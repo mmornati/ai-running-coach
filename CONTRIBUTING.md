@@ -1,0 +1,71 @@
+# Contribuer à ai-running-coach
+
+Merci de votre intérêt pour `ai-running-coach` ! Voici les conventions à respecter.
+
+## Conventions
+
+### Langue
+
+- **Tout le contenu** (agents, skills, documentation, fichiers MD générés) est en **français**
+- Les noms de fichiers et de dossiers sont en anglais (convention technique)
+
+### Structure
+
+```
+agents/                  # Agents IA (un fichier .md par agent)
+skills/                  # Skills (un dossier par skill avec SKILL.md)
+config/gemini/commands/  # Templates de commandes Gemini CLI
+docs/                    # Documentation (MkDocs / GitHub Pages)
+```
+
+### Agents
+
+- Un agent = un fichier Markdown dans `agents/`
+- Format : frontmatter YAML (`description`, `mode: subagent`) + instructions
+- Les agents délèguent via l'outil `task` de leur IDE
+- Toutes les données Garmin passent par `leanproxy_invoke_tool(server="garmin", ...)`
+
+### Skills
+
+- Un skill = un dossier dans `skills/` avec un fichier `SKILL.md`
+- Les scripts Python doivent utiliser **uniquement la stdlib** (sauf exception documentée)
+- Chaque skill doit documenter son usage dans `docs/skills/`
+
+### Scripts Python
+
+- **stdlib uniquement** par défaut
+- Si des dépendances externes sont nécessaires, documentez-les dans le `SKILL.md`
+- Vérifiez la syntaxe : `python3 -m py_compile <script>.py`
+
+## Processus
+
+1. **Fork** le dépôt
+2. Créez une **branche** : `git checkout -b feature/ma-fonctionnalite`
+3. Faites vos modifications
+4. **Testez** :
+   - `bash -n install.sh` (syntaxe du script d'installation)
+   - `python3 -m py_compile skills/*/scripts/*.py` (syntaxe des scripts)
+   - `./install.sh --dry-run` (test du script d'installation)
+5. **Commit** avec un message clair
+6. Ouvrez une **pull request**
+
+## Tests
+
+```bash
+# Syntaxe du script d'installation
+bash -n install.sh
+
+# Syntaxe des scripts Python
+python3 -m py_compile skills/*/scripts/*.py
+
+# Test du script d'installation (sans rien modifier)
+./install.sh --dry-run
+
+# Build de la documentation
+pip install mkdocs-material
+mkdocs build
+```
+
+## Licence
+
+En contribuant, vous acceptez que vos contributions soient publiées sous la [licence MIT](LICENSE).

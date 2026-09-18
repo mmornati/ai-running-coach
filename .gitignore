@@ -1,0 +1,37 @@
+# Données personnelles — jamais versionnées
+activities/
+medical/
+nutrition/
+planning/
+rapports/
+resources/
+
+# Secrets & tokens
+*.token
+*.tokens.json
+.garminconnect/
+.env
+.env.local
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+
+# OS
+.DS_Store
+
+# IDE
+.idea/
+.vscode/
+
+# Configs IDE générées par install.sh
+.opencode/
+.claude/
+.gemini/
+.cursor/
+.windsurf/
+.mcp.json
+
+# Build docs
+site/

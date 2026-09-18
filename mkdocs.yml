@@ -1,0 +1,89 @@
+site_name: ai-running-coach
+site_description: Coach IA de trail running connecté à Garmin Connect
+site_url: https://mmornati.github.io/ai-running-coach/
+repo_url: https://github.com/mmornati/ai-running-coach
+repo_name: ai-running-coach
+edit_uri: edit/main/docs/
+
+theme:
+  name: material
+  language: fr
+  custom_dir: overrides
+  font:
+    text: Inter
+    code: JetBrains Mono
+  icon:
+    logo: material/terrain
+  palette:
+    - scheme: default
+      primary: green
+      accent: lime
+      toggle:
+        icon: material/brightness-7
+        name: Mode sombre
+    - scheme: slate
+      primary: green
+      accent: lime
+      toggle:
+        icon: material/brightness-4
+        name: Mode clair
+  features:
+    - navigation.instant
+    - navigation.tracking
+    - navigation.top
+    - search.suggest
+    - search.highlight
+    - content.code.copy
+    - content.tabs.link
+
+extra_css:
+  - stylesheets/extra.css
+
+extra:
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/mmornati/ai-running-coach
+
+markdown_extensions:
+  - md_in_html
+  - admonition
+  - pymdownx.details
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.emoji:
+      emoji_index: !!python/name:material.extensions.emoji.twemoji
+      emoji_generator: !!python/name:material.extensions.emoji.to_svg
+  - toc:
+      permalink: true
+
+nav:
+  - Accueil: index.md
+  - Installation:
+      - Démarrage rapide: quickstart.md
+      - Configuration Garmin: garmin-setup.md
+      - IDE supportés: ides.md
+  - Agents:
+      - Vue d'ensemble: agents.md
+      - Coach: agents/coach.md
+      - Stratège de course: agents/course-strategist.md
+      - Médecin: agents/medical.md
+      - Nutritionniste: agents/nutritionist.md
+  - Skills:
+      - Vue d'ensemble: skills.md
+      - Analyse GPX: skills/gpx-analysis.md
+      - Comparaison de parcours: skills/course-comparison.md
+      - Planification Garmin: skills/garmin-workout-scheduling.md
+      - Synchronisation Garmin: skills/garmin-sync-efficiency.md
+      - Météo: skills/weather-forecast.md
+      - Analyse de séances: skills/session-parts-analyzer.md
+      - Intervals.icu: skills/intervals-icu-best-practices.md
+      - Téléchargement FIT: skills/fit-download.md
+  - Ressources:
+      - Base de connaissances: resources.md
+  - Dépannage: troubleshooting.md
+  - FAQ: faq.md

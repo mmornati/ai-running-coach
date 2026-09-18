@@ -1,0 +1,35 @@
+name: "Copilot Setup Steps"
+
+# Automatiquement exécuté quand ce fichier change (validation CI) et
+# manuellement depuis l'onglet Actions.
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - .github/workflows/copilot-setup-steps.yml
+  pull_request:
+    paths:
+      - .github/workflows/copilot-setup-steps.yml
+
+jobs:
+  # Le job DOIT s'appeler `copilot-setup-steps` pour être pris en compte
+  # par l'agent cloud Copilot.
+  copilot-setup-steps:
+    runs-on: ubuntu-latest
+
+    permissions:
+      # Nécessaire pour cloner le dépôt et installer les dépendances.
+      contents: read
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install documentation dependencies
+        run: |
+          pip install -r requirements-docs.txt

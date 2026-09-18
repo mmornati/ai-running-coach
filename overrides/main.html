@@ -1,0 +1,47 @@
+{% extends "base.html" %}
+
+<!--
+  DIRECTION CONTRACT — ai-running-coach docs (seed 7db02fbb)
+  THESIS: The docs are a trailhead, not a manual — one full-bleed mountain
+  viewport that turns "another docs site" into "I want this in my IDE now".
+  OWN-WORLD: Earth-and-forest palette (deep pine green, warm stone, energetic
+  lime accent) over real trail photography; a quiet alpine type system
+  (Inter text, tight display headings); generous whitespace, soft shadows,
+  one authored motion moment on load.
+  STORY: A francophone trail runner lands, sees their own world (mountains,
+  dawn, effort), understands in seconds that four AI specialists + Garmin
+  live in their IDE, and acts: install in 5 minutes.
+  FIRST VIEWPORT: Full-bleed hero image with dark scrim; display headline
+  top-left, one lead sentence, two CTAs (primary "Commencer en 5 minutes",
+  secondary "Découvrir les agents"), three quiet trust markers below.
+  FORM: Marketing landing (candidate 3/4 of grounded list) staged as a
+  full-bleed hero + feature grid + flow section + CTA band, all static.
+-->
+
+{% block hero %}
+  {% if page.is_homepage %}
+    <section class="arc-hero" aria-label="Présentation">
+      <div class="arc-hero__media" aria-hidden="true">
+        <img src="{{ 'assets/hero-trail.jpg' | url }}" alt="" />
+        <div class="arc-hero__scrim"></div>
+      </div>
+      <div class="arc-hero__inner md-grid">
+        <h1 class="arc-hero__title">Votre staff d'entraînement,<br />dans votre IDE.</h1>
+        <p class="arc-hero__lead">
+          Un coach, un médecin du sport, un nutritionniste et un stratège de course —
+          des agents IA open source qui préparent votre objectif trail, connectés à
+          Garmin Connect, sans quitter votre éditeur.
+        </p>
+        <div class="arc-hero__actions">
+          <a href="{{ 'quickstart/' | url }}" class="md-button md-button--primary">Commencer en 5 minutes</a>
+          <a href="{{ 'agents/' | url }}" class="md-button">Découvrir les agents</a>
+        </div>
+        <ul class="arc-hero__meta">
+          <li>Open source · MIT</li>
+          <li>Garmin Connect</li>
+          <li>Français</li>
+        </ul>
+      </div>
+    </section>
+  {% endif %}
+{% endblock %}

@@ -1,0 +1,368 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2025-09-18T00:00:00Z",
+  "title": "Design System: ai-running-coach",
+  "extensions": {
+    "colorMeta": {
+      "primary": {
+        "role": "primary",
+        "displayName": "Pine",
+        "canonical": "#1e4d3b",
+        "tonalRamp": [
+          "#0b1f16",
+          "#0f2a1f",
+          "#14352a",
+          "#1a4536",
+          "#1e4d3b",
+          "#2f6b4f",
+          "#3d7a5c",
+          "#4f8f6e"
+        ]
+      },
+      "primary-deep": {
+        "role": "primary",
+        "displayName": "Pine Deep",
+        "canonical": "#0f2a1f",
+        "tonalRamp": [
+          "#0b1f16",
+          "#0f2a1f",
+          "#14352a",
+          "#1a4536",
+          "#1e4d3b",
+          "#2f6b4f",
+          "#3d7a5c",
+          "#4f8f6e"
+        ]
+      },
+      "accent": {
+        "role": "secondary",
+        "displayName": "Lime",
+        "canonical": "#a3e635",
+        "tonalRamp": [
+          "#1a3a0a",
+          "#2c5c12",
+          "#3f7d1a",
+          "#529e22",
+          "#6bbf2b",
+          "#84cc16",
+          "#a3e635",
+          "#c6f26a"
+        ]
+      },
+      "accent-strong": {
+        "role": "secondary",
+        "displayName": "Lime Strong",
+        "canonical": "#84cc16",
+        "tonalRamp": [
+          "#1a3a0a",
+          "#2c5c12",
+          "#3f7d1a",
+          "#529e22",
+          "#6bbf2b",
+          "#84cc16",
+          "#a3e635",
+          "#c6f26a"
+        ]
+      },
+      "neutral-bg": {
+        "role": "neutral",
+        "displayName": "Stone",
+        "canonical": "#f6f4ef",
+        "tonalRamp": [
+          "#1c2b24",
+          "#2e4036",
+          "#4a5a52",
+          "#6b7a72",
+          "#8b9a92",
+          "#b8c4bd",
+          "#e7ede9",
+          "#f6f4ef"
+        ]
+      },
+      "neutral-bg-2": {
+        "role": "neutral",
+        "displayName": "Stone 2",
+        "canonical": "#efece3",
+        "tonalRamp": [
+          "#1c2b24",
+          "#2e4036",
+          "#4a5a52",
+          "#6b7a72",
+          "#8b9a92",
+          "#b8c4bd",
+          "#e7ede9",
+          "#efece3"
+        ]
+      },
+      "neutral-ink": {
+        "role": "neutral",
+        "displayName": "Ink",
+        "canonical": "#1c2b24",
+        "tonalRamp": [
+          "#0b1f16",
+          "#1c2b24",
+          "#2e4036",
+          "#4a5a52",
+          "#6b7a72",
+          "#8b9a92",
+          "#b8c4bd",
+          "#e7ede9"
+        ]
+      },
+      "neutral-ink-soft": {
+        "role": "neutral",
+        "displayName": "Ink Soft",
+        "canonical": "#4a5a52",
+        "tonalRamp": [
+          "#0b1f16",
+          "#1c2b24",
+          "#2e4036",
+          "#4a5a52",
+          "#6b7a72",
+          "#8b9a92",
+          "#b8c4bd",
+          "#e7ede9"
+        ]
+      },
+      "dark-bg": {
+        "role": "neutral",
+        "displayName": "Dark Background",
+        "canonical": "#0d1410",
+        "tonalRamp": [
+          "#0a1510",
+          "#0d1410",
+          "#111a15",
+          "#16201a",
+          "#1d2a22",
+          "#2e4036",
+          "#4a5a52",
+          "#6b7a72"
+        ]
+      },
+      "dark-ink": {
+        "role": "neutral",
+        "displayName": "Dark Ink",
+        "canonical": "#e7ede9",
+        "tonalRamp": [
+          "#0a1510",
+          "#0d1410",
+          "#111a15",
+          "#16201a",
+          "#1d2a22",
+          "#2e4036",
+          "#4a5a52",
+          "#e7ede9"
+        ]
+      },
+      "dark-ink-soft": {
+        "role": "neutral",
+        "displayName": "Dark Ink Soft",
+        "canonical": "#b8c4bd",
+        "tonalRamp": [
+          "#0a1510",
+          "#0d1410",
+          "#111a15",
+          "#16201a",
+          "#1d2a22",
+          "#2e4036",
+          "#4a5a52",
+          "#b8c4bd"
+        ]
+      },
+      "accent-hover": {
+        "role": "secondary",
+        "displayName": "Lime Hover",
+        "canonical": "#b6f04a",
+        "tonalRamp": [
+          "#1a3a0a",
+          "#2c5c12",
+          "#3f7d1a",
+          "#529e22",
+          "#6bbf2b",
+          "#84cc16",
+          "#a3e635",
+          "#b6f04a"
+        ]
+      },
+      "white": {
+        "role": "neutral",
+        "displayName": "White",
+        "canonical": "#ffffff",
+        "tonalRamp": [
+          "#8b9a92",
+          "#b8c4bd",
+          "#c9d4cd",
+          "#e7ede9",
+          "#f6f4ef",
+          "#ffffff",
+          "#ffffff",
+          "#ffffff"
+        ]
+      }
+    },
+    "typographyMeta": {
+      "display": {
+        "displayName": "Display",
+        "purpose": "Hero headline only. Max 15ch, one natural line break."
+      },
+      "headline": {
+        "displayName": "Headline",
+        "purpose": "Section headings. Max 24ch."
+      },
+      "body": {
+        "displayName": "Body",
+        "purpose": "Content text. 65-75ch measure in docs, 46-58ch in hero/intros."
+      },
+      "label": {
+        "displayName": "Label",
+        "purpose": "Trust markers, step numbers, disclaimers."
+      },
+      "title": {
+        "displayName": "Title",
+        "purpose": "Agent names and step titles."
+      },
+      "lead": {
+        "displayName": "Lead",
+        "purpose": "Hero lead sentence and section intros. 46-58ch."
+      },
+      "mono": {
+        "displayName": "Mono",
+        "purpose": "Code, commands, and measurements only."
+      }
+    },
+    "shadows": [
+      {
+        "name": "ambient-card",
+        "value": "0 1px 2px rgba(20,40,30,0.06), 0 8px 24px rgba(20,40,30,0.08)",
+        "purpose": "Agent cards on light surfaces."
+      },
+      {
+        "name": "ambient-dark",
+        "value": "0 1px 2px rgba(0,0,0,0.3), 0 8px 24px rgba(0,0,0,0.35)",
+        "purpose": "Cards and CTA command block on dark surfaces."
+      },
+      {
+        "name": "header",
+        "value": "0 0 0.2rem rgba(0,0,0,0.1), 0 0.2rem 0.4rem rgba(0,0,0,0.3)",
+        "purpose": "Sticky header once scrolled past the transparent hero."
+      }
+    ],
+    "motion": [
+      {
+        "name": "hero-rise",
+        "value": "cubic-bezier(0.16, 1, 0.3, 1) 0.8s",
+        "purpose": "The single authored motion moment: hero title/lead/actions rise in sequence (0s/0.15s/0.3s). Disabled under prefers-reduced-motion."
+      }
+    ],
+    "breakpoints": [
+      {
+        "name": "lg",
+        "value": "76.1875em"
+      },
+      {
+        "name": "md",
+        "value": "60em"
+      },
+      {
+        "name": "sm",
+        "value": "44.9375em"
+      }
+    ]
+  },
+  "components": [
+    {
+      "name": "Primary Button",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "The single action CTA on the page. Lime on pine-deep.",
+      "html": "<button class=\"ds-btn-primary\">Commencer en 5 minutes</button>",
+      "css": ".ds-btn-primary { background: #a3e635; color: #0f2a1f; padding: 0.85rem 1.7rem; border-radius: 2rem; border: 1px solid #a3e635; font-weight: 600; font-size: 1rem; transition: background 0.2s; } .ds-btn-primary:hover { background: #b6f04a; } .ds-btn-primary:focus-visible { outline: 2px solid #0f2a1f; outline-offset: 2px; }"
+    },
+    {
+      "name": "Secondary Button",
+      "kind": "button",
+      "refersTo": "button-secondary",
+      "description": "Ghost action over the hero image. White text, translucent border.",
+      "html": "<button class=\"ds-btn-secondary\">Découvrir les agents</button>",
+      "css": ".ds-btn-secondary { background: transparent; color: #ffffff; padding: 0.85rem 1.7rem; border-radius: 2rem; border: 1px solid rgba(255,255,255,0.65); font-weight: 600; font-size: 1rem; transition: background 0.2s; } .ds-btn-secondary:hover { background: rgba(255,255,255,0.14); border-color: #ffffff; } .ds-btn-secondary:focus-visible { outline: 2px solid #ffffff; outline-offset: 2px; }"
+    },
+    {
+      "name": "Agent Card",
+      "kind": "card",
+      "refersTo": "agent-card",
+      "description": "One AI specialist: icon, name, role, example prompt in a quote block.",
+      "html": "<div class=\"ds-agent-card\"><h3>🧠 Coach</h3><p>Le chef d'orchestre du plan d'entraînement.</p><blockquote>« Je veux préparer un trail de 50 km. »</blockquote></div>",
+      "css": ".ds-agent-card { background: #f6f4ef; border-radius: 1.1rem; padding: 1.8rem 1.8rem 1.6rem; box-shadow: 0 1px 2px rgba(20,40,30,0.06), 0 8px 24px rgba(20,40,30,0.08); } .ds-agent-card h3 { font-family: Sora, Inter, sans-serif; font-size: 1.3rem; font-weight: 700; letter-spacing: -0.02em; margin: 0 0 0.5rem; } .ds-agent-card p { color: #4a5a52; line-height: 1.6; margin: 0 0 1rem; } .ds-agent-card blockquote { background: #efece3; border-radius: 0.6rem; padding: 0.8rem 1rem; font-size: 0.92rem; color: #1c2b24; } .ds-agent-card blockquote p { margin: 0; color: inherit; }"
+    },
+    {
+      "name": "CTA Command Block",
+      "kind": "custom",
+      "refersTo": "cta-command",
+      "description": "The one-line install command. Mono, lime on near-black.",
+      "html": "<code class=\"ds-cta-cmd\">git clone https://github.com/mmornati/ai-running-coach.git && cd ai-running-coach && ./install.sh</code>",
+      "css": ".ds-cta-cmd { display: inline-block; background: #0a1510; color: #a3e635; padding: 1rem 1.6rem; border-radius: 0.8rem; font-family: 'JetBrains Mono', monospace; font-size: 0.95rem; box-shadow: 0 1px 2px rgba(0,0,0,0.3), 0 10px 30px rgba(0,0,0,0.35); }"
+    },
+    {
+      "name": "Trust Marker",
+      "kind": "chip",
+      "refersTo": "button-secondary",
+      "description": "Quiet hero trust markers: lime dot + label.",
+      "html": "<ul class=\"ds-trust\"><li>Open source · MIT</li><li>Garmin Connect</li><li>Français</li></ul>",
+      "css": ".ds-trust { list-style: none; display: flex; gap: 0.4rem 1.6rem; font-size: 0.9rem; color: rgba(255,255,255,0.78); } .ds-trust li { display: flex; align-items: center; gap: 0.45rem; } .ds-trust li::before { content: ''; width: 0.4rem; height: 0.4rem; border-radius: 50%; background: #a3e635; }"
+    }
+  ],
+  "narrative": {
+    "northStar": "Le Sentier",
+    "overview": "The docs are a trailhead, not a manual. Every screen opens onto the runner's own world: deep pine forest, warm stone, a lime accent like a trail marker catching dawn light. The system earns attention with real mountain photography and a quiet alpine type system, then gets out of the way so the reader acts: install in five minutes. The personality is earned and restrained — one full-bleed photographic moment per landing, generous whitespace, soft ambient shadows, and a single authored motion moment on load. Density is low; confidence is high. The palette is earth-and-forest (deep pine greens, warm stone neutrals, energetic lime), chosen from the use scene: a francophone trail runner at dawn, not a corporate dashboard at noon.",
+    "keyCharacteristics": [
+      "Full-bleed photographic hero as the first viewport, with a dark scrim for text legibility.",
+      "Earth-and-forest palette: pine greens, warm stone, lime accent.",
+      "Sora display type (tight tracking) over Inter body text.",
+      "One authored motion moment (hero rise on load), exponential ease-out, reduced-motion respected.",
+      "Soft ambient shadows with real offset and blur; never zero-offset halos.",
+      "Generous section rhythm (5rem), tight intra-group gaps (1.4rem)."
+    ],
+    "rules": [
+      {
+        "name": "The One Accent Rule",
+        "body": "Lime appears on ≤10% of any screen. It marks action (CTAs, step numbers, trust dots) and nothing else; a second accent color is never introduced.",
+        "section": "colors"
+      },
+      {
+        "name": "The Tinted-Secondary Rule",
+        "body": "Secondary text is tinted from the surface hue (green-tinted ink on stone, green-tinted gray on dark) — never pure gray, which reads as disabled.",
+        "section": "colors"
+      },
+      {
+        "name": "The Tight-Tracking Rule",
+        "body": "Display and headline letter-spacing is negative (-0.02em to -0.03em) and never looser than normal. The alpine character comes from compression, not from spacing out.",
+        "section": "typography"
+      },
+      {
+        "name": "The Mono-Is-Data Rule",
+        "body": "JetBrains Mono appears only for code, commands, and measurements — never to make a label look technical.",
+        "section": "typography"
+      },
+      {
+        "name": "The Offset-Only Rule",
+        "body": "Every shadow carries a vertical offset and a soft blur. A zero-offset colored halo is decoration, not depth, and is never used.",
+        "section": "elevation"
+      }
+    ],
+    "dos": [
+      "Do open with the full-bleed photographic hero — the mountain is the promise.",
+      "Do use lime only for action: CTAs, step numbers, trust dots.",
+      "Do keep display tracking tight (-0.02em to -0.03em) and body measure at 65–75ch in docs.",
+      "Do give every shadow an offset and a blur.",
+      "Do respect prefers-reduced-motion by disabling the hero rise."
+    ],
+    "donts": [
+      "Don't add a second accent color; lime is the only one.",
+      "Don't use pure gray for secondary text — tint it from the surface hue.",
+      "Don't use JetBrains Mono outside code, commands, and data.",
+      "Don't add a kicker or eyebrow above a heading; the heading carries its own weight.",
+      "Don't use gradient text, glass-as-decoration, or zero-offset colored halos.",
+      "Don't add more than one authored motion moment; the hero rise is the only one."
+    ]
+  }
+}

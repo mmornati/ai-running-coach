@@ -1,0 +1,46 @@
+# Configuration de l'application GitHub Copilot (app desktop)
+
+# Ces instructions sont ajoutées aux instructions globales de l'utilisateur
+# lorsque l'application Copilot travaille dans ce dépôt.
+instructions: |
+  # ai-running-coach — Documentation MkDocs
+
+  Ce dépôt contient la documentation du projet ai-running-coach, construite avec
+  **MkDocs** et le thème **Material**.
+
+  ## Commandes utiles
+
+  - **Construire la documentation** (validation stricte) :
+    `uv run --with mkdocs-material --no-project mkdocs build --strict`
+  - **Servir la documentation en local** :
+    `uv run --with mkdocs-material --no-project mkdocs serve`
+  - **Installer les dépendances docs** :
+    `uv tool install mkdocs-material`
+
+  ## Règles
+
+  - Ne jamais éditer le dossier `site/` : il est **généré** par `mkdocs build`.
+  - Les pages de documentation vivent dans `docs/` (fichiers Markdown en français).
+  - La navigation est définie dans `mkdocs.yml`.
+  - Les dossiers `activities/`, `medical/`, `nutrition/`, `planning/`, `rapports/`
+    et `resources/` contiennent des données personnelles de l'utilisateur :
+    ne pas les modifier, ne pas les versionner.
+  - Après une modification de `docs/` ou `mkdocs.yml`, valider avec
+    `mkdocs build --strict` (0 erreur attendue).
+
+# Scripts exécutables depuis l'application Copilot (bouton play).
+# Aucun trigger : ils restent manuels.
+scripts:
+  - name: Setup docs
+    command: uv tool install mkdocs-material
+  - name: Build docs
+    command: uv run --with mkdocs-material --no-project mkdocs build --strict
+  - name: Serve docs
+    command: uv run --with mkdocs-material --no-project mkdocs serve
+
+# Pattern détectant l'URL de service dans la sortie de `mkdocs serve`.
+# Capture group 1 = URL complète (robuste au chemin de base /ai-running-coach/).
+server_ready_pattern: '(?i)Serving on\s+(https?://\S+)'
+
+# Ouvre automatiquement l'URL détectée dans le navigateur intégré.
+auto_open_in_browser: true

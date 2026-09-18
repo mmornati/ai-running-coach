@@ -1,0 +1,3 @@
+# Dépendances pour construire la documentation MkDocs (GitHub Pages).
+# Version vérifiée : mkdocs-material 9.7.7 (mkdocs 1.6.1).
+mkdocs-material==9.7.7

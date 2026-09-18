@@ -1,0 +1,558 @@
+/* ============================================================
+   ai-running-coach — design system (trail / mountain world)
+   Loaded after Material palette.css, so these overrides win.
+   ============================================================ */
+
+@import url("https://fonts.googleapis.com/css2?family=Sora:wght@600;700;800&display=swap");
+
+/* ---------- Tokens ---------- */
+
+:root {
+  --arc-pine-950: #0b1f16;
+  --arc-pine-900: #0f2a1f;
+  --arc-pine-800: #14352a;
+  --arc-pine-700: #1a4536;
+  --arc-pine-600: #1e4d3b;
+  --arc-moss: #2f6b4f;
+  --arc-lime: #a3e635;
+  --arc-lime-strong: #84cc16;
+  --arc-stone: #f6f4ef;
+  --arc-stone-2: #efece3;
+  --arc-ink: #1c2b24;
+  --arc-ink-soft: #4a5a52;
+  --arc-display: "Sora", "Inter", sans-serif;
+}
+
+/* ---------- Material palette overrides ---------- */
+
+[data-md-color-scheme="default"] {
+  --md-primary-fg-color: var(--arc-pine-800);
+  --md-primary-fg-color--light: var(--arc-pine-600);
+  --md-primary-fg-color--dark: var(--arc-pine-900);
+  --md-primary-bg-color: var(--arc-stone);
+  --md-accent-fg-color: var(--arc-lime-strong);
+  --md-accent-fg-color--transparent: rgba(132, 204, 22, 0.16);
+  --md-default-bg-color: var(--arc-stone);
+  --md-default-fg-color: var(--arc-ink);
+  --md-default-fg-color--light: var(--arc-ink-soft);
+  --md-default-fg-color--lighter: #6b7a72;
+  --md-typeset-a-color: var(--arc-pine-600);
+  --md-typeset-a-color--active: var(--arc-pine-700);
+  --md-code-bg-color: var(--arc-stone-2);
+  --md-code-fg-color: var(--arc-ink);
+  --md-footer-bg-color: var(--arc-pine-900);
+  --md-footer-fg-color: #c9d4cd;
+}
+
+[data-md-color-scheme="slate"] {
+  --md-primary-fg-color: var(--arc-pine-700);
+  --md-primary-fg-color--light: var(--arc-pine-600);
+  --md-primary-fg-color--dark: var(--arc-pine-900);
+  --md-primary-bg-color: #e7ede9;
+  --md-accent-fg-color: var(--arc-lime);
+  --md-accent-fg-color--transparent: rgba(163, 230, 53, 0.16);
+  --md-default-bg-color: #0d1410;
+  --md-default-fg-color: #e7ede9;
+  --md-default-fg-color--light: #b8c4bd;
+  --md-default-fg-color--lighter: #8b9a92;
+  --md-typeset-a-color: var(--arc-lime);
+  --md-typeset-a-color--active: #c6f26a;
+  --md-code-bg-color: #16201a;
+  --md-code-fg-color: #e7ede9;
+  --md-footer-bg-color: #0a1510;
+  --md-footer-fg-color: #b8c4bd;
+}
+
+/* ---------- Typography ---------- */
+
+.md-typeset h1,
+.md-typeset h2,
+.md-typeset h3,
+.md-typeset h4 {
+  font-family: var(--arc-display);
+  letter-spacing: -0.02em;
+  font-weight: 700;
+}
+
+.md-typeset h1 {
+  font-weight: 800;
+  letter-spacing: -0.03em;
+}
+
+/* ---------- Homepage: full-bleed layout ---------- */
+
+html:has(.arc-hero) .md-main__inner {
+  margin-top: 0;
+}
+
+html:has(.arc-hero) .md-content__inner {
+  margin: 0;
+  padding: 0;
+}
+
+html:has(.arc-hero) .md-content__inner > .md-content__inner {
+  margin: 0;
+  padding: 0;
+}
+
+/* The auto-generated page-title h1 is redundant under the hero */
+html:has(.arc-hero) .md-content__inner h1:first-of-type {
+  display: none;
+}
+
+/* Transparent header over the hero, solid once scrolled */
+html:has(.arc-hero) .md-header {
+  background: transparent;
+  box-shadow: none;
+}
+
+html:has(.arc-hero) .md-header--shadow {
+  background: var(--md-primary-fg-color);
+  box-shadow: 0 0 0.2rem rgba(0, 0, 0, 0.1), 0 0.2rem 0.4rem rgba(0, 0, 0, 0.3);
+}
+
+/* ---------- Hero ---------- */
+
+.arc-hero {
+  position: relative;
+  min-height: 88vh;
+  display: flex;
+  align-items: center;
+  overflow: hidden;
+  color: #fff;
+}
+
+.arc-hero__media {
+  position: absolute;
+  inset: 0;
+}
+
+.arc-hero__media img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.arc-hero__scrim {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    180deg,
+    rgba(9, 20, 15, 0.62) 0%,
+    rgba(9, 20, 15, 0.28) 45%,
+    rgba(9, 20, 15, 0.78) 100%
+  );
+}
+
+.arc-hero__inner {
+  position: relative;
+  z-index: 1;
+  padding: 7rem 0 4.5rem;
+}
+
+.arc-hero__title {
+  font-family: var(--arc-display);
+  font-size: clamp(2.4rem, 6vw, 4.4rem);
+  line-height: 1.04;
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  color: #fff;
+  margin: 0 0 1.4rem;
+  max-width: 15ch;
+}
+
+.arc-hero__lead {
+  font-size: clamp(1.05rem, 1.6vw, 1.25rem);
+  line-height: 1.6;
+  color: rgba(255, 255, 255, 0.92);
+  max-width: 46ch;
+  margin: 0 0 2.2rem;
+}
+
+.arc-hero__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.9rem;
+  margin-bottom: 2.6rem;
+}
+
+.arc-hero .md-button {
+  padding: 0.85rem 1.7rem;
+  font-size: 1rem;
+  border-radius: 2rem;
+  font-weight: 600;
+}
+
+.arc-hero .md-button--primary {
+  background: var(--arc-lime);
+  border-color: var(--arc-lime);
+  color: var(--arc-pine-900);
+}
+
+.arc-hero .md-button--primary:hover {
+  background: #b6f04a;
+  border-color: #b6f04a;
+  color: var(--arc-pine-900);
+}
+
+.arc-hero .md-button:not(.md-button--primary) {
+  border-color: rgba(255, 255, 255, 0.65);
+  color: #fff;
+}
+
+.arc-hero .md-button:not(.md-button--primary):hover {
+  background: rgba(255, 255, 255, 0.14);
+  border-color: #fff;
+  color: #fff;
+}
+
+.arc-hero__meta {
+  list-style: none;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem 1.6rem;
+  margin: 0;
+  padding: 0;
+  font-size: 0.9rem;
+  color: rgba(255, 255, 255, 0.78);
+}
+
+.arc-hero__meta li {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+}
+
+.arc-hero__meta li::before {
+  content: "";
+  width: 0.4rem;
+  height: 0.4rem;
+  border-radius: 50%;
+  background: var(--arc-lime);
+}
+
+/* One authored motion moment: hero rises on load */
+@keyframes arc-rise {
+  from {
+    opacity: 0;
+    transform: translateY(1.4rem);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.arc-hero__title {
+  animation: arc-rise 0.8s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.arc-hero__lead {
+  animation: arc-rise 0.8s cubic-bezier(0.16, 1, 0.3, 1) 0.15s both;
+}
+
+.arc-hero__actions {
+  animation: arc-rise 0.8s cubic-bezier(0.16, 1, 0.3, 1) 0.3s both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .arc-hero__title,
+  .arc-hero__lead,
+  .arc-hero__actions {
+    animation: none;
+  }
+}
+
+/* ---------- Landing sections ---------- */
+
+.arc-section {
+  padding: 5rem 0;
+}
+
+.arc-section--tint {
+  background: var(--arc-stone-2);
+}
+
+[data-md-color-scheme="slate"] .arc-section--tint {
+  background: #111a15;
+}
+
+.arc-section--dark {
+  background: var(--arc-pine-900);
+  color: #e7ede9;
+}
+
+.arc-section__inner {
+  max-width: 61rem;
+  margin: 0 auto;
+  padding: 0 1rem;
+}
+
+.arc-section h2 {
+  font-size: clamp(1.8rem, 3.4vw, 2.6rem);
+  line-height: 1.12;
+  margin: 0 0 1.1rem;
+  max-width: 24ch;
+}
+
+.arc-section--dark h2 {
+  color: #fff;
+}
+
+.arc-section__intro {
+  font-size: 1.1rem;
+  line-height: 1.65;
+  max-width: 58ch;
+  margin: 0 0 2.8rem;
+  color: var(--arc-ink-soft);
+}
+
+.arc-section--dark .arc-section__intro {
+  color: #b8c4bd;
+}
+
+/* ---------- Team (agents) ---------- */
+
+.arc-team {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 1.4rem;
+}
+
+.arc-agent {
+  background: var(--arc-stone);
+  border-radius: 1.1rem;
+  padding: 1.8rem 1.8rem 1.6rem;
+  box-shadow: 0 1px 2px rgba(20, 40, 30, 0.06), 0 8px 24px rgba(20, 40, 30, 0.08);
+}
+
+[data-md-color-scheme="slate"] .arc-agent {
+  background: #16201a;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.3), 0 8px 24px rgba(0, 0, 0, 0.35);
+}
+
+.arc-agent h3 {
+  font-size: 1.3rem;
+  margin: 0 0 0.5rem;
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+}
+
+.arc-agent h3 .arc-agent__icon {
+  font-size: 1.15rem;
+  line-height: 1;
+}
+
+.arc-agent p {
+  margin: 0 0 1rem;
+  line-height: 1.6;
+  color: var(--arc-ink-soft);
+}
+
+[data-md-color-scheme="slate"] .arc-agent p {
+  color: #b8c4bd;
+}
+
+.arc-agent blockquote {
+  margin: 0;
+  padding: 0.8rem 1rem;
+  border-radius: 0.6rem;
+  background: var(--arc-stone-2);
+  font-size: 0.92rem;
+  color: var(--arc-ink);
+}
+
+[data-md-color-scheme="slate"] .arc-agent blockquote {
+  background: #1d2a22;
+  color: #e7ede9;
+}
+
+.arc-agent blockquote p {
+  margin: 0;
+  color: inherit;
+}
+
+/* ---------- Flow ---------- */
+
+.arc-flow {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 1.6rem;
+  counter-reset: arc-step;
+}
+
+.arc-step {
+  position: relative;
+  padding-top: 0.4rem;
+}
+
+.arc-step__num {
+  font-family: var(--arc-display);
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: var(--arc-lime);
+  margin-bottom: 0.7rem;
+  display: block;
+}
+
+.arc-step h3 {
+  font-size: 1.2rem;
+  color: #fff;
+  margin: 0 0 0.6rem;
+}
+
+.arc-step p {
+  margin: 0;
+  line-height: 1.6;
+  color: #b8c4bd;
+}
+
+/* ---------- Skills ---------- */
+
+.arc-skills {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 0.9rem 1.6rem;
+}
+
+.arc-skill {
+  display: flex;
+  gap: 0.9rem;
+  align-items: baseline;
+  padding: 0.9rem 0;
+  border-bottom: 1px solid rgba(20, 40, 30, 0.12);
+}
+
+[data-md-color-scheme="slate"] .arc-skill {
+  border-bottom-color: rgba(255, 255, 255, 0.1);
+}
+
+.arc-skill__name {
+  font-weight: 700;
+  white-space: nowrap;
+  color: var(--arc-ink);
+}
+
+[data-md-color-scheme="slate"] .arc-skill__name {
+  color: #e7ede9;
+}
+
+.arc-skill__desc {
+  color: var(--arc-ink-soft);
+  line-height: 1.5;
+}
+
+[data-md-color-scheme="slate"] .arc-skill__desc {
+  color: #b8c4bd;
+}
+
+/* ---------- CTA band ---------- */
+
+.arc-cta {
+  text-align: center;
+}
+
+.arc-cta h2 {
+  margin-left: auto;
+  margin-right: auto;
+}
+
+.arc-cta__cmd {
+  display: inline-block;
+  margin: 1.6rem 0 2rem;
+  padding: 1rem 1.6rem;
+  border-radius: 0.8rem;
+  background: #0a1510;
+  font-family: "JetBrains Mono", monospace;
+  font-size: 0.95rem;
+  color: var(--arc-lime);
+  text-align: left;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.3), 0 10px 30px rgba(0, 0, 0, 0.35);
+}
+
+.arc-cta .md-button {
+  padding: 0.85rem 1.7rem;
+  font-size: 1rem;
+  border-radius: 2rem;
+  font-weight: 600;
+}
+
+.arc-cta .md-button--primary {
+  background: var(--arc-lime);
+  border-color: var(--arc-lime);
+  color: var(--arc-pine-900);
+}
+
+.arc-cta .md-button--primary:hover {
+  background: #b6f04a;
+  border-color: #b6f04a;
+  color: var(--arc-pine-900);
+}
+
+/* ---------- Disclaimer ---------- */
+
+.arc-note {
+  font-size: 0.9rem;
+  color: var(--arc-ink-soft);
+  max-width: 60ch;
+  margin: 0 auto;
+  line-height: 1.6;
+}
+
+[data-md-color-scheme="slate"] .arc-note {
+  color: #8b9a92;
+}
+
+/* ---------- Responsive ---------- */
+
+@media (max-width: 76.1875em) {
+  .arc-hero {
+    min-height: 82vh;
+  }
+
+  .arc-hero__inner {
+    padding-top: 6rem;
+  }
+}
+
+@media (max-width: 60em) {
+  .arc-team,
+  .arc-skills {
+    grid-template-columns: 1fr;
+  }
+
+  .arc-flow {
+    grid-template-columns: 1fr;
+    gap: 2rem;
+  }
+
+  .arc-section {
+    padding: 3.5rem 0;
+  }
+}
+
+@media (max-width: 44.9375em) {
+  .arc-hero {
+    min-height: 78vh;
+    align-items: flex-end;
+  }
+
+  .arc-hero__inner {
+    padding: 5rem 0 3rem;
+  }
+
+  .arc-hero__title {
+    font-size: clamp(2rem, 9vw, 2.6rem);
+  }
+
+  .arc-hero__actions {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .arc-hero .md-button {
+    text-align: center;
+  }
+}
