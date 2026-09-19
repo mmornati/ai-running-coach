@@ -4,7 +4,7 @@
 
 ## Pourquoi ce skill existe
 
-- Le MCP Garmin (`garmin_get_activity_fit_data`) **timeoute** sur les téléchargements FIT (payloads de plusieurs Mo)
+- Le MCP Garmin (`get_activity_fit_data`) **timeoute** sur les téléchargements FIT (payloads de plusieurs Mo)
 - Le script `download_fit.py` utilise la lib `garminconnect` installée dans l'environnement `garmin-mcp` + les **tokens locaux** `~/.garminconnect` → **aucun mot de passe** nécessaire
 
 ## Quand l'utiliser

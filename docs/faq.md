@@ -26,11 +26,11 @@ macOS ou Linux, bash 4+, curl, git, et un compte Garmin Connect.
 
 ### Combien de temps dure l'installation ?
 
-Quelques minutes. Le script installe uv, garmin-mcp, leanproxy-mcp et configure votre IDE.
+Quelques minutes. Le script installe uv, garmin-mcp et configure votre IDE (mode direct). Le mode passerelle leanproxy-mcp est optionnel (`--use-leanproxy`).
 
 ### L'installation est-elle sûre ?
 
-Oui. Le script n'installe que des outils open-source connus (uv, garmin-mcp, leanproxy-mcp). Vos identifiants Garmin ne sont jamais stockés dans le projet — les tokens sont conservés dans `~/.garminconnect/`.
+Oui. Le script n'installe que des outils open-source connus (uv, garmin-mcp, et optionnellement leanproxy-mcp). Vos identifiants Garmin ne sont jamais stockés dans le projet — les tokens sont conservés dans `~/.garminconnect/`.
 
 ### Puis-je installer pour un seul IDE ?
 
@@ -40,7 +40,7 @@ Oui : `./install.sh --ide claude` (ou `opencode`, `gemini`, `cursor`, `windsurf`
 
 ### Comment fonctionne l'accès à Garmin Connect ?
 
-Le projet utilise `garmin-mcp` (serveur MCP) et `leanproxy-mcp` (passerelle) pour accéder aux données Garmin Connect : activités, santé, sommeil, calendrier, planification d'entraînements.
+Le projet utilise `garmin-mcp` (serveur MCP) pour accéder aux données Garmin Connect : activités, santé, sommeil, calendrier, planification d'entraînements. Une passerelle optionnelle `leanproxy-mcp` (mode power user) peut réduire la consommation de tokens.
 
 ### Mes identifiants Garmin sont-ils en sécurité ?
 

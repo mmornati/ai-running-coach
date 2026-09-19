@@ -1,6 +1,6 @@
 # ⚡ Skill : Synchronisation Garmin
 
-> **Description** : Récupération efficace des données Garmin (activités, sommeil, HRV, training readiness, métriques de santé) via le serveur MCP garmin à travers leanproxy.
+> **Description** : Récupération efficace des données Garmin (activités, sommeil, HRV, training readiness, métriques de santé) via le serveur MCP `garmin`.
 
 ## Quand l'utiliser
 

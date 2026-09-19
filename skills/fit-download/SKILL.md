@@ -6,7 +6,7 @@ Télécharge les fichiers FIT Garmin (et leurs records GPS en JSON) en **bypassa
 
 ## Pourquoi ce skill
 
-- Le MCP Garmin (`garmin_get_activity_fit_data`) **timeoute** sur les downloads FIT (payload de plusieurs Mo) — ne pas insister dessus pour un download.
+- Le MCP Garmin (`get_activity_fit_data`) **timeoute** sur les downloads FIT (payload de plusieurs Mo) — ne pas insister dessus pour un download.
 - Le script `download_fit.py` utilise la lib `garminconnect` installée dans l'environnement `garmin-mcp` + les **tokens locaux** `~/.garminconnect` → **aucun mot de passe** nécessaire.
 
 ## Quand l'utiliser
@@ -16,7 +16,7 @@ Télécharge les fichiers FIT Garmin (et leurs records GPS en JSON) en **bypassa
 
 ## Workflow
 
-1. **Trouver les activity_id** : dans les fichiers MD d'activités (`activity_id: \d+`), ou via `garmin_get_activities_by_date` (MCP).
+1. **Trouver les activity_id** : dans les fichiers MD d'activités (`activity_id: \d+`), ou via `get_activities_by_date` (MCP).
 2. **Télécharger** :
    ```bash
    python3 skills/fit-download/scripts/download_fit.py 24070286912 --json --output-dir /tmp/fits/

@@ -28,7 +28,7 @@ python3 skills/gpx-analysis/scripts/analyze_gpx.py \
 1. **Analyser** le GPX avec le script (stdout pour lecture rapide, `--output` pour persister).
 2. **Croiser avec le contexte** : séance planifiée (distance/D+ cible), météo du jour (`weather-forecast`), historique de l'athlète (`activities/`), objectif (`active_objective.md`).
 3. **Persister** la fiche d'évaluation en FRANÇAIS dans `planning/YYYY-MM-DD_evaluation_parcours_<lieu>.md` (format : chiffres GPX, verdict compat, recommandation, détails pratiques).
-4. Le cas échéant, proposer l'**upload Garmin** via `leanproxy_invoke_tool(server="garmin", tool="upload_course")` — ne jamais uploader sans validation utilisateur.
+4. Le cas échéant, proposer l'**upload Garmin** via `upload_course` — ne jamais uploader sans validation utilisateur.
 
 ## Sorties du script
 

@@ -18,12 +18,15 @@ Rechargez votre shell (`source ~/.zshrc` ou `source ~/.bashrc`) puis relancez le
 uv tool install --python 3.12 git+https://github.com/Taxuspt/garmin_mcp
 ```
 
-### `leanproxy-mcp` introuvable
+### `leanproxy-mcp` introuvable (mode passerelle uniquement)
 
 ```bash
 brew tap mmornati/leanproxy-mcp
 brew install leanproxy-mcp
 ```
+
+!!! note
+    `leanproxy-mcp` n'est requis qu'en mode passerelle (`--use-leanproxy`). En mode direct (défaut), il n'est pas installé.
 
 ## Authentification Garmin
 
@@ -57,7 +60,7 @@ uv run garmin-mcp-auth --verify
 
 Relancez `./install.sh --ide <votre-ide>` si nécessaire.
 
-### Le serveur MCP `leanproxy` n'apparaît pas
+### Le serveur MCP `garmin` (ou `leanproxy`) n'apparaît pas
 
 Vérifiez la configuration MCP de votre IDE :
 
@@ -75,7 +78,7 @@ cat .cursor/mcp.json
 cat .windsurf/mcp_config.json
 ```
 
-Chaque configuration doit contenir une référence à `leanproxy`.
+Chaque configuration doit contenir une référence au serveur MCP `garmin` (mode direct) ou `leanproxy` (mode passerelle).
 
 ## Données
 
@@ -86,7 +89,7 @@ Les dossiers `activities/`, `medical/`, `nutrition/`, `planning/`, `rapports/`, 
 ### Les données Garmin ne se synchronisent pas
 
 1. Vérifiez que les tokens sont valides : `uv run garmin-mcp-auth --verify`
-2. Vérifiez que le serveur garmin est configuré dans leanproxy : `cat ~/.config/leanproxy_servers.yaml`
+2. En mode passerelle, vérifiez que le serveur garmin est configuré dans leanproxy : `cat ~/.config/leanproxy_servers.yaml`
 3. Vérifiez que `garmin-mcp` fonctionne : `garmin-mcp stdio`
 
 ## Scripts Python
@@ -107,7 +110,7 @@ Les scripts `analyze_gpx.py`, `compare_course.py` et `analyze_session_parts.py` 
 
 ### Le script d'installation ne trouve pas Homebrew
 
-Le script affiche des instructions d'installation manuelle pour `leanproxy-mcp`. Installez-le manuellement puis relancez le script.
+En mode passerelle, le script affiche des instructions d'installation manuelle pour `leanproxy-mcp`. Installez-le manuellement puis relancez le script.
 
 ### Problème non résolu ?
 

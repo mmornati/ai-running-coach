@@ -10,7 +10,7 @@ Ce guide vous permet d'installer et de configurer `ai-running-coach` en quelques
 - Un compte **Garmin Connect** (avec un appareil Garmin)
 
 !!! tip "Homebrew"
-    **Homebrew** est recommandé sur macOS pour installer `leanproxy-mcp`. S'il est absent, le script vous indiquera comment l'installer manuellement.
+    **Homebrew** est recommandé sur macOS. Il est requis uniquement pour le mode passerelle optionnel (`leanproxy-mcp`).
 
 ## Installation
 
@@ -25,9 +25,8 @@ Le script effectue les étapes suivantes :
 1. **uv** — gestionnaire Python (installé si absent)
 2. **garmin-mcp** — serveur MCP d'accès à Garmin Connect
 3. **garmin-mcp-auth** — authentification Garmin (tokens valides ~6 mois)
-4. **leanproxy-mcp** — passerelle MCP (via Homebrew)
-5. **Configuration IDE** — Claude Code, OpenCode, Gemini CLI, Cursor, Windsurf
-6. **Dossiers de travail** — `activities/`, `medical/`, `nutrition/`, `planning/`, `rapports/`, `resources/`
+4. **Configuration IDE** — serveur MCP `garmin` (mode direct, liste blanche d'outils) pour Claude Code, OpenCode, Gemini CLI, Cursor, Windsurf
+5. **Dossiers de travail** — `activities/`, `medical/`, `nutrition/`, `planning/`, `rapports/`, `resources/`
 
 ## Authentification Garmin
 
@@ -46,7 +45,7 @@ Lors de la première installation, le script lance l'authentification Garmin Con
 |---|---|
 | `--ide claude` | Installe pour un IDE précis (`claude`, `opencode`, `gemini`, `cursor`, `windsurf`) |
 | `--no-auth` | Saute l'authentification Garmin |
-| `--skip-leanproxy` | Saute l'installation de leanproxy-mcp |
+| `--use-leanproxy` | Mode passerelle leanproxy-mcp (power user, optionnel) |
 | `--dry-run` | Affiche les actions sans rien exécuter |
 | `--help` | Affiche l'aide |
 
@@ -65,9 +64,10 @@ Pour vérifier que tout est bien installé :
 ```bash
 uv --version
 garmin-mcp --version
-leanproxy-mcp --version
 ls ~/.garminconnect/
 ```
+
+En mode passerelle (`--use-leanproxy`), vérifiez aussi `leanproxy-mcp --version`.
 
 ## Prochaines étapes
 

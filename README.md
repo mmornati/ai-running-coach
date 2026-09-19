@@ -12,7 +12,7 @@ Le projet est **100 % en français** et ne supporte que **Garmin** dans cette ve
 |---|---|
 | 🧠 **4 agents spécialisés** | `coach`, `course-strategist`, `medical`, `nutritionist` |
 | 🛠️ **8 skills** | analyse GPX, comparaison de parcours, planification Garmin, météo, analyse de séances, etc. |
-| 📡 **Accès Garmin Connect** | via `garmin-mcp` + `leanproxy-mcp` (données, calendrier, planification d'entraînements) |
+| 📡 **Accès Garmin Connect** | via `garmin-mcp` (mode direct, liste blanche d'outils) — passerelle `leanproxy-mcp` optionnelle |
 | 🚀 **Installation automatisée** | un script pour installer et configurer tout (uv, Garmin, IDE) |
 | 📚 **Documentation** | guide de démarrage rapide, configuration, dépannage |
 
@@ -31,7 +31,7 @@ Le projet est **100 % en français** et ne supporte que **Garmin** dans cette ve
 - **curl** et **git**
 - Un compte **Garmin Connect** (avec un appareil Garmin)
 
-> 💡 **Homebrew** est recommandé sur macOS pour installer `leanproxy-mcp`.
+> 💡 **Homebrew** est recommandé sur macOS. Requis uniquement pour le mode passerelle optionnel (`--use-leanproxy`).
 
 ## 🚀 Installation rapide
 
@@ -45,17 +45,16 @@ Le script installe et configure automatiquement :
 
 1. **uv** (gestionnaire Python)
 2. **garmin-mcp** + **garmin-mcp-auth** (accès Garmin Connect)
-3. **leanproxy-mcp** (passerelle MCP)
-4. La configuration de votre **IDE** (Claude Code, OpenCode, Gemini CLI, Cursor, Windsurf)
-5. Les dossiers de travail (`activities/`, `medical/`, `nutrition/`, `planning/`, `rapports/`, `resources/`)
+3. La configuration de votre **IDE** (Claude Code, OpenCode, Gemini CLI, Cursor, Windsurf) — serveur MCP `garmin` en mode direct avec liste blanche d'outils
+4. Les dossiers de travail (`activities/`, `medical/`, `nutrition/`, `planning/`, `rapports/`, `resources/`)
 
 ### Options du script
 
 ```bash
-./install.sh --ide claude    # installe pour un IDE précis (claude|opencode|gemini|cursor|windsurf)
-./install.sh --no-auth       # saute l'authentification Garmin
-./install.sh --skip-leanproxy # saute l'installation de leanproxy-mcp
-./install.sh --dry-run       # affiche les actions sans rien exécuter
+./install.sh --ide claude      # installe pour un IDE précis (claude|opencode|gemini|cursor|windsurf)
+./install.sh --no-auth         # saute l'authentification Garmin
+./install.sh --use-leanproxy   # mode passerelle leanproxy-mcp (power user, optionnel)
+./install.sh --dry-run         # affiche les actions sans rien exécuter
 ./install.sh --help
 ```
 

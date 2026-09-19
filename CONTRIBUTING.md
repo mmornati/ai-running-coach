@@ -23,7 +23,7 @@ docs/                    # Documentation (MkDocs / GitHub Pages)
 - Un agent = un fichier Markdown dans `agents/`
 - Format : frontmatter YAML (`description`, `mode: subagent`) + instructions
 - Les agents délèguent via l'outil `task` de leur IDE
-- Toutes les données Garmin passent par `leanproxy_invoke_tool(server="garmin", ...)`
+- Toutes les données Garmin passent par les outils du serveur MCP `garmin` (mode direct) ou via `leanproxy_invoke_tool(server="garmin", ...)` (mode passerelle)
 
 ### Skills
 

@@ -1,6 +1,6 @@
 ---
 name: garmin-workout-scheduling
-description: Use to push planned training sessions directly to the Garmin Connect calendar via leanproxy (server="garmin", tools schedule_workouts / schedule_week / upload_workout). Covers the exact Garmin DTO JSON schema, step/endCondition/targetType/sportType lookup tables, idempotency, strength-workout detail (exercises, reps, weight, rest, RepeatGroupDTO loops), and the verify-after-push pattern. Garmin calendar is the PRIMARY scheduling destination; Intervals.icu is secondary.
+description: Use to push planned training sessions directly to the Garmin Connect calendar via the garmin MCP tools (schedule_workouts / schedule_week / upload_workout). Covers the exact Garmin DTO JSON schema, step/endCondition/targetType/sportType lookup tables, idempotency, strength-workout detail (exercises, reps, weight, rest, RepeatGroupDTO loops), and the verify-after-push pattern. Garmin calendar is the PRIMARY scheduling destination; Intervals.icu is secondary.
 ---
 
 # Garmin Workout Scheduling — Garmin Calendar First
@@ -9,23 +9,23 @@ Push planned sessions straight onto the Garmin Connect calendar. **Garmin is the
 
 ## Tool Access
 
-Everything via `leanproxy_invoke_tool` with `server: "garmin"`:
+Everything via the `garmin` MCP server tools (direct mode) or via `leanproxy_invoke_tool(server="garmin", ...)` (power-user mode):
 
-- `garmin_schedule_workouts(schedules)` — **preferred**: list of `{calendar_date, workout_id}` OR `{calendar_date, workout_data}` (upload + schedule in ONE call).
-- `garmin_schedule_week(week)` — list of `{date, workout_id}` for an existing workout.
-- `garmin_schedule_workout(workout_id, calendar_date)` — single schedule of an existing workout.
-- `garmin_upload_workout(workout_data)` — create a library workout without scheduling.
-- `garmin_get_workout_by_id(workout_id)` / `garmin_get_workouts` / `garmin_get_scheduled_workouts(start_date, end_date)` — verification.
-- `garmin_delete_workout(s)` / `garmin_delete_scheduled_workout(s)` — cleanup stale calendar entries.
+- `schedule_workouts(schedules)` — **preferred**: list of `{calendar_date, workout_id}` OR `{calendar_date, workout_data}` (upload + schedule in ONE call).
+- `schedule_week(week)` — list of `{date, workout_id}` for an existing workout.
+- `schedule_workout(workout_id, calendar_date)` — single schedule of an existing workout.
+- `upload_workout(workout_data)` — create a library workout without scheduling.
+- `get_workout_by_id(workout_id)` / `get_workouts` / `get_scheduled_workouts(start_date, end_date)` — verification.
+- `delete_workout(s)` / `delete_scheduled_workout(s)` — cleanup stale calendar entries.
 
 ## Idempotency — CRITICAL CORRECTION (tested 11 Aug 2026)
 
 - **Inline `workout_data` is NOT idempotent.** Each `schedule_workouts` call with inline `workout_data` UPLOADS A NEW workout and schedules it — re-pushing a date with new data leaves the OLD workout scheduled alongside it (observed duplicate on 2026-08-19).
 - **`workout_id` path IS idempotent** per date (rescheduling same id overwrites without duplicating).
-- **SAFE PATTERN — check before push:** BEFORE pushing a date, call `garmin_get_scheduled_workouts(start_date, end_date)`. If a workout already exists for that date:
+- **SAFE PATTERN — check before push:** BEFORE pushing a date, call `get_scheduled_workouts(start_date, end_date)`. If a workout already exists for that date:
   - Same session + same detail → reuse its `workout_id` via `schedule_workouts`/`schedule_week` (idempotent).
-  - Session changed → `garmin_delete_workout(old_workout_id)` then push fresh `workout_data`.
-- After ANY push, ALWAYS verify with `garmin_get_scheduled_workouts(start_date, end_date)` and (for detail) `garmin_get_workout_by_id(workout_id)`. Watch for duplicates on the same date.
+  - Session changed → `delete_workout(old_workout_id)` then push fresh `workout_data`.
+- After ANY push, ALWAYS verify with `get_scheduled_workouts(start_date, end_date)` and (for detail) `get_workout_by_id(workout_id)`. Watch for duplicates on the same date.
 
 ## EXACT JSON SCHEMA (Garmin internal DTO — do NOT invent keys)
 
@@ -169,24 +169,24 @@ Loop = `RepeatGroupDTO` with `numberOfIterations` + `endCondition` iterations(7)
 
 Known-good strength `category` values: `SQUAT`, `LUNGE`, `CARDIO`, `PLANK`, `BENCH_PRESS`, `PULL_UP`, `CURL`, `SHOULDER_PRESS`, `ROW`, `DEADLIFT`, `TRICEPS_EXTENSION`. `exerciseName` is free-text; unsupported names fall back to category `CARDIO`/`Other` on the watch. Timed core work (e.g. gainage): use endCondition time(2) with a `PLANK` category instead of reps.
 
-Alternative helper: `garmin_create_strength_workout(name, exercises)` — simpler but estimates 45s/set and loses structured reps/weight; prefer the structured JSON when detail matters.
+Alternative helper: `create_strength_workout(name, exercises)` — simpler but estimates 45s/set and loses structured reps/weight; prefer the structured JSON when detail matters.
 
 ## Workflow
 
 1. Read the planned week from `planning/` (e.g. `Semaine_YYYY-MM-DD.md`) and the phase detail file for strength sessions.
-2. Check `garmin_get_scheduled_workouts(start_date, end_date)` for the week — identify existing workout_ids per date and any stale entries (dedupe strategy per Idempotency section).
+2. Check `get_scheduled_workouts(start_date, end_date)` for the week — identify existing workout_ids per date and any stale entries (dedupe strategy per Idempotency section).
 3. For each session, build `workout_data` with the schema above. Strength sessions come from the plan's circuit detail.
-4. Push via `garmin_schedule_workouts` with one `{calendar_date, workout_data}` per NEW session (reuse `workout_id` for unchanged ones).
-5. VERIFY: `garmin_get_scheduled_workouts(start_date, end_date)` for the week → confirm each date, duration, name, and NO duplicates; `garmin_get_workout_by_id` for any structured detail (loops/reps/weight).
+4. Push via `schedule_workouts` with one `{calendar_date, workout_data}` per NEW session (reuse `workout_id` for unchanged ones).
+5. VERIFY: `get_scheduled_workouts(start_date, end_date)` for the week → confirm each date, duration, name, and NO duplicates; `get_workout_by_id` for any structured detail (loops/reps/weight).
 6. Persist: note the pushed session (workout_id, date) in the week's `planning/` MD file.
 
 ## Reliability & Batching (tested 2026-08-11)
 
 - **Keep batches small (≤ 4-5 schedules per call).** An 8-entry batch in ONE `schedule_workouts` call failed with a JSON parse error ("Expected ']'") on the live server. Split the week into chunks of 3-5 and push sequentially.
-- **MCP timeouts happen** (observed: -32001 then -32000 connection closed, twice in a row). Retry once after a short pause; if it still fails, ask the user to restart the MCP server. Never assume a timeout = failure — ALWAYS re-verify with `garmin_get_scheduled_workouts` before re-pushing (avoids duplicate uploads).
+- **MCP timeouts happen** (observed: -32001 then -32000 connection closed, twice in a row). Retry once after a short pause; if it still fails, ask the user to restart the MCP server. Never assume a timeout = failure — ALWAYS re-verify with `get_scheduled_workouts` before re-pushing (avoids duplicate uploads).
 - **Walking comes back as "mobility"** in `get_scheduled_workouts` responses (cosmetic; the watch handles it correctly). Don't treat it as a mismatch.
 - **Race day / special events** (e.g. the 110km race on 13/09) are NOT pushed via workouts — flag in the planning MD file to create them manually on the watch.
 
 ## Stale-entry hygiene
 
-Before pushing a new week, run `garmin_get_scheduled_workouts(start_date, end_date)` for the previous week and flag any `completed=false` entries that no longer match the plan (e.g. a 48km stale entry after the plan was cut to 38km). Delete with `garmin_delete_scheduled_workout` or overwrite by rescheduling the date.
+Before pushing a new week, run `get_scheduled_workouts(start_date, end_date)` for the previous week and flag any `completed=false` entries that no longer match the plan (e.g. a 48km stale entry after the plan was cut to 38km). Delete with `unschedule_workout` or overwrite by rescheduling the date.

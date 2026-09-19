@@ -81,4 +81,4 @@ cat .windsurf/mcp_config.json
 ls .gemini/commands/
 ```
 
-Chaque configuration doit contenir une référence au serveur MCP `leanproxy`.
+Chaque configuration doit contenir une référence au serveur MCP `garmin` (mode direct) ou `leanproxy` (mode passerelle).

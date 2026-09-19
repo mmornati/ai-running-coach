@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Téléchargeur de fichiers FIT Garmin — bypass du canal MCP.
 
-Résout le timeout MCP de `garmin_get_activity_fit_data` (records GPS = payload
+Résout le timeout MCP de `get_activity_fit_data` (records GPS = payload
 de plusieurs Mo qui dépasse le timeout côté client). Ce script utilise la
 librairie `garminconnect` déjà installée dans l'environnement `garmin-mcp` et
 les tokens locaux `~/.garminconnect` — aucun mot de passe nécessaire.

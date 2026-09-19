@@ -1,6 +1,6 @@
 # 📅 Skill : Planification Garmin
 
-> **Description** : Push de séances planifiées directement dans le calendrier Garmin Connect via leanproxy (serveur `garmin`, outils `schedule_workouts` / `schedule_week` / `upload_workout`).
+> **Description** : Push de séances planifiées directement dans le calendrier Garmin Connect via le serveur MCP `garmin` (outils `schedule_workouts` / `schedule_week` / `upload_workout`).
 
 ## Quand l'utiliser
 

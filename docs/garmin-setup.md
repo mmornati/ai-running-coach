@@ -4,6 +4,16 @@ Cette page détaille l'accès à **Garmin Connect** utilisé par `ai-running-coa
 
 ## Architecture
 
+### Mode direct (défaut)
+
+```mermaid
+flowchart LR
+    A["Votre IDE<br/>(agent IA)"] --> B["garmin-mcp<br/>(serveur, liste blanche)"]
+    B --> C["Garmin Connect<br/>(API)"]
+```
+
+### Mode passerelle (optionnel — power user)
+
 ```mermaid
 flowchart LR
     A["Votre IDE<br/>(agent IA)"] --> B["leanproxy-mcp<br/>(passerelle)"]
@@ -11,8 +21,8 @@ flowchart LR
     C --> D["Garmin Connect<br/>(API)"]
 ```
 
-- **`garmin-mcp`** — serveur MCP qui expose les données Garmin Connect (activités, santé, sommeil, calendrier, planification d'entraînements)
-- **`leanproxy-mcp`** — passerelle MCP qui agrège les serveurs et les expose aux IDE
+- **`garmin-mcp`** — serveur MCP qui expose les données Garmin Connect (activités, santé, sommeil, calendrier, planification d'entraînements). **Mode direct par défaut** : il est enregistré directement dans votre IDE avec une **liste blanche d'outils** (`GARMIN_ENABLED_TOOLS`) pour réduire la taxe de contexte (~151 outils → ~25).
+- **`leanproxy-mcp`** — passerelle MCP optionnelle (mode *power user*) qui agrège les serveurs, charge les schémas à la demande et économise ~98 % de tokens. Installée avec `--use-leanproxy`.
 - **`garmin-mcp-auth`** — outil d'authentification OAuth (tokens stockés dans `~/.garminconnect/`)
 
 ## Composants installés
@@ -22,11 +32,38 @@ flowchart LR
 | `uv` | Gestionnaire Python | `curl -LsSf https://astral.sh/uv/install.sh \| sh` |
 | `garmin-mcp` | Serveur MCP Garmin | `uv tool install --python 3.12 git+https://github.com/Taxuspt/garmin_mcp` |
 | `garmin-mcp-auth` | Authentification OAuth | via `uv run garmin-mcp-auth` |
-| `leanproxy-mcp` | Passerelle MCP | `brew tap mmornati/leanproxy-mcp && brew install leanproxy-mcp` |
+| `leanproxy-mcp` | Passerelle MCP (optionnel) | `brew tap mmornati/leanproxy-mcp && brew install leanproxy-mcp` |
 
-## Configuration leanproxy
+## Mode direct (défaut)
 
-Le script d'installation configure deux fichiers dans `~/.config/leanproxy/` :
+Le script d'installation enregistre le serveur MCP `garmin` dans votre IDE avec la liste blanche d'outils :
+
+```json
+{
+  "mcpServers": {
+    "garmin": {
+      "command": "garmin-mcp",
+      "args": ["stdio"],
+      "env": {
+        "GARMIN_ENABLED_TOOLS": "get_activities,get_activities_by_date,get_activity,get_activity_fit_data,get_activity_splits,get_activity_typed_splits,get_activity_split_summaries,get_sleep_data,get_hrv_data,get_training_readiness,get_calendar_events,get_courses,get_workouts,get_workout_by_id,get_scheduled_workouts,schedule_workouts,schedule_week,upload_workout,upload_course,create_strength_workout,delete_workout,unschedule_workout,unschedule_workouts,download_activity_file"
+      }
+    }
+  }
+}
+```
+
+!!! tip "Pourquoi une liste blanche ?"
+    `garmin-mcp` expose ~151 outils. Les agents de ce projet n'en utilisent qu'une vingtaine. La liste blanche (`GARMIN_ENABLED_TOOLS`) réduit fortement la taxe de contexte de chaque requête. Vous pouvez l'ajuster dans `install.sh` (variable `GARMIN_TOOL_WHITELIST`).
+
+## Mode passerelle (optionnel — power user)
+
+Installez avec `--use-leanproxy` :
+
+```bash
+./install.sh --use-leanproxy
+```
+
+Le script configure deux fichiers dans `~/.config/leanproxy/` :
 
 ### `config.yaml`
 
@@ -65,7 +102,8 @@ servers:
         command: garmin-mcp
         args:
             - stdio
-        env: []
+        env:
+            - GARMIN_ENABLED_TOOLS: "get_activities,get_activities_by_date,get_activity,get_activity_fit_data,get_activity_splits,get_activity_typed_splits,get_activity_split_summaries,get_sleep_data,get_hrv_data,get_training_readiness,get_calendar_events,get_courses,get_workouts,get_workout_by_id,get_scheduled_workouts,schedule_workouts,schedule_week,upload_workout,upload_course,create_strength_workout,delete_workout,unschedule_workout,unschedule_workouts,download_activity_file"
         cwd: .
       timeout: 300s
       connect_timeout: 10s
@@ -93,7 +131,7 @@ uv run garmin-mcp-auth
 
 ## Données accessibles
 
-Via `leanproxy_invoke_tool(server="garmin", tool="...")`, les agents peuvent accéder à :
+Les agents accèdent aux outils Garmin directement (mode direct) ou via `leanproxy_invoke_tool(server="garmin", tool="...")` (mode passerelle) :
 
 - **Activités** : liste, détails, fichiers FIT
 - **Santé** : HRV, sommeil, stress, fréquence cardiaque au repos
@@ -106,7 +144,7 @@ Via `leanproxy_invoke_tool(server="garmin", tool="...")`, les agents peuvent acc
 |---|---|
 | `garmin-mcp` introuvable | `uv tool install --python 3.12 git+https://github.com/Taxuspt/garmin_mcp` |
 | Tokens expirés | `uv run garmin-mcp-auth` |
-| `leanproxy-mcp` introuvable | `brew tap mmornati/leanproxy-mcp && brew install leanproxy-mcp` |
+| `leanproxy-mcp` introuvable (mode passerelle) | `brew tap mmornati/leanproxy-mcp && brew install leanproxy-mcp` |
 | Erreur de connexion | Vérifiez que `garmin-mcp` fonctionne : `garmin-mcp stdio` |
 
 Voir aussi la page [Dépannage](troubleshooting.md).

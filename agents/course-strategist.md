@@ -175,14 +175,11 @@ Produis une checklist détaillée :
 
 1. **Enrichis le GPX** : ajoute les waypoints des ravitaillements (officiels + OSM validés)
 2. **Sauvegarde** le GPX enrichi dans `planning/` (format `course_nom_date_contexte.gpx`)
-3. **Upload vers Garmin** via `leanproxy_invoke_tool` avec :
-   - `server` : `"garmin"`
-   - `tool` : `"upload_course"`
-   - `arguments` :
-     - `gpx_path` : chemin du fichier GPX enrichi (requis)
-     - `course_name` : nom de la course + " - Stratégie"
-     - `activity_type` : `"running"`
-     - `description` : résumé (distance, D+, 3 scénarios, points d'eau)
+3. **Upload vers Garmin** via l'outil `upload_course` avec :
+   - `gpx_path` : chemin du fichier GPX enrichi (requis)
+   - `course_name` : nom de la course + " - Stratégie"
+   - `activity_type` : `"running"`
+   - `description` : résumé (distance, D+, 3 scénarios, points d'eau)
 4. **Confirme** le succès : "GPX disponible dans Garmin Connect sous le nom 'X - Stratégie'"
 
 ---

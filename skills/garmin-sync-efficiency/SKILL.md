@@ -1,6 +1,6 @@
 ---
 name: garmin-sync-efficiency
-description: Use when fetching Garmin data (activities, sleep, HRV, training readiness, health metrics) via the garmin MCP server through leanproxy. Prevents context-window bloat — fetch specific dates only, persist to Markdown immediately, never dump raw JSON into the conversation.
+description: Use when fetching Garmin data (activities, sleep, HRV, training readiness, health metrics) via the garmin MCP server. Prevents context-window bloat — fetch specific dates only, persist to Markdown immediately, never dump raw JSON into the conversation.
 ---
 
 # Garmin Sync Efficiency
@@ -9,7 +9,7 @@ Garmin MCP responses are verbose JSON. Pulling wide date ranges or raw payloads 
 
 ## Tool Access
 
-All Garmin tools go through `leanproxy_invoke_tool` with `server: "garmin"`. Useful tools include `get_sleep_data`, `get_hrv`, `get_training_readiness`, `get_activities`, `upload_course`, `upload_workout`, `get_courses`.
+All Garmin tools are exposed by the `garmin` MCP server (direct mode) or via `leanproxy_invoke_tool(server="garmin", ...)` (power-user mode). Useful tools include `get_sleep_data`, `get_hrv_data`, `get_training_readiness`, `get_activities`, `upload_course`, `upload_workout`, `get_courses`.
 
 ## Rules
 

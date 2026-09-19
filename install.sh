@@ -5,15 +5,16 @@
 # Installe et configure tout ce qu'il faut pour utiliser les agents/skills de
 # coaching trail-running avec accès Garmin :
 #   1. uv (gestionnaire Python)
-#   2. garmin-mcp + garmin-mcp-auth (accès Garmin Connect)
-#   3. leanproxy-mcp (passerelle MCP)
+#   2. garmin-mcp + garmin-mcp-auth (accès Garmin Connect) — mode DIRECT par défaut
+#   3. (Optionnel) leanproxy-mcp — passerelle MCP "power user" (--use-leanproxy)
 #   4. Configuration des IDE (Claude Code, OpenCode, Gemini CLI, Cursor, Windsurf)
 #   5. Vérification finale
 #
 # Usage :
-#   ./install.sh                 # installation interactive
+#   ./install.sh                 # installation interactive (mode direct Garmin)
 #   ./install.sh --ide claude    # installe pour un IDE précis
 #   ./install.sh --no-auth       # saute l'authentification Garmin
+#   ./install.sh --use-leanproxy # mode passerelle leanproxy (power user)
 #   ./install.sh --dry-run       # affiche les actions sans rien exécuter
 #   ./install.sh --help
 #
@@ -24,13 +25,18 @@ set -euo pipefail
 # ---------------------------------------------------------------------------
 # Constantes
 # ---------------------------------------------------------------------------
-VERSION="0.1.0"
+VERSION="0.2.0"
 GARMIN_MCP_REF="git+https://github.com/Taxuspt/garmin_mcp"
 LEANPROXY_BREW_TAP="mmornati/leanproxy-mcp"
 LEANPROXY_FORMULA="leanproxy-mcp"
 GARMIN_TOKENS_DIR="$HOME/.garminconnect"
 LEANPROXY_CONFIG_DIR="$HOME/.config/leanproxy"
 LEANPROXY_SERVERS="$HOME/.config/leanproxy_servers.yaml"
+
+# Liste blanche des outils Garmin utilisés par les agents/skills du projet.
+# Réduit la taxe de contexte (~151 outils → ~30) en mode direct.
+# Noms réels des outils garmin-mcp (sans préfixe garmin_).
+GARMIN_TOOL_WHITELIST="get_activities,get_activities_by_date,get_activity,get_activity_fit_data,get_activity_splits,get_activity_typed_splits,get_activity_split_summaries,get_sleep_data,get_hrv_data,get_training_readiness,get_calendar_events,get_courses,get_workouts,get_workout_by_id,get_scheduled_workouts,schedule_workouts,schedule_week,upload_workout,upload_course,create_strength_workout,delete_workout,unschedule_workout,unschedule_workouts,download_activity_file"
 
 # Détection du répertoire du projet (racine du dépôt)
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -58,7 +64,7 @@ die()  { err "$*"; exit 1; }
 DRY_RUN=0
 DO_AUTH=1
 IDE="all"          # all | claude | opencode | gemini | cursor | windsurf
-SKIP_LEANPROXY=0
+USE_LEANPROXY=0    # mode passerelle (power user) — défaut : direct
 
 usage() {
     sed -n '2,20p' "$0" | sed 's/^# \{0,1\}//'
@@ -69,7 +75,8 @@ while [[ $# -gt 0 ]]; do
     case "$1" in
         --ide) IDE="$2"; shift 2 ;;
         --no-auth) DO_AUTH=0; shift ;;
-        --skip-leanproxy) SKIP_LEANPROXY=1; shift ;;
+        --use-leanproxy) USE_LEANPROXY=1; shift ;;
+        --skip-leanproxy) USE_LEANPROXY=0; shift ;;  # rétro-compatibilité
         --dry-run) DRY_RUN=1; shift ;;
         --help|-h) usage ;;
         *) die "Option inconnue : $1 (voir --help)" ;;
@@ -158,14 +165,14 @@ install_garmin_mcp() {
 }
 
 # ---------------------------------------------------------------------------
-# 3. leanproxy-mcp
+# 3. leanproxy-mcp (optionnel — mode power user)
 # ---------------------------------------------------------------------------
 install_leanproxy() {
-    if [[ "$SKIP_LEANPROXY" -eq 1 ]]; then
-        warn "Installation de leanproxy-mcp sautée (--skip-leanproxy)"
+    if [[ "$USE_LEANPROXY" -eq 0 ]]; then
+        warn "leanproxy-mcp non installé (mode direct). Utilisez --use-leanproxy pour la passerelle."
         return 0
     fi
-    log "Installation de leanproxy-mcp (passerelle MCP)"
+    log "Installation de leanproxy-mcp (passerelle MCP — power user)"
     if have leanproxy-mcp; then
         ok "leanproxy-mcp déjà installé : $(leanproxy-mcp --version 2>/dev/null || echo 'version inconnue')"
     elif have brew; then
@@ -180,10 +187,10 @@ install_leanproxy() {
 }
 
 # ---------------------------------------------------------------------------
-# 4. Configuration leanproxy (serveur garmin)
+# 4. Configuration leanproxy (serveur garmin) — mode power user
 # ---------------------------------------------------------------------------
 configure_leanproxy() {
-    if [[ "$SKIP_LEANPROXY" -eq 1 ]]; then
+    if [[ "$USE_LEANPROXY" -eq 0 ]]; then
         return 0
     fi
     log "Configuration de leanproxy (serveur garmin)"
@@ -233,7 +240,8 @@ servers:
         command: garmin-mcp
         args:
             - stdio
-        env: []
+        env:
+            - GARMIN_ENABLED_TOOLS: "get_activities,get_activities_by_date,get_activity,get_activity_fit_data,get_activity_splits,get_activity_typed_splits,get_activity_split_summaries,get_sleep_data,get_hrv_data,get_training_readiness,get_calendar_events,get_courses,get_workouts,get_workout_by_id,get_scheduled_workouts,schedule_workouts,schedule_week,upload_workout,upload_course,create_strength_workout,delete_workout,unschedule_workout,unschedule_workouts,download_activity_file"
         cwd: .
       timeout: 300s
       connect_timeout: 10s
@@ -246,16 +254,52 @@ EOF
 # ---------------------------------------------------------------------------
 # 5. Configuration IDE
 # ---------------------------------------------------------------------------
-# Chaque fonction écrit la config MCP + pointe vers les agents/skills du projet.
+# Mode direct (défaut) : le serveur MCP "garmin" pointe vers garmin-mcp avec
+# la liste blanche d'outils. Mode leanproxy : le serveur "leanproxy" est utilisé.
+
+# Bloc MCP pour le mode direct (garmin-mcp + whitelist)
+mcp_garmin_direct() {
+    cat <<'EOF'
+    "garmin": {
+      "command": "garmin-mcp",
+      "args": ["stdio"],
+      "env": {
+        "GARMIN_ENABLED_TOOLS": "get_activities,get_activities_by_date,get_activity,get_activity_fit_data,get_activity_splits,get_activity_typed_splits,get_activity_split_summaries,get_sleep_data,get_hrv_data,get_training_readiness,get_calendar_events,get_courses,get_workouts,get_workout_by_id,get_scheduled_workouts,schedule_workouts,schedule_week,upload_workout,upload_course,create_strength_workout,delete_workout,unschedule_workout,unschedule_workouts,download_activity_file"
+      }
+    }
+EOF
+}
+
+# Bloc MCP pour le mode leanproxy
+mcp_leanproxy_block() {
+    cat <<'EOF'
+    "leanproxy": {
+      "command": "leanproxy-mcp",
+      "args": []
+    }
+EOF
+}
+
+# Nom du serveur MCP à utiliser selon le mode
+mcp_server_name() {
+    if [[ "$USE_LEANPROXY" -eq 1 ]]; then
+        echo "leanproxy"
+    else
+        echo "garmin"
+    fi
+}
 
 write_opencode_config() {
     log "Configuration OpenCode"
     local cfg="$HOME/.config/opencode/opencode.json"
     mkdir -p "$(dirname "$cfg")"
-    if [[ -f "$cfg" ]] && grep -q 'leanproxy' "$cfg"; then
-        ok "OpenCode déjà configuré (leanproxy présent)"
+    local server
+    server="$(mcp_server_name)"
+    if [[ -f "$cfg" ]] && grep -q "\"$server\"" "$cfg"; then
+        ok "OpenCode déjà configuré ($server présent)"
     else
-        write_file "$cfg" <<EOF
+        if [[ "$USE_LEANPROXY" -eq 1 ]]; then
+            write_file "$cfg" <<EOF
 {
   "\$schema": "https://opencode.ai/config.json",
   "mcp": {
@@ -267,6 +311,23 @@ write_opencode_config() {
   }
 }
 EOF
+        else
+            write_file "$cfg" <<EOF
+{
+  "\$schema": "https://opencode.ai/config.json",
+  "mcp": {
+    "garmin": {
+      "type": "local",
+      "command": ["garmin-mcp", "stdio"],
+      "environment": {
+        "GARMIN_ENABLED_TOOLS": "$GARMIN_TOOL_WHITELIST"
+      },
+      "enabled": true
+    }
+  }
+}
+EOF
+        fi
         ok "Config OpenCode écrite dans $cfg"
     fi
     # Agents/skills : OpenCode lit .opencode/ à la racine du projet.
@@ -282,10 +343,13 @@ EOF
 write_claude_config() {
     log "Configuration Claude Code"
     local cfg="$PROJECT_ROOT/.mcp.json"
-    if [[ -f "$cfg" ]] && grep -q 'leanproxy' "$cfg"; then
-        ok "Claude Code déjà configuré (leanproxy présent)"
+    local server
+    server="$(mcp_server_name)"
+    if [[ -f "$cfg" ]] && grep -q "\"$server\"" "$cfg"; then
+        ok "Claude Code déjà configuré ($server présent)"
     else
-        write_file "$cfg" <<'EOF'
+        if [[ "$USE_LEANPROXY" -eq 1 ]]; then
+            write_file "$cfg" <<'EOF'
 {
   "mcpServers": {
     "leanproxy": {
@@ -295,6 +359,21 @@ write_claude_config() {
   }
 }
 EOF
+        else
+            write_file "$cfg" <<EOF
+{
+  "mcpServers": {
+    "garmin": {
+      "command": "garmin-mcp",
+      "args": ["stdio"],
+      "env": {
+        "GARMIN_ENABLED_TOOLS": "$GARMIN_TOOL_WHITELIST"
+      }
+    }
+  }
+}
+EOF
+        fi
         ok "Config Claude Code écrite dans $cfg"
     fi
     # Claude Code utilise .claude/agents/*.md + .claude/skills/*/SKILL.md
@@ -327,10 +406,13 @@ write_cursor_config() {
     if [[ "$DRY_RUN" -eq 0 ]]; then
         mkdir -p "$dir"
     fi
-    if [[ -f "$dir/mcp.json" ]] && grep -q 'leanproxy' "$dir/mcp.json"; then
-        ok "Cursor déjà configuré (leanproxy présent)"
+    local server
+    server="$(mcp_server_name)"
+    if [[ -f "$dir/mcp.json" ]] && grep -q "\"$server\"" "$dir/mcp.json"; then
+        ok "Cursor déjà configuré ($server présent)"
     else
-        write_file "$dir/mcp.json" <<'EOF'
+        if [[ "$USE_LEANPROXY" -eq 1 ]]; then
+            write_file "$dir/mcp.json" <<'EOF'
 {
   "mcpServers": {
     "leanproxy": {
@@ -340,6 +422,21 @@ write_cursor_config() {
   }
 }
 EOF
+        else
+            write_file "$dir/mcp.json" <<EOF
+{
+  "mcpServers": {
+    "garmin": {
+      "command": "garmin-mcp",
+      "args": ["stdio"],
+      "env": {
+        "GARMIN_ENABLED_TOOLS": "$GARMIN_TOOL_WHITELIST"
+      }
+    }
+  }
+}
+EOF
+        fi
         ok "Config Cursor écrite dans $dir/mcp.json"
     fi
 }
@@ -350,10 +447,13 @@ write_windsurf_config() {
     if [[ "$DRY_RUN" -eq 0 ]]; then
         mkdir -p "$dir"
     fi
-    if [[ -f "$dir/mcp_config.json" ]] && grep -q 'leanproxy' "$dir/mcp_config.json"; then
-        ok "Windsurf déjà configuré (leanproxy présent)"
+    local server
+    server="$(mcp_server_name)"
+    if [[ -f "$dir/mcp_config.json" ]] && grep -q "\"$server\"" "$dir/mcp_config.json"; then
+        ok "Windsurf déjà configuré ($server présent)"
     else
-        write_file "$dir/mcp_config.json" <<'EOF'
+        if [[ "$USE_LEANPROXY" -eq 1 ]]; then
+            write_file "$dir/mcp_config.json" <<'EOF'
 {
   "mcpServers": {
     "leanproxy": {
@@ -363,6 +463,21 @@ write_windsurf_config() {
   }
 }
 EOF
+        else
+            write_file "$dir/mcp_config.json" <<EOF
+{
+  "mcpServers": {
+    "garmin": {
+      "command": "garmin-mcp",
+      "args": ["stdio"],
+      "env": {
+        "GARMIN_ENABLED_TOOLS": "$GARMIN_TOOL_WHITELIST"
+      }
+    }
+  }
+}
+EOF
+        fi
         ok "Config Windsurf écrite dans $dir/mcp_config.json"
     fi
 }
@@ -398,7 +513,7 @@ create_workspace_dirs() {
 verify() {
     log "Vérification finale"
     local fail=0
-    for cmd in uv garmin-mcp leanproxy-mcp; do
+    for cmd in uv garmin-mcp; do
         if have "$cmd"; then
             ok "$cmd : présent"
         else
@@ -406,6 +521,14 @@ verify() {
             fail=1
         fi
     done
+    if [[ "$USE_LEANPROXY" -eq 1 ]]; then
+        if have leanproxy-mcp; then
+            ok "leanproxy-mcp : présent (mode passerelle)"
+        else
+            warn "leanproxy-mcp : absent — mode passerelle incomplet"
+            fail=1
+        fi
+    fi
     if [[ -f "$GARMIN_TOKENS_DIR/garmin_tokens.json" ]]; then
         ok "Tokens Garmin : présents ($GARMIN_TOKENS_DIR)"
     else
@@ -424,6 +547,11 @@ verify() {
 main() {
     log "ai-running-coach — installation v$VERSION"
     log "Projet : $PROJECT_ROOT"
+    if [[ "$USE_LEANPROXY" -eq 1 ]]; then
+        log "Mode : passerelle leanproxy (power user)"
+    else
+        log "Mode : direct garmin-mcp (défaut, liste blanche d'outils)"
+    fi
     [[ "$DRY_RUN" -eq 1 ]] && warn "Mode dry-run : aucune modification ne sera effectuée."
     echo
 
