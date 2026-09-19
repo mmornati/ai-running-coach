@@ -3,7 +3,7 @@
 
 ## Quatre spécialistes, un seul objectif : le vôtre
 
-`ai-running-coach` transforme votre IDE en staff d'entraînement complet. Quatre agents IA open source, 100 % en français, coordonnés par un coach — chacun avec ses skills, ses données et ses protocoles. Vous décrivez votre objectif, ils construisent le plan.
+`ai-running-coach` transforme votre IDE en staff d'entraînement complet. Quatre agents IA open source, en français par défaut, coordonnés par un coach — chacun avec ses skills, ses données et ses protocoles. Vous décrivez votre objectif, ils construisent le plan.
 
 <div class="arc-team" markdown>
 
@@ -128,7 +128,7 @@ Installez `ai-running-coach` et laissez votre staff d'entraînement prendre le r
 
 <a href="quickstart/" class="md-button md-button--primary">Commencer en 5 minutes</a>
 
-<p class="arc-note">Projet open source (MIT), 100 % en français, compatible Claude Code, OpenCode, Gemini CLI, Cursor et Windsurf. Ce projet fournit des outils d'aide à la préparation sportive : il ne remplace pas un avis médical professionnel.</p>
+<p class="arc-note">Projet open source (MIT), en français par défaut (langue des documents configurable via `config/workspace.toml`), compatible Claude Code, OpenCode, Gemini CLI, Cursor et Windsurf. Ce projet fournit des outils d'aide à la préparation sportive : il ne remplace pas un avis médical professionnel.</p>
 
   </div>
 </div>

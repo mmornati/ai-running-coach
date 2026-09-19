@@ -1,0 +1,15 @@
+# Configuration de l'espace de travail ai-running-coach
+#
+# Ce fichier est VERSIONNÉ : il contient les valeurs par défaut partagées.
+# Pour des overrides personnels, créez `config/workspace.user.toml`
+# (gitignoré) avec la même structure — ses valeurs priment.
+
+[language]
+# Langue des fichiers Markdown persistés par les agents/skills
+# (activities/, medical/, nutrition/, planning/, rapports/).
+# Valeurs : code ISO 639-1 (ex. "fr", "en", "nl").
+documents = "fr"
+
+# Langue des réponses à l'utilisateur.
+# "auto" = même langue que la requête de l'utilisateur.
+responses = "auto"

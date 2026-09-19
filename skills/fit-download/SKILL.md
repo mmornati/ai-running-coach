@@ -26,7 +26,7 @@ Télécharge les fichiers FIT Garmin (et leurs records GPS en JSON) en **bypassa
    ```
    La sortie par défaut est `activities/` (workspace) si `--output-dir` omis — utiliser `/tmp/` quand le FIT n'a pas vocation à rester.
 3. **Analyser** le FIT avec `session-parts-analyzer` (`analyze_session_parts.py --fit ... --part climb|stride|...`) ou `course-comparison` (`compare_course.py --fit-dir`).
-4. **Persister** l'analyse (dérive, profil) dans le MD de l'activité en FRANÇAIS — ne jamais dump le JSON brut en chat.
+4. **Persister** l'analyse (dérive, profil) dans le MD de l'activité dans la langue des documents (`config/workspace.toml` → `[language].documents`, défaut FRANÇAIS) — ne jamais dump le JSON brut en chat.
 
 ## Détails techniques
 
