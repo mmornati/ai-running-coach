@@ -4,7 +4,7 @@
 
 `ai-running-coach` est un projet open-source qui fournit des **agents IA** et des **skills** pour aider les coureurs à préparer un objectif (course, trail, ultra) avec l'aide d'un assistant IA dans leur IDE préféré.
 
-Le projet est **100 % en français** et ne supporte que **Garmin** dans cette version.
+Le projet est **en français par défaut** (la langue des documents générés est configurable via `config/workspace.toml`) et ne supporte que **Garmin** dans cette version.
 
 ## ✨ Ce que le projet apporte
 

@@ -508,6 +508,31 @@ create_workspace_dirs() {
 }
 
 # ---------------------------------------------------------------------------
+# 6b. Configuration de l'espace de travail
+# ---------------------------------------------------------------------------
+create_workspace_config() {
+    local cfg="$PROJECT_ROOT/config/workspace.user.toml"
+    if [[ -f "$cfg" ]]; then
+        ok "Config personnelle présente : $cfg"
+        return 0
+    fi
+    log "Création de la config personnelle (overrides, gitignorée)"
+    write_file "$cfg" <<'EOF'
+# Overrides personnels — ce fichier est GITIGNORÉ.
+# Les valeurs ci-dessous priment sur config/workspace.toml (versionné).
+
+[language]
+# Langue des fichiers Markdown persistés par les agents/skills.
+# Valeurs : code ISO 639-1 (ex. "fr", "en", "nl").
+documents = "fr"
+
+# Langue des réponses à l'utilisateur ("auto" = même langue que la requête).
+responses = "auto"
+EOF
+    ok "Config personnelle créée : $cfg"
+}
+
+# ---------------------------------------------------------------------------
 # 7. Vérification finale
 # ---------------------------------------------------------------------------
 verify() {
@@ -564,6 +589,7 @@ main() {
     configure_leanproxy
     configure_ide
     create_workspace_dirs
+    create_workspace_config
     verify
 }
 

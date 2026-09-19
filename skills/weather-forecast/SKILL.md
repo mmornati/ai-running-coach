@@ -77,7 +77,7 @@ Garder les autres champs en mémoire seulement si utile (visibilité, pression).
 
 ## Persistance — `medical/YYYY-MM-DD_meteo.md`
 
-**Une fois par jour, par lieu.** Format FRENCH :
+**Une fois par jour, par lieu.** Format dans la langue des documents (`config/workspace.toml` → `[language].documents`, défaut FRENCH) :
 
 ```markdown
 # Météo — {lieu} — {YYYY-MM-DD}

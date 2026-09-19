@@ -12,7 +12,7 @@ Claude Code, OpenCode, Gemini CLI, Cursor et Windsurf.
 
 ### Le projet est-il en français ?
 
-Oui, le projet est **100 % en français** : les agents, les skills, la documentation et les fichiers Markdown générés.
+Oui, le projet est **en français par défaut** : les agents, les skills et la documentation sont en français, et les fichiers Markdown générés utilisent la langue configurée dans `config/workspace.toml` (`[language].documents`, défaut : français). Vous pouvez changer cette langue via `config/workspace.user.toml` (gitignoré).
 
 ### Quels appareils sont supportés ?
 

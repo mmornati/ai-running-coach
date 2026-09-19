@@ -48,7 +48,7 @@ Pour chaque segment répété (même géométrie, dates différentes) :
 - cadence, puissance moyenne
 - D+ (somme des gains d'altitude sur les records du segment)
 
-Sortie : tableau Markdown FRENCH identique au format de `compare_course.py`,
+Sortie : tableau Markdown dans la langue des documents (`config/workspace.toml` → `[language].documents`, défaut FRENCH), identique au format de `compare_course.py`,
 mais alignée sur les segments GPS exacts plutôt que sur les bornes km fixes.
 
 ## 4. Limites & bonnes pratiques

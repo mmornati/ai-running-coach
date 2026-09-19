@@ -47,7 +47,7 @@ Utilise les fichiers `activities/*.md` (bloc `## Données brutes Garmin (référ
 
 1. Charge `garmin-sync-efficiency` et récupère les activités du lieu via `get_activities_by_date`.
 2. Pour chaque activité à comparer, récupère le détail (`get_activity`) et les splits (`get_activity_splits`).
-3. **Persiste immédiatement** chaque activité en FRANÇAIS dans `activities/YYYY-MM-DD_type.md` **avec** :
+3. **Persiste immédiatement** chaque activité dans la langue des documents (`config/workspace.toml` → `[language].documents`, défaut FRANÇAIS) dans `activities/YYYY-MM-DD_type.md` **avec** :
    - le bloc `## Données brutes Garmin (référence)` (YAML : `activity_id`, `name`, `distance_m`, `duration_s`, `avg_hr_bpm`, `max_hr_bpm`, `elevation_gain_m`, `elevation_loss_m`, `recovery_hr_bpm`, `training_effect`…)
    - le tableau `## Analyse par splits (km)` (colonnes : `num | durée | allure | vmax | D+/D- | FC moy | cadence | lecture`).
    - Ces deux blocs sont **requis** par le script (un fichier sans eux est ignoré avec un warning).
@@ -76,7 +76,7 @@ python3 skills/course-comparison/scripts/compare_course.py \
 
 ### Étape 3 — Lecture du rapport
 
-Le script émet un rapport Markdown FRENCH avec 4 sections :
+Le script émet un rapport Markdown dans la langue des documents (`config/workspace.toml` → `[language].documents`, défaut FRENCH) avec 4 sections :
 
 1. **Comparaison globale** — un tableau par séance : distance, durée, allure, D+/D-, FC moy/max, HRR, TE. Lecture rapide de la progression brute.
 2. **Alignement des tours** — découpage de chaque séance en boucles de `--loop-length` km (ou auto-détectée). Lignes empilées par tour = **segments comparables** (ex. premier tour 1-10 km de chaque séance).

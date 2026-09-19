@@ -28,7 +28,7 @@ L'agent suit un workflow structuré en 8 étapes pour construire la stratégie d
 
 - **Rafraîchissement contextuel** : vérifie `planning/`, `activities/`, `medical/` et `resources/` avant d'analyser
 - **Persistance** : stocke chaque plan de course dans `planning/` et le plan nutritionnel dans `nutrition/`
-- **Langue** : tous les fichiers MD sont en français
+- **Langue** : les fichiers MD utilisent la langue configurée dans `config/workspace.toml` (`[language].documents`, défaut : français)
 
 ## Skills utilisés
 
