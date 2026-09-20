@@ -14,6 +14,7 @@ theme:
     code: JetBrains Mono
   icon:
     logo: material/terrain
+  favicon: assets/favicon.png
   palette:
     - scheme: default
       primary: green
@@ -31,10 +32,12 @@ theme:
     - navigation.instant
     - navigation.tracking
     - navigation.top
+    - navigation.footer
     - search.suggest
     - search.highlight
     - content.code.copy
     - content.tabs.link
+    - content.action.edit
 
 extra_css:
   - stylesheets/extra.css

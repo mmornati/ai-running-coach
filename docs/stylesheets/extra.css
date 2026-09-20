@@ -63,6 +63,32 @@
   --md-footer-fg-color: #b8c4bd;
 }
 
+/* ---------- Mermaid diagrams ----------
+   Explicit overrides so flowcharts (agents.md, garmin-setup.md) use the
+   pine/lime system instead of Material's stock diagram colors. Light mode
+   borrows Pine for structure (per the Do's/Don'ts "lime is for action
+   only" rule); dark mode uses Lime for node stroke/text, matching the
+   established lime-on-near-black convention already used by the CTA
+   command block. */
+
+[data-md-color-scheme="default"] {
+  --md-mermaid-font-family: "Inter", sans-serif;
+  --md-mermaid-edge-color: var(--arc-moss);
+  --md-mermaid-node-bg-color: rgba(30, 77, 59, 0.08);
+  --md-mermaid-node-fg-color: var(--arc-pine-700);
+  --md-mermaid-label-bg-color: var(--arc-stone);
+  --md-mermaid-label-fg-color: var(--arc-ink);
+}
+
+[data-md-color-scheme="slate"] {
+  --md-mermaid-font-family: "Inter", sans-serif;
+  --md-mermaid-edge-color: var(--arc-moss);
+  --md-mermaid-node-bg-color: rgba(163, 230, 53, 0.1);
+  --md-mermaid-node-fg-color: var(--arc-lime);
+  --md-mermaid-label-bg-color: #0d1410;
+  --md-mermaid-label-fg-color: #e7ede9;
+}
+
 /* ---------- Typography ---------- */
 
 .md-typeset h1,
@@ -261,6 +287,47 @@ html:has(.arc-hero) .md-header--shadow {
   .arc-hero__lead,
   .arc-hero__actions {
     animation: none;
+  }
+}
+
+/* ---------- Page banner (interior overview pages) ----------
+   A contained (not full-bleed), rounded photo band for section landing
+   pages like agents.md / skills.md — extends the trail photography beyond
+   the homepage hero without taking over the whole page shell. No text is
+   overlaid (the page's own H1 follows immediately below), so it never
+   needs a kicker/eyebrow. */
+
+.arc-page-banner {
+  position: relative;
+  height: clamp(140px, 26vw, 280px);
+  margin: 0 0 1.8rem;
+  border-radius: 1.1rem;
+  overflow: hidden;
+  box-shadow: 0 1px 2px rgba(20, 40, 30, 0.06), 0 8px 24px rgba(20, 40, 30, 0.08);
+}
+
+[data-md-color-scheme="slate"] .arc-page-banner {
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.3), 0 8px 24px rgba(0, 0, 0, 0.35);
+}
+
+.arc-page-banner img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.arc-page-banner::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(180deg, rgba(9, 20, 15, 0.05) 0%, rgba(9, 20, 15, 0.4) 100%);
+}
+
+@media (max-width: 44.9375em) {
+  .arc-page-banner {
+    height: clamp(120px, 34vw, 200px);
+    border-radius: 0.8rem;
   }
 }
 
