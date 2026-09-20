@@ -1,5 +1,9 @@
 # 🧠 Agents
 
+<div class="arc-page-banner" markdown>
+![](assets/trail-runner.jpg)
+</div>
+
 `ai-running-coach` fournit **4 agents spécialisés** qui collaborent pour vous aider à préparer votre objectif.
 
 ## Vue d'ensemble
@@ -13,9 +17,13 @@ flowchart TB
 
 ## Les agents
 
-### 🏃 Coach (`coach.md`)
+<div class="arc-team" markdown>
 
-L'agent **principal**. Il gère :
+<div class="arc-agent" markdown>
+
+### 🏃 Coach
+
+`coach.md` — L'agent **principal**. Il gère :
 
 - La **définition et le suivi de l'objectif** (`planning/active_objective.md`)
 - La **planification hebdomadaire** et l'ajustement des séances
@@ -26,9 +34,13 @@ L'agent **principal**. Il gère :
 
 [→ Détails de l'agent coach](agents/coach.md)
 
-### 🗺️ Stratège de course (`course-strategist.md`)
+</div>
 
-Spécialiste de la **stratégie de course** :
+<div class="arc-agent" markdown>
+
+### 🗺️ Stratège de course
+
+`course-strategist.md` — Spécialiste de la **stratégie de course** :
 
 - Analyse du **parcours** (GPX ou URL)
 - Points d'eau et ravitaillement (OpenStreetMap)
@@ -39,9 +51,13 @@ Spécialiste de la **stratégie de course** :
 
 [→ Détails de l'agent stratège](agents/course-strategist.md)
 
-### 🩺 Médecin (`medical.md`)
+</div>
 
-Spécialiste de la **récupération** et de la **santé** :
+<div class="arc-agent" markdown>
+
+### 🩺 Médecin
+
+`medical.md` — Spécialiste de la **récupération** et de la **santé** :
 
 - Analyse des métriques de santé (HRV, sommeil, stress)
 - **Gatekeeper** de la disponibilité à l'entraînement
@@ -50,9 +66,13 @@ Spécialiste de la **récupération** et de la **santé** :
 
 [→ Détails de l'agent médecin](agents/medical.md)
 
-### 🥗 Nutritionniste (`nutritionist.md`)
+</div>
 
-Spécialiste de la **nutrition sportive** :
+<div class="arc-agent" markdown>
+
+### 🥗 Nutritionniste
+
+`nutritionist.md` — Spécialiste de la **nutrition sportive** :
 
 - Suivi des **macros** (glucides, protéines, lipides)
 - Stratégie de **poids de course**
@@ -60,6 +80,10 @@ Spécialiste de la **nutrition sportive** :
 - Comparaison apports / dépenses (calories Garmin)
 
 [→ Détails de l'agent nutritionniste](agents/nutritionist.md)
+
+</div>
+
+</div>
 
 ## Comment les agents collaborent
 
