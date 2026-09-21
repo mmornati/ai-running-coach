@@ -430,6 +430,10 @@ write_claude_config() {
         link_dir "$PROJECT_ROOT/agents" "$PROJECT_ROOT/.claude/agents"
         link_dir "$PROJECT_ROOT/skills" "$PROJECT_ROOT/.claude/skills"
     fi
+    # Pré-approuve le serveur MCP du projet (.mcp.json) dans ~/.claude.json :
+    # sinon Claude Code le laisse « Pending approval » jusqu'à une session
+    # interactive — bloquant sur une machine coach sans écran (Remote Control, cron).
+    approve_claude_project_mcp "$(mcp_server_name)"
 }
 
 write_copilot_config() {
@@ -449,10 +453,6 @@ write_copilot_config() {
     else
         warn "Aucun .github/copilot-instructions.md — Copilot lira AGENTS.md"
     fi
-    # Pré-approuve le serveur MCP du projet (.mcp.json) dans ~/.claude.json :
-    # sinon Claude Code le laisse « Pending approval » jusqu'à une session
-    # interactive — bloquant sur une machine coach sans écran (Remote Control, cron).
-    approve_claude_project_mcp "$server"
 }
 
 approve_claude_project_mcp() {
