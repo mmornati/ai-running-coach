@@ -7,12 +7,14 @@
 #   1. uv (gestionnaire Python)
 #   2. garmin-mcp + garmin-mcp-auth (accès Garmin Connect) — mode DIRECT par défaut
 #   3. (Optionnel) leanproxy-mcp — passerelle MCP "power user" (--use-leanproxy)
-#   4. Configuration des IDE (Claude Code, OpenCode, Gemini CLI, Cursor, Windsurf)
+#   4. Configuration des IDE (Claude Code, GitHub Copilot, OpenCode, Gemini CLI,
+#      Cursor, Windsurf)
 #   5. Vérification finale
 #
 # Usage :
 #   ./install.sh                 # installation interactive (mode direct Garmin)
 #   ./install.sh --ide claude    # installe pour un IDE précis
+#   ./install.sh --ide copilot   # GitHub Copilot (CLI, VS Code, agent cloud)
 #   ./install.sh --no-auth       # saute l'authentification Garmin
 #   ./install.sh --use-leanproxy # mode passerelle leanproxy (power user)
 #   ./install.sh --dry-run       # affiche les actions sans rien exécuter
@@ -63,11 +65,11 @@ die()  { err "$*"; exit 1; }
 # ---------------------------------------------------------------------------
 DRY_RUN=0
 DO_AUTH=1
-IDE="all"          # all | claude | opencode | gemini | cursor | windsurf
+IDE="all"          # all | claude | copilot | opencode | gemini | cursor | windsurf
 USE_LEANPROXY=0    # mode passerelle (power user) — défaut : direct
 
 usage() {
-    sed -n '2,20p' "$0" | sed 's/^# \{0,1\}//'
+    sed -n '2,23p' "$0" | sed 's/^# \{0,1\}//'
     exit 0
 }
 
@@ -340,13 +342,14 @@ EOF
     fi
 }
 
-write_claude_config() {
-    log "Configuration Claude Code"
+# .mcp.json à la racine du projet — format partagé, lu par Claude Code ET
+# GitHub Copilot CLI.
+write_project_mcp_json() {
     local cfg="$PROJECT_ROOT/.mcp.json"
     local server
     server="$(mcp_server_name)"
     if [[ -f "$cfg" ]] && grep -q "\"$server\"" "$cfg"; then
-        ok "Claude Code déjà configuré ($server présent)"
+        ok ".mcp.json déjà configuré ($server présent)"
     else
         if [[ "$USE_LEANPROXY" -eq 1 ]]; then
             write_file "$cfg" <<'EOF'
@@ -374,14 +377,39 @@ EOF
 }
 EOF
         fi
-        ok "Config Claude Code écrite dans $cfg"
+        ok "Config MCP projet écrite dans $cfg"
     fi
+}
+
+write_claude_config() {
+    log "Configuration Claude Code"
+    write_project_mcp_json
     # Claude Code utilise .claude/agents/*.md + .claude/skills/*/SKILL.md
     if [[ "$DRY_RUN" -eq 0 ]]; then
         mkdir -p "$PROJECT_ROOT/.claude"
         ln -sfn "$PROJECT_ROOT/agents" "$PROJECT_ROOT/.claude/agents"
         ln -sfn "$PROJECT_ROOT/skills" "$PROJECT_ROOT/.claude/skills"
         ok "Liens .claude/agents et .claude/skills créés"
+    fi
+}
+
+write_copilot_config() {
+    log "Configuration GitHub Copilot"
+    # Copilot CLI lit le même .mcp.json projet que Claude Code.
+    write_project_mcp_json
+    # Copilot découvre les agents dans .github/agents/*.md et les skills dans
+    # .github/skills/*/SKILL.md — liens symboliques pour que agents/ et skills/
+    # restent la source de vérité (les liens sont gitignorés).
+    if [[ "$DRY_RUN" -eq 0 ]]; then
+        mkdir -p "$PROJECT_ROOT/.github"
+        ln -sfn "$PROJECT_ROOT/agents" "$PROJECT_ROOT/.github/agents"
+        ln -sfn "$PROJECT_ROOT/skills" "$PROJECT_ROOT/.github/skills"
+        ok "Liens .github/agents et .github/skills créés"
+    fi
+    if [[ -f "$PROJECT_ROOT/.github/copilot-instructions.md" ]]; then
+        ok "Instructions Copilot présentes (.github/copilot-instructions.md)"
+    else
+        warn "Aucun .github/copilot-instructions.md — Copilot lira AGENTS.md"
     fi
 }
 
@@ -484,13 +512,14 @@ EOF
 
 configure_ide() {
     case "$IDE" in
-        all)      write_opencode_config; write_claude_config; write_gemini_config; write_cursor_config; write_windsurf_config ;;
+        all)      write_opencode_config; write_claude_config; write_copilot_config; write_gemini_config; write_cursor_config; write_windsurf_config ;;
         opencode) write_opencode_config ;;
         claude)   write_claude_config ;;
+        copilot)  write_copilot_config ;;
         gemini)   write_gemini_config ;;
         cursor)   write_cursor_config ;;
         windsurf) write_windsurf_config ;;
-        *) die "IDE inconnu : $IDE (all|claude|opencode|gemini|cursor|windsurf)" ;;
+        *) die "IDE inconnu : $IDE (all|claude|copilot|opencode|gemini|cursor|windsurf)" ;;
     esac
 }
 

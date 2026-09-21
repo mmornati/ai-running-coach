@@ -33,6 +33,10 @@ __pycache__/
 .windsurf/
 .mcp.json
 
+# Liens symboliques Copilot générés par install.sh (agents/ et skills/ sont la source)
+.github/agents
+.github/skills
+
 # Overrides personnels de configuration (générés par install.sh)
 config/workspace.user.toml
 

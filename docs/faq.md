@@ -8,7 +8,7 @@ Un projet open-source qui fournit des **agents IA** et des **skills** pour aider
 
 ### Quels IDE sont supportés ?
 
-Claude Code, OpenCode, Gemini CLI, Cursor et Windsurf.
+Claude Code, GitHub Copilot, OpenCode, Gemini CLI, Cursor et Windsurf.
 
 ### Le projet est-il en français ?
 

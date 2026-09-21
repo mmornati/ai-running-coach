@@ -25,7 +25,7 @@ Le script effectue les étapes suivantes :
 1. **uv** — gestionnaire Python (installé si absent)
 2. **garmin-mcp** — serveur MCP d'accès à Garmin Connect
 3. **garmin-mcp-auth** — authentification Garmin (tokens valides ~6 mois)
-4. **Configuration IDE** — serveur MCP `garmin` (mode direct, liste blanche d'outils) pour Claude Code, OpenCode, Gemini CLI, Cursor, Windsurf
+4. **Configuration IDE** — serveur MCP `garmin` (mode direct, liste blanche d'outils) pour Claude Code, GitHub Copilot, OpenCode, Gemini CLI, Cursor, Windsurf
 5. **Dossiers de travail** — `activities/`, `medical/`, `nutrition/`, `planning/`, `rapports/`, `resources/`
 
 ## Authentification Garmin
@@ -43,7 +43,7 @@ Lors de la première installation, le script lance l'authentification Garmin Con
 
 | Option | Description |
 |---|---|
-| `--ide claude` | Installe pour un IDE précis (`claude`, `opencode`, `gemini`, `cursor`, `windsurf`) |
+| `--ide claude` | Installe pour un IDE précis (`claude`, `copilot`, `opencode`, `gemini`, `cursor`, `windsurf`) |
 | `--no-auth` | Saute l'authentification Garmin |
 | `--use-leanproxy` | Mode passerelle leanproxy-mcp (power user, optionnel) |
 | `--dry-run` | Affiche les actions sans rien exécuter |

@@ -1,4 +1,7 @@
-# Skill: gpx-analysis
+---
+name: gpx-analysis
+description: Use when the user provides a GPX file (race course, Strava/Garmin track) and wants it analyzed or evaluated against a planned session. Runs scripts/analyze_gpx.py (stdlib) to compute real distance, elevation gain/loss with noise smoothing, per-km profile, significant climbs, loop vs point-to-point detection, and a compatibility verdict against a distance/elevation target. Do not use for an already-run session (use session-parts-analyzer) or multi-session comparison (use course-comparison).
+---
 
 # Skill: gpx-analysis
 

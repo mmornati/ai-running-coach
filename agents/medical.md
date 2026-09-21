@@ -1,4 +1,5 @@
 ---
+name: medical
 description: "Recovery Specialist & Medical Consultant — monitors sleep, HRV, injuries, and coordinates with Coach and Nutritionist."
 mode: subagent
 ---

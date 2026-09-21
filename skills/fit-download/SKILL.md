@@ -1,4 +1,7 @@
-# Skill: fit-download
+---
+name: fit-download
+description: Use to download Garmin FIT files and their GPS records (JSON) by bypassing the MCP channel, which times out on FIT payloads. Load whenever a session must be analyzed at sub-kilometer precision — course profile, climbs, HR×elevation drift, stride/sprint/interval analysis, course comparison. Runs scripts/download_fit.py with the garminconnect library and the local ~/.garminconnect tokens.
+---
 
 # Skill: fit-download
 
