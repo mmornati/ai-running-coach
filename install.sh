@@ -449,6 +449,37 @@ write_copilot_config() {
     else
         warn "Aucun .github/copilot-instructions.md — Copilot lira AGENTS.md"
     fi
+    # Pré-approuve le serveur MCP du projet (.mcp.json) dans ~/.claude.json :
+    # sinon Claude Code le laisse « Pending approval » jusqu'à une session
+    # interactive — bloquant sur une machine coach sans écran (Remote Control, cron).
+    approve_claude_project_mcp "$server"
+}
+
+approve_claude_project_mcp() {
+    local server="$1" store="$HOME/.claude.json"
+    if ! have python3; then
+        warn "python3 absent : approuvez le serveur MCP $server en lançant 'claude' une fois dans $PROJECT_ROOT"
+        return 0
+    fi
+    if [[ "$DRY_RUN" -eq 1 ]]; then
+        printf '%s\n' "${C_YELLOW}[dry-run]${C_RESET} approbation du serveur MCP $server pour $PROJECT_ROOT dans $store"
+        return 0
+    fi
+    python3 - "$store" "$PROJECT_ROOT" "$server" <<'PY'
+import json, os, sys
+store, root, server = sys.argv[1:4]
+data = json.load(open(store)) if os.path.exists(store) else {}
+proj = data.setdefault("projects", {}).setdefault(root, {})
+enabled = proj.setdefault("enabledMcpjsonServers", [])
+if server not in enabled:
+    enabled.append(server)
+proj.setdefault("hasTrustDialogAccepted", True)
+tmp = store + ".tmp"
+with open(tmp, "w") as fh:
+    json.dump(data, fh, indent=2)
+os.replace(tmp, store)
+PY
+    ok "Serveur MCP $server approuvé pour ce projet ($store)"
 }
 
 write_gemini_config() {
