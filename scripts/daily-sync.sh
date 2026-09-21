@@ -12,8 +12,9 @@
 #   scripts/daily-sync.sh --runner codex
 #
 # Configuration : section [sync] de config/workspace.toml (runner, lookback_days)
-# et [notifications] (voir scripts/setup-ntfy.sh).
-# Journaux : logs/sync-YYYY-MM-DD.log (gitignoré). Verrou : logs/.sync.lock.
+# et [notifications] (voir scripts/setup-ntfy.sh). S'exécute dans le workspace
+# (ARC_WORKSPACE / ~/.config/ai-running-coach/workspace, sinon ce dépôt).
+# Journaux : <workspace>/logs/sync-YYYY-MM-DD.log (gitignoré). Verrou : logs/.sync.lock.
 # =============================================================================
 set -euo pipefail
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib/config.sh"
@@ -35,11 +36,12 @@ export PATH="$HOME/.local/bin:$HOME/.claude/bin:$HOME/.cargo/bin:/opt/homebrew/b
 
 RUNNER="${RUNNER:-$(toml_get sync runner claude)}"
 LOOKBACK="$(toml_get sync lookback_days 2)"
-SKILL_FILE="$ARC_PROJECT_ROOT/skills/garmin-daily-sync/SKILL.md"
-LOG_DIR="$ARC_PROJECT_ROOT/logs"
+GIT_AUTOCOMMIT="$(toml_get sync git_autocommit false)"
+SKILL_FILE="$ARC_ENGINE_ROOT/skills/garmin-daily-sync/SKILL.md"
+LOG_DIR="$ARC_WORKSPACE/logs"
 LOG_FILE="$LOG_DIR/sync-$(date +%F).log"
 LOCK_FILE="$LOG_DIR/.sync.lock"
-NOTIFY="$ARC_PROJECT_ROOT/scripts/notify.sh"
+NOTIFY="$ARC_ENGINE_ROOT/scripts/notify.sh"
 
 [[ -f "$SKILL_FILE" ]] || die "Skill introuvable : $SKILL_FILE"
 mkdir -p "$LOG_DIR"
@@ -50,7 +52,7 @@ mkdir -p "$LOG_DIR"
 CLAUDE_TOOLS="mcp__garmin,mcp__leanproxy,Agent,Task,Skill,Read,Write,Edit,Glob,Grep,Bash(python3:*)"
 # En mode -p, un serveur MCP déclaré dans .mcp.json (portée projet) n'est chargé
 # que s'il a été approuvé interactivement ; on le passe explicitement.
-MCP_CONFIG="$ARC_PROJECT_ROOT/.mcp.json"
+MCP_CONFIG="$ARC_WORKSPACE/.mcp.json"
 
 build_command() {
     case "$RUNNER" in
@@ -72,7 +74,7 @@ build_command() {
             prompt="$(awk 'NR==1 && /^---$/ {fm=1; next} fm && /^---$/ {fm=0; next} !fm' "$SKILL_FILE")"
             prompt="lookback_days=$LOOKBACK. Follow these instructions exactly:
 $prompt"
-            CMD=(codex exec --full-auto --cd "$ARC_PROJECT_ROOT" "$prompt") ;;
+            CMD=(codex exec --full-auto --cd "$ARC_WORKSPACE" "$prompt") ;;
         *) die "Exécuteur inconnu : $RUNNER (claude|codex)" ;;
     esac
 }
@@ -84,6 +86,27 @@ extract_resume() {
         capture && /^```[[:space:]]*$/ { capture = 0; last = buf; next }
         capture { buf = buf $0 "\n" }
         END { printf "%s", last }'
+}
+
+# Versionne le workspace après chaque run (données de la sync ET fichiers créés
+# entre-temps par les sessions Remote Control). Push seulement si un remote existe.
+# Retourne 0 si rien à faire ou si le commit/push a réussi ; sinon 1 (signalé
+# dans la notification, sans faire échouer la synchronisation).
+git_autocommit() {
+    [[ "$GIT_AUTOCOMMIT" == "true" ]] || return 0
+    git -C "$ARC_WORKSPACE" rev-parse --is-inside-work-tree >/dev/null 2>&1 || { warn "git_autocommit : $ARC_WORKSPACE n'est pas un dépôt git."; return 1; }
+    cd "$ARC_WORKSPACE"
+    if [[ -z "$(git status --porcelain)" ]]; then
+        ok "git : rien à versionner"
+        return 0
+    fi
+    git add -A
+    git -c user.name="${GIT_AUTHOR_NAME:-ai-running-coach}" -c user.email="${GIT_AUTHOR_EMAIL:-coach@localhost}" \
+        commit -q -m "sync: $(date '+%F %H:%M') ($RUNNER)" || { warn "git commit échoué"; return 1; }
+    ok "git : commit $(git rev-parse --short HEAD)"
+    if git remote get-url origin >/dev/null 2>&1; then
+        git push -q 2>>"$LOG_FILE" && ok "git : push origin" || { warn "git push échoué (voir $LOG_FILE)"; return 1; }
+    fi
 }
 
 notify() {
@@ -99,10 +122,10 @@ notify() {
 main() {
     build_command
     log "Synchronisation Garmin — exécuteur : $RUNNER, fenêtre : $LOOKBACK jour(s)"
-    log "Projet : $ARC_PROJECT_ROOT"
+    log "Workspace : $ARC_WORKSPACE (moteur : $ARC_ENGINE_ROOT)"
 
     if [[ "$DRY_RUN" -eq 1 ]]; then
-        printf '%s\n' "${C_YELLOW}[dry-run]${C_RESET} cd $ARC_PROJECT_ROOT && ${CMD[*]}" | head -c 600; echo
+        printf '%s\n' "${C_YELLOW}[dry-run]${C_RESET} cd $ARC_WORKSPACE && ${CMD[*]}" | head -c 600; echo
         printf '%s\n' "${C_YELLOW}[dry-run]${C_RESET} journal : $LOG_FILE"
         return 0
     fi
@@ -119,7 +142,7 @@ main() {
     {
         echo "===== $(date '+%F %T') — runner=$RUNNER lookback=$LOOKBACK ====="
     } >> "$LOG_FILE"
-    cd "$ARC_PROJECT_ROOT"
+    cd "$ARC_WORKSPACE"
     output="$("${CMD[@]}" 2>>"$LOG_FILE")" || rc=$?
     printf '%s\n' "$output" >> "$LOG_FILE"
 
@@ -143,6 +166,11 @@ main() {
         title="⚠️ Sync Garmin"; priority=4; tags="warning"
     elif printf '%s' "$resume" | grep -qi '^À jour'; then
         title="Sync Garmin — à jour"; priority=2; tags="running"
+    fi
+    if ! git_autocommit; then
+        resume="$resume
+⚠ git : commit/push du workspace échoué — voir logs/"
+        priority=4
     fi
     notify "$title" "$priority" "$tags" "$resume"
 }

@@ -143,7 +143,7 @@ echo
 if [[ "$NO_TEST" -eq 0 && -t 0 ]]; then
     read -r -p "Envoyer une notification de test maintenant ? [O/n] : " yn
     if [[ "${yn:-o}" =~ ^[oOyY]$ ]]; then
-        "$ARC_PROJECT_ROOT/scripts/notify.sh" --title "AI Running Coach" --tags "white_check_mark" \
+        "$ARC_ENGINE_ROOT/scripts/notify.sh" --title "AI Running Coach" --tags "white_check_mark" \
             "Notifications configurées ✅ — vous recevrez ici le résumé de chaque synchronisation Garmin."
     fi
 fi

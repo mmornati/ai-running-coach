@@ -36,3 +36,8 @@ runner = "claude"
 times = ["07:15", "14:15"]
 # Nombre de jours à vérifier (aujourd'hui inclus) — seuls les fichiers MD manquants sont récupérés.
 lookback_days = 2
+# Après chaque run, `git add -A && git commit && git push` dans le workspace s'il est
+# un dépôt git (données de la sync + fichiers créés par les sessions mobiles).
+# À activer dans workspace.user.toml quand le workspace est votre dépôt privé
+# (voir docs/workspace.md). Le push exige un remote accessible sans mot de passe (clé SSH).
+git_autocommit = false

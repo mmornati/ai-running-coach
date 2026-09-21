@@ -44,7 +44,7 @@ SERVICE_NAME="ai-running-coach-remote"
 SYSTEMD_UNIT="$HOME/.config/systemd/user/$SERVICE_NAME.service"
 LAUNCHD_LABEL="com.ai-running-coach.remote"
 LAUNCHD_PLIST="$HOME/Library/LaunchAgents/$LAUNCHD_LABEL.plist"
-LOG_DIR="$ARC_PROJECT_ROOT/logs"
+LOG_DIR="$ARC_WORKSPACE/logs"
 SCREEN_NAME="coach-remote"
 OS="$(uname -s)"
 
@@ -103,9 +103,9 @@ backend() {
 # ---------------------------------------------------------------------------
 do_run() {
     claude_bin >/dev/null
-    cd "$ARC_PROJECT_ROOT"
+    cd "$ARC_WORKSPACE"
     log "Démarrage de claude remote-control — session « $SESSION_NAME » ($PERMISSION_MODE)"
-    log "Projet : $ARC_PROJECT_ROOT"
+    log "Workspace : $ARC_WORKSPACE (moteur : $ARC_ENGINE_ROOT)"
     exec claude remote-control --name "$SESSION_NAME" --permission-mode "$PERMISSION_MODE"
 }
 
@@ -121,10 +121,11 @@ Wants=network-online.target
 
 [Service]
 Type=simple
-WorkingDirectory=$ARC_PROJECT_ROOT
+WorkingDirectory=$ARC_WORKSPACE
 Environment=PATH=$HOME/.local/bin:$HOME/.claude/bin:$HOME/.cargo/bin:/usr/local/bin:/usr/bin:/bin
 Environment=HOME=$HOME
-ExecStart=$ARC_PROJECT_ROOT/scripts/coach-remote.sh run --name "$SESSION_NAME" --permission-mode $PERMISSION_MODE
+Environment=ARC_WORKSPACE=$ARC_WORKSPACE
+ExecStart=$ARC_ENGINE_ROOT/scripts/coach-remote.sh run --name "$SESSION_NAME" --permission-mode $PERMISSION_MODE
 # Le serveur s'arrête de lui-même après ~10 min sans joindre claude.ai :
 # on le relance, il reprend ses sessions (fenêtre ~4 h).
 Restart=always
@@ -152,14 +153,15 @@ install_launchd() {
   <key>Label</key><string>$LAUNCHD_LABEL</string>
   <key>ProgramArguments</key>
   <array>
-    <string>$ARC_PROJECT_ROOT/scripts/coach-remote.sh</string>
+    <string>$ARC_ENGINE_ROOT/scripts/coach-remote.sh</string>
     <string>run</string>
     <string>--name</string><string>$SESSION_NAME</string>
     <string>--permission-mode</string><string>$PERMISSION_MODE</string>
   </array>
-  <key>WorkingDirectory</key><string>$ARC_PROJECT_ROOT</string>
+  <key>WorkingDirectory</key><string>$ARC_WORKSPACE</string>
   <key>EnvironmentVariables</key>
   <dict>
+    <key>ARC_WORKSPACE</key><string>$ARC_WORKSPACE</string>
     <key>PATH</key><string>$HOME/.local/bin:$HOME/.claude/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string>
     <key>HOME</key><string>$HOME</string>
   </dict>
@@ -194,7 +196,7 @@ do_install() {
         read -r -p "Avez-vous déjà accepté cette confirmation sur cette machine ? [o/N] : " yn
         if [[ ! "${yn:-n}" =~ ^[oOyY]$ ]]; then
             log "Lancement interactif : répondez 'y', attendez « Remote Control session started », puis Ctrl+C."
-            (cd "$ARC_PROJECT_ROOT" && claude remote-control --name "$SESSION_NAME" --permission-mode "$PERMISSION_MODE") || true
+            (cd "$ARC_WORKSPACE" && claude remote-control --name "$SESSION_NAME" --permission-mode "$PERMISSION_MODE") || true
         fi
     fi
     case "$(backend)" in
