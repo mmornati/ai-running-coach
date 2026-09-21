@@ -78,6 +78,17 @@ Puis `./install.sh --ide claude --workspace ~/mon-workspace`, vérifiez `git sta
 vos données, `local/`, `config/workspace.user.toml` et `.gitignore` doivent apparaître) et
 committez.
 
+## Versionner automatiquement depuis la machine coach
+
+Avec `git_autocommit = true` dans `config/workspace.user.toml` (section `[sync]`), chaque
+run de `scripts/daily-sync.sh` termine par `git add -A && git commit && git push` dans le
+workspace : les fichiers de la synchronisation **et** ceux créés entre-temps par vos sessions
+mobiles (plans, rapports) arrivent dans votre dépôt privé sans intervention. Un échec de
+commit/push est signalé dans la notification, sans bloquer la synchronisation. Le push
+suppose une clé SSH sur la machine coach autorisée sur votre dépôt.
+
+Sur le portable : `git pull` avant de travailler.
+
 ## Suivre les mises à jour du moteur
 
 ```bash

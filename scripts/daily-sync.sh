@@ -36,6 +36,7 @@ export PATH="$HOME/.local/bin:$HOME/.claude/bin:$HOME/.cargo/bin:/opt/homebrew/b
 
 RUNNER="${RUNNER:-$(toml_get sync runner claude)}"
 LOOKBACK="$(toml_get sync lookback_days 2)"
+GIT_AUTOCOMMIT="$(toml_get sync git_autocommit false)"
 SKILL_FILE="$ARC_ENGINE_ROOT/skills/garmin-daily-sync/SKILL.md"
 LOG_DIR="$ARC_WORKSPACE/logs"
 LOG_FILE="$LOG_DIR/sync-$(date +%F).log"
@@ -85,6 +86,27 @@ extract_resume() {
         capture && /^```[[:space:]]*$/ { capture = 0; last = buf; next }
         capture { buf = buf $0 "\n" }
         END { printf "%s", last }'
+}
+
+# Versionne le workspace après chaque run (données de la sync ET fichiers créés
+# entre-temps par les sessions Remote Control). Push seulement si un remote existe.
+# Retourne 0 si rien à faire ou si le commit/push a réussi ; sinon 1 (signalé
+# dans la notification, sans faire échouer la synchronisation).
+git_autocommit() {
+    [[ "$GIT_AUTOCOMMIT" == "true" ]] || return 0
+    git -C "$ARC_WORKSPACE" rev-parse --is-inside-work-tree >/dev/null 2>&1 || { warn "git_autocommit : $ARC_WORKSPACE n'est pas un dépôt git."; return 1; }
+    cd "$ARC_WORKSPACE"
+    if [[ -z "$(git status --porcelain)" ]]; then
+        ok "git : rien à versionner"
+        return 0
+    fi
+    git add -A
+    git -c user.name="${GIT_AUTHOR_NAME:-ai-running-coach}" -c user.email="${GIT_AUTHOR_EMAIL:-coach@localhost}" \
+        commit -q -m "sync: $(date '+%F %H:%M') ($RUNNER)" || { warn "git commit échoué"; return 1; }
+    ok "git : commit $(git rev-parse --short HEAD)"
+    if git remote get-url origin >/dev/null 2>&1; then
+        git push -q 2>>"$LOG_FILE" && ok "git : push origin" || { warn "git push échoué (voir $LOG_FILE)"; return 1; }
+    fi
 }
 
 notify() {
@@ -144,6 +166,11 @@ main() {
         title="⚠️ Sync Garmin"; priority=4; tags="warning"
     elif printf '%s' "$resume" | grep -qi '^À jour'; then
         title="Sync Garmin — à jour"; priority=2; tags="running"
+    fi
+    if ! git_autocommit; then
+        resume="$resume
+⚠ git : commit/push du workspace échoué — voir logs/"
+        priority=4
     fi
     notify "$title" "$priority" "$tags" "$resume"
 }
