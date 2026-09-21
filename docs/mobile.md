@@ -90,11 +90,22 @@ cd ai-running-coach
 ```
 
 L'authentification Garmin (`garmin-mcp-auth`, MFA compris) fonctionne en SSH. Si vos tokens
-existent déjà sur le portable, copiez simplement le dossier :
-`scp -r ~/.garminconnect machine-coach:~/`.
+existent déjà sur le portable, copiez simplement le dossier (permissions 600) :
 
-Si vous migrez un workspace existant, copiez aussi `activities/ medical/ nutrition/
-planning/ rapports/ resources/` et `config/workspace.user.toml`.
+```bash
+rsync -az ~/.garminconnect/ machine-coach:~/.garminconnect/
+```
+
+Si vous migrez un workspace existant, copiez aussi les dossiers personnels — ils restent
+exclus du dépôt (`.gitignore`) :
+
+```bash
+rsync -az --exclude .DS_Store activities medical nutrition planning rapports resources machine-coach:~/ai-running-coach/
+```
+
+`install.sh` **pré-approuve** le serveur MCP `garmin` du projet dans `~/.claude.json` :
+sans cela, Claude Code le laisse « Pending approval » jusqu'à une session interactive, ce qui
+bloque une machine sans écran. Vérifiez avec `claude mcp list` (→ `garmin … ✔ Connected`).
 
 ### 3. Notifications push (ntfy)
 
@@ -163,7 +174,7 @@ Pour utiliser Codex à la place de Claude Code : `runner = "codex"` dans
 1. **Première fois** : Remote Control demande une confirmation unique (`Enable Remote
    Control? (y/n)`) qu'un service en arrière-plan ne peut pas accepter. Le script vous
    propose de lancer `claude remote-control` une fois au premier plan : répondez `y`,
-   attendez l'URL/QR code, puis `Ctrl+C`.
+   attendez l'URL/QR code, puis `Ctrl+C`. En SSH, utilisez `ssh -t` pour avoir un terminal.
 2. Le service (`systemd --user` + `loginctl enable-linger` sur Linux, LaunchAgent sur macOS)
    démarre au boot et relance le serveur s'il s'arrête (il reprend ses sessions pendant
    ~4 h).
@@ -219,6 +230,7 @@ datacenter (à valider une fois). C'est pourquoi la machine coach reste le choix
 | Symptôme | Cause / solution |
 |---|---|
 | La session est « hors ligne » sur le téléphone | Le processus `claude remote-control` est arrêté : `scripts/coach-remote.sh status` puis `restart`. Les sessions restent reprenables ~4 h. |
+| `claude mcp list` → `garmin … Pending approval` | Relancez `./install.sh --ide claude` (pré-approbation dans `~/.claude.json`) ou lancez `claude` une fois dans le projet et approuvez. |
 | `Remote Control requires claude.ai subscription auth` | `ANTHROPIC_API_KEY` est défini ou vous êtes connecté par clé API : retirez la variable, `claude` → `/login`. |
 | Le service démarre puis s'arrête en boucle | Confirmation unique jamais acceptée : lancez `claude remote-control` une fois au premier plan. |
 | `❌ Sync Garmin échouée` | Voir `logs/sync-YYYY-MM-DD.log`. Cause fréquente : tokens Garmin expirés → `uv run garmin-mcp-auth`. |
