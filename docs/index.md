@@ -128,7 +128,7 @@ Installez `ai-running-coach` et laissez votre staff d'entraînement prendre le r
 
 <a href="quickstart/" class="md-button md-button--primary">Commencer en 5 minutes</a>
 
-<p class="arc-note">Projet open source (MIT), en français par défaut (langue des documents configurable via `config/workspace.toml`), compatible Claude Code, OpenCode, Gemini CLI, Cursor et Windsurf. Ce projet fournit des outils d'aide à la préparation sportive : il ne remplace pas un avis médical professionnel.</p>
+<p class="arc-note">Projet open source (MIT), en français par défaut (langue des documents configurable via `config/workspace.toml`), compatible Claude Code, GitHub Copilot, OpenCode, Gemini CLI, Cursor et Windsurf. Ce projet fournit des outils d'aide à la préparation sportive : il ne remplace pas un avis médical professionnel.</p>
 
   </div>
 </div>

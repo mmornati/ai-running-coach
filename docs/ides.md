@@ -1,6 +1,6 @@
 # 🧑‍💻 IDE supportés
 
-`ai-running-coach` supporte **5 IDE** avec une configuration automatique via le script d'installation.
+`ai-running-coach` supporte **6 IDE** avec une configuration automatique via le script d'installation.
 
 ## Claude Code
 
@@ -13,6 +13,40 @@ Le script crée des **liens symboliques** depuis `.claude/` vers `agents/` et `s
 ```bash
 ./install.sh --ide claude
 ```
+
+## GitHub Copilot
+
+- **Agents** : `.github/agents/*.md`
+- **Skills** : `.github/skills/*/SKILL.md`
+- **MCP** : `.mcp.json` (à la racine du projet, partagé avec Claude Code)
+- **Instructions** : `.github/copilot-instructions.md` (+ `AGENTS.md`, lu nativement)
+
+Le script crée des **liens symboliques** depuis `.github/` vers `agents/` et `skills/`, afin que le projet reste la source de vérité.
+
+```bash
+./install.sh --ide copilot
+```
+
+Fonctionne avec **Copilot CLI**, **Copilot dans VS Code** et l'**agent cloud** (Copilot coding agent).
+
+### Copilot CLI
+
+```bash
+copilot            # depuis le dossier du projet
+/agent coach       # sélectionne l'agent coach
+/skills            # liste les skills disponibles
+/mcp               # vérifie le serveur MCP garmin
+```
+
+!!! warning "Confiance du dossier"
+    Au premier lancement, Copilot CLI demande de **faire confiance au dossier**.
+    Sans cette confirmation, les serveurs MCP du projet (donc `garmin`) ne sont pas chargés.
+
+### Agent cloud
+
+L'environnement de l'agent cloud est préparé par `.github/workflows/copilot-setup-steps.yml`.
+Il n'a **pas** accès à Garmin Connect (aucun token) : utilisez-le pour contribuer au dépôt
+(documentation, agents, skills, installation), pas pour le coaching.
 
 ## OpenCode
 
@@ -67,6 +101,10 @@ Après installation, vérifiez que la configuration MCP est présente :
 ```bash
 # Claude Code
 cat .mcp.json
+
+# GitHub Copilot (même fichier + agents/skills)
+cat .mcp.json
+ls .github/agents/ .github/skills/
 
 # OpenCode
 cat ~/.config/opencode/opencode.json

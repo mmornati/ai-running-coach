@@ -1,4 +1,5 @@
 ---
+name: course-comparison
 description: "Analyse comparative générique de séances sur un même parcours/lieu (ex. toutes les 'Tournai Trail') — découverte des activités via Garmin, alignement des boucles/segments comparables, montées, et rapport Markdown comparatif (script compare_course.py). Utiliser quand l'utilisateur demande une comparaison entre séances d'un même lieu ou l'évaluation de progression sur un parcours connu."
 ---
 

@@ -1,4 +1,5 @@
 ---
+name: course-strategist
 description: "Course Strategy Specialist — analyzes GPX courses or race URLs, builds detailed race plans with pacing, nutrition, weather, gear, and uploads enriched GPX to Garmin with water point waypoints."
 mode: subagent
 ---

@@ -55,6 +55,7 @@ uv run garmin-mcp-auth --verify
 ### L'agent `coach` n'apparaît pas dans mon IDE
 
 - **Claude Code** : vérifiez que `.claude/agents/` existe et contient `coach.md`
+- **GitHub Copilot** : vérifiez que `.github/agents/` existe et contient `coach.md`, puis `/agent` dans Copilot CLI
 - **OpenCode** : vérifiez que `.opencode/agents/` existe et contient `coach.md`
 - **Gemini CLI** : vérifiez que `.gemini/commands/` contient les fichiers `.toml`
 
@@ -65,7 +66,7 @@ Relancez `./install.sh --ide <votre-ide>` si nécessaire.
 Vérifiez la configuration MCP de votre IDE :
 
 ```bash
-# Claude Code
+# Claude Code / GitHub Copilot
 cat .mcp.json
 
 # OpenCode
@@ -79,6 +80,12 @@ cat .windsurf/mcp_config.json
 ```
 
 Chaque configuration doit contenir une référence au serveur MCP `garmin` (mode direct) ou `leanproxy` (mode passerelle).
+
+### Copilot CLI ne charge pas le serveur MCP `garmin`
+
+Copilot CLI ne charge les serveurs MCP d'un projet qu'après confirmation de la
+**confiance du dossier**. Relancez `copilot` depuis la racine du projet, acceptez
+la demande de confiance, puis vérifiez avec `/mcp`.
 
 ## Données
 

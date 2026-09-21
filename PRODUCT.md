@@ -10,7 +10,7 @@ web
 
 Coureurs de trail et d'ultra-trail (francophones) qui préparent un objectif de course
 (50 km, 100 km, D+ important) et utilisent un assistant IA dans leur IDE (Claude Code,
-OpenCode, Gemini CLI, Cursor, Windsurf). Ils possèdent un appareil Garmin et un compte
+GitHub Copilot, OpenCode, Gemini CLI, Cursor, Windsurf). Ils possèdent un appareil Garmin et un compte
 Garmin Connect. Le visiteur du site de documentation est un coureur qui cherche à
 comprendre ce que le projet apporte et à démarrer rapidement.
 

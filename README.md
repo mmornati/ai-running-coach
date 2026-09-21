@@ -19,6 +19,7 @@ Le projet est **en français par défaut** (la langue des documents générés e
 ## 🧑‍💻 IDE supportés
 
 - **Claude Code** (`.claude/agents` + `.claude/skills`)
+- **GitHub Copilot** (`.github/agents` + `.github/skills` + `.mcp.json`) — CLI, VS Code et agent cloud
 - **OpenCode** (`.opencode/agents` + `.opencode/skills`)
 - **Gemini CLI** (`.gemini/commands`)
 - **Cursor** (`.cursor/mcp.json`)
@@ -45,13 +46,13 @@ Le script installe et configure automatiquement :
 
 1. **uv** (gestionnaire Python)
 2. **garmin-mcp** + **garmin-mcp-auth** (accès Garmin Connect)
-3. La configuration de votre **IDE** (Claude Code, OpenCode, Gemini CLI, Cursor, Windsurf) — serveur MCP `garmin` en mode direct avec liste blanche d'outils
+3. La configuration de votre **IDE** (Claude Code, GitHub Copilot, OpenCode, Gemini CLI, Cursor, Windsurf) — serveur MCP `garmin` en mode direct avec liste blanche d'outils
 4. Les dossiers de travail (`activities/`, `medical/`, `nutrition/`, `planning/`, `rapports/`, `resources/`)
 
 ### Options du script
 
 ```bash
-./install.sh --ide claude      # installe pour un IDE précis (claude|opencode|gemini|cursor|windsurf)
+./install.sh --ide claude      # installe pour un IDE précis (claude|copilot|opencode|gemini|cursor|windsurf)
 ./install.sh --no-auth         # saute l'authentification Garmin
 ./install.sh --use-leanproxy   # mode passerelle leanproxy-mcp (power user, optionnel)
 ./install.sh --dry-run         # affiche les actions sans rien exécuter
@@ -84,6 +85,9 @@ ai-running-coach/
 ├── skills/                  # Skills (analyse GPX, planification, météo, etc.)
 ├── config/
 │   └── gemini/commands/     # Templates de commandes Gemini CLI
+├── .github/
+│   ├── copilot-instructions.md          # Instructions GitHub Copilot
+│   └── workflows/copilot-setup-steps.yml # Environnement de l'agent cloud Copilot
 ├── install.sh               # Script d'installation
 ├── AGENTS.md                # Conventions de travail pour les agents
 └── docs/                    # Documentation (GitHub Pages)

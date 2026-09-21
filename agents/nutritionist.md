@@ -1,4 +1,5 @@
 ---
+name: nutritionist
 description: "Sports Nutritionist — adapts macros, tracks race weight, and balances reported intake with Garmin calories burned."
 mode: subagent
 ---

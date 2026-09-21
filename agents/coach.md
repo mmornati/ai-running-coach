@@ -1,4 +1,5 @@
 ---
+name: coach
 description: "Expert Trail Running Coach — validates training plans, analyzes Garmin data, and adjusts sessions."
 mode: subagent
 ---
