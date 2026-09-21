@@ -9,15 +9,19 @@
 #   3. (Optionnel) leanproxy-mcp — passerelle MCP "power user" (--use-leanproxy)
 #   4. Configuration des IDE (Claude Code, GitHub Copilot, OpenCode, Gemini CLI,
 #      Cursor, Windsurf)
-#   5. (Optionnel) Machine « coach » toujours allumée : synchronisation Garmin
+#   5. (Optionnel) Workspace séparé (--workspace DIR) : vos données personnelles
+#      dans votre propre dépôt privé, le moteur (agents/skills) lié dedans —
+#      voir docs/workspace.md
+#   6. (Optionnel) Machine « coach » toujours allumée : synchronisation Garmin
 #      automatique (--daily-sync) et coach accessible depuis le téléphone via
 #      Claude Code Remote Control (--remote-control) — voir docs/mobile.md
-#   6. Vérification finale
+#   7. Vérification finale
 #
 # Usage :
 #   ./install.sh                    # installation interactive (mode direct Garmin)
 #   ./install.sh --ide claude       # installe pour un IDE précis
 #   ./install.sh --ide copilot      # GitHub Copilot (CLI, VS Code, agent cloud)
+#   ./install.sh --workspace DIR    # données + config IDE dans DIR (dépôt privé), moteur lié
 #   ./install.sh --no-auth          # saute l'authentification Garmin
 #   ./install.sh --use-leanproxy    # mode passerelle leanproxy (power user)
 #   ./install.sh --daily-sync       # cron/launchd : sync Garmin aux heures de [sync].times
@@ -45,9 +49,13 @@ LEANPROXY_SERVERS="$HOME/.config/leanproxy_servers.yaml"
 # Noms réels des outils garmin-mcp (sans préfixe garmin_).
 GARMIN_TOOL_WHITELIST="get_activities,get_activities_by_date,get_activity,get_activity_fit_data,get_activity_splits,get_activity_typed_splits,get_activity_split_summaries,get_sleep_data,get_hrv_data,get_training_readiness,get_calendar_events,get_courses,get_workouts,get_workout_by_id,get_scheduled_workouts,schedule_workouts,schedule_week,upload_workout,upload_course,create_strength_workout,delete_workout,unschedule_workout,unschedule_workouts,download_activity_file"
 
-# Détection du répertoire du projet (racine du dépôt)
+# Détection du répertoire du projet (racine du dépôt) = le « moteur »
+# (agents, skills, scripts). Le workspace (données personnelles + config IDE)
+# est le même dossier par défaut, ou celui passé à --workspace.
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR" && pwd)"
+WORKSPACE_ROOT="$PROJECT_ROOT"
+WORKSPACE_STATE_FILE="$HOME/.config/ai-running-coach/workspace"
 
 # ---------------------------------------------------------------------------
 # Couleurs (si terminal interactif)
@@ -73,12 +81,13 @@ DO_AUTH=1
 IDE="all"          # all | claude | copilot | opencode | gemini | cursor | windsurf
 USE_LEANPROXY=0    # mode passerelle (power user) — défaut : direct
 DAILY_SYNC=0       # cron/launchd de synchronisation Garmin automatique
+WORKSPACE_ARG=""   # --workspace DIR (défaut : le dossier du projet)
 REMOTE_CONTROL=0   # service Claude Code Remote Control (accès mobile)
 
 usage() {
-    # 2,27p = l'en-tête jusqu'à la fin du bloc « Usage ». À réajuster si le bloc
+    # 2,31p = l'en-tête jusqu'à la fin du bloc « Usage ». À réajuster si le bloc
     # de commentaires en tête de fichier change de longueur.
-    sed -n '2,27p' "$0" | sed 's/^# \{0,1\}//'
+    sed -n '2,31p' "$0" | sed 's/^# \{0,1\}//'
     exit 0
 }
 
@@ -88,6 +97,7 @@ while [[ $# -gt 0 ]]; do
         --no-auth) DO_AUTH=0; shift ;;
         --use-leanproxy) USE_LEANPROXY=1; shift ;;
         --skip-leanproxy) USE_LEANPROXY=0; shift ;;  # rétro-compatibilité
+        --workspace) WORKSPACE_ARG="$2"; shift 2 ;;
         --daily-sync) DAILY_SYNC=1; shift ;;
         --remote-control) REMOTE_CONTROL=1; shift ;;
         --dry-run) DRY_RUN=1; shift ;;
@@ -145,6 +155,143 @@ link_dir() {
     fi
     ln -sfn "$target" "$link"
     ok "Lien créé : $link -> $target"
+}
+
+# Idem pour un fichier (AGENTS.md, config/workspace.toml) — un vrai fichier
+# existant est conservé (l'utilisateur l'a peut-être personnalisé).
+link_file() {
+    local target="$1" link="$2"
+    [[ -f "$target" ]] || { warn "Cible introuvable, lien ignoré : $target"; return 0; }
+    if [[ -e "$link" && ! -L "$link" ]]; then
+        warn "$link existe et n'est pas un lien — conservé tel quel (le moteur est dans $target)."
+        return 0
+    fi
+    ln -sfn "$target" "$link"
+    ok "Lien créé : $link -> $target"
+}
+
+# ---------------------------------------------------------------------------
+# 0. Workspace séparé (--workspace DIR)
+# ---------------------------------------------------------------------------
+# Le workspace contient les données personnelles (activities/ … resources/),
+# config/workspace.user.toml, et d'éventuels agents/skills privés dans
+# local/agents et local/skills (versionnés dans votre dépôt privé). Le moteur y
+# est LIÉ, jamais copié : agents/ et skills/ du workspace sont des catalogues de
+# liens (moteur + local/), AGENTS.md et config/workspace.toml pointent vers le
+# moteur. Tout ce qui est généré est ajouté au .gitignore du workspace.
+
+resolve_workspace() {
+    if [[ -z "$WORKSPACE_ARG" ]]; then
+        return 0
+    fi
+    if [[ ! -d "$WORKSPACE_ARG" ]]; then
+        if [[ "$DRY_RUN" -eq 1 ]]; then
+            warn "Workspace $WORKSPACE_ARG inexistant — serait créé."
+            WORKSPACE_ROOT="$WORKSPACE_ARG"
+            return 0
+        fi
+        mkdir -p "$WORKSPACE_ARG"
+    fi
+    WORKSPACE_ROOT="$(cd "$WORKSPACE_ARG" && pwd)"
+}
+
+workspace_is_separate() { [[ "$WORKSPACE_ROOT" != "$PROJECT_ROOT" ]]; }
+
+# Dossier des agents/skills à présenter aux IDE : catalogue du workspace en
+# mode séparé, dossiers du moteur sinon.
+agents_dir() { if workspace_is_separate; then echo "$WORKSPACE_ROOT/agents"; else echo "$PROJECT_ROOT/agents"; fi; }
+skills_dir() { if workspace_is_separate; then echo "$WORKSPACE_ROOT/skills"; else echo "$PROJECT_ROOT/skills"; fi; }
+
+# Remplit $WORKSPACE_ROOT/<catalogue> avec un lien par élément du moteur puis
+# par élément de local/<catalogue> (le local prime en cas d'homonyme). Les
+# liens morts sont retirés ; un vrai dossier présent dans le catalogue est
+# conservé (et signalé : sa place est dans local/).
+populate_catalog() {
+    local cat="$1" dir="$WORKSPACE_ROOT/$1" src name n=0
+    if [[ -L "$dir" ]]; then
+        run rm -f "$dir"     # ancien layout : lien direct vers le moteur
+    elif [[ -e "$dir" && ! -d "$dir" ]]; then
+        warn "$dir existe et n'est pas un dossier — catalogue $cat ignoré."
+        return 0
+    fi
+    run mkdir -p "$dir"
+    if [[ "$DRY_RUN" -eq 1 ]]; then
+        printf '%s\n' "${C_YELLOW}[dry-run]${C_RESET} catalogue $dir ← $PROJECT_ROOT/$cat/* + $WORKSPACE_ROOT/local/$cat/*"
+        return 0
+    fi
+    for src in "$PROJECT_ROOT/$cat"/* "$WORKSPACE_ROOT/local/$cat"/*; do
+        [[ -e "$src" ]] || continue
+        name="$(basename "$src")"
+        if [[ -e "$dir/$name" && ! -L "$dir/$name" ]]; then
+            warn "$dir/$name est un vrai dossier — conservé ; déplacez-le dans local/$cat/ pour le versionner proprement."
+            continue
+        fi
+        ln -sfn "$src" "$dir/$name"
+        n=$((n + 1))
+    done
+    # liens morts (skill supprimé du moteur ou de local/)
+    for src in "$dir"/*; do
+        [[ -L "$src" && ! -e "$src" ]] && rm -f "$src"
+    done
+    ok "Catalogue $cat : $n élément(s) lié(s) dans $dir"
+}
+
+# Bloc .gitignore du workspace : tout ce que install.sh génère.
+ensure_workspace_gitignore() {
+    local gi="$WORKSPACE_ROOT/.gitignore" marker="# ai-running-coach — généré par install.sh (ne pas éditer ce bloc)"
+    if [[ -f "$gi" ]] && grep -qF "$marker" "$gi"; then
+        ok ".gitignore du workspace déjà à jour"
+        return 0
+    fi
+    if [[ "$DRY_RUN" -eq 1 ]]; then
+        printf '%s\n' "${C_YELLOW}[dry-run]${C_RESET} ajout du bloc ai-running-coach à $gi"
+        return 0
+    fi
+    cat >> "$gi" <<EOF
+
+$marker
+# Liens vers le moteur (recréés par ./install.sh --workspace) — ancrés à la
+# racine pour ne pas masquer local/agents et local/skills (versionnés)
+/agents/
+/skills/
+/AGENTS.md
+/config/workspace.toml
+# Configs IDE générées
+/.mcp.json
+/.claude/
+/.opencode/
+/.gemini/
+/.cursor/
+/.windsurf/
+/.github/agents
+/.github/skills
+# Journaux et fichiers temporaires
+/logs/
+.DS_Store
+__pycache__/
+# fin du bloc ai-running-coach
+EOF
+    ok "Bloc ai-running-coach ajouté à $gi"
+}
+
+prepare_workspace() {
+    # Mémorise le workspace pour scripts/ (daily-sync, coach-remote, notify).
+    if [[ "$DRY_RUN" -eq 0 ]]; then
+        mkdir -p "$(dirname "$WORKSPACE_STATE_FILE")"
+        printf '%s\n' "$WORKSPACE_ROOT" > "$WORKSPACE_STATE_FILE"
+    fi
+    workspace_is_separate || return 0
+    log "Préparation du workspace : $WORKSPACE_ROOT (moteur : $PROJECT_ROOT)"
+    run mkdir -p "$WORKSPACE_ROOT/config" "$WORKSPACE_ROOT/local/agents" "$WORKSPACE_ROOT/local/skills"
+    if [[ "$DRY_RUN" -eq 1 ]]; then
+        printf '%s\n' "${C_YELLOW}[dry-run]${C_RESET} liens AGENTS.md, config/workspace.toml → moteur"
+    else
+        link_file "$PROJECT_ROOT/AGENTS.md" "$WORKSPACE_ROOT/AGENTS.md"
+        link_file "$PROJECT_ROOT/config/workspace.toml" "$WORKSPACE_ROOT/config/workspace.toml"
+    fi
+    populate_catalog agents
+    populate_catalog skills
+    ensure_workspace_gitignore
 }
 
 # ---------------------------------------------------------------------------
@@ -376,16 +523,16 @@ EOF
     # Agents/skills : OpenCode lit .opencode/ à la racine du projet.
     # On crée des liens symboliques pour que le projet reste la source de vérité.
     if [[ "$DRY_RUN" -eq 0 ]]; then
-        mkdir -p "$PROJECT_ROOT/.opencode"
-        link_dir "$PROJECT_ROOT/agents" "$PROJECT_ROOT/.opencode/agents"
-        link_dir "$PROJECT_ROOT/skills" "$PROJECT_ROOT/.opencode/skills"
+        mkdir -p "$WORKSPACE_ROOT/.opencode"
+        link_dir "$(agents_dir)" "$WORKSPACE_ROOT/.opencode/agents"
+        link_dir "$(skills_dir)" "$WORKSPACE_ROOT/.opencode/skills"
     fi
 }
 
 # .mcp.json à la racine du projet — format partagé, lu par Claude Code ET
 # GitHub Copilot CLI.
 write_project_mcp_json() {
-    local cfg="$PROJECT_ROOT/.mcp.json"
+    local cfg="$WORKSPACE_ROOT/.mcp.json"
     local server
     server="$(mcp_server_name)"
     if [[ -f "$cfg" ]] && grep -q "\"$server\"" "$cfg"; then
@@ -426,9 +573,9 @@ write_claude_config() {
     write_project_mcp_json
     # Claude Code utilise .claude/agents/*.md + .claude/skills/*/SKILL.md
     if [[ "$DRY_RUN" -eq 0 ]]; then
-        mkdir -p "$PROJECT_ROOT/.claude"
-        link_dir "$PROJECT_ROOT/agents" "$PROJECT_ROOT/.claude/agents"
-        link_dir "$PROJECT_ROOT/skills" "$PROJECT_ROOT/.claude/skills"
+        mkdir -p "$WORKSPACE_ROOT/.claude"
+        link_dir "$(agents_dir)" "$WORKSPACE_ROOT/.claude/agents"
+        link_dir "$(skills_dir)" "$WORKSPACE_ROOT/.claude/skills"
     fi
     # Pré-approuve le serveur MCP du projet (.mcp.json) dans ~/.claude.json :
     # sinon Claude Code le laisse « Pending approval » jusqu'à une session
@@ -444,11 +591,14 @@ write_copilot_config() {
     # .github/skills/*/SKILL.md — liens symboliques pour que agents/ et skills/
     # restent la source de vérité (les liens sont gitignorés).
     if [[ "$DRY_RUN" -eq 0 ]]; then
-        mkdir -p "$PROJECT_ROOT/.github"
-        link_dir "$PROJECT_ROOT/agents" "$PROJECT_ROOT/.github/agents"
-        link_dir "$PROJECT_ROOT/skills" "$PROJECT_ROOT/.github/skills"
+        mkdir -p "$WORKSPACE_ROOT/.github"
+        link_dir "$(agents_dir)" "$WORKSPACE_ROOT/.github/agents"
+        link_dir "$(skills_dir)" "$WORKSPACE_ROOT/.github/skills"
     fi
-    if [[ -f "$PROJECT_ROOT/.github/copilot-instructions.md" ]]; then
+    if workspace_is_separate && [[ -f "$PROJECT_ROOT/.github/copilot-instructions.md" && ! -e "$WORKSPACE_ROOT/.github/copilot-instructions.md" && "$DRY_RUN" -eq 0 ]]; then
+        cp "$PROJECT_ROOT/.github/copilot-instructions.md" "$WORKSPACE_ROOT/.github/copilot-instructions.md"
+    fi
+    if [[ -f "$WORKSPACE_ROOT/.github/copilot-instructions.md" ]]; then
         ok "Instructions Copilot présentes (.github/copilot-instructions.md)"
     else
         warn "Aucun .github/copilot-instructions.md — Copilot lira AGENTS.md"
@@ -458,14 +608,14 @@ write_copilot_config() {
 approve_claude_project_mcp() {
     local server="$1" store="$HOME/.claude.json"
     if ! have python3; then
-        warn "python3 absent : approuvez le serveur MCP $server en lançant 'claude' une fois dans $PROJECT_ROOT"
+        warn "python3 absent : approuvez le serveur MCP $server en lançant 'claude' une fois dans $WORKSPACE_ROOT"
         return 0
     fi
     if [[ "$DRY_RUN" -eq 1 ]]; then
-        printf '%s\n' "${C_YELLOW}[dry-run]${C_RESET} approbation du serveur MCP $server pour $PROJECT_ROOT dans $store"
+        printf '%s\n' "${C_YELLOW}[dry-run]${C_RESET} approbation du serveur MCP $server pour $WORKSPACE_ROOT dans $store"
         return 0
     fi
-    python3 - "$store" "$PROJECT_ROOT" "$server" <<'PY'
+    python3 - "$store" "$WORKSPACE_ROOT" "$server" <<'PY'
 import json, os, sys
 store, root, server = sys.argv[1:4]
 data = json.load(open(store)) if os.path.exists(store) else {}
@@ -484,7 +634,7 @@ PY
 
 write_gemini_config() {
     log "Configuration Gemini CLI"
-    local dir="$PROJECT_ROOT/.gemini/commands"
+    local dir="$WORKSPACE_ROOT/.gemini/commands"
     if [[ "$DRY_RUN" -eq 0 ]]; then
         mkdir -p "$dir"
     fi
@@ -499,7 +649,7 @@ write_gemini_config() {
 
 write_cursor_config() {
     log "Configuration Cursor"
-    local dir="$PROJECT_ROOT/.cursor"
+    local dir="$WORKSPACE_ROOT/.cursor"
     if [[ "$DRY_RUN" -eq 0 ]]; then
         mkdir -p "$dir"
     fi
@@ -540,7 +690,7 @@ EOF
 
 write_windsurf_config() {
     log "Configuration Windsurf"
-    local dir="$PROJECT_ROOT/.windsurf"
+    local dir="$WORKSPACE_ROOT/.windsurf"
     if [[ "$DRY_RUN" -eq 0 ]]; then
         mkdir -p "$dir"
     fi
@@ -599,7 +749,7 @@ create_workspace_dirs() {
     log "Création des dossiers de travail (exclus du dépôt)"
     for d in activities medical nutrition planning rapports resources; do
         if [[ "$DRY_RUN" -eq 0 ]]; then
-            mkdir -p "$PROJECT_ROOT/$d"
+            mkdir -p "$WORKSPACE_ROOT/$d"
         fi
     done
     ok "Dossiers activities/ medical/ nutrition/ planning/ rapports/ resources/ prêts"
@@ -609,7 +759,7 @@ create_workspace_dirs() {
 # 6b. Configuration de l'espace de travail
 # ---------------------------------------------------------------------------
 create_workspace_config() {
-    local cfg="$PROJECT_ROOT/config/workspace.user.toml"
+    local cfg="$WORKSPACE_ROOT/config/workspace.user.toml"
     if [[ -f "$cfg" ]]; then
         ok "Config personnelle présente : $cfg"
         return 0
@@ -655,7 +805,7 @@ check_runners() {
 # ---------------------------------------------------------------------------
 # Heures lues dans config/workspace.toml → [sync].times (override user.toml).
 sync_times() {
-    ARC_PROJECT_ROOT="$PROJECT_ROOT" bash -c 'source "$0/scripts/lib/config.sh"; toml_get_list sync times "07:15 14:15"' "$PROJECT_ROOT"
+    ARC_WORKSPACE="$WORKSPACE_ROOT" bash -c 'source "$0/scripts/lib/config.sh"; toml_get_list sync times "07:15 14:15"' "$PROJECT_ROOT"
 }
 
 install_daily_sync() {
@@ -680,16 +830,17 @@ install_daily_sync() {
 <dict>
   <key>Label</key><string>com.ai-running-coach.daily-sync</string>
   <key>ProgramArguments</key><array><string>$sync</string></array>
-  <key>WorkingDirectory</key><string>$PROJECT_ROOT</string>
+  <key>WorkingDirectory</key><string>$WORKSPACE_ROOT</string>
+  <key>EnvironmentVariables</key><dict><key>ARC_WORKSPACE</key><string>$WORKSPACE_ROOT</string></dict>
   <key>StartCalendarInterval</key>
   <array>
 $entries  </array>
-  <key>StandardOutPath</key><string>$PROJECT_ROOT/logs/launchd-sync.log</string>
-  <key>StandardErrorPath</key><string>$PROJECT_ROOT/logs/launchd-sync.log</string>
+  <key>StandardOutPath</key><string>$WORKSPACE_ROOT/logs/launchd-sync.log</string>
+  <key>StandardErrorPath</key><string>$WORKSPACE_ROOT/logs/launchd-sync.log</string>
 </dict>
 </plist>
 EOF
-        [[ "$DRY_RUN" -eq 1 ]] || mkdir -p "$PROJECT_ROOT/logs"
+        [[ "$DRY_RUN" -eq 1 ]] || mkdir -p "$WORKSPACE_ROOT/logs"
         run launchctl bootout "gui/$(id -u)" "$plist" 2>/dev/null || true
         run launchctl bootstrap "gui/$(id -u)" "$plist"
         ok "LaunchAgent com.ai-running-coach.daily-sync installé ($plist)"
@@ -697,7 +848,7 @@ EOF
         # crontab : on remplace les lignes marquées, on conserve le reste.
         local marker="# ai-running-coach daily-sync" lines="" current
         for t in $times; do
-            lines+="$((10#${t##*:})) $((10#${t%%:*})) * * * $sync >/dev/null 2>&1 $marker
+            lines+="$((10#${t##*:})) $((10#${t%%:*})) * * * ARC_WORKSPACE=$WORKSPACE_ROOT $sync >/dev/null 2>&1 $marker
 "
         done
         current="$(crontab -l 2>/dev/null | grep -v "$marker" || true)"
@@ -722,9 +873,9 @@ install_remote_control() {
     fi
     log "Service Claude Code Remote Control (scripts/coach-remote.sh install)"
     if [[ "$DRY_RUN" -eq 1 ]]; then
-        ARC_DRY_RUN=1 "$PROJECT_ROOT/scripts/coach-remote.sh" install --dry-run
+        ARC_WORKSPACE="$WORKSPACE_ROOT" ARC_DRY_RUN=1 "$PROJECT_ROOT/scripts/coach-remote.sh" install --dry-run
     else
-        "$PROJECT_ROOT/scripts/coach-remote.sh" install
+        ARC_WORKSPACE="$WORKSPACE_ROOT" "$PROJECT_ROOT/scripts/coach-remote.sh" install
     fi
 }
 
@@ -768,6 +919,8 @@ verify() {
 main() {
     log "ai-running-coach — installation v$VERSION"
     log "Projet : $PROJECT_ROOT"
+    resolve_workspace
+    workspace_is_separate && log "Workspace : $WORKSPACE_ROOT (--workspace)"
     if [[ "$USE_LEANPROXY" -eq 1 ]]; then
         log "Mode : passerelle leanproxy (power user)"
     else
@@ -783,6 +936,7 @@ main() {
     install_garmin_mcp
     install_leanproxy
     configure_leanproxy
+    prepare_workspace
     configure_ide
     create_workspace_dirs
     create_workspace_config

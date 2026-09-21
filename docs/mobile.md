@@ -51,8 +51,10 @@ flowchart TB
     NTFY -- push --> P
 ```
 
-- **Le workspace vit sur la machine coach** (source de vérité unique). Depuis le portable,
-  vous continuez à travailler dans l'IDE via *VS Code Remote-SSH* ou claude.ai/code.
+- **Le workspace vit sur la machine coach** (source de vérité unique), idéalement dans
+  votre dépôt privé séparé du moteur (`--workspace`, voir [Votre workspace privé](workspace.md)).
+  Depuis le portable, vous continuez à travailler dans l'IDE via *VS Code Remote-SSH* ou
+  claude.ai/code.
 - **Interactif** : `claude remote-control` (mode serveur) tourne en service. Depuis
   l'appli Claude, vous ouvrez une session qui s'exécute *sur la machine coach* : agent
   `coach`, skills, serveur MCP `garmin`, fichiers du workspace. Les confirmations d'outils
@@ -86,7 +88,9 @@ codex login --device-auth
 ```bash
 git clone https://github.com/mmornati/ai-running-coach.git
 cd ai-running-coach
-./install.sh --ide claude
+./install.sh --ide claude                      # données dans ce dossier (exclues du dépôt)
+# ou, données dans votre dépôt privé :
+./install.sh --ide claude --workspace ~/mon-workspace
 ```
 
 L'authentification Garmin (`garmin-mcp-auth`, MFA compris) fonctionne en SSH. Si vos tokens

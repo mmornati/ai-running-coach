@@ -70,6 +70,7 @@ nav:
       - Démarrage rapide: quickstart.md
       - Configuration Garmin: garmin-setup.md
       - IDE supportés: ides.md
+      - Votre workspace privé: workspace.md
       - Le coach dans la poche: mobile.md
   - Agents:
       - Vue d'ensemble: agents.md

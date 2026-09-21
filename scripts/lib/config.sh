@@ -6,12 +6,27 @@
 # scripts/coach-remote.sh. Lecture minimaliste de config/workspace.toml +
 # config/workspace.user.toml (overrides), sans dépendance Python : suffisant
 # pour des clés `cle = "valeur"`, `cle = 12`, `cle = ["a", "b"]`.
+#
+# Deux racines :
+#   ARC_ENGINE_ROOT — le moteur (ce dépôt : agents, skills, scripts)
+#   ARC_WORKSPACE   — le workspace (données personnelles, config, logs, .mcp.json) :
+#                     variable ARC_WORKSPACE, sinon ~/.config/ai-running-coach/workspace
+#                     (écrit par ./install.sh --workspace), sinon le moteur lui-même.
 # =============================================================================
 
 ARC_LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-ARC_PROJECT_ROOT="${ARC_PROJECT_ROOT:-$(cd "$ARC_LIB_DIR/../.." && pwd)}"
-ARC_CONFIG="$ARC_PROJECT_ROOT/config/workspace.toml"
-ARC_CONFIG_USER="$ARC_PROJECT_ROOT/config/workspace.user.toml"
+ARC_ENGINE_ROOT="$(cd "$ARC_LIB_DIR/../.." && pwd)"
+ARC_WORKSPACE_STATE_FILE="$HOME/.config/ai-running-coach/workspace"
+if [[ -z "${ARC_WORKSPACE:-}" && -f "$ARC_WORKSPACE_STATE_FILE" ]]; then
+    ARC_WORKSPACE="$(head -n1 "$ARC_WORKSPACE_STATE_FILE")"
+fi
+if [[ -z "${ARC_WORKSPACE:-}" || ! -d "${ARC_WORKSPACE:-}" ]]; then
+    ARC_WORKSPACE="$ARC_ENGINE_ROOT"
+fi
+ARC_PROJECT_ROOT="$ARC_WORKSPACE"   # compatibilité
+ARC_CONFIG="$ARC_WORKSPACE/config/workspace.toml"
+[[ -f "$ARC_CONFIG" ]] || ARC_CONFIG="$ARC_ENGINE_ROOT/config/workspace.toml"
+ARC_CONFIG_USER="$ARC_WORKSPACE/config/workspace.user.toml"
 
 if [[ -t 1 ]]; then
     C_RED=$'\033[31m'; C_GREEN=$'\033[32m'; C_YELLOW=$'\033[33m'

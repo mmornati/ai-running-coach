@@ -56,6 +56,7 @@ Le script installe et configure automatiquement :
 ./install.sh --ide claude      # installe pour un IDE précis (claude|copilot|opencode|gemini|cursor|windsurf)
 ./install.sh --no-auth         # saute l'authentification Garmin
 ./install.sh --use-leanproxy   # mode passerelle leanproxy-mcp (power user, optionnel)
+./install.sh --workspace DIR   # vos données dans votre dépôt privé, moteur lié (voir docs/workspace.md)
 ./install.sh --daily-sync      # machine « coach » : sync Garmin automatique (cron/launchd) + notification
 ./install.sh --remote-control  # machine « coach » : le coach accessible depuis le téléphone
 ./install.sh --dry-run         # affiche les actions sans rien exécuter
@@ -103,6 +104,7 @@ La documentation complète est disponible sur [GitHub Pages](https://mmornati.gi
 
 - [Guide de démarrage rapide](docs/quickstart.md)
 - [Configuration Garmin](docs/garmin-setup.md)
+- [Votre workspace privé (données versionnées, moteur lié)](docs/workspace.md)
 - [Le coach dans la poche (mobile + sync automatique)](docs/mobile.md)
 - [Les agents](docs/agents.md)
 - [Les skills](docs/skills.md)
