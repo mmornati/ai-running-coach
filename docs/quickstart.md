@@ -46,6 +46,8 @@ Lors de la première installation, le script lance l'authentification Garmin Con
 | `--ide claude` | Installe pour un IDE précis (`claude`, `copilot`, `opencode`, `gemini`, `cursor`, `windsurf`) |
 | `--no-auth` | Saute l'authentification Garmin |
 | `--use-leanproxy` | Mode passerelle leanproxy-mcp (power user, optionnel) |
+| `--daily-sync` | Synchronisation Garmin automatique (cron/launchd) + notification — voir [Le coach dans la poche](mobile.md) |
+| `--remote-control` | Service Claude Code Remote Control : le coach depuis le téléphone — voir [Le coach dans la poche](mobile.md) |
 | `--dry-run` | Affiche les actions sans rien exécuter |
 | `--help` | Affiche l'aide |
 

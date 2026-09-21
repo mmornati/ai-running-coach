@@ -43,8 +43,9 @@ point d'entrée : elle doit donner envie de l'essayer.
 ## Capabilities and Constraints
 
 - 4 agents : `coach`, `course-strategist`, `medical`, `nutritionist`.
-- 8 skills : analyse GPX, comparaison de parcours, planification Garmin, météo,
-  analyse de séances, Intervals.icu (secondaire), téléchargement FIT, sync Garmin.
+- 9 skills : analyse GPX, comparaison de parcours, planification Garmin, météo,
+  analyse de séances, Intervals.icu (secondaire), téléchargement FIT, sync Garmin,
+  sync quotidienne headless (machine coach).
 - 100 % en français. Garmin uniquement (v1).
 - Contraintes techniques : MkDocs Material, GitHub Pages, pas de backend.
 - **INFÉRÉ** : le site doit rester statique (MkDocs), sans JavaScript lourd.
@@ -59,7 +60,7 @@ point d'entrée : elle doit donner envie de l'essayer.
 
 ## Evidence on Hand
 
-- Contenu réel : 4 agents, 8 skills, script d'installation, docs existantes (index,
+- Contenu réel : 4 agents, 9 skills, script d'installation, docs existantes (index,
   quickstart, garmin-setup, ides, agents, skills, resources, troubleshooting, faq).
 - Aucun témoignage, benchmark, prix ou donnée de démonstration réelle. Ne pas inventer
   de chiffres de performance, de témoignages ou de clients.

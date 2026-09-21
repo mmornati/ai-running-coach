@@ -70,6 +70,7 @@ nav:
       - Démarrage rapide: quickstart.md
       - Configuration Garmin: garmin-setup.md
       - IDE supportés: ides.md
+      - Le coach dans la poche: mobile.md
   - Agents:
       - Vue d'ensemble: agents.md
       - Coach: agents/coach.md
@@ -86,6 +87,7 @@ nav:
       - Analyse de séances: skills/session-parts-analyzer.md
       - Intervals.icu: skills/intervals-icu-best-practices.md
       - Téléchargement FIT: skills/fit-download.md
+      - Sync quotidienne (headless): skills/garmin-daily-sync.md
   - Ressources:
       - Base de connaissances: resources.md
   - Dépannage: troubleshooting.md
