@@ -69,7 +69,9 @@ IDE="all"          # all | claude | copilot | opencode | gemini | cursor | winds
 USE_LEANPROXY=0    # mode passerelle (power user) — défaut : direct
 
 usage() {
-    sed -n '2,23p' "$0" | sed 's/^# \{0,1\}//'
+    # 2,22p = l'en-tête jusqu'à la fin du bloc « Usage ». À réajuster si le bloc
+    # de commentaires en tête de fichier change de longueur.
+    sed -n '2,22p' "$0" | sed 's/^# \{0,1\}//'
     exit 0
 }
 
@@ -113,6 +115,27 @@ require_cmd() {
     if ! have "$cmd"; then
         die "Commande '$cmd' introuvable. $hint"
     fi
+}
+
+# Crée un lien symbolique vers un dossier du projet.
+#
+# Si la destination existe déjà en tant que VRAI répertoire, on n'écrit pas
+# dedans : « ln -sfn cible repertoire » y créerait un lien imbriqué
+# (ex. .github/agents/agents) sans message d'erreur, et les agents/skills ne
+# seraient alors pas découverts par l'IDE.
+link_dir() {
+    local target="$1" link="$2"
+    if [[ ! -d "$target" ]]; then
+        warn "Cible introuvable, lien ignoré : $target"
+        return 0
+    fi
+    if [[ -e "$link" && ! -L "$link" ]]; then
+        warn "$link existe et n'est pas un lien — conservé tel quel."
+        warn "Supprimez-le puis relancez si vous vouliez un lien vers $target."
+        return 0
+    fi
+    ln -sfn "$target" "$link"
+    ok "Lien créé : $link -> $target"
 }
 
 # ---------------------------------------------------------------------------
@@ -336,9 +359,8 @@ EOF
     # On crée des liens symboliques pour que le projet reste la source de vérité.
     if [[ "$DRY_RUN" -eq 0 ]]; then
         mkdir -p "$PROJECT_ROOT/.opencode"
-        ln -sfn "$PROJECT_ROOT/agents" "$PROJECT_ROOT/.opencode/agents"
-        ln -sfn "$PROJECT_ROOT/skills" "$PROJECT_ROOT/.opencode/skills"
-        ok "Liens .opencode/agents et .opencode/skills créés"
+        link_dir "$PROJECT_ROOT/agents" "$PROJECT_ROOT/.opencode/agents"
+        link_dir "$PROJECT_ROOT/skills" "$PROJECT_ROOT/.opencode/skills"
     fi
 }
 
@@ -387,9 +409,8 @@ write_claude_config() {
     # Claude Code utilise .claude/agents/*.md + .claude/skills/*/SKILL.md
     if [[ "$DRY_RUN" -eq 0 ]]; then
         mkdir -p "$PROJECT_ROOT/.claude"
-        ln -sfn "$PROJECT_ROOT/agents" "$PROJECT_ROOT/.claude/agents"
-        ln -sfn "$PROJECT_ROOT/skills" "$PROJECT_ROOT/.claude/skills"
-        ok "Liens .claude/agents et .claude/skills créés"
+        link_dir "$PROJECT_ROOT/agents" "$PROJECT_ROOT/.claude/agents"
+        link_dir "$PROJECT_ROOT/skills" "$PROJECT_ROOT/.claude/skills"
     fi
 }
 
@@ -402,9 +423,8 @@ write_copilot_config() {
     # restent la source de vérité (les liens sont gitignorés).
     if [[ "$DRY_RUN" -eq 0 ]]; then
         mkdir -p "$PROJECT_ROOT/.github"
-        ln -sfn "$PROJECT_ROOT/agents" "$PROJECT_ROOT/.github/agents"
-        ln -sfn "$PROJECT_ROOT/skills" "$PROJECT_ROOT/.github/skills"
-        ok "Liens .github/agents et .github/skills créés"
+        link_dir "$PROJECT_ROOT/agents" "$PROJECT_ROOT/.github/agents"
+        link_dir "$PROJECT_ROOT/skills" "$PROJECT_ROOT/.github/skills"
     fi
     if [[ -f "$PROJECT_ROOT/.github/copilot-instructions.md" ]]; then
         ok "Instructions Copilot présentes (.github/copilot-instructions.md)"
