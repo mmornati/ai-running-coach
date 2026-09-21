@@ -13,3 +13,26 @@ documents = "fr"
 # Langue des réponses à l'utilisateur.
 # "auto" = même langue que la requête de l'utilisateur.
 responses = "auto"
+[notifications]
+# Notification push envoyée après chaque synchronisation automatique
+# (scripts/daily-sync.sh → scripts/notify.sh). Configurez-la avec
+# `scripts/setup-ntfy.sh` (écrit les overrides dans workspace.user.toml).
+# Valeurs : "ntfy" (appli gratuite iOS/Android, serveur public ou auto-hébergé) | "none".
+provider = "none"
+# Serveur ntfy : public (https://ntfy.sh) ou auto-hébergé.
+ntfy_url = "https://ntfy.sh"
+# Sujet (topic) auquel votre téléphone est abonné — choisissez-le difficile à deviner.
+ntfy_topic = ""
+# Fichier contenant un token d'accès (serveur avec authentification) — optionnel.
+# Jamais versionné : à placer hors du dépôt, ex. "~/.config/ai-running-coach/ntfy.token".
+ntfy_token_file = ""
+
+[sync]
+# Synchronisation Garmin automatique (voir docs/mobile.md et scripts/daily-sync.sh).
+# Exécuteur headless : "claude" (Claude Code, `claude -p`) | "codex" (Codex CLI, `codex exec`).
+runner = "claude"
+# Heures locales de lancement (cron/launchd) — installées par `./install.sh --daily-sync`.
+# Défaut : après la nuit (sommeil/HRV synchronisés) et après la sortie du midi.
+times = ["07:15", "14:15"]
+# Nombre de jours à vérifier (aujourd'hui inclus) — seuls les fichiers MD manquants sont récupérés.
+lookback_days = 2

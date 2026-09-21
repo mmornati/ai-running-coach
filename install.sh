@@ -9,15 +9,20 @@
 #   3. (Optionnel) leanproxy-mcp — passerelle MCP "power user" (--use-leanproxy)
 #   4. Configuration des IDE (Claude Code, GitHub Copilot, OpenCode, Gemini CLI,
 #      Cursor, Windsurf)
-#   5. Vérification finale
+#   5. (Optionnel) Machine « coach » toujours allumée : synchronisation Garmin
+#      automatique (--daily-sync) et coach accessible depuis le téléphone via
+#      Claude Code Remote Control (--remote-control) — voir docs/mobile.md
+#   6. Vérification finale
 #
 # Usage :
-#   ./install.sh                 # installation interactive (mode direct Garmin)
-#   ./install.sh --ide claude    # installe pour un IDE précis
-#   ./install.sh --ide copilot   # GitHub Copilot (CLI, VS Code, agent cloud)
-#   ./install.sh --no-auth       # saute l'authentification Garmin
-#   ./install.sh --use-leanproxy # mode passerelle leanproxy (power user)
-#   ./install.sh --dry-run       # affiche les actions sans rien exécuter
+#   ./install.sh                    # installation interactive (mode direct Garmin)
+#   ./install.sh --ide claude       # installe pour un IDE précis
+#   ./install.sh --ide copilot      # GitHub Copilot (CLI, VS Code, agent cloud)
+#   ./install.sh --no-auth          # saute l'authentification Garmin
+#   ./install.sh --use-leanproxy    # mode passerelle leanproxy (power user)
+#   ./install.sh --daily-sync       # cron/launchd : sync Garmin aux heures de [sync].times
+#   ./install.sh --remote-control   # service Remote Control (le coach dans la poche)
+#   ./install.sh --dry-run          # affiche les actions sans rien exécuter
 #   ./install.sh --help
 #
 # Prérequis : macOS ou Linux, bash 4+, curl, git.
@@ -67,11 +72,13 @@ DRY_RUN=0
 DO_AUTH=1
 IDE="all"          # all | claude | copilot | opencode | gemini | cursor | windsurf
 USE_LEANPROXY=0    # mode passerelle (power user) — défaut : direct
+DAILY_SYNC=0       # cron/launchd de synchronisation Garmin automatique
+REMOTE_CONTROL=0   # service Claude Code Remote Control (accès mobile)
 
 usage() {
-    # 2,22p = l'en-tête jusqu'à la fin du bloc « Usage ». À réajuster si le bloc
+    # 2,27p = l'en-tête jusqu'à la fin du bloc « Usage ». À réajuster si le bloc
     # de commentaires en tête de fichier change de longueur.
-    sed -n '2,22p' "$0" | sed 's/^# \{0,1\}//'
+    sed -n '2,27p' "$0" | sed 's/^# \{0,1\}//'
     exit 0
 }
 
@@ -81,6 +88,8 @@ while [[ $# -gt 0 ]]; do
         --no-auth) DO_AUTH=0; shift ;;
         --use-leanproxy) USE_LEANPROXY=1; shift ;;
         --skip-leanproxy) USE_LEANPROXY=0; shift ;;  # rétro-compatibilité
+        --daily-sync) DAILY_SYNC=1; shift ;;
+        --remote-control) REMOTE_CONTROL=1; shift ;;
         --dry-run) DRY_RUN=1; shift ;;
         --help|-h) usage ;;
         *) die "Option inconnue : $1 (voir --help)" ;;
@@ -155,6 +164,7 @@ install_uv() {
     # recharge le PATH pour la session courante
     export PATH="$HOME/.local/bin:$HOME/.cargo/bin:$PATH"
     if ! have uv; then
+        [[ "$DRY_RUN" -eq 1 ]] && { warn "uv absent (dry-run) — serait installé."; return 0; }
         die "uv installé mais introuvable dans le PATH. Rechargez votre shell puis relancez."
     fi
     ok "uv installé : $(uv --version)"
@@ -166,12 +176,16 @@ install_uv() {
 install_garmin_mcp() {
     log "Installation de garmin-mcp (accès Garmin Connect)"
     if have garmin-mcp; then
-        ok "garmin-mcp déjà installé : $(garmin-mcp --version 2>/dev/null || echo 'version inconnue')"
+        # NB : pas de « garmin-mcp --version » — cela démarre le serveur stdio et bloque.
+        ok "garmin-mcp déjà installé : $(command -v garmin-mcp)"
     else
         run uv tool install --python 3.12 "$GARMIN_MCP_REF"
         export PATH="$HOME/.local/bin:$PATH"
-        have garmin-mcp || die "garmin-mcp introuvable après installation."
-        ok "garmin-mcp installé"
+        if ! have garmin-mcp; then
+            [[ "$DRY_RUN" -eq 1 ]] && warn "garmin-mcp absent (dry-run) — serait installé." || die "garmin-mcp introuvable après installation."
+        else
+            ok "garmin-mcp installé"
+        fi
     fi
 
     if [[ "$DO_AUTH" -eq 1 ]]; then
@@ -586,6 +600,104 @@ EOF
 }
 
 # ---------------------------------------------------------------------------
+# 6c. Exécuteurs headless (Claude Code / Codex CLI) — machine « coach »
+# ---------------------------------------------------------------------------
+# Les fonctionnalités mobiles reposent sur les CLI officiels (abonnement, pas de
+# clé API). On ne les installe pas à la place de l'utilisateur : on vérifie et
+# on affiche la commande officielle.
+check_runners() {
+    if have claude; then
+        ok "claude : présent ($(claude --version 2>/dev/null | head -1))"
+    else
+        warn "claude absent — requis pour --remote-control et [sync].runner = \"claude\" :"
+        warn "  curl -fsSL https://claude.ai/install.sh | bash   (puis 'claude' → /login, compte claude.ai)"
+    fi
+    if have codex; then
+        ok "codex : présent ($(codex --version 2>/dev/null | head -1))"
+    else
+        warn "codex absent — optionnel ([sync].runner = \"codex\") : npm i -g @openai/codex  (puis 'codex login --device-auth')"
+    fi
+}
+
+# ---------------------------------------------------------------------------
+# 6d. Synchronisation Garmin automatique (cron / launchd)
+# ---------------------------------------------------------------------------
+# Heures lues dans config/workspace.toml → [sync].times (override user.toml).
+sync_times() {
+    ARC_PROJECT_ROOT="$PROJECT_ROOT" bash -c 'source "$0/scripts/lib/config.sh"; toml_get_list sync times "07:15 14:15"' "$PROJECT_ROOT"
+}
+
+install_daily_sync() {
+    if [[ "$DAILY_SYNC" -eq 0 ]]; then
+        return 0
+    fi
+    log "Synchronisation Garmin automatique (scripts/daily-sync.sh)"
+    local sync="$PROJECT_ROOT/scripts/daily-sync.sh" times
+    times="$(sync_times | tr '\n' ' ')"
+    log "Heures : $times (config [sync].times)"
+
+    if [[ "$(uname -s)" == "Darwin" ]]; then
+        local plist="$HOME/Library/LaunchAgents/com.ai-running-coach.daily-sync.plist" entries=""
+        for t in $times; do
+            entries+="    <dict><key>Hour</key><integer>$((10#${t%%:*}))</integer><key>Minute</key><integer>$((10#${t##*:}))</integer></dict>
+"
+        done
+        write_file "$plist" <<EOF
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key><string>com.ai-running-coach.daily-sync</string>
+  <key>ProgramArguments</key><array><string>$sync</string></array>
+  <key>WorkingDirectory</key><string>$PROJECT_ROOT</string>
+  <key>StartCalendarInterval</key>
+  <array>
+$entries  </array>
+  <key>StandardOutPath</key><string>$PROJECT_ROOT/logs/launchd-sync.log</string>
+  <key>StandardErrorPath</key><string>$PROJECT_ROOT/logs/launchd-sync.log</string>
+</dict>
+</plist>
+EOF
+        [[ "$DRY_RUN" -eq 1 ]] || mkdir -p "$PROJECT_ROOT/logs"
+        run launchctl bootout "gui/$(id -u)" "$plist" 2>/dev/null || true
+        run launchctl bootstrap "gui/$(id -u)" "$plist"
+        ok "LaunchAgent com.ai-running-coach.daily-sync installé ($plist)"
+    else
+        # crontab : on remplace les lignes marquées, on conserve le reste.
+        local marker="# ai-running-coach daily-sync" lines="" current
+        for t in $times; do
+            lines+="$((10#${t##*:})) $((10#${t%%:*})) * * * $sync >/dev/null 2>&1 $marker
+"
+        done
+        current="$(crontab -l 2>/dev/null | grep -v "$marker" || true)"
+        if [[ "$DRY_RUN" -eq 1 ]]; then
+            printf '%s\n' "${C_YELLOW}[dry-run]${C_RESET} crontab :"
+            printf '%s' "$lines"
+        else
+            printf '%s\n%s' "$current" "$lines" | sed '/^$/d' | crontab -
+            ok "crontab mis à jour :"
+            printf '%s' "$lines"
+        fi
+    fi
+    warn "Pensez à configurer la notification push : scripts/setup-ntfy.sh"
+}
+
+# ---------------------------------------------------------------------------
+# 6e. Remote Control — le coach dans la poche
+# ---------------------------------------------------------------------------
+install_remote_control() {
+    if [[ "$REMOTE_CONTROL" -eq 0 ]]; then
+        return 0
+    fi
+    log "Service Claude Code Remote Control (scripts/coach-remote.sh install)"
+    if [[ "$DRY_RUN" -eq 1 ]]; then
+        ARC_DRY_RUN=1 "$PROJECT_ROOT/scripts/coach-remote.sh" install --dry-run
+    else
+        "$PROJECT_ROOT/scripts/coach-remote.sh" install
+    fi
+}
+
+# ---------------------------------------------------------------------------
 # 7. Vérification finale
 # ---------------------------------------------------------------------------
 verify() {
@@ -643,6 +755,11 @@ main() {
     configure_ide
     create_workspace_dirs
     create_workspace_config
+    if [[ "$DAILY_SYNC" -eq 1 || "$REMOTE_CONTROL" -eq 1 ]]; then
+        check_runners
+    fi
+    install_daily_sync
+    install_remote_control
     verify
 }
 

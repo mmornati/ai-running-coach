@@ -11,9 +11,10 @@ Le projet est **en français par défaut** (la langue des documents générés e
 | Composant | Description |
 |---|---|
 | 🧠 **4 agents spécialisés** | `coach`, `course-strategist`, `medical`, `nutritionist` |
-| 🛠️ **8 skills** | analyse GPX, comparaison de parcours, planification Garmin, météo, analyse de séances, etc. |
+| 🛠️ **9 skills** | analyse GPX, comparaison de parcours, planification Garmin, météo, analyse de séances, etc. |
 | 📡 **Accès Garmin Connect** | via `garmin-mcp` (mode direct, liste blanche d'outils) — passerelle `leanproxy-mcp` optionnelle |
 | 🚀 **Installation automatisée** | un script pour installer et configurer tout (uv, Garmin, IDE) |
+| 📱 **Le coach dans la poche** | synchronisation Garmin automatique + notification push, et dialogue avec le coach depuis le téléphone (Claude Code Remote Control) — sans renoncer à votre abonnement |
 | 📚 **Documentation** | guide de démarrage rapide, configuration, dépannage |
 
 ## 🧑‍💻 IDE supportés
@@ -55,6 +56,8 @@ Le script installe et configure automatiquement :
 ./install.sh --ide claude      # installe pour un IDE précis (claude|copilot|opencode|gemini|cursor|windsurf)
 ./install.sh --no-auth         # saute l'authentification Garmin
 ./install.sh --use-leanproxy   # mode passerelle leanproxy-mcp (power user, optionnel)
+./install.sh --daily-sync      # machine « coach » : sync Garmin automatique (cron/launchd) + notification
+./install.sh --remote-control  # machine « coach » : le coach accessible depuis le téléphone
 ./install.sh --dry-run         # affiche les actions sans rien exécuter
 ./install.sh --help
 ```
@@ -83,6 +86,7 @@ Lors de la première installation, le script lance l'authentification Garmin Con
 ai-running-coach/
 ├── agents/                  # Agents IA (coach, course-strategist, medical, nutritionist)
 ├── skills/                  # Skills (analyse GPX, planification, météo, etc.)
+├── scripts/                 # Machine « coach » : sync automatique, notifications, Remote Control
 ├── config/
 │   └── gemini/commands/     # Templates de commandes Gemini CLI
 ├── .github/
@@ -99,6 +103,7 @@ La documentation complète est disponible sur [GitHub Pages](https://mmornati.gi
 
 - [Guide de démarrage rapide](docs/quickstart.md)
 - [Configuration Garmin](docs/garmin-setup.md)
+- [Le coach dans la poche (mobile + sync automatique)](docs/mobile.md)
 - [Les agents](docs/agents.md)
 - [Les skills](docs/skills.md)
 - [Base de connaissances (resources)](docs/resources.md)

@@ -97,7 +97,7 @@ Chaque séance est poussée dans votre calendrier Garmin Connect. Après l'effor
 <div class="arc-section" markdown>
   <div class="arc-section__inner" markdown>
 
-## Huit skills, prêts à l'emploi
+## Neuf skills, prêts à l'emploi
 
 Chaque agent s'appuie sur des skills spécialisés — des protocoles précis que l'IA suit à la lettre.
 
@@ -111,6 +111,7 @@ Chaque agent s'appuie sur des skills spécialisés — des protocoles précis qu
 <div class="arc-skill"><span class="arc-skill__name">Téléchargement FIT</span><span class="arc-skill__desc">fichiers Garmin bruts pour une précision sub-kilomètre</span></div>
 <div class="arc-skill"><span class="arc-skill__name">Synchronisation Garmin</span><span class="arc-skill__desc">récupération efficace des données, sans explosion du contexte</span></div>
 <div class="arc-skill"><span class="arc-skill__name">Intervals.icu</span><span class="arc-skill__desc">événements et wellness en destination secondaire</span></div>
+<div class="arc-skill"><span class="arc-skill__name">Sync quotidienne</span><span class="arc-skill__desc">synchronisation automatique sur votre machine coach, résumé envoyé sur le téléphone</span></div>
 
 </div>
 
