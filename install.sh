@@ -122,7 +122,11 @@ install_uv() {
         ok "uv déjà installé : $(uv --version)"
         return 0
     fi
-    run curl -LsSf https://astral.sh/uv/install.sh | sh
+    # Le pipeline entier doit être confié à « run ». Sous la forme
+    # « run curl … | sh », le pipe porte sur « run » lui-même : en dry-run,
+    # c'est le message « [dry-run] curl … » qui alimente sh, d'où un échec 127
+    # propagé par pipefail.
+    run sh -c 'curl -LsSf https://astral.sh/uv/install.sh | sh'
     # recharge le PATH pour la session courante
     export PATH="$HOME/.local/bin:$HOME/.cargo/bin:$PATH"
     if ! have uv; then
