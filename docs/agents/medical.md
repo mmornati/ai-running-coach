@@ -12,6 +12,7 @@ L'agent **medical** est le spécialiste de la récupération et de la santé. Il
 
 - **Analyse des problèmes de santé** : douleur, fatigue, maladie → protocoles d'amélioration immédiats (étirements, repos, méthode RICE)
 - **Analyse des métriques** : HRV, sommeil, stress depuis Garmin pour identifier la charge physiologique
+- **Bilan matinal obligatoire (HRV + FC de repos + readiness)** : tout verdict de disponibilité s'appuie sur les trois — `get_hrv_data`, **`get_rhr_day`** et `get_training_readiness`. La FC de repos est ce qui distingue un stress autonome (HRV bas, FC stable → entraînement facile, pas de repos) d'une surcharge systémique (HRV bas, FC > +5 bpm → repos, signalement au coach). Jamais de verdict sur HRV + readiness seuls.
 - **Récupération cardiaque (HRR)** : prise en compte du `recovery_hr_bpm` dans l'évaluation de la récupération
 
 ### Coordination (délégation)

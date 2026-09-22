@@ -9,7 +9,9 @@ Garmin MCP responses are verbose JSON. Pulling wide date ranges or raw payloads 
 
 ## Tool Access
 
-All Garmin tools are exposed by the `garmin` MCP server (direct mode) or via `leanproxy_invoke_tool(server="garmin", ...)` (power-user mode). Useful tools include `get_sleep_data`, `get_hrv_data`, `get_training_readiness`, `get_activities`, `upload_course`, `upload_workout`, `get_courses`.
+All Garmin tools are exposed by the `garmin` MCP server (direct mode) or via `leanproxy_invoke_tool(server="garmin", ...)` (power-user mode). Useful tools include `get_sleep_data`, `get_hrv_data`, `get_rhr_day`, `get_training_readiness`, `get_activities`, `upload_course`, `upload_workout`, `get_courses`.
+
+> **Resting HR:** use `get_rhr_day(date)`. It returns the value directly. `get_sleep_data` also contains it, but that payload can exceed 400 KB — never pull it just to read resting HR.
 
 ## Rules
 
@@ -25,8 +27,9 @@ All Garmin tools are exposed by the `garmin` MCP server (direct mode) or via `le
 For each day, extract only what the MD file needs:
 - **Sleep**: duration, deep/light/REM split, sleep score
 - **HRV**: overnight average, status vs baseline
+- **Resting HR**: value of the day and delta vs the athlete's recent baseline — **always**, never "if relevant". Safety rules depend on it, and it is what separates autonomic stress from systemic overload.
 - **Readiness**: score, contributing factors
 - **Activity**: type, duration, distance, D+, avg/max HR, training effect, calories
-- **Body**: weight, resting HR, stress, body battery (if relevant)
+- **Body**: weight, stress, body battery (if relevant)
 
 Everything else in the response is noise — drop it.
