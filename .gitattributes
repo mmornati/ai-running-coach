@@ -1,0 +1,24 @@
+# Fins de ligne normalisées : le dépôt stocke du LF, quel que soit l'OS du
+# contributeur. Sans cette règle, la protection repose sur `core.autocrlf`,
+# qui vit dans .git/config et n'est donc pas versionné : il ne suit pas un
+# clone sur une autre machine, et Git pour Windows l'installe par défaut à
+# `true`. Ici, la normalisation s'applique à tout le monde dès le clone.
+#
+# `eol=lf` force également le LF dans la copie de travail, y compris sous
+# Windows : indispensable pour que install.sh et les scripts des skills
+# restent exécutables sous bash/WSL (un CRLF produit « bad interpreter:
+# /bin/bash^M »).
+* text=auto eol=lf
+
+# Scripts — explicites, car ce sont eux qui cassent en CRLF
+*.sh text eol=lf
+*.py text eol=lf
+
+# Formats binaires — aucune conversion, et pas de faux positifs lors d'un
+# audit de fins de ligne : un octet 0x0D y est une donnée, pas un CR.
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.pdf binary
+*.ico binary
