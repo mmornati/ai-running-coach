@@ -1,0 +1,9 @@
+# Le skill headless ne pose aucune question et termine par un bloc ```resume```
+# de cinq lignes au plus : c'est ce qui part en notification push.
+id = "daily-sync-resume-block"
+prompt = "/garmin-daily-sync"
+fixture = "base-week"
+
+[expect]
+must_match = ['```resume']
+must_not_match = ["coach-setup", "\\?$"]

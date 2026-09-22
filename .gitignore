@@ -1,10 +1,12 @@
 # Données personnelles — jamais versionnées
-activities/
-medical/
-nutrition/
-planning/
-rapports/
-resources/
+# Ancrés à la racine : sans le « / » initial, ces motifs excluent aussi
+# tests/evals/fixtures/*/activities/ et consorts.
+/activities/
+/medical/
+/nutrition/
+/planning/
+/rapports/
+/resources/
 
 # Secrets & tokens
 *.token

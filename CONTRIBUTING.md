@@ -78,3 +78,40 @@ mkdocs build
 ## Licence
 
 En contribuant, vous acceptez que vos contributions soient publiées sous la [licence MIT](LICENSE).
+
+## Tests
+
+Trois paliers, aucun paquet à installer (bibliothèque standard uniquement) :
+
+```bash
+python3 tests/run_tests.py --tier a     # intégration de l'installation (bac à sable)
+python3 tests/run_tests.py --tier b     # lint des prompts et de la configuration
+ARC_LLM_TESTS=1 python3 tests/run_tests.py --tier c   # évals d'exécution (modèle léger)
+```
+
+Les paliers A et B tournent en CI sur `ubuntu-latest` **et** `macos-latest` — bash
+3.2, le sed de BSD et `launchctl` sont des cibles de premier plan. Le palier C
+coûte des jetons : il ne tourne que la nuit et sur déclenchement manuel.
+
+Le détail (bac à sable, stubs, ajout d'un cas) est dans
+[`tests/README.md`](tests/README.md).
+
+### Fichiers générés
+
+`config/gemini/commands/*.toml` est **généré** depuis `agents/*.md`. Ne les
+éditez pas à la main :
+
+```bash
+python3 scripts/build-gemini-commands.py
+```
+
+La CI vérifie leur fraîcheur.
+
+### Avant d'ouvrir une PR
+
+```bash
+shellcheck -S warning install.sh scripts/*.sh scripts/lib/*.sh
+python3 tests/run_tests.py --tier ab
+python3 scripts/build-gemini-commands.py --check
+mkdocs build --strict
+```

@@ -4,7 +4,29 @@
 ![](assets/trail-runner.jpg)
 </div>
 
-`ai-running-coach` fournit **4 agents spécialisés** qui collaborent pour vous aider à préparer votre objectif.
+`ai-running-coach` fournit **4 agents spécialisés** qui collaborent pour vous aider à préparer votre objectif. Vous choisissez lesquels installer.
+
+## Choisir son staff
+
+Seuls les agents que vous retenez sont déployés, et le coach ne délègue qu'à eux.
+
+```bash
+./install.sh --no-medical                  # tout sauf le médecin
+./install.sh --agents coach,nutritionist   # staff explicite
+```
+
+Le choix est écrit dans `config/workspace.user.toml` → `[agents].enabled`, donc une
+réinstallation sans option le respecte. Réactiver un agent le réinstalle ; le
+désactiver le retire des dossiers d'agents de tous les IDE.
+
+`coach` est indispensable : c'est lui qui planifie et pousse vers Garmin.
+Le détail de ce que vous perdez agent par agent est dans
+[Configuration](configuration.md#le-staff-agents).
+
+!!! warning "Retirer le médecin ne désactive pas le bilan santé"
+    Le bilan matinal (HRV, FC de repos, readiness) est un mandat porté par le
+    **coach**. Pour le désactiver, utilisez
+    [`[health].morning_check`](configuration.md#le-bilan-matinal-health).
 
 ## Vue d'ensemble
 

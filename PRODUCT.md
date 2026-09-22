@@ -8,9 +8,10 @@ web
 
 ## Users
 
-Coureurs de trail et d'ultra-trail (francophones) qui préparent un objectif de course
-(50 km, 100 km, D+ important) et utilisent un assistant IA dans leur IDE (Claude Code,
-GitHub Copilot, OpenCode, Gemini CLI, Cursor, Windsurf). Ils possèdent un appareil Garmin et un compte
+Coureurs d'endurance francophones — trail et ultra d'abord, route depuis que la
+discipline est configurable — qui préparent un objectif de course et utilisent un
+assistant IA dans leur IDE (Claude Code, GitHub Copilot, OpenCode, Gemini CLI,
+Cursor, Windsurf). Ils possèdent un appareil Garmin et un compte
 Garmin Connect. Le visiteur du site de documentation est un coureur qui cherche à
 comprendre ce que le projet apporte et à démarrer rapidement.
 
@@ -42,10 +43,14 @@ point d'entrée : elle doit donner envie de l'essayer.
 
 ## Capabilities and Constraints
 
-- 4 agents : `coach`, `course-strategist`, `medical`, `nutritionist`.
+- 4 agents : `coach`, `course-strategist`, `medical`, `nutritionist` — **sélectionnables
+  à l'installation** (`--agents`, `--no-medical`).
 - 9 skills : analyse GPX, comparaison de parcours, planification Garmin, météo,
   analyse de séances, Intervals.icu (secondaire), téléchargement FIT, sync Garmin,
   sync quotidienne headless (machine coach).
+- **Coaching configurable** : style (bienveillant / exigeant / factuel / pédagogue),
+  fermeté, longueur, discipline (trail ou route), bilan santé matinal
+  (complet / minimal / désactivé), profil d'athlète.
 - 100 % en français. Garmin uniquement (v1).
 - Contraintes techniques : MkDocs Material, GitHub Pages, pas de backend.
 - **INFÉRÉ** : le site doit rester statique (MkDocs), sans JavaScript lourd.

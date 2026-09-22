@@ -1,0 +1,8 @@
+# Sur un workspace non configuré, /coach-setup pose la première question en
+# attente — et une seule.
+id = "setup-first-run"
+prompt = "/coach-setup"
+fixture = "empty"
+
+[expect]
+must_match = ["style|parle"]

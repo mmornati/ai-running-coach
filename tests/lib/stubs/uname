@@ -1,0 +1,13 @@
+#!/usr/bin/env bash
+# Permet de tester le chemin launchd ET le chemin crontab sur n'importe quel OS.
+# Sans $ARC_FAKE_UNAME, délègue au vrai uname.
+if [ -n "${ARC_FAKE_UNAME:-}" ] && [ "${1:-}" = "-s" ]; then
+    echo "$ARC_FAKE_UNAME"
+    exit 0
+fi
+for d in $(echo "$PATH" | tr ':' ' '); do
+    case "$d" in *"/tests/lib/stubs") continue ;; esac
+    if [ -x "$d/uname" ]; then exec "$d/uname" "$@"; fi
+done
+echo "uname: introuvable" >&2
+exit 127

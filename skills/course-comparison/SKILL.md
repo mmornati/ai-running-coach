@@ -28,7 +28,7 @@ Le skill offre **2 niveaux** :
 Utilise les fichiers `activities/*.md` (bloc `## Données brutes Garmin (référence)` + `## Analyse par splits (km)`). Rapide, suffisant pour les tours/boucles/montées par km.
 
 ### Analyse détaillée (FIT/GPX) — workflow
-1. **Téléchargement FIT direct** : charge le skill **`fit-download`** et utilise `scripts/download_fit.py` (bypass MCP, évite le timeout de `get_activity_fit_data` autour des records GPS) :
+1. **Téléchargement FIT direct** : charge le skill **`fit-download`** et utilise `skills/fit-download/scripts/download_fit.py` (bypass MCP, évite le timeout de `get_activity_fit_data` autour des records GPS) :
    ```bash
    python3 skills/fit-download/scripts/download_fit.py 24070286912 --json
    # → activities/24070286912.fit (+ <id>.records.json si --json)

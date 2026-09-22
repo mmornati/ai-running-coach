@@ -211,4 +211,3 @@ Last 5 minutes of the session by default.
 |:-----|:-----|
 | `SKILL.md` | This file (load via the `skill` tool) |
 | `scripts/analyze_session_parts.py` | Self-contained detector + reporter (CLI) |
-| `examples/README.md` | _(to be filled)_ example outputs on real sessions |

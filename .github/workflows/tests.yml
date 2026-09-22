@@ -1,0 +1,66 @@
+name: Tests
+
+# Paliers A (intégration de l'installation) et B (lint des prompts et de la
+# configuration) : déterministes, gratuits, à chaque poussée.
+# Le palier C (évals d'exécution) coûte des jetons — voir evals.yml.
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: tests-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  tests:
+    name: ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        # macOS n'est pas optionnel : bash 3.2, le sed de BSD et launchctl sont
+        # des cibles de premier plan, et aucun workflow ne les couvrait.
+        os: [ubuntu-latest, macos-latest]
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Version de bash
+        run: bash --version | head -1
+
+      - name: Installer shellcheck (Linux)
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y shellcheck
+
+      - name: Installer shellcheck (macOS)
+        if: runner.os == 'macOS'
+        run: brew install shellcheck
+
+      - name: shellcheck
+        run: shellcheck -S warning install.sh scripts/*.sh scripts/lib/*.sh tests/lib/stubs/*
+
+      - name: Palier A — intégration de l'installation
+        run: python3 tests/run_tests.py --tier a
+
+      - name: Palier B — lint prompts & configuration
+        run: python3 tests/run_tests.py --tier b
+
+      - name: Aperçu --dry-run (aucune écriture attendue)
+        run: ./install.sh --dry-run --no-auth
+
+  docs:
+    name: Documentation
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -r requirements-docs.txt
+      - run: mkdocs build --strict

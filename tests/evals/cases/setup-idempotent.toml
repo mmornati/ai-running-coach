@@ -1,0 +1,29 @@
+# Relancer /coach-setup sur un workspace déjà configuré ne doit rien redemander.
+id = "setup-idempotent"
+prompt = "/coach-setup"
+fixture = "configured"
+
+[config.coaching]
+style = "factuel"
+intensity = "balanced"
+verbosity = "brief"
+
+[config.sport]
+primary = "trail"
+
+[config.agents]
+enabled = ["coach"]
+
+[config.health]
+morning_check = "off"
+
+[config.athlete]
+units = "metric"
+
+[config.language]
+documents = "fr"
+responses = "auto"
+
+[expect]
+must_match = ["déjà configuré|rien à faire|tout est configuré"]
+max_words = 200

@@ -4,22 +4,52 @@ Espace de travail de coaching trail-running. Les agents IA gèrent l'entraîneme
 la santé, la nutrition et la stratégie de course, en persistant tout sous forme de
 fichiers Markdown en français.
 
-## Mandat linguistique
+## Configuration
 
-La langue des documents est **configurable** via `config/workspace.toml`
-(versionné) et `config/workspace.user.toml` (gitignoré, overrides personnels) :
+**Règle de résolution** (valable pour toutes les clés) : lire
+`config/workspace.toml` (versionné, défauts partagés) ; si
+`config/workspace.user.toml` existe (gitignoré, personnel), ses valeurs priment,
+clé par clé. Une clé présente mais vide gagne : c'est ainsi qu'on annule un
+héritage.
 
-- **`[language].documents`** — langue des fichiers Markdown persistés
-  (`activities/`, `medical/`, `nutrition/`, `planning/`, `rapports/`).
-  Défaut : `fr` (ISO 639-1).
-- **`[language].responses`** — langue des réponses à l'utilisateur.
-  Défaut : `auto` (même langue que la requête).
+| Clé | Effet sur les agents |
+|---|---|
+| `[language].documents` | Langue des MD persistés (`activities/`, `medical/`, `nutrition/`, `planning/`, `rapports/`). Défaut `fr`. |
+| `[language].responses` | Langue des réponses. Défaut `auto` = celle de la requête. |
+| `[coaching].style` | Voix de l'agent → `config/coaching-styles.md`. |
+| `[coaching].intensity` | Fermeté d'application du style. |
+| `[coaching].verbosity` | Longueur des retours et rapports. |
+| `[sport].primary` | Profil chargé depuis `config/sports/<valeur>.md` (`trail` \| `road`). |
+| `[sport].disciplines` | Sports croisés réellement pratiqués — les seuls à programmer. |
+| `[agents].enabled` | **Seuls agents joignables.** Ne jamais déléguer à un agent absent. |
+| `[health].morning_check` | `full` \| `minimal` \| `off` — voir ci-dessous. |
+| `[athlete].profile` | Profil de l'athlète, défaut `planning/Runner_Profile.md`. |
+| `[athlete].units` | `metric` \| `imperial`. |
 
-**Règle de résolution** : lire `config/workspace.toml` à la racine du projet ;
-si `config/workspace.user.toml` existe, ses valeurs priment (par clé). Les
-agents et skills appliquent `documents` à tout fichier MD qu'ils persistent,
-et `responses` à leurs réponses. Les instructions des agents/skills restent
-en français — seule la langue de sortie des documents est paramétrée.
+Le **profil de l'athlète prime sur le catalogue de styles** : sa section
+« Préférences de coaching » est écrite par l'athlète lui-même. Et le style ne
+change **jamais** le fond : une séance annulée pour raison médicale reste
+annulée quel que soit le ton.
+
+Les instructions des agents/skills restent rédigées en anglais ou en français
+selon le fichier — seule la langue de *sortie* est paramétrée.
+
+## Premier démarrage
+
+Tant que `config/workspace.user.toml` n'a pas de section `[coaching]` et que le
+profil de l'athlète n'existe pas, proposer `/coach-setup` en une ligne — le
+**proposer**, jamais l'imposer, et jamais deux fois dans une session. Exception :
+`/garmin-daily-sync` tourne sous cron et ne doit rien proposer du tout.
+
+## Bilan matinal — `[health].morning_check`
+
+| Valeur | Comportement attendu |
+|---|---|
+| `full` | Triptyque indivisible : HRV + FC de repos (`get_rhr_day`) + readiness, avant toute décision de séance. Défaut. |
+| `minimal` | `get_training_readiness` seule, rapportée en une ligne. Pas de HRV, pas de FC de repos, pas d'annulation sur les seules données de santé. |
+| `off` | Aucune donnée de santé récupérée, aucun filtrage. Planification sur la charge, l'historique `activities/` et le ressenti déclaré. |
+
+Ne jamais réactiver silencieusement un niveau plus strict que celui configuré.
 
 ## Carte des dossiers
 
@@ -28,7 +58,7 @@ en français — seule la langue de sortie des documents est paramétrée.
 | `activities/` | Journaux d'entraînement | `YYYY-MM-DD_type.md` (running, trail, strength, indoor_cycling, home_trainer, hiking, elliptical, rest) |
 | `medical/` | Sommeil, HRV, récupération, blessures, météo | `YYYY-MM-DD_health.md`, `YYYY-MM-DD_meteo.md` |
 | `nutrition/` | Journaux nutrition & plans de ravitaillement | `YYYY-MM-DD_nutrition.md` |
-| `planning/` | Plans d'entraînement, objectifs, stratégies de course | `active_objective.md` est la **source de vérité** de l'objectif courant |
+| `planning/` | Plans d'entraînement, objectifs, stratégies de course | `active_objective.md` est la **source de vérité** de l'objectif courant ; `Runner_Profile.md` est le profil de l'athlète. Les deux sont installés depuis `templates/` par `/coach-setup`. |
 | `rapports/` | Rapports de synthèse périodiques (propriété du **coach**) | `YYYY-MM-DD_rapport.md` |
 | `resources/` | Base de connaissances (langue des documents) : running, nutrition, santé, récupération | Matériel de référence, citer lors des conseils. **Catalogues produits** (optionnels) : `resources/nutrition/catalogue-produits-*.md` = valeurs nutritionnelles par produit de l'athlète |
 
@@ -37,11 +67,16 @@ en français — seule la langue de sortie des documents est paramétrée.
 
 ## Sous-agents
 
-Délégation via l'outil `task` :
+Délégation via l'outil `task`, **et uniquement vers les agents listés dans
+`[agents].enabled`**. Le staff est choisi à l'installation
+(`./install.sh --agents …`, `--no-medical`) ; seuls les agents choisis sont
+déployés dans `.claude/agents`, `.opencode/agents` et `.github/agents`. Si un
+agent est absent, ne pas l'appeler et ne pas le mentionner à l'athlète : traiter
+le sujet soi-même dans la limite de sa compétence.
 
 | Agent | Utilisation |
 |---|---|
-| `coach` | Plans d'entraînement, analyse des activités Garmin (**incl. HRR `recovery_hr_bpm` dans chaque retour de séance**), ajustements de séances, **push des séances au calendrier Garmin** (`schedule_workouts`, Garmin d'abord), rapports hebdomadaires. **Bilan matinal obligatoire avant toute décision de séance : HRV + FC de repos (`get_rhr_day`) + readiness — les trois, jamais deux.** **Inclut toujours la météo + le créneau optimal (matin tôt / midi / soir) dans chaque validation hebdomadaire/journalière (charger le skill `weather-forecast`, résoudre le lieu via la règle de précédence stricte).** |
+| `coach` | Plans d'entraînement, analyse des activités Garmin (**incl. HRR `recovery_hr_bpm` dans chaque retour de séance**), ajustements de séances, **push des séances au calendrier Garmin** (`schedule_workouts`, Garmin d'abord), rapports hebdomadaires. **Bilan matinal avant toute décision de séance, au niveau fixé par `[health].morning_check` : à `full` (défaut), HRV + FC de repos (`get_rhr_day`) + readiness — les trois, jamais deux.** **Inclut toujours la météo + le créneau optimal (matin tôt / midi / soir) dans chaque validation hebdomadaire/journalière (charger le skill `weather-forecast`, résoudre le lieu via la règle de précédence stricte).** |
 | `medical` | Analyse sommeil/HRV/récupération (**incl. HRR lors de l'évaluation de l'impact d'une séance**, et **FC de repos dans le bilan matinal**), protocoles blessures, gatekeeper de disponibilité, contraintes de coordination pour coach/nutritionniste |
 | `nutritionist` | Macros, poids de course, plans de ravitaillement. **Pas de serveur MyFitnessPal** — les apports viennent des rapports manuels de l'utilisateur ; croiser avec les calories brûlées Garmin |
 | `course-strategist` | Analyse GPX/URL de course → plan de course (allures ×3 scénarios, nutrition, météo, équipement), enrichissement points d'eau OSM, upload de parcours Garmin via l'outil `upload_course` |
@@ -64,6 +99,10 @@ est destinée à l'utilisateur.
 
 ## Skills
 
+- `coach-setup` — **premier démarrage** (`/coach-setup`) : entretien mené par le modèle,
+  écriture pilotée par `scripts/coach_setup.py` (qui ne remplace jamais une réponse
+  existante), installation de `planning/Runner_Profile.md` et `planning/active_objective.md`
+  depuis `templates/`. Relancer la commande est sans effet.
 - `garmin-workout-scheduling` — push des séances planifiées au calendrier Garmin (schéma DTO exact, détail force, idempotence, vérification après push)
 - `intervals-icu-best-practices` — pièges de création/mise à jour d'événements (`workout_doc`, vérification `start_date`) ; secondaire, Garmin d'abord
 - `garmin-sync-efficiency` — discipline de récupération pour éviter l'explosion du contexte

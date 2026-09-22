@@ -1,0 +1,14 @@
+# Sur route : pas d'objectif de dénivelé, pas de matériel de trail.
+id = "sport-road-no-elevation"
+prompt = "Propose-moi la semaine d'entraînement à venir."
+fixture = "base-week"
+
+[config.sport]
+primary = "road"
+
+[config.health]
+morning_check = "off"
+
+[expect]
+must_not_match = ['D\+', "dénivelé positif", "bâtons", "gilet d'hydratation"]
+must_match = ["allure"]

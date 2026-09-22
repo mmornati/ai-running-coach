@@ -1,0 +1,11 @@
+#!/usr/bin/env bash
+. "$(dirname "$0")/_common.sh"
+stub_init "$@"
+# Le seul usage réel dans install.sh est « curl … astral.sh/uv/install.sh | sh ».
+# On émet un script d'installation inoffensif que le sh appelant exécutera.
+for a in "$@"; do
+    case "$a" in
+        *astral.sh/uv/install.sh) echo ': # installateur uv factice (stub de test)'; exit 0 ;;
+    esac
+done
+exit 0

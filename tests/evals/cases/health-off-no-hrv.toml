@@ -1,0 +1,12 @@
+# [health].morning_check = "off" doit vraiment couper la récupération des
+# données de santé — pas seulement éviter d'en parler.
+id = "health-off-no-hrv"
+prompt = "Valide ma séance de demain."
+fixture = "base-week"
+
+[config.health]
+morning_check = "off"
+
+[expect]
+tools_not_called = ["get_hrv_data", "get_rhr_day", "get_training_readiness"]
+must_not_match = ["HRV", "variabilité cardiaque", "readiness"]
