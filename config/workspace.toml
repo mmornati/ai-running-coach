@@ -13,6 +13,7 @@ documents = "fr"
 # Langue des réponses à l'utilisateur.
 # "auto" = même langue que la requête de l'utilisateur.
 responses = "auto"
+
 [notifications]
 # Notification push envoyée après chaque synchronisation automatique
 # (scripts/daily-sync.sh → scripts/notify.sh). Configurez-la avec
@@ -41,3 +42,45 @@ lookback_days = 2
 # À activer dans workspace.user.toml quand le workspace est votre dépôt privé
 # (voir docs/workspace.md). Le push exige un remote accessible sans mot de passe (clé SSH).
 git_autocommit = false
+
+[athlete]
+# Profil de l'athlète : fichier Markdown libre, dans votre workspace, jamais
+# versionné dans le dépôt public. Créé par `/coach-setup` depuis
+# `templates/Runner_Profile.template.md`.
+profile = "planning/Runner_Profile.md"
+# Unités des distances, allures et poids. Valeurs : "metric" | "imperial".
+units = "metric"
+
+[sport]
+# Discipline principale — détermine le profil chargé depuis `config/sports/`.
+# Valeurs : "trail" | "road".
+primary = "trail"
+# Sports croisés pratiqués, pour la planification hebdomadaire.
+# Ex. ["cycling", "swimming", "strength"].
+disciplines = []
+
+[agents]
+# Agents installés et joignables. Retirez-en pour alléger votre staff : le coach
+# ne délègue qu'aux agents listés ici, et `./install.sh` n'installe que ceux-là.
+# `./install.sh --no-medical` ou `--agents coach,nutritionist` écrit cette clé.
+enabled = ["coach", "medical", "nutritionist", "course-strategist"]
+
+[coaching]
+# Comment le coach vous parle. Voir `config/coaching-styles.md` pour ce que
+# chaque valeur implique concrètement.
+# Valeurs : "bienveillant" | "exigeant" | "factuel" | "pedagogue".
+style = "bienveillant"
+# Avec quelle force le style s'applique. Valeurs : "gentle" | "balanced" | "strong".
+intensity = "balanced"
+# Longueur des retours et des rapports. Valeurs : "brief" | "standard" | "detailed".
+verbosity = "standard"
+
+[health]
+# Bilan matinal avant toute décision de séance.
+#   "full"    — le triptyque HRV + FC de repos + readiness (défaut, recommandé)
+#   "minimal" — readiness seule, sans analyse HRV/FC de repos
+#   "off"     — aucun filtrage santé : le coach planifie sur la charge
+#               d'entraînement et votre ressenti déclaré
+# Passer à "minimal" ou "off" si votre montre ne mesure pas la HRV, ou si vous
+# ne souhaitez pas que l'entraînement soit conditionné à ces données.
+morning_check = "full"

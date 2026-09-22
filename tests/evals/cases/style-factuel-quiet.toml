@@ -1,0 +1,16 @@
+# Le style sobre doit produire une réponse réellement sobre : c'est la seule
+# façon de savoir que le catalogue de styles agit sur autre chose que le papier.
+id = "style-factuel-quiet"
+prompt = "Valide ma séance de demain."
+fixture = "base-week"
+
+[config.coaching]
+style = "factuel"
+verbosity = "brief"
+
+[config.health]
+morning_check = "off"
+
+[expect]
+must_not_match = ["Bravo", "Continue comme ça", "Bien joué", "N'oublie pas que", "courage"]
+max_words = 250

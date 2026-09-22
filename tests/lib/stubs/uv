@@ -1,0 +1,15 @@
+#!/usr/bin/env bash
+# shellcheck source=_common.sh
+. "$(dirname "$0")/_common.sh"
+stub_init "$@"
+case "${1:-}" in
+    --version) echo "uv 0.0.0-stub" ;;
+    tool) : ;;                       # tool install … : no-op
+    run)
+        # « uv run garmin-mcp-auth [--verify] » — succès sauf ARC_STUB_FAIL
+        case ",${ARC_STUB_FAIL:-}," in
+            *",garmin-mcp-auth,"*) echo "auth: échec simulé" >&2; exit 1 ;;
+        esac
+        ;;
+esac
+exit 0

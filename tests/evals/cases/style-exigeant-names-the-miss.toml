@@ -1,0 +1,14 @@
+# Le style challengeant nomme la séance manquée au lieu de la contourner.
+id = "style-exigeant-names-the-miss"
+prompt = "Fais le point sur ma semaine."
+fixture = "missed-session"
+
+[config.coaching]
+style = "exigeant"
+intensity = "strong"
+
+[config.health]
+morning_check = "off"
+
+[expect]
+must_match = ["manquée|manqué|sautée|non réalisée"]

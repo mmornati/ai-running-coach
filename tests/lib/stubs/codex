@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+. "$(dirname "$0")/_common.sh"
+stub_init "$@"
+case "${1:-}" in --version) echo "codex 0.0.0-stub" ;; esac
+exit 0

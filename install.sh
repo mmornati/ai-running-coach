@@ -22,6 +22,8 @@
 #   ./install.sh --ide claude       # installe pour un IDE précis
 #   ./install.sh --ide copilot      # GitHub Copilot (CLI, VS Code, agent cloud)
 #   ./install.sh --workspace DIR    # données + config IDE dans DIR (dépôt privé), moteur lié
+#   ./install.sh --agents LISTE     # staff à installer, ex. coach,nutritionist
+#   ./install.sh --no-medical       # tous les agents sauf le médecin
 #   ./install.sh --no-auth          # saute l'authentification Garmin
 #   ./install.sh --use-leanproxy    # mode passerelle leanproxy (power user)
 #   ./install.sh --daily-sync       # cron/launchd : sync Garmin aux heures de [sync].times
@@ -29,7 +31,7 @@
 #   ./install.sh --dry-run          # affiche les actions sans rien exécuter
 #   ./install.sh --help
 #
-# Prérequis : macOS ou Linux, bash 4+, curl, git.
+# Prérequis : macOS ou Linux, bash 3.2+ (celui de macOS convient), curl, git.
 # =============================================================================
 set -euo pipefail
 
@@ -60,6 +62,7 @@ WORKSPACE_STATE_FILE="$HOME/.config/ai-running-coach/workspace"
 # ---------------------------------------------------------------------------
 # Couleurs (si terminal interactif)
 # ---------------------------------------------------------------------------
+# shellcheck disable=SC2034  # C_BOLD fait partie de la palette, utilisé au besoin
 if [[ -t 1 ]]; then
     C_RED=$'\033[31m'; C_GREEN=$'\033[32m'; C_YELLOW=$'\033[33m'
     C_BLUE=$'\033[34m'; C_BOLD=$'\033[1m'; C_RESET=$'\033[0m'
@@ -83,21 +86,47 @@ USE_LEANPROXY=0    # mode passerelle (power user) — défaut : direct
 DAILY_SYNC=0       # cron/launchd de synchronisation Garmin automatique
 WORKSPACE_ARG=""   # --workspace DIR (défaut : le dossier du projet)
 REMOTE_CONTROL=0   # service Claude Code Remote Control (accès mobile)
+AGENTS_ARG=""      # --agents coach,medical,… (défaut : la config, sinon tous)
+ENABLED_AGENTS=""  # résolu par resolve_agents()
 
 usage() {
-    # 2,31p = l'en-tête jusqu'à la fin du bloc « Usage ». À réajuster si le bloc
-    # de commentaires en tête de fichier change de longueur.
-    sed -n '2,31p' "$0" | sed 's/^# \{0,1\}//'
+    cat <<'USAGE'
+ai-running-coach — script d'installation
+
+Usage :
+  ./install.sh                    # installation (mode direct Garmin)
+  ./install.sh --ide IDE          # claude | copilot | opencode | gemini | cursor | windsurf
+  ./install.sh --workspace DIR    # données + config IDE dans DIR (dépôt privé), moteur lié
+  ./install.sh --agents LISTE     # staff à installer, ex. coach,nutritionist
+  ./install.sh --no-medical       # tous les agents sauf le médecin
+  ./install.sh --no-auth          # saute l'authentification Garmin
+  ./install.sh --use-leanproxy    # mode passerelle leanproxy (power user)
+  ./install.sh --daily-sync       # cron/launchd : sync Garmin aux heures de [sync].times
+  ./install.sh --remote-control   # service Remote Control (le coach dans la poche)
+  ./install.sh --dry-run          # affiche les actions sans rien exécuter
+  ./install.sh --help
+
+Prérequis : macOS ou Linux, bash 3.2+, curl, git.
+Documentation : https://mmornati.github.io/ai-running-coach/
+USAGE
     exit 0
+}
+
+# Vérifie qu'une option attendant une valeur en a bien reçu une. Sans cela,
+# « ./install.sh --ide » meurt sur « $2: unbound variable » (set -u).
+need_value() {
+    [[ $# -ge 2 && -n "${2:-}" ]] || die "L'option $1 attend une valeur (voir --help)."
 }
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
-        --ide) IDE="$2"; shift 2 ;;
+        --ide) need_value "$@"; IDE="$2"; shift 2 ;;
         --no-auth) DO_AUTH=0; shift ;;
         --use-leanproxy) USE_LEANPROXY=1; shift ;;
         --skip-leanproxy) USE_LEANPROXY=0; shift ;;  # rétro-compatibilité
-        --workspace) WORKSPACE_ARG="$2"; shift 2 ;;
+        --workspace) need_value "$@"; WORKSPACE_ARG="$2"; shift 2 ;;
+        --agents) need_value "$@"; AGENTS_ARG="$2"; shift 2 ;;
+        --no-medical) AGENTS_ARG="${AGENTS_ARG:-__all_but__}:medical"; shift ;;
         --daily-sync) DAILY_SYNC=1; shift ;;
         --remote-control) REMOTE_CONTROL=1; shift ;;
         --dry-run) DRY_RUN=1; shift ;;
@@ -122,9 +151,31 @@ write_file() {
     local file="$1"
     if [[ "$DRY_RUN" -eq 1 ]]; then
         printf '%s\n' "${C_YELLOW}[dry-run]${C_RESET} écriture de $file"
+        cat > /dev/null      # consomme le heredoc sans rien écrire
         return 0
     fi
+    mkdir -p "$(dirname "$file")"
     cat > "$file"
+}
+
+# Échappe une chaîne pour l'insérer dans du XML (plist launchd) : un « & » dans
+# un chemin suffit à produire un plist que launchctl refuse.
+xml_escape() {
+    printf '%s' "$1" | sed -e 's/&/\&amp;/g' -e 's/</\&lt;/g' -e 's/>/\&gt;/g'
+}
+
+# Fusionne une clé dans un fichier JSON sans toucher au reste (scripts/coach_config.py).
+merge_json_key() {
+    local file="$1" section="$2" name="$3" value="$4" template="${5:-}"
+    if [[ "$DRY_RUN" -eq 1 ]]; then
+        printf '%s\n' "${C_YELLOW}[dry-run]${C_RESET} fusion de « $name » dans $file"
+        return 0
+    fi
+    have python3 || { warn "python3 absent : $file non modifié (ajoutez « $name » à la main)."; return 0; }
+    python3 "$PROJECT_ROOT/scripts/coach_config.py" merge-json \
+        --file "$file" --section "$section" --name "$name" --value "$value" \
+        ${template:+--template "$template"} >/dev/null \
+        || die "Échec de la mise à jour de $file (voir le message ci-dessus)."
 }
 
 have() { command -v "$1" >/dev/null 2>&1; }
@@ -136,25 +187,87 @@ require_cmd() {
     fi
 }
 
-# Crée un lien symbolique vers un dossier du projet.
+# Catalogue d'agents : toujours un lien PAR AGENT, jamais un lien vers le dossier.
 #
-# Si la destination existe déjà en tant que VRAI répertoire, on n'écrit pas
-# dedans : « ln -sfn cible repertoire » y créerait un lien imbriqué
-# (ex. .github/agents/agents) sans message d'erreur, et les agents/skills ne
-# seraient alors pas découverts par l'IDE.
-link_dir() {
-    local target="$1" link="$2"
+# C'est ce qui rend la sélection réelle — un lien vers `agents/` exposerait les
+# quatre agents quoi qu'il arrive — et c'est aussi ce qui permet de RETIRER un
+# agent désactivé lors d'une réinstallation. Sans cela, désactiver un agent sur
+# une installation existante ne ferait rien du tout.
+link_agents() {
+    local target="$1" link="$2" name n=0 existing base
+    if [[ ! -d "$target" ]]; then
+        warn "Cible introuvable, catalogue d'agents ignoré : $target"
+        return 0
+    fi
+    if [[ -L "$link" ]]; then
+        rm -f "$link"                      # ancien format : lien vers le dossier
+    elif [[ -e "$link" && ! -d "$link" ]]; then
+        warn "$link existe et n'est pas un dossier — conservé tel quel."
+        return 0
+    fi
+    mkdir -p "$link"
+    for name in $ENABLED_AGENTS; do
+        [[ -e "$target/$name.md" ]] || continue
+        if [[ -e "$link/$name.md" && ! -L "$link/$name.md" ]]; then
+            warn "$link/$name.md est un vrai fichier — conservé."
+            continue
+        fi
+        ln -sfn "$target/$name.md" "$link/$name.md"
+        n=$((n + 1))
+    done
+    # Retire les agents désactivés depuis la dernière installation, et les liens morts.
+    for existing in "$link"/*.md; do
+        [[ -L "$existing" ]] || continue
+        base="$(basename "$existing" .md)"
+        if ! printf '%s\n' $ENABLED_AGENTS | grep -qx "$base" || [[ ! -e "$existing" ]]; then
+            rm -f "$existing"
+            ok "Agent retiré : $base"
+        fi
+    done
+    [[ "$n" -gt 0 ]] || die "Aucun agent lié dans $link — installation incomplète."
+    ok "Catalogue $link : $n agent(s)"
+}
+
+# Rend le contenu de $target visible sous $link pour un IDE.
+#
+# Chemin rapide : $link n'existe pas → un simple lien symbolique vers $target.
+# Cas réel et fréquent : Claude Code crée .claude/ (voire .claude/agents/) tout
+# seul dès qu'on ouvre le projet. L'ancienne version renonçait alors en
+# affichant un avertissement — aucun agent n'était installé et l'installation se
+# déclarait malgré tout réussie. On remplit désormais le dossier existant avec
+# un lien par élément, et on échoue bruyamment si rien n'a pu être lié.
+link_catalog() {
+    local target="$1" link="$2" src name n=0
     if [[ ! -d "$target" ]]; then
         warn "Cible introuvable, lien ignoré : $target"
         return 0
     fi
-    if [[ -e "$link" && ! -L "$link" ]]; then
-        warn "$link existe et n'est pas un lien — conservé tel quel."
+    if [[ -L "$link" || ! -e "$link" ]]; then
+        mkdir -p "$(dirname "$link")"
+        ln -sfn "$target" "$link"
+        ok "Lien créé : $link -> $target"
+        return 0
+    fi
+    if [[ ! -d "$link" ]]; then
+        warn "$link existe et n'est pas un dossier — conservé tel quel."
         warn "Supprimez-le puis relancez si vous vouliez un lien vers $target."
         return 0
     fi
-    ln -sfn "$target" "$link"
-    ok "Lien créé : $link -> $target"
+    for src in "$target"/*; do
+        [[ -e "$src" ]] || continue
+        name="$(basename "$src")"
+        if [[ -e "$link/$name" && ! -L "$link/$name" ]]; then
+            warn "$link/$name est un vrai fichier — conservé (le moteur est dans $src)."
+            continue
+        fi
+        ln -sfn "$src" "$link/$name"
+        n=$((n + 1))
+    done
+    for src in "$link"/*; do
+        if [[ -L "$src" && ! -e "$src" ]]; then rm -f "$src"; fi   # lien mort
+    done
+    [[ "$n" -gt 0 ]] || die "Aucun élément lié dans $link (source : $target) — installation incomplète."
+    ok "Catalogue $link : $n élément(s) lié(s)"
 }
 
 # Idem pour un fichier (AGENTS.md, config/workspace.toml) — un vrai fichier
@@ -196,6 +309,70 @@ resolve_workspace() {
 }
 
 workspace_is_separate() { [[ "$WORKSPACE_ROOT" != "$PROJECT_ROOT" ]]; }
+
+# Tous les agents fournis par le moteur.
+all_agents() {
+    local f
+    for f in "$PROJECT_ROOT"/agents/*.md; do
+        [[ -e "$f" ]] || continue
+        basename "$f" .md
+    done
+}
+
+# Détermine le staff à installer : --agents / --no-medical, sinon
+# [agents].enabled de la configuration, sinon tous.
+#
+# L'ensemble retenu est réécrit dans workspace.user.toml pour que l'installation
+# et l'exécution ne puissent pas diverger : le coach ne délègue qu'aux agents
+# listés là, et il n'y a donc qu'une seule vérité.
+resolve_agents() {
+    local available requested="" excluded="" name keep skip
+    available="$(all_agents)"
+
+    if [[ "$AGENTS_ARG" == __all_but__:* ]]; then
+        excluded="${AGENTS_ARG#__all_but__:}"
+    elif [[ -n "$AGENTS_ARG" ]]; then
+        requested="$(printf '%s' "${AGENTS_ARG%%:*}" | tr ',' ' ')"
+        if [[ "$AGENTS_ARG" == *:* ]]; then excluded="${AGENTS_ARG#*:}"; fi
+    elif have python3; then
+        requested="$(python3 "$PROJECT_ROOT/scripts/coach_config.py" get \
+            --workspace "$WORKSPACE_ROOT" --section agents --key enabled 2>/dev/null | tr '\n' ' ')" \
+            || requested=""
+    fi
+    [[ -n "$requested" ]] || requested="$available"
+
+    ENABLED_AGENTS=""
+    for name in $requested; do
+        [[ -n "$name" ]] || continue
+        printf '%s\n' "$available" | grep -qx "$name" \
+            || die "Agent inconnu : « $name ». Disponibles : $(all_agents | tr '\n' ' ')"
+        keep=1
+        for skip in $(printf '%s' "$excluded" | tr ',' ' '); do
+            [[ "$name" == "$skip" ]] && keep=0
+        done
+        [[ "$keep" -eq 1 ]] && ENABLED_AGENTS="$ENABLED_AGENTS $name"
+    done
+    ENABLED_AGENTS="${ENABLED_AGENTS# }"
+
+    [[ -n "$ENABLED_AGENTS" ]] || die "Aucun agent sélectionné — il en faut au moins un."
+    printf '%s\n' $ENABLED_AGENTS | grep -qx coach \
+        || die "L'agent « coach » est indispensable : c'est lui qui planifie et pousse vers Garmin."
+    log "Staff : $ENABLED_AGENTS"
+}
+
+# Enregistre le staff retenu dans la config personnelle.
+persist_agents() {
+    if [[ "$DRY_RUN" -eq 1 ]]; then
+        printf '%s\n' "${C_YELLOW}[dry-run]${C_RESET} [agents].enabled = $ENABLED_AGENTS"
+        return 0
+    fi
+    have python3 || return 0
+    local args=() name
+    for name in $ENABLED_AGENTS; do args+=(--list "$name"); done
+    python3 "$PROJECT_ROOT/scripts/coach_config.py" set \
+        --workspace "$WORKSPACE_ROOT" --section agents --key enabled "${args[@]}" >/dev/null \
+        || warn "Impossible d'écrire [agents].enabled — vérifiez config/workspace.user.toml."
+}
 
 # Dossier des agents/skills à présenter aux IDE : catalogue du workspace en
 # mode séparé, dossiers du moteur sinon.
@@ -256,6 +433,8 @@ $marker
 /skills/
 /AGENTS.md
 /config/workspace.toml
+# Config personnelle : contient le sujet ntfy, qui fait office de secret
+config/workspace.user.toml
 # Configs IDE générées
 /.mcp.json
 /.claude/
@@ -276,9 +455,23 @@ EOF
 
 prepare_workspace() {
     # Mémorise le workspace pour scripts/ (daily-sync, coach-remote, notify).
+    #
+    # Uniquement si --workspace a été passé, ou si rien n'est encore mémorisé :
+    # ce fichier pilote le cron DÉJÀ installé. Le réécrire à chaque exécution
+    # faisait qu'une installation lancée depuis un second clone repointait
+    # silencieusement la synchronisation quotidienne vers ce clone.
     if [[ "$DRY_RUN" -eq 0 ]]; then
-        mkdir -p "$(dirname "$WORKSPACE_STATE_FILE")"
-        printf '%s\n' "$WORKSPACE_ROOT" > "$WORKSPACE_STATE_FILE"
+        if [[ -n "$WORKSPACE_ARG" || ! -f "$WORKSPACE_STATE_FILE" ]]; then
+            mkdir -p "$(dirname "$WORKSPACE_STATE_FILE")"
+            printf '%s\n' "$WORKSPACE_ROOT" > "$WORKSPACE_STATE_FILE"
+        else
+            local memorised
+            memorised="$(head -n1 "$WORKSPACE_STATE_FILE" 2>/dev/null || true)"
+            if [[ -n "$memorised" && "$memorised" != "$WORKSPACE_ROOT" ]]; then
+                warn "Workspace mémorisé conservé : $memorised"
+                warn "  (relancez avec --workspace \"$WORKSPACE_ROOT\" pour le remplacer)"
+            fi
+        fi
     fi
     workspace_is_separate || return 0
     log "Préparation du workspace : $WORKSPACE_ROOT (moteur : $PROJECT_ROOT)"
@@ -338,7 +531,9 @@ install_garmin_mcp() {
     if [[ "$DO_AUTH" -eq 1 ]]; then
         log "Authentification Garmin Connect (une seule fois, tokens valides ~6 mois)"
         if [[ -f "$GARMIN_TOKENS_DIR/garmin_tokens.json" ]]; then
-            if run uv run garmin-mcp-auth --verify; then
+            if [[ "$DRY_RUN" -eq 1 ]]; then
+                warn "Tokens présents — validité non vérifiée (dry-run)."
+            elif uv run garmin-mcp-auth --verify; then
                 ok "Tokens Garmin valides (vérifiés)"
             else
                 warn "Tokens présents mais invalides/expirés — relance de l'authentification"
@@ -385,7 +580,7 @@ configure_leanproxy() {
     fi
     log "Configuration de leanproxy (serveur garmin)"
 
-    mkdir -p "$LEANPROXY_CONFIG_DIR"
+    [[ "$DRY_RUN" -eq 1 ]] || mkdir -p "$LEANPROXY_CONFIG_DIR"
 
     # config.yaml — ne pas écraser une config existante
     if [[ -f "$LEANPROXY_CONFIG_DIR/config.yaml" ]]; then
@@ -470,6 +665,27 @@ mcp_leanproxy_block() {
 EOF
 }
 
+# Valeur JSON du serveur, au format « mcpServers » (Claude, Copilot, Cursor,
+# Windsurf) puis au format OpenCode. Produites ici pour qu'il n'y ait qu'un
+# endroit à corriger quand la liste blanche change.
+mcp_server_value() {
+    if [[ "$USE_LEANPROXY" -eq 1 ]]; then
+        printf '{"command": "leanproxy-mcp", "args": []}'
+    else
+        printf '{"command": "garmin-mcp", "args": ["stdio"], "env": {"GARMIN_ENABLED_TOOLS": "%s"}}' \
+            "$GARMIN_TOOL_WHITELIST"
+    fi
+}
+
+mcp_server_value_opencode() {
+    if [[ "$USE_LEANPROXY" -eq 1 ]]; then
+        printf '{"type": "local", "command": ["leanproxy-mcp"], "enabled": true}'
+    else
+        printf '{"type": "local", "command": ["garmin-mcp", "stdio"], "environment": {"GARMIN_ENABLED_TOOLS": "%s"}, "enabled": true}' \
+            "$GARMIN_TOOL_WHITELIST"
+    fi
+}
+
 # Nom du serveur MCP à utiliser selon le mode
 mcp_server_name() {
     if [[ "$USE_LEANPROXY" -eq 1 ]]; then
@@ -481,51 +697,17 @@ mcp_server_name() {
 
 write_opencode_config() {
     log "Configuration OpenCode"
+    # ~/.config/opencode/opencode.json est GLOBAL : d'autres projets y déclarent
+    # leurs propres serveurs MCP. On insère la clé, on ne réécrit pas le fichier.
     local cfg="$HOME/.config/opencode/opencode.json"
-    mkdir -p "$(dirname "$cfg")"
-    local server
-    server="$(mcp_server_name)"
-    if [[ -f "$cfg" ]] && grep -q "\"$server\"" "$cfg"; then
-        ok "OpenCode déjà configuré ($server présent)"
-    else
-        if [[ "$USE_LEANPROXY" -eq 1 ]]; then
-            write_file "$cfg" <<EOF
-{
-  "\$schema": "https://opencode.ai/config.json",
-  "mcp": {
-    "leanproxy": {
-      "type": "local",
-      "command": ["leanproxy-mcp"],
-      "enabled": true
-    }
-  }
-}
-EOF
-        else
-            write_file "$cfg" <<EOF
-{
-  "\$schema": "https://opencode.ai/config.json",
-  "mcp": {
-    "garmin": {
-      "type": "local",
-      "command": ["garmin-mcp", "stdio"],
-      "environment": {
-        "GARMIN_ENABLED_TOOLS": "$GARMIN_TOOL_WHITELIST"
-      },
-      "enabled": true
-    }
-  }
-}
-EOF
-        fi
-        ok "Config OpenCode écrite dans $cfg"
-    fi
+    merge_json_key "$cfg" mcp "$(mcp_server_name)" "$(mcp_server_value_opencode)" \
+        '{"$schema": "https://opencode.ai/config.json"}'
+    ok "Serveur MCP $(mcp_server_name) présent dans $cfg"
     # Agents/skills : OpenCode lit .opencode/ à la racine du projet.
-    # On crée des liens symboliques pour que le projet reste la source de vérité.
     if [[ "$DRY_RUN" -eq 0 ]]; then
         mkdir -p "$WORKSPACE_ROOT/.opencode"
-        link_dir "$(agents_dir)" "$WORKSPACE_ROOT/.opencode/agents"
-        link_dir "$(skills_dir)" "$WORKSPACE_ROOT/.opencode/skills"
+        link_agents "$(agents_dir)" "$WORKSPACE_ROOT/.opencode/agents"
+        link_catalog "$(skills_dir)" "$WORKSPACE_ROOT/.opencode/skills"
     fi
 }
 
@@ -533,39 +715,8 @@ EOF
 # GitHub Copilot CLI.
 write_project_mcp_json() {
     local cfg="$WORKSPACE_ROOT/.mcp.json"
-    local server
-    server="$(mcp_server_name)"
-    if [[ -f "$cfg" ]] && grep -q "\"$server\"" "$cfg"; then
-        ok ".mcp.json déjà configuré ($server présent)"
-    else
-        if [[ "$USE_LEANPROXY" -eq 1 ]]; then
-            write_file "$cfg" <<'EOF'
-{
-  "mcpServers": {
-    "leanproxy": {
-      "command": "leanproxy-mcp",
-      "args": []
-    }
-  }
-}
-EOF
-        else
-            write_file "$cfg" <<EOF
-{
-  "mcpServers": {
-    "garmin": {
-      "command": "garmin-mcp",
-      "args": ["stdio"],
-      "env": {
-        "GARMIN_ENABLED_TOOLS": "$GARMIN_TOOL_WHITELIST"
-      }
-    }
-  }
-}
-EOF
-        fi
-        ok "Config MCP projet écrite dans $cfg"
-    fi
+    merge_json_key "$cfg" mcpServers "$(mcp_server_name)" "$(mcp_server_value)"
+    ok "Serveur MCP $(mcp_server_name) présent dans $cfg"
 }
 
 write_claude_config() {
@@ -574,8 +725,8 @@ write_claude_config() {
     # Claude Code utilise .claude/agents/*.md + .claude/skills/*/SKILL.md
     if [[ "$DRY_RUN" -eq 0 ]]; then
         mkdir -p "$WORKSPACE_ROOT/.claude"
-        link_dir "$(agents_dir)" "$WORKSPACE_ROOT/.claude/agents"
-        link_dir "$(skills_dir)" "$WORKSPACE_ROOT/.claude/skills"
+        link_agents "$(agents_dir)" "$WORKSPACE_ROOT/.claude/agents"
+        link_catalog "$(skills_dir)" "$WORKSPACE_ROOT/.claude/skills"
     fi
     # Pré-approuve le serveur MCP du projet (.mcp.json) dans ~/.claude.json :
     # sinon Claude Code le laisse « Pending approval » jusqu'à une session
@@ -592,8 +743,8 @@ write_copilot_config() {
     # restent la source de vérité (les liens sont gitignorés).
     if [[ "$DRY_RUN" -eq 0 ]]; then
         mkdir -p "$WORKSPACE_ROOT/.github"
-        link_dir "$(agents_dir)" "$WORKSPACE_ROOT/.github/agents"
-        link_dir "$(skills_dir)" "$WORKSPACE_ROOT/.github/skills"
+        link_agents "$(agents_dir)" "$WORKSPACE_ROOT/.github/agents"
+        link_catalog "$(skills_dir)" "$WORKSPACE_ROOT/.github/skills"
     fi
     if workspace_is_separate && [[ -f "$PROJECT_ROOT/.github/copilot-instructions.md" && ! -e "$WORKSPACE_ROOT/.github/copilot-instructions.md" && "$DRY_RUN" -eq 0 ]]; then
         cp "$PROJECT_ROOT/.github/copilot-instructions.md" "$WORKSPACE_ROOT/.github/copilot-instructions.md"
@@ -615,20 +766,12 @@ approve_claude_project_mcp() {
         printf '%s\n' "${C_YELLOW}[dry-run]${C_RESET} approbation du serveur MCP $server pour $WORKSPACE_ROOT dans $store"
         return 0
     fi
-    python3 - "$store" "$WORKSPACE_ROOT" "$server" <<'PY'
-import json, os, sys
-store, root, server = sys.argv[1:4]
-data = json.load(open(store)) if os.path.exists(store) else {}
-proj = data.setdefault("projects", {}).setdefault(root, {})
-enabled = proj.setdefault("enabledMcpjsonServers", [])
-if server not in enabled:
-    enabled.append(server)
-proj.setdefault("hasTrustDialogAccepted", True)
-tmp = store + ".tmp"
-with open(tmp, "w") as fh:
-    json.dump(data, fh, indent=2)
-os.replace(tmp, store)
-PY
+    # ~/.claude.json contient TOUT l'état global de Claude Code. Le helper
+    # sauvegarde en .bak, refuse d'écrire si le fichier est illisible, et
+    # signale explicitement l'acceptation du dialogue de confiance.
+    python3 "$PROJECT_ROOT/scripts/coach_config.py" approve-claude-mcp \
+        --store "$store" --project "$WORKSPACE_ROOT" --server "$server" --trust \
+        || die "Échec de la mise à jour de $store — rien n'a été modifié."
     ok "Serveur MCP $server approuvé pour ce projet ($store)"
 }
 
@@ -649,84 +792,16 @@ write_gemini_config() {
 
 write_cursor_config() {
     log "Configuration Cursor"
-    local dir="$WORKSPACE_ROOT/.cursor"
-    if [[ "$DRY_RUN" -eq 0 ]]; then
-        mkdir -p "$dir"
-    fi
-    local server
-    server="$(mcp_server_name)"
-    if [[ -f "$dir/mcp.json" ]] && grep -q "\"$server\"" "$dir/mcp.json"; then
-        ok "Cursor déjà configuré ($server présent)"
-    else
-        if [[ "$USE_LEANPROXY" -eq 1 ]]; then
-            write_file "$dir/mcp.json" <<'EOF'
-{
-  "mcpServers": {
-    "leanproxy": {
-      "command": "leanproxy-mcp",
-      "args": []
-    }
-  }
-}
-EOF
-        else
-            write_file "$dir/mcp.json" <<EOF
-{
-  "mcpServers": {
-    "garmin": {
-      "command": "garmin-mcp",
-      "args": ["stdio"],
-      "env": {
-        "GARMIN_ENABLED_TOOLS": "$GARMIN_TOOL_WHITELIST"
-      }
-    }
-  }
-}
-EOF
-        fi
-        ok "Config Cursor écrite dans $dir/mcp.json"
-    fi
+    local cfg="$WORKSPACE_ROOT/.cursor/mcp.json"
+    merge_json_key "$cfg" mcpServers "$(mcp_server_name)" "$(mcp_server_value)"
+    ok "Serveur MCP $(mcp_server_name) présent dans $cfg"
 }
 
 write_windsurf_config() {
     log "Configuration Windsurf"
-    local dir="$WORKSPACE_ROOT/.windsurf"
-    if [[ "$DRY_RUN" -eq 0 ]]; then
-        mkdir -p "$dir"
-    fi
-    local server
-    server="$(mcp_server_name)"
-    if [[ -f "$dir/mcp_config.json" ]] && grep -q "\"$server\"" "$dir/mcp_config.json"; then
-        ok "Windsurf déjà configuré ($server présent)"
-    else
-        if [[ "$USE_LEANPROXY" -eq 1 ]]; then
-            write_file "$dir/mcp_config.json" <<'EOF'
-{
-  "mcpServers": {
-    "leanproxy": {
-      "command": "leanproxy-mcp",
-      "args": []
-    }
-  }
-}
-EOF
-        else
-            write_file "$dir/mcp_config.json" <<EOF
-{
-  "mcpServers": {
-    "garmin": {
-      "command": "garmin-mcp",
-      "args": ["stdio"],
-      "env": {
-        "GARMIN_ENABLED_TOOLS": "$GARMIN_TOOL_WHITELIST"
-      }
-    }
-  }
-}
-EOF
-        fi
-        ok "Config Windsurf écrite dans $dir/mcp_config.json"
-    fi
+    local cfg="$WORKSPACE_ROOT/.windsurf/mcp_config.json"
+    merge_json_key "$cfg" mcpServers "$(mcp_server_name)" "$(mcp_server_value)"
+    ok "Serveur MCP $(mcp_server_name) présent dans $cfg"
 }
 
 configure_ide() {
@@ -808,56 +883,99 @@ sync_times() {
     ARC_WORKSPACE="$WORKSPACE_ROOT" bash -c 'source "$0/scripts/lib/config.sh"; toml_get_list sync times "07:15 14:15"' "$PROJECT_ROOT"
 }
 
+# Lit la crontab existante. Distingue « pas de crontab » (cas normal) d'une
+# vraie erreur (droits, cron.deny) : dans le second cas on doit renoncer, sinon
+# « crontab - » remplace la table complète de l'utilisateur par nos deux lignes.
+read_crontab() {
+    local out status
+    out="$(crontab -l 2>&1)" && { printf '%s\n' "$out"; return 0; }
+    status=$?
+    if printf '%s' "$out" | grep -qi 'no crontab'; then
+        return 0            # table vide
+    fi
+    err "Lecture de la crontab impossible : $out"
+    return "$status"
+}
+
 install_daily_sync() {
     if [[ "$DAILY_SYNC" -eq 0 ]]; then
         return 0
     fi
     log "Synchronisation Garmin automatique (scripts/daily-sync.sh)"
-    local sync="$PROJECT_ROOT/scripts/daily-sync.sh" times
+    local sync="$PROJECT_ROOT/scripts/daily-sync.sh" times t hour minute
     times="$(sync_times | tr '\n' ' ')"
     log "Heures : $times (config [sync].times)"
+
+    for t in $times; do
+        if [[ ! "$t" =~ ^[0-9]{1,2}:[0-9]{2}$ ]]; then
+            die "Heure invalide dans [sync].times : « $t » (format attendu HH:MM)."
+        fi
+    done
 
     if [[ "$(uname -s)" == "Darwin" ]]; then
         local plist="$HOME/Library/LaunchAgents/com.ai-running-coach.daily-sync.plist" entries=""
         for t in $times; do
-            entries+="    <dict><key>Hour</key><integer>$((10#${t%%:*}))</integer><key>Minute</key><integer>$((10#${t##*:}))</integer></dict>
+            hour="$((10#${t%%:*}))"; minute="$((10#${t##*:}))"
+            entries+="    <dict><key>Hour</key><integer>$hour</integer><key>Minute</key><integer>$minute</integer></dict>
 "
         done
+        # Un « & » dans un chemin suffit à produire un plist que launchctl refuse.
+        local x_sync x_ws
+        x_sync="$(xml_escape "$sync")"; x_ws="$(xml_escape "$WORKSPACE_ROOT")"
         write_file "$plist" <<EOF
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
   <key>Label</key><string>com.ai-running-coach.daily-sync</string>
-  <key>ProgramArguments</key><array><string>$sync</string></array>
-  <key>WorkingDirectory</key><string>$WORKSPACE_ROOT</string>
-  <key>EnvironmentVariables</key><dict><key>ARC_WORKSPACE</key><string>$WORKSPACE_ROOT</string></dict>
+  <key>ProgramArguments</key><array><string>$x_sync</string></array>
+  <key>WorkingDirectory</key><string>$x_ws</string>
+  <key>EnvironmentVariables</key><dict><key>ARC_WORKSPACE</key><string>$x_ws</string></dict>
   <key>StartCalendarInterval</key>
   <array>
 $entries  </array>
-  <key>StandardOutPath</key><string>$WORKSPACE_ROOT/logs/launchd-sync.log</string>
-  <key>StandardErrorPath</key><string>$WORKSPACE_ROOT/logs/launchd-sync.log</string>
+  <key>StandardOutPath</key><string>$x_ws/logs/launchd-sync.log</string>
+  <key>StandardErrorPath</key><string>$x_ws/logs/launchd-sync.log</string>
 </dict>
 </plist>
 EOF
         [[ "$DRY_RUN" -eq 1 ]] || mkdir -p "$WORKSPACE_ROOT/logs"
         run launchctl bootout "gui/$(id -u)" "$plist" 2>/dev/null || true
-        run launchctl bootstrap "gui/$(id -u)" "$plist"
-        ok "LaunchAgent com.ai-running-coach.daily-sync installé ($plist)"
+        # launchctl bootstrap exige une session graphique : sur un Mac « coach »
+        # accessible seulement en SSH il échoue, sans que ce soit fatal.
+        if run launchctl bootstrap "gui/$(id -u)" "$plist"; then
+            ok "LaunchAgent com.ai-running-coach.daily-sync installé ($plist)"
+        else
+            warn "launchctl bootstrap a échoué (session graphique absente ?)."
+            warn "Le plist est écrit ($plist) : il sera chargé à la prochaine ouverture de session,"
+            warn "ou chargez-le depuis une session graphique avec :"
+            warn "  launchctl bootstrap gui/$(id -u) \"$plist\""
+        fi
     else
         # crontab : on remplace les lignes marquées, on conserve le reste.
-        local marker="# ai-running-coach daily-sync" lines="" current
+        local marker="# ai-running-coach daily-sync" lines="" current backup
         for t in $times; do
-            lines+="$((10#${t##*:})) $((10#${t%%:*})) * * * ARC_WORKSPACE=$WORKSPACE_ROOT $sync >/dev/null 2>&1 $marker
+            hour="$((10#${t%%:*}))"; minute="$((10#${t##*:}))"
+            # Le chemin du workspace peut contenir des espaces : il doit être cité.
+            lines+="$minute $hour * * * ARC_WORKSPACE=\"$WORKSPACE_ROOT\" \"$sync\" >/dev/null 2>&1 $marker
 "
         done
-        current="$(crontab -l 2>/dev/null | grep -v "$marker" || true)"
         if [[ "$DRY_RUN" -eq 1 ]]; then
             printf '%s\n' "${C_YELLOW}[dry-run]${C_RESET} crontab :"
             printf '%s' "$lines"
         else
-            printf '%s\n%s' "$current" "$lines" | sed '/^$/d' | crontab -
-            ok "crontab mis à jour :"
+            current="$(read_crontab)" \
+                || die "Crontab non modifiée. Corrigez l'accès à cron puis relancez."
+            # Sauvegarde avant toute écriture : la crontab n'est pas versionnée.
+            if [[ -n "$current" ]]; then
+                backup="$(dirname "$WORKSPACE_STATE_FILE")/crontab-$(date +%Y%m%d-%H%M%S).bak"
+                mkdir -p "$(dirname "$backup")"
+                printf '%s\n' "$current" > "$backup"
+                ok "Crontab sauvegardée : $backup"
+            fi
+            printf '%s\n%s' "$(printf '%s\n' "$current" | grep -vF "$marker" || true)" "$lines" \
+                | grep -v '^[[:space:]]*$' | crontab -
+            ok "crontab mise à jour :"
             printf '%s' "$lines"
         fi
     fi
@@ -921,6 +1039,7 @@ main() {
     log "Projet : $PROJECT_ROOT"
     resolve_workspace
     workspace_is_separate && log "Workspace : $WORKSPACE_ROOT (--workspace)"
+    resolve_agents
     if [[ "$USE_LEANPROXY" -eq 1 ]]; then
         log "Mode : passerelle leanproxy (power user)"
     else
@@ -940,6 +1059,7 @@ main() {
     configure_ide
     create_workspace_dirs
     create_workspace_config
+    persist_agents
     if [[ "$DAILY_SYNC" -eq 1 || "$REMOTE_CONTROL" -eq 1 ]]; then
         check_runners
     fi

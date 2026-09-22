@@ -1,0 +1,30 @@
+#!/usr/bin/env bash
+# Stub crontab avec état : $ARC_FAKE_CRONTAB tient lieu de table de l'utilisateur.
+#
+# Distingue les deux échecs que le vrai crontab confond en exit 1 :
+#   - « no crontab for … » = table vide, cas normal ;
+#   - toute autre erreur (droits, cron.deny) = échec réel, l'appelant doit
+#     refuser d'écrire plutôt que d'écraser la table.
+. "$(dirname "$0")/_common.sh"
+stub_log "$@"
+
+FAKE="${ARC_FAKE_CRONTAB:?ARC_FAKE_CRONTAB non défini}"
+
+# ARC_STUB_FAIL=crontab ne casse QUE la lecture : l'écriture doit rester
+# possible, sinon le test « refuse d'écrire après une lecture en erreur »
+# passerait pour la mauvaise raison.
+case "${1:-}" in
+    -l)
+        if stub_should_fail; then
+            echo "crontab: you are not allowed to use this program (cron.deny)" >&2
+            exit 1
+        fi
+        if [ -f "$FAKE" ]; then cat "$FAKE"; exit 0; fi
+        echo "no crontab for $(id -un)" >&2
+        exit 1
+        ;;
+    -r) rm -f "$FAKE"; exit 0 ;;
+    -)  cat > "$FAKE"; exit 0 ;;
+    "") cat > "$FAKE"; exit 0 ;;
+    *)  cat "$1" > "$FAKE"; exit 0 ;;
+esac

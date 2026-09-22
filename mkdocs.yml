@@ -68,6 +68,7 @@ nav:
   - Accueil: index.md
   - Installation:
       - Démarrage rapide: quickstart.md
+      - Configuration: configuration.md
       - Configuration Garmin: garmin-setup.md
       - IDE supportés: ides.md
       - Votre workspace privé: workspace.md
@@ -89,6 +90,7 @@ nav:
       - Intervals.icu: skills/intervals-icu-best-practices.md
       - Téléchargement FIT: skills/fit-download.md
       - Sync quotidienne (headless): skills/garmin-daily-sync.md
+      - Premier démarrage: skills/coach-setup.md
   - Ressources:
       - Base de connaissances: resources.md
   - Dépannage: troubleshooting.md

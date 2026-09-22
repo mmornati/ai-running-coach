@@ -1,0 +1,13 @@
+# En trail, la charge se raisonne en temps d'effort et en D+.
+id = "sport-trail-elevation"
+prompt = "Propose-moi la semaine d'entraînement à venir."
+fixture = "base-week"
+
+[config.sport]
+primary = "trail"
+
+[config.health]
+morning_check = "off"
+
+[expect]
+must_match = ['D\+|dénivelé']

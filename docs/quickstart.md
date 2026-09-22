@@ -5,7 +5,7 @@ Ce guide vous permet d'installer et de configurer `ai-running-coach` en quelques
 ## Prérequis
 
 - **macOS** ou **Linux**
-- **bash 4+**
+- **bash 3.2+** (celui livré avec macOS convient)
 - **curl** et **git**
 - Un compte **Garmin Connect** (avec un appareil Garmin)
 
@@ -44,6 +44,8 @@ Lors de la première installation, le script lance l'authentification Garmin Con
 | Option | Description |
 |---|---|
 | `--ide claude` | Installe pour un IDE précis (`claude`, `copilot`, `opencode`, `gemini`, `cursor`, `windsurf`) |
+| `--agents LISTE` | Staff à installer, ex. `coach,nutritionist` — voir [Configuration](configuration.md#le-staff-agents) |
+| `--no-medical` | Tous les agents sauf le médecin |
 | `--no-auth` | Saute l'authentification Garmin |
 | `--use-leanproxy` | Mode passerelle leanproxy-mcp (power user, optionnel) |
 | `--workspace DIR` | Données et configs IDE dans `DIR` (votre dépôt privé), moteur lié — voir [Votre workspace privé](workspace.md) |
@@ -55,10 +57,23 @@ Lors de la première installation, le script lance l'authentification Garmin Con
 ## Premiers pas
 
 1. **Lancez votre IDE** dans le dossier du projet
-2. **Demandez à l'agent `coach`** de définir votre objectif, par exemple :
-   - *« Je veux préparer un trail de 50 km avec 2500 m de D+ dans 6 mois »*
-   - *« Aide-moi à planifier ma semaine d'entraînement »*
-3. L'agent `coach` coordonne les autres agents (`course-strategist`, `medical`, `nutritionist`) et pousse vos séances directement dans le **calendrier Garmin Connect**
+
+2. **Lancez `/coach-setup`**
+
+    Un entretien court : votre staff d'agents, votre discipline, la façon dont le
+    coach vous parle, votre bilan santé matinal. Il installe aussi votre profil
+    d'athlète et votre fiche d'objectif.
+
+    Relancer la commande est sans risque : elle ne pose que les questions sans
+    réponse et ne remplace jamais un réglage existant.
+    Voir [Premier démarrage](skills/coach-setup.md) et [Configuration](configuration.md).
+
+3. **Demandez à l'agent `coach`** de définir votre objectif, par exemple :
+
+    - *« Je veux préparer un trail de 50 km avec 2500 m de D+ dans 6 mois »*
+    - *« Aide-moi à planifier ma semaine d'entraînement »*
+
+4. L'agent `coach` coordonne les agents que vous avez retenus et pousse vos séances directement dans le **calendrier Garmin Connect**
 
 ## Vérification
 
@@ -74,6 +89,7 @@ En mode passerelle (`--use-leanproxy`), vérifiez aussi `leanproxy-mcp --version
 
 ## Prochaines étapes
 
+- [Configuration](configuration.md) — staff, style de coaching, discipline, bilan santé
 - [Configuration Garmin](garmin-setup.md) — détails sur l'accès Garmin
 - [Les agents](agents.md) — comprendre le rôle de chaque agent
 - [Les skills](skills.md) — découvrir les skills disponibles

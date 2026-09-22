@@ -1,0 +1,56 @@
+name: Évals
+
+# Palier C — exécution réelle des prompts avec un modèle léger.
+#
+# Jamais sur `pull_request` : une PR de fork ne voit pas les secrets, et n'importe
+# quelle PR pourrait sinon dépenser des jetons. Déclenchement manuel, plus une
+# exécution nocturne sur main.
+on:
+  workflow_dispatch:
+    inputs:
+      repeat:
+        description: "Répétitions par scénario"
+        default: "3"
+      model:
+        description: "Modèle à évaluer"
+        default: "claude-haiku-4-5-20251001"
+  schedule:
+    - cron: "17 3 * * *"
+
+concurrency:
+  group: evals
+  cancel-in-progress: false
+
+jobs:
+  evals:
+    runs-on: ubuntu-latest
+    # Sans clé, le palier s'ignore proprement : inutile de lancer le job.
+    if: github.repository == 'mmornati/ai-running-coach'
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Installer Claude Code
+        run: curl -fsSL https://claude.ai/install.sh | bash
+
+      - name: Lancer les évals
+        env:
+          ARC_LLM_TESTS: "1"
+          ARC_EVAL_REPEAT: ${{ inputs.repeat || '3' }}
+          ARC_EVAL_MODEL: ${{ inputs.model || 'claude-haiku-4-5-20251001' }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+          export PATH="$HOME/.local/bin:$PATH"
+          python3 tests/run_tests.py --tier c | tee /tmp/evals.log
+
+      - name: Publier le journal
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: evals-log
+          path: /tmp/evals.log

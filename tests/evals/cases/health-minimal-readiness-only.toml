@@ -1,0 +1,11 @@
+# En mode "minimal", la readiness seule : ni HRV, ni FC de repos.
+id = "health-minimal-readiness-only"
+prompt = "Valide ma séance de demain."
+fixture = "base-week"
+
+[config.health]
+morning_check = "minimal"
+
+[expect]
+tools_called = ["get_training_readiness"]
+tools_not_called = ["get_hrv_data", "get_rhr_day"]

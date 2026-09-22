@@ -19,6 +19,7 @@
 <div class="arc-skill"><span class="arc-skill__name"><a href="skills/intervals-icu-best-practices.md">Intervals.icu</a></span><span class="arc-skill__desc">Création et mise à jour d'événements Intervals.icu</span></div>
 <div class="arc-skill"><span class="arc-skill__name"><a href="skills/fit-download.md">Téléchargement FIT</a></span><span class="arc-skill__desc">Téléchargement de fichiers FIT Garmin en bypassant le canal MCP</span></div>
 <div class="arc-skill"><span class="arc-skill__name"><a href="skills/garmin-daily-sync.md">Sync quotidienne</a></span><span class="arc-skill__desc">Synchronisation Garmin sans surveillance (cron, téléphone) avec résumé pour notification</span></div>
+<div class="arc-skill"><span class="arc-skill__name"><a href="skills/coach-setup.md">Premier démarrage</a></span><span class="arc-skill__desc">Entretien de configuration : staff d'agents, discipline, style de coaching, bilan santé, profil d'athlète</span></div>
 
 </div>
 
@@ -49,3 +50,4 @@ Certains skills incluent des scripts Python :
 | `compare_course.py` | course-comparison | stdlib uniquement |
 | `analyze_session_parts.py` | session-parts-analyzer | stdlib uniquement |
 | `download_fit.py` | fit-download | `garminconnect` + `fitparse` (via l'environnement garmin-mcp) |
+| `coach_setup.py` | coach-setup | stdlib uniquement |

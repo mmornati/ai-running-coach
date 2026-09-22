@@ -1,0 +1,8 @@
+#!/usr/bin/env bash
+. "$(dirname "$0")/_common.sh"
+stub_init "$@"
+case "${1:-}" in
+    --version) echo "1.0.0-stub (Claude Code)" ;;
+    auth) echo '{"loggedIn": true}' ;;
+esac
+exit 0

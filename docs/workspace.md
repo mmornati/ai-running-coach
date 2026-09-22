@@ -105,3 +105,16 @@ redémarrés : ils lisent les skills à chaque session.
 - `~/.config/ai-running-coach/ntfy.token` — token de notification
 - `~/.config/ai-running-coach/workspace` — chemin du workspace
 - `~/.claude.json` — approbation du serveur MCP pour le workspace
+
+## Votre profil d'athlète
+
+`/coach-setup` installe deux fichiers dans `planning/` depuis `templates/` :
+
+| Fichier | Contenu |
+|---|---|
+| `Runner_Profile.md` | Physiologie, historique de blessures, matériel, lieu par défaut, créneau habituel, préférences de coaching |
+| `active_objective.md` | La course visée, l'objectif de performance, les contraintes connues |
+
+Les deux vivent dans `planning/`, gitignoré dans le dépôt public et **versionné
+dans votre dépôt privé** si vous utilisez `--workspace`. Les agents les lisent
+avant toute planification ; aucun des deux n'est jamais écrasé une fois créé.

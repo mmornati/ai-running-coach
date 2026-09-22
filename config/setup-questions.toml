@@ -1,0 +1,127 @@
+# Questions posées au premier démarrage par `/coach-setup`.
+#
+# Ce fichier est une DONNÉE, pas du code : ajouter une question, en reformuler
+# une ou changer un défaut ne demande de toucher à aucun script. L'ordre des
+# sections est l'ordre de l'entretien.
+#
+# Chaque section décrit une question :
+#   key      section.clé visée dans config/workspace.user.toml
+#   prompt   la question, en français, telle qu'elle est posée
+#   help     une ligne de contexte (facultatif) — affichée avec la question
+#   default  valeur proposée ; « / » dans l'entretien la retient
+#   kind     "select" (un choix), "multi" (plusieurs), "text" (libre)
+#   options  valeurs admises, pour select/multi
+#   labels   libellé de chaque option, dans le même ordre
+#
+# `/coach-setup` ne pose que les questions SANS RÉPONSE et ne remplace jamais
+# une valeur déjà écrite : relancer la commande est sans effet.
+
+[style]
+key = "coaching.style"
+prompt = "Comment voulez-vous qu'on vous parle ?"
+help = "Le style change la formulation, jamais le verdict d'une séance. Détail : config/coaching-styles.md"
+default = "bienveillant"
+kind = "select"
+options = ["bienveillant", "exigeant", "factuel", "pedagogue"]
+labels = [
+  "Encourageant — valorise la régularité, explique le pourquoi",
+  "Challengeant — direct, vous tient à vos engagements, ne console pas",
+  "Sobre — verdict et chiffres, zéro remplissage motivationnel",
+  "Pédagogue — développe la physiologie derrière chaque décision",
+]
+
+[intensity]
+key = "coaching.intensity"
+prompt = "Avec quelle fermeté ?"
+default = "balanced"
+kind = "select"
+options = ["gentle", "balanced", "strong"]
+labels = [
+  "En douceur — propose, laisse toujours une option de repli",
+  "Équilibré — recommande clairement, accepte la contradiction",
+  "Ferme — tranche, et ne rouvre pas une décision déjà justifiée",
+]
+
+[verbosity]
+key = "coaching.verbosity"
+prompt = "Quelle longueur pour les retours de séance et les rapports ?"
+default = "standard"
+kind = "select"
+options = ["brief", "standard", "detailed"]
+labels = [
+  "Court — 3 à 5 lignes, verdict en premier",
+  "Standard — un paragraphe et les métriques clés",
+  "Détaillé — analyse segment par segment, tendances, hypothèses écartées",
+]
+
+[sport]
+key = "sport.primary"
+prompt = "Quelle discipline principale ?"
+help = "Détermine le profil chargé depuis config/sports/ : vocabulaire, conversions, matériel."
+default = "trail"
+kind = "select"
+options = ["trail", "road"]
+labels = [
+  "Trail / ultra — dénivelé, terrain technique, ravitaillements",
+  "Route — allures au plat, 10 km à marathon",
+]
+
+[disciplines]
+key = "sport.disciplines"
+prompt = "Quels sports croisés pratiquez-vous ?"
+help = "Utilisés pour la planification hebdomadaire. Aucun : répondez « aucun »."
+default = ""
+kind = "multi"
+options = ["cycling", "swimming", "strength", "hiking", "elliptical", "rowing"]
+labels = [
+  "Vélo", "Natation", "Renforcement musculaire", "Randonnée", "Elliptique", "Rameur",
+]
+
+[agents]
+key = "agents.enabled"
+prompt = "Quel staff voulez-vous ?"
+help = "Seuls les agents choisis sont installés, et le coach ne délègue qu'à eux."
+default = "coach,medical,nutritionist,course-strategist"
+kind = "multi"
+options = ["coach", "medical", "nutritionist", "course-strategist"]
+labels = [
+  "Coach — plans, analyse des séances, calendrier Garmin (indispensable)",
+  "Médecin — sommeil, HRV, récupération, protocoles blessure",
+  "Nutritionniste — macros, poids de forme, plans de ravitaillement",
+  "Stratège de course — analyse GPX, plan de course, allures par scénario",
+]
+
+[morning_check]
+key = "health.morning_check"
+prompt = "Le coach doit-il conditionner vos séances aux données de santé du matin ?"
+help = "HRV + FC de repos + readiness. Répondez « off » si votre montre ne les mesure pas, ou si vous ne voulez pas que l'entraînement en dépende."
+default = "full"
+kind = "select"
+options = ["full", "minimal", "off"]
+labels = [
+  "Complet — HRV, FC de repos et readiness avant chaque décision (recommandé)",
+  "Minimal — readiness seule, sans analyse HRV/FC de repos",
+  "Aucun — planification sur la charge d'entraînement et votre ressenti",
+]
+
+[documents_language]
+key = "language.documents"
+prompt = "Dans quelle langue écrire les fichiers du workspace ?"
+help = "Code ISO 639-1 : fr, en, nl…"
+default = "fr"
+kind = "text"
+
+[responses_language]
+key = "language.responses"
+prompt = "Dans quelle langue vous répondre ?"
+help = "« auto » = la langue de votre message."
+default = "auto"
+kind = "text"
+
+[units]
+key = "athlete.units"
+prompt = "Quelles unités ?"
+default = "metric"
+kind = "select"
+options = ["metric", "imperial"]
+labels = ["Métriques — km, m D+, kg", "Impériales — miles, pieds, livres"]

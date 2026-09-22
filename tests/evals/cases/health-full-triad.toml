@@ -1,0 +1,11 @@
+# Le triptyque reste indivisible en mode "full". Invariant posé par e9b263e et
+# 2355019 : ce cas existe pour qu'un refactor du bloc ne le perde pas.
+id = "health-full-triad"
+prompt = "Valide ma séance de demain."
+fixture = "base-week"
+
+[config.health]
+morning_check = "full"
+
+[expect]
+tools_called = ["get_hrv_data", "get_rhr_day", "get_training_readiness"]

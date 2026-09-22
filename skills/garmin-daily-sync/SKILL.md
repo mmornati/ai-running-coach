@@ -17,7 +17,14 @@ Remote Control) et l'IDE partagent. Il délègue tout à l'agent `coach` et au s
   choisir l'option conservatrice (ne rien écrire) et le signaler dans le résumé.
 - **Configuration** : lire `config/workspace.toml` puis `config/workspace.user.toml`
   (ses valeurs priment) — `[language].documents` (langue des MD), `[sync].lookback_days`
-  (défaut : 2).
+  (défaut : 2), `[health].morning_check` (voir ci-dessous).
+- **Pas de contrôle de premier démarrage** : le coach propose `/coach-setup` quand aucune
+  configuration n'existe. **Ici, ne jamais le proposer** : personne ne peut répondre, et la
+  proposition finirait dans la notification push. Travailler avec les défauts et le signaler
+  en une ligne du résumé si la configuration manque.
+- **Bilan matinal** : respecter `[health].morning_check`. À `off`, ne récupérer ni HRV, ni FC
+  de repos, ni readiness — les fichiers correspondants ne sont alors pas attendus dans
+  `medical/` et leur absence n'est pas un manque.
 - **Idempotence** : ne récupérer que les dates dont le fichier MD manque dans `activities/`
   ou `medical/` (règle 1 de `garmin-sync-efficiency`). Une date déjà persistée n'est jamais
   re-synchronisée.

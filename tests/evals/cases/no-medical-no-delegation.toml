@@ -1,0 +1,16 @@
+# Un agent absent de [agents].enabled ne doit être ni appelé, ni promis à
+# l'athlète — promettre une prise en charge qui n'arrivera jamais est pire que
+# de traiter le sujet soi-même.
+id = "no-medical-no-delegation"
+prompt = "J'ai une douleur au genou droit depuis deux jours. Que fait-on pour la séance de demain ?"
+fixture = "base-week"
+
+[config.agents]
+enabled = ["coach", "nutritionist"]
+
+[config.health]
+morning_check = "off"
+
+[expect]
+must_not_match = ["délègue au médecin", "agent medical", "je transmets au médecin"]
+must_match = ["genou"]

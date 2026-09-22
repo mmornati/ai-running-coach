@@ -90,13 +90,23 @@ check_login() {
 }
 
 # Comment le service est géré sur cette machine.
+#
+# NE JAMAIS appeler « die » ici : backend est utilisé en substitution de
+# commande ($(backend)), où un exit ne quitte que le sous-shell. L'appelant
+# recevait une chaîne vide, aucun case ne correspondait, et l'installation se
+# poursuivait jusqu'au message de succès. On renvoie donc un statut, que
+# require_backend transforme en erreur fatale dans le shell principal.
 backend() {
-    if [[ "$OS" == "Darwin" ]]; then echo launchd
-    elif have systemctl && systemctl --user show-environment >/dev/null 2>&1; then echo systemd
-    elif have screen || have tmux; then echo screen
-    else die "Ni systemd --user, ni screen/tmux disponibles."
+    if [[ "$OS" == "Darwin" ]]; then echo launchd; return 0
+    elif have systemctl && systemctl --user show-environment >/dev/null 2>&1; then echo systemd; return 0
+    elif have screen || have tmux; then echo screen; return 0
     fi
+    echo none
+    return 1
 }
+
+# Message unique pour l'absence de gestionnaire de services.
+NO_BACKEND_MSG="Ni systemd --user, ni screen/tmux disponibles sur cette machine — service impossible."
 
 # ---------------------------------------------------------------------------
 # run — premier plan
@@ -194,12 +204,14 @@ do_install() {
         warn "Première utilisation : Remote Control demande une confirmation unique (Enable Remote Control? y/n)"
         warn "qui ne peut pas être acceptée par un service en arrière-plan."
         read -r -p "Avez-vous déjà accepté cette confirmation sur cette machine ? [o/N] : " yn
-        if [[ ! "${yn:-n}" =~ ^[oOyY]$ ]]; then
+        if [[ ! "${yn:-n}" =~ ^([oO]([uU][iI])?|[yY]([eE][sS])?)$ ]]; then
             log "Lancement interactif : répondez 'y', attendez « Remote Control session started », puis Ctrl+C."
             (cd "$ARC_WORKSPACE" && claude remote-control --name "$SESSION_NAME" --permission-mode "$PERMISSION_MODE") || true
         fi
     fi
-    case "$(backend)" in
+    local chosen
+    chosen="$(backend)" || die "$NO_BACKEND_MSG"
+    case "$chosen" in
         systemd) install_systemd ;;
         launchd) install_launchd ;;
         screen)  install_screen ;;
@@ -210,7 +222,9 @@ do_install() {
 }
 
 do_uninstall() {
-    case "$(backend)" in
+    local chosen
+    chosen="$(backend)" || die "$NO_BACKEND_MSG"
+    case "$chosen" in
         systemd)
             run systemctl --user disable --now "$SERVICE_NAME" || true
             run rm -f "$SYSTEMD_UNIT"
@@ -227,7 +241,9 @@ do_uninstall() {
 # start / stop / status / logs
 # ---------------------------------------------------------------------------
 do_start() {
-    case "$(backend)" in
+    local chosen
+    chosen="$(backend)" || die "$NO_BACKEND_MSG"
+    case "$chosen" in
         systemd) run systemctl --user start "$SERVICE_NAME" ;;
         launchd) run launchctl kickstart "gui/$(id -u)/$LAUNCHD_LABEL" ;;
         screen)
@@ -242,7 +258,9 @@ do_start() {
 }
 
 do_stop() {
-    case "$(backend)" in
+    local chosen
+    chosen="$(backend)" || die "$NO_BACKEND_MSG"
+    case "$chosen" in
         systemd) run systemctl --user stop "$SERVICE_NAME" ;;
         launchd) run launchctl kill SIGTERM "gui/$(id -u)/$LAUNCHD_LABEL" ;;
         screen)
@@ -253,7 +271,9 @@ do_stop() {
 }
 
 do_status() {
-    case "$(backend)" in
+    local chosen
+    chosen="$(backend)" || die "$NO_BACKEND_MSG"
+    case "$chosen" in
         systemd) systemctl --user status "$SERVICE_NAME" --no-pager || true ;;
         launchd) launchctl print "gui/$(id -u)/$LAUNCHD_LABEL" 2>/dev/null | grep -E "state|pid|last exit" || warn "Service non chargé." ;;
         screen)
