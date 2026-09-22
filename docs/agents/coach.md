@@ -35,6 +35,33 @@ Pour chaque séance, le coach fournit :
 3. **Z1/Z2 (aérobie)** : attentes claires (ex. « rester strictement sous 140 bpm »)
 4. **Matériel** : liste explicite pour chaque séance
 
+### Bilan matinal (HRV + FC de repos + readiness)
+
+- **Le triptyque est indivisible** : avant de valider, maintenir, ajuster ou annuler une séance, les **trois** métriques doivent être récupérées et rapportées — HRV nocturne (`get_hrv_data`), **FC de repos (`get_rhr_day`)** et training readiness (`get_training_readiness`). HRV + readiness sans FC de repos = bilan incomplet.
+- **Outil dédié** : `get_rhr_day` renvoie la valeur directement. Ne jamais tirer `get_sleep_data` (> 400 Ko) pour lire une FC de repos.
+- **Les règles d'annulation sont des conjonctions** : « annuler si HRV bas **ET** FC repos > +5 bpm » exige les deux. Annuler sur un HRV bas seul, avec une FC de repos stable, sur-restreint l'athlète.
+- **La divergence est le diagnostic** :
+
+| HRV | FC de repos | Interprétation | Action |
+|---|---|---|---|
+| bas | stable | Stress autonome (dette de sommeil, stress, déficit énergétique) | Aérobie maintenu, intensité réduite — pas un jour de repos |
+| bas | **nettement élevée** | Cause **non-entraînement** : infection, déshydratation, alcool, chaleur | Repos ou Z1 strict, escalade vers l'agent `medical` |
+| normal | **nettement élevée** | Infection débutante, alcool, chaleur | Reporter la qualité, recontrôler le lendemain |
+| normal | stable | Récupéré | Séance comme prévu |
+
+> **« Nettement élevée » = > +7 bpm au-dessus de la médiane glissante 7 jours, ou ≥ +5 deux jours consécutifs.** Un seul jour à +5 est dans le bruit de la mesure optique (±3-5 bpm) et ne doit rien déclencher. Noter la valeur, continuer.
+>
+> **La colonne FC de repos ne diagnostique jamais une surcharge d'entraînement** — dans le surmenage parasympathique elle est stable ou basse. C'est la HRV qui porte ce diagnostic. La FC de repos sert à écarter une cause étrangère à l'entraînement.
+
+
+- **La FC de repos est un filtre de spécificité, pas une mesure de charge.** Dans le surmenage à dominante parasympathique, elle est inchangée voire abaissée. Une FC de repos qui monte désigne l'axe **sympathique aigu** : infection, déshydratation, alcool, chaleur, dette de sommeil, stress de vie. Elle répond à « est-ce autre chose que l'entraînement ? », jamais à « suis-je en surcharge ? ». Elle ne doit pas renverser un diagnostic porté par la HRV.
+- **Respecter le plancher de bruit** : ±3-5 bpm de variation quotidienne chez un sportif entraîné, et Garmin rapporte la **moyenne glissante de 30 min la plus basse du jour** au poignet, pas une mesure au réveil allongé. Un seul jour à +5 est indiscernable du bruit. Ne retenir le signal que si **> +7 au-dessus de la médiane glissante 7 jours**, ou **≥ +5 deux jours consécutifs**.
+- **Confronter aux séances réelles avant de conclure** : si le pic ne suit pas les efforts les plus durs — ou anti-corrèle avec eux — ce n'est pas un signal d'entraînement. Chercher une cause de vie courante ou accepter le bruit, sans plaquer après coup une explication d'entraînement.
+- **Lire la tendance, pas le point** : récupérer la FC de repos sur les **5 à 7 derniers jours**, pas seulement le jour même. Un pic déjà redescendu paraît normal aujourd'hui alors qu'il explique le statut HRV courant. Les jours manquants sont en général **non collectés**, pas absents — les récupérer avant de conclure.
+- **Les valeurs limites sont des avertissements** : le seuil est strict (`> +5`), donc exactement +5 ne déclenche pas d'annulation — mais doit être signalé comme tel et recontrôlé le lendemain.
+- **La readiness est un score dérivé, pas une mesure** : fortement pondérée par le sommeil. Vérifier la fenêtre de sommeil enregistrée face à l'heure de coucher déclarée — une montre qui démarre en retard déprime mécaniquement le score de sommeil et la readiness, alors que HRV et FC de repos restent valides.
+- **Moyenne hebdomadaire ≠ nuit dernière** : le statut `UNBALANCED` porte sur la moyenne 7 jours. Rapporter les deux valeurs.
+
 ### Récupération cardiaque (HRR)
 
 - **Obligatoire** : chaque analyse de séance doit inclure le `recovery_hr_bpm` extrait de l'activité Garmin
