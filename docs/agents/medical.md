@@ -12,7 +12,7 @@ L'agent **medical** est le spécialiste de la récupération et de la santé. Il
 
 - **Analyse des problèmes de santé** : douleur, fatigue, maladie → protocoles d'amélioration immédiats (étirements, repos, méthode RICE)
 - **Analyse des métriques** : HRV, sommeil, stress depuis Garmin pour identifier la charge physiologique
-- **Bilan matinal obligatoire (HRV + FC de repos + readiness)** : tout verdict de disponibilité s'appuie sur les trois — `get_hrv_data`, **`get_rhr_day`** et `get_training_readiness`. La FC de repos est ce qui distingue un stress autonome (HRV bas, FC stable → entraînement facile, pas de repos) d'une surcharge systémique (HRV bas, FC > +5 bpm → repos, signalement au coach). Jamais de verdict sur HRV + readiness seuls.
+- **Bilan matinal obligatoire (HRV + FC de repos + readiness)** : tout verdict de disponibilité s'appuie sur les trois — `get_hrv_data`, **`get_rhr_day`** et `get_training_readiness`. La FC de repos distingue un stress autonome (HRV bas, FC stable → entraînement facile, pas de repos) d'une cause **étrangère à l'entraînement** (HRV bas, FC nettement élevée → infection, déshydratation, alcool, chaleur : repos, signalement au coach). « Nettement élevée » = **> +7 bpm au-dessus de la médiane 7 jours, ou ≥ +5 deux jours de suite** ; un jour isolé à +5 est dans le bruit (±3-5 bpm). La FC de repos ne diagnostique jamais seule une surcharge d'entraînement — c'est la HRV qui le fait. Jamais de verdict sur HRV + readiness seuls.
 - **Récupération cardiaque (HRR)** : prise en compte du `recovery_hr_bpm` dans l'évaluation de la récupération
 
 ### Coordination (délégation)
