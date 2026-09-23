@@ -79,6 +79,7 @@ nav:
       - Les vues: dashboard/views.md
       - Migrer vos fichiers: dashboard/migration.md
       - Machine coach & mode headless: dashboard/headless.md
+      - Derrière un reverse proxy (Docker): dashboard/docker.md
   - Agents:
       - Vue d'ensemble: agents.md
       - Coach: agents/coach.md

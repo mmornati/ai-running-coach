@@ -55,7 +55,10 @@ indépendant de la machine.
 Aucun modèle, aucun réseau, quelques millisecondes. Vérifie le frontmatter des
 agents et des skills, la résolution de **tout chemin cité dans un prompt**, la
 parité des surfaces (Gemini, docs, navigation mkdocs), la fraîcheur des fichiers
-générés et l'hygiène des scripts shell.
+générés et l'hygiène des scripts shell. `test_docker.py` y verrouille les
+invariants du conteneur du tableau de bord (aucun port publié, workspace en
+lecture seule, middleware d'authentification obligatoire, utilisateur non root) ;
+la CI construit en plus l'image et l'interroge (job « Docker »).
 
 C'est ce palier qui attrape la classe de bug ayant produit
 `planning/Runner_Profile.md` : un chemin cité par trois fichiers d'instructions

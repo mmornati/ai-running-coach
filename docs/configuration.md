@@ -140,7 +140,9 @@ port = 8765
 ```
 
 Port du [tableau de bord local](dashboard/index.md). S'il est pris, les 9 suivants sont
-essayés. L'adresse d'écoute, elle, n'est pas réglable : `127.0.0.1` uniquement.
+essayés. L'adresse d'écoute, elle, n'est pas réglable : `127.0.0.1` uniquement. Seul le
+[conteneur Docker](dashboard/docker.md) écoute ailleurs, derrière un reverse proxy
+authentifié.
 
 ## Langue, notifications, synchronisation
 

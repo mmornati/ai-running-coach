@@ -16,7 +16,7 @@ flowchart TB
     R[📱 Remote Control] -->|plans, rapports| W
     S -->|fichiers au contrat + index| W[(workspace Markdown)]
     S -->|résumé 5 lignes| T[📱 notification]
-    W -->|tunnel SSH| B[📊 tableau de bord]
+    W -->|tunnel SSH ou reverse proxy| B[📊 tableau de bord]
     W <-->|git push / pull| L[portable]
     L --> B2[📊 tableau de bord]
 ```
@@ -34,7 +34,7 @@ La notification vous dit *qu'il* s'est passé quelque chose ; le tableau de bord
 vous montre *quoi*, en contexte — la HRV du jour dans sa bande, la séance à côté
 des précédentes sur le même parcours, la charge de la semaine face au plan.
 
-## Deux façons de le consulter
+## Trois façons de le consulter
 
 ### Sur le portable, après un `git pull`
 
@@ -89,6 +89,15 @@ téléphone.
     systemctl --user enable --now arc-dashboard
     loginctl enable-linger "$USER"   # démarre sans session ouverte
     ```
+
+### Sur un nom de domaine, derrière votre reverse proxy
+
+Si la machine coach héberge déjà des services derrière Traefik et une authentification
+unique (Authentik, Authelia), le tableau de bord s'y ajoute en conteneur Docker :
+`https://coach.example.org`, ouvert depuis le téléphone après votre connexion
+habituelle, sans client SSH. Le workspace y est monté en lecture seule et la
+synchronisation l'alimente de la même façon. Voir
+[Derrière un reverse proxy (Docker)](docker.md).
 
 ## Deux machines, un dépôt
 

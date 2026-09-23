@@ -88,10 +88,12 @@ contrat » dans le menu). Pour tout remettre d'aplomb : [Migrer vos fichiers](mi
 ## Sécurité
 
 - Le serveur n'écoute **que sur `127.0.0.1`** : rien n'est visible depuis le réseau.
-  L'adresse n'est volontairement pas configurable.
+  `scripts/dashboard.sh` n'offre aucun moyen d'en changer.
 - Lecture seule : il n'écrit que sa propre base, dans `.arc/`.
 - Une page tierce qui tenterait de l'atteindre en se faisant passer pour
   `localhost` est refusée (protection contre le *DNS rebinding*).
 
 Pour le consulter depuis une autre machine, passez par un tunnel SSH plutôt que
-d'ouvrir un port : voir [Machine coach & mode headless](headless.md).
+d'ouvrir un port : voir [Machine coach & mode headless](headless.md). Si votre serveur
+a déjà un reverse proxy avec authentification, le tableau de bord peut s'y ranger en
+conteneur, workspace en lecture seule : [Derrière un reverse proxy (Docker)](docker.md).

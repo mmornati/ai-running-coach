@@ -31,6 +31,10 @@ scripts/dashboard.sh
 
 ![Tableau de bord — vue Aujourd'hui](docs/assets/dashboard/aujourdhui.webp)
 
+Sur un serveur qui a déjà Traefik et une authentification unique, il se range aussi
+en conteneur Docker, workspace en lecture seule :
+[Derrière un reverse proxy](docs/dashboard/docker.md).
+
 Voir [la documentation du tableau de bord](docs/dashboard/index.md).
 
 ## 🧑‍💻 IDE supportés
@@ -143,7 +147,7 @@ La documentation complète est disponible sur [GitHub Pages](https://mmornati.gi
 - [Configuration Garmin](docs/garmin-setup.md)
 - [Votre workspace privé (données versionnées, moteur lié)](docs/workspace.md)
 - [Le coach dans la poche (mobile + sync automatique)](docs/mobile.md)
-- [Tableau de bord](docs/dashboard/index.md) · [Les vues](docs/dashboard/views.md) · [Migrer vos fichiers](docs/dashboard/migration.md) · [Mode headless](docs/dashboard/headless.md)
+- [Tableau de bord](docs/dashboard/index.md) · [Les vues](docs/dashboard/views.md) · [Migrer vos fichiers](docs/dashboard/migration.md) · [Mode headless](docs/dashboard/headless.md) · [Docker](docs/dashboard/docker.md)
 - [Les agents](docs/agents.md)
 - [Les skills](docs/skills.md)
 - [Base de connaissances (resources)](docs/resources.md)

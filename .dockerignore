@@ -1,0 +1,8 @@
+# Seuls scripts/, web/ et config/ entrent dans l'image (voir Dockerfile).
+*
+!scripts/
+!web/
+!config/
+**/__pycache__
+**/*.py[cod]
+**/.DS_Store

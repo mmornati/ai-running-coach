@@ -66,7 +66,7 @@ class TestDashboardServer(InstallAsserts):
         self.sb.__exit__(None, None, None)
 
     def test_listens_on_loopback_only(self):
-        """L'adresse d'écoute n'est pas configurable : 127.0.0.1, rien d'autre."""
+        """Par défaut, 127.0.0.1 : seul le conteneur Docker écoute ailleurs (--listen)."""
         self.assertTrue(self.server.url.startswith("http://127.0.0.1:"), self.server.url)
 
     def test_api_serves_indexed_data(self):
@@ -90,6 +90,12 @@ class TestDashboardServer(InstallAsserts):
         """Protection contre le DNS rebinding : un Host étranger est refusé."""
         self.assertEqual(self.server.get("/api/summary", host="evil.example")[0], 403)
 
+    def test_healthz(self):
+        """Sonde du conteneur : répond sans réindexer, derrière le même contrôle d'hôte."""
+        status, body, _ = self.server.get("/healthz")
+        self.assertEqual((status, json.loads(body)), (200, {"status": "ok"}))
+        self.assertEqual(self.server.get("/healthz", host="evil.example")[0], 403)
+
     def test_read_only(self):
         self.assertEqual(self.server.get("/api/summary", method="POST")[0], 405)
 
@@ -110,6 +116,47 @@ class TestDashboardServer(InstallAsserts):
             encoding="utf-8")
         after = [r["title"] for r in json.loads(self.server.get("/api/reports")[1])["reports"]]
         self.assertIn("Bilan test", after)
+
+
+class TestDashboardBehindProxy(InstallAsserts):
+    """Le conteneur Docker : le proxy présente le tableau de bord sous un nom public."""
+
+    def test_public_name_accepted_foreign_refused(self):
+        with Sandbox() as sb:
+            ws = build(sb.root / "ws", days=10)
+            server = Server(sb, ["python3", str(sb.repo / "scripts/arc_serve.py"), "--workspace", str(ws),
+                                 "--port", "0", "--memory"], ARC_DASHBOARD_ALLOWED_HOSTS="coach.example.org, autre.example.org")
+            try:
+                self.assertIsNotNone(server.url)
+                for host in ("coach.example.org", "Coach.Example.org", "coach.example.org:443", "autre.example.org"):
+                    self.assertEqual(server.get("/api/summary", host=host)[0], 200, host)
+                for host in ("evil.example", "coach.example.org.evil.example", "example.org"):
+                    self.assertEqual(server.get("/api/summary", host=host)[0], 403, host)
+                self.assertEqual(server.get("/api/summary")[0], 200, "la boucle locale reste acceptée (sonde)")
+            finally:
+                server.stop()
+
+    def test_exposed_without_public_name_is_refused(self):
+        """Défaut verrouillé : écouter sur le réseau sans nom public déclaré ne servirait
+        que des 403 — le serveur refuse de démarrer et dit pourquoi."""
+        with Sandbox() as sb:
+            ws = build(sb.root / "ws", days=3)
+            proc = sb.run(["python3", str(sb.repo / "scripts/arc_serve.py"), "--workspace", str(ws), "--memory",
+                           "--port", "0", "--listen", "0.0.0.0"])
+            self.assertEqual(proc.returncode, 1, proc.stderr)
+            self.assertIn("--allowed-host", proc.stderr)
+
+    def test_read_only_workspace_with_memory_index(self):
+        """Le conteneur monte le workspace en lecture seule : --memory n'écrit rien."""
+        with Sandbox() as sb:
+            ws = build(sb.root / "ws", days=10)
+            server = Server(sb, ["python3", str(sb.repo / "scripts/arc_serve.py"), "--workspace", str(ws),
+                                 "--port", "0", "--memory"])
+            try:
+                self.assertEqual(server.get("/api/summary")[0], 200)
+            finally:
+                server.stop()
+            self.assertFalse((ws / ".arc").exists(), "--memory a écrit dans le workspace")
 
 
 class TestDashboardLauncher(InstallAsserts):
@@ -170,7 +217,7 @@ config/workspace.user.toml
             (ws / ".gitignore").write_text("mes-notes/\n" + self.OLD_BLOCK)
             self.assertSucceeded(sb.install("--no-auth", "--workspace", str(ws)))
             lines = (ws / ".gitignore").read_text().splitlines()
-            for entry in ("/.arc/", "/scripts/", "/.opencode/"):
+            for entry in ("/.arc/", "/scripts", "/.opencode/", "*.bak"):
                 self.assertEqual(lines.count(entry), 1, f"{entry} absent ou en double")
             self.assertIn("mes-notes/", lines, "une ligne de l'utilisateur a disparu")
             end = lines.index("# fin du bloc ai-running-coach")
@@ -192,6 +239,20 @@ config/workspace.user.toml
             proc = sb.run(["python3", "scripts/arc_index.py", "--validate", "medical/2026-09-23_health.md"], cwd=ws)
             self.assertSucceeded(proc)
             self.assertOutputContains(proc, "ok:")
+
+    def test_engine_links_never_committed(self):
+        """Défaut verrouillé : « /scripts/ » ne couvre pas un lien symbolique, et
+        `git add -A` (git_autocommit) versionnait le lien vers le moteur ; de même
+        pour les sauvegardes *.bak laissées par l'installation."""
+        with Sandbox() as sb:
+            ws = sb.root / "prive"
+            ws.mkdir()
+            self.assertSucceeded(sb.run(["git", "init", "-q"], cwd=ws))
+            self.assertSucceeded(sb.install("--no-auth", "--workspace", str(ws)))
+            (ws / "config/workspace.user.toml.bak").write_text("[coaching]\n")
+            status = sb.run(["git", "status", "--porcelain", "--untracked-files=all"], cwd=ws).stdout
+            for leaked in ("scripts", ".bak", "AGENTS.md", "agents/", "skills/"):
+                self.assertNotIn(leaked, status, f"{leaked} apparaît dans git :\n{status}")
 
 
 class TestIndexNeverCommitted(InstallAsserts):
