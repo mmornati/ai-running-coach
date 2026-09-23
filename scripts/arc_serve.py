@@ -1,0 +1,564 @@
+#!/usr/bin/env python3
+"""Serveur local du tableau de bord : lecture seule, 127.0.0.1 uniquement.
+
+Sert `web/` (HTML/CSS/JS statiques) et une API JSON `/api/*` construite sur
+l'index SQLite dérivé (`scripts/arc_index.py`). Rien n'est jamais écrit dans le
+workspace hors de `.arc/` (la base elle-même), et rien n'est exposé hors de la
+machine : l'adresse d'écoute n'est pas configurable.
+
+    arc_serve.py [--workspace DIR] [--port N] [--memory] [--db FICHIER] [--today AAAA-MM-JJ]
+
+Le port vient de `[dashboard].port` (défaut 8765). S'il est pris, les 9 suivants
+sont essayés ; `--port 0` laisse le système choisir (tests). La ligne
+`URL: http://127.0.0.1:<port>/` est imprimée dès que le serveur écoute.
+
+L'index est rafraîchi au démarrage puis, au plus toutes les 30 s, à la
+première requête qui suit — un fichier écrit par un agent apparaît donc sans
+relancer le serveur.
+
+Bibliothèque standard uniquement (CONTRIBUTING.md).
+"""
+
+from __future__ import annotations
+
+import argparse
+import html
+import json
+import os
+import re
+import sqlite3
+import statistics
+import sys
+import threading
+import time
+from datetime import date, timedelta
+from http import HTTPStatus
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from pathlib import Path
+from urllib.parse import parse_qs, urlparse
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import arc_index as I  # noqa: E402
+import arc_metrics as M  # noqa: E402
+from coach_config import ConfigError  # noqa: E402
+
+BIND = "127.0.0.1"                      # en dur : le tableau de bord ne sort pas de la machine
+DEFAULT_PORT = 8765
+WEB_ROOT = I.ENGINE / "web"
+# Intervalle minimal entre deux réindexations (ARC_DASHBOARD_REFRESH_S pour les tests).
+REFRESH_EVERY_S = float(os.environ.get("ARC_DASHBOARD_REFRESH_S", "30"))
+CONTENT_TYPES = {
+    ".html": "text/html; charset=utf-8", ".css": "text/css; charset=utf-8",
+    ".js": "text/javascript; charset=utf-8", ".svg": "image/svg+xml",
+    ".png": "image/png", ".jpg": "image/jpeg", ".json": "application/json",
+    ".woff2": "font/woff2", ".ico": "image/x-icon",
+}
+
+# ---------------------------------------------------------------------------
+# Markdown → HTML (sous-ensemble : ce que les agents écrivent)
+# ---------------------------------------------------------------------------
+
+_INLINE = [
+    (re.compile(r"`([^`]+)`"), r"<code>\1</code>"),
+    (re.compile(r"\*\*(.+?)\*\*"), r"<strong>\1</strong>"),
+    (re.compile(r"(?<![*\w])\*(?!\s)(.+?)(?<!\s)\*(?![*\w])"), r"<em>\1</em>"),
+    (re.compile(r"\[([^\]]+)\]\((https?://[^)\s]+)\)"), r'<a href="\2" rel="noopener noreferrer">\1</a>'),
+]
+
+
+def _inline(text: str) -> str:
+    out = html.escape(text, quote=False)
+    for pattern, repl in _INLINE:
+        out = pattern.sub(repl, out)
+    return out
+
+
+def _table(lines: list) -> str:
+    rows = [[c.strip() for c in line.strip().strip("|").split("|")] for line in lines]
+    head, body = rows[0], [r for r in rows[2:]] if len(rows) > 1 and set("".join(rows[1])) <= set("-: ") else rows[1:]
+    parts = ["<table><thead><tr>", *(f"<th>{_inline(c)}</th>" for c in head), "</tr></thead><tbody>"]
+    for row in body:
+        parts.append("<tr>" + "".join(f"<td>{_inline(c)}</td>" for c in row) + "</tr>")
+    parts.append("</tbody></table>")
+    return "".join(parts)
+
+
+def render_markdown(text: str) -> str:
+    """Rendu sûr : tout le texte est échappé, seuls quelques motifs deviennent du HTML."""
+    text = re.sub(r"<!--.*?-->", "", text or "", flags=re.S)
+    lines, out, i = text.splitlines(), [], 0
+    while i < len(lines):
+        line = lines[i]
+        stripped = line.strip()
+        if stripped.startswith("```"):
+            fence, block = stripped[:3], []
+            i += 1
+            while i < len(lines) and not lines[i].strip().startswith(fence):
+                block.append(lines[i])
+                i += 1
+            out.append("<pre><code>" + html.escape("\n".join(block)) + "</code></pre>")
+            i += 1
+            continue
+        heading = re.match(r"^(#{1,6})\s+(.*)$", stripped)
+        if heading:
+            level = min(len(heading.group(1)) + 1, 6)          # le h1 est le titre de la page
+            out.append(f"<h{level}>{_inline(heading.group(2))}</h{level}>")
+            i += 1
+            continue
+        if stripped.startswith("|"):
+            block = []
+            while i < len(lines) and lines[i].strip().startswith("|"):
+                block.append(lines[i])
+                i += 1
+            out.append(_table(block))
+            continue
+        if stripped.startswith(">"):
+            block = []
+            while i < len(lines) and lines[i].strip().startswith(">"):
+                block.append(lines[i].strip()[1:].strip())
+                i += 1
+            out.append("<blockquote>" + render_markdown("\n".join(block)) + "</blockquote>")
+            continue
+        if re.match(r"^\s*([-*]|\d+\.)\s+", line):
+            ordered = bool(re.match(r"^\s*\d+\.", line))
+            tag, items = ("ol" if ordered else "ul"), []
+            while i < len(lines) and re.match(r"^\s*([-*]|\d+\.)\s+", lines[i]):
+                items.append(re.sub(r"^\s*([-*]|\d+\.)\s+", "", lines[i]))
+                i += 1
+            out.append(f"<{tag}>" + "".join(f"<li>{_inline(it)}</li>" for it in items) + f"</{tag}>")
+            continue
+        if not stripped or re.fullmatch(r"-{3,}|\*{3,}", stripped):
+            i += 1
+            continue
+        para = []
+        while i < len(lines) and lines[i].strip() and not re.match(r"^(#|\||>|```|\s*([-*]|\d+\.)\s)", lines[i].strip()):
+            para.append(lines[i].strip())
+            i += 1
+        out.append("<p>" + _inline(" ".join(para)) + "</p>")
+    return "\n".join(out)
+
+
+# ---------------------------------------------------------------------------
+# Accès aux données
+# ---------------------------------------------------------------------------
+
+
+class Store:
+    """Connexion SQLite partagée entre les threads, sous verrou."""
+
+    def __init__(self, workspace: Path, db=None, memory=False, today=None):
+        self.workspace, self.today, self.db, self.memory = workspace, today, db, memory
+        self.lock = threading.Lock()
+        self.conn = I.open_db(workspace, db, memory)
+        self.last_index = 0.0
+        self.refresh(force=True)
+
+    def refresh(self, force=False) -> None:
+        with self.lock:
+            if force or time.monotonic() - self.last_index > REFRESH_EVERY_S:
+                try:
+                    I.index_workspace(self.conn, self.workspace, self.today)
+                except sqlite3.DatabaseError:
+                    # Base remplacée ou corrompue par un autre processus : elle est
+                    # dérivée, on rouvre et on réindexe.
+                    self.conn.close()
+                    self.conn = I.open_db(self.workspace, self.db, self.memory, rebuild=True)
+                    I.index_workspace(self.conn, self.workspace, self.today)
+                self.last_index = time.monotonic()
+
+    def rows(self, sql: str, params=()) -> list:
+        with self.lock:
+            return [dict(r) for r in self.conn.execute(sql, params).fetchall()]
+
+    def one(self, sql: str, params=()):
+        found = self.rows(sql, params)
+        return found[0] if found else None
+
+    def backfill(self) -> list:
+        with self.lock:
+            return I.backfill_items(self.conn)
+
+    def meta(self, key: str):
+        row = self.one("SELECT value FROM meta WHERE key = ?", (key,))
+        return json.loads(row["value"]) if row and row["value"] and row["value"][:1] in "[{" else (row or {}).get("value")
+
+
+def _today(store: Store) -> date:
+    return date.fromisoformat(store.meta("today") or date.today().isoformat())
+
+
+def _monday(d: date) -> date:
+    return d - timedelta(days=d.weekday())
+
+
+def _strip(row, *keys):
+    return {k: v for k, v in (row or {}).items() if k not in keys} if row else None
+
+
+def api_summary(store: Store, q: dict) -> dict:
+    today = _today(store)
+    settings = store.meta("settings") or {}
+    objective = _strip(store.one("SELECT * FROM objective LIMIT 1"), "body_md")
+    if objective and objective.get("race_date"):
+        race = date.fromisoformat(objective["race_date"])
+        objective["days_left"] = (race - today).days
+        objective["weeks_left"] = round((race - today).days / 7, 1)
+    athlete = _strip(store.one("SELECT * FROM athlete LIMIT 1"), "body_md", "source_path")
+    latest = store.one("SELECT * FROM metric_day WHERE date <= ? ORDER BY date DESC LIMIT 1", (today.isoformat(),))
+    health = _strip(store.one("SELECT * FROM health_day WHERE date <= ? ORDER BY date DESC LIMIT 1",
+                              (today.isoformat(),)), "body_md", "data_json")
+    files = store.rows("SELECT parsed_ok, COUNT(*) AS n FROM source_file WHERE kind IS NOT NULL "
+                       "AND kind NOT IN ('athlete','objective') GROUP BY parsed_ok")
+    incomplete = len(store.backfill())
+    return {
+        "today": today.isoformat(), "settings": settings, "objective": objective, "athlete": athlete,
+        "form": latest, "health": health, "files": {r["parsed_ok"]: r["n"] for r in files},
+        "incomplete_files": incomplete, "assumptions": store.meta("assumptions"),
+        "counts": {
+            "activities": (store.one("SELECT COUNT(*) AS n FROM activity") or {}).get("n", 0),
+            "reports": (store.one("SELECT COUNT(*) AS n FROM report") or {}).get("n", 0),
+            "nutrition": (store.one("SELECT COUNT(*) AS n FROM nutrition_day") or {}).get("n", 0),
+        },
+    }
+
+
+def _days(q: dict, default: int, cap: int = 3650) -> int:
+    try:
+        return max(7, min(cap, int(q.get("days", [default])[0])))
+    except ValueError:
+        return default
+
+
+def api_form(store: Store, q: dict) -> dict:
+    today = _today(store)
+    start = (today - timedelta(days=_days(q, 180) - 1)).isoformat()
+    objective = store.one("SELECT race_date FROM objective LIMIT 1") or {}
+    return {
+        "series": store.rows("SELECT * FROM metric_day WHERE date >= ? AND date <= ? ORDER BY date",
+                             (start, today.isoformat())),
+        "race_date": objective.get("race_date"),
+        "acwr_safe": list(M.ACWR_SAFE),
+    }
+
+
+def api_load(store: Store, q: dict) -> dict:
+    weeks = max(4, min(104, int(q.get("weeks", [26])[0]) if q.get("weeks", [""])[0].isdigit() else 26))
+    today = _today(store)
+    first = _monday(today) - timedelta(weeks=weeks - 1)
+    rows = store.rows("SELECT date, sport, distance_m, duration_s, elevation_gain_m, load FROM activity "
+                      "WHERE date >= ? AND date <= ?", (first.isoformat(), today.isoformat()))
+    buckets = {}
+    for w in range(weeks):
+        start = first + timedelta(weeks=w)
+        buckets[start.isoformat()] = {"week_start": start.isoformat(), "distance_m": 0.0, "duration_s": 0.0,
+                                      "elevation_m": 0.0, "load": 0.0, "sessions": 0}
+    for row in rows:
+        key = _monday(date.fromisoformat(row["date"])).isoformat()
+        b = buckets.get(key)
+        if not b:
+            continue
+        b["sessions"] += 1
+        b["distance_m"] += row["distance_m"] or 0
+        b["duration_s"] += row["duration_s"] or 0
+        b["elevation_m"] += row["elevation_gain_m"] or 0
+        b["load"] += row["load"] or 0
+    latest = store.one("SELECT monotony, strain FROM metric_day WHERE date <= ? ORDER BY date DESC LIMIT 1",
+                       (today.isoformat(),)) or {}
+    return {"weeks": list(buckets.values()), "monotony": latest.get("monotony"), "strain": latest.get("strain")}
+
+
+def api_health(store: Store, q: dict) -> dict:
+    today = _today(store)
+    days = _days(q, 90)
+    start = (today - timedelta(days=days - 1)).isoformat()
+    # 6 jours de plus pour que la médiane mobile soit définie dès le premier point affiché
+    fetch_from = (today - timedelta(days=days + 5)).isoformat()
+    rows = store.rows("SELECT * FROM health_day WHERE date >= ? AND date <= ? ORDER BY date",
+                      (fetch_from, today.isoformat()))
+    by_date = {r["date"]: r for r in rows}
+    series = []
+    for i in range(days):
+        day = date.fromisoformat(start) + timedelta(days=i)
+        row = by_date.get(day.isoformat())
+        window = [by_date[d]["resting_hr_bpm"] for d in
+                  ((day - timedelta(days=k)).isoformat() for k in range(1, 8))
+                  if d in by_date and by_date[d]["resting_hr_bpm"] is not None]
+        median = statistics.median(window) if len(window) >= 3 else None
+        point = {"date": day.isoformat(), "rhr_median7": median}
+        if row:
+            point.update({k: row[k] for k in (
+                "hrv_overnight_ms", "hrv_baseline_low_ms", "hrv_baseline_high_ms", "hrv_status",
+                "resting_hr_bpm", "readiness_score", "sleep_total_s", "sleep_score", "sleep_deep_s",
+                "sleep_rem_s", "sleep_light_s", "verdict", "verdict_reason", "morning_check")})
+            rhr = row["resting_hr_bpm"]
+            point["rhr_delta"] = round(rhr - median, 1) if rhr is not None and median is not None else None
+        series.append(point)
+    settings = store.meta("settings") or {}
+    return {"series": series, "morning_check": settings.get("morning_check", "full"),
+            "thresholds": {"rhr_warn": 5, "rhr_alert": 7}}
+
+
+def api_week(store: Store, q: dict) -> dict:
+    today = _today(store)
+    requested = q.get("start", [None])[0]
+    try:
+        monday = date.fromisoformat(requested) if requested else _monday(today)
+    except ValueError:
+        monday = _monday(today)
+    monday = _monday(monday)
+    sunday = monday + timedelta(days=6)
+    week = store.one("SELECT * FROM week WHERE week_start = ?", (monday.isoformat(),))
+    sessions = store.rows("SELECT * FROM planned_session WHERE date >= ? AND date <= ? ORDER BY date",
+                          (monday.isoformat(), sunday.isoformat()))
+    done = store.rows("SELECT id, date, sport, name, distance_m, duration_s, elevation_gain_m, avg_hr_bpm, load "
+                      "FROM activity WHERE date >= ? AND date <= ? ORDER BY date", (monday.isoformat(), sunday.isoformat()))
+    weather = store.rows("SELECT date, location, category, best_slot, slot_reason, temp_max_c, wind_kmh, precip_mm "
+                         "FROM weather_day WHERE date >= ? AND date <= ? ORDER BY date", (monday.isoformat(), sunday.isoformat()))
+    weeks = [r["week_start"] for r in store.rows("SELECT DISTINCT week_start FROM week ORDER BY week_start")]
+    return {
+        "week_start": monday.isoformat(), "today": today.isoformat(),
+        "week": _strip(week, "body_md"), "body_html": render_markdown(I.C.body_after_block(week["body_md"] or "")) if week else None,
+        "sessions": sessions, "activities": done, "weather": weather, "known_weeks": weeks,
+    }
+
+
+def api_activities(store: Store, q: dict) -> dict:
+    limit = min(500, int(q.get("limit", ["200"])[0])) if q.get("limit", ["200"])[0].isdigit() else 200
+    return {"activities": store.rows(
+        "SELECT id, date, sport, name, location, distance_m, duration_s, elevation_gain_m, avg_hr_bpm, "
+        "max_hr_bpm, recovery_hr_bpm, te_aerobic, load, load_source, vo2max_est, arc_version "
+        "FROM activity ORDER BY date DESC, id DESC LIMIT ?", (limit,))}
+
+
+def api_activity(store: Store, activity_id: int):
+    act = store.one("SELECT * FROM activity WHERE id = ?", (activity_id,))
+    if not act:
+        return None
+    splits = store.rows("SELECT * FROM activity_split WHERE activity_id = ? ORDER BY km", (activity_id,))
+    weather = _strip(store.one("SELECT * FROM weather_day WHERE date = ? LIMIT 1", (act["date"],)), "data_json")
+    body = act.pop("body_md") or ""
+    act.pop("data_json", None)
+    act["missing_reason"] = json.loads(act["missing_reason"]) if act.get("missing_reason") else None
+    return {"activity": act, "splits": splits, "weather": weather,
+            "body_html": render_markdown(I.C.body_after_block(body))}
+
+
+def api_performance(store: Store, q: dict) -> dict:
+    today = _today(store)
+    settings = store.meta("settings") or {}
+    # Tous les jours de la fenêtre, valeurs nulles comprises : un trou dans les données
+    # doit couper la courbe, pas la relier en ligne droite.
+    series = store.rows("SELECT date, vo2max FROM metric_day WHERE date <= ? AND date >= ? ORDER BY date",
+                        (today.isoformat(), (today - timedelta(days=365)).isoformat()))
+    if not any(p["vo2max"] is not None for p in series):
+        series = []
+    last = next((p for p in reversed(series) if p["vo2max"] is not None), None)
+    current = last["vo2max"] if last else None
+    acts = []
+    for act in store.rows("SELECT id, date, sport, name, distance_m FROM activity WHERE sport IN ('running', 'trail')"):
+        act["splits"] = store.rows("SELECT km, distance_m, duration_s FROM activity_split WHERE activity_id = ?",
+                                   (act["id"],))
+        acts.append(act)
+    records = M.best_efforts(acts)
+    recent = M.best_efforts([a for a in acts if a["date"] >= (today - timedelta(days=90)).isoformat()])
+    objective = store.one("SELECT distance_m, elevation_gain_m, target_time_s, name FROM objective LIMIT 1") or {}
+    primary = settings.get("sport", "trail")
+    return {
+        "vo2max": series, "vo2max_current": current, "vo2max_date": last["date"] if last else None,
+        "records": [{"km": k, **v} for k, v in sorted(records.items())],
+        "predictions": M.predictions(current, recent, primary, objective.get("distance_m"),
+                                     objective.get("elevation_gain_m") if primary == "trail" else None),
+        "objective": objective, "sport": primary,
+    }
+
+
+def api_reports(store: Store, q: dict) -> dict:
+    return {"reports": store.rows("SELECT source_path, date, report_type, title, period_start, period_end "
+                                  "FROM report ORDER BY date DESC, source_path DESC")}
+
+
+def api_report(store: Store, q: dict):
+    path = q.get("path", [""])[0]
+    row = store.one("SELECT * FROM report WHERE source_path = ?", (path,))
+    if not row:
+        return None
+    return {**_strip(row, "body_md"), "body_html": render_markdown(I.C.body_after_block(row["body_md"] or ""))}
+
+
+def api_calendar(store: Store, q: dict) -> dict:
+    rows = store.rows("SELECT date, SUM(distance_m) AS distance_m, SUM(duration_s) AS duration_s, "
+                      "SUM(elevation_gain_m) AS elevation_m, SUM(load) AS load, COUNT(*) AS sessions "
+                      "FROM activity WHERE sport != 'rest' GROUP BY date ORDER BY date")
+    years: dict = {}
+    for row in rows:
+        year = row["date"][:4]
+        years.setdefault(year, []).append(row)
+    cumulative = {}
+    for year, days in years.items():
+        total, points = 0.0, []
+        for d in days:
+            total += d["distance_m"] or 0
+            points.append({"doy": date.fromisoformat(d["date"]).timetuple().tm_yday, "distance_m": total})
+        cumulative[year] = points
+    return {"days": rows, "cumulative": cumulative, "today": _today(store).isoformat()}
+
+
+def api_nutrition(store: Store, q: dict) -> dict:
+    today = _today(store)
+    start = (today - timedelta(days=_days(q, 60) - 1)).isoformat()
+    return {"days": store.rows("SELECT date, intake_kcal, burned_kcal, carbs_g, protein_g, fat_g, hydration_ml, "
+                               "weight_kg, target_weight_kg FROM nutrition_day WHERE date >= ? ORDER BY date", (start,))}
+
+
+def api_files(store: Store, q: dict) -> dict:
+    return {"items": store.backfill()}
+
+
+ROUTES = {
+    "/api/summary": api_summary, "/api/form": api_form, "/api/load": api_load,
+    "/api/health": api_health, "/api/week": api_week, "/api/activities": api_activities,
+    "/api/performance": api_performance, "/api/reports": api_reports, "/api/report": api_report,
+    "/api/calendar": api_calendar, "/api/nutrition": api_nutrition, "/api/files": api_files,
+}
+
+# ---------------------------------------------------------------------------
+# HTTP
+# ---------------------------------------------------------------------------
+
+
+class Handler(BaseHTTPRequestHandler):
+    server_version = "arc-dashboard"
+    store: Store = None           # posé par serve()
+    allowed_hosts: set = set()
+
+    def log_message(self, fmt, *args):         # silencieux : c'est un outil local
+        pass
+
+    def _send(self, status: int, body: bytes, ctype: str) -> None:
+        self.send_response(status)
+        self.send_header("Content-Type", ctype)
+        self.send_header("Content-Length", str(len(body)))
+        self.send_header("Cache-Control", "no-store")
+        self.send_header("X-Content-Type-Options", "nosniff")
+        self.send_header("Referrer-Policy", "no-referrer")
+        self.send_header("Content-Security-Policy",
+                         "default-src 'self'; style-src 'self' https://fonts.googleapis.com; "
+                         "font-src https://fonts.gstatic.com; img-src 'self' data:; "
+                         "frame-ancestors 'none'; base-uri 'none'; form-action 'none'")
+        self.end_headers()
+        if self.command != "HEAD":
+            self.wfile.write(body)
+
+    def _json(self, status: int, payload) -> None:
+        self._send(status, json.dumps(payload, ensure_ascii=False).encode("utf-8"), "application/json; charset=utf-8")
+
+    def _host_ok(self) -> bool:
+        # Protection contre le DNS rebinding : une page tierce qui ferait résoudre
+        # son domaine vers 127.0.0.1 enverrait son propre Host.
+        return (self.headers.get("Host") or "") in self.allowed_hosts
+
+    def do_HEAD(self):
+        self.do_GET()
+
+    def do_GET(self):
+        if not self._host_ok():
+            self._json(HTTPStatus.FORBIDDEN, {"error": "hôte non autorisé"})
+            return
+        url = urlparse(self.path)
+        if url.path.startswith("/api/"):
+            self._api(url)
+        else:
+            self._static(url.path)
+
+    def do_POST(self):          # lecture seule
+        self._json(HTTPStatus.METHOD_NOT_ALLOWED, {"error": "lecture seule"})
+
+    do_PUT = do_DELETE = do_PATCH = do_POST
+
+    def _api(self, url) -> None:
+        q = parse_qs(url.query)
+        try:
+            self.store.refresh()
+            match = re.fullmatch(r"/api/activity/(\d+)", url.path)
+            if match:
+                payload = api_activity(self.store, int(match.group(1)))
+            elif url.path in ROUTES:
+                payload = ROUTES[url.path](self.store, q)
+            else:
+                self._json(HTTPStatus.NOT_FOUND, {"error": "route inconnue"})
+                return
+        except Exception as exc:                  # une erreur de données ne doit pas tuer le serveur
+            self._json(HTTPStatus.INTERNAL_SERVER_ERROR, {"error": f"{type(exc).__name__}: {exc}"})
+            return
+        if payload is None:
+            self._json(HTTPStatus.NOT_FOUND, {"error": "introuvable"})
+        else:
+            self._json(HTTPStatus.OK, payload)
+
+    def _static(self, path: str) -> None:
+        rel = "index.html" if path in ("", "/") else path.lstrip("/")
+        target = (WEB_ROOT / rel).resolve()
+        root = WEB_ROOT.resolve()
+        if root not in target.parents or not target.is_file():
+            self._send(HTTPStatus.NOT_FOUND, b"introuvable", "text/plain; charset=utf-8")
+            return
+        ctype = CONTENT_TYPES.get(target.suffix, "application/octet-stream")
+        self._send(HTTPStatus.OK, target.read_bytes(), ctype)
+
+
+def bind(port: int, tries: int = 10) -> ThreadingHTTPServer:
+    last = None
+    candidates = [0] if port == 0 else range(port, port + tries)
+    for candidate in candidates:
+        try:
+            return ThreadingHTTPServer((BIND, candidate), Handler)
+        except OSError as exc:
+            last = exc
+    raise ConfigError(f"aucun port libre entre {port} et {port + tries - 1} ({last}). Essayez --port.")
+
+
+def serve(workspace: Path, port: int, db=None, memory=False, today=None) -> None:
+    Handler.store = Store(workspace, db, memory, today)
+    httpd = bind(port)
+    actual = httpd.server_address[1]
+    Handler.allowed_hosts = {f"127.0.0.1:{actual}", f"localhost:{actual}"}
+    print(f"URL: http://127.0.0.1:{actual}/", flush=True)
+    try:
+        httpd.serve_forever()
+    except KeyboardInterrupt:
+        pass
+    finally:
+        httpd.server_close()
+
+
+def configured_port(workspace: Path) -> int:
+    value = I.load_config(workspace).get("dashboard", {}).get("port", DEFAULT_PORT)
+    try:
+        port = int(value)
+    except (TypeError, ValueError):
+        raise ConfigError(f"[dashboard].port : entier attendu, « {value} » trouvé.")
+    if not 0 <= port <= 65535:
+        raise ConfigError(f"[dashboard].port : {port} hors de 0-65535.")
+    return port
+
+
+def main(argv=None) -> int:
+    parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
+    parser.add_argument("--workspace")
+    parser.add_argument("--port", type=int)
+    parser.add_argument("--db")
+    parser.add_argument("--memory", action="store_true", help="base en mémoire, rien sur disque")
+    parser.add_argument("--today", help="date de référence AAAA-MM-JJ (démonstrations, tests)")
+    args = parser.parse_args(argv)
+    workspace = I.workspace_root(args.workspace)
+    port = args.port if args.port is not None else configured_port(workspace)
+    serve(workspace, port, args.db, args.memory, args.today)
+    return 0
+
+
+if __name__ == "__main__":
+    try:
+        sys.exit(main())
+    except ConfigError as exc:
+        print(f"erreur : {exc}", file=sys.stderr)
+        sys.exit(1)

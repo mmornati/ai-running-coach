@@ -1,0 +1,679 @@
+#!/usr/bin/env python3
+"""Index SQLite dérivé du workspace : la source de vérité reste le Markdown.
+
+La base est jetable et reconstruisible à tout moment depuis les fichiers. Elle
+sert au tableau de bord (`scripts/arc_serve.py`) et aux calculs de charge
+(`scripts/arc_metrics.py`).
+
+    arc_index.py                         # (ré)indexe le workspace, incrémental
+    arc_index.py --rebuild               # repart de zéro
+    arc_index.py --validate FICHIER…     # vérifie le bloc ```arc (code 1 si non conforme)
+    arc_index.py backfill-plan           # écrit .arc/backfill.md : fichiers à réécrire au contrat
+    arc_index.py status                  # état de l'index, en JSON
+
+Options communes : `--workspace DIR` (sinon $ARC_WORKSPACE, le pointeur
+~/.config/ai-running-coach/workspace, puis le moteur), `--db FICHIER` (défaut
+<workspace>/.arc/coach.db), `--memory` (base en mémoire, rien sur disque),
+`--today AAAA-MM-JJ` (date de fin des séries, pour des sorties reproductibles).
+
+Chaîne de lecture par fichier : bloc ```arc valide → format canonique hérité
+(YAML + splits) → puces → rien. Seul le premier étage donne `parsed_ok = ok`.
+
+Bibliothèque standard uniquement (CONTRIBUTING.md).
+"""
+
+from __future__ import annotations
+
+import argparse
+import hashlib
+import json
+import sqlite3
+import sys
+from datetime import date
+from pathlib import Path
+from typing import Dict, List, Optional, Tuple
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import arc_contract as C  # noqa: E402
+import arc_legacy as L  # noqa: E402
+import arc_metrics as M  # noqa: E402
+from coach_config import ConfigError, read_toml  # noqa: E402
+from coach_setup import ENGINE, workspace_root  # noqa: E402
+
+SCHEMA_VERSION = 1
+DEFAULT_DB = ".arc/coach.db"
+DATA_DIRS = ("activities", "medical", "nutrition", "planning", "rapports")
+
+# ---------------------------------------------------------------------------
+# Configuration
+# ---------------------------------------------------------------------------
+
+
+def load_config(workspace: Path) -> Dict[str, dict]:
+    """workspace.toml puis workspace.user.toml, clé par clé (même règle que config.sh).
+
+    Sans `config/workspace.toml` dans le workspace (installation incomplète),
+    les défauts du moteur s'appliquent.
+    """
+    shared = workspace / "config/workspace.toml"
+    if not shared.exists():
+        shared = ENGINE / "config/workspace.toml"
+    merged: Dict[str, dict] = {}
+    for path in (shared, workspace / "config/workspace.user.toml"):
+        for section, values in read_toml(path).items():
+            if isinstance(values, dict):
+                merged.setdefault(section, {}).update(values)
+    return merged
+
+
+def settings(config: Dict[str, dict]) -> dict:
+    """Les réglages qui changent ce que l'index attend et ce que le tableau affiche."""
+    agents = config.get("agents", {}).get("enabled", ["coach", "medical", "nutritionist", "course-strategist"])
+    return {
+        "sport": config.get("sport", {}).get("primary", "trail") or "trail",
+        "morning_check": config.get("health", {}).get("morning_check", "full") or "full",
+        "agents": list(agents),
+        "units": config.get("athlete", {}).get("units", "metric") or "metric",
+        "profile": config.get("athlete", {}).get("profile", "planning/Runner_Profile.md"),
+        "language": config.get("language", {}).get("documents", "fr") or "fr",
+    }
+
+
+# ---------------------------------------------------------------------------
+# Schéma SQLite
+# ---------------------------------------------------------------------------
+
+DDL = """
+CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT);
+CREATE TABLE source_file (
+    path TEXT PRIMARY KEY, kind TEXT, sha256 TEXT, mtime REAL,
+    arc_version INTEGER, parsed_ok TEXT, issues TEXT
+);
+CREATE TABLE athlete (
+    source_path TEXT, name TEXT, hr_max_bpm INTEGER, hr_rest_bpm INTEGER,
+    hr_threshold_bpm INTEGER, sex TEXT, weight_kg REAL, birth_year INTEGER,
+    default_location TEXT, usual_slot TEXT, body_md TEXT
+);
+CREATE TABLE objective (
+    source_path TEXT, name TEXT, race_date TEXT, distance_m REAL, elevation_gain_m REAL,
+    location TEXT, goal TEXT, target_time_s REAL, weekly_start_s REAL, weekly_start_m REAL,
+    weekly_target_s REAL, weekly_target_m REAL, quality_per_week INTEGER,
+    training_location TEXT, body_md TEXT
+);
+CREATE TABLE activity (
+    id INTEGER PRIMARY KEY, source_path TEXT, arc_version INTEGER, date TEXT, sport TEXT,
+    name TEXT, location TEXT, garmin_activity_id INTEGER, start_time TEXT,
+    distance_m REAL, duration_s REAL, moving_duration_s REAL, elevation_gain_m REAL,
+    elevation_loss_m REAL, avg_hr_bpm REAL, max_hr_bpm REAL, recovery_hr_bpm REAL,
+    avg_cadence_spm REAL, calories_kcal REAL, te_aerobic REAL, te_anaerobic REAL, rpe REAL,
+    load REAL, load_source TEXT, vo2max_est REAL, missing_reason TEXT, body_md TEXT, data_json TEXT
+);
+CREATE INDEX activity_date ON activity(date);
+CREATE TABLE activity_split (
+    activity_id INTEGER, km INTEGER, distance_m REAL, duration_s REAL, elev_gain_m REAL,
+    elev_loss_m REAL, avg_hr_bpm REAL, max_hr_bpm REAL, max_speed_kmh REAL,
+    cadence_spm REAL, label TEXT
+);
+CREATE TABLE health_day (
+    source_path TEXT, arc_version INTEGER, date TEXT, morning_check TEXT,
+    sleep_total_s REAL, sleep_deep_s REAL, sleep_light_s REAL, sleep_rem_s REAL,
+    sleep_awake_s REAL, sleep_score REAL, sleep_start TEXT, sleep_end TEXT,
+    hrv_overnight_ms REAL, hrv_baseline_low_ms REAL, hrv_baseline_high_ms REAL, hrv_status TEXT,
+    resting_hr_bpm REAL, readiness_score REAL, body_battery_high REAL, body_battery_low REAL,
+    stress_avg REAL, weight_kg REAL, verdict TEXT, verdict_reason TEXT, body_md TEXT, data_json TEXT
+);
+CREATE INDEX health_date ON health_day(date);
+CREATE TABLE weather_day (
+    source_path TEXT, date TEXT, location TEXT, category TEXT, best_slot TEXT, slot_reason TEXT,
+    temp_min_c REAL, temp_max_c REAL, feels_like_c REAL, wind_kmh REAL, gust_kmh REAL,
+    precip_mm REAL, chance_of_rain_pct REAL, uv_index REAL, data_json TEXT
+);
+CREATE TABLE week (
+    source_path TEXT, arc_version INTEGER, week_start TEXT, location TEXT, phase TEXT,
+    target_duration_s REAL, target_distance_m REAL, target_elevation_m REAL, body_md TEXT
+);
+CREATE TABLE planned_session (
+    source_path TEXT, week_start TEXT, date TEXT, sport TEXT, title TEXT,
+    planned_duration_s REAL, planned_distance_m REAL, planned_elevation_m REAL,
+    intensity TEXT, outdoor INTEGER, garmin_workout_id INTEGER, status TEXT,
+    weather_category TEXT, best_slot TEXT
+);
+CREATE TABLE nutrition_day (
+    source_path TEXT, date TEXT, intake_kcal REAL, carbs_g REAL, protein_g REAL, fat_g REAL,
+    hydration_ml REAL, burned_kcal REAL, weight_kg REAL, target_weight_kg REAL, body_md TEXT
+);
+CREATE TABLE report (
+    source_path TEXT, date TEXT, report_type TEXT, title TEXT, period_start TEXT,
+    period_end TEXT, location TEXT, body_md TEXT
+);
+CREATE TABLE course_eval (
+    source_path TEXT, date TEXT, name TEXT, distance_m REAL, elevation_gain_m REAL,
+    verdict TEXT, body_md TEXT, data_json TEXT
+);
+CREATE TABLE race_plan (
+    source_path TEXT, date TEXT, race_name TEXT, race_date TEXT, distance_m REAL,
+    elevation_gain_m REAL, target_time_s REAL, body_md TEXT, data_json TEXT
+);
+CREATE TABLE aid_station (source_path TEXT, km REAL, name TEXT, cutoff TEXT, services TEXT);
+CREATE TABLE metric_day (
+    date TEXT PRIMARY KEY, load REAL, ctl REAL, atl REAL, tsb REAL, acwr REAL,
+    monotony REAL, strain REAL, vo2max REAL
+);
+-- Lot 2 (ingestion FIT) : tables prévues, vides tant que l'ingestion n'existe pas.
+CREATE TABLE activity_sample (
+    activity_id INTEGER, t_s REAL, distance_m REAL, altitude_m REAL, hr_bpm REAL,
+    speed_ms REAL, cadence_spm REAL, lat REAL, lon REAL
+);
+CREATE TABLE hr_zone_time (activity_id INTEGER, zone INTEGER, seconds REAL);
+"""
+
+# Tables alimentées par fichier (colonne `source_path`) : purgées à la réindexation d'un fichier.
+PER_FILE_TABLES = (
+    "athlete", "objective", "health_day", "weather_day", "week", "planned_session",
+    "nutrition_day", "report", "course_eval", "race_plan", "aid_station",
+)
+
+
+def open_db(workspace: Path, db: Optional[str] = None, memory: bool = False,
+            rebuild: bool = False) -> sqlite3.Connection:
+    if memory:
+        conn = sqlite3.connect(":memory:", check_same_thread=False)
+    else:
+        path = Path(db) if db else workspace / DEFAULT_DB
+        path.parent.mkdir(parents=True, exist_ok=True)
+        if not db:
+            # Le dossier s'ignore lui-même : même dans un workspace dont le .gitignore
+            # n'a jamais été complété, `git add -A` (git_autocommit) n'embarque pas la base.
+            marker = path.parent / ".gitignore"
+            if not marker.exists():
+                marker.write_text("# Index dérivé du tableau de bord : jetable, jamais versionné.\n*\n", encoding="utf-8")
+        # Le tableau de bord et la synchronisation peuvent indexer en même temps :
+        # on attend le verrou plutôt que d'échouer.
+        conn = sqlite3.connect(str(path), check_same_thread=False, timeout=10)
+    conn.row_factory = sqlite3.Row
+    current = None
+    try:
+        row = conn.execute("SELECT value FROM meta WHERE key = 'schema_version'").fetchone()
+        current = int(row[0]) if row else None
+    except sqlite3.DatabaseError:
+        current = None
+    # --rebuild vide les tables sur place au lieu de supprimer le fichier : un serveur
+    # déjà ouvert sur la base garderait sinon une connexion vers un fichier disparu.
+    if rebuild or current != SCHEMA_VERSION:
+        # Base d'une autre version (ou vide) : elle est dérivée, on la recrée.
+        for (name,) in conn.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall():
+            conn.execute(f'DROP TABLE IF EXISTS "{name}"')
+        conn.executescript(DDL)
+        conn.execute("INSERT INTO meta VALUES ('schema_version', ?)", (str(SCHEMA_VERSION),))
+        conn.commit()
+    return conn
+
+
+# ---------------------------------------------------------------------------
+# Découverte et lecture des fichiers
+# ---------------------------------------------------------------------------
+
+
+def classify(rel: str) -> Optional[str]:
+    """Type attendu d'après le chemin (None : fichier hors contrat, sauf bloc ```arc)."""
+    parts = rel.split("/")
+    folder, name = parts[0], parts[-1]
+    if folder == "activities" and L.filename_date(name) and L.sport_from_filename(name):
+        # `2026-08-21_strides_analysis.md` est une analyse, pas une séance : seul un
+        # type de sport connu après la date fait un fichier d'activité.
+        return "activity"
+    if folder == "medical" and name.endswith("_health.md"):
+        return "health"
+    if folder == "medical" and name.endswith("_meteo.md"):
+        return "weather"
+    if folder == "nutrition" and name.endswith("_nutrition.md"):
+        return "nutrition"
+    if folder == "rapports" and name.endswith(".md"):
+        return "report"
+    if folder == "planning":
+        if name == "Runner_Profile.md":
+            return "athlete"
+        if name == "active_objective.md":
+            return "objective"
+        if name.startswith("Semaine_"):
+            return "week"
+        if "_evaluation_parcours_" in name:
+            return "course_eval"
+    return None
+
+
+def discover(workspace: Path) -> List[Path]:
+    files = []
+    for folder in DATA_DIRS:
+        root = workspace / folder
+        if root.is_dir():
+            files.extend(p for p in sorted(root.rglob("*.md")) if p.is_file())
+    return files
+
+
+def expected_keys(kind: str, data: dict, conf: dict) -> List[str]:
+    """Clés dont l'absence est une dette (au-delà des clés obligatoires du contrat)."""
+    if kind == "activity":
+        sport = data.get("sport")
+        keys = ["garmin_activity_id"]
+        if sport not in ("strength", "rest", "home_trainer", "indoor_cycling", "elliptical"):
+            keys.append("distance_m")
+        if sport != "rest":
+            keys.append("avg_hr_bpm")
+        if sport in M.RUNNING_SPORTS:
+            keys.append("splits")
+        return keys
+    if kind == "health":
+        mode = data.get("morning_check") or conf["morning_check"]
+        return {
+            "full": ["sleep_total_s", "hrv_overnight_ms", "resting_hr_bpm", "readiness_score", "verdict"],
+            "minimal": ["readiness_score", "verdict"],
+        }.get(mode, [])
+    if kind == "weather":
+        return ["best_slot"]
+    return []
+
+
+def read_file(path: Path, rel: str, conf: dict) -> Tuple[Optional[str], dict, int, str, List[str]]:
+    """Rend (kind, données, arc_version, parsed_ok, problèmes)."""
+    text = path.read_text(encoding="utf-8", errors="replace")
+    kind = classify(rel)
+    issues: List[str] = []
+
+    if kind in ("athlete", "objective"):          # fichiers humains : puces du modèle
+        data = L.parse_profile(text) if kind == "athlete" else L.parse_objective(text)
+        data["body_md"] = text
+        return kind, data, 0, "ok" if data else "partial", issues
+
+    block_error = None
+    try:
+        block = C.extract_block(text)
+    except C.ContractError as exc:
+        block, block_error = None, str(exc)
+
+    if block is not None:
+        errors, warnings = C.validate(block)
+        block_kind = block.get("kind")
+        if block_kind in C.KINDS:
+            if kind and block_kind != kind:
+                issues.append(f"kind « {block_kind} » dans un fichier attendu « {kind} »")
+            kind = block_kind
+        issues.extend(warnings)
+        if not errors:
+            data = dict(block)
+            data["body_md"] = C.body_after_block(text)
+            missing = [k for k in expected_keys(kind, data, conf) if data.get(k) is None]
+            issues.extend(f"{k} : absent" for k in missing)
+            return kind, data, 1, "ok", issues
+        issues = errors + issues
+        status = "invalid"
+    else:
+        if kind is None:
+            return None, {}, 0, "no", []
+        issues.append(block_error or "bloc ```arc absent")
+        status = "partial"
+
+    # Repli : lecture héritée.
+    name = path.name
+    if kind == "activity":
+        data = L.legacy_activity(text, name, conf["sport"])
+    elif kind == "health":
+        data = L.legacy_health(text, name, conf["morning_check"])
+    elif kind == "weather":
+        data = L.legacy_weather(text, name)
+    elif kind == "week":
+        data = L.legacy_week(text, name, conf["sport"])
+    elif kind == "nutrition":
+        data = L.legacy_nutrition(text, name)
+    elif kind == "report":
+        data = L.legacy_report(text, name)
+    elif kind == "course_eval":
+        data = {"kind": "course_eval", "date": L.filename_date(name), "name": L.title_of(text) or name}
+    else:
+        data = {}
+    data["body_md"] = text
+    required = C.SCHEMA.get(kind, {}).get("required", {})
+    missing = [k for k in list(required) + expected_keys(kind, data, conf) if data.get(k) in (None, [], "")]
+    issues.extend(f"{k} : absent" for k in dict.fromkeys(missing))
+    if kind == "activity":
+        # « Aucune activité enregistrée ce jour » ne doit pas devenir une séance vide.
+        usable = data.get("duration_s") is not None or data.get("distance_m") is not None
+    else:
+        usable = any(data.get(k) is not None for k in required if k != "date") or kind in ("report", "course_eval")
+    if "date" in required and not data.get("date"):
+        usable = False                      # `2026-04-11b_health.md` : sans date sûre, rien à tracer
+        issues.append("date introuvable (nom de fichier non conforme)")
+    if status == "partial" and not usable:
+        status = "no"
+    return kind, data, 0, status, issues
+
+
+# ---------------------------------------------------------------------------
+# Écriture
+# ---------------------------------------------------------------------------
+
+
+def _j(value) -> Optional[str]:
+    return None if value is None else json.dumps(value, ensure_ascii=False)
+
+
+def _insert(conn, table: str, row: dict) -> int:
+    cols = ", ".join(row)
+    marks = ", ".join("?" for _ in row)
+    return conn.execute(f"INSERT INTO {table} ({cols}) VALUES ({marks})", list(row.values())).lastrowid
+
+
+def _purge(conn, rel: str) -> None:
+    for (activity_id,) in conn.execute("SELECT id FROM activity WHERE source_path = ?", (rel,)).fetchall():
+        conn.execute("DELETE FROM activity_split WHERE activity_id = ?", (activity_id,))
+    conn.execute("DELETE FROM activity WHERE source_path = ?", (rel,))
+    for table in PER_FILE_TABLES:
+        conn.execute(f"DELETE FROM {table} WHERE source_path = ?", (rel,))
+
+
+def _data_json(data: dict) -> str:
+    return _j({k: v for k, v in data.items() if k != "body_md"})
+
+
+def store(conn, rel: str, kind: str, data: dict, arc_version: int) -> None:
+    body = data.get("body_md")
+    g = data.get
+    if kind == "athlete":
+        _insert(conn, "athlete", {
+            "source_path": rel, "name": g("name"), "hr_max_bpm": g("hr_max_bpm"),
+            "hr_rest_bpm": g("hr_rest_bpm"), "hr_threshold_bpm": g("hr_threshold_bpm"),
+            "sex": g("sex"), "weight_kg": g("weight_kg"), "birth_year": g("birth_year"),
+            "default_location": g("default_location"), "usual_slot": g("usual_slot"), "body_md": body,
+        })
+    elif kind == "objective":
+        row = {k: g(k) for k in (
+            "name", "race_date", "distance_m", "elevation_gain_m", "location", "goal", "target_time_s",
+            "weekly_start_s", "weekly_start_m", "weekly_target_s", "weekly_target_m",
+            "quality_per_week", "training_location")}
+        _insert(conn, "objective", {"source_path": rel, **row, "body_md": body})
+    elif kind == "activity":
+        activity_id = _insert(conn, "activity", {
+            "source_path": rel, "arc_version": arc_version, "date": g("date"), "sport": g("sport"),
+            "name": g("name"), "location": g("location"), "garmin_activity_id": g("garmin_activity_id"),
+            "start_time": g("start_time"), "distance_m": g("distance_m"), "duration_s": g("duration_s"),
+            "moving_duration_s": g("moving_duration_s"), "elevation_gain_m": g("elevation_gain_m"),
+            "elevation_loss_m": g("elevation_loss_m"), "avg_hr_bpm": g("avg_hr_bpm"),
+            "max_hr_bpm": g("max_hr_bpm"), "recovery_hr_bpm": g("recovery_hr_bpm"),
+            "avg_cadence_spm": g("avg_cadence_spm"), "calories_kcal": g("calories_kcal"),
+            "te_aerobic": g("training_effect_aerobic"), "te_anaerobic": g("training_effect_anaerobic"),
+            "rpe": g("rpe"), "missing_reason": _j(g("missing_reason")), "body_md": body,
+            "data_json": _data_json(data),
+        })
+        for split in C.split_rows(data):
+            _insert(conn, "activity_split", {
+                "activity_id": activity_id,
+                **{col: split.get(col) for col in C.SPLIT_COLUMNS},
+            })
+    elif kind == "health":
+        cols = [k for k in C.SCHEMA["health"]["optional"] if k not in ("readiness_factors", "missing_reason")]
+        _insert(conn, "health_day", {
+            "source_path": rel, "arc_version": arc_version, "date": g("date"),
+            "morning_check": g("morning_check"), **{k: g(k) for k in cols},
+            "body_md": body, "data_json": _data_json(data),
+        })
+    elif kind == "weather":
+        _insert(conn, "weather_day", {
+            "source_path": rel, **{k: g(k) for k in (
+                "date", "location", "category", "best_slot", "slot_reason", "temp_min_c", "temp_max_c",
+                "feels_like_c", "wind_kmh", "gust_kmh", "precip_mm", "chance_of_rain_pct", "uv_index")},
+            "data_json": _data_json(data),
+        })
+    elif kind == "week":
+        _insert(conn, "week", {
+            "source_path": rel, "arc_version": arc_version, "week_start": g("week_start"),
+            "location": g("location"), "phase": g("phase"), "target_duration_s": g("target_duration_s"),
+            "target_distance_m": g("target_distance_m"), "target_elevation_m": g("target_elevation_m"),
+            "body_md": body,
+        })
+        for s in g("sessions") or []:
+            if not isinstance(s, dict):
+                continue
+            _insert(conn, "planned_session", {
+                "source_path": rel, "week_start": g("week_start"),
+                **{k: s.get(k) for k in (
+                    "date", "sport", "title", "planned_duration_s", "planned_distance_m",
+                    "planned_elevation_m", "intensity", "garmin_workout_id", "status",
+                    "weather_category", "best_slot")},
+                "outdoor": None if s.get("outdoor") is None else int(bool(s["outdoor"])),
+            })
+    elif kind == "nutrition":
+        _insert(conn, "nutrition_day", {
+            "source_path": rel, **{k: g(k) for k in (
+                "date", "intake_kcal", "carbs_g", "protein_g", "fat_g", "hydration_ml",
+                "burned_kcal", "weight_kg", "target_weight_kg")},
+            "body_md": body,
+        })
+    elif kind == "report":
+        _insert(conn, "report", {
+            "source_path": rel, **{k: g(k) for k in (
+                "date", "report_type", "title", "period_start", "period_end", "location")},
+            "body_md": body,
+        })
+    elif kind == "course_eval":
+        _insert(conn, "course_eval", {
+            "source_path": rel, "date": g("date"), "name": g("name"), "distance_m": g("distance_m"),
+            "elevation_gain_m": g("elevation_gain_m"), "verdict": g("verdict"), "body_md": body,
+            "data_json": _data_json(data),
+        })
+    elif kind == "race_plan":
+        _insert(conn, "race_plan", {
+            "source_path": rel, **{k: g(k) for k in (
+                "date", "race_name", "race_date", "distance_m", "elevation_gain_m", "target_time_s")},
+            "body_md": body, "data_json": _data_json(data),
+        })
+        for station in g("aid_stations") or []:
+            if isinstance(station, dict):
+                _insert(conn, "aid_station", {
+                    "source_path": rel, "km": station.get("km"), "name": station.get("name"),
+                    "cutoff": station.get("cutoff"), "services": _j(station.get("services")),
+                })
+
+
+def compute_metrics(conn, conf: dict, today: Optional[str] = None) -> None:
+    """Charge par séance, VO2max par séance, puis la série quotidienne matérialisée."""
+    athlete = conn.execute("SELECT * FROM athlete LIMIT 1").fetchone()
+    athlete = dict(athlete) if athlete else {}
+    loads: Dict[str, float] = {}
+    estimates = []
+    rows = conn.execute("SELECT * FROM activity ORDER BY date").fetchall()
+    for row in rows:
+        act = dict(row)
+        load, source = M.session_load(act, athlete)
+        vo2 = M.vo2max_effective(act, athlete)
+        conn.execute("UPDATE activity SET load = ?, load_source = ?, vo2max_est = ? WHERE id = ?",
+                     (round(load, 2), source, vo2, act["id"]))
+        if act.get("date"):
+            loads[act["date"]] = loads.get(act["date"], 0.0) + load
+            if vo2 is not None:
+                estimates.append((act["date"], vo2, act.get("duration_s") or 0))
+    conn.execute("DELETE FROM metric_day")
+    dated = sorted(loads)
+    if dated:
+        start = date.fromisoformat(dated[0])
+        end = max(date.fromisoformat(dated[-1]), date.fromisoformat(today) if today else date.today())
+        for point in M.daily_series(loads, start, end):
+            point["vo2max"] = M.vo2max_trend(estimates, point["date"])
+            _insert(conn, "metric_day", point)
+
+
+def index_workspace(conn, workspace: Path, today: Optional[str] = None) -> dict:
+    """Indexe (incrémental) puis recalcule les métriques. Rend un résumé."""
+    conf = settings(load_config(workspace))
+    seen = set()
+    counts = {"indexed": 0, "unchanged": 0, "removed": 0}
+    for path in discover(workspace):
+        rel = path.relative_to(workspace).as_posix()
+        seen.add(rel)
+        raw = path.read_bytes()
+        digest = hashlib.sha256(raw).hexdigest()
+        known = conn.execute("SELECT sha256 FROM source_file WHERE path = ?", (rel,)).fetchone()
+        if known and known[0] == digest:
+            counts["unchanged"] += 1
+            continue
+        _purge(conn, rel)
+        kind, data, arc_version, parsed_ok, issues = read_file(path, rel, conf)
+        twin = None
+        if kind == "activity" and data.get("garmin_activity_id"):
+            twin = conn.execute("SELECT source_path FROM activity WHERE garmin_activity_id = ? AND source_path != ?",
+                                (data["garmin_activity_id"], rel)).fetchone()
+        if twin:
+            # Même séance Garmin décrite dans deux fichiers : une seule charge. Le fichier
+            # écarté est relu à chaque passe (sha vide) pour reprendre la main si l'autre disparaît.
+            issues.append(f"doublon de {twin[0]} (même garmin_activity_id) : non compté")
+            digest = ""
+        elif kind is not None and parsed_ok != "no":
+            store(conn, rel, kind, data, arc_version)
+        conn.execute(
+            "INSERT OR REPLACE INTO source_file VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (rel, kind, digest, path.stat().st_mtime, arc_version, parsed_ok, _j(issues)),
+        )
+        counts["indexed"] += 1
+    for (rel,) in conn.execute("SELECT path FROM source_file").fetchall():
+        if rel not in seen:
+            _purge(conn, rel)
+            conn.execute("DELETE FROM source_file WHERE path = ?", (rel,))
+            counts["removed"] += 1
+    compute_metrics(conn, conf, today)
+    for key, value in (("settings", _j(conf)), ("assumptions", _j(M.ASSUMPTIONS)),
+                       ("today", today or date.today().isoformat())):
+        conn.execute("INSERT OR REPLACE INTO meta VALUES (?, ?)", (key, value))
+    conn.commit()
+    return counts
+
+
+# ---------------------------------------------------------------------------
+# Backfill
+# ---------------------------------------------------------------------------
+
+
+def backfill_items(conn) -> List[dict]:
+    """Fichiers qui ne sont pas au contrat, ou incomplets, et ce qui leur manque.
+
+    L'attendu tient compte de la configuration : en `morning_check = "off"`, un
+    fichier santé sans HRV n'est pas une dette (expected_keys ne demande rien) ;
+    un workspace sans nutritionniste n'a pas de `nutrition/` à remplir.
+    """
+    items = []
+    for row in conn.execute(
+        "SELECT path, kind, parsed_ok, issues FROM source_file "
+        "WHERE kind IS NOT NULL AND kind NOT IN ('athlete', 'objective') "
+        "AND parsed_ok != 'ok' ORDER BY path"
+    ).fetchall():
+        # Seul un fichier hors contrat (sans bloc, bloc invalide, illisible) est une dette.
+        # Une clé facultative absente d'un bloc valide (pas de verdict ce jour-là, pas de
+        # splits sur une séance de renfo) reste visible dans `issues`, sans être à reprendre.
+        issues = json.loads(row["issues"] or "[]")
+        items.append({"path": row["path"], "kind": row["kind"], "status": row["parsed_ok"], "issues": issues})
+    return items
+
+
+def write_backfill(conn, workspace: Path) -> Path:
+    items = backfill_items(conn)
+    lines = [
+        "# Backfill — fichiers à réécrire au contrat ```arc",
+        "",
+        "> Généré par `scripts/arc_index.py backfill-plan`. Ne pas éditer : relancer la commande.",
+        "> Chaque fichier doit être réécrit avec un bloc ```arc conforme au skill",
+        "> `workspace-data-contract`, en conservant le texte existant sous le bloc.",
+        "",
+        f"**{len(items)} fichier(s)** à traiter.",
+        "",
+    ]
+    for item in items:
+        lines.append(f"- [ ] `{item['path']}` — {item['kind']} ({item['status']})")
+        for issue in item["issues"]:
+            lines.append(f"    - {issue}")
+    out = workspace / ".arc/backfill.md"
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    return out
+
+
+# ---------------------------------------------------------------------------
+# Validation d'un fichier (appelée par les agents après chaque écriture)
+# ---------------------------------------------------------------------------
+
+
+def validate_file(path: Path) -> Tuple[bool, List[str], List[str]]:
+    if not path.is_file():
+        return False, [f"{path} : fichier introuvable"], []
+    if path.name in ("Runner_Profile.md", "active_objective.md"):
+        return True, [], ["fichier édité par l'humain : pas de bloc ```arc attendu (puces du modèle)"]
+    try:
+        block = C.extract_block(path.read_text(encoding="utf-8"))
+    except C.ContractError as exc:
+        return False, [str(exc)], []
+    if block is None:
+        return False, ["bloc ```arc absent — voir le skill workspace-data-contract"], []
+    errors, warnings = C.validate(block)
+    expected = classify(f"{path.parent.name}/{path.name}")
+    if expected and block.get("kind") in C.KINDS and block.get("kind") != expected:
+        warnings.append(f"kind « {block.get('kind')} » inattendu pour ce fichier (« {expected} » attendu)")
+    return not errors, errors, warnings
+
+
+# ---------------------------------------------------------------------------
+# CLI
+# ---------------------------------------------------------------------------
+
+
+def build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
+    parser.add_argument("command", nargs="?", default="index", choices=("index", "backfill-plan", "status"))
+    parser.add_argument("--workspace")
+    parser.add_argument("--db")
+    parser.add_argument("--memory", action="store_true")
+    parser.add_argument("--rebuild", action="store_true")
+    parser.add_argument("--today", help="date de fin des séries (AAAA-MM-JJ)")
+    parser.add_argument("--validate", nargs="+", metavar="FICHIER")
+    return parser
+
+
+def main(argv=None) -> int:
+    args = build_parser().parse_args(argv)
+    if args.today:
+        try:
+            date.fromisoformat(args.today)
+        except ValueError:
+            raise ConfigError(f"--today : date AAAA-MM-JJ attendue, « {args.today} » reçue.")
+
+    if args.validate:
+        all_ok = True
+        for name in args.validate:
+            ok, errors, warnings = validate_file(Path(name))
+            all_ok &= ok
+            print(f"{'ok' if ok else 'NON CONFORME'}: {name}")
+            for line in errors:
+                print(f"  erreur : {line}")
+            for line in warnings:
+                print(f"  attention : {line}")
+        return 0 if all_ok else 1
+
+    workspace = workspace_root(args.workspace)
+    conn = open_db(workspace, args.db, args.memory, args.rebuild)
+    counts = index_workspace(conn, workspace, args.today)
+    if args.command == "backfill-plan":
+        out = write_backfill(conn, workspace)
+        print(f"{len(backfill_items(conn))} fichier(s) à reprendre — {out}")
+        return 0
+    if args.command == "status":
+        by_status = {row[0]: row[1] for row in conn.execute(
+            "SELECT parsed_ok, COUNT(*) FROM source_file WHERE kind IS NOT NULL GROUP BY parsed_ok")}
+        print(json.dumps({"workspace": str(workspace), **counts, "files": by_status}, ensure_ascii=False))
+        return 0
+    print(f"index : {counts['indexed']} lu(s), {counts['unchanged']} inchangé(s), "
+          f"{counts['removed']} retiré(s) — {workspace / DEFAULT_DB if not args.memory and not args.db else args.db or ':memory:'}")
+    return 0
+
+
+if __name__ == "__main__":
+    try:
+        sys.exit(main())
+    except ConfigError as exc:
+        print(f"erreur : {exc}", file=sys.stderr)
+        sys.exit(1)

@@ -118,6 +118,23 @@ Chaque agent s'appuie sur des skills spécialisés — des protocoles précis qu
   </div>
 </div>
 
+<div class="arc-section" markdown>
+  <div class="arc-section__inner" markdown>
+
+## Tout ce que le coach sait, sous vos yeux
+
+Verdict du jour, bilan du matin, courbe de forme, semaine planifiée face au réalisé,
+séances et splits, prédictions, rapports du coach : un tableau de bord local, en
+lecture seule, alimenté par les fichiers de votre workspace — même quand le coach
+travaille seul sur votre machine coach.
+
+![Tableau de bord ai-running-coach — vue Aujourd'hui](assets/dashboard/aujourdhui.webp){ .arc-shot }
+
+<a href="dashboard/" class="md-button">Découvrir le tableau de bord</a>
+
+  </div>
+</div>
+
 <div class="arc-section arc-section--tint" markdown>
   <div class="arc-section__inner arc-cta" markdown>
 

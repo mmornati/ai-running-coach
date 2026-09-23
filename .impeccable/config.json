@@ -1,0 +1,14 @@
+{
+  "detector": {
+    "ignoreRules": [],
+    "ignoreFiles": [],
+    "ignoreValues": [
+      {
+        "rule": "overused-font",
+        "value": "inter",
+        "createdAt": "2026-09-23T06:11:29.203Z",
+        "reason": "project design system: DESIGN.md sets Inter as the body/UI font (typography.body/label); the dashboard inherits the established world"
+      }
+    ]
+  }
+}

@@ -1,0 +1,13 @@
+# Contrat de données : la synchronisation écrit des fichiers qu'on peut calculer.
+# Sans bloc ```arc, le tableau de bord et la comparaison de parcours retombent sur
+# une lecture approximative de la prose.
+id = "sync-writes-arc-block"
+prompt = "/garmin-daily-sync"
+fixture = "empty"
+
+[config.sync]
+lookback_days = 3
+
+[expect]
+must_match = ['```resume']
+files_with_arc_block = ["activities/*.md", "medical/*_health.md"]

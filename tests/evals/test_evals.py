@@ -21,7 +21,7 @@ class TestCaseFilesAreValid(unittest.TestCase):
 
     KNOWN_EXPECTATIONS = {
         "must_match", "must_not_match", "tools_called", "tools_not_called",
-        "files_created", "max_words", "first_line_matches",
+        "files_created", "max_words", "first_line_matches", "files_with_arc_block", "files_absent",
     }
 
     def setUp(self):

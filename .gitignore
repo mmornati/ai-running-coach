@@ -46,3 +46,7 @@ config/workspace.user.toml
 site/
 # Journaux des synchronisations automatiques
 logs/
+# Index SQLite du tableau de bord (dérivé des fichiers, jetable)
+/.arc/
+# Cache local du hook de design (impeccable)
+/.impeccable/hook.cache.json

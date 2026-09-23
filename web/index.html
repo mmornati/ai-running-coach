@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <title>Tableau de bord — ai-running-coach</title>
+  <link rel="icon" href="favicon.svg" type="image/svg+xml">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Sora:wght@600;700&display=swap">
+  <link rel="stylesheet" href="css/app.css">
+</head>
+<body>
+  <a class="skip" href="#main">Aller au contenu</a>
+  <header class="top">
+    <a class="brand" href="#/"><svg class="brand__mark" viewBox="0 0 24 24" aria-hidden="true"><path d="M2 19 9 8l4 6 3-4 6 9Z"/></svg><span>ai-running-coach</span></a>
+    <div class="objective" id="objective" aria-live="polite"></div>
+    <button class="icon-btn" id="theme" type="button" aria-label="Basculer le thème clair / sombre">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3a9 9 0 1 0 9 9 7 7 0 0 1-9-9Z"/></svg>
+    </button>
+  </header>
+  <div class="shell">
+    <nav class="nav" id="nav" aria-label="Sections"></nav>
+    <main class="main" id="main" tabindex="-1" aria-live="polite">
+      <div class="loading" aria-hidden="true"><div class="skeleton skeleton--title"></div><div class="skeleton"></div><div class="skeleton skeleton--block"></div></div>
+    </main>
+  </div>
+  <script type="module" src="js/app.js"></script>
+</body>
+</html>

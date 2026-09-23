@@ -43,6 +43,7 @@ COPIED = [
     "scripts",
     "config",
     "templates",
+    "web",
 ]
 
 

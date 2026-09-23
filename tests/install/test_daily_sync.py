@@ -117,3 +117,57 @@ class TestLaunchd(InstallAsserts):
             ET.fromstring(content)
         except ET.ParseError as exc:
             self.fail(f"plist XML invalide : {exc}\n{content}")
+
+
+class TestGitSyncBetweenMachines(InstallAsserts):
+    """La machine coach doit intégrer ce que le portable a poussé.
+
+    Défaut verrouillé : `daily-sync.sh` commitait puis poussait sans jamais tirer.
+    Un seul push venu du portable (fichiers mis au contrat, plan écrit hors cron)
+    rendait tous les push suivants de la machine coach impossibles.
+    """
+
+    def _git(self, sb, cwd, *args):
+        proc = sb.run(["git", "-c", "user.name=t", "-c", "user.email=t@t", *args], cwd=cwd)
+        self.assertSucceeded(proc, "git " + " ".join(args))
+        return proc
+
+    def _setup(self, sb):
+        remote = sb.root / "remote.git"
+        self._git(sb, sb.root, "init", "-q", "--bare", "-b", "main", str(remote))
+        server = sb.root / "coach"
+        self._git(sb, sb.root, "clone", "-q", str(remote), str(server))
+        (server / "config").mkdir()
+        (server / "config/workspace.user.toml").write_text(
+            '[sync]\nrunner = "claude"\ngit_autocommit = true\n\n[notifications]\nprovider = "none"\n'
+        )
+        (server / ".gitignore").write_text("/logs/\n/config/workspace.user.toml\n")
+        (server / "activities").mkdir()
+        (server / "activities/2026-09-20_running.md").write_text("# Séance\n")
+        self._git(sb, server, "add", "-A")
+        self._git(sb, server, "commit", "-q", "-m", "init")
+        self._git(sb, server, "push", "-q", "-u", "origin", "main")
+        laptop = sb.root / "portable"
+        self._git(sb, sb.root, "clone", "-q", str(remote), str(laptop))
+        return remote, server, laptop
+
+    def test_sync_pulls_laptop_push_then_pushes(self):
+        with Sandbox() as sb:
+            remote, server, laptop = self._setup(sb)
+            # Le portable pousse une mise au contrat…
+            (laptop / "activities/2026-09-20_running.md").write_text("# Séance\n\n```arc\n{}\n```\n")
+            self._git(sb, laptop, "commit", "-q", "-am", "arc: contrat")
+            self._git(sb, laptop, "push", "-q")
+            # … pendant que la machine coach a produit un nouveau fichier.
+            (server / "medical").mkdir()
+            (server / "medical/2026-09-23_health.md").write_text("# Santé\n")
+
+            proc = sb.script("daily-sync.sh", ARC_WORKSPACE=str(server))
+            self.assertSucceeded(proc)
+            self.assertOutputContains(proc, "push origin")
+            self.assertIn("```arc", (server / "activities/2026-09-20_running.md").read_text(),
+                          "la machine coach n'a pas intégré le push du portable")
+            log = self._git(sb, laptop, "fetch", "-q")
+            log = self._git(sb, laptop, "log", "--format=%s", "origin/main").stdout
+            self.assertIn("arc: contrat", log)
+            self.assertRegex(log.splitlines()[0], r"^sync: ", "le commit de sync n'est pas au sommet du remote")

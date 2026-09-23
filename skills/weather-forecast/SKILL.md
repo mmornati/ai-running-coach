@@ -20,7 +20,8 @@ Alternative gratuite et sans clé : Open-Meteo (`https://api.open-meteo.com/v1/f
 ## Résolution du lieu — ordre STRICT (ne jamais deviner)
 
 ```
-1. planning/Semaine_*.md → champ "Lieu d'entraînement :" du fichier semaine actif
+1. planning/Semaine_*.md → clé "location" du bloc ```arc du fichier semaine actif
+   (fichiers anciens sans bloc : champ "Lieu d'entraînement :")
 2. planning/active_objective.md → "Lieu d'entraînement par défaut"
 3. planning/Runner_Profile.md → "Lieu par défaut"
 4. Si aucun des trois → question() à l'utilisateur (ne JAMAIS inventer)
@@ -77,10 +78,12 @@ Garder les autres champs en mémoire seulement si utile (visibilité, pression).
 
 ## Persistance — `medical/YYYY-MM-DD_meteo.md`
 
-**Une fois par jour, par lieu.** Format dans la langue des documents (`config/workspace.toml` → `[language].documents`, défaut FRENCH) :
+**Une fois par jour, par lieu.** Le fichier s'ouvre par son bloc ```arc (`kind: weather` : `location`, `category` en `green` / `yellow` / `orange` / `red`, `best_slot` en `morning` / `midday` / `evening` / `none`, valeurs en °C, km/h, mm — voir le skill `workspace-data-contract`), puis le texte ci-dessous. Format dans la langue des documents (`config/workspace.toml` → `[language].documents`, défaut FRENCH) :
 
 ```markdown
 # Météo — {lieu} — {YYYY-MM-DD}
+
+(bloc ```arc kind: weather)
 
 ## Données brutes
 - **Température :** min {T_min}°C / max {T_max}°C (ressenti {feels}°C)

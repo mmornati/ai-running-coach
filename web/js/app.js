@@ -1,0 +1,559 @@
+// Tableau de bord ai-running-coach — lecture seule, servi par scripts/arc_serve.py.
+import * as F from "./format.js";
+import { timeChart, attachCursor, verdictStrip, yearCalendar } from "./chart.js";
+
+const $ = (sel, root = document) => root.querySelector(sel);
+const main = $("#main");
+const cache = new Map();
+let SUMMARY = null;
+
+async function api(path, { fresh = false } = {}) {
+  if (!fresh && cache.has(path)) return cache.get(path);
+  const res = await fetch(`/api/${path}`, { headers: { Accept: "application/json" } });
+  if (!res.ok) {
+    let detail = "";
+    try { detail = (await res.json()).error || ""; } catch { /* corps non JSON */ }
+    throw new Error(`${res.status} ${detail}`.trim());
+  }
+  const data = await res.json();
+  cache.set(path, data);
+  return data;
+}
+
+// ---------------------------------------------------------------------------
+// Petits composants
+// ---------------------------------------------------------------------------
+
+const chip = (kind, value, label) => `<span class="chip chip--${kind}-${F.esc(value)}"><span class="chip__dot" aria-hidden="true"></span>${F.esc(label)}</span>`;
+const verdictChip = (v) => (v ? chip("verdict", v, F.VERDICT[v] || v) : "");
+const weatherChip = (w) => (w ? chip("weather", w, F.WEATHER[w] || w) : "");
+const statusChip = (s) => (s ? chip("status", s, F.STATUS[s] || s) : "");
+
+function note(text) {
+  return `<p class="note">${text}</p>`;
+}
+
+function empty(title, body) {
+  return `<div class="empty"><h3>${F.esc(title)}</h3><p>${body}</p></div>`;
+}
+
+function header(title, sub = "") {
+  return `<header class="view-head"><h1>${F.esc(title)}</h1>${sub ? `<p class="view-sub">${sub}</p>` : ""}</header>`;
+}
+
+/** Jauge horizontale : valeur située dans une bande de référence. */
+function rangeBar(value, lo, hi, min, max, cls = "") {
+  if (value === null || value === undefined) return `<svg class="range" viewBox="0 0 200 14" aria-hidden="true"></svg>`;
+  const span = max - min || 1;
+  const px = (v) => Math.max(0, Math.min(200, ((v - min) / span) * 200));
+  const band = lo !== null && lo !== undefined && hi !== null && hi !== undefined
+    ? `<rect class="range__band" x="${px(lo)}" y="3" width="${Math.max(2, px(hi) - px(lo))}" height="8" rx="4"/>` : "";
+  return `<svg class="range ${cls}" viewBox="0 0 200 14" aria-hidden="true"><rect class="range__track" x="0" y="5" width="200" height="4" rx="2"/>${band}<circle class="range__dot" cx="${px(value)}" cy="7" r="5"/></svg>`;
+}
+
+function readout(el, html) {
+  if (el) el.innerHTML = html;
+}
+
+// ---------------------------------------------------------------------------
+// Cadre : objectif, navigation, thème
+// ---------------------------------------------------------------------------
+
+function renderObjective(s) {
+  const o = s.objective;
+  const box = $("#objective");
+  if (!o || !o.race_date) {
+    box.innerHTML = `<span class="objective__none">Aucun objectif actif — <code>planning/active_objective.md</code></span>`;
+    return;
+  }
+  const left = o.days_left;
+  const when = left > 0 ? `J-${left}` : left === 0 ? "Jour de course" : `Terminé il y a ${-left} j`;
+  const meta = [F.dateLong(o.race_date), o.distance_m ? F.distance(o.distance_m, 0) : null,
+    o.elevation_gain_m && s.settings.sport === "trail" ? `${F.elevation(o.elevation_gain_m)} D+` : null].filter(Boolean).join(" · ");
+  box.innerHTML = `<span class="objective__count ${left < 0 ? "is-past" : ""}">${when}</span>
+    <span class="objective__text"><strong>${F.esc(o.name || "Objectif")}</strong><span>${meta}</span></span>`;
+}
+
+function renderNav(s) {
+  const nutrition = s.settings.agents?.includes("nutritionist");
+  const items = [
+    ["", "Aujourd'hui"], ["forme", "Forme & charge"], ["sante", "Santé"], ["semaine", "Semaine"],
+    ["seances", "Séances"], ["performance", "Performance"], ["calendrier", "Calendrier"],
+    ["rapports", "Rapports"], ...(nutrition ? [["nutrition", "Nutrition"]] : []),
+  ];
+  $("#nav").innerHTML = items.map(([h, l]) => `<a href="#/${h}" data-route="${h}">${l}</a>`).join("")
+    + (s.incomplete_files ? `<a href="#/fichiers" data-route="fichiers" class="nav__debt">${s.incomplete_files} fichier${s.incomplete_files > 1 ? "s" : ""} hors contrat</a>` : "");
+}
+
+function markNav(route) {
+  for (const a of document.querySelectorAll("#nav a")) {
+    const on = a.dataset.route === route || (route === "seance" && a.dataset.route === "seances") || (route === "rapport" && a.dataset.route === "rapports");
+    a.toggleAttribute("aria-current", on);
+    if (on) a.setAttribute("aria-current", "page");
+  }
+}
+
+function setupTheme() {
+  const btn = $("#theme");
+  // ?theme=dark|light force le thème (lien partagé, capture d'écran) ; sinon le choix mémorisé.
+  const forced = new URLSearchParams(location.search).get("theme");
+  const saved = (() => { try { return localStorage.getItem("arc-theme"); } catch { return null; } })();
+  const theme = ["dark", "light"].includes(forced) ? forced : saved;
+  if (theme) document.documentElement.dataset.theme = theme;
+  btn.addEventListener("click", () => {
+    const dark = document.documentElement.dataset.theme
+      ? document.documentElement.dataset.theme === "dark"
+      : matchMedia("(prefers-color-scheme: dark)").matches;
+    const next = dark ? "light" : "dark";
+    document.documentElement.dataset.theme = next;
+    try { localStorage.setItem("arc-theme", next); } catch { /* stockage indisponible */ }
+    route();
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Vue : Aujourd'hui
+// ---------------------------------------------------------------------------
+
+async function viewToday() {
+  const s = SUMMARY;
+  const [health, week, form, reports] = await Promise.all([
+    api("health?days=14"), api("week"), api("form?days=30"), api("reports"),
+  ]);
+  const today = s.today;
+  const mode = health.morning_check;
+  const series = health.series;
+  const h = series.find((p) => p.date === today) || null;
+  const lastVerdict = [...series].reverse().find((p) => p.verdict);
+
+  let verdict;
+  if (h && h.verdict) {
+    verdict = `<div class="verdict verdict--${h.verdict}"><div class="verdict__word">${F.VERDICT[h.verdict]}</div><p class="verdict__why">${F.esc(h.verdict_reason || "")}</p></div>`;
+  } else {
+    verdict = `<div class="verdict verdict--none"><div class="verdict__word">Pas de verdict aujourd'hui</div><p class="verdict__why">${lastVerdict
+      ? `Dernier verdict du coach le ${F.dayLong(lastVerdict.date)} : <strong>${F.VERDICT[lastVerdict.verdict]}</strong> — ${F.esc(lastVerdict.verdict_reason || "")}`
+      : "Le coach pose un verdict (maintenir, alléger, repos) dans le fichier santé du jour lors du bilan matinal."}</p></div>`;
+  }
+
+  let triad = "";
+  if (mode === "off") {
+    triad = note("Bilan matinal désactivé (<code>[health].morning_check = \"off\"</code>) : pas de données de santé attendues.");
+  } else {
+    const latest = h || [...series].reverse().find((p) => p.readiness_score !== undefined || p.hrv_overnight_ms !== undefined) || {};
+    const rows = [];
+    if (mode === "full") {
+      const lo = latest.hrv_baseline_low_ms, hi = latest.hrv_baseline_high_ms;
+      const hrvTxt = lo && hi ? (latest.hrv_overnight_ms < lo ? "sous la bande" : latest.hrv_overnight_ms > hi ? "au-dessus de la bande" : "dans la bande") + ` ${lo}–${hi}` : "bande de référence non renseignée";
+      rows.push(["HRV nocturne", latest.hrv_overnight_ms != null ? `${F.num(latest.hrv_overnight_ms)} ms` : "—",
+        rangeBar(latest.hrv_overnight_ms, lo, hi, 20, 120), hrvTxt]);
+      const d = latest.rhr_delta;
+      const rhrTxt = latest.rhr_median7 != null && d != null
+        ? `${d > 0 ? "+" : ""}${F.num(d)} vs médiane 7 j (${F.num(latest.rhr_median7)})${d > 7 ? " — nettement élevée" : d >= 5 ? " — à surveiller" : ""}`
+        : "médiane 7 j indisponible";
+      rows.push(["FC de repos", latest.resting_hr_bpm != null ? `${F.num(latest.resting_hr_bpm)} bpm` : "—",
+        rangeBar(latest.resting_hr_bpm, latest.rhr_median7 != null ? latest.rhr_median7 - 3 : null, latest.rhr_median7 != null ? latest.rhr_median7 + 5 : null, 30, 70, d > 7 ? "range--alert" : d >= 5 ? "range--warn" : ""), rhrTxt]);
+    }
+    rows.push(["Readiness", latest.readiness_score != null ? `${F.num(latest.readiness_score)}/100` : "—",
+      rangeBar(latest.readiness_score, 60, 100, 0, 100), latest.readiness_score != null ? (latest.readiness_score >= 60 ? "prêt" : latest.readiness_score >= 40 ? "modéré" : "faible") : ""]);
+    rows.push(["Sommeil", latest.sleep_total_s ? F.duration(latest.sleep_total_s) : "—",
+      rangeBar(latest.sleep_score, 80, 100, 0, 100), latest.sleep_score != null ? `score ${F.num(latest.sleep_score)}` : ""]);
+    triad = `<table class="triad"><caption>Bilan du matin${latest.date && latest.date !== today ? ` — dernières données : ${F.dayLong(latest.date)}` : ""}</caption>
+      <tbody>${rows.map((r) => `<tr><th scope="row">${r[0]}</th><td class="triad__value">${r[1]}</td><td class="triad__bar">${r[2]}</td><td class="triad__ctx">${F.esc(r[3])}</td></tr>`).join("")}</tbody></table>
+      ${mode === "minimal" ? note("Bilan minimal : readiness seule (<code>[health].morning_check = \"minimal\"</code>).") : ""}`;
+  }
+
+  const todaySessions = week.sessions.filter((x) => x.date === today);
+  const todayActs = week.activities.filter((x) => x.date === today);
+  const weather = week.weather.find((w) => w.date === today);
+  const sessionHtml = todaySessions.length || todayActs.length
+    ? `<ul class="plan">${todaySessions.map((x) => `<li><span class="plan__title">${F.esc(x.title)}</span><span class="plan__meta">${F.SPORT[x.sport] || x.sport}${x.planned_duration_s ? " · " + F.duration(x.planned_duration_s) : ""}${x.planned_distance_m ? " · " + F.distance(x.planned_distance_m) : ""}</span>${statusChip(x.status)}</li>`).join("")}
+        ${todayActs.map((a) => `<li class="plan__done"><a href="#/seance/${a.id}">${F.esc(a.name || F.SPORT[a.sport])}</a><span class="plan__meta">Réalisée · ${a.distance_m ? F.distance(a.distance_m) + " · " : ""}${F.duration(a.duration_s)}</span></li>`).join("")}</ul>`
+    : `<p class="muted">Aucune séance planifiée aujourd'hui${week.week ? "" : " — pas de plan de semaine au contrat pour cette semaine"}.</p>`;
+  const weatherHtml = weather
+    ? `<p class="weather">${weatherChip(weather.category)} <span>${F.esc(weather.location)} · ${F.num(weather.temp_max_c)} °C max · vent ${F.num(weather.wind_kmh)} km/h</span>${weather.best_slot ? ` <span class="slot">Créneau : <strong>${F.SLOT[weather.best_slot]}</strong></span>` : ""}</p>${weather.slot_reason ? `<p class="muted">${F.esc(weather.slot_reason)}</p>` : ""}`
+    : "";
+
+  const f = form.series[form.series.length - 1];
+  const tsb = f ? f.tsb : null;
+  const formTxt = !f ? "Pas encore de séances indexées." :
+    `${tsb > 5 ? "Fraîcheur : la fatigue est sous la condition physique." : tsb < -20 ? "Fatigue marquée : la charge récente dépasse nettement la condition." : "Zone de travail : fatigue et condition équilibrées."}${f.acwr > 1.3 ? " Charge aiguë au-dessus de la zone prudente." : ""}`;
+  const formHtml = f ? `<dl class="facts"><div><dt>Condition (CTL)</dt><dd>${F.num(f.ctl)}</dd></div><div><dt>Fatigue (ATL)</dt><dd>${F.num(f.atl)}</dd></div><div><dt>Forme (TSB)</dt><dd class="${tsb >= 0 ? "pos" : "neg"}">${tsb > 0 ? "+" : ""}${F.num(tsb)}</dd></div><div><dt>ACWR</dt><dd>${F.num(f.acwr, 2)}</dd></div></dl><p class="muted">${formTxt} <a href="#/forme">Courbe de forme</a></p>` : note(formTxt);
+
+  const rep = reports.reports[0];
+  main.innerHTML = `${header(F.dayLong(today).replace(/^./, (c) => c.toUpperCase()))}
+    ${verdict}
+    <section class="band"><h2>Santé</h2>${triad}</section>
+    <section class="band band--split"><div><h2>Au programme</h2>${sessionHtml}${weatherHtml}</div>
+      <div><h2>Forme</h2>${formHtml}</div></section>
+    ${rep ? `<section class="band"><h2>Dernier rapport du coach</h2><p><a href="#/rapport?path=${encodeURIComponent(rep.source_path)}">${F.esc(rep.title)}</a> <span class="muted">— ${F.dayLong(rep.date)}</span></p></section>` : ""}`;
+}
+
+// ---------------------------------------------------------------------------
+// Vue : Forme & charge
+// ---------------------------------------------------------------------------
+
+async function viewForm(params) {
+  const days = Number(params.get("jours")) || 180;
+  const [form, load] = await Promise.all([api(`form?days=${days}`), api("load?weeks=26")]);
+  const s = SUMMARY;
+  const trail = s.settings.sport === "trail";
+  const series = form.series;
+  if (!series.length) {
+    main.innerHTML = header("Forme & charge") + empty("Pas encore de séances", "La courbe de forme se construit à partir des séances indexées. Il faut environ six semaines d'historique pour qu'elle soit parlante.");
+    return;
+  }
+  const dates = series.map((p) => p.date);
+  const marks = [{ type: "hline", value: 0, cls: "mark mark--zero" }];
+  if (form.race_date) marks.push({ type: "vline", date: form.race_date, cls: "mark mark--race", label: "Course" });
+  const chart = timeChart(dates, [
+    { type: "area", values: series.map((p) => p.tsb), cls: "area area--tsb" },
+    { type: "line", values: series.map((p) => p.ctl), cls: "line line--ctl" },
+    { type: "line", values: series.map((p) => p.atl), cls: "line line--atl" },
+  ], marks, { height: 250, label: "Condition, fatigue et forme", yFormat: (v) => F.num(v) });
+  const acwr = timeChart(dates, [
+    { type: "band", lo: dates.map(() => form.acwr_safe[0]), hi: dates.map(() => form.acwr_safe[1]), cls: "band-fill" },
+    { type: "line", values: series.map((p) => p.acwr), cls: "line line--acwr" },
+  ], [], { height: 140, y: { min: 0, max: Math.max(2, ...series.map((p) => p.acwr || 0)) }, label: "Ratio charge aiguë / chronique", yFormat: (v) => F.num(v, 1) });
+
+  const weeks = load.weeks;
+  const wd = weeks.map((w) => w.week_start);
+  const loadChart = trail
+    ? timeChart(wd, [
+      { type: "bars", values: weeks.map((w) => w.duration_s / 3600), cls: "bar" },
+      { type: "line", values: weeks.map((w) => w.elevation_m), cls: "line line--dplus", axis: "y2" },
+      { type: "dots", values: weeks.map((w) => w.elevation_m), cls: "dot dot--dplus", axis: "y2" },
+    ], [], { height: 200, y: { zero: true }, y2: { zero: true }, label: "Volume hebdomadaire : heures et D+", yFormat: (v) => `${F.num(v)} h`, y2Format: (v) => `${F.num(v)} m` })
+    : timeChart(wd, [
+      { type: "bars", values: weeks.map((w) => w.distance_m / 1000), cls: "bar" },
+    ], [], { height: 200, y: { zero: true }, label: "Volume hebdomadaire en kilomètres", yFormat: (v) => `${F.num(v)} km` });
+
+  const periods = [[90, "3 mois"], [180, "6 mois"], [365, "1 an"]].map(([d, l]) => `<a class="seg ${d === days ? "is-on" : ""}" href="#/forme?jours=${d}">${l}</a>`).join("");
+  const last = series[series.length - 1];
+  main.innerHTML = `${header("Forme & charge", `Charge par séance : TRIMP (fréquence cardiaque), repli sur l'effort perçu. <a href="#/performance">Hypothèses des modèles</a>`)}
+    <div class="toolbar">${periods}</div>
+    <section class="band"><h2>Courbe de forme</h2>
+      <p class="legend"><span class="legend__item"><span class="key key--ctl"></span>Condition (CTL 42 j)</span> <span class="legend__item"><span class="key key--atl"></span>Fatigue (ATL 7 j)</span> <span class="legend__item"><span class="key key--tsb"></span>Forme (TSB)</span></p>
+      <div class="chart-host" id="c-form">${chart.svg}</div><p class="readout" id="r-form"></p></section>
+    <section class="band"><h2>Ratio charge aiguë / chronique</h2><p class="muted">Bande prudente ${F.num(form.acwr_safe[0], 1)} – ${F.num(form.acwr_safe[1], 1)}.</p>
+      <div class="chart-host" id="c-acwr">${acwr.svg}</div></section>
+    <section class="band"><h2>Volume hebdomadaire</h2>
+      <p class="legend">${trail ? `<span class="legend__item"><span class="key key--bar"></span>Heures d'effort</span> <span class="legend__item"><span class="key key--dplus"></span>D+ cumulé</span>` : `<span class="legend__item"><span class="key key--bar"></span>Kilomètres</span>`}</p>
+      <div class="chart-host" id="c-load">${loadChart.svg}</div><p class="readout" id="r-load"></p>
+      <dl class="facts facts--inline"><div><dt>Monotonie (7 j)</dt><dd>${F.num(load.monotony, 2)}</dd></div><div><dt>Strain (7 j)</dt><dd>${F.num(load.strain)}</dd></div><div><dt>Charge du jour</dt><dd>${F.num(last.load)}</dd></div></dl></section>`;
+
+  attachCursor($("#c-form"), chart, (i) => {
+    const p = series[i];
+    readout($("#r-form"), `<strong>${F.dayLong(p.date)}</strong> · charge ${F.num(p.load)} · CTL ${F.num(p.ctl, 1)} · ATL ${F.num(p.atl, 1)} · TSB ${p.tsb > 0 ? "+" : ""}${F.num(p.tsb, 1)} · ACWR ${F.num(p.acwr, 2)}`);
+  });
+  attachCursor($("#c-acwr"), acwr, () => {});
+  attachCursor($("#c-load"), loadChart, (i) => {
+    const w = weeks[i];
+    readout($("#r-load"), `<strong>Semaine du ${F.dayShort(w.week_start)}</strong> · ${w.sessions} séance${w.sessions > 1 ? "s" : ""} · ${F.hours(w.duration_s)} · ${F.distance(w.distance_m)}${trail ? ` · ${F.elevation(w.elevation_m)} D+` : ` · ${F.pace(w.distance_m, w.duration_s)}`} · charge ${F.num(w.load)}`);
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Vue : Santé
+// ---------------------------------------------------------------------------
+
+async function viewHealth(params) {
+  const days = Number(params.get("jours")) || 90;
+  const data = await api(`health?days=${days}`);
+  const mode = data.morning_check;
+  if (mode === "off") {
+    main.innerHTML = header("Santé") + empty("Bilan matinal désactivé", "Avec <code>[health].morning_check = \"off\"</code>, le coach ne récupère ni HRV, ni FC de repos, ni readiness : leur absence ici n'est pas un manque. Passez à <code>minimal</code> ou <code>full</code> pour suivre ces courbes.");
+    return;
+  }
+  const s = data.series;
+  const dates = s.map((p) => p.date);
+  if (!s.some((p) => p.readiness_score != null || p.hrv_overnight_ms != null || p.resting_hr_bpm != null)) {
+    main.innerHTML = header("Santé") + empty("Pas encore de données de santé", "Les fichiers <code>medical/AAAA-MM-JJ_health.md</code> écrits par la synchronisation alimentent ces courbes.");
+    return;
+  }
+  const charts = [];
+  if (mode === "full") {
+    charts.push(["hrv", "HRV nocturne", "La bande est la plage de référence Garmin.", timeChart(dates, [
+      { type: "band", lo: s.map((p) => p.hrv_baseline_low_ms), hi: s.map((p) => p.hrv_baseline_high_ms), cls: "band-fill" },
+      { type: "line", values: s.map((p) => p.hrv_overnight_ms), cls: "line line--hrv" },
+      { type: "dots", values: s.map((p) => p.hrv_overnight_ms), cls: "dot dot--hrv" },
+    ], [], { height: 190, label: "HRV nocturne en millisecondes", yFormat: (v) => `${F.num(v)}` }), true]);
+    charts.push(["rhr", "FC de repos", "Tirets : médiane 7 j, puis seuils +5 (à surveiller) et +7 (nettement élevée).", timeChart(dates, [
+      { type: "line", values: s.map((p) => p.rhr_median7), cls: "line line--median" },
+      { type: "line", values: s.map((p) => (p.rhr_median7 != null ? p.rhr_median7 + 5 : null)), cls: "line line--warn" },
+      { type: "line", values: s.map((p) => (p.rhr_median7 != null ? p.rhr_median7 + 7 : null)), cls: "line line--alert" },
+      { type: "line", values: s.map((p) => p.resting_hr_bpm), cls: "line line--rhr" },
+      { type: "dots", values: s.map((p) => p.resting_hr_bpm), cls: "dot dot--rhr" },
+    ], [], { height: 170, label: "Fréquence cardiaque de repos", yFormat: (v) => `${F.num(v)}` }), false]);
+  }
+  charts.push(["ready", "Readiness", "", timeChart(dates, [
+    { type: "bars", values: s.map((p) => p.readiness_score), cls: (i, v) => `bar bar--ready-${v >= 60 ? "hi" : v >= 40 ? "mid" : "lo"}` },
+  ], [], { height: 150, y: { min: 0, max: 100 }, label: "Readiness sur 100" }), false]);
+  if (mode === "full") {
+    charts.push(["sleep", "Sommeil", "", timeChart(dates, [
+      { type: "bars", values: s.map((p) => (p.sleep_total_s ? p.sleep_total_s / 3600 : null)), cls: "bar bar--sleep" },
+    ], [{ type: "hline", value: 7.5, cls: "mark", label: "7 h 30" }], { height: 150, y: { min: 0 }, label: "Durée de sommeil en heures", yFormat: (v) => `${F.num(v)} h` }), false]);
+  }
+  const periods = [[30, "1 mois"], [90, "3 mois"], [180, "6 mois"]].map(([d, l]) => `<a class="seg ${d === days ? "is-on" : ""}" href="#/sante?jours=${d}">${l}</a>`).join("");
+  main.innerHTML = `${header("Santé", mode === "minimal" ? "Bilan minimal : readiness seule." : "Triade du matin : HRV, FC de repos, readiness — et le verdict du coach, jour par jour.")}
+    <div class="toolbar">${periods}</div>
+    <p class="readout readout--sticky" id="r-health"></p>
+    ${charts.map(([id, title, sub, c, strip]) => `<section class="band"><h2>${title}</h2>${sub ? `<p class="muted">${sub}</p>` : ""}<div class="chart-host" id="c-${id}">${c.svg}</div>${strip ? `<div class="strip-host">${verdictStrip(dates, s.map((p) => p.verdict))}<p class="legend legend--small"><span class="legend__item"><span class="key key--green"></span>Maintenir</span> <span class="legend__item"><span class="key key--amber"></span>Alléger</span> <span class="legend__item"><span class="key key--red"></span>Repos</span> — verdicts du coach</p></div>` : ""}</section>`).join("")}`;
+  const show = (i) => {
+    const p = s[i];
+    const bits = [`<strong>${F.dayLong(p.date)}</strong>`];
+    if (p.hrv_overnight_ms != null) bits.push(`HRV ${F.num(p.hrv_overnight_ms)} ms`);
+    if (p.resting_hr_bpm != null) bits.push(`FC repos ${F.num(p.resting_hr_bpm)}${p.rhr_delta != null ? ` (${p.rhr_delta > 0 ? "+" : ""}${F.num(p.rhr_delta)})` : ""}`);
+    if (p.readiness_score != null) bits.push(`readiness ${F.num(p.readiness_score)}`);
+    if (p.sleep_total_s) bits.push(`sommeil ${F.duration(p.sleep_total_s)}${p.sleep_score != null ? ` (${F.num(p.sleep_score)})` : ""}`);
+    readout($("#r-health"), bits.join(" · ") + (p.verdict ? `<br>${verdictChip(p.verdict)} ${F.esc(p.verdict_reason || "")}` : ""));
+  };
+  for (const [id, , , c] of charts) attachCursor($(`#c-${id}`), c, show);
+}
+
+// ---------------------------------------------------------------------------
+// Vue : Semaine
+// ---------------------------------------------------------------------------
+
+async function viewWeek(params) {
+  const start = params.get("debut");
+  const w = await api(start ? `week?start=${start}` : "week");
+  const known = w.known_weeks;
+  const prev = F.addDays(w.week_start, -7);
+  const next = F.addDays(w.week_start, 7);
+  const days = [...Array(7)].map((_, i) => F.addDays(w.week_start, i));
+  const cols = days.map((d) => {
+    const plans = w.sessions.filter((x) => x.date === d);
+    const acts = w.activities.filter((x) => x.date === d);
+    const wx = w.weather.find((x) => x.date === d);
+    return `<li class="day ${d === w.today ? "day--today" : ""}"><div class="day__head"><span class="day__name">${F.weekday(d)}</span><span class="day__date">${F.dayShort(d)}</span>${wx ? weatherChip(wx.category) : ""}</div>
+      ${plans.map((x) => `<div class="session"><span class="session__title">${F.esc(x.title)}</span><span class="session__meta">${F.SPORT[x.sport] || x.sport}${x.best_slot && x.best_slot !== "none" ? ` · ${F.SLOT[x.best_slot]}` : ""}</span>${statusChip(x.status)}</div>`).join("")}
+      ${acts.map((a) => `<a class="session session--done" href="#/seance/${a.id}"><span class="session__title">${F.esc(a.name || F.SPORT[a.sport])}</span><span class="session__meta">${a.distance_m ? F.distance(a.distance_m) + " · " : ""}${F.duration(a.duration_s)}${a.avg_hr_bpm ? ` · ${F.num(a.avg_hr_bpm)} bpm` : ""}</span></a>`).join("")}
+      ${!plans.length && !acts.length ? `<span class="muted">—</span>` : ""}</li>`;
+  }).join("");
+  const totalS = w.activities.reduce((t, a) => t + (a.duration_s || 0), 0);
+  const totalM = w.activities.reduce((t, a) => t + (a.distance_m || 0), 0);
+  const target = w.week || {};
+  main.innerHTML = `${header(`Semaine du ${F.dayShort(w.week_start)}`, w.week ? `${F.esc(w.week.location || "")}${w.week.phase ? " · " + F.esc(w.week.phase) : ""}` : "Pas de plan de semaine au contrat pour ces dates.")}
+    <div class="toolbar"><a class="seg" href="#/semaine?debut=${prev}">← Précédente</a><a class="seg" href="#/semaine">Cette semaine</a><a class="seg" href="#/semaine?debut=${next}">Suivante →</a>
+      ${known.length ? `<label class="select">Plans : <select id="weeks">${known.slice().reverse().map((k) => `<option value="${k}" ${k === w.week_start ? "selected" : ""}>${F.dayShort(k)}</option>`).join("")}</select></label>` : ""}</div>
+    <ol class="week">${cols}</ol>
+    <section class="band"><h2>Réalisé</h2><dl class="facts facts--inline"><div><dt>Séances</dt><dd>${w.activities.length}</dd></div><div><dt>Durée</dt><dd>${F.hours(totalS)}${target.target_duration_s ? ` <small>/ ${F.hours(target.target_duration_s)}</small>` : ""}</dd></div><div><dt>Distance</dt><dd>${F.distance(totalM)}${target.target_distance_m ? ` <small>/ ${F.distance(target.target_distance_m, 0)}</small>` : ""}</dd></div></dl></section>
+    ${w.body_html ? `<section class="band prose"><h2>Plan du coach</h2>${w.body_html}</section>` : ""}`;
+  const sel = $("#weeks");
+  if (sel) sel.addEventListener("change", () => { location.hash = `#/semaine?debut=${sel.value}`; });
+}
+
+// ---------------------------------------------------------------------------
+// Vues : Séances, détail
+// ---------------------------------------------------------------------------
+
+async function viewSessions(params) {
+  const { activities } = await api("activities?limit=500");
+  const sport = params.get("sport") || "";
+  const sort = params.get("tri") || "date";
+  const dir = params.get("sens") === "asc" ? 1 : -1;
+  const trail = SUMMARY.settings.sport === "trail";
+  let rows = activities.filter((a) => !sport || a.sport === sport);
+  const key = { date: (a) => a.date, distance: (a) => a.distance_m || 0, duree: (a) => a.duration_s || 0, dplus: (a) => a.elevation_gain_m || 0, fc: (a) => a.avg_hr_bpm || 0, charge: (a) => a.load || 0 }[sort] || ((a) => a.date);
+  rows = rows.slice().sort((a, b) => (key(a) > key(b) ? 1 : key(a) < key(b) ? -1 : 0) * dir);
+  const sports = [...new Set(activities.map((a) => a.sport))];
+  const th = (k, label, num = true) => {
+    const on = sort === k;
+    const next = on && dir === -1 ? "asc" : "desc";
+    return `<th scope="col" class="${num ? "num" : ""}" aria-sort="${on ? (dir === 1 ? "ascending" : "descending") : "none"}"><a href="#/seances?${new URLSearchParams({ sport, tri: k, sens: next })}">${label}${on ? (dir === 1 ? " ↑" : " ↓") : ""}</a></th>`;
+  };
+  main.innerHTML = `${header("Séances", `${activities.length} séances indexées.`)}
+    <div class="toolbar"><label class="select">Sport : <select id="sport"><option value="">Tous</option>${sports.map((s) => `<option value="${s}" ${s === sport ? "selected" : ""}>${F.SPORT[s] || s}</option>`).join("")}</select></label></div>
+    ${rows.length ? `<div class="table-wrap"><table class="data"><thead><tr>${th("date", "Date", false)}<th scope="col">Séance</th>${th("distance", "Distance")}${th("duree", "Durée")}${trail ? th("dplus", "D+") : `<th scope="col" class="num">Allure</th>`}${th("fc", "FC moy")}<th scope="col" class="num">HRR</th>${th("charge", "Charge")}</tr></thead>
+    <tbody>${rows.map((a) => `<tr><td class="nowrap">${F.dayShort(a.date)} <span class="muted">${a.date.slice(0, 4)}</span></td><td><a href="#/seance/${a.id}">${F.esc(a.name || F.SPORT[a.sport] || a.sport)}</a> <span class="muted">${F.SPORT[a.sport] || a.sport}</span>${a.arc_version === 0 ? ` <span class="tag" title="Fichier hors contrat : lecture approximative">approx.</span>` : ""}</td>
+      <td class="num">${F.distance(a.distance_m)}</td><td class="num">${F.duration(a.duration_s)}</td><td class="num">${trail ? F.elevation(a.elevation_gain_m) : F.pace(a.distance_m, a.duration_s)}</td>
+      <td class="num">${F.num(a.avg_hr_bpm)}</td><td class="num">${a.recovery_hr_bpm != null ? F.num(a.recovery_hr_bpm) : `<span class="muted" title="non mesuré">—</span>`}</td><td class="num">${F.num(a.load)}${a.load_source === "estimated" ? `<span class="muted" title="Charge estimée : ni FC ni effort perçu">*</span>` : ""}</td></tr>`).join("")}</tbody></table></div>`
+    : empty("Aucune séance", "Les fichiers <code>activities/AAAA-MM-JJ_&lt;sport&gt;.md</code> apparaissent ici une fois indexés.")}`;
+  $("#sport").addEventListener("change", (e) => { location.hash = `#/seances?${new URLSearchParams({ sport: e.target.value, tri: sort, sens: dir === 1 ? "asc" : "desc" })}`; });
+}
+
+async function viewSession(id) {
+  const d = await api(`activity/${id}`);
+  const a = d.activity;
+  const trail = SUMMARY.settings.sport === "trail";
+  const missing = a.missing_reason || {};
+  const facts = [
+    ["Distance", F.distance(a.distance_m, 2)], ["Durée", F.duration(a.duration_s, { seconds: true })],
+    ["Allure", F.pace(a.distance_m, a.moving_duration_s || a.duration_s)],
+    ...(trail || a.elevation_gain_m ? [["D+ / D-", a.elevation_gain_m != null ? `${F.elevation(a.elevation_gain_m)} / ${F.elevation(a.elevation_loss_m)}` : (missing.elevation_gain_m ? "non mesuré" : "—")]] : []),
+    ["FC moy / max", a.avg_hr_bpm ? `${F.num(a.avg_hr_bpm)} / ${F.num(a.max_hr_bpm)} bpm` : (missing.avg_hr_bpm ? "non mesurée" : "—")],
+    ["HRR", a.recovery_hr_bpm != null ? `${F.num(a.recovery_hr_bpm)} bpm` : `non mesuré${missing.recovery_hr_bpm ? ` — ${F.esc(missing.recovery_hr_bpm)}` : ""}`],
+    ["Effet d'entraînement", a.te_aerobic != null ? `${F.num(a.te_aerobic, 1)}${a.te_anaerobic != null ? ` / ${F.num(a.te_anaerobic, 1)} anaérobie` : ""}` : "—"],
+    ["Charge", `${F.num(a.load)} <small class="muted">${a.load_source === "trimp" ? "TRIMP" : a.load_source === "srpe" ? "effort perçu" : "estimée"}</small>`],
+    ...(a.vo2max_est ? [["VO2max estimée", F.num(a.vo2max_est, 1)]] : []),
+  ];
+  let splitsHtml = "";
+  if (d.splits.length) {
+    const sp = d.splits;
+    const labels = sp.map((x) => String(x.km));
+    const c = timeChart(labels, [
+      { type: "bars", values: sp.map((x) => (x.duration_s ? x.duration_s / 60 : null)), cls: "bar" },
+      { type: "line", values: sp.map((x) => x.avg_hr_bpm), cls: "line line--rhr", axis: "y2" },
+      { type: "dots", values: sp.map((x) => x.avg_hr_bpm), cls: "dot dot--rhr", axis: "y2" },
+    ], [], { height: 200, y: { zero: true }, y2: {}, xLabels: labels, label: "Temps et FC par kilomètre", yFormat: (v) => `${F.num(v)}′`, y2Format: (v) => F.num(v) });
+    splitsHtml = `<section class="band"><h2>Splits</h2><p class="legend"><span class="legend__item"><span class="key key--bar"></span>Temps au km</span> <span class="legend__item"><span class="key key--rhr"></span>FC moyenne</span></p>
+      <div class="chart-host chart-host--nox" id="c-splits">${c.svg}</div><p class="readout" id="r-splits"></p>
+      <div class="table-wrap"><table class="data data--compact"><thead><tr><th scope="col">Km</th><th scope="col" class="num">Temps</th><th scope="col" class="num">D+ / D-</th><th scope="col" class="num">FC</th><th scope="col" class="num">Cadence</th><th scope="col">Lecture</th></tr></thead>
+      <tbody>${sp.map((x) => `<tr><td>${x.km}</td><td class="num">${F.clock(x.duration_s).replace(/^0:/, "")}</td><td class="num">${x.elev_gain_m != null ? `+${F.num(x.elev_gain_m)} / -${F.num(x.elev_loss_m)}` : "—"}</td><td class="num">${F.num(x.avg_hr_bpm)}</td><td class="num">${F.num(x.cadence_spm)}</td><td>${F.esc(x.label || "")}</td></tr>`).join("")}</tbody></table></div></section>`;
+    setTimeout(() => attachCursor($("#c-splits"), c, (i) => {
+      const x = sp[i];
+      readout($("#r-splits"), `<strong>Km ${x.km}</strong> · ${F.clock(x.duration_s).replace(/^0:/, "")} · FC ${F.num(x.avg_hr_bpm)}${x.elev_gain_m != null ? ` · +${F.num(x.elev_gain_m)} m` : ""}${x.label ? ` · ${F.esc(x.label)}` : ""}`);
+    }), 0);
+  }
+  const wx = d.weather;
+  main.innerHTML = `${header(a.name || F.SPORT[a.sport] || "Séance", `${F.dayLong(a.date)} · ${F.SPORT[a.sport] || a.sport}${a.location ? " · " + F.esc(a.location) : ""}`)}
+    <p><a href="#/seances">← Toutes les séances</a></p>
+    <dl class="facts facts--grid">${facts.map(([k, v]) => `<div><dt>${k}</dt><dd>${v}</dd></div>`).join("")}</dl>
+    ${wx ? `<p class="weather">${weatherChip(wx.category)} <span>${F.esc(wx.location)} · ${F.num(wx.temp_min_c)}–${F.num(wx.temp_max_c)} °C · vent ${F.num(wx.wind_kmh)} km/h</span></p>` : ""}
+    ${splitsHtml}
+    <section class="band prose"><h2>Analyse du coach</h2>${d.body_html || "<p class=\"muted\">Pas de texte.</p>"}<p class="muted source">Source : <code>${F.esc(a.source_path)}</code></p></section>`;
+}
+
+// ---------------------------------------------------------------------------
+// Vue : Performance
+// ---------------------------------------------------------------------------
+
+async function viewPerformance() {
+  const p = await api("performance");
+  const trail = p.sport === "trail";
+  let chartHtml = empty("Pas encore d'estimation", "La VO2max effective s'estime sur les séances de course d'au moins 20 minutes, à plus de 70 % de la FC max, avec distance et FC moyenne.");
+  let c = null;
+  if (p.vo2max.length) {
+    c = timeChart(p.vo2max.map((x) => x.date), [{ type: "line", values: p.vo2max.map((x) => x.vo2max), cls: "line line--ctl" }], [], { height: 200, label: "VO2max effective, tendance 30 jours", yFormat: (v) => F.num(v) });
+    chartHtml = `<div class="chart-host" id="c-vo2">${c.svg}</div><p class="readout" id="r-vo2"></p>`;
+  }
+  const names = { 5000: "5 km", 10000: "10 km", 21097.5: "Semi-marathon", 42195: "Marathon" };
+  const pred = p.predictions.map((r) => `<tr><th scope="row">${r.tag === "objective" ? `${F.esc(p.objective.name || "Objectif")} <span class="muted">${F.distance(r.distance_m, 1)}${trail && r.effort_distance_m !== Math.round(r.distance_m) ? ` · effort ${F.distance(r.effort_distance_m, 0)}` : ""}</span>` : names[r.distance_m] || F.distance(r.distance_m)}</th><td class="num">${F.clock(r.vdot_s)}</td><td class="num">${F.clock(r.riegel_s)}</td></tr>`).join("");
+  const rec = p.records.length ? `<table class="data data--compact"><thead><tr><th scope="col">Distance</th><th scope="col" class="num">Temps</th><th scope="col" class="num">Allure</th><th scope="col">Date</th></tr></thead><tbody>${p.records.map((r) => `<tr><th scope="row">${r.km} km</th><td class="num">${F.clock(r.time_s)}</td><td class="num">${F.pace(r.km * 1000, r.time_s)}</td><td>${F.dayShort(r.date)} ${r.date.slice(0, 4)}</td></tr>`).join("")}</tbody></table>` : note("Pas de splits kilométriques indexés : les records se calculent sur les séances qui en ont.");
+  const assumptions = SUMMARY.assumptions || {};
+  main.innerHTML = `${header("Performance", "Estimations modélisées à partir des moyennes de chaque séance : des ordres de grandeur, pas des mesures.")}
+    <section class="band"><h2>VO2max effective</h2>${p.vo2max_current ? `<p class="lead-num">${F.num(p.vo2max_current, 1)} <small>ml/kg/min, tendance 30 j${p.vo2max_date !== SUMMARY.today ? ` au ${F.dayShort(p.vo2max_date)}` : ""}</small></p>` : ""}${chartHtml}</section>
+    <section class="band band--split"><div><h2>Prédictions</h2><table class="data data--compact"><thead><tr><th scope="col">Distance</th><th scope="col" class="num">VDOT</th><th scope="col" class="num">Riegel</th></tr></thead><tbody>${pred}</tbody></table>
+      ${trail ? note("En trail, la distance « effort » ajoute le dénivelé (1000 m D+ ≈ 1,75 km de plat, <code>config/sports/trail.md</code>). Sable, vent et barrières ne sont pas modélisés.") : ""}</div>
+      <div><h2>Records</h2>${rec}</div></section>
+    <section class="band"><h2>Hypothèses</h2><dl class="assumptions">${Object.values(assumptions).map((t) => `<dd>${F.esc(t)}</dd>`).join("")}</dl></section>`;
+  if (c) attachCursor($("#c-vo2"), c, (i) => readout($("#r-vo2"), `<strong>${F.dayLong(p.vo2max[i].date)}</strong> · ${p.vo2max[i].vo2max != null ? F.num(p.vo2max[i].vo2max, 1) : "pas d'estimation (aucune séance de course qualifiante sur 30 j)"}`));
+}
+
+// ---------------------------------------------------------------------------
+// Vue : Calendrier
+// ---------------------------------------------------------------------------
+
+async function viewCalendar(params) {
+  const cal = await api("calendar");
+  const years = Object.keys(cal.cumulative).sort();
+  if (!years.length) {
+    main.innerHTML = header("Calendrier") + empty("Aucune séance", "Le calendrier se remplit avec les séances indexées.");
+    return;
+  }
+  const year = params.get("annee") || cal.today.slice(0, 4);
+  const byDate = Object.fromEntries(cal.days.map((d) => [d.date, d]));
+  const trail = SUMMARY.settings.sport === "trail";
+  const value = (d, text) => (text ? `${F.duration(d.duration_s)}${d.distance_m ? " · " + F.distance(d.distance_m) : ""}` : d.duration_s / 60);
+  const bucket = (m) => (m <= 0 ? 0 : m < 40 ? 1 : m < 75 ? 2 : m < 120 ? 3 : 4);
+  const maxDoy = 366;
+  const cumDates = [...Array(maxDoy)].map((_, i) => `2000-${String(Math.floor(i / 31) + 1).padStart(2, "0")}-01`);
+  const cumLayers = years.slice(-3).map((y, k, arr) => {
+    const pts = new Array(maxDoy).fill(null);
+    let last = 0;
+    const map = Object.fromEntries(cal.cumulative[y].map((p) => [p.doy, p.distance_m]));
+    const lastDoy = y === cal.today.slice(0, 4) ? Math.round((F.parseDate(cal.today) - F.parseDate(`${y}-01-01`)) / 86400000) + 1 : maxDoy;
+    for (let d = 1; d <= Math.min(lastDoy, maxDoy); d++) { if (map[d] !== undefined) last = map[d]; pts[d - 1] = last / 1000; }
+    return { type: "line", values: pts, cls: `line line--year line--year-${arr.length - 1 - k}` };
+  });
+  const monthLabels = cumDates.map((_, i) => (i % 31 === 0 ? ["janv.", "févr.", "mars", "avr.", "mai", "juin", "juil.", "août", "sept.", "oct.", "nov.", "déc."][i / 31] || "" : ""));
+  const cum = timeChart(cumDates, cumLayers, [], { height: 200, y: { zero: true }, xLabels: monthLabels, label: "Distance cumulée par année", yFormat: (v) => `${F.num(v)} km` });
+  main.innerHTML = `${header("Calendrier", trail ? "Intensité : durée d'effort du jour." : "Intensité : durée d'effort du jour.")}
+    <div class="toolbar">${years.map((y) => `<a class="seg ${y === year ? "is-on" : ""}" href="#/calendrier?annee=${y}">${y}</a>`).join("")}</div>
+    <section class="band"><div class="chart-host chart-host--cal">${yearCalendar(Number(year), byDate, value, bucket)}</div>
+      <p class="legend legend--small">Moins <span class="key cal--1"></span><span class="key cal--2"></span><span class="key cal--3"></span><span class="legend__item"><span class="key cal--4"></span>Plus (&lt; 40 min, 40–75, 75–120, &gt; 2 h)</span></p></section>
+    <section class="band"><h2>Distance cumulée</h2><p class="legend">${years.slice(-3).map((y, k, arr) => `<span class="key key--year-${arr.length - 1 - k}"></span>${y}`).join(" ")}</p>
+      <div class="chart-host chart-host--nox">${cum.svg}</div></section>`;
+}
+
+// ---------------------------------------------------------------------------
+// Vues : Rapports, Nutrition, Fichiers
+// ---------------------------------------------------------------------------
+
+async function viewReports() {
+  const { reports } = await api("reports");
+  main.innerHTML = `${header("Rapports du coach")}${reports.length ? `<ul class="list">${reports.map((r) => `<li><a href="#/rapport?path=${encodeURIComponent(r.source_path)}">${F.esc(r.title)}</a><span class="list__meta">${F.dayShort(r.date)} ${r.date.slice(0, 4)} · ${F.REPORT[r.report_type] || r.report_type}${r.period_start && r.period_end && r.period_start !== r.period_end ? ` · du ${F.dayShort(r.period_start)} au ${F.dayShort(r.period_end)}` : ""}</span></li>`).join("")}</ul>`
+    : empty("Aucun rapport", "Les rapports écrits par le coach dans <code>rapports/</code> apparaissent ici.")}`;
+}
+
+async function viewReport(params) {
+  const r = await api(`report?path=${encodeURIComponent(params.get("path") || "")}`);
+  main.innerHTML = `${header(r.title, `${F.dayLong(r.date)} · ${F.REPORT[r.report_type] || r.report_type}`)}<p><a href="#/rapports">← Tous les rapports</a></p>
+    <article class="prose">${r.body_html}</article><p class="muted source">Source : <code>${F.esc(r.source_path)}</code></p>`;
+}
+
+async function viewNutrition() {
+  const { days } = await api("nutrition?days=180");
+  const weighed = days.filter((d) => d.weight_kg != null || d.intake_kcal != null);
+  if (!weighed.length) {
+    main.innerHTML = header("Nutrition") + empty("Pas encore de suivi chiffré", "Les journaux <code>nutrition/</code> au contrat (apports, macros, poids) alimentent cette vue.");
+    return;
+  }
+  main.innerHTML = `${header("Nutrition")}<div class="table-wrap"><table class="data"><thead><tr><th scope="col">Date</th><th scope="col" class="num">Poids</th><th scope="col" class="num">Cible</th><th scope="col" class="num">Apports</th><th scope="col" class="num">Dépense</th><th scope="col" class="num">G / P / L</th></tr></thead>
+    <tbody>${days.slice().reverse().map((d) => `<tr><td>${F.dayShort(d.date)}</td><td class="num">${d.weight_kg != null ? F.num(d.weight_kg, 1) + " kg" : "—"}</td><td class="num">${d.target_weight_kg != null ? F.num(d.target_weight_kg, 1) + " kg" : "—"}</td><td class="num">${F.num(d.intake_kcal)}</td><td class="num">${F.num(d.burned_kcal)}</td><td class="num">${d.carbs_g != null ? `${F.num(d.carbs_g)} / ${F.num(d.protein_g)} / ${F.num(d.fat_g)} g` : "—"}</td></tr>`).join("")}</tbody></table></div>`;
+}
+
+async function viewFiles() {
+  const { items } = await api("files", { fresh: true });
+  main.innerHTML = `${header("Fichiers hors contrat", "Lus au mieux par le tableau de bord, mais sans bloc <code>```arc</code> valide.")}
+    ${items.length ? `${note("Pour les mettre au contrat, lancez <code>/arc-backfill</code> dans votre IDE : le coach les reprend par lots, sans rien inventer, en conservant le texte existant.")}
+      <ul class="list">${items.map((i) => `<li><code>${F.esc(i.path)}</code><span class="list__meta">${F.esc(i.status === "no" ? "illisible" : i.status === "invalid" ? "bloc invalide" : "lecture partielle")} — ${F.esc(i.issues.slice(0, 3).join(" · "))}</span></li>`).join("")}</ul>`
+    : empty("Tout est au contrat", "Chaque fichier du workspace porte un bloc <code>```arc</code> valide.")}`;
+}
+
+// ---------------------------------------------------------------------------
+// Routeur
+// ---------------------------------------------------------------------------
+
+const ROUTES = {
+  "": viewToday, forme: viewForm, sante: viewHealth, semaine: viewWeek, seances: viewSessions,
+  performance: viewPerformance, calendrier: viewCalendar, rapports: viewReports, rapport: viewReport,
+  nutrition: viewNutrition, fichiers: viewFiles,
+};
+
+async function route() {
+  const hash = location.hash.replace(/^#\/?/, "");
+  const [path, query] = hash.split("?");
+  const params = new URLSearchParams(query || "");
+  const [name, arg] = path.split("/");
+  markNav(name);
+  main.setAttribute("aria-busy", "true");
+  try {
+    if (name === "seance" && arg) await viewSession(Number(arg));
+    else if (ROUTES[name]) await ROUTES[name](params);
+    else main.innerHTML = header("Page introuvable") + `<p><a href="#/">Retour à aujourd'hui</a></p>`;
+  } catch (err) {
+    main.innerHTML = header("Données indisponibles") + empty("Le serveur n'a pas répondu comme prévu", `${F.esc(err.message)}. Vérifiez que <code>scripts/dashboard.sh</code> tourne toujours, puis rechargez la page.`);
+  } finally {
+    main.removeAttribute("aria-busy");
+    main.focus({ preventScroll: true });
+    window.scrollTo(0, 0);
+  }
+}
+
+async function boot() {
+  setupTheme();
+  try {
+    SUMMARY = await api("summary");
+    F.setUnits(SUMMARY.settings.units);
+    renderObjective(SUMMARY);
+    renderNav(SUMMARY);
+  } catch (err) {
+    main.innerHTML = header("Tableau de bord indisponible") + empty("Impossible de lire l'index", `${F.esc(err.message)}. Relancez <code>scripts/dashboard.sh</code>.`);
+    return;
+  }
+  window.addEventListener("hashchange", route);
+  route();
+}
+
+boot();

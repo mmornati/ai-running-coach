@@ -122,6 +122,18 @@ def _write_records_json(fit: bytes, out: Path) -> None:
     print(f"OK {len(records)} records -> {out}")
 
 
+def _activity_id_from_arc(text: str):
+    """`garmin_activity_id` du bloc ```arc (contrat workspace-data-contract), ou None."""
+    m = re.search(r"^```arc[ \t]*\n(.*?)\n```", text, re.M | re.S)
+    if not m:
+        return None
+    try:
+        value = json.loads(m.group(1)).get("garmin_activity_id")
+    except (ValueError, AttributeError):
+        return None
+    return value if isinstance(value, int) else None
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(
         description="Télécharge des fichiers FIT Garmin (bypass MCP) via garminconnect + tokens locaux."
@@ -142,9 +154,14 @@ def main(argv: list[str] | None = None) -> int:
     if args.from_dir:
         for md in args.from_dir.glob("*.md"):
             txt = md.read_text(encoding="utf-8", errors="ignore")
-            m = re.search(r"activity_id:\s*(\d+)", txt)
-            if m:
-                ids.append(int(m.group(1)))
+            found = _activity_id_from_arc(txt)
+            if found is None:
+                # Fichiers antérieurs au contrat : la clé en début de ligne du bloc YAML
+                # uniquement — un « activity_id: 123 » cité dans la prose n'est pas une séance.
+                m = re.search(r"^activity_id:\s*(\d+)", txt, re.M)
+                found = int(m.group(1)) if m else None
+            if found is not None:
+                ids.append(found)
         ids = sorted(set(ids))
     if not ids:
         ap.error("aucun activity_id fourni (args ou --from-dir)")

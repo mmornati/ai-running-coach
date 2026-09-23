@@ -414,23 +414,61 @@ populate_catalog() {
 }
 
 # Bloc .gitignore du workspace : tout ce que install.sh génère.
+# Entrées que le bloc généré doit contenir. Une installation plus ancienne a
+# déjà un bloc : on n'y ajoute que ce qui manque (sinon une nouvelle entrée,
+# comme l'index du tableau de bord, n'atteindrait jamais les workspaces existants).
+WORKSPACE_IGNORES=(
+    /agents/ /skills/ /scripts/ /AGENTS.md /config/workspace.toml config/workspace.user.toml
+    /.mcp.json /.claude/ /.opencode/ /.gemini/ /.cursor/ /.windsurf/ /.github/agents /.github/skills
+    /logs/ /.arc/ .DS_Store __pycache__/
+)
+
 ensure_workspace_gitignore() {
     local gi="$WORKSPACE_ROOT/.gitignore" marker="# ai-running-coach — généré par install.sh (ne pas éditer ce bloc)"
+    local end_marker="# fin du bloc ai-running-coach"
     if [[ -f "$gi" ]] && grep -qF "$marker" "$gi"; then
-        ok ".gitignore du workspace déjà à jour"
+        local missing=() entry
+        for entry in "${WORKSPACE_IGNORES[@]}"; do
+            grep -qxF -- "$entry" "$gi" || missing+=("$entry")
+        done
+        if [[ ${#missing[@]} -eq 0 ]]; then
+            ok ".gitignore du workspace déjà à jour"
+            return 0
+        fi
+        if [[ "$DRY_RUN" -eq 1 ]]; then
+            printf '%s\n' "${C_YELLOW}[dry-run]${C_RESET} ajout à $gi : ${missing[*]}"
+            return 0
+        fi
+        local tmp
+        tmp="$(mktemp "$gi.XXXXXX")"
+        if grep -qxF "$end_marker" "$gi"; then
+            # Insertion juste avant la fin du bloc, pour qu'il reste d'un seul tenant.
+            # Boucle bash plutôt qu'awk -v : l'awk BSD de macOS refuse un saut de ligne
+            # dans une variable passée par -v.
+            local line
+            while IFS= read -r line || [[ -n "$line" ]]; do
+                [[ "$line" == "$end_marker" ]] && printf '%s\n' "${missing[@]}"
+                printf '%s\n' "$line"
+            done < "$gi" > "$tmp"
+        else
+            { cat "$gi"; printf '%s\n' "${missing[@]}"; } > "$tmp"
+        fi
+        mv "$tmp" "$gi"
+        ok ".gitignore du workspace complété : ${missing[*]}"
         return 0
     fi
     if [[ "$DRY_RUN" -eq 1 ]]; then
         printf '%s\n' "${C_YELLOW}[dry-run]${C_RESET} ajout du bloc ai-running-coach à $gi"
         return 0
     fi
-    cat >> "$gi" <<EOF
+    cat >> "$gi" <<GITIGNORE
 
 $marker
 # Liens vers le moteur (recréés par ./install.sh --workspace) — ancrés à la
 # racine pour ne pas masquer local/agents et local/skills (versionnés)
 /agents/
 /skills/
+/scripts/
 /AGENTS.md
 /config/workspace.toml
 # Config personnelle : contient le sujet ntfy, qui fait office de secret
@@ -444,12 +482,13 @@ config/workspace.user.toml
 /.windsurf/
 /.github/agents
 /.github/skills
-# Journaux et fichiers temporaires
+# Journaux, index du tableau de bord (dérivé, jetable) et fichiers temporaires
 /logs/
+/.arc/
 .DS_Store
 __pycache__/
-# fin du bloc ai-running-coach
-EOF
+$end_marker
+GITIGNORE
     ok "Bloc ai-running-coach ajouté à $gi"
 }
 
@@ -481,6 +520,13 @@ prepare_workspace() {
     else
         link_file "$PROJECT_ROOT/AGENTS.md" "$WORKSPACE_ROOT/AGENTS.md"
         link_file "$PROJECT_ROOT/config/workspace.toml" "$WORKSPACE_ROOT/config/workspace.toml"
+        # Les agents appellent `python3 scripts/arc_index.py …` depuis le workspace.
+        if [[ -e "$WORKSPACE_ROOT/scripts" && ! -L "$WORKSPACE_ROOT/scripts" ]]; then
+            warn "$WORKSPACE_ROOT/scripts existe et n'est pas un lien — conservé ; les agents n'y trouveront pas les scripts du moteur."
+        else
+            ln -sfn "$PROJECT_ROOT/scripts" "$WORKSPACE_ROOT/scripts"
+            ok "Lien créé : $WORKSPACE_ROOT/scripts -> $PROJECT_ROOT/scripts"
+        fi
     fi
     populate_catalog agents
     populate_catalog skills

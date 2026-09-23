@@ -1,10 +1,11 @@
 # Tests
 
-Trois paliers, séparés par ce qu'ils coûtent et par leur déterminisme.
+Quatre paliers, séparés par ce qu'ils coûtent et par leur déterminisme.
 
 ```bash
-python3 tests/run_tests.py --tier a     # intégration de l'installation
+python3 tests/run_tests.py --tier a     # intégration de l'installation et du tableau de bord
 python3 tests/run_tests.py --tier b     # lint prompts & configuration
+python3 tests/run_tests.py --tier d     # données : contrat, index dérivé, métriques
 python3 tests/run_tests.py --tier c     # évals d'exécution (modèle léger)
 python3 tests/run_tests.py --tier all
 python3 tests/run_tests.py -k TestCrontab      # filtrer
@@ -76,3 +77,23 @@ ARC_LLM_TESTS=1 python3 tests/run_tests.py --tier c --repeat 3
 Chaque cas est répété N fois et passe sur un seuil, pas à l'unanimité. Le dernier
 relevé est versionné dans `tests/evals/RESULTS.md` : une régression se lit alors
 dans un diff.
+
+## Palier D — données
+
+Tests unitaires purs, sans sous-processus : le contrat ```` ```arc ````
+(`scripts/arc_contract.py` contre `skills/workspace-data-contract/SKILL.md`), la
+lecture des fichiers antérieurs au contrat (`scripts/arc_legacy.py`, sur les
+fixtures d'évals), l'index SQLite dérivé et les métriques (TRIMP, CTL/ATL/TSB,
+VDOT) sur des valeurs de référence.
+
+Plusieurs cas viennent d'un vrai workspace de plusieurs mois et portent le nom du
+défaut qu'ils verrouillent : doublon d'une même séance Garmin, fichier d'analyse
+pris pour une séance, dernier split partiel pris pour un record, ultra marché qui
+fausse la VO2max. `tests/lib/synthetic.py` fabrique un workspace au contrat pour
+les tests de bout en bout du palier A et pour essayer le tableau de bord :
+
+```bash
+python3 -m tests.lib.synthetic /tmp/demo --days 120
+ARC_WORKSPACE=/tmp/demo scripts/dashboard.sh
+```
+

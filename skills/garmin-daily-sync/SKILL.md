@@ -38,13 +38,20 @@ Remote Control) et l'IDE partagent. Il délègue tout à l'agent `coach` et au s
    > `medical/YYYY-MM-DD_health.md` exist. For missing dates only, fetch from the `garmin` MCP
    > server: activities (with splits and `recovery_hr_bpm`), sleep, HRV, training readiness,
    > resting HR / body battery. Persist each file immediately using the workspace conventions
-   > (`AGENTS.md`: file names, `## Données brutes Garmin (référence)` YAML block +
-   > `## Analyse par splits (km)` table for activities, document language from
-   > `config/workspace.toml`). Never dump raw JSON. Do not ask questions. Do not push anything
+   > (`AGENTS.md`: file names; load the `workspace-data-contract` skill and open every file
+   > with its ```arc JSON block — `kind: activity` with `garmin_activity_id`, `location` and
+   > `splits`, `kind: health` with `morning_check` set to the configured mode; document
+   > language from `config/workspace.toml` for the prose below the block). Validate each file
+   > with `python3 scripts/arc_index.py --validate <file>` and fix what it reports. Never dump
+   > raw JSON into the conversation. Do not ask questions. Do not push anything
    > to the Garmin calendar. Reply with: the list of files created, and a 5-line maximum
    > summary (new activities: type/distance/D+/HR avg/HRR; sleep score; HRV status vs
    > baseline; readiness score; any alert such as low HRV, poor sleep, HRR missing).
-2. Si l'agent `coach` échoue (MCP indisponible, tokens Garmin expirés…), ne rien inventer :
+2. Réindexer le workspace pour le tableau de bord : `python3 scripts/arc_index.py`. La base
+   est dérivée ; un échec ici ne bloque rien, mais se signale en une ligne `Alerte :` du
+   résumé. Un fichier resté `NON CONFORME` à la validation se signale de la même façon
+   (`Alerte : 1 fichier hors contrat — medical/2026-09-20_health.md`).
+3. Si l'agent `coach` échoue (MCP indisponible, tokens Garmin expirés…), ne rien inventer :
    le résumé doit contenir `ERREUR : <cause>` (ex. « tokens Garmin expirés — relancer
    `uv run garmin-mcp-auth` »).
 

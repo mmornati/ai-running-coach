@@ -1,0 +1,15 @@
+# [health].morning_check = "off" : aucun fichier santé attendu — et aucun écrit.
+# Les séances, elles, restent au contrat.
+id = "health-off-no-health-file"
+prompt = "/garmin-daily-sync"
+fixture = "empty"
+
+[config.sync]
+lookback_days = 3
+
+[config.health]
+morning_check = "off"
+
+[expect]
+files_absent = ["medical/*_health.md"]
+files_with_arc_block = ["activities/*.md"]

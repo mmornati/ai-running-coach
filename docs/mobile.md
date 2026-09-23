@@ -201,6 +201,13 @@ pour forcer une synchronisation.
     les outils Garmin d'écriture (`schedule_workouts`, `upload_course`…) restent confirmés
     depuis le téléphone. Modifiez avec `--permission-mode` si besoin.
 
+### 6. Voir ce que le coach a stocké
+
+La notification résume ; le [tableau de bord](dashboard/index.md) montre tout — verdict
+et bilan du matin, nouvelle séance et ses splits, courbe de forme, plan de la semaine,
+rapports. Lancez-le sur le portable après un `git pull`, ou sur la machine coach et
+consultez-le par un tunnel SSH : voir [Machine coach & mode headless](dashboard/headless.md).
+
 ## Et Codex ?
 
 - **Synchronisation** : `runner = "codex"` — `scripts/daily-sync.sh` lance

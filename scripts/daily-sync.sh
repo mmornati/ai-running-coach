@@ -88,6 +88,26 @@ extract_resume() {
         END { printf "%s", last }'
 }
 
+# Identité des commits et des rebase faits par la machine coach : cron n'a souvent
+# aucune configuration git globale, et un rebase sans identité échoue.
+GIT_ID=(-c user.name="${GIT_AUTHOR_NAME:-ai-running-coach}" -c user.email="${GIT_AUTHOR_EMAIL:-coach@localhost}")
+
+# Avant le run : récupère ce qu'une autre machine a poussé (fichiers mis au contrat
+# depuis le portable, plan écrit en session mobile…), pour que l'agent parte de
+# l'état le plus récent. Un échec (conflit, réseau) n'empêche pas la
+# synchronisation : elle se fait sur l'état local et le push final le signalera.
+git_pull_before_run() {
+    [[ "$GIT_AUTOCOMMIT" == "true" ]] || return 0
+    git -C "$ARC_WORKSPACE" rev-parse --is-inside-work-tree >/dev/null 2>&1 || return 0
+    git -C "$ARC_WORKSPACE" remote get-url origin >/dev/null 2>&1 || return 0
+    if git -C "$ARC_WORKSPACE" "${GIT_ID[@]}" pull -q --rebase --autostash 2>>"$LOG_FILE"; then
+        ok "git : workspace à jour"
+    else
+        git -C "$ARC_WORKSPACE" rebase --abort >/dev/null 2>&1 || true
+        warn "git pull échoué (voir $LOG_FILE) — synchronisation sur l'état local."
+    fi
+}
+
 # Versionne le workspace après chaque run (données de la sync ET fichiers créés
 # entre-temps par les sessions Remote Control). Push seulement si un remote existe.
 # Retourne 0 si rien à faire ou si le commit/push a réussi ; sinon 1 (signalé
@@ -101,10 +121,16 @@ git_autocommit() {
         return 0
     fi
     git add -A
-    git -c user.name="${GIT_AUTHOR_NAME:-ai-running-coach}" -c user.email="${GIT_AUTHOR_EMAIL:-coach@localhost}" \
-        commit -q -m "sync: $(date '+%F %H:%M') ($RUNNER)" || { warn "git commit échoué"; return 1; }
+    git "${GIT_ID[@]}" commit -q -m "sync: $(date '+%F %H:%M') ($RUNNER)" || { warn "git commit échoué"; return 1; }
     ok "git : commit $(git rev-parse --short HEAD)"
     if git remote get-url origin >/dev/null 2>&1; then
+        # Sans ce rebase, un seul push venu d'ailleurs pendant le run rendait tous les
+        # push suivants de la machine coach impossibles (historiques divergents).
+        if ! git "${GIT_ID[@]}" pull -q --rebase 2>>"$LOG_FILE"; then
+            git rebase --abort >/dev/null 2>&1 || true
+            warn "git pull --rebase échoué avant le push (voir $LOG_FILE)"
+            return 1
+        fi
         git push -q 2>>"$LOG_FILE" && ok "git : push origin" || { warn "git push échoué (voir $LOG_FILE)"; return 1; }
     fi
 }
@@ -137,6 +163,7 @@ main() {
     fi
     echo $$ > "$LOCK_FILE"
     trap 'rm -f "$LOCK_FILE"' EXIT
+    git_pull_before_run
 
     local output rc=0
     {
@@ -167,6 +194,10 @@ main() {
     elif printf '%s' "$resume" | grep -qi '^À jour'; then
         title="Sync Garmin — à jour"; priority=2; tags="running"
     fi
+    # Index du tableau de bord : dérivé, jetable, et ignoré par git (.arc/ s'ignore
+    # lui-même). Un tableau de bord ouvert voit ainsi la synchronisation sans attendre.
+    python3 "$ARC_ENGINE_ROOT/scripts/arc_index.py" --workspace "$ARC_WORKSPACE" >>"$LOG_FILE" 2>&1 \
+        || warn "Index du tableau de bord non mis à jour (voir $LOG_FILE)"
     if ! git_autocommit; then
         resume="$resume
 ⚠ git : commit/push du workspace échoué — voir logs/"
