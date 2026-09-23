@@ -83,7 +83,7 @@ dans un diff.
 Tests unitaires purs, sans sous-processus : le contrat ```` ```arc ````
 (`scripts/arc_contract.py` contre `skills/workspace-data-contract/SKILL.md`), la
 lecture des fichiers antérieurs au contrat (`scripts/arc_legacy.py`, sur les
-fixtures d'évals), l'index SQLite dérivé et les métriques (TRIMP, CTL/ATL/TSB,
+fixtures d'évals), l'index SQLite dérivé et les métriques (TRIMP, condition/fatigue/forme,
 VDOT) sur des valeurs de référence.
 
 Plusieurs cas viennent d'un vrai workspace de plusieurs mois et portent le nom du

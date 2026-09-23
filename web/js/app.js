@@ -174,10 +174,10 @@ async function viewToday() {
     : "";
 
   const f = form.series[form.series.length - 1];
-  const tsb = f ? f.tsb : null;
+  const formNow = f ? f.form : null;
   const formTxt = !f ? "Pas encore de séances indexées." :
-    `${tsb > 5 ? "Fraîcheur : la fatigue est sous la condition physique." : tsb < -20 ? "Fatigue marquée : la charge récente dépasse nettement la condition." : "Zone de travail : fatigue et condition équilibrées."}${f.acwr > 1.3 ? " Charge aiguë au-dessus de la zone prudente." : ""}`;
-  const formHtml = f ? `<dl class="facts"><div><dt>Condition (CTL)</dt><dd>${F.num(f.ctl)}</dd></div><div><dt>Fatigue (ATL)</dt><dd>${F.num(f.atl)}</dd></div><div><dt>Forme (TSB)</dt><dd class="${tsb >= 0 ? "pos" : "neg"}">${tsb > 0 ? "+" : ""}${F.num(tsb)}</dd></div><div><dt>ACWR</dt><dd>${F.num(f.acwr, 2)}</dd></div></dl><p class="muted">${formTxt} <a href="#/forme">Courbe de forme</a></p>` : note(formTxt);
+    `${formNow > 5 ? "Fraîcheur : la fatigue est sous la condition physique." : formNow < -20 ? "Fatigue marquée : la charge récente dépasse nettement la condition." : "Zone de travail : fatigue et condition équilibrées."}${f.acwr > 1.3 ? " Charge aiguë au-dessus de la zone prudente." : ""}`;
+  const formHtml = f ? `<dl class="facts"><div><dt>Condition</dt><dd>${F.num(f.fitness)}</dd></div><div><dt>Fatigue</dt><dd>${F.num(f.fatigue)}</dd></div><div><dt>Forme</dt><dd class="${formNow >= 0 ? "pos" : "neg"}">${formNow > 0 ? "+" : ""}${F.num(formNow)}</dd></div><div><dt>ACWR</dt><dd>${F.num(f.acwr, 2)}</dd></div></dl><p class="muted">${formTxt} <a href="#/forme">Courbe de forme</a></p>` : note(formTxt);
 
   const rep = reports.reports[0];
   main.innerHTML = `${header(F.dayLong(today).replace(/^./, (c) => c.toUpperCase()))}
@@ -206,9 +206,9 @@ async function viewForm(params) {
   const marks = [{ type: "hline", value: 0, cls: "mark mark--zero" }];
   if (form.race_date) marks.push({ type: "vline", date: form.race_date, cls: "mark mark--race", label: "Course" });
   const chart = timeChart(dates, [
-    { type: "area", values: series.map((p) => p.tsb), cls: "area area--tsb" },
-    { type: "line", values: series.map((p) => p.ctl), cls: "line line--ctl" },
-    { type: "line", values: series.map((p) => p.atl), cls: "line line--atl" },
+    { type: "area", values: series.map((p) => p.form), cls: "area area--form" },
+    { type: "line", values: series.map((p) => p.fitness), cls: "line line--fitness" },
+    { type: "line", values: series.map((p) => p.fatigue), cls: "line line--fatigue" },
   ], marks, { height: 250, label: "Condition, fatigue et forme", yFormat: (v) => F.num(v) });
   const acwr = timeChart(dates, [
     { type: "band", lo: dates.map(() => form.acwr_safe[0]), hi: dates.map(() => form.acwr_safe[1]), cls: "band-fill" },
@@ -232,7 +232,7 @@ async function viewForm(params) {
   main.innerHTML = `${header("Forme & charge", `Charge par séance : TRIMP (fréquence cardiaque), repli sur l'effort perçu. <a href="#/performance">Hypothèses des modèles</a>`)}
     <div class="toolbar">${periods}</div>
     <section class="band"><h2>Courbe de forme</h2>
-      <p class="legend"><span class="legend__item"><span class="key key--ctl"></span>Condition (CTL 42 j)</span> <span class="legend__item"><span class="key key--atl"></span>Fatigue (ATL 7 j)</span> <span class="legend__item"><span class="key key--tsb"></span>Forme (TSB)</span></p>
+      <p class="legend"><span class="legend__item"><span class="key key--fitness"></span>Condition (42 j)</span> <span class="legend__item"><span class="key key--fatigue"></span>Fatigue (7 j)</span> <span class="legend__item"><span class="key key--form"></span>Forme</span></p>
       <div class="chart-host" id="c-form">${chart.svg}</div><p class="readout" id="r-form"></p></section>
     <section class="band"><h2>Ratio charge aiguë / chronique</h2><p class="muted">Bande prudente ${F.num(form.acwr_safe[0], 1)} – ${F.num(form.acwr_safe[1], 1)}.</p>
       <div class="chart-host" id="c-acwr">${acwr.svg}</div></section>
@@ -243,7 +243,7 @@ async function viewForm(params) {
 
   attachCursor($("#c-form"), chart, (i) => {
     const p = series[i];
-    readout($("#r-form"), `<strong>${F.dayLong(p.date)}</strong> · charge ${F.num(p.load)} · CTL ${F.num(p.ctl, 1)} · ATL ${F.num(p.atl, 1)} · TSB ${p.tsb > 0 ? "+" : ""}${F.num(p.tsb, 1)} · ACWR ${F.num(p.acwr, 2)}`);
+    readout($("#r-form"), `<strong>${F.dayLong(p.date)}</strong> · charge ${F.num(p.load)} · condition ${F.num(p.fitness, 1)} · fatigue ${F.num(p.fatigue, 1)} · forme ${p.form > 0 ? "+" : ""}${F.num(p.form, 1)} · ACWR ${F.num(p.acwr, 2)}`);
   });
   attachCursor($("#c-acwr"), acwr, () => {});
   attachCursor($("#c-load"), loadChart, (i) => {
@@ -424,7 +424,7 @@ async function viewPerformance() {
   let chartHtml = empty("Pas encore d'estimation", "La VO2max effective s'estime sur les séances de course d'au moins 20 minutes, à plus de 70 % de la FC max, avec distance et FC moyenne.");
   let c = null;
   if (p.vo2max.length) {
-    c = timeChart(p.vo2max.map((x) => x.date), [{ type: "line", values: p.vo2max.map((x) => x.vo2max), cls: "line line--ctl" }], [], { height: 200, label: "VO2max effective, tendance 30 jours", yFormat: (v) => F.num(v) });
+    c = timeChart(p.vo2max.map((x) => x.date), [{ type: "line", values: p.vo2max.map((x) => x.vo2max), cls: "line line--fitness" }], [], { height: 200, label: "VO2max effective, tendance 30 jours", yFormat: (v) => F.num(v) });
     chartHtml = `<div class="chart-host" id="c-vo2">${c.svg}</div><p class="readout" id="r-vo2"></p>`;
   }
   const names = { 5000: "5 km", 10000: "10 km", 21097.5: "Semi-marathon", 42195: "Marathon" };

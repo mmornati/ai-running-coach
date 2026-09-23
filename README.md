@@ -14,7 +14,7 @@ Le projet est **en français par défaut** (la langue des documents générés e
 | 🛠️ **9 skills** | analyse GPX, comparaison de parcours, planification Garmin, météo, analyse de séances, etc. |
 | 📡 **Accès Garmin Connect** | via `garmin-mcp` (mode direct, liste blanche d'outils) — passerelle `leanproxy-mcp` optionnelle |
 | 🚀 **Installation automatisée** | un script pour installer et configurer tout (uv, Garmin, IDE) |
-| 📊 **Tableau de bord local** | courbe de forme (CTL / ATL / TSB), bilan santé du matin, semaine, séances et splits, prédictions — à côté du texte du coach (`scripts/dashboard.sh`, lecture seule, 127.0.0.1) |
+| 📊 **Tableau de bord local** | courbe de forme (condition / fatigue / forme), bilan santé du matin, semaine, séances et splits, prédictions — à côté du texte du coach (`scripts/dashboard.sh`, lecture seule, 127.0.0.1) |
 | 📱 **Le coach dans la poche** | synchronisation Garmin automatique + notification push, et dialogue avec le coach depuis le téléphone (Claude Code Remote Control) — sans renoncer à votre abonnement |
 | 🎛️ **Coach configurable** | style de coaching, discipline (trail ou route), bilan santé matinal, profil d'athlète |
 | 📚 **Documentation** | guide de démarrage rapide, configuration, dépannage |
@@ -157,6 +157,12 @@ Les contributions sont les bienvenues ! Consultez le fichier [CONTRIBUTING.md](C
 ## 📄 Licence
 
 Ce projet est sous licence [MIT](LICENSE).
+
+## ™️ Marques
+
+Garmin®, Garmin Connect™, Body Battery™ et Firstbeat Analytics™ sont des marques de Garmin Ltd. ou de ses filiales. TrainingPeaks® ainsi que TSS®, NP® et IF® sont des marques de Peaksware LLC ; les sigles CTL, ATL et TSB sont revendiqués par la même société. Intervals.icu et Strava sont des marques de leurs éditeurs respectifs. Ces noms sont cités uniquement pour désigner les services avec lesquels le projet interagit ou pour expliquer une équivalence.
+
+Ce projet est **indépendant** : il n'est ni affilié à ces sociétés, ni approuvé, parrainé ou soutenu par elles. Ses métriques de charge (TRIMP de Banister, condition / fatigue / forme, ACWR) reposent sur des modèles scientifiques publiés et portent volontairement des noms génériques — voir [Marques et métriques](docs/marques.md).
 
 ## ⚠️ Avertissement
 

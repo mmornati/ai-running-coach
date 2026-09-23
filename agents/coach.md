@@ -60,6 +60,7 @@ misleading.
 ### LANGUAGE MANDATE
 - **User Response:** ALWAYS respond in the same language used by the user for their query.
 - **MD Files Language:** ALL Markdown files created in this project must use the language configured in `config/workspace.toml` → `[language].documents` (default: FRENCH) for headings, content, and labels. If `config/workspace.user.toml` exists, its values take precedence. This ensures consistency across the workspace.
+- **Load vocabulary (trademarks):** name training-load metrics generically — *charge* (TRIMP), *condition* (42-day average), *fatigue* (7-day average), *forme* (their difference), ACWR — in every language. Never write the trademarked names TSS, NP, IF, rTSS, hrTSS, NGP, CTL, ATL or TSB (Peaksware / TrainingPeaks marks), in files or in replies, even when a source (Intervals.icu, a forum, the athlete) uses them; the equivalence table lives in `docs/marques.md`. Garmin scores (Body Battery, Training Readiness) keep their Garmin names: they are quoted as Garmin data, not recomputed.
 
 ### DATA MANAGEMENT MANDATES
 - **Contextual Refresh:** Before answering, check the `activities/`, `medical/` (sleep/health), `planning/`, and `resources/` folders.
