@@ -389,20 +389,31 @@ async function viewSession(id) {
   ];
   let splitsHtml = "";
   if (d.splits.length) {
-    const sp = d.splits;
+    const all = d.splits;
+    // Tours Garmin : souvent 1 km, mais un pas de séance structurée ou le reliquat
+    // final peut faire 500 m ou 20 m. On trace l'allure (temps ramené au km),
+    // et un tour de moins de 200 m n'entre pas dans le graphique.
+    const lapKm = (x) => (x.distance_m != null ? x.distance_m / 1000 : 1);
+    const byKm = all.every((x) => x.distance_m == null || Math.abs(x.distance_m - 1000) <= 50);
+    const sp = all.filter((x) => x.duration_s && (x.distance_m == null || x.distance_m >= 200));
+    const unit = byKm ? "Km" : "Tour";
     const labels = sp.map((x) => String(x.km));
     const c = timeChart(labels, [
-      { type: "bars", values: sp.map((x) => (x.duration_s ? x.duration_s / 60 : null)), cls: "bar" },
+      { type: "bars", values: sp.map((x) => x.duration_s / lapKm(x) / 60), cls: "bar" },
       { type: "line", values: sp.map((x) => x.avg_hr_bpm), cls: "line line--rhr", axis: "y2" },
       { type: "dots", values: sp.map((x) => x.avg_hr_bpm), cls: "dot dot--rhr", axis: "y2" },
-    ], [], { height: 200, y: { zero: true }, y2: {}, xLabels: labels, label: "Temps et FC par kilomètre", yFormat: (v) => `${F.num(v)}′`, y2Format: (v) => F.num(v) });
-    splitsHtml = `<section class="band"><h2>Splits</h2><p class="legend"><span class="legend__item"><span class="key key--bar"></span>Temps au km</span> <span class="legend__item"><span class="key key--rhr"></span>FC moyenne</span></p>
+    ], [], { height: 200, y: { zero: true }, y2: {}, xLabels: labels, label: byKm ? "Temps et FC par kilomètre" : "Allure et FC par tour", yFormat: (v) => `${F.num(v)}′`, y2Format: (v) => F.num(v) });
+    const hidden = all.length - sp.length;
+    const lapPace = (x) => (x.distance_m ? F.pace(x.distance_m, x.duration_s) : "—");
+    splitsHtml = `<section class="band"><h2>Splits</h2><p class="legend"><span class="legend__item"><span class="key key--bar"></span>${byKm ? "Temps au km" : "Allure (min/km)"}</span> <span class="legend__item"><span class="key key--rhr"></span>FC moyenne</span></p>
       <div class="chart-host chart-host--nox" id="c-splits">${c.svg}</div><p class="readout" id="r-splits"></p>
-      <div class="table-wrap"><table class="data data--compact"><thead><tr><th scope="col">Km</th><th scope="col" class="num">Temps</th><th scope="col" class="num">D+ / D-</th><th scope="col" class="num">FC</th><th scope="col" class="num">Cadence</th><th scope="col">Lecture</th></tr></thead>
-      <tbody>${sp.map((x) => `<tr><td>${x.km}</td><td class="num">${F.clock(x.duration_s).replace(/^0:/, "")}</td><td class="num">${x.elev_gain_m != null ? `+${F.num(x.elev_gain_m)} / -${F.num(x.elev_loss_m)}` : "—"}</td><td class="num">${F.num(x.avg_hr_bpm)}</td><td class="num">${F.num(x.cadence_spm)}</td><td>${F.esc(x.label || "")}</td></tr>`).join("")}</tbody></table></div></section>`;
+      ${hidden ? `<p class="muted"><small>${hidden === 1 ? "Un tour de moins de 200 m n'est pas tracé" : `${hidden} tours de moins de 200 m ne sont pas tracés`} ; il${hidden === 1 ? " reste" : "s restent"} dans le tableau.</small></p>` : ""}
+      <div class="table-wrap"><table class="data data--compact"><thead><tr><th scope="col">${unit}</th>${byKm ? "" : `<th scope="col" class="num">Distance</th>`}<th scope="col" class="num">Temps</th>${byKm ? "" : `<th scope="col" class="num">Allure</th>`}<th scope="col" class="num">D+ / D-</th><th scope="col" class="num">FC</th><th scope="col" class="num">Cadence</th><th scope="col">Lecture</th></tr></thead>
+      <tbody>${all.map((x) => `<tr><td>${x.km}</td>${byKm ? "" : `<td class="num">${x.distance_m != null ? F.distance(x.distance_m, 2) : "—"}</td>`}<td class="num">${F.clock(x.duration_s).replace(/^0:/, "")}</td>${byKm ? "" : `<td class="num">${lapPace(x)}</td>`}<td class="num">${x.elev_gain_m != null ? `+${F.num(x.elev_gain_m)} / -${F.num(x.elev_loss_m)}` : "—"}</td><td class="num">${F.num(x.avg_hr_bpm)}</td><td class="num">${F.num(x.cadence_spm)}</td><td>${F.esc(x.label || "")}</td></tr>`).join("")}</tbody></table></div></section>`;
     setTimeout(() => attachCursor($("#c-splits"), c, (i) => {
       const x = sp[i];
-      readout($("#r-splits"), `<strong>Km ${x.km}</strong> · ${F.clock(x.duration_s).replace(/^0:/, "")} · FC ${F.num(x.avg_hr_bpm)}${x.elev_gain_m != null ? ` · +${F.num(x.elev_gain_m)} m` : ""}${x.label ? ` · ${F.esc(x.label)}` : ""}`);
+      const what = byKm ? F.clock(x.duration_s).replace(/^0:/, "") : `${F.distance(x.distance_m, 2)} en ${F.clock(x.duration_s).replace(/^0:/, "")} (${lapPace(x)})`;
+      readout($("#r-splits"), `<strong>${unit} ${x.km}</strong> · ${what} · FC ${F.num(x.avg_hr_bpm)}${x.elev_gain_m != null ? ` · +${F.num(x.elev_gain_m)} m` : ""}${x.label ? ` · ${F.esc(x.label)}` : ""}`);
     }), 0);
   }
   const wx = d.weather;

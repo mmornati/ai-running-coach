@@ -271,7 +271,8 @@ def best_efforts(activities: List[dict]) -> Dict[int, dict]:
     """Meilleur temps sur 1/5/10/21 km consécutifs, tous splits confondus.
 
     Chaque activité : {"date", "sport", "distance_m"?, "splits": [{"km", "duration_s", "distance_m"?}, …]}.
-    Un split partiel (distance_m < 900) interrompt la fenêtre. Sans distance par split,
+    Un tour qui ne fait pas environ 1 km (distance_m hors de 900-1100 : reliquat final,
+    pas de séance structurée de 500 m ou de 2 km) interrompt la fenêtre. Sans distance par split,
     le dernier est présumé partiel dès qu'il y a plus de splits que de kilomètres
     entiers (25,19 km → 26 splits : le 26ᵉ fait 190 m, pas un « record » en 0:49).
     """
@@ -285,7 +286,7 @@ def best_efforts(activities: List[dict]) -> Dict[int, dict]:
             splits = splits[:-1]
         durations = []
         for split in splits:
-            partial = split.get("distance_m") is not None and split["distance_m"] < 900
+            partial = split.get("distance_m") is not None and not 900 <= split["distance_m"] <= 1100
             durations.append(None if partial or not split.get("duration_s") else split["duration_s"])
         for km in RECORD_DISTANCES_KM:
             for i in range(0, len(durations) - km + 1):
