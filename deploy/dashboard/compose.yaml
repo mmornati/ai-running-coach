@@ -1,0 +1,45 @@
+# ai-running-coach — tableau de bord derrière Traefik.
+#
+#   cp .env.example .env    # puis renseigner .env
+#   docker compose up -d --build
+#
+# Le tableau de bord n'a pas d'authentification propre et montre des données de
+# santé : il n'est joignable QUE par Traefik (aucun port publié), et le routeur
+# exige un middleware d'authentification (TRAEFIK_AUTH_MIDDLEWARE).
+# Documentation : docs/dashboard/docker.md
+name: ai-running-coach
+
+services:
+  dashboard:
+    build:
+      context: ../..
+    image: ai-running-coach-dashboard:local
+    container_name: ai-running-coach-dashboard
+    restart: unless-stopped
+    # Propriétaire du workspace sur l'hôte (config/workspace.user.toml est en 600).
+    user: "${ARC_UID:-1000}:${ARC_GID:-1000}"
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    tmpfs: [/tmp]
+    environment:
+      ARC_DASHBOARD_ALLOWED_HOSTS: "${ARC_DASHBOARD_HOST:?ARC_DASHBOARD_HOST manquant dans .env}"
+      TZ: ${TZ:-Europe/Paris}
+    volumes:
+      # Lecture seule : le conteneur ne peut rien écrire dans vos fichiers.
+      - "${ARC_WORKSPACE_HOST:?ARC_WORKSPACE_HOST manquant dans .env}:/workspace:ro"
+    networks: [proxy]
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=${TRAEFIK_NETWORK:-traefik}"
+      - "traefik.http.routers.arc-dashboard.rule=Host(`${ARC_DASHBOARD_HOST}`)"
+      - "traefik.http.routers.arc-dashboard.entrypoints=${TRAEFIK_ENTRYPOINT:-websecure}"
+      # Pas de valeur par défaut : sans middleware d'authentification, compose refuse de démarrer.
+      - "traefik.http.routers.arc-dashboard.middlewares=${TRAEFIK_AUTH_MIDDLEWARE:?TRAEFIK_AUTH_MIDDLEWARE manquant, le tableau de bord ne s'expose pas sans authentification}"
+      - "traefik.http.routers.arc-dashboard.service=arc-dashboard"
+      - "traefik.http.services.arc-dashboard.loadbalancer.server.port=8765"
+
+networks:
+  proxy:
+    external: true
+    name: ${TRAEFIK_NETWORK:-traefik}

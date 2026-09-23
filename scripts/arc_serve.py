@@ -1,12 +1,21 @@
 #!/usr/bin/env python3
-"""Serveur local du tableau de bord : lecture seule, 127.0.0.1 uniquement.
+"""Serveur local du tableau de bord : lecture seule, 127.0.0.1 par défaut.
 
 Sert `web/` (HTML/CSS/JS statiques) et une API JSON `/api/*` construite sur
 l'index SQLite dérivé (`scripts/arc_index.py`). Rien n'est jamais écrit dans le
 workspace hors de `.arc/` (la base elle-même), et rien n'est exposé hors de la
-machine : l'adresse d'écoute n'est pas configurable.
+machine : le serveur écoute sur 127.0.0.1.
 
     arc_serve.py [--workspace DIR] [--port N] [--memory] [--db FICHIER] [--today AAAA-MM-JJ]
+                 [--listen ADRESSE --allowed-host NOM ...]
+
+`--listen` (ou ARC_DASHBOARD_LISTEN) n'existe que pour le conteneur Docker, qui
+doit écouter sur son interface réseau pour que le reverse proxy l'atteigne. Il
+exige `--allowed-host` (ou ARC_DASHBOARD_ALLOWED_HOSTS, séparés par des
+virgules) : les noms sous lesquels le proxy présente le tableau de bord. Tout
+autre en-tête Host reste refusé. Le tableau de bord n'a pas d'authentification
+propre : hors de 127.0.0.1, il se place derrière un proxy qui en a une
+(docs/dashboard/docker.md).
 
 Le port vient de `[dashboard].port` (défaut 8765). S'il est pris, les 9 suivants
 sont essayés ; `--port 0` laisse le système choisir (tests). La ligne
@@ -42,7 +51,7 @@ import arc_index as I  # noqa: E402
 import arc_metrics as M  # noqa: E402
 from coach_config import ConfigError  # noqa: E402
 
-BIND = "127.0.0.1"                      # en dur : le tableau de bord ne sort pas de la machine
+LOOPBACK = "127.0.0.1"                   # défaut : le tableau de bord ne sort pas de la machine
 DEFAULT_PORT = 8765
 WEB_ROOT = I.ENGINE / "web"
 # Intervalle minimal entre deux réindexations (ARC_DASHBOARD_REFRESH_S pour les tests).
@@ -455,7 +464,8 @@ class Handler(BaseHTTPRequestHandler):
     def _host_ok(self) -> bool:
         # Protection contre le DNS rebinding : une page tierce qui ferait résoudre
         # son domaine vers 127.0.0.1 enverrait son propre Host.
-        return (self.headers.get("Host") or "") in self.allowed_hosts
+        host = (self.headers.get("Host") or "").lower()
+        return host in self.allowed_hosts or host.rsplit(":", 1)[0] in self.allowed_hosts
 
     def do_HEAD(self):
         self.do_GET()
@@ -465,7 +475,9 @@ class Handler(BaseHTTPRequestHandler):
             self._json(HTTPStatus.FORBIDDEN, {"error": "hôte non autorisé"})
             return
         url = urlparse(self.path)
-        if url.path.startswith("/api/"):
+        if url.path == "/healthz":              # sonde du conteneur : ne réindexe pas
+            self._json(HTTPStatus.OK, {"status": "ok"})
+        elif url.path.startswith("/api/"):
             self._api(url)
         else:
             self._static(url.path)
@@ -506,22 +518,44 @@ class Handler(BaseHTTPRequestHandler):
         self._send(HTTPStatus.OK, target.read_bytes(), ctype)
 
 
-def bind(port: int, tries: int = 10) -> ThreadingHTTPServer:
+def bind(port: int, tries: int = 10, listen: str = LOOPBACK) -> ThreadingHTTPServer:
     last = None
     candidates = [0] if port == 0 else range(port, port + tries)
     for candidate in candidates:
         try:
-            return ThreadingHTTPServer((BIND, candidate), Handler)
+            return ThreadingHTTPServer((listen, candidate), Handler)
         except OSError as exc:
             last = exc
-    raise ConfigError(f"aucun port libre entre {port} et {port + tries - 1} ({last}). Essayez --port.")
+    raise ConfigError(f"aucun port libre entre {port} et {port + tries - 1} sur {listen} ({last}). Essayez --port.")
 
 
-def serve(workspace: Path, port: int, db=None, memory=False, today=None) -> None:
+def host_allowlist(port: int, extra=()) -> set:
+    """En-têtes Host acceptés : la boucle locale, plus les noms publics déclarés.
+
+    Un nom déclaré est accepté seul (derrière un proxy, `coach.example.org`) ou
+    suivi d'un port (`coach.example.org:8443`) ; la casse est ignorée.
+    """
+    hosts = {f"127.0.0.1:{port}", f"localhost:{port}"}
+    for name in extra:
+        hosts.add(name.strip().lower())
+    return hosts
+
+
+def check_exposure(listen: str, extra_hosts) -> None:
+    """Hors de la boucle locale, sans nom public déclaré, rien ne serait servi."""
+    if listen not in (LOOPBACK, "localhost") and not extra_hosts:
+        raise ConfigError(
+            f"--listen {listen} sans --allowed-host : toute requête venue du réseau serait refusée. "
+            "Déclarez le nom public (ARC_DASHBOARD_ALLOWED_HOSTS), derrière un proxy authentifié.")
+
+
+def serve(workspace: Path, port: int, db=None, memory=False, today=None,
+          listen: str = LOOPBACK, extra_hosts=()) -> None:
+    check_exposure(listen, extra_hosts)
     Handler.store = Store(workspace, db, memory, today)
-    httpd = bind(port)
+    httpd = bind(port, listen=listen)
     actual = httpd.server_address[1]
-    Handler.allowed_hosts = {f"127.0.0.1:{actual}", f"localhost:{actual}"}
+    Handler.allowed_hosts = host_allowlist(actual, extra_hosts)
     print(f"URL: http://127.0.0.1:{actual}/", flush=True)
     try:
         httpd.serve_forever()
@@ -549,10 +583,15 @@ def main(argv=None) -> int:
     parser.add_argument("--db")
     parser.add_argument("--memory", action="store_true", help="base en mémoire, rien sur disque")
     parser.add_argument("--today", help="date de référence AAAA-MM-JJ (démonstrations, tests)")
+    parser.add_argument("--listen", default=os.environ.get("ARC_DASHBOARD_LISTEN") or LOOPBACK,
+                        help="adresse d'écoute (conteneur uniquement ; défaut 127.0.0.1)")
+    parser.add_argument("--allowed-host", action="append", dest="allowed_hosts",
+                        default=[h for h in os.environ.get("ARC_DASHBOARD_ALLOWED_HOSTS", "").split(",") if h.strip()],
+                        help="nom public accepté dans l'en-tête Host (répétable)")
     args = parser.parse_args(argv)
     workspace = I.workspace_root(args.workspace)
     port = args.port if args.port is not None else configured_port(workspace)
-    serve(workspace, port, args.db, args.memory, args.today)
+    serve(workspace, port, args.db, args.memory, args.today, args.listen, args.allowed_hosts)
     return 0
 
 

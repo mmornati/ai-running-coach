@@ -47,7 +47,9 @@ point d'entrée : elle doit donner envie de l'essayer.
 - **Tableau de bord local** (`scripts/dashboard.sh`, `web/`) : outil quotidien de l'athlète,
   mode Operate. Servi par un serveur Python de la bibliothèque standard qui n'écoute que sur
   `127.0.0.1`, en lecture seule, sur un index SQLite dérivé des fichiers du workspace. Aucune
-  dépendance npm, aucun build.
+  dépendance npm, aucun build. Variante serveur : le même tableau de bord en conteneur Docker
+  (`Dockerfile`, `deploy/dashboard/`), workspace monté en lecture seule, joignable
+  uniquement par un reverse proxy qui authentifie.
 
 ## Capabilities and Constraints
 

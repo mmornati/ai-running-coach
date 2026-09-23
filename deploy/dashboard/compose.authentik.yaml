@@ -1,0 +1,10 @@
+# Complément Authentik (forward auth, avant-poste intégré) : les routes
+# /outpost.goauthentik.io/ du même hôte vont à l'avant-poste, sans passer par
+# le middleware — c'est là qu'Authentik reçoit le retour de connexion.
+# Activé par COMPOSE_FILE=compose.yaml:compose.authentik.yaml dans .env.
+services:
+  dashboard:
+    labels:
+      - "traefik.http.routers.arc-dashboard-sso.rule=Host(`${ARC_DASHBOARD_HOST}`) && PathPrefix(`/outpost.goauthentik.io/`)"
+      - "traefik.http.routers.arc-dashboard-sso.entrypoints=${TRAEFIK_ENTRYPOINT:-websecure}"
+      - "traefik.http.routers.arc-dashboard-sso.service=${AUTHENTIK_OUTPOST_SERVICE:?AUTHENTIK_OUTPOST_SERVICE manquant dans .env}"

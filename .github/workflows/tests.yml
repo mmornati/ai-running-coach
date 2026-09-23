@@ -57,6 +57,51 @@ jobs:
       - name: Aperçu --dry-run (aucune écriture attendue)
         run: ./install.sh --dry-run --no-auth
 
+  docker:
+    # Le conteneur du tableau de bord : construit, démarré sur un workspace en
+    # lecture seule, et interrogé comme le ferait le reverse proxy.
+    name: Docker (tableau de bord)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Construire l'image
+        run: docker build -t arc-dashboard:ci .
+
+      - name: Démarrer sur un workspace en lecture seule
+        run: |
+          docker run -d --name arc-dashboard --read-only --cap-drop ALL \
+            --security-opt no-new-privileges:true --tmpfs /tmp \
+            -e ARC_DASHBOARD_ALLOWED_HOSTS=coach.example.org \
+            -v "$PWD/tests/evals/fixtures/base-week:/workspace:ro" \
+            -p 127.0.0.1:8765:8765 arc-dashboard:ci
+          for _ in $(seq 30); do
+            [ "$(docker inspect -f '{{.State.Health.Status}}' arc-dashboard)" = healthy ] && break
+            sleep 2
+          done
+          docker inspect -f '{{.State.Health.Status}}' arc-dashboard | grep -qx healthy
+
+      - name: Nom public accepté, hôte étranger refusé, lecture seule
+        run: |
+          code() { curl -s -o /dev/null -w '%{http_code}' -H "Host: $1" -X "${2:-GET}" "http://127.0.0.1:8765${3:-/api/summary}"; }
+          test "$(code coach.example.org)" = 200
+          test "$(code evil.example.org)" = 403
+          test "$(code coach.example.org POST)" = 405
+          curl -sf -H 'Host: coach.example.org' http://127.0.0.1:8765/api/summary | grep -q '"today"'
+          test "$(docker exec arc-dashboard id -u)" != 0
+
+      - name: Refus de démarrer sans nom public
+        run: |
+          if docker run --rm -e ARC_DASHBOARD_ALLOWED_HOSTS= \
+               -v "$PWD/tests/evals/fixtures/base-week:/workspace:ro" arc-dashboard:ci 2>err.txt; then
+            echo "le conteneur a démarré sans nom public autorisé" >&2; exit 1
+          fi
+          grep -q -- '--allowed-host' err.txt
+
+      - name: Journal du conteneur
+        if: failure()
+        run: docker logs arc-dashboard || true
+
   docs:
     name: Documentation
     runs-on: ubuntu-latest

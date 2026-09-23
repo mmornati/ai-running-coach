@@ -417,10 +417,13 @@ populate_catalog() {
 # Entrées que le bloc généré doit contenir. Une installation plus ancienne a
 # déjà un bloc : on n'y ajoute que ce qui manque (sinon une nouvelle entrée,
 # comme l'index du tableau de bord, n'atteindrait jamais les workspaces existants).
+# /scripts sans « / » final : c'est un lien, et un motif « dossier/ » ne couvre pas
+# un lien symbolique — `git add -A` (git_autocommit) l'aurait versionné.
+# *.bak : sauvegardes que install.sh et coach_config.py laissent à côté des fichiers.
 WORKSPACE_IGNORES=(
-    /agents/ /skills/ /scripts/ /AGENTS.md /config/workspace.toml config/workspace.user.toml
+    /agents/ /skills/ /scripts /AGENTS.md /config/workspace.toml config/workspace.user.toml
     /.mcp.json /.claude/ /.opencode/ /.gemini/ /.cursor/ /.windsurf/ /.github/agents /.github/skills
-    /logs/ /.arc/ .DS_Store __pycache__/
+    /logs/ /.arc/ .DS_Store __pycache__/ '*.bak'
 )
 
 ensure_workspace_gitignore() {
@@ -468,7 +471,7 @@ $marker
 # racine pour ne pas masquer local/agents et local/skills (versionnés)
 /agents/
 /skills/
-/scripts/
+/scripts
 /AGENTS.md
 /config/workspace.toml
 # Config personnelle : contient le sujet ntfy, qui fait office de secret
@@ -487,6 +490,8 @@ config/workspace.user.toml
 /.arc/
 .DS_Store
 __pycache__/
+# Sauvegardes laissées par l'installation
+*.bak
 $end_marker
 GITIGNORE
     ok "Bloc ai-running-coach ajouté à $gi"
