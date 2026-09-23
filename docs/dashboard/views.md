@@ -25,15 +25,18 @@ La vue du matin. Elle répond à une question : **je cours, j'allège ou je me r
 
 ![Forme & charge](../assets/dashboard/forme.webp)
 
-La **courbe de forme** met côte à côte votre **condition** (CTL, moyenne de charge sur
-42 jours), votre **fatigue** (ATL, 7 jours) et votre **forme** (TSB, leur écart) :
+La **courbe de forme** met côte à côte votre **condition** (moyenne de charge sur
+42 jours), votre **fatigue** (7 jours) et votre **forme** (leur écart) — le modèle
+impulsion-réponse de Banister, calculé sur le TRIMP (voir
+[Marques et métriques](../marques.md)) :
 quand la fatigue passe sous la condition, vous êtes frais. Le jour de course est
 marqué ; on y voit ici la fatigue bondir à plus de 200 le 13 septembre, puis la
 forme redevenir positive pendant la reprise.
 
 En dessous :
 
-- le **ratio charge aiguë / chronique** (ACWR) et sa bande prudente 0,8 – 1,3 ;
+- le **ratio charge aiguë / chronique** (ACWR) et sa bande 0,8 – 1,3 — un repère
+  indicatif, discuté dans la littérature, pas un seuil de blessure ;
 - le **volume hebdomadaire** — heures d'effort et D+ cumulé en trail, kilomètres sur
   route —, la monotonie et le *strain* de la semaine.
 

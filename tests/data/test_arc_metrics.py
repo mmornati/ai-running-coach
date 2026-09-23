@@ -24,18 +24,18 @@ class TestForm(unittest.TestCase):
                               start, start + timedelta(days=days - 1))
 
     def test_constant_load_converges(self):
-        """120 j à charge constante 100 : CTL et ATL → 100, TSB → 0 (solutions analytiques)."""
+        """120 j à charge constante 100 : condition et fatigue → 100, forme → 0 (solutions analytiques)."""
         s = self.series({k: 100.0 for k in range(120)}, 120)
         last = s[-1]
-        self.assertAlmostEqual(last["ctl"], 100 * (1 - math.exp(-120 / 42)), delta=0.05)
-        self.assertAlmostEqual(last["atl"], 100.0, delta=0.05)
-        self.assertLess(abs(last["tsb"]), 7)
+        self.assertAlmostEqual(last["fitness"], 100 * (1 - math.exp(-120 / 42)), delta=0.05)
+        self.assertAlmostEqual(last["fatigue"], 100.0, delta=0.05)
+        self.assertLess(abs(last["form"]), 7)
 
     def test_rest_after_block_gives_positive_form(self):
-        """Six semaines de charge puis dix jours de repos : la forme (TSB) devient positive."""
+        """Six semaines de charge puis dix jours de repos : la forme devient positive."""
         s = self.series({k: 80.0 for k in range(42)}, 52)
-        self.assertLess(s[41]["tsb"], 0)
-        self.assertGreater(s[-1]["tsb"], 0)
+        self.assertLess(s[41]["form"], 0)
+        self.assertGreater(s[-1]["form"], 0)
 
     def test_acwr_needs_history(self):
         """Une première séance après une coupure ne produit pas un ACWR de 4."""

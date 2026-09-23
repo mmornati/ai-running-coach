@@ -40,7 +40,7 @@ import arc_metrics as M  # noqa: E402
 from coach_config import ConfigError, read_toml  # noqa: E402
 from coach_setup import ENGINE, workspace_root  # noqa: E402
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 DEFAULT_DB = ".arc/coach.db"
 DATA_DIRS = ("activities", "medical", "nutrition", "planning", "rapports")
 
@@ -156,7 +156,7 @@ CREATE TABLE race_plan (
 );
 CREATE TABLE aid_station (source_path TEXT, km REAL, name TEXT, cutoff TEXT, services TEXT);
 CREATE TABLE metric_day (
-    date TEXT PRIMARY KEY, load REAL, ctl REAL, atl REAL, tsb REAL, acwr REAL,
+    date TEXT PRIMARY KEY, load REAL, fitness REAL, fatigue REAL, form REAL, acwr REAL,
     monotony REAL, strain REAL, vo2max REAL
 );
 -- Lot 2 (ingestion FIT) : tables prévues, vides tant que l'ingestion n'existe pas.

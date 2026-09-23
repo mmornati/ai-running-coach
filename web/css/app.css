@@ -19,9 +19,9 @@
   --on-pine: #ffffff;
 
   /* séries */
-  --s-ctl: #1e4d3b;
-  --s-atl: #b0712f;
-  --s-tsb-pos: rgba(47, 107, 79, 0.22);
+  --s-fitness: #1e4d3b;
+  --s-fatigue: #b0712f;
+  --s-form-pos: rgba(47, 107, 79, 0.22);
   --s-hrv: #1e4d3b;
   --s-rhr: #9a4a38;
   --s-median: #6b7a72;
@@ -61,7 +61,7 @@
   :root:not([data-theme="light"]) {
     --bg: #0d1410; --surface: #121c16; --surface-2: #16201a; --ink: #e7ede9; --ink-soft: #b8c4bd; --ink-faint: #8b9a92;
     --line: #26352c; --line-strong: #34473c; --pine: #5fa57e; --moss: #6fb58c; --focus: #b6f04a; --on-pine: #0d1410;
-    --s-ctl: #7cc39b; --s-atl: #e0a45c; --s-tsb-pos: rgba(124, 195, 155, 0.20); --s-hrv: #7cc39b; --s-rhr: #e0826b;
+    --s-fitness: #7cc39b; --s-fatigue: #e0a45c; --s-form-pos: rgba(124, 195, 155, 0.20); --s-hrv: #7cc39b; --s-rhr: #e0826b;
     --s-median: #8b9a92; --s-bar: #4f8f6e; --s-sleep: #3d7a5c; --s-dplus: #e0826b; --s-band: rgba(124, 195, 155, 0.12);
     --s-year-0: #7cc39b; --s-year-1: #e0a45c; --s-year-2: #56665d;
     --ok: #6fc28f; --ok-bg: rgba(111, 194, 143, 0.12); --warn: #e0ad4f; --warn-bg: rgba(224, 173, 79, 0.13);
@@ -74,7 +74,7 @@
 :root[data-theme="dark"] {
   --bg: #0d1410; --surface: #121c16; --surface-2: #16201a; --ink: #e7ede9; --ink-soft: #b8c4bd; --ink-faint: #8b9a92;
   --line: #26352c; --line-strong: #34473c; --pine: #5fa57e; --moss: #6fb58c; --focus: #b6f04a; --on-pine: #0d1410;
-  --s-ctl: #7cc39b; --s-atl: #e0a45c; --s-tsb-pos: rgba(124, 195, 155, 0.20); --s-hrv: #7cc39b; --s-rhr: #e0826b;
+  --s-fitness: #7cc39b; --s-fatigue: #e0a45c; --s-form-pos: rgba(124, 195, 155, 0.20); --s-hrv: #7cc39b; --s-rhr: #e0826b;
   --s-median: #8b9a92; --s-bar: #4f8f6e; --s-sleep: #3d7a5c; --s-dplus: #e0826b; --s-band: rgba(124, 195, 155, 0.12);
   --s-year-0: #7cc39b; --s-year-1: #e0a45c; --s-year-2: #56665d;
   --ok: #6fc28f; --ok-bg: rgba(111, 194, 143, 0.12); --warn: #e0ad4f; --warn-bg: rgba(224, 173, 79, 0.13);
@@ -225,9 +225,9 @@ select { font: inherit; color: var(--ink); background: var(--surface); border: 1
 .chart .hit { fill: transparent; cursor: crosshair; }
 .chart .cursor { stroke: var(--ink-soft); stroke-width: 1; stroke-dasharray: 3 3; pointer-events: none; }
 .chart .line { fill: none; stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
-.chart .line--ctl { stroke: var(--s-ctl); stroke-width: 2.4; }
-.chart .line--atl { stroke: var(--s-atl); }
-.chart .line--acwr { stroke: var(--s-ctl); }
+.chart .line--fitness { stroke: var(--s-fitness); stroke-width: 2.4; }
+.chart .line--fatigue { stroke: var(--s-fatigue); }
+.chart .line--acwr { stroke: var(--s-fitness); }
 .chart .line--hrv { stroke: var(--s-hrv); }
 .chart .line--rhr { stroke: var(--s-rhr); }
 .chart .line--median { stroke: var(--s-median); stroke-dasharray: 4 3; stroke-width: 1.4; }
@@ -237,7 +237,7 @@ select { font: inherit; color: var(--ink); background: var(--surface); border: 1
 .chart .line--year-0 { stroke: var(--s-year-0); stroke-width: 2.4; }
 .chart .line--year-1 { stroke: var(--s-year-1); }
 .chart .line--year-2 { stroke: var(--s-year-2); }
-.chart .area--tsb { fill: var(--s-tsb-pos); }
+.chart .area--form { fill: var(--s-form-pos); }
 .chart .band-fill { fill: var(--s-band); }
 .chart .dot { stroke: var(--surface); stroke-width: 1.2; }
 .chart .dot--hrv { fill: var(--s-hrv); } .chart .dot--rhr { fill: var(--s-rhr); } .chart .dot--dplus { fill: var(--s-dplus); }
@@ -263,7 +263,7 @@ select { font: inherit; color: var(--ink); background: var(--surface); border: 1
 .legend--small { font-size: 0.78rem; color: var(--ink-faint); margin-top: 0.3rem; }
 .legend__item { white-space: nowrap; display: inline-flex; align-items: center; }
 .key { display: inline-block; width: 0.95rem; height: 0.28rem; border-radius: 2px; margin-right: 0.3rem; vertical-align: middle; }
-.key--ctl { background: var(--s-ctl); } .key--atl { background: var(--s-atl); } .key--tsb { background: var(--s-tsb-pos); height: 0.6rem; }
+.key--fitness { background: var(--s-fitness); } .key--fatigue { background: var(--s-fatigue); } .key--form { background: var(--s-form-pos); height: 0.6rem; }
 .key--bar { background: var(--s-bar); height: 0.6rem; } .key--dplus, .key--rhr { background: var(--s-dplus); }
 .key--green { background: var(--ok); height: 0.6rem; } .key--amber { background: var(--warn); height: 0.6rem; } .key--red { background: var(--bad); height: 0.6rem; }
 .key--year-0 { background: var(--s-year-0); } .key--year-1 { background: var(--s-year-1); } .key--year-2 { background: var(--s-year-2); }

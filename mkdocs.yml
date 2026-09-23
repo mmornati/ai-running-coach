@@ -3,6 +3,10 @@ site_description: Coach IA de trail running connecté à Garmin Connect
 site_url: https://mmornati.github.io/ai-running-coach/
 repo_url: https://github.com/mmornati/ai-running-coach
 repo_name: ai-running-coach
+copyright: >-
+  Projet indépendant, sous licence MIT — ni affilié à Garmin ni à TrainingPeaks,
+  ni approuvé par eux. Les marques citées appartiennent à leurs titulaires :
+  <a href="https://mmornati.github.io/ai-running-coach/marques/">Marques et métriques</a>.
 edit_uri: edit/main/docs/
 
 theme:
@@ -103,4 +107,5 @@ nav:
   - Ressources:
       - Base de connaissances: resources.md
   - Dépannage: troubleshooting.md
+  - Marques et métriques: marques.md
   - FAQ: faq.md

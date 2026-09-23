@@ -78,7 +78,7 @@ class TestDashboardServer(InstallAsserts):
         self.assertEqual(summary["incomplete_files"], 0, "le workspace synthétique est entièrement au contrat")
         form = json.loads(self.server.get("/api/form?days=60")[1])
         self.assertEqual(len(form["series"]), 60)
-        self.assertIsNotNone(form["series"][-1]["ctl"])
+        self.assertIsNotNone(form["series"][-1]["fitness"])
 
     def test_static_page_and_csp(self):
         status, body, headers = self.server.get("/")

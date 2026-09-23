@@ -56,6 +56,10 @@ Analyse du coach, en français (ou dans la langue des documents), libre.
    est la décision de disponibilité du jour ; `[coaching].style` change la
    façon de la dire, jamais la valeur. Un verdict s'accompagne toujours de
    `verdict_reason` (une phrase).
+7. **Noms de métriques génériques.** Ni clé ni texte ne reprend les sigles
+   déposés ou revendiqués par TrainingPeaks — marques : TSS, NP, IF, rTSS, hrTSS, NGP, CTL, ATL, TSB.
+   Écrivez *charge* (TRIMP), *condition*, *fatigue*, *forme*. Équivalences
+   dans `docs/marques.md`.
 
 ## Valider après chaque écriture
 

@@ -7,8 +7,10 @@ modèle.
 
 - Charge par séance : TRIMP de Banister (FC moyenne, FC repos/max du profil),
   repli sur le session-RPE de Foster quand la FC manque.
-- Forme : CTL (42 j) / ATL (7 j) en moyennes mobiles exponentielles,
-  TSB = CTL(j-1) − ATL(j-1), ACWR = ATL / CTL.
+- Forme (modèle impulsion-réponse de Banister) : condition (42 j) et fatigue
+  (7 j) en moyennes mobiles exponentielles, forme = condition(j-1) − fatigue(j-1),
+  ACWR = fatigue / condition. Noms génériques à dessein : voir « Marques »
+  dans README.md.
 - Monotonie et strain de Foster sur 7 jours.
 - VO2max effective par séance (allure + fraction de FC max), tendance 30 j.
 - Prédictions : VDOT de Daniels et Riegel.
@@ -30,10 +32,10 @@ from typing import Dict, Iterable, List, Optional, Tuple
 # Constantes et hypothèses
 # ---------------------------------------------------------------------------
 
-CTL_DAYS = 42
-ATL_DAYS = 7
+FITNESS_DAYS = 42
+FATIGUE_DAYS = 7
 ACWR_SAFE = (0.8, 1.3)
-ACWR_MIN_CTL = 10.0     # CTL quasi nulle (reprise, historique naissant) : le ratio n'a pas de sens
+ACWR_MIN_FITNESS = 10.0  # condition quasi nulle (reprise, historique naissant) : le ratio n'a pas de sens
 
 # Banister (1991) : coefficient de pondération exponentielle selon le sexe.
 BANISTER_K = {"male": 1.92, "female": 1.67}
@@ -71,8 +73,12 @@ ASSUMPTIONS = {
     "trimp_sex_default": "Sexe non renseigné dans le profil : k = 1,92 appliqué par défaut.",
     "srpe": f"Sans FC : session-RPE de Foster (minutes × RPE) × {RPE_TO_TRIMP} pour rester sur l'échelle TRIMP. "
             "RPE absent : valeur par défaut selon le sport (renforcement 5, randonnée 3, autres 4).",
-    "form": f"CTL = moyenne exponentielle {CTL_DAYS} j, ATL = {ATL_DAYS} j, TSB = CTL(j-1) − ATL(j-1), "
-            f"ACWR = ATL / CTL (zone prudente {ACWR_SAFE[0]}–{ACWR_SAFE[1]}), affiché dès que la CTL atteint {ACWR_MIN_CTL:g}.",
+    "form": f"Modèle impulsion-réponse de Banister : condition = moyenne exponentielle {FITNESS_DAYS} j de la charge, "
+            f"fatigue = {FATIGUE_DAYS} j, forme = condition(j-1) − fatigue(j-1). D'autres outils nomment ces grandeurs "
+            "CTL, ATL et TSB (marques revendiquées par Peaksware LLC / TrainingPeaks) ; calculées ici sur le TRIMP, "
+            "nos valeurs ne sont pas comparables aux leurs.",
+    "acwr": f"ACWR = fatigue / condition, affiché dès que la condition atteint {ACWR_MIN_FITNESS:g}. "
+            f"La zone {ACWR_SAFE[0]}–{ACWR_SAFE[1]} est un repère indicatif, discuté dans la littérature, pas un seuil de blessure.",
     "monotony": "Monotonie de Foster = moyenne / écart-type de la charge quotidienne sur 7 j ; strain = charge 7 j × monotonie.",
     "vo2max": "VO2max effective : VO2 de l'allure (Daniels) ÷ fraction de VO2max estimée par (FC moy / FC max − 0,37) / 0,64. "
               "Calculée depuis l'allure et la FC MOYENNES de la séance (pas de série seconde par seconde) : "
@@ -124,7 +130,7 @@ def session_load(activity: dict, athlete: dict) -> Tuple[float, str]:
 
 
 # ---------------------------------------------------------------------------
-# Forme : CTL / ATL / TSB / ACWR, monotonie / strain
+# Forme : condition / fatigue / forme / ACWR, monotonie / strain
 # ---------------------------------------------------------------------------
 
 
@@ -137,16 +143,16 @@ def _daterange(start: date, end: date) -> Iterable[date]:
 
 def daily_series(loads_by_date: Dict[str, float], start: date, end: date) -> List[dict]:
     """Série quotidienne de start à end inclus (jours sans séance = charge 0)."""
-    a_ctl = 1 - math.exp(-1 / CTL_DAYS)
-    a_atl = 1 - math.exp(-1 / ATL_DAYS)
-    ctl = atl = 0.0
+    a_fit = 1 - math.exp(-1 / FITNESS_DAYS)
+    a_fat = 1 - math.exp(-1 / FATIGUE_DAYS)
+    fitness = fatigue = 0.0
     window: List[float] = []
     out = []
     for day in _daterange(start, end):
         load = loads_by_date.get(day.isoformat(), 0.0)
-        tsb = ctl - atl                              # forme en entrant dans la journée
-        ctl += (load - ctl) * a_ctl
-        atl += (load - atl) * a_atl
+        form = fitness - fatigue                     # forme en entrant dans la journée
+        fitness += (load - fitness) * a_fit
+        fatigue += (load - fatigue) * a_fat
         window = (window + [load])[-7:]
         monotony = strain = None
         if len(window) == 7:
@@ -158,10 +164,10 @@ def daily_series(loads_by_date: Dict[str, float], start: date, end: date) -> Lis
         out.append({
             "date": day.isoformat(),
             "load": round(load, 2),
-            "ctl": round(ctl, 2),
-            "atl": round(atl, 2),
-            "tsb": round(tsb, 2),
-            "acwr": round(atl / ctl, 3) if ctl >= ACWR_MIN_CTL else None,
+            "fitness": round(fitness, 2),
+            "fatigue": round(fatigue, 2),
+            "form": round(form, 2),
+            "acwr": round(fatigue / fitness, 3) if fitness >= ACWR_MIN_FITNESS else None,
             "monotony": round(monotony, 3) if monotony is not None else None,
             "strain": round(strain, 1) if strain is not None else None,
         })
