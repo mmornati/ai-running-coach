@@ -19,6 +19,20 @@ Le projet est **en français par défaut** (la langue des documents générés e
 | 🎛️ **Coach configurable** | style de coaching, discipline (trail ou route), bilan santé matinal, profil d'athlète |
 | 📚 **Documentation** | guide de démarrage rapide, configuration, dépannage |
 
+## 📊 Tableau de bord
+
+Tout ce que le coach stocke — verdict du jour, bilan du matin, courbe de forme,
+semaine planifiée, séances et splits, rapports — dans un tableau de bord local,
+en lecture seule :
+
+```bash
+scripts/dashboard.sh
+```
+
+![Tableau de bord — vue Aujourd'hui](docs/assets/dashboard/aujourdhui.webp)
+
+Voir [la documentation du tableau de bord](docs/dashboard/index.md).
+
 ## 🧑‍💻 IDE supportés
 
 - **Claude Code** (`.claude/agents` + `.claude/skills`)
@@ -129,7 +143,7 @@ La documentation complète est disponible sur [GitHub Pages](https://mmornati.gi
 - [Configuration Garmin](docs/garmin-setup.md)
 - [Votre workspace privé (données versionnées, moteur lié)](docs/workspace.md)
 - [Le coach dans la poche (mobile + sync automatique)](docs/mobile.md)
-- [Tableau de bord](docs/dashboard.md)
+- [Tableau de bord](docs/dashboard/index.md) · [Les vues](docs/dashboard/views.md) · [Migrer vos fichiers](docs/dashboard/migration.md) · [Mode headless](docs/dashboard/headless.md)
 - [Les agents](docs/agents.md)
 - [Les skills](docs/skills.md)
 - [Base de connaissances (resources)](docs/resources.md)

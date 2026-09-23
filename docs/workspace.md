@@ -23,7 +23,7 @@ jour du moteur sans rien copier**, séparez-les avec `--workspace`.
 └── logs/
 ```
 
-- **`.arc/`** contient l'index du [tableau de bord](dashboard.md) : dérivé de vos fichiers,
+- **`.arc/`** contient l'index du [tableau de bord](dashboard/index.md) : dérivé de vos fichiers,
   jetable, ignoré par git.
 - **Rien n'est copié** : `agents/` et `skills/` du workspace ne contiennent que des liens.
   Un `git pull` dans le moteur met à jour tous les skills instantanément ; relancez

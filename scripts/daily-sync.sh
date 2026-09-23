@@ -194,6 +194,10 @@ main() {
     elif printf '%s' "$resume" | grep -qi '^À jour'; then
         title="Sync Garmin — à jour"; priority=2; tags="running"
     fi
+    # Index du tableau de bord : dérivé, jetable, et ignoré par git (.arc/ s'ignore
+    # lui-même). Un tableau de bord ouvert voit ainsi la synchronisation sans attendre.
+    python3 "$ARC_ENGINE_ROOT/scripts/arc_index.py" --workspace "$ARC_WORKSPACE" >>"$LOG_FILE" 2>&1 \
+        || warn "Index du tableau de bord non mis à jour (voir $LOG_FILE)"
     if ! git_autocommit; then
         resume="$resume
 ⚠ git : commit/push du workspace échoué — voir logs/"

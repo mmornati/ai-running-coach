@@ -192,3 +192,19 @@ config/workspace.user.toml
             proc = sb.run(["python3", "scripts/arc_index.py", "--validate", "medical/2026-09-23_health.md"], cwd=ws)
             self.assertSucceeded(proc)
             self.assertOutputContains(proc, "ok:")
+
+
+class TestIndexNeverCommitted(InstallAsserts):
+    """Défaut verrouillé : dans un workspace dont le .gitignore n'a pas /.arc/, la
+    réindexation de la synchro suivie de `git add -A` aurait versionné la base."""
+
+    def test_arc_dir_ignores_itself(self):
+        with Sandbox() as sb:
+            ws = build(sb.root / "ws", days=10)
+            (ws / ".gitignore").write_text("logs/\n")          # ancien .gitignore, sans /.arc/
+            self.assertSucceeded(sb.run(["git", "init", "-q"], cwd=ws))
+            self.assertSucceeded(sb.run(["python3", str(sb.repo / "scripts/arc_index.py"), "--workspace", str(ws)]))
+            self.assertIsFile(ws / ".arc/coach.db")
+            status = sb.run(["git", "status", "--porcelain", "--untracked-files=all"], cwd=ws).stdout
+            self.assertNotIn(".arc/", status, f"l'index apparaît dans git :\n{status}")
+

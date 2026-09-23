@@ -129,7 +129,7 @@ Deux champs du profil changent le quotidien :
   vos séances.
 
 Deux champs de la section « Physiologie » alimentent le
-[tableau de bord](dashboard.md) : **FC max** et **FC de repos de référence**
+[tableau de bord](dashboard/index.md) : **FC max** et **FC de repos de référence**
 (la **FC au seuil** et le **sexe**, facultatifs, affinent le calcul de charge).
 
 ## Le tableau de bord — `[dashboard]`
@@ -139,7 +139,7 @@ Deux champs de la section « Physiologie » alimentent le
 port = 8765
 ```
 
-Port du [tableau de bord local](dashboard.md). S'il est pris, les 9 suivants sont
+Port du [tableau de bord local](dashboard/index.md). S'il est pris, les 9 suivants sont
 essayés. L'adresse d'écoute, elle, n'est pas réglable : `127.0.0.1` uniquement.
 
 ## Langue, notifications, synchronisation

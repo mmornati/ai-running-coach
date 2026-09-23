@@ -1,7 +1,8 @@
 # Backfill (`arc-backfill`)
 
 Met au [contrat de données](workspace-data-contract.md) les fichiers écrits
-avant lui.
+avant lui. Pour migrer tout un historique d'un coup, voir
+[Migrer vos fichiers](../dashboard/migration.md).
 
 ## Lancer
 

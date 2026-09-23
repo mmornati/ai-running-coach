@@ -49,6 +49,7 @@ extra:
 
 markdown_extensions:
   - md_in_html
+  - attr_list
   - admonition
   - pymdownx.details
   - pymdownx.superfences:
@@ -73,7 +74,11 @@ nav:
       - IDE supportés: ides.md
       - Votre workspace privé: workspace.md
       - Le coach dans la poche: mobile.md
-      - Tableau de bord: dashboard.md
+  - Tableau de bord:
+      - Prise en main: dashboard/index.md
+      - Les vues: dashboard/views.md
+      - Migrer vos fichiers: dashboard/migration.md
+      - Machine coach & mode headless: dashboard/headless.md
   - Agents:
       - Vue d'ensemble: agents.md
       - Coach: agents/coach.md

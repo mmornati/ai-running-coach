@@ -181,6 +181,12 @@ def open_db(workspace: Path, db: Optional[str] = None, memory: bool = False,
     else:
         path = Path(db) if db else workspace / DEFAULT_DB
         path.parent.mkdir(parents=True, exist_ok=True)
+        if not db:
+            # Le dossier s'ignore lui-même : même dans un workspace dont le .gitignore
+            # n'a jamais été complété, `git add -A` (git_autocommit) n'embarque pas la base.
+            marker = path.parent / ".gitignore"
+            if not marker.exists():
+                marker.write_text("# Index dérivé du tableau de bord : jetable, jamais versionné.\n*\n", encoding="utf-8")
         # Le tableau de bord et la synchronisation peuvent indexer en même temps :
         # on attend le verrou plutôt que d'échouer.
         conn = sqlite3.connect(str(path), check_same_thread=False, timeout=10)

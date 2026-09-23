@@ -2,7 +2,7 @@
 
 Vos séances, vos nuits et vos plans restent des fichiers Markdown lisibles.
 Mais chaque fichier écrit par un agent commence désormais par un **petit bloc de
-données** : c'est lui que lisent le [tableau de bord](../dashboard.md) et la
+données** : c'est lui que lisent le [tableau de bord](../dashboard/index.md) et la
 comparaison de parcours, jamais la prose.
 
 ## À quoi ça ressemble

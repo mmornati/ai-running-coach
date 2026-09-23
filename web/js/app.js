@@ -95,8 +95,11 @@ function markNav(route) {
 
 function setupTheme() {
   const btn = $("#theme");
+  // ?theme=dark|light force le thème (lien partagé, capture d'écran) ; sinon le choix mémorisé.
+  const forced = new URLSearchParams(location.search).get("theme");
   const saved = (() => { try { return localStorage.getItem("arc-theme"); } catch { return null; } })();
-  if (saved) document.documentElement.dataset.theme = saved;
+  const theme = ["dark", "light"].includes(forced) ? forced : saved;
+  if (theme) document.documentElement.dataset.theme = theme;
   btn.addEventListener("click", () => {
     const dark = document.documentElement.dataset.theme
       ? document.documentElement.dataset.theme === "dark"

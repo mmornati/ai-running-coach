@@ -14,7 +14,8 @@ function niceTicks(min, max, count = 4) {
   if (min === max) { min -= 1; max += 1; }
   const raw = (max - min) / count;
   const mag = 10 ** Math.floor(Math.log10(raw));
-  const step = [1, 2, 2.5, 5, 10].map((m) => m * mag).find((s) => s >= raw) || raw;
+  // 1, 2, 5 : jamais 2,5 — une graduation « 7,5 » arrondie à « 8 » mentait sur l'axe.
+  const step = [1, 2, 5, 10].map((m) => m * mag).find((s) => s >= raw) || raw;
   const lo = Math.floor(min / step) * step;
   const hi = Math.ceil(max / step) * step;
   const ticks = [];
