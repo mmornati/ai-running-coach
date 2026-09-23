@@ -73,6 +73,7 @@ nav:
       - IDE supportés: ides.md
       - Votre workspace privé: workspace.md
       - Le coach dans la poche: mobile.md
+      - Tableau de bord: dashboard.md
   - Agents:
       - Vue d'ensemble: agents.md
       - Coach: agents/coach.md
@@ -91,6 +92,8 @@ nav:
       - Téléchargement FIT: skills/fit-download.md
       - Sync quotidienne (headless): skills/garmin-daily-sync.md
       - Premier démarrage: skills/coach-setup.md
+      - Contrat de données: skills/workspace-data-contract.md
+      - Backfill du contrat: skills/arc-backfill.md
   - Ressources:
       - Base de connaissances: resources.md
   - Dépannage: troubleshooting.md

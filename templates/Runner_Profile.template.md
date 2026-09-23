@@ -20,6 +20,8 @@
 
 - **FC max** :
 - **FC de repos de référence** : <!-- votre ligne de base, pas la valeur du jour -->
+- **FC au seuil** : <!-- FC tenue ~1 h à fond (seuil lactique), ex. 172 -->
+- **Sexe** : <!-- facultatif : F ou H, sert uniquement au calcul de charge (TRIMP) -->
 - **Zones / seuils** :
 - **Allures de référence** : <!-- 5 km, 10 km, semi, marathon -->
 - **Poids de forme** :

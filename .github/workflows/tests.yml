@@ -51,6 +51,9 @@ jobs:
       - name: Palier B — lint prompts & configuration
         run: python3 tests/run_tests.py --tier b
 
+      - name: Palier D — données (contrat, index dérivé, métriques)
+        run: python3 tests/run_tests.py --tier d
+
       - name: Aperçu --dry-run (aucune écriture attendue)
         run: ./install.sh --dry-run --no-auth
 

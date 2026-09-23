@@ -59,7 +59,14 @@ import os
 import re
 import sys
 from datetime import date, datetime
+from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
+
+# Moteur : scripts/ à la racine (le skill peut être atteint par un lien symbolique
+# depuis un workspace séparé — resolve() remonte au vrai dossier du moteur).
+sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "scripts"))
+import arc_contract as C  # noqa: E402
+from arc_legacy import parse_split_time, parse_splits_table, parse_yaml_block  # noqa: E402,F401
 
 
 # ---------------------------------------------------------------------------
@@ -84,105 +91,6 @@ def parse_pace(seconds_per_km: float) -> str:
     return f"{m}:{s:02d}/km"
 
 
-def parse_split_time(txt: str) -> Optional[float]:
-    """Parse '5:58' ou '1:23:26' → secondes. Retourne None si invalide.
-    Tolère les balises markdown **bold** autour de la valeur."""
-    txt = txt.strip().replace("*", "").replace(",", ".")
-    parts = txt.split(":")
-    try:
-        if len(parts) == 3:
-            return int(parts[0]) * 3600 + int(parts[1]) * 60 + float(parts[2])
-        if len(parts) == 2:
-            return int(parts[0]) * 60 + float(parts[1])
-        if len(parts) == 1:
-            return float(parts[0])
-    except ValueError:
-        return None
-    return None
-
-
-def parse_yaml_block(md_text: str) -> Dict[str, Any]:
-    """Extrait le bloc '## Données brutes Garmin (référence)' → dict."""
-    data: Dict[str, Any] = {}
-    m = re.search(r"## Données brutes Garmin \(référence\)\s*```(?:yaml)?\s*(.*?)```", md_text, re.S)
-    if not m:
-        return data
-    for line in m.group(1).splitlines():
-        line = line.strip()
-        if not line or line.startswith("#") or ":" not in line:
-            continue
-        key, _, val = line.partition(":")
-        key = key.strip()
-        val = val.strip()
-        # retire les commentaires en fin de ligne
-        val = re.sub(r"\s*#.*$", "", val).strip()
-        if val in ("", "null", "~"):
-            data[key] = None
-            continue
-        # conversion numérique quand possible
-        try:
-            if re.fullmatch(r"-?\d+", val):
-                data[key] = int(val)
-            elif re.fullmatch(r"-?\d+\.\d+", val):
-                data[key] = float(val)
-            else:
-                data[key] = val
-        except ValueError:
-            data[key] = val
-    return data
-
-
-def parse_splits_table(md_text: str) -> List[Dict[str, Any]]:
-    """Parse le tableau '## Analyse par splits (km)' → liste de splits.
-
-    Format attendu par ligne :
-        | 1 | 5:58 | 5:58 | 11.2 | +3/-36 | 120 | 166 | Échauffement |
-    Colonnes : num, durée, allure, vmax, D+/D-, FC moy, cadence, lecture.
-    """
-    splits: List[Dict[str, Any]] = []
-    m = re.search(r"## Analyse par splits \(km\)\s*\n(.*?)(?:\n##|\Z)", md_text, re.S)
-    if not m:
-        return splits
-    lines = m.group(1).splitlines()
-    header_seen = False
-    for line in lines:
-        line = line.strip()
-        if not line.startswith("|"):
-            continue
-        cells = [c.strip() for c in line.strip("|").split("|")]
-        # détecte l'en-tête
-        if not header_seen:
-            if any("Split" in c or "Durée" in c for c in cells):
-                header_seen = True
-            continue
-        if len(cells) < 7:
-            continue
-        num = cells[0]
-        if not num.isdigit():
-            continue
-        duration = parse_split_time(cells[1])
-        if duration is None:
-            continue
-        dplus_dminus = cells[4] if len(cells) > 4 else "+0/-0"
-        # ignore les balises markdown (**bold**) autour des valeurs
-        dplus_dminus_clean = dplus_dminus.replace("*", "")
-        mdn = re.search(r"([+-]?\d+(?:\.\d+)?)\s*/\s*([+-]?\d+(?:\.\d+)?)", dplus_dminus_clean)
-        dplus = float(mdn.group(1)) if mdn else 0.0
-        dminus = float(mdn.group(2)) if mdn else 0.0
-        try:
-            fc_moy = float(cells[5].replace("*", "")) if cells[5].replace("*", "").strip() not in ("—", "-", "") else None
-        except ValueError:
-            fc_moy = None
-        splits.append({
-            "num": int(num),
-            "duration_s": duration,
-            "dplus_m": dplus,
-            "dminus_m": dminus,
-            "hr_avg_bpm": fc_moy,
-        })
-    return splits
-
-
 def parse_activity_file(path: str) -> Optional[Dict[str, Any]]:
     """Parse un fichier MD d'activité → dict structuré (ou None si inexploitable)."""
     fname = os.path.basename(path)
@@ -191,6 +99,9 @@ def parse_activity_file(path: str) -> Optional[Dict[str, Any]]:
         return None
     with open(path, "r", encoding="utf-8") as f:
         text = f.read()
+    act = _from_arc_block(path, text)
+    if act is not None:
+        return _fill_from_splits(act)
     yaml_data = parse_yaml_block(text)
     splits = parse_splits_table(text)
     # extraction du lieu et du nom (fallback si pas de YAML)
@@ -205,14 +116,52 @@ def parse_activity_file(path: str) -> Optional[Dict[str, Any]]:
         "splits": splits,
     }
     act.update(yaml_data)
-    # distance / durée / D+ : priorité au YAML, fallback splits
+    return _fill_from_splits(act)
+
+
+def _from_arc_block(path: str, text: str) -> Optional[Dict[str, Any]]:
+    """Activité lue dans le bloc ```arc (contrat `workspace-data-contract`), ou None.
+
+    Le bloc a des clés fixes en anglais : la comparaison ne dépend plus des titres
+    français (`## Données brutes Garmin (référence)`) ni de l'ordre des colonnes.
+    """
+    try:
+        block = C.extract_block(text)
+    except C.ContractError:
+        return None
+    if not block or block.get("kind") != "activity" or C.validate(block)[0]:
+        return None
+    splits = [
+        {"num": row["km"], "duration_s": row["duration_s"],
+         "dplus_m": row.get("elev_gain_m") or 0.0, "dminus_m": row.get("elev_loss_m") or 0.0,
+         "hr_avg_bpm": row.get("avg_hr_bpm")}
+        for row in C.split_rows(block) if row.get("km") is not None and row.get("duration_s") is not None
+    ]
+    return {
+        "file": path, "date": block["date"], "name": block.get("name") or os.path.basename(path),
+        "lieu": block.get("location") or "", "splits": splits,
+        "activity_id": block.get("garmin_activity_id"),
+        "distance_m": block.get("distance_m"), "duration_s": block.get("duration_s"),
+        "elevation_gain_m": block.get("elevation_gain_m"), "elevation_loss_m": block.get("elevation_loss_m"),
+        "avg_hr_bpm": block.get("avg_hr_bpm"), "max_hr_bpm": block.get("max_hr_bpm"),
+        "recovery_hr_bpm": block.get("recovery_hr_bpm"),
+        "training_effect": block.get("training_effect_aerobic"),
+        # D+ absent des splits (profil d'altitude non enregistré) : inconnu, pas 0.
+        "_elev_known": any(r.get("elev_gain_m") is not None for r in C.split_rows(block)),
+    }
+
+
+def _fill_from_splits(act: Dict[str, Any]) -> Dict[str, Any]:
+    splits = act.get("splits") or []
+    # distance / durée / D+ : priorité aux données de séance, repli sur les splits
     if act.get("distance_m") is None and splits:
         act["distance_m"] = float(len(splits)) * 1000.0
     if act.get("duration_s") is None and splits:
         act["duration_s"] = float(sum(s["duration_s"] for s in splits))
-    if act.get("elevation_gain_m") is None and splits:
+    elev_known = act.pop("_elev_known", True)
+    if act.get("elevation_gain_m") is None and splits and elev_known:
         act["elevation_gain_m"] = float(sum(s["dplus_m"] for s in splits))
-    if act.get("elevation_loss_m") is None and splits:
+    if act.get("elevation_loss_m") is None and splits and elev_known:
         act["elevation_loss_m"] = float(sum(s["dminus_m"] for s in splits))
     return act
 
@@ -224,7 +173,17 @@ def parse_activity_file(path: str) -> Optional[Dict[str, Any]]:
 def match_lieu(act: Dict[str, Any], patterns: List[str]) -> bool:
     """Vrai si l'activité correspond à l'un des patterns (lieu ou nom)."""
     haystack = f"{act.get('lieu','')} {act.get('name','')}".lower()
-    return any(re.search(p.lower(), haystack) for p in patterns if p)
+    for p in patterns:
+        if not p:
+            continue
+        if p.lower() in haystack:
+            return True
+        try:
+            if re.search(p.lower(), haystack):
+                return True
+        except re.error:
+            continue        # pas une regex valide : le texte littéral a déjà été essayé
+    return False
 
 
 def discover_activities(activities_dir: str, patterns: List[str],
@@ -429,15 +388,16 @@ def render_report(ref: Dict[str, Any], others: List[Dict[str, Any]],
     for a in all_acts:
         dist = (a.get("distance_m") or 0) / 1000.0
         dur = a.get("duration_s") or 0
-        dplus = a.get("elevation_gain_m") or 0
-        dminus = a.get("elevation_loss_m") or 0
+        dplus = a.get("elevation_gain_m")
+        dminus = a.get("elevation_loss_m")
         hr_avg = a.get("avg_hr_bpm")
         hr_max = a.get("max_hr_bpm")
         hrr = a.get("recovery_hr_bpm")
         te = a.get("training_effect")
         pace = dur / dist if dist else 0
         L.append(f"| {a['date']} | {dist:.1f} km | {parse_duration(dur)} | {_fmt_pace(pace)} "
-                 f"| {dplus:.0f} | {dminus:.0f} | {_fmt_hr(hr_avg)} | {_fmt_hr(hr_max)} "
+                 f"| {'—' if dplus is None else f'{dplus:.0f}'} | {'—' if dminus is None else f'{dminus:.0f}'} "
+                 f"| {_fmt_hr(hr_avg)} | {_fmt_hr(hr_max)} "
                  f"| {hrr if hrr is not None else '—'} | {te if te is not None else '—'} |")
     L.append("")
 

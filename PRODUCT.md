@@ -41,6 +41,14 @@ point d'entrée : elle doit donner envie de l'essayer.
 - Garmin Connect est la seule source de données supportée (v1).
 - Documentation construite avec MkDocs + thème Material, déployée sur GitHub Pages.
 
+## Surfaces
+
+- **Site de documentation** (MkDocs, GitHub Pages) : statique, sans backend — mode Persuade/Read.
+- **Tableau de bord local** (`scripts/dashboard.sh`, `web/`) : outil quotidien de l'athlète,
+  mode Operate. Servi par un serveur Python de la bibliothèque standard qui n'écoute que sur
+  `127.0.0.1`, en lecture seule, sur un index SQLite dérivé des fichiers du workspace. Aucune
+  dépendance npm, aucun build.
+
 ## Capabilities and Constraints
 
 - 4 agents : `coach`, `course-strategist`, `medical`, `nutritionist` — **sélectionnables

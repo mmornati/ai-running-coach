@@ -84,3 +84,9 @@ verbosity = "standard"
 # Passer à "minimal" ou "off" si votre montre ne mesure pas la HRV, ou si vous
 # ne souhaitez pas que l'entraînement soit conditionné à ces données.
 morning_check = "full"
+
+[dashboard]
+# Tableau de bord local (`scripts/dashboard.sh`) : lecture seule, n'écoute que sur
+# 127.0.0.1 — l'adresse n'est volontairement pas configurable. Si le port est pris,
+# les 9 suivants sont essayés.
+port = 8765

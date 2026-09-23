@@ -177,6 +177,28 @@ def looks_unauthenticated(result: dict) -> bool:
     )
 
 
+def _new_files(case: dict, result: dict, pattern: str) -> list:
+    """Fichiers du workspace correspondant au motif, hors ceux apportés par la fixture."""
+    fixture = FIXTURES_DIR / case.get("fixture", "base-week")
+    return sorted(p for p in result["workspace"].glob(pattern)
+                  if p.is_file() and not (fixture / p.relative_to(result["workspace"])).exists())
+
+
+def _arc_problem(path: Path):
+    """Motif de non-conformité au contrat ```arc, ou None."""
+    sys.path.insert(0, str(REPO / "scripts"))
+    import arc_contract as C
+
+    try:
+        block = C.extract_block(path.read_text(encoding="utf-8"))
+    except C.ContractError as exc:
+        return str(exc)
+    if block is None:
+        return "bloc ```arc absent"
+    errors, _ = C.validate(block)
+    return "; ".join(errors[:3]) if errors else None
+
+
 def check(case: dict, result: dict) -> list:
     """Applique les assertions déterministes. Rend la liste des échecs."""
     expect = case.get("expect", {})
@@ -200,6 +222,21 @@ def check(case: dict, result: dict) -> list:
     for relative in _as_list(expect.get("files_created")):
         if not (result["workspace"] / relative).exists():
             failures.append(f"fichier attendu non créé : {relative}")
+
+    # Contrat de données : fichiers ÉCRITS pendant le run (la fixture n'en a aucun au contrat).
+    for pattern in _as_list(expect.get("files_with_arc_block")):
+        new = _new_files(case, result, pattern)
+        if not new:
+            failures.append(f"aucun fichier écrit ne correspond à {pattern}")
+        for path in new:
+            problem = _arc_problem(path)
+            if problem:
+                failures.append(f"{path.relative_to(result['workspace'])} : {problem}")
+    for pattern in _as_list(expect.get("files_absent")):
+        new = _new_files(case, result, pattern)
+        if new:
+            failures.append(f"fichier(s) écrit(s) alors qu'attendu(s) absent(s) : "
+                            + ", ".join(str(p.relative_to(result["workspace"])) for p in new))
 
     limit = expect.get("max_words")
     if limit and len(haystack.split()) > int(limit):

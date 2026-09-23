@@ -30,6 +30,7 @@ PATH_ALLOWLIST = {
     "config/workspace.user.toml",   # généré par install.sh, gitignoré
     "local/agents/",
     "local/skills/",
+    ".arc/backfill.md",             # généré par scripts/arc_index.py backfill-plan, gitignoré
 }
 
 # Un chemin entre backticks, assez spécifique pour éviter les faux positifs.
@@ -158,7 +159,7 @@ class TestSkillReferences(unittest.TestCase):
             for name in set(re.findall(r"`([a-z][a-z0-9-]+)`", text)):
                 if name.endswith(("-analyzer", "-comparison", "-sync", "-scheduling",
                                   "-forecast", "-analysis", "-download", "-practices",
-                                  "-efficiency")) and name not in known:
+                                  "-efficiency", "-contract", "-backfill")) and name not in known:
                     missing.append(f"{path.name} → {name}")
         self.assertFalse(missing, "skills cités par un agent mais absents de skills/ :\n  " + "\n  ".join(missing))
 

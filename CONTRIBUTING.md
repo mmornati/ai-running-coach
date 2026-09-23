@@ -60,36 +60,16 @@ docs/                    # Documentation (MkDocs / GitHub Pages)
 
 ## Tests
 
-```bash
-# Syntaxe du script d'installation
-bash -n install.sh
-
-# Syntaxe des scripts Python
-python3 -m py_compile skills/*/scripts/*.py
-
-# Test du script d'installation (sans rien modifier)
-./install.sh --dry-run
-
-# Build de la documentation
-pip install mkdocs-material
-mkdocs build
-```
-
-## Licence
-
-En contribuant, vous acceptez que vos contributions soient publiées sous la [licence MIT](LICENSE).
-
-## Tests
-
-Trois paliers, aucun paquet à installer (bibliothèque standard uniquement) :
+Quatre paliers, aucun paquet à installer (bibliothèque standard uniquement) :
 
 ```bash
-python3 tests/run_tests.py --tier a     # intégration de l'installation (bac à sable)
+python3 tests/run_tests.py --tier a     # intégration de l'installation et du tableau de bord (bac à sable)
 python3 tests/run_tests.py --tier b     # lint des prompts et de la configuration
+python3 tests/run_tests.py --tier d     # données : contrat ```arc, index dérivé, métriques
 ARC_LLM_TESTS=1 python3 tests/run_tests.py --tier c   # évals d'exécution (modèle léger)
 ```
 
-Les paliers A et B tournent en CI sur `ubuntu-latest` **et** `macos-latest` — bash
+Les paliers A, B et D tournent en CI sur `ubuntu-latest` **et** `macos-latest` — bash
 3.2, le sed de BSD et `launchctl` sont des cibles de premier plan. Le palier C
 coûte des jetons : il ne tourne que la nuit et sur déclenchement manuel.
 
@@ -111,7 +91,18 @@ La CI vérifie leur fraîcheur.
 
 ```bash
 shellcheck -S warning install.sh scripts/*.sh scripts/lib/*.sh
-python3 tests/run_tests.py --tier ab
+python3 tests/run_tests.py --tier abd
 python3 scripts/build-gemini-commands.py --check
 mkdocs build --strict
 ```
+
+### Contrat de données
+
+Le schéma du bloc ```` ```arc ```` vit à deux endroits tenus d'accord par le palier D :
+`scripts/arc_contract.py` (exécutable) et `skills/workspace-data-contract/SKILL.md`
+(ce que lisent les agents). Toute clé ajoutée au premier doit être documentée,
+avec un exemple valide, dans le second.
+
+## Licence
+
+En contribuant, vous acceptez que vos contributions soient publiées sous la [licence MIT](LICENSE).

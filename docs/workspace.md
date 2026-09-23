@@ -17,11 +17,14 @@ jour du moteur sans rien copier**, séparez-les avec `--workspace`.
 │
 │   généré par install.sh, ignoré par git (bloc ajouté à .gitignore) :
 ├── agents/  skills/                ← catalogues de liens : moteur + local/
-├── AGENTS.md  config/workspace.toml → liens vers le moteur
+├── AGENTS.md  config/workspace.toml  scripts/ → liens vers le moteur
 ├── .mcp.json  .claude/  .opencode/  .gemini/  .cursor/  .windsurf/  .github/agents|skills
+├── .arc/                           ← index du tableau de bord (dérivé, jetable)
 └── logs/
 ```
 
+- **`.arc/`** contient l'index du [tableau de bord](dashboard.md) : dérivé de vos fichiers,
+  jetable, ignoré par git.
 - **Rien n'est copié** : `agents/` et `skills/` du workspace ne contiennent que des liens.
   Un `git pull` dans le moteur met à jour tous les skills instantanément ; relancez
   `./install.sh --workspace …` seulement si un skill a été **ajouté ou supprimé** (le
@@ -81,13 +84,21 @@ committez.
 ## Versionner automatiquement depuis la machine coach
 
 Avec `git_autocommit = true` dans `config/workspace.user.toml` (section `[sync]`), chaque
-run de `scripts/daily-sync.sh` termine par `git add -A && git commit && git push` dans le
-workspace : les fichiers de la synchronisation **et** ceux créés entre-temps par vos sessions
-mobiles (plans, rapports) arrivent dans votre dépôt privé sans intervention. Un échec de
-commit/push est signalé dans la notification, sans bloquer la synchronisation. Le push
-suppose une clé SSH sur la machine coach autorisée sur votre dépôt.
+run de `scripts/daily-sync.sh` :
 
-Sur le portable : `git pull` avant de travailler.
+1. **tire** d'abord le dépôt (`git pull --rebase --autostash`) : ce que vous avez poussé
+   depuis le portable est pris en compte par l'agent ;
+2. synchronise Garmin ;
+3. termine par `git add -A && git commit`, **re-tire** en rebase ce qui aurait été poussé
+   pendant le run, puis `git push`.
+
+Les fichiers de la synchronisation **et** ceux créés entre-temps par vos sessions mobiles
+(plans, rapports) arrivent dans votre dépôt privé sans intervention, et les deux machines
+restent synchronisées dans les deux sens. Un conflit (même fichier modifié des deux côtés)
+annule le rebase et est signalé dans la notification, sans bloquer la synchronisation. Le
+push suppose une clé SSH sur la machine coach autorisée sur votre dépôt.
+
+Sur le portable : `git pull` avant de travailler, `git push` après.
 
 ## Suivre les mises à jour du moteur
 

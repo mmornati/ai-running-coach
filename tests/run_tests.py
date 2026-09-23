@@ -4,6 +4,7 @@
     python3 tests/run_tests.py --tier a     # intégration installateur (sandbox)
     python3 tests/run_tests.py --tier b     # lint prompts & configuration
     python3 tests/run_tests.py --tier c     # évals d'exécution (modèle léger)
+    python3 tests/run_tests.py --tier d     # données : contrat, index dérivé, métriques
     python3 tests/run_tests.py --tier all
 
 Le palier C coûte des jetons et n'est pas déterministe : il est ignoré sauf si
@@ -25,6 +26,7 @@ TIERS = {
     "a": ("install", "intégration installateur"),
     "b": ("lint", "lint prompts & configuration"),
     "c": ("evals", "évals d'exécution des prompts"),
+    "d": ("data", "données : contrat, index, métriques"),
 }
 
 
@@ -42,7 +44,7 @@ def build_suite(tiers: list) -> unittest.TestSuite:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("--tier", default="ab", help="a, b, c, une combinaison (« ab ») ou « all »")
+    parser.add_argument("--tier", default="abd", help="a, b, c, d, une combinaison (« abd ») ou « all »")
     parser.add_argument("-v", "--verbose", action="count", default=1)
     parser.add_argument("--repeat", type=int, default=None, help="palier C : répétitions par cas")
     parser.add_argument("-k", "--filter", default=None, help="ne garder que les tests dont le nom contient ce motif")
@@ -50,7 +52,7 @@ def main() -> int:
 
     tiers = list(TIERS) if args.tier == "all" else [t for t in args.tier if t in TIERS]
     if not tiers:
-        parser.error(f"palier inconnu : {args.tier!r} (attendu : a, b, c, all)")
+        parser.error(f"palier inconnu : {args.tier!r} (attendu : a, b, c, d, all)")
 
     if args.repeat is not None:
         os.environ["ARC_EVAL_REPEAT"] = str(args.repeat)

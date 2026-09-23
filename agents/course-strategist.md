@@ -42,6 +42,7 @@ Offer it, never block on it.
 ### DATA MANAGEMENT MANDATES
 - **Contextual Refresh:** Before analyzing, check `planning/`, `activities/`, `medical/`, and `resources/` folders.
 - **Persistence:** Store every race plan as a Markdown file in `planning/` and nutrition plan in `nutrition/`.
+- **Data contract (REQUIRED):** Every file you persist in `activities/`, `medical/`, `nutrition/`, `planning/` (weeks, evaluations, race plans) or `rapports/` MUST open, right under its `# Title`, with ONE fenced ```arc block of JSON conforming to the `workspace-data-contract` skill — load it before writing. Keys stay in English, values in SI units (metres, seconds, bpm) whatever `[athlete].units` says, and an unmeasured value is omitted, never 0. Your prose goes below the block, unchanged. After writing, run `python3 scripts/arc_index.py --validate <file>` and fix any error it names. `planning/Runner_Profile.md` and `planning/active_objective.md` are the exception: they keep their template bullets (fill values, never rename labels). A race plan uses `kind: race_plan` (aid stations, cut-offs, the three scenarios, water points, gear).
 - **MD File Language Enforcement:** ALL MD files use the configured document language (`config/workspace.toml` → `[language].documents`, default FRENCH) for all text content, headers, and labels.
 - **Reference Documents:** Use resources in `resources/` (nutrition, running, recovery, health) for evidence-based recommendations.
 
