@@ -234,7 +234,7 @@ async function viewForm(params) {
     <section class="band"><h2>Courbe de forme</h2>
       <p class="legend"><span class="legend__item"><span class="key key--fitness"></span>Condition (42 j)</span> <span class="legend__item"><span class="key key--fatigue"></span>Fatigue (7 j)</span> <span class="legend__item"><span class="key key--form"></span>Forme</span></p>
       <div class="chart-host" id="c-form">${chart.svg}</div><p class="readout" id="r-form"></p></section>
-    <section class="band"><h2>Ratio charge aiguë / chronique</h2><p class="muted">Bande prudente ${F.num(form.acwr_safe[0], 1)} – ${F.num(form.acwr_safe[1], 1)}.</p>
+    <section class="band"><h2>Ratio charge aiguë / chronique</h2><p class="muted">Repère indicatif ${F.num(form.acwr_safe[0], 1)} – ${F.num(form.acwr_safe[1], 1)}, pas un seuil de blessure.</p>
       <div class="chart-host" id="c-acwr">${acwr.svg}</div></section>
     <section class="band"><h2>Volume hebdomadaire</h2>
       <p class="legend">${trail ? `<span class="legend__item"><span class="key key--bar"></span>Heures d'effort</span> <span class="legend__item"><span class="key key--dplus"></span>D+ cumulé</span>` : `<span class="legend__item"><span class="key key--bar"></span>Kilomètres</span>`}</p>
