@@ -39,14 +39,26 @@ function pathFrom(points) {
  *   dates   : tableau de dates ISO (axe x, un point par entrée)
  *   layers  : [{type: "line"|"area"|"band"|"bars"|"dots", values|lo|hi, cls, axis: "y"|"y2"}]
  *   marks   : [{type: "hline", value, cls, label, axis} | {type: "vline", date, cls, label}]
- *   opts    : {height, y: {min, max, zero}, y2: {...}, yFormat, y2Format, label}
+ *   opts    : {height, y: {min, max, zero}, y2: {...}, yFormat, y2Format, label, band}
+ *
+ * Avec des barres (ou opts.band), chaque point occupe le centre d'une case : la
+ * première et la dernière barre restent dans la zone de tracé au lieu de
+ * déborder sur les graduations.
  */
 export function timeChart(dates, layers, marks = [], opts = {}) {
   const H = opts.height || 220;
   const iw = W - PAD.left - (opts.y2 ? 44 : PAD.right);
   const ih = H - PAD.top - PAD.bottom;
   const n = dates.length;
-  const x = (i) => PAD.left + (n <= 1 ? iw / 2 : (i / (n - 1)) * iw);
+  const band = opts.band ?? layers.some((l) => l.type === "bars");
+  const x = band
+    ? (i) => PAD.left + ((i + 0.5) / Math.max(n, 1)) * iw
+    : (i) => PAD.left + (n <= 1 ? iw / 2 : (i / (n - 1)) * iw);
+  // Inverse de x : l'indice le plus proche d'une abscisse (curseur).
+  const index = band
+    ? (px) => Math.floor(((px - PAD.left) / iw) * n)
+    : (px) => Math.round(((px - PAD.left) / iw) * (n - 1));
+  const anchor = (i) => (i === 0 && !band ? "start" : "middle");
 
   const scale = (axis) => {
     const vals = [];
@@ -86,7 +98,7 @@ export function timeChart(dates, layers, marks = [], opts = {}) {
     const every = shown <= Math.floor(iw / 30) ? 1 : Math.ceil(n / Math.floor(iw / 30));
     opts.xLabels.forEach((label, i) => {
       if (label && (every === 1 || i % every === 0 || i === n - 1)) {
-        parts.push(`<text class="tick" x="${x(i)}" y="${H - 8}" text-anchor="${i === 0 ? "start" : "middle"}">${esc(label)}</text>`);
+        parts.push(`<text class="tick" x="${x(i)}" y="${H - 8}" text-anchor="${anchor(i)}">${esc(label)}</text>`);
       }
     });
   }
@@ -99,7 +111,7 @@ export function timeChart(dates, layers, marks = [], opts = {}) {
       if (x(i) - lastX < 52) return;                 // pas de libellés qui se chevauchent
       const m = Number(d.slice(5, 7)) - 1;
       const label = n <= 21 ? `${Number(d.slice(8))} ${MONTHS[m]}` : MONTHS[m];
-      parts.push(`<text class="tick" x="${x(i)}" y="${H - 8}" text-anchor="${i === 0 ? "start" : "middle"}">${label}</text>`);
+      parts.push(`<text class="tick" x="${x(i)}" y="${H - 8}" text-anchor="${anchor(i)}">${label}</text>`);
       lastX = x(i);
     }
   });
@@ -161,7 +173,7 @@ export function timeChart(dates, layers, marks = [], opts = {}) {
   parts.push(`<rect class="hit" x="${PAD.left}" y="${PAD.top}" width="${iw}" height="${ih}"/>`);
 
   const svg = `<svg class="chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="${esc(opts.label || "")}" xmlns="${NS}">${parts.join("")}</svg>`;
-  return { svg, x, n, iw };
+  return { svg, x, n, iw, index };
 }
 
 /**
@@ -185,7 +197,7 @@ export function attachCursor(host, chart, onIndex, initial = chart.n - 1) {
   const fromEvent = (ev) => {
     const box = svg.getBoundingClientRect();
     const px = ((ev.clientX - box.left) / box.width) * W;
-    const i = Math.round(((px - PAD.left) / chart.iw) * (chart.n - 1));
+    const i = chart.index(px);
     set(i);
   };
   hit.addEventListener("pointermove", fromEvent);

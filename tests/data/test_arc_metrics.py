@@ -107,6 +107,16 @@ class TestPerformance(unittest.TestCase):
         best = M.best_efforts([{"date": "2025-05-31", "sport": "trail", "distance_m": 25190, "splits": splits}])
         self.assertEqual(best[1]["time_s"], 360)
 
+    def test_long_lap_is_not_a_kilometre(self):
+        """Tours Garmin d'une séance structurée : un pas de 2 km en 7:00 n'est pas un
+        « kilomètre en 7:00 », et ne doit pas entrer dans une fenêtre de 5 km."""
+        splits = [{"km": 1, "duration_s": 300, "distance_m": 1000},
+                  {"km": 2, "duration_s": 420, "distance_m": 2000}] + \
+                 [{"km": k, "duration_s": 330, "distance_m": 1000} for k in range(3, 9)]
+        best = M.best_efforts([{"date": "2026-09-23", "sport": "running", "distance_m": 9000, "splits": splits}])
+        self.assertEqual(best[1]["time_s"], 300)
+        self.assertEqual(best[5]["time_s"], 5 * 330, "la fenêtre de 5 km ne peut pas enjamber le tour de 2 km")
+
 
 if __name__ == "__main__":
     unittest.main()
