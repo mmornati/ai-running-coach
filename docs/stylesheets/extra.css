@@ -634,3 +634,18 @@ html:has(.arc-hero) .md-header--shadow {
   box-shadow: 0 1px 2px rgba(20, 40, 30, 0.06), 0 8px 24px rgba(20, 40, 30, 0.08);
 }
 
+
+/* Visite guidée du tableau de bord : vignettes recadrées sur le haut de chaque vue */
+.arc-tour.grid.cards img {
+  display: block;
+  width: 100%;
+  aspect-ratio: 16 / 10;
+  object-fit: cover;
+  object-position: top left;
+  border-radius: 0.4rem;
+  border: 1px solid rgba(28, 43, 36, 0.12);
+}
+
+.arc-tour.grid.cards > ul > li > p:first-child {
+  margin-top: 0;
+}

@@ -38,7 +38,7 @@ formulation du modèle.
 | `activity` | `activities/AAAA-MM-JJ_<type>.md` |
 | `health` | `medical/AAAA-MM-JJ_health.md` — sommeil, HRV, FC de repos, readiness, **verdict du jour** |
 | `weather` | `medical/AAAA-MM-JJ_meteo.md` |
-| `week` | `planning/Semaine_AAAA-MM-JJ.md` — séances datées, lieu de la semaine |
+| `week` | `planning/Semaine_AAAA-MM-JJ.md`, daté du **lundi**, **un fichier par semaine** (un plan de 10 semaines = 10 fichiers) — séances datées, lieu de la semaine |
 | `nutrition` | `nutrition/AAAA-MM-JJ_nutrition.md` |
 | `report` | `rapports/…` |
 | `course_eval` | `planning/…_evaluation_parcours_<lieu>.md` |

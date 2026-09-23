@@ -19,9 +19,9 @@ reste. Deux chemins, selon le volume.
 
 ## Quelques fichiers : `/arc-backfill`
 
-Dans votre IDE, avec le coach :
+Dans la conversation avec le coach (Claude Code, OpenCode, Copilot) :
 
-```bash
+```text
 /arc-backfill
 ```
 
@@ -103,6 +103,13 @@ d'un même jour, une FC moyenne pondérée) y échappent — et se revérifient 
 Le lien « fichiers hors contrat » du tableau de bord doit ne plus lister que ce que
 vous avez choisi de laisser de côté.
 
+Tout est bon ? Enregistrez le travail sur la branche :
+
+```bash
+git add -A
+git commit -m "data: fichiers au contrat de données"
+```
+
 ### 5. Fusionner, pousser — et la machine coach
 
 ```bash
@@ -118,10 +125,35 @@ Si une machine coach synchronise ce dépôt, faites-le **entre deux synchronisat
 ssh machine-coach 'git -C ~/mon-workspace pull --ff-only'
 ```
 
-Depuis cette version, `daily-sync.sh` tire lui-même avant chaque synchronisation et
+Depuis la version 0.2.0 du moteur, `daily-sync.sh` tire lui-même avant chaque synchronisation et
 avant de pousser — voir [Machine coach & mode headless](headless.md#deux-machines-un-depot).
 Mettez la machine coach à jour du moteur pour en profiter : avant, elle poussait sans
 jamais tirer, et un seul push venu du portable bloquait tous ses push suivants.
+
+## Compléter les splits depuis Garmin
+
+Un fichier d'activité migré garde ce que son texte contenait. Or beaucoup d'anciens
+fichiers n'ont pas de tableau de splits, ou un tableau qu'on ne peut pas relire
+sans risque : la séance s'affiche alors sans graphique. Garmin, lui, a gardé les
+**tours** de chaque activité enregistrée. Demandez au coach de les rapatrier, par
+lots, dans la même session que la migration :
+
+```text
+Charge le skill workspace-data-contract. Pour chaque fichier activities/*.md dont
+le bloc ```arc a un garmin_activity_id mais pas de splits : récupère les tours avec
+get_activity_splits et ajoute au bloc splits_cols =
+["km", "duration_s", "distance_m", "elev_gain_m", "elev_loss_m", "avg_hr_bpm",
+"max_hr_bpm", "cadence_spm"] et une ligne par tour (km = numéro du tour).
+Vérifie d'abord que la somme des distances des tours égale distance_m à 3 % près,
+sinon laisse le fichier. Ne modifie que le bloc. Valide chaque fichier.
+Pour les blocs sans garmin_activity_id : retrouve l'activité par date, distance et
+durée ; ne l'ajoute que si un seul candidat correspond.
+```
+
+Deux vérifications ont suffi sur le workspace des captures : la distance totale des
+tours face au bloc, et, quand le texte avait un tableau, le nombre de tours face au
+nombre de lignes. 73 séances ont gagné leurs splits ; le renforcement et les séances
+d'intérieur n'en ont pas, c'est normal.
 
 ## Et ensuite ?
 
