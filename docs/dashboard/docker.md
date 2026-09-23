@@ -58,13 +58,30 @@ docker compose ps        # l'état passe à « healthy » en une trentaine de se
 
 ## Mettre à jour
 
-L'image embarque le code du moteur ; vos fichiers, eux, sont lus en direct. Après un
-`git pull` du moteur, reconstruisez :
+Vos fichiers sont lus en direct : une séance ou un plan écrit par le coach apparaît
+sans rien toucher. L'image, elle, embarque le **code** du moteur : après un `git pull`
+du moteur, reconstruisez-la.
 
 ```bash
-cd ~/ai-running-coach && git pull
-cd deploy/dashboard && docker compose up -d --build
+cd ~/ai-running-coach && git pull --ff-only
+cd deploy/dashboard
+diff <(grep -o '^[A-Z_]*=' .env.example | sort) <(grep -o '^[A-Z_]*=' .env | sort)
+docker compose build --pull
+docker compose up -d
+docker compose ps        # « healthy » en une trentaine de secondes
 ```
+
+- `diff` signale une variable apparue dans `.env.example` et absente de votre `.env`
+  (rien ne s'affiche si les deux concordent) ; `docker compose` refuserait de toute
+  façon de démarrer sans une variable obligatoire.
+- `--pull` récupère aussi la dernière image Python de base, et avec elle ses
+  correctifs de sécurité.
+- Faites-le en dehors des heures de synchronisation (07:15 et 14:15 par défaut) : la
+  synchronisation lit le même dépôt du moteur.
+
+**Revenir en arrière** : `git -C ~/ai-running-coach checkout <commit-précédent>` puis
+`docker compose up -d --build` ; `git switch main` pour revenir ensuite à la version
+courante.
 
 ## Exemple : Traefik, Authentik et un tunnel Cloudflare
 

@@ -2,8 +2,9 @@
 
 Avec une [machine coach](../mobile.md), le coach travaille sans vous : chaque matin
 et chaque midi, la synchronisation récupère vos données Garmin, les écrit dans le
-workspace, pose le verdict du jour et vous envoie un résumé de cinq lignes sur le
-téléphone. Vous pouvez aussi lui parler depuis le téléphone (Remote Control).
+workspace (bilan du matin, séances) et vous envoie un résumé de cinq lignes sur le
+téléphone. Le verdict du jour, lui, est posé par le coach quand vous lui demandez si
+vous courez. Vous pouvez aussi lui parler depuis le téléphone (Remote Control).
 
 Le tableau de bord ferme la boucle : **tout ce que le coach stocke devient visible**,
 sans ouvrir l'IDE ni lire les fichiers un par un — le verdict et le bilan du matin,
@@ -56,8 +57,11 @@ Pour le voir depuis ailleurs, on ne l'expose pas : on y accède par SSH.
 Sur la machine coach, lancez-le (dans `tmux`, ou en service, voir plus bas) :
 
 ```bash
-ARC_WORKSPACE=~/mon-workspace ~/ai-running-coach/scripts/dashboard.sh --no-open
+ARC_WORKSPACE=~/mon-workspace ~/ai-running-coach/scripts/dashboard.sh --no-open --port 8765
 ```
+
+Fixez le port : s'il est pris, le serveur en choisit un autre parmi les neuf suivants
+(il l'affiche au démarrage), et le tunnel ci-dessous pointerait dans le vide.
 
 Depuis le portable :
 
@@ -77,7 +81,7 @@ téléphone.
 
     [Service]
     Environment=ARC_WORKSPACE=%h/mon-workspace
-    ExecStart=%h/ai-running-coach/scripts/dashboard.sh --no-open
+    ExecStart=%h/ai-running-coach/scripts/dashboard.sh --no-open --port 8765
     Restart=on-failure
 
     [Install]
