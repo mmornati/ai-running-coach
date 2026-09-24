@@ -50,6 +50,51 @@ dossiers au `PATH`, donc « aucun gestionnaire de services » n'y est pas une
 situation atteignable. Le motif fautif reste verrouillé par le palier B, lui
 indépendant de la machine.
 
+### Instantanés « golden » de l'API du tableau de bord (#28)
+
+`tests/install/test_dashboard_golden.py` construit un workspace synthétique à
+date et graine figées (`tests/lib/synthetic.py`, `--today` + `seed`), lance
+`scripts/arc_serve.py` pour de vrai (même infrastructure que
+`test_dashboard.py` : `Sandbox`, `Server`), interroge **chaque** route JSON —
+dérivées de `arc_serve.ROUTES` à l'exécution, jamais d'une liste recopiée à la
+main, pour qu'une route ajoutée sans golden fasse échouer la comparaison
+plutôt que de passer inaperçue — plus quelques appels paramétrés
+représentatifs (fenêtre courte, une séance précise, un rapport précis), et
+compare au JSON de `tests/data/golden/dashboard_api_<sport>.json` (deux
+profils, `trail` et `road`, chacun empruntant un chemin de calcul différent
+dans `scripts/arc_metrics.py::predictions`).
+
+La comparaison (`tests/lib/golden.py`) est récursive et tolérante aux
+flottants (`rel_tol=1e-6`, `abs_tol=1e-9` — du bruit de représentation IEEE
+754 entre deux exécutions identiques, jamais de quoi changer une décision) ;
+un écart produit une ligne par champ, avec le chemin JSON (`$.body.series[3].distance_m`),
+la valeur attendue et la valeur obtenue. Une liste documentée de clés
+volatiles (`generated_at`, `indexed_at`, `created_at`, `port`, `pid`) est
+retirée récursivement avant comparaison — défensive : `arc_serve.py` n'en émet
+aucune aujourd'hui (`source_path` est déjà relatif au workspace, `today` est
+figé par `--today`), mais une story future pourrait en ajouter une sans que la
+suite doive être réécrite pour l'ignorer.
+
+Régénération volontaire (après un changement de forme JSON assumé, jamais pour
+faire taire un échec inexpliqué) :
+
+```bash
+ARC_UPDATE_GOLDEN=1 python3 tests/run_tests.py -k Golden
+```
+
+Un diff attendu dans une revue est un ajout/retrait de champ cohérent avec le
+changement de code, ou une valeur qui bouge dans le sens attendu (nouvelle
+métrique, nouveau calcul) — jamais un déplacement de dates ou d'identifiants
+d'activité : le workspace est déterministe (graine et date figées), donc tout
+mouvement inattendu de ces valeurs signale un bug d'ordonnancement.
+
+**Budget de taille.** Le workspace synthétique est volontairement court (40
+jours, ~28 séances) — assez pour que `/api/form`, `/api/health` etc. aient une
+série non triviale, assez peu pour que les deux fichiers golden pèsent environ
+120 Ko chacun (~240 Ko à eux deux). `/api/health` sans paramètre domine (fenêtre
+par défaut fixe de 90 jours, indépendante de la taille du workspace — voir
+`scripts/arc_serve.py::api_health`).
+
 ## Palier B — lint des prompts et de la configuration
 
 Aucun modèle, aucun réseau, quelques millisecondes. Vérifie le frontmatter des
