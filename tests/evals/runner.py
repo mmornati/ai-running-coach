@@ -30,6 +30,28 @@ DEFAULT_MODEL = "claude-haiku-4-5-20251001"
 DEFAULT_REPEAT = 3
 DEFAULT_THRESHOLD = 2 / 3
 
+# Serveurs MCP factices disponibles pour un scénario (#26). `garmin` reste le
+# nom historique et le seul câblé par défaut ; `intervals` (#68) ne l'est que
+# si le cas déclare `[stub.intervals.*]` — voir `build_workspace`.
+STUB_SCRIPTS = {
+    "garmin": TESTS_DIR / "evals" / "stub_garmin_mcp.py",
+    "intervals": TESTS_DIR / "evals" / "stub_intervals_mcp.py",
+}
+
+
+def _write_stub_config(workspace: Path, server: str, stub_section) -> Path | None:
+    """Dépose la section `[stub.<server>]` d'un cas en JSON pour le stub.
+
+    Le stub la lit via `ARC_STUB_CONFIG` (`mcp_stub_common.load_stub_config`).
+    Rien à écrire (et rien à passer en env) pour un cas sans section `[stub]`
+    — c'est ce qui garantit la non-régression des cas existants.
+    """
+    if not stub_section:
+        return None
+    path = workspace / f".stub-config-{server}.json"
+    path.write_text(json.dumps(stub_section, ensure_ascii=False), encoding="utf-8")
+    return path
+
 
 def enabled() -> bool:
     return os.environ.get("ARC_LLM_TESTS") == "1"
@@ -100,16 +122,24 @@ def build_workspace(root: Path, case: dict) -> Path:
         if not target.exists():
             target.symlink_to(REPO / name)
 
-    # Serveur MCP factice : aucune donnée réelle, et chaque appel d'outil est
-    # journalisé — c'est ce qui rend « n'a pas cherché la HRV » vérifiable.
-    stub = TESTS_DIR / "evals" / "stub_garmin_mcp.py"
+    # Serveur(s) MCP factice(s) : aucune donnée réelle, et chaque appel d'outil
+    # est journalisé — c'est ce qui rend « n'a pas cherché la HRV »
+    # vérifiable. `garmin` est toujours câblé (non-régression) ; `intervals`
+    # (#68) ne l'est que si le cas script explicitement ses réponses, pour ne
+    # pas exposer un serveur que le scénario n'a pas demandé.
+    tool_log = workspace / ".tool-calls.log"
+    mcp_servers = {}
+    for server, script in STUB_SCRIPTS.items():
+        stub_section = case.get("stub", {}).get(server)
+        if server != "garmin" and not stub_section:
+            continue
+        env = {"ARC_TOOL_LOG": str(tool_log)}
+        config_path = _write_stub_config(workspace, server, stub_section)
+        if config_path:
+            env["ARC_STUB_CONFIG"] = str(config_path)
+        mcp_servers[server] = {"command": sys.executable, "args": [str(script)], "env": env}
     (workspace / ".mcp.json").write_text(
-        json.dumps({"mcpServers": {"garmin": {
-            "command": sys.executable,
-            "args": [str(stub)],
-            "env": {"ARC_TOOL_LOG": str(workspace / ".tool-calls.log")},
-        }}}, indent=2),
-        encoding="utf-8",
+        json.dumps({"mcpServers": mcp_servers}, indent=2), encoding="utf-8",
     )
 
     # Les agents sont découverts via .claude/agents ; on ne lie que ceux du scénario.

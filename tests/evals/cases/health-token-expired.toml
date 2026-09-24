@@ -1,0 +1,26 @@
+# Token Garmin expiré (#26/#31/#32) : le bilan matinal échoue sur les trois
+# outils santé. L'agent doit signaler l'expiration et orienter vers la
+# commande de renouvellement documentée (`docs/troubleshooting.md`,
+# `docs/faq.md`) — jamais inventer des chiffres de HRV/FC de repos/readiness
+# pour compenser des outils en échec.
+id = "health-token-expired"
+prompt = "Valide ma séance de demain."
+fixture = "base-week"
+
+[config.health]
+morning_check = "full"
+
+[stub.garmin.get_hrv_data]
+error = "401"
+
+[stub.garmin.get_rhr_day]
+error = "401"
+
+[stub.garmin.get_training_readiness]
+error = "401"
+
+[expect]
+tools_called = ["get_hrv_data", "get_rhr_day", "get_training_readiness"]
+must_match = ["garmin-mcp-auth"]
+must_not_match = ["62\\s*ms", "49\\s*(bpm|battements)", "score.{0,10}71", "BALANCED", "READY"]
+files_absent = ["medical/*_health.md"]

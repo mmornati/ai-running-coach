@@ -24,6 +24,9 @@ class TestCaseFilesAreValid(unittest.TestCase):
         "files_created", "max_words", "first_line_matches", "files_with_arc_block", "files_absent",
     }
 
+    KNOWN_STUB_SERVERS = {"garmin", "intervals"}
+    KNOWN_STUB_ERRORS = {"401", "timeout", "empty"}
+
     def setUp(self):
         self.cases = runner.load_cases()
 
@@ -52,6 +55,44 @@ class TestCaseFilesAreValid(unittest.TestCase):
                 for pattern in runner._as_list(case["expect"].get(field)):
                     with self.subTest(case=case["id"], pattern=pattern):
                         re.compile(pattern)
+
+    def test_stub_section_is_well_formed(self):
+        """Une section `[stub]` mal écrite ne scripte rien silencieusement :
+        un serveur ou un type d'erreur inconnu doit faire échouer le chargement,
+        pas juste être ignoré par le stub (voir `mcp_stub_common.resolve_content`,
+        qui lève sur un `error` inconnu — cette assertion attrape la même classe
+        de faute plus tôt, sans lancer de sous-processus)."""
+        for case in self.cases:
+            stub = case.get("stub", {})
+            with self.subTest(case=case["id"]):
+                unknown_servers = set(stub) - self.KNOWN_STUB_SERVERS
+                self.assertFalse(unknown_servers, f"serveur(s) stub inconnu(s) : {sorted(unknown_servers)}")
+                for server, tools in stub.items():
+                    self.assertIsInstance(tools, dict, f"[stub.{server}] doit être une table d'outils")
+                    for tool, override in tools.items():
+                        with self.subTest(case=case["id"], server=server, tool=tool):
+                            self.assertIsInstance(override, dict, f"[stub.{server}.{tool}] doit être une table")
+                            has_file = "file" in override
+                            has_error = "error" in override
+                            self.assertTrue(
+                                has_file or has_error,
+                                f"[stub.{server}.{tool}] doit déclarer `file` ou `error`",
+                            )
+                            self.assertFalse(
+                                has_file and has_error,
+                                f"[stub.{server}.{tool}] ne peut pas déclarer `file` ET `error`",
+                            )
+                            if has_error:
+                                self.assertIn(
+                                    override["error"], self.KNOWN_STUB_ERRORS,
+                                    f"[stub.{server}.{tool}] error inconnue : {override['error']!r}",
+                                )
+                            if has_file:
+                                candidate = runner.FIXTURES_DIR / "stub-responses" / override["file"]
+                                self.assertTrue(
+                                    candidate.is_file(),
+                                    f"[stub.{server}.{tool}] fichier introuvable : {candidate}",
+                                )
 
     def test_config_keys_exist_in_the_schema(self):
         """Un scénario qui règle une clé inexistante ne teste rien."""

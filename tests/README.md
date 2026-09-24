@@ -73,6 +73,16 @@ les fichiers créés, la présence ou l'absence de notions précises.
 Non déterministe et facturé. Ignoré sauf si `ARC_LLM_TESTS=1` et que le runner
 est authentifié — sans quoi les cas sont *ignorés*, jamais en échec.
 
+Le serveur MCP factice (`tests/evals/stub_garmin_mcp.py`, et son pendant
+`stub_intervals_mcp.py` pour la story source intervals.icu, #68) rend des
+données canned stables par défaut, mais un cas peut scripter ses réponses
+outil par outil — fichier de remplacement ou panne injectée (token expiré,
+timeout, liste vide) — via une section `[stub.<serveur>.<outil>]` de son
+`.toml`. Détail complet, sémantique des erreurs et exemples dans
+`tests/evals/fixtures/README.md`. Les deux stubs partagent leur protocole
+JSON-RPC via `tests/evals/mcp_stub_common.py`, verrouillé par le palier D
+(`tests/data/test_mcp_stubs.py`).
+
 ```bash
 ARC_LLM_TESTS=1 python3 tests/run_tests.py --tier c --repeat 3
 ```
