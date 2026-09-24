@@ -306,21 +306,44 @@ print(check.get("expires_at") or "")
 #     https://connect(api).garmin.com/... », voir
 #     tests/evals/mcp_stub_common.py::auth_expired_text) — visible dans le
 #     journal seulement si l'exécuteur restitue la sortie brute des outils
-#     (ex. `codex exec` en mode verbeux) ;
+#     (ex. `codex exec` en mode verbeux). `AUTH_FAILURE_KIND=raw` : on peut
+#     revendiquer un 401 avec certitude, c'est le texte HTTP réel ;
 #   - avec le runner par défaut, `claude -p --output-format text` ne restitue
 #     QUE le message final de l'agent, jamais la sortie brute d'un outil MCP :
 #     le texte ci-dessus n'atteint donc jamais ce journal. C'est pour cette
 #     raison que `skills/garmin-daily-sync/SKILL.md` impose à l'agent d'écrire
-#     lui-même, en première ligne du bloc ```resume```, `ERREUR : <cause>`
-#     (ex. « tokens Garmin expirés — relancer uv run garmin-mcp-auth ») : on
-#     reconnaît aussi cette formulation, qui elle traverse `claude -p`.
+#     lui-même, en première ligne du bloc ```resume```, `ERREUR : <cause>`. On
+#     reconnaît cette formulation, mais SEULEMENT quand elle nomme
+#     explicitement une expiration/un refus de token ou renvoie vers
+#     `garmin-mcp-auth` — jamais un `ERREUR` générique quelconque (ex. « MCP
+#     garmin injoignable (timeout réseau) », « échec du rafraîchissement des
+#     tokens Garmin (DNS) » : ni l'un ni l'autre ne doit déclencher cette
+#     alerte, un problème réseau n'est pas un problème d'authentification —
+#     voir revue PR #77). `AUTH_FAILURE_KIND=erreur` : la cause réelle peut ne
+#     PAS être un 401 (l'agent a pu mal diagnostiquer) — ne jamais l'affirmer
+#     dans la notification, relayer sa ligne telle quelle.
+# `AUTH_FAILURE_LINE` porte la ligne `ERREUR : …` détectée (kind=erreur), pour
+# que l'appelant puisse la relayer mot pour mot plutôt que d'inventer un « 401 ».
+AUTH_FAILURE_KIND=""
+AUTH_FAILURE_LINE=""
 detect_auth_failure() {
-    local run_log
+    local run_log erreur_line
+    AUTH_FAILURE_KIND=""
+    AUTH_FAILURE_LINE=""
     run_log="$(awk '/^===== /{buf=""} {buf = buf $0 ORS} END{printf "%s", buf}' "$LOG_FILE" 2>/dev/null)"
-    printf '%s' "$run_log" | grep -qiE \
-        'garminconnectauthenticationerror|401 client error: unauthorized for url: https://connect(api)?\.garmin\.com|error retrieving [a-z ]+ data: authentication failed' \
-        && return 0
-    printf '%s' "$run_log" | grep -qiE '^ERREUR.*(tokens? garmin|garmin-mcp-auth)' && return 0
+    if printf '%s' "$run_log" | grep -qiE \
+        'garminconnectauthenticationerror|401 client error: unauthorized for url: https://connect(api)?\.garmin\.com|error retrieving [a-z ]+ data: authentication failed'
+    then
+        AUTH_FAILURE_KIND="raw"
+        return 0
+    fi
+    erreur_line="$(printf '%s' "$run_log" \
+        | grep -iE '^ERREUR.*(garmin-mcp-auth|tokens? garmin (expir|invalid|refus)|401)' | tail -n1)"
+    if [[ -n "$erreur_line" ]]; then
+        AUTH_FAILURE_KIND="erreur"
+        AUTH_FAILURE_LINE="$erreur_line"
+        return 0
+    fi
     return 1
 }
 
@@ -359,10 +382,17 @@ main() {
             if [[ "$TOKEN_ALERT_SENT_THIS_RUN" -eq 1 ]]; then
                 # L'alerte d'expiration envoyée juste avant la synchronisation couvre
                 # déjà ce même problème (tokens expirés) — pas de doublon.
-                warn "401 Garmin — alerte d'expiration déjà envoyée ce run, pas de notification supplémentaire."
-            else
+                warn "Garmin — alerte d'expiration déjà envoyée ce run, pas de notification supplémentaire."
+            elif [[ "$AUTH_FAILURE_KIND" == "raw" ]]; then
+                # Texte HTTP réel de garminconnect/garmin_mcp : le 401 est un fait constaté.
                 notify "🔑 Authentification Garmin refusée" 5 "key,warning" \
                     "Synchronisation interrompue (401) — renouvelez avec : uv run garmin-mcp-auth. Voir logs/sync-$(date +%F).log."
+            else
+                # Détecté via la formulation ERREUR de l'agent : la cause réelle peut ne
+                # PAS être un 401 (ex. un problème réseau/DNS mal diagnostiqué par
+                # l'agent) — on relaie sa ligne telle quelle plutôt que d'affirmer « 401 ».
+                notify "🔑 Authentification Garmin — action requise" 5 "key,warning" \
+                    "Synchronisation interrompue — ${AUTH_FAILURE_LINE#ERREUR : } Voir logs/sync-$(date +%F).log."
             fi
         else
             notify "❌ Sync Garmin échouée" 4 "warning" "Exécuteur $RUNNER, code $rc. Voir logs/sync-$(date +%F).log sur la machine coach."

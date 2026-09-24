@@ -408,6 +408,45 @@ class TestAuthFailureExplicitNotification(TokenAlertSandbox):
             self.assertIn("Sync Garmin échouée", calls[0])
             self.assertNotIn("garmin-mcp-auth", calls[0])
 
+    def test_erreur_line_about_network_issue_on_success_is_not_mistaken_for_auth(self):
+        """RÉGRESSION (revue PR #77) : une ligne `ERREUR` qui ne fait que
+        MENTIONNER les tokens Garmin en passant, sans dire qu'ils sont
+        expirés/invalides/refusés, ne doit pas se voir requalifiée en refus
+        d'authentification — ici un simple timeout réseau vers le MCP."""
+        with Sandbox() as sb:
+            self._configure_notifications(sb)
+            tokens_dir = _tokens_dir_with_days_left(sb, 60)
+            final_message = (
+                "```resume\n"
+                "ERREUR : MCP garmin injoignable (timeout réseau) — token Garmin non vérifié\n"
+                "```\n"
+            )
+            fake_bin = self._fake_claude(sb, final_message, exit_code=0)
+            proc = self._run(sb, tokens_dir, NOW, PATH=self._path_with_fake_claude(fake_bin))
+            self.assertSucceeded(proc)
+            calls = self._curl_messages(sb)
+            self.assertEqual(len(calls), 1, f"attendu 1 notification, vu {calls}")
+            self.assertNotIn("Authentification Garmin refusée", calls[0])
+            self.assertNotIn("Authentification Garmin — action requise", calls[0])
+            self.assertIn("timeout réseau", calls[0])
+
+    def test_erreur_line_about_network_issue_on_failure_does_not_claim_401(self):
+        """RÉGRESSION (revue PR #77) : sur un run en échec, une ligne `ERREUR`
+        qui décrit une panne réseau (DNS) ne doit jamais être requalifiée en
+        « (401) » — un vrai problème réseau serait alors masqué par une fausse
+        piste d'authentification."""
+        with Sandbox() as sb:
+            self._configure_notifications(sb)
+            tokens_dir = _tokens_dir_with_days_left(sb, 60)
+            final_message = "ERREUR : échec du rafraîchissement des tokens Garmin (DNS)"
+            fake_bin = self._fake_claude(sb, final_message, exit_code=1)
+            proc = self._run(sb, tokens_dir, NOW, PATH=self._path_with_fake_claude(fake_bin))
+            self.assertFailed(proc)
+            calls = self._curl_messages(sb)
+            self.assertEqual(len(calls), 1, f"attendu 1 notification, vu {calls}")
+            self.assertNotIn("(401)", calls[0])
+            self.assertIn("Sync Garmin échouée", calls[0])
+
     def test_no_duplicate_notification_when_token_alert_already_fired(self):
         """Si l'alerte d'expiration (tokens expirés) est déjà partie ce run,
         et que la synchronisation échoue ensuite sur ce même 401, on ne

@@ -98,17 +98,23 @@ avec la commande de renouvellement quand l'échéance estimée approche.
   renouvellement manuel des tokens en dehors du daily-sync.
 - **401 réel** : si la synchronisation rencontre effectivement un refus
   d'authentification **Garmin** — jamais un 401 sans rapport, par exemple un
-  échec d'authentification du runner Codex lui-même —, la notification
-  remplace le message d'échec générique par un message explicite avec la
-  commande de renouvellement. Deux formes reconnues selon l'exécuteur : le
-  texte réel de `garminconnect`/`garmin_mcp` (`GarminConnectAuthenticationError`,
-  visible seulement si l'exécuteur restitue la sortie brute d'un outil MCP,
-  ex. `codex exec` en mode verbeux) et la formulation `ERREUR : … tokens
-  Garmin …`/`… garmin-mcp-auth` que `skills/garmin-daily-sync/SKILL.md` impose
-  à l'agent d'écrire lui-même — seule forme qui traverse le runner par défaut,
-  `claude -p --output-format text`, qui ne restitue que le message final de
-  l'agent. Si une alerte d'expiration est déjà partie plus tôt dans le même
-  run, cette notification 401 n'est pas doublée.
+  échec d'authentification du runner Codex lui-même, ni une ligne `ERREUR`
+  qui mentionne « tokens Garmin » en passant pour une tout autre raison (panne
+  réseau, DNS…) —, la notification remplace le message d'échec générique par
+  un message explicite avec la commande de renouvellement. Deux formes
+  reconnues selon l'exécuteur : le texte réel de `garminconnect`/`garmin_mcp`
+  (`GarminConnectAuthenticationError`, visible seulement si l'exécuteur
+  restitue la sortie brute d'un outil MCP, ex. `codex exec` en mode verbeux —
+  un « 401 » est alors une certitude, revendiqué tel quel) et la formulation
+  `ERREUR : …` que `skills/garmin-daily-sync/SKILL.md` impose à l'agent
+  d'écrire lui-même, reconnue SEULEMENT quand elle nomme explicitement une
+  expiration/un refus de token ou renvoie vers `garmin-mcp-auth` — seule forme
+  qui traverse le runner par défaut, `claude -p --output-format text` (ne
+  restitue que le message final de l'agent) ; dans ce cas, la cause réelle
+  n'étant pas confirmée comme un 401, la notification relaie la ligne de
+  l'agent telle quelle plutôt que d'affirmer « 401 ». Si une alerte
+  d'expiration est déjà partie plus tôt dans le même run, cette notification
+  n'est pas doublée.
 
 ## Configuration IDE
 
