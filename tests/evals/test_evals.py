@@ -9,6 +9,7 @@ contributeur sans accès modèle doit voir des tests ignorés, pas une suite rou
 
 from __future__ import annotations
 
+import re
 import tempfile
 import unittest
 from pathlib import Path
@@ -117,6 +118,122 @@ class TestCaseFilesAreValid(unittest.TestCase):
                                     candidate.is_file(),
                                     f"[stub.{server}.{tool}] fichier introuvable : {candidate}",
                                 )
+
+    def test_arc_field_assertions_are_well_formed(self):
+        """`arc_field` (#27) : `glob`/`path` obligatoires, chemin syntaxiquement
+        valide, exactement un comparateur parmi equals|min|max|in, min/max
+        numériques, `in` en liste — sinon le cas ne teste rien de fiable."""
+        allowed_keys = {"glob", "path"} | set(runner.ARC_FIELD_COMPARATORS)
+        for case in self.cases:
+            for assertion in runner._as_list(case["expect"].get("arc_field")):
+                with self.subTest(case=case["id"], assertion=assertion):
+                    self.assertIn("glob", assertion, "arc_field : 'glob' manquant")
+                    self.assertIn("path", assertion, "arc_field : 'path' manquant")
+                    try:
+                        runner._parse_json_path(assertion["path"])
+                    except ValueError as exc:
+                        self.fail(f"arc_field : chemin invalide {assertion['path']!r} : {exc}")
+                    unknown = set(assertion) - allowed_keys
+                    self.assertFalse(unknown, f"arc_field : clé(s) inconnue(s) {sorted(unknown)}")
+                    comparators = set(assertion) & set(runner.ARC_FIELD_COMPARATORS)
+                    self.assertEqual(
+                        len(comparators), 1,
+                        f"arc_field : exactement un comparateur attendu (equals|min|max|in), trouvé {sorted(comparators)}",
+                    )
+                    comparator = next(iter(comparators))
+                    value = assertion[comparator]
+                    if comparator in ("min", "max"):
+                        self.assertTrue(
+                            runner._is_numeric(value), f"arc_field : {comparator} doit être numérique (trouvé {value!r})"
+                        )
+                    if comparator == "in":
+                        self.assertIsInstance(value, list, "arc_field : 'in' doit être une liste")
+
+    def test_tool_args_match_assertions_are_well_formed(self):
+        """`tool_args_match` (#27) : `tool`/`path` obligatoires, chemin valide,
+        `server` connu, `tool` dans les outils réellement exposés par ce stub
+        (ou par n'importe lequel si `server` est omis), exactement un
+        comparateur, min/max numériques, regex qui compile."""
+        all_known_tools = set()
+        for names in self.STUB_TOOL_NAMES.values():
+            all_known_tools |= names
+        allowed_keys = {"tool", "path", "server"} | set(runner.TOOL_ARGS_COMPARATORS)
+        for case in self.cases:
+            for assertion in runner._as_list(case["expect"].get("tool_args_match")):
+                with self.subTest(case=case["id"], assertion=assertion):
+                    self.assertIn("tool", assertion, "tool_args_match : 'tool' manquant")
+                    self.assertIn("path", assertion, "tool_args_match : 'path' manquant")
+                    try:
+                        runner._parse_json_path(assertion["path"])
+                    except ValueError as exc:
+                        self.fail(f"tool_args_match : chemin invalide {assertion['path']!r} : {exc}")
+                    server = assertion.get("server")
+                    if server is not None:
+                        self.assertIn(server, self.KNOWN_STUB_SERVERS, f"tool_args_match : serveur inconnu {server!r}")
+                        known_tools = self.STUB_TOOL_NAMES.get(server, set())
+                    else:
+                        known_tools = all_known_tools
+                    self.assertIn(
+                        assertion["tool"], known_tools,
+                        f"tool_args_match : outil inconnu du stub {assertion['tool']!r}",
+                    )
+                    unknown = set(assertion) - allowed_keys
+                    self.assertFalse(unknown, f"tool_args_match : clé(s) inconnue(s) {sorted(unknown)}")
+                    comparators = set(assertion) & set(runner.TOOL_ARGS_COMPARATORS)
+                    self.assertEqual(
+                        len(comparators), 1,
+                        f"tool_args_match : exactement un comparateur attendu (equals|min|max|regex), trouvé {sorted(comparators)}",
+                    )
+                    comparator = next(iter(comparators))
+                    value = assertion[comparator]
+                    if comparator in ("min", "max"):
+                        self.assertTrue(
+                            runner._is_numeric(value), f"tool_args_match : {comparator} doit être numérique (trouvé {value!r})"
+                        )
+                    if comparator == "regex":
+                        try:
+                            re.compile(str(value))
+                        except re.error as exc:
+                            self.fail(f"tool_args_match : regex invalide {value!r} : {exc}")
+
+    def test_sqlite_query_assertions_are_well_formed(self):
+        """`sqlite_query` (#27) : une seule instruction de lecture, exactement
+        un comparateur, min/max numériques. Le vrai garde-fou reste la
+        connexion `mode=ro` de `_check_sqlite_queries` — ce test ne verrouille
+        que la lisibilité du refus."""
+        allowed_keys = {"sql"} | set(runner.SQLITE_COMPARATORS)
+        for case in self.cases:
+            for assertion in runner._as_list(case["expect"].get("sqlite_query")):
+                with self.subTest(case=case["id"], assertion=assertion):
+                    self.assertIn("sql", assertion, "sqlite_query : 'sql' manquant")
+                    problem = runner._validate_single_read_statement(assertion["sql"])
+                    self.assertIsNone(problem, f"sqlite_query : {problem}")
+                    unknown = set(assertion) - allowed_keys
+                    self.assertFalse(unknown, f"sqlite_query : clé(s) inconnue(s) {sorted(unknown)}")
+                    comparators = set(assertion) & set(runner.SQLITE_COMPARATORS)
+                    self.assertEqual(
+                        len(comparators), 1,
+                        f"sqlite_query : exactement un comparateur attendu (equals|min|max), trouvé {sorted(comparators)}",
+                    )
+                    comparator = next(iter(comparators))
+                    value = assertion[comparator]
+                    if comparator in ("min", "max"):
+                        self.assertTrue(
+                            runner._is_numeric(value), f"sqlite_query : {comparator} doit être numérique (trouvé {value!r})"
+                        )
+
+    def test_file_contains_any_assertions_are_well_formed(self):
+        """`file_contains_any` (#27) : `glob`/`any` obligatoires, `any` est
+        une liste non vide — une liste vide ne pourrait jamais être satisfaite."""
+        for case in self.cases:
+            for assertion in runner._as_list(case["expect"].get("file_contains_any")):
+                with self.subTest(case=case["id"], assertion=assertion):
+                    self.assertIn("glob", assertion, "file_contains_any : 'glob' manquant")
+                    self.assertIn("any", assertion, "file_contains_any : 'any' manquant")
+                    self.assertIsInstance(assertion["any"], list, "file_contains_any : 'any' doit être une liste")
+                    self.assertTrue(assertion["any"], "file_contains_any : 'any' ne doit pas être vide")
+                    unknown = set(assertion) - {"glob", "any"}
+                    self.assertFalse(unknown, f"file_contains_any : clé(s) inconnue(s) {sorted(unknown)}")
 
     def test_config_keys_exist_in_the_schema(self):
         """Un scénario qui règle une clé inexistante ne teste rien."""

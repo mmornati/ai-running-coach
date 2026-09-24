@@ -37,6 +37,9 @@ CORRECT_ANSWERS_BY_CASE = {
         "Impossible de récupérer la HRV (401 Unauthorized) ni la FC de repos — reconnexion nécessaire.",
         "FC de repos de référence : 48 bpm (profil) — mais authentification Garmin expirée (401), "
         "impossible de confirmer celle de ce matin.",
+        "Score de readiness : erreur 401 (token expiré).",
+        "Le score de readiness renvoie 401 Unauthorized.",
+        "Pas de score de readiness depuis 2 jours : authentification expirée (401).",
     ],
 }
 

@@ -21,6 +21,7 @@ import sqlite3
 import subprocess
 import sys
 import tempfile
+from datetime import date
 from pathlib import Path
 
 TESTS_DIR = Path(__file__).resolve().parent.parent
@@ -275,116 +276,128 @@ def _new_files(case: dict, result: dict, pattern: str) -> list:
                   if p.is_file() and not (fixture / p.relative_to(result["workspace"])).exists())
 
 
-def _arc_problem(path: Path):
-    """Motif de non-conformité au contrat ```arc, ou None."""
-    sys.path.insert(0, str(REPO / "scripts"))
-    import arc_contract as C
+def _load_arc_block(path: Path):
+    """Extrait et valide le bloc ```arc d'un fichier.
 
-    try:
-        block = C.extract_block(path.read_text(encoding="utf-8"))
-    except C.ContractError as exc:
-        return str(exc)
-    if block is None:
-        return "bloc ```arc absent"
-    errors, _ = C.validate(block)
-    return "; ".join(errors[:3]) if errors else None
-
-
-def _resolve_json_path(data, path: str):
-    """Résout un chemin JSON simple dans une donnée.
-
-    Syntaxe supportée :
-    - clés pointées : `foo.bar.baz`
-    - indices : `items[0]`
-    - caractères génériques : `items[*].name` (chaque élément d'une liste)
-
-    Rend une liste de valeurs (vide si le chemin ne résout rien).
+    Rend `(bloc, None)` si tout va bien, `(None, motif)` sinon — bloc
+    dupliqué, JSON invalide, bloc absent, ou en échec de validation contre le
+    schéma (`scripts/arc_contract.py`). Ne lève jamais : c'est ce texte, pas
+    une exception avalée, que `check()` doit pouvoir reporter dans le message
+    d'échec (#27, revue PR #72 — l'ancienne version rendait `None` sur
+    n'importe quelle erreur, y compris de programmation, sans distinction).
     """
-    # Construire une liste de segments : (key, index_or_wildcard)
-    # "foo.bar[0].baz[*].name" → [("foo", None), ("bar", 0), ("baz", None), ("baz", "*"), ("name", None)]
-    segments = []
-    remaining = path
-    while remaining:
-        # Chercher le prochain "." ou "["
-        dot_pos = remaining.find(".")
-        bracket_pos = remaining.find("[")
-
-        if dot_pos == -1 and bracket_pos == -1:
-            # Dernier segment
-            segments.append((remaining, None))
-            break
-
-        if dot_pos != -1 and (bracket_pos == -1 or dot_pos < bracket_pos):
-            # Le "." vient avant le "["
-            segments.append((remaining[:dot_pos], None))
-            remaining = remaining[dot_pos + 1:]
-        elif bracket_pos != -1:
-            # Le "[" vient en premier (ou il n'y a pas de ".")
-            key = remaining[:bracket_pos] if bracket_pos > 0 else None
-            if key:
-                segments.append((key, None))
-
-            # Extraire l'index ou le caractère générique : [...] ou [0] ou [*]
-            close_pos = remaining.find("]", bracket_pos)
-            if close_pos == -1:
-                # Malformé : ignorer
-                break
-            index_str = remaining[bracket_pos + 1:close_pos]
-            if index_str == "*":
-                segments.append((None, "*"))
-            else:
-                try:
-                    segments.append((None, int(index_str)))
-                except ValueError:
-                    # Index non entier : ignorer ce segment
-                    break
-            remaining = remaining[close_pos + 1:]
-            if remaining.startswith("."):
-                remaining = remaining[1:]
-        else:
-            break
-
-    # Appliquer les segments en commençant par `data`
-    results = [data]
-    for key, index_or_wildcard in segments:
-        new_results = []
-        for current in results:
-            if index_or_wildcard is None and key is not None:
-                # Accès au dictionnaire
-                if isinstance(current, dict) and key in current:
-                    new_results.append(current[key])
-            elif index_or_wildcard == "*":
-                # Caractère générique sur liste
-                if isinstance(current, list):
-                    new_results.extend(current)
-            elif isinstance(index_or_wildcard, int):
-                # Accès par index
-                if isinstance(current, list) and -len(current) <= index_or_wildcard < len(current):
-                    new_results.append(current[index_or_wildcard])
-        results = new_results
-        if not results:
-            break
-
-    return results
-
-
-def _load_arc_block(path: Path) -> dict | None:
-    """Extrait et analyse le bloc ```arc d'un fichier."""
     sys.path.insert(0, str(REPO / "scripts"))
     import arc_contract as C
 
     try:
         text = path.read_text(encoding="utf-8")
+    except OSError as exc:
+        return None, f"lecture impossible : {exc}"
+    try:
         block = C.extract_block(text)
-        if block is None:
-            return None
-        # Valider avant de renvoyer
-        errors, _ = C.validate(block)
-        if errors:
-            return None
-        return block
-    except Exception:
-        return None
+    except C.ContractError as exc:
+        return None, str(exc)
+    if block is None:
+        return None, "bloc ```arc absent"
+    errors, _ = C.validate(block)
+    if errors:
+        return None, "; ".join(errors[:3])
+    return block, None
+
+
+def _arc_problem(path: Path):
+    """Motif de non-conformité au contrat ```arc, ou None (utilisé par `files_with_arc_block`)."""
+    _, problem = _load_arc_block(path)
+    return problem
+
+
+# ---------------------------------------------------------------------------
+# Chemins JSON simples : `foo.bar[0].baz[*].name`
+# ---------------------------------------------------------------------------
+
+
+def _parse_json_path(path: str) -> list:
+    """Découpe un chemin JSON en segments : `("key", nom)`, `("index", n)`,
+    `("wildcard",)`.
+
+    Lève `ValueError` sur toute syntaxe malformée plutôt que d'ignorer
+    silencieusement le reste du chemin (#27, revue PR #72) : un chemin comme
+    `items[abc].x`, `items[0`, `a.b.` ou `items[*]x` est une faute de frappe
+    dans un cas de test, pas une donnée absente — elle doit remonter comme
+    échec explicite, pas comme un chemin qui « ne résout à rien ».
+    """
+    if not path:
+        raise ValueError("chemin vide")
+    segments = []
+    i, n = 0, len(path)
+    while i < n:
+        if path[i] in ".[":
+            raise ValueError(f"caractère {path[i]!r} inattendu en position {i} dans {path!r}")
+        j = i
+        while j < n and path[j] not in ".[":
+            j += 1
+        key = path[i:j]
+        if not key:
+            raise ValueError(f"clé vide dans {path!r}")
+        segments.append(("key", key))
+        i = j
+        while i < n and path[i] == "[":
+            close = path.find("]", i)
+            if close == -1:
+                raise ValueError(f"']' manquant dans {path!r}")
+            index_str = path[i + 1:close]
+            if index_str == "*":
+                segments.append(("wildcard",))
+            else:
+                try:
+                    segments.append(("index", int(index_str)))
+                except ValueError:
+                    raise ValueError(f"index non entier {index_str!r} dans {path!r}") from None
+            i = close + 1
+        if i < n:
+            if path[i] != ".":
+                raise ValueError(f"caractère {path[i]!r} inattendu après ']' dans {path!r} (un '.' est attendu)")
+            i += 1
+            if i >= n or path[i] in ".[":
+                raise ValueError(f"clé manquante après '.' dans {path!r}")
+    return segments
+
+
+def _resolve_json_path(data, path: str) -> list:
+    """Résout un chemin JSON contre `data`.
+
+    Rend une liste de `(chemin_concret, valeur)` — le chemin concret a ses
+    `[*]` remplacés par l'indice réellement traversé (`items[*].x` →
+    `items[0].x`, `items[1].x`, …), ce qui permet aux messages d'échec de
+    désigner l'élément fautif au lieu du seul motif générique (#27, revue
+    PR #72). Une liste vide signifie « chemin introuvable » : ce n'est **pas**
+    une erreur ici, c'est à l'appelant de décider si c'est un échec.
+
+    Lève `ValueError` si `path` est syntaxiquement invalide.
+    """
+    segments = _parse_json_path(path)
+    results = [("", data)]
+    for segment in segments:
+        new_results = []
+        kind = segment[0]
+        for prefix, current in results:
+            if kind == "key":
+                key = segment[1]
+                if isinstance(current, dict) and key in current:
+                    new_results.append((f"{prefix}.{key}" if prefix else key, current[key]))
+            elif kind == "index":
+                idx = segment[1]
+                if isinstance(current, list) and -len(current) <= idx < len(current):
+                    real_idx = idx if idx >= 0 else len(current) + idx
+                    new_results.append((f"{prefix}[{real_idx}]", current[idx]))
+            elif kind == "wildcard":
+                if isinstance(current, list):
+                    for i, item in enumerate(current):
+                        new_results.append((f"{prefix}[{i}]", item))
+        results = new_results
+        if not results:
+            break
+    return results
 
 
 def _parse_tool_log(tool_calls_text: str) -> list:
@@ -403,20 +416,325 @@ def _parse_tool_log(tool_calls_text: str) -> list:
     return calls
 
 
+def _is_numeric(value) -> bool:
+    """`bool` n'est PAS numérique ici, même si `isinstance(True, int)` vaut vrai en
+    Python — `min = 3` satisfait par `found = True` serait un faux positif absurde."""
+    return isinstance(value, (int, float)) and not isinstance(value, bool)
+
+
 def _compare_value(found, expected, comparator: str) -> bool:
-    """Compare une valeur trouvée avec une attendue selon le comparateur."""
+    """Compare une valeur trouvée avec une attendue selon le comparateur.
+
+    Lève `ValueError` (jamais une exception qui remonterait telle quelle
+    jusqu'à `check()`) sur un comparateur numérique appliqué à une valeur non
+    numérique (chaîne, `None`, `bool`…) ou sur une regex qui ne compile pas —
+    c'est l'appelant qui transforme ça en ligne de résultat lisible (#27,
+    revue PR #72 : « TOML min="3" » ou un `equals` de type incompatible ne
+    doivent jamais faire planter la suite)."""
     if comparator == "equals":
+        if isinstance(found, bool) or isinstance(expected, bool):
+            return type(found) is type(expected) and found == expected
         return found == expected
     if comparator == "regex":
-        return bool(re.search(str(expected), str(found)))
-    if comparator == "min":
-        return found is not None and found >= expected
-    if comparator == "max":
-        return found is not None and found <= expected
+        try:
+            return bool(re.search(str(expected), str(found)))
+        except re.error as exc:
+            raise ValueError(f"regex invalide {expected!r} : {exc}") from exc
+    if comparator in ("min", "max"):
+        if not _is_numeric(found) or not _is_numeric(expected):
+            raise ValueError(
+                f"comparateur {comparator} : valeur numérique attendue "
+                f"(trouvé {found!r}, attendu {expected!r})"
+            )
+        return found >= expected if comparator == "min" else found <= expected
     if comparator == "in":
-        # `in` = found doit être dans la liste expected
-        return found in (expected if isinstance(expected, list) else [expected])
-    return False
+        allowed = expected if isinstance(expected, list) else [expected]
+        return found in allowed
+    raise ValueError(f"comparateur inconnu : {comparator!r}")   # inatteignable après validation (test_evals.py)
+
+
+def _describe_expected(comparator: str, expected) -> str:
+    """Décrit ce qu'attendait le comparateur, pour un message d'échec lisible."""
+    if comparator == "equals":
+        return f"≠ {expected!r}"
+    if comparator == "min":
+        return f"< {expected} (minimum attendu)"
+    if comparator == "max":
+        return f"> {expected} (maximum attendu)"
+    if comparator == "in":
+        return f"∉ {expected!r}"
+    if comparator == "regex":
+        return f"ne correspond pas à /{expected}/"
+    return f"ne satisfait pas {comparator}={expected!r}"
+
+
+def _validate_single_read_statement(sql: str):
+    """Rend un motif de refus si `sql` n'est pas une unique requête de lecture, sinon None.
+
+    Secondaire par construction (#27, revue PR #72) : le vrai garde-fou est la
+    connexion SQLite ouverte en lecture seule dans `_check_sqlite_queries`
+    (`mode=ro` + `PRAGMA query_only`). Ce contrôle textuel n'est qu'un
+    diagnostic plus lisible en cas d'abus évident, et tolère les commentaires
+    de tête (`-- …`) et les CTE (`WITH … SELECT`)."""
+    if not isinstance(sql, str) or not sql.strip():
+        return "requête vide"
+    lines, body_started = [], False
+    for line in sql.splitlines():
+        stripped = line.strip()
+        if not body_started and (not stripped or stripped.startswith("--")):
+            continue
+        body_started = True
+        lines.append(line)
+    body = "\n".join(lines).strip()
+    if not body:
+        return "requête vide (rien que des commentaires)"
+    without_trailing = body[:-1] if body.endswith(";") else body
+    if ";" in without_trailing:
+        return "une seule instruction SQL est autorisée"
+    upper = without_trailing.strip().upper()
+    if not (upper.startswith("SELECT") or upper.startswith("WITH")):
+        return "seules les requêtes SELECT (ou WITH … SELECT) sont autorisées"
+    return None
+
+
+ARC_FIELD_COMPARATORS = ("equals", "min", "max", "in")
+TOOL_ARGS_COMPARATORS = ("equals", "min", "max", "regex")
+SQLITE_COMPARATORS = ("equals", "min", "max")
+
+
+def _check_arc_field(case: dict, result: dict, assertions: list) -> list:
+    """`arc_field` : sémantique TOUT, pas AU MOINS UN (#27, revue PR #72).
+
+    Chaque fichier écrit pendant le run et correspondant au glob doit
+    résoudre au moins une valeur pour `path`, et **toutes** les valeurs
+    résolues (un `[*]` peut en donner plusieurs, dans un seul fichier comme
+    across plusieurs fichiers) doivent satisfaire **tous** les comparateurs.
+    Un chemin qui ne résout à rien dans un fichier donné est un échec à part
+    entière, pas un fichier ignoré."""
+    failures = []
+    for assertion in assertions:
+        if not isinstance(assertion, dict):
+            failures.append(f"arc_field : entrée mal formée : {assertion!r}")
+            continue
+        glob_pattern, path_expr = assertion.get("glob"), assertion.get("path")
+        if not glob_pattern or not path_expr:
+            failures.append("arc_field : 'glob' et 'path' sont obligatoires")
+            continue
+        comparators = {k: v for k, v in assertion.items() if k in ARC_FIELD_COMPARATORS}
+        if not comparators:
+            failures.append(f"arc_field : {glob_pattern} : {path_expr} : aucun comparateur (equals|min|max|in)")
+            continue
+
+        new = _new_files(case, result, glob_pattern)
+        if not new:
+            failures.append(f"arc_field : aucun fichier écrit ne correspond à {glob_pattern}")
+            continue
+
+        for fpath in new:
+            relpath = fpath.relative_to(result["workspace"])
+            block, problem = _load_arc_block(fpath)
+            if problem:
+                failures.append(f"arc_field : {relpath} : {problem}")
+                continue
+            try:
+                resolved = _resolve_json_path(block, path_expr)
+            except ValueError as exc:
+                failures.append(f"arc_field : {relpath} : chemin invalide {path_expr!r} : {exc}")
+                continue
+            if not resolved:
+                failures.append(f"arc_field : {relpath} : chemin introuvable : {path_expr}")
+                continue
+            for concrete_path, value in resolved:
+                for cmp_kind, cmp_expected in comparators.items():
+                    try:
+                        ok = _compare_value(value, cmp_expected, cmp_kind)
+                    except ValueError as exc:
+                        failures.append(f"arc_field : {relpath} : {concrete_path} : {exc}")
+                        continue
+                    if not ok:
+                        failures.append(
+                            f"{relpath} : {concrete_path} = {value!r} {_describe_expected(cmp_kind, cmp_expected)}"
+                        )
+    return failures
+
+
+def _check_tool_args_match(tool_calls: list, assertions: list) -> list:
+    """`tool_args_match` : au moins UN appel doit satisfaire — mais, DANS cet
+    appel, TOUTES les valeurs résolues par un `[*]` doivent satisfaire (#27,
+    revue PR #72). « L'outil n'a jamais été appelé » et « appelé, mais chemin
+    introuvable dans les arguments » sont deux messages distincts."""
+    failures = []
+    for assertion in assertions:
+        if not isinstance(assertion, dict):
+            failures.append(f"tool_args_match : entrée mal formée : {assertion!r}")
+            continue
+        tool_name, path_expr, server = assertion.get("tool"), assertion.get("path"), assertion.get("server")
+        if not tool_name or not path_expr:
+            failures.append("tool_args_match : 'tool' et 'path' sont obligatoires")
+            continue
+        comparators = {k: v for k, v in assertion.items() if k in TOOL_ARGS_COMPARATORS}
+        if not comparators:
+            failures.append(f"tool_args_match : {tool_name} : aucun comparateur (equals|min|max|regex)")
+            continue
+
+        matching_calls = [c for c in tool_calls if c.get("tool") == tool_name
+                          and (not server or c.get("server") == server)]
+        if not matching_calls:
+            scope = f" (serveur {server})" if server else ""
+            failures.append(f"tool_args_match : aucun appel à {tool_name}{scope}")
+            continue
+
+        path_error, satisfied, call_reports = None, False, []
+        for call in matching_calls:
+            arguments = call.get("arguments") or {}
+            try:
+                resolved = _resolve_json_path(arguments, path_expr)
+            except ValueError as exc:
+                path_error = f"tool_args_match : {tool_name} : chemin invalide {path_expr!r} : {exc}"
+                break
+            if not resolved:
+                call_reports.append(f"chemin introuvable : arguments.{path_expr}")
+                continue
+            call_failures = []
+            for concrete_path, value in resolved:
+                for cmp_kind, cmp_expected in comparators.items():
+                    try:
+                        ok = _compare_value(value, cmp_expected, cmp_kind)
+                    except ValueError as exc:
+                        call_failures.append(f"arguments.{concrete_path} : {exc}")
+                        continue
+                    if not ok:
+                        call_failures.append(
+                            f"arguments.{concrete_path} = {value!r} {_describe_expected(cmp_kind, cmp_expected)}"
+                        )
+            if not call_failures:
+                satisfied = True
+                break
+            call_reports.append("; ".join(call_failures))
+
+        if path_error:
+            failures.append(path_error)
+        elif not satisfied:
+            details = " | ".join(call_reports) if call_reports else "aucune valeur résolue"
+            failures.append(
+                f"tool_args_match : {tool_name} : {len(matching_calls)} appel(s), aucun ne satisfait — {details}"
+            )
+    return failures
+
+
+def _check_sqlite_queries(assertions: list, result: dict) -> list:
+    """`sqlite_query` : indexe le workspace UNE FOIS pour toutes les assertions
+    du cas (pas une réindexation par requête), sur une base temporaire
+    nettoyée par `TemporaryDirectory` (jamais de fichier orphelin), puis rouvre
+    en LECTURE SEULE (`mode=ro` + `PRAGMA query_only`) pour exécuter les
+    requêtes elles-mêmes — le contrôle textuel de `_validate_single_read_statement`
+    n'est qu'un filtre secondaire, plus lisible (#27, revue PR #72)."""
+    failures, to_run = [], []
+    for assertion in assertions:
+        if not isinstance(assertion, dict):
+            failures.append(f"sqlite_query : entrée mal formée : {assertion!r}")
+            continue
+        sql = assertion.get("sql")
+        if not sql:
+            failures.append("sqlite_query : 'sql' est obligatoire")
+            continue
+        comparators = {k: v for k, v in assertion.items() if k in SQLITE_COMPARATORS}
+        if not comparators:
+            failures.append(f"sqlite_query : {sql!r} : aucun comparateur (equals|min|max)")
+            continue
+        problem = _validate_single_read_statement(sql)
+        if problem:
+            failures.append(f"sqlite_query : {sql!r} : {problem}")
+            continue
+        to_run.append((sql, comparators))
+
+    if not to_run:
+        return failures
+
+    # `today` fixe pour tout le check() : des métriques (charge, VDOT…) calculées
+    # deux fois dans le même run avec un `today` qui dérive entre-temps (minuit
+    # pendant une suite longue) donneraient des résultats différents pour la
+    # même exécution — ce n'est pas déterministe (#27, revue PR #72).
+    today = date.today().isoformat()
+    with tempfile.TemporaryDirectory(prefix="arc-eval-sqlite-") as tmp:
+        db_path = str(Path(tmp) / "index.db")
+        sys.path.insert(0, str(REPO / "scripts"))
+        import arc_index as I
+
+        conn = I.open_db(result["workspace"], db=db_path, rebuild=True)
+        try:
+            I.index_workspace(conn, result["workspace"], today=today)
+        finally:
+            conn.close()
+
+        ro_conn = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
+        try:
+            ro_conn.execute("PRAGMA query_only = ON")
+            for sql, comparators in to_run:
+                try:
+                    row = ro_conn.execute(sql).fetchone()
+                except sqlite3.Error as exc:
+                    failures.append(f"sqlite_query : {sql!r} : erreur d'exécution : {exc}")
+                    continue
+                if row is None:
+                    failures.append(f"sqlite_query : {sql!r} : aucune ligne renvoyée")
+                    continue
+                found = row[0]
+                if found is None:
+                    failures.append(f"sqlite_query : {sql!r} : valeur NULL")
+                    continue
+                for cmp_kind, cmp_expected in comparators.items():
+                    try:
+                        ok = _compare_value(found, cmp_expected, cmp_kind)
+                    except ValueError as exc:
+                        failures.append(f"sqlite_query : {sql!r} : {exc}")
+                        continue
+                    if not ok:
+                        failures.append(
+                            f"sqlite_query : {sql!r} : {found!r} {_describe_expected(cmp_kind, cmp_expected)}"
+                        )
+        finally:
+            ro_conn.close()
+    return failures
+
+
+def _check_file_contains_any(case: dict, result: dict, assertions: list) -> list:
+    failures = []
+    for assertion in assertions:
+        if not isinstance(assertion, dict):
+            failures.append(f"file_contains_any : entrée mal formée : {assertion!r}")
+            continue
+        glob_pattern, any_list = assertion.get("glob"), assertion.get("any")
+        if not glob_pattern or not any_list:
+            failures.append("file_contains_any : 'glob' et 'any' (non vide) sont obligatoires")
+            continue
+        new = _new_files(case, result, glob_pattern)
+        if not new:
+            failures.append(f"file_contains_any : aucun fichier ne correspond à {glob_pattern}")
+            continue
+        found_match = False
+        for fpath in new:
+            try:
+                content = fpath.read_text(encoding="utf-8").lower()
+            except OSError:
+                continue
+            if any(str(needle).lower() in content for needle in any_list):
+                found_match = True
+                break
+        if not found_match:
+            notions = ", ".join(str(n) for n in any_list)
+            failures.append(f"file_contains_any : {glob_pattern} : aucun de « {notions} »")
+    return failures
+
+
+def _safe_check(label: str, fn, *args) -> list:
+    """Ceinture et bretelles (#27, revue PR #72) : aucune exception, même une
+    faute de programmation dans un helper, ne doit faire planter `check()` —
+    au pire un échec de cas signalé proprement plutôt qu'une suite qui casse."""
+    try:
+        return fn(*args)
+    except Exception as exc:      # noqa: BLE001 — c'est le but : tout attraper ici
+        return [f"{label} : erreur inattendue : {exc}"]
 
 
 def check(case: dict, result: dict) -> list:
@@ -468,165 +786,16 @@ def check(case: dict, result: dict) -> list:
         if not re.search(pattern, first.strip(), re.IGNORECASE):
             failures.append(f"première ligne « {first.strip()[:80]} » ne correspond pas à /{pattern}/")
 
-    # Nouvelles assertions : arc_field
-    for assertion in _as_list(expect.get("arc_field")):
-        glob_pattern = assertion.get("glob")
-        path_expr = assertion.get("path")
-        if not glob_pattern or not path_expr:
-            continue
+    failures.extend(_safe_check("arc_field", _check_arc_field, case, result, _as_list(expect.get("arc_field"))))
 
-        new = _new_files(case, result, glob_pattern)
-        if not new:
-            failures.append(f"arc_field : aucun fichier ne correspond à {glob_pattern}")
-            continue
-
-        # Résolvants pour chaque fichier
-        comparators = {k: v for k, v in assertion.items() if k in ("equals", "min", "max", "in")}
-        if not comparators:
-            failures.append(f"arc_field : {glob_pattern} : aucun comparateur (equals|min|max|in)")
-            continue
-
-        found_match = False
-        for fpath in new:
-            block = _load_arc_block(fpath)
-            if block is None:
-                continue
-
-            values = _resolve_json_path(block, path_expr)
-            if not values:
-                continue
-
-            # Vérifier si au moins une valeur satisfait tous les comparateurs
-            for val in values:
-                all_match = all(_compare_value(val, cmp_val, cmp_kind)
-                               for cmp_kind, cmp_val in comparators.items())
-                if all_match:
-                    found_match = True
-                    break
-
-            if found_match:
-                break
-
-        if not found_match:
-            comp_str = ", ".join(f"{k}={v}" for k, v in comparators.items())
-            failures.append(f"arc_field : {glob_pattern} : {path_expr} ne satisfait pas {comp_str}")
-
-    # Nouvelles assertions : tool_args_match
     tool_calls = _parse_tool_log(result["tool_calls"])
-    for assertion in _as_list(expect.get("tool_args_match")):
-        tool_name = assertion.get("tool")
-        path_expr = assertion.get("path")
-        server = assertion.get("server")
-        if not tool_name or not path_expr:
-            continue
-
-        comparators = {k: v for k, v in assertion.items() if k in ("equals", "min", "max", "regex")}
-        if not comparators:
-            failures.append(f"tool_args_match : {tool_name} : aucun comparateur")
-            continue
-
-        found_match = False
-        for call in tool_calls:
-            if call.get("tool") != tool_name:
-                continue
-            if server and call.get("server") != server:
-                continue
-
-            arguments = call.get("arguments", {})
-            values = _resolve_json_path(arguments, path_expr)
-            if not values:
-                continue
-
-            for val in values:
-                all_match = all(_compare_value(val, cmp_val, cmp_kind)
-                               for cmp_kind, cmp_val in comparators.items())
-                if all_match:
-                    found_match = True
-                    break
-
-            if found_match:
-                break
-
-        if not found_match:
-            comp_str = ", ".join(f"{k}={v}" for k, v in comparators.items())
-            failures.append(f"tool_args_match : {tool_name} : arguments.{path_expr} ne satisfait pas {comp_str}")
-
-    # Nouvelles assertions : sqlite_query
-    for assertion in _as_list(expect.get("sqlite_query")):
-        sql = assertion.get("sql")
-        if not sql:
-            continue
-
-        comparators = {k: v for k, v in assertion.items() if k in ("equals", "min", "max")}
-        if not comparators:
-            failures.append(f"sqlite_query : aucun comparateur")
-            continue
-
-        # Valider que c'est un SELECT
-        sql_upper = sql.strip().upper()
-        if not sql_upper.startswith("SELECT"):
-            failures.append(f"sqlite_query : requête non SELECT")
-            continue
-
-        # Indexer le workspace dans une DB temporaire
-        try:
-            with tempfile.NamedTemporaryFile(suffix=".db", delete=False) as tmp:
-                tmp_db = tmp.name
-
-            sys.path.insert(0, str(REPO / "scripts"))
-            import arc_index as I
-
-            conn = I.open_db(result["workspace"], db=tmp_db, rebuild=True)
-            I.index_workspace(conn, result["workspace"])
-
-            # Exécuter la requête
-            cursor = conn.execute(sql)
-            row = cursor.fetchone()
-            conn.close()
-
-            if row is None:
-                failures.append(f"sqlite_query : requête n'a renvoyé aucune ligne")
-                continue
-
-            # Comparer la première colonne
-            found = row[0]
-            found_match = all(_compare_value(found, cmp_val, cmp_kind)
-                             for cmp_kind, cmp_val in comparators.items())
-            if not found_match:
-                comp_str = ", ".join(f"{k}={v}" for k, v in comparators.items())
-                failures.append(f"sqlite_query : {found} ne satisfait pas {comp_str}")
-
-        except Exception as exc:
-            failures.append(f"sqlite_query : erreur d'exécution : {exc}")
-
-    # Nouvelles assertions : file_contains_any
-    for assertion in _as_list(expect.get("file_contains_any")):
-        glob_pattern = assertion.get("glob")
-        any_list = assertion.get("any", [])
-        if not glob_pattern or not any_list:
-            continue
-
-        new = _new_files(case, result, glob_pattern)
-        if not new:
-            failures.append(f"file_contains_any : aucun fichier ne correspond à {glob_pattern}")
-            continue
-
-        found_match = False
-        for fpath in new:
-            try:
-                content = fpath.read_text(encoding="utf-8").lower()
-                for needle in any_list:
-                    if str(needle).lower() in content:
-                        found_match = True
-                        break
-            except Exception:
-                continue
-            if found_match:
-                break
-
-        if not found_match:
-            notions = ", ".join(str(n) for n in any_list)
-            failures.append(f"file_contains_any : {glob_pattern} : aucun de « {notions} »")
+    failures.extend(_safe_check(
+        "tool_args_match", _check_tool_args_match, tool_calls, _as_list(expect.get("tool_args_match"))
+    ))
+    failures.extend(_safe_check("sqlite_query", _check_sqlite_queries, _as_list(expect.get("sqlite_query")), result))
+    failures.extend(_safe_check(
+        "file_contains_any", _check_file_contains_any, case, result, _as_list(expect.get("file_contains_any"))
+    ))
 
     return failures
 

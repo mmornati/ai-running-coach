@@ -1,0 +1,35 @@
+# Contrat de données, contenu (#27) : la synchronisation quotidienne n'écrit pas
+# seulement un bloc ```arc valide (déjà verrouillé par `sync-writes-arc-block`),
+# elle doit y reporter fidèlement ce que le stub Garmin a renvoyé — pas une
+# distance ou un sport approximatifs.
+#
+# Fixture "empty" : `get_activities` (stub_garmin_mcp.CANNED) rend UNE activité
+# canned, "Sortie longue" en trail_running, distance 24800 m, FC moyenne 141 —
+# les seuils ci-dessous laissent de la marge à l'arrondi/l'agrégation de l'agent
+# tout en restant assez serrés pour détecter une valeur inventée ou une confusion
+# d'unité (24800 m rapporté comme 24.8 sans conversion, par exemple).
+id = "sync-activity-arc-fields"
+prompt = "/garmin-daily-sync"
+fixture = "empty"
+
+[config.sync]
+lookback_days = 3
+
+[expect]
+must_match = ['```resume']
+files_with_arc_block = ["activities/*.md"]
+
+[[expect.arc_field]]
+glob = "activities/*.md"
+path = "distance_m"
+min = 20000
+
+[[expect.arc_field]]
+glob = "activities/*.md"
+path = "avg_hr_bpm"
+min = 100
+
+[[expect.arc_field]]
+glob = "activities/*.md"
+path = "sport"
+in = ["trail", "running"]
