@@ -3720,6 +3720,7 @@
       "body": {
         "assumptions": {
           "acwr": "ACWR = fatigue / condition, affiché dès que la condition atteint 10. La zone 0.8–1.3 est un repère indicatif, discuté dans la littérature, pas un seuil de blessure.",
+          "compliance": "Conformité plan vs réalisé : séances de repos hors calcul (sport ou intensité `rest`), `cancelled` exclue du dénominateur (le contrat n'a pas de motif d'annulation distinct médical/autre), `moved` exclue (pas de date cible dans le contrat), séance future de la semaine en cours jamais comptée manquée, séance du jour même sans activité encore en attente (pas manquée), `done` sans activité chiffrée exclue des ratios durée/D+ (comptée en séance faite seulement), appariement séance ↔ activité par date + sport (route/trail/randonnée/marche et variantes vélo interchangeables), les `done` explicites réservant leur activité avant les séances sans statut.",
           "form": "Modèle impulsion-réponse de Banister : condition = moyenne exponentielle 42 j de la charge, fatigue = 7 j, forme = condition(j-1) − fatigue(j-1). D'autres outils nomment ces grandeurs CTL, ATL et TSB (marques revendiquées par Peaksware LLC / TrainingPeaks) ; calculées ici sur le TRIMP, nos valeurs ne sont pas comparables aux leurs.",
           "monotony": "Monotonie de Foster = moyenne / écart-type de la charge quotidienne sur 7 j ; strain = charge 7 j × monotonie.",
           "prediction": "Prédictions VDOT (Daniels) depuis la tendance VO2max, et Riegel depuis le meilleur effort récent (exposant 1,06 route / 1,15 trail).",
@@ -3741,6 +3742,92 @@
           "usual_slot": "pause de midi (12 h-14 h)",
           "weight_kg": 68.5
         },
+        "compliance_trend": [
+          {
+            "compliance": null,
+            "week_start": "2026-08-31"
+          },
+          {
+            "compliance": null,
+            "week_start": "2026-09-07"
+          },
+          {
+            "compliance": {
+              "by_intensity": {
+                "easy": {
+                  "duration_ratio": 1.364,
+                  "elevation_ratio": 0.836,
+                  "sessions_done": 3,
+                  "sessions_pct": 100.0,
+                  "sessions_planned": 3
+                },
+                "other": {
+                  "duration_ratio": 1.0,
+                  "elevation_ratio": null,
+                  "sessions_done": 1,
+                  "sessions_pct": 100.0,
+                  "sessions_planned": 1
+                },
+                "quality": {
+                  "duration_ratio": 0.835,
+                  "elevation_ratio": 0.076,
+                  "sessions_done": 1,
+                  "sessions_pct": 100.0,
+                  "sessions_planned": 1
+                }
+              },
+              "duration_ratio": 1.106,
+              "elevation_ratio": 0.582,
+              "sessions_cancelled": 0,
+              "sessions_done": 5,
+              "sessions_future": 0,
+              "sessions_moved": 0,
+              "sessions_pct": 100.0,
+              "sessions_pending": 0,
+              "sessions_planned": 5,
+              "sessions_rest": 0
+            },
+            "week_start": "2026-09-14"
+          },
+          {
+            "compliance": {
+              "by_intensity": {
+                "easy": {
+                  "duration_ratio": 1.255,
+                  "elevation_ratio": null,
+                  "sessions_done": 1,
+                  "sessions_pct": 100.0,
+                  "sessions_planned": 1
+                },
+                "other": {
+                  "duration_ratio": null,
+                  "elevation_ratio": null,
+                  "sessions_done": 0,
+                  "sessions_pct": null,
+                  "sessions_planned": 0
+                },
+                "quality": {
+                  "duration_ratio": 0.895,
+                  "elevation_ratio": 0.06,
+                  "sessions_done": 1,
+                  "sessions_pct": 100.0,
+                  "sessions_planned": 1
+                }
+              },
+              "duration_ratio": 1.045,
+              "elevation_ratio": 0.06,
+              "sessions_cancelled": 0,
+              "sessions_done": 2,
+              "sessions_future": 3,
+              "sessions_moved": 0,
+              "sessions_pct": 100.0,
+              "sessions_pending": 0,
+              "sessions_planned": 2,
+              "sessions_rest": 0
+            },
+            "week_start": "2026-09-21"
+          }
+        ],
         "counts": {
           "activities": 28,
           "nutrition": 7,
@@ -3849,6 +3936,41 @@
           }
         ],
         "body_html": "<h2>Semaine du 2026-09-21</h2>\n<h3>Intention</h3>\n<p>Consolider le volume, une seule séance de qualité si la HRV reste dans la bande.</p>",
+        "compliance": {
+          "by_intensity": {
+            "easy": {
+              "duration_ratio": 1.255,
+              "elevation_ratio": null,
+              "sessions_done": 1,
+              "sessions_pct": 100.0,
+              "sessions_planned": 1
+            },
+            "other": {
+              "duration_ratio": null,
+              "elevation_ratio": null,
+              "sessions_done": 0,
+              "sessions_pct": null,
+              "sessions_planned": 0
+            },
+            "quality": {
+              "duration_ratio": 0.895,
+              "elevation_ratio": 0.06,
+              "sessions_done": 1,
+              "sessions_pct": 100.0,
+              "sessions_planned": 1
+            }
+          },
+          "duration_ratio": 1.045,
+          "elevation_ratio": 0.06,
+          "sessions_cancelled": 0,
+          "sessions_done": 2,
+          "sessions_future": 3,
+          "sessions_moved": 0,
+          "sessions_pct": 100.0,
+          "sessions_pending": 0,
+          "sessions_planned": 2,
+          "sessions_rest": 0
+        },
         "known_weeks": [
           "2026-09-14",
           "2026-09-21"

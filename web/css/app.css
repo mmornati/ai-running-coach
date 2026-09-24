@@ -196,6 +196,15 @@ select { font: inherit; color: var(--ink); background: var(--surface); border: 1
 .facts--grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(10.5rem, 1fr)); gap: 0.9rem 1.5rem; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 1rem 1.25rem; }
 .facts--grid dd { font-size: 1rem; font-weight: 600; }
 
+/* ---------------------------------------------------------------- tendance de conformité (#33) */
+
+.trend { display: block; width: 100%; max-width: 10rem; height: 2.4rem; margin: 0.6rem 0 0.2rem; overflow: visible; }
+.trend__bar { fill: var(--s-bar); }
+.trend__bar--pos { fill: var(--ok); }
+.trend__bar--mid { fill: var(--warn); }
+.trend__bar--neg { fill: var(--bad); }
+.trend__bar--none { fill: var(--line); }
+
 .plan { list-style: none; margin: 0; padding: 0; }
 .plan li { display: flex; flex-wrap: wrap; align-items: center; gap: 0.25rem 0.7rem; padding: 0.5rem 0; border-top: 1px solid var(--line); }
 .plan li:first-child { border-top: 0; }
