@@ -60,26 +60,36 @@ function readout(el, html) {
 // ---------------------------------------------------------------------------
 
 const pctClass = (pct) => (pct === null || pct === undefined ? "" : pct >= 80 ? "pos" : pct < 50 ? "neg" : "");
-const ratioText = (r) => (r === null || r === undefined ? "—" : `${F.num(r * 100, 0)}${" "}%`);
+const ratioText = (r) => (r === null || r === undefined ? "—" : `${F.num(r * 100, 0)}\u00a0%`);
 
-/** Bloc « Conformité » de la vue Semaine : % de séances faites, ratios durée/D+, par intensité. */
+const INTENSITY_LABEL = { easy: "Facile", quality: "Qualité", other: "Autre" };
+
+/** Le texte d'une semaine de conformité : soit un %, soit ce qui explique son absence. */
+function complianceWeekLabel(c) {
+  if (!c) return "pas de plan";
+  if (c.sessions_planned === 0) return "séances à venir";
+  return `${F.num(c.sessions_pct, 0)}\u00a0% des séances (${c.sessions_done}/${c.sessions_planned})`;
+}
+
+/** Bloc « Conformité » de la vue Semaine : % de séances faites, ratios durée/D+, par intensité. */
 function complianceSection(c, trail) {
   if (!c) {
-    return `<section class="band"><h2>Conformité</h2>${note("Pas de séance planifiée cette semaine-là : conformité non calculée.")}</section>`;
+    return `<section class="band"><h2>Conformité</h2>${note("Pas de séance planifiée cette semaine-là (hors repos) : conformité non calculée.")}</section>`;
   }
-  const intensityLabel = { easy: "Facile", quality: "Qualité" };
   const intensityRows = Object.entries(c.by_intensity)
     .filter(([, v]) => v.sessions_planned > 0)
-    .map(([name, v]) => `<div><dt>${intensityLabel[name]}</dt><dd class="${pctClass(v.sessions_pct)}">${F.num(v.sessions_pct, 0)}${" "}%<small> (${v.sessions_done}/${v.sessions_planned})</small></dd></div>`)
+    .map(([name, v]) => `<div><dt>${INTENSITY_LABEL[name] || name}</dt><dd class="${pctClass(v.sessions_pct)}">${F.num(v.sessions_pct, 0)}\u00a0%<small> (${v.sessions_done}/${v.sessions_planned})</small></dd></div>`)
     .join("");
   const excluded = [
+    c.sessions_rest ? `${c.sessions_rest} repos` : null,
     c.sessions_cancelled ? `${c.sessions_cancelled} annulée${c.sessions_cancelled > 1 ? "s" : ""}` : null,
     c.sessions_moved ? `${c.sessions_moved} déplacée${c.sessions_moved > 1 ? "s" : ""}` : null,
     c.sessions_future ? `${c.sessions_future} à venir` : null,
+    c.sessions_pending ? `${c.sessions_pending} en attente (aujourd'hui)` : null,
   ].filter(Boolean).join(" · ");
   return `<section class="band"><h2>Conformité</h2>
     <dl class="facts facts--grid">
-      <div><dt>Séances faites</dt><dd class="${pctClass(c.sessions_pct)}">${c.sessions_pct !== null ? F.num(c.sessions_pct, 0) + " %" : "—"}<small> (${c.sessions_done}/${c.sessions_planned})</small></dd></div>
+      <div><dt>Séances faites</dt><dd class="${pctClass(c.sessions_pct)}">${c.sessions_pct !== null ? F.num(c.sessions_pct, 0) + "\u00a0%" : "—"}<small> (${c.sessions_done}/${c.sessions_planned})</small></dd></div>
       <div><dt>Durée réalisée / planifiée</dt><dd>${ratioText(c.duration_ratio)}</dd></div>
       ${trail ? `<div><dt>D+ réalisé / planifié</dt><dd>${ratioText(c.elevation_ratio)}</dd></div>` : ""}
       ${intensityRows}
@@ -93,23 +103,27 @@ function complianceSection(c, trail) {
  * En SVG (comme `rangeBar`), pas en CSS : la hauteur varie par valeur, et le CSP du
  * tableau de bord (`style-src 'self'`, sans `unsafe-inline`) interdit tout style
  * posé en ligne — seuls des attributs SVG (`height`, `y`) peuvent varier par item.
+ *
+ * `role="img"` masque aux lecteurs d'écran tout contenu interne (les `<title>` par
+ * barre ne sont donc pas exposés individuellement) : l'`aria-label` du `<svg>` est
+ * construit à partir des mêmes données que les `<title>`, pour porter toute
+ * l'information par un seul nom accessible plutôt que de la perdre.
  */
 function complianceTrend(trend) {
   if (!trend || !trend.some((w) => w.compliance)) return "";
   const barW = 40, gap = 10, chartH = 36;
   const bars = trend.map((w, i) => {
     const c = w.compliance;
-    const pct = c ? c.sessions_pct : null;
+    const pct = c && c.sessions_planned > 0 ? c.sessions_pct : null;
     const barH = pct !== null ? Math.max(3, (pct / 100) * chartH) : 3;
     const cls = pct === null ? "trend__bar--none" : pct >= 80 ? "trend__bar--pos" : pct < 50 ? "trend__bar--neg" : "trend__bar--mid";
-    const title = c
-      ? `Semaine du ${F.dayShort(w.week_start)} : ${F.num(pct, 0)} % des séances (${c.sessions_done}/${c.sessions_planned})`
-      : `Semaine du ${F.dayShort(w.week_start)} : pas de plan`;
+    const title = `${F.dayShort(w.week_start)} : ${complianceWeekLabel(c)}`;
     const x = i * (barW + gap);
     return `<rect class="trend__bar ${cls}" x="${x}" y="${chartH - barH}" width="${barW}" height="${barH}" rx="3"><title>${F.esc(title)}</title></rect>`;
   }).join("");
   const totalW = trend.length * barW + (trend.length - 1) * gap;
-  return `<svg class="trend" viewBox="0 0 ${totalW} ${chartH}" role="img" aria-label="Conformité au plan sur les 4 dernières semaines">${bars}</svg>
+  const label = `Conformité au plan sur les 4 dernières semaines : ${trend.map((w) => `${F.dayShort(w.week_start)} : ${complianceWeekLabel(w.compliance)}`).join(" ; ")}.`;
+  return `<svg class="trend" viewBox="0 0 ${totalW} ${chartH}" role="img" aria-label="${F.esc(label)}">${bars}</svg>
     <p class="muted">Conformité au plan, 4 dernières semaines. <a href="#/semaine">Détail</a></p>`;
 }
 

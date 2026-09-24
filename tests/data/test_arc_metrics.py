@@ -14,6 +14,7 @@ from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO / "scripts"))
+import arc_legacy as L  # noqa: E402
 import arc_metrics as M  # noqa: E402
 
 
@@ -226,6 +227,110 @@ class TestWeekCompliance(unittest.TestCase):
         activities = [self.activity("2026-09-14", elevation_gain_m=800)]
         c = M.week_compliance(sessions, activities, self.TODAY)
         self.assertAlmostEqual(c["elevation_ratio"], 0.8)
+
+    # -- Régressions signalées en revue de la PR #78 -----------------------
+
+    def test_rest_sessions_excluded_from_denominator(self):
+        """Une semaine entièrement faite ne doit pas tomber à 50 % à cause des jours de repos."""
+        sessions = [
+            self.session("2026-09-14", sport="rest", title="Repos"),
+            self.session("2026-09-15", planned_duration_s=2400, status="done"),
+            self.session("2026-09-16", sport="rest", title="Repos"),
+            self.session("2026-09-17", planned_duration_s=3000, status="done"),
+        ]
+        activities = [self.activity("2026-09-15", duration_s=2400), self.activity("2026-09-17", duration_s=3000)]
+        c = M.week_compliance(sessions, activities, self.TODAY)
+        self.assertEqual(c["sessions_rest"], 2)
+        self.assertEqual(c["sessions_planned"], 2, "les 2 jours de repos ne doivent pas compter au dénominateur")
+        self.assertEqual(c["sessions_pct"], 100.0)
+
+    def test_rest_sessions_excluded_through_legacy_parser(self):
+        """Reproduction exacte du signalement : semaine héritée, tout fait, repos non planifiés comme sport."""
+        text = (
+            "| Jour | Séance | Réalisée |\n"
+            "|---|---|---|\n"
+            "| Lundi | Repos | |\n"
+            "| Mardi | Footing 40 min | oui |\n"
+            "| Mercredi | Repos | |\n"
+            "| Jeudi | Fractionné 50 min | oui |\n"
+        )
+        week = L.legacy_week(text, "Semaine_2026-09-14.md", "running")
+        sessions = week["sessions"]
+        self.assertEqual({s["sport"] for s in sessions if s["title"] == "Repos"}, {"rest"})
+        activities = [
+            self.activity("2026-09-15", duration_s=2400),
+            self.activity("2026-09-17", duration_s=3000),
+        ]
+        c = M.week_compliance(sessions, activities, self.TODAY)
+        self.assertEqual(c["sessions_rest"], 2)
+        self.assertEqual(c["sessions_planned"], 2)
+        self.assertEqual(c["sessions_pct"], 100.0, "2 séances sur 2 faites : jamais 50 %")
+
+    def test_intensity_rest_also_excludes_non_rest_sport(self):
+        """`intensity == "rest"` exclut aussi, même sans `sport == "rest"`."""
+        sessions = [self.session("2026-09-14", sport="running", intensity="rest", title="Footing très facile")]
+        c = M.week_compliance(sessions, [], self.TODAY)
+        self.assertIsNone(c, "une seule séance, de repos : plus aucune séance à compter")
+
+    def test_todays_session_without_activity_is_pending_not_missed(self):
+        """Le matin même, sans activité encore enregistrée : en attente, pas manquée."""
+        today = date(2026, 9, 18)
+        sessions = [self.session("2026-09-18", planned_duration_s=1800)]
+        c = M.week_compliance(sessions, [], today)
+        self.assertEqual(c["sessions_planned"], 0, "une séance du jour encore incertaine ne compte pas déjà manquée")
+        self.assertEqual(c["sessions_pending"], 1)
+        self.assertEqual(c["sessions_done"], 0)
+
+    def test_todays_session_with_activity_still_counts_done(self):
+        today = date(2026, 9, 18)
+        sessions = [self.session("2026-09-18", planned_duration_s=1800)]
+        activities = [self.activity("2026-09-18", duration_s=1800)]
+        c = M.week_compliance(sessions, activities, today)
+        self.assertEqual(c["sessions_done"], 1)
+        self.assertEqual(c["sessions_pending"], 0)
+
+    def test_done_without_matched_activity_excluded_from_ratio_only(self):
+        """`done` explicite sans activité chiffrée : compte en séance faite, hors ratio des deux côtés."""
+        sessions = [self.session("2026-09-14", planned_duration_s=1800, status="done")]
+        c = M.week_compliance(sessions, [], self.TODAY)
+        self.assertEqual(c["sessions_done"], 1)
+        self.assertEqual(c["sessions_pct"], 100.0)
+        self.assertIsNone(c["duration_ratio"], "aucune activité chiffrée : le ratio ne doit pas être artificiellement à 0")
+
+    def test_explicit_done_reserves_its_activity_before_auto_match(self):
+        """Une séance sans statut ne doit pas voler l'activité d'une séance `done` explicite du même jour."""
+        sessions = [
+            self.session("2026-09-14", sport="running", title="Footing (statut absent)"),
+            self.session("2026-09-14", sport="trail", title="Sortie longue", planned_duration_s=3600, status="done"),
+        ]
+        activities = [self.activity("2026-09-14", sport="trail", duration_s=3600)]
+        c = M.week_compliance(sessions, activities, self.TODAY)
+        # La séance `done` explicite doit récupérer l'unique activité trail : ratio exact à 1.
+        self.assertEqual(c["duration_ratio"], 1.0)
+        # La séance sans statut, sport `running`, ne trouve plus rien à apparier une fois
+        # l'activité trail réservée (compatible par famille, mais déjà consommée) : manquée.
+        self.assertEqual(c["sessions_done"], 1)
+        self.assertEqual(c["sessions_planned"], 2)
+
+    def test_strength_intensity_goes_to_other_bucket(self):
+        """`strength` (contrat INTENSITY) n'est ni facile ni qualité : bucket `other`, jamais perdu."""
+        sessions = [
+            self.session("2026-09-14", intensity="endurance", planned_duration_s=1800, status="done"),
+            self.session("2026-09-15", intensity="strength", planned_duration_s=2400, status="done"),
+        ]
+        activities = [self.activity("2026-09-14", duration_s=1800), self.activity("2026-09-15", sport="strength", duration_s=2400)]
+        c = M.week_compliance(sessions, activities, self.TODAY)
+        total_bucketed = sum(v["sessions_planned"] for v in c["by_intensity"].values())
+        self.assertEqual(total_bucketed, c["sessions_planned"], "easy + quality + other doit reconstituer le total")
+        self.assertEqual(c["by_intensity"]["other"]["sessions_planned"], 1)
+        self.assertEqual(c["by_intensity"]["other"]["sessions_done"], 1)
+
+    def test_hiking_matches_planned_trail_session(self):
+        """Une sortie trail remplacée par une randonnée (mauvais temps…) doit pouvoir compter faite."""
+        sessions = [self.session("2026-09-14", sport="trail")]     # pas de statut
+        activities = [self.activity("2026-09-14", sport="hiking")]
+        c = M.week_compliance(sessions, activities, self.TODAY)
+        self.assertEqual(c["sessions_done"], 1)
 
 
 if __name__ == "__main__":

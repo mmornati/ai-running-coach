@@ -89,10 +89,14 @@ ASSUMPTIONS = {
     "prediction": "Prédictions VDOT (Daniels) depuis la tendance VO2max, et Riegel depuis le meilleur effort récent "
                   "(exposant 1,06 route / 1,15 trail).",
     "records": "Records sur fenêtres de splits consécutifs d'environ 1 km : précision ±1 km.",
-    "compliance": "Conformité plan vs réalisé : séance `cancelled` exclue du dénominateur (le contrat n'a pas de "
-                  "motif d'annulation distinct médical/autre), `moved` exclue (pas de date cible dans le contrat), "
-                  "séance future de la semaine en cours jamais comptée manquée, appariement séance ↔ activité par "
-                  "date + sport (route/trail et variantes vélo interchangeables) quand le statut n'est pas explicite.",
+    "compliance": "Conformité plan vs réalisé : séances de repos hors calcul (sport ou intensité `rest`), "
+                  "`cancelled` exclue du dénominateur (le contrat n'a pas de motif d'annulation distinct "
+                  "médical/autre), `moved` exclue (pas de date cible dans le contrat), séance future de la semaine "
+                  "en cours jamais comptée manquée, séance du jour même sans activité encore en attente (pas "
+                  "manquée), `done` sans activité chiffrée exclue des ratios durée/D+ (comptée en séance faite "
+                  "seulement), appariement séance ↔ activité par date + sport (route/trail/randonnée/marche et "
+                  "variantes vélo interchangeables), les `done` explicites réservant leur activité avant les "
+                  "séances sans statut.",
 }
 
 # ---------------------------------------------------------------------------
@@ -339,8 +343,16 @@ def predictions(vdot_value: Optional[float], records: Dict[int, dict], primary: 
 # jamais une déduction sur des données absentes.
 #
 # Règles, dans l'ordre :
+# - une séance de repos (`sport == "rest"` ou `intensity == "rest"`) est hors
+#   sujet pour ce KPI : rien n'y est « conforme » ou « manqué ». Elle est
+#   retirée de tous les calculs (dénominateur global ET répartition par
+#   intensité), comptée à part dans `sessions_rest`. Sans cette exclusion, les
+#   semaines lues au format hérité (`scripts/arc_legacy.py::legacy_week`, qui
+#   classe toute ligne « Repos » en `sport = "rest"` sans statut) tombaient à
+#   50 % de conformité alors que tout avait été fait ;
 # - un statut explicite (`done`, `missed`, `cancelled`, `moved`) prime toujours
-#   sur l'appariement automatique ;
+#   sur l'appariement automatique — mais un appariement automatique différé
+#   (deux passes, ci-dessous) leur laisse toujours la priorité sur les activités ;
 # - `cancelled` : le contrat (scripts/arc_contract.py::SUBSCHEMA["session"]) n'a
 #   pas de motif d'annulation distinct (médical vs organisationnel). Ajouter une
 #   clé rien que pour ce KPI aurait été la seule raison de son existence ; on
@@ -354,19 +366,37 @@ def predictions(vdot_value: Optional[float], records: Dict[int, dict], primary: 
 #   déplacée. On l'exclut du dénominateur (ni faite, ni manquée) ; si le coach a
 #   effectivement écrit une nouvelle séance à la date réelle, cette séance est
 #   comptée pour elle-même, avec son propre statut ;
-# - `planned` (ou statut absent) : séance future (date > aujourd'hui) → ignorée
-#   (jamais comptée manquée par anticipation) ; séance passée ou du jour →
-#   appariée à une activité de même date et de sport compatible
-#   (`SPORT_FAMILY` : route/trail interchangeables, les variantes de vélo entre
-#   elles), sinon `missed`. Plusieurs séances/activités le même jour : chaque
-#   activité n'est consommée qu'une fois (appariement glouton, sport exact
-#   d'abord, puis famille), dans l'ordre des séances du fichier ;
-# - semaine sans aucune séance planifiée → `None` (KPI absent), jamais un ratio
-#   à 0/0 qui laisserait croire à une semaine blanche.
+# - `done` explicite SANS activité appariée (le coach a coché « fait » avant que
+#   la synchronisation n'écrive le fichier d'activité, ou l'a écrit sans
+#   chiffres) : compte dans `sessions_done` / `sessions_pct`, mais est exclu des
+#   DEUX côtés des ratios durée/D+ — l'inclure aurait dégradé le ratio d'un
+#   dénominateur planifié sans numérateur réel, pour une séance qu'on sait
+#   pourtant faite ;
+# - `planned` (ou statut absent), appariement en deux passes pour qu'une séance
+#   sans statut ne puisse jamais « voler » l'activité d'une séance `done`
+#   explicite du même jour :
+#     1. les séances `done` explicites réservent d'abord leur activité (sport
+#        exact, puis famille — `SPORT_FAMILY` : route/trail/randonnée/marche
+#        interchangeables, variantes de vélo entre elles) ;
+#     2. puis les séances sans statut piochent dans ce qui reste. Séance future
+#        (date > aujourd'hui) → ignorée (jamais comptée manquée par
+#        anticipation) ; séance du jour même sans activité correspondante →
+#        `pending` (le jour n'est pas terminé, pas encore une séance manquée) ;
+#        séance strictement passée sans correspondance → `missed`.
+#   Plusieurs séances/activités le même jour : chaque activité n'est consommée
+#   qu'une fois ;
+# - semaine sans aucune séance planifiée (hors repos) → `None` (KPI absent),
+#   jamais un ratio à 0/0 qui laisserait croire à une semaine blanche.
+#
+# Répartition par intensité : `easy` (récupération, endurance), `quality`
+# (tempo, seuil, VO2max, course) et `other` — le contrat autorise aussi
+# `strength` (scripts/arc_contract.py::INTENSITY), qui n'est ni l'un ni
+# l'autre ; `other` couvre cette valeur et toute intensité absente, pour que
+# easy + quality + other reconstitue toujours le total (hors repos).
 # ---------------------------------------------------------------------------
 
 SPORT_FAMILY = {
-    "running": "run", "trail": "run",
+    "running": "run", "trail": "run", "hiking": "run", "walking": "run",
     "cycling": "bike", "indoor_cycling": "bike", "home_trainer": "bike",
 }
 
@@ -375,14 +405,17 @@ def sport_family(sport: Optional[str]) -> Optional[str]:
     return SPORT_FAMILY.get(sport, sport)
 
 
-EASY_INTENSITIES = ("rest", "recovery", "endurance")
+EASY_INTENSITIES = ("recovery", "endurance")
 QUALITY_INTENSITIES = ("tempo", "threshold", "vo2max", "race")
 INTENSITY_BUCKETS = {"easy": EASY_INTENSITIES, "quality": QUALITY_INTENSITIES}
 
 # Statuts qui priment sur l'appariement automatique.
 _EXPLICIT_DONE = "done"
 _EXPLICIT_MISSED = "missed"
-_EXCLUDED_STATUSES = ("cancelled", "moved")
+
+
+def _is_rest(session: dict) -> bool:
+    return session.get("sport") == "rest" or session.get("intensity") == "rest"
 
 
 def _match_activity(by_date: Dict[str, List[dict]], day: Optional[str], sport: Optional[str]) -> Optional[dict]:
@@ -400,26 +433,42 @@ def _match_activity(by_date: Dict[str, List[dict]], day: Optional[str], sport: O
     return None
 
 
-def _resolve_session(session: dict, by_date: Dict[str, List[dict]], today_iso: str) -> Tuple[str, Optional[dict]]:
-    """Rend (statut_effectif, activité_appariée_ou_None).
+def _resolve_sessions(sessions: List[dict], by_date: Dict[str, List[dict]], today_iso: str) -> List[dict]:
+    """Rend, pour chaque séance (dans l'ordre donné), `{session, effective, actual}`.
 
-    Statuts effectifs : `done`, `missed`, `cancelled`, `moved`, `future`.
+    Statuts effectifs : `done`, `missed`, `cancelled`, `moved`, `future`, `pending`.
+    Deux passes sur l'appariement automatique (voir le commentaire de tête du
+    module) : les `done` explicites réservent leur activité avant que les
+    séances sans statut ne piochent dans ce qui reste.
     """
-    status = session.get("status")
-    day = session.get("date")
-    if status == "cancelled":
-        return "cancelled", None
-    if status == "moved":
-        return "moved", None
-    if status == _EXPLICIT_DONE:
-        return "done", _match_activity(by_date, day, session.get("sport"))
-    if status == _EXPLICIT_MISSED:
-        return "missed", None
-    # Statut absent ou `planned` : à trancher par la date et l'appariement.
-    if day and day > today_iso:
-        return "future", None
-    matched = _match_activity(by_date, day, session.get("sport"))
-    return ("done", matched) if matched else ("missed", None)
+    resolved: List[Optional[dict]] = [None] * len(sessions)
+
+    for i, session in enumerate(sessions):
+        if session.get("status") == _EXPLICIT_DONE:
+            actual = _match_activity(by_date, session.get("date"), session.get("sport"))
+            resolved[i] = {"session": session, "effective": "done", "actual": actual}
+
+    for i, session in enumerate(sessions):
+        if resolved[i] is not None:
+            continue
+        status, day = session.get("status"), session.get("date")
+        if status == "cancelled":
+            resolved[i] = {"session": session, "effective": "cancelled", "actual": None}
+        elif status == "moved":
+            resolved[i] = {"session": session, "effective": "moved", "actual": None}
+        elif status == _EXPLICIT_MISSED:
+            resolved[i] = {"session": session, "effective": "missed", "actual": None}
+        elif day and day > today_iso:
+            resolved[i] = {"session": session, "effective": "future", "actual": None}
+        else:
+            matched = _match_activity(by_date, day, session.get("sport"))
+            if matched:
+                resolved[i] = {"session": session, "effective": "done", "actual": matched}
+            elif day == today_iso:
+                resolved[i] = {"session": session, "effective": "pending", "actual": None}
+            else:
+                resolved[i] = {"session": session, "effective": "missed", "actual": None}
+    return resolved
 
 
 def _ratio(actual_total: float, planned_total: float, has_planned: bool) -> Optional[float]:
@@ -433,18 +482,22 @@ def _bucket_metrics(resolved: List[dict]) -> dict:
     duration_planned = duration_actual = elevation_planned = elevation_actual = 0.0
     has_duration = has_elevation = False
     for r in counted:
+        if r["effective"] == _EXPLICIT_DONE and not r["actual"]:
+            # Faite, mais sans activité chiffrée : ni au numérateur ni au dénominateur
+            # du ratio (voir le commentaire de tête du module).
+            continue
         s = r["session"]
         planned_d = s.get("planned_duration_s")
         if planned_d is not None:
             has_duration = True
             duration_planned += planned_d
-            if r["effective"] == _EXPLICIT_DONE and r["actual"]:
+            if r["actual"]:
                 duration_actual += r["actual"].get("duration_s") or 0
         planned_e = s.get("planned_elevation_m")
         if planned_e is not None:
             has_elevation = True
             elevation_planned += planned_e
-            if r["effective"] == _EXPLICIT_DONE and r["actual"]:
+            if r["actual"]:
                 elevation_actual += r["actual"].get("elevation_gain_m") or 0
     return {
         "sessions_planned": len(counted),
@@ -456,33 +509,40 @@ def _bucket_metrics(resolved: List[dict]) -> dict:
 
 
 def week_compliance(sessions: List[dict], activities: List[dict], today) -> Optional[dict]:
-    """Conformité plan vs réalisé d'une semaine. `None` si aucune séance planifiée.
+    """Conformité plan vs réalisé d'une semaine. `None` si aucune séance planifiée
+    (hors repos — voir le commentaire de tête du module).
 
     `sessions` : lignes `planned_session` (ou sous-schéma `session` du contrat).
     `activities` : lignes `activity` de la même fenêtre (date, sport, duration_s,
     elevation_gain_m…). `today` : `date` ou chaîne AAAA-MM-JJ.
     """
-    if not sessions:
+    non_rest_input = [s for s in sessions if not _is_rest(s)]
+    if not non_rest_input:
         return None
     today_iso = today.isoformat() if hasattr(today, "isoformat") else today
     by_date: Dict[str, List[dict]] = {}
     for act in activities:
         by_date.setdefault(act.get("date"), []).append({**act, "_used": False})
 
-    resolved = []
-    for session in sorted(sessions, key=lambda s: s.get("date") or ""):
-        effective, actual = _resolve_session(session, by_date, today_iso)
-        resolved.append({"session": session, "effective": effective, "actual": actual})
+    ordered = sorted(sessions, key=lambda s: s.get("date") or "")
+    resolved_all = _resolve_sessions(ordered, by_date, today_iso)
+    rest_count = sum(1 for r in resolved_all if _is_rest(r["session"]))
+    resolved = [r for r in resolved_all if not _is_rest(r["session"])]
 
     overall = _bucket_metrics(resolved)
+    other_intensities = set(EASY_INTENSITIES) | set(QUALITY_INTENSITIES)
     by_intensity = {
         name: _bucket_metrics([r for r in resolved if r["session"].get("intensity") in values])
         for name, values in INTENSITY_BUCKETS.items()
     }
+    by_intensity["other"] = _bucket_metrics(
+        [r for r in resolved if r["session"].get("intensity") not in other_intensities])
     overall.update({
+        "sessions_rest": rest_count,
         "sessions_cancelled": sum(1 for r in resolved if r["effective"] == "cancelled"),
         "sessions_moved": sum(1 for r in resolved if r["effective"] == "moved"),
         "sessions_future": sum(1 for r in resolved if r["effective"] == "future"),
+        "sessions_pending": sum(1 for r in resolved if r["effective"] == "pending"),
         "by_intensity": by_intensity,
     })
     return overall
