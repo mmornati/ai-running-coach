@@ -97,10 +97,17 @@ de référence du profil. Sans elles, la charge vient de l'effort perçu seul.
 
 Les tendances du bilan matinal, sur 1, 3 ou 6 mois :
 
-- **HRV nocturne** dans sa bande de référence Garmin — et, juste dessous, **la frise
-  des verdicts du coach**, jour par jour (vert *Maintenir*, orange *Alléger*, rouge
-  *Repos*). On y lit ici le repos imposé au lendemain de l'ultra, puis le feu vert
-  de la reprise.
+- **HRV nocturne** dans sa bande de référence Garmin (zone pleine) — avec, en tirets,
+  une **référence personnelle** calculée localement : moyenne glissante 7 jours de
+  ln(HRV) comparée à une référence 60 jours ± 0,5 écart-type (méthode Plews, Laursen
+  & Buchheit 2013 ; Kiviniemi et al. 2007 — détail dans `ASSUMPTIONS["hrv_baseline"]`
+  de `scripts/arc_metrics.py`). Quand Garmin ne fournit pas de bande, cette référence
+  personnelle prend sa place. Sous 30 jours d'historique HRV, le statut reste
+  « en construction » plutôt que d'afficher une estimation bruitée. Uniquement
+  calculé et affiché en `[health].morning_check = "full"` : en `minimal`, seule la
+  readiness est exposée. Juste dessous, **la frise des verdicts du coach**, jour par
+  jour (vert *Maintenir*, orange *Alléger*, rouge *Repos*). On y lit ici le repos
+  imposé au lendemain de l'ultra, puis le feu vert de la reprise.
 - **FC de repos**, avec sa médiane 7 jours et les seuils +5 / +7 qui la suivent : le
   pic post-course à 55 bpm les franchit nettement, puis la FC redescend.
 - **Readiness**, colorée par niveau, et **sommeil** face aux 7 h 30 visées.

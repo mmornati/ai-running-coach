@@ -7,6 +7,7 @@ aucun compte Garmin : un scénario doit pouvoir tourner chez n'importe qui.
 |---|---|
 | `base-week/` | Une semaine plausible : quatre séances persistées, deux bilans santé, un objectif actif, un profil rempli. |
 | `missed-session/` | Comme `base-week`, mais la séance qualité du mardi n'a jamais été faite. |
+| `health-own-baseline/` | 40 jours de bilans santé (`medical/*_health.md`), assez pour une référence HRV personnelle 60 j (#34) ; les 7 derniers jours marquent une baisse d'HRV, sans jamais mentionner de bande Garmin. |
 | `empty/` | Workspace nu — l'état d'un premier démarrage. |
 | `configured/` | Profil et objectif déjà installés, pour tester l'idempotence. |
 

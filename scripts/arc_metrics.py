@@ -55,6 +55,16 @@ DEFAULT_RPE_OTHER = 4
 TRAIL_FLAT_KM_PER_1000M = (1.5, 2.0)
 TRAIL_FLAT_M_PER_M_DPLUS = sum(TRAIL_FLAT_KM_PER_1000M) / 2      # 1,75 m plat par m D+
 
+# Ligne de base HRV personnelle (#34) : moyenne glissante 7 j de ln(HRV) comparée à
+# une référence 60 j ± 0,5 ET (Plews, Laursen & Buchheit 2013 ; Kiviniemi et al. 2007).
+# Nombres de jours minimaux exigés avant d'afficher quoi que ce soit — sous ce seuil,
+# le calcul rend `None` plutôt qu'une valeur bruitée.
+HRV_LN_WINDOW_DAYS = 7          # fenêtre de la moyenne glissante à court terme
+HRV_LN_MIN_VALID_DAYS = 5       # jours HRV valides exigés dans ces 7 j
+HRV_REF_WINDOW_DAYS = 60        # fenêtre de la référence longue
+HRV_REF_MIN_VALID_DAYS = 30     # jours HRV valides exigés dans ces 60 j
+HRV_BAND_SD_MULT = 0.5          # largeur de bande : ± 0,5 écart-type (smallest worthwhile change)
+
 RUNNING_SPORTS = ("running", "trail")
 RIEGEL_EXPONENT = {"road": 1.06, "trail": 1.15}
 VO2MAX_TREND_DAYS = 30
@@ -80,6 +90,21 @@ ASSUMPTIONS = {
     "acwr": f"ACWR = fatigue / condition, affiché dès que la condition atteint {ACWR_MIN_FITNESS:g}. "
             f"La zone {ACWR_SAFE[0]}–{ACWR_SAFE[1]} est un repère indicatif, discuté dans la littérature, pas un seuil de blessure.",
     "monotony": "Monotonie de Foster = moyenne / écart-type de la charge quotidienne sur 7 j ; strain = charge 7 j × monotonie.",
+    "hrv_baseline": f"Ligne de base HRV personnelle : moyenne glissante {HRV_LN_WINDOW_DAYS} j de ln(HRV nocturne) "
+                    f"(min. {HRV_LN_MIN_VALID_DAYS} jours valides sur {HRV_LN_WINDOW_DAYS}, sinon aucune valeur), "
+                    f"comparée à une référence glissante {HRV_REF_WINDOW_DAYS} j (moyenne et écart-type de ln(HRV), "
+                    f"min. {HRV_REF_MIN_VALID_DAYS} jours valides, sinon « en construction ») ± {HRV_BAND_SD_MULT:g} "
+                    "écart-type. Hypothèse : `hrv_overnight_ms` (moyenne nocturne Garmin) est traité comme une "
+                    "mesure de type rMSSD — Garmin ne documente pas publiquement l'algorithme exact, mais la "
+                    "littérature qui fonde cette méthode (Plews, Laursen & Buchheit 2013 ; Kiviniemi et al. 2007) "
+                    "porte sur le rMSSD. Le passage au log réduit l'asymétrie de la distribution du rMSSD, "
+                    "standard depuis Plews et al. 2012/2013. Un jour sans mesure n'est jamais compté comme 0, "
+                    "il est simplement absent des deux fenêtres. CV 7 j = écart-type / moyenne des valeurs BRUTES "
+                    "(pas du log) sur la même fenêtre 7 j que la moyenne glissante, en pourcentage — indicateur de "
+                    "stabilité de la modulation parasympathique (Kiviniemi et al. 2007), distinct de la bande "
+                    "(qui compare les logs). Ce statut n'est calculé et affiché qu'en `[health].morning_check = "
+                    "\"full\"` : en `minimal`, seule la readiness est exposée (rien qui dépende de l'HRV) ; en "
+                    "`off`, aucune donnée de santé n'est récupérée.",
     "vo2max": "VO2max effective : VO2 de l'allure (Daniels) ÷ fraction de VO2max estimée par (FC moy / FC max − 0,37) / 0,64. "
               "Calculée depuis l'allure et la FC MOYENNES de la séance (pas de série seconde par seconde) : "
               "ordre de grandeur, pas une mesure. Séances de course de 20 min à 3 h seulement, FC moy ≥ 70 % de la FC max, allure effort ≤ 8:30/km ; "
@@ -179,6 +204,89 @@ def daily_series(loads_by_date: Dict[str, float], start: date, end: date) -> Lis
             "monotony": round(monotony, 3) if monotony is not None else None,
             "strain": round(strain, 1) if strain is not None else None,
         })
+    return out
+
+
+# ---------------------------------------------------------------------------
+# Ligne de base HRV personnelle
+# ---------------------------------------------------------------------------
+
+
+def _window_values(by_date: Dict[str, float], day: date, days: int) -> List[float]:
+    """Valeurs présentes (non None) sur les `days` jours se terminant à `day` inclus.
+
+    Un jour absent de `by_date` n'est pas une mesure à 0 : il est simplement ignoré,
+    la fenêtre glissante en compte alors moins que `days`.
+    """
+    values = []
+    for k in range(days):
+        v = by_date.get((day - timedelta(days=k)).isoformat())
+        if v is not None:
+            values.append(v)
+    return values
+
+
+def _mean(values: List[float]) -> float:
+    return sum(values) / len(values)
+
+
+def _population_sd(values: List[float], mean: float) -> float:
+    return math.sqrt(sum((x - mean) ** 2 for x in values) / len(values))
+
+
+def hrv_baseline_series(hrv_by_date: Dict[str, float], start: date, end: date) -> List[dict]:
+    """Ligne de base HRV personnelle, jour par jour, de `start` à `end` inclus.
+
+    `hrv_by_date` : `hrv_overnight_ms` brut (millisecondes) par date ISO, jours
+    manquants absents du dict (jamais 0). Voir `ASSUMPTIONS["hrv_baseline"]` pour
+    la méthode complète et ses sources.
+
+    Chaque point rend :
+    - `hrv_ln_mean7` : moyenne glissante 7 j de ln(HRV), `None` sous le seuil de jours valides.
+    - `hrv_cv7_pct` : coefficient de variation 7 j sur les valeurs brutes (%), même seuil.
+    - `hrv_personal_low_ms` / `hrv_personal_high_ms` : bande de référence 60 j ± 0,5 ET,
+      reconvertie en millisecondes (`exp`) pour rester comparable à la bande Garmin.
+    - `hrv_personal_status` : `"sous"`, `"dans_la_norme"`, `"au_dessus"`, `"en_construction"`
+      (moyenne 7 j disponible mais référence 60 j encore trop courte), ou `None`
+      (pas même de moyenne 7 j).
+    """
+    out = []
+    for day in _daterange(start, end):
+        short = _window_values(hrv_by_date, day, HRV_LN_WINDOW_DAYS)
+        ref = _window_values(hrv_by_date, day, HRV_REF_WINDOW_DAYS)
+        point = {
+            "date": day.isoformat(),
+            "hrv_ln_mean7": None,
+            "hrv_cv7_pct": None,
+            "hrv_personal_low_ms": None,
+            "hrv_personal_high_ms": None,
+            "hrv_personal_status": None,
+        }
+        if len(short) >= HRV_LN_MIN_VALID_DAYS:
+            ln_short = [math.log(v) for v in short if v > 0]
+            mean7 = _mean(ln_short) if ln_short else None
+            if mean7 is not None:
+                point["hrv_ln_mean7"] = round(mean7, 4)
+            raw_mean = _mean(short)
+            if raw_mean > 0:
+                point["hrv_cv7_pct"] = round(100 * _population_sd(short, raw_mean) / raw_mean, 1)
+            if mean7 is None:
+                out.append(point)
+                continue
+            if len(ref) >= HRV_REF_MIN_VALID_DAYS:
+                ln_ref = [math.log(v) for v in ref if v > 0]
+                ref_mean = _mean(ln_ref)
+                ref_sd = _population_sd(ln_ref, ref_mean)
+                low, high = ref_mean - HRV_BAND_SD_MULT * ref_sd, ref_mean + HRV_BAND_SD_MULT * ref_sd
+                point["hrv_personal_low_ms"] = round(math.exp(low), 1)
+                point["hrv_personal_high_ms"] = round(math.exp(high), 1)
+                # Comparaison sur la moyenne NON arrondie : `hrv_ln_mean7` (arrondi à 4
+                # décimales pour l'affichage) pourrait sinon basculer un cas pile à la
+                # frontière (écart-type nul, par exemple) du mauvais côté du seuil.
+                point["hrv_personal_status"] = "sous" if mean7 < low else "au_dessus" if mean7 > high else "dans_la_norme"
+            else:
+                point["hrv_personal_status"] = "en_construction"
+        out.append(point)
     return out
 
 

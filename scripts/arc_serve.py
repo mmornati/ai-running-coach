@@ -281,12 +281,22 @@ def api_load(store: Store, q: dict) -> dict:
 def api_health(store: Store, q: dict) -> dict:
     today = _today(store)
     days = _days(q, 90)
-    start = (today - timedelta(days=days - 1)).isoformat()
-    # 6 jours de plus pour que la médiane mobile soit définie dès le premier point affiché
-    fetch_from = (today - timedelta(days=days + 5)).isoformat()
+    start_date = today - timedelta(days=days - 1)
+    start = start_date.isoformat()
+    settings = store.meta("settings") or {}
+    mode = settings.get("morning_check", "full")
+    # 6 jours de plus pour la médiane FC de repos ; jusqu'à `HRV_REF_WINDOW_DAYS` de plus pour que
+    # la référence HRV 60 j soit définie dès le premier point affiché (seulement en mode "full" :
+    # ce calcul dérivé de l'HRV n'a pas sa place en "minimal" ni "off", voir ASSUMPTIONS["hrv_baseline"]).
+    lookback = M.HRV_REF_WINDOW_DAYS - 1 if mode == "full" else 5
+    fetch_from = (today - timedelta(days=days + lookback)).isoformat()
     rows = store.rows("SELECT * FROM health_day WHERE date >= ? AND date <= ? ORDER BY date",
                       (fetch_from, today.isoformat()))
     by_date = {r["date"]: r for r in rows}
+    hrv_baseline_by_date = {}
+    if mode == "full":
+        hrv_by_date = {d: r["hrv_overnight_ms"] for d, r in by_date.items() if r["hrv_overnight_ms"] is not None}
+        hrv_baseline_by_date = {p["date"]: p for p in M.hrv_baseline_series(hrv_by_date, start_date, today)}
     series = []
     for i in range(days):
         day = date.fromisoformat(start) + timedelta(days=i)
@@ -303,9 +313,11 @@ def api_health(store: Store, q: dict) -> dict:
                 "sleep_rem_s", "sleep_light_s", "verdict", "verdict_reason", "morning_check")})
             rhr = row["resting_hr_bpm"]
             point["rhr_delta"] = round(rhr - median, 1) if rhr is not None and median is not None else None
+        baseline = hrv_baseline_by_date.get(day.isoformat())
+        if baseline:
+            point.update({k: v for k, v in baseline.items() if k != "date"})
         series.append(point)
-    settings = store.meta("settings") or {}
-    return {"series": series, "morning_check": settings.get("morning_check", "full"),
+    return {"series": series, "morning_check": mode,
             "thresholds": {"rhr_warn": 5, "rhr_alert": 7}}
 
 

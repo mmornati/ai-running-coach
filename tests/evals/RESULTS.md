@@ -27,6 +27,7 @@ ARC_LLM_TESTS=1 python3 tests/run_tests.py --tier c --repeat 3
 | `health-minimal-readiness-only` | — | — |
 | `health-off-no-health-file` | — | — |
 | `health-off-no-hrv` | — | — |
+| `health-own-baseline` | — | — |
 | `health-token-expired` | — | — |
 | `no-medical-no-delegation` | — | — |
 | `setup-first-run` | — | — |
