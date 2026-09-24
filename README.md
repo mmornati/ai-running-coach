@@ -4,14 +4,14 @@
 
 `ai-running-coach` est un projet open-source qui fournit des **agents IA** et des **skills** pour aider les coureurs à préparer un objectif (course, trail, ultra) avec l'aide d'un assistant IA dans leur IDE préféré.
 
-Le projet est **en français par défaut** (la langue des documents générés est configurable via `config/workspace.toml`) et ne supporte que **Garmin** dans cette version.
+Le projet est **en français par défaut** (la langue des documents générés est configurable via `config/workspace.toml`). Il est connecté principalement à **Garmin Connect** ; **Intervals.icu** est supporté en secondaire (optionnel, installation manuelle).
 
 ## ✨ Ce que le projet apporte
 
 | Composant | Description |
 |---|---|
 | 🧠 **4 agents spécialisés** | `coach`, `course-strategist`, `medical`, `nutritionist` — installez seulement ceux que vous voulez |
-| 🛠️ **9 skills** | analyse GPX, comparaison de parcours, planification Garmin, météo, analyse de séances, etc. |
+| 🛠️ **12 skills** | analyse GPX, comparaison de parcours, planification Garmin, météo, analyse de séances, Intervals.icu, etc. |
 | 📡 **Accès Garmin Connect** | via `garmin-mcp` (mode direct, liste blanche d'outils) — passerelle `leanproxy-mcp` optionnelle |
 | 🚀 **Installation automatisée** | un script pour installer et configurer tout (uv, Garmin, IDE) |
 | 📊 **Tableau de bord local** | courbe de forme (condition / fatigue / forme), bilan santé du matin, semaine, séances et splits, prédictions — à côté du texte du coach (`scripts/dashboard.sh`, lecture seule, 127.0.0.1) |
