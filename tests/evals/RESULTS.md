@@ -34,6 +34,8 @@ ARC_LLM_TESTS=1 python3 tests/run_tests.py --tier c --repeat 3
 | `setup-idempotent` | — | — |
 | `daily-sync-resume-block` | — | — |
 | `health-token-expired` | — | — |
+| `sync-writes-arc-block` | — | — |
+| `sync-activity-arc-fields` | — | — |
 
 > **Pas encore de relevé.** Le harnais est complet et validé — scénarios,
 > fixtures, serveur MCP factice, journal des appels d'outils — mais aucune

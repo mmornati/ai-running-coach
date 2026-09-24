@@ -442,6 +442,24 @@ class TestSqliteQueryViaCheck(unittest.TestCase):
             }]}}
             self.assertEqual(runner.check(case_count, _result(ws)), [])
 
+    def test_with_select_disguising_a_write_is_caught_by_the_readonly_connection(self):
+        """Le contrôle textuel accepte tout ce qui commence par `WITH`, y compris
+        une écriture déguisée derrière un CTE — c'est la connexion `mode=ro`
+        (pas le texte) qui doit refuser, avec un message qui le dit (#27,
+        revue PR #72)."""
+        with tempfile.TemporaryDirectory() as tmp:
+            ws = self._workspace_with_activity(Path(tmp))
+            case = {"id": "t", "fixture": "base-week", "expect": {"sqlite_query": [{
+                "sql": "WITH x AS (SELECT 1) DELETE FROM activity", "equals": 0,
+            }]}}
+            failures = runner.check(case, _result(ws))
+            self.assertTrue(any("readonly" in f for f in failures), failures)
+            # la table n'a pas été vidée : le refus est réel, pas cosmétique
+            case_count = {"id": "t", "fixture": "base-week", "expect": {"sqlite_query": [{
+                "sql": "SELECT COUNT(*) FROM activity", "equals": 1,
+            }]}}
+            self.assertEqual(runner.check(case_count, _result(ws)), [])
+
     def test_multi_statement_is_rejected(self):
         with tempfile.TemporaryDirectory() as tmp:
             ws = self._workspace_with_activity(Path(tmp))
@@ -452,15 +470,18 @@ class TestSqliteQueryViaCheck(unittest.TestCase):
             self.assertTrue(failures)
 
     def test_no_temp_file_left_behind(self):
-        """#27, revue PR #72 : plus de `NamedTemporaryFile(delete=False)` qui fuit."""
+        """#27, revue PR #72 : plus de `NamedTemporaryFile(delete=False)` qui fuit,
+        ni de dossier `arc-eval-sqlite-*` (le `TemporaryDirectory` de
+        `_check_sqlite_queries`) laissé derrière une fois `check()` revenu."""
+        tmpdir = Path(tempfile.gettempdir())
         with tempfile.TemporaryDirectory() as tmp:
             ws = self._workspace_with_activity(Path(tmp))
-            before = set(Path(tempfile.gettempdir()).glob("tmp*.db"))
+            before = set(tmpdir.glob("tmp*.db")) | set(tmpdir.glob("arc-eval-sqlite-*"))
             case = {"id": "t", "fixture": "base-week", "expect": {"sqlite_query": [{
                 "sql": "SELECT COUNT(*) FROM activity", "min": 1,
             }]}}
             runner.check(case, _result(ws))
-            after = set(Path(tempfile.gettempdir()).glob("tmp*.db"))
+            after = set(tmpdir.glob("tmp*.db")) | set(tmpdir.glob("arc-eval-sqlite-*"))
             self.assertEqual(before, after)
 
     def test_indexes_once_for_several_assertions(self):

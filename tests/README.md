@@ -174,7 +174,12 @@ Indexe le workspace en SQLite (une seule fois par cas, quel que soit le nombre d
 vérifier des agrégats (nombre de séances par semaine, charge totale du mois…) sans
 jamais pouvoir modifier l'index. Une seule instruction de lecture (`SELECT` ou
 `WITH … SELECT`, commentaires `-- …` de tête tolérés) ; toute tentative d'écriture
-est refusée par la connexion elle-même, pas seulement par un contrôle textuel.
+est refusée par la connexion elle-même, pas seulement par un contrôle textuel — ce
+dernier n'est qu'un diagnostic plus lisible en cas d'abus évident, et sa recherche
+naïve du `;` a une limite connue : une requête par ailleurs valide comme
+`SELECT ';'` (un `;` dans un littéral) ou précédée d'un commentaire `/* … */` (au
+lieu de `-- …`) sera refusée à tort par ce contrôle. Écrivez plutôt vos requêtes
+sans point-virgule littéral et avec des commentaires `-- …` si besoin.
 
 Comparateurs (un seul par assertion) : `equals`, `min`, `max`. La comparaison porte
 sur la **première colonne de la première ligne** ; « aucune ligne » et « `NULL` »

@@ -553,7 +553,8 @@ def _check_arc_field(case: dict, result: dict, assertions: list) -> list:
                         continue
                     if not ok:
                         failures.append(
-                            f"{relpath} : {concrete_path} = {value!r} {_describe_expected(cmp_kind, cmp_expected)}"
+                            f"arc_field : {relpath} : {concrete_path} = {value!r} "
+                            f"{_describe_expected(cmp_kind, cmp_expected)}"
                         )
     return failures
 
