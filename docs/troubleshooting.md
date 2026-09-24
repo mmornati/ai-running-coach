@@ -2,6 +2,19 @@
 
 Cette page regroupe les problèmes courants et leurs solutions.
 
+## Par où commencer
+
+Avant de chercher plus loin, lancez le diagnostic d'installation en une
+commande — il vérifie les tokens Garmin, le MCP, la configuration, le profil
+athlète, l'index et le daily-sync sans rien modifier :
+
+```bash
+python3 scripts/coach_doctor.py
+```
+
+Voir le skill [`coach-doctor`](skills/coach-doctor.md) pour le détail de
+chaque vérification et la sortie `--json`.
+
 ## Installation
 
 ### `uv` introuvable après installation
@@ -37,6 +50,13 @@ Les tokens Garmin sont valides environ **6 mois**. Pour les renouveler :
 ```bash
 uv run garmin-mcp-auth
 ```
+
+`coach doctor` (`garmin_token`) estime cette échéance à partir de la date de
+dernière modification de `garmin_tokens.json`, faute d'échéance explicite dans
+ce fichier (voir le skill [`coach-doctor`](skills/coach-doctor.md)) — cette
+estimation peut dériver, car le fichier est réécrit à chaque rafraîchissement
+automatique du token, ce qui repousse sa date de modification sans que la
+session ait réellement été renouvelée pour 6 mois de plus.
 
 ### Vérifier les tokens
 

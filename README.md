@@ -11,7 +11,7 @@ Le projet est **en français par défaut** (la langue des documents générés e
 | Composant | Description |
 |---|---|
 | 🧠 **4 agents spécialisés** | `coach`, `course-strategist`, `medical`, `nutritionist` — installez seulement ceux que vous voulez |
-| 🛠️ **12 skills** | analyse GPX, comparaison de parcours, planification Garmin, météo, analyse de séances, Intervals.icu, etc. |
+| 🛠️ **13 skills** | analyse GPX, comparaison de parcours, planification Garmin, météo, analyse de séances, Intervals.icu, diagnostic d'installation, etc. |
 | 📡 **Accès Garmin Connect** | via `garmin-mcp` (mode direct, liste blanche d'outils) — passerelle `leanproxy-mcp` optionnelle |
 | 🚀 **Installation automatisée** | un script pour installer et configurer tout (uv, Garmin, IDE) |
 | 📊 **Tableau de bord local** | courbe de forme (condition / fatigue / forme), bilan santé du matin, semaine, séances et splits, prédictions — à côté du texte du coach (`scripts/dashboard.sh`, lecture seule, 127.0.0.1) |

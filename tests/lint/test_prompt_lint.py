@@ -31,6 +31,7 @@ PATH_ALLOWLIST = {
     "local/agents/",
     "local/skills/",
     ".arc/backfill.md",             # généré par scripts/arc_index.py backfill-plan, gitignoré
+    ".arc/coach.db",                # généré par scripts/arc_index.py, gitignoré (skill coach-doctor)
 }
 
 # Un chemin entre backticks, assez spécifique pour éviter les faux positifs.

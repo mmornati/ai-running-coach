@@ -1,0 +1,32 @@
+# `coach doctor` (#31/#32) : l'agent lance le diagnostic d'installation et
+# restitue la commande de renouvellement des tokens Garmin, avec le bon
+# nombre de jours restants.
+#
+# HERMÉTIQUE (revue PR #76, blocage n°7) : `tests/evals/runner.py::run_case`
+# pointe TOUJOURS `GARMIN_TOKENS_DIR`/`GARMINTOKENS` sur un répertoire de
+# tokens propre à ce cas (jamais le vrai `~/.garminconnect` du contributeur ou
+# du runner CI), et `[tokens]` ci-dessous y dépose un `garmin_tokens.json`
+# FACTICE dont la mtime est calée pour que `coach_doctor.py` — qui estime
+# l'échéance via mtime + ~6 mois, faute d'échéance explicite dans ce fichier
+# (voir sa docstring) — rende exactement `expires_in_days` jours restants au
+# moment du run.
+#
+# La preuve que le VRAI diagnostic a tourné (et pas une réponse générique) est
+# le nombre de jours ("5") : un agent qui devinerait sans lancer l'outil ne
+# tomberait pas dessus par hasard.
+#
+# tools_called n'est pas utilisé ici : `coach_doctor.py` est lancé via l'outil
+# Bash, pas via un appel d'outil MCP journalisé par les stubs — la preuve
+# observable par ce palier est le texte final restitué à l'athlète.
+id = "doctor-token-expiring"
+prompt = "Le daily-sync semble échouer depuis ce matin, peux-tu diagnostiquer l'installation ?"
+fixture = "configured"
+
+[config.agents]
+enabled = ["coach"]
+
+[tokens]
+expires_in_days = 5
+
+[expect]
+must_match = ["uv run garmin-mcp-auth", "5\\s*jour"]
