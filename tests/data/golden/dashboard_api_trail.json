@@ -1,0 +1,4026 @@
+{
+  "_meta": {
+    "days": 40,
+    "seed": 12345,
+    "sport": "trail",
+    "today": "2026-09-23"
+  },
+  "endpoints": {
+    "/api/activities": {
+      "body": {
+        "activities": [
+          {
+            "arc_version": 1,
+            "avg_hr_bpm": 141.0,
+            "date": "2026-09-23",
+            "distance_m": 10000.0,
+            "duration_s": 3764.0,
+            "elevation_gain_m": 425.0,
+            "id": 28,
+            "load": 95.49,
+            "load_source": "trimp",
+            "location": "Tournai",
+            "max_hr_bpm": 161.0,
+            "name": "Endurance fondamentale",
+            "recovery_hr_bpm": 31.0,
+            "sport": "trail",
+            "te_aerobic": 3.4,
+            "vo2max_est": 50.47
+          },
+          {
+            "arc_version": 1,
+            "avg_hr_bpm": 163.0,
+            "date": "2026-09-22",
+            "distance_m": 12000.0,
+            "duration_s": 3757.0,
+            "elevation_gain_m": 27.0,
+            "id": 27,
+            "load": 159.36,
+            "load_source": "trimp",
+            "location": "Tournai",
+            "max_hr_bpm": 183.0,
+            "name": "Côtes 8 × 90 s",
+            "recovery_hr_bpm": 22.0,
+            "sport": "running",
+            "te_aerobic": 4.4,
+            "vo2max_est": 44.41
+          },
+          {
+            "arc_version": 1,
+            "avg_hr_bpm": 139.0,
+            "date": "2026-09-20",
+            "distance_m": 10000.0,
+            "duration_s": 3912.0,
+            "elevation_gain_m": 542.0,
+            "id": 26,
+            "load": 94.48,
+            "load_source": "trimp",
+            "location": "Tournai",
+            "max_hr_bpm": 159.0,
+            "name": "Endurance fondamentale",
+            "recovery_hr_bpm": 22.0,
+            "sport": "trail",
+            "te_aerobic": 3.4,
+            "vo2max_est": 50.63
+          },
+          {
+            "arc_version": 1,
+            "avg_hr_bpm": 144.0,
+            "date": "2026-09-19",
+            "distance_m": 21000.0,
+            "duration_s": 8386.0,
+            "elevation_gain_m": 752.0,
+            "id": 25,
+            "load": 228.83,
+            "load_source": "trimp",
+            "location": "Tournai",
+            "max_hr_bpm": 164.0,
+            "name": "Sortie longue",
+            "recovery_hr_bpm": 24.0,
+            "sport": "trail",
+            "te_aerobic": 4.5,
+            "vo2max_est": 44.09
+          },
+          {
+            "arc_version": 1,
+            "avg_hr_bpm": null,
+            "date": "2026-09-17",
+            "distance_m": null,
+            "duration_s": 2400.0,
+            "elevation_gain_m": null,
+            "id": 24,
+            "load": 72.0,
+            "load_source": "srpe",
+            "location": null,
+            "max_hr_bpm": null,
+            "name": null,
+            "recovery_hr_bpm": null,
+            "sport": "strength",
+            "te_aerobic": null,
+            "vo2max_est": null
+          },
+          {
+            "arc_version": 1,
+            "avg_hr_bpm": 138.0,
+            "date": "2026-09-16",
+            "distance_m": 9000.0,
+            "duration_s": 3452.0,
+            "elevation_gain_m": 330.0,
+            "id": 23,
+            "load": 81.33,
+            "load_source": "trimp",
+            "location": "Tournai",
+            "max_hr_bpm": 158.0,
+            "name": "Endurance fondamentale",
+            "recovery_hr_bpm": 24.0,
+            "sport": "trail",
+            "te_aerobic": 3.3,
+            "vo2max_est": 50.88
+          },
+          {
+            "arc_version": 1,
+            "avg_hr_bpm": 159.0,
+            "date": "2026-09-15",
+            "distance_m": 11000.0,
+            "duration_s": 3509.0,
+            "elevation_gain_m": 34.0,
+            "id": 22,
+            "load": 136.0,
+            "load_source": "trimp",
+            "location": "Tournai",
+            "max_hr_bpm": 179.0,
+            "name": "Côtes 8 × 90 s",
+            "recovery_hr_bpm": 24.0,
+            "sport": "running",
+            "te_aerobic": 4.3,
+            "vo2max_est": 45.36
+          },
+          {
+            "arc_version": 1,
+            "avg_hr_bpm": 137.0,
+            "date": "2026-09-13",
+            "distance_m": 9000.0,
+            "duration_s": 3615.0,
+            "elevation_gain_m": 528.0,
+            "id": 21,
+            "load": 83.08,
+            "load_source": "trimp",
+            "location": "Tournai",
+            "max_hr_bpm": 157.0,
+            "name": "Endurance fondamentale",
+            "recovery_hr_bpm": 28.0,
+            "sport": "trail",
+            "te_aerobic": 3.3,
+            "vo2max_est": 50.92
+          },
+          {
+            "arc_version": 1,
+            "avg_hr_bpm": 142.0,
+            "date": "2026-09-12",
+            "distance_m": 20000.0,
+            "duration_s": 8020.0,
+            "elevation_gain_m": 849.0,
+            "id": 20,
+            "load": 208.48,
+            "load_source": "trimp",
+            "location": "Tournai",
+            "max_hr_bpm": 162.0,
+            "name": "Sortie longue",
+            "recovery_hr_bpm": 24.0,
+            "sport": "trail",
+            "te_aerobic": 4.4,
+            "vo2max_est": 45.7
+          },
+          {
+            "arc_version": 1,
+            "avg_hr_bpm": null,
+            "date": "2026-09-10",
+            "distance_m": null,
+            "duration_s": 2400.0,
+            "elevation_gain_m": null,
+            "id": 19,
+            "load": 72.0,
+            "load_source": "srpe",
+            "location": null,
+            "max_hr_bpm": null,
+            "name": null,
+            "recovery_hr_bpm": null,
+            "sport": "strength",
+            "te_aerobic": null,
+            "vo2max_est": null
+          },
+          {
+            "arc_version": 1,
+            "avg_hr_bpm": 138.0,
+            "date": "2026-09-09",
+            "distance_m": 6000.0,
+            "duration_s": 2349.0,
+            "elevation_gain_m": 246.0,
+            "id": 18,
+            "load": 55.34,
+            "load_source": "trimp",
+            "location": "Tournai",
+            "max_hr_bpm": 158.0,
+            "name": "Endurance fondamentale",
+            "recovery_hr_bpm": 23.0,
+            "sport": "trail",
+            "te_aerobic": 3.0,
+            "vo2max_est": 50.28
+          },
+          {
+            "arc_version": 1,
+            "avg_hr_bpm": 158.0,
+            "date": "2026-09-08",
+            "distance_m": 7000.0,
+            "duration_s": 2234.0,
+            "elevation_gain_m": 28.0,
+            "id": 17,
+            "load": 84.63,
+            "load_source": "trimp",
+            "location": "Tournai",
+            "max_hr_bpm": 178.0,
+            "name": "Côtes 8 × 90 s",
+            "recovery_hr_bpm": 20.0,
+            "sport": "running",
+            "te_aerobic": 3.9,
+            "vo2max_est": 46.13
+          },
+          {
+            "arc_version": 1,
+            "avg_hr_bpm": 145.0,
+            "date": "2026-09-05",
+            "distance_m": 13000.0,
+            "duration_s": 5538.0,
+            "elevation_gain_m": 758.0,
+            "id": 16,
+            "load": 154.8,
+            "load_source": "trimp",
+            "location": "Tournai",
+            "max_hr_bpm": 165.0,
+            "name": "Sortie longue",
+            "recovery_hr_bpm": null,
+            "sport": "trail",
+            "te_aerobic": 3.7,
+            "vo2max_est": 42.07
+          },
+          {
+            "arc_version": 1,
+            "avg_hr_bpm": null,
+            "date": "2026-09-03",
+            "distance_m": null,
+            "duration_s": 2400.0,
+            "elevation_gain_m": null,
+            "id": 15,
+            "load": 72.0,
+            "load_source": "srpe",
+            "location": null,
+            "max_hr_bpm": null,
+            "name": null,
+            "recovery_hr_bpm": null,
+            "sport": "strength",
+            "te_aerobic": null,
+            "vo2max_est": null
+          },
+          {
+            "arc_version": 1,
+            "avg_hr_bpm": 140.0,
+            "date": "2026-09-02",
+            "distance_m": 8000.0,
+            "duration_s": 3181.0,
+            "elevation_gain_m": 396.0,
+            "id": 14,
+            "load": 78.74,
+            "load_source": "trimp",
+            "location": "Tournai",
+            "max_hr_bpm": 160.0,
+            "name": "Endurance fondamentale",
+            "recovery_hr_bpm": 19.0,
+            "sport": "trail",
+            "te_aerobic": 3.2,
+            "vo2max_est": 48.54
+          },
+          {
+            "arc_version": 1,
+            "avg_hr_bpm": 160.0,
+            "date": "2026-09-01",
+            "distance_m": 10000.0,
+            "duration_s": 3168.0,
+            "elevation_gain_m": 25.0,
+            "id": 13,
+            "load": 125.6,
+            "load_source": "trimp",
+            "location": "Tournai",
+            "max_hr_bpm": 180.0,
+            "name": "Côtes 8 × 90 s",
+            "recovery_hr_bpm": 28.0,
+            "sport": "running",
+            "te_aerobic": 4.2,
+            "vo2max_est": 45.3
+          },
+          {
+            "arc_version": 1,
+            "avg_hr_bpm": 140.0,
+            "date": "2026-08-30",
+            "distance_m": 8000.0,
+            "duration_s": 3127.0,
+            "elevation_gain_m": 330.0,
+            "id": 12,
+            "load": 77.41,
+            "load_source": "trimp",
+            "location": "Tournai",
+            "max_hr_bpm": 160.0,
+            "name": "Endurance fondamentale",
+            "recovery_hr_bpm": 20.0,
+            "sport": "trail",
+            "te_aerobic": 3.2,
+            "vo2max_est": 48.78
+          },
+          {
+            "arc_version": 1,
+            "avg_hr_bpm": 147.0,
+            "date": "2026-08-29",
+            "distance_m": 17000.0,
+            "duration_s": 7225.0,
+            "elevation_gain_m": 1018.0,
+            "id": 11,
+            "load": 211.85,
+            "load_source": "trimp",
+            "location": "Tournai",
+            "max_hr_bpm": 167.0,
+            "name": "Sortie longue",
+            "recovery_hr_bpm": 22.0,
+            "sport": "trail",
+            "te_aerobic": 4.1,
+            "vo2max_est": 41.17
+          },
+          {
+            "arc_version": 1,
+            "avg_hr_bpm": null,
+            "date": "2026-08-27",
+            "distance_m": null,
+            "duration_s": 2400.0,
+            "elevation_gain_m": null,
+            "id": 10,
+            "load": 72.0,
+            "load_source": "srpe",
+            "location": null,
+            "max_hr_bpm": null,
+            "name": null,
+            "recovery_hr_bpm": null,
+            "sport": "strength",
+            "te_aerobic": null,
+            "vo2max_est": null
+          },
+          {
+            "arc_version": 1,
+            "avg_hr_bpm": 138.0,
+            "date": "2026-08-26",
+            "distance_m": 7000.0,
+            "duration_s": 2786.0,
+            "elevation_gain_m": 330.0,
+            "id": 9,
+            "load": 65.64,
+            "load_source": "trimp",
+            "location": "Tournai",
+            "max_hr_bpm": 158.0,
+            "name": "Endurance fondamentale",
+            "recovery_hr_bpm": 25.0,
+            "sport": "trail",
+            "te_aerobic": 3.1,
+            "vo2max_est": 49.75
+          },
+          {
+            "arc_version": 1,
+            "avg_hr_bpm": 159.0,
+            "date": "2026-08-25",
+            "distance_m": 9000.0,
+            "duration_s": 2878.0,
+            "elevation_gain_m": 29.0,
+            "id": 8,
+            "load": 111.54,
+            "load_source": "trimp",
+            "location": "Tournai",
+            "max_hr_bpm": 179.0,
+            "name": "Côtes 8 × 90 s",
+            "recovery_hr_bpm": null,
+            "sport": "running",
+            "te_aerobic": 4.1,
+            "vo2max_est": 45.33
+          },
+          {
+            "arc_version": 1,
+            "avg_hr_bpm": 141.0,
+            "date": "2026-08-23",
+            "distance_m": 7000.0,
+            "duration_s": 2760.0,
+            "elevation_gain_m": 333.0,
+            "id": 7,
+            "load": 70.02,
+            "load_source": "trimp",
+            "location": "Tournai",
+            "max_hr_bpm": 161.0,
+            "name": "Endurance fondamentale",
+            "recovery_hr_bpm": null,
+            "sport": "trail",
+            "te_aerobic": 3.1,
+            "vo2max_est": 48.27
+          },
+          {
+            "arc_version": 1,
+            "avg_hr_bpm": 145.0,
+            "date": "2026-08-22",
+            "distance_m": 15000.0,
+            "duration_s": 6091.0,
+            "elevation_gain_m": 503.0,
+            "id": 6,
+            "load": 170.25,
+            "load_source": "trimp",
+            "location": "Tournai",
+            "max_hr_bpm": 165.0,
+            "name": "Sortie longue",
+            "recovery_hr_bpm": 30.0,
+            "sport": "trail",
+            "te_aerobic": 3.9,
+            "vo2max_est": 42.46
+          },
+          {
+            "arc_version": 1,
+            "avg_hr_bpm": null,
+            "date": "2026-08-20",
+            "distance_m": null,
+            "duration_s": 2400.0,
+            "elevation_gain_m": null,
+            "id": 5,
+            "load": 72.0,
+            "load_source": "srpe",
+            "location": null,
+            "max_hr_bpm": null,
+            "name": null,
+            "recovery_hr_bpm": null,
+            "sport": "strength",
+            "te_aerobic": null,
+            "vo2max_est": null
+          },
+          {
+            "arc_version": 1,
+            "avg_hr_bpm": 137.0,
+            "date": "2026-08-19",
+            "distance_m": 6000.0,
+            "duration_s": 2350.0,
+            "elevation_gain_m": 248.0,
+            "id": 4,
+            "load": 54.01,
+            "load_source": "trimp",
+            "location": "Tournai",
+            "max_hr_bpm": 157.0,
+            "name": "Endurance fondamentale",
+            "recovery_hr_bpm": 23.0,
+            "sport": "trail",
+            "te_aerobic": 3.0,
+            "vo2max_est": 51.04
+          },
+          {
+            "arc_version": 1,
+            "avg_hr_bpm": 161.0,
+            "date": "2026-08-18",
+            "distance_m": 8000.0,
+            "duration_s": 2594.0,
+            "elevation_gain_m": 12.0,
+            "id": 3,
+            "load": 105.19,
+            "load_source": "trimp",
+            "location": "Tournai",
+            "max_hr_bpm": 181.0,
+            "name": "Côtes 8 × 90 s",
+            "recovery_hr_bpm": 29.0,
+            "sport": "running",
+            "te_aerobic": 4.0,
+            "vo2max_est": 43.64
+          },
+          {
+            "arc_version": 1,
+            "avg_hr_bpm": 140.0,
+            "date": "2026-08-16",
+            "distance_m": 6000.0,
+            "duration_s": 2396.0,
+            "elevation_gain_m": 272.0,
+            "id": 2,
+            "load": 59.31,
+            "load_source": "trimp",
+            "location": "Tournai",
+            "max_hr_bpm": 160.0,
+            "name": "Endurance fondamentale",
+            "recovery_hr_bpm": 22.0,
+            "sport": "trail",
+            "te_aerobic": 3.0,
+            "vo2max_est": 48.06
+          },
+          {
+            "arc_version": 1,
+            "avg_hr_bpm": 142.0,
+            "date": "2026-08-15",
+            "distance_m": 14000.0,
+            "duration_s": 5670.0,
+            "elevation_gain_m": 425.0,
+            "id": 1,
+            "load": 147.39,
+            "load_source": "trimp",
+            "location": "Tournai",
+            "max_hr_bpm": 162.0,
+            "name": "Sortie longue",
+            "recovery_hr_bpm": 28.0,
+            "sport": "trail",
+            "te_aerobic": 3.8,
+            "vo2max_est": 44.09
+          }
+        ]
+      },
+      "status": 200
+    },
+    "/api/activities?limit=5": {
+      "body": {
+        "activities": [
+          {
+            "arc_version": 1,
+            "avg_hr_bpm": 141.0,
+            "date": "2026-09-23",
+            "distance_m": 10000.0,
+            "duration_s": 3764.0,
+            "elevation_gain_m": 425.0,
+            "id": 28,
+            "load": 95.49,
+            "load_source": "trimp",
+            "location": "Tournai",
+            "max_hr_bpm": 161.0,
+            "name": "Endurance fondamentale",
+            "recovery_hr_bpm": 31.0,
+            "sport": "trail",
+            "te_aerobic": 3.4,
+            "vo2max_est": 50.47
+          },
+          {
+            "arc_version": 1,
+            "avg_hr_bpm": 163.0,
+            "date": "2026-09-22",
+            "distance_m": 12000.0,
+            "duration_s": 3757.0,
+            "elevation_gain_m": 27.0,
+            "id": 27,
+            "load": 159.36,
+            "load_source": "trimp",
+            "location": "Tournai",
+            "max_hr_bpm": 183.0,
+            "name": "Côtes 8 × 90 s",
+            "recovery_hr_bpm": 22.0,
+            "sport": "running",
+            "te_aerobic": 4.4,
+            "vo2max_est": 44.41
+          },
+          {
+            "arc_version": 1,
+            "avg_hr_bpm": 139.0,
+            "date": "2026-09-20",
+            "distance_m": 10000.0,
+            "duration_s": 3912.0,
+            "elevation_gain_m": 542.0,
+            "id": 26,
+            "load": 94.48,
+            "load_source": "trimp",
+            "location": "Tournai",
+            "max_hr_bpm": 159.0,
+            "name": "Endurance fondamentale",
+            "recovery_hr_bpm": 22.0,
+            "sport": "trail",
+            "te_aerobic": 3.4,
+            "vo2max_est": 50.63
+          },
+          {
+            "arc_version": 1,
+            "avg_hr_bpm": 144.0,
+            "date": "2026-09-19",
+            "distance_m": 21000.0,
+            "duration_s": 8386.0,
+            "elevation_gain_m": 752.0,
+            "id": 25,
+            "load": 228.83,
+            "load_source": "trimp",
+            "location": "Tournai",
+            "max_hr_bpm": 164.0,
+            "name": "Sortie longue",
+            "recovery_hr_bpm": 24.0,
+            "sport": "trail",
+            "te_aerobic": 4.5,
+            "vo2max_est": 44.09
+          },
+          {
+            "arc_version": 1,
+            "avg_hr_bpm": null,
+            "date": "2026-09-17",
+            "distance_m": null,
+            "duration_s": 2400.0,
+            "elevation_gain_m": null,
+            "id": 24,
+            "load": 72.0,
+            "load_source": "srpe",
+            "location": null,
+            "max_hr_bpm": null,
+            "name": null,
+            "recovery_hr_bpm": null,
+            "sport": "strength",
+            "te_aerobic": null,
+            "vo2max_est": null
+          }
+        ]
+      },
+      "status": 200
+    },
+    "/api/activity/{first}": {
+      "body": {
+        "activity": {
+          "arc_version": 1,
+          "avg_cadence_spm": 168.0,
+          "avg_hr_bpm": 141.0,
+          "calories_kcal": 680.0,
+          "date": "2026-09-23",
+          "distance_m": 10000.0,
+          "duration_s": 3764.0,
+          "elevation_gain_m": 425.0,
+          "elevation_loss_m": 339.0,
+          "garmin_activity_id": 90000000039,
+          "id": 28,
+          "load": 95.49,
+          "load_source": "trimp",
+          "location": "Tournai",
+          "max_hr_bpm": 161.0,
+          "missing_reason": null,
+          "moving_duration_s": 3734.0,
+          "name": "Endurance fondamentale",
+          "recovery_hr_bpm": 31.0,
+          "rpe": null,
+          "source_path": "activities/2026-09-23_trail.md",
+          "sport": "trail",
+          "start_time": "2026-09-23T12:10:00+02:00",
+          "te_aerobic": 3.4,
+          "te_anaerobic": 0.4,
+          "vo2max_est": 50.47
+        },
+        "body_html": "<h2>Séance du 2026-09-23 — Endurance fondamentale</h2>\n<h3>Analyse du coach</h3>\n<p>Séance <strong>endurance fondamentale</strong> conforme. FC moyenne 141 bpm, HRR 31.</p>\n<ul><li>Allure régulière sur le plat</li><li>Montées gérées en marche rapide</li></ul>",
+        "splits": [
+          {
+            "activity_id": 28,
+            "avg_hr_bpm": 140.0,
+            "cadence_spm": 160.0,
+            "distance_m": null,
+            "duration_s": 374.0,
+            "elev_gain_m": 53.0,
+            "elev_loss_m": 34.0,
+            "km": 1,
+            "label": "Échauffement",
+            "max_hr_bpm": null,
+            "max_speed_kmh": 12.0
+          },
+          {
+            "activity_id": 28,
+            "avg_hr_bpm": 142.0,
+            "cadence_spm": 162.0,
+            "distance_m": null,
+            "duration_s": 346.0,
+            "elev_gain_m": 13.0,
+            "elev_loss_m": 11.0,
+            "km": 2,
+            "label": "Allure",
+            "max_hr_bpm": null,
+            "max_speed_kmh": 13.0
+          },
+          {
+            "activity_id": 28,
+            "avg_hr_bpm": 143.0,
+            "cadence_spm": 162.0,
+            "distance_m": null,
+            "duration_s": 409.0,
+            "elev_gain_m": 89.0,
+            "elev_loss_m": 62.0,
+            "km": 3,
+            "label": "Montée",
+            "max_hr_bpm": null,
+            "max_speed_kmh": 11.0
+          },
+          {
+            "activity_id": 28,
+            "avg_hr_bpm": 141.0,
+            "cadence_spm": 160.0,
+            "distance_m": null,
+            "duration_s": 404.0,
+            "elev_gain_m": 69.0,
+            "elev_loss_m": 46.0,
+            "km": 4,
+            "label": "Montée",
+            "max_hr_bpm": null,
+            "max_speed_kmh": 11.1
+          },
+          {
+            "activity_id": 28,
+            "avg_hr_bpm": 146.0,
+            "cadence_spm": 160.0,
+            "distance_m": null,
+            "duration_s": 393.0,
+            "elev_gain_m": 70.0,
+            "elev_loss_m": 83.0,
+            "km": 5,
+            "label": "Montée",
+            "max_hr_bpm": null,
+            "max_speed_kmh": 11.5
+          },
+          {
+            "activity_id": 28,
+            "avg_hr_bpm": 145.0,
+            "cadence_spm": 169.0,
+            "distance_m": null,
+            "duration_s": 393.0,
+            "elev_gain_m": 79.0,
+            "elev_loss_m": 49.0,
+            "km": 6,
+            "label": "Montée",
+            "max_hr_bpm": null,
+            "max_speed_kmh": 11.5
+          },
+          {
+            "activity_id": 28,
+            "avg_hr_bpm": 139.0,
+            "cadence_spm": 169.0,
+            "distance_m": null,
+            "duration_s": 368.0,
+            "elev_gain_m": 28.0,
+            "elev_loss_m": 30.0,
+            "km": 7,
+            "label": "Allure",
+            "max_hr_bpm": null,
+            "max_speed_kmh": 12.2
+          },
+          {
+            "activity_id": 28,
+            "avg_hr_bpm": 139.0,
+            "cadence_spm": 161.0,
+            "distance_m": null,
+            "duration_s": 369.0,
+            "elev_gain_m": 24.0,
+            "elev_loss_m": 24.0,
+            "km": 8,
+            "label": "Allure",
+            "max_hr_bpm": null,
+            "max_speed_kmh": 12.2
+          },
+          {
+            "activity_id": 28,
+            "avg_hr_bpm": 140.0,
+            "cadence_spm": 174.0,
+            "distance_m": null,
+            "duration_s": 342.0,
+            "elev_gain_m": 0.0,
+            "elev_loss_m": 0.0,
+            "km": 9,
+            "label": "Allure",
+            "max_hr_bpm": null,
+            "max_speed_kmh": 13.2
+          },
+          {
+            "activity_id": 28,
+            "avg_hr_bpm": 138.0,
+            "cadence_spm": 172.0,
+            "distance_m": null,
+            "duration_s": 340.0,
+            "elev_gain_m": 0.0,
+            "elev_loss_m": 0.0,
+            "km": 10,
+            "label": "Retour au calme",
+            "max_hr_bpm": null,
+            "max_speed_kmh": 13.2
+          }
+        ],
+        "weather": {
+          "best_slot": "midday",
+          "category": "green",
+          "chance_of_rain_pct": null,
+          "date": "2026-09-23",
+          "feels_like_c": null,
+          "gust_kmh": null,
+          "location": "Tournai",
+          "precip_mm": 1.6,
+          "slot_reason": "Conditions stables toute la journée.",
+          "source_path": "medical/2026-09-23_meteo.md",
+          "temp_max_c": 21.0,
+          "temp_min_c": 13.0,
+          "uv_index": 4.0,
+          "wind_kmh": 17.0
+        }
+      },
+      "status": 200
+    },
+    "/api/calendar": {
+      "body": {
+        "cumulative": {
+          "2026": [
+            {
+              "distance_m": 14000.0,
+              "doy": 227
+            },
+            {
+              "distance_m": 20000.0,
+              "doy": 228
+            },
+            {
+              "distance_m": 28000.0,
+              "doy": 230
+            },
+            {
+              "distance_m": 34000.0,
+              "doy": 231
+            },
+            {
+              "distance_m": 34000.0,
+              "doy": 232
+            },
+            {
+              "distance_m": 49000.0,
+              "doy": 234
+            },
+            {
+              "distance_m": 56000.0,
+              "doy": 235
+            },
+            {
+              "distance_m": 65000.0,
+              "doy": 237
+            },
+            {
+              "distance_m": 72000.0,
+              "doy": 238
+            },
+            {
+              "distance_m": 72000.0,
+              "doy": 239
+            },
+            {
+              "distance_m": 89000.0,
+              "doy": 241
+            },
+            {
+              "distance_m": 97000.0,
+              "doy": 242
+            },
+            {
+              "distance_m": 107000.0,
+              "doy": 244
+            },
+            {
+              "distance_m": 115000.0,
+              "doy": 245
+            },
+            {
+              "distance_m": 115000.0,
+              "doy": 246
+            },
+            {
+              "distance_m": 128000.0,
+              "doy": 248
+            },
+            {
+              "distance_m": 135000.0,
+              "doy": 251
+            },
+            {
+              "distance_m": 141000.0,
+              "doy": 252
+            },
+            {
+              "distance_m": 141000.0,
+              "doy": 253
+            },
+            {
+              "distance_m": 161000.0,
+              "doy": 255
+            },
+            {
+              "distance_m": 170000.0,
+              "doy": 256
+            },
+            {
+              "distance_m": 181000.0,
+              "doy": 258
+            },
+            {
+              "distance_m": 190000.0,
+              "doy": 259
+            },
+            {
+              "distance_m": 190000.0,
+              "doy": 260
+            },
+            {
+              "distance_m": 211000.0,
+              "doy": 262
+            },
+            {
+              "distance_m": 221000.0,
+              "doy": 263
+            },
+            {
+              "distance_m": 233000.0,
+              "doy": 265
+            },
+            {
+              "distance_m": 243000.0,
+              "doy": 266
+            }
+          ]
+        },
+        "days": [
+          {
+            "date": "2026-08-15",
+            "distance_m": 14000.0,
+            "duration_s": 5670.0,
+            "elevation_m": 425.0,
+            "load": 147.39,
+            "sessions": 1
+          },
+          {
+            "date": "2026-08-16",
+            "distance_m": 6000.0,
+            "duration_s": 2396.0,
+            "elevation_m": 272.0,
+            "load": 59.31,
+            "sessions": 1
+          },
+          {
+            "date": "2026-08-18",
+            "distance_m": 8000.0,
+            "duration_s": 2594.0,
+            "elevation_m": 12.0,
+            "load": 105.19,
+            "sessions": 1
+          },
+          {
+            "date": "2026-08-19",
+            "distance_m": 6000.0,
+            "duration_s": 2350.0,
+            "elevation_m": 248.0,
+            "load": 54.01,
+            "sessions": 1
+          },
+          {
+            "date": "2026-08-20",
+            "distance_m": null,
+            "duration_s": 2400.0,
+            "elevation_m": null,
+            "load": 72.0,
+            "sessions": 1
+          },
+          {
+            "date": "2026-08-22",
+            "distance_m": 15000.0,
+            "duration_s": 6091.0,
+            "elevation_m": 503.0,
+            "load": 170.25,
+            "sessions": 1
+          },
+          {
+            "date": "2026-08-23",
+            "distance_m": 7000.0,
+            "duration_s": 2760.0,
+            "elevation_m": 333.0,
+            "load": 70.02,
+            "sessions": 1
+          },
+          {
+            "date": "2026-08-25",
+            "distance_m": 9000.0,
+            "duration_s": 2878.0,
+            "elevation_m": 29.0,
+            "load": 111.54,
+            "sessions": 1
+          },
+          {
+            "date": "2026-08-26",
+            "distance_m": 7000.0,
+            "duration_s": 2786.0,
+            "elevation_m": 330.0,
+            "load": 65.64,
+            "sessions": 1
+          },
+          {
+            "date": "2026-08-27",
+            "distance_m": null,
+            "duration_s": 2400.0,
+            "elevation_m": null,
+            "load": 72.0,
+            "sessions": 1
+          },
+          {
+            "date": "2026-08-29",
+            "distance_m": 17000.0,
+            "duration_s": 7225.0,
+            "elevation_m": 1018.0,
+            "load": 211.85,
+            "sessions": 1
+          },
+          {
+            "date": "2026-08-30",
+            "distance_m": 8000.0,
+            "duration_s": 3127.0,
+            "elevation_m": 330.0,
+            "load": 77.41,
+            "sessions": 1
+          },
+          {
+            "date": "2026-09-01",
+            "distance_m": 10000.0,
+            "duration_s": 3168.0,
+            "elevation_m": 25.0,
+            "load": 125.6,
+            "sessions": 1
+          },
+          {
+            "date": "2026-09-02",
+            "distance_m": 8000.0,
+            "duration_s": 3181.0,
+            "elevation_m": 396.0,
+            "load": 78.74,
+            "sessions": 1
+          },
+          {
+            "date": "2026-09-03",
+            "distance_m": null,
+            "duration_s": 2400.0,
+            "elevation_m": null,
+            "load": 72.0,
+            "sessions": 1
+          },
+          {
+            "date": "2026-09-05",
+            "distance_m": 13000.0,
+            "duration_s": 5538.0,
+            "elevation_m": 758.0,
+            "load": 154.8,
+            "sessions": 1
+          },
+          {
+            "date": "2026-09-08",
+            "distance_m": 7000.0,
+            "duration_s": 2234.0,
+            "elevation_m": 28.0,
+            "load": 84.63,
+            "sessions": 1
+          },
+          {
+            "date": "2026-09-09",
+            "distance_m": 6000.0,
+            "duration_s": 2349.0,
+            "elevation_m": 246.0,
+            "load": 55.34,
+            "sessions": 1
+          },
+          {
+            "date": "2026-09-10",
+            "distance_m": null,
+            "duration_s": 2400.0,
+            "elevation_m": null,
+            "load": 72.0,
+            "sessions": 1
+          },
+          {
+            "date": "2026-09-12",
+            "distance_m": 20000.0,
+            "duration_s": 8020.0,
+            "elevation_m": 849.0,
+            "load": 208.48,
+            "sessions": 1
+          },
+          {
+            "date": "2026-09-13",
+            "distance_m": 9000.0,
+            "duration_s": 3615.0,
+            "elevation_m": 528.0,
+            "load": 83.08,
+            "sessions": 1
+          },
+          {
+            "date": "2026-09-15",
+            "distance_m": 11000.0,
+            "duration_s": 3509.0,
+            "elevation_m": 34.0,
+            "load": 136.0,
+            "sessions": 1
+          },
+          {
+            "date": "2026-09-16",
+            "distance_m": 9000.0,
+            "duration_s": 3452.0,
+            "elevation_m": 330.0,
+            "load": 81.33,
+            "sessions": 1
+          },
+          {
+            "date": "2026-09-17",
+            "distance_m": null,
+            "duration_s": 2400.0,
+            "elevation_m": null,
+            "load": 72.0,
+            "sessions": 1
+          },
+          {
+            "date": "2026-09-19",
+            "distance_m": 21000.0,
+            "duration_s": 8386.0,
+            "elevation_m": 752.0,
+            "load": 228.83,
+            "sessions": 1
+          },
+          {
+            "date": "2026-09-20",
+            "distance_m": 10000.0,
+            "duration_s": 3912.0,
+            "elevation_m": 542.0,
+            "load": 94.48,
+            "sessions": 1
+          },
+          {
+            "date": "2026-09-22",
+            "distance_m": 12000.0,
+            "duration_s": 3757.0,
+            "elevation_m": 27.0,
+            "load": 159.36,
+            "sessions": 1
+          },
+          {
+            "date": "2026-09-23",
+            "distance_m": 10000.0,
+            "duration_s": 3764.0,
+            "elevation_m": 425.0,
+            "load": 95.49,
+            "sessions": 1
+          }
+        ],
+        "today": "2026-09-23"
+      },
+      "status": 200
+    },
+    "/api/files": {
+      "body": {
+        "items": []
+      },
+      "status": 200
+    },
+    "/api/form": {
+      "body": {
+        "acwr_safe": [
+          0.8,
+          1.3
+        ],
+        "race_date": "2026-11-16",
+        "series": [
+          {
+            "acwr": null,
+            "date": "2026-08-15",
+            "fatigue": 19.62,
+            "fitness": 3.47,
+            "form": 0.0,
+            "load": 147.39,
+            "monotony": null,
+            "strain": null,
+            "vo2max": 44.09
+          },
+          {
+            "acwr": null,
+            "date": "2026-08-16",
+            "fatigue": 24.9,
+            "fitness": 4.78,
+            "form": -16.15,
+            "load": 59.31,
+            "monotony": null,
+            "strain": null,
+            "vo2max": 45.31
+          },
+          {
+            "acwr": null,
+            "date": "2026-08-17",
+            "fatigue": 21.59,
+            "fitness": 4.67,
+            "form": -20.12,
+            "load": 0.0,
+            "monotony": null,
+            "strain": null,
+            "vo2max": 45.31
+          },
+          {
+            "acwr": null,
+            "date": "2026-08-18",
+            "fatigue": 32.72,
+            "fitness": 7.03,
+            "form": -16.92,
+            "load": 105.19,
+            "monotony": null,
+            "strain": null,
+            "vo2max": 44.89
+          },
+          {
+            "acwr": null,
+            "date": "2026-08-19",
+            "fatigue": 35.55,
+            "fitness": 8.14,
+            "form": -25.68,
+            "load": 54.01,
+            "monotony": null,
+            "strain": null,
+            "vo2max": 46.03
+          },
+          {
+            "acwr": null,
+            "date": "2026-08-20",
+            "fatigue": 40.4,
+            "fitness": 9.64,
+            "form": -27.41,
+            "load": 72.0,
+            "monotony": null,
+            "strain": null,
+            "vo2max": 46.03
+          },
+          {
+            "acwr": null,
+            "date": "2026-08-21",
+            "fatigue": 35.03,
+            "fitness": 9.42,
+            "form": -30.76,
+            "load": 0.0,
+            "monotony": 1.269,
+            "strain": 555.6,
+            "vo2max": 46.03
+          },
+          {
+            "acwr": 4.017,
+            "date": "2026-08-22",
+            "fatigue": 53.03,
+            "fitness": 13.2,
+            "form": -25.61,
+            "load": 170.25,
+            "monotony": 1.192,
+            "strain": 549.3,
+            "vo2max": 44.97
+          },
+          {
+            "acwr": 3.804,
+            "date": "2026-08-23",
+            "fatigue": 55.29,
+            "fitness": 14.54,
+            "form": -39.83,
+            "load": 70.02,
+            "monotony": 1.221,
+            "strain": 575.7,
+            "vo2max": 45.4
+          },
+          {
+            "acwr": 3.377,
+            "date": "2026-08-24",
+            "fatigue": 47.93,
+            "fitness": 14.19,
+            "form": -40.75,
+            "load": 0.0,
+            "monotony": 1.221,
+            "strain": 575.7,
+            "vo2max": 45.4
+          },
+          {
+            "acwr": 3.421,
+            "date": "2026-08-25",
+            "fatigue": 56.4,
+            "fitness": 16.48,
+            "form": -33.73,
+            "load": 111.54,
+            "monotony": 1.223,
+            "strain": 584.2,
+            "vo2max": 45.39
+          },
+          {
+            "acwr": 3.267,
+            "date": "2026-08-26",
+            "fatigue": 57.63,
+            "fitness": 17.64,
+            "form": -39.91,
+            "load": 65.64,
+            "monotony": 1.259,
+            "strain": 616.1,
+            "vo2max": 45.85
+          },
+          {
+            "acwr": 3.147,
+            "date": "2026-08-27",
+            "fatigue": 59.54,
+            "fitness": 18.92,
+            "form": -39.99,
+            "load": 72.0,
+            "monotony": 1.259,
+            "strain": 616.1,
+            "vo2max": 45.85
+          },
+          {
+            "acwr": 2.794,
+            "date": "2026-08-28",
+            "fatigue": 51.61,
+            "fitness": 18.48,
+            "form": -40.62,
+            "load": 0.0,
+            "monotony": 1.259,
+            "strain": 616.1,
+            "vo2max": 45.85
+          },
+          {
+            "acwr": 3.168,
+            "date": "2026-08-29",
+            "fatigue": 72.95,
+            "fitness": 23.02,
+            "form": -33.14,
+            "load": 211.85,
+            "monotony": 1.132,
+            "strain": 601.2,
+            "vo2max": 45.06
+          },
+          {
+            "acwr": 3.026,
+            "date": "2026-08-30",
+            "fatigue": 73.54,
+            "fitness": 24.3,
+            "form": -49.92,
+            "load": 77.41,
+            "monotony": 1.149,
+            "strain": 618.5,
+            "vo2max": 45.39
+          },
+          {
+            "acwr": 2.686,
+            "date": "2026-08-31",
+            "fatigue": 63.75,
+            "fitness": 23.73,
+            "form": -49.23,
+            "load": 0.0,
+            "monotony": 1.149,
+            "strain": 618.5,
+            "vo2max": 45.39
+          },
+          {
+            "acwr": 2.755,
+            "date": "2026-09-01",
+            "fatigue": 71.98,
+            "fitness": 26.13,
+            "form": -40.02,
+            "load": 125.6,
+            "monotony": 1.158,
+            "strain": 639.7,
+            "vo2max": 45.38
+          },
+          {
+            "acwr": 2.663,
+            "date": "2026-09-02",
+            "fatigue": 72.88,
+            "fitness": 27.37,
+            "form": -45.85,
+            "load": 78.74,
+            "monotony": 1.189,
+            "strain": 672.4,
+            "vo2max": 45.63
+          },
+          {
+            "acwr": 2.561,
+            "date": "2026-09-03",
+            "fatigue": 72.76,
+            "fitness": 28.42,
+            "form": -45.52,
+            "load": 72.0,
+            "monotony": 1.189,
+            "strain": 672.4,
+            "vo2max": 45.63
+          },
+          {
+            "acwr": 2.273,
+            "date": "2026-09-04",
+            "fatigue": 63.08,
+            "fitness": 27.75,
+            "form": -44.35,
+            "load": 0.0,
+            "monotony": 1.189,
+            "strain": 672.4,
+            "vo2max": 45.63
+          },
+          {
+            "acwr": 2.449,
+            "date": "2026-09-05",
+            "fatigue": 75.29,
+            "fitness": 30.74,
+            "form": -35.33,
+            "load": 154.8,
+            "monotony": 1.353,
+            "strain": 688.3,
+            "vo2max": 45.22
+          },
+          {
+            "acwr": 2.174,
+            "date": "2026-09-06",
+            "fatigue": 65.27,
+            "fitness": 30.01,
+            "form": -44.55,
+            "load": 0.0,
+            "monotony": 1.04,
+            "strain": 448.2,
+            "vo2max": 45.22
+          },
+          {
+            "acwr": 1.93,
+            "date": "2026-09-07",
+            "fatigue": 56.58,
+            "fitness": 29.31,
+            "form": -35.25,
+            "load": 0.0,
+            "monotony": 1.04,
+            "strain": 448.2,
+            "vo2max": 45.22
+          },
+          {
+            "acwr": 1.97,
+            "date": "2026-09-08",
+            "fatigue": 60.31,
+            "fitness": 30.61,
+            "form": -27.27,
+            "load": 84.63,
+            "monotony": 1.023,
+            "strain": 399.3,
+            "vo2max": 45.26
+          },
+          {
+            "acwr": 1.912,
+            "date": "2026-09-09",
+            "fatigue": 59.65,
+            "fitness": 31.19,
+            "form": -29.7,
+            "load": 55.34,
+            "monotony": 0.976,
+            "strain": 358.2,
+            "vo2max": 45.49
+          },
+          {
+            "acwr": 1.906,
+            "date": "2026-09-10",
+            "fatigue": 61.29,
+            "fitness": 32.15,
+            "form": -28.46,
+            "load": 72.0,
+            "monotony": 0.976,
+            "strain": 358.2,
+            "vo2max": 45.49
+          },
+          {
+            "acwr": 1.692,
+            "date": "2026-09-11",
+            "fatigue": 53.14,
+            "fitness": 31.4,
+            "form": -29.14,
+            "load": 0.0,
+            "monotony": 0.976,
+            "strain": 358.2,
+            "vo2max": 45.49
+          },
+          {
+            "acwr": 2.076,
+            "date": "2026-09-12",
+            "fatigue": 73.82,
+            "fitness": 35.56,
+            "form": -21.74,
+            "load": 208.48,
+            "monotony": 0.867,
+            "strain": 364.4,
+            "vo2max": 45.51
+          },
+          {
+            "acwr": 2.046,
+            "date": "2026-09-13",
+            "fatigue": 75.05,
+            "fitness": 36.68,
+            "form": -38.25,
+            "load": 83.08,
+            "monotony": 1.107,
+            "strain": 557.4,
+            "vo2max": 45.83
+          },
+          {
+            "acwr": 1.816,
+            "date": "2026-09-14",
+            "fatigue": 65.06,
+            "fitness": 35.82,
+            "form": -38.37,
+            "load": 0.0,
+            "monotony": 1.107,
+            "strain": 557.4,
+            "vo2max": 46.0
+          },
+          {
+            "acwr": 1.952,
+            "date": "2026-09-15",
+            "fatigue": 74.5,
+            "fitness": 38.17,
+            "form": -29.24,
+            "load": 136.0,
+            "monotony": 1.152,
+            "strain": 639.5,
+            "vo2max": 45.87
+          },
+          {
+            "acwr": 1.924,
+            "date": "2026-09-16",
+            "fatigue": 75.41,
+            "fitness": 39.19,
+            "form": -36.33,
+            "load": 81.33,
+            "monotony": 1.219,
+            "strain": 707.9,
+            "vo2max": 46.16
+          },
+          {
+            "acwr": 1.876,
+            "date": "2026-09-17",
+            "fatigue": 74.96,
+            "fitness": 39.96,
+            "form": -36.22,
+            "load": 72.0,
+            "monotony": 1.219,
+            "strain": 707.9,
+            "vo2max": 46.28
+          },
+          {
+            "acwr": 1.665,
+            "date": "2026-09-18",
+            "fatigue": 64.98,
+            "fitness": 39.02,
+            "form": -34.99,
+            "load": 0.0,
+            "monotony": 1.219,
+            "strain": 707.9,
+            "vo2max": 46.07
+          },
+          {
+            "acwr": 1.996,
+            "date": "2026-09-19",
+            "fatigue": 86.79,
+            "fitness": 43.49,
+            "form": -25.96,
+            "load": 228.83,
+            "monotony": 1.167,
+            "strain": 701.6,
+            "vo2max": 45.9
+          },
+          {
+            "acwr": 1.965,
+            "date": "2026-09-20",
+            "fatigue": 87.81,
+            "fitness": 44.69,
+            "form": -43.3,
+            "load": 94.48,
+            "monotony": 1.188,
+            "strain": 728.1,
+            "vo2max": 46.18
+          },
+          {
+            "acwr": 1.745,
+            "date": "2026-09-21",
+            "fatigue": 76.12,
+            "fitness": 43.64,
+            "form": -43.13,
+            "load": 0.0,
+            "monotony": 1.188,
+            "strain": 728.1,
+            "vo2max": 46.53
+          },
+          {
+            "acwr": 1.881,
+            "date": "2026-09-22",
+            "fatigue": 87.2,
+            "fitness": 46.36,
+            "form": -32.49,
+            "load": 159.36,
+            "monotony": 1.192,
+            "strain": 757.8,
+            "vo2max": 46.31
+          },
+          {
+            "acwr": 1.859,
+            "date": "2026-09-23",
+            "fatigue": 88.31,
+            "fitness": 47.51,
+            "form": -40.85,
+            "load": 95.49,
+            "monotony": 1.22,
+            "strain": 792.9,
+            "vo2max": 46.56
+          }
+        ]
+      },
+      "status": 200
+    },
+    "/api/form?days=14": {
+      "body": {
+        "acwr_safe": [
+          0.8,
+          1.3
+        ],
+        "race_date": "2026-11-16",
+        "series": [
+          {
+            "acwr": 1.906,
+            "date": "2026-09-10",
+            "fatigue": 61.29,
+            "fitness": 32.15,
+            "form": -28.46,
+            "load": 72.0,
+            "monotony": 0.976,
+            "strain": 358.2,
+            "vo2max": 45.49
+          },
+          {
+            "acwr": 1.692,
+            "date": "2026-09-11",
+            "fatigue": 53.14,
+            "fitness": 31.4,
+            "form": -29.14,
+            "load": 0.0,
+            "monotony": 0.976,
+            "strain": 358.2,
+            "vo2max": 45.49
+          },
+          {
+            "acwr": 2.076,
+            "date": "2026-09-12",
+            "fatigue": 73.82,
+            "fitness": 35.56,
+            "form": -21.74,
+            "load": 208.48,
+            "monotony": 0.867,
+            "strain": 364.4,
+            "vo2max": 45.51
+          },
+          {
+            "acwr": 2.046,
+            "date": "2026-09-13",
+            "fatigue": 75.05,
+            "fitness": 36.68,
+            "form": -38.25,
+            "load": 83.08,
+            "monotony": 1.107,
+            "strain": 557.4,
+            "vo2max": 45.83
+          },
+          {
+            "acwr": 1.816,
+            "date": "2026-09-14",
+            "fatigue": 65.06,
+            "fitness": 35.82,
+            "form": -38.37,
+            "load": 0.0,
+            "monotony": 1.107,
+            "strain": 557.4,
+            "vo2max": 46.0
+          },
+          {
+            "acwr": 1.952,
+            "date": "2026-09-15",
+            "fatigue": 74.5,
+            "fitness": 38.17,
+            "form": -29.24,
+            "load": 136.0,
+            "monotony": 1.152,
+            "strain": 639.5,
+            "vo2max": 45.87
+          },
+          {
+            "acwr": 1.924,
+            "date": "2026-09-16",
+            "fatigue": 75.41,
+            "fitness": 39.19,
+            "form": -36.33,
+            "load": 81.33,
+            "monotony": 1.219,
+            "strain": 707.9,
+            "vo2max": 46.16
+          },
+          {
+            "acwr": 1.876,
+            "date": "2026-09-17",
+            "fatigue": 74.96,
+            "fitness": 39.96,
+            "form": -36.22,
+            "load": 72.0,
+            "monotony": 1.219,
+            "strain": 707.9,
+            "vo2max": 46.28
+          },
+          {
+            "acwr": 1.665,
+            "date": "2026-09-18",
+            "fatigue": 64.98,
+            "fitness": 39.02,
+            "form": -34.99,
+            "load": 0.0,
+            "monotony": 1.219,
+            "strain": 707.9,
+            "vo2max": 46.07
+          },
+          {
+            "acwr": 1.996,
+            "date": "2026-09-19",
+            "fatigue": 86.79,
+            "fitness": 43.49,
+            "form": -25.96,
+            "load": 228.83,
+            "monotony": 1.167,
+            "strain": 701.6,
+            "vo2max": 45.9
+          },
+          {
+            "acwr": 1.965,
+            "date": "2026-09-20",
+            "fatigue": 87.81,
+            "fitness": 44.69,
+            "form": -43.3,
+            "load": 94.48,
+            "monotony": 1.188,
+            "strain": 728.1,
+            "vo2max": 46.18
+          },
+          {
+            "acwr": 1.745,
+            "date": "2026-09-21",
+            "fatigue": 76.12,
+            "fitness": 43.64,
+            "form": -43.13,
+            "load": 0.0,
+            "monotony": 1.188,
+            "strain": 728.1,
+            "vo2max": 46.53
+          },
+          {
+            "acwr": 1.881,
+            "date": "2026-09-22",
+            "fatigue": 87.2,
+            "fitness": 46.36,
+            "form": -32.49,
+            "load": 159.36,
+            "monotony": 1.192,
+            "strain": 757.8,
+            "vo2max": 46.31
+          },
+          {
+            "acwr": 1.859,
+            "date": "2026-09-23",
+            "fatigue": 88.31,
+            "fitness": 47.51,
+            "form": -40.85,
+            "load": 95.49,
+            "monotony": 1.22,
+            "strain": 792.9,
+            "vo2max": 46.56
+          }
+        ]
+      },
+      "status": 200
+    },
+    "/api/health": {
+      "body": {
+        "morning_check": "full",
+        "series": [
+          {
+            "date": "2026-06-26",
+            "rhr_median7": null
+          },
+          {
+            "date": "2026-06-27",
+            "rhr_median7": null
+          },
+          {
+            "date": "2026-06-28",
+            "rhr_median7": null
+          },
+          {
+            "date": "2026-06-29",
+            "rhr_median7": null
+          },
+          {
+            "date": "2026-06-30",
+            "rhr_median7": null
+          },
+          {
+            "date": "2026-07-01",
+            "rhr_median7": null
+          },
+          {
+            "date": "2026-07-02",
+            "rhr_median7": null
+          },
+          {
+            "date": "2026-07-03",
+            "rhr_median7": null
+          },
+          {
+            "date": "2026-07-04",
+            "rhr_median7": null
+          },
+          {
+            "date": "2026-07-05",
+            "rhr_median7": null
+          },
+          {
+            "date": "2026-07-06",
+            "rhr_median7": null
+          },
+          {
+            "date": "2026-07-07",
+            "rhr_median7": null
+          },
+          {
+            "date": "2026-07-08",
+            "rhr_median7": null
+          },
+          {
+            "date": "2026-07-09",
+            "rhr_median7": null
+          },
+          {
+            "date": "2026-07-10",
+            "rhr_median7": null
+          },
+          {
+            "date": "2026-07-11",
+            "rhr_median7": null
+          },
+          {
+            "date": "2026-07-12",
+            "rhr_median7": null
+          },
+          {
+            "date": "2026-07-13",
+            "rhr_median7": null
+          },
+          {
+            "date": "2026-07-14",
+            "rhr_median7": null
+          },
+          {
+            "date": "2026-07-15",
+            "rhr_median7": null
+          },
+          {
+            "date": "2026-07-16",
+            "rhr_median7": null
+          },
+          {
+            "date": "2026-07-17",
+            "rhr_median7": null
+          },
+          {
+            "date": "2026-07-18",
+            "rhr_median7": null
+          },
+          {
+            "date": "2026-07-19",
+            "rhr_median7": null
+          },
+          {
+            "date": "2026-07-20",
+            "rhr_median7": null
+          },
+          {
+            "date": "2026-07-21",
+            "rhr_median7": null
+          },
+          {
+            "date": "2026-07-22",
+            "rhr_median7": null
+          },
+          {
+            "date": "2026-07-23",
+            "rhr_median7": null
+          },
+          {
+            "date": "2026-07-24",
+            "rhr_median7": null
+          },
+          {
+            "date": "2026-07-25",
+            "rhr_median7": null
+          },
+          {
+            "date": "2026-07-26",
+            "rhr_median7": null
+          },
+          {
+            "date": "2026-07-27",
+            "rhr_median7": null
+          },
+          {
+            "date": "2026-07-28",
+            "rhr_median7": null
+          },
+          {
+            "date": "2026-07-29",
+            "rhr_median7": null
+          },
+          {
+            "date": "2026-07-30",
+            "rhr_median7": null
+          },
+          {
+            "date": "2026-07-31",
+            "rhr_median7": null
+          },
+          {
+            "date": "2026-08-01",
+            "rhr_median7": null
+          },
+          {
+            "date": "2026-08-02",
+            "rhr_median7": null
+          },
+          {
+            "date": "2026-08-03",
+            "rhr_median7": null
+          },
+          {
+            "date": "2026-08-04",
+            "rhr_median7": null
+          },
+          {
+            "date": "2026-08-05",
+            "rhr_median7": null
+          },
+          {
+            "date": "2026-08-06",
+            "rhr_median7": null
+          },
+          {
+            "date": "2026-08-07",
+            "rhr_median7": null
+          },
+          {
+            "date": "2026-08-08",
+            "rhr_median7": null
+          },
+          {
+            "date": "2026-08-09",
+            "rhr_median7": null
+          },
+          {
+            "date": "2026-08-10",
+            "rhr_median7": null
+          },
+          {
+            "date": "2026-08-11",
+            "rhr_median7": null
+          },
+          {
+            "date": "2026-08-12",
+            "rhr_median7": null
+          },
+          {
+            "date": "2026-08-13",
+            "rhr_median7": null
+          },
+          {
+            "date": "2026-08-14",
+            "rhr_median7": null
+          },
+          {
+            "date": "2026-08-15",
+            "hrv_baseline_high_ms": 68.0,
+            "hrv_baseline_low_ms": 56.0,
+            "hrv_overnight_ms": 54.0,
+            "hrv_status": "low",
+            "morning_check": "full",
+            "readiness_score": 64.0,
+            "resting_hr_bpm": 48.0,
+            "rhr_delta": null,
+            "rhr_median7": null,
+            "sleep_deep_s": 4244.0,
+            "sleep_light_s": 12966.0,
+            "sleep_rem_s": 5186.0,
+            "sleep_score": 63.0,
+            "sleep_total_s": 23575.0,
+            "verdict": "green",
+            "verdict_reason": "Triade dans la norme : séance maintenue."
+          },
+          {
+            "date": "2026-08-16",
+            "hrv_baseline_high_ms": 68.0,
+            "hrv_baseline_low_ms": 56.0,
+            "hrv_overnight_ms": 53.0,
+            "hrv_status": "low",
+            "morning_check": "full",
+            "readiness_score": 58.0,
+            "resting_hr_bpm": 52.0,
+            "rhr_delta": null,
+            "rhr_median7": null,
+            "sleep_deep_s": 4208.0,
+            "sleep_light_s": 12859.0,
+            "sleep_rem_s": 5144.0,
+            "sleep_score": 63.0,
+            "sleep_total_s": 23380.0,
+            "verdict": "amber",
+            "verdict_reason": "HRV sous la bande, FC de repos stable : garder l'aérobie, couper l'intensité."
+          },
+          {
+            "date": "2026-08-17",
+            "hrv_baseline_high_ms": 68.0,
+            "hrv_baseline_low_ms": 56.0,
+            "hrv_overnight_ms": 57.0,
+            "hrv_status": "balanced",
+            "morning_check": "full",
+            "readiness_score": 59.0,
+            "resting_hr_bpm": 51.0,
+            "rhr_delta": null,
+            "rhr_median7": null,
+            "sleep_deep_s": 4515.0,
+            "sleep_light_s": 13797.0,
+            "sleep_rem_s": 5519.0,
+            "sleep_score": 68.0,
+            "sleep_total_s": 25086.0,
+            "verdict": "amber",
+            "verdict_reason": "HRV sous la bande, FC de repos stable : garder l'aérobie, couper l'intensité."
+          },
+          {
+            "date": "2026-08-18",
+            "hrv_baseline_high_ms": 68.0,
+            "hrv_baseline_low_ms": 56.0,
+            "hrv_overnight_ms": 57.0,
+            "hrv_status": "balanced",
+            "morning_check": "full",
+            "readiness_score": 61.0,
+            "resting_hr_bpm": 48.0,
+            "rhr_delta": -3.0,
+            "rhr_median7": 51.0,
+            "sleep_deep_s": 4844.0,
+            "sleep_light_s": 14801.0,
+            "sleep_rem_s": 5920.0,
+            "sleep_score": 73.0,
+            "sleep_total_s": 26911.0,
+            "verdict": "green",
+            "verdict_reason": "Triade dans la norme : séance maintenue."
+          },
+          {
+            "date": "2026-08-19",
+            "hrv_baseline_high_ms": 68.0,
+            "hrv_baseline_low_ms": 56.0,
+            "hrv_overnight_ms": 59.0,
+            "hrv_status": "balanced",
+            "morning_check": "full",
+            "readiness_score": 71.0,
+            "resting_hr_bpm": 48.0,
+            "rhr_delta": -1.5,
+            "rhr_median7": 49.5,
+            "sleep_deep_s": 4202.0,
+            "sleep_light_s": 12840.0,
+            "sleep_rem_s": 5136.0,
+            "sleep_score": 63.0,
+            "sleep_total_s": 23346.0,
+            "verdict": "green",
+            "verdict_reason": "Triade dans la norme : séance maintenue."
+          },
+          {
+            "date": "2026-08-20",
+            "hrv_baseline_high_ms": 68.0,
+            "hrv_baseline_low_ms": 56.0,
+            "hrv_overnight_ms": 53.0,
+            "hrv_status": "low",
+            "morning_check": "full",
+            "readiness_score": 52.0,
+            "resting_hr_bpm": 50.0,
+            "rhr_delta": 2.0,
+            "rhr_median7": 48.0,
+            "sleep_deep_s": 5071.0,
+            "sleep_light_s": 15495.0,
+            "sleep_rem_s": 6198.0,
+            "sleep_score": 76.0,
+            "sleep_total_s": 28172.0,
+            "verdict": "amber",
+            "verdict_reason": "HRV sous la bande, FC de repos stable : garder l'aérobie, couper l'intensité."
+          },
+          {
+            "date": "2026-08-21",
+            "hrv_baseline_high_ms": 68.0,
+            "hrv_baseline_low_ms": 56.0,
+            "hrv_overnight_ms": 53.0,
+            "hrv_status": "low",
+            "morning_check": "full",
+            "readiness_score": 57.0,
+            "resting_hr_bpm": 52.0,
+            "rhr_delta": 3.0,
+            "rhr_median7": 49.0,
+            "sleep_deep_s": 4568.0,
+            "sleep_light_s": 13957.0,
+            "sleep_rem_s": 5583.0,
+            "sleep_score": 68.0,
+            "sleep_total_s": 25376.0,
+            "verdict": "amber",
+            "verdict_reason": "HRV sous la bande, FC de repos stable : garder l'aérobie, couper l'intensité."
+          },
+          {
+            "date": "2026-08-22",
+            "hrv_baseline_high_ms": 68.0,
+            "hrv_baseline_low_ms": 56.0,
+            "hrv_overnight_ms": 60.0,
+            "hrv_status": "balanced",
+            "morning_check": "full",
+            "readiness_score": 74.0,
+            "resting_hr_bpm": 47.0,
+            "rhr_delta": -3.0,
+            "rhr_median7": 50.0,
+            "sleep_deep_s": 4549.0,
+            "sleep_light_s": 13899.0,
+            "sleep_rem_s": 5560.0,
+            "sleep_score": 68.0,
+            "sleep_total_s": 25271.0,
+            "verdict": "green",
+            "verdict_reason": "Triade dans la norme : séance maintenue."
+          },
+          {
+            "date": "2026-08-23",
+            "hrv_baseline_high_ms": 68.0,
+            "hrv_baseline_low_ms": 56.0,
+            "hrv_overnight_ms": 52.0,
+            "hrv_status": "low",
+            "morning_check": "full",
+            "readiness_score": 52.0,
+            "resting_hr_bpm": 50.0,
+            "rhr_delta": 0.0,
+            "rhr_median7": 50.0,
+            "sleep_deep_s": 4126.0,
+            "sleep_light_s": 12607.0,
+            "sleep_rem_s": 5043.0,
+            "sleep_score": 62.0,
+            "sleep_total_s": 22921.0,
+            "verdict": "amber",
+            "verdict_reason": "HRV sous la bande, FC de repos stable : garder l'aérobie, couper l'intensité."
+          },
+          {
+            "date": "2026-08-24",
+            "hrv_baseline_high_ms": 68.0,
+            "hrv_baseline_low_ms": 56.0,
+            "hrv_overnight_ms": 58.0,
+            "hrv_status": "balanced",
+            "morning_check": "full",
+            "readiness_score": 56.0,
+            "resting_hr_bpm": 48.0,
+            "rhr_delta": -2.0,
+            "rhr_median7": 50.0,
+            "sleep_deep_s": 4072.0,
+            "sleep_light_s": 12441.0,
+            "sleep_rem_s": 4976.0,
+            "sleep_score": 61.0,
+            "sleep_total_s": 22620.0,
+            "verdict": "amber",
+            "verdict_reason": "HRV sous la bande, FC de repos stable : garder l'aérobie, couper l'intensité."
+          },
+          {
+            "date": "2026-08-25",
+            "hrv_baseline_high_ms": 68.0,
+            "hrv_baseline_low_ms": 56.0,
+            "hrv_overnight_ms": 56.0,
+            "hrv_status": "balanced",
+            "morning_check": "full",
+            "readiness_score": 52.0,
+            "resting_hr_bpm": 49.0,
+            "rhr_delta": 1.0,
+            "rhr_median7": 48.0,
+            "sleep_deep_s": 4786.0,
+            "sleep_light_s": 14625.0,
+            "sleep_rem_s": 5850.0,
+            "sleep_score": 72.0,
+            "sleep_total_s": 26591.0,
+            "verdict": "amber",
+            "verdict_reason": "HRV sous la bande, FC de repos stable : garder l'aérobie, couper l'intensité."
+          },
+          {
+            "date": "2026-08-26",
+            "hrv_baseline_high_ms": 68.0,
+            "hrv_baseline_low_ms": 56.0,
+            "hrv_overnight_ms": 61.0,
+            "hrv_status": "balanced",
+            "morning_check": "full",
+            "readiness_score": 64.0,
+            "resting_hr_bpm": 48.0,
+            "rhr_delta": -1.0,
+            "rhr_median7": 49.0,
+            "sleep_deep_s": 4404.0,
+            "sleep_light_s": 13457.0,
+            "sleep_rem_s": 5383.0,
+            "sleep_score": 66.0,
+            "sleep_total_s": 24468.0,
+            "verdict": "green",
+            "verdict_reason": "Triade dans la norme : séance maintenue."
+          },
+          {
+            "date": "2026-08-27",
+            "hrv_baseline_high_ms": 68.0,
+            "hrv_baseline_low_ms": 56.0,
+            "hrv_overnight_ms": 61.0,
+            "hrv_status": "balanced",
+            "morning_check": "full",
+            "readiness_score": 70.0,
+            "resting_hr_bpm": 49.0,
+            "rhr_delta": 0.0,
+            "rhr_median7": 49.0,
+            "sleep_deep_s": 4940.0,
+            "sleep_light_s": 15094.0,
+            "sleep_rem_s": 6037.0,
+            "sleep_score": 74.0,
+            "sleep_total_s": 27443.0,
+            "verdict": "green",
+            "verdict_reason": "Triade dans la norme : séance maintenue."
+          },
+          {
+            "date": "2026-08-28",
+            "hrv_baseline_high_ms": 68.0,
+            "hrv_baseline_low_ms": 56.0,
+            "hrv_overnight_ms": 59.0,
+            "hrv_status": "balanced",
+            "morning_check": "full",
+            "readiness_score": 75.0,
+            "resting_hr_bpm": 48.0,
+            "rhr_delta": -1.0,
+            "rhr_median7": 49.0,
+            "sleep_deep_s": 4848.0,
+            "sleep_light_s": 14812.0,
+            "sleep_rem_s": 5925.0,
+            "sleep_score": 73.0,
+            "sleep_total_s": 26931.0,
+            "verdict": "green",
+            "verdict_reason": "Triade dans la norme : séance maintenue."
+          },
+          {
+            "date": "2026-08-29",
+            "hrv_baseline_high_ms": 68.0,
+            "hrv_baseline_low_ms": 56.0,
+            "hrv_overnight_ms": 58.0,
+            "hrv_status": "balanced",
+            "morning_check": "full",
+            "readiness_score": 66.0,
+            "resting_hr_bpm": 49.0,
+            "rhr_delta": 1.0,
+            "rhr_median7": 48.0,
+            "sleep_deep_s": 4426.0,
+            "sleep_light_s": 13525.0,
+            "sleep_rem_s": 5410.0,
+            "sleep_score": 66.0,
+            "sleep_total_s": 24590.0,
+            "verdict": "green",
+            "verdict_reason": "Triade dans la norme : séance maintenue."
+          },
+          {
+            "date": "2026-08-30",
+            "hrv_baseline_high_ms": 68.0,
+            "hrv_baseline_low_ms": 56.0,
+            "hrv_overnight_ms": 53.0,
+            "hrv_status": "low",
+            "morning_check": "full",
+            "readiness_score": 49.0,
+            "resting_hr_bpm": 56.0,
+            "rhr_delta": 7.0,
+            "rhr_median7": 49.0,
+            "sleep_deep_s": 4991.0,
+            "sleep_light_s": 15250.0,
+            "sleep_rem_s": 6100.0,
+            "sleep_score": 75.0,
+            "sleep_total_s": 27727.0,
+            "verdict": "amber",
+            "verdict_reason": "HRV sous la bande, FC de repos stable : garder l'aérobie, couper l'intensité."
+          },
+          {
+            "date": "2026-08-31",
+            "hrv_baseline_high_ms": 68.0,
+            "hrv_baseline_low_ms": 56.0,
+            "hrv_overnight_ms": 55.0,
+            "hrv_status": "low",
+            "morning_check": "full",
+            "readiness_score": 67.0,
+            "resting_hr_bpm": 49.0,
+            "rhr_delta": 0.0,
+            "rhr_median7": 49.0,
+            "sleep_deep_s": 4510.0,
+            "sleep_light_s": 13781.0,
+            "sleep_rem_s": 5512.0,
+            "sleep_score": 68.0,
+            "sleep_total_s": 25056.0,
+            "verdict": "green",
+            "verdict_reason": "Triade dans la norme : séance maintenue."
+          },
+          {
+            "date": "2026-09-01",
+            "hrv_baseline_high_ms": 68.0,
+            "hrv_baseline_low_ms": 56.0,
+            "hrv_overnight_ms": 61.0,
+            "hrv_status": "balanced",
+            "morning_check": "full",
+            "readiness_score": 77.0,
+            "resting_hr_bpm": 48.0,
+            "rhr_delta": -1.0,
+            "rhr_median7": 49.0,
+            "sleep_deep_s": 4999.0,
+            "sleep_light_s": 15274.0,
+            "sleep_rem_s": 6110.0,
+            "sleep_score": 75.0,
+            "sleep_total_s": 27771.0,
+            "verdict": "green",
+            "verdict_reason": "Triade dans la norme : séance maintenue."
+          },
+          {
+            "date": "2026-09-02",
+            "hrv_baseline_high_ms": 68.0,
+            "hrv_baseline_low_ms": 56.0,
+            "hrv_overnight_ms": 57.0,
+            "hrv_status": "balanced",
+            "morning_check": "full",
+            "readiness_score": 49.0,
+            "resting_hr_bpm": 50.0,
+            "rhr_delta": 1.0,
+            "rhr_median7": 49.0,
+            "sleep_deep_s": 4811.0,
+            "sleep_light_s": 14699.0,
+            "sleep_rem_s": 5880.0,
+            "sleep_score": 72.0,
+            "sleep_total_s": 26726.0,
+            "verdict": "amber",
+            "verdict_reason": "HRV sous la bande, FC de repos stable : garder l'aérobie, couper l'intensité."
+          },
+          {
+            "date": "2026-09-03",
+            "hrv_baseline_high_ms": 68.0,
+            "hrv_baseline_low_ms": 56.0,
+            "hrv_overnight_ms": 63.0,
+            "hrv_status": "balanced",
+            "morning_check": "full",
+            "readiness_score": 76.0,
+            "resting_hr_bpm": 50.0,
+            "rhr_delta": 1.0,
+            "rhr_median7": 49.0,
+            "sleep_deep_s": 4028.0,
+            "sleep_light_s": 12308.0,
+            "sleep_rem_s": 4923.0,
+            "sleep_score": 60.0,
+            "sleep_total_s": 22379.0,
+            "verdict": "green",
+            "verdict_reason": "Triade dans la norme : séance maintenue."
+          },
+          {
+            "date": "2026-09-04",
+            "hrv_baseline_high_ms": 68.0,
+            "hrv_baseline_low_ms": 56.0,
+            "hrv_overnight_ms": 60.0,
+            "hrv_status": "balanced",
+            "morning_check": "full",
+            "readiness_score": 78.0,
+            "resting_hr_bpm": 50.0,
+            "rhr_delta": 1.0,
+            "rhr_median7": 49.0,
+            "sleep_deep_s": 4125.0,
+            "sleep_light_s": 12603.0,
+            "sleep_rem_s": 5041.0,
+            "sleep_score": 62.0,
+            "sleep_total_s": 22915.0,
+            "verdict": "green",
+            "verdict_reason": "Triade dans la norme : séance maintenue."
+          },
+          {
+            "date": "2026-09-05",
+            "hrv_baseline_high_ms": 68.0,
+            "hrv_baseline_low_ms": 56.0,
+            "hrv_overnight_ms": 62.0,
+            "hrv_status": "balanced",
+            "morning_check": "full",
+            "readiness_score": 71.0,
+            "resting_hr_bpm": 50.0,
+            "rhr_delta": 0.0,
+            "rhr_median7": 50.0,
+            "sleep_deep_s": 4679.0,
+            "sleep_light_s": 14297.0,
+            "sleep_rem_s": 5719.0,
+            "sleep_score": 70.0,
+            "sleep_total_s": 25995.0,
+            "verdict": "green",
+            "verdict_reason": "Triade dans la norme : séance maintenue."
+          },
+          {
+            "date": "2026-09-06",
+            "hrv_baseline_high_ms": 68.0,
+            "hrv_baseline_low_ms": 56.0,
+            "hrv_overnight_ms": 60.0,
+            "hrv_status": "balanced",
+            "morning_check": "full",
+            "readiness_score": 43.0,
+            "resting_hr_bpm": 52.0,
+            "rhr_delta": 2.0,
+            "rhr_median7": 50.0,
+            "sleep_deep_s": 5025.0,
+            "sleep_light_s": 15353.0,
+            "sleep_rem_s": 6141.0,
+            "sleep_score": 76.0,
+            "sleep_total_s": 27915.0,
+            "verdict": "amber",
+            "verdict_reason": "HRV sous la bande, FC de repos stable : garder l'aérobie, couper l'intensité."
+          },
+          {
+            "date": "2026-09-07",
+            "hrv_baseline_high_ms": 68.0,
+            "hrv_baseline_low_ms": 56.0,
+            "hrv_overnight_ms": 61.0,
+            "hrv_status": "balanced",
+            "morning_check": "full",
+            "readiness_score": 69.0,
+            "resting_hr_bpm": 48.0,
+            "rhr_delta": -2.0,
+            "rhr_median7": 50.0,
+            "sleep_deep_s": 4603.0,
+            "sleep_light_s": 14065.0,
+            "sleep_rem_s": 5626.0,
+            "sleep_score": 69.0,
+            "sleep_total_s": 25573.0,
+            "verdict": "green",
+            "verdict_reason": "Triade dans la norme : séance maintenue."
+          },
+          {
+            "date": "2026-09-08",
+            "hrv_baseline_high_ms": 68.0,
+            "hrv_baseline_low_ms": 56.0,
+            "hrv_overnight_ms": 61.0,
+            "hrv_status": "balanced",
+            "morning_check": "full",
+            "readiness_score": 48.0,
+            "resting_hr_bpm": 49.0,
+            "rhr_delta": -1.0,
+            "rhr_median7": 50.0,
+            "sleep_deep_s": 4152.0,
+            "sleep_light_s": 12686.0,
+            "sleep_rem_s": 5074.0,
+            "sleep_score": 62.0,
+            "sleep_total_s": 23065.0,
+            "verdict": "amber",
+            "verdict_reason": "HRV sous la bande, FC de repos stable : garder l'aérobie, couper l'intensité."
+          },
+          {
+            "date": "2026-09-09",
+            "hrv_baseline_high_ms": 68.0,
+            "hrv_baseline_low_ms": 56.0,
+            "hrv_overnight_ms": 60.0,
+            "hrv_status": "balanced",
+            "morning_check": "full",
+            "readiness_score": 73.0,
+            "resting_hr_bpm": 50.0,
+            "rhr_delta": 0.0,
+            "rhr_median7": 50.0,
+            "sleep_deep_s": 4767.0,
+            "sleep_light_s": 14565.0,
+            "sleep_rem_s": 5826.0,
+            "sleep_score": 72.0,
+            "sleep_total_s": 26481.0,
+            "verdict": "green",
+            "verdict_reason": "Triade dans la norme : séance maintenue."
+          },
+          {
+            "date": "2026-09-10",
+            "hrv_baseline_high_ms": 68.0,
+            "hrv_baseline_low_ms": 56.0,
+            "hrv_overnight_ms": 64.0,
+            "hrv_status": "balanced",
+            "morning_check": "full",
+            "readiness_score": 60.0,
+            "resting_hr_bpm": 51.0,
+            "rhr_delta": 1.0,
+            "rhr_median7": 50.0,
+            "sleep_deep_s": 5097.0,
+            "sleep_light_s": 15574.0,
+            "sleep_rem_s": 6230.0,
+            "sleep_score": 77.0,
+            "sleep_total_s": 28317.0,
+            "verdict": "green",
+            "verdict_reason": "Triade dans la norme : séance maintenue."
+          },
+          {
+            "date": "2026-09-11",
+            "hrv_baseline_high_ms": 68.0,
+            "hrv_baseline_low_ms": 56.0,
+            "hrv_overnight_ms": 57.0,
+            "hrv_status": "balanced",
+            "morning_check": "full",
+            "readiness_score": 57.0,
+            "resting_hr_bpm": 52.0,
+            "rhr_delta": 2.0,
+            "rhr_median7": 50.0,
+            "sleep_deep_s": 4618.0,
+            "sleep_light_s": 14110.0,
+            "sleep_rem_s": 5644.0,
+            "sleep_score": 69.0,
+            "sleep_total_s": 25654.0,
+            "verdict": "amber",
+            "verdict_reason": "HRV sous la bande, FC de repos stable : garder l'aérobie, couper l'intensité."
+          },
+          {
+            "date": "2026-09-12",
+            "hrv_baseline_high_ms": 68.0,
+            "hrv_baseline_low_ms": 56.0,
+            "hrv_overnight_ms": 54.0,
+            "hrv_status": "low",
+            "morning_check": "full",
+            "readiness_score": 46.0,
+            "resting_hr_bpm": 49.0,
+            "rhr_delta": -1.0,
+            "rhr_median7": 50.0,
+            "sleep_deep_s": 4836.0,
+            "sleep_light_s": 14778.0,
+            "sleep_rem_s": 5911.0,
+            "sleep_score": 73.0,
+            "sleep_total_s": 26869.0,
+            "verdict": "amber",
+            "verdict_reason": "HRV sous la bande, FC de repos stable : garder l'aérobie, couper l'intensité."
+          },
+          {
+            "date": "2026-09-13",
+            "hrv_baseline_high_ms": 68.0,
+            "hrv_baseline_low_ms": 56.0,
+            "hrv_overnight_ms": 60.0,
+            "hrv_status": "balanced",
+            "morning_check": "full",
+            "readiness_score": 68.0,
+            "resting_hr_bpm": 48.0,
+            "rhr_delta": -2.0,
+            "rhr_median7": 50.0,
+            "sleep_deep_s": 4980.0,
+            "sleep_light_s": 15218.0,
+            "sleep_rem_s": 6087.0,
+            "sleep_score": 75.0,
+            "sleep_total_s": 27669.0,
+            "verdict": "green",
+            "verdict_reason": "Triade dans la norme : séance maintenue."
+          },
+          {
+            "date": "2026-09-14",
+            "hrv_baseline_high_ms": 68.0,
+            "hrv_baseline_low_ms": 56.0,
+            "hrv_overnight_ms": 58.0,
+            "hrv_status": "balanced",
+            "morning_check": "full",
+            "readiness_score": 67.0,
+            "resting_hr_bpm": 50.0,
+            "rhr_delta": 1.0,
+            "rhr_median7": 49.0,
+            "sleep_deep_s": 4830.0,
+            "sleep_light_s": 14758.0,
+            "sleep_rem_s": 5903.0,
+            "sleep_score": 73.0,
+            "sleep_total_s": 26832.0,
+            "verdict": "green",
+            "verdict_reason": "Triade dans la norme : séance maintenue."
+          },
+          {
+            "date": "2026-09-15",
+            "hrv_baseline_high_ms": 68.0,
+            "hrv_baseline_low_ms": 56.0,
+            "hrv_overnight_ms": 56.0,
+            "hrv_status": "balanced",
+            "morning_check": "full",
+            "readiness_score": 65.0,
+            "resting_hr_bpm": 50.0,
+            "rhr_delta": 0.0,
+            "rhr_median7": 50.0,
+            "sleep_deep_s": 4052.0,
+            "sleep_light_s": 12380.0,
+            "sleep_rem_s": 4952.0,
+            "sleep_score": 61.0,
+            "sleep_total_s": 22509.0,
+            "verdict": "green",
+            "verdict_reason": "Triade dans la norme : séance maintenue."
+          },
+          {
+            "date": "2026-09-16",
+            "hrv_baseline_high_ms": 68.0,
+            "hrv_baseline_low_ms": 56.0,
+            "hrv_overnight_ms": 57.0,
+            "hrv_status": "balanced",
+            "morning_check": "full",
+            "readiness_score": 48.0,
+            "resting_hr_bpm": 50.0,
+            "rhr_delta": 0.0,
+            "rhr_median7": 50.0,
+            "sleep_deep_s": 4932.0,
+            "sleep_light_s": 15070.0,
+            "sleep_rem_s": 6028.0,
+            "sleep_score": 74.0,
+            "sleep_total_s": 27400.0,
+            "verdict": "amber",
+            "verdict_reason": "HRV sous la bande, FC de repos stable : garder l'aérobie, couper l'intensité."
+          },
+          {
+            "date": "2026-09-17",
+            "hrv_baseline_high_ms": 68.0,
+            "hrv_baseline_low_ms": 56.0,
+            "hrv_overnight_ms": 57.0,
+            "hrv_status": "balanced",
+            "morning_check": "full",
+            "readiness_score": 55.0,
+            "resting_hr_bpm": 50.0,
+            "rhr_delta": 0.0,
+            "rhr_median7": 50.0,
+            "sleep_deep_s": 4471.0,
+            "sleep_light_s": 13660.0,
+            "sleep_rem_s": 5464.0,
+            "sleep_score": 67.0,
+            "sleep_total_s": 24837.0,
+            "verdict": "amber",
+            "verdict_reason": "HRV sous la bande, FC de repos stable : garder l'aérobie, couper l'intensité."
+          },
+          {
+            "date": "2026-09-18",
+            "hrv_baseline_high_ms": 68.0,
+            "hrv_baseline_low_ms": 56.0,
+            "hrv_overnight_ms": 62.0,
+            "hrv_status": "balanced",
+            "morning_check": "full",
+            "readiness_score": 71.0,
+            "resting_hr_bpm": 48.0,
+            "rhr_delta": -2.0,
+            "rhr_median7": 50.0,
+            "sleep_deep_s": 4308.0,
+            "sleep_light_s": 13162.0,
+            "sleep_rem_s": 5265.0,
+            "sleep_score": 64.0,
+            "sleep_total_s": 23931.0,
+            "verdict": "green",
+            "verdict_reason": "Triade dans la norme : séance maintenue."
+          },
+          {
+            "date": "2026-09-19",
+            "hrv_baseline_high_ms": 68.0,
+            "hrv_baseline_low_ms": 56.0,
+            "hrv_overnight_ms": 62.0,
+            "hrv_status": "balanced",
+            "morning_check": "full",
+            "readiness_score": 75.0,
+            "resting_hr_bpm": 47.0,
+            "rhr_delta": -3.0,
+            "rhr_median7": 50.0,
+            "sleep_deep_s": 4695.0,
+            "sleep_light_s": 14347.0,
+            "sleep_rem_s": 5739.0,
+            "sleep_score": 70.0,
+            "sleep_total_s": 26086.0,
+            "verdict": "green",
+            "verdict_reason": "Triade dans la norme : séance maintenue."
+          },
+          {
+            "date": "2026-09-20",
+            "hrv_baseline_high_ms": 68.0,
+            "hrv_baseline_low_ms": 56.0,
+            "hrv_overnight_ms": 60.0,
+            "hrv_status": "balanced",
+            "morning_check": "full",
+            "readiness_score": 54.0,
+            "resting_hr_bpm": 51.0,
+            "rhr_delta": 1.0,
+            "rhr_median7": 50.0,
+            "sleep_deep_s": 4060.0,
+            "sleep_light_s": 12407.0,
+            "sleep_rem_s": 4963.0,
+            "sleep_score": 61.0,
+            "sleep_total_s": 22558.0,
+            "verdict": "amber",
+            "verdict_reason": "HRV sous la bande, FC de repos stable : garder l'aérobie, couper l'intensité."
+          },
+          {
+            "date": "2026-09-21",
+            "hrv_baseline_high_ms": 68.0,
+            "hrv_baseline_low_ms": 56.0,
+            "hrv_overnight_ms": 58.0,
+            "hrv_status": "balanced",
+            "morning_check": "full",
+            "readiness_score": 57.0,
+            "resting_hr_bpm": 49.0,
+            "rhr_delta": -1.0,
+            "rhr_median7": 50.0,
+            "sleep_deep_s": 4467.0,
+            "sleep_light_s": 13649.0,
+            "sleep_rem_s": 5460.0,
+            "sleep_score": 67.0,
+            "sleep_total_s": 24817.0,
+            "verdict": "amber",
+            "verdict_reason": "HRV sous la bande, FC de repos stable : garder l'aérobie, couper l'intensité."
+          },
+          {
+            "date": "2026-09-22",
+            "hrv_baseline_high_ms": 68.0,
+            "hrv_baseline_low_ms": 56.0,
+            "hrv_overnight_ms": 52.0,
+            "hrv_status": "low",
+            "morning_check": "full",
+            "readiness_score": 51.0,
+            "resting_hr_bpm": 58.0,
+            "rhr_delta": 8.0,
+            "rhr_median7": 50.0,
+            "sleep_deep_s": 4386.0,
+            "sleep_light_s": 13401.0,
+            "sleep_rem_s": 5361.0,
+            "sleep_score": 66.0,
+            "sleep_total_s": 24366.0,
+            "verdict": "amber",
+            "verdict_reason": "HRV sous la bande, FC de repos stable : garder l'aérobie, couper l'intensité."
+          },
+          {
+            "date": "2026-09-23",
+            "hrv_baseline_high_ms": 68.0,
+            "hrv_baseline_low_ms": 56.0,
+            "hrv_overnight_ms": 61.0,
+            "hrv_status": "balanced",
+            "morning_check": "full",
+            "readiness_score": 62.0,
+            "resting_hr_bpm": 51.0,
+            "rhr_delta": 1.0,
+            "rhr_median7": 50.0,
+            "sleep_deep_s": 4397.0,
+            "sleep_light_s": 13435.0,
+            "sleep_rem_s": 5374.0,
+            "sleep_score": 66.0,
+            "sleep_total_s": 24428.0,
+            "verdict": "green",
+            "verdict_reason": "Triade dans la norme : séance maintenue."
+          }
+        ],
+        "thresholds": {
+          "rhr_alert": 7,
+          "rhr_warn": 5
+        }
+      },
+      "status": 200
+    },
+    "/api/health?days=14": {
+      "body": {
+        "morning_check": "full",
+        "series": [
+          {
+            "date": "2026-09-10",
+            "hrv_baseline_high_ms": 68.0,
+            "hrv_baseline_low_ms": 56.0,
+            "hrv_overnight_ms": 64.0,
+            "hrv_status": "balanced",
+            "morning_check": "full",
+            "readiness_score": 60.0,
+            "resting_hr_bpm": 51.0,
+            "rhr_delta": 1.0,
+            "rhr_median7": 50.0,
+            "sleep_deep_s": 5097.0,
+            "sleep_light_s": 15574.0,
+            "sleep_rem_s": 6230.0,
+            "sleep_score": 77.0,
+            "sleep_total_s": 28317.0,
+            "verdict": "green",
+            "verdict_reason": "Triade dans la norme : séance maintenue."
+          },
+          {
+            "date": "2026-09-11",
+            "hrv_baseline_high_ms": 68.0,
+            "hrv_baseline_low_ms": 56.0,
+            "hrv_overnight_ms": 57.0,
+            "hrv_status": "balanced",
+            "morning_check": "full",
+            "readiness_score": 57.0,
+            "resting_hr_bpm": 52.0,
+            "rhr_delta": 2.0,
+            "rhr_median7": 50.0,
+            "sleep_deep_s": 4618.0,
+            "sleep_light_s": 14110.0,
+            "sleep_rem_s": 5644.0,
+            "sleep_score": 69.0,
+            "sleep_total_s": 25654.0,
+            "verdict": "amber",
+            "verdict_reason": "HRV sous la bande, FC de repos stable : garder l'aérobie, couper l'intensité."
+          },
+          {
+            "date": "2026-09-12",
+            "hrv_baseline_high_ms": 68.0,
+            "hrv_baseline_low_ms": 56.0,
+            "hrv_overnight_ms": 54.0,
+            "hrv_status": "low",
+            "morning_check": "full",
+            "readiness_score": 46.0,
+            "resting_hr_bpm": 49.0,
+            "rhr_delta": -1.0,
+            "rhr_median7": 50.0,
+            "sleep_deep_s": 4836.0,
+            "sleep_light_s": 14778.0,
+            "sleep_rem_s": 5911.0,
+            "sleep_score": 73.0,
+            "sleep_total_s": 26869.0,
+            "verdict": "amber",
+            "verdict_reason": "HRV sous la bande, FC de repos stable : garder l'aérobie, couper l'intensité."
+          },
+          {
+            "date": "2026-09-13",
+            "hrv_baseline_high_ms": 68.0,
+            "hrv_baseline_low_ms": 56.0,
+            "hrv_overnight_ms": 60.0,
+            "hrv_status": "balanced",
+            "morning_check": "full",
+            "readiness_score": 68.0,
+            "resting_hr_bpm": 48.0,
+            "rhr_delta": -2.0,
+            "rhr_median7": 50.0,
+            "sleep_deep_s": 4980.0,
+            "sleep_light_s": 15218.0,
+            "sleep_rem_s": 6087.0,
+            "sleep_score": 75.0,
+            "sleep_total_s": 27669.0,
+            "verdict": "green",
+            "verdict_reason": "Triade dans la norme : séance maintenue."
+          },
+          {
+            "date": "2026-09-14",
+            "hrv_baseline_high_ms": 68.0,
+            "hrv_baseline_low_ms": 56.0,
+            "hrv_overnight_ms": 58.0,
+            "hrv_status": "balanced",
+            "morning_check": "full",
+            "readiness_score": 67.0,
+            "resting_hr_bpm": 50.0,
+            "rhr_delta": 1.0,
+            "rhr_median7": 49.0,
+            "sleep_deep_s": 4830.0,
+            "sleep_light_s": 14758.0,
+            "sleep_rem_s": 5903.0,
+            "sleep_score": 73.0,
+            "sleep_total_s": 26832.0,
+            "verdict": "green",
+            "verdict_reason": "Triade dans la norme : séance maintenue."
+          },
+          {
+            "date": "2026-09-15",
+            "hrv_baseline_high_ms": 68.0,
+            "hrv_baseline_low_ms": 56.0,
+            "hrv_overnight_ms": 56.0,
+            "hrv_status": "balanced",
+            "morning_check": "full",
+            "readiness_score": 65.0,
+            "resting_hr_bpm": 50.0,
+            "rhr_delta": 0.0,
+            "rhr_median7": 50.0,
+            "sleep_deep_s": 4052.0,
+            "sleep_light_s": 12380.0,
+            "sleep_rem_s": 4952.0,
+            "sleep_score": 61.0,
+            "sleep_total_s": 22509.0,
+            "verdict": "green",
+            "verdict_reason": "Triade dans la norme : séance maintenue."
+          },
+          {
+            "date": "2026-09-16",
+            "hrv_baseline_high_ms": 68.0,
+            "hrv_baseline_low_ms": 56.0,
+            "hrv_overnight_ms": 57.0,
+            "hrv_status": "balanced",
+            "morning_check": "full",
+            "readiness_score": 48.0,
+            "resting_hr_bpm": 50.0,
+            "rhr_delta": 0.0,
+            "rhr_median7": 50.0,
+            "sleep_deep_s": 4932.0,
+            "sleep_light_s": 15070.0,
+            "sleep_rem_s": 6028.0,
+            "sleep_score": 74.0,
+            "sleep_total_s": 27400.0,
+            "verdict": "amber",
+            "verdict_reason": "HRV sous la bande, FC de repos stable : garder l'aérobie, couper l'intensité."
+          },
+          {
+            "date": "2026-09-17",
+            "hrv_baseline_high_ms": 68.0,
+            "hrv_baseline_low_ms": 56.0,
+            "hrv_overnight_ms": 57.0,
+            "hrv_status": "balanced",
+            "morning_check": "full",
+            "readiness_score": 55.0,
+            "resting_hr_bpm": 50.0,
+            "rhr_delta": 0.0,
+            "rhr_median7": 50.0,
+            "sleep_deep_s": 4471.0,
+            "sleep_light_s": 13660.0,
+            "sleep_rem_s": 5464.0,
+            "sleep_score": 67.0,
+            "sleep_total_s": 24837.0,
+            "verdict": "amber",
+            "verdict_reason": "HRV sous la bande, FC de repos stable : garder l'aérobie, couper l'intensité."
+          },
+          {
+            "date": "2026-09-18",
+            "hrv_baseline_high_ms": 68.0,
+            "hrv_baseline_low_ms": 56.0,
+            "hrv_overnight_ms": 62.0,
+            "hrv_status": "balanced",
+            "morning_check": "full",
+            "readiness_score": 71.0,
+            "resting_hr_bpm": 48.0,
+            "rhr_delta": -2.0,
+            "rhr_median7": 50.0,
+            "sleep_deep_s": 4308.0,
+            "sleep_light_s": 13162.0,
+            "sleep_rem_s": 5265.0,
+            "sleep_score": 64.0,
+            "sleep_total_s": 23931.0,
+            "verdict": "green",
+            "verdict_reason": "Triade dans la norme : séance maintenue."
+          },
+          {
+            "date": "2026-09-19",
+            "hrv_baseline_high_ms": 68.0,
+            "hrv_baseline_low_ms": 56.0,
+            "hrv_overnight_ms": 62.0,
+            "hrv_status": "balanced",
+            "morning_check": "full",
+            "readiness_score": 75.0,
+            "resting_hr_bpm": 47.0,
+            "rhr_delta": -3.0,
+            "rhr_median7": 50.0,
+            "sleep_deep_s": 4695.0,
+            "sleep_light_s": 14347.0,
+            "sleep_rem_s": 5739.0,
+            "sleep_score": 70.0,
+            "sleep_total_s": 26086.0,
+            "verdict": "green",
+            "verdict_reason": "Triade dans la norme : séance maintenue."
+          },
+          {
+            "date": "2026-09-20",
+            "hrv_baseline_high_ms": 68.0,
+            "hrv_baseline_low_ms": 56.0,
+            "hrv_overnight_ms": 60.0,
+            "hrv_status": "balanced",
+            "morning_check": "full",
+            "readiness_score": 54.0,
+            "resting_hr_bpm": 51.0,
+            "rhr_delta": 1.0,
+            "rhr_median7": 50.0,
+            "sleep_deep_s": 4060.0,
+            "sleep_light_s": 12407.0,
+            "sleep_rem_s": 4963.0,
+            "sleep_score": 61.0,
+            "sleep_total_s": 22558.0,
+            "verdict": "amber",
+            "verdict_reason": "HRV sous la bande, FC de repos stable : garder l'aérobie, couper l'intensité."
+          },
+          {
+            "date": "2026-09-21",
+            "hrv_baseline_high_ms": 68.0,
+            "hrv_baseline_low_ms": 56.0,
+            "hrv_overnight_ms": 58.0,
+            "hrv_status": "balanced",
+            "morning_check": "full",
+            "readiness_score": 57.0,
+            "resting_hr_bpm": 49.0,
+            "rhr_delta": -1.0,
+            "rhr_median7": 50.0,
+            "sleep_deep_s": 4467.0,
+            "sleep_light_s": 13649.0,
+            "sleep_rem_s": 5460.0,
+            "sleep_score": 67.0,
+            "sleep_total_s": 24817.0,
+            "verdict": "amber",
+            "verdict_reason": "HRV sous la bande, FC de repos stable : garder l'aérobie, couper l'intensité."
+          },
+          {
+            "date": "2026-09-22",
+            "hrv_baseline_high_ms": 68.0,
+            "hrv_baseline_low_ms": 56.0,
+            "hrv_overnight_ms": 52.0,
+            "hrv_status": "low",
+            "morning_check": "full",
+            "readiness_score": 51.0,
+            "resting_hr_bpm": 58.0,
+            "rhr_delta": 8.0,
+            "rhr_median7": 50.0,
+            "sleep_deep_s": 4386.0,
+            "sleep_light_s": 13401.0,
+            "sleep_rem_s": 5361.0,
+            "sleep_score": 66.0,
+            "sleep_total_s": 24366.0,
+            "verdict": "amber",
+            "verdict_reason": "HRV sous la bande, FC de repos stable : garder l'aérobie, couper l'intensité."
+          },
+          {
+            "date": "2026-09-23",
+            "hrv_baseline_high_ms": 68.0,
+            "hrv_baseline_low_ms": 56.0,
+            "hrv_overnight_ms": 61.0,
+            "hrv_status": "balanced",
+            "morning_check": "full",
+            "readiness_score": 62.0,
+            "resting_hr_bpm": 51.0,
+            "rhr_delta": 1.0,
+            "rhr_median7": 50.0,
+            "sleep_deep_s": 4397.0,
+            "sleep_light_s": 13435.0,
+            "sleep_rem_s": 5374.0,
+            "sleep_score": 66.0,
+            "sleep_total_s": 24428.0,
+            "verdict": "green",
+            "verdict_reason": "Triade dans la norme : séance maintenue."
+          }
+        ],
+        "thresholds": {
+          "rhr_alert": 7,
+          "rhr_warn": 5
+        }
+      },
+      "status": 200
+    },
+    "/api/load": {
+      "body": {
+        "monotony": 1.22,
+        "strain": 792.9,
+        "weeks": [
+          {
+            "distance_m": 0.0,
+            "duration_s": 0.0,
+            "elevation_m": 0.0,
+            "load": 0.0,
+            "sessions": 0,
+            "week_start": "2026-03-30"
+          },
+          {
+            "distance_m": 0.0,
+            "duration_s": 0.0,
+            "elevation_m": 0.0,
+            "load": 0.0,
+            "sessions": 0,
+            "week_start": "2026-04-06"
+          },
+          {
+            "distance_m": 0.0,
+            "duration_s": 0.0,
+            "elevation_m": 0.0,
+            "load": 0.0,
+            "sessions": 0,
+            "week_start": "2026-04-13"
+          },
+          {
+            "distance_m": 0.0,
+            "duration_s": 0.0,
+            "elevation_m": 0.0,
+            "load": 0.0,
+            "sessions": 0,
+            "week_start": "2026-04-20"
+          },
+          {
+            "distance_m": 0.0,
+            "duration_s": 0.0,
+            "elevation_m": 0.0,
+            "load": 0.0,
+            "sessions": 0,
+            "week_start": "2026-04-27"
+          },
+          {
+            "distance_m": 0.0,
+            "duration_s": 0.0,
+            "elevation_m": 0.0,
+            "load": 0.0,
+            "sessions": 0,
+            "week_start": "2026-05-04"
+          },
+          {
+            "distance_m": 0.0,
+            "duration_s": 0.0,
+            "elevation_m": 0.0,
+            "load": 0.0,
+            "sessions": 0,
+            "week_start": "2026-05-11"
+          },
+          {
+            "distance_m": 0.0,
+            "duration_s": 0.0,
+            "elevation_m": 0.0,
+            "load": 0.0,
+            "sessions": 0,
+            "week_start": "2026-05-18"
+          },
+          {
+            "distance_m": 0.0,
+            "duration_s": 0.0,
+            "elevation_m": 0.0,
+            "load": 0.0,
+            "sessions": 0,
+            "week_start": "2026-05-25"
+          },
+          {
+            "distance_m": 0.0,
+            "duration_s": 0.0,
+            "elevation_m": 0.0,
+            "load": 0.0,
+            "sessions": 0,
+            "week_start": "2026-06-01"
+          },
+          {
+            "distance_m": 0.0,
+            "duration_s": 0.0,
+            "elevation_m": 0.0,
+            "load": 0.0,
+            "sessions": 0,
+            "week_start": "2026-06-08"
+          },
+          {
+            "distance_m": 0.0,
+            "duration_s": 0.0,
+            "elevation_m": 0.0,
+            "load": 0.0,
+            "sessions": 0,
+            "week_start": "2026-06-15"
+          },
+          {
+            "distance_m": 0.0,
+            "duration_s": 0.0,
+            "elevation_m": 0.0,
+            "load": 0.0,
+            "sessions": 0,
+            "week_start": "2026-06-22"
+          },
+          {
+            "distance_m": 0.0,
+            "duration_s": 0.0,
+            "elevation_m": 0.0,
+            "load": 0.0,
+            "sessions": 0,
+            "week_start": "2026-06-29"
+          },
+          {
+            "distance_m": 0.0,
+            "duration_s": 0.0,
+            "elevation_m": 0.0,
+            "load": 0.0,
+            "sessions": 0,
+            "week_start": "2026-07-06"
+          },
+          {
+            "distance_m": 0.0,
+            "duration_s": 0.0,
+            "elevation_m": 0.0,
+            "load": 0.0,
+            "sessions": 0,
+            "week_start": "2026-07-13"
+          },
+          {
+            "distance_m": 0.0,
+            "duration_s": 0.0,
+            "elevation_m": 0.0,
+            "load": 0.0,
+            "sessions": 0,
+            "week_start": "2026-07-20"
+          },
+          {
+            "distance_m": 0.0,
+            "duration_s": 0.0,
+            "elevation_m": 0.0,
+            "load": 0.0,
+            "sessions": 0,
+            "week_start": "2026-07-27"
+          },
+          {
+            "distance_m": 0.0,
+            "duration_s": 0.0,
+            "elevation_m": 0.0,
+            "load": 0.0,
+            "sessions": 0,
+            "week_start": "2026-08-03"
+          },
+          {
+            "distance_m": 20000.0,
+            "duration_s": 8066.0,
+            "elevation_m": 697.0,
+            "load": 206.7,
+            "sessions": 2,
+            "week_start": "2026-08-10"
+          },
+          {
+            "distance_m": 36000.0,
+            "duration_s": 16195.0,
+            "elevation_m": 1096.0,
+            "load": 471.46999999999997,
+            "sessions": 5,
+            "week_start": "2026-08-17"
+          },
+          {
+            "distance_m": 41000.0,
+            "duration_s": 18416.0,
+            "elevation_m": 1707.0,
+            "load": 538.4399999999999,
+            "sessions": 5,
+            "week_start": "2026-08-24"
+          },
+          {
+            "distance_m": 31000.0,
+            "duration_s": 14287.0,
+            "elevation_m": 1179.0,
+            "load": 431.14,
+            "sessions": 4,
+            "week_start": "2026-08-31"
+          },
+          {
+            "distance_m": 42000.0,
+            "duration_s": 18618.0,
+            "elevation_m": 1651.0,
+            "load": 503.53,
+            "sessions": 5,
+            "week_start": "2026-09-07"
+          },
+          {
+            "distance_m": 51000.0,
+            "duration_s": 21659.0,
+            "elevation_m": 1658.0,
+            "load": 612.64,
+            "sessions": 5,
+            "week_start": "2026-09-14"
+          },
+          {
+            "distance_m": 22000.0,
+            "duration_s": 7521.0,
+            "elevation_m": 452.0,
+            "load": 254.85000000000002,
+            "sessions": 2,
+            "week_start": "2026-09-21"
+          }
+        ]
+      },
+      "status": 200
+    },
+    "/api/load?weeks=6": {
+      "body": {
+        "monotony": 1.22,
+        "strain": 792.9,
+        "weeks": [
+          {
+            "distance_m": 36000.0,
+            "duration_s": 16195.0,
+            "elevation_m": 1096.0,
+            "load": 471.46999999999997,
+            "sessions": 5,
+            "week_start": "2026-08-17"
+          },
+          {
+            "distance_m": 41000.0,
+            "duration_s": 18416.0,
+            "elevation_m": 1707.0,
+            "load": 538.4399999999999,
+            "sessions": 5,
+            "week_start": "2026-08-24"
+          },
+          {
+            "distance_m": 31000.0,
+            "duration_s": 14287.0,
+            "elevation_m": 1179.0,
+            "load": 431.14,
+            "sessions": 4,
+            "week_start": "2026-08-31"
+          },
+          {
+            "distance_m": 42000.0,
+            "duration_s": 18618.0,
+            "elevation_m": 1651.0,
+            "load": 503.53,
+            "sessions": 5,
+            "week_start": "2026-09-07"
+          },
+          {
+            "distance_m": 51000.0,
+            "duration_s": 21659.0,
+            "elevation_m": 1658.0,
+            "load": 612.64,
+            "sessions": 5,
+            "week_start": "2026-09-14"
+          },
+          {
+            "distance_m": 22000.0,
+            "duration_s": 7521.0,
+            "elevation_m": 452.0,
+            "load": 254.85000000000002,
+            "sessions": 2,
+            "week_start": "2026-09-21"
+          }
+        ]
+      },
+      "status": 200
+    },
+    "/api/nutrition": {
+      "body": {
+        "days": [
+          {
+            "burned_kcal": 2676.0,
+            "carbs_g": 316.0,
+            "date": "2026-09-11",
+            "fat_g": 78.0,
+            "hydration_ml": 2400.0,
+            "intake_kcal": 2495.0,
+            "protein_g": 115.0,
+            "target_weight_kg": null,
+            "weight_kg": null
+          },
+          {
+            "burned_kcal": 2273.0,
+            "carbs_g": 289.0,
+            "date": "2026-09-13",
+            "fat_g": 78.0,
+            "hydration_ml": 2400.0,
+            "intake_kcal": 2247.0,
+            "protein_g": 115.0,
+            "target_weight_kg": null,
+            "weight_kg": null
+          },
+          {
+            "burned_kcal": 2768.0,
+            "carbs_g": 331.0,
+            "date": "2026-09-15",
+            "fat_g": 78.0,
+            "hydration_ml": 2400.0,
+            "intake_kcal": 2200.0,
+            "protein_g": 115.0,
+            "target_weight_kg": null,
+            "weight_kg": null
+          },
+          {
+            "burned_kcal": 2945.0,
+            "carbs_g": 305.0,
+            "date": "2026-09-17",
+            "fat_g": 78.0,
+            "hydration_ml": 2400.0,
+            "intake_kcal": 2450.0,
+            "protein_g": 115.0,
+            "target_weight_kg": null,
+            "weight_kg": null
+          },
+          {
+            "burned_kcal": 2266.0,
+            "carbs_g": 316.0,
+            "date": "2026-09-19",
+            "fat_g": 78.0,
+            "hydration_ml": 2400.0,
+            "intake_kcal": 2677.0,
+            "protein_g": 115.0,
+            "target_weight_kg": null,
+            "weight_kg": null
+          },
+          {
+            "burned_kcal": 2483.0,
+            "carbs_g": 326.0,
+            "date": "2026-09-21",
+            "fat_g": 78.0,
+            "hydration_ml": 2400.0,
+            "intake_kcal": 2454.0,
+            "protein_g": 115.0,
+            "target_weight_kg": null,
+            "weight_kg": null
+          },
+          {
+            "burned_kcal": 2390.0,
+            "carbs_g": 354.0,
+            "date": "2026-09-23",
+            "fat_g": 78.0,
+            "hydration_ml": 2400.0,
+            "intake_kcal": 2678.0,
+            "protein_g": 115.0,
+            "target_weight_kg": null,
+            "weight_kg": null
+          }
+        ]
+      },
+      "status": 200
+    },
+    "/api/nutrition?days=3": {
+      "body": {
+        "days": [
+          {
+            "burned_kcal": 2945.0,
+            "carbs_g": 305.0,
+            "date": "2026-09-17",
+            "fat_g": 78.0,
+            "hydration_ml": 2400.0,
+            "intake_kcal": 2450.0,
+            "protein_g": 115.0,
+            "target_weight_kg": null,
+            "weight_kg": null
+          },
+          {
+            "burned_kcal": 2266.0,
+            "carbs_g": 316.0,
+            "date": "2026-09-19",
+            "fat_g": 78.0,
+            "hydration_ml": 2400.0,
+            "intake_kcal": 2677.0,
+            "protein_g": 115.0,
+            "target_weight_kg": null,
+            "weight_kg": null
+          },
+          {
+            "burned_kcal": 2483.0,
+            "carbs_g": 326.0,
+            "date": "2026-09-21",
+            "fat_g": 78.0,
+            "hydration_ml": 2400.0,
+            "intake_kcal": 2454.0,
+            "protein_g": 115.0,
+            "target_weight_kg": null,
+            "weight_kg": null
+          },
+          {
+            "burned_kcal": 2390.0,
+            "carbs_g": 354.0,
+            "date": "2026-09-23",
+            "fat_g": 78.0,
+            "hydration_ml": 2400.0,
+            "intake_kcal": 2678.0,
+            "protein_g": 115.0,
+            "target_weight_kg": null,
+            "weight_kg": null
+          }
+        ]
+      },
+      "status": 200
+    },
+    "/api/performance": {
+      "body": {
+        "objective": {
+          "distance_m": 52000.0,
+          "elevation_gain_m": 2400.0,
+          "name": "Trail des Collines",
+          "target_time_s": 25200.0
+        },
+        "predictions": [
+          {
+            "distance_m": 5000.0,
+            "effort_distance_m": 5000,
+            "riegel_s": 1599,
+            "tag": null,
+            "vdot_s": 1271
+          },
+          {
+            "distance_m": 10000.0,
+            "effort_distance_m": 10000,
+            "riegel_s": 3548,
+            "tag": null,
+            "vdot_s": 2636
+          },
+          {
+            "distance_m": 21097.5,
+            "effort_distance_m": 21098,
+            "riegel_s": 8372,
+            "tag": null,
+            "vdot_s": 5840
+          },
+          {
+            "distance_m": 42195.0,
+            "effort_distance_m": 42195,
+            "riegel_s": 18580,
+            "tag": null,
+            "vdot_s": 12145
+          },
+          {
+            "distance_m": 52000.0,
+            "effort_distance_m": 56200,
+            "riegel_s": 25834,
+            "tag": "objective",
+            "vdot_s": 16312
+          }
+        ],
+        "records": [
+          {
+            "activity_name": "Côtes 8 × 90 s",
+            "date": "2026-09-22",
+            "km": 1,
+            "time_s": 297
+          },
+          {
+            "activity_name": "Côtes 8 × 90 s",
+            "date": "2026-09-15",
+            "km": 5,
+            "time_s": 1528
+          },
+          {
+            "activity_name": "Côtes 8 × 90 s",
+            "date": "2026-09-22",
+            "km": 10,
+            "time_s": 3081
+          },
+          {
+            "activity_name": "Sortie longue",
+            "date": "2026-09-19",
+            "km": 21,
+            "time_s": 8328
+          }
+        ],
+        "sport": "trail",
+        "vo2max": [
+          {
+            "date": "2026-08-15",
+            "vo2max": 44.09
+          },
+          {
+            "date": "2026-08-16",
+            "vo2max": 45.31
+          },
+          {
+            "date": "2026-08-17",
+            "vo2max": 45.31
+          },
+          {
+            "date": "2026-08-18",
+            "vo2max": 44.89
+          },
+          {
+            "date": "2026-08-19",
+            "vo2max": 46.03
+          },
+          {
+            "date": "2026-08-20",
+            "vo2max": 46.03
+          },
+          {
+            "date": "2026-08-21",
+            "vo2max": 46.03
+          },
+          {
+            "date": "2026-08-22",
+            "vo2max": 44.97
+          },
+          {
+            "date": "2026-08-23",
+            "vo2max": 45.4
+          },
+          {
+            "date": "2026-08-24",
+            "vo2max": 45.4
+          },
+          {
+            "date": "2026-08-25",
+            "vo2max": 45.39
+          },
+          {
+            "date": "2026-08-26",
+            "vo2max": 45.85
+          },
+          {
+            "date": "2026-08-27",
+            "vo2max": 45.85
+          },
+          {
+            "date": "2026-08-28",
+            "vo2max": 45.85
+          },
+          {
+            "date": "2026-08-29",
+            "vo2max": 45.06
+          },
+          {
+            "date": "2026-08-30",
+            "vo2max": 45.39
+          },
+          {
+            "date": "2026-08-31",
+            "vo2max": 45.39
+          },
+          {
+            "date": "2026-09-01",
+            "vo2max": 45.38
+          },
+          {
+            "date": "2026-09-02",
+            "vo2max": 45.63
+          },
+          {
+            "date": "2026-09-03",
+            "vo2max": 45.63
+          },
+          {
+            "date": "2026-09-04",
+            "vo2max": 45.63
+          },
+          {
+            "date": "2026-09-05",
+            "vo2max": 45.22
+          },
+          {
+            "date": "2026-09-06",
+            "vo2max": 45.22
+          },
+          {
+            "date": "2026-09-07",
+            "vo2max": 45.22
+          },
+          {
+            "date": "2026-09-08",
+            "vo2max": 45.26
+          },
+          {
+            "date": "2026-09-09",
+            "vo2max": 45.49
+          },
+          {
+            "date": "2026-09-10",
+            "vo2max": 45.49
+          },
+          {
+            "date": "2026-09-11",
+            "vo2max": 45.49
+          },
+          {
+            "date": "2026-09-12",
+            "vo2max": 45.51
+          },
+          {
+            "date": "2026-09-13",
+            "vo2max": 45.83
+          },
+          {
+            "date": "2026-09-14",
+            "vo2max": 46.0
+          },
+          {
+            "date": "2026-09-15",
+            "vo2max": 45.87
+          },
+          {
+            "date": "2026-09-16",
+            "vo2max": 46.16
+          },
+          {
+            "date": "2026-09-17",
+            "vo2max": 46.28
+          },
+          {
+            "date": "2026-09-18",
+            "vo2max": 46.07
+          },
+          {
+            "date": "2026-09-19",
+            "vo2max": 45.9
+          },
+          {
+            "date": "2026-09-20",
+            "vo2max": 46.18
+          },
+          {
+            "date": "2026-09-21",
+            "vo2max": 46.53
+          },
+          {
+            "date": "2026-09-22",
+            "vo2max": 46.31
+          },
+          {
+            "date": "2026-09-23",
+            "vo2max": 46.56
+          }
+        ],
+        "vo2max_current": 46.56,
+        "vo2max_date": "2026-09-23"
+      },
+      "status": 200
+    },
+    "/api/report": {
+      "body": {
+        "error": "introuvable"
+      },
+      "status": 404
+    },
+    "/api/report?path={first}": {
+      "body": {
+        "body_html": "<h2>Bilan de la semaine du 2026-09-14</h2>\n<h3>Synthèse</h3>\n<p>Semaine <strong>conforme au plan</strong> : charge en hausse contrôlée, HRV stable.</p>\n<table><thead><tr><th>Indicateur</th><th>Valeur</th></tr></thead><tbody><tr><td>Séances</td><td>5 / 5</td></tr><tr><td>Volume</td><td>7 h 40</td></tr><tr><td>D+</td><td>1 650 m</td></tr></tbody></table>\n<h3>Pour la semaine prochaine</h3>\n<ul><li>Garder la sortie longue en endurance stricte</li><li>Une seule séance de côtes</li></ul>",
+        "date": "2026-09-20",
+        "location": null,
+        "period_end": "2026-09-20",
+        "period_start": "2026-09-14",
+        "report_type": "weekly",
+        "source_path": "rapports/2026-09-20_rapport.md",
+        "title": "Bilan de la semaine du 2026-09-14"
+      },
+      "status": 200
+    },
+    "/api/reports": {
+      "body": {
+        "reports": [
+          {
+            "date": "2026-09-20",
+            "period_end": "2026-09-20",
+            "period_start": "2026-09-14",
+            "report_type": "weekly",
+            "source_path": "rapports/2026-09-20_rapport.md",
+            "title": "Bilan de la semaine du 2026-09-14"
+          },
+          {
+            "date": "2026-09-13",
+            "period_end": "2026-09-13",
+            "period_start": "2026-09-07",
+            "report_type": "weekly",
+            "source_path": "rapports/2026-09-13_rapport.md",
+            "title": "Bilan de la semaine du 2026-09-07"
+          },
+          {
+            "date": "2026-09-06",
+            "period_end": "2026-09-06",
+            "period_start": "2026-08-31",
+            "report_type": "weekly",
+            "source_path": "rapports/2026-09-06_rapport.md",
+            "title": "Bilan de la semaine du 2026-08-31"
+          }
+        ]
+      },
+      "status": 200
+    },
+    "/api/summary": {
+      "body": {
+        "assumptions": {
+          "acwr": "ACWR = fatigue / condition, affiché dès que la condition atteint 10. La zone 0.8–1.3 est un repère indicatif, discuté dans la littérature, pas un seuil de blessure.",
+          "form": "Modèle impulsion-réponse de Banister : condition = moyenne exponentielle 42 j de la charge, fatigue = 7 j, forme = condition(j-1) − fatigue(j-1). D'autres outils nomment ces grandeurs CTL, ATL et TSB (marques revendiquées par Peaksware LLC / TrainingPeaks) ; calculées ici sur le TRIMP, nos valeurs ne sont pas comparables aux leurs.",
+          "monotony": "Monotonie de Foster = moyenne / écart-type de la charge quotidienne sur 7 j ; strain = charge 7 j × monotonie.",
+          "prediction": "Prédictions VDOT (Daniels) depuis la tendance VO2max, et Riegel depuis le meilleur effort récent (exposant 1,06 route / 1,15 trail).",
+          "records": "Records sur fenêtres de splits consécutifs d'environ 1 km : précision ±1 km.",
+          "srpe": "Sans FC : session-RPE de Foster (minutes × RPE) × 0.3 pour rester sur l'échelle TRIMP. RPE absent : valeur par défaut selon le sport (renforcement 5, randonnée 3, autres 4).",
+          "trail_equivalence": "Trail : distance effort = distance + D+ × 1.75 (config/sports/trail.md : 1000 m D+ ≈ 1,5 à 2 km plat).",
+          "trimp": "TRIMP de Banister : minutes × FCr × 0,64 × e^(k·FCr), FCr = (FC moy − FC repos) / (FC max − FC repos), k = 1,92 (homme) / 1,67 (femme).",
+          "trimp_sex_default": "Sexe non renseigné dans le profil : k = 1,92 appliqué par défaut.",
+          "vo2max": "VO2max effective : VO2 de l'allure (Daniels) ÷ fraction de VO2max estimée par (FC moy / FC max − 0,37) / 0,64. Calculée depuis l'allure et la FC MOYENNES de la séance (pas de série seconde par seconde) : ordre de grandeur, pas une mesure. Séances de course de 20 min à 3 h seulement, FC moy ≥ 70 % de la FC max, allure effort ≤ 8:30/km ; tendance 30 j pondérée par la durée, plafonnée à 90 min par séance."
+        },
+        "athlete": {
+          "birth_year": null,
+          "default_location": "Tournai",
+          "hr_max_bpm": 188,
+          "hr_rest_bpm": 48,
+          "hr_threshold_bpm": 172,
+          "name": null,
+          "sex": "male",
+          "usual_slot": "pause de midi (12 h-14 h)",
+          "weight_kg": 68.5
+        },
+        "counts": {
+          "activities": 28,
+          "nutrition": 7,
+          "reports": 3
+        },
+        "files": {
+          "ok": 87
+        },
+        "form": {
+          "acwr": 1.859,
+          "date": "2026-09-23",
+          "fatigue": 88.31,
+          "fitness": 47.51,
+          "form": -40.85,
+          "load": 95.49,
+          "monotony": 1.22,
+          "strain": 792.9,
+          "vo2max": 46.56
+        },
+        "health": {
+          "arc_version": 1,
+          "body_battery_high": 74.0,
+          "body_battery_low": 20.0,
+          "date": "2026-09-23",
+          "hrv_baseline_high_ms": 68.0,
+          "hrv_baseline_low_ms": 56.0,
+          "hrv_overnight_ms": 61.0,
+          "hrv_status": "balanced",
+          "morning_check": "full",
+          "readiness_score": 62.0,
+          "resting_hr_bpm": 51.0,
+          "sleep_awake_s": null,
+          "sleep_deep_s": 4397.0,
+          "sleep_end": null,
+          "sleep_light_s": 13435.0,
+          "sleep_rem_s": 5374.0,
+          "sleep_score": 66.0,
+          "sleep_start": null,
+          "sleep_total_s": 24428.0,
+          "source_path": "medical/2026-09-23_health.md",
+          "stress_avg": 33.0,
+          "verdict": "green",
+          "verdict_reason": "Triade dans la norme : séance maintenue.",
+          "weight_kg": 68.9
+        },
+        "incomplete_files": 0,
+        "objective": {
+          "days_left": 54,
+          "distance_m": 52000.0,
+          "elevation_gain_m": 2400.0,
+          "goal": "finir en restant lucide",
+          "location": "Tournai",
+          "name": "Trail des Collines",
+          "quality_per_week": 2,
+          "race_date": "2026-11-16",
+          "source_path": "planning/active_objective.md",
+          "target_time_s": 25200.0,
+          "training_location": "Tournai",
+          "weekly_start_m": null,
+          "weekly_start_s": 18000.0,
+          "weekly_target_m": null,
+          "weekly_target_s": 28800.0,
+          "weeks_left": 7.7
+        },
+        "settings": {
+          "agents": [
+            "coach",
+            "medical",
+            "nutritionist",
+            "course-strategist"
+          ],
+          "language": "fr",
+          "morning_check": "full",
+          "profile": "planning/Runner_Profile.md",
+          "sport": "trail",
+          "units": "metric"
+        },
+        "today": "2026-09-23"
+      },
+      "status": 200
+    },
+    "/api/week": {
+      "body": {
+        "activities": [
+          {
+            "avg_hr_bpm": 163.0,
+            "date": "2026-09-22",
+            "distance_m": 12000.0,
+            "duration_s": 3757.0,
+            "elevation_gain_m": 27.0,
+            "id": 27,
+            "load": 159.36,
+            "name": "Côtes 8 × 90 s",
+            "sport": "running"
+          },
+          {
+            "avg_hr_bpm": 141.0,
+            "date": "2026-09-23",
+            "distance_m": 10000.0,
+            "duration_s": 3764.0,
+            "elevation_gain_m": 425.0,
+            "id": 28,
+            "load": 95.49,
+            "name": "Endurance fondamentale",
+            "sport": "trail"
+          }
+        ],
+        "body_html": "<h2>Semaine du 2026-09-21</h2>\n<h3>Intention</h3>\n<p>Consolider le volume, une seule séance de qualité si la HRV reste dans la bande.</p>",
+        "known_weeks": [
+          "2026-09-14",
+          "2026-09-21"
+        ],
+        "sessions": [
+          {
+            "best_slot": null,
+            "date": "2026-09-22",
+            "garmin_workout_id": null,
+            "intensity": "vo2max",
+            "outdoor": 1,
+            "planned_distance_m": null,
+            "planned_duration_s": 4200.0,
+            "planned_elevation_m": 450.0,
+            "source_path": "planning/Semaine_2026-09-21.md",
+            "sport": "trail",
+            "status": "done",
+            "title": "Côtes 8 × 90 s",
+            "weather_category": null,
+            "week_start": "2026-09-21"
+          },
+          {
+            "best_slot": null,
+            "date": "2026-09-23",
+            "garmin_workout_id": null,
+            "intensity": "endurance",
+            "outdoor": 1,
+            "planned_distance_m": null,
+            "planned_duration_s": 3000.0,
+            "planned_elevation_m": null,
+            "source_path": "planning/Semaine_2026-09-21.md",
+            "sport": "running",
+            "status": "planned",
+            "title": "Endurance fondamentale 50 min",
+            "weather_category": null,
+            "week_start": "2026-09-21"
+          },
+          {
+            "best_slot": null,
+            "date": "2026-09-24",
+            "garmin_workout_id": null,
+            "intensity": "strength",
+            "outdoor": 0,
+            "planned_distance_m": null,
+            "planned_duration_s": 2400.0,
+            "planned_elevation_m": null,
+            "source_path": "planning/Semaine_2026-09-21.md",
+            "sport": "strength",
+            "status": "planned",
+            "title": "Renforcement 40 min",
+            "weather_category": null,
+            "week_start": "2026-09-21"
+          },
+          {
+            "best_slot": null,
+            "date": "2026-09-26",
+            "garmin_workout_id": null,
+            "intensity": "endurance",
+            "outdoor": 1,
+            "planned_distance_m": 25000.0,
+            "planned_duration_s": null,
+            "planned_elevation_m": 900.0,
+            "source_path": "planning/Semaine_2026-09-21.md",
+            "sport": "trail",
+            "status": "planned",
+            "title": "Sortie longue 25 km / 900 m D+",
+            "weather_category": null,
+            "week_start": "2026-09-21"
+          },
+          {
+            "best_slot": null,
+            "date": "2026-09-27",
+            "garmin_workout_id": null,
+            "intensity": "recovery",
+            "outdoor": 1,
+            "planned_distance_m": null,
+            "planned_duration_s": 2400.0,
+            "planned_elevation_m": null,
+            "source_path": "planning/Semaine_2026-09-21.md",
+            "sport": "running",
+            "status": "planned",
+            "title": "Footing récupération 40 min",
+            "weather_category": null,
+            "week_start": "2026-09-21"
+          }
+        ],
+        "today": "2026-09-23",
+        "weather": [
+          {
+            "best_slot": "midday",
+            "category": "green",
+            "date": "2026-09-21",
+            "location": "Tournai",
+            "precip_mm": 2.6,
+            "slot_reason": "Conditions stables toute la journée.",
+            "temp_max_c": 17.0,
+            "wind_kmh": 11.0
+          },
+          {
+            "best_slot": "midday",
+            "category": "green",
+            "date": "2026-09-22",
+            "location": "Tournai",
+            "precip_mm": 2.4,
+            "slot_reason": "Conditions stables toute la journée.",
+            "temp_max_c": 21.0,
+            "wind_kmh": 14.0
+          },
+          {
+            "best_slot": "midday",
+            "category": "green",
+            "date": "2026-09-23",
+            "location": "Tournai",
+            "precip_mm": 1.6,
+            "slot_reason": "Conditions stables toute la journée.",
+            "temp_max_c": 21.0,
+            "wind_kmh": 17.0
+          },
+          {
+            "best_slot": "morning",
+            "category": "yellow",
+            "date": "2026-09-24",
+            "location": "Tournai",
+            "precip_mm": 0.3,
+            "slot_reason": "Chaleur l'après-midi : sortir tôt.",
+            "temp_max_c": 23.0,
+            "wind_kmh": 19.0
+          },
+          {
+            "best_slot": "midday",
+            "category": "green",
+            "date": "2026-09-25",
+            "location": "Tournai",
+            "precip_mm": 2.9,
+            "slot_reason": "Conditions stables toute la journée.",
+            "temp_max_c": 18.0,
+            "wind_kmh": 14.0
+          },
+          {
+            "best_slot": "midday",
+            "category": "green",
+            "date": "2026-09-26",
+            "location": "Tournai",
+            "precip_mm": 2.3,
+            "slot_reason": "Conditions stables toute la journée.",
+            "temp_max_c": 18.0,
+            "wind_kmh": 16.0
+          },
+          {
+            "best_slot": "morning",
+            "category": "yellow",
+            "date": "2026-09-27",
+            "location": "Tournai",
+            "precip_mm": 2.0,
+            "slot_reason": "Chaleur l'après-midi : sortir tôt.",
+            "temp_max_c": 22.0,
+            "wind_kmh": 10.0
+          }
+        ],
+        "week": {
+          "arc_version": 1,
+          "location": "Tournai",
+          "phase": "Spécifique",
+          "source_path": "planning/Semaine_2026-09-21.md",
+          "target_distance_m": null,
+          "target_duration_s": 28800.0,
+          "target_elevation_m": null,
+          "week_start": "2026-09-21"
+        },
+        "week_start": "2026-09-21"
+      },
+      "status": 200
+    }
+  }
+}

@@ -50,6 +50,75 @@ dossiers au `PATH`, donc « aucun gestionnaire de services » n'y est pas une
 situation atteignable. Le motif fautif reste verrouillé par le palier B, lui
 indépendant de la machine.
 
+### Instantanés « golden » de l'API du tableau de bord (#28)
+
+`tests/install/test_dashboard_golden.py` construit un workspace synthétique à
+date et graine figées (`tests/lib/synthetic.py`, `--today` + `seed`), lance
+`scripts/arc_serve.py` pour de vrai (même infrastructure que
+`test_dashboard.py` : `Sandbox`, `Server`), interroge les routes JSON de
+`arc_serve.ROUTES` — dérivées à l'exécution, jamais d'une liste recopiée à la
+main, pour qu'une route ajoutée sans golden fasse échouer la comparaison
+plutôt que de passer inaperçue (preuve avec un vrai serveur dans
+`TestGoldenDetectsNewRoute`, qui ajoute une route factice en process et
+restaure `ROUTES` via `addCleanup`) — plus la route paramétrée
+`/api/activity/<id>` (routée à part par une expression régulière, donc **hors**
+de `ROUTES` : ajoutée ici explicitement, faute de pouvoir l'énumérer sans
+dupliquer cette regex) et quelques appels paramétrés représentatifs (fenêtre
+courte, un rapport précis). Compare au JSON de
+`tests/data/golden/dashboard_api_<sport>.json` (deux profils, `trail` et
+`road`, chacun empruntant un chemin de calcul différent dans
+`scripts/arc_metrics.py::predictions`).
+
+La comparaison (`tests/lib/golden.py`) est récursive et tolérante aux
+flottants (`rel_tol=1e-6`, `abs_tol=1e-9` — du bruit de représentation IEEE
+754 entre deux exécutions identiques, jamais de quoi changer une décision,
+deux `NaN` issus du même calcul déterministe comptant comme égaux) ; un écart
+produit une ligne par champ, avec le chemin JSON
+(`$.body.series[3].distance_m`), la valeur attendue et la valeur obtenue — la
+sortie est plafonnée à 50 lignes (`… N autres écarts (tronqué)`). Un booléen
+n'est jamais confondu avec `0`/`1`, et un entier qui se met à sortir en
+flottant (ou l'inverse, ex. `5000` vs `5000.0`) est rapporté comme un
+changement de forme JSON même si la valeur numérique est égale. La liste des
+clés ignorées à toute profondeur (`IGNORED_KEYS`) est **volontairement vide** :
+`arc_serve.py` n'émet aujourd'hui aucun champ non déterministe (`source_path`
+est déjà relatif au workspace, `today` est figé par `--today`) et ignorer une
+clé *par son nom* masquerait pour toujours un futur champ légitime qui
+porterait ce nom par malchance — une vraie clé volatile future devrait plutôt
+être exclue par un chemin JSON précis, endpoint par endpoint. Pour la même
+raison, un chemin absolu du bac à sable de test qui fuiterait dans une réponse
+n'est **pas** normalisé avant comparaison (une redaction l'aurait fait
+disparaître des deux côtés et l'aurait rendu indétectable une fois figé dans
+le golden) : `test_matches_golden` vérifie explicitement qu'aucune chaîne de
+la réponse ne contient le chemin du bac à sable courant, avant même de
+comparer au golden. `dump_golden()` écrit les données déjà normalisées, pour
+que le golden versionné reflète exactement ce que `compare()` compare.
+
+Régénération volontaire (après un changement de forme JSON assumé, jamais pour
+faire taire un échec inexpliqué) :
+
+```bash
+ARC_UPDATE_GOLDEN=1 python3 tests/run_tests.py -k Golden
+```
+
+En mode régénération, un statut HTTP différent de 200 (sauf le 404 attendu de
+la route sans paramètre `/api/report`, qui n'a alors aucun rapport à
+résoudre) fait échouer le test plutôt que de figer une route en échec dans le
+golden.
+
+Un diff attendu dans une revue est un ajout/retrait de champ cohérent avec le
+changement de code, ou une valeur qui bouge dans le sens attendu (nouvelle
+métrique, nouveau calcul) — jamais un déplacement de dates ou d'identifiants
+d'activité : le workspace est déterministe (graine et date figées), donc tout
+mouvement inattendu de ces valeurs signale un bug d'ordonnancement.
+
+**Budget de taille.** Le workspace synthétique est volontairement court (40
+jours, ~28 séances) — assez pour que `/api/form`, `/api/health` etc. aient une
+série non triviale, assez peu pour que les deux fichiers golden pèsent environ
+120 Ko chacun (~240 Ko à eux deux). `/api/health` sans paramètre (fenêtre par
+défaut fixe de 90 jours, indépendante de la taille du workspace — voir
+`scripts/arc_serve.py::api_health`) est la plus grosse route individuelle,
+environ 28 % du volume total — loin d'en être la majorité.
+
 ## Palier B — lint des prompts et de la configuration
 
 Aucun modèle, aucun réseau, quelques millisecondes. Vérifie le frontmatter des
