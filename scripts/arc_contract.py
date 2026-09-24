@@ -41,6 +41,11 @@ SPORTS = (
 )
 MORNING_CHECK = ("full", "minimal", "off")
 HRV_STATUS = ("balanced", "unbalanced", "low", "poor", "no_status")
+# Statut de la ligne de base HRV PERSONNELLE (#34, scripts/arc_metrics.py::hrv_baseline_series),
+# distinct de HRV_STATUS (le statut Garmin). Persisté par l'agent qui a lu la sortie de
+# `scripts/arc_index.py hrv-baseline` au moment du bilan matinal, pas recalculé à la volée
+# depuis ce fichier (le tableau de bord, lui, recalcule toujours en direct).
+HRV_PERSONAL_STATUS = ("sous", "dans_la_norme", "au_dessus", "en_construction")
 VERDICT = ("green", "amber", "red")
 WEATHER_CATEGORY = ("green", "yellow", "orange", "red")
 SLOT = ("morning", "midday", "evening", "none")
@@ -127,6 +132,9 @@ SCHEMA = {
             "hrv_baseline_low_ms": "num+",
             "hrv_baseline_high_ms": "num+",
             "hrv_status": _enum(HRV_STATUS),
+            "hrv_personal_low_ms": "num+",
+            "hrv_personal_high_ms": "num+",
+            "hrv_personal_status": _enum(HRV_PERSONAL_STATUS),
             "resting_hr_bpm": "hr",
             "readiness_score": "score",
             "readiness_factors": "obj",

@@ -241,6 +241,7 @@ select { font: inherit; color: var(--ink); background: var(--surface); border: 1
 .chart .line--rhr { stroke: var(--s-rhr); }
 .chart .line--median { stroke: var(--s-median); stroke-dasharray: 4 3; stroke-width: 1.4; }
 .chart .line--personal { stroke: var(--s-hrv); stroke-dasharray: 5 3; stroke-width: 1.2; opacity: 0.75; }
+.chart .line--personal-mean { stroke: var(--s-hrv); stroke-dasharray: 2 2; stroke-width: 1.6; opacity: 0.9; }
 .chart .line--warn { stroke: var(--warn); stroke-dasharray: 2 4; stroke-width: 1.2; opacity: 0.8; }
 .chart .line--alert { stroke: var(--bad); stroke-dasharray: 2 4; stroke-width: 1.2; opacity: 0.8; }
 .chart .line--dplus { stroke: var(--s-dplus); stroke-width: 1.6; }

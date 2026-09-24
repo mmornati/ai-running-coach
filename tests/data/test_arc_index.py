@@ -9,6 +9,7 @@ import sqlite3
 import sys
 import tempfile
 import unittest
+from datetime import date
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[2]
@@ -163,6 +164,42 @@ class TestRealWorkspaceRegressions(Workspace):
         conf = {"morning_check": "off", "sport": "trail"}
         self.assertEqual(I.expected_keys("health", {"morning_check": "off"}, conf), [])
         self.assertEqual(I.expected_keys("health", {"morning_check": "minimal"}, conf), ["readiness_score", "verdict"])
+
+
+class TestHrvBaselineCli(Workspace):
+    """#34 — `arc_index.py hrv-baseline` : la seule voie sans tableau de bord (headless,
+    `/garmin-daily-sync` compris) vers la ligne de base HRV personnelle."""
+
+    def health(self, day: str, hrv_ms: float, mode: str = "full") -> None:
+        self.write(f"medical/{day}_health.md",
+                  arc(f'{{"arc": 1, "kind": "health", "date": "{day}", "morning_check": "{mode}", '
+                      f'"hrv_overnight_ms": {hrv_ms}}}'))
+
+    def test_full_mode_returns_the_computed_point(self):
+        for i in range(40):
+            day = f"2026-08-{i + 1:02d}" if i < 31 else f"2026-09-{i - 30:02d}"
+            self.health(day, 60.0)
+        self.index()
+        conf = {"morning_check": "full"}
+        point = I.hrv_baseline_today(self.conn, conf, date(2026, 9, 9))
+        self.assertEqual(point["morning_check"], "full")
+        self.assertIsNotNone(point["hrv_ln_mean7"])
+        self.assertEqual(point["hrv_personal_status"], "dans_la_norme")
+
+    def test_minimal_mode_returns_no_status_and_says_why(self):
+        """`[health].morning_check = "minimal"` : rien de calculé, jamais un statut deviné
+        depuis un historique qui n'aurait de toute façon pas dû être récupéré ce jour-là."""
+        conf = {"morning_check": "minimal"}
+        point = I.hrv_baseline_today(self.conn, conf, date(2026, 9, 9))
+        self.assertIsNone(point["status"])
+        self.assertEqual(point["morning_check"], "minimal")
+        self.assertIn("full", point["reason"])
+
+    def test_off_mode_returns_no_status(self):
+        conf = {"morning_check": "off"}
+        point = I.hrv_baseline_today(self.conn, conf, date(2026, 9, 9))
+        self.assertIsNone(point["status"])
+        self.assertEqual(point["morning_check"], "off")
 
 
 class TestFrenchNumbers(unittest.TestCase):

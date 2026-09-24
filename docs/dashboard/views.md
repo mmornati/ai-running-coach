@@ -97,15 +97,19 @@ de référence du profil. Sans elles, la charge vient de l'effort perçu seul.
 
 Les tendances du bilan matinal, sur 1, 3 ou 6 mois :
 
-- **HRV nocturne** dans sa bande de référence Garmin (zone pleine) — avec, en tirets,
-  une **référence personnelle** calculée localement : moyenne glissante 7 jours de
-  ln(HRV) comparée à une référence 60 jours ± 0,5 écart-type (méthode Plews, Laursen
-  & Buchheit 2013 ; Kiviniemi et al. 2007 — détail dans `ASSUMPTIONS["hrv_baseline"]`
-  de `scripts/arc_metrics.py`). Quand Garmin ne fournit pas de bande, cette référence
-  personnelle prend sa place. Sous 30 jours d'historique HRV, le statut reste
-  « en construction » plutôt que d'afficher une estimation bruitée. Uniquement
-  calculé et affiché en `[health].morning_check = "full"` : en `minimal`, seule la
-  readiness est exposée. Juste dessous, **la frise des verdicts du coach**, jour par
+- **HRV nocturne** dans sa bande de référence Garmin (zone pleine), avec sa courbe
+  lissée en tirets — moyenne glissante 7 jours de ln(HRV) comparée à une **référence
+  personnelle** 60 jours ± 0,5 écart-type calculée localement (largeur de bande :
+  Plews, Laursen & Buchheit 2013 ; passage au log et CV du lnRMSSD hebdomadaire :
+  Plews et al. 2012 — Kiviniemi et al. 2007 n'est qu'un précédent de l'entraînement
+  guidé par une bande individuelle, pas la source de cette largeur ni de ce CV ;
+  détail complet dans `ASSUMPTIONS["hrv_baseline"]` de `scripts/arc_metrics.py`).
+  Quand Garmin ne fournit pas de bande, cette référence personnelle prend sa place —
+  y compris hors tableau de bord, via `python3 scripts/arc_index.py hrv-baseline`.
+  Sous 30 jours d'historique de référence, le statut reste « en construction » plutôt
+  que d'afficher une estimation bruitée. Uniquement calculé et affiché en
+  `[health].morning_check = "full"` : en `minimal`, seule la readiness est exposée.
+  Juste dessous, **la frise des verdicts du coach**, jour par
   jour (vert *Maintenir*, orange *Alléger*, rouge *Repos*). On y lit ici le repos
   imposé au lendemain de l'ultra, puis le feu vert de la reprise.
 - **FC de repos**, avec sa médiane 7 jours et les seuils +5 / +7 qui la suivent : le

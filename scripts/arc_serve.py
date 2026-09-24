@@ -285,10 +285,16 @@ def api_health(store: Store, q: dict) -> dict:
     start = start_date.isoformat()
     settings = store.meta("settings") or {}
     mode = settings.get("morning_check", "full")
-    # 6 jours de plus pour la médiane FC de repos ; jusqu'à `HRV_REF_WINDOW_DAYS` de plus pour que
-    # la référence HRV 60 j soit définie dès le premier point affiché (seulement en mode "full" :
-    # ce calcul dérivé de l'HRV n'a pas sa place en "minimal" ni "off", voir ASSUMPTIONS["hrv_baseline"]).
-    lookback = M.HRV_REF_WINDOW_DAYS - 1 if mode == "full" else 5
+    # Toujours au moins 7 jours de plus pour que la médiane FC de repos (fenêtre j-1..j-7,
+    # `range(1, 8)` plus bas) soit définie dès le premier point affiché, quel que soit le
+    # mode — un lookback plus court ici décalait silencieusement cette médiane pour les
+    # premiers jours de la série (constaté sur les goldens : `rhr_median7`/`rhr_delta`
+    # différaient de ceux d'un lookback suffisant, alors que rien d'autre n'avait changé).
+    # En mode "full" seulement, lookback bien plus large pour que la référence HRV 60 j
+    # (qui se termine `HRV_LN_WINDOW_DAYS` j avant chaque point, voir `hrv_baseline_series`)
+    # soit définie dès le premier point affiché ; ce calcul dérivé de l'HRV n'a pas sa
+    # place en "minimal" ni "off" (voir ASSUMPTIONS["hrv_baseline"]).
+    lookback = (M.HRV_LN_WINDOW_DAYS + M.HRV_REF_WINDOW_DAYS - 2) if mode == "full" else 7
     fetch_from = (today - timedelta(days=days + lookback)).isoformat()
     rows = store.rows("SELECT * FROM health_day WHERE date >= ? AND date <= ? ORDER BY date",
                       (fetch_from, today.isoformat()))

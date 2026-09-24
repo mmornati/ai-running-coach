@@ -214,25 +214,27 @@ async function viewToday() {
     const latest = h || [...series].reverse().find((p) => p.readiness_score !== undefined || p.hrv_overnight_ms !== undefined) || {};
     const rows = [];
     if (mode === "full") {
-      let lo = latest.hrv_baseline_low_ms, hi = latest.hrv_baseline_high_ms, garminBand = true;
-      if (lo == null || hi == null) {
-        lo = latest.hrv_personal_low_ms; hi = latest.hrv_personal_high_ms; garminBand = false;
-      }
-      const statusTxt = { sous: "sous", au_dessus: "au-dessus de", dans_la_norme: "dans" }[latest.hrv_personal_status];
-      let hrvTxt;
-      if (lo != null && hi != null) {
+      // Le statut personnel (`hrv_personal_status`) porte sur la MOYENNE 7 j, pas sur la
+      // valeur brute de la nuit : on l'affiche tel quel plutôt que de recomparer la valeur
+      // brute à la bande personnelle (qui n'est pas à la même échelle qu'une nuit isolée).
+      const lo = latest.hrv_baseline_low_ms, hi = latest.hrv_baseline_high_ms;
+      const garminBand = lo != null && hi != null;
+      const statusLabel = { sous: "sous", au_dessus: "au-dessus de", dans_la_norme: "dans" }[latest.hrv_personal_status];
+      let hrvTxt, barValue = latest.hrv_overnight_ms, barLo = lo, barHi = hi;
+      if (garminBand) {
         hrvTxt = (latest.hrv_overnight_ms < lo ? "sous la bande" : latest.hrv_overnight_ms > hi ? "au-dessus de la bande" : "dans la bande")
-          + ` ${F.num(lo)}–${F.num(hi)}` + (garminBand ? "" : " (référence personnelle)");
+          + ` ${F.num(lo)}–${F.num(hi)}`;
+        if (statusLabel) hrvTxt += ` · moyenne 7 j ${statusLabel} la référence personnelle`;
       } else if (latest.hrv_personal_status === "en_construction") {
-        hrvTxt = "référence personnelle en construction (historique encore court)";
+        hrvTxt = "pas de bande Garmin disponible ; référence personnelle en construction (historique encore court)";
+      } else if (statusLabel) {
+        hrvTxt = `pas de bande Garmin disponible ; moyenne 7 j ${statusLabel} la référence personnelle ${F.num(latest.hrv_personal_low_ms)}–${F.num(latest.hrv_personal_high_ms)}`;
+        barValue = latest.hrv_personal_mean7_ms; barLo = latest.hrv_personal_low_ms; barHi = latest.hrv_personal_high_ms;
       } else {
         hrvTxt = "bande de référence non renseignée";
       }
-      if (garminBand && statusTxt && latest.hrv_personal_low_ms != null) {
-        hrvTxt += ` · statut personnel : ${statusTxt} la norme`;
-      }
       rows.push(["HRV nocturne", latest.hrv_overnight_ms != null ? `${F.num(latest.hrv_overnight_ms)} ms` : "—",
-        rangeBar(latest.hrv_overnight_ms, lo, hi, 20, 120), hrvTxt]);
+        rangeBar(barValue, barLo, barHi, 20, 120), hrvTxt]);
       const d = latest.rhr_delta;
       const rhrTxt = latest.rhr_median7 != null && d != null
         ? `${d > 0 ? "+" : ""}${F.num(d)} vs médiane 7 j (${F.num(latest.rhr_median7)})${d > 7 ? " — nettement élevée" : d >= 5 ? " — à surveiller" : ""}`
@@ -361,13 +363,16 @@ async function viewHealth(params) {
   if (mode === "full") {
     const hasGarminBand = s.some((p) => p.hrv_baseline_low_ms != null);
     charts.push(["hrv", "HRV nocturne",
-      hasGarminBand
-        ? "Bande pleine : référence Garmin. Tirets : référence personnelle (moyenne 7 j de ln(HRV) vs 60 j ± 0,5 ET)."
-        : "Pas de bande Garmin renseignée : les tirets sont la référence personnelle (moyenne 7 j de ln(HRV) vs 60 j ± 0,5 ET), utilisée à sa place.",
+      (hasGarminBand
+        ? "Bande pleine : référence Garmin (valeur brute de la nuit). Tirets : référence "
+        : "Pas de bande Garmin renseignée : les tirets sont la référence ")
+        + "personnelle — bande appliquée à la MOYENNE 7 j (courbe pointillée), pas à la valeur "
+        + "brute de la nuit (moyenne 7 j de ln(HRV) vs 60 j ± 0,5 ET, fenêtres non chevauchantes).",
       timeChart(dates, [
       { type: "band", lo: s.map((p) => p.hrv_baseline_low_ms), hi: s.map((p) => p.hrv_baseline_high_ms), cls: "band-fill" },
       { type: "line", values: s.map((p) => p.hrv_personal_low_ms), cls: "line line--personal" },
       { type: "line", values: s.map((p) => p.hrv_personal_high_ms), cls: "line line--personal" },
+      { type: "line", values: s.map((p) => p.hrv_personal_mean7_ms), cls: "line line--personal-mean" },
       { type: "line", values: s.map((p) => p.hrv_overnight_ms), cls: "line line--hrv" },
       { type: "dots", values: s.map((p) => p.hrv_overnight_ms), cls: "dot dot--hrv" },
     ], [], { height: 190, label: "HRV nocturne en millisecondes", yFormat: (v) => `${F.num(v)}` }), true]);
@@ -396,6 +401,7 @@ async function viewHealth(params) {
     const p = s[i];
     const bits = [`<strong>${F.dayLong(p.date)}</strong>`];
     if (p.hrv_overnight_ms != null) bits.push(`HRV ${F.num(p.hrv_overnight_ms)} ms`);
+    if (p.hrv_personal_mean7_ms != null) bits.push(`moyenne 7 j ${F.num(p.hrv_personal_mean7_ms)} ms`);
     if (p.hrv_personal_status && p.hrv_personal_status !== "en_construction") {
       bits.push(`référence personnelle : ${{ sous: "sous", au_dessus: "au-dessus de", dans_la_norme: "dans" }[p.hrv_personal_status]} la norme`);
     } else if (p.hrv_personal_status === "en_construction") {

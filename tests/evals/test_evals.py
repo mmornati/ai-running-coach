@@ -263,6 +263,49 @@ class TestCaseFilesAreValid(unittest.TestCase):
                     )
 
 
+class TestRelativeDateFixtures(unittest.TestCase):
+    """#34 — `<N>d_...` (`runner._materialize_relative_dates`) : sans LLM, sans réseau,
+    aucune raison de dépendre de `ARC_LLM_TESTS`. Verrouille le mécanisme qui garde
+    `fixtures/health-own-baseline/` fraîche quelle que soit la date du run — un
+    historique HRV figé à des dates de plus en plus lointaines finirait par sortir de
+    la fenêtre de référence 60 j et changer silencieusement le comportement attendu."""
+
+    def test_offsets_become_real_dates_relative_to_today(self):
+        import datetime
+        case = {"id": "health-own-baseline", "fixture": "health-own-baseline"}
+        with tempfile.TemporaryDirectory(prefix="arc-eval-relative-dates-") as tmp:
+            workspace = runner.build_workspace(Path(tmp), case)
+            names = sorted(p.name for p in (workspace / "medical").glob("*.md"))
+            self.assertEqual(len(names), 40, "40 jours d'historique attendus dans la fixture")
+            self.assertFalse(
+                any(re.match(r"^\d+d_", n) for n in names),
+                f"nom(s) non matérialisé(s) : {[n for n in names if re.match(r'^\\d+d_', n)]}",
+            )
+            for path in (workspace / "medical").glob("*.md"):
+                self.assertNotIn("{{DATE}}", path.read_text(encoding="utf-8"), f"{path.name} : placeholder non substitué")
+                # Le nom encode la date réelle : elle doit être analysable et dans le passé récent.
+                iso = path.stem.split("_", 1)[0]
+                day = datetime.date.fromisoformat(iso)
+                self.assertLessEqual(day, datetime.date.today())
+                self.assertGreaterEqual(day, datetime.date.today() - datetime.timedelta(days=40))
+
+    def test_new_files_excludes_materialized_fixture_files(self):
+        """`_new_files` (utilisé par `file_contains_any`) ne doit pas prendre les fichiers
+        de fixture renommés (dates réelles) pour des fichiers écrits par l'agent — sans
+        quoi l'assertion `file_contains_any` du cas `health-own-baseline` pourrait passer
+        sur un vieux fichier d'historique au lieu du fichier réellement écrit pendant le
+        run, ou pire, échouer à tort si aucun des 40 fichiers ne contient la notion."""
+        case = {"id": "health-own-baseline", "fixture": "health-own-baseline"}
+        with tempfile.TemporaryDirectory(prefix="arc-eval-relative-dates-") as tmp:
+            workspace = runner.build_workspace(Path(tmp), case)
+            result = {"workspace": workspace}
+            self.assertEqual(runner._new_files(case, result, "medical/*.md"), [],
+                             "les 40 fichiers de la fixture ne doivent pas compter comme écrits par le run")
+            new_file = workspace / "medical/2099-01-01_health.md"
+            new_file.write_text("# Santé\n\nréférence personnelle : sous la norme.\n", encoding="utf-8")
+            self.assertEqual(runner._new_files(case, result, "medical/*.md"), [new_file])
+
+
 @unittest.skipIf(runner.skip_reason(), runner.skip_reason() or "palier C désactivé")
 class TestPromptBehaviour(unittest.TestCase):
     """Un test par scénario, généré au chargement du module."""

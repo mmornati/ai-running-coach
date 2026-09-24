@@ -1,10 +1,18 @@
 # #34 — quand Garmin ne rend aucune bande HRV (`baseline` absent de la réponse,
 # watch récente ou historique Garmin trop court), l'agent doit s'appuyer sur la
 # ligne de base personnelle du workspace (moyenne 7 j de ln(HRV) vs référence
-# 60 j ± 0,5 ET, `scripts/arc_metrics.py::hrv_baseline_series`) plutôt que
-# d'inventer un statut Garmin ou de rester muet sur la HRV. La fixture porte 40
-# jours d'historique santé (`medical/*_health.md`), largement au-dessus du
-# seuil de référence (`HRV_REF_MIN_VALID_DAYS` = 30).
+# 60 j ± 0,5 ET, `python3 scripts/arc_index.py hrv-baseline`) plutôt que
+# d'inventer un statut Garmin ou de rester muet sur la HRV.
+#
+# La fixture porte 40 jours d'historique santé (`medical/*_health.md`, noms
+# `<N>d_health.md` matérialisés en dates réelles par le runner — #34,
+# `runner._materialize_relative_dates` — pour que la fraîcheur de l'historique
+# reste correcte quel que soit le jour où ce cas tourne), largement au-dessus
+# du seuil de référence (`HRV_REF_MIN_VALID_DAYS` = 30), avec une baisse
+# réaliste (CV ~ 11 %, pas un cycle parfait) sur les 7 derniers jours — la
+# lecture Garmin sans bande (stub) prolonge cette baisse (47 ms). Une lecture
+# correcte de cet historique doit donc situer la moyenne 7 j SOUS la
+# référence personnelle, jamais dans la norme ou au-dessus.
 id = "health-own-baseline"
 prompt = "Valide ma séance de demain."
 fixture = "health-own-baseline"
@@ -17,8 +25,19 @@ file = "hrv-no-baseline.json"
 
 [expect]
 tools_called = ["get_hrv_data", "get_rhr_day", "get_training_readiness"]
-must_match = ["référence personnelle|ligne de base personnelle|base personnelle|baseline personnelle"]
-must_not_match = ["bande Garmin", "référence Garmin", "statut Garmin"]
+# Deux exigences distinctes (ET, jamais OU) : citer la référence personnelle, ET dire
+# qu'elle est sous la norme — un simple « référence personnelle » sans direction
+# laisserait passer une réponse qui la mentionne sans vraiment l'avoir lue.
+must_match = [
+  "référence personnelle|ligne de base personnelle|base personnelle|baseline personnelle",
+  "sous|en dessous|inférieur|baisse|diminution",
+]
+# Seulement « statut Garmin » : un agent correct DIT explicitement qu'il n'y a « pas de
+# bande Garmin disponible » (ou formulation équivalente), donc interdire "bande Garmin"/
+# "référence Garmin" tout court ferait échouer la bonne réponse pour avoir nommé ce
+# qu'elle exclut. « statut Garmin » (balanced/unbalanced/low/poor) reste un bon signal
+# d'un statut Garmin inventé, puisque le stub n'en a rendu aucun.
+must_not_match = ["statut Garmin"]
 
 [[expect.file_contains_any]]
 glob = "medical/*.md"

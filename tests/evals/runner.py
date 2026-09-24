@@ -22,7 +22,7 @@ import subprocess
 import sys
 import tempfile
 import time
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
 TESTS_DIR = Path(__file__).resolve().parent.parent
@@ -188,6 +188,34 @@ def load_cases() -> list:
     return cases
 
 
+# Convention de dates RELATIVES à l'exécution (#34) : un fichier de fixture nommé
+# `<N>d_reste-du-nom.md` (N = nombre de jours avant AUJOURD'HUI, réel, au moment du
+# run) est renommé `<date réelle>_reste-du-nom.md`, et tout `{{DATE}}` dans son
+# contenu est remplacé par cette même date ISO. Sert aux scénarios dont le
+# comportement attendu dépend de la FRAÎCHEUR de l'historique (une ligne de base
+# HRV calculée sur les 60 derniers jours n'a aucun sens sur des dates figées et
+# de plus en plus lointaines à mesure que le dépôt vieillit) — voir
+# `fixtures/health-own-baseline/`. Une fixture qui ne s'en sert pas n'est pas
+# affectée : aucun fichier `<N>d_...` à réécrire.
+RELATIVE_DATE_NAME = re.compile(r"^(\d+)d_(.+)$")
+
+
+def _materialize_relative_dates(workspace: Path) -> None:
+    today = date.today()
+    for path in list(workspace.rglob("*d_*")):
+        if not path.is_file():
+            continue
+        match = RELATIVE_DATE_NAME.match(path.name)
+        if not match:
+            continue
+        offset, rest = match.groups()
+        real_date = (today - timedelta(days=int(offset))).isoformat()
+        content = path.read_text(encoding="utf-8").replace("{{DATE}}", real_date)
+        target = path.with_name(f"{real_date}_{rest}")
+        target.write_text(content, encoding="utf-8")
+        path.unlink()
+
+
 def build_workspace(root: Path, case: dict) -> Path:
     """Workspace jetable : fixtures + configuration propre au scénario."""
     workspace = root / "workspace"
@@ -196,8 +224,10 @@ def build_workspace(root: Path, case: dict) -> Path:
         shutil.copytree(fixture, workspace)
     else:
         workspace.mkdir(parents=True)
+    _materialize_relative_dates(workspace)
     for name in ("activities", "medical", "nutrition", "planning", "rapports", "resources"):
         (workspace / name).mkdir(parents=True, exist_ok=True)
+    _write_fixture_snapshot(root, workspace)
 
     # Le moteur est lié, jamais copié : les prompts testés sont ceux du dépôt.
     (workspace / "config").mkdir(exist_ok=True)
@@ -387,8 +417,32 @@ def looks_unauthenticated(result: dict) -> bool:
     )
 
 
+FIXTURE_SNAPSHOT_NAME = ".fixture-snapshot.json"
+
+
+def _write_fixture_snapshot(root: Path, workspace: Path) -> None:
+    """Chemins relatifs présents juste après la copie de la fixture (et le
+    renommage des dates relatives, #34) — l'état de référence pour distinguer
+    « apporté par la fixture » de « écrit par l'agent pendant le run ».
+
+    Nécessaire depuis la convention `<N>d_...` (`_materialize_relative_dates`) :
+    un fichier renommé avec la date réelle du jour n'a plus le même nom que dans
+    `tests/evals/fixtures/<fixture>/`, donc une comparaison directe à ce dossier
+    le prendrait à tort pour un fichier écrit par l'agent.
+    """
+    paths = sorted(str(p.relative_to(workspace).as_posix()) for p in workspace.rglob("*") if p.is_file())
+    (root / FIXTURE_SNAPSHOT_NAME).write_text(json.dumps(paths), encoding="utf-8")
+
+
 def _new_files(case: dict, result: dict, pattern: str) -> list:
     """Fichiers du workspace correspondant au motif, hors ceux apportés par la fixture."""
+    snapshot_path = result["workspace"].parent / FIXTURE_SNAPSHOT_NAME
+    if snapshot_path.exists():
+        known = set(json.loads(snapshot_path.read_text(encoding="utf-8")))
+        return sorted(p for p in result["workspace"].glob(pattern)
+                      if p.is_file() and p.relative_to(result["workspace"]).as_posix() not in known)
+    # Repli (snapshot absent, ex. workspace construit hors de `build_workspace`) :
+    # comparaison directe à la fixture statique, comme avant #34.
     fixture = FIXTURES_DIR / case.get("fixture", "base-week")
     return sorted(p for p in result["workspace"].glob(pattern)
                   if p.is_file() and not (fixture / p.relative_to(result["workspace"])).exists())
