@@ -139,6 +139,11 @@ class Sandbox:
     def env(self, hide: tuple = (), isolate: bool = False, **extra: str) -> dict:
         env = dict(os.environ)
         env.pop("ARC_WORKSPACE", None)
+        # `coach_doctor.py` (#31) lit ces variables : une valeur héritée du
+        # shell du contributeur (ou d'un `export` resté dans un terminal CI)
+        # ne doit jamais fuiter dans un test qui ne les fixe pas lui-même.
+        for leaky in ("ARC_DOCTOR_NOW", "GARMIN_TOKENS_DIR", "GARMINTOKENS", "ARC_FAKE_UNAME"):
+            env.pop(leaky, None)
         if isolate or hide:
             path = str(self.isolated_bin(tuple(hide)))
         else:

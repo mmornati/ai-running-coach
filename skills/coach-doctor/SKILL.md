@@ -5,9 +5,9 @@ description: Diagnostic d'installation en une commande — vérifie l'échéance
 
 # Diagnostic d'installation
 
-`scripts/coach_doctor.py` sait tout vérifier d'un coup, sans rien écrire ni
-appeler Garmin Connect. Ne devinez pas la cause d'un problème d'installation à
-la main — lancez-le d'abord.
+`scripts/coach_doctor.py` sait tout vérifier d'un coup, sans rien écrire —
+par défaut, sans appeler Garmin Connect non plus (voir §5). Ne devinez pas la
+cause d'un problème d'installation à la main — lancez-le d'abord.
 
 ## 1. Lancer le diagnostic
 
@@ -20,8 +20,8 @@ commande de correction sous chaque ligne non ✅ :
 
 | Vérification | Ce qu'elle couvre |
 |---|---|
-| `garmin_token` | Âge/échéance des tokens `~/.garminconnect` — ⚠️ à moins de 14 jours, ❌ si expirés ou absents |
-| `garmin_mcp` | MCP `garmin` joignable (handshake léger, sans appel Garmin réel) |
+| `garmin_token` | Âge/échéance des tokens (`~/.garminconnect` par défaut) — ⚠️ à moins de 14 jours, ❌ si expirés ou absents |
+| `garmin_mcp` | Présence/exécutabilité du binaire MCP `garmin` — pas de handshake réel sans `--probe-mcp` (§5) |
 | `config_files` | `config/workspace.toml` et `config/workspace.user.toml` sont du TOML valide |
 | `athlete_profile` | FC max / FC de repos renseignées dans le profil — sinon repli sur le RPE |
 | `index_freshness` | `.arc/coach.db` à jour par rapport aux fichiers du workspace |
@@ -35,8 +35,10 @@ Un ❌ fait échouer la commande (code de sortie non nul) ; un ⚠️ ou un ℹ�
 ## 2. Relayer le résultat
 
 Restituez le tableau (ou un résumé s'il est long, selon `[coaching].verbosity`)
-**dans la langue des documents** (`config/workspace.toml` → `[language].documents`),
-en mettant en avant :
+**dans la langue des réponses** (`config/workspace.toml` → `[language].responses`,
+défaut `auto` = celle de la requête de l'athlète — ce diagnostic est une
+réponse en chat, pas un fichier persisté dans `activities/`/`medical/`/etc.,
+donc `[language].documents` ne s'applique pas ici), en mettant en avant :
 
 - tout ❌, avec sa commande de correction telle quelle — ne la reformulez pas ;
 - les ⚠️ qui touchent directement la demande de l'athlète (ex. token qui expire
@@ -56,9 +58,9 @@ python3 scripts/coach_doctor.py --json
 
 Schéma documenté en tête de `scripts/coach_doctor.py` — un objet par
 vérification (`id`, `status`, `message`, `fix`), plus `expires_at`/`days_left`/
-`source` pour `garmin_token`. Utilisé par le tableau de bord et par la story
-#32 (alerte ntfy avant expiration des tokens) : ne changez pas les noms de
-champs sans mettre à jour les deux.
+`source` pour `garmin_token`. Conçu pour être réutilisé tel quel par la story
+#32 (alerte ntfy avant expiration des tokens, via `--check garmin_token`) : ne
+changez pas les noms de champs sans mettre à jour les deux.
 
 ## 4. Quand le charger de vous-même
 
@@ -70,12 +72,20 @@ champs sans mettre à jour les deux.
 - Jamais en boucle : si le diagnostic est déjà tout vert, ne le relancez pas
   sans nouvelle raison.
 
-## 5. Ce que ce script NE fait PAS
+## 5. Ce que ce script NE fait PAS (et l'exception `--probe-mcp`)
 
-- Il n'écrit rien sur le disque (pas de réindexation, pas de correction
-  automatique) et n'affiche jamais le contenu d'un token.
-- Il n'appelle pas l'API Garmin Connect (le check `garmin_mcp` se limite à un
-  handshake MCP `initialize`, borné dans le temps).
+- Il n'écrit jamais rien sur le disque (pas de réindexation, pas de correction
+  automatique) et n'affiche jamais le contenu d'un token — ni en table, ni en
+  `--json`.
+- **Par défaut**, il ne contacte pas Garmin Connect : `garmin_mcp` vérifie
+  seulement que le binaire configuré existe et est exécutable. Lancer le vrai
+  `garmin-mcp` déclencherait une authentification Garmin (réseau, retries,
+  éventuelle réécriture des tokens) avant même de répondre en MCP — bien plus
+  qu'une vérification d'installation ne doit faire. Un handshake MCP
+  `initialize` réel, borné dans le temps, existe en opt-in via
+  `--probe-mcp` — **ce drapeau contacte Garmin Connect** : ne le proposez à
+  l'athlète que s'il demande explicitement une vérification plus poussée que
+  « le binaire est-il installé ? ».
 - Il ne remplace pas `/coach-setup` (configuration initiale) ni
   `scripts/setup-ntfy.sh` (configuration des notifications) — il vous dit
   seulement lequel lancer.

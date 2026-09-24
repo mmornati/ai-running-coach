@@ -1,32 +1,23 @@
 # `coach doctor` (#31/#32) : l'agent lance le diagnostic d'installation et
-# restitue la commande de renouvellement des tokens Garmin.
+# restitue la commande de renouvellement des tokens Garmin, avec le bon
+# nombre de jours restants.
 #
-# HERMÉTICITÉ (documentée, pas contournée) : `scripts/coach_doctor.py` lit
-# les tokens Garmin réels sous `~/.garminconnect` (voir sa docstring), et
-# `tests/evals/runner.py::run_case` hérite l'environnement du process de test
-# TEL QUEL (`dict(os.environ, ARC_WORKSPACE=..., ARC_TOOL_LOG=...)`) — contrairement
-# au palier A (`tests/lib/sandbox.py`), il n'isole PAS `HOME`. Rendre ce cas
-# hermétique demanderait soit que le runner isole HOME/injecte
-# GARMIN_TOKENS_DIR par cas (changement d'infrastructure partagée, hors
-# périmètre de #31), soit de faire invoquer un chemin de tokens de test par le
-# PROMPT lui-même (`--tokens-dir`), ce qui serait artificiel et ne
-# correspond pas à l'usage réel du skill `coach-doctor` (aucun flag).
+# HERMÉTIQUE (revue PR #76, blocage n°7) : `tests/evals/runner.py::run_case`
+# pointe TOUJOURS `GARMIN_TOKENS_DIR`/`GARMINTOKENS` sur un répertoire de
+# tokens propre à ce cas (jamais le vrai `~/.garminconnect` du contributeur ou
+# du runner CI), et `[tokens]` ci-dessous y dépose un `garmin_tokens.json`
+# FACTICE dont la mtime est calée pour que `coach_doctor.py` — qui estime
+# l'échéance via mtime + ~6 mois, faute d'échéance explicite dans ce fichier
+# (voir sa docstring) — rende exactement `expires_in_days` jours restants au
+# moment du run.
 #
-# Le cas reste néanmoins fiable dans les DEUX environnements où le palier C
-# tourne réellement (voir tests/README.md : CI planifiée/manuelle/étiquette
-# `run-evals`, jamais sur poste de contributeur automatiquement) : un
-# runner GitHub Actions frais n'a jamais `~/.garminconnect`, et
-# `scripts/coach_doctor.py` y rend alors `garmin_token: error` (tokens
-# absents) avec le MÊME correctif que des tokens expirés :
-# `uv run garmin-mcp-auth` (vérifié : `check_garmin_token`, statut
-# "missing" ou "error" par échéance dépassée mènent au même `fix`). Seul un
-# poste de développeur qui aurait DÉJÀ authentifié `garmin-mcp` avec des
-# tokens frais (> 14 jours restants) romprait l'assertion — cas rare en local
-# et sans incidence en CI.
+# La preuve que le VRAI diagnostic a tourné (et pas une réponse générique) est
+# le nombre de jours ("5") : un agent qui devinerait sans lancer l'outil ne
+# tomberait pas dessus par hasard.
 #
 # tools_called n'est pas utilisé ici : `coach_doctor.py` est lancé via l'outil
-# Bash, pas via un appel d'outil MCP journalisé par les stubs — la seule
-# preuve observable par ce palier est le texte final restitué à l'athlète.
+# Bash, pas via un appel d'outil MCP journalisé par les stubs — la preuve
+# observable par ce palier est le texte final restitué à l'athlète.
 id = "doctor-token-expiring"
 prompt = "Le daily-sync semble échouer depuis ce matin, peux-tu diagnostiquer l'installation ?"
 fixture = "configured"
@@ -34,5 +25,8 @@ fixture = "configured"
 [config.agents]
 enabled = ["coach"]
 
+[tokens]
+expires_in_days = 5
+
 [expect]
-must_match = ["uv run garmin-mcp-auth"]
+must_match = ["uv run garmin-mcp-auth", "5\\s*jour"]

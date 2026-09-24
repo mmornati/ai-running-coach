@@ -247,6 +247,21 @@ class TestCaseFilesAreValid(unittest.TestCase):
                     unknown = set(values) - set(schema[section])
                     self.assertFalse(unknown, f"clés inconnues dans [{section}] : {sorted(unknown)}")
 
+    def test_tokens_section_is_well_formed(self):
+        """`[tokens]` (#31/#32) : seule clé connue `expires_in_days`, un nombre."""
+        for case in self.cases:
+            tokens = case.get("tokens")
+            if tokens is None:
+                continue
+            with self.subTest(case=case["id"]):
+                unknown = set(tokens) - {"expires_in_days"}
+                self.assertFalse(unknown, f"[tokens] : clé(s) inconnue(s) {sorted(unknown)}")
+                if "expires_in_days" in tokens:
+                    self.assertIsInstance(
+                        tokens["expires_in_days"], (int, float),
+                        "[tokens].expires_in_days doit être un nombre",
+                    )
+
 
 @unittest.skipIf(runner.skip_reason(), runner.skip_reason() or "palier C désactivé")
 class TestPromptBehaviour(unittest.TestCase):

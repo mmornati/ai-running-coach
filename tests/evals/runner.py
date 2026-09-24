@@ -21,6 +21,7 @@ import sqlite3
 import subprocess
 import sys
 import tempfile
+import time
 from datetime import date, datetime, timezone
 from pathlib import Path
 
@@ -28,6 +29,16 @@ TESTS_DIR = Path(__file__).resolve().parent.parent
 REPO = TESTS_DIR.parent
 CASES_DIR = TESTS_DIR / "evals" / "cases"
 FIXTURES_DIR = TESTS_DIR / "evals" / "fixtures"
+
+sys.path.insert(0, str(REPO / "scripts"))
+import coach_doctor  # noqa: E402 — réutilise TOKEN_VALIDITY_FALLBACK_DAYS (#31/#32)
+
+# Répertoire de tokens Garmin FACTICE, propre à chaque cas (#31/#32) : pointé
+# par `GARMIN_TOKENS_DIR`/`GARMINTOKENS` pour TOUS les cas (voir `run_case`),
+# ce qui rend `coach_doctor.py` hermétique même quand un cas ne script rien
+# sous `[tokens]` — il verra simplement « tokens absents », jamais ceux du
+# vrai `~/.garminconnect` du contributeur ou du runner CI.
+FAKE_TOKENS_DIRNAME = "garminconnect"
 
 DEFAULT_MODEL = "claude-haiku-4-5-20251001"
 DEFAULT_REPEAT = 3
@@ -249,7 +260,45 @@ def build_workspace(root: Path, case: dict) -> Path:
                     lines.append(f'{key} = "{value}"')
             lines.append("")
         (workspace / "config/workspace.user.toml").write_text("\n".join(lines), encoding="utf-8")
+
+    _write_fake_tokens(root, case)
     return workspace
+
+
+def _write_fake_tokens(root: Path, case: dict) -> None:
+    """Section optionnelle `[tokens]` (#31/#32) : dépose un `garmin_tokens.json`
+    FACTICE (aucune valeur qui ressemble à un vrai secret) dans le répertoire
+    de tokens propre à ce cas, avec une mtime choisie pour que
+    `coach_doctor.py` — qui estime l'échéance via mtime + ~6 mois, faute
+    d'échéance explicite dans ce fichier (voir sa docstring) — rende
+    `expires_in_days` jours restants au moment du run.
+
+    Rend le cas `doctor-token-expiring` hermétique : sans cette section (ou
+    pour tout cas qui ne la déclare pas), le répertoire reste absent et
+    `coach_doctor.py` verra simplement « tokens absents », jamais ceux du
+    contributeur.
+    """
+    tokens_cfg = case.get("tokens")
+    if not tokens_cfg:
+        return
+    tokens_dir = root / FAKE_TOKENS_DIRNAME
+    tokens_dir.mkdir(parents=True, exist_ok=True)
+    token_path = tokens_dir / "garmin_tokens.json"
+    token_path.write_text(json.dumps({
+        "di_token": "fake-not-a-real-secret.eyJmYWtlIjp0cnVlfQ.fake-signature",
+        "di_refresh_token": "fake-refresh-not-a-real-secret",
+        "di_client_id": "fake-client-id-for-tests",
+    }), encoding="utf-8")
+
+    expires_in_days = tokens_cfg.get("expires_in_days")
+    if expires_in_days is not None:
+        # +0.5 jour de marge : `coach_doctor.py` calcule `days_left` avec
+        # `.days` (floor) contre SA PROPRE horloge, prise quelques millisecondes
+        # après celle-ci — sans cette marge, un pile-poil `expires_in_days`
+        # jours peut retomber sur `expires_in_days - 1` par arrondi.
+        age_days = coach_doctor.TOKEN_VALIDITY_FALLBACK_DAYS - (float(expires_in_days) + 0.5)
+        mtime = time.time() - age_days * 86400
+        os.utime(token_path, (mtime, mtime))
 
 
 # Timeout MCP côté client pour un cas qui scripte `error = "timeout"`
@@ -270,7 +319,17 @@ def run_case(case: dict, workspace: Path, timeout: int = 300) -> dict:
         "--permission-mode", "acceptEdits",
         "--strict-mcp-config", "--mcp-config", str(workspace / ".mcp.json"),
     ]
-    env = dict(os.environ, ARC_WORKSPACE=str(workspace), ARC_TOOL_LOG=str(tool_log))
+    # Répertoire de tokens FACTICE, propre à ce cas (#31/#32, revue PR #76
+    # blocage n°7) : toujours défini, même quand le cas ne script rien sous
+    # `[tokens]` (le répertoire reste alors absent — `coach_doctor.py` verra
+    # « tokens absents », jamais le vrai `~/.garminconnect` du contributeur ou
+    # du runner CI). `workspace.parent` est `root` tel que passé à
+    # `build_workspace`, qui y écrit `garminconnect/garmin_tokens.json`.
+    fake_tokens_dir = str(workspace.parent / FAKE_TOKENS_DIRNAME)
+    env = dict(
+        os.environ, ARC_WORKSPACE=str(workspace), ARC_TOOL_LOG=str(tool_log),
+        GARMIN_TOKENS_DIR=fake_tokens_dir, GARMINTOKENS=fake_tokens_dir,
+    )
     if _uses_timeout_error(case):
         env.setdefault("MCP_TOOL_TIMEOUT", MCP_TOOL_TIMEOUT_MS)
     try:
