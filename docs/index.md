@@ -3,7 +3,7 @@
 
 ## Quatre spécialistes, un seul objectif : le vôtre
 
-`ai-running-coach` transforme votre IDE en staff d'entraînement complet. Quatre agents IA open source, en français par défaut, coordonnés par un coach — chacun avec ses skills, ses données et ses protocoles. Vous décrivez votre objectif, ils construisent le plan.
+`ai-running-coach` transforme votre IDE en staff d'entraînement complet. Quatre agents IA open source, en français par défaut, coordonnés par un coach — chacun avec ses skills, ses données et ses protocoles. Vous décrivez votre objectif, ils construisent le plan. <!-- count:agents -->
 
 <div class="arc-team" markdown>
 
@@ -97,7 +97,7 @@ Chaque séance est poussée dans votre calendrier Garmin Connect. Après l'effor
 <div class="arc-section" markdown>
   <div class="arc-section__inner" markdown>
 
-## Neuf skills, prêts à l'emploi
+## Douze skills, prêts à l'emploi
 
 Chaque agent s'appuie sur des skills spécialisés — des protocoles précis que l'IA suit à la lettre.
 
@@ -112,6 +112,9 @@ Chaque agent s'appuie sur des skills spécialisés — des protocoles précis qu
 <div class="arc-skill"><span class="arc-skill__name">Synchronisation Garmin</span><span class="arc-skill__desc">récupération efficace des données, sans explosion du contexte</span></div>
 <div class="arc-skill"><span class="arc-skill__name">Intervals.icu</span><span class="arc-skill__desc">événements et wellness en destination secondaire</span></div>
 <div class="arc-skill"><span class="arc-skill__name">Sync quotidienne</span><span class="arc-skill__desc">synchronisation automatique sur votre machine coach, résumé envoyé sur le téléphone</span></div>
+<div class="arc-skill"><span class="arc-skill__name">Premier démarrage</span><span class="arc-skill__desc">entretien de configuration : staff d'agents, discipline, style de coaching, profil d'athlète</span></div>
+<div class="arc-skill"><span class="arc-skill__name">Contrat de données</span><span class="arc-skill__desc">schéma structuré des fichiers Markdown pour l'index et le tableau de bord</span></div>
+<div class="arc-skill"><span class="arc-skill__name">Backfill du contrat</span><span class="arc-skill__desc">mise à niveau des fichiers existants vers le contrat de données</span></div>
 
 </div>
 
