@@ -44,6 +44,14 @@ Leviers disponibles dans un test :
 Chaque cas nomme le défaut qu'il verrouille. Pour en ajouter un, partez de
 `tests/install/test_install_regressions.py`.
 
+`tests/install/test_coach_doctor.py` (#31) verrouille `scripts/coach_doctor.py` :
+âges de tokens (frais/proche échéance/expiré/absent, via un `oauth2_token.json`
+façon `garth` avec `refresh_token_expires_at` explicite, ou via le repli sur
+mtime d'un `garmin_tokens.json` legacy), MCP `garmin` stub présent-mais-muet
+vs absent du `PATH`, profil athlète incomplet, index `.arc/coach.db` périmé,
+crontab/LaunchAgent absents (jamais qu'une `info`, jamais une panne), schéma
+`--json`, et l'absence de toute valeur de token dans la sortie (table et JSON).
+
 **Tests ignorés.** `TestCoachRemote` s'ignore là où `screen` ou `tmux` existe
 dans `/opt/homebrew/bin` ou `/usr/local/bin` : `coach-remote.sh` rajoute ces
 dossiers au `PATH`, donc « aucun gestionnaire de services » n'y est pas une

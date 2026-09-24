@@ -4,7 +4,7 @@
 ![](assets/ridge.jpg)
 </div>
 
-`ai-running-coach` fournit **12 skills** que les agents chargent à la demande pour des tâches spécifiques.
+`ai-running-coach` fournit **13 skills** que les agents chargent à la demande pour des tâches spécifiques.
 
 ## Vue d'ensemble
 
@@ -22,6 +22,7 @@
 <div class="arc-skill"><span class="arc-skill__name"><a href="skills/coach-setup.md">Premier démarrage</a></span><span class="arc-skill__desc">Entretien de configuration : staff d'agents, discipline, style de coaching, bilan santé, profil d'athlète</span></div>
 <div class="arc-skill"><span class="arc-skill__name"><a href="skills/workspace-data-contract.md">Contrat de données</a></span><span class="arc-skill__desc">Schéma JSON du bloc <code>arc</code> pour la persistance structurée des données</span></div>
 <div class="arc-skill"><span class="arc-skill__name"><a href="skills/arc-backfill.md">Backfill du contrat</a></span><span class="arc-skill__desc">Migration des fichiers Markdown existants pour les conformer au contrat de données</span></div>
+<div class="arc-skill"><span class="arc-skill__name"><a href="skills/coach-doctor.md">Diagnostic d'installation</a></span><span class="arc-skill__desc">Vérification en une commande des tokens Garmin, du MCP, de la configuration et du daily-sync</span></div>
 
 </div>
 
@@ -53,3 +54,4 @@ Certains skills incluent des scripts Python :
 | `analyze_session_parts.py` | session-parts-analyzer | stdlib uniquement |
 | `download_fit.py` | fit-download | `garminconnect` + `fitparse` (via l'environnement garmin-mcp) |
 | `coach_setup.py` | coach-setup | stdlib uniquement |
+| `coach_doctor.py` | coach-doctor | stdlib uniquement |

@@ -2,6 +2,19 @@
 
 Cette page regroupe les problèmes courants et leurs solutions.
 
+## Par où commencer
+
+Avant de chercher plus loin, lancez le diagnostic d'installation en une
+commande — il vérifie les tokens Garmin, le MCP, la configuration, le profil
+athlète, l'index et le daily-sync sans rien modifier :
+
+```bash
+python3 scripts/coach_doctor.py
+```
+
+Voir le skill [`coach-doctor`](skills/coach-doctor.md) pour le détail de
+chaque vérification et la sortie `--json`.
+
 ## Installation
 
 ### `uv` introuvable après installation
