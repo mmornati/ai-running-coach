@@ -149,6 +149,11 @@ def record_result(case_id: str, passed: int, attempts: int) -> None:
         "model": model(),
         "repeat": repeat(),
         "threshold": threshold(),
+        # Même variable que celle lue par le workflow `Évals` pour construire le `-k`
+        # (voir `.github/workflows/evals.yml`) : présente ici pour que
+        # `render_results.py` distingue un cas exclu volontairement par ce filtre
+        # d'un cas que le run a simplement interrompu en route (#29, revue PR #74).
+        "case_filter": os.environ.get("ARC_EVAL_CASE_FILTER") or None,
     }
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(data, indent=2, sort_keys=True, ensure_ascii=False), encoding="utf-8")

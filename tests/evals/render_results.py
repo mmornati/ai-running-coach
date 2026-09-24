@@ -66,6 +66,18 @@ def _min_passes(threshold: float, repeat: int) -> int:
     return math.ceil(threshold * repeat - 1e-9)
 
 
+def _case_matches_filter(case_id: str, case_filter: str) -> bool:
+    """Approximation du `-k` d'`unittest` : sous-chaîne, insensible à la casse, sur
+    l'identifiant du cas OU sur le nom de test dérivé (`test_<id avec _ pour ->`,
+    voir `tests/evals/test_evals.py::_attach_cases`) — c'est ce nom-là que
+    `run_tests.py -k` compare réellement, mais un mainteneur qui tape un motif
+    tapera plus naturellement l'identifiant TOML (`sport-trail`) que son nom de
+    test (`test_sport_trail`)."""
+    needle = case_filter.lower()
+    test_name = f"test_{case_id.replace('-', '_')}"
+    return needle in case_id.lower() or needle in test_name.lower()
+
+
 def render(results: dict, case_ids: list, meta: dict, previous: dict | None = None) -> str:
     """Rend le Markdown complet. Pur : aucune I/O, ce qui le rend testable au palier D."""
     previous = previous or {}
@@ -100,15 +112,22 @@ def render(results: dict, case_ids: list, meta: dict, previous: dict | None = No
     # Un `results` non vide prouve qu'un run a bien eu lieu cette fois-ci (au moins
     # un cas y a écrit — voir `runner.record_result`) : un cas absent de ce `results`
     # non vide n'est donc pas « jamais exécuté », il a été laissé de côté par un run
-    # interrompu en cours de route (timeout du job CI, filtre `-k` du déclenchement
-    # manuel…) — distinction utile pour ne pas confondre un trou dans le run avec un
-    # cas qui n'a tout simplement encore jamais tourné (#29, revue de la PR #74).
+    # interrompu en cours de route (timeout du job CI…) — distinction utile pour ne
+    # pas confondre un trou dans le run avec un cas qui n'a tout simplement encore
+    # jamais tourné (#29, revue PR #74). Un `case_filter` (`-k`, voir
+    # `runner.record_result`) explique une troisième forme d'absence, volontaire
+    # celle-ci : un cas exclu par le filtre n'a jamais été censé tourner, ce n'est
+    # pas la même chose qu'un cas qui aurait dû tourner et n'a pas eu le temps.
+    case_filter = meta.get("case_filter")
     ran_this_time = bool(results)
     any_result = False
     for case_id in case_ids:
         entry = results.get(case_id)
         if entry is None:
-            marker = "— (interrompu)" if ran_this_time else "—"
+            if case_filter and not _case_matches_filter(case_id, case_filter):
+                marker = "— (exclu par le filtre)"
+            else:
+                marker = "— (interrompu)" if ran_this_time else "—"
             lines.append(f"| `{case_id}` | {marker} | {marker} |")
             continue
         any_result = True
@@ -141,6 +160,7 @@ def main(argv=None) -> int:
     parser.add_argument("--runner", default="claude -p")
     parser.add_argument("--repeat", type=int, default=None)
     parser.add_argument("--threshold", type=float, default=None)
+    parser.add_argument("--case-filter", default=None, help="filtre `-k` utilisé pour ce run, si connu")
     args = parser.parse_args(argv)
 
     from tests.evals import runner as evals_runner
@@ -160,6 +180,7 @@ def main(argv=None) -> int:
         "runner": args.runner,
         "repeat": args.repeat or saved_meta.get("repeat") or evals_runner.repeat(),
         "threshold": args.threshold if args.threshold is not None else saved_meta.get("threshold", evals_runner.threshold()),
+        "case_filter": args.case_filter or saved_meta.get("case_filter"),
     }
 
     case_ids = [case["id"] for case in evals_runner.load_cases()]

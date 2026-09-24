@@ -222,7 +222,15 @@ jobs:
               issue_number: context.payload.pull_request.number,
               per_page: 100,
             });
-            const existing = comments.find((c) => c.body && c.body.includes(MARKER));
+            // Le login est vérifié en plus du marqueur (revue PR #74, second passage,
+            // point 3) : un humain qui citerait le marqueur en réponse (« comme dit
+            // plus haut : <!-- arc-evals-results --> ») ne doit jamais être pris pour
+            // le commentaire du bot — `updateComment` sur le commentaire de quelqu'un
+            // d'autre échoue en 403, et rien ne garantit qu'un tel commentaire soit le
+            // bon de toute façon.
+            const existing = comments.find(
+              (c) => c.body && c.body.includes(MARKER) && c.user && c.user.login === "github-actions[bot]",
+            );
 
             if (existing) {
               await github.rest.issues.updateComment({

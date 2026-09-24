@@ -76,6 +76,26 @@ class TestRecordResult(unittest.TestCase):
             self.assertEqual(data["_meta"]["model"], "claude-haiku-4-5-20251001")
             self.assertEqual(data["_meta"]["repeat"], 3)
             self.assertIn("date", data["_meta"])
+            self.assertIsNone(data["_meta"]["case_filter"], "pas de filtre réglé : doit être None, pas absent")
+
+    def test_meta_captures_the_case_filter_when_set(self):
+        """Même variable que celle lue par le workflow `Évals` pour le `-k` (#74,
+        second passage, point 4) — `render_results.py` s'en sert pour distinguer un
+        cas exclu volontairement d'un cas interrompu en route."""
+        with tempfile.TemporaryDirectory() as tmp:
+            target = Path(tmp) / "results.json"
+            with mock.patch.dict("os.environ", {runner.RESULTS_ENV: str(target), "ARC_EVAL_CASE_FILTER": "sport-trail"}):
+                runner.record_result("sport-trail-elevation", passed=3, attempts=3)
+            data = json.loads(target.read_text(encoding="utf-8"))
+            self.assertEqual(data["_meta"]["case_filter"], "sport-trail")
+
+    def test_meta_case_filter_is_none_when_env_var_is_empty_string(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            target = Path(tmp) / "results.json"
+            with mock.patch.dict("os.environ", {runner.RESULTS_ENV: str(target), "ARC_EVAL_CASE_FILTER": ""}):
+                runner.record_result("case-a", passed=1, attempts=1)
+            data = json.loads(target.read_text(encoding="utf-8"))
+            self.assertIsNone(data["_meta"]["case_filter"])
 
     def test_two_calls_merge_instead_of_overwriting(self):
         """Un deuxième cas ne doit jamais effacer le premier — lecture-fusion-écriture,

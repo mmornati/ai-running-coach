@@ -186,15 +186,27 @@ class TestEvalsWorkflowLabelGuard(unittest.TestCase):
         types = [t.strip() for t in types_match.group(1).split(",")]
         self.assertEqual(types, ["labeled"], f"evals.yml : types attendus ['labeled'], trouvé {types}")
 
-    def test_evals_job_if_condition_has_all_three_guards(self):
-        """Isolé au job `evals` lui-même (revue PR #74, point 2) : avant, ces trois
-        gardes étaient cherchées dans le fichier entier, donc une garde retirée du
-        job `evals` mais laissée ailleurs (ex. dans le job `comment`) passait quand
-        même — ce qui ne protège en rien le job qui exécute réellement les prompts."""
+    def test_evals_job_if_condition_has_all_guards(self):
+        """Isolé au job `evals` lui-même (revue PR #74, point 2) : avant, ces gardes
+        étaient cherchées dans le fichier entier, donc une garde retirée du job
+        `evals` mais laissée ailleurs (ex. dans le job `comment`) passait quand même
+        — ce qui ne protège en rien le job qui exécute réellement les prompts.
+
+        Les QUATRE conditions comptent, pas seulement trois (revue PR #74, second
+        passage, point 1) : sans `github.event.label.name == 'run-evals'`, poser
+        n'IMPORTE QUELLE AUTRE étiquette sur une PR qui porte déjà `run-evals`
+        redéclenche la suite payante — `contains(labels, 'run-evals')` reste vrai
+        pour ce nouvel événement `labeled`, puisque l'étiquette est toujours là."""
         self.assertIn("evals", self.jobs, "evals.yml : job `evals` introuvable")
         if_blocks = _extract_scalar_blocks(self.jobs["evals"], "if")
         self.assertTrue(if_blocks, "evals.yml : job `evals` sans condition `if:` de haut niveau")
         condition = if_blocks[0]  # le premier `if:` du bloc est celui du job (avant les `if:` de ses steps)
+        self.assertIn(
+            "github.event.label.name == 'run-evals'", condition,
+            "evals.yml : le job `evals` ne vérifie pas que L'ÉTIQUETTE QUI VIENT D'ÊTRE POSÉE est "
+            "`run-evals` — sans ça, ajouter une étiquette sans rapport à une PR déjà étiquetée "
+            "`run-evals` relance la suite payante à chaque fois.",
+        )
         self.assertRegex(
             condition, r"contains\([^)]*labels[^)]*,\s*'run-evals'\)",
             "evals.yml : le job `evals` ne vérifie pas l'étiquette `run-evals` dans sa propre condition",
@@ -206,6 +218,26 @@ class TestEvalsWorkflowLabelGuard(unittest.TestCase):
         self.assertIn(
             "mmornati/ai-running-coach", condition,
             "evals.yml : le job `evals` ne vérifie pas le dépôt canonique (schedule/dispatch inclus)",
+        )
+
+    def test_concurrency_is_scoped_to_the_evals_job_not_the_workflow(self):
+        """Revue PR #74, second passage, point 2 : verrouille la correction du point
+        bloquant du premier passage. Un `concurrency:` de HAUT NIVEAU (colonne 0)
+        rejoint son groupe dès que le workflow démarre, AVANT même que la condition
+        `if:` du job `evals` ne soit évaluée — donc pour CHAQUE étiquette posée sur
+        une PR, pas seulement `run-evals`. Le groupe doit être déclaré SOUS le job
+        `evals` (indenté), pour n'être rejoint que quand ce job tourne réellement."""
+        self.assertNotRegex(
+            self.text, r"(?m)^concurrency:",
+            "evals.yml : `concurrency:` de haut niveau — n'importe quelle étiquette ajoutée à une PR "
+            "annulerait un run `evals` payant en cours, même si cette étiquette n'est pas `run-evals` "
+            "(voir la section Sécurité de la PR #74). Le bloc doit être indenté sous le job `evals`.",
+        )
+        self.assertIn("evals", self.jobs, "evals.yml : job `evals` introuvable")
+        self.assertRegex(
+            self.jobs["evals"], re.compile(r"^ {4}concurrency:", re.MULTILINE),
+            "evals.yml : le job `evals` devrait porter son propre `concurrency:` (limite le coût d'une "
+            "PR relabellisée sans risquer d'annuler un run déclenché par une étiquette différente).",
         )
 
     def test_comment_permission_is_isolated_from_the_eval_job(self):

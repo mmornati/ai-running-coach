@@ -29,12 +29,34 @@ class TestRender(unittest.TestCase):
 
     def test_case_missing_from_a_non_empty_run_is_marked_interrupted(self):
         """Un run qui a bien eu lieu (au moins un cas enregistré) mais qui n'a pas
-        atteint un cas donné (timeout du job, filtre `-k`…) ne doit jamais se
-        confondre avec un cas qui n'a simplement jamais tourné (#74)."""
+        atteint un cas donné (timeout du job…) ne doit jamais se confondre avec un
+        cas qui n'a simplement jamais tourné (#74)."""
         results = {"ran": {"passed": 3, "attempts": 3, "rate": 1.0}}
         text = render_results.render(results, ["ran", "cut-short"], META)
         self.assertIn("| `cut-short` | — (interrompu) | — (interrompu) |", text)
         self.assertNotIn("| `ran` | — (interrompu) | — (interrompu) |", text)
+
+    def test_case_excluded_by_filter_is_not_marked_interrupted(self):
+        """Un `case_filter` (`-k`) explique une absence VOLONTAIRE — bien distincte
+        d'un cas qui aurait dû tourner et que le run a coupé en route (revue PR #74,
+        second passage, point 4)."""
+        meta = dict(META, case_filter="sport-trail")
+        results = {"sport-trail-elevation": {"passed": 3, "attempts": 3, "rate": 1.0}}
+        text = render_results.render(results, ["sport-trail-elevation", "health-full-triad"], meta)
+        self.assertIn("| `health-full-triad` | — (exclu par le filtre) | — (exclu par le filtre) |", text)
+        self.assertNotIn("| `health-full-triad` | — (interrompu) | — (interrompu) |", text)
+
+    def test_case_matching_filter_but_missing_is_still_interrupted(self):
+        """Un cas SÉLECTIONNÉ par le filtre mais absent du relevé a bien dû être
+        coupé en route — le filtre n'explique pas cette absence-là."""
+        meta = dict(META, case_filter="health")
+        results = {"health-full-triad": {"passed": 3, "attempts": 3, "rate": 1.0}}
+        text = render_results.render(results, ["health-full-triad", "health-minimal-readiness-only"], meta)
+        self.assertIn("| `health-minimal-readiness-only` | — (interrompu) | — (interrompu) |", text)
+
+    def test_no_filter_behaves_exactly_as_before(self):
+        text = render_results.render({}, ["never-run"], dict(META, case_filter=None))
+        self.assertIn("| `never-run` | — | — |", text)
 
     def test_passing_case_shows_ratio_and_check(self):
         results = {"ok-case": {"passed": 3, "attempts": 3, "rate": 1.0}}
@@ -121,6 +143,22 @@ class TestMinPasses(unittest.TestCase):
     def test_floating_point_does_not_round_up_spuriously(self):
         """0.667 * 3 flirte avec 2.000000001 en flottant : jamais 3."""
         self.assertEqual(render_results._min_passes(2 / 3, 3), 2)
+
+
+class TestCaseMatchesFilter(unittest.TestCase):
+    def test_matches_on_case_id_substring(self):
+        self.assertTrue(render_results._case_matches_filter("sport-trail-elevation", "sport-trail"))
+
+    def test_matches_on_derived_test_name(self):
+        """`run_tests.py -k` compare en réalité le nom de test généré
+        (`test_sport_trail_elevation`, underscores), pas l'identifiant TOML."""
+        self.assertTrue(render_results._case_matches_filter("sport-trail-elevation", "test_sport_trail"))
+
+    def test_case_insensitive(self):
+        self.assertTrue(render_results._case_matches_filter("sport-trail-elevation", "SPORT-TRAIL"))
+
+    def test_no_match(self):
+        self.assertFalse(render_results._case_matches_filter("sport-trail-elevation", "health"))
 
 
 if __name__ == "__main__":
