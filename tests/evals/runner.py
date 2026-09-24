@@ -30,6 +30,44 @@ DEFAULT_MODEL = "claude-haiku-4-5-20251001"
 DEFAULT_REPEAT = 3
 DEFAULT_THRESHOLD = 2 / 3
 
+# Serveurs MCP factices disponibles pour un scénario (#26). `garmin` reste le
+# nom historique et le seul câblé par défaut ; `intervals` (#68) ne l'est que
+# si le cas déclare `[stub.intervals.*]` — voir `build_workspace`.
+STUB_SCRIPTS = {
+    "garmin": TESTS_DIR / "evals" / "stub_garmin_mcp.py",
+    "intervals": TESTS_DIR / "evals" / "stub_intervals_mcp.py",
+}
+
+
+def _write_stub_config(root: Path, server: str, stub_section) -> Path | None:
+    """Dépose la section `[stub.<server>]` d'un cas en JSON pour le stub.
+
+    Le stub la lit via `ARC_STUB_CONFIG` (`mcp_stub_common.load_stub_config`).
+    Rien à écrire pour un cas sans section `[stub]` — c'est ce qui garantit la
+    non-régression des cas existants.
+
+    Écrit à côté du workspace (`root`, pas `root / "workspace"`) et non
+    dedans : l'agent testé n'a accès qu'au workspace via ses outils fichiers,
+    il ne doit pas pouvoir lire à l'avance le scénario de panne qu'on lui
+    scripte.
+    """
+    if not stub_section:
+        return None
+    path = root / f".stub-config-{server}.json"
+    path.write_text(json.dumps(stub_section, ensure_ascii=False), encoding="utf-8")
+    return path
+
+
+def _uses_timeout_error(case: dict) -> bool:
+    """Un cas script-t-il au moins un `error = "timeout"` (n'importe quel
+    serveur, n'importe quel outil) ? Détermine si `run_case` doit brider le
+    timeout MCP côté client (voir `run_case`)."""
+    for stub_section in case.get("stub", {}).values():
+        for override in stub_section.values():
+            if str(override.get("error")) == "timeout":
+                return True
+    return False
+
 
 def enabled() -> bool:
     return os.environ.get("ARC_LLM_TESTS") == "1"
@@ -100,16 +138,28 @@ def build_workspace(root: Path, case: dict) -> Path:
         if not target.exists():
             target.symlink_to(REPO / name)
 
-    # Serveur MCP factice : aucune donnée réelle, et chaque appel d'outil est
-    # journalisé — c'est ce qui rend « n'a pas cherché la HRV » vérifiable.
-    stub = TESTS_DIR / "evals" / "stub_garmin_mcp.py"
+    # Serveur(s) MCP factice(s) : aucune donnée réelle, et chaque appel d'outil
+    # est journalisé — c'est ce qui rend « n'a pas cherché la HRV »
+    # vérifiable. `garmin` est toujours câblé (non-régression) ; `intervals`
+    # (#68) ne l'est que si le cas script explicitement ses réponses, pour ne
+    # pas exposer un serveur que le scénario n'a pas demandé.
+    tool_log = workspace / ".tool-calls.log"
+    mcp_servers = {}
+    for server, script in STUB_SCRIPTS.items():
+        stub_section = case.get("stub", {}).get(server)
+        if server != "garmin" and not stub_section:
+            continue
+        config_path = _write_stub_config(root, server, stub_section)
+        env = {
+            "ARC_TOOL_LOG": str(tool_log),
+            # Toujours présente, même vide : une valeur héritée de l'environnement
+            # de l'appelant (export ARC_STUB_CONFIG=... resté dans un shell) ne
+            # doit jamais fuiter dans un cas qui ne script rien.
+            "ARC_STUB_CONFIG": str(config_path) if config_path else "",
+        }
+        mcp_servers[server] = {"command": sys.executable, "args": [str(script)], "env": env}
     (workspace / ".mcp.json").write_text(
-        json.dumps({"mcpServers": {"garmin": {
-            "command": sys.executable,
-            "args": [str(stub)],
-            "env": {"ARC_TOOL_LOG": str(workspace / ".tool-calls.log")},
-        }}}, indent=2),
-        encoding="utf-8",
+        json.dumps({"mcpServers": mcp_servers}, indent=2), encoding="utf-8",
     )
 
     # Les agents sont découverts via .claude/agents ; on ne lie que ceux du scénario.
@@ -140,6 +190,15 @@ def build_workspace(root: Path, case: dict) -> Path:
     return workspace
 
 
+# Timeout MCP côté client pour un cas qui scripte `error = "timeout"`
+# (millisecondes). Sans lui, un appel jamais répondu par le stub (#26,
+# `DropRequest`) laisse l'agent — et donc `subprocess.run` — attendre le
+# timeout du PROCESS (300s par défaut) avant d'échouer, ce qui ne démontre
+# rien de plus qu'un `MAX_TIMEOUT_DELAY_S` déjà court côté stub. `claude -p`
+# lit cette variable pour bander ses propres appels d'outils MCP.
+MCP_TOOL_TIMEOUT_MS = os.environ.get("ARC_MCP_TOOL_TIMEOUT_MS", "15000")
+
+
 def run_case(case: dict, workspace: Path, timeout: int = 300) -> dict:
     """Une exécution. Rend le texte produit et le journal des outils."""
     tool_log = workspace / ".tool-calls.log"
@@ -150,9 +209,24 @@ def run_case(case: dict, workspace: Path, timeout: int = 300) -> dict:
         "--strict-mcp-config", "--mcp-config", str(workspace / ".mcp.json"),
     ]
     env = dict(os.environ, ARC_WORKSPACE=str(workspace), ARC_TOOL_LOG=str(tool_log))
-    completed = subprocess.run(
-        command, cwd=str(workspace), env=env, capture_output=True, text=True, timeout=timeout
-    )
+    if _uses_timeout_error(case):
+        env.setdefault("MCP_TOOL_TIMEOUT", MCP_TOOL_TIMEOUT_MS)
+    try:
+        completed = subprocess.run(
+            command, cwd=str(workspace), env=env, capture_output=True, text=True, timeout=timeout,
+        )
+    except subprocess.TimeoutExpired as exc:
+        # Le runner lui-même n'a pas répondu dans le budget imparti — un
+        # échec de cas normal (le comportement attendu était que l'agent
+        # abandonne l'outil lent et réponde), pas une exception qui remonte
+        # et casse toute la suite.
+        return {
+            "returncode": -1,
+            "output": _decode(exc.stdout),
+            "stderr": _decode(exc.stderr) or f"le runner n'a pas répondu sous {timeout}s (TimeoutExpired)",
+            "tool_calls": tool_log.read_text(encoding="utf-8") if tool_log.exists() else "",
+            "workspace": workspace,
+        }
     return {
         "returncode": completed.returncode,
         "output": completed.stdout,
@@ -160,6 +234,12 @@ def run_case(case: dict, workspace: Path, timeout: int = 300) -> dict:
         "tool_calls": tool_log.read_text(encoding="utf-8") if tool_log.exists() else "",
         "workspace": workspace,
     }
+
+
+def _decode(value) -> str:
+    if value is None:
+        return ""
+    return value.decode("utf-8", errors="replace") if isinstance(value, bytes) else value
 
 
 NOT_LOGGED_IN = re.compile(r"not logged in|/login|unauthor", re.IGNORECASE)
@@ -171,7 +251,16 @@ def looks_unauthenticated(result: dict) -> bool:
     Cas fréquent : le CLI est installé, l'utilisateur est connecté dans son
     terminal, mais pas dans l'environnement qui lance les tests. Mieux vaut
     ignorer le palier avec un message clair que rendre onze échecs identiques.
+
+    `returncode == -1` est le sentinel posé par `run_case` pour un
+    `subprocess.TimeoutExpired` (cas qui scripte un `error = "timeout"`, #26).
+    Le message de relais d'un 401 stub (« ... Unauthorized ... ») peut alors
+    apparaître dans la sortie partielle sans que le run soit réellement « pas
+    authentifié » — ce n'est pas ce qu'on veut *skip*, c'est un vrai résultat
+    de cas (l'agent a-t-il su abandonner l'outil lent ?).
     """
+    if result["returncode"] == -1:
+        return False
     return result["returncode"] != 0 and bool(
         NOT_LOGGED_IN.search(result["output"] + result["stderr"])
     )

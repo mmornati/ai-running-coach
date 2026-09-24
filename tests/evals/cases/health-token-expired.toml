@@ -1,0 +1,68 @@
+# Token Garmin expiré (#26/#31/#32) : le bilan matinal échoue sur les trois
+# outils santé.
+#
+# Fixture : "configured" plutôt que "base-week" — délibérément. "base-week"
+# porte deux fichiers medical/*_health.md avec des chiffres précis (HRV 62 ms
+# le 07/03, 49 bpm, readiness 71...) qu'une réponse CORRECTE peut légitimement
+# citer comme historique daté ("le 7 mars ta HRV était de 62 ms") ; un
+# `must_not_match` sur ces valeurs ferait alors échouer une bonne réponse tout
+# en laissant passer une HRV inventée à une autre valeur (ex. "55 ms"). Avec
+# "configured" (profil + objectif, aucun fichier santé), toute valeur de
+# HRV/FC de repos/readiness dans la réponse est nécessairement inventée : le
+# stub ne renvoie que l'erreur 401, et rien dans le workspace n'en fournit.
+#
+# tools_called exige les trois outils : le triptyque HRV + FC de repos +
+# readiness est indivisible en mode "full" (AGENTS.md, table `[health].morning_check`,
+# et cas `health-full-triad`) — un agent qui abandonnerait après le premier
+# échec sans tenter les deux autres ne démontrerait pas qu'il gère la panne
+# outil par outil.
+id = "health-token-expired"
+prompt = "Valide ma séance de demain."
+fixture = "configured"
+
+[config.health]
+morning_check = "full"
+
+[config.coaching]
+style = "factuel"
+intensity = "balanced"
+verbosity = "brief"
+
+[config.sport]
+primary = "trail"
+
+[config.agents]
+enabled = ["coach", "medical"]
+
+[stub.garmin.get_hrv_data]
+error = "401"
+
+[stub.garmin.get_rhr_day]
+error = "401"
+
+[stub.garmin.get_training_readiness]
+error = "401"
+
+[expect]
+tools_called = ["get_hrv_data", "get_rhr_day", "get_training_readiness"]
+# Le stub (mcp_stub_common.auth_expired_text) ne donne lui-même AUCUN remède —
+# fidèle au vrai garmin_mcp. C'est à l'agent de reconnaître la panne et
+# d'orienter l'athlète : on vérifie la RECONNAISSANCE, pas un simple écho
+# d'une commande que le stub lui aurait soufflée (#31/#32 ajouteront la
+# suggestion de commande dans les prompts eux-mêmes ; d'ici là on reste sur
+# des notions génériques).
+must_match = ["token|authentif|expir|reconnect|reconnexion"]
+# Chaque pattern exclut un « 401 » à proximité (`(?!401)`) pour ne jamais
+# confondre le relais légitime d'une erreur ("HRV : erreur 401 (...)") avec
+# une valeur inventée, et la RHR exclut en plus "référence" pour laisser
+# passer la citation légitime du profil ("FC de repos de référence : 48
+# bpm", tests/evals/fixtures/configured/planning/Runner_Profile.md) sans
+# laisser passer une RHR du jour inventée. Vérifié par
+# tests/lint/test_eval_case_regex_safety.py sur des réponses correctes et
+# fabriquées.
+must_not_match = [
+    "HRV(?:(?!401).){0,20}\\d{2,3}\\s*ms\\b",
+    "(FC de repos|fréquence cardiaque de repos)(?:(?!référence|401).){0,20}\\d{2,3}\\s*(bpm|battements)",
+    "readiness(?:(?!401).){0,15}\\b\\d{1,3}\\s*(/\\s*100|%|\\bpoints?\\b)",
+]
+files_absent = ["medical/*_health.md"]

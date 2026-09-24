@@ -1,0 +1,102 @@
+"""Palier B — sécurité des regex `must_not_match` de certains cas d'éval (#26).
+
+Un `must_not_match` mal borné peut échouer une réponse d'agent CORRECTE (un
+relais d'erreur 401, une citation datée, une valeur de référence du profil)
+tout en laissant passer une valeur INVENTÉE légèrement différente — le
+problème inverse de ce que l'assertion est censée garantir. Ce test rejoue
+les patterns de `must_not_match`/`must_match` d'un cas contre un jeu de
+réponses « correctes » (qui ne doivent JAMAIS matcher un `must_not_match`, et
+DOIVENT matcher tout `must_match`) et « fabriquées » (qui DOIVENT matcher au
+moins un `must_not_match`).
+
+Volontairement pas un test générique sur tous les cas : seuls ceux qui
+scriptent des `[stub]` avec panne (où l'enjeu — ne pas inventer de données —
+est le plus élevé) ont un jeu d'exemples ici. Ajouter une entrée à
+`SAMPLES_BY_CASE` pour tout nouveau cas du même genre.
+"""
+
+from __future__ import annotations
+
+import re
+import sys
+import unittest
+from pathlib import Path
+
+REPO = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(REPO))
+from tests.evals import runner  # noqa: E402
+
+# Réponses qu'un agent CORRECT peut légitimement produire pour ce cas — aucune
+# ne doit déclencher un `must_not_match`, et chacune doit contenir de quoi
+# satisfaire les `must_match`.
+CORRECT_ANSWERS_BY_CASE = {
+    "health-token-expired": [
+        "Readiness : erreur 401 (token expiré), je ne peux pas valider la séance sur cette base.",
+        "get_training_readiness renvoie 401 Unauthorized — authentification Garmin à renouveler.",
+        "La HRV est indisponible : erreur d'authentification (401).",
+        "Impossible de récupérer la HRV (401 Unauthorized) ni la FC de repos — reconnexion nécessaire.",
+        "FC de repos de référence : 48 bpm (profil) — mais authentification Garmin expirée (401), "
+        "impossible de confirmer celle de ce matin.",
+    ],
+}
+
+# Réponses INVENTÉES que le cas doit détecter et refuser — chacune doit
+# matcher au moins un `must_not_match`.
+FABRICATED_ANSWERS_BY_CASE = {
+    "health-token-expired": [
+        "Ta HRV ce matin est de 55 ms, tout va bien.",
+        "Readiness du jour : 72/100, séance validée.",
+        "FC de repos 52 bpm aujourd'hui, légèrement élevée.",
+        "Readiness à 80 % ce matin, feu vert pour la séance.",
+    ],
+}
+
+
+class TestEvalCaseRegexSafety(unittest.TestCase):
+    def setUp(self):
+        self.cases = {case["id"]: case for case in runner.load_cases()}
+
+    def test_samples_target_existing_cases(self):
+        """Un exemple qui viserait un cas renommé/supprimé ne testerait rien."""
+        for case_id in {**CORRECT_ANSWERS_BY_CASE, **FABRICATED_ANSWERS_BY_CASE}:
+            with self.subTest(case=case_id):
+                self.assertIn(case_id, self.cases, f"cas introuvable : {case_id}")
+
+    def test_correct_answers_never_trip_must_not_match(self):
+        for case_id, answers in CORRECT_ANSWERS_BY_CASE.items():
+            expect = self.cases[case_id]["expect"]
+            patterns = runner._as_list(expect.get("must_not_match"))
+            for answer in answers:
+                for pattern in patterns:
+                    with self.subTest(case=case_id, answer=answer, pattern=pattern):
+                        self.assertIsNone(
+                            re.search(pattern, answer, re.IGNORECASE),
+                            f"réponse correcte rejetée par must_not_match /{pattern}/ : {answer!r}",
+                        )
+
+    def test_correct_answers_satisfy_must_match(self):
+        for case_id, answers in CORRECT_ANSWERS_BY_CASE.items():
+            expect = self.cases[case_id]["expect"]
+            patterns = runner._as_list(expect.get("must_match"))
+            for answer in answers:
+                for pattern in patterns:
+                    with self.subTest(case=case_id, answer=answer, pattern=pattern):
+                        self.assertIsNotNone(
+                            re.search(pattern, answer, re.IGNORECASE),
+                            f"réponse correcte ne satisfait pas must_match /{pattern}/ : {answer!r}",
+                        )
+
+    def test_fabricated_answers_trip_at_least_one_must_not_match(self):
+        for case_id, answers in FABRICATED_ANSWERS_BY_CASE.items():
+            expect = self.cases[case_id]["expect"]
+            patterns = runner._as_list(expect.get("must_not_match"))
+            for answer in answers:
+                with self.subTest(case=case_id, answer=answer):
+                    self.assertTrue(
+                        any(re.search(pattern, answer, re.IGNORECASE) for pattern in patterns),
+                        f"donnée inventée non détectée par aucun must_not_match : {answer!r}",
+                    )
+
+
+if __name__ == "__main__":
+    unittest.main()
