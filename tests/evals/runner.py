@@ -21,7 +21,7 @@ import sqlite3
 import subprocess
 import sys
 import tempfile
-from datetime import date
+from datetime import date, datetime, timezone
 from pathlib import Path
 
 TESTS_DIR = Path(__file__).resolve().parent.parent
@@ -32,6 +32,13 @@ FIXTURES_DIR = TESTS_DIR / "evals" / "fixtures"
 DEFAULT_MODEL = "claude-haiku-4-5-20251001"
 DEFAULT_REPEAT = 3
 DEFAULT_THRESHOLD = 2 / 3
+
+# Nom de la variable d'environnement lue par `record_result` / écrite par la CI
+# (#29) : quand elle pointe vers un chemin, chaque cas y persiste son taux de
+# réussite en JSON, pour que `render_results.py` en tire un `RESULTS.md` sans
+# rejouer les cas. Absente en local par défaut : ça ne change rien au comportement
+# historique du palier C tant que personne ne la règle.
+RESULTS_ENV = "ARC_EVAL_RESULTS_OUT"
 
 # Serveurs MCP factices disponibles pour un scénario (#26). `garmin` reste le
 # nom historique et le seul câblé par défaut ; `intervals` (#68) ne l'est que
@@ -98,6 +105,58 @@ def repeat() -> int:
 
 def threshold() -> float:
     return float(os.environ.get("ARC_EVAL_THRESHOLD", DEFAULT_THRESHOLD))
+
+
+def results_output_path() -> Path | None:
+    """Chemin du JSON de résultats (#29), ou `None` si la variable n'est pas réglée."""
+    value = os.environ.get(RESULTS_ENV)
+    return Path(value) if value else None
+
+
+def record_result(case_id: str, passed: int, attempts: int) -> None:
+    """Persiste le taux de réussite d'un cas pour `render_results.py` (#29).
+
+    Sans effet si `ARC_EVAL_RESULTS_OUT` n'est pas réglé — c'est le cas de toute
+    exécution locale qui ne le passe pas explicitement. Écrit après CHAQUE cas,
+    pas seulement à la fin de la suite : un run interrompu (timeout du job CI)
+    laisse ainsi une trace partielle plutôt que rien.
+
+    Lecture-fusion-écriture, PAS de verrou : un cas n'efface jamais celui déjà
+    écrit par un autre (chacun ne touche que sa propre clé), mais ce n'est
+    correct que parce que `tests/run_tests.py` exécute le palier C de façon
+    strictement séquentielle (`unittest` sans exécuteur parallèle) — deux
+    process qui écriraient ici en même temps pourraient perdre l'un des deux
+    écrits (read-modify-write classique). Si le palier C gagne un jour un mode
+    parallèle, cette fonction devra écrire un fichier par cas (assemblé ensuite
+    par `render_results.py`) plutôt que de partager un seul fichier.
+    """
+    path = results_output_path()
+    if path is None:
+        return
+    data = {}
+    if path.exists():
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            data = {}
+    data[case_id] = {
+        "passed": passed,
+        "attempts": attempts,
+        "rate": passed / attempts if attempts else 0.0,
+    }
+    data["_meta"] = {
+        "date": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC"),
+        "model": model(),
+        "repeat": repeat(),
+        "threshold": threshold(),
+        # Même variable que celle lue par le workflow `Évals` pour construire le `-k`
+        # (voir `.github/workflows/evals.yml`) : présente ici pour que
+        # `render_results.py` distingue un cas exclu volontairement par ce filtre
+        # d'un cas que le run a simplement interrompu en route (#29, revue PR #74).
+        "case_filter": os.environ.get("ARC_EVAL_CASE_FILTER") or None,
+    }
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(data, indent=2, sort_keys=True, ensure_ascii=False), encoding="utf-8")
 
 
 def load_cases() -> list:

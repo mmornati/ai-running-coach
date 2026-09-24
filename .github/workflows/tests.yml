@@ -9,6 +9,11 @@ on:
   pull_request:
   workflow_dispatch:
 
+# Ces jobs ne font que lire le dépôt et lancer des tests locaux : aucun n'a besoin
+# d'écrire quoi que ce soit sur GitHub (#29 — moindre privilège explicite partout).
+permissions:
+  contents: read
+
 concurrency:
   group: tests-${{ github.ref }}
   cancel-in-progress: true

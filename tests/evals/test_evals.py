@@ -269,6 +269,11 @@ class TestPromptBehaviour(unittest.TestCase):
 
         passed = sum(1 for f in failures_by_run if not f)
         rate = passed / attempts
+        # Toujours enregistré, échec ou pas (#29) : c'est ce qui permet à
+        # `render_results.py` de produire un RESULTS.md fidèle même quand la
+        # suite se termine avec des échecs — un cas en échec doit apparaître au
+        # tableau, pas disparaître avec le reste de la suite.
+        runner.record_result(case["id"], passed, attempts)
         if rate < runner.threshold():
             detail = "\n".join(
                 f"  exécution {i + 1} : " + ("ok" if not f else "; ".join(f))
