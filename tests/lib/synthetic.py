@@ -92,7 +92,7 @@ FAKE_ACTIVITY_ID_BASE = 90_000_000_000
 
 
 def default_slope_factor(grade_pct: float) -> float:
-    """Modèle pente→allure minimal : ±6 % de vitesse par point de pente.
+    """Modèle pente→allure minimal, borné à des vitesses plausibles.
 
     Volontairement simpliste (ce n'est pas le modèle appris sur l'historique de
     la story #58) : fait varier la vitesse de façon déterministe sur une montée
@@ -100,8 +100,29 @@ def default_slope_factor(grade_pct: float) -> float:
     de remplacement pour imposer une courbe pente→allure précise — la courbe
     utilisée est exposée telle quelle dans `truth["speed_by_grade_curve"]`,
     pour un test qui la retrouverait par régression (story #58).
+
+    - Montée : -3,5 % de vitesse par point de pente, plancher à 0,35× (une
+      pente soutenue reste beaucoup plus lente, jamais à l'arrêt). Un
+      coefficient plus dur (ex. -6 %/point) plafonne trop vite : sur une
+      montée à 16 % (le maximum que produit `_spread_segments`), il ferait
+      chuter le facteur au plancher, ce qui forcerait `_calibrate_base_speed`
+      à relever d'autant la vitesse nominale pour tenir la distance visée —
+      exactement la cause du bug d'allures irréalistes verrouillé par
+      `TestPlausibleSpeeds`.
+    - Descente : accélère jusqu'à un pic (+24 % vers -8 %), **puis ralentit à
+      nouveau au-delà** — comme un coureur réel qui freine en descente
+      technique — jusqu'à un plancher à 0,3×. Sans ce second segment, une
+      pente à -20 % donnerait une vitesse ×2,2 (au-delà de ce qui est
+      plausible en course à pied).
     """
-    return max(0.2, min(2.5, 1 - 0.06 * grade_pct))
+    if grade_pct >= 0:
+        return max(0.35, 1 - 0.035 * grade_pct)
+    downhill = -grade_pct
+    if downhill <= 8:
+        factor = 1 + 0.03 * downhill  # pic à +24 % vers -8 %
+    else:
+        factor = 1.24 - 0.03 * (downhill - 8)  # freinage au-delà
+    return max(0.3, min(1.24, factor))
 
 
 def _zone_of_bpm(hr_bpm: float, zone_bounds_bpm: Sequence[float] = ZONE_BOUNDS_BPM) -> int:
@@ -165,14 +186,27 @@ def sample_session(
       `()` (défaut) = parcours plat. D+/D− attendus : voir
       `truth["segments_gain_requested_m"]` / `["segments_loss_requested_m"]`.
     - `decoupling_pct` : la FC de la seconde moitié de la séance (en temps,
-      pas en distance) est relevée de ce pourcentage par rapport à la
-      première — la dérive cardiaque (Pa:HR / découplage, story #45). La FC
-      ne dépend **que** de cette dérive, jamais de la pente ni du fade :
+      pas en distance) est divisée par `(1 - decoupling_pct/100)` par rapport
+      à la première — la dérive cardiaque (Pa:HR / découplage, story #45),
+      mesurée dans `truth` comme `EF = moyenne(GAP)/moyenne(FC)` par moitié.
+      Cette forme (division, pas multiplication) est choisie précisément pour
+      que `decoupling_pct_measured` retombe sur `decoupling_pct` demandé, à
+      bruit près, **sur un parcours plat sans fade** (ex. demander 4 → mesurer
+      ≈ 3,98, pas 3,83 comme le donnerait une FC simplement multipliée par
+      `1 + d/100`).
+
+      La FC elle-même ne dépend **que** de cette dérive, jamais de la pente :
       l'effort est supposé constant (le modèle pente→allure absorbe déjà la
-      pente, `fade_pct` absorbe déjà le ralentissement de fin de séance),
-      sinon une montée ou un fade viendrait fausser silencieusement le
-      découplage mesuré. Incompatible avec `zone_shares` (la FC y est pilotée
-      par le calendrier de zones) : ce dernier prévaut si fourni, et
+      pente), sinon une montée viendrait fausser silencieusement le
+      découplage mesuré. **Un `fade_pct` actif, en revanche, augmente
+      légitimement le découplage mesuré au-delà du `decoupling_pct` demandé** :
+      le fade réduit le GAP du dernier tiers sans réduire la FC, exactement
+      comme le ferait une dérive cardiaque plus forte — ce n'est pas un bug,
+      c'est le signal réel que le découplage est censé capter (demander
+      découplage 4 % + fade 8 % mesure un découplage global ≈ 9,1 %, pas 4 %,
+      voir `TestDecoupling.test_ef_based_decoupling_matches_independent_recomputation_with_climb_and_fade`).
+      Incompatible avec `zone_shares` (la FC y est pilotée par le calendrier
+      de zones) : ce dernier prévaut si fourni, et
       `decoupling_pct_requested`/`decoupling_pct_measured` valent alors `None`.
     - `zone_shares` : dict `{zone: part_du_temps}` (parts sommant à 1,0, sinon
       `ValueError`) imposant la répartition du temps en zones FC (story #43).
@@ -231,7 +265,12 @@ def sample_session(
             lo, hi = zone_bounds_bpm[zone - 1], zone_bounds_bpm[zone]
             hr = (lo + hi) / 2
         else:
-            hr = hr_base_bpm * (1 + decoupling_pct / 100 if t >= half_t else 1)
+            # FC divisée (pas multipliée) par (1 − d/100) sur la seconde moitié : cette
+            # forme fait que le découplage EF mesuré (voir `_measure_truth`) retombe
+            # exactement sur `decoupling_pct` demandé, à bruit près, sur un parcours
+            # plat sans fade — voir le docstring de `decoupling_pct` pour le calcul et
+            # ce qui se passe quand un fade est aussi actif.
+            hr = hr_base_bpm * (1 / (1 - decoupling_pct / 100) if t >= half_t else 1)
         if noise:
             hr += rng.uniform(-1.5, 1.5)
 
@@ -406,19 +445,33 @@ def _write(root: Path, rel: str, title: str, data: dict, prose: str) -> None:
 def _spread_segments(distance_m: float, gain_m: float, loss_m: float, n: int = 2) -> tuple:
     """Répartit `n` montées + `n` descentes le long du parcours, sommant à `gain_m`/`loss_m`.
 
-    La pente est dérivée d'un budget de longueur cumulée (au plus ~60 % du
-    parcours) plutôt que fixée en dur, pour rester cohérente même sur un fort
-    D+/km (typiquement une sortie trail). Les segments sont ensuite posés
-    **séquentiellement** (montées puis descentes), séparés par des intervalles
-    plats de taille égale, sur 90 % de la distance visée au plus : ils ne se
-    chevauchent jamais et ne débordent jamais au-delà du parcours (un segment
-    tronqué par une fin de parcours produirait moins de D+/D− que demandé).
+    La pente est dérivée d'un budget de longueur cumulée (au plus ~85 % du
+    parcours, et plafonnée à 16 %) plutôt que fixée en dur, pour rester
+    cohérente même sur un fort D+/km (typiquement une sortie trail) SANS
+    exiger des pentes qui forceraient ensuite la calibration de
+    `base_speed_ms` vers des vitesses à plat non plausibles (une pente trop
+    raide ferait plonger `default_slope_factor` en montée, donc
+    `_calibrate_base_speed` devrait relever d'autant la vitesse nominale pour
+    tenir la distance visée — voir
+    `tests/data/test_synthetic_samples.py::TestPlausibleSpeeds`, qui
+    verrouille des vitesses ≤ ~7 m/s sur des séances `build()` réelles).
+
+    Les segments sont ensuite posés **séquentiellement** (montées puis
+    descentes), séparés par des intervalles plats de taille égale, sur 97 %
+    de la distance visée au plus : ils ne se chevauchent jamais et ne
+    débordent jamais au-delà du parcours (un segment tronqué par une fin de
+    parcours produirait moins de D+/D− que demandé). Si le plafond de pente
+    ne suffit quand même pas à faire tenir le D+/D− demandé sur la distance
+    visée (un D+/km extrême, hors de ce que produit `build()`), les longueurs
+    sont réduites proportionnellement plutôt que de déborder : le D+/D−
+    obtenu est alors inférieur à celui demandé, mais jamais un segment
+    silencieusement tronqué en aval.
     """
     if distance_m <= 0 or (gain_m <= 0 and loss_m <= 0):
         return ()
-    budget_m = 0.6 * distance_m
+    budget_m = 0.85 * distance_m
     vertical_total = gain_m + loss_m
-    grade_pct = max(6.0, min(25.0, (vertical_total / budget_m) * 100)) if budget_m > 0 else 15.0
+    grade_pct = max(6.0, min(16.0, (vertical_total / budget_m) * 100)) if budget_m > 0 else 10.0
 
     climb_len = (gain_m / n / (grade_pct / 100)) if gain_m > 0 else 0.0
     descent_len = (loss_m / n / (grade_pct / 100)) if loss_m > 0 else 0.0
@@ -427,7 +480,12 @@ def _spread_segments(distance_m: float, gain_m: float, loss_m: float, n: int = 2
     if not seg_lengths:
         return ()
 
-    gap = max(0.0, (0.9 * distance_m - sum(seg_lengths)) / (len(seg_lengths) + 1))
+    placement_cap_m = 0.97 * distance_m
+    if sum(seg_lengths) > placement_cap_m:
+        scale = placement_cap_m / sum(seg_lengths)
+        seg_lengths = [length * scale for length in seg_lengths]
+
+    gap = max(0.0, (placement_cap_m - sum(seg_lengths)) / (len(seg_lengths) + 1))
     segments, cursor = [], gap
     for length, grade in zip(seg_lengths, seg_grades):
         segments.append((round(cursor, 1), round(length, 1), grade))

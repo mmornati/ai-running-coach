@@ -141,5 +141,9 @@ python3 -m tests.lib.synthetic /tmp/demo --days 120 --with-samples
 
 `--with-samples` calibre la distance, le D+/D− et la FC moyenne des
 échantillons pour qu'ils restent cohérents avec le Markdown de la même
-séance (`tests/data/test_synthetic_samples.py::TestMarkdownAgreement`).
+séance (`tests/data/test_synthetic_samples.py::TestMarkdownAgreement`), tout
+en gardant des vitesses plausibles (`TestPlausibleSpeeds` : pas d'allure
+au-delà de ~7 m/s, ni de vitesse « à plat » hors d'une plage d'endurance
+réaliste) — un budget de pente trop étroit forcerait sinon la calibration
+vers des allures de sprint pour tenir la distance visée.
 

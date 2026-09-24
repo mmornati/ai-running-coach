@@ -317,10 +317,82 @@ class TestMarkdownAgreement(unittest.TestCase):
                     truth["elevation_gain_m"], data["elevation_gain_m"],
                     delta=max(20.0, 0.25 * max(data["elevation_gain_m"], 1)),
                 )
+                self.assertAlmostEqual(
+                    truth["elevation_loss_m"], data["elevation_loss_m"],
+                    delta=max(20.0, 0.25 * max(data["elevation_loss_m"], 1)),
+                )
                 avg_hr_samples = sum(r["hr_bpm"] for r in records) / len(records)
                 self.assertAlmostEqual(avg_hr_samples, data["avg_hr_bpm"], delta=3.0)
                 checked += 1
             self.assertGreater(checked, 0, "aucune séance running/trail à comparer")
+
+
+class TestPlausibleSpeeds(unittest.TestCase):
+    """`--with-samples` ne doit jamais produire d'allure irréaliste (finding de revue).
+
+    Constaté avant correction sur un `build(with_samples=True)` de 120 jours
+    trail : 42/64 séances dépassaient 7 m/s, avec un pic à 12,05 m/s — un
+    budget de segments trop étroit (60 % du parcours) forçait des pentes de
+    montée à 13-20 %, ce qui faisait plonger `default_slope_factor` et donc
+    remonter d'autant la vitesse à plat calibrée pour tenir la distance
+    visée ; côté descente, le facteur (jusque ×2,5, sans ralentissement au-delà
+    d'un certain seuil) portait certains passages à 10-12 m/s.
+    """
+
+    SPEED_CEILING_MS = 7.0  # ~2:23/km : au-delà, plus une allure de course à pied plausible
+
+    def _max_speed(self, sport: str, seed: int) -> float:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = build(Path(tmp), days=60, today=None, sport=sport, seed=seed, with_samples=True)
+            files = list((root / "activities/fit").glob("*.json"))
+            self.assertGreater(len(files), 0)
+            return max(
+                r["speed_ms"]
+                for f in files
+                for r in json.loads(f.read_text(encoding="utf-8"))["records"]
+            )
+
+    def test_trail_sessions_stay_under_the_speed_ceiling(self):
+        for seed in (1, 2, 3):
+            with self.subTest(seed=seed):
+                self.assertLessEqual(self._max_speed("trail", seed), self.SPEED_CEILING_MS)
+
+    def test_road_sessions_stay_under_the_speed_ceiling(self):
+        for seed in (1, 2, 3):
+            with self.subTest(seed=seed):
+                self.assertLessEqual(self._max_speed("road", seed), self.SPEED_CEILING_MS)
+
+    def test_flat_pace_stays_in_a_plausible_endurance_range(self):
+        """La vitesse calibrée à plat (`base_speed_ms`, avant tout effet de pente) doit
+        rester une allure d'endurance plausible (~3:00 à 8:20/km), pas un sprint ni une
+        marche — vérifié sur `base_speed_ms` directement, pas sur une vitesse médiane des
+        échantillons (peu fiable : une courte séance très pentue peut passer la majorité
+        de son temps en montée, sans que ce soit un défaut de calibration)."""
+        import re
+        from tests.lib.synthetic import _calibrate_base_speed, _spread_segments, default_slope_factor  # noqa: E402
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = build(Path(tmp), days=30, today=None, sport="trail", seed=4, with_samples=False)
+            checked = 0
+            for md_path in (root / "activities").glob("*.md"):
+                text = md_path.read_text(encoding="utf-8")
+                m = re.search(r"```arc\n(.*?)\n```", text, re.S)
+                if not m:
+                    continue
+                data = json.loads(m.group(1))
+                if data.get("sport") == "strength" or "garmin_activity_id" not in data:
+                    continue
+                segments = _spread_segments(
+                    float(data["distance_m"]), float(data["elevation_gain_m"]), float(data["elevation_loss_m"]),
+                )
+                base_speed = _calibrate_base_speed(data["duration_s"], float(data["distance_m"]),
+                                                    segments, default_slope_factor)
+                self.assertTrue(
+                    2.0 <= base_speed <= 5.6,
+                    f"{md_path.name}: base_speed_ms calibré à {base_speed:.2f} m/s, hors plage d'endurance plausible",
+                )
+                checked += 1
+            self.assertGreater(checked, 0, "aucune séance running/trail à vérifier")
 
 
 if __name__ == "__main__":
