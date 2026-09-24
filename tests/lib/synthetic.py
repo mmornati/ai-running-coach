@@ -4,9 +4,40 @@ Sert aux tests du palier A (tableau de bord de bout en bout) et à la
 vérification visuelle :
 
     python3 -m tests.lib.synthetic DIR [--days 120] [--today AAAA-MM-JJ] [--sport trail|road]
+    python3 -m tests.lib.synthetic DIR --with-samples   # + échantillons seconde par seconde
 
 Les valeurs sont plausibles, pas réalistes : un bloc de base, une montée de
 charge, une semaine allégée toutes les quatre. Aucune donnée réelle.
+
+## Échantillons seconde par seconde (`sample_session`)
+
+Toute l'épopée FIT (zones, GAP, découplage, VAM, descente, durabilité, modèle
+pente→allure — voir les stories de l'épopée #21) a besoin de séries seconde
+par seconde dont le résultat attendu est connu à l'avance. `sample_session`
+génère une telle série avec des **propriétés paramétrées** (pente et longueur
+de montée, dérive FC imposée, répartition de zones imposée, fade de fin de
+séance, trous de signal) et renvoie, à côté des échantillons, un dict
+`truth` : ce que le générateur affirme avoir produit, mesuré sur les données
+qu'il vient d'écrire (pas seulement les paramètres demandés en entrée). Les
+tests du palier D (`tests/data/test_synthetic_samples.py`) vérifient que
+mesuré ≈ demandé, à la tolérance documentée dans chaque test.
+
+Champs par échantillon — alignés sur le schéma `activity_sample` de
+`scripts/arc_index.py` (colonnes `t_s, distance_m, altitude_m, hr_bpm,
+speed_ms, cadence_spm`), pour que l'ingestion FIT (story #42, non encore
+implémentée) puisse consommer ce format sans traduction : un fichier FIT réel,
+lu via `skills/fit-download/scripts/download_fit.py` (champs bruts
+`fitparse` : `timestamp`, `distance`, `heart_rate`, `enhanced_altitude` ou
+`altitude`, `enhanced_speed` ou `speed`, `cadence`), s'y ramène par le mapping
+`{heart_rate → hr_bpm, distance → distance_m, altitude → altitude_m,
+speed → speed_ms, cadence → cadence_spm, timestamp → t_s relatif au départ}`.
+Aucune coordonnée GPS n'est générée (`lat`/`lon` restent hors du format —
+inutiles aux KPI de l'épopée FIT, et ça évite tout risque de ressemblance
+avec un lieu réel).
+
+`--with-samples` écrit, pour chaque séance running/trail générée, un fichier
+`activities/fit/<garmin_activity_id>.json` (`{"activity_id", "records",
+"truth"}`) — l'emplacement brut proposé par la story d'ingestion (#42).
 """
 
 from __future__ import annotations
@@ -16,8 +47,191 @@ import json
 import random
 from datetime import date, timedelta
 from pathlib import Path
+from typing import Callable, Optional
 
 HR_REST, HR_MAX = 48, 188
+
+# Bornes de zones FC par défaut (bpm), 5 zones : Zi = [ZONE_BOUNDS_BPM[i-1], ZONE_BOUNDS_BPM[i]).
+# Cohérentes avec le profil type de `planning/Runner_Profile.md` (FC max 188) — valeurs
+# rondes, pas une méthode de calcul (Karvonen/LTHR) : la story #43 la rendra configurable.
+ZONE_BOUNDS_BPM = (90, 130, 150, 160, 170, 190)
+
+# ID Garmin manifestement synthétiques (même convention que `build()` : jamais un ID plausible).
+FAKE_ACTIVITY_ID_BASE = 20_000_000_000
+
+
+def _default_slope_factor(grade_pct: float) -> float:
+    """Modèle pente→allure minimal : -6 % de vitesse par point de pente en montée.
+
+    Volontairement simpliste (ce n'est pas le modèle de la story #58, qui sera
+    appris sur l'historique) : sert seulement à faire varier la vitesse pendant
+    une montée synthétique de façon déterministe. `sample_session` accepte un
+    `slope_factor_fn` de remplacement pour imposer une courbe pente→allure précise.
+    """
+    return max(0.2, 1 - 0.06 * grade_pct)
+
+
+def _zone_of_bpm(hr_bpm: float, zone_bounds_bpm: tuple = ZONE_BOUNDS_BPM) -> int:
+    """Numéro de zone (1..len(bounds)-1) contenant `hr_bpm` ; sature aux bornes."""
+    zones = len(zone_bounds_bpm) - 1
+    for z in range(1, zones + 1):
+        if hr_bpm < zone_bounds_bpm[z] or z == zones:
+            return z
+    return zones
+
+
+def sample_session(
+    seed: int = 7,
+    duration_s: int = 3600,
+    base_speed_ms: float = 2.78,
+    cadence_spm: float = 170.0,
+    hr_base_bpm: float = 140.0,
+    climb_start_m: Optional[float] = None,
+    climb_length_m: float = 1000.0,
+    climb_grade_pct: float = 8.0,
+    decoupling_pct: float = 0.0,
+    fade_pct: float = 0.0,
+    zone_shares: Optional[dict] = None,
+    zone_bounds_bpm: tuple = ZONE_BOUNDS_BPM,
+    dropout_windows: tuple = (),
+    slope_factor_fn: Optional[Callable[[float], float]] = None,
+    noise: bool = True,
+) -> tuple[list, dict]:
+    """Génère une séance échantillonnée seconde par seconde, à vérité connue.
+
+    Chaque propriété est **imposée** par un paramètre et **mesurée** en retour
+    dans `truth`, sur les données réellement écrites (pas seulement rejouer le
+    paramètre d'entrée) — c'est ce que les tests du palier D comparent.
+
+    - `climb_start_m` / `climb_length_m` / `climb_grade_pct` : une montée
+      unique, démarrant quand la distance parcourue atteint `climb_start_m`,
+      sur `climb_length_m` mètres horizontaux, à la pente donnée. `None` =
+      parcours plat. D+ attendu ≈ `climb_length_m * climb_grade_pct / 100`.
+    - `decoupling_pct` : la FC de la seconde moitié de la séance est relevée
+      de ce pourcentage par rapport à la première (à allure/effort équivalents)
+      — la dérive cardiaque (Pa:HR / découplage, story #45) mesurable dans les
+      données brutes. Incompatible avec `zone_shares` (la FC y est pilotée par
+      le calendrier de zones, pas par la dérive) : ce dernier prévaut si fourni.
+    - `zone_shares` : dict `{zone: part_du_temps}` (parts sommant à 1) imposant
+      la répartition du temps en zones FC (story #43). Le calendrier est
+      déterministe (zones dans l'ordre croissant, reliquat d'arrondi sur la
+      dernière) — pas un tirage aléatoire de l'ordre des zones.
+    - `fade_pct` : la vitesse du dernier tiers de la séance est réduite de ce
+      pourcentage par rapport au reste (fade / durabilité, story #48).
+    - `dropout_windows` : tuple de `(début_s, fin_s)` (fin exclue) — secondes
+      sans échantillon, comme un GPS qui décroche. La distance/l'altitude
+      continuent d'être intégrées en interne pendant le trou (elles reprennent
+      sans saut à la réapparition du signal), seule l'émission est coupée.
+    - `noise` : `False` désactive tout bruit aléatoire (utile pour des
+      assertions exactes en test) ; `True` (défaut) ajoute un bruit borné et
+      centré, qui ne change pas les moyennes attendues à grande échelle.
+
+    Déterministe : même `seed` + mêmes paramètres → mêmes échantillons,
+    octet pour octet (pas d'horloge, pas d'aléatoire hors `random.Random(seed)`).
+    """
+    rng = random.Random(seed)
+    slope_factor_fn = slope_factor_fn or _default_slope_factor
+    climb_end_m = None if climb_start_m is None else climb_start_m + climb_length_m
+
+    zone_schedule = None
+    zone_seconds_requested = None
+    if zone_shares:
+        zones_sorted = sorted(zone_shares)
+        zone_seconds_requested = {}
+        allocated = 0
+        for z in zones_sorted[:-1]:
+            n = round(duration_s * zone_shares[z])
+            zone_seconds_requested[z] = n
+            allocated += n
+        zone_seconds_requested[zones_sorted[-1]] = duration_s - allocated  # reliquat exact
+        zone_schedule = []
+        for z in zones_sorted:
+            zone_schedule.extend([z] * zone_seconds_requested[z])
+
+    t_out, distance_out, altitude_out, hr_out, speed_out, cadence_out = [], [], [], [], [], []
+    distance = altitude = 0.0
+    hr_first_half, hr_second_half = [], []
+    speed_first_two_thirds, speed_last_third = [], []
+    zone_seconds_from_hr = {}
+
+    for t in range(duration_s):
+        grade_pct = 0.0
+        if climb_start_m is not None and climb_start_m <= distance < climb_end_m:
+            grade_pct = climb_grade_pct
+
+        speed = base_speed_ms * slope_factor_fn(grade_pct)
+        if t >= 2 * duration_s / 3:
+            speed *= (1 - fade_pct / 100)
+            speed_last_third.append(speed)
+        else:
+            speed_first_two_thirds.append(speed)
+        if noise:
+            speed *= (1 + rng.uniform(-0.02, 0.02))
+        speed = max(0.1, speed)
+
+        if zone_schedule is not None:
+            zone = zone_schedule[t]
+            lo, hi = zone_bounds_bpm[zone - 1], zone_bounds_bpm[zone]
+            hr = (lo + hi) / 2
+        else:
+            hr = hr_base_bpm * (1 + decoupling_pct / 100 if t >= duration_s / 2 else 1)
+        if noise:
+            hr += rng.uniform(-1.5, 1.5)
+        (hr_first_half if t < duration_s / 2 else hr_second_half).append(hr)
+        zone_seconds_from_hr[_zone_of_bpm(hr, zone_bounds_bpm)] = \
+            zone_seconds_from_hr.get(_zone_of_bpm(hr, zone_bounds_bpm), 0) + 1
+
+        cadence = cadence_spm + (rng.uniform(-2, 2) if noise else 0.0)
+
+        distance += speed
+        altitude += speed * grade_pct / 100
+
+        if not any(a <= t < b for a, b in dropout_windows):
+            t_out.append(t)
+            distance_out.append(round(distance, 3))
+            altitude_out.append(round(altitude, 3))
+            hr_out.append(round(hr, 1))
+            speed_out.append(round(speed, 3))
+            cadence_out.append(round(cadence, 1))
+
+    records = [
+        {"t_s": t, "distance_m": d, "altitude_m": a, "hr_bpm": h, "speed_ms": s, "cadence_spm": c}
+        for t, d, a, h, s, c in zip(t_out, distance_out, altitude_out, hr_out, speed_out, cadence_out)
+    ]
+
+    avg_hr_first = sum(hr_first_half) / len(hr_first_half) if hr_first_half else None
+    avg_hr_second = sum(hr_second_half) / len(hr_second_half) if hr_second_half else None
+    decoupling_measured = (
+        round((avg_hr_second / avg_hr_first - 1) * 100, 2)
+        if avg_hr_first and avg_hr_second else None
+    )
+    avg_speed_first = sum(speed_first_two_thirds) / len(speed_first_two_thirds) if speed_first_two_thirds else None
+    avg_speed_last = sum(speed_last_third) / len(speed_last_third) if speed_last_third else None
+    fade_measured = (
+        round((1 - avg_speed_last / avg_speed_first) * 100, 2)
+        if avg_speed_first and avg_speed_last else None
+    )
+    elevation_gain_m = round(max(0.0, altitude_out[-1] if altitude_out else 0.0), 2)
+
+    truth = {
+        "seed": seed,
+        "duration_s": duration_s,
+        "n_samples": len(records),
+        "distance_m": distance_out[-1] if distance_out else 0.0,
+        "elevation_gain_m": elevation_gain_m,
+        "climb_requested_gain_m": (
+            round(climb_length_m * climb_grade_pct / 100, 2) if climb_start_m is not None else None
+        ),
+        "decoupling_pct_requested": decoupling_pct if not zone_shares else None,
+        "decoupling_pct_measured": decoupling_measured,
+        "fade_pct_requested": fade_pct,
+        "fade_pct_measured": fade_measured,
+        "zone_seconds_requested": zone_seconds_requested,
+        "zone_seconds_from_hr": zone_seconds_from_hr,
+        "dropout_windows": list(dropout_windows),
+        "dropout_seconds": duration_s - len(records),
+    }
+    return records, truth
 
 
 def _block(data: dict) -> str:
@@ -28,6 +242,20 @@ def _write(root: Path, rel: str, title: str, data: dict, prose: str) -> None:
     path = root / rel
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(f"# {title}\n\n{_block(data)}\n{prose.strip()}\n", encoding="utf-8")
+
+
+def _write_samples(root: Path, activity_id: int, **kwargs) -> None:
+    """Écrit les échantillons seconde par seconde d'une séance (`--with-samples`).
+
+    Emplacement brut proposé par la story d'ingestion FIT (#42) :
+    `activities/fit/<garmin_activity_id>.json`, gitignoré (donnée jetable,
+    reconstruite depuis le Markdown + les FIT réels — voir `tests/README.md`).
+    """
+    records, truth = sample_session(**kwargs)
+    path = root / "activities/fit" / f"{activity_id}.json"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps({"activity_id": activity_id, "records": records, "truth": truth},
+                                ensure_ascii=False), encoding="utf-8")
 
 
 def _splits(rng, km: int, pace_s: float, hr: float, dplus_total: float, trail: bool) -> list:
@@ -43,7 +271,8 @@ def _splits(rng, km: int, pace_s: float, hr: float, dplus_total: float, trail: b
     return rows
 
 
-def build(root: Path, days: int = 120, today: date | None = None, sport: str = "trail", seed: int = 7) -> Path:
+def build(root: Path, days: int = 120, today: date | None = None, sport: str = "trail", seed: int = 7,
+          with_samples: bool = False) -> Path:
     rng = random.Random(seed)
     today = today or date.today()
     start = today - timedelta(days=days - 1)
@@ -168,6 +397,13 @@ def build(root: Path, days: int = 120, today: date | None = None, sport: str = "
         _write(root, f"activities/{iso}_{kind}.md", f"Séance du {iso} — {data['name']}", data,
                f"## Analyse du coach\n\nSéance **{data['name'].lower()}** conforme. FC moyenne {data['avg_hr_bpm']} bpm, "
                f"HRR {data.get('recovery_hr_bpm', '—')}.\n\n- Allure régulière sur le plat\n- Montées gérées en marche rapide")
+        if with_samples:
+            _write_samples(root, data["garmin_activity_id"], seed=seed + i, duration_s=duration,
+                            base_speed_ms=km * 1000 / duration,
+                            climb_grade_pct=8.0 if kind == "trail" else 0.0,
+                            climb_length_m=min(1000.0, km * 1000 / 3) if kind == "trail" else 0.0,
+                            climb_start_m=km * 500.0 if kind == "trail" else None,
+                            hr_base_bpm=hr, cadence_spm=168.0)
         fitness += km * 0.12
 
     # --- météo (7 jours autour d'aujourd'hui) ---------------------------------
@@ -252,8 +488,11 @@ def main(argv=None) -> int:
     parser.add_argument("--days", type=int, default=120)
     parser.add_argument("--today")
     parser.add_argument("--sport", choices=("trail", "road"), default="trail")
+    parser.add_argument("--with-samples", action="store_true",
+                         help="génère aussi activities/fit/<id>.json (échantillons seconde par seconde)")
     args = parser.parse_args(argv)
-    root = build(Path(args.dir), args.days, date.fromisoformat(args.today) if args.today else None, args.sport)
+    root = build(Path(args.dir), args.days, date.fromisoformat(args.today) if args.today else None, args.sport,
+                 with_samples=args.with_samples)
     print(root)
     return 0
 

@@ -100,3 +100,26 @@ python3 -m tests.lib.synthetic /tmp/demo --days 120
 ARC_WORKSPACE=/tmp/demo scripts/dashboard.sh
 ```
 
+### Échantillons seconde par seconde (`sample_session`, story #25)
+
+Toute l'épopée FIT (zones, GAP, découplage, VAM, descente, durabilité, modèle
+pente→allure) a besoin de séries seconde par seconde à **vérité connue**.
+`tests.lib.synthetic.sample_session(...)` en génère une, avec des propriétés
+paramétrées (montée de pente et longueur, dérive FC/découplage imposée,
+répartition de zones FC imposée, fade de fin de séance, trous de signal) et
+renvoie, à côté des échantillons, un dict `truth` : ce qu'il affirme avoir
+produit, mesuré sur les données réellement écrites — c'est ce que
+`tests/data/test_synthetic_samples.py` vérifie (D+, dérive, zones, fade,
+déterminisme octet pour octet).
+
+Champs d'un échantillon : `t_s, distance_m, altitude_m, hr_bpm, speed_ms,
+cadence_spm` — alignés sur le schéma `activity_sample` de
+`scripts/arc_index.py`, pour que l'ingestion FIT (story #42) le consomme sans
+traduction. Pas de `lat`/`lon` : inutiles aux KPI de l'épopée et ça évite tout
+risque de lieu réel (vérifié par `tests/lint/test_synthetic_no_real_data.py`).
+
+```bash
+python3 -m tests.lib.synthetic /tmp/demo --days 120 --with-samples
+# -> /tmp/demo/activities/fit/<garmin_activity_id>.json  ({"activity_id", "records", "truth"})
+```
+
