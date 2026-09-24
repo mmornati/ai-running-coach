@@ -119,9 +119,16 @@ def record_result(case_id: str, passed: int, attempts: int) -> None:
     Sans effet si `ARC_EVAL_RESULTS_OUT` n'est pas réglé — c'est le cas de toute
     exécution locale qui ne le passe pas explicitement. Écrit après CHAQUE cas,
     pas seulement à la fin de la suite : un run interrompu (timeout du job CI)
-    laisse ainsi une trace partielle plutôt que rien, et l'ordre d'exécution des
-    tests (parallélisation, `-k`) n'affecte jamais le résultat déjà écrit pour un
-    autre cas — lecture-fusion-écriture, jamais un remplacement du fichier entier.
+    laisse ainsi une trace partielle plutôt que rien.
+
+    Lecture-fusion-écriture, PAS de verrou : un cas n'efface jamais celui déjà
+    écrit par un autre (chacun ne touche que sa propre clé), mais ce n'est
+    correct que parce que `tests/run_tests.py` exécute le palier C de façon
+    strictement séquentielle (`unittest` sans exécuteur parallèle) — deux
+    process qui écriraient ici en même temps pourraient perdre l'un des deux
+    écrits (read-modify-write classique). Si le palier C gagne un jour un mode
+    parallèle, cette fonction devra écrire un fichier par cas (assemblé ensuite
+    par `render_results.py`) plutôt que de partager un seul fichier.
     """
     path = results_output_path()
     if path is None:

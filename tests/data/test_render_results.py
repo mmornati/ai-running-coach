@@ -27,6 +27,15 @@ class TestRender(unittest.TestCase):
         text = render_results.render({}, ["never-run"], META)
         self.assertIn("| `never-run` | — | — |", text)
 
+    def test_case_missing_from_a_non_empty_run_is_marked_interrupted(self):
+        """Un run qui a bien eu lieu (au moins un cas enregistré) mais qui n'a pas
+        atteint un cas donné (timeout du job, filtre `-k`…) ne doit jamais se
+        confondre avec un cas qui n'a simplement jamais tourné (#74)."""
+        results = {"ran": {"passed": 3, "attempts": 3, "rate": 1.0}}
+        text = render_results.render(results, ["ran", "cut-short"], META)
+        self.assertIn("| `cut-short` | — (interrompu) | — (interrompu) |", text)
+        self.assertNotIn("| `ran` | — (interrompu) | — (interrompu) |", text)
+
     def test_passing_case_shows_ratio_and_check(self):
         results = {"ok-case": {"passed": 3, "attempts": 3, "rate": 1.0}}
         text = render_results.render(results, ["ok-case"], META)

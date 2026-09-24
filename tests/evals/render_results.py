@@ -97,11 +97,19 @@ def render(results: dict, case_ids: list, meta: dict, previous: dict | None = No
         "|---|---|---|",
     ]
 
+    # Un `results` non vide prouve qu'un run a bien eu lieu cette fois-ci (au moins
+    # un cas y a écrit — voir `runner.record_result`) : un cas absent de ce `results`
+    # non vide n'est donc pas « jamais exécuté », il a été laissé de côté par un run
+    # interrompu en cours de route (timeout du job CI, filtre `-k` du déclenchement
+    # manuel…) — distinction utile pour ne pas confondre un trou dans le run avec un
+    # cas qui n'a tout simplement encore jamais tourné (#29, revue de la PR #74).
+    ran_this_time = bool(results)
     any_result = False
     for case_id in case_ids:
         entry = results.get(case_id)
         if entry is None:
-            lines.append(f"| `{case_id}` | — | — |")
+            marker = "— (interrompu)" if ran_this_time else "—"
+            lines.append(f"| `{case_id}` | {marker} | {marker} |")
             continue
         any_result = True
         passed, attempts, rate = entry["passed"], entry["attempts"], entry["rate"]

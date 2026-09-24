@@ -197,6 +197,17 @@ geste manuel (commande ci-dessus, ou téléchargement de l'artefact
 `evals-results` produit par le job), à la main d'un mainteneur qui en valide
 le contenu.
 
+**Ce que pose l'étiquette exécute réellement.** `run-evals` déclenche
+`.github/workflows/evals.yml` **tel qu'il existe sur la branche de la PR**, pas
+la version sur `main` — avec le secret `ANTHROPIC_API_KEY`. Une PR qui modifie
+ce workflow, `tests/run_tests.py`, `tests/evals/runner.py` ou
+`tests/evals/render_results.py` change donc ce que l'étiquette exécute et avec
+quels privilèges. Poser l'étiquette revient à approuver l'exécution du code de
+la PR avec ce secret — un pouvoir qu'un accès en écriture au dépôt donne déjà,
+mais qu'il faut exercer consciemment : un mainteneur doit relire tout
+changement touchant à ces fichiers **avant** de poser l'étiquette, pas
+seulement le reste du diff.
+
 ### Nouvelles assertions sur les contenus d'arc et les arguments d'outils (#27)
 
 Quatre assertions permettent de vérifier le **contenu** des fichiers générés et des

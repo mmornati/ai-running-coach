@@ -22,6 +22,15 @@ name: Évals
 # de fork — la garde same-repo ci-dessous n'est qu'une défense en profondeur, utile
 # si le dépôt change un jour ses réglages d'organisation sur le partage de secrets
 # avec les forks internes.
+#
+# ATTENTION (revue PR #74, point 8) : poser l'étiquette `run-evals` lance ce workflow
+# TEL QU'IL EXISTE SUR LA BRANCHE DE LA PR, avec le secret `ANTHROPIC_API_KEY` — pas
+# la version sur `main`. Une PR qui modifie CE fichier, `tests/run_tests.py`,
+# `tests/evals/runner.py` ou `tests/evals/render_results.py` peut donc changer ce que
+# l'étiquette exécute et avec quels privilèges. Poser l'étiquette équivaut à approuver
+# l'exécution du code de la PR avec ce secret — exactement ce qu'un accès en écriture
+# donnerait déjà, mais un mainteneur doit relire tout changement touchant à ces
+# fichiers AVANT de poser l'étiquette, pas seulement le reste du diff.
 on:
   workflow_dispatch:
     inputs:
@@ -39,20 +48,15 @@ on:
   pull_request:
     types: [labeled]
 
-# Un groupe par PR (jamais partagé avec le nocturne/manuel) : reposer l'étiquette
-# plusieurs fois de suite annule le run précédent au lieu de les empiler. Le
-# schedule/dispatch, eux, restent dans un groupe stable et ne s'annulent pas entre
-# eux (un lancement manuel ne doit pas couper le run hebdomadaire en cours).
-concurrency:
-  group: evals-${{ github.event_name }}-${{ github.event.pull_request.number || 'scheduled' }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
-
 jobs:
   evals:
     runs-on: ubuntu-latest
-    # Plafond de coût : au-delà, le job échoue plutôt que de consommer indéfiniment
-    # (à ajuster avec `repeat`/`cases` si la suite grossit).
-    timeout-minutes: 30
+    # Plafond de coût : au-delà, le job échoue plutôt que de consommer indéfiniment.
+    # ~15 cas × 3 répétitions × jusqu'à ~60s chacun (installation de l'outil comprise
+    # sur le premier) peut approcher 45 min dans le pire cas ; 60 min laisse de la
+    # marge sans être un chèque en blanc (revue PR #74, point 7 : 30 min était trop
+    # juste et aurait fait échouer des runs par ailleurs sains).
+    timeout-minutes: 60
     permissions:
       # Rien de plus que lire le dépôt : ce job n'écrit jamais sur GitHub lui-même,
       # il ne fait que produire des artefacts. `pull-requests: write` reste isolé
@@ -62,7 +66,9 @@ jobs:
     # le dépôt canonique (jamais sur un fork qui aurait copié le workflow) ; la PR ne
     # tourne que si l'étiquette QUI VIENT D'ÊTRE POSÉE est bien `run-evals`, sur une PR
     # du dépôt lui-même (jamais d'une fork — appartient déjà par défaut sans secrets,
-    # mais on le vérifie explicitement).
+    # mais on le vérifie explicitement). Verrouillé par
+    # `tests/lint/test_workflow_lint.py::TestEvalsWorkflowLabelGuard`, qui isole CE
+    # bloc `if:` (pas le fichier entier) pour vérifier les trois gardes.
     if: >
       github.repository == 'mmornati/ai-running-coach' &&
       (
@@ -73,9 +79,27 @@ jobs:
           github.event.pull_request.head.repo.full_name == github.repository
         )
       )
+    # Groupe de concurrence PORTÉ PAR LE JOB, pas par le workflow (revue PR #74, point
+    # 1 — BLOQUANT dans la revue précédente) : posé au niveau du workflow, N'IMPORTE
+    # QUELLE autre étiquette ajoutée à la PR pendant que ce job tourne aurait rejoint
+    # le même groupe (le déclencheur `pull_request: types: [labeled]` réagit à
+    # N'IMPORTE quelle étiquette, la condition `if:` ci-dessus ne filtrant qu'ENSUITE)
+    # et aurait annulé le run payant en cours, alors même que ce nouveau run n'exécute
+    # rien. Porté par le job, le groupe n'est rejoint QUE quand `if:` est vrai — un
+    # ajout d'étiquette sans rapport, dont le job est `skipped`, n'entre jamais dans
+    # le groupe et ne peut donc rien annuler. Seul un second run où `run-evals` est
+    # réellement reposée (retrait + repose) partage le groupe et annule le précédent
+    # — le comportement voulu.
+    concurrency:
+      group: evals-${{ github.event_name }}-${{ github.event.pull_request.number || 'scheduled' }}
+      cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
     steps:
       - uses: actions/checkout@v5
+        with:
+          # Le jeton de checkout n'a besoin d'exister que le temps du clone : aucune
+          # étape suivante ne pousse quoi que ce soit avec (nit, revue PR #74, point 9).
+          persist-credentials: false
 
       - uses: actions/setup-python@v5
         with:
@@ -142,10 +166,16 @@ jobs:
     # (une régression de `render_results.py`) resterait borné à un commentaire mal
     # formaté, jamais à une fuite de secret ou une action sur le dépôt.
     needs: evals
+    # `success`/`failure` seulement, jamais `cancelled` (revue PR #74, point 1) : un
+    # `evals` annulé (relabel légitime, ou plafond de coût atteint) n'a pas forcément
+    # publié l'artefact `evals-results` — télécharger un artefact absent ferait
+    # échouer ce job pour rien. `skipped` (dépôt non canonique, étiquette différente)
+    # est déjà exclu par construction, mais l'écrire en positif (au lieu de `!=
+    # 'skipped'`) documente l'intention plutôt que de l'déduire par soustraction.
     if: >
       always() &&
       github.event_name == 'pull_request' &&
-      needs.evals.result != 'skipped' &&
+      (needs.evals.result == 'success' || needs.evals.result == 'failure') &&
       github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -165,17 +195,47 @@ jobs:
           # (RESULTS.md), jamais du titre/corps de la PR : rien d'interpolé depuis
           # `github.event.pull_request.*` dans une commande shell ici — tout passe
           # par l'API Octokit avec une chaîne lue en Node, pas par `run:`.
+          #
+          # Mis à jour en place plutôt que reposté (revue PR #74, point 6) : reposer
+          # l'étiquette après un correctif ne doit pas empiler un nouveau commentaire
+          # à chaque fois — un marqueur caché identifie le commentaire précédent, mis
+          # à jour via `updateComment` s'il existe encore. Un corps trop long (limite
+          # GitHub 65536 caractères) est tronqué plutôt que de faire échouer l'appel.
           script: |
             const fs = require("fs");
+            const MARKER = "<!-- arc-evals-results -->";
+            const MAX_LEN = 65536;
             const path = "/tmp/evals-results/RESULTS.md";
-            if (!fs.existsSync(path)) {
-              core.warning("RESULTS.md absent de l'artefact — rien à commenter.");
-              return;
+
+            let body = fs.existsSync(path)
+              ? fs.readFileSync(path, "utf8")
+              : "_Aucun `RESULTS.md` produit (job `evals` terminé sans artefact — voir son journal)._";
+            body = `${MARKER}\n\n${body}`;
+            if (body.length > MAX_LEN) {
+              const notice = "\n\n… (tronqué — voir l'artefact `evals-results` pour le relevé complet)";
+              body = body.slice(0, MAX_LEN - notice.length) + notice;
             }
-            const body = fs.readFileSync(path, "utf8");
-            await github.rest.issues.createComment({
+
+            const comments = await github.paginate(github.rest.issues.listComments, {
               owner: context.repo.owner,
               repo: context.repo.repo,
               issue_number: context.payload.pull_request.number,
-              body,
+              per_page: 100,
             });
+            const existing = comments.find((c) => c.body && c.body.includes(MARKER));
+
+            if (existing) {
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: existing.id,
+                body,
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.payload.pull_request.number,
+                body,
+              });
+            }
