@@ -28,6 +28,16 @@ ntfy_topic = ""
 # Jamais versionné : à placer hors du dépôt, ex. "~/.config/ai-running-coach/ntfy.token".
 ntfy_token_file = ""
 
+# Alerte d'expiration des tokens Garmin (#32) : `scripts/daily-sync.sh` interroge
+# `coach_doctor.py --check garmin_token` avant chaque synchronisation. Sans effet
+# si `provider = "none"`.
+token_alerts = true
+# Seuils, en jours restants avant l'échéance estimée, qui déclenchent une alerte.
+# Le seuil le plus proche de l'échéance (le plus petit) alerte au maximum une
+# fois par jour jusqu'au renouvellement ; un seuil plus lointain (ex. J-14)
+# n'alerte qu'une seule fois tant que l'échéance n'a pas atteint le seuil suivant.
+token_alert_days = [14, 3]
+
 [sync]
 # Synchronisation Garmin automatique (voir docs/mobile.md et scripts/daily-sync.sh).
 # Exécuteur headless : "claude" (Claude Code, `claude -p`) | "codex" (Codex CLI, `codex exec`).

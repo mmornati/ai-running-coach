@@ -70,6 +70,32 @@ uv run garmin-mcp-auth --verify
 2. Vérifiez que les tokens existent : `ls ~/.garminconnect/`
 3. Relancez l'authentification : `uv run garmin-mcp-auth`
 
+### Alerte push avant expiration des tokens (#32)
+
+Avant chaque exécution, `scripts/daily-sync.sh` interroge `coach_doctor.py
+--check garmin_token --json` (borné dans le temps, jamais bloquant : une panne
+du diagnostic se journalise et n'empêche jamais la synchronisation) et envoie,
+au plus une fois par jour, une notification ntfy avec la commande de
+renouvellement quand l'échéance estimée approche.
+
+- **Seuils** : `[notifications].token_alert_days` dans `config/workspace.toml`
+  (défaut `[14, 3]`, en jours restants). Le seuil le plus proche de l'échéance
+  (le plus petit, ainsi que « expiré ») alerte chaque jour jusqu'au
+  renouvellement ; un seuil plus lointain (J-14 par défaut) n'alerte qu'une
+  seule fois tant que l'échéance n'a pas atteint le seuil suivant — pas de
+  rappel quotidien dès J-14.
+- **Désactivation** : `[notifications].token_alerts = false` dans
+  `config/workspace.user.toml`. Sans effet si `provider = "none"`.
+- **État** : `<workspace>/logs/.token-alert-state` (gitignoré comme tout
+  `logs/`) — supprimez-le pour forcer une réévaluation, par exemple après un
+  renouvellement manuel des tokens en dehors du daily-sync.
+- **401 réel** : si la synchronisation rencontre effectivement un refus
+  d'authentification Garmin (`Authentication failed: 401 …`, texte réel de
+  `garminconnect`/`garmin_mcp`), la notification remplace le message d'échec
+  générique par un message explicite avec la commande de renouvellement,
+  qu'elle vienne d'un run en échec ou d'un run que l'agent a rattrapé
+  lui-même (`ERREUR : …` dans le résumé).
+
 ## Configuration IDE
 
 ### L'agent `coach` n'apparaît pas dans mon IDE
