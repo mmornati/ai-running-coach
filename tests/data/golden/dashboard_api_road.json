@@ -3376,42 +3376,9 @@
       },
       "status": 200
     },
-    "/api/nutrition?days=14": {
+    "/api/nutrition?days=3": {
       "body": {
         "days": [
-          {
-            "burned_kcal": 2876.0,
-            "carbs_g": 375.0,
-            "date": "2026-09-11",
-            "fat_g": 78.0,
-            "hydration_ml": 2400.0,
-            "intake_kcal": 2264.0,
-            "protein_g": 115.0,
-            "target_weight_kg": null,
-            "weight_kg": null
-          },
-          {
-            "burned_kcal": 2446.0,
-            "carbs_g": 354.0,
-            "date": "2026-09-13",
-            "fat_g": 78.0,
-            "hydration_ml": 2400.0,
-            "intake_kcal": 2405.0,
-            "protein_g": 115.0,
-            "target_weight_kg": null,
-            "weight_kg": null
-          },
-          {
-            "burned_kcal": 2679.0,
-            "carbs_g": 360.0,
-            "date": "2026-09-15",
-            "fat_g": 78.0,
-            "hydration_ml": 2400.0,
-            "intake_kcal": 2406.0,
-            "protein_g": 115.0,
-            "target_weight_kg": null,
-            "weight_kg": null
-          },
           {
             "burned_kcal": 2560.0,
             "carbs_g": 355.0,
