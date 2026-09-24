@@ -160,6 +160,43 @@ Chaque cas est répété N fois et passe sur un seuil, pas à l'unanimité. Le d
 relevé est versionné dans `tests/evals/RESULTS.md` : une régression se lit alors
 dans un diff.
 
+### CI planifiée, sur demande, ou sur étiquette de PR (#29)
+
+`.github/workflows/evals.yml` déclenche ce palier de trois façons, toutes
+pensées pour plafonner le coût (jetons, minutes CI) et ne jamais exposer
+`ANTHROPIC_API_KEY` à du code non fiable :
+
+| Déclencheur | Quand | Paramètres |
+|---|---|---|
+| `schedule` | chaque lundi 03:17 UTC | modèle et répétitions par défaut |
+| `workflow_dispatch` (onglet Actions) | à la demande | `repeat`, `model`, `cases` (filtre `-k`, vide = tous) |
+| étiquette `run-evals` sur une PR | à la pose de l'étiquette (jamais à chaque push suivant) | par défaut |
+
+Poser l'étiquette est l'acte d'approbation d'un mainteneur — jamais automatique,
+et jamais sur `synchronize` : retirer puis reposer l'étiquette relance
+volontairement les évals après un correctif, sans que chaque commit d'une PR
+déjà étiquetée ne reparte pour un tour. Une PR de fork ne reçoit de toute façon
+aucun secret sur cet événement ; une garde explicite (`head.repo.full_name`)
+l'exclut quand même du déclenchement, en défense en profondeur.
+
+Secret absent (`ANTHROPIC_API_KEY` non réglé — fork, ou dépôt fraîchement
+installé) : chaque cas est simplement *ignoré*, jamais en échec, comme en
+local (voir `runner.looks_unauthenticated`).
+
+Le job publie deux artefacts (journal brut, et un `RESULTS.md` régénéré par
+`tests/evals/render_results.py` depuis les taux de réussite du run — voir
+docstring du module) et, uniquement pour les PR étiquetées, poste ce même
+`RESULTS.md` en commentaire, depuis un second job qui ne porte
+`pull-requests: write` que lui, et qui n'exécute lui-même ni prompt ni outil
+MCP : il republie tel quel un fichier déjà produit par le premier job. Une
+régression de taux de réussite par rapport au `RESULTS.md` **versionné** est
+annotée `⚠️ régression` directement dans ce commentaire (voir
+`render_results.parse_previous`). Ce `RESULTS.md` généré par la CI n'est
+jamais committé automatiquement : régénérer le relevé de référence reste un
+geste manuel (commande ci-dessus, ou téléchargement de l'artefact
+`evals-results` produit par le job), à la main d'un mainteneur qui en valide
+le contenu.
+
 ### Nouvelles assertions sur les contenus d'arc et les arguments d'outils (#27)
 
 Quatre assertions permettent de vérifier le **contenu** des fichiers générés et des

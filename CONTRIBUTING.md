@@ -71,7 +71,9 @@ ARC_LLM_TESTS=1 python3 tests/run_tests.py --tier c   # évals d'exécution (mod
 
 Les paliers A, B et D tournent en CI sur `ubuntu-latest` **et** `macos-latest` — bash
 3.2, le sed de BSD et `launchctl` sont des cibles de premier plan. Le palier C
-coûte des jetons : il ne tourne que la nuit et sur déclenchement manuel.
+coûte des jetons : il ne tourne qu'une fois par semaine, sur déclenchement manuel,
+ou sur une PR à laquelle un mainteneur pose l'étiquette `run-evals` (jamais
+automatiquement) — détail et garanties de sécurité dans `tests/README.md`.
 
 Le détail (bac à sable, stubs, ajout d'un cas) est dans
 [`tests/README.md`](tests/README.md).

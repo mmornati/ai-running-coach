@@ -1,10 +1,27 @@
 name: Évals
 
-# Palier C — exécution réelle des prompts avec un modèle léger.
+# Palier C — exécution réelle des prompts avec un modèle léger. Coûte des jetons et
+# n'est jamais déterministe : trois déclencheurs, tous pensés pour plafonner le coût
+# et ne jamais exposer de secret à du code non fiable (détail complet dans la section
+# Sécurité de la PR #29) :
 #
-# Jamais sur `pull_request` : une PR de fork ne voit pas les secrets, et n'importe
-# quelle PR pourrait sinon dépenser des jetons. Déclenchement manuel, plus une
-# exécution nocturne sur main.
+#   - `schedule` HEBDOMADAIRE (pas nocturne comme avant #29) : le comportement des
+#     agents ne dérive pas d'un jour à l'autre, un run par semaine suffit à détecter
+#     une régression sans payer un abonnement quotidien de jetons.
+#   - `workflow_dispatch`, avec un filtre de cas optionnel (`-k`) en plus du modèle et
+#     des répétitions, pour rejouer un sous-ensemble ciblé sans relancer toute la suite.
+#   - `pull_request` de type `labeled` **uniquement** (jamais `synchronize`) : poser
+#     l'étiquette `run-evals` est l'acte d'approbation d'un mainteneur ; la laisser
+#     réagir à chaque push relancerait les évals à chaque commit d'une PR déjà
+#     étiquetée, un coût non plafonné. Pour rejouer après un correctif, retirer puis
+#     reposer l'étiquette.
+#
+# Jamais `pull_request_target` : cet événement donnerait les secrets du dépôt à un
+# checkout de la branche de la PR, donc à du code potentiellement non fiable (« pwn
+# request »). `pull_request` classique ne donne de toute façon aucun secret à une PR
+# de fork — la garde same-repo ci-dessous n'est qu'une défense en profondeur, utile
+# si le dépôt change un jour ses réglages d'organisation sur le partage de secrets
+# avec les forks internes.
 on:
   workflow_dispatch:
     inputs:
@@ -14,18 +31,48 @@ on:
       model:
         description: "Modèle à évaluer"
         default: "claude-haiku-4-5-20251001"
+      cases:
+        description: "Filtre de cas (-k du runner de tests), vide = tous"
+        default: ""
   schedule:
-    - cron: "17 3 * * *"
+    - cron: "17 3 * * 1" # lundi 03:17 UTC
+  pull_request:
+    types: [labeled]
 
+# Un groupe par PR (jamais partagé avec le nocturne/manuel) : reposer l'étiquette
+# plusieurs fois de suite annule le run précédent au lieu de les empiler. Le
+# schedule/dispatch, eux, restent dans un groupe stable et ne s'annulent pas entre
+# eux (un lancement manuel ne doit pas couper le run hebdomadaire en cours).
 concurrency:
-  group: evals
-  cancel-in-progress: false
+  group: evals-${{ github.event_name }}-${{ github.event.pull_request.number || 'scheduled' }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   evals:
     runs-on: ubuntu-latest
-    # Sans clé, le palier s'ignore proprement : inutile de lancer le job.
-    if: github.repository == 'mmornati/ai-running-coach'
+    # Plafond de coût : au-delà, le job échoue plutôt que de consommer indéfiniment
+    # (à ajuster avec `repeat`/`cases` si la suite grossit).
+    timeout-minutes: 30
+    permissions:
+      # Rien de plus que lire le dépôt : ce job n'écrit jamais sur GitHub lui-même,
+      # il ne fait que produire des artefacts. `pull-requests: write` reste isolé
+      # dans le job `comment`, qui n'exécute lui-même aucun prompt (voir plus bas).
+      contents: read
+    # Trois conditions, une par déclencheur : schedule/dispatch tournent seulement sur
+    # le dépôt canonique (jamais sur un fork qui aurait copié le workflow) ; la PR ne
+    # tourne que si l'étiquette QUI VIENT D'ÊTRE POSÉE est bien `run-evals`, sur une PR
+    # du dépôt lui-même (jamais d'une fork — appartient déjà par défaut sans secrets,
+    # mais on le vérifie explicitement).
+    if: >
+      github.repository == 'mmornati/ai-running-coach' &&
+      (
+        github.event_name != 'pull_request' ||
+        (
+          github.event.label.name == 'run-evals' &&
+          contains(github.event.pull_request.labels.*.name, 'run-evals') &&
+          github.event.pull_request.head.repo.full_name == github.repository
+        )
+      )
 
     steps:
       - uses: actions/checkout@v5
@@ -42,11 +89,22 @@ jobs:
           ARC_LLM_TESTS: "1"
           ARC_EVAL_REPEAT: ${{ inputs.repeat || '3' }}
           ARC_EVAL_MODEL: ${{ inputs.model || 'claude-haiku-4-5-20251001' }}
+          # Consommé par `render_results.py` juste après (#29) — chaque cas y ajoute
+          # son taux de réussite au fil de l'eau (voir `runner.record_result`).
+          ARC_EVAL_RESULTS_OUT: /tmp/eval-results.json
+          ARC_EVAL_CASE_FILTER: ${{ inputs.cases || '' }}
+          # Absente (fork sans secret configuré, ou avant que le mainteneur ne l'ait
+          # réglé après le merge de la #29) : chaque cas se retrouve juste `skipped`,
+          # jamais en échec — voir `runner.looks_unauthenticated`.
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
         run: |
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
           export PATH="$HOME/.local/bin:$PATH"
-          python3 tests/run_tests.py --tier c | tee /tmp/evals.log
+          if [ -n "$ARC_EVAL_CASE_FILTER" ]; then
+            python3 tests/run_tests.py --tier c -k "$ARC_EVAL_CASE_FILTER" | tee /tmp/evals.log
+          else
+            python3 tests/run_tests.py --tier c | tee /tmp/evals.log
+          fi
 
       - name: Publier le journal
         if: always()
@@ -54,3 +112,70 @@ jobs:
         with:
           name: evals-log
           path: /tmp/evals.log
+
+      - name: Rendre RESULTS.md
+        if: always()
+        env:
+          ARC_EVAL_MODEL: ${{ inputs.model || 'claude-haiku-4-5-20251001' }}
+          ARC_EVAL_REPEAT: ${{ inputs.repeat || '3' }}
+        run: |
+          python3 tests/evals/render_results.py \
+            --results /tmp/eval-results.json \
+            --previous tests/evals/RESULTS.md \
+            --model "$ARC_EVAL_MODEL" \
+            --repeat "$ARC_EVAL_REPEAT" \
+            --out /tmp/RESULTS.md
+
+      - name: Publier RESULTS.md
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: evals-results
+          path: |
+            /tmp/RESULTS.md
+            /tmp/eval-results.json
+
+  comment:
+    # Job séparé et le SEUL avec `pull-requests: write` (#29) : il n'exécute aucun
+    # prompt, aucun outil MCP, aucun code de PR — il télécharge un artefact déjà
+    # produit par `evals` et en republie le contenu tel quel. Le pire abus possible
+    # (une régression de `render_results.py`) resterait borné à un commentaire mal
+    # formaté, jamais à une fuite de secret ou une action sur le dépôt.
+    needs: evals
+    if: >
+      always() &&
+      github.event_name == 'pull_request' &&
+      needs.evals.result != 'skipped' &&
+      github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      pull-requests: write
+    steps:
+      - name: Télécharger le relevé
+        uses: actions/download-artifact@v4
+        with:
+          name: evals-results
+          path: /tmp/evals-results
+
+      - name: Commenter la PR
+        uses: actions/github-script@v7
+        with:
+          # Le contenu posté vient d'un fichier produit par notre propre script
+          # (RESULTS.md), jamais du titre/corps de la PR : rien d'interpolé depuis
+          # `github.event.pull_request.*` dans une commande shell ici — tout passe
+          # par l'API Octokit avec une chaîne lue en Node, pas par `run:`.
+          script: |
+            const fs = require("fs");
+            const path = "/tmp/evals-results/RESULTS.md";
+            if (!fs.existsSync(path)) {
+              core.warning("RESULTS.md absent de l'artefact — rien à commenter.");
+              return;
+            }
+            const body = fs.readFileSync(path, "utf8");
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.payload.pull_request.number,
+              body,
+            });
