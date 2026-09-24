@@ -44,6 +44,7 @@ from datetime import date, timedelta
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+from typing import Optional, Tuple
 from urllib.parse import parse_qs, urlparse
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -223,6 +224,7 @@ def api_summary(store: Store, q: dict) -> dict:
         "today": today.isoformat(), "settings": settings, "objective": objective, "athlete": athlete,
         "form": latest, "health": health, "files": {r["parsed_ok"]: r["n"] for r in files},
         "incomplete_files": incomplete, "assumptions": store.meta("assumptions"),
+        "compliance_trend": api_compliance_trend(store, q),
         "counts": {
             "activities": (store.one("SELECT COUNT(*) AS n FROM activity") or {}).get("n", 0),
             "reports": (store.one("SELECT COUNT(*) AS n FROM report") or {}).get("n", 0),
@@ -307,6 +309,21 @@ def api_health(store: Store, q: dict) -> dict:
             "thresholds": {"rhr_warn": 5, "rhr_alert": 7}}
 
 
+def _week_sessions_and_activities(store: Store, monday: date) -> Tuple[list, list]:
+    sunday = monday + timedelta(days=6)
+    sessions = store.rows("SELECT * FROM planned_session WHERE date >= ? AND date <= ? ORDER BY date",
+                          (monday.isoformat(), sunday.isoformat()))
+    activities = store.rows("SELECT id, date, sport, name, distance_m, duration_s, elevation_gain_m, avg_hr_bpm, load "
+                            "FROM activity WHERE date >= ? AND date <= ? ORDER BY date",
+                            (monday.isoformat(), sunday.isoformat()))
+    return sessions, activities
+
+
+def _week_compliance(store: Store, monday: date, today: date) -> Optional[dict]:
+    sessions, activities = _week_sessions_and_activities(store, monday)
+    return M.week_compliance(sessions, activities, today)
+
+
 def api_week(store: Store, q: dict) -> dict:
     today = _today(store)
     requested = q.get("start", [None])[0]
@@ -317,10 +334,7 @@ def api_week(store: Store, q: dict) -> dict:
     monday = _monday(monday)
     sunday = monday + timedelta(days=6)
     week = store.one("SELECT * FROM week WHERE week_start = ?", (monday.isoformat(),))
-    sessions = store.rows("SELECT * FROM planned_session WHERE date >= ? AND date <= ? ORDER BY date",
-                          (monday.isoformat(), sunday.isoformat()))
-    done = store.rows("SELECT id, date, sport, name, distance_m, duration_s, elevation_gain_m, avg_hr_bpm, load "
-                      "FROM activity WHERE date >= ? AND date <= ? ORDER BY date", (monday.isoformat(), sunday.isoformat()))
+    sessions, done = _week_sessions_and_activities(store, monday)
     weather = store.rows("SELECT date, location, category, best_slot, slot_reason, temp_max_c, wind_kmh, precip_mm "
                          "FROM weather_day WHERE date >= ? AND date <= ? ORDER BY date", (monday.isoformat(), sunday.isoformat()))
     weeks = [r["week_start"] for r in store.rows("SELECT DISTINCT week_start FROM week ORDER BY week_start")]
@@ -328,7 +342,24 @@ def api_week(store: Store, q: dict) -> dict:
         "week_start": monday.isoformat(), "today": today.isoformat(),
         "week": _strip(week, "body_md"), "body_html": render_markdown(I.C.body_after_block(week["body_md"] or "")) if week else None,
         "sessions": sessions, "activities": done, "weather": weather, "known_weeks": weeks,
+        "compliance": M.week_compliance(sessions, done, today),
     }
+
+
+def api_compliance_trend(store: Store, q: dict, weeks: int = 4) -> list:
+    """Conformité des `weeks` dernières semaines (la courante incluse), plus ancienne en premier.
+
+    Une semaine sans plan (`week_compliance` rend `None`) apparaît quand même dans la
+    liste, avec `compliance: null` : c'est ce qui permet à l'affichage de montrer un
+    trou plutôt que de faire glisser silencieusement la fenêtre.
+    """
+    today = _today(store)
+    current_monday = _monday(today)
+    out = []
+    for w in range(weeks - 1, -1, -1):
+        monday = current_monday - timedelta(weeks=w)
+        out.append({"week_start": monday.isoformat(), "compliance": _week_compliance(store, monday, today)})
+    return out
 
 
 def api_activities(store: Store, q: dict) -> dict:

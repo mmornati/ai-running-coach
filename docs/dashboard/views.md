@@ -35,7 +35,10 @@ La page du matin, à ouvrir avant de lacer ses chaussures. De haut en bas :
 3. **Au programme** : la séance prévue par le plan de la semaine, ce qui a déjà été
    enregistré aujourd'hui, la météo du lieu d'entraînement et le créneau conseillé.
 4. **Forme** : condition, fatigue, forme et ratio de charge, avec une phrase qui les
-   lit pour vous (« la fatigue est sous la condition physique »).
+   lit pour vous (« la fatigue est sous la condition physique »), puis une **mini
+   tendance de conformité sur 4 semaines** (une barre par semaine, hauteur = % de
+   séances faites) — une semaine sans plan reste une barre grise plutôt que de
+   disparaître silencieusement de la série. Détail complet dans **Semaine**.
 5. **Le dernier rapport du coach**, en lien.
 
 | Alimentée par | Écrit par |
@@ -128,9 +131,29 @@ Le plan de la semaine face au réalisé. Pour chaque jour :
 - **les séances réellement enregistrées**, sous le plan : un clic ouvre leur détail.
 
 En dessous, **le réalisé face à la cible** de la semaine (18,2 km sur 40 visés), puis
-**le texte du plan** tel que le coach l'a écrit. *Précédente* / *Suivante* naviguent
-d'une semaine à l'autre ; la liste **Plans** saute directement aux semaines qui ont
-un plan.
+**la conformité** — le KPI de l'épopée #20 (story #33) : % de séances faites, ratio
+durée réalisée/planifiée, ratio D+ réalisé/planifié (route : ratio absent, pas de D+
+significatif), le tout aussi par intensité (*Facile* : repos, récupération,
+endurance ; *Qualité* : tempo, seuil, VO2max, course). Les séances *Annulées* et
+*Déplacées* sont retirées du calcul (elles ne comptent ni en séance faite ni en
+manquée) et les séances des jours pas encore passés de la semaine en cours ne sont
+jamais comptées manquées. Une semaine sans aucune séance planifiée n'affiche aucun
+pourcentage plutôt qu'un 0 % trompeur. Puis **le texte du plan** tel que le coach
+l'a écrit. *Précédente* / *Suivante* naviguent d'une semaine à l'autre ; la liste
+**Plans** saute directement aux semaines qui ont un plan.
+
+!!! note "Comment une séance prévue est rapprochée du réalisé"
+    Le statut écrit dans le plan (`done`, `missed`, `moved`, `cancelled`) prime
+    toujours. Sans statut, ou avec `planned` sur une date déjà passée, la séance est
+    comparée aux activités du même jour de sport compatible (route et trail
+    interchangeables, de même pour les variantes de vélo) : une activité
+    correspondante fait compter la séance comme faite, son absence comme manquée.
+    Une séance `cancelled` est exclue du calcul quel que soit le motif — le contrat
+    de données n'a pas de champ pour distinguer une annulation médicale d'une autre
+    (voir la docstring de `scripts/arc_metrics.py::week_compliance`). Une séance
+    `moved` est également exclue : rien dans le contrat n'indique sa nouvelle date ;
+    si le coach a écrit une séance distincte au jour réel, celle-ci compte pour
+    elle-même.
 
 La même vue montre les semaines à venir — ici un bloc de force planifié un mois plus
 tard, avec les fiches de renforcement et le home trainer :

@@ -56,6 +56,64 @@ function readout(el, html) {
 }
 
 // ---------------------------------------------------------------------------
+// Conformité plan vs réalisé (#33)
+// ---------------------------------------------------------------------------
+
+const pctClass = (pct) => (pct === null || pct === undefined ? "" : pct >= 80 ? "pos" : pct < 50 ? "neg" : "");
+const ratioText = (r) => (r === null || r === undefined ? "—" : `${F.num(r * 100, 0)}${" "}%`);
+
+/** Bloc « Conformité » de la vue Semaine : % de séances faites, ratios durée/D+, par intensité. */
+function complianceSection(c, trail) {
+  if (!c) {
+    return `<section class="band"><h2>Conformité</h2>${note("Pas de séance planifiée cette semaine-là : conformité non calculée.")}</section>`;
+  }
+  const intensityLabel = { easy: "Facile", quality: "Qualité" };
+  const intensityRows = Object.entries(c.by_intensity)
+    .filter(([, v]) => v.sessions_planned > 0)
+    .map(([name, v]) => `<div><dt>${intensityLabel[name]}</dt><dd class="${pctClass(v.sessions_pct)}">${F.num(v.sessions_pct, 0)}${" "}%<small> (${v.sessions_done}/${v.sessions_planned})</small></dd></div>`)
+    .join("");
+  const excluded = [
+    c.sessions_cancelled ? `${c.sessions_cancelled} annulée${c.sessions_cancelled > 1 ? "s" : ""}` : null,
+    c.sessions_moved ? `${c.sessions_moved} déplacée${c.sessions_moved > 1 ? "s" : ""}` : null,
+    c.sessions_future ? `${c.sessions_future} à venir` : null,
+  ].filter(Boolean).join(" · ");
+  return `<section class="band"><h2>Conformité</h2>
+    <dl class="facts facts--grid">
+      <div><dt>Séances faites</dt><dd class="${pctClass(c.sessions_pct)}">${c.sessions_pct !== null ? F.num(c.sessions_pct, 0) + " %" : "—"}<small> (${c.sessions_done}/${c.sessions_planned})</small></dd></div>
+      <div><dt>Durée réalisée / planifiée</dt><dd>${ratioText(c.duration_ratio)}</dd></div>
+      ${trail ? `<div><dt>D+ réalisé / planifié</dt><dd>${ratioText(c.elevation_ratio)}</dd></div>` : ""}
+      ${intensityRows}
+    </dl>
+    ${excluded ? note(`Hors calcul : ${F.esc(excluded)}.`) : ""}
+  </section>`;
+}
+
+/** Mini-tendance 4 semaines pour la vue Aujourd'hui : une barre SVG par semaine.
+ *
+ * En SVG (comme `rangeBar`), pas en CSS : la hauteur varie par valeur, et le CSP du
+ * tableau de bord (`style-src 'self'`, sans `unsafe-inline`) interdit tout style
+ * posé en ligne — seuls des attributs SVG (`height`, `y`) peuvent varier par item.
+ */
+function complianceTrend(trend) {
+  if (!trend || !trend.some((w) => w.compliance)) return "";
+  const barW = 40, gap = 10, chartH = 36;
+  const bars = trend.map((w, i) => {
+    const c = w.compliance;
+    const pct = c ? c.sessions_pct : null;
+    const barH = pct !== null ? Math.max(3, (pct / 100) * chartH) : 3;
+    const cls = pct === null ? "trend__bar--none" : pct >= 80 ? "trend__bar--pos" : pct < 50 ? "trend__bar--neg" : "trend__bar--mid";
+    const title = c
+      ? `Semaine du ${F.dayShort(w.week_start)} : ${F.num(pct, 0)} % des séances (${c.sessions_done}/${c.sessions_planned})`
+      : `Semaine du ${F.dayShort(w.week_start)} : pas de plan`;
+    const x = i * (barW + gap);
+    return `<rect class="trend__bar ${cls}" x="${x}" y="${chartH - barH}" width="${barW}" height="${barH}" rx="3"><title>${F.esc(title)}</title></rect>`;
+  }).join("");
+  const totalW = trend.length * barW + (trend.length - 1) * gap;
+  return `<svg class="trend" viewBox="0 0 ${totalW} ${chartH}" role="img" aria-label="Conformité au plan sur les 4 dernières semaines">${bars}</svg>
+    <p class="muted">Conformité au plan, 4 dernières semaines. <a href="#/semaine">Détail</a></p>`;
+}
+
+// ---------------------------------------------------------------------------
 // Cadre : objectif, navigation, thème
 // ---------------------------------------------------------------------------
 
@@ -184,7 +242,7 @@ async function viewToday() {
     ${verdict}
     <section class="band"><h2>Santé</h2>${triad}</section>
     <section class="band band--split"><div><h2>Au programme</h2>${sessionHtml}${weatherHtml}</div>
-      <div><h2>Forme</h2>${formHtml}</div></section>
+      <div><h2>Forme</h2>${formHtml}${complianceTrend(s.compliance_trend)}</div></section>
     ${rep ? `<section class="band"><h2>Dernier rapport du coach</h2><p><a href="#/rapport?path=${encodeURIComponent(rep.source_path)}">${F.esc(rep.title)}</a> <span class="muted">— ${F.dayLong(rep.date)}</span></p></section>` : ""}`;
 }
 
@@ -333,11 +391,13 @@ async function viewWeek(params) {
   const totalS = w.activities.reduce((t, a) => t + (a.duration_s || 0), 0);
   const totalM = w.activities.reduce((t, a) => t + (a.distance_m || 0), 0);
   const target = w.week || {};
+  const trail = SUMMARY.settings.sport === "trail";
   main.innerHTML = `${header(`Semaine du ${F.dayShort(w.week_start)}`, w.week ? `${F.esc(w.week.location || "")}${w.week.phase ? " · " + F.esc(w.week.phase) : ""}` : "Pas de plan de semaine au contrat pour ces dates.")}
     <div class="toolbar"><a class="seg" href="#/semaine?debut=${prev}">← Précédente</a><a class="seg" href="#/semaine">Cette semaine</a><a class="seg" href="#/semaine?debut=${next}">Suivante →</a>
       ${known.length ? `<label class="select">Plans : <select id="weeks">${known.slice().reverse().map((k) => `<option value="${k}" ${k === w.week_start ? "selected" : ""}>${F.dayShort(k)}</option>`).join("")}</select></label>` : ""}</div>
     <ol class="week">${cols}</ol>
     <section class="band"><h2>Réalisé</h2><dl class="facts facts--inline"><div><dt>Séances</dt><dd>${w.activities.length}</dd></div><div><dt>Durée</dt><dd>${F.hours(totalS)}${target.target_duration_s ? ` <small>/ ${F.hours(target.target_duration_s)}</small>` : ""}</dd></div><div><dt>Distance</dt><dd>${F.distance(totalM)}${target.target_distance_m ? ` <small>/ ${F.distance(target.target_distance_m, 0)}</small>` : ""}</dd></div></dl></section>
+    ${complianceSection(w.compliance, trail)}
     ${w.body_html ? `<section class="band prose"><h2>Plan du coach</h2>${w.body_html}</section>` : ""}`;
   const sel = $("#weeks");
   if (sel) sel.addEventListener("change", () => { location.hash = `#/semaine?debut=${sel.value}`; });

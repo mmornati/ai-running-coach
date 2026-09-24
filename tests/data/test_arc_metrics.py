@@ -118,5 +118,115 @@ class TestPerformance(unittest.TestCase):
         self.assertEqual(best[5]["time_s"], 5 * 330, "la fenêtre de 5 km ne peut pas enjamber le tour de 2 km")
 
 
+class TestWeekCompliance(unittest.TestCase):
+    """#33 — conformité plan vs réalisé, fixtures à ratios connus."""
+
+    TODAY = date(2026, 9, 20)          # dimanche : la semaine du 14 est entièrement passée
+
+    def session(self, day, sport="running", title="Footing", **kw):
+        s = {"date": day, "sport": sport, "title": title}
+        s.update(kw)
+        return s
+
+    def activity(self, day, sport="running", duration_s=1800, elevation_gain_m=None, **kw):
+        a = {"date": day, "sport": sport, "duration_s": duration_s, "elevation_gain_m": elevation_gain_m}
+        a.update(kw)
+        return a
+
+    def test_no_plan_gives_none(self):
+        """Semaine sans aucune séance : KPI absent, jamais 0."""
+        self.assertIsNone(M.week_compliance([], [], self.TODAY))
+
+    def test_known_ratios_done_and_missed(self):
+        """2 séances planifiées, 1 faite (durée à 120 %), 1 manquée : 50 %, ratio durée 0,6."""
+        sessions = [
+            self.session("2026-09-14", planned_duration_s=1800, status="done"),
+            self.session("2026-09-15", planned_duration_s=1200, status="missed"),
+        ]
+        activities = [self.activity("2026-09-14", duration_s=2160)]      # 120 % de la première
+        c = M.week_compliance(sessions, activities, self.TODAY)
+        self.assertEqual(c["sessions_planned"], 2)
+        self.assertEqual(c["sessions_done"], 1)
+        self.assertEqual(c["sessions_pct"], 50.0)
+        # (2160 + 0) / (1800 + 1200) = 0.72
+        self.assertAlmostEqual(c["duration_ratio"], 0.72)
+
+    def test_cancelled_excluded_from_denominator(self):
+        """Une annulation (médicale ou non — le contrat n'a pas de motif) sort du calcul."""
+        sessions = [
+            self.session("2026-09-14", planned_duration_s=1800, status="done"),
+            self.session("2026-09-15", planned_duration_s=1200, status="cancelled"),
+        ]
+        activities = [self.activity("2026-09-14", duration_s=1800)]
+        c = M.week_compliance(sessions, activities, self.TODAY)
+        self.assertEqual(c["sessions_planned"], 1, "la séance annulée ne doit pas compter au dénominateur")
+        self.assertEqual(c["sessions_pct"], 100.0)
+        self.assertEqual(c["sessions_cancelled"], 1)
+        self.assertEqual(c["duration_ratio"], 1.0)
+
+    def test_moved_excluded_unless_a_session_exists_at_the_new_date(self):
+        """`moved` sort du calcul ; si le coach a écrit la séance réelle ailleurs, elle compte pour elle-même."""
+        sessions = [
+            self.session("2026-09-14", planned_duration_s=1800, status="moved"),
+            self.session("2026-09-16", planned_duration_s=1800, status="done"),
+        ]
+        activities = [self.activity("2026-09-16", duration_s=1800)]
+        c = M.week_compliance(sessions, activities, self.TODAY)
+        self.assertEqual(c["sessions_moved"], 1)
+        self.assertEqual(c["sessions_planned"], 1, "seule la séance réellement datée compte")
+        self.assertEqual(c["sessions_done"], 1)
+
+    def test_future_session_not_counted_missed(self):
+        """Séance du reste de la semaine en cours (date > aujourd'hui) : jamais « manquée »."""
+        today = date(2026, 9, 16)                     # mercredi
+        sessions = [self.session("2026-09-18", status="planned")]         # vendredi : à venir
+        c = M.week_compliance(sessions, [], today)
+        self.assertEqual(c["sessions_planned"], 0, "une séance future ne doit pas compter au dénominateur")
+        self.assertEqual(c["sessions_future"], 1)
+
+    def test_matching_without_explicit_status(self):
+        """Statut absent + activité du même jour et famille de sport compatible → faite."""
+        sessions = [self.session("2026-09-14", sport="trail")]     # pas de `status`
+        activities = [self.activity("2026-09-14", sport="running")]   # route/trail interchangeables
+        c = M.week_compliance(sessions, activities, self.TODAY)
+        self.assertEqual(c["sessions_done"], 1)
+
+    def test_matching_without_activity_is_missed(self):
+        sessions = [self.session("2026-09-14")]
+        c = M.week_compliance(sessions, [], self.TODAY)
+        self.assertEqual(c["sessions_done"], 0)
+        self.assertEqual(c["sessions_planned"], 1)
+
+    def test_multiple_sessions_and_activities_same_day(self):
+        """Deux séances le même jour, deux activités : appariement un-pour-un, pas de double compte."""
+        sessions = [
+            self.session("2026-09-14", sport="running", title="Footing matin"),
+            self.session("2026-09-14", sport="strength", title="Renfo soir"),
+        ]
+        activities = [
+            self.activity("2026-09-14", sport="running", duration_s=1800),
+            self.activity("2026-09-14", sport="strength", duration_s=2400),
+        ]
+        c = M.week_compliance(sessions, activities, self.TODAY)
+        self.assertEqual(c["sessions_planned"], 2)
+        self.assertEqual(c["sessions_done"], 2)
+
+    def test_intensity_split_easy_vs_quality(self):
+        sessions = [
+            self.session("2026-09-14", intensity="endurance", planned_duration_s=3600, status="done"),
+            self.session("2026-09-15", intensity="vo2max", planned_duration_s=1800, status="missed"),
+        ]
+        activities = [self.activity("2026-09-14", duration_s=3600)]
+        c = M.week_compliance(sessions, activities, self.TODAY)
+        self.assertEqual(c["by_intensity"]["easy"]["sessions_pct"], 100.0)
+        self.assertEqual(c["by_intensity"]["quality"]["sessions_pct"], 0.0)
+
+    def test_elevation_ratio(self):
+        sessions = [self.session("2026-09-14", planned_elevation_m=1000, status="done")]
+        activities = [self.activity("2026-09-14", elevation_gain_m=800)]
+        c = M.week_compliance(sessions, activities, self.TODAY)
+        self.assertAlmostEqual(c["elevation_ratio"], 0.8)
+
+
 if __name__ == "__main__":
     unittest.main()
