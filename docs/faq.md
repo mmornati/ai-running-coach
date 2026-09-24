@@ -68,21 +68,27 @@ ne prescrit ni n'installe de paquet précis.
 
 1. Choisissez un serveur MCP Intervals.icu communautaire. Les tests du projet
    (`tests/evals/fixtures/README.md`) documentent leur hypothèse de travail
-   autour du serveur communautaire [`eddmann/intervals-icu-mcp`](https://github.com/eddmann/intervals-icu-mcp) — à ajuster
-   si vous en préférez un autre.
+   autour du serveur communautaire [`eddmann/intervals-icu-mcp`](https://github.com/eddmann/intervals-icu-mcp)
+   — **suivez son README** pour l'installation exacte (à la date de rédaction :
+   clone + `uv run --directory …`, ou Docker ; pas de paquet PyPI officiel).
+   Adaptez selon le serveur que vous retenez réellement.
 2. Ajoutez-le manuellement à la configuration MCP de votre IDE. Exemple
-   générique (adaptez la commande au serveur choisi et gardez votre clé API
-   hors du dépôt, par exemple via une variable d'environnement) :
+   **illustratif et non vérifié** — remplacez `command`/`args` par ceux
+   documentés par le serveur choisi, et ne committez jamais votre clé API :
+   fournissez-la via une variable d'environnement de votre shell ou le
+   mécanisme de secrets de votre IDE, puis référencez-la (`env` supporte les
+   références `${VAR}` selon l'IDE) plutôt que de l'écrire en clair dans
+   `.mcp.json` :
 
    ```json
    {
      "mcpServers": {
        "intervals": {
-         "command": "uvx",
-         "args": ["--from", "intervals-icu-mcp", "intervals-icu-mcp"],
+         "command": "uv",
+         "args": ["run", "--directory", "/chemin/vers/intervals-icu-mcp", "intervals-icu-mcp"],
          "env": {
-           "INTERVALS_API_KEY": "votre-clé-api",
-           "INTERVALS_ATHLETE_ID": "votre-id-athlète"
+           "INTERVALS_ICU_API_KEY": "${INTERVALS_ICU_API_KEY}",
+           "INTERVALS_ICU_ATHLETE_ID": "${INTERVALS_ICU_ATHLETE_ID}"
          }
        }
      }

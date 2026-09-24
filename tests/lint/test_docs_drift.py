@@ -177,7 +177,8 @@ _STRIP_EMPHASIS = re.compile(r"[*_`]")
 # formulation d'origine (« ne supporte que **Garmin** ») de passer inaperçue.
 FORBIDDEN_GARMIN_PATTERNS = [
     re.compile(r"ne\s+supporte\s+que\s+garmin", re.IGNORECASE),
-    re.compile(r"garmin\s+(?:seulement|uniquement|exclusivement)", re.IGNORECASE),
+    re.compile(r"garmin(?:\s+connect)?\s+(?:seulement|uniquement|exclusivement)", re.IGNORECASE),
+    re.compile(r"(?:uniquement|seulement|exclusivement)\s+garmin", re.IGNORECASE),
     re.compile(r"garmin\s+only", re.IGNORECASE),
     re.compile(r"seul\w*\s+garmin\s+(?:est\s+)?support\w*", re.IGNORECASE),
     re.compile(r"garmin\s+(?:est\s+)?le\s+seul", re.IGNORECASE),
@@ -332,6 +333,20 @@ class TestFailureDetection(unittest.TestCase):
                + "\nLe projet ne supporte que **Garmin** dans cette version.\n")
         problems = check_garmin_only_claims(self.root)
         self.assertTrue(any("ne supporte que" in p or "Garmin" in p for p in problems), problems)
+
+    def test_garmin_connect_uniquement_detected(self):
+        """« Garmin Connect uniquement » (variante avec « Connect ») doit aussi être attrapée."""
+        _write(self.root / "README.md", (self.root / "README.md").read_text(encoding="utf-8")
+               + "\nCe projet fonctionne avec Garmin Connect uniquement.\n")
+        problems = check_garmin_only_claims(self.root)
+        self.assertTrue(problems, "« Garmin Connect uniquement » doit être détecté")
+
+    def test_uniquement_garmin_detected(self):
+        """L'ordre inverse (« uniquement Garmin ») doit aussi être attrapé."""
+        _write(self.root / "README.md", (self.root / "README.md").read_text(encoding="utf-8")
+               + "\nCompatible uniquement Garmin pour le moment.\n")
+        problems = check_garmin_only_claims(self.root)
+        self.assertTrue(problems, "« uniquement Garmin » doit être détecté")
 
     def test_garmin_only_claim_not_excused_by_nearby_context(self):
         """Contrairement à la version précédente du test, mentionner Intervals.icu à proximité
