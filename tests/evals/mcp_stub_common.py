@@ -22,18 +22,25 @@ from typing import Callable
 
 PROTOCOL_VERSION = "2024-11-05"
 
-# Borne dure sur le délai d'un appel « timeout », quelle que soit la valeur
-# `delay` demandée par le cas : un cas mal réglé (delay énorme, oubli du kill
-# côté appelant) ne doit jamais suspendre la suite de tests indéfiniment.
-# Le protocole lui-même reste fidèle à un vrai timeout : au-delà du délai,
-# le stub ne répond PAS à cet appel (voir `DropRequest`) — c'est au client
-# (agent, ou test palier D avec son propre `communicate(timeout=...)`) de
-# couper court, exactement comme il le ferait contre un vrai serveur lent.
+# Borne dure sur le SOMMEIL du stub avant d'abandonner un appel « timeout »,
+# quelle que soit la valeur `delay` demandée par le cas — un `delay` énorme
+# dans un `.toml` ne doit pas faire dormir le process plus que ça. Ça ne borne
+# PAS l'attente du client en face : passé ce délai, le stub ne répond
+# toujours PAS à cet appel (voir `DropRequest`), exactement comme un vrai
+# serveur qui ne répondrait jamais. C'est au client de couper court — un
+# agent réel via son propre timeout MCP (voir `runner.run_case`, qui règle
+# `MCP_TOOL_TIMEOUT` pour un cas qui scripte un timeout), un test palier D
+# avec son propre `select`/`communicate(timeout=...)`.
 MAX_TIMEOUT_DELAY_S = float(os.environ.get("ARC_STUB_TIMEOUT_CAP", "10"))
 DEFAULT_TIMEOUT_DELAY_S = 2.0
 
 CONFIG_ENV_VAR = "ARC_STUB_CONFIG"
 LOG_ENV_VAR = "ARC_TOOL_LOG"
+
+# Seule liste faisant foi des `error =` reconnus par un `[stub.<serveur>.<outil>]`
+# — `tests/evals/test_evals.py` la réutilise pour valider les cas, au lieu de
+# dupliquer l'ensemble.
+ERROR_KINDS = frozenset({"401", "timeout", "empty"})
 
 
 class DropRequest(Exception):
@@ -86,22 +93,28 @@ def _empty_like(default):
 
 
 def auth_expired_text(tool_name: str) -> str:
-    """Message d'un token expiré, façon garmin_mcp.
+    """Message d'un token expiré, façon garmin_mcp — SANS remède.
 
-    Vérifié dans le paquet `garmin_mcp` réellement installé
-    (`garmin_mcp/health_wellness.py` et consorts, version 0.1.0) : chaque
-    outil attrape l'exception `GarminConnectAuthenticationError` levée par
-    `garminconnect` et la restitue en TEXTE dans un résultat d'outil NORMAL —
-    pas d'erreur JSON-RPC, pas de `isError`. Le message de `garminconnect`
-    lui-même contient littéralement « Authentication failed (401
-    Unauthorized) ». Un `isError` ou une erreur JSON-RPC serait plus
-    « propre » au sens du protocole MCP, mais ne reproduirait pas ce qu'un
-    agent voit réellement contre le vrai serveur — on choisit donc la
-    fidélité comportementale à la pureté du spec.
+    Vérifié dans le paquet `garmin_mcp` réellement installé (version 0.1.0) :
+    `garminconnect/__init__.py` (autour de la ligne 339) lève
+    `GarminConnectAuthenticationError(f"Authentication failed: {e}")` où `e`
+    est l'exception HTTP sous-jacente (typiquement
+    `401 Client Error: Unauthorized for url: ...`) ; chaque outil de
+    `garmin_mcp/health_wellness.py` l'attrape et la restitue en TEXTE dans un
+    résultat d'outil NORMAL — pas d'erreur JSON-RPC, pas de `isError` — sous
+    la forme `f"Error retrieving {chose} data: {str(e)}"`.
+
+    Le serveur réel ne mentionne **aucune** commande de renouvellement : c'est
+    l'agent (via `agents/coach.md`/`agents/medical.md`, et plus tard #31/#32)
+    qui doit reconnaître la panne et orienter vers `uv run garmin-mcp-auth` —
+    pas le stub qui la lui souffle. Un `isError`/une erreur JSON-RPC serait
+    plus « propre » au sens du protocole MCP, mais ne reproduirait pas ce
+    qu'un agent voit réellement contre le vrai serveur : fidélité
+    comportementale plutôt que pureté du spec.
     """
     return (
-        f"Error retrieving data for {tool_name}: Authentication failed (401 Unauthorized). "
-        "Session token expired — run 'uv run garmin-mcp-auth' to re-authenticate."
+        f"Error retrieving data for {tool_name}: Authentication failed: "
+        "401 Client Error: Unauthorized for url: https://connect.garmin.com/modern/proxy/"
     )
 
 
@@ -116,7 +129,16 @@ def resolve_content(
     """
     override = (overrides or {}).get(name) or {}
     if "file" in override:
-        candidate = fixtures_dir / "stub-responses" / override["file"]
+        # Résolution bornée à `fixtures/stub-responses/` : un cas ne doit pas
+        # pouvoir faire lire au stub un fichier arbitraire du système
+        # (`../../etc/hosts`, chemin absolu...) via un `file =` malicieux ou
+        # mal formé.
+        base = (fixtures_dir / "stub-responses").resolve()
+        candidate = (base / override["file"]).resolve()
+        if base not in candidate.parents and candidate != base:
+            raise ValueError(
+                f"[stub.*.{name}] file en dehors de stub-responses/ : {override['file']!r}"
+            )
         if not candidate.is_file():
             raise FileNotFoundError(f"réponse stub introuvable pour {name} : {candidate}")
         return candidate.read_text(encoding="utf-8")
@@ -124,6 +146,7 @@ def resolve_content(
     error = override.get("error")
     if error is None:
         return json.dumps(default, ensure_ascii=False)
+    error = str(error)              # un `error = 401` TOML (entier) reste géré
     if error == "401":
         return auth_expired_text(name)
     if error == "empty":
@@ -195,8 +218,21 @@ def make_handler(
     return handle
 
 
+def _error_response(request_id, code: int, message: str):
+    if request_id is None:
+        return None                   # notification : jamais de réponse, même en erreur
+    return {"jsonrpc": "2.0", "id": request_id, "error": {"code": code, "message": message}}
+
+
 def serve(handle: Callable[[dict], object]) -> int:
-    """Boucle JSON-RPC stdin/stdout, une requête par ligne."""
+    """Boucle JSON-RPC stdin/stdout, une requête par ligne.
+
+    Un cas mal réglé (fichier de réponse absent, `error` inconnu...) ne doit
+    faire échouer QUE l'appel concerné, jamais tuer le process : le stub
+    répond alors -32603 pour cette requête et continue de servir les
+    suivantes — c'est ce qui permet à un agent de recevoir l'erreur, de s'en
+    remettre, et de continuer sa session.
+    """
     for line in sys.stdin:
         line = line.strip()
         if not line:
@@ -211,16 +247,17 @@ def serve(handle: Callable[[dict], object]) -> int:
         except DropRequest:
             continue                   # timeout simulé : aucune réponse pour cet appel
         except LookupError as exc:
-            if request_id is None:
-                continue
-            response = {"jsonrpc": "2.0", "id": request_id,
-                        "error": {"code": -32601, "message": f"méthode inconnue : {exc}"}}
-            sys.stdout.write(json.dumps(response, ensure_ascii=False) + "\n")
-            sys.stdout.flush()
+            response = _error_response(request_id, -32601, f"méthode inconnue : {exc}")
+        except Exception as exc:  # noqa: BLE001 — un cas mal scripté ne doit jamais tuer le stub
+            response = _error_response(request_id, -32603, f"erreur interne du stub : {exc}")
+        else:
+            response = (
+                {"jsonrpc": "2.0", "id": request_id, "result": result}
+                if request_id is not None and result is not None
+                else None
+            )
+        if response is None:
             continue
-        if request_id is None or result is None:
-            continue                   # notification : pas de réponse
-        response = {"jsonrpc": "2.0", "id": request_id, "result": result}
         sys.stdout.write(json.dumps(response, ensure_ascii=False) + "\n")
         sys.stdout.flush()
     return 0

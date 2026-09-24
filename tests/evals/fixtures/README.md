@@ -45,12 +45,23 @@ exemple pour l'épopée FIT/santé (HRV effondrée).
 
 | `error` | Comportement du stub |
 |---|---|
-| `"401"` | Rend un résultat d'outil **normal** (pas d'erreur JSON-RPC, pas de `isError`) dont le texte imite ce que `garmin_mcp` rend réellement quand `garminconnect` lève une authentification expirée : un message contenant « Authentication failed (401 Unauthorized) » et la commande de renouvellement (`uv run garmin-mcp-auth`). Ce choix privilégie la fidélité comportementale à la pureté du protocole MCP — voir `mcp_stub_common.auth_expired_text` pour la justification détaillée et la source vendored qui l'a confirmé. |
-| `"timeout"` | L'appel ne reçoit **aucune réponse** — un vrai timeout côté client, pas un message d'erreur. `delay` (secondes, défaut 2) règle combien de temps le stub attend avant de laisser tomber la requête ; une borne dure (`ARC_STUB_TIMEOUT_CAP`, défaut 10s) l'empêche de dépasser une durée raisonnable même si un cas demande un `delay` excessif. |
+| `"401"` | Rend un résultat d'outil **normal** (pas d'erreur JSON-RPC, pas de `isError`) dont le texte imite ce que `garmin_mcp` rend RÉELLEMENT à l'expiration du token (vérifié dans le paquet vendored, `garminconnect/__init__.py` et `garmin_mcp/health_wellness.py`) : `Error retrieving data for <outil>: Authentication failed: 401 Client Error: Unauthorized for url: ...` — **sans aucun remède**. Le vrai serveur ne suggère pas `uv run garmin-mcp-auth` ; c'est à l'agent de reconnaître la panne et de l'orienter (#31/#32), pas au stub de la lui souffler. Voir `mcp_stub_common.auth_expired_text` pour la justification détaillée. |
+| `"timeout"` | L'appel ne reçoit **aucune réponse**. `delay` (secondes, défaut 2) règle combien de temps le stub DORT avant de laisser tomber la requête ; une borne dure (`ARC_STUB_TIMEOUT_CAP`, défaut 10s) plafonne ce sommeil quel que soit le `delay` demandé. Cette borne ne raccourcit PAS l'attente du client en face — passé son délai, le stub ne répond toujours pas. Pour qu'un cas d'éval scriptant un timeout n'attende pas les 300s du sous-processus `claude -p`, `runner.run_case` règle `MCP_TOOL_TIMEOUT` côté client dès qu'un cas déclare `error = "timeout"`, et `subprocess.TimeoutExpired` est traité comme un échec de cas normal plutôt qu'une exception qui casserait la suite. |
 | `"empty"` | Rend une liste ou un dict vide, de la même forme que la donnée canned par défaut (`[]` pour un endpoint « liste », `{}` sinon). |
 
 `file` et `error` sont mutuellement exclusifs sur un même outil (vérifié par
-`tests/evals/test_evals.py::TestCaseFilesAreValid.test_stub_section_is_well_formed`).
+`tests/evals/test_evals.py::TestCaseFilesAreValid.test_stub_section_is_well_formed`,
+qui vérifie aussi que l'outil scripté existe bien dans le stub visé, et que
+`file` reste sous `stub-responses/` — un `file` qui s'en évaderait
+(`../../AGENTS.md`, chemin absolu) est refusé au chargement du cas comme à
+l'exécution du stub).
+
+Le fichier généré à partir de `[stub.<serveur>]` est déposé **hors du
+workspace** de l'agent (à côté, pas dedans) : l'agent ne doit pas pouvoir lire
+à l'avance le scénario de panne qu'on lui scripte. `ARC_STUB_CONFIG` est
+toujours présente dans l'environnement de chaque stub, y compris vide, pour
+qu'un export resté dans le shell de l'appelant ne puisse jamais fuiter dans un
+cas qui ne script rien.
 
 ## Serveur `intervals` (#68)
 

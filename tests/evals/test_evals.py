@@ -13,7 +13,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from tests.evals import runner
+from tests.evals import mcp_stub_common, runner, stub_garmin_mcp, stub_intervals_mcp
 
 
 class TestCaseFilesAreValid(unittest.TestCase):
@@ -24,8 +24,15 @@ class TestCaseFilesAreValid(unittest.TestCase):
         "files_created", "max_words", "first_line_matches", "files_with_arc_block", "files_absent",
     }
 
-    KNOWN_STUB_SERVERS = {"garmin", "intervals"}
-    KNOWN_STUB_ERRORS = {"401", "timeout", "empty"}
+    # Dérivés des modules qui font foi, pas dupliqués : un stub retiré de
+    # `runner.STUB_SCRIPTS`, ou un type d'erreur ajouté à
+    # `mcp_stub_common.ERROR_KINDS`, se répercute ici sans y toucher.
+    KNOWN_STUB_SERVERS = set(runner.STUB_SCRIPTS)
+    KNOWN_STUB_ERRORS = mcp_stub_common.ERROR_KINDS
+    STUB_TOOL_NAMES = {
+        "garmin": {name for name, _ in stub_garmin_mcp.TOOLS},
+        "intervals": {name for name, _ in stub_intervals_mcp.TOOLS},
+    }
 
     def setUp(self):
         self.cases = runner.load_cases()
@@ -69,8 +76,14 @@ class TestCaseFilesAreValid(unittest.TestCase):
                 self.assertFalse(unknown_servers, f"serveur(s) stub inconnu(s) : {sorted(unknown_servers)}")
                 for server, tools in stub.items():
                     self.assertIsInstance(tools, dict, f"[stub.{server}] doit être une table d'outils")
+                    known_tools = self.STUB_TOOL_NAMES.get(server, set())
                     for tool, override in tools.items():
                         with self.subTest(case=case["id"], server=server, tool=tool):
+                            self.assertIn(
+                                tool, known_tools,
+                                f"[stub.{server}.{tool}] : outil inconnu du stub {server} "
+                                f"(tools/list n'en parle pas — le cas scripte un outil qui n'existe pas)",
+                            )
                             self.assertIsInstance(override, dict, f"[stub.{server}.{tool}] doit être une table")
                             has_file = "file" in override
                             has_error = "error" in override
@@ -88,7 +101,17 @@ class TestCaseFilesAreValid(unittest.TestCase):
                                     f"[stub.{server}.{tool}] error inconnue : {override['error']!r}",
                                 )
                             if has_file:
-                                candidate = runner.FIXTURES_DIR / "stub-responses" / override["file"]
+                                # Même borne que `mcp_stub_common.resolve_content` : un
+                                # `file` qui s'évaderait de `stub-responses/` (chemin
+                                # absolu, `../..`) doit échouer ici, pas seulement à
+                                # l'exécution du stub.
+                                base = (runner.FIXTURES_DIR / "stub-responses").resolve()
+                                candidate = (base / override["file"]).resolve()
+                                self.assertTrue(
+                                    candidate == base or base in candidate.parents,
+                                    f"[stub.{server}.{tool}] file en dehors de stub-responses/ : "
+                                    f"{override['file']!r}",
+                                )
                                 self.assertTrue(
                                     candidate.is_file(),
                                     f"[stub.{server}.{tool}] fichier introuvable : {candidate}",
