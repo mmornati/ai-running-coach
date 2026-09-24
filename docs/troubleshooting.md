@@ -70,6 +70,52 @@ uv run garmin-mcp-auth --verify
 2. Vérifiez que les tokens existent : `ls ~/.garminconnect/`
 3. Relancez l'authentification : `uv run garmin-mcp-auth`
 
+### Alerte push avant expiration des tokens (#32)
+
+Avant chaque exécution, `scripts/daily-sync.sh` interroge `coach_doctor.py
+--check garmin_token --json` (lecture seule, borné dans le temps via
+`timeout`/`gtimeout` quand l'un des deux est disponible — sur une machine sans
+coreutils, l'appel n'est pas borné, mais ce check ne fait aucun accès réseau ;
+dans tous les cas, une panne du diagnostic se journalise et n'empêche jamais la
+synchronisation) et envoie, au plus une fois par jour, une notification ntfy
+avec la commande de renouvellement quand l'échéance estimée approche.
+
+- **Seuils** : `[notifications].token_alert_days` dans `config/workspace.toml`
+  (défaut `[14, 3]`, en jours restants, entiers positifs uniquement — toute
+  valeur non entière dans la config est ignorée avec un avertissement, jamais
+  évaluée). Le seuil le plus proche de l'échéance (le plus petit, ainsi que
+  « expiré ») alerte chaque jour jusqu'au renouvellement ; un seuil plus
+  lointain (J-14 par défaut) n'alerte qu'une seule fois tant que l'échéance n'a
+  pas atteint le seuil suivant — pas de rappel quotidien dès J-14. Une liste
+  vide (`[]`, ou qui ne contient plus aucun entier valide) désactive l'alerte
+  d'expiration, sans effet sur la notification 401 explicite ci-dessous.
+  « Expiré depuis N jour(s) » arrondit vers le bas comme `coach doctor`
+  (un token expiré depuis 30h30 affiche 1 jour, pas 2).
+- **Désactivation** : `[notifications].token_alerts = false` dans
+  `config/workspace.user.toml`. Sans effet si `provider = "none"`.
+- **État** : `<workspace>/logs/.token-alert-state` (gitignoré comme tout
+  `logs/`) — supprimez-le pour forcer une réévaluation, par exemple après un
+  renouvellement manuel des tokens en dehors du daily-sync.
+- **401 réel** : si la synchronisation rencontre effectivement un refus
+  d'authentification **Garmin** — jamais un 401 sans rapport, par exemple un
+  échec d'authentification du runner Codex lui-même, ni une ligne `ERREUR`
+  qui mentionne « tokens Garmin » en passant pour une tout autre raison (panne
+  réseau, DNS…) —, la notification remplace le message d'échec générique par
+  un message explicite avec la commande de renouvellement. Deux formes
+  reconnues selon l'exécuteur : le texte réel de `garminconnect`/`garmin_mcp`
+  (`GarminConnectAuthenticationError`, visible seulement si l'exécuteur
+  restitue la sortie brute d'un outil MCP, ex. `codex exec` en mode verbeux —
+  un « 401 » est alors une certitude, revendiqué tel quel) et la formulation
+  `ERREUR : …` que `skills/garmin-daily-sync/SKILL.md` impose à l'agent
+  d'écrire lui-même, reconnue SEULEMENT quand elle nomme explicitement une
+  expiration/un refus de token ou renvoie vers `garmin-mcp-auth` — seule forme
+  qui traverse le runner par défaut, `claude -p --output-format text` (ne
+  restitue que le message final de l'agent) ; dans ce cas, la cause réelle
+  n'étant pas confirmée comme un 401, la notification relaie la ligne de
+  l'agent telle quelle plutôt que d'affirmer « 401 ». Si une alerte
+  d'expiration est déjà partie plus tôt dans le même run, cette notification
+  n'est pas doublée.
+
 ## Configuration IDE
 
 ### L'agent `coach` n'apparaît pas dans mon IDE

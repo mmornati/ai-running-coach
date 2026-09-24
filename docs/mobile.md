@@ -140,6 +140,15 @@ scripts/setup-ntfy.sh
     `~/.config/ai-running-coach/ntfy.token` (chmod 600) et référencé par
     `ntfy_token_file` dans `config/workspace.user.toml`.
 
+!!! tip "Alerte avant expiration des tokens Garmin (#32)"
+    Une fois ntfy configuré, `scripts/daily-sync.sh` prévient automatiquement à
+    l'approche de l'échéance estimée des tokens Garmin (par défaut J-14 puis
+    J-3, au plus une notification par jour), avec la commande de renouvellement
+    (`uv run garmin-mcp-auth`) — et bascule sur un message explicite si la
+    synchronisation rencontre un vrai refus d'authentification (401). Réglages :
+    `[notifications].token_alerts` / `token_alert_days` dans
+    `config/workspace.toml` — détail dans [Dépannage](troubleshooting.md#alerte-push-avant-expiration-des-tokens-32).
+
 ### 4. Synchronisation automatique
 
 ```bash
