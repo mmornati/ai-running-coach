@@ -16,7 +16,7 @@ Oui, le projet est **en français par défaut** : les agents, les skills et la d
 
 ### Quels appareils sont supportés ?
 
-Seul **Garmin** est supporté dans cette version (Garmin Connect, montres et capteurs Garmin).
+**Garmin Connect** (montres et capteurs Garmin) est la destination primaire, installée automatiquement par `./install.sh`. **Intervals.icu** est supporté en secondaire, uniquement si vous le demandez explicitement à l'agent `coach` — son serveur MCP n'est pas installé par le script, voir [configurer Intervals.icu](#comment-configurer-intervalsicu-optionnel) ci-dessous.
 
 ## Installation
 
@@ -53,6 +53,46 @@ Environ **6 mois**. Après expiration, relancez `uv run garmin-mcp-auth`.
 ### Puis-je utiliser le projet sans compte Garmin ?
 
 Non, l'accès à Garmin Connect est requis pour la synchronisation des données.
+
+## Intervals.icu
+
+### Intervals.icu est-il installé automatiquement ?
+
+Non. `install.sh` n'installe et ne configure **que** `garmin-mcp` (et, en option,
+la passerelle `leanproxy-mcp`) : aucune commande du script ne touche à
+Intervals.icu. Le skill `intervals-icu-best-practices` suppose l'existence
+d'outils MCP nommés `add_or_update_event`, `get_events` et `delete_event`, mais
+ne prescrit ni n'installe de paquet précis.
+
+### Comment configurer Intervals.icu (optionnel) ?
+
+1. Choisissez un serveur MCP Intervals.icu communautaire. Les tests du projet
+   (`tests/evals/fixtures/README.md`) documentent leur hypothèse de travail
+   autour du serveur communautaire [`eddmann/intervals-icu-mcp`](https://github.com/eddmann/intervals-icu-mcp) — à ajuster
+   si vous en préférez un autre.
+2. Ajoutez-le manuellement à la configuration MCP de votre IDE. Exemple
+   générique (adaptez la commande au serveur choisi et gardez votre clé API
+   hors du dépôt, par exemple via une variable d'environnement) :
+
+   ```json
+   {
+     "mcpServers": {
+       "intervals": {
+         "command": "uvx",
+         "args": ["--from", "intervals-icu-mcp", "intervals-icu-mcp"],
+         "env": {
+           "INTERVALS_API_KEY": "votre-clé-api",
+           "INTERVALS_ATHLETE_ID": "votre-id-athlète"
+         }
+       }
+     }
+   }
+   ```
+
+3. Demandez explicitement à l'agent `coach` de créer ou mettre à jour un
+   événement sur Intervals.icu — il charge alors le skill
+   `intervals-icu-best-practices`. Garmin reste la destination **primaire** :
+   Intervals.icu n'est jamais utilisé sans demande explicite.
 
 ## Agents
 

@@ -2,6 +2,11 @@
 
 <!-- impeccable:product-schema 1 -->
 
+> **Instantané daté** : ce document a été produit lors de la conception initiale
+> du site (skill `impeccable`) et n'est pas maintenu en continu. Pour l'état
+> actuel du projet (nombre d'agents/skills, backends supportés), voir
+> `README.md` et `docs/`, tenus à jour par le palier B (`tests/lint/test_docs_drift.py`).
+
 ## Platform
 
 web
@@ -17,7 +22,7 @@ comprendre ce que le projet apporte et à démarrer rapidement.
 
 > **INFÉRÉ (utilisateur indisponible)** : profil déduit du brief initial (« aider les
 > coureurs à préparer un objectif ») et du contenu du projet (agents coach/medical/
-> nutritionist/course-strategist, Garmin uniquement).
+> nutritionist/course-strategist, connectés en priorité à Garmin).
 
 ## Product Purpose
 
@@ -38,7 +43,8 @@ point d'entrée : elle doit donner envie de l'essayer.
 - Installation via `./install.sh` (uv, garmin-mcp, garmin-mcp-auth, leanproxy-mcp, config IDE).
 - Les agents persistent des fichiers Markdown en français dans des dossiers de travail
   (`activities/`, `medical/`, `nutrition/`, `planning/`, `rapports/`, `resources/`).
-- Garmin Connect est la seule source de données supportée (v1).
+- Garmin Connect est la source de données primaire ; Intervals.icu est supporté
+  en secondaire, à la demande explicite de l'utilisateur (v1).
 - Documentation construite avec MkDocs + thème Material, déployée sur GitHub Pages.
 
 ## Surfaces
@@ -55,13 +61,14 @@ point d'entrée : elle doit donner envie de l'essayer.
 
 - 4 agents : `coach`, `course-strategist`, `medical`, `nutritionist` — **sélectionnables
   à l'installation** (`--agents`, `--no-medical`).
-- 9 skills : analyse GPX, comparaison de parcours, planification Garmin, météo,
+- 12 skills : analyse GPX, comparaison de parcours, planification Garmin, météo,
   analyse de séances, Intervals.icu (secondaire), téléchargement FIT, sync Garmin,
-  sync quotidienne headless (machine coach).
+  sync quotidienne headless (machine coach), premier démarrage, contrat de
+  données, backfill du contrat.
 - **Coaching configurable** : style (bienveillant / exigeant / factuel / pédagogue),
   fermeté, longueur, discipline (trail ou route), bilan santé matinal
   (complet / minimal / désactivé), profil d'athlète.
-- 100 % en français. Garmin uniquement (v1).
+- 100 % en français. Garmin en priorité, Intervals.icu en secondaire optionnel (v1).
 - Contraintes techniques : MkDocs Material, GitHub Pages, pas de backend.
 - **INFÉRÉ** : le site doit rester statique (MkDocs), sans JavaScript lourd.
 
@@ -75,7 +82,7 @@ point d'entrée : elle doit donner envie de l'essayer.
 
 ## Evidence on Hand
 
-- Contenu réel : 4 agents, 9 skills, script d'installation, docs existantes (index,
+- Contenu réel : 4 agents, 12 skills, script d'installation, docs existantes (index,
   quickstart, garmin-setup, ides, agents, skills, resources, troubleshooting, faq).
 - Aucun témoignage, benchmark, prix ou donnée de démonstration réelle. Ne pas inventer
   de chiffres de performance, de témoignages ou de clients.

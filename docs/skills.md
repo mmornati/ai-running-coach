@@ -20,7 +20,7 @@
 <div class="arc-skill"><span class="arc-skill__name"><a href="skills/fit-download.md">Téléchargement FIT</a></span><span class="arc-skill__desc">Téléchargement de fichiers FIT Garmin en bypassant le canal MCP</span></div>
 <div class="arc-skill"><span class="arc-skill__name"><a href="skills/garmin-daily-sync.md">Sync quotidienne</a></span><span class="arc-skill__desc">Synchronisation Garmin sans surveillance (cron, téléphone) avec résumé pour notification</span></div>
 <div class="arc-skill"><span class="arc-skill__name"><a href="skills/coach-setup.md">Premier démarrage</a></span><span class="arc-skill__desc">Entretien de configuration : staff d'agents, discipline, style de coaching, bilan santé, profil d'athlète</span></div>
-<div class="arc-skill"><span class="arc-skill__name"><a href="skills/workspace-data-contract.md">Contrat de données</a></span><span class="arc-skill__desc">Schéma JSON du bloc ```arc``` pour persistance structurée des données (ARC)</span></div>
+<div class="arc-skill"><span class="arc-skill__name"><a href="skills/workspace-data-contract.md">Contrat de données</a></span><span class="arc-skill__desc">Schéma JSON du bloc <code>arc</code> pour la persistance structurée des données</span></div>
 <div class="arc-skill"><span class="arc-skill__name"><a href="skills/arc-backfill.md">Backfill du contrat</a></span><span class="arc-skill__desc">Migration des fichiers Markdown existants pour les conformer au contrat de données</span></div>
 
 </div>
