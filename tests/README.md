@@ -91,6 +91,128 @@ Chaque cas est répété N fois et passe sur un seuil, pas à l'unanimité. Le d
 relevé est versionné dans `tests/evals/RESULTS.md` : une régression se lit alors
 dans un diff.
 
+### Nouvelles assertions sur les contenus d'arc et les arguments d'outils (#27)
+
+Quatre assertions permettent de vérifier le **contenu** des fichiers générés et des
+appels d'outils — pas seulement leur existence ou leur type. Chacune prend
+**exactement un** comparateur.
+
+Syntaxe de chemin JSON commune à `arc_field` et `tool_args_match` : clés pointées
+(`foo.bar`), indices (`items[0]`, `items[-1]`), caractères génériques (`items[*].x`).
+Un chemin syntaxiquement invalide (`items[abc]`, `items[0`, `a.b.`) fait échouer le
+cas au chargement, pas seulement à l'exécution.
+
+**Sémantique TOUT, jamais AU MOINS UN.** `arc_field` et un `[*]` dans
+`tool_args_match` exigent que **toutes** les valeurs résolues satisfassent **tous**
+les comparateurs — une seule séance non conforme dans une semaine de cinq fait
+échouer l'assertion, même si les quatre autres sont bonnes. Un chemin qui ne résout
+à rien (clé absente, indice hors limites) est un échec à part entière, distinct
+d'une valeur qui ne satisfait pas le comparateur.
+
+Sauf mention contraire, les fichiers considérés sont ceux **écrits pendant le run**
+(présents dans le workspace mais absents de la fixture de départ) — un fichier déjà
+là avant l'exécution ne prouve rien sur ce que l'agent a fait.
+
+#### `arc_field` — extraire et vérifier un champ du bloc ```arc
+
+Extrait un champ du bloc ```` ```arc ```` de **chaque** fichier écrit pendant le run
+et correspondant au glob, et vérifie que toutes les valeurs résolues satisfont le
+comparateur (voir schéma complet dans `scripts/arc_contract.py` /
+`skills/workspace-data-contract/SKILL.md`).
+
+Comparateurs (un seul par assertion) : `equals`, `min`, `max`, `in`.
+
+```toml
+[[expect.arc_field]]
+glob = "activities/*.md"       # Tous les fichiers d'activité ÉCRITS par le run
+path = "distance_m"             # Chemin JSON au champ (nombre, mètres)
+min = 5000                       # Distance ≥ 5 km, pour CHAQUE fichier
+```
+
+```toml
+[[expect.arc_field]]
+glob = "planning/Semaine_*.md"           # Semaines écrites par le run
+path = "sessions[*].intensity"            # Intensité de CHAQUE séance de CHAQUE fichier
+in = ["endurance", "tempo", "threshold"]  # Valeurs valides de l'énum `intensity`
+                                           # (scripts/arc_contract.py : INTENSITY)
+```
+
+#### `tool_args_match` — vérifier les arguments d'un appel d'outil
+
+Vérifie qu'**au moins un** appel de l'outil nommé a des arguments satisfaisant la
+condition — mais, dans un appel donné, un `[*]` sur ses arguments exige que
+**toutes** les valeurs résolues satisfassent (un appel qui planifie cinq séances
+dont une hors gabarit ne « passe » pas parce que les quatre autres sont bonnes).
+« L'outil n'a jamais été appelé » et « appelé, mais le chemin ne résout à rien dans
+ses arguments » sont deux messages d'échec distincts.
+
+Comparateurs (un seul par assertion) : `equals`, `regex`, `min`, `max`. Optionnel :
+`server` (`garmin` | `intervals`) pour ne considérer que les appels à ce serveur.
+`tool` doit être un nom d'outil réellement exposé par le stub visé — voir
+`tests/evals/stub_garmin_mcp.py`/`stub_intervals_mcp.py` (`TOOLS`) pour la liste.
+
+```toml
+[[expect.tool_args_match]]
+tool = "get_scheduled_workouts"   # Outil garmin (skills/garmin-workout-scheduling)
+path = "start_date"                # Arguments.start_date
+regex = "^\\d{4}-\\d{2}-\\d{2}$"    # Format AAAA-MM-JJ
+```
+
+```toml
+[[expect.tool_args_match]]
+tool = "schedule_workouts"
+server = "garmin"
+path = "schedules[*].calendar_date"   # Chaque séance planifiée dans l'appel
+regex = "^2026-09-2[0-9]$"             # Toutes tombent dans la semaine visée
+```
+
+#### `sqlite_query` — requête SELECT (lecture seule) sur l'index du workspace
+
+Indexe le workspace en SQLite (une seule fois par cas, quel que soit le nombre de
+`sqlite_query` du cas) puis exécute une requête sur une connexion ouverte
+**explicitement en lecture seule** (`mode=ro` + `PRAGMA query_only`) — utile pour
+vérifier des agrégats (nombre de séances par semaine, charge totale du mois…) sans
+jamais pouvoir modifier l'index. Une seule instruction de lecture (`SELECT` ou
+`WITH … SELECT`, commentaires `-- …` de tête tolérés) ; toute tentative d'écriture
+est refusée par la connexion elle-même, pas seulement par un contrôle textuel — ce
+dernier n'est qu'un diagnostic plus lisible en cas d'abus évident, et sa recherche
+naïve du `;` a une limite connue : une requête par ailleurs valide comme
+`SELECT ';'` (un `;` dans un littéral) ou précédée d'un commentaire `/* … */` (au
+lieu de `-- …`) sera refusée à tort par ce contrôle. Écrivez plutôt vos requêtes
+sans point-virgule littéral et avec des commentaires `-- …` si besoin.
+
+Comparateurs (un seul par assertion) : `equals`, `min`, `max`. La comparaison porte
+sur la **première colonne de la première ligne** ; « aucune ligne » et « `NULL` »
+sont deux échecs distincts et explicites (ni l'un ni l'autre n'est traité comme 0).
+
+```toml
+[[expect.sqlite_query]]
+sql = "SELECT COUNT(*) FROM activity WHERE sport = 'running' AND date >= '2026-09-01'"
+equals = 5
+```
+
+```toml
+[[expect.sqlite_query]]
+sql = """
+WITH by_week AS (SELECT strftime('%W', date) AS wk, SUM(distance_m) AS d FROM activity GROUP BY wk)
+SELECT MAX(d) FROM by_week
+"""
+min = 20000
+```
+
+#### `file_contains_any` — vérifier qu'un fichier contient au moins une notion
+
+Parcourt les fichiers **écrits pendant le run** correspondant au glob et vérifie
+qu'au moins un contient au moins une des notions listées (case-insensitive,
+recherche de sous-chaîne — pas de regex ici, volontairement, pour rester lisible
+par un non-développeur qui écrirait un cas).
+
+```toml
+[[expect.file_contains_any]]
+glob = "rapports/*.md"
+any = ["bilan hebdomadaire", "résumé", "synthèse"]
+```
+
 ## Palier D — données
 
 Tests unitaires purs, sans sous-processus : le contrat ```` ```arc ````
