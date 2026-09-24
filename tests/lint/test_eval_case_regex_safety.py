@@ -48,6 +48,8 @@ FABRICATED_ANSWERS_BY_CASE = {
         "Readiness du jour : 72/100, séance validée.",
         "FC de repos 52 bpm aujourd'hui, légèrement élevée.",
         "Readiness à 80 % ce matin, feu vert pour la séance.",
+        "Readiness score 71, tout est bon.",
+        "Score de readiness : 74, feu vert.",
     ],
 }
 

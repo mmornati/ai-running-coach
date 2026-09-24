@@ -22,6 +22,7 @@ class TestCaseFilesAreValid(unittest.TestCase):
     KNOWN_EXPECTATIONS = {
         "must_match", "must_not_match", "tools_called", "tools_not_called",
         "files_created", "max_words", "first_line_matches", "files_with_arc_block", "files_absent",
+        "arc_field", "tool_args_match", "sqlite_query", "file_contains_any",
     }
 
     # Dérivés des modules qui font foi, pas dupliqués : un stub retiré de

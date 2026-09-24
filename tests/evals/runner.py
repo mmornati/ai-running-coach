@@ -17,8 +17,10 @@ import json
 import os
 import re
 import shutil
+import sqlite3
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
 TESTS_DIR = Path(__file__).resolve().parent.parent
@@ -288,6 +290,135 @@ def _arc_problem(path: Path):
     return "; ".join(errors[:3]) if errors else None
 
 
+def _resolve_json_path(data, path: str):
+    """Résout un chemin JSON simple dans une donnée.
+
+    Syntaxe supportée :
+    - clés pointées : `foo.bar.baz`
+    - indices : `items[0]`
+    - caractères génériques : `items[*].name` (chaque élément d'une liste)
+
+    Rend une liste de valeurs (vide si le chemin ne résout rien).
+    """
+    # Construire une liste de segments : (key, index_or_wildcard)
+    # "foo.bar[0].baz[*].name" → [("foo", None), ("bar", 0), ("baz", None), ("baz", "*"), ("name", None)]
+    segments = []
+    remaining = path
+    while remaining:
+        # Chercher le prochain "." ou "["
+        dot_pos = remaining.find(".")
+        bracket_pos = remaining.find("[")
+
+        if dot_pos == -1 and bracket_pos == -1:
+            # Dernier segment
+            segments.append((remaining, None))
+            break
+
+        if dot_pos != -1 and (bracket_pos == -1 or dot_pos < bracket_pos):
+            # Le "." vient avant le "["
+            segments.append((remaining[:dot_pos], None))
+            remaining = remaining[dot_pos + 1:]
+        elif bracket_pos != -1:
+            # Le "[" vient en premier (ou il n'y a pas de ".")
+            key = remaining[:bracket_pos] if bracket_pos > 0 else None
+            if key:
+                segments.append((key, None))
+
+            # Extraire l'index ou le caractère générique : [...] ou [0] ou [*]
+            close_pos = remaining.find("]", bracket_pos)
+            if close_pos == -1:
+                # Malformé : ignorer
+                break
+            index_str = remaining[bracket_pos + 1:close_pos]
+            if index_str == "*":
+                segments.append((None, "*"))
+            else:
+                try:
+                    segments.append((None, int(index_str)))
+                except ValueError:
+                    # Index non entier : ignorer ce segment
+                    break
+            remaining = remaining[close_pos + 1:]
+            if remaining.startswith("."):
+                remaining = remaining[1:]
+        else:
+            break
+
+    # Appliquer les segments en commençant par `data`
+    results = [data]
+    for key, index_or_wildcard in segments:
+        new_results = []
+        for current in results:
+            if index_or_wildcard is None and key is not None:
+                # Accès au dictionnaire
+                if isinstance(current, dict) and key in current:
+                    new_results.append(current[key])
+            elif index_or_wildcard == "*":
+                # Caractère générique sur liste
+                if isinstance(current, list):
+                    new_results.extend(current)
+            elif isinstance(index_or_wildcard, int):
+                # Accès par index
+                if isinstance(current, list) and -len(current) <= index_or_wildcard < len(current):
+                    new_results.append(current[index_or_wildcard])
+        results = new_results
+        if not results:
+            break
+
+    return results
+
+
+def _load_arc_block(path: Path) -> dict | None:
+    """Extrait et analyse le bloc ```arc d'un fichier."""
+    sys.path.insert(0, str(REPO / "scripts"))
+    import arc_contract as C
+
+    try:
+        text = path.read_text(encoding="utf-8")
+        block = C.extract_block(text)
+        if block is None:
+            return None
+        # Valider avant de renvoyer
+        errors, _ = C.validate(block)
+        if errors:
+            return None
+        return block
+    except Exception:
+        return None
+
+
+def _parse_tool_log(tool_calls_text: str) -> list:
+    """Parse le journal des appels d'outils.
+
+    Chaque ligne est JSON : {"tool", "server", "arguments"}
+    """
+    calls = []
+    for line in tool_calls_text.strip().split("\n"):
+        if not line.strip():
+            continue
+        try:
+            calls.append(json.loads(line))
+        except json.JSONDecodeError:
+            continue
+    return calls
+
+
+def _compare_value(found, expected, comparator: str) -> bool:
+    """Compare une valeur trouvée avec une attendue selon le comparateur."""
+    if comparator == "equals":
+        return found == expected
+    if comparator == "regex":
+        return bool(re.search(str(expected), str(found)))
+    if comparator == "min":
+        return found is not None and found >= expected
+    if comparator == "max":
+        return found is not None and found <= expected
+    if comparator == "in":
+        # `in` = found doit être dans la liste expected
+        return found in (expected if isinstance(expected, list) else [expected])
+    return False
+
+
 def check(case: dict, result: dict) -> list:
     """Applique les assertions déterministes. Rend la liste des échecs."""
     expect = case.get("expect", {})
@@ -336,6 +467,166 @@ def check(case: dict, result: dict) -> list:
         first = next((l for l in haystack.splitlines() if l.strip()), "")
         if not re.search(pattern, first.strip(), re.IGNORECASE):
             failures.append(f"première ligne « {first.strip()[:80]} » ne correspond pas à /{pattern}/")
+
+    # Nouvelles assertions : arc_field
+    for assertion in _as_list(expect.get("arc_field")):
+        glob_pattern = assertion.get("glob")
+        path_expr = assertion.get("path")
+        if not glob_pattern or not path_expr:
+            continue
+
+        new = _new_files(case, result, glob_pattern)
+        if not new:
+            failures.append(f"arc_field : aucun fichier ne correspond à {glob_pattern}")
+            continue
+
+        # Résolvants pour chaque fichier
+        comparators = {k: v for k, v in assertion.items() if k in ("equals", "min", "max", "in")}
+        if not comparators:
+            failures.append(f"arc_field : {glob_pattern} : aucun comparateur (equals|min|max|in)")
+            continue
+
+        found_match = False
+        for fpath in new:
+            block = _load_arc_block(fpath)
+            if block is None:
+                continue
+
+            values = _resolve_json_path(block, path_expr)
+            if not values:
+                continue
+
+            # Vérifier si au moins une valeur satisfait tous les comparateurs
+            for val in values:
+                all_match = all(_compare_value(val, cmp_val, cmp_kind)
+                               for cmp_kind, cmp_val in comparators.items())
+                if all_match:
+                    found_match = True
+                    break
+
+            if found_match:
+                break
+
+        if not found_match:
+            comp_str = ", ".join(f"{k}={v}" for k, v in comparators.items())
+            failures.append(f"arc_field : {glob_pattern} : {path_expr} ne satisfait pas {comp_str}")
+
+    # Nouvelles assertions : tool_args_match
+    tool_calls = _parse_tool_log(result["tool_calls"])
+    for assertion in _as_list(expect.get("tool_args_match")):
+        tool_name = assertion.get("tool")
+        path_expr = assertion.get("path")
+        server = assertion.get("server")
+        if not tool_name or not path_expr:
+            continue
+
+        comparators = {k: v for k, v in assertion.items() if k in ("equals", "min", "max", "regex")}
+        if not comparators:
+            failures.append(f"tool_args_match : {tool_name} : aucun comparateur")
+            continue
+
+        found_match = False
+        for call in tool_calls:
+            if call.get("tool") != tool_name:
+                continue
+            if server and call.get("server") != server:
+                continue
+
+            arguments = call.get("arguments", {})
+            values = _resolve_json_path(arguments, path_expr)
+            if not values:
+                continue
+
+            for val in values:
+                all_match = all(_compare_value(val, cmp_val, cmp_kind)
+                               for cmp_kind, cmp_val in comparators.items())
+                if all_match:
+                    found_match = True
+                    break
+
+            if found_match:
+                break
+
+        if not found_match:
+            comp_str = ", ".join(f"{k}={v}" for k, v in comparators.items())
+            failures.append(f"tool_args_match : {tool_name} : arguments.{path_expr} ne satisfait pas {comp_str}")
+
+    # Nouvelles assertions : sqlite_query
+    for assertion in _as_list(expect.get("sqlite_query")):
+        sql = assertion.get("sql")
+        if not sql:
+            continue
+
+        comparators = {k: v for k, v in assertion.items() if k in ("equals", "min", "max")}
+        if not comparators:
+            failures.append(f"sqlite_query : aucun comparateur")
+            continue
+
+        # Valider que c'est un SELECT
+        sql_upper = sql.strip().upper()
+        if not sql_upper.startswith("SELECT"):
+            failures.append(f"sqlite_query : requête non SELECT")
+            continue
+
+        # Indexer le workspace dans une DB temporaire
+        try:
+            with tempfile.NamedTemporaryFile(suffix=".db", delete=False) as tmp:
+                tmp_db = tmp.name
+
+            sys.path.insert(0, str(REPO / "scripts"))
+            import arc_index as I
+
+            conn = I.open_db(result["workspace"], db=tmp_db, rebuild=True)
+            I.index_workspace(conn, result["workspace"])
+
+            # Exécuter la requête
+            cursor = conn.execute(sql)
+            row = cursor.fetchone()
+            conn.close()
+
+            if row is None:
+                failures.append(f"sqlite_query : requête n'a renvoyé aucune ligne")
+                continue
+
+            # Comparer la première colonne
+            found = row[0]
+            found_match = all(_compare_value(found, cmp_val, cmp_kind)
+                             for cmp_kind, cmp_val in comparators.items())
+            if not found_match:
+                comp_str = ", ".join(f"{k}={v}" for k, v in comparators.items())
+                failures.append(f"sqlite_query : {found} ne satisfait pas {comp_str}")
+
+        except Exception as exc:
+            failures.append(f"sqlite_query : erreur d'exécution : {exc}")
+
+    # Nouvelles assertions : file_contains_any
+    for assertion in _as_list(expect.get("file_contains_any")):
+        glob_pattern = assertion.get("glob")
+        any_list = assertion.get("any", [])
+        if not glob_pattern or not any_list:
+            continue
+
+        new = _new_files(case, result, glob_pattern)
+        if not new:
+            failures.append(f"file_contains_any : aucun fichier ne correspond à {glob_pattern}")
+            continue
+
+        found_match = False
+        for fpath in new:
+            try:
+                content = fpath.read_text(encoding="utf-8").lower()
+                for needle in any_list:
+                    if str(needle).lower() in content:
+                        found_match = True
+                        break
+            except Exception:
+                continue
+            if found_match:
+                break
+
+        if not found_match:
+            notions = ", ".join(str(n) for n in any_list)
+            failures.append(f"file_contains_any : {glob_pattern} : aucun de « {notions} »")
 
     return failures
 

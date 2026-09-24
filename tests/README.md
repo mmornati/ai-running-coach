@@ -91,6 +91,80 @@ Chaque cas est répété N fois et passe sur un seuil, pas à l'unanimité. Le d
 relevé est versionné dans `tests/evals/RESULTS.md` : une régression se lit alors
 dans un diff.
 
+### Nouvelles assertions sur les contenus d'arc et les arguments d'outils (#27)
+
+Quatre assertions permettent de vérifier le **contenu** des fichiers générés et des
+appels d'outils — pas seulement leur existence ou leur type :
+
+#### `arc_field` — extraire et vérifier un champ du bloc ```arc
+
+Extrait un champ du bloc ```` ```arc ```` d'un fichier et le compare à une valeur
+attendue. Syntaxe de chemin JSON : clés pointées (`foo.bar`), indices (`items[0]`),
+caractères génériques (`items[*].intensity`).
+
+Comparateurs : `equals`, `min`, `max`, `in`.
+
+```toml
+[[expect.arc_field]]
+glob = "activities/*.md"      # Tous les fichiers d'activité
+path = "distance_m"            # Chemin JSON au champ
+min = 5000                      # Distance ≥ 5 km
+```
+
+```toml
+[[expect.arc_field]]
+glob = "planning/Semaine_*.md"  # Semaines
+path = "sessions[*].intensity"  # Tous les niveaux d'intensité
+in = [5, 6, 7]                  # Seulement 5, 6 ou 7
+```
+
+#### `tool_args_match` — vérifier les arguments d'un appel d'outil
+
+Vérifie que l'outil nommé a été appelé avec des arguments satisfaisant une condition.
+Même syntaxe de chemin que `arc_field`.
+
+Comparateurs : `equals`, `min`, `max`, `regex`. Optionnel : `server` pour filtrer par
+serveur MCP.
+
+```toml
+[[expect.tool_args_match]]
+tool = "get_activities"         # Outil MCP
+path = "days"                   # Arguments.days
+equals = 7
+```
+
+```toml
+[[expect.tool_args_match]]
+tool = "get_health"
+server = "garmin"
+path = "metric"
+regex = "hrv.*"                 # Matches "hrv_overnight", "hrv_baseline", …
+```
+
+#### `sqlite_query` — requête SELECT sur l'index du workspace
+
+Indexe le workspace en SQLite (lecture seule) et exécute une requête SELECT — utile
+pour vérifier des agrégats (nombre de séances par semaine, charge totale du mois…).
+
+Comparateurs : `equals`, `min`, `max`.
+
+```toml
+[[expect.sqlite_query]]
+sql = "SELECT COUNT(*) FROM activity WHERE sport = 'running' AND date >= '2026-09-01'"
+equals = 5
+```
+
+#### `file_contains_any` — vérifier qu'un fichier contient au moins une notion
+
+Parcourt les fichiers correspondant au glob et vérifie qu'au moins un contient au
+moins une des notions listées (case-insensitive, recherche de sous-chaîne).
+
+```toml
+[[expect.file_contains_any]]
+glob = "rapports/*.md"
+any = ["bilan hebdomadaire", "résumé", "synthèse"]
+```
+
 ## Palier D — données
 
 Tests unitaires purs, sans sous-processus : le contrat ```` ```arc ````
