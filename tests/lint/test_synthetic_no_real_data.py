@@ -20,7 +20,8 @@ from tests.lib.synthetic import FAKE_ACTIVITY_ID_BASE, build, sample_session  # 
 
 class TestNoRealisticGarminId(unittest.TestCase):
     def test_fit_samples_use_the_obviously_fake_id_range(self):
-        """Même convention que `build()` : un ID Garmin réel n'atteint jamais ce plafond."""
+        """Même convention que `build()` : les ID Garmin réels (≈ 1,8-2,1 × 10¹⁰ en
+        2025-2026) n'approchent jamais `FAKE_ACTIVITY_ID_BASE` (9 × 10¹⁰)."""
         with tempfile.TemporaryDirectory() as tmp:
             root = build(Path(tmp), days=6, sport="trail", seed=1, with_samples=True)
             files = list((root / "activities/fit").glob("*.json"))

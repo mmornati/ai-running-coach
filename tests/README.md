@@ -102,24 +102,44 @@ ARC_WORKSPACE=/tmp/demo scripts/dashboard.sh
 
 ### Échantillons seconde par seconde (`sample_session`, story #25)
 
-Toute l'épopée FIT (zones, GAP, découplage, VAM, descente, durabilité, modèle
-pente→allure) a besoin de séries seconde par seconde à **vérité connue**.
-`tests.lib.synthetic.sample_session(...)` en génère une, avec des propriétés
-paramétrées (montée de pente et longueur, dérive FC/découplage imposée,
-répartition de zones FC imposée, fade de fin de séance, trous de signal) et
-renvoie, à côté des échantillons, un dict `truth` : ce qu'il affirme avoir
-produit, mesuré sur les données réellement écrites — c'est ce que
-`tests/data/test_synthetic_samples.py` vérifie (D+, dérive, zones, fade,
-déterminisme octet pour octet).
+Toute l'épopée FIT (zones #43, GAP #44, découplage #45, VAM #46, descente #47,
+durabilité #48, modèle pente→allure #58) a besoin de séries seconde par
+seconde à **vérité connue**. `tests.lib.synthetic.sample_session(...)` en
+génère une, avec des propriétés paramétrées (segments montée/descente,
+dérive FC/découplage imposée, répartition de zones FC imposée, fade de fin de
+séance, trous de signal) et renvoie, à côté des échantillons, un dict
+`truth`. **Toute valeur mesurée de `truth` est recalculée après coup depuis
+la liste `records` finale**, jamais depuis un tableau interne pré-troncature
+— un trou de signal ou une pente ne peut donc jamais fausser une mesure sans
+que ce soit visible dans les données réellement émises.
+
+Le découplage (Pa:HR, #45) et le fade (#48) sont mesurés sur le GAP (vitesse
+ajustée à la pente), pas la vitesse brute — sinon une montée ou une descente
+fausserait la mesure. `tests/data/test_synthetic_samples.py` vérifie D+/D−,
+dérive, zones, fade, courbe pente→allure, déterminisme octet pour octet, et
+recalcule certaines mesures de façon indépendante pour prouver qu'il n'y a
+pas d'incohérence entre `truth` et `records`.
 
 Champs d'un échantillon : `t_s, distance_m, altitude_m, hr_bpm, speed_ms,
-cadence_spm` — alignés sur le schéma `activity_sample` de
-`scripts/arc_index.py`, pour que l'ingestion FIT (story #42) le consomme sans
-traduction. Pas de `lat`/`lon` : inutiles aux KPI de l'épopée et ça évite tout
-risque de lieu réel (vérifié par `tests/lint/test_synthetic_no_real_data.py`).
+cadence_spm` — **format normalisé**, aligné sur le schéma `activity_sample`
+de `scripts/arc_index.py`. Ce n'est **pas** le format brut de
+`skills/fit-download/scripts/download_fit.py` (qui dumpe les champs
+`fitparse` tels quels : `timestamp`, `distance`, `heart_rate`,
+`enhanced_altitude`/`altitude`, `enhanced_speed`/`speed`, `cadence`) : c'est
+le format que l'ingestion FIT (story #42) devra produire en sortie de sa
+normalisation. Pas de `lat`/`lon` : inutiles aux KPI de l'épopée et ça évite
+tout risque de lieu réel (vérifié par `tests/lint/test_synthetic_no_real_data.py`).
+
+Zones FC par défaut : méthode Karvonen sur la FC repos/max du profil type
+(`HR_REST`/`HR_MAX` — voir `planning/Runner_Profile.md`), pas des bornes
+arbitraires ; la story #43 rendra la méthode configurable par profil.
 
 ```bash
 python3 -m tests.lib.synthetic /tmp/demo --days 120 --with-samples
 # -> /tmp/demo/activities/fit/<garmin_activity_id>.json  ({"activity_id", "records", "truth"})
 ```
+
+`--with-samples` calibre la distance, le D+/D− et la FC moyenne des
+échantillons pour qu'ils restent cohérents avec le Markdown de la même
+séance (`tests/data/test_synthetic_samples.py::TestMarkdownAgreement`).
 
