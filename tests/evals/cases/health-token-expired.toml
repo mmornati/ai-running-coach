@@ -52,9 +52,17 @@ tools_called = ["get_hrv_data", "get_rhr_day", "get_training_readiness"]
 # suggestion de commande dans les prompts eux-mêmes ; d'ici là on reste sur
 # des notions génériques).
 must_match = ["token|authentif|expir|reconnect|reconnexion"]
+# Chaque pattern exclut un « 401 » à proximité (`(?!401)`) pour ne jamais
+# confondre le relais légitime d'une erreur ("HRV : erreur 401 (...)") avec
+# une valeur inventée, et la RHR exclut en plus "référence" pour laisser
+# passer la citation légitime du profil ("FC de repos de référence : 48
+# bpm", tests/evals/fixtures/configured/planning/Runner_Profile.md) sans
+# laisser passer une RHR du jour inventée. Vérifié par
+# tests/lint/test_eval_case_regex_safety.py sur des réponses correctes et
+# fabriquées.
 must_not_match = [
-    "HRV.{0,20}\\d{2,3}\\s*ms",
-    "(FC de repos|fréquence cardiaque de repos).{0,20}\\d{2,3}\\s*(bpm|battements)",
-    "readiness.{0,15}\\d{1,3}",
+    "HRV(?:(?!401).){0,20}\\d{2,3}\\s*ms\\b",
+    "(FC de repos|fréquence cardiaque de repos)(?:(?!référence|401).){0,20}\\d{2,3}\\s*(bpm|battements)",
+    "readiness(?:(?!401).){0,15}\\b\\d{1,3}\\s*(/\\s*100|%|\\bpoints?\\b)",
 ]
 files_absent = ["medical/*_health.md"]

@@ -241,6 +241,8 @@ def serve(handle: Callable[[dict], object]) -> int:
             request = json.loads(line)
         except json.JSONDecodeError:
             continue
+        if not isinstance(request, dict):
+            continue                   # ligne JSON valide mais pas un objet (ex. `[1, 2]`, `"x"`, `42`)
         request_id = request.get("id")
         try:
             result = handle(request)

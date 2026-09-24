@@ -251,7 +251,16 @@ def looks_unauthenticated(result: dict) -> bool:
     Cas fréquent : le CLI est installé, l'utilisateur est connecté dans son
     terminal, mais pas dans l'environnement qui lance les tests. Mieux vaut
     ignorer le palier avec un message clair que rendre onze échecs identiques.
+
+    `returncode == -1` est le sentinel posé par `run_case` pour un
+    `subprocess.TimeoutExpired` (cas qui scripte un `error = "timeout"`, #26).
+    Le message de relais d'un 401 stub (« ... Unauthorized ... ») peut alors
+    apparaître dans la sortie partielle sans que le run soit réellement « pas
+    authentifié » — ce n'est pas ce qu'on veut *skip*, c'est un vrai résultat
+    de cas (l'agent a-t-il su abandonner l'outil lent ?).
     """
+    if result["returncode"] == -1:
+        return False
     return result["returncode"] != 0 and bool(
         NOT_LOGGED_IN.search(result["output"] + result["stderr"])
     )

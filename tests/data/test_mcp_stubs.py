@@ -311,6 +311,20 @@ class TestGarminStubFraming(StubProcessTestCase):
         response = self.recv(proc)
         self.assertEqual(response["error"]["code"], -32601)
 
+    def test_non_object_json_line_does_not_kill_the_stub(self):
+        """Une ligne JSON valide mais qui n'est pas un objet (`[1, 2]`, `"x"`,
+        `42`) n'a pas de `.get()` — elle ne doit pas planter la boucle."""
+        proc = self.start()
+        proc.stdin.write("[1, 2, 3]\n")
+        proc.stdin.write('"just a string"\n')
+        proc.stdin.write("42\n")
+        proc.stdin.flush()
+        # Aucune des trois n'a d'id : rien ne doit répondre, mais le process
+        # doit rester vivant et répondre normalement ensuite.
+        self.assertIsNone(self.recv(proc, timeout=0.5))
+        response = self.initialize(proc)
+        self.assertEqual(response["result"]["protocolVersion"], common.PROTOCOL_VERSION)
+
     def test_a_malformed_call_does_not_kill_the_stub(self):
         """Un `[stub.garmin.<outil>]` mal réglé (ici : `error` inconnu) ne doit
         faire échouer QUE cet appel — le process continue de répondre aux
@@ -408,6 +422,19 @@ class TestRunnerStubWiring(unittest.TestCase):
             workspace = self.runner.build_workspace(root, case)
             manifest = json.loads((workspace / ".mcp.json").read_text(encoding="utf-8"))
             self.assertEqual(manifest["mcpServers"]["garmin"]["env"]["ARC_STUB_CONFIG"], "")
+
+    def test_timeout_sentinel_is_never_treated_as_unauthenticated(self):
+        """Un `subprocess.TimeoutExpired` (cas qui scripte `error = "timeout"`)
+        rend `returncode == -1` avec parfois un relais de 401 dans la sortie
+        partielle (« ... Unauthorized ... ») — ça ne doit jamais déclencher le
+        *skip* « runner pas authentifié » (item #3 de la revue de #26)."""
+        result = {
+            "returncode": -1,
+            "output": "Impossible de récupérer la HRV : 401 Unauthorized (relais)",
+            "stderr": "le runner n'a pas répondu sous 300s (TimeoutExpired)",
+            "tool_calls": "", "workspace": Path("/dev/null"),
+        }
+        self.assertFalse(self.runner.looks_unauthenticated(result))
 
 
 if __name__ == "__main__":
