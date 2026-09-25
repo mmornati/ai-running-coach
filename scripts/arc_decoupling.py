@@ -118,16 +118,38 @@ STEEP_GRADE_FRACTION = 0.12
 # physiologique différent (économie de marche, pas le modèle de course de
 # Minetti), exclu de l'EF et de la détection d'effort stable pour la même
 # raison que les pentes fortes ci-dessus — PAS de la séance dans son
-# ensemble (voir ASSUMPTIONS["walking"] pour ce que cela implique sur un
-# ultra couru en run/walk). Plus haut que `arc_gap.STOPPED_SPEED_MS` (arrêt
-# net) : une marche soutenue reste un mouvement réel, pas une pause.
+# ensemble (voir ASSUMPTIONS["steep_grade_and_walking"] pour ce que cela
+# implique sur un ultra couru en run/walk). Plus haut que
+# `arc_gap.STOPPED_SPEED_MS` (arrêt net) : une marche soutenue reste un
+# mouvement réel, pas une pause. Seuil de repli seulement (voir `_is_walking`
+# pour la cadence et le GAP, préférés quand disponibles) : une vitesse BRUTE
+# lente en forte montée est souvent de la course réelle (effort intense,
+# cadence de course), pas de la marche — la confondre avec de la marche sur
+# ce seul critère rejetterait à tort une grosse partie des sorties en
+# montagne (revue de code #45).
 WALKING_SPEED_MS = 1.4
 
-# Couverture FC/GAP minimale par moitié (part du temps de mouvement de la
-# moitié réellement utilisable pour l'EF : FC et GAP présents, ni pente
-# forte ni marche) : sous ce seuil, un pan entier de la moitié (ex. un
-# capteur FC décroché 13 minutes) pourrait porter la moyenne sans qu'on le
-# voie — voir ASSUMPTIONS["hr_coverage"].
+# Cadence en dessous de laquelle un échantillon est traité comme de la marche
+# (#45, revue de code) — PRÉFÉRÉE à la vitesse brute quand disponible : une
+# foulée de course, même lente en forte montée, reste nettement au-dessus de
+# la cadence de marche (typiquement ≥ 150-160 pas/min en course, quelle que
+# soit l'allure), alors qu'une vitesse brute lente peut aussi bien être de la
+# course en côte raide que de la marche. Valeur ronde, jugement d'ingénierie
+# (pas calibrée sur un jeu de séances réelles étiquetées course/marche).
+WALKING_CADENCE_SPM = 140.0
+
+# Couverture FC minimale par moitié (part du temps de MOUVEMENT de la moitié
+# — TOUT terrain confondu, pente forte et marche comprises — où la FC est
+# présente) : sous ce seuil, un pan entier de la moitié (ex. un capteur FC
+# décroché 13 minutes) pourrait fausser la moyenne sans qu'on le voie — voir
+# ASSUMPTIONS["hr_coverage"]. Distincte de la couverture RÉELLEMENT UTILISABLE
+# pour l'EF (hors pente forte/marche, voir MIN_HALF_MOVING_S ci-dessous et
+# ASSUMPTIONS["usable_running"]) : une sortie en montagne avec une FC
+# complète mais beaucoup de pente forte/marche a raison d'avoir une
+# couverture FC à 100 % tout en manquant de portions courues exploitables —
+# deux raisons d'échec bien distinctes (revue de code #45, corrige un bug où
+# les deux étaient confondues et rejetaient à tort la plupart des sorties en
+# montagne réelles).
 MIN_HR_COVERAGE_FRAC = 0.8
 
 # Écart de pente moyenne maximal toléré entre les deux moitiés (fraction,
@@ -204,11 +226,28 @@ ASSUMPTIONS = {
     ),
     "hr_coverage": (
         f"Chaque moitié doit avoir au moins {MIN_HR_COVERAGE_FRAC * 100:.0f} % de son temps de mouvement "
-        "couvert par un échantillon utilisable pour l'EF (FC et GAP présents, ni pente forte ni marche) "
-        "— sous ce seuil (capteur FC décroché, longue portion marchée/en forte pente), la moyenne de "
-        "cette moitié porterait sur une fraction non représentative de son temps réel, ce qui peut "
-        "fausser le découplage mesuré dans un sens ou dans l'autre selon ce qui manque. Distinct d'une "
-        "absence totale de FC (séance sans capteur), qui a sa propre raison plus tôt dans le pipeline."
+        "couvert par une FC présente — TOUT terrain confondu, pente forte et marche COMPRISES : sous ce "
+        "seuil (capteur FC décroché sur une longue portion), la moyenne de cette moitié porterait sur "
+        "une fraction non représentative de son temps réel, ce qui peut fausser le découplage mesuré "
+        "dans un sens ou dans l'autre selon ce qui manque. Distinct d'une absence totale de FC (séance "
+        "sans capteur), qui a sa propre raison plus tôt dans le pipeline, ET distinct de la couverture "
+        "RÉELLEMENT UTILISABLE pour l'EF (voir ASSUMPTIONS['usable_running']) : une sortie en montagne "
+        "peut avoir une FC complète (100 % de couverture ici) tout en manquant de portions courues "
+        "exploitables (beaucoup de pente forte/marche) — mélanger les deux critères en un seul (revue de "
+        "code #45, correction apportée) rejetait à tort la plupart des sorties de montagne réelles avec "
+        "une FC pourtant complète (ex. mesuré sur des profils synthétiques : vallonné ±12 % à 64-86 % de "
+        "« couverture » avant correction, ±15-25 % à 13-51 %, répétitions à allure adaptée ±10 % à 33 %, "
+        "alors que la FC y était mesurée à 100 % du temps)."
+    ),
+    "usable_running": (
+        f"Indépendamment de la couverture FC ci-dessus, chaque moitié doit conserver au moins "
+        f"{MIN_HALF_MOVING_S / 60:.0f} minutes de temps RÉELLEMENT COURU exploitable (FC et GAP présents, "
+        "hors pente forte et marche, voir ASSUMPTIONS['steep_grade_and_walking']) — une DURÉE ABSOLUE, "
+        "jamais une part relative du temps de mouvement (une part minimale pénaliserait à tort les "
+        "sorties de montagne où la pente forte/la marche occupent une portion importante mais où il "
+        "reste largement assez de course exploitable en minutes). Sous ce seuil, l'activité est jugée "
+        "inéligible : « trop peu de portions courues exploitables », distinct de « FC incomplète » "
+        "ci-dessus — deux causes différentes du même symptôme (aucun chiffre affiché)."
     ),
     "grade_asymmetry": (
         f"Si la pente moyenne (pondérée par le temps, sur les échantillons utilisés pour l'EF) diffère "
@@ -243,7 +282,16 @@ ASSUMPTIONS = {
         "(repérage de pics répétés) ne sont utilisés : cette règle statistique unique reste "
         "volontairement simple. Avec moins de "
         f"{STEADY_MIN_SAMPLES} points glissants exploitables, le jugement n'est pas fiable et cette "
-        "règle est ignorée (pas assez de points pour distinguer un vrai fractionné d'un artefact)."
+        "règle est ignorée (pas assez de points pour distinguer un vrai fractionné d'un artefact). "
+        "LIMITE CONNUE, documentée honnêtement (revue de code #45) : cette règle juge la dispersion "
+        "autour d'une médiane UNIQUE pour toute la séance, elle ne distingue donc pas un vrai fractionné "
+        "d'un bloc tempo unique et soutenu (ex. 20 minutes à allure seuil au milieu d'une sortie sinon "
+        "facile) — selon sa durée relative au reste de la séance, un tel bloc peut soit être absorbé "
+        "sans déclencher le seuil (la médiane glisse peu, l'essentiel du temps reste proche d'elle), "
+        "soit déclencher à tort un verdict « non stable » alors qu'il s'agit d'un seul changement de "
+        "régime contrôlé, pas d'une alternance répétée. Un test dédié (repérage d'un unique plateau "
+        "soutenu plutôt qu'une alternance) pourrait affiner ce cas mais n'est pas fait ici, pour rester "
+        "volontairement simple."
     ),
     "whole_activity_ef": (
         "Le facteur d'efficacité « séance entière » (ef_whole) est calculé sur TOUS les échantillons "
@@ -269,6 +317,20 @@ def _is_moving(sample: dict) -> bool:
 
 
 def _is_walking(sample: dict) -> bool:
+    """Marche/power-hiking plutôt que course (#45, revue de code) : la cadence
+    (`cadence_spm`), quand disponible, est préférée à toute mesure de vitesse
+    (une foulée de course reste nettement au-dessus de la cadence de marche,
+    même lente en forte montée — voir `WALKING_CADENCE_SPM`) ; à défaut, le
+    GAP (vitesse « plat équivalent », déjà ajustée à la pente) est préféré à
+    la vitesse BRUTE, qui confondrait une course lente en côte raide avec de
+    la marche ; la vitesse brute n'est utilisée qu'en tout dernier recours,
+    quand ni la cadence ni le GAP ne sont disponibles."""
+    cadence = sample.get("cadence_spm")
+    if cadence is not None:
+        return cadence < WALKING_CADENCE_SPM
+    gap_speed = sample.get("gap_speed_ms")
+    if gap_speed is not None:
+        return gap_speed < WALKING_SPEED_MS
     speed = sample.get("speed_ms")
     return speed is not None and speed < WALKING_SPEED_MS
 
@@ -358,18 +420,22 @@ def _split_by_moving_time(series: Sequence[dict], *,
     return half1, half2
 
 
-def _coverage_frac(half_raw: Sequence[dict], resolution_s: float) -> float:
-    """Part du temps de mouvement de `half_raw` (déjà en mouvement uniquement,
-    voir `_split_by_moving_time`) réellement utilisable pour l'EF (FC et GAP
-    présents, ni pente forte ni marche) — voir ASSUMPTIONS["hr_coverage"]."""
+def _hr_coverage_frac(half_raw: Sequence[dict], resolution_s: float) -> float:
+    """Part du temps de MOUVEMENT de `half_raw` (déjà en mouvement uniquement,
+    voir `_split_by_moving_time`) où la FC est présente — TOUT terrain
+    confondu, pente forte et marche COMPRISES (voir ASSUMPTIONS["hr_coverage"]
+    pour pourquoi cette couverture est volontairement indépendante de la
+    règle « portions courues exploitables » de `_usable_running_time`, revue
+    de code #45 : mélanger les deux rejetait à tort la plupart des sorties en
+    montagne réelles, où la FC est complète mais une bonne part du temps est
+    en forte pente ou marchée)."""
     total = 0.0
     covered = 0.0
     n = len(half_raw)
     for i in range(n):
         w = _dt_to_next(half_raw, i, resolution_s)
         total += w
-        s = half_raw[i]
-        if _usable_for_ef(s) and s.get("hr_bpm") is not None and s.get("gap_speed_ms") is not None:
+        if half_raw[i].get("hr_bpm") is not None:
             covered += w
     return (covered / total) if total > 0 else 0.0
 
@@ -435,8 +501,8 @@ def decoupling_report_from_series(series: Sequence[dict], *,
                           f"(< {MIN_HALF_MOVING_S / 60:.0f} min de mouvement sur au moins une moitié), "
                           "voir ASSUMPTIONS[\"halves\"]"}
 
-    coverage1 = _coverage_frac(half1_raw, resolution_s)
-    coverage2 = _coverage_frac(half2_raw, resolution_s)
+    coverage1 = _hr_coverage_frac(half1_raw, resolution_s)
+    coverage2 = _hr_coverage_frac(half2_raw, resolution_s)
     if coverage1 < MIN_HR_COVERAGE_FRAC or coverage2 < MIN_HR_COVERAGE_FRAC:
         return {**empty, "moving_duration_s": round(whole_moving_s, 1),
                 "reason": f"FC incomplète sur au moins une moitié (couverture {coverage1 * 100:.0f} % / "
@@ -447,9 +513,13 @@ def decoupling_report_from_series(series: Sequence[dict], *,
                and s.get("gap_speed_ms") is not None]
     usable2 = [s for s in half2_raw if _usable_for_ef(s) and s.get("hr_bpm") is not None
                and s.get("gap_speed_ms") is not None]
-    if not usable1 or not usable2:
+    usable1_s = _weighted_time(usable1, resolution_s)
+    usable2_s = _weighted_time(usable2, resolution_s)
+    if usable1_s < MIN_HALF_MOVING_S or usable2_s < MIN_HALF_MOVING_S:
         return {**empty, "moving_duration_s": round(whole_moving_s, 1),
-                "reason": "aucune fréquence cardiaque (ou pente/GAP) exploitable sur au moins une moitié"}
+                "reason": "trop peu de portions courues exploitables (hors pente forte/marche) sur au "
+                          f"moins une moitié (< {MIN_HALF_MOVING_S / 60:.0f} min), voir "
+                          "ASSUMPTIONS[\"usable_running\"]"}
 
     grade1 = G.weighted_average(usable1, "grade", resolution_s)
     grade2 = G.weighted_average(usable2, "grade", resolution_s)

@@ -130,14 +130,24 @@ six semaines d'historique pour que la condition ait un sens.
   durabilité) et au-delà de 5 % (dérive marquée) est affichée ; une valeur
   négative reste neutre, jamais présentée comme meilleure qu'une dérive
   proche de zéro. N'apparaît que pour les séances éligibles : famille course
-  à pied, au moins 60 minutes de mouvement, couverture FC/GAP suffisante sur
-  chaque moitié, profil de pente comparable entre les deux moitiés, effort
-  jugé stable sur des fenêtres glissantes de 30 secondes (voir
-  `scripts/arc_decoupling.py::ASSUMPTIONS` pour la règle complète — pentes
-  fortes et marche/power-hiking exclues du calcul, arrêts exclus) ; une
+  à pied, au moins 60 minutes de mouvement, couverture FC suffisante sur
+  chaque moitié (indépendamment du relief), assez de minutes réellement
+  courues hors pente forte/marche, profil de pente comparable entre les deux
+  moitiés, effort jugé stable sur des fenêtres glissantes de 30 secondes (voir
+  `scripts/arc_decoupling.py::ASSUMPTIONS` pour la règle complète) ; une
   sortie longue non éligible (trop courte, fractionnée, relief trop
   asymétrique entre les deux moitiés, sans FC) n'apparaît simplement pas sur
-  ce graphique, sans qu'aucun autre chiffre de la vue n'en soit affecté.
+  ce graphique, sans qu'aucun autre chiffre de la vue n'en soit affecté. **Une
+  ascension sèche ou une sortie point-à-point avec la montée d'un côté et la
+  descente de l'autre n'affiche généralement AUCUNE valeur** (relief trop
+  différent entre les deux moitiés) — ce n'est pas un bug : le GAP ne corrige
+  pas parfaitement l'effet du relief sur la FC, et comparer une moitié
+  « montée » à une moitié « descente » mesurerait surtout le profil du
+  parcours, pas une vraie dérive cardiaque. C'est le cas typique d'un
+  aller-retour à un sommet unique (montée concentrée dans la première moitié,
+  descente dans la seconde). Une sortie vallonnée, où montées et descentes se
+  répartissent de façon comparable dans chacune des deux moitiés (plusieurs
+  bosses, pas un seul flanc par moitié), reste éligible.
 
 | Alimentée par | Calcul |
 |---|---|

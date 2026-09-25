@@ -105,6 +105,26 @@ def _independent_recompute(records, warmup_s=600.0):
     return (ef1 - ef2) / ef1 * 100.0
 
 
+def _two_grade_halves_records(duration_s=3900, grade1=0.02, grade2=-0.02, target_gap=2.7, hr=150.0):
+    """Séance à allure adaptée à la pente (effort constant, comme les profils
+    vallonnés de `TestSteadyEffort`) : pente moyenne `grade1` dans la première
+    moitié, `grade2` dans la seconde — pour tester la frontière de
+    `arc_decoupling.GRADE_ASYMMETRY_MAX` sans déclencher la détection d'effort
+    non stable (grades faibles, effort constant, pas de fractionné)."""
+    mid = 600 + (duration_s - 600) / 2.0
+    records = []
+    distance = altitude = 0.0
+    for t in range(duration_s):
+        grade = grade1 if t < mid else grade2
+        cost = G.minetti_cost(grade)
+        speed = target_gap * G.MINETTI_FLAT_COST / cost
+        distance += speed
+        altitude += speed * grade
+        records.append({"t_s": t, "distance_m": round(distance, 2), "altitude_m": round(altitude, 2),
+                         "hr_bpm": hr, "speed_ms": speed, "cadence_spm": 170.0})
+    return records
+
+
 class TestDecouplingMatchesAnalyticLinearDrift(unittest.TestCase):
     def test_imposed_linear_drift_matches_closed_form(self):
         """Critère d'acceptation de l'issue #45 (dérive imposée -> mesure
@@ -229,6 +249,34 @@ class TestHrGapCoverage(unittest.TestCase):
         report = D.decoupling_report(records, "trail")
         self.assertTrue(report["eligible"])
 
+    def test_rolling_hill_trail_with_complete_hr_is_eligible(self):
+        """Revue de code #45 (SHOULD-FIX) : un profil vallonné réaliste
+        (±12 %, allure adaptée à la pente pour tenir l'effort) avec une FC
+        COMPLÈTE à 100 % du temps doit rester éligible — l'ancienne règle de
+        couverture (qui comptait les pentes fortes/la marche comme « non
+        couvertes ») rejetait à tort ce genre de sortie de montagne pourtant
+        parfaitement mesurée côté FC (mesuré avant correction : 64-86 % de
+        « couverture » pour un profil ±12 %, sous le seuil de 80 % alors même
+        que la FC ne manquait jamais)."""
+        duration_s = 3900
+        target_gap = 2.7
+        cycle_len = 300.0
+        records = []
+        distance = altitude = 0.0
+        sign = 1
+        for t in range(duration_s):
+            grade = 0.12 * sign
+            cost = G.minetti_cost(grade)
+            speed = target_gap * G.MINETTI_FLAT_COST / cost
+            distance += speed
+            altitude += speed * grade
+            records.append({"t_s": t, "distance_m": round(distance, 2), "altitude_m": round(altitude, 2),
+                             "hr_bpm": 150.0, "speed_ms": speed, "cadence_spm": 170.0})
+            if distance % (2 * cycle_len) < speed:
+                sign *= -1
+        report = D.decoupling_report(records, "trail")
+        self.assertTrue(report["eligible"], report["reason"])
+
 
 class TestGradeAsymmetry(unittest.TestCase):
     def test_summit_and_back_is_ineligible(self):
@@ -282,6 +330,21 @@ class TestGradeAsymmetry(unittest.TestCase):
                              "hr_bpm": 150.0, "speed_ms": speed, "cadence_spm": 170.0})
         report = D.decoupling_report(records, "trail")
         self.assertTrue(report["eligible"], report["reason"])
+
+    def test_just_under_asymmetry_threshold_is_eligible(self):
+        """Écart de pente moyenne de 2,9 points entre les deux moitiés — juste
+        SOUS `arc_decoupling.GRADE_ASYMMETRY_MAX` (3 points) : reste éligible."""
+        records = _two_grade_halves_records(grade1=0.0145, grade2=-0.0145)  # écart = 2,9 pts
+        report = D.decoupling_report(records, "trail")
+        self.assertTrue(report["eligible"], report["reason"])
+
+    def test_just_over_asymmetry_threshold_is_ineligible(self):
+        """Écart de pente moyenne de 3,1 points — juste AU-DESSUS du seuil :
+        devient inéligible."""
+        records = _two_grade_halves_records(grade1=0.0155, grade2=-0.0155)  # écart = 3,1 pts
+        report = D.decoupling_report(records, "trail")
+        self.assertFalse(report["eligible"])
+        self.assertIn("trop différent", report["reason"])
 
 
 class TestSteadyEffort(unittest.TestCase):
@@ -344,8 +407,12 @@ class TestSteadyEffort(unittest.TestCase):
             hr_base = 150.0 if running else 130.0
             if t >= boundary:
                 hr_base = hr_base / (1 - decoupling_pct / 100.0)
+            # Cadence de course (170) vs de marche (110, sous `arc_decoupling.
+            # WALKING_CADENCE_SPM`) : c'est la cadence, pas la vitesse brute, que
+            # `_is_walking` regarde en premier (#45, revue de code).
+            cadence = 170.0 if running else 110.0
             records.append({"t_s": t, "distance_m": round(distance, 2), "altitude_m": 0.0,
-                             "hr_bpm": hr_base, "speed_ms": speed, "cadence_spm": 170.0})
+                             "hr_bpm": hr_base, "speed_ms": speed, "cadence_spm": cadence})
         return records
 
     def test_run_walk_ultra_mostly_running_is_measured_on_running_only(self):
@@ -359,14 +426,33 @@ class TestSteadyEffort(unittest.TestCase):
         self.assertTrue(report["eligible"], report["reason"])
         self.assertAlmostEqual(report["decoupling_pct"], 4.0, delta=0.5)
 
-    def test_run_walk_ultra_balanced_is_ineligible(self):
-        """À l'inverse, un run/walk moitié-moitié ne laisse plus assez de
-        couverture utile par moitié (< 80 %) : l'activité devient inéligible
-        plutôt que de mélanger course et marche dans une seule moyenne."""
-        records = self._run_walk_records(run_s=150, walk_s=150)
+    def test_run_walk_ultra_mostly_walking_is_ineligible_for_lack_of_running(self):
+        """Un run/walk très majoritairement marché (10 % du temps couru) laisse
+        moins de `arc_decoupling.MIN_HALF_MOVING_S` (10 min) de course
+        exploitable par moitié — inéligible pour une raison DISTINCTE de « FC
+        incomplète » (la FC, elle, reste mesurée à 100 % du temps, marche
+        comprise) : ASSUMPTIONS['usable_running'], pas ASSUMPTIONS
+        ['hr_coverage'] (revue de code #45 : les deux ne doivent jamais être
+        confondues, sous peine de rejeter à tort des sorties de montagne à FC
+        complète mais avec beaucoup de pente forte/marche)."""
+        records = self._run_walk_records(duration_s=7200, run_s=30, walk_s=270)
         report = D.decoupling_report(records, "trail")
         self.assertFalse(report["eligible"])
-        self.assertIn("FC incomplète", report["reason"])
+        self.assertIn("trop peu de portions courues exploitables", report["reason"])
+        self.assertNotIn("FC incomplète", report["reason"])
+
+    def test_run_walk_ultra_balanced_with_enough_running_minutes_is_eligible(self):
+        """Un run/walk moitié-moitié (#45, revue de code) laisse encore
+        largement plus de 10 minutes de course exploitable par moitié sur une
+        séance assez longue (2 h) : reste éligible, mesuré sur les portions
+        courues seulement — la marche n'invalide PAS la mesure tant qu'il
+        reste assez de minutes courues, même si sa PART du temps est élevée
+        (contrairement à l'ancienne règle à 80 % de part relative, revue de
+        code #45, qui rejetait ce cas à tort)."""
+        records = self._run_walk_records(duration_s=7200, run_s=150, walk_s=150)
+        report = D.decoupling_report(records, "trail")
+        self.assertTrue(report["eligible"], report["reason"])
+        self.assertAlmostEqual(report["decoupling_pct"], 4.0, delta=0.5)
 
 
 class TestEligibility(unittest.TestCase):
@@ -396,6 +482,24 @@ class TestEligibility(unittest.TestCase):
         self.assertIn("FC incomplète", report["reason"])
 
 
+def _two_block_series(block1_s, block2_s, resolution_s=5.0, v1=2.7, v2=6.0):
+    """Deux blocs de valeurs GAP constantes (`v1` puis `v2`), bien plus longs
+    que `arc_decoupling.STEADY_WINDOW_S` — pour tester la frontière de
+    `STEADY_MIN_SHARE_PCT` avec une part « dans la bande » calculable
+    approximativement à l'avance (`block1_s / (block1_s + block2_s)`, à l'effet
+    de bord de la fenêtre glissante près, négligeable ici vu la longueur des
+    blocs)."""
+    series = []
+    t = 0.0
+    while t < block1_s:
+        series.append({"t_s": t, "gap_speed_ms": v1})
+        t += resolution_s
+    while t < block1_s + block2_s:
+        series.append({"t_s": t, "gap_speed_ms": v2})
+        t += resolution_s
+    return series
+
+
 class TestSteadinessSharePct(unittest.TestCase):
     def test_constant_gap_has_full_share(self):
         series = [{"t_s": float(t), "gap_speed_ms": 2.8} for t in range(0, 900, 5)]
@@ -405,6 +509,20 @@ class TestSteadinessSharePct(unittest.TestCase):
     def test_too_few_samples_is_none(self):
         series = [{"t_s": 0.0, "gap_speed_ms": 2.8}, {"t_s": 30.0, "gap_speed_ms": 3.0}]
         self.assertIsNone(D.steadiness_share_pct(series))
+
+    def test_share_just_above_the_stable_threshold(self):
+        """~63,75 % dans la bande — juste AU-DESSUS de `STEADY_MIN_SHARE_PCT`
+        (60 %) : jugée stable par cette fonction pure (l'appelant, lui,
+        comparerait ce chiffre au seuil)."""
+        share = D.steadiness_share_pct(_two_block_series(1800, 1000))
+        self.assertGreater(share, D.STEADY_MIN_SHARE_PCT)
+        self.assertAlmostEqual(share, 63.75, delta=1.0)
+
+    def test_share_just_below_the_stable_threshold(self):
+        """~57,6 % dans la bande — juste SOUS `STEADY_MIN_SHARE_PCT` (60 %)."""
+        share = D.steadiness_share_pct(_two_block_series(1800, 1300))
+        self.assertLess(share, D.STEADY_MIN_SHARE_PCT)
+        self.assertAlmostEqual(share, 57.6, delta=1.0)
 
 
 # ---------------------------------------------------------------------------
