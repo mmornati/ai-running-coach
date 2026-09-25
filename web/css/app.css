@@ -32,6 +32,7 @@
   --s-year-0: #1e4d3b;
   --s-year-1: #b0712f;
   --s-year-2: #9aa89f;
+  --s-weight: #6a4c93;
 
   /* sémantique : verdicts, météo, statuts */
   --ok: #2f7a4f;
@@ -63,7 +64,7 @@
     --line: #26352c; --line-strong: #34473c; --pine: #5fa57e; --moss: #6fb58c; --focus: #b6f04a; --on-pine: #0d1410;
     --s-fitness: #7cc39b; --s-fatigue: #e0a45c; --s-form-pos: rgba(124, 195, 155, 0.20); --s-hrv: #7cc39b; --s-rhr: #e0826b;
     --s-median: #8b9a92; --s-bar: #4f8f6e; --s-sleep: #3d7a5c; --s-dplus: #e0826b; --s-band: rgba(124, 195, 155, 0.12);
-    --s-year-0: #7cc39b; --s-year-1: #e0a45c; --s-year-2: #56665d;
+    --s-year-0: #7cc39b; --s-year-1: #e0a45c; --s-year-2: #56665d; --s-weight: #b39ddb;
     --ok: #6fc28f; --ok-bg: rgba(111, 194, 143, 0.12); --warn: #e0ad4f; --warn-bg: rgba(224, 173, 79, 0.13);
     --bad: #ec7f69; --bad-bg: rgba(236, 127, 105, 0.12); --yellow: #dcc04c; --orange: #e8864a;
     --cal-0: #1a241e; --cal-1: #1f3b2c; --cal-2: #2f6b4f; --cal-3: #4f9e74; --cal-4: #a3e635;
@@ -76,7 +77,7 @@
   --line: #26352c; --line-strong: #34473c; --pine: #5fa57e; --moss: #6fb58c; --focus: #b6f04a; --on-pine: #0d1410;
   --s-fitness: #7cc39b; --s-fatigue: #e0a45c; --s-form-pos: rgba(124, 195, 155, 0.20); --s-hrv: #7cc39b; --s-rhr: #e0826b;
   --s-median: #8b9a92; --s-bar: #4f8f6e; --s-sleep: #3d7a5c; --s-dplus: #e0826b; --s-band: rgba(124, 195, 155, 0.12);
-  --s-year-0: #7cc39b; --s-year-1: #e0a45c; --s-year-2: #56665d;
+  --s-year-0: #7cc39b; --s-year-1: #e0a45c; --s-year-2: #56665d; --s-weight: #b39ddb;
   --ok: #6fc28f; --ok-bg: rgba(111, 194, 143, 0.12); --warn: #e0ad4f; --warn-bg: rgba(224, 173, 79, 0.13);
   --bad: #ec7f69; --bad-bg: rgba(236, 127, 105, 0.12); --yellow: #dcc04c; --orange: #e8864a;
   --cal-0: #1a241e; --cal-1: #1f3b2c; --cal-2: #2f6b4f; --cal-3: #4f9e74; --cal-4: #a3e635;
@@ -245,6 +246,7 @@ select { font: inherit; color: var(--ink); background: var(--surface); border: 1
 .chart .line--warn { stroke: var(--warn); stroke-dasharray: 2 4; stroke-width: 1.2; opacity: 0.8; }
 .chart .line--alert { stroke: var(--bad); stroke-dasharray: 2 4; stroke-width: 1.2; opacity: 0.8; }
 .chart .line--dplus { stroke: var(--s-dplus); stroke-width: 1.6; }
+.chart .line--weight-avg { stroke: var(--s-weight); stroke-width: 2; }
 .chart .line--year-0 { stroke: var(--s-year-0); stroke-width: 2.4; }
 .chart .line--year-1 { stroke: var(--s-year-1); }
 .chart .line--year-2 { stroke: var(--s-year-2); }
@@ -252,6 +254,8 @@ select { font: inherit; color: var(--ink); background: var(--surface); border: 1
 .chart .band-fill { fill: var(--s-band); }
 .chart .dot { stroke: var(--surface); stroke-width: 1.2; }
 .chart .dot--hrv { fill: var(--s-hrv); } .chart .dot--rhr { fill: var(--s-rhr); } .chart .dot--dplus { fill: var(--s-dplus); }
+.chart .dot--weight { fill: var(--s-weight); }
+.chart .mark--target { stroke: var(--s-weight); }
 .chart .bar { fill: var(--s-bar); }
 .chart .bar--sleep { fill: var(--s-sleep); }
 .chart .bar--ready-hi { fill: var(--ok); } .chart .bar--ready-mid { fill: var(--warn); } .chart .bar--ready-lo { fill: var(--bad); }
@@ -278,6 +282,7 @@ select { font: inherit; color: var(--ink); background: var(--surface); border: 1
 .key--bar { background: var(--s-bar); height: 0.6rem; } .key--dplus, .key--rhr { background: var(--s-dplus); }
 .key--green { background: var(--ok); height: 0.6rem; } .key--amber { background: var(--warn); height: 0.6rem; } .key--red { background: var(--bad); height: 0.6rem; }
 .key--year-0 { background: var(--s-year-0); } .key--year-1 { background: var(--s-year-1); } .key--year-2 { background: var(--s-year-2); }
+.key--weight, .key--weight-avg, .key--target { background: var(--s-weight); }
 .key.cal--1 { background: var(--cal-1); height: 0.8rem; width: 0.8rem; } .key.cal--2 { background: var(--cal-2); height: 0.8rem; width: 0.8rem; }
 .key.cal--3 { background: var(--cal-3); height: 0.8rem; width: 0.8rem; } .key.cal--4 { background: var(--cal-4); height: 0.8rem; width: 0.8rem; }
 

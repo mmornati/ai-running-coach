@@ -756,12 +756,20 @@ Semaine **conforme au plan** : charge en hausse contrôlée, HRV stable.
 - Une seule séance de côtes""")
 
     # --- nutrition (quelques jours) --------------------------------------------
+    # `weight_kg` est délibérément différent de `medical/<date>_health.md` le même jour
+    # (#36) : ça exerce la règle de fusion (santé, mesure du matin, prioritaire) plutôt
+    # que de la laisser non testée par simple absence de conflit. `target_weight_kg` est
+    # constant, comme un objectif qui ne change pas d'un jour à l'autre. Valeur du poids
+    # calculée SANS `rng` (fonction déterministe de `k` seule) : consommer le flux `rng`
+    # ici décalerait tous les tirages suivants et changerait des valeurs déjà couvertes
+    # par le golden (apports, dépense…) sans rapport avec #36.
     for k in range(0, 14, 2):
         day = today - timedelta(days=k)
         _write(root, f"nutrition/{day.isoformat()}_nutrition.md", f"Nutrition du {day.isoformat()}", {
             "arc": 1, "kind": "nutrition", "date": day.isoformat(),
             "intake_kcal": 2400 + rng.randint(-200, 300), "burned_kcal": 2500 + rng.randint(-300, 500),
             "carbs_g": 320 + rng.randint(-40, 60), "protein_g": 115, "fat_g": 78, "hydration_ml": 2400,
+            "weight_kg": round(70.5 - 0.05 * k, 1), "target_weight_kg": 67.0,
         }, "## Commentaire\n\nApports cohérents avec la charge.")
     return root
 

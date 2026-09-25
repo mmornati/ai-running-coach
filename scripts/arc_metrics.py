@@ -77,6 +77,12 @@ VO2MAX_MIN_HR_FRACTION = 0.70         # en dessous de 70 % de la FC max, la rela
 RECORD_DISTANCES_KM = (1, 5, 10, 21)
 PREDICTION_DISTANCES_M = (5000.0, 10000.0, 21097.5, 42195.0)
 
+# Tendance du poids (#36) : moyenne mobile 7 j vs cible, pente 4 semaines.
+WEIGHT_AVG_WINDOW_DAYS = 7        # fenêtre de la moyenne mobile affichée dans le graphique
+WEIGHT_AVG_MIN_VALID_DAYS = 3     # jours pesés exigés dans ces 7 j, sinon moyenne à None (trop bruitée)
+WEIGHT_SLOPE_WINDOW_DAYS = 28     # fenêtre de la régression (4 semaines)
+WEIGHT_SLOPE_MIN_POINTS = 5       # jours pesés exigés dans ces 28 j pour une pente fiable
+
 ASSUMPTIONS = {
     "trimp": "TRIMP de Banister : minutes × FCr × 0,64 × e^(k·FCr), FCr = (FC moy − FC repos) / (FC max − FC repos), "
              "k = 1,92 (homme) / 1,67 (femme).",
@@ -139,6 +145,21 @@ ASSUMPTIONS = {
                  "les valeurs brutes puis arrondie une seule fois (pas la somme de valeurs déjà arrondies par "
                  "activité). Distinct de l'« équivalence plat » (`trail_equivalence`, D+ × 1,75) utilisée pour les "
                  "prédictions.",
+    "weight_merge": "Fusion des deux sources de poids (#36) : le contrat n'a pas de champ d'heure de mesure "
+                    "dédié, mais `health.weight_kg` est renseigné pendant le bilan matinal (`morning_check`) — "
+                    "traité comme la pesée du matin — tandis que `nutrition.weight_kg` n'a aucune garantie "
+                    "d'horaire. Un jour où les deux sont présents : `health` gagne TOUJOURS, jamais de moyenne "
+                    "des deux sources ni de préférence à la plus récemment écrite. Un jour sans aucune des deux : "
+                    "absent, jamais 0.",
+    "weight_trend": f"Moyenne mobile {WEIGHT_AVG_WINDOW_DAYS} j du poids fusionné (`weight_merge`) : moyenne des "
+                    f"jours PRÉSENTS dans la fenêtre (jour manquant jamais compté 0), rendue seulement à partir de "
+                    f"{WEIGHT_AVG_MIN_VALID_DAYS} jours pesés sur les {WEIGHT_AVG_WINDOW_DAYS}, sinon `None`. Écart "
+                    "à la cible = moyenne 7 j la plus récente − `target_weight_kg` le plus récent connu (nutrition "
+                    "uniquement dans le contrat) ; positif = au-dessus de la cible. Pente 4 semaines : régression "
+                    f"des moindres carrés (x = jour, y = poids fusionné, PAS la moyenne lissée) sur les "
+                    f"{WEIGHT_SLOPE_WINDOW_DAYS} derniers jours, convertie en kg/semaine (× 7) ; rendue seulement à "
+                    f"partir de {WEIGHT_SLOPE_MIN_POINTS} jours pesés dans la fenêtre, sinon `None`. Aucun "
+                    "commentaire normatif n'est dérivé de ces chiffres : chiffres seulement (voir issue #36).",
 }
 
 # ---------------------------------------------------------------------------
@@ -313,6 +334,79 @@ def hrv_baseline_series(hrv_by_date: Dict[str, float], start: date, end: date) -
             point["hrv_personal_status"] = "en_construction"
         out.append(point)
     return out
+
+
+# ---------------------------------------------------------------------------
+# Tendance du poids (#36)
+# ---------------------------------------------------------------------------
+
+
+def merge_weight_kg(health_weight_kg: Optional[float], nutrition_weight_kg: Optional[float]) -> Optional[float]:
+    """Poids fusionné pour un jour donné. Voir `ASSUMPTIONS["weight_merge"]`.
+
+    `health_weight_kg` (mesure du matin, bilan santé) gagne TOUJOURS sur
+    `nutrition_weight_kg` quand les deux sont présents — jamais de moyenne des deux.
+    Absence des deux : `None`, jamais 0.
+    """
+    return health_weight_kg if health_weight_kg is not None else nutrition_weight_kg
+
+
+def weight_avg7_series(weight_by_date: Dict[str, float], start: date, end: date) -> List[dict]:
+    """Poids fusionné et moyenne mobile 7 j, jour par jour de `start` à `end` inclus.
+
+    `weight_by_date` : poids déjà fusionné (`merge_weight_kg`) par date ISO, jours sans
+    mesure absents du dict (jamais 0). Voir `ASSUMPTIONS["weight_trend"]`.
+
+    Chaque point rend `weight_kg` (valeur fusionnée du jour, `None` si aucune mesure) et
+    `weight_avg7_kg` (moyenne des valeurs présentes sur les `WEIGHT_AVG_WINDOW_DAYS`
+    derniers jours, `None` sous `WEIGHT_AVG_MIN_VALID_DAYS` valeurs).
+    """
+    out = []
+    for day in _daterange(start, end):
+        window = _window_values(weight_by_date, day, WEIGHT_AVG_WINDOW_DAYS)
+        avg7 = round(_mean(window), 1) if len(window) >= WEIGHT_AVG_MIN_VALID_DAYS else None
+        out.append({
+            "date": day.isoformat(),
+            "weight_kg": weight_by_date.get(day.isoformat()),
+            "weight_avg7_kg": avg7,
+        })
+    return out
+
+
+def weight_slope_kg_per_week(weight_by_date: Dict[str, float], day: date,
+                              window_days: int = WEIGHT_SLOPE_WINDOW_DAYS,
+                              min_points: int = WEIGHT_SLOPE_MIN_POINTS) -> Optional[float]:
+    """Pente du poids (kg/semaine) sur les `window_days` jours se terminant à `day` inclus.
+
+    Régression des moindres carrés sur les valeurs quotidiennes FUSIONNÉES et PRÉSENTES
+    (jamais la moyenne mobile lissée) : x = décalage en jours depuis le début de la
+    fenêtre, y = poids. `None` sous `min_points` jours mesurés dans la fenêtre, ou si les
+    points disponibles sont tous au même jour relatif (variance de x nulle) — une pente
+    n'a alors pas de sens.
+    """
+    points = []
+    start = day - timedelta(days=window_days - 1)
+    for offset in range(window_days):
+        v = weight_by_date.get((start + timedelta(days=offset)).isoformat())
+        if v is not None:
+            points.append((offset, v))
+    if len(points) < min_points:
+        return None
+    n = len(points)
+    mean_x = sum(p[0] for p in points) / n
+    mean_y = sum(p[1] for p in points) / n
+    den = sum((x - mean_x) ** 2 for x, _ in points)
+    if den == 0:
+        return None
+    num = sum((x - mean_x) * (y - mean_y) for x, y in points)
+    return round((num / den) * 7, 3)
+
+
+def weight_target_gap_kg(weight_avg7_kg: Optional[float], target_weight_kg: Optional[float]) -> Optional[float]:
+    """Écart (kg) entre la moyenne 7 j du poids et la cible. Positif = au-dessus de la cible."""
+    if weight_avg7_kg is None or target_weight_kg is None:
+        return None
+    return round(weight_avg7_kg - target_weight_kg, 1)
 
 
 # ---------------------------------------------------------------------------
