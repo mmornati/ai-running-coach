@@ -133,12 +133,64 @@ lui-même) : `arc_contract.gear_slug(label)` est la règle PARTAGÉE qui dérive
 slug d'un libellé quand aucun identifiant explicite n'est donné — décomposition
 Unicode et suppression des accents, minuscules, tout ce qui n'est pas
 alphanumérique devient un tiret, tirets de tête/fin retirés, coupé à 40
-caractères. Un futur agrégateur de kilométrage lira le profil ligne par ligne
-et appliquera cette même règle (identifiant explicite prioritaire sur la
-dérivation automatique). Le coach applique la même règle sur le nom de modèle
-cité par l'athlète pour choisir le `gear_id` d'une activité — et **omet** la
-clé plutôt que de deviner si la référence est trop ambiguë (plusieurs paires
-possibles, modèle non reconnu).
+caractères. Le coach applique la même règle sur le nom de modèle cité par
+l'athlète pour choisir le `gear_id` d'une activité — et **omet** la clé plutôt
+que de deviner si la référence est trop ambiguë (plusieurs paires possibles,
+modèle non reconnu).
+
+**Kilométrage chaussures et alerte d'usure (#40).** La sous-section `### Chaussures`
+sous `## Matériel & lieux` du profil (voir `templates/Runner_Profile.template.md`)
+déclare les chaussures de l'athlète, une puce par paire, en langage libre —
+seul le nom est obligatoire :
+
+```markdown
+### Chaussures
+
+- Hoka Speedgoat 5 (bleues) — depuis 2026-03-01 — alerte 700 km — id: speedgoat-bleues (par défaut)
+- Adidas Adizero SL — alerte 500 km
+- Nike Pegasus (retirée)
+```
+
+Une puce de **premier niveau** par paire — une puce indentée en dessous n'est
+jamais une chaussure à part, elle est repliée dans les segments de la
+chaussure précédente. Segments séparés par un tiret cadratin/demi-cadratin
+(`—`/`–`, espaces autour optionnels), par un simple tiret **entouré
+d'espaces** (` - ` : un nom de modèle peut légitimement contenir un trait
+d'union SANS espaces, ex. « Salomon S/Lab Ultra-Trail », qui reste intact),
+ou par un deux-points suivi d'un mot-clé reconnu : `depuis AAAA-MM-JJ` (ou
+« mars 2026 »/« 03/2026 », 1er du mois — date d'achat), `alerte N km` (ou
+`N miles`/`N mi`, convertis), `id: <texte>` (identifiant explicite, passé par
+`gear_slug` comme n'importe quel `gear_id`). `(par défaut)` et `(retirée)`
+peuvent être accolés n'importe où sur la ligne. `arc_legacy.parse_gear` lit
+cette sous-section ; `scripts/arc_index.py` l'indexe dans la table dérivée
+`gear` (une ligne par chaussure) ; `arc_metrics.gear_mileage` calcule le
+kilométrage cumulé — voir `arc_metrics.ASSUMPTIONS["gear_mileage"]` pour la
+méthode complète. En résumé :
+
+- Kilométrage = somme de `distance_m` des activités de sport course/randonnée
+  (`arc_metrics.GEAR_WEAR_SPORTS` : course, trail, randonnée — PAS la marche)
+  portant ce `gear_id` — vélo, natation, renforcement… n'usent jamais une
+  paire de chaussures de course, même avec un `gear_id` renseigné par erreur.
+- Séance sans `gear_id` → attribuée à la chaussure `(par défaut)` si une seule
+  est déclarée, sinon **ignorée** (ni comptée, ni signalée).
+- `gear_id` explicite absent du profil (faute de frappe, paire jamais
+  déclarée) → jamais éliminé silencieusement, regroupé à part (« inconnue »
+  côté tableau de bord) avec son propre kilométrage.
+- `depuis` filtre **seulement** l'attribution PAR DÉFAUT : une séance sans
+  `gear_id` datée avant le `depuis` de la chaussure `(par défaut)` n'y est pas
+  rattachée (sinon tout un historique d'avant #39, sans `gear_id` au contrat,
+  se retrouverait crédité à une paire achetée hier). Une séance portant un
+  `gear_id` EXPLICITE compte quel que soit son rapport à `depuis` : l'explicite
+  prime toujours sur une date de début possiblement approximative.
+- Seuil d'alerte : celui de la puce si renseigné, sinon
+  `arc_metrics.GEAR_ALERT_THRESHOLD_M_DEFAULT` (700 km).
+- `(retirée)` : kilométrage toujours affiché (historique), jamais d'alerte,
+  jamais candidate à l'attribution par défaut (priorité retraite avant
+  défaut, même si `(par défaut)` est aussi coché sur la même puce).
+- Deux puces qui dérivent le même `gear_id` (même modèle racheté sans `id:`
+  pour les distinguer) : la première garde le slug nu, les suivantes reçoivent
+  `-2`, `-3`… et une collision signalée dans `gear_mileage().warnings` — pour
+  l'éviter, donnez un `id:` explicite à chaque paire du même modèle.
 
 `carbs_g` et `fluid_intake_ml` viennent d'une déclaration de l'athlète (gels,
 barres, boisson…) pendant ou juste après la séance — jamais une valeur

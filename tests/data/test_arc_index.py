@@ -433,6 +433,185 @@ class TestProfileSleepNeed(unittest.TestCase):
         self.assertNotIn("sleep_need_s", L.parse_profile(text))
 
 
+class TestParseGear(unittest.TestCase):
+    """#40 — `arc_legacy.parse_gear` : sous-section « Chaussures » du profil, en
+    langage libre (pas des puces « Libellé : valeur »)."""
+
+    def _gear(self, bullet: str):
+        text = f"# Profil\n\n## Matériel & lieux\n\n### Chaussures\n\n- {bullet}\n"
+        gear = L.parse_gear(text)
+        self.assertEqual(len(gear), 1, gear)
+        return gear[0]
+
+    def test_name_only_derives_id(self):
+        g = self._gear("Hoka Speedgoat 5")
+        self.assertEqual(g, {"gear_id": "hoka-speedgoat-5", "name": "Hoka Speedgoat 5"})
+
+    def test_full_line_all_segments(self):
+        g = self._gear("Hoka Speedgoat 5 (bleues) — depuis 2026-03-01 — alerte 700 km "
+                        "— id: speedgoat-bleues (par défaut)")
+        self.assertEqual(g["gear_id"], "speedgoat-bleues")
+        self.assertEqual(g["name"], "Hoka Speedgoat 5 (bleues)")
+        self.assertEqual(g["start_date"], "2026-03-01")
+        self.assertEqual(g["threshold_m"], 700000.0)
+        self.assertIs(g["default"], True)
+        self.assertNotIn("retired", g)
+
+    def test_retired_flag(self):
+        g = self._gear("Nike Pegasus (retirée)")
+        self.assertIs(g["retired"], True)
+        self.assertNotIn("default", g)
+        self.assertEqual(g["name"], "Nike Pegasus")   # le marqueur est retiré du nom
+
+    def test_retired_accent_variants(self):
+        for text in ("(retirée)", "(retiree)", "(RETIRÉE)", "( retirée )"):
+            with self.subTest(text=text):
+                self.assertIs(self._gear(f"Nike Pegasus {text}")["retired"], True)
+
+    def test_explicit_id_is_slugified(self):
+        """Un id explicite mal formé (majuscules, espaces) reste passé par `gear_slug` :
+        même garantie de format que le `gear_id` dérivé automatiquement."""
+        g = self._gear("Salomon S/Lab Ultra — id: Mon Id Perso")
+        self.assertEqual(g["gear_id"], "mon-id-perso")
+
+    def test_accented_name_without_explicit_id(self):
+        g = self._gear("Adidas Adizero Évo Été")
+        self.assertEqual(g["gear_id"], "adidas-adizero-evo-ete")
+
+    def test_hyphenated_model_name_not_split_on_plain_hyphen(self):
+        """Un simple tiret dans le nom (pas un cadratin/demi-cadratin entouré
+        d'espaces) ne doit jamais être pris pour un séparateur de segment."""
+        g = self._gear("Salomon S/Lab Ultra-Trail")
+        self.assertEqual(g["name"], "Salomon S/Lab Ultra-Trail")
+
+    def test_no_chaussures_section_returns_empty(self):
+        text = "# Profil\n\n## Matériel & lieux\n\n- **Lieu par défaut** : Tournai\n"
+        self.assertEqual(L.parse_gear(text), [])
+
+    def test_commented_out_example_is_ignored(self):
+        """L'exemple commenté du modèle (`templates/Runner_Profile.template.md`) ne
+        doit jamais être lu comme une chaussure réellement déclarée."""
+        text = ("# Profil\n\n## Matériel & lieux\n\n### Chaussures\n\n"
+                "<!--\n- Hoka Speedgoat 5 — depuis 2026-03-01 — alerte 700 km\n-->\n")
+        self.assertEqual(L.parse_gear(text), [])
+
+    def test_multiple_shoes(self):
+        text = ("# Profil\n\n## Matériel & lieux\n\n### Chaussures\n\n"
+                "- Hoka Speedgoat 5 (par défaut)\n- Adidas Adizero SL\n- Nike Pegasus (retirée)\n")
+        gear = L.parse_gear(text)
+        self.assertEqual([g["gear_id"] for g in gear],
+                         ["hoka-speedgoat-5", "adidas-adizero-sl", "nike-pegasus"])
+
+    # -- revue PR #85 -------------------------------------------------------
+
+    def test_duplicate_slug_is_suffixed_not_overwritten(self):
+        """blocker 2 : rachat du même modèle sans `id:` explicite pour les
+        distinguer — la seconde puce ne doit jamais écraser la première."""
+        text = ("# Profil\n\n## Matériel & lieux\n\n### Chaussures\n\n"
+                "- Hoka Speedgoat 5 (par défaut)\n- Hoka Speedgoat 5\n- Hoka Speedgoat 5\n")
+        gear = L.parse_gear(text)
+        self.assertEqual([g["gear_id"] for g in gear],
+                         ["hoka-speedgoat-5", "hoka-speedgoat-5-2", "hoka-speedgoat-5-3"])
+        self.assertNotIn("collision_base", gear[0])
+        self.assertEqual(gear[1]["collision_base"], "hoka-speedgoat-5")
+        self.assertEqual(gear[2]["collision_base"], "hoka-speedgoat-5")
+        self.assertIs(gear[0]["default"], True)   # la première garde ses attributs propres
+
+    def test_duplicate_slug_via_explicit_id_also_suffixed(self):
+        """La collision se détecte sur le slug FINAL (après résolution de l'id
+        explicite), pas seulement sur des noms identiques."""
+        text = ("# Profil\n\n## Matériel & lieux\n\n### Chaussures\n\n"
+                "- Hoka Speedgoat 5 — id: sg\n- Adidas Adizero — id: sg\n")
+        gear = L.parse_gear(text)
+        self.assertEqual([g["gear_id"] for g in gear], ["sg", "sg-2"])
+        self.assertEqual(gear[1]["collision_base"], "sg")
+
+    def test_id_keyword_does_not_match_note_starting_with_id(self):
+        """blocker 3 : « idéale » / « idem » ne sont pas le mot-clé `id`."""
+        g = self._gear("Hoka Speedgoat 5 — idéale pour la route")
+        self.assertEqual(g["gear_id"], "hoka-speedgoat-5")   # pas "eale-pour-la-route"
+
+    def test_depuis_and_alerte_keywords_use_word_boundaries(self):
+        g = self._gear("Hoka Speedgoat 5 — idem que la bleue")
+        self.assertEqual(g["gear_id"], "hoka-speedgoat-5")
+        self.assertNotIn("start_date", g)
+        self.assertNotIn("threshold_m", g)
+
+    def test_nested_sub_bullet_folds_into_parent_not_a_new_shoe(self):
+        """blocker 4 : une puce indentée sous une chaussure est un complément de
+        cette chaussure (ex. seuil noté à part), jamais sa propre chaussure."""
+        text = ("# Profil\n\n## Matériel & lieux\n\n### Chaussures\n\n"
+                "- Hoka Speedgoat 5\n  - alerte 800 km\n- Adidas Adizero SL\n")
+        gear = L.parse_gear(text)
+        self.assertEqual([g["gear_id"] for g in gear], ["hoka-speedgoat-5", "adidas-adizero-sl"])
+        self.assertEqual(gear[0]["threshold_m"], 800000)
+
+    def test_plain_hyphen_separator_with_spaces(self):
+        """blocker 5 : « - » entouré d'espaces sépare quand un mot-clé suit."""
+        g = self._gear("Hoka Speedgoat 5 - depuis 2026-03-01 - alerte 700 km")
+        self.assertEqual(g["name"], "Hoka Speedgoat 5")
+        self.assertEqual(g["start_date"], "2026-03-01")
+        self.assertEqual(g["threshold_m"], 700000)
+
+    def test_plain_hyphen_not_followed_by_keyword_stays_in_name(self):
+        """Revue #85, round 2 : un « - » entouré d'espaces mais SANS mot-clé
+        reconnu derrière n'est pas un séparateur — un suffixe de variante
+        (« - GTX ») ne doit jamais tronquer le nom réel du modèle (ce qui
+        dériverait un `gear_id` faux, risquant même une fausse collision avec
+        un modèle homonyme sans ce suffixe)."""
+        g = self._gear("Brooks Cascadia 17 - GTX")
+        self.assertEqual(g["name"], "Brooks Cascadia 17 - GTX")
+        self.assertEqual(g["gear_id"], "brooks-cascadia-17-gtx")
+
+    def test_plain_hyphen_number_suffix_stays_in_name_until_a_keyword(self):
+        g = self._gear("Salomon S/Lab Ultra - 3 - alerte 600 km")
+        self.assertEqual(g["name"], "Salomon S/Lab Ultra - 3")
+        self.assertEqual(g["threshold_m"], 600000)
+
+    def test_unspaced_em_dash_separator(self):
+        """blocker 5 : un cadratin collé au texte (« 5—alerte ») sépare quand même."""
+        g = self._gear("Hoka Speedgoat 5—alerte 700 km")
+        self.assertEqual(g["name"], "Hoka Speedgoat 5")
+        self.assertEqual(g["threshold_m"], 700000)
+
+    def test_colon_separator_before_recognized_keyword(self):
+        """blocker 5 : un deux-points sépare quand le segment suivant commence
+        par un mot-clé reconnu — mais celui de « id: » n'est jamais un séparateur."""
+        g = self._gear("Hoka Speedgoat 5: depuis 2026-03-01: alerte 700 km: id: speedgoat-bleues")
+        self.assertEqual(g["name"], "Hoka Speedgoat 5")
+        self.assertEqual(g["start_date"], "2026-03-01")
+        self.assertEqual(g["threshold_m"], 700000)
+        self.assertEqual(g["gear_id"], "speedgoat-bleues")
+
+    def test_colon_not_split_on_unrelated_note(self):
+        """Un deux-points suivi de texte quelconque (pas un mot-clé) reste dans
+        le nom : seuls depuis/alerte/id: déclenchent un découpage sur « : »."""
+        g = self._gear("Hoka Speedgoat 5: super confortable")
+        self.assertEqual(g["name"], "Hoka Speedgoat 5: super confortable")
+
+    def test_alerte_in_miles_is_converted_to_meters(self):
+        """blocker 6 : unité miles reconnue et convertie (jamais stockée telle
+        quelle comme si elle était en km)."""
+        g = self._gear("Hoka Speedgoat 5 — alerte 500 miles")
+        self.assertEqual(g["threshold_m"], round(500 * 1609.344))
+
+    def test_alerte_in_mi_abbreviation_is_converted(self):
+        g = self._gear("Hoka Speedgoat 5 — alerte 500 mi")
+        self.assertEqual(g["threshold_m"], round(500 * 1609.344))
+
+    def test_bold_markers_stripped_from_name(self):
+        g = self._gear("**Hoka Speedgoat 5**")
+        self.assertEqual(g["name"], "Hoka Speedgoat 5")
+
+    def test_month_year_start_date_defaults_to_first_of_month(self):
+        g = self._gear("Hoka Speedgoat 5 — depuis mars 2026")
+        self.assertEqual(g["start_date"], "2026-03-01")
+
+    def test_numeric_month_year_start_date(self):
+        g = self._gear("Hoka Speedgoat 5 — depuis 03/2026")
+        self.assertEqual(g["start_date"], "2026-03-01")
+
+
 class TestParseSleepNeed(unittest.TestCase):
     """#37, revue de code PR #82 — `_parse_sleep_need_s` est un parseur DÉDIÉ, distinct
     de `parse_fr_duration` : ce dernier lit silencieusement « 7.5 h » comme 5 h (le « h »
@@ -575,13 +754,14 @@ class TestGearSweatFuelIndex(Workspace):
         self.assertIsNone(rate)   # 4.5 l/h > SWEAT_RATE_PLAUSIBLE_L_H[1] (4.0)
 
     def test_schema_version_bumped_forces_rebuild(self):
-        self.assertEqual(I.SCHEMA_VERSION, 5)
+        self.assertEqual(I.SCHEMA_VERSION, 7)
 
-    def test_real_v4_database_is_rebuilt_at_v5(self):
-        """Pas seulement « la constante vaut 5 » : une vraie base laissée par une
-        version antérieure (#37, schema_version = 4, sans les colonnes #39) doit être
-        détectée et reconstruite, colonnes comprises — sinon `store()` échouerait sur
-        la première activité avec `gear_id`."""
+    def test_real_v4_database_is_rebuilt_at_v7(self):
+        """Pas seulement « la constante vaut 7 » : une vraie base laissée par une
+        version antérieure (#37, schema_version = 4, sans les colonnes #39 ni la
+        table `gear` #40) doit être détectée et reconstruite, colonnes et table
+        comprises — sinon `store()` échouerait sur la première activité avec
+        `gear_id` ou sur le premier profil avec des chaussures déclarées."""
         db_path = self.tmp / "legacy.db"
         legacy = sqlite3.connect(str(db_path))
         legacy.executescript(
@@ -593,11 +773,109 @@ class TestGearSweatFuelIndex(Workspace):
         legacy.close()
         conn = I.open_db(self.ws, str(db_path))
         self.assertEqual(
-            conn.execute("SELECT value FROM meta WHERE key = 'schema_version'").fetchone()[0], "5")
+            conn.execute("SELECT value FROM meta WHERE key = 'schema_version'").fetchone()[0], "7")
         columns = {row[1] for row in conn.execute("PRAGMA table_info(activity)").fetchall()}
         self.assertIn("gear_id", columns)
         self.assertIn("sweat_rate_l_h", columns)
+        gear_columns = {row[1] for row in conn.execute("PRAGMA table_info(gear)").fetchall()}
+        self.assertIn("collision_base", gear_columns)
         conn.close()
+
+
+class TestGearMileageIndex(Workspace):
+    """#40 : sous-section « Chaussures » du profil → table `gear`, lue par
+    `arc_index.gear_mileage` (headless, `scripts/arc_index.py gear`)."""
+
+    def write_profile_with_gear(self):
+        self.write("planning/Runner_Profile.md", """# Profil de l'athlète
+
+## Matériel & lieux
+
+### Chaussures
+
+- Hoka Speedgoat 5 (bleues) — depuis 2026-03-01 — alerte 700 km — id: speedgoat-bleues (par défaut)
+- Adidas Adizero SL — alerte 500 km
+- Nike Pegasus (retirée)
+""")
+
+    def test_gear_table_indexed_from_profile(self):
+        self.write_profile_with_gear()
+        self.index()
+        rows = {row["gear_id"]: dict(row) for row in self.conn.execute(
+            "SELECT * FROM gear ORDER BY gear_id").fetchall()}
+        self.assertEqual(set(rows), {"speedgoat-bleues", "adidas-adizero-sl", "nike-pegasus"})
+        self.assertEqual(rows["speedgoat-bleues"]["is_default"], 1)
+        self.assertEqual(rows["speedgoat-bleues"]["threshold_m"], 700000.0)
+        self.assertEqual(rows["speedgoat-bleues"]["start_date"], "2026-03-01")
+        self.assertEqual(rows["nike-pegasus"]["retired"], 1)
+
+    def test_gear_mileage_attributes_default_and_flags_unknown(self):
+        self.write_profile_with_gear()
+        self.write("activities/2026-04-01_trail.md", arc(
+            '{"arc": 1, "kind": "activity", "date": "2026-04-01", "sport": "trail", '
+            '"duration_s": 3600, "distance_m": 15000, "gear_id": "speedgoat-bleues"}'))
+        self.write("activities/2026-04-02_running.md", arc(
+            '{"arc": 1, "kind": "activity", "date": "2026-04-02", "sport": "running", '
+            '"duration_s": 2400, "distance_m": 10000}'))  # sans gear_id -> chaussure par défaut
+        self.write("activities/2026-04-03_running.md", arc(
+            '{"arc": 1, "kind": "activity", "date": "2026-04-03", "sport": "running", '
+            '"duration_s": 1800, "distance_m": 8000, "gear_id": "chaussure-jamais-declaree"}'))
+        self.index()
+        result = I.gear_mileage(self.conn)
+        by_id = {s["gear_id"]: s for s in result["shoes"]}
+        self.assertEqual(by_id["speedgoat-bleues"]["distance_m"], 25000)  # 15 + 10 (défaut)
+        self.assertEqual(by_id["adidas-adizero-sl"]["distance_m"], 0)
+        self.assertFalse(by_id["nike-pegasus"]["alert"])   # retirée : jamais d'alerte
+        self.assertEqual(result["unknown"], [{"gear_id": "chaussure-jamais-declaree", "distance_m": 8000}])
+
+    def test_gear_mileage_ignores_non_wear_sports(self):
+        self.write_profile_with_gear()
+        self.write("activities/2026-04-01_indoor_cycling.md", arc(
+            '{"arc": 1, "kind": "activity", "date": "2026-04-01", "sport": "indoor_cycling", '
+            '"duration_s": 3600, "distance_m": 30000, "gear_id": "speedgoat-bleues"}'))
+        self.index()
+        result = I.gear_mileage(self.conn)
+        by_id = {s["gear_id"]: s for s in result["shoes"]}
+        self.assertEqual(by_id["speedgoat-bleues"]["distance_m"], 0)
+
+    def test_gear_mileage_default_shoe_start_date_excludes_prior_history_end_to_end(self):
+        """Revue PR #85, blocker 1, de bout en bout : un historique d'AVANT #39
+        (aucune activité n'a de `gear_id`, la clé n'existait pas encore) ne doit
+        pas se retrouver crédité à une paire déclarée `(par défaut)` hier."""
+        self.write("planning/Runner_Profile.md", """# Profil de l'athlète
+
+## Matériel & lieux
+
+### Chaussures
+
+- Hoka Clifton — depuis 2026-09-15 — alerte 700 km — id: clifton (par défaut)
+""")
+        for i in range(3):
+            self.write(f"activities/2025-01-0{i + 1}_running.md", arc(
+                '{"arc": 1, "kind": "activity", "date": "2025-01-0%d", "sport": "running", '
+                '"duration_s": 3600, "distance_m": 10000}' % (i + 1)))
+        self.write("activities/2026-09-20_running.md", arc(
+            '{"arc": 1, "kind": "activity", "date": "2026-09-20", "sport": "running", '
+            '"duration_s": 3600, "distance_m": 10000}'))
+        self.index()
+        result = I.gear_mileage(self.conn)
+        self.assertEqual(result["shoes"][0]["distance_m"], 10000)   # seule la séance du 20/09 compte
+        self.assertFalse(result["shoes"][0]["alert"])
+
+    def test_gear_mileage_surfaces_duplicate_slug_warning_end_to_end(self):
+        self.write("planning/Runner_Profile.md", """# Profil de l'athlète
+
+## Matériel & lieux
+
+### Chaussures
+
+- Hoka Speedgoat 5
+- Hoka Speedgoat 5
+""")
+        self.index()
+        result = I.gear_mileage(self.conn)
+        self.assertEqual({s["gear_id"] for s in result["shoes"]}, {"hoka-speedgoat-5", "hoka-speedgoat-5-2"})
+        self.assertEqual(len(result["warnings"]), 1)
 
 
 if __name__ == "__main__":

@@ -26,7 +26,9 @@ from __future__ import annotations
 import re
 import unicodedata
 from datetime import date, timedelta
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
+
+from arc_contract import gear_slug
 
 # ---------------------------------------------------------------------------
 # Nombres, durées, dates « à la française »
@@ -167,7 +169,13 @@ _MONTHS = {
 
 
 def parse_fr_date(text) -> Optional[str]:
-    """Date → AAAA-MM-JJ. ISO, « 13/06/2026 » ou « 13 juin 2026 »."""
+    """Date → AAAA-MM-JJ. ISO, « 13/06/2026 », « 13 juin 2026 » — ou, sans jour
+    précis (revue PR #85 : la puce « depuis » du profil #40 s'en sert plus
+    lourdement depuis que la date filtre l'attribution par défaut), « 03/2026 »
+    ou « mars 2026 » → 1er du mois. Les motifs à jour complet sont essayés EN
+    PREMIER (`candidates` est ordonné, la boucle rend le premier qui construit
+    une date valide) : un texte « 13/06/2026 » ne doit jamais se résoudre au
+    1er juin faute d'avoir laissé le motif mois/année le doubler."""
     if not text:
         return None
     t = str(text).strip().lower()
@@ -181,6 +189,12 @@ def parse_fr_date(text) -> Optional[str]:
     match = re.search(r"\b(\d{1,2})(?:er)?\s+([a-zéûô]+)\s+(\d{4})\b", t)
     if match and match.group(2) in _MONTHS:
         candidates.append((int(match.group(3)), _MONTHS[match.group(2)], int(match.group(1))))
+    match = re.search(r"\b(\d{1,2})/(\d{4})\b", t)
+    if match:
+        candidates.append((int(match.group(2)), int(match.group(1)), 1))
+    match = re.search(r"\b([a-zéûô]+)\s+(\d{4})\b", t)
+    if match and match.group(1) in _MONTHS:
+        candidates.append((int(match.group(2)), _MONTHS[match.group(1)], 1))
     for year, month, day in candidates:
         try:
             return date(year, month, day).isoformat()
@@ -651,6 +665,180 @@ def legacy_report(text: str, filename: str) -> Dict[str, Any]:
 
 
 # ---------------------------------------------------------------------------
+# Section « Matériel » : chaussures (#40)
+# ---------------------------------------------------------------------------
+
+# Une puce de la sous-section « Chaussures » n'est PAS un « Libellé : valeur »
+# (`parse_bullets` ne s'applique pas) : c'est une description en langage libre,
+# nom d'abord, puis des segments optionnels séparés par un tiret cadratin/demi-
+# cadratin (« — »/« – », espaces optionnels — « 5—alerte » colle sans espace),
+# par un simple tiret ENTOURÉ D'ESPACES (« - ») UNIQUEMENT quand ce qui suit est
+# un mot-clé reconnu, ou par un deux-points dans le même cas (« Hoka Speedgoat
+# 5: depuis 2026-03-01 » — le « : » de « id: » lui-même n'est PAS un séparateur,
+# voir `_GEAR_SEGMENT_SPLIT_RE`). Un simple tiret NON suivi d'un mot-clé reste
+# dans le nom : un modèle peut légitimement en contenir un, SANS espaces
+# (« Salomon S/Lab Ultra-Trail ») ou AVEC (« Brooks Cascadia 17 - GTX », suffixe
+# de variante ; « Salomon S/Lab Ultra - 3 » ; revue PR #85, round 2) — sans le
+# garde-fou du mot-clé, ces deux exemples se tronqueraient en « Brooks Cascadia
+# 17 »/« Salomon S/Lab Ultra », un `gear_id` faux qui peut même collider avec un
+# autre modèle réellement homonyme (fausse alerte de collision, voir
+# `parse_gear`).
+# Format documenté dans `templates/Runner_Profile.template.md` :
+#   - Hoka Speedgoat 5 (bleues) — depuis 2026-03-01 — alerte 700 km — id: speedgoat-bleues (par défaut)
+#   - Nike Pegasus (retirée)
+# Tout est facultatif sauf le nom. `(par défaut)`/`(retirée)` peuvent être
+# accolés n'importe où sur la ligne (avant ou après les segments « — »).
+_GEAR_HEADING_RE = re.compile(r"^\s{0,3}#{2,4}\s*chaussures\s*$", re.I | re.M)
+_GEAR_NEXT_HEADING_RE = re.compile(r"^\s{0,3}#{1,6}\s", re.M)
+# Puce de PREMIER niveau (aucune indentation) seulement — une puce indentée est une
+# sous-puce d'une chaussure précédente (revue #85 blocker 4 : « - alerte 800 km »
+# indenté sous une chaussure ne doit jamais devenir sa propre chaussure fantôme) et
+# est repliée dans les segments de la chaussure en cours, voir `parse_gear`.
+_GEAR_TOP_BULLET_RE = re.compile(r"^[-*]\s+(.+)$")
+_GEAR_SUB_BULLET_RE = re.compile(r"^\s+[-*]\s+(.+)$")
+_GEAR_SEGMENT_SPLIT_RE = re.compile(
+    r"\s+-\s+(?=depuis\b|alerte\b|id\s*:)|\s*[—–]\s*|\s*:\s*(?=depuis\b|alerte\b|id\s*:)", re.I)
+_GEAR_DEFAULT_RE = re.compile(r"\(\s*par\s*d[ée]faut\s*\)", re.I)
+_GEAR_RETIRED_RE = re.compile(r"\(\s*retir[ée]e?\s*\)", re.I)
+_GEAR_MILES_RE = re.compile(r"\bmi(?:les?)?\b", re.I)
+
+
+def _gear_section(text: str) -> Optional[str]:
+    """Texte de la sous-section « ### Chaussures » (n'importe quel niveau de
+    titre entre `##` et `####`), jusqu'au prochain titre ou la fin du fichier.
+    `None` si la section est absente (rien à lire, pas une erreur : la plupart
+    des profils n'ont pas encore de chaussures déclarées). Les commentaires
+    HTML sont retirés avant la recherche du titre — même règle que
+    `parse_bullets` — pour que l'exemple commenté du modèle
+    (`templates/Runner_Profile.template.md`) ne soit jamais lu comme une
+    chaussure réellement déclarée."""
+    text = re.sub(r"<!--.*?-->", "", text, flags=re.S)
+    m = _GEAR_HEADING_RE.search(text)
+    if not m:
+        return None
+    rest = text[m.end():]
+    nxt = _GEAR_NEXT_HEADING_RE.search(rest)
+    return rest[: nxt.start()] if nxt else rest
+
+
+def _gear_bullets(section: str) -> List[str]:
+    """Une chaîne brute par chaussure : la puce de premier niveau, avec toute
+    puce indentée qui la suit repliée dedans comme un segment supplémentaire
+    (revue #85 blocker 4). Une puce indentée AVANT la première puce de premier
+    niveau est ignorée (rien à quoi la rattacher)."""
+    raws: List[str] = []
+    current: Optional[str] = None
+    for line in section.splitlines():
+        top = _GEAR_TOP_BULLET_RE.match(line)
+        if top:
+            if current is not None:
+                raws.append(current)
+            current = top.group(1).strip()
+            continue
+        sub = _GEAR_SUB_BULLET_RE.match(line)
+        if sub and current is not None:
+            current = f"{current} — {sub.group(1).strip()}"
+    if current is not None:
+        raws.append(current)
+    return raws
+
+
+def _gear_segment_kind(segment: str) -> Tuple[Optional[str], str]:
+    """(type, valeur brute) d'un segment « — xxx » : `start_date`/`threshold`/
+    `id`, ou `(None, segment)` pour un segment non reconnu (ignoré silencieusement
+    — un athlète peut vouloir noter autre chose, ex. « — usure semelle visible »).
+
+    Ancrés sur le DÉBUT du segment avec limite de mot (`\\b`) : revue #85 blocker 3
+    — un `startswith` nu prenait « idéale » ou « idem » pour le mot-clé `id`
+    (segment amputé, `gear_id` faux dérivé de sa propre fin de phrase)."""
+    stripped = segment.strip()
+    m = re.match(r"depuis\b\s*:?\s*(.*)$", stripped, re.I)
+    if m:
+        return "start_date", m.group(1).strip()
+    m = re.match(r"alerte\b\s*:?\s*(.*)$", stripped, re.I)
+    if m:
+        return "threshold", m.group(1).strip()
+    m = re.match(r"id\s*:\s*(.*)$", stripped, re.I)
+    if m:
+        return "id", m.group(1).strip()
+    return None, stripped
+
+
+def parse_gear(text: str) -> List[Dict[str, Any]]:
+    """Sous-section « Chaussures » du profil (`## Matériel & lieux` → `### Chaussures`)
+    → liste de dicts `{gear_id, name, start_date, threshold_m, default, retired,
+    collision_base}` (clés absentes plutôt que `None` — voir `_drop_none`).
+
+    `gear_id` : l'identifiant explicite (`id: …`) passé par `arc_contract.gear_slug`
+    pour rester au format slug (même si l'athlète l'a déjà écrit en minuscules avec
+    tirets, c'est idempotent), sinon dérivé du nom — RÈGLE PARTAGÉE avec #39 et le
+    coach (voir `arc_contract.gear_slug`, `skills/workspace-data-contract/SKILL.md`).
+    Une puce dont ni le nom ni l'id explicite ne contiennent de caractère
+    alphanumérique (slug vide) est ignorée : rien de fiable à recouper avec les
+    `gear_id` d'activité.
+
+    Deux puces qui dérivent le MÊME slug (rachat du même modèle sans `id:` pour les
+    distinguer — revue #85 blocker 2) ne s'écrasent plus l'une l'autre : la
+    première garde le slug nu, chaque suivante reçoit `-2`, `-3`… et porte
+    `collision_base` (le slug d'origine) — `arc_metrics.gear_mileage` s'en sert
+    pour signaler la collision plutôt que de la laisser invisible (une paire
+    active qui « disparaît » derrière une plus ancienne, ou l'inverse).
+
+    `threshold_m` : le nombre du segment « alerte » est en km, SAUF si l'unité
+    « mi »/« mile »/« miles » apparaît (alors × 1609,344 — revue #85 blocker 6) ;
+    aucune autre unité n'est reconnue.
+
+    `(par défaut)` déclare la chaussure attribuée à une activité sans `gear_id`
+    (voir `arc_metrics.gear_mileage`) ; `(retirée)`, une chaussure sortie de
+    rotation (exclue des alertes, voir la même fonction). Les deux repères sont
+    cherchés sur la ligne ENTIÈRE (n'importe quelle position), puis retirés avant
+    de découper le reste en segments — sans quoi l'un d'eux traînerait dans le nom
+    ou dans un segment mal reconnu."""
+    section = _gear_section(text)
+    if not section:
+        return []
+    out: List[Dict[str, Any]] = []
+    seen: Dict[str, int] = {}
+    for raw in _gear_bullets(section):
+        raw = raw.replace("**", "").strip()   # gras markdown : jamais significatif ici (comme `parse_bullets`)
+        is_default = bool(_GEAR_DEFAULT_RE.search(raw))
+        is_retired = bool(_GEAR_RETIRED_RE.search(raw))
+        raw = _GEAR_RETIRED_RE.sub("", _GEAR_DEFAULT_RE.sub("", raw)).strip()
+        segments = [s for s in _GEAR_SEGMENT_SPLIT_RE.split(raw) if s.strip()]
+        if not segments:
+            continue
+        name = segments[0].strip()
+        explicit_id = None
+        start_date = None
+        threshold_m = None
+        for segment in segments[1:]:
+            kind, value = _gear_segment_kind(segment)
+            if kind == "start_date":
+                start_date = parse_fr_date(value)
+            elif kind == "threshold":
+                number = parse_fr_number(value)
+                if number is not None:
+                    factor = 1609.344 if _GEAR_MILES_RE.search(value) else 1000.0
+                    threshold_m = round(number * factor)
+            elif kind == "id":
+                explicit_id = value.strip() or None
+        base_id = gear_slug(explicit_id) if explicit_id else gear_slug(name)
+        if not base_id:
+            continue
+        seen[base_id] = seen.get(base_id, 0) + 1
+        n = seen[base_id]
+        gear_id = base_id if n == 1 else f"{base_id}-{n}"
+        entry = {
+            "gear_id": gear_id, "name": name or None, "start_date": start_date,
+            "threshold_m": threshold_m, "default": is_default or None, "retired": is_retired or None,
+        }
+        if n > 1:
+            entry["collision_base"] = base_id
+        out.append(_drop_none(entry))
+    return out
+
+
+# ---------------------------------------------------------------------------
 # Fichiers édités par l'humain : profil et objectif (libellés du modèle)
 # ---------------------------------------------------------------------------
 
@@ -670,6 +858,9 @@ def parse_profile(text: str) -> Dict[str, Any]:
         "usual_slot": _pick(b, "creneau habituel"),
         "name": _pick(b, "prenom / surnom", "prenom"),
     }
+    gear = parse_gear(text)
+    if gear:
+        out["gear"] = gear
     return _drop_none(out)
 
 

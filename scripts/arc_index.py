@@ -63,7 +63,7 @@ import arc_metrics as M  # noqa: E402
 from coach_config import ConfigError, read_toml  # noqa: E402
 from coach_setup import ENGINE, workspace_root  # noqa: E402
 
-SCHEMA_VERSION = 5   # #39 : activity gagne gear_id/carbs_g/fluid_intake_ml/weight_pre_kg/weight_post_kg/sweat_rate_l_h
+SCHEMA_VERSION = 7   # #40 : table `gear` (chaussures du profil) + `collision_base` (revue PR #85)
 DEFAULT_DB = ".arc/coach.db"
 DATA_DIRS = ("activities", "medical", "nutrition", "planning", "rapports")
 
@@ -153,6 +153,10 @@ CREATE TABLE athlete (
     hr_threshold_bpm INTEGER, sex TEXT, weight_kg REAL, birth_year INTEGER,
     default_location TEXT, usual_slot TEXT, sleep_need_s REAL, body_md TEXT
 );
+CREATE TABLE gear (
+    source_path TEXT, gear_id TEXT, name TEXT, start_date TEXT, threshold_m REAL,
+    is_default INTEGER, retired INTEGER, collision_base TEXT
+);
 CREATE TABLE objective (
     source_path TEXT, name TEXT, race_date TEXT, distance_m REAL, elevation_gain_m REAL,
     location TEXT, goal TEXT, target_time_s REAL, weekly_start_s REAL, weekly_start_m REAL,
@@ -232,7 +236,7 @@ CREATE TABLE hr_zone_time (activity_id INTEGER, zone INTEGER, seconds REAL);
 # Tables alimentées par fichier (colonne `source_path`) : purgées à la réindexation d'un fichier.
 PER_FILE_TABLES = (
     "athlete", "objective", "health_day", "weather_day", "week", "planned_session",
-    "nutrition_day", "report", "course_eval", "race_plan", "aid_station",
+    "nutrition_day", "report", "course_eval", "race_plan", "aid_station", "gear",
 )
 
 
@@ -448,6 +452,15 @@ def store(conn, rel: str, kind: str, data: dict, arc_version: int) -> None:
             "default_location": g("default_location"), "usual_slot": g("usual_slot"),
             "sleep_need_s": g("sleep_need_s"), "body_md": body,
         })
+        for shoe in g("gear") or []:
+            if not isinstance(shoe, dict) or not shoe.get("gear_id"):
+                continue
+            _insert(conn, "gear", {
+                "source_path": rel, "gear_id": shoe["gear_id"], "name": shoe.get("name"),
+                "start_date": shoe.get("start_date"), "threshold_m": shoe.get("threshold_m"),
+                "is_default": int(bool(shoe.get("default"))), "retired": int(bool(shoe.get("retired"))),
+                "collision_base": shoe.get("collision_base"),
+            })
     elif kind == "objective":
         row = {k: g(k) for k in (
             "name", "race_date", "distance_m", "elevation_gain_m", "location", "goal", "target_time_s",
@@ -766,11 +779,27 @@ def heat_acclimation_today(conn, conf: dict, today: date) -> dict:
     return M.heat_acclimation(activities, weather_rows, today, conf["heat_threshold_c"], window_days)
 
 
+def gear_mileage(conn) -> dict:
+    """Kilométrage par chaussure (#40) — pour la CLI et pour les agents en headless
+    (`coach`, rapport hebdomadaire). N'est pas soumis à `[health].morning_check` :
+    ne dépend d'aucune donnée de santé, seulement du profil et des activités."""
+    gear_defs = [dict(r) for r in conn.execute(
+        "SELECT gear_id, name, start_date, threshold_m, is_default AS \"default\", retired, collision_base "
+        "FROM gear")]
+    activities = [dict(r) for r in conn.execute(
+        # `date` : indispensable à `M.gear_mileage` pour filtrer l'attribution par
+        # défaut par `depuis` (revue PR #85, blocker 1) — jamais utilisée pour
+        # exclure une activité à `gear_id` explicite.
+        "SELECT sport, distance_m, gear_id, date FROM activity WHERE gear_id IS NOT NULL OR sport IN "
+        f"({', '.join('?' for _ in M.GEAR_WEAR_SPORTS)})", M.GEAR_WEAR_SPORTS).fetchall()]
+    return M.gear_mileage(activities, gear_defs)
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     parser.add_argument("command", nargs="?", default="index",
                         choices=("index", "backfill-plan", "status", "hrv-baseline", "sleep-debt",
-                                 "heat-acclimation"))
+                                 "heat-acclimation", "gear"))
     parser.add_argument("--workspace")
     parser.add_argument("--db")
     parser.add_argument("--memory", action="store_true")
@@ -817,6 +846,9 @@ def main(argv=None) -> int:
         conf = settings(load_config(workspace))
         today_date = date.fromisoformat(args.today) if args.today else date.today()
         print(json.dumps(heat_acclimation_today(conn, conf, today_date), ensure_ascii=False))
+        return 0
+    if args.command == "gear":
+        print(json.dumps(gear_mileage(conn), ensure_ascii=False))
         return 0
     if args.command == "backfill-plan":
         out = write_backfill(conn, workspace)
