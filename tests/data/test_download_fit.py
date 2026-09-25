@@ -50,19 +50,64 @@ class TestActivityDirOut(unittest.TestCase):
 
 
 class TestEnsureGitignore(unittest.TestCase):
-    def test_creates_marker_when_absent(self):
+    """Bug corrigé (revue PR #87, tour 2 — privacy) : une version antérieure ne faisait
+    RIEN dès que `.gitignore` existait déjà, même sans les motifs attendus — un fichier
+    préexistant dans `activities/` (installateur, ou l'athlète pour tout autre motif)
+    empêchait alors silencieusement l'exclusion de `*.fit`/`*.records.json`, et
+    `daily-sync` (`git add -A`) aurait committé des pistes GPS complètes."""
+
+    def test_file_absent_creates_it_with_header_and_patterns(self):
         with tempfile.TemporaryDirectory() as tmp:
             directory = Path(tmp)
-            D._ensure_gitignore(directory, "*.fit\n")
-            self.assertEqual((directory / ".gitignore").read_text(encoding="utf-8"), "*.fit\n")
+            D._ensure_gitignore(directory, "# en-tête\n", ["*.fit", "*.records.json"])
+            content = (directory / ".gitignore").read_text(encoding="utf-8")
+            self.assertEqual(content, "# en-tête\n*.fit\n*.records.json\n")
 
-    def test_never_overwrites_an_existing_marker(self):
+    def test_file_present_without_patterns_gets_them_appended(self):
         with tempfile.TemporaryDirectory() as tmp:
             directory = Path(tmp)
             (directory / ".gitignore").write_text("# personnalisé par l'utilisateur\n", encoding="utf-8")
-            D._ensure_gitignore(directory, "*.fit\n")
-            self.assertEqual((directory / ".gitignore").read_text(encoding="utf-8"),
-                              "# personnalisé par l'utilisateur\n")
+            D._ensure_gitignore(directory, "# en-tête\n", ["*.fit", "*.records.json"])
+            content = (directory / ".gitignore").read_text(encoding="utf-8")
+            self.assertIn("# personnalisé par l'utilisateur\n", content)   # jamais écrasé
+            self.assertIn("*.fit\n", content)
+            self.assertIn("*.records.json\n", content)
+
+    def test_file_present_without_patterns_and_without_trailing_newline(self):
+        """Le contenu existant peut ne pas finir par un retour à la ligne : le premier
+        motif ajouté ne doit pas se coller à la dernière ligne existante."""
+        with tempfile.TemporaryDirectory() as tmp:
+            directory = Path(tmp)
+            (directory / ".gitignore").write_text("# sans retour à la ligne final", encoding="utf-8")
+            D._ensure_gitignore(directory, "# en-tête\n", ["*.fit"])
+            content = (directory / ".gitignore").read_text(encoding="utf-8")
+            self.assertEqual(content, "# sans retour à la ligne final\n*.fit\n")
+
+    def test_file_present_with_patterns_already_is_untouched_no_duplicate(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            directory = Path(tmp)
+            original = "# personnalisé\n*.fit\n*.records.json\n"
+            (directory / ".gitignore").write_text(original, encoding="utf-8")
+            D._ensure_gitignore(directory, "# en-tête\n", ["*.fit", "*.records.json"])
+            content = (directory / ".gitignore").read_text(encoding="utf-8")
+            self.assertEqual(content, original)   # rien ajouté, rien dupliqué
+
+    def test_only_the_missing_pattern_is_appended(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            directory = Path(tmp)
+            (directory / ".gitignore").write_text("*.fit\n", encoding="utf-8")
+            D._ensure_gitignore(directory, "# en-tête\n", ["*.fit", "*.records.json"])
+            content = (directory / ".gitignore").read_text(encoding="utf-8")
+            self.assertEqual(content, "*.fit\n*.records.json\n")
+            self.assertEqual(content.count("*.fit"), 1)
+
+    def test_repeated_calls_are_idempotent(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            directory = Path(tmp)
+            for _ in range(3):
+                D._ensure_gitignore(directory, "# en-tête\n", ["*.fit", "*.records.json"])
+            content = (directory / ".gitignore").read_text(encoding="utf-8")
+            self.assertEqual(content, "# en-tête\n*.fit\n*.records.json\n")
 
 
 class TestWriteCanonicalSamples(unittest.TestCase):

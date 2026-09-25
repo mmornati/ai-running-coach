@@ -21,7 +21,7 @@ depuis les fichiers FIT réels de Garmin — au même titre que `.arc/` : il n'e
 première utilisation par `download_fit.py` — pas besoin d'y penser à
 l'installation. Les fichiers `.fit`/`.records.json` bruts (GPS complets, plus
 lourds, écrits à côté par `download_fit.py` pour compatibilité ascendante)
-reçoivent le même traitement (voir `download_fit._ensure_raw_gitignore`).
+reçoivent le même traitement (voir `download_fit._ensure_gitignore`).
 
 `Le Markdown de la séance reste la source de vérité` (distance, D+, FC moyenne
 déjà écrits dans le bloc ```arc``` par l'agent `coach`) : les échantillons

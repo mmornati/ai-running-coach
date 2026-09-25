@@ -115,12 +115,35 @@ def _unwrap_fit(data: bytes) -> bytes:
     return data
 
 
-def _ensure_gitignore(directory: Path, content: str) -> None:
-    """Marqueur `.gitignore` créé une fois, jamais écrasé (whatever l'utilisateur y a mis
-    depuis) — même geste que `.arc/.gitignore` dans `arc_index.open_db`."""
+def _ensure_gitignore(directory: Path, header: str, patterns: list[str]) -> None:
+    """Garantit que chaque motif de `patterns` figure dans `directory/.gitignore`.
+
+    Fichier absent : créé avec `header` + les motifs. Fichier déjà présent (ex. un
+    `.gitignore` que l'athlète a lui-même écrit dans `activities/`) : le contenu
+    existant n'est JAMAIS écrasé (whatever l'utilisateur y a mis — même geste que
+    `.arc/.gitignore` dans `arc_index.open_db`), mais les motifs qui y manquent
+    ENCORE sont ajoutés à la suite. Bug corrigé (revue PR #87) : une version
+    antérieure de cette fonction ne faisait rien dès que le fichier existait, même
+    sans les motifs attendus — un `.gitignore` préexistant dans `activities/` (créé
+    par l'installateur, ou par l'athlète pour tout autre motif) empêchait alors
+    silencieusement l'exclusion de `*.fit`/`*.records.json`, et le `git add -A` de
+    `daily-sync` aurait committé des pistes GPS complètes dans le dépôt privé.
+    Idempotent : un motif déjà présent (créé par un appel précédent, ou par
+    l'utilisateur) n'est jamais dupliqué.
+    """
     marker = directory / ".gitignore"
-    if not marker.exists():
-        marker.write_text(content, encoding="utf-8")
+    if not marker.is_file():
+        marker.write_text(header + "\n".join(patterns) + "\n", encoding="utf-8")
+        return
+    existing_text = marker.read_text(encoding="utf-8")
+    existing_lines = {line.strip() for line in existing_text.splitlines()}
+    missing = [p for p in patterns if p not in existing_lines]
+    if not missing:
+        return
+    # Racine propre avant d'ajouter : un fichier existant sans retour à la ligne final
+    # ne doit pas coller le premier motif ajouté à la dernière ligne existante.
+    prefix = "" if not existing_text or existing_text.endswith("\n") else "\n"
+    marker.write_text(existing_text + prefix + "\n".join(missing) + "\n", encoding="utf-8")
 
 
 def _download_one(client, activity_id: int, out_dir: Path, want_json: bool) -> Path:
@@ -133,11 +156,12 @@ def _download_one(client, activity_id: int, out_dir: Path, want_json: bool) -> P
     # versionnés — même dans un workspace privé qui versionne `activities/`
     # (docs/workspace.md). `daily-sync` avec `git_autocommit = true` fait un
     # `git add -A` : sans ce marqueur, ces fichiers y seraient embarqués (should-fix
-    # #4, revue PR #87). Motifs `*.fit`/`*.records.json` seulement (pas `*` — les
-    # fichiers `.md` d'activités ne vivent normalement pas dans ce dossier, mais un
-    # motif ciblé reste plus sûr qu'un blanket-ignore si un jour ils s'y trouvaient).
-    _ensure_gitignore(out_dir, "# FIT bruts + records GPS complets : lourds, jetables, jamais versionnés.\n"
-                               "*.fit\n*.records.json\n")
+    # #4, revue PR #87). Motifs `*.fit`/`*.records.json` CIBLÉS, jamais un `*` : ce
+    # répertoire (`out_dir`, normalement `activities/` du workspace) contient aussi
+    # les Markdown de séances, versionnés eux — un blanket-ignore les exclurait à
+    # tort du dépôt.
+    _ensure_gitignore(out_dir, "# FIT bruts + records GPS complets : lourds, jetables, jamais versionnés.\n",
+                       ["*.fit", "*.records.json"])
 
     out = out_dir / f"{activity_id}.fit"
     out.write_bytes(fit)
@@ -200,7 +224,8 @@ def _write_canonical_samples(activity_id: int, raw_records: list[dict], activiti
 
     fit_dir = activities_root / "fit"
     fit_dir.mkdir(parents=True, exist_ok=True)
-    _ensure_gitignore(fit_dir, "# Échantillons FIT normalisés : jetables, jamais versionnés.\n*\n!.gitignore\n")
+    _ensure_gitignore(fit_dir, "# Échantillons FIT normalisés : jetables, jamais versionnés.\n",
+                       ["*", "!.gitignore"])
     records = S.normalise_records(raw_records, sport=sport)
     out = fit_dir / f"{activity_id}.json"
     out.write_text(json.dumps({"activity_id": activity_id, "records": records}, ensure_ascii=False),
