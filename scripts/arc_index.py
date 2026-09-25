@@ -78,7 +78,8 @@ import arc_samples as S  # noqa: E402
 from coach_config import ConfigError, read_toml  # noqa: E402
 from coach_setup import ENGINE, workspace_root  # noqa: E402
 
-SCHEMA_VERSION = 8   # #42 : `activity_sample.source_path` (purge par fichier) + index par activity_id
+SCHEMA_VERSION = 9   # #42 (revue PR #87) : activity_sample keyed by garmin_activity_id (pas
+                      # activity.id/rowid) + table dédiée `sample_file` (jamais `source_file`)
 DEFAULT_DB = ".arc/coach.db"
 DATA_DIRS = ("activities", "medical", "nutrition", "planning", "rapports")
 
@@ -240,16 +241,29 @@ CREATE TABLE metric_day (
     date TEXT PRIMARY KEY, load REAL, fitness REAL, fatigue REAL, form REAL, acwr REAL,
     monotony REAL, strain REAL, vo2max REAL
 );
--- Échantillons FIT sous-échantillonnés (#42) : source_path permet de purger les lignes
--- d'un fichier `activities/fit/<id>.json` modifié ou supprimé, comme les autres tables
--- par fichier. lat/lon restent NULL : aucune source actuelle n'en fournit (voir
--- arc_samples.py) — présentes pour un usage futur, pas remplies par cette histoire.
+-- Échantillons FIT sous-échantillonnés (#42). Clé de rattachement = garmin_activity_id
+-- (JAMAIS activity.id/rowid — voir `ingest_samples` pour le bug que ça corrige : un
+-- rowid change à chaque édition du Markdown et peut être réattribué après suppression).
+-- Le lien avec `activity` est résolu à LA LECTURE (`samples()`), jamais mis en cache.
+-- source_path permet de purger les lignes d'un fichier `activities/fit/<id>.json`
+-- modifié ou supprimé, comme les autres tables par fichier. lat/lon restent NULL :
+-- aucune source actuelle n'en fournit (voir arc_samples.py) — présentes pour un usage
+-- futur, pas remplies par cette histoire.
 CREATE TABLE activity_sample (
-    activity_id INTEGER, source_path TEXT, t_s REAL, distance_m REAL, altitude_m REAL,
+    garmin_activity_id INTEGER, source_path TEXT, t_s REAL, distance_m REAL, altitude_m REAL,
     hr_bpm REAL, speed_ms REAL, cadence_spm REAL, lat REAL, lon REAL
 );
-CREATE INDEX activity_sample_activity ON activity_sample(activity_id);
+CREATE INDEX activity_sample_garmin ON activity_sample(garmin_activity_id);
 CREATE INDEX activity_sample_source ON activity_sample(source_path);
+-- Suivi des fichiers `activities/fit/*.json` — table DÉDIÉE, jamais `source_file` :
+-- `source_file` est lu par `backfill_items` et `scripts/coach_doctor.py` en supposant
+-- qu'il ne contient que des fichiers Markdown du contrat (revue PR #87) ; y mêler les
+-- FIT y ferait apparaître à tort une dette de contrat ou un « fichier supprimé »
+-- fantôme après --rebuild.
+CREATE TABLE sample_file (
+    path TEXT PRIMARY KEY, sha256 TEXT, mtime REAL, garmin_activity_id INTEGER,
+    status TEXT, issues TEXT
+);
 -- Lot 3 (zones FC, #43) : table prévue, vide tant que cette histoire n'existe pas.
 CREATE TABLE hr_zone_time (activity_id INTEGER, zone INTEGER, seconds REAL);
 CREATE INDEX hr_zone_time_activity ON hr_zone_time(activity_id);
@@ -630,16 +644,39 @@ def _sample_file_activity_id(path: Path, raw) -> Optional[int]:
 
 def ingest_samples(conn, workspace: Path, resolution_s: int = S.DEFAULT_RESOLUTION_S) -> dict:
     """Ingestion incrémentale et idempotente des échantillons FIT (`activities/fit/*.json`)
-    dans `activity_sample`. Même discipline que `index_workspace` pour les fichiers
-    Markdown : chaque fichier est suivi dans `source_file` (kind `fit_sample`) par son
+    dans `activity_sample`.
+
+    **Clé de rattachement = `garmin_activity_id`, jamais le rowid interne `activity.id`.**
+    Une version antérieure de cette fonction stockait `activity.id` — un bug réel (revue
+    PR #87) : ce rowid change dès qu'une activité est repurgée puis réinsérée
+    (`_purge`/`store`, sur un simple edit du Markdown), et SQLite peut le RÉATTRIBUER à
+    une tout autre séance après suppression d'un fichier. Trois conséquences observées :
+    un FIT ingéré avant que le Markdown correspondant n'existe restait orphelin pour
+    toujours (aucun re-rattachement automatique) ; un Markdown simplement modifié
+    perdait ses échantillons (rattachés à un id mort) ; un Markdown supprimé puis un id
+    réutilisé par une AUTRE activité lui volait les échantillons de la première. Stocker
+    `garmin_activity_id` (jamais réattribué, c'est l'identifiant Garmin réel) et joindre
+    `activity` à la LECTURE (`samples()`) élimine structurellement les trois cas : le lien
+    n'est jamais mis en cache, il est recalculé à chaque lecture depuis l'état courant de
+    `activity`.
+
+    Suivi dans sa propre table `sample_file` (jamais `source_file`, qui n'est lu par
+    aucun consommateur autrement qu'en assumant un fichier Markdown du contrat —
+    `backfill_items`, `scripts/coach_doctor.py::check_index_freshness` /
+    `check_out_of_contract`, `arc_serve.py` — un fichier `fit_sample` qui s'y serait
+    glissé y apparaîtrait à tort comme une dette de contrat ou un fichier « supprimé »
+    fantôme après un `--rebuild`, revue PR #87) : chaque fichier est suivi par son
     sha256 — inchangé → sauté, modifié → repurgé puis réingéré, disparu → ses lignes
     `activity_sample` retirées. Deux ingestions successives sans changement de fichier
-    produisent donc des lignes identiques (idempotence).
+    produisent donc des lignes identiques (idempotence) ; un JSON illisible est compté
+    `invalid`, jamais confondu avec un fichier ingéré avec succès.
 
-    Un fichier dont le `garmin_activity_id` ne correspond à aucune activité déjà indexée
-    est compté à part (`orphan`) : rien n'est écrit dans `activity_sample`, et **rien ne
-    casse** côté séance — c'est le cas normal d'un FIT téléchargé avant que le Markdown
-    de la séance n'existe encore, ou d'un `garmin_activity_id` qui a changé.
+    Le `garmin_activity_id` d'un fichier ingéré, qu'il corresponde ou non à une activité
+    DÉJÀ indexée au moment de l'ingestion, est toujours stocké — voir `sample_coverage()`
+    pour le comptage `unlinked_garmin_ids`, calculé fraîchement à chaque appel par une
+    requête, jamais mis en cache sur le fichier : purement informatif, **rien n'est
+    perdu** — `samples()` retrouvera les échantillons dès que le Markdown de la séance
+    sera indexé, sans réingestion du FIT.
 
     **Budget de taille** (documenté ici, pas ailleurs, pour rester à côté du code qui le
     détermine) : à la résolution par défaut (5 s), une sortie d'1 h ≈ 720 lignes. Pour
@@ -647,18 +684,18 @@ def ingest_samples(conn, workspace: Path, resolution_s: int = S.DEFAULT_RESOLUTI
     `tests/lib/synthetic.py`), ≈ 216 000 lignes — quelques dizaines de Mo dans SQLite
     (l'ordre de grandeur usuel est de 50 à 100 octets/ligne avec l'overhead SQLite pour 6
     colonnes REAL + 2 INTEGER/TEXT), largement absorbable par le fichier `.arc/coach.db`
-    déjà jetable et reconstruit à la demande. L'index sur `activity_id` (DDL ci-dessus)
-    garde `arc_serve.samples`-like les requêtes par séance en O(log n) plutôt qu'un scan
-    complet de la table à mesure qu'elle grossit.
+    déjà jetable et reconstruit à la demande. L'index sur `garmin_activity_id` (DDL
+    ci-dessus) garde les requêtes par séance en O(log n) plutôt qu'un scan complet de la
+    table à mesure qu'elle grossit.
     """
-    counts = {"ingested": 0, "unchanged": 0, "removed": 0, "orphan": 0}
+    counts = {"ingested": 0, "unchanged": 0, "removed": 0, "invalid": 0}
     seen = set()
     for path in discover_sample_files(workspace):
         rel = path.relative_to(workspace).as_posix()
         seen.add(rel)
         raw_bytes = path.read_bytes()
         digest = hashlib.sha256(raw_bytes).hexdigest()
-        known = conn.execute("SELECT sha256 FROM source_file WHERE path = ?", (rel,)).fetchone()
+        known = conn.execute("SELECT sha256 FROM sample_file WHERE path = ?", (rel,)).fetchone()
         if known and known[0] == digest:
             counts["unchanged"] += 1
             continue
@@ -667,68 +704,96 @@ def ingest_samples(conn, workspace: Path, resolution_s: int = S.DEFAULT_RESOLUTI
             raw = json.loads(raw_bytes.decode("utf-8"))
         except (json.JSONDecodeError, UnicodeDecodeError):
             conn.execute(
-                "INSERT OR REPLACE INTO source_file VALUES (?, ?, ?, ?, ?, ?, ?)",
-                (rel, "fit_sample", digest, path.stat().st_mtime, 0, "invalid", _j(["JSON illisible"])),
+                "INSERT OR REPLACE INTO sample_file VALUES (?, ?, ?, ?, ?, ?)",
+                (rel, digest, path.stat().st_mtime, None, "invalid", _j(["JSON illisible"])),
             )
-            counts["ingested"] += 1
+            counts["invalid"] += 1
             continue
         garmin_id = _sample_file_activity_id(path, raw)
-        activity_row = (
-            conn.execute("SELECT id FROM activity WHERE garmin_activity_id = ?", (garmin_id,)).fetchone()
-            if garmin_id is not None else None
+        if garmin_id is None:
+            conn.execute(
+                "INSERT OR REPLACE INTO sample_file VALUES (?, ?, ?, ?, ?, ?)",
+                (rel, digest, path.stat().st_mtime, None, "invalid",
+                 _j(["garmin_activity_id introuvable (nom de fichier non numérique et clé activity_id absente)"])),
+            )
+            counts["invalid"] += 1
+            continue
+        sport = conn.execute(
+            "SELECT sport FROM activity WHERE garmin_activity_id = ?", (garmin_id,)).fetchone()
+        records = S.downsample(
+            S.normalise_records(raw, sport=sport["sport"] if sport else None), resolution_s)
+        conn.executemany(
+            "INSERT INTO activity_sample "
+            "(garmin_activity_id, source_path, t_s, distance_m, altitude_m, hr_bpm, speed_ms, cadence_spm) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            [(garmin_id, rel, rec["t_s"], rec["distance_m"], rec["altitude_m"],
+              rec["hr_bpm"], rec["speed_ms"], rec["cadence_spm"]) for rec in records],
         )
-        if activity_row is None:
-            parsed_ok = "orphan"
-            counts["orphan"] += 1
-        else:
-            parsed_ok = "ok"
-            records = S.downsample(S.normalise_records(raw), resolution_s)
-            for rec in records:
-                conn.execute(
-                    "INSERT INTO activity_sample "
-                    "(activity_id, source_path, t_s, distance_m, altitude_m, hr_bpm, speed_ms, cadence_spm) "
-                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-                    (activity_row["id"], rel, rec["t_s"], rec["distance_m"], rec["altitude_m"],
-                     rec["hr_bpm"], rec["speed_ms"], rec["cadence_spm"]),
-                )
         conn.execute(
-            "INSERT OR REPLACE INTO source_file VALUES (?, ?, ?, ?, ?, ?, ?)",
-            (rel, "fit_sample", digest, path.stat().st_mtime, 0, parsed_ok,
-             _j([] if parsed_ok == "ok" else [f"garmin_activity_id {garmin_id} : aucune activité indexée"])),
+            "INSERT OR REPLACE INTO sample_file VALUES (?, ?, ?, ?, ?, ?)",
+            (rel, digest, path.stat().st_mtime, garmin_id, "ok", "[]"),
         )
         counts["ingested"] += 1
-    for (rel,) in conn.execute("SELECT path FROM source_file WHERE kind = 'fit_sample'").fetchall():
+    for (rel,) in conn.execute("SELECT path FROM sample_file").fetchall():
         if rel not in seen:
             conn.execute("DELETE FROM activity_sample WHERE source_path = ?", (rel,))
-            conn.execute("DELETE FROM source_file WHERE path = ?", (rel,))
+            conn.execute("DELETE FROM sample_file WHERE path = ?", (rel,))
             counts["removed"] += 1
     conn.commit()
     return counts
 
 
+def sample_coverage(conn) -> dict:
+    """Couverture FIT actuelle, recalculée à chaque appel (jamais mise en cache sur un
+    fichier) — pour `status` et `coach_doctor`-like diagnostics. `rows` : TOUTES les
+    lignes stockées, liées ou non (jamais scopé au lien) ; `activities_with_samples` :
+    activités dont le `garmin_activity_id` a au moins un échantillon ; `unlinked_garmin_ids` :
+    `garmin_activity_id` présents dans `activity_sample` sans activité correspondante
+    (FIT téléchargé avant le Markdown, ou séance depuis retirée du workspace) — jamais
+    une erreur, juste une information de latence entre les deux sources."""
+    rows = conn.execute("SELECT COUNT(*) FROM activity_sample").fetchone()[0]
+    linked = conn.execute(
+        "SELECT COUNT(DISTINCT garmin_activity_id) FROM activity_sample "
+        "WHERE garmin_activity_id IN (SELECT garmin_activity_id FROM activity WHERE garmin_activity_id IS NOT NULL)"
+    ).fetchone()[0]
+    unlinked = conn.execute(
+        "SELECT COUNT(DISTINCT garmin_activity_id) FROM activity_sample "
+        "WHERE garmin_activity_id NOT IN (SELECT garmin_activity_id FROM activity WHERE garmin_activity_id IS NOT NULL)"
+    ).fetchone()[0]
+    return {"rows": rows, "activities_with_samples": linked, "unlinked_garmin_ids": unlinked}
+
+
 def samples(conn, activity_id: int) -> List[dict]:
     """Échantillons sous-échantillonnés d'une séance (id INTERNE de `activity`, pas le
     `garmin_activity_id`), triés par `t_s`. Pure lecture, jamais d'exception : une
-    séance sans FIT ingéré rend `[]` — les KPI dérivés (zones #43, GAP #44, découplage
-    #45, VAM #46, descente #47, durabilité #48, modèle pente→allure #58) peuvent tous
-    tester `if not samples: ...` sans se soucier de l'existence du FIT.
+    séance sans FIT ingéré, ou sans `garmin_activity_id` du tout, rend `[]` — les KPI
+    dérivés (zones #43, GAP #44, découplage #45, VAM #46, descente #47, durabilité #48,
+    modèle pente→allure #58) peuvent tous tester `if not samples: ...` sans se soucier
+    de l'existence du FIT.
+
+    Le lien vers `activity_sample` est résolu ICI, à la lecture, par `garmin_activity_id`
+    — jamais mis en cache sur un rowid : voir `ingest_samples` pour le bug que cette
+    résolution tardive corrige (rowid réutilisé/instable).
     """
-    rows = conn.execute(
-        "SELECT t_s, distance_m, altitude_m, hr_bpm, speed_ms, cadence_spm "
-        "FROM activity_sample WHERE activity_id = ? ORDER BY t_s", (activity_id,),
-    ).fetchall()
-    return [dict(row) for row in rows]
+    row = conn.execute("SELECT garmin_activity_id FROM activity WHERE id = ?", (activity_id,)).fetchone()
+    if row is None or row["garmin_activity_id"] is None:
+        return []
+    return samples_by_garmin_id(conn, row["garmin_activity_id"])["samples"]
 
 
 def samples_by_garmin_id(conn, garmin_activity_id: int) -> dict:
-    """Enveloppe JSON-amie de `samples()`, par `garmin_activity_id` (identifiant externe,
-    celui du nom de fichier `activities/fit/<id>.json` et du CLI `arc_index.py samples`).
-    """
-    row = conn.execute("SELECT id FROM activity WHERE garmin_activity_id = ?", (garmin_activity_id,)).fetchone()
-    if row is None:
-        return {"garmin_activity_id": garmin_activity_id, "samples": [],
-                "reason": "aucune activité indexée avec cet identifiant Garmin"}
-    return {"garmin_activity_id": garmin_activity_id, "samples": samples(conn, row["id"])}
+    """Enveloppe JSON-amie, par `garmin_activity_id` (identifiant externe, celui du nom
+    de fichier `activities/fit/<id>.json` et du CLI `arc_index.py samples`) — fonctionne
+    même SANS activité indexée correspondante (FIT ingéré avant le Markdown) : c'est le
+    but de stocker `activity_sample` par `garmin_activity_id` plutôt que par rowid."""
+    rows = conn.execute(
+        "SELECT t_s, distance_m, altitude_m, hr_bpm, speed_ms, cadence_spm "
+        "FROM activity_sample WHERE garmin_activity_id = ? ORDER BY t_s", (garmin_activity_id,),
+    ).fetchall()
+    result = {"garmin_activity_id": garmin_activity_id, "samples": [dict(r) for r in rows]}
+    if not rows:
+        result["reason"] = "aucun échantillon ingéré pour ce garmin_activity_id"
+    return result
 
 
 def index_workspace(conn, workspace: Path, today: Optional[str] = None) -> dict:
@@ -763,20 +828,18 @@ def index_workspace(conn, workspace: Path, today: Optional[str] = None) -> dict:
             (rel, kind, digest, path.stat().st_mtime, arc_version, parsed_ok, _j(issues)),
         )
         counts["indexed"] += 1
-    # kind != 'fit_sample' : ce nettoyage porte sur les fichiers Markdown découverts par
-    # `discover()` ci-dessus — les échantillons FIT (`activities/fit/*.json`) ont leur
-    # propre découverte et leur propre nettoyage dans `ingest_samples`, plus bas. Sans ce
-    # filtre, chaque passe purgerait puis réingérerait les échantillons en boucle (leur
-    # chemin n'est jamais dans `seen`, rempli uniquement par `discover()`).
-    for (rel,) in conn.execute("SELECT path FROM source_file WHERE kind IS NULL OR kind != 'fit_sample'").fetchall():
+    for (rel,) in conn.execute("SELECT path FROM source_file").fetchall():
         if rel not in seen:
             _purge(conn, rel)
             conn.execute("DELETE FROM source_file WHERE path = ?", (rel,))
             counts["removed"] += 1
-    # Échantillons FIT (#42) : APRÈS le passage Markdown ci-dessus, pour que les activités
-    # tout juste indexées soient déjà en base au moment de résoudre garmin_activity_id.
-    # Clé distincte de `samples` (coverage globale, calculée par la commande `status`) :
-    # celle-ci ne compte que les fichiers TOUCHÉS par CETTE passe d'indexation.
+    # Échantillons FIT (#42) — table dédiée `sample_file`, jamais `source_file` (voir
+    # `ingest_samples`) : sa propre découverte/nettoyage ne touche donc jamais la boucle
+    # ci-dessus. Le rattachement à `activity` n'est plus résolu ICI (il l'était par
+    # rowid dans une version antérieure, bug corrigé — voir `samples()`) : l'ordre
+    # d'exécution par rapport au passage Markdown n'a donc plus d'importance pour la
+    # correction, seulement `sport` (déjà en base pour un fichier réingéré CETTE passe
+    # puisque le passage Markdown ci-dessus vient de le (ré)écrire).
     counts["fit_ingestion"] = ingest_samples(conn, workspace)
     compute_metrics(conn, conf, today)
     for key, value in (("settings", _j(conf)), ("assumptions", _j(M.ASSUMPTIONS)),
@@ -1051,11 +1114,9 @@ def main(argv=None) -> int:
     if args.command == "status":
         by_status = {row[0]: row[1] for row in conn.execute(
             "SELECT parsed_ok, COUNT(*) FROM source_file WHERE kind IS NOT NULL GROUP BY parsed_ok")}
-        sample_rows, activities_with_samples = conn.execute(
-            "SELECT COUNT(*), COUNT(DISTINCT activity_id) FROM activity_sample").fetchone()
         print(json.dumps({
             "workspace": str(workspace), **counts, "files": by_status,
-            "samples": {"rows": sample_rows, "activities_with_samples": activities_with_samples},
+            "samples": sample_coverage(conn),
         }, ensure_ascii=False))
         return 0
     print(f"index : {counts['indexed']} lu(s), {counts['unchanged']} inchangé(s), "

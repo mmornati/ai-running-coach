@@ -71,6 +71,86 @@ class TestNormaliseFitparseFormat(unittest.TestCase):
         self.assertEqual(S.normalise_records({"records": []}), [])
 
 
+class TestCadenceSportGating(unittest.TestCase):
+    """#42 revue PR #87 (should-fix 5) : doublement de la cadence uniquement pour les
+    sports à pied — un FIT vélo verrait sinon sa cadence (déjà complète) doublée à tort."""
+
+    RAW = [
+        {"timestamp": "2026-01-01 08:00:00", "distance": 0.0, "heart_rate": 120, "cadence": 85},
+        {"timestamp": "2026-01-01 08:00:05", "distance": 12.0, "heart_rate": 122, "cadence": 90},
+    ]
+
+    def test_running_sport_doubles_cadence(self):
+        out = S.normalise_records(self.RAW, sport="running")
+        self.assertEqual(out[0]["cadence_spm"], 170.0)
+
+    def test_hiking_and_walking_also_double(self):
+        for sport in ("hiking", "walking"):
+            out = S.normalise_records(self.RAW, sport=sport)
+            self.assertEqual(out[0]["cadence_spm"], 170.0, sport)
+
+    def test_cycling_sport_does_not_double(self):
+        out = S.normalise_records(self.RAW, sport="cycling")
+        self.assertEqual(out[0]["cadence_spm"], 85.0)
+
+    def test_unknown_sport_defaults_to_doubling(self):
+        """sport=None (non résolu) : le pari le plus sûr pour ce moteur trail-running
+        reste le doublement (voir ASSUMPTIONS["cadence_doubling"])."""
+        out = S.normalise_records(self.RAW, sport=None)
+        self.assertEqual(out[0]["cadence_spm"], 170.0)
+
+    def test_sport_is_case_insensitive(self):
+        out = S.normalise_records(self.RAW, sport="CYCLING")
+        self.assertEqual(out[0]["cadence_spm"], 85.0)
+
+    def test_sport_ignored_on_already_normalised_passthrough(self):
+        """La cadence d'un format déjà normalisé est supposée déjà dans l'unité finale :
+        `sport` n'a aucun effet sur ce chemin (jamais un second doublement)."""
+        recs, _ = sample_session(seed=1, duration_s=5, noise=False)
+        out_running = S.normalise_records(recs, sport="running")
+        out_cycling = S.normalise_records(recs, sport="cycling")
+        self.assertEqual([r["cadence_spm"] for r in out_running], [r["cadence_spm"] for r in out_cycling])
+
+
+class TestTimestampEdgeCases(unittest.TestCase):
+    """Nits de la revue PR #87 : t0 = min (pas premier), NaN/inf écartés, ISO 8601 tz-aware."""
+
+    def test_t0_is_minimum_not_first_record(self):
+        """Un premier enregistrement hors séquence ne doit jamais produire de t_s négatif."""
+        raw = [
+            {"timestamp": "2026-01-01 08:00:03", "distance": 3.0, "heart_rate": 120},
+            {"timestamp": "2026-01-01 08:00:00", "distance": 0.0, "heart_rate": 118},
+            {"timestamp": "2026-01-01 08:00:05", "distance": 5.0, "heart_rate": 122},
+        ]
+        out = S.normalise_records(raw)
+        self.assertEqual(min(r["t_s"] for r in out), 0.0)
+        self.assertEqual(sorted(r["t_s"] for r in out), [0.0, 3.0, 5.0])
+
+    def test_nan_and_inf_values_are_dropped_not_kept(self):
+        raw = [{"timestamp": "2026-01-01 08:00:00", "distance": float("nan"),
+                "heart_rate": float("inf"), "speed": 2.5, "cadence": 80}]
+        out = S.normalise_records(raw)
+        self.assertIsNone(out[0]["distance_m"])
+        self.assertIsNone(out[0]["hr_bpm"])
+        self.assertEqual(out[0]["speed_ms"], 2.5)
+
+    def test_iso8601_with_utc_offset_is_accepted(self):
+        raw = [
+            {"timestamp": "2026-01-01T08:00:00+00:00", "distance": 0.0, "heart_rate": 120},
+            {"timestamp": "2026-01-01T08:00:05+00:00", "distance": 12.0, "heart_rate": 122},
+        ]
+        out = S.normalise_records(raw)
+        self.assertEqual([r["t_s"] for r in out], [0.0, 5.0])
+
+    def test_iso8601_with_z_suffix_is_accepted(self):
+        raw = [
+            {"timestamp": "2026-01-01T08:00:00Z", "distance": 0.0, "heart_rate": 120},
+            {"timestamp": "2026-01-01T08:00:05Z", "distance": 12.0, "heart_rate": 122},
+        ]
+        out = S.normalise_records(raw)
+        self.assertEqual([r["t_s"] for r in out], [0.0, 5.0])
+
+
 class TestNormaliseAlreadyNormalisedFormat(unittest.TestCase):
     """Le format `sample_session` (#25) doit passer quasiment tel quel."""
 
@@ -95,6 +175,21 @@ class TestNormaliseAlreadyNormalisedFormat(unittest.TestCase):
                                      "hr_bpm": "140", "speed_ms": "2.5", "cadence_spm": "170"}])
         self.assertEqual(out, [{"t_s": 0.0, "distance_m": 1.5, "altitude_m": None,
                                  "hr_bpm": 140.0, "speed_ms": 2.5, "cadence_spm": 170.0}])
+
+    def test_out_of_order_passthrough_records_are_sorted(self):
+        """Le format déjà normalisé n'est pas garanti trié par la source : `normalise_records`
+        le trie quand même (nit revue PR #87 — seul le format fitparse l'était jusque-là)."""
+        out = S.normalise_records([
+            {"t_s": 10, "distance_m": 20.0, "altitude_m": 0.0, "hr_bpm": 145.0, "speed_ms": 2.5, "cadence_spm": 170.0},
+            {"t_s": 0, "distance_m": 0.0, "altitude_m": 0.0, "hr_bpm": 140.0, "speed_ms": 2.5, "cadence_spm": 170.0},
+            {"t_s": 5, "distance_m": 10.0, "altitude_m": 0.0, "hr_bpm": 142.0, "speed_ms": 2.5, "cadence_spm": 170.0},
+        ])
+        self.assertEqual([r["t_s"] for r in out], [0, 5, 10])
+
+    def test_records_with_null_t_s_are_dropped(self):
+        out = S.normalise_records([{"t_s": None, "distance_m": 1.0, "altitude_m": None,
+                                     "hr_bpm": None, "speed_ms": None, "cadence_spm": None}])
+        self.assertEqual(out, [])
 
 
 class TestDownsample(unittest.TestCase):
@@ -151,6 +246,18 @@ class TestDownsample(unittest.TestCase):
 
     def test_empty_input(self):
         self.assertEqual(S.downsample([], resolution_s=5), [])
+
+    def test_last_value_is_by_time_even_if_input_bucket_order_is_shuffled(self):
+        """`downsample` ne doit pas supposer son entrée triée : le bucket est retrié
+        par `t_s` avant d'en prendre la « dernière » valeur (nit revue PR #87)."""
+        shuffled = [
+            {"t_s": 3, "distance_m": 6.0, "altitude_m": 3.0, "hr_bpm": 140.0, "speed_ms": 2.0, "cadence_spm": 170.0},
+            {"t_s": 0, "distance_m": 0.0, "altitude_m": 0.0, "hr_bpm": 140.0, "speed_ms": 2.0, "cadence_spm": 170.0},
+            {"t_s": 1, "distance_m": 2.0, "altitude_m": 1.0, "hr_bpm": 140.0, "speed_ms": 2.0, "cadence_spm": 170.0},
+        ]
+        out = S.downsample(shuffled, resolution_s=5)
+        self.assertEqual(out[0]["distance_m"], 6.0)   # t_s=3 est bien le plus tardif du bucket
+        self.assertEqual(out[0]["altitude_m"], 3.0)
 
 
 class TestSyntheticSessionIngestionPreservesTruth(unittest.TestCase):

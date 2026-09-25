@@ -44,6 +44,7 @@ class TestFitIngestionRebuild(unittest.TestCase):
         status = self._status()
         self.assertEqual(status["samples"]["activities_with_samples"], len(fit_files))
         self.assertGreater(status["samples"]["rows"], 0)
+        self.assertEqual(status["samples"]["unlinked_garmin_ids"], 0)
 
     def test_rebuild_preserves_sample_coverage(self):
         self._run_index("index")

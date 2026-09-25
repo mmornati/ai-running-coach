@@ -42,18 +42,34 @@ import sys
 import zipfile
 from pathlib import Path
 
+# skills/<skill>/scripts/download_fit.py → 3 niveaux jusqu'à la racine du MOTEUR (là où
+# vivent scripts/coach_setup.py et scripts/arc_samples.py) — jamais celle du workspace,
+# voir `_activity_dir_out` ci-dessous pour la distinction et le bug qu'elle corrige.
+_ENGINE_ROOT = Path(__file__).resolve().parents[3]
+sys.path.insert(0, str(_ENGINE_ROOT / "scripts"))
+
 
 def _activity_dir_out() -> Path:
-    """Répertoire par défaut : `activities/` du workspace.
+    """Répertoire par défaut : `activities/` du WORKSPACE (pas forcément le moteur).
 
-    Remonte depuis `scripts/` jusqu'à la racine du projet (skills/<skill>/scripts/),
-    puis utilise `<racine>/activities`. Si le dossier n'existe pas encore, il est
-    créé à la première utilisation.
+    Bug corrigé (revue PR #87) : une version antérieure remontait depuis `__file__`
+    (`skills/<skill>/scripts/download_fit.py` → 3 niveaux) pour dériver `activities/`.
+    Correct uniquement quand moteur et workspace sont le même dossier (installation
+    fusionnée) — dans une installation séparée (`--workspace`, `docs/workspace.md`),
+    `skills/` du workspace est un LIEN SYMBOLIQUE vers le moteur, que `Path.resolve()`
+    suit : le résultat pointait alors TOUJOURS `<moteur>/activities`, jamais le
+    workspace réel de l'utilisateur — les échantillons canoniques n'étaient donc
+    jamais là où `scripts/arc_index.py` (qui, lui, résout bien le workspace via
+    `coach_setup.workspace_root`) les cherche.
+
+    Même résolution que `scripts/coach_setup.workspace_root()` : `$ARC_WORKSPACE`,
+    puis le pointeur `~/.config/ai-running-coach/workspace`, puis (installation
+    fusionnée ou pointeur absent) le moteur lui-même — la même chaîne que le reste
+    du projet (`scripts/lib/config.sh`, `arc_index.py`).
     """
-    here = Path(__file__).resolve()
-    # skills/<skill>/scripts/analyze_*.py → remonter de 3 niveaux pour la racine
-    root = here.parents[3]
-    return root / "activities"
+    from coach_setup import workspace_root  # noqa: E402 (sys.path déjà préparé plus haut)
+
+    return workspace_root() / "activities"
 
 
 def _auto_relaunch(argv: list[str]) -> None:
@@ -99,26 +115,48 @@ def _unwrap_fit(data: bytes) -> bytes:
     return data
 
 
+def _ensure_gitignore(directory: Path, content: str) -> None:
+    """Marqueur `.gitignore` créé une fois, jamais écrasé (whatever l'utilisateur y a mis
+    depuis) — même geste que `.arc/.gitignore` dans `arc_index.open_db`."""
+    marker = directory / ".gitignore"
+    if not marker.exists():
+        marker.write_text(content, encoding="utf-8")
+
+
 def _download_one(client, activity_id: int, out_dir: Path, want_json: bool) -> Path:
     from garminconnect import Garmin
 
     fit = client.download_activity(activity_id, dl_fmt=Garmin.ActivityDownloadFormat.ORIGINAL)
     fit = _unwrap_fit(fit)
 
+    # FIT brut + records.json (pistes GPS complètes) : lourds, jetables, jamais
+    # versionnés — même dans un workspace privé qui versionne `activities/`
+    # (docs/workspace.md). `daily-sync` avec `git_autocommit = true` fait un
+    # `git add -A` : sans ce marqueur, ces fichiers y seraient embarqués (should-fix
+    # #4, revue PR #87). Motifs `*.fit`/`*.records.json` seulement (pas `*` — les
+    # fichiers `.md` d'activités ne vivent normalement pas dans ce dossier, mais un
+    # motif ciblé reste plus sûr qu'un blanket-ignore si un jour ils s'y trouvaient).
+    _ensure_gitignore(out_dir, "# FIT bruts + records GPS complets : lourds, jetables, jamais versionnés.\n"
+                               "*.fit\n*.records.json\n")
+
     out = out_dir / f"{activity_id}.fit"
     out.write_bytes(fit)
     print(f"OK {len(fit):,} octets -> {out}")
 
     if want_json and fit:
-        records = _write_records_json(fit, out.with_suffix(".records.json"))
-        _write_canonical_samples(activity_id, records, out_dir)
+        records, sport = _write_records_json(fit, out.with_suffix(".records.json"))
+        _write_canonical_samples(activity_id, records, out_dir, sport)
     return out
 
 
-def _write_records_json(fit: bytes, out: Path) -> list[dict]:
+def _write_records_json(fit: bytes, out: Path) -> tuple[list[dict], str | None]:
     """Extrait les records (timestamp, lat/long, altitude, FC, cadence, power) → JSON
-    BRUT (champs `fitparse` tels quels). Rend la liste pour `_write_canonical_samples`,
-    qui la normalise (#42) sans reparser le FIT une seconde fois."""
+    BRUT (champs `fitparse` tels quels), et le sport de la séance (message FIT
+    `session`, ex. `"running"`, `"cycling"`). Rend `(records, sport)` pour
+    `_write_canonical_samples`, qui les normalise (#42) sans reparser le FIT une
+    seconde fois — `sport` gouverne le doublement (ou non) de la cadence, spécifique
+    aux sports à pied (voir `arc_samples.CADENCE_DOUBLING_SPORTS` — un FIT vélo lu
+    sans ce paramètre verrait sa cadence, déjà complète, doublée à tort)."""
     import fitparse
 
     f = fitparse.FitFile(io.BytesIO(fit))
@@ -130,12 +168,21 @@ def _write_records_json(fit: bytes, out: Path) -> list[dict]:
                 continue
             r[field.name] = field.value
         records.append(r)
+
+    sport = None
+    for m in f.get_messages("session"):
+        value = m.get_value("sport")
+        if value is not None:
+            sport = str(value).lower()
+            break
+
     out.write_text(json.dumps(records, default=str))
-    print(f"OK {len(records)} records -> {out}")
-    return records
+    print(f"OK {len(records)} records -> {out} (sport: {sport or 'inconnu'})")
+    return records, sport
 
 
-def _write_canonical_samples(activity_id: int, raw_records: list[dict], activities_root: Path) -> None:
+def _write_canonical_samples(activity_id: int, raw_records: list[dict], activities_root: Path,
+                              sport: str | None = None) -> None:
     """Copie normalisée (#42) au chemin canonique `activities/fit/<id>.json`, ingérée par
     `scripts/arc_index.py` (table `activity_sample`). `activities_root` est le
     `--output-dir` de ce script — normalement `activities/` du workspace ; si un autre
@@ -145,22 +192,16 @@ def _write_canonical_samples(activity_id: int, raw_records: list[dict], activiti
     `scripts/arc_samples.py` est un module stdlib pur (pas de dépendance à
     `garminconnect`/`fitparse`) : l'importer ici ne casse pas la contrainte « aucune
     dépendance dans l'index » (CONTRIBUTING.md) — seul CE script (déjà hors-stdlib pour
-    `garminconnect`/`fitparse`) l'utilise en plus de `arc_index.py`.
+    `garminconnect`/`fitparse`) l'utilise en plus de `arc_index.py`. `sport` (lu du
+    message FIT `session` par `_write_records_json`) gouverne le doublement de la
+    cadence course à pied — voir `arc_samples.normalise_records`.
     """
-    engine_root = Path(__file__).resolve().parents[3]
-    sys.path.insert(0, str(engine_root / "scripts"))
-    import arc_samples as S  # noqa: E402
+    import arc_samples as S  # noqa: E402 (sys.path déjà préparé en tête de module)
 
     fit_dir = activities_root / "fit"
     fit_dir.mkdir(parents=True, exist_ok=True)
-    marker = fit_dir / ".gitignore"
-    if not marker.exists():
-        # Donnée brute jetable (reconstruite depuis les FIT réels) : jamais versionnée,
-        # même dans un workspace privé qui versionne `activities/` (docs/workspace.md) —
-        # même geste que `.arc/.gitignore` dans `arc_index.open_db`.
-        marker.write_text("# Échantillons FIT bruts : jetables, jamais versionnés.\n*\n!.gitignore\n",
-                           encoding="utf-8")
-    records = S.normalise_records(raw_records)
+    _ensure_gitignore(fit_dir, "# Échantillons FIT normalisés : jetables, jamais versionnés.\n*\n!.gitignore\n")
+    records = S.normalise_records(raw_records, sport=sport)
     out = fit_dir / f"{activity_id}.json"
     out.write_text(json.dumps({"activity_id": activity_id, "records": records}, ensure_ascii=False),
                     encoding="utf-8")
