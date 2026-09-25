@@ -234,6 +234,65 @@ class TestNoiseRobustness(unittest.TestCase):
         self.assertAlmostEqual(gap_pace, actual_pace, delta=actual_pace * 0.03)  # ±3 %
 
 
+class TestStoppedSamplesExcludedFromActivityGap(unittest.TestCase):
+    """Revue #89 : un plat avec un arrêt de 5 minutes (feu rouge, ravitaillement)
+    ne doit JAMAIS gonfler l'allure GAP de la séance entière — celle-ci doit
+    rester comparable à l'allure sur temps de MOUVEMENT (comme `moving_duration_s`
+    ailleurs dans le tableau de bord), jamais à l'allure sur temps total."""
+
+    def _flat_with_stop(self, speed=2.7, moving_n=240, stopped_n=60):
+        samples = [{"t_s": t * 5, "distance_m": t * 5 * speed, "altitude_m": 0.0,
+                    "hr_bpm": 150.0, "speed_ms": speed, "cadence_spm": 170.0} for t in range(moving_n)]
+        stop_t0 = samples[-1]["t_s"] + 5
+        stop_distance = samples[-1]["distance_m"]
+        samples += [{"t_s": stop_t0 + t * 5, "distance_m": stop_distance, "altitude_m": 0.0,
+                     "hr_bpm": 90.0, "speed_ms": 0.0, "cadence_spm": 0.0} for t in range(stopped_n)]
+        resume_t0 = samples[-1]["t_s"] + 5
+        samples += [{"t_s": resume_t0 + t * 5, "distance_m": stop_distance + t * 5 * speed, "altitude_m": 0.0,
+                     "hr_bpm": 150.0, "speed_ms": speed, "cadence_spm": 170.0} for t in range(moving_n)]
+        return samples
+
+    def test_activity_gap_ignores_the_stop(self):
+        speed = 2.7
+        samples = self._flat_with_stop(speed=speed)
+        gap_pace = G.activity_gap_pace_s_km(samples)
+        moving_pace = 1000.0 / speed
+        self.assertAlmostEqual(gap_pace, moving_pace, delta=moving_pace * 0.02)
+
+    def test_including_stopped_samples_would_have_inflated_the_pace(self):
+        """Contre-preuve : SANS l'exclusion (`exclude_stopped=False`), la même
+        séance rend une allure GAP nettement plus lente — la régression que ce
+        correctif ferme (feu rouge = allure GAP artificiellement dégradée)."""
+        speed = 2.7
+        samples = self._flat_with_stop(speed=speed)
+        series = G.gap_sample_series(samples)
+        excluded = G.activity_gap_pace_from_series(series, exclude_stopped=True)
+        included = G.activity_gap_pace_from_series(series, exclude_stopped=False)
+        self.assertGreater(included, excluded)
+
+
+class TestSplitDistanceDrift(unittest.TestCase):
+    """Revue #89 : la distance totale déclarée par les splits (Markdown) peut
+    différer de la distance réellement mesurée par la montre (FIT) — le dernier
+    split ne doit jamais perdre les derniers échantillons de la séance pour
+    autant."""
+
+    def test_last_split_absorbs_the_extra_distance(self):
+        samples = _minetti_samples(0.0, 2.8, n=250)  # ~1400 m réellement parcourus
+        splits = [{"km": 1, "distance_m": 1000.0}]     # ne déclare que 1000 m
+        paces = G.split_gap_paces(samples, splits)
+        # Sans l'extension de la borne, les échantillons au-delà de 1000 m
+        # seraient perdus (hors de toute plage) et le split resterait calculé
+        # sur une fraction seulement de la séance réellement parcourue.
+        bounds = G.split_boundaries(splits, actual_total_m=samples[-1]["distance_m"])
+        self.assertEqual(bounds[-1]["end_m"], samples[-1]["distance_m"])
+        self.assertIsNotNone(paces[1])
+
+    def test_boundaries_unchanged_when_declared_distance_is_larger(self):
+        bounds = G.split_boundaries([{"km": 1, "distance_m": 1000.0}], actual_total_m=800.0)
+        self.assertEqual(bounds[-1]["end_m"], 1000.0)  # jamais réduite, seulement étendue
+
+
 # ---------------------------------------------------------------------------
 # Splits : bornes de distance cumulée et GAP par split
 # ---------------------------------------------------------------------------
@@ -339,6 +398,17 @@ class Workspace(unittest.TestCase):
         (fit_dir / f"{garmin_id}.json").write_text(
             json.dumps({"activity_id": garmin_id, "records": records}), encoding="utf-8")
 
+    def write_fit_no_altitude(self, garmin_id, n=360, speed=2.7):
+        """Séance avec échantillons FIT ingérés mais SANS altitude exploitable
+        (tapis de course, capteur barométrique absent) : la pente reste `None`
+        partout, donc le GAP aussi — un cas distinct de « aucun échantillon »."""
+        records = [{"t_s": t * 5, "distance_m": t * 5 * speed, "altitude_m": None, "hr_bpm": 150.0,
+                    "speed_ms": speed, "cadence_spm": 170.0} for t in range(n)]
+        fit_dir = self.ws / "activities/fit"
+        fit_dir.mkdir(parents=True, exist_ok=True)
+        (fit_dir / f"{garmin_id}.json").write_text(
+            json.dumps({"activity_id": garmin_id, "records": records}), encoding="utf-8")
+
     def activity_row(self, garmin_id):
         return self.conn.execute(
             "SELECT * FROM activity WHERE garmin_activity_id = ?", (garmin_id,)).fetchone()
@@ -402,7 +472,20 @@ class TestActivityGapReportAndCli(Workspace):
         self.index()
         report = I.activity_gap_report(self.conn, self.GARMIN_ID)
         self.assertIsNone(report["gap_pace_s_km"])
-        self.assertIn("échantillon", report["reason"])
+        self.assertIn("aucun échantillon FIT ingéré", report["reason"])
+
+    def test_samples_without_usable_altitude_has_a_distinct_reason(self):
+        """Revue #89 : « des échantillons existent mais aucune pente n'est
+        calculable » (tapis de course, capteur baro absent) doit être
+        distinguable de « aucun échantillon du tout » — deux causes très
+        différentes à corriger côté athlète, même symptôme (aucun chiffre)."""
+        self.write_activity(self.GARMIN_ID)
+        self.write_fit_no_altitude(self.GARMIN_ID)
+        self.index()
+        report = I.activity_gap_report(self.conn, self.GARMIN_ID)
+        self.assertIsNone(report["gap_pace_s_km"])
+        self.assertIn("échantillons FIT ingérés", report["reason"])
+        self.assertNotIn("aucun échantillon FIT ingéré", report["reason"])
 
     def test_success_report_has_no_reason(self):
         self.write_activity(self.GARMIN_ID)

@@ -31,7 +31,8 @@ MARKS = re.compile(
 DECLARED = re.compile(r"marque|trademark|®", re.IGNORECASE)
 
 # Surfaces lues par l'athlète ou par les agents qui écrivent pour lui.
-SURFACES = ("README.md", "web", "docs", "agents", "skills", "templates", "config", "scripts/arc_metrics.py")
+SURFACES = ("README.md", "web", "docs", "agents", "skills", "templates", "config",
+            "scripts/arc_metrics.py", "scripts/arc_gap.py")
 TEXT_SUFFIXES = {".md", ".html", ".js", ".css", ".toml", ".py", ".yml"}
 EXEMPT = {REPO / "docs" / "marques.md"}
 

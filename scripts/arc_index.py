@@ -986,8 +986,11 @@ def activity_gap_report(conn, garmin_activity_id: int) -> dict:
     "splits", "reason"}` (`reason` non nul explique un `None`), jamais une
     exception ni un échec muet (même discipline que `activity_zone_report`,
     #43) : activité introuvable, sport hors de la famille course à pied
-    (`arc_metrics.sport_family`), ou pas d'échantillons FIT ingérés sont trois
-    raisons distinctes."""
+    (`arc_metrics.sport_family`), pas d'échantillon FIT ingéré, ou échantillons
+    ingérés mais sans altitude exploitable (tapis de course, capteur
+    barométrique absent, séance toujours à l'arrêt) sont QUATRE raisons
+    distinctes — les deux dernières se ressemblent côté athlète (aucun chiffre
+    affiché) mais pointent vers des causes très différentes à corriger."""
     act = conn.execute("SELECT id, sport, gap_pace_s_km FROM activity WHERE garmin_activity_id = ?",
                         (garmin_activity_id,)).fetchone()
     if act is None:
@@ -1000,8 +1003,17 @@ def activity_gap_report(conn, garmin_activity_id: int) -> dict:
     splits = conn.execute(
         "SELECT km, gap_pace_s_km FROM activity_split WHERE activity_id = ? ORDER BY km", (act["id"],)).fetchall()
     if act["gap_pace_s_km"] is None and not any(s["gap_pace_s_km"] is not None for s in splits):
+        sample_count = conn.execute(
+            "SELECT COUNT(*) FROM activity_sample WHERE garmin_activity_id = ?", (garmin_activity_id,)
+        ).fetchone()[0]
+        if sample_count == 0:
+            reason = "aucun échantillon FIT ingéré pour cette séance"
+        else:
+            reason = ("échantillons FIT ingérés, mais aucune pente exploitable (tapis de course, "
+                      "capteur barométrique absent, altitude toujours identique, ou vitesse "
+                      "toujours sous le seuil de mouvement) — voir arc_gap.ASSUMPTIONS")
         return {"garmin_activity_id": garmin_activity_id, "gap_pace_s_km": None, "splits": None,
-                "reason": "aucun échantillon FIT ingéré pour cette séance"}
+                "reason": reason}
     return {"garmin_activity_id": garmin_activity_id, "gap_pace_s_km": act["gap_pace_s_km"],
             "splits": [dict(s) for s in splits], "reason": None}
 
