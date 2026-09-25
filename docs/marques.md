@@ -31,6 +31,8 @@ publiés dans la littérature scientifique et portent ici des noms génériques 
 | **Fatigue** (moyenne exponentielle 7 j) | idem | ATL · *Fatigue* |
 | **Forme** (condition − fatigue, la veille) | idem | TSB · *Form* |
 | **ACWR** (fatigue / condition) | Hulin, Gabbett *et al.* (2014) | idem |
+| **Zones FC** (5 zones) | Karvonen, Kentala & Mustala (1957) (réserve FC) ; Friel, *The Triathlete's Training Bible* (% de la FC au seuil/LTHR) ; %FC max (convention courante) | « Zones » telles qu'affichées par d'autres montres/applications — méthode et bornes différentes, non comparables terme à terme |
+| **Polarisation 80/20** (facile / modérée / difficile) | Modèle à 3 zones de Seiler (Seiler & Kjerland, 2006 ; Seiler, 2010) | idem, terminologie usuelle en entraînement d'endurance |
 
 !!! note "Valeurs non comparables"
     Notre condition, notre fatigue et notre forme sont calculées sur le **TRIMP**

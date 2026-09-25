@@ -340,7 +340,19 @@ def api_load(store: Store, q: dict) -> dict:
         b["effort_km"] = M.effort_km_week_total(week_rows[key])
     latest = store.one("SELECT monotony, strain FROM metric_day WHERE date <= ? ORDER BY date DESC LIMIT 1",
                        (today.isoformat(),)) or {}
-    return {"weeks": list(buckets.values()), "monotony": latest.get("monotony"), "strain": latest.get("strain")}
+    conf = store.meta("settings") or {}
+    with store.lock:
+        polarisation = I.weekly_polarisation(store.conn, weeks, today)
+        # Raison explicite quand AUCUNE zone n'est calculable (profil incomplet, ou
+        # méthode forcée par [athlete].hr_zones mais champ manquant) : sans elle, la
+        # section « Polarisation 80/20 » disparaîtrait silencieusement côté UI plutôt
+        # que d'en expliquer la cause (revue de code #43, round 3) — `None` ici veut
+        # dire « des zones sont calculables », pas nécessairement que la fenêtre a des
+        # données (une semaine sans échantillons FIT reste `polarisation: null`, sans
+        # rapport avec cette raison globale).
+        hr_zones_reason = I.athlete_hr_zone_resolution(store.conn, conf)["reason"]
+    return {"weeks": list(buckets.values()), "monotony": latest.get("monotony"), "strain": latest.get("strain"),
+            "polarisation_weeks": polarisation, "hr_zones_reason": hr_zones_reason}
 
 
 def api_health(store: Store, q: dict) -> dict:
@@ -477,7 +489,37 @@ def api_activity(store: Store, activity_id: int):
     act.pop("data_json", None)
     act["missing_reason"] = json.loads(act["missing_reason"]) if act.get("missing_reason") else None
     return {"activity": act, "splits": splits, "weather": weather,
+            "hr_zones": api_activity_hr_zones(store, activity_id),
             "body_html": render_markdown(I.C.body_after_block(body))}
+
+
+def api_activity_hr_zones(store: Store, activity_id: int) -> dict:
+    """Zones FC + temps en zone d'une séance (#43), pour `/api/activity/<id>.hr_zones` :
+    bornes et méthode effectives (précédence `arc_metrics.hr_zone_resolution`), temps
+    en zone (`hr_zone_time`) et polarisation Seiler (`hr_polarisation_time`, bornes
+    dédiées par méthode) de la séance, id INTERNE de l'activité.
+
+    Rend TOUJOURS un dict, jamais `None` (revue de code #43, point 4) : un
+    `bounds_bpm: null` porte une `reason` explicite (méthode inconnue, méthode forcée
+    mais champ manquant au profil, ou aucune donnée du tout) que l'UI affiche au lieu
+    de masquer silencieusement la section. `zone_seconds`/`polarisation` restent
+    `None` sans échantillons FIT (ou sport hors de la famille course à pied — voir
+    `compute_metrics`), même quand les bornes sont connues."""
+    conf = store.meta("settings") or {}
+    with store.lock:
+        resolution = I.athlete_hr_zone_resolution(store.conn, conf)
+        if resolution["bounds_bpm"] is None:
+            return {**resolution, "zone_seconds": None, "polarisation": None}
+        rows = store.conn.execute(
+            "SELECT zone, seconds FROM hr_zone_time WHERE activity_id = ?", (activity_id,)).fetchall()
+        pol_rows = store.conn.execute(
+            "SELECT bucket, seconds FROM hr_polarisation_time WHERE activity_id = ?", (activity_id,)).fetchall()
+    zone_seconds = {row["zone"]: row["seconds"] for row in rows} if rows else None
+    pol_seconds = {row["bucket"]: row["seconds"] for row in pol_rows} if pol_rows else None
+    return {
+        **resolution, "zone_seconds": zone_seconds,
+        "polarisation": M.polarisation_shares(pol_seconds) if pol_seconds else None,
+    }
 
 
 def api_performance(store: Store, q: dict) -> dict:

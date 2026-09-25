@@ -28,7 +28,7 @@ import math
 import statistics
 import unicodedata
 from datetime import date, timedelta
-from typing import Dict, Iterable, List, Optional, Tuple
+from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
 
 # ---------------------------------------------------------------------------
 # Constantes et hypothèses
@@ -158,6 +158,64 @@ FUELING_TARGET_BAND_G_H = (60, 90)
 # fixer de pourcentage de progression consensuel par unité de temps — la marge choisie
 # ici reste donc une règle de projet, pas une valeur tirée de ces sources.
 FUELING_MAX_MARGIN_G_H = 10
+
+# Zones FC, temps en zone et polarisation 80/20 (#43). 5 zones, trois méthodes de
+# calcul des bornes, choisies par précédence (voir `hr_zone_bounds`) : LTHR (FC au
+# seuil) si connue, sinon Karvonen (réserve FC), sinon %FCmax, sinon aucune zone
+# calculable. Voir ASSUMPTIONS["hr_zones"] pour la justification complète et les
+# citations.
+HR_ZONE_COUNT = 5
+HR_ZONE_METHODS = ("lthr", "karvonen", "percent_max")
+HR_ZONE_METHOD_DEFAULT = "auto"     # précédence : lthr -> karvonen -> percent_max
+# Karvonen (réserve FC = FC max - FC repos) : bornes à 50/60/70/80/90/100 % de la
+# réserve — même convention que `tests/lib/synthetic.py::KARVONEN_HRR_PCT`, pour que
+# les tests de temps en zone (palier D) retombent exactement sur les bornes du
+# générateur synthétique quand le profil type (FC repos 48, FC max 188) est utilisé.
+HR_ZONE_KARVONEN_HRR_PCT = (0.50, 0.60, 0.70, 0.80, 0.90, 1.00)
+# Friel (« The Triathlete's Training Bible », zones course à pied à partir de la FC
+# au seuil lactique/LTHR) : Z1 < 85 %, Z2 85-90 %, Z3 90-95 %, Z4 95-100 %,
+# Z5 >= 100 % de LTHR. Friel décrit en réalité TROIS paliers au-dessus du seuil
+# (5a/5b/5c, respectivement 100-102 %, 102-106 % et > 106 % de LTHR) : notre Z5 les
+# FUSIONNE en un seul, pour rester à 5 zones partout dans le projet (voir
+# `HR_ZONE_COUNT`). Le premier terme (0.0) et le dernier (1.5) ne gouvernent aucun
+# calcul (`hr_zone_of` sature la zone 1 vers le bas et la zone 5 vers le haut) : ils
+# ne servent qu'à exposer une borne d'affichage cohérente.
+HR_ZONE_LTHR_PCT = (0.0, 0.85, 0.90, 0.95, 1.00, 1.5)
+# %FCmax : convention à 5 zones courante (Z1 < 60 %, Z2 60-70 %, Z3 70-80 %,
+# Z4 80-90 %, Z5 90-100 %+ de la FC max) — la méthode de repli quand ni la FC au
+# seuil ni la FC de repos ne sont connues (seule la FC max suffit).
+HR_ZONE_PCT_MAX = (0.0, 0.60, 0.70, 0.80, 0.90, 1.5)
+# Polarisation 80/20 façon Seiler (Seiler & Kjerland 2006 ; Seiler 2010, « What is
+# best practice for training intensity and duration distribution in endurance
+# athletes? ») : une APPROXIMATION du modèle à 3 zones (sous le premier seuil
+# ventilatoire/lactique, entre les deux seuils, au-dessus du second), jamais une
+# mesure de lactate ou de seuils ventilatoires réels — voir ASSUMPTIONS["hr_zones"].
+#
+# Les seuils Seiler ne tombent PAS sur les mêmes bornes bpm selon la méthode de
+# zones : un simple mapping fixe des 5 zones (Z1+Z2/Z3/Z4+Z5) serait FAUX pour LTHR
+# et %FCmax, où les bornes de zones répondent à une autre logique (paliers
+# d'entraînement Friel/%FCmax, pas les seuils ventilatoires VT1/VT2 que Seiler
+# suppose) — voir `seiler_bounds`, qui calcule deux bornes bpm DÉDIÉES par méthode
+# plutôt que de réutiliser les bornes des 5 zones affichées :
+# - Karvonen : le mapping Z1+Z2/Z3/Z4+Z5 EST correct ici, parce que nos bornes de
+#   zones 3 et 4 (70 %/80 % de la réserve FC) sont déjà les seuils Seiler usuels sur
+#   la réserve FC (Karvonen, Kentala & Mustala 1957 pour la réserve elle-même).
+# - LTHR : les seuils Seiler sont à 90 % et 100 % de la LTHR, PAS aux bornes de nos
+#   zones 2/3 (90 %, en fait identique) et 4/5 (100 %, identique aussi) — mais Z4
+#   (95-99 % LTHR) reste alors dans la zone MODÉRÉE (encore sous le second seuil),
+#   pas la difficile : `seiler_bounds("lthr")` regroupe donc Z1+Z2 facile,
+#   Z3+Z4 modérée, Z5 difficile — jamais Z4+Z5 difficile comme pour Karvonen.
+# - %FCmax : nos bornes de zones (60/70/80/90 %) NE correspondent à aucun seuil
+#   ventilatoire usuel en %FCmax — les regrouper donnerait une polarisation
+#   trompeuse (ex. Z3, 70-80 % FCmax, est typiquement SOUS VT1, pas « modérée »).
+#   `seiler_bounds("percent_max")` calcule donc deux bornes INDÉPENDANTES des 5
+#   zones affichées, à 82 % et 87 % de la FC max — une APPROXIMATION MAISON de
+#   l'emplacement typique de VT1/VT2 en %FCmax pour un adulte entraîné, PAS une
+#   valeur tirée d'une source vérifiée (aucune citation fiable trouvée pour ces
+#   deux pourcentages précis — mieux vaut le dire explicitement que citer une
+#   source invérifiable) : nettement moins précis qu'un test d'effort réel, d'où
+#   l'usage du mot « approximation ». À affiner si une source solide se présente.
+HR_ZONE_SEILER_PCT_MAX = (0.82, 0.87)
 
 ASSUMPTIONS = {
     "trimp": "TRIMP de Banister : minutes × FCr × 0,64 × e^(k·FCr), FCr = (FC moy − FC repos) / (FC max − FC repos), "
@@ -449,6 +507,80 @@ ASSUMPTIONS = {
                  "avant défaut. Deux puces qui dérivent le même slug (rachat du même modèle sans `id:` pour les "
                  "distinguer) : `arc_legacy.parse_gear` renomme les suivantes `-2`, `-3`… plutôt que de laisser "
                  "la dernière écraser la première dans l'index, et la collision remonte dans `warnings`.",
+    "hr_zones": "Zones FC, temps en zone et polarisation 80/20 (#43) : des APPROXIMATIONS d'entraînement, "
+                "jamais une mesure physiologique directe (pas de test d'effort, pas de lactate, pas de "
+                "seuils ventilatoires mesurés) — voir plus bas pour la polarisation, la plus approximative "
+                "des deux. 5 zones, méthode de calcul des bornes choisie par PRÉCÉDENCE (configurable, "
+                "`[athlete].hr_zones` dans `config/workspace.toml`, valeurs `\"auto\"` (défaut) | `\"lthr\"` | "
+                "`\"karvonen\"` | `\"percent_max\"`, insensible à la casse, tout le reste retombant sur "
+                "`\"auto\"` avec un avertissement — voir `arc_index.py::_hr_zone_method` — une valeur explicite "
+                "FORCE cette méthode, sans repli si les champs qu'elle demande manquent, auquel cas aucune "
+                "zone n'est calculée MAIS la raison est rendue explicitement par `hr_zone_resolution` (jamais "
+                "une simple absence silencieuse) : "
+                "1) LTHR (`hr_threshold_bpm` du profil, « FC au seuil ») si renseignée — Friel "
+                "(« The Triathlete's Training Bible »), zones course à pied à 5 paliers : "
+                f"{', '.join(f'Z{i+1} {round(HR_ZONE_LTHR_PCT[i]*100)}-{round(HR_ZONE_LTHR_PCT[i+1]*100)} %' for i in range(5))} "
+                "de la LTHR (dernière borne ouverte vers le haut) — Friel décrit en réalité trois paliers "
+                "au-dessus du seuil (5a/5b/5c) que notre Z5 FUSIONNE, pour rester à 5 zones partout dans le "
+                "projet ; "
+                "2) Karvonen (réserve FC = FC max - FC repos, `hr_max_bpm`/`hr_rest_bpm` du profil) sinon, "
+                f"bornes à {', '.join(f'{round(p*100)} %' for p in HR_ZONE_KARVONEN_HRR_PCT)} de la réserve — "
+                "MÊME convention que `tests/lib/synthetic.py::KARVONEN_HRR_PCT`, ce qui permet aux tests de "
+                "temps en zone (palier D) de comparer directement le temps en zone calculé à la vérité connue "
+                "du générateur synthétique sur le profil type (FC repos 48, FC max 188 -> bornes 118/132/146/"
+                "160/174/188 bpm) — NOTE : le workspace synthétique type renseigne AUSSI une FC au seuil "
+                "(172 bpm), donc `\"auto\"` y résout en réalité sur LTHR, pas Karvonen (voir tests/README.md) ; "
+                "cette comparaison directe ne vaut que si `[athlete].hr_zones = \"karvonen\"` est forcé, ou si "
+                "le profil ne porte pas de FC au seuil ; "
+                "3) %FCmax sinon (`hr_max_bpm` seul suffit), bornes à "
+                f"{', '.join(f'{round(p*100)} %' for p in HR_ZONE_PCT_MAX)} de la FC max — convention à 5 "
+                "zones courante quand ni la FC de repos ni la FC au seuil ne sont connues ; "
+                "4) aucune zone calculée si même la FC max manque (`hr_zone_bounds` rend `None`) — jamais de "
+                "bornes inventées. `hr_zone_of` sature : tout ce qui est sous la 2ᵉ borne tombe en zone 1, tout "
+                "ce qui est au-delà de la 5ᵉ (dernière) borne tombe en zone 5, la 1ʳᵉ et la 6ᵉ valeur de chaque "
+                "tuple ne sont que des repères d'affichage internes (JAMAIS montrées telles quelles à "
+                "l'utilisateur : l'interface n'affiche que les bornes intérieures, « Z1 < X », « Z5 ≥ Y », le "
+                "temps sous le plancher théorique de Z1 comptant quand même en Z1). "
+                "Restreint aux sports de la famille course à pied (`arc_metrics.sport_family(sport) == "
+                "\"run\"` : course, trail, randonnée, marche) : le renforcement et le vélo (d'intérieur ou "
+                "non) sont EXCLUS du temps en zone et de la polarisation, même avec des échantillons FIT "
+                "ingérés — une FC élevée en renforcement (musculation, gainage) répond à un effort "
+                "essentiellement anaérobie/technique sans rapport avec les zones aérobies d'endurance, et le "
+                "vélo a en pratique une FC au seuil différente de la course à pied que le profil ne "
+                "renseigne pas séparément ; les compter gonflerait ou fausserait silencieusement la "
+                "polarisation hebdomadaire. La randonnée et la marche restent incluses (même famille "
+                "`\"run\"` que le reste du projet, ex. `GEAR_WEAR_SPORTS`, `effort_km`) : leur FC répond au "
+                "même modèle aérobie que la course, à une intensité différente. "
+                "Temps en zone (`time_in_zone_seconds`) : calculé sur les échantillons déjà sous-échantillonnés "
+                "de `arc_index.samples`/`samples_by_garmin_id` (résolution par défaut 5 s, `arc_samples."
+                "DEFAULT_RESOLUTION_S`), triés par `t_s`. Chaque échantillon pèse la durée `dt` jusqu'au "
+                "suivant, PLAFONNÉE à la résolution du sous-échantillonnage : une pause ou un trou de signal "
+                "(`arc_samples.ASSUMPTIONS[\"gaps\"]`, `dt` peut dépasser la résolution après un trou) n'est "
+                "donc JAMAIS compté comme du temps en zone — sans ce plafond, une montre restée en veille "
+                "30 min gonflerait artificiellement la zone où la FC se trouvait juste avant la pause. Le "
+                "DERNIER échantillon d'une séance (pas de suivant pour mesurer `dt`) est compté pour la "
+                "résolution nominale de son propre bucket. Un `hr_bpm` absent (`None`, capteur décroché) est "
+                "ignoré : ni zone, ni secondes comptées pour cet échantillon — cohérent avec le reste du "
+                "projet (mesure absente = absente, jamais 0). Recalculé pour CHAQUE activité à CHAQUE passage "
+                "de `arc_index.index_workspace` (jamais mis en cache par fichier comme les tables `PER_FILE_"
+                "TABLES`) : un changement du profil (FC max/repos/seuil, ou `[athlete].hr_zones`) est donc "
+                "répercuté dès le prochain index, incrémental ou `--rebuild`, sans étape supplémentaire. "
+                "Polarisation (`seiler_bounds` + `polarisation_shares`, modèle 3 zones de Seiler) : ENCORE "
+                "PLUS approximative que le temps en zone, parce que le seuil qui sépare « facile » de "
+                "« modérée » et « modérée » de « difficile » ne tombe PAS sur les mêmes bornes bpm que les 5 "
+                "zones affichées selon la méthode — `seiler_bounds` calcule donc deux bornes bpm DÉDIÉES par "
+                "méthode (voir sa docstring pour le détail par méthode) plutôt que de regrouper aveuglément "
+                "les 5 zones affichées : le mapping Z1+Z2/Z3/Z4+Z5 n'est physiologiquement correct QUE pour "
+                "Karvonen (Karvonen, Kentala & Mustala 1957 pour la réserve elle-même) ; pour LTHR, Z4 "
+                "(95-99 % LTHR) reste sous le second seuil Seiler (donc « modérée », pas « difficile ») ; pour "
+                "%FCmax, les seuils (82 %/87 %) sont une APPROXIMATION MAISON de l'emplacement typique de "
+                "VT1/VT2 en %FCmax, SANS source vérifiée (pas une valeur tirée telle quelle de la "
+                "littérature) — indépendants des bornes de zones affichées (60/70/80/90 %). Calculée "
+                "UNIQUEMENT sur les activités qui ont des "
+                "échantillons FIT ingérés (`hr_polarisation_time` non vide) ; une semaine sans AUCUNE activité "
+                "avec échantillons rend `None` sur tous ses champs (jamais 0 % ni une part calculée sur zéro "
+                "seconde) — une semaine avec au moins une activité datée sans FIT associé n'est pas `None` "
+                "pour autant, cette activité est simplement absente de la somme.",
 }
 
 # ---------------------------------------------------------------------------
@@ -487,6 +619,220 @@ def session_load(activity: dict, athlete: dict) -> Tuple[float, str]:
         rpe = DEFAULT_RPE.get(activity.get("sport"), DEFAULT_RPE_OTHER)
         source = "estimated"
     return (duration / 60.0) * rpe * RPE_TO_TRIMP, source
+
+
+# ---------------------------------------------------------------------------
+# Zones FC, temps en zone, polarisation 80/20 (#43)
+# ---------------------------------------------------------------------------
+
+
+def _normalise_hr_zone_method(method: Optional[str]) -> Optional[str]:
+    """`None`/`"auto"` restent tels quels ; toute chaîne est ramenée en minuscules et
+    sans espaces (`"LTHR"`, `" Lthr "` -> `"lthr"`) : un override de config ne doit pas
+    échouer silencieusement sur une simple différence de casse. Une valeur qui reste
+    hors de `HR_ZONE_METHODS ∪ {HR_ZONE_METHOD_DEFAULT}` après normalisation est
+    renvoyée telle quelle (chaîne inconnue) : c'est `hr_zone_resolution` qui la
+    transforme en raison lisible ; `arc_index.py::_hr_zone_method` filtre déjà ce cas
+    en amont pour la configuration réelle, cette fonction reste défensive pour tout
+    appelant direct (tests, CLI)."""
+    if not isinstance(method, str):
+        return method
+    normalised = method.strip().lower()
+    return normalised or None
+
+
+def hr_zone_bounds(athlete: dict, method: Optional[str] = None) -> Optional[Tuple[Tuple[float, ...], str]]:
+    """Bornes de zones FC (bpm, 6 valeurs pour 5 zones) et méthode effectivement utilisée.
+
+    `method` : override explicite (`"lthr"` | `"karvonen"` | `"percent_max"`,
+    insensible à la casse/aux espaces — voir `_normalise_hr_zone_method`) — une
+    valeur inconnue, ou dont les champs manquent au profil, rend `None` (jamais de
+    repli silencieux sur une autre méthode que celle demandée). `None` ou `"auto"`
+    (défaut, voir `HR_ZONE_METHOD_DEFAULT`) applique la précédence documentée dans
+    `ASSUMPTIONS["hr_zones"]` : LTHR -> Karvonen -> %FCmax -> `None` si même la FC max
+    manque. Rend `None` quand aucune méthode n'est calculable — jamais des bornes
+    inventées. Voir `hr_zone_resolution` pour une variante qui explique POURQUOI."""
+    method = _normalise_hr_zone_method(method)
+    hr_max = athlete.get("hr_max_bpm")
+    hr_rest = athlete.get("hr_rest_bpm")
+    lthr = athlete.get("hr_threshold_bpm")
+
+    def _lthr() -> Optional[Tuple[float, ...]]:
+        return tuple(round(lthr * p, 1) for p in HR_ZONE_LTHR_PCT) if lthr else None
+
+    def _karvonen() -> Optional[Tuple[float, ...]]:
+        if not hr_rest or not hr_max or hr_max <= hr_rest:
+            return None
+        reserve = hr_max - hr_rest
+        return tuple(round(hr_rest + p * reserve, 1) for p in HR_ZONE_KARVONEN_HRR_PCT)
+
+    def _percent_max() -> Optional[Tuple[float, ...]]:
+        return tuple(round(hr_max * p, 1) for p in HR_ZONE_PCT_MAX) if hr_max else None
+
+    resolvers = {"lthr": _lthr, "karvonen": _karvonen, "percent_max": _percent_max}
+    if method and method != HR_ZONE_METHOD_DEFAULT:
+        resolver = resolvers.get(method)
+        if resolver is None:
+            return None
+        bounds = resolver()
+        return (bounds, method) if bounds else None
+    for name in ("lthr", "karvonen", "percent_max"):
+        bounds = resolvers[name]()
+        if bounds:
+            return bounds, name
+    return None
+
+
+_HR_ZONE_MISSING_FIELDS = {
+    "lthr": "la FC au seuil, à renseigner dans le profil",
+    "karvonen": "la FC max et la FC de repos, à renseigner dans le profil",
+    "percent_max": "la FC max, à renseigner dans le profil",
+}
+
+
+def hr_zone_resolution(athlete: dict, method: Optional[str] = None) -> dict:
+    """Comme `hr_zone_bounds`, mais rend TOUJOURS un dict avec une raison explicite
+    quand aucune zone n'est calculable — pour l'API et la CLI, qui doivent dire
+    POURQUOI (méthode inconnue, méthode forcée mais champ manquant au profil, ou même
+    la FC max manque) plutôt que de masquer silencieusement la section (voir revue de
+    code #43, point 4).
+
+    Rend `{"bounds_bpm": [...], "method": <méthode utilisée>, "reason": None}` en cas
+    de succès, ou `{"bounds_bpm": None, "method": <méthode demandée ou None>,
+    "reason": <texte>}` sinon — jamais d'exception."""
+    normalised = _normalise_hr_zone_method(method)
+    requested = normalised or HR_ZONE_METHOD_DEFAULT
+    known = (HR_ZONE_METHOD_DEFAULT,) + HR_ZONE_METHODS
+    if requested not in known:
+        return {"bounds_bpm": None, "method": requested,
+                "reason": f"méthode « {requested} » inconnue (attendu : {', '.join(known)})"}
+    resolved = hr_zone_bounds(athlete, requested)
+    if resolved:
+        bounds, used = resolved
+        return {"bounds_bpm": list(bounds), "method": used, "reason": None}
+    if requested == HR_ZONE_METHOD_DEFAULT:
+        return {"bounds_bpm": None, "method": None,
+                "reason": "aucune méthode de zones calculable (profil sans FC max/repos/seuil renseignée)"}
+    return {"bounds_bpm": None, "method": requested,
+            "reason": f"méthode « {requested} » forcée par le réglage de zones FC de la configuration, mais "
+                      f"{_HR_ZONE_MISSING_FIELDS[requested]}"}
+
+
+def hr_zone_of(hr_bpm: float, bounds: Sequence[float]) -> int:
+    """Numéro de zone (1..len(bounds)-1) contenant `hr_bpm` ; sature aux bornes —
+    même convention que `tests/lib/synthetic.py::_zone_of_bpm`."""
+    zones = len(bounds) - 1
+    for z in range(1, zones + 1):
+        if hr_bpm < bounds[z] or z == zones:
+            return z
+    return zones
+
+
+def _time_weighted_buckets(samples: Sequence[dict], resolution_s: float,
+                            bucket_of) -> Dict[Any, float]:
+    """Partage commun à `time_in_zone_seconds` et `time_in_polarisation_seconds` :
+    trie par `t_s`, ignore `hr_bpm` absent, pèse chaque échantillon par
+    `min(dt_vers_le_suivant, resolution_s)` (jamais `dt` brut — voir
+    `ASSUMPTIONS["hr_zones"]` pour pourquoi), et accumule dans le seau que rend
+    `bucket_of(hr_bpm)`."""
+    ordered = sorted((s for s in samples if s.get("t_s") is not None), key=lambda s: s["t_s"])
+    seconds: Dict[Any, float] = {}
+    n = len(ordered)
+    for i, sample in enumerate(ordered):
+        hr = sample.get("hr_bpm")
+        if hr is None:
+            continue
+        dt = ordered[i + 1]["t_s"] - sample["t_s"] if i + 1 < n else resolution_s
+        dt = max(0.0, min(dt, resolution_s))
+        bucket = bucket_of(hr)
+        seconds[bucket] = seconds.get(bucket, 0.0) + dt
+    return seconds
+
+
+def time_in_zone_seconds(samples: Sequence[dict], bounds: Sequence[float],
+                          resolution_s: float) -> Dict[int, float]:
+    """Temps en zone (secondes) par numéro de zone, depuis des échantillons
+    sous-échantillonnés (`arc_index.samples`/`samples_by_garmin_id`, format
+    `{t_s, hr_bpm, ...}`, triés ou non).
+
+    Voir `ASSUMPTIONS["hr_zones"]` pour la méthode complète : chaque échantillon pèse
+    `min(dt_vers_le_suivant, resolution_s)` — jamais `dt` brut, pour qu'une pause ou un
+    trou de signal (`dt` peut dépasser `resolution_s`, voir `arc_samples.ASSUMPTIONS
+    ["gaps"]`) ne soit jamais compté comme du temps en zone. Le dernier échantillon
+    (pas de suivant) compte pour `resolution_s`. `hr_bpm` absent : échantillon ignoré."""
+    return _time_weighted_buckets(samples, resolution_s, lambda hr: hr_zone_of(hr, bounds))
+
+
+def seiler_bounds(athlete: dict, method: str) -> Optional[Tuple[float, float]]:
+    """Bornes bpm (facile/modérée, modérée/difficile) du modèle 3 zones de Seiler,
+    DÉDIÉES à `method` — jamais un simple regroupement des 5 zones affichées (voir
+    `ASSUMPTIONS["hr_zones"]` pour la justification complète et les sources) :
+
+    - `"karvonen"` : seuils à 70 %/80 % de la réserve FC — MÊMES valeurs que nos
+      bornes de zones 3/4 (`HR_ZONE_KARVONEN_HRR_PCT[2]`/`[3]`), donc équivalent au
+      regroupement Z1+Z2 facile / Z3 modérée / Z4+Z5 difficile.
+    - `"lthr"` : seuils à 90 %/100 % de la LTHR — PAS aux bornes 2/3 et 4/5 de nos
+      zones affichées telles quelles regroupées zone par zone : Z4 (95-99 % LTHR)
+      reste sous le second seuil, donc « modérée ».
+    - `"percent_max"` : seuils à `HR_ZONE_SEILER_PCT_MAX` (82 %/87 % de la FC max),
+      INDÉPENDANTS des bornes de zones affichées (60/70/80/90 %).
+
+    Rend `None` si les champs requis par `method` manquent au profil, ou si `method`
+    n'est ni `"karvonen"`, ni `"lthr"`, ni `"percent_max"` (`"auto"` n'a pas de sens
+    ici : appeler avec la méthode déjà résolue par `hr_zone_bounds`/`hr_zone_resolution`)."""
+    method = _normalise_hr_zone_method(method)
+    hr_max = athlete.get("hr_max_bpm")
+    hr_rest = athlete.get("hr_rest_bpm")
+    lthr = athlete.get("hr_threshold_bpm")
+    if method == "karvonen":
+        if not hr_rest or not hr_max or hr_max <= hr_rest:
+            return None
+        reserve = hr_max - hr_rest
+        return (hr_rest + HR_ZONE_KARVONEN_HRR_PCT[2] * reserve, hr_rest + HR_ZONE_KARVONEN_HRR_PCT[3] * reserve)
+    if method == "lthr":
+        return (lthr * 0.90, lthr * 1.00) if lthr else None
+    if method == "percent_max":
+        return (hr_max * HR_ZONE_SEILER_PCT_MAX[0], hr_max * HR_ZONE_SEILER_PCT_MAX[1]) if hr_max else None
+    return None
+
+
+def _seiler_bucket(hr_bpm: float, thresholds: Tuple[float, float]) -> str:
+    low_high, moderate_high = thresholds
+    if hr_bpm < low_high:
+        return "low"
+    if hr_bpm < moderate_high:
+        return "moderate"
+    return "high"
+
+
+def time_in_polarisation_seconds(samples: Sequence[dict], thresholds: Tuple[float, float],
+                                  resolution_s: float) -> Dict[str, float]:
+    """Temps (secondes) par seau Seiler (`"low"`/`"moderate"`/`"high"`), depuis des
+    échantillons sous-échantillonnés et les bornes bpm dédiées rendues par
+    `seiler_bounds` — même méthode de pondération que `time_in_zone_seconds` (voir sa
+    docstring et `ASSUMPTIONS["hr_zones"]`), mais sur un DÉCOUPAGE bpm différent :
+    jamais dérivé de `time_in_zone_seconds` en regroupant des numéros de zone."""
+    return _time_weighted_buckets(samples, resolution_s, lambda hr: _seiler_bucket(hr, thresholds))
+
+
+def polarisation_shares(bucket_seconds: Dict[str, float]) -> Optional[dict]:
+    """Répartition Seiler à 3 zones (facile/modérée/difficile) depuis un temps par
+    seau `{"low"|"moderate"|"high": secondes}` (voir `time_in_polarisation_seconds`).
+    `None` si `bucket_seconds` est vide ou de somme nulle (rien à répartir) — jamais
+    0 % partout, qui laisserait croire à une mesure réelle. Voir `ASSUMPTIONS["hr_zones"]`
+    pour le caractère approximatif de ce modèle."""
+    total = sum(bucket_seconds.values())
+    if not total:
+        return None
+    low = bucket_seconds.get("low", 0.0)
+    moderate = bucket_seconds.get("moderate", 0.0)
+    high = bucket_seconds.get("high", 0.0)
+    return {
+        "total_s": total, "low_s": low, "moderate_s": moderate, "high_s": high,
+        "low_pct": round(low / total * 100, 1),
+        "moderate_pct": round(moderate / total * 100, 1),
+        "high_pct": round(high / total * 100, 1),
+    }
 
 
 # ---------------------------------------------------------------------------

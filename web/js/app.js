@@ -402,7 +402,8 @@ async function viewForm(params) {
     <section class="band"><h2>Volume hebdomadaire</h2>
       <p class="legend">${trail ? `<span class="legend__item"><span class="key key--bar"></span>Heures d'effort</span> <span class="legend__item"><span class="key key--dplus"></span>D+ cumulé</span>` : `<span class="legend__item"><span class="key key--bar"></span>Kilomètres</span>`}</p>
       <div class="chart-host" id="c-load">${loadChart.svg}</div><p class="readout" id="r-load"></p>
-      <dl class="facts facts--inline"><div><dt>Monotonie (7 j)</dt><dd>${F.num(load.monotony, 2)}</dd></div><div><dt>Strain (7 j)</dt><dd>${F.num(load.strain)}</dd></div><div><dt>Charge du jour</dt><dd>${F.num(last.load)}</dd></div></dl></section>`;
+      <dl class="facts facts--inline"><div><dt>Monotonie (7 j)</dt><dd>${F.num(load.monotony, 2)}</dd></div><div><dt>Strain (7 j)</dt><dd>${F.num(load.strain)}</dd></div><div><dt>Charge du jour</dt><dd>${F.num(last.load)}</dd></div></dl></section>
+    ${polarisationSection(load.polarisation_weeks, load.hr_zones_reason)}`;
 
   attachCursor($("#c-form"), chart, (i) => {
     const p = series[i];
@@ -412,6 +413,87 @@ async function viewForm(params) {
   attachCursor($("#c-load"), loadChart, (i) => {
     const w = weeks[i];
     readout($("#r-load"), `<strong>Semaine du ${F.dayShort(w.week_start)}</strong> · ${w.sessions} séance${w.sessions > 1 ? "s" : ""} · ${F.hours(w.duration_s)} · ${F.distance(w.distance_m)}${trail ? ` · ${F.elevation(w.elevation_m)} D+${w.effort_km ? ` · ${F.num(w.effort_km, 1)} km-effort` : ""}` : ` · ${F.pace(w.distance_m, w.duration_s)}`} · charge ${F.num(w.load)}`);
+  });
+  wirePolarisationChart(load.polarisation_weeks);
+}
+
+/** Section « Polarisation 80/20 » de Forme & charge (#43) : une barre empilée par
+ * semaine (facile / modérée / difficile, seuils Seiler DÉDIÉS à la méthode de zones
+ * du profil — voir `arc_metrics.seiler_bounds`), en SVG (pas de style en ligne, CSP).
+ * Une semaine sans AUCUNE activité à échantillons FIT (`polarisation: null`, voir
+ * `arc_index.weekly_polarisation`) reste visible, barre grise, plutôt que masquée :
+ * on veut voir où la donnée manque, pas la faire disparaître silencieusement.
+ *
+ * Une semaine par groupe `<g>` (`tabindex`/`role="img"`/`aria-label`, navigable au
+ * clavier), pour que `wirePolarisationChart` (appelée après insertion dans le DOM)
+ * mette à jour un `readout` visible au survol/focus — jamais SEULEMENT un `<title>`
+ * SVG, illisible au clavier et peu visible à la souris (revue de code #43, nit). Un
+ * résumé de la semaine la plus récente reste affiché par défaut, avant toute
+ * interaction. Les seuils facile/modérée/difficile dépendent de la méthode de zones
+ * du profil (Karvonen, LTHR ou %FCmax) : jamais un simple « Z1-Z2/Z3/Z4-Z5 » fixe,
+ * faux pour LTHR et %FCmax (voir `arc_metrics.seiler_bounds`). */
+function polarisationSection(weeks, hrZonesReason) {
+  // `hrZonesReason` (non nul) : AUCUNE zone n'est calculable pour ce profil (FC max/
+  // repos/seuil manquante, ou méthode forcée incomplète) — la section reste visible
+  // avec la raison plutôt que de disparaître silencieusement (revue de code #43,
+  // round 3). Distinct d'une fenêtre simplement sans séances à échantillons FIT
+  // (`weeks` vide de données), qui n'est pas une erreur de configuration.
+  if (hrZonesReason) {
+    return `<section class="band"><h2>Polarisation 80/20</h2>${note(F.esc(hrZonesReason))}</section>`;
+  }
+  if (!weeks || !weeks.some((w) => w.polarisation)) return "";
+  const barW = 22, gap = 8, chartH = 64;
+  const groups = weeks.map((w, i) => {
+    const x = i * (barW + gap);
+    const p = w.polarisation;
+    if (!p) {
+      const label = `${F.dayShort(w.week_start)} : pas d'échantillons FIT`;
+      return `<g class="polar-week" data-i="${i}" tabindex="0" role="img" aria-label="${F.esc(label)}">
+        <rect class="polar polar--none" x="${x}" y="${chartH - 4}" width="${barW}" height="4" rx="2"></rect></g>`;
+    }
+    const segs = [["low", p.low_pct], ["moderate", p.moderate_pct], ["high", p.high_pct]];
+    let y = chartH;
+    const rects = segs.map(([cls, pct]) => {
+      const segH = Math.max(0, (pct / 100) * chartH);
+      y -= segH;
+      return `<rect class="polar polar--${cls}" x="${x}" y="${y.toFixed(1)}" width="${barW}" height="${segH.toFixed(1)}"></rect>`;
+    }).join("");
+    const label = `${F.dayShort(w.week_start)} : facile ${F.num(p.low_pct, 0)} % · modérée ${F.num(p.moderate_pct, 0)} % · difficile ${F.num(p.high_pct, 0)} %`;
+    return `<g class="polar-week" data-i="${i}" tabindex="0" role="img" aria-label="${F.esc(label)}">${rects}</g>`;
+  }).join("");
+  const totalW = weeks.length * barW + (weeks.length - 1) * gap;
+  const latest = [...weeks].reverse().find((w) => w.polarisation);
+  const defaultReadout = latest
+    ? polarisationReadoutHtml(latest)
+    : "Pas encore de semaine avec échantillons FIT.";
+  return `<section class="band"><h2>Polarisation 80/20</h2>
+    <p class="muted">Part du temps en zone FC facile, modérée et difficile — seuils propres à la méthode de
+      zones du profil (Karvonen, FC au seuil ou %FC max, voir <a href="#/performance">Hypothèses des modèles</a>),
+      sur les semaines avec séances à échantillons FIT.</p>
+    <p class="legend"><span class="legend__item"><span class="key key--polar-low"></span>Facile</span> <span class="legend__item"><span class="key key--polar-moderate"></span>Modérée</span> <span class="legend__item"><span class="key key--polar-high"></span>Difficile</span></p>
+    <div class="chart-host" id="c-polar"><svg class="polar-chart" viewBox="0 0 ${totalW} ${chartH}">${groups}</svg></div>
+    <p class="readout" id="r-polar">${defaultReadout}</p></section>`;
+}
+
+function polarisationReadoutHtml(week) {
+  const p = week.polarisation;
+  return `<strong>Semaine du ${F.dayShort(week.week_start)}</strong> · facile ${F.num(p.low_pct, 0)} % · modérée ${F.num(p.moderate_pct, 0)} % · difficile ${F.num(p.high_pct, 0)} %`;
+}
+
+/** Câble le survol/focus clavier de chaque semaine du graphique de polarisation vers
+ * le `readout` visible sous le graphique (voir `polarisationSection`) — appelée une
+ * fois le HTML inséré dans le DOM, jamais avant (les `<g data-i>` n'existent pas
+ * encore sinon). */
+function wirePolarisationChart(weeks) {
+  const host = $("#c-polar");
+  if (!host) return;
+  host.querySelectorAll(".polar-week").forEach((g) => {
+    const week = weeks[Number(g.dataset.i)];
+    if (!week) return;
+    const show = () => readout($("#r-polar"),
+      week.polarisation ? polarisationReadoutHtml(week) : `${F.dayLong(week.week_start)} : pas d'échantillons FIT.`);
+    g.addEventListener("mouseenter", show);
+    g.addEventListener("focus", show);
   });
 }
 
@@ -618,7 +700,59 @@ async function viewSession(id) {
     <dl class="facts facts--grid">${facts.map(([k, v]) => `<div><dt>${k}</dt><dd>${v}</dd></div>`).join("")}</dl>
     ${wx ? `<p class="weather">${weatherChip(wx.category)} <span>${F.esc(wx.location)} · ${F.num(wx.temp_min_c)}–${F.num(wx.temp_max_c)} °C · vent ${F.num(wx.wind_kmh)} km/h</span></p>` : ""}
     ${splitsHtml}
+    ${hrZoneSection(d.hr_zones)}
     <section class="band prose"><h2>Analyse du coach</h2>${d.body_html || "<p class=\"muted\">Pas de texte.</p>"}<p class="muted source">Source : <code>${F.esc(a.source_path)}</code></p></section>`;
+}
+
+/** Section « Zones FC » de la page séance (#43) : temps en zone en barre empilée
+ * (SVG, jamais de style en ligne — CSP `style-src 'self'`) + légende. `hz` vient de
+ * `/api/activity/<id>.hr_zones` (voir `arc_serve.py::api_activity_hr_zones`), et est
+ * TOUJOURS un objet (jamais `null` — revue de code #43, point 4) : `bounds_bpm: null`
+ * porte une `reason` explicite (méthode inconnue, méthode forcée mais champ manquant
+ * au profil, ou aucune donnée du tout) affichée à l'utilisateur plutôt que masquée ;
+ * `zone_seconds: null` avec des bornes connues signale une séance sans échantillons
+ * FIT (ou un sport hors de la famille course à pied, voir `compute_metrics`). */
+const HR_ZONE_METHOD_LABEL = { lthr: "FC au seuil (LTHR)", karvonen: "Karvonen (réserve FC)", percent_max: "% FC max" };
+
+/** Bornes INTÉRIEURES seulement (« Z1 < 146 · Z2 146-153 · … · Z5 ≥ 170 ») : le
+ * premier (0) et le dernier (1,5×) élément de `bounds_bpm` sont des repères de calcul
+ * internes, jamais des seuils réels (revue de code #43, point 3 — un temps de FC sous
+ * le plancher théorique de Z1 compte quand même dans Z1, `arc_metrics.hr_zone_of`). */
+function hrZoneBoundsLabel(bounds) {
+  const b = bounds.map((v) => Math.round(v));
+  return [
+    `Z1 < ${b[1]}`, `Z2 ${b[1]}-${b[2]}`, `Z3 ${b[2]}-${b[3]}`, `Z4 ${b[3]}-${b[4]}`, `Z5 ≥ ${b[4]}`,
+  ].join(" · ") + " bpm";
+}
+
+function hrZoneSection(hz) {
+  const methodLabel = HR_ZONE_METHOD_LABEL[hz.method] || hz.method;
+  if (!hz.bounds_bpm) {
+    return `<section class="band"><h2>Zones FC</h2>${note(F.esc(hz.reason || "Zones FC non calculables."))}</section>`;
+  }
+  const boundsTxt = hrZoneBoundsLabel(hz.bounds_bpm);
+  if (!hz.zone_seconds) {
+    return `<section class="band"><h2>Zones FC</h2><p class="muted">Bornes (${F.esc(methodLabel)}) : ${boundsTxt}.</p>
+      ${note(F.esc(hz.reason || "Pas d'échantillons FIT ingérés pour cette séance : le temps en zone ne peut pas être calculé."))}</section>`;
+  }
+  const seconds = [1, 2, 3, 4, 5].map((z) => hz.zone_seconds[z] ?? hz.zone_seconds[String(z)] ?? 0);
+  const total = seconds.reduce((a, b) => a + b, 0);
+  if (!total) return "";
+  const w = 640, h = 26;
+  let x = 0;
+  const segs = seconds.map((secs, i) => {
+    const z = i + 1, width = (secs / total) * w;
+    const rect = width > 0 ? `<rect class="zone zone--${z}" x="${x.toFixed(2)}" y="0" width="${width.toFixed(2)}" height="${h}"><title>Zone ${z} : ${F.duration(secs)}</title></rect>` : "";
+    x += width;
+    return rect;
+  }).join("");
+  const label = `Temps en zone : ${seconds.map((s, i) => `zone ${i + 1} ${F.duration(s)}`).join(", ")}, total ${F.duration(total)}.`;
+  const legend = seconds.map((s, i) => `<span class="legend__item"><span class="key key--zone${i + 1}"></span>Z${i + 1} ${F.duration(s)}</span>`).join(" ");
+  const pol = hz.polarisation;
+  const polTxt = pol ? `<p class="muted">Polarisation : facile ${F.num(pol.low_pct, 0)} % · modérée ${F.num(pol.moderate_pct, 0)} % · difficile ${F.num(pol.high_pct, 0)} %.</p>` : "";
+  return `<section class="band"><h2>Zones FC</h2><p class="muted">Bornes (${F.esc(methodLabel)}) : ${boundsTxt}.</p>
+    <svg class="zone-bar" viewBox="0 0 ${w} ${h}" role="img" aria-label="${F.esc(label)}">${segs}</svg>
+    <p class="legend">${legend}</p>${polTxt}</section>`;
 }
 
 // ---------------------------------------------------------------------------

@@ -37,6 +37,7 @@ from __future__ import annotations
 import copy
 import datetime
 import json
+import re
 import sys
 import unittest
 import urllib.parse
@@ -56,6 +57,39 @@ import arc_serve  # noqa: E402
 TODAY = "2026-09-23"
 SEED = 12345
 DAYS = 40  # cf. docstring : budget de taille du golden
+
+
+def _write_fixed_fit_samples(ws: Path, today: str) -> None:
+    """Écrit `activities/fit/<garmin_activity_id>.json` À LA MAIN (jamais le
+    générateur aléatoire `tests.lib.synthetic.sample_session`) pour l'activité datée
+    `today` du workspace golden (#43, revue de code, nit) : sans ce fichier, AUCUNE
+    activité du workspace synthétique n'a d'échantillon FIT ingéré, donc
+    `hr_zones`/`polarisation_weeks` restent `null` PARTOUT dans le golden — ce chemin
+    (bornes connues + temps en zone/polarisation réellement calculés) ne serait donc
+    jamais verrouillé par la comparaison golden. FC constante à 150 bpm, 30 min à 5 s
+    de résolution (360 points) : entièrement déterministe, sans tirage `rng`, la
+    valeur de FC n'a pas besoin de varier pour prouver que le calcul tourne. Le
+    `garmin_activity_id` est LU dans le fichier Markdown de l'activité (jamais codé
+    en dur) : il reste correct même si le générateur venait à changer sa façon de les
+    attribuer."""
+    matches = sorted((ws / "activities").glob(f"{today}_*.md"))
+    if not matches:
+        raise AssertionError(f"aucune activité datée {today} dans le workspace golden — "
+                             "`_write_fixed_fit_samples` doit être ajustée")
+    text = matches[0].read_text(encoding="utf-8")
+    match = re.search(r'"garmin_activity_id":\s*(\d+)', text)
+    if not match:
+        raise AssertionError(f"garmin_activity_id introuvable dans {matches[0]}")
+    garmin_id = int(match.group(1))
+    records = [
+        {"t_s": t, "distance_m": round(t * 2.7, 2), "altitude_m": 0.0, "hr_bpm": 150.0,
+         "speed_ms": 2.7, "cadence_spm": 172.0}
+        for t in range(0, 1800, 5)
+    ]
+    fit_dir = ws / "activities/fit"
+    fit_dir.mkdir(parents=True, exist_ok=True)
+    (fit_dir / f"{garmin_id}.json").write_text(
+        json.dumps({"activity_id": garmin_id, "records": records}), encoding="utf-8")
 
 
 def _endpoint_urls(server: Server) -> dict:
@@ -149,6 +183,7 @@ class GoldenCase:
         self.addCleanup(self.sb.__exit__, None, None, None)
         self.ws = build(self.sb.root / "ws", days=DAYS, sport=self.sport, seed=SEED,
                         today=datetime.date.fromisoformat(TODAY))
+        _write_fixed_fit_samples(self.ws, TODAY)
         self.server = Server(self.sb, ["python3", str(self.sb.repo / "scripts/arc_serve.py"),
                                        "--workspace", str(self.ws), "--port", "0", "--today", TODAY])
         self.addCleanup(self.server.stop)

@@ -15,6 +15,7 @@ sert au tableau de bord (`scripts/arc_serve.py`) et aux calculs de charge
     arc_index.py heat-acclimation         # acclimatation à la chaleur, 14 j, en JSON (#38)
     arc_index.py fueling                  # glucides/h et sudation, sorties longues, en JSON (#41)
     arc_index.py samples GARMIN_ID         # échantillons ingérés d'une séance, en JSON (#42)
+    arc_index.py zones [--activity GARMIN_ID] [--weeks N]   # zones FC, temps en zone, polarisation (#43)
 
 `hrv-baseline` n'a besoin d'aucun tableau de bord lancé (headless, `/garmin-daily-sync`
 compris) : elle réindexe puis rend le point du jour de `arc_metrics.hrv_baseline_series`
@@ -48,6 +49,19 @@ pas l'id interne de la table `activity`), les échantillons FIT déjà ingérés
 séance n'a pas de FIT associé — jamais une erreur (voir `arc_samples.py` et
 `ingest_samples` ci-dessous pour le format et l'ingestion elle-même).
 
+`zones` (#43) rend les bornes de zones FC effectives (méthode par précédence, voir
+`arc_metrics.hr_zone_resolution` — toujours une `reason` explicite quand aucune
+zone n'est calculable, jamais un échec muet) et, selon les options :
+`--activity GARMIN_ID` le temps en zone d'une séance précise ; `--weeks N` (défaut 8)
+la polarisation 80/20 hebdomadaire des N dernières semaines. Restreint aux sports de
+la famille course à pied (`arc_metrics.sport_family` = « run » : course, trail,
+randonnée, marche — pas le renforcement ni le vélo). Tables dérivées `hr_zone_time`
+(5 zones affichées) et `hr_polarisation_time` (bornes Seiler DÉDIÉES par méthode,
+jamais un regroupement des 5 zones) recalculées en entier à chaque passage de
+`index_workspace` (voir `compute_metrics`) : un changement de profil (FC max/repos/
+seuil) ou de `[athlete].hr_zones` est répercuté sans étape à part. Voir
+`arc_metrics.ASSUMPTIONS["hr_zones"]`.
+
 Options communes : `--workspace DIR` (sinon $ARC_WORKSPACE, le pointeur
 ~/.config/ai-running-coach/workspace, puis le moteur), `--db FICHIER` (défaut
 <workspace>/.arc/coach.db), `--memory` (base en mémoire, rien sur disque),
@@ -78,8 +92,8 @@ import arc_samples as S  # noqa: E402
 from coach_config import ConfigError, read_toml  # noqa: E402
 from coach_setup import ENGINE, workspace_root  # noqa: E402
 
-SCHEMA_VERSION = 9   # #42 (revue PR #87) : activity_sample keyed by garmin_activity_id (pas
-                      # activity.id/rowid) + table dédiée `sample_file` (jamais `source_file`)
+SCHEMA_VERSION = 10  # #43 (revue de code) : nouvelle table `hr_polarisation_time` (bornes
+                      # Seiler DÉDIÉES par méthode, jamais dérivées de `hr_zone_time`)
 DEFAULT_DB = ".arc/coach.db"
 DATA_DIRS = ("activities", "medical", "nutrition", "planning", "rapports")
 
@@ -140,6 +154,37 @@ def _heat_threshold_c(config: Dict[str, dict]) -> float:
     return value
 
 
+def _hr_zone_method(config: Dict[str, dict]) -> str:
+    """Résout `[athlete].hr_zones`, jamais en levant (même discipline que
+    `_heat_threshold_c` ci-dessus) : un typo ou une casse différente
+    (`hr_zones = "LTHR"`, `hr_zones = "lthar"`) ne doit PAS casser `index_workspace`.
+
+    Insensible à la casse et aux espaces (`M.hr_zone_bounds` le refait de toute façon
+    en défense en profondeur, mais normaliser ici évite qu'un avertissement soit
+    émis à chaque appel pour une simple casse différente). Toute valeur absente,
+    vide, non-chaîne ou hors de `("auto",) + M.HR_ZONE_METHODS` retombe sur
+    `M.HR_ZONE_METHOD_DEFAULT` (« auto »), avec un avertissement sur stderr dans le
+    cas invalide seulement (pas pour une simple absence). Voir revue de code #43,
+    point 4 : une méthode FORCÉE mais dont le profil n'a pas les champs requis reste
+    volontairement possible ici (ce n'est pas une erreur de configuration, c'est
+    `arc_metrics.hr_zone_resolution` qui en rend la raison à l'appelant, pas cette
+    fonction — qui ne valide que le NOM de la méthode)."""
+    raw = config.get("athlete", {}).get("hr_zones")
+    if raw in (None, ""):
+        return M.HR_ZONE_METHOD_DEFAULT
+    allowed = (M.HR_ZONE_METHOD_DEFAULT,) + M.HR_ZONE_METHODS
+    if not isinstance(raw, str):
+        print(f"avertissement : [athlete].hr_zones = {raw!r} n'est pas une chaîne — "
+              f"défaut « {M.HR_ZONE_METHOD_DEFAULT} » appliqué.", file=sys.stderr)
+        return M.HR_ZONE_METHOD_DEFAULT
+    value = raw.strip().lower()
+    if value not in allowed:
+        print(f"avertissement : [athlete].hr_zones = {raw!r} hors de {allowed} — "
+              f"défaut « {M.HR_ZONE_METHOD_DEFAULT} » appliqué.", file=sys.stderr)
+        return M.HR_ZONE_METHOD_DEFAULT
+    return value
+
+
 def settings(config: Dict[str, dict]) -> dict:
     """Les réglages qui changent ce que l'index attend et ce que le tableau affiche."""
     agents = config.get("agents", {}).get("enabled", ["coach", "medical", "nutritionist", "course-strategist"])
@@ -150,6 +195,7 @@ def settings(config: Dict[str, dict]) -> dict:
         "agents": list(agents),
         "units": config.get("athlete", {}).get("units", "metric") or "metric",
         "profile": config.get("athlete", {}).get("profile", "planning/Runner_Profile.md"),
+        "hr_zones": _hr_zone_method(config),
         "language": config.get("language", {}).get("documents", "fr") or "fr",
     }
 
@@ -264,9 +310,21 @@ CREATE TABLE sample_file (
     path TEXT PRIMARY KEY, sha256 TEXT, mtime REAL, garmin_activity_id INTEGER,
     status TEXT, issues TEXT
 );
--- Lot 3 (zones FC, #43) : table prévue, vide tant que cette histoire n'existe pas.
+-- Temps en zone FC (#43), par activité (id INTERNE, comme `activity_split` — jamais
+-- `garmin_activity_id` : la ligne est recréée à chaque `compute_metrics`, sans purge
+-- par fichier). Une activité sans zone calculable (pas de FC max au profil), hors de
+-- la famille course à pied (`arc_metrics.sport_family` != "run" — revue de code #43,
+-- point 5 : le renforcement et le vélo faussaient la polarisation) ou sans
+-- échantillons FIT n'a simplement aucune ligne ici.
 CREATE TABLE hr_zone_time (activity_id INTEGER, zone INTEGER, seconds REAL);
 CREATE INDEX hr_zone_time_activity ON hr_zone_time(activity_id);
+-- Temps par seau Seiler (#43, revue de code point 2) : bornes bpm DÉDIÉES par
+-- méthode (`arc_metrics.seiler_bounds`), JAMAIS dérivées de `hr_zone_time` par un
+-- simple regroupement de numéros de zone (faux pour LTHR/%FCmax, voir
+-- ASSUMPTIONS["hr_zones"]). `bucket` : "low" | "moderate" | "high". Mêmes règles de
+-- restriction et de recalcul que `hr_zone_time` ci-dessus.
+CREATE TABLE hr_polarisation_time (activity_id INTEGER, bucket TEXT, seconds REAL);
+CREATE INDEX hr_polarisation_time_activity ON hr_polarisation_time(activity_id);
 """
 
 # Tables alimentées par fichier (colonne `source_path`) : purgées à la réindexation d'un fichier.
@@ -590,12 +648,22 @@ def store(conn, rel: str, kind: str, data: dict, arc_version: int) -> None:
 
 
 def compute_metrics(conn, conf: dict, today: Optional[str] = None) -> None:
-    """Charge par séance, VO2max par séance, puis la série quotidienne matérialisée."""
+    """Charge par séance, VO2max par séance, temps en zone FC + polarisation, puis la
+    série quotidienne matérialisée."""
     athlete = conn.execute("SELECT * FROM athlete LIMIT 1").fetchone()
     athlete = dict(athlete) if athlete else {}
+    zone_bounds = M.hr_zone_bounds(athlete, conf.get("hr_zones"))
+    seiler_thresholds = M.seiler_bounds(athlete, zone_bounds[1]) if zone_bounds else None
     loads: Dict[str, float] = {}
     estimates = []
     rows = conn.execute("SELECT * FROM activity ORDER BY date").fetchall()
+    # Tables dérivées intégralement recalculées à chaque passage (pas de purge par
+    # fichier comme `PER_FILE_TABLES`, `activity_id` change à chaque édition du
+    # Markdown — voir ASSUMPTIONS["hr_zones"]) : un changement de profil (FC max/
+    # repos/seuil) ou de `[athlete].hr_zones` est donc répercuté sans étape à part,
+    # incrémental ou `--rebuild`.
+    conn.execute("DELETE FROM hr_zone_time")
+    conn.execute("DELETE FROM hr_polarisation_time")
     for row in rows:
         act = dict(row)
         load, source = M.session_load(act, athlete)
@@ -607,6 +675,26 @@ def compute_metrics(conn, conf: dict, today: Optional[str] = None) -> None:
             loads[act["date"]] = loads.get(act["date"], 0.0) + load
             if vo2 is not None:
                 estimates.append((act["date"], vo2, act.get("duration_s") or 0))
+        # Restreint aux sports « course à pied » (running/trail/randonnée/marche) :
+        # le renforcement (effort anaérobie/technique) et le vélo (LTHR différente,
+        # non renseignée séparément au profil) fausseraient temps en zone et
+        # polarisation — voir ASSUMPTIONS["hr_zones"], revue de code #43 point 5.
+        if act.get("garmin_activity_id") and M.sport_family(act.get("sport")) == "run":
+            act_samples = samples(conn, act["id"])
+            if act_samples:
+                if zone_bounds:
+                    bounds, _method = zone_bounds
+                    zone_seconds = M.time_in_zone_seconds(act_samples, bounds, S.DEFAULT_RESOLUTION_S)
+                    conn.executemany(
+                        "INSERT INTO hr_zone_time (activity_id, zone, seconds) VALUES (?, ?, ?)",
+                        [(act["id"], zone, round(seconds, 1)) for zone, seconds in zone_seconds.items()],
+                    )
+                if seiler_thresholds:
+                    bucket_seconds = M.time_in_polarisation_seconds(act_samples, seiler_thresholds, S.DEFAULT_RESOLUTION_S)
+                    conn.executemany(
+                        "INSERT INTO hr_polarisation_time (activity_id, bucket, seconds) VALUES (?, ?, ?)",
+                        [(act["id"], bucket, round(seconds, 1)) for bucket, seconds in bucket_seconds.items()],
+                    )
     conn.execute("DELETE FROM metric_day")
     dated = sorted(loads)
     if dated:
@@ -794,6 +882,95 @@ def samples_by_garmin_id(conn, garmin_activity_id: int) -> dict:
     if not rows:
         result["reason"] = "aucun échantillon ingéré pour ce garmin_activity_id"
     return result
+
+
+# ---------------------------------------------------------------------------
+# Zones FC, temps en zone, polarisation 80/20 (#43)
+# ---------------------------------------------------------------------------
+
+
+def _monday(day: date) -> date:
+    return day - timedelta(days=day.weekday())
+
+
+def athlete_hr_zone_resolution(conn, conf: dict) -> dict:
+    """Résolution des zones FC pour ce workspace, AVEC raison explicite en cas
+    d'échec (méthode inconnue, méthode forcée mais champ manquant, ou aucune donnée
+    du tout) — voir `arc_metrics.hr_zone_resolution` (revue de code #43, point 4 :
+    jamais un `None` muet qui masquerait la section côté API/UI)."""
+    athlete = conn.execute("SELECT * FROM athlete LIMIT 1").fetchone()
+    return M.hr_zone_resolution(dict(athlete) if athlete else {}, conf.get("hr_zones"))
+
+
+def athlete_hr_zone_bounds(conn, conf: dict) -> Optional[Tuple[Tuple[float, ...], str]]:
+    """Bornes de zones + méthode effectivement utilisée pour ce workspace — voir
+    `arc_metrics.hr_zone_bounds` pour la précédence. `None` si aucune méthode n'est
+    calculable (profil sans FC max renseignée, au minimum). Pour un appelant qui a
+    besoin de savoir POURQUOI, voir `athlete_hr_zone_resolution`."""
+    athlete = conn.execute("SELECT * FROM athlete LIMIT 1").fetchone()
+    return M.hr_zone_bounds(dict(athlete) if athlete else {}, conf.get("hr_zones"))
+
+
+def activity_zone_report(conn, conf: dict, garmin_activity_id: int) -> dict:
+    """Temps en zone d'une séance (#43), par `garmin_activity_id` — pour la CLI
+    (`arc_index.py zones --activity`) et pour les agents en headless. Rend
+    `{"garmin_activity_id", "bounds_bpm", "method", "reason", "zone_seconds",
+    "polarisation"}` — `reason` est toujours présent (`None` en cas de succès),
+    `zone_seconds`/`polarisation` restent `None` si aucune zone n'est calculable, si
+    la séance n'existe pas, ou si elle n'a pas d'échantillons ingérés — jamais une
+    exception, jamais un échec muet."""
+    resolution = athlete_hr_zone_resolution(conn, conf)
+    if resolution["bounds_bpm"] is None:
+        return {"garmin_activity_id": garmin_activity_id, **resolution, "zone_seconds": None, "polarisation": None}
+    act = conn.execute("SELECT id FROM activity WHERE garmin_activity_id = ?", (garmin_activity_id,)).fetchone()
+    if act is None:
+        return {"garmin_activity_id": garmin_activity_id, **resolution, "reason": "aucune activité indexée pour ce garmin_activity_id",
+                "zone_seconds": None, "polarisation": None}
+    rows = conn.execute(
+        "SELECT zone, seconds FROM hr_zone_time WHERE activity_id = ?", (act["id"],)).fetchall()
+    pol_rows = conn.execute(
+        "SELECT bucket, seconds FROM hr_polarisation_time WHERE activity_id = ?", (act["id"],)).fetchall()
+    if not rows and not pol_rows:
+        return {"garmin_activity_id": garmin_activity_id, **resolution,
+                "reason": "aucun échantillon FIT ingéré pour cette séance (ou sport hors de la famille "
+                          "course à pied, voir ASSUMPTIONS[\"hr_zones\"])",
+                "zone_seconds": None, "polarisation": None}
+    zone_seconds = {row["zone"]: row["seconds"] for row in rows} if rows else None
+    pol_seconds = {row["bucket"]: row["seconds"] for row in pol_rows} if pol_rows else None
+    return {
+        "garmin_activity_id": garmin_activity_id, **resolution,
+        "zone_seconds": zone_seconds, "polarisation": M.polarisation_shares(pol_seconds) if pol_seconds else None,
+    }
+
+
+def weekly_polarisation(conn, weeks: int, today: date) -> List[dict]:
+    """Polarisation 80/20 hebdomadaire (#43) des `weeks` dernières semaines (la
+    courante incluse), plus ancienne en premier — pour la CLI (`arc_index.py zones
+    --weeks`) et pour `/api/load`. Une semaine sans AUCUNE activité à échantillons
+    (`hr_polarisation_time` vide sur toute la semaine) rend `polarisation: None` —
+    jamais 0 % partout, voir `arc_metrics.ASSUMPTIONS["hr_zones"]`. Lit directement
+    les seaux Seiler déjà calculés à l'indexation (bornes dédiées par méthode,
+    `arc_metrics.seiler_bounds`) — jamais un regroupement de `hr_zone_time` ici."""
+    first = _monday(today) - timedelta(weeks=weeks - 1)
+    buckets: Dict[str, Dict[str, float]] = {
+        (first + timedelta(weeks=w)).isoformat(): {} for w in range(weeks)
+    }
+    rows = conn.execute(
+        "SELECT a.date AS date, hp.bucket AS bucket, hp.seconds AS seconds "
+        "FROM hr_polarisation_time hp JOIN activity a ON a.id = hp.activity_id "
+        "WHERE a.date >= ? AND a.date <= ?",
+        (first.isoformat(), today.isoformat()),
+    ).fetchall()
+    for row in rows:
+        week_start = _monday(date.fromisoformat(row["date"])).isoformat()
+        bucket = buckets.get(week_start)
+        if bucket is None:
+            continue
+        bucket[row["bucket"]] = bucket.get(row["bucket"], 0.0) + row["seconds"]
+    out = []
+    for week_start in sorted(buckets):
+        out.append({"week_start": week_start, "polarisation": M.polarisation_shares(buckets[week_start])})
+    return out
 
 
 def index_workspace(conn, workspace: Path, today: Optional[str] = None) -> dict:
@@ -1040,7 +1217,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     parser.add_argument("command", nargs="?", default="index",
                         choices=("index", "backfill-plan", "status", "hrv-baseline", "sleep-debt",
-                                 "heat-acclimation", "gear", "fueling", "samples"))
+                                 "heat-acclimation", "gear", "fueling", "samples", "zones"))
     parser.add_argument("selector", nargs="?", default=None,
                         help="argument de la sous-commande (ex. garmin_activity_id pour « samples »)")
     parser.add_argument("--workspace")
@@ -1049,6 +1226,10 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--rebuild", action="store_true")
     parser.add_argument("--today", help="date de fin des séries (AAAA-MM-JJ)")
     parser.add_argument("--validate", nargs="+", metavar="FICHIER")
+    parser.add_argument("--activity", type=int, metavar="GARMIN_ID",
+                        help="commande « zones » : temps en zone d'une séance (garmin_activity_id)")
+    parser.add_argument("--weeks", type=int, metavar="N",
+                        help="commande « zones » : polarisation sur les N dernières semaines (défaut 8)")
     return parser
 
 
@@ -1110,6 +1291,19 @@ def main(argv=None) -> int:
         except ValueError:
             raise ConfigError(f"commande « samples » : entier attendu, « {args.selector} » reçu.")
         print(json.dumps(samples_by_garmin_id(conn, garmin_id), ensure_ascii=False))
+        return 0
+    if args.command == "zones":
+        conf = settings(load_config(workspace))
+        today_date = date.fromisoformat(args.today) if args.today else date.today()
+        if args.activity is not None:
+            print(json.dumps(activity_zone_report(conn, conf, args.activity), ensure_ascii=False))
+            return 0
+        weeks = args.weeks if args.weeks and args.weeks > 0 else 8
+        result = {
+            **athlete_hr_zone_resolution(conn, conf),
+            "weekly_polarisation": weekly_polarisation(conn, weeks, today_date),
+        }
+        print(json.dumps(result, ensure_ascii=False))
         return 0
     if args.command == "status":
         by_status = {row[0]: row[1] for row in conn.execute(

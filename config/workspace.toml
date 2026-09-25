@@ -64,6 +64,14 @@ git_autocommit = false
 profile = "planning/Runner_Profile.md"
 # Unités des distances, allures et poids. Valeurs : "metric" | "imperial".
 units = "metric"
+# Méthode de calcul des zones FC (#43, temps en zone + polarisation 80/20).
+#   "auto"        — précédence par défaut : FC au seuil (LTHR) si connue au profil,
+#                   sinon Karvonen (FC max/repos), sinon %FCmax (FC max seule)
+#   "lthr"        — force la FC au seuil (rien si absente du profil)
+#   "karvonen"    — force la réserve FC (rien si FC max ou repos absente)
+#   "percent_max" — force le %FCmax (rien si FC max absente)
+# Une valeur autre que "auto" force cette méthode SANS repli si le champ requis manque.
+hr_zones = "auto"
 
 [sport]
 # Discipline principale — détermine le profil chargé depuis `config/sports/`.
