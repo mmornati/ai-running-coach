@@ -13,6 +13,7 @@ soutenu par eux.
 | TrainingPeaks®, TSS®, NP®, IF® | Peaksware LLC (groupe Garmin depuis juillet 2026) | Non utilisés par le projet |
 | CTL, ATL, TSB | revendiqués par Peaksware LLC | Cités seulement pour l'équivalence ci-dessous |
 | Intervals.icu, Strava | leurs éditeurs respectifs | Services tiers, facultatifs |
+| Strava GAP, COROS Effort Pace, Suunto NGP | leurs éditeurs respectifs (Strava, Inc. ; COROS ; Suunto Oy) | Cités uniquement pour situer notre allure ajustée à la pente parmi des calculs équivalents du marché (voir l'équivalence ci-dessous) — non utilisés par le projet, calculs propriétaires non reproduits |
 
 Ces noms sont cités uniquement pour désigner les services avec lesquels le projet
 interagit ou pour expliquer une équivalence, conformément à l'usage loyal des
@@ -33,6 +34,19 @@ publiés dans la littérature scientifique et portent ici des noms génériques 
 | **ACWR** (fatigue / condition) | Hulin, Gabbett *et al.* (2014) | idem |
 | **Zones FC** (5 zones) | Karvonen, Kentala & Mustala (1957) (réserve FC) ; Friel, *The Triathlete's Training Bible* (% de la FC au seuil/LTHR) ; %FC max (convention courante) | « Zones » telles qu'affichées par d'autres montres/applications — méthode et bornes différentes, non comparables terme à terme |
 | **Polarisation 80/20** (facile / modérée / difficile) | Modèle à 3 zones de Seiler (Seiler & Kjerland, 2006 ; Seiler, 2010) | idem, terminologie usuelle en entraînement d'endurance |
+| **Allure ajustée à la pente** (« GAP ») | Coût énergétique de la course de Minetti AE *et al.*, *J Appl Physiol* 93:1039–1046 (2002) | Strava GAP, COROS Effort Pace, Suunto NGP — même principe (ajuster l'allure à la pente), calculs propriétaires non documentés publiquement dans le détail ; voir la limite du modèle ci-dessous |
+
+!!! warning "GAP : approximation du projet, pas un équivalent des GAP propriétaires"
+    Notre allure ajustée à la pente applique tel quel le modèle de laboratoire de
+    Minetti AE *et al.* (*J Appl Physiol* 93:1039–1046, 2002 ; coût métabolique
+    mesuré sur tapis jusqu'à ±45 % de pente). La littérature sur l'économie de
+    course suggère que ce type de modèle a tendance à **surestimer le gain
+    métabolique des fortes descentes** en conditions réelles de trail (freinage
+    excentrique, terrain technique) ; aucun outil grand public ne documente
+    publiquement le détail de son propre calcul propriétaire, donc cette limite
+    ne peut pas être vérifiée pour eux spécifiquement. Notre GAP reste une
+    **approximation du projet**, jamais une reproduction de Strava GAP, COROS
+    Effort Pace ou Suunto NGP : ne pas présenter ces valeurs comme équivalentes.
 
 !!! note "Valeurs non comparables"
     Notre condition, notre fatigue et notre forme sont calculées sur le **TRIMP**

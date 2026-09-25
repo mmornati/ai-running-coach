@@ -59,6 +59,20 @@ SEED = 12345
 DAYS = 40  # cf. docstring : budget de taille du golden
 
 
+def _fixed_altitude_m(t: int) -> float:
+    """Profil d'altitude déterministe : montée douce (0 -> 30 m) sur le premier
+    tiers, plateau, puis redescente symétrique sur le dernier tiers (#44, allure
+    ajustée à la pente) — assez de dénivelé (~1,85 % de pente sur ~1620 m à
+    2,7 m/s) pour que le GAP diverge visiblement de l'allure brute et verrouille
+    ainsi un chemin de calcul non trivial dans le golden, sans changer le reste
+    du fichier (FC, cadence, distance) verrouillé par #43."""
+    if t < 600:
+        return round(30.0 * (t / 600.0), 2)
+    if t < 1200:
+        return 30.0
+    return round(30.0 * (1 - (t - 1200) / 600.0), 2)
+
+
 def _write_fixed_fit_samples(ws: Path, today: str) -> None:
     """Écrit `activities/fit/<garmin_activity_id>.json` À LA MAIN (jamais le
     générateur aléatoire `tests.lib.synthetic.sample_session`) pour l'activité datée
@@ -68,10 +82,12 @@ def _write_fixed_fit_samples(ws: Path, today: str) -> None:
     (bornes connues + temps en zone/polarisation réellement calculés) ne serait donc
     jamais verrouillé par la comparaison golden. FC constante à 150 bpm, 30 min à 5 s
     de résolution (360 points) : entièrement déterministe, sans tirage `rng`, la
-    valeur de FC n'a pas besoin de varier pour prouver que le calcul tourne. Le
-    `garmin_activity_id` est LU dans le fichier Markdown de l'activité (jamais codé
-    en dur) : il reste correct même si le générateur venait à changer sa façon de les
-    attribuer."""
+    valeur de FC n'a pas besoin de varier pour prouver que le calcul tourne. Altitude
+    en montée/plateau/descente douce (`_fixed_altitude_m`, #44) : sans dénivelé, le
+    GAP calculé serait toujours strictement égal à l'allure brute, ce qui ne
+    verrouillerait jamais le chemin de calcul de la pente. Le `garmin_activity_id`
+    est LU dans le fichier Markdown de l'activité (jamais codé en dur) : il reste
+    correct même si le générateur venait à changer sa façon de les attribuer."""
     matches = sorted((ws / "activities").glob(f"{today}_*.md"))
     if not matches:
         raise AssertionError(f"aucune activité datée {today} dans le workspace golden — "
@@ -82,7 +98,7 @@ def _write_fixed_fit_samples(ws: Path, today: str) -> None:
         raise AssertionError(f"garmin_activity_id introuvable dans {matches[0]}")
     garmin_id = int(match.group(1))
     records = [
-        {"t_s": t, "distance_m": round(t * 2.7, 2), "altitude_m": 0.0, "hr_bpm": 150.0,
+        {"t_s": t, "distance_m": round(t * 2.7, 2), "altitude_m": _fixed_altitude_m(t), "hr_bpm": 150.0,
          "speed_ms": 2.7, "cadence_spm": 172.0}
         for t in range(0, 1800, 5)
     ]
