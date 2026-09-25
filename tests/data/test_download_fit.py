@@ -1,9 +1,14 @@
 """Palier D — `skills/fit-download/scripts/download_fit.py` : résolution du workspace
 (#42, revue PR #87, blocker 3), copie canonique normalisée, sport-gating de la
-cadence, et les marqueurs `.gitignore` (should-fix 4/5). Fonctions testées sans
-`garminconnect` (absent de cet environnement) — seules `_activity_dir_out`,
-`_write_canonical_samples`, `_ensure_gitignore` et `_write_records_json` (mockée sur
-`fitparse.FitFile`, disponible) n'en dépendent pas.
+cadence, et les marqueurs `.gitignore` (should-fix 4/5). Aucune dépendance à
+`garminconnect` ni `fitparse` (CONTRIBUTING.md : stdlib uniquement pour la suite de
+tests — ces deux paquets ne sont installés que dans l'environnement `garmin-mcp`,
+absent de la CI comme de cet environnement de dev) : seules `_activity_dir_out`,
+`_write_canonical_samples`, `_ensure_gitignore` et `_write_records_json` n'en
+dépendent pas DIRECTEMENT — `_write_records_json` importe `fitparse` localement,
+donc testée via un FAUX module injecté dans `sys.modules` (voir
+`TestWriteRecordsJsonSportExtraction`), jamais via `unittest.mock.patch("fitparse...")`
+qui exigerait le vrai paquet installé pour résoudre l'attribut à patcher.
 """
 
 from __future__ import annotations
@@ -12,6 +17,7 @@ import json
 import os
 import sys
 import tempfile
+import types
 import unittest
 from pathlib import Path
 from unittest.mock import MagicMock, patch
@@ -170,10 +176,17 @@ class _FakeMessage:
 class TestWriteRecordsJsonSportExtraction(unittest.TestCase):
     """`_write_records_json` lit le sport dans le message FIT `session` — pour que le
     doublement de cadence (should-fix 5) ne s'applique jamais à tort à un FIT vélo.
-    `fitparse.FitFile` est mocké (le vrai FIT binaire n'est pas constructible sans un
-    encodeur, hors de portée de ce test unitaire)."""
 
-    def _fake_fitfile(self, records, session_sport):
+    `fitparse` n'est PAS une dépendance de la suite de tests (CONTRIBUTING.md : stdlib
+    uniquement — seul `download_fit.py`, hors index, en a besoin en production, via un
+    import LOCAL à l'intérieur de `_write_records_json`). Un `patch("fitparse.FitFile")`
+    échouerait en CI, où `fitparse` n'est pas installé (bug corrigé : la première
+    version de ce test le faisait, cassant le palier D sur `ubuntu-latest` et
+    `macos-latest`). On injecte donc un FAUX module `fitparse` dans `sys.modules`
+    (`types.ModuleType` + attribut `FitFile`) via `patch.dict` : l'import local de
+    `download_fit.py` le trouve sans jamais toucher au vrai paquet, présent ou non."""
+
+    def _fake_fitparse_module(self, records, session_sport):
         instance = MagicMock()
 
         def get_messages(name):
@@ -184,38 +197,40 @@ class TestWriteRecordsJsonSportExtraction(unittest.TestCase):
             return []
 
         instance.get_messages.side_effect = get_messages
-        return instance
+        fake_module = types.ModuleType("fitparse")
+        fake_module.FitFile = MagicMock(return_value=instance)
+        return fake_module
 
     def test_extracts_running_sport(self):
-        fake = self._fake_fitfile([{"heart_rate": 120}], "running")
+        fake_module = self._fake_fitparse_module([{"heart_rate": 120}], "running")
         with tempfile.TemporaryDirectory() as tmp:
             out = Path(tmp) / "out.json"
-            with patch("fitparse.FitFile", return_value=fake):
+            with patch.dict(sys.modules, {"fitparse": fake_module}):
                 records, sport = D._write_records_json(b"FAKEFIT", out)
         self.assertEqual(sport, "running")
         self.assertEqual(len(records), 1)
 
     def test_extracts_cycling_sport_lowercased(self):
-        fake = self._fake_fitfile([{"heart_rate": 130}], "Cycling")
+        fake_module = self._fake_fitparse_module([{"heart_rate": 130}], "Cycling")
         with tempfile.TemporaryDirectory() as tmp:
             out = Path(tmp) / "out.json"
-            with patch("fitparse.FitFile", return_value=fake):
+            with patch.dict(sys.modules, {"fitparse": fake_module}):
                 _, sport = D._write_records_json(b"FAKEFIT", out)
         self.assertEqual(sport, "cycling")
 
     def test_missing_session_message_yields_none_sport(self):
-        fake = self._fake_fitfile([{"heart_rate": 140}], None)
+        fake_module = self._fake_fitparse_module([{"heart_rate": 140}], None)
         with tempfile.TemporaryDirectory() as tmp:
             out = Path(tmp) / "out.json"
-            with patch("fitparse.FitFile", return_value=fake):
+            with patch.dict(sys.modules, {"fitparse": fake_module}):
                 _, sport = D._write_records_json(b"FAKEFIT", out)
         self.assertIsNone(sport)
 
     def test_raw_records_file_still_written_unchanged(self):
-        fake = self._fake_fitfile([{"heart_rate": 120, "distance": 5.0}], "running")
+        fake_module = self._fake_fitparse_module([{"heart_rate": 120, "distance": 5.0}], "running")
         with tempfile.TemporaryDirectory() as tmp:
             out = Path(tmp) / "out.json"
-            with patch("fitparse.FitFile", return_value=fake):
+            with patch.dict(sys.modules, {"fitparse": fake_module}):
                 D._write_records_json(b"FAKEFIT", out)
             raw = json.loads(out.read_text(encoding="utf-8"))
         self.assertEqual(raw, [{"heart_rate": 120, "distance": 5.0}])
