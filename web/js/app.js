@@ -357,7 +357,9 @@ async function viewToday() {
 
 async function viewForm(params) {
   const days = Number(params.get("jours")) || 180;
-  const [form, load, decoupling] = await Promise.all([api(`form?days=${days}`), api("load?weeks=26"), api("decoupling")]);
+  const [form, load, decoupling, vam] = await Promise.all([
+    api(`form?days=${days}`), api("load?weeks=26"), api("decoupling"), api("vam"),
+  ]);
   const s = SUMMARY;
   const trail = s.settings.sport === "trail";
   const series = form.series;
@@ -393,6 +395,7 @@ async function viewForm(params) {
   const periods = [[90, "3 mois"], [180, "6 mois"], [365, "1 an"]].map(([d, l]) => `<a class="seg ${d === days ? "is-on" : ""}" href="#/forme?jours=${d}">${l}</a>`).join("");
   const last = series[series.length - 1];
   const { html: decouplingHtml, chart: decouplingChart, points: decouplingPoints } = decouplingSection(decoupling);
+  const { html: vamHtml, chart: vamChart, points: vamPoints } = vamSection(vam);
   main.innerHTML = `${header("Forme & charge", `Charge par séance : TRIMP (fréquence cardiaque), repli sur l'effort perçu. <a href="#/performance">Hypothèses des modèles</a>`)}
     <div class="toolbar">${periods}</div>
     <section class="band"><h2>Courbe de forme</h2>
@@ -405,7 +408,8 @@ async function viewForm(params) {
       <div class="chart-host" id="c-load">${loadChart.svg}</div><p class="readout" id="r-load"></p>
       <dl class="facts facts--inline"><div><dt>Monotonie (7 j)</dt><dd>${F.num(load.monotony, 2)}</dd></div><div><dt>Strain (7 j)</dt><dd>${F.num(load.strain)}</dd></div><div><dt>Charge du jour</dt><dd>${F.num(last.load)}</dd></div></dl></section>
     ${polarisationSection(load.polarisation_weeks, load.hr_zones_reason)}
-    ${decouplingHtml}`;
+    ${decouplingHtml}
+    ${vamHtml}`;
 
   attachCursor($("#c-form"), chart, (i) => {
     const p = series[i];
@@ -421,6 +425,12 @@ async function viewForm(params) {
     attachCursor($("#c-decoupling"), decouplingChart, (i) => {
       const p = decouplingPoints[i];
       readout($("#r-decoupling"), `<strong>${F.dayLong(p.date)}</strong> · ${F.esc(p.name || F.SPORT[p.sport] || p.sport)} · découplage ${F.num(p.decoupling_pct, 1)} %${p.ef_whole != null ? ` · EF ${F.num(p.ef_whole, 2)}` : ""}`);
+    });
+  }
+  if (vamChart) {
+    attachCursor($("#c-vam"), vamChart, (i) => {
+      const p = vamPoints[i];
+      readout($("#r-vam"), `<strong>${F.dayLong(p.date)}</strong> · ${F.esc(p.name || F.SPORT[p.sport] || p.sport)} · meilleure montée ${F.vam(p.best_climb_vam_elapsed_m_h)}`);
     });
   }
 }
@@ -727,8 +737,42 @@ async function viewSession(id) {
     <dl class="facts facts--grid">${facts.map(([k, v]) => `<div><dt>${k}</dt><dd>${v}</dd></div>`).join("")}</dl>
     ${wx ? `<p class="weather">${weatherChip(wx.category)} <span>${F.esc(wx.location)} · ${F.num(wx.temp_min_c)}–${F.num(wx.temp_max_c)} °C · vent ${F.num(wx.wind_kmh)} km/h</span></p>` : ""}
     ${splitsHtml}
+    ${climbsSection(d.climbs)}
     ${hrZoneSection(d.hr_zones)}
     <section class="band prose"><h2>Analyse du coach</h2>${d.body_html || "<p class=\"muted\">Pas de texte.</p>"}<p class="muted source">Source : <code>${F.esc(a.source_path)}</code></p></section>`;
+}
+
+/** Section « Montées » de la page séance (#46, VAM) : un tableau, une ligne par
+ * montée détectée (D+ minimal et pente minimale — `arc_climb.ASSUMPTIONS`), triée
+ * chronologiquement. `climbs` vient de `/api/activity/<id>.climbs` (voir
+ * `arc_serve.py::api_activity_climbs`) et est TOUJOURS un objet (jamais `null`,
+ * même discipline que `hrZoneSection`/#43) : `climbs.climbs: []` (parcours plat,
+ * séance hors famille course à pied, ou sans échantillons FIT) ne rend qu'une
+ * ligne vide plutôt que masquer la section — un athlète qui s'attend à voir ses
+ * montées trail doit comprendre qu'aucune n'a été détectée, pas croire à un bug
+ * d'affichage. Les deux VAM (temps écoulé/temps de mouvement, voir
+ * `arc_climb.ASSUMPTIONS["vam_basis"]") sont toutes deux affichées : la seconde en
+ * `<small>`, pour ne pas laisser croire qu'une seule existe. */
+function climbsSection(climbs) {
+  const rows = (climbs && climbs.climbs) || [];
+  if (!rows.length) {
+    return `<section class="band"><h2>Montées</h2>${note("Aucune montée détectée (D+ ou pente sous le seuil de détection, ou parcours plat).")}</section>`;
+  }
+  const byClass = (climbs && climbs.vam_by_grade_class) || {};
+  const classLegend = Object.keys(byClass).sort().map((cls) =>
+    `<span class="legend__item">${F.esc(cls)} : ${F.vam(byClass[cls].avg_vam_elapsed_m_h)} <small class="muted">(${byClass[cls].count})</small></span>`
+  ).join(" · ");
+  return `<section class="band"><h2>Montées (${rows.length})</h2>
+    <div class="table-wrap"><table class="data data--compact"><thead><tr>
+      <th scope="col">#</th><th scope="col" class="num">Km</th><th scope="col" class="num">Distance</th>
+      <th scope="col" class="num">D+</th><th scope="col" class="num">Pente moy.</th>
+      <th scope="col" class="num">Durée</th><th scope="col" class="num">VAM</th></tr></thead>
+    <tbody>${rows.map((c) => `<tr><td>${c.index}</td><td class="num">${F.num(c.start_km, 1)} → ${F.num(c.end_km, 1)}</td>
+      <td class="num">${F.distance(c.distance_m, 2)}</td><td class="num">+${F.elevation(c.gain_m)}</td>
+      <td class="num">${F.num(c.avg_grade * 100, 1)} % <span class="tag">${F.esc(c.grade_class)}</span></td>
+      <td class="num">${F.clock(c.duration_elapsed_s).replace(/^0:/, "")}</td>
+      <td class="num">${F.vam(c.vam_elapsed_m_h)}<br><small class="muted">mvt ${F.vam(c.vam_moving_m_h)}</small></td></tr>`).join("")}</tbody></table></div>
+    ${classLegend ? `<p class="legend legend--small">VAM moyenne par pente : ${classLegend}</p>` : ""}</section>`;
 }
 
 /** Section « Zones FC » de la page séance (#43) : temps en zone en barre empilée
@@ -975,6 +1019,40 @@ function decouplingSection(trend) {
     <dl class="facts facts--inline">
       <div><dt>Sorties longues (${trend.window_weeks} sem.)</dt><dd>${F.num(trend.long_runs)}</dd></div>
       <div><dt>Découplage moyen</dt><dd>${trend.avg_decoupling_pct != null ? `${F.num(trend.avg_decoupling_pct, 1)} %<small class="muted"> sur ${trend.measured_n} sortie${trend.measured_n > 1 ? "s" : ""}</small>` : "—"}</dd></div>
+    </dl></section>`;
+  return { html, chart, points };
+}
+
+/** Section « VAM » (vitesse ascensionnelle, #46) de Forme & charge : un point par
+ * séance de la famille course à pied où au moins une montée a été détectée
+ * (D+ minimal et pente minimale, voir `arc_climb.ASSUMPTIONS`) — meilleure VAM
+ * (temps écoulé) de la séance. Vide (pas de section) tant qu'aucune montée n'a
+ * jamais été détectée (parcours plats, ou pas encore de séance en relief) —
+ * même motif que `decouplingSection`/`fuelingSection` : abscisses espacées par
+ * indice, pas un axe temporel continu (les montées sont trop irrégulières). */
+function vamSection(trend) {
+  const points = trend.points.filter((p) => p.best_climb_vam_elapsed_m_h != null);
+  if (!points.length) return { html: "", chart: null, points: [] };
+  const dates = points.map((p) => p.date);
+  const chart = timeChart(dates, [
+    { type: "dots", values: points.map((p) => p.best_climb_vam_elapsed_m_h), cls: "dot dot--vam" },
+  ], [], {
+    height: 200, y: { zero: true }, label: "Meilleure VAM par sortie (vitesse ascensionnelle)",
+    yFormat: (v) => F.vam(v),
+  });
+  const best10 = Math.max(...points.map((p) => p.vam_best_10min_m_h || 0)) || null;
+  const best20 = Math.max(...points.map((p) => p.vam_best_20min_m_h || 0)) || null;
+  const html = `<section class="band"><h2>VAM (vitesse ascensionnelle)</h2>
+    <p class="muted">Gain d'altitude / durée sur les montées détectées (D+ et pente minimaux,
+      trous de signal jamais franchis). Deux VAM existent par montée (temps écoulé/temps de
+      mouvement, une pause n'est pas comptée deux fois) ; le point ici est le temps écoulé,
+      la valeur la plus simple à interpréter. <a href="#/performance">Hypothèses des modèles</a></p>
+    <p class="legend"><span class="legend__item"><span class="key key--vam"></span>Meilleure montée de la sortie</span></p>
+    <div class="chart-host" id="c-vam">${chart.svg}</div><p class="readout" id="r-vam"></p>
+    <dl class="facts facts--inline">
+      <div><dt>Sorties avec montée (${trend.window_weeks} sem.)</dt><dd>${F.num(trend.with_climb_n)} <small class="muted">/ ${F.num(trend.activities_n)}</small></dd></div>
+      <div><dt>Meilleure VAM 10 min</dt><dd>${best10 != null ? F.vam(best10) : "—"}</dd></div>
+      <div><dt>Meilleure VAM 20 min</dt><dd>${best20 != null ? F.vam(best20) : "—"}</dd></div>
     </dl></section>`;
   return { html, chart, points };
 }

@@ -1,0 +1,533 @@
+#!/usr/bin/env python3
+"""Vitesse ascensionnelle moyenne (VAM, m/h) sur les montées détectées — #46,
+épopée #21.
+
+## Qu'est-ce que la VAM
+
+La VAM (« Vitesse Ascensionnelle Moyenne », parfois VAM en anglais aussi —
+« Vertical Ascent rate ») est le gain d'altitude divisé par le temps :
+
+    VAM (m/h) = gain_m / (durée_h)
+
+Terminologie d'origine cycliste (montées chronométrées sur route), souvent
+associée dans la culture du cyclisme au préparateur italien Michele Ferrari —
+**aucune publication scientifique vérifiable identifiée par ce projet pour
+cette attribution précise** : elle est mentionnée ici comme repère historique
+informel, jamais comme une source citée (voir CONTRIBUTING.md, « citer
+uniquement ce qui est vérifiable »). Le calcul lui-même est une simple
+division (gain d'altitude / temps), pas un modèle propriétaire : rien à
+reproduire ni à approximer, contrairement au GAP (`arc_gap.py`, #44, modèle de
+Minetti). Des fonctionnalités de segmentation de montée existent chez
+plusieurs marques (segments de montée de la marque Strava, ClimbPro de la
+marque Garmin) : ce module s'en inspire pour le principe (détecter des
+montées, mesurer leur VAM) mais n'en reproduit aucun calcul propriétaire —
+voir `docs/marques.md`.
+
+## Détection des montées — REUSE partiel, pas une troisième copie complète
+
+Deux détecteurs de montées existaient déjà dans le projet avant #46:
+`skills/gpx-analysis/scripts/analyze_gpx.py::detect_climbs` (points GPS bruts,
+suivi de pic simple, sans fusion de creux ni notion de trou de signal
+temporel — un fichier GPX n'a pas de temps fiable point par point) et
+`skills/session-parts-analyzer/scripts/analyze_session_parts.py::detect_climbs`
+(pente instantanée ≥ seuil, sans fusion de creux non plus). Aucun des deux ne
+couvre l'hystérésis (fusion de montées séparées par un petit creux) ni le
+respect des trous de signal EXIGÉS par le critère d'acceptation de #46 — les
+étendre sur place aurait risqué de changer leur sortie (contrat de #46 :
+« comportement inchangé, sortie identique octet pour octet sur un GPX de
+test » si on les touche). Ce module RÉUTILISE en revanche leurs briques
+communes déjà factorisées par #44 : le lissage d'altitude
+(`arc_elevation.smooth_moving_average`, déjà partagé par `analyze_gpx.py`) et
+la segmentation par trou de signal (`arc_elevation.segments_by_gap`, alias
+public ajouté par #46 sur la fonction déjà utilisée en interne par
+`arc_elevation.grade_series`). L'algorithme de détection proprement dit
+(zigzag à hystérésis + fusion de creux, voir plus bas) est neuf : aucun des
+deux détecteurs existants ne l'implémentait, et c'est précisément ce que #46
+demande en plus (montée minimale configurable, fusion de creux, trous de
+signal jamais franchis — voir `ASSUMPTIONS`). #49 (progression sur une même
+montée) pourra réutiliser `detect_climbs`/`climb_report` tels quels plutôt que
+réinventer une quatrième détection.
+
+## Algorithme de détection
+
+1. **Segmentation par trou de signal** (`arc_elevation.segments_by_gap`,
+   `MAX_GAP_S`, 30 s comme le GAP/#44) : une montée n'est jamais détectée ni
+   fusionnée à travers une pause GPS/altimètre.
+2. **Lissage** de l'altitude (`arc_elevation.smooth_moving_average`,
+   `SMOOTH_TAPS`, 3 points — même lissage que le GAP) pour ne pas confondre
+   bruit barométrique et vrai changement de pente.
+3. **Simplification en zigzag à hystérésis** (`_zigzag_extrema`,
+   `SWING_NOISE_FLOOR_M`) : ne garde que les extrema (creux/sommets) séparés
+   d'au moins ce seuil d'altitude — un bruit de quelques mètres n'invente
+   jamais un creux ou un sommet.
+4. **Montées brutes** : chaque paire (creux, sommet) consécutive dans le
+   zigzag dont l'altitude progresse.
+5. **Fusion des montées séparées par un petit creux** (`_merge_climbs`,
+   `MERGE_MAX_DIP_LOSS_M`/`MERGE_MAX_DIP_DIST_M`) : deux montées consécutives
+   sont fusionnées en une seule si le creux qui les sépare perd moins de
+   `MERGE_MAX_DIP_LOSS_M` d'altitude sur moins de `MERGE_MAX_DIP_DIST_M` de
+   distance horizontale — un replat ou un petit passage en faux plat au
+   milieu d'une montée ne doit pas la couper en deux montées artificielles.
+6. **Filtre final** : gain net ≥ `MIN_CLIMB_GAIN_M` ET pente moyenne (gain /
+   distance) ≥ `MIN_CLIMB_AVG_GRADE`, sur la montée éventuellement fusionnée.
+
+Voir `ASSUMPTIONS` pour la justification complète de chaque seuil.
+
+## VAM : temps écoulé vs temps de mouvement — DEUX métriques, jamais une seule
+
+Un arrêt prolongé au milieu d'une montée (ravitaillement, photo, pause) fait
+chuter la VAM « temps écoulé » sans que l'effort d'ascension réel n'ait
+changé. Ce module calcule et expose **les deux** plutôt que de trancher :
+`vam_elapsed_m_h` (gain / durée ÉCOULÉE, arrêts compris — c'est la définition
+usuelle et la plus simple à interpréter : « à quelle vitesse ai-je gravi cette
+montée, du premier au dernier pas ») et `vam_moving_m_h` (gain / durée de
+MOUVEMENT seulement, arrêts exclus — reflète l'effort ascensionnel réel,
+insensible à une pause). `vam_elapsed_m_h` est la valeur mise en avant par
+défaut (tableau de bord, tri des montées) car c'est la question que se pose
+spontanément l'athlète ; `vam_moving_m_h` reste disponible à côté pour
+détecter une pause qui aurait plombé la VAM apparente. Voir
+`ASSUMPTIONS["vam_basis"]`.
+
+## API réutilisable, pure (sans SQLite ni disque) — pour #49 (progression sur
+une même montée) et #58 (modèle pente→allure)
+
+- `detect_climbs(samples, ...)` : montées détectées sur des échantillons
+  normalisés (`arc_index.samples`), chacune avec ses bornes, son gain, sa
+  distance, sa pente moyenne, sa classe de pente et ses deux VAM.
+- `best_vam_windows(samples, climbs, ...)` : meilleure VAM sur des fenêtres
+  glissantes de 10/20 minutes PENDANT les montées détectées (« courbe de
+  puissance verticale », voir `ASSUMPTIONS["best_window"]`).
+- `vam_by_grade_class(climbs)` : VAM moyenne par classe de pente.
+- `climb_report(samples, sport, ...)` : rapport complet, restreint à la
+  famille course à pied (course, trail, randonnée, marche — la marche compte,
+  la VAM en randonnée/power-hiking est parfaitement valide en trail), TOUJOURS
+  un dict avec une `reason` explicite en cas d'échec, jamais une exception.
+
+Stdlib uniquement (CONTRIBUTING.md).
+"""
+
+from __future__ import annotations
+
+import bisect
+import sys
+from pathlib import Path
+from typing import Dict, List, Optional, Sequence, Tuple
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import arc_elevation as E  # noqa: E402
+import arc_gap as G  # noqa: E402
+import arc_metrics as M  # noqa: E402
+
+DEFAULT_RESOLUTION_S = G.DEFAULT_RESOLUTION_S
+
+# Seuils de détection (#46, critère d'acceptation : « montée minimale
+# configurable (D+, pente) ») — valeurs rondes documentées, pas calibrées sur
+# un jeu de séances étiquetées : à ajuster si l'usage réel le justifie.
+MIN_CLIMB_GAIN_M = 50.0
+MIN_CLIMB_AVG_GRADE = 0.05  # 5 % — aligné sur la première classe de pente ci-dessous
+
+# Fusion de deux montées séparées par un petit creux (replat, faux plat) — voir
+# ASSUMPTIONS["merge"].
+MERGE_MAX_DIP_LOSS_M = 10.0
+MERGE_MAX_DIP_DIST_M = 200.0
+
+# Seuil de bruit de la simplification en zigzag (#46) — nettement sous
+# `MIN_CLIMB_GAIN_M` : ne sert qu'à ignorer le bruit résiduel post-lissage,
+# jamais à filtrer une vraie petite montée (le filtre final s'en charge).
+SWING_NOISE_FLOOR_M = 5.0
+
+# Même lissage et même segmentation par trou de signal que le GAP (#44,
+# `arc_gap.py`/`arc_elevation.py`) — cohérence des KPI dérivés des mêmes
+# échantillons.
+SMOOTH_TAPS = E.DEFAULT_SMOOTH_TAPS
+MAX_GAP_S = E.DEFAULT_MAX_GAP_S
+
+# Fenêtres de la « courbe de puissance verticale » (#46, critère d'acceptation :
+# « tendance : meilleure VAM sur 10/20 min ») — mêmes noms que les colonnes
+# `activity.best_vam_10min_m_h`/`best_vam_20min_m_h` (arc_index.py).
+BEST_WINDOWS_S = {"vam_best_10min_m_h": 600.0, "vam_best_20min_m_h": 1200.0}
+
+# Classes de pente (#46, critère d'acceptation : « VAM ... par pente »).
+# `MIN_CLIMB_AVG_GRADE` coïncide avec la borne basse de "5-10%" : une montée
+# tout juste détectée tombe donc toujours dans la première classe non vide.
+GRADE_CLASSES: Tuple[Tuple[float, float, str], ...] = (
+    (0.00, 0.05, "<5%"),
+    (0.05, 0.10, "5-10%"),
+    (0.10, 0.15, "10-15%"),
+    (0.15, 0.20, "15-20%"),
+    (0.20, float("inf"), ">20%"),
+)
+
+ASSUMPTIONS = {
+    "model": (
+        "VAM (Vitesse Ascensionnelle Moyenne) = gain d'altitude (m) / durée (h), sur une montée "
+        "détectée. Terminologie d'origine cycliste, souvent associée informellement au préparateur "
+        "Michele Ferrari dans la culture du cyclisme — AUCUNE publication vérifiable identifiée pour "
+        "cette attribution précise, mentionnée uniquement comme repère historique, jamais comme une "
+        "source citée. Le calcul lui-même (une division) n'est pas un modèle propriétaire : rien à "
+        "approximer ni à reproduire, à la différence du GAP (arc_gap.py, Minetti et al. 2002)."
+    ),
+    "restricted_to_run_family": (
+        "Calculé UNIQUEMENT pour les séances de la famille course à pied (arc_metrics.sport_family == "
+        "\"run\" : course, trail, randonnée, marche) avec des échantillons FIT ingérés — la randonnée "
+        "et la marche (power-hiking) y ont toute leur place : la VAM en montée est un indicateur "
+        "trail/montagne classique aussi bien en courant qu'en marchant vite."
+    ),
+    "detection": (
+        f"Une montée est détectée sur l'altitude LISSÉE (moyenne glissante {SMOOTH_TAPS} points, même "
+        "lissage que le GAP/#44) simplifiée en zigzag à hystérésis (creux/sommets séparés d'au moins "
+        f"{SWING_NOISE_FLOOR_M:.0f} m, pour ignorer le bruit résiduel post-lissage), puis retenue "
+        f"seulement si son gain net atteint {MIN_CLIMB_GAIN_M:.0f} m ET sa pente moyenne (gain / "
+        f"distance) atteint {MIN_CLIMB_AVG_GRADE * 100:.0f} % — les DEUX critères, jamais un seul (un "
+        "faux plat de 200 m de D+ sur 10 km ne doit pas compter comme une montée trail, et un mur de "
+        "20 m à 30 % non plus si le critère de D+ minimal existe pour écarter le bruit très local). "
+        "Valeurs rondes documentées, pas calibrées sur un jeu de séances étiquetées trail/montagne — un "
+        "réglage futur resterait localisé à ces deux constantes."
+    ),
+    "merge": (
+        f"Deux montées consécutives séparées par un creux (replat, faux plat, courte descente) sont "
+        f"fusionnées en une seule si ce creux perd moins de {MERGE_MAX_DIP_LOSS_M:.0f} m d'altitude sur "
+        f"moins de {MERGE_MAX_DIP_DIST_M:.0f} m de distance horizontale — sans cette fusion, une montée "
+        "réelle avec un replat au milieu (très courant en trail : plateau avant un dernier raidillon) "
+        "serait artificiellement coupée en deux montées plus courtes, chacune sous-estimant le vrai "
+        "effort ascensionnel continu perçu par le coureur."
+    ),
+    "gap_segmentation": (
+        "Une montée n'est JAMAIS détectée ni fusionnée à travers un trou de signal (montre en veille, "
+        f"perte GPS/altimètre — {MAX_GAP_S:.0f} s, même segmentation que le GAP/#44, "
+        "`arc_elevation.segments_by_gap`) : deux morceaux de montée de part et d'autre d'une pause "
+        "totale du capteur ne sont jamais recollés, même s'ils appartiennent visuellement à la même "
+        "vraie montée — mieux vaut deux montées détectées séparément qu'une VAM faussée par un temps "
+        "écoulé qui inclurait une pause dont la durée réelle est inconnue."
+    ),
+    "vam_basis": (
+        "DEUX VAM sont calculées et exposées pour chaque montée, jamais une seule : `vam_elapsed_m_h` "
+        "(gain / durée ÉCOULÉE de la montée, arrêts compris — la définition usuelle, la plus simple à "
+        "interpréter) et `vam_moving_m_h` (gain / durée de MOUVEMENT seulement, échantillons sous "
+        "`arc_gap.STOPPED_SPEED_MS` exclus — insensible à une pause). Un long arrêt au milieu d'une "
+        "montée (ravitaillement, photo) écrase `vam_elapsed_m_h` sans changer `vam_moving_m_h` : "
+        "recommandation du projet — `vam_elapsed_m_h` reste la valeur mise en avant par défaut (c'est "
+        "la question spontanée de l'athlète), `vam_moving_m_h` sert à comprendre un écart inattendu "
+        "entre deux montées sinon comparables, jamais l'inverse (l'effort perçu du coureur inclut ses "
+        "propres pauses, contrairement à un chronométrage de segment qui les exclurait)."
+    ),
+    "grade_classes": (
+        f"Classes de pente moyenne (par montée) : {', '.join(label for _, _, label in GRADE_CLASSES)} "
+        f"— la borne basse de la première classe non triviale ({GRADE_CLASSES[1][2]}) coïncide avec "
+        "`MIN_CLIMB_AVG_GRADE`, donc une montée tout juste détectée n'est jamais classée « <5 % » (ce "
+        "libellé ne peut apparaître que si le seuil de détection est abaissé manuellement). Classement "
+        "par montée, jamais par échantillon isolé : une montée fusionnée avec un replat interne garde "
+        "une seule classe, celle de sa pente moyenne globale."
+    ),
+    "best_window": (
+        "Comme une courbe de puissance en cyclisme (meilleure puissance moyenne sur des durées "
+        "fixes), `best_vam_windows` cherche le plus grand gain net d'altitude sur une fenêtre d'AU "
+        f"MOINS {BEST_WINDOWS_S['vam_best_10min_m_h'] / 60:.0f} puis "
+        f"{BEST_WINDOWS_S['vam_best_20min_m_h'] / 60:.0f} minutes, glissée uniquement À L'INTÉRIEUR "
+        "d'une montée détectée (jamais à travers une descente ou un plat entre deux montées, qui "
+        "gonflerait artificiellement le gain sur la durée). Une montée plus courte que la fenêtre ne "
+        "contribue à aucun des deux best (`None` si aucune montée de l'activité n'atteint la durée). "
+        "Approximation liée à la résolution des échantillons (5 s par défaut) : le point de fin de "
+        "fenêtre est le premier point dont l'écart au départ ATTEINT la durée demandée, jamais "
+        "strictement plus court — la fenêtre réellement mesurée peut donc dépasser légèrement la "
+        "durée nominale, jamais lui être inférieure."
+    ),
+}
+
+
+# ---------------------------------------------------------------------------
+# Zigzag à hystérésis
+# ---------------------------------------------------------------------------
+
+
+def _zigzag_extrema(altitudes: Sequence[float], min_swing_m: float) -> List[int]:
+    """Indices (dans `altitudes`) des extrema alternés (creux/sommet) d'une
+    simplification en zigzag à hystérésis `min_swing_m` : tout extremum LOCAL
+    dont le mouvement depuis l'extremum précédemment retenu est inférieur à
+    `min_swing_m` est éliminé (bruit), et deux segments de même sens qui se
+    retrouvent adjacents après élimination sont traités comme un seul plus
+    grand segment (comportement recherché : un petit aller-retour de bruit au
+    milieu d'une vraie montée ne doit pas la couper). Le premier et le dernier
+    point sont toujours conservés (bornes du segment de temps sans trou de
+    signal, voir `arc_elevation.segments_by_gap`)."""
+    n = len(altitudes)
+    if n <= 1:
+        return list(range(n))
+    # 1) extrema locaux bruts : tout changement de signe de la dérivée discrète.
+    candidates = [0]
+    for i in range(1, n - 1):
+        prev_delta = altitudes[i] - altitudes[i - 1]
+        next_delta = altitudes[i + 1] - altitudes[i]
+        if prev_delta == 0:
+            continue
+        if (prev_delta > 0) != (next_delta > 0) and next_delta != 0:
+            candidates.append(i)
+    candidates.append(n - 1)
+    # 2) élimination itérative des segments (creux->sommet ou l'inverse) dont
+    # l'amplitude est sous le seuil de bruit, jusqu'à stabilité.
+    changed = True
+    while changed and len(candidates) > 2:
+        changed = False
+        i = 1
+        while i < len(candidates) - 1:
+            swing = abs(altitudes[candidates[i]] - altitudes[candidates[i - 1]])
+            if swing < min_swing_m:
+                del candidates[i]
+                changed = True
+            else:
+                i += 1
+    return candidates
+
+
+def _raw_rises(extrema: Sequence[int], altitudes: Sequence[float]) -> List[List[int]]:
+    """Paires (creux, sommet) CONSÉCUTIVES dans `extrema` dont l'altitude
+    progresse — les montées brutes, avant fusion des petits creux
+    intermédiaires (`_merge_climbs`)."""
+    rises = []
+    for i in range(len(extrema) - 1):
+        a, b = extrema[i], extrema[i + 1]
+        if altitudes[b] > altitudes[a]:
+            rises.append([a, b])
+    return rises
+
+
+def _merge_climbs(rises: Sequence[Sequence[int]], altitudes: Sequence[float],
+                   distances: Sequence[float], *,
+                   max_dip_loss_m: float = MERGE_MAX_DIP_LOSS_M,
+                   max_dip_dist_m: float = MERGE_MAX_DIP_DIST_M) -> List[List[int]]:
+    """Fusionne deux montées brutes CONSÉCUTIVES (séparées par exactement un
+    creux, garanti par l'alternance du zigzag) si ce creux perd moins de
+    `max_dip_loss_m` sur moins de `max_dip_dist_m` — voir ASSUMPTIONS["merge"].
+    Itératif jusqu'à stabilité (une fusion peut rapprocher deux autres montées
+    d'un creux qui, cumulé, dépasserait quand même le seuil — non : le creux
+    entre deux montées non adjacentes n'est jamais reconsidéré après une
+    fusion ailleurs, seule la liste se raccourcit)."""
+    merged = [list(r) for r in rises]
+    changed = True
+    while changed and len(merged) > 1:
+        changed = False
+        i = 0
+        while i < len(merged) - 1:
+            end_a = merged[i][1]
+            start_b = merged[i + 1][0]
+            dip_loss = altitudes[end_a] - altitudes[start_b]
+            dip_dist = distances[start_b] - distances[end_a]
+            if dip_loss <= max_dip_loss_m and (dip_dist is None or dip_dist <= max_dip_dist_m):
+                merged[i][1] = merged[i + 1][1]
+                del merged[i + 1]
+                changed = True
+            else:
+                i += 1
+    return merged
+
+
+def grade_class(avg_grade: Optional[float]) -> Optional[str]:
+    """Classe de pente (voir `GRADE_CLASSES`) d'une pente moyenne signée ou
+    non (valeur absolue utilisée) — `None` si `avg_grade` est `None`."""
+    if avg_grade is None:
+        return None
+    g = abs(avg_grade)
+    for lo, hi, label in GRADE_CLASSES:
+        if lo <= g < hi:
+            return label
+    return GRADE_CLASSES[-1][2]
+
+
+# ---------------------------------------------------------------------------
+# Détection des montées
+# ---------------------------------------------------------------------------
+
+
+def detect_climbs(samples: Sequence[dict], *,
+                   min_gain_m: float = MIN_CLIMB_GAIN_M,
+                   min_avg_grade: float = MIN_CLIMB_AVG_GRADE,
+                   merge_max_dip_loss_m: float = MERGE_MAX_DIP_LOSS_M,
+                   merge_max_dip_dist_m: float = MERGE_MAX_DIP_DIST_M,
+                   swing_noise_floor_m: float = SWING_NOISE_FLOOR_M,
+                   smooth_taps: int = SMOOTH_TAPS,
+                   max_gap_s: float = MAX_GAP_S,
+                   resolution_s: float = DEFAULT_RESOLUTION_S) -> List[dict]:
+    """Montées détectées sur des échantillons normalisés (`t_s, distance_m,
+    altitude_m, speed_ms, ...`, triés ou non — voir `arc_samples.NORMALISED_KEYS`).
+    Voir la docstring du module pour l'algorithme complet et `ASSUMPTIONS` pour
+    la justification de chaque seuil.
+
+    Rend une liste de dicts triés par `start_t_s`, chacun numéroté `index`
+    (1-based) : `start_t_s`, `end_t_s`, `start_km`, `end_km`, `distance_m`,
+    `gain_m`, `avg_grade` (fraction), `grade_class`, `duration_elapsed_s`,
+    `duration_moving_s`, `vam_elapsed_m_h`, `vam_moving_m_h` (`None` si la
+    durée correspondante est nulle). Liste vide si aucune montée ne satisfait
+    les seuils — jamais une exception."""
+    ordered = sorted((s for s in samples if s.get("t_s") is not None), key=lambda s: s["t_s"])
+    if len(ordered) < 2:
+        return []
+    t_values = [s["t_s"] for s in ordered]
+    climbs_out: List[dict] = []
+    for segment in E.segments_by_gap(t_values, max_gap_s):
+        if len(segment) < 2:
+            continue
+        raw_alt = [ordered[i].get("altitude_m") for i in segment]
+        smoothed_alt = E.smooth_moving_average(raw_alt, smooth_taps)
+        raw_dist = [ordered[i].get("distance_m") for i in segment]
+        valid = [j for j in range(len(segment)) if smoothed_alt[j] is not None and raw_dist[j] is not None]
+        if len(valid) < 2:
+            continue
+        alt_v = [smoothed_alt[j] for j in valid]
+        dist_v = [raw_dist[j] for j in valid]
+        idx_v = [segment[j] for j in valid]  # indices globaux dans `ordered`
+
+        extrema = _zigzag_extrema(alt_v, swing_noise_floor_m)
+        rises = _raw_rises(extrema, alt_v)
+        merged = _merge_climbs(rises, alt_v, dist_v,
+                                max_dip_loss_m=merge_max_dip_loss_m, max_dip_dist_m=merge_max_dip_dist_m)
+
+        for start_local, end_local in merged:
+            gain = alt_v[end_local] - alt_v[start_local]
+            distance = dist_v[end_local] - dist_v[start_local]
+            if gain < min_gain_m or not distance or distance <= 0:
+                continue
+            avg_grade = gain / distance
+            if avg_grade < min_avg_grade:
+                continue
+            gi, gj = idx_v[start_local], idx_v[end_local]
+            climb_samples = ordered[gi:gj + 1]
+            start_t = climb_samples[0]["t_s"]
+            end_t = climb_samples[-1]["t_s"]
+            duration_elapsed_s = end_t - start_t
+            moving_s = 0.0
+            n_climb = len(climb_samples)
+            for k in range(n_climb):
+                dt = (climb_samples[k + 1]["t_s"] - climb_samples[k]["t_s"]) if k + 1 < n_climb else resolution_s
+                dt = max(0.0, min(dt, resolution_s))
+                speed = climb_samples[k].get("speed_ms")
+                if speed is not None and speed >= G.STOPPED_SPEED_MS:
+                    moving_s += dt
+            vam_elapsed = (gain / (duration_elapsed_s / 3600.0)) if duration_elapsed_s > 0 else None
+            vam_moving = (gain / (moving_s / 3600.0)) if moving_s > 0 else None
+            climbs_out.append({
+                "start_t_s": start_t,
+                "end_t_s": end_t,
+                "start_km": round(dist_v[start_local] / 1000.0, 3),
+                "end_km": round(dist_v[end_local] / 1000.0, 3),
+                "distance_m": round(distance, 1),
+                "gain_m": round(gain, 1),
+                "avg_grade": round(avg_grade, 4),
+                "grade_class": grade_class(avg_grade),
+                "duration_elapsed_s": round(duration_elapsed_s, 1),
+                "duration_moving_s": round(moving_s, 1),
+                "vam_elapsed_m_h": round(vam_elapsed, 1) if vam_elapsed is not None else None,
+                "vam_moving_m_h": round(vam_moving, 1) if vam_moving is not None else None,
+            })
+    climbs_out.sort(key=lambda c: c["start_t_s"])
+    for i, c in enumerate(climbs_out, start=1):
+        c["index"] = i
+    return climbs_out
+
+
+# ---------------------------------------------------------------------------
+# Courbe de puissance verticale — meilleure VAM sur fenêtres 10/20 min
+# ---------------------------------------------------------------------------
+
+
+def _best_window_gain(times: Sequence[float], altitudes: Sequence[float], window_s: float) -> Optional[float]:
+    """Plus grand gain net d'altitude sur une fenêtre d'AU MOINS `window_s`
+    secondes glissée sur `times`/`altitudes` (triés par temps croissant, DÉJÀ
+    limités à une seule montée) — voir ASSUMPTIONS["best_window"]. `None` si
+    la montée est plus courte que `window_s`."""
+    n = len(times)
+    if n < 2 or times[-1] - times[0] < window_s:
+        return None
+    best = None
+    for i in range(n):
+        j = bisect.bisect_left(times, times[i] + window_s, i)
+        if j >= n:
+            continue
+        gain = altitudes[j] - altitudes[i]
+        if best is None or gain > best:
+            best = gain
+    return best
+
+
+def best_vam_windows(samples: Sequence[dict], climbs: Sequence[dict], *,
+                      windows_s: Dict[str, float] = BEST_WINDOWS_S,
+                      smooth_taps: int = SMOOTH_TAPS) -> Dict[str, Optional[float]]:
+    """Meilleure VAM (m/h) sur des fenêtres d'AU MOINS `windows_s` secondes,
+    glissées uniquement À L'INTÉRIEUR de chaque montée de `climbs` (voir
+    `detect_climbs` et ASSUMPTIONS["best_window"]) — une « courbe de puissance
+    verticale » façon courbe de puissance cycliste. Rend un dict aux mêmes clés
+    que `windows_s` (défaut `BEST_WINDOWS_S`), valeurs `None` si aucune montée
+    de l'activité n'atteint la durée correspondante."""
+    ordered = sorted((s for s in samples if s.get("t_s") is not None), key=lambda s: s["t_s"])
+    out: Dict[str, Optional[float]] = {key: None for key in windows_s}
+    for climb in climbs:
+        climb_samples = [s for s in ordered if climb["start_t_s"] <= s["t_s"] <= climb["end_t_s"]]
+        if len(climb_samples) < 2:
+            continue
+        smoothed = E.smooth_moving_average([s.get("altitude_m") for s in climb_samples], smooth_taps)
+        pairs = [(s["t_s"], a) for s, a in zip(climb_samples, smoothed) if a is not None]
+        if len(pairs) < 2:
+            continue
+        times = [p[0] for p in pairs]
+        altitudes = [p[1] for p in pairs]
+        for key, window_s in windows_s.items():
+            gain = _best_window_gain(times, altitudes, window_s)
+            if gain is None:
+                continue
+            vam = gain / (window_s / 3600.0)
+            if out[key] is None or vam > out[key]:
+                out[key] = vam
+    return {key: (round(v, 1) if v is not None else None) for key, v in out.items()}
+
+
+def vam_by_grade_class(climbs: Sequence[dict]) -> Dict[str, dict]:
+    """VAM (temps écoulé) moyenne par classe de pente (#46, critère
+    d'acceptation) — seulement les classes réellement représentées dans
+    `climbs`. `{"5-10%": {"count": N, "avg_vam_elapsed_m_h": ...}, ...}`."""
+    buckets: Dict[str, List[float]] = {}
+    for c in climbs:
+        cls = c.get("grade_class")
+        vam = c.get("vam_elapsed_m_h")
+        if cls is None or vam is None:
+            continue
+        buckets.setdefault(cls, []).append(vam)
+    return {
+        cls: {"count": len(vals), "avg_vam_elapsed_m_h": round(sum(vals) / len(vals), 1)}
+        for cls, vals in buckets.items()
+    }
+
+
+# ---------------------------------------------------------------------------
+# Rapport complet
+# ---------------------------------------------------------------------------
+
+
+def climb_report(samples: Sequence[dict], sport: Optional[str], **kwargs) -> dict:
+    """Rapport complet des montées d'une séance (#46), à partir de ses
+    échantillons normalisés et de son sport — API autonome, restreinte à la
+    famille course à pied (voir ASSUMPTIONS["restricted_to_run_family"]).
+
+    Rend TOUJOURS `{"climbs", "vam_best_10min_m_h", "vam_best_20min_m_h",
+    "vam_by_grade_class", "best_climb_vam_elapsed_m_h", "reason"}` — `reason`
+    explique un rapport vide/`None`, jamais une exception ni un échec muet
+    (même discipline que `arc_decoupling.decoupling_report`). Une séance
+    éligible sans aucune montée détectée (parcours plat) rend `climbs: []`
+    avec `reason: None` — absence de montée n'est jamais une erreur."""
+    empty = {"climbs": [], "vam_best_10min_m_h": None, "vam_best_20min_m_h": None,
+              "vam_by_grade_class": {}, "best_climb_vam_elapsed_m_h": None}
+    if M.sport_family(sport) != "run":
+        return {**empty, "reason": "hors de la famille course à pied (arc_metrics.sport_family), "
+                                    "voir ASSUMPTIONS[\"restricted_to_run_family\"]"}
+    if not samples:
+        return {**empty, "reason": "aucun échantillon FIT ingéré pour cette séance"}
+    climbs = detect_climbs(samples, **kwargs)
+    windows = best_vam_windows(samples, climbs)
+    best_climb_vam = max(
+        (c["vam_elapsed_m_h"] for c in climbs if c["vam_elapsed_m_h"] is not None), default=None)
+    return {
+        "climbs": climbs,
+        "vam_best_10min_m_h": windows["vam_best_10min_m_h"],
+        "vam_best_20min_m_h": windows["vam_best_20min_m_h"],
+        "vam_by_grade_class": vam_by_grade_class(climbs),
+        "best_climb_vam_elapsed_m_h": best_climb_vam,
+        "reason": None,
+    }

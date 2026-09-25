@@ -135,6 +135,15 @@ def _segments(t_values: Sequence[Optional[float]], max_gap_s: float) -> List[Lis
     return segments
 
 
+def segments_by_gap(t_values: Sequence[Optional[float]], max_gap_s: float = DEFAULT_MAX_GAP_S) -> List[List[int]]:
+    """Alias PUBLIC de `_segments` — segmentation par trou de signal, réutilisée
+    par la détection de montées (`arc_climb.py`, #46) : une montée ne doit
+    jamais être détectée à travers une pause GPS/altimètre (montre en veille),
+    même principe que la pente (`grade_series` ci-dessus) et que le GAP
+    (`arc_gap.py`, #44)."""
+    return _segments(t_values, max_gap_s)
+
+
 def _extend_back(dist: Sequence[Optional[float]], li: int, half_window: float) -> int:
     """Indice `j <= li` le plus proche tel que `dist[li] - dist[j] >= half_window`
     (ou 0 / le bord d'un trou de distance manquante si cette distance n'est jamais

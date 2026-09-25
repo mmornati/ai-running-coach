@@ -149,11 +149,30 @@ six semaines d'historique pour que la condition ait un sens.
   répartissent de façon comparable dans chacune des deux moitiés (plusieurs
   bosses, pas un seul flanc par moitié), reste éligible.
 
+- **La VAM (vitesse ascensionnelle)** (#46) : un point par séance de la
+  famille course à pied où au moins une montée a été détectée — gain
+  d'altitude / durée de la meilleure montée de la sortie (VAM temps écoulé, la
+  définition la plus simple à interpréter ; voir `scripts/arc_climb.py::ASSUMPTIONS`
+  pour la seconde VAM, « temps de mouvement », qui exclut les arrêts).
+  L'indicateur lui-même est une simple division (gain / durée), sans modèle
+  propriétaire à approximer — voir [Marques et métriques](../marques.md) pour
+  son origine historique en cyclisme. Une montée n'est comptée que si son
+  gain net atteint 50 m ET sa pente moyenne atteint 5 % (les deux critères),
+  jamais à travers un trou de signal (montre en veille) ; deux montées
+  séparées par un petit replat (moins de 10 m perdus sur moins de 200 m) sont
+  fusionnées en une seule. Sous les deux repères « Meilleure VAM 10/20 min »
+  (comme une courbe de puissance en cyclisme) : le plus grand gain net observé
+  sur une fenêtre d'au moins 10, puis 20 minutes, glissée à l'intérieur d'une
+  seule montée. Une sortie sans montée détectée (parcours plat) n'apparaît
+  simplement pas sur ce graphique. La fiche d'une séance individuelle
+  (« Séances » → une séance) détaille chaque montée (bornes, D+, pente
+  moyenne, classe de pente, durée, VAM) dans son propre tableau.
+
 | Alimentée par | Calcul |
 |---|---|
 | `activities/*.md` (durée, FC moyenne, effort perçu) | `scripts/arc_metrics.py` : TRIMP, ou effort perçu sans FC |
 | `planning/Runner_Profile.md` (FC max, FC de repos) | indispensables au TRIMP |
-| `activities/fit/*.json` (échantillons ingérés) | temps en zone FC → polarisation 80/20 ; GAP → découplage aérobie/EF |
+| `activities/fit/*.json` (échantillons ingérés) | temps en zone FC → polarisation 80/20 ; GAP → découplage aérobie/EF ; montées détectées → VAM |
 
 **Si les courbes sont plates ou bizarres** : renseignez la FC max et la FC de repos
 de référence du profil. Sans elles, la charge vient de l'effort perçu seul.
@@ -315,6 +334,13 @@ de fréquence cardiaque et d'effort perçu, un astérisque.
   mentalement les côtes pour comparer une allure de montée à une allure de plat.
   Réservée aux sports de la famille course à pied avec échantillons FIT ; absente
   sinon (jamais une valeur à zéro).
+- **Les montées** (#46, VAM) : un tableau, une ligne par montée détectée (bornes en
+  kilomètres, distance, D+, pente moyenne et sa classe, durée, VAM temps
+  écoulé/temps de mouvement), plus la VAM moyenne par classe de pente en pied de
+  tableau. Réservé aux sports de la famille course à pied avec échantillons FIT ;
+  une séance sans montée détectée (parcours plat, D+ ou pente sous le seuil de
+  détection) affiche la section avec un message plutôt que la masquer — pour
+  distinguer « pas de montée sur cette sortie » d'un bug d'affichage.
 - **Les zones FC** (#43) : une barre empilée du temps passé dans chacune des 5 zones,
   avec les bornes intérieures (bpm, ex. « Z1 < 146 · Z2 146-155 · … · Z5 ≥ 172 ») et
   la méthode effective (FC au seuil, Karvonen ou %FC max — voir

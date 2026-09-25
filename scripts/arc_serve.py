@@ -490,7 +490,24 @@ def api_activity(store: Store, activity_id: int):
     act["missing_reason"] = json.loads(act["missing_reason"]) if act.get("missing_reason") else None
     return {"activity": act, "splits": splits, "weather": weather,
             "hr_zones": api_activity_hr_zones(store, activity_id),
+            "climbs": api_activity_climbs(store, activity_id),
             "body_html": render_markdown(I.C.body_after_block(body))}
+
+
+def api_activity_climbs(store: Store, activity_id: int) -> dict:
+    """Montées détectées et VAM d'une séance (#46), pour
+    `/api/activity/<id>.climbs` : liste des montées (bornes, gain, pente, VAM
+    temps écoulé/temps de mouvement, classe de pente) déjà calculées à
+    l'indexation (`compute_metrics` -> `arc_climb.detect_climbs`), id INTERNE
+    de l'activité. Rend TOUJOURS un dict (jamais `None`, même discipline que
+    `api_activity_hr_zones`/#43) : une activité sans montée détectée (parcours
+    plat, hors famille course à pied, ou sans échantillons FIT) a
+    `climbs: []`, jamais une absence de clé."""
+    rows = store.rows(
+        "SELECT idx AS \"index\", start_t_s, end_t_s, start_km, end_km, distance_m, gain_m, avg_grade, "
+        "grade_class, duration_elapsed_s, duration_moving_s, vam_elapsed_m_h, vam_moving_m_h "
+        "FROM activity_climb WHERE activity_id = ? ORDER BY idx", (activity_id,))
+    return {"climbs": rows, "vam_by_grade_class": I.VC.vam_by_grade_class(rows)}
 
 
 def api_activity_hr_zones(store: Store, activity_id: int) -> dict:
@@ -690,6 +707,24 @@ def api_decoupling(store: Store, q: dict) -> dict:
     return M.decoupling_trend(rows, today, weeks)
 
 
+def api_vam(store: Store, q: dict) -> dict:
+    """Tendance de la VAM sur les montées détectées (#46) : `/api/vam`.
+
+    Additive : ne touche à aucune route existante. Délègue à `M.vam_trend` sur
+    TOUTES les activités de la famille course à pied de la fenêtre demandée
+    (`weeks`, défaut `M.VAM_TREND_WEEKS`) — AUCUN seuil de durée minimale,
+    contrairement à `api_decoupling` (voir `arc_climb.ASSUMPTIONS`).
+    """
+    today = _today(store)
+    weeks_raw = q.get("weeks", [""])[0]
+    weeks = int(weeks_raw) if weeks_raw.isdigit() else M.VAM_TREND_WEEKS
+    weeks = max(4, min(52, weeks))
+    rows = store.rows(
+        "SELECT date, sport, name, best_vam_10min_m_h, best_vam_20min_m_h, best_climb_vam_elapsed_m_h "
+        "FROM activity")
+    return M.vam_trend(rows, today, weeks)
+
+
 def api_files(store: Store, q: dict) -> dict:
     return {"items": store.backfill()}
 
@@ -699,7 +734,7 @@ ROUTES = {
     "/api/health": api_health, "/api/week": api_week, "/api/activities": api_activities,
     "/api/performance": api_performance, "/api/reports": api_reports, "/api/report": api_report,
     "/api/calendar": api_calendar, "/api/nutrition": api_nutrition, "/api/fueling": api_fueling,
-    "/api/decoupling": api_decoupling, "/api/files": api_files,
+    "/api/decoupling": api_decoupling, "/api/vam": api_vam, "/api/files": api_files,
 }
 
 # ---------------------------------------------------------------------------

@@ -18,6 +18,7 @@ sert au tableau de bord (`scripts/arc_serve.py`) et aux calculs de charge
     arc_index.py zones [--activity GARMIN_ID] [--weeks N]   # zones FC, temps en zone, polarisation (#43)
     arc_index.py gap --activity GARMIN_ID                   # allure ajustée à la pente, globale + par split (#44)
     arc_index.py decoupling [--activity GARMIN_ID] [--weeks N]   # découplage aérobie (Pa:HR), EF (#45)
+    arc_index.py vam [--activity GARMIN_ID] [--weeks N]           # VAM sur les montées détectées (#46)
 
 `hrv-baseline` n'a besoin d'aucun tableau de bord lancé (headless, `/garmin-daily-sync`
 compris) : elle réindexe puis rend le point du jour de `arc_metrics.hrv_baseline_series`
@@ -82,6 +83,18 @@ recalculées en entier à chaque passage de `index_workspace` (même discipline
 que GAP/#44 et zones/#43), restreintes à la famille course à pied avec des
 échantillons FIT ingérés — voir `arc_decoupling.ASSUMPTIONS`.
 
+`vam` (#46) rend, avec `--activity GARMIN_ID`, le détail des montées détectées
+d'une séance (bornes, gain, pente, VAM temps écoulé/temps de mouvement, classe
+de pente, meilleure VAM 10/20 min) ; sans `--activity`, la tendance sur les
+`--weeks` dernières semaines glissantes (défaut 12, AUCUN seuil de durée
+minimale contrairement à `decoupling` — une montée peut être détectée sur une
+sortie courte). La table `activity_climb` et les colonnes
+`activity.best_vam_10min_m_h`/`best_vam_20min_m_h`/`best_climb_vam_elapsed_m_h`
+sont recalculées en entier à chaque passage de `index_workspace` (même
+discipline que GAP/#44 et découplage/#45), restreintes à la famille course à
+pied (course, trail, randonnée, marche) avec des échantillons FIT ingérés —
+voir `arc_climb.ASSUMPTIONS`.
+
 Options communes : `--workspace DIR` (sinon $ARC_WORKSPACE, le pointeur
 ~/.config/ai-running-coach/workspace, puis le moteur), `--db FICHIER` (défaut
 <workspace>/.arc/coach.db), `--memory` (base en mémoire, rien sur disque),
@@ -105,6 +118,7 @@ from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+import arc_climb as VC  # noqa: E402
 import arc_contract as C  # noqa: E402
 import arc_decoupling as DC  # noqa: E402
 import arc_gap as G  # noqa: E402
@@ -114,8 +128,8 @@ import arc_samples as S  # noqa: E402
 from coach_config import ConfigError, read_toml  # noqa: E402
 from coach_setup import ENGINE, workspace_root  # noqa: E402
 
-SCHEMA_VERSION = 12  # #45 : colonnes `activity.decoupling_pct`/`ef_whole`/`decoupling_reason`
-                      # (découplage aérobie Pa:HR et facteur d'efficacité)
+SCHEMA_VERSION = 13  # #46 : table `activity_climb` + colonnes `activity.best_vam_10min_m_h`/
+                      # `best_vam_20min_m_h`/`best_climb_vam_elapsed_m_h` (VAM sur les montées détectées)
 DEFAULT_DB = ".arc/coach.db"
 DATA_DIRS = ("activities", "medical", "nutrition", "planning", "rapports")
 
@@ -256,7 +270,8 @@ CREATE TABLE activity (
     load REAL, load_source TEXT, vo2max_est REAL, missing_reason TEXT,
     gear_id TEXT, carbs_g REAL, fluid_intake_ml REAL, weight_pre_kg REAL, weight_post_kg REAL,
     sweat_rate_l_h REAL, gap_pace_s_km REAL, decoupling_pct REAL, ef_whole REAL,
-    decoupling_reason TEXT, body_md TEXT, data_json TEXT
+    decoupling_reason TEXT, best_vam_10min_m_h REAL, best_vam_20min_m_h REAL,
+    best_climb_vam_elapsed_m_h REAL, body_md TEXT, data_json TEXT
 );
 CREATE INDEX activity_date ON activity(date);
 -- `gap_pace_s_km` (#44, allure ajustée à la pente, `arc_gap.py`) : recalculée en
@@ -269,6 +284,12 @@ CREATE INDEX activity_date ON activity(date);
 -- échantillons FIT ingérés. `decoupling_reason` porte TOUJOURS la raison d'un
 -- `decoupling_pct` NULL (durée insuffisante, échauffement, FC manquante, effort
 -- non stable...) — jamais un NULL muet, voir `arc_decoupling.ASSUMPTIONS`.
+-- `best_vam_10min_m_h`/`best_vam_20min_m_h`/`best_climb_vam_elapsed_m_h` (#46,
+-- VAM sur les montées détectées, `arc_climb.py`) : même discipline de recalcul
+-- intégral à chaque `compute_metrics`, restreint à la famille course à pied avec
+-- échantillons FIT ingérés — voir `arc_climb.ASSUMPTIONS`. Le détail par montée
+-- vit dans `activity_climb` ci-dessous, jamais ici (une activité peut avoir
+-- plusieurs montées).
 CREATE TABLE activity_split (
     activity_id INTEGER, km INTEGER, distance_m REAL, duration_s REAL, elev_gain_m REAL,
     elev_loss_m REAL, avg_hr_bpm REAL, max_hr_bpm REAL, max_speed_kmh REAL,
@@ -358,6 +379,20 @@ CREATE INDEX hr_zone_time_activity ON hr_zone_time(activity_id);
 -- restriction et de recalcul que `hr_zone_time` ci-dessus.
 CREATE TABLE hr_polarisation_time (activity_id INTEGER, bucket TEXT, seconds REAL);
 CREATE INDEX hr_polarisation_time_activity ON hr_polarisation_time(activity_id);
+-- Montées détectées par activité (#46, `arc_climb.py`), id INTERNE (`activity_id`,
+-- comme `hr_zone_time`/`activity_split` — jamais `garmin_activity_id` : la ligne
+-- est recréée en entier à chaque `compute_metrics`, sans purge par fichier). `idx`
+-- : ordre de la montée dans l'activité (1-based, chronologique). `avg_grade` :
+-- fraction signée (0,08 = 8 %). `vam_elapsed_m_h`/`vam_moving_m_h` : voir
+-- `arc_climb.ASSUMPTIONS["vam_basis"]` (les deux, jamais une seule). Une activité
+-- sans montée détectée (parcours plat, ou hors famille course à pied/sans FIT)
+-- n'a simplement aucune ligne ici.
+CREATE TABLE activity_climb (
+    activity_id INTEGER, idx INTEGER, start_t_s REAL, end_t_s REAL, start_km REAL, end_km REAL,
+    distance_m REAL, gain_m REAL, avg_grade REAL, grade_class TEXT,
+    duration_elapsed_s REAL, duration_moving_s REAL, vam_elapsed_m_h REAL, vam_moving_m_h REAL
+);
+CREATE INDEX activity_climb_activity ON activity_climb(activity_id);
 """
 
 # Tables alimentées par fichier (colonne `source_path`) : purgées à la réindexation d'un fichier.
@@ -697,6 +732,7 @@ def compute_metrics(conn, conf: dict, today: Optional[str] = None) -> None:
     # incrémental ou `--rebuild`.
     conn.execute("DELETE FROM hr_zone_time")
     conn.execute("DELETE FROM hr_polarisation_time")
+    conn.execute("DELETE FROM activity_climb")
     for row in rows:
         act = dict(row)
         load, source = M.session_load(act, athlete)
@@ -754,6 +790,31 @@ def compute_metrics(conn, conf: dict, today: Optional[str] = None) -> None:
                 conn.execute(
                     "UPDATE activity SET decoupling_pct = ?, ef_whole = ?, decoupling_reason = ? WHERE id = ?",
                     (report["decoupling_pct"], report["ef_whole"], report["reason"], act["id"]),
+                )
+                # VAM sur les montées détectées (#46) : détection PURE sur les échantillons
+                # bruts (t_s/distance_m/altitude_m/speed_ms), indépendante du GAP/de la pente
+                # fenêtrée calculée ci-dessus pour le GAP (`arc_climb.detect_climbs` a son
+                # propre lissage/segmentation, voir `arc_climb.ASSUMPTIONS`) — jamais un
+                # second calcul de pente au sens GAP, seulement une réutilisation du lissage
+                # d'altitude déjà partagé (`arc_elevation.smooth_moving_average`).
+                climb = VC.detect_climbs(act_samples)
+                if climb:
+                    conn.executemany(
+                        "INSERT INTO activity_climb (activity_id, idx, start_t_s, end_t_s, start_km, end_km, "
+                        "distance_m, gain_m, avg_grade, grade_class, duration_elapsed_s, duration_moving_s, "
+                        "vam_elapsed_m_h, vam_moving_m_h) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                        [(act["id"], c["index"], c["start_t_s"], c["end_t_s"], c["start_km"], c["end_km"],
+                          c["distance_m"], c["gain_m"], c["avg_grade"], c["grade_class"],
+                          c["duration_elapsed_s"], c["duration_moving_s"], c["vam_elapsed_m_h"],
+                          c["vam_moving_m_h"]) for c in climb],
+                    )
+                windows = VC.best_vam_windows(act_samples, climb)
+                best_climb_vam = max(
+                    (c["vam_elapsed_m_h"] for c in climb if c["vam_elapsed_m_h"] is not None), default=None)
+                conn.execute(
+                    "UPDATE activity SET best_vam_10min_m_h = ?, best_vam_20min_m_h = ?, "
+                    "best_climb_vam_elapsed_m_h = ? WHERE id = ?",
+                    (windows["vam_best_10min_m_h"], windows["vam_best_20min_m_h"], best_climb_vam, act["id"]),
                 )
     conn.execute("DELETE FROM metric_day")
     dated = sorted(loads)
@@ -1133,8 +1194,14 @@ def index_workspace(conn, workspace: Path, today: Optional[str] = None) -> dict:
     # `stopped_samples`, `restricted_to_run_family`...) qu'un simple `{**G.ASSUMPTIONS,
     # **DC.ASSUMPTIONS}` écraserait silencieusement au lieu d'exposer les deux.
     decoupling_assumptions = {f"decoupling_{key}": value for key, value in DC.ASSUMPTIONS.items()}
+    # `arc_climb.ASSUMPTIONS` (#46) fusionné à PART lui aussi, sous des clés
+    # préfixées `vam_*` — même raison que `decoupling_*` ci-dessus (collision de
+    # noms de clé possible avec `arc_gap`/`arc_decoupling`, ex. "model",
+    # "restricted_to_run_family").
+    vam_assumptions = {f"vam_{key}": value for key, value in VC.ASSUMPTIONS.items()}
     for key, value in (("settings", _j(conf)),
-                       ("assumptions", _j({**M.ASSUMPTIONS, **G.ASSUMPTIONS, **decoupling_assumptions})),
+                       ("assumptions", _j({**M.ASSUMPTIONS, **G.ASSUMPTIONS, **decoupling_assumptions,
+                                           **vam_assumptions})),
                        ("today", today or date.today().isoformat())):
         conn.execute("INSERT OR REPLACE INTO meta VALUES (?, ?)", (key, value))
     conn.commit()
@@ -1383,12 +1450,68 @@ def decoupling_trend(conn, today: date, weeks: Optional[int] = None) -> dict:
     return M.decoupling_trend(rows, today, window_weeks)
 
 
+# ---------------------------------------------------------------------------
+# VAM — montées détectées (#46)
+# ---------------------------------------------------------------------------
+
+
+def activity_climb_report(conn, garmin_activity_id: int) -> dict:
+    """Rapport VAM (#46) d'une séance, par `garmin_activity_id` — pour la CLI
+    (`arc_index.py vam --activity`) et pour les agents en headless. Lit les
+    lignes/colonnes déjà calculées à l'indexation (`compute_metrics`), jamais un
+    recalcul à la lecture — même discipline que `activity_gap_report` (#44) et
+    `activity_decoupling_report` (#45). Rend TOUJOURS `{"garmin_activity_id",
+    "climbs", "vam_best_10min_m_h", "vam_best_20min_m_h", "vam_by_grade_class",
+    "best_climb_vam_elapsed_m_h", "reason"}`, jamais une exception."""
+    empty = {"garmin_activity_id": garmin_activity_id, "climbs": [], "vam_best_10min_m_h": None,
+             "vam_best_20min_m_h": None, "vam_by_grade_class": {}, "best_climb_vam_elapsed_m_h": None}
+    act = conn.execute(
+        "SELECT id, sport, best_vam_10min_m_h, best_vam_20min_m_h, best_climb_vam_elapsed_m_h "
+        "FROM activity WHERE garmin_activity_id = ?", (garmin_activity_id,)).fetchone()
+    if act is None:
+        return {**empty, "reason": "aucune activité indexée pour ce garmin_activity_id"}
+    if M.sport_family(act["sport"]) != "run":
+        return {**empty, "reason": "hors de la famille course à pied (arc_metrics.sport_family), voir "
+                                    "arc_climb.ASSUMPTIONS[\"restricted_to_run_family\"]"}
+    sample_count = conn.execute(
+        "SELECT COUNT(*) FROM activity_sample WHERE garmin_activity_id = ?", (garmin_activity_id,)
+    ).fetchone()[0]
+    if sample_count == 0:
+        return {**empty, "reason": "aucun échantillon FIT ingéré pour cette séance"}
+    climbs = [dict(r) for r in conn.execute(
+        "SELECT idx AS \"index\", start_t_s, end_t_s, start_km, end_km, distance_m, gain_m, avg_grade, "
+        "grade_class, duration_elapsed_s, duration_moving_s, vam_elapsed_m_h, vam_moving_m_h "
+        "FROM activity_climb WHERE activity_id = ? ORDER BY idx", (act["id"],)).fetchall()]
+    return {
+        "garmin_activity_id": garmin_activity_id,
+        "climbs": climbs,
+        "vam_best_10min_m_h": act["best_vam_10min_m_h"],
+        "vam_best_20min_m_h": act["best_vam_20min_m_h"],
+        "vam_by_grade_class": VC.vam_by_grade_class(climbs),
+        "best_climb_vam_elapsed_m_h": act["best_climb_vam_elapsed_m_h"],
+        "reason": None,
+    }
+
+
+def vam_trend(conn, today: date, weeks: Optional[int] = None) -> dict:
+    """Tendance de la VAM sur les montées détectées (#46) — pour la CLI
+    (`arc_index.py vam --weeks`) et pour `coach`/le tableau de bord. Voir
+    `arc_metrics.vam_trend`/`arc_climb.ASSUMPTIONS` — AUCUN seuil de durée
+    minimale (contrairement à `decoupling_trend`) : une montée peut être
+    détectée sur une sortie courte."""
+    rows = [dict(r) for r in conn.execute(
+        "SELECT date, sport, name, best_vam_10min_m_h, best_vam_20min_m_h, best_climb_vam_elapsed_m_h "
+        "FROM activity").fetchall()]
+    window_weeks = weeks if weeks and weeks > 0 else M.VAM_TREND_WEEKS
+    return M.vam_trend(rows, today, window_weeks)
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     parser.add_argument("command", nargs="?", default="index",
                         choices=("index", "backfill-plan", "status", "hrv-baseline", "sleep-debt",
                                  "heat-acclimation", "gear", "fueling", "samples", "zones", "gap",
-                                 "decoupling"))
+                                 "decoupling", "vam"))
     parser.add_argument("selector", nargs="?", default=None,
                         help="argument de la sous-commande (ex. garmin_activity_id pour « samples »)")
     parser.add_argument("--workspace")
@@ -1398,11 +1521,11 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--today", help="date de fin des séries (AAAA-MM-JJ)")
     parser.add_argument("--validate", nargs="+", metavar="FICHIER")
     parser.add_argument("--activity", type=int, metavar="GARMIN_ID",
-                        help="commande « zones »/« gap »/« decoupling » : temps en zone, GAP ou "
-                             "découplage d'une séance (garmin_activity_id)")
+                        help="commande « zones »/« gap »/« decoupling »/« vam » : temps en zone, GAP, "
+                             "découplage ou montées/VAM d'une séance (garmin_activity_id)")
     parser.add_argument("--weeks", type=int, metavar="N",
-                        help="commande « zones »/« decoupling » : polarisation ou tendance sur les N "
-                             "dernières semaines (défaut 8 pour « zones », 12 pour « decoupling »)")
+                        help="commande « zones »/« decoupling »/« vam » : polarisation ou tendance sur "
+                             "les N dernières semaines (défaut 8 pour « zones », 12 pour « decoupling »/« vam »)")
     return parser
 
 
@@ -1492,6 +1615,14 @@ def main(argv=None) -> int:
             print(json.dumps(activity_decoupling_report(conn, garmin_id), ensure_ascii=False))
             return 0
         print(json.dumps(decoupling_trend(conn, today_date, args.weeks), ensure_ascii=False))
+        return 0
+    if args.command == "vam":
+        today_date = date.fromisoformat(args.today) if args.today else date.today()
+        garmin_id = args.activity if args.activity is not None else (int(args.selector) if args.selector else None)
+        if garmin_id is not None:
+            print(json.dumps(activity_climb_report(conn, garmin_id), ensure_ascii=False))
+            return 0
+        print(json.dumps(vam_trend(conn, today_date, args.weeks), ensure_ascii=False))
         return 0
     if args.command == "status":
         by_status = {row[0]: row[1] for row in conn.execute(
