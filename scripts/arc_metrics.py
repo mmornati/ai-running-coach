@@ -118,8 +118,10 @@ ASSUMPTIONS = {
               "Calculée depuis l'allure et la FC MOYENNES de la séance (pas de série seconde par seconde) : "
               "ordre de grandeur, pas une mesure. Séances de course de 20 min à 3 h seulement, FC moy ≥ 70 % de la FC max, allure effort ≤ 8:30/km ; "
               "tendance 30 j pondérée par la durée, plafonnée à 90 min par séance.",
-    "trail_equivalence": f"Trail : distance effort = distance + D+ × {TRAIL_FLAT_M_PER_M_DPLUS:g} "
-                         "(config/sports/trail.md : 1000 m D+ ≈ 1,5 à 2 km plat).",
+    "trail_equivalence": f"Trail : équivalence plat (prédictions) = distance + D+ × {TRAIL_FLAT_M_PER_M_DPLUS:g} "
+                         "(config/sports/trail.md : 1000 m D+ ≈ 1,5 à 2 km plat). Sert uniquement aux prédictions "
+                         "VDOT/Riegel ; à ne pas confondre avec le « km-effort ITRA » (`effort_km`, D+/100) "
+                         "affiché dans le volume hebdomadaire.",
     "prediction": "Prédictions VDOT (Daniels) depuis la tendance VO2max, et Riegel depuis le meilleur effort récent "
                   "(exposant 1,06 route / 1,15 trail).",
     "records": "Records sur fenêtres de splits consécutifs d'environ 1 km : précision ±1 km.",
@@ -131,6 +133,12 @@ ASSUMPTIONS = {
                   "seulement), appariement séance ↔ activité par date + sport (route/trail/randonnée/marche et "
                   "variantes vélo interchangeables), les `done` explicites réservant leur activité avant les "
                   "séances sans statut.",
+    "effort_km": "Km-effort ITRA : pour les activités de la famille course (`SPORT_FAMILY` = \"run\" : running, "
+                 "trail, hiking, walking — cyclisme exclu), effort_km = distance_km + D+_m / 100. Absence de D+ : "
+                 "0 m utilisé. Absence de distance : l'activité n'est pas comptée. Somme hebdomadaire calculée sur "
+                 "les valeurs brutes puis arrondie une seule fois (pas la somme de valeurs déjà arrondies par "
+                 "activité). Distinct de l'« équivalence plat » (`trail_equivalence`, D+ × 1,75) utilisée pour les "
+                 "prédictions.",
 }
 
 # ---------------------------------------------------------------------------
@@ -339,6 +347,38 @@ def effort_distance_m(activity: dict) -> Optional[float]:
     if activity.get("sport") == "trail":
         return distance + (activity.get("elevation_gain_m") or 0) * TRAIL_FLAT_M_PER_M_DPLUS
     return float(distance)
+
+
+def effort_km_itra_raw(activity: dict) -> Optional[float]:
+    """Unrounded ITRA km-effort (distance_km + elevation_gain_m / 100), for run-like sports.
+
+    None if distance is missing (activity doesn't count) or the sport isn't in the "run"
+    family (`SPORT_FAMILY`): running, trail, hiking, walking. Unrounded, so callers summing
+    several activities (e.g. a weekly total) should round only once, after summing — never
+    sum values already rounded per activity.
+    """
+    distance_m = activity.get("distance_m")
+    if not distance_m or sport_family(activity.get("sport")) != "run":
+        return None
+    elevation_gain_m = activity.get("elevation_gain_m") or 0
+    return distance_m / 1000 + elevation_gain_m / 100
+
+
+def effort_km_itra(activity: dict) -> Optional[float]:
+    """ITRA km-effort (km) for a single activity, rounded to 1 decimal. See `effort_km_itra_raw`."""
+    raw = effort_km_itra_raw(activity)
+    return None if raw is None else round(raw, 1)
+
+
+def effort_km_week_total(activities: list) -> float:
+    """Sum of ITRA km-effort over a set of activities (e.g. one week), rounded once.
+
+    Non-run-like activities and activities missing a distance contribute nothing. Summing
+    the unrounded per-activity values first, then rounding once, avoids drifting from the
+    true weekly total (as summing values already rounded per activity would).
+    """
+    total = sum(v for v in (effort_km_itra_raw(a) for a in activities) if v is not None)
+    return round(total, 1)
 
 
 def vo2max_effective(activity: dict, athlete: dict) -> Optional[float]:

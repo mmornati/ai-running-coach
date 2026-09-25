@@ -247,6 +247,91 @@ class TestPerformance(unittest.TestCase):
         self.assertEqual(best[5]["time_s"], 5 * 330, "la fenêtre de 5 km ne peut pas enjamber le tour de 2 km")
 
 
+class TestEffortKmItra(unittest.TestCase):
+    """#35 — distance effort ITRA (km + D+/100) pour sports de course."""
+
+    def test_running_with_elevation(self):
+        """10 km + 500 m D+ → 10 + 5 = 15,0 km-effort."""
+        activity = {"sport": "running", "distance_m": 10000, "elevation_gain_m": 500}
+        self.assertEqual(M.effort_km_itra(activity), 15.0)
+
+    def test_trail_with_elevation(self):
+        """21,1 km + 0 m D+ → 21,1 km-effort (pas d'arrondi artificiel à 21)."""
+        activity = {"sport": "trail", "distance_m": 21100, "elevation_gain_m": 0}
+        self.assertEqual(M.effort_km_itra(activity), 21.1)
+
+    def test_hiking_with_elevation(self):
+        """5 km + 300 m D+ → 5 + 3 = 8,0 km-effort."""
+        activity = {"sport": "hiking", "distance_m": 5000, "elevation_gain_m": 300}
+        self.assertEqual(M.effort_km_itra(activity), 8.0)
+
+    def test_walking_with_elevation(self):
+        """3 km + 200 m D+ → 3 + 2 = 5,0 km-effort."""
+        activity = {"sport": "walking", "distance_m": 3000, "elevation_gain_m": 200}
+        self.assertEqual(M.effort_km_itra(activity), 5.0)
+
+    def test_missing_distance_returns_none(self):
+        """Pas de distance : l'activité ne compte pas (None, pas 0)."""
+        activity = {"sport": "trail", "elevation_gain_m": 500}
+        self.assertIsNone(M.effort_km_itra(activity))
+
+    def test_missing_elevation_uses_zero(self):
+        """Pas de D+ : utiliser 0 pour le calcul."""
+        activity = {"sport": "running", "distance_m": 10000}
+        self.assertEqual(M.effort_km_itra(activity), 10.0)
+
+    def test_non_running_sport_returns_none(self):
+        """Indoor cycling 30 km : n'est pas un sport de course, ne compte pas."""
+        activity = {"sport": "indoor_cycling", "distance_m": 30000, "elevation_gain_m": 0}
+        self.assertIsNone(M.effort_km_itra(activity))
+
+    def test_rounding_to_one_decimal(self):
+        """Le résultat est arrondi à une décimale. 20,0 km + 697 m D+ → 26,97 → 27,0."""
+        activity = {"sport": "trail", "distance_m": 20000, "elevation_gain_m": 697}
+        self.assertEqual(M.effort_km_itra(activity), 27.0)
+
+
+class TestEffortKmWeekTotal(unittest.TestCase):
+    """#35 (revue PR 80) — agrégation hebdomadaire du km-effort ITRA, telle qu'utilisée par
+    `scripts/arc_serve.py::api_load` pour cumuler les activités d'une semaine."""
+
+    def test_filters_sport_and_sums_run_like_activities(self):
+        """Trail (20 km + 697 m D+) et hiking (5 km + 4 m D+) comptent ; indoor_cycling
+        (30 km) est un sport hors famille course et ne contribue pas au total."""
+        week = [
+            {"sport": "trail", "distance_m": 20000, "elevation_gain_m": 697},
+            {"sport": "hiking", "distance_m": 5000, "elevation_gain_m": 4},
+            {"sport": "indoor_cycling", "distance_m": 30000, "elevation_gain_m": 0},
+        ]
+        self.assertEqual(M.effort_km_week_total(week), round(26.97 + 5.04, 1))
+
+    def test_rounds_once_on_the_raw_sum_not_the_sum_of_rounded_activities(self):
+        """Deux activités à 5,04 km-effort brut chacune : arrondies séparément puis
+        sommées, cela donne 5,0 + 5,0 = 10,0 (le bug corrigé après revue de la PR 80,
+        qui faisait dériver le total hebdomadaire du vrai résultat) ; en sommant les
+        valeurs brutes puis en arrondissant une seule fois, le total correct est 10,1."""
+        week = [{"sport": "running", "distance_m": 5000, "elevation_gain_m": 4},
+                {"sport": "running", "distance_m": 5000, "elevation_gain_m": 4}]
+        wrong_sum_of_rounded = sum(M.effort_km_itra(a) for a in week)
+        self.assertEqual(wrong_sum_of_rounded, 10.0, "arrondir avant de sommer dérive du vrai total")
+        self.assertEqual(M.effort_km_week_total(week), 10.1)
+
+    def test_each_week_is_computed_from_its_own_activities_only(self):
+        """Une activité du lundi suivant ne doit jamais entrer dans le total de la semaine
+        courante : `api_load` doit passer à cette fonction les activités déjà réparties par
+        semaine (bucket par lundi), jamais la liste complète sur plusieurs semaines — sans
+        quoi l'arrondi unique (voir le test précédent) se ferait sur la mauvaise fenêtre."""
+        week1 = [{"sport": "running", "distance_m": 5000, "elevation_gain_m": 4}]      # semaine courante
+        week2 = [{"sport": "running", "distance_m": 5000, "elevation_gain_m": 4}]      # lundi suivant
+        self.assertEqual(M.effort_km_week_total(week1), 5.0)
+        self.assertEqual(M.effort_km_week_total(week2), 5.0)
+        # Si les deux semaines étaient fusionnées avant l'arrondi (bug de bucket), le total
+        # de la semaine courante s'en trouverait faussé : 10,1 au lieu de 5,0 + 5,0 = 10,0.
+        merged = M.effort_km_week_total(week1 + week2)
+        self.assertNotEqual(merged, M.effort_km_week_total(week1) + M.effort_km_week_total(week2))
+        self.assertEqual(merged, 10.1)
+
+
 class TestWeekCompliance(unittest.TestCase):
     """#33 — conformité plan vs réalisé, fixtures à ratios connus."""
 

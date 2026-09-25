@@ -73,8 +73,15 @@ Trois graphiques, sur 3 mois, 6 mois ou un an :
   indicatif, discuté dans la littérature, pas un seuil de blessure. Il n'est pas
   tracé tant que l'historique est trop mince pour avoir un sens.
 - **Le volume hebdomadaire** : heures d'effort et D+ cumulé en trail, kilomètres sur
-  route. En dessous, la monotonie et le *strain* de Foster sur 7 jours, et la charge
-  du jour.
+  route. En profil trail, la ligne affichée au survol ajoute le **km-effort ITRA**
+  (km + D+/100 ; voir [Marques et métriques](../marques.md)) — à ne pas confondre
+  avec l'« équivalence plat » utilisée ailleurs pour les prédictions VDOT/Riegel
+  (D+ × 1,5 à 2 km). Contrairement aux heures, kilomètres et D+ affichés à côté, qui
+  cumulent **toutes** les activités de la semaine, le km-effort ne compte que les
+  activités de course (running, trail, randonnée, marche) : le vélo et les autres
+  sports en sont exclus. Reste exprimé en kilomètres même en unités impériales
+  (`[athlete].units = imperial`). En dessous, la monotonie et le *strain* de Foster
+  sur 7 jours, et la charge du jour.
 
 **Comment la lire** : une forme très négative plusieurs semaines de suite, c'est de
 la fatigue accumulée ; une forme franchement positive avant une course, c'est

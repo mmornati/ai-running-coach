@@ -258,11 +258,12 @@ def api_load(store: Store, q: dict) -> dict:
     first = _monday(today) - timedelta(weeks=weeks - 1)
     rows = store.rows("SELECT date, sport, distance_m, duration_s, elevation_gain_m, load FROM activity "
                       "WHERE date >= ? AND date <= ?", (first.isoformat(), today.isoformat()))
-    buckets = {}
+    buckets, week_rows = {}, {}
     for w in range(weeks):
         start = first + timedelta(weeks=w)
         buckets[start.isoformat()] = {"week_start": start.isoformat(), "distance_m": 0.0, "duration_s": 0.0,
-                                      "elevation_m": 0.0, "load": 0.0, "sessions": 0}
+                                      "elevation_m": 0.0, "effort_km": 0.0, "load": 0.0, "sessions": 0}
+        week_rows[start.isoformat()] = []
     for row in rows:
         key = _monday(date.fromisoformat(row["date"])).isoformat()
         b = buckets.get(key)
@@ -273,6 +274,11 @@ def api_load(store: Store, q: dict) -> dict:
         b["duration_s"] += row["duration_s"] or 0
         b["elevation_m"] += row["elevation_gain_m"] or 0
         b["load"] += row["load"] or 0
+        week_rows[key].append(row)
+    # ITRA km-effort, per week: `effort_km_week_total` sums the raw (unrounded) per-activity
+    # values and rounds once — never the sum of values already rounded per activity.
+    for key, b in buckets.items():
+        b["effort_km"] = M.effort_km_week_total(week_rows[key])
     latest = store.one("SELECT monotony, strain FROM metric_day WHERE date <= ? ORDER BY date DESC LIMIT 1",
                        (today.isoformat(),)) or {}
     return {"weeks": list(buckets.values()), "monotony": latest.get("monotony"), "strain": latest.get("strain")}
