@@ -601,6 +601,7 @@ def parse_profile(text: str) -> Dict[str, Any]:
         "sex": "female" if re.match(r"^(f|femme|female)\b", sex) else ("male" if re.match(r"^(h|m|homme|male)\b", sex) else None),
         "weight_kg": parse_fr_number(_pick(b, "poids de forme", "poids")),
         "birth_year": _int(parse_fr_number(_pick(b, "annee de naissance"))),
+        "sleep_need_s": parse_fr_duration(_pick(b, "besoin de sommeil")),
         "default_location": _pick(b, "lieu par defaut"),
         "usual_slot": _pick(b, "creneau habituel"),
         "name": _pick(b, "prenom / surnom", "prenom"),

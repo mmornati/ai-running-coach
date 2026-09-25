@@ -1,0 +1,30 @@
+# #37 — dette de sommeil 7 j : le coach doit la nommer explicitement (pas juste
+# constater « vous semblez fatigué ») ET en tirer une adaptation d'intensité, pas
+# seulement la reporter sans conséquence.
+#
+# La fixture porte 6 nuits d'historique santé (`medical/*_health.md`, noms
+# `<N>d_health.md` matérialisés en dates réelles par le runner — #34,
+# `runner._materialize_relative_dates`) : les 4 nuits les plus récentes à ~5 h
+# (déficit ~2,5 h/nuit face au besoin par défaut de 7 h 30, le profil ne renseigne
+# pas « Besoin de sommeil »), puis 2 nuits normales à ~7 h 20-30 — assez pour
+# dépasser `SLEEP_DEBT_MIN_NIGHTS` (4) et obtenir une dette substantielle
+# (≈ 10 h sur 6 nuits mesurées), jamais nulle ni ambiguë. HRV/FC de repos/readiness
+# restent dans des valeurs plausibles et non alarmantes sur ces mêmes jours : la
+# dette de sommeil doit être identifiée pour elle-même, pas comme un effet de bord
+# d'un signal HRV effondré.
+id = "sleep-debt"
+prompt = "Valide ma séance de demain."
+fixture = "sleep-debt"
+
+[config.health]
+morning_check = "full"
+
+[expect]
+tools_called = ["get_hrv_data", "get_rhr_day", "get_training_readiness"]
+# Deux exigences distinctes (ET, jamais OU — comme health-own-baseline) : nommer la
+# dette/le manque de sommeil, ET en tirer une adaptation d'intensité. Un simple
+# « vous avez peu dormi » sans conséquence sur la séance ne doit pas suffire.
+must_match = [
+  "dette de sommeil|manque de sommeil|manque de sommeil accumulé|dette de sommeil accumulée",
+  "all[ée]g|allèg|réduir|facile|repos|diminuer l'intensité|intensité réduite",
+]

@@ -202,6 +202,73 @@ class TestHrvBaselineCli(Workspace):
         self.assertEqual(point["morning_check"], "off")
 
 
+class TestSleepDebtCli(Workspace):
+    """#37 — `arc_index.py sleep-debt` : voie headless vers la dette de sommeil 7 j,
+    même porte `[health].morning_check` que `hrv-baseline` (#34)."""
+
+    def health(self, day: str, sleep_h: float, mode: str = "full") -> None:
+        self.write(f"medical/{day}_health.md",
+                  arc(f'{{"arc": 1, "kind": "health", "date": "{day}", "morning_check": "{mode}", '
+                      f'"sleep_total_s": {sleep_h * 3600}}}'))
+
+    def test_full_mode_returns_the_computed_debt(self):
+        for day in ("2026-09-03", "2026-09-04", "2026-09-05", "2026-09-06"):
+            self.health(day, 5.0)
+        self.index()
+        conf = {"morning_check": "full"}
+        point = I.sleep_debt_today(self.conn, conf, date(2026, 9, 9))
+        self.assertEqual(point["morning_check"], "full")
+        self.assertEqual(point["nights_counted"], 4)
+        self.assertAlmostEqual(point["sleep_debt_7d_s"], 4 * 2.5 * 3600)
+        self.assertEqual(point["sleep_need_s"], 7 * 3600 + 30 * 60, "défaut 7 h 30 sans profil")
+
+    def test_uses_profile_sleep_need_when_present(self):
+        self.write("planning/Runner_Profile.md", "# Profil\n\n## Physiologie\n\n- **Besoin de sommeil** : 8h00\n")
+        for day in ("2026-09-03", "2026-09-04", "2026-09-05", "2026-09-06"):
+            self.health(day, 6.0)
+        self.index()
+        conf = {"morning_check": "full"}
+        point = I.sleep_debt_today(self.conn, conf, date(2026, 9, 9))
+        self.assertEqual(point["sleep_need_s"], 8 * 3600)
+        self.assertAlmostEqual(point["sleep_debt_7d_s"], 4 * 2 * 3600)
+
+    def test_below_min_nights_gives_none_but_counts(self):
+        for day in ("2026-09-05", "2026-09-06"):
+            self.health(day, 5.0)
+        self.index()
+        conf = {"morning_check": "full"}
+        point = I.sleep_debt_today(self.conn, conf, date(2026, 9, 9))
+        self.assertIsNone(point["sleep_debt_7d_s"])
+        self.assertEqual(point["nights_counted"], 2)
+
+    def test_minimal_mode_returns_no_debt_and_says_why(self):
+        """`minimal` : rien de calculé (même porte que la ligne de base HRV, #34) — la
+        readiness seule sort du bilan matinal, pas la dette de sommeil."""
+        conf = {"morning_check": "minimal"}
+        point = I.sleep_debt_today(self.conn, conf, date(2026, 9, 9))
+        self.assertIsNone(point["sleep_debt_7d_s"])
+        self.assertEqual(point["morning_check"], "minimal")
+        self.assertIn("full", point["reason"])
+
+    def test_off_mode_returns_no_debt(self):
+        conf = {"morning_check": "off"}
+        point = I.sleep_debt_today(self.conn, conf, date(2026, 9, 9))
+        self.assertIsNone(point["sleep_debt_7d_s"])
+        self.assertEqual(point["morning_check"], "off")
+
+
+class TestProfileSleepNeed(unittest.TestCase):
+    """#37 — `Besoin de sommeil` du profil, analysé comme les autres champs physio."""
+
+    def test_parses_hour_and_minutes_notation(self):
+        text = "# Profil\n\n## Physiologie\n\n- **Besoin de sommeil** : 7h30\n"
+        self.assertEqual(L.parse_profile(text)["sleep_need_s"], 7 * 3600 + 30 * 60)
+
+    def test_absent_when_not_filled(self):
+        text = "# Profil\n\n## Physiologie\n\n- **FC max** : 188\n"
+        self.assertNotIn("sleep_need_s", L.parse_profile(text))
+
+
 class TestFrenchNumbers(unittest.TestCase):
     def test_numbers(self):
         for text, expected in (("2 400 m", 2400.0), ("2 400", 2400.0), ("12,4 km", 12.4), ("188", 188.0), ("-3,5", -3.5)):

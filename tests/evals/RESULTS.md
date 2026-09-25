@@ -14,8 +14,8 @@ ARC_LLM_TESTS=1 python3 tests/run_tests.py --tier c --repeat 3
 
 | | |
 |---|---|
-| **Date** | _jamais exécuté_ |
-| **Modèle** | `claude-haiku-4-5-20251001` (défaut) |
+| **Date** | 2026-09-25 01:47 UTC |
+| **Modèle** | `claude-haiku-4-5-20251001` |
 | **Runner** | `claude -p` |
 | **Répétitions** | 3 par scénario |
 | **Seuil de réussite** | 2/3 |
@@ -23,6 +23,7 @@ ARC_LLM_TESTS=1 python3 tests/run_tests.py --tier c --repeat 3
 | Scénario | Réussites | Verdict |
 |---|---|---|
 | `daily-sync-resume-block` | — | — |
+| `doctor-token-expiring` | — | — |
 | `health-full-triad` | — | — |
 | `health-minimal-readiness-only` | — | — |
 | `health-off-no-health-file` | — | — |
@@ -32,6 +33,7 @@ ARC_LLM_TESTS=1 python3 tests/run_tests.py --tier c --repeat 3
 | `no-medical-no-delegation` | — | — |
 | `setup-first-run` | — | — |
 | `setup-idempotent` | — | — |
+| `sleep-debt` | — | — |
 | `sport-road-no-elevation` | — | — |
 | `sport-trail-elevation` | — | — |
 | `style-exigeant-names-the-miss` | — | — |
@@ -45,7 +47,3 @@ ARC_LLM_TESTS=1 python3 tests/run_tests.py --tier c --repeat 3
 > Lancez la commande ci-dessus, ou le workflow `Évals` depuis l'onglet Actions,
 > puis remplacez ce tableau par le relevé obtenu.
 
-<!-- Régénéré via `python3 tests/evals/render_results.py --results <(echo '{}')`
-     (#29, revue PR #74, point 11) : la liste des scénarios ci-dessus vient de
-     `runner.load_cases()`, pas d'une recopie à la main — `health-off-no-health-file`
-     manquait au tableau précédent. -->

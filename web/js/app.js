@@ -241,6 +241,18 @@ async function viewToday() {
         : "médiane 7 j indisponible";
       rows.push(["FC de repos", latest.resting_hr_bpm != null ? `${F.num(latest.resting_hr_bpm)} bpm` : "—",
         rangeBar(latest.resting_hr_bpm, latest.rhr_median7 != null ? latest.rhr_median7 - 3 : null, latest.rhr_median7 != null ? latest.rhr_median7 + 5 : null, 30, 70, d > 7 ? "range--alert" : d >= 5 ? "range--warn" : ""), rhrTxt]);
+      // Dette de sommeil 7 j (#37) : `nights_counted` est toujours rendu par l'API, même
+      // sous le seuil de nuits mesurées — on distingue donc « pas assez de nuits » de
+      // « aucune dette » plutôt que d'afficher un simple tiret dans les deux cas.
+      if (latest.sleep_debt_7d_s != null) {
+        const debtH = latest.sleep_debt_7d_s / 3600;
+        rows.push(["Dette de sommeil (7 j)", `${F.num(debtH, 1)} h`,
+          rangeBar(debtH, 0, 5, 0, 15, debtH > 10 ? "range--alert" : debtH > 5 ? "range--warn" : ""),
+          `sur ${latest.nights_counted} nuit${latest.nights_counted > 1 ? "s" : ""} mesurée${latest.nights_counted > 1 ? "s" : ""} · besoin ${F.duration(latest.sleep_need_s)}`]);
+      } else if (latest.nights_counted != null) {
+        rows.push(["Dette de sommeil (7 j)", "—", rangeBar(null, 0, 5, 0, 15),
+          `pas assez de nuits mesurées (${latest.nights_counted}/7)`]);
+      }
     }
     rows.push(["Readiness", latest.readiness_score != null ? `${F.num(latest.readiness_score)}/100` : "—",
       rangeBar(latest.readiness_score, 60, 100, 0, 100), latest.readiness_score != null ? (latest.readiness_score >= 60 ? "prêt" : latest.readiness_score >= 40 ? "modéré" : "faible") : ""]);
@@ -388,9 +400,18 @@ async function viewHealth(params) {
     { type: "bars", values: s.map((p) => p.readiness_score), cls: (i, v) => `bar bar--ready-${v >= 60 ? "hi" : v >= 40 ? "mid" : "lo"}` },
   ], [], { height: 150, y: { min: 0, max: 100 }, label: "Readiness sur 100" }), false]);
   if (mode === "full") {
+    // Besoin de sommeil (#37) : ligne du profil (`Besoin de sommeil`) si connue, sinon
+    // le défaut moteur (7 h 30) — jamais une valeur codée en dur ici, pour que la ligne
+    // reste cohérente avec la dette de sommeil calculée sur le même besoin.
+    const needS = s.find((p) => p.sleep_need_s != null)?.sleep_need_s ?? 27000;
     charts.push(["sleep", "Sommeil", "", timeChart(dates, [
       { type: "bars", values: s.map((p) => (p.sleep_total_s ? p.sleep_total_s / 3600 : null)), cls: "bar bar--sleep" },
-    ], [{ type: "hline", value: 7.5, cls: "mark", label: "7 h 30" }], { height: 150, y: { min: 0 }, label: "Durée de sommeil en heures", yFormat: (v) => `${F.num(v)} h` }), false]);
+    ], [{ type: "hline", value: needS / 3600, cls: "mark", label: F.duration(needS) }], { height: 150, y: { min: 0 }, label: "Durée de sommeil en heures", yFormat: (v) => `${F.num(v)} h` }), false]);
+    charts.push(["sleepdebt", "Dette de sommeil (7 j)",
+      `Somme, sur les nuits mesurées des 7 derniers jours, du manque par rapport au besoin (${F.duration(needS)}) — une nuit non mesurée n'est jamais comptée comme un manque de 0 h.`,
+      timeChart(dates, [
+        { type: "bars", values: s.map((p) => (p.sleep_debt_7d_s != null ? p.sleep_debt_7d_s / 3600 : null)), cls: (i, v) => `bar bar--sleep${v > 10 ? " bar--alert" : v > 5 ? " bar--warn" : ""}` },
+      ], [], { height: 150, y: { min: 0 }, label: "Dette de sommeil cumulée en heures", yFormat: (v) => `${F.num(v)} h` }), false]);
   }
   const periods = [[30, "1 mois"], [90, "3 mois"], [180, "6 mois"]].map(([d, l]) => `<a class="seg ${d === days ? "is-on" : ""}" href="#/sante?jours=${d}">${l}</a>`).join("");
   main.innerHTML = `${header("Santé", mode === "minimal" ? "Bilan minimal : readiness seule." : "Triade du matin : HRV, FC de repos, readiness — et le verdict du coach, jour par jour.")}
@@ -410,6 +431,7 @@ async function viewHealth(params) {
     if (p.resting_hr_bpm != null) bits.push(`FC repos ${F.num(p.resting_hr_bpm)}${p.rhr_delta != null ? ` (${p.rhr_delta > 0 ? "+" : ""}${F.num(p.rhr_delta)})` : ""}`);
     if (p.readiness_score != null) bits.push(`readiness ${F.num(p.readiness_score)}`);
     if (p.sleep_total_s) bits.push(`sommeil ${F.duration(p.sleep_total_s)}${p.sleep_score != null ? ` (${F.num(p.sleep_score)})` : ""}`);
+    if (p.sleep_debt_7d_s != null) bits.push(`dette 7 j ${F.num(p.sleep_debt_7d_s / 3600, 1)} h (${p.nights_counted} nuits)`);
     readout($("#r-health"), bits.join(" · ") + (p.verdict ? `<br>${verdictChip(p.verdict)} ${F.esc(p.verdict_reason || "")}` : ""));
   };
   for (const [id, , , c] of charts) attachCursor($(`#c-${id}`), c, show);
