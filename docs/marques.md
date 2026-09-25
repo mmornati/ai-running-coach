@@ -33,6 +33,17 @@ publiés dans la littérature scientifique et portent ici des noms génériques 
 | **ACWR** (fatigue / condition) | Hulin, Gabbett *et al.* (2014) | idem |
 | **Zones FC** (5 zones) | Karvonen, Kentala & Mustala (1957) (réserve FC) ; Friel, *The Triathlete's Training Bible* (% de la FC au seuil/LTHR) ; %FC max (convention courante) | « Zones » telles qu'affichées par d'autres montres/applications — méthode et bornes différentes, non comparables terme à terme |
 | **Polarisation 80/20** (facile / modérée / difficile) | Modèle à 3 zones de Seiler (Seiler & Kjerland, 2006 ; Seiler, 2010) | idem, terminologie usuelle en entraînement d'endurance |
+| **Allure ajustée à la pente** (« GAP ») | Coût énergétique de la course de Minetti *et al.* (2002) | Strava GAP®, COROS Effort Pace, Suunto NGP — mêmes principes (ajuster l'allure à la pente), calculs propriétaires différents et non documentés publiquement ; voir la limite du modèle ci-dessous |
+
+!!! warning "GAP : approximation du projet, pas un équivalent des GAP propriétaires"
+    Notre allure ajustée à la pente applique tel quel le modèle de laboratoire de
+    Minetti *et al.* (2002, coût métabolique mesuré sur tapis jusqu'à ±45 % de
+    pente). Ce modèle est connu pour **surestimer le gain métabolique des fortes
+    descentes** en conditions réelles de trail (freinage excentrique, terrain
+    technique) — Strava documente d'ailleurs un modèle propriétaire différent pour
+    cette même raison. Notre GAP reste une **approximation du projet**, jamais une
+    reproduction de Strava GAP, COROS Effort Pace ou Suunto NGP : ne pas présenter
+    ces valeurs comme équivalentes.
 
 !!! note "Valeurs non comparables"
     Notre condition, notre fatigue et notre forme sont calculées sur le **TRIMP**

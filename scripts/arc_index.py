@@ -16,6 +16,7 @@ sert au tableau de bord (`scripts/arc_serve.py`) et aux calculs de charge
     arc_index.py fueling                  # glucides/h et sudation, sorties longues, en JSON (#41)
     arc_index.py samples GARMIN_ID         # échantillons ingérés d'une séance, en JSON (#42)
     arc_index.py zones [--activity GARMIN_ID] [--weeks N]   # zones FC, temps en zone, polarisation (#43)
+    arc_index.py gap --activity GARMIN_ID                   # allure ajustée à la pente, globale + par split (#44)
 
 `hrv-baseline` n'a besoin d'aucun tableau de bord lancé (headless, `/garmin-daily-sync`
 compris) : elle réindexe puis rend le point du jour de `arc_metrics.hrv_baseline_series`
@@ -62,6 +63,14 @@ jamais un regroupement des 5 zones) recalculées en entier à chaque passage de
 seuil) ou de `[athlete].hr_zones` est répercuté sans étape à part. Voir
 `arc_metrics.ASSUMPTIONS["hr_zones"]`.
 
+`gap` (#44) rend l'allure ajustée à la pente (« GAP », coût énergétique de
+Minetti et al. 2002 — voir `arc_gap.py`) d'une séance : allure globale et par
+split, `--activity GARMIN_ID` obligatoire (ou en argument positionnel).
+`activity.gap_pace_s_km` et `activity_split.gap_pace_s_km` sont recalculées en
+entier à chaque passage de `index_workspace` (même discipline que les tables
+zones/polarisation ci-dessus), restreintes à la famille course à pied avec des
+échantillons FIT ingérés — voir `arc_gap.ASSUMPTIONS`.
+
 Options communes : `--workspace DIR` (sinon $ARC_WORKSPACE, le pointeur
 ~/.config/ai-running-coach/workspace, puis le moteur), `--db FICHIER` (défaut
 <workspace>/.arc/coach.db), `--memory` (base en mémoire, rien sur disque),
@@ -86,14 +95,15 @@ from typing import Dict, List, Optional, Tuple
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import arc_contract as C  # noqa: E402
+import arc_gap as G  # noqa: E402
 import arc_legacy as L  # noqa: E402
 import arc_metrics as M  # noqa: E402
 import arc_samples as S  # noqa: E402
 from coach_config import ConfigError, read_toml  # noqa: E402
 from coach_setup import ENGINE, workspace_root  # noqa: E402
 
-SCHEMA_VERSION = 10  # #43 (revue de code) : nouvelle table `hr_polarisation_time` (bornes
-                      # Seiler DÉDIÉES par méthode, jamais dérivées de `hr_zone_time`)
+SCHEMA_VERSION = 11  # #44 : colonnes `activity.gap_pace_s_km` et `activity_split.gap_pace_s_km`
+                      # (allure ajustée à la pente)
 DEFAULT_DB = ".arc/coach.db"
 DATA_DIRS = ("activities", "medical", "nutrition", "planning", "rapports")
 
@@ -233,13 +243,17 @@ CREATE TABLE activity (
     avg_cadence_spm REAL, calories_kcal REAL, te_aerobic REAL, te_anaerobic REAL, rpe REAL,
     load REAL, load_source TEXT, vo2max_est REAL, missing_reason TEXT,
     gear_id TEXT, carbs_g REAL, fluid_intake_ml REAL, weight_pre_kg REAL, weight_post_kg REAL,
-    sweat_rate_l_h REAL, body_md TEXT, data_json TEXT
+    sweat_rate_l_h REAL, gap_pace_s_km REAL, body_md TEXT, data_json TEXT
 );
 CREATE INDEX activity_date ON activity(date);
+-- `gap_pace_s_km` (#44, allure ajustée à la pente, `arc_gap.py`) : recalculée en
+-- entier à CHAQUE `compute_metrics`, comme `hr_zone_time`/`hr_polarisation_time`
+-- (#43) — jamais purgée par fichier, NULL par défaut pour tout sport hors de la
+-- famille course à pied ou sans échantillons FIT (voir `arc_gap.ASSUMPTIONS`).
 CREATE TABLE activity_split (
     activity_id INTEGER, km INTEGER, distance_m REAL, duration_s REAL, elev_gain_m REAL,
     elev_loss_m REAL, avg_hr_bpm REAL, max_hr_bpm REAL, max_speed_kmh REAL,
-    cadence_spm REAL, label TEXT
+    cadence_spm REAL, label TEXT, gap_pace_s_km REAL
 );
 CREATE TABLE health_day (
     source_path TEXT, arc_version INTEGER, date TEXT, morning_check TEXT,
@@ -695,6 +709,23 @@ def compute_metrics(conn, conf: dict, today: Optional[str] = None) -> None:
                         "INSERT INTO hr_polarisation_time (activity_id, bucket, seconds) VALUES (?, ?, ?)",
                         [(act["id"], bucket, round(seconds, 1)) for bucket, seconds in bucket_seconds.items()],
                     )
+                # GAP (#44, allure ajustée à la pente) : pente + vitesse GAP calculées une
+                # seule fois par échantillon (`gap_sample_series`), réutilisées pour
+                # l'allure globale ET par split — jamais recalculées deux fois pour la
+                # même activité (voir `arc_gap.activity_gap_pace_from_series`).
+                gap_series = G.gap_sample_series(act_samples)
+                gap_pace = G.activity_gap_pace_from_series(gap_series, resolution_s=S.DEFAULT_RESOLUTION_S)
+                conn.execute("UPDATE activity SET gap_pace_s_km = ? WHERE id = ?",
+                             (round(gap_pace, 2) if gap_pace is not None else None, act["id"]))
+                split_rows = conn.execute(
+                    "SELECT km, distance_m FROM activity_split WHERE activity_id = ?", (act["id"],)).fetchall()
+                if split_rows:
+                    gap_by_km = G.split_gap_paces_from_series(gap_series, [dict(r) for r in split_rows],
+                                                               resolution_s=S.DEFAULT_RESOLUTION_S)
+                    conn.executemany(
+                        "UPDATE activity_split SET gap_pace_s_km = ? WHERE activity_id = ? AND km = ?",
+                        [(round(v, 2) if v is not None else None, act["id"], km) for km, v in gap_by_km.items()],
+                    )
     conn.execute("DELETE FROM metric_day")
     dated = sorted(loads)
     if dated:
@@ -943,6 +974,38 @@ def activity_zone_report(conn, conf: dict, garmin_activity_id: int) -> dict:
     }
 
 
+# ---------------------------------------------------------------------------
+# GAP — allure ajustée à la pente (#44)
+# ---------------------------------------------------------------------------
+
+
+def activity_gap_report(conn, garmin_activity_id: int) -> dict:
+    """Rapport GAP (#44) d'une séance : allure GAP globale (s/km) + par split, par
+    `garmin_activity_id` — pour la CLI (`arc_index.py gap --activity`) et pour
+    les agents en headless. Rend TOUJOURS `{"garmin_activity_id", "gap_pace_s_km",
+    "splits", "reason"}` (`reason` non nul explique un `None`), jamais une
+    exception ni un échec muet (même discipline que `activity_zone_report`,
+    #43) : activité introuvable, sport hors de la famille course à pied
+    (`arc_metrics.sport_family`), ou pas d'échantillons FIT ingérés sont trois
+    raisons distinctes."""
+    act = conn.execute("SELECT id, sport, gap_pace_s_km FROM activity WHERE garmin_activity_id = ?",
+                        (garmin_activity_id,)).fetchone()
+    if act is None:
+        return {"garmin_activity_id": garmin_activity_id, "gap_pace_s_km": None, "splits": None,
+                "reason": "aucune activité indexée pour ce garmin_activity_id"}
+    if M.sport_family(act["sport"]) != "run":
+        return {"garmin_activity_id": garmin_activity_id, "gap_pace_s_km": None, "splits": None,
+                "reason": "hors de la famille course à pied (arc_metrics.sport_family), voir "
+                          "arc_gap.ASSUMPTIONS[\"restricted_to_run_family\"]"}
+    splits = conn.execute(
+        "SELECT km, gap_pace_s_km FROM activity_split WHERE activity_id = ? ORDER BY km", (act["id"],)).fetchall()
+    if act["gap_pace_s_km"] is None and not any(s["gap_pace_s_km"] is not None for s in splits):
+        return {"garmin_activity_id": garmin_activity_id, "gap_pace_s_km": None, "splits": None,
+                "reason": "aucun échantillon FIT ingéré pour cette séance"}
+    return {"garmin_activity_id": garmin_activity_id, "gap_pace_s_km": act["gap_pace_s_km"],
+            "splits": [dict(s) for s in splits], "reason": None}
+
+
 def weekly_polarisation(conn, weeks: int, today: date) -> List[dict]:
     """Polarisation 80/20 hebdomadaire (#43) des `weeks` dernières semaines (la
     courante incluse), plus ancienne en premier — pour la CLI (`arc_index.py zones
@@ -1019,7 +1082,12 @@ def index_workspace(conn, workspace: Path, today: Optional[str] = None) -> dict:
     # puisque le passage Markdown ci-dessus vient de le (ré)écrire).
     counts["fit_ingestion"] = ingest_samples(conn, workspace)
     compute_metrics(conn, conf, today)
-    for key, value in (("settings", _j(conf)), ("assumptions", _j(M.ASSUMPTIONS)),
+    # `arc_gap.ASSUMPTIONS` (#44) fusionné à celles d'`arc_metrics` : la section
+    # « Hypothèses » du tableau de bord (`/api/summary` -> `web/js/app.js`) doit
+    # exposer la limite connue du modèle de Minetti (surestimation des fortes
+    # descentes) au même titre que les autres approximations du projet — jamais
+    # cachée dans un module que cette agrégation oublierait.
+    for key, value in (("settings", _j(conf)), ("assumptions", _j({**M.ASSUMPTIONS, **G.ASSUMPTIONS})),
                        ("today", today or date.today().isoformat())):
         conn.execute("INSERT OR REPLACE INTO meta VALUES (?, ?)", (key, value))
     conn.commit()
@@ -1217,7 +1285,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     parser.add_argument("command", nargs="?", default="index",
                         choices=("index", "backfill-plan", "status", "hrv-baseline", "sleep-debt",
-                                 "heat-acclimation", "gear", "fueling", "samples", "zones"))
+                                 "heat-acclimation", "gear", "fueling", "samples", "zones", "gap"))
     parser.add_argument("selector", nargs="?", default=None,
                         help="argument de la sous-commande (ex. garmin_activity_id pour « samples »)")
     parser.add_argument("--workspace")
@@ -1227,7 +1295,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--today", help="date de fin des séries (AAAA-MM-JJ)")
     parser.add_argument("--validate", nargs="+", metavar="FICHIER")
     parser.add_argument("--activity", type=int, metavar="GARMIN_ID",
-                        help="commande « zones » : temps en zone d'une séance (garmin_activity_id)")
+                        help="commande « zones »/« gap » : temps en zone ou GAP d'une séance (garmin_activity_id)")
     parser.add_argument("--weeks", type=int, metavar="N",
                         help="commande « zones » : polarisation sur les N dernières semaines (défaut 8)")
     return parser
@@ -1304,6 +1372,13 @@ def main(argv=None) -> int:
             "weekly_polarisation": weekly_polarisation(conn, weeks, today_date),
         }
         print(json.dumps(result, ensure_ascii=False))
+        return 0
+    if args.command == "gap":
+        garmin_id = args.activity if args.activity is not None else (int(args.selector) if args.selector else None)
+        if garmin_id is None:
+            raise ConfigError("commande « gap » : garmin_activity_id attendu "
+                               "(--activity ou argument positionnel, ex. arc_index.py gap 19287537093).")
+        print(json.dumps(activity_gap_report(conn, garmin_id), ensure_ascii=False))
         return 0
     if args.command == "status":
         by_status = {row[0]: row[1] for row in conn.execute(

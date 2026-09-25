@@ -53,6 +53,11 @@ import sys
 import xml.etree.ElementTree as ET
 from pathlib import Path
 
+# Moteur : scripts/ à la racine (le skill peut être atteint par un lien symbolique
+# depuis un workspace séparé — resolve() remonte au vrai dossier du moteur).
+sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "scripts"))
+from arc_elevation import smooth_moving_average  # noqa: E402
+
 NS = {"g": "http://www.topografix.com/GPX/1/1"}
 
 
@@ -105,12 +110,9 @@ def compute_metrics(pts: list[dict], smooth: int = 3) -> dict:
         d = haversine(pts[i - 1]["lat"], pts[i - 1]["lon"], pts[i]["lat"], pts[i]["lon"])
         dist.append(dist[-1] + d)
 
-    # 2) altitude : lissage glissant pour tuer le bruit GPS
-    ele = []
-    for i in range(len(pts)):
-        win = pts[max(0, i - smooth // 2): min(len(pts), i + smooth // 2 + 1)]
-        vals = [p["ele"] for p in win if p["ele"] is not None]
-        ele.append(sum(vals) / len(vals) if vals else None)
+    # 2) altitude : lissage glissant pour tuer le bruit GPS (moyenne glissante
+    # partagée avec le GAP, `arc_elevation.smooth_moving_average` — #44)
+    ele = smooth_moving_average([p["ele"] for p in pts], smooth)
 
     # 3) D+ / D- : somme des montées/descentes > 1 m (post-lissage)
     dp, dm = 0.0, 0.0

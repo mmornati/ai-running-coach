@@ -993,7 +993,7 @@ class TestGearSweatFuelIndex(Workspace):
         self.assertIsNone(rate)   # 4.5 l/h > SWEAT_RATE_PLAUSIBLE_L_H[1] (4.0)
 
     def test_schema_version_bumped_forces_rebuild(self):
-        self.assertEqual(I.SCHEMA_VERSION, 10)
+        self.assertEqual(I.SCHEMA_VERSION, 11)
 
     def test_real_v4_database_is_rebuilt_at_current_version(self):
         """Pas seulement « la constante vaut N » : une vraie base laissée par une

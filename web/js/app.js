@@ -658,6 +658,10 @@ async function viewSession(id) {
   const facts = [
     ["Distance", F.distance(a.distance_m, 2)], ["Durée", F.duration(a.duration_s, { seconds: true })],
     ["Allure", F.pace(a.distance_m, a.moving_duration_s || a.duration_s)],
+    // GAP (#44) : uniquement pour la famille course à pied avec échantillons FIT
+    // ingérés (arc_gap.ASSUMPTIONS) — absent (jamais une ligne à "—") sinon, pour
+    // ne pas laisser croire qu'une valeur a été calculée et vaut zéro/inconnue.
+    ...(a.gap_pace_s_km != null ? [["GAP (allure ajustée à la pente)", F.paceFromSecPerKm(a.gap_pace_s_km)]] : []),
     ...(trail || a.elevation_gain_m ? [["D+ / D-", a.elevation_gain_m != null ? `${F.elevation(a.elevation_gain_m)} / ${F.elevation(a.elevation_loss_m)}` : (missing.elevation_gain_m ? "non mesuré" : "—")]] : []),
     ["FC moy / max", a.avg_hr_bpm ? `${F.num(a.avg_hr_bpm)} / ${F.num(a.max_hr_bpm)} bpm` : (missing.avg_hr_bpm ? "non mesurée" : "—")],
     ["HRR", a.recovery_hr_bpm != null ? `${F.num(a.recovery_hr_bpm)} bpm` : `non mesuré${missing.recovery_hr_bpm ? ` — ${F.esc(missing.recovery_hr_bpm)}` : ""}`],
@@ -676,22 +680,27 @@ async function viewSession(id) {
     const sp = all.filter((x) => x.duration_s && (x.distance_m == null || x.distance_m >= 200));
     const unit = byKm ? "Km" : "Tour";
     const labels = sp.map((x) => String(x.km));
+    // GAP par split (#44) : rendu SEULEMENT s'il y a au moins une valeur — une
+    // séance sans échantillons FIT (ou hors famille course à pied,
+    // `arc_gap.ASSUMPTIONS`) n'a aucun `gap_pace_s_km`, jamais une ligne plate à 0.
+    const hasGap = sp.some((x) => x.gap_pace_s_km != null);
     const c = timeChart(labels, [
       { type: "bars", values: sp.map((x) => x.duration_s / lapKm(x) / 60), cls: "bar" },
+      ...(hasGap ? [{ type: "line", values: sp.map((x) => (x.gap_pace_s_km != null ? x.gap_pace_s_km / 60 : null)), cls: "line line--gap" }] : []),
       { type: "line", values: sp.map((x) => x.avg_hr_bpm), cls: "line line--rhr", axis: "y2" },
       { type: "dots", values: sp.map((x) => x.avg_hr_bpm), cls: "dot dot--rhr", axis: "y2" },
-    ], [], { height: 200, y: { zero: true }, y2: {}, xLabels: labels, label: byKm ? "Temps et FC par kilomètre" : "Allure et FC par tour", yFormat: (v) => `${F.num(v)}′`, y2Format: (v) => F.num(v) });
+    ], [], { height: 200, y: { zero: true }, y2: {}, xLabels: labels, label: byKm ? "Temps, GAP et FC par kilomètre" : "Allure, GAP et FC par tour", yFormat: (v) => `${F.num(v)}′`, y2Format: (v) => F.num(v) });
     const hidden = all.length - sp.length;
     const lapPace = (x) => (x.distance_m ? F.pace(x.distance_m, x.duration_s) : "—");
-    splitsHtml = `<section class="band"><h2>Splits</h2><p class="legend"><span class="legend__item"><span class="key key--bar"></span>${byKm ? "Temps au km" : "Allure (min/km)"}</span> <span class="legend__item"><span class="key key--rhr"></span>FC moyenne</span></p>
+    splitsHtml = `<section class="band"><h2>Splits</h2><p class="legend"><span class="legend__item"><span class="key key--bar"></span>${byKm ? "Temps au km" : "Allure (min/km)"}</span> ${hasGap ? `<span class="legend__item"><span class="key key--gap"></span>GAP (allure ajustée à la pente)</span> ` : ""}<span class="legend__item"><span class="key key--rhr"></span>FC moyenne</span></p>
       <div class="chart-host chart-host--nox" id="c-splits">${c.svg}</div><p class="readout" id="r-splits"></p>
       ${hidden ? `<p class="muted"><small>${hidden === 1 ? "Un tour de moins de 200 m n'est pas tracé" : `${hidden} tours de moins de 200 m ne sont pas tracés`} ; il${hidden === 1 ? " reste" : "s restent"} dans le tableau.</small></p>` : ""}
-      <div class="table-wrap"><table class="data data--compact"><thead><tr><th scope="col">${unit}</th>${byKm ? "" : `<th scope="col" class="num">Distance</th>`}<th scope="col" class="num">Temps</th>${byKm ? "" : `<th scope="col" class="num">Allure</th>`}<th scope="col" class="num">D+ / D-</th><th scope="col" class="num">FC</th><th scope="col" class="num">Cadence</th><th scope="col">Lecture</th></tr></thead>
-      <tbody>${all.map((x) => `<tr><td>${x.km}</td>${byKm ? "" : `<td class="num">${x.distance_m != null ? F.distance(x.distance_m, 2) : "—"}</td>`}<td class="num">${F.clock(x.duration_s).replace(/^0:/, "")}</td>${byKm ? "" : `<td class="num">${lapPace(x)}</td>`}<td class="num">${x.elev_gain_m != null ? `+${F.num(x.elev_gain_m)} / -${F.num(x.elev_loss_m)}` : "—"}</td><td class="num">${F.num(x.avg_hr_bpm)}</td><td class="num">${F.num(x.cadence_spm)}</td><td>${F.esc(x.label || "")}</td></tr>`).join("")}</tbody></table></div></section>`;
+      <div class="table-wrap"><table class="data data--compact"><thead><tr><th scope="col">${unit}</th>${byKm ? "" : `<th scope="col" class="num">Distance</th>`}<th scope="col" class="num">Temps</th>${byKm ? "" : `<th scope="col" class="num">Allure</th>`}${hasGap ? `<th scope="col" class="num">GAP</th>` : ""}<th scope="col" class="num">D+ / D-</th><th scope="col" class="num">FC</th><th scope="col" class="num">Cadence</th><th scope="col">Lecture</th></tr></thead>
+      <tbody>${all.map((x) => `<tr><td>${x.km}</td>${byKm ? "" : `<td class="num">${x.distance_m != null ? F.distance(x.distance_m, 2) : "—"}</td>`}<td class="num">${F.clock(x.duration_s).replace(/^0:/, "")}</td>${byKm ? "" : `<td class="num">${lapPace(x)}</td>`}${hasGap ? `<td class="num">${F.paceFromSecPerKm(x.gap_pace_s_km)}</td>` : ""}<td class="num">${x.elev_gain_m != null ? `+${F.num(x.elev_gain_m)} / -${F.num(x.elev_loss_m)}` : "—"}</td><td class="num">${F.num(x.avg_hr_bpm)}</td><td class="num">${F.num(x.cadence_spm)}</td><td>${F.esc(x.label || "")}</td></tr>`).join("")}</tbody></table></div></section>`;
     setTimeout(() => attachCursor($("#c-splits"), c, (i) => {
       const x = sp[i];
       const what = byKm ? F.clock(x.duration_s).replace(/^0:/, "") : `${F.distance(x.distance_m, 2)} en ${F.clock(x.duration_s).replace(/^0:/, "")} (${lapPace(x)})`;
-      readout($("#r-splits"), `<strong>${unit} ${x.km}</strong> · ${what} · FC ${F.num(x.avg_hr_bpm)}${x.elev_gain_m != null ? ` · +${F.num(x.elev_gain_m)} m` : ""}${x.label ? ` · ${F.esc(x.label)}` : ""}`);
+      readout($("#r-splits"), `<strong>${unit} ${x.km}</strong> · ${what}${x.gap_pace_s_km != null ? ` · GAP ${F.paceFromSecPerKm(x.gap_pace_s_km)}` : ""} · FC ${F.num(x.avg_hr_bpm)}${x.elev_gain_m != null ? ` · +${F.num(x.elev_gain_m)} m` : ""}${x.label ? ` · ${F.esc(x.label)}` : ""}`);
     }), 0);
   }
   const wx = d.weather;

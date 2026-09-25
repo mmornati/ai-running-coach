@@ -475,7 +475,7 @@ def api_activities(store: Store, q: dict) -> dict:
     return {"activities": store.rows(
         "SELECT id, date, sport, name, location, distance_m, duration_s, elevation_gain_m, avg_hr_bpm, "
         "max_hr_bpm, recovery_hr_bpm, te_aerobic, load, load_source, vo2max_est, arc_version, "
-        "gear_id, sweat_rate_l_h "
+        "gear_id, sweat_rate_l_h, gap_pace_s_km "
         "FROM activity ORDER BY date DESC, id DESC LIMIT ?", (limit,))}
 
 

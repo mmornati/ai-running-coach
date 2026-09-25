@@ -76,6 +76,18 @@ export function pace(distanceM, durationS) {
   return `${m}:${String(s === 60 ? 59 : s).padStart(2, "0")}/${UNITS === "imperial" ? "mi" : "km"}`;
 }
 
+// Allure ajustée à la pente (#44, GAP) : le serveur rend `gap_pace_s_km` déjà
+// en SI (secondes par km, jamais une distance/durée séparées comme `pace()`
+// ci-dessus) — cette fonction applique la même conversion impériale et le
+// même format d'affichage (mm:ss/unité).
+export function paceFromSecPerKm(secPerKm) {
+  if (secPerKm === null || secPerKm === undefined) return "—";
+  const perUnit = UNITS === "imperial" ? secPerKm * 1.609344 : secPerKm;
+  const m = Math.floor(perUnit / 60);
+  const s = Math.round(perUnit % 60);
+  return `${m}:${String(s === 60 ? 59 : s).padStart(2, "0")}/${UNITS === "imperial" ? "mi" : "km"}`;
+}
+
 export function clock(s) {
   if (s === null || s === undefined) return "—";
   const total = Math.round(s);

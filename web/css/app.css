@@ -35,6 +35,7 @@
   --s-weight: #6a4c93;
   --s-carbs: #b0712f;
   --s-sweat: #2f6b9a;
+  --s-gap: #6a4c93;
 
   /* sémantique : verdicts, météo, statuts */
   --ok: #2f7a4f;
@@ -67,7 +68,7 @@
     --s-fitness: #7cc39b; --s-fatigue: #e0a45c; --s-form-pos: rgba(124, 195, 155, 0.20); --s-hrv: #7cc39b; --s-rhr: #e0826b;
     --s-median: #8b9a92; --s-bar: #4f8f6e; --s-sleep: #3d7a5c; --s-dplus: #e0826b; --s-band: rgba(124, 195, 155, 0.12);
     --s-year-0: #7cc39b; --s-year-1: #e0a45c; --s-year-2: #56665d; --s-weight: #b39ddb;
-    --s-carbs: #e0a45c; --s-sweat: #6fa8dc;
+    --s-carbs: #e0a45c; --s-sweat: #6fa8dc; --s-gap: #b39ddb;
     --ok: #6fc28f; --ok-bg: rgba(111, 194, 143, 0.12); --warn: #e0ad4f; --warn-bg: rgba(224, 173, 79, 0.13);
     --bad: #ec7f69; --bad-bg: rgba(236, 127, 105, 0.12); --yellow: #dcc04c; --orange: #e8864a;
     --cal-0: #1a241e; --cal-1: #1f3b2c; --cal-2: #2f6b4f; --cal-3: #4f9e74; --cal-4: #a3e635;
@@ -81,7 +82,7 @@
   --s-fitness: #7cc39b; --s-fatigue: #e0a45c; --s-form-pos: rgba(124, 195, 155, 0.20); --s-hrv: #7cc39b; --s-rhr: #e0826b;
   --s-median: #8b9a92; --s-bar: #4f8f6e; --s-sleep: #3d7a5c; --s-dplus: #e0826b; --s-band: rgba(124, 195, 155, 0.12);
   --s-year-0: #7cc39b; --s-year-1: #e0a45c; --s-year-2: #56665d; --s-weight: #b39ddb;
-  --s-carbs: #e0a45c; --s-sweat: #6fa8dc;
+  --s-carbs: #e0a45c; --s-sweat: #6fa8dc; --s-gap: #b39ddb;
   --ok: #6fc28f; --ok-bg: rgba(111, 194, 143, 0.12); --warn: #e0ad4f; --warn-bg: rgba(224, 173, 79, 0.13);
   --bad: #ec7f69; --bad-bg: rgba(236, 127, 105, 0.12); --yellow: #dcc04c; --orange: #e8864a;
   --cal-0: #1a241e; --cal-1: #1f3b2c; --cal-2: #2f6b4f; --cal-3: #4f9e74; --cal-4: #a3e635;
@@ -263,6 +264,7 @@ select { font: inherit; color: var(--ink); background: var(--surface); border: 1
 .chart .line--acwr { stroke: var(--s-fitness); }
 .chart .line--hrv { stroke: var(--s-hrv); }
 .chart .line--rhr { stroke: var(--s-rhr); }
+.chart .line--gap { stroke: var(--s-gap); stroke-width: 1.6; stroke-dasharray: 5 3; }
 .chart .line--median { stroke: var(--s-median); stroke-dasharray: 4 3; stroke-width: 1.4; }
 .chart .line--personal { stroke: var(--s-hrv); stroke-dasharray: 5 3; stroke-width: 1.2; opacity: 0.75; }
 .chart .line--personal-mean { stroke: var(--s-hrv); stroke-dasharray: 2 2; stroke-width: 1.6; opacity: 0.9; }
@@ -315,6 +317,7 @@ select { font: inherit; color: var(--ink); background: var(--surface); border: 1
 .key { display: inline-block; width: 0.95rem; height: 0.28rem; border-radius: 2px; margin-right: 0.3rem; vertical-align: middle; }
 .key--fitness { background: var(--s-fitness); } .key--fatigue { background: var(--s-fatigue); } .key--form { background: var(--s-form-pos); height: 0.6rem; }
 .key--bar { background: var(--s-bar); height: 0.6rem; } .key--dplus, .key--rhr { background: var(--s-dplus); }
+.key--gap { background: var(--s-gap); }
 .key--green { background: var(--ok); height: 0.6rem; } .key--amber { background: var(--warn); height: 0.6rem; } .key--red { background: var(--bad); height: 0.6rem; }
 .key--year-0 { background: var(--s-year-0); } .key--year-1 { background: var(--s-year-1); } .key--year-2 { background: var(--s-year-2); }
 /* Poids (#36) : même couleur pour les trois séries (violet), mais forme distincte —

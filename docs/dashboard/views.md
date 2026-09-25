@@ -270,6 +270,12 @@ de fréquence cardiaque et d'effort perçu, un astérisque.
 - **La météo du jour**, si une prévision a été enregistrée.
 - **Les splits** : un graphique allure + FC, puis le tableau complet — temps, D+ / D-,
   FC, cadence et la lecture du coach pour chaque kilomètre quand il en a écrit une.
+  Quand la séance a des échantillons FIT ingérés, une seconde courbe **GAP**
+  (allure ajustée à la pente, #44 — voir [Marques et métriques](../marques.md))
+  s'ajoute au graphique et au tableau, à côté de l'allure brute : elle « aplatit »
+  mentalement les côtes pour comparer une allure de montée à une allure de plat.
+  Réservée aux sports de la famille course à pied avec échantillons FIT ; absente
+  sinon (jamais une valeur à zéro).
 - **Les zones FC** (#43) : une barre empilée du temps passé dans chacune des 5 zones,
   avec les bornes intérieures (bpm, ex. « Z1 < 146 · Z2 146-155 · … · Z5 ≥ 172 ») et
   la méthode effective (FC au seuil, Karvonen ou %FC max — voir
