@@ -475,7 +475,7 @@ def api_activities(store: Store, q: dict) -> dict:
     return {"activities": store.rows(
         "SELECT id, date, sport, name, location, distance_m, duration_s, elevation_gain_m, avg_hr_bpm, "
         "max_hr_bpm, recovery_hr_bpm, te_aerobic, load, load_source, vo2max_est, arc_version, "
-        "gear_id, sweat_rate_l_h, gap_pace_s_km "
+        "gear_id, sweat_rate_l_h, gap_pace_s_km, decoupling_pct, ef_whole "
         "FROM activity ORDER BY date DESC, id DESC LIMIT ?", (limit,))}
 
 
@@ -671,6 +671,25 @@ def api_fueling(store: Store, q: dict) -> dict:
     return result
 
 
+def api_decoupling(store: Store, q: dict) -> dict:
+    """Tendance du découplage aérobie (Pa:HR) et du facteur d'efficacité sur les
+    sorties longues (#45) : `/api/decoupling`.
+
+    Additive : ne touche à aucune route existante. Délègue à `M.decoupling_trend`
+    sur les sorties longues de la famille course à pied (`duration_s` >
+    `M.LONG_RUN_MIN_DURATION_S`) de la fenêtre demandée (`weeks`, défaut
+    `M.DECOUPLING_TREND_WEEKS`) — voir `arc_decoupling.ASSUMPTIONS`.
+    """
+    today = _today(store)
+    weeks_raw = q.get("weeks", [""])[0]
+    weeks = int(weeks_raw) if weeks_raw.isdigit() else M.DECOUPLING_TREND_WEEKS
+    weeks = max(4, min(52, weeks))
+    rows = store.rows(
+        "SELECT date, sport, name, duration_s, decoupling_pct, ef_whole FROM activity "
+        "WHERE duration_s > ?", (M.LONG_RUN_MIN_DURATION_S,))
+    return M.decoupling_trend(rows, today, weeks)
+
+
 def api_files(store: Store, q: dict) -> dict:
     return {"items": store.backfill()}
 
@@ -680,7 +699,7 @@ ROUTES = {
     "/api/health": api_health, "/api/week": api_week, "/api/activities": api_activities,
     "/api/performance": api_performance, "/api/reports": api_reports, "/api/report": api_report,
     "/api/calendar": api_calendar, "/api/nutrition": api_nutrition, "/api/fueling": api_fueling,
-    "/api/files": api_files,
+    "/api/decoupling": api_decoupling, "/api/files": api_files,
 }
 
 # ---------------------------------------------------------------------------

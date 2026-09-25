@@ -17,6 +17,7 @@ sert au tableau de bord (`scripts/arc_serve.py`) et aux calculs de charge
     arc_index.py samples GARMIN_ID         # échantillons ingérés d'une séance, en JSON (#42)
     arc_index.py zones [--activity GARMIN_ID] [--weeks N]   # zones FC, temps en zone, polarisation (#43)
     arc_index.py gap --activity GARMIN_ID                   # allure ajustée à la pente, globale + par split (#44)
+    arc_index.py decoupling [--activity GARMIN_ID] [--weeks N]   # découplage aérobie (Pa:HR), EF (#45)
 
 `hrv-baseline` n'a besoin d'aucun tableau de bord lancé (headless, `/garmin-daily-sync`
 compris) : elle réindexe puis rend le point du jour de `arc_metrics.hrv_baseline_series`
@@ -71,6 +72,16 @@ entier à chaque passage de `index_workspace` (même discipline que les tables
 zones/polarisation ci-dessus), restreintes à la famille course à pied avec des
 échantillons FIT ingérés — voir `arc_gap.ASSUMPTIONS`.
 
+`decoupling` (#45) rend, sans `--activity`, la tendance du découplage aérobie
+(Pa:HR) et du facteur d'efficacité (EF) sur les sorties longues (course à pied,
+`duration_s` > `arc_metrics.LONG_RUN_MIN_DURATION_S`, 90 min) des `--weeks`
+dernières semaines glissantes (défaut 12) ; avec `--activity GARMIN_ID`, le
+détail d'une séance (`decoupling_pct`, `ef_whole`, `reason` explicite si non
+calculable). `activity.decoupling_pct`/`ef_whole`/`decoupling_reason` sont
+recalculées en entier à chaque passage de `index_workspace` (même discipline
+que GAP/#44 et zones/#43), restreintes à la famille course à pied avec des
+échantillons FIT ingérés — voir `arc_decoupling.ASSUMPTIONS`.
+
 Options communes : `--workspace DIR` (sinon $ARC_WORKSPACE, le pointeur
 ~/.config/ai-running-coach/workspace, puis le moteur), `--db FICHIER` (défaut
 <workspace>/.arc/coach.db), `--memory` (base en mémoire, rien sur disque),
@@ -95,6 +106,7 @@ from typing import Dict, List, Optional, Tuple
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import arc_contract as C  # noqa: E402
+import arc_decoupling as DC  # noqa: E402
 import arc_gap as G  # noqa: E402
 import arc_legacy as L  # noqa: E402
 import arc_metrics as M  # noqa: E402
@@ -102,8 +114,8 @@ import arc_samples as S  # noqa: E402
 from coach_config import ConfigError, read_toml  # noqa: E402
 from coach_setup import ENGINE, workspace_root  # noqa: E402
 
-SCHEMA_VERSION = 11  # #44 : colonnes `activity.gap_pace_s_km` et `activity_split.gap_pace_s_km`
-                      # (allure ajustée à la pente)
+SCHEMA_VERSION = 12  # #45 : colonnes `activity.decoupling_pct`/`ef_whole`/`decoupling_reason`
+                      # (découplage aérobie Pa:HR et facteur d'efficacité)
 DEFAULT_DB = ".arc/coach.db"
 DATA_DIRS = ("activities", "medical", "nutrition", "planning", "rapports")
 
@@ -243,13 +255,20 @@ CREATE TABLE activity (
     avg_cadence_spm REAL, calories_kcal REAL, te_aerobic REAL, te_anaerobic REAL, rpe REAL,
     load REAL, load_source TEXT, vo2max_est REAL, missing_reason TEXT,
     gear_id TEXT, carbs_g REAL, fluid_intake_ml REAL, weight_pre_kg REAL, weight_post_kg REAL,
-    sweat_rate_l_h REAL, gap_pace_s_km REAL, body_md TEXT, data_json TEXT
+    sweat_rate_l_h REAL, gap_pace_s_km REAL, decoupling_pct REAL, ef_whole REAL,
+    decoupling_reason TEXT, body_md TEXT, data_json TEXT
 );
 CREATE INDEX activity_date ON activity(date);
 -- `gap_pace_s_km` (#44, allure ajustée à la pente, `arc_gap.py`) : recalculée en
 -- entier à CHAQUE `compute_metrics`, comme `hr_zone_time`/`hr_polarisation_time`
 -- (#43) — jamais purgée par fichier, NULL par défaut pour tout sport hors de la
 -- famille course à pied ou sans échantillons FIT (voir `arc_gap.ASSUMPTIONS`).
+-- `decoupling_pct`/`ef_whole`/`decoupling_reason` (#45, découplage aérobie Pa:HR
+-- et facteur d'efficacité, `arc_decoupling.py`) : même discipline de recalcul
+-- intégral à chaque `compute_metrics`, restreint à la famille course à pied avec
+-- échantillons FIT ingérés. `decoupling_reason` porte TOUJOURS la raison d'un
+-- `decoupling_pct` NULL (durée insuffisante, échauffement, FC manquante, effort
+-- non stable...) — jamais un NULL muet, voir `arc_decoupling.ASSUMPTIONS`.
 CREATE TABLE activity_split (
     activity_id INTEGER, km INTEGER, distance_m REAL, duration_s REAL, elev_gain_m REAL,
     elev_loss_m REAL, avg_hr_bpm REAL, max_hr_bpm REAL, max_speed_kmh REAL,
@@ -726,6 +745,18 @@ def compute_metrics(conn, conf: dict, today: Optional[str] = None) -> None:
                         "UPDATE activity_split SET gap_pace_s_km = ? WHERE activity_id = ? AND km = ?",
                         [(round(v, 2) if v is not None else None, act["id"], km) for km, v in gap_by_km.items()],
                     )
+                # Découplage aérobie (#45, Pa:HR) et facteur d'efficacité : réutilise
+                # `gap_series` déjà calculée ci-dessus (jamais un second calcul de
+                # pente/GAP pour la même activité) via `decoupling_report`, qui prend
+                # directement des échantillons normalisés — on lui repasse `act_samples`
+                # (pas `gap_series`, qui a une clé `gap_speed_ms` en plus mais
+                # `decoupling_report` la recalcule lui-même en interne pour rester une
+                # API autonome, testable indépendamment de `arc_index`).
+                report = DC.decoupling_report(act_samples, act.get("sport"), resolution_s=S.DEFAULT_RESOLUTION_S)
+                conn.execute(
+                    "UPDATE activity SET decoupling_pct = ?, ef_whole = ?, decoupling_reason = ? WHERE id = ?",
+                    (report["decoupling_pct"], report["ef_whole"], report["reason"], act["id"]),
+                )
     conn.execute("DELETE FROM metric_day")
     dated = sorted(loads)
     if dated:
@@ -1293,11 +1324,54 @@ def fueling_trend(conn, today: date) -> dict:
     return result
 
 
+# ---------------------------------------------------------------------------
+# Découplage aérobie (Pa:HR) et facteur d'efficacité (#45)
+# ---------------------------------------------------------------------------
+
+
+def activity_decoupling_report(conn, garmin_activity_id: int) -> dict:
+    """Rapport de découplage aérobie (#45) d'une séance, par `garmin_activity_id` —
+    pour la CLI (`arc_index.py decoupling --activity`) et pour les agents en
+    headless (`coach`, #51). Lit les colonnes déjà calculées à l'indexation
+    (`compute_metrics`), jamais un recalcul à la lecture — même discipline que
+    `activity_gap_report` (#44). Rend TOUJOURS `{"garmin_activity_id",
+    "decoupling_pct", "ef_whole", "reason"}`, jamais une exception."""
+    act = conn.execute(
+        "SELECT sport, decoupling_pct, ef_whole, decoupling_reason FROM activity WHERE garmin_activity_id = ?",
+        (garmin_activity_id,)).fetchone()
+    if act is None:
+        return {"garmin_activity_id": garmin_activity_id, "decoupling_pct": None, "ef_whole": None,
+                "reason": "aucune activité indexée pour ce garmin_activity_id"}
+    if M.sport_family(act["sport"]) != "run":
+        return {"garmin_activity_id": garmin_activity_id, "decoupling_pct": None, "ef_whole": None,
+                "reason": "hors de la famille course à pied (arc_metrics.sport_family), voir "
+                          "arc_decoupling.ASSUMPTIONS[\"restricted_to_run_family\"]"}
+    if act["decoupling_pct"] is None and act["decoupling_reason"] is None:
+        return {"garmin_activity_id": garmin_activity_id, "decoupling_pct": None, "ef_whole": None,
+                "reason": "aucun échantillon FIT ingéré pour cette séance"}
+    return {"garmin_activity_id": garmin_activity_id, "decoupling_pct": act["decoupling_pct"],
+            "ef_whole": act["ef_whole"], "reason": act["decoupling_reason"]}
+
+
+def decoupling_trend(conn, today: date, weeks: Optional[int] = None) -> dict:
+    """Tendance du découplage aérobie sur les sorties longues (#45) — pour la CLI
+    (`arc_index.py decoupling --weeks`) et pour `coach`/le tableau de bord.
+    N'est pas soumis à `[health].morning_check` : ne dépend d'aucune donnée de
+    santé, seulement des activités déjà indexées. Voir
+    `arc_metrics.ASSUMPTIONS`/`arc_decoupling.ASSUMPTIONS`."""
+    rows = [dict(r) for r in conn.execute(
+        "SELECT date, sport, name, duration_s, decoupling_pct, ef_whole FROM activity "
+        "WHERE duration_s > ?", (M.LONG_RUN_MIN_DURATION_S,)).fetchall()]
+    window_weeks = weeks if weeks and weeks > 0 else M.DECOUPLING_TREND_WEEKS
+    return M.decoupling_trend(rows, today, window_weeks)
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     parser.add_argument("command", nargs="?", default="index",
                         choices=("index", "backfill-plan", "status", "hrv-baseline", "sleep-debt",
-                                 "heat-acclimation", "gear", "fueling", "samples", "zones", "gap"))
+                                 "heat-acclimation", "gear", "fueling", "samples", "zones", "gap",
+                                 "decoupling"))
     parser.add_argument("selector", nargs="?", default=None,
                         help="argument de la sous-commande (ex. garmin_activity_id pour « samples »)")
     parser.add_argument("--workspace")
@@ -1307,9 +1381,11 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--today", help="date de fin des séries (AAAA-MM-JJ)")
     parser.add_argument("--validate", nargs="+", metavar="FICHIER")
     parser.add_argument("--activity", type=int, metavar="GARMIN_ID",
-                        help="commande « zones »/« gap » : temps en zone ou GAP d'une séance (garmin_activity_id)")
+                        help="commande « zones »/« gap »/« decoupling » : temps en zone, GAP ou "
+                             "découplage d'une séance (garmin_activity_id)")
     parser.add_argument("--weeks", type=int, metavar="N",
-                        help="commande « zones » : polarisation sur les N dernières semaines (défaut 8)")
+                        help="commande « zones »/« decoupling » : polarisation ou tendance sur les N "
+                             "dernières semaines (défaut 8 pour « zones », 12 pour « decoupling »)")
     return parser
 
 
@@ -1391,6 +1467,14 @@ def main(argv=None) -> int:
             raise ConfigError("commande « gap » : garmin_activity_id attendu "
                                "(--activity ou argument positionnel, ex. arc_index.py gap 19287537093).")
         print(json.dumps(activity_gap_report(conn, garmin_id), ensure_ascii=False))
+        return 0
+    if args.command == "decoupling":
+        today_date = date.fromisoformat(args.today) if args.today else date.today()
+        garmin_id = args.activity if args.activity is not None else (int(args.selector) if args.selector else None)
+        if garmin_id is not None:
+            print(json.dumps(activity_decoupling_report(conn, garmin_id), ensure_ascii=False))
+            return 0
+        print(json.dumps(decoupling_trend(conn, today_date, args.weeks), ensure_ascii=False))
         return 0
     if args.command == "status":
         by_status = {row[0]: row[1] for row in conn.execute(

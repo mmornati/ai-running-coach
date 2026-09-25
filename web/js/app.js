@@ -357,7 +357,7 @@ async function viewToday() {
 
 async function viewForm(params) {
   const days = Number(params.get("jours")) || 180;
-  const [form, load] = await Promise.all([api(`form?days=${days}`), api("load?weeks=26")]);
+  const [form, load, decoupling] = await Promise.all([api(`form?days=${days}`), api("load?weeks=26"), api("decoupling")]);
   const s = SUMMARY;
   const trail = s.settings.sport === "trail";
   const series = form.series;
@@ -392,6 +392,7 @@ async function viewForm(params) {
 
   const periods = [[90, "3 mois"], [180, "6 mois"], [365, "1 an"]].map(([d, l]) => `<a class="seg ${d === days ? "is-on" : ""}" href="#/forme?jours=${d}">${l}</a>`).join("");
   const last = series[series.length - 1];
+  const { html: decouplingHtml, chart: decouplingChart, points: decouplingPoints } = decouplingSection(decoupling);
   main.innerHTML = `${header("Forme & charge", `Charge par séance : TRIMP (fréquence cardiaque), repli sur l'effort perçu. <a href="#/performance">Hypothèses des modèles</a>`)}
     <div class="toolbar">${periods}</div>
     <section class="band"><h2>Courbe de forme</h2>
@@ -403,7 +404,8 @@ async function viewForm(params) {
       <p class="legend">${trail ? `<span class="legend__item"><span class="key key--bar"></span>Heures d'effort</span> <span class="legend__item"><span class="key key--dplus"></span>D+ cumulé</span>` : `<span class="legend__item"><span class="key key--bar"></span>Kilomètres</span>`}</p>
       <div class="chart-host" id="c-load">${loadChart.svg}</div><p class="readout" id="r-load"></p>
       <dl class="facts facts--inline"><div><dt>Monotonie (7 j)</dt><dd>${F.num(load.monotony, 2)}</dd></div><div><dt>Strain (7 j)</dt><dd>${F.num(load.strain)}</dd></div><div><dt>Charge du jour</dt><dd>${F.num(last.load)}</dd></div></dl></section>
-    ${polarisationSection(load.polarisation_weeks, load.hr_zones_reason)}`;
+    ${polarisationSection(load.polarisation_weeks, load.hr_zones_reason)}
+    ${decouplingHtml}`;
 
   attachCursor($("#c-form"), chart, (i) => {
     const p = series[i];
@@ -415,6 +417,12 @@ async function viewForm(params) {
     readout($("#r-load"), `<strong>Semaine du ${F.dayShort(w.week_start)}</strong> · ${w.sessions} séance${w.sessions > 1 ? "s" : ""} · ${F.hours(w.duration_s)} · ${F.distance(w.distance_m)}${trail ? ` · ${F.elevation(w.elevation_m)} D+${w.effort_km ? ` · ${F.num(w.effort_km, 1)} km-effort` : ""}` : ` · ${F.pace(w.distance_m, w.duration_s)}`} · charge ${F.num(w.load)}`);
   });
   wirePolarisationChart(load.polarisation_weeks);
+  if (decouplingChart) {
+    attachCursor($("#c-decoupling"), decouplingChart, (i) => {
+      const p = decouplingPoints[i];
+      readout($("#r-decoupling"), `<strong>${F.dayLong(p.date)}</strong> · ${F.esc(p.name || F.SPORT[p.sport] || p.sport)} · découplage ${F.num(p.decoupling_pct, 1)} %${p.ef_whole != null ? ` · EF ${F.num(p.ef_whole, 2)}` : ""}`);
+    });
+  }
 }
 
 /** Section « Polarisation 80/20 » de Forme & charge (#43) : une barre empilée par
@@ -662,6 +670,11 @@ async function viewSession(id) {
     // ingérés (arc_gap.ASSUMPTIONS) — absent (jamais une ligne à "—") sinon, pour
     // ne pas laisser croire qu'une valeur a été calculée et vaut zéro/inconnue.
     ...(a.gap_pace_s_km != null ? [["GAP (allure ajustée à la pente)", F.paceFromSecPerKm(a.gap_pace_s_km)]] : []),
+    // Découplage aérobie / Pa:HR (#45) : uniquement si calculable (séance de course
+    // à pied, ≥ 60 min de mouvement, effort jugé stable — arc_decoupling.ASSUMPTIONS)
+    // — jamais une ligne à "—", qui laisserait croire à une valeur nulle mesurée.
+    ...(a.decoupling_pct != null ? [["Découplage aérobie (Pa:HR)",
+      `<span class="${a.decoupling_pct <= 5 ? "pos" : "neg"}">${a.decoupling_pct > 0 ? "+" : ""}${F.num(a.decoupling_pct, 1)} %</span>${a.ef_whole != null ? `<small class="muted"> · EF ${F.num(a.ef_whole, 2)}</small>` : ""}`]] : []),
     ...(trail || a.elevation_gain_m ? [["D+ / D-", a.elevation_gain_m != null ? `${F.elevation(a.elevation_gain_m)} / ${F.elevation(a.elevation_loss_m)}` : (missing.elevation_gain_m ? "non mesuré" : "—")]] : []),
     ["FC moy / max", a.avg_hr_bpm ? `${F.num(a.avg_hr_bpm)} / ${F.num(a.max_hr_bpm)} bpm` : (missing.avg_hr_bpm ? "non mesurée" : "—")],
     ["HRR", a.recovery_hr_bpm != null ? `${F.num(a.recovery_hr_bpm)} bpm` : `non mesuré${missing.recovery_hr_bpm ? ` — ${F.esc(missing.recovery_hr_bpm)}` : ""}`],
@@ -925,6 +938,38 @@ function fuelingSection(fueling) {
       <div><dt>Sorties longues (${fueling.window_weeks} sem.)</dt><dd>${F.num(fueling.long_runs)}</dd></div>
       <div><dt>Débit maximal observé</dt><dd>${maxTxt}</dd></div>
       <div><dt>Sudation médiane</dt><dd>${medianTxt}</dd></div>
+    </dl></section>`;
+  return { html, chart, points };
+}
+
+/** Section « Découplage aérobie » de Forme & charge (#45) : un point par sortie
+ * longue (> `arc_metrics.LONG_RUN_MIN_DURATION_S`, 90 min) éligible (course à pied,
+ * ≥ 60 min de mouvement, effort jugé stable — `arc_decoupling.ASSUMPTIONS`), Pa:HR
+ * en pourcentage. Repère indicatif à 5 % (coaching endurance/ultra courant, pas un
+ * seuil validé cliniquement — voir docs/marques.md), jamais présenté comme une
+ * norme. Abscisses espacées par indice, comme `fuelingSection` (#41) : les sorties
+ * longues sont trop irrégulières pour un axe temporel continu lisible. */
+function decouplingSection(trend) {
+  const points = trend.points.filter((p) => p.decoupling_pct != null);
+  if (!points.length) return { html: "", chart: null, points: [] };
+  const dates = points.map((p) => p.date);
+  const chart = timeChart(dates, [
+    { type: "hline", value: 5, cls: "mark mark--decoupling-good", label: "Repère 5 %" },
+    { type: "dots", values: points.map((p) => p.decoupling_pct), cls: "dot dot--decoupling" },
+  ], [], {
+    height: 200, y: { zero: true }, label: "Découplage aérobie (Pa:HR) sur les sorties longues",
+    yFormat: (v) => `${F.num(v, 1)} %`,
+  });
+  const html = `<section class="band"><h2>Découplage aérobie (Pa:HR)</h2>
+    <p class="muted">Dérive de la fréquence cardiaque à allure ajustée (GAP) constante entre les deux
+      moitiés d'une sortie longue. Sous 5 %, repère de coaching courant en endurance/ultra pour une
+      bonne durabilité aérobie — pas un seuil validé cliniquement.
+      <a href="#/performance">Hypothèses des modèles</a></p>
+    <p class="legend"><span class="legend__item"><span class="key key--decoupling"></span>Découplage mesuré</span></p>
+    <div class="chart-host" id="c-decoupling">${chart.svg}</div><p class="readout" id="r-decoupling"></p>
+    <dl class="facts facts--inline">
+      <div><dt>Sorties longues (${trend.window_weeks} sem.)</dt><dd>${F.num(trend.long_runs)}</dd></div>
+      <div><dt>Découplage moyen</dt><dd>${trend.avg_decoupling_pct != null ? `${F.num(trend.avg_decoupling_pct, 1)} %<small class="muted"> sur ${trend.measured_n} sortie${trend.measured_n > 1 ? "s" : ""}</small>` : "—"}</dd></div>
     </dl></section>`;
   return { html, chart, points };
 }

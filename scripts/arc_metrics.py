@@ -1294,6 +1294,60 @@ def fueling_carbs_ceiling(max_observed_g_h: Optional[float],
     return math.ceil(min(max_observed_g_h + margin_g_h, max(target_band_g_h[1], max_observed_g_h)))
 
 
+# Fenêtre de la tendance de découplage (#45) : 12 semaines glissantes, comme demandé
+# par le critère d'acceptation de l'issue — assez large pour dégager une tendance de
+# fond sur les sorties longues sans remonter à un bloc d'entraînement complètement
+# différent.
+DECOUPLING_TREND_WEEKS = 12
+
+
+def decoupling_trend(activities: List[dict], day: date, window_weeks: int = DECOUPLING_TREND_WEEKS) -> dict:
+    """Tendance du découplage aérobie (Pa:HR, #45) sur les sorties longues, fenêtre de
+    `window_weeks` semaines glissantes se terminant à `day` inclus — même discipline
+    que `fueling_trend` (#41) : les DEUX filtres (famille course à pied, durée >
+    `LONG_RUN_MIN_DURATION_S`) sont appliqués ici, que l'appelant ait ou non déjà
+    pré-filtré sa requête.
+
+    `activities` : dicts portant au moins `date` (AAAA-MM-JJ), `duration_s` et
+    `sport` ; `decoupling_pct`/`ef_whole` (déjà dérivés à l'indexation par
+    `arc_decoupling.decoupling_report`, JAMAIS recalculés ici) optionnels — une
+    sortie longue sans découplage calculable (séance non stable, échauffement trop
+    long, etc.) apparaît quand même dans `points` avec `decoupling_pct: None`,
+    jamais silencieusement exclue de la liste (seulement de la moyenne)."""
+    start = day - timedelta(days=window_weeks * 7 - 1)
+    points = []
+    for act in activities:
+        iso = act.get("date")
+        duration = act.get("duration_s")
+        if not iso or not duration or duration <= LONG_RUN_MIN_DURATION_S:
+            continue
+        if sport_family(act.get("sport")) != "run":
+            continue
+        try:
+            act_date = date.fromisoformat(iso)
+        except ValueError:
+            continue
+        if not (start <= act_date <= day):
+            continue
+        points.append({
+            "date": iso,
+            "sport": act.get("sport"),
+            "name": act.get("name"),
+            "duration_s": duration,
+            "decoupling_pct": act.get("decoupling_pct"),
+            "ef_whole": act.get("ef_whole"),
+        })
+    points.sort(key=lambda p: p["date"])
+    measured = [p["decoupling_pct"] for p in points if p["decoupling_pct"] is not None]
+    return {
+        "points": points,
+        "window_weeks": window_weeks,
+        "long_runs": len(points),
+        "measured_n": len(measured),
+        "avg_decoupling_pct": round(statistics.mean(measured), 2) if measured else None,
+    }
+
+
 def gear_mileage(activities: List[dict], gear_defs: List[dict]) -> dict:
     """Kilométrage cumulé par chaussure (#40). Voir `ASSUMPTIONS["gear_mileage"]`
     pour la méthode complète (attribution, chaussure par défaut, `gear_id` inconnu,

@@ -59,18 +59,42 @@ SEED = 12345
 DAYS = 40  # cf. docstring : budget de taille du golden
 
 
+
+# Durée totale des échantillons FIT figés, en secondes. Étendue de 1800 s (30 min)
+# à 3900 s (65 min) pour #45 (revue de code) : le découplage aérobie exige au
+# moins `arc_decoupling.MIN_MOVING_DURATION_S` (60 min) de mouvement, sous peine
+# de rester `null` (inéligible) partout dans le golden — ce chemin de calcul
+# (découplage/EF réellement mesurés) ne serait alors jamais verrouillé. 3900 s
+# laisse une marge confortable au-delà du seuil (échauffement de 10 min +
+# 2 × 10 min minimum par moitié, voir `arc_decoupling.ASSUMPTIONS`).
+FIXED_FIT_DURATION_S = 3900
+
+
 def _fixed_altitude_m(t: int) -> float:
     """Profil d'altitude déterministe : montée douce (0 -> 30 m) sur le premier
     tiers, plateau, puis redescente symétrique sur le dernier tiers (#44, allure
-    ajustée à la pente) — assez de dénivelé (~1,85 % de pente sur ~1620 m à
-    2,7 m/s) pour que le GAP diverge visiblement de l'allure brute et verrouille
-    ainsi un chemin de calcul non trivial dans le golden, sans changer le reste
-    du fichier (FC, cadence, distance) verrouillé par #43."""
-    if t < 600:
-        return round(30.0 * (t / 600.0), 2)
-    if t < 1200:
+    ajustée à la pente) — assez de dénivelé pour que le GAP diverge visiblement de
+    l'allure brute et verrouille ainsi un chemin de calcul non trivial dans le
+    golden, sans changer le reste du fichier (FC, cadence, distance) verrouillé
+    par #43. Bornes mises à l'échelle de `FIXED_FIT_DURATION_S` (#45, revue de
+    code : le tiers reste un tiers quelle que soit la durée totale)."""
+    third = FIXED_FIT_DURATION_S / 3.0
+    if t < third:
+        return round(30.0 * (t / third), 2)
+    if t < 2 * third:
         return 30.0
-    return round(30.0 * (1 - (t - 1200) / 600.0), 2)
+    return round(30.0 * (1 - (t - 2 * third) / third), 2)
+
+
+def _fixed_hr_bpm(t: int) -> float:
+    """FC déterministe : 150 bpm sur la première moitié (temps écoulé, séance
+    plate en vitesse donc identique au temps de mouvement), 155 bpm sur la
+    seconde (#45, revue de code) — une dérive fixe et modeste (+3,3 %), assez
+    pour verrouiller un découplage aérobie mesuré NON NUL dans le golden (la FC
+    constante à 150 bpm sur toute la séance, suffisante pour #43/#44, aurait
+    verrouillé un découplage nul partout, jamais le chemin de calcul de la
+    dérive elle-même)."""
+    return 150.0 if t < FIXED_FIT_DURATION_S / 2 else 155.0
 
 
 def _write_fixed_fit_samples(ws: Path, today: str) -> None:
@@ -80,14 +104,15 @@ def _write_fixed_fit_samples(ws: Path, today: str) -> None:
     activité du workspace synthétique n'a d'échantillon FIT ingéré, donc
     `hr_zones`/`polarisation_weeks` restent `null` PARTOUT dans le golden — ce chemin
     (bornes connues + temps en zone/polarisation réellement calculés) ne serait donc
-    jamais verrouillé par la comparaison golden. FC constante à 150 bpm, 30 min à 5 s
-    de résolution (360 points) : entièrement déterministe, sans tirage `rng`, la
-    valeur de FC n'a pas besoin de varier pour prouver que le calcul tourne. Altitude
-    en montée/plateau/descente douce (`_fixed_altitude_m`, #44) : sans dénivelé, le
+    jamais verrouillé par la comparaison golden. `FIXED_FIT_DURATION_S` (65 min) à
+    5 s de résolution : entièrement déterministe, sans tirage `rng`. Altitude en
+    montée/plateau/descente douce (`_fixed_altitude_m`, #44) : sans dénivelé, le
     GAP calculé serait toujours strictement égal à l'allure brute, ce qui ne
-    verrouillerait jamais le chemin de calcul de la pente. Le `garmin_activity_id`
-    est LU dans le fichier Markdown de l'activité (jamais codé en dur) : il reste
-    correct même si le générateur venait à changer sa façon de les attribuer."""
+    verrouillerait jamais le chemin de calcul de la pente. FC en palier
+    150 -> 155 bpm à mi-séance (`_fixed_hr_bpm`, #45) : verrouille un découplage
+    aérobie/EF mesurés NON NULS. Le `garmin_activity_id` est LU dans le fichier
+    Markdown de l'activité (jamais codé en dur) : il reste correct même si le
+    générateur venait à changer sa façon de les attribuer."""
     matches = sorted((ws / "activities").glob(f"{today}_*.md"))
     if not matches:
         raise AssertionError(f"aucune activité datée {today} dans le workspace golden — "
@@ -98,9 +123,9 @@ def _write_fixed_fit_samples(ws: Path, today: str) -> None:
         raise AssertionError(f"garmin_activity_id introuvable dans {matches[0]}")
     garmin_id = int(match.group(1))
     records = [
-        {"t_s": t, "distance_m": round(t * 2.7, 2), "altitude_m": _fixed_altitude_m(t), "hr_bpm": 150.0,
-         "speed_ms": 2.7, "cadence_spm": 172.0}
-        for t in range(0, 1800, 5)
+        {"t_s": t, "distance_m": round(t * 2.7, 2), "altitude_m": _fixed_altitude_m(t),
+         "hr_bpm": _fixed_hr_bpm(t), "speed_ms": 2.7, "cadence_spm": 172.0}
+        for t in range(0, FIXED_FIT_DURATION_S, 5)
     ]
     fit_dir = ws / "activities/fit"
     fit_dir.mkdir(parents=True, exist_ok=True)
