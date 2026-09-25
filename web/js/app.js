@@ -403,7 +403,7 @@ async function viewForm(params) {
       <p class="legend">${trail ? `<span class="legend__item"><span class="key key--bar"></span>Heures d'effort</span> <span class="legend__item"><span class="key key--dplus"></span>D+ cumulé</span>` : `<span class="legend__item"><span class="key key--bar"></span>Kilomètres</span>`}</p>
       <div class="chart-host" id="c-load">${loadChart.svg}</div><p class="readout" id="r-load"></p>
       <dl class="facts facts--inline"><div><dt>Monotonie (7 j)</dt><dd>${F.num(load.monotony, 2)}</dd></div><div><dt>Strain (7 j)</dt><dd>${F.num(load.strain)}</dd></div><div><dt>Charge du jour</dt><dd>${F.num(last.load)}</dd></div></dl></section>
-    ${polarisationSection(load.polarisation_weeks)}`;
+    ${polarisationSection(load.polarisation_weeks, load.hr_zones_reason)}`;
 
   attachCursor($("#c-form"), chart, (i) => {
     const p = series[i];
@@ -432,7 +432,15 @@ async function viewForm(params) {
  * interaction. Les seuils facile/modérée/difficile dépendent de la méthode de zones
  * du profil (Karvonen, LTHR ou %FCmax) : jamais un simple « Z1-Z2/Z3/Z4-Z5 » fixe,
  * faux pour LTHR et %FCmax (voir `arc_metrics.seiler_bounds`). */
-function polarisationSection(weeks) {
+function polarisationSection(weeks, hrZonesReason) {
+  // `hrZonesReason` (non nul) : AUCUNE zone n'est calculable pour ce profil (FC max/
+  // repos/seuil manquante, ou méthode forcée incomplète) — la section reste visible
+  // avec la raison plutôt que de disparaître silencieusement (revue de code #43,
+  // round 3). Distinct d'une fenêtre simplement sans séances à échantillons FIT
+  // (`weeks` vide de données), qui n'est pas une erreur de configuration.
+  if (hrZonesReason) {
+    return `<section class="band"><h2>Polarisation 80/20</h2>${note(F.esc(hrZonesReason))}</section>`;
+  }
   if (!weeks || !weeks.some((w) => w.polarisation)) return "";
   const barW = 22, gap = 8, chartH = 64;
   const groups = weeks.map((w, i) => {

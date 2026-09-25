@@ -209,10 +209,12 @@ HR_ZONE_PCT_MAX = (0.0, 0.60, 0.70, 0.80, 0.90, 1.5)
 #   ventilatoire usuel en %FCmax — les regrouper donnerait une polarisation
 #   trompeuse (ex. Z3, 70-80 % FCmax, est typiquement SOUS VT1, pas « modérée »).
 #   `seiler_bounds("percent_max")` calcule donc deux bornes INDÉPENDANTES des 5
-#   zones affichées, à 82 % et 87 % de la FC max — repères courants pour situer
-#   VT1/VT2 en %FCmax (ex. Skiba, "Evidence-Based Cycling Training", et la
-#   littérature sur l'estimation de VT1/VT2 en %FCmax pour un adulte entraîné) —
-#   moins précis qu'un test d'effort réel, d'où l'usage du mot « approximation ».
+#   zones affichées, à 82 % et 87 % de la FC max — une APPROXIMATION MAISON de
+#   l'emplacement typique de VT1/VT2 en %FCmax pour un adulte entraîné, PAS une
+#   valeur tirée d'une source vérifiée (aucune citation fiable trouvée pour ces
+#   deux pourcentages précis — mieux vaut le dire explicitement que citer une
+#   source invérifiable) : nettement moins précis qu'un test d'effort réel, d'où
+#   l'usage du mot « approximation ». À affiner si une source solide se présente.
 HR_ZONE_SEILER_PCT_MAX = (0.82, 0.87)
 
 ASSUMPTIONS = {
@@ -567,11 +569,14 @@ ASSUMPTIONS = {
                 "PLUS approximative que le temps en zone, parce que le seuil qui sépare « facile » de "
                 "« modérée » et « modérée » de « difficile » ne tombe PAS sur les mêmes bornes bpm que les 5 "
                 "zones affichées selon la méthode — `seiler_bounds` calcule donc deux bornes bpm DÉDIÉES par "
-                "méthode (voir sa docstring pour le détail par méthode et les sources) plutôt que de regrouper "
-                "aveuglément les 5 zones affichées : le mapping Z1+Z2/Z3/Z4+Z5 n'est physiologiquement correct "
-                "QUE pour Karvonen ; pour LTHR, Z4 (95-99 % LTHR) reste sous le second seuil Seiler (donc "
-                "« modérée », pas « difficile ») ; pour %FCmax, les seuils (82 %/87 %) sont indépendants des "
-                "bornes de zones affichées (60/70/80/90 %). Calculée UNIQUEMENT sur les activités qui ont des "
+                "méthode (voir sa docstring pour le détail par méthode) plutôt que de regrouper aveuglément "
+                "les 5 zones affichées : le mapping Z1+Z2/Z3/Z4+Z5 n'est physiologiquement correct QUE pour "
+                "Karvonen (Karvonen, Kentala & Mustala 1957 pour la réserve elle-même) ; pour LTHR, Z4 "
+                "(95-99 % LTHR) reste sous le second seuil Seiler (donc « modérée », pas « difficile ») ; pour "
+                "%FCmax, les seuils (82 %/87 %) sont une APPROXIMATION MAISON de l'emplacement typique de "
+                "VT1/VT2 en %FCmax, SANS source vérifiée (pas une valeur tirée telle quelle de la "
+                "littérature) — indépendants des bornes de zones affichées (60/70/80/90 %). Calculée "
+                "UNIQUEMENT sur les activités qui ont des "
                 "échantillons FIT ingérés (`hr_polarisation_time` non vide) ; une semaine sans AUCUNE activité "
                 "avec échantillons rend `None` sur tous ses champs (jamais 0 % ni une part calculée sur zéro "
                 "seconde) — une semaine avec au moins une activité datée sans FIT associé n'est pas `None` "
@@ -679,9 +684,9 @@ def hr_zone_bounds(athlete: dict, method: Optional[str] = None) -> Optional[Tupl
 
 
 _HR_ZONE_MISSING_FIELDS = {
-    "lthr": "la FC au seuil (« FC au seuil » du profil, `hr_threshold_bpm`)",
-    "karvonen": "la FC max et la FC de repos (`hr_max_bpm`/`hr_rest_bpm` du profil)",
-    "percent_max": "la FC max (`hr_max_bpm` du profil)",
+    "lthr": "la FC au seuil, à renseigner dans le profil",
+    "karvonen": "la FC max et la FC de repos, à renseigner dans le profil",
+    "percent_max": "la FC max, à renseigner dans le profil",
 }
 
 
@@ -709,8 +714,8 @@ def hr_zone_resolution(athlete: dict, method: Optional[str] = None) -> dict:
         return {"bounds_bpm": None, "method": None,
                 "reason": "aucune méthode de zones calculable (profil sans FC max/repos/seuil renseignée)"}
     return {"bounds_bpm": None, "method": requested,
-            "reason": f"méthode « {requested} » forcée par [athlete].hr_zones mais "
-                      f"{_HR_ZONE_MISSING_FIELDS[requested]} est absente du profil"}
+            "reason": f"méthode « {requested} » forcée par le réglage de zones FC de la configuration, mais "
+                      f"{_HR_ZONE_MISSING_FIELDS[requested]}"}
 
 
 def hr_zone_of(hr_bpm: float, bounds: Sequence[float]) -> int:

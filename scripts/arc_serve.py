@@ -340,10 +340,19 @@ def api_load(store: Store, q: dict) -> dict:
         b["effort_km"] = M.effort_km_week_total(week_rows[key])
     latest = store.one("SELECT monotony, strain FROM metric_day WHERE date <= ? ORDER BY date DESC LIMIT 1",
                        (today.isoformat(),)) or {}
+    conf = store.meta("settings") or {}
     with store.lock:
         polarisation = I.weekly_polarisation(store.conn, weeks, today)
+        # Raison explicite quand AUCUNE zone n'est calculable (profil incomplet, ou
+        # méthode forcée par [athlete].hr_zones mais champ manquant) : sans elle, la
+        # section « Polarisation 80/20 » disparaîtrait silencieusement côté UI plutôt
+        # que d'en expliquer la cause (revue de code #43, round 3) — `None` ici veut
+        # dire « des zones sont calculables », pas nécessairement que la fenêtre a des
+        # données (une semaine sans échantillons FIT reste `polarisation: null`, sans
+        # rapport avec cette raison globale).
+        hr_zones_reason = I.athlete_hr_zone_resolution(store.conn, conf)["reason"]
     return {"weeks": list(buckets.values()), "monotony": latest.get("monotony"), "strain": latest.get("strain"),
-            "polarisation_weeks": polarisation}
+            "polarisation_weeks": polarisation, "hr_zones_reason": hr_zones_reason}
 
 
 def api_health(store: Store, q: dict) -> dict:

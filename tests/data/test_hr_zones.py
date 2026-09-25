@@ -32,6 +32,7 @@ sys.path.insert(0, str(REPO))
 import arc_index as I  # noqa: E402
 import arc_metrics as M  # noqa: E402
 import arc_samples as S  # noqa: E402
+import arc_serve  # noqa: E402
 from tests.lib.synthetic import HR_MAX, HR_REST, ZONE_BOUNDS_BPM, sample_session  # noqa: E402
 
 
@@ -567,6 +568,33 @@ class TestWeeklyPolarisation(Workspace):
         weeks = I.weekly_polarisation(self.conn, 2, date(2026, 9, 25))
         current_week = next(w for w in weeks if w["week_start"] == "2026-09-21")
         self.assertIsNone(current_week["polarisation"])
+
+
+class TestApiLoadHrZonesReason(Workspace):
+    """Revue de code #43, round 3 : `/api/load` doit porter une raison explicite
+    quand AUCUNE zone n'est calculable pour ce profil, pour que la section
+    « Polarisation 80/20 » de Forme & charge ne disparaisse pas silencieusement."""
+
+    def _api_load(self):
+        store = arc_serve.Store(self.ws, memory=True, today="2026-09-25")
+        return arc_serve.api_load(store, {})
+
+    def test_reason_present_without_any_profile(self):
+        payload = self._api_load()
+        self.assertIsNotNone(payload["hr_zones_reason"])
+        self.assertNotIn("`", payload["hr_zones_reason"])   # pas de backtick brut affiché en UI
+
+    def test_reason_none_when_zones_are_computable(self):
+        self.write_profile(hr_max=188, hr_rest=48)
+        payload = self._api_load()
+        self.assertIsNone(payload["hr_zones_reason"])
+
+    def test_reason_present_and_backtick_free_when_forced_method_incomplete(self):
+        self.write_profile(hr_max=188, hr_rest=48)
+        self.write_hr_zones_override("lthr")
+        payload = self._api_load()
+        self.assertIsNotNone(payload["hr_zones_reason"])
+        self.assertNotIn("`", payload["hr_zones_reason"])
 
 
 if __name__ == "__main__":
