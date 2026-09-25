@@ -63,7 +63,7 @@ import arc_metrics as M  # noqa: E402
 from coach_config import ConfigError, read_toml  # noqa: E402
 from coach_setup import ENGINE, workspace_root  # noqa: E402
 
-SCHEMA_VERSION = 4   # #37 : athlete gagne sleep_need_s
+SCHEMA_VERSION = 5   # #39 : activity gagne gear_id/carbs_g/fluid_intake_ml/weight_pre_kg/weight_post_kg/sweat_rate_l_h
 DEFAULT_DB = ".arc/coach.db"
 DATA_DIRS = ("activities", "medical", "nutrition", "planning", "rapports")
 
@@ -165,7 +165,9 @@ CREATE TABLE activity (
     distance_m REAL, duration_s REAL, moving_duration_s REAL, elevation_gain_m REAL,
     elevation_loss_m REAL, avg_hr_bpm REAL, max_hr_bpm REAL, recovery_hr_bpm REAL,
     avg_cadence_spm REAL, calories_kcal REAL, te_aerobic REAL, te_anaerobic REAL, rpe REAL,
-    load REAL, load_source TEXT, vo2max_est REAL, missing_reason TEXT, body_md TEXT, data_json TEXT
+    load REAL, load_source TEXT, vo2max_est REAL, missing_reason TEXT,
+    gear_id TEXT, carbs_g REAL, fluid_intake_ml REAL, weight_pre_kg REAL, weight_post_kg REAL,
+    sweat_rate_l_h REAL, body_md TEXT, data_json TEXT
 );
 CREATE INDEX activity_date ON activity(date);
 CREATE TABLE activity_split (
@@ -462,7 +464,10 @@ def store(conn, rel: str, kind: str, data: dict, arc_version: int) -> None:
             "max_hr_bpm": g("max_hr_bpm"), "recovery_hr_bpm": g("recovery_hr_bpm"),
             "avg_cadence_spm": g("avg_cadence_spm"), "calories_kcal": g("calories_kcal"),
             "te_aerobic": g("training_effect_aerobic"), "te_anaerobic": g("training_effect_anaerobic"),
-            "rpe": g("rpe"), "missing_reason": _j(g("missing_reason")), "body_md": body,
+            "rpe": g("rpe"), "missing_reason": _j(g("missing_reason")),
+            "gear_id": g("gear_id"), "carbs_g": g("carbs_g"), "fluid_intake_ml": g("fluid_intake_ml"),
+            "weight_pre_kg": g("weight_pre_kg"), "weight_post_kg": g("weight_post_kg"),
+            "body_md": body,
             "data_json": _data_json(data),
         })
         for split in C.split_rows(data):
@@ -546,8 +551,9 @@ def compute_metrics(conn, conf: dict, today: Optional[str] = None) -> None:
         act = dict(row)
         load, source = M.session_load(act, athlete)
         vo2 = M.vo2max_effective(act, athlete)
-        conn.execute("UPDATE activity SET load = ?, load_source = ?, vo2max_est = ? WHERE id = ?",
-                     (round(load, 2), source, vo2, act["id"]))
+        sweat_rate = M.sweat_rate_l_h(act)
+        conn.execute("UPDATE activity SET load = ?, load_source = ?, vo2max_est = ?, sweat_rate_l_h = ? WHERE id = ?",
+                     (round(load, 2), source, vo2, sweat_rate, act["id"]))
         if act.get("date"):
             loads[act["date"]] = loads.get(act["date"], 0.0) + load
             if vo2 is not None:

@@ -115,7 +115,44 @@ Types de valeurs ci-dessous : *entier*, *nombre* (≥ 0 sauf mention), *texte*,
 | `rpe` | 0-10 | effort perçu déclaré — indispensable si la séance n'a pas de FC |
 | `splits_cols` | liste | en-tête des splits, voir ci-dessous |
 | `splits` | liste | une ligne par km, dans l'ordre de `splits_cols` |
+| `gear_id` | texte | identifiant matériel (slug), voir ci-dessous |
+| `carbs_g` | nombre | glucides ingérés pendant l'effort, 0-1000 g |
+| `fluid_intake_ml` | nombre | liquide ingéré pendant l'effort, 0-10 000 ml |
+| `weight_pre_kg`, `weight_post_kg` | nombre | pesée avant / après effort, 30-200 kg |
 | `missing_reason` | objet | clé absente → cause |
+
+**Matériel, sudation, glucides.** `gear_id` référence la section « Matériel &
+lieux » du profil athlète (`planning/Runner_Profile.md`) : un identifiant
+stable au format **slug** — minuscules, chiffres, tirets simples, 40
+caractères maximum (ex. `hoka-speedgoat-5-bleue`). Deux séances avec le même
+`gear_id` sont la même paire de chaussures pour le kilométrage cumulé.
+
+Cette section du profil reste du texte libre écrit par l'athlète (un modèle,
+une date d'achat, éventuellement un identifiant explicite qu'il choisit
+lui-même) : `arc_contract.gear_slug(label)` est la règle PARTAGÉE qui dérive un
+slug d'un libellé quand aucun identifiant explicite n'est donné — décomposition
+Unicode et suppression des accents, minuscules, tout ce qui n'est pas
+alphanumérique devient un tiret, tirets de tête/fin retirés, coupé à 40
+caractères. Un futur agrégateur de kilométrage lira le profil ligne par ligne
+et appliquera cette même règle (identifiant explicite prioritaire sur la
+dérivation automatique). Le coach applique la même règle sur le nom de modèle
+cité par l'athlète pour choisir le `gear_id` d'une activité — et **omet** la
+clé plutôt que de deviner si la référence est trop ambiguë (plusieurs paires
+possibles, modèle non reconnu).
+
+`carbs_g` et `fluid_intake_ml` viennent d'une déclaration de l'athlète (gels,
+barres, boisson…) pendant ou juste après la séance — jamais une valeur
+inventée : sans déclaration, la clé est omise. Convertissez un produit du
+catalogue (`resources/nutrition/catalogue-produits-*.md`, voir `nutritionist`)
+en grammes/millilitres avant d'écrire le bloc.
+
+`weight_pre_kg`/`weight_post_kg` sont les pesées avant et après l'effort
+(protocole classique de mesure du taux de sudation). `weight_post_kg`
+supérieur à `weight_pre_kg` de plus de 1 kg déclenche un avertissement (pesée à
+vérifier), pas une erreur — la balance ou les vêtements peuvent expliquer un
+petit écart. Le taux de sudation lui-même (`sweat_rate_l_h`) n'est **pas**
+écrit par l'agent : c'est un champ **dérivé**, voir « Champ dérivé »
+juste après l'exemple ci-dessous.
 
 **Splits.** `splits_cols` déclare les colonnes, `splits` donne une liste de
 valeurs par km dans cet ordre. `km` et `duration_s` sont obligatoires ; les
@@ -143,6 +180,57 @@ qui porte la charge.
 ```arc
 {"arc": 1, "kind": "activity", "date": "2026-09-18", "sport": "strength", "duration_s": 2400, "rpe": 6, "missing_reason": {"avg_hr_bpm": "pas de ceinture cardio"}}
 ```
+
+Sortie longue avec matériel, ravitaillement déclaré et pesées avant/après
+(entraînement digestif, #41 en tirera glucides/h et taux de sudation) :
+
+```arc
+{
+  "arc": 1, "kind": "activity", "date": "2026-09-21", "sport": "trail", "duration_s": 9000,
+  "moving_duration_s": 8820, "distance_m": 22000, "avg_hr_bpm": 138,
+  "gear_id": "hoka-speedgoat-5-bleue", "carbs_g": 72, "fluid_intake_ml": 900,
+  "weight_pre_kg": 70.2, "weight_post_kg": 69.1
+}
+```
+
+Ici, `scripts/arc_index.py` dérive `sweat_rate_l_h` à l'indexation : ni cette
+clé ni sa formule ne s'écrivent dans le bloc — voir juste en dessous.
+
+#### Champ dérivé : `sweat_rate_l_h`
+
+Ne s'écrit **jamais** dans un bloc ```arc — c'est `scripts/arc_index.py`
+(fonction `arc_metrics.sweat_rate_l_h`) qui le calcule à l'indexation, à partir
+des seules clés `activity` ci-dessus, et l'expose dans la table dérivée
+(`activity.sweat_rate_l_h`), pour un futur suivi glucides/h et taux de
+sudation.
+
+Formule : `((weight_pre_kg − weight_post_kg) + fluid_intake_ml / 1000) / durée_h`,
+avec :
+
+- **durée** = `duration_s` (durée TOTALE de la sortie), **jamais**
+  `moving_duration_s` : la pesée encadre la sortie entière (avant le départ,
+  après le retour), et la transpiration comme l'ingestion continuent pendant
+  les arrêts (ravitaillement, photo, pause à un point d'eau) — utiliser la
+  seule durée de mouvement sous-estimerait le temps réel d'exposition ;
+- **sous 45 minutes**, `null` : l'imprécision d'une pesée maison (résolution
+  de la balance, habits, passage aux toilettes) domine le signal sur une
+  sortie courte ;
+- calculé **seulement** si `weight_pre_kg` **et** `weight_post_kg` **et**
+  `duration_s` (≥ 45 min) sont tous présents — sinon `null`, jamais une valeur
+  devinée ;
+- `fluid_intake_ml` absent → traité comme `0` dans le calcul : le taux devient
+  alors une **borne basse** (l'athlète a pu boire sans le déclarer) ;
+- ce chiffre reste une **approximation dans les deux sens**, jamais une
+  mesure : la perte urinaire (non soustraite) et la perte d'eau
+  respiratoire/métabolique (comptée à tort comme de la sueur) le
+  **surestiment** ; la masse des aliments solides ingérés (non retranchée du
+  poids « après ») le **sous-estime** légèrement ;
+- résultat négatif — dès que `(weight_pre_kg − weight_post_kg) + fluid_intake_ml / 1000 < 0`,
+  y compris sans franchir l'avertissement ci-dessus (ex. 70 → 70,5 kg sans
+  liquide déclaré) — ou hors plage plausible (0-4 l/h) → `null`, pas une
+  valeur aberrante affichée.
+
+Détails et justification complète : `arc_metrics.ASSUMPTIONS["sweat_rate"]`.
 
 ### `health`
 

@@ -106,6 +106,18 @@ WEIGHT_SLOPE_WINDOW_DAYS = 28     # fenêtre de la régression (4 semaines)
 WEIGHT_SLOPE_MIN_POINTS = 5       # jours pesés exigés dans ces 28 j pour une pente fiable
 WEIGHT_SLOPE_MIN_SPAN_DAYS = 14   # écart mini entre 1re et dernière pesée : pas de pente sur des points groupés
 
+# Taux de sudation (#39) : dérivé par séance depuis les pesées avant/après effort.
+# Voir ASSUMPTIONS["sweat_rate"] pour la formule complète et ses hypothèses.
+# Borne haute à 4 l/h (pas 3) : la littérature documente des gros transpirateurs
+# au-delà de 2,5-3 l/h en ambiance chaude (ex. sportifs d'élite), et une borne trop
+# serrée écarterait silencieusement ces séances réelles plutôt que les erreurs de
+# saisie qu'elle est censée filtrer.
+SWEAT_RATE_PLAUSIBLE_L_H = (0.0, 4.0)
+# En dessous de cette durée, l'erreur de pesée (résolution de la balance, habits,
+# passage aux toilettes) domine le signal : sur 10 min, 0,1 kg d'imprécision vaut
+# déjà 0,6 l/h d'écart. Pas de calcul en dessous, plutôt qu'un chiffre bruité.
+SWEAT_RATE_MIN_DURATION_S = 45 * 60
+
 ASSUMPTIONS = {
     "trimp": "TRIMP de Banister : minutes × FCr × 0,64 × e^(k·FCr), FCr = (FC moy − FC repos) / (FC max − FC repos), "
              "k = 1,92 (homme) / 1,67 (femme).",
@@ -280,6 +292,26 @@ ASSUMPTIONS = {
                     "jours donneraient une pente extrapolée sur 4 semaines à partir d'un intervalle bien trop "
                     "court pour être fiable. Aucun commentaire normatif n'est dérivé de ces chiffres : chiffres "
                     "seulement (voir issue #36).",
+    "sweat_rate": "Taux de sudation par séance (#39) : ((weight_pre_kg − weight_post_kg) + fluid_intake_ml / 1000) "
+                 "/ durée en heures, calculé UNIQUEMENT quand weight_pre_kg, weight_post_kg et une durée sont "
+                 "tous les trois présents dans le bloc ```arc de l'activité — sinon `None`, jamais estimé. "
+                 "Durée : `duration_s` (durée TOTALE de la sortie), PAS `moving_duration_s` — la pesée encadre la "
+                 "sortie entière (avant le départ, après le retour), et la transpiration comme l'ingestion "
+                 "continuent pendant les arrêts (ravitaillement, photo, pause à un point d'eau) ; utiliser la "
+                 "seule durée de mouvement sous-estimerait le temps réel d'exposition. Sous "
+                 f"{SWEAT_RATE_MIN_DURATION_S / 60:g} min, `None` : sur une sortie courte, l'imprécision d'une "
+                 "pesée maison (résolution de la balance, habits, passage aux toilettes) domine le signal — un "
+                 "écart de 0,1 kg sur 10 min vaut déjà plusieurs l/h d'erreur. `fluid_intake_ml` absent est traité "
+                 "comme 0 dans le calcul et documenté ici plutôt que dans le contrat : le résultat devient alors "
+                 "une BORNE BASSE (l'athlète a pu boire sans le déclarer). Ce chiffre reste néanmoins une "
+                 "APPROXIMATION dans les deux sens, jamais une mesure : la perte urinaire (non soustraite) et la "
+                 "perte d'eau respiratoire/métabolique (comptée à tort comme de la sueur) le SURESTIMENT ; la "
+                 "masse des aliments solides ingérés (gels, barres — non retranchée du poids « après ») le "
+                 "SOUS-ESTIME légèrement. Résultat négatif — chaque fois que (weight_pre_kg − weight_post_kg) + "
+                 "fluid_intake_ml / 1000 < 0, y compris sans franchir l'avertissement du contrat "
+                 "(`arc_contract.WEIGHT_POST_TOLERANCE_KG`), ex. 70 → 70,5 kg sans liquide déclaré — ou hors plage "
+                 f"plausible {SWEAT_RATE_PLAUSIBLE_L_H[0]:g}-{SWEAT_RATE_PLAUSIBLE_L_H[1]:g} l/h → `None`, jamais "
+                 "affiché tel quel. Alimente #41 (KPI glucides/h et taux de sudation).",
 }
 
 # ---------------------------------------------------------------------------
@@ -666,6 +698,21 @@ def vo2max_trend(estimates: List[Tuple[str, float, float]], day: str, days: int 
             total += value * w
             weight += w
     return round(total / weight, 2) if weight else None
+
+
+def sweat_rate_l_h(activity: dict) -> Optional[float]:
+    """Taux de sudation d'une séance (#39). `None` si pesées ou durée manquent, si la
+    séance est trop courte pour que la pesée soit fiable, si le résultat est négatif
+    ou hors plage plausible. Voir `ASSUMPTIONS["sweat_rate"]`."""
+    pre, post = activity.get("weight_pre_kg"), activity.get("weight_post_kg")
+    duration = activity.get("duration_s")   # durée TOTALE : la pesée encadre la sortie entière, pas le seul mouvement
+    if pre is None or post is None or not duration or duration < SWEAT_RATE_MIN_DURATION_S:
+        return None
+    fluid_l = (activity.get("fluid_intake_ml") or 0) / 1000.0
+    hours = duration / 3600.0
+    rate = ((pre - post) + fluid_l) / hours
+    lo, hi = SWEAT_RATE_PLAUSIBLE_L_H
+    return round(rate, 2) if lo <= rate <= hi else None
 
 
 def predict_time_vdot(vdot_value: float, distance_m: float) -> Optional[float]:

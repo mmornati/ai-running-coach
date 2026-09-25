@@ -26,6 +26,7 @@ from __future__ import annotations
 
 import json
 import re
+import unicodedata
 from datetime import date, datetime
 
 ARC_VERSION = 1
@@ -56,6 +57,54 @@ SESSION_STATUS = ("planned", "done", "missed", "moved", "cancelled")
 REPORT_TYPE = ("weekly", "monthly", "comparison", "race", "adhoc")
 COURSE_VERDICT = ("compatible", "partial", "incompatible")
 WATER_SOURCE = ("officiel", "osm_drinking_water", "osm_spring", "osm_cafe")
+
+# Matériel, sudation, glucides pendant l'effort (#39 — champs consommés par #40
+# kilométrage chaussures, #41 KPI glucides/h et taux de sudation).
+GEAR_ID_MAX_LEN = 40
+# Format slug : minuscules, chiffres, tirets simples, jamais en tête/fin — même
+# convention que la plupart des identifiants stables lisibles par un humain
+# (ex. "hoka-speedgoat-5-bleue"). La section « Matériel & lieux » du profil
+# (`templates/Runner_Profile.template.md`) reste du texte libre écrit par
+# l'athlète : `gear_slug()` ci-dessous est la règle PARTAGÉE qui en dérive un
+# identifiant — utilisée par #40 pour lire le profil, et par le coach pour
+# choisir le `gear_id` d'une activité à partir du nom de modèle donné par
+# l'athlète (voir `agents/coach.md`).
+GEAR_ID_RE = re.compile(r"^[a-z0-9]+(-[a-z0-9]+)*$")
+_GEAR_SLUG_NON_ALNUM_RE = re.compile(r"[^a-z0-9]+")
+
+
+def gear_slug(label: str) -> str:
+    """Dérive un `gear_id` (slug) d'un libellé de matériel en texte libre.
+
+    Règle PARTAGÉE entre #39 (validation), #40 (lecture de la section
+    « Matériel » du profil, un `gear_id` explicite dans la ligne de l'athlète
+    restant prioritaire sur cette dérivation automatique) et le coach (choix du
+    `gear_id` d'une activité à partir du nom de modèle cité par l'athlète) :
+    1. décomposition Unicode (NFKD) puis suppression des marques diacritiques
+       — « Hoka Speedgoat 5 Bleue » perd ses accents avant tout le reste ;
+    2. minuscules ;
+    3. toute suite de caractères non alphanumériques (espaces, apostrophes,
+       ponctuation) devient un tiret unique ;
+    4. tirets de tête/fin retirés ;
+    5. coupé à `GEAR_ID_MAX_LEN` caractères, puis un éventuel tiret de fin
+       laissé par la coupe est retiré à son tour.
+
+    Rend une chaîne vide si `label` ne contient aucun caractère alphanumérique
+    — à l'appelant de décider (ex. : ne pas écrire `gear_id` du tout plutôt
+    qu'une chaîne vide, qui échouerait de toute façon la validation du
+    contrat)."""
+    decomposed = unicodedata.normalize("NFKD", label)
+    stripped = "".join(c for c in decomposed if not unicodedata.combining(c))
+    slug = _GEAR_SLUG_NON_ALNUM_RE.sub("-", stripped.lower()).strip("-")
+    return slug[:GEAR_ID_MAX_LEN].rstrip("-")
+CARBS_G_PLAUSIBLE_MAX = 1000        # ravitaillement pendant l'effort ; au-delà, faute de frappe probable
+FLUID_INTAKE_ML_PLAUSIBLE_MAX = 10000
+BODY_WEIGHT_KG_PLAUSIBLE = (30.0, 200.0)
+# Pesée après effort supérieure à avant : n'arrive normalement pas (perte hydrique),
+# mais une petite marge absorbe l'imprécision d'une pesée maison (habits, balance).
+# Au-delà, avertissement (pas une erreur) : `sweat_rate_l_h` (arc_metrics.py) ignore
+# de toute façon un résultat négatif plutôt que de le rejeter ici en amont.
+WEIGHT_POST_TOLERANCE_KG = 1.0
 
 # Colonnes de splits reconnues. `km` et `duration_s` sont obligatoires ; les
 # autres sont facultatives et dans n'importe quel ordre, puisque l'en-tête est
@@ -114,6 +163,11 @@ SCHEMA = {
             "rpe": "rpe",
             "splits_cols": "list",
             "splits": "list",
+            "gear_id": "gear_id",
+            "carbs_g": "carbs_g",
+            "fluid_intake_ml": "fluid_ml",
+            "weight_pre_kg": "body_weight_kg",
+            "weight_post_kg": "body_weight_kg",
             "missing_reason": "obj",
         },
     },
@@ -369,6 +423,26 @@ def _check_value(spec: str, value, where: str, errors: list, warnings: list) -> 
         if not _is_number(value) or not 0 <= value <= 10:
             fail("un RPE de 0 à 10")
         return
+    if spec == "gear_id":
+        if not isinstance(value, str) or not value.strip():
+            fail("un identifiant de matériel (chaîne non vide)")
+        elif len(value) > GEAR_ID_MAX_LEN or not GEAR_ID_RE.match(value):
+            fail(f"un identifiant de matériel au format slug (minuscules, chiffres, tirets, "
+                 f"{GEAR_ID_MAX_LEN} caractères max)")
+        return
+    if spec == "carbs_g":
+        if not _is_number(value) or not 0 <= value <= CARBS_G_PLAUSIBLE_MAX:
+            fail(f"une quantité de glucides en g (0-{CARBS_G_PLAUSIBLE_MAX:g})")
+        return
+    if spec == "fluid_ml":
+        if not _is_number(value) or not 0 <= value <= FLUID_INTAKE_ML_PLAUSIBLE_MAX:
+            fail(f"un volume ingéré en ml (0-{FLUID_INTAKE_ML_PLAUSIBLE_MAX:g})")
+        return
+    if spec == "body_weight_kg":
+        lo, hi = BODY_WEIGHT_KG_PLAUSIBLE
+        if not _is_number(value) or not lo <= value <= hi:
+            fail(f"un poids en kg ({lo:g}-{hi:g})")
+        return
     if spec == "str":
         if not isinstance(value, str) or not value.strip():
             fail("une chaîne non vide")
@@ -465,6 +539,16 @@ def validate(data: dict) -> tuple:
         moving, total = data.get("moving_duration_s"), data.get("duration_s")
         if _is_number(moving) and _is_number(total) and moving > total:
             errors.append("activity.moving_duration_s : ne peut dépasser duration_s")
+        pre, post = data.get("weight_pre_kg"), data.get("weight_post_kg")
+        if _is_number(pre) and _is_number(post) and post > pre + WEIGHT_POST_TOLERANCE_KG:
+            # Pas une erreur : une pesée maison a de l'imprécision (habits, balance), et le
+            # contrat ne connaît pas la cause (peut aussi arriver, ex. ravitaillement massif
+            # avant une pesée après course). `sweat_rate_l_h` (arc_metrics.py) ignore de
+            # toute façon un résultat négatif plutôt que d'être calculé sur ces valeurs.
+            warnings.append(
+                f"activity.weight_post_kg : supérieur au poids avant effort de plus de "
+                f"{WEIGHT_POST_TOLERANCE_KG:g} kg — pesée à vérifier"
+            )
     return errors, warnings
 
 

@@ -456,7 +456,8 @@ def api_activities(store: Store, q: dict) -> dict:
     limit = min(500, int(q.get("limit", ["200"])[0])) if q.get("limit", ["200"])[0].isdigit() else 200
     return {"activities": store.rows(
         "SELECT id, date, sport, name, location, distance_m, duration_s, elevation_gain_m, avg_hr_bpm, "
-        "max_hr_bpm, recovery_hr_bpm, te_aerobic, load, load_source, vo2max_est, arc_version "
+        "max_hr_bpm, recovery_hr_bpm, te_aerobic, load, load_source, vo2max_est, arc_version, "
+        "gear_id, sweat_rate_l_h "
         "FROM activity ORDER BY date DESC, id DESC LIMIT ?", (limit,))}
 
 
