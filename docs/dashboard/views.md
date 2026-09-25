@@ -114,11 +114,46 @@ six semaines d'historique pour que la condition ait un sens.
   pas le renforcement ni le vélo) ; une semaine sans aucune séance à échantillons
   s'affiche en gris plutôt que d'être masquée — pas de donnée, pas un 0 %.
 
+- **Le découplage aérobie (Pa:HR)** (#45) : un point par sortie longue (plus de
+  90 minutes, course à pied) où la mesure est calculable — dérive de la
+  fréquence cardiaque à allure ajustée à la pente (GAP, #44) constante entre
+  la première et la seconde moitié de la séance, échauffement exclu
+  (facteur d'efficacité EF = vitesse GAP / FC, par moitié). Un repère à 5 %
+  est tracé : sous ce seuil, bonne durabilité aérobie selon le protocole de
+  test de dérive de FC d'Uphill Athlete
+  (<https://uphillathlete.com/aerobic-training/heart-rate-drift/>) — un
+  protocole CONTRÔLÉ (allure constante, terrain maîtrisé), **pas un seuil
+  validé cliniquement pour une sortie de terrain ordinaire**, jamais présenté
+  comme une norme (voir [Marques et métriques](../marques.md) pour la
+  terminologie Pa:HR/EF, popularisée par la marque TrainingPeaks, calcul
+  public repris ici sous des noms génériques). Seule la couleur 0-5 % (bonne
+  durabilité) et au-delà de 5 % (dérive marquée) est affichée ; une valeur
+  négative reste neutre, jamais présentée comme meilleure qu'une dérive
+  proche de zéro. N'apparaît que pour les séances éligibles : famille course
+  à pied, au moins 60 minutes de mouvement, couverture FC suffisante sur
+  chaque moitié (indépendamment du relief), assez de minutes réellement
+  courues hors pente forte/marche, profil de pente comparable entre les deux
+  moitiés, effort jugé stable sur des fenêtres glissantes de 30 secondes (voir
+  `scripts/arc_decoupling.py::ASSUMPTIONS` pour la règle complète) ; une
+  sortie longue non éligible (trop courte, fractionnée, relief trop
+  asymétrique entre les deux moitiés, sans FC) n'apparaît simplement pas sur
+  ce graphique, sans qu'aucun autre chiffre de la vue n'en soit affecté. **Une
+  ascension sèche ou une sortie point-à-point avec la montée d'un côté et la
+  descente de l'autre n'affiche généralement AUCUNE valeur** (relief trop
+  différent entre les deux moitiés) — ce n'est pas un bug : le GAP ne corrige
+  pas parfaitement l'effet du relief sur la FC, et comparer une moitié
+  « montée » à une moitié « descente » mesurerait surtout le profil du
+  parcours, pas une vraie dérive cardiaque. C'est le cas typique d'un
+  aller-retour à un sommet unique (montée concentrée dans la première moitié,
+  descente dans la seconde). Une sortie vallonnée, où montées et descentes se
+  répartissent de façon comparable dans chacune des deux moitiés (plusieurs
+  bosses, pas un seul flanc par moitié), reste éligible.
+
 | Alimentée par | Calcul |
 |---|---|
 | `activities/*.md` (durée, FC moyenne, effort perçu) | `scripts/arc_metrics.py` : TRIMP, ou effort perçu sans FC |
 | `planning/Runner_Profile.md` (FC max, FC de repos) | indispensables au TRIMP |
-| `activities/fit/*.json` (échantillons ingérés) | temps en zone FC → polarisation 80/20 |
+| `activities/fit/*.json` (échantillons ingérés) | temps en zone FC → polarisation 80/20 ; GAP → découplage aérobie/EF |
 
 **Si les courbes sont plates ou bizarres** : renseignez la FC max et la FC de repos
 de référence du profil. Sans elles, la charge vient de l'effort perçu seul.
@@ -266,7 +301,11 @@ de fréquence cardiaque et d'effort perçu, un astérisque.
 
 - **Les chiffres clés** : distance, durée, allure, D+ / D-, FC moyenne et max, **HRR**
   (récupération cardiaque — « non mesuré » avec sa raison quand Garmin ne l'a pas),
-  effet d'entraînement, charge, VO2max estimée quand la séance s'y prête.
+  effet d'entraînement, charge, VO2max estimée quand la séance s'y prête, et le
+  **découplage aérobie (Pa:HR)** (#45, facteur d'efficacité EF en complément) quand la
+  séance est éligible (sortie course à pied d'au moins 60 minutes de mouvement, à
+  effort stable — voir la section « Découplage aérobie » de « Forme & charge »
+  ci-dessus pour la méthode complète) ; absent sinon, jamais une valeur à zéro.
 - **La météo du jour**, si une prévision a été enregistrée.
 - **Les splits** : un graphique allure + FC, puis le tableau complet — temps, D+ / D-,
   FC, cadence et la lecture du coach pour chaque kilomètre quand il en a écrit une.

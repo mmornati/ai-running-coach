@@ -10,7 +10,7 @@ soutenu par eux.
 |---|---|---|
 | Garmin®, Garmin Connect™ | Garmin Ltd. ou ses filiales | Source des données (activités, sommeil, HRV) et calendrier des séances |
 | Body Battery™, Firstbeat Analytics™, *Training Readiness* | Garmin Ltd. ou ses filiales | Scores lus tels que Garmin les fournit, jamais recalculés |
-| TrainingPeaks®, TSS®, NP®, IF® | Peaksware LLC (groupe Garmin depuis juillet 2026) | Non utilisés par le projet |
+| TrainingPeaks®, TSS®, NP®, IF® | Peaksware LLC (groupe Garmin depuis juillet 2026) | Non utilisés par le projet ; « Pa:HR »/« Efficiency Factor » cités uniquement pour situer notre découplage aérobie/EF (formule publique, voir l'équivalence ci-dessous) |
 | CTL, ATL, TSB | revendiqués par Peaksware LLC | Cités seulement pour l'équivalence ci-dessous |
 | Intervals.icu, Strava | leurs éditeurs respectifs | Services tiers, facultatifs |
 | Strava GAP, COROS Effort Pace, Suunto NGP | leurs éditeurs respectifs (Strava, Inc. ; COROS ; Suunto Oy) | Cités uniquement pour situer notre allure ajustée à la pente parmi des calculs équivalents du marché (voir l'équivalence ci-dessous) — non utilisés par le projet, calculs propriétaires non reproduits |
@@ -35,6 +35,7 @@ publiés dans la littérature scientifique et portent ici des noms génériques 
 | **Zones FC** (5 zones) | Karvonen, Kentala & Mustala (1957) (réserve FC) ; Friel, *The Triathlete's Training Bible* (% de la FC au seuil/LTHR) ; %FC max (convention courante) | « Zones » telles qu'affichées par d'autres montres/applications — méthode et bornes différentes, non comparables terme à terme |
 | **Polarisation 80/20** (facile / modérée / difficile) | Modèle à 3 zones de Seiler (Seiler & Kjerland, 2006 ; Seiler, 2010) | idem, terminologie usuelle en entraînement d'endurance |
 | **Allure ajustée à la pente** (« GAP ») | Coût énergétique de la course de Minetti AE *et al.*, *J Appl Physiol* 93:1039–1046 (2002) | Strava GAP, COROS Effort Pace, Suunto NGP — même principe (ajuster l'allure à la pente), calculs propriétaires non documentés publiquement dans le détail ; voir la limite du modèle ci-dessous |
+| **Découplage aérobie (Pa:HR)** et **facteur d'efficacité (EF)** | Formule publique : EF = allure ajustée à la pente (GAP) / FC ; découplage = variation d'EF entre les deux moitiés d'une séance | Terminologie « Pa:HR » (« Pace:HR ») et « Efficiency Factor » popularisée par la **marque** TrainingPeaks — même principe, calcul propriétaire non documenté publiquement ; notre calcul est indépendant, fondé sur notre propre GAP (ligne ci-dessus) |
 
 !!! warning "GAP : approximation du projet, pas un équivalent des GAP propriétaires"
     Notre allure ajustée à la pente applique tel quel le modèle de laboratoire de
