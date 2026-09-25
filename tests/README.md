@@ -404,8 +404,19 @@ arbitraires ; la story #43 (zones FC, temps en zone, polarisation 80/20) rend la
 méthode configurable par profil (`arc_metrics.hr_zone_bounds`, précédence LTHR
 → Karvonen → %FCmax, `[athlete].hr_zones` dans `config/workspace.toml`) — les
 mêmes bornes Karvonen que ce générateur (`KARVONEN_HRR_PCT`) y sont reprises à
-l'identique, pour que le temps en zone calculé sur un profil type retombe sur
-`zone_seconds_measured` à quelques secondes près.
+l'identique, pour que le temps en zone calculé sur un profil qui n'a QUE
+`HR_REST`/`HR_MAX` (sans FC au seuil) retombe sur `zone_seconds_measured` à
+quelques secondes près.
+
+**Attention** : le profil type écrit par `build()` (`planning/Runner_Profile.md`)
+renseigne AUSSI une FC au seuil (172 bpm, voir `_write` du profil dans ce
+module) — sur un workspace construit par `build()`, `[athlete].hr_zones =
+"auto"` (le défaut) résout donc en réalité sur la méthode **LTHR**, pas
+Karvonen, la LTHR primant par précédence (`arc_metrics.ASSUMPTIONS
+["hr_zones"]`). La comparaison directe aux bornes `KARVONEN_HRR_PCT` ci-dessus
+ne vaut donc que pour un appel direct à `sample_session`/`hr_zone_bounds` avec
+un profil sans FC au seuil, ou en forçant `[athlete].hr_zones = "karvonen"` —
+pas pour un workspace `build()` par défaut.
 
 ```bash
 python3 -m tests.lib.synthetic /tmp/demo --days 120 --with-samples

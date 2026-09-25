@@ -484,25 +484,32 @@ def api_activity(store: Store, activity_id: int):
             "body_html": render_markdown(I.C.body_after_block(body))}
 
 
-def api_activity_hr_zones(store: Store, activity_id: int) -> Optional[dict]:
-    """Zones FC + temps en zone d'une séance (#43), pour `/api/activity/<id>` : bornes
-    et méthode effectives (précédence `arc_metrics.hr_zone_bounds`), temps en zone
-    (`hr_zone_time`, id INTERNE de l'activité) et polarisation Seiler de la séance.
-    `None` si aucune méthode de zones n'est calculable (profil sans FC max/repos/seuil
-    renseignée) — distinct d'une séance sans échantillons FIT, qui rend quand même les
-    bornes avec `zone_seconds: null` (voir `arc_index.activity_zone_report`)."""
+def api_activity_hr_zones(store: Store, activity_id: int) -> dict:
+    """Zones FC + temps en zone d'une séance (#43), pour `/api/activity/<id>.hr_zones` :
+    bornes et méthode effectives (précédence `arc_metrics.hr_zone_resolution`), temps
+    en zone (`hr_zone_time`) et polarisation Seiler (`hr_polarisation_time`, bornes
+    dédiées par méthode) de la séance, id INTERNE de l'activité.
+
+    Rend TOUJOURS un dict, jamais `None` (revue de code #43, point 4) : un
+    `bounds_bpm: null` porte une `reason` explicite (méthode inconnue, méthode forcée
+    mais champ manquant au profil, ou aucune donnée du tout) que l'UI affiche au lieu
+    de masquer silencieusement la section. `zone_seconds`/`polarisation` restent
+    `None` sans échantillons FIT (ou sport hors de la famille course à pied — voir
+    `compute_metrics`), même quand les bornes sont connues."""
     conf = store.meta("settings") or {}
     with store.lock:
-        resolved = I.athlete_hr_zone_bounds(store.conn, conf)
-        if resolved is None:
-            return None
-        bounds, method = resolved
+        resolution = I.athlete_hr_zone_resolution(store.conn, conf)
+        if resolution["bounds_bpm"] is None:
+            return {**resolution, "zone_seconds": None, "polarisation": None}
         rows = store.conn.execute(
             "SELECT zone, seconds FROM hr_zone_time WHERE activity_id = ?", (activity_id,)).fetchall()
+        pol_rows = store.conn.execute(
+            "SELECT bucket, seconds FROM hr_polarisation_time WHERE activity_id = ?", (activity_id,)).fetchall()
     zone_seconds = {row["zone"]: row["seconds"] for row in rows} if rows else None
+    pol_seconds = {row["bucket"]: row["seconds"] for row in pol_rows} if pol_rows else None
     return {
-        "bounds_bpm": list(bounds), "method": method, "zone_seconds": zone_seconds,
-        "polarisation": M.polarisation_shares(zone_seconds) if zone_seconds else None,
+        **resolution, "zone_seconds": zone_seconds,
+        "polarisation": M.polarisation_shares(pol_seconds) if pol_seconds else None,
     }
 
 

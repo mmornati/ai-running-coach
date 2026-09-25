@@ -103,12 +103,16 @@ l'affûtage réussi. La tendance compte plus que le chiffre du jour. Il faut env
 six semaines d'historique pour que la condition ait un sens.
 
 - **La polarisation 80/20** (#43) : une barre empilée par semaine — part du temps en
-  zone FC **facile** (Z1-Z2), **modérée** (Z3) et **difficile** (Z4-Z5), modèle à
-  trois zones de Seiler reconstruit depuis nos 5 zones FC (voir
-  [Marques et métriques](../marques.md)). N'apparaît que pour les semaines ayant au
+  zone FC **facile**, **modérée** et **difficile**, modèle à trois zones de Seiler
+  (voir [Marques et métriques](../marques.md)). Les seuils bpm qui séparent ces trois
+  paliers dépendent de la méthode de zones effective du profil (FC au seuil,
+  Karvonen ou %FC max) — pas un simple découpage fixe des 5 zones affichées : pour la
+  FC au seuil notamment, une zone FC affichée (« Z4 ») peut rester classée
+  « modérée » plutôt que « difficile ». N'apparaît que pour les semaines ayant au
   moins une séance avec échantillons FIT ingérés (`activities/fit/*.json`, story
-  #42) ; une semaine sans aucune séance à échantillons s'affiche en gris plutôt que
-  d'être masquée — pas de donnée, pas un 0 %.
+  #42) et un sport de la famille course à pied (course, trail, randonnée, marche —
+  pas le renforcement ni le vélo) ; une semaine sans aucune séance à échantillons
+  s'affiche en gris plutôt que d'être masquée — pas de donnée, pas un 0 %.
 
 | Alimentée par | Calcul |
 |---|---|
@@ -267,10 +271,15 @@ de fréquence cardiaque et d'effort perçu, un astérisque.
 - **Les splits** : un graphique allure + FC, puis le tableau complet — temps, D+ / D-,
   FC, cadence et la lecture du coach pour chaque kilomètre quand il en a écrit une.
 - **Les zones FC** (#43) : une barre empilée du temps passé dans chacune des 5 zones,
-  avec les bornes (bpm) et la méthode effective (FC au seuil, Karvonen ou %FC max —
-  voir [Marques et métriques](../marques.md)), plus la polarisation 80/20 de la
-  séance. N'apparaît que si le profil permet de calculer des zones ; sans échantillons
-  FIT ingérés pour cette séance, les bornes s'affichent quand même, sans barre.
+  avec les bornes intérieures (bpm, ex. « Z1 < 146 · Z2 146-155 · … · Z5 ≥ 172 ») et
+  la méthode effective (FC au seuil, Karvonen ou %FC max — voir
+  [Marques et métriques](../marques.md)), plus la polarisation 80/20 de la séance,
+  restreinte aux sports de la famille course à pied. Réservé aux sports course à
+  pied (course, trail, randonnée, marche). Si le profil ne permet de calculer aucune
+  zone (FC max/repos/seuil manquantes, ou méthode forcée par
+  `[athlete].hr_zones` mais incomplète), la raison est affichée explicitement au lieu
+  de masquer la section ; sans échantillons FIT ingérés pour cette séance, les bornes
+  s'affichent quand même, sans barre.
 - **L'analyse complète du coach**, rendue telle qu'il l'a écrite, tableaux compris ;
   le chemin du fichier source est rappelé en bas.
 

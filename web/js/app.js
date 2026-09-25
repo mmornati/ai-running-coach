@@ -414,40 +414,79 @@ async function viewForm(params) {
     const w = weeks[i];
     readout($("#r-load"), `<strong>Semaine du ${F.dayShort(w.week_start)}</strong> · ${w.sessions} séance${w.sessions > 1 ? "s" : ""} · ${F.hours(w.duration_s)} · ${F.distance(w.distance_m)}${trail ? ` · ${F.elevation(w.elevation_m)} D+${w.effort_km ? ` · ${F.num(w.effort_km, 1)} km-effort` : ""}` : ` · ${F.pace(w.distance_m, w.duration_s)}`} · charge ${F.num(w.load)}`);
   });
+  wirePolarisationChart(load.polarisation_weeks);
 }
 
 /** Section « Polarisation 80/20 » de Forme & charge (#43) : une barre empilée par
- * semaine (facile / modérée / difficile, mapping Seiler — voir
- * `arc_metrics.HR_ZONE_SEILER_MAP`), en SVG (pas de style en ligne, CSP). Une
- * semaine sans AUCUNE activité à échantillons FIT (`polarisation: null`, voir
+ * semaine (facile / modérée / difficile, seuils Seiler DÉDIÉS à la méthode de zones
+ * du profil — voir `arc_metrics.seiler_bounds`), en SVG (pas de style en ligne, CSP).
+ * Une semaine sans AUCUNE activité à échantillons FIT (`polarisation: null`, voir
  * `arc_index.weekly_polarisation`) reste visible, barre grise, plutôt que masquée :
- * on veut voir où la donnée manque, pas la faire disparaître silencieusement. */
+ * on veut voir où la donnée manque, pas la faire disparaître silencieusement.
+ *
+ * Une semaine par groupe `<g>` (`tabindex`/`role="img"`/`aria-label`, navigable au
+ * clavier), pour que `wirePolarisationChart` (appelée après insertion dans le DOM)
+ * mette à jour un `readout` visible au survol/focus — jamais SEULEMENT un `<title>`
+ * SVG, illisible au clavier et peu visible à la souris (revue de code #43, nit). Un
+ * résumé de la semaine la plus récente reste affiché par défaut, avant toute
+ * interaction. Les seuils facile/modérée/difficile dépendent de la méthode de zones
+ * du profil (Karvonen, LTHR ou %FCmax) : jamais un simple « Z1-Z2/Z3/Z4-Z5 » fixe,
+ * faux pour LTHR et %FCmax (voir `arc_metrics.seiler_bounds`). */
 function polarisationSection(weeks) {
   if (!weeks || !weeks.some((w) => w.polarisation)) return "";
   const barW = 22, gap = 8, chartH = 64;
-  const bars = weeks.map((w, i) => {
+  const groups = weeks.map((w, i) => {
     const x = i * (barW + gap);
     const p = w.polarisation;
     if (!p) {
-      return `<rect class="polar polar--none" x="${x}" y="${chartH - 4}" width="${barW}" height="4" rx="2"><title>${F.dayShort(w.week_start)} : pas d'échantillons FIT</title></rect>`;
+      const label = `${F.dayShort(w.week_start)} : pas d'échantillons FIT`;
+      return `<g class="polar-week" data-i="${i}" tabindex="0" role="img" aria-label="${F.esc(label)}">
+        <rect class="polar polar--none" x="${x}" y="${chartH - 4}" width="${barW}" height="4" rx="2"></rect></g>`;
     }
     const segs = [["low", p.low_pct], ["moderate", p.moderate_pct], ["high", p.high_pct]];
     let y = chartH;
-    const title = `${F.dayShort(w.week_start)} : facile ${F.num(p.low_pct, 0)} % · modérée ${F.num(p.moderate_pct, 0)} % · difficile ${F.num(p.high_pct, 0)} %`;
-    return segs.map(([cls, pct]) => {
+    const rects = segs.map(([cls, pct]) => {
       const segH = Math.max(0, (pct / 100) * chartH);
       y -= segH;
-      return `<rect class="polar polar--${cls}" x="${x}" y="${y.toFixed(1)}" width="${barW}" height="${segH.toFixed(1)}"><title>${F.esc(title)}</title></rect>`;
+      return `<rect class="polar polar--${cls}" x="${x}" y="${y.toFixed(1)}" width="${barW}" height="${segH.toFixed(1)}"></rect>`;
     }).join("");
+    const label = `${F.dayShort(w.week_start)} : facile ${F.num(p.low_pct, 0)} % · modérée ${F.num(p.moderate_pct, 0)} % · difficile ${F.num(p.high_pct, 0)} %`;
+    return `<g class="polar-week" data-i="${i}" tabindex="0" role="img" aria-label="${F.esc(label)}">${rects}</g>`;
   }).join("");
   const totalW = weeks.length * barW + (weeks.length - 1) * gap;
-  const label = `Polarisation 80/20 hebdomadaire : ${weeks.map((w) => w.polarisation
-    ? `${F.dayShort(w.week_start)} facile ${F.num(w.polarisation.low_pct, 0)} % modérée ${F.num(w.polarisation.moderate_pct, 0)} % difficile ${F.num(w.polarisation.high_pct, 0)} %`
-    : `${F.dayShort(w.week_start)} pas de données`).join(" ; ")}.`;
+  const latest = [...weeks].reverse().find((w) => w.polarisation);
+  const defaultReadout = latest
+    ? polarisationReadoutHtml(latest)
+    : "Pas encore de semaine avec échantillons FIT.";
   return `<section class="band"><h2>Polarisation 80/20</h2>
-    <p class="muted">Part du temps en zone FC facile (Z1-Z2), modérée (Z3) et difficile (Z4-Z5), sur les semaines avec séances à échantillons FIT.</p>
+    <p class="muted">Part du temps en zone FC facile, modérée et difficile — seuils propres à la méthode de
+      zones du profil (Karvonen, FC au seuil ou %FC max, voir <a href="#/performance">Hypothèses des modèles</a>),
+      sur les semaines avec séances à échantillons FIT.</p>
     <p class="legend"><span class="legend__item"><span class="key key--polar-low"></span>Facile</span> <span class="legend__item"><span class="key key--polar-moderate"></span>Modérée</span> <span class="legend__item"><span class="key key--polar-high"></span>Difficile</span></p>
-    <svg class="polar-chart" viewBox="0 0 ${totalW} ${chartH}" role="img" aria-label="${F.esc(label)}">${bars}</svg></section>`;
+    <div class="chart-host" id="c-polar"><svg class="polar-chart" viewBox="0 0 ${totalW} ${chartH}">${groups}</svg></div>
+    <p class="readout" id="r-polar">${defaultReadout}</p></section>`;
+}
+
+function polarisationReadoutHtml(week) {
+  const p = week.polarisation;
+  return `<strong>Semaine du ${F.dayShort(week.week_start)}</strong> · facile ${F.num(p.low_pct, 0)} % · modérée ${F.num(p.moderate_pct, 0)} % · difficile ${F.num(p.high_pct, 0)} %`;
+}
+
+/** Câble le survol/focus clavier de chaque semaine du graphique de polarisation vers
+ * le `readout` visible sous le graphique (voir `polarisationSection`) — appelée une
+ * fois le HTML inséré dans le DOM, jamais avant (les `<g data-i>` n'existent pas
+ * encore sinon). */
+function wirePolarisationChart(weeks) {
+  const host = $("#c-polar");
+  if (!host) return;
+  host.querySelectorAll(".polar-week").forEach((g) => {
+    const week = weeks[Number(g.dataset.i)];
+    if (!week) return;
+    const show = () => readout($("#r-polar"),
+      week.polarisation ? polarisationReadoutHtml(week) : `${F.dayLong(week.week_start)} : pas d'échantillons FIT.`);
+    g.addEventListener("mouseenter", show);
+    g.addEventListener("focus", show);
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -659,18 +698,34 @@ async function viewSession(id) {
 
 /** Section « Zones FC » de la page séance (#43) : temps en zone en barre empilée
  * (SVG, jamais de style en ligne — CSP `style-src 'self'`) + légende. `hz` vient de
- * `/api/activity/<id>.hr_zones` (voir `arc_serve.py::api_activity_hr_zones`) :
- * `null` (aucune méthode de zones calculable, profil incomplet), ou
- * `zone_seconds: null` (bornes connues mais séance sans échantillons FIT). */
+ * `/api/activity/<id>.hr_zones` (voir `arc_serve.py::api_activity_hr_zones`), et est
+ * TOUJOURS un objet (jamais `null` — revue de code #43, point 4) : `bounds_bpm: null`
+ * porte une `reason` explicite (méthode inconnue, méthode forcée mais champ manquant
+ * au profil, ou aucune donnée du tout) affichée à l'utilisateur plutôt que masquée ;
+ * `zone_seconds: null` avec des bornes connues signale une séance sans échantillons
+ * FIT (ou un sport hors de la famille course à pied, voir `compute_metrics`). */
 const HR_ZONE_METHOD_LABEL = { lthr: "FC au seuil (LTHR)", karvonen: "Karvonen (réserve FC)", percent_max: "% FC max" };
 
+/** Bornes INTÉRIEURES seulement (« Z1 < 146 · Z2 146-153 · … · Z5 ≥ 170 ») : le
+ * premier (0) et le dernier (1,5×) élément de `bounds_bpm` sont des repères de calcul
+ * internes, jamais des seuils réels (revue de code #43, point 3 — un temps de FC sous
+ * le plancher théorique de Z1 compte quand même dans Z1, `arc_metrics.hr_zone_of`). */
+function hrZoneBoundsLabel(bounds) {
+  const b = bounds.map((v) => Math.round(v));
+  return [
+    `Z1 < ${b[1]}`, `Z2 ${b[1]}-${b[2]}`, `Z3 ${b[2]}-${b[3]}`, `Z4 ${b[3]}-${b[4]}`, `Z5 ≥ ${b[4]}`,
+  ].join(" · ") + " bpm";
+}
+
 function hrZoneSection(hz) {
-  if (!hz) return "";
   const methodLabel = HR_ZONE_METHOD_LABEL[hz.method] || hz.method;
-  const boundsTxt = hz.bounds_bpm.map((b) => Math.round(b)).join(" / ");
+  if (!hz.bounds_bpm) {
+    return `<section class="band"><h2>Zones FC</h2>${note(F.esc(hz.reason || "Zones FC non calculables."))}</section>`;
+  }
+  const boundsTxt = hrZoneBoundsLabel(hz.bounds_bpm);
   if (!hz.zone_seconds) {
-    return `<section class="band"><h2>Zones FC</h2><p class="muted">Bornes (${F.esc(methodLabel)}) : ${boundsTxt} bpm.</p>
-      ${note("Pas d'échantillons FIT ingérés pour cette séance : le temps en zone ne peut pas être calculé.")}</section>`;
+    return `<section class="band"><h2>Zones FC</h2><p class="muted">Bornes (${F.esc(methodLabel)}) : ${boundsTxt}.</p>
+      ${note(F.esc(hz.reason || "Pas d'échantillons FIT ingérés pour cette séance : le temps en zone ne peut pas être calculé."))}</section>`;
   }
   const seconds = [1, 2, 3, 4, 5].map((z) => hz.zone_seconds[z] ?? hz.zone_seconds[String(z)] ?? 0);
   const total = seconds.reduce((a, b) => a + b, 0);
@@ -687,7 +742,7 @@ function hrZoneSection(hz) {
   const legend = seconds.map((s, i) => `<span class="legend__item"><span class="key key--zone${i + 1}"></span>Z${i + 1} ${F.duration(s)}</span>`).join(" ");
   const pol = hz.polarisation;
   const polTxt = pol ? `<p class="muted">Polarisation : facile ${F.num(pol.low_pct, 0)} % · modérée ${F.num(pol.moderate_pct, 0)} % · difficile ${F.num(pol.high_pct, 0)} %.</p>` : "";
-  return `<section class="band"><h2>Zones FC</h2><p class="muted">Bornes (${F.esc(methodLabel)}) : ${boundsTxt} bpm.</p>
+  return `<section class="band"><h2>Zones FC</h2><p class="muted">Bornes (${F.esc(methodLabel)}) : ${boundsTxt}.</p>
     <svg class="zone-bar" viewBox="0 0 ${w} ${h}" role="img" aria-label="${F.esc(label)}">${segs}</svg>
     <p class="legend">${legend}</p>${polTxt}</section>`;
 }

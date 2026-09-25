@@ -212,13 +212,20 @@ select { font: inherit; color: var(--ink); background: var(--surface); border: 1
 
 /* ---------------------------------------------------------------- zones FC et polarisation (#43) */
 
+/* 5 teintes nettement distinctes (revue de code #43, nit : Z1/Z2 et Z3/Z4 étaient
+   quasi identiques avec --moss/--ok et --yellow/--warn) + un liseré `--surface` entre
+   segments pour rester lisible même pour deux teintes proches (dichromatopsie). */
 .zone-bar { display: block; width: 100%; height: auto; border-radius: 4px; overflow: hidden; margin: 0.5rem 0; }
-.zone--1 { fill: var(--moss); } .zone--2 { fill: var(--ok); } .zone--3 { fill: var(--yellow); }
-.zone--4 { fill: var(--warn); } .zone--5 { fill: var(--bad); }
-.key--zone1 { background: var(--moss); } .key--zone2 { background: var(--ok); } .key--zone3 { background: var(--yellow); }
-.key--zone4 { background: var(--warn); } .key--zone5 { background: var(--bad); }
+.zone-bar rect { stroke: var(--surface); stroke-width: 1; }
+.zone--1 { fill: var(--pine); } .zone--2 { fill: var(--ok); } .zone--3 { fill: var(--yellow); }
+.zone--4 { fill: var(--orange); } .zone--5 { fill: var(--bad); }
+.key--zone1 { background: var(--pine); } .key--zone2 { background: var(--ok); } .key--zone3 { background: var(--yellow); }
+.key--zone4 { background: var(--orange); } .key--zone5 { background: var(--bad); }
 
 .polar-chart { display: block; width: 100%; max-width: 32rem; height: 5rem; margin: 0.6rem 0 0.2rem; overflow: visible; }
+.polar-week { cursor: pointer; }
+.polar-week:focus { outline: 2px solid var(--focus); outline-offset: 2px; }
+.polar-chart rect { stroke: var(--surface); stroke-width: 1; }
 .polar--low { fill: var(--ok); } .polar--moderate { fill: var(--yellow); } .polar--high { fill: var(--bad); } .polar--none { fill: var(--line); }
 .key--polar-low { background: var(--ok); } .key--polar-moderate { background: var(--yellow); } .key--polar-high { background: var(--bad); }
 

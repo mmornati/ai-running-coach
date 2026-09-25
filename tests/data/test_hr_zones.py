@@ -1,15 +1,22 @@
 """Palier D — zones FC, temps en zone et polarisation 80/20 (#43).
 
-Trois familles de tests :
-- `arc_metrics.hr_zone_bounds`/`time_in_zone_seconds`/`polarisation_shares`, purs,
+Familles de tests :
+- `arc_metrics.hr_zone_bounds`/`hr_zone_resolution`/`time_in_zone_seconds`, purs,
   contre des valeurs de référence à la main et contre la vérité connue du générateur
   synthétique (`tests/lib/synthetic.sample_session`, story #25).
-- `arc_index` : la table dérivée `hr_zone_time` se recalcule à chaque passage
-  (changement de profil compris), la CLI `zones`, la polarisation hebdomadaire.
+- `arc_metrics.seiler_bounds`/`time_in_polarisation_seconds`/`polarisation_shares` :
+  la polarisation 80/20 utilise des bornes bpm DÉDIÉES par méthode (revue de code
+  #43, point 2), jamais un regroupement des 5 zones affichées.
+- `arc_index` : les tables dérivées `hr_zone_time`/`hr_polarisation_time` se
+  recalculent à chaque passage (changement de profil compris), restreintes à la
+  famille course à pied (revue de code #43, point 5), la CLI `zones`, la
+  polarisation hebdomadaire.
 """
 
 from __future__ import annotations
 
+import contextlib
+import io
 import json
 import shutil
 import sys
@@ -40,12 +47,12 @@ class TestHrZoneBounds(unittest.TestCase):
         bounds, method = M.hr_zone_bounds(
             {"hr_rest_bpm": 48, "hr_max_bpm": 188, "hr_threshold_bpm": 172})
         self.assertEqual(method, "lthr")
-        self.assertEqual(round(bounds[1]), round(172 * 0.85))
+        self.assertAlmostEqual(bounds[1], 172 * 0.85, places=1)
 
     def test_percent_max_is_the_last_resort(self):
         bounds, method = M.hr_zone_bounds({"hr_max_bpm": 190})
         self.assertEqual(method, "percent_max")
-        self.assertEqual(round(bounds[1]), round(190 * 0.60))
+        self.assertAlmostEqual(bounds[1], 190 * 0.60, places=1)
 
     def test_none_when_nothing_known(self):
         self.assertIsNone(M.hr_zone_bounds({}))
@@ -68,12 +75,75 @@ class TestHrZoneBounds(unittest.TestCase):
         athlete = {"hr_max_bpm": 190}
         self.assertEqual(M.hr_zone_bounds(athlete, "auto"), M.hr_zone_bounds(athlete, None))
 
+    def test_method_override_is_case_and_space_insensitive(self):
+        """Revue de code #43, point 4 : un typo de casse ne doit pas faire échouer
+        silencieusement une méthode par ailleurs valide."""
+        athlete = {"hr_rest_bpm": 48, "hr_max_bpm": 188}
+        self.assertEqual(M.hr_zone_bounds(athlete, "KARVONEN"), M.hr_zone_bounds(athlete, "karvonen"))
+        self.assertEqual(M.hr_zone_bounds(athlete, "  Karvonen  "), M.hr_zone_bounds(athlete, "karvonen"))
+
+    def test_unknown_method_name_returns_none(self):
+        athlete = {"hr_rest_bpm": 48, "hr_max_bpm": 188}
+        self.assertIsNone(M.hr_zone_bounds(athlete, "polar"))
+
     def test_hr_zone_of_saturates(self):
         bounds = (118, 132, 146, 160, 174, 188)
         self.assertEqual(M.hr_zone_of(50, bounds), 1)     # bien en dessous : zone 1
         self.assertEqual(M.hr_zone_of(200, bounds), 5)    # bien au-dessus : zone 5 (jamais hors zone)
         self.assertEqual(M.hr_zone_of(131.9, bounds), 1)
         self.assertEqual(M.hr_zone_of(132.0, bounds), 2)
+
+
+class TestLthrZoneBoundaries(unittest.TestCase):
+    """Revue de code #43, point 1 : bornes Friel corrigées (85/90/95/100 %, pas
+    85/89/94/99 %) — valeurs à la main sur une LTHR de 172 bpm."""
+
+    def setUp(self):
+        self.bounds, self.method = M.hr_zone_bounds({"hr_threshold_bpm": 172})
+        self.assertEqual(self.method, "lthr")
+
+    def test_bounds_are_85_90_95_100_pct_of_lthr(self):
+        self.assertEqual([round(b, 1) for b in self.bounds], [0.0, 146.2, 154.8, 163.4, 172.0, 258.0])
+
+    def test_153_08_bpm_is_zone_2(self):
+        self.assertEqual(M.hr_zone_of(153.08, self.bounds), 2)
+
+    def test_170_5_bpm_is_zone_4(self):
+        self.assertEqual(M.hr_zone_of(170.5, self.bounds), 4)
+
+
+class TestHrZoneResolution(unittest.TestCase):
+    """Revue de code #43, point 4 : `hr_zone_resolution` rend toujours une raison
+    explicite, jamais un `None` muet."""
+
+    def test_success_has_no_reason(self):
+        resolution = M.hr_zone_resolution({"hr_max_bpm": 188, "hr_rest_bpm": 48})
+        self.assertIsNotNone(resolution["bounds_bpm"])
+        self.assertEqual(resolution["method"], "karvonen")
+        self.assertIsNone(resolution["reason"])
+
+    def test_unknown_method_has_a_reason_naming_it(self):
+        resolution = M.hr_zone_resolution({"hr_max_bpm": 188}, "polar")
+        self.assertIsNone(resolution["bounds_bpm"])
+        self.assertEqual(resolution["method"], "polar")
+        self.assertIn("polar", resolution["reason"])
+
+    def test_forced_method_missing_field_names_the_missing_field(self):
+        resolution = M.hr_zone_resolution({"hr_max_bpm": 188, "hr_rest_bpm": 48}, "lthr")
+        self.assertIsNone(resolution["bounds_bpm"])
+        self.assertEqual(resolution["method"], "lthr")
+        self.assertIn("seuil", resolution["reason"])
+
+    def test_nothing_known_at_all(self):
+        resolution = M.hr_zone_resolution({})
+        self.assertIsNone(resolution["bounds_bpm"])
+        self.assertIsNone(resolution["method"])
+        self.assertIsNotNone(resolution["reason"])
+
+    def test_case_insensitive_like_hr_zone_bounds(self):
+        resolution = M.hr_zone_resolution({"hr_max_bpm": 188, "hr_rest_bpm": 48}, "KARVONEN")
+        self.assertEqual(resolution["method"], "karvonen")
+        self.assertIsNone(resolution["reason"])
 
 
 class TestTimeInZone(unittest.TestCase):
@@ -128,10 +198,86 @@ class TestTimeInZone(unittest.TestCase):
         self.assertEqual(zone_seconds, {1: 5.0})
 
 
-class TestPolarisation(unittest.TestCase):
-    def test_seiler_mapping_low_moderate_high(self):
-        zone_seconds = {1: 100.0, 2: 50.0, 3: 30.0, 4: 10.0, 5: 10.0}
-        shares = M.polarisation_shares(zone_seconds)
+class TestSeilerBounds(unittest.TestCase):
+    """Revue de code #43, point 2 : les seuils Seiler sont DÉDIÉS par méthode, pas un
+    regroupement fixe des 5 zones affichées."""
+
+    def test_karvonen_thresholds_are_70_and_80_pct_of_reserve(self):
+        athlete = {"hr_rest_bpm": 48, "hr_max_bpm": 188}
+        low_high, moderate_high = M.seiler_bounds(athlete, "karvonen")
+        reserve = 188 - 48
+        self.assertAlmostEqual(low_high, 48 + 0.70 * reserve, places=1)
+        self.assertAlmostEqual(moderate_high, 48 + 0.80 * reserve, places=1)
+
+    def test_lthr_thresholds_are_90_and_100_pct_of_lthr(self):
+        low_high, moderate_high = M.seiler_bounds({"hr_threshold_bpm": 172}, "lthr")
+        self.assertAlmostEqual(low_high, 172 * 0.90, places=1)
+        self.assertAlmostEqual(moderate_high, 172 * 1.00, places=1)
+
+    def test_percent_max_thresholds_are_independent_82_and_87_pct(self):
+        low_high, moderate_high = M.seiler_bounds({"hr_max_bpm": 190}, "percent_max")
+        self.assertAlmostEqual(low_high, 190 * 0.82, places=1)
+        self.assertAlmostEqual(moderate_high, 190 * 0.87, places=1)
+
+    def test_none_when_required_field_missing(self):
+        self.assertIsNone(M.seiler_bounds({}, "lthr"))
+        self.assertIsNone(M.seiler_bounds({"hr_rest_bpm": 48}, "karvonen"))
+        self.assertIsNone(M.seiler_bounds({}, "percent_max"))
+
+    def test_none_for_auto_or_unknown_method(self):
+        athlete = {"hr_max_bpm": 188, "hr_rest_bpm": 48, "hr_threshold_bpm": 172}
+        self.assertIsNone(M.seiler_bounds(athlete, "auto"))
+        self.assertIsNone(M.seiler_bounds(athlete, "polar"))
+
+
+class TestTimeInPolarisationSeconds(unittest.TestCase):
+    """Revue de code #43, point 2 : le regroupement par zone (Z1+Z2/Z3/Z4+Z5) n'est
+    physiologiquement correct QUE pour Karvonen — LTHR et %FCmax ont besoin de leurs
+    propres seuils bpm."""
+
+    def test_lthr_zone4_is_moderate_not_high(self):
+        """96 % LTHR tombe dans notre Z4 (95-99 %), mais reste SOUS le second seuil
+        Seiler (100 % LTHR) : il doit compter « modérée », pas « difficile »."""
+        thresholds = M.seiler_bounds({"hr_threshold_bpm": 172}, "lthr")
+        samples = [{"t_s": 0, "hr_bpm": 172 * 0.96}]
+        buckets = M.time_in_polarisation_seconds(samples, thresholds, 5)
+        self.assertEqual(buckets, {"moderate": 5.0})
+
+    def test_lthr_above_100_pct_is_high(self):
+        thresholds = M.seiler_bounds({"hr_threshold_bpm": 172}, "lthr")
+        samples = [{"t_s": 0, "hr_bpm": 172 * 1.01}]
+        buckets = M.time_in_polarisation_seconds(samples, thresholds, 5)
+        self.assertEqual(buckets, {"high": 5.0})
+
+    def test_percent_max_between_82_and_87_is_moderate(self):
+        thresholds = M.seiler_bounds({"hr_max_bpm": 190}, "percent_max")
+        samples = [{"t_s": 0, "hr_bpm": 190 * 0.85}]
+        buckets = M.time_in_polarisation_seconds(samples, thresholds, 5)
+        self.assertEqual(buckets, {"moderate": 5.0})
+
+    def test_percent_max_below_82_is_low(self):
+        thresholds = M.seiler_bounds({"hr_max_bpm": 190}, "percent_max")
+        samples = [{"t_s": 0, "hr_bpm": 190 * 0.70}]
+        buckets = M.time_in_polarisation_seconds(samples, thresholds, 5)
+        self.assertEqual(buckets, {"low": 5.0})
+
+    def test_karvonen_between_70_and_80_pct_reserve_is_moderate(self):
+        athlete = {"hr_rest_bpm": 48, "hr_max_bpm": 188}
+        thresholds = M.seiler_bounds(athlete, "karvonen")
+        samples = [{"t_s": 0, "hr_bpm": 48 + 0.75 * (188 - 48)}]
+        buckets = M.time_in_polarisation_seconds(samples, thresholds, 5)
+        self.assertEqual(buckets, {"moderate": 5.0})
+
+    def test_pause_gap_not_counted(self):
+        thresholds = (140.0, 160.0)
+        samples = [{"t_s": 0, "hr_bpm": 120}, {"t_s": 605, "hr_bpm": 120}]
+        buckets = M.time_in_polarisation_seconds(samples, thresholds, 5)
+        self.assertEqual(sum(buckets.values()), 10.0)
+
+
+class TestPolarisationShares(unittest.TestCase):
+    def test_shares_from_low_moderate_high_buckets(self):
+        shares = M.polarisation_shares({"low": 150.0, "moderate": 30.0, "high": 20.0})
         self.assertAlmostEqual(shares["low_s"], 150.0)
         self.assertAlmostEqual(shares["moderate_s"], 30.0)
         self.assertAlmostEqual(shares["high_s"], 20.0)
@@ -139,15 +285,14 @@ class TestPolarisation(unittest.TestCase):
         self.assertAlmostEqual(shares["moderate_pct"], 15.0)
         self.assertAlmostEqual(shares["high_pct"], 10.0)
 
-    def test_string_zone_keys_are_accepted(self):
-        """`hr_zone_time`/JSON rendent parfois des clés de zone en chaîne."""
-        shares = M.polarisation_shares({"1": 100.0, "5": 100.0})
-        self.assertAlmostEqual(shares["low_pct"], 50.0)
-        self.assertAlmostEqual(shares["high_pct"], 50.0)
+    def test_missing_bucket_defaults_to_zero(self):
+        shares = M.polarisation_shares({"low": 50.0})
+        self.assertAlmostEqual(shares["moderate_pct"], 0.0)
+        self.assertAlmostEqual(shares["high_pct"], 0.0)
 
     def test_none_when_empty_or_zero(self):
         self.assertIsNone(M.polarisation_shares({}))
-        self.assertIsNone(M.polarisation_shares({1: 0.0, 2: 0.0}))
+        self.assertIsNone(M.polarisation_shares({"low": 0.0, "moderate": 0.0}))
 
 
 def arc(kind_line: str) -> str:
@@ -167,7 +312,9 @@ class Workspace(unittest.TestCase):
         shutil.rmtree(self.tmp, ignore_errors=True)
 
     def write(self, rel: str, text: str) -> None:
-        (self.ws / rel).write_text(text, encoding="utf-8")
+        path = self.ws / rel
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(text, encoding="utf-8")
 
     def index(self, today="2026-09-25"):
         return I.index_workspace(self.conn, self.ws, today)
@@ -182,9 +329,12 @@ class Workspace(unittest.TestCase):
             lines.append(f"- **FC au seuil** : {hr_threshold}")
         self.write("planning/Runner_Profile.md", "\n".join(lines) + "\n")
 
-    def write_activity(self, garmin_id, day="2026-09-20", duration_s=3600, distance_m=10000):
-        self.write(f"activities/{day}_trail.md", arc(
-            f'{{"arc": 1, "kind": "activity", "date": "{day}", "sport": "trail", '
+    def write_hr_zones_override(self, value: str) -> None:
+        self.write("config/workspace.user.toml", f'[athlete]\nhr_zones = "{value}"\n')
+
+    def write_activity(self, garmin_id, day="2026-09-20", duration_s=3600, distance_m=10000, sport="trail"):
+        self.write(f"activities/{day}_{sport}.md", arc(
+            f'{{"arc": 1, "kind": "activity", "date": "{day}", "sport": "{sport}", '
             f'"duration_s": {duration_s}, "distance_m": {distance_m}, "garmin_activity_id": {garmin_id}}}'
         ))
 
@@ -208,6 +358,11 @@ class Workspace(unittest.TestCase):
         return {r["zone"]: r["seconds"] for r in self.conn.execute(
             "SELECT zone, seconds FROM hr_zone_time WHERE activity_id = ?", (activity_id,)).fetchall()}
 
+    def polarisation_rows(self, garmin_id):
+        activity_id = self.internal_id(garmin_id)
+        return {r["bucket"]: r["seconds"] for r in self.conn.execute(
+            "SELECT bucket, seconds FROM hr_polarisation_time WHERE activity_id = ?", (activity_id,)).fetchall()}
+
 
 class TestHrZoneTimeIndexing(Workspace):
     GARMIN_ID = 90000000002
@@ -226,6 +381,14 @@ class TestHrZoneTimeIndexing(Workspace):
         rows = self.zone_rows(self.GARMIN_ID)
         self.assertGreater(sum(rows.values()), 0)
         self.assertEqual(set(rows), {2})
+
+    def test_profile_with_hr_max_and_rest_fills_polarisation_time(self):
+        self.write_profile(hr_max=188, hr_rest=48)
+        self.write_activity(self.GARMIN_ID)
+        self.write_fit(self.GARMIN_ID, hr_bpm=140.0)
+        self.index()
+        rows = self.polarisation_rows(self.GARMIN_ID)
+        self.assertGreater(sum(rows.values()), 0)
 
     def test_activity_without_samples_gets_no_zone_row(self):
         self.write_profile(hr_max=188, hr_rest=48)
@@ -258,6 +421,47 @@ class TestHrZoneTimeIndexing(Workspace):
         self.assertEqual(set(self.zone_rows(self.GARMIN_ID)), {2})
 
 
+class TestSportFamilyRestriction(Workspace):
+    """Revue de code #43, point 5 : renforcement et vélo exclus du temps en zone et
+    de la polarisation, même avec des échantillons FIT ingérés."""
+
+    def test_strength_gets_no_zone_or_polarisation_rows(self):
+        self.write_profile(hr_max=188, hr_rest=48)
+        garmin_id = 90000000020
+        self.write_activity(garmin_id, sport="strength")
+        self.write_fit(garmin_id, hr_bpm=140.0)
+        self.index()
+        self.assertEqual(self.zone_rows(garmin_id), {})
+        self.assertEqual(self.polarisation_rows(garmin_id), {})
+
+    def test_indoor_cycling_gets_no_zone_or_polarisation_rows(self):
+        self.write_profile(hr_max=188, hr_rest=48)
+        garmin_id = 90000000021
+        self.write_activity(garmin_id, sport="indoor_cycling")
+        self.write_fit(garmin_id, hr_bpm=140.0)
+        self.index()
+        self.assertEqual(self.zone_rows(garmin_id), {})
+        self.assertEqual(self.polarisation_rows(garmin_id), {})
+
+    def test_hiking_is_still_included(self):
+        """Même famille « run » que `GEAR_WEAR_SPORTS`/`effort_km` : la randonnée
+        garde le même modèle aérobie que la course, seulement plus lente."""
+        self.write_profile(hr_max=188, hr_rest=48)
+        garmin_id = 90000000022
+        self.write_activity(garmin_id, sport="hiking")
+        self.write_fit(garmin_id, hr_bpm=140.0)
+        self.index()
+        self.assertNotEqual(self.zone_rows(garmin_id), {})
+
+    def test_running_is_still_included(self):
+        self.write_profile(hr_max=188, hr_rest=48)
+        garmin_id = 90000000023
+        self.write_activity(garmin_id, sport="running")
+        self.write_fit(garmin_id, hr_bpm=140.0)
+        self.index()
+        self.assertNotEqual(self.zone_rows(garmin_id), {})
+
+
 class TestActivityZoneReportAndCli(Workspace):
     GARMIN_ID = 90000000003
 
@@ -268,7 +472,7 @@ class TestActivityZoneReportAndCli(Workspace):
         self.index()
         report = I.activity_zone_report(self.conn, conf, self.GARMIN_ID)
         self.assertIsNone(report["zone_seconds"])
-        self.assertIn("reason", report)
+        self.assertIsNotNone(report["reason"])
 
     def test_activity_zone_report_reasons_without_samples(self):
         self.write_profile(hr_max=188, hr_rest=48)
@@ -278,6 +482,7 @@ class TestActivityZoneReportAndCli(Workspace):
         report = I.activity_zone_report(self.conn, conf, self.GARMIN_ID)
         self.assertIsNone(report["zone_seconds"])
         self.assertEqual(report["method"], "karvonen")
+        self.assertIsNotNone(report["reason"])
 
     def test_activity_zone_report_returns_seconds_and_polarisation(self):
         self.write_profile(hr_max=188, hr_rest=48)
@@ -288,22 +493,50 @@ class TestActivityZoneReportAndCli(Workspace):
         report = I.activity_zone_report(self.conn, conf, self.GARMIN_ID)
         self.assertIsNotNone(report["zone_seconds"])
         self.assertIsNotNone(report["polarisation"])
+        self.assertIsNone(report["reason"])
 
-    def test_cli_zones_command_prints_bounds(self):
+    def _run_cli(self, args) -> tuple:
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            code = I.main(args)
+        return code, buf.getvalue()
+
+    def test_cli_zones_command_prints_bounds_and_method(self):
         self.write_profile(hr_max=188, hr_rest=48)
-        self.index()
         out = self.tmp / "db.sqlite"
-        code = I.main(["zones", "--workspace", str(self.ws), "--db", str(out), "--today", "2026-09-25"])
+        code, stdout = self._run_cli(["zones", "--workspace", str(self.ws), "--db", str(out), "--today", "2026-09-25"])
         self.assertEqual(code, 0)
+        payload = json.loads(stdout)
+        self.assertEqual(payload["method"], "karvonen")
+        self.assertEqual([round(b) for b in payload["bounds_bpm"]], [118, 132, 146, 160, 174, 188])
+        self.assertIsNone(payload["reason"])
+        self.assertIn("weekly_polarisation", payload)
 
-    def test_cli_zones_command_with_activity_selector(self):
+    def test_cli_zones_command_with_activity_selector_prints_zone_seconds(self):
         self.write_profile(hr_max=188, hr_rest=48)
         self.write_activity(self.GARMIN_ID)
         self.write_fit(self.GARMIN_ID, hr_bpm=140.0)
         out = self.tmp / "db.sqlite"
-        code = I.main(["zones", "--activity", str(self.GARMIN_ID),
-                       "--workspace", str(self.ws), "--db", str(out), "--today", "2026-09-25"])
+        code, stdout = self._run_cli(["zones", "--activity", str(self.GARMIN_ID),
+                                      "--workspace", str(self.ws), "--db", str(out), "--today", "2026-09-25"])
         self.assertEqual(code, 0)
+        payload = json.loads(stdout)
+        self.assertEqual(payload["method"], "karvonen")
+        self.assertEqual(payload["zone_seconds"], {"2": 20.0})
+        self.assertIsNotNone(payload["polarisation"])
+
+    def test_cli_zones_command_with_invalid_override_falls_back_to_auto(self):
+        """Revue de code #43, point 4 : une méthode invalide dans la config n'empêche
+        pas la commande de rendre un résultat (repli sur « auto », avertissement à
+        part sur stderr — pas testé ici, voir `_hr_zone_method`)."""
+        self.write_profile(hr_max=188, hr_rest=48)
+        self.write_hr_zones_override("PAS-UNE-METHODE")
+        out = self.tmp / "db.sqlite"
+        code, stdout = self._run_cli(["zones", "--workspace", str(self.ws), "--db", str(out), "--today", "2026-09-25"])
+        self.assertEqual(code, 0)
+        payload = json.loads(stdout)
+        self.assertEqual(payload["method"], "karvonen")   # auto, résolu sur Karvonen
+        self.assertIsNone(payload["reason"])
 
 
 class TestWeeklyPolarisation(Workspace):
@@ -323,6 +556,17 @@ class TestWeeklyPolarisation(Workspace):
         matching = [w for w in weeks if w["polarisation"] is not None]
         self.assertTrue(matching)
         self.assertAlmostEqual(matching[0]["polarisation"]["low_pct"], 100.0)
+
+    def test_week_with_only_excluded_sport_is_none(self):
+        """Une séance de renforcement avec échantillons FIT ne doit pas suffire à
+        remplir une semaine de polarisation — voir `TestSportFamilyRestriction`."""
+        self.write_profile(hr_max=188, hr_rest=48)
+        self.write_activity(90000000012, day="2026-09-21", sport="strength")
+        self.write_fit(90000000012, hr_bpm=120.0)
+        self.index()
+        weeks = I.weekly_polarisation(self.conn, 2, date(2026, 9, 25))
+        current_week = next(w for w in weeks if w["week_start"] == "2026-09-21")
+        self.assertIsNone(current_week["polarisation"])
 
 
 if __name__ == "__main__":
