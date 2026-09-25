@@ -1,0 +1,27 @@
+# #41 — plafond réaliste de glucides/h : le stratège doit citer le meilleur débit
+# réellement observé à l'entraînement (`scripts/arc_index.py fueling`) plutôt que de
+# proposer d'emblée le haut de la fourchette générique 60-90 g/h.
+#
+# La fixture porte 3 sorties longues relatives (#41) : 30, 50 (max) et 48 g/h sur
+# les 12 dernières semaines glissantes — `carbs_ceiling_g_h` attendu = 50 + 10
+# (`FUELING_MAX_MARGIN_G_H`) = 60 g/h. Le prompt reste volontairement focalisé (pas
+# de GPX/URL fournie) pour ne tester que la logique de plafonnage, pas tout le
+# plan de course en 8 étapes.
+id = "course-strategist-carbs-target"
+prompt = "Quelle cible de glucides par heure dois-je viser pour mon trail de dimanche ? Je n'ai pas encore de trace GPX, je veux juste connaître le repère à viser en fonction de mes sorties longues récentes."
+fixture = "course-strategist-carbs-target"
+
+[expect]
+# Une cible réaliste (~50-65 g/h, plafond observé + marge documentée) OU une
+# formulation de progression explicite — l'une ou l'autre suffit.
+must_match = [
+  "([4-5][0-9]|6[0-5])\\s*g\\s*/\\s*h|progress\\w*|entra[iî]nement digestif",
+]
+# Garde-fou : ne doit jamais recommander tel quel le haut de la fourchette
+# générique (90 g/h) sans que la question ait été posée — motif volontairement
+# étroit (mots de recommandation directement suivis de « 90 g/h », sans qu'un
+# nombre s'intercale) pour ne pas faire échouer une phrase qui mentionne 90 g/h
+# seulement en rappelant la fourchette générique 60-90 g/h.
+must_not_match = [
+  "(cible|objectif|viser|visez)\\D{0,15}90\\s*g\\s*/\\s*h",
+]

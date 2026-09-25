@@ -1152,5 +1152,119 @@ class TestGearMileage(unittest.TestCase):
             self.assertIsInstance(shoe["threshold_m"], int)
 
 
+class TestCarbsPerHour(unittest.TestCase):
+    """#41 — `arc_metrics.carbs_per_hour_g` : calcul à la main, frontière 90 min,
+    absence vs 0. Voir `ASSUMPTIONS["fueling"]`."""
+
+    def test_hand_computed_value(self):
+        # 100 g sur 2 h (7200 s) = 50 g/h.
+        self.assertEqual(M.carbs_per_hour_g({"duration_s": 7200, "carbs_g": 100}), 50.0)
+
+    def test_boundary_exactly_90_minutes_is_none(self):
+        """La borne est STRICTE (> 90 min, pas ≥) : une séance de 90 min pile n'est
+        pas une sortie longue au sens de ce KPI."""
+        self.assertIsNone(M.carbs_per_hour_g({"duration_s": M.LONG_RUN_MIN_DURATION_S, "carbs_g": 100}))
+
+    def test_just_over_90_minutes_is_computed(self):
+        self.assertIsNotNone(M.carbs_per_hour_g({"duration_s": M.LONG_RUN_MIN_DURATION_S + 1, "carbs_g": 10}))
+
+    def test_missing_carbs_g_is_none_never_zero(self):
+        """Absence de déclaration ≠ 0 g/h : `None`, jamais une valeur inventée."""
+        self.assertIsNone(M.carbs_per_hour_g({"duration_s": 7200}))
+
+    def test_explicit_zero_carbs_g_is_a_real_zero(self):
+        """Un `carbs_g` explicitement à 0 (rien ingéré, déclaré comme tel) reste un
+        0 g/h légitime — pas confondu avec l'absence de déclaration ci-dessus."""
+        self.assertEqual(M.carbs_per_hour_g({"duration_s": 7200, "carbs_g": 0}), 0.0)
+
+    def test_missing_duration_is_none(self):
+        self.assertIsNone(M.carbs_per_hour_g({"carbs_g": 100}))
+
+
+class TestFuelingTrend(unittest.TestCase):
+    """#41 — `arc_metrics.fueling_trend` : fenêtre de tendance, sudation réutilisée
+    (jamais recalculée), maximum observé, médiane de sudation avec effectif."""
+
+    def long_run(self, iso, duration_s=7200, carbs_g=None, sweat_rate_l_h=None, distance_m=None):
+        act = {"date": iso, "duration_s": duration_s}
+        if carbs_g is not None:
+            act["carbs_g"] = carbs_g
+        if sweat_rate_l_h is not None:
+            act["sweat_rate_l_h"] = sweat_rate_l_h
+        if distance_m is not None:
+            act["distance_m"] = distance_m
+        return act
+
+    def test_excludes_short_sessions(self):
+        acts = [self.long_run("2026-09-01", duration_s=3600, carbs_g=200)]  # 1 h : pas une sortie longue
+        result = M.fueling_trend(acts, date(2026, 9, 25))
+        self.assertEqual(result["long_runs"], 0)
+        self.assertIsNone(result["max_carbs_per_hour_g"])
+
+    def test_excludes_sessions_outside_window(self):
+        # Fenêtre = `FUELING_TREND_WEEKS * 7` jours INCLUSIFS des deux côtés (voir
+        # `fueling_trend` docstring) : un jour de plus que ça tombe hors fenêtre.
+        old = date(2026, 9, 25) - timedelta(days=M.FUELING_TREND_WEEKS * 7)
+        acts = [self.long_run(old.isoformat(), carbs_g=200)]
+        result = M.fueling_trend(acts, date(2026, 9, 25))
+        self.assertEqual(result["long_runs"], 0)
+
+    def test_window_boundary_is_inclusive(self):
+        edge = date(2026, 9, 25) - timedelta(days=M.FUELING_TREND_WEEKS * 7 - 1)
+        acts = [self.long_run(edge.isoformat(), carbs_g=200)]
+        result = M.fueling_trend(acts, date(2026, 9, 25))
+        self.assertEqual(result["long_runs"], 1)
+
+    def test_max_observed_and_carbs_n(self):
+        acts = [
+            self.long_run("2026-08-01", carbs_g=100),   # 50 g/h
+            self.long_run("2026-08-15", carbs_g=120),   # 60 g/h — max
+            self.long_run("2026-08-29"),                # pas déclaré : ignoré du max, compte dans long_runs
+        ]
+        result = M.fueling_trend(acts, date(2026, 9, 25))
+        self.assertEqual(result["long_runs"], 3)
+        self.assertEqual(result["max_carbs_per_hour_g"], 60.0)
+        self.assertEqual(result["carbs_per_hour_n"], 2)
+
+    def test_sweat_rate_reused_never_recomputed(self):
+        """`fueling_trend` reprend `sweat_rate_l_h` tel quel — il ne recalcule jamais
+        la formule depuis des pesées, même si l'activité en portait (pas fournies ici :
+        seul le champ déjà dérivé compte)."""
+        acts = [self.long_run("2026-08-01", sweat_rate_l_h=1.5),
+                self.long_run("2026-08-15", sweat_rate_l_h=0.5)]
+        result = M.fueling_trend(acts, date(2026, 9, 25))
+        self.assertEqual(result["median_sweat_rate_l_h"], 1.0)
+        self.assertEqual(result["sweat_rate_n"], 2)
+
+    def test_median_sweat_rate_ignores_missing(self):
+        acts = [self.long_run("2026-08-01", sweat_rate_l_h=1.0),
+                self.long_run("2026-08-15")]   # pas de sudation
+        result = M.fueling_trend(acts, date(2026, 9, 25))
+        self.assertEqual(result["median_sweat_rate_l_h"], 1.0)
+        self.assertEqual(result["sweat_rate_n"], 1)
+
+    def test_no_long_runs_at_all(self):
+        result = M.fueling_trend([], date(2026, 9, 25))
+        self.assertEqual(result["long_runs"], 0)
+        self.assertIsNone(result["max_carbs_per_hour_g"])
+        self.assertIsNone(result["median_sweat_rate_l_h"])
+        self.assertEqual(result["carbs_per_hour_n"], 0)
+        self.assertEqual(result["sweat_rate_n"], 0)
+
+
+class TestFuelingCarbsCeiling(unittest.TestCase):
+    """#41 — `arc_metrics.fueling_carbs_ceiling` : plafond de plan de course = max
+    observé + marge documentée, `None` sans donnée."""
+
+    def test_adds_documented_margin(self):
+        self.assertEqual(M.fueling_carbs_ceiling(50.0), 50.0 + M.FUELING_MAX_MARGIN_G_H)
+
+    def test_custom_margin(self):
+        self.assertEqual(M.fueling_carbs_ceiling(50.0, margin_g_h=5), 55.0)
+
+    def test_none_without_any_observation(self):
+        self.assertIsNone(M.fueling_carbs_ceiling(None))
+
+
 if __name__ == "__main__":
     unittest.main()

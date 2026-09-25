@@ -145,8 +145,21 @@ Chaque scénario inclut : heure estimée, allure moyenne, temps ravito max, marg
 
 #### ÉTAPE 5 : PLAN NUTRITION
 
+**Plafond réaliste glucides/h (#41), avant de fixer l'objectif :** lance
+`python3 scripts/arc_index.py fueling` (sorties longues > 90 min, 12 dernières
+semaines) et lis `max_carbs_per_hour_g`/`carbs_ceiling_g_h` (= meilleur débit observé
++ marge de progression documentée, `arc_metrics.ASSUMPTIONS["fueling"]`). Si
+`carbs_ceiling_g_h` n'est pas `null`, l'objectif glucides/h du plan ne dépasse PAS ce
+plafond — même s'il tombe sous 60 g/h — sauf confirmation explicite de l'athlète
+qu'il tolère plus (aucun trouble digestif n'est déclaré au contrat : le maximum
+observé n'est qu'un « ingéré sans incident signalé », jamais une vraie mesure de
+tolérance, d'où la marge plutôt qu'un plafond dur). Sans aucune donnée
+(`carbs_ceiling_g_h` à `null`), garde la fourchette générique ci-dessous et suggère
+à l'athlète un entraînement digestif progressif sur ses prochaines sorties longues.
+
 Produis un fichier dans `nutrition/` (format `YYYY-MM-DD_nutrition.md`) :
-- **Objectif glucides :** 60-90 g/h selon intensité et durée totale
+- **Objectif glucides :** 60-90 g/h selon intensité et durée totale (plafonné par le
+  débit réellement toléré à l'entraînement, voir ci-dessus)
 - **Hydratation :** 500-750 ml/h (base), ajustée à la chaleur (×1.2 si >25°C)
 - **Électrolytes :** 1 pastille par flasque, sel supplémentaire si chaleur
 - **Produits réels (si catalogues fournis) :** dimensionne glucides/sodium/hydratation avec les valeurs produit des catalogues locaux si l'athlète en a fourni dans `resources/nutrition/catalogue-produits-*.md` (ex. gel 85 g = 32 g glucides, stick 44 g = 30 g, purées 90 g ≈ 11-19 g, barre 50 g = 24.7 g, pastilles électrolytes = Na 300 mg).

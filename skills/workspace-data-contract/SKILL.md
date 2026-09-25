@@ -284,6 +284,29 @@ avec :
 
 Détails et justification complète : `arc_metrics.ASSUMPTIONS["sweat_rate"]`.
 
+#### Champ dérivé : `carbs_per_hour_g` (#41, entraînement digestif)
+
+Comme `sweat_rate_l_h` ci-dessus, ne s'écrit **jamais** dans un bloc ```arc.
+`carbs_per_hour_g` (fonction `arc_metrics.carbs_per_hour_g`) = `carbs_g` / durée en
+heures (`duration_s`, la même durée totale que `sweat_rate_l_h`), calculé
+**seulement** pour les sorties **longues** (`duration_s` **strictement** supérieure
+à 90 min, `arc_metrics.LONG_RUN_MIN_DURATION_S`) et **seulement** si `carbs_g` est
+renseigné — sinon `null`, jamais 0 par défaut (un `carbs_g` explicitement à `0` reste
+un 0 g/h légitime, une absence de déclaration n'en est pas un).
+
+`python3 scripts/arc_index.py fueling` agrège les sorties longues des 12 dernières
+semaines glissantes (`FUELING_TREND_WEEKS`) : `long_runs` (nombre total), le meilleur
+débit observé (`max_carbs_per_hour_g`, avec son effectif `carbs_per_hour_n`), la
+médiane du taux de sudation sur la même fenêtre (`median_sweat_rate_l_h`,
+`sweat_rate_n`), et `carbs_ceiling_g_h` — le meilleur débit observé + une marge de
+progression documentée (`FUELING_MAX_MARGIN_G_H`, 10 g/h), plafond réaliste proposé
+à `course-strategist` pour un plan de course. `null` sans aucune sortie longue
+chiffrée : le repère générique reste 60-90 g/h (`FUELING_TARGET_BAND_G_H`). Le
+workspace n'a **aucun** champ de trouble digestif déclaré : « toléré » veut
+seulement dire « ingéré sans incident signalé ailleurs », jamais une mesure de
+tolérance — à confirmer par l'athlète avant d'en faire un plafond dur. Détails :
+`arc_metrics.ASSUMPTIONS["fueling"]`.
+
 ### `health`
 
 | Clé | Type | Notes |
