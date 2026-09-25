@@ -26,6 +26,7 @@ from __future__ import annotations
 
 import json
 import re
+import unicodedata
 from datetime import date, datetime
 
 ARC_VERSION = 1
@@ -62,10 +63,40 @@ WATER_SOURCE = ("officiel", "osm_drinking_water", "osm_spring", "osm_cafe")
 GEAR_ID_MAX_LEN = 40
 # Format slug : minuscules, chiffres, tirets simples, jamais en tête/fin — même
 # convention que la plupart des identifiants stables lisibles par un humain
-# (ex. "hoka-speedgoat-5-bleue"). `planning/Runner_Profile.md` (#40) écrira la
-# section « Matériel » avec ce même identifiant : c'est la clé de jointure
-# entre une séance et sa paire de chaussures.
+# (ex. "hoka-speedgoat-5-bleue"). La section « Matériel & lieux » du profil
+# (`templates/Runner_Profile.template.md`) reste du texte libre écrit par
+# l'athlète : `gear_slug()` ci-dessous est la règle PARTAGÉE qui en dérive un
+# identifiant — utilisée par #40 pour lire le profil, et par le coach pour
+# choisir le `gear_id` d'une activité à partir du nom de modèle donné par
+# l'athlète (voir `agents/coach.md`).
 GEAR_ID_RE = re.compile(r"^[a-z0-9]+(-[a-z0-9]+)*$")
+_GEAR_SLUG_NON_ALNUM_RE = re.compile(r"[^a-z0-9]+")
+
+
+def gear_slug(label: str) -> str:
+    """Dérive un `gear_id` (slug) d'un libellé de matériel en texte libre.
+
+    Règle PARTAGÉE entre #39 (validation), #40 (lecture de la section
+    « Matériel » du profil, un `gear_id` explicite dans la ligne de l'athlète
+    restant prioritaire sur cette dérivation automatique) et le coach (choix du
+    `gear_id` d'une activité à partir du nom de modèle cité par l'athlète) :
+    1. décomposition Unicode (NFKD) puis suppression des marques diacritiques
+       — « Hoka Speedgoat 5 Bleue » perd ses accents avant tout le reste ;
+    2. minuscules ;
+    3. toute suite de caractères non alphanumériques (espaces, apostrophes,
+       ponctuation) devient un tiret unique ;
+    4. tirets de tête/fin retirés ;
+    5. coupé à `GEAR_ID_MAX_LEN` caractères, puis un éventuel tiret de fin
+       laissé par la coupe est retiré à son tour.
+
+    Rend une chaîne vide si `label` ne contient aucun caractère alphanumérique
+    — à l'appelant de décider (ex. : ne pas écrire `gear_id` du tout plutôt
+    qu'une chaîne vide, qui échouerait de toute façon la validation du
+    contrat)."""
+    decomposed = unicodedata.normalize("NFKD", label)
+    stripped = "".join(c for c in decomposed if not unicodedata.combining(c))
+    slug = _GEAR_SLUG_NON_ALNUM_RE.sub("-", stripped.lower()).strip("-")
+    return slug[:GEAR_ID_MAX_LEN].rstrip("-")
 CARBS_G_PLAUSIBLE_MAX = 1000        # ravitaillement pendant l'effort ; au-delà, faute de frappe probable
 FLUID_INTAKE_ML_PLAUSIBLE_MAX = 10000
 BODY_WEIGHT_KG_PLAUSIBLE = (30.0, 200.0)

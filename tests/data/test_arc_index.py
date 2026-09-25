@@ -512,24 +512,19 @@ class TestGearSweatFuelIndex(Workspace):
             "FROM activity").fetchone()
         gear_id, carbs_g, fluid_ml, pre, post, sweat_rate = tuple(row)
         self.assertEqual((gear_id, carbs_g, fluid_ml, pre, post), ("hoka-speedgoat-5-bleue", 72, 900, 70.2, 69.1))
-        # (70.2 - 69.1) + 900/1000 = 2.0 l sur 8820 s (moving_duration_s, pas duration_s) = 8820/3600 h
-        self.assertAlmostEqual(sweat_rate, 2.0 / (8820 / 3600), places=2)
+        # (70.2 - 69.1) + 900/1000 = 2.0 l sur 9000 s (duration_s TOTALE : la pesée
+        # encadre la sortie entière, `moving_duration_s` n'entre pas dans le calcul).
+        self.assertAlmostEqual(sweat_rate, 2.0 / (9000 / 3600), places=2)
 
-    def test_sweat_rate_uses_moving_duration_over_total(self):
-        self.write("activities/2026-09-20_trail.md", arc(
-            '{"arc": 1, "kind": "activity", "date": "2026-09-20", "sport": "trail", "duration_s": 10000, '
-            '"moving_duration_s": 3600, "weight_pre_kg": 71.0, "weight_post_kg": 70.0}'))
-        self.index()
-        rate = self.conn.execute("SELECT sweat_rate_l_h FROM activity").fetchone()[0]
-        self.assertAlmostEqual(rate, 1.0, places=2)   # 1 kg / 1 h, pas / (10000 s)
-
-    def test_sweat_rate_falls_back_to_duration_s_without_moving(self):
+    def test_sweat_rate_ignores_moving_duration(self):
+        """La pesée encadre toute la sortie (arrêts compris) : `moving_duration_s`,
+        bien plus court ici, ne doit pas réduire artificiellement la durée retenue."""
         self.write("activities/2026-09-20_trail.md", arc(
             '{"arc": 1, "kind": "activity", "date": "2026-09-20", "sport": "trail", "duration_s": 3600, '
-            '"weight_pre_kg": 71.0, "weight_post_kg": 70.0}'))
+            '"moving_duration_s": 1800, "weight_pre_kg": 71.0, "weight_post_kg": 70.0}'))
         self.index()
         rate = self.conn.execute("SELECT sweat_rate_l_h FROM activity").fetchone()[0]
-        self.assertAlmostEqual(rate, 1.0, places=2)
+        self.assertAlmostEqual(rate, 1.0, places=2)   # 1 kg / 1 h (duration_s), pas / 0,5 h (moving_duration_s)
 
     def test_sweat_rate_missing_fluid_defaults_to_zero(self):
         self.write("activities/2026-09-20_trail.md", arc(
@@ -548,17 +543,61 @@ class TestGearSweatFuelIndex(Workspace):
         self.assertIsNone(rate)
 
     def test_sweat_rate_negative_result_is_none(self):
-        """Poids après > avant (au-delà de la tolérance du contrat) et aucun liquide déclaré :
-        le résultat serait négatif, donc `None`, jamais affiché tel quel."""
+        """Poids après > avant et aucun liquide déclaré : le résultat serait négatif,
+        donc `None`, jamais affiché tel quel — même sans franchir l'avertissement du
+        contrat (`arc_contract.WEIGHT_POST_TOLERANCE_KG`, ici 0,5 kg < 1 kg)."""
         self.write("activities/2026-09-20_trail.md", arc(
             '{"arc": 1, "kind": "activity", "date": "2026-09-20", "sport": "trail", "duration_s": 3600, '
-            '"weight_pre_kg": 70.0, "weight_post_kg": 71.5}'))
+            '"weight_pre_kg": 70.0, "weight_post_kg": 70.5}'))
         self.index()
         rate = self.conn.execute("SELECT sweat_rate_l_h FROM activity").fetchone()[0]
         self.assertIsNone(rate)
 
+    def test_sweat_rate_too_short_session_is_none(self):
+        """Sous `SWEAT_RATE_MIN_DURATION_S` (45 min), l'imprécision de la pesée
+        domine le signal : `None` plutôt qu'un chiffre bruité."""
+        self.write("activities/2026-09-20_trail.md", arc(
+            '{"arc": 1, "kind": "activity", "date": "2026-09-20", "sport": "trail", "duration_s": 1800, '
+            '"weight_pre_kg": 71.0, "weight_post_kg": 70.0}'))
+        self.index()
+        rate = self.conn.execute("SELECT sweat_rate_l_h FROM activity").fetchone()[0]
+        self.assertIsNone(rate)
+
+    def test_sweat_rate_above_plausible_max_is_none(self):
+        """Gros transpirateur en ambiance chaude : 3,5 kg perdus en 1 h reste sous la
+        borne haute (4 l/h) ; au-delà, `None` (faute de saisie plus probable qu'une
+        vraie mesure)."""
+        self.write("activities/2026-09-20_trail.md", arc(
+            '{"arc": 1, "kind": "activity", "date": "2026-09-20", "sport": "trail", "duration_s": 3600, '
+            '"weight_pre_kg": 75.0, "weight_post_kg": 70.5}'))
+        self.index()
+        rate = self.conn.execute("SELECT sweat_rate_l_h FROM activity").fetchone()[0]
+        self.assertIsNone(rate)   # 4.5 l/h > SWEAT_RATE_PLAUSIBLE_L_H[1] (4.0)
+
     def test_schema_version_bumped_forces_rebuild(self):
         self.assertEqual(I.SCHEMA_VERSION, 5)
+
+    def test_real_v4_database_is_rebuilt_at_v5(self):
+        """Pas seulement « la constante vaut 5 » : une vraie base laissée par une
+        version antérieure (#37, schema_version = 4, sans les colonnes #39) doit être
+        détectée et reconstruite, colonnes comprises — sinon `store()` échouerait sur
+        la première activité avec `gear_id`."""
+        db_path = self.tmp / "legacy.db"
+        legacy = sqlite3.connect(str(db_path))
+        legacy.executescript(
+            "CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT);"
+            "INSERT INTO meta VALUES ('schema_version', '4');"
+            "CREATE TABLE activity (id INTEGER PRIMARY KEY, source_path TEXT, date TEXT);"
+        )
+        legacy.commit()
+        legacy.close()
+        conn = I.open_db(self.ws, str(db_path))
+        self.assertEqual(
+            conn.execute("SELECT value FROM meta WHERE key = 'schema_version'").fetchone()[0], "5")
+        columns = {row[1] for row in conn.execute("PRAGMA table_info(activity)").fetchall()}
+        self.assertIn("gear_id", columns)
+        self.assertIn("sweat_rate_l_h", columns)
+        conn.close()
 
 
 if __name__ == "__main__":

@@ -157,5 +157,45 @@ class TestGearSweatFuel(unittest.TestCase):
         self.assertTrue(any("weight_post_kg" in w for w in warnings), warnings)
 
 
+class TestGearSlug(unittest.TestCase):
+    """`arc_contract.gear_slug()` : règle PARTAGÉE entre #39 (validation), #40 (lecture
+    du profil) et le coach (choix du `gear_id` d'une activité)."""
+
+    def test_lowercases_and_hyphenates_spaces(self):
+        self.assertEqual(C.gear_slug("Hoka Speedgoat 5 Bleue"), "hoka-speedgoat-5-bleue")
+
+    def test_strips_accents(self):
+        self.assertEqual(C.gear_slug("Adidas Adizero Évo Été"), "adidas-adizero-evo-ete")
+
+    def test_collapses_punctuation_to_a_single_hyphen(self):
+        self.assertEqual(C.gear_slug("Salomon S/Lab --- Ultra !!"), "salomon-s-lab-ultra")
+
+    def test_trims_leading_and_trailing_hyphens(self):
+        self.assertEqual(C.gear_slug("  -Nike Pegasus- "), "nike-pegasus")
+
+    def test_truncates_to_max_length(self):
+        slug = C.gear_slug("a" * 60)
+        self.assertLessEqual(len(slug), C.GEAR_ID_MAX_LEN)
+        self.assertEqual(slug, "a" * C.GEAR_ID_MAX_LEN)
+
+    def test_truncation_does_not_leave_a_trailing_hyphen(self):
+        # 39 lettres + un tiret juste à la coupe (40e caractère) : le tiret de fin
+        # laissé par la coupe doit être retiré, pas gardé tel quel.
+        label = "a" * 39 + "-" + "b" * 10
+        slug = C.gear_slug(label)
+        self.assertFalse(slug.endswith("-"), slug)
+        self.assertLessEqual(len(slug), C.GEAR_ID_MAX_LEN)
+
+    def test_no_alphanumeric_content_gives_empty_string(self):
+        self.assertEqual(C.gear_slug("   !!! --- "), "")
+
+    def test_output_always_matches_the_contract_pattern(self):
+        """Un slug dérivé doit toujours être accepté par le validateur (sauf vide)."""
+        slug = C.gear_slug("Hoka Speedgoat 5 Bleue")
+        errors, _ = C.validate({"arc": 1, "kind": "activity", "date": "2026-09-20", "sport": "trail",
+                                "duration_s": 3600, "gear_id": slug})
+        self.assertEqual(errors, [])
+
+
 if __name__ == "__main__":
     unittest.main()
