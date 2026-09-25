@@ -109,6 +109,26 @@ function complianceSection(c, trail) {
  * construit à partir des mêmes données que les `<title>`, pour porter toute
  * l'information par un seul nom accessible plutôt que de la perdre.
  */
+/** Tuile « Acclimatation à la chaleur » (#38) — Aujourd'hui.
+ *
+ * Affichée quand elle est utile MAINTENANT : au moins une séance chaude sur la
+ * fenêtre de 14 j (le compte a du contenu), OU la météo de la course de l'objectif
+ * est déjà connue et chaude (`objective_forecast_hot === true`). Le seul critère
+ * « objectif » resterait presque toujours invisible en dehors de la semaine de
+ * course : `wttr.in` ne prévoit qu'à quelques jours, donc `objective_forecast_hot`
+ * est `null` (inconnu, pas « pas chaud ») pendant tout le bloc d'entraînement — d'où
+ * la combinaison des deux signaux plutôt que le seul critère cité par #38.
+ */
+function heatTile(heat) {
+  if (!heat || (heat.hot_sessions <= 0 && heat.objective_forecast_hot !== true)) return "";
+  const n = heat.hot_sessions;
+  const bits = [`${n} séance${n > 1 ? "s" : ""} chaude${n > 1 ? "s" : ""} (≥ ${F.num(heat.threshold_c)} °C) sur ${heat.window_days} j`];
+  if (heat.hot_duration_s) bits.push(`${F.duration(heat.hot_duration_s)} cumulée${n > 1 ? "s" : ""}`);
+  if (heat.objective_forecast_hot) bits.push("météo chaude prévue pour l'objectif");
+  if (heat.sessions_without_weather) bits.push(`${heat.sessions_without_weather} sans météo (non compté${heat.sessions_without_weather > 1 ? "es" : "e"})`);
+  return `<p class="weather">${chip("weather", n > 0 ? "orange" : "yellow", "Acclimatation chaleur")} <span>${bits.join(" · ")}</span></p>`;
+}
+
 function complianceTrend(trend) {
   if (!trend || !trend.some((w) => w.compliance)) return "";
   const barW = 40, gap = 10, chartH = 36;
@@ -278,6 +298,7 @@ async function viewToday() {
   const weatherHtml = weather
     ? `<p class="weather">${weatherChip(weather.category)} <span>${F.esc(weather.location)} · ${F.num(weather.temp_max_c)} °C max · vent ${F.num(weather.wind_kmh)} km/h</span>${weather.best_slot ? ` <span class="slot">Créneau : <strong>${F.SLOT[weather.best_slot]}</strong></span>` : ""}</p>${weather.slot_reason ? `<p class="muted">${F.esc(weather.slot_reason)}</p>` : ""}`
     : "";
+  const heatHtml = heatTile(s.heat_acclimation);
 
   const f = form.series[form.series.length - 1];
   const formNow = f ? f.form : null;
@@ -289,7 +310,7 @@ async function viewToday() {
   main.innerHTML = `${header(F.dayLong(today).replace(/^./, (c) => c.toUpperCase()))}
     ${verdict}
     <section class="band"><h2>Santé</h2>${triad}</section>
-    <section class="band band--split"><div><h2>Au programme</h2>${sessionHtml}${weatherHtml}</div>
+    <section class="band band--split"><div><h2>Au programme</h2>${sessionHtml}${weatherHtml}${heatHtml}</div>
       <div><h2>Forme</h2>${formHtml}${complianceTrend(s.compliance_trend)}</div></section>
     ${rep ? `<section class="band"><h2>Dernier rapport du coach</h2><p><a href="#/rapport?path=${encodeURIComponent(rep.source_path)}">${F.esc(rep.title)}</a> <span class="muted">— ${F.dayLong(rep.date)}</span></p></section>` : ""}`;
 }

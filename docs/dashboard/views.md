@@ -33,7 +33,16 @@ La page du matin, à ouvrir avant de lacer ses chaussures. De haut en bas :
    des 7 derniers jours (+5 bpm : à surveiller, +7 : nettement élevée, les règles
    mêmes du coach), la readiness, le sommeil et son score.
 3. **Au programme** : la séance prévue par le plan de la semaine, ce qui a déjà été
-   enregistré aujourd'hui, la météo du lieu d'entraînement et le créneau conseillé.
+   enregistré aujourd'hui, la météo du lieu d'entraînement et le créneau conseillé —
+   puis, quand c'est pertinent, la tuile **Acclimatation chaleur** (#38) : nombre de
+   séances outdoor à `temp_max_c` ≥ seuil (défaut 25 °C, `[health].heat_threshold_c`)
+   sur les 14 derniers jours et leur durée cumulée. Affichée dès qu'il y a au moins
+   une séance chaude sur la fenêtre, OU quand la météo de la course de l'objectif est
+   déjà connue et chaude — le seul second critère resterait presque toujours muet en
+   dehors de la semaine de course (les prévisions ne portent que sur quelques jours),
+   d'où la combinaison des deux plutôt que la seule condition citée par l'issue.
+   Une séance sans fichier météo ce jour-là n'est ni chaude ni froide : elle est
+   ignorée du compte et signalée à part (« sans météo »).
 4. **Forme** : condition, fatigue, forme et ratio de charge, avec une phrase qui les
    lit pour vous (« la fatigue est sous la condition physique »), puis une **mini
    tendance de conformité sur 4 semaines** (une barre par semaine, hauteur = % de

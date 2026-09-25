@@ -90,6 +90,14 @@ SLEEP_NEED_DEFAULT_S = 7 * 3600 + 30 * 60   # 7 h 30 : défaut de l'issue #37, s
 SLEEP_DEBT_WARN_S = 5 * 3600      # 5 h cumulées sur 7 j : à surveiller
 SLEEP_DEBT_ALERT_S = 10 * 3600    # 10 h cumulées sur 7 j : nettement, allègement recommandé
 
+# Acclimatation à la chaleur (#38) : séances outdoor jointes à la météo du même jour.
+# Sports SANS variante indoor déclarée dans le contrat (running, trail, hiking, walking,
+# cycling, swimming, rowing) sont traités comme outdoor par défaut — voir
+# ASSUMPTIONS["heat_acclimation"] pour la justification et ses limites.
+INDOOR_SPORTS = ("strength", "indoor_cycling", "home_trainer", "elliptical", "rest")
+HEAT_WINDOW_DAYS = 14              # fenêtre glissante, aujourd'hui inclus
+HEAT_THRESHOLD_C_DEFAULT = 25.0    # seuil « séance chaude », configurable ([health].heat_threshold_c)
+
 # Tendance du poids (#36) : moyenne mobile 7 j vs cible, pente 4 semaines.
 WEIGHT_AVG_WINDOW_DAYS = 7        # fenêtre de la moyenne mobile affichée dans le graphique
 WEIGHT_AVG_MIN_VALID_DAYS = 3     # jours pesés exigés dans ces 7 j, sinon moyenne à None (trop bruitée)
@@ -193,6 +201,41 @@ ASSUMPTIONS = {
                  "`hrv_baseline` : en `minimal`, seule la readiness sort du bilan matinal ; en `off`, "
                  "aucune donnée de santé n'est même récupérée) — voir `scripts/arc_index.py sleep-debt` "
                  "pour l'appel headless utilisé par les agents `coach`/`medical`.",
+    "heat_acclimation": f"Acclimatation à la chaleur (#38) : sur les {HEAT_WINDOW_DAYS} derniers jours "
+                 "(aujourd'hui inclus), jointure de chaque activité OUTDOOR avec le fichier météo "
+                 "(`medical/*_meteo.md`) du MÊME JOUR calendaire. Outdoor / indoor : un sport listé "
+                 "dans `INDOOR_SPORTS` (`strength`, `indoor_cycling`, `home_trainer`, `elliptical`, "
+                 "`rest`) est exclu ; tout autre sport connu du contrat (`running`, `trail`, `hiking`, "
+                 "`walking`, `cycling`, `swimming`, `rowing`) est traité comme outdoor par défaut — le "
+                 "contrat ne distingue une variante indoor que pour le cyclisme (`indoor_cycling`/"
+                 "`home_trainer` vs `cycling`) ; `swimming`/`rowing` peuvent en pratique se pratiquer "
+                 "en piscine ou sur ergomètre, mais faute d'un `outdoor` explicite au niveau de "
+                 "l'activité (contrairement à `week.sessions[].outdoor`, réservé au plan), les compter "
+                 "en outdoor par défaut reste la lecture la plus proche du contrat existant. Séance "
+                 "« chaude » : `temp_max_c` DU JOUR ≥ seuil (borne INCLUSE), défaut "
+                 f"{HEAT_THRESHOLD_C_DEFAULT:g} °C, configurable (`[health].heat_threshold_c`). Le "
+                 "contrat n'a pas d'heure de mesure météo infra-journalière : `temp_max_c` est le "
+                 "maximum du jour entier, pas la température à l'heure de départ de la séance "
+                 "(`start_time`) — une approximation CONSERVATRICE (une séance matinale par jour "
+                 "caniculaire peut compter « chaude » alors qu'elle s'est déroulée avant la pointe de "
+                 "chaleur) assumée en l'absence de données horaires ; le raffiner demanderait une "
+                 "série météo horaire, hors contrat actuel. Plusieurs fichiers météo le même jour "
+                 "(plusieurs lieux) : priorité au fichier dont `location` correspond à celui de "
+                 "l'activité (comparaison texte insensible à la casse) ; à défaut de correspondance "
+                 "(activité sans lieu, ou aucun fichier météo du jour ne correspond), l'activité est "
+                 "traitée comme SANS météo plutôt que de deviner laquelle s'applique — voir "
+                 "`sessions_without_weather` ci-dessous. Un seul fichier météo ce jour-là : il "
+                 "s'applique, quel que soit son lieu. Absence TOTALE de fichier météo pour le jour : "
+                 "la séance n'est ni chaude ni froide, elle est IGNORÉE du compte "
+                 "(`hot_sessions`/`hot_duration_s`) et comptée séparément dans "
+                 "`sessions_without_weather` — sans quoi un simple trou de synchronisation météo "
+                 "ferait baisser artificiellement le compte de séances chaudes. Rendu : "
+                 "`hot_sessions` (nombre), `hot_duration_s` (somme de `duration_s` des séances "
+                 "chaudes), `sessions_considered` (total des séances outdoor de la fenêtre, chaudes "
+                 "ou non, hors sans-météo), `sessions_without_weather`, `window_days`, `threshold_c`. "
+                 "Aucun seuil minimal de séances avant affichage (contrairement à `sleep_debt`/"
+                 "`hrv_baseline`) : `0` séance chaude sur la fenêtre est une réponse valide en soi, pas "
+                 "une valeur bruitée à masquer.",
     "weight_merge": "Fusion des deux sources de poids (#36) : le contrat n'a pas de champ d'heure de mesure "
                     "dédié, mais `health.weight_kg` est renseigné pendant le bilan matinal (`morning_check`) — "
                     "traité comme la pesée du matin — tandis que `nutrition.weight_kg` n'a aucune garantie "
@@ -901,3 +944,87 @@ def week_compliance(sessions: List[dict], activities: List[dict], today) -> Opti
         "by_intensity": by_intensity,
     })
     return overall
+
+
+# ---------------------------------------------------------------------------
+# Acclimatation à la chaleur (#38)
+# ---------------------------------------------------------------------------
+
+
+def is_outdoor_sport(sport: Optional[str]) -> bool:
+    """`True` pour tout sport connu du contrat sauf `INDOOR_SPORTS`. Voir
+    `ASSUMPTIONS["heat_acclimation"]` pour la justification (swimming/rowing traités
+    outdoor par défaut faute de variante indoor déclarée dans le contrat)."""
+    return sport is not None and sport not in INDOOR_SPORTS
+
+
+def pick_weather(weather_rows: List[dict], location: Optional[str]) -> Optional[dict]:
+    """Choisit le fichier météo applicable parmi ceux du même jour.
+
+    Un seul fichier : il s'applique. Plusieurs : priorité à celui dont `location`
+    correspond (insensible à la casse) à celui de l'activité ; sans correspondance,
+    rend `None` (l'activité est alors traitée comme sans météo — voir
+    `ASSUMPTIONS["heat_acclimation"]`) plutôt que de deviner.
+    """
+    if not weather_rows:
+        return None
+    if len(weather_rows) == 1:
+        return weather_rows[0]
+    if location:
+        loc = location.strip().lower()
+        for row in weather_rows:
+            row_loc = (row.get("location") or "").strip().lower()
+            if row_loc == loc:
+                return row
+    return None
+
+
+def heat_acclimation(activities: List[dict], weather_rows: List[dict], end,
+                      threshold_c: float = HEAT_THRESHOLD_C_DEFAULT,
+                      window_days: int = HEAT_WINDOW_DAYS) -> dict:
+    """Acclimatation à la chaleur sur les `window_days` jours se terminant à `end` inclus.
+
+    `activities` : dicts portant au moins `date` (AAAA-MM-JJ), `sport`, `duration_s`,
+    `location` (optionnel). `weather_rows` : dicts `date`, `location`, `temp_max_c`
+    (un fichier météo par lieu et par jour — voir skill `weather-forecast`). `end` :
+    `date` ou chaîne AAAA-MM-JJ.
+
+    Voir `ASSUMPTIONS["heat_acclimation"]` pour la méthode complète (jointure par
+    date, choix du fichier météo si plusieurs lieux le même jour, séances sans
+    météo ignorées et comptées à part, borne du seuil incluse).
+    """
+    end_d = end if hasattr(end, "isoformat") else date.fromisoformat(end)
+    start_d = end_d - timedelta(days=window_days - 1)
+    start_iso, end_iso = start_d.isoformat(), end_d.isoformat()
+
+    weather_by_date: Dict[str, List[dict]] = {}
+    for row in weather_rows:
+        day = row.get("date")
+        if day and start_iso <= day <= end_iso and row.get("temp_max_c") is not None:
+            weather_by_date.setdefault(day, []).append(row)
+
+    hot_sessions = 0
+    hot_duration_s = 0.0
+    sessions_considered = 0
+    sessions_without_weather = 0
+    for act in activities:
+        day = act.get("date")
+        if not day or not start_iso <= day <= end_iso or not is_outdoor_sport(act.get("sport")):
+            continue
+        weather = pick_weather(weather_by_date.get(day, []), act.get("location"))
+        if weather is None:
+            sessions_without_weather += 1
+            continue
+        sessions_considered += 1
+        if weather["temp_max_c"] >= threshold_c:
+            hot_sessions += 1
+            hot_duration_s += act.get("duration_s") or 0
+
+    return {
+        "window_days": window_days,
+        "threshold_c": threshold_c,
+        "hot_sessions": hot_sessions,
+        "hot_duration_s": round(hot_duration_s),
+        "sessions_considered": sessions_considered,
+        "sessions_without_weather": sessions_without_weather,
+    }

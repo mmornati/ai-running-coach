@@ -771,5 +771,142 @@ class TestSleepDebt(unittest.TestCase):
         self.assertEqual(series[-1]["sleep_debt_7d_s"], M.sleep_debt_7d(by_date, self.DAY)["sleep_debt_7d_s"])
 
 
+class TestHeatAcclimation(unittest.TestCase):
+    """#38 — acclimatation à la chaleur : jointure activité outdoor / météo du même
+    jour sur 14 j, sports indoor exclus, séance sans météo ignorée (jamais froide),
+    seuil borne incluse, plusieurs fichiers météo le même jour."""
+
+    END = date(2026, 7, 15)   # jour évalué ; fenêtre = les 14 jours qui précèdent, lui inclus
+
+    def offset(self, k: int) -> str:
+        """Date ISO à `k` jours AVANT `END` (0 = `END`)."""
+        return (self.END - timedelta(days=k)).isoformat()
+
+    def act(self, offset_days: int, sport: str = "running", duration_s: float = 3600, location: str = None) -> dict:
+        d = {"date": self.offset(offset_days), "sport": sport, "duration_s": duration_s}
+        if location is not None:
+            d["location"] = location
+        return d
+
+    def wx(self, offset_days: int, temp_max_c: float, location: str = "Tournai") -> dict:
+        return {"date": self.offset(offset_days), "location": location, "temp_max_c": temp_max_c}
+
+    def test_hand_computed_count_and_duration(self):
+        """2 séances outdoor chaudes (28°C, 30°C) sur 3 : durée cumulée = somme des deux
+        chaudes seulement, la 3e (24°C) reste sous le seuil par défaut (25°C)."""
+        activities = [self.act(0, duration_s=3000), self.act(1, duration_s=4000), self.act(2, duration_s=5000)]
+        weather = [self.wx(0, 28), self.wx(1, 30), self.wx(2, 24)]
+        result = M.heat_acclimation(activities, weather, self.END)
+        self.assertEqual(result["hot_sessions"], 2)
+        self.assertEqual(result["hot_duration_s"], 3000 + 4000)
+        self.assertEqual(result["sessions_considered"], 3)
+        self.assertEqual(result["sessions_without_weather"], 0)
+        self.assertEqual(result["threshold_c"], M.HEAT_THRESHOLD_C_DEFAULT)
+        self.assertEqual(result["window_days"], M.HEAT_WINDOW_DAYS)
+
+    def test_indoor_sports_are_excluded(self):
+        """Renforcement, vélo indoor, home trainer, elliptique : jamais compté même par
+        temps caniculaire — seuls sports SANS variante indoor déclarée sont outdoor."""
+        activities = [
+            self.act(0, sport="strength"), self.act(1, sport="indoor_cycling"),
+            self.act(2, sport="home_trainer"), self.act(3, sport="elliptical"),
+            self.act(4, sport="rest", duration_s=0),
+        ]
+        weather = [self.wx(k, 32) for k in range(5)]
+        result = M.heat_acclimation(activities, weather, self.END)
+        self.assertEqual(result["hot_sessions"], 0)
+        self.assertEqual(result["sessions_considered"], 0)
+        self.assertEqual(result["sessions_without_weather"], 0)
+
+    def test_outdoor_sports_without_an_explicit_indoor_variant_count(self):
+        """running, trail, hiking, walking, cycling, swimming, rowing : outdoor par défaut
+        (voir ASSUMPTIONS["heat_acclimation"])."""
+        sports = ("running", "trail", "hiking", "walking", "cycling", "swimming", "rowing")
+        activities = [self.act(i, sport=sp) for i, sp in enumerate(sports)]
+        weather = [self.wx(i, 30) for i in range(len(sports))]
+        result = M.heat_acclimation(activities, weather, self.END)
+        self.assertEqual(result["hot_sessions"], len(sports))
+        self.assertEqual(result["sessions_considered"], len(sports))
+
+    def test_missing_weather_is_ignored_not_counted_cold(self):
+        """Un jour sans AUCUN fichier météo : la séance n'est ni chaude ni comptée dans
+        `sessions_considered` — elle va dans `sessions_without_weather`, séparément."""
+        activities = [self.act(0), self.act(1)]
+        weather = [self.wx(0, 30)]   # rien pour offset(1)
+        result = M.heat_acclimation(activities, weather, self.END)
+        self.assertEqual(result["hot_sessions"], 1)
+        self.assertEqual(result["sessions_considered"], 1)
+        self.assertEqual(result["sessions_without_weather"], 1)
+
+    def test_threshold_boundary_is_inclusive(self):
+        """`temp_max_c` exactement égal au seuil (25.0 par défaut) compte comme chaude."""
+        activities = [self.act(0)]
+        weather = [self.wx(0, 25.0)]
+        result = M.heat_acclimation(activities, weather, self.END)
+        self.assertEqual(result["hot_sessions"], 1)
+
+        activities = [self.act(0)]
+        weather = [self.wx(0, 24.999)]
+        result = M.heat_acclimation(activities, weather, self.END)
+        self.assertEqual(result["hot_sessions"], 0)
+        self.assertEqual(result["sessions_considered"], 1)
+
+    def test_custom_threshold(self):
+        """Seuil configurable ([health].heat_threshold_c) : 30°C avec seuil 30 compte,
+        29.9°C ne compte pas."""
+        result = M.heat_acclimation([self.act(0)], [self.wx(0, 30.0)], self.END, threshold_c=30.0)
+        self.assertEqual(result["hot_sessions"], 1)
+        result = M.heat_acclimation([self.act(0)], [self.wx(0, 29.9)], self.END, threshold_c=30.0)
+        self.assertEqual(result["hot_sessions"], 0)
+
+    def test_window_edges_14_days(self):
+        """Offset 13 (14e jour, dans la fenêtre) compte ; offset 14 (15e jour, hors
+        fenêtre) ne compte pas — fenêtre glissante de EXACTEMENT 14 jours, `END` inclus."""
+        result = M.heat_acclimation([self.act(13)], [self.wx(13, 30)], self.END)
+        self.assertEqual(result["sessions_considered"], 1)
+        self.assertEqual(result["hot_sessions"], 1)
+
+        result = M.heat_acclimation([self.act(14)], [self.wx(14, 30)], self.END)
+        self.assertEqual(result["sessions_considered"], 0)
+        self.assertEqual(result["hot_sessions"], 0)
+        self.assertEqual(result["sessions_without_weather"], 0, "hors fenêtre : ni compté ni « sans météo »")
+
+    def test_multiple_weather_files_same_day_prefers_matching_location(self):
+        """Deux lieux météo le même jour : la séance prend celui qui correspond à son
+        propre lieu (insensible à la casse), jamais l'autre."""
+        activities = [self.act(0, location="Tournai")]
+        weather = [self.wx(0, 32, location="Palma"), self.wx(0, 18, location="tournai")]
+        result = M.heat_acclimation(activities, weather, self.END)
+        self.assertEqual(result["hot_sessions"], 0, "doit prendre Tournai (18°C), pas Palma (32°C)")
+        self.assertEqual(result["sessions_considered"], 1)
+
+    def test_multiple_weather_files_same_day_no_match_counts_as_without_weather(self):
+        """Deux lieux météo le même jour, aucun ne correspond au lieu de la séance (ou
+        séance sans lieu renseigné) : pas de météo devinée, comptée à part."""
+        activities = [self.act(0, location="Lille")]
+        weather = [self.wx(0, 32, location="Palma"), self.wx(0, 18, location="Tournai")]
+        result = M.heat_acclimation(activities, weather, self.END)
+        self.assertEqual(result["sessions_considered"], 0)
+        self.assertEqual(result["sessions_without_weather"], 1)
+
+    def test_single_weather_file_applies_regardless_of_location_text(self):
+        """Un seul fichier météo ce jour-là : il s'applique, même si son `location` ne
+        correspond pas exactement à celui de l'activité (lieu imprécis, alias)."""
+        activities = [self.act(0, location="Lille")]
+        weather = [self.wx(0, 30, location="Villeneuve-d'Ascq")]
+        result = M.heat_acclimation(activities, weather, self.END)
+        self.assertEqual(result["hot_sessions"], 1)
+        self.assertEqual(result["sessions_without_weather"], 0)
+
+    def test_zero_hot_sessions_is_a_valid_result(self):
+        """Aucun seuil minimal de séances avant affichage (contrairement à sleep_debt) :
+        0 séance chaude est une réponse en soi."""
+        result = M.heat_acclimation([], [], self.END)
+        self.assertEqual(result["hot_sessions"], 0)
+        self.assertEqual(result["hot_duration_s"], 0)
+        self.assertEqual(result["sessions_considered"], 0)
+        self.assertEqual(result["sessions_without_weather"], 0)
+
+
 if __name__ == "__main__":
     unittest.main()

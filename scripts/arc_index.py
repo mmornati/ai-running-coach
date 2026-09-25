@@ -12,6 +12,7 @@ sert au tableau de bord (`scripts/arc_serve.py`) et aux calculs de charge
     arc_index.py status                  # état de l'index, en JSON
     arc_index.py hrv-baseline            # ligne de base HRV personnelle du jour, en JSON (#34)
     arc_index.py sleep-debt               # dette de sommeil 7 j du jour, en JSON (#37)
+    arc_index.py heat-acclimation         # acclimatation à la chaleur, 14 j, en JSON (#38)
 
 `hrv-baseline` n'a besoin d'aucun tableau de bord lancé (headless, `/garmin-daily-sync`
 compris) : elle réindexe puis rend le point du jour de `arc_metrics.hrv_baseline_series`
@@ -25,6 +26,13 @@ Garmin ou de rester silencieux sur la HRV.
 défaut 7 h 30, − sommeil réalisé, nuits manquantes jamais comptées 0 h) sur
 `medical/*_health.md::sleep_total_s`, ou `{"sleep_debt_7d_s": null, "morning_check": ...}`
 hors `"full"` (voir `arc_metrics.ASSUMPTIONS["sleep_debt"]`). Utilisée par `coach`/`medical`.
+
+`heat-acclimation` joint les activités outdoor et les fichiers météo du même jour sur
+les 14 derniers jours (`[health].heat_threshold_c`, défaut 25 °C) : nombre de séances
+« chaudes » et durée cumulée, séances sans météo comptées à part
+(`sessions_without_weather`, jamais froides par défaut). N'est PAS soumis à
+`[health].morning_check` (voir `arc_metrics.ASSUMPTIONS["heat_acclimation"]`). Utilisée
+par `coach` et `course-strategist` (course dont la météo prévue est chaude).
 
 Options communes : `--workspace DIR` (sinon $ARC_WORKSPACE, le pointeur
 ~/.config/ai-running-coach/workspace, puis le moteur), `--db FICHIER` (défaut
@@ -44,7 +52,7 @@ import hashlib
 import json
 import sqlite3
 import sys
-from datetime import date
+from datetime import date, timedelta
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
@@ -84,9 +92,11 @@ def load_config(workspace: Path) -> Dict[str, dict]:
 def settings(config: Dict[str, dict]) -> dict:
     """Les réglages qui changent ce que l'index attend et ce que le tableau affiche."""
     agents = config.get("agents", {}).get("enabled", ["coach", "medical", "nutritionist", "course-strategist"])
+    heat_threshold_c = config.get("health", {}).get("heat_threshold_c", M.HEAT_THRESHOLD_C_DEFAULT)
     return {
         "sport": config.get("sport", {}).get("primary", "trail") or "trail",
         "morning_check": config.get("health", {}).get("morning_check", "full") or "full",
+        "heat_threshold_c": float(heat_threshold_c) if heat_threshold_c not in (None, "") else M.HEAT_THRESHOLD_C_DEFAULT,
         "agents": list(agents),
         "units": config.get("athlete", {}).get("units", "metric") or "metric",
         "profile": config.get("athlete", {}).get("profile", "planning/Runner_Profile.md"),
@@ -695,10 +705,32 @@ def sleep_debt_today(conn, conf: dict, today: date) -> dict:
     return {**result, "morning_check": mode}
 
 
+def heat_acclimation_today(conn, conf: dict, today: date) -> dict:
+    """Acclimatation à la chaleur sur les 14 j se terminant à `today` (#38) — pour la
+    CLI et pour les agents en headless (`coach`, `course-strategist` pour une course
+    dont la météo prévue est chaude).
+
+    Contrairement à `hrv_baseline_today`/`sleep_debt_today`, n'est pas soumis à
+    `[health].morning_check` : la jointure activité/météo ne dépend pas du bilan
+    matinal (voir `arc_metrics.ASSUMPTIONS["heat_acclimation"]`).
+    """
+    window_days = M.HEAT_WINDOW_DAYS
+    start = (today - timedelta(days=window_days - 1)).isoformat()
+    end = today.isoformat()
+    activities = [dict(r) for r in conn.execute(
+        "SELECT date, sport, duration_s, location FROM activity WHERE date >= ? AND date <= ?",
+        (start, end)).fetchall()]
+    weather_rows = [dict(r) for r in conn.execute(
+        "SELECT date, location, temp_max_c FROM weather_day WHERE date >= ? AND date <= ?",
+        (start, end)).fetchall()]
+    return M.heat_acclimation(activities, weather_rows, today, conf["heat_threshold_c"], window_days)
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     parser.add_argument("command", nargs="?", default="index",
-                        choices=("index", "backfill-plan", "status", "hrv-baseline", "sleep-debt"))
+                        choices=("index", "backfill-plan", "status", "hrv-baseline", "sleep-debt",
+                                 "heat-acclimation"))
     parser.add_argument("--workspace")
     parser.add_argument("--db")
     parser.add_argument("--memory", action="store_true")
@@ -740,6 +772,11 @@ def main(argv=None) -> int:
         conf = settings(load_config(workspace))
         today_date = date.fromisoformat(args.today) if args.today else date.today()
         print(json.dumps(sleep_debt_today(conn, conf, today_date), ensure_ascii=False))
+        return 0
+    if args.command == "heat-acclimation":
+        conf = settings(load_config(workspace))
+        today_date = date.fromisoformat(args.today) if args.today else date.today()
+        print(json.dumps(heat_acclimation_today(conn, conf, today_date), ensure_ascii=False))
         return 0
     if args.command == "backfill-plan":
         out = write_backfill(conn, workspace)

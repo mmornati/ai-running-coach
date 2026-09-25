@@ -257,6 +257,84 @@ class TestSleepDebtCli(Workspace):
         self.assertEqual(point["morning_check"], "off")
 
 
+class TestHeatAcclimationCli(Workspace):
+    """#38 — `arc_index.py heat-acclimation` : jointure activité outdoor / météo réelle
+    (fichiers indexés, pas des dicts à la main comme `test_arc_metrics.py`), et
+    l'indépendance de `[health].morning_check` (contrairement à `hrv-baseline`/`sleep-debt`)."""
+
+    TODAY = "2026-09-23"
+
+    def activity(self, day: str, sport: str, duration_s: float = 3600, location: str = None) -> None:
+        loc = f', "location": "{location}"' if location else ""
+        self.write(f"activities/{day}_{sport}.md",
+                  arc(f'{{"arc": 1, "kind": "activity", "date": "{day}", "sport": "{sport}", '
+                      f'"duration_s": {duration_s}{loc}}}'))
+
+    def weather(self, day: str, temp_max_c: float, location: str = "Tournai") -> None:
+        self.write(f"medical/{day}_meteo.md",
+                  arc(f'{{"arc": 1, "kind": "weather", "date": "{day}", "location": "{location}", '
+                      f'"category": "orange", "temp_max_c": {temp_max_c}}}'))
+
+    def test_full_workspace_hand_computed(self):
+        """2 séances outdoor chaudes (28°C, 30°C), 1 sous le seuil (20°C), sur des fichiers
+        réels indexés — pas des dicts construits à la main."""
+        self.activity("2026-09-20", "running", duration_s=3000)
+        self.weather("2026-09-20", 28)
+        self.activity("2026-09-21", "trail", duration_s=4000)
+        self.weather("2026-09-21", 30)
+        self.activity("2026-09-22", "running", duration_s=5000)
+        self.weather("2026-09-22", 20)
+        self.index()
+        conf = {"heat_threshold_c": 25.0}
+        result = I.heat_acclimation_today(self.conn, conf, date.fromisoformat(self.TODAY))
+        self.assertEqual(result["hot_sessions"], 2)
+        self.assertEqual(result["hot_duration_s"], 3000 + 4000)
+        self.assertEqual(result["sessions_considered"], 3)
+        self.assertEqual(result["sessions_without_weather"], 0)
+
+    def test_indoor_sport_excluded(self):
+        self.activity("2026-09-20", "strength", duration_s=2400)
+        self.weather("2026-09-20", 32)
+        self.index()
+        conf = {"heat_threshold_c": 25.0}
+        result = I.heat_acclimation_today(self.conn, conf, date.fromisoformat(self.TODAY))
+        self.assertEqual(result["hot_sessions"], 0)
+        self.assertEqual(result["sessions_considered"], 0)
+
+    def test_missing_weather_counted_separately_not_cold(self):
+        self.activity("2026-09-20", "running")
+        # Pas de fichier météo ce jour-là.
+        self.index()
+        conf = {"heat_threshold_c": 25.0}
+        result = I.heat_acclimation_today(self.conn, conf, date.fromisoformat(self.TODAY))
+        self.assertEqual(result["sessions_considered"], 0)
+        self.assertEqual(result["sessions_without_weather"], 1)
+
+    def test_custom_threshold_from_workspace_config(self):
+        """`[health].heat_threshold_c` en config : une séance à 27°C compte au seuil
+        défaut (25°C) mais pas au seuil surchargé (30°C)."""
+        self.activity("2026-09-20", "running")
+        self.weather("2026-09-20", 27)
+        self.index()
+        (self.ws / "config").mkdir(parents=True, exist_ok=True)
+        self.write("config/workspace.toml", "[health]\nheat_threshold_c = 30.0\n")
+        conf = I.settings(I.load_config(self.ws))
+        self.assertEqual(conf["heat_threshold_c"], 30.0)
+        result = I.heat_acclimation_today(self.conn, conf, date.fromisoformat(self.TODAY))
+        self.assertEqual(result["hot_sessions"], 0)
+
+    def test_not_gated_by_morning_check_off(self):
+        """Contrairement à `hrv-baseline`/`sleep-debt`, le calcul tourne même en
+        `[health].morning_check = "off"` — la jointure activité/météo n'a rien à voir
+        avec le bilan matinal."""
+        self.activity("2026-09-20", "running")
+        self.weather("2026-09-20", 30)
+        self.index()
+        conf = {"heat_threshold_c": 25.0, "morning_check": "off"}
+        result = I.heat_acclimation_today(self.conn, conf, date.fromisoformat(self.TODAY))
+        self.assertEqual(result["hot_sessions"], 1)
+
+
 class TestProfileSleepNeed(unittest.TestCase):
     """#37 — `Besoin de sommeil` du profil, analysé comme les autres champs physio."""
 

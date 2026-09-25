@@ -164,6 +164,7 @@ Extrais : température min/max, vent, précipitations, couverture nuageuse.
 - Vent > 40 km/h → +5-15% selon exposition (note : "attention aux sections côtières exposées")
 - Pluie → emballage étanche pour nourriture/électronique, veste imperméable
 - Stocke les prévisions météo dans le fichier `planning/`
+- **Acclimatation à la chaleur (#38) :** si la météo prévue pour la course est chaude, lance `python3 scripts/arc_index.py heat-acclimation` (14 derniers jours, seuil `[health].heat_threshold_c`, défaut 25 °C) et cite son résultat (`hot_sessions`, `hot_duration_s`) dans le plan de course — un athlète peu exposé à la chaleur récemment appelle un ajustement plus prudent que les pourcentages ci-dessus, jamais un pari optimiste sur une acclimatation supposée.
 
 #### ÉTAPE 7 : ÉQUIPEMENT & VÊTEMENTS
 
