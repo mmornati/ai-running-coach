@@ -66,12 +66,23 @@ réinventer une quatrième détection.
    bug que cela évite, revue de code #46).
 4. **Montées brutes** : chaque paire (creux, sommet) consécutive dans le
    zigzag dont l'altitude progresse.
-5. **Rognage de chaque montée brute AVANT toute fusion** (`_trim_rise`,
-   `TRIM_TOLERANCE_M`) : un creux/sommet du zigzag peut se retrouver très loin
-   de la vraie montée quand une longue approche plate (ou un long replat de
-   sortie) ne crée elle-même aucun extremum — voir ASSUMPTIONS["trim"] pour le
-   bug corrigé (revue de code #46, BLOQUANT) et la méthode complète.
-6. **Fusion des montées (rognées) séparées par un petit creux** (`_merge_climbs`,
+5. **Rognage de chaque montée brute AUX EXTRÉMITÉS** (`_trim_rise`, tolérance =
+   `max(TRIM_TOLERANCE_M, TRIM_TOLERANCE_NOISE_K × bruit mesuré)`, voir
+   `_robust_noise_sigma`) : un creux/sommet du zigzag peut se retrouver très
+   loin de la vraie montée quand une longue approche plate (ou un long replat
+   de sortie) ne crée elle-même aucun extremum — voir ASSUMPTIONS["trim"] pour
+   le bug corrigé (revue de code #46, BLOQUANT) et la méthode complète.
+6. **Découpage des plateaux INTERNES** (`_split_flat_plateaus`), sur le
+   résultat DÉJÀ ROGNÉ du point précédent : un plateau interne dont la pente
+   moyenne reste sous `PLATEAU_SPLIT_MAX_GRADE` sur au moins
+   `MERGE_MAX_DIP_DIST_M` de distance est retiré — un tel plateau ne crée
+   jamais lui-même d'extremum au zigzag (aucune vraie retombée n'y dépasse
+   `SWING_NOISE_FLOOR_M`) et ne pourrait de toute façon jamais être fusionné
+   ensuite. Chaque nouveau morceau produit par un découpage est alors rogné À
+   SON TOUR (jamais un morceau que le découpage aurait laissé intact, déjà
+   rogné à l'étape précédente — voir ASSUMPTIONS["trim"] pour le bug de
+   double-rognage que cet ordre évite, revue de code #46, BLOQUANT 2e passe).
+7. **Fusion des montées (rognées) séparées par un petit creux** (`_merge_climbs`,
    `MERGE_MAX_DIP_LOSS_M`/`MERGE_DIP_RELATIVE_FRAC`/`MERGE_MAX_DIP_DIST_M`) :
    deux montées consécutives sont fusionnées en une seule si le creux qui les
    sépare perd moins que le seuil (le plus GRAND de l'absolu et du relatif aux
@@ -79,7 +90,7 @@ réinventer une quatrième détection.
    `MERGE_MAX_DIP_DIST_M` de distance horizontale — un replat ou un petit
    passage en faux plat au milieu d'une montée ne doit pas la couper en deux
    montées artificielles.
-7. **Filtre final** : gain net ≥ `MIN_CLIMB_GAIN_M` ET pente moyenne (gain /
+8. **Filtre final** : gain net ≥ `MIN_CLIMB_GAIN_M` ET pente moyenne (gain /
    distance) ≥ `MIN_CLIMB_AVG_GRADE`, sur la montée (rognée puis) éventuellement
    fusionnée.
 
@@ -121,6 +132,7 @@ Stdlib uniquement (CONTRIBUTING.md).
 from __future__ import annotations
 
 import bisect
+import statistics
 import sys
 from pathlib import Path
 from typing import Dict, List, Optional, Sequence, Tuple
@@ -160,8 +172,31 @@ SWING_NOISE_FLOOR_M = 5.0
 # montée brute est rognée à son véritable début/fin AVANT toute fusion — voir
 # `_trim_rise` et ASSUMPTIONS["trim"]. Nettement sous `SWING_NOISE_FLOOR_M` :
 # sert à coller au plus près du vrai bas/haut de la montée, pas à filtrer du
-# bruit d'extrema.
+# bruit d'extrema. Plancher seulement : la tolérance EFFECTIVEMENT appliquée
+# est `max(TRIM_TOLERANCE_M, TRIM_TOLERANCE_NOISE_K × sigma_bruit)`, où
+# `sigma_bruit` est estimé sur l'altitude déjà lissée du segment (revue de
+# code #46, 2e passe, should-fix 2) — voir `_robust_noise_sigma` et
+# ASSUMPTIONS["trim"] : un bruit résiduel plus fort que le cas nominal
+# (ex. σ ≈ 2 m après lissage) rognerait sinon bien plus que prévu (jusqu'à
+# plusieurs centaines de mètres de vraie montée perdus).
 TRIM_TOLERANCE_M = 2.0
+TRIM_TOLERANCE_NOISE_K = 3.0
+
+# Un plateau interne à une montée brute dont la PENTE MOYENNE (pas la simple
+# variation absolue d'altitude — voir `_split_flat_plateaus`, un plateau de
+# 2 km avec 3-4 m de faux plat dépasse largement `TRIM_TOLERANCE_M` mais reste
+# à une pente dérisoire) reste sous ce seuil sur au moins `MERGE_MAX_DIP_DIST_M`
+# de distance ne peut de toute façon JAMAIS être fusionné (`_merge_climbs` le
+# refuserait sur le seul critère de distance) — `_split_flat_plateaus` le
+# retire donc de la montée brute (déjà rognée à ses extrémités), plutôt que
+# d'attendre (en vain) que le zigzag y détecte un extremum (BLOQUANT, revue de
+# code #46, 2e passe : un plateau sans vraie retombée ≥ `SWING_NOISE_FLOOR_M`
+# ne crée JAMAIS d'extremum, donc restait auparavant à l'intérieur d'une seule
+# « montée » brute continue, quelle que soit sa longueur — voir
+# ASSUMPTIONS["trim"]). Valeur ronde (~1/5 du seuil de détection le plus bas,
+# `MIN_CLIMB_AVG_GRADE` à 5 %) : nettement sous la pente de n'importe quelle
+# vraie montée trail, jamais calibrée sur un jeu de séances étiquetées.
+PLATEAU_SPLIT_MAX_GRADE = 0.02
 
 # Même lissage et même segmentation par trou de signal que le GAP (#44,
 # `arc_gap.py`/`arc_elevation.py`) — cohérence des KPI dérivés des mêmes
@@ -234,15 +269,52 @@ ASSUMPTIONS = {
         "reste au tout début des 3 km plats (rien n'y dépasse le seuil de bruit), ce qui dilue "
         "artificiellement la distance et donc la pente moyenne calculée (montée non détectée du tout, "
         "ou VAM faussée). `_trim_rise` corrige cela EN ROGNANT chaque montée brute AVANT toute fusion : "
-        "sur l'intervalle du zigzag brut, le début est déplacé au DERNIER point encore à moins de "
-        f"{TRIM_TOLERANCE_M:.0f} m (`TRIM_TOLERANCE_M`) du minimum de l'intervalle, et la fin au PREMIER "
-        "point déjà à moins de cette tolérance du maximum — ce qui élimine toute approche plate en amont "
-        "et tout replat en aval, sans dépendre de la position réelle de l'extremum détecté par le "
-        "zigzag. Cette tolérance est volontairement plus petite que `SWING_NOISE_FLOOR_M` : elle sert à "
-        "coller au plus près du vrai bas/haut de la montée (précision), pas à filtrer du bruit "
-        "d'extrema (rôle déjà tenu par le zigzag). Rogner AVANT la fusion (jamais après) est essentiel : "
+        "sur l'intervalle du zigzag brut, le début est déplacé au DERNIER point encore à `tol` du "
+        "minimum de l'intervalle, et la fin au PREMIER point déjà à `tol` du maximum — ce qui élimine "
+        "toute approche plate en amont et tout replat en aval, sans dépendre de la position réelle de "
+        "l'extremum détecté par le zigzag. `tol` est un PLANCHER "
+        f"({TRIM_TOLERANCE_M:.0f} m, `TRIM_TOLERANCE_M`), volontairement plus petit que "
+        "`SWING_NOISE_FLOOR_M` (sert à coller au plus près du vrai bas/haut de la montée, pas à filtrer "
+        "du bruit d'extrema, rôle déjà tenu par le zigzag) — MAIS élargi au bruit réellement mesuré "
+        f"(`max(TRIM_TOLERANCE_M, {TRIM_TOLERANCE_NOISE_K:.0f} × sigma_bruit)`, `_robust_noise_sigma`, "
+        "estimateur MAD sur la dérivée seconde de l'altitude déjà lissée) si besoin (revue de code #46, "
+        "2e passe, should-fix 2) : un plancher fixe de 2 m rognerait BIEN TROP sur un signal plus "
+        "bruité que le cas nominal (mesuré : jusqu'à 1 350 m de vraie montée perdus et -20 % de VAM à "
+        "σ ≈ 2 m après lissage) — le seuil s'adapte donc au bruit réel de CHAQUE segment plutôt que de "
+        "supposer un bruit nominal universel. Rogner AVANT la fusion (jamais après) est essentiel : "
         "c'est ce qui permet à `MERGE_MAX_DIP_DIST_M` de mesurer la VRAIE distance du replat entre deux "
-        "montées plutôt qu'une distance gonflée par des bouts de plat encore attachés aux deux montées."
+        "montées plutôt qu'une distance gonflée par des bouts de plat encore attachés aux deux montées.\n\n"
+        "SECONDE LIMITE, également BLOQUANTE et corrigée en 2e passe de revue : un plateau interne SANS "
+        "aucune vraie retombée d'altitude ≥ `SWING_NOISE_FLOOR_M` (ex. un plateau parfaitement plat, ou un "
+        "faux plat de seulement quelques mètres sur plusieurs kilomètres) ne crée JAMAIS d'extremum au "
+        "zigzag — deux montées séparées par un tel plateau restaient donc, avant cette correction, une "
+        "SEULE montée brute continue, même sur un plateau de plusieurs kilomètres (le rognage seul coupe "
+        "les DEUX EXTRÉMITÉS d'une montée brute, jamais un plateau interne). `_split_flat_plateaus` "
+        "corrige ce cas, sur la montée DÉJÀ ROGNÉE à ses extrémités : tout intervalle interne dont la "
+        f"PENTE MOYENNE (pas la simple variation absolue d'altitude — voir plus bas pourquoi) reste sous "
+        f"`PLATEAU_SPLIT_MAX_GRADE` ({PLATEAU_SPLIT_MAX_GRADE * 100:.0f} %) sur AU MOINS "
+        f"`MERGE_MAX_DIP_DIST_M` ({MERGE_MAX_DIP_DIST_M:.0f} m) de distance horizontale est retiré, "
+        "coupant la montée en plusieurs morceaux — un tel plateau ne pourrait de toute façon jamais être "
+        "fusionné ensuite (son étendue dépasse justement le seuil de fusion par distance). Un critère de "
+        "PENTE (et non de variation absolue bornée par `TRIM_TOLERANCE_M`, comme le rognage lui-même) est "
+        "nécessaire ici : un plateau de 2 km avec 3-4 m de faux plat dépasse la tolérance de rognage "
+        "(2 m par défaut) mais reste à une pente dérisoire (0,15-0,2 %) — un critère absolu aurait soit "
+        "raté ce cas, soit (avec un seuil plus généreux) redoublé le rognage déjà appliqué et rogné "
+        "excessivement une vraie montée sans aucun plateau (bug corrigé lors de cette même revue : "
+        "appliquer le rognage une SECONDE fois sur un segment déjà rogné, avec le même seuil, double-rogne "
+        "d'environ `TRIM_TOLERANCE_M` de chaque côté). Ordre d'exécution donc IMPORTANT : rognage des "
+        "extrémités D'ABORD, découpage des plateaux internes ENSUITE sur le résultat déjà rogné, puis un "
+        "second rognage UNIQUEMENT sur les nouveaux morceaux effectivement produits par un découpage "
+        "(jamais sur une montée que le découpage aurait laissée intacte, déjà rognée à l'étape "
+        "précédente).\n\n"
+        "MARGE DE BORD, documentée honnêtement : une fenêtre de découpage de longueur "
+        f"`MERGE_MAX_DIP_DIST_M` peut englober jusqu'à `PLATEAU_SPLIT_MAX_GRADE × MERGE_MAX_DIP_DIST_M "
+        "/ pente_réelle_de_la_montée` de VRAIE montée à son bord côté plateau (ex. à 10 % de pente "
+        "réelle, jusqu'à 40 m de distance / 4 m de D+) avant que la fenêtre ne dépasse le seuil de pente "
+        "et cesse d'être jugée « plate » — le D+ d'une montée immédiatement adjacente à un plateau "
+        "découpé peut donc être conservativement sous-estimé de quelques mètres. La VAM, elle, reste "
+        "exacte sur une pente constante (le rognage/découpage affecte gain ET distance dans la même "
+        "proportion), donc bien plus fiable que le D+ absolu dans ce cas précis."
     ),
     "merge": (
         f"Deux montées (déjà rognées, voir ASSUMPTIONS[\"trim\"]) consécutives séparées par un creux "
@@ -259,7 +331,21 @@ ASSUMPTIONS = {
         "modeste (où le plancher absolu reste généralement le plus grand des deux). Sans fusion, une "
         "montée réelle avec un replat au milieu (très courant en trail : plateau avant un dernier "
         "raidillon) serait artificiellement coupée en plusieurs montées plus courtes, chacune "
-        "sous-estimant le vrai effort ascensionnel continu perçu par le coureur."
+        "sous-estimant le vrai effort ascensionnel continu perçu par le coureur.\n\n"
+        "LIMITE CONNUE, documentée honnêtement (revue de code #46, 2e passe, should-fix 3) : le seuil de "
+        f"DISTANCE ({MERGE_MAX_DIP_DIST_M:.0f} m), lui, reste volontairement ABSOLU — voir plus haut "
+        "pourquoi il ne doit jamais devenir trop généreux sur un plateau long. Conséquence assumée : un "
+        "bruit d'altitude suffisant peut occasionnellement déplacer le point où le zigzag confirme le "
+        "creux d'une petite descente intermédiaire, élargissant sa distance MESURÉE de quelques dizaines "
+        "de mètres par rapport à sa vraie étendue — dans de rares cas (mesuré : 15 à 25 % des tirages "
+        "aléatoires sur un scénario de test dédié), cela suffit à faire dépasser le seuil de 200 m à un "
+        "creux dont la vraie étendue y restait sous, coupant à tort une grosse montée alpine en deux. Non "
+        "corrigé ici (un seuil de distance relatif à la taille des montées adjacentes déplacerait le "
+        "problème plutôt que de le résoudre, et compliquerait la lecture du seuil pour un gain incertain) "
+        "— une piste pour une revue future si l'usage réel montre que ce n'est pas anecdotique : élargir "
+        "`MERGE_MAX_DIP_DIST_M` d'une marge proportionnelle au bruit mesuré (`_robust_noise_sigma`, comme "
+        "pour `_trim_rise`, voir ASSUMPTIONS[\"trim\"]), plutôt qu'un pourcentage arbitraire de la "
+        "distance des montées adjacentes."
     ),
     "gap_segmentation": (
         "Une montée n'est JAMAIS détectée ni fusionnée à travers un trou de signal (montre en veille, "
@@ -374,6 +460,105 @@ def _raw_rises(extrema: Sequence[int], altitudes: Sequence[float]) -> List[List[
     return rises
 
 
+def _robust_noise_sigma(altitudes: Sequence[float]) -> float:
+    """Estimateur robuste (MAD, écart absolu médian × 1,4826, approximation de
+    l'écart-type pour un bruit gaussien) du bruit résiduel d'une série DÉJÀ
+    LISSÉE, à partir de sa dérivée SECONDE discrète — voir ASSUMPTIONS["trim"]
+    (revue de code #46, 2e passe, should-fix 2). La dérivée seconde annule une
+    tendance/pente réelle (constante ou lentement variable), ne laissant que le
+    bruit résiduel : `alt[i+1] - 2*alt[i] + alt[i-1]` est nul sur une rampe
+    parfaitement linéaire, quelle que soit sa pente. La médiane (jamais une
+    moyenne) rend l'estimateur insensible à quelques vrais changements de pente
+    ponctuels (sommet, replat) qui produiraient sinon des valeurs aberrantes.
+    `0.0` si la série est trop courte pour être exploitable (< 3 points)."""
+    n = len(altitudes)
+    if n < 3:
+        return 0.0
+    diffs2 = [altitudes[i + 1] - 2 * altitudes[i] + altitudes[i - 1] for i in range(1, n - 1)]
+    med = statistics.median(diffs2)
+    mad = statistics.median([abs(d - med) for d in diffs2])
+    return 1.4826 * mad
+
+
+def _split_flat_plateaus(a: int, b: int, altitudes: Sequence[float], distances: Sequence[float], *,
+                          max_gap_dist_m: float, max_grade: float) -> List[List[int]]:
+    """Découpe la montée brute `[a, b]` (indices, DÉJÀ rognée à ses extrémités
+    par `_trim_rise` — voir l'appelant) en plusieurs segments partout où un
+    plateau INTERNE s'étend sur AU MOINS `max_gap_dist_m` de distance
+    horizontale avec une pente moyenne sous `max_grade` sur cette distance —
+    voir ASSUMPTIONS["trim"] (BLOQUANT, revue de code #46, 2e passe) : un tel
+    plateau ne crée jamais lui-même d'extremum au zigzag (aucune vraie
+    retombée n'y dépasse `SWING_NOISE_FLOOR_M`), et ne pourrait de toute façon
+    jamais être fusionné ensuite (son étendue dépasse justement le seuil de
+    fusion par distance, `_merge_climbs`) — sans ce découpage, deux montées
+    séparées par un tel plateau restent une SEULE montée brute continue, quelle
+    que soit la longueur du plateau, MÊME si l'altitude y varie de plus que la
+    tolérance de rognage (`TRIM_TOLERANCE_M`) : un critère de PENTE (et non de
+    variation absolue d'altitude) est nécessaire ici — un plateau de 2 km avec
+    3-4 m de faux plat dépasse la tolérance de rognage (2 m) mais reste à une
+    pente dérisoire (0,15-0,2 %), bien sous `max_grade`.
+
+    Technique : pour chaque point de départ `i`, la fenêtre `[i, j]` de
+    longueur horizontale FIXE (au moins `max_gap_dist_m`, `j` avançant
+    uniquement — deux pointeurs classiques, la distance cumulée étant
+    croissante) est jugée « plate » si (max − min) de l'altitude sur cette
+    fenêtre reste sous `max_grade × max_gap_dist_m`. Une fenêtre à LONGUEUR
+    FIXE (pas une fenêtre à portée d'altitude bornée comme `_trim_rise`) est
+    essentielle : le critère devient alors une vraie PENTE MOYENNE sur une
+    distance de référence constante, jamais une simple variation absolue qui
+    dépendrait de la longueur du plateau. Rend `[[a, b]]` inchangé si aucun
+    plateau qualifiant n'est trouvé."""
+    if b <= a or distances[b] - distances[a] < max_gap_dist_m:
+        return [[a, b]]
+    max_span = max_grade * max_gap_dist_m
+    j = a - 1
+    min_dq: List[int] = []
+    max_dq: List[int] = []
+    flat_ranges: List[Tuple[int, int]] = []
+    for i in range(a, b + 1):
+        if j < i:
+            j = i - 1
+        # Étend `j` jusqu'à ce que la fenêtre [i, j] ATTEIGNE (ou dépasse)
+        # `max_gap_dist_m` — la condition porte sur `j` (déjà inclus), pas sur
+        # `j + 1` en anticipation : sinon la boucle s'arrête UN CRAN TROP TÔT,
+        # `distances[j] - distances[i]` restant perpétuellement sous le seuil
+        # (bug corrigé en 2e passe de revue : la fenêtre ne dépassait jamais
+        # `max_gap_dist_m` faute d'inclure le point qui la franchit réellement).
+        while j < b and distances[j] - distances[i] < max_gap_dist_m:
+            j += 1
+            while min_dq and altitudes[min_dq[-1]] >= altitudes[j]:
+                min_dq.pop()
+            min_dq.append(j)
+            while max_dq and altitudes[max_dq[-1]] <= altitudes[j]:
+                max_dq.pop()
+            max_dq.append(j)
+        while min_dq and min_dq[0] < i:
+            min_dq.pop(0)
+        while max_dq and max_dq[0] < i:
+            max_dq.pop(0)
+        if distances[j] - distances[i] >= max_gap_dist_m:
+            span = altitudes[max_dq[0]] - altitudes[min_dq[0]]
+            if span <= max_span:
+                flat_ranges.append((i, j))
+    if not flat_ranges:
+        return [[a, b]]
+    merged_flats: List[List[int]] = []
+    for lo, hi in flat_ranges:
+        if merged_flats and lo <= merged_flats[-1][1]:
+            merged_flats[-1][1] = max(merged_flats[-1][1], hi)
+        else:
+            merged_flats.append([lo, hi])
+    segments: List[List[int]] = []
+    cursor = a
+    for lo, hi in merged_flats:
+        if lo > cursor:
+            segments.append([cursor, lo])
+        cursor = hi
+    if cursor < b:
+        segments.append([cursor, b])
+    return segments if segments else [[a, b]]
+
+
 def _trim_rise(a: int, b: int, altitudes: Sequence[float], tol: float) -> List[int]:
     """Rogne une montée brute `[a, b]` (indices dans `altitudes`) à son
     intervalle le plus étroit qui couvre encore (min, max) de `altitudes[a:b+1]`
@@ -471,6 +656,8 @@ def detect_climbs(samples: Sequence[dict], *,
                    merge_max_dip_dist_m: float = MERGE_MAX_DIP_DIST_M,
                    swing_noise_floor_m: float = SWING_NOISE_FLOOR_M,
                    trim_tolerance_m: float = TRIM_TOLERANCE_M,
+                   trim_tolerance_noise_k: float = TRIM_TOLERANCE_NOISE_K,
+                   plateau_split_max_grade: float = PLATEAU_SPLIT_MAX_GRADE,
                    smooth_taps: int = SMOOTH_TAPS,
                    max_gap_s: float = MAX_GAP_S,
                    resolution_s: float = DEFAULT_RESOLUTION_S) -> List[dict]:
@@ -503,15 +690,39 @@ def detect_climbs(samples: Sequence[dict], *,
         dist_v = [raw_dist[j] for j in valid]
         idx_v = [segment[j] for j in valid]  # indices globaux dans `ordered`
 
+        # Tolérance EFFECTIVE de rognage/découpage (revue de code #46, 2e passe,
+        # should-fix 2) : plancher `trim_tolerance_m`, élargi au bruit RÉELLEMENT
+        # mesuré sur l'altitude déjà lissée de CE segment — voir
+        # `_robust_noise_sigma` et ASSUMPTIONS["trim"].
+        effective_tol = max(trim_tolerance_m, trim_tolerance_noise_k * _robust_noise_sigma(alt_v))
+
         extrema = _zigzag_extrema(alt_v, swing_noise_floor_m)
         rises = _raw_rises(extrema, alt_v)
-        # Rognage AVANT fusion (BLOQUANT, revue de code #46, voir ASSUMPTIONS["trim"]) :
-        # sans cela, une approche plate ou un replat de sortie jamais eux-mêmes détectés
-        # comme extremum resteraient attachés à la montée et fausseraient sa distance —
-        # ET fausseraient la distance du CREUX entre deux montées consécutives, sur
-        # laquelle `_merge_climbs` s'appuie pour décider de fusionner ou non.
-        trimmed = [_trim_rise(a, b, alt_v, trim_tolerance_m) for a, b in rises]
-        merged = _merge_climbs(trimmed, alt_v, dist_v,
+        # Rognage des EXTRÉMITÉS d'abord (BLOQUANT, revue de code #46, voir
+        # ASSUMPTIONS["trim"]) : sans cela, une approche plate ou un replat de sortie
+        # jamais eux-mêmes détectés comme extremum resteraient attachés à la montée
+        # et fausseraient sa distance — ET fausseraient la distance du CREUX entre
+        # deux montées consécutives, sur laquelle `_merge_climbs` s'appuie pour
+        # décider de fusionner ou non.
+        trimmed_rises = [_trim_rise(a, b, alt_v, effective_tol) for a, b in rises]
+        # Découpage des plateaux INTERNES ENSUITE, sur le résultat déjà rogné
+        # (BLOQUANT, revue de code #46, 2e passe, voir ASSUMPTIONS["trim"]) : un
+        # plateau interne (jamais détecté par le zigzag, faute de vraie retombée)
+        # est retiré s'il excède `merge_max_dip_dist_m` à pente quasi nulle — il ne
+        # pourrait de toute façon jamais être fusionné ensuite. Un morceau que le
+        # découpage laisse INTACT est déjà rogné (étape précédente) : ne JAMAIS le
+        # rogner une seconde fois (double-rognage, même bug que le premier —
+        # ASSUMPTIONS["trim"]), seuls les NOUVEAUX morceaux introduits par un
+        # découpage effectif ont besoin d'un second rognage sur leurs propres bords.
+        split_rises: List[List[int]] = []
+        for a, b in trimmed_rises:
+            pieces = _split_flat_plateaus(
+                a, b, alt_v, dist_v, max_gap_dist_m=merge_max_dip_dist_m, max_grade=plateau_split_max_grade)
+            if len(pieces) == 1 and pieces[0] == [a, b]:
+                split_rises.append([a, b])
+            else:
+                split_rises.extend(_trim_rise(pa, pb, alt_v, effective_tol) for pa, pb in pieces)
+        merged = _merge_climbs(split_rises, alt_v, dist_v,
                                 max_dip_loss_m=merge_max_dip_loss_m,
                                 dip_relative_frac=merge_dip_relative_frac,
                                 max_dip_dist_m=merge_max_dip_dist_m)

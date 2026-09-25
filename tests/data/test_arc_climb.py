@@ -368,6 +368,13 @@ class TestFlatApproachAndExitNeverDiluteClimb(unittest.TestCase):
         self.assertGreaterEqual(c["avg_grade"], 0.08)
         self.assertLessEqual(c["distance_m"], 1200.0)
         self.assertAlmostEqual(c["gain_m"], 100.0, delta=2 * VC.TRIM_TOLERANCE_M + 1.0)
+        # Assertion SERRÉE (revue de code #46, 2e passe, should-fix 1) : sans bruit,
+        # la pente et la VAM mesurées doivent coller de très près aux 10 %/vraie VAM
+        # réels de la seule portion montée (rognage déterministe à ±TRIM_TOLERANCE_M).
+        true_duration_h = (1000.0 / 2.0) / 3600.0
+        true_vam = 100.0 / true_duration_h
+        self.assertAlmostEqual(c["avg_grade"], 0.10, delta=0.01)
+        self.assertAlmostEqual(c["vam_elapsed_m_h"], true_vam, delta=5.0)
 
     def test_200m_flat_plus_60m_at_8pct_plus_200m_flat_vam_close_to_true_rate(self):
         climb_dist_m = 60.0 / 0.08  # 750 m, pour une pente réelle de 8 %
@@ -382,6 +389,32 @@ class TestFlatApproachAndExitNeverDiluteClimb(unittest.TestCase):
         # bon ORDRE DE GRANDEUR — jamais diluée par les 400 m de plat comme avant #46
         # (revue de code : 343 m/h mesurés au lieu de ~432 m/h attendus).
         self.assertAlmostEqual(c["vam_elapsed_m_h"], true_vam, delta=true_vam * 0.15)
+
+    def test_acceptance_case_with_500m_flat_lead_and_trail_noise_free_tight(self):
+        """Revue de code #46, 2e passe, should-fix 1 : assertion SERRÉE, sans bruit
+        — 600 ± 5 m/h (jamais seulement l'ordre de grandeur). Complète, sans la
+        remplacer, l'assertion large et bruitée ci-dessous."""
+        samples = _flat_climb_flat_samples(lead_m=500, climb_gain_m=300.0, climb_dist_m=3600.0, trail_m=500)
+        climbs = VC.detect_climbs(samples)
+        self.assertEqual(len(climbs), 1, climbs)
+        self.assertAlmostEqual(climbs[0]["vam_elapsed_m_h"], 600.0, delta=5.0)
+
+    def test_trim_tolerance_scales_with_measured_noise_at_sigma2(self):
+        """Revue de code #46, 2e passe, should-fix 2 : un plancher de rognage FIXE
+        (2 m) est très insuffisant à σ ≈ 2 m de bruit après lissage (mesuré par la
+        revue : début de montée jusqu'à 1 350 m trop tôt, VAM jusqu'à -20 %) —
+        `_robust_noise_sigma` doit élargir la tolérance effective en conséquence.
+        30 graines, jamais plus de quelques m/h d'écart (bien loin de -20 %)."""
+        import random
+        worst_err = 0.0
+        for seed in range(1, 31):
+            rng = random.Random(seed)
+            samples = _flat_climb_flat_samples(lead_m=500, climb_gain_m=300.0, climb_dist_m=3600.0,
+                                                trail_m=500, speed_ms=2.0, rng=rng, noise_m=2.0)
+            climbs = VC.detect_climbs(samples)
+            self.assertEqual(len(climbs), 1, (seed, climbs))
+            worst_err = max(worst_err, abs(climbs[0]["vam_elapsed_m_h"] - 600.0))
+        self.assertLess(worst_err, 30.0, f"pire écart observé : {worst_err} m/h (>= 30, proche du -20 % signalé)")
 
     def test_acceptance_case_with_500m_flat_lead_and_trail_across_seeds(self):
         """Le critère d'acceptation de #46 (300 m / 30 min -> 600 m/h) doit rester
@@ -476,41 +509,78 @@ class TestRelativeMergeThreshold(unittest.TestCase):
         self.assertGreaterEqual(len(climbs), 2, climbs)
 
 
+def _climb_plateau_climb_samples(*, dip_m=0.0, noise_m=0.0, rng=None):
+    """200 m de montée + plateau de 2 km (plat, ou avec un dip de `dip_m` sur
+    1 km aller + 1 km retour) + 200 m de montée — construction EXACTE de la
+    revue de code #46, 2e passe (BLOQUANT) : `dip_m` dans `(0.0, 3.0, 4.0)`,
+    chacun sous `SWING_NOISE_FLOOR_M` (5 m), donc jamais détecté par le zigzag
+    lui-même — seul un critère de PENTE sur le plateau entier peut le séparer
+    des deux montées adjacentes."""
+    out = []
+    t = 0.0
+    dist = 0.0
+    alt = 0.0
+
+    def _emit():
+        a = alt + (rng.uniform(-noise_m, noise_m) if rng and noise_m else 0.0)
+        out.append({"t_s": t, "distance_m": dist, "altitude_m": a,
+                     "speed_ms": 2.0, "hr_bpm": 150.0, "cadence_spm": 160.0})
+
+    def _ramp(gain_m, dist_m, n):
+        nonlocal t, dist, alt
+        step_alt = gain_m / n
+        step_dist = dist_m / n
+        for _ in range(n):
+            t += 5
+            dist += step_dist
+            alt += step_alt
+            _emit()
+
+    _emit()
+    _ramp(200.0, 2000.0, 200)
+    if dip_m:
+        _ramp(-dip_m, 1000.0, 100)
+        _ramp(dip_m, 1000.0, 100)
+    else:
+        _ramp(0.0, 2000.0, 200)
+    _ramp(200.0, 2000.0, 200)
+    return out
+
+
 class TestPlateauBetweenTwoClimbsStaysSplit(unittest.TestCase):
-    """Revue de code #46, BLOQUANT : un plateau de 2 km (même avec un creux minime)
-    entre deux montées de 200 m ne doit JAMAIS être fusionné — le seuil de distance
-    (`MERGE_MAX_DIP_DIST_M`, 200 m) reste absolu, quel que soit le seuil de perte."""
+    """Revue de code #46, BLOQUANT (2e passe) : un plateau de 2 km — parfaitement
+    plat, ou avec un dip de 3 m ou 4 m (sous `SWING_NOISE_FLOOR_M`, donc jamais
+    lui-même détecté par le zigzag) — entre deux montées de 200 m ne doit JAMAIS
+    rester fusionné en une seule montée. Repro exacte de la revue : sans
+    correction, `detect_climbs` rendait 1 montée km 0,02→5,98, 6,6 %, VAM 414 au
+    lieu des ~540 m/h réels d'une montée de 200 m — un critère de PENTE (pas
+    seulement de variation absolue d'altitude, qui dépasserait la tolérance de
+    rognage sur un dip de 3-4 m) est nécessaire pour séparer un tel plateau."""
 
-    def test_200m_climb_2km_plateau_200m_climb_stays_two_climbs(self):
-        out = []
-        t = 0.0
-        dist = 0.0
-        alt = 0.0
+    def test_flat_plateau_and_small_dips_noise_free(self):
+        for dip_m in (0.0, 3.0, 4.0):
+            with self.subTest(dip_m=dip_m):
+                climbs = VC.detect_climbs(_climb_plateau_climb_samples(dip_m=dip_m))
+                self.assertEqual(len(climbs), 2, (dip_m, climbs))
+                for c in climbs:
+                    # Le découpage par pente (`_split_flat_plateaus`) laisse une marge
+                    # de bord proportionnelle à PLATEAU_SPLIT_MAX_GRADE × MERGE_MAX_DIP_DIST_M
+                    # (jusqu'à ~10 m de D+ perdus sur le bord côté plateau, ici) — mais la
+                    # VITESSE (VAM), elle, reste exacte sur une rampe linéaire (assertion
+                    # serrée, revue de code #46, 2e passe, should-fix 1).
+                    self.assertAlmostEqual(c["gain_m"], 200.0, delta=15.0)
+                    self.assertGreaterEqual(c["avg_grade"], VC.MIN_CLIMB_AVG_GRADE)
+                    self.assertAlmostEqual(c["vam_elapsed_m_h"], 720.0, delta=5.0)
 
-        def _emit():
-            out.append({"t_s": t, "distance_m": dist, "altitude_m": alt,
-                         "speed_ms": 2.0, "hr_bpm": 150.0, "cadence_spm": 160.0})
-
-        _emit()
-
-        def _ramp(gain_m, dist_m, n):
-            nonlocal t, dist, alt
-            step_alt = gain_m / n
-            step_dist = dist_m / n
-            for _ in range(n):
-                t += 5
-                dist += step_dist
-                alt += step_alt
-                _emit()
-
-        _ramp(200.0, 2000.0, 200)
-        # Plateau de 2 km avec un léger creux réaliste de 6 m (au-dessus du bruit de
-        # zigzag, mais dérisoire face aux deux montées de 200 m).
-        _ramp(-6.0, 1000.0, 100)
-        _ramp(6.0, 1000.0, 100)
-        _ramp(200.0, 2000.0, 200)
-        climbs = VC.detect_climbs(out)
-        self.assertEqual(len(climbs), 2, climbs)
+    def test_flat_plateau_and_small_dips_with_sigma1_noise(self):
+        for dip_m in (0.0, 3.0, 4.0):
+            with self.subTest(dip_m=dip_m):
+                import random
+                for seed in range(1, 11):
+                    rng = random.Random(seed)
+                    climbs = VC.detect_climbs(_climb_plateau_climb_samples(
+                        dip_m=dip_m, noise_m=1.0, rng=rng))
+                    self.assertEqual(len(climbs), 2, (dip_m, seed, climbs))
 
 
 class TestMovingTimeNeverExceedsElapsed(unittest.TestCase):
