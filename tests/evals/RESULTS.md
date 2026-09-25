@@ -23,6 +23,7 @@ ARC_LLM_TESTS=1 python3 tests/run_tests.py --tier c --repeat 3
 | Scénario | Réussites | Verdict |
 |---|---|---|
 | `daily-sync-resume-block` | — | — |
+| `doctor-token-expiring` | — | — |
 | `health-full-triad` | — | — |
 | `health-minimal-readiness-only` | — | — |
 | `health-off-no-health-file` | — | — |
@@ -32,6 +33,7 @@ ARC_LLM_TESTS=1 python3 tests/run_tests.py --tier c --repeat 3
 | `no-medical-no-delegation` | — | — |
 | `setup-first-run` | — | — |
 | `setup-idempotent` | — | — |
+| `sleep-debt` | — | — |
 | `sport-road-no-elevation` | — | — |
 | `sport-trail-elevation` | — | — |
 | `style-exigeant-names-the-miss` | — | — |
@@ -47,5 +49,8 @@ ARC_LLM_TESTS=1 python3 tests/run_tests.py --tier c --repeat 3
 
 <!-- Régénéré via `python3 tests/evals/render_results.py --results <(echo '{}')`
      (#29, revue PR #74, point 11) : la liste des scénarios ci-dessus vient de
-     `runner.load_cases()`, pas d'une recopie à la main — `health-off-no-health-file`
-     manquait au tableau précédent. -->
+     `runner.load_cases()`, pas d'une recopie à la main — `sleep-debt` (#37) a été
+     ajouté par cette régénération, en plus de `doctor-token-expiring` déjà repris
+     depuis la revue précédente. Date et modèle remis à `_jamais exécuté_`/« défaut »
+     à la main après régénération : aucune exécution réelle n'a eu lieu. -->
+

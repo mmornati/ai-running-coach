@@ -688,5 +688,88 @@ class TestWeightTargetGap(unittest.TestCase):
         self.assertIsNone(M.weight_target_gap_kg(70.0, None))
 
 
+class TestSleepDebt(unittest.TestCase):
+    """#37 — dette de sommeil 7 j : nuits manquantes jamais comptées 0 h, seuil de
+    nuits mesurées avant d'afficher quoi que ce soit, besoin par défaut 7 h 30,
+    nuits excédentaires plafonnées à 0 (jamais de dette négative/compensée)."""
+
+    DAY = date(2026, 6, 28)   # jour évalué ; fenêtre = les 7 jours qui précèdent, lui inclus
+
+    def by_date(self, sleep_h_by_offset_before_day: dict) -> dict:
+        """`sleep_h_by_offset_before_day` : nb de jours AVANT `DAY` (0 = `DAY`) -> heures dormies."""
+        return {(self.DAY - timedelta(days=k)).isoformat(): h * 3600 for k, h in sleep_h_by_offset_before_day.items()}
+
+    def test_hand_computed_debt_over_four_nights(self):
+        """4 nuits à 5 h (offsets 0-3), besoin 7 h 30 : dette = 4 × 2,5 h = 10 h, exactement
+        au seuil minimal de nuits (`SLEEP_DEBT_MIN_NIGHTS` = 4) — doit être calculée, pas
+        rejetée."""
+        by_date = self.by_date({0: 5.0, 1: 5.0, 2: 5.0, 3: 5.0})
+        result = M.sleep_debt_7d(by_date, self.DAY)
+        self.assertEqual(result["nights_counted"], 4)
+        self.assertAlmostEqual(result["sleep_debt_7d_s"], 4 * 2.5 * 3600)
+        self.assertEqual(result["sleep_need_s"], M.SLEEP_NEED_DEFAULT_S)
+
+    def test_missing_nights_are_not_zero(self):
+        """Fenêtre de 7 j avec seulement 4 nuits mesurées (offsets 0, 2, 4, 6) à 6 h : les 3
+        nuits absentes ne doivent JAMAIS entrer dans la somme comme des manques de 7 h 30
+        (ce qui donnerait 4 × 1,5 h + 3 × 7,5 h = 28,5 h) — seule la dette des nuits
+        mesurées compte : 4 × 1,5 h = 6 h."""
+        by_date = self.by_date({0: 6.0, 2: 6.0, 4: 6.0, 6: 6.0})
+        result = M.sleep_debt_7d(by_date, self.DAY)
+        self.assertEqual(result["nights_counted"], 4)
+        self.assertAlmostEqual(result["sleep_debt_7d_s"], 4 * 1.5 * 3600)
+
+    def test_below_min_nights_gives_none_but_still_reports_the_count(self):
+        """`SLEEP_DEBT_MIN_NIGHTS` (4) moins un (3 nuits mesurées) : `sleep_debt_7d_s` doit
+        être `None`, mais `nights_counted` reste rendu (3) — l'appelant doit pouvoir dire
+        « il manque des nuits », pas seulement « pas de valeur »."""
+        by_date = self.by_date({0: 5.0, 1: 5.0, 2: 5.0})
+        result = M.sleep_debt_7d(by_date, self.DAY)
+        self.assertIsNone(result["sleep_debt_7d_s"])
+        self.assertEqual(result["nights_counted"], 3)
+
+    def test_surplus_nights_are_floored_not_netted(self):
+        """3 nuits à 10 h (excédent de 2,5 h chacune) et 4 nuits à 5 h (déficit de 2,5 h
+        chacune) : une dette « nette » donnerait 0 (les excédents annuleraient les
+        déficits). La dette attendue ne compte QUE les déficits, plafonnés à 0 par nuit
+        excédentaire : 4 × 2,5 h = 10 h, jamais 0 ni une valeur négative."""
+        by_date = self.by_date({0: 10.0, 1: 10.0, 2: 10.0, 3: 5.0, 4: 5.0, 5: 5.0, 6: 5.0})
+        result = M.sleep_debt_7d(by_date, self.DAY)
+        self.assertEqual(result["nights_counted"], 7)
+        self.assertAlmostEqual(result["sleep_debt_7d_s"], 4 * 2.5 * 3600)
+
+    def test_no_debt_when_sleep_meets_need(self):
+        by_date = self.by_date({k: 7.5 for k in range(7)})
+        result = M.sleep_debt_7d(by_date, self.DAY)
+        self.assertEqual(result["sleep_debt_7d_s"], 0)
+
+    def test_custom_need_from_profile(self):
+        """Besoin non par défaut (8 h, ex. profil « Besoin de sommeil »), 7 nuits à 6 h :
+        dette = 7 × 2 h = 14 h."""
+        by_date = self.by_date({k: 6.0 for k in range(7)})
+        result = M.sleep_debt_7d(by_date, self.DAY, need_s=8 * 3600)
+        self.assertEqual(result["sleep_need_s"], 8 * 3600)
+        self.assertAlmostEqual(result["sleep_debt_7d_s"], 7 * 2 * 3600)
+
+    def test_window_slides_and_drops_old_nights(self):
+        """Une nuit ancienne très déficitaire (offset 6, 8 j avant `DAY` avec `days=9`... en
+        fait vérifie qu'une nuit hors fenêtre 7 j n'est plus comptée) : seules les 7 nuits
+        les plus récentes entrent dans le calcul."""
+        # offset 7 = 8e jour avant DAY, HORS de la fenêtre de 7 j (offsets 0-6) : une nuit
+        # à 1 h (fortement déficitaire) ne doit donc PAS peser sur la dette du jour évalué.
+        by_date = self.by_date({0: 7.5, 1: 7.5, 2: 7.5, 3: 7.5, 7: 1.0})
+        result = M.sleep_debt_7d(by_date, self.DAY)
+        self.assertEqual(result["nights_counted"], 4, "la nuit à l'offset 7 est hors fenêtre")
+        self.assertEqual(result["sleep_debt_7d_s"], 0)
+
+    def test_series_matches_pointwise_computation(self):
+        by_date = self.by_date({0: 5.0, 1: 5.0, 2: 5.0, 3: 5.0})
+        start = self.DAY - timedelta(days=1)
+        series = M.sleep_debt_series(by_date, start, self.DAY)
+        self.assertEqual(len(series), 2)
+        self.assertEqual(series[-1]["date"], self.DAY.isoformat())
+        self.assertEqual(series[-1]["sleep_debt_7d_s"], M.sleep_debt_7d(by_date, self.DAY)["sleep_debt_7d_s"])
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -220,9 +220,23 @@ def api_summary(store: Store, q: dict) -> dict:
     files = store.rows("SELECT parsed_ok, COUNT(*) AS n FROM source_file WHERE kind IS NOT NULL "
                        "AND kind NOT IN ('athlete','objective') GROUP BY parsed_ok")
     incomplete = len(store.backfill())
+    sleep_debt = None
+    if settings.get("morning_check") == "full":
+        # Dette de sommeil 7 j (#37), même porte que la ligne de base HRV : voir
+        # ASSUMPTIONS["sleep_debt"]. Fenêtre EXACTEMENT `SLEEP_DEBT_WINDOW_DAYS` (7 j,
+        # nuits d'hier à J-6 puisque la nuit de `today` n'est jamais encore mesurée) —
+        # `sleep_debt_7d` ignore de toute façon toute date hors de sa propre fenêtre,
+        # récupérer plus large ici n'aurait rien changé au résultat.
+        sleep_rows = store.rows(
+            "SELECT date, sleep_total_s FROM health_day WHERE date >= ? AND date <= ? "
+            "AND sleep_total_s IS NOT NULL",
+            ((today - timedelta(days=M.SLEEP_DEBT_WINDOW_DAYS - 1)).isoformat(), today.isoformat()))
+        sleep_by_date = {r["date"]: r["sleep_total_s"] for r in sleep_rows}
+        sleep_debt = M.sleep_debt_7d(sleep_by_date, today, I.athlete_sleep_need_s(athlete))
     return {
         "today": today.isoformat(), "settings": settings, "objective": objective, "athlete": athlete,
-        "form": latest, "health": health, "files": {r["parsed_ok"]: r["n"] for r in files},
+        "form": latest, "health": health, "sleep_debt": sleep_debt,
+        "files": {r["parsed_ok"]: r["n"] for r in files},
         "incomplete_files": incomplete, "assumptions": store.meta("assumptions"),
         "compliance_trend": api_compliance_trend(store, q),
         "counts": {
@@ -306,9 +320,17 @@ def api_health(store: Store, q: dict) -> dict:
                       (fetch_from, today.isoformat()))
     by_date = {r["date"]: r for r in rows}
     hrv_baseline_by_date = {}
+    sleep_debt_by_date = {}
     if mode == "full":
         hrv_by_date = {d: r["hrv_overnight_ms"] for d, r in by_date.items() if r["hrv_overnight_ms"] is not None}
         hrv_baseline_by_date = {p["date"]: p for p in M.hrv_baseline_series(hrv_by_date, start_date, today)}
+        # Dette de sommeil 7 j (#37) : même porte que la ligne de base HRV ci-dessus
+        # (rien hors "full", voir ASSUMPTIONS["sleep_debt"]). Besoin lu au profil
+        # (`athlete.sleep_need_s`), sinon 7 h 30 par défaut — résolution partagée
+        # avec `sleep_debt_today` de la CLI (`arc_index.athlete_sleep_need_s`).
+        sleep_by_date = {d: r["sleep_total_s"] for d, r in by_date.items() if r["sleep_total_s"] is not None}
+        need_s = I.athlete_sleep_need_s(store.one("SELECT sleep_need_s FROM athlete LIMIT 1"))
+        sleep_debt_by_date = {p["date"]: p for p in M.sleep_debt_series(sleep_by_date, start_date, today, need_s)}
     series = []
     for i in range(days):
         day = date.fromisoformat(start) + timedelta(days=i)
@@ -328,9 +350,14 @@ def api_health(store: Store, q: dict) -> dict:
         baseline = hrv_baseline_by_date.get(day.isoformat())
         if baseline:
             point.update({k: v for k, v in baseline.items() if k != "date"})
+        debt = sleep_debt_by_date.get(day.isoformat())
+        if debt:
+            point.update({k: v for k, v in debt.items() if k != "date"})
         series.append(point)
     return {"series": series, "morning_check": mode,
-            "thresholds": {"rhr_warn": 5, "rhr_alert": 7}}
+            "thresholds": {"rhr_warn": 5, "rhr_alert": 7,
+                           "sleep_debt_warn_h": M.SLEEP_DEBT_WARN_S / 3600,
+                           "sleep_debt_alert_h": M.SLEEP_DEBT_ALERT_S / 3600}}
 
 
 def _week_sessions_and_activities(store: Store, monday: date) -> Tuple[list, list]:

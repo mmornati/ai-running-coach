@@ -121,7 +121,20 @@ Les tendances du bilan matinal, sur 1, 3 ou 6 mois :
   imposé au lendemain de l'ultra, puis le feu vert de la reprise.
 - **FC de repos**, avec sa médiane 7 jours et les seuils +5 / +7 qui la suivent : le
   pic post-course à 55 bpm les franchit nettement, puis la FC redescend.
-- **Readiness**, colorée par niveau, et **sommeil** face aux 7 h 30 visées.
+- **Readiness**, colorée par niveau, et **sommeil** face au besoin configuré (profil
+  → « Besoin de sommeil », sinon 7 h 30 par défaut).
+- **Dette de sommeil sur 7 jours** (#37, `[health].morning_check = "full"` uniquement) :
+  somme, sur les nuits mesurées des 7 derniers jours, du manque par rapport à ce même
+  besoin — une nuit sans mesure n'est jamais comptée comme un manque de 0 h, et la
+  valeur n'est rendue qu'à partir de 4 nuits mesurées sur les 7 (sinon aucune barre ce
+  jour-là). Les nuits excédentaires ne compensent pas un déficit d'une autre nuit
+  (détail et justification dans `ASSUMPTIONS["sleep_debt"]` de `scripts/arc_metrics.py`).
+  Seuils d'affichage indicatifs (pas médicaux, même statut que la zone ACWR) :
+  **5 h cumulées → à surveiller**, **10 h → nettement** (`SLEEP_DEBT_WARN_S`/
+  `SLEEP_DEBT_ALERT_S`, servis par `/api/health` → `thresholds.sleep_debt_warn_h`/
+  `sleep_debt_alert_h`, jamais recalculés côté JS). Même calcul repris dans la
+  tuile « Aujourd'hui » et disponible hors tableau de bord via
+  `python3 scripts/arc_index.py sleep-debt`.
 
 **Comment la lire** : un point isolé ne dit rien ; deux ou trois jours d'affilée
 hors de la bande, ou au-dessus du seuil +5, oui. C'est exactement ce que le coach

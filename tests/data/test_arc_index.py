@@ -202,6 +202,114 @@ class TestHrvBaselineCli(Workspace):
         self.assertEqual(point["morning_check"], "off")
 
 
+class TestSleepDebtCli(Workspace):
+    """#37 — `arc_index.py sleep-debt` : voie headless vers la dette de sommeil 7 j,
+    même porte `[health].morning_check` que `hrv-baseline` (#34)."""
+
+    def health(self, day: str, sleep_h: float, mode: str = "full") -> None:
+        self.write(f"medical/{day}_health.md",
+                  arc(f'{{"arc": 1, "kind": "health", "date": "{day}", "morning_check": "{mode}", '
+                      f'"sleep_total_s": {sleep_h * 3600}}}'))
+
+    def test_full_mode_returns_the_computed_debt(self):
+        for day in ("2026-09-03", "2026-09-04", "2026-09-05", "2026-09-06"):
+            self.health(day, 5.0)
+        self.index()
+        conf = {"morning_check": "full"}
+        point = I.sleep_debt_today(self.conn, conf, date(2026, 9, 9))
+        self.assertEqual(point["morning_check"], "full")
+        self.assertEqual(point["nights_counted"], 4)
+        self.assertAlmostEqual(point["sleep_debt_7d_s"], 4 * 2.5 * 3600)
+        self.assertEqual(point["sleep_need_s"], 7 * 3600 + 30 * 60, "défaut 7 h 30 sans profil")
+
+    def test_uses_profile_sleep_need_when_present(self):
+        self.write("planning/Runner_Profile.md", "# Profil\n\n## Physiologie\n\n- **Besoin de sommeil** : 8h00\n")
+        for day in ("2026-09-03", "2026-09-04", "2026-09-05", "2026-09-06"):
+            self.health(day, 6.0)
+        self.index()
+        conf = {"morning_check": "full"}
+        point = I.sleep_debt_today(self.conn, conf, date(2026, 9, 9))
+        self.assertEqual(point["sleep_need_s"], 8 * 3600)
+        self.assertAlmostEqual(point["sleep_debt_7d_s"], 4 * 2 * 3600)
+
+    def test_below_min_nights_gives_none_but_counts(self):
+        for day in ("2026-09-05", "2026-09-06"):
+            self.health(day, 5.0)
+        self.index()
+        conf = {"morning_check": "full"}
+        point = I.sleep_debt_today(self.conn, conf, date(2026, 9, 9))
+        self.assertIsNone(point["sleep_debt_7d_s"])
+        self.assertEqual(point["nights_counted"], 2)
+
+    def test_minimal_mode_returns_no_debt_and_says_why(self):
+        """`minimal` : rien de calculé (même porte que la ligne de base HRV, #34) — la
+        readiness seule sort du bilan matinal, pas la dette de sommeil."""
+        conf = {"morning_check": "minimal"}
+        point = I.sleep_debt_today(self.conn, conf, date(2026, 9, 9))
+        self.assertIsNone(point["sleep_debt_7d_s"])
+        self.assertEqual(point["morning_check"], "minimal")
+        self.assertIn("full", point["reason"])
+
+    def test_off_mode_returns_no_debt(self):
+        conf = {"morning_check": "off"}
+        point = I.sleep_debt_today(self.conn, conf, date(2026, 9, 9))
+        self.assertIsNone(point["sleep_debt_7d_s"])
+        self.assertEqual(point["morning_check"], "off")
+
+
+class TestProfileSleepNeed(unittest.TestCase):
+    """#37 — `Besoin de sommeil` du profil, analysé comme les autres champs physio."""
+
+    def test_parses_hour_and_minutes_notation(self):
+        text = "# Profil\n\n## Physiologie\n\n- **Besoin de sommeil** : 7h30\n"
+        self.assertEqual(L.parse_profile(text)["sleep_need_s"], 7 * 3600 + 30 * 60)
+
+    def test_absent_when_not_filled(self):
+        text = "# Profil\n\n## Physiologie\n\n- **FC max** : 188\n"
+        self.assertNotIn("sleep_need_s", L.parse_profile(text))
+
+
+class TestParseSleepNeed(unittest.TestCase):
+    """#37, revue de code PR #82 — `_parse_sleep_need_s` est un parseur DÉDIÉ, distinct
+    de `parse_fr_duration` : ce dernier lit silencieusement « 7.5 h » comme 5 h (le « h »
+    de « 7h30 » matche avant que « .5 » ne soit consommé) et « 7:30 » comme m:ss
+    (450 s), deux contresens qui rendraient la dette de sommeil silencieusement fausse
+    (souvent 0, ou une dette énorme) plutôt que d'échouer bruyamment."""
+
+    def test_decimal_hours_with_dot(self):
+        self.assertEqual(L._parse_sleep_need_s("7.5 h"), 7.5 * 3600)
+
+    def test_decimal_hours_with_comma(self):
+        """Décimale française (virgule) : ne doit PAS être lue comme « 7 h » plus un
+        reliquat « ,5 h » ignoré — 7,5 h vaut 7 h 30, pas 7 h."""
+        self.assertEqual(L._parse_sleep_need_s("7,5 h"), 7.5 * 3600)
+
+    def test_colon_notation_is_hours_minutes_not_minutes_seconds(self):
+        """« 7:30 » est un besoin de sommeil en HEURES:MINUTES (7 h 30 = 27 000 s),
+        jamais m:ss (ce que `parse_fr_duration` rendrait : 450 s, une dette qui ne
+        pourrait alors jamais retomber à 0)."""
+        self.assertEqual(L._parse_sleep_need_s("7:30"), 7 * 3600 + 30 * 60)
+
+    def test_minutes_notation(self):
+        self.assertEqual(L._parse_sleep_need_s("450 min"), 450 * 60)
+
+    def test_bare_number_is_hours(self):
+        self.assertEqual(L._parse_sleep_need_s("8"), 8 * 3600)
+
+    def test_hour_minute_notation_still_works(self):
+        self.assertEqual(L._parse_sleep_need_s("7h30"), 7 * 3600 + 30 * 60)
+        self.assertEqual(L._parse_sleep_need_s("7 h 30"), 7 * 3600 + 30 * 60)
+
+    def test_implausible_value_is_rejected(self):
+        """« 25 h » : hors de `SLEEP_NEED_PLAUSIBLE_H` (4-12 h) — une faute de saisie,
+        jamais un besoin de sommeil réel. `None`, pour que l'appelant retombe sur son
+        propre défaut (7 h 30) plutôt que de programmer sur une valeur absurde."""
+        self.assertIsNone(L._parse_sleep_need_s("25 h"))
+
+    def test_unparseable_text_is_none(self):
+        self.assertIsNone(L._parse_sleep_need_s("beaucoup"))
+
+
 class TestFrenchNumbers(unittest.TestCase):
     def test_numbers(self):
         for text, expected in (("2 400 m", 2400.0), ("2 400", 2400.0), ("12,4 km", 12.4), ("188", 188.0), ("-3,5", -3.5)):

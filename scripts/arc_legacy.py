@@ -82,6 +82,70 @@ def parse_fr_duration(text) -> Optional[float]:
     return None
 
 
+# Plage plausible pour un besoin de sommeil humain déclaré : au-delà, c'est une
+# faute de saisie (« 25 h »), jamais une valeur à retenir telle quelle.
+SLEEP_NEED_PLAUSIBLE_H = (4.0, 12.0)
+
+_SLEEP_NEED_DECIMAL_RE = re.compile(r"(\d+(?:[.,]\d+)?)\s*h(?!\s*\d)")           # « 7.5 h », « 7,5 h »
+_SLEEP_NEED_HM_RE = re.compile(r"(\d+)\s*h\s*(\d{1,2})\b")                       # « 7h30 », « 7 h 30 »
+_SLEEP_NEED_COLON_RE = re.compile(r"\b(\d{1,2}):(\d{2})\b")                      # « 7:30 » = 7 h 30, PAS 7 min 30
+_SLEEP_NEED_MIN_RE = re.compile(r"(\d+(?:[.,]\d+)?)\s*(?:min|mn)\b")             # « 450 min »
+_SLEEP_NEED_BARE_RE = re.compile(r"^(\d+(?:[.,]\d+)?)$")                        # « 8 » nu, en heures
+
+
+def _parse_sleep_need_s(text) -> Optional[float]:
+    """Besoin de sommeil (« Besoin de sommeil » du profil) → secondes.
+
+    Format DÉDIÉ, distinct de `parse_fr_duration` : ce dernier lit « 7:30 » comme
+    m:ss (450 s, pas 7 h 30) et n'a pas de notation décimale d'heures, deux
+    contresens silencieux sur ce champ précis (revue de code, PR #82) — une durée
+    de séance et un besoin de sommeil ne s'écrivent pas avec la même ambiguïté
+    tolérable. Ordre d'essai, le premier qui matche gagne :
+
+    1. décimale d'heures — « 7.5 h », « 7,5 h » — testée AVANT « Hh MM » via une
+       négation `(?!\\s*\\d)` après le « h » (sans elle, « 7.5 h » matcherait comme
+       Hh MM avec `h=7`, perdant le « .5 » : 7.5 h deviendrait 5 h) ;
+    2. « 7h30 », « 7 h 30 » (heures-minutes) ;
+    3. « 7:30 » — interprété ICI comme HEURES:MINUTES (7 h 30), jamais
+       minutes:secondes : un besoin de sommeil de 7 minutes n'aurait aucun sens ;
+    4. « 450 min », « 450 mn » ;
+    5. un nombre nu — « 8 » — interprété en heures.
+
+    Rend `None` si rien ne matche, ou si le résultat sort de `SLEEP_NEED_PLAUSIBLE_H`
+    (ex. « 25 h », faute de saisie) : l'appelant applique alors son propre défaut
+    (7 h 30, `arc_metrics.SLEEP_NEED_DEFAULT_S`) plutôt qu'une valeur bruitée.
+    """
+    if text is None:
+        return None
+    t = str(text).replace("*", "").strip().lower()
+    for space in _SPACES:
+        t = t.replace(space, " ")
+    seconds = None
+    m = _SLEEP_NEED_DECIMAL_RE.search(t)
+    if m:
+        seconds = float(m.group(1).replace(",", ".")) * 3600
+    else:
+        m = _SLEEP_NEED_HM_RE.search(t)
+        if m:
+            seconds = int(m.group(1)) * 3600 + int(m.group(2)) * 60
+        else:
+            m = _SLEEP_NEED_COLON_RE.search(t)
+            if m:
+                seconds = int(m.group(1)) * 3600 + int(m.group(2)) * 60
+            else:
+                m = _SLEEP_NEED_MIN_RE.search(t)
+                if m:
+                    seconds = float(m.group(1).replace(",", ".")) * 60
+                else:
+                    m = _SLEEP_NEED_BARE_RE.match(t)
+                    if m:
+                        seconds = float(m.group(1).replace(",", ".")) * 3600
+    if seconds is None:
+        return None
+    lo_h, hi_h = SLEEP_NEED_PLAUSIBLE_H
+    return seconds if lo_h * 3600 <= seconds <= hi_h * 3600 else None
+
+
 def parse_fr_distance_m(text) -> Optional[float]:
     """Distance → mètres. « 12,4 km » → 12400, « 480 m » → 480, nombre nu → km."""
     value = parse_fr_number(text)
@@ -601,6 +665,7 @@ def parse_profile(text: str) -> Dict[str, Any]:
         "sex": "female" if re.match(r"^(f|femme|female)\b", sex) else ("male" if re.match(r"^(h|m|homme|male)\b", sex) else None),
         "weight_kg": parse_fr_number(_pick(b, "poids de forme", "poids")),
         "birth_year": _int(parse_fr_number(_pick(b, "annee de naissance"))),
+        "sleep_need_s": _parse_sleep_need_s(_pick(b, "besoin de sommeil")),
         "default_location": _pick(b, "lieu par defaut"),
         "usual_slot": _pick(b, "creneau habituel"),
         "name": _pick(b, "prenom / surnom", "prenom"),

@@ -11,6 +11,7 @@ sert au tableau de bord (`scripts/arc_serve.py`) et aux calculs de charge
     arc_index.py backfill-plan           # écrit .arc/backfill.md : fichiers à réécrire au contrat
     arc_index.py status                  # état de l'index, en JSON
     arc_index.py hrv-baseline            # ligne de base HRV personnelle du jour, en JSON (#34)
+    arc_index.py sleep-debt               # dette de sommeil 7 j du jour, en JSON (#37)
 
 `hrv-baseline` n'a besoin d'aucun tableau de bord lancé (headless, `/garmin-daily-sync`
 compris) : elle réindexe puis rend le point du jour de `arc_metrics.hrv_baseline_series`
@@ -19,6 +20,11 @@ si `[health].morning_check` n'est pas `"full"` (rien n'est calculé aux autres n
 voir `arc_metrics.ASSUMPTIONS["hrv_baseline"]`). Les agents `medical`/`coach` l'appellent
 quand `get_hrv_data` (Garmin) ne renvoie pas de `baseline`, au lieu d'inventer un statut
 Garmin ou de rester silencieux sur la HRV.
+
+`sleep-debt` a la même discipline headless : dette de sommeil 7 j (besoin du profil,
+défaut 7 h 30, − sommeil réalisé, nuits manquantes jamais comptées 0 h) sur
+`medical/*_health.md::sleep_total_s`, ou `{"sleep_debt_7d_s": null, "morning_check": ...}`
+hors `"full"` (voir `arc_metrics.ASSUMPTIONS["sleep_debt"]`). Utilisée par `coach`/`medical`.
 
 Options communes : `--workspace DIR` (sinon $ARC_WORKSPACE, le pointeur
 ~/.config/ai-running-coach/workspace, puis le moteur), `--db FICHIER` (défaut
@@ -49,7 +55,7 @@ import arc_metrics as M  # noqa: E402
 from coach_config import ConfigError, read_toml  # noqa: E402
 from coach_setup import ENGINE, workspace_root  # noqa: E402
 
-SCHEMA_VERSION = 3   # #34 : health_day gagne hrv_personal_low_ms/high_ms/status
+SCHEMA_VERSION = 4   # #37 : athlete gagne sleep_need_s
 DEFAULT_DB = ".arc/coach.db"
 DATA_DIRS = ("activities", "medical", "nutrition", "planning", "rapports")
 
@@ -101,7 +107,7 @@ CREATE TABLE source_file (
 CREATE TABLE athlete (
     source_path TEXT, name TEXT, hr_max_bpm INTEGER, hr_rest_bpm INTEGER,
     hr_threshold_bpm INTEGER, sex TEXT, weight_kg REAL, birth_year INTEGER,
-    default_location TEXT, usual_slot TEXT, body_md TEXT
+    default_location TEXT, usual_slot TEXT, sleep_need_s REAL, body_md TEXT
 );
 CREATE TABLE objective (
     source_path TEXT, name TEXT, race_date TEXT, distance_m REAL, elevation_gain_m REAL,
@@ -393,7 +399,8 @@ def store(conn, rel: str, kind: str, data: dict, arc_version: int) -> None:
             "source_path": rel, "name": g("name"), "hr_max_bpm": g("hr_max_bpm"),
             "hr_rest_bpm": g("hr_rest_bpm"), "hr_threshold_bpm": g("hr_threshold_bpm"),
             "sex": g("sex"), "weight_kg": g("weight_kg"), "birth_year": g("birth_year"),
-            "default_location": g("default_location"), "usual_slot": g("usual_slot"), "body_md": body,
+            "default_location": g("default_location"), "usual_slot": g("usual_slot"),
+            "sleep_need_s": g("sleep_need_s"), "body_md": body,
         })
     elif kind == "objective":
         row = {k: g(k) for k in (
@@ -653,10 +660,45 @@ def hrv_baseline_today(conn, conf: dict, today: date) -> dict:
     return {**point, "morning_check": mode}
 
 
+def athlete_sleep_need_s(row) -> float:
+    """Résout le besoin de sommeil à partir d'une ligne `athlete` (dict-like portant
+    `sleep_need_s` — `sqlite3.Row` ou `dict`, tous deux indexables par nom de colonne
+    — ou `None`) : la valeur du profil si présente et non nulle, sinon le défaut
+    moteur (`arc_metrics.SLEEP_NEED_DEFAULT_S`, 7 h 30).
+
+    Point de résolution UNIQUE, partagé par la CLI `sleep-debt` ci-dessous et par
+    `arc_serve.py` (`/api/summary`, `/api/health`) — revue de code PR #82 : trois
+    copies de `(row["sleep_need_s"] if row else None) or DEFAULT` avaient dérivé.
+    """
+    value = row["sleep_need_s"] if row is not None else None
+    return value or M.SLEEP_NEED_DEFAULT_S
+
+
+def sleep_debt_today(conn, conf: dict, today: date) -> dict:
+    """Dette de sommeil 7 j du jour (#37) — pour la CLI et pour les agents en headless.
+
+    Respecte `[health].morning_check` : rien n'est calculé hors `"full"` (même porte
+    que `hrv_baseline_today` — voir `arc_metrics.ASSUMPTIONS["sleep_debt"]`).
+    """
+    mode = conf["morning_check"]
+    if mode != "full":
+        return {"sleep_debt_7d_s": None, "nights_counted": None, "morning_check": mode,
+                "reason": "dette de sommeil calculée seulement en "
+                          '[health].morning_check = "full"'}
+    rows = conn.execute(
+        "SELECT date, sleep_total_s FROM health_day WHERE sleep_total_s IS NOT NULL"
+    ).fetchall()
+    sleep_by_date = {row[0]: row[1] for row in rows}
+    athlete = conn.execute("SELECT sleep_need_s FROM athlete LIMIT 1").fetchone()
+    need_s = athlete_sleep_need_s(athlete)
+    result = M.sleep_debt_7d(sleep_by_date, today, need_s)
+    return {**result, "morning_check": mode}
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     parser.add_argument("command", nargs="?", default="index",
-                        choices=("index", "backfill-plan", "status", "hrv-baseline"))
+                        choices=("index", "backfill-plan", "status", "hrv-baseline", "sleep-debt"))
     parser.add_argument("--workspace")
     parser.add_argument("--db")
     parser.add_argument("--memory", action="store_true")
@@ -693,6 +735,11 @@ def main(argv=None) -> int:
         conf = settings(load_config(workspace))
         today_date = date.fromisoformat(args.today) if args.today else date.today()
         print(json.dumps(hrv_baseline_today(conn, conf, today_date), ensure_ascii=False))
+        return 0
+    if args.command == "sleep-debt":
+        conf = settings(load_config(workspace))
+        today_date = date.fromisoformat(args.today) if args.today else date.today()
+        print(json.dumps(sleep_debt_today(conn, conf, today_date), ensure_ascii=False))
         return 0
     if args.command == "backfill-plan":
         out = write_backfill(conn, workspace)

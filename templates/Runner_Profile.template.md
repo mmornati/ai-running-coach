@@ -25,6 +25,7 @@
 - **Zones / seuils** :
 - **Allures de référence** : <!-- 5 km, 10 km, semi, marathon -->
 - **Poids de forme** :
+- **Besoin de sommeil** : <!-- ex. 7h30 ; 7 h 30 par défaut si vide (dette de sommeil 7 j) -->
 
 ## Historique & blessures
 

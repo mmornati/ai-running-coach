@@ -77,6 +77,19 @@ VO2MAX_MIN_HR_FRACTION = 0.70         # en dessous de 70 % de la FC max, la rela
 RECORD_DISTANCES_KM = (1, 5, 10, 21)
 PREDICTION_DISTANCES_M = (5000.0, 10000.0, 21097.5, 42195.0)
 
+# Dette de sommeil 7 j (#37) : besoin (profil, défaut 7 h 30) − sommeil réalisé,
+# sur les nuits AVEC donnée seulement (une nuit manquante n'est jamais comptée
+# comme 0 h — voir ASSUMPTIONS["sleep_debt"]).
+SLEEP_DEBT_WINDOW_DAYS = 7        # fenêtre glissante
+SLEEP_DEBT_MIN_NIGHTS = 4         # nuits mesurées exigées dans ces 7 j, sinon `None`
+SLEEP_NEED_DEFAULT_S = 7 * 3600 + 30 * 60   # 7 h 30 : défaut de l'issue #37, si le profil est vide
+# Seuils d'affichage (tableau de bord ET prose des agents) : repères indicatifs, pas
+# un seuil médical — même statut que `ACWR_SAFE` ci-dessus. Choisis pour que le seuil
+# « à surveiller » corresponde à peu près à une nuit complète de dette accumulée sur
+# la fenêtre, et « nettement » à deux.
+SLEEP_DEBT_WARN_S = 5 * 3600      # 5 h cumulées sur 7 j : à surveiller
+SLEEP_DEBT_ALERT_S = 10 * 3600    # 10 h cumulées sur 7 j : nettement, allègement recommandé
+
 # Tendance du poids (#36) : moyenne mobile 7 j vs cible, pente 4 semaines.
 WEIGHT_AVG_WINDOW_DAYS = 7        # fenêtre de la moyenne mobile affichée dans le graphique
 WEIGHT_AVG_MIN_VALID_DAYS = 3     # jours pesés exigés dans ces 7 j, sinon moyenne à None (trop bruitée)
@@ -146,6 +159,40 @@ ASSUMPTIONS = {
                  "les valeurs brutes puis arrondie une seule fois (pas la somme de valeurs déjà arrondies par "
                  "activité). Distinct de l'« équivalence plat » (`trail_equivalence`, D+ × 1,75) utilisée pour les "
                  "prédictions.",
+    "sleep_debt": f"Dette de sommeil {SLEEP_DEBT_WINDOW_DAYS} j (#37) : somme, sur les nuits des "
+                 f"{SLEEP_DEBT_WINDOW_DAYS} derniers jours AVEC une mesure de `sleep_total_s`, de "
+                 "max(0, besoin − sommeil réalisé de la nuit). Une nuit ABSENTE de `medical/*_health.md` "
+                 "n'est jamais comptée comme un manque de 0 h (elle est simplement ignorée, comme dans "
+                 "`hrv_baseline`/`weight_trend`) — sans quoi un simple trou de synchronisation gonflerait "
+                 "artificiellement la dette. Le résultat n'est rendu qu'à partir de "
+                 f"{SLEEP_DEBT_MIN_NIGHTS} nuits mesurées sur les {SLEEP_DEBT_WINDOW_DAYS}, sinon `None` "
+                 "— `nights_counted` est TOUJOURS rendu, y compris `None`, pour que l'appelant sache s'il "
+                 "manque une nuit ou sept. Nuits EXCÉDENTAIRES (sommeil > besoin) : chaque nuit est "
+                 "plafonnée à 0 avant sommation (`max(0, …)`), jamais sommée en négatif — une dette "
+                 "« nette » qui autoriserait un excédent à compenser un déficit d'une autre nuit "
+                 "suppose une récupération linéaire et immédiate que la littérature sur la dette de "
+                 "sommeil ne documente pas (contrairement, par exemple, à la charge d'entraînement où "
+                 "un jour de repos réduit authentiquement la fatigue accumulée) ; deux nuits courtes "
+                 "suivies d'une longue nuit restent donc un déficit réel, pas un solde nul. Ce plafonnage "
+                 "par nuit est délibérément plus CONSERVATEUR qu'un modèle de remboursement partiel "
+                 "(« recovery sleep ») : la littérature sur la privation chronique de sommeil documente "
+                 "une récupération réelle mais partielle et non linéaire des déficits (ex. Belenky et al. "
+                 "2003 ; Banks & Dinges 2007, revue sur la dette de sommeil cumulative et la récupération "
+                 "incomplète après une seule nuit de rattrapage) — nous ne modélisons aucun remboursement "
+                 "du tout, par prudence, plutôt que de choisir un taux de remboursement partiel arbitraire "
+                 "et invérifiable sur ce workspace. Seuils d'AFFICHAGE (tableau de bord, prose des agents), "
+                 "repères indicatifs et non médicaux, même statut que `ACWR_SAFE` : "
+                 f"{SLEEP_DEBT_WARN_S / 3600:g} h cumulées sur la fenêtre → « à surveiller », "
+                 f"{SLEEP_DEBT_ALERT_S / 3600:g} h → « nettement », allègement recommandé — exposés "
+                 "par `/api/health` (`thresholds.sleep_debt_warn_h`/`sleep_debt_alert_h`), jamais recalculés "
+                 "séparément côté JS. Besoin "
+                 "(`sleep_need_s`) : lu dans `planning/Runner_Profile.md` (« Besoin de sommeil », "
+                 f"`arc_legacy.parse_profile`), sinon {SLEEP_NEED_DEFAULT_S / 3600:g} h par défaut "
+                 "(7 h 30, valeur de l'issue #37) — jamais 8 h, chiffre plus courant mais non retenu ici. "
+                 "Calculé et exposé seulement en `[health].morning_check = \"full\"` (même porte que "
+                 "`hrv_baseline` : en `minimal`, seule la readiness sort du bilan matinal ; en `off`, "
+                 "aucune donnée de santé n'est même récupérée) — voir `scripts/arc_index.py sleep-debt` "
+                 "pour l'appel headless utilisé par les agents `coach`/`medical`.",
     "weight_merge": "Fusion des deux sources de poids (#36) : le contrat n'a pas de champ d'heure de mesure "
                     "dédié, mais `health.weight_kg` est renseigné pendant le bilan matinal (`morning_check`) — "
                     "traité comme la pesée du matin — tandis que `nutrition.weight_kg` n'a aucune garantie "
@@ -423,6 +470,39 @@ def weight_target_gap_kg(weight_avg7_kg: Optional[float], target_weight_kg: Opti
     if weight_avg7_kg is None or target_weight_kg is None:
         return None
     return round(weight_avg7_kg - target_weight_kg, 1)
+
+
+# ---------------------------------------------------------------------------
+# Dette de sommeil 7 j (#37)
+# ---------------------------------------------------------------------------
+
+
+def sleep_debt_7d(sleep_by_date: Dict[str, float], day: date, need_s: float = SLEEP_NEED_DEFAULT_S,
+                   window_days: int = SLEEP_DEBT_WINDOW_DAYS,
+                   min_nights: int = SLEEP_DEBT_MIN_NIGHTS) -> dict:
+    """Dette de sommeil sur les `window_days` nuits se terminant à `day` inclus.
+
+    `sleep_by_date` : `sleep_total_s` par date ISO, nuits sans mesure absentes du
+    dict (jamais 0). Voir `ASSUMPTIONS["sleep_debt"]` pour la méthode complète et
+    le choix documenté sur les nuits excédentaires.
+
+    Rend toujours `nights_counted` (nombre de nuits mesurées dans la fenêtre,
+    même sous le seuil) et `sleep_need_s` (le besoin effectivement utilisé).
+    `sleep_debt_7d_s` est `None` sous `min_nights` nuits mesurées.
+    """
+    values = _window_values(sleep_by_date, day, window_days)
+    nights_counted = len(values)
+    debt = None
+    if nights_counted >= min_nights:
+        debt = round(sum(max(0.0, need_s - v) for v in values))
+    return {"sleep_debt_7d_s": debt, "nights_counted": nights_counted, "sleep_need_s": need_s}
+
+
+def sleep_debt_series(sleep_by_date: Dict[str, float], start: date, end: date,
+                       need_s: float = SLEEP_NEED_DEFAULT_S) -> List[dict]:
+    """Dette de sommeil 7 j, jour par jour, de `start` à `end` inclus. Voir `sleep_debt_7d`."""
+    return [{"date": day.isoformat(), **sleep_debt_7d(sleep_by_date, day, need_s)}
+            for day in _daterange(start, end)]
 
 
 # ---------------------------------------------------------------------------

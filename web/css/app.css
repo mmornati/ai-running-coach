@@ -257,6 +257,8 @@ select { font: inherit; color: var(--ink); background: var(--surface); border: 1
 .chart .dot--weight { fill: var(--s-weight); }
 .chart .bar { fill: var(--s-bar); }
 .chart .bar--sleep { fill: var(--s-sleep); }
+.chart .bar--sleep.bar--warn { fill: var(--warn); }
+.chart .bar--sleep.bar--alert { fill: var(--bad); }
 .chart .bar--ready-hi { fill: var(--ok); } .chart .bar--ready-mid { fill: var(--warn); } .chart .bar--ready-lo { fill: var(--bad); }
 .chart .mark { stroke: var(--ink-faint); stroke-dasharray: 3 3; }
 .chart .mark--zero { stroke: var(--line-strong); stroke-dasharray: none; }
