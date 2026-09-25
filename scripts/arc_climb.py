@@ -57,19 +57,31 @@ réinventer une quatrième détection.
    `SMOOTH_TAPS`, 3 points — même lissage que le GAP) pour ne pas confondre
    bruit barométrique et vrai changement de pente.
 3. **Simplification en zigzag à hystérésis** (`_zigzag_extrema`,
-   `SWING_NOISE_FLOOR_M`) : ne garde que les extrema (creux/sommets) séparés
-   d'au moins ce seuil d'altitude — un bruit de quelques mètres n'invente
-   jamais un creux ou un sommet.
+   `SWING_NOISE_FLOOR_M`) : algorithme standard à extremum courant confirmé —
+   un extremum candidat (le plus haut/bas point vu depuis le dernier extremum
+   confirmé) n'est confirmé, et un nouveau candidat de sens opposé démarré,
+   que lorsque le signal RETRACE d'au moins `SWING_NOISE_FLOOR_M` depuis ce
+   candidat (jamais une élimination a posteriori de petits segments, qui peut
+   effacer un vrai sommet intermédiaire — voir ASSUMPTIONS["zigzag"] pour le
+   bug que cela évite, revue de code #46).
 4. **Montées brutes** : chaque paire (creux, sommet) consécutive dans le
    zigzag dont l'altitude progresse.
-5. **Fusion des montées séparées par un petit creux** (`_merge_climbs`,
-   `MERGE_MAX_DIP_LOSS_M`/`MERGE_MAX_DIP_DIST_M`) : deux montées consécutives
-   sont fusionnées en une seule si le creux qui les sépare perd moins de
-   `MERGE_MAX_DIP_LOSS_M` d'altitude sur moins de `MERGE_MAX_DIP_DIST_M` de
-   distance horizontale — un replat ou un petit passage en faux plat au
-   milieu d'une montée ne doit pas la couper en deux montées artificielles.
-6. **Filtre final** : gain net ≥ `MIN_CLIMB_GAIN_M` ET pente moyenne (gain /
-   distance) ≥ `MIN_CLIMB_AVG_GRADE`, sur la montée éventuellement fusionnée.
+5. **Rognage de chaque montée brute AVANT toute fusion** (`_trim_rise`,
+   `TRIM_TOLERANCE_M`) : un creux/sommet du zigzag peut se retrouver très loin
+   de la vraie montée quand une longue approche plate (ou un long replat de
+   sortie) ne crée elle-même aucun extremum — voir ASSUMPTIONS["trim"] pour le
+   bug corrigé (revue de code #46, BLOQUANT) et la méthode complète.
+6. **Fusion des montées (rognées) séparées par un petit creux** (`_merge_climbs`,
+   `MERGE_MAX_DIP_LOSS_M`/`MERGE_DIP_RELATIVE_FRAC`/`MERGE_MAX_DIP_DIST_M`) :
+   deux montées consécutives sont fusionnées en une seule si le creux qui les
+   sépare perd moins que le seuil (le plus GRAND de l'absolu et du relatif aux
+   gains adjacents, voir ASSUMPTIONS["merge"]) sur moins de
+   `MERGE_MAX_DIP_DIST_M` de distance horizontale — un replat ou un petit
+   passage en faux plat au milieu d'une montée ne doit pas la couper en deux
+   montées artificielles.
+7. **Filtre final** : gain net ≥ `MIN_CLIMB_GAIN_M` ET pente moyenne (gain /
+   distance) ≥ `MIN_CLIMB_AVG_GRADE`, sur la montée (rognée puis) éventuellement
+   fusionnée.
 
 Voir `ASSUMPTIONS` pour la justification complète de chaque seuil.
 
@@ -127,14 +139,29 @@ MIN_CLIMB_GAIN_M = 50.0
 MIN_CLIMB_AVG_GRADE = 0.05  # 5 % — aligné sur la première classe de pente ci-dessous
 
 # Fusion de deux montées séparées par un petit creux (replat, faux plat) — voir
-# ASSUMPTIONS["merge"].
+# ASSUMPTIONS["merge"]. Le seuil de PERTE est le plus GRAND des deux :
+# `MERGE_MAX_DIP_LOSS_M` (plancher absolu, utile sur une petite montée trail) et
+# `MERGE_DIP_RELATIVE_FRAC` × le plus petit des deux gains adjacents (pour une
+# grosse montée alpine, un creux de 15 m est anecdotique face à 800 m de D+,
+# mais dépasserait un plancher absolu de 10 m — revue de code #46). Le seuil de
+# DISTANCE, lui, reste absolu (`MERGE_MAX_DIP_DIST_M`) : un plateau de 2 km,
+# même sans perte d'altitude notable, n'est jamais une simple respiration au
+# milieu d'une montée continue.
 MERGE_MAX_DIP_LOSS_M = 10.0
+MERGE_DIP_RELATIVE_FRAC = 0.125  # 12,5 %, milieu de la fourchette 10-15 % (revue de code #46)
 MERGE_MAX_DIP_DIST_M = 200.0
 
 # Seuil de bruit de la simplification en zigzag (#46) — nettement sous
 # `MIN_CLIMB_GAIN_M` : ne sert qu'à ignorer le bruit résiduel post-lissage,
 # jamais à filtrer une vraie petite montée (le filtre final s'en charge).
 SWING_NOISE_FLOOR_M = 5.0
+
+# Tolérance de rognage (#46, revue de code, BLOQUANT) : après le zigzag, chaque
+# montée brute est rognée à son véritable début/fin AVANT toute fusion — voir
+# `_trim_rise` et ASSUMPTIONS["trim"]. Nettement sous `SWING_NOISE_FLOOR_M` :
+# sert à coller au plus près du vrai bas/haut de la montée, pas à filtrer du
+# bruit d'extrema.
+TRIM_TOLERANCE_M = 2.0
 
 # Même lissage et même segmentation par trou de signal que le GAP (#44,
 # `arc_gap.py`/`arc_elevation.py`) — cohérence des KPI dérivés des mêmes
@@ -176,21 +203,63 @@ ASSUMPTIONS = {
     "detection": (
         f"Une montée est détectée sur l'altitude LISSÉE (moyenne glissante {SMOOTH_TAPS} points, même "
         "lissage que le GAP/#44) simplifiée en zigzag à hystérésis (creux/sommets séparés d'au moins "
-        f"{SWING_NOISE_FLOOR_M:.0f} m, pour ignorer le bruit résiduel post-lissage), puis retenue "
-        f"seulement si son gain net atteint {MIN_CLIMB_GAIN_M:.0f} m ET sa pente moyenne (gain / "
+        f"{SWING_NOISE_FLOOR_M:.0f} m, pour ignorer le bruit résiduel post-lissage — voir "
+        "ASSUMPTIONS[\"zigzag\"]), rognée à son véritable début/fin (voir ASSUMPTIONS[\"trim\"]), puis "
+        f"retenue seulement si son gain net atteint {MIN_CLIMB_GAIN_M:.0f} m ET sa pente moyenne (gain / "
         f"distance) atteint {MIN_CLIMB_AVG_GRADE * 100:.0f} % — les DEUX critères, jamais un seul (un "
         "faux plat de 200 m de D+ sur 10 km ne doit pas compter comme une montée trail, et un mur de "
         "20 m à 30 % non plus si le critère de D+ minimal existe pour écarter le bruit très local). "
         "Valeurs rondes documentées, pas calibrées sur un jeu de séances étiquetées trail/montagne — un "
-        "réglage futur resterait localisé à ces deux constantes."
+        "réglage futur resterait localisé à ces deux constantes. Configurables par le workspace, voir "
+        "`[metrics].climb_min_gain_m`/`climb_min_grade_pct` dans `config/workspace.toml`."
+    ),
+    "zigzag": (
+        "La simplification en zigzag suit l'algorithme standard « extremum courant confirmé » (pas une "
+        "élimination a posteriori de petits segments) : un candidat (le point le plus haut/bas vu depuis "
+        "le dernier extremum CONFIRMÉ) n'est confirmé comme extremum, et un nouveau candidat de sens "
+        f"opposé démarré, que lorsque le signal retrace d'au moins {SWING_NOISE_FLOOR_M:.0f} m depuis ce "
+        "candidat. Une PREMIÈRE VERSION de #46 (revue de code, BLOQUANT) éliminait après coup les petits "
+        "segments d'un passage en revue des extrema locaux bruts, en reconsidérant à chaque suppression "
+        "les swings des segments restants CONTRE des voisins différents de ceux d'origine — un vrai "
+        "sommet intermédiaire pouvait alors être supprimé à tort (exemple qui casse cette version : "
+        "altitudes [0, 100, 98, 103, 60] avec un seuil de 5 m rend [0, 1, 4] au lieu de [0, 1, 3, 4] — le "
+        "sommet réel à 103 disparaît). L'algorithme courant ne présente pas ce défaut : chaque extremum "
+        "confirmé l'est par une seule comparaison locale (retracement depuis le candidat courant), jamais "
+        "reconsidéré ensuite."
+    ),
+    "trim": (
+        "BLOQUANT (revue de code #46) : un extremum du zigzag peut se retrouver TRÈS loin de la vraie "
+        "montée quand une longue approche plate (ou un long replat de sortie) ne crée elle-même aucun "
+        f"extremum — ex. 3 km plats + 100 m de montée + 3 km plats : le « creux » retenu par le zigzag "
+        "reste au tout début des 3 km plats (rien n'y dépasse le seuil de bruit), ce qui dilue "
+        "artificiellement la distance et donc la pente moyenne calculée (montée non détectée du tout, "
+        "ou VAM faussée). `_trim_rise` corrige cela EN ROGNANT chaque montée brute AVANT toute fusion : "
+        "sur l'intervalle du zigzag brut, le début est déplacé au DERNIER point encore à moins de "
+        f"{TRIM_TOLERANCE_M:.0f} m (`TRIM_TOLERANCE_M`) du minimum de l'intervalle, et la fin au PREMIER "
+        "point déjà à moins de cette tolérance du maximum — ce qui élimine toute approche plate en amont "
+        "et tout replat en aval, sans dépendre de la position réelle de l'extremum détecté par le "
+        "zigzag. Cette tolérance est volontairement plus petite que `SWING_NOISE_FLOOR_M` : elle sert à "
+        "coller au plus près du vrai bas/haut de la montée (précision), pas à filtrer du bruit "
+        "d'extrema (rôle déjà tenu par le zigzag). Rogner AVANT la fusion (jamais après) est essentiel : "
+        "c'est ce qui permet à `MERGE_MAX_DIP_DIST_M` de mesurer la VRAIE distance du replat entre deux "
+        "montées plutôt qu'une distance gonflée par des bouts de plat encore attachés aux deux montées."
     ),
     "merge": (
-        f"Deux montées consécutives séparées par un creux (replat, faux plat, courte descente) sont "
-        f"fusionnées en une seule si ce creux perd moins de {MERGE_MAX_DIP_LOSS_M:.0f} m d'altitude sur "
-        f"moins de {MERGE_MAX_DIP_DIST_M:.0f} m de distance horizontale — sans cette fusion, une montée "
-        "réelle avec un replat au milieu (très courant en trail : plateau avant un dernier raidillon) "
-        "serait artificiellement coupée en deux montées plus courtes, chacune sous-estimant le vrai "
-        "effort ascensionnel continu perçu par le coureur."
+        f"Deux montées (déjà rognées, voir ASSUMPTIONS[\"trim\"]) consécutives séparées par un creux "
+        "(replat, faux plat, courte descente) sont fusionnées en une seule si CE creux perd moins que le "
+        f"seuil applicable — le plus GRAND de {MERGE_MAX_DIP_LOSS_M:.0f} m (plancher absolu) et "
+        f"{MERGE_DIP_RELATIVE_FRAC * 100:.1f} % du plus petit des deux gains adjacents (`MERGE_DIP_"
+        "RELATIVE_FRAC`) — sur moins de "
+        f"{MERGE_MAX_DIP_DIST_M:.0f} m de distance horizontale (seuil, LUI, resté ABSOLU : même un "
+        "creux minuscule sur un long plateau de plusieurs centaines de mètres n'est jamais une simple "
+        "respiration au milieu d'une montée continue). Le plancher purement absolu (revue de code #46) "
+        "coupait à tort une grosse montée alpine en plusieurs tronçons dès qu'un creux de 15 m "
+        "interrompait ses 800 m de D+ — anecdotique à cette échelle, mais dépassant le plancher fixe de "
+        "10 m ; le seuil relatif corrige ce cas sans changer le comportement sur une montée trail "
+        "modeste (où le plancher absolu reste généralement le plus grand des deux). Sans fusion, une "
+        "montée réelle avec un replat au milieu (très courant en trail : plateau avant un dernier "
+        "raidillon) serait artificiellement coupée en plusieurs montées plus courtes, chacune "
+        "sous-estimant le vrai effort ascensionnel continu perçu par le coureur."
     ),
     "gap_segmentation": (
         "Une montée n'est JAMAIS détectée ni fusionnée à travers un trou de signal (montre en veille, "
@@ -198,7 +267,11 @@ ASSUMPTIONS = {
         "`arc_elevation.segments_by_gap`) : deux morceaux de montée de part et d'autre d'une pause "
         "totale du capteur ne sont jamais recollés, même s'ils appartiennent visuellement à la même "
         "vraie montée — mieux vaut deux montées détectées séparément qu'une VAM faussée par un temps "
-        "écoulé qui inclurait une pause dont la durée réelle est inconnue."
+        "écoulé qui inclurait une pause dont la durée réelle est inconnue. Conséquence assumée : une "
+        "montée coupée en deux par un trou de signal peut voir chacune de ses deux moitiés ÉCHOUER "
+        "individuellement le filtre de D+/pente minimal (ASSUMPTIONS[\"detection\"]) alors que la montée "
+        "entière, reconstituée, l'aurait franchi — deux montées manquées valent mieux qu'une VAM "
+        "silencieusement faussée par une pause de durée inconnue."
     ),
     "vam_basis": (
         "DEUX VAM sont calculées et exposées pour chaque montée, jamais une seule : `vam_elapsed_m_h` "
@@ -217,20 +290,28 @@ ASSUMPTIONS = {
         "`MIN_CLIMB_AVG_GRADE`, donc une montée tout juste détectée n'est jamais classée « <5 % » (ce "
         "libellé ne peut apparaître que si le seuil de détection est abaissé manuellement). Classement "
         "par montée, jamais par échantillon isolé : une montée fusionnée avec un replat interne garde "
-        "une seule classe, celle de sa pente moyenne globale."
+        "une seule classe, celle de sa pente moyenne globale. La pente est ARRONDIE (0,1 point de "
+        "pourcentage, la même précision que l'affichage) avant classement — une valeur brute juste sous "
+        "une borne (ex. 9,98 %) qui s'affiche arrondie à « 10,0 % » doit tomber dans la classe « 10-15 % "
+        "», pas dans « 5-10 % », pour ne jamais afficher un pourcentage et une classe visuellement "
+        "incohérents. Classes en valeur absolue, symétriques : #47 (descente) pourra les réutiliser "
+        "telles quelles pour ses propres classes de pente descendante si besoin — aucune classe dédiée à "
+        "la descente n'est définie ici, ce choix reviendra à #47."
     ),
     "best_window": (
         "Comme une courbe de puissance en cyclisme (meilleure puissance moyenne sur des durées "
         "fixes), `best_vam_windows` cherche le plus grand gain net d'altitude sur une fenêtre d'AU "
         f"MOINS {BEST_WINDOWS_S['vam_best_10min_m_h'] / 60:.0f} puis "
-        f"{BEST_WINDOWS_S['vam_best_20min_m_h'] / 60:.0f} minutes, glissée uniquement À L'INTÉRIEUR "
-        "d'une montée détectée (jamais à travers une descente ou un plat entre deux montées, qui "
-        "gonflerait artificiellement le gain sur la durée). Une montée plus courte que la fenêtre ne "
-        "contribue à aucun des deux best (`None` si aucune montée de l'activité n'atteint la durée). "
-        "Approximation liée à la résolution des échantillons (5 s par défaut) : le point de fin de "
-        "fenêtre est le premier point dont l'écart au départ ATTEINT la durée demandée, jamais "
-        "strictement plus court — la fenêtre réellement mesurée peut donc dépasser légèrement la "
-        "durée nominale, jamais lui être inférieure."
+        f"{BEST_WINDOWS_S['vam_best_20min_m_h'] / 60:.0f} minutes (approximativement — voir plus bas), "
+        "glissée uniquement À L'INTÉRIEUR d'une montée détectée (jamais à travers une descente ou un "
+        "plat entre deux montées, qui gonflerait artificiellement le gain sur la durée). Une montée plus "
+        "courte que la fenêtre ne contribue à aucun des deux best (`None` si aucune montée de l'activité "
+        "n'atteint la durée). Approximation liée à la résolution des échantillons (5 s par défaut) : le "
+        "point de fin de fenêtre est le premier point dont l'écart au départ ATTEINT la durée demandée, "
+        "jamais strictement plus court — la fenêtre réellement mesurée peut donc dépasser légèrement la "
+        "durée nominale (jamais lui être inférieure), et la VAM est divisée par cette durée RÉELLEMENT "
+        "mesurée (jamais par la durée nominale demandée), pour ne jamais surestimer le résultat d'un "
+        "écart de résolution."
     ),
 }
 
@@ -242,47 +323,49 @@ ASSUMPTIONS = {
 
 def _zigzag_extrema(altitudes: Sequence[float], min_swing_m: float) -> List[int]:
     """Indices (dans `altitudes`) des extrema alternés (creux/sommet) d'une
-    simplification en zigzag à hystérésis `min_swing_m` : tout extremum LOCAL
-    dont le mouvement depuis l'extremum précédemment retenu est inférieur à
-    `min_swing_m` est éliminé (bruit), et deux segments de même sens qui se
-    retrouvent adjacents après élimination sont traités comme un seul plus
-    grand segment (comportement recherché : un petit aller-retour de bruit au
-    milieu d'une vraie montée ne doit pas la couper). Le premier et le dernier
-    point sont toujours conservés (bornes du segment de temps sans trou de
-    signal, voir `arc_elevation.segments_by_gap`)."""
+    simplification en zigzag à hystérésis `min_swing_m` — algorithme standard
+    « extremum courant confirmé », voir ASSUMPTIONS["zigzag"] pour le défaut
+    d'une première version (élimination a posteriori) que celui-ci corrige
+    (BLOQUANT, revue de code #46) : un candidat (le point le plus haut/bas vu
+    depuis le dernier extremum CONFIRMÉ) n'est confirmé, et un nouveau candidat
+    de sens opposé démarré, que lorsque le signal retrace d'au moins
+    `min_swing_m` depuis ce candidat — jamais de reconsidération a posteriori
+    d'un extremum déjà confirmé. Le premier et le dernier point sont toujours
+    conservés (bornes du segment de temps sans trou de signal, voir
+    `arc_elevation.segments_by_gap`)."""
     n = len(altitudes)
     if n <= 1:
         return list(range(n))
-    # 1) extrema locaux bruts : tout changement de signe de la dérivée discrète.
-    candidates = [0]
-    for i in range(1, n - 1):
-        prev_delta = altitudes[i] - altitudes[i - 1]
-        next_delta = altitudes[i + 1] - altitudes[i]
-        if prev_delta == 0:
-            continue
-        if (prev_delta > 0) != (next_delta > 0) and next_delta != 0:
-            candidates.append(i)
-    candidates.append(n - 1)
-    # 2) élimination itérative des segments (creux->sommet ou l'inverse) dont
-    # l'amplitude est sous le seuil de bruit, jusqu'à stabilité.
-    changed = True
-    while changed and len(candidates) > 2:
-        changed = False
-        i = 1
-        while i < len(candidates) - 1:
-            swing = abs(altitudes[candidates[i]] - altitudes[candidates[i - 1]])
-            if swing < min_swing_m:
-                del candidates[i]
-                changed = True
-            else:
-                i += 1
-    return candidates
+    pivots = [0]
+    trend = 0  # 0 = sens pas encore déterminé ; 1 = candidat = sommet ; -1 = candidat = creux
+    ext_idx, ext_val = 0, altitudes[0]
+    for i in range(1, n):
+        v = altitudes[i]
+        if trend == 0 and abs(v - ext_val) >= min_swing_m:
+            trend = 1 if v > ext_val else -1
+        if trend == 1:
+            if v >= ext_val:
+                ext_val, ext_idx = v, i
+            elif ext_val - v >= min_swing_m:
+                pivots.append(ext_idx)
+                trend = -1
+                ext_val, ext_idx = v, i
+        elif trend == -1:
+            if v <= ext_val:
+                ext_val, ext_idx = v, i
+            elif v - ext_val >= min_swing_m:
+                pivots.append(ext_idx)
+                trend = 1
+                ext_val, ext_idx = v, i
+    if pivots[-1] != n - 1:
+        pivots.append(n - 1)
+    return pivots
 
 
 def _raw_rises(extrema: Sequence[int], altitudes: Sequence[float]) -> List[List[int]]:
     """Paires (creux, sommet) CONSÉCUTIVES dans `extrema` dont l'altitude
-    progresse — les montées brutes, avant fusion des petits creux
-    intermédiaires (`_merge_climbs`)."""
+    progresse — les montées brutes, avant rognage (`_trim_rise`) puis fusion
+    des petits creux intermédiaires (`_merge_climbs`)."""
     rises = []
     for i in range(len(extrema) - 1):
         a, b = extrema[i], extrema[i + 1]
@@ -291,13 +374,47 @@ def _raw_rises(extrema: Sequence[int], altitudes: Sequence[float]) -> List[List[
     return rises
 
 
+def _trim_rise(a: int, b: int, altitudes: Sequence[float], tol: float) -> List[int]:
+    """Rogne une montée brute `[a, b]` (indices dans `altitudes`) à son
+    intervalle le plus étroit qui couvre encore (min, max) de `altitudes[a:b+1]`
+    à `tol` près — voir ASSUMPTIONS["trim"] (BLOQUANT, revue de code #46) pour
+    le défaut que ceci corrige (une longue approche plate en amont, ou un long
+    replat en aval, jamais eux-mêmes détectés comme extremum, gonflent sinon la
+    distance de la montée bien au-delà de sa vraie étendue). Le début devient
+    le DERNIER index encore à `tol` du minimum de l'intervalle (élimine toute
+    approche plate), la fin le PREMIER index déjà à `tol` du maximum de
+    l'intervalle à partir de ce nouveau début (élimine tout replat de sortie).
+    Rend `[a, b]` inchangé si l'intervalle est trop court pour être rogné
+    utilement (amplitude ≤ 2×`tol`)."""
+    leg_min = min(altitudes[a:b + 1])
+    leg_max = max(altitudes[a:b + 1])
+    if leg_max - leg_min <= 2 * tol:
+        return [a, b]
+    start = a
+    for j in range(a, b + 1):
+        if altitudes[j] <= leg_min + tol:
+            start = j
+    end = b
+    for k in range(start, b + 1):
+        if altitudes[k] >= leg_max - tol:
+            end = k
+            break
+    if end <= start:
+        end = b
+    return [start, end]
+
+
 def _merge_climbs(rises: Sequence[Sequence[int]], altitudes: Sequence[float],
                    distances: Sequence[float], *,
                    max_dip_loss_m: float = MERGE_MAX_DIP_LOSS_M,
+                   dip_relative_frac: float = MERGE_DIP_RELATIVE_FRAC,
                    max_dip_dist_m: float = MERGE_MAX_DIP_DIST_M) -> List[List[int]]:
-    """Fusionne deux montées brutes CONSÉCUTIVES (séparées par exactement un
-    creux, garanti par l'alternance du zigzag) si ce creux perd moins de
-    `max_dip_loss_m` sur moins de `max_dip_dist_m` — voir ASSUMPTIONS["merge"].
+    """Fusionne deux montées (déjà ROGNÉES par `_trim_rise`) CONSÉCUTIVES
+    (séparées par exactement un creux, garanti par l'alternance du zigzag) si
+    ce creux perd moins que le seuil applicable — le plus GRAND de
+    `max_dip_loss_m` (absolu) et `dip_relative_frac` × le plus petit des deux
+    gains adjacents (relatif, pour une grosse montée alpine) — sur moins de
+    `max_dip_dist_m` (seuil, lui, resté absolu) — voir ASSUMPTIONS["merge"].
     Itératif jusqu'à stabilité (une fusion peut rapprocher deux autres montées
     d'un creux qui, cumulé, dépasserait quand même le seuil — non : le creux
     entre deux montées non adjacentes n'est jamais reconsidéré après une
@@ -308,11 +425,14 @@ def _merge_climbs(rises: Sequence[Sequence[int]], altitudes: Sequence[float],
         changed = False
         i = 0
         while i < len(merged) - 1:
-            end_a = merged[i][1]
-            start_b = merged[i + 1][0]
+            start_a, end_a = merged[i]
+            start_b, end_b = merged[i + 1]
             dip_loss = altitudes[end_a] - altitudes[start_b]
             dip_dist = distances[start_b] - distances[end_a]
-            if dip_loss <= max_dip_loss_m and (dip_dist is None or dip_dist <= max_dip_dist_m):
+            gain_a = altitudes[end_a] - altitudes[start_a]
+            gain_b = altitudes[end_b] - altitudes[start_b]
+            allowed_loss = max(max_dip_loss_m, dip_relative_frac * min(gain_a, gain_b))
+            if dip_loss <= allowed_loss and dip_dist <= max_dip_dist_m:
                 merged[i][1] = merged[i + 1][1]
                 del merged[i + 1]
                 changed = True
@@ -323,10 +443,15 @@ def _merge_climbs(rises: Sequence[Sequence[int]], altitudes: Sequence[float],
 
 def grade_class(avg_grade: Optional[float]) -> Optional[str]:
     """Classe de pente (voir `GRADE_CLASSES`) d'une pente moyenne signée ou
-    non (valeur absolue utilisée) — `None` si `avg_grade` est `None`."""
+    non (valeur absolue utilisée) — `None` si `avg_grade` est `None`. La pente
+    est ARRONDIE au dixième de point de pourcentage (même précision que
+    l'affichage) AVANT classement — voir ASSUMPTIONS["grade_classes"] : une
+    valeur brute juste sous une borne (ex. 9,98 %, affichée arrondie « 10,0 %
+    ») doit tomber dans la classe supérieure, jamais afficher un pourcentage
+    et une classe visuellement incohérents."""
     if avg_grade is None:
         return None
-    g = abs(avg_grade)
+    g = round(abs(avg_grade), 3)
     for lo, hi, label in GRADE_CLASSES:
         if lo <= g < hi:
             return label
@@ -342,8 +467,10 @@ def detect_climbs(samples: Sequence[dict], *,
                    min_gain_m: float = MIN_CLIMB_GAIN_M,
                    min_avg_grade: float = MIN_CLIMB_AVG_GRADE,
                    merge_max_dip_loss_m: float = MERGE_MAX_DIP_LOSS_M,
+                   merge_dip_relative_frac: float = MERGE_DIP_RELATIVE_FRAC,
                    merge_max_dip_dist_m: float = MERGE_MAX_DIP_DIST_M,
                    swing_noise_floor_m: float = SWING_NOISE_FLOOR_M,
+                   trim_tolerance_m: float = TRIM_TOLERANCE_M,
                    smooth_taps: int = SMOOTH_TAPS,
                    max_gap_s: float = MAX_GAP_S,
                    resolution_s: float = DEFAULT_RESOLUTION_S) -> List[dict]:
@@ -378,15 +505,23 @@ def detect_climbs(samples: Sequence[dict], *,
 
         extrema = _zigzag_extrema(alt_v, swing_noise_floor_m)
         rises = _raw_rises(extrema, alt_v)
-        merged = _merge_climbs(rises, alt_v, dist_v,
-                                max_dip_loss_m=merge_max_dip_loss_m, max_dip_dist_m=merge_max_dip_dist_m)
+        # Rognage AVANT fusion (BLOQUANT, revue de code #46, voir ASSUMPTIONS["trim"]) :
+        # sans cela, une approche plate ou un replat de sortie jamais eux-mêmes détectés
+        # comme extremum resteraient attachés à la montée et fausseraient sa distance —
+        # ET fausseraient la distance du CREUX entre deux montées consécutives, sur
+        # laquelle `_merge_climbs` s'appuie pour décider de fusionner ou non.
+        trimmed = [_trim_rise(a, b, alt_v, trim_tolerance_m) for a, b in rises]
+        merged = _merge_climbs(trimmed, alt_v, dist_v,
+                                max_dip_loss_m=merge_max_dip_loss_m,
+                                dip_relative_frac=merge_dip_relative_frac,
+                                max_dip_dist_m=merge_max_dip_dist_m)
 
         for start_local, end_local in merged:
             gain = alt_v[end_local] - alt_v[start_local]
             distance = dist_v[end_local] - dist_v[start_local]
             if gain < min_gain_m or not distance or distance <= 0:
                 continue
-            avg_grade = gain / distance
+            avg_grade = round(gain / distance, 3)
             if avg_grade < min_avg_grade:
                 continue
             gi, gj = idx_v[start_local], idx_v[end_local]
@@ -394,14 +529,20 @@ def detect_climbs(samples: Sequence[dict], *,
             start_t = climb_samples[0]["t_s"]
             end_t = climb_samples[-1]["t_s"]
             duration_elapsed_s = end_t - start_t
+            # Temps de mouvement (#46, revue de code) : SEULEMENT les intervalles
+            # ENTRE deux échantillons de la montée — le dernier échantillon n'a pas de
+            # « suivant » à l'intérieur de la montée, donc ne lui attribue aucun
+            # intervalle (jamais `resolution_s` par défaut, qui ferait dépasser
+            # `duration_moving_s` au-delà de `duration_elapsed_s`, la montée n'ayant
+            # par définition aucun instant après son propre dernier échantillon).
             moving_s = 0.0
             n_climb = len(climb_samples)
-            for k in range(n_climb):
-                dt = (climb_samples[k + 1]["t_s"] - climb_samples[k]["t_s"]) if k + 1 < n_climb else resolution_s
-                dt = max(0.0, min(dt, resolution_s))
+            for k in range(n_climb - 1):
+                dt = max(0.0, min(climb_samples[k + 1]["t_s"] - climb_samples[k]["t_s"], resolution_s))
                 speed = climb_samples[k].get("speed_ms")
                 if speed is not None and speed >= G.STOPPED_SPEED_MS:
                     moving_s += dt
+            moving_s = min(moving_s, duration_elapsed_s)
             vam_elapsed = (gain / (duration_elapsed_s / 3600.0)) if duration_elapsed_s > 0 else None
             vam_moving = (gain / (moving_s / 3600.0)) if moving_s > 0 else None
             climbs_out.append({
@@ -411,7 +552,7 @@ def detect_climbs(samples: Sequence[dict], *,
                 "end_km": round(dist_v[end_local] / 1000.0, 3),
                 "distance_m": round(distance, 1),
                 "gain_m": round(gain, 1),
-                "avg_grade": round(avg_grade, 4),
+                "avg_grade": avg_grade,
                 "grade_class": grade_class(avg_grade),
                 "duration_elapsed_s": round(duration_elapsed_s, 1),
                 "duration_moving_s": round(moving_s, 1),
@@ -429,11 +570,15 @@ def detect_climbs(samples: Sequence[dict], *,
 # ---------------------------------------------------------------------------
 
 
-def _best_window_gain(times: Sequence[float], altitudes: Sequence[float], window_s: float) -> Optional[float]:
+def _best_window_gain(times: Sequence[float], altitudes: Sequence[float],
+                       window_s: float) -> Optional[Tuple[float, float]]:
     """Plus grand gain net d'altitude sur une fenêtre d'AU MOINS `window_s`
     secondes glissée sur `times`/`altitudes` (triés par temps croissant, DÉJÀ
-    limités à une seule montée) — voir ASSUMPTIONS["best_window"]. `None` si
-    la montée est plus courte que `window_s`."""
+    limités à une seule montée) — voir ASSUMPTIONS["best_window"]. Rend
+    `(gain_m, span_s)` — `span_s` est la durée RÉELLEMENT mesurée (≥
+    `window_s`, jamais < : voir ASSUMPTIONS["best_window"] pour pourquoi la
+    VAM doit être divisée par `span_s`, pas par `window_s`), ou `None` si la
+    montée est plus courte que `window_s`."""
     n = len(times)
     if n < 2 or times[-1] - times[0] < window_s:
         return None
@@ -443,8 +588,8 @@ def _best_window_gain(times: Sequence[float], altitudes: Sequence[float], window
         if j >= n:
             continue
         gain = altitudes[j] - altitudes[i]
-        if best is None or gain > best:
-            best = gain
+        if best is None or gain > best[0]:
+            best = (gain, times[j] - times[i])
     return best
 
 
@@ -470,11 +615,15 @@ def best_vam_windows(samples: Sequence[dict], climbs: Sequence[dict], *,
         times = [p[0] for p in pairs]
         altitudes = [p[1] for p in pairs]
         for key, window_s in windows_s.items():
-            gain = _best_window_gain(times, altitudes, window_s)
-            if gain is None:
+            result = _best_window_gain(times, altitudes, window_s)
+            if result is None:
                 continue
-            vam = gain / (window_s / 3600.0)
-            if out[key] is None or vam > out[key]:
+            gain, span_s = result
+            # Divisé par la durée RÉELLEMENT mesurée (`span_s`, ≥ `window_s` du fait de
+            # la résolution des échantillons), jamais par `window_s` nominal — sinon un
+            # écart de résolution surestimerait légèrement la VAM (#46, revue de code).
+            vam = gain / (span_s / 3600.0) if span_s > 0 else None
+            if vam is not None and (out[key] is None or vam > out[key]):
                 out[key] = vam
     return {key: (round(v, 1) if v is not None else None) for key, v in out.items()}
 

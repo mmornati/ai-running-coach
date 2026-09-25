@@ -59,11 +59,14 @@ class TestSyntheticClimbKnownVam(unittest.TestCase):
         climbs = VC.detect_climbs(samples)
         self.assertEqual(len(climbs), 1)
         c = climbs[0]
-        # Tolérance : le lissage d'altitude (3 points) rogne légèrement les deux
-        # bords d'une rampe parfaitement linéaire (voir arc_climb.ASSUMPTIONS
-        # ["detection"]) — quelques m/h d'écart, jamais plusieurs dizaines.
+        # Tolérance : le rognage (`_trim_rise`, `TRIM_TOLERANCE_M`) recadre chaque
+        # montée sur son intervalle le plus étroit à `TRIM_TOLERANCE_M` près de part
+        # et d'autre (voir arc_climb.ASSUMPTIONS["trim"]) — sur une rampe parfaitement
+        # linéaire sans aucun replat, cela rogne jusqu'à ~2×TRIM_TOLERANCE_M du D+
+        # total, mais préserve exactement le TAUX (VAM), d'où une tolérance plus large
+        # sur le gain que sur la VAM elle-même.
         self.assertAlmostEqual(c["vam_elapsed_m_h"], 600.0, delta=5.0)
-        self.assertAlmostEqual(c["gain_m"], 300.0, delta=2.0)
+        self.assertAlmostEqual(c["gain_m"], 300.0, delta=2 * VC.TRIM_TOLERANCE_M + 1.0)
         self.assertAlmostEqual(c["avg_grade"], 300.0 / 3600.0, delta=0.002)
         self.assertEqual(c["grade_class"], "5-10%")
 
@@ -129,7 +132,11 @@ class TestMergeAcrossSmallDip(unittest.TestCase):
             emit()
         climbs = VC.detect_climbs(samples)
         self.assertEqual(len(climbs), 1, climbs)
-        self.assertAlmostEqual(climbs[0]["gain_m"], 115.0, delta=3.0)
+        # Rognage des deux extrémités EXTÉRIEURES de la montée fusionnée (voir
+        # arc_climb.ASSUMPTIONS["trim"]) : jusqu'à ~2×TRIM_TOLERANCE_M de moins que
+        # les 115 m « bruts » (60 - 5 + 60), sans affecter la décision de fusion
+        # elle-même (le creux interne, lui, reste correctement mesuré).
+        self.assertAlmostEqual(climbs[0]["gain_m"], 115.0, delta=2 * VC.TRIM_TOLERANCE_M + 2.0)
 
     def test_dip_too_big_keeps_climbs_separate(self):
         """Même profil, mais un creux de 20 m (au-dessus de
@@ -304,6 +311,238 @@ class TestClimbReportSportRestriction(unittest.TestCase):
         self.assertIsNone(report["best_climb_vam_elapsed_m_h"])
 
 
+def _flat_climb_flat_samples(*, lead_m, climb_gain_m, climb_dist_m, trail_m,
+                              speed_ms=2.0, resolution_s=5, hr_bpm=150.0, rng=None, noise_m=0.0):
+    """Approche plate (`lead_m`), montée linéaire (`climb_gain_m` sur
+    `climb_dist_m`), replat de sortie (`trail_m`) — vérité connue sur la SEULE
+    portion montée, pour verrouiller la revue de code #46 (BLOQUANT) : un
+    replat qui ne crée lui-même aucun extremum ne doit jamais diluer le gain/
+    la pente/la VAM détectés."""
+    out = []
+    t = 0.0
+    dist = 0.0
+    alt = 0.0
+
+    def _emit():
+        a = alt + (rng.uniform(-noise_m, noise_m) if rng and noise_m else 0.0)
+        out.append({"t_s": t, "distance_m": dist, "altitude_m": a,
+                     "speed_ms": speed_ms, "hr_bpm": hr_bpm, "cadence_spm": 160.0})
+
+    n_lead = int(lead_m / speed_ms / resolution_s)
+    n_climb = int(climb_dist_m / speed_ms / resolution_s)
+    n_trail = int(trail_m / speed_ms / resolution_s)
+    step_dist = speed_ms * resolution_s
+    step_alt = climb_gain_m / n_climb if n_climb else 0.0
+    _emit()
+    for _ in range(n_lead):
+        t += resolution_s
+        dist += step_dist
+        _emit()
+    for _ in range(n_climb):
+        t += resolution_s
+        dist += step_dist
+        alt += step_alt
+        _emit()
+    for _ in range(n_trail):
+        t += resolution_s
+        dist += step_dist
+        _emit()
+    return out
+
+
+class TestFlatApproachAndExitNeverDiluteClimb(unittest.TestCase):
+    """Revue de code #46, BLOQUANT : une longue approche/sortie plate ne crée
+    elle-même aucun extremum du zigzag — sans rognage (`_trim_rise`), le
+    « creux » retenu reste au tout début de l'approche plate, ce qui dilue le
+    gain/la pente sur toute la distance plate en trop. Repros de la revue."""
+
+    def test_3km_flat_plus_100m_at_10pct_plus_3km_flat_is_detected(self):
+        samples = _flat_climb_flat_samples(lead_m=3000, climb_gain_m=100.0,
+                                            climb_dist_m=1000.0, trail_m=3000)
+        climbs = VC.detect_climbs(samples)
+        self.assertEqual(len(climbs), 1, climbs)
+        c = climbs[0]
+        # Sans le rognage, la pente mesurée tombe à ~1,4 % (100 m sur ~7 km) et la
+        # montée n'est même pas détectée (sous MIN_CLIMB_AVG_GRADE) — avec, la pente
+        # doit rester proche des 10 % réels de la seule portion montée.
+        self.assertGreaterEqual(c["avg_grade"], 0.08)
+        self.assertLessEqual(c["distance_m"], 1200.0)
+        self.assertAlmostEqual(c["gain_m"], 100.0, delta=2 * VC.TRIM_TOLERANCE_M + 1.0)
+
+    def test_200m_flat_plus_60m_at_8pct_plus_200m_flat_vam_close_to_true_rate(self):
+        climb_dist_m = 60.0 / 0.08  # 750 m, pour une pente réelle de 8 %
+        samples = _flat_climb_flat_samples(lead_m=200, climb_gain_m=60.0,
+                                            climb_dist_m=climb_dist_m, trail_m=200, speed_ms=2.0)
+        climbs = VC.detect_climbs(samples)
+        self.assertEqual(len(climbs), 1, climbs)
+        c = climbs[0]
+        true_duration_h = (climb_dist_m / 2.0) / 3600.0
+        true_vam = 60.0 / true_duration_h
+        # Tolérance large (rognage aux deux bords) mais la VAM mesurée doit rester du
+        # bon ORDRE DE GRANDEUR — jamais diluée par les 400 m de plat comme avant #46
+        # (revue de code : 343 m/h mesurés au lieu de ~432 m/h attendus).
+        self.assertAlmostEqual(c["vam_elapsed_m_h"], true_vam, delta=true_vam * 0.15)
+
+    def test_acceptance_case_with_500m_flat_lead_and_trail_across_seeds(self):
+        """Le critère d'acceptation de #46 (300 m / 30 min -> 600 m/h) doit rester
+        vérifié même entouré de 500 m de plat de chaque côté, et robuste à un bruit
+        d'altitude ±1-3 m — plusieurs graines (revue de code, BLOQUANT : mesuré entre
+        383 et 591 m/h avant #46 selon la graine, jamais 600 m/h)."""
+        import random
+        for seed in (1, 2, 3, 4, 5):
+            for noise_m in (1.0, 2.0, 3.0):
+                rng = random.Random(seed * 100 + int(noise_m))
+                samples = _flat_climb_flat_samples(lead_m=500, climb_gain_m=300.0, climb_dist_m=3600.0,
+                                                    trail_m=500, speed_ms=2.0, rng=rng, noise_m=noise_m)
+                climbs = VC.detect_climbs(samples)
+                self.assertEqual(len(climbs), 1, (seed, noise_m, climbs))
+                self.assertAlmostEqual(climbs[0]["vam_elapsed_m_h"], 600.0, delta=60.0,
+                                        msg=(seed, noise_m, climbs[0]))
+
+
+class TestZigzagPreservesTrueSummit(unittest.TestCase):
+    """Revue de code #46, SHOULD-FIX : l'ancienne élimination a posteriori pouvait
+    supprimer un vrai sommet intermédiaire. [0, 100, 98, 103, 60] à seuil 5 doit
+    garder le sommet réel à l'indice 3 (valeur 103), jamais le perdre."""
+
+    def test_true_summit_is_preserved(self):
+        # 100 (indice 1) n'est jamais un extremum CONFIRMÉ : il est dépassé par 103
+        # avant toute retracement de 5 m depuis lui — seul le vrai sommet (103,
+        # indice 3) doit être confirmé, jamais perdu comme le faisait l'ancienne
+        # élimination a posteriori (qui rendait [0, 1, 4], perdant le sommet réel).
+        pivots = VC._zigzag_extrema([0, 100, 98, 103, 60], 5.0)
+        self.assertEqual(pivots, [0, 3, 4])
+
+
+class TestRelativeMergeThreshold(unittest.TestCase):
+    """Revue de code #46, SHOULD-FIX : un plancher de fusion purement absolu coupe à
+    tort une grosse montée alpine dès qu'un petit creux (anecdotique à cette
+    échelle) dépasse ce plancher fixe."""
+
+    def _alpine_climb_with_two_dips(self, dip_loss_m):
+        out = []
+        t = 0.0
+        dist = 0.0
+        alt = 0.0
+
+        def _emit():
+            out.append({"t_s": t, "distance_m": dist, "altitude_m": alt,
+                         "speed_ms": 1.5, "hr_bpm": 150.0, "cadence_spm": 150.0})
+
+        _emit()
+
+        def _ramp(gain_m, dist_m, n=None):
+            nonlocal t, dist, alt
+            n = n or int(dist_m / 15.0)
+            step_alt = gain_m / n
+            step_dist = dist_m / n
+            for _ in range(n):
+                t += 5
+                dist += step_dist
+                alt += step_alt
+                _emit()
+
+        def _dip(loss_m, dist_m=100.0, n=20):
+            nonlocal t, dist, alt
+            step_alt = -loss_m / n
+            step_dist = dist_m / n
+            for _ in range(n):
+                t += 5
+                dist += step_dist
+                alt += step_alt
+                _emit()
+
+        _ramp(300.0, 3000.0)
+        _dip(dip_loss_m)
+        _ramp(300.0, 3000.0)
+        _dip(dip_loss_m)
+        _ramp(200.0, 2000.0)
+        return out
+
+    def test_two_15m_dips_in_800m_climb_stay_merged(self):
+        samples = self._alpine_climb_with_two_dips(15.0)
+        climbs = VC.detect_climbs(samples)
+        self.assertEqual(len(climbs), 1, climbs)
+        # Gain NET (300 + 300 + 200 - 15 - 15 = 770 m, jamais la somme brute des trois
+        # segments de montée qui ignorerait les deux creux internes), à ~2×TRIM_TOLERANCE_M
+        # près (rognage des deux extrémités extérieures de la montée fusionnée).
+        self.assertAlmostEqual(climbs[0]["gain_m"], 770.0, delta=2 * VC.TRIM_TOLERANCE_M + 5.0)
+
+    def test_dip_far_beyond_relative_threshold_still_splits(self):
+        """Un creux de 80 m (bien au-delà de 12,5 % du plus petit gain adjacent,
+        300 m) reste une coupure — le seuil relatif ne devient pas sans limite."""
+        samples = self._alpine_climb_with_two_dips(80.0)
+        climbs = VC.detect_climbs(samples)
+        self.assertGreaterEqual(len(climbs), 2, climbs)
+
+
+class TestPlateauBetweenTwoClimbsStaysSplit(unittest.TestCase):
+    """Revue de code #46, BLOQUANT : un plateau de 2 km (même avec un creux minime)
+    entre deux montées de 200 m ne doit JAMAIS être fusionné — le seuil de distance
+    (`MERGE_MAX_DIP_DIST_M`, 200 m) reste absolu, quel que soit le seuil de perte."""
+
+    def test_200m_climb_2km_plateau_200m_climb_stays_two_climbs(self):
+        out = []
+        t = 0.0
+        dist = 0.0
+        alt = 0.0
+
+        def _emit():
+            out.append({"t_s": t, "distance_m": dist, "altitude_m": alt,
+                         "speed_ms": 2.0, "hr_bpm": 150.0, "cadence_spm": 160.0})
+
+        _emit()
+
+        def _ramp(gain_m, dist_m, n):
+            nonlocal t, dist, alt
+            step_alt = gain_m / n
+            step_dist = dist_m / n
+            for _ in range(n):
+                t += 5
+                dist += step_dist
+                alt += step_alt
+                _emit()
+
+        _ramp(200.0, 2000.0, 200)
+        # Plateau de 2 km avec un léger creux réaliste de 6 m (au-dessus du bruit de
+        # zigzag, mais dérisoire face aux deux montées de 200 m).
+        _ramp(-6.0, 1000.0, 100)
+        _ramp(6.0, 1000.0, 100)
+        _ramp(200.0, 2000.0, 200)
+        climbs = VC.detect_climbs(out)
+        self.assertEqual(len(climbs), 2, climbs)
+
+
+class TestMovingTimeNeverExceedsElapsed(unittest.TestCase):
+    """Revue de code #46, SHOULD-FIX : le dernier échantillon d'une montée ne doit
+    jamais recevoir un crédit de mouvement au-delà de la durée écoulée réelle de la
+    montée elle-même (bug mesuré : 2445 s de mouvement pour 2440 s écoulées)."""
+
+    def test_moving_duration_never_exceeds_elapsed_duration(self):
+        samples = _linear_climb_samples(duration_s=1800, gain_m=300.0, distance_m=3600.0)
+        climbs = VC.detect_climbs(samples)
+        self.assertEqual(len(climbs), 1)
+        c = climbs[0]
+        self.assertLessEqual(c["duration_moving_s"], c["duration_elapsed_s"])
+
+    def test_two_sample_climb_moving_equals_elapsed_not_more(self):
+        samples = [
+            {"t_s": 0.0, "distance_m": 0.0, "altitude_m": 0.0, "speed_ms": 2.0,
+             "hr_bpm": 150.0, "cadence_spm": 160.0},
+            {"t_s": 5.0, "distance_m": 10.0, "altitude_m": 60.0, "speed_ms": 2.0,
+             "hr_bpm": 150.0, "cadence_spm": 160.0},
+        ]
+        # Deux échantillons seuls ne suffisent pas à passer le zigzag/rognage utiles,
+        # mais l'invariant (jamais moving > elapsed) doit tenir même sur un cas
+        # dégénéré : on vérifie directement via une montée fabriquée à la main plus
+        # longue mais toujours à SEULEMENT deux pas de temps utiles pour le dernier
+        # segment.
+        big = _linear_climb_samples(duration_s=60, gain_m=55.0, distance_m=120.0, resolution_s=5)
+        climbs = VC.detect_climbs(big)
+        if climbs:
+            self.assertLessEqual(climbs[0]["duration_moving_s"], climbs[0]["duration_elapsed_s"])
+
+
 # ---------------------------------------------------------------------------
 # arc_index : table activity_climb, colonnes best_vam_*, CLI
 # ---------------------------------------------------------------------------
@@ -391,6 +630,32 @@ class TestActivityClimbTable(Workspace):
         self.index()
         act = self.activity_row(self.GARMIN_ID)
         self.assertIsNone(act["best_climb_vam_elapsed_m_h"])
+
+    def test_configurable_min_gain_from_workspace_config(self):
+        """Revue de code #46, should-fix 4 (critère d'acceptation : « montée
+        minimale configurable ») : un `[metrics].climb_min_gain_m` plus haut que le
+        gain réel de la montée (30 m) doit empêcher sa détection, alors que le
+        défaut (50 m) l'aurait aussi rejetée — ici on vérifie l'inverse : ABAISSER
+        le seuil sous 30 m permet de détecter une petite montée normalement
+        rejetée par le défaut."""
+        self.write_activity(self.GARMIN_ID, duration_s=300, distance_m=300)
+        self.write_fit_climb(self.GARMIN_ID, duration_s=300, gain_m=30.0, distance_m=300.0)
+        self.index()
+        self.assertIsNone(self.activity_row(self.GARMIN_ID)["best_climb_vam_elapsed_m_h"])
+        (self.ws / "config").mkdir(parents=True, exist_ok=True)
+        self.write("config/workspace.toml", "[metrics]\nclimb_min_gain_m = 10.0\nclimb_min_grade_pct = 5.0\n")
+        self.index()
+        act = self.activity_row(self.GARMIN_ID)
+        self.assertIsNotNone(act["best_climb_vam_elapsed_m_h"])
+
+    def test_invalid_config_value_falls_back_to_default_with_warning(self):
+        self.write_activity(self.GARMIN_ID)
+        self.write_fit_climb(self.GARMIN_ID, duration_s=1800, gain_m=300.0, distance_m=3600.0)
+        (self.ws / "config").mkdir(parents=True, exist_ok=True)
+        self.write("config/workspace.toml", "[metrics]\nclimb_min_gain_m = \"beaucoup\"\n")
+        self.index()  # ne doit jamais lever
+        act = self.activity_row(self.GARMIN_ID)
+        self.assertIsNotNone(act["best_climb_vam_elapsed_m_h"])
 
 
 class TestActivityClimbReportAndCli(Workspace):

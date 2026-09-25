@@ -157,10 +157,14 @@ six semaines d'historique pour que la condition ait un sens.
   L'indicateur lui-même est une simple division (gain / durée), sans modèle
   propriétaire à approximer — voir [Marques et métriques](../marques.md) pour
   son origine historique en cyclisme. Une montée n'est comptée que si son
-  gain net atteint 50 m ET sa pente moyenne atteint 5 % (les deux critères),
-  jamais à travers un trou de signal (montre en veille) ; deux montées
-  séparées par un petit replat (moins de 10 m perdus sur moins de 200 m) sont
-  fusionnées en une seule. Sous les deux repères « Meilleure VAM 10/20 min »
+  gain net atteint 50 m ET sa pente moyenne atteint 5 % (les deux critères,
+  **configurables** — `[metrics].climb_min_gain_m`/`climb_min_grade_pct` dans
+  `config/workspace.toml`, à adapter au terrain habituel), jamais à travers un
+  trou de signal (montre en veille) ; deux montées séparées par un petit
+  replat sont fusionnées en une seule (creux de moins de 10 m, ou moins de
+  12,5 % du plus petit des deux gains adjacents sur une grosse montée, sur
+  moins de 200 m de distance dans tous les cas). Sous les deux repères
+  « Meilleure VAM 10/20 min »
   (comme une courbe de puissance en cyclisme) : le plus grand gain net observé
   sur une fenêtre d'au moins 10, puis 20 minutes, glissée à l'intérieur d'une
   seule montée. Une sortie sans montée détectée (parcours plat) n'apparaît

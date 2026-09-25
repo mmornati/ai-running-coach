@@ -93,7 +93,10 @@ sortie courte). La table `activity_climb` et les colonnes
 sont recalculées en entier à chaque passage de `index_workspace` (même
 discipline que GAP/#44 et découplage/#45), restreintes à la famille course à
 pied (course, trail, randonnée, marche) avec des échantillons FIT ingérés —
-voir `arc_climb.ASSUMPTIONS`.
+voir `arc_climb.ASSUMPTIONS`. Seuils de détection configurables :
+`[metrics].climb_min_gain_m`/`climb_min_grade_pct` (défauts 50 m / 5 %, voir
+`config/workspace.toml`), résolus par `settings()` — critère d'acceptation de
+#46 (« montée minimale configurable »).
 
 Options communes : `--workspace DIR` (sinon $ARC_WORKSPACE, le pointeur
 ~/.config/ai-running-coach/workspace, puis le moteur), `--db FICHIER` (défaut
@@ -221,6 +224,33 @@ def _hr_zone_method(config: Dict[str, dict]) -> str:
     return value
 
 
+def _positive_float(config: Dict[str, dict], section: str, key: str, default: float) -> float:
+    """Résout `[section].key` en flottant strictement positif, jamais en levant —
+    même discipline que `_heat_threshold_c` (revue de code #46, should-fix 4 :
+    « montée minimale configurable », critère d'acceptation de #46). Accepte un
+    nombre ou une chaîne numérique (repli TOML < 3.11, voir `_heat_threshold_c`),
+    rejette les booléens. Toute valeur absente, vide, invalide, nulle ou négative
+    retombe sur `default`, avec un avertissement sur stderr dans le cas invalide
+    seulement (jamais pour une simple absence, le cas normal sans override)."""
+    raw = config.get(section, {}).get(key)
+    if raw in (None, ""):
+        return default
+    value = None
+    if not isinstance(raw, bool):
+        if isinstance(raw, (int, float)):
+            value = float(raw)
+        elif isinstance(raw, str):
+            try:
+                value = float(raw.strip().replace(",", "."))
+            except ValueError:
+                value = None
+    if value is None or value <= 0:
+        print(f"avertissement : [{section}].{key} = {raw!r} n'est pas un nombre strictement positif "
+              f"valide — défaut {default:g} appliqué.", file=sys.stderr)
+        return default
+    return value
+
+
 def settings(config: Dict[str, dict]) -> dict:
     """Les réglages qui changent ce que l'index attend et ce que le tableau affiche."""
     agents = config.get("agents", {}).get("enabled", ["coach", "medical", "nutritionist", "course-strategist"])
@@ -233,6 +263,13 @@ def settings(config: Dict[str, dict]) -> dict:
         "profile": config.get("athlete", {}).get("profile", "planning/Runner_Profile.md"),
         "hr_zones": _hr_zone_method(config),
         "language": config.get("language", {}).get("documents", "fr") or "fr",
+        # VAM sur les montées détectées (#46, critère d'acceptation : « montée
+        # minimale configurable (D+, pente) ») — `climb_min_grade_pct` en points de
+        # pourcentage au workspace (ex. 5, pas 0.05), converti ici en fraction pour
+        # `arc_climb.detect_climbs(min_avg_grade=...)`.
+        "climb_min_gain_m": _positive_float(config, "metrics", "climb_min_gain_m", VC.MIN_CLIMB_GAIN_M),
+        "climb_min_grade": _positive_float(
+            config, "metrics", "climb_min_grade_pct", VC.MIN_CLIMB_AVG_GRADE * 100.0) / 100.0,
     }
 
 
@@ -796,8 +833,12 @@ def compute_metrics(conn, conf: dict, today: Optional[str] = None) -> None:
                 # fenêtrée calculée ci-dessus pour le GAP (`arc_climb.detect_climbs` a son
                 # propre lissage/segmentation, voir `arc_climb.ASSUMPTIONS`) — jamais un
                 # second calcul de pente au sens GAP, seulement une réutilisation du lissage
-                # d'altitude déjà partagé (`arc_elevation.smooth_moving_average`).
-                climb = VC.detect_climbs(act_samples)
+                # d'altitude déjà partagé (`arc_elevation.smooth_moving_average`). Seuils de
+                # détection configurables par le workspace (`[metrics].climb_min_gain_m`/
+                # `climb_min_grade_pct`, critère d'acceptation de #46 : « montée minimale
+                # configurable »), résolus une fois pour toutes dans `conf` par `settings()`.
+                climb = VC.detect_climbs(act_samples, min_gain_m=conf["climb_min_gain_m"],
+                                          min_avg_grade=conf["climb_min_grade"])
                 if climb:
                     conn.executemany(
                         "INSERT INTO activity_climb (activity_id, idx, start_t_s, end_t_s, start_km, end_km, "

@@ -745,21 +745,44 @@ async function viewSession(id) {
 /** Section « Montées » de la page séance (#46, VAM) : un tableau, une ligne par
  * montée détectée (D+ minimal et pente minimale — `arc_climb.ASSUMPTIONS`), triée
  * chronologiquement. `climbs` vient de `/api/activity/<id>.climbs` (voir
- * `arc_serve.py::api_activity_climbs`) et est TOUJOURS un objet (jamais `null`,
- * même discipline que `hrZoneSection`/#43) : `climbs.climbs: []` (parcours plat,
- * séance hors famille course à pied, ou sans échantillons FIT) ne rend qu'une
- * ligne vide plutôt que masquer la section — un athlète qui s'attend à voir ses
- * montées trail doit comprendre qu'aucune n'a été détectée, pas croire à un bug
- * d'affichage. Les deux VAM (temps écoulé/temps de mouvement, voir
+ * `arc_serve.py::api_activity_climbs`) et porte TOUJOURS une `reason` explicite
+ * (même discipline que `hrZoneSection`/#43) quand `climbs.climbs` est vide pour
+ * une raison AUTRE qu'un parcours plat : `reason` non nulle distingue « hors de
+ * la famille course à pied » (renforcement, vélo — la section est alors masquée,
+ * ELLE N'A JAMAIS PU avoir de montée) et « pas d'échantillons FIT ingérés »
+ * (l'athlète peut agir : synchroniser le FIT) d'une séance ÉLIGIBLE mais
+ * réellement plate (`reason: null`, revue de code #46, should-fix 5 : avant
+ * cette distinction, le même message « aucune montée détectée » s'affichait
+ * partout, laissant croire à tort qu'une séance de renforcement aurait pu en
+ * avoir une). Les deux VAM (temps écoulé/temps de mouvement, voir
  * `arc_climb.ASSUMPTIONS["vam_basis"]") sont toutes deux affichées : la seconde en
  * `<small>`, pour ne pas laisser croire qu'une seule existe. */
+// Même ordre que `arc_climb.GRADE_CLASSES` (Python) — dupliqué ici volontairement
+// (pas de dépendance runtime entre le serveur Python et le JS statique) : à tenir
+// à jour si `GRADE_CLASSES` change côté serveur.
+const GRADE_CLASS_ORDER = ["<5%", "5-10%", "10-15%", "15-20%", ">20%"];
+
 function climbsSection(climbs) {
   const rows = (climbs && climbs.climbs) || [];
+  const reason = climbs && climbs.reason;
+  if (reason && /famille course à pied/.test(reason)) {
+    // Séance qui n'a structurellement jamais pu avoir de montée (renforcement,
+    // vélo...) : section masquée plutôt qu'un message qui laisserait croire
+    // qu'une montée aurait pu y être détectée.
+    return "";
+  }
   if (!rows.length) {
-    return `<section class="band"><h2>Montées</h2>${note("Aucune montée détectée (D+ ou pente sous le seuil de détection, ou parcours plat).")}</section>`;
+    const msg = reason
+      ? F.esc(reason).replace(/^./, (c) => c.toUpperCase())
+      : "Aucune montée détectée (D+ ou pente sous le seuil de détection : parcours plat).";
+    return `<section class="band"><h2>Montées</h2>${note(msg)}</section>`;
   }
   const byClass = (climbs && climbs.vam_by_grade_class) || {};
-  const classLegend = Object.keys(byClass).sort().map((cls) =>
+  // Ordre des classes de pente : celui d'`arc_climb.GRADE_CLASSES` (croissant),
+  // JAMAIS un tri alphabétique du texte (qui placerait ">20%" et "<5%" n'importe
+  // où — revue de code #46, nit) — une classe absente de `byClass` est simplement
+  // ignorée.
+  const classLegend = GRADE_CLASS_ORDER.filter((cls) => byClass[cls]).map((cls) =>
     `<span class="legend__item">${F.esc(cls)} : ${F.vam(byClass[cls].avg_vam_elapsed_m_h)} <small class="muted">(${byClass[cls].count})</small></span>`
   ).join(" · ");
   return `<section class="band"><h2>Montées (${rows.length})</h2>
@@ -767,7 +790,7 @@ function climbsSection(climbs) {
       <th scope="col">#</th><th scope="col" class="num">Km</th><th scope="col" class="num">Distance</th>
       <th scope="col" class="num">D+</th><th scope="col" class="num">Pente moy.</th>
       <th scope="col" class="num">Durée</th><th scope="col" class="num">VAM</th></tr></thead>
-    <tbody>${rows.map((c) => `<tr><td>${c.index}</td><td class="num">${F.num(c.start_km, 1)} → ${F.num(c.end_km, 1)}</td>
+    <tbody>${rows.map((c) => `<tr><td>${c.index}</td><td class="num">${F.distance(c.start_km * 1000, 1)} → ${F.distance(c.end_km * 1000, 1)}</td>
       <td class="num">${F.distance(c.distance_m, 2)}</td><td class="num">+${F.elevation(c.gain_m)}</td>
       <td class="num">${F.num(c.avg_grade * 100, 1)} % <span class="tag">${F.esc(c.grade_class)}</span></td>
       <td class="num">${F.clock(c.duration_elapsed_s).replace(/^0:/, "")}</td>
