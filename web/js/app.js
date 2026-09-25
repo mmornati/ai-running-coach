@@ -673,8 +673,13 @@ async function viewSession(id) {
     // Découplage aérobie / Pa:HR (#45) : uniquement si calculable (séance de course
     // à pied, ≥ 60 min de mouvement, effort jugé stable — arc_decoupling.ASSUMPTIONS)
     // — jamais une ligne à "—", qui laisserait croire à une valeur nulle mesurée.
+    // Couleur seulement dans les deux sens univoques (revue de code #45) : 0-5 %
+    // (dérive attendue, repère de bonne durabilité) en positif, au-delà en
+    // négatif (dérive trop marquée) — une valeur négative (efficacité qui
+    // s'améliore, ou simplement du bruit de mesure) reste neutre, jamais
+    // colorée comme si « moins » était automatiquement « mieux ».
     ...(a.decoupling_pct != null ? [["Découplage aérobie (Pa:HR)",
-      `<span class="${a.decoupling_pct <= 5 ? "pos" : "neg"}">${a.decoupling_pct > 0 ? "+" : ""}${F.num(a.decoupling_pct, 1)} %</span>${a.ef_whole != null ? `<small class="muted"> · EF ${F.num(a.ef_whole, 2)}</small>` : ""}`]] : []),
+      `<span class="${a.decoupling_pct >= 0 && a.decoupling_pct <= 5 ? "pos" : a.decoupling_pct > 5 ? "neg" : ""}">${a.decoupling_pct > 0 ? "+" : ""}${F.num(a.decoupling_pct, 1)} %</span>${a.ef_whole != null ? `<small class="muted"> · EF ${F.num(a.ef_whole, 2)}</small>` : ""}`]] : []),
     ...(trail || a.elevation_gain_m ? [["D+ / D-", a.elevation_gain_m != null ? `${F.elevation(a.elevation_gain_m)} / ${F.elevation(a.elevation_loss_m)}` : (missing.elevation_gain_m ? "non mesuré" : "—")]] : []),
     ["FC moy / max", a.avg_hr_bpm ? `${F.num(a.avg_hr_bpm)} / ${F.num(a.max_hr_bpm)} bpm` : (missing.avg_hr_bpm ? "non mesurée" : "—")],
     ["HRR", a.recovery_hr_bpm != null ? `${F.num(a.recovery_hr_bpm)} bpm` : `non mesuré${missing.recovery_hr_bpm ? ` — ${F.esc(missing.recovery_hr_bpm)}` : ""}`],

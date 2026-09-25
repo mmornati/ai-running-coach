@@ -746,13 +746,11 @@ def compute_metrics(conn, conf: dict, today: Optional[str] = None) -> None:
                         [(round(v, 2) if v is not None else None, act["id"], km) for km, v in gap_by_km.items()],
                     )
                 # Découplage aérobie (#45, Pa:HR) et facteur d'efficacité : réutilise
-                # `gap_series` déjà calculée ci-dessus (jamais un second calcul de
-                # pente/GAP pour la même activité) via `decoupling_report`, qui prend
-                # directement des échantillons normalisés — on lui repasse `act_samples`
-                # (pas `gap_series`, qui a une clé `gap_speed_ms` en plus mais
-                # `decoupling_report` la recalcule lui-même en interne pour rester une
-                # API autonome, testable indépendamment de `arc_index`).
-                report = DC.decoupling_report(act_samples, act.get("sport"), resolution_s=S.DEFAULT_RESOLUTION_S)
+                # `gap_series` déjà calculée ci-dessus via `decoupling_report_from_series`
+                # (jamais un second calcul de pente/GAP pour la même activité) — le sport
+                # est déjà restreint à la famille course à pied par le `if` englobant,
+                # comme pour le GAP lui-même juste au-dessus.
+                report = DC.decoupling_report_from_series(gap_series, resolution_s=S.DEFAULT_RESOLUTION_S)
                 conn.execute(
                     "UPDATE activity SET decoupling_pct = ?, ef_whole = ?, decoupling_reason = ? WHERE id = ?",
                     (report["decoupling_pct"], report["ef_whole"], report["reason"], act["id"]),
@@ -1129,8 +1127,14 @@ def index_workspace(conn, workspace: Path, today: Optional[str] = None) -> dict:
     # « Hypothèses » du tableau de bord (`/api/summary` -> `web/js/app.js`) doit
     # exposer la limite connue du modèle de Minetti (surestimation des fortes
     # descentes) au même titre que les autres approximations du projet — jamais
-    # cachée dans un module que cette agrégation oublierait.
-    for key, value in (("settings", _j(conf)), ("assumptions", _j({**M.ASSUMPTIONS, **G.ASSUMPTIONS})),
+    # cachée dans un module que cette agrégation oublierait. `arc_decoupling.ASSUMPTIONS`
+    # (#45) fusionné à PART, sous des clés préfixées `decoupling_*` (revue de code) :
+    # `arc_decoupling` et `arc_gap` partagent des noms de clé (`model`,
+    # `stopped_samples`, `restricted_to_run_family`...) qu'un simple `{**G.ASSUMPTIONS,
+    # **DC.ASSUMPTIONS}` écraserait silencieusement au lieu d'exposer les deux.
+    decoupling_assumptions = {f"decoupling_{key}": value for key, value in DC.ASSUMPTIONS.items()}
+    for key, value in (("settings", _j(conf)),
+                       ("assumptions", _j({**M.ASSUMPTIONS, **G.ASSUMPTIONS, **decoupling_assumptions})),
                        ("today", today or date.today().isoformat())):
         conn.execute("INSERT OR REPLACE INTO meta VALUES (?, ?)", (key, value))
     conn.commit()
@@ -1358,7 +1362,20 @@ def decoupling_trend(conn, today: date, weeks: Optional[int] = None) -> dict:
     (`arc_index.py decoupling --weeks`) et pour `coach`/le tableau de bord.
     N'est pas soumis à `[health].morning_check` : ne dépend d'aucune donnée de
     santé, seulement des activités déjà indexées. Voir
-    `arc_metrics.ASSUMPTIONS`/`arc_decoupling.ASSUMPTIONS`."""
+    `arc_metrics.ASSUMPTIONS`/`arc_decoupling.ASSUMPTIONS`.
+
+    ATTENTION, deux seuils de durée DIFFÉRENTS et NON liés (revue de code) :
+    « sortie longue » ici (`duration_s` DÉCLARÉ au contrat ```arc, temps ÉCOULÉ,
+    > `arc_metrics.LONG_RUN_MIN_DURATION_S`, 90 min) détermine seulement quelles
+    activités ENTRENT dans cette tendance ; l'ÉLIGIBILITÉ au découplage lui-même
+    (`arc_decoupling.MIN_MOVING_DURATION_S`, 60 min de MOUVEMENT mesuré sur les
+    échantillons FIT) est vérifiée séparément, à l'indexation
+    (`compute_metrics`). Une activité de 70 min déclarées peut donc apparaître
+    ici avec `decoupling_pct: null` (sortie longue mais pas forcément éligible),
+    et une activité de 65 min déclarées mais réellement longue en mouvement
+    n'apparaîtra PAS ici du tout (sous le seuil de 90 min de CETTE tendance)
+    même si son découplage est parfaitement calculé et visible sur sa fiche
+    séance (`/api/activity/<id>`)."""
     rows = [dict(r) for r in conn.execute(
         "SELECT date, sport, name, duration_s, decoupling_pct, ef_whole FROM activity "
         "WHERE duration_s > ?", (M.LONG_RUN_MIN_DURATION_S,)).fetchall()]

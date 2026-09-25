@@ -1,27 +1,31 @@
 """Palier D — découplage aérobie (Pa:HR) et facteur d'efficacité (#45).
 
 Familles de tests :
-- `arc_decoupling.decoupling_report` sur des séances SYNTHÉTIQUES construites
-  par `tests.lib.synthetic.sample_session`, à vérité connue
-  (`truth["decoupling_pct_measured"]`) : identité sur le plat, dérive imposée
-  de 4 % (critère d'acceptation de l'issue #45), interaction avec un fade
-  (#48), bruit, arrêt au milieu de la séance, effet de l'exclusion de
-  l'échauffement.
-
-  **Comparaison « comme avec comme »** (voir tests/README.md et le corps de
-  la tâche #45) : `sample_session` mesure sa propre vérité avec le SLOPE
-  FACTOR du générateur (`default_slope_factor`), volontairement différent du
-  modèle de Minetti utilisé par `arc_gap`/`arc_decoupling`. Sur une séance
-  SANS SEGMENT DE PENTE (parcours plat, le cas par défaut), la pente vaut 0
-  partout : les deux modèles valent alors 1 (`default_slope_factor(0) == 1`,
-  `arc_gap.minetti_cost(0)/MINETTI_FLAT_COST == 1`), donc le GAP produit par
-  les deux méthodes est identique à la vitesse mesurée — la comparaison est
-  alors bien « comme avec comme », sans avoir besoin de reconstruire les
-  échantillons depuis le modèle de Minetti (contrairement à #44, qui doit
-  comparer un GAP en pente).
-- Éligibilité : familles hors course à pied, durée insuffisante, aucune FC
-  exploitable, séance jugée non stable (règle du coefficient de variation du
-  GAP par fenêtre d'une minute).
+- `arc_decoupling.decoupling_report` sur des séances à vérité connue :
+  - une dérive LINÉAIRE construite à la main, dont le découplage attendu se
+    calcule analytiquement (moyenne d'une fonction linéaire sur un intervalle
+    = valeur au milieu de l'intervalle) — INDÉPENDANT du point exact où
+    `arc_decoupling` place la frontière des deux moitiés (revue de code #45) :
+    contrairement à une marche d'escalier (dérive en palier), une dérive
+    linéaire donne le même résultat quel que soit l'ordre exclusion/découpage
+    ou l'endroit précis de la frontière, ce qui en fait une vérité de
+    référence robuste pour ce test d'acceptation.
+  - des séances `tests.lib.synthetic.sample_session` (dérive en PALIER à
+    `duration_s/2`, jamais post-échauffement) comparées à une recomputation
+    INDÉPENDANTE de ce module, calculée ICI sur les moitiés RÉELLEMENT
+    utilisées par `arc_decoupling` (échauffement exclu D'ABORD, moitiés
+    égales du reste) — la vérité `truth["decoupling_pct_measured"]` du
+    générateur n'est PAS comparée directement à `decoupling_report` : son
+    palier est fixé à `duration_s/2`, pas à `warmup + (duration_s -
+    warmup)/2`, donc les deux ne mesurent pas exactement la même chose (revue
+    de code #45 ; voir `tests/README.md` sur la comparaison « comme avec
+    comme »).
+- Éligibilité : familles hors course à pied, durée insuffisante, aucun
+  échantillon, aucune FC exploitable, couverture FC/GAP insuffisante sur une
+  moitié (ex. décrochage capteur), profil de pente trop asymétrique entre les
+  deux moitiés, effort jugé non stable (fenêtres glissantes de 30 s, pas des
+  seaux disjoints d'une minute — un fractionné 30 s/30 s serait sinon
+  invisible, revue de code #45).
 - Découpage en deux moitiés sur le temps de MOUVEMENT (pas le temps écoulé) :
   un arrêt au milieu de la séance ne doit pas fausser la mesure.
 - `arc_index` : colonnes `activity.decoupling_pct`/`ef_whole`/
@@ -31,6 +35,8 @@ Familles de tests :
 
 from __future__ import annotations
 
+import contextlib
+import io
 import json
 import shutil
 import sys
@@ -43,86 +49,138 @@ sys.path.insert(0, str(REPO / "scripts"))
 sys.path.insert(0, str(REPO))
 
 import arc_decoupling as D  # noqa: E402
+import arc_gap as G  # noqa: E402
 import arc_index as I  # noqa: E402
 from tests.lib.synthetic import sample_session  # noqa: E402
 
 
 # ---------------------------------------------------------------------------
-# arc_decoupling : découplage sur séances synthétiques à vérité connue
+# Vérités de référence
 # ---------------------------------------------------------------------------
 
 
-class TestDecouplingMatchesSyntheticTruth(unittest.TestCase):
-    """Séances à effort stable, PLATES (pas de segment de pente) — voir le
-    docstring du module pour pourquoi c'est la comparaison « comme avec
-    comme » correcte face à `sample_session`."""
+def _linear_drift_records(duration_s=3900, speed=2.7, hr0=140.0, slope=0.0037):
+    """Séance plate, FC en dérive LINÉAIRE (`hr0 + slope * t`), un échantillon
+    par seconde — voir le docstring du module pour pourquoi cette vérité est
+    indépendante du point exact de la frontière des deux moitiés."""
+    return [{"t_s": t, "distance_m": t * speed, "altitude_m": 0.0, "hr_bpm": hr0 + slope * t,
+             "speed_ms": speed, "cadence_spm": 170.0} for t in range(duration_s)]
 
-    def test_flat_identity_zero_decoupling(self):
-        records, truth = sample_session(duration_s=3900, decoupling_pct=0.0, noise=False)
+
+def _analytic_linear_decoupling(duration_s, warmup_s, hr0, slope):
+    """Découplage EXACT (à la discrétisation 1 s près) d'une dérive linéaire de
+    FC sur une séance plate (GAP = vitesse constante) : la moyenne d'une
+    fonction linéaire sur un intervalle vaut sa valeur au milieu de cet
+    intervalle — vrai quel que soit l'intervalle, donc pas besoin de connaître
+    l'algorithme de découpage en détail pour vérifier son résultat."""
+    mid = warmup_s + (duration_s - warmup_s) / 2.0
+    mean_hr1 = hr0 + slope * (warmup_s + mid) / 2.0
+    mean_hr2 = hr0 + slope * (mid + duration_s) / 2.0
+    return (mean_hr2 - mean_hr1) / mean_hr2 * 100.0
+
+
+def _independent_recompute(records, warmup_s=600.0):
+    """Recalcule le découplage sur les MÊMES moitiés que `arc_decoupling`
+    (échauffement exclu D'ABORD, temps de mouvement restant partagé en deux
+    PAR NOMBRE D'ÉCHANTILLONS — une approximation valide ici : les séances
+    `sample_session` sans arrêt ni trou de signal sont régulièrement
+    échantillonnées, donc partager par nombre d'échantillons ou par temps de
+    mouvement cumulé donne le même résultat à l'arrondi près), par une moyenne
+    ARITHMÉTIQUE simple (pas pondérée par le temps — même remarque) de la
+    vitesse (= GAP sur un parcours plat) et de la FC. Sert à vérifier
+    `decoupling_report` de façon indépendante, sans réutiliser son code."""
+    ordered = sorted(records, key=lambda r: r["t_s"])
+    moving = [r for r in ordered if (r.get("speed_ms") or 0.0) >= 0.2]
+    t0 = moving[0]["t_s"]
+    post = [r for r in moving if r["t_s"] - t0 >= warmup_s]
+    n = len(post)
+    half1, half2 = post[: n // 2], post[n // 2:]
+
+    def _mean(key, xs):
+        vs = [x[key] for x in xs]
+        return sum(vs) / len(vs)
+
+    ef1 = _mean("speed_ms", half1) * 60.0 / _mean("hr_bpm", half1)
+    ef2 = _mean("speed_ms", half2) * 60.0 / _mean("hr_bpm", half2)
+    return (ef1 - ef2) / ef1 * 100.0
+
+
+class TestDecouplingMatchesAnalyticLinearDrift(unittest.TestCase):
+    def test_imposed_linear_drift_matches_closed_form(self):
+        """Critère d'acceptation de l'issue #45 (dérive imposée -> mesure
+        proche), sur une vérité de référence dont le calcul ne dépend pas du
+        détail d'implémentation de la frontière (voir le docstring du module)."""
+        records = _linear_drift_records(duration_s=3900, hr0=140.0, slope=0.0037)
+        report = D.decoupling_report(records, "trail")
+        expected = _analytic_linear_decoupling(3900, 600.0, 140.0, 0.0037)
+        self.assertIsNone(report["reason"])
+        self.assertAlmostEqual(expected, 4.03, delta=0.05)  # sanity : ~4 %, comme demandé par l'issue
+        self.assertAlmostEqual(report["decoupling_pct"], expected, delta=0.05)
+
+    def test_no_drift_is_near_zero(self):
+        records = _linear_drift_records(duration_s=3900, hr0=140.0, slope=0.0)
         report = D.decoupling_report(records, "trail")
         self.assertIsNone(report["reason"])
-        self.assertEqual(truth["decoupling_pct_measured"], 0.0)
-        self.assertAlmostEqual(report["decoupling_pct"], 0.0, delta=0.5)
+        self.assertAlmostEqual(report["decoupling_pct"], 0.0, delta=0.05)
 
-    def test_imposed_4_percent_drift_measured_within_half_point(self):
-        """Critère d'acceptation de l'issue #45 : 4 % imposé -> 4 % mesuré ± 0,5."""
-        records, truth = sample_session(duration_s=3900, decoupling_pct=4.0, noise=False)
+
+class TestDecouplingMatchesIndependentRecomputation(unittest.TestCase):
+    """`sample_session` (dérive en PALIER à `duration_s/2`) comparé à une
+    recomputation indépendante sur les moitiés RÉELLEMENT utilisées par
+    `arc_decoupling` (échauffement exclu d'abord) — voir le docstring du
+    module : ce n'est PAS `truth["decoupling_pct_measured"]` du générateur,
+    dont le palier est ailleurs."""
+
+    def test_drift_only(self):
+        records, _truth = sample_session(duration_s=3900, decoupling_pct=4.0, noise=False)
         report = D.decoupling_report(records, "trail")
         self.assertIsNone(report["reason"])
-        self.assertAlmostEqual(truth["decoupling_pct_measured"], 3.98, delta=0.05)
-        self.assertAlmostEqual(report["decoupling_pct"], 4.0, delta=0.5)
+        self.assertAlmostEqual(report["decoupling_pct"], _independent_recompute(records), delta=0.1)
 
-    def test_imposed_4_percent_drift_with_noise_still_within_tolerance(self):
-        records, truth = sample_session(duration_s=3900, decoupling_pct=4.0, noise=True, seed=11)
-        report = D.decoupling_report(records, "trail")
-        self.assertIsNone(report["reason"])
-        self.assertAlmostEqual(report["decoupling_pct"], truth["decoupling_pct_measured"], delta=0.5)
-
-    def test_drift_plus_fade_increases_measured_decoupling_beyond_drift_alone(self):
+    def test_drift_plus_fade(self):
         """Un fade (#48) actif AUGMENTE légitimement le découplage mesuré au-delà
         du seul `decoupling_pct` demandé — voir le docstring de `sample_session`."""
-        records, truth = sample_session(duration_s=3900, decoupling_pct=4.0, fade_pct=8.0, noise=False)
+        records, _truth = sample_session(duration_s=3900, decoupling_pct=4.0, fade_pct=8.0, noise=False)
         report = D.decoupling_report(records, "trail")
         self.assertIsNone(report["reason"])
         self.assertGreater(report["decoupling_pct"], 4.0)
-        self.assertAlmostEqual(report["decoupling_pct"], truth["decoupling_pct_measured"], delta=0.5)
+        self.assertAlmostEqual(report["decoupling_pct"], _independent_recompute(records), delta=0.15)
 
-    def test_longer_session_dilutes_warmup_effect_further(self):
-        records, truth = sample_session(duration_s=7200, decoupling_pct=4.0, noise=False)
+    def test_with_noise_still_close_to_independent_recomputation(self):
+        records, _truth = sample_session(duration_s=3900, decoupling_pct=4.0, noise=True, seed=11)
         report = D.decoupling_report(records, "trail")
-        self.assertAlmostEqual(report["decoupling_pct"], truth["decoupling_pct_measured"], delta=0.5)
-
-
-def _flat_session_with_depressed_warmup_hr(duration_s=3900, speed_ms=2.8, warmup_s=600,
-                                            warmup_hr=100.0, hr1=140.0, decoupling_pct=4.0):
-    """Séance plate, artisanale (pas `sample_session`, dont le modèle de dérive ne
-    simule pas de « retard cardiovasculaire » à l'échauffement) : FC anormalement
-    basse pendant `warmup_s`, puis FC stable `hr1` jusqu'à la moitié (temps de
-    mouvement, séance plate donc identique au temps écoulé), puis FC en dérive de
-    `decoupling_pct` — voir `ASSUMPTIONS["warmup"]` pour l'effet que ceci illustre."""
-    half_t = duration_s / 2.0
-    hr2 = hr1 / (1 - decoupling_pct / 100.0)
-    records = []
-    for t in range(duration_s):
-        if t < warmup_s:
-            hr = warmup_hr
-        elif t < half_t:
-            hr = hr1
-        else:
-            hr = hr2
-        records.append({"t_s": float(t), "distance_m": t * speed_ms, "altitude_m": 0.0,
-                         "hr_bpm": hr, "speed_ms": speed_ms, "cadence_spm": 170.0})
-    return records
+        self.assertIsNone(report["reason"])
+        self.assertAlmostEqual(report["decoupling_pct"], _independent_recompute(records), delta=0.3)
 
 
 class TestWarmupExclusion(unittest.TestCase):
+    def _flat_session_with_depressed_warmup_hr(self, duration_s=3900, speed_ms=2.8, warmup_s=600,
+                                                warmup_hr=100.0, hr1=140.0, decoupling_pct=4.0):
+        """Séance plate, artisanale : FC anormalement basse pendant `warmup_s`
+        (retard cardiovasculaire), puis FC stable `hr1`, puis en dérive à la
+        frontière RÉELLE des deux moitiés (`warmup_s + (duration_s -
+        warmup_s) / 2`, PAS `duration_s / 2`) — voir
+        `arc_decoupling.ASSUMPTIONS["warmup"]` pour l'effet que ceci illustre."""
+        mid = warmup_s + (duration_s - warmup_s) / 2.0
+        hr2 = hr1 / (1 - decoupling_pct / 100.0)
+        records = []
+        for t in range(duration_s):
+            if t < warmup_s:
+                hr = warmup_hr
+            elif t < mid:
+                hr = hr1
+            else:
+                hr = hr2
+            records.append({"t_s": float(t), "distance_m": t * speed_ms, "altitude_m": 0.0,
+                             "hr_bpm": hr, "speed_ms": speed_ms, "cadence_spm": 170.0})
+        return records
+
     def test_excluding_warmup_changes_the_measured_value(self):
-        """La règle d'exclusion de l'échauffement (10 min, ASSUMPTIONS["warmup"])
-        a un effet mesurable : sans elle, une FC anormalement basse pendant les
-        10 premières minutes (retard cardiovasculaire) est comptée dans la
+        """Sans exclusion de l'échauffement, une FC anormalement basse pendant
+        les 10 premières minutes (retard cardiovasculaire) est comptée dans la
         moyenne de la première moitié, ce qui gonfle artificiellement le
         découplage mesuré au-delà de la vraie dérive imposée."""
-        records = _flat_session_with_depressed_warmup_hr()
+        records = self._flat_session_with_depressed_warmup_hr()
         with_warmup_excluded = D.decoupling_report(records, "trail")["decoupling_pct"]
 
         original_warmup = D.WARMUP_S
@@ -133,7 +191,6 @@ class TestWarmupExclusion(unittest.TestCase):
             D.WARMUP_S = original_warmup
 
         self.assertNotAlmostEqual(with_warmup_excluded, without_exclusion, delta=0.001)
-        # L'échauffement exclu rapproche la mesure de la vraie dérive imposée (4 %).
         self.assertLess(abs(with_warmup_excluded - 4.0), abs(without_exclusion - 4.0))
         self.assertAlmostEqual(with_warmup_excluded, 4.0, delta=0.1)
         self.assertGreater(without_exclusion, 10.0)
@@ -141,14 +198,175 @@ class TestWarmupExclusion(unittest.TestCase):
 
 class TestStoppedSamplesExcluded(unittest.TestCase):
     def test_pause_in_the_middle_does_not_distort_the_measurement(self):
-        records, truth = sample_session(duration_s=3900, decoupling_pct=4.0, noise=False)
+        records, _truth = sample_session(duration_s=3900, decoupling_pct=4.0, noise=False)
         records = [dict(r) for r in records]
         mid = len(records) // 2
         for r in records[mid:mid + 120]:
             r["speed_ms"] = 0.0
         report = D.decoupling_report(records, "trail")
         self.assertIsNone(report["reason"])
-        self.assertAlmostEqual(report["decoupling_pct"], truth["decoupling_pct_measured"], delta=0.5)
+        self.assertAlmostEqual(report["decoupling_pct"], _independent_recompute(records), delta=0.2)
+
+
+class TestHrGapCoverage(unittest.TestCase):
+    def test_hr_dropout_in_one_half_is_ineligible_not_silently_biased(self):
+        """Revue de code #45 : un décrochage capteur FC de 13 minutes dans une
+        moitié, sur une séance sans aucune vraie dérive (0 % attendu), ne doit
+        JAMAIS produire un découplage mesuré non nul faute de FC — il doit
+        rendre l'activité inéligible avec une raison explicite."""
+        records = _linear_drift_records(duration_s=3900, hr0=150.0, slope=0.0)
+        records = [dict(r) for r in records]
+        for r in records:
+            if 2500 <= r["t_s"] < 2500 + 780:  # 13 min, dans la seconde moitié (frontière à 2250 s)
+                r["hr_bpm"] = None
+        report = D.decoupling_report(records, "trail")
+        self.assertFalse(report["eligible"])
+        self.assertIsNone(report["decoupling_pct"])
+        self.assertIn("FC incomplète", report["reason"])
+
+    def test_full_hr_coverage_is_eligible(self):
+        records = _linear_drift_records(duration_s=3900, hr0=150.0, slope=0.0)
+        report = D.decoupling_report(records, "trail")
+        self.assertTrue(report["eligible"])
+
+
+class TestGradeAsymmetry(unittest.TestCase):
+    def test_summit_and_back_is_ineligible(self):
+        """Aller-retour à un sommet : montée à 6 % dans la première moitié,
+        descente à 6 % dans la seconde, FC constante (0 % de vraie dérive) —
+        le biais connu du modèle de Minetti en descente (arc_gap.ASSUMPTIONS)
+        peut sinon produire un découplage mesuré non nul qui reflète le
+        relief, pas une dérive cardiaque (revue de code #45)."""
+        duration_s = 3900
+        mid = 600 + (duration_s - 600) / 2.0
+        speed = 2.7
+        records = []
+        distance = altitude = 0.0
+        for t in range(duration_s):
+            grade = 0.06 if t < mid else -0.06
+            distance += speed
+            altitude += speed * grade
+            records.append({"t_s": t, "distance_m": round(distance, 2), "altitude_m": round(altitude, 2),
+                             "hr_bpm": 150.0, "speed_ms": speed, "cadence_spm": 170.0})
+        report = D.decoupling_report(records, "trail")
+        self.assertFalse(report["eligible"])
+        self.assertIsNone(report["decoupling_pct"])
+        self.assertIn("trop différent", report["reason"])
+
+    def test_symmetric_hills_per_half_are_eligible(self):
+        """Une colline identique DANS CHAQUE moitié (montée puis descente,
+        symétrique, allure adaptée à la pente pour tenir un effort constant —
+        comme le profil vallonné de `TestSteadyEffort`, sinon la seule
+        variation de GAP due au relief déclencherait la détection d'effort
+        non stable plutôt que celle testée ici) n'a pas de profil de pente
+        asymétrique ENTRE les deux moitiés — reste éligible."""
+        duration_s = 3900
+        half_len = (duration_s - 600) / 2.0
+        quarter = half_len / 2.0
+        target_gap = 2.7
+        records = []
+        distance = altitude = 0.0
+        for t in range(duration_s):
+            # Pente : montée puis descente à 8 %, une colline par moitié (même
+            # principe que `_fixed_altitude_m` du golden, #45).
+            if t >= 600:
+                offset = (t - 600) % half_len
+                grade = 0.08 if offset < quarter else -0.08
+            else:
+                grade = 0.0
+            cost = G.minetti_cost(grade)
+            speed = target_gap * G.MINETTI_FLAT_COST / cost
+            distance += speed
+            altitude += speed * grade
+            records.append({"t_s": t, "distance_m": round(distance, 2), "altitude_m": round(altitude, 2),
+                             "hr_bpm": 150.0, "speed_ms": speed, "cadence_spm": 170.0})
+        report = D.decoupling_report(records, "trail")
+        self.assertTrue(report["eligible"], report["reason"])
+
+
+class TestSteadyEffort(unittest.TestCase):
+    def test_30_30_intervals_running_recovery_rejected(self):
+        """30 s effort / 30 s récupération COURUE (pas marchée, donc pas
+        exclue par le filtre marche) : la moyenne glissante de 30 s (pas des
+        seaux disjoints d'une minute, qui annuleraient artificiellement la
+        variabilité d'un cycle pile d'une minute — revue de code #45) doit
+        détecter la non-stabilité."""
+        duration_s = 3900
+        records = []
+        for t in range(duration_s):
+            on = (t // 30) % 2 == 0
+            hr = 175.0 if on else 140.0
+            speed = 4.2 if on else 2.2  # les deux allures restent au-dessus du seuil de marche
+            records.append({"t_s": t, "distance_m": t * speed, "altitude_m": 0.0, "hr_bpm": hr,
+                             "speed_ms": speed, "cadence_spm": 170.0})
+        report = D.decoupling_report(records, "trail")
+        self.assertFalse(report["eligible"])
+        self.assertIn("non stable", report["reason"])
+
+    def test_rolling_hill_trail_at_steady_effort_is_accepted(self):
+        """Un profil vallonné réaliste (relances/montées modérées à 8 %, brefs
+        passages raides à 22 % exclus du calcul, allure adaptée à la pente
+        pour tenir un effort constant — comme un coureur réel, pas une vitesse
+        brute constante) doit rester éligible : le relief seul, à effort
+        constant, n'est pas un fractionné (revue de code #45)."""
+        duration_s = 3900
+        moderate_grade, steep_grade = 0.08, 0.22
+        moderate_len, steep_len = 280.0, 20.0
+        target_gap = 2.7
+        cycle_len = moderate_len + steep_len
+        records = []
+        distance = altitude = 0.0
+        sign = 1
+        for t in range(duration_s):
+            pos = distance % cycle_len
+            grade = (moderate_grade if pos < moderate_len else steep_grade) * sign
+            cost = G.minetti_cost(grade)
+            speed = target_gap * G.MINETTI_FLAT_COST / cost
+            distance += speed
+            altitude += speed * grade
+            records.append({"t_s": t, "distance_m": round(distance, 2), "altitude_m": round(altitude, 2),
+                             "hr_bpm": 150.0, "speed_ms": speed, "cadence_spm": 170.0})
+            if distance % (2 * cycle_len) < speed:
+                sign *= -1
+        report = D.decoupling_report(records, "trail")
+        self.assertTrue(report["eligible"], report["reason"])
+        self.assertAlmostEqual(report["decoupling_pct"], 0.0, delta=1.0)
+
+    def _run_walk_records(self, duration_s=7200, run_speed=2.8, walk_speed=1.2, run_s=280, walk_s=40,
+                           decoupling_pct=4.0):
+        boundary = 600 + (duration_s - 600) / 2.0
+        records = []
+        distance = 0.0
+        for t in range(duration_s):
+            running = (t % (run_s + walk_s)) < run_s
+            speed = run_speed if running else walk_speed
+            distance += speed
+            hr_base = 150.0 if running else 130.0
+            if t >= boundary:
+                hr_base = hr_base / (1 - decoupling_pct / 100.0)
+            records.append({"t_s": t, "distance_m": round(distance, 2), "altitude_m": 0.0,
+                             "hr_bpm": hr_base, "speed_ms": speed, "cadence_spm": 170.0})
+        return records
+
+    def test_run_walk_ultra_mostly_running_is_measured_on_running_only(self):
+        """Ultra en run/walk (#45, revue de code) : la marche est exclue de
+        l'EF et de la détection d'effort stable (ASSUMPTIONS
+        ["steep_grade_and_walking"]) — si la course reste largement
+        majoritaire (ici 87,5 % du temps), la couverture FC/GAP utile reste
+        suffisante et le découplage porte sur les portions courues."""
+        records = self._run_walk_records(run_s=280, walk_s=40)
+        report = D.decoupling_report(records, "trail")
+        self.assertTrue(report["eligible"], report["reason"])
+        self.assertAlmostEqual(report["decoupling_pct"], 4.0, delta=0.5)
+
+    def test_run_walk_ultra_balanced_is_ineligible(self):
+        """À l'inverse, un run/walk moitié-moitié ne laisse plus assez de
+        couverture utile par moitié (< 80 %) : l'activité devient inéligible
+        plutôt que de mélanger course et marche dans une seule moyenne."""
+        records = self._run_walk_records(run_s=150, walk_s=150)
+        report = D.decoupling_report(records, "trail")
+        self.assertFalse(report["eligible"])
+        self.assertIn("FC incomplète", report["reason"])
 
 
 class TestEligibility(unittest.TestCase):
@@ -175,33 +393,18 @@ class TestEligibility(unittest.TestCase):
         records = [dict(r, hr_bpm=None) for r in records]
         report = D.decoupling_report(records, "trail")
         self.assertFalse(report["eligible"])
-        self.assertIn("fréquence cardiaque", report["reason"])
-
-    def test_intervals_like_session_is_flagged_unstable(self):
-        """Alternance rapide effort/récupération (fractionné), CV du GAP par
-        fenêtre d'une minute au-delà du seuil documenté."""
-        records = []
-        for t in range(3900):
-            on = (t // 120) % 2 == 0
-            records.append({
-                "t_s": t, "distance_m": t * (3.0 if on else 1.2), "altitude_m": 0.0,
-                "hr_bpm": 178.0 if on else 128.0, "speed_ms": 3.0 if on else 1.2,
-                "cadence_spm": 170.0,
-            })
-        report = D.decoupling_report(records, "trail")
-        self.assertFalse(report["eligible"])
-        self.assertIn("non stable", report["reason"])
+        self.assertIn("FC incomplète", report["reason"])
 
 
-class TestCoefficientOfVariation(unittest.TestCase):
-    def test_constant_gap_has_zero_cv(self):
+class TestSteadinessSharePct(unittest.TestCase):
+    def test_constant_gap_has_full_share(self):
         series = [{"t_s": float(t), "gap_speed_ms": 2.8} for t in range(0, 900, 5)]
-        cv = D.coefficient_of_variation_pct(series)
-        self.assertAlmostEqual(cv, 0.0, delta=0.01)
+        share = D.steadiness_share_pct(series)
+        self.assertAlmostEqual(share, 100.0, delta=0.01)
 
-    def test_too_few_windows_is_none(self):
+    def test_too_few_samples_is_none(self):
         series = [{"t_s": 0.0, "gap_speed_ms": 2.8}, {"t_s": 30.0, "gap_speed_ms": 3.0}]
-        self.assertIsNone(D.coefficient_of_variation_pct(series))
+        self.assertIsNone(D.steadiness_share_pct(series))
 
 
 # ---------------------------------------------------------------------------
@@ -256,13 +459,14 @@ class TestActivityDecouplingColumns(Workspace):
     GARMIN_ID = 90000000045
 
     def test_eligible_long_run_gets_decoupling_and_ef(self):
-        records, truth = sample_session(duration_s=3900, decoupling_pct=4.0, noise=False)
+        records = _linear_drift_records(duration_s=3900, hr0=140.0, slope=0.0037)
         self.write_activity(self.GARMIN_ID, duration_s=3900)
         self.write_fit_records(self.GARMIN_ID, records)
         self.index()
         row = self.activity_row(self.GARMIN_ID)
         self.assertIsNotNone(row["decoupling_pct"])
-        self.assertAlmostEqual(row["decoupling_pct"], truth["decoupling_pct_measured"], delta=0.5)
+        expected = _analytic_linear_decoupling(3900, 600.0, 140.0, 0.0037)
+        self.assertAlmostEqual(row["decoupling_pct"], expected, delta=0.1)
         self.assertIsNotNone(row["ef_whole"])
         self.assertIsNone(row["decoupling_reason"])
 
@@ -294,7 +498,7 @@ class TestActivityDecouplingReportAndCli(Workspace):
         self.assertIsNotNone(report["reason"])
 
     def test_success_report_has_no_reason(self):
-        records, _truth = sample_session(duration_s=3900, decoupling_pct=4.0, noise=False)
+        records = _linear_drift_records(duration_s=3900, hr0=140.0, slope=0.0037)
         self.write_activity(self.GARMIN_ID, duration_s=3900)
         self.write_fit_records(self.GARMIN_ID, records)
         self.index()
@@ -303,17 +507,25 @@ class TestActivityDecouplingReportAndCli(Workspace):
         self.assertIsNotNone(report["decoupling_pct"])
 
     def test_cli_decoupling_command_activity(self):
-        records, _truth = sample_session(duration_s=3900, decoupling_pct=4.0, noise=False)
+        records = _linear_drift_records(duration_s=3900, hr0=140.0, slope=0.0037)
         self.write_activity(self.GARMIN_ID, duration_s=3900)
         self.write_fit_records(self.GARMIN_ID, records)
         self.index()
-        code = I.main(["decoupling", "--activity", str(self.GARMIN_ID),
-                        "--workspace", str(self.ws), "--memory"])
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            code = I.main(["decoupling", "--activity", str(self.GARMIN_ID),
+                            "--workspace", str(self.ws), "--memory"])
         self.assertEqual(code, 0)
+        payload = json.loads(out.getvalue())
+        self.assertEqual(payload["garmin_activity_id"], self.GARMIN_ID)
 
     def test_cli_decoupling_command_trend(self):
-        code = I.main(["decoupling", "--workspace", str(self.ws), "--memory", "--weeks", "12"])
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            code = I.main(["decoupling", "--workspace", str(self.ws), "--memory", "--weeks", "12"])
         self.assertEqual(code, 0)
+        payload = json.loads(out.getvalue())
+        self.assertEqual(payload["window_weeks"], 12)
 
 
 class TestDecouplingTrend(Workspace):
@@ -321,7 +533,7 @@ class TestDecouplingTrend(Workspace):
         # > arc_metrics.LONG_RUN_MIN_DURATION_S (90 min) : condition d'entrée dans
         # la tendance des « sorties longues », distincte du seuil d'éligibilité au
         # découplage lui-même (60 min, arc_decoupling.MIN_MOVING_DURATION_S).
-        records, truth = sample_session(duration_s=5700, decoupling_pct=4.0, noise=False)
+        records = _linear_drift_records(duration_s=5700, hr0=140.0, slope=0.0025)
         self.write_activity(90000000047, day="2026-09-10", duration_s=5700)
         self.write_fit_records(90000000047, records)
         self.write_activity(90000000048, day="2026-09-17", duration_s=5700)
@@ -330,7 +542,8 @@ class TestDecouplingTrend(Workspace):
         trend = I.decoupling_trend(self.conn, __import__("datetime").date(2026, 9, 25))
         self.assertEqual(trend["long_runs"], 2)
         self.assertEqual(trend["measured_n"], 2)
-        self.assertAlmostEqual(trend["avg_decoupling_pct"], truth["decoupling_pct_measured"], delta=0.5)
+        expected = _analytic_linear_decoupling(5700, 600.0, 140.0, 0.0025)
+        self.assertAlmostEqual(trend["avg_decoupling_pct"], expected, delta=0.2)
 
     def test_short_runs_are_excluded_from_trend(self):
         records, _truth = sample_session(duration_s=1800, decoupling_pct=4.0, noise=False)

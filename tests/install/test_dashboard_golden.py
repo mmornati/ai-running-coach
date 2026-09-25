@@ -69,32 +69,54 @@ DAYS = 40  # cf. docstring : budget de taille du golden
 # 2 × 10 min minimum par moitié, voir `arc_decoupling.ASSUMPTIONS`).
 FIXED_FIT_DURATION_S = 3900
 
+# Frontière des deux moitiés du découplage (#45) : échauffement de
+# `arc_decoupling.WARMUP_S` (600 s) exclu EN PREMIER, PUIS le reste
+# (600 -> FIXED_FIT_DURATION_S) partagé en deux moitiés ÉGALES de temps de
+# mouvement (protocole standard, voir `arc_decoupling.ASSUMPTIONS["warmup"]`) —
+# ce fixture est plat en vitesse (2,7 m/s constante, aucun arrêt), donc le
+# temps de mouvement coïncide avec le temps écoulé et cette frontière peut être
+# calculée à l'avance : 600 + (3900 - 600) / 2 = 2250 s.
+_HALF_BOUNDARY_S = 600 + (FIXED_FIT_DURATION_S - 600) / 2.0
+
 
 def _fixed_altitude_m(t: int) -> float:
-    """Profil d'altitude déterministe : montée douce (0 -> 30 m) sur le premier
-    tiers, plateau, puis redescente symétrique sur le dernier tiers (#44, allure
-    ajustée à la pente) — assez de dénivelé pour que le GAP diverge visiblement de
-    l'allure brute et verrouille ainsi un chemin de calcul non trivial dans le
-    golden, sans changer le reste du fichier (FC, cadence, distance) verrouillé
-    par #43. Bornes mises à l'échelle de `FIXED_FIT_DURATION_S` (#45, revue de
-    code : le tiers reste un tiers quelle que soit la durée totale)."""
-    third = FIXED_FIT_DURATION_S / 3.0
-    if t < third:
-        return round(30.0 * (t / third), 2)
-    if t < 2 * third:
-        return 30.0
-    return round(30.0 * (1 - (t - 2 * third) / third), 2)
+    """Profil d'altitude déterministe : DEUX collines identiques (montée puis
+    descente symétriques, 30 m de dénivelé chacune), une entièrement dans
+    chaque moitié du découplage (#45, revue de code — voir `_HALF_BOUNDARY_S`)
+    — jamais une seule colline qui traverserait la frontière des deux moitiés
+    (un profil asymétrique entre les deux moitiés, ex. montée dans l'une,
+    descente dans l'autre, biaiserait le découplage mesuré par le relief plutôt
+    que par la vraie dérive de FC imposée, voir `arc_decoupling.ASSUMPTIONS
+    ["grade_asymmetry"]" — c'est exactement le bug que verrouillait, à tort,
+    l'ancien profil « montée/plateau/descente » unique). Plat (0 m) pendant
+    l'échauffement (0-600 s, hors calcul de découplage). Assez de dénivelé
+    pour que le GAP diverge visiblement de l'allure brute et verrouille un
+    chemin de calcul non trivial dans le golden (#44), sans changer le reste
+    du fichier (cadence, distance) verrouillé par #43."""
+    if t < 600:
+        return 0.0
+    half_len = (FIXED_FIT_DURATION_S - 600) / 2.0  # 1650 s
+    quarter = half_len / 2.0  # 825 s : montée puis descente, à l'intérieur d'une seule moitié
+    offset = (t - 600) % half_len
+    if offset < quarter:
+        return round(30.0 * (offset / quarter), 2)
+    return round(30.0 * (1 - (offset - quarter) / quarter), 2)
 
 
 def _fixed_hr_bpm(t: int) -> float:
-    """FC déterministe : 150 bpm sur la première moitié (temps écoulé, séance
-    plate en vitesse donc identique au temps de mouvement), 155 bpm sur la
-    seconde (#45, revue de code) — une dérive fixe et modeste (+3,3 %), assez
-    pour verrouiller un découplage aérobie mesuré NON NUL dans le golden (la FC
-    constante à 150 bpm sur toute la séance, suffisante pour #43/#44, aurait
-    verrouillé un découplage nul partout, jamais le chemin de calcul de la
-    dérive elle-même)."""
-    return 150.0 if t < FIXED_FIT_DURATION_S / 2 else 155.0
+    """FC déterministe : 150 bpm sur la première moitié du découplage (#45),
+    155 bpm sur la seconde — une dérive fixe et modeste (+3,3 %, découplage
+    théorique en séance plate : 1 - 150/155 ≈ 3,23 %), assez pour verrouiller
+    un découplage aérobie mesuré NON NUL dans le golden (la FC constante à
+    150 bpm sur toute la séance, suffisante pour #43/#44, aurait verrouillé un
+    découplage nul partout, jamais le chemin de calcul de la dérive
+    elle-même). La frontière est `_HALF_BOUNDARY_S` (2250 s), PAS le milieu de
+    `FIXED_FIT_DURATION_S` (1950 s) : elle doit coïncider avec la frontière
+    RÉELLEMENT utilisée par `arc_decoupling` (échauffement exclu D'ABORD, puis
+    partage en deux moitiés égales du reste, voir `_HALF_BOUNDARY_S`), sinon
+    la valeur verrouillée dériverait du 3,23 % théorique pour une raison
+    différente de la dérive de FC elle-même."""
+    return 150.0 if t < _HALF_BOUNDARY_S else 155.0
 
 
 def _write_fixed_fit_samples(ws: Path, today: str) -> None:
@@ -105,14 +127,17 @@ def _write_fixed_fit_samples(ws: Path, today: str) -> None:
     `hr_zones`/`polarisation_weeks` restent `null` PARTOUT dans le golden — ce chemin
     (bornes connues + temps en zone/polarisation réellement calculés) ne serait donc
     jamais verrouillé par la comparaison golden. `FIXED_FIT_DURATION_S` (65 min) à
-    5 s de résolution : entièrement déterministe, sans tirage `rng`. Altitude en
-    montée/plateau/descente douce (`_fixed_altitude_m`, #44) : sans dénivelé, le
-    GAP calculé serait toujours strictement égal à l'allure brute, ce qui ne
-    verrouillerait jamais le chemin de calcul de la pente. FC en palier
-    150 -> 155 bpm à mi-séance (`_fixed_hr_bpm`, #45) : verrouille un découplage
-    aérobie/EF mesurés NON NULS. Le `garmin_activity_id` est LU dans le fichier
-    Markdown de l'activité (jamais codé en dur) : il reste correct même si le
-    générateur venait à changer sa façon de les attribuer."""
+    5 s de résolution : entièrement déterministe, sans tirage `rng`. Altitude en deux
+    collines symétriques, une par moitié du découplage (`_fixed_altitude_m`, #44/#45) :
+    sans dénivelé, le GAP calculé serait toujours strictement égal à l'allure brute, ce
+    qui ne verrouillerait jamais le chemin de calcul de la pente ; un profil asymétrique
+    entre les deux moitiés verrouillerait à tort un découplage biaisé par le relief (bug
+    de revue de code #45, voir `_fixed_altitude_m`). FC en palier 150 -> 155 bpm à la
+    frontière des deux moitiés (`_fixed_hr_bpm`, #45) : verrouille un découplage
+    aérobie/EF mesurés NON NULS et proches de la dérive théorique (3,23 %). Le
+    `garmin_activity_id` est LU dans le fichier Markdown de l'activité (jamais codé en
+    dur) : il reste correct même si le générateur venait à changer sa façon de les
+    attribuer."""
     matches = sorted((ws / "activities").glob(f"{today}_*.md"))
     if not matches:
         raise AssertionError(f"aucune activité datée {today} dans le workspace golden — "

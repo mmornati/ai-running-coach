@@ -117,20 +117,27 @@ six semaines d'historique pour que la condition ait un sens.
 - **Le découplage aérobie (Pa:HR)** (#45) : un point par sortie longue (plus de
   90 minutes, course à pied) où la mesure est calculable — dérive de la
   fréquence cardiaque à allure ajustée à la pente (GAP, #44) constante entre
-  la première et la seconde moitié de la séance (facteur d'efficacité EF =
-  vitesse GAP / FC, par moitié). Un repère à 5 % est tracé : sous ce seuil,
-  bonne durabilité aérobie selon un repère de coaching courant en
-  endurance/ultra (par exemple Uphill Athlete) — **pas un seuil validé
-  cliniquement**, jamais présenté comme une norme (voir
-  [Marques et métriques](../marques.md) pour la terminologie Pa:HR/EF,
-  popularisée par la marque TrainingPeaks, calcul public repris ici sous des
-  noms génériques). N'apparaît que pour les séances éligibles : famille course
-  à pied, au moins 60 minutes de mouvement, effort jugé stable (voir
-  `scripts/arc_decoupling.py::ASSUMPTIONS` pour la règle complète —
-  échauffement exclu, arrêts exclus, coefficient de variation du GAP
-  plafonné) ; une sortie longue non éligible (trop courte, fractionnée,
-  sans FC) n'apparaît simplement pas sur ce graphique, sans qu'aucun autre
-  chiffre de la vue n'en soit affecté.
+  la première et la seconde moitié de la séance, échauffement exclu
+  (facteur d'efficacité EF = vitesse GAP / FC, par moitié). Un repère à 5 %
+  est tracé : sous ce seuil, bonne durabilité aérobie selon le protocole de
+  test de dérive de FC d'Uphill Athlete
+  (<https://uphillathlete.com/aerobic-training/heart-rate-drift/>) — un
+  protocole CONTRÔLÉ (allure constante, terrain maîtrisé), **pas un seuil
+  validé cliniquement pour une sortie de terrain ordinaire**, jamais présenté
+  comme une norme (voir [Marques et métriques](../marques.md) pour la
+  terminologie Pa:HR/EF, popularisée par la marque TrainingPeaks, calcul
+  public repris ici sous des noms génériques). Seule la couleur 0-5 % (bonne
+  durabilité) et au-delà de 5 % (dérive marquée) est affichée ; une valeur
+  négative reste neutre, jamais présentée comme meilleure qu'une dérive
+  proche de zéro. N'apparaît que pour les séances éligibles : famille course
+  à pied, au moins 60 minutes de mouvement, couverture FC/GAP suffisante sur
+  chaque moitié, profil de pente comparable entre les deux moitiés, effort
+  jugé stable sur des fenêtres glissantes de 30 secondes (voir
+  `scripts/arc_decoupling.py::ASSUMPTIONS` pour la règle complète — pentes
+  fortes et marche/power-hiking exclues du calcul, arrêts exclus) ; une
+  sortie longue non éligible (trop courte, fractionnée, relief trop
+  asymétrique entre les deux moitiés, sans FC) n'apparaît simplement pas sur
+  ce graphique, sans qu'aucun autre chiffre de la vue n'en soit affecté.
 
 | Alimentée par | Calcul |
 |---|---|
