@@ -56,6 +56,17 @@ CORRECT_ANSWERS_BY_CASE = {
         "glucides par heure, à confirmer sur ta prochaine sortie.",
         "Ton débit maximal observé est de 50 g/h ; je te propose une cible prudente de 60 g par heure "
         "plutôt que la fourchette généraliste de 90 g/h, réservée aux profils déjà rodés.",
+        # Deuxième passe de revue de code (#41) : mention explicitement écartée
+        # (« réservée… ») avec la fourchette générique citée dans le même souffle
+        # que la cible réaliste — ne doit toujours pas se faire piéger par le
+        # « 90 » de la fourchette 60-90.
+        "La fourchette générale va de 60 à 90 g/h, mais d'après tes sorties longues où tu as toléré "
+        "jusqu'à 50 g/h, ta cible réaliste est 60 g/h.",
+        # Négation explicite AVANT le nombre — la garde `(?<!ne )(?<!pas )` doit
+        # neutraliser le déclencheur « cible »/« vis\\w* » ici.
+        "Ne cible pas 90 g/h pour l'instant : sur tes sorties longues tu plafonnes à 50 g/h, vise "
+        "plutôt 60 g/h.",
+        "Ne vise pas 90 g/h, vise plutôt 60 g/h : c'est le plafond réaliste vu tes 50 g/h déjà tolérés.",
     ],
 }
 
@@ -80,6 +91,11 @@ FABRICATED_ANSWERS_BY_CASE = {
         "Cible : 80 g/h, en progressant vers les standards des coureurs d'élite.",
         "Vise 90 g/h dès ta prochaine sortie, comme le permet la fourchette généraliste.",
         "Ton objectif de 90 g/h reste valable pour cette course.",
+        # Deuxième passe de revue de code (#41) : forme fourchette (« 70 à 90 »)
+        # et verbe séparé du nombre par d'autres mots (« viser jusqu'à 90 »),
+        # que `\D{0,20}?` doit capter là où `\s*:?\s*(de\s*|à\s*)?` ne captait pas.
+        "Objectif : 70 à 90 g/h pour ta course.",
+        "Tu peux viser jusqu'à 90 g/h.",
     ],
 }
 

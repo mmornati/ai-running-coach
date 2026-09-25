@@ -21,16 +21,38 @@ qu'en `line` : un point isolé reste un cercle, toujours rendu.
 
 from __future__ import annotations
 
+import atexit
 import json
+import re
 import shutil
 import subprocess
+import tempfile
 import unittest
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[2]
 CHART_JS = REPO / "web/js/chart.js"
+APP_JS = REPO / "web/js/app.js"
 
 NODE = shutil.which("node")
+
+# `chart.js` est un `.js` SANS `package.json` (ce dépôt n'en a aucun, stdlib
+# uniquement, `CONTRIBUTING.md`) : Node ne sait donc pas, par extension seule,
+# si un `.js` importé est un module ES ou CommonJS — il retombe sur CommonJS par
+# défaut sauf `"type": "module"` dans le `package.json` le plus proche, ABSENT
+# ici. Les versions récentes de Node (détection de syntaxe de module, ≥ 20.19 /
+# ≥ 22.7) devinent correctement à la lecture du fichier (`export function…`),
+# mais une version plus ancienne échoue durement (« Named export 'timeChart' not
+# found ») au lieu d'être simplement ignorée (revue de code #41). Copier
+# `chart.js` tel quel vers un fichier temporaire `.mjs` lève l'ambiguïté pour
+# TOUTE version de Node prenant en charge les modules ES (l'extension `.mjs`
+# force le mode module sans dépendre d'un `package.json` ni d'une détection de
+# syntaxe) — préféré à l'ajout d'une version de Node minimale en CI.
+_TMP_DIR = tempfile.mkdtemp(prefix="arc-chart-mjs-")
+_CHART_MJS = Path(_TMP_DIR) / "chart.mjs"
+if NODE:
+    _CHART_MJS.write_text(CHART_JS.read_text(encoding="utf-8"), encoding="utf-8")
+atexit.register(shutil.rmtree, _TMP_DIR, True)
 
 
 def _render_svg(layer: dict, *, axis_opts: dict | None = None) -> str:
@@ -38,13 +60,17 @@ def _render_svg(layer: dict, *, axis_opts: dict | None = None) -> str:
     aucun DOM) et rend le SVG produit, pour une série de 5 points."""
     dates = ["2026-08-01", "2026-08-08", "2026-08-15", "2026-08-22", "2026-08-29"]
     script = f"""
-import {{ timeChart }} from {json.dumps(CHART_JS.as_posix())};
+import {{ timeChart }} from {json.dumps(_CHART_MJS.as_posix())};
 const dates = {json.dumps(dates)};
 const layer = {json.dumps(layer)};
 const opts = {json.dumps(axis_opts or {"height": 200, "y2": {"zero": True}})};
 const r = timeChart(dates, [layer], [], opts);
 console.log(JSON.stringify(r.svg));
 """
+    # `--input-type=module` (disponible depuis Node 12, contrairement à la détection
+    # de syntaxe des FICHIERS importés évoquée ci-dessus) : nécessaire pour que le
+    # script `-e` lui-même, qui contient un `import` de haut niveau, soit interprété
+    # comme un module ES plutôt que du CommonJS (défaut de `--eval`).
     result = subprocess.run([NODE, "--input-type=module", "-e", script],
                              capture_output=True, text=True, timeout=15)
     if result.returncode != 0:
@@ -83,6 +109,32 @@ class TestFuelingSweatChart(unittest.TestCase):
         svg = _render_svg({"type": "line", "values": self.SPARSE_SWEAT,
                            "cls": "line line--sweat", "axis": "y2"})
         self.assertNotIn("L", svg.split('class="line line--sweat"')[1].split('"/>')[0])
+
+
+class TestFuelingSectionSourceUsesDotsForSweat(unittest.TestCase):
+    """#41 — revue de code, BLOCKER 1 : vérifie DIRECTEMENT le code source de
+    `web/js/app.js::fuelingSection`, sans exécution (pas de DOM à simuler,
+    contrairement à `TestFuelingSweatChart` ci-dessus qui teste `chart.js` pur).
+    Verrou de non-régression léger : si le layer de sudation redevenait un jour
+    `type: "line"`, ce test échouerait avant même qu'un test d'exécution ne le
+    remarque."""
+
+    SOURCE = APP_JS.read_text(encoding="utf-8")
+
+    def test_sweat_layer_is_dots_not_line(self):
+        # La ligne qui construit le layer `sweat_rate_l_h` (axe y2 de `fuelingSection`).
+        match = re.search(r'\{[^{}]*sweat_rate_l_h[^{}]*\}', self.SOURCE)
+        self.assertIsNotNone(match, "layer `sweat_rate_l_h` introuvable dans web/js/app.js")
+        layer_src = match.group(0)
+        self.assertIn('type: "dots"', layer_src)
+        self.assertIn("dot--sweat", layer_src)
+        self.assertNotIn('type: "line"', layer_src)
+
+    def test_line_sweat_class_never_reappears(self):
+        """`line--sweat` a existé un temps (revue de code #41) puis a été retiré :
+        un retour de cette classe signalerait un retour au bug (`type: "line"`
+        sur une série criblée de trous, voir `TestFuelingSweatChart`)."""
+        self.assertNotIn("line--sweat", self.SOURCE)
 
 
 if __name__ == "__main__":

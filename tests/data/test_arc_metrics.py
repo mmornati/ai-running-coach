@@ -1318,6 +1318,14 @@ class TestFuelingCarbsCeiling(unittest.TestCase):
     def test_ceiling_is_always_an_integer(self):
         self.assertIsInstance(M.fueling_carbs_ceiling(48.3), int)
 
+    def test_never_rounds_below_the_observed_maximum(self):
+        """Revue de code #41, nit : un plafond est une borne HAUTE — `round(98.2)`
+        donnerait 98, EN DESSOUS du débit réellement observé (98,2). `math.ceil`
+        garantit que le plafond couvre toujours au moins ce qui a été observé."""
+        ceiling = M.fueling_carbs_ceiling(98.2)
+        self.assertGreaterEqual(ceiling, 98.2)
+        self.assertEqual(ceiling, 99)
+
 
 if __name__ == "__main__":
     unittest.main()

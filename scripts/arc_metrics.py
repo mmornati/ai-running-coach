@@ -392,7 +392,7 @@ ASSUMPTIONS = {
                "graphique de tendance. `fueling_carbs_ceiling` = "
                "min(`max_carbs_per_hour_g` + `FUELING_MAX_MARGIN_G_H`, "
                f"max(`FUELING_TARGET_BAND_G_H[1]` ({FUELING_TARGET_BAND_G_H[1]:g}), "
-               "`max_carbs_per_hour_g`)), arrondi à l'entier — plafond réaliste proposé à "
+               "`max_carbs_per_hour_g`)), arrondi PAR EXCÈS (`math.ceil`, jamais `round` : un plafond ne doit jamais tomber sous le débit réellement observé) — plafond réaliste proposé à "
                "`course-strategist` pour un plan de course, PAS une limite physiologique dure. "
                f"La marge (`FUELING_MAX_MARGIN_G_H`, {FUELING_MAX_MARGIN_G_H:g} g/h) reste une "
                "étape de projet CONSERVATRICE, cohérente avec la littérature sur l'entraînement "
@@ -937,10 +937,15 @@ def fueling_carbs_ceiling(max_observed_g_h: Optional[float],
     `max_observed_g_h + margin_g_h`). Sans cette borne, un athlète déjà à 50 g/h
     recevrait un plafond à 60 (cohérent), mais un athlète à 85 g/h recevrait un
     plafond à 95 g/h — au-dessus du haut de la fourchette généraliste sans qu'un
-    dixième gramme au-delà de 90 n'ait jamais été démontré."""
+    dixième gramme au-delà de 90 n'ait jamais été démontré.
+
+    Arrondi par EXCÈS (`math.ceil`), jamais `round` (revue de code #41, nit) : un
+    plafond est une borne HAUTE — `round` peut arrondir PAR DÉFAUT (98,2 → 98), ce
+    qui rendrait le plafond inférieur au débit RÉELLEMENT observé, un non-sens pour
+    une valeur censée le couvrir."""
     if max_observed_g_h is None:
         return None
-    return round(min(max_observed_g_h + margin_g_h, max(target_band_g_h[1], max_observed_g_h)))
+    return math.ceil(min(max_observed_g_h + margin_g_h, max(target_band_g_h[1], max_observed_g_h)))
 
 
 def gear_mileage(activities: List[dict], gear_defs: List[dict]) -> dict:

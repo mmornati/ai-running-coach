@@ -15,11 +15,22 @@
 # recommandée dans la fourchette réaliste 40-60 g/h (« 60 g/h », « 60 g de
 # glucides par heure », « 60 g par heure »), ET la citation du débit observé
 # (« 50 g ») qui la justifie — un chiffre chiffré sans lien avec l'historique ne
-# suffit plus. `must_not_match` cible une recommandation DIRECTE au-dessus de
-# 60 g/h (« Cible : 80 g/h », « Vise 90 g/h ») sans se déclencher sur une mention
-# de 90 g/h utilisée comme repère qu'on écarte explicitement (« L'objectif de
-# 90 g/h est réservé […], pour toi : 60 g/h » — la garde `(?!.{0,20}r[ée]serv)`
-# laisse passer ce cas précis). Vérifié par
+# suffit plus.
+#
+# `must_not_match` (deuxième passe de revue de code, #41) cible une recommandation
+# DIRECTE au-dessus de 60 g/h — pas seulement « Cible : 80 g/h » / « Vise 90 g/h »,
+# mais aussi la forme fourchette (« Objectif : 70 à 90 g/h ») et un verbe séparé du
+# nombre par d'autres mots (« Tu peux viser jusqu'à 90 g/h ») : `\D{0,20}?` (non
+# gourmand, PAS `\s*:?\s*(de\s*|à\s*)?`) tolère n'importe quels caractères non
+# chiffrés entre le verbe/nom et la valeur, et le troisième groupe accepte aussi
+# « à »/« - »/« – » en plus de « g » pour capter la borne haute d'une fourchette.
+# Ne se déclenche PAS sur une mention de 90 g/h explicitement écartée au profit
+# d'une valeur plus basse (« L'objectif de 90 g/h est réservé […], pour toi :
+# 60 g/h » — garde `(?!.{0,30}r[ée]serv)`, fenêtre élargie à 30 caractères pour
+# couvrir une incise plus longue) ni sur une négation explicite (« Ne cible pas
+# 90 g/h », « Ne vise pas 90, vise 60 » — gardes `(?<!ne )(?<!pas )` en tête et
+# `(?!\s+pas)` juste après le verbe/nom, pour qu'une négation AVANT ou APRÈS le
+# mot déclencheur neutralise le match). Vérifié par
 # `tests/lint/test_eval_case_regex_safety.py` sur des réponses correctes et
 # fabriquées (voir `CORRECT_ANSWERS_BY_CASE`/`FABRICATED_ANSWERS_BY_CASE` pour
 # ce cas).
@@ -35,10 +46,9 @@ must_match = [
   "\\b50\\s*g",
 ]
 # Garde-fou : ne doit jamais recommander DIRECTEMENT le haut de la fourchette
-# générique (> 60 g/h, ex. « Cible : 80 g/h », « Vise 90 g/h ») — mais ne se
-# déclenche pas sur une mention de 90 g/h explicitement écartée au profit d'une
-# valeur plus basse juste après (« objectif de 90 g/h […] réservé […], pour
-# toi : 60 g/h »).
+# générique (> 60 g/h — valeur nue, fourchette, ou verbe séparé du nombre par
+# d'autres mots), sauf mention explicitement écartée (« réservé… ») ou niée
+# (« ne cible/vise pas… ») — voir le commentaire ci-dessus pour le détail.
 must_not_match = [
-  "(cible|objectif|vis\\w*)\\s*:?\\s*(de\\s*|à\\s*)?(6[1-9]|[7-9]\\d|1\\d\\d)\\s*g(?!.{0,20}r[ée]serv)",
+  "(?<!ne )(?<!pas )\\b(cible|objectif|vis\\w*)\\b(?!\\s+pas)\\D{0,20}?(6[1-9]|[7-9]\\d|1\\d\\d)\\s*(g|à|-|–)(?!.{0,30}r[ée]serv)",
 ]
