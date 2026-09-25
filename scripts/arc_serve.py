@@ -273,11 +273,10 @@ def api_load(store: Store, q: dict) -> dict:
         b["duration_s"] += row["duration_s"] or 0
         b["elevation_m"] += row["elevation_gain_m"] or 0
         b["load"] += row["load"] or 0
-        # ITRA effort_km: distance_km + elevation_gain_m / 1000, for run-like sports only
-        if row["sport"] in M.RUN_LIKE and row["distance_m"]:
-            distance_km = row["distance_m"] / 1000
-            effort_km = distance_km + (row["elevation_gain_m"] or 0) / 1000
-            b["effort_km"] += round(effort_km, 1)
+        # ITRA effort_km: distance_km + elevation_gain_m / 100, for run-like sports only
+        effort_km = M.effort_km_itra(row)
+        if effort_km is not None:
+            b["effort_km"] += effort_km
     latest = store.one("SELECT monotony, strain FROM metric_day WHERE date <= ? ORDER BY date DESC LIMIT 1",
                        (today.isoformat(),)) or {}
     return {"weeks": list(buckets.values()), "monotony": latest.get("monotony"), "strain": latest.get("strain")}
