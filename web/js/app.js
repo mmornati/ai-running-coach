@@ -732,22 +732,83 @@ function weightSection(weightSeries, weight) {
   return { html, chart };
 }
 
+/** Section « Glucides & sudation » de la vue Nutrition (#41), entraînement digestif :
+ * un point par sortie longue (> 90 min) — glucides/h (axe principal) et taux de
+ * sudation quand pesé (axe secondaire, `sweat_rate_l_h` déjà dérivé à l'indexation,
+ * jamais recalculé ici) — plus une bande de repère générique 60-90 g/h (documentaire,
+ * pas une cible normative) et le meilleur débit observé sur la fenêtre. Chiffres
+ * seulement, comme la section « Poids » ci-dessus (#36) : aucun avis sur ce qu'il
+ * faudrait manger.
+ */
+function fuelingSection(fueling) {
+  const points = fueling.points.filter((p) => p.carbs_per_hour_g != null || p.sweat_rate_l_h != null);
+  if (!points.length) return { html: "", chart: null };
+  // Abscisses espacées RÉGULIÈREMENT par indice (`timeChart` sans `xLabels`, comme le
+  // volume hebdomadaire) — pas à l'échelle réelle du calendrier : deux sorties longues
+  // rapprochées de trois jours et deux espacées de trois semaines occupent la même
+  // largeur. Assumé délibérément ici (revue de code #41, nit) : les sorties longues
+  // sont trop peu nombreuses et trop irrégulières (une par semaine dans le meilleur
+  // des cas) pour qu'un axe temporel continu reste lisible sans écraser les points
+  // récents dans un coin — documenté plutôt que « corrigé » par un axe réel.
+  const dates = points.map((p) => p.date);
+  const [lo, hi] = fueling.target_band_g_h;
+  const marks = fueling.carbs_ceiling_g_h != null
+    ? [{ type: "hline", value: fueling.carbs_ceiling_g_h, cls: "mark mark--carbs-ceiling", label: `Plafond course ${F.carbsRate(fueling.carbs_ceiling_g_h)}` }]
+    : [];
+  const chart = timeChart(dates, [
+    { type: "band", lo: dates.map(() => lo), hi: dates.map(() => hi), cls: "band-fill" },
+    { type: "dots", values: points.map((p) => p.carbs_per_hour_g), cls: "dot dot--carbs" },
+    // Sudation en `dots` (jamais `line`) : les sorties longues ne sont pas toutes pesées, donc
+    // cette série est CRIBLÉE de trous — `pathFrom` (chart.js) coupe une ligne à chaque `null`
+    // et un point non-`null` isolé entre deux `null` (aucun voisin immédiat) génère un simple
+    // « M » sans « L » à la suite, un sous-tracé d'un seul point qu'aucun navigateur ne rend
+    // (revue de code #41). Un point par sortie pesée reste visible même isolé ; anneau creux
+    // (voir `.dot--sweat` CSS) plutôt qu'un disque plein, pour rester distinct des points
+    // glucides/h au premier coup d'œil, y compris en niveaux de gris.
+    { type: "dots", values: points.map((p) => p.sweat_rate_l_h), cls: "dot dot--sweat", axis: "y2", r: 3.2 },
+  ], marks, {
+    height: 200, y: { zero: true }, y2: { zero: true }, label: "Glucides par heure et taux de sudation, sorties longues",
+    yFormat: (v) => F.carbsRate(v), y2Format: (v) => F.sweatRate(v),
+  });
+  const maxTxt = fueling.max_carbs_per_hour_g != null
+    ? `${F.carbsRate(fueling.max_carbs_per_hour_g)}<small> sur ${fueling.carbs_per_hour_n} sortie${fueling.carbs_per_hour_n > 1 ? "s" : ""}</small>` : "—";
+  const medianTxt = fueling.median_sweat_rate_l_h != null
+    ? `${F.sweatRate(fueling.median_sweat_rate_l_h)}<small> sur ${fueling.sweat_rate_n} sortie${fueling.sweat_rate_n > 1 ? "s" : ""}</small>` : "—";
+  const html = `<section class="band"><h2>Glucides &amp; sudation</h2>
+    <p class="muted">Repère indicatif ${F.carbsRate(lo)} – ${F.carbsRate(hi)}, pas une cible normative — le plafond réaliste d'un plan de course est le meilleur débit observé ci-dessous, plus une marge de progression documentée.</p>
+    <p class="legend"><span class="legend__item"><span class="key key--band"></span>Repère 60-90 g/h</span> <span class="legend__item"><span class="key key--carbs"></span>Glucides/h</span> <span class="legend__item"><span class="key key--sweat"></span>Sudation</span>${fueling.carbs_ceiling_g_h != null ? ` <span class="legend__item"><span class="key key--carbs-ceiling"></span>Plafond course</span>` : ""}</p>
+    <div class="chart-host" id="c-fueling">${chart.svg}</div><p class="readout" id="r-fueling"></p>
+    <dl class="facts facts--inline">
+      <div><dt>Sorties longues (${fueling.window_weeks} sem.)</dt><dd>${F.num(fueling.long_runs)}</dd></div>
+      <div><dt>Débit maximal observé</dt><dd>${maxTxt}</dd></div>
+      <div><dt>Sudation médiane</dt><dd>${medianTxt}</dd></div>
+    </dl></section>`;
+  return { html, chart, points };
+}
+
 async function viewNutrition() {
-  const { days, weight_series, weight } = await api("nutrition?days=180");
+  const [{ days, weight_series, weight }, fueling] = await Promise.all([api("nutrition?days=180"), api("fueling")]);
   const weighed = days.filter((d) => d.weight_kg != null || d.intake_kcal != null);
   const { html: weightHtml, chart: weightChart } = weightSection(weight_series, weight);
-  if (!weighed.length && !weightChart) {
+  const { html: fuelingHtml, chart: fuelingChart, points: fuelingPoints } = fuelingSection(fueling);
+  if (!weighed.length && !weightChart && !fuelingChart) {
     main.innerHTML = header("Nutrition") + empty("Pas encore de suivi chiffré", "Les journaux <code>nutrition/</code> et <code>medical/</code> au contrat (apports, macros, poids) alimentent cette vue.");
     return;
   }
   const table = weighed.length ? `<div class="table-wrap"><table class="data"><thead><tr><th scope="col">Date</th><th scope="col" class="num">Poids</th><th scope="col" class="num">Cible</th><th scope="col" class="num">Apports</th><th scope="col" class="num">Dépense</th><th scope="col" class="num">G / P / L</th></tr></thead>
     <tbody>${days.slice().reverse().map((d) => `<tr><td>${F.dayShort(d.date)}</td><td class="num">${F.weight(d.weight_kg)}</td><td class="num">${F.weight(d.target_weight_kg)}</td><td class="num">${F.num(d.intake_kcal)}</td><td class="num">${F.num(d.burned_kcal)}</td><td class="num">${d.carbs_g != null ? `${F.num(d.carbs_g)} / ${F.num(d.protein_g)} / ${F.num(d.fat_g)} g` : "—"}</td></tr>`).join("")}</tbody></table></div>`
     : empty("Pas encore d'apports déclarés", "Les journaux <code>nutrition/</code> au contrat (apports, macros) alimentent ce tableau.");
-  main.innerHTML = `${header("Nutrition")}${weightHtml}${table}`;
+  main.innerHTML = `${header("Nutrition")}${weightHtml}${fuelingHtml}${table}`;
   if (weightChart) {
     attachCursor($("#c-weight"), weightChart, (i) => {
       const p = weight_series[i];
       readout($("#r-weight"), `<strong>${F.dayLong(p.date)}</strong> · poids ${F.weight(p.weight_kg_merged)} · moyenne 7 j ${F.weight(p.weight_avg7_kg)}`);
+    });
+  }
+  if (fuelingChart) {
+    attachCursor($("#c-fueling"), fuelingChart, (i) => {
+      const p = fuelingPoints[i];
+      readout($("#r-fueling"), `<strong>${F.dayLong(p.date)}</strong> · glucides ${F.carbsRate(p.carbs_per_hour_g)} · sudation ${F.sweatRate(p.sweat_rate_l_h)}`);
     });
   }
 }

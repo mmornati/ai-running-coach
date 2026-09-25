@@ -1,0 +1,54 @@
+# #41 — plafond réaliste de glucides/h : le stratège doit citer le meilleur débit
+# réellement observé à l'entraînement (`scripts/arc_index.py fueling`) plutôt que de
+# proposer d'emblée le haut de la fourchette générique 60-90 g/h.
+#
+# La fixture porte 3 sorties longues relatives (#41) : 30, 50 (max) et 48 g/h sur
+# les 12 dernières semaines glissantes — `carbs_ceiling_g_h` attendu = 50 + 10
+# (`FUELING_MAX_MARGIN_G_H`) = 60 g/h. Le prompt reste volontairement focalisé (pas
+# de GPX/URL fournie) pour ne tester que la logique de plafonnage, pas tout le
+# plan de course en 8 étapes.
+#
+# Regex affinées après revue de code (#41) : `progress\w*` seul en `must_match`
+# laissait passer un renvoi générique à la fourchette 60-90 sans aucune valeur
+# chiffrée issue de l'historique (« Vise 60-90 g/h … augmente progressivement ») —
+# retiré. `must_match` exige maintenant DEUX preuves distinctes : une valeur
+# recommandée dans la fourchette réaliste 40-60 g/h (« 60 g/h », « 60 g de
+# glucides par heure », « 60 g par heure »), ET la citation du débit observé
+# (« 50 g ») qui la justifie — un chiffre chiffré sans lien avec l'historique ne
+# suffit plus.
+#
+# `must_not_match` (deuxième passe de revue de code, #41) cible une recommandation
+# DIRECTE au-dessus de 60 g/h — pas seulement « Cible : 80 g/h » / « Vise 90 g/h »,
+# mais aussi la forme fourchette (« Objectif : 70 à 90 g/h ») et un verbe séparé du
+# nombre par d'autres mots (« Tu peux viser jusqu'à 90 g/h ») : `\D{0,20}?` (non
+# gourmand, PAS `\s*:?\s*(de\s*|à\s*)?`) tolère n'importe quels caractères non
+# chiffrés entre le verbe/nom et la valeur, et le troisième groupe accepte aussi
+# « à »/« - »/« – » en plus de « g » pour capter la borne haute d'une fourchette.
+# Ne se déclenche PAS sur une mention de 90 g/h explicitement écartée au profit
+# d'une valeur plus basse (« L'objectif de 90 g/h est réservé […], pour toi :
+# 60 g/h » — garde `(?!.{0,30}r[ée]serv)`, fenêtre élargie à 30 caractères pour
+# couvrir une incise plus longue) ni sur une négation explicite (« Ne cible pas
+# 90 g/h », « Ne vise pas 90, vise 60 » — gardes `(?<!ne )(?<!pas )` en tête et
+# `(?!\s+pas)` juste après le verbe/nom, pour qu'une négation AVANT ou APRÈS le
+# mot déclencheur neutralise le match). Vérifié par
+# `tests/lint/test_eval_case_regex_safety.py` sur des réponses correctes et
+# fabriquées (voir `CORRECT_ANSWERS_BY_CASE`/`FABRICATED_ANSWERS_BY_CASE` pour
+# ce cas).
+id = "course-strategist-carbs-target"
+prompt = "Quelle cible de glucides par heure dois-je viser pour mon trail de dimanche ? Je n'ai pas encore de trace GPX, je veux juste connaître le repère à viser en fonction de mes sorties longues récentes."
+fixture = "course-strategist-carbs-target"
+
+[expect]
+# Une valeur recommandée réaliste (40-60 g/h, plafond observé + marge documentée) ...
+must_match = [
+  "\\b(4\\d|5\\d|60)\\s*g(\\s*/\\s*h|\\s*(de\\s*glucides\\s*)?(par|/)\\s*h(eure)?)",
+  # ... ET la citation du débit observé qui la justifie (50 g/h dans la fixture).
+  "\\b50\\s*g",
+]
+# Garde-fou : ne doit jamais recommander DIRECTEMENT le haut de la fourchette
+# générique (> 60 g/h — valeur nue, fourchette, ou verbe séparé du nombre par
+# d'autres mots), sauf mention explicitement écartée (« réservé… ») ou niée
+# (« ne cible/vise pas… ») — voir le commentaire ci-dessus pour le détail.
+must_not_match = [
+  "(?<!ne )(?<!pas )\\b(cible|objectif|vis\\w*)\\b(?!\\s+pas)\\D{0,20}?(6[1-9]|[7-9]\\d|1\\d\\d)\\s*(g|à|-|–)(?!.{0,30}r[ée]serv)",
+]

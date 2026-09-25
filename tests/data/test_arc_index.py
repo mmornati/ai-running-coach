@@ -878,5 +878,76 @@ class TestGearMileageIndex(Workspace):
         self.assertEqual(len(result["warnings"]), 1)
 
 
+class TestFuelingCli(Workspace):
+    """#41 — `arc_index.fueling_trend` : voie headless (`scripts/arc_index.py fueling`)
+    vers glucides/h et taux de sudation sur les sorties longues, bout en bout depuis
+    des fichiers `activities/*.md` indexés. N'est pas soumis à `[health].morning_check`
+    (contrairement à `hrv-baseline`/`sleep-debt`)."""
+
+    def test_end_to_end_max_and_median(self):
+        self.write("activities/2026-08-01_trail.md", arc(
+            '{"arc": 1, "kind": "activity", "date": "2026-08-01", "sport": "trail", '
+            '"duration_s": 7200, "distance_m": 18000, "weight_pre_kg": 70.0, '
+            '"weight_post_kg": 69.0, "carbs_g": 100}'))
+        self.write("activities/2026-08-15_trail.md", arc(
+            '{"arc": 1, "kind": "activity", "date": "2026-08-15", "sport": "trail", '
+            '"duration_s": 9000, "distance_m": 22000, "carbs_g": 150}'))
+        self.index()
+        result = I.fueling_trend(self.conn, date(2026, 9, 23))
+        self.assertEqual(result["long_runs"], 2)
+        # 100 g / 2 h = 50 g/h ; 150 g / 2,5 h = 60 g/h (max).
+        self.assertEqual(result["max_carbs_per_hour_g"], 60.0)
+        self.assertEqual(result["carbs_per_hour_n"], 2)
+        self.assertEqual(result["carbs_ceiling_g_h"], 60.0 + M.FUELING_MAX_MARGIN_G_H)
+        self.assertEqual(result["target_band_g_h"], [60, 90])
+        # Une seule séance pesée -> une seule valeur de sudation, effectif à 1.
+        self.assertEqual(result["sweat_rate_n"], 1)
+
+    def test_short_sessions_excluded_end_to_end(self):
+        self.write("activities/2026-09-20_running.md", arc(
+            '{"arc": 1, "kind": "activity", "date": "2026-09-20", "sport": "running", '
+            '"duration_s": 3600, "distance_m": 10000, "carbs_g": 40}'))
+        self.index()
+        result = I.fueling_trend(self.conn, date(2026, 9, 23))
+        self.assertEqual(result["long_runs"], 0)
+        self.assertIsNone(result["max_carbs_per_hour_g"])
+        self.assertIsNone(result["carbs_ceiling_g_h"])
+
+    def test_no_data_ceiling_is_none(self):
+        self.index()
+        result = I.fueling_trend(self.conn, date(2026, 9, 23))
+        self.assertEqual(result["long_runs"], 0)
+        self.assertIsNone(result["carbs_ceiling_g_h"])
+        self.assertEqual(result["target_band_g_h"], [60, 90])
+
+    def test_cycling_excluded_end_to_end(self):
+        """Revue de code #41, blocker : un long vélo à haut débit ne doit jamais
+        gonfler le plafond d'un plan de COURSE À PIED (`FUELING_SPORTS`, ni la
+        SQL `arc_index.fueling_trend` ni `arc_metrics.fueling_trend`)."""
+        self.write("activities/2026-08-01_cycling.md", arc(
+            '{"arc": 1, "kind": "activity", "date": "2026-08-01", "sport": "cycling", '
+            '"duration_s": 10800, "distance_m": 90000, "carbs_g": 300}'))   # 100 g/h
+        self.index()
+        result = I.fueling_trend(self.conn, date(2026, 9, 23))
+        self.assertEqual(result["long_runs"], 0)
+        self.assertIsNone(result["max_carbs_per_hour_g"])
+
+    def test_not_gated_by_morning_check(self):
+        """Contrairement à `hrv-baseline`/`sleep-debt`, `fueling_trend` ne lit même
+        pas `conf`/`[health].morning_check` : le calcul ne dépend d'aucune donnée de
+        santé, seulement des activités déjà indexées."""
+        import inspect
+        self.assertNotIn("conf", inspect.signature(I.fueling_trend).parameters)
+
+    def test_end_to_end_ignores_health_only_mode(self):
+        self.write("activities/2026-08-01_trail.md", arc(
+            '{"arc": 1, "kind": "activity", "date": "2026-08-01", "sport": "trail", '
+            '"duration_s": 7200, "distance_m": 18000, "carbs_g": 100}'))
+        self.index()
+        result = I.fueling_trend(self.conn, date(2026, 9, 23))
+        self.assertEqual(result["long_runs"], 1)
+        self.assertEqual(result["max_carbs_per_hour_g"], 50.0)
+
+
 if __name__ == "__main__":
     unittest.main()

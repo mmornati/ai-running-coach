@@ -25,6 +25,7 @@ Bibliothèque standard uniquement (CONTRIBUTING.md).
 from __future__ import annotations
 
 import math
+import statistics
 import unicodedata
 from datetime import date, timedelta
 from typing import Dict, Iterable, List, Optional, Tuple
@@ -126,6 +127,37 @@ GEAR_WEAR_SPORTS = RUNNING_SPORTS + ("hiking",)
 # Seuil d'alerte par défaut si la puce du profil n'en précise pas (`arc_legacy.parse_gear`,
 # segment « alerte NNN km ») — valeur courante pour une chaussure de route/trail.
 GEAR_ALERT_THRESHOLD_M_DEFAULT = 700_000
+
+# Glucides/h et taux de sudation sur les sorties longues (#41) : entraînement digestif.
+# « Sortie longue » = duration_s STRICTEMENT supérieure à 90 min (issue #41), la même
+# borne que celle citée pour le plan de course (60-90 g/h). Une séance de 90 min pile
+# n'est pas une sortie longue au sens de ce KPI.
+LONG_RUN_MIN_DURATION_S = 90 * 60
+# Sports considérés (revue de code #41, blocker : sans filtre, un vélo de 3 h à 100 g/h
+# plafonnait un plan de COURSE À PIED à 110 g/h). `RUNNING_SPORTS` (running, trail) —
+# jamais `GEAR_WEAR_SPORTS`, qui inclut aussi `hiking` pour l'usure de semelle : une
+# randonnée est typiquement beaucoup plus lente qu'un effort de course (allure, FC,
+# dépense horaire), donc pas comparable à la cible glucides/h d'un plan de course à
+# pied — l'inclure risquerait de faire plafonner (ou de gonfler) la cible sur un
+# régime d'effort différent. Le vélo est exclu pour la même raison, en plus marquée :
+# une intensité et une digestion à l'effort nettement différentes de la course à pied.
+FUELING_SPORTS = RUNNING_SPORTS
+# Fenêtre de tendance : 12 semaines glissantes, aujourd'hui inclus (choix de l'issue #41).
+FUELING_TREND_WEEKS = 12
+# Fourchette de repère généraliste (60-90 g/h), affichée comme guide, jamais comme
+# seuil normatif — même statut que ACWR_SAFE/SLEEP_DEBT_WARN_S ci-dessus.
+FUELING_TARGET_BAND_G_H = (60, 90)
+# Marge de progression documentée au-dessus du meilleur débit réellement toléré à
+# l'entraînement, utilisée par `course-strategist` pour plafonner l'objectif d'un
+# plan de course : voir ASSUMPTIONS["fueling"]. Volontairement conservatrice : c'est
+# une étape de projet documentée (pas une valeur validée par un essai contrôlé sur CE
+# workspace), cohérente avec la littérature sur l'entraînement progressif de la
+# tolérance digestive (Jeukendrup 2017, « Training the Gut for Athletes », Sports
+# Medicine ; Costa et al. 2017, revue sur les troubles gastro-intestinaux d'exercice)
+# qui documente une tolérance qui s'accroît par exposition répétée à l'effort, sans
+# fixer de pourcentage de progression consensuel par unité de temps — la marge choisie
+# ici reste donc une règle de projet, pas une valeur tirée de ces sources.
+FUELING_MAX_MARGIN_G_H = 10
 
 ASSUMPTIONS = {
     "trimp": "TRIMP de Banister : minutes × FCr × 0,64 × e^(k·FCr), FCr = (FC moy − FC repos) / (FC max − FC repos), "
@@ -321,6 +353,69 @@ ASSUMPTIONS = {
                  "(`arc_contract.WEIGHT_POST_TOLERANCE_KG`), ex. 70 → 70,5 kg sans liquide déclaré — ou hors plage "
                  f"plausible {SWEAT_RATE_PLAUSIBLE_L_H[0]:g}-{SWEAT_RATE_PLAUSIBLE_L_H[1]:g} l/h → `None`, jamais "
                  "affiché tel quel. Alimente #41 (KPI glucides/h et taux de sudation).",
+    "fueling": "Glucides/h et taux de sudation sur les sorties longues (#41), entraînement "
+               "digestif. `carbs_per_hour_g` (fonction `carbs_per_hour_g`) = `carbs_g` / "
+               f"(`duration_s` en heures), calculé UNIQUEMENT pour les séances de plus de "
+               f"{LONG_RUN_MIN_DURATION_S / 60:g} min (`LONG_RUN_MIN_DURATION_S`, la même borne "
+               "que le repère 60-90 g/h cité aux plans de course) — sous ce seuil, `None` (pas "
+               "une sortie longue au sens de ce KPI), tout comme si `carbs_g` est absent (jamais "
+               "0 par défaut : un `carbs_g` explicitement à 0 reste un 0 g/h légitime, une "
+               "absence de déclaration n'en est pas un). Sport : `FUELING_SPORTS` (running, trail) "
+               "SEULEMENT (revue de code #41, blocker) — jamais `GEAR_WEAR_SPORTS`, qui inclut "
+               "aussi la randonnée pour l'usure de semelle : une randonnée est typiquement bien "
+               "plus lente qu'un effort de course (allure, FC, dépense horaire), et le vélo a une "
+               "intensité et une digestion à l'effort différentes ; sans ce filtre, un long vélo à "
+               "haut débit glucidique gonflerait `max_carbs_per_hour_g` et donc le plafond d'un "
+               "plan de COURSE À PIED. Durée : `duration_s` (durée TOTALE), "
+               "la même que `sweat_rate_l_h` ci-dessus — cohérence entre les deux KPI dérivés de "
+               "la même sortie, tous deux encadrés par la pesée/le ravitaillement sur la sortie "
+               "entière, arrêts compris. `sweat_rate_l_h` n'est JAMAIS recalculé ici : "
+               "`fueling_trend` réutilise tel quel le champ déjà dérivé à l'indexation "
+               "(`arc_metrics.sweat_rate_l_h`), pour ne jamais faire dériver deux définitions du "
+               "même chiffre. `fueling_trend` agrège les sorties longues des "
+               f"`FUELING_TREND_WEEKS` ({FUELING_TREND_WEEKS}) dernières semaines glissantes "
+               "(aujourd'hui inclus) : `max_carbs_per_hour_g` (le plus haut débit observé sur "
+               "une sortie longue de la fenêtre — c'est le seul repère de tolérance dont on "
+               "dispose : le contrat n'a AUCUN champ de trouble digestif déclaré, donc « toléré » "
+               "veut seulement dire « ingéré sans qu'un problème n'ait été signalé ailleurs », "
+               "jamais une vraie mesure de tolérance — à confirmer par l'athlète ou l'agent avant "
+               "de s'en servir comme plafond dur), `carbs_per_hour_n` (nombre de sorties longues "
+               "AVEC un `carbs_per_hour_g` défini, pour que l'appelant sache si le maximum repose "
+               "sur une ou dix séances), `median_sweat_rate_l_h` et `sweat_rate_n` (médiane et "
+               "effectif des `sweat_rate_l_h` non `None` sur la même fenêtre — une médiane "
+               "plutôt qu'une moyenne : un seul jour très chaud ne doit pas à lui seul déplacer "
+               "le repère). Une sortie longue sans aucune des deux valeurs compte quand même dans "
+               "`long_runs` (nombre total de sorties longues de la fenêtre) : elle prouve qu'un "
+               "entraînement digestif a eu lieu, même non chiffré. Fenêtre volontairement "
+               "identique pour les deux KPI (jamais une fenêtre glucides et une fenêtre sudation "
+               "différentes) : ce sont les mêmes séances qui alimentent les deux courbes du même "
+               "graphique de tendance. `fueling_carbs_ceiling` = "
+               "min(`max_carbs_per_hour_g` + `FUELING_MAX_MARGIN_G_H`, "
+               f"max(`FUELING_TARGET_BAND_G_H[1]` ({FUELING_TARGET_BAND_G_H[1]:g}), "
+               "`max_carbs_per_hour_g`)), arrondi PAR EXCÈS (`math.ceil`, jamais `round` : un plafond ne doit jamais tomber sous le débit réellement observé) — plafond réaliste proposé à "
+               "`course-strategist` pour un plan de course, PAS une limite physiologique dure. "
+               f"La marge (`FUELING_MAX_MARGIN_G_H`, {FUELING_MAX_MARGIN_G_H:g} g/h) reste une "
+               "étape de projet CONSERVATRICE, cohérente avec la littérature sur l'entraînement "
+               "progressif de la tolérance digestive (Jeukendrup 2017, « Training the Gut for "
+               "Athletes », Sports Medicine ; Costa et al. 2017, revue sur les troubles "
+               "gastro-intestinaux d'exercice) qui documente une tolérance qui s'accroît par "
+               "exposition répétée à l'effort, sans fixer de pourcentage de progression "
+               "consensuel — PAS une valeur tirée telle quelle de ces sources. Le plafond ne "
+               "dépasse JAMAIS le haut du repère généraliste (90 g/h) sauf si l'athlète a DÉJÀ "
+               "personnellement démontré un débit supérieur, auquel cas aucune marge "
+               "supplémentaire n'est ajoutée au-delà de ce qu'il a prouvé (revue de code #41, "
+               "SHOULD-FIX 3 : sans cette borne, un athlète déjà à 85 g/h recevait un plafond à "
+               "95 g/h, au-dessus du haut de la fourchette généraliste sans qu'un dixième gramme "
+               "au-delà de 90 n'ait jamais été démontré). `None` sans aucune sortie longue "
+               "chiffrée sur la fenêtre : le stratège garde alors le repère générique 60-90 g/h "
+               "(`FUELING_TARGET_BAND_G_H`) et doit suggérer un entraînement digestif progressif "
+               "plutôt que d'inventer un plafond. Moins de 3 sorties longues chiffrées "
+               "(`carbs_per_hour_n` < 3) : le plafond tient sur trop peu de données pour être "
+               "présenté comme fiable — `course-strategist`/`nutritionist` doivent le signaler "
+               "(« repose sur seulement N sortie(s) ») et suggérer de le confirmer à la prochaine "
+               "sortie longue, plutôt que de le donner pour acquis. Non soumis à "
+               "`[health].morning_check` : ne dépend d'aucune donnée de santé, seulement des "
+               "activités déjà indexées.",
     "gear_mileage": "Kilométrage chaussures (#40) : somme de `distance_m` des activités de sport dans "
                  f"`GEAR_WEAR_SPORTS` ({', '.join(GEAR_WEAR_SPORTS)}) — course et randonnée seulement (la "
                  "marche, `walking`, n'y est délibérément PAS incluse : elle use une semelle bien plus lentement "
@@ -755,6 +850,102 @@ def sweat_rate_l_h(activity: dict) -> Optional[float]:
     rate = ((pre - post) + fluid_l) / hours
     lo, hi = SWEAT_RATE_PLAUSIBLE_L_H
     return round(rate, 2) if lo <= rate <= hi else None
+
+
+def carbs_per_hour_g(activity: dict) -> Optional[float]:
+    """Glucides ingérés par heure d'effort (#41), entraînement digestif. `None` si la
+    séance n'est pas une sortie longue (`duration_s` ≤ `LONG_RUN_MIN_DURATION_S`, borne
+    STRICTE) ou si `carbs_g` n'est pas renseigné — jamais 0 par défaut : un `carbs_g`
+    explicitement à 0 reste un 0 g/h légitime. Voir `ASSUMPTIONS["fueling"]`."""
+    duration = activity.get("duration_s")
+    if not duration or duration <= LONG_RUN_MIN_DURATION_S:
+        return None
+    carbs = activity.get("carbs_g")
+    if carbs is None:
+        return None
+    return round(carbs / (duration / 3600.0), 1)
+
+
+def fueling_trend(activities: List[dict], day: date, window_weeks: int = FUELING_TREND_WEEKS) -> dict:
+    """Tendance glucides/h et taux de sudation sur les sorties longues (#41), fenêtre
+    de `window_weeks` semaines glissantes se terminant à `day` inclus. Voir
+    `ASSUMPTIONS["fueling"]` pour la méthode complète.
+
+    `activities` : dicts portant au moins `date` (AAAA-MM-JJ), `duration_s` et `sport` ;
+    `carbs_g` et `sweat_rate_l_h` (déjà dérivé à l'indexation, JAMAIS recalculé ici)
+    optionnels. Seules les activités de `FUELING_SPORTS` (running, trail — jamais le
+    vélo ni la randonnée, voir la constante) avec `duration_s` > `LONG_RUN_MIN_DURATION_S`
+    sont considérées (les deux filtres sont appliqués ici, que l'appelant ait ou non déjà
+    pré-filtré sa requête — revue de code #41, blocker : sans le filtre sport, un long
+    vélo à haut débit pouvait plafonner un objectif de COURSE À PIED). Fenêtre INCLUSIVE
+    des deux côtés, `window_weeks * 7` jours au total (aujourd'hui et le jour
+    `window_weeks` semaines avant tous les deux comptés) — même convention que
+    `HEAT_WINDOW_DAYS` ci-dessus (`start = day - timedelta(days=N-1)`).
+    """
+    start = day - timedelta(days=window_weeks * 7 - 1)
+    points = []
+    for act in activities:
+        iso = act.get("date")
+        duration = act.get("duration_s")
+        if not iso or not duration or duration <= LONG_RUN_MIN_DURATION_S:
+            continue
+        if act.get("sport") not in FUELING_SPORTS:
+            continue
+        try:
+            act_date = date.fromisoformat(iso)
+        except ValueError:
+            continue
+        if not (start <= act_date <= day):
+            continue
+        points.append({
+            "date": iso,
+            "sport": act.get("sport"),
+            "distance_m": act.get("distance_m"),
+            "duration_s": duration,
+            "carbs_per_hour_g": carbs_per_hour_g(act),
+            "sweat_rate_l_h": act.get("sweat_rate_l_h"),
+        })
+    points.sort(key=lambda p: p["date"])
+    carbs_values = [p["carbs_per_hour_g"] for p in points if p["carbs_per_hour_g"] is not None]
+    sweat_values = [p["sweat_rate_l_h"] for p in points if p["sweat_rate_l_h"] is not None]
+    return {
+        "points": points,
+        "window_weeks": window_weeks,
+        "long_runs": len(points),
+        "max_carbs_per_hour_g": max(carbs_values) if carbs_values else None,
+        "carbs_per_hour_n": len(carbs_values),
+        "median_sweat_rate_l_h": round(statistics.median(sweat_values), 2) if sweat_values else None,
+        "sweat_rate_n": len(sweat_values),
+    }
+
+
+def fueling_carbs_ceiling(max_observed_g_h: Optional[float],
+                           margin_g_h: float = FUELING_MAX_MARGIN_G_H,
+                           target_band_g_h: Tuple[float, float] = FUELING_TARGET_BAND_G_H) -> Optional[float]:
+    """Plafond réaliste de glucides/h pour un plan de course (#41) : meilleur débit
+    réellement observé à l'entraînement + marge de progression documentée
+    (`ASSUMPTIONS["fueling"]`) — PAS une limite physiologique dure. `None` si aucune
+    sortie longue chiffrée n'est disponible : le stratège garde alors le repère
+    générique `FUELING_TARGET_BAND_G_H` et doit suggérer un entraînement digestif
+    progressif plutôt que d'inventer un plafond.
+
+    Borné au-dessus par `max(target_band_g_h[1], max_observed_g_h)` (revue de code #41,
+    SHOULD-FIX 3) : le plafond ne dépasse JAMAIS le haut du repère généraliste
+    (90 g/h) sauf si l'athlète a DÉJÀ personnellement démontré un débit supérieur —
+    auquel cas aucune marge supplémentaire n'est ajoutée au-delà de ce qu'il a
+    prouvé (le plafond devient alors exactement `max_observed_g_h`, jamais
+    `max_observed_g_h + margin_g_h`). Sans cette borne, un athlète déjà à 50 g/h
+    recevrait un plafond à 60 (cohérent), mais un athlète à 85 g/h recevrait un
+    plafond à 95 g/h — au-dessus du haut de la fourchette généraliste sans qu'un
+    dixième gramme au-delà de 90 n'ait jamais été démontré.
+
+    Arrondi par EXCÈS (`math.ceil`), jamais `round` (revue de code #41, nit) : un
+    plafond est une borne HAUTE — `round` peut arrondir PAR DÉFAUT (98,2 → 98), ce
+    qui rendrait le plafond inférieur au débit RÉELLEMENT observé, un non-sens pour
+    une valeur censée le couvrir."""
+    if max_observed_g_h is None:
+        return None
+    return math.ceil(min(max_observed_g_h + margin_g_h, max(target_band_g_h[1], max_observed_g_h)))
 
 
 def gear_mileage(activities: List[dict], gear_defs: List[dict]) -> dict:

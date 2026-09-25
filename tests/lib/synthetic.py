@@ -702,6 +702,16 @@ def build(root: Path, days: int = 120, today: date | None = None, sport: str = "
         # ci-dessus) plutôt que l'identifiant explicite sur toutes les séances.
         if plan == "quality":
             data["gear_id"] = "adizero-sl"
+        # Glucides/fluide/pesées sur certaines sorties longues (#41, entraînement
+        # digestif) : motifs déterministes sur `i` uniquement, JAMAIS un nouveau tirage
+        # `rng` — même précaution que `weight_kg`/`gear_id` ci-dessus, sans quoi ajouter
+        # ce champ décalerait tout le flux aléatoire partagé qui suit selon `i % N`.
+        if plan == "long" and duration > 5400 and i % 2 == 0:
+            data["carbs_g"] = round(30 + 6 * (i % 6))            # 30-60 g déclarés
+            data["fluid_intake_ml"] = round(500 + 50 * (i % 4))
+            if i % 4 == 0:
+                data["weight_pre_kg"] = round(69.5 - 0.4 * i / days, 1)
+                data["weight_post_kg"] = round(data["weight_pre_kg"] - 0.5 - 0.1 * (i % 3), 1)
         if rng.random() < 0.8:
             data["recovery_hr_bpm"] = round(24 + 10 * rng.random() - 8 * fatigue)
         else:

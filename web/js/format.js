@@ -39,6 +39,18 @@ export function weightRate(kgPerWeek, digits = 2) {
   return `${num(kgPerWeek, digits)}${NBSP}kg/semaine`;
 }
 
+// Glucides/h et taux de sudation (#41) : grammes et litres, indépendants de
+// `[athlete].units` (pas de convention impériale d'usage pour ces deux grandeurs).
+export function carbsRate(gPerHour, digits = 0) {
+  if (gPerHour === null || gPerHour === undefined) return "—";
+  return `${num(gPerHour, digits)}${NBSP}g/h`;
+}
+
+export function sweatRate(litersPerHour, digits = 2) {
+  if (litersPerHour === null || litersPerHour === undefined) return "—";
+  return `${num(litersPerHour, digits)}${NBSP}l/h`;
+}
+
 export function duration(s, { seconds = false } = {}) {
   if (s === null || s === undefined) return "—";
   const total = Math.round(s);

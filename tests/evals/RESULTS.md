@@ -22,6 +22,7 @@ ARC_LLM_TESTS=1 python3 tests/run_tests.py --tier c --repeat 3
 
 | Scénario | Réussites | Verdict |
 |---|---|---|
+| `course-strategist-carbs-target` | — | — |
 | `daily-sync-resume-block` | — | — |
 | `doctor-token-expiring` | — | — |
 | `health-full-triad` | — | — |
@@ -49,6 +50,6 @@ ARC_LLM_TESTS=1 python3 tests/run_tests.py --tier c --repeat 3
 > puis remplacez ce tableau par le relevé obtenu.
 
 <!-- Régénéré via `python3 tests/evals/render_results.py --results <(echo '{}')`
-     (#39) : `sync-declared-fuel` a été ajouté par cette régénération. Date et
-     modèle remis à `_jamais exécuté_`/« défaut » à la main après régénération :
-     aucune exécution réelle n'a eu lieu. -->
+     (#41) : `course-strategist-carbs-target` a été ajouté par cette
+     régénération. Date et modèle remis à `_jamais exécuté_`/« défaut » à la
+     main après régénération : aucune exécution réelle n'a eu lieu. -->

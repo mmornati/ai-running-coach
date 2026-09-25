@@ -33,6 +33,8 @@
   --s-year-1: #b0712f;
   --s-year-2: #9aa89f;
   --s-weight: #6a4c93;
+  --s-carbs: #b0712f;
+  --s-sweat: #2f6b9a;
 
   /* sémantique : verdicts, météo, statuts */
   --ok: #2f7a4f;
@@ -65,6 +67,7 @@
     --s-fitness: #7cc39b; --s-fatigue: #e0a45c; --s-form-pos: rgba(124, 195, 155, 0.20); --s-hrv: #7cc39b; --s-rhr: #e0826b;
     --s-median: #8b9a92; --s-bar: #4f8f6e; --s-sleep: #3d7a5c; --s-dplus: #e0826b; --s-band: rgba(124, 195, 155, 0.12);
     --s-year-0: #7cc39b; --s-year-1: #e0a45c; --s-year-2: #56665d; --s-weight: #b39ddb;
+    --s-carbs: #e0a45c; --s-sweat: #6fa8dc;
     --ok: #6fc28f; --ok-bg: rgba(111, 194, 143, 0.12); --warn: #e0ad4f; --warn-bg: rgba(224, 173, 79, 0.13);
     --bad: #ec7f69; --bad-bg: rgba(236, 127, 105, 0.12); --yellow: #dcc04c; --orange: #e8864a;
     --cal-0: #1a241e; --cal-1: #1f3b2c; --cal-2: #2f6b4f; --cal-3: #4f9e74; --cal-4: #a3e635;
@@ -78,6 +81,7 @@
   --s-fitness: #7cc39b; --s-fatigue: #e0a45c; --s-form-pos: rgba(124, 195, 155, 0.20); --s-hrv: #7cc39b; --s-rhr: #e0826b;
   --s-median: #8b9a92; --s-bar: #4f8f6e; --s-sleep: #3d7a5c; --s-dplus: #e0826b; --s-band: rgba(124, 195, 155, 0.12);
   --s-year-0: #7cc39b; --s-year-1: #e0a45c; --s-year-2: #56665d; --s-weight: #b39ddb;
+  --s-carbs: #e0a45c; --s-sweat: #6fa8dc;
   --ok: #6fc28f; --ok-bg: rgba(111, 194, 143, 0.12); --warn: #e0ad4f; --warn-bg: rgba(224, 173, 79, 0.13);
   --bad: #ec7f69; --bad-bg: rgba(236, 127, 105, 0.12); --yellow: #dcc04c; --orange: #e8864a;
   --cal-0: #1a241e; --cal-1: #1f3b2c; --cal-2: #2f6b4f; --cal-3: #4f9e74; --cal-4: #a3e635;
@@ -255,6 +259,12 @@ select { font: inherit; color: var(--ink); background: var(--surface); border: 1
 .chart .dot { stroke: var(--surface); stroke-width: 1.2; }
 .chart .dot--hrv { fill: var(--s-hrv); } .chart .dot--rhr { fill: var(--s-rhr); } .chart .dot--dplus { fill: var(--s-dplus); }
 .chart .dot--weight { fill: var(--s-weight); }
+.chart .dot--carbs { fill: var(--s-carbs); }
+/* Anneau creux (pas un disque plein comme `.dot--carbs`) : forme distincte au premier
+   coup d'œil, y compris en niveaux de gris — la sudation n'est pesée que sur une
+   partie des sorties longues, ce point isolé ne doit jamais se confondre avec un
+   point glucides/h voisin sur le même graphique (#41, revue de code). */
+.chart .dot--sweat { fill: var(--surface); stroke: var(--s-sweat); stroke-width: 1.6; }
 .chart .bar { fill: var(--s-bar); }
 .chart .bar--sleep { fill: var(--s-sleep); }
 .chart .bar--sleep.bar--warn { fill: var(--warn); }
@@ -267,6 +277,7 @@ select { font: inherit; color: var(--ink); background: var(--surface); border: 1
    même ordre de déclaration sinon perdant) sans dépendre de l'ordre des règles — la
    cible doit rester violette même si une règle `.mark` générique est ajoutée après. */
 .chart .mark.mark--target { stroke: var(--s-weight); }
+.chart .mark.mark--carbs-ceiling { stroke: var(--s-carbs); }
 .chart .mark-label { fill: var(--ink-soft); font: 600 11px var(--text); }
 .chart--strip { margin-top: 0.3rem; }
 .chart .strip-base { stroke: var(--line); }
@@ -293,6 +304,12 @@ select { font: inherit; color: var(--ink); background: var(--surface); border: 1
 .key--weight { background: var(--s-weight); border-radius: 50%; width: 0.5rem; height: 0.5rem; }
 .key--weight-avg { background: var(--s-weight); height: 0.22rem; }
 .key--target { background: repeating-linear-gradient(to right, var(--s-weight) 0 4px, transparent 4px 7px); height: 0.22rem; }
+/* Glucides/h et sudation (#41) : point pour glucides/h par sortie longue, trait
+   pointillé pour la sudation (axe secondaire) — forme distincte, comme le poids ci-dessus. */
+.key--carbs { background: var(--s-carbs); border-radius: 50%; width: 0.5rem; height: 0.5rem; }
+.key--sweat { background: var(--surface); border: 1.6px solid var(--s-sweat); border-radius: 50%; width: 0.5rem; height: 0.5rem; }
+.key--carbs-ceiling { background: repeating-linear-gradient(to right, var(--s-carbs) 0 4px, transparent 4px 7px); height: 0.22rem; }
+.key--band { background: var(--s-band); height: 0.6rem; }
 .key.cal--1 { background: var(--cal-1); height: 0.8rem; width: 0.8rem; } .key.cal--2 { background: var(--cal-2); height: 0.8rem; width: 0.8rem; }
 .key.cal--3 { background: var(--cal-3); height: 0.8rem; width: 0.8rem; } .key.cal--4 { background: var(--cal-4); height: 0.8rem; width: 0.8rem; }
 

@@ -606,6 +606,29 @@ def api_nutrition(store: Store, q: dict) -> dict:
     }
 
 
+def api_fueling(store: Store, q: dict) -> dict:
+    """Glucides/h et taux de sudation sur les sorties longues (#41) : `/api/fueling`.
+
+    Additive : ne touche à aucune route existante. Délègue à `M.fueling_trend` sur les
+    sorties longues (`duration_s` > `M.LONG_RUN_MIN_DURATION_S`) de la fenêtre demandée
+    (`weeks`, défaut `M.FUELING_TREND_WEEKS`) — voir `M.ASSUMPTIONS["fueling"]`.
+    """
+    today = _today(store)
+    weeks_raw = q.get("weeks", [""])[0]
+    weeks = int(weeks_raw) if weeks_raw.isdigit() else M.FUELING_TREND_WEEKS
+    weeks = max(4, min(52, weeks))
+    rows = store.rows(
+        "SELECT date, sport, distance_m, duration_s, carbs_g, sweat_rate_l_h FROM activity "
+        "WHERE duration_s > ? AND sport IN "
+        f"({', '.join('?' for _ in M.FUELING_SPORTS)})",
+        (M.LONG_RUN_MIN_DURATION_S, *M.FUELING_SPORTS))
+    result = M.fueling_trend(rows, today, weeks)
+    result["carbs_ceiling_g_h"] = M.fueling_carbs_ceiling(result["max_carbs_per_hour_g"])
+    result["margin_g_h"] = M.FUELING_MAX_MARGIN_G_H
+    result["target_band_g_h"] = list(M.FUELING_TARGET_BAND_G_H)
+    return result
+
+
 def api_files(store: Store, q: dict) -> dict:
     return {"items": store.backfill()}
 
@@ -614,7 +637,8 @@ ROUTES = {
     "/api/summary": api_summary, "/api/form": api_form, "/api/load": api_load,
     "/api/health": api_health, "/api/week": api_week, "/api/activities": api_activities,
     "/api/performance": api_performance, "/api/reports": api_reports, "/api/report": api_report,
-    "/api/calendar": api_calendar, "/api/nutrition": api_nutrition, "/api/files": api_files,
+    "/api/calendar": api_calendar, "/api/nutrition": api_nutrition, "/api/fueling": api_fueling,
+    "/api/files": api_files,
 }
 
 # ---------------------------------------------------------------------------

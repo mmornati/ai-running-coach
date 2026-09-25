@@ -13,6 +13,7 @@ sert au tableau de bord (`scripts/arc_serve.py`) et aux calculs de charge
     arc_index.py hrv-baseline            # ligne de base HRV personnelle du jour, en JSON (#34)
     arc_index.py sleep-debt               # dette de sommeil 7 j du jour, en JSON (#37)
     arc_index.py heat-acclimation         # acclimatation à la chaleur, 14 j, en JSON (#38)
+    arc_index.py fueling                  # glucides/h et sudation, sorties longues, en JSON (#41)
 
 `hrv-baseline` n'a besoin d'aucun tableau de bord lancé (headless, `/garmin-daily-sync`
 compris) : elle réindexe puis rend le point du jour de `arc_metrics.hrv_baseline_series`
@@ -33,6 +34,12 @@ les 14 derniers jours (`[health].heat_threshold_c`, défaut 25 °C) : nombre de 
 (`sessions_without_weather`, jamais froides par défaut). N'est PAS soumis à
 `[health].morning_check` (voir `arc_metrics.ASSUMPTIONS["heat_acclimation"]`). Utilisée
 par `coach` et `course-strategist` (course dont la météo prévue est chaude).
+
+`fueling` agrège glucides/h et taux de sudation sur les sorties longues (> 90 min) des
+12 dernières semaines glissantes : meilleur débit observé (+ plafond avec marge de
+progression), médiane du taux de sudation, effectifs. N'est PAS soumis à
+`[health].morning_check` (voir `arc_metrics.ASSUMPTIONS["fueling"]`). Utilisée par
+`course-strategist` pour plafonner l'objectif glucides/h d'un plan de course.
 
 Options communes : `--workspace DIR` (sinon $ARC_WORKSPACE, le pointeur
 ~/.config/ai-running-coach/workspace, puis le moteur), `--db FICHIER` (défaut
@@ -795,11 +802,29 @@ def gear_mileage(conn) -> dict:
     return M.gear_mileage(activities, gear_defs)
 
 
+def fueling_trend(conn, today: date) -> dict:
+    """Glucides/h et taux de sudation sur les sorties longues (#41) — pour la CLI
+    (`arc_index.py fueling`) et pour `course-strategist` en headless (plafond
+    réaliste d'un plan de course). N'est pas soumis à `[health].morning_check` :
+    ne dépend d'aucune donnée de santé, seulement des activités déjà indexées.
+    Voir `arc_metrics.ASSUMPTIONS["fueling"]`."""
+    rows = [dict(r) for r in conn.execute(
+        "SELECT date, sport, distance_m, duration_s, carbs_g, sweat_rate_l_h FROM activity "
+        "WHERE duration_s > ? AND sport IN "
+        f"({', '.join('?' for _ in M.FUELING_SPORTS)})",
+        (M.LONG_RUN_MIN_DURATION_S, *M.FUELING_SPORTS)).fetchall()]
+    result = M.fueling_trend(rows, today)
+    result["carbs_ceiling_g_h"] = M.fueling_carbs_ceiling(result["max_carbs_per_hour_g"])
+    result["margin_g_h"] = M.FUELING_MAX_MARGIN_G_H
+    result["target_band_g_h"] = list(M.FUELING_TARGET_BAND_G_H)
+    return result
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     parser.add_argument("command", nargs="?", default="index",
                         choices=("index", "backfill-plan", "status", "hrv-baseline", "sleep-debt",
-                                 "heat-acclimation", "gear"))
+                                 "heat-acclimation", "gear", "fueling"))
     parser.add_argument("--workspace")
     parser.add_argument("--db")
     parser.add_argument("--memory", action="store_true")
@@ -849,6 +874,10 @@ def main(argv=None) -> int:
         return 0
     if args.command == "gear":
         print(json.dumps(gear_mileage(conn), ensure_ascii=False))
+        return 0
+    if args.command == "fueling":
+        today_date = date.fromisoformat(args.today) if args.today else date.today()
+        print(json.dumps(fueling_trend(conn, today_date), ensure_ascii=False))
         return 0
     if args.command == "backfill-plan":
         out = write_backfill(conn, workspace)

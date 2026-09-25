@@ -369,6 +369,24 @@ des chiffres, jamais un avis sur ce qu'il faudrait en faire. En unités impéria
 | `nutrition/<date>_nutrition.md` (valeurs chiffrées) | le nutritionniste |
 | `medical/<date>_health.md` (poids du bilan matinal) | le coach / la synchronisation santé |
 
+**Glucides & sudation, sorties longues (#41).** Un point par sortie longue
+(`duration_s` > 90 min) des 12 dernières semaines glissantes : glucides ingérés par
+heure d'effort (`carbs_g` / durée), et taux de sudation quand la séance a été pesée
+avant/après (`sweat_rate_l_h`, dérivé à l'indexation — voir plus haut). Une bande
+60-90 g/h rappelle le repère généraliste des plans de course, à titre documentaire
+seulement, pas une cible normative. Le débit maximal observé sur la fenêtre — le seul
+repère de tolérance dont dispose le workspace, faute d'un champ de trouble digestif
+au contrat — est affiché en chiffre et sert de plafond (+ marge de progression
+documentée) à `course-strategist` lors d'un plan de course : jamais un pari sur
+60-90 g/h par défaut si l'athlète n'a encore rien démontré à l'entraînement. Sans
+aucune sortie longue chiffrée, la section ne s'affiche pas — ce n'est pas une
+absence de données à signaler comme une erreur, juste un entraînement digestif qui
+n'a pas encore commencé.
+
+| Alimentée par | Écrit par |
+|---|---|
+| `activities/<date>_*.md` (`carbs_g`, `weight_pre_kg`/`weight_post_kg`) | le nutritionniste / le coach, déclaration de l'athlète pendant la séance |
+
 **Si c'est vide** — « Pas encore de suivi chiffré » : les fichiers `nutrition/` ne
 contiennent pas encore de valeurs (une liste de courses ou un plan de ravitaillement
 n'en contiennent pas). Sans `nutritionist` dans `[agents].enabled`, la vue
