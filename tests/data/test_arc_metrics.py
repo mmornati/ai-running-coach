@@ -546,5 +546,147 @@ class TestWeekCompliance(unittest.TestCase):
         self.assertEqual(c["sessions_done"], 1)
 
 
+class TestWeightMerge(unittest.TestCase):
+    """#36 — fusion des deux sources de poids : `health.weight_kg` (mesure du matin) gagne
+    toujours sur `nutrition.weight_kg`. Voir `M.ASSUMPTIONS["weight_merge"]`."""
+
+    def test_health_wins_when_both_present_and_differ(self):
+        self.assertEqual(M.merge_weight_kg(70.2, 71.0), 70.2)
+
+    def test_health_wins_even_when_nutrition_is_smaller(self):
+        """La priorité est à la SOURCE (santé), jamais à la valeur la plus petite ou la plus
+        récemment écrite : un nutrition plus « propre » ne doit pas prendre le dessus."""
+        self.assertEqual(M.merge_weight_kg(71.0, 70.2), 71.0)
+
+    def test_falls_back_to_nutrition_when_health_missing(self):
+        self.assertEqual(M.merge_weight_kg(None, 68.5), 68.5)
+
+    def test_none_when_both_missing(self):
+        """Absence des deux sources : `None`, jamais 0 (un 0 kg fausserait une moyenne)."""
+        self.assertIsNone(M.merge_weight_kg(None, None))
+
+    def test_health_present_alone(self):
+        self.assertEqual(M.merge_weight_kg(70.0, None), 70.0)
+
+
+class TestWeightAvg7Series(unittest.TestCase):
+    """#36 — moyenne mobile 7 j du poids fusionné : jours manquants jamais comptés 0,
+    seuil de jours pesés avant d'afficher quoi que ce soit."""
+
+    START = date(2026, 6, 1)
+
+    def series(self, weights_by_offset: dict, days: int = 10):
+        """`weights_by_offset` : décalage en jours depuis `START` -> poids fusionné (kg).
+        Un décalage absent est un jour sans pesée (jamais 0 kg)."""
+        by_date = {(self.START + timedelta(days=k)).isoformat(): v for k, v in weights_by_offset.items()}
+        return M.weight_avg7_series(by_date, self.START, self.START + timedelta(days=days - 1))
+
+    def test_missing_days_are_not_zero_in_the_average(self):
+        """Fenêtre 0-6 : pesées présentes seulement à 0, 2, 4, 6 (70, 69, 68, 67 kg) — 1, 3, 5
+        sont des jours SANS pesée. Moyenne attendue sur les 4 valeurs présentes seulement :
+        (70 + 69 + 68 + 67) / 4 = 68,5 — pas 274/7 ≈ 39,1 (ce que donnerait un jour manquant
+        compté comme 0 kg)."""
+        s = self.series({0: 70.0, 2: 69.0, 4: 68.0, 6: 67.0})
+        self.assertEqual(s[6]["weight_avg7_kg"], 68.5)
+        self.assertIsNone(s[1]["weight_kg"], "jour sans pesée : poids fusionné absent, jamais 0")
+
+    def test_below_min_valid_days_gives_none(self):
+        """`WEIGHT_AVG_MIN_VALID_DAYS` (3) moins un (2 pesées sur 7) : moyenne à `None`
+        plutôt qu'une valeur bruitée sur trop peu de points."""
+        s = self.series({0: 70.0, 3: 69.0})
+        self.assertIsNone(s[6]["weight_avg7_kg"])
+
+    def test_exactly_min_valid_days_is_enough(self):
+        """Exactement `WEIGHT_AVG_MIN_VALID_DAYS` (3) pesées sur les 7 derniers jours : la
+        moyenne doit être calculée, pas rejetée."""
+        s = self.series({0: 70.0, 3: 69.0, 6: 68.0})
+        self.assertAlmostEqual(s[6]["weight_avg7_kg"], 69.0)
+
+    def test_window_slides_and_drops_old_values(self):
+        """Une pesée ancienne (70 kg, offset 0) sort de la fenêtre 7 j du jour à l'offset 10
+        (fenêtre = offsets 4-10) : elle ne doit plus peser sur la moyenne à ce moment-là,
+        qui ne porte alors que sur les trois pesées à 60 kg (offsets 8, 9, 10)."""
+        s = self.series({0: 70.0, 8: 60.0, 9: 60.0, 10: 60.0}, days=11)
+        self.assertAlmostEqual(s[10]["weight_avg7_kg"], 60.0)
+
+
+class TestWeightSlope(unittest.TestCase):
+    """#36 — pente 4 semaines (kg/semaine), régression des moindres carrés sur les valeurs
+    fusionnées PRÉSENTES (pas la moyenne lissée)."""
+
+    DAY = date(2026, 6, 28)   # jour évalué ; fenêtre = les 28 jours qui précèdent, lui inclus
+
+    def by_date(self, weights_by_offset_before_day: dict) -> dict:
+        """`weights_by_offset_before_day` : nombre de jours AVANT `DAY` (0 = `DAY`) -> poids."""
+        return {(self.DAY - timedelta(days=k)).isoformat(): v for k, v in weights_by_offset_before_day.items()}
+
+    def test_hand_computed_linear_loss(self):
+        """Perte parfaitement linéaire de 70 kg (il y a 27 j, début de fenêtre) à 69 kg
+        (aujourd'hui) pesée chaque jour : 27 intervalles d'un jour sur la fenêtre, pente
+        = -1 kg / 27 j × 7 = -7/27 ≈ -0,2593 kg/semaine, exact (points parfaitement alignés)."""
+        weights = {k: 69.0 + k * (1.0 / 27) for k in range(28)}   # offset 0 = 69,0 (aujourd'hui) ... offset 27 = 70,0 (il y a 4 semaines)
+        by_date = self.by_date(weights)
+        slope = M.weight_slope_kg_per_week(by_date, self.DAY)
+        self.assertAlmostEqual(slope, -7 / 27, places=3)
+
+    def test_flat_weight_gives_zero_slope(self):
+        weights = {k: 68.0 for k in range(28)}
+        slope = M.weight_slope_kg_per_week(self.by_date(weights), self.DAY)
+        self.assertAlmostEqual(slope, 0.0, places=6)
+
+    def test_below_min_points_gives_none(self):
+        """`WEIGHT_SLOPE_MIN_POINTS` (5) moins un (4 pesées dans la fenêtre de 28 j) :
+        pas de pente plutôt qu'une régression sur trop peu de points."""
+        weights = {0: 70.0, 7: 69.5, 14: 69.0, 21: 68.5}
+        slope = M.weight_slope_kg_per_week(self.by_date(weights), self.DAY)
+        self.assertIsNone(slope)
+
+    def test_exactly_min_points_is_enough(self):
+        weights = {0: 70.0, 7: 69.5, 14: 69.0, 21: 68.5, 27: 68.0}
+        slope = M.weight_slope_kg_per_week(self.by_date(weights), self.DAY)
+        self.assertIsNotNone(slope)
+
+    def test_below_min_span_gives_none_even_with_enough_points(self):
+        """5 pesées (assez pour `WEIGHT_SLOPE_MIN_POINTS`) mais toutes groupées sur 4 jours
+        (offsets 0 à 3, sous `WEIGHT_SLOPE_MIN_SPAN_DAYS` = 14) : pas de pente. Sans ce
+        second seuil, une régression sur un intervalle aussi court serait extrapolée à tort
+        sur 4 semaines entières."""
+        weights = {0: 70.0, 1: 69.9, 2: 69.8, 3: 69.7, 4: 69.6}
+        slope = M.weight_slope_kg_per_week(self.by_date(weights), self.DAY)
+        self.assertIsNone(slope)
+
+    def test_exactly_min_span_is_enough(self):
+        """5 pesées (`WEIGHT_SLOPE_MIN_POINTS`), écart de pile `WEIGHT_SLOPE_MIN_SPAN_DAYS`
+        (14 j) entre la première et la dernière : la pente doit être calculée, pas
+        rejetée."""
+        weights = {0: 70.0, 3: 69.8, 6: 69.6, 10: 69.3, 14: 69.0}
+        slope = M.weight_slope_kg_per_week(self.by_date(weights), self.DAY)
+        self.assertIsNotNone(slope)
+
+    def test_missing_days_never_counted_as_zero(self):
+        """Une pesée quotidienne complète sur 28 j sauf un trou (offset 14 absent) : le trou
+        ne doit jamais entrer dans la régression comme un poids de 0 kg — la pente resterait
+        alors proche de la vraie tendance (légère baisse), pas explosée par un faux 0."""
+        weights = {k: 68.0 + k * 0.02 for k in range(28) if k != 14}   # k = jours avant DAY : plus loin dans le passé, plus lourd -> perte
+        slope = M.weight_slope_kg_per_week(self.by_date(weights), self.DAY)
+        self.assertAlmostEqual(slope, -0.02 * 7, places=2)
+
+
+class TestWeightTargetGap(unittest.TestCase):
+    """#36 — écart (kg) entre la moyenne 7 j et la cible : positif = au-dessus de la cible."""
+
+    def test_above_target_is_positive(self):
+        self.assertEqual(M.weight_target_gap_kg(70.0, 67.0), 3.0)
+
+    def test_below_target_is_negative(self):
+        self.assertEqual(M.weight_target_gap_kg(65.0, 67.0), -2.0)
+
+    def test_none_when_average_missing(self):
+        self.assertIsNone(M.weight_target_gap_kg(None, 67.0))
+
+    def test_none_when_target_missing(self):
+        self.assertIsNone(M.weight_target_gap_kg(70.0, None))
+
+
 if __name__ == "__main__":
     unittest.main()

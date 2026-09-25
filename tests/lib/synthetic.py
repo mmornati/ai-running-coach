@@ -627,7 +627,7 @@ def build(root: Path, days: int = 120, today: date | None = None, sport: str = "
             "red": "HRV basse et FC de repos élevée : repos ou Z1 strict.",
         }[verdict]
         sleep = round(6.2 * 3600 + 1.8 * 3600 * rng.random())
-        _write(root, f"medical/{iso}_health.md", f"Santé du {iso}", {
+        health_data = {
             "arc": 1, "kind": "health", "date": iso, "morning_check": "full",
             "sleep_total_s": sleep, "sleep_deep_s": round(sleep * 0.18), "sleep_light_s": round(sleep * 0.55),
             "sleep_rem_s": round(sleep * 0.22), "sleep_score": max(40, min(95, round(sleep / 360 - 2))),
@@ -635,9 +635,18 @@ def build(root: Path, days: int = 120, today: date | None = None, sport: str = "
             "hrv_status": "balanced" if hrv >= 56 else "low",
             "resting_hr_bpm": rhr, "readiness_score": readiness,
             "body_battery_high": min(100, readiness + 12), "body_battery_low": 20, "stress_avg": round(25 + 20 * fatigue),
-            "weight_kg": round(69.2 - 0.6 * i / days + rng.uniform(-0.3, 0.3), 1),
             "verdict": verdict, "verdict_reason": reason,
-        }, f"## Analyse\n\n{reason}")
+        }
+        # `weight_kg` omis un jour sur cinq (#36), afin que le repli sur `nutrition.weight_kg`
+        # (`merge_weight_kg`) soit réellement exercé par les goldens : sans ce trou, la santé
+        # porte un poids TOUS les jours et la branche nutrition du merge ne serait jamais
+        # prise dans les fixtures. Le bruit est tiré INCONDITIONNELLEMENT (même sur un jour
+        # omis, la valeur est juste jetée) pour que le flux `rng` partagé — et donc toutes
+        # les valeurs tirées ensuite — ne se décale pas selon `i % 5`.
+        weight_noise = rng.uniform(-0.3, 0.3)
+        if i % 5 != 0:
+            health_data["weight_kg"] = round(69.2 - 0.6 * i / days + weight_noise, 1)
+        _write(root, f"medical/{iso}_health.md", f"Santé du {iso}", health_data, f"## Analyse\n\n{reason}")
 
         # --- séance --------------------------------------------------------
         weekday = day.weekday()
@@ -756,12 +765,20 @@ Semaine **conforme au plan** : charge en hausse contrôlée, HRV stable.
 - Une seule séance de côtes""")
 
     # --- nutrition (quelques jours) --------------------------------------------
+    # `weight_kg` est délibérément différent de `medical/<date>_health.md` le même jour
+    # (#36) : ça exerce la règle de fusion (santé, mesure du matin, prioritaire) plutôt
+    # que de la laisser non testée par simple absence de conflit. `target_weight_kg` est
+    # constant, comme un objectif qui ne change pas d'un jour à l'autre. Valeur du poids
+    # calculée SANS `rng` (fonction déterministe de `k` seule) : consommer le flux `rng`
+    # ici décalerait tous les tirages suivants et changerait des valeurs déjà couvertes
+    # par le golden (apports, dépense…) sans rapport avec #36.
     for k in range(0, 14, 2):
         day = today - timedelta(days=k)
         _write(root, f"nutrition/{day.isoformat()}_nutrition.md", f"Nutrition du {day.isoformat()}", {
             "arc": 1, "kind": "nutrition", "date": day.isoformat(),
             "intake_kcal": 2400 + rng.randint(-200, 300), "burned_kcal": 2500 + rng.randint(-300, 500),
             "carbs_g": 320 + rng.randint(-40, 60), "protein_g": 115, "fat_g": 78, "hydration_ml": 2400,
+            "weight_kg": round(70.5 - 0.05 * k, 1), "target_weight_kg": 67.0,
         }, "## Commentaire\n\nApports cohérents avec la charge.")
     return root
 

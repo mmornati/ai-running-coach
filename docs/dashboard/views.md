@@ -310,13 +310,32 @@ prévision et le déroulé réel de l'ultra :
 
 **Mon poids et mes apports suivent-ils ?**
 
-Un tableau jour par jour : poids et poids cible, apports déclarés, dépense Garmin,
+Un graphique de poids (#36) — points quotidiens, moyenne mobile 7 jours et cible — puis
+un tableau jour par jour : poids et poids cible, apports déclarés, dépense Garmin,
 glucides / protéines / lipides. Il n'y a pas de connexion MyFitnessPal : les apports
 viennent de ce que vous dites au nutritionniste, qui les consigne.
+
+Le poids affiché fusionne deux sources qui peuvent toutes deux exister le même jour :
+`medical/<date>_health.md` (pesée du bilan matinal) et `nutrition/<date>_nutrition.md`
+(sans garantie d'horaire). La mesure du matin gagne toujours ; jamais de moyenne entre
+les deux. Deux fichiers de la MÊME source pour la même date (doublon santé, ou doublon
+nutrition) : le `source_path` le plus grand par ordre alphabétique gagne — une règle
+arbitraire mais déterministe et documentée (`ASSUMPTIONS["weight_merge"]`), faute d'heure
+de mesure dans le contrat pour départager autrement. Sous trois jours pesés sur les sept
+derniers, la moyenne 7 j n'est pas affichée plutôt que de montrer une valeur bruitée ; la
+moyenne et l'écart à la cible affichés sont toujours ceux du jour même — jamais la dernière
+valeur non nulle trouvée plus tôt dans l'historique — et portent leur propre date (« au
+25 sept. ») pour qu'une valeur ancienne ne se fasse jamais passer pour la valeur du jour.
+La pente sur 4 semaines (kg/semaine) demande au moins cinq jours pesés ET un écart d'au
+moins 14 jours entre la première et la dernière pesée de la fenêtre — quelques pesées
+groupées sur deux ou trois jours ne donnent pas une tendance fiable sur 4 semaines. Ce sont
+des chiffres, jamais un avis sur ce qu'il faudrait en faire. En unités impériales
+(`[athlete].units = "imperial"`), le poids s'affiche en livres.
 
 | Alimentée par | Écrit par |
 |---|---|
 | `nutrition/<date>_nutrition.md` (valeurs chiffrées) | le nutritionniste |
+| `medical/<date>_health.md` (poids du bilan matinal) | le coach / la synchronisation santé |
 
 **Si c'est vide** — « Pas encore de suivi chiffré » : les fichiers `nutrition/` ne
 contiennent pas encore de valeurs (une liste de courses ou un plan de ravitaillement

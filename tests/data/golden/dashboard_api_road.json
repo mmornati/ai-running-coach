@@ -3959,8 +3959,8 @@
             "hydration_ml": 2400.0,
             "intake_kcal": 2264.0,
             "protein_g": 115.0,
-            "target_weight_kg": null,
-            "weight_kg": null
+            "target_weight_kg": 67.0,
+            "weight_kg": 69.9
           },
           {
             "burned_kcal": 2446.0,
@@ -3970,8 +3970,8 @@
             "hydration_ml": 2400.0,
             "intake_kcal": 2405.0,
             "protein_g": 115.0,
-            "target_weight_kg": null,
-            "weight_kg": null
+            "target_weight_kg": 67.0,
+            "weight_kg": 70.0
           },
           {
             "burned_kcal": 2679.0,
@@ -3981,8 +3981,8 @@
             "hydration_ml": 2400.0,
             "intake_kcal": 2406.0,
             "protein_g": 115.0,
-            "target_weight_kg": null,
-            "weight_kg": null
+            "target_weight_kg": 67.0,
+            "weight_kg": 70.1
           },
           {
             "burned_kcal": 2560.0,
@@ -3992,8 +3992,8 @@
             "hydration_ml": 2400.0,
             "intake_kcal": 2206.0,
             "protein_g": 115.0,
-            "target_weight_kg": null,
-            "weight_kg": null
+            "target_weight_kg": 67.0,
+            "weight_kg": 70.2
           },
           {
             "burned_kcal": 2283.0,
@@ -4003,8 +4003,8 @@
             "hydration_ml": 2400.0,
             "intake_kcal": 2456.0,
             "protein_g": 115.0,
-            "target_weight_kg": null,
-            "weight_kg": null
+            "target_weight_kg": 67.0,
+            "weight_kg": 70.3
           },
           {
             "burned_kcal": 2588.0,
@@ -4014,8 +4014,8 @@
             "hydration_ml": 2400.0,
             "intake_kcal": 2251.0,
             "protein_g": 115.0,
-            "target_weight_kg": null,
-            "weight_kg": null
+            "target_weight_kg": 67.0,
+            "weight_kg": 70.4
           },
           {
             "burned_kcal": 2258.0,
@@ -4025,8 +4025,317 @@
             "hydration_ml": 2400.0,
             "intake_kcal": 2615.0,
             "protein_g": 115.0,
-            "target_weight_kg": null,
-            "weight_kg": null
+            "target_weight_kg": 67.0,
+            "weight_kg": 70.5
+          }
+        ],
+        "weight": {
+          "avg7_date": "2026-09-23",
+          "avg7_kg": 68.9,
+          "gap_kg": 1.9,
+          "slope_kg_per_week": -0.056,
+          "target_kg": 67.0
+        },
+        "weight_series": [
+          {
+            "date": "2026-07-26",
+            "weight_avg7_kg": null,
+            "weight_kg_merged": null
+          },
+          {
+            "date": "2026-07-27",
+            "weight_avg7_kg": null,
+            "weight_kg_merged": null
+          },
+          {
+            "date": "2026-07-28",
+            "weight_avg7_kg": null,
+            "weight_kg_merged": null
+          },
+          {
+            "date": "2026-07-29",
+            "weight_avg7_kg": null,
+            "weight_kg_merged": null
+          },
+          {
+            "date": "2026-07-30",
+            "weight_avg7_kg": null,
+            "weight_kg_merged": null
+          },
+          {
+            "date": "2026-07-31",
+            "weight_avg7_kg": null,
+            "weight_kg_merged": null
+          },
+          {
+            "date": "2026-08-01",
+            "weight_avg7_kg": null,
+            "weight_kg_merged": null
+          },
+          {
+            "date": "2026-08-02",
+            "weight_avg7_kg": null,
+            "weight_kg_merged": null
+          },
+          {
+            "date": "2026-08-03",
+            "weight_avg7_kg": null,
+            "weight_kg_merged": null
+          },
+          {
+            "date": "2026-08-04",
+            "weight_avg7_kg": null,
+            "weight_kg_merged": null
+          },
+          {
+            "date": "2026-08-05",
+            "weight_avg7_kg": null,
+            "weight_kg_merged": null
+          },
+          {
+            "date": "2026-08-06",
+            "weight_avg7_kg": null,
+            "weight_kg_merged": null
+          },
+          {
+            "date": "2026-08-07",
+            "weight_avg7_kg": null,
+            "weight_kg_merged": null
+          },
+          {
+            "date": "2026-08-08",
+            "weight_avg7_kg": null,
+            "weight_kg_merged": null
+          },
+          {
+            "date": "2026-08-09",
+            "weight_avg7_kg": null,
+            "weight_kg_merged": null
+          },
+          {
+            "date": "2026-08-10",
+            "weight_avg7_kg": null,
+            "weight_kg_merged": null
+          },
+          {
+            "date": "2026-08-11",
+            "weight_avg7_kg": null,
+            "weight_kg_merged": null
+          },
+          {
+            "date": "2026-08-12",
+            "weight_avg7_kg": null,
+            "weight_kg_merged": null
+          },
+          {
+            "date": "2026-08-13",
+            "weight_avg7_kg": null,
+            "weight_kg_merged": null
+          },
+          {
+            "date": "2026-08-14",
+            "weight_avg7_kg": null,
+            "weight_kg_merged": null
+          },
+          {
+            "date": "2026-08-15",
+            "weight_avg7_kg": null,
+            "weight_kg_merged": null
+          },
+          {
+            "date": "2026-08-16",
+            "weight_avg7_kg": null,
+            "weight_kg_merged": 69.3
+          },
+          {
+            "date": "2026-08-17",
+            "weight_avg7_kg": null,
+            "weight_kg_merged": 69.2
+          },
+          {
+            "date": "2026-08-18",
+            "weight_avg7_kg": 69.3,
+            "weight_kg_merged": 69.3
+          },
+          {
+            "date": "2026-08-19",
+            "weight_avg7_kg": 69.3,
+            "weight_kg_merged": 69.3
+          },
+          {
+            "date": "2026-08-20",
+            "weight_avg7_kg": 69.3,
+            "weight_kg_merged": null
+          },
+          {
+            "date": "2026-08-21",
+            "weight_avg7_kg": 69.2,
+            "weight_kg_merged": 68.8
+          },
+          {
+            "date": "2026-08-22",
+            "weight_avg7_kg": 69.1,
+            "weight_kg_merged": 69.0
+          },
+          {
+            "date": "2026-08-23",
+            "weight_avg7_kg": 69.1,
+            "weight_kg_merged": 68.8
+          },
+          {
+            "date": "2026-08-24",
+            "weight_avg7_kg": 69.0,
+            "weight_kg_merged": 68.9
+          },
+          {
+            "date": "2026-08-25",
+            "weight_avg7_kg": 69.0,
+            "weight_kg_merged": null
+          },
+          {
+            "date": "2026-08-26",
+            "weight_avg7_kg": 69.0,
+            "weight_kg_merged": 69.3
+          },
+          {
+            "date": "2026-08-27",
+            "weight_avg7_kg": 69.0,
+            "weight_kg_merged": 68.9
+          },
+          {
+            "date": "2026-08-28",
+            "weight_avg7_kg": 69.0,
+            "weight_kg_merged": 69.3
+          },
+          {
+            "date": "2026-08-29",
+            "weight_avg7_kg": 69.1,
+            "weight_kg_merged": 69.2
+          },
+          {
+            "date": "2026-08-30",
+            "weight_avg7_kg": 69.1,
+            "weight_kg_merged": null
+          },
+          {
+            "date": "2026-08-31",
+            "weight_avg7_kg": 69.1,
+            "weight_kg_merged": 69.0
+          },
+          {
+            "date": "2026-09-01",
+            "weight_avg7_kg": 69.1,
+            "weight_kg_merged": 68.8
+          },
+          {
+            "date": "2026-09-02",
+            "weight_avg7_kg": 69.0,
+            "weight_kg_merged": 69.0
+          },
+          {
+            "date": "2026-09-03",
+            "weight_avg7_kg": 69.1,
+            "weight_kg_merged": 69.2
+          },
+          {
+            "date": "2026-09-04",
+            "weight_avg7_kg": 69.0,
+            "weight_kg_merged": null
+          },
+          {
+            "date": "2026-09-05",
+            "weight_avg7_kg": 69.0,
+            "weight_kg_merged": 68.8
+          },
+          {
+            "date": "2026-09-06",
+            "weight_avg7_kg": 69.0,
+            "weight_kg_merged": 69.0
+          },
+          {
+            "date": "2026-09-07",
+            "weight_avg7_kg": 68.9,
+            "weight_kg_merged": 68.8
+          },
+          {
+            "date": "2026-09-08",
+            "weight_avg7_kg": 68.9,
+            "weight_kg_merged": 68.5
+          },
+          {
+            "date": "2026-09-09",
+            "weight_avg7_kg": 68.9,
+            "weight_kg_merged": null
+          },
+          {
+            "date": "2026-09-10",
+            "weight_avg7_kg": 68.8,
+            "weight_kg_merged": 68.7
+          },
+          {
+            "date": "2026-09-11",
+            "weight_avg7_kg": 68.8,
+            "weight_kg_merged": 69.0
+          },
+          {
+            "date": "2026-09-12",
+            "weight_avg7_kg": 68.8,
+            "weight_kg_merged": 69.0
+          },
+          {
+            "date": "2026-09-13",
+            "weight_avg7_kg": 68.9,
+            "weight_kg_merged": 69.1
+          },
+          {
+            "date": "2026-09-14",
+            "weight_avg7_kg": 68.9,
+            "weight_kg_merged": null
+          },
+          {
+            "date": "2026-09-15",
+            "weight_avg7_kg": 68.9,
+            "weight_kg_merged": 68.5
+          },
+          {
+            "date": "2026-09-16",
+            "weight_avg7_kg": 68.9,
+            "weight_kg_merged": 68.8
+          },
+          {
+            "date": "2026-09-17",
+            "weight_avg7_kg": 68.8,
+            "weight_kg_merged": 68.4
+          },
+          {
+            "date": "2026-09-18",
+            "weight_avg7_kg": 68.8,
+            "weight_kg_merged": 68.8
+          },
+          {
+            "date": "2026-09-19",
+            "weight_avg7_kg": 69.0,
+            "weight_kg_merged": 70.3
+          },
+          {
+            "date": "2026-09-20",
+            "weight_avg7_kg": 68.9,
+            "weight_kg_merged": 68.6
+          },
+          {
+            "date": "2026-09-21",
+            "weight_avg7_kg": 68.9,
+            "weight_kg_merged": 68.8
+          },
+          {
+            "date": "2026-09-22",
+            "weight_avg7_kg": 68.9,
+            "weight_kg_merged": 68.8
+          },
+          {
+            "date": "2026-09-23",
+            "weight_avg7_kg": 68.9,
+            "weight_kg_merged": 68.6
           }
         ]
       },
@@ -4043,8 +4352,8 @@
             "hydration_ml": 2400.0,
             "intake_kcal": 2206.0,
             "protein_g": 115.0,
-            "target_weight_kg": null,
-            "weight_kg": null
+            "target_weight_kg": 67.0,
+            "weight_kg": 70.2
           },
           {
             "burned_kcal": 2283.0,
@@ -4054,8 +4363,8 @@
             "hydration_ml": 2400.0,
             "intake_kcal": 2456.0,
             "protein_g": 115.0,
-            "target_weight_kg": null,
-            "weight_kg": null
+            "target_weight_kg": 67.0,
+            "weight_kg": 70.3
           },
           {
             "burned_kcal": 2588.0,
@@ -4065,8 +4374,8 @@
             "hydration_ml": 2400.0,
             "intake_kcal": 2251.0,
             "protein_g": 115.0,
-            "target_weight_kg": null,
-            "weight_kg": null
+            "target_weight_kg": 67.0,
+            "weight_kg": 70.4
           },
           {
             "burned_kcal": 2258.0,
@@ -4076,8 +4385,52 @@
             "hydration_ml": 2400.0,
             "intake_kcal": 2615.0,
             "protein_g": 115.0,
-            "target_weight_kg": null,
-            "weight_kg": null
+            "target_weight_kg": 67.0,
+            "weight_kg": 70.5
+          }
+        ],
+        "weight": {
+          "avg7_date": "2026-09-23",
+          "avg7_kg": 68.9,
+          "gap_kg": 1.9,
+          "slope_kg_per_week": -0.056,
+          "target_kg": 67.0
+        },
+        "weight_series": [
+          {
+            "date": "2026-09-17",
+            "weight_avg7_kg": 68.8,
+            "weight_kg_merged": 68.4
+          },
+          {
+            "date": "2026-09-18",
+            "weight_avg7_kg": 68.8,
+            "weight_kg_merged": 68.8
+          },
+          {
+            "date": "2026-09-19",
+            "weight_avg7_kg": 69.0,
+            "weight_kg_merged": 70.3
+          },
+          {
+            "date": "2026-09-20",
+            "weight_avg7_kg": 68.9,
+            "weight_kg_merged": 68.6
+          },
+          {
+            "date": "2026-09-21",
+            "weight_avg7_kg": 68.9,
+            "weight_kg_merged": 68.8
+          },
+          {
+            "date": "2026-09-22",
+            "weight_avg7_kg": 68.9,
+            "weight_kg_merged": 68.8
+          },
+          {
+            "date": "2026-09-23",
+            "weight_avg7_kg": 68.9,
+            "weight_kg_merged": 68.6
           }
         ]
       },
@@ -4387,7 +4740,9 @@
           "trail_equivalence": "Trail : équivalence plat (prédictions) = distance + D+ × 1.75 (config/sports/trail.md : 1000 m D+ ≈ 1,5 à 2 km plat). Sert uniquement aux prédictions VDOT/Riegel ; à ne pas confondre avec le « km-effort ITRA » (`effort_km`, D+/100) affiché dans le volume hebdomadaire.",
           "trimp": "TRIMP de Banister : minutes × FCr × 0,64 × e^(k·FCr), FCr = (FC moy − FC repos) / (FC max − FC repos), k = 1,92 (homme) / 1,67 (femme).",
           "trimp_sex_default": "Sexe non renseigné dans le profil : k = 1,92 appliqué par défaut.",
-          "vo2max": "VO2max effective : VO2 de l'allure (Daniels) ÷ fraction de VO2max estimée par (FC moy / FC max − 0,37) / 0,64. Calculée depuis l'allure et la FC MOYENNES de la séance (pas de série seconde par seconde) : ordre de grandeur, pas une mesure. Séances de course de 20 min à 3 h seulement, FC moy ≥ 70 % de la FC max, allure effort ≤ 8:30/km ; tendance 30 j pondérée par la durée, plafonnée à 90 min par séance."
+          "vo2max": "VO2max effective : VO2 de l'allure (Daniels) ÷ fraction de VO2max estimée par (FC moy / FC max − 0,37) / 0,64. Calculée depuis l'allure et la FC MOYENNES de la séance (pas de série seconde par seconde) : ordre de grandeur, pas une mesure. Séances de course de 20 min à 3 h seulement, FC moy ≥ 70 % de la FC max, allure effort ≤ 8:30/km ; tendance 30 j pondérée par la durée, plafonnée à 90 min par séance.",
+          "weight_merge": "Fusion des deux sources de poids (#36) : le contrat n'a pas de champ d'heure de mesure dédié, mais `health.weight_kg` est renseigné pendant le bilan matinal (`morning_check`) — traité comme la pesée du matin — tandis que `nutrition.weight_kg` n'a aucune garantie d'horaire. Un jour où les deux sont présents : `health` gagne TOUJOURS, jamais de moyenne des deux sources ni de préférence à la plus récemment écrite. Un jour sans aucune des deux : absent, jamais 0. Doublon DANS une même source (deux fichiers santé, ou deux fichiers nutrition, pour la même date — pas d'heure de mesure pour départager) : le `source_path` le plus grand par ordre alphabétique gagne, appliqué en base par `arc_serve.py` (`ORDER BY date, source_path` avant fusion ; `ORDER BY date DESC, source_path DESC` pour la cible la plus récente) — jamais l'ordre arbitraire que rendrait SQLite sans tri explicite.",
+          "weight_trend": "Moyenne mobile 7 j du poids fusionné (`weight_merge`) : moyenne des jours PRÉSENTS dans la fenêtre (jour manquant jamais compté 0), rendue seulement à partir de 3 jours pesés sur les 7, sinon `None`. `avg7_kg`/`gap_kg` exposés par `/api/nutrition` sont TOUJOURS la valeur DU JOUR (aujourd'hui), jamais la dernière moyenne non nulle trouvée plus tôt dans la fenêtre affichée — une pesée vieille de plusieurs semaines ne doit jamais s'afficher comme si elle datait d'aujourd'hui ; `avg7_date` porte la date effectivement utilisée. Écart à la cible = moyenne 7 j du jour − `target_weight_kg` le plus récent connu (nutrition uniquement dans le contrat) ; positif = au-dessus de la cible. Pente 4 semaines : régression des moindres carrés (x = jour, y = poids fusionné, PAS la moyenne lissée) sur les 28 derniers jours, convertie en kg/semaine (× 7) ; rendue seulement à partir de 5 jours pesés ET 14 jours d'écart entre la première et la dernière pesée de la fenêtre (sinon `None`) — sans ce second seuil, quelques pesées groupées sur deux ou trois jours donneraient une pente extrapolée sur 4 semaines à partir d'un intervalle bien trop court pour être fiable. Aucun commentaire normatif n'est dérivé de ces chiffres : chiffres seulement (voir issue #36)."
         },
         "athlete": {
           "birth_year": null,

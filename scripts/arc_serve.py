@@ -469,9 +469,68 @@ def api_calendar(store: Store, q: dict) -> dict:
 
 def api_nutrition(store: Store, q: dict) -> dict:
     today = _today(store)
-    start = (today - timedelta(days=_days(q, 60) - 1)).isoformat()
-    return {"days": store.rows("SELECT date, intake_kcal, burned_kcal, carbs_g, protein_g, fat_g, hydration_ml, "
-                               "weight_kg, target_weight_kg FROM nutrition_day WHERE date >= ? ORDER BY date", (start,))}
+    days = _days(q, 60)
+    start_date = today - timedelta(days=days - 1)
+    start = start_date.isoformat()
+    rows = store.rows("SELECT date, intake_kcal, burned_kcal, carbs_g, protein_g, fat_g, hydration_ml, "
+                      "weight_kg, target_weight_kg FROM nutrition_day WHERE date >= ? ORDER BY date", (start,))
+    # Tendance du poids (#36), additive : `days` (table existante) n'est pas modifié — la
+    # série dédiée `weight_series` et le résumé `weight` sont calculés à part, sur une
+    # fenêtre élargie en amont pour que la moyenne 7 j / pente 4 semaines du premier point
+    # affiché soient déjà définies (même motif que le lookback HRV de `api_health`).
+    lookback = max(M.WEIGHT_AVG_WINDOW_DAYS, M.WEIGHT_SLOPE_WINDOW_DAYS) - 1
+    fetch_from = (start_date - timedelta(days=lookback)).isoformat()
+    # Doublon même jour (deux fichiers santé, ou deux fichiers nutrition, pour la même
+    # date) : le contrat n'a pas d'heure de mesure, donc pas de règle « le plus récent »
+    # possible. Règle documentée (`ASSUMPTIONS["weight_merge"]`) : le `source_path` le
+    # plus grand par ordre alphabétique gagne — appliquée ici en ordonnant `ORDER BY
+    # date, source_path` puis en laissant le dict `{date: valeur}` écraser avec la
+    # DERNIÈRE ligne itérée pour une date donnée (jamais l'ordre arbitraire que rendrait
+    # SQLite sans `ORDER BY`).
+    nutrition_weight_rows = store.rows(
+        "SELECT date, weight_kg FROM nutrition_day WHERE date >= ? AND date <= ? ORDER BY date, source_path",
+        (fetch_from, today.isoformat()))
+    health_weight_rows = store.rows(
+        "SELECT date, weight_kg FROM health_day WHERE date >= ? AND date <= ? ORDER BY date, source_path",
+        (fetch_from, today.isoformat()))
+    nutrition_weight_by_date = {r["date"]: r["weight_kg"] for r in nutrition_weight_rows if r["weight_kg"] is not None}
+    health_weight_by_date = {r["date"]: r["weight_kg"] for r in health_weight_rows if r["weight_kg"] is not None}
+    merged_by_date = {}
+    for d in set(nutrition_weight_by_date) | set(health_weight_by_date):
+        v = M.merge_weight_kg(health_weight_by_date.get(d), nutrition_weight_by_date.get(d))
+        if v is not None:
+            merged_by_date[d] = v
+    weight_points = M.weight_avg7_series(merged_by_date, start_date, today)
+    # Cible la plus récente connue à ce jour (le contrat ne la porte que sur `nutrition`) —
+    # pas bornée à `fetch_from` : une cible fixée il y a longtemps et jamais changée reste
+    # valide. Même règle de doublon que ci-dessus, dans le même sens (date la plus récente
+    # d'abord, puis `source_path` le plus grand par ordre alphabétique) : `DESC` sur les
+    # deux colonnes plutôt qu'un simple `ORDER BY date DESC` qui laisserait SQLite décider
+    # arbitrairement entre deux fichiers nutrition de la même date.
+    target_row = store.one("SELECT target_weight_kg FROM nutrition_day WHERE date <= ? "
+                           "AND target_weight_kg IS NOT NULL ORDER BY date DESC, source_path DESC LIMIT 1",
+                           (today.isoformat(),))
+    target_weight_kg = target_row.get("target_weight_kg") if target_row else None
+    # Moyenne 7 j et écart à la cible : valeur DU JOUR (aujourd'hui) seulement, jamais la
+    # dernière valeur non nulle trouvée n'importe où dans la fenêtre affichée — sans quoi
+    # une moyenne vieille de plusieurs semaines (plus aucune pesée récente) s'afficherait
+    # comme si elle était d'aujourd'hui. `avg7_date` porte la date réellement utilisée :
+    # toujours `today` ici, mais nommée explicitement pour que l'appelant (l'UI) l'affiche
+    # plutôt que de supposer qu'« avg7_kg » est forcément à jour.
+    today_point = next((p for p in weight_points if p["date"] == today.isoformat()), None)
+    latest_avg7 = today_point["weight_avg7_kg"] if today_point else None
+    slope = M.weight_slope_kg_per_week(merged_by_date, today)
+    return {
+        "days": rows,
+        "weight_series": [{"date": p["date"], "weight_kg_merged": p["weight_kg"], "weight_avg7_kg": p["weight_avg7_kg"]}
+                          for p in weight_points],
+        "weight": {
+            "avg7_kg": latest_avg7, "avg7_date": today.isoformat() if latest_avg7 is not None else None,
+            "target_kg": target_weight_kg,
+            "gap_kg": M.weight_target_gap_kg(latest_avg7, target_weight_kg),
+            "slope_kg_per_week": slope,
+        },
+    }
 
 
 def api_files(store: Store, q: dict) -> dict:
