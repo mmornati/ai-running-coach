@@ -52,11 +52,23 @@ Remote Control) et l'IDE partagent. Il délègue tout à l'agent `coach` et au s
    > to the Garmin calendar. Reply with: the list of files created, and a 5-line maximum
    > summary (new activities: type/distance/D+/HR avg/HRR; sleep score; HRV status vs
    > baseline; readiness score; any alert such as low HRV, poor sleep, HRR missing).
-2. Réindexer le workspace pour le tableau de bord : `python3 scripts/arc_index.py`. La base
+2. **Échantillons FIT (#42, best-effort)** : pour chaque activité running/trail dont un
+   fichier a été créé à l'étape 1, télécharger son FIT : `python3
+   skills/fit-download/scripts/download_fit.py <garmin_activity_id> --json` (sans
+   `--output-dir` : la copie normalisée canonique doit atterrir dans `activities/fit/`
+   du workspace pour être ingérée à l'étape suivante). **Best-effort et non bloquant** :
+   un échec (tokens `garminconnect` absents/expirés, `fitparse` non installé, FIT
+   indisponible côté Garmin) ne doit **jamais** faire échouer la synchronisation ni
+   apparaître comme `ERREUR :` — au plus une ligne `Alerte : FIT non téléchargé (n
+   séance(s))` dans le résumé si au moins un téléchargement a échoué. Ignorer
+   silencieusement les sports sans profil FIT utile (renforcement, vélo d'appartement…).
+3. Réindexer le workspace pour le tableau de bord : `python3 scripts/arc_index.py`. La base
    est dérivée ; un échec ici ne bloque rien, mais se signale en une ligne `Alerte :` du
    résumé. Un fichier resté `NON CONFORME` à la validation se signale de la même façon
-   (`Alerte : 1 fichier hors contrat — medical/2026-09-20_health.md`).
-3. Si l'agent `coach` échoue (MCP indisponible, tokens Garmin expirés…), ne rien inventer :
+   (`Alerte : 1 fichier hors contrat — medical/2026-09-20_health.md`). Cette même commande
+   ingère aussi les échantillons FIT déposés à l'étape 2 (`activity_sample`, aucune action
+   supplémentaire requise).
+4. Si l'agent `coach` échoue (MCP indisponible, tokens Garmin expirés…), ne rien inventer :
    le résumé doit contenir `ERREUR : <cause>` (ex. « tokens Garmin expirés — relancer
    `uv run garmin-mcp-auth` »).
 

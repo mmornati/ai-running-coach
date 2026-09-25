@@ -15,9 +15,18 @@ Usage:
 
 Options:
   --output-dir   Répertoire de sortie (défaut: activities/)
-  --json         Écrit aussi <id>_records.json (records GPS/HR/power/cadence)
+  --json         Écrit aussi <id>.records.json (bruts fitparse) ET la copie normalisée
+                 activities/fit/<id>.json (#42 — ingérée par `scripts/arc_index.py`)
   --overwrite    Ré-télécharge même si le fichier existe
   --python PATH  Interpréteur contenant garminconnect (auto-détecté sinon)
+
+Avec `--json`, en plus du dump brut `fitparse` (`<id>.records.json`, à des fins de
+diagnostic/analyse fine — `skills/session-parts-analyzer`), une copie **normalisée**
+est écrite au chemin canonique `activities/fit/<id>.json` (voir `scripts/arc_samples.py`
+pour le format et les règles de normalisation — unités, doublement de la cadence
+course à pied). C'est ce second fichier que `scripts/arc_index.py` ingère dans
+`activity_sample` ; le premier (`<id>.records.json`) reste inchangé pour compatibilité
+ascendante avec les skills qui le lisent déjà (`session-parts-analyzer`).
 """
 
 from __future__ import annotations
@@ -101,12 +110,15 @@ def _download_one(client, activity_id: int, out_dir: Path, want_json: bool) -> P
     print(f"OK {len(fit):,} octets -> {out}")
 
     if want_json and fit:
-        _write_records_json(fit, out.with_suffix(".records.json"))
+        records = _write_records_json(fit, out.with_suffix(".records.json"))
+        _write_canonical_samples(activity_id, records, out_dir)
     return out
 
 
-def _write_records_json(fit: bytes, out: Path) -> None:
-    """Extrait les records (timestamp, lat/long, altitude, FC, cadence, power) → JSON."""
+def _write_records_json(fit: bytes, out: Path) -> list[dict]:
+    """Extrait les records (timestamp, lat/long, altitude, FC, cadence, power) → JSON
+    BRUT (champs `fitparse` tels quels). Rend la liste pour `_write_canonical_samples`,
+    qui la normalise (#42) sans reparser le FIT une seconde fois."""
     import fitparse
 
     f = fitparse.FitFile(io.BytesIO(fit))
@@ -120,6 +132,39 @@ def _write_records_json(fit: bytes, out: Path) -> None:
         records.append(r)
     out.write_text(json.dumps(records, default=str))
     print(f"OK {len(records)} records -> {out}")
+    return records
+
+
+def _write_canonical_samples(activity_id: int, raw_records: list[dict], activities_root: Path) -> None:
+    """Copie normalisée (#42) au chemin canonique `activities/fit/<id>.json`, ingérée par
+    `scripts/arc_index.py` (table `activity_sample`). `activities_root` est le
+    `--output-dir` de ce script — normalement `activities/` du workspace ; si un autre
+    répertoire est passé, la copie canonique reste relative à CE répertoire (pas au
+    workspace) pour ne jamais écrire hors de l'endroit demandé par l'utilisateur.
+
+    `scripts/arc_samples.py` est un module stdlib pur (pas de dépendance à
+    `garminconnect`/`fitparse`) : l'importer ici ne casse pas la contrainte « aucune
+    dépendance dans l'index » (CONTRIBUTING.md) — seul CE script (déjà hors-stdlib pour
+    `garminconnect`/`fitparse`) l'utilise en plus de `arc_index.py`.
+    """
+    engine_root = Path(__file__).resolve().parents[3]
+    sys.path.insert(0, str(engine_root / "scripts"))
+    import arc_samples as S  # noqa: E402
+
+    fit_dir = activities_root / "fit"
+    fit_dir.mkdir(parents=True, exist_ok=True)
+    marker = fit_dir / ".gitignore"
+    if not marker.exists():
+        # Donnée brute jetable (reconstruite depuis les FIT réels) : jamais versionnée,
+        # même dans un workspace privé qui versionne `activities/` (docs/workspace.md) —
+        # même geste que `.arc/.gitignore` dans `arc_index.open_db`.
+        marker.write_text("# Échantillons FIT bruts : jetables, jamais versionnés.\n*\n!.gitignore\n",
+                           encoding="utf-8")
+    records = S.normalise_records(raw_records)
+    out = fit_dir / f"{activity_id}.json"
+    out.write_text(json.dumps({"activity_id": activity_id, "records": records}, ensure_ascii=False),
+                    encoding="utf-8")
+    print(f"OK {len(records)} échantillons normalisés -> {out}")
 
 
 def _activity_id_from_arc(text: str):

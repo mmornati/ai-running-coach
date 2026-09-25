@@ -35,6 +35,21 @@ La notification vous dit *qu'il* s'est passé quelque chose ; le tableau de bord
 vous montre *quoi*, en contexte — la HRV du jour dans sa bande, la séance à côté
 des précédentes sur le même parcours, la charge de la semaine face au plan.
 
+### Échantillons FIT (seconde par seconde)
+
+En plus des fichiers Markdown, la synchronisation tente — en best-effort, sans jamais
+faire échouer le reste — de télécharger le fichier FIT de chaque nouvelle séance
+running/trail (`skills/fit-download`) et écrit sa copie normalisée dans
+`activities/fit/<garmin_activity_id>.json` : une donnée **brute et jetable**
+(reconstruite depuis Garmin à tout moment), jamais versionnée, même dans un
+[workspace privé](../workspace.md) — son propre `.gitignore` est créé automatiquement.
+La réindexation (`scripts/arc_index.py`) l'ingère alors dans la table dérivée
+`activity_sample` (sous-échantillonnée à 5 s), qui alimentera les KPI plus fins de
+l'épopée FIT (zones FC, allure ajustée à la pente, découplage cardiaque…). Une séance
+sans FIT associé reste une séance normale : aucun de ces KPI n'apparaît, rien ne casse
+ailleurs. Voir la docstring de `scripts/arc_samples.py` pour le format exact et les
+règles de normalisation.
+
 ## Trois façons de le consulter
 
 ### Sur le portable, après un `git pull`

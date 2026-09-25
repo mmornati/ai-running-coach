@@ -163,6 +163,128 @@ class TestRealWorkspaceRegressions(Workspace):
         finally:
             reader.close()
 
+
+class TestFitSampleIngestion(Workspace):
+    """Palier D — ingestion des échantillons FIT (#42) : `activities/fit/*.json` →
+    `activity_sample`. Incrémentalité, idempotence, orphelins, suppression."""
+
+    GARMIN_ID = 90000000001
+
+    def _write_activity(self, garmin_id=None):
+        garmin_id = self.GARMIN_ID if garmin_id is None else garmin_id
+        self.write("activities/2026-09-20_trail.md", arc(
+            '{"arc": 1, "kind": "activity", "date": "2026-09-20", "sport": "trail", '
+            f'"duration_s": 3600, "distance_m": 10000, "garmin_activity_id": {garmin_id}}}'
+        ))
+
+    def _write_fit(self, garmin_id=None, n=20, resolution=1):
+        garmin_id = self.GARMIN_ID if garmin_id is None else garmin_id
+        records = [
+            {"t_s": t, "distance_m": float(t) * 2.5, "altitude_m": 0.0, "hr_bpm": 140.0 + (t % 5),
+             "speed_ms": 2.5, "cadence_spm": 170.0}
+            for t in range(0, n, resolution)
+        ]
+        fit_dir = self.ws / "activities/fit"
+        fit_dir.mkdir(parents=True, exist_ok=True)
+        (fit_dir / f"{garmin_id}.json").write_text(
+            __import__("json").dumps({"activity_id": garmin_id, "records": records}), encoding="utf-8")
+
+    def _row_count(self):
+        return self.conn.execute("SELECT COUNT(*) FROM activity_sample").fetchone()[0]
+
+    def test_matching_activity_gets_samples(self):
+        self._write_activity()
+        self._write_fit()
+        counts = self.index()
+        self.assertEqual(counts["fit_ingestion"], {"ingested": 1, "unchanged": 0, "removed": 0, "orphan": 0})
+        self.assertGreater(self._row_count(), 0)
+        activity_id = self.conn.execute("SELECT id FROM activity").fetchone()[0]
+        rows = self.conn.execute(
+            "SELECT activity_id FROM activity_sample WHERE activity_id != ?", (activity_id,)).fetchall()
+        self.assertEqual(rows, [])
+
+    def test_samples_are_downsampled_to_5s_by_default(self):
+        self._write_activity()
+        self._write_fit(n=20, resolution=1)   # 20 échantillons/s -> 4 buckets de 5 s attendus
+        self.index()
+        self.assertEqual(self._row_count(), 4)
+
+    def test_two_ingestions_produce_identical_rows(self):
+        """Idempotence : deux passes sans changement de fichier -> mêmes lignes."""
+        self._write_activity()
+        self._write_fit()
+        self.index()
+        before = sorted(tuple(r) for r in self.conn.execute(
+            "SELECT activity_id, t_s, distance_m, hr_bpm FROM activity_sample ORDER BY t_s").fetchall())
+        counts2 = self.index()
+        after = sorted(tuple(r) for r in self.conn.execute(
+            "SELECT activity_id, t_s, distance_m, hr_bpm FROM activity_sample ORDER BY t_s").fetchall())
+        self.assertEqual(before, after)
+        self.assertEqual(counts2["fit_ingestion"]["unchanged"], 1)
+        self.assertEqual(counts2["fit_ingestion"]["ingested"], 0)
+
+    def test_changed_file_is_replaced_not_duplicated(self):
+        self._write_activity()
+        self._write_fit(n=20)
+        self.index()
+        rows_before = self._row_count()
+        self._write_fit(n=40)   # même fichier, deux fois plus d'échantillons
+        counts = self.index()
+        self.assertEqual(counts["fit_ingestion"]["ingested"], 1)
+        self.assertGreater(self._row_count(), rows_before)
+
+    def test_deleted_fit_file_removes_its_samples(self):
+        self._write_activity()
+        self._write_fit()
+        self.index()
+        self.assertGreater(self._row_count(), 0)
+        (self.ws / f"activities/fit/{self.GARMIN_ID}.json").unlink()
+        counts = self.index()
+        self.assertEqual(counts["fit_ingestion"]["removed"], 1)
+        self.assertEqual(self._row_count(), 0)
+
+    def test_orphan_sample_file_without_matching_activity_is_skipped_not_an_error(self):
+        """Aucune activité avec ce garmin_activity_id : compté « orphan », rien n'est écrit."""
+        self._write_fit(garmin_id=999999999999)
+        counts = self.index()
+        self.assertEqual(counts["fit_ingestion"]["orphan"], 1)
+        self.assertEqual(self._row_count(), 0)
+
+    def test_activity_without_samples_is_unaffected(self):
+        """Une séance sans FIT associé reste une séance normale : rien ne casse."""
+        self._write_activity()
+        counts = self.index()
+        self.assertEqual(counts["fit_ingestion"], {"ingested": 0, "unchanged": 0, "removed": 0, "orphan": 0})
+        self.assertEqual(self.conn.execute("SELECT COUNT(*) FROM activity").fetchone()[0], 1)
+        self.assertEqual(self._row_count(), 0)
+
+    def test_samples_accessor_returns_ordered_rows(self):
+        self._write_activity()
+        self._write_fit(n=30)
+        self.index()
+        activity_id = self.conn.execute("SELECT id FROM activity").fetchone()[0]
+        rows = I.samples(self.conn, activity_id)
+        self.assertEqual([r["t_s"] for r in rows], sorted(r["t_s"] for r in rows))
+        for key in ("t_s", "distance_m", "altitude_m", "hr_bpm", "speed_ms", "cadence_spm"):
+            self.assertIn(key, rows[0])
+
+    def test_samples_accessor_empty_for_activity_without_fit(self):
+        self._write_activity()
+        self.index()
+        activity_id = self.conn.execute("SELECT id FROM activity").fetchone()[0]
+        self.assertEqual(I.samples(self.conn, activity_id), [])
+
+    def test_samples_by_garmin_id_reports_reason_when_activity_missing(self):
+        result = I.samples_by_garmin_id(self.conn, 12345)
+        self.assertEqual(result["samples"], [])
+        self.assertIn("reason", result)
+
+    def test_repeated_indexing_without_fit_dir_is_a_noop(self):
+        """Un workspace sans `activities/fit/` du tout ne doit ni planter ni compter d'orphelins."""
+        self._write_activity()
+        counts = self.index()
+        self.assertEqual(counts["fit_ingestion"], {"ingested": 0, "unchanged": 0, "removed": 0, "orphan": 0})
+
     def test_morning_check_off_expects_no_health_keys(self):
         conf = {"morning_check": "off", "sport": "trail"}
         self.assertEqual(I.expected_keys("health", {"morning_check": "off"}, conf), [])
@@ -754,10 +876,10 @@ class TestGearSweatFuelIndex(Workspace):
         self.assertIsNone(rate)   # 4.5 l/h > SWEAT_RATE_PLAUSIBLE_L_H[1] (4.0)
 
     def test_schema_version_bumped_forces_rebuild(self):
-        self.assertEqual(I.SCHEMA_VERSION, 7)
+        self.assertEqual(I.SCHEMA_VERSION, 8)
 
-    def test_real_v4_database_is_rebuilt_at_v7(self):
-        """Pas seulement « la constante vaut 7 » : une vraie base laissée par une
+    def test_real_v4_database_is_rebuilt_at_current_version(self):
+        """Pas seulement « la constante vaut N » : une vraie base laissée par une
         version antérieure (#37, schema_version = 4, sans les colonnes #39 ni la
         table `gear` #40) doit être détectée et reconstruite, colonnes et table
         comprises — sinon `store()` échouerait sur la première activité avec
@@ -773,12 +895,15 @@ class TestGearSweatFuelIndex(Workspace):
         legacy.close()
         conn = I.open_db(self.ws, str(db_path))
         self.assertEqual(
-            conn.execute("SELECT value FROM meta WHERE key = 'schema_version'").fetchone()[0], "7")
+            conn.execute("SELECT value FROM meta WHERE key = 'schema_version'").fetchone()[0],
+            str(I.SCHEMA_VERSION))
         columns = {row[1] for row in conn.execute("PRAGMA table_info(activity)").fetchall()}
         self.assertIn("gear_id", columns)
         self.assertIn("sweat_rate_l_h", columns)
         gear_columns = {row[1] for row in conn.execute("PRAGMA table_info(gear)").fetchall()}
         self.assertIn("collision_base", gear_columns)
+        sample_columns = {row[1] for row in conn.execute("PRAGMA table_info(activity_sample)").fetchall()}
+        self.assertIn("source_path", sample_columns)   # #42
         conn.close()
 
 
