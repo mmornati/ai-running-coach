@@ -400,7 +400,12 @@ tout risque de lieu réel (vérifié par `tests/lint/test_synthetic_no_real_data
 
 Zones FC par défaut : méthode Karvonen sur la FC repos/max du profil type
 (`HR_REST`/`HR_MAX` — voir `planning/Runner_Profile.md`), pas des bornes
-arbitraires ; la story #43 rendra la méthode configurable par profil.
+arbitraires ; la story #43 (zones FC, temps en zone, polarisation 80/20) rend la
+méthode configurable par profil (`arc_metrics.hr_zone_bounds`, précédence LTHR
+→ Karvonen → %FCmax, `[athlete].hr_zones` dans `config/workspace.toml`) — les
+mêmes bornes Karvonen que ce générateur (`KARVONEN_HRR_PCT`) y sont reprises à
+l'identique, pour que le temps en zone calculé sur un profil type retombe sur
+`zone_seconds_measured` à quelques secondes près.
 
 ```bash
 python3 -m tests.lib.synthetic /tmp/demo --days 120 --with-samples

@@ -402,7 +402,8 @@ async function viewForm(params) {
     <section class="band"><h2>Volume hebdomadaire</h2>
       <p class="legend">${trail ? `<span class="legend__item"><span class="key key--bar"></span>Heures d'effort</span> <span class="legend__item"><span class="key key--dplus"></span>D+ cumulé</span>` : `<span class="legend__item"><span class="key key--bar"></span>Kilomètres</span>`}</p>
       <div class="chart-host" id="c-load">${loadChart.svg}</div><p class="readout" id="r-load"></p>
-      <dl class="facts facts--inline"><div><dt>Monotonie (7 j)</dt><dd>${F.num(load.monotony, 2)}</dd></div><div><dt>Strain (7 j)</dt><dd>${F.num(load.strain)}</dd></div><div><dt>Charge du jour</dt><dd>${F.num(last.load)}</dd></div></dl></section>`;
+      <dl class="facts facts--inline"><div><dt>Monotonie (7 j)</dt><dd>${F.num(load.monotony, 2)}</dd></div><div><dt>Strain (7 j)</dt><dd>${F.num(load.strain)}</dd></div><div><dt>Charge du jour</dt><dd>${F.num(last.load)}</dd></div></dl></section>
+    ${polarisationSection(load.polarisation_weeks)}`;
 
   attachCursor($("#c-form"), chart, (i) => {
     const p = series[i];
@@ -413,6 +414,40 @@ async function viewForm(params) {
     const w = weeks[i];
     readout($("#r-load"), `<strong>Semaine du ${F.dayShort(w.week_start)}</strong> · ${w.sessions} séance${w.sessions > 1 ? "s" : ""} · ${F.hours(w.duration_s)} · ${F.distance(w.distance_m)}${trail ? ` · ${F.elevation(w.elevation_m)} D+${w.effort_km ? ` · ${F.num(w.effort_km, 1)} km-effort` : ""}` : ` · ${F.pace(w.distance_m, w.duration_s)}`} · charge ${F.num(w.load)}`);
   });
+}
+
+/** Section « Polarisation 80/20 » de Forme & charge (#43) : une barre empilée par
+ * semaine (facile / modérée / difficile, mapping Seiler — voir
+ * `arc_metrics.HR_ZONE_SEILER_MAP`), en SVG (pas de style en ligne, CSP). Une
+ * semaine sans AUCUNE activité à échantillons FIT (`polarisation: null`, voir
+ * `arc_index.weekly_polarisation`) reste visible, barre grise, plutôt que masquée :
+ * on veut voir où la donnée manque, pas la faire disparaître silencieusement. */
+function polarisationSection(weeks) {
+  if (!weeks || !weeks.some((w) => w.polarisation)) return "";
+  const barW = 22, gap = 8, chartH = 64;
+  const bars = weeks.map((w, i) => {
+    const x = i * (barW + gap);
+    const p = w.polarisation;
+    if (!p) {
+      return `<rect class="polar polar--none" x="${x}" y="${chartH - 4}" width="${barW}" height="4" rx="2"><title>${F.dayShort(w.week_start)} : pas d'échantillons FIT</title></rect>`;
+    }
+    const segs = [["low", p.low_pct], ["moderate", p.moderate_pct], ["high", p.high_pct]];
+    let y = chartH;
+    const title = `${F.dayShort(w.week_start)} : facile ${F.num(p.low_pct, 0)} % · modérée ${F.num(p.moderate_pct, 0)} % · difficile ${F.num(p.high_pct, 0)} %`;
+    return segs.map(([cls, pct]) => {
+      const segH = Math.max(0, (pct / 100) * chartH);
+      y -= segH;
+      return `<rect class="polar polar--${cls}" x="${x}" y="${y.toFixed(1)}" width="${barW}" height="${segH.toFixed(1)}"><title>${F.esc(title)}</title></rect>`;
+    }).join("");
+  }).join("");
+  const totalW = weeks.length * barW + (weeks.length - 1) * gap;
+  const label = `Polarisation 80/20 hebdomadaire : ${weeks.map((w) => w.polarisation
+    ? `${F.dayShort(w.week_start)} facile ${F.num(w.polarisation.low_pct, 0)} % modérée ${F.num(w.polarisation.moderate_pct, 0)} % difficile ${F.num(w.polarisation.high_pct, 0)} %`
+    : `${F.dayShort(w.week_start)} pas de données`).join(" ; ")}.`;
+  return `<section class="band"><h2>Polarisation 80/20</h2>
+    <p class="muted">Part du temps en zone FC facile (Z1-Z2), modérée (Z3) et difficile (Z4-Z5), sur les semaines avec séances à échantillons FIT.</p>
+    <p class="legend"><span class="legend__item"><span class="key key--polar-low"></span>Facile</span> <span class="legend__item"><span class="key key--polar-moderate"></span>Modérée</span> <span class="legend__item"><span class="key key--polar-high"></span>Difficile</span></p>
+    <svg class="polar-chart" viewBox="0 0 ${totalW} ${chartH}" role="img" aria-label="${F.esc(label)}">${bars}</svg></section>`;
 }
 
 // ---------------------------------------------------------------------------
@@ -618,7 +653,43 @@ async function viewSession(id) {
     <dl class="facts facts--grid">${facts.map(([k, v]) => `<div><dt>${k}</dt><dd>${v}</dd></div>`).join("")}</dl>
     ${wx ? `<p class="weather">${weatherChip(wx.category)} <span>${F.esc(wx.location)} · ${F.num(wx.temp_min_c)}–${F.num(wx.temp_max_c)} °C · vent ${F.num(wx.wind_kmh)} km/h</span></p>` : ""}
     ${splitsHtml}
+    ${hrZoneSection(d.hr_zones)}
     <section class="band prose"><h2>Analyse du coach</h2>${d.body_html || "<p class=\"muted\">Pas de texte.</p>"}<p class="muted source">Source : <code>${F.esc(a.source_path)}</code></p></section>`;
+}
+
+/** Section « Zones FC » de la page séance (#43) : temps en zone en barre empilée
+ * (SVG, jamais de style en ligne — CSP `style-src 'self'`) + légende. `hz` vient de
+ * `/api/activity/<id>.hr_zones` (voir `arc_serve.py::api_activity_hr_zones`) :
+ * `null` (aucune méthode de zones calculable, profil incomplet), ou
+ * `zone_seconds: null` (bornes connues mais séance sans échantillons FIT). */
+const HR_ZONE_METHOD_LABEL = { lthr: "FC au seuil (LTHR)", karvonen: "Karvonen (réserve FC)", percent_max: "% FC max" };
+
+function hrZoneSection(hz) {
+  if (!hz) return "";
+  const methodLabel = HR_ZONE_METHOD_LABEL[hz.method] || hz.method;
+  const boundsTxt = hz.bounds_bpm.map((b) => Math.round(b)).join(" / ");
+  if (!hz.zone_seconds) {
+    return `<section class="band"><h2>Zones FC</h2><p class="muted">Bornes (${F.esc(methodLabel)}) : ${boundsTxt} bpm.</p>
+      ${note("Pas d'échantillons FIT ingérés pour cette séance : le temps en zone ne peut pas être calculé.")}</section>`;
+  }
+  const seconds = [1, 2, 3, 4, 5].map((z) => hz.zone_seconds[z] ?? hz.zone_seconds[String(z)] ?? 0);
+  const total = seconds.reduce((a, b) => a + b, 0);
+  if (!total) return "";
+  const w = 640, h = 26;
+  let x = 0;
+  const segs = seconds.map((secs, i) => {
+    const z = i + 1, width = (secs / total) * w;
+    const rect = width > 0 ? `<rect class="zone zone--${z}" x="${x.toFixed(2)}" y="0" width="${width.toFixed(2)}" height="${h}"><title>Zone ${z} : ${F.duration(secs)}</title></rect>` : "";
+    x += width;
+    return rect;
+  }).join("");
+  const label = `Temps en zone : ${seconds.map((s, i) => `zone ${i + 1} ${F.duration(s)}`).join(", ")}, total ${F.duration(total)}.`;
+  const legend = seconds.map((s, i) => `<span class="legend__item"><span class="key key--zone${i + 1}"></span>Z${i + 1} ${F.duration(s)}</span>`).join(" ");
+  const pol = hz.polarisation;
+  const polTxt = pol ? `<p class="muted">Polarisation : facile ${F.num(pol.low_pct, 0)} % · modérée ${F.num(pol.moderate_pct, 0)} % · difficile ${F.num(pol.high_pct, 0)} %.</p>` : "";
+  return `<section class="band"><h2>Zones FC</h2><p class="muted">Bornes (${F.esc(methodLabel)}) : ${boundsTxt} bpm.</p>
+    <svg class="zone-bar" viewBox="0 0 ${w} ${h}" role="img" aria-label="${F.esc(label)}">${segs}</svg>
+    <p class="legend">${legend}</p>${polTxt}</section>`;
 }
 
 // ---------------------------------------------------------------------------

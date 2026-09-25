@@ -717,6 +717,19 @@
           "weight_pre_kg": null
         },
         "body_html": "<h2>Séance du 2026-09-23 — Endurance fondamentale</h2>\n<h3>Analyse du coach</h3>\n<p>Séance <strong>endurance fondamentale</strong> conforme. FC moyenne 141 bpm, HRR 31.</p>\n<ul><li>Allure régulière sur le plat</li><li>Montées gérées en marche rapide</li></ul>",
+        "hr_zones": {
+          "bounds_bpm": [
+            0.0,
+            146.2,
+            153.1,
+            161.7,
+            170.3,
+            258.0
+          ],
+          "method": "lthr",
+          "polarisation": null,
+          "zone_seconds": null
+        },
         "splits": [
           {
             "activity_id": 28,
@@ -4100,6 +4113,112 @@
     "/api/load": {
       "body": {
         "monotony": 1.22,
+        "polarisation_weeks": [
+          {
+            "polarisation": null,
+            "week_start": "2026-03-30"
+          },
+          {
+            "polarisation": null,
+            "week_start": "2026-04-06"
+          },
+          {
+            "polarisation": null,
+            "week_start": "2026-04-13"
+          },
+          {
+            "polarisation": null,
+            "week_start": "2026-04-20"
+          },
+          {
+            "polarisation": null,
+            "week_start": "2026-04-27"
+          },
+          {
+            "polarisation": null,
+            "week_start": "2026-05-04"
+          },
+          {
+            "polarisation": null,
+            "week_start": "2026-05-11"
+          },
+          {
+            "polarisation": null,
+            "week_start": "2026-05-18"
+          },
+          {
+            "polarisation": null,
+            "week_start": "2026-05-25"
+          },
+          {
+            "polarisation": null,
+            "week_start": "2026-06-01"
+          },
+          {
+            "polarisation": null,
+            "week_start": "2026-06-08"
+          },
+          {
+            "polarisation": null,
+            "week_start": "2026-06-15"
+          },
+          {
+            "polarisation": null,
+            "week_start": "2026-06-22"
+          },
+          {
+            "polarisation": null,
+            "week_start": "2026-06-29"
+          },
+          {
+            "polarisation": null,
+            "week_start": "2026-07-06"
+          },
+          {
+            "polarisation": null,
+            "week_start": "2026-07-13"
+          },
+          {
+            "polarisation": null,
+            "week_start": "2026-07-20"
+          },
+          {
+            "polarisation": null,
+            "week_start": "2026-07-27"
+          },
+          {
+            "polarisation": null,
+            "week_start": "2026-08-03"
+          },
+          {
+            "polarisation": null,
+            "week_start": "2026-08-10"
+          },
+          {
+            "polarisation": null,
+            "week_start": "2026-08-17"
+          },
+          {
+            "polarisation": null,
+            "week_start": "2026-08-24"
+          },
+          {
+            "polarisation": null,
+            "week_start": "2026-08-31"
+          },
+          {
+            "polarisation": null,
+            "week_start": "2026-09-07"
+          },
+          {
+            "polarisation": null,
+            "week_start": "2026-09-14"
+          },
+          {
+            "polarisation": null,
+            "week_start": "2026-09-21"
+          }
+        ],
         "strain": 792.9,
         "weeks": [
           {
@@ -4343,6 +4462,32 @@
     "/api/load?weeks=6": {
       "body": {
         "monotony": 1.22,
+        "polarisation_weeks": [
+          {
+            "polarisation": null,
+            "week_start": "2026-08-17"
+          },
+          {
+            "polarisation": null,
+            "week_start": "2026-08-24"
+          },
+          {
+            "polarisation": null,
+            "week_start": "2026-08-31"
+          },
+          {
+            "polarisation": null,
+            "week_start": "2026-09-07"
+          },
+          {
+            "polarisation": null,
+            "week_start": "2026-09-14"
+          },
+          {
+            "polarisation": null,
+            "week_start": "2026-09-21"
+          }
+        ],
         "strain": 792.9,
         "weeks": [
           {
@@ -5190,6 +5335,7 @@
           "fueling": "Glucides/h et taux de sudation sur les sorties longues (#41), entraînement digestif. `carbs_per_hour_g` (fonction `carbs_per_hour_g`) = `carbs_g` / (`duration_s` en heures), calculé UNIQUEMENT pour les séances de plus de 90 min (`LONG_RUN_MIN_DURATION_S`, la même borne que le repère 60-90 g/h cité aux plans de course) — sous ce seuil, `None` (pas une sortie longue au sens de ce KPI), tout comme si `carbs_g` est absent (jamais 0 par défaut : un `carbs_g` explicitement à 0 reste un 0 g/h légitime, une absence de déclaration n'en est pas un). Sport : `FUELING_SPORTS` (running, trail) SEULEMENT (revue de code #41, blocker) — jamais `GEAR_WEAR_SPORTS`, qui inclut aussi la randonnée pour l'usure de semelle : une randonnée est typiquement bien plus lente qu'un effort de course (allure, FC, dépense horaire), et le vélo a une intensité et une digestion à l'effort différentes ; sans ce filtre, un long vélo à haut débit glucidique gonflerait `max_carbs_per_hour_g` et donc le plafond d'un plan de COURSE À PIED. Durée : `duration_s` (durée TOTALE), la même que `sweat_rate_l_h` ci-dessus — cohérence entre les deux KPI dérivés de la même sortie, tous deux encadrés par la pesée/le ravitaillement sur la sortie entière, arrêts compris. `sweat_rate_l_h` n'est JAMAIS recalculé ici : `fueling_trend` réutilise tel quel le champ déjà dérivé à l'indexation (`arc_metrics.sweat_rate_l_h`), pour ne jamais faire dériver deux définitions du même chiffre. `fueling_trend` agrège les sorties longues des `FUELING_TREND_WEEKS` (12) dernières semaines glissantes (aujourd'hui inclus) : `max_carbs_per_hour_g` (le plus haut débit observé sur une sortie longue de la fenêtre — c'est le seul repère de tolérance dont on dispose : le contrat n'a AUCUN champ de trouble digestif déclaré, donc « toléré » veut seulement dire « ingéré sans qu'un problème n'ait été signalé ailleurs », jamais une vraie mesure de tolérance — à confirmer par l'athlète ou l'agent avant de s'en servir comme plafond dur), `carbs_per_hour_n` (nombre de sorties longues AVEC un `carbs_per_hour_g` défini, pour que l'appelant sache si le maximum repose sur une ou dix séances), `median_sweat_rate_l_h` et `sweat_rate_n` (médiane et effectif des `sweat_rate_l_h` non `None` sur la même fenêtre — une médiane plutôt qu'une moyenne : un seul jour très chaud ne doit pas à lui seul déplacer le repère). Une sortie longue sans aucune des deux valeurs compte quand même dans `long_runs` (nombre total de sorties longues de la fenêtre) : elle prouve qu'un entraînement digestif a eu lieu, même non chiffré. Fenêtre volontairement identique pour les deux KPI (jamais une fenêtre glucides et une fenêtre sudation différentes) : ce sont les mêmes séances qui alimentent les deux courbes du même graphique de tendance. `fueling_carbs_ceiling` = min(`max_carbs_per_hour_g` + `FUELING_MAX_MARGIN_G_H`, max(`FUELING_TARGET_BAND_G_H[1]` (90), `max_carbs_per_hour_g`)), arrondi PAR EXCÈS (`math.ceil`, jamais `round` : un plafond ne doit jamais tomber sous le débit réellement observé) — plafond réaliste proposé à `course-strategist` pour un plan de course, PAS une limite physiologique dure. La marge (`FUELING_MAX_MARGIN_G_H`, 10 g/h) reste une étape de projet CONSERVATRICE, cohérente avec la littérature sur l'entraînement progressif de la tolérance digestive (Jeukendrup 2017, « Training the Gut for Athletes », Sports Medicine ; Costa et al. 2017, revue sur les troubles gastro-intestinaux d'exercice) qui documente une tolérance qui s'accroît par exposition répétée à l'effort, sans fixer de pourcentage de progression consensuel — PAS une valeur tirée telle quelle de ces sources. Le plafond ne dépasse JAMAIS le haut du repère généraliste (90 g/h) sauf si l'athlète a DÉJÀ personnellement démontré un débit supérieur, auquel cas aucune marge supplémentaire n'est ajoutée au-delà de ce qu'il a prouvé (revue de code #41, SHOULD-FIX 3 : sans cette borne, un athlète déjà à 85 g/h recevait un plafond à 95 g/h, au-dessus du haut de la fourchette généraliste sans qu'un dixième gramme au-delà de 90 n'ait jamais été démontré). `None` sans aucune sortie longue chiffrée sur la fenêtre : le stratège garde alors le repère générique 60-90 g/h (`FUELING_TARGET_BAND_G_H`) et doit suggérer un entraînement digestif progressif plutôt que d'inventer un plafond. Moins de 3 sorties longues chiffrées (`carbs_per_hour_n` < 3) : le plafond tient sur trop peu de données pour être présenté comme fiable — `course-strategist`/`nutritionist` doivent le signaler (« repose sur seulement N sortie(s) ») et suggérer de le confirmer à la prochaine sortie longue, plutôt que de le donner pour acquis. Non soumis à `[health].morning_check` : ne dépend d'aucune donnée de santé, seulement des activités déjà indexées.",
           "gear_mileage": "Kilométrage chaussures (#40) : somme de `distance_m` des activités de sport dans `GEAR_WEAR_SPORTS` (running, trail, hiking) — course et randonnée seulement (la marche, `walking`, n'y est délibérément PAS incluse : elle use une semelle bien plus lentement et le contrat ne distingue pas une marche d'entraînement d'une simple promenade), un sport hors de cette liste (vélo, natation, renforcement…) n'est jamais compté, même avec un `gear_id` renseigné par erreur. Attribution : `gear_id` explicite de l'activité si présent — JAMAIS filtré par une date, voir plus bas — sinon la chaussure marquée `(par défaut)` dans le profil si une seule l'est (la première rencontrée si plusieurs, cas non censé arriver mais pas une erreur), sinon la séance est IGNORÉE (ni comptée nulle part, ni signalée) — c'est le comportement documenté par #40 : sans chaussure par défaut déclarée, une activité sans `gear_id` n'a simplement rien à raconter côté matériel. `gear_id` explicite qui ne correspond à AUCUNE chaussure du profil (faute de frappe, chaussure jamais déclarée) : jamais éliminé silencieusement, regroupé sous `unknown` avec son kilométrage — libellé « inconnue » côté tableau de bord. Date `depuis` du profil : filtre l'attribution PAR DÉFAUT SEULEMENT (revue PR #85, blocker 1) — une séance sans `gear_id` datée AVANT le `depuis` de la chaussure `(par défaut)` n'y est PAS attribuée (sans ce filtre, toute activité antérieure à #39, y compris des années d'historique sans `gear_id` au contrat, se retrouverait comptée sur une paire achetée hier) ; sans `depuis` déclaré sur la chaussure par défaut, aucun filtre, comme avant. À l'inverse, une activité portant un `gear_id` EXPLICITE compte quel que soit son rapport à `depuis` (même avant) : l'explicite du `gear_id` prime toujours sur une date de début possiblement oubliée ou approximative — ne pas la compter risquerait de sous-estimer silencieusement l'usure réelle, l'erreur la plus coûteuse ici. Seuil d'alerte : celui de la puce (segment « alerte NNN km », ou « alerte NNN miles/mi » — converti × 1609,344 — voir `arc_legacy.parse_gear`) si renseigné, sinon 700 km par défaut (`GEAR_ALERT_THRESHOLD_M_DEFAULT`) — TOUTE chaussure déclarée peut donc alerter, avec ou sans seuil explicite ; `threshold_m` toujours arrondi à l'entier avant sérialisation (cohérence de type JSON, valeur déclarée ou valeur par défaut). Chaussure `(retirée)` : kilométrage affiché (historique), mais jamais d'alerte, et jamais candidate à l'attribution par défaut même si `(par défaut)` est aussi coché sur la même puce (une chaussure qu'on ne porte plus ne doit pas absorber les séances sans `gear_id`) — priorité documentée : retraite avant défaut. Deux puces qui dérivent le même slug (rachat du même modèle sans `id:` pour les distinguer) : `arc_legacy.parse_gear` renomme les suivantes `-2`, `-3`… plutôt que de laisser la dernière écraser la première dans l'index, et la collision remonte dans `warnings`.",
           "heat_acclimation": "Acclimatation à la chaleur (#38) : sur les 14 derniers jours (aujourd'hui inclus), jointure de chaque activité OUTDOOR avec le fichier météo (`medical/*_meteo.md`) du MÊME JOUR calendaire. Outdoor / indoor : un sport listé dans `INDOOR_SPORTS` (`strength`, `indoor_cycling`, `home_trainer`, `elliptical`, `rest`) est exclu ; tout autre sport connu du contrat (`running`, `trail`, `hiking`, `walking`, `cycling`, `swimming`, `rowing`) est traité comme outdoor par défaut — le contrat ne distingue une variante indoor que pour le cyclisme (`indoor_cycling`/`home_trainer` vs `cycling`) ; `swimming`/`rowing` peuvent en pratique se pratiquer en piscine ou sur ergomètre, mais faute d'un `outdoor` explicite au niveau de l'activité (contrairement à `week.sessions[].outdoor`, réservé au plan), les compter en outdoor par défaut reste la lecture la plus proche du contrat existant. Séance « chaude » : `temp_max_c` DU JOUR ≥ seuil (borne INCLUSE), défaut 25 °C, configurable (`[health].heat_threshold_c`). Le contrat n'a pas d'heure de mesure météo infra-journalière : `temp_max_c` est le maximum du jour entier, pas la température à l'heure de départ de la séance (`start_time`) — une approximation CONSERVATRICE (une séance matinale par jour caniculaire peut compter « chaude » alors qu'elle s'est déroulée avant la pointe de chaleur) assumée en l'absence de données horaires ; le raffiner demanderait une série météo horaire, hors contrat actuel. `temp_max_c` peut lui-même être une PRÉVISION écrite plusieurs jours avant la séance (le skill `weather-forecast` ne refetch pas un jour déjà persisté, règle d'idempotence < 24 h) et non une mesure a posteriori : un écart entre la prévision et la météo réelle du jour n'est pas corrigé rétroactivement. Plusieurs fichiers météo le même jour (plusieurs lieux) : priorité au fichier dont `location` correspond à celui de l'activité — comparaison sur le nom de VILLE (avant la première virgule, ex. « Annecy » dans « Annecy, France »), accents et casse ignorés (`normalize_location`), pas une égalité de chaîne stricte. À défaut de correspondance (activité sans lieu, ou aucun fichier météo du jour ne correspond) MAIS que tous les fichiers du jour s'accordent sur le verdict chaud/pas chaud (même seuil), ce verdict est quand même retenu — peu importe lequel des lieux est le bon puisqu'ils concluent tous pareil (`_resolve_hot`). S'ils divergent (au moins un chaud, au moins un non), l'activité est traitée comme SANS météo plutôt que de deviner laquelle s'applique — voir `sessions_without_weather` ci-dessous. Un seul fichier météo ce jour-là : il s'applique, quel que soit son lieu — c'est le fichier de la séance d'ENTRAÎNEMENT du jour (le skill `weather-forecast` fetch d'abord le lieu d'entraînement) ; ce raccourci n'est PAS repris pour la météo de la course d'un objectif (`objective_forecast_hot`, `scripts/arc_serve.py::api_heat_acclimation`), où un lieu de course lointain ne doit jamais hériter du seul fichier du jour si ce fichier ne le nomme pas explicitement (`pick_weather_strict`, sans ce raccourci). Absence TOTALE de fichier météo pour le jour : la séance n'est ni chaude ni froide, elle est IGNORÉE du compte (`hot_sessions`/`hot_duration_s`) et comptée séparément dans `sessions_without_weather` — sans quoi un simple trou de synchronisation météo ferait baisser artificiellement le compte de séances chaudes. Rendu : `hot_sessions` (nombre), `hot_duration_s` (somme de `duration_s` des séances chaudes), `sessions_considered` (total des séances outdoor de la fenêtre, chaudes ou non, hors sans-météo), `sessions_without_weather`, `window_days`, `threshold_c`. Aucun seuil minimal de séances avant affichage (contrairement à `sleep_debt`/`hrv_baseline`) : `0` séance chaude sur la fenêtre est une réponse valide en soi, pas une valeur bruitée à masquer. `[health].heat_threshold_c` invalide (texte non numérique, booléen, section absente…) : jamais d'exception qui casserait TOUT appel de `scripts/arc_index.py` (index, hrv-baseline, sleep-debt, heat-acclimation) ni l'actualisation du tableau de bord — repli sur le défaut avec un avertissement, voir `arc_index.py::settings`.",
+          "hr_zones": "Zones FC, temps en zone et polarisation 80/20 (#43). 5 zones, méthode de calcul des bornes choisie par PRÉCÉDENCE (configurable, `[athlete].hr_zones` dans `config/workspace.toml`, valeurs `\"auto\"` (défaut) | `\"lthr\"` | `\"karvonen\"` | `\"percent_max\"` — une valeur explicite FORCE cette méthode, sans repli si les champs qu'elle demande manquent, auquel cas aucune zone n'est calculée) : 1) LTHR (`hr_threshold_bpm` du profil, « FC au seuil ») si renseignée — Friel (« The Triathlete's Training Bible »), zones course à pied simplifiées à 5 paliers : Z1 0-85 %, Z2 85-89 %, Z3 89-94 %, Z4 94-99 %, Z5 99-150 % de la LTHR (dernière borne ouverte vers le haut) ; 2) Karvonen (réserve FC = FC max - FC repos, `hr_max_bpm`/`hr_rest_bpm` du profil) sinon, bornes à 50 %, 60 %, 70 %, 80 %, 90 %, 100 % de la réserve — MÊME convention que `tests/lib/synthetic.py::KARVONEN_HRR_PCT`, ce qui permet aux tests de temps en zone (palier D) de comparer directement le temps en zone calculé à la vérité connue du générateur synthétique sur le profil type (FC repos 48, FC max 188 -> bornes 118/132/146/160/174/188 bpm) ; 3) %FCmax sinon (`hr_max_bpm` seul suffit), bornes à 0 %, 60 %, 70 %, 80 %, 90 %, 150 % de la FC max — convention à 5 zones courante quand ni la FC de repos ni la FC au seuil ne sont connues ; 4) aucune zone calculée si même la FC max manque (`hr_zone_bounds` rend `None`) — jamais de bornes inventées. `hr_zone_of` sature : tout ce qui est sous la 2ᵉ borne tombe en zone 1, tout ce qui est au-delà de la 5ᵉ (dernière) borne tombe en zone 5, la 1ʳᵉ et la 6ᵉ valeur de chaque tuple ne sont que des repères d'affichage. Temps en zone (`time_in_zone_seconds`) : calculé sur les échantillons déjà sous-échantillonnés de `arc_index.samples`/`samples_by_garmin_id` (résolution par défaut 5 s, `arc_samples.DEFAULT_RESOLUTION_S`), triés par `t_s`. Chaque échantillon pèse la durée `dt` jusqu'au suivant, PLAFONNÉE à la résolution du sous-échantillonnage : une pause ou un trou de signal (`arc_samples.ASSUMPTIONS[\"gaps\"]`, `dt` peut dépasser la résolution après un trou) n'est donc JAMAIS compté comme du temps en zone — sans ce plafond, une montre restée en veille 30 min gonflerait artificiellement la zone où la FC se trouvait juste avant la pause. Le DERNIER échantillon d'une séance (pas de suivant pour mesurer `dt`) est compté pour la résolution nominale de son propre bucket. Un `hr_bpm` absent (`None`, capteur décroché) est ignoré : ni zone, ni secondes comptées pour cet échantillon — cohérent avec le reste du projet (mesure absente = absente, jamais 0). Recalculé pour CHAQUE activité à CHAQUE passage de `arc_index.index_workspace` (jamais mis en cache par fichier comme les tables `PER_FILE_TABLES`) : un changement du profil (FC max/repos/seuil, ou `[athlete].hr_zones`) est donc répercuté dès le prochain index, incrémental ou `--rebuild`, sans étape supplémentaire. Polarisation hebdomadaire (`polarisation_shares`, modèle 3 zones de Seiler — voir `HR_ZONE_SEILER_MAP`) : calculée UNIQUEMENT sur les activités qui ont des échantillons FIT ingérés (`hr_zone_time` non vide) ; une semaine sans AUCUNE activité avec échantillons rend `None` sur tous ses champs (jamais 0 % ni une part calculée sur zéro seconde) — une semaine avec au moins une activité datée sans FIT associé n'est pas `None` pour autant, cette activité est simplement absente de la somme.",
           "hrv_baseline": "Ligne de base HRV personnelle : moyenne glissante 7 j de ln(HRV nocturne) (min. 5 jours valides sur 7, sinon aucune valeur), comparée à une référence glissante 60 j de ln(HRV) (moyenne et écart-type, min. 30 jours valides, sinon « en construction ») ± 0.5 écart-type — une largeur de bande couramment retenue comme « plus petit changement significatif » (smallest worthwhile change) sur le lnRMSSD 7 j (Plews, Laursen & Buchheit 2013). La fenêtre de référence se termine 7 j AVANT le jour évalué (jours j-7 à j-66) : elle ne recouvre JAMAIS la fenêtre courte, sinon la moyenne 7 j se retrouve diluée dans sa propre référence et l'écart entre les deux est mécaniquement rétréci. Hypothèse : `hrv_overnight_ms` (moyenne nocturne Garmin) est traité comme une mesure de type rMSSD — Garmin ne documente pas publiquement l'algorithme exact. Le passage au log réduit l'asymétrie de la distribution du rMSSD (Plews et al. 2012 ; Plews, Laursen & Buchheit 2013). Un jour sans mesure n'est jamais compté comme 0, il est simplement absent des deux fenêtres. CV 7 j = écart-type / moyenne de ln(HRV) (pas des valeurs brutes) sur la fenêtre courte, en pourcentage : Plews et al. (2012) évaluent la stabilité de la modulation parasympathique sur le coefficient de variation du lnRMSSD hebdomadaire, pas sur la valeur brute. Kiviniemi et al. (2007) est cité comme PRÉCÉDENT de l'entraînement individualisé guidé par une bande statistique (± 1 écart-type autour de la puissance HF de la variabilité cardiaque, une mesure et une largeur différentes de celles retenues ici) — pas comme source de la largeur ± 0,5 ET ni du CV appliqués dans ce module. Écart-type demandé aux deux fenêtres : population (division par N, pas N-1), cohérent avec le reste du module (`daily_series`, monotonie de Foster). Ce statut n'est calculé et affiché qu'en `[health].morning_check = \"full\"` : en `minimal`, seule la readiness est exposée (rien qui dépende de l'HRV) ; en `off`, aucune donnée de santé n'est récupérée.",
           "monotony": "Monotonie de Foster = moyenne / écart-type de la charge quotidienne sur 7 j ; strain = charge 7 j × monotonie.",
           "prediction": "Prédictions VDOT (Daniels) depuis la tendance VO2max, et Riegel depuis le meilleur effort récent (exposant 1,06 route / 1,15 trail).",
@@ -5422,6 +5568,7 @@
             "course-strategist"
           ],
           "heat_threshold_c": 25.0,
+          "hr_zones": "auto",
           "language": "fr",
           "morning_check": "full",
           "profile": "planning/Runner_Profile.md",

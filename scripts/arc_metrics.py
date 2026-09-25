@@ -28,7 +28,7 @@ import math
 import statistics
 import unicodedata
 from datetime import date, timedelta
-from typing import Dict, Iterable, List, Optional, Tuple
+from typing import Dict, Iterable, List, Optional, Sequence, Tuple
 
 # ---------------------------------------------------------------------------
 # Constantes et hypothèses
@@ -158,6 +158,39 @@ FUELING_TARGET_BAND_G_H = (60, 90)
 # fixer de pourcentage de progression consensuel par unité de temps — la marge choisie
 # ici reste donc une règle de projet, pas une valeur tirée de ces sources.
 FUELING_MAX_MARGIN_G_H = 10
+
+# Zones FC, temps en zone et polarisation 80/20 (#43). 5 zones, trois méthodes de
+# calcul des bornes, choisies par précédence (voir `hr_zone_bounds`) : LTHR (FC au
+# seuil) si connue, sinon Karvonen (réserve FC), sinon %FCmax, sinon aucune zone
+# calculable. Voir ASSUMPTIONS["hr_zones"] pour la justification complète et les
+# citations.
+HR_ZONE_COUNT = 5
+HR_ZONE_METHODS = ("lthr", "karvonen", "percent_max")
+HR_ZONE_METHOD_DEFAULT = "auto"     # précédence : lthr -> karvonen -> percent_max
+# Karvonen (réserve FC = FC max - FC repos) : bornes à 50/60/70/80/90/100 % de la
+# réserve — même convention que `tests/lib/synthetic.py::KARVONEN_HRR_PCT`, pour que
+# les tests de temps en zone (palier D) retombent exactement sur les bornes du
+# générateur synthétique quand le profil type (FC repos 48, FC max 188) est utilisé.
+HR_ZONE_KARVONEN_HRR_PCT = (0.50, 0.60, 0.70, 0.80, 0.90, 1.00)
+# Friel (« The Triathlete's Training Bible » / zones course à pied simplifiées à 5
+# zones à partir de la FC au seuil lactique/LTHR) : Z1 < 85 %, Z2 85-89 %, Z3 90-94 %,
+# Z4 95-99 %, Z5 >= 100 % de LTHR. Le premier terme (0.0) et le dernier (1.5) ne
+# gouvernent aucun calcul (`hr_zone_of` sature la zone 1 vers le bas et la zone 5 vers
+# le haut) : ils ne servent qu'à exposer une borne d'affichage cohérente.
+HR_ZONE_LTHR_PCT = (0.0, 0.85, 0.89, 0.94, 0.99, 1.5)
+# %FCmax : convention à 5 zones courante (Z1 < 60 %, Z2 60-70 %, Z3 70-80 %,
+# Z4 80-90 %, Z5 90-100 %+ de la FC max) — la méthode de repli quand ni la FC au
+# seuil ni la FC de repos ne sont connues (seule la FC max suffit).
+HR_ZONE_PCT_MAX = (0.0, 0.60, 0.70, 0.80, 0.90, 1.5)
+# Polarisation 80/20 façon Seiler (Seiler & Kjerland 2006 ; Seiler 2010, « What is
+# best practice for training intensity and duration distribution in endurance
+# athletes? ») : modèle à 3 zones (sous le premier seuil ventilatoire/lactique,
+# entre les deux seuils, au-dessus du second) reconstruit ici depuis nos 5 zones —
+# Z1+Z2 = « facile » (sous le premier seuil), Z3 = « modérée » (zone intermédiaire,
+# évitée dans un entraînement polarisé), Z4+Z5 = « difficile » (au-dessus du second
+# seuil). Un mapping de zones, pas une mesure de lactate ou de seuils ventilatoires
+# réels : voir ASSUMPTIONS["hr_zones"].
+HR_ZONE_SEILER_MAP = {1: "low", 2: "low", 3: "moderate", 4: "high", 5: "high"}
 
 ASSUMPTIONS = {
     "trimp": "TRIMP de Banister : minutes × FCr × 0,64 × e^(k·FCr), FCr = (FC moy − FC repos) / (FC max − FC repos), "
@@ -449,6 +482,48 @@ ASSUMPTIONS = {
                  "avant défaut. Deux puces qui dérivent le même slug (rachat du même modèle sans `id:` pour les "
                  "distinguer) : `arc_legacy.parse_gear` renomme les suivantes `-2`, `-3`… plutôt que de laisser "
                  "la dernière écraser la première dans l'index, et la collision remonte dans `warnings`.",
+    "hr_zones": "Zones FC, temps en zone et polarisation 80/20 (#43). 5 zones, méthode de calcul "
+                "des bornes choisie par PRÉCÉDENCE (configurable, `[athlete].hr_zones` dans "
+                "`config/workspace.toml`, valeurs `\"auto\"` (défaut) | `\"lthr\"` | `\"karvonen\"` | "
+                "`\"percent_max\"` — une valeur explicite FORCE cette méthode, sans repli si les "
+                "champs qu'elle demande manquent, auquel cas aucune zone n'est calculée) : "
+                "1) LTHR (`hr_threshold_bpm` du profil, « FC au seuil ») si renseignée — Friel "
+                "(« The Triathlete's Training Bible »), zones course à pied simplifiées à 5 paliers : "
+                f"{', '.join(f'Z{i+1} {round(HR_ZONE_LTHR_PCT[i]*100)}-{round(HR_ZONE_LTHR_PCT[i+1]*100)} %' for i in range(5))} "
+                "de la LTHR (dernière borne ouverte vers le haut) ; "
+                "2) Karvonen (réserve FC = FC max - FC repos, `hr_max_bpm`/`hr_rest_bpm` du profil) sinon, "
+                f"bornes à {', '.join(f'{round(p*100)} %' for p in HR_ZONE_KARVONEN_HRR_PCT)} de la réserve — "
+                "MÊME convention que `tests/lib/synthetic.py::KARVONEN_HRR_PCT`, ce qui permet aux tests de "
+                "temps en zone (palier D) de comparer directement le temps en zone calculé à la vérité connue "
+                "du générateur synthétique sur le profil type (FC repos 48, FC max 188 -> bornes 118/132/146/"
+                "160/174/188 bpm) ; "
+                "3) %FCmax sinon (`hr_max_bpm` seul suffit), bornes à "
+                f"{', '.join(f'{round(p*100)} %' for p in HR_ZONE_PCT_MAX)} de la FC max — convention à 5 "
+                "zones courante quand ni la FC de repos ni la FC au seuil ne sont connues ; "
+                "4) aucune zone calculée si même la FC max manque (`hr_zone_bounds` rend `None`) — jamais de "
+                "bornes inventées. `hr_zone_of` sature : tout ce qui est sous la 2ᵉ borne tombe en zone 1, tout "
+                "ce qui est au-delà de la 5ᵉ (dernière) borne tombe en zone 5, la 1ʳᵉ et la 6ᵉ valeur de chaque "
+                "tuple ne sont que des repères d'affichage. "
+                "Temps en zone (`time_in_zone_seconds`) : calculé sur les échantillons déjà sous-échantillonnés "
+                "de `arc_index.samples`/`samples_by_garmin_id` (résolution par défaut 5 s, `arc_samples."
+                "DEFAULT_RESOLUTION_S`), triés par `t_s`. Chaque échantillon pèse la durée `dt` jusqu'au "
+                "suivant, PLAFONNÉE à la résolution du sous-échantillonnage : une pause ou un trou de signal "
+                "(`arc_samples.ASSUMPTIONS[\"gaps\"]`, `dt` peut dépasser la résolution après un trou) n'est "
+                "donc JAMAIS compté comme du temps en zone — sans ce plafond, une montre restée en veille "
+                "30 min gonflerait artificiellement la zone où la FC se trouvait juste avant la pause. Le "
+                "DERNIER échantillon d'une séance (pas de suivant pour mesurer `dt`) est compté pour la "
+                "résolution nominale de son propre bucket. Un `hr_bpm` absent (`None`, capteur décroché) est "
+                "ignoré : ni zone, ni secondes comptées pour cet échantillon — cohérent avec le reste du "
+                "projet (mesure absente = absente, jamais 0). Recalculé pour CHAQUE activité à CHAQUE passage "
+                "de `arc_index.index_workspace` (jamais mis en cache par fichier comme les tables `PER_FILE_"
+                "TABLES`) : un changement du profil (FC max/repos/seuil, ou `[athlete].hr_zones`) est donc "
+                "répercuté dès le prochain index, incrémental ou `--rebuild`, sans étape supplémentaire. "
+                "Polarisation hebdomadaire (`polarisation_shares`, modèle 3 zones de Seiler — voir "
+                "`HR_ZONE_SEILER_MAP`) : calculée UNIQUEMENT sur les activités qui ont des échantillons FIT "
+                "ingérés (`hr_zone_time` non vide) ; une semaine sans AUCUNE activité avec échantillons rend "
+                "`None` sur tous ses champs (jamais 0 % ni une part calculée sur zéro seconde) — une semaine "
+                "avec au moins une activité datée sans FIT associé n'est pas `None` pour autant, cette "
+                "activité est simplement absente de la somme.",
 }
 
 # ---------------------------------------------------------------------------
@@ -487,6 +562,108 @@ def session_load(activity: dict, athlete: dict) -> Tuple[float, str]:
         rpe = DEFAULT_RPE.get(activity.get("sport"), DEFAULT_RPE_OTHER)
         source = "estimated"
     return (duration / 60.0) * rpe * RPE_TO_TRIMP, source
+
+
+# ---------------------------------------------------------------------------
+# Zones FC, temps en zone, polarisation 80/20 (#43)
+# ---------------------------------------------------------------------------
+
+
+def hr_zone_bounds(athlete: dict, method: Optional[str] = None) -> Optional[Tuple[Tuple[float, ...], str]]:
+    """Bornes de zones FC (bpm, 6 valeurs pour 5 zones) et méthode effectivement utilisée.
+
+    `method` : override explicite (`"lthr"` | `"karvonen"` | `"percent_max"`) — une
+    valeur invalide ou dont les champs manquent au profil rend `None` (jamais de repli
+    silencieux sur une autre méthode que celle demandée). `None` ou `"auto"` (défaut,
+    voir `HR_ZONE_METHOD_DEFAULT`) applique la précédence documentée dans
+    `ASSUMPTIONS["hr_zones"]` : LTHR -> Karvonen -> %FCmax -> `None` si même la FC max
+    manque. Rend `None` quand aucune méthode n'est calculable — jamais des bornes
+    inventées."""
+    hr_max = athlete.get("hr_max_bpm")
+    hr_rest = athlete.get("hr_rest_bpm")
+    lthr = athlete.get("hr_threshold_bpm")
+
+    def _lthr() -> Optional[Tuple[float, ...]]:
+        return tuple(round(lthr * p, 1) for p in HR_ZONE_LTHR_PCT) if lthr else None
+
+    def _karvonen() -> Optional[Tuple[float, ...]]:
+        if not hr_rest or not hr_max or hr_max <= hr_rest:
+            return None
+        reserve = hr_max - hr_rest
+        return tuple(round(hr_rest + p * reserve, 1) for p in HR_ZONE_KARVONEN_HRR_PCT)
+
+    def _percent_max() -> Optional[Tuple[float, ...]]:
+        return tuple(round(hr_max * p, 1) for p in HR_ZONE_PCT_MAX) if hr_max else None
+
+    resolvers = {"lthr": _lthr, "karvonen": _karvonen, "percent_max": _percent_max}
+    if method and method != HR_ZONE_METHOD_DEFAULT:
+        resolver = resolvers.get(method)
+        if resolver is None:
+            return None
+        bounds = resolver()
+        return (bounds, method) if bounds else None
+    for name in ("lthr", "karvonen", "percent_max"):
+        bounds = resolvers[name]()
+        if bounds:
+            return bounds, name
+    return None
+
+
+def hr_zone_of(hr_bpm: float, bounds: Sequence[float]) -> int:
+    """Numéro de zone (1..len(bounds)-1) contenant `hr_bpm` ; sature aux bornes —
+    même convention que `tests/lib/synthetic.py::_zone_of_bpm`."""
+    zones = len(bounds) - 1
+    for z in range(1, zones + 1):
+        if hr_bpm < bounds[z] or z == zones:
+            return z
+    return zones
+
+
+def time_in_zone_seconds(samples: Sequence[dict], bounds: Sequence[float],
+                          resolution_s: float) -> Dict[int, float]:
+    """Temps en zone (secondes) par numéro de zone, depuis des échantillons
+    sous-échantillonnés (`arc_index.samples`/`samples_by_garmin_id`, format
+    `{t_s, hr_bpm, ...}`, triés ou non).
+
+    Voir `ASSUMPTIONS["hr_zones"]` pour la méthode complète : chaque échantillon pèse
+    `min(dt_vers_le_suivant, resolution_s)` — jamais `dt` brut, pour qu'une pause ou un
+    trou de signal (`dt` peut dépasser `resolution_s`, voir `arc_samples.ASSUMPTIONS
+    ["gaps"]`) ne soit jamais compté comme du temps en zone. Le dernier échantillon
+    (pas de suivant) compte pour `resolution_s`. `hr_bpm` absent : échantillon ignoré."""
+    ordered = sorted((s for s in samples if s.get("t_s") is not None), key=lambda s: s["t_s"])
+    seconds: Dict[int, float] = {}
+    n = len(ordered)
+    for i, sample in enumerate(ordered):
+        hr = sample.get("hr_bpm")
+        if hr is None:
+            continue
+        dt = ordered[i + 1]["t_s"] - sample["t_s"] if i + 1 < n else resolution_s
+        dt = max(0.0, min(dt, resolution_s))
+        zone = hr_zone_of(hr, bounds)
+        seconds[zone] = seconds.get(zone, 0.0) + dt
+    return seconds
+
+
+def polarisation_shares(zone_seconds: Dict[int, float]) -> Optional[dict]:
+    """Répartition Seiler à 3 zones (facile/modérée/difficile, `HR_ZONE_SEILER_MAP`)
+    depuis un temps en zone à 5 zones `{zone: secondes}`. `None` si `zone_seconds` est
+    vide ou de somme nulle (rien à répartir) — jamais 0 % partout, qui laisserait
+    croire à une mesure réelle. Voir `ASSUMPTIONS["hr_zones"]`."""
+    total = sum(zone_seconds.values())
+    if not total:
+        return None
+    grouped = {"low": 0.0, "moderate": 0.0, "high": 0.0}
+    for zone, seconds in zone_seconds.items():
+        bucket = HR_ZONE_SEILER_MAP.get(int(zone))
+        if bucket:
+            grouped[bucket] += seconds
+    return {
+        "total_s": total,
+        "low_s": grouped["low"], "moderate_s": grouped["moderate"], "high_s": grouped["high"],
+        "low_pct": round(grouped["low"] / total * 100, 1),
+        "moderate_pct": round(grouped["moderate"] / total * 100, 1),
+        "high_pct": round(grouped["high"] / total * 100, 1),
+    }
 
 
 # ---------------------------------------------------------------------------

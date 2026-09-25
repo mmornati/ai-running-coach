@@ -340,7 +340,10 @@ def api_load(store: Store, q: dict) -> dict:
         b["effort_km"] = M.effort_km_week_total(week_rows[key])
     latest = store.one("SELECT monotony, strain FROM metric_day WHERE date <= ? ORDER BY date DESC LIMIT 1",
                        (today.isoformat(),)) or {}
-    return {"weeks": list(buckets.values()), "monotony": latest.get("monotony"), "strain": latest.get("strain")}
+    with store.lock:
+        polarisation = I.weekly_polarisation(store.conn, weeks, today)
+    return {"weeks": list(buckets.values()), "monotony": latest.get("monotony"), "strain": latest.get("strain"),
+            "polarisation_weeks": polarisation}
 
 
 def api_health(store: Store, q: dict) -> dict:
@@ -477,7 +480,30 @@ def api_activity(store: Store, activity_id: int):
     act.pop("data_json", None)
     act["missing_reason"] = json.loads(act["missing_reason"]) if act.get("missing_reason") else None
     return {"activity": act, "splits": splits, "weather": weather,
+            "hr_zones": api_activity_hr_zones(store, activity_id),
             "body_html": render_markdown(I.C.body_after_block(body))}
+
+
+def api_activity_hr_zones(store: Store, activity_id: int) -> Optional[dict]:
+    """Zones FC + temps en zone d'une séance (#43), pour `/api/activity/<id>` : bornes
+    et méthode effectives (précédence `arc_metrics.hr_zone_bounds`), temps en zone
+    (`hr_zone_time`, id INTERNE de l'activité) et polarisation Seiler de la séance.
+    `None` si aucune méthode de zones n'est calculable (profil sans FC max/repos/seuil
+    renseignée) — distinct d'une séance sans échantillons FIT, qui rend quand même les
+    bornes avec `zone_seconds: null` (voir `arc_index.activity_zone_report`)."""
+    conf = store.meta("settings") or {}
+    with store.lock:
+        resolved = I.athlete_hr_zone_bounds(store.conn, conf)
+        if resolved is None:
+            return None
+        bounds, method = resolved
+        rows = store.conn.execute(
+            "SELECT zone, seconds FROM hr_zone_time WHERE activity_id = ?", (activity_id,)).fetchall()
+    zone_seconds = {row["zone"]: row["seconds"] for row in rows} if rows else None
+    return {
+        "bounds_bpm": list(bounds), "method": method, "zone_seconds": zone_seconds,
+        "polarisation": M.polarisation_shares(zone_seconds) if zone_seconds else None,
+    }
 
 
 def api_performance(store: Store, q: dict) -> dict:
