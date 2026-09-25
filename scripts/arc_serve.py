@@ -262,7 +262,7 @@ def api_load(store: Store, q: dict) -> dict:
     for w in range(weeks):
         start = first + timedelta(weeks=w)
         buckets[start.isoformat()] = {"week_start": start.isoformat(), "distance_m": 0.0, "duration_s": 0.0,
-                                      "elevation_m": 0.0, "load": 0.0, "sessions": 0}
+                                      "elevation_m": 0.0, "effort_km": 0.0, "load": 0.0, "sessions": 0}
     for row in rows:
         key = _monday(date.fromisoformat(row["date"])).isoformat()
         b = buckets.get(key)
@@ -273,6 +273,11 @@ def api_load(store: Store, q: dict) -> dict:
         b["duration_s"] += row["duration_s"] or 0
         b["elevation_m"] += row["elevation_gain_m"] or 0
         b["load"] += row["load"] or 0
+        # ITRA effort_km: distance_km + elevation_gain_m / 1000, for run-like sports only
+        if row["sport"] in M.RUN_LIKE and row["distance_m"]:
+            distance_km = row["distance_m"] / 1000
+            effort_km = distance_km + (row["elevation_gain_m"] or 0) / 1000
+            b["effort_km"] += round(effort_km, 1)
     latest = store.one("SELECT monotony, strain FROM metric_day WHERE date <= ? ORDER BY date DESC LIMIT 1",
                        (today.isoformat(),)) or {}
     return {"weeks": list(buckets.values()), "monotony": latest.get("monotony"), "strain": latest.get("strain")}

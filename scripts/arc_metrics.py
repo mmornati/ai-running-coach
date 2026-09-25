@@ -66,6 +66,7 @@ HRV_REF_MIN_VALID_DAYS = 30     # jours HRV valides exigés dans ces 60 j
 HRV_BAND_SD_MULT = 0.5          # largeur de bande : ± 0,5 écart-type (smallest worthwhile change)
 
 RUNNING_SPORTS = ("running", "trail")
+RUN_LIKE = {"running", "trail", "hiking", "walking"}    # sports counted for effort_km (ITRA)
 RIEGEL_EXPONENT = {"road": 1.06, "trail": 1.15}
 VO2MAX_TREND_DAYS = 30
 VO2MAX_PLAUSIBLE = (20.0, 90.0)
@@ -131,6 +132,9 @@ ASSUMPTIONS = {
                   "seulement), appariement séance ↔ activité par date + sport (route/trail/randonnée/marche et "
                   "variantes vélo interchangeables), les `done` explicites réservant leur activité avant les "
                   "séances sans statut.",
+    "effort_km": "Distance effort (ITRA) : pour les activités de course (running, trail, hiking, walking), "
+                 "effort_km = distance_km + D+_m / 1000. Absence de D+ : 0 m utilisé. Absence de distance : "
+                 "l'activité n'est pas comptée.",
 }
 
 # ---------------------------------------------------------------------------
@@ -339,6 +343,21 @@ def effort_distance_m(activity: dict) -> Optional[float]:
     if activity.get("sport") == "trail":
         return distance + (activity.get("elevation_gain_m") or 0) * TRAIL_FLAT_M_PER_M_DPLUS
     return float(distance)
+
+
+def effort_km_itra(activity: dict) -> Optional[float]:
+    """ITRA effort distance (km) for run-like sports: distance_km + elevation_gain_m / 1000.
+
+    Returns the effort in km, rounded to 1 decimal. If distance is missing, returns None
+    (activity doesn't count). If elevation is missing, uses 0.
+    """
+    distance_m = activity.get("distance_m")
+    if not distance_m or activity.get("sport") not in RUN_LIKE:
+        return None
+    elevation_gain_m = activity.get("elevation_gain_m") or 0
+    distance_km = distance_m / 1000
+    effort_km = distance_km + elevation_gain_m / 1000
+    return round(effort_km, 1)
 
 
 def vo2max_effective(activity: dict, athlete: dict) -> Optional[float]:

@@ -247,6 +247,51 @@ class TestPerformance(unittest.TestCase):
         self.assertEqual(best[5]["time_s"], 5 * 330, "la fenêtre de 5 km ne peut pas enjamber le tour de 2 km")
 
 
+class TestEffortKmItra(unittest.TestCase):
+    """#35 — distance effort ITRA (km + D+/100) pour sports de course."""
+
+    def test_running_with_elevation(self):
+        """10 km + 500 m D+ → 10 + 0,5 = 10,5 km-effort."""
+        activity = {"sport": "running", "distance_m": 10000, "elevation_gain_m": 500}
+        self.assertEqual(M.effort_km_itra(activity), 10.5)
+
+    def test_trail_with_elevation(self):
+        """21.1 km + 0 m D+ → 21,1 km-effort (pas d'arrondi artificiel à 21)."""
+        activity = {"sport": "trail", "distance_m": 21100, "elevation_gain_m": 0}
+        self.assertEqual(M.effort_km_itra(activity), 21.1)
+
+    def test_hiking_with_elevation(self):
+        """5 km + 300 m D+ → 5 + 0,3 = 5,3 km-effort."""
+        activity = {"sport": "hiking", "distance_m": 5000, "elevation_gain_m": 300}
+        self.assertEqual(M.effort_km_itra(activity), 5.3)
+
+    def test_walking_with_elevation(self):
+        """3 km + 200 m D+ → 3 + 0,2 = 3,2 km-effort."""
+        activity = {"sport": "walking", "distance_m": 3000, "elevation_gain_m": 200}
+        self.assertEqual(M.effort_km_itra(activity), 3.2)
+
+    def test_missing_distance_returns_none(self):
+        """Pas de distance : l'activité ne compte pas (None, pas 0)."""
+        activity = {"sport": "trail", "elevation_gain_m": 500}
+        self.assertIsNone(M.effort_km_itra(activity))
+
+    def test_missing_elevation_uses_zero(self):
+        """Pas de D+ : utiliser 0 pour le calcul."""
+        activity = {"sport": "running", "distance_m": 10000}
+        self.assertEqual(M.effort_km_itra(activity), 10.0)
+
+    def test_non_running_sport_returns_none(self):
+        """Indoor cycling 30 km : n'est pas un sport de course, ne compte pas."""
+        activity = {"sport": "indoor_cycling", "distance_m": 30000, "elevation_gain_m": 0}
+        self.assertIsNone(M.effort_km_itra(activity))
+
+    def test_rounding_to_one_decimal(self):
+        """Le résultat est arrondi à une décimale."""
+        activity = {"sport": "trail", "distance_m": 12345, "elevation_gain_m": 567}
+        expected = round(12345 / 1000 + 567 / 1000, 1)
+        self.assertEqual(M.effort_km_itra(activity), expected)
+
+
 class TestWeekCompliance(unittest.TestCase):
     """#33 — conformité plan vs réalisé, fixtures à ratios connus."""
 

@@ -72,9 +72,9 @@ Trois graphiques, sur 3 mois, 6 mois ou un an :
 - **Le ratio charge aiguë / chronique** (ACWR) et sa bande 0,8 – 1,3 — un repère
   indicatif, discuté dans la littérature, pas un seuil de blessure. Il n'est pas
   tracé tant que l'historique est trop mince pour avoir un sens.
-- **Le volume hebdomadaire** : heures d'effort et D+ cumulé en trail, kilomètres sur
-  route. En dessous, la monotonie et le *strain* de Foster sur 7 jours, et la charge
-  du jour.
+- **Le volume hebdomadaire** : heures d'effort et D+ cumulé en trail (plus la
+  « distance effort » ITRA, km + D+/100, en info-bulle), kilomètres sur route. En
+  dessous, la monotonie et le *strain* de Foster sur 7 jours, et la charge du jour.
 
 **Comment la lire** : une forme très négative plusieurs semaines de suite, c'est de
 la fatigue accumulée ; une forme franchement positive avant une course, c'est
