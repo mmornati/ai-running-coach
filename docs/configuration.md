@@ -65,6 +65,24 @@ morning_check = "full"   # full | minimal | off
 Passez à `minimal` ou `off` si votre montre ne mesure pas la HRV, ou si vous ne
 souhaitez pas que votre entraînement dépende de ces données.
 
+## Le seuil de chaleur — `[health].heat_threshold_c`
+
+```toml
+[health]
+heat_threshold_c = 25.0   # °C, borne INCLUSE
+```
+
+Une séance outdoor compte comme « chaude » (KPI d'acclimatation à la chaleur,
+#38) quand la température maximale du jour au lieu de la séance est **≥** ce
+seuil. Défaut 25 °C. Indépendant de `morning_check` ci-dessus : le calcul joint
+les activités et la météo, il ne dépend pas du bilan matinal — il tourne même
+avec `morning_check = "off"`.
+
+!!! warning "Une valeur invalide ne casse jamais l'index"
+    `heat_threshold_c = "chaud"` (ou tout autre texte non numérique, ou un
+    booléen) ne fait planter ni `scripts/arc_index.py`, ni le tableau de bord :
+    un avertissement est affiché et le défaut (25 °C) s'applique à la place.
+
 ## Le style de coaching — `[coaching]`
 
 ```toml

@@ -23,6 +23,7 @@ héritage.
 | `[sport].disciplines` | Sports croisés réellement pratiqués — les seuls à programmer. |
 | `[agents].enabled` | **Seuls agents joignables.** Ne jamais déléguer à un agent absent. |
 | `[health].morning_check` | `full` \| `minimal` \| `off` — voir ci-dessous. |
+| `[health].heat_threshold_c` | Seuil (°C, borne incluse) « séance chaude » pour le KPI d'acclimatation à la chaleur (#38, `scripts/arc_index.py heat-acclimation`). Défaut `25.0`. Indépendant de `morning_check` ; une valeur invalide n'interrompt jamais l'index (repli sur le défaut, avertissement). |
 | `[athlete].profile` | Profil de l'athlète, défaut `planning/Runner_Profile.md`. |
 | `[athlete].units` | `metric` \| `imperial`. |
 

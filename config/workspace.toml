@@ -98,6 +98,10 @@ verbosity = "standard"
 # Passer à "minimal" ou "off" si votre montre ne mesure pas la HRV, ou si vous
 # ne souhaitez pas que l'entraînement soit conditionné à ces données.
 morning_check = "full"
+# Seuil (°C) au-delà duquel une séance outdoor compte comme « chaude » dans le KPI
+# d'acclimatation à la chaleur (#38, `temp_max_c` du jour ≥ ce seuil, borne incluse).
+# Indépendant de `morning_check` (jointure activité/météo, pas du bilan matinal).
+heat_threshold_c = 25.0
 
 [dashboard]
 # Tableau de bord local (`scripts/dashboard.sh`) : lecture seule, n'écoute que sur
