@@ -188,6 +188,12 @@ class Store:
         with self.lock:
             return I.backfill_items(self.conn)
 
+    def heat_acclimation(self, today: date, threshold_c: float) -> dict:
+        """Réutilise `arc_index.heat_acclimation_today` (même SQL, même fenêtre)
+        plutôt que de la dupliquer ici — voir aussi la CLI `heat-acclimation`."""
+        with self.lock:
+            return I.heat_acclimation_today(self.conn, {"heat_threshold_c": threshold_c}, today)
+
     def meta(self, key: str):
         row = self.one("SELECT value FROM meta WHERE key = ?", (key,))
         return json.loads(row["value"]) if row and row["value"] and row["value"][:1] in "[{" else (row or {}).get("value")
@@ -208,26 +214,29 @@ def _strip(row, *keys):
 def api_heat_acclimation(store: Store, today: date, settings: dict, objective: Optional[dict]) -> dict:
     """Acclimatation à la chaleur (#38) : `/api/summary.heat_acclimation`.
 
-    Jointure activité outdoor / météo du même jour, 14 j glissants — voir
-    `arc_metrics.ASSUMPTIONS["heat_acclimation"]`. `objective_forecast_hot` :
-    `True`/`False` si un fichier météo existe pour `objective.race_date` (souvent
-    absent tant que la course est à plus de quelques jours — `wttr.in` ne prévoit
-    pas au-delà), `None` sinon (prévision pas encore disponible, pas « pas chaud »).
-    Sert aussi la règle d'affichage de la tuile « Aujourd'hui » (voir `web/js/app.js`).
+    Jointure activité outdoor / météo du même jour, 14 j glissants — délègue à
+    `arc_index.heat_acclimation_today` (même SQL que la CLI, pas de duplication) via
+    `Store.heat_acclimation`. Voir `arc_metrics.ASSUMPTIONS["heat_acclimation"]`.
+
+    `objective_forecast_hot` : `True`/`False` UNIQUEMENT si un fichier météo dont le
+    `location` correspond explicitement à celui de la course existe pour
+    `objective.race_date` (`pick_weather_strict` — SANS le raccourci « un seul
+    fichier => il s'applique » de `pick_weather` : le fichier météo du jour est,
+    par construction du skill `weather-forecast`, presque toujours celui du lieu
+    d'ENTRAÎNEMENT, pas celui d'une course lointaine ; lui faire dire « la course
+    sera chaude » serait un faux positif). `None` sinon : pas d'objectif avec date
+    de course, pas de lieu de course renseigné, ou prévision pas encore disponible
+    (souvent le cas tant que la course est à plus de quelques jours — `wttr.in` ne
+    prévoit pas au-delà) — jamais confondu avec « pas chaud ». Sert aussi la règle
+    d'affichage de la tuile « Aujourd'hui » (voir `web/js/app.js`).
     """
     threshold_c = settings.get("heat_threshold_c", M.HEAT_THRESHOLD_C_DEFAULT)
-    start = (today - timedelta(days=M.HEAT_WINDOW_DAYS - 1)).isoformat()
-    end = today.isoformat()
-    activities = store.rows(
-        "SELECT date, sport, duration_s, location FROM activity WHERE date >= ? AND date <= ?", (start, end))
-    weather_rows = store.rows(
-        "SELECT date, location, temp_max_c FROM weather_day WHERE date >= ? AND date <= ?", (start, end))
-    result = M.heat_acclimation(activities, weather_rows, today, threshold_c)
+    result = store.heat_acclimation(today, threshold_c)
     objective_forecast_hot = None
-    if objective and objective.get("race_date"):
+    if objective and objective.get("race_date") and objective.get("location"):
         race_weather_rows = store.rows(
             "SELECT location, temp_max_c FROM weather_day WHERE date = ?", (objective["race_date"],))
-        race_weather = M.pick_weather(race_weather_rows, objective.get("location"))
+        race_weather = M.pick_weather_strict(race_weather_rows, objective["location"])
         if race_weather is not None and race_weather.get("temp_max_c") is not None:
             objective_forecast_hot = race_weather["temp_max_c"] >= threshold_c
     result["objective_forecast_hot"] = objective_forecast_hot

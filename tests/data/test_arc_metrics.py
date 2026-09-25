@@ -771,6 +771,26 @@ class TestSleepDebt(unittest.TestCase):
         self.assertEqual(series[-1]["sleep_debt_7d_s"], M.sleep_debt_7d(by_date, self.DAY)["sleep_debt_7d_s"])
 
 
+class TestNormalizeLocation(unittest.TestCase):
+    """#38 — `normalize_location` : nom de ville avant la virgule, accents et casse
+    ignorés, pour que `pick_weather`/`pick_weather_strict` reconnaissent le même lieu
+    écrit différemment par l'activité et par le fichier météo."""
+
+    def test_strips_country_suffix(self):
+        self.assertEqual(M.normalize_location("Annecy, France"), M.normalize_location("Annecy"))
+
+    def test_ignores_accents_and_case(self):
+        self.assertEqual(M.normalize_location("Mègève"), M.normalize_location("megeve"))
+
+    def test_none_and_empty_are_none(self):
+        self.assertIsNone(M.normalize_location(None))
+        self.assertIsNone(M.normalize_location(""))
+        self.assertIsNone(M.normalize_location("   "))
+
+    def test_different_cities_do_not_match(self):
+        self.assertNotEqual(M.normalize_location("Annecy"), M.normalize_location("Chamonix"))
+
+
 class TestHeatAcclimation(unittest.TestCase):
     """#38 — acclimatation à la chaleur : jointure activité outdoor / météo du même
     jour sur 14 j, sports indoor exclus, séance sans météo ignorée (jamais froide),
@@ -889,6 +909,48 @@ class TestHeatAcclimation(unittest.TestCase):
         self.assertEqual(result["sessions_considered"], 0)
         self.assertEqual(result["sessions_without_weather"], 1)
 
+    def test_multiple_weather_files_same_day_no_match_but_all_agree_hot(self):
+        """Deux lieux météo le même jour, aucun ne correspond au lieu de la séance, mais
+        les DEUX s'accordent sur « chaude » (30°C, 32°C) : le verdict est retenu quand
+        même — peu importe lequel des deux lieux est le bon."""
+        activities = [self.act(0, location="Lille")]
+        weather = [self.wx(0, 32, location="Palma"), self.wx(0, 30, location="Tournai")]
+        result = M.heat_acclimation(activities, weather, self.END)
+        self.assertEqual(result["sessions_considered"], 1)
+        self.assertEqual(result["hot_sessions"], 1)
+        self.assertEqual(result["sessions_without_weather"], 0)
+
+    def test_multiple_weather_files_same_day_no_match_but_all_agree_not_hot(self):
+        """Même logique côté « pas chaud » (18°C, 20°C, seuil 25°C)."""
+        activities = [self.act(0, location="Lille")]
+        weather = [self.wx(0, 18, location="Palma"), self.wx(0, 20, location="Tournai")]
+        result = M.heat_acclimation(activities, weather, self.END)
+        self.assertEqual(result["sessions_considered"], 1)
+        self.assertEqual(result["hot_sessions"], 0)
+        self.assertEqual(result["sessions_without_weather"], 0)
+
+    def test_multiple_weather_files_same_day_disagreement_stays_without_weather(self):
+        """Aucune correspondance de lieu ET désaccord (32°C vs 18°C) : pas de verdict
+        deviné, comptée à part — reproduit le test existant, verrouille la régression."""
+        activities = [self.act(0, location="Lille")]
+        weather = [self.wx(0, 32, location="Palma"), self.wx(0, 18, location="Tournai")]
+        result = M.heat_acclimation(activities, weather, self.END)
+        self.assertEqual(result["sessions_considered"], 0)
+        self.assertEqual(result["sessions_without_weather"], 1)
+
+    def test_location_matching_ignores_country_suffix_and_accents(self):
+        """« Annecy » (activité) doit reconnaître « Annecy, France » (météo) — comparaison
+        sur le nom de ville avant la virgule, accents et casse ignorés."""
+        activities = [self.act(0, location="Annecy")]
+        weather = [self.wx(0, 32, location="Annecy, France"), self.wx(0, 18, location="Megève")]
+        result = M.heat_acclimation(activities, weather, self.END)
+        self.assertEqual(result["hot_sessions"], 1, "doit prendre Annecy (32°C), pas Megève")
+
+        activities = [self.act(0, location="Megeve")]   # sans accent côté activité
+        weather = [self.wx(0, 32, location="Annecy"), self.wx(0, 18, location="Mègève, France")]
+        result = M.heat_acclimation(activities, weather, self.END)
+        self.assertEqual(result["hot_sessions"], 0, "doit prendre Megève (18°C) malgré l'accent/la virgule")
+
     def test_single_weather_file_applies_regardless_of_location_text(self):
         """Un seul fichier météo ce jour-là : il s'applique, même si son `location` ne
         correspond pas exactement à celui de l'activité (lieu imprécis, alias)."""
@@ -897,6 +959,21 @@ class TestHeatAcclimation(unittest.TestCase):
         result = M.heat_acclimation(activities, weather, self.END)
         self.assertEqual(result["hot_sessions"], 1)
         self.assertEqual(result["sessions_without_weather"], 0)
+
+    def test_pick_weather_strict_never_falls_back_to_the_lone_file(self):
+        """`pick_weather_strict` (utilisé pour la météo de la course d'un objectif) NE
+        reprend PAS le raccourci « un seul fichier => il s'applique » de `pick_weather` :
+        un fichier météo de Tournai (lieu d'entraînement) ne doit jamais répondre pour
+        une course à Chamonix."""
+        self.assertIsNone(M.pick_weather_strict([self.wx(0, 28, location="Tournai")], "Chamonix"))
+        self.assertIsNone(M.pick_weather_strict([self.wx(0, 28, location="Tournai")], None))
+        self.assertIsNone(M.pick_weather_strict([], "Chamonix"))
+
+    def test_pick_weather_strict_matches_normalized_location(self):
+        rows = [self.wx(0, 28, location="Tournai"), self.wx(0, 12, location="Chamonix, France")]
+        found = M.pick_weather_strict(rows, "chamonix")
+        self.assertIsNotNone(found)
+        self.assertEqual(found["temp_max_c"], 12)
 
     def test_zero_hot_sessions_is_a_valid_result(self):
         """Aucun seuil minimal de séances avant affichage (contrairement à sleep_debt) :

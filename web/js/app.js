@@ -109,26 +109,6 @@ function complianceSection(c, trail) {
  * construit à partir des mêmes données que les `<title>`, pour porter toute
  * l'information par un seul nom accessible plutôt que de la perdre.
  */
-/** Tuile « Acclimatation à la chaleur » (#38) — Aujourd'hui.
- *
- * Affichée quand elle est utile MAINTENANT : au moins une séance chaude sur la
- * fenêtre de 14 j (le compte a du contenu), OU la météo de la course de l'objectif
- * est déjà connue et chaude (`objective_forecast_hot === true`). Le seul critère
- * « objectif » resterait presque toujours invisible en dehors de la semaine de
- * course : `wttr.in` ne prévoit qu'à quelques jours, donc `objective_forecast_hot`
- * est `null` (inconnu, pas « pas chaud ») pendant tout le bloc d'entraînement — d'où
- * la combinaison des deux signaux plutôt que le seul critère cité par #38.
- */
-function heatTile(heat) {
-  if (!heat || (heat.hot_sessions <= 0 && heat.objective_forecast_hot !== true)) return "";
-  const n = heat.hot_sessions;
-  const bits = [`${n} séance${n > 1 ? "s" : ""} chaude${n > 1 ? "s" : ""} (≥ ${F.num(heat.threshold_c)} °C) sur ${heat.window_days} j`];
-  if (heat.hot_duration_s) bits.push(`${F.duration(heat.hot_duration_s)} cumulée${n > 1 ? "s" : ""}`);
-  if (heat.objective_forecast_hot) bits.push("météo chaude prévue pour l'objectif");
-  if (heat.sessions_without_weather) bits.push(`${heat.sessions_without_weather} sans météo (non compté${heat.sessions_without_weather > 1 ? "es" : "e"})`);
-  return `<p class="weather">${chip("weather", n > 0 ? "orange" : "yellow", "Acclimatation chaleur")} <span>${bits.join(" · ")}</span></p>`;
-}
-
 function complianceTrend(trend) {
   if (!trend || !trend.some((w) => w.compliance)) return "";
   const barW = 40, gap = 10, chartH = 36;
@@ -145,6 +125,28 @@ function complianceTrend(trend) {
   const label = `Conformité au plan sur les 4 dernières semaines : ${trend.map((w) => `${F.dayShort(w.week_start)} : ${complianceWeekLabel(w.compliance)}`).join(" ; ")}.`;
   return `<svg class="trend" viewBox="0 0 ${totalW} ${chartH}" role="img" aria-label="${F.esc(label)}">${bars}</svg>
     <p class="muted">Conformité au plan, 4 dernières semaines. <a href="#/semaine">Détail</a></p>`;
+}
+
+/** Tuile « Acclimatation à la chaleur » (#38) — Aujourd'hui.
+ *
+ * Affichée quand elle est utile MAINTENANT : au moins une séance chaude sur la
+ * fenêtre de 14 j (le compte a du contenu), OU la météo de la course de l'objectif
+ * est déjà connue et chaude (`objective_forecast_hot === true`). Le seul critère
+ * « objectif » resterait presque toujours invisible en dehors de la semaine de
+ * course : `wttr.in` ne prévoit qu'à quelques jours, donc `objective_forecast_hot`
+ * est `null` (inconnu, pas « pas chaud ») pendant tout le bloc d'entraînement — d'où
+ * la combinaison des deux signaux plutôt que le seul critère cité par #38.
+ */
+function heatTile(heat) {
+  if (!heat || (heat.hot_sessions <= 0 && heat.objective_forecast_hot !== true)) return "";
+  const n = heat.hot_sessions;
+  const t = heat.threshold_c;
+  const tTxt = t != null && !Number.isInteger(t) ? F.num(t, 1) : F.num(t);
+  const bits = [`${n} séance${n > 1 ? "s" : ""} chaude${n > 1 ? "s" : ""} (≥ ${tTxt} °C) sur ${heat.window_days} j`];
+  if (heat.hot_duration_s) bits.push(`${F.duration(heat.hot_duration_s)} cumulée${n > 1 ? "s" : ""}`);
+  if (heat.objective_forecast_hot) bits.push("météo chaude prévue pour l'objectif");
+  if (heat.sessions_without_weather) bits.push(`${heat.sessions_without_weather} sans météo (non compté${heat.sessions_without_weather > 1 ? "es" : "e"})`);
+  return `<p class="weather">${chip("weather", n > 0 ? "orange" : "yellow", "Acclimatation chaleur")} <span>${bits.join(" · ")}</span></p>`;
 }
 
 // ---------------------------------------------------------------------------

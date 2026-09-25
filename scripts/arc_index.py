@@ -89,14 +89,48 @@ def load_config(workspace: Path) -> Dict[str, dict]:
     return merged
 
 
+def _heat_threshold_c(config: Dict[str, dict]) -> float:
+    """Résout `[health].heat_threshold_c`, jamais en levant : un typo dans
+    `workspace.user.toml` (ex. `heat_threshold_c = "chaud"`) ne doit PAS casser
+    `index_workspace` — appelé par CHAQUE commande (`index`, `hrv-baseline`,
+    `sleep-debt`, `heat-acclimation`, et le rafraîchissement du tableau de bord).
+
+    Accepte un nombre, ou une chaîne numérique (le repli TOML < 3.11,
+    `coach_config._read_toml_fallback`, ne reconnaît que les entiers et rend les
+    flottants sous forme de chaîne — `"25.0"` doit donc rester valide). Rejette
+    explicitement les booléens (`True`/`False` sont aussi des `int` en Python :
+    sans ce test, `heat_threshold_c = true` serait accepté comme 1.0 °C). Toute
+    valeur absente, vide ou invalide retombe sur `M.HEAT_THRESHOLD_C_DEFAULT`,
+    avec un avertissement sur stderr dans le cas invalide (pas pour une simple
+    absence, qui est le cas normal sans override) — voir
+    `arc_metrics.ASSUMPTIONS["heat_acclimation"]`.
+    """
+    raw = config.get("health", {}).get("heat_threshold_c")
+    if raw in (None, ""):
+        return M.HEAT_THRESHOLD_C_DEFAULT
+    value = None
+    if not isinstance(raw, bool):
+        if isinstance(raw, (int, float)):
+            value = float(raw)
+        elif isinstance(raw, str):
+            try:
+                value = float(raw.strip().replace(",", "."))
+            except ValueError:
+                value = None
+    if value is None:
+        print(f"avertissement : [health].heat_threshold_c = {raw!r} n'est pas un nombre valide — "
+              f"défaut {M.HEAT_THRESHOLD_C_DEFAULT:g} °C appliqué.", file=sys.stderr)
+        return M.HEAT_THRESHOLD_C_DEFAULT
+    return value
+
+
 def settings(config: Dict[str, dict]) -> dict:
     """Les réglages qui changent ce que l'index attend et ce que le tableau affiche."""
     agents = config.get("agents", {}).get("enabled", ["coach", "medical", "nutritionist", "course-strategist"])
-    heat_threshold_c = config.get("health", {}).get("heat_threshold_c", M.HEAT_THRESHOLD_C_DEFAULT)
     return {
         "sport": config.get("sport", {}).get("primary", "trail") or "trail",
         "morning_check": config.get("health", {}).get("morning_check", "full") or "full",
-        "heat_threshold_c": float(heat_threshold_c) if heat_threshold_c not in (None, "") else M.HEAT_THRESHOLD_C_DEFAULT,
+        "heat_threshold_c": _heat_threshold_c(config),
         "agents": list(agents),
         "units": config.get("athlete", {}).get("units", "metric") or "metric",
         "profile": config.get("athlete", {}).get("profile", "planning/Runner_Profile.md"),

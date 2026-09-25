@@ -4,6 +4,8 @@ trouvés sur un vrai workspace (doublons, fichiers d'analyse, fichiers sans date
 
 from __future__ import annotations
 
+import contextlib
+import io
 import shutil
 import sqlite3
 import sys
@@ -16,6 +18,7 @@ REPO = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO / "scripts"))
 import arc_index as I  # noqa: E402
 import arc_legacy as L  # noqa: E402
+import arc_metrics as M  # noqa: E402
 
 FIXTURES = REPO / "tests/evals/fixtures"
 
@@ -333,6 +336,89 @@ class TestHeatAcclimationCli(Workspace):
         conf = {"heat_threshold_c": 25.0, "morning_check": "off"}
         result = I.heat_acclimation_today(self.conn, conf, date.fromisoformat(self.TODAY))
         self.assertEqual(result["hot_sessions"], 1)
+
+
+class TestHeatThresholdConfig(unittest.TestCase):
+    """#38 — `[health].heat_threshold_c` : jamais d'exception (`settings()` est appelé
+    par CHAQUE commande, y compris un simple `index`), booléen explicitement rejeté,
+    chaîne numérique acceptée (repli TOML < 3.11 qui rend les flottants en chaîne)."""
+
+    def conf(self, raw) -> dict:
+        return I.settings({"health": {"heat_threshold_c": raw}})
+
+    def test_missing_key_uses_default_silently(self):
+        with contextlib.redirect_stderr(io.StringIO()) as err:
+            result = I.settings({})
+        self.assertEqual(result["heat_threshold_c"], M.HEAT_THRESHOLD_C_DEFAULT)
+        self.assertEqual(err.getvalue(), "", "l'absence d'override n'est pas une erreur : pas d'avertissement")
+
+    def test_float_value_is_used_as_is(self):
+        self.assertEqual(self.conf(30.0)["heat_threshold_c"], 30.0)
+
+    def test_int_value_is_converted_to_float(self):
+        self.assertEqual(self.conf(30)["heat_threshold_c"], 30.0)
+
+    def test_numeric_string_is_parsed(self):
+        """Repli TOML < 3.11 (`coach_config._read_toml_fallback`) : un flottant sans
+        guillemets ressort comme une CHAÎNE (« 27.5 »), jamais rejetée pour autant."""
+        self.assertEqual(self.conf("27.5")["heat_threshold_c"], 27.5)
+
+    def test_numeric_string_with_french_comma_is_parsed(self):
+        self.assertEqual(self.conf("27,5")["heat_threshold_c"], 27.5)
+
+    def test_invalid_string_falls_back_to_default_with_a_warning_not_a_crash(self):
+        """Le bug rapporté : un typo (« chaud ») ne doit JAMAIS faire planter `settings()`
+        (donc `index_workspace`, donc CHAQUE commande de la CLI et le rafraîchissement
+        du tableau de bord) — repli sur le défaut, avertissement sur stderr."""
+        with contextlib.redirect_stderr(io.StringIO()) as err:
+            result = self.conf("chaud")
+        self.assertEqual(result["heat_threshold_c"], M.HEAT_THRESHOLD_C_DEFAULT)
+        self.assertIn("heat_threshold_c", err.getvalue())
+
+    def test_boolean_is_rejected_not_treated_as_one_degree(self):
+        """`True` est aussi un `int` en Python : sans un test explicite, il vaudrait
+        1.0 °C — un seuil de chaleur absurde, jamais celui voulu par un booléen mal
+        placé dans le TOML."""
+        with contextlib.redirect_stderr(io.StringIO()) as err:
+            result = self.conf(True)
+        self.assertEqual(result["heat_threshold_c"], M.HEAT_THRESHOLD_C_DEFAULT)
+        self.assertIn("heat_threshold_c", err.getvalue())
+
+    def test_empty_string_falls_back_silently(self):
+        """Une clé présente mais vide (convention du projet, AGENTS.md : « une clé
+        présente mais vide gagne ») n'est pas une erreur de saisie — pas d'avertissement."""
+        with contextlib.redirect_stderr(io.StringIO()) as err:
+            result = self.conf("")
+        self.assertEqual(result["heat_threshold_c"], M.HEAT_THRESHOLD_C_DEFAULT)
+        self.assertEqual(err.getvalue(), "")
+
+    def test_none_falls_back_silently(self):
+        with contextlib.redirect_stderr(io.StringIO()) as err:
+            result = self.conf(None)
+        self.assertEqual(result["heat_threshold_c"], M.HEAT_THRESHOLD_C_DEFAULT)
+        self.assertEqual(err.getvalue(), "")
+
+
+class TestHeatThresholdConfigPrecedence(Workspace):
+    """`workspace.user.toml` prime sur `workspace.toml`, clé par clé — même règle que
+    tout le reste de la configuration (AGENTS.md)."""
+
+    def test_user_override_wins_over_shared_default(self):
+        (self.ws / "config").mkdir(parents=True, exist_ok=True)
+        self.write("config/workspace.toml", "[health]\nheat_threshold_c = 25.0\n")
+        self.write("config/workspace.user.toml", "[health]\nheat_threshold_c = 32.0\n")
+        conf = I.settings(I.load_config(self.ws))
+        self.assertEqual(conf["heat_threshold_c"], 32.0)
+
+    def test_empty_user_override_falls_back_to_engine_default_not_shared_value(self):
+        """Une clé présente mais VIDE dans `workspace.user.toml` gagne (annule
+        l'héritage, AGENTS.md) — elle ne doit pas retomber sur la valeur de
+        `workspace.toml`, mais sur le défaut moteur."""
+        (self.ws / "config").mkdir(parents=True, exist_ok=True)
+        self.write("config/workspace.toml", "[health]\nheat_threshold_c = 28.0\n")
+        self.write("config/workspace.user.toml", '[health]\nheat_threshold_c = ""\n')
+        conf = I.settings(I.load_config(self.ws))
+        self.assertEqual(conf["heat_threshold_c"], M.HEAT_THRESHOLD_C_DEFAULT)
 
 
 class TestProfileSleepNeed(unittest.TestCase):
