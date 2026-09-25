@@ -10,6 +10,15 @@ sert au tableau de bord (`scripts/arc_serve.py`) et aux calculs de charge
     arc_index.py --validate FICHIER…     # vérifie le bloc ```arc (code 1 si non conforme)
     arc_index.py backfill-plan           # écrit .arc/backfill.md : fichiers à réécrire au contrat
     arc_index.py status                  # état de l'index, en JSON
+    arc_index.py hrv-baseline            # ligne de base HRV personnelle du jour, en JSON (#34)
+
+`hrv-baseline` n'a besoin d'aucun tableau de bord lancé (headless, `/garmin-daily-sync`
+compris) : elle réindexe puis rend le point du jour de `arc_metrics.hrv_baseline_series`
+sur `medical/*_health.md::hrv_overnight_ms`, ou `{"status": null, "morning_check": ...}`
+si `[health].morning_check` n'est pas `"full"` (rien n'est calculé aux autres niveaux,
+voir `arc_metrics.ASSUMPTIONS["hrv_baseline"]`). Les agents `medical`/`coach` l'appellent
+quand `get_hrv_data` (Garmin) ne renvoie pas de `baseline`, au lieu d'inventer un statut
+Garmin ou de rester silencieux sur la HRV.
 
 Options communes : `--workspace DIR` (sinon $ARC_WORKSPACE, le pointeur
 ~/.config/ai-running-coach/workspace, puis le moteur), `--db FICHIER` (défaut
@@ -40,7 +49,7 @@ import arc_metrics as M  # noqa: E402
 from coach_config import ConfigError, read_toml  # noqa: E402
 from coach_setup import ENGINE, workspace_root  # noqa: E402
 
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3   # #34 : health_day gagne hrv_personal_low_ms/high_ms/status
 DEFAULT_DB = ".arc/coach.db"
 DATA_DIRS = ("activities", "medical", "nutrition", "planning", "rapports")
 
@@ -119,6 +128,7 @@ CREATE TABLE health_day (
     sleep_total_s REAL, sleep_deep_s REAL, sleep_light_s REAL, sleep_rem_s REAL,
     sleep_awake_s REAL, sleep_score REAL, sleep_start TEXT, sleep_end TEXT,
     hrv_overnight_ms REAL, hrv_baseline_low_ms REAL, hrv_baseline_high_ms REAL, hrv_status TEXT,
+    hrv_personal_low_ms REAL, hrv_personal_high_ms REAL, hrv_personal_status TEXT,
     resting_hr_bpm REAL, readiness_score REAL, body_battery_high REAL, body_battery_low REAL,
     stress_avg REAL, weight_kg REAL, verdict TEXT, verdict_reason TEXT, body_md TEXT, data_json TEXT
 );
@@ -622,9 +632,31 @@ def validate_file(path: Path) -> Tuple[bool, List[str], List[str]]:
 # ---------------------------------------------------------------------------
 
 
+def hrv_baseline_today(conn, conf: dict, today: date) -> dict:
+    """Point du jour de la ligne de base HRV personnelle (#34) — pour la CLI et pour les
+    agents en headless (`/garmin-daily-sync`, ou tout appel sans tableau de bord lancé).
+
+    Respecte `[health].morning_check` : rien n'est calculé hors `"full"` (voir
+    `arc_metrics.ASSUMPTIONS["hrv_baseline"]` — décision documentée : en `"minimal"`,
+    seule la readiness est exposée ; en `"off"`, aucune donnée de santé n'est récupérée).
+    """
+    mode = conf["morning_check"]
+    if mode != "full":
+        return {"status": None, "morning_check": mode,
+                "reason": "ligne de base personnelle calculée seulement en "
+                          '[health].morning_check = "full"'}
+    rows = conn.execute(
+        "SELECT date, hrv_overnight_ms FROM health_day WHERE hrv_overnight_ms IS NOT NULL"
+    ).fetchall()
+    hrv_by_date = {row[0]: row[1] for row in rows}
+    point = M.hrv_baseline_series(hrv_by_date, today, today)[0]
+    return {**point, "morning_check": mode}
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
-    parser.add_argument("command", nargs="?", default="index", choices=("index", "backfill-plan", "status"))
+    parser.add_argument("command", nargs="?", default="index",
+                        choices=("index", "backfill-plan", "status", "hrv-baseline"))
     parser.add_argument("--workspace")
     parser.add_argument("--db")
     parser.add_argument("--memory", action="store_true")
@@ -657,6 +689,11 @@ def main(argv=None) -> int:
     workspace = workspace_root(args.workspace)
     conn = open_db(workspace, args.db, args.memory, args.rebuild)
     counts = index_workspace(conn, workspace, args.today)
+    if args.command == "hrv-baseline":
+        conf = settings(load_config(workspace))
+        today_date = date.fromisoformat(args.today) if args.today else date.today()
+        print(json.dumps(hrv_baseline_today(conn, conf, today_date), ensure_ascii=False))
+        return 0
     if args.command == "backfill-plan":
         out = write_backfill(conn, workspace)
         print(f"{len(backfill_items(conn))} fichier(s) à reprendre — {out}")

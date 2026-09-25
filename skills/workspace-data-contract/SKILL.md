@@ -156,6 +156,8 @@ qui porte la charge.
 | `hrv_overnight_ms` | nombre | moyenne nocturne |
 | `hrv_baseline_low_ms`, `hrv_baseline_high_ms` | nombre | bande de référence Garmin |
 | `hrv_status` | `balanced` `unbalanced` `low` `poor` `no_status` | statut Garmin (moyenne 7 j) |
+| `hrv_personal_low_ms`, `hrv_personal_high_ms` | nombre | bande de référence PERSONNELLE (#34) — moyenne 7 j de ln(HRV) vs référence 60 j ± 0,5 ET, calculée par `scripts/arc_index.py hrv-baseline`. À renseigner surtout quand `hrv_baseline_low_ms`/`high_ms` (Garmin) sont absents : c'est alors la seule bande disponible. |
+| `hrv_personal_status` | `sous` `dans_la_norme` `au_dessus` `en_construction` | statut personnel rendu par cette même commande (`en_construction` : historique de référence encore trop court) |
 | `resting_hr_bpm` | 20-250 | `get_rhr_day` |
 | `readiness_score` | 0-100 | |
 | `readiness_factors` | objet | facteurs Garmin, ex. `{"sleep": 62, "hrv": 80}` |
@@ -185,6 +187,20 @@ En `morning_check = "minimal"` :
 
 ```arc
 {"arc": 1, "kind": "health", "date": "2026-09-21", "morning_check": "minimal", "readiness_score": 68, "verdict": "green", "verdict_reason": "Readiness correcte : séance maintenue."}
+```
+
+Bande Garmin absente (`get_hrv_data` sans `baseline` — watch récente, historique Garmin
+encore court) : la ligne de base personnelle (`python3 scripts/arc_index.py hrv-baseline`,
+voir plus bas) prend sa place, jamais un statut Garmin inventé.
+
+```arc
+{
+  "arc": 1, "kind": "health", "date": "2026-09-22", "morning_check": "full",
+  "hrv_overnight_ms": 47, "resting_hr_bpm": 51, "readiness_score": 60,
+  "hrv_personal_low_ms": 56.2, "hrv_personal_high_ms": 59.4, "hrv_personal_status": "sous",
+  "verdict": "amber",
+  "verdict_reason": "Pas de bande Garmin disponible ; sous la référence personnelle (56-59 ms) : garder l'aérobie, couper l'intensité."
+}
 ```
 
 ### `weather`

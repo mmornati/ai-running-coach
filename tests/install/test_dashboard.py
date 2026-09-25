@@ -118,6 +118,45 @@ class TestDashboardServer(InstallAsserts):
         self.assertIn("Bilan test", after)
 
 
+class TestDashboardHealthMorningCheck(InstallAsserts):
+    """#34 — la ligne de base HRV personnelle est un calcul dérivé de l'HRV : elle ne
+    doit apparaître dans `/api/health` qu'en `[health].morning_check = "full"`, jamais
+    en `"minimal"` (readiness seule) ni en `"off"` (aucune donnée de santé)."""
+
+    HRV_KEYS = ("hrv_ln_mean7", "hrv_personal_mean7_ms", "hrv_cv7_pct",
+                "hrv_personal_low_ms", "hrv_personal_high_ms", "hrv_personal_status")
+
+    def _server_with_mode(self, sb, mode):
+        ws = build(sb.root / "ws", days=90, today=__import__("datetime").date.fromisoformat(TODAY))
+        (ws / "config/workspace.user.toml").write_text(
+            f'[sport]\nprimary = "trail"\n\n[health]\nmorning_check = "{mode}"\n', encoding="utf-8")
+        server = Server(sb, ["python3", str(sb.repo / "scripts/arc_serve.py"),
+                             "--workspace", str(ws), "--port", "0", "--today", TODAY])
+        self.assertIsNotNone(server.url, server.proc.stderr.read() if server.proc.poll() is not None else "pas d'URL")
+        return server
+
+    def _assert_no_personal_hrv_keys(self, mode):
+        with Sandbox() as sb:
+            server = self._server_with_mode(sb, mode)
+            try:
+                status, body, _ = server.get("/api/health?days=14")
+                self.assertEqual(status, 200)
+                data = json.loads(body)
+                self.assertEqual(data["morning_check"], mode)
+                for point in data["series"]:
+                    for key in self.HRV_KEYS:
+                        self.assertNotIn(key, point,
+                                        f"morning_check={mode} : « {key} » ne devrait pas apparaître ({point})")
+            finally:
+                server.stop()
+
+    def test_minimal_has_no_personal_baseline(self):
+        self._assert_no_personal_hrv_keys("minimal")
+
+    def test_off_has_no_personal_baseline(self):
+        self._assert_no_personal_hrv_keys("off")
+
+
 class TestDashboardBehindProxy(InstallAsserts):
     """Le conteneur Docker : le proxy présente le tableau de bord sous un nom public."""
 

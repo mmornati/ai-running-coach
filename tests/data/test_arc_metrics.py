@@ -48,6 +48,134 @@ class TestForm(unittest.TestCase):
         self.assertIsNone(s[-1]["monotony"])
 
 
+class TestHrvBaseline(unittest.TestCase):
+    """#34 — ligne de base HRV personnelle : moyenne 7 j de ln(HRV) vs référence 60 j ± 0,5 ET.
+
+    Méthode : Plews et al. (2012) pour le passage au log et le CV du lnRMSSD hebdomadaire ;
+    Plews, Laursen & Buchheit (2013) pour la largeur de bande ± 0,5 ET. Kiviniemi et al.
+    (2007) n'est cité que comme précédent de l'entraînement guidé par une bande individuelle
+    (± 1 ET sur la puissance HF, pas le rMSSD) — pas comme source de cette bande ni du CV.
+    Voir `M.ASSUMPTIONS["hrv_baseline"]` pour le détail complet.
+
+    La référence 60 j est NON chevauchante avec la moyenne courte : elle se termine
+    `HRV_LN_WINDOW_DAYS` (7) jours avant le jour évalué (`ANCHOR` ci-dessous), donc un
+    décalage (offset) de 0 à 6 relève de la moyenne courte, 7 à 66 de la référence.
+    """
+
+    ANCHOR = date(2026, 3, 1)   # le jour évalué : « day » dans hrv_baseline_series
+
+    def point(self, values_by_offset: dict) -> dict:
+        """`values_by_offset` : décalage en jours AVANT `ANCHOR` (0 = `ANCHOR` lui-même) ->
+        HRV brut en ms. Un décalage absent du dict est un jour SANS mesure (jamais 0 ms)."""
+        by_date = {(self.ANCHOR - timedelta(days=k)).isoformat(): v for k, v in values_by_offset.items()}
+        return M.hrv_baseline_series(by_date, self.ANCHOR, self.ANCHOR)[0]
+
+    def test_constant_hrv_gives_flat_band_and_normal_status(self):
+        """67 jours (0 à 66) à 60 ms pile : moyenne 7 j = ln(60), référence 60 j identique
+        (écart-type nul) → bande [60, 60] et statut « dans la norme » (ni sous, ni au-dessus)."""
+        p = self.point({k: 60.0 for k in range(67)})
+        self.assertAlmostEqual(p["hrv_ln_mean7"], math.log(60), places=4)
+        self.assertEqual(p["hrv_personal_mean7_ms"], 60.0)
+        self.assertEqual(p["hrv_cv7_pct"], 0.0)
+        self.assertEqual(p["hrv_personal_low_ms"], 60.0)
+        self.assertEqual(p["hrv_personal_high_ms"], 60.0)
+        self.assertEqual(p["hrv_personal_status"], "dans_la_norme")
+
+    def test_missing_days_are_not_zero(self):
+        """Fenêtre courte (offsets 0 à 6) : mesures présentes seulement à 0, 1, 3, 5, 6 (5 sur
+        7, au-dessus du seuil) — 2 et 4 sont des jours SANS mesure, jamais un 0. Aucune donnée
+        de référence (offsets ≥ 7) : la moyenne courte doit rester calculable sur ces seules
+        5 valeurs.
+
+        Calcul à la main (5 valeurs : 60, 64, 58, 70, 50 ms) :
+        - moyenne de ln = (ln60 + ln64 + ln58 + ln70 + ln50) / 5 ≈ 4,0948
+        - écart-type (population) de ces mêmes ln ≈ 0,1116 → CV 7 j = 100 × 0,1116 / 4,0948 ≈ 2,7 %
+
+        Si les jours 2 et 4 comptaient pour 0 ms, `math.log(0)` lèverait `ValueError` — la
+        fonction ne doit ni planter, ni diviser par 7 (nombre de jours de la fenêtre) au lieu
+        de 5 (nombre de mesures réellement présentes) : cette dernière erreur donnerait une
+        moyenne de ln ≈ 2,9249 (4,0948 × 5/7), très différente de la valeur attendue.
+        """
+        p = self.point({0: 60.0, 1: 64.0, 3: 58.0, 5: 70.0, 6: 50.0})
+        self.assertAlmostEqual(p["hrv_ln_mean7"], 4.0948, places=4)
+        self.assertAlmostEqual(p["hrv_cv7_pct"], 2.7, places=1)
+        self.assertEqual(p["hrv_personal_mean7_ms"], 60.0)
+        self.assertEqual(p["hrv_personal_status"], "en_construction", "pas de référence du tout ici")
+
+    def test_five_of_seven_valid_days_is_enough(self):
+        """Exactement `HRV_LN_MIN_VALID_DAYS` (5) jours mesurés sur les 7 derniers : la
+        moyenne courte doit être calculée, pas rejetée."""
+        p = self.point({0: 60.0, 1: 60.0, 2: 60.0, 3: 60.0, 4: 60.0})
+        self.assertIsNotNone(p["hrv_ln_mean7"])
+
+    def test_four_of_seven_valid_days_gives_none(self):
+        """Un de moins (4 sur 7, juste sous le seuil) : rien n'est calculé plutôt qu'une
+        moyenne bruitée sur trop peu de points."""
+        p = self.point({0: 60.0, 1: 60.0, 2: 60.0, 3: 60.0})
+        self.assertIsNone(p["hrv_ln_mean7"])
+        self.assertIsNone(p["hrv_cv7_pct"])
+        self.assertIsNone(p["hrv_personal_mean7_ms"])
+        self.assertIsNone(p["hrv_personal_status"])
+        self.assertIsNone(p["hrv_personal_low_ms"])
+
+    def test_thirty_of_sixty_reference_days_is_enough(self):
+        """Moyenne courte au complet (offsets 0-6) + exactement `HRV_REF_MIN_VALID_DAYS`
+        (30) jours de référence (offsets 7 à 36) : la bande doit être calculée, le statut
+        ne doit plus être « en construction »."""
+        values = {k: 60.0 for k in range(7)}
+        values.update({k: 60.0 for k in range(7, 37)})   # offsets 7..36 inclus = 30 jours
+        p = self.point(values)
+        self.assertNotEqual(p["hrv_personal_status"], "en_construction")
+        self.assertEqual(p["hrv_personal_low_ms"], 60.0)
+        self.assertEqual(p["hrv_personal_high_ms"], 60.0)
+
+    def test_twenty_nine_of_sixty_reference_days_gives_under_construction(self):
+        """Un jour de référence de moins (29 sur 60, offsets 7 à 35) : statut « en
+        construction », jamais un statut sous/dans/au-dessus deviné trop tôt."""
+        values = {k: 60.0 for k in range(7)}
+        values.update({k: 60.0 for k in range(7, 36)})   # offsets 7..35 inclus = 29 jours
+        p = self.point(values)
+        self.assertEqual(p["hrv_personal_status"], "en_construction")
+        self.assertIsNone(p["hrv_personal_low_ms"])
+        self.assertIsNone(p["hrv_personal_high_ms"])
+
+    def test_reference_window_does_not_overlap_the_short_window(self):
+        """Les offsets 0 à 6 (moyenne courte) sont exclus de la référence, même quand ils
+        portent des valeurs très différentes du reste de l'historique : une référence à 60 ms
+        pile sur 60 j (offsets 7-66) donne une bande [60, 60] quelle que soit la valeur des
+        7 derniers jours — si la fenêtre de référence les incluait par erreur, la bande
+        s'élargirait ou se déplacerait pour les absorber."""
+        values = {k: 60.0 for k in range(7, 67)}         # référence : 60 j pile à 60 ms
+        values.update({0: 200.0, 1: 200.0, 2: 200.0, 3: 200.0, 4: 200.0, 5: 200.0, 6: 200.0})
+        p = self.point(values)
+        self.assertEqual(p["hrv_personal_low_ms"], 60.0)
+        self.assertEqual(p["hrv_personal_high_ms"], 60.0)
+        self.assertEqual(p["hrv_personal_status"], "au_dessus", "200 ms est loin au-dessus de 60")
+
+    def test_known_values_below_band(self):
+        """Moyenne courte (offsets 0-6) : alternance 50/70/50/70/50/70/50 (quatre fois 50,
+        trois fois 70). Référence (offsets 7-66, 60 jours, NON chevauchante) : 60 ms pile.
+
+        Calcul à la main :
+        - moyenne de ln (7 valeurs) = (4×ln(50) + 3×ln(70)) / 7 ≈ 4,056225
+        - écart-type (population) de ces mêmes ln ≈ 0,166511 → CV 7 j = 100 × 0,166511 / 4,056225 ≈ 4,1 %
+          (CV calculé sur ln, PAS sur les valeurs brutes — Plews et al. 2012 ; à ne pas confondre
+          avec le CV ≈ 16,9 % qu'on obtiendrait sur les valeurs brutes 50/70)
+        - référence : 60 valeurs à ln(60) pile → moyenne ln(60) ≈ 4,094345, écart-type nul
+        - bande ± 0,5 ET : [ln(60), ln(60)] en ln, soit [60,0 ; 60,0] ms (exp)
+        - la moyenne courte (4,056225) est SOUS la borne basse (4,094345) → statut « sous »
+        """
+        values = {i: v for i, v in enumerate([50.0, 70.0, 50.0, 70.0, 50.0, 70.0, 50.0])}
+        values.update({k: 60.0 for k in range(7, 67)})
+        p = self.point(values)
+        self.assertAlmostEqual(p["hrv_ln_mean7"], 4.056225, places=4)
+        self.assertAlmostEqual(p["hrv_personal_mean7_ms"], 57.8, places=1)
+        self.assertAlmostEqual(p["hrv_cv7_pct"], 4.1, places=1)
+        self.assertEqual(p["hrv_personal_low_ms"], 60.0)
+        self.assertEqual(p["hrv_personal_high_ms"], 60.0)
+        self.assertEqual(p["hrv_personal_status"], "sous")
+
+
 class TestLoad(unittest.TestCase):
     ATHLETE = {"hr_max_bpm": 188, "hr_rest_bpm": 48}
 
