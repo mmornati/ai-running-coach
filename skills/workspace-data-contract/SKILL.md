@@ -71,6 +71,29 @@ Code 0 et `ok` : conforme. `NON CONFORME` : corrigez les erreurs listées (elles
 nomment la clé) et revalidez. Les lignes `attention` (clé inconnue, type
 inattendu pour le dossier) se corrigent aussi.
 
+## Champ dérivé : `sweat_rate_l_h` (#39)
+
+Ne s'écrit **jamais** dans un bloc ```arc — c'est `scripts/arc_index.py`
+(fonction `arc_metrics.sweat_rate_l_h`) qui le calcule à l'indexation, à partir
+des seules clés `activity` ci-dessus, et l'expose dans la table dérivée
+(`activity.sweat_rate_l_h`), pour #41 (KPI glucides/h et taux de sudation).
+
+Formule : `((weight_pre_kg − weight_post_kg) + fluid_intake_ml / 1000) / durée_h`,
+avec :
+
+- **durée** = `moving_duration_s` si présente, sinon `duration_s` — la durée en
+  mouvement est la plus proche du temps d'effort réel qui fait transpirer ;
+  `duration_s` (repli) inclut les arrêts (ravitaillement, photo…) et sous-estime
+  donc légèrement le taux quand l'activité s'arrête beaucoup ;
+- calculé **seulement** si `weight_pre_kg` **et** `weight_post_kg` **et** une
+  durée sont tous présents — sinon `null`, jamais une valeur devinée ;
+- `fluid_intake_ml` absent → traité comme `0` dans le calcul (hypothèse
+  documentée dans `arc_metrics.ASSUMPTIONS["sweat_rate"]` : un athlète qui n'a
+  rien déclaré peut avoir bu sans le dire, le taux est alors une **borne
+  basse**, jamais surestimé) ;
+- résultat négatif (poids après > avant, au-delà de la tolérance ci-dessus) ou
+  hors plage plausible (0-3 l/h) → `null`, pas une valeur aberrante affichée.
+
 ## Les types
 
 | `kind` | Fichier | Écrit par |
@@ -115,7 +138,32 @@ Types de valeurs ci-dessous : *entier*, *nombre* (≥ 0 sauf mention), *texte*,
 | `rpe` | 0-10 | effort perçu déclaré — indispensable si la séance n'a pas de FC |
 | `splits_cols` | liste | en-tête des splits, voir ci-dessous |
 | `splits` | liste | une ligne par km, dans l'ordre de `splits_cols` |
+| `gear_id` | texte | identifiant matériel (slug), voir ci-dessous |
+| `carbs_g` | nombre | glucides ingérés pendant l'effort, 0-1000 g |
+| `fluid_intake_ml` | nombre | liquide ingéré pendant l'effort, 0-10 000 ml |
+| `weight_pre_kg`, `weight_post_kg` | nombre | pesée avant / après effort, 30-200 kg |
 | `missing_reason` | objet | clé absente → cause |
+
+**Matériel, sudation, glucides (#39).** `gear_id` référence la section
+« Matériel » du profil athlète (`planning/Runner_Profile.md`, #40) : un
+identifiant stable au format **slug** — minuscules, chiffres, tirets simples,
+40 caractères maximum (ex. `hoka-speedgoat-5-bleue`). Deux séances avec le même
+`gear_id` sont la même paire de chaussures pour le kilométrage cumulé de #40.
+
+`carbs_g` et `fluid_intake_ml` viennent d'une déclaration de l'athlète (gels,
+barres, boisson…) pendant ou juste après la séance — jamais une valeur
+inventée : sans déclaration, la clé est omise. Convertissez un produit du
+catalogue (`resources/nutrition/catalogue-produits-*.md`, voir `nutritionist`)
+en grammes/millilitres avant d'écrire le bloc.
+
+`weight_pre_kg`/`weight_post_kg` sont les pesées avant et après l'effort
+(protocole classique de mesure du taux de sudation). `weight_post_kg`
+supérieur à `weight_pre_kg` de plus de 1 kg déclenche un avertissement (pesée à
+vérifier), pas une erreur — la balance ou les vêtements peuvent expliquer un
+petit écart. Le taux de sudation lui-même (`sweat_rate_l_h`) n'est **pas**
+écrit par l'agent : c'est un champ **dérivé**, calculé par
+`scripts/arc_index.py` (voir plus bas) uniquement quand `weight_pre_kg`,
+`weight_post_kg` et une durée sont tous les trois présents.
 
 **Splits.** `splits_cols` déclare les colonnes, `splits` donne une liste de
 valeurs par km dans cet ordre. `km` et `duration_s` sont obligatoires ; les
@@ -143,6 +191,21 @@ qui porte la charge.
 ```arc
 {"arc": 1, "kind": "activity", "date": "2026-09-18", "sport": "strength", "duration_s": 2400, "rpe": 6, "missing_reason": {"avg_hr_bpm": "pas de ceinture cardio"}}
 ```
+
+Sortie longue avec matériel, ravitaillement déclaré et pesées avant/après
+(entraînement digestif, #41 en tirera glucides/h et taux de sudation) :
+
+```arc
+{
+  "arc": 1, "kind": "activity", "date": "2026-09-21", "sport": "trail", "duration_s": 9000,
+  "moving_duration_s": 8820, "distance_m": 22000, "avg_hr_bpm": 138,
+  "gear_id": "hoka-speedgoat-5-bleue", "carbs_g": 72, "fluid_intake_ml": 900,
+  "weight_pre_kg": 70.2, "weight_post_kg": 69.1
+}
+```
+
+Ici, `scripts/arc_index.py` dérive `sweat_rate_l_h` à l'indexation (voir plus
+bas) : ni cette clé ni sa formule ne s'écrivent dans le bloc.
 
 ### `health`
 

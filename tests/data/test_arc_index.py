@@ -497,5 +497,69 @@ class TestFrenchNumbers(unittest.TestCase):
         self.assertEqual(L.sport_from_filename("2026-08-24_walking.md"), "walking")
 
 
+class TestGearSweatFuelIndex(Workspace):
+    """#39 : colonnes `activity` (gear_id, carbs_g, fluid_intake_ml, weight_pre_kg,
+    weight_post_kg) et dérivation de `sweat_rate_l_h` à l'indexation."""
+
+    def test_columns_are_stored(self):
+        self.write("activities/2026-09-20_trail.md", arc(
+            '{"arc": 1, "kind": "activity", "date": "2026-09-20", "sport": "trail", "duration_s": 9000, '
+            '"moving_duration_s": 8820, "gear_id": "hoka-speedgoat-5-bleue", "carbs_g": 72, '
+            '"fluid_intake_ml": 900, "weight_pre_kg": 70.2, "weight_post_kg": 69.1}'))
+        self.index()
+        row = self.conn.execute(
+            "SELECT gear_id, carbs_g, fluid_intake_ml, weight_pre_kg, weight_post_kg, sweat_rate_l_h "
+            "FROM activity").fetchone()
+        gear_id, carbs_g, fluid_ml, pre, post, sweat_rate = tuple(row)
+        self.assertEqual((gear_id, carbs_g, fluid_ml, pre, post), ("hoka-speedgoat-5-bleue", 72, 900, 70.2, 69.1))
+        # (70.2 - 69.1) + 900/1000 = 2.0 l sur 8820 s (moving_duration_s, pas duration_s) = 8820/3600 h
+        self.assertAlmostEqual(sweat_rate, 2.0 / (8820 / 3600), places=2)
+
+    def test_sweat_rate_uses_moving_duration_over_total(self):
+        self.write("activities/2026-09-20_trail.md", arc(
+            '{"arc": 1, "kind": "activity", "date": "2026-09-20", "sport": "trail", "duration_s": 10000, '
+            '"moving_duration_s": 3600, "weight_pre_kg": 71.0, "weight_post_kg": 70.0}'))
+        self.index()
+        rate = self.conn.execute("SELECT sweat_rate_l_h FROM activity").fetchone()[0]
+        self.assertAlmostEqual(rate, 1.0, places=2)   # 1 kg / 1 h, pas / (10000 s)
+
+    def test_sweat_rate_falls_back_to_duration_s_without_moving(self):
+        self.write("activities/2026-09-20_trail.md", arc(
+            '{"arc": 1, "kind": "activity", "date": "2026-09-20", "sport": "trail", "duration_s": 3600, '
+            '"weight_pre_kg": 71.0, "weight_post_kg": 70.0}'))
+        self.index()
+        rate = self.conn.execute("SELECT sweat_rate_l_h FROM activity").fetchone()[0]
+        self.assertAlmostEqual(rate, 1.0, places=2)
+
+    def test_sweat_rate_missing_fluid_defaults_to_zero(self):
+        self.write("activities/2026-09-20_trail.md", arc(
+            '{"arc": 1, "kind": "activity", "date": "2026-09-20", "sport": "trail", "duration_s": 3600, '
+            '"weight_pre_kg": 71.5, "weight_post_kg": 71.0}'))
+        self.index()
+        rate = self.conn.execute("SELECT sweat_rate_l_h FROM activity").fetchone()[0]
+        self.assertAlmostEqual(rate, 0.5, places=2)
+
+    def test_sweat_rate_none_without_both_weights(self):
+        self.write("activities/2026-09-20_trail.md", arc(
+            '{"arc": 1, "kind": "activity", "date": "2026-09-20", "sport": "trail", "duration_s": 3600, '
+            '"weight_pre_kg": 71.0}'))
+        self.index()
+        rate = self.conn.execute("SELECT sweat_rate_l_h FROM activity").fetchone()[0]
+        self.assertIsNone(rate)
+
+    def test_sweat_rate_negative_result_is_none(self):
+        """Poids après > avant (au-delà de la tolérance du contrat) et aucun liquide déclaré :
+        le résultat serait négatif, donc `None`, jamais affiché tel quel."""
+        self.write("activities/2026-09-20_trail.md", arc(
+            '{"arc": 1, "kind": "activity", "date": "2026-09-20", "sport": "trail", "duration_s": 3600, '
+            '"weight_pre_kg": 70.0, "weight_post_kg": 71.5}'))
+        self.index()
+        rate = self.conn.execute("SELECT sweat_rate_l_h FROM activity").fetchone()[0]
+        self.assertIsNone(rate)
+
+    def test_schema_version_bumped_forces_rebuild(self):
+        self.assertEqual(I.SCHEMA_VERSION, 5)
+
+
 if __name__ == "__main__":
     unittest.main()

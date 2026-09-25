@@ -1,0 +1,30 @@
+# Contrat de données, ravitaillement pendant l'effort (#39) : quand l'athlète
+# déclare son ravitaillement dans le même message que la synchronisation, le
+# coach doit le reporter sur l'activité du jour — pas juste écrire un bloc
+# ```arc valide (déjà couvert par `sync-writes-arc-block`), mais y mettre les
+# valeurs déclarées, converties via le catalogue produit fourni en fixture
+# (`resources/nutrition/catalogue-produits-fixture.md` : 1 « Gel Fixture Test »
+# = 32 g de glucides). 3 gels ⇒ 96 g, une marge de tolérance absorbe
+# l'arrondi ; `fluid_intake_ml` doit reprendre les 750 ml déclarés au gramme
+# près, aucune conversion n'étant nécessaire dessus.
+id = "sync-declared-fuel"
+prompt = "Synchronise ma séance d'aujourd'hui. Pendant l'effort, j'ai pris 3 Gel Fixture Test et bu 750 ml d'eau."
+fixture = "sync-declared-fuel"
+
+[expect]
+files_with_arc_block = ["activities/*.md"]
+
+[[expect.arc_field]]
+glob = "activities/*.md"
+path = "fluid_intake_ml"
+equals = 750
+
+[[expect.arc_field]]
+glob = "activities/*.md"
+path = "carbs_g"
+min = 85
+
+[[expect.arc_field]]
+glob = "activities/*.md"
+path = "carbs_g"
+max = 105

@@ -39,6 +39,7 @@ ARC_LLM_TESTS=1 python3 tests/run_tests.py --tier c --repeat 3
 | `style-exigeant-names-the-miss` | — | — |
 | `style-factuel-quiet` | — | — |
 | `sync-activity-arc-fields` | — | — |
+| `sync-declared-fuel` | — | — |
 | `sync-writes-arc-block` | — | — |
 
 > **Pas encore de relevé.** Le harnais est complet et validé — scénarios,
@@ -48,9 +49,6 @@ ARC_LLM_TESTS=1 python3 tests/run_tests.py --tier c --repeat 3
 > puis remplacez ce tableau par le relevé obtenu.
 
 <!-- Régénéré via `python3 tests/evals/render_results.py --results <(echo '{}')`
-     (#29, revue PR #74, point 11) : la liste des scénarios ci-dessus vient de
-     `runner.load_cases()`, pas d'une recopie à la main — `sleep-debt` (#37) a été
-     ajouté par cette régénération, en plus de `doctor-token-expiring` déjà repris
-     depuis la revue précédente. Date et modèle remis à `_jamais exécuté_`/« défaut »
-     à la main après régénération : aucune exécution réelle n'a eu lieu. -->
-
+     (#39) : `sync-declared-fuel` a été ajouté par cette régénération. Date et
+     modèle remis à `_jamais exécuté_`/« défaut » à la main après régénération :
+     aucune exécution réelle n'a eu lieu. -->

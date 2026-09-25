@@ -83,5 +83,79 @@ class TestValidator(unittest.TestCase):
         self.assertEqual(C.body_after_block(text), "# Séance\n\nTexte.")
 
 
+class TestGearSweatFuel(unittest.TestCase):
+    """#39 : gear_id, carbs_g, fluid_intake_ml, weight_pre_kg/weight_post_kg."""
+
+    def base(self, **extra):
+        return {"arc": 1, "kind": "activity", "date": "2026-09-20", "sport": "trail", "duration_s": 3600, **extra}
+
+    def test_valid_fields_pass(self):
+        errors, warnings = C.validate(self.base(
+            gear_id="hoka-speedgoat-5-bleue", carbs_g=72, fluid_intake_ml=900,
+            weight_pre_kg=70.2, weight_post_kg=69.1))
+        self.assertEqual(errors + warnings, [])
+
+    def test_gear_id_must_be_a_slug(self):
+        errors, _ = C.validate(self.base(gear_id="Hoka Speedgoat 5"))
+        self.assertTrue(any("gear_id" in e for e in errors), errors)
+
+    def test_gear_id_too_long_is_rejected(self):
+        errors, _ = C.validate(self.base(gear_id="a" * (C.GEAR_ID_MAX_LEN + 1)))
+        self.assertTrue(any("gear_id" in e for e in errors), errors)
+
+    def test_gear_id_empty_string_is_rejected(self):
+        errors, _ = C.validate(self.base(gear_id=""))
+        self.assertTrue(any("gear_id" in e for e in errors), errors)
+
+    def test_carbs_g_negative_is_rejected(self):
+        errors, _ = C.validate(self.base(carbs_g=-5))
+        self.assertTrue(any("carbs_g" in e for e in errors), errors)
+
+    def test_carbs_g_above_plausible_max_is_rejected(self):
+        errors, _ = C.validate(self.base(carbs_g=C.CARBS_G_PLAUSIBLE_MAX + 1))
+        self.assertTrue(any("carbs_g" in e for e in errors), errors)
+
+    def test_carbs_g_at_plausible_max_is_accepted(self):
+        errors, _ = C.validate(self.base(carbs_g=C.CARBS_G_PLAUSIBLE_MAX))
+        self.assertEqual(errors, [])
+
+    def test_carbs_g_as_string_is_rejected(self):
+        """« bool traité comme un nombre » et « chaîne traitée comme un nombre » sont les deux
+        pièges classiques d'un contrat JSON : `True` est un `int` en Python, `"72"` ressemble à
+        un nombre à l'œil. Les deux doivent être refusés, pas silencieusement acceptés."""
+        errors, _ = C.validate(self.base(carbs_g="72"))
+        self.assertTrue(any("carbs_g" in e for e in errors), errors)
+
+    def test_carbs_g_bool_is_rejected(self):
+        errors, _ = C.validate(self.base(carbs_g=True))
+        self.assertTrue(any("carbs_g" in e for e in errors), errors)
+
+    def test_fluid_intake_ml_negative_is_rejected(self):
+        errors, _ = C.validate(self.base(fluid_intake_ml=-1))
+        self.assertTrue(any("fluid_intake_ml" in e for e in errors), errors)
+
+    def test_fluid_intake_ml_above_plausible_max_is_rejected(self):
+        errors, _ = C.validate(self.base(fluid_intake_ml=C.FLUID_INTAKE_ML_PLAUSIBLE_MAX + 1))
+        self.assertTrue(any("fluid_intake_ml" in e for e in errors), errors)
+
+    def test_weight_pre_kg_below_plausible_min_is_rejected(self):
+        errors, _ = C.validate(self.base(weight_pre_kg=C.BODY_WEIGHT_KG_PLAUSIBLE[0] - 1))
+        self.assertTrue(any("weight_pre_kg" in e for e in errors), errors)
+
+    def test_weight_post_kg_above_plausible_max_is_rejected(self):
+        errors, _ = C.validate(self.base(weight_post_kg=C.BODY_WEIGHT_KG_PLAUSIBLE[1] + 1))
+        self.assertTrue(any("weight_post_kg" in e for e in errors), errors)
+
+    def test_weight_post_above_pre_within_tolerance_is_silent(self):
+        errors, warnings = C.validate(self.base(weight_pre_kg=70.0, weight_post_kg=70.5))
+        self.assertEqual(errors + warnings, [])
+
+    def test_weight_post_above_pre_beyond_tolerance_warns_not_errors(self):
+        """La pesée peut être imprécise (habits, balance) : un avertissement, pas un rejet."""
+        errors, warnings = C.validate(self.base(weight_pre_kg=70.0, weight_post_kg=71.5))
+        self.assertEqual(errors, [])
+        self.assertTrue(any("weight_post_kg" in w for w in warnings), warnings)
+
+
 if __name__ == "__main__":
     unittest.main()

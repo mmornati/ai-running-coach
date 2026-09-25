@@ -28,6 +28,11 @@ Remote Control) et l'IDE partagent. Il délègue tout à l'agent `coach` et au s
 - **Idempotence** : ne récupérer que les dates dont le fichier MD manque dans `activities/`
   ou `medical/` (règle 1 de `garmin-sync-efficiency`). Une date déjà persistée n'est jamais
   re-synchronisée.
+- **Matériel, glucides, hydratation, pesées (#39)** : `gear_id`, `carbs_g`, `fluid_intake_ml`,
+  `weight_pre_kg`, `weight_post_kg` ne viennent JAMAIS de Garmin — seule une déclaration de
+  l'athlète les remplit (voir `agents/coach.md`). Ce skill tourne sans personne pour répondre :
+  ne JAMAIS les demander, ne JAMAIS les deviner. Les laisser absents du bloc ```arc est le
+  comportement normal d'une synchronisation headless, pas un manque à signaler.
 
 ## Déroulé
 
