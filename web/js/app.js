@@ -618,20 +618,24 @@ function weightSection(weightSeries, weight) {
   if (!weightSeries.some((p) => p.weight_kg_merged != null)) return { html: "", chart: null };
   const dates = weightSeries.map((p) => p.date);
   const marks = weight.target_kg != null
-    ? [{ type: "hline", value: weight.target_kg, cls: "mark mark--target", label: `Cible ${F.num(weight.target_kg, 1)} kg` }]
+    ? [{ type: "hline", value: weight.target_kg, cls: "mark mark--target", label: `Cible ${F.weight(weight.target_kg)}` }]
     : [];
   const chart = timeChart(dates, [
     { type: "line", values: weightSeries.map((p) => p.weight_avg7_kg), cls: "line line--weight-avg" },
     { type: "dots", values: weightSeries.map((p) => p.weight_kg_merged), cls: "dot dot--weight" },
-  ], marks, { height: 200, label: "Poids quotidien, moyenne mobile 7 jours et cible", yFormat: (v) => `${F.num(v, 1)} kg` });
-  const gapTxt = weight.gap_kg != null ? `${weight.gap_kg > 0 ? "+" : ""}${F.num(weight.gap_kg, 1)} kg` : "—";
-  const slopeTxt = weight.slope_kg_per_week != null ? `${weight.slope_kg_per_week > 0 ? "+" : ""}${F.num(weight.slope_kg_per_week, 2)} kg/semaine` : "—";
+  ], marks, { height: 200, label: "Poids quotidien, moyenne mobile 7 jours et cible", yFormat: (v) => F.weight(v) });
+  const gapTxt = weight.gap_kg != null ? `${weight.gap_kg > 0 ? "+" : ""}${F.weight(weight.gap_kg)}` : "—";
+  const slopeTxt = weight.slope_kg_per_week != null ? `${weight.slope_kg_per_week > 0 ? "+" : ""}${F.weightRate(weight.slope_kg_per_week)}` : "—";
+  // `avg7_kg` (et `gap_kg`, qui en dérive) est TOUJOURS la valeur du jour même (jamais la
+  // dernière moyenne non nulle trouvée plus tôt dans la fenêtre, voir arc_serve.py) : un
+  // « — » ici signifie « pas assez de pesées récentes », pas une absence de data ancienne.
+  const avg7Txt = weight.avg7_kg != null ? `${F.weight(weight.avg7_kg)}<small> au ${F.dayShort(weight.avg7_date)}</small>` : "—";
   const html = `<section class="band"><h2>Poids</h2>
     <p class="legend"><span class="legend__item"><span class="key key--weight"></span>Poids quotidien</span> <span class="legend__item"><span class="key key--weight-avg"></span>Moyenne 7 j</span>${weight.target_kg != null ? ` <span class="legend__item"><span class="key key--target"></span>Cible</span>` : ""}</p>
     <div class="chart-host" id="c-weight">${chart.svg}</div><p class="readout" id="r-weight"></p>
     <dl class="facts facts--inline">
-      <div><dt>Moyenne 7 j</dt><dd>${weight.avg7_kg != null ? F.num(weight.avg7_kg, 1) + " kg" : "—"}</dd></div>
-      <div><dt>Cible</dt><dd>${weight.target_kg != null ? F.num(weight.target_kg, 1) + " kg" : "—"}</dd></div>
+      <div><dt>Moyenne 7 j</dt><dd>${avg7Txt}</dd></div>
+      <div><dt>Cible</dt><dd>${F.weight(weight.target_kg)}</dd></div>
       <div><dt>Écart à la cible</dt><dd>${gapTxt}</dd></div>
       <div><dt>Pente 4 semaines</dt><dd>${slopeTxt}</dd></div>
     </dl></section>`;
@@ -647,13 +651,13 @@ async function viewNutrition() {
     return;
   }
   const table = weighed.length ? `<div class="table-wrap"><table class="data"><thead><tr><th scope="col">Date</th><th scope="col" class="num">Poids</th><th scope="col" class="num">Cible</th><th scope="col" class="num">Apports</th><th scope="col" class="num">Dépense</th><th scope="col" class="num">G / P / L</th></tr></thead>
-    <tbody>${days.slice().reverse().map((d) => `<tr><td>${F.dayShort(d.date)}</td><td class="num">${d.weight_kg != null ? F.num(d.weight_kg, 1) + " kg" : "—"}</td><td class="num">${d.target_weight_kg != null ? F.num(d.target_weight_kg, 1) + " kg" : "—"}</td><td class="num">${F.num(d.intake_kcal)}</td><td class="num">${F.num(d.burned_kcal)}</td><td class="num">${d.carbs_g != null ? `${F.num(d.carbs_g)} / ${F.num(d.protein_g)} / ${F.num(d.fat_g)} g` : "—"}</td></tr>`).join("")}</tbody></table></div>`
+    <tbody>${days.slice().reverse().map((d) => `<tr><td>${F.dayShort(d.date)}</td><td class="num">${F.weight(d.weight_kg)}</td><td class="num">${F.weight(d.target_weight_kg)}</td><td class="num">${F.num(d.intake_kcal)}</td><td class="num">${F.num(d.burned_kcal)}</td><td class="num">${d.carbs_g != null ? `${F.num(d.carbs_g)} / ${F.num(d.protein_g)} / ${F.num(d.fat_g)} g` : "—"}</td></tr>`).join("")}</tbody></table></div>`
     : empty("Pas encore d'apports déclarés", "Les journaux <code>nutrition/</code> au contrat (apports, macros) alimentent ce tableau.");
   main.innerHTML = `${header("Nutrition")}${weightHtml}${table}`;
   if (weightChart) {
     attachCursor($("#c-weight"), weightChart, (i) => {
       const p = weight_series[i];
-      readout($("#r-weight"), `<strong>${F.dayLong(p.date)}</strong> · poids ${p.weight_kg_merged != null ? F.num(p.weight_kg_merged, 1) + " kg" : "—"} · moyenne 7 j ${p.weight_avg7_kg != null ? F.num(p.weight_avg7_kg, 1) + " kg" : "—"}`);
+      readout($("#r-weight"), `<strong>${F.dayLong(p.date)}</strong> · poids ${F.weight(p.weight_kg_merged)} · moyenne 7 j ${F.weight(p.weight_avg7_kg)}`);
     });
   }
 }

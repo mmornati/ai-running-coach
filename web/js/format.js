@@ -27,6 +27,18 @@ export function elevation(m) {
   return `${num(m)}${NBSP}m`;
 }
 
+export function weight(kg, digits = 1) {
+  if (kg === null || kg === undefined) return "—";
+  if (UNITS === "imperial") return `${num(kg * 2.20462, digits)}${NBSP}lb`;
+  return `${num(kg, digits)}${NBSP}kg`;
+}
+
+export function weightRate(kgPerWeek, digits = 2) {
+  if (kgPerWeek === null || kgPerWeek === undefined) return "—";
+  if (UNITS === "imperial") return `${num(kgPerWeek * 2.20462, digits)}${NBSP}lb/semaine`;
+  return `${num(kgPerWeek, digits)}${NBSP}kg/semaine`;
+}
+
 export function duration(s, { seconds = false } = {}) {
   if (s === null || s === undefined) return "—";
   const total = Math.round(s);

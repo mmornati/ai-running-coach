@@ -627,7 +627,7 @@ def build(root: Path, days: int = 120, today: date | None = None, sport: str = "
             "red": "HRV basse et FC de repos élevée : repos ou Z1 strict.",
         }[verdict]
         sleep = round(6.2 * 3600 + 1.8 * 3600 * rng.random())
-        _write(root, f"medical/{iso}_health.md", f"Santé du {iso}", {
+        health_data = {
             "arc": 1, "kind": "health", "date": iso, "morning_check": "full",
             "sleep_total_s": sleep, "sleep_deep_s": round(sleep * 0.18), "sleep_light_s": round(sleep * 0.55),
             "sleep_rem_s": round(sleep * 0.22), "sleep_score": max(40, min(95, round(sleep / 360 - 2))),
@@ -635,9 +635,18 @@ def build(root: Path, days: int = 120, today: date | None = None, sport: str = "
             "hrv_status": "balanced" if hrv >= 56 else "low",
             "resting_hr_bpm": rhr, "readiness_score": readiness,
             "body_battery_high": min(100, readiness + 12), "body_battery_low": 20, "stress_avg": round(25 + 20 * fatigue),
-            "weight_kg": round(69.2 - 0.6 * i / days + rng.uniform(-0.3, 0.3), 1),
             "verdict": verdict, "verdict_reason": reason,
-        }, f"## Analyse\n\n{reason}")
+        }
+        # `weight_kg` omis un jour sur cinq (#36), afin que le repli sur `nutrition.weight_kg`
+        # (`merge_weight_kg`) soit réellement exercé par les goldens : sans ce trou, la santé
+        # porte un poids TOUS les jours et la branche nutrition du merge ne serait jamais
+        # prise dans les fixtures. Le bruit est tiré INCONDITIONNELLEMENT (même sur un jour
+        # omis, la valeur est juste jetée) pour que le flux `rng` partagé — et donc toutes
+        # les valeurs tirées ensuite — ne se décale pas selon `i % 5`.
+        weight_noise = rng.uniform(-0.3, 0.3)
+        if i % 5 != 0:
+            health_data["weight_kg"] = round(69.2 - 0.6 * i / days + weight_noise, 1)
+        _write(root, f"medical/{iso}_health.md", f"Santé du {iso}", health_data, f"## Analyse\n\n{reason}")
 
         # --- séance --------------------------------------------------------
         weekday = day.weekday()

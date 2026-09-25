@@ -4030,9 +4030,10 @@
           }
         ],
         "weight": {
-          "avg7_kg": 68.6,
-          "gap_kg": 1.6,
-          "slope_kg_per_week": -0.111,
+          "avg7_date": "2026-09-23",
+          "avg7_kg": 68.9,
+          "gap_kg": 1.9,
+          "slope_kg_per_week": -0.056,
           "target_kg": 67.0
         },
         "weight_series": [
@@ -4139,7 +4140,7 @@
           {
             "date": "2026-08-15",
             "weight_avg7_kg": null,
-            "weight_kg_merged": 69.2
+            "weight_kg_merged": null
           },
           {
             "date": "2026-08-16",
@@ -4148,12 +4149,12 @@
           },
           {
             "date": "2026-08-17",
-            "weight_avg7_kg": 69.2,
+            "weight_avg7_kg": null,
             "weight_kg_merged": 69.2
           },
           {
             "date": "2026-08-18",
-            "weight_avg7_kg": 69.2,
+            "weight_avg7_kg": 69.3,
             "weight_kg_merged": 69.3
           },
           {
@@ -4163,8 +4164,8 @@
           },
           {
             "date": "2026-08-20",
-            "weight_avg7_kg": 69.2,
-            "weight_kg_merged": 69.1
+            "weight_avg7_kg": 69.3,
+            "weight_kg_merged": null
           },
           {
             "date": "2026-08-21",
@@ -4189,7 +4190,7 @@
           {
             "date": "2026-08-25",
             "weight_avg7_kg": 69.0,
-            "weight_kg_merged": 69.0
+            "weight_kg_merged": null
           },
           {
             "date": "2026-08-26",
@@ -4214,7 +4215,7 @@
           {
             "date": "2026-08-30",
             "weight_avg7_kg": 69.1,
-            "weight_kg_merged": 68.8
+            "weight_kg_merged": null
           },
           {
             "date": "2026-08-31",
@@ -4223,7 +4224,7 @@
           },
           {
             "date": "2026-09-01",
-            "weight_avg7_kg": 69.0,
+            "weight_avg7_kg": 69.1,
             "weight_kg_merged": 68.8
           },
           {
@@ -4233,22 +4234,22 @@
           },
           {
             "date": "2026-09-03",
-            "weight_avg7_kg": 69.0,
+            "weight_avg7_kg": 69.1,
             "weight_kg_merged": 69.2
           },
           {
             "date": "2026-09-04",
             "weight_avg7_kg": 69.0,
-            "weight_kg_merged": 68.8
+            "weight_kg_merged": null
           },
           {
             "date": "2026-09-05",
-            "weight_avg7_kg": 68.9,
+            "weight_avg7_kg": 69.0,
             "weight_kg_merged": 68.8
           },
           {
             "date": "2026-09-06",
-            "weight_avg7_kg": 68.9,
+            "weight_avg7_kg": 69.0,
             "weight_kg_merged": 69.0
           },
           {
@@ -4264,7 +4265,7 @@
           {
             "date": "2026-09-09",
             "weight_avg7_kg": 68.9,
-            "weight_kg_merged": 69.0
+            "weight_kg_merged": null
           },
           {
             "date": "2026-09-10",
@@ -4278,7 +4279,7 @@
           },
           {
             "date": "2026-09-12",
-            "weight_avg7_kg": 68.9,
+            "weight_avg7_kg": 68.8,
             "weight_kg_merged": 69.0
           },
           {
@@ -4289,7 +4290,7 @@
           {
             "date": "2026-09-14",
             "weight_avg7_kg": 68.9,
-            "weight_kg_merged": 68.8
+            "weight_kg_merged": null
           },
           {
             "date": "2026-09-15",
@@ -4298,7 +4299,7 @@
           },
           {
             "date": "2026-09-16",
-            "weight_avg7_kg": 68.8,
+            "weight_avg7_kg": 68.9,
             "weight_kg_merged": 68.8
           },
           {
@@ -4313,27 +4314,27 @@
           },
           {
             "date": "2026-09-19",
-            "weight_avg7_kg": 68.7,
-            "weight_kg_merged": 68.5
+            "weight_avg7_kg": 69.0,
+            "weight_kg_merged": 70.3
           },
           {
             "date": "2026-09-20",
-            "weight_avg7_kg": 68.6,
+            "weight_avg7_kg": 68.9,
             "weight_kg_merged": 68.6
           },
           {
             "date": "2026-09-21",
-            "weight_avg7_kg": 68.6,
+            "weight_avg7_kg": 68.9,
             "weight_kg_merged": 68.8
           },
           {
             "date": "2026-09-22",
-            "weight_avg7_kg": 68.7,
+            "weight_avg7_kg": 68.9,
             "weight_kg_merged": 68.8
           },
           {
             "date": "2026-09-23",
-            "weight_avg7_kg": 68.6,
+            "weight_avg7_kg": 68.9,
             "weight_kg_merged": 68.6
           }
         ]
@@ -4389,9 +4390,10 @@
           }
         ],
         "weight": {
-          "avg7_kg": 68.6,
-          "gap_kg": 1.6,
-          "slope_kg_per_week": -0.111,
+          "avg7_date": "2026-09-23",
+          "avg7_kg": 68.9,
+          "gap_kg": 1.9,
+          "slope_kg_per_week": -0.056,
           "target_kg": 67.0
         },
         "weight_series": [
@@ -4407,27 +4409,27 @@
           },
           {
             "date": "2026-09-19",
-            "weight_avg7_kg": 68.7,
-            "weight_kg_merged": 68.5
+            "weight_avg7_kg": 69.0,
+            "weight_kg_merged": 70.3
           },
           {
             "date": "2026-09-20",
-            "weight_avg7_kg": 68.6,
+            "weight_avg7_kg": 68.9,
             "weight_kg_merged": 68.6
           },
           {
             "date": "2026-09-21",
-            "weight_avg7_kg": 68.6,
+            "weight_avg7_kg": 68.9,
             "weight_kg_merged": 68.8
           },
           {
             "date": "2026-09-22",
-            "weight_avg7_kg": 68.7,
+            "weight_avg7_kg": 68.9,
             "weight_kg_merged": 68.8
           },
           {
             "date": "2026-09-23",
-            "weight_avg7_kg": 68.6,
+            "weight_avg7_kg": 68.9,
             "weight_kg_merged": 68.6
           }
         ]
@@ -4739,8 +4741,8 @@
           "trimp": "TRIMP de Banister : minutes × FCr × 0,64 × e^(k·FCr), FCr = (FC moy − FC repos) / (FC max − FC repos), k = 1,92 (homme) / 1,67 (femme).",
           "trimp_sex_default": "Sexe non renseigné dans le profil : k = 1,92 appliqué par défaut.",
           "vo2max": "VO2max effective : VO2 de l'allure (Daniels) ÷ fraction de VO2max estimée par (FC moy / FC max − 0,37) / 0,64. Calculée depuis l'allure et la FC MOYENNES de la séance (pas de série seconde par seconde) : ordre de grandeur, pas une mesure. Séances de course de 20 min à 3 h seulement, FC moy ≥ 70 % de la FC max, allure effort ≤ 8:30/km ; tendance 30 j pondérée par la durée, plafonnée à 90 min par séance.",
-          "weight_merge": "Fusion des deux sources de poids (#36) : le contrat n'a pas de champ d'heure de mesure dédié, mais `health.weight_kg` est renseigné pendant le bilan matinal (`morning_check`) — traité comme la pesée du matin — tandis que `nutrition.weight_kg` n'a aucune garantie d'horaire. Un jour où les deux sont présents : `health` gagne TOUJOURS, jamais de moyenne des deux sources ni de préférence à la plus récemment écrite. Un jour sans aucune des deux : absent, jamais 0.",
-          "weight_trend": "Moyenne mobile 7 j du poids fusionné (`weight_merge`) : moyenne des jours PRÉSENTS dans la fenêtre (jour manquant jamais compté 0), rendue seulement à partir de 3 jours pesés sur les 7, sinon `None`. Écart à la cible = moyenne 7 j la plus récente − `target_weight_kg` le plus récent connu (nutrition uniquement dans le contrat) ; positif = au-dessus de la cible. Pente 4 semaines : régression des moindres carrés (x = jour, y = poids fusionné, PAS la moyenne lissée) sur les 28 derniers jours, convertie en kg/semaine (× 7) ; rendue seulement à partir de 5 jours pesés dans la fenêtre, sinon `None`. Aucun commentaire normatif n'est dérivé de ces chiffres : chiffres seulement (voir issue #36)."
+          "weight_merge": "Fusion des deux sources de poids (#36) : le contrat n'a pas de champ d'heure de mesure dédié, mais `health.weight_kg` est renseigné pendant le bilan matinal (`morning_check`) — traité comme la pesée du matin — tandis que `nutrition.weight_kg` n'a aucune garantie d'horaire. Un jour où les deux sont présents : `health` gagne TOUJOURS, jamais de moyenne des deux sources ni de préférence à la plus récemment écrite. Un jour sans aucune des deux : absent, jamais 0. Doublon DANS une même source (deux fichiers santé, ou deux fichiers nutrition, pour la même date — pas d'heure de mesure pour départager) : le `source_path` le plus grand par ordre alphabétique gagne, appliqué en base par `arc_serve.py` (`ORDER BY date, source_path` avant fusion ; `ORDER BY date DESC, source_path DESC` pour la cible la plus récente) — jamais l'ordre arbitraire que rendrait SQLite sans tri explicite.",
+          "weight_trend": "Moyenne mobile 7 j du poids fusionné (`weight_merge`) : moyenne des jours PRÉSENTS dans la fenêtre (jour manquant jamais compté 0), rendue seulement à partir de 3 jours pesés sur les 7, sinon `None`. `avg7_kg`/`gap_kg` exposés par `/api/nutrition` sont TOUJOURS la valeur DU JOUR (aujourd'hui), jamais la dernière moyenne non nulle trouvée plus tôt dans la fenêtre affichée — une pesée vieille de plusieurs semaines ne doit jamais s'afficher comme si elle datait d'aujourd'hui ; `avg7_date` porte la date effectivement utilisée. Écart à la cible = moyenne 7 j du jour − `target_weight_kg` le plus récent connu (nutrition uniquement dans le contrat) ; positif = au-dessus de la cible. Pente 4 semaines : régression des moindres carrés (x = jour, y = poids fusionné, PAS la moyenne lissée) sur les 28 derniers jours, convertie en kg/semaine (× 7) ; rendue seulement à partir de 5 jours pesés ET 14 jours d'écart entre la première et la dernière pesée de la fenêtre (sinon `None`) — sans ce second seuil, quelques pesées groupées sur deux ou trois jours donneraient une pente extrapolée sur 4 semaines à partir d'un intervalle bien trop court pour être fiable. Aucun commentaire normatif n'est dérivé de ces chiffres : chiffres seulement (voir issue #36)."
         },
         "athlete": {
           "birth_year": null,

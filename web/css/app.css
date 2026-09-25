@@ -255,13 +255,16 @@ select { font: inherit; color: var(--ink); background: var(--surface); border: 1
 .chart .dot { stroke: var(--surface); stroke-width: 1.2; }
 .chart .dot--hrv { fill: var(--s-hrv); } .chart .dot--rhr { fill: var(--s-rhr); } .chart .dot--dplus { fill: var(--s-dplus); }
 .chart .dot--weight { fill: var(--s-weight); }
-.chart .mark--target { stroke: var(--s-weight); }
 .chart .bar { fill: var(--s-bar); }
 .chart .bar--sleep { fill: var(--s-sleep); }
 .chart .bar--ready-hi { fill: var(--ok); } .chart .bar--ready-mid { fill: var(--warn); } .chart .bar--ready-lo { fill: var(--bad); }
 .chart .mark { stroke: var(--ink-faint); stroke-dasharray: 3 3; }
 .chart .mark--zero { stroke: var(--line-strong); stroke-dasharray: none; }
 .chart .mark--race { stroke: var(--lime-strong); stroke-dasharray: none; stroke-width: 2; }
+/* `.chart .mark.mark--target` (deux classes) : passe devant `.chart .mark` (une classe,
+   même ordre de déclaration sinon perdant) sans dépendre de l'ordre des règles — la
+   cible doit rester violette même si une règle `.mark` générique est ajoutée après. */
+.chart .mark.mark--target { stroke: var(--s-weight); }
 .chart .mark-label { fill: var(--ink-soft); font: 600 11px var(--text); }
 .chart--strip { margin-top: 0.3rem; }
 .chart .strip-base { stroke: var(--line); }
@@ -282,7 +285,12 @@ select { font: inherit; color: var(--ink); background: var(--surface); border: 1
 .key--bar { background: var(--s-bar); height: 0.6rem; } .key--dplus, .key--rhr { background: var(--s-dplus); }
 .key--green { background: var(--ok); height: 0.6rem; } .key--amber { background: var(--warn); height: 0.6rem; } .key--red { background: var(--bad); height: 0.6rem; }
 .key--year-0 { background: var(--s-year-0); } .key--year-1 { background: var(--s-year-1); } .key--year-2 { background: var(--s-year-2); }
-.key--weight, .key--weight-avg, .key--target { background: var(--s-weight); }
+/* Poids (#36) : même couleur pour les trois séries (violet), mais forme distincte —
+   point pour le poids quotidien, trait plein pour la moyenne 7 j, trait pointillé pour
+   la cible — pour rester lisible même sans percevoir la couleur (daltonisme, N&B). */
+.key--weight { background: var(--s-weight); border-radius: 50%; width: 0.5rem; height: 0.5rem; }
+.key--weight-avg { background: var(--s-weight); height: 0.22rem; }
+.key--target { background: repeating-linear-gradient(to right, var(--s-weight) 0 4px, transparent 4px 7px); height: 0.22rem; }
 .key.cal--1 { background: var(--cal-1); height: 0.8rem; width: 0.8rem; } .key.cal--2 { background: var(--cal-2); height: 0.8rem; width: 0.8rem; }
 .key.cal--3 { background: var(--cal-3); height: 0.8rem; width: 0.8rem; } .key.cal--4 { background: var(--cal-4); height: 0.8rem; width: 0.8rem; }
 

@@ -82,6 +82,7 @@ WEIGHT_AVG_WINDOW_DAYS = 7        # fenêtre de la moyenne mobile affichée dans
 WEIGHT_AVG_MIN_VALID_DAYS = 3     # jours pesés exigés dans ces 7 j, sinon moyenne à None (trop bruitée)
 WEIGHT_SLOPE_WINDOW_DAYS = 28     # fenêtre de la régression (4 semaines)
 WEIGHT_SLOPE_MIN_POINTS = 5       # jours pesés exigés dans ces 28 j pour une pente fiable
+WEIGHT_SLOPE_MIN_SPAN_DAYS = 14   # écart mini entre 1re et dernière pesée : pas de pente sur des points groupés
 
 ASSUMPTIONS = {
     "trimp": "TRIMP de Banister : minutes × FCr × 0,64 × e^(k·FCr), FCr = (FC moy − FC repos) / (FC max − FC repos), "
@@ -150,16 +151,27 @@ ASSUMPTIONS = {
                     "traité comme la pesée du matin — tandis que `nutrition.weight_kg` n'a aucune garantie "
                     "d'horaire. Un jour où les deux sont présents : `health` gagne TOUJOURS, jamais de moyenne "
                     "des deux sources ni de préférence à la plus récemment écrite. Un jour sans aucune des deux : "
-                    "absent, jamais 0.",
+                    "absent, jamais 0. Doublon DANS une même source (deux fichiers santé, ou deux fichiers "
+                    "nutrition, pour la même date — pas d'heure de mesure pour départager) : le `source_path` le "
+                    "plus grand par ordre alphabétique gagne, appliqué en base par `arc_serve.py` (`ORDER BY date, "
+                    "source_path` avant fusion ; `ORDER BY date DESC, source_path DESC` pour la cible la plus "
+                    "récente) — jamais l'ordre arbitraire que rendrait SQLite sans tri explicite.",
     "weight_trend": f"Moyenne mobile {WEIGHT_AVG_WINDOW_DAYS} j du poids fusionné (`weight_merge`) : moyenne des "
                     f"jours PRÉSENTS dans la fenêtre (jour manquant jamais compté 0), rendue seulement à partir de "
-                    f"{WEIGHT_AVG_MIN_VALID_DAYS} jours pesés sur les {WEIGHT_AVG_WINDOW_DAYS}, sinon `None`. Écart "
-                    "à la cible = moyenne 7 j la plus récente − `target_weight_kg` le plus récent connu (nutrition "
-                    "uniquement dans le contrat) ; positif = au-dessus de la cible. Pente 4 semaines : régression "
-                    f"des moindres carrés (x = jour, y = poids fusionné, PAS la moyenne lissée) sur les "
-                    f"{WEIGHT_SLOPE_WINDOW_DAYS} derniers jours, convertie en kg/semaine (× 7) ; rendue seulement à "
-                    f"partir de {WEIGHT_SLOPE_MIN_POINTS} jours pesés dans la fenêtre, sinon `None`. Aucun "
-                    "commentaire normatif n'est dérivé de ces chiffres : chiffres seulement (voir issue #36).",
+                    f"{WEIGHT_AVG_MIN_VALID_DAYS} jours pesés sur les {WEIGHT_AVG_WINDOW_DAYS}, sinon `None`. "
+                    "`avg7_kg`/`gap_kg` exposés par `/api/nutrition` sont TOUJOURS la valeur DU JOUR (aujourd'hui), "
+                    "jamais la dernière moyenne non nulle trouvée plus tôt dans la fenêtre affichée — une pesée "
+                    "vieille de plusieurs semaines ne doit jamais s'afficher comme si elle datait d'aujourd'hui ; "
+                    "`avg7_date` porte la date effectivement utilisée. Écart à la cible = moyenne 7 j du jour − "
+                    "`target_weight_kg` le plus récent connu (nutrition uniquement dans le contrat) ; positif = "
+                    "au-dessus de la cible. Pente 4 semaines : régression des moindres carrés (x = jour, y = poids "
+                    f"fusionné, PAS la moyenne lissée) sur les {WEIGHT_SLOPE_WINDOW_DAYS} derniers jours, convertie "
+                    f"en kg/semaine (× 7) ; rendue seulement à partir de {WEIGHT_SLOPE_MIN_POINTS} jours pesés ET "
+                    f"{WEIGHT_SLOPE_MIN_SPAN_DAYS} jours d'écart entre la première et la dernière pesée de la "
+                    "fenêtre (sinon `None`) — sans ce second seuil, quelques pesées groupées sur deux ou trois "
+                    "jours donneraient une pente extrapolée sur 4 semaines à partir d'un intervalle bien trop "
+                    "court pour être fiable. Aucun commentaire normatif n'est dérivé de ces chiffres : chiffres "
+                    "seulement (voir issue #36).",
 }
 
 # ---------------------------------------------------------------------------
@@ -375,14 +387,16 @@ def weight_avg7_series(weight_by_date: Dict[str, float], start: date, end: date)
 
 def weight_slope_kg_per_week(weight_by_date: Dict[str, float], day: date,
                               window_days: int = WEIGHT_SLOPE_WINDOW_DAYS,
-                              min_points: int = WEIGHT_SLOPE_MIN_POINTS) -> Optional[float]:
+                              min_points: int = WEIGHT_SLOPE_MIN_POINTS,
+                              min_span_days: int = WEIGHT_SLOPE_MIN_SPAN_DAYS) -> Optional[float]:
     """Pente du poids (kg/semaine) sur les `window_days` jours se terminant à `day` inclus.
 
     Régression des moindres carrés sur les valeurs quotidiennes FUSIONNÉES et PRÉSENTES
     (jamais la moyenne mobile lissée) : x = décalage en jours depuis le début de la
-    fenêtre, y = poids. `None` sous `min_points` jours mesurés dans la fenêtre, ou si les
-    points disponibles sont tous au même jour relatif (variance de x nulle) — une pente
-    n'a alors pas de sens.
+    fenêtre, y = poids. `None` sous `min_points` jours mesurés dans la fenêtre, ou si
+    l'écart entre la première et la dernière pesée disponible est sous `min_span_days` —
+    quelques pesées groupées sur deux ou trois jours ne donnent pas une pente fiable sur
+    4 semaines, même avec assez de points bruts.
     """
     points = []
     start = day - timedelta(days=window_days - 1)
@@ -391,6 +405,8 @@ def weight_slope_kg_per_week(weight_by_date: Dict[str, float], day: date,
         if v is not None:
             points.append((offset, v))
     if len(points) < min_points:
+        return None
+    if points[-1][0] - points[0][0] < min_span_days:
         return None
     n = len(points)
     mean_x = sum(p[0] for p in points) / n

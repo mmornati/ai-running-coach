@@ -646,6 +646,23 @@ class TestWeightSlope(unittest.TestCase):
         slope = M.weight_slope_kg_per_week(self.by_date(weights), self.DAY)
         self.assertIsNotNone(slope)
 
+    def test_below_min_span_gives_none_even_with_enough_points(self):
+        """5 pesées (assez pour `WEIGHT_SLOPE_MIN_POINTS`) mais toutes groupées sur 4 jours
+        (offsets 0 à 3, sous `WEIGHT_SLOPE_MIN_SPAN_DAYS` = 14) : pas de pente. Sans ce
+        second seuil, une régression sur un intervalle aussi court serait extrapolée à tort
+        sur 4 semaines entières."""
+        weights = {0: 70.0, 1: 69.9, 2: 69.8, 3: 69.7, 4: 69.6}
+        slope = M.weight_slope_kg_per_week(self.by_date(weights), self.DAY)
+        self.assertIsNone(slope)
+
+    def test_exactly_min_span_is_enough(self):
+        """5 pesées (`WEIGHT_SLOPE_MIN_POINTS`), écart de pile `WEIGHT_SLOPE_MIN_SPAN_DAYS`
+        (14 j) entre la première et la dernière : la pente doit être calculée, pas
+        rejetée."""
+        weights = {0: 70.0, 3: 69.8, 6: 69.6, 10: 69.3, 14: 69.0}
+        slope = M.weight_slope_kg_per_week(self.by_date(weights), self.DAY)
+        self.assertIsNotNone(slope)
+
     def test_missing_days_never_counted_as_zero(self):
         """Une pesée quotidienne complète sur 28 j sauf un trou (offset 14 absent) : le trou
         ne doit jamais entrer dans la régression comme un poids de 0 kg — la pente resterait
