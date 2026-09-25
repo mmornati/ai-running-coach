@@ -63,7 +63,7 @@ import arc_metrics as M  # noqa: E402
 from coach_config import ConfigError, read_toml  # noqa: E402
 from coach_setup import ENGINE, workspace_root  # noqa: E402
 
-SCHEMA_VERSION = 6   # #40 : nouvelle table `gear` (chaussures du profil)
+SCHEMA_VERSION = 7   # #40 : table `gear` (chaussures du profil) + `collision_base` (revue PR #85)
 DEFAULT_DB = ".arc/coach.db"
 DATA_DIRS = ("activities", "medical", "nutrition", "planning", "rapports")
 
@@ -155,7 +155,7 @@ CREATE TABLE athlete (
 );
 CREATE TABLE gear (
     source_path TEXT, gear_id TEXT, name TEXT, start_date TEXT, threshold_m REAL,
-    is_default INTEGER, retired INTEGER
+    is_default INTEGER, retired INTEGER, collision_base TEXT
 );
 CREATE TABLE objective (
     source_path TEXT, name TEXT, race_date TEXT, distance_m REAL, elevation_gain_m REAL,
@@ -459,6 +459,7 @@ def store(conn, rel: str, kind: str, data: dict, arc_version: int) -> None:
                 "source_path": rel, "gear_id": shoe["gear_id"], "name": shoe.get("name"),
                 "start_date": shoe.get("start_date"), "threshold_m": shoe.get("threshold_m"),
                 "is_default": int(bool(shoe.get("default"))), "retired": int(bool(shoe.get("retired"))),
+                "collision_base": shoe.get("collision_base"),
             })
     elif kind == "objective":
         row = {k: g(k) for k in (
@@ -783,9 +784,13 @@ def gear_mileage(conn) -> dict:
     (`coach`, rapport hebdomadaire). N'est pas soumis à `[health].morning_check` :
     ne dépend d'aucune donnée de santé, seulement du profil et des activités."""
     gear_defs = [dict(r) for r in conn.execute(
-        "SELECT gear_id, name, start_date, threshold_m, is_default AS \"default\", retired FROM gear")]
+        "SELECT gear_id, name, start_date, threshold_m, is_default AS \"default\", retired, collision_base "
+        "FROM gear")]
     activities = [dict(r) for r in conn.execute(
-        "SELECT sport, distance_m, gear_id FROM activity WHERE gear_id IS NOT NULL OR sport IN "
+        # `date` : indispensable à `M.gear_mileage` pour filtrer l'attribution par
+        # défaut par `depuis` (revue PR #85, blocker 1) — jamais utilisée pour
+        # exclure une activité à `gear_id` explicite.
+        "SELECT sport, distance_m, gear_id, date FROM activity WHERE gear_id IS NOT NULL OR sport IN "
         f"({', '.join('?' for _ in M.GEAR_WEAR_SPORTS)})", M.GEAR_WEAR_SPORTS).fetchall()]
     return M.gear_mileage(activities, gear_defs)
 

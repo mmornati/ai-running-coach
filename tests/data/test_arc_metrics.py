@@ -1078,6 +1078,79 @@ class TestGearMileage(unittest.TestCase):
             "start_date": None, "default": False, "retired": False, "alert": False,
         }])
 
+    # -- revue PR #85, blocker 1 : date `depuis` filtre l'attribution PAR DÉFAUT --
+
+    def test_default_shoe_start_date_excludes_earlier_gearless_activities(self):
+        """Repro exacte du bug signalé : une chaussure par défaut déclarée
+        `depuis` hier ne doit pas hériter de tout l'historique sans `gear_id`
+        (des années d'activités d'avant #39, où `gear_id` n'existait pas)."""
+        gear = [self.shoe("clifton", default=True, start_date="2026-09-15")]
+        acts = [self.act(distance_m=10000)] * 96
+        for a in acts:
+            a["date"] = "2025-01-15"   # bien avant `depuis`
+        result = M.gear_mileage(acts, gear)
+        self.assertEqual(result["shoes"][0]["distance_m"], 0)
+        self.assertFalse(result["shoes"][0]["alert"])
+
+    def test_default_shoe_start_date_includes_later_gearless_activities(self):
+        gear = [self.shoe("clifton", default=True, start_date="2026-09-15")]
+        acts = [self.act(distance_m=10000)]
+        acts[0]["date"] = "2026-09-20"   # après `depuis`
+        result = M.gear_mileage(acts, gear)
+        self.assertEqual(result["shoes"][0]["distance_m"], 10000)
+
+    def test_default_shoe_start_date_boundary_is_inclusive(self):
+        gear = [self.shoe("clifton", default=True, start_date="2026-09-15")]
+        acts = [self.act(distance_m=10000)]
+        acts[0]["date"] = "2026-09-15"   # égal à `depuis`
+        result = M.gear_mileage(acts, gear)
+        self.assertEqual(result["shoes"][0]["distance_m"], 10000)
+
+    def test_default_shoe_without_start_date_has_no_filter(self):
+        """Sans `depuis` déclaré, comportement inchangé : tout historique compte."""
+        gear = [self.shoe("clifton", default=True)]
+        acts = [self.act(distance_m=10000)]
+        acts[0]["date"] = "2020-01-01"
+        result = M.gear_mileage(acts, gear)
+        self.assertEqual(result["shoes"][0]["distance_m"], 10000)
+
+    def test_default_shoe_missing_activity_date_is_excluded_when_start_date_set(self):
+        """Sans `date` sur l'activité, impossible de vérifier `>= depuis` : on
+        n'attribue PAS, plutôt que de risquer la même surestimation silencieuse."""
+        gear = [self.shoe("clifton", default=True, start_date="2026-09-15")]
+        result = M.gear_mileage([self.act(distance_m=10000)], gear)   # pas de "date"
+        self.assertEqual(result["shoes"][0]["distance_m"], 0)
+
+    def test_explicit_gear_id_never_filtered_by_default_shoe_start_date(self):
+        """L'explicite du `gear_id` prime toujours — seule l'attribution PAR
+        DÉFAUT est filtrée par `depuis` (voir ASSUMPTIONS)."""
+        gear = [self.shoe("clifton", default=True, start_date="2026-09-15")]
+        acts = [self.act(gear_id="clifton", distance_m=10000)]
+        acts[0]["date"] = "2025-01-15"   # avant `depuis`, mais gear_id explicite
+        result = M.gear_mileage(acts, gear)
+        self.assertEqual(result["shoes"][0]["distance_m"], 10000)
+
+    # -- revue PR #85, blocker 2 : collision de slug signalée --------------
+
+    def test_collision_base_surfaces_a_warning(self):
+        gear = [self.shoe("hoka-speedgoat-5", name="Hoka Speedgoat 5"),
+                self.shoe("hoka-speedgoat-5-2", name="Hoka Speedgoat 5", collision_base="hoka-speedgoat-5")]
+        result = M.gear_mileage([], gear)
+        self.assertEqual(len(result["warnings"]), 1)
+        self.assertIn("hoka-speedgoat-5", result["warnings"][0])
+
+    def test_no_collision_no_warnings(self):
+        result = M.gear_mileage([], [self.shoe("a"), self.shoe("b")])
+        self.assertEqual(result["warnings"], [])
+
+    # -- revue PR #85, nit : sérialisation du seuil normalisée --------------
+
+    def test_threshold_is_always_an_int(self):
+        gear = [self.shoe("a", threshold_m=500000.0), self.shoe("b")]
+        result = M.gear_mileage([], gear)
+        for shoe in result["shoes"]:
+            self.assertIsInstance(shoe["threshold_m"], int)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -322,26 +322,38 @@ ASSUMPTIONS = {
                  f"plausible {SWEAT_RATE_PLAUSIBLE_L_H[0]:g}-{SWEAT_RATE_PLAUSIBLE_L_H[1]:g} l/h → `None`, jamais "
                  "affiché tel quel. Alimente #41 (KPI glucides/h et taux de sudation).",
     "gear_mileage": "Kilométrage chaussures (#40) : somme de `distance_m` des activités de sport dans "
-                 f"`GEAR_WEAR_SPORTS` ({', '.join(GEAR_WEAR_SPORTS)}) — course et randonnée seulement, un "
-                 "sport hors de cette liste (vélo, natation, renforcement…) n'est jamais compté, même avec un "
-                 "`gear_id` renseigné par erreur. Attribution : `gear_id` explicite de l'activité si présent, "
-                 "sinon la chaussure marquée `(par défaut)` dans le profil si une seule l'est (la première "
-                 "rencontrée si plusieurs, cas non censé arriver mais pas une erreur), sinon la séance est "
-                 "IGNORÉE (ni comptée nulle part, ni signalée) — c'est le comportement documenté par #40 : sans "
-                 "chaussure par défaut déclarée, une activité sans `gear_id` n'a simplement rien à raconter côté "
-                 "matériel. `gear_id` explicite qui ne correspond à AUCUNE chaussure du profil (faute de frappe, "
-                 "chaussure jamais déclarée) : jamais éliminé silencieusement, regroupé sous `unknown` avec son "
-                 "kilométrage — libellé « inconnue » côté tableau de bord. Date `depuis` du profil : purement "
-                 "informative (affichage), jamais un filtre — une activité portant le `gear_id` d'une chaussure "
-                 "datée plus tard est comptée quand même (l'explicite du `gear_id` prime sur une date de début "
-                 "possiblement oubliée ou approximative) ; ne pas la compter risquerait de sous-estimer "
+                 f"`GEAR_WEAR_SPORTS` ({', '.join(GEAR_WEAR_SPORTS)}) — course et randonnée seulement (la "
+                 "marche, `walking`, n'y est délibérément PAS incluse : elle use une semelle bien plus lentement "
+                 "et le contrat ne distingue pas une marche d'entraînement d'une simple promenade), un sport "
+                 "hors de cette liste (vélo, natation, renforcement…) n'est jamais compté, même avec un "
+                 "`gear_id` renseigné par erreur. Attribution : `gear_id` explicite de l'activité si présent — "
+                 "JAMAIS filtré par une date, voir plus bas — sinon la chaussure marquée `(par défaut)` dans le "
+                 "profil si une seule l'est (la première rencontrée si plusieurs, cas non censé arriver mais pas "
+                 "une erreur), sinon la séance est IGNORÉE (ni comptée nulle part, ni signalée) — c'est le "
+                 "comportement documenté par #40 : sans chaussure par défaut déclarée, une activité sans "
+                 "`gear_id` n'a simplement rien à raconter côté matériel. `gear_id` explicite qui ne correspond "
+                 "à AUCUNE chaussure du profil (faute de frappe, chaussure jamais déclarée) : jamais éliminé "
+                 "silencieusement, regroupé sous `unknown` avec son kilométrage — libellé « inconnue » côté "
+                 "tableau de bord. Date `depuis` du profil : filtre l'attribution PAR DÉFAUT SEULEMENT (revue "
+                 "PR #85, blocker 1) — une séance sans `gear_id` datée AVANT le `depuis` de la chaussure "
+                 "`(par défaut)` n'y est PAS attribuée (sans ce filtre, toute activité antérieure à #39, y "
+                 "compris des années d'historique sans `gear_id` au contrat, se retrouverait comptée sur une "
+                 "paire achetée hier) ; sans `depuis` déclaré sur la chaussure par défaut, aucun filtre, comme "
+                 "avant. À l'inverse, une activité portant un `gear_id` EXPLICITE compte quel que soit son "
+                 "rapport à `depuis` (même avant) : l'explicite du `gear_id` prime toujours sur une date de "
+                 "début possiblement oubliée ou approximative — ne pas la compter risquerait de sous-estimer "
                  "silencieusement l'usure réelle, l'erreur la plus coûteuse ici. Seuil d'alerte : celui de la "
-                 f"puce (segment « alerte NNN km ») si renseigné, sinon {GEAR_ALERT_THRESHOLD_M_DEFAULT / 1000:g} km "
-                 "par défaut (`GEAR_ALERT_THRESHOLD_M_DEFAULT`) — TOUTE chaussure déclarée peut donc alerter, "
-                 "avec ou sans seuil explicite. Chaussure `(retirée)` : kilométrage affiché (historique), mais "
-                 "jamais d'alerte, et jamais candidate à l'attribution par défaut même si `(par défaut)` est "
-                 "aussi coché sur la même puce (une chaussure qu'on ne porte plus ne doit pas absorber les "
-                 "séances sans `gear_id`) — priorité documentée : retraite avant défaut.",
+                 f"puce (segment « alerte NNN km », ou « alerte NNN miles/mi » — converti × 1609,344 — voir "
+                 f"`arc_legacy.parse_gear`) si renseigné, sinon {GEAR_ALERT_THRESHOLD_M_DEFAULT / 1000:g} km par "
+                 "défaut (`GEAR_ALERT_THRESHOLD_M_DEFAULT`) — TOUTE chaussure déclarée peut donc alerter, avec "
+                 "ou sans seuil explicite ; `threshold_m` toujours arrondi à l'entier avant sérialisation "
+                 "(cohérence de type JSON, valeur déclarée ou valeur par défaut). Chaussure `(retirée)` : "
+                 "kilométrage affiché (historique), mais jamais d'alerte, et jamais candidate à l'attribution "
+                 "par défaut même si `(par défaut)` est aussi coché sur la même puce (une chaussure qu'on ne "
+                 "porte plus ne doit pas absorber les séances sans `gear_id`) — priorité documentée : retraite "
+                 "avant défaut. Deux puces qui dérivent le même slug (rachat du même modèle sans `id:` pour les "
+                 "distinguer) : `arc_legacy.parse_gear` renomme les suivantes `-2`, `-3`… plutôt que de laisser "
+                 "la dernière écraser la première dans l'index, et la collision remonte dans `warnings`.",
 }
 
 # ---------------------------------------------------------------------------
@@ -748,20 +760,34 @@ def sweat_rate_l_h(activity: dict) -> Optional[float]:
 def gear_mileage(activities: List[dict], gear_defs: List[dict]) -> dict:
     """Kilométrage cumulé par chaussure (#40). Voir `ASSUMPTIONS["gear_mileage"]`
     pour la méthode complète (attribution, chaussure par défaut, `gear_id` inconnu,
-    date `depuis` purement informative, priorité retraite/défaut).
+    date `depuis` filtrant l'attribution PAR DÉFAUT seulement, priorité
+    retraite/défaut).
 
     `activities` : dicts portant au moins `sport`, `distance_m` (optionnel — une
-    séance sans distance ne contribue rien) et `gear_id` (optionnel). `gear_defs` :
-    liste au format `arc_legacy.parse_gear` (`gear_id`, `name`, `start_date`,
-    `threshold_m`, `default`, `retired`).
+    séance sans distance ne contribue rien), `gear_id` (optionnel) et `date`
+    (AAAA-MM-JJ — nécessaire pour filtrer l'attribution par défaut par `depuis`,
+    voir plus bas ; son absence n'exclut jamais une activité à `gear_id` explicite).
+    `gear_defs` : liste au format `arc_legacy.parse_gear` (`gear_id`, `name`,
+    `start_date`, `threshold_m`, `default`, `retired`, `collision_base`).
 
-    Rend `{"shoes": [...], "unknown": [...]}` : `shoes` couvre TOUTE chaussure
-    déclarée dans le profil, y compris à 0 m (l'athlète voit sa liste complète),
-    chacune avec `distance_m`, `alert` (bool) et les champs du profil ; `unknown`
-    liste les `gear_id` vus sur une activité mais absents du profil, avec leur
-    seul kilométrage (pas de nom, pas de seuil — rien à afficher de plus)."""
+    Rend `{"shoes": [...], "unknown": [...], "warnings": [...]}` : `shoes` couvre
+    TOUTE chaussure déclarée dans le profil, y compris à 0 m (l'athlète voit sa
+    liste complète), chacune avec `distance_m`, `alert` (bool) et les champs du
+    profil ; `unknown` liste les `gear_id` vus sur une activité mais absents du
+    profil, avec leur seul kilométrage (pas de nom, pas de seuil — rien à
+    afficher de plus) ; `warnings` signale toute collision de `gear_id` dérivé
+    détectée par `arc_legacy.parse_gear` (revue #85 blocker 2)."""
     by_id = {g["gear_id"]: dict(g) for g in gear_defs if g.get("gear_id")}
-    default_id = next((gid for gid, g in by_id.items() if g.get("default") and not g.get("retired")), None)
+    default_entry = next((g for g in by_id.values() if g.get("default") and not g.get("retired")), None)
+    default_id = default_entry["gear_id"] if default_entry else None
+    # Revue #85 blocker 1 : une chaussure par défaut déclarée avec `depuis` ne doit
+    # RÉCUPÉRER que les séances postérieures (ou égales) à cette date — sans ce
+    # filtre, TOUT l'historique sans `gear_id` (y compris des années d'activités
+    # d'avant #39, où `gear_id` n'existait même pas encore dans le contrat) se
+    # retrouve attribué à une paire achetée hier. Seule l'attribution PAR DÉFAUT
+    # est filtrée : un `gear_id` EXPLICITE sur l'activité n'est jamais remis en
+    # cause par la date (voir ASSUMPTIONS["gear_mileage"]).
+    default_start = default_entry.get("start_date") if default_entry else None
 
     totals: Dict[str, float] = {}
     for act in activities:
@@ -770,15 +796,20 @@ def gear_mileage(activities: List[dict], gear_defs: List[dict]) -> dict:
         distance = act.get("distance_m")
         if not distance:
             continue
-        gear_id = act.get("gear_id") or default_id
+        gear_id = act.get("gear_id")
         if not gear_id:
-            continue
+            if not default_id:
+                continue
+            if default_start and (not act.get("date") or act["date"] < default_start):
+                continue    # séance antérieure à l'entrée en service de la chaussure par défaut
+            gear_id = default_id
         totals[gear_id] = totals.get(gear_id, 0.0) + distance
 
     shoes = []
+    warnings = []
     for gear_id, g in by_id.items():
         distance_m = round(totals.get(gear_id, 0.0))
-        threshold_m = g.get("threshold_m") or GEAR_ALERT_THRESHOLD_M_DEFAULT
+        threshold_m = round(g.get("threshold_m") or GEAR_ALERT_THRESHOLD_M_DEFAULT)
         retired = bool(g.get("retired"))
         shoes.append({
             "gear_id": gear_id, "name": g.get("name") or gear_id, "distance_m": distance_m,
@@ -786,10 +817,17 @@ def gear_mileage(activities: List[dict], gear_defs: List[dict]) -> dict:
             "default": bool(g.get("default")), "retired": retired,
             "alert": (not retired) and distance_m >= threshold_m,
         })
+        collision_base = g.get("collision_base")
+        if collision_base:
+            warnings.append(
+                f"« {g.get('name') or gear_id} » dérive le même identifiant (« {collision_base} ») qu'une "
+                f"autre chaussure du profil — renommé « {gear_id} » automatiquement ; ajoutez un `id:` "
+                "explicite sur chaque puce pour lever l'ambiguïté (même modèle racheté, deux paires distinctes).")
     unknown = [{"gear_id": gid, "distance_m": round(m)} for gid, m in totals.items() if gid not in by_id]
     shoes.sort(key=lambda s: s["name"].casefold())
     unknown.sort(key=lambda s: s["gear_id"])
-    return {"shoes": shoes, "unknown": unknown}
+    warnings.sort()
+    return {"shoes": shoes, "unknown": unknown, "warnings": warnings}
 
 
 def predict_time_vdot(vdot_value: float, distance_m: float) -> Optional[float]:

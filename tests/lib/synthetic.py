@@ -569,6 +569,11 @@ def build(root: Path, days: int = 120, today: date | None = None, sport: str = "
     for folder in ("activities", "medical", "nutrition", "planning", "rapports", "resources"):
         (root / folder).mkdir(parents=True, exist_ok=True)
 
+    # Adidas Adizero SL : seuil bas (50 km, pas les 500 km d'une vraie chaussure)
+    # exprès — les séances qualité (~57 km cumulés sur la fenêtre, déterministe,
+    # cf. `data["gear_id"] = "adizero-sl"` plus bas) le dépassent TOUJOURS, ce qui
+    # verrouille `alert: true` dans les goldens sans dépendre d'un tirage `rng`
+    # (revue PR #85, point 7).
     (root / "planning/Runner_Profile.md").write_text(f"""# Profil de l'athlète
 
 ## Physiologie
@@ -587,7 +592,7 @@ def build(root: Path, days: int = 120, today: date | None = None, sport: str = "
 ### Chaussures
 
 - Hoka Speedgoat 5 (bleue) — depuis 2026-01-01 — alerte 700 km — id: hoka-speedgoat-5-bleue (par défaut)
-- Adidas Adizero SL — alerte 500 km — id: adizero-sl
+- Adidas Adizero SL — alerte 50 km — id: adizero-sl
 - Nike Pegasus (retirée)
 """, encoding="utf-8")
     (root / "planning/active_objective.md").write_text(f"""# Objectif actif

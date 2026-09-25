@@ -45,18 +45,29 @@
 ### Chaussures
 
 <!--
-  Une puce par paire, tout est facultatif sauf le nom. Segments séparés par un
-  tiret cadratin " — " (jamais un simple "-", qui peut faire partie du nom) :
+  Une puce de PREMIER NIVEAU par paire (pas de puce indentée dessous, elle
+  serait ignorée comme chaussure et repliée dans la ligne du dessus), tout est
+  facultatif sauf le nom. Segments séparés par un tiret cadratin " — " (le plus
+  lisible), ou par un simple tiret ENTOURÉ D'ESPACES " - " (jamais un tiret
+  sans espaces, qui peut faire partie du nom, ex. « Ultra-Trail ») :
     - <nom> — depuis <AAAA-MM-JJ> — alerte <N> km — id: <identifiant> (par défaut)
 
-  - "depuis" : date d'achat (informative seulement, n'exclut aucune séance).
-  - "alerte" : seuil d'usure propre à cette paire, en km (sinon 700 km par défaut).
+  - "depuis" : date d'achat — AAAA-MM-JJ, ou juste "mars 2026"/"03/2026" (1er du
+    mois). Depuis #40, filtre l'attribution automatique des séances SANS
+    matériel précisé à la chaussure "(par défaut)" (une séance datée avant
+    n'y est pas rattachée) — sans effet sur une séance qui cite cet id.
+  - "alerte" : seuil d'usure propre à cette paire, en km (ou "N miles"/"N mi",
+    converti), sinon 700 km par défaut.
   - "id:" : identifiant explicite (sinon dérivé automatiquement du nom).
+    OBLIGATOIRE si vous rachetez le même modèle (deux puces au même nom sans
+    id explicite se voient sinon attribuer un identifiant renommé -2, -3… et
+    un avertissement au tableau de bord).
   - "(par défaut)" : chaussure attribuée aux séances sans matériel précisé.
   - "(retirée)" : sortie de rotation — kilométrage conservé, jamais d'alerte.
 
   Exemple (à adapter, effacer les lignes que vous ne remplissez pas) :
   - Hoka Speedgoat 5 (bleues) — depuis 2026-03-01 — alerte 700 km — id: speedgoat-bleues (par défaut)
+  - Hoka Speedgoat 5 (grises) — depuis 2026-09-01 — id: speedgoat-grises
   - Nike Pegasus (retirée)
 -->
 

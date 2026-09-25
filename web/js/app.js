@@ -166,9 +166,10 @@ function gearTile(gear) {
 function gearSection(gear) {
   const shoes = gear?.shoes || [];
   const unknown = gear?.unknown || [];
+  const warnings = gear?.warnings || [];
   if (!shoes.length && !unknown.length) return "";
   const sorted = [...shoes].sort((a, b) => (a.retired === b.retired ? 0 : a.retired ? 1 : -1));
-  const rows = sorted.map((s) => `<tr class="${s.retired ? "muted" : ""}">
+  const rows = sorted.map((s) => `<tr${s.retired ? ` class="muted"` : ""}>
       <th scope="row">${F.esc(s.name)}${s.default ? ` <span class="tag">défaut</span>` : ""}${s.retired ? ` <span class="tag">retirée</span>` : ""}</th>
       <td class="num">${F.distance(s.distance_m, 0)}</td>
       <td class="num">${F.distance(s.threshold_m, 0)}</td>
@@ -177,7 +178,8 @@ function gearSection(gear) {
   return `<section class="band"><h2>Matériel</h2><table class="data data--compact">
       <thead><tr><th scope="col">Chaussure</th><th scope="col" class="num">Kilométrage</th><th scope="col" class="num">Seuil d'alerte</th><th scope="col">Statut</th></tr></thead>
       <tbody>${rows}${unknownRows}</tbody></table>
-      ${unknown.length ? note("« inconnue » : gear_id vu sur une séance mais absent de la section « Chaussures » du profil (faute de frappe, paire jamais déclarée).") : ""}</section>`;
+      ${unknown.length ? note("« inconnue » : gear_id vu sur une séance mais absent de la section « Chaussures » du profil (faute de frappe, paire jamais déclarée).") : ""}
+      ${warnings.map((w) => note(F.esc(w))).join("")}</section>`;
 }
 
 // ---------------------------------------------------------------------------

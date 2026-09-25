@@ -151,35 +151,46 @@ seul le nom est obligatoire :
 - Nike Pegasus (retirée)
 ```
 
-Segments séparés par un tiret cadratin/demi-cadratin **entouré d'espaces**
-(`—`/`–`, jamais un simple `-` : un nom de modèle peut légitimement en
-contenir un, ex. « Salomon S/Lab ») : `depuis AAAA-MM-JJ` (date d'achat,
-informative seulement — voir plus bas), `alerte N km` (seuil d'alerte propre
-à cette paire), `id: <texte>` (identifiant explicite, passé par `gear_slug`
-comme n'importe quel `gear_id`). `(par défaut)` et `(retirée)` peuvent être
-accolés n'importe où sur la ligne. `arc_legacy.parse_gear` lit cette
-sous-section ; `scripts/arc_index.py` l'indexe dans la table dérivée `gear`
-(une ligne par chaussure) ; `arc_metrics.gear_mileage` calcule le kilométrage
-cumulé — voir `arc_metrics.ASSUMPTIONS["gear_mileage"]` pour la méthode
-complète. En résumé :
+Une puce de **premier niveau** par paire — une puce indentée en dessous n'est
+jamais une chaussure à part, elle est repliée dans les segments de la
+chaussure précédente. Segments séparés par un tiret cadratin/demi-cadratin
+(`—`/`–`, espaces autour optionnels), par un simple tiret **entouré
+d'espaces** (` - ` : un nom de modèle peut légitimement contenir un trait
+d'union SANS espaces, ex. « Salomon S/Lab Ultra-Trail », qui reste intact),
+ou par un deux-points suivi d'un mot-clé reconnu : `depuis AAAA-MM-JJ` (ou
+« mars 2026 »/« 03/2026 », 1er du mois — date d'achat), `alerte N km` (ou
+`N miles`/`N mi`, convertis), `id: <texte>` (identifiant explicite, passé par
+`gear_slug` comme n'importe quel `gear_id`). `(par défaut)` et `(retirée)`
+peuvent être accolés n'importe où sur la ligne. `arc_legacy.parse_gear` lit
+cette sous-section ; `scripts/arc_index.py` l'indexe dans la table dérivée
+`gear` (une ligne par chaussure) ; `arc_metrics.gear_mileage` calcule le
+kilométrage cumulé — voir `arc_metrics.ASSUMPTIONS["gear_mileage"]` pour la
+méthode complète. En résumé :
 
 - Kilométrage = somme de `distance_m` des activités de sport course/randonnée
-  (`arc_metrics.GEAR_WEAR_SPORTS`) portant ce `gear_id` — vélo, natation,
-  renforcement… n'usent jamais une paire de chaussures de course, même avec un
-  `gear_id` renseigné par erreur.
+  (`arc_metrics.GEAR_WEAR_SPORTS` : course, trail, randonnée — PAS la marche)
+  portant ce `gear_id` — vélo, natation, renforcement… n'usent jamais une
+  paire de chaussures de course, même avec un `gear_id` renseigné par erreur.
 - Séance sans `gear_id` → attribuée à la chaussure `(par défaut)` si une seule
   est déclarée, sinon **ignorée** (ni comptée, ni signalée).
 - `gear_id` explicite absent du profil (faute de frappe, paire jamais
   déclarée) → jamais éliminé silencieusement, regroupé à part (« inconnue »
   côté tableau de bord) avec son propre kilométrage.
-- `depuis` est purement informatif : une activité portant ce `gear_id` compte
-  même datée avant cette date (l'explicite du `gear_id` prime sur une date de
-  début possiblement approximative).
+- `depuis` filtre **seulement** l'attribution PAR DÉFAUT : une séance sans
+  `gear_id` datée avant le `depuis` de la chaussure `(par défaut)` n'y est pas
+  rattachée (sinon tout un historique d'avant #39, sans `gear_id` au contrat,
+  se retrouverait crédité à une paire achetée hier). Une séance portant un
+  `gear_id` EXPLICITE compte quel que soit son rapport à `depuis` : l'explicite
+  prime toujours sur une date de début possiblement approximative.
 - Seuil d'alerte : celui de la puce si renseigné, sinon
   `arc_metrics.GEAR_ALERT_THRESHOLD_M_DEFAULT` (700 km).
 - `(retirée)` : kilométrage toujours affiché (historique), jamais d'alerte,
   jamais candidate à l'attribution par défaut (priorité retraite avant
   défaut, même si `(par défaut)` est aussi coché sur la même puce).
+- Deux puces qui dérivent le même `gear_id` (même modèle racheté sans `id:`
+  pour les distinguer) : la première garde le slug nu, les suivantes reçoivent
+  `-2`, `-3`… et une collision signalée dans `gear_mileage().warnings` — pour
+  l'éviter, donnez un `id:` explicite à chaque paire du même modèle.
 
 `carbs_g` et `fluid_intake_ml` viennent d'une déclaration de l'athlète (gels,
 barres, boisson…) pendant ou juste après la séance — jamais une valeur

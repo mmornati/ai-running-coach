@@ -88,7 +88,7 @@ class TestGearSummary(GearApi):
 
     def test_no_profile_gear_section_is_empty_not_an_error(self):
         gear = self.summary()["gear"]
-        self.assertEqual(gear, {"shoes": [], "unknown": []})
+        self.assertEqual(gear, {"shoes": [], "unknown": [], "warnings": []})
 
 
 if __name__ == "__main__":
