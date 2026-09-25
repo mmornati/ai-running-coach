@@ -507,6 +507,41 @@ class TestIndexFreshness(InstallAsserts):
             self.assertEqual(check["status"], "warning")
             self.assertIn("supprimé", check["message"])
 
+    def test_fit_sample_files_never_trigger_a_false_deleted_warning(self):
+        """Régression (#42, revue PR #87, blocker 2) : `activities/fit/*.json` (échantillons
+        FIT, table dédiée `sample_file`) ne doit JAMAIS apparaître dans `source_file`
+        (celui-ci est comparé à `arc_index.discover()`, qui ne liste que les Markdown du
+        contrat) — sinon chaque fichier FIT ingéré déclencherait un faux « fichier(s)
+        supprimé(s) » permanent, jamais nettoyé même par --rebuild."""
+        with Sandbox() as sb:
+            activities = sb.repo / "activities"
+            activities.mkdir(parents=True, exist_ok=True)
+            (activities / "2026-09-24_running.md").write_text(
+                "# Séance\n\n```arc\n"
+                '{"arc": 1, "kind": "activity", "date": "2026-09-24", "sport": "trail", '
+                '"duration_s": 3600, "distance_m": 10000, "garmin_activity_id": 90000000005}\n'
+                "```\n"
+            )
+            fit_dir = activities / "fit"
+            fit_dir.mkdir(parents=True, exist_ok=True)
+            (fit_dir / "90000000005.json").write_text(json.dumps({
+                "activity_id": 90000000005,
+                "records": [{"t_s": t, "distance_m": float(t) * 2.5, "altitude_m": 0.0,
+                             "hr_bpm": 140.0, "speed_ms": 2.5, "cadence_spm": 170.0} for t in range(10)],
+            }))
+            self._build_real_index(sb)
+
+            proc = sb.script("coach_doctor.py", "--json", "--tokens-dir", str(_fresh_tokens_dir(sb)))
+            check = _find(json.loads(proc.stdout), "index_freshness")
+            self.assertEqual(check["status"], "ok", check)
+
+            # Idem après --rebuild : le bug historique ne se serait jamais résorbé.
+            proc = sb.run(["python3", str(sb.repo / "scripts" / "arc_index.py"), "--rebuild"])
+            self.assertSucceeded(proc)
+            proc = sb.script("coach_doctor.py", "--json", "--tokens-dir", str(_fresh_tokens_dir(sb)))
+            check = _find(json.loads(proc.stdout), "index_freshness")
+            self.assertEqual(check["status"], "ok", check)
+
 
 class TestOutOfContract(InstallAsserts):
     def test_out_of_contract_counted_against_real_index(self):
@@ -516,6 +551,33 @@ class TestOutOfContract(InstallAsserts):
             (activities / "2026-09-24_running.md").write_text(
                 "# Séance sans bloc ```arc — hors contrat\n\nTexte libre uniquement.\n"
             )
+            proc = sb.run(["python3", str(sb.repo / "scripts" / "arc_index.py")])
+            self.assertSucceeded(proc)
+
+            proc = sb.script("coach_doctor.py", "--json", "--tokens-dir", str(_fresh_tokens_dir(sb)))
+            check = _find(json.loads(proc.stdout), "out_of_contract")
+            self.assertEqual(check["status"], "warning")
+            self.assertIn("1 fichier", check["message"])
+
+    def test_orphan_fit_sample_never_counted_as_out_of_contract(self):
+        """Régression (#42, revue PR #87, blocker 2) : un fichier FIT sans activité
+        correspondante (`activities/fit/999….json`) est une situation normale (FIT
+        téléchargé avant le Markdown) — jamais une dette de contrat comptée par
+        `out_of_contract`, qui ne doit voir QUE le fichier Markdown réellement hors
+        contrat ci-dessous (comptage à « 1 », pas « 2 »)."""
+        with Sandbox() as sb:
+            activities = sb.repo / "activities"
+            activities.mkdir(parents=True, exist_ok=True)
+            (activities / "2026-09-24_running.md").write_text(
+                "# Séance sans bloc ```arc — hors contrat\n\nTexte libre uniquement.\n"
+            )
+            fit_dir = activities / "fit"
+            fit_dir.mkdir(parents=True, exist_ok=True)
+            (fit_dir / "999999999999.json").write_text(json.dumps({
+                "activity_id": 999999999999,
+                "records": [{"t_s": 0, "distance_m": 0.0, "altitude_m": 0.0,
+                             "hr_bpm": 140.0, "speed_ms": 2.5, "cadence_spm": 170.0}],
+            }))
             proc = sb.run(["python3", str(sb.repo / "scripts" / "arc_index.py")])
             self.assertSucceeded(proc)
 

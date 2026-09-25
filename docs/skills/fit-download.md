@@ -24,6 +24,12 @@
 
 `skills/fit-download/scripts/download_fit.py` — nécessite `garminconnect` + `fitparse` (disponibles dans l'environnement garmin-mcp).
 
+Avec `--json`, écrit aussi une copie **normalisée** au chemin canonique
+`activities/fit/<garmin_activity_id>.json` (unités SI, mapping documenté dans
+`scripts/arc_samples.py`) — c'est ce fichier que `scripts/arc_index.py` ingère dans la
+table dérivée `activity_sample` (voir [Mode headless](../dashboard/headless.md)).
+Donnée brute et jetable, jamais versionnée.
+
 ## Fichier source
 
 `skills/fit-download/SKILL.md`

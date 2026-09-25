@@ -98,6 +98,18 @@ restent synchronisées dans les deux sens. Un conflit (même fichier modifié de
 annule le rebase et est signalé dans la notification, sans bloquer la synchronisation. Le
 push suppose une clé SSH sur la machine coach autorisée sur votre dépôt.
 
+!!! note "Échantillons FIT (#42) : jamais dans le `git add -A`"
+    `daily-sync` peut aussi télécharger le FIT de chaque nouvelle séance
+    ([mode headless](dashboard/headless.md)) : `activities/<id>.fit` et
+    `activities/<id>.records.json` (pistes GPS complètes, plusieurs centaines de Ko par
+    séance) et leur copie normalisée `activities/fit/<id>.json`. Les trois sont des
+    données **brutes et jetables**, reconstruites depuis Garmin à tout moment — jamais
+    versionnées, même ici, même avec `git_autocommit = true`. `download_fit.py` dépose
+    un `.gitignore` (`*.fit`, `*.records.json` dans `activities/`, un blanket-ignore dans
+    `activities/fit/`) dès son premier téléchargement dans le workspace : rien à faire
+    de votre côté, ce marqueur suffit à les exclure du `git add -A` de `daily-sync`
+    comme d'un `git add` manuel.
+
 Sur le portable : `git pull` avant de travailler, `git push` après.
 
 ## Suivre les mises à jour du moteur
