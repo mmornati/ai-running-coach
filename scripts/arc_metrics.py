@@ -83,6 +83,12 @@ PREDICTION_DISTANCES_M = (5000.0, 10000.0, 21097.5, 42195.0)
 SLEEP_DEBT_WINDOW_DAYS = 7        # fenêtre glissante
 SLEEP_DEBT_MIN_NIGHTS = 4         # nuits mesurées exigées dans ces 7 j, sinon `None`
 SLEEP_NEED_DEFAULT_S = 7 * 3600 + 30 * 60   # 7 h 30 : défaut de l'issue #37, si le profil est vide
+# Seuils d'affichage (tableau de bord ET prose des agents) : repères indicatifs, pas
+# un seuil médical — même statut que `ACWR_SAFE` ci-dessus. Choisis pour que le seuil
+# « à surveiller » corresponde à peu près à une nuit complète de dette accumulée sur
+# la fenêtre, et « nettement » à deux.
+SLEEP_DEBT_WARN_S = 5 * 3600      # 5 h cumulées sur 7 j : à surveiller
+SLEEP_DEBT_ALERT_S = 10 * 3600    # 10 h cumulées sur 7 j : nettement, allègement recommandé
 
 # Tendance du poids (#36) : moyenne mobile 7 j vs cible, pente 4 semaines.
 WEIGHT_AVG_WINDOW_DAYS = 7        # fenêtre de la moyenne mobile affichée dans le graphique
@@ -167,7 +173,19 @@ ASSUMPTIONS = {
                  "suppose une récupération linéaire et immédiate que la littérature sur la dette de "
                  "sommeil ne documente pas (contrairement, par exemple, à la charge d'entraînement où "
                  "un jour de repos réduit authentiquement la fatigue accumulée) ; deux nuits courtes "
-                 "suivies d'une longue nuit restent donc un déficit réel, pas un solde nul. Besoin "
+                 "suivies d'une longue nuit restent donc un déficit réel, pas un solde nul. Ce plafonnage "
+                 "par nuit est délibérément plus CONSERVATEUR qu'un modèle de remboursement partiel "
+                 "(« recovery sleep ») : la littérature sur la privation chronique de sommeil documente "
+                 "une récupération réelle mais partielle et non linéaire des déficits (ex. Belenky et al. "
+                 "2003 ; Banks & Dinges 2007, revue sur la dette de sommeil cumulative et la récupération "
+                 "incomplète après une seule nuit de rattrapage) — nous ne modélisons aucun remboursement "
+                 "du tout, par prudence, plutôt que de choisir un taux de remboursement partiel arbitraire "
+                 "et invérifiable sur ce workspace. Seuils d'AFFICHAGE (tableau de bord, prose des agents), "
+                 "repères indicatifs et non médicaux, même statut que `ACWR_SAFE` : "
+                 f"{SLEEP_DEBT_WARN_S / 3600:g} h cumulées sur la fenêtre → « à surveiller », "
+                 f"{SLEEP_DEBT_ALERT_S / 3600:g} h → « nettement », allègement recommandé — exposés "
+                 "par `/api/health` (`thresholds.sleep_debt_warn_h`/`sleep_debt_alert_h`), jamais recalculés "
+                 "séparément côté JS. Besoin "
                  "(`sleep_need_s`) : lu dans `planning/Runner_Profile.md` (« Besoin de sommeil », "
                  f"`arc_legacy.parse_profile`), sinon {SLEEP_NEED_DEFAULT_S / 3600:g} h par défaut "
                  "(7 h 30, valeur de l'issue #37) — jamais 8 h, chiffre plus courant mais non retenu ici. "

@@ -241,17 +241,22 @@ async function viewToday() {
         : "médiane 7 j indisponible";
       rows.push(["FC de repos", latest.resting_hr_bpm != null ? `${F.num(latest.resting_hr_bpm)} bpm` : "—",
         rangeBar(latest.resting_hr_bpm, latest.rhr_median7 != null ? latest.rhr_median7 - 3 : null, latest.rhr_median7 != null ? latest.rhr_median7 + 5 : null, 30, 70, d > 7 ? "range--alert" : d >= 5 ? "range--warn" : ""), rhrTxt]);
-      // Dette de sommeil 7 j (#37) : `nights_counted` est toujours rendu par l'API, même
-      // sous le seuil de nuits mesurées — on distingue donc « pas assez de nuits » de
-      // « aucune dette » plutôt que d'afficher un simple tiret dans les deux cas.
-      if (latest.sleep_debt_7d_s != null) {
-        const debtH = latest.sleep_debt_7d_s / 3600;
+      // Dette de sommeil 7 j (#37) : lue depuis `/api/summary` (calculée pour AUJOURD'HUI
+      // précisément), pas depuis `latest` (qui peut retomber sur un jour plus ancien si
+      // rien n'a encore été synchronisé aujourd'hui — `nights_counted` est toujours rendu
+      // par l'API, même sous le seuil de nuits mesurées, pour distinguer « pas assez de
+      // nuits » de « aucune dette » plutôt que d'afficher un simple tiret dans les deux cas.
+      const debt = s.sleep_debt;
+      const debtWarnH = health.thresholds?.sleep_debt_warn_h ?? 5;
+      const debtAlertH = health.thresholds?.sleep_debt_alert_h ?? 10;
+      if (debt && debt.sleep_debt_7d_s != null) {
+        const debtH = debt.sleep_debt_7d_s / 3600;
         rows.push(["Dette de sommeil (7 j)", `${F.num(debtH, 1)} h`,
-          rangeBar(debtH, 0, 5, 0, 15, debtH > 10 ? "range--alert" : debtH > 5 ? "range--warn" : ""),
-          `sur ${latest.nights_counted} nuit${latest.nights_counted > 1 ? "s" : ""} mesurée${latest.nights_counted > 1 ? "s" : ""} · besoin ${F.duration(latest.sleep_need_s)}`]);
-      } else if (latest.nights_counted != null) {
-        rows.push(["Dette de sommeil (7 j)", "—", rangeBar(null, 0, 5, 0, 15),
-          `pas assez de nuits mesurées (${latest.nights_counted}/7)`]);
+          rangeBar(debtH, 0, debtWarnH, 0, debtAlertH * 1.5, debtH > debtAlertH ? "range--alert" : debtH > debtWarnH ? "range--warn" : ""),
+          `sur ${debt.nights_counted} nuit${debt.nights_counted > 1 ? "s" : ""} mesurée${debt.nights_counted > 1 ? "s" : ""} · besoin ${F.duration(debt.sleep_need_s)}`]);
+      } else if (debt && debt.nights_counted != null) {
+        rows.push(["Dette de sommeil (7 j)", "—", rangeBar(null, 0, debtWarnH, 0, debtAlertH * 1.5),
+          `pas assez de nuits mesurées (${debt.nights_counted}/7)`]);
       }
     }
     rows.push(["Readiness", latest.readiness_score != null ? `${F.num(latest.readiness_score)}/100` : "—",
@@ -400,17 +405,22 @@ async function viewHealth(params) {
     { type: "bars", values: s.map((p) => p.readiness_score), cls: (i, v) => `bar bar--ready-${v >= 60 ? "hi" : v >= 40 ? "mid" : "lo"}` },
   ], [], { height: 150, y: { min: 0, max: 100 }, label: "Readiness sur 100" }), false]);
   if (mode === "full") {
-    // Besoin de sommeil (#37) : ligne du profil (`Besoin de sommeil`) si connue, sinon
-    // le défaut moteur (7 h 30) — jamais une valeur codée en dur ici, pour que la ligne
-    // reste cohérente avec la dette de sommeil calculée sur le même besoin.
-    const needS = s.find((p) => p.sleep_need_s != null)?.sleep_need_s ?? 27000;
+    // Besoin de sommeil (#37) : lu depuis `/api/summary` (source unique déjà résolue
+    // côté serveur — profil ou défaut moteur), jamais recalculé ni codé en dur ici, pour
+    // que cette ligne reste cohérente avec la dette de sommeil calculée sur ce même besoin.
+    const needS = SUMMARY.sleep_debt?.sleep_need_s ?? 27000;
+    // Seuils d'affichage (#37) : servis par l'API (`thresholds.sleep_debt_warn_h`/
+    // `sleep_debt_alert_h`, `scripts/arc_metrics.py::SLEEP_DEBT_WARN_S`/`ALERT_S`) —
+    // jamais une deuxième copie de ces nombres côté JS.
+    const debtWarnH = data.thresholds?.sleep_debt_warn_h ?? 5;
+    const debtAlertH = data.thresholds?.sleep_debt_alert_h ?? 10;
     charts.push(["sleep", "Sommeil", "", timeChart(dates, [
       { type: "bars", values: s.map((p) => (p.sleep_total_s ? p.sleep_total_s / 3600 : null)), cls: "bar bar--sleep" },
     ], [{ type: "hline", value: needS / 3600, cls: "mark", label: F.duration(needS) }], { height: 150, y: { min: 0 }, label: "Durée de sommeil en heures", yFormat: (v) => `${F.num(v)} h` }), false]);
     charts.push(["sleepdebt", "Dette de sommeil (7 j)",
       `Somme, sur les nuits mesurées des 7 derniers jours, du manque par rapport au besoin (${F.duration(needS)}) — une nuit non mesurée n'est jamais comptée comme un manque de 0 h.`,
       timeChart(dates, [
-        { type: "bars", values: s.map((p) => (p.sleep_debt_7d_s != null ? p.sleep_debt_7d_s / 3600 : null)), cls: (i, v) => `bar bar--sleep${v > 10 ? " bar--alert" : v > 5 ? " bar--warn" : ""}` },
+        { type: "bars", values: s.map((p) => (p.sleep_debt_7d_s != null ? p.sleep_debt_7d_s / 3600 : null)), cls: (i, v) => `bar bar--sleep${v > debtAlertH ? " bar--alert" : v > debtWarnH ? " bar--warn" : ""}` },
       ], [], { height: 150, y: { min: 0 }, label: "Dette de sommeil cumulée en heures", yFormat: (v) => `${F.num(v)} h` }), false]);
   }
   const periods = [[30, "1 mois"], [90, "3 mois"], [180, "6 mois"]].map(([d, l]) => `<a class="seg ${d === days ? "is-on" : ""}" href="#/sante?jours=${d}">${l}</a>`).join("");

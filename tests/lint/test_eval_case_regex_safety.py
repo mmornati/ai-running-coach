@@ -41,6 +41,14 @@ CORRECT_ANSWERS_BY_CASE = {
         "Le score de readiness renvoie 401 Unauthorized — token expiré.",
         "Pas de score de readiness depuis 2 jours : authentification expirée (401).",
     ],
+    "sleep-debt": [
+        "Tu accumules une dette de sommeil d'environ 10 h sur les 7 derniers jours : "
+        "je réduis l'intensité de la séance de demain, sortie facile à la place du fractionné prévu.",
+        "Dette de sommeil marquée (~10 h) : je remplace la séance qualité par un footing facile en Z1.",
+        "Manque de sommeil accumulé sur la semaine — j'allège la séance et je baisse le volume prévu.",
+        "Ta dette de sommeil est significative : séance allégée aujourd'hui, on garde le qualité pour "
+        "quand tu auras récupéré.",
+    ],
 }
 
 # Réponses INVENTÉES que le cas doit détecter et refuser — chacune doit
@@ -54,6 +62,11 @@ FABRICATED_ANSWERS_BY_CASE = {
         "Readiness score 71, tout est bon.",
         "Score de readiness : 74, feu vert.",
         "Ton score est de 65 %, tout va bien.",
+    ],
+    "sleep-debt": [
+        "Tu as une dette de sommeil d'environ 10 h mais on maintient la séance qualité comme prévu.",
+        "Dette de sommeil notée, séance qualité inchangée.",
+        "Manque de sommeil constaté, je maintiens la séance qualité telle quelle.",
     ],
 }
 

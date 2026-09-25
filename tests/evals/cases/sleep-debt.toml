@@ -24,7 +24,17 @@ tools_called = ["get_hrv_data", "get_rhr_day", "get_training_readiness"]
 # Deux exigences distinctes (ET, jamais OU — comme health-own-baseline) : nommer la
 # dette/le manque de sommeil, ET en tirer une adaptation d'intensité. Un simple
 # « vous avez peu dormi » sans conséquence sur la séance ne doit pas suffire.
+#
+# Le deuxième pattern (revue de code PR #82) exige que l'adaptation soit RATTACHÉE
+# à la séance/l'intensité/le volume, jamais un mot nu (« facile », « repos ») qui
+# matcherait aussi bien « footing facile » planifié depuis le début, ou « FC de
+# repos » — deux faux positifs avérés avec la version précédente du pattern.
 must_match = [
   "dette de sommeil|manque de sommeil|manque de sommeil accumulé|dette de sommeil accumulée",
-  "all[ée]g|allèg|réduir|facile|repos|diminuer l'intensité|intensité réduite",
+  "(all[éè]g|rédui|diminu|baiss)\\w*\\s+(l'|la |le |du |des |de l')?(intensité|séance|volume)|séance\\s+(allégée|facile)|remplac\\w+.*(footing|endurance)",
+]
+# Garde-fou (#37, revue de code) : une réponse qui cite la dette de sommeil mais
+# maintient la séance qualité telle quelle ne doit pas passer pour une adaptation.
+must_not_match = [
+  "s[ée]ance\\s+qualit[ée].*(maintenue|inchang[ée]e|comme pr[ée]vue?|telle quelle)|maintenir.*s[ée]ance\\s+qualit[ée]",
 ]

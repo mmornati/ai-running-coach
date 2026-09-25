@@ -119,12 +119,15 @@ class TestDashboardServer(InstallAsserts):
 
 
 class TestDashboardHealthMorningCheck(InstallAsserts):
-    """#34 — la ligne de base HRV personnelle est un calcul dérivé de l'HRV : elle ne
-    doit apparaître dans `/api/health` qu'en `[health].morning_check = "full"`, jamais
-    en `"minimal"` (readiness seule) ni en `"off"` (aucune donnée de santé)."""
+    """#34/#37 — la ligne de base HRV personnelle et la dette de sommeil sont deux
+    calculs dérivés de données de santé : ni l'un ni l'autre ne doit apparaître dans
+    `/api/health` (ou `/api/summary` pour la dette) hors de
+    `[health].morning_check = "full"` — jamais en `"minimal"` (readiness seule) ni en
+    `"off"` (aucune donnée de santé)."""
 
     HRV_KEYS = ("hrv_ln_mean7", "hrv_personal_mean7_ms", "hrv_cv7_pct",
                 "hrv_personal_low_ms", "hrv_personal_high_ms", "hrv_personal_status")
+    SLEEP_DEBT_KEYS = ("sleep_debt_7d_s", "nights_counted", "sleep_need_s")
 
     def _server_with_mode(self, sb, mode):
         ws = build(sb.root / "ws", days=90, today=__import__("datetime").date.fromisoformat(TODAY))
@@ -144,9 +147,14 @@ class TestDashboardHealthMorningCheck(InstallAsserts):
                 data = json.loads(body)
                 self.assertEqual(data["morning_check"], mode)
                 for point in data["series"]:
-                    for key in self.HRV_KEYS:
+                    for key in self.HRV_KEYS + self.SLEEP_DEBT_KEYS:
                         self.assertNotIn(key, point,
                                         f"morning_check={mode} : « {key} » ne devrait pas apparaître ({point})")
+                summary_status, summary_body, _ = server.get("/api/summary")
+                self.assertEqual(summary_status, 200)
+                summary = json.loads(summary_body)
+                self.assertIsNone(summary.get("sleep_debt"),
+                                  f"morning_check={mode} : /api/summary.sleep_debt devrait être null ({summary.get('sleep_debt')})")
             finally:
                 server.stop()
 

@@ -660,6 +660,20 @@ def hrv_baseline_today(conn, conf: dict, today: date) -> dict:
     return {**point, "morning_check": mode}
 
 
+def athlete_sleep_need_s(row) -> float:
+    """Résout le besoin de sommeil à partir d'une ligne `athlete` (dict-like portant
+    `sleep_need_s` — `sqlite3.Row` ou `dict`, tous deux indexables par nom de colonne
+    — ou `None`) : la valeur du profil si présente et non nulle, sinon le défaut
+    moteur (`arc_metrics.SLEEP_NEED_DEFAULT_S`, 7 h 30).
+
+    Point de résolution UNIQUE, partagé par la CLI `sleep-debt` ci-dessous et par
+    `arc_serve.py` (`/api/summary`, `/api/health`) — revue de code PR #82 : trois
+    copies de `(row["sleep_need_s"] if row else None) or DEFAULT` avaient dérivé.
+    """
+    value = row["sleep_need_s"] if row is not None else None
+    return value or M.SLEEP_NEED_DEFAULT_S
+
+
 def sleep_debt_today(conn, conf: dict, today: date) -> dict:
     """Dette de sommeil 7 j du jour (#37) — pour la CLI et pour les agents en headless.
 
@@ -676,7 +690,7 @@ def sleep_debt_today(conn, conf: dict, today: date) -> dict:
     ).fetchall()
     sleep_by_date = {row[0]: row[1] for row in rows}
     athlete = conn.execute("SELECT sleep_need_s FROM athlete LIMIT 1").fetchone()
-    need_s = (athlete[0] if athlete and athlete[0] else None) or M.SLEEP_NEED_DEFAULT_S
+    need_s = athlete_sleep_need_s(athlete)
     result = M.sleep_debt_7d(sleep_by_date, today, need_s)
     return {**result, "morning_check": mode}
 

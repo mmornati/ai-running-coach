@@ -269,6 +269,47 @@ class TestProfileSleepNeed(unittest.TestCase):
         self.assertNotIn("sleep_need_s", L.parse_profile(text))
 
 
+class TestParseSleepNeed(unittest.TestCase):
+    """#37, revue de code PR #82 — `_parse_sleep_need_s` est un parseur DÉDIÉ, distinct
+    de `parse_fr_duration` : ce dernier lit silencieusement « 7.5 h » comme 5 h (le « h »
+    de « 7h30 » matche avant que « .5 » ne soit consommé) et « 7:30 » comme m:ss
+    (450 s), deux contresens qui rendraient la dette de sommeil silencieusement fausse
+    (souvent 0, ou une dette énorme) plutôt que d'échouer bruyamment."""
+
+    def test_decimal_hours_with_dot(self):
+        self.assertEqual(L._parse_sleep_need_s("7.5 h"), 7.5 * 3600)
+
+    def test_decimal_hours_with_comma(self):
+        """Décimale française (virgule) : ne doit PAS être lue comme « 7 h » plus un
+        reliquat « ,5 h » ignoré — 7,5 h vaut 7 h 30, pas 7 h."""
+        self.assertEqual(L._parse_sleep_need_s("7,5 h"), 7.5 * 3600)
+
+    def test_colon_notation_is_hours_minutes_not_minutes_seconds(self):
+        """« 7:30 » est un besoin de sommeil en HEURES:MINUTES (7 h 30 = 27 000 s),
+        jamais m:ss (ce que `parse_fr_duration` rendrait : 450 s, une dette qui ne
+        pourrait alors jamais retomber à 0)."""
+        self.assertEqual(L._parse_sleep_need_s("7:30"), 7 * 3600 + 30 * 60)
+
+    def test_minutes_notation(self):
+        self.assertEqual(L._parse_sleep_need_s("450 min"), 450 * 60)
+
+    def test_bare_number_is_hours(self):
+        self.assertEqual(L._parse_sleep_need_s("8"), 8 * 3600)
+
+    def test_hour_minute_notation_still_works(self):
+        self.assertEqual(L._parse_sleep_need_s("7h30"), 7 * 3600 + 30 * 60)
+        self.assertEqual(L._parse_sleep_need_s("7 h 30"), 7 * 3600 + 30 * 60)
+
+    def test_implausible_value_is_rejected(self):
+        """« 25 h » : hors de `SLEEP_NEED_PLAUSIBLE_H` (4-12 h) — une faute de saisie,
+        jamais un besoin de sommeil réel. `None`, pour que l'appelant retombe sur son
+        propre défaut (7 h 30) plutôt que de programmer sur une valeur absurde."""
+        self.assertIsNone(L._parse_sleep_need_s("25 h"))
+
+    def test_unparseable_text_is_none(self):
+        self.assertIsNone(L._parse_sleep_need_s("beaucoup"))
+
+
 class TestFrenchNumbers(unittest.TestCase):
     def test_numbers(self):
         for text, expected in (("2 400 m", 2400.0), ("2 400", 2400.0), ("12,4 km", 12.4), ("188", 188.0), ("-3,5", -3.5)):
