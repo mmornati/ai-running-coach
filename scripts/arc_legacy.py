@@ -671,12 +671,18 @@ def legacy_report(text: str, filename: str) -> Dict[str, Any]:
 # Une puce de la sous-section « Chaussures » n'est PAS un « Libellé : valeur »
 # (`parse_bullets` ne s'applique pas) : c'est une description en langage libre,
 # nom d'abord, puis des segments optionnels séparés par un tiret cadratin/demi-
-# cadratin (« — »/« – », espaces optionnels — « 5—alerte » colle sans espace) ou
-# par un simple tiret ENTOURÉ D'ESPACES (« - » : un nom de modèle peut contenir un
-# trait d'union SANS espaces, ex. « Salomon S/Lab Ultra-Trail », qui doit rester
-# intact), ou encore par un deux-points quand ce qui suit commence par un mot-clé
-# reconnu (« Hoka Speedgoat 5: depuis 2026-03-01 » — le « : » de « id: » lui-même
-# n'est PAS un séparateur, voir `_GEAR_SEGMENT_SPLIT_RE`).
+# cadratin (« — »/« – », espaces optionnels — « 5—alerte » colle sans espace),
+# par un simple tiret ENTOURÉ D'ESPACES (« - ») UNIQUEMENT quand ce qui suit est
+# un mot-clé reconnu, ou par un deux-points dans le même cas (« Hoka Speedgoat
+# 5: depuis 2026-03-01 » — le « : » de « id: » lui-même n'est PAS un séparateur,
+# voir `_GEAR_SEGMENT_SPLIT_RE`). Un simple tiret NON suivi d'un mot-clé reste
+# dans le nom : un modèle peut légitimement en contenir un, SANS espaces
+# (« Salomon S/Lab Ultra-Trail ») ou AVEC (« Brooks Cascadia 17 - GTX », suffixe
+# de variante ; « Salomon S/Lab Ultra - 3 » ; revue PR #85, round 2) — sans le
+# garde-fou du mot-clé, ces deux exemples se tronqueraient en « Brooks Cascadia
+# 17 »/« Salomon S/Lab Ultra », un `gear_id` faux qui peut même collider avec un
+# autre modèle réellement homonyme (fausse alerte de collision, voir
+# `parse_gear`).
 # Format documenté dans `templates/Runner_Profile.template.md` :
 #   - Hoka Speedgoat 5 (bleues) — depuis 2026-03-01 — alerte 700 km — id: speedgoat-bleues (par défaut)
 #   - Nike Pegasus (retirée)
@@ -691,7 +697,7 @@ _GEAR_NEXT_HEADING_RE = re.compile(r"^\s{0,3}#{1,6}\s", re.M)
 _GEAR_TOP_BULLET_RE = re.compile(r"^[-*]\s+(.+)$")
 _GEAR_SUB_BULLET_RE = re.compile(r"^\s+[-*]\s+(.+)$")
 _GEAR_SEGMENT_SPLIT_RE = re.compile(
-    r"\s+-\s+|\s*[—–]\s*|\s*:\s*(?=depuis\b|alerte\b|id\s*:)", re.I)
+    r"\s+-\s+(?=depuis\b|alerte\b|id\s*:)|\s*[—–]\s*|\s*:\s*(?=depuis\b|alerte\b|id\s*:)", re.I)
 _GEAR_DEFAULT_RE = re.compile(r"\(\s*par\s*d[ée]faut\s*\)", re.I)
 _GEAR_RETIRED_RE = re.compile(r"\(\s*retir[ée]e?\s*\)", re.I)
 _GEAR_MILES_RE = re.compile(r"\bmi(?:les?)?\b", re.I)

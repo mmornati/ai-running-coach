@@ -547,11 +547,26 @@ class TestParseGear(unittest.TestCase):
         self.assertEqual(gear[0]["threshold_m"], 800000)
 
     def test_plain_hyphen_separator_with_spaces(self):
-        """blocker 5 : « - » entouré d'espaces sépare aussi les segments."""
+        """blocker 5 : « - » entouré d'espaces sépare quand un mot-clé suit."""
         g = self._gear("Hoka Speedgoat 5 - depuis 2026-03-01 - alerte 700 km")
         self.assertEqual(g["name"], "Hoka Speedgoat 5")
         self.assertEqual(g["start_date"], "2026-03-01")
         self.assertEqual(g["threshold_m"], 700000)
+
+    def test_plain_hyphen_not_followed_by_keyword_stays_in_name(self):
+        """Revue #85, round 2 : un « - » entouré d'espaces mais SANS mot-clé
+        reconnu derrière n'est pas un séparateur — un suffixe de variante
+        (« - GTX ») ne doit jamais tronquer le nom réel du modèle (ce qui
+        dériverait un `gear_id` faux, risquant même une fausse collision avec
+        un modèle homonyme sans ce suffixe)."""
+        g = self._gear("Brooks Cascadia 17 - GTX")
+        self.assertEqual(g["name"], "Brooks Cascadia 17 - GTX")
+        self.assertEqual(g["gear_id"], "brooks-cascadia-17-gtx")
+
+    def test_plain_hyphen_number_suffix_stays_in_name_until_a_keyword(self):
+        g = self._gear("Salomon S/Lab Ultra - 3 - alerte 600 km")
+        self.assertEqual(g["name"], "Salomon S/Lab Ultra - 3")
+        self.assertEqual(g["threshold_m"], 600000)
 
     def test_unspaced_em_dash_separator(self):
         """blocker 5 : un cadratin collé au texte (« 5—alerte ») sépare quand même."""
