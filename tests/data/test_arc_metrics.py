@@ -291,6 +291,47 @@ class TestEffortKmItra(unittest.TestCase):
         self.assertEqual(M.effort_km_itra(activity), 27.0)
 
 
+class TestEffortKmWeekTotal(unittest.TestCase):
+    """#35 (revue PR 80) — agrégation hebdomadaire du km-effort ITRA, telle qu'utilisée par
+    `scripts/arc_serve.py::api_load` pour cumuler les activités d'une semaine."""
+
+    def test_filters_sport_and_sums_run_like_activities(self):
+        """Trail (20 km + 697 m D+) et hiking (5 km + 4 m D+) comptent ; indoor_cycling
+        (30 km) est un sport hors famille course et ne contribue pas au total."""
+        week = [
+            {"sport": "trail", "distance_m": 20000, "elevation_gain_m": 697},
+            {"sport": "hiking", "distance_m": 5000, "elevation_gain_m": 4},
+            {"sport": "indoor_cycling", "distance_m": 30000, "elevation_gain_m": 0},
+        ]
+        self.assertEqual(M.effort_km_week_total(week), round(26.97 + 5.04, 1))
+
+    def test_rounds_once_on_the_raw_sum_not_the_sum_of_rounded_activities(self):
+        """Deux activités à 5,04 km-effort brut chacune : arrondies séparément puis
+        sommées, cela donne 5,0 + 5,0 = 10,0 (le bug corrigé après revue de la PR 80,
+        qui faisait dériver le total hebdomadaire du vrai résultat) ; en sommant les
+        valeurs brutes puis en arrondissant une seule fois, le total correct est 10,1."""
+        week = [{"sport": "running", "distance_m": 5000, "elevation_gain_m": 4},
+                {"sport": "running", "distance_m": 5000, "elevation_gain_m": 4}]
+        wrong_sum_of_rounded = sum(M.effort_km_itra(a) for a in week)
+        self.assertEqual(wrong_sum_of_rounded, 10.0, "arrondir avant de sommer dérive du vrai total")
+        self.assertEqual(M.effort_km_week_total(week), 10.1)
+
+    def test_each_week_is_computed_from_its_own_activities_only(self):
+        """Une activité du lundi suivant ne doit jamais entrer dans le total de la semaine
+        courante : `api_load` doit passer à cette fonction les activités déjà réparties par
+        semaine (bucket par lundi), jamais la liste complète sur plusieurs semaines — sans
+        quoi l'arrondi unique (voir le test précédent) se ferait sur la mauvaise fenêtre."""
+        week1 = [{"sport": "running", "distance_m": 5000, "elevation_gain_m": 4}]      # semaine courante
+        week2 = [{"sport": "running", "distance_m": 5000, "elevation_gain_m": 4}]      # lundi suivant
+        self.assertEqual(M.effort_km_week_total(week1), 5.0)
+        self.assertEqual(M.effort_km_week_total(week2), 5.0)
+        # Si les deux semaines étaient fusionnées avant l'arrondi (bug de bucket), le total
+        # de la semaine courante s'en trouverait faussé : 10,1 au lieu de 5,0 + 5,0 = 10,0.
+        merged = M.effort_km_week_total(week1 + week2)
+        self.assertNotEqual(merged, M.effort_km_week_total(week1) + M.effort_km_week_total(week2))
+        self.assertEqual(merged, 10.1)
+
+
 class TestWeekCompliance(unittest.TestCase):
     """#33 — conformité plan vs réalisé, fixtures à ratios connus."""
 

@@ -3650,7 +3650,7 @@
           {
             "distance_m": 0.0,
             "duration_s": 0.0,
-            "effort_km": 0.0,
+            "effort_km": 0,
             "elevation_m": 0.0,
             "load": 0.0,
             "sessions": 0,
@@ -3659,7 +3659,7 @@
           {
             "distance_m": 0.0,
             "duration_s": 0.0,
-            "effort_km": 0.0,
+            "effort_km": 0,
             "elevation_m": 0.0,
             "load": 0.0,
             "sessions": 0,
@@ -3668,7 +3668,7 @@
           {
             "distance_m": 0.0,
             "duration_s": 0.0,
-            "effort_km": 0.0,
+            "effort_km": 0,
             "elevation_m": 0.0,
             "load": 0.0,
             "sessions": 0,
@@ -3677,7 +3677,7 @@
           {
             "distance_m": 0.0,
             "duration_s": 0.0,
-            "effort_km": 0.0,
+            "effort_km": 0,
             "elevation_m": 0.0,
             "load": 0.0,
             "sessions": 0,
@@ -3686,7 +3686,7 @@
           {
             "distance_m": 0.0,
             "duration_s": 0.0,
-            "effort_km": 0.0,
+            "effort_km": 0,
             "elevation_m": 0.0,
             "load": 0.0,
             "sessions": 0,
@@ -3695,7 +3695,7 @@
           {
             "distance_m": 0.0,
             "duration_s": 0.0,
-            "effort_km": 0.0,
+            "effort_km": 0,
             "elevation_m": 0.0,
             "load": 0.0,
             "sessions": 0,
@@ -3704,7 +3704,7 @@
           {
             "distance_m": 0.0,
             "duration_s": 0.0,
-            "effort_km": 0.0,
+            "effort_km": 0,
             "elevation_m": 0.0,
             "load": 0.0,
             "sessions": 0,
@@ -3713,7 +3713,7 @@
           {
             "distance_m": 0.0,
             "duration_s": 0.0,
-            "effort_km": 0.0,
+            "effort_km": 0,
             "elevation_m": 0.0,
             "load": 0.0,
             "sessions": 0,
@@ -3722,7 +3722,7 @@
           {
             "distance_m": 0.0,
             "duration_s": 0.0,
-            "effort_km": 0.0,
+            "effort_km": 0,
             "elevation_m": 0.0,
             "load": 0.0,
             "sessions": 0,
@@ -3731,7 +3731,7 @@
           {
             "distance_m": 0.0,
             "duration_s": 0.0,
-            "effort_km": 0.0,
+            "effort_km": 0,
             "elevation_m": 0.0,
             "load": 0.0,
             "sessions": 0,
@@ -3740,7 +3740,7 @@
           {
             "distance_m": 0.0,
             "duration_s": 0.0,
-            "effort_km": 0.0,
+            "effort_km": 0,
             "elevation_m": 0.0,
             "load": 0.0,
             "sessions": 0,
@@ -3749,7 +3749,7 @@
           {
             "distance_m": 0.0,
             "duration_s": 0.0,
-            "effort_km": 0.0,
+            "effort_km": 0,
             "elevation_m": 0.0,
             "load": 0.0,
             "sessions": 0,
@@ -3758,7 +3758,7 @@
           {
             "distance_m": 0.0,
             "duration_s": 0.0,
-            "effort_km": 0.0,
+            "effort_km": 0,
             "elevation_m": 0.0,
             "load": 0.0,
             "sessions": 0,
@@ -3767,7 +3767,7 @@
           {
             "distance_m": 0.0,
             "duration_s": 0.0,
-            "effort_km": 0.0,
+            "effort_km": 0,
             "elevation_m": 0.0,
             "load": 0.0,
             "sessions": 0,
@@ -3776,7 +3776,7 @@
           {
             "distance_m": 0.0,
             "duration_s": 0.0,
-            "effort_km": 0.0,
+            "effort_km": 0,
             "elevation_m": 0.0,
             "load": 0.0,
             "sessions": 0,
@@ -3785,7 +3785,7 @@
           {
             "distance_m": 0.0,
             "duration_s": 0.0,
-            "effort_km": 0.0,
+            "effort_km": 0,
             "elevation_m": 0.0,
             "load": 0.0,
             "sessions": 0,
@@ -3794,7 +3794,7 @@
           {
             "distance_m": 0.0,
             "duration_s": 0.0,
-            "effort_km": 0.0,
+            "effort_km": 0,
             "elevation_m": 0.0,
             "load": 0.0,
             "sessions": 0,
@@ -3803,7 +3803,7 @@
           {
             "distance_m": 0.0,
             "duration_s": 0.0,
-            "effort_km": 0.0,
+            "effort_km": 0,
             "elevation_m": 0.0,
             "load": 0.0,
             "sessions": 0,
@@ -3812,7 +3812,7 @@
           {
             "distance_m": 0.0,
             "duration_s": 0.0,
-            "effort_km": 0.0,
+            "effort_km": 0,
             "elevation_m": 0.0,
             "load": 0.0,
             "sessions": 0,
@@ -3830,7 +3830,7 @@
           {
             "distance_m": 36000.0,
             "duration_s": 15378.0,
-            "effort_km": 37.1,
+            "effort_km": 37.0,
             "elevation_m": 105.0,
             "load": 457.84999999999997,
             "sessions": 5,
@@ -3839,7 +3839,7 @@
           {
             "distance_m": 41000.0,
             "duration_s": 16989.0,
-            "effort_km": 42.099999999999994,
+            "effort_km": 42.0,
             "elevation_m": 103.0,
             "load": 487.64,
             "sessions": 5,
@@ -3848,7 +3848,7 @@
           {
             "distance_m": 31000.0,
             "duration_s": 13341.0,
-            "effort_km": 31.9,
+            "effort_km": 32.0,
             "elevation_m": 99.0,
             "load": 413.87,
             "sessions": 4,
@@ -3857,7 +3857,7 @@
           {
             "distance_m": 42000.0,
             "duration_s": 17212.0,
-            "effort_km": 43.3,
+            "effort_km": 43.4,
             "elevation_m": 136.0,
             "load": 493.03999999999996,
             "sessions": 5,
@@ -3893,7 +3893,7 @@
           {
             "distance_m": 36000.0,
             "duration_s": 15378.0,
-            "effort_km": 37.1,
+            "effort_km": 37.0,
             "elevation_m": 105.0,
             "load": 457.84999999999997,
             "sessions": 5,
@@ -3902,7 +3902,7 @@
           {
             "distance_m": 41000.0,
             "duration_s": 16989.0,
-            "effort_km": 42.099999999999994,
+            "effort_km": 42.0,
             "elevation_m": 103.0,
             "load": 487.64,
             "sessions": 5,
@@ -3911,7 +3911,7 @@
           {
             "distance_m": 31000.0,
             "duration_s": 13341.0,
-            "effort_km": 31.9,
+            "effort_km": 32.0,
             "elevation_m": 99.0,
             "load": 413.87,
             "sessions": 4,
@@ -3920,7 +3920,7 @@
           {
             "distance_m": 42000.0,
             "duration_s": 17212.0,
-            "effort_km": 43.3,
+            "effort_km": 43.4,
             "elevation_m": 136.0,
             "load": 493.03999999999996,
             "sessions": 5,
@@ -4377,14 +4377,14 @@
         "assumptions": {
           "acwr": "ACWR = fatigue / condition, affiché dès que la condition atteint 10. La zone 0.8–1.3 est un repère indicatif, discuté dans la littérature, pas un seuil de blessure.",
           "compliance": "Conformité plan vs réalisé : séances de repos hors calcul (sport ou intensité `rest`), `cancelled` exclue du dénominateur (le contrat n'a pas de motif d'annulation distinct médical/autre), `moved` exclue (pas de date cible dans le contrat), séance future de la semaine en cours jamais comptée manquée, séance du jour même sans activité encore en attente (pas manquée), `done` sans activité chiffrée exclue des ratios durée/D+ (comptée en séance faite seulement), appariement séance ↔ activité par date + sport (route/trail/randonnée/marche et variantes vélo interchangeables), les `done` explicites réservant leur activité avant les séances sans statut.",
-          "effort_km": "Distance effort (ITRA) : pour les activités de la famille course (`SPORT_FAMILY` = \"run\" : running, trail, hiking, walking), effort_km = distance_km + D+_m / 100. Absence de D+ : 0 m utilisé. Absence de distance : l'activité n'est pas comptée.",
+          "effort_km": "Km-effort ITRA : pour les activités de la famille course (`SPORT_FAMILY` = \"run\" : running, trail, hiking, walking — cyclisme exclu), effort_km = distance_km + D+_m / 100. Absence de D+ : 0 m utilisé. Absence de distance : l'activité n'est pas comptée. Somme hebdomadaire calculée sur les valeurs brutes puis arrondie une seule fois (pas la somme de valeurs déjà arrondies par activité). Distinct de l'« équivalence plat » (`trail_equivalence`, D+ × 1,75) utilisée pour les prédictions.",
           "form": "Modèle impulsion-réponse de Banister : condition = moyenne exponentielle 42 j de la charge, fatigue = 7 j, forme = condition(j-1) − fatigue(j-1). D'autres outils nomment ces grandeurs CTL, ATL et TSB (marques revendiquées par Peaksware LLC / TrainingPeaks) ; calculées ici sur le TRIMP, nos valeurs ne sont pas comparables aux leurs.",
           "hrv_baseline": "Ligne de base HRV personnelle : moyenne glissante 7 j de ln(HRV nocturne) (min. 5 jours valides sur 7, sinon aucune valeur), comparée à une référence glissante 60 j de ln(HRV) (moyenne et écart-type, min. 30 jours valides, sinon « en construction ») ± 0.5 écart-type — une largeur de bande couramment retenue comme « plus petit changement significatif » (smallest worthwhile change) sur le lnRMSSD 7 j (Plews, Laursen & Buchheit 2013). La fenêtre de référence se termine 7 j AVANT le jour évalué (jours j-7 à j-66) : elle ne recouvre JAMAIS la fenêtre courte, sinon la moyenne 7 j se retrouve diluée dans sa propre référence et l'écart entre les deux est mécaniquement rétréci. Hypothèse : `hrv_overnight_ms` (moyenne nocturne Garmin) est traité comme une mesure de type rMSSD — Garmin ne documente pas publiquement l'algorithme exact. Le passage au log réduit l'asymétrie de la distribution du rMSSD (Plews et al. 2012 ; Plews, Laursen & Buchheit 2013). Un jour sans mesure n'est jamais compté comme 0, il est simplement absent des deux fenêtres. CV 7 j = écart-type / moyenne de ln(HRV) (pas des valeurs brutes) sur la fenêtre courte, en pourcentage : Plews et al. (2012) évaluent la stabilité de la modulation parasympathique sur le coefficient de variation du lnRMSSD hebdomadaire, pas sur la valeur brute. Kiviniemi et al. (2007) est cité comme PRÉCÉDENT de l'entraînement individualisé guidé par une bande statistique (± 1 écart-type autour de la puissance HF de la variabilité cardiaque, une mesure et une largeur différentes de celles retenues ici) — pas comme source de la largeur ± 0,5 ET ni du CV appliqués dans ce module. Écart-type demandé aux deux fenêtres : population (division par N, pas N-1), cohérent avec le reste du module (`daily_series`, monotonie de Foster). Ce statut n'est calculé et affiché qu'en `[health].morning_check = \"full\"` : en `minimal`, seule la readiness est exposée (rien qui dépende de l'HRV) ; en `off`, aucune donnée de santé n'est récupérée.",
           "monotony": "Monotonie de Foster = moyenne / écart-type de la charge quotidienne sur 7 j ; strain = charge 7 j × monotonie.",
           "prediction": "Prédictions VDOT (Daniels) depuis la tendance VO2max, et Riegel depuis le meilleur effort récent (exposant 1,06 route / 1,15 trail).",
           "records": "Records sur fenêtres de splits consécutifs d'environ 1 km : précision ±1 km.",
           "srpe": "Sans FC : session-RPE de Foster (minutes × RPE) × 0.3 pour rester sur l'échelle TRIMP. RPE absent : valeur par défaut selon le sport (renforcement 5, randonnée 3, autres 4).",
-          "trail_equivalence": "Trail : distance effort = distance + D+ × 1.75 (config/sports/trail.md : 1000 m D+ ≈ 1,5 à 2 km plat).",
+          "trail_equivalence": "Trail : équivalence plat (prédictions) = distance + D+ × 1.75 (config/sports/trail.md : 1000 m D+ ≈ 1,5 à 2 km plat). Sert uniquement aux prédictions VDOT/Riegel ; à ne pas confondre avec le « km-effort ITRA » (`effort_km`, D+/100) affiché dans le volume hebdomadaire.",
           "trimp": "TRIMP de Banister : minutes × FCr × 0,64 × e^(k·FCr), FCr = (FC moy − FC repos) / (FC max − FC repos), k = 1,92 (homme) / 1,67 (femme).",
           "trimp_sex_default": "Sexe non renseigné dans le profil : k = 1,92 appliqué par défaut.",
           "vo2max": "VO2max effective : VO2 de l'allure (Daniels) ÷ fraction de VO2max estimée par (FC moy / FC max − 0,37) / 0,64. Calculée depuis l'allure et la FC MOYENNES de la séance (pas de série seconde par seconde) : ordre de grandeur, pas une mesure. Séances de course de 20 min à 3 h seulement, FC moy ≥ 70 % de la FC max, allure effort ≤ 8:30/km ; tendance 30 j pondérée par la durée, plafonnée à 90 min par séance."
