@@ -26,7 +26,9 @@ from __future__ import annotations
 import re
 import unicodedata
 from datetime import date, timedelta
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
+
+from arc_contract import gear_slug
 
 # ---------------------------------------------------------------------------
 # Nombres, durées, dates « à la française »
@@ -651,6 +653,119 @@ def legacy_report(text: str, filename: str) -> Dict[str, Any]:
 
 
 # ---------------------------------------------------------------------------
+# Section « Matériel » : chaussures (#40)
+# ---------------------------------------------------------------------------
+
+# Une puce de la sous-section « Chaussures » n'est PAS un « Libellé : valeur »
+# (`parse_bullets` ne s'applique pas) : c'est une description en langage libre,
+# nom d'abord, puis des segments optionnels séparés par un tiret cadratin/demi-
+# cadratin entouré d'espaces (« — » ou « – », jamais un simple « - » : un nom de
+# modèle peut légitimement contenir un trait d'union, ex. « Salomon S/Lab »).
+# Format documenté dans `templates/Runner_Profile.template.md` :
+#   - Hoka Speedgoat 5 (bleues) — depuis 2026-03-01 — alerte 700 km — id: speedgoat-bleues (par défaut)
+#   - Nike Pegasus (retirée)
+# Tout est facultatif sauf le nom. `(par défaut)`/`(retirée)` peuvent être
+# accolés n'importe où sur la ligne (avant ou après les segments « — »).
+_GEAR_HEADING_RE = re.compile(r"^\s{0,3}#{2,4}\s*chaussures\s*$", re.I | re.M)
+_GEAR_NEXT_HEADING_RE = re.compile(r"^\s{0,3}#{1,6}\s", re.M)
+_GEAR_BULLET_RE = re.compile(r"^\s*[-*]\s+(.+)$")
+_GEAR_SEGMENT_SPLIT_RE = re.compile(r"\s+[—–]\s+")
+_GEAR_DEFAULT_RE = re.compile(r"\(\s*par\s*d[ée]faut\s*\)", re.I)
+_GEAR_RETIRED_RE = re.compile(r"\(\s*retir[ée]e?\s*\)", re.I)
+
+
+def _gear_section(text: str) -> Optional[str]:
+    """Texte de la sous-section « ### Chaussures » (n'importe quel niveau de
+    titre entre `##` et `####`), jusqu'au prochain titre ou la fin du fichier.
+    `None` si la section est absente (rien à lire, pas une erreur : la plupart
+    des profils n'ont pas encore de chaussures déclarées). Les commentaires
+    HTML sont retirés avant la recherche du titre — même règle que
+    `parse_bullets` — pour que l'exemple commenté du modèle
+    (`templates/Runner_Profile.template.md`) ne soit jamais lu comme une
+    chaussure réellement déclarée."""
+    text = re.sub(r"<!--.*?-->", "", text, flags=re.S)
+    m = _GEAR_HEADING_RE.search(text)
+    if not m:
+        return None
+    rest = text[m.end():]
+    nxt = _GEAR_NEXT_HEADING_RE.search(rest)
+    return rest[: nxt.start()] if nxt else rest
+
+
+def _gear_segment_kind(segment: str) -> Tuple[Optional[str], str]:
+    """(type, valeur brute) d'un segment « — xxx » : `start_date`/`threshold`/
+    `id`, ou `(None, segment)` pour un segment non reconnu (ignoré silencieusement
+    — un athlète peut vouloir noter autre chose, ex. « — usure semelle visible »)."""
+    stripped = segment.strip()
+    lowered = stripped.lower()
+    if lowered.startswith("depuis"):
+        return "start_date", stripped[len("depuis"):].strip(" :")
+    if lowered.startswith("alerte"):
+        return "threshold", stripped[len("alerte"):].strip(" :")
+    if lowered.startswith("id"):
+        rest = stripped[2:].strip()
+        return "id", rest[1:].strip() if rest.startswith(":") else rest
+    return None, stripped
+
+
+def parse_gear(text: str) -> List[Dict[str, Any]]:
+    """Sous-section « Chaussures » du profil (`## Matériel & lieux` → `### Chaussures`)
+    → liste de dicts `{gear_id, name, start_date, threshold_m, default, retired}`
+    (clés absentes plutôt que `None` — voir `_drop_none`).
+
+    `gear_id` : l'identifiant explicite (`id: …`) passé par `arc_contract.gear_slug`
+    pour rester au format slug (même si l'athlète l'a déjà écrit en minuscules avec
+    tirets, c'est idempotent), sinon dérivé du nom — RÈGLE PARTAGÉE avec #39 et le
+    coach (voir `arc_contract.gear_slug`, `skills/workspace-data-contract/SKILL.md`).
+    Une puce dont ni le nom ni l'id explicite ne contiennent de caractère
+    alphanumérique (slug vide) est ignorée : rien de fiable à recouper avec les
+    `gear_id` d'activité.
+
+    `(par défaut)` déclare la chaussure attribuée à une activité sans `gear_id`
+    (voir `arc_metrics.gear_mileage`) ; `(retirée)`, une chaussure sortie de
+    rotation (exclue des alertes, voir la même fonction). Les deux repères sont
+    cherchés sur la ligne ENTIÈRE (n'importe quelle position), puis retirés avant
+    de découper le reste en segments — sans quoi l'un d'eux traînerait dans le nom
+    ou dans un segment mal reconnu."""
+    section = _gear_section(text)
+    if not section:
+        return []
+    out: List[Dict[str, Any]] = []
+    for line in section.splitlines():
+        m = _GEAR_BULLET_RE.match(line)
+        if not m:
+            continue
+        raw = m.group(1).strip()
+        is_default = bool(_GEAR_DEFAULT_RE.search(raw))
+        is_retired = bool(_GEAR_RETIRED_RE.search(raw))
+        raw = _GEAR_RETIRED_RE.sub("", _GEAR_DEFAULT_RE.sub("", raw)).strip()
+        segments = [s for s in _GEAR_SEGMENT_SPLIT_RE.split(raw) if s.strip()]
+        if not segments:
+            continue
+        name = segments[0].strip()
+        explicit_id = None
+        start_date = None
+        threshold_m = None
+        for segment in segments[1:]:
+            kind, value = _gear_segment_kind(segment)
+            if kind == "start_date":
+                start_date = parse_fr_date(value)
+            elif kind == "threshold":
+                km = parse_fr_number(value)
+                threshold_m = km * 1000 if km is not None else None
+            elif kind == "id":
+                explicit_id = value.strip() or None
+        gear_id = gear_slug(explicit_id) if explicit_id else gear_slug(name)
+        if not gear_id:
+            continue
+        out.append(_drop_none({
+            "gear_id": gear_id, "name": name or None, "start_date": start_date,
+            "threshold_m": threshold_m, "default": is_default or None, "retired": is_retired or None,
+        }))
+    return out
+
+
+# ---------------------------------------------------------------------------
 # Fichiers édités par l'humain : profil et objectif (libellés du modèle)
 # ---------------------------------------------------------------------------
 
@@ -670,6 +785,9 @@ def parse_profile(text: str) -> Dict[str, Any]:
         "usual_slot": _pick(b, "creneau habituel"),
         "name": _pick(b, "prenom / surnom", "prenom"),
     }
+    gear = parse_gear(text)
+    if gear:
+        out["gear"] = gear
     return _drop_none(out)
 
 

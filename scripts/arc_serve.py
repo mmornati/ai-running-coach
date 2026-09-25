@@ -194,6 +194,11 @@ class Store:
         with self.lock:
             return I.heat_acclimation_today(self.conn, {"heat_threshold_c": threshold_c}, today)
 
+    def gear_mileage(self) -> dict:
+        """Réutilise `arc_index.gear_mileage` (même SQL) — voir aussi la CLI `gear`."""
+        with self.lock:
+            return I.gear_mileage(self.conn)
+
     def meta(self, key: str):
         row = self.one("SELECT value FROM meta WHERE key = ?", (key,))
         return json.loads(row["value"]) if row and row["value"] and row["value"][:1] in "[{" else (row or {}).get("value")
@@ -275,6 +280,7 @@ def api_summary(store: Store, q: dict) -> dict:
     return {
         "today": today.isoformat(), "settings": settings, "objective": objective, "athlete": athlete,
         "form": latest, "health": health, "sleep_debt": sleep_debt, "heat_acclimation": heat_acclimation,
+        "gear": store.gear_mileage(),
         "files": {r["parsed_ok"]: r["n"] for r in files},
         "incomplete_files": incomplete, "assumptions": store.meta("assumptions"),
         "compliance_trend": api_compliance_trend(store, q),

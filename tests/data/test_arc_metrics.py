@@ -985,5 +985,99 @@ class TestHeatAcclimation(unittest.TestCase):
         self.assertEqual(result["sessions_without_weather"], 0)
 
 
+class TestGearMileage(unittest.TestCase):
+    """#40 — `arc_metrics.gear_mileage` : attribution, seuils, chaussure inconnue,
+    retraite. Voir `ASSUMPTIONS["gear_mileage"]` pour la méthode complète."""
+
+    def shoe(self, gear_id, **kw):
+        return {"gear_id": gear_id, "name": kw.pop("name", gear_id), **kw}
+
+    def act(self, sport="running", distance_m=10000, gear_id=None):
+        d = {"sport": sport, "distance_m": distance_m}
+        if gear_id is not None:
+            d["gear_id"] = gear_id
+        return d
+
+    def test_explicit_gear_id_is_summed(self):
+        gear = [self.shoe("a"), self.shoe("b")]
+        acts = [self.act(gear_id="a", distance_m=5000), self.act(gear_id="a", distance_m=3000),
+                self.act(gear_id="b", distance_m=1000)]
+        result = M.gear_mileage(acts, gear)
+        by_id = {s["gear_id"]: s["distance_m"] for s in result["shoes"]}
+        self.assertEqual(by_id, {"a": 8000, "b": 1000})
+
+    def test_activity_without_gear_id_falls_back_to_default(self):
+        gear = [self.shoe("a", default=True), self.shoe("b")]
+        acts = [self.act(distance_m=5000)]
+        result = M.gear_mileage(acts, gear)
+        by_id = {s["gear_id"]: s["distance_m"] for s in result["shoes"]}
+        self.assertEqual(by_id, {"a": 5000, "b": 0})
+
+    def test_activity_without_gear_id_and_no_default_is_ignored(self):
+        """Critère d'acceptation #40 : sans chaussure par défaut déclarée, une
+        séance sans `gear_id` n'est ni comptée ni signalée."""
+        gear = [self.shoe("a")]
+        result = M.gear_mileage([self.act(distance_m=5000)], gear)
+        self.assertEqual(result["shoes"][0]["distance_m"], 0)
+        self.assertEqual(result["unknown"], [])
+
+    def test_unknown_gear_id_is_reported_not_dropped(self):
+        result = M.gear_mileage([self.act(gear_id="jamais-declaree", distance_m=4000)], [self.shoe("a")])
+        self.assertEqual(result["unknown"], [{"gear_id": "jamais-declaree", "distance_m": 4000}])
+        self.assertEqual(result["shoes"][0]["distance_m"], 0)
+
+    def test_non_wear_sport_never_counted_even_with_explicit_gear_id(self):
+        result = M.gear_mileage([self.act(sport="cycling", gear_id="a", distance_m=50000)], [self.shoe("a")])
+        self.assertEqual(result["shoes"][0]["distance_m"], 0)
+
+    def test_hiking_counts_as_wear(self):
+        result = M.gear_mileage([self.act(sport="hiking", gear_id="a", distance_m=12000)], [self.shoe("a")])
+        self.assertEqual(result["shoes"][0]["distance_m"], 12000)
+
+    def test_activity_without_distance_is_ignored(self):
+        result = M.gear_mileage([{"sport": "running", "gear_id": "a"}], [self.shoe("a")])
+        self.assertEqual(result["shoes"][0]["distance_m"], 0)
+
+    def test_threshold_boundary_is_inclusive(self):
+        gear = [self.shoe("a", threshold_m=700000)]
+        below = M.gear_mileage([self.act(distance_m=699999, gear_id="a")], gear)
+        at = M.gear_mileage([self.act(distance_m=700000, gear_id="a")], gear)
+        self.assertFalse(below["shoes"][0]["alert"])
+        self.assertTrue(at["shoes"][0]["alert"])
+
+    def test_default_threshold_applies_when_not_declared(self):
+        gear = [self.shoe("a")]
+        result = M.gear_mileage([self.act(distance_m=M.GEAR_ALERT_THRESHOLD_M_DEFAULT, gear_id="a")], gear)
+        self.assertTrue(result["shoes"][0]["alert"])
+        self.assertEqual(result["shoes"][0]["threshold_m"], M.GEAR_ALERT_THRESHOLD_M_DEFAULT)
+
+    def test_retired_shoe_never_alerts_even_past_threshold(self):
+        gear = [self.shoe("a", retired=True, threshold_m=1000)]
+        result = M.gear_mileage([self.act(distance_m=5000, gear_id="a")], gear)
+        self.assertFalse(result["shoes"][0]["alert"])
+
+    def test_retired_default_is_not_used_for_attribution(self):
+        """Une chaussure retirée, même marquée `(par défaut)`, ne doit jamais
+        récupérer les séances sans `gear_id` — priorité retraite avant défaut."""
+        gear = [self.shoe("a", default=True, retired=True)]
+        result = M.gear_mileage([self.act(distance_m=5000)], gear)
+        self.assertEqual(result["shoes"][0]["distance_m"], 0)
+        self.assertEqual(result["unknown"], [])
+
+    def test_start_date_is_informational_not_a_filter(self):
+        """Une activité portant le `gear_id` compte même datée avant `depuis` :
+        voir `ASSUMPTIONS["gear_mileage"]`."""
+        gear = [self.shoe("a", start_date="2026-06-01")]
+        result = M.gear_mileage([self.act(gear_id="a", distance_m=5000)], gear)
+        self.assertEqual(result["shoes"][0]["distance_m"], 5000)
+
+    def test_declared_shoe_with_no_activity_still_listed_at_zero(self):
+        result = M.gear_mileage([], [self.shoe("a")])
+        self.assertEqual(result["shoes"], [{
+            "gear_id": "a", "name": "a", "distance_m": 0, "threshold_m": M.GEAR_ALERT_THRESHOLD_M_DEFAULT,
+            "start_date": None, "default": False, "retired": False, "alert": False,
+        }])
+
+
 if __name__ == "__main__":
     unittest.main()

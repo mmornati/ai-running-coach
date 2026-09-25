@@ -42,6 +42,25 @@
 - **Équipement** : <!-- salle de sport, home trainer, haltères, tapis -->
 - **Sports croisés pratiqués** : <!-- vélo, natation, renforcement -->
 
+### Chaussures
+
+<!--
+  Une puce par paire, tout est facultatif sauf le nom. Segments séparés par un
+  tiret cadratin " — " (jamais un simple "-", qui peut faire partie du nom) :
+    - <nom> — depuis <AAAA-MM-JJ> — alerte <N> km — id: <identifiant> (par défaut)
+
+  - "depuis" : date d'achat (informative seulement, n'exclut aucune séance).
+  - "alerte" : seuil d'usure propre à cette paire, en km (sinon 700 km par défaut).
+  - "id:" : identifiant explicite (sinon dérivé automatiquement du nom).
+  - "(par défaut)" : chaussure attribuée aux séances sans matériel précisé.
+  - "(retirée)" : sortie de rotation — kilométrage conservé, jamais d'alerte.
+
+  Exemple (à adapter, effacer les lignes que vous ne remplissez pas) :
+  - Hoka Speedgoat 5 (bleues) — depuis 2026-03-01 — alerte 700 km — id: speedgoat-bleues (par défaut)
+  - Nike Pegasus (retirée)
+-->
+
+
 ## Préférences de coaching
 
 > Ce que la configuration (`config/workspace.user.toml` → `[coaching]`) ne peut

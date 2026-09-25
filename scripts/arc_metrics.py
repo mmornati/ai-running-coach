@@ -118,6 +118,15 @@ SWEAT_RATE_PLAUSIBLE_L_H = (0.0, 4.0)
 # déjà 0,6 l/h d'écart. Pas de calcul en dessous, plutôt qu'un chiffre bruité.
 SWEAT_RATE_MIN_DURATION_S = 45 * 60
 
+# Kilométrage chaussures (#40) : sports qui usent une semelle. Course (RUNNING_SPORTS)
+# et randonnée — un sport SANS variante indoor (contrairement à `INDOOR_SPORTS` pour la
+# chaleur, ce n'est pas la même liste : le vélo/natation/aviron n'usent pas une paire
+# de chaussures de course, même pratiqués outdoor). Voir ASSUMPTIONS["gear_mileage"].
+GEAR_WEAR_SPORTS = RUNNING_SPORTS + ("hiking",)
+# Seuil d'alerte par défaut si la puce du profil n'en précise pas (`arc_legacy.parse_gear`,
+# segment « alerte NNN km ») — valeur courante pour une chaussure de route/trail.
+GEAR_ALERT_THRESHOLD_M_DEFAULT = 700_000
+
 ASSUMPTIONS = {
     "trimp": "TRIMP de Banister : minutes × FCr × 0,64 × e^(k·FCr), FCr = (FC moy − FC repos) / (FC max − FC repos), "
              "k = 1,92 (homme) / 1,67 (femme).",
@@ -312,6 +321,27 @@ ASSUMPTIONS = {
                  "(`arc_contract.WEIGHT_POST_TOLERANCE_KG`), ex. 70 → 70,5 kg sans liquide déclaré — ou hors plage "
                  f"plausible {SWEAT_RATE_PLAUSIBLE_L_H[0]:g}-{SWEAT_RATE_PLAUSIBLE_L_H[1]:g} l/h → `None`, jamais "
                  "affiché tel quel. Alimente #41 (KPI glucides/h et taux de sudation).",
+    "gear_mileage": "Kilométrage chaussures (#40) : somme de `distance_m` des activités de sport dans "
+                 f"`GEAR_WEAR_SPORTS` ({', '.join(GEAR_WEAR_SPORTS)}) — course et randonnée seulement, un "
+                 "sport hors de cette liste (vélo, natation, renforcement…) n'est jamais compté, même avec un "
+                 "`gear_id` renseigné par erreur. Attribution : `gear_id` explicite de l'activité si présent, "
+                 "sinon la chaussure marquée `(par défaut)` dans le profil si une seule l'est (la première "
+                 "rencontrée si plusieurs, cas non censé arriver mais pas une erreur), sinon la séance est "
+                 "IGNORÉE (ni comptée nulle part, ni signalée) — c'est le comportement documenté par #40 : sans "
+                 "chaussure par défaut déclarée, une activité sans `gear_id` n'a simplement rien à raconter côté "
+                 "matériel. `gear_id` explicite qui ne correspond à AUCUNE chaussure du profil (faute de frappe, "
+                 "chaussure jamais déclarée) : jamais éliminé silencieusement, regroupé sous `unknown` avec son "
+                 "kilométrage — libellé « inconnue » côté tableau de bord. Date `depuis` du profil : purement "
+                 "informative (affichage), jamais un filtre — une activité portant le `gear_id` d'une chaussure "
+                 "datée plus tard est comptée quand même (l'explicite du `gear_id` prime sur une date de début "
+                 "possiblement oubliée ou approximative) ; ne pas la compter risquerait de sous-estimer "
+                 "silencieusement l'usure réelle, l'erreur la plus coûteuse ici. Seuil d'alerte : celui de la "
+                 f"puce (segment « alerte NNN km ») si renseigné, sinon {GEAR_ALERT_THRESHOLD_M_DEFAULT / 1000:g} km "
+                 "par défaut (`GEAR_ALERT_THRESHOLD_M_DEFAULT`) — TOUTE chaussure déclarée peut donc alerter, "
+                 "avec ou sans seuil explicite. Chaussure `(retirée)` : kilométrage affiché (historique), mais "
+                 "jamais d'alerte, et jamais candidate à l'attribution par défaut même si `(par défaut)` est "
+                 "aussi coché sur la même puce (une chaussure qu'on ne porte plus ne doit pas absorber les "
+                 "séances sans `gear_id`) — priorité documentée : retraite avant défaut.",
 }
 
 # ---------------------------------------------------------------------------
@@ -713,6 +743,53 @@ def sweat_rate_l_h(activity: dict) -> Optional[float]:
     rate = ((pre - post) + fluid_l) / hours
     lo, hi = SWEAT_RATE_PLAUSIBLE_L_H
     return round(rate, 2) if lo <= rate <= hi else None
+
+
+def gear_mileage(activities: List[dict], gear_defs: List[dict]) -> dict:
+    """Kilométrage cumulé par chaussure (#40). Voir `ASSUMPTIONS["gear_mileage"]`
+    pour la méthode complète (attribution, chaussure par défaut, `gear_id` inconnu,
+    date `depuis` purement informative, priorité retraite/défaut).
+
+    `activities` : dicts portant au moins `sport`, `distance_m` (optionnel — une
+    séance sans distance ne contribue rien) et `gear_id` (optionnel). `gear_defs` :
+    liste au format `arc_legacy.parse_gear` (`gear_id`, `name`, `start_date`,
+    `threshold_m`, `default`, `retired`).
+
+    Rend `{"shoes": [...], "unknown": [...]}` : `shoes` couvre TOUTE chaussure
+    déclarée dans le profil, y compris à 0 m (l'athlète voit sa liste complète),
+    chacune avec `distance_m`, `alert` (bool) et les champs du profil ; `unknown`
+    liste les `gear_id` vus sur une activité mais absents du profil, avec leur
+    seul kilométrage (pas de nom, pas de seuil — rien à afficher de plus)."""
+    by_id = {g["gear_id"]: dict(g) for g in gear_defs if g.get("gear_id")}
+    default_id = next((gid for gid, g in by_id.items() if g.get("default") and not g.get("retired")), None)
+
+    totals: Dict[str, float] = {}
+    for act in activities:
+        if act.get("sport") not in GEAR_WEAR_SPORTS:
+            continue
+        distance = act.get("distance_m")
+        if not distance:
+            continue
+        gear_id = act.get("gear_id") or default_id
+        if not gear_id:
+            continue
+        totals[gear_id] = totals.get(gear_id, 0.0) + distance
+
+    shoes = []
+    for gear_id, g in by_id.items():
+        distance_m = round(totals.get(gear_id, 0.0))
+        threshold_m = g.get("threshold_m") or GEAR_ALERT_THRESHOLD_M_DEFAULT
+        retired = bool(g.get("retired"))
+        shoes.append({
+            "gear_id": gear_id, "name": g.get("name") or gear_id, "distance_m": distance_m,
+            "threshold_m": threshold_m, "start_date": g.get("start_date"),
+            "default": bool(g.get("default")), "retired": retired,
+            "alert": (not retired) and distance_m >= threshold_m,
+        })
+    unknown = [{"gear_id": gid, "distance_m": round(m)} for gid, m in totals.items() if gid not in by_id]
+    shoes.sort(key=lambda s: s["name"].casefold())
+    unknown.sort(key=lambda s: s["gear_id"])
+    return {"shoes": shoes, "unknown": unknown}
 
 
 def predict_time_vdot(vdot_value: float, distance_m: float) -> Optional[float]:

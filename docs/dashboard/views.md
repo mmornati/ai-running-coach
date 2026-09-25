@@ -42,7 +42,12 @@ La page du matin, à ouvrir avant de lacer ses chaussures. De haut en bas :
    dehors de la semaine de course (les prévisions ne portent que sur quelques jours),
    d'où la combinaison des deux plutôt que la seule condition citée par l'issue.
    Une séance sans fichier météo ce jour-là n'est ni chaude ni froide : elle est
-   ignorée du compte et signalée à part (« sans météo »).
+   ignorée du compte et signalée à part (« sans météo »). Juste en dessous, la
+   tuile **Chaussures à surveiller** (#40) apparaît dès qu'une paire déclarée dans
+   « Matériel & lieux » du profil (hors chaussures retirées) atteint son seuil
+   d'alerte (700 km par défaut, ou celui précisé sur sa puce) — détail complet
+   (toutes les paires, y compris retirées, et tout `gear_id` inconnu du profil)
+   dans **Performance**.
 4. **Forme** : condition, fatigue, forme et ratio de charge, avec une phrase qui les
    lit pour vous (« la fatigue est sous la condition physique »), puis une **mini
    tendance de conformité sur 4 semaines** (une barre par semaine, hauteur = % de
@@ -290,6 +295,11 @@ kilomètre : pas de graphique, c'est normal.
   dénivelé (1 000 m D+ ≈ 1,75 km de plat).
 - **Records** sur des fenêtres de kilomètres consécutifs (1, 5, 10, 21 km) : seuls
   les tours d'environ 1 km comptent.
+- **Matériel** (#40) : kilométrage cumulé de chaque paire déclarée dans « Matériel &
+  lieux » du profil (course et randonnée seulement), une ligne « à surveiller »
+  au-delà du seuil d'alerte, les paires retirées affichées en grisé sans jamais
+  alerter, et une ligne « inconnue » par `gear_id` vu sur une séance mais absent du
+  profil — jamais masqué silencieusement.
 - **Hypothèses** : toutes les formules et leurs limites, en clair.
 
 **Comment la lire** : ce sont des ordres de grandeur, calculés sur l'allure et la FC

@@ -583,6 +583,12 @@ def build(root: Path, days: int = 120, today: date | None = None, sport: str = "
 
 - **Lieu par défaut** : Tournai
 - **Créneau habituel** : pause de midi (12 h-14 h)
+
+### Chaussures
+
+- Hoka Speedgoat 5 (bleue) — depuis 2026-01-01 — alerte 700 km — id: hoka-speedgoat-5-bleue (par défaut)
+- Adidas Adizero SL — alerte 500 km — id: adizero-sl
+- Nike Pegasus (retirée)
 """, encoding="utf-8")
     (root / "planning/active_objective.md").write_text(f"""# Objectif actif
 
@@ -683,6 +689,14 @@ def build(root: Path, days: int = 120, today: date | None = None, sport: str = "
             "splits_cols": ["km", "duration_s", "elev_gain_m", "elev_loss_m", "avg_hr_bpm", "max_speed_kmh", "cadence_spm", "label"],
             "splits": splits,
         }
+        # Kilométrage chaussures (#40) : `gear_id` posé sur `plan`, jamais sur un tirage
+        # `rng` — sans quoi ajouter/retirer une chaussure décalerait tout le flux aléatoire
+        # partagé qui suit (même précaution que le poids omis un jour sur cinq, #36).
+        # Séances qualité -> paire explicite ; sortie longue/facile -> aucun `gear_id`,
+        # pour exercer l'attribution par défaut (`(par défaut)` du profil synthétique
+        # ci-dessus) plutôt que l'identifiant explicite sur toutes les séances.
+        if plan == "quality":
+            data["gear_id"] = "adizero-sl"
         if rng.random() < 0.8:
             data["recovery_hr_bpm"] = round(24 + 10 * rng.random() - 8 * fatigue)
         else:

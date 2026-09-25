@@ -149,6 +149,37 @@ function heatTile(heat) {
   return `<p class="weather">${chip("weather", n > 0 ? "orange" : "yellow", "Acclimatation chaleur")} <span>${bits.join(" · ")}</span></p>`;
 }
 
+// Kilométrage chaussures et alerte d'usure (#40) : tuile « Aujourd'hui » — n'apparaît
+// que si au moins une chaussure (non retirée) a atteint son seuil. Le détail complet
+// (toutes les paires, retirées comprises) vit dans la vue Performance (`gearSection`).
+function gearTile(gear) {
+  const alerts = (gear?.shoes || []).filter((s) => s.alert);
+  if (!alerts.length) return "";
+  const names = alerts.map((s) => `${F.esc(s.name)} (${F.distance(s.distance_m, 0)})`).join(", ");
+  return `<p class="weather">${chip("gear", "orange", "Chaussures à surveiller")} <span>${names}</span></p>`;
+}
+
+// Détail complet du kilométrage chaussures (vue Performance) : toutes les paires
+// déclarées (retirées comprises, en fin de tableau), plus une ligne « inconnue »
+// par `gear_id` vu sur une activité mais absent du profil (#40 — ne jamais
+// masquer silencieusement un `gear_id` mal orthographié).
+function gearSection(gear) {
+  const shoes = gear?.shoes || [];
+  const unknown = gear?.unknown || [];
+  if (!shoes.length && !unknown.length) return "";
+  const sorted = [...shoes].sort((a, b) => (a.retired === b.retired ? 0 : a.retired ? 1 : -1));
+  const rows = sorted.map((s) => `<tr class="${s.retired ? "muted" : ""}">
+      <th scope="row">${F.esc(s.name)}${s.default ? ` <span class="tag">défaut</span>` : ""}${s.retired ? ` <span class="tag">retirée</span>` : ""}</th>
+      <td class="num">${F.distance(s.distance_m, 0)}</td>
+      <td class="num">${F.distance(s.threshold_m, 0)}</td>
+      <td>${s.alert ? chip("gear", "orange", "À surveiller") : ""}</td></tr>`).join("");
+  const unknownRows = unknown.map((u) => `<tr><th scope="row">${F.esc(u.gear_id)} <span class="tag">inconnue</span></th><td class="num">${F.distance(u.distance_m, 0)}</td><td class="num">—</td><td></td></tr>`).join("");
+  return `<section class="band"><h2>Matériel</h2><table class="data data--compact">
+      <thead><tr><th scope="col">Chaussure</th><th scope="col" class="num">Kilométrage</th><th scope="col" class="num">Seuil d'alerte</th><th scope="col">Statut</th></tr></thead>
+      <tbody>${rows}${unknownRows}</tbody></table>
+      ${unknown.length ? note("« inconnue » : gear_id vu sur une séance mais absent de la section « Chaussures » du profil (faute de frappe, paire jamais déclarée).") : ""}</section>`;
+}
+
 // ---------------------------------------------------------------------------
 // Cadre : objectif, navigation, thème
 // ---------------------------------------------------------------------------
@@ -301,6 +332,7 @@ async function viewToday() {
     ? `<p class="weather">${weatherChip(weather.category)} <span>${F.esc(weather.location)} · ${F.num(weather.temp_max_c)} °C max · vent ${F.num(weather.wind_kmh)} km/h</span>${weather.best_slot ? ` <span class="slot">Créneau : <strong>${F.SLOT[weather.best_slot]}</strong></span>` : ""}</p>${weather.slot_reason ? `<p class="muted">${F.esc(weather.slot_reason)}</p>` : ""}`
     : "";
   const heatHtml = heatTile(s.heat_acclimation);
+  const gearHtml = gearTile(s.gear);
 
   const f = form.series[form.series.length - 1];
   const formNow = f ? f.form : null;
@@ -312,7 +344,7 @@ async function viewToday() {
   main.innerHTML = `${header(F.dayLong(today).replace(/^./, (c) => c.toUpperCase()))}
     ${verdict}
     <section class="band"><h2>Santé</h2>${triad}</section>
-    <section class="band band--split"><div><h2>Au programme</h2>${sessionHtml}${weatherHtml}${heatHtml}</div>
+    <section class="band band--split"><div><h2>Au programme</h2>${sessionHtml}${weatherHtml}${heatHtml}${gearHtml}</div>
       <div><h2>Forme</h2>${formHtml}${complianceTrend(s.compliance_trend)}</div></section>
     ${rep ? `<section class="band"><h2>Dernier rapport du coach</h2><p><a href="#/rapport?path=${encodeURIComponent(rep.source_path)}">${F.esc(rep.title)}</a> <span class="muted">— ${F.dayLong(rep.date)}</span></p></section>` : ""}`;
 }
@@ -609,6 +641,7 @@ async function viewPerformance() {
     <section class="band band--split"><div><h2>Prédictions</h2><table class="data data--compact"><thead><tr><th scope="col">Distance</th><th scope="col" class="num">VDOT</th><th scope="col" class="num">Riegel</th></tr></thead><tbody>${pred}</tbody></table>
       ${trail ? note("En trail, la distance « effort » ajoute le dénivelé (1000 m D+ ≈ 1,75 km de plat, <code>config/sports/trail.md</code>). Sable, vent et barrières ne sont pas modélisés.") : ""}</div>
       <div><h2>Records</h2>${rec}</div></section>
+    ${gearSection(SUMMARY.gear)}
     <section class="band"><h2>Hypothèses</h2><dl class="assumptions">${Object.values(assumptions).map((t) => `<dd>${F.esc(t)}</dd>`).join("")}</dl></section>`;
   if (c) attachCursor($("#c-vo2"), c, (i) => readout($("#r-vo2"), `<strong>${F.dayLong(p.vo2max[i].date)}</strong> · ${p.vo2max[i].vo2max != null ? F.num(p.vo2max[i].vo2max, 1) : "pas d'estimation (aucune séance de course qualifiante sur 30 j)"}`));
 }
