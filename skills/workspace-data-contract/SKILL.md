@@ -294,14 +294,20 @@ heures (`duration_s`, la même durée totale que `sweat_rate_l_h`), calculé
 renseigné — sinon `null`, jamais 0 par défaut (un `carbs_g` explicitement à `0` reste
 un 0 g/h légitime, une absence de déclaration n'en est pas un).
 
-`python3 scripts/arc_index.py fueling` agrège les sorties longues des 12 dernières
-semaines glissantes (`FUELING_TREND_WEEKS`) : `long_runs` (nombre total), le meilleur
-débit observé (`max_carbs_per_hour_g`, avec son effectif `carbs_per_hour_n`), la
-médiane du taux de sudation sur la même fenêtre (`median_sweat_rate_l_h`,
-`sweat_rate_n`), et `carbs_ceiling_g_h` — le meilleur débit observé + une marge de
-progression documentée (`FUELING_MAX_MARGIN_G_H`, 10 g/h), plafond réaliste proposé
-à `course-strategist` pour un plan de course. `null` sans aucune sortie longue
-chiffrée : le repère générique reste 60-90 g/h (`FUELING_TARGET_BAND_G_H`). Le
+`python3 scripts/arc_index.py fueling` agrège les sorties longues **running/trail
+seulement** (`arc_metrics.FUELING_SPORTS` — ni la randonnée, ni le vélo : allure/FC/
+digestion trop différentes d'un effort de course pour plafonner sa cible glucides/h)
+des 12 dernières semaines glissantes (`FUELING_TREND_WEEKS`) : `long_runs` (nombre
+total), le meilleur débit observé (`max_carbs_per_hour_g`, avec son effectif
+`carbs_per_hour_n` — **moins de 3**, le plafond repose sur trop peu de données pour
+être présenté comme fiable, à signaler et confirmer à la prochaine sortie longue),
+la médiane du taux de sudation sur la même fenêtre (`median_sweat_rate_l_h`,
+`sweat_rate_n`), et `carbs_ceiling_g_h` (entier) — le meilleur débit observé + une
+marge de progression documentée (`FUELING_MAX_MARGIN_G_H`, 10 g/h), plafonné à son
+tour au haut du repère généraliste (90 g/h) sauf si l'athlète l'a déjà personnellement
+dépassé — plafond réaliste proposé à `course-strategist` pour un plan de course.
+`null` sans aucune sortie longue chiffrée : le repère générique reste 60-90 g/h
+(`FUELING_TARGET_BAND_G_H`). Le
 workspace n'a **aucun** champ de trouble digestif déclaré : « toléré » veut
 seulement dire « ingéré sans incident signalé ailleurs », jamais une mesure de
 tolérance — à confirmer par l'athlète avant d'en faire un plafond dur. Détails :

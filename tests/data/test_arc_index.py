@@ -920,6 +920,18 @@ class TestFuelingCli(Workspace):
         self.assertIsNone(result["carbs_ceiling_g_h"])
         self.assertEqual(result["target_band_g_h"], [60, 90])
 
+    def test_cycling_excluded_end_to_end(self):
+        """Revue de code #41, blocker : un long vélo à haut débit ne doit jamais
+        gonfler le plafond d'un plan de COURSE À PIED (`FUELING_SPORTS`, ni la
+        SQL `arc_index.fueling_trend` ni `arc_metrics.fueling_trend`)."""
+        self.write("activities/2026-08-01_cycling.md", arc(
+            '{"arc": 1, "kind": "activity", "date": "2026-08-01", "sport": "cycling", '
+            '"duration_s": 10800, "distance_m": 90000, "carbs_g": 300}'))   # 100 g/h
+        self.index()
+        result = I.fueling_trend(self.conn, date(2026, 9, 23))
+        self.assertEqual(result["long_runs"], 0)
+        self.assertIsNone(result["max_carbs_per_hour_g"])
+
     def test_not_gated_by_morning_check(self):
         """Contrairement à `hrv-baseline`/`sleep-debt`, `fueling_trend` ne lit même
         pas `conf`/`[health].morning_check` : le calcul ne dépend d'aucune donnée de

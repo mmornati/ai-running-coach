@@ -617,8 +617,11 @@ def api_fueling(store: Store, q: dict) -> dict:
     weeks_raw = q.get("weeks", [""])[0]
     weeks = int(weeks_raw) if weeks_raw.isdigit() else M.FUELING_TREND_WEEKS
     weeks = max(4, min(52, weeks))
-    rows = store.rows("SELECT date, distance_m, duration_s, carbs_g, sweat_rate_l_h FROM activity "
-                      "WHERE duration_s > ?", (M.LONG_RUN_MIN_DURATION_S,))
+    rows = store.rows(
+        "SELECT date, sport, distance_m, duration_s, carbs_g, sweat_rate_l_h FROM activity "
+        "WHERE duration_s > ? AND sport IN "
+        f"({', '.join('?' for _ in M.FUELING_SPORTS)})",
+        (M.LONG_RUN_MIN_DURATION_S, *M.FUELING_SPORTS))
     result = M.fueling_trend(rows, today, weeks)
     result["carbs_ceiling_g_h"] = M.fueling_carbs_ceiling(result["max_carbs_per_hour_g"])
     result["margin_g_h"] = M.FUELING_MAX_MARGIN_G_H

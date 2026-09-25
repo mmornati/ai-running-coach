@@ -809,8 +809,10 @@ def fueling_trend(conn, today: date) -> dict:
     ne dépend d'aucune donnée de santé, seulement des activités déjà indexées.
     Voir `arc_metrics.ASSUMPTIONS["fueling"]`."""
     rows = [dict(r) for r in conn.execute(
-        "SELECT date, distance_m, duration_s, carbs_g, sweat_rate_l_h FROM activity "
-        "WHERE duration_s > ?", (M.LONG_RUN_MIN_DURATION_S,)).fetchall()]
+        "SELECT date, sport, distance_m, duration_s, carbs_g, sweat_rate_l_h FROM activity "
+        "WHERE duration_s > ? AND sport IN "
+        f"({', '.join('?' for _ in M.FUELING_SPORTS)})",
+        (M.LONG_RUN_MIN_DURATION_S, *M.FUELING_SPORTS)).fetchall()]
     result = M.fueling_trend(rows, today)
     result["carbs_ceiling_g_h"] = M.fueling_carbs_ceiling(result["max_carbs_per_hour_g"])
     result["margin_g_h"] = M.FUELING_MAX_MARGIN_G_H

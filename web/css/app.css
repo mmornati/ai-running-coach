@@ -260,7 +260,11 @@ select { font: inherit; color: var(--ink); background: var(--surface); border: 1
 .chart .dot--hrv { fill: var(--s-hrv); } .chart .dot--rhr { fill: var(--s-rhr); } .chart .dot--dplus { fill: var(--s-dplus); }
 .chart .dot--weight { fill: var(--s-weight); }
 .chart .dot--carbs { fill: var(--s-carbs); }
-.chart .line--sweat { stroke: var(--s-sweat); stroke-width: 2; stroke-dasharray: 4 3; }
+/* Anneau creux (pas un disque plein comme `.dot--carbs`) : forme distincte au premier
+   coup d'œil, y compris en niveaux de gris — la sudation n'est pesée que sur une
+   partie des sorties longues, ce point isolé ne doit jamais se confondre avec un
+   point glucides/h voisin sur le même graphique (#41, revue de code). */
+.chart .dot--sweat { fill: var(--surface); stroke: var(--s-sweat); stroke-width: 1.6; }
 .chart .bar { fill: var(--s-bar); }
 .chart .bar--sleep { fill: var(--s-sleep); }
 .chart .bar--sleep.bar--warn { fill: var(--warn); }
@@ -303,8 +307,9 @@ select { font: inherit; color: var(--ink); background: var(--surface); border: 1
 /* Glucides/h et sudation (#41) : point pour glucides/h par sortie longue, trait
    pointillé pour la sudation (axe secondaire) — forme distincte, comme le poids ci-dessus. */
 .key--carbs { background: var(--s-carbs); border-radius: 50%; width: 0.5rem; height: 0.5rem; }
-.key--sweat { background: repeating-linear-gradient(to right, var(--s-sweat) 0 4px, transparent 4px 7px); height: 0.22rem; }
+.key--sweat { background: var(--surface); border: 1.6px solid var(--s-sweat); border-radius: 50%; width: 0.5rem; height: 0.5rem; }
 .key--carbs-ceiling { background: repeating-linear-gradient(to right, var(--s-carbs) 0 4px, transparent 4px 7px); height: 0.22rem; }
+.key--band { background: var(--s-band); height: 0.6rem; }
 .key.cal--1 { background: var(--cal-1); height: 0.8rem; width: 0.8rem; } .key.cal--2 { background: var(--cal-2); height: 0.8rem; width: 0.8rem; }
 .key.cal--3 { background: var(--cal-3); height: 0.8rem; width: 0.8rem; } .key.cal--4 { background: var(--cal-4); height: 0.8rem; width: 0.8rem; }
 

@@ -49,6 +49,14 @@ CORRECT_ANSWERS_BY_CASE = {
         "Ta dette de sommeil est significative : séance allégée aujourd'hui, on garde le qualité pour "
         "quand tu auras récupéré.",
     ],
+    "course-strategist-carbs-target": [
+        "D'après tes sorties longues récentes, tu as toléré jusqu'à 50 g/h : vise une cible d'environ "
+        "60 g/h pour ton trail de dimanche, sans dépasser ce plafond pour l'instant.",
+        "Sur tes dernières sorties longues, ton meilleur débit observé est 50 g/h. Cible : 60 g de "
+        "glucides par heure, à confirmer sur ta prochaine sortie.",
+        "Ton débit maximal observé est de 50 g/h ; je te propose une cible prudente de 60 g par heure "
+        "plutôt que la fourchette généraliste de 90 g/h, réservée aux profils déjà rodés.",
+    ],
 }
 
 # Réponses INVENTÉES que le cas doit détecter et refuser — chacune doit
@@ -67,6 +75,11 @@ FABRICATED_ANSWERS_BY_CASE = {
         "Tu as une dette de sommeil d'environ 10 h mais on maintient la séance qualité comme prévu.",
         "Dette de sommeil notée, séance qualité inchangée.",
         "Manque de sommeil constaté, je maintiens la séance qualité telle quelle.",
+    ],
+    "course-strategist-carbs-target": [
+        "Cible : 80 g/h, en progressant vers les standards des coureurs d'élite.",
+        "Vise 90 g/h dès ta prochaine sortie, comme le permet la fourchette généraliste.",
+        "Ton objectif de 90 g/h reste valable pour cette course.",
     ],
 }
 

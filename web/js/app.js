@@ -743,6 +743,13 @@ function weightSection(weightSeries, weight) {
 function fuelingSection(fueling) {
   const points = fueling.points.filter((p) => p.carbs_per_hour_g != null || p.sweat_rate_l_h != null);
   if (!points.length) return { html: "", chart: null };
+  // Abscisses espacées RÉGULIÈREMENT par indice (`timeChart` sans `xLabels`, comme le
+  // volume hebdomadaire) — pas à l'échelle réelle du calendrier : deux sorties longues
+  // rapprochées de trois jours et deux espacées de trois semaines occupent la même
+  // largeur. Assumé délibérément ici (revue de code #41, nit) : les sorties longues
+  // sont trop peu nombreuses et trop irrégulières (une par semaine dans le meilleur
+  // des cas) pour qu'un axe temporel continu reste lisible sans écraser les points
+  // récents dans un coin — documenté plutôt que « corrigé » par un axe réel.
   const dates = points.map((p) => p.date);
   const [lo, hi] = fueling.target_band_g_h;
   const marks = fueling.carbs_ceiling_g_h != null
@@ -751,7 +758,14 @@ function fuelingSection(fueling) {
   const chart = timeChart(dates, [
     { type: "band", lo: dates.map(() => lo), hi: dates.map(() => hi), cls: "band-fill" },
     { type: "dots", values: points.map((p) => p.carbs_per_hour_g), cls: "dot dot--carbs" },
-    { type: "line", values: points.map((p) => p.sweat_rate_l_h), cls: "line line--sweat", axis: "y2" },
+    // Sudation en `dots` (jamais `line`) : les sorties longues ne sont pas toutes pesées, donc
+    // cette série est CRIBLÉE de trous — `pathFrom` (chart.js) coupe une ligne à chaque `null`
+    // et un point non-`null` isolé entre deux `null` (aucun voisin immédiat) génère un simple
+    // « M » sans « L » à la suite, un sous-tracé d'un seul point qu'aucun navigateur ne rend
+    // (revue de code #41). Un point par sortie pesée reste visible même isolé ; anneau creux
+    // (voir `.dot--sweat` CSS) plutôt qu'un disque plein, pour rester distinct des points
+    // glucides/h au premier coup d'œil, y compris en niveaux de gris.
+    { type: "dots", values: points.map((p) => p.sweat_rate_l_h), cls: "dot dot--sweat", axis: "y2", r: 3.2 },
   ], marks, {
     height: 200, y: { zero: true }, y2: { zero: true }, label: "Glucides par heure et taux de sudation, sorties longues",
     yFormat: (v) => F.carbsRate(v), y2Format: (v) => F.sweatRate(v),
@@ -762,7 +776,7 @@ function fuelingSection(fueling) {
     ? `${F.sweatRate(fueling.median_sweat_rate_l_h)}<small> sur ${fueling.sweat_rate_n} sortie${fueling.sweat_rate_n > 1 ? "s" : ""}</small>` : "—";
   const html = `<section class="band"><h2>Glucides &amp; sudation</h2>
     <p class="muted">Repère indicatif ${F.carbsRate(lo)} – ${F.carbsRate(hi)}, pas une cible normative — le plafond réaliste d'un plan de course est le meilleur débit observé ci-dessous, plus une marge de progression documentée.</p>
-    <p class="legend"><span class="legend__item"><span class="key key--carbs"></span>Glucides/h</span> <span class="legend__item"><span class="key key--sweat"></span>Sudation</span>${fueling.carbs_ceiling_g_h != null ? ` <span class="legend__item"><span class="key key--carbs-ceiling"></span>Plafond course</span>` : ""}</p>
+    <p class="legend"><span class="legend__item"><span class="key key--band"></span>Repère 60-90 g/h</span> <span class="legend__item"><span class="key key--carbs"></span>Glucides/h</span> <span class="legend__item"><span class="key key--sweat"></span>Sudation</span>${fueling.carbs_ceiling_g_h != null ? ` <span class="legend__item"><span class="key key--carbs-ceiling"></span>Plafond course</span>` : ""}</p>
     <div class="chart-host" id="c-fueling">${chart.svg}</div><p class="readout" id="r-fueling"></p>
     <dl class="facts facts--inline">
       <div><dt>Sorties longues (${fueling.window_weeks} sem.)</dt><dd>${F.num(fueling.long_runs)}</dd></div>

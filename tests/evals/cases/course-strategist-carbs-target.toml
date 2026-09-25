@@ -7,21 +7,38 @@
 # (`FUELING_MAX_MARGIN_G_H`) = 60 g/h. Le prompt reste volontairement focalisé (pas
 # de GPX/URL fournie) pour ne tester que la logique de plafonnage, pas tout le
 # plan de course en 8 étapes.
+#
+# Regex affinées après revue de code (#41) : `progress\w*` seul en `must_match`
+# laissait passer un renvoi générique à la fourchette 60-90 sans aucune valeur
+# chiffrée issue de l'historique (« Vise 60-90 g/h … augmente progressivement ») —
+# retiré. `must_match` exige maintenant DEUX preuves distinctes : une valeur
+# recommandée dans la fourchette réaliste 40-60 g/h (« 60 g/h », « 60 g de
+# glucides par heure », « 60 g par heure »), ET la citation du débit observé
+# (« 50 g ») qui la justifie — un chiffre chiffré sans lien avec l'historique ne
+# suffit plus. `must_not_match` cible une recommandation DIRECTE au-dessus de
+# 60 g/h (« Cible : 80 g/h », « Vise 90 g/h ») sans se déclencher sur une mention
+# de 90 g/h utilisée comme repère qu'on écarte explicitement (« L'objectif de
+# 90 g/h est réservé […], pour toi : 60 g/h » — la garde `(?!.{0,20}r[ée]serv)`
+# laisse passer ce cas précis). Vérifié par
+# `tests/lint/test_eval_case_regex_safety.py` sur des réponses correctes et
+# fabriquées (voir `CORRECT_ANSWERS_BY_CASE`/`FABRICATED_ANSWERS_BY_CASE` pour
+# ce cas).
 id = "course-strategist-carbs-target"
 prompt = "Quelle cible de glucides par heure dois-je viser pour mon trail de dimanche ? Je n'ai pas encore de trace GPX, je veux juste connaître le repère à viser en fonction de mes sorties longues récentes."
 fixture = "course-strategist-carbs-target"
 
 [expect]
-# Une cible réaliste (~50-65 g/h, plafond observé + marge documentée) OU une
-# formulation de progression explicite — l'une ou l'autre suffit.
+# Une valeur recommandée réaliste (40-60 g/h, plafond observé + marge documentée) ...
 must_match = [
-  "([4-5][0-9]|6[0-5])\\s*g\\s*/\\s*h|progress\\w*|entra[iî]nement digestif",
+  "\\b(4\\d|5\\d|60)\\s*g(\\s*/\\s*h|\\s*(de\\s*glucides\\s*)?(par|/)\\s*h(eure)?)",
+  # ... ET la citation du débit observé qui la justifie (50 g/h dans la fixture).
+  "\\b50\\s*g",
 ]
-# Garde-fou : ne doit jamais recommander tel quel le haut de la fourchette
-# générique (90 g/h) sans que la question ait été posée — motif volontairement
-# étroit (mots de recommandation directement suivis de « 90 g/h », sans qu'un
-# nombre s'intercale) pour ne pas faire échouer une phrase qui mentionne 90 g/h
-# seulement en rappelant la fourchette générique 60-90 g/h.
+# Garde-fou : ne doit jamais recommander DIRECTEMENT le haut de la fourchette
+# générique (> 60 g/h, ex. « Cible : 80 g/h », « Vise 90 g/h ») — mais ne se
+# déclenche pas sur une mention de 90 g/h explicitement écartée au profit d'une
+# valeur plus basse juste après (« objectif de 90 g/h […] réservé […], pour
+# toi : 60 g/h »).
 must_not_match = [
-  "(cible|objectif|viser|visez)\\D{0,15}90\\s*g\\s*/\\s*h",
+  "(cible|objectif|vis\\w*)\\s*:?\\s*(de\\s*|à\\s*)?(6[1-9]|[7-9]\\d|1\\d\\d)\\s*g(?!.{0,20}r[ée]serv)",
 ]

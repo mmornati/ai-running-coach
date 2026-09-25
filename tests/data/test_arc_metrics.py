@@ -1182,11 +1182,12 @@ class TestCarbsPerHour(unittest.TestCase):
 
 
 class TestFuelingTrend(unittest.TestCase):
-    """#41 — `arc_metrics.fueling_trend` : fenêtre de tendance, sudation réutilisée
-    (jamais recalculée), maximum observé, médiane de sudation avec effectif."""
+    """#41 — `arc_metrics.fueling_trend` : fenêtre de tendance, filtre de sport,
+    sudation réutilisée (jamais recalculée), maximum observé, médiane de sudation
+    avec effectif."""
 
-    def long_run(self, iso, duration_s=7200, carbs_g=None, sweat_rate_l_h=None, distance_m=None):
-        act = {"date": iso, "duration_s": duration_s}
+    def long_run(self, iso, duration_s=7200, carbs_g=None, sweat_rate_l_h=None, distance_m=None, sport="trail"):
+        act = {"date": iso, "duration_s": duration_s, "sport": sport}
         if carbs_g is not None:
             act["carbs_g"] = carbs_g
         if sweat_rate_l_h is not None:
@@ -1251,19 +1252,71 @@ class TestFuelingTrend(unittest.TestCase):
         self.assertEqual(result["carbs_per_hour_n"], 0)
         self.assertEqual(result["sweat_rate_n"], 0)
 
+    # -- revue de code #41, blocker : filtre de sport ------------------------
+
+    def test_cycling_session_is_excluded_even_if_long(self):
+        """Un vélo de 3 h à haut débit ne doit jamais gonfler le maximum d'un KPI
+        destiné à plafonner un plan de COURSE À PIED (revue de code #41)."""
+        acts = [self.long_run("2026-08-01", duration_s=10800, carbs_g=300, sport="cycling")]  # 100 g/h
+        result = M.fueling_trend(acts, date(2026, 9, 25))
+        self.assertEqual(result["long_runs"], 0)
+        self.assertIsNone(result["max_carbs_per_hour_g"])
+
+    def test_hiking_session_is_excluded(self):
+        """Contrairement à `GEAR_WEAR_SPORTS` (kilométrage chaussures, #40), la
+        randonnée n'entre PAS dans `FUELING_SPORTS` : allure/dépense horaire trop
+        différentes d'un effort de course pour partager le même plafond."""
+        acts = [self.long_run("2026-08-01", carbs_g=100, sport="hiking")]
+        result = M.fueling_trend(acts, date(2026, 9, 25))
+        self.assertEqual(result["long_runs"], 0)
+
+    def test_running_and_trail_both_count(self):
+        acts = [self.long_run("2026-08-01", carbs_g=100, sport="running"),
+                self.long_run("2026-08-15", carbs_g=100, sport="trail")]
+        result = M.fueling_trend(acts, date(2026, 9, 25))
+        self.assertEqual(result["long_runs"], 2)
+
+    def test_point_carries_its_sport(self):
+        acts = [self.long_run("2026-08-01", carbs_g=100, sport="running")]
+        result = M.fueling_trend(acts, date(2026, 9, 25))
+        self.assertEqual(result["points"][0]["sport"], "running")
+
+    def test_cycling_never_shadows_a_valid_running_max(self):
+        acts = [self.long_run("2026-08-01", carbs_g=100, sport="trail"),                          # 50 g/h
+                self.long_run("2026-08-15", duration_s=10800, carbs_g=300, sport="cycling")]       # 100 g/h, exclu
+        result = M.fueling_trend(acts, date(2026, 9, 25))
+        self.assertEqual(result["long_runs"], 1)
+        self.assertEqual(result["max_carbs_per_hour_g"], 50.0)
+
 
 class TestFuelingCarbsCeiling(unittest.TestCase):
     """#41 — `arc_metrics.fueling_carbs_ceiling` : plafond de plan de course = max
-    observé + marge documentée, `None` sans donnée."""
+    observé + marge documentée, borné au haut du repère généraliste sauf dépassement
+    déjà démontré (revue de code #41, SHOULD-FIX 3), `None` sans donnée, arrondi à
+    l'entier."""
 
-    def test_adds_documented_margin(self):
-        self.assertEqual(M.fueling_carbs_ceiling(50.0), 50.0 + M.FUELING_MAX_MARGIN_G_H)
+    def test_adds_documented_margin_below_the_band(self):
+        # 50 + 10 = 60, sous le haut de bande (90) : la marge s'applique telle quelle.
+        self.assertEqual(M.fueling_carbs_ceiling(50.0), 50 + M.FUELING_MAX_MARGIN_G_H)
 
     def test_custom_margin(self):
-        self.assertEqual(M.fueling_carbs_ceiling(50.0, margin_g_h=5), 55.0)
+        self.assertEqual(M.fueling_carbs_ceiling(50.0, margin_g_h=5), 55)
 
     def test_none_without_any_observation(self):
         self.assertIsNone(M.fueling_carbs_ceiling(None))
+
+    def test_capped_at_band_top_when_margin_would_exceed_it(self):
+        """85 + 10 = 95, au-dessus du haut de bande (90) : plafonné à 90, jamais un
+        chiffre au-delà de la fourchette généraliste sans preuve à l'appui."""
+        self.assertEqual(M.fueling_carbs_ceiling(85.0), M.FUELING_TARGET_BAND_G_H[1])
+
+    def test_exceeds_the_band_only_when_already_personally_demonstrated(self):
+        """Un athlète déjà à 100 g/h à l'entraînement garde son propre maximum comme
+        plafond (aucune marge ajoutée au-delà de ce qu'il a prouvé) — jamais 110."""
+        self.assertEqual(M.fueling_carbs_ceiling(100.0), 100)
+
+    def test_ceiling_is_always_an_integer(self):
+        self.assertIsInstance(M.fueling_carbs_ceiling(48.3), int)
 
 
 if __name__ == "__main__":

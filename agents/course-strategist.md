@@ -146,14 +146,19 @@ Chaque scénario inclut : heure estimée, allure moyenne, temps ravito max, marg
 #### ÉTAPE 5 : PLAN NUTRITION
 
 **Plafond réaliste glucides/h (#41), avant de fixer l'objectif :** lance
-`python3 scripts/arc_index.py fueling` (sorties longues > 90 min, 12 dernières
-semaines) et lis `max_carbs_per_hour_g`/`carbs_ceiling_g_h` (= meilleur débit observé
-+ marge de progression documentée, `arc_metrics.ASSUMPTIONS["fueling"]`). Si
-`carbs_ceiling_g_h` n'est pas `null`, l'objectif glucides/h du plan ne dépasse PAS ce
-plafond — même s'il tombe sous 60 g/h — sauf confirmation explicite de l'athlète
-qu'il tolère plus (aucun trouble digestif n'est déclaré au contrat : le maximum
-observé n'est qu'un « ingéré sans incident signalé », jamais une vraie mesure de
-tolérance, d'où la marge plutôt qu'un plafond dur). Sans aucune donnée
+`python3 scripts/arc_index.py fueling` (sorties longues running/trail > 90 min, 12
+dernières semaines — ni randonnée ni vélo, allure/digestion trop différentes) et lis
+`max_carbs_per_hour_g`/`carbs_ceiling_g_h`/`carbs_per_hour_n`
+(`carbs_ceiling_g_h` = meilleur débit observé + marge de progression documentée,
+jamais au-dessus de 90 g/h sauf si l'athlète l'a déjà personnellement dépassé —
+`arc_metrics.ASSUMPTIONS["fueling"]`). Si `carbs_ceiling_g_h` n'est pas `null`,
+l'objectif glucides/h du plan ne dépasse PAS ce plafond — même s'il tombe sous
+60 g/h — sauf confirmation explicite de l'athlète qu'il tolère plus (aucun trouble
+digestif n'est déclaré au contrat : le maximum observé n'est qu'un « ingéré sans
+incident signalé », jamais une vraie mesure de tolérance, d'où la marge plutôt
+qu'un plafond dur). Si `carbs_per_hour_n` < 3, précise que ce plafond repose sur
+seulement `carbs_per_hour_n` sortie(s) chiffrée(s) et propose de le confirmer à la
+prochaine sortie longue plutôt que de le donner pour acquis. Sans aucune donnée
 (`carbs_ceiling_g_h` à `null`), garde la fourchette générique ci-dessous et suggère
 à l'athlète un entraînement digestif progressif sur ses prochaines sorties longues.
 
