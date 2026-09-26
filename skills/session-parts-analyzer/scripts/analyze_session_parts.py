@@ -37,6 +37,11 @@ from dataclasses import dataclass, asdict, field
 from pathlib import Path
 from typing import Iterable, List, Optional, Sequence
 
+# Moteur : scripts/ à la racine (le skill peut être atteint par un lien symbolique
+# depuis un workspace séparé — resolve() remonte au vrai dossier du moteur).
+sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "scripts"))
+from arc_samples import normalise_records  # noqa: E402
+
 
 # ---------------------------------------------------------------------------
 # Default thresholds — tunable via CLI flags
@@ -761,31 +766,41 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     return 0
 
 
-def _records_from_fit_json(data: dict) -> List[Record]:
+def _records_from_fit_json(data) -> List[Record]:
     """
-    Convert a get_activity_fit_data payload (already parsed JSON) into Records.
-    Each entry in data['records'] (if present) has positions, speed, hr, etc.
+    Convert a JSON records payload into Records.
+
+    Accepts the raw fitparse dump written by `download_fit.py --json`
+    (`<id>.records.json`, a list whose timestamps are strings because of
+    `json.dumps(default=str)`), an object `{"records": [...]}`, or the canonical
+    normalised samples (`activities/fit/<id>.json`). Parsing is delegated to
+    `arc_samples.normalise_records`: string/ISO timestamps, t0 = earliest
+    timestamp, `enhanced_speed`/`enhanced_altitude`, FIT `distance`,
+    semicircle → degree GPS conversion. Cadence comes out in steps/min.
     """
-    raw = data.get("records") or []
+    samples = normalise_records(data)
     out: List[Record] = []
-    t0 = None
     cum = 0.0
-    last = None
-    for r in raw:
-        ts = r.get("timestamp")
-        if t0 is None and ts is not None:
-            t0 = ts
-        t = (ts - t0).total_seconds() if ts is not None else len(out)
-        sp_mps = r.get("speed") or 0.0
-        sp_kmh = sp_mps * 3.6
-        cum += sp_mps
+    prev_t = None
+    for s in samples:
+        t = s["t_s"]
+        sp_mps = s.get("speed_ms") or 0.0
+        dist = s.get("distance_m")
+        if dist is not None:
+            cum = dist
+        elif prev_t is not None:
+            # No FIT distance on this sample: integrate speed over the real gap.
+            cum += sp_mps * (t - prev_t)
+        prev_t = t
+        hr = s.get("hr_bpm")
+        cad = s.get("cadence_spm")
         out.append(Record(
-            t=t, distance_m=cum, speed_kmh=sp_kmh,
-            hr=r.get("heart_rate"),
-            elevation_m=r.get("enhanced_altitude") or r.get("altitude"),
-            grade_pct=r.get("grade"),
-            cadence=r.get("cadence"),
-            lat=r.get("position_lat"), lon=r.get("position_long"),
+            t=t, distance_m=cum, speed_kmh=sp_mps * 3.6,
+            hr=int(round(hr)) if hr is not None else None,
+            elevation_m=s.get("altitude_m"),
+            grade_pct=None,  # not carried by the normalised samples
+            cadence=int(round(cad)) if cad is not None else None,
+            lat=s.get("lat_deg"), lon=s.get("lon_deg"),
         ))
     return out
 
