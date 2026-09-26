@@ -357,8 +357,9 @@ async function viewToday() {
 
 async function viewForm(params) {
   const days = Number(params.get("jours")) || 180;
-  const [form, load, decoupling, vam, descent] = await Promise.all([
+  const [form, load, decoupling, vam, descent, durability] = await Promise.all([
     api(`form?days=${days}`), api("load?weeks=26"), api("decoupling"), api("vam"), api("descent"),
+    api("durability"),
   ]);
   const s = SUMMARY;
   const trail = s.settings.sport === "trail";
@@ -397,6 +398,7 @@ async function viewForm(params) {
   const { html: decouplingHtml, chart: decouplingChart, points: decouplingPoints } = decouplingSection(decoupling);
   const { html: vamHtml, chart: vamChart, points: vamPoints } = vamSection(vam);
   const { html: descentHtml, chart: descentChart, points: descentPoints } = descentTrendSection(descent, days, params.get("descente"));
+  const { html: durabilityHtml, chart: durabilityChart, points: durabilityPoints } = durabilitySection(durability);
   main.innerHTML = `${header("Forme & charge", `Charge par séance : TRIMP (fréquence cardiaque), repli sur l'effort perçu. <a href="#/performance">Hypothèses des modèles</a>`)}
     <div class="toolbar">${periods}</div>
     <section class="band"><h2>Courbe de forme</h2>
@@ -411,7 +413,8 @@ async function viewForm(params) {
     ${polarisationSection(load.polarisation_weeks, load.hr_zones_reason)}
     ${decouplingHtml}
     ${vamHtml}
-    ${descentHtml}`;
+    ${descentHtml}
+    ${durabilityHtml}`;
 
   attachCursor($("#c-form"), chart, (i) => {
     const p = series[i];
@@ -440,6 +443,12 @@ async function viewForm(params) {
       const p = descentPoints[i];
       const refNote = p.reference_source === "non_descent" ? " · référence de repli (anneau creux)" : "";
       readout($("#r-descent"), `<strong>${F.dayLong(p.date)}</strong> · ${F.esc(p.name || F.SPORT[p.sport] || p.sport)} · efficacité ${F.efficiency(p.efficiency)}${p.mean_grade != null ? ` · pente moy. ${F.num(Math.abs(p.mean_grade) * 100, 1)} %` : ""}${refNote}`);
+    });
+  }
+  if (durabilityChart) {
+    attachCursor($("#c-durability"), durabilityChart, (i) => {
+      const p = durabilityPoints[i];
+      readout($("#r-durability"), `<strong>${F.dayLong(p.date)}</strong> · ${F.esc(p.name || F.SPORT[p.sport] || p.sport)} · fade GAP ${p.gap_fade_pct != null ? `${p.gap_fade_pct > 0 ? "+" : ""}${F.num(p.gap_fade_pct, 1)} %` : "—"}${p.ef_fade_pct != null ? ` · fade EF ${p.ef_fade_pct > 0 ? "+" : ""}${F.num(p.ef_fade_pct, 1)} %` : ""}`);
     });
   }
 }
@@ -699,6 +708,14 @@ async function viewSession(id) {
     // colorée comme si « moins » était automatiquement « mieux ».
     ...(a.decoupling_pct != null ? [["Découplage aérobie (Pa:HR)",
       `<span class="${a.decoupling_pct >= 0 && a.decoupling_pct <= 5 ? "pos" : a.decoupling_pct > 5 ? "neg" : ""}">${a.decoupling_pct > 0 ? "+" : ""}${F.num(a.decoupling_pct, 1)} %</span>${a.ef_whole != null ? `<small class="muted"> · EF ${F.num(a.ef_whole, 2)}</small>` : ""}`]] : []),
+    // Durabilité (#48) : fade GAP entre le premier et le dernier tiers de la
+    // sortie longue — uniquement si calculable (voir arc_durability.ASSUMPTIONS),
+    // jamais une ligne à "—". Couleur seulement dans les deux sens univoques
+    // (même discipline que le découplage ci-dessus) : positif (ralentissement en
+    // fin de sortie) en négatif visuel, négatif ou nul (pas de baisse) neutre —
+    // jamais coloré comme si un fade positif était souhaitable.
+    ...(a.durability_gap_fade_pct != null ? [["Durabilité (fade GAP dernier tiers)",
+      `<span class="${a.durability_gap_fade_pct > 0 ? "neg" : ""}">${a.durability_gap_fade_pct > 0 ? "+" : ""}${F.num(a.durability_gap_fade_pct, 1)} %</span>${a.durability_ef_fade_pct != null ? `<small class="muted"> · fade EF ${a.durability_ef_fade_pct > 0 ? "+" : ""}${F.num(a.durability_ef_fade_pct, 1)} %</small>` : ""}`]] : []),
     ...(trail || a.elevation_gain_m ? [["D+ / D-", a.elevation_gain_m != null ? `${F.elevation(a.elevation_gain_m)} / ${F.elevation(a.elevation_loss_m)}` : (missing.elevation_gain_m ? "non mesuré" : "—")]] : []),
     ["FC moy / max", a.avg_hr_bpm ? `${F.num(a.avg_hr_bpm)} / ${F.num(a.max_hr_bpm)} bpm` : (missing.avg_hr_bpm ? "non mesurée" : "—")],
     ["HRR", a.recovery_hr_bpm != null ? `${F.num(a.recovery_hr_bpm)} bpm` : `non mesuré${missing.recovery_hr_bpm ? ` — ${F.esc(missing.recovery_hr_bpm)}` : ""}`],
@@ -1219,6 +1236,49 @@ function descentTrendSection(trend, days, selectedClass) {
     ${fallbackCount ? `<p class="muted"><small>${fallbackCount} point${fallbackCount > 1 ? "s" : ""} en anneau creux : référence de repli, échelle différente d'un point plein — ne pas comparer directement.</small></p>` : ""}
     <p class="legend legend--small">Efficacité moyenne par classe de pente (${trend.window_weeks} sem.) : ${classLegend}</p>
   </section>`;
+  return { html, chart, points };
+}
+
+/** Section « Durabilité » (#48) de Forme & charge : un point par sortie longue
+ * (> `arc_metrics.LONG_RUN_MIN_DURATION_S`, 90 min) éligible (course à pied,
+ * échauffement exclu puis trois tiers de mouvement égaux, portions/FC suffisantes
+ * sur le premier ET le dernier tiers, pente comparable entre les deux —
+ * `arc_durability.ASSUMPTIONS`), fade GAP et fade EF entre le premier et le
+ * dernier tiers, en pourcentage. Repère à 0 % (aucune baisse mesurée) — une
+ * valeur POSITIVE signale un ralentissement en fin de sortie (fade), jamais une
+ * amélioration. Fade EF en anneau creux (même motif que
+ * `descentTrendSection`/`.dot--sweat`) : ce n'est pas la même grandeur que le
+ * fade GAP, jamais confondue visuellement. Abscisses espacées par indice, comme
+ * `decouplingSection` (#45) : les sorties longues sont trop irrégulières pour un
+ * axe temporel continu lisible. */
+function durabilitySection(trend) {
+  const points = trend.points.filter((p) => p.gap_fade_pct != null);
+  if (!points.length) return { html: "", chart: null, points: [] };
+  const dates = points.map((p) => p.date);
+  const chart = timeChart(dates, [
+    { type: "dots", values: points.map((p) => p.gap_fade_pct), cls: "dot dot--durability-gap" },
+    { type: "dots", values: points.map((p) => p.ef_fade_pct), cls: "dot dot--durability-ef" },
+  ], [
+    // `hline` va dans `marks` (3e argument), jamais dans `layers` (2e) — voir le
+    // correctif de #47 sur `decouplingSection`/`descentTrendSection`.
+    { type: "hline", value: 0, cls: "mark mark--durability-zero" },
+  ], {
+    height: 200, label: "Fade GAP/EF (dernier tiers vs premier tiers) sur les sorties longues",
+    yFormat: (v) => `${F.num(v, 1)} %`,
+  });
+  const html = `<section class="band"><h2>Durabilité</h2>
+    <p class="muted">Baisse de performance en fin de sortie longue, prédicteur direct de la tenue en
+      ultra : allure ajustée à la pente (GAP) et facteur d'efficacité (EF = GAP/FC) du dernier tiers de
+      la sortie (temps de mouvement, échauffement exclu), comparés au premier tiers. Une valeur
+      POSITIVE signale un ralentissement en fin de sortie ; négative ou nulle, pas de baisse mesurable.
+      Repère de coaching indicatif, pas un seuil validé cliniquement. <a href="#/performance">Hypothèses
+      des modèles</a></p>
+    <p class="legend"><span class="legend__item"><span class="key key--durability-gap"></span>Fade GAP</span> <span class="legend__item"><span class="key key--durability-ef"></span>Fade EF</span></p>
+    <div class="chart-host" id="c-durability">${chart.svg}</div><p class="readout" id="r-durability"></p>
+    <dl class="facts facts--inline">
+      <div><dt>Sorties longues (${trend.window_weeks} sem.)</dt><dd>${F.num(trend.long_runs)}</dd></div>
+      <div><dt>Fade GAP moyen</dt><dd>${trend.avg_gap_fade_pct != null ? `${trend.avg_gap_fade_pct > 0 ? "+" : ""}${F.num(trend.avg_gap_fade_pct, 1)} %<small class="muted"> sur ${trend.measured_n} sortie${trend.measured_n > 1 ? "s" : ""}</small>` : "—"}</dd></div>
+    </dl></section>`;
   return { html, chart, points };
 }
 

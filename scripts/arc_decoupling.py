@@ -397,6 +397,39 @@ def steadiness_share_pct(series: Sequence[dict], *, window_s: float = STEADY_WIN
     return (in_band_w / total_w * 100.0) if total_w > 0 else None
 
 
+def _split_by_moving_time_n(series: Sequence[dict], n_portions: int, *,
+                             resolution_s: float = DEFAULT_RESOLUTION_S) -> List[List[dict]]:
+    """Découpe `series` (déjà post-échauffement, triée ou non) en `n_portions`
+    portions ÉGALES sur le temps de MOUVEMENT cumulé (généralisation partagée
+    par `_split_by_moving_time`, deux portions/#45, et `arc_durability.py`,
+    trois portions/#48 — voir `ASSUMPTIONS["halves"]`/`["stopped_samples"]`,
+    valables pour n'importe quel nombre de portions égales). Rend une liste de
+    `n_portions` listes — les échantillons à l'arrêt n'apparaissent dans
+    AUCUNE portion ; les pentes fortes et la marche restent dans leur portion
+    (exclues seulement de l'EF/de la détection d'effort stable, voir
+    `_usable_for_ef`, pas du découpage temporel lui-même). Un échantillon est
+    affecté à la première portion dont la borne haute (`total * (k+1) /
+    n_portions`) n'est pas encore atteinte par le temps de mouvement cumulé
+    ÉCOULÉ AVANT lui — même règle de frontière que l'ancien découpage en deux
+    moitiés (`running < halfway`), généralisée à `n_portions` bornes."""
+    ordered = sorted((s for s in series if s.get("t_s") is not None), key=lambda s: s["t_s"])
+    moving = [(i, s) for i, s in enumerate(ordered) if _is_moving(s)]
+    weights = {i: _dt_to_next(ordered, i, resolution_s) for i, _s in moving}
+    total_moving_s = sum(weights.values())
+    portions: List[List[dict]] = [[] for _ in range(n_portions)]
+    boundaries = [total_moving_s * (k + 1) / n_portions for k in range(n_portions - 1)]
+    running = 0.0
+    for i, s in moving:
+        portion_idx = n_portions - 1
+        for k, boundary in enumerate(boundaries):
+            if running < boundary:
+                portion_idx = k
+                break
+        portions[portion_idx].append(s)
+        running += weights[i]
+    return portions
+
+
 def _split_by_moving_time(series: Sequence[dict], *,
                            resolution_s: float = DEFAULT_RESOLUTION_S) -> Tuple[List[dict], List[dict]]:
     """Découpe `series` (déjà post-échauffement, triée ou non) en deux moitiés
@@ -405,18 +438,10 @@ def _split_by_moving_time(series: Sequence[dict], *,
     l'arrêt n'apparaissent dans AUCUNE des deux moitiés ; les pentes fortes et
     la marche restent dans leur moitié (exclues seulement de l'EF/de la
     détection d'effort stable, voir `_usable_for_ef`, pas du découpage
-    temporel lui-même)."""
-    ordered = sorted((s for s in series if s.get("t_s") is not None), key=lambda s: s["t_s"])
-    moving = [(i, s) for i, s in enumerate(ordered) if _is_moving(s)]
-    weights = {i: _dt_to_next(ordered, i, resolution_s) for i, _s in moving}
-    total_moving_s = sum(weights.values())
-    half1: List[dict] = []
-    half2: List[dict] = []
-    running = 0.0
-    halfway = total_moving_s / 2.0
-    for i, s in moving:
-        (half1 if running < halfway else half2).append(s)
-        running += weights[i]
+    temporel lui-même). Cas particulier (`n_portions=2`) de
+    `_split_by_moving_time_n` — voir #48 (durabilité) pour la généralisation à
+    trois portions, sans aucun changement de comportement ici."""
+    half1, half2 = _split_by_moving_time_n(series, 2, resolution_s=resolution_s)
     return half1, half2
 
 

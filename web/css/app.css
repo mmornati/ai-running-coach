@@ -39,6 +39,7 @@
   --s-decoupling: #2f6b6b;
   --s-vam: #b0712f;
   --s-descent: #2f6b9a;
+  --s-durability: #a63d40;
 
   /* sémantique : verdicts, météo, statuts */
   --ok: #2f7a4f;
@@ -71,7 +72,7 @@
     --s-fitness: #7cc39b; --s-fatigue: #e0a45c; --s-form-pos: rgba(124, 195, 155, 0.20); --s-hrv: #7cc39b; --s-rhr: #e0826b;
     --s-median: #8b9a92; --s-bar: #4f8f6e; --s-sleep: #3d7a5c; --s-dplus: #e0826b; --s-band: rgba(124, 195, 155, 0.12);
     --s-year-0: #7cc39b; --s-year-1: #e0a45c; --s-year-2: #56665d; --s-weight: #b39ddb;
-    --s-carbs: #e0a45c; --s-sweat: #6fa8dc; --s-gap: #b39ddb; --s-decoupling: #5fc2c2; --s-vam: #e0a45c; --s-descent: #6fa8dc;
+    --s-carbs: #e0a45c; --s-sweat: #6fa8dc; --s-gap: #b39ddb; --s-decoupling: #5fc2c2; --s-vam: #e0a45c; --s-descent: #6fa8dc; --s-durability: #e0826b;
     --ok: #6fc28f; --ok-bg: rgba(111, 194, 143, 0.12); --warn: #e0ad4f; --warn-bg: rgba(224, 173, 79, 0.13);
     --bad: #ec7f69; --bad-bg: rgba(236, 127, 105, 0.12); --yellow: #dcc04c; --orange: #e8864a;
     --cal-0: #1a241e; --cal-1: #1f3b2c; --cal-2: #2f6b4f; --cal-3: #4f9e74; --cal-4: #a3e635;
@@ -85,7 +86,7 @@
   --s-fitness: #7cc39b; --s-fatigue: #e0a45c; --s-form-pos: rgba(124, 195, 155, 0.20); --s-hrv: #7cc39b; --s-rhr: #e0826b;
   --s-median: #8b9a92; --s-bar: #4f8f6e; --s-sleep: #3d7a5c; --s-dplus: #e0826b; --s-band: rgba(124, 195, 155, 0.12);
   --s-year-0: #7cc39b; --s-year-1: #e0a45c; --s-year-2: #56665d; --s-weight: #b39ddb;
-  --s-carbs: #e0a45c; --s-sweat: #6fa8dc; --s-gap: #b39ddb; --s-decoupling: #5fc2c2; --s-vam: #e0a45c; --s-descent: #6fa8dc;
+  --s-carbs: #e0a45c; --s-sweat: #6fa8dc; --s-gap: #b39ddb; --s-decoupling: #5fc2c2; --s-vam: #e0a45c; --s-descent: #6fa8dc; --s-durability: #e0826b;
   --ok: #6fc28f; --ok-bg: rgba(111, 194, 143, 0.12); --warn: #e0ad4f; --warn-bg: rgba(224, 173, 79, 0.13);
   --bad: #ec7f69; --bad-bg: rgba(236, 127, 105, 0.12); --yellow: #dcc04c; --orange: #e8864a;
   --cal-0: #1a241e; --cal-1: #1f3b2c; --cal-2: #2f6b4f; --cal-3: #4f9e74; --cal-4: #a3e635;
@@ -293,6 +294,11 @@ select { font: inherit; color: var(--ink); background: var(--surface); border: 1
    d'œil, jamais confondue avec un point plein voisin sur le même graphique
    (revue de code #47). */
 .chart .dot--descent-fallback { fill: var(--surface); stroke: var(--s-descent); stroke-width: 1.6; }
+.chart .dot--durability-gap { fill: var(--s-durability); }
+/* Anneau creux (même motif que `.dot--descent-fallback`/`.dot--sweat`) : le fade EF
+   n'est pas la même grandeur que le fade GAP (#48) — forme distincte au premier coup
+   d'œil, jamais confondue avec le point GAP voisin sur le même graphique. */
+.chart .dot--durability-ef { fill: var(--surface); stroke: var(--s-durability); stroke-width: 1.6; }
 /* Anneau creux (pas un disque plein comme `.dot--carbs`) : forme distincte au premier
    coup d'œil, y compris en niveaux de gris — la sudation n'est pesée que sur une
    partie des sorties longues, ce point isolé ne doit jamais se confondre avec un
@@ -313,6 +319,7 @@ select { font: inherit; color: var(--ink); background: var(--surface); border: 1
 .chart .mark.mark--carbs-ceiling { stroke: var(--s-carbs); }
 .chart .mark.mark--decoupling-good { stroke: var(--ok); }
 .chart .mark.mark--descent-model { stroke: var(--s-descent); stroke-dasharray: 2 3; }
+.chart .mark.mark--durability-zero { stroke: var(--line-strong); stroke-dasharray: none; }
 .chart .mark-label { fill: var(--ink-soft); font: 600 11px var(--text); }
 .chart--strip { margin-top: 0.3rem; }
 .chart .strip-base { stroke: var(--line); }
@@ -349,6 +356,8 @@ select { font: inherit; color: var(--ink); background: var(--surface); border: 1
 .key--vam { background: var(--s-vam); border-radius: 50%; width: 0.5rem; height: 0.5rem; }
 .key--descent { background: var(--s-descent); border-radius: 50%; width: 0.5rem; height: 0.5rem; }
 .key--descent-fallback { background: var(--surface); border: 1.6px solid var(--s-descent); border-radius: 50%; width: 0.5rem; height: 0.5rem; }
+.key--durability-gap { background: var(--s-durability); border-radius: 50%; width: 0.5rem; height: 0.5rem; }
+.key--durability-ef { background: var(--surface); border: 1.6px solid var(--s-durability); border-radius: 50%; width: 0.5rem; height: 0.5rem; }
 .key--band { background: var(--s-band); height: 0.6rem; }
 .key.cal--1 { background: var(--cal-1); height: 0.8rem; width: 0.8rem; } .key.cal--2 { background: var(--cal-2); height: 0.8rem; width: 0.8rem; }
 .key.cal--3 { background: var(--cal-3); height: 0.8rem; width: 0.8rem; } .key.cal--4 { background: var(--cal-4); height: 0.8rem; width: 0.8rem; }

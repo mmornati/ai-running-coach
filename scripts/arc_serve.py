@@ -492,6 +492,7 @@ def api_activity(store: Store, activity_id: int):
             "hr_zones": api_activity_hr_zones(store, activity_id),
             "climbs": api_activity_climbs(store, activity_id),
             "descent": api_activity_descent(store, activity_id),
+            "durability": api_activity_durability(store, activity_id),
             "body_html": render_markdown(I.C.body_after_block(body))}
 
 
@@ -578,6 +579,44 @@ def api_activity_descent(store: Store, activity_id: int) -> dict:
         "reference_source": act["descent_reference_source"],
         "reason": reason,
         "reason_code": reason_code,
+        "applicable": True,
+    }
+
+
+def api_activity_durability(store: Store, activity_id: int) -> dict:
+    """Durabilité sur les sorties longues (#48), pour
+    `/api/activity/<id>.durability` : fade GAP/EF entre le premier et le
+    dernier tiers, FC par tiers, déjà calculés à l'indexation
+    (`compute_metrics` -> `arc_durability.durability_report_from_series`), id
+    INTERNE de l'activité. Rend TOUJOURS un dict (jamais `None`, même
+    discipline que `api_activity_descent`/#47) avec une `reason`/`reason_code`
+    explicites dans TOUS les cas où `gap_fade_pct` est `None` — hors de la
+    famille course à pied, pas d'échantillon FIT, séance pas assez longue,
+    portion insuffisante, FC incomplète ou pente trop asymétrique entre les
+    deux tiers comparés (voir `arc_durability.ASSUMPTIONS`)."""
+    act = store.one(
+        "SELECT sport, durability_gap_fade_pct, durability_ef_fade_pct, durability_hr_first_third_bpm, "
+        "durability_hr_middle_third_bpm, durability_hr_last_third_bpm, durability_reason, "
+        "durability_reason_code FROM activity WHERE id = ?", (activity_id,))
+    empty = {"gap_fade_pct": None, "ef_fade_pct": None, "hr_first_third_bpm": None,
+             "hr_middle_third_bpm": None, "hr_last_third_bpm": None}
+    if act is None:
+        return {**empty, "reason": "activité introuvable", "reason_code": "unknown_activity", "applicable": True}
+    if M.sport_family(act["sport"]) != "run":
+        return {**empty, "reason": "hors de la famille course à pied (arc_metrics.sport_family), voir "
+                                    "arc_durability.ASSUMPTIONS[\"restricted_to_run_family\"]",
+                "reason_code": "not_run_family", "applicable": False}
+    if act["durability_gap_fade_pct"] is None and act["durability_reason"] is None:
+        return {**empty, "reason": "aucun échantillon FIT ingéré pour cette séance",
+                "reason_code": "no_samples", "applicable": True}
+    return {
+        "gap_fade_pct": act["durability_gap_fade_pct"],
+        "ef_fade_pct": act["durability_ef_fade_pct"],
+        "hr_first_third_bpm": act["durability_hr_first_third_bpm"],
+        "hr_middle_third_bpm": act["durability_hr_middle_third_bpm"],
+        "hr_last_third_bpm": act["durability_hr_last_third_bpm"],
+        "reason": act["durability_reason"],
+        "reason_code": act["durability_reason_code"],
         "applicable": True,
     }
 
@@ -823,6 +862,26 @@ def api_descent(store: Store, q: dict) -> dict:
     return M.descent_trend(rows, today, weeks)
 
 
+def api_durability(store: Store, q: dict) -> dict:
+    """Tendance de durabilité sur les sorties longues (#48) : `/api/durability`.
+
+    Additive : ne touche à aucune route existante. Délègue à `M.durability_trend`
+    sur les sorties longues de la famille course à pied (`duration_s` >
+    `M.LONG_RUN_MIN_DURATION_S`) de la fenêtre demandée (`weeks`, défaut
+    `M.DURABILITY_TREND_WEEKS`) — même filtre que `api_decoupling` (#45), sur lequel
+    la durabilité calque son esprit — voir `arc_durability.ASSUMPTIONS`.
+    """
+    today = _today(store)
+    weeks_raw = q.get("weeks", [""])[0]
+    weeks = int(weeks_raw) if weeks_raw.isdigit() else M.DURABILITY_TREND_WEEKS
+    weeks = max(4, min(52, weeks))
+    rows = store.rows(
+        "SELECT date, sport, name, duration_s, durability_gap_fade_pct, durability_ef_fade_pct, "
+        "durability_hr_first_third_bpm, durability_hr_middle_third_bpm, durability_hr_last_third_bpm "
+        "FROM activity WHERE duration_s > ?", (M.LONG_RUN_MIN_DURATION_S,))
+    return M.durability_trend(rows, today, weeks)
+
+
 def api_files(store: Store, q: dict) -> dict:
     return {"items": store.backfill()}
 
@@ -833,7 +892,7 @@ ROUTES = {
     "/api/performance": api_performance, "/api/reports": api_reports, "/api/report": api_report,
     "/api/calendar": api_calendar, "/api/nutrition": api_nutrition, "/api/fueling": api_fueling,
     "/api/decoupling": api_decoupling, "/api/vam": api_vam, "/api/descent": api_descent,
-    "/api/files": api_files,
+    "/api/durability": api_durability, "/api/files": api_files,
 }
 
 # ---------------------------------------------------------------------------

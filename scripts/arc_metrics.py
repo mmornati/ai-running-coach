@@ -1508,6 +1508,66 @@ def descent_trend(rows: List[dict], day: date, window_weeks: int = DESCENT_TREND
     return {"activities": activities, "classes": classes_out, "window_weeks": window_weeks}
 
 
+# Fenêtre de la tendance de durabilité (#48) : 12 semaines glissantes, même largeur
+# que le découplage (#45), sur lequel la durabilité calque son esprit (sorties
+# longues, famille course à pied) — pas de raison connue d'en choisir une différente.
+DURABILITY_TREND_WEEKS = 12
+
+
+def durability_trend(activities: List[dict], day: date, window_weeks: int = DURABILITY_TREND_WEEKS) -> dict:
+    """Tendance de la durabilité (#48, fade GAP/EF sur le dernier tiers des sorties
+    longues) sur `window_weeks` semaines glissantes se terminant à `day` inclus —
+    même discipline que `decoupling_trend` (#45) : les DEUX filtres (famille course
+    à pied, durée > `LONG_RUN_MIN_DURATION_S`) sont appliqués ici, que l'appelant
+    ait ou non déjà pré-filtré sa requête.
+
+    `activities` : dicts portant au moins `date` (AAAA-MM-JJ), `duration_s` et
+    `sport` ; `durability_gap_fade_pct`/`durability_ef_fade_pct`/
+    `durability_hr_first_third_bpm`/`durability_hr_middle_third_bpm`/
+    `durability_hr_last_third_bpm` (déjà dérivés à l'indexation par
+    `arc_durability.durability_report`, JAMAIS recalculés ici) optionnels — une
+    sortie longue sans fade calculable (portion trop courte, FC incomplète, pente
+    trop asymétrique...) apparaît quand même dans `points` avec ces champs à
+    `None`, jamais silencieusement exclue de la liste (seulement des moyennes)."""
+    start = day - timedelta(days=window_weeks * 7 - 1)
+    points = []
+    for act in activities:
+        iso = act.get("date")
+        duration = act.get("duration_s")
+        if not iso or not duration or duration <= LONG_RUN_MIN_DURATION_S:
+            continue
+        if sport_family(act.get("sport")) != "run":
+            continue
+        try:
+            act_date = date.fromisoformat(iso)
+        except ValueError:
+            continue
+        if not (start <= act_date <= day):
+            continue
+        points.append({
+            "date": iso,
+            "sport": act.get("sport"),
+            "name": act.get("name"),
+            "duration_s": duration,
+            "gap_fade_pct": act.get("durability_gap_fade_pct"),
+            "ef_fade_pct": act.get("durability_ef_fade_pct"),
+            "hr_first_third_bpm": act.get("durability_hr_first_third_bpm"),
+            "hr_middle_third_bpm": act.get("durability_hr_middle_third_bpm"),
+            "hr_last_third_bpm": act.get("durability_hr_last_third_bpm"),
+        })
+    points.sort(key=lambda p: p["date"])
+    gap_measured = [p["gap_fade_pct"] for p in points if p["gap_fade_pct"] is not None]
+    ef_measured = [p["ef_fade_pct"] for p in points if p["ef_fade_pct"] is not None]
+    return {
+        "points": points,
+        "window_weeks": window_weeks,
+        "long_runs": len(points),
+        "measured_n": len(gap_measured),
+        "avg_gap_fade_pct": round(statistics.mean(gap_measured), 2) if gap_measured else None,
+        "avg_ef_fade_pct": round(statistics.mean(ef_measured), 2) if ef_measured else None,
+    }
+
+
 def gear_mileage(activities: List[dict], gear_defs: List[dict]) -> dict:
     """Kilométrage cumulé par chaussure (#40). Voir `ASSUMPTIONS["gear_mileage"]`
     pour la méthode complète (attribution, chaussure par défaut, `gear_id` inconnu,
