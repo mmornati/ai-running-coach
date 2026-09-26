@@ -806,6 +806,10 @@ def api_descent(store: Store, q: dict) -> dict:
     (`weeks`, défaut `M.DESCENT_TREND_WEEKS`) — AUCUN seuil de durée minimale
     sur la séance (comme `api_vam`), seul le seuil PAR CLASSE (déjà appliqué à
     l'indexation) filtre les lignes — voir `arc_descent.ASSUMPTIONS`.
+    `a.descent_reference_source` (revue de code, should-fix) : `"flat"` et son
+    repli `"non_descent"` ne sont pas sur la même échelle (mesuré : 0,664 en
+    `flat` vs 0,548 en `non_descent` pour la MÊME descente) — porté sur chaque
+    point de la tendance pour que l'UI ne les mélange jamais sans le dire.
     """
     today = _today(store)
     weeks_raw = q.get("weeks", [""])[0]
@@ -813,7 +817,8 @@ def api_descent(store: Store, q: dict) -> dict:
     weeks = max(4, min(52, weeks))
     rows = store.rows(
         "SELECT a.id AS activity_id, a.date AS date, a.sport AS sport, a.name AS name, "
-        "dc.grade_class AS grade_class, dc.efficiency AS efficiency, dc.mean_pace_s_km AS mean_pace_s_km, "
+        "a.descent_reference_source AS reference_source, dc.grade_class AS grade_class, "
+        "dc.efficiency AS efficiency, dc.mean_pace_s_km AS mean_pace_s_km, "
         "dc.mean_grade AS mean_grade FROM activity_descent_class dc JOIN activity a ON a.id = dc.activity_id")
     return M.descent_trend(rows, today, weeks)
 

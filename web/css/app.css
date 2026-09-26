@@ -287,6 +287,12 @@ select { font: inherit; color: var(--ink); background: var(--surface); border: 1
 .chart .dot--decoupling { fill: var(--s-decoupling); }
 .chart .dot--vam { fill: var(--s-vam); }
 .chart .dot--descent { fill: var(--s-descent); }
+/* Anneau creux (même motif que `.dot--sweat`) : la référence de repli
+   (`"non_descent"`, `arc_descent.ASSUMPTIONS["reference"]`) n'est pas sur la même
+   échelle que la référence plate (`"flat"`) — forme distincte au premier coup
+   d'œil, jamais confondue avec un point plein voisin sur le même graphique
+   (revue de code #47). */
+.chart .dot--descent-fallback { fill: var(--surface); stroke: var(--s-descent); stroke-width: 1.6; }
 /* Anneau creux (pas un disque plein comme `.dot--carbs`) : forme distincte au premier
    coup d'œil, y compris en niveaux de gris — la sudation n'est pesée que sur une
    partie des sorties longues, ce point isolé ne doit jamais se confondre avec un
@@ -342,6 +348,7 @@ select { font: inherit; color: var(--ink); background: var(--surface); border: 1
 .key--decoupling { background: var(--s-decoupling); border-radius: 50%; width: 0.5rem; height: 0.5rem; }
 .key--vam { background: var(--s-vam); border-radius: 50%; width: 0.5rem; height: 0.5rem; }
 .key--descent { background: var(--s-descent); border-radius: 50%; width: 0.5rem; height: 0.5rem; }
+.key--descent-fallback { background: var(--surface); border: 1.6px solid var(--s-descent); border-radius: 50%; width: 0.5rem; height: 0.5rem; }
 .key--band { background: var(--s-band); height: 0.6rem; }
 .key.cal--1 { background: var(--cal-1); height: 0.8rem; width: 0.8rem; } .key.cal--2 { background: var(--cal-2); height: 0.8rem; width: 0.8rem; }
 .key.cal--3 { background: var(--cal-3); height: 0.8rem; width: 0.8rem; } .key.cal--4 { background: var(--cal-4); height: 0.8rem; width: 0.8rem; }

@@ -445,6 +445,38 @@ class TestDescentTrendGroupsByActivityId(unittest.TestCase):
         self.assertIn("-5 à -10 %", trend["classes"])
 
 
+class TestDescentTrendCarriesReferenceSource(unittest.TestCase):
+    """Revue de code (post-approbation, should-fix) : `"flat"` et son repli
+    `"non_descent"` ne sont PAS sur la même échelle (mesuré : 0,664 en `flat`
+    contre 0,548 en `non_descent` pour la MÊME descente) — un point de tendance
+    doit porter sa source pour que l'UI puisse les distinguer visuellement,
+    jamais les mélanger comme s'ils étaient de même nature."""
+
+    def test_reference_source_is_carried_on_each_class_point(self):
+        from datetime import date
+        rows = [
+            {"activity_id": 1, "date": "2026-09-18", "sport": "trail", "name": "Trail A",
+             "reference_source": "flat", "grade_class": "-10 à -15 %", "efficiency": 0.664,
+             "mean_pace_s_km": 300.0},
+            {"activity_id": 2, "date": "2026-09-20", "sport": "trail", "name": "Trail B",
+             "reference_source": "non_descent", "grade_class": "-10 à -15 %", "efficiency": 0.548,
+             "mean_pace_s_km": 300.0},
+        ]
+        trend = M.descent_trend(rows, date(2026, 9, 25))
+        points = trend["classes"]["-10 à -15 %"]["points"]
+        sources = {p["date"]: p["reference_source"] for p in points}
+        self.assertEqual(sources, {"2026-09-18": "flat", "2026-09-20": "non_descent"})
+
+    def test_reference_source_is_none_when_the_row_does_not_carry_it(self):
+        """Défense en profondeur pour un ancien appelant qui n'aurait pas encore
+        la colonne dans sa requête SQL — jamais une exception."""
+        from datetime import date
+        rows = [{"activity_id": 1, "date": "2026-09-20", "sport": "trail", "name": "Trail",
+                  "grade_class": "-5 à -10 %", "efficiency": 0.9, "mean_pace_s_km": 300.0}]
+        trend = M.descent_trend(rows, date(2026, 9, 25))
+        self.assertIsNone(trend["classes"]["-5 à -10 %"]["points"][0]["reference_source"])
+
+
 # ---------------------------------------------------------------------------
 # arc_index : table activity_descent_class, CLI, garde-fou
 # ---------------------------------------------------------------------------
@@ -603,6 +635,19 @@ class TestActivityDescentReportAndCli(Workspace):
         trend = I.descent_trend(self.conn, date(2026, 9, 25))
         self.assertGreaterEqual(len(trend["activities"]), 1)
         self.assertTrue(trend["classes"])
+
+    def test_descent_trend_carries_reference_source_from_the_activity_row(self):
+        """Revue de code (post-approbation, should-fix) : `arc_index.descent_trend`
+        doit SÉLECTIONNER `a.descent_reference_source` — sans quoi la tendance ne
+        pourrait jamais distinguer un point `"flat"` d'un point `"non_descent"`
+        (échelles différentes, voir `arc_descent.ASSUMPTIONS["reference"]`)."""
+        self.write_activity(self.GARMIN_ID)
+        self.write_fit_descent(self.GARMIN_ID, descent_duration_s=600, grade=-0.12, speed_ms=3.0)
+        self.index()
+        from datetime import date
+        trend = I.descent_trend(self.conn, date(2026, 9, 25))
+        point = trend["classes"]["-10 à -15 %"]["points"][0]
+        self.assertEqual(point["reference_source"], "flat")
 
 
 class TestComputeMetricsSurvivesAnUnexpectedDescentCrash(Workspace):

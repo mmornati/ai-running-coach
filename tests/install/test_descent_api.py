@@ -117,6 +117,12 @@ class TestDescentApi(InstallAsserts):
         self.assertEqual(len(matches), 1, trend["activities"])
         self.assertIsNotNone(matches[0].get("activity_id"))
         self.assertTrue(trend["classes"])
+        # Revue de code (post-approbation, should-fix) : chaque point de classe doit
+        # porter sa source de référence ("flat"/"non_descent", échelles différentes
+        # — arc_descent.ASSUMPTIONS["reference"]), jamais un point muet sur ce plan.
+        class_points = next(iter(trend["classes"].values()))["points"]
+        self.assertTrue(class_points)
+        self.assertEqual(class_points[0]["reference_source"], "flat")
 
     def test_non_run_activity_descent_has_an_explicit_reason_and_no_error(self):
         """Même discipline que `test_vam_api.py`, should-fix 5 de #46 : une

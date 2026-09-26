@@ -1422,7 +1422,15 @@ def descent_trend(rows: List[dict], day: date, window_weeks: int = DESCENT_TREND
     présente (déjà dérivée à l'indexation par `arc_descent.descent_speed_by_grade_class`,
     JAMAIS recalculée ici), portant `activity_id` (revue de code, should-fix 3 —
     voir plus bas), `date`, `sport`, `name`, `grade_class`, `efficiency`
-    (optionnel), `mean_pace_s_km` (optionnel), `mean_grade` (optionnel).
+    (optionnel), `mean_pace_s_km` (optionnel), `mean_grade` (optionnel),
+    `reference_source` (optionnel — `"flat"` ou `"non_descent"`, voir
+    `arc_descent.ASSUMPTIONS["reference"]`). `reference_source` est reporté TEL
+    QUEL sur chaque point de `classes[label]["points"]` (revue de code,
+    should-fix) : les deux sources ne sont PAS sur la même échelle (mesuré :
+    0,664 en `flat` contre 0,548 en `non_descent` pour la MÊME descente) —
+    l'appelant (l'UI) doit pouvoir les distinguer visuellement, jamais les
+    tracer comme un seul point de même nature (une séance repliée sur
+    `non_descent` semblerait sinon une chute d'efficacité).
 
     Rend `{"activities": [...], "classes": {label: {"points", "count",
     "avg_efficiency"}}, "window_weeks"}`. `classes` — LE RÉSULTAT PRINCIPAL,
@@ -1476,6 +1484,13 @@ def descent_trend(rows: List[dict], day: date, window_weeks: int = DESCENT_TREND
             "date": iso, "sport": row.get("sport"), "name": row.get("name"),
             "efficiency": eff, "mean_pace_s_km": row.get("mean_pace_s_km"),
             "mean_grade": row.get("mean_grade"),
+            # `reference_source` (revue de code, should-fix) : `"flat"` et son repli
+            # `"non_descent"` (voir `arc_descent.ASSUMPTIONS["reference"]`) ne sont
+            # PAS sur la même échelle (mesuré : 0,664 en `flat` vs 0,548 en
+            # `non_descent` pour la MÊME descente) — porté sur CHAQUE point pour que
+            # l'appelant (l'UI) ne les affiche jamais indifféremment, une séance
+            # repliée sur `non_descent` semblant sinon une chute d'efficacité.
+            "reference_source": row.get("reference_source"),
         })
     activities = []
     for entry in by_activity.values():

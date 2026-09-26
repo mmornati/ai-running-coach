@@ -392,7 +392,7 @@ async function viewForm(params) {
       { type: "bars", values: weeks.map((w) => w.distance_m / 1000), cls: "bar" },
     ], [], { height: 200, y: { zero: true }, label: "Volume hebdomadaire en kilomètres", yFormat: (v) => `${F.num(v)} km` });
 
-  const periods = [[90, "3 mois"], [180, "6 mois"], [365, "1 an"]].map(([d, l]) => `<a class="seg ${d === days ? "is-on" : ""}" href="#/forme?jours=${d}">${l}</a>`).join("");
+  const periods = [[90, "3 mois"], [180, "6 mois"], [365, "1 an"]].map(([d, l]) => `<a class="seg ${d === days ? "is-on" : ""}" aria-current="${d === days ? "true" : "false"}" href="#/forme?jours=${d}">${l}</a>`).join("");
   const last = series[series.length - 1];
   const { html: decouplingHtml, chart: decouplingChart, points: decouplingPoints } = decouplingSection(decoupling);
   const { html: vamHtml, chart: vamChart, points: vamPoints } = vamSection(vam);
@@ -438,7 +438,8 @@ async function viewForm(params) {
   if (descentChart) {
     attachCursor($("#c-descent"), descentChart, (i) => {
       const p = descentPoints[i];
-      readout($("#r-descent"), `<strong>${F.dayLong(p.date)}</strong> · ${F.esc(p.name || F.SPORT[p.sport] || p.sport)} · efficacité ${F.efficiency(p.efficiency)}${p.mean_grade != null ? ` · pente moy. ${F.num(Math.abs(p.mean_grade) * 100, 1)} %` : ""}`);
+      const refNote = p.reference_source === "non_descent" ? " · référence de repli (anneau creux)" : "";
+      readout($("#r-descent"), `<strong>${F.dayLong(p.date)}</strong> · ${F.esc(p.name || F.SPORT[p.sport] || p.sport)} · efficacité ${F.efficiency(p.efficiency)}${p.mean_grade != null ? ` · pente moy. ${F.num(Math.abs(p.mean_grade) * 100, 1)} %` : ""}${refNote}`);
     });
   }
 }
@@ -588,7 +589,7 @@ async function viewHealth(params) {
         { type: "bars", values: s.map((p) => (p.sleep_debt_7d_s != null ? p.sleep_debt_7d_s / 3600 : null)), cls: (i, v) => `bar bar--sleep${v > debtAlertH ? " bar--alert" : v > debtWarnH ? " bar--warn" : ""}` },
       ], [], { height: 150, y: { min: 0 }, label: "Dette de sommeil cumulée en heures", yFormat: (v) => `${F.num(v)} h` }), false]);
   }
-  const periods = [[30, "1 mois"], [90, "3 mois"], [180, "6 mois"]].map(([d, l]) => `<a class="seg ${d === days ? "is-on" : ""}" href="#/sante?jours=${d}">${l}</a>`).join("");
+  const periods = [[30, "1 mois"], [90, "3 mois"], [180, "6 mois"]].map(([d, l]) => `<a class="seg ${d === days ? "is-on" : ""}" aria-current="${d === days ? "true" : "false"}" href="#/sante?jours=${d}">${l}</a>`).join("");
   main.innerHTML = `${header("Santé", mode === "minimal" ? "Bilan minimal : readiness seule." : "Triade du matin : HRV, FC de repos, readiness — et le verdict du coach, jour par jour.")}
     <div class="toolbar">${periods}</div>
     <p class="readout readout--sticky" id="r-health"></p>
@@ -1176,11 +1177,24 @@ function descentTrendSection(trend, days, selectedClass) {
     ? selectedClass
     : labels.slice().sort((a, b) => classes[b].count - classes[a].count)[0];
   const points = classes[active].points.filter((p) => p.efficiency != null);
+  // La référence peut venir de deux sources DIFFÉRENTES d'une séance à l'autre
+  // (`arc_descent.ASSUMPTIONS["reference"]`) — le plat de LA séance (`"flat"`),
+  // ou son repli hors forte descente (`"non_descent"`) quand elle n'a pas assez
+  // de plat. Les deux ne sont PAS sur la même échelle (revue de code : mesuré
+  // 0,664 en `flat` contre 0,548 en `non_descent` pour la MÊME descente) —
+  // JAMAIS tracées comme un seul point de même nature, sous peine de lire une
+  // chute d'efficacité là où seule la référence a changé de source. Repli
+  // affiché en anneau creux (même motif que `.dot--sweat`), avec sa propre
+  // légende, plutôt qu'exclu : la donnée reste réelle, juste moins fiable.
+  const flatValues = points.map((p) => (p.reference_source === "flat" ? p.efficiency : null));
+  const fallbackValues = points.map((p) => (p.reference_source === "non_descent" ? p.efficiency : null));
+  const fallbackCount = fallbackValues.filter((v) => v != null).length;
   const selector = labels.map((cls) =>
-    `<a class="seg ${cls === active ? "is-on" : ""}" href="#/forme?jours=${days}&descente=${encodeURIComponent(cls)}">${F.esc(cls)}</a>`
+    `<a class="seg ${cls === active ? "is-on" : ""}" aria-current="${cls === active ? "true" : "false"}" href="#/forme?jours=${days}&descente=${encodeURIComponent(cls)}">${F.esc(cls)}</a>`
   ).join("");
   const chart = points.length ? timeChart(points.map((p) => p.date), [
-    { type: "dots", values: points.map((p) => p.efficiency), cls: "dot dot--descent" },
+    { type: "dots", values: flatValues, cls: "dot dot--descent" },
+    { type: "dots", values: fallbackValues, cls: "dot dot--descent-fallback" },
   ], [
     // `hline` va dans `marks` (3e argument), jamais dans `layers` (2e) — voir le
     // même correctif sur `decouplingSection` ci-dessus.
@@ -1200,8 +1214,9 @@ function descentTrendSection(trend, days, selectedClass) {
       seule la <strong>tendance, à pente égale</strong>, est exploitable : une classe de pente ne se
       compare JAMAIS à une autre. <a href="#/performance">Hypothèses des modèles</a></p>
     <div class="toolbar">${selector}</div>
-    <p class="legend"><span class="legend__item"><span class="key key--descent"></span>Efficacité (classe ${F.esc(active)})</span></p>
+    <p class="legend"><span class="legend__item"><span class="key key--descent"></span>Référence plate de la séance</span> <span class="legend__item"><span class="key key--descent-fallback"></span>Référence de repli (hors forte descente, pas de plat suffisant)</span></p>
     ${chart ? `<div class="chart-host" id="c-descent">${chart.svg}</div><p class="readout" id="r-descent"></p>` : note("Pas assez de points pour cette classe.")}
+    ${fallbackCount ? `<p class="muted"><small>${fallbackCount} point${fallbackCount > 1 ? "s" : ""} en anneau creux : référence de repli, échelle différente d'un point plein — ne pas comparer directement.</small></p>` : ""}
     <p class="legend legend--small">Efficacité moyenne par classe de pente (${trend.window_weeks} sem.) : ${classLegend}</p>
   </section>`;
   return { html, chart, points };

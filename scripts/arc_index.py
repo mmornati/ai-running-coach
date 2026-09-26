@@ -1762,10 +1762,17 @@ def descent_trend(conn, today: date, weeks: Optional[int] = None) -> dict:
     `arc_metrics.descent_trend` doit être l'id, jamais `(date, name, sport)` —
     deux séances distinctes le même jour au même nom générique (« Trail »,
     par exemple, deux sorties bi-quotidiennes) se seraient sinon vues fusionnées
-    à tort en une seule."""
+    à tort en une seule. `a.descent_reference_source AS reference_source`
+    (revue de code, should-fix) : la référence `"flat"` et son repli
+    `"non_descent"` (voir `arc_descent.ASSUMPTIONS["reference"]`) ne sont PAS
+    sur la même échelle (mesuré : 0,664 en `flat` vs 0,548 en `non_descent`
+    pour la MÊME descente) — la tendance doit pouvoir distinguer les deux,
+    jamais les mélanger sans le dire (une séance sans plat suffisant
+    apparaîtrait sinon comme une chute d'efficacité)."""
     rows = [dict(r) for r in conn.execute(
         "SELECT a.id AS activity_id, a.date AS date, a.sport AS sport, a.name AS name, "
-        "dc.grade_class AS grade_class, dc.efficiency AS efficiency, dc.mean_pace_s_km AS mean_pace_s_km, "
+        "a.descent_reference_source AS reference_source, dc.grade_class AS grade_class, "
+        "dc.efficiency AS efficiency, dc.mean_pace_s_km AS mean_pace_s_km, "
         "dc.mean_grade AS mean_grade FROM activity_descent_class dc "
         "JOIN activity a ON a.id = dc.activity_id").fetchall()]
     window_weeks = weeks if weeks and weeks > 0 else M.DESCENT_TREND_WEEKS
