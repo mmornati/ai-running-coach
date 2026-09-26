@@ -327,6 +327,30 @@ class TestRelativeDateFixtures(unittest.TestCase):
             new_file.write_text("# Santé\n\nréférence personnelle : sous la norme.\n", encoding="utf-8")
             self.assertEqual(runner._new_files(case, result, "medical/*.md"), [new_file])
 
+    def test_today_and_week_start_placeholders_are_materialized(self):
+        """#101, revue de code de la PR #53 : `{{TODAY}}`/`{{WEEK_START}}`
+        doivent être substitués dans TOUS les fichiers de la fixture (pas
+        seulement les `<N>d_...`), et `{{WEEK_START}}` doit toujours résoudre
+        sur un vrai LUNDI — la contrainte que `arc_guardrails.py` impose à
+        `week.week_start`."""
+        import datetime
+
+        case = {"id": "guardrail-ok", "fixture": "guardrail-ok"}
+        with tempfile.TemporaryDirectory(prefix="arc-eval-week-start-") as tmp:
+            workspace = runner.build_workspace(Path(tmp), case)
+            week_files = list((workspace / "planning").glob("*_semaine.md"))
+            self.assertEqual(len(week_files), 1, "une seule semaine attendue dans cette fixture")
+            content = week_files[0].read_text(encoding="utf-8")
+            self.assertNotIn("{{TODAY}}", content)
+            self.assertNotIn("{{WEEK_START}}", content)
+            match = re.search(r'"week_start":\s*"(\d{4}-\d{2}-\d{2})"', content)
+            self.assertIsNotNone(match, "week_start introuvable dans le bloc ```arc")
+            week_start = datetime.date.fromisoformat(match.group(1))
+            self.assertEqual(week_start.weekday(), 0, f"{week_start} n'est pas un lundi")
+            today = datetime.date.today()
+            self.assertLessEqual(week_start, today)
+            self.assertGreater(week_start, today - datetime.timedelta(days=7))
+
 
 @unittest.skipIf(runner.skip_reason(), runner.skip_reason() or "palier C désactivé")
 class TestPromptBehaviour(unittest.TestCase):

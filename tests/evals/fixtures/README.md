@@ -18,6 +18,17 @@ aucun compte Garmin : un scénario doit pouvoir tourner chez n'importe qui.
 Les dates sont volontairement relatives dans le texte (« lundi », « mardi ») et
 fixes dans les noms de fichiers : les évals ne vérifient jamais une date précise.
 
+**Placeholders de contenu (#101, revue de code).** `<N>d_reste-du-nom.md`
+matérialise le NOM du fichier (N jours avant aujourd'hui) et remplace
+`{{DATE}}` dans son contenu par cette même date — propre à CE fichier. Deux
+placeholders supplémentaires, remplacés dans TOUS les fichiers de la fixture
+(pas seulement ceux nommés `<N>d_...`) : `{{TODAY}}` (date réelle du jour du
+run) et `{{WEEK_START}}` (lundi de la semaine ISO courante). Nécessaires dès
+qu'une fixture doit satisfaire `arc_guardrails._validate_proposed_week`, qui
+exige un vrai LUNDI pour `week.week_start` — une date qui n'a aucune raison de
+coïncider avec l'offset d'une séance donnée (ex. une séance de `{{TODAY}}` un
+mardi). Voir `fixtures/guardrail-block-red-verdict/` et `fixtures/guardrail-ok/`.
+
 ## Scripter les stubs MCP (`[stub]`, #26)
 
 `tests/evals/stub_garmin_mcp.py` et `tests/evals/stub_intervals_mcp.py`

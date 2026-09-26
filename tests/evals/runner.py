@@ -215,6 +215,33 @@ def _materialize_relative_dates(workspace: Path) -> None:
         target.write_text(content, encoding="utf-8")
         path.unlink()
 
+    # Placeholders GÉNÉRIQUES (revue de code #101), indépendants de l'offset
+    # `<N>d_` d'un fichier donné : `{{TODAY}}` (date réelle du jour du run) et
+    # `{{WEEK_START}}` (lundi de la semaine ISO courante). `{{DATE}}` ci-dessus
+    # ne convient pas à `week.week_start` : il vaut la date propre au FICHIER
+    # (son offset `<N>d_`), alors que `arc_guardrails._validate_proposed_week`
+    # exige un vrai LUNDI, qui n'a aucune raison de coïncider avec la date
+    # d'une séance particulière (ex. une séance du jour même, `{{TODAY}}`, un
+    # mardi). Remplacés dans TOUS les fichiers de la fixture, pas seulement
+    # ceux nommés `<N>d_...` — un fichier au nom fixe peut vouloir référencer
+    # `{{WEEK_START}}` sans porter lui-même un offset de date. Sûr uniquement
+    # parce que cette passe tourne AVANT que `build_workspace` ne lie
+    # `scripts/`/`skills/`/`agents/`/`templates/` dans le workspace (sans quoi
+    # elle réécrirait des fichiers du dépôt à travers le lien symbolique).
+    today_iso = today.isoformat()
+    week_start_iso = (today - timedelta(days=today.weekday())).isoformat()
+    for path in workspace.rglob("*"):
+        if not path.is_file() or path.is_symlink():
+            continue
+        try:
+            content = path.read_text(encoding="utf-8")
+        except (UnicodeDecodeError, OSError):
+            continue
+        if "{{TODAY}}" not in content and "{{WEEK_START}}" not in content:
+            continue
+        content = content.replace("{{TODAY}}", today_iso).replace("{{WEEK_START}}", week_start_iso)
+        path.write_text(content, encoding="utf-8")
+
 
 def build_workspace(root: Path, case: dict) -> Path:
     """Workspace jetable : fixtures + configuration propre au scénario."""

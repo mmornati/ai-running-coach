@@ -700,15 +700,37 @@ Bilan matinal qui bascule le plan en repos (garde-fou santé, #53) :
 }
 ```
 
-Garde-fou `block` (#53) qui annule une séance de qualité proposée le lendemain
-d'un verdict rouge :
+Garde-fou `block` (#53) qui bloque une séance de qualité proposée le lendemain
+d'un verdict rouge — session interactive, `outcome: "proposed"` : l'athlète
+n'a pas encore confirmé l'alternative, la séance flaguée n'est donc ni
+réécrite dans le fichier semaine ni poussée sur Garmin :
 
 ```arc
 {
   "arc": 1, "kind": "decision", "date": "2026-09-24", "created_at": "2026-09-23T19:40:00+02:00",
-  "trigger": "guardrail", "summary": "Séance de qualité bloquée : verdict rouge la veille (r5_quality_after_red).",
-  "outcome": "applied", "rule_ids": ["r5_quality_after_red"],
+  "trigger": "guardrail", "summary": "Séance de qualité proposée en alternative : verdict rouge la veille (r5_quality_after_red).",
+  "outcome": "proposed", "rule_ids": ["r5_quality_after_red"],
   "inputs": {"verdict_previous_day": "red"},
+  "sources": ["medical/2026-09-23_health.md"],
+  "before": {"date": "2026-09-24", "sport": "trail", "title": "Seuil 3 × 10 min", "intensity": "threshold"},
+  "after": {"intensity": "recovery", "title": "Footing de récupération 35 min"},
+  "session_ref": {"week": "planning/Semaine_2026-09-21.md", "date": "2026-09-24"}
+}
+```
+
+Même garde-fou, une fois que l'athlète a confirmé l'alternative : NOUVEAU
+fichier `decision` (`outcome: "applied"`, `supersedes` vers celui ci-dessus),
+puis le fichier `proposed` ci-dessus est rouvert pour poser son propre
+`outcome` à `"superseded"` (protocole « Remplacer une décision » ci-dessous) —
+c'est SEULEMENT à ce moment que le fichier semaine est réécrit et la séance
+poussée sur Garmin :
+
+```arc
+{
+  "arc": 1, "kind": "decision", "date": "2026-09-24", "created_at": "2026-09-24T07:15:00+02:00",
+  "trigger": "guardrail", "summary": "Alternative confirmée par l'athlète : séance allégée en récupération.",
+  "outcome": "applied", "rule_ids": ["r5_quality_after_red"],
+  "supersedes": "planning/2026-09-23_decision_seance-qualite-bloquee.md",
   "sources": ["medical/2026-09-23_health.md"],
   "before": {"date": "2026-09-24", "sport": "trail", "title": "Seuil 3 × 10 min", "intensity": "threshold"},
   "after": {"intensity": "recovery", "title": "Footing de récupération 35 min"},

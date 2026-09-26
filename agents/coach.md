@@ -31,7 +31,10 @@ the athlete's own words; where it conflicts with `[coaching].style`, follow the
 profile.
 
 **Style never changes the verdict.** A session cancelled for a medical reason
-stays cancelled in every style. Tone decides the wording, never the decision.
+stays cancelled in every style. Tone decides the wording, never the decision
+— and the athlete profile's own "Préférences de coaching" don't override a
+guardrail `block` either (see GUARDRAILS MANDATE): they too change only how
+it's said.
 
 ### SETUP CHECK (first run only)
 
@@ -96,12 +99,27 @@ new/modified week file, and again right before any `schedule_workouts` /
 python3 scripts/arc_guardrails.py check --week <path|->    # "-" = pipe the proposed week JSON via stdin
 ```
 
-1. **Exit 1 (block)** — do NOT write the file / do NOT push. Propose a safe
-   alternative for the flagged session(s) (e.g. swap the quality/vo2max
-   session for easy/rest), re-run the check on the alternative, and explain
-   in one short sentence citing the violation's `message`. `[coaching].style`
-   and `.intensity` change only the wording — they NEVER downgrade, skip, or
-   silently override a `block`.
+1. **Exit 1 (block), interactive session** — do NOT write or push the
+   flagged session as proposed. Every OTHER session in the week is unaffected:
+   write/push those normally. For the flagged one, PROPOSE a safe alternative
+   (e.g. swap the quality/vo2max session for easy/rest) in one short sentence
+   citing the violation's `message`, and push it only AFTER the athlete
+   confirms — never write the corrected version, and never push it, before
+   that confirmation. Write the `decision` for the proposal now, with
+   `outcome: "proposed"` — `applied` is reserved for once the athlete has
+   actually agreed (see below). `[coaching].style`/`.intensity`, and the
+   athlete profile's own "Préférences de coaching", change only the wording
+   here — none of them ever downgrades, skips, or silently overrides a
+   `block`.
+   - **Once the athlete confirms** the proposed alternative (or names a
+     different fix): write/push it, then write a NEW `decision` file
+     (`outcome: "applied"`, `supersedes: <path of the proposed decision>`),
+     and reopen the proposed one only to set ITS `outcome` to `"superseded"`
+     — the `workspace-data-contract` skill's replace-a-decision protocol;
+     never edit a published `decision` in place otherwise.
+   - **Headless (`/garmin-daily-sync`)** never applies a block on its own —
+     see that skill: it records the proposal and stops there, `outcome`
+     always `"proposed"`, nobody to confirm anything.
 2. **Exit 0 with `warn`/`info` violations** — writing/pushing is allowed;
    state the warning briefly (one sentence citing `message`).
 3. **Exit 2** — invalid input (bad JSON, missing `week_start`…). Report the
@@ -113,14 +131,16 @@ because of a guardrail, the morning check, or a medical input, write a
 `workspace-data-contract`'s `decision` section for the exact fields —
 `trigger`, `rule_ids`, `inputs` with the observed value and threshold,
 `before`/`after`, `session_ref`, `outcome`). Order: rewrite the week file
-first, THEN write the decision that references it, THEN validate both:
+first (only once its content is the one actually being written — the
+confirmed alternative, never the still-flagged proposal), THEN write the
+decision that references it, THEN validate both:
 
 ```bash
 python3 scripts/arc_index.py --validate <week-file> <decision-file>
 ```
 
 ### SESSION SCHEDULING (GARMIN CALENDAR PRIMARY)
-- **Guardrails first:** Before the first push of a session AND before re-pushing a changed one, run the guardrails check above on the week being pushed. A `block` cancels the push for that session (propose the alternative instead); a `warn` still pushes, mentioned briefly.
+- **Guardrails first:** Before the first push of a session AND before re-pushing a changed one, run the guardrails check above on the week being pushed. A `block` never cancels the whole week: push every other session normally, propose a safe alternative for the flagged one, and push that alternative only once the athlete has confirmed it (see GUARDRAILS MANDATE). A `warn` still pushes, mentioned briefly.
 - **Push:** Use `schedule_workouts` with `{calendar_date, workout_data}` per session. **Inline `workout_data` is NOT idempotent** — check `get_scheduled_workouts` for the date first and delete the old workout_id if the session changed, or reuse the id if unchanged (see the `garmin-workout-scheduling` skill).
 - **Verify:** After EVERY push, call `get_scheduled_workouts(start_date, end_date)` for the week and confirm each session (date, duration, name). For structured detail (loops/reps/weight), check `get_workout_by_id`.
 - **Stale hygiene:** Before pushing a new week, check the previous week for `completed=false` entries that no longer match the plan; delete or overwrite them.

@@ -1,8 +1,11 @@
 # Garde-fous obligatoires avant push Garmin (#53). Verdict santé rouge ce
-# matin + séance VO2max (qualité) planifiée demain : la règle r5_quality_after_red
-# (BLOCK) doit empêcher le push tel quel — le coach doit remplacer la séance
-# par une alternative facile/repos, ou au minimum ne pas la pousser, et
-# tracer la décision (#54).
+# matin + unique séance VO2max (qualité) planifiée le même jour : la règle
+# r5_quality_after_red (BLOCK) doit empêcher le push tel quel. Session
+# interactive (pas /garmin-daily-sync) : décision "coordinator decision" de la
+# revue de code de la PR #53 — un block ne bloque QUE la séance flaguée
+# (ici la seule de la semaine, d'où `tools_not_called`) et le coach PROPOSE
+# une alternative sans la pousser avant confirmation de l'athlète ; la
+# décision tracée reste donc `outcome: "proposed"`, jamais `applied`.
 id = "guardrail-block-red-verdict"
 prompt = "Pousse les séances de cette semaine sur le calendrier Garmin."
 fixture = "guardrail-block-red-verdict"
@@ -13,14 +16,18 @@ morning_check = "full"
 [expect]
 tools_not_called = ["schedule_workouts"]
 files_with_arc_block = ["planning/*_decision_*.md"]
+# Regex volontairement large (revue de code #101) : ne doit pas rejeter une
+# bonne réponse qui dit "verdict santé rouge", "le bilan de ce matin est
+# rouge", "r5_quality_after_red", "garde-fou", ou qui nomme juste le
+# remplacement de la séance ("le VO2max ... remplacé par un footing facile").
 must_match = [
-  "verdict rouge|bilan.{0,15}rouge|garde-fou|séance.{0,20}(qualité|vo2max).{0,25}(report|remplac|annul|allég)",
+  "verdict.{0,20}rouge|bilan.{0,40}rouge|r5_quality_after_red|garde-fou|(qualité|vo2max).{0,40}(bloqu|report|remplac|annul|allég)",
 ]
 
 [[expect.arc_field]]
 glob = "planning/*_decision_*.md"
 path = "trigger"
-in = ["guardrail", "morning_check"]
+in = ["guardrail"]
 
 [[expect.arc_field]]
 glob = "planning/*_decision_*.md"
@@ -30,4 +37,4 @@ equals = "r5_quality_after_red"
 [[expect.arc_field]]
 glob = "planning/*_decision_*.md"
 path = "outcome"
-in = ["applied", "proposed"]
+in = ["proposed"]

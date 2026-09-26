@@ -59,13 +59,14 @@ Remote Control) et l'IDE partagent. Il délègue tout à l'agent `coach` et au s
    du workspace pour être ingérée à l'étape suivante). **Best-effort et non bloquant** :
    un échec (tokens `garminconnect` absents/expirés, `fitparse` non installé, FIT
    indisponible côté Garmin) ne doit **jamais** faire échouer la synchronisation ni
-   apparaître comme `ERREUR :` — au plus une ligne `Alerte : FIT non téléchargé (n
-   séance(s))` dans le résumé si au moins un téléchargement a échoué. Ignorer
-   silencieusement les sports sans profil FIT utile (renforcement, vélo d'appartement…).
+   apparaître comme `ERREUR :` — seulement contribuer au segment « FIT non téléchargé
+   (n séance(s)) » de la ligne `Alerte :` unique (voir plus bas) si au moins un
+   téléchargement a échoué. Ignorer silencieusement les sports sans profil FIT utile
+   (renforcement, vélo d'appartement…).
 3. Réindexer le workspace pour le tableau de bord : `python3 scripts/arc_index.py`. La base
-   est dérivée ; un échec ici ne bloque rien, mais se signale en une ligne `Alerte :` du
-   résumé. Un fichier resté `NON CONFORME` à la validation se signale de la même façon
-   (`Alerte : 1 fichier hors contrat — medical/2026-09-20_health.md`). Cette même commande
+   est dérivée ; un échec ici ne bloque rien, mais contribue un segment à la ligne
+   `Alerte :` unique. Un fichier resté `NON CONFORME` à la validation contribue de la même
+   façon (« 1 fichier hors contrat — medical/2026-09-20_health.md »). Cette même commande
    ingère aussi les échantillons FIT déposés à l'étape 2 (`activity_sample`, aucune action
    supplémentaire requise).
 4. **Garde-fou r5, bilan rouge (#52/#53) — jamais d'écriture de plan ni de push ici.** Si
@@ -78,9 +79,12 @@ Remote Control) et l'IDE partagent. Il délègue tout à l'agent `coach` et au s
    (`workspace-data-contract` skill) avec `outcome: "proposed"` — jamais `applied`, aucune
    décision n'a été appliquée en headless — `trigger: "guardrail"`,
    `rule_ids: ["r5_quality_after_red"]`, `session_ref`, puis la valider
-   (`python3 scripts/arc_index.py --validate <fichier decision>`). L'annoncer dans le
-   `resume` (`Alerte : séance qualité du <date> à revoir avec le coach — verdict rouge`),
-   jamais silencieusement.
+   (`python3 scripts/arc_index.py --validate <fichier decision>`). Contribue un segment
+   « séance qualité du <date> à revoir avec le coach — verdict rouge » à la ligne `Alerte :`
+   unique, jamais silencieusement. Si une session interactive ultérieure confirme ou change
+   l'alternative, elle écrit une NOUVELLE `decision` (`outcome: "applied"`,
+   `supersedes: <chemin de la decision proposed ci-dessus>`) — ce skill headless ne le fait
+   jamais lui-même.
 5. Si l'agent `coach` échoue (MCP indisponible, tokens Garmin expirés…), ne rien inventer :
    le résumé doit contenir `ERREUR : <cause>` (ex. « tokens Garmin expirés — relancer
    `uv run garmin-mcp-auth` »).
@@ -90,6 +94,13 @@ Remote Control) et l'IDE partagent. Il délègue tout à l'agent `coach` et au s
 Terminer la réponse par un bloc de code clôturé avec le langage `resume`, **5 lignes maximum**,
 dans la langue des documents, sans Markdown à l'intérieur. C'est ce bloc que
 `scripts/daily-sync.sh` extrait mot pour mot pour la notification push.
+
+**Une seule ligne `Alerte :` au total**, jamais une par source : si plusieurs
+alertes s'appliquent en même temps (FIT non téléchargé, fichier hors contrat,
+séance de qualité à revoir après un verdict rouge…), les concaténer sur cette
+même ligne, séparées par ` ; ` — le budget de 5 lignes ne laisse la place à
+aucune ligne `Alerte :` supplémentaire. `Alerte : aucune` seulement quand
+aucune des sources ci-dessus n'a de signal à ce moment-là.
 
 ````
 ```resume

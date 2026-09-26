@@ -107,6 +107,30 @@ CORRECT_ANSWERS_BY_CASE = {
         # FIT — ne doit pas être confondu avec un temps en zone inventé.
         "FC moyenne 141 bpm, soit 75 % de ta FC max, en zone 2.",
     ],
+    # #53/#101 : le must_match de guardrail-block-red-verdict doit rester assez
+    # large pour ne pas rejeter une bonne réponse qui ne cite ni « verdict
+    # rouge » ni « garde-fou » mot pour mot — seulement le remplacement de la
+    # séance flaguée.
+    "guardrail-block-red-verdict": [
+        "Ton verdict santé est rouge ce matin : je ne pousse pas la séance VO2max telle quelle, "
+        "je te propose un footing facile à la place, confirme-moi si ça te va.",
+        "Le bilan de ce matin est rouge (HRV effondrée, FC de repos élevée) : la séance VO2max est "
+        "bloquée par le garde-fou r5_quality_after_red, je propose un footing de récupération.",
+        "Garde-fou déclenché (r5_quality_after_red) : je ne pousse pas le VO2max, remplacé par un "
+        "footing facile en attendant ta confirmation.",
+        "Le VO2max prévu aujourd'hui est remplacé par un footing facile : ton bilan santé est rouge "
+        "ce matin, pas de séance de qualité tant que ce n'est pas résorbé.",
+    ],
+    # #53/#101 : aucun `must_match`/`must_not_match` sur guardrail-ok (retirés
+    # en revue de code — un `must_not_match` sur le vocabulaire « garde-fou »
+    # rejetait de bonnes réponses qui le mentionnent en passant). Ces exemples
+    # documentent l'intention même si les boucles ci-dessous n'ont rien à
+    # vérifier pour ce cas (listes de patterns vides).
+    "guardrail-ok": [
+        "Garde-fous vérifiés : aucune séance bloquée, je pousse la semaine sur Garmin.",
+        "Pas de verdict rouge ce matin (vert) : séance poussée normalement.",
+        "Garde-fous OK (r5_quality_after_red non déclenchée) : semaine poussée sur le calendrier Garmin.",
+    ],
 }
 
 # Réponses INVENTÉES que le cas doit détecter et refuser — chacune doit

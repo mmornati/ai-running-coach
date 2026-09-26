@@ -205,12 +205,24 @@ Le moteur ci-dessus ne fait rien tant que personne ne l'appelle : `coach`
 `garmin-workout-scheduling` lancent `check` avant d'écrire un fichier semaine
 et avant tout `schedule_workouts`/`schedule_week`, jamais après.
 
-- **`ok=false` (exit 1, au moins un `block`)** : le coach n'écrit ni ne pousse
-  la séance visée — il propose une alternative sûre (ex. remplacer une séance
-  de qualité par du facile/repos), relance `check` dessus, et n'explique le
-  changement qu'en une phrase citant le `message` de la violation. Le style et
-  l'intensité de coaching (`[coaching].style`/`.intensity`) ne changent que le
-  ton de cette phrase — jamais la décision elle-même.
+- **`ok=false` (exit 1, au moins un `block`), session interactive** : un
+  `block` ne bloque QUE la séance visée — les autres séances de la semaine
+  s'écrivent et se poussent normalement. Pour la séance flaguée, le coach ne
+  l'écrit ni ne la pousse telle quelle : il PROPOSE une alternative sûre (ex.
+  remplacer une séance de qualité par du facile/repos) en une phrase citant le
+  `message` de la violation, écrit tout de suite une `decision`
+  `outcome: "proposed"`, et ne pousse (ni n'écrit) l'alternative qu'une fois
+  l'athlète d'accord. Une fois confirmée : la décision devient un NOUVEAU
+  fichier `decision` (`outcome: "applied"`, `supersedes` vers le `proposed`
+  ci-dessus, qui repasse lui-même à `outcome: "superseded"`). Le style et
+  l'intensité de coaching (`[coaching].style`/`.intensity`), et les
+  « Préférences de coaching » du profil de l'athlète, ne changent que le ton
+  de cette phrase — jamais la décision, jamais l'ordre écriture-après-
+  confirmation.
+- **`ok=false`, synchronisation headless (`/garmin-daily-sync`)** : jamais de
+  push ni d'écriture de plan, jamais même une proposition « applied » —
+  seulement une `decision` `outcome: "proposed"` et un segment dans la ligne
+  `Alerte :` du `resume` ; voir `skills/garmin-daily-sync/SKILL.md`.
 - **`ok=true` avec des `warn`/`info`** : écriture/push autorisés, la violation
   est mentionnée brièvement.
 - **Exit 2** : entrée invalide — le coach le signale et ne pousse rien ; ce
@@ -221,15 +233,9 @@ et avant tout `schedule_workouts`/`schedule_week`, jamais après.
   [contrat de données](skills/workspace-data-contract.md#les-types-de-fichiers),
   détaillé champ par champ dans `skills/workspace-data-contract/SKILL.md`) —
   `trigger: "guardrail"`, `rule_ids` repris tels quels depuis `violations[].rule_id`,
-  `before`/`after` sur la séance concernée. Le fichier semaine est toujours
-  réécrit AVANT le fichier `decision` qui le référence.
-- **Synchronisation headless (`/garmin-daily-sync`)** : ce skill ne modifie ni
-  ne pousse jamais de plan — il détecte seulement un verdict rouge du jour
-  couplé à une séance de qualité programmée ce jour ou le lendemain, confirme
-  R5 avec le même `check`, et journalise une `decision` `outcome: "proposed"`
-  (jamais `applied`, aucune décision n'étant appliquée sans supervision) plus
-  une ligne `Alerte :` dans le `resume` — voir
-  `skills/garmin-daily-sync/SKILL.md`.
+  `before`/`after` sur la séance concernée. Le fichier semaine n'est réécrit
+  qu'avec le contenu réellement appliqué (jamais la version encore flaguée),
+  et toujours AVANT le fichier `decision` qui le référence.
 
 ## Pour aller plus loin
 
