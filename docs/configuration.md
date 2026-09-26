@@ -150,6 +150,31 @@ Deux champs de la section « Physiologie » alimentent le
 [tableau de bord](dashboard/index.md) : **FC max** et **FC de repos de référence**
 (la **FC au seuil** et le **sexe**, facultatifs, affinent le calcul de charge).
 
+## Les garde-fous — `[guardrails]`
+
+```toml
+[guardrails]
+enabled = true
+r1_acwr_max = 1.3
+r2_volume_increase_max_pct = 10.0
+r2_volume_reference = "previous_week"   # previous_week | mean4
+r3_elevation_increase_max_pct = 10.0
+r4_monotony_max = 2.0
+r6_long_run_share_max_pct = 35.0
+severity_r1_acwr_projected = "block"    # info | warn | block
+```
+
+Le moteur de garde-fous déterministe ([`scripts/arc_guardrails.py`](guardrails.md))
+est un second avis purement calculé, consulté par le coach avant d'écrire une
+semaine et avant de la pousser au calendrier Garmin. Chaque règle (R1 à R7) a son
+seuil et sa sévérité propres — voir [la page dédiée](guardrails.md) pour le détail,
+les sources et le format de sortie.
+
+!!! note "Le style ne change jamais le fond, ici non plus"
+    Une violation `block` (ACWR projeté, qualité après un verdict rouge) reste
+    bloquante quel que soit `[coaching].style` — voir « Le style ne change jamais
+    le fond » ci-dessus.
+
 ## Le tableau de bord — `[dashboard]`
 
 ```toml

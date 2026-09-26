@@ -121,6 +121,41 @@ heat_threshold_c = 25.0
 climb_min_gain_m = 50.0
 climb_min_grade_pct = 5.0
 
+[guardrails]
+# Moteur de garde-fous déterministe (#52, `scripts/arc_guardrails.py`) : un
+# second avis calculé, consulté par le coach avant d'écrire une semaine et
+# avant de la pousser au calendrier Garmin (câblage : #53). Défauts documentés
+# ici ; voir `scripts/arc_guardrails.py::ASSUMPTIONS` pour la méthode complète
+# et les sources de chaque règle.
+enabled = true
+# R1 : ACWR (charge aiguë/chronique) PROJETÉ en fin de semaine proposée
+# au-delà de ce seuil — même repère indicatif que `[health]` ci-dessus, pas un
+# seuil de blessure prouvé (Gabbett 2016).
+r1_acwr_max = 1.3
+# R2 : hausse de la durée hebdomadaire planifiée (+ distance en `[sport].primary
+# = "road"`) au-delà de ce pourcentage vs la référence choisie ci-dessous.
+r2_volume_increase_max_pct = 10.0
+# Référence de comparaison pour R2/R3 : "previous_week" (semaine précédente) ou
+# "mean4" (moyenne des 4 semaines précédentes).
+r2_volume_reference = "previous_week"
+# R3 : hausse du D+ hebdomadaire planifié au-delà de ce pourcentage
+# ([sport].primary = "trail" seulement — le D+ n'a pas de sens sur route).
+r3_elevation_increase_max_pct = 10.0
+# R4 : monotonie de Foster PROJETÉE sur la semaine proposée au-delà de ce seuil.
+r4_monotony_max = 2.0
+# R6 : part de la plus longue sortie planifiée dans le volume hebdomadaire
+# planifié total (famille course à pied), au-delà de ce pourcentage.
+r6_long_run_share_max_pct = 35.0
+# Sévérité par règle : "info" | "warn" | "block". R1 (ACWR) et R5 (qualité
+# après un verdict santé rouge) bloquent par défaut ; les autres avertissent.
+severity_r1_acwr_projected = "block"
+severity_r2_weekly_volume_jump = "warn"
+severity_r3_weekly_elevation_jump = "warn"
+severity_r4_monotony_projected = "warn"
+severity_r5_quality_after_red = "block"
+severity_r6_long_run_share = "warn"
+severity_r7_consecutive_quality = "warn"
+
 [dashboard]
 # Tableau de bord local (`scripts/dashboard.sh`) : lecture seule, n'écoute que sur
 # 127.0.0.1 — l'adresse n'est volontairement pas configurable. Si le port est pris,

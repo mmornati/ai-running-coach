@@ -105,6 +105,7 @@ nav:
       - Contrat de données: skills/workspace-data-contract.md
       - Backfill du contrat: skills/arc-backfill.md
       - Diagnostic d'installation: skills/coach-doctor.md
+  - Garde-fous: guardrails.md
   - Ressources:
       - Base de connaissances: resources.md
   - Dépannage: troubleshooting.md
