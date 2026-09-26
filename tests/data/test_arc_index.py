@@ -1384,6 +1384,55 @@ class TestDecisionIndex(Workspace):
         self.assertEqual(warnings, [])
 
 
+class TestClassifySourcePath(unittest.TestCase):
+    """#55 : `classify_source_path` — pure, aucun accès disque/base — reconnaît
+    un chemin `sources`/`supersedes`/`session_ref.week` de décision PAR SON NOM
+    seul, pour que le dashboard sache quelle vue lier sans jamais rouvrir le
+    fichier désigné."""
+
+    def test_health_file(self):
+        self.assertEqual(I.classify_source_path("medical/2026-09-22_health.md"),
+                          {"path": "medical/2026-09-22_health.md", "kind": "health", "date": "2026-09-22"})
+
+    def test_weather_file(self):
+        self.assertEqual(I.classify_source_path("medical/2026-09-22_meteo.md")["kind"], "weather")
+
+    def test_nutrition_file(self):
+        self.assertEqual(I.classify_source_path("nutrition/2026-09-22_nutrition.md")["kind"], "nutrition")
+
+    def test_activity_file(self):
+        result = I.classify_source_path("activities/2026-09-22_trail.md")
+        self.assertEqual(result, {"path": "activities/2026-09-22_trail.md", "kind": "activity", "date": "2026-09-22"})
+
+    def test_week_file(self):
+        result = I.classify_source_path("planning/Semaine_2026-09-21.md")
+        self.assertEqual(result, {"path": "planning/Semaine_2026-09-21.md", "kind": "week", "date": "2026-09-21"})
+
+    def test_decision_file(self):
+        result = I.classify_source_path("planning/2026-09-20_decision_hrv-hold.md")
+        self.assertEqual(result, {"path": "planning/2026-09-20_decision_hrv-hold.md",
+                                  "kind": "decision", "date": "2026-09-20"})
+
+    def test_report_file(self):
+        result = I.classify_source_path("rapports/2026-09-21_rapport.md")
+        self.assertEqual(result["kind"], "report")
+        self.assertIsNone(result["date"])
+
+    def test_resource_and_unknown_paths_are_other(self):
+        self.assertEqual(I.classify_source_path("resources/running/acwr.md")["kind"], "other")
+        self.assertEqual(I.classify_source_path("planning/active_objective.md")["kind"], "other")
+
+    def test_none_is_other(self):
+        self.assertEqual(I.classify_source_path(None), {"path": None, "kind": "other", "date": None})
+
+    def test_never_matches_a_substring_only(self):
+        """Même discipline que `test_classify_does_not_match_substring_only` :
+        un fichier qui ne respecte pas le format exact reste `"other"`, jamais
+        classé par erreur sur un simple segment du nom."""
+        self.assertEqual(I.classify_source_path("planning/journal_decision_generale.md")["kind"], "other")
+        self.assertEqual(I.classify_source_path("activities/fit/12345.json")["kind"], "other")
+
+
 class TestDecisionCli(Workspace):
     """#100, revue de code : garde-fous CLI de `arc_index.py decisions` — refus
     explicite d'une combinaison ambiguë plutôt qu'une précédence silencieuse."""

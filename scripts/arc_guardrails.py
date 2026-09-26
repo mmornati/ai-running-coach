@@ -181,6 +181,26 @@ DEFAULT_SEVERITY: Dict[str, str] = {
 }
 RULE_IDS: Tuple[str, ...] = tuple(sorted(DEFAULT_SEVERITY))
 
+# Libellé court, en français, de ce que chaque règle vérifie (reprise fidèle de
+# la colonne « ce qu'elle vérifie » du tableau ci-dessus) — donnée PURE, jamais
+# le message d'une violation précise (celui-ci porte des valeurs mesurées,
+# régénérées à chaque évaluation par `evaluate()`, et n'est donc jamais rejoué
+# tel quel après coup). Consommé par le dashboard (#55, `scripts/arc_serve.py`)
+# pour afficher un intitulé lisible à côté d'un `rule_id` cité dans
+# `decision.rule_ids`, sans réimporter `evaluate`/`build_context` (qui ont
+# besoin d'un index ouvert) juste pour un libellé statique. Un test dédié
+# (`tests/data/test_arc_guardrails.py`) verrouille `RULE_LABELS.keys() ==
+# set(RULE_IDS)` pour que les deux ne divergent jamais silencieusement.
+RULE_LABELS: Dict[str, str] = {
+    "r1_acwr_projected": "ACWR (charge aiguë/chronique) projeté, maximum sur la semaine proposée",
+    "r2_weekly_volume_jump": "Hausse de la durée (+ distance en road) hebdomadaire planifiée",
+    "r3_weekly_elevation_jump": "Hausse du D+ hebdomadaire planifié (trail seulement)",
+    "r4_monotony_projected": "Monotonie de Foster projetée sur la semaine proposée",
+    "r5_quality_after_red": "Séance de qualité le jour même ou le lendemain d'un verdict santé rouge",
+    "r6_long_run_share": "Part de la plus longue sortie dans le volume hebdomadaire",
+    "r7_consecutive_quality": "Deux séances de qualité sur deux jours consécutifs",
+}
+
 # Statuts de séance qui sortent une séance du calcul (charge, volume, D+,
 # sortie longue, qualité consécutive…) — voir AGENTS.md « cas limites » de
 # l'issue #52. `rest` est exclu séparément (sport/intensité "rest", jamais un

@@ -1993,6 +1993,45 @@ def decisions_query(conn, today: Optional[date] = None, days: Optional[int] = No
     return out
 
 
+# Reconnaissance d'un chemin `sources`/`supersedes`/`session_ref.week` de décision
+# (#55) PAR SON NOM SEUL, jamais par son contenu — un chemin non reconnu (hors
+# workspace, `resources/*`, fichier libre) rend `kind: "other"` et reste un simple
+# texte côté dashboard, jamais un lien vers un fichier arbitraire.
+_SOURCE_HEALTH_RE = re.compile(r"^medical/(\d{4}-\d{2}-\d{2})_health\.md$")
+_SOURCE_WEATHER_RE = re.compile(r"^medical/(\d{4}-\d{2}-\d{2})_meteo\.md$")
+_SOURCE_NUTRITION_RE = re.compile(r"^nutrition/(\d{4}-\d{2}-\d{2})_nutrition\.md$")
+_SOURCE_ACTIVITY_RE = re.compile(r"^activities/(\d{4}-\d{2}-\d{2})_[^/]+\.md$")
+_SOURCE_WEEK_RE = re.compile(r"^planning/Semaine_(\d{4}-\d{2}-\d{2})\.md$")
+_SOURCE_REPORT_RE = re.compile(r"^rapports/[^/]+\.md$")
+
+
+def classify_source_path(path: Optional[str]) -> dict:
+    """Classe un chemin cité par une décision (#54/#55) — `sources`, `supersedes`
+    ou `session_ref.week` — pour que le dashboard sache à quelle vue le lier,
+    SANS jamais lire le fichier ni ouvrir la base : seul le NOM suffit. Rend
+    TOUJOURS `{"path", "kind", "date"}` — `kind: "other"` (et `date: None`) pour
+    tout chemin non reconnu (`resources/*`, chemin libre, `None`), affiché en
+    simple texte par `scripts/arc_serve.py::resolve_source`, jamais comme un
+    lien : ce module n'a pas de notion de fichier « servable », c'est
+    `arc_serve.py` qui décide, à partir de `kind`, s'il existe une vue à lier —
+    jamais en rouvrant le fichier désigné par `path`."""
+    if not path:
+        return {"path": path, "kind": "other", "date": None}
+    for pattern, kind in (
+        (_SOURCE_HEALTH_RE, "health"), (_SOURCE_WEATHER_RE, "weather"),
+        (_SOURCE_NUTRITION_RE, "nutrition"), (_SOURCE_ACTIVITY_RE, "activity"),
+        (_SOURCE_WEEK_RE, "week"),
+    ):
+        m = pattern.match(path)
+        if m:
+            return {"path": path, "kind": kind, "date": m.group(1)}
+    if _DECISION_FILENAME_RE.match(Path(path).name):
+        return {"path": path, "kind": "decision", "date": Path(path).name[:10]}
+    if _SOURCE_REPORT_RE.match(path):
+        return {"path": path, "kind": "report", "date": None}
+    return {"path": path, "kind": "other", "date": None}
+
+
 # ---------------------------------------------------------------------------
 # Découplage aérobie (Pa:HR) et facteur d'efficacité (#45)
 # ---------------------------------------------------------------------------

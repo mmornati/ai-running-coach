@@ -158,6 +158,15 @@ export const SLOT = { morning: "Matin tôt", midday: "Midi", evening: "Soir", no
 export const STATUS = { planned: "Prévue", done: "Faite", missed: "Manquée", moved: "Déplacée", cancelled: "Annulée" };
 export const REPORT = { weekly: "Hebdomadaire", monthly: "Mensuel", comparison: "Comparaison", race: "Course", adhoc: "Ponctuel" };
 
+// Journal des décisions (#55) : déclencheur et issue d'une décision du coach.
+export const TRIGGER = {
+  morning_check: "Bilan matinal", guardrail: "Garde-fou", athlete_request: "Demande de l'athlète",
+  medical: "Médical", weather: "Météo", race: "Course", other: "Autre",
+};
+export const DECISION_OUTCOME = {
+  applied: "Appliquée", proposed: "Proposée", rejected_by_athlete: "Refusée par l'athlète", superseded: "Remplacée",
+};
+
 // Échappement pour les chaînes insérées dans le DOM par innerHTML.
 export function esc(text) {
   return String(text ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));

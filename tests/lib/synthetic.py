@@ -809,6 +809,69 @@ Semaine **conforme au plan** : charge en hausse contrôlée, HRV stable.
             "carbs_g": 320 + rng.randint(-40, 60), "protein_g": 115, "fat_g": 78, "hydration_ml": 2400,
             "weight_kg": round(70.5 - 0.05 * k, 1), "target_weight_kg": 67.0,
         }, "## Commentaire\n\nApports cohérents avec la charge.")
+
+    # --- décisions du coach (#55) : journal déterministe, verrouillé par les
+    # goldens et par `tests/install/test_decisions_api.py`. Seulement quand
+    # l'historique est assez long (>= 10 j) pour couvrir sans collision les
+    # quatre dates utilisées ci-dessous (jamais nécessaire aux petits bacs à
+    # sable de `test_dashboard.py`, qui ne testent pas le journal).
+    if days >= 10:
+        d_old, d_mid, d_yesterday = (today - timedelta(days=n) for n in (5, 4, 1))
+        monday_this_week = today - timedelta(days=today.weekday())
+        # Chaîne `supersedes` : une première décision (ACWR projeté trop haut),
+        # remplacée le lendemain par une réévaluation une fois la sortie longue
+        # raccourcie — exerce `supersedes`/`superseded_by` du dashboard (#55).
+        _write(root, f"planning/{d_old.isoformat()}_decision_acwr-projete.md",
+               "Décision — garde-fou ACWR", {
+                   "arc": 1, "kind": "decision", "date": d_old.isoformat(),
+                   "created_at": f"{d_old.isoformat()}T19:30:00+02:00",
+                   "trigger": "guardrail", "outcome": "superseded",
+                   "summary": "ACWR projeté au-delà du seuil : sortie longue raccourcie.",
+                   "rule_ids": ["r1_acwr_projected"],
+                   "inputs": {"acwr_projected": 1.42, "acwr_max": 1.3},
+                   "sources": [f"medical/{d_old.isoformat()}_health.md"],
+                   "before": {"planned_duration_s": 7200}, "after": {"planned_duration_s": 5400},
+               }, "## Contexte\n\nACWR projeté 1,42, au-delà de 1,3.")
+        _write(root, f"planning/{d_mid.isoformat()}_decision_acwr-ajuste.md",
+               "Décision — garde-fou ACWR (mise à jour)", {
+                   "arc": 1, "kind": "decision", "date": d_mid.isoformat(),
+                   "created_at": f"{d_mid.isoformat()}T07:05:00+02:00",
+                   "trigger": "guardrail", "outcome": "applied",
+                   "summary": "ACWR projeté ramené sous le seuil après raccourcissement de la sortie longue.",
+                   "rule_ids": ["r1_acwr_projected"],
+                   "inputs": {"acwr_projected": 1.18, "acwr_max": 1.3},
+                   "sources": [f"medical/{d_mid.isoformat()}_health.md"],
+                   "supersedes": f"planning/{d_old.isoformat()}_decision_acwr-projete.md",
+                   "before": {"planned_duration_s": 7200}, "after": {"planned_duration_s": 5400},
+               }, "## Contexte\n\nNouvelle évaluation : ACWR 1,18, sous le seuil.")
+        # Décision « proposée » (pas encore confirmée par l'athlète) : exerce le
+        # filtre `outcome=proposed` et le déclencheur `athlete_request`.
+        _write(root, f"planning/{d_yesterday.isoformat()}_decision_qualite-deplacee.md",
+               "Décision — qualité proposée en déplacement", {
+                   "arc": 1, "kind": "decision", "date": d_yesterday.isoformat(),
+                   "created_at": f"{d_yesterday.isoformat()}T19:40:00+02:00",
+                   "trigger": "athlete_request", "outcome": "proposed",
+                   "summary": "Séance de qualité déplacée à la demande de l'athlète : réunion professionnelle.",
+                   "inputs": {"reason": "agenda"},
+                   "sources": [f"medical/{d_yesterday.isoformat()}_health.md"],
+                   "before": {"date": d_yesterday.isoformat(), "intensity": "threshold"},
+                   "after": {"date": today.isoformat(), "intensity": "threshold"},
+               }, "## Contexte\n\nDéplacement demandé par l'athlète, à confirmer.")
+        # Décision du jour (bilan matinal) : c'est elle que l'encart « Pourquoi
+        # aujourd'hui ? » de la vue Aujourd'hui doit trouver et afficher.
+        _write(root, f"planning/{today.isoformat()}_decision_bilan-matinal.md",
+               "Décision — bilan matinal", {
+                   "arc": 1, "kind": "decision", "date": today.isoformat(),
+                   "created_at": f"{today.isoformat()}T07:10:00+02:00",
+                   "trigger": "morning_check", "outcome": "applied",
+                   "summary": "HRV sous la référence personnelle : séance de qualité reportée en récupération.",
+                   "inputs": {"hrv_personal_status": "sous", "readiness_score": 52},
+                   "sources": [f"medical/{today.isoformat()}_health.md"],
+                   "before": {"date": today.isoformat(), "sport": sport, "intensity": "vo2max"},
+                   "after": {"intensity": "recovery"},
+                   "session_ref": {"week": f"planning/Semaine_{monday_this_week.isoformat()}.md",
+                                   "date": today.isoformat()},
+               }, "## Contexte\n\nBilan matinal : HRV sous la bande personnelle, séance allégée.")
     return root
 
 
