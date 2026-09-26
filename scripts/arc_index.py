@@ -22,6 +22,7 @@ sert au tableau de bord (`scripts/arc_serve.py`) et aux calculs de charge
     arc_index.py descent [--activity GARMIN_ID] [--weeks N]        # efficacité en descente par classe de pente (#47)
     arc_index.py durability [--activity GARMIN_ID] [--weeks N]      # fade GAP/EF sur les sorties longues (#48)
     arc_index.py climb-history [--segment ID | --activity GARMIN_ID]  # identité de montée entre séances (#49)
+    arc_index.py decisions [--date D | --days N] [--trigger T]        # journal des décisions, en JSON (#54)
 
 `hrv-baseline` n'a besoin d'aucun tableau de bord lancé (headless, `/garmin-daily-sync`
 compris) : elle réindexe puis rend le point du jour de `arc_metrics.hrv_baseline_series`
@@ -135,6 +136,15 @@ réindexation à l'autre (voir la table dans `DDL`) : un id noté puis réutilis
 un `--rebuild` peut ne plus exister (`reason_code: "unknown_segment"`, jamais une
 erreur bruyante).
 
+`decisions` (#54) rend le journal des décisions (`planning/*_decision_*.md`), triées
+`date` puis `created_at` décroissants (plusieurs décisions le même jour : la plus
+récemment ÉCRITE en tête). `--date AAAA-MM-JJ` cible une date précise (prime sur
+`--days`) ; `--days N` une fenêtre glissante se terminant à `--today` ; `--trigger`
+filtre en plus par déclencheur (`morning_check`, `guardrail`…). Sans filtre, rend
+tout l'historique. Consommée par le tableau de bord (#55, encart « Pourquoi
+aujourd'hui ? » + journal filtrable) et par `/garmin-daily-sync` (#56, ligne
+« Pourquoi » du bloc `resume`).
+
 Options communes : `--workspace DIR` (sinon $ARC_WORKSPACE, le pointeur
 ~/.config/ai-running-coach/workspace, puis le moteur), `--db FICHIER` (défaut
 <workspace>/.arc/coach.db), `--memory` (base en mémoire, rien sur disque),
@@ -172,11 +182,10 @@ import arc_samples as S  # noqa: E402
 from coach_config import ConfigError, read_toml  # noqa: E402
 from coach_setup import ENGINE, workspace_root  # noqa: E402
 
-SCHEMA_VERSION = 17  # #49 : colonnes GPS `activity_sample.lat`/`lon` remplies (#42 les réservait),
-                      # colonnes `activity_climb.segment_id`/`hr_*`/`vs_*` et table `climb_segment`
-                      # (identité de montée entre séances, `arc_climb_match.py`), + `climb_segment.
-                      # mid_lat`/`mid_lon` (contrôle de mi-parcours, 2e revue de code #49) — voir
-                      # #48 pour la version précédente
+SCHEMA_VERSION = 18  # #54 : nouveau type de contrat `decision` — tables `decision`
+                      # (une ligne par fichier) et `decision_rule` (une ligne par rule_id
+                      # cité, pour le filtre par règle du futur journal des décisions, #55) —
+                      # voir #49 pour la version précédente
 DEFAULT_DB = ".arc/coach.db"
 DATA_DIRS = ("activities", "medical", "nutrition", "planning", "rapports")
 
@@ -441,6 +450,29 @@ CREATE TABLE race_plan (
     elevation_gain_m REAL, target_time_s REAL, body_md TEXT, data_json TEXT
 );
 CREATE TABLE aid_station (source_path TEXT, km REAL, name TEXT, cutoff TEXT, services TEXT);
+-- `decision` (#54) : traçabilité d'un ajustement du coach — un fichier =
+-- une décision (`planning/AAAA-MM-JJ_decision_<slug>.md`), jamais une section
+-- dans le fichier semaine (voir SKILL.md, justification du choix). `inputs`/
+-- `rule_ids`/`sources`/`before`/`after`/`session_ref` restent en JSON brut
+-- (`*_json`) : ce sont des objets/listes libres, pas des colonnes qu'une
+-- requête SQL courante filtre directement — `decision_rule` ci-dessous
+-- couvre déjà le seul filtre utile (#55 : décisions par règle). `created_at`
+-- départage plusieurs décisions du même `date` (ordre chronologique d'écriture,
+-- critère d'acceptation #54 : « plusieurs décisions le même jour, triées par
+-- created_at »).
+CREATE TABLE decision (
+    source_path TEXT, arc_version INTEGER, date TEXT, created_at TEXT, trigger TEXT,
+    summary TEXT, outcome TEXT, garmin_workout_id INTEGER,
+    inputs_json TEXT, rule_ids_json TEXT, sources_json TEXT,
+    before_json TEXT, after_json TEXT, session_ref_json TEXT,
+    body_md TEXT, data_json TEXT
+);
+CREATE INDEX decision_date ON decision(date, created_at);
+-- Une ligne par `rule_id` cité dans `decision.rule_ids` (#54/#55) : permet de
+-- filtrer le journal des décisions par règle de garde-fou sans parser
+-- `rule_ids_json` à chaque requête.
+CREATE TABLE decision_rule (source_path TEXT, rule_id TEXT);
+CREATE INDEX decision_rule_id ON decision_rule(rule_id);
 CREATE TABLE metric_day (
     date TEXT PRIMARY KEY, load REAL, fitness REAL, fatigue REAL, form REAL, acwr REAL,
     monotony REAL, strain REAL, vo2max REAL
@@ -565,6 +597,7 @@ CREATE INDEX activity_descent_class_activity ON activity_descent_class(activity_
 PER_FILE_TABLES = (
     "athlete", "objective", "health_day", "weather_day", "week", "planned_session",
     "nutrition_day", "report", "course_eval", "race_plan", "aid_station", "gear",
+    "decision", "decision_rule",
 )
 
 
@@ -633,6 +666,8 @@ def classify(rel: str) -> Optional[str]:
             return "week"
         if "_evaluation_parcours_" in name:
             return "course_eval"
+        if "_decision_" in name:
+            return "decision"
     return None
 
 
@@ -879,6 +914,19 @@ def store(conn, rel: str, kind: str, data: dict, arc_version: int) -> None:
                     "source_path": rel, "km": station.get("km"), "name": station.get("name"),
                     "cutoff": station.get("cutoff"), "services": _j(station.get("services")),
                 })
+    elif kind == "decision":
+        _insert(conn, "decision", {
+            "source_path": rel, "arc_version": arc_version, "date": g("date"),
+            "created_at": g("created_at"), "trigger": g("trigger"), "summary": g("summary"),
+            "outcome": g("outcome"), "garmin_workout_id": g("garmin_workout_id"),
+            "inputs_json": _j(g("inputs")), "rule_ids_json": _j(g("rule_ids")),
+            "sources_json": _j(g("sources")), "before_json": _j(g("before")),
+            "after_json": _j(g("after")), "session_ref_json": _j(g("session_ref")),
+            "body_md": body, "data_json": _data_json(data),
+        })
+        for rule_id in g("rule_ids") or []:
+            if isinstance(rule_id, str):
+                _insert(conn, "decision_rule", {"source_path": rel, "rule_id": rule_id})
 
 
 def compute_metrics(conn, conf: dict, today: Optional[str] = None) -> None:
@@ -1655,7 +1703,10 @@ def backfill_items(conn) -> List[dict]:
     items = []
     for row in conn.execute(
         "SELECT path, kind, parsed_ok, issues FROM source_file "
-        "WHERE kind IS NOT NULL AND kind NOT IN ('athlete', 'objective') "
+        # `decision` (#54) exclu au même titre que `athlete`/`objective` : c'est un
+        # type NEUF, jamais écrit avant ce contrat — aucun fichier historique à
+        # reprendre, jamais de dette de backfill à faire apparaître pour lui.
+        "WHERE kind IS NOT NULL AND kind NOT IN ('athlete', 'objective', 'decision') "
         "AND parsed_ok != 'ok' ORDER BY path"
     ).fetchall():
         # Seul un fichier hors contrat (sans bloc, bloc invalide, illisible) est une dette.
@@ -1825,6 +1876,51 @@ def fueling_trend(conn, today: date) -> dict:
     result["margin_g_h"] = M.FUELING_MAX_MARGIN_G_H
     result["target_band_g_h"] = list(M.FUELING_TARGET_BAND_G_H)
     return result
+
+
+# ---------------------------------------------------------------------------
+# Journal des décisions (#54, consommé par le dashboard #55 et le resume #56)
+# ---------------------------------------------------------------------------
+
+
+def decisions_query(conn, today: Optional[date] = None, days: Optional[int] = None,
+                     trigger: Optional[str] = None, on_date: Optional[str] = None) -> List[dict]:
+    """Décisions journalisées, plus récentes d'abord (`date` puis `created_at`).
+
+    `on_date` (une date précise) prime sur `days` (fenêtre glissante se terminant
+    à `today`, INCLUSE) — les deux filtres ne se combinent pas, comme les autres
+    sous-commandes de ce module (`--activity` prime sur `--weeks`). Sans aucun
+    filtre, rend TOUTES les décisions connues : à l'appelant de borner avec
+    `--days` pour un usage headless (#56) sur un historique qui grossit.
+    `trigger` filtre en plus, quel que soit le mode de sélection de date.
+    """
+    where, params = [], []
+    if on_date:
+        where.append("date = ?")
+        params.append(on_date)
+    elif days is not None:
+        end = today or date.today()
+        start = (end - timedelta(days=days - 1)).isoformat() if days > 0 else end.isoformat()
+        where.append("date BETWEEN ? AND ?")
+        params.extend([start, end.isoformat()])
+    if trigger:
+        where.append("trigger = ?")
+        params.append(trigger)
+    clause = f"WHERE {' AND '.join(where)}" if where else ""
+    rows = conn.execute(
+        f"SELECT * FROM decision {clause} ORDER BY date DESC, created_at DESC", params
+    ).fetchall()
+    out = []
+    for row in rows:
+        d = dict(row)
+        for key in ("inputs", "rule_ids", "sources", "before", "after", "session_ref"):
+            raw = d.pop(f"{key}_json", None)
+            d[key] = json.loads(raw) if raw else None
+        d.pop("body_md", None)
+        d.pop("data_json", None)
+        d.pop("arc_version", None)
+        out.append(d)
+    return out
 
 
 # ---------------------------------------------------------------------------
@@ -2151,7 +2247,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("command", nargs="?", default="index",
                         choices=("index", "backfill-plan", "status", "hrv-baseline", "sleep-debt",
                                  "heat-acclimation", "gear", "fueling", "samples", "zones", "gap",
-                                 "decoupling", "vam", "descent", "durability", "climb-history"))
+                                 "decoupling", "vam", "descent", "durability", "climb-history",
+                                 "decisions"))
     parser.add_argument("selector", nargs="?", default=None,
                         help="argument de la sous-commande (ex. garmin_activity_id pour « samples »)")
     parser.add_argument("--workspace")
@@ -2173,6 +2270,13 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--with-gps", action="store_true",
                         help="commande « samples » : inclut lat_deg/lon_deg dans la sortie "
                              "(désactivé par défaut depuis #49 — débogage GPS local uniquement)")
+    parser.add_argument("--date", metavar="AAAA-MM-JJ",
+                        help="commande « decisions » : décisions d'une date précise (prime sur --days)")
+    parser.add_argument("--days", type=int, metavar="N",
+                        help="commande « decisions » : fenêtre glissante de N jours se terminant à "
+                             "--today (défaut : toutes les décisions connues)")
+    parser.add_argument("--trigger", choices=C.DECISION_TRIGGER,
+                        help="commande « decisions » : ne garde que les décisions de ce déclencheur")
     return parser
 
 
@@ -2323,6 +2427,16 @@ def main(argv=None) -> int:
                 ensure_ascii=False))
             return 0
         print(json.dumps({"segments": climb_segment_list(conn)}, ensure_ascii=False))
+        return 0
+    if args.command == "decisions":
+        if args.date:
+            try:
+                date.fromisoformat(args.date)
+            except ValueError:
+                raise ConfigError(f"--date : date AAAA-MM-JJ attendue, « {args.date} » reçue.")
+        today_date = date.fromisoformat(args.today) if args.today else date.today()
+        result = decisions_query(conn, today_date, args.days, args.trigger, args.date)
+        print(json.dumps(result, ensure_ascii=False))
         return 0
     if args.command == "status":
         by_status = {row[0]: row[1] for row in conn.execute(

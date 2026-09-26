@@ -58,6 +58,23 @@ REPORT_TYPE = ("weekly", "monthly", "comparison", "race", "adhoc")
 COURSE_VERDICT = ("compatible", "partial", "incompatible")
 WATER_SOURCE = ("officiel", "osm_drinking_water", "osm_spring", "osm_cafe")
 
+# `decision` (#54) : traçabilité d'un ajustement du coach — déclencheur, entrées
+# qui l'ont justifié, règles de garde-fous concernées (#52), avant/après de la
+# séance touchée, issue. `DECISION_TRIGGER`/`DECISION_OUTCOME` ci-dessous.
+DECISION_TRIGGER = (
+    "morning_check", "guardrail", "athlete_request", "medical", "weather", "race", "other",
+)
+DECISION_OUTCOME = ("applied", "proposed", "rejected_by_athlete", "superseded")
+
+# `decision.rule_ids` référence les `rule_id` de `scripts/arc_guardrails.py`
+# (r1_acwr_projected … r7_consecutive_quality). Ce module ne les importe PAS :
+# `arc_guardrails` importe déjà `arc_index`, qui importe ce module — un import
+# dans l'autre sens créerait un cycle. La forme `rN_nom_de_regle` est donc
+# validée par un PATTERN, jamais contre la liste vivante des règles connues
+# (voir `skills/workspace-data-contract/SKILL.md`, section `decision`, pour le
+# renvoi explicite vers `arc_guardrails.RULE_IDS`).
+RULE_ID_RE = re.compile(r"^r\d+_[a-z][a-z0-9_]*$")
+
 # Matériel, sudation, glucides pendant l'effort (#39 — champs consommés par #40
 # kilométrage chaussures, #41 KPI glucides/h et taux de sudation).
 GEAR_ID_MAX_LEN = 40
@@ -316,6 +333,24 @@ SCHEMA = {
             "gear": "list",
         },
     },
+    "decision": {
+        "required": {
+            "date": "date",
+            "created_at": "datetime",
+            "trigger": _enum(DECISION_TRIGGER),
+            "summary": "str",
+            "outcome": _enum(DECISION_OUTCOME),
+        },
+        "optional": {
+            "inputs": "obj",
+            "rule_ids": "rule_ids",
+            "sources": "source_paths",
+            "before": "{session_change}",
+            "after": "{session_change}",
+            "session_ref": "{session_ref}",
+            "garmin_workout_id": "int+",
+        },
+    },
 }
 
 # Sous-schémas des listes d'objets (non utilisables comme `kind` de fichier).
@@ -342,6 +377,29 @@ SUBSCHEMA = {
         "required": {"km": "num+", "source": _enum(WATER_SOURCE)},
         "optional": {"name": "str"},
     },
+    # `decision.before`/`decision.after` (#54) : instantané PARTIEL d'une séance —
+    # tous les champs sont facultatifs (une annulation ne change que `status`, un
+    # simple allègement ne change que `intensity`/`planned_duration_s`…). Jamais
+    # un objet `session` complet du fichier semaine : seuls les champs qui
+    # CHANGENT ont à être recopiés ici, le reste se lit dans `session_ref`.
+    "session_change": {
+        "required": {},
+        "optional": {
+            "date": "date",
+            "sport": _enum(SPORTS),
+            "title": "str",
+            "intensity": _enum(INTENSITY),
+            "planned_duration_s": "num+",
+            "status": _enum(SESSION_STATUS),
+        },
+    },
+    # `decision.session_ref` (#54) : pointeur vers la séance du fichier semaine
+    # que la décision modifie — le fichier `week` reste la source de vérité de
+    # l'état COURANT de la séance, cette référence ne fait que la retrouver.
+    "session_ref": {
+        "required": {"week": "str", "date": "date"},
+        "optional": {},
+    },
 }
 
 KINDS = tuple(SCHEMA)
@@ -356,6 +414,7 @@ KIND_FOLDERS = {
     "report": "rapports",
     "course_eval": "planning",
     "race_plan": "planning",
+    "decision": "planning",
 }
 
 # ---------------------------------------------------------------------------
@@ -431,6 +490,15 @@ def _check_value(spec: str, value, where: str, errors: list, warnings: list) -> 
                 continue
             _check_object(sub, item, f"{where}[{i}]", errors, warnings)
         return
+    if spec.startswith("{") and spec.endswith("}"):
+        # Sous-objet UNIQUE (par opposition à `[kind]` ci-dessus, une liste) —
+        # `decision.before`/`after`/`session_ref` (#54).
+        sub = SUBSCHEMA[spec[1:-1]]
+        if not isinstance(value, dict):
+            fail("un objet")
+            return
+        _check_object(sub, value, where, errors, warnings)
+        return
     if spec in ("int", "int+"):
         if not isinstance(value, int) or isinstance(value, bool):
             fail("un entier")
@@ -482,6 +550,41 @@ def _check_value(spec: str, value, where: str, errors: list, warnings: list) -> 
         lo, hi = BODY_WEIGHT_KG_PLAUSIBLE
         if not _is_number(value) or not lo <= value <= hi:
             fail(f"un poids en kg ({lo:g}-{hi:g})")
+        return
+    if spec == "rule_ids":
+        # `decision.rule_ids` (#54) : identifiants de `arc_guardrails.RULE_IDS`,
+        # au format `rN_nom_de_regle`. Validé par PATTERN, pas contre la liste
+        # vivante des règles connues (voir la note au-dessus de `RULE_ID_RE`) —
+        # une règle future (`r8_...`) ou retirée n'invalide donc pas un bloc
+        # `decision` déjà écrit.
+        if not isinstance(value, list):
+            fail("une liste d'identifiants de règle (arc_guardrails.RULE_IDS)")
+            return
+        for i, item in enumerate(value):
+            if not isinstance(item, str) or not RULE_ID_RE.match(item):
+                errors.append(
+                    f"{where}[{i}] : identifiant de règle attendu au format rN_nom_de_regle, "
+                    f"{json.dumps(item, ensure_ascii=False)} trouvé"
+                )
+        return
+    if spec == "source_paths":
+        # `decision.sources` (#54) : chemins RELATIFS au workspace (ex.
+        # `resources/running/vo2max.md`, `medical/2026-09-20_health.md`) —
+        # jamais une URL, jamais un chemin absolu ni remontant hors du
+        # workspace (`..`), pour rester un pointeur stable vers un fichier du
+        # dépôt de l'athlète.
+        if not isinstance(value, list):
+            fail("une liste de chemins relatifs au workspace")
+            return
+        for i, item in enumerate(value):
+            where_i = f"{where}[{i}]"
+            if not isinstance(item, str) or not item.strip():
+                errors.append(f"{where_i} : chemin non vide attendu")
+            elif "://" in item or item.startswith("/") or ".." in item.split("/"):
+                errors.append(
+                    f"{where_i} : chemin relatif au workspace attendu (pas d'URL, pas de chemin "
+                    f"absolu, pas de « .. »), {json.dumps(item, ensure_ascii=False)} trouvé"
+                )
         return
     if spec == "str":
         if not isinstance(value, str) or not value.strip():
@@ -617,7 +720,35 @@ def validate(data: dict) -> tuple:
                 f"activity.weight_post_kg : supérieur au poids avant effort de plus de "
                 f"{WEIGHT_POST_TOLERANCE_KG:g} kg — pesée à vérifier"
             )
+    if kind == "decision":
+        _check_decision_created_at(data, errors)
     return errors, warnings
+
+
+# `created_at` (horodatage d'écriture) ne doit pas s'écarter dans le futur, au-delà
+# d'une marge raisonnable, de `date` (le jour auquel la décision s'applique) : une
+# décision du 20 septembre datée du 25 sent la faute de frappe de date, pas un cas
+# légitime (une décision peut en revanche être écrite la VEILLE au soir — bilan du
+# lendemain préparé à l'avance — donc `created_at` antérieur à `date` reste normal,
+# aucune borne basse).
+DECISION_CREATED_AT_MAX_LEAD_DAYS = 1
+
+
+def _check_decision_created_at(data: dict, errors: list) -> None:
+    day, created_at = data.get("date"), data.get("created_at")
+    if not isinstance(day, str) or not isinstance(created_at, str):
+        return
+    try:
+        day_value = date.fromisoformat(day)
+        created_day = datetime.fromisoformat(created_at.replace("Z", "+00:00")).date()
+    except ValueError:
+        return   # déjà signalé par `_check_value` (format de date/date-heure invalide)
+    lead = (created_day - day_value).days
+    if lead > DECISION_CREATED_AT_MAX_LEAD_DAYS:
+        errors.append(
+            f"decision.created_at : {created_at} est postérieur de {lead} jour(s) à date "
+            f"({day}) — au-delà de {DECISION_CREATED_AT_MAX_LEAD_DAYS} jour, probable faute de frappe"
+        )
 
 
 def split_rows(data: dict) -> list:

@@ -43,6 +43,7 @@ formulation du modèle.
 | `report` | `rapports/…` |
 | `course_eval` | `planning/…_evaluation_parcours_<lieu>.md` |
 | `race_plan` | plan de course dans `planning/` |
+| `decision` | `planning/AAAA-MM-JJ_decision_<slug>.md` — traçabilité d'un ajustement (garde-fou, bilan matinal, blessure…), un fichier par décision |
 
 Votre profil (`planning/Runner_Profile.md`) et votre objectif
 (`planning/active_objective.md`) n'ont **pas** de bloc : vous les éditez à la
