@@ -188,11 +188,33 @@ const INJURY_FACTOR_FALLBACK = {
   sleep_debt: "Dette de sommeil", red_verdict: "Verdict santé rouge récent",
 };
 
+/** Formatage PAR FACTEUR (#57, revue de code #104, should-fix 2) : l'API rend
+ * déjà `observed`/`threshold` dans l'unité pertinente pour chaque facteur
+ * (score /10 pour `pain`, heures pour `sleep_debt`, `null` pour `red_verdict`
+ * — un fait booléen n'a rien à comparer à un seuil), cette fonction n'ajoute
+ * QUE le suffixe d'unité et, pour `pain`, la zone déclarée (`location`).
+ * Jamais de conversion d'unité ici : elle vivrait alors en double (API +
+ * tuile), avec le risque qu'elles divergent. */
+function injuryFactorValueText(f) {
+  if (f.observed == null || f.threshold == null) return "";
+  if (f.id === "pain") {
+    const loc = f.location ? ` — ${F.esc(f.location)}` : "";
+    return ` <span class="muted">(${F.esc(String(f.observed))}/10, seuil ${F.esc(String(f.threshold))}/10)${loc}</span>`;
+  }
+  if (f.id === "sleep_debt") {
+    return ` <span class="muted">(${F.esc(String(f.observed))} h, seuil ${F.esc(String(f.threshold))} h)</span>`;
+  }
+  return ` <span class="muted">(${F.esc(String(f.observed))} vs seuil ${F.esc(String(f.threshold))})</span>`;
+}
+
 /** Tuile « Signal de vigilance blessure » (#57) — Aujourd'hui. N'apparaît QUE si
  * le niveau est `moderate`/`high` (jamais pour `low`, pas un signal actionnable
  * au quotidien) : facteurs contributeurs cités par leur libellé + valeur
- * observée/seuil, et le disclaimer NON-diagnostique rendu par l'API tel quel
- * (jamais reformulé ici — voir `arc_guardrails.INJURY_RISK_DISCLAIMER`). */
+ * formatée par facteur (`injuryFactorValueText`), le disclaimer NON-diagnostique
+ * rendu par l'API tel quel (jamais reformulé ici — voir
+ * `arc_guardrails.INJURY_RISK_DISCLAIMER`), et une recommandation de
+ * consultation explicite dès `consult: true` (douleur sévère, ou niveau élevé
+ * avec douleur contributrice — voir `arc_guardrails.evaluate_injury_risk`). */
 function injuryRiskTile(risk) {
   if (!risk || risk.level === "low") return "";
   const contributing = (risk.factors || []).filter((f) => f.contributes);
@@ -200,13 +222,14 @@ function injuryRiskTile(risk) {
   const label = risk.level === "high" ? "Signal de vigilance élevé" : "Signal de vigilance modéré";
   const items = contributing.map((f) => {
     const name = F.esc(f.label || INJURY_FACTOR_FALLBACK[f.id] || f.id);
-    const values = f.observed != null && f.threshold != null
-      ? ` <span class="muted">(${F.esc(String(f.observed))} vs seuil ${F.esc(String(f.threshold))})</span>` : "";
-    return `<li>${name}${values}</li>`;
+    return `<li>${name}${injuryFactorValueText(f)}</li>`;
   }).join("");
+  const consult = risk.consult
+    ? `<p class="note">Consulte un professionnel de santé pour un avis avant de reprendre.</p>` : "";
   return `<div role="note" aria-label="${F.esc(label)}">
     <p class="weather">${chip("injury", risk.level, label)}</p>
     <ul class="facts-list">${items}</ul>
+    ${consult}
     <p class="muted">${F.esc(risk.disclaimer)}</p>
   </div>`;
 }

@@ -72,20 +72,24 @@ python3 scripts/arc_guardrails.py injury-risk
 
 It combines ACWR, monotony, declared pain (`health.pain`), a perceived-effort
 vs measured-HR mismatch, sleep debt and a recent red verdict into a 3-level
-`level` (`low`/`moderate`/`high`), each contributing factor with its observed
-value and threshold (`factors[].contributes`), and a mandatory non-diagnostic
-`disclaimer` you must relay, not paraphrase away. Cite the contributing
-factors by name (`factors[].label`) when you mention the flag — never present
-it as a verdict on its own, never name a specific pathology (no "tendinite",
-"fracture", "you have an injury"): it is a "signal de vigilance"
-(vigilance signal), not a diagnosis. **At `level: "high"` with pain reported
-(a contributing `pain` factor), explicitly recommend the athlete see a
-healthcare professional for a check-up** — this is the one case where you go
+`level` (`low`/`moderate`/`high`), a `consult` boolean, each contributing
+factor (`factors[].label`, already formatted per factor — a score out of 10
+plus the declared `location` for pain, hours for sleep debt, no
+observed/threshold value for the plain `red_verdict` fact), and a mandatory
+non-diagnostic `disclaimer` you must relay, not paraphrase away. Cite the
+contributing factors by name (`factors[].label`) when you mention the flag —
+never present it as a verdict on its own, never name a specific pathology (no
+"tendinite", "fracture", "entorse", "lésion", "syndrome", "you have an
+injury"): it is a "signal de vigilance" (vigilance signal), not a diagnosis.
+**Whenever `consult: true`** — severe pain on its own (observed >=
+`[injury_risk].pain_consult_threshold`, default 7/10) or `level: "high"` with
+a contributing `pain` factor — **explicitly recommend the athlete see a
+healthcare professional for a check-up**: this is the one case where you go
 beyond a training/recovery hint. At any level, a skipped factor
-(`reason_code`, e.g. insufficient history, `[health].morning_check = "off"`,
-no pain field) is a gap in the data, never evidence of safety — say so rather
-than treating the flag's `low` as reassurance when several factors were
-skipped.
+(`reason_code`, e.g. insufficient history, `[health].morning_check` gating,
+no health file for pain) is a gap in the data, never evidence of safety — say
+so rather than treating the flag's `low` as reassurance when several factors
+were skipped.
 
 ### KNOWLEDGE & RESOURCES
 - **Expertise:** Use the specialized documents in the `resources/` directory (covering health, recovery, and injury prevention) to provide evidence-based recovery strategies.

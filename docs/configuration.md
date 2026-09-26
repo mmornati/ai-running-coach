@@ -190,10 +190,11 @@ les sources et le format de sortie.
 enabled = true
 acwr_max = 1.3
 monotony_max = 2.0
-pain_score_threshold = 4.0
-pain_window_days = 3
+pain_score_threshold = 4.0               # (0, 10]
+pain_consult_threshold = 7.0             # (0, 10] — douleur sévère : level forcé "high", consult: true
+pain_window_days = 3                     # entier >= 1
 mismatch_ratio_max = 1.3
-sleep_debt_alert_s = 36000               # 10 h
+sleep_debt_alert_s = 36000               # 10 h, en secondes
 ```
 
 Drapeau composite ([#57](https://github.com/mmornati/ai-running-coach/issues/57),
@@ -201,8 +202,11 @@ Drapeau composite ([#57](https://github.com/mmornati/ai-running-coach/issues/57)
 qui combine ACWR/monotonie réels, douleur déclarée, écart effort perçu/charge
 FC, dette de sommeil et verdict rouge récent en un niveau à 3 paliers
 (`low`/`moderate`/`high`), toujours non-diagnostique — voir la page dédiée
-pour le détail de chaque facteur et ses conditions de saut (historique
-insuffisant, bilan matinal désactivé…).
+pour le détail de chaque facteur, ses conditions de saut (historique
+insuffisant, bilan matinal désactivé…) et l'escalade automatique à `high` sur
+une douleur sévère. Une valeur hors plage (ex. `pain_score_threshold = 15`,
+`pain_window_days = 0.5`) retombe sur son défaut avec un avertissement sur
+stderr, jamais silencieusement.
 
 ## Le tableau de bord — `[dashboard]`
 

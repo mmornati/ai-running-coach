@@ -264,10 +264,10 @@ python3 scripts/arc_guardrails.py injury-risk --today 2026-09-24 --workspace .
 |---|---|---|---|---|
 | `acwr` | ACWR réel du jour (mêmes constantes que R1) | `1.3` | 1 | historique réel < 84 j, ou condition trop faible |
 | `monotony` | monotonie de Foster réelle, 7 j glissants (mêmes constantes que R4) | `2.0` | 1 | historique réel < 14 j, ou fenêtre incomplète |
-| `pain` | douleur maximale déclarée (`health.pain[].score`), fenêtre glissante de 3 j | `4/10` | **2** | aucun fichier santé sur la fenêtre (`no_pain_field`) — un fichier présent sans douleur compte comme une observation, pas un saut |
+| `pain` | douleur maximale déclarée (`health.pain[].score`), fenêtre glissante de 3 j | `4/10` | **2** | aucun fichier santé sur la fenêtre (`no_health_file`) — un fichier présent sans douleur compte comme une observation (`observed: 0`), pas un saut |
 | `rpe_hr_mismatch` | ratio (charge sRPE équivalente / charge TRIMP réelle) sur les séances avec FC ET RPE, médiane 14 j vs médiane de référence 90 j | `+30 %` | 1 | moins de 3 séances avec les deux champs sur l'une des deux fenêtres |
-| `sleep_debt` | dette de sommeil 7 j (#37, réutilise `arc_index.sleep_debt_today`) | `10 h` cumulées | 1 | `[health].morning_check != "full"` |
-| `red_verdict` | verdict santé rouge aujourd'hui ou hier | — | 1 | `[health].morning_check == "off"` |
+| `sleep_debt` | dette de sommeil 7 j (#37, réutilise `arc_index.sleep_debt_today`), exposée en HEURES | `10 h` cumulées | 1 | `[health].morning_check != "full"` (sauté à `"minimal"` ET à `"off"`, pas seulement à `"off"`) |
+| `red_verdict` | verdict santé rouge aujourd'hui ou hier — fait booléen, `observed`/`threshold` valent `null` | — | 1 | `[health].morning_check == "off"` |
 
 Niveau = somme des poids des facteurs qui **contribuent** : `< 2` faible,
 `2` à `3` modéré, `>= 4` élevé — convention du projet, jamais une
@@ -278,17 +278,31 @@ jamais — un signal manquant n'est pas un signal favorable, mais le moteur ne
 devine jamais une aggravation depuis une absence de donnée ; chaque facteur
 sauté porte un `reason_code` explicite.
 
+!!! warning "Douleur sévère : `level` forcé à `high`, `consult: true`"
+    Si `pain` contribue ET que la douleur observée est **>=
+    `[injury_risk].pain_consult_threshold`** (défaut `7/10`), le niveau est
+    forcé à `high` À LUI SEUL — pas besoin d'un second facteur. `consult`
+    (booléen, toujours présent dans la sortie) vaut alors `true`, et plus
+    généralement dès que `level: "high"` ET que `pain` contribue (même sous ce
+    second seuil, si d'autres facteurs ont déjà porté le niveau à `high`).
+    `agents/medical.md`/`agents/coach.md` recommandent explicitement un avis
+    professionnel dans ce cas — voir « Câblage agent » ci-dessous.
+
 Seuils réglables via `[injury_risk]` — voir
-[Configuration](configuration.md#le-drapeau-de-risque-de-blessure-injury_risk).
+[Configuration](configuration.md#le-drapeau-de-risque-de-blessure-injury-risk).
 
 ### Sortie JSON
 
 ```json
 {
-  "level": "high", "score": 4,
+  "level": "high", "score": 2, "consult": true,
   "factors": [
-    {"id": "pain", "observed": 6.0, "threshold": 4.0, "contributes": true,
-     "weight": 2, "label": "Douleur déclarée (champ structuré `health.pain`)"},
+    {"id": "pain", "observed": 8.0, "threshold": 4.0, "contributes": true,
+     "weight": 2, "label": "Douleur déclarée", "location": "genou droit"},
+    {"id": "sleep_debt", "observed": 8.5, "threshold": 10.0, "contributes": false,
+     "weight": 0, "label": "Dette de sommeil 7 jours"},
+    {"id": "red_verdict", "observed": null, "threshold": null, "contributes": false,
+     "weight": 0, "label": "Verdict santé rouge aujourd'hui ou hier"},
     {"id": "acwr", "observed": null, "threshold": null, "contributes": false,
      "weight": 0, "reason_code": "insufficient_history",
      "reason": "historique réel trop court (< 84 j)...", "label": "..."}
@@ -298,12 +312,19 @@ Seuils réglables via `[injury_risk]` — voir
 }
 ```
 
+`label` est un texte COURT, sans jargon de schéma (jamais un nom de champ
+contractuel) — c'est ce qu'un agent ou le tableau de bord peuvent citer
+directement. `pain` porte en plus `location` (zone déclarée au score maximal,
+`null` si absente) ; `sleep_debt` est déjà en heures ; `red_verdict` n'a pas de
+`observed`/`threshold` numériques (un fait booléen n'a rien à comparer à un
+seuil).
+
 ### Câblage agent
 
 `medical` (gatekeeper) et `coach` lisent ce drapeau — voir la section
 « INJURY-RISK FLAG » de `agents/medical.md`/`agents/coach.md`. `medical`
-recommande explicitement un avis professionnel à `level: "high"` avec une
-douleur contributrice ; ni l'un ni l'autre ne nomme jamais une pathologie
+recommande explicitement un avis professionnel dès que `consult: true` (voir
+l'encart ci-dessus) ; ni l'un ni l'autre ne nomme jamais une pathologie
 précise. Le tableau de bord affiche une tuile compacte sur « Aujourd'hui »
 dès `level >= "moderate"` (`/api/injury-risk`, `web/js/app.js::injuryRiskTile`).
 
@@ -311,11 +332,14 @@ dès `level >= "moderate"` (`/api/injury-risk`, `web/js/app.js::injuryRiskTile`)
 
 `acwr`/`monotony` reprennent les mêmes repères que R1/R4 ci-dessus (Gabbett
 2016, réserves d'Impellizzeri 2020 ; Foster 1998) — voir [Sources](#sources).
-`pain_score_threshold` (4/10), la fenêtre de 3 jours, le ratio `rpe_hr_mismatch`
-(+30 %) et les poids par facteur sont des **conventions du projet** : aucune
-étude publiée ne fixe ces valeurs numériques précises pour un drapeau
-composite — seuls les principes documentés (charge aiguë/chronique,
-monotonie de Foster, effort perçu vs réponse cardiaque) le sont.
+`pain_score_threshold` (4/10), `pain_consult_threshold` (7/10 — repère
+d'échelle numérique de douleur 0-10 courant en clinique pour qualifier une
+douleur « sévère », pas une valeur calibrée sur ce moteur), la fenêtre de
+3 jours, le ratio `rpe_hr_mismatch` (+30 %) et les poids par facteur sont des
+**conventions du projet** : aucune étude publiée ne fixe ces valeurs
+numériques précises pour un drapeau composite — seuls les principes
+documentés (charge aiguë/chronique, monotonie de Foster, effort perçu vs
+réponse cardiaque) le sont.
 
 ## Pour aller plus loin
 

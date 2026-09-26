@@ -124,6 +124,12 @@ BODY_WEIGHT_KG_PLAUSIBLE = (30.0, 200.0)
 # de toute façon un résultat négatif plutôt que de le rejeter ici en amont.
 WEIGHT_POST_TOLERANCE_KG = 1.0
 
+# `health.pain` (#57, revue de code #104, nit) : une liste plus longue sent la
+# faute de saisie (copier-coller, entrées dupliquées) plutôt qu'un vrai
+# inventaire de zones douloureuses distinctes le même jour — avertissement,
+# jamais une erreur (un cas légitime, quoique rare, reste possible).
+PAIN_MAX_ENTRIES = 10
+
 # Colonnes de splits reconnues. `km` et `duration_s` sont obligatoires ; les
 # autres sont facultatives et dans n'importe quel ordre, puisque l'en-tête est
 # déclaré dans la donnée (`splits_cols`).
@@ -784,6 +790,11 @@ def validate(data: dict) -> tuple:
         _check_time_in_zone(data, errors, warnings)
     if kind == "health" and data.get("verdict") and not data.get("verdict_reason"):
         errors.append("health.verdict_reason : obligatoire dès qu'un verdict est posé")
+    if kind == "health" and isinstance(data.get("pain"), list) and len(data["pain"]) > PAIN_MAX_ENTRIES:
+        warnings.append(
+            f"health.pain : {len(data['pain'])} entrées, plus de {PAIN_MAX_ENTRIES} — "
+            "vérifier qu'il ne s'agit pas d'un doublon plutôt que de zones distinctes"
+        )
     if kind == "activity":
         moving, total = data.get("moving_duration_s"), data.get("duration_s")
         if _is_number(moving) and _is_number(total) and moving > total:

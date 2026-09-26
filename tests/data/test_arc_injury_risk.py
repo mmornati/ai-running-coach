@@ -35,6 +35,7 @@ def base_context(**overrides):
         "acwr_history_sufficient": True, "acwr_today": 1.0,
         "monotony_history_sufficient": True, "monotony_today": 1.0,
         "pain_found_any_health_file": True, "pain_max_score": 0.0, "pain_window_days": 3,
+        "pain_location": None,
         "recent_rpe_hr_ratios": [1.0, 1.0, 1.0],
         "baseline_rpe_hr_ratios": [1.0, 1.0, 1.0],
         "sleep_debt_7d_s": 0.0,
@@ -96,11 +97,24 @@ class TestMonotonyFactor(unittest.TestCase):
 
 
 class TestPainFactor(unittest.TestCase):
-    def test_no_health_file_is_skipped_as_no_pain_field(self):
+    def test_no_health_file_is_skipped_as_no_health_file(self):
         ctx = base_context(pain_found_any_health_file=False, pain_max_score=0.0)
         factor = G._eval_pain_factor(ctx, DEFAULT_GCONF)
-        self.assertEqual(factor["reason_code"], "no_pain_field")
+        self.assertEqual(factor["reason_code"], "no_health_file")
         self.assertFalse(factor["contributes"])
+
+    def test_location_is_reported_alongside_score(self):
+        """Revue de code #104, should-fix 2 : la zone déclarée (`location`)
+        accompagne le score maximal, pour que le facteur reste lisible sans
+        rouvrir le fichier santé."""
+        ctx = base_context(pain_max_score=6.0, pain_location="genou droit")
+        factor = G._eval_pain_factor(ctx, DEFAULT_GCONF)
+        self.assertEqual(factor["location"], "genou droit")
+
+    def test_location_is_none_without_pain(self):
+        ctx = base_context(pain_max_score=0.0, pain_location=None)
+        factor = G._eval_pain_factor(ctx, DEFAULT_GCONF)
+        self.assertIsNone(factor["location"])
 
     def test_health_file_without_pain_is_checked_not_skipped(self):
         """Un fichier santé existe mais ne rapporte aucune douleur : c'est une
@@ -183,8 +197,26 @@ class TestSleepDebtFactor(unittest.TestCase):
         factor = G._eval_sleep_debt_factor(ctx, DEFAULT_GCONF)
         self.assertTrue(factor["contributes"])
 
+    def test_observed_and_threshold_are_exposed_in_hours(self):
+        """Revue de code #104, should-fix 2 : le calcul interne reste en
+        secondes, mais la sortie du facteur doit être lisible directement
+        (heures), jamais « 37800 vs seuil 36000 »."""
+        ctx = base_context(sleep_debt_7d_s=37800.0)
+        factor = G._eval_sleep_debt_factor(ctx, DEFAULT_GCONF)
+        self.assertEqual(factor["observed"], 10.5)
+        self.assertEqual(factor["threshold"], round(DEFAULT_GCONF["sleep_debt_alert_s"] / 3600.0, 1))
+
 
 class TestRedVerdictFactor(unittest.TestCase):
+    def test_observed_and_threshold_are_none(self):
+        """Revue de code #104, should-fix 2 : un fait booléen (rouge ou non)
+        n'a pas de « valeur observée contre un seuil » — jamais « red vs seuil
+        red »."""
+        ctx = base_context(health_by_date={"2026-09-24": "red"})
+        factor = G._eval_red_verdict_factor(ctx)
+        self.assertIsNone(factor["observed"])
+        self.assertIsNone(factor["threshold"])
+
     def test_off_mode_is_skipped(self):
         ctx = base_context(morning_check="off")
         factor = G._eval_red_verdict_factor(ctx)
@@ -228,6 +260,7 @@ class TestLevel(unittest.TestCase):
         result = G.evaluate_injury_risk(ctx, DEFAULT_GCONF)
         self.assertEqual(result["level"], "low")
         self.assertEqual(result["score"], 0)
+        self.assertFalse(result["consult"])
         self.assertIn("disclaimer", result)
 
     def test_single_weight_one_factor_stays_low(self):
@@ -292,7 +325,52 @@ class TestLevel(unittest.TestCase):
         ctx = base_context()
         result = G.evaluate_injury_risk(ctx, conf)
         self.assertEqual(result["level"], "low")
+        self.assertFalse(result["consult"])
         self.assertTrue(all(f["reason_code"] == "injury_risk_disabled" for f in result["factors"]))
+
+    # -- douleur sévère (#57/#104, decision du coordinateur, S1) ------------
+
+    def test_severe_pain_alone_forces_high_and_consult(self):
+        """Une douleur >= `pain_consult_threshold` (défaut 7/10) force `level:
+        "high"` À ELLE SEULE, même si le score pondéré (2, poids de `pain`
+        seul) resterait « modéré » sans cette règle."""
+        ctx = base_context(pain_max_score=DEFAULT_GCONF["pain_consult_threshold"])
+        result = G.evaluate_injury_risk(ctx, DEFAULT_GCONF)
+        self.assertEqual(result["score"], 2)
+        self.assertEqual(result["level"], "high")
+        self.assertTrue(result["consult"])
+
+    def test_pain_below_consult_threshold_does_not_force_high(self):
+        ctx = base_context(pain_max_score=DEFAULT_GCONF["pain_consult_threshold"] - 0.1)
+        result = G.evaluate_injury_risk(ctx, DEFAULT_GCONF)
+        self.assertEqual(result["level"], "moderate")
+        self.assertFalse(result["consult"])
+
+    def test_high_from_other_factors_with_contributing_pain_also_consults(self):
+        """`consult` vaut aussi `true` quand `level` atteint `"high"` par la
+        combinaison d'AUTRES facteurs, tant que `pain` contribue aussi — même
+        sous le seuil de douleur sévère (voir ASSUMPTIONS_INJURY_RISK['consult'])."""
+        ctx = base_context(pain_max_score=DEFAULT_GCONF["pain_score_threshold"],
+                            acwr_today=DEFAULT_GCONF["acwr_max"] + 0.1,
+                            monotony_today=DEFAULT_GCONF["monotony_max"] + 0.1)
+        result = G.evaluate_injury_risk(ctx, DEFAULT_GCONF)
+        self.assertEqual(result["level"], "high")
+        self.assertTrue(result["consult"])
+
+    def test_high_without_contributing_pain_does_not_consult(self):
+        """`level: "high"` sans que `pain` y contribue (ex. RPE/FC + sommeil +
+        verdict rouge) ne doit jamais recommander une consultation — `consult`
+        est spécifique à la douleur."""
+        ctx = base_context(
+            acwr_today=DEFAULT_GCONF["acwr_max"] + 0.1,
+            recent_rpe_hr_ratios=[DEFAULT_GCONF["mismatch_ratio_max"] + 1] * 3,
+            baseline_rpe_hr_ratios=[1.0, 1.0, 1.0],
+            sleep_debt_7d_s=DEFAULT_GCONF["sleep_debt_alert_s"],
+            health_by_date={"2026-09-24": "red"},
+        )
+        result = G.evaluate_injury_risk(ctx, DEFAULT_GCONF)
+        self.assertEqual(result["level"], "high")
+        self.assertFalse(result["consult"])
 
 
 # ---------------------------------------------------------------------------
@@ -335,6 +413,79 @@ class TestInjuryRiskSettings(unittest.TestCase):
             conf = G.injury_risk_settings({"injury_risk": {"enabled": "peut-être"}})
         self.assertTrue(conf["enabled"])
         self.assertIn("avertissement", buf.getvalue())
+
+    # -- revue de code #104, should-fix 3 : bornes métier + bon nom de section --
+
+    def test_defaults_include_pain_consult_threshold(self):
+        conf = G.injury_risk_settings({})
+        self.assertEqual(conf["pain_consult_threshold"], G.PAIN_CONSULT_THRESHOLD)
+
+    def test_warning_names_injury_risk_section_not_guardrails(self):
+        """Les fonctions de résolution sont PARTAGÉES avec `guardrail_settings`,
+        qui écrivait `[guardrails]` en dur — un avertissement pour une clé de
+        `[injury_risk]` doit citer la bonne section."""
+        buf = io.StringIO()
+        with contextlib.redirect_stderr(buf):
+            G.injury_risk_settings({"injury_risk": {"acwr_max": "beaucoup"}})
+        self.assertIn("[injury_risk]", buf.getvalue())
+        self.assertNotIn("[guardrails]", buf.getvalue())
+
+    def test_pain_score_threshold_above_ten_falls_back_with_warning(self):
+        """Un seuil > 10 désactiverait le facteur en silence (aucun score de
+        douleur ne peut jamais l'atteindre)."""
+        buf = io.StringIO()
+        with contextlib.redirect_stderr(buf):
+            conf = G.injury_risk_settings({"injury_risk": {"pain_score_threshold": 15}})
+        self.assertEqual(conf["pain_score_threshold"], G.PAIN_SCORE_THRESHOLD)
+        self.assertIn("avertissement", buf.getvalue())
+
+    def test_pain_score_threshold_zero_falls_back_with_warning(self):
+        buf = io.StringIO()
+        with contextlib.redirect_stderr(buf):
+            conf = G.injury_risk_settings({"injury_risk": {"pain_score_threshold": 0}})
+        self.assertEqual(conf["pain_score_threshold"], G.PAIN_SCORE_THRESHOLD)
+        self.assertIn("avertissement", buf.getvalue())
+
+    def test_pain_score_threshold_at_ten_is_accepted(self):
+        conf = G.injury_risk_settings({"injury_risk": {"pain_score_threshold": 10}})
+        self.assertEqual(conf["pain_score_threshold"], 10)
+
+    def test_pain_consult_threshold_above_ten_falls_back_with_warning(self):
+        buf = io.StringIO()
+        with contextlib.redirect_stderr(buf):
+            conf = G.injury_risk_settings({"injury_risk": {"pain_consult_threshold": 11}})
+        self.assertEqual(conf["pain_consult_threshold"], G.PAIN_CONSULT_THRESHOLD)
+        self.assertIn("avertissement", buf.getvalue())
+
+    def test_pain_window_days_half_falls_back_with_warning(self):
+        """Revue de code #104, should-fix 3 : `0.5` acceptée par l'ancien
+        `int(_positive_float_setting(...))` tombait à `0`, inversant la
+        fenêtre et désactivant le facteur douleur en silence."""
+        buf = io.StringIO()
+        with contextlib.redirect_stderr(buf):
+            conf = G.injury_risk_settings({"injury_risk": {"pain_window_days": 0.5}})
+        self.assertEqual(conf["pain_window_days"], G.PAIN_RECENT_WINDOW_DAYS)
+        self.assertIn("avertissement", buf.getvalue())
+        self.assertGreaterEqual(conf["pain_window_days"], 1)
+
+    def test_pain_window_days_zero_falls_back_with_warning(self):
+        buf = io.StringIO()
+        with contextlib.redirect_stderr(buf):
+            conf = G.injury_risk_settings({"injury_risk": {"pain_window_days": 0}})
+        self.assertEqual(conf["pain_window_days"], G.PAIN_RECENT_WINDOW_DAYS)
+        self.assertIn("avertissement", buf.getvalue())
+
+    def test_pain_window_days_negative_falls_back_with_warning(self):
+        buf = io.StringIO()
+        with contextlib.redirect_stderr(buf):
+            conf = G.injury_risk_settings({"injury_risk": {"pain_window_days": -2}})
+        self.assertEqual(conf["pain_window_days"], G.PAIN_RECENT_WINDOW_DAYS)
+        self.assertIn("avertissement", buf.getvalue())
+
+    def test_pain_window_days_valid_integer_override_applies(self):
+        conf = G.injury_risk_settings({"injury_risk": {"pain_window_days": 5}})
+        self.assertEqual(conf["pain_window_days"], 5)
+        self.assertIsInstance(conf["pain_window_days"], int)
 
 
 # ---------------------------------------------------------------------------

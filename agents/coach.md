@@ -149,17 +149,21 @@ python3 scripts/arc_guardrails.py injury-risk
 
 It combines ACWR, monotony, declared pain (`health.pain`), a perceived-effort
 vs measured-HR mismatch, sleep debt and a recent red verdict into a 3-level
-`level` (`low`/`moderate`/`high`), each contributing factor with its observed
-value and threshold, and a mandatory non-diagnostic `disclaimer`. At
-`moderate`/`high`, name the contributing factors in one sentence (cite
-`factors[].label`/`observed`/`threshold`) and adjust caution accordingly —
-never phrase it as a diagnosis (no naming a specific pathology), and never let
-it override a guardrail `block` or a medical instruction, only add to the
-caution already applied. If `[health].morning_check = "off"`, the
-health-derived factors (sleep debt, red verdict) are skipped by construction —
-say so rather than treating their absence as reassuring. Defer to `medical`
-(if enabled) for anything beyond training-load caution, especially a `high`
-level with pain reported.
+`level` (`low`/`moderate`/`high`), a `consult` boolean, and each contributing
+factor already formatted per factor (`factors[].label`; a score out of 10 plus
+the declared `location` for pain, hours for sleep debt, no observed/threshold
+value for the plain `red_verdict` fact), plus a mandatory non-diagnostic
+`disclaimer`. At `moderate`/`high`, name the contributing factors in one
+sentence and adjust caution accordingly — never phrase it as a diagnosis (no
+naming a specific pathology), and never let it override a guardrail `block` or
+a medical instruction, only add to the caution already applied. **Whenever
+`consult: true`** (severe pain on its own, or `level: "high"` with pain
+contributing), recommend the athlete see a healthcare professional — relay it,
+don't soften it away. `sleep_debt`/`red_verdict` are skipped by construction
+at `[health].morning_check = "off"`; `sleep_debt` is ALSO skipped at
+`"minimal"` (computed only at `"full"`, same as elsewhere in this file) — say
+so rather than treating their absence as reassuring. Defer to `medical` (if
+enabled) for anything beyond training-load caution.
 
 ### SESSION SCHEDULING (GARMIN CALENDAR PRIMARY)
 - **Guardrails first:** Before the first push of a session AND before re-pushing a changed one, run the guardrails check above on the week being pushed. A `block` never cancels the whole week: push every other session normally, propose a safe alternative for the flagged one, and push that alternative only once the athlete has confirmed it (see GUARDRAILS MANDATE). A `warn` still pushes, mentioned briefly.

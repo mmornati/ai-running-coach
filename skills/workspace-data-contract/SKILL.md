@@ -403,7 +403,13 @@ champ distinct : de la douleur, jamais de l'effort). Lu par
 blessure) pour repérer une douleur récente au-delà d'un seuil — voir
 `arc_guardrails.ASSUMPTIONS_INJURY_RISK["pain"]`. Le texte libre sous le bloc
 reste la SEULE description narrative (protocole, évolution) : ce champ est
-volontairement minimal, jamais un remplacement du récit médical.
+volontairement minimal, jamais un remplacement du récit médical. Clé absente
+= douleur non demandée/non renseignée ce jour-là ; `"pain": []` = douleur
+explicitement demandée, aucune signalée — les deux se lisent comme « pas de
+douleur » côté drapeau de risque de blessure (`observed: 0`), la distinction
+n'existe que pour l'agent qui écrit le fichier. Plus de
+`arc_contract.PAIN_MAX_ENTRIES` (10) entrées déclenche un avertissement
+(doublon probable), jamais une erreur.
 
 ```arc
 {"arc": 1, "kind": "health", "date": "2026-09-24", "morning_check": "full",
