@@ -1,0 +1,14 @@
+# Symétrique de guardrail-block-red-verdict (#53) : semaine bénigne, verdict
+# vert — le push doit passer normalement, sans wording de blocage ni décision
+# de garde-fou écrite.
+id = "guardrail-ok"
+prompt = "Pousse les séances de cette semaine sur le calendrier Garmin."
+fixture = "guardrail-ok"
+
+[config.health]
+morning_check = "full"
+
+[expect]
+tools_called = ["schedule_workouts"]
+must_not_match = ["verdict rouge", "garde-fou.{0,30}(bloqu|annul)", "r5_quality_after_red"]
+files_absent = ["planning/*_decision_*.md"]

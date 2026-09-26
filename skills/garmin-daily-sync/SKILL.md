@@ -68,7 +68,20 @@ Remote Control) et l'IDE partagent. Il délègue tout à l'agent `coach` et au s
    (`Alerte : 1 fichier hors contrat — medical/2026-09-20_health.md`). Cette même commande
    ingère aussi les échantillons FIT déposés à l'étape 2 (`activity_sample`, aucune action
    supplémentaire requise).
-4. Si l'agent `coach` échoue (MCP indisponible, tokens Garmin expirés…), ne rien inventer :
+4. **Garde-fou r5, bilan rouge (#52/#53) — jamais d'écriture de plan ni de push ici.** Si
+   un `medical/YYYY-MM-DD_health.md` persisté à l'étape 1 porte `verdict: "red"`, chercher
+   dans `planning/` une semaine (`kind: week`) dont une séance de qualité (intensité
+   `tempo`/`threshold`/`vo2max`/`race`) tombe ce jour-là ou le lendemain. Si oui, lancer
+   `python3 scripts/arc_guardrails.py check --week <fichier> --today <date>` pour confirmer
+   `r5_quality_after_red`. Ce skill ne modifie **jamais** le plan ni le calendrier Garmin
+   (règle inchangée, voir étape 1) : écrire à la place une `decision`
+   (`workspace-data-contract` skill) avec `outcome: "proposed"` — jamais `applied`, aucune
+   décision n'a été appliquée en headless — `trigger: "guardrail"`,
+   `rule_ids: ["r5_quality_after_red"]`, `session_ref`, puis la valider
+   (`python3 scripts/arc_index.py --validate <fichier decision>`). L'annoncer dans le
+   `resume` (`Alerte : séance qualité du <date> à revoir avec le coach — verdict rouge`),
+   jamais silencieusement.
+5. Si l'agent `coach` échoue (MCP indisponible, tokens Garmin expirés…), ne rien inventer :
    le résumé doit contenir `ERREUR : <cause>` (ex. « tokens Garmin expirés — relancer
    `uv run garmin-mcp-auth` »).
 

@@ -84,7 +84,41 @@ misleading.
   3. **Z1/Z2 (Aerobic):** Clearly state the expectations (e.g., "Stay strictly below 140bpm"), constants to follow, and the physiological goal of the session.
   4. **Material:** Explicitly list the necessary material for every single session. Start from the "Matériel par défaut" section of the loaded sport profile, then add what the athlete declared in their profile.
 
+### GUARDRAILS MANDATE (MANDATORY — before writing a week AND before any Garmin push, #52/#53)
+
+A deterministic second opinion, not a suggestion. Run it before persisting a
+new/modified week file, and again right before any `schedule_workouts` /
+`schedule_week` call:
+
+```bash
+python3 scripts/arc_guardrails.py check --week <path|->    # "-" = pipe the proposed week JSON via stdin
+```
+
+1. **Exit 1 (block)** — do NOT write the file / do NOT push. Propose a safe
+   alternative for the flagged session(s) (e.g. swap the quality/vo2max
+   session for easy/rest), re-run the check on the alternative, and explain
+   in one short sentence citing the violation's `message`. `[coaching].style`
+   and `.intensity` change only the wording — they NEVER downgrade, skip, or
+   silently override a `block`.
+2. **Exit 0 with `warn`/`info` violations** — writing/pushing is allowed;
+   state the warning briefly (one sentence citing `message`).
+3. **Exit 2** — invalid input (bad JSON, missing `week_start`…). Report the
+   problem, do not push, and never treat it as a guardrail verdict.
+
+**Record the change.** Whenever a session is changed, replaced, or cancelled
+because of a guardrail, the morning check, or a medical input, write a
+`decision` file (`planning/YYYY-MM-DD_decision_<slug>.md`, see
+`workspace-data-contract`'s `decision` section for the exact fields —
+`trigger`, `rule_ids`, `inputs` with the observed value and threshold,
+`before`/`after`, `session_ref`, `outcome`). Order: rewrite the week file
+first, THEN write the decision that references it, THEN validate both:
+
+```bash
+python3 scripts/arc_index.py --validate <week-file> <decision-file>
+```
+
 ### SESSION SCHEDULING (GARMIN CALENDAR PRIMARY)
+- **Guardrails first:** Before the first push of a session AND before re-pushing a changed one, run the guardrails check above on the week being pushed. A `block` cancels the push for that session (propose the alternative instead); a `warn` still pushes, mentioned briefly.
 - **Push:** Use `schedule_workouts` with `{calendar_date, workout_data}` per session. **Inline `workout_data` is NOT idempotent** — check `get_scheduled_workouts` for the date first and delete the old workout_id if the session changed, or reuse the id if unchanged (see the `garmin-workout-scheduling` skill).
 - **Verify:** After EVERY push, call `get_scheduled_workouts(start_date, end_date)` for the week and confirm each session (date, duration, name). For structured detail (loops/reps/weight), check `get_workout_by_id`.
 - **Stale hygiene:** Before pushing a new week, check the previous week for `completed=false` entries that no longer match the plan; delete or overwrite them.

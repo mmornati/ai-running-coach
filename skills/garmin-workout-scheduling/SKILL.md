@@ -174,11 +174,15 @@ Alternative helper: `create_strength_workout(name, exercises)` — simpler but e
 ## Workflow
 
 1. Read the planned week from `planning/` (e.g. `Semaine_YYYY-MM-DD.md`) and the phase detail file for strength sessions.
-2. Check `get_scheduled_workouts(start_date, end_date)` for the week — identify existing workout_ids per date and any stale entries (dedupe strategy per Idempotency section).
-3. For each session, build `workout_data` with the schema above. Strength sessions come from the plan's circuit detail.
-4. Push via `schedule_workouts` with one `{calendar_date, workout_data}` per NEW session (reuse `workout_id` for unchanged ones).
-5. VERIFY: `get_scheduled_workouts(start_date, end_date)` for the week → confirm each date, duration, name, and NO duplicates; `get_workout_by_id` for any structured detail (loops/reps/weight).
-6. Persist: note the pushed session (workout_id, date) in the week's `planning/` MD file.
+2. **Guardrails (MANDATORY, #52/#53) — never skip, style/intensity never override it:** run `python3 scripts/arc_guardrails.py check --week <path|->` on the week about to be pushed (pipe its `week` JSON via `-` if it isn't written to disk yet).
+   - **Exit 1 (block):** do NOT push the flagged session(s). Replace the flagged session with a safe alternative (easy/rest), re-run the check, and push only once it passes; explain the swap in one sentence citing the violation's `message`. Write a `decision` file for the change (`workspace-data-contract` skill: `trigger: "guardrail"`, `rule_ids`, `before`/`after`, `session_ref`, `outcome`) and validate it (`python3 scripts/arc_index.py --validate <decision-file>`).
+   - **Exit 0 with `warn`/`info`:** push proceeds; mention the warning briefly.
+   - **Exit 2:** invalid input — report it, do not push.
+3. Check `get_scheduled_workouts(start_date, end_date)` for the week — identify existing workout_ids per date and any stale entries (dedupe strategy per Idempotency section).
+4. For each session, build `workout_data` with the schema above. Strength sessions come from the plan's circuit detail.
+5. Push via `schedule_workouts` with one `{calendar_date, workout_data}` per NEW session (reuse `workout_id` for unchanged ones).
+6. VERIFY: `get_scheduled_workouts(start_date, end_date)` for the week → confirm each date, duration, name, and NO duplicates; `get_workout_by_id` for any structured detail (loops/reps/weight).
+7. Persist: note the pushed session (workout_id, date) in the week's `planning/` MD file.
 
 ## Reliability & Batching (tested 2026-08-11)
 
