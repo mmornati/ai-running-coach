@@ -23,7 +23,7 @@ dans `[guardrails]` de `config/workspace.toml`) :
 
 | id | ce qu'elle vérifie | sévérité par défaut |
 |---|---|---|
-| `r1_acwr_projected` | ACWR (charge aiguë/chronique) PROJETÉ en fin de semaine proposée | `block` |
+| `r1_acwr_projected` | ACWR (charge aiguë/chronique) PROJETÉ, maximum sur la semaine proposée | `warn` |
 | `r2_weekly_volume_jump` | hausse de la durée (+ distance en `road`) hebdomadaire | `warn` |
 | `r3_weekly_elevation_jump` | hausse du D+ hebdomadaire (trail seulement) | `warn` |
 | `r4_monotony_projected` | monotonie de Foster PROJETÉE sur la semaine proposée | `warn` |
@@ -45,7 +45,7 @@ Sortie JSON (consommée par #53 pour le câblage agent, #54 pour le futur bloc
 {
   "ok": true,
   "violations": [
-    {"rule_id": "r1_acwr_projected", "severity": "block",
+    {"rule_id": "r1_acwr_projected", "severity": "warn",
      "message": "ACWR projeté 1.42, au-delà de 1.3.", "message_en": "...",
      "values": {"observed": 1.42, "threshold": 1.3},
      "session_dates": ["2026-09-24"], "source": "..."}
@@ -83,6 +83,8 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
+import statistics
 import sys
 from datetime import date, timedelta
 from pathlib import Path
@@ -109,13 +111,47 @@ SEVERITIES = ("info", "warn", "block")
 # voir `arc_index.py::_heat_threshold_c` pour la même discipline).
 DEFAULT_ACWR_MAX = 1.3
 DEFAULT_VOLUME_INCREASE_MAX_PCT = 10.0
-DEFAULT_VOLUME_REFERENCE = "previous_week"       # "previous_week" | "mean4"
+# Défaut "mean4" (pas "previous_week") depuis la revue de code #98, blocker 8 :
+# comparer à la seule semaine précédente déclenche une fausse alerte à +100 %
+# après une semaine de récupération (deload) suivie d'un retour à la normale —
+# la moyenne des 4 dernières semaines lisse ce genre d'à-coup. Encore
+# configurable en "previous_week" pour qui préfère la sensibilité immédiate.
+DEFAULT_VOLUME_REFERENCE = "mean4"       # "previous_week" | "mean4"
 DEFAULT_ELEVATION_INCREASE_MAX_PCT = 10.0
 DEFAULT_MONOTONY_MAX = 2.0
 DEFAULT_LONG_RUN_SHARE_MAX_PCT = 35.0
+# Nombre minimal de séances de la famille course à pied dans la semaine avant
+# que R6 (part de la plus longue sortie) soit un repère fiable — voir revue de
+# code #98, should-fix 9 : sous ce seuil (ex. 3 séances 60/60/120 min), la plus
+# longue séance dépasse presque toujours 35 % par construction (peu de séances
+# parmi lesquelles se répartir), sans que ce soit un signal de charge excessive.
+R6_MIN_SESSIONS = 4
+# Fenêtre de calcul de l'allure course RÉCENTE (voir `_recent_run_pace_s_km`,
+# ASSUMPTIONS["distance_only_estimate"]) : les 90 jours qui précèdent
+# `week_start`, jamais tout l'historique (une allure d'il y a deux ans ne
+# reflète pas la forme actuelle).
+RECENT_PACE_WINDOW_DAYS = 90
+# Historique réel minimal (en jours, écart entre la plus ancienne charge
+# indexée et `week_start`) avant qu'une projection ACWR/monotonie (R1/R4) soit
+# considérée fiable — voir revue de code #98, blocker 1, et
+# ASSUMPTIONS["acwr_projection"]. `arc_metrics.daily_series` initialise la
+# condition (moyenne mobile exponentielle 42 j) à ZÉRO au premier jour connu :
+# avec moins de deux fois cette fenêtre d'historique réel, la condition reste
+# artificiellement sous-estimée par ce démarrage à froid et l'ACWR (fatigue /
+# condition) se retrouve mécaniquement gonflé, QUELLE QUE SOIT la semaine
+# proposée — un nouvel utilisateur avec seulement 1 à 8 semaines d'historique
+# lirait un ACWR de 3,18 à 1,34 sur une semaine pourtant parfaitement stable.
+MIN_HISTORY_DAYS_FOR_PROJECTION = 2 * M.FITNESS_DAYS   # 84 jours
 
 DEFAULT_SEVERITY: Dict[str, str] = {
-    "r1_acwr_projected": "block",
+    # R1 passé de "block" à "warn" en revue de code #98 (should-fix 7) : les
+    # seuils de Gabbett viennent de sports collectifs avec des moyennes
+    # glissantes 7/28 j, pas du modèle impulsion-réponse de Banister (7/42 j)
+    # évalué en fin de semaine que ce moteur utilise — voir
+    # ASSUMPTIONS["acwr_projection"] pour le détail des réserves scientifiques.
+    # Un utilisateur qui veut la fermeté d'un blocage peut le remettre à
+    # "block" via `[guardrails].severity_r1_acwr_projected`.
+    "r1_acwr_projected": "warn",
     "r2_weekly_volume_jump": "warn",
     "r3_weekly_elevation_jump": "warn",
     "r4_monotony_projected": "warn",
@@ -128,13 +164,15 @@ RULE_IDS: Tuple[str, ...] = tuple(sorted(DEFAULT_SEVERITY))
 # Statuts de séance qui sortent une séance du calcul (charge, volume, D+,
 # sortie longue, qualité consécutive…) — voir AGENTS.md « cas limites » de
 # l'issue #52. `rest` est exclu séparément (sport/intensité "rest", jamais un
-# statut).
-_EXCLUDED_STATUSES = ("cancelled", "moved")
+# statut). `missed` ajouté en revue de code #98 (should-fix 4) : une séance
+# déjà constatée manquée ne doit pas peser comme si elle allait avoir lieu,
+# exactement comme `cancelled`/`moved` — le contrat n'a pas de motif distinct.
+_EXCLUDED_STATUSES = ("cancelled", "moved", "missed")
 
 
 def _is_excluded(session: dict) -> bool:
-    """Une séance annulée, déplacée ou de repos ne compte dans AUCUNE règle de
-    charge/volume/qualité — voir `ASSUMPTIONS["excluded_sessions"]`."""
+    """Une séance annulée, déplacée, manquée ou de repos ne compte dans AUCUNE
+    règle de charge/volume/qualité — voir `ASSUMPTIONS["excluded_sessions"]`."""
     return session.get("status") in _EXCLUDED_STATUSES or session.get("sport") == "rest" \
         or session.get("intensity") == "rest"
 
@@ -151,14 +189,36 @@ INTENSITY_RPE: Dict[str, float] = {
 INTENSITY_RPE_DEFAULT = 5.0     # intensité absente/inconnue : milieu d'échelle, ni facile ni dur
 
 
-def projected_session_load(session: dict) -> float:
+def _effective_planned_duration_s(session: dict, recent_pace_s_km: Optional[float]) -> Tuple[Optional[float], bool]:
+    """Durée planifiée EFFECTIVE d'une séance : `planned_duration_s` si renseignée
+    (rendue TELLE QUELLE, jamais estimée), sinon ESTIMÉE depuis `planned_distance_m`
+    (+ équivalence D+ plat, `arc_metrics.TRAIL_FLAT_M_PER_M_DPLUS`) à l'allure course
+    RÉCENTE de l'athlète (`recent_pace_s_km`, voir `_recent_run_pace_s_km` et
+    `ASSUMPTIONS["distance_only_estimate"]`) — revue de code #98, blocker 3.
+
+    Rend `(durée_s, estimée)`. `(None, False)` si ni la durée ni la distance ne sont
+    renseignées, OU si la distance est renseignée mais qu'aucune allure récente
+    n'est disponible pour l'estimer (jamais une estimation inventée sans donnée)."""
+    duration_s = session.get("planned_duration_s")
+    if duration_s:
+        return duration_s, False
+    distance_m = session.get("planned_distance_m")
+    if not distance_m or not recent_pace_s_km:
+        return None, False
+    elevation_m = session.get("planned_elevation_m") or 0.0
+    flat_equivalent_m = distance_m + elevation_m * M.TRAIL_FLAT_M_PER_M_DPLUS
+    return (flat_equivalent_m / 1000.0) * recent_pace_s_km, True
+
+
+def projected_session_load(session: dict, recent_pace_s_km: Optional[float] = None) -> float:
     """Charge PROJETÉE d'une séance planifiée, sur la MÊME échelle que
     `arc_metrics.session_load` (TRIMP/sRPE) — voir `ASSUMPTIONS["projected_load"]`
     pour la justification complète. Rend 0.0 pour une séance sans durée planifiée
-    (jamais estimée depuis rien) ou explicitement de repos."""
+    NI durée estimable (jamais une charge inventée depuis rien) ou explicitement
+    exclue (voir `_is_excluded`)."""
     if _is_excluded(session):
         return 0.0
-    duration_s = session.get("planned_duration_s")
+    duration_s, _estimated = _effective_planned_duration_s(session, recent_pace_s_km)
     if not duration_s:
         return 0.0
     rpe = INTENSITY_RPE.get(session.get("intensity"), INTENSITY_RPE_DEFAULT)
@@ -179,51 +239,117 @@ ASSUMPTIONS: Dict[str, str] = {
         "approximation du projet, jamais présentée comme mesurée."
     ),
     "acwr_projection": (
-        "R1 : la charge réelle déjà indexée (table `activity`, une ligne par jour, "
-        "sommée si plusieurs séances) alimente arc_metrics.daily_series depuis la "
-        "date de la plus ancienne activité connue jusqu'au dernier jour de la "
-        "semaine proposée (dimanche) ; les jours de la semaine proposée qui n'ont "
-        "PAS déjà une activité réelle indexée à cette date reçoivent la charge "
-        "PROJETÉE de leur séance planifiée (projected_session_load) — un jour qui a "
-        "déjà une activité réelle garde TOUJOURS cette valeur réelle (jamais "
-        "écrasée par une projection, pour ne jamais compter une même charge deux "
-        "fois). L'ACWR/la monotonie « projetés » sont la valeur du DERNIER jour de "
-        "la série (dimanche de la semaine proposée) — la fenêtre de monotonie 7 j "
-        "d'arc_metrics.daily_series coïncide alors exactement avec les 7 jours de "
-        "la semaine proposée, puisque week_start est toujours un lundi. Repère "
-        "indicatif de la littérature sur le ratio de charge aiguë/chronique "
+        "R1 : la charge réelle déjà indexée (table `activity`, sommée par jour si "
+        "plusieurs séances) alimente arc_metrics.daily_series depuis la date de la "
+        "plus ancienne activité connue jusqu'au dernier jour de la semaine proposée "
+        "(dimanche). Pour les jours DE LA SEMAINE PROPOSÉE : chaque séance non "
+        "exclue est appariée à une activité réelle (arc_metrics._resolve_sessions, "
+        "même logique que arc_metrics.week_compliance — statut `done` explicite, ou "
+        "appariement automatique date+sport/famille) et compte sa charge RÉELLE si "
+        "appariée ; sinon, un jour STRICTEMENT AVANT `context['today']` compte 0 "
+        "(jamais le bénéfice d'une charge qui n'a peut-être jamais eu lieu, revue "
+        "de code #98, blocker/should-fix 5), et un jour à `today` ou après compte la "
+        "charge PROJETÉE (`projected_session_load`). Plusieurs séances le même jour "
+        "sont SOMMÉES (revue de code #98, blocker 2 : jamais la charge agrégée déjà "
+        "indexée écrasée par une seule séance restante). "
+        "`acwr_projected` = MAXIMUM de l'ACWR sur les 7 jours de la semaine proposée "
+        "(`_max_week_acwr`, revue de code #98, should-fix 7 — pas seulement le "
+        "dimanche : sinon une semaine régulière avec une longue sortie le dimanche "
+        "se lit artificiellement autour de 1,12 du seul fait du jour d'évaluation, un "
+        "biais de motif hebdomadaire indépendant de la charge réelle). La monotonie/"
+        "condition/fatigue PROJETÉES restent la valeur du DERNIER jour (dimanche) — "
+        "voir ASSUMPTIONS['monotony_projection']. `acwr_baseline` (scénario « repos "
+        "complet » cette semaine-là, `zero_proposed=True`) : R1 ne bloque QUE si la "
+        "semaine proposée AGGRAVE le ratio par rapport à ce scénario — voir "
+        "ASSUMPTIONS['race_week'] (should-fix 6). "
+        "Historique minimal : `MIN_HISTORY_DAYS_FOR_PROJECTION` (84 j, 2× "
+        "`arc_metrics.FITNESS_DAYS`) — `arc_metrics.daily_series` initialise la "
+        "condition (moyenne mobile exponentielle 42 j) à ZÉRO au premier jour connu ; "
+        "avec moins de deux fois cette fenêtre, la condition reste sous-estimée par "
+        "ce démarrage à froid et l'ACWR se retrouve mécaniquement gonflé quelle que "
+        "soit la semaine proposée (revue de code #98, blocker 1, repro : 3,18 à 1,34 "
+        "d'ACWR sur une semaine identique et parfaitement stable, selon que "
+        "l'historique compte 1 ou 8 semaines) — sous ce seuil, R1/R4 sont SAUTÉES "
+        "avec `reason_code: \"insufficient_history\"`, jamais évaluées sur un "
+        "démarrage à froid. "
+        "Repère indicatif de la littérature sur le ratio de charge aiguë/chronique "
         "(« acute:chronic workload ratio »), pas un seuil de blessure prouvé : "
         "Gabbett T.J. (2016), « The training-injury prevention paradox: should "
         "athletes be training smarter and harder? », British Journal of Sports "
         "Medicine, 50(5), 273-280 — la zone 0,8-1,3 y est documentée comme associée "
         "à un risque de blessure plus faible qu'au-delà de 1,5 ; c'est aussi le "
-        "repère déjà partagé par `arc_metrics.ACWR_SAFE` dans ce projet. `resources/` "
-        "ne contient pas cette référence (dossier propre au workspace de "
-        "l'utilisateur, hors du dépôt public) : citée ici depuis la littérature, "
-        "comme le fait déjà `arc_metrics.ASSUMPTIONS`."
+        "repère déjà partagé par `arc_metrics.ACWR_SAFE` dans ce projet. RÉSERVES "
+        "SCIENTIFIQUES IMPORTANTES (revue de code #98, should-fix 7), en plus du "
+        "biais de motif hebdomadaire ci-dessus : (1) les seuils de Gabbett viennent "
+        "d'études en SPORTS COLLECTIFS (rugby, football australien), avec des "
+        "moyennes glissantes SIMPLES sur 7 j (aigu) et 28 j (chronique) — ce moteur "
+        "utilise le modèle impulsion-réponse de Banister (moyennes mobiles "
+        "EXPONENTIELLES 7 j/42 j), une définition mathématiquement DIFFÉRENTE de "
+        "l'ACWR, jamais validée par les mêmes études ; (2) la preuve elle-même est "
+        "CONTESTÉE dans la littérature de course à pied — voir Impellizzeri F.M. "
+        "et al. (2020), citée dans `docs/marques.md` (« ACWR : la zone 0,8-1,3 est "
+        "un repère indicatif [...] discuté dans la littérature »). C'est pourquoi "
+        "R1 est `warn` par défaut (pas `block`, voir DEFAULT_SEVERITY) — configurable "
+        "en `block` par qui veut la fermeté. `resources/` ne contient pas ces "
+        "références (dossier propre au workspace de l'utilisateur, hors du dépôt "
+        "public) : citées ici depuis la littérature, comme le fait déjà "
+        "`arc_metrics.ASSUMPTIONS`."
+    ),
+    "distance_only_estimate": (
+        "Séance planifiée en DISTANCE seule (`planned_distance_m`, sans "
+        "`planned_duration_s`) : revue de code #98, blocker 3 — une telle séance ne "
+        "doit jamais compter une charge/durée de ZÉRO (elle a bien une charge "
+        "réelle, seulement pas encore chiffrée en temps). Durée ESTIMÉE = "
+        "(distance_m + élévation_m × arc_metrics.TRAIL_FLAT_M_PER_M_DPLUS) / 1000 × "
+        "allure course RÉCENTE (médiane, s/km, familles course à pied, "
+        "`_recent_run_pace_s_km`, fenêtre `RECENT_PACE_WINDOW_DAYS` = 90 j avant "
+        "`week_start`) — la même équivalence D+/plat que "
+        "`arc_metrics.ASSUMPTIONS['trail_equivalence']`, réutilisée pour rester "
+        "cohérente avec le reste du projet. Une APPROXIMATION D'UNE APPROXIMATION "
+        "(l'allure récente n'est pas l'allure de CETTE séance), signalée "
+        "explicitement dans `context['distance_only_sessions_estimated']` (dates). "
+        "Aucune activité de la famille course avec durée ET distance sur la fenêtre "
+        "récente : `recent_run_pace_s_km` est `None`, et toute séance de la famille "
+        "course prescrite en distance seule rend alors R1/R2/R4 SAUTÉES avec "
+        "`reason_code: \"missing_planned_duration\"` — jamais un 0 silencieux, "
+        "jamais une estimation inventée sans donnée. R3 (D+) et R6 (part de la "
+        "sortie la plus longue) restent traitées séparément — R3 utilise "
+        "`planned_elevation_m` directement (aucune durée en jeu), R6 utilise cette "
+        "même estimation (voir ASSUMPTIONS['long_run_share'])."
     ),
     "volume_and_elevation": (
         "R2/R3 : comparaison au choix (`[guardrails].r2_volume_reference`) à la "
         "semaine PRÉCÉDENTE (les 7 jours immédiatement avant week_start) ou à la "
-        "MOYENNE des 4 semaines précédentes — seule la famille course à pied "
-        "(arc_metrics.sport_family == \"run\" : course, trail, randonnée, marche) "
-        "compte, jamais le vélo/renforcement/natation d'une semaine multi-sport "
-        "(cohérent avec `arc_metrics.GEAR_WEAR_SPORTS`/`FUELING_SPORTS`, mêmes "
-        "raisons). R2 compare la durée planifiée totale (toujours) et la distance "
-        "planifiée totale (seulement si [sport].primary == \"road\" : le D+ n'a pas "
-        "de sens sur route). R3 compare le D+ planifié total, seulement si "
-        "[sport].primary == \"trail\". Référence nulle (aucune activité de la "
-        "famille course sur la fenêtre de référence) : la règle est SAUTÉE avec "
-        "`reason_code: \"insufficient_history\"`, jamais un pourcentage infini ou "
-        "une division par zéro — c'est le cas normal des toutes premières semaines "
-        "d'un workspace neuf. Seule une HAUSSE déclenche la règle : une semaine de "
-        "récupération (deload) ou d'affûtage, qui réduit le volume, ne peut jamais "
-        "être signalée par R2/R3 (le calcul du pourcentage de variation n'est "
-        "comparé au seuil que s'il est strictement positif). « Règle des 10 % » : "
-        "convention très répandue dans le coaching course à pied (programmes pour "
-        "débutants, littérature grand public), jamais validée par un essai "
-        "contrôlé dédié à ma connaissance — traitée ici comme une APPROXIMATION DU "
-        "PROJET, pas une référence bibliographique vérifiée, contrairement à R1/R4."
+        "MOYENNE des 4 semaines précédentes (`\"mean4\"`, DÉFAUT depuis la revue de "
+        "code #98, should-fix 8 : comparer à la seule semaine précédente déclenche "
+        "une fausse alerte à +100 % après une semaine de récupération suivie d'un "
+        "retour à la normale — la moyenne 4 semaines lisse cet à-coup) — seule la "
+        "famille course à pied (arc_metrics.sport_family == \"run\" : course, "
+        "trail, randonnée, marche) compte, jamais le vélo/renforcement/natation "
+        "d'une semaine multi-sport (cohérent avec `arc_metrics.GEAR_WEAR_SPORTS`/"
+        "`FUELING_SPORTS`, mêmes raisons) — `_run_family_totals.has_any_activity` "
+        "ne compte QUE cette famille (revue de code #98, should-fix 10 : une "
+        "semaine 100 % vélo n'est PAS une référence valide, même si `activity` a "
+        "bien des lignes ce jour-là). R2 compare la durée planifiée totale "
+        "(toujours, durée EFFECTIVE — voir ASSUMPTIONS['distance_only_estimate']) "
+        "et la distance planifiée totale (seulement si [sport].primary == \"road\" "
+        ": le D+ n'a pas de sens sur route). R3 compare le D+ planifié total, "
+        "seulement si [sport].primary == \"trail\". Référence sans AUCUNE activité "
+        "de la famille course sur la fenêtre : la règle est SAUTÉE avec "
+        "`reason_code: \"no_reference\"` (distinct de `\"insufficient_history\"`, "
+        "réservé à R1/R4/R6 : ici, il existe peut-être un historique, juste pas de "
+        "la bonne famille), jamais un pourcentage infini ou une division par zéro. "
+        "Séance(s) prescrite(s) en distance sans allure récente pour estimer la "
+        "durée : R2 est SAUTÉE avec `reason_code: \"missing_planned_duration\"` "
+        "(voir ASSUMPTIONS['distance_only_estimate']). Seule une HAUSSE déclenche "
+        "la règle : une semaine de récupération (deload) ou d'affûtage, qui réduit "
+        "le volume, ne peut jamais être signalée par R2/R3 (le calcul du "
+        "pourcentage de variation n'est comparé au seuil que s'il est strictement "
+        "positif). « Règle des 10 % » : convention très répandue dans le coaching "
+        "course à pied (programmes pour débutants, littérature grand public), "
+        "jamais validée par un essai contrôlé dédié à ma connaissance — traitée ici "
+        "comme une APPROXIMATION DU PROJET, pas une référence bibliographique "
+        "vérifiée, contrairement à R1/R4."
     ),
     "monotony_projection": (
         "R4 : monotonie de Foster PROJETÉE, même série que R1 (arc_metrics."
@@ -234,7 +360,12 @@ ASSUMPTIONS: Dict[str, str] = {
         "encore 7 jours d'historique (workspace trop jeune) OU si l'écart-type est "
         "nul (charge quotidienne identique tous les jours, y compris tout à zéro) "
         "— dans les deux cas, `reason_code: \"insufficient_history\"`, jamais un "
-        "seuil évalué sur une valeur non significative. Source : Foster C. (1998), "
+        "seuil évalué sur une valeur non significative. Comme R1 (voir "
+        "ASSUMPTIONS['acwr_projection']), R4 est aussi SAUTÉE sous "
+        "`MIN_HISTORY_DAYS_FOR_PROJECTION` (84 j) — par la même discipline de "
+        "prudence, même si la fenêtre glissante de la monotonie (7 j de charge "
+        "brute, pas une moyenne mobile exponentielle) n'a pas le même biais de "
+        "démarrage à froid que l'ACWR. Source : Foster C. (1998), "
         "« Monitoring training in athletes with reference to overtraining "
         "syndrome », Medicine & Science in Sports & Exercise, 30(7), 1164-1168 — "
         "seuil de 2,0 couramment cité dans la littérature sur le monitoring de "
@@ -265,31 +396,49 @@ ASSUMPTIONS: Dict[str, str] = {
     "long_run_share": (
         "R6 : part de la plus longue sortie planifiée (famille course à pied) "
         "dans le volume hebdomadaire planifié TOTAL de cette même famille "
-        "(durée). Séances annulées/déplacées/repos exclues des deux termes. "
-        "Aucune sortie de la famille course cette semaine, ou volume total nul : "
-        "`reason_code: \"insufficient_history\"` (rien à comparer). Plus longue "
-        "sortie sans `planned_duration_s` renseignée : `reason_code: "
-        "\"missing_planned_duration\"` plutôt qu'un partage silencieusement à "
-        "zéro. Seuil par défaut 35 % : convention du projet (repère courant en "
-        "coaching course à pied selon lequel une seule sortie ne devrait pas "
-        "dominer la semaine, popularisé sous des formes voisines — ex. « pas plus "
-        "de 25-30 % du volume hebdomadaire » — sans source unique, vérifiable et "
-        "consensuelle identifiée), pas une valeur tirée d'un essai contrôlé publié."
+        "(durée EFFECTIVE, estimée depuis la distance si besoin — voir "
+        "ASSUMPTIONS['distance_only_estimate']). Séances annulées/déplacées/"
+        "manquées/repos exclues des deux termes. Aucune sortie de la famille "
+        "course cette semaine, ou volume total nul : `reason_code: "
+        "\"insufficient_history\"` (rien à comparer). MOINS de `R6_MIN_SESSIONS` "
+        "(4) séances de la famille course cette semaine : `reason_code: "
+        "\"too_few_sessions\"` (revue de code #98, should-fix 9 — avec 3 séances "
+        "ou moins, ex. 60/60/120 min, la plus longue dépasse presque toujours "
+        "35 % par pure construction arithmétique, jamais un signal de charge "
+        "excessive). Plus longue sortie sans durée NI distance+allure estimable : "
+        "`reason_code: \"missing_planned_duration\"` plutôt qu'un partage "
+        "silencieusement sous-estimé. Part plafonnée à 100 % par construction "
+        "(le maximum d'un sous-ensemble ne peut pas dépasser la somme ; garde "
+        "défensive contre l'imprécision flottante, revue de code #98, "
+        "should-fix 12). Seuil par défaut 35 % : convention du projet (repère "
+        "courant en coaching course à pied selon lequel une seule sortie ne "
+        "devrait pas dominer la semaine, popularisé sous des formes voisines — "
+        "ex. « pas plus de 25-30 % du volume hebdomadaire » — sans source unique, "
+        "vérifiable et consensuelle identifiée), pas une valeur tirée d'un essai "
+        "contrôlé publié."
     ),
     "consecutive_quality": (
-        "R7 : deux séances de qualité (arc_metrics.QUALITY_INTENSITIES) sur deux "
-        "jours consécutifs (écart d'exactement 1 jour), séances annulées/"
-        "déplacées exclues. Principe de l'entraînement polarisé (alterner "
-        "franchement facile et difficile, jamais du difficile deux jours de "
-        "suite sans jour plus facile entre les deux) documenté par Seiler S. & "
-        "Kjerland G.Ø. (2006), « Quantifying training intensity distribution in "
-        "elite endurance athletes: is there evidence for an \"optimal\" "
-        "distribution? », Scandinavian Journal of Medicine & Science in Sports, "
-        "16(1), 49-56 — déjà cité par `arc_metrics.HR_ZONE_SEILER_PCT_MAX` pour la "
-        "polarisation 80/20. Le seuil précis « jamais deux jours consécutifs » "
-        "(plutôt qu'un espacement plus long) reste une APPROXIMATION DU PROJET : "
-        "Seiler documente une distribution d'intensité globale, pas une règle "
-        "d'espacement jour par jour."
+        "R7 : deux séances de qualité (arc_metrics.QUALITY_INTENSITIES) le MÊME "
+        "jour, ou sur deux jours consécutifs (écart d'exactement 1 jour), séances "
+        "annulées/déplacées/manquées exclues. Principe de l'entraînement polarisé "
+        "(alterner franchement facile et difficile, jamais du difficile deux "
+        "jours de suite sans jour plus facile entre les deux) documenté par "
+        "Seiler S. & Kjerland G.Ø. (2006), « Quantifying training intensity "
+        "distribution in elite endurance athletes: is there evidence for an "
+        "\"optimal\" distribution? », Scandinavian Journal of Medicine & Science "
+        "in Sports, 16(1), 49-56 — déjà cité par `arc_metrics.HR_ZONE_SEILER_PCT_"
+        "MAX` pour la polarisation 80/20. Le seuil précis « jamais deux jours "
+        "consécutifs » (plutôt qu'un espacement plus long) reste une "
+        "APPROXIMATION DU PROJET : Seiler documente une distribution d'intensité "
+        "globale, pas une règle d'espacement jour par jour. LIMITES ASSUMÉES "
+        "(revue de code #98, nit) : (1) ne regarde QUE les séances de la semaine "
+        "PROPOSÉE — une séance de qualité le dimanche de la semaine PRÉCÉDENTE "
+        "déjà persistée, suivie d'une séance de qualité le lundi proposé, n'est "
+        "PAS détectée (`build_context` ne fournit pas la semaine précédente déjà "
+        "écrite, hors périmètre de #52, raffinable par #53 qui a accès au fichier "
+        "précédent) ; (2) deux séances de qualité LE MÊME JOUR SONT détectées "
+        "depuis la revue de code #98 (comptage par date, pas seulement l'écart "
+        "entre dates distinctes)."
     ),
     "race_week": (
         "Semaine de course : `race_date` de l'objectif actif (`planning/"
@@ -302,10 +451,26 @@ ASSUMPTIONS: Dict[str, str] = {
         "R5 reste active (voir ASSUMPTIONS[\"quality_after_red\"]). Limite "
         "assumée : seule la semaine qui CONTIENT la date de course est concernée, "
         "pas les semaines d'affûtage qui la précèdent (hors périmètre de #52, "
-        "raffinable plus tard si besoin s'en fait sentir)."
+        "raffinable plus tard si besoin s'en fait sentir). "
+        "SEMAINE APRÈS UNE COURSE (récupération) — revue de code #98, should-fix "
+        "6 : la semaine qui SUIT une course n'est PAS traitée comme une semaine "
+        "de course par cette logique (`race_date` n'y tombe plus), et pourrait "
+        "donc en théorie voir R1 se déclencher sur la fatigue résiduelle de la "
+        "course (ACWR élevé alors même que la semaine proposée est un repos "
+        "actif à charge minimale). C'est pour EXACTEMENT ce cas que R1 compare "
+        "`acwr_projected` à `acwr_baseline` (le même calcul avec les séances "
+        "proposées mises à zéro, `_project_series(zero_proposed=True)`) : si la "
+        "semaine proposée n'aggrave pas le ratio par rapport à un repos complet, "
+        "R1 ne bloque PAS (`reason_code: \"acwr_elevated_by_recent_load\"`), "
+        "quelle que soit la valeur absolue de l'ACWR — solution PRÉFÉRÉE à un "
+        "simple « saute R1/R2 la semaine suivant la course », qui aurait dû "
+        "deviner arbitrairement combien de semaines de répit accorder après "
+        "quelle taille de course."
     ),
     "excluded_sessions": (
-        "Une séance `status: \"cancelled\"` ou `status: \"moved\"`, ou de repos "
+        "Une séance `status: \"cancelled\"`, `\"moved\"` ou `\"missed\"` "
+        "(ajoutée en revue de code #98, should-fix 4 — une séance déjà constatée "
+        "manquée ne doit pas peser comme si elle allait avoir lieu), ou de repos "
         "(`sport: \"rest\"` ou `intensity: \"rest\"`), ne compte dans AUCUNE règle "
         "(charge projetée R1/R4, volume/D+ R2/R3/R6, qualité R5/R7) — le contrat "
         "n'a pas de motif d'annulation distinct médical/autre (même limite que "
@@ -338,7 +503,12 @@ def _positive_float_setting(section: dict, key: str, default: float) -> float:
                 value = float(raw.strip().replace(",", "."))
             except ValueError:
                 value = None
-    if value is None or value <= 0:
+    # `math.isfinite` (revue de code #98, should-fix 12) : sans ce garde-fou,
+    # `float("nan")`/`float("inf")` passeraient `value <= 0` (False pour les
+    # deux) et désactiveraient silencieusement la règle (`nan > seuil` est
+    # toujours False, `inf > seuil` bloquerait tout — ni l'un ni l'autre n'est
+    # une configuration valide).
+    if value is None or not math.isfinite(value) or value <= 0:
         _warn(f"[guardrails].{key} = {raw!r} n'est pas un nombre strictement positif valide — "
               f"défaut {default:g} appliqué.")
         return default
@@ -410,23 +580,56 @@ def _monday(day: date) -> date:
 def _run_family_totals(conn, start: date, end: date) -> dict:
     """Somme, sur `[start, end]` inclus, `duration_s`/`distance_m`/`elevation_gain_m`
     des activités de la famille course à pied (arc_metrics.sport_family == "run") —
-    voir ASSUMPTIONS["volume_and_elevation"]. Rend aussi `has_any_activity`, distinct
-    de "totaux nuls" : une semaine à 0 avec des activités connues (repos complet,
-    blessure) n'est pas la même chose qu'une fenêtre sans AUCUNE donnée."""
+    voir ASSUMPTIONS["volume_and_elevation"]. Rend aussi `has_any_activity`, VRAI
+    seulement s'il existe une activité de CETTE famille sur la fenêtre (revue de
+    code #98, should-fix 10 : une semaine 100 % vélo n'est PAS une référence pour
+    R2/R3, même si `activity` a bien des lignes ce jour-là — sans cette
+    distinction, R2/R3 étaient déclarées « vérifiées » alors qu'aucune comparaison
+    n'était réellement possible, la référence retombant silencieusement à zéro)."""
     rows = conn.execute(
         "SELECT sport, duration_s, distance_m, elevation_gain_m FROM activity "
         "WHERE date >= ? AND date <= ?", (start.isoformat(), end.isoformat())).fetchall()
     duration_s = distance_m = elevation_m = 0.0
-    has_any = False
+    has_run_activity = False
     for sport, dur, dist, elev in rows:
-        has_any = True
         if M.sport_family(sport) != "run":
             continue
+        has_run_activity = True
         duration_s += dur or 0.0
         distance_m += dist or 0.0
         elevation_m += elev or 0.0
     return {"duration_s": duration_s, "distance_m": distance_m, "elevation_gain_m": elevation_m,
-            "has_any_activity": has_any}
+            "has_any_activity": has_run_activity}
+
+
+def _recent_run_pace_s_km(conn, week_start: date) -> Optional[float]:
+    """Allure course RÉCENTE (médiane, s/km) sur les `RECENT_PACE_WINDOW_DAYS`
+    jours précédant `week_start`, famille course à pied seulement — voir
+    `ASSUMPTIONS["distance_only_estimate"]`. `None` si aucune activité de cette
+    fenêtre n'a à la fois une durée ET une distance (jamais une allure inventée)."""
+    start = (week_start - timedelta(days=RECENT_PACE_WINDOW_DAYS)).isoformat()
+    end = (week_start - timedelta(days=1)).isoformat()
+    rows = conn.execute(
+        "SELECT sport, duration_s, distance_m FROM activity WHERE date >= ? AND date <= ?",
+        (start, end)).fetchall()
+    paces = [
+        duration_s / (distance_m / 1000.0)
+        for sport, duration_s, distance_m in rows
+        if M.sport_family(sport) == "run" and duration_s and distance_m
+    ]
+    return statistics.median(paces) if paces else None
+
+
+def _week_activities(conn, week_start: date, week_end: date) -> List[dict]:
+    """Activités réelles indexées dans `[week_start, week_end]` — utilisées par
+    `_week_loads_by_date` pour apparier chaque séance proposée à une activité
+    réelle (revue de code #98, blocker 2), au lieu de la charge agrégée par jour
+    (`loads_by_date`) qui masquait un second entraînement du jour ou une séance
+    encore prévue le jour d'une activité réelle déjà indexée."""
+    rows = conn.execute(
+        "SELECT date, sport, load FROM activity WHERE date >= ? AND date <= ?",
+        (week_start.isoformat(), week_end.isoformat())).fetchall()
+    return [{"date": d, "sport": sport, "load": load or 0.0} for d, sport, load in rows]
 
 
 def _reference_totals(conn, week_start: date, reference: str) -> dict:
@@ -474,11 +677,19 @@ def build_context(conn, config: Dict[str, dict], gconf: dict, week_start: date,
     déjà résolue par `arc_index.settings`/`guardrail_settings`.
 
     `week_start` : lundi de la semaine PROPOSÉE (pas forcément déjà écrite). `today`
-    (défaut : `date.today()`) sert de repère pour le bilan santé (R5) uniquement
-    quand la semaine proposée démarre dans le passé ou aujourd'hui — la projection
-    ACWR/monotonie (R1/R4), elle, couvre TOUJOURS l'intégralité de la semaine (lundi
-    à dimanche), y compris les jours encore à venir : c'est le sens même d'une
-    valeur « projetée ». Voir ASSUMPTIONS pour la méthode complète.
+    (défaut : `date.today()`) sert de repère à DEUX endroits (revue de code #98,
+    nit — corrige une affirmation devenue fausse : `today` gouvernait déjà, avant
+    cette PR, uniquement R5) :
+    - R5 (qualité après un verdict rouge) : bilan matinal, sans dépendance à
+      `today` en tant que telle (`health_by_date` couvre la semaine entière).
+    - R1/R4 (`evaluate`/`_project_series`) : un jour de la semaine proposée
+      STRICTEMENT AVANT `today` sans activité réelle indexée compte une charge de
+      0, jamais la charge PROJETÉE de la séance planifiée (revue de code #98,
+      blocker/should-fix 5) — un jour déjà passé sans donnée ne doit jamais
+      recevoir le bénéfice d'une charge qui n'a peut-être jamais eu lieu. Un jour
+      ≥ `today` (aujourd'hui inclus) reçoit la charge projetée comme avant :
+      c'est le sens même d'une valeur « projetée ».
+    Voir ASSUMPTIONS pour la méthode complète.
     """
     today = today or date.today()
     settings = I.settings(config)
@@ -516,6 +727,8 @@ def build_context(conn, config: Dict[str, dict], gconf: dict, week_start: date,
         "is_race_week": is_race_week,
         "has_load_history": bool(loads_by_date),
         "loads_by_date": loads_by_date,
+        "week_activities": _week_activities(conn, week_start, week_end),
+        "recent_run_pace_s_km": _recent_run_pace_s_km(conn, week_start),
         "previous_week": previous_week,
         "mean4_weeks": mean4,
         "health_by_date": health_by_date,
@@ -556,34 +769,158 @@ def _sum(sessions: List[dict], key: str) -> float:
     return sum((s.get(key) or 0.0) for s in sessions)
 
 
+def _sum_effective_duration(sessions: List[dict], recent_pace_s_km: Optional[float]) -> float:
+    """Comme `_sum(sessions, "planned_duration_s")`, mais utilise la durée
+    EFFECTIVE (`_effective_planned_duration_s`, estimée depuis la distance quand
+    la durée manque) — voir `ASSUMPTIONS["distance_only_estimate"]`."""
+    total = 0.0
+    for s in sessions:
+        duration_s, _estimated = _effective_planned_duration_s(s, recent_pace_s_km)
+        total += duration_s or 0.0
+    return total
+
+
+def _unresolved_duration_dates(sessions: List[dict], recent_pace_s_km: Optional[float]) -> List[str]:
+    """Dates (triées, sans doublon) des séances de la famille course à pied, non
+    exclues, prescrites en distance (`planned_distance_m`) mais SANS
+    `planned_duration_s` NI allure récente disponible pour l'estimer — revue de
+    code #98, blocker 3 : ces séances rendent la charge/le volume PROJETÉS de
+    toute la semaine non fiables (R1/R2/R4), pas seulement leur propre part."""
+    dates = set()
+    for s in sessions:
+        if _is_excluded(s) or M.sport_family(s.get("sport")) != "run":
+            continue
+        if s.get("planned_duration_s") or not s.get("planned_distance_m"):
+            continue
+        duration_s, _estimated = _effective_planned_duration_s(s, recent_pace_s_km)
+        if duration_s is None and s.get("date"):
+            dates.add(s["date"])
+    return sorted(dates)
+
+
+def _estimated_duration_dates(sessions: List[dict], recent_pace_s_km: Optional[float]) -> List[str]:
+    """Dates des séances dont la durée a été ESTIMÉE depuis la distance (pas
+    renseignée telle quelle) — exposé dans `context` pour transparence (revue de
+    code #98, blocker 3 : « flagged as estimated in context »)."""
+    dates = set()
+    for s in sessions:
+        if _is_excluded(s):
+            continue
+        duration_s, estimated = _effective_planned_duration_s(s, recent_pace_s_km)
+        if estimated and duration_s and s.get("date"):
+            dates.add(s["date"])
+    return sorted(dates)
+
+
 def _pct_increase(observed: float, reference: float) -> Optional[float]:
     if reference <= 0:
         return None
     return round(100.0 * (observed - reference) / reference, 1)
 
 
-def _project_series(context: dict, sessions: List[dict], week_start: date, week_end: date) -> dict:
-    """Fusionne la charge réelle déjà indexée (`context["loads_by_date"]`) avec la
-    charge PROJETÉE des séances proposées, puis rend l'ACWR/la monotonie/la
-    condition/la fatigue du DERNIER jour de la semaine proposée — voir
-    `ASSUMPTIONS["acwr_projection"]`. Un jour qui a déjà une charge réelle indexée
-    garde TOUJOURS cette valeur (jamais écrasée par une projection)."""
-    loads_by_date: Dict[str, float] = dict(context.get("loads_by_date") or {})
-    for session in sessions:
-        day = session.get("date")
-        if not day or day in loads_by_date:
+def _week_loads_by_date(context: dict, sessions: List[dict], week_start: date, week_end: date,
+                         today: date, zero_proposed: bool) -> Dict[str, float]:
+    """Charge quotidienne de la semaine proposée, séance par séance — revue de
+    code #98, blocker 2 : jamais la charge déjà agrégée par jour dans
+    `context["loads_by_date"]` pour les dates de CETTE semaine (qui masquerait un
+    second entraînement du jour, ou effacerait une séance encore prévue le jour
+    d'une activité réelle déjà indexée). Chaque séance non exclue de la semaine
+    est appariée à une activité réelle (`arc_metrics._resolve_sessions`, même
+    logique que `arc_metrics.week_compliance` : statut `done` explicite, ou
+    appariement automatique date+sport/famille) ; les charges de PLUSIEURS
+    séances le même jour sont SOMMÉES, jamais l'une écrasant l'autre.
+
+    Une séance NON appariée à une activité réelle compte :
+    - sa charge RÉELLE si elle est appariée (`week_compliance` l'aurait
+      appariée aussi) ;
+    - 0 si sa date est STRICTEMENT avant `today` (revue de code #98, blocker/
+      should-fix 5 : un jour déjà passé sans activité indexée ne doit jamais
+      recevoir le bénéfice d'une charge projetée qui n'a peut-être jamais eu
+      lieu — voir `ASSUMPTIONS["acwr_projection"]`) ;
+    - sa charge PROJETÉE sinon (`projected_session_load`), sauf si
+      `zero_proposed` (calcul du scénario « repos complet » de R1, voir
+      `ASSUMPTIONS["race_week"]`), auquel cas elle compte aussi 0.
+    """
+    activities_by_date: Dict[str, List[dict]] = {}
+    for act in context.get("week_activities") or []:
+        activities_by_date.setdefault(act["date"], []).append({**act, "_used": False})
+    # Triées par date (même convention que `arc_metrics.week_compliance`) : le
+    # résultat (charge par date, sommée) doit être identique quel que soit
+    # l'ordre des séances dans `proposed_week["sessions"]` — revue de code #98,
+    # blocker 2 ("tests both orders").
+    non_excluded = sorted((s for s in sessions if not _is_excluded(s)), key=lambda s: s.get("date") or "")
+    resolved = M._resolve_sessions(non_excluded, activities_by_date, week_end.isoformat())
+    recent_pace = context.get("recent_run_pace_s_km")
+    loads: Dict[str, float] = {}
+    for r in resolved:
+        day_iso = r["session"].get("date")
+        if not day_iso:
             continue
-        loads_by_date[day] = projected_session_load(session)
+        if r["actual"]:
+            load = r["actual"].get("load") or 0.0
+        elif date.fromisoformat(day_iso) < today:
+            load = 0.0
+        elif zero_proposed:
+            load = 0.0
+        else:
+            load = projected_session_load(r["session"], recent_pace)
+        loads[day_iso] = loads.get(day_iso, 0.0) + load
+    return loads
+
+
+def _max_week_acwr(series: List[dict]) -> Optional[float]:
+    """Maximum de l'ACWR sur les 7 DERNIERS points de la série — qui coïncident
+    exactement avec la semaine proposée (`week_start` est toujours un lundi,
+    `week_end = week_start + 6`), voir `ASSUMPTIONS["acwr_projection"]` (revue de
+    code #98, should-fix 7 : évaluer le pic de la semaine plutôt que le seul
+    dimanche, moins sensible au motif hebdomadaire — une longue sortie le
+    dimanche gonfle artificiellement l'ACWR du seul dernier jour)."""
+    week_points = series[-7:] if len(series) >= 7 else series
+    values = [p["acwr"] for p in week_points if p.get("acwr") is not None]
+    return max(values) if values else None
+
+
+def _project_series(context: dict, sessions: List[dict], week_start: date, week_end: date,
+                     zero_proposed: bool = False) -> dict:
+    """Fusionne la charge réelle déjà indexée (`context["loads_by_date"]`, jours
+    STRICTEMENT avant `week_start`) avec la charge de la semaine proposée
+    (`_week_loads_by_date`), puis rend l'ACWR (maximum sur la semaine, voir
+    `_max_week_acwr`) et la monotonie/condition/fatigue (valeur du dernier jour,
+    dimanche) — voir `ASSUMPTIONS["acwr_projection"]`.
+
+    `zero_proposed` : calcule le scénario « repos complet » (aucune séance
+    projetée ne compte, seule la charge déjà réelle de la semaine est gardée) —
+    utilisé par R1 pour ne bloquer QUE si la semaine proposée AGGRAVE le ratio
+    par rapport à ce scénario (revue de code #98, should-fix 6).
+    """
+    today = date.fromisoformat(context["today"]) if context.get("today") else week_start
+    loads_by_date: Dict[str, float] = {
+        d: v for d, v in (context.get("loads_by_date") or {}).items()
+        if date.fromisoformat(d) < week_start
+    }
+    loads_by_date.update(_week_loads_by_date(context, sessions, week_start, week_end, today, zero_proposed))
+
     known_dates = [date.fromisoformat(d) for d in loads_by_date] or [week_start]
     series_start = min(known_dates + [week_start])
     series = M.daily_series(loads_by_date, series_start, week_end)
     last = series[-1] if series else {}
+
+    real_loads = context.get("loads_by_date") or {}
+    if real_loads:
+        first_real_date = min(date.fromisoformat(d) for d in real_loads)
+        history_span_days = (week_start - first_real_date).days
+    else:
+        history_span_days = 0
+    history_sufficient = history_span_days >= MIN_HISTORY_DAYS_FOR_PROJECTION
+
     return {
-        "acwr_projected": last.get("acwr"),
-        "monotony_projected": last.get("monotony"),
+        "acwr_projected": _max_week_acwr(series) if history_sufficient else None,
+        "monotony_projected": last.get("monotony") if history_sufficient else None,
         "fitness_projected": last.get("fitness"),
         "fatigue_projected": last.get("fatigue"),
         "history_days": len(loads_by_date),
+        "history_span_days": history_span_days,
+        "history_sufficient": history_sufficient,
     }
 
 
@@ -592,16 +929,30 @@ def _eval_r1(context: dict, gconf: dict) -> Tuple[Optional[dict], Optional[dict]
     acwr = context.get("acwr_projected")
     if acwr is None:
         return None, _skip(rule_id, "insufficient_history",
-                            "condition (fitness) trop faible pour un ACWR significatif — "
-                            "historique insuffisant (voir arc_metrics.ACWR_MIN_FITNESS).")
+                            "condition (fitness) trop faible, ou historique réel trop court "
+                            f"(< {MIN_HISTORY_DAYS_FOR_PROJECTION} j), pour un ACWR projeté "
+                            "significatif — voir arc_metrics.ACWR_MIN_FITNESS et "
+                            "arc_guardrails.MIN_HISTORY_DAYS_FOR_PROJECTION.")
     threshold = gconf["r1_acwr_max"]
-    if acwr > threshold:
-        return _violation(
-            rule_id, gconf["severity"][rule_id],
-            f"ACWR projeté en fin de semaine : {acwr:.2f}, au-delà du seuil {threshold:g}.",
-            f"Projected end-of-week ACWR: {acwr:.2f}, above the {threshold:g} threshold.",
-            acwr, threshold, ASSUMPTIONS["acwr_projection"]), None
-    return None, None
+    if acwr <= threshold:
+        return None, None
+    baseline = context.get("acwr_baseline")
+    if baseline is not None and acwr <= baseline:
+        # La semaine proposée n'AGGRAVE pas le ratio par rapport à un scénario de
+        # repos complet cette semaine-là (`acwr_baseline`, voir `_project_series`,
+        # `zero_proposed=True`) : l'ACWR élevé vient de la charge RÉELLE déjà
+        # indexée (ex. course récente dont la fatigue ne s'est pas encore
+        # résorbée), pas de ce qui est proposé — bloquer la semaine proposée n'y
+        # changerait rien. Revue de code #98, should-fix 6.
+        return None, _skip(rule_id, "acwr_elevated_by_recent_load",
+                            f"ACWR projeté ({acwr:.2f}) dépasse le seuil ({threshold:g}) mais la "
+                            "semaine proposée ne l'aggrave pas par rapport à une semaine de repos "
+                            "complet (charge résiduelle d'un effort récent) — non bloqué.")
+    return _violation(
+        rule_id, gconf["severity"][rule_id],
+        f"ACWR projeté (maximum sur la semaine) : {acwr:.2f}, au-delà du seuil {threshold:g}.",
+        f"Projected ACWR (weekly maximum): {acwr:.2f}, above the {threshold:g} threshold.",
+        acwr, threshold, ASSUMPTIONS["acwr_projection"]), None
 
 
 def _eval_r2(context: dict, gconf: dict, sessions: List[dict], sport_primary: str) -> Tuple[Optional[dict], Optional[dict]]:
@@ -609,11 +960,23 @@ def _eval_r2(context: dict, gconf: dict, sessions: List[dict], sport_primary: st
     reference_name = gconf["r2_volume_reference"]
     reference = context["previous_week"] if reference_name == "previous_week" else context["mean4_weeks"]
     if not reference.get("has_any_activity"):
-        return None, _skip(rule_id, "insufficient_history",
+        # `has_any_activity` ne compte QUE la famille course à pied (revue de
+        # code #98, should-fix 10) : une semaine 100 % vélo n'est pas un
+        # historique de référence pour la durée/distance de COURSE — code
+        # `no_reference`, distinct de `insufficient_history` (qui, lui, signale
+        # l'absence de toute donnée, pas juste l'absence de la bonne famille).
+        return None, _skip(rule_id, "no_reference",
                             "aucune activité de la famille course à pied sur la fenêtre de "
-                            f"référence ({reference_name}) — historique insuffisant.")
+                            f"référence ({reference_name}) — rien à comparer.")
     run_sessions = _run_family_sessions(sessions)
-    proposed_duration = _sum(run_sessions, "planned_duration_s")
+    recent_pace = context.get("recent_run_pace_s_km")
+    unresolved = _unresolved_duration_dates(sessions, recent_pace)
+    if unresolved:
+        return None, _skip(rule_id, "missing_planned_duration",
+                            "séance(s) prescrite(s) en distance sans allure récente pour estimer "
+                            "la durée, et donc le volume hebdomadaire planifié : "
+                            + ", ".join(unresolved) + ".")
+    proposed_duration = _sum_effective_duration(run_sessions, recent_pace)
     threshold = gconf["r2_volume_increase_max_pct"]
     duration_pct = _pct_increase(proposed_duration, reference["duration_s"])
     if duration_pct is not None and duration_pct > threshold:
@@ -644,9 +1007,9 @@ def _eval_r3(context: dict, gconf: dict, sessions: List[dict], sport_primary: st
     reference_name = gconf["r2_volume_reference"]
     reference = context["previous_week"] if reference_name == "previous_week" else context["mean4_weeks"]
     if not reference.get("has_any_activity"):
-        return None, _skip(rule_id, "insufficient_history",
+        return None, _skip(rule_id, "no_reference",
                             "aucune activité de la famille course à pied sur la fenêtre de "
-                            f"référence ({reference_name}) — historique insuffisant.")
+                            f"référence ({reference_name}) — rien à comparer.")
     run_sessions = _run_family_sessions(sessions)
     proposed_elevation = _sum(run_sessions, "planned_elevation_m")
     threshold = gconf["r3_elevation_increase_max_pct"]
@@ -666,8 +1029,10 @@ def _eval_r4(context: dict, gconf: dict) -> Tuple[Optional[dict], Optional[dict]
     monotony = context.get("monotony_projected")
     if monotony is None:
         return None, _skip(rule_id, "insufficient_history",
-                            "monotonie non calculable (moins de 7 jours d'historique, ou "
-                            "charge quotidienne constante sur la fenêtre) — historique insuffisant.")
+                            "monotonie non calculable (moins de 7 jours d'historique, charge "
+                            "quotidienne constante sur la fenêtre, ou historique réel trop court — "
+                            f"< {MIN_HISTORY_DAYS_FOR_PROJECTION} j, voir "
+                            "arc_guardrails.MIN_HISTORY_DAYS_FOR_PROJECTION) — historique insuffisant.")
     threshold = gconf["r4_monotony_max"]
     if monotony > threshold:
         return _violation(
@@ -706,48 +1071,75 @@ def _eval_r5(context: dict, sessions: List[dict], gconf: dict) -> Tuple[Optional
         sorted(flagged_dates), "red", ASSUMPTIONS["quality_after_red"], flagged_dates), None
 
 
-def _eval_r6(sessions: List[dict], gconf: dict) -> Tuple[Optional[dict], Optional[dict]]:
+def _eval_r6(sessions: List[dict], gconf: dict, recent_pace_s_km: Optional[float]) -> Tuple[Optional[dict], Optional[dict]]:
     rule_id = "r6_long_run_share"
     run_sessions = _run_family_sessions(sessions)
     if not run_sessions:
         return None, _skip(rule_id, "insufficient_history",
                             "aucune séance de la famille course à pied cette semaine — rien à comparer.")
-    if any(s.get("planned_duration_s") is None for s in run_sessions):
+    if len(run_sessions) < R6_MIN_SESSIONS:
+        # Revue de code #98, should-fix 9 : avec très peu de séances (ex. 3 :
+        # 60/60/120 min), la plus longue dépasse presque toujours 35 % par pure
+        # construction arithmétique (peu de séances parmi lesquelles répartir le
+        # volume) — pas un signal de charge excessive.
+        return None, _skip(rule_id, "too_few_sessions",
+                            f"moins de {R6_MIN_SESSIONS} séances de la famille course à pied cette "
+                            "semaine — la part de la plus longue sortie n'est pas un repère fiable "
+                            "avec aussi peu de séances.")
+    durations = [(s, _effective_planned_duration_s(s, recent_pace_s_km)[0]) for s in run_sessions]
+    if any(d is None for _, d in durations):
         # Impossible d'identifier la plus longue sortie avec certitude si au moins
-        # une séance de la famille course n'a pas de durée planifiée (ex. prescrite
-        # en distance seule) : mieux vaut sauter la règle que de calculer une part
-        # sous-estimée qui masquerait une sortie réellement dominante — voir
-        # ASSUMPTIONS["long_run_share"].
+        # une séance de la famille course n'a ni durée planifiée NI durée
+        # estimable depuis sa distance (pas d'allure récente disponible) : mieux
+        # vaut sauter la règle que de calculer une part sous-estimée qui
+        # masquerait une sortie réellement dominante — voir
+        # ASSUMPTIONS["long_run_share"]/["distance_only_estimate"].
         return None, _skip(rule_id, "missing_planned_duration",
-                            "au moins une séance de la famille course à pied n'a pas de "
-                            "planned_duration_s — la plus longue sortie ne peut pas être "
-                            "identifiée de façon fiable.")
-    total_duration = _sum(run_sessions, "planned_duration_s")
+                            "au moins une séance de la famille course à pied n'a ni "
+                            "planned_duration_s ni durée estimable depuis sa distance — la plus "
+                            "longue sortie ne peut pas être identifiée de façon fiable.")
+    total_duration = sum(d for _, d in durations)
     if total_duration <= 0:
         return None, _skip(rule_id, "insufficient_history",
                             "durée planifiée totale nulle sur la famille course à pied cette "
                             "semaine — rien à comparer.")
-    longest = max(run_sessions, key=lambda s: s.get("planned_duration_s") or 0.0)
-    share = round(100.0 * longest["planned_duration_s"] / total_duration, 1)
+    longest_session, longest_duration = max(durations, key=lambda pair: pair[1] or 0.0)
+    # Plafonné à 100 % (revue de code #98, should-fix 12) : par construction le
+    # maximum d'un sous-ensemble ne peut pas dépasser la somme, mais une garde
+    # défensive contre un dépassement par imprécision flottante ne coûte rien.
+    share = min(round(100.0 * longest_duration / total_duration, 1), 100.0)
     threshold = gconf["r6_long_run_share_max_pct"]
     if share > threshold:
         return _violation(
             rule_id, gconf["severity"][rule_id],
-            f"La plus longue sortie ({longest.get('date')}) représente {share:g} % du volume "
+            f"La plus longue sortie ({longest_session.get('date')}) représente {share:g} % du volume "
             f"hebdomadaire (seuil {threshold:g} %).",
-            f"The longest run ({longest.get('date')}) is {share:g} % of the weekly volume "
+            f"The longest run ({longest_session.get('date')}) is {share:g} % of the weekly volume "
             f"(threshold {threshold:g} %).",
-            share, threshold, ASSUMPTIONS["long_run_share"], [longest.get("date")]), None
+            share, threshold, ASSUMPTIONS["long_run_share"], [longest_session.get("date")]), None
     return None, None
 
 
 def _eval_r7(sessions: List[dict], gconf: dict) -> Tuple[Optional[dict], Optional[dict]]:
+    """Voir `ASSUMPTIONS["consecutive_quality"]` pour deux limites documentées et
+    assumées (revue de code #98, nit) : cette règle ne regarde QUE les séances de
+    la semaine proposée (une séance de qualité le dimanche de la semaine
+    PRÉCÉDENTE suivie d'une séance de qualité le lundi proposé n'est pas
+    détectée) — `build_context` ne fournit pas la semaine précédente déjà
+    persistée, hors périmètre de #52."""
     rule_id = "r7_consecutive_quality"
-    quality_dates = sorted({
+    quality_dates_all = [
         s["date"] for s in sessions
         if not _is_excluded(s) and _is_quality(s) and s.get("date")
-    })
+    ]
     flagged: set = set()
+    # Deux séances de qualité le MÊME jour (revue de code #98, nit) : au moins
+    # aussi préoccupant que deux jours consécutifs, détecté séparément puisque
+    # `set(quality_dates_all)` en dessous ne verrait qu'une seule date.
+    for d, n in {d: quality_dates_all.count(d) for d in set(quality_dates_all)}.items():
+        if n > 1:
+            flagged.add(d)
+    quality_dates = sorted(set(quality_dates_all))
     for i in range(len(quality_dates) - 1):
         d1, d2 = date.fromisoformat(quality_dates[i]), date.fromisoformat(quality_dates[i + 1])
         if (d2 - d1).days == 1:
@@ -758,8 +1150,8 @@ def _eval_r7(sessions: List[dict], gconf: dict) -> Tuple[Optional[dict], Optiona
     dates = sorted(flagged)
     return _violation(
         rule_id, gconf["severity"][rule_id],
-        "Séances de qualité sur deux jours consécutifs : " + ", ".join(dates) + ".",
-        "Quality sessions on consecutive days: " + ", ".join(dates) + ".",
+        "Séances de qualité le même jour ou sur deux jours consécutifs : " + ", ".join(dates) + ".",
+        "Quality sessions on the same day, or on consecutive days: " + ", ".join(dates) + ".",
         dates, 1, ASSUMPTIONS["consecutive_quality"], dates), None
 
 
@@ -780,7 +1172,8 @@ def evaluate(proposed_week: dict, context: dict, gconf: dict) -> dict:
     (c'est le point même du garde-fou : évaluer AVANT écriture). `context` :
     voir `build_context`. `gconf` : voir `guardrail_settings`.
     """
-    output_context = {k: v for k, v in context.items() if k != "loads_by_date"}
+    _internal_only_keys = ("loads_by_date", "week_activities")
+    output_context = {k: v for k, v in context.items() if k not in _internal_only_keys}
     if not gconf.get("enabled", True):
         return {
             "ok": True, "violations": [], "checked_rules": [],
@@ -801,10 +1194,17 @@ def evaluate(proposed_week: dict, context: dict, gconf: dict) -> dict:
     # `build_context`) — voir `_project_series`. La sortie `context` du résultat
     # (`output_context`, défini plus haut) reste la vue COURTE sans `loads_by_date`
     # ni la projection (ajoutée séparément ci-dessous) : jamais des années de
-    # charge quotidienne recopiées dans chaque appel JSON.
+    # charge quotidienne recopiées dans chaque appel JSON. `baseline` (scénario
+    # « repos complet », voir `_project_series(zero_proposed=True)`) alimente
+    # UNIQUEMENT R1 (`acwr_baseline`, should-fix 6) — jamais exposé pour la
+    # monotonie/condition/fatigue, hors périmètre de ce garde-fou précis.
     projected = _project_series(context, sessions, week_start, week_end)
+    baseline = _project_series(context, sessions, week_start, week_end, zero_proposed=True)
+    projected["acwr_baseline"] = baseline["acwr_projected"]
+    recent_pace = context.get("recent_run_pace_s_km")
     work_context = {**context, **projected}
     output_context.update(projected)
+    output_context["distance_only_sessions_estimated"] = _estimated_duration_dates(sessions, recent_pace)
 
     violations: List[dict] = []
     skipped: List[dict] = []
@@ -816,7 +1216,7 @@ def evaluate(proposed_week: dict, context: dict, gconf: dict) -> dict:
         "r3_weekly_elevation_jump": lambda: _eval_r3(work_context, gconf, sessions, sport_primary),
         "r4_monotony_projected": lambda: _eval_r4(work_context, gconf),
         "r5_quality_after_red": lambda: _eval_r5(work_context, sessions, gconf),
-        "r6_long_run_share": lambda: _eval_r6(sessions, gconf),
+        "r6_long_run_share": lambda: _eval_r6(sessions, gconf, recent_pace),
         "r7_consecutive_quality": lambda: _eval_r7(sessions, gconf),
     }
 
@@ -871,8 +1271,21 @@ def _read_week_argument(value: str) -> dict:
     return data
 
 
+# Codes de sortie (revue de code #98, should-fix 11) — documentés ici ET dans
+# `--help` : un agent en headless (câblage #53) doit pouvoir les distinguer sans
+# ambiguïté.
+#   0 : ok — aucune violation de sévérité "block" (des "warn"/"info" peuvent exister).
+#   1 : au moins une violation de sévérité "block".
+#   2 : erreur (fichier introuvable, JSON/semaine invalide, date malformée…) —
+#       jamais confondu avec 1 : une erreur d'entrée n'est PAS un verdict de garde-fou.
+EXIT_CODES_HELP = (
+    "Codes de sortie : 0 = ok (aucune violation « block »), "
+    "1 = au moins une violation « block », 2 = erreur (entrée invalide)."
+)
+
+
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
+    parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0], epilog=EXIT_CODES_HELP)
     parser.add_argument("command", nargs="?", default="check", choices=("check",))
     parser.add_argument("--week", required=True, metavar="FICHIER|-",
                         help="semaine proposée : chemin d'un fichier (Markdown ```arc ou JSON brut) "
@@ -882,6 +1295,25 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--memory", action="store_true")
     parser.add_argument("--today", help="date de référence (AAAA-MM-JJ), défaut aujourd'hui")
     return parser
+
+
+def _validate_proposed_week(proposed_week: dict, week_start: date) -> None:
+    """Valide la semaine proposée AVANT tout calcul (revue de code #98,
+    should-fix 11) : contrat `arc_contract` (kind "week", champs requis/types de
+    chaque séance — attrape par exemple un `planned_duration_s` non numérique
+    avant qu'il ne fasse planter une opération arithmétique plus loin) et
+    `week_start` sur un LUNDI (le moteur suppose partout que la semaine est
+    Lundi-Dimanche, voir `ASSUMPTIONS["acwr_projection"]`). Lève `ConfigError`
+    avec un message clair — jamais une exception qui remonterait telle quelle."""
+    if week_start.weekday() != 0:
+        raise ConfigError(
+            f"--week : week_start « {week_start.isoformat()} » n'est pas un lundi "
+            "(le moteur suppose des semaines Lundi-Dimanche)."
+        )
+    data = {"arc": C.ARC_VERSION, "kind": "week", **proposed_week}
+    errors, _warnings = C.validate(data)
+    if errors:
+        raise ConfigError("--week : semaine non conforme au contrat :\n  " + "\n  ".join(errors))
 
 
 def main(argv=None) -> int:
@@ -902,6 +1334,7 @@ def main(argv=None) -> int:
         raise ConfigError(f"--week : week_start « {week_start_raw} » n'est pas une date AAAA-MM-JJ.") from exc
     if not isinstance(proposed_week.get("sessions"), list):
         raise ConfigError("--week : « sessions » (liste) obligatoire dans la semaine proposée.")
+    _validate_proposed_week(proposed_week, week_start)
 
     workspace = workspace_root(args.workspace)
     conn = I.open_db(workspace, args.db, args.memory)
@@ -919,5 +1352,13 @@ if __name__ == "__main__":
     try:
         sys.exit(main())
     except ConfigError as exc:
+        print(f"erreur : {exc}", file=sys.stderr)
+        sys.exit(2)
+    except (OSError, ValueError, TypeError) as exc:
+        # Revue de code #98, should-fix 11 : un fichier introuvable, une donnée
+        # numérique en réalité une chaîne, une date malformée ailleurs que
+        # --today/--week ne doivent JAMAIS remonter comme un code 1 (qui
+        # signifierait « violation bloquante » aux yeux d'un agent en headless)
+        # — code 2, comme toute autre erreur de configuration/entrée.
         print(f"erreur : {exc}", file=sys.stderr)
         sys.exit(2)

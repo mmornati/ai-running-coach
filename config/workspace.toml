@@ -128,27 +128,41 @@ climb_min_grade_pct = 5.0
 # ici ; voir `scripts/arc_guardrails.py::ASSUMPTIONS` pour la méthode complète
 # et les sources de chaque règle.
 enabled = true
-# R1 : ACWR (charge aiguë/chronique) PROJETÉ en fin de semaine proposée
-# au-delà de ce seuil — même repère indicatif que `[health]` ci-dessus, pas un
-# seuil de blessure prouvé (Gabbett 2016).
+# R1 : ACWR (charge aiguë/chronique) PROJETÉ — maximum sur la semaine proposée,
+# jamais évaluée avec moins de 84 j d'historique réel (voir
+# MIN_HISTORY_DAYS_FOR_PROJECTION) — au-delà de ce seuil, même repère indicatif
+# que `[health]` ci-dessus, pas un seuil de blessure prouvé (Gabbett 2016,
+# réserves scientifiques importantes documentées dans `ASSUMPTIONS`).
 r1_acwr_max = 1.3
 # R2 : hausse de la durée hebdomadaire planifiée (+ distance en `[sport].primary
 # = "road"`) au-delà de ce pourcentage vs la référence choisie ci-dessous.
 r2_volume_increase_max_pct = 10.0
-# Référence de comparaison pour R2/R3 : "previous_week" (semaine précédente) ou
-# "mean4" (moyenne des 4 semaines précédentes).
-r2_volume_reference = "previous_week"
+# Référence de comparaison pour R2/R3 : "mean4" (moyenne des 4 semaines
+# précédentes, DÉFAUT — lisse une semaine de récupération isolée, qui donnerait
+# sinon une fausse alerte à +100 % vs la seule semaine précédente) ou
+# "previous_week" (semaine précédente, plus réactif mais plus sensible aux
+# à-coups).
+r2_volume_reference = "mean4"
 # R3 : hausse du D+ hebdomadaire planifié au-delà de ce pourcentage
 # ([sport].primary = "trail" seulement — le D+ n'a pas de sens sur route).
 r3_elevation_increase_max_pct = 10.0
-# R4 : monotonie de Foster PROJETÉE sur la semaine proposée au-delà de ce seuil.
+# R4 : monotonie de Foster PROJETÉE sur la semaine proposée au-delà de ce seuil
+# (même garde d'historique minimal que R1).
 r4_monotony_max = 2.0
 # R6 : part de la plus longue sortie planifiée dans le volume hebdomadaire
-# planifié total (famille course à pied), au-delà de ce pourcentage.
+# planifié total (famille course à pied), au-delà de ce pourcentage — jamais
+# évaluée avec moins de 4 séances de la famille course dans la semaine
+# (R6_MIN_SESSIONS, sinon la part dépasse presque toujours ce seuil par pure
+# construction arithmétique).
 r6_long_run_share_max_pct = 35.0
-# Sévérité par règle : "info" | "warn" | "block". R1 (ACWR) et R5 (qualité
-# après un verdict santé rouge) bloquent par défaut ; les autres avertissent.
-severity_r1_acwr_projected = "block"
+# Sévérité par règle : "info" | "warn" | "block". Seul R5 (qualité après un
+# verdict santé rouge) bloque par défaut. R1 (ACWR) est passée à "warn" : les
+# seuils de Gabbett viennent de sports collectifs avec des moyennes glissantes
+# simples 7/28 j, pas du modèle impulsion-réponse de Banister (7/42 j) évalué
+# en fin de semaine que ce moteur utilise — la preuve elle-même est contestée
+# dans la littérature de course à pied (voir `docs/marques.md`, avertissement
+# ACWR). Remettez-la à "block" si vous préférez la fermeté.
+severity_r1_acwr_projected = "warn"
 severity_r2_weekly_volume_jump = "warn"
 severity_r3_weekly_elevation_jump = "warn"
 severity_r4_monotony_projected = "warn"
