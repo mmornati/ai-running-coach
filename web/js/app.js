@@ -214,7 +214,11 @@ function renderNav(s) {
 
 function markNav(route) {
   for (const a of document.querySelectorAll("#nav a")) {
-    const on = a.dataset.route === route || (route === "seance" && a.dataset.route === "seances") || (route === "rapport" && a.dataset.route === "rapports");
+    const on = a.dataset.route === route || (route === "seance" && a.dataset.route === "seances") || (route === "rapport" && a.dataset.route === "rapports")
+      // `#/montee/<id>` (#49) n'a pas d'entrée de nav propre — c'est un sous-détail
+      // d'Analyse (#50, historique d'un segment de montée listé là), même motif
+      // que `seance`/`rapport` ci-dessus (sous-page sans onglet dédié).
+      || (route === "montee" && a.dataset.route === "analyse");
     a.toggleAttribute("aria-current", on);
     if (on) a.setAttribute("aria-current", "page");
   }
@@ -434,12 +438,16 @@ async function viewForm(params) {
  * toutes les tendances FIT interrogent déjà `/api/{decoupling,vam,descent,
  * durability}?weeks=` et `/api/load?weeks=` côté serveur — un seul paramètre
  * pour toute la vue, jamais une conversion approximative jours/semaines.
+ * Défaut 12 semaines (revue de code #50) : les seuils par défaut côté serveur
+ * (`M.DECOUPLING_TREND_WEEKS` et consorts) valent tous 12 — un défaut différent
+ * ici (26 dans une version antérieure) aurait affiché une fenêtre plus large que
+ * ce que chaque endpoint sert par défaut hors dashboard (CLI `arc_index.py`).
  *
  * Compatibilité des liens (#50) : l'ancien sélecteur de classe de descente
  * vivait sur `#/forme?jours=…&descente=…` (#47) — `route()` redirige ces
  * hashes vers `#/analyse?semaines=…&descente=…` plutôt que de les casser. */
 async function viewAnalyse(params) {
-  const weeks = Number(params.get("semaines")) || 26;
+  const weeks = Number(params.get("semaines")) || 12;
   const [load, decoupling, vam, descent, durability, segments] = await Promise.all([
     api(`load?weeks=${weeks}`), api(`decoupling?weeks=${weeks}`), api(`vam?weeks=${weeks}`),
     api(`descent?weeks=${weeks}`), api(`durability?weeks=${weeks}`), api("climb-segments"),
@@ -452,8 +460,20 @@ async function viewAnalyse(params) {
   const { html: descentHtml, chart: descentChart, points: descentPoints } = descentTrendSection(descent, weeks, params.get("descente"));
   const { html: durabilityHtml, chart: durabilityChart, points: durabilityPoints } = durabilitySection(durability);
   const segmentsHtml = climbSegmentsSection(segments.segments);
-  const nothing = !polarisationHtml && !decouplingHtml && !vamHtml && !descentHtml && !durabilityHtml && !segmentsHtml;
-  if (nothing) {
+  // Revue de code #50, should-fix 1 : la présence d'échantillons FIT se décide sur
+  // les DONNÉES elles-mêmes, jamais sur le HTML rendu — `durabilitySection` reste
+  // affichée (un texte, jamais un graphique) dès qu'il existe des sorties longues
+  // DÉCLARÉES (`long_runs > 0`, simple durée déclarée au contrat, `duration_s`),
+  // même sans AUCUN échantillon FIT ingéré nulle part dans le workspace (cas
+  // observé sur un workspace route sans `--with-samples`) : `durabilityHtml` seul
+  // ne suffit donc PAS à conclure que le workspace a des échantillons FIT.
+  const hasFitSamples = (load.polarisation_weeks || []).some((w) => w.polarisation)
+    || decoupling.points.some((p) => p.decoupling_pct != null)
+    || vam.points.some((p) => p.best_climb_vam_elapsed_m_h != null)
+    || Object.keys(descent.classes || {}).length > 0
+    || durability.points.some((p) => p.gap_fade_pct != null)
+    || (segments.segments || []).length > 0;
+  if (!hasFitSamples) {
     main.innerHTML = header("Analyse", "Tendances calculées à partir des échantillons FIT (montre GPS) ingérés.")
       + empty("Pas encore d'échantillons FIT", "Ces tendances (polarisation des zones FC, découplage aérobie, VAM, "
         + "efficacité en descente, durabilité, historique des montées) exigent des échantillons FIT ingérés "
@@ -510,18 +530,33 @@ async function viewAnalyse(params) {
  * coordonnée GPS ici (l'API n'en renvoie aucune, voir
  * `arc_climb_match.ASSUMPTIONS["privacy"]`). Vide (pas de section) tant
  * qu'aucun segment n'a encore été identifié (moins de deux occurrences d'une
- * même montée, voir `arc_climb_match.py`). */
+ * même montée, voir `arc_climb_match.py`).
+ *
+ * Texte du lien (revue de code #50, should-fix 4) : `location` seul se répète
+ * IDENTIQUE d'une ligne à l'autre (plusieurs montées différentes au même lieu
+ * déclaré, ex. plusieurs cols d'un même massif nommés par la commune la plus
+ * proche) — le lien porte donc aussi la distance/le D+ et la date de première
+ * observation, seule information qui distingue deux montées de même lieu sans
+ * jamais exposer de coordonnée GPS. Trié par occurrences décroissantes (les
+ * montées les plus régulièrement gravies d'abord) — `climb_segment_list` (Python)
+ * trie déjà ainsi, mais un tri explicite ici protège l'UI d'un futur changement
+ * d'ordre côté serveur qui passerait inaperçu. */
 function climbSegmentsSection(segments) {
   if (!segments || !segments.length) return "";
-  const rows = segments.map((s) => `<tr><td><a href="#/montee/${s.segment_id}">${F.esc(s.location || "Montée")}</a></td>
+  const sorted = segments.slice().sort((a, b) => b.occurrences - a.occurrences);
+  const rows = sorted.map((s) => {
+    const label = `${s.location || "Montée"} — ${F.distance(s.distance_m, 2)}, +${F.elevation(s.gain_m)} (depuis ${F.dayShort(s.first_seen_date)})`;
+    return `<tr><td><a href="#/montee/${s.segment_id}">${F.esc(label)}</a></td>
     <td class="num">${F.distance(s.distance_m, 2)}</td><td class="num">+${F.elevation(s.gain_m)}</td>
     <td class="num">${F.num(s.avg_grade * 100, 1)} % <span class="tag">${F.esc(s.grade_class)}</span></td>
     <td class="num">${F.num(s.occurrences)}</td>
-    <td class="num">${s.best_time_elapsed_s != null ? F.clock(s.best_time_elapsed_s).replace(/^0:/, "") : "—"}</td></tr>`).join("");
+    <td class="num">${s.best_time_elapsed_s != null ? F.clockShort(s.best_time_elapsed_s) : "—"}</td></tr>`;
+  }).join("");
   return `<section class="band"><h2>Segments de montée (${segments.length})</h2>
     <p class="muted">Une même montée, reconnue d'une séance à l'autre (position GPS, ou à défaut profil
-      distance/D+/pente — #49) : au moins deux occurrences pour apparaître ici. Détail complet, occurrence
-      par occurrence, dans l'historique de chaque segment.</p>
+      distance/D+/pente — #49) : au moins deux occurrences pour apparaître ici, toutes périodes confondues
+      (pas seulement la fenêtre choisie ci-dessus). Détail complet, occurrence par occurrence, dans
+      l'historique de chaque segment.</p>
     <div class="table-wrap"><table class="data data--compact"><thead><tr>
       <th scope="col">Lieu</th><th scope="col" class="num">Distance</th><th scope="col" class="num">D+</th>
       <th scope="col" class="num">Pente moy.</th><th scope="col" class="num">Occurrences</th>
@@ -826,10 +861,10 @@ async function viewSession(id) {
       <div class="chart-host chart-host--nox" id="c-splits">${c.svg}</div><p class="readout" id="r-splits"></p>
       ${hidden ? `<p class="muted"><small>${hidden === 1 ? "Un tour de moins de 200 m n'est pas tracé" : `${hidden} tours de moins de 200 m ne sont pas tracés`} ; il${hidden === 1 ? " reste" : "s restent"} dans le tableau.</small></p>` : ""}
       <div class="table-wrap"><table class="data data--compact"><thead><tr><th scope="col">${unit}</th>${byKm ? "" : `<th scope="col" class="num">Distance</th>`}<th scope="col" class="num">Temps</th>${byKm ? "" : `<th scope="col" class="num">Allure</th>`}${hasGap ? `<th scope="col" class="num">GAP</th>` : ""}<th scope="col" class="num">D+ / D-</th><th scope="col" class="num">FC</th><th scope="col" class="num">Cadence</th><th scope="col">Lecture</th></tr></thead>
-      <tbody>${all.map((x) => `<tr><td>${x.km}</td>${byKm ? "" : `<td class="num">${x.distance_m != null ? F.distance(x.distance_m, 2) : "—"}</td>`}<td class="num">${F.clock(x.duration_s).replace(/^0:/, "")}</td>${byKm ? "" : `<td class="num">${lapPace(x)}</td>`}${hasGap ? `<td class="num">${F.paceFromSecPerKm(x.gap_pace_s_km)}</td>` : ""}<td class="num">${x.elev_gain_m != null ? `+${F.num(x.elev_gain_m)} / -${F.num(x.elev_loss_m)}` : "—"}</td><td class="num">${F.num(x.avg_hr_bpm)}</td><td class="num">${F.num(x.cadence_spm)}</td><td>${F.esc(x.label || "")}</td></tr>`).join("")}</tbody></table></div></section>`;
+      <tbody>${all.map((x) => `<tr><td>${x.km}</td>${byKm ? "" : `<td class="num">${x.distance_m != null ? F.distance(x.distance_m, 2) : "—"}</td>`}<td class="num">${F.clockShort(x.duration_s)}</td>${byKm ? "" : `<td class="num">${lapPace(x)}</td>`}${hasGap ? `<td class="num">${F.paceFromSecPerKm(x.gap_pace_s_km)}</td>` : ""}<td class="num">${x.elev_gain_m != null ? `+${F.num(x.elev_gain_m)} / -${F.num(x.elev_loss_m)}` : "—"}</td><td class="num">${F.num(x.avg_hr_bpm)}</td><td class="num">${F.num(x.cadence_spm)}</td><td>${F.esc(x.label || "")}</td></tr>`).join("")}</tbody></table></div></section>`;
     setTimeout(() => attachCursor($("#c-splits"), c, (i) => {
       const x = sp[i];
-      const what = byKm ? F.clock(x.duration_s).replace(/^0:/, "") : `${F.distance(x.distance_m, 2)} en ${F.clock(x.duration_s).replace(/^0:/, "")} (${lapPace(x)})`;
+      const what = byKm ? F.clockShort(x.duration_s) : `${F.distance(x.distance_m, 2)} en ${F.clockShort(x.duration_s)} (${lapPace(x)})`;
       readout($("#r-splits"), `<strong>${unit} ${x.km}</strong> · ${what}${x.gap_pace_s_km != null ? ` · GAP ${F.paceFromSecPerKm(x.gap_pace_s_km)}` : ""} · FC ${F.num(x.avg_hr_bpm)}${x.elev_gain_m != null ? ` · +${F.num(x.elev_gain_m)} m` : ""}${x.label ? ` · ${F.esc(x.label)}` : ""}`);
     }), 0);
   }
@@ -848,7 +883,7 @@ async function viewSession(id) {
     <p><a href="#/seances">← Toutes les séances</a></p>
     <dl class="facts facts--grid">${facts.map(([k, v]) => `<div><dt>${k}</dt><dd>${v}</dd></div>`).join("")}</dl>
     ${wx ? `<p class="weather">${weatherChip(wx.category)} <span>${F.esc(wx.location)} · ${F.num(wx.temp_min_c)}–${F.num(wx.temp_max_c)} °C · vent ${F.num(wx.wind_kmh)} km/h</span></p>` : ""}
-    ${noFitSamples ? noFitSamplesNote() : hrZoneSection(d.hr_zones)}
+    ${noFitSamples ? noFitSamplesNote(d.hr_zones) : hrZoneSection(d.hr_zones)}
     ${splitsHtml}
     ${noFitSamples ? "" : climbsSection(d.climbs)}
     ${noFitSamples ? "" : descentSection(d.descent)}
@@ -918,7 +953,7 @@ function climbsSection(climbs) {
     <tbody>${rows.map((c) => `<tr><td>${c.index}</td><td class="num">${F.distance(c.start_km * 1000, 1)} → ${F.distance(c.end_km * 1000, 1)}</td>
       <td class="num">${F.distance(c.distance_m, 2)}</td><td class="num">+${F.elevation(c.gain_m)}</td>
       <td class="num">${F.num(c.avg_grade * 100, 1)} % <span class="tag">${F.esc(c.grade_class)}</span></td>
-      <td class="num">${F.clock(c.duration_elapsed_s).replace(/^0:/, "")}</td>
+      <td class="num">${F.clockShort(c.duration_elapsed_s)}</td>
       <td class="num">${F.vam(c.vam_elapsed_m_h)}<br><small class="muted">mvt ${F.vam(c.vam_moving_m_h)}</small></td>
       <td class="num">${climbProgressionCell(c)}</td></tr>`).join("")}</tbody></table></div>
     ${classLegend ? `<p class="legend legend--small">VAM moyenne par pente : ${classLegend}</p>` : ""}</section>`;
@@ -965,7 +1000,7 @@ async function viewClimbSegment(id) {
       <th scope="col" class="num">Dérive FC/100 m</th><th scope="col" class="num">vs précédent</th>
       <th scope="col" class="num">vs meilleur</th></tr></thead>
     <tbody>${occ.map((o) => `<tr><td><a href="#/seance/${o.activity_id}">${F.dayLong(o.date)}</a></td>
-      <td>${F.esc(o.name || "")}</td><td class="num">${F.clock(o.duration_elapsed_s).replace(/^0:/, "")}</td>
+      <td>${F.esc(o.name || "")}</td><td class="num">${F.clockShort(o.duration_elapsed_s)}</td>
       <td class="num">${F.vam(o.vam_elapsed_m_h)}</td>
       <td class="num">${o.hr_first_third_bpm != null ? `${F.num(o.hr_first_third_bpm)} → ${F.num(o.hr_last_third_bpm)}` : "—"}</td>
       <td class="num">${o.hr_drift_bpm_per_100m != null ? `${o.hr_drift_bpm_per_100m > 0 ? "+" : ""}${F.num(o.hr_drift_bpm_per_100m, 1)}` : "—"}</td>
@@ -1060,10 +1095,24 @@ function hrZoneBoundsLabel(bounds) {
 /** Note unique remplaçant zones FC + montées + descente quand une séance de la
  * famille course à pied n'a AUCUN échantillon FIT ingéré (#50, voir le calcul de
  * `noFitSamples` dans `viewSession`) — plutôt que trois sections vides côte à
- * côte disant chacune, à sa façon, la même chose. */
-function noFitSamplesNote() {
-  return `<section class="band"><h2>Détail avancé</h2>
-    ${note("Aucun échantillon FIT ingéré pour cette séance : zones FC, GAP par tour, montées (VAM) et "
+ * côte disant chacune, à sa façon, la même chose.
+ *
+ * `hz` (revue de code #50, should-fix 5) : consolider zones/montées/descente en
+ * une note ne doit PAS faire perdre les deux informations que `hrZoneSection`
+ * portait seule — les bornes bpm effectives (`hz.bounds_bpm`, utiles même sans
+ * échantillons : elles restent affichées sur la page dès que la méthode de
+ * zones du profil est connue) et, quand la méthode elle-même est inconnue ou
+ * incomplète (`hz.bounds_bpm` nul), la `reason` explicite (#43, point 4) — un
+ * problème de PROFIL (méthode manquante, champ requis absent), pas la même
+ * cause qu'une simple absence de FIT sur cette séance, jamais fusionné avec
+ * elle sous peine de perdre l'information qui permettrait de le corriger. */
+function noFitSamplesNote(hz) {
+  const methodLabel = hz && hz.method ? (HR_ZONE_METHOD_LABEL[hz.method] || hz.method) : null;
+  const boundsLine = hz && hz.bounds_bpm
+    ? `<p class="muted">Bornes (${F.esc(methodLabel)}) : ${hrZoneBoundsLabel(hz.bounds_bpm)}.</p>`
+    : (hz && hz.reason ? note(F.esc(hz.reason)) : "");
+  return `<section class="band"><h2>Détail avancé</h2>${boundsLine}
+    ${note("Aucun échantillon FIT ingéré pour cette séance : temps en zone, GAP par tour, montées (VAM) et "
       + "efficacité en descente ne peuvent pas être calculés. Synchronisez le fichier FIT (skill "
       + "<code>fit-download</code>) puis relancez l'indexation pour les activer.")}</section>`;
 }
@@ -1505,6 +1554,22 @@ async function viewFiles() {
 // Routeur
 // ---------------------------------------------------------------------------
 
+/** Convertit l'ancien paramètre `jours` de « Forme & charge » (#/forme?jours=…,
+ * #47) vers le sélecteur de fenêtre EN SEMAINES d'Analyse (#50) — jamais un
+ * simple arrondi (`Math.round(jours / 7)`) : 90 jours donnerait 13 semaines,
+ * qu'AUCUN des trois boutons de la vue (12/26/52, « 3 mois »/« 6 mois »/« 1 an »)
+ * n'offre — le sélecteur resterait sans état actif (`aria-current` nulle part),
+ * la fenêtre demandée silencieusement différente de celle affichée par les
+ * boutons (revue de code #50, should-fix 2). Correspondance exacte pour les
+ * trois périodes historiques de « Forme & charge » (90/180/365 j) ; sinon, la
+ * période OFFERTE la plus proche — jamais une valeur hors de `[12, 26, 52]`. */
+function daysToWeeksPeriod(days) {
+  const exact = { 90: 12, 180: 26, 365: 52 };
+  if (exact[days] != null) return exact[days];
+  const offered = [12, 26, 52];
+  return offered.reduce((best, w) => (Math.abs(w * 7 - days) < Math.abs(best * 7 - days) ? w : best));
+}
+
 const ROUTES = {
   "": viewToday, forme: viewForm, analyse: viewAnalyse, sante: viewHealth, semaine: viewWeek, seances: viewSessions,
   performance: viewPerformance, calendrier: viewCalendar, rapports: viewReports, rapport: viewReport,
@@ -1520,11 +1585,12 @@ async function route() {
   // `#/forme?jours=…&descente=…` (#47) avant que ces tendances FIT ne rejoignent
   // la vue Analyse — un lien partagé ou mis en favori avant #50 doit continuer à
   // ouvrir la bonne classe plutôt que de renvoyer vers « Forme & charge » où la
-  // section a disparu. `jours` (1 jour) est converti en `semaines` (7 jours),
-  // borné comme le fait déjà chaque route `/api/*` côté serveur (4-52).
+  // section a disparu. `jours` est mappé sur l'une des trois fenêtres OFFERTES
+  // par le sélecteur d'Analyse (voir `daysToWeeksPeriod`), jamais un simple
+  // arrondi jours/7 qui produirait une fenêtre sans bouton actif.
   if (name === "forme" && params.has("descente")) {
     const joursVal = Number(params.get("jours")) || 180;
-    const semaines = Math.max(4, Math.min(52, Math.round(joursVal / 7)));
+    const semaines = daysToWeeksPeriod(joursVal);
     const redirected = new URLSearchParams({ semaines: String(semaines), descente: params.get("descente") });
     location.replace(`#/analyse?${redirected}`);
     return;

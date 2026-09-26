@@ -114,6 +114,17 @@ export function clock(s) {
   return `${h}:${String(m).padStart(2, "0")}:${String(sec).padStart(2, "0")}`;
 }
 
+// Durée d'un tour, d'une montée ou d'une descente : sous l'heure la quasi-totalité
+// du temps (splits, montées détectées, classes de descente), le préfixe « 0: » de
+// `clock` (ex. « 0:32:50 ») n'apporte rien — chaque appelant le retirait par son
+// propre `.replace(/^0:/, "")` (revue de code #50, nit) ; centralisé ici pour ne
+// plus dépendre de ce qu'un futur appelant pense à répéter. `clock` reste utilisée
+// telle quelle là où l'heure peut légitimement dépasser 1 h (prédictions/records de
+// `viewPerformance`, un marathon dépasse largement l'heure).
+export function clockShort(s) {
+  return clock(s).replace(/^0:/, "");
+}
+
 const DAY = new Intl.DateTimeFormat("fr-FR", { weekday: "long", day: "numeric", month: "long" });
 const SHORT = new Intl.DateTimeFormat("fr-FR", { day: "numeric", month: "short" });
 const WEEKDAY = new Intl.DateTimeFormat("fr-FR", { weekday: "short" });

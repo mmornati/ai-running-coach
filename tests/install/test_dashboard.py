@@ -171,6 +171,59 @@ class TestDashboardAnalysisView(InstallAsserts):
             self.assertNotIn(leaked, seg, "aucune coordonnée GPS ne doit être exposée")
 
 
+class TestDashboardAnalysisViewEmptyState(InstallAsserts):
+    """#50, revue de code (should-fix 1) : sur un workspace SANS échantillon FIT nulle
+    part (`build(..., with_samples=False)`, le défaut), `viewAnalyse` doit afficher
+    l'état vide global (pointeur vers le skill `fit-download`) plutôt qu'un mur de
+    sections vides — ou, pire, une seule section (« Durabilité ») qui reste affichée
+    seule car son propre message (« N sorties longues, aucune éligible ») ne dépend
+    QUE de `duration_s` déclaré au contrat, jamais de la présence réelle
+    d'échantillons FIT (contrairement aux quatre autres tendances). Un rendu DOM
+    complet n'est pas disponible à ce palier (pas de navigateur dans le harnais de
+    test) : ce test verrouille directement la CONDITION dont dépend `hasFitSamples`
+    côté JS (`web/js/app.js::viewAnalyse`) sur les données réellement servies par
+    chaque endpoint qu'elle consomme — si l'un de ces endpoints se mettait à
+    retourner une valeur non nulle sur un workspace sans FIT, ce test le
+    détecterait avant que l'état vide ne cesse de s'afficher en pratique."""
+
+    def setUp(self):
+        self.sb = Sandbox().__enter__()
+        self.ws = build(self.sb.root / "ws", days=120, today=__import__("datetime").date.fromisoformat(TODAY),
+                        sport="road")  # with_samples=False (défaut) : aucun `activities/fit/*.json`
+        self.server = Server(self.sb, ["python3", str(self.sb.repo / "scripts/arc_serve.py"),
+                                       "--workspace", str(self.ws), "--port", "0", "--today", TODAY])
+        self.assertIsNotNone(self.server.url, self.server.proc.stderr.read() if self.server.proc.poll() is not None else "pas d'URL")
+
+    def tearDown(self):
+        self.server.stop()
+        self.sb.__exit__(None, None, None)
+
+    def test_no_endpoint_reports_fit_derived_data(self):
+        """Reproduit `hasFitSamples` (`web/js/app.js::viewAnalyse`) terme à terme : si
+        tous ces termes sont faux, la vue doit basculer sur l'état vide global —
+        jamais laisser `durabilitySection` seule masquer l'absence de FIT."""
+        polarisation_weeks = json.loads(self.server.get("/api/load?weeks=26")[1])["polarisation_weeks"]
+        decoupling = json.loads(self.server.get("/api/decoupling?weeks=26")[1])
+        vam = json.loads(self.server.get("/api/vam?weeks=26")[1])
+        descent = json.loads(self.server.get("/api/descent?weeks=26")[1])
+        durability = json.loads(self.server.get("/api/durability?weeks=26")[1])
+        segments = json.loads(self.server.get("/api/climb-segments")[1])["segments"]
+
+        self.assertFalse(any(w.get("polarisation") for w in polarisation_weeks),
+                         "aucune semaine ne devrait avoir de polarisation sans échantillons FIT")
+        self.assertFalse(any(p.get("decoupling_pct") is not None for p in decoupling["points"]),
+                         "aucun découplage mesuré n'est attendu sans échantillons FIT")
+        self.assertFalse(any(p.get("best_climb_vam_elapsed_m_h") is not None for p in vam["points"]),
+                         "aucune VAM n'est attendue sans échantillons FIT")
+        self.assertEqual(descent["classes"], {}, "aucune classe de descente sans échantillons FIT")
+        # `durability.long_runs` PEUT être > 0 (des sorties longues DÉCLARÉES existent
+        # sans aucun FIT, c'est précisément le piège verrouillé ici) — seul
+        # `gap_fade_pct` (dérivé des échantillons) doit rester nul partout.
+        self.assertFalse(any(p.get("gap_fade_pct") is not None for p in durability["points"]),
+                         "aucun fade GAP n'est attendu sans échantillons FIT, même si des sorties longues existent")
+        self.assertEqual(segments, [], "aucun segment de montée sans échantillons FIT")
+
+
 class TestDashboardHealthMorningCheck(InstallAsserts):
     """#34/#37 — la ligne de base HRV personnelle et la dette de sommeil sont deux
     calculs dérivés de données de santé : ni l'un ni l'autre ne doit apparaître dans

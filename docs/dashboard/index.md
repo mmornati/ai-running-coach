@@ -68,7 +68,7 @@ détaillée : comment la lire, d'où viennent ses données, que faire si elle es
 
     Polarisation 80/20, découplage aérobie, VAM, efficacité en descente,
     durabilité et segments de montée — tout ce qui vient des échantillons FIT
-    (#50 ; capture d'écran à venir).
+    (capture d'écran à venir).
 
 -   [![Santé](../assets/dashboard/vignette-sante.webp)](views.md#sante)
 
