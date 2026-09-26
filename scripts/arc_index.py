@@ -882,7 +882,16 @@ def compute_metrics(conn, conf: dict, today: Optional[str] = None) -> None:
     seiler_thresholds = M.seiler_bounds(athlete, zone_bounds[1]) if zone_bounds else None
     loads: Dict[str, float] = {}
     estimates = []
-    rows = conn.execute("SELECT * FROM activity ORDER BY date").fetchall()
+    # Tri par date, avec des DÉPARTAGEURS déterministes (#49, revue de code, BLOQUANT) :
+    # `date` seule ne distingue pas deux activités du même jour, ce qui rendrait l'ordre de
+    # traitement chronologique (`climb_registry`/`segment_history`, voir plus bas) dépendant
+    # d'un ordre SQL non garanti d'une exécution à l'autre — deux séances au même
+    # `garmin_activity_id`/lieu le même jour pourraient alors se voir apparier dans un ordre
+    # instable, changeant occasionnellement laquelle est « la première » (`vs_previous_pct`
+    # calculé dans le mauvais sens). `start_time` (horodatage complet) départage d'abord,
+    # `garmin_activity_id` ensuite (stable, jamais réattribué), `id` en tout dernier recours
+    # (toujours unique) pour un ordre totalement déterministe.
+    rows = conn.execute("SELECT * FROM activity ORDER BY date, start_time, garmin_activity_id, id").fetchall()
     # Tables dérivées intégralement recalculées à chaque passage (pas de purge par
     # fichier comme `PER_FILE_TABLES`, `activity_id` change à chaque édition du
     # Markdown — voir ASSUMPTIONS["hr_zones"]) : un changement de profil (FC max/
@@ -946,6 +955,21 @@ def compute_metrics(conn, conf: dict, today: Optional[str] = None) -> None:
                 # n'est, elle, JAMAIS rattrapée ici, `ARC_STRICT_METRICS` ou pas : un
                 # problème d'infrastructure de la base doit toujours remonter bruyamment,
                 # ce n'est pas ce que cette défense en profondeur vise à absorber.
+                #
+                # `registry_mark`/`history_marks` (#49, revue de code, BLOQUANT) : point de
+                # reprise du registre de montées AVANT tout appariement de CETTE activité —
+                # si le `except Exception` ci-dessous doit rattraper un échec survenu APRÈS
+                # que cette activité a déjà été appariée/enregistrée dans `climb_registry`/
+                # `segment_history`, ces mutations en mémoire sont défaites pour cette seule
+                # activité (voir `ClimbSegmentIndex.rollback`) — sans ce mécanisme, une
+                # activité en échec laissait une occurrence FANTÔME dans `segment_history`,
+                # faussant `vs_previous_pct`/`vs_best_pct` (et `climb_segment.occurrences`)
+                # d'une activité SUIVANTE qui, elle, réussit (bug réel : l'activité en échec
+                # n'a AUCUNE ligne `activity_climb`, jamais purgée par le nettoyage SQL
+                # ci-dessous, mais son occurrence restait comptée dans l'historique en
+                # mémoire du segment).
+                registry_mark = climb_registry.mark()
+                history_marks: Dict[int, Optional[int]] = {}
                 try:
                     if zone_bounds:
                         bounds, _method = zone_bounds
@@ -1014,11 +1038,23 @@ def compute_metrics(conn, conf: dict, today: Optional[str] = None) -> None:
                                 "gain_m": c["gain_m"], "distance_m": c["distance_m"],
                                 "avg_grade": c["avg_grade"], "grade_class": c["grade_class"],
                                 "location": act.get("location"),
+                                # Identifiant déterministe (#49, ASSUMPTIONS["segment_id"]) :
+                                # requis par `ClimbSegmentIndex.add` si aucun appariement.
+                                "garmin_activity_id": act["garmin_activity_id"], "climb_idx": c["index"],
                             }
                             segment = climb_registry.match(candidate)
                             if segment is None:
                                 segment = climb_registry.add(candidate)
                             segment_id = segment["id"]
+                            # Point de reprise PAR SEGMENT (une seule fois par segment touché
+                            # par CETTE activité, voir `registry_mark` ci-dessus) : `None`
+                            # signifie « ce segment n'existait pas avant cette activité »
+                            # (rollback = le supprimer entièrement), un entier signifie
+                            # « il avait déjà N occurrences » (rollback = tronquer à N).
+                            if segment_id not in history_marks:
+                                history_marks[segment_id] = (
+                                    len(segment_history[segment_id]["occurrences"])
+                                    if segment_id in segment_history else None)
                             history = segment_history.setdefault(
                                 segment_id, {"occurrences": [], "first_activity_id": act["id"],
                                              "first_date": act.get("date")})
@@ -1124,6 +1160,17 @@ def compute_metrics(conn, conf: dict, today: Optional[str] = None) -> None:
                         "suivantes.",
                         file=sys.stderr,
                     )
+                    # Annule tout ce que CETTE activité a mutable en mémoire dans le
+                    # registre de montées AVANT l'échec (#49, revue de code, BLOQUANT — voir
+                    # le commentaire de `registry_mark` ci-dessus) : sans ce rollback, une
+                    # occurrence fantôme resterait dans `segment_history` et fausserait la
+                    # progression calculée pour l'activité suivante.
+                    climb_registry.rollback(registry_mark)
+                    for seg_id, occ_count in history_marks.items():
+                        if occ_count is None:
+                            segment_history.pop(seg_id, None)
+                        else:
+                            segment_history[seg_id]["occurrences"] = segment_history[seg_id]["occurrences"][:occ_count]
                     conn.execute("DELETE FROM hr_zone_time WHERE activity_id = ?", (act["id"],))
                     conn.execute("DELETE FROM hr_polarisation_time WHERE activity_id = ?", (act["id"],))
                     conn.execute("DELETE FROM activity_climb WHERE activity_id = ?", (act["id"],))
@@ -1144,15 +1191,15 @@ def compute_metrics(conn, conf: dict, today: Optional[str] = None) -> None:
     # Écriture du registre `climb_segment` (#49), une fois toutes les activités traitées :
     # `climb_registry.segments` porte le profil/la position représentative (première
     # occurrence), `segment_history` les occurrences vues (temps écoulé, activité) pour
-    # `occurrences`/`best_time_elapsed_s`/`best_activity_id`. Un segment enregistré en
-    # mémoire (`climb_registry.add`) mais sans occurrence dans `segment_history` ne peut
-    # arriver que si l'activité qui l'a créé a ensuite échoué (voir le `except Exception`
-    # ci-dessus, défense en profondeur) : ligne orpheline sans `activity_climb`
-    # correspondant, harmless (recalculée à la prochaine indexation), jamais affichée nulle
-    # part (l'UI/l'API partent toujours d'`activity_climb.segment_id`, jamais d'un survol
-    # de `climb_segment`).
+    # `occurrences`/`best_time_elapsed_s`/`best_activity_id`. Le rollback par activité
+    # (`registry_mark`/`history_marks` ci-dessus) garantit qu'un segment présent ici a
+    # TOUJOURS au moins une occurrence dans `segment_history` — plus de ligne orpheline
+    # possible depuis ce correctif (#49, revue de code, BLOQUANT).
+    # `segment["id"]` est déterministe (ASSUMPTIONS["segment_id"]), PAS une position dans
+    # `climb_registry.segments` : recherche par id, jamais par index.
+    segments_by_id = {seg["id"]: seg for seg in climb_registry.segments}
     for segment_id, history in segment_history.items():
-        seg = climb_registry.segments[segment_id - 1]
+        seg = segments_by_id[segment_id]
         times = [(o["time_elapsed_s"], o["activity_id"]) for o in history["occurrences"]
                  if o["time_elapsed_s"] is not None]
         best_time, best_activity_id = min(times, default=(None, None), key=lambda t: t[0])
@@ -2102,6 +2149,9 @@ def build_parser() -> argparse.ArgumentParser:
                              "« zones », 12 pour « decoupling »/« vam »/« descent »/« durability »)")
     parser.add_argument("--segment", type=int, metavar="SEGMENT_ID",
                         help="commande « climb-history » : historique complet d'un segment (#49)")
+    parser.add_argument("--with-gps", action="store_true",
+                        help="commande « samples » : inclut lat_deg/lon_deg dans la sortie "
+                             "(désactivé par défaut depuis #49 — débogage GPS local uniquement)")
     return parser
 
 
@@ -2162,7 +2212,17 @@ def main(argv=None) -> int:
             garmin_id = int(args.selector)
         except ValueError:
             raise ConfigError(f"commande « samples » : entier attendu, « {args.selector} » reçu.")
-        print(json.dumps(samples_by_garmin_id(conn, garmin_id), ensure_ascii=False))
+        result = samples_by_garmin_id(conn, garmin_id)
+        # `--with-gps` (#49, revue de code, nit) : lat_deg/lon_deg RETIRÉS par défaut de la
+        # sortie CLI — même si la position n'est pas une fuite nouvelle en soi (déjà lisible
+        # dans le fichier `activities/fit/<id>.json` source, voir `samples_by_garmin_id`),
+        # un CLI copié/collé sans y penser (log, chat de support) ne doit pas se mettre à
+        # exposer une coordonnée qu'il n'exposait jamais avant #49 — sécurité par défaut.
+        if not args.with_gps:
+            for rec in result.get("samples", []):
+                rec.pop("lat_deg", None)
+                rec.pop("lon_deg", None)
+        print(json.dumps(result, ensure_ascii=False))
         return 0
     if args.command == "zones":
         conf = settings(load_config(workspace))

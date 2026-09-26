@@ -12,24 +12,26 @@ couche suivante : reconnaître qu'une montée détectée sur la séance du jour 
 que celle détectée sur une séance précédente, malgré de petites variations de trace
 (bruit GPS/altimétrique, bornes qui glissent — voir `arc_climb.ASSUMPTIONS["trim"]`).
 
-## Deux méthodes d'appariement — GPS d'abord, repli sans GPS ensuite
+## Deux méthodes d'appariement — GPS d'abord, repli sans GPS ensuite (+ adoption)
 
 **Avec GPS** (positions de départ/sommet connues des deux côtés, `arc_samples.GPS_KEYS`,
 #49) : deux montées sont LA MÊME si leur point de départ ET leur sommet sont chacun à
-moins de `CLIMB_MATCH_POSITION_TOLERANCE_M` l'un de l'autre (`haversine_m`), ET que leur
-profil (gain, longueur) reste proche (`_profile_close`). Comparer le DÉPART au départ et
-le SOMMET au sommet (jamais départ↔sommet ou l'inverse) est ce qui exclut naturellement
-une même trace parcourue en SENS INVERSE : `arc_climb.detect_climbs` ne détecte que des
-montées (gain net positif) — descendre un versant précédemment gravi n'y apparaît jamais
-comme une « montée » à apparier, et gravir l'AUTRE versant d'un aller-retour a un départ
-proche du sommet enregistré (et réciproquement) : aucune des deux comparaisons dans le
-bon sens ne passe, donc aucun appariement — un nouveau segment distinct est créé, ce qui
-est le comportement voulu (monter par l'autre face n'est pas « la même montée »).
+moins d'une tolérance qui s'élargit avec la longueur de la montée (`_position_tolerance_m`,
+voir ASSUMPTIONS["gps_matching"] pour les taux mesurés qui justifient cette mise à
+l'échelle) l'un de l'autre (`haversine_m`), ET que leur profil (gain, longueur) reste
+proche (`_profile_close`). Comparer le DÉPART au départ et le SOMMET au sommet (jamais
+départ↔sommet ou l'inverse) est ce qui exclut naturellement une même trace parcourue en
+SENS INVERSE : `arc_climb.detect_climbs` ne détecte que des montées (gain net positif) —
+descendre un versant précédemment gravi n'y apparaît jamais comme une « montée » à
+apparier, et gravir l'AUTRE versant d'un aller-retour a un départ proche du sommet
+enregistré (et réciproquement) : aucune des deux comparaisons dans le bon sens ne passe,
+donc aucun appariement — un nouveau segment distinct est créé, ce qui est le comportement
+voulu (monter par l'autre face n'est pas « la même montée »).
 
 **Sans GPS** (repli, séance sans échantillons FIT géolocalisés — la quasi-totalité du
 parc actuel, voir `arc_samples.ASSUMPTIONS["gps"]`) : appariement sur le LIEU (`location`
 du bloc ```arc```, comparaison exacte après normalisation casse/espaces) ET la
-« signature » de profil (gain, longueur, classe de pente) — voir ASSUMPTIONS["fallback"]
+« signature » de profil (gain, longueur, classe de pente) — voir ASSUMPTIONS["fallback_matching"]
 pour ses limites assumées, documentées honnêtement plutôt que cachées : sans géométrie,
 impossible de distinguer une montée d'un aller-retour parcouru en sens inverse (le
 « repli » ne détecte alors JAMAIS ce cas, contrairement au chemin GPS) ni deux montées
@@ -38,6 +40,14 @@ même montagne) — le repli est donc délibérément CONSERVATEUR : toute ambig
 segments existants satisfont à la fois lieu et profil) annule l'appariement plutôt que de
 deviner, préférant un doublon de segment (progression perdue une fois) à un faux
 rapprochement (progression fausse, potentiellement pour toujours).
+
+**Adoption** (ce même repli, utilisé en dernier recours) : un candidat AVEC GPS qui ne
+trouve aucun segment GPS compatible retente le repli par lieu, restreint aux segments SANS
+position connue — un segment créé sans GPS par sa toute première occurrence (le cas
+largement majoritaire sur un workspace existant avant #49) peut ainsi être retrouvé par une
+occurrence ULTÉRIEURE avec GPS, qui lui fournit alors sa position pour la suite. Sans cette
+adoption, la quasi-totalité des historiques de montée d'un workspace existant se
+scinderaient artificiellement en deux segments à la première occurrence géolocalisée.
 
 ## Passage à l'échelle — bucketing spatial, jamais un balayage complet
 
@@ -73,12 +83,27 @@ import math
 from typing import Dict, List, Optional, Sequence, Tuple
 
 # Tolérance de position (#49, critère d'acceptation : « robuste aux petites variations de
-# trace ») : englobe le bruit GPS ordinaire (quelques dizaines de mètres) ET le glissement
-# de bord documenté par #46 à fort bruit altimétrique (`arc_climb.ASSUMPTIONS["trim"]`,
-# « le début mesuré d'une montée peut occasionnellement glisser de quelques dizaines de
-# mètres sur une approche plate malgré le rognage adaptatif ») — valeur ronde au milieu de
-# la fourchette 100-150 m suggérée par #49, pas calibrée sur un jeu de traces étiquetées.
+# trace ») — PLANCHER absolu, voir `_position_tolerance_m` ci-dessous pour la mise à
+# l'échelle sur la longueur de la montée (revue de code #49, BLOQUANT) : un plancher fixe
+# seul s'est révélé insuffisant sur une montée longue à fort bruit altimétrique — mesuré
+# (`tests/data/test_arc_climb_match.py::TestPositionToleranceScalesWithClimbLength`, montée
+# de 3 560 m/300 m, 200 paires de tirages indépendants) : à σ ≈ 2 m de bruit résiduel après
+# lissage, un plancher fixe de 150 m n'appariait que 184/200 paires (glissement de sommet
+# mesuré jusqu'à 256 m) ; à σ ≈ 4 m, seulement 100/200 (glissement jusqu'à 290 m). La mise à
+# l'échelle ci-dessous (`_position_tolerance_m`) apparie 200/200 aux deux niveaux de bruit
+# sur ce même jeu de mesures — voir ASSUMPTIONS["gps_matching"] pour la valeur relative
+# retenue et son raisonnement.
 CLIMB_MATCH_POSITION_TOLERANCE_M = 150.0
+
+# Fraction de la longueur de la montée ajoutée au plancher ci-dessus (revue de code #49,
+# BLOQUANT) : un glissement de bord (`arc_climb.ASSUMPTIONS["trim"]`) déplace le début/la
+# fin MESURÉS d'une montée d'une quantité qui croît avec le bruit ET, à bruit égal, avec la
+# longueur de la montée (un rognage à noise_tol_m fixe représente une fraction plus grande
+# d'une petite montée) — un plancher fixe seul sous-estime donc le glissement possible sur
+# une longue montée. 10 % est la plus PETITE fraction testée qui apparie 200/200 paires aux
+# deux niveaux de bruit mesurés ci-dessus (8 % suffisait aussi dans cette mesure précise,
+# 10 % retenu pour une marge de sécurité sur un bruit encore plus fort que celui testé).
+CLIMB_MATCH_POSITION_TOLERANCE_FRAC = 0.10
 
 # Tolérance de profil (gain, longueur) — le plus GRAND d'un plancher absolu et d'une
 # fraction relative, même discipline que `arc_climb.MERGE_MAX_DIP_LOSS_M`/
@@ -99,6 +124,12 @@ GRID_CELL_DEG = 0.005
 
 EARTH_RADIUS_M = 6371000.0
 
+# Identifiant déterministe d'un segment (revue de code #49, BLOQUANT) : dérivé du
+# `garmin_activity_id` ET de l'index (1-based) de la montée AU SEIN de cette activité — pas
+# d'un compteur séquentiel (voir ASSUMPTIONS["segment_id"]). Marge large (une activité ne
+# détecte jamais des milliers de montées : gain minimal 50 m, `arc_climb.MIN_CLIMB_GAIN_M`).
+SEGMENT_ID_CLIMB_MULTIPLIER = 10_000
+
 ASSUMPTIONS = {
     "reuse": (
         "Ce module réutilise `arc_climb.detect_climbs` tel quel (montées déjà détectées, "
@@ -108,13 +139,23 @@ ASSUMPTIONS = {
     ),
     "gps_matching": (
         "Avec position de départ ET de sommet connues des deux côtés : appariement si "
-        f"`haversine_m(départs) <= {CLIMB_MATCH_POSITION_TOLERANCE_M:.0f} m` ET "
-        f"`haversine_m(sommets) <= {CLIMB_MATCH_POSITION_TOLERANCE_M:.0f} m` ET profil "
-        "proche (gain/longueur, voir `_profile_close`) — comparaison APPARIÉE (départ à "
-        "départ, sommet à sommet), jamais croisée : c'est ce qui exclut une même trace "
-        "parcourue en sens inverse (voir docstring du module). Quand plusieurs segments "
-        "connus satisfont ce critère (rare, deux montées très proches), celui dont la "
-        "somme des deux distances est la plus petite est retenu."
+        "`haversine_m(départs) <= tol` ET `haversine_m(sommets) <= tol` ET profil proche "
+        "(gain/longueur, voir `_profile_close`), où `tol = _position_tolerance_m(...)` = "
+        f"le plus GRAND de `CLIMB_MATCH_POSITION_TOLERANCE_M` ({CLIMB_MATCH_POSITION_TOLERANCE_M:.0f} m, "
+        f"plancher) et `CLIMB_MATCH_POSITION_TOLERANCE_FRAC` ({CLIMB_MATCH_POSITION_TOLERANCE_FRAC * 100:.0f} %) "
+        "× la longueur de la montée (voir le commentaire de ces deux constantes pour la mesure "
+        "qui justifie la mise à l'échelle — un plancher fixe seul est insuffisant sur une "
+        "longue montée à fort bruit). Comparaison APPARIÉE (départ à départ, sommet à "
+        "sommet), jamais croisée : c'est ce qui exclut une même trace parcourue en sens "
+        "inverse (voir docstring du module et ASSUMPTIONS['direction']). Quand plusieurs "
+        "segments connus satisfont ce critère (rare, deux montées très proches), celui dont "
+        "la somme des deux distances est la plus petite est retenu. Un candidat GPS qui ne "
+        "trouve AUCUN segment GPS compatible retente ensuite le repli sans GPS, restreint "
+        "aux segments SANS position connue (voir ASSUMPTIONS['fallback_matching'], "
+        "« adoption ») — sans quoi un segment créé par une toute première occurrence sans "
+        "GPS ne pourrait plus jamais être retrouvé par une occurrence ultérieure AVEC GPS "
+        "(revue de code #49, BLOQUANT : la quasi-totalité du parc existant avant #49 n'a "
+        "aucune position enregistrée, voir `arc_samples.ASSUMPTIONS['gps']`)."
     ),
     "fallback_matching": (
         "Sans position exploitable d'un des deux côtés : appariement par LIEU (`location`, "
@@ -131,7 +172,32 @@ ASSUMPTIONS = {
         "d'un aller-retour, si un jour toutes deux dépassaient le seuil de détection dans "
         "les deux sens (rare : l'une des deux est presque toujours une descente au sens de "
         "`arc_climb.detect_climbs`), pourraient être confondues à tort. Ce cas n'a pas de "
-        "solution sans coordonnées : documenté plutôt que caché."
+        "solution sans coordonnées : documenté plutôt que caché.\n\n"
+        "ADOPTION (revue de code #49, BLOQUANT — corrige une asymétrie qui aurait scindé "
+        "l'historique de PRESQUE TOUTES les montées existantes à la transition GPS) : ce "
+        "même repli sert aussi de dernier recours pour un CANDIDAT AVEC GPS qui n'a trouvé "
+        "aucun segment GPS compatible (voir ASSUMPTIONS['gps_matching']), restreint aux "
+        "segments SANS position connue (jamais à un segment déjà positionné : deux positions "
+        "connues et incompatibles ne doivent jamais être ignorées au profit du lieu seul) — "
+        "même règle « exactement un candidat, sinon aucun ». En cas d'appariement, le "
+        "segment ADOPTE la position du candidat (départ/sommet) et rejoint le quadrillage "
+        "spatial : les occurrences GPS suivantes le retrouveront directement, sans repasser "
+        "par ce repli."
+    ),
+    "segment_id": (
+        "`climb_segment.id` (#49, revue de code, BLOQUANT) = "
+        "`garmin_activity_id_de_la_première_occurrence × SEGMENT_ID_CLIMB_MULTIPLIER + "
+        "index_de_la_montée_dans_cette_activité` (1-based, `arc_climb.detect_climbs` "
+        "l'attribue déjà) — JAMAIS un compteur séquentiel assigné dans l'ordre de "
+        "traitement des activités (bug corrigé : avec un compteur, indexer une activité "
+        "plus ANCIENNE que celles déjà connues décalait l'id de TOUS les segments créés "
+        "après elle dans l'ordre chronologique, même sans aucun rapport avec la nouvelle "
+        "activité — un lien `#/montee/<id>`/une URL d'API mémorisée pointait alors "
+        "silencieusement vers une autre montée après la prochaine indexation). Le "
+        "`garmin_activity_id`/index de la PREMIÈRE occurrence effectivement rencontrée peut "
+        "changer si une occurrence encore plus ancienne du même segment est découverte plus "
+        "tard (un vrai « premier vu » plus ancien change légitimement l'identité), mais "
+        "cela n'affecte alors QUE ce segment précis, jamais les autres."
     ),
     "bucketing": (
         "`ClimbSegmentIndex` n'examine jamais l'ensemble des segments connus : un "
@@ -140,8 +206,8 @@ ASSUMPTIONS = {
         "un dictionnaire par lieu normalisé restreint la recherche au même lieu côté "
         "repli. Coût par montée candidate proportionnel au nombre de segments DANS CES "
         "quelques cellules/ce lieu, pas au nombre total de segments du workspace — "
-        "`tests/data/test_arc_climb_match.py::TestPerformance` mesure ce coût sur un grand "
-        "nombre de lieux distincts."
+        "`tests/data/test_arc_climb_match.py::TestBucketingIsNotQuadratic` mesure ce coût "
+        "sur un grand nombre de lieux distincts."
     ),
     "direction": (
         "Une montée gravie dans l'autre sens (sommet→départ) n'est PAS une descente au "
@@ -174,7 +240,34 @@ ASSUMPTIONS = {
         "COURANTE à celui de l'occurrence PRÉCÉDENTE (`vs_previous_pct`) et à la MEILLEURE "
         "occurrence ANTÉRIEURE (`vs_best_pct`, jamais la courante elle-même) du même "
         "segment. Positif = plus rapide (temps réduit). `None` pour la toute première "
-        "occurrence d'un segment (rien à comparer)."
+        "occurrence d'un segment (rien à comparer). Un équivalent en temps de MOUVEMENT "
+        "(`duration_moving_s`) n'est délibérément PAS exposé séparément (nit, revue de code "
+        "#49) : `vam_moving_m_h` existe déjà à côté de `vam_elapsed_m_h` sur la même ligne "
+        "pour qui veut comparer les deux, et dupliquer aussi `vs_previous`/`vs_best` en "
+        "version « mouvement » alourdirait l'API/l'UI pour un signal secondaire — à ajouter "
+        "sans difficulté si l'usage le justifie (même calcul, base `duration_moving_s`).\n\n"
+        "MÊME ACTIVITÉ, PLUSIEURS OCCURRENCES (nit, revue de code #49, documenté plutôt que "
+        "surprenant) : deux montées détectées dans la MÊME activité (ex. un aller-retour "
+        "avec la même côte gravie deux fois, ou des répétitions de côte) sont appariées au "
+        "même `climb_segment` si leur géométrie/profil correspond, EXACTEMENT comme deux "
+        "montées d'activités différentes — `climb_registry`/`segment_history` "
+        "(`arc_index.compute_metrics`) sont mis à jour APRÈS CHAQUE montée traitée, dans "
+        "l'ordre chronologique de la séance, jamais après la séance entière. La 2e "
+        "répétition affiche donc `vs_previous_pct` face à la 1ʳᵉ de LA MÊME séance (pas "
+        "face à la séance précédente) — comportement voulu : c'est la comparaison la plus "
+        "récente disponible, cohérent avec la définition de `vs_previous_pct` ci-dessus."
+    ),
+    "frozen_first_occurrence": (
+        "Le profil représentatif d'un segment (`gain_m`/`distance_m`/`avg_grade`/"
+        "`grade_class`/`location`, plus la position quand connue) est celui de sa PREMIÈRE "
+        "occurrence rencontrée — jamais mis à jour ensuite, même si des occurrences "
+        "suivantes mesurent un gain/une longueur légèrement différents (bruit de mesure "
+        "normal d'une séance à l'autre, voir `_close`/`CLIMB_MATCH_GAIN_TOLERANCE_FRAC`). "
+        "Documenté honnêtement (nit, revue de code #49) : un repère STABLE (jamais dérivant "
+        "d'une moyenne mobile qui bougerait à chaque nouvelle occurrence) est préférable "
+        "pour l'appariement — chaque occurrence individuelle garde de toute façon SES "
+        "propres `gain_m`/`distance_m`/etc. mesurés dans `activity_climb`, seul le REPÈRE de "
+        "recherche (`climb_segment`) reste figé."
     ),
     "privacy": (
         "Les positions GPS ne quittent jamais ce module ni la base dérivée locale "
@@ -245,6 +338,18 @@ def hr_drift_bpm_per_100m(act_samples: Sequence[dict], climb: dict) -> dict:
             "hr_drift_bpm_per_100m": round(drift, 2)}
 
 
+def _position_tolerance_m(candidate: dict, segment: dict) -> float:
+    """Tolérance de position EFFECTIVE pour une paire (candidat, segment) — voir le
+    commentaire de `CLIMB_MATCH_POSITION_TOLERANCE_M`/`CLIMB_MATCH_POSITION_TOLERANCE_FRAC`
+    et ASSUMPTIONS["gps_matching"] pour la mesure qui justifie la mise à l'échelle. Basée
+    sur la PLUS LONGUE des deux longueurs connues (candidat/segment) : un glissement de bord
+    dépend de la longueur RÉELLE de la montée, dont on ne connaît a priori que ces deux
+    mesures indépendantes, potentiellement toutes deux bruitées."""
+    lengths = [v for v in (candidate.get("distance_m"), segment.get("distance_m")) if v]
+    longest = max(lengths) if lengths else 0.0
+    return max(CLIMB_MATCH_POSITION_TOLERANCE_M, CLIMB_MATCH_POSITION_TOLERANCE_FRAC * longest)
+
+
 def _norm_location(location: Optional[str]) -> Optional[str]:
     if not location:
         return None
@@ -276,68 +381,134 @@ class ClimbSegmentIndex:
     ASSUMPTIONS["bucketing"]) — reconstruit à chaque `compute_metrics` (même discipline
     que les autres tables dérivées intégralement recalculées, `arc_index.compute_metrics`),
     jamais persisté tel quel entre deux exécutions : les LIGNES `climb_segment` le sont,
-    en SQLite, par l'appelant."""
+    en SQLite, par l'appelant.
+
+    `mark()`/`rollback(mark)` (revue de code #49, BLOQUANT) permettent à l'appelant
+    d'annuler proprement tout ce qu'une activité a enregistré ICI si son traitement échoue
+    APRÈS l'appariement (ex. un calcul dérivé suivant lève) — voir
+    `arc_index.compute_metrics` et ASSUMPTIONS d'`arc_index` sur la défense en profondeur :
+    sans ce mécanisme, une activité en échec pouvait laisser une occurrence FANTÔME dans
+    `segment_history`, faussant `vs_previous_pct`/`vs_best_pct` d'une activité SUIVANTE qui,
+    elle, réussit."""
 
     def __init__(self) -> None:
         self.segments: List[dict] = []
         self._by_grid: Dict[Tuple[int, int], List[int]] = {}
         self._by_location: Dict[str, List[int]] = {}
 
+    def mark(self) -> int:
+        """Point de reprise pour `rollback` — nombre de segments actuellement connus."""
+        return len(self.segments)
+
+    def rollback(self, mark: int) -> None:
+        """Retire tout segment ajouté depuis `mark` (voir `mark()`), y compris des index
+        spatial/lieu qui le référencent — sans effet si rien n'a été ajouté depuis."""
+        if mark >= len(self.segments):
+            return
+        del self.segments[mark:]
+        for key in list(self._by_grid):
+            kept = [i for i in self._by_grid[key] if i < mark]
+            if kept:
+                self._by_grid[key] = kept
+            else:
+                del self._by_grid[key]
+        for key in list(self._by_location):
+            kept = [i for i in self._by_location[key] if i < mark]
+            if kept:
+                self._by_location[key] = kept
+            else:
+                del self._by_location[key]
+
     def _grid_cells(self, lat: float, lon: float) -> List[Tuple[int, int]]:
         cx = math.floor(lat / GRID_CELL_DEG)
         cy = math.floor(lon / GRID_CELL_DEG)
         return [(cx + dx, cy + dy) for dx in (-1, 0, 1) for dy in (-1, 0, 1)]
 
-    def _candidate_indices(self, candidate: dict) -> List[int]:
-        if candidate.get("start_lat") is not None and candidate.get("start_lon") is not None:
-            seen: List[int] = []
-            for key in self._grid_cells(candidate["start_lat"], candidate["start_lon"]):
-                for i in self._by_grid.get(key, []):
-                    if i not in seen:
-                        seen.append(i)
-            return seen
-        loc = _norm_location(candidate.get("location"))
-        if loc is None:
-            return []
-        return list(self._by_location.get(loc, []))
+    def _grid_indices(self, lat: float, lon: float) -> List[int]:
+        seen: List[int] = []
+        for key in self._grid_cells(lat, lon):
+            for i in self._by_grid.get(key, []):
+                if i not in seen:
+                    seen.append(i)
+        return seen
+
+    def _location_indices(self, location: Optional[str]) -> List[int]:
+        loc = _norm_location(location)
+        return list(self._by_location.get(loc, [])) if loc is not None else []
+
+    def _register_position(self, idx: int, lat: float, lon: float) -> None:
+        for key in self._grid_cells(lat, lon):
+            self._by_grid.setdefault(key, []).append(idx)
+
+    def _match_gps(self, candidate: dict, indices: List[int]) -> Optional[dict]:
+        best, best_score = None, None
+        for i in indices:
+            seg = self.segments[i]
+            if seg.get("start_lat") is None or seg.get("summit_lat") is None:
+                continue  # segment sans position connue : jamais comparé ici (voir _match_fallback)
+            tol = _position_tolerance_m(candidate, seg)
+            d_start = haversine_m(candidate["start_lat"], candidate["start_lon"],
+                                   seg["start_lat"], seg["start_lon"])
+            d_summit = haversine_m(candidate["end_lat"], candidate["end_lon"],
+                                    seg["summit_lat"], seg["summit_lon"])
+            if d_start > tol or d_summit > tol:
+                continue
+            if not _profile_close(candidate, seg):
+                continue
+            score = d_start + d_summit
+            if best is None or score < best_score:
+                best, best_score = seg, score
+        return best
+
+    def _match_fallback(self, candidate: dict, indices: List[int], *, gps_only: bool) -> Optional[dict]:
+        """Repli par lieu + profil (ASSUMPTIONS["fallback_matching"]) — `gps_only=True` :
+        appelé pour un CANDIDAT AVEC GPS qui n'a trouvé aucun segment GPS compatible,
+        restreint aux segments SANS position connue (« adoption », voir ASSUMPTIONS) ;
+        `gps_only=False` : candidat sans GPS, restreint... à rien de plus (n'importe quel
+        segment du même lieu, qu'il ait ou non une position, peut satisfaire un candidat qui
+        n'a de toute façon pas de géométrie à comparer)."""
+        pool = indices
+        if gps_only:
+            pool = [i for i in indices if self.segments[i].get("start_lat") is None]
+        matches = [i for i in pool if _profile_close(candidate, self.segments[i], require_grade_class=True)]
+        if len(matches) != 1:
+            return None
+        idx = matches[0]
+        seg = self.segments[idx]
+        if gps_only:
+            # Adoption (ASSUMPTIONS["fallback_matching"]) : ce segment n'avait pas de
+            # position, ce candidat en a une — il la prend, et rejoint le quadrillage
+            # spatial pour que les occurrences GPS suivantes le retrouvent directement.
+            seg["start_lat"], seg["start_lon"] = candidate["start_lat"], candidate["start_lon"]
+            seg["summit_lat"], seg["summit_lon"] = candidate["end_lat"], candidate["end_lon"]
+            self._register_position(idx, seg["start_lat"], seg["start_lon"])
+        return seg
 
     def match(self, candidate: dict) -> Optional[dict]:
         """Rend le segment déjà connu qui correspond le mieux à `candidate`, ou `None` —
-        voir ASSUMPTIONS["gps_matching"]/["fallback_matching"]. `candidate` : "
+        voir ASSUMPTIONS["gps_matching"]/["fallback_matching"]. `candidate` :
         `{'start_lat','start_lon','end_lat','end_lon','gain_m','distance_m','grade_class','location'}`
         (positions à `None` si inconnues)."""
         has_gps = all(candidate.get(k) is not None for k in ("start_lat", "start_lon", "end_lat", "end_lon"))
-        indices = self._candidate_indices(candidate)
         if has_gps:
-            best, best_score = None, None
-            for i in indices:
-                seg = self.segments[i]
-                if seg.get("start_lat") is None or seg.get("summit_lat") is None:
-                    continue  # segment sans position connue : incomparable côté GPS (ASSUMPTIONS)
-                d_start = haversine_m(candidate["start_lat"], candidate["start_lon"],
-                                       seg["start_lat"], seg["start_lon"])
-                d_summit = haversine_m(candidate["end_lat"], candidate["end_lon"],
-                                        seg["summit_lat"], seg["summit_lon"])
-                if d_start > CLIMB_MATCH_POSITION_TOLERANCE_M or d_summit > CLIMB_MATCH_POSITION_TOLERANCE_M:
-                    continue
-                if not _profile_close(candidate, seg):
-                    continue
-                score = d_start + d_summit
-                if best is None or score < best_score:
-                    best, best_score = seg, score
-            return best
-        # Repli sans GPS (ASSUMPTIONS["fallback_matching"]) : conservateur, une ambiguïté
-        # (plusieurs segments du même lieu au profil proche) annule le match.
-        matches = [self.segments[i] for i in indices
-                   if _profile_close(candidate, self.segments[i], require_grade_class=True)]
-        return matches[0] if len(matches) == 1 else None
+            gps_indices = self._grid_indices(candidate["start_lat"], candidate["start_lon"])
+            found = self._match_gps(candidate, gps_indices)
+            if found is not None:
+                return found
+            # Aucun segment GPS compatible : dernier recours par lieu, restreint aux
+            # segments SANS position (adoption — voir ASSUMPTIONS["fallback_matching"]).
+            return self._match_fallback(candidate, self._location_indices(candidate.get("location")),
+                                         gps_only=True)
+        return self._match_fallback(candidate, self._location_indices(candidate.get("location")), gps_only=False)
 
     def add(self, candidate: dict) -> dict:
         """Enregistre `candidate` comme un NOUVEAU segment (aucun appariement trouvé) et le
-        rend, `id` (1-based, interne à CETTE passe — l'appelant SQLite lui donne son id
-        définitif de ligne) inclus."""
+        rend. `id` déterministe (voir ASSUMPTIONS["segment_id"]) : `candidate` DOIT porter
+        `garmin_activity_id` et `climb_idx` (index 1-based de cette montée dans son
+        activité, `arc_climb.detect_climbs` l'attribue déjà) — jamais un compteur
+        séquentiel."""
         segment = {
-            "id": len(self.segments) + 1,
+            "id": candidate["garmin_activity_id"] * SEGMENT_ID_CLIMB_MULTIPLIER + candidate["climb_idx"],
             "start_lat": candidate.get("start_lat"), "start_lon": candidate.get("start_lon"),
             "summit_lat": candidate.get("end_lat"), "summit_lon": candidate.get("end_lon"),
             "gain_m": candidate.get("gain_m"), "distance_m": candidate.get("distance_m"),
@@ -347,8 +518,7 @@ class ClimbSegmentIndex:
         idx = len(self.segments)
         self.segments.append(segment)
         if segment["start_lat"] is not None and segment["start_lon"] is not None:
-            for key in self._grid_cells(segment["start_lat"], segment["start_lon"]):
-                self._by_grid.setdefault(key, []).append(idx)
+            self._register_position(idx, segment["start_lat"], segment["start_lon"])
         loc = _norm_location(segment["location"])
         if loc is not None:
             self._by_location.setdefault(loc, []).append(idx)

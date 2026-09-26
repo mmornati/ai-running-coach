@@ -3,7 +3,8 @@ sable dédié — même discipline que `test_vam_api.py` (#46) : son propre peti
 workspace avec deux montées FIT injectées à la main (même trace GPS, la seconde 5 %
 plus rapide) plutôt que d'alourdir le golden partagé (`tests/install/
 test_dashboard_golden.py`), dont les collines synthétiques restent volontairement sous
-les seuils de détection.
+les seuils de détection. Coordonnées FICTIVES (Pacifique Sud, loin de toute côte — voir
+`tests/lint/test_synthetic_no_real_data.py::SAFE_LAT_RANGE`/`SAFE_LON_RANGE`).
 """
 
 from __future__ import annotations
@@ -21,7 +22,7 @@ TODAY = "2026-09-26"
 
 
 def _write_climb_fit(ws, garmin_id: int, *, duration_s=1800, gain_m=300.0, distance_m=3600.0,
-                      start_lat=46.0, start_lon=7.0, bearing=(0.01, 0.01), resolution_s=5) -> None:
+                      start_lat=-40.0, start_lon=-135.0, bearing=(0.01, 0.01), resolution_s=5) -> None:
     """Montée linéaire déterministe avec une trace GPS explicite — même construction
     que `test_vam_api.py::_write_climb_fit`, avec `lat_deg`/`lon_deg` en plus (#49)."""
     n = duration_s // resolution_s + 1

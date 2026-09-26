@@ -95,10 +95,14 @@ est cet usage — la position n'est utilisée QUE pour apparier une montée dét
 (voir `arc_climb_match.ASSUMPTIONS["privacy"]`) : le tableau de bord et
 `skills/course-comparison` ne reçoivent qu'un `segment_id` et un nom de lieu, jamais une
 coordonnée brute. Le format déjà normalisé (`tests/lib/synthetic.py::sample_session`)
-n'émet PAS ces clés par défaut (voir `tests/lint/test_synthetic_no_real_data.py`) — seul
-un appelant qui les fournit EXPLICITEMENT (paramètre `climb_route` de `sample_session`,
-coordonnées synthétiques déterministes, jamais un vrai lieu) les voit repassées telles
-quelles par `_clean_normalised`.
+n'émet PAS ces clés (voir `tests/lint/test_synthetic_no_real_data.py`) : `sample_session`
+n'a reçu AUCUN paramètre GPS par cette histoire (#49) — les tests qui ont besoin d'une
+trace GPS (`tests/data/test_arc_climb_match.py`) construisent leurs propres échantillons à
+la main, avec des coordonnées fictives (océan sans terre, jamais un vrai lieu — voir
+`tests/lint/test_synthetic_no_real_data.py::SAFE_LAT_RANGE`/`SAFE_LON_RANGE`), plutôt que
+d'étendre le générateur partagé. Un appelant qui fournit EXPLICITEMENT `lat_deg`/`lon_deg`
+au format déjà normalisé les voit repassées telles quelles par `_clean_normalised`
+(passthrough générique, pas une fonctionnalité dédiée de `sample_session`).
 
 ## Pauses et trous de signal : jamais interpolés
 
@@ -211,10 +215,15 @@ ASSUMPTIONS = {
                      "lat_deg/lon_deg : dernière valeur (temporellement) du bucket (cumuls monotones ou "
                      "position, jamais moyennés).",
     "gps": "lat_deg/lon_deg (#49) : degrés décimaux convertis depuis les semi-cercles FIT "
-           "(`position_lat`/`position_long`, `_semicircle_to_deg`), `None` si absents (indoor, capteur "
-           "coupé) — jamais une position inventée. Réservées à l'appariement de montée entre séances "
-           "(`arc_climb_match.py`, #49) : jamais exposées telles quelles par l'API du tableau de bord ni "
-           "par le CLI `climb-history` (voir `arc_climb_match.ASSUMPTIONS[\"privacy\"]`).",
+           "(`position_lat`/`position_long`, `_semicircle_to_deg` — plage plausible PAR AXE, "
+           "±90° latitude/±180° longitude, jamais un plafond unique aux deux, revue de code "
+           "BLOQUANT), `None` si absents (indoor, capteur coupé) ou si la PAIRE vaut exactement "
+           "(0, 0) — « île nulle », valeur sentinelle d'un GPS non fixé, jamais une position "
+           "réelle plausible en course à pied (voir `_position_deg`) — jamais une position "
+           "inventée en aval. Réservées à l'appariement de montée entre séances "
+           "(`arc_climb_match.py`, #49) : jamais exposées telles quelles par l'API du tableau de "
+           "bord ni par défaut par le CLI `samples`/`climb-history` (`--with-gps` les inclut "
+           "explicitement pour un débogage local, voir `arc_climb_match.ASSUMPTIONS[\"privacy\"]`).",
     "missing_timestamp": "Un enregistrement fitparse sans `timestamp` exploitable, ou une valeur non finie "
                           "(NaN/inf), est écarté silencieusement (jamais de t_s inventé qui décalerait les "
                           "échantillons suivants). t0 = le PLUS ANCIEN horodatage exploitable, pas le premier "
@@ -281,15 +290,18 @@ def _parse_timestamp(value) -> Optional[datetime]:
     return parsed.replace(tzinfo=None) if parsed.tzinfo is not None else parsed
 
 
-def _semicircle_to_deg(value) -> Optional[float]:
+def _semicircle_to_deg(value, *, max_abs: float) -> Optional[float]:
     """Semi-cercles FIT (`position_lat`/`position_long`) → degrés décimaux, `None` si
-    absent/non numérique/hors plage plausible (`abs(degrés) > 180`, un FIT corrompu peut
-    produire une valeur aberrante — jamais une position inventée en aval)."""
+    absent/non numérique/hors plage plausible — `max_abs` DOIT être passé explicitement par
+    l'appelant (revue de code #49, BLOQUANT : une latitude et une longitude n'ont PAS la
+    même plage valide — ±90° pour une latitude, ±180° pour une longitude — un plafond
+    unique à 180° laissait passer une latitude physiquement impossible, ex. 150°, sans la
+    détecter comme un FIT corrompu)."""
     deg = _num(value)
     if deg is None:
         return None
     deg *= _SEMICIRCLE_TO_DEG
-    return round(deg, 6) if abs(deg) <= 180.0 else None
+    return round(deg, 6) if abs(deg) <= max_abs else None
 
 
 def _cadence_spm(record: dict, sport: Optional[str]) -> Optional[float]:
@@ -309,6 +321,21 @@ def _cadence_spm(record: dict, sport: Optional[str]) -> Optional[float]:
     return value
 
 
+def _position_deg(record: dict) -> tuple:
+    """`(lat_deg, lon_deg)` d'un enregistrement fitparse brut — voir `_semicircle_to_deg`
+    pour la conversion/le plafond par axe. « Île nulle » (`lat == lon == 0.0` EXACTEMENT,
+    revue de code #49, nit) : rejetée en PAIRE — c'est la valeur SENTINELLE classique d'un
+    GPS non fixé/en panne (jamais une position réelle plausible pour ce moteur, un point de
+    course à pied au large du Golfe de Guinée n'existe pas) — jamais rejetée séparément (un
+    lon EXACTEMENT nul avec une vraie latitude reste une position parfaitement valide sur le
+    méridien de Greenwich, ne pas la confondre avec l'île nulle)."""
+    lat = _semicircle_to_deg(record.get("position_lat"), max_abs=90.0)
+    lon = _semicircle_to_deg(record.get("position_long"), max_abs=180.0)
+    if lat == 0.0 and lon == 0.0:
+        return None, None
+    return lat, lon
+
+
 def _normalise_fitparse(records: Sequence[dict], sport: Optional[str]) -> List[dict]:
     parsed = [_parse_timestamp(r.get("timestamp")) for r in records]
     valid_ts = [t for t in parsed if t is not None]
@@ -319,6 +346,7 @@ def _normalise_fitparse(records: Sequence[dict], sport: Optional[str]) -> List[d
     for record, ts in zip(records, parsed):
         if ts is None:
             continue
+        lat_deg, lon_deg = _position_deg(record)
         out.append({
             "t_s": (ts - t0).total_seconds(),
             "distance_m": _num(record.get("distance")),
@@ -326,8 +354,8 @@ def _normalise_fitparse(records: Sequence[dict], sport: Optional[str]) -> List[d
             "hr_bpm": _num(record.get("heart_rate")),
             "speed_ms": _num(_first_present(record, "enhanced_speed", "speed")),
             "cadence_spm": _cadence_spm(record, sport),
-            "lat_deg": _semicircle_to_deg(record.get("position_lat")),
-            "lon_deg": _semicircle_to_deg(record.get("position_long")),
+            "lat_deg": lat_deg,
+            "lon_deg": lon_deg,
         })
     out.sort(key=lambda r: r["t_s"])
     return out

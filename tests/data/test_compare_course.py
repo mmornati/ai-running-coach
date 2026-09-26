@@ -5,7 +5,9 @@ Le script travaille par défaut UNIQUEMENT sur les fichiers Markdown (splits km)
 inchangé par #49 (`render_report`/`main` sans `--workspace`) — `climb_segment_report`
 est un COMPLÉMENT optionnel qui lit l'index dérivé du moteur (`.arc/coach.db`,
 `scripts/arc_index.py`) quand il existe déjà pour le workspace, et n'ajoute une
-section au rapport que si des segments correspondent au lieu demandé.
+section au rapport que si des segments correspondent au lieu demandé. Lieu et
+coordonnées FICTIFS (« Cirque Imaginaire », Pacifique Sud — voir
+`tests/lint/test_synthetic_no_real_data.py::SAFE_LAT_RANGE`/`SAFE_LON_RANGE`).
 """
 
 from __future__ import annotations
@@ -25,7 +27,7 @@ import arc_index as I  # noqa: E402
 import compare_course as CC  # noqa: E402
 
 
-def _arc_activity(day: str, *, garmin_id: int, location: str = "Tournai", duration_s=1800,
+def _arc_activity(day: str, *, garmin_id: int, location: str = "Cirque Imaginaire", duration_s=1800,
                    distance_m=3600) -> str:
     return (f"# Titre\n\n```arc\n"
             f'{{"arc": 1, "kind": "activity", "date": "{day}", "sport": "trail", '
@@ -38,17 +40,17 @@ class TestClimbSegmentReportWithoutIndex(unittest.TestCase):
     c'est ce qui garantit la compatibilité ascendante de la sortie par défaut."""
 
     def test_no_workspace_given_is_none(self):
-        self.assertIsNone(CC.climb_segment_report(["Tournai"], None))
+        self.assertIsNone(CC.climb_segment_report(["Cirque Imaginaire"], None))
 
     def test_workspace_without_arc_db_is_none(self):
         with tempfile.TemporaryDirectory() as tmp:
-            self.assertIsNone(CC.climb_segment_report(["Tournai"], tmp))
+            self.assertIsNone(CC.climb_segment_report(["Cirque Imaginaire"], tmp))
 
     def test_workspace_with_unrelated_arc_db_is_none(self):
         with tempfile.TemporaryDirectory() as tmp:
             (Path(tmp) / ".arc").mkdir()
             (Path(tmp) / ".arc" / "coach.db").write_bytes(b"not a real sqlite file")
-            self.assertIsNone(CC.climb_segment_report(["Tournai"], tmp))
+            self.assertIsNone(CC.climb_segment_report(["Cirque Imaginaire"], tmp))
 
 
 class TestReportBackwardCompatible(unittest.TestCase):
@@ -68,10 +70,10 @@ class TestReportBackwardCompatible(unittest.TestCase):
         shutil.rmtree(self.tmp, ignore_errors=True)
 
     def _report(self, workspace=None):
-        acts = CC.discover_activities(str(self.activities), ["Tournai"], None, None)
+        acts = CC.discover_activities(str(self.activities), ["Cirque Imaginaire"], None, None)
         ref = next(a for a in acts if a["date"] == "2026-09-10")
         others = [a for a in acts if a["date"] != "2026-09-10"]
-        segments = CC.climb_segment_report(["Tournai"], workspace)
+        segments = CC.climb_segment_report(["Cirque Imaginaire"], workspace)
         return CC.render_report(ref, others, None, 50, 40.0, segments)
 
     def test_no_section_5_without_workspace(self):
@@ -124,14 +126,14 @@ class TestClimbSegmentSectionAppearsWhenIndexAvailable(unittest.TestCase):
             records.append({"t_s": float(t), "distance_m": round(distance_m * frac, 2),
                              "altitude_m": round(gain_m * frac, 2), "hr_bpm": 150.0,
                              "speed_ms": speed, "cadence_spm": 160.0,
-                             "lat_deg": 46.0 + 0.01 * frac, "lon_deg": 7.0 + 0.01 * frac})
+                             "lat_deg": -40.0 + 0.01 * frac, "lon_deg": -135.0 + 0.01 * frac})
         fit_dir = self.ws / "activities/fit"
         fit_dir.mkdir(parents=True, exist_ok=True)
         (fit_dir / f"{garmin_id}.json").write_text(
             json.dumps({"activity_id": garmin_id, "records": records}), encoding="utf-8")
 
     def test_section_5_appears_with_progression(self):
-        segments = CC.climb_segment_report(["Tournai"], str(self.ws))
+        segments = CC.climb_segment_report(["Cirque Imaginaire"], str(self.ws))
         self.assertIsNotNone(segments)
         self.assertEqual(len(segments), 1)
         self.assertEqual(segments[0]["occurrences"], 2)
@@ -144,11 +146,11 @@ class TestClimbSegmentSectionAppearsWhenIndexAvailable(unittest.TestCase):
         self.assertIsNone(CC.climb_segment_report(["Un Autre Lieu Jamais Enregistré"], str(self.ws)))
 
     def test_sections_1_to_4_unchanged_by_the_new_section(self):
-        acts = CC.discover_activities(str(self.ws / "activities"), ["Tournai"], None, None)
+        acts = CC.discover_activities(str(self.ws / "activities"), ["Cirque Imaginaire"], None, None)
         ref = next(a for a in acts if a["date"] == "2026-09-10")
         others = [a for a in acts if a["date"] != "2026-09-10"]
         without = CC.render_report(ref, others, None, 50, 40.0, None)
-        segments = CC.climb_segment_report(["Tournai"], str(self.ws))
+        segments = CC.climb_segment_report(["Cirque Imaginaire"], str(self.ws))
         withit = CC.render_report(ref, others, None, 50, 40.0, segments)
         self.assertTrue(withit.startswith(without.rstrip("\n")))
 

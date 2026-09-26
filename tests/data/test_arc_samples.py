@@ -73,29 +73,68 @@ class TestNormaliseFitparseFormat(unittest.TestCase):
 
 class TestGpsSemicirclesToDegrees(unittest.TestCase):
     """#49 : `position_lat`/`position_long` (semi-cercles FIT) -> `lat_deg`/`lon_deg`
-    (degrés décimaux) — `fitparse` ne convertit pas lui-même ces champs."""
+    (degrés décimaux) — `fitparse` ne convertit pas lui-même ces champs. Coordonnées
+    FICTIVES (Pacifique Sud, loin de toute côte, voir
+    `tests/lint/test_synthetic_no_real_data.py::SAFE_LAT_RANGE`/`SAFE_LON_RANGE`)."""
 
     def test_known_semicircle_conversion(self):
-        # 46° -> 46 / 180 * 2**31 semi-cercles (arrondi).
-        lat_semicircles = round(46.0 / 180.0 * (2 ** 31))
-        lon_semicircles = round(7.0 / 180.0 * (2 ** 31))
+        # -40° / -135° -> × 2**31 / 180 semi-cercles (arrondi).
+        lat_semicircles = round(-40.0 / 180.0 * (2 ** 31))
+        lon_semicircles = round(-135.0 / 180.0 * (2 ** 31))
         out = S.normalise_records([
             {"timestamp": "2026-01-01 08:00:00", "distance": 0.0, "heart_rate": 120,
              "position_lat": lat_semicircles, "position_long": lon_semicircles},
         ])
-        self.assertAlmostEqual(out[0]["lat_deg"], 46.0, places=5)
-        self.assertAlmostEqual(out[0]["lon_deg"], 7.0, places=5)
+        self.assertAlmostEqual(out[0]["lat_deg"], -40.0, places=5)
+        self.assertAlmostEqual(out[0]["lon_deg"], -135.0, places=5)
 
     def test_missing_position_is_none_not_zero(self):
         out = S.normalise_records([{"timestamp": "2026-01-01 08:00:00", "distance": 0.0}])
         self.assertIsNone(out[0]["lat_deg"])
         self.assertIsNone(out[0]["lon_deg"])
 
+    def test_latitude_beyond_90_degrees_is_rejected(self):
+        """Revue de code #49, nit : une latitude n'a pas la même plage valide qu'une
+        longitude (±90° contre ±180°) — un FIT corrompu qui produirait une latitude de
+        150° (physiquement impossible) ne doit jamais être converti tel quel."""
+        # 150° de latitude (invalide) mais une longitude de 150° (valide, dans la plage).
+        lat_semicircles = round(150.0 / 180.0 * (2 ** 31))  # coord-lint: valeur invalide intentionnelle
+        lon_semicircles = round(150.0 / 180.0 * (2 ** 31))  # coord-lint: valeur invalide intentionnelle
+        out = S.normalise_records([
+            {"timestamp": "2026-01-01 08:00:00", "distance": 0.0,
+             "position_lat": lat_semicircles, "position_long": lon_semicircles},
+        ])
+        self.assertIsNone(out[0]["lat_deg"], "150° de latitude est physiquement impossible")
+        self.assertAlmostEqual(out[0]["lon_deg"], 150.0, places=5, msg="150° de longitude reste valide")
+
+    def test_exact_null_island_pair_is_rejected(self):
+        """Revue de code #49, nit : (lat, lon) = (0, 0) EXACTEMENT est la valeur
+        SENTINELLE classique d'un GPS non fixé — jamais une position course à pied
+        plausible — rejetée en PAIRE."""
+        out = S.normalise_records([
+            {"timestamp": "2026-01-01 08:00:00", "distance": 0.0,
+             "position_lat": 0, "position_long": 0},
+        ])
+        self.assertIsNone(out[0]["lat_deg"])
+        self.assertIsNone(out[0]["lon_deg"])
+
+    def test_zero_longitude_with_a_real_latitude_is_not_null_island(self):
+        """Un lon EXACTEMENT nul avec une vraie latitude reste une position valide sur le
+        méridien de Greenwich — à ne jamais confondre avec l'île nulle (revue de code #49,
+        nit) : seule la PAIRE (0, 0) est une sentinelle."""
+        lat_semicircles = round(-40.0 / 180.0 * (2 ** 31))
+        out = S.normalise_records([
+            {"timestamp": "2026-01-01 08:00:00", "distance": 0.0,
+             "position_lat": lat_semicircles, "position_long": 0},
+        ])
+        self.assertAlmostEqual(out[0]["lat_deg"], -40.0, places=5)
+        self.assertEqual(out[0]["lon_deg"], 0.0)
+
     def test_already_normalised_format_passes_through_lat_lon(self):
         out = S.normalise_records([{"t_s": 0, "distance_m": 0.0, "altitude_m": 0.0, "hr_bpm": 140.0,
-                                     "speed_ms": 2.5, "cadence_spm": 170.0, "lat_deg": 46.5, "lon_deg": 7.5}])
-        self.assertEqual(out[0]["lat_deg"], 46.5)
-        self.assertEqual(out[0]["lon_deg"], 7.5)
+                                     "speed_ms": 2.5, "cadence_spm": 170.0, "lat_deg": -39.5, "lon_deg": -134.5}])
+        self.assertEqual(out[0]["lat_deg"], -39.5)
+        self.assertEqual(out[0]["lon_deg"], -134.5)
 
     def test_already_normalised_format_without_lat_lon_gives_none(self):
         out = S.normalise_records([{"t_s": 0, "distance_m": 0.0, "altitude_m": 0.0, "hr_bpm": 140.0,
@@ -106,14 +145,14 @@ class TestGpsSemicirclesToDegrees(unittest.TestCase):
     def test_downsample_keeps_last_position_of_bucket(self):
         records = [
             {"t_s": 0.0, "distance_m": 0.0, "altitude_m": 0.0, "hr_bpm": 140.0, "speed_ms": 2.5,
-             "cadence_spm": 170.0, "lat_deg": 46.0, "lon_deg": 7.0},
+             "cadence_spm": 170.0, "lat_deg": -40.0, "lon_deg": -135.0},
             {"t_s": 3.0, "distance_m": 7.5, "altitude_m": 0.0, "hr_bpm": 141.0, "speed_ms": 2.5,
-             "cadence_spm": 170.0, "lat_deg": 46.001, "lon_deg": 7.001},
+             "cadence_spm": 170.0, "lat_deg": -39.999, "lon_deg": -134.999},
         ]
         out = S.downsample(records, resolution_s=5)
         self.assertEqual(len(out), 1)
-        self.assertEqual(out[0]["lat_deg"], 46.001)
-        self.assertEqual(out[0]["lon_deg"], 7.001)
+        self.assertEqual(out[0]["lat_deg"], -39.999)
+        self.assertEqual(out[0]["lon_deg"], -134.999)
 
 
 class TestCadenceSportGating(unittest.TestCase):
