@@ -102,6 +102,32 @@ la fatigue accumulée ; une forme franchement positive avant une course, c'est
 l'affûtage réussi. La tendance compte plus que le chiffre du jour. Il faut environ
 six semaines d'historique pour que la condition ait un sens.
 
+| Alimentée par | Calcul |
+|---|---|
+| `activities/*.md` (durée, FC moyenne, effort perçu) | `scripts/arc_metrics.py` : TRIMP, ou effort perçu sans FC |
+| `planning/Runner_Profile.md` (FC max, FC de repos) | indispensables au TRIMP |
+
+**Si les courbes sont plates ou bizarres** : renseignez la FC max et la FC de repos
+de référence du profil. Sans elles, la charge vient de l'effort perçu seul.
+
+!!! note "#50 — les tendances FIT ont déménagé"
+    Jusqu'à la story #50, cette vue affichait aussi la polarisation 80/20, le
+    découplage aérobie, la VAM, l'efficacité en descente et la durabilité : elles
+    surchargeaient une vue censée rester concentrée sur condition/fatigue/forme et
+    volume. Elles vivent désormais dans **[Analyse](#analyse)**, avec la liste des
+    montées reconnues d'une séance à l'autre (#49). Un lien de sélecteur de classe
+    de descente ouvert depuis avant #50 (`#/forme?jours=…&descente=…`) redirige
+    automatiquement vers son équivalent `#/analyse?semaines=…&descente=…` — rien à
+    refaire côté favoris ou liens partagés.
+
+## Analyse
+
+**Ma technique et ma durabilité progressent-elles ?**
+
+Les tendances calculées à partir des **échantillons FIT ingérés**
+(`activities/fit/*.json`, story #42), sur 3 mois, 6 mois ou un an — jamais
+disponibles à partir du seul résumé Markdown d'une séance :
+
 - **La polarisation 80/20** (#43) : une barre empilée par semaine — part du temps en
   zone FC **facile**, **modérée** et **difficile**, modèle à trois zones de Seiler
   (voir [Marques et métriques](../marques.md)). Les seuils bpm qui séparent ces trois
@@ -236,14 +262,28 @@ six semaines d'historique pour que la condition ait un sens.
   séance individuelle affiche le fade GAP (et le fade EF) comme un fait de
   séance, aux côtés du découplage aérobie.
 
+- **Segments de montée** (#49, #50) : une même montée, reconnue d'une séance à
+  l'autre (position GPS quand le FIT en porte, sinon profil distance/D+/pente,
+  voir `scripts/arc_climb_match.py`) — un tableau, une ligne par segment avec au
+  moins deux occurrences, sans jamais exposer de coordonnée GPS
+  (`arc_climb_match.ASSUMPTIONS["privacy"]`). Chaque ligne ouvre l'historique
+  complet du segment (`#/montee/<id>`) : toutes ses occurrences, un graphique VAM
+  par date, et la progression vs séance précédente/meilleure déjà affichée sur la
+  fiche de chaque séance (colonne « vs précédent/meilleur » de la table des
+  montées). Cette table existait côté API depuis #49 (`/api/climb-segments`) sans
+  être affichée nulle part avant #50.
+
 | Alimentée par | Calcul |
 |---|---|
-| `activities/*.md` (durée, FC moyenne, effort perçu) | `scripts/arc_metrics.py` : TRIMP, ou effort perçu sans FC |
-| `planning/Runner_Profile.md` (FC max, FC de repos) | indispensables au TRIMP |
 | `activities/fit/*.json` (échantillons ingérés) | temps en zone FC → polarisation 80/20 ; GAP → découplage aérobie/EF ; montées détectées → VAM ; classes de pente descendante → efficacité en descente ; premier/dernier tiers → durabilité (fade GAP/EF) ; position GPS des montées (si présente dans le FIT) → identité de montée entre séances (#49) |
 
-**Si les courbes sont plates ou bizarres** : renseignez la FC max et la FC de repos
-de référence du profil. Sans elles, la charge vient de l'effort perçu seul.
+**Si la vue est vide** : aucune de ces cinq sections n'apparaît tant qu'aucune
+activité n'a d'échantillons FIT ingérés — la vue l'explique alors en une seule
+fois (plutôt que cinq sections vides côte à côte) et renvoie au skill
+`fit-download` (`skills/fit-download/SKILL.md`) pour synchroniser les fichiers
+FIT depuis Garmin. Une section peut aussi rester absente individuellement (pas
+de séance à échantillons cette fenêtre, aucune sortie longue, aucun segment
+reconnu deux fois) sans que les autres en soient affectées.
 
 ## Santé
 
@@ -391,12 +431,23 @@ de fréquence cardiaque et d'effort perçu, un astérisque.
   effet d'entraînement, charge, VO2max estimée quand la séance s'y prête, et le
   **découplage aérobie (Pa:HR)** (#45, facteur d'efficacité EF en complément) quand la
   séance est éligible (sortie course à pied d'au moins 60 minutes de mouvement, à
-  effort stable — voir la section « Découplage aérobie » de « Forme & charge »
-  ci-dessus pour la méthode complète) ; absent sinon, jamais une valeur à zéro. La
+  effort stable — voir la section « Découplage aérobie » de [Analyse](#analyse)
+  pour la méthode complète) ; absent sinon, jamais une valeur à zéro. La
   **durabilité (fade GAP dernier tiers)** (#48, fade EF en complément) apparaît de la
   même façon, quand la sortie est éligible (plus de 90 minutes de mouvement, voir la
-  section « Durabilité » de « Forme & charge » ci-dessus) ; absente sinon.
+  section « Durabilité » de [Analyse](#analyse)) ; absente sinon.
 - **La météo du jour**, si une prévision a été enregistrée.
+- **Les zones FC** (#43) : une barre empilée du temps passé dans chacune des 5 zones,
+  avec les bornes intérieures (bpm, ex. « Z1 < 146 · Z2 146-155 · … · Z5 ≥ 172 ») et
+  la méthode effective (FC au seuil, Karvonen ou %FC max — voir
+  [Marques et métriques](../marques.md)), plus la polarisation 80/20 de la séance,
+  restreinte aux sports de la famille course à pied. Réservé aux sports course à
+  pied (course, trail, randonnée, marche). Si le profil ne permet de calculer aucune
+  zone (FC max/repos/seuil manquantes, ou méthode forcée par
+  `[athlete].hr_zones` mais incomplète), la raison est affichée explicitement au lieu
+  de masquer la section ; sans échantillons FIT ingérés pour cette séance, les bornes
+  s'affichent quand même, sans barre — **sauf** pour une séance de la famille course
+  à pied sans AUCUN échantillon FIT (voir plus bas, « Détail avancé »).
 - **Les splits** : un graphique allure + FC, puis le tableau complet — temps, D+ / D-,
   FC, cadence et la lecture du coach pour chaque kilomètre quand il en a écrit une.
   Quand la séance a des échantillons FIT ingérés, une seconde courbe **GAP**
@@ -419,30 +470,25 @@ de fréquence cardiaque et d'effort perçu, un astérisque.
   précédente et face à la meilleure occurrence connue, un tiret pour la toute
   première occurrence (rien à comparer), et un lien **« historique »** vers une
   page dédiée (`#/montee/<id>`) qui trace la VAM de chaque occurrence dans le temps
-  et détaille FC (premier/dernier tiers de la montée) et dérive FC par 100 m de D+.
+  et détaille FC (premier/dernier tiers de la montée) et dérive FC par 100 m de D+ —
+  la même page que la liste des « Segments de montée » de [Analyse](#analyse).
   Aucune coordonnée GPS n'est jamais exposée par le tableau de bord (positions
   utilisées uniquement en interne pour l'appariement).
 - **L'efficacité en descente** (#47) : un tableau, une ligne par classe de pente
   descendante qualifiante (pente moyenne réellement rencontrée, allure, distance,
-  durée de mouvement, indicateur d'efficacité — voir la vue « Forme & charge »
-  ci-dessus et `scripts/arc_descent.py::ASSUMPTIONS` pour la méthode complète), plus
-  l'allure GAP de référence utilisée en pied de tableau — sections réellement
-  plates de CETTE séance, ou à défaut tout ce qui n'est pas une forte descente
-  (repli, la source est indiquée). Réservé aux sports de la famille course à pied
-  avec échantillons FIT ; une séance sans classe qualifiante affiche la section
-  avec un message explicite plutôt que la masquer
-  (contrairement aux montées, l'absence est ici TOUJOURS documentée — critère
-  d'acceptation de #47).
-- **Les zones FC** (#43) : une barre empilée du temps passé dans chacune des 5 zones,
-  avec les bornes intérieures (bpm, ex. « Z1 < 146 · Z2 146-155 · … · Z5 ≥ 172 ») et
-  la méthode effective (FC au seuil, Karvonen ou %FC max — voir
-  [Marques et métriques](../marques.md)), plus la polarisation 80/20 de la séance,
-  restreinte aux sports de la famille course à pied. Réservé aux sports course à
-  pied (course, trail, randonnée, marche). Si le profil ne permet de calculer aucune
-  zone (FC max/repos/seuil manquantes, ou méthode forcée par
-  `[athlete].hr_zones` mais incomplète), la raison est affichée explicitement au lieu
-  de masquer la section ; sans échantillons FIT ingérés pour cette séance, les bornes
-  s'affichent quand même, sans barre.
+  durée de mouvement, indicateur d'efficacité — voir la section « Efficacité en
+  descente » de [Analyse](#analyse) et `scripts/arc_descent.py::ASSUMPTIONS` pour la
+  méthode complète), plus l'allure GAP de référence utilisée en pied de tableau —
+  sections réellement plates de CETTE séance, ou à défaut tout ce qui n'est pas une
+  forte descente (repli, la source est indiquée). Réservé aux sports de la famille
+  course à pied avec échantillons FIT ; une séance sans classe qualifiante affiche
+  la section avec un message explicite plutôt que la masquer (contrairement aux
+  montées, l'absence est ici TOUJOURS documentée — critère d'acceptation de #47).
+- **« Détail avancé »** (#50) : sur une séance de la famille course à pied sans
+  **AUCUN** échantillon FIT ingéré, zones FC, montées et descente disparaissent au
+  profit d'une **note unique** — jamais trois sections vides côte à côte disant
+  chacune, à sa façon, « pas d'échantillons FIT » — qui garde les bornes de zones
+  effectives (utiles même sans FIT) et renvoie vers le skill `fit-download`.
 - **L'analyse complète du coach**, rendue telle qu'il l'a écrite, tableaux compris ;
   le chemin du fichier source est rappelé en bas.
 
@@ -616,6 +662,7 @@ nourrit :
 |---|---|---|
 | Aujourd'hui | `medical/<date>_health.md`, `medical/<date>_meteo.md`, `planning/Semaine_<lundi>.md` | synchronisation, coach |
 | Forme & charge | `activities/*.md`, `planning/Runner_Profile.md` | synchronisation, vous |
+| Analyse | `activities/fit/*.json`, `planning/Runner_Profile.md` | skill `fit-download`, synchronisation |
 | Santé | `medical/<date>_health.md` | synchronisation, coach |
 | Semaine | `planning/Semaine_<lundi>.md`, `activities/*.md` | coach, synchronisation |
 | Séances | `activities/<date>_<sport>.md` | synchronisation |
