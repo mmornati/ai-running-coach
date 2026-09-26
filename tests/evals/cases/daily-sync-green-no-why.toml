@@ -14,9 +14,15 @@ morning_check = "full"
 
 [expect]
 must_match = ['```resume']
-# Ancré sur l'étiquette en tête de ligne (revue de code, #56) : un `(?m)^Pourquoi\s*:`
-# ne peut pas être déclenché par une mention en passant de « pourquoi » dans une
-# phrase (ex. « voici pourquoi je garde la séance ») — seule la ligne dédiée du
-# bloc ```resume``` matcherait.
-must_not_match = ["coach-setup", "(?m)^Pourquoi\\s*:"]
+# Ancré À L'INTÉRIEUR du bloc ```resume``` (revue de code, #56 — même motif que
+# `daily-sync-red-why`) : un `Pourquoi` en tête de ligne n'a d'importance que
+# s'il finit dans la notification, donc seulement s'il est DANS le bloc que
+# `scripts/daily-sync.sh` extrait — une ligne qui commencerait par « Pourquoi »
+# ailleurs dans la réponse (avant/après le bloc, ex. « Pourquoi cette
+# approche : ... » dans une explication) n'atteint jamais l'utilisateur et ne
+# doit pas faire échouer un bon résumé.
+must_not_match = [
+  "coach-setup",
+  '```resume[ \t]*\n(?:(?!```)[^\n]*\n){0,4}Pourquoi\s*:',
+]
 files_absent = ["planning/*_decision_*.md"]

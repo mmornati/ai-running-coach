@@ -166,6 +166,18 @@ CORRECT_ANSWERS_BY_CASE = {
         "Readiness : 74\n"
         "Alerte : aucune\n"
         "```",
+        # Revue de code (#56) : « pourquoi » en PROSE, hors du bloc ```resume```
+        # (et sans les deux-points juste après le mot) — le motif ancré dans le
+        # bloc ne doit surtout pas être déclenché par une phrase ordinaire comme
+        # celle-ci, qui n'a rien d'une décision inventée.
+        "Voici pourquoi la séance est maintenue.\n"
+        "```resume\n"
+        "Séances : 1 nouvelle — trail 12,3 km\n"
+        "Sommeil : 7 h 42, score 81\n"
+        "HRV : 62 ms — équilibré\n"
+        "Readiness : 74\n"
+        "Alerte : aucune\n"
+        "```",
     ],
 }
 
@@ -216,10 +228,10 @@ FABRICATED_ANSWERS_BY_CASE = {
     ],
     # #56 : pas de décision active aujourd'hui (fixture `base-week`, athlète
     # reposé) — une ligne `Pourquoi :` inventée ici n'a aucun fichier
-    # `decision` derrière elle. Le motif est ancré en tête de ligne
-    # (`(?m)^Pourquoi\s*:`) pour ne jamais confondre cette étiquette dédiée
-    # avec une mention en passant du mot dans une phrase ordinaire — vérifié
-    # par le couple correct/fabriqué ci-dessous et par
+    # `decision` derrière elle. Le motif est ancré DANS le bloc ```resume```
+    # (revue de code) pour ne jamais confondre cette étiquette dédiée avec une
+    # mention en passant du mot dans une phrase ordinaire — vérifié par le
+    # couple correct/fabriqué ci-dessous et par
     # `CORRECT_ANSWERS_BY_CASE["daily-sync-green-no-why"]`.
     "daily-sync-green-no-why": [
         "```resume\n"
@@ -228,6 +240,18 @@ FABRICATED_ANSWERS_BY_CASE = {
         "HRV : 60 ms — équilibré\n"
         "Readiness : 75\n"
         "Pourquoi : séance ajustée suite à une bonne nuit de sommeil\n"
+        "```",
+        # Revue de code (#56) : espace INSÉCABLE (NBSP, U+00A0) entre « Pourquoi »
+        # et « : » — `\s` de Python matche l'espace insécable par défaut ; ce
+        # motif doit rester détecté même sous cette variante d'espacement (au
+        # contraire du garde-fou shell `enforce_resume_cap`, qui tourne sous
+        # `LC_ALL=C` et a besoin de sa propre classe `[^:]{0,4}`, hors sujet ici).
+        "```resume\n"
+        "Séances : à jour\n"
+        "Sommeil : 7 h 30, score 80\n"
+        "HRV : 60 ms — équilibré\n"
+        "Readiness : 75\n"
+        "Pourquoi : séance ajustée suite à une bonne nuit de sommeil\n"
         "```",
     ],
 }

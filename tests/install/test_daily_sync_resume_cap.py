@@ -15,6 +15,7 @@ que l'agent aurait dû produire.
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 from tests.lib.asserts import InstallAsserts
@@ -61,8 +62,14 @@ class ResumeCapSandbox(InstallAsserts):
         par `stub_calls`. On lit le journal brut à la place : un seul appel
         `curl` est attendu par run (asserté ci-dessous), toujours le DERNIER
         écrit (la notification finale) — tout ce qui suit `--data-binary `
-        dans le fichier est donc le message tel qu'envoyé, newlines
-        comprises.
+        dans le fichier est le message PUIS l'URL ntfy cible
+        (`curl ... --data-binary "$MESSAGE" "$URL"`, un argument de plus,
+        collé au message par un simple espace puisque la substitution de
+        commande `resume="$(enforce_resume_cap "$resume")"` a déjà mangé le
+        saut de ligne final du message). On retire cette URL avec un
+        `rsplit(" ", 1)` — le DERNIER espace du journal sépare forcément le
+        message de cette URL, quel que soit le nombre d'espaces internes au
+        message lui-même.
         """
         raw = sb.stub_log.read_text()
         self.assertEqual(
@@ -70,7 +77,17 @@ class ResumeCapSandbox(InstallAsserts):
         )
         marker = "--data-binary "
         self.assertIn(marker, raw, f"aucun --data-binary dans le journal :\n{raw}")
-        return raw.split(marker, 1)[1]
+        tail = raw.split(marker, 1)[1]
+        message, _, _url_and_trailing_newline = tail.rpartition(" ")
+        return message
+
+    def _notified_priority(self, sb: Sandbox) -> int:
+        """La valeur de `-H "Priority: N"` du seul appel `curl` du run (voir
+        `scripts/notify.sh`)."""
+        raw = sb.stub_log.read_text()
+        match = re.search(r"Priority:\s*(\d+)", raw)
+        self.assertIsNotNone(match, f"aucun en-tête Priority dans le journal :\n{raw}")
+        return int(match.group(1))
 
 
 class TestResumeCapPreservesPourquoi(ResumeCapSandbox):
@@ -153,3 +170,57 @@ class TestResumeCapPreservesPourquoi(ResumeCapSandbox):
             non_empty_lines = [l for l in message.splitlines() if l.strip()]
             self.assertLessEqual(len(non_empty_lines), 5)
             self.assertEqual(non_empty_lines[0], "Séances : 1 nouvelle — trail 12,3 km")
+
+
+class TestResumeCapBumpsPriorityWithPourquoi(ResumeCapSandbox):
+    """Une ligne « Pourquoi : » signale un ajustement (garde-fou r5…) : la
+    notification mérite plus d'attention qu'une sync ordinaire (priorité 4 au
+    lieu de 2 ou 3), sans jamais faire redescendre une priorité déjà plus
+    grave (401/ERREUR, 4 ou 5)."""
+
+    def test_ordinary_block_with_pourquoi_gets_priority_four(self):
+        with Sandbox() as sb:
+            self._configure_notifications(sb)
+            final_message = (
+                "```resume\n"
+                "Séances : à jour\n"
+                "Sommeil : 5 h 10, score 41\n"
+                "HRV : 31 ms — effondrée\n"
+                "Readiness : 22\n"
+                "Pourquoi : verdict rouge — séance VO2max à revoir (r5_quality_after_red)\n"
+                "```\n"
+            )
+            proc = self._run(sb, final_message)
+            self.assertSucceeded(proc)
+            self.assertEqual(self._notified_priority(sb), 4)
+
+    def test_a_jour_block_with_pourquoi_is_bumped_above_the_usual_priority_two(self):
+        """`^À jour` fixe normalement la priorité à 2 — une décision active le
+        même jour doit tout de même faire remonter la notification."""
+        with Sandbox() as sb:
+            self._configure_notifications(sb)
+            final_message = (
+                "```resume\n"
+                "À jour — aucune nouvelle donnée Garmin (dernière séance : 2026-09-20)\n"
+                "Pourquoi : verdict rouge — séance VO2max à revoir (r5_quality_after_red)\n"
+                "```\n"
+            )
+            proc = self._run(sb, final_message)
+            self.assertSucceeded(proc)
+            self.assertEqual(self._notified_priority(sb), 4)
+
+    def test_block_without_pourquoi_keeps_the_usual_priority(self):
+        with Sandbox() as sb:
+            self._configure_notifications(sb)
+            final_message = (
+                "```resume\n"
+                "Séances : 1 nouvelle — trail 12,3 km\n"
+                "Sommeil : 7 h 42, score 81\n"
+                "HRV : 62 ms — équilibré\n"
+                "Readiness : 74\n"
+                "Alerte : aucune\n"
+                "```\n"
+            )
+            proc = self._run(sb, final_message)
+            self.assertSucceeded(proc)
+            self.assertEqual(self._notified_priority(sb), 3)

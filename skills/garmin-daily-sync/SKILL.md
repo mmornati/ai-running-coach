@@ -45,7 +45,10 @@ Remote Control) et l'IDE partagent. Il délègue tout à l'agent `coach` et au s
    > resting HR / body battery. Persist each file immediately using the workspace conventions
    > (`AGENTS.md`: file names; load the `workspace-data-contract` skill and open every file
    > with its ```arc JSON block — `kind: activity` with `garmin_activity_id`, `location` and
-   > `splits`, `kind: health` with `morning_check` set to the configured mode; document
+   > `splits`, `kind: health` with `morning_check` set to the configured mode. For TODAY's
+   > `medical/YYYY-MM-DD_health.md`, when `morning_check` is `full` or `minimal`, record the
+   > gatekeeper `verdict` (`green`/`amber`/`red`) and `verdict_reason` per the morning-check
+   > rules (`agents/medical.md`) — never leave it to chance, step 4 below depends on it; document
    > language from `config/workspace.toml` for the prose below the block). Validate each file
    > with `python3 scripts/arc_index.py --validate <file>` and fix what it reports. Never dump
    > raw JSON into the conversation. Do not ask questions. Do not push anything
@@ -79,21 +82,31 @@ Remote Control) et l'IDE partagent. Il délègue tout à l'agent `coach` et au s
    (`workspace-data-contract` skill) avec `outcome: "proposed"` — jamais `applied`, aucune
    décision n'a été appliquée en headless — `trigger: "guardrail"`,
    `rule_ids: ["r5_quality_after_red"]`, `session_ref`, puis la valider
-   (`python3 scripts/arc_index.py --validate <fichier decision>`). Contribue un segment
-   « séance qualité du <date> à revoir avec le coach — verdict rouge » à la ligne `Alerte :`
-   unique, jamais silencieusement. Si une session interactive ultérieure confirme ou change
-   l'alternative, elle écrit une NOUVELLE `decision` (`outcome: "applied"`,
+   (`python3 scripts/arc_index.py --validate <fichier decision>`). `date` du fichier `decision`
+   = le jour auquel elle s'applique (celui de la séance flaguée, donc potentiellement DEMAIN
+   quand la séance de qualité tombe le lendemain plutôt qu'aujourd'hui même — voir ci-dessus).
+   Ne rien ajouter à la ligne `Alerte :` pour cette raison précise : l'étape 5 la reprendra dans
+   la ligne `Pourquoi :`, jamais les deux à la fois (une même information ne doit apparaître
+   qu'une fois dans la sortie obligatoire). Si une session interactive ultérieure confirme ou
+   change l'alternative, elle écrit une NOUVELLE `decision` (`outcome: "applied"`,
    `supersedes: <chemin de la decision proposed ci-dessus>`) — ce skill headless ne le fait
    jamais lui-même.
-5. **Raison de l'ajustement pour la notification (#56).** Après la réindexation de l'étape 3
-   (decision et decision_rule y sont à jour, que la décision vienne d'être écrite à l'étape 4
-   ou d'une session interactive plus tôt dans la journée), interroger :
-   `python3 scripts/arc_index.py decisions --date <date du jour> --active`. Un résultat non
-   vide (`outcome` `"proposed"` ou `"applied"`) alimente la ligne `Pourquoi :` de la sortie
-   obligatoire ci-dessous, à partir de son champ `summary` — **jamais l'inverse** : pas de
-   décision trouvée pour aujourd'hui = pas de ligne `Pourquoi :`, ne jamais en inventer une à
-   partir d'une simple impression ou d'une alerte non tracée en `decision`. Un échec de cette
-   commande (index absent, erreur) ne bloque rien : traiter comme « aucune décision trouvée ».
+5. **Raison de l'ajustement pour la notification (#56).** Interroger le journal des décisions
+   pour AUJOURD'HUI **et** DEMAIN — `date` d'une `decision` de l'étape 4 est celle de la séance
+   qu'elle concerne, pas forcément celle du run :
+   `python3 scripts/arc_index.py decisions --date <date du jour> --active`
+   `python3 scripts/arc_index.py decisions --date <date du lendemain> --active`
+   (chaque appel à `decisions` réindexe le workspace lui-même avant de répondre — inutile
+   d'attendre l'étape 3 pour que `decision`/`decision_rule` soient à jour ; l'étape 3 reste utile
+   pour le tableau de bord, pas un préalable à celle-ci). Un résultat non vide sur L'UNE OU
+   L'AUTRE requête (`outcome` `"proposed"` ou `"applied"`, que la décision vienne d'être écrite à
+   l'étape 4 ou d'une session interactive plus tôt dans la journée) alimente la ligne
+   `Pourquoi :` de la sortie obligatoire ci-dessous, à partir de son champ `summary` — s'il y a un
+   résultat sur les deux requêtes, prendre la décision la plus récente (`created_at`) entre les
+   deux. **Jamais l'inverse** : pas de décision trouvée ni aujourd'hui ni demain = pas de ligne
+   `Pourquoi :`, ne jamais en inventer une à partir d'une simple impression ou d'une alerte non
+   tracée en `decision`. Un échec de ces commandes (index absent, erreur) ne bloque rien :
+   traiter comme « aucune décision trouvée ».
 6. Si l'agent `coach` échoue (MCP indisponible, tokens Garmin expirés…), ne rien inventer :
    le résumé doit contenir `ERREUR : <cause>` (ex. « tokens Garmin expirés — relancer
    `uv run garmin-mcp-auth` »).
@@ -105,11 +118,13 @@ dans la langue des documents, sans Markdown à l'intérieur. C'est ce bloc que
 `scripts/daily-sync.sh` extrait mot pour mot pour la notification push.
 
 **Une seule ligne `Alerte :` au total**, jamais une par source : si plusieurs
-alertes s'appliquent en même temps (FIT non téléchargé, fichier hors contrat,
-séance de qualité à revoir après un verdict rouge…), les concaténer sur cette
-même ligne, séparées par ` ; ` — le budget de 5 lignes ne laisse la place à
-aucune ligne `Alerte :` supplémentaire. `Alerte : aucune` seulement quand
-aucune des sources ci-dessus n'a de signal à ce moment-là.
+alertes s'appliquent en même temps (FIT non téléchargé, fichier hors contrat…),
+les concaténer sur cette même ligne, séparées par ` ; ` — le budget de 5
+lignes ne laisse la place à aucune ligne `Alerte :` supplémentaire. `Alerte :
+aucune` seulement quand aucune des sources ci-dessus n'a de signal à ce
+moment-là. **La séance de qualité à revoir après un verdict rouge (étape 4)
+n'est PAS une source de cette ligne** — elle est portée par la ligne
+`Pourquoi :` ci-dessous (son `summary`), jamais dupliquée ici.
 
 ````
 ```resume
@@ -123,18 +138,19 @@ Alerte : aucune
 
 **Ligne `Pourquoi :` (#56) — remplace la ligne `Alerte :`, ne s'y ajoute jamais.**
 Le budget reste à 5 lignes : quand l'étape 5 a trouvé une `decision` active
-(`outcome` `"proposed"` ou `"applied"`) pour aujourd'hui, la 5<sup>e</sup> ligne change
-d'étiquette — `Pourquoi :` au lieu d'`Alerte :` — plutôt que d'en ajouter une
-sixième. Contenu : le champ `summary` de cette décision, tronqué à environ 12
-mots en gardant la règle ou la métrique qu'il cite (`rule_ids`/le chiffre qui a
-déclenché la décision) ; s'il y a plusieurs décisions actives le même jour,
-prendre la plus récente (`created_at`). Si d'autres alertes s'appliquaient par
-ailleurs (FIT non téléchargé, fichier hors contrat…), les concaténer à la
-suite, séparées par ` ; `, exactement comme elles l'auraient été derrière
-`Alerte :` — cette ligne ne perd aucune information, elle change seulement
-d'étiquette et gagne la raison en tête. Pas de décision active aujourd'hui =
-ligne `Alerte :` inchangée, jamais de `Pourquoi :` inventée à partir d'une
-simple alerte ou d'une impression non tracée en `decision` (étape 5).
+(`outcome` `"proposed"` ou `"applied"`) pour aujourd'hui OU pour demain, la
+5<sup>e</sup> ligne change d'étiquette — `Pourquoi :` au lieu d'`Alerte :` —
+plutôt que d'en ajouter une sixième. Contenu : le champ `summary` de cette
+décision, tronqué à environ 12 mots en gardant la règle ou la métrique qu'il
+cite (`rule_ids`/le chiffre qui a déclenché la décision) ; s'il y a des
+décisions actives sur les deux dates, prendre la plus récente (`created_at`).
+Si d'autres alertes s'appliquaient par ailleurs (FIT non téléchargé, fichier
+hors contrat…), les concaténer à la suite, séparées par ` ; `, exactement
+comme elles l'auraient été derrière `Alerte :` — cette ligne ne perd aucune
+information, elle change seulement d'étiquette et gagne la raison en tête.
+Aucune décision active ni aujourd'hui ni demain = ligne `Alerte :` inchangée,
+jamais de `Pourquoi :` inventée à partir d'une simple alerte ou d'une
+impression non tracée en `decision` (étape 5).
 
 ````
 ```resume
@@ -146,5 +162,8 @@ Pourquoi : verdict rouge (HRV effondrée) — séance VO2max à revoir (r5_quali
 ```
 ````
 
-Si aucune date ne manquait : `À jour — aucune nouvelle donnée Garmin (dernière séance : YYYY-MM-DD)`.
+Si aucune date ne manquait : `À jour — aucune nouvelle donnée Garmin (dernière séance : YYYY-MM-DD)`
+en ligne unique — SAUF si l'étape 5 a trouvé une décision active : la ligne `Pourquoi :`
+s'ajoute alors en 2<sup>e</sup> ligne (toujours ≤ 5 au total), elle n'est jamais perdue
+faute de nouvelles données Garmin.
 Si une étape a échoué : première ligne `ERREUR : <cause courte>`.

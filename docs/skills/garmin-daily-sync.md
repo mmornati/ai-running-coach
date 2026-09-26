@@ -17,7 +17,8 @@ Il **n'ajoute aucune logique** : il délègue à l'agent `coach` et au skill
 3. Persiste `activities/` et `medical/` selon les conventions du workspace
 4. Termine par un bloc ```` ```resume ```` de 5 lignes maximum, extrait mot pour mot par
    `scripts/daily-sync.sh` pour la notification push (ntfy)
-5. Quand une `decision` (garde-fou, #52/#53) existe pour le jour même, la 5<sup>e</sup>
+5. Quand une `decision` (garde-fou, #52/#53) existe pour aujourd'hui OU pour demain —
+   sa `date` est celle de la séance concernée, pas forcément celle du run — la 5<sup>e</sup>
    ligne devient `Pourquoi :` (raison de l'ajustement, #56) au lieu de `Alerte :` —
    jamais les deux, jamais inventée sans fichier `decision` à l'appui
 

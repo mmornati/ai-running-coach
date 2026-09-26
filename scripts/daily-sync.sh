@@ -106,6 +106,7 @@ enforce_resume_cap() {
     local -a lines=()
     local line
     while IFS= read -r line; do
+        line="${line%$'\r'}"   # CRLF éventuel (sortie d'un runner Windows) avant le test de vide
         [[ -n "$line" ]] && lines+=("$line")
     done <<< "$resume"
     if (( ${#lines[@]} <= max )); then
@@ -115,7 +116,13 @@ enforce_resume_cap() {
     local why="" idx
     local -a rest=()
     for idx in "${!lines[@]}"; do
-        if [[ -z "$why" && "${lines[$idx]}" =~ ^Pourquoi[[:space:]]*: ]]; then
+        # `[^:]{0,4}` plutôt que `[[:space:]]*` : sous `LC_ALL=C` (imposé par ce
+        # script), la classe POSIX `[[:space:]]` ne reconnaît que les espaces
+        # ASCII — une espace insécable (NBSP, U+00A0, 2 octets en UTF-8) entre
+        # « Pourquoi » et « : » ne matcherait pas et ferait perdre la ligne au
+        # lieu de la préserver. `[^:]{0,4}` accepte NBSP et tout espacement
+        # raisonnable sans dépendre de la locale.
+        if [[ -z "$why" && "${lines[$idx]}" =~ ^Pourquoi[^:]{0,4}: ]]; then
             why="${lines[$idx]}"
         else
             rest+=("${lines[$idx]}")
@@ -464,6 +471,15 @@ main() {
         title="⚠️ Sync Garmin"; priority=4; tags="warning"
     elif printf '%s' "$resume" | grep -qi '^À jour'; then
         title="Sync Garmin — à jour"; priority=2; tags="running"
+    fi
+    # Une ligne « Pourquoi : » (#56) signale un ajustement (garde-fou r5…) : la
+    # notification mérite plus d'attention qu'une sync ordinaire, MÊME si elle
+    # part par ailleurs sur un « À jour » (priorité 2 par défaut) — mais ne
+    # descend jamais une priorité déjà plus grave (401, ERREUR, à 4 ou 5).
+    # Motif accordé avec `enforce_resume_cap` (NBSP-safe sous `LC_ALL=C`).
+    if printf '%s' "$resume" | grep -qE '^Pourquoi[^:]{0,4}:' && [[ "$priority" -lt 4 ]]; then
+        priority=4
+        tags="running,warning"
     fi
     # Index du tableau de bord : dérivé, jetable, et ignoré par git (.arc/ s'ignore
     # lui-même). Un tableau de bord ouvert voit ainsi la synchronisation sans attendre.
