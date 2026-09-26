@@ -252,6 +252,12 @@ select { font: inherit; color: var(--ink); background: var(--surface); border: 1
 .chip--weather-yellow { color: var(--yellow); background: var(--warn-bg); }
 .chip--weather-orange, .chip--gear-orange { color: var(--orange); background: var(--warn-bg); }
 .chip--status-planned { color: var(--ink-soft); }
+/* Journal des décisions (#55) : issue d'une décision — le déclencheur (`chip--trigger-*`)
+   reste sur la pastille neutre par défaut, aucune règle n'y correspondant volontairement. */
+.chip--outcome-applied { color: var(--ok); background: var(--ok-bg); }
+.chip--outcome-proposed { color: var(--warn); background: var(--warn-bg); }
+.chip--outcome-rejected_by_athlete { color: var(--bad); background: var(--bad-bg); }
+.chip--outcome-superseded { color: var(--ink-faint); background: var(--surface-2); }
 .tag { font-size: 0.72rem; padding: 0.05rem 0.4rem; border-radius: 4px; border: 1px solid var(--line-strong); color: var(--ink-faint); }
 
 /* ---------------------------------------------------------------- graphiques */

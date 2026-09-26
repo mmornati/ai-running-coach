@@ -1094,5 +1094,21 @@ class TestCLI(WorkspaceCase):
         self.assertEqual(result.returncode, 0, result.stderr)
 
 
+class TestRuleLabels(unittest.TestCase):
+    """#55 : `RULE_LABELS` doit toujours couvrir exactement `RULE_IDS`, jamais
+    plus ni moins — le dashboard (`scripts/arc_serve.py::rule_info`) affiche un
+    libellé à côté de chaque `rule_id` cité par une décision, une règle
+    ajoutée/retirée sans mettre à jour `RULE_LABELS` doit donc échouer ici
+    plutôt que d'afficher un id nu ou une clé fantôme côté API."""
+
+    def test_covers_exactly_the_known_rule_ids(self):
+        self.assertEqual(set(G.RULE_LABELS), set(G.RULE_IDS))
+
+    def test_every_label_is_a_non_empty_string(self):
+        for rule_id, label in G.RULE_LABELS.items():
+            self.assertIsInstance(label, str, rule_id)
+            self.assertTrue(label.strip(), rule_id)
+
+
 if __name__ == "__main__":
     unittest.main()

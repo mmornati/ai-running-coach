@@ -654,7 +654,16 @@ def open_db(workspace: Path, db: Optional[str] = None, memory: bool = False,
 # ---------------------------------------------------------------------------
 
 
-_DECISION_FILENAME_RE = re.compile(r"^\d{4}-\d{2}-\d{2}_decision_[^/]+\.md$")
+# `[^/.]+` (#55, revue de code) — jamais `[^/]+` : un `<slug>` avec un point
+# (`..._decision_dotted.v2.md`) resterait indexable via le repli `block_kind`
+# de `read_file` (le bloc ```arc fait foi quand le nom ne dit rien), mais son
+# identifiant `/api/decision/<id>` (nom de fichier sans extension, JAMAIS de
+# point accepté — voir `arc_serve.DECISION_ID_RE`) ne pourrait alors plus
+# jamais désigner ce fichier : `Path(...).stem` ne retire que le DERNIER
+# suffixe (`.md`), pas `.v2`. `validate_file` avertit explicitement quand un
+# fichier `decision` ne suit pas ce format (slug sans point, directement sous
+# `planning/`, jamais un sous-dossier — voir aussi `classify_source_path`).
+_DECISION_FILENAME_RE = re.compile(r"^\d{4}-\d{2}-\d{2}_decision_[^/.]+\.md$")
 
 
 def classify(rel: str) -> Optional[str]:
@@ -1802,6 +1811,22 @@ def validate_file(path: Path) -> Tuple[bool, List[str], List[str]]:
                 f"date du nom de fichier ({filename_day}) différente de decision.date "
                 f"({block_day})"
             )
+        # #55, revue de code : un fichier `decision` hors du format attendu (slug
+        # avec un point, ou pas directement sous `planning/`) reste indexable — le
+        # bloc ```arc fait foi même quand le nom ne dit rien (voir `read_file`) —
+        # mais son identifiant `/api/decision/<id>` (nom de fichier sans extension,
+        # jamais de point accepté, voir `arc_serve.DECISION_ID_RE`) ne peut alors
+        # plus le désigner : il apparaît dans le journal mais son lien de détail
+        # rend 404. `path.parent.name` (jamais le chemin complet, indisponible
+        # ici : cette fonction ne reçoit qu'un `Path`, pas la racine du workspace)
+        # suffit à détecter un sous-dossier immédiat (`planning/archive/...`).
+        if not _DECISION_FILENAME_RE.match(path.name) or path.parent.name != "planning":
+            warnings.append(
+                "fichier « decision » hors du format attendu "
+                "(`planning/AAAA-MM-JJ_decision_<slug>.md`, slug SANS point, "
+                "directement sous `planning/`) — le tableau de bord (#55) l'affiche "
+                "dans le journal mais ne pourra jamais résoudre son détail par id."
+            )
     return not errors, errors, warnings
 
 
@@ -1991,6 +2016,53 @@ def decisions_query(conn, today: Optional[date] = None, days: Optional[int] = No
         d.pop("created_at_utc", None)   # détail d'implémentation du tri, pas une donnée du contrat
         out.append(d)
     return out
+
+
+# Reconnaissance d'un chemin `sources`/`supersedes`/`session_ref.week` de décision
+# (#55) PAR SON NOM SEUL, jamais par son contenu — un chemin non reconnu (hors
+# workspace, `resources/*`, fichier libre) rend `kind: "other"` et reste un simple
+# texte côté dashboard, jamais un lien vers un fichier arbitraire.
+_SOURCE_HEALTH_RE = re.compile(r"^medical/(\d{4}-\d{2}-\d{2})_health\.md$")
+_SOURCE_WEATHER_RE = re.compile(r"^medical/(\d{4}-\d{2}-\d{2})_meteo\.md$")
+_SOURCE_NUTRITION_RE = re.compile(r"^nutrition/(\d{4}-\d{2}-\d{2})_nutrition\.md$")
+_SOURCE_ACTIVITY_RE = re.compile(r"^activities/(\d{4}-\d{2}-\d{2})_[^/]+\.md$")
+_SOURCE_WEEK_RE = re.compile(r"^planning/Semaine_(\d{4}-\d{2}-\d{2})\.md$")
+# Ancré `^planning/[^/]+$` (#55, revue de code) — jamais `Path(path).name` seul :
+# celui-ci matchait le nom de fichier quel que soit son dossier, classant à tort
+# `planning/archive/2026-09-20_decision_x.md` comme une décision LIABLE alors que
+# `arc_serve.DECISION_ID_RE` (id = nom sans extension, jamais un chemin) ne
+# désigne QUE `planning/<id>.md` — un sous-dossier rendrait le lien de détail
+# invariablement 404 malgré un chemin `sources`/`supersedes` par ailleurs valide.
+_SOURCE_DECISION_RE = re.compile(r"^planning/(\d{4}-\d{2}-\d{2})_decision_[^/.]+\.md$")
+_SOURCE_REPORT_RE = re.compile(r"^rapports/[^/]+\.md$")
+
+
+def classify_source_path(path: Optional[str]) -> dict:
+    """Classe un chemin cité par une décision (#54/#55) — `sources`, `supersedes`
+    ou `session_ref.week` — pour que le dashboard sache à quelle vue le lier,
+    SANS jamais lire le fichier ni ouvrir la base : seul le NOM suffit. Rend
+    TOUJOURS `{"path", "kind", "date"}` — `kind: "other"` (et `date: None`) pour
+    tout chemin non reconnu (`resources/*`, chemin libre, `None`), affiché en
+    simple texte par `scripts/arc_serve.py::resolve_source`, jamais comme un
+    lien : ce module n'a pas de notion de fichier « servable », c'est
+    `arc_serve.py` qui décide, à partir de `kind`, s'il existe une vue à lier —
+    jamais en rouvrant le fichier désigné par `path`."""
+    if not path:
+        return {"path": path, "kind": "other", "date": None}
+    for pattern, kind in (
+        (_SOURCE_HEALTH_RE, "health"), (_SOURCE_WEATHER_RE, "weather"),
+        (_SOURCE_NUTRITION_RE, "nutrition"), (_SOURCE_ACTIVITY_RE, "activity"),
+        (_SOURCE_WEEK_RE, "week"),
+    ):
+        m = pattern.match(path)
+        if m:
+            return {"path": path, "kind": kind, "date": m.group(1)}
+    m = _SOURCE_DECISION_RE.match(path)
+    if m:
+        return {"path": path, "kind": "decision", "date": m.group(1)}
+    if _SOURCE_REPORT_RE.match(path):
+        return {"path": path, "kind": "report", "date": None}
+    return {"path": path, "kind": "other", "date": None}
 
 
 # ---------------------------------------------------------------------------

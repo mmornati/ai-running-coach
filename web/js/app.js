@@ -28,6 +28,35 @@ const chip = (kind, value, label) => `<span class="chip chip--${kind}-${F.esc(va
 const verdictChip = (v) => (v ? chip("verdict", v, F.VERDICT[v] || v) : "");
 const weatherChip = (w) => (w ? chip("weather", w, F.WEATHER[w] || w) : "");
 const statusChip = (s) => (s ? chip("status", s, F.STATUS[s] || s) : "");
+const triggerChip = (t) => (t ? chip("trigger", t, F.TRIGGER[t] || t) : "");
+const outcomeChip = (o) => (o ? chip("outcome", o, F.DECISION_OUTCOME[o] || o) : "");
+
+// Journal des décisions (#55) : lien de la documentation des garde-fous (#52),
+// cité depuis « Décisions » et depuis l'encart « Pourquoi aujourd'hui ? ».
+const GUARDRAILS_DOC_URL = "https://mmornati.github.io/ai-running-coach/guardrails/#les-sept-regles";
+
+// `decision.inputs`/`before`/`after` : valeurs libres (revue de code #55, nit) —
+// un objet imbriqué (rare, mais le contrat ne l'interdit pas) doit se lire
+// comme du JSON plutôt que devenir le peu lisible `[object Object]` d'un
+// simple `String(v)`.
+const fmtInputValue = (v) => (v !== null && typeof v === "object" ? JSON.stringify(v) : String(v));
+
+// Libellé d'un champ `before`/`after` de décision par sa CLÉ (revue de code #55,
+// should-fix 1) : une clé absente de `after` ne veut PAS dire « valeur vide » —
+// `formatDecisionDiffValue` reste `null` dans ce cas précis, à distinguer par
+// l'appelant (`viewDecision`) d'une valeur réellement effacée.
+const INTENSITY_FULL_LABEL = {
+  rest: "Repos", recovery: "Récupération", endurance: "Endurance", tempo: "Tempo",
+  threshold: "Seuil", vo2max: "VO2max", race: "Course", strength: "Renforcement",
+};
+function formatDecisionDiffValue(key, value) {
+  if (value === undefined) return null;
+  if (key === "planned_duration_s") return F.duration(value);
+  if (key === "status") return F.STATUS[value] || value;
+  if (key === "date") return F.dayLong(value);
+  if (key === "intensity") return INTENSITY_FULL_LABEL[value] || value;
+  return fmtInputValue(value);
+}
 
 function note(text) {
   return `<p class="note">${text}</p>`;
@@ -206,7 +235,7 @@ function renderNav(s) {
   const items = [
     ["", "Aujourd'hui"], ["forme", "Forme & charge"], ["analyse", "Analyse"], ["sante", "Santé"], ["semaine", "Semaine"],
     ["seances", "Séances"], ["performance", "Performance"], ["calendrier", "Calendrier"],
-    ["rapports", "Rapports"], ...(nutrition ? [["nutrition", "Nutrition"]] : []),
+    ["decisions", "Décisions"], ["rapports", "Rapports"], ...(nutrition ? [["nutrition", "Nutrition"]] : []),
   ];
   $("#nav").innerHTML = items.map(([h, l]) => `<a href="#/${h}" data-route="${h}">${l}</a>`).join("")
     + (s.incomplete_files ? `<a href="#/fichiers" data-route="fichiers" class="nav__debt">${s.incomplete_files} fichier${s.incomplete_files > 1 ? "s" : ""} hors contrat</a>` : "");
@@ -218,7 +247,10 @@ function markNav(route) {
       // `#/montee/<id>` (#49) n'a pas d'entrée de nav propre — c'est un sous-détail
       // d'Analyse (#50, historique d'un segment de montée listé là), même motif
       // que `seance`/`rapport` ci-dessus (sous-page sans onglet dédié).
-      || (route === "montee" && a.dataset.route === "analyse");
+      || (route === "montee" && a.dataset.route === "analyse")
+      // `#/decision?id=…` (#55, détail d'une décision) : même motif que `rapport`
+      // ci-dessus, sous-page de « Décisions » sans onglet dédié.
+      || (route === "decision" && a.dataset.route === "decisions");
     a.toggleAttribute("aria-current", on);
     if (on) a.setAttribute("aria-current", "page");
   }
@@ -246,10 +278,46 @@ function setupTheme() {
 // Vue : Aujourd'hui
 // ---------------------------------------------------------------------------
 
+/** Encart « Pourquoi aujourd'hui ? » (#55) : la dernière décision ACTIVE du
+ * coach, pour rendre visible — sans ouvrir l'IDE — le principal différenciateur
+ * face aux apps commerciales : chaque ajustement de séance est tracé, avec ce
+ * qui l'a justifié.
+ *
+ * Sélection : décision `date === aujourd'hui` en priorité ; à défaut, la plus
+ * récente décision active des 2 derniers jours (`/api/decisions?days=2&active=1`
+ * rend déjà « plus récente d'abord » — `[0]` suffit), étiquetée avec SA propre
+ * date pour ne jamais laisser croire qu'elle date d'aujourd'hui. Aucune décision
+ * dans cette fenêtre : encart absent (jamais un encart vide) — c'est un jour
+ * sans ajustement notable, pas une panne.
+ */
+async function decisionEncart(s) {
+  let data;
+  try { data = await api("decisions?days=2&active=1"); } catch { return ""; }
+  const list = data.decisions || [];
+  const chosen = list.find((d) => d.date === s.today) || list[0];
+  if (!chosen) return "";
+  const isToday = chosen.date === s.today;
+  const inputs = chosen.inputs
+    ? `<ul class="facts-list">${Object.entries(chosen.inputs).map(([k, v]) => `<li><code>${F.esc(k)}</code> : ${F.esc(fmtInputValue(v))}</li>`).join("")}</ul>` : "";
+  const rules = (chosen.rules || []).length
+    ? `<p class="muted">Règle${chosen.rules.length > 1 ? "s" : ""} : ${chosen.rules.map((r) => F.esc(r.label || r.rule_id)).join(", ")} — <a href="${GUARDRAILS_DOC_URL}" rel="noopener noreferrer">garde-fous</a></p>` : "";
+  const sources = (chosen.source_links || []).map((sl) => sl.route ? `<a href="${sl.route}">${F.esc(sl.label)}</a>` : F.esc(sl.label)).join(", ");
+  const pending = chosen.outcome === "proposed" ? `<p class="note">En attente de ta confirmation.</p>` : "";
+  return `<section class="band" aria-labelledby="decision-encart-title">
+    <h2 id="decision-encart-title">Pourquoi ${isToday ? "aujourd'hui" : F.dayLong(chosen.date)} ?</h2>
+    <p>${triggerChip(chosen.trigger)} ${outcomeChip(chosen.outcome)}</p>
+    <p>${F.esc(chosen.summary)}</p>
+    ${inputs}${rules}
+    ${sources ? `<p class="muted">Sources : ${sources}</p>` : ""}
+    ${pending}
+    <p><a href="#/decision?id=${encodeURIComponent(chosen.id)}">Voir cette décision</a> · <a href="#/decisions">Le journal des décisions</a></p>
+  </section>`;
+}
+
 async function viewToday() {
   const s = SUMMARY;
-  const [health, week, form, reports] = await Promise.all([
-    api("health?days=14"), api("week"), api("form?days=30"), api("reports"),
+  const [health, week, form, reports, decisionHtml] = await Promise.all([
+    api("health?days=14"), api("week"), api("form?days=30"), api("reports"), decisionEncart(s),
   ]);
   const today = s.today;
   const mode = health.morning_check;
@@ -349,6 +417,7 @@ async function viewToday() {
   const rep = reports.reports[0];
   main.innerHTML = `${header(F.dayLong(today).replace(/^./, (c) => c.toUpperCase()))}
     ${verdict}
+    ${decisionHtml}
     <section class="band"><h2>Santé</h2>${triad}</section>
     <section class="band band--split"><div><h2>Au programme</h2>${sessionHtml}${weatherHtml}${heatHtml}${gearHtml}</div>
       <div><h2>Forme</h2>${formHtml}${complianceTrend(s.compliance_trend)}</div></section>
@@ -1551,6 +1620,121 @@ async function viewFiles() {
 }
 
 // ---------------------------------------------------------------------------
+// Vue : Décisions (#55) — journal chronologique, filtrable
+// ---------------------------------------------------------------------------
+
+/** Liens de filtre : conserve TOUJOURS les deux autres filtres (`déclencheur`,
+ * `résultat`, `jours`) lors du changement d'un seul, pour que les trois se
+ * combinent plutôt que s'écraser — même discipline que `viewSessions` (tri +
+ * sport) et `viewAnalyse` (semaines + classe de descente). */
+// Fenêtre par défaut de la vue « Décisions » (#55, revue de code) : SANS
+// paramètre `jours`, `/api/decisions` se bornait à 90 j côté serveur (voir
+// `arc_serve.api_decisions`) — « Tout » reste offert, mais via la valeur
+// EXPLICITE `jours=tout`, jamais l'absence de paramètre (qui redeviendrait
+// silencieusement le défaut serveur si on l'utilisait pour ça).
+const DECISIONS_DEFAULT_DAYS = 90;
+
+function decisionFilterHash({ trigger, outcome, days }) {
+  const p = new URLSearchParams();
+  if (trigger) p.set("declencheur", trigger);
+  if (outcome) p.set("resultat", outcome);
+  if (days != null) p.set("jours", String(days));
+  return `#/decisions?${p}`;
+}
+
+async function viewDecisions(params) {
+  const trigger = params.get("declencheur") || "";
+  const outcome = params.get("resultat") || "";
+  const joursRaw = params.get("jours");
+  const showAll = joursRaw === "tout";
+  const days = showAll ? null : (joursRaw && /^\d+$/.test(joursRaw) ? Number(joursRaw) : DECISIONS_DEFAULT_DAYS);
+  const qs = new URLSearchParams();
+  if (showAll) qs.set("all", "1"); else qs.set("days", String(days));
+  if (trigger) qs.set("trigger", trigger);
+  if (outcome) qs.set("outcome", outcome);
+  const data = await api(`decisions?${qs}`);
+  const list = data.decisions || [];
+  const periods = [[30, "1 mois"], [90, "3 mois"], [365, "1 an"], ["tout", "Tout"]];
+  const toolbarPeriods = periods.map(([value, label]) => {
+    const on = value === "tout" ? showAll : value === days;
+    return `<a class="seg ${on ? "is-on" : ""}" aria-current="${on ? "true" : "false"}" href="${decisionFilterHash({ trigger, outcome, days: value })}">${label}</a>`;
+  }).join("");
+  const triggerOptions = Object.entries(F.TRIGGER).map(([k, l]) => `<option value="${k}" ${k === trigger ? "selected" : ""}>${l}</option>`).join("");
+  const outcomeOptions = Object.entries(F.DECISION_OUTCOME).map(([k, l]) => `<option value="${k}" ${k === outcome ? "selected" : ""}>${l}</option>`).join("");
+  const items = list.map((d) => {
+    const ruleTxt = (d.rules || []).map((r) => F.esc(r.label || r.rule_id)).join(", ");
+    return `<li>
+      <a href="#/decision?id=${encodeURIComponent(d.id)}"><strong>${F.esc(d.summary)}</strong></a>
+      <span class="list__meta">${F.dayLong(d.date)} · ${triggerChip(d.trigger)} ${outcomeChip(d.outcome)}${ruleTxt ? ` · ${ruleTxt}` : ""}${d.supersedes ? " · remplace une décision précédente" : ""}</span>
+    </li>`;
+  }).join("");
+  const currentHashDays = showAll ? "tout" : days;
+  main.innerHTML = `${header("Décisions", `Journal des ajustements du coach : ce qui a changé, ce qui l'a justifié. <a href="${GUARDRAILS_DOC_URL}" rel="noopener noreferrer">Garde-fous</a>`)}
+    <div class="toolbar">${toolbarPeriods}
+      <label class="select">Déclencheur : <select id="f-declencheur"><option value="">Tous</option>${triggerOptions}</select></label>
+      <label class="select">Résultat : <select id="f-resultat"><option value="">Tous</option>${outcomeOptions}</select></label>
+    </div>
+    ${list.length ? `<ul class="list">${items}</ul>`
+      : empty("Aucune décision sur cette période", "Le coach écrit une décision quand il ajuste, allège ou reporte une séance — bilan matinal, garde-fou, ou demande de l'athlète.")}`;
+  $("#f-declencheur").addEventListener("change", (e) => { location.hash = decisionFilterHash({ trigger: e.target.value, outcome, days: currentHashDays }); });
+  $("#f-resultat").addEventListener("change", (e) => { location.hash = decisionFilterHash({ trigger, outcome: e.target.value, days: currentHashDays }); });
+}
+
+/** Vue « Décisions », détail (#55, `#/decision?id=…`) : avant/après, données,
+ * règles, sources et chaîne `supersedes` — tout ce que le journal doit
+ * exposer pour qu'« pourquoi cette séance a changé » se lise sans ouvrir
+ * l'IDE ni relancer une conversation disparue. */
+async function viewDecision(params) {
+  const id = params.get("id") || "";
+  let d;
+  try {
+    d = await api(`decision/${encodeURIComponent(id)}`);
+  } catch {
+    main.innerHTML = header("Décision introuvable") + empty("Décision introuvable", `Aucune décision ne correspond à cet identifiant. <a href="#/decisions">Retour au journal</a>.`);
+    return;
+  }
+  const before = d.before || {}, after = d.after || {};
+  // Diff avant/après (revue de code #55, should-fix 1) : une clé ABSENTE de
+  // `after` (le contrat n'y recopie que les champs qui CHANGENT — voir
+  // workspace-data-contract.md) ne veut pas dire « effacée » — l'afficher en
+  // « — » se lisait à tort comme un champ vidé (le cas le plus visible :
+  // `date`/`sport` de la décision du bilan matinal synthétique, qui ne
+  // figurent jamais dans son `after`). La valeur AVANT, grisée avec
+  // « (inchangé) », le dit sans ambiguïté ; formatage PAR CLÉ (durée, statut,
+  // date, intensité) plutôt que la valeur brute.
+  const diffKeys = [...new Set([...Object.keys(before), ...Object.keys(after)])];
+  const diffHtml = diffKeys.length
+    ? `<table class="data data--compact"><thead><tr><th scope="col">Champ</th><th scope="col">Avant</th><th scope="col">Après</th></tr></thead>
+        <tbody>${diffKeys.map((k) => {
+          const beforeVal = formatDecisionDiffValue(k, before[k]);
+          const hasAfter = Object.prototype.hasOwnProperty.call(after, k);
+          const afterVal = hasAfter ? formatDecisionDiffValue(k, after[k]) : null;
+          const beforeCell = beforeVal !== null ? F.esc(beforeVal) : "—";
+          const afterCell = hasAfter
+            ? (afterVal !== null ? F.esc(afterVal) : "—")
+            : `<span class="muted">${beforeCell} (inchangé)</span>`;
+          return `<tr><th scope="row">${F.esc(k)}</th><td>${beforeCell}</td><td>${afterCell}</td></tr>`;
+        }).join("")}</tbody></table>` : "";
+  const inputsHtml = d.inputs && Object.keys(d.inputs).length
+    ? `<ul>${Object.entries(d.inputs).map(([k, v]) => `<li><code>${F.esc(k)}</code> : ${F.esc(fmtInputValue(v))}</li>`).join("")}</ul>` : "";
+  const rulesHtml = (d.rules || []).length
+    ? `<ul>${d.rules.map((r) => `<li>${F.esc(r.label || r.rule_id)} <span class="muted">(${F.esc(r.rule_id)}${r.default_severity ? ` · ${F.esc(r.default_severity)}` : ""})</span></li>`).join("")}</ul>` : "";
+  const sourcesHtml = (d.source_links || []).length
+    ? `<p>${d.source_links.map((sl) => sl.route ? `<a href="${sl.route}">${F.esc(sl.label)}</a>` : F.esc(sl.label)).join(", ")}</p>` : "";
+  main.innerHTML = `${header(d.summary, `${F.dayLong(d.date)} · ${triggerChip(d.trigger)} ${outcomeChip(d.outcome)}`)}
+    <p><a href="#/decisions">← Toutes les décisions</a></p>
+    ${d.outcome === "proposed" ? note("En attente de ta confirmation.") : ""}
+    ${diffHtml ? `<section class="band"><h2>Avant / après</h2>${diffHtml}</section>` : ""}
+    ${inputsHtml ? `<section class="band"><h2>Données</h2>${inputsHtml}</section>` : ""}
+    ${rulesHtml ? `<section class="band"><h2>Règles</h2>${rulesHtml}</section>` : ""}
+    ${sourcesHtml ? `<section class="band"><h2>Sources</h2>${sourcesHtml}</section>` : ""}
+    ${d.session_ref_route ? `<p><a href="${d.session_ref_route}">Voir la semaine concernée</a></p>` : ""}
+    ${d.supersedes_info ? `<p class="muted">Remplace : <a href="#/decision?id=${encodeURIComponent(d.supersedes_info.id)}">${F.esc(d.supersedes_info.summary)}</a> (${F.dayLong(d.supersedes_info.date)})</p>` : ""}
+    ${(d.superseded_by || []).length ? `<p class="muted">Remplacée par : ${d.superseded_by.map((sb) => `<a href="#/decision?id=${encodeURIComponent(sb.id)}">${F.esc(sb.summary)}</a>`).join(", ")}</p>` : ""}
+    ${d.body_html ? `<section class="band">${d.body_html}</section>` : ""}`;
+}
+
+// ---------------------------------------------------------------------------
 // Routeur
 // ---------------------------------------------------------------------------
 
@@ -1573,7 +1757,7 @@ function daysToWeeksPeriod(days) {
 const ROUTES = {
   "": viewToday, forme: viewForm, analyse: viewAnalyse, sante: viewHealth, semaine: viewWeek, seances: viewSessions,
   performance: viewPerformance, calendrier: viewCalendar, rapports: viewReports, rapport: viewReport,
-  nutrition: viewNutrition, fichiers: viewFiles,
+  nutrition: viewNutrition, fichiers: viewFiles, decisions: viewDecisions, decision: viewDecision,
 };
 
 async function route() {

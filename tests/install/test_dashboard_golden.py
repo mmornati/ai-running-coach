@@ -191,6 +191,14 @@ def _endpoint_urls(server: Server) -> dict:
         quoted = urllib.parse.quote(reports[0]["source_path"], safe="")
         urls["/api/report?path={first}"] = f"/api/report?path={quoted}"
 
+    # `/api/decision/<id>` (#55) : routée à part, par regex dans `Handler._api`,
+    # donc hors de `ROUTES` — même motif que `/api/activity/{first}` ci-dessus.
+    # `tests.lib.synthetic.build` écrit un jeu de décisions déterministe dès que
+    # `days >= 10` (voir son docstring) : toujours présent ici (`DAYS = 40`).
+    decisions = json.loads(server.get("/api/decisions")[1]).get("decisions", [])
+    if decisions:
+        urls["/api/decision/{first}"] = f"/api/decision/{decisions[0]['id']}"
+
     return urls
 
 

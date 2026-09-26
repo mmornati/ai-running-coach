@@ -1383,6 +1383,109 @@ class TestDecisionIndex(Workspace):
         self.assertTrue(ok, errors)
         self.assertEqual(warnings, [])
 
+    # -- #55, revue de code ---------------------------------------------------
+
+    def test_classify_rejects_a_dotted_slug(self):
+        """`[^/.]+` (jamais `[^/]+`) : un `<slug>` avec un point resterait
+        indexable via le repli `block_kind` de `read_file` (le bloc fait foi
+        quand le nom ne dit rien), mais son id `/api/decision/<id>` (jamais un
+        point accepté, voir `arc_serve.DECISION_ID_RE`) ne pourrait plus jamais
+        le désigner — `classify()` doit refuser ce nom d'entrée de jeu."""
+        self.assertIsNone(I.classify("planning/2026-09-22_decision_dotted.v2.md"))
+        self.assertEqual(I.classify("planning/2026-09-22_decision_dotted-v2.md"), "decision")
+
+    def test_classify_accepts_a_subfolder_by_filename_alone(self):
+        """`classify()` ne regarde que le premier et le dernier segment du chemin
+        (comportement PRÉEXISTANT, partagé par tous les types `planning/*`, pas
+        seulement `decision`) : un fichier dans un sous-dossier de `planning/`
+        est donc classé « decision » comme au premier niveau — c'est
+        `classify_source_path` (pour `sources`/`supersedes`) et le lien de
+        détail du dashboard (`api_decision`, recherche par id calculé plutôt que
+        par chemin reconstruit) qui gèrent ce cas, pas `classify()` lui-même."""
+        self.assertEqual(I.classify("planning/archive/2026-09-22_decision_hrv-hold.md"), "decision")
+
+    def test_validate_file_warns_on_dotted_slug(self):
+        path = self.ws / "planning/2026-09-22_decision_dotted.v2.md"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(self.decision_block("2026-09-22", "2026-09-22T07:10:00+02:00"), encoding="utf-8")
+        ok, errors, warnings = I.validate_file(path)
+        self.assertTrue(ok, errors)
+        self.assertTrue(any("hors du format attendu" in w for w in warnings), warnings)
+
+    def test_validate_file_warns_on_subfolder_placement(self):
+        path = self.ws / "planning/archive/2026-09-22_decision_hrv-hold.md"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(self.decision_block("2026-09-22", "2026-09-22T07:10:00+02:00"), encoding="utf-8")
+        ok, errors, warnings = I.validate_file(path)
+        self.assertTrue(ok, errors)
+        self.assertTrue(any("hors du format attendu" in w for w in warnings), warnings)
+
+
+class TestClassifySourcePath(unittest.TestCase):
+    """#55 : `classify_source_path` — pure, aucun accès disque/base — reconnaît
+    un chemin `sources`/`supersedes`/`session_ref.week` de décision PAR SON NOM
+    seul, pour que le dashboard sache quelle vue lier sans jamais rouvrir le
+    fichier désigné."""
+
+    def test_health_file(self):
+        self.assertEqual(I.classify_source_path("medical/2026-09-22_health.md"),
+                          {"path": "medical/2026-09-22_health.md", "kind": "health", "date": "2026-09-22"})
+
+    def test_weather_file(self):
+        self.assertEqual(I.classify_source_path("medical/2026-09-22_meteo.md")["kind"], "weather")
+
+    def test_nutrition_file(self):
+        self.assertEqual(I.classify_source_path("nutrition/2026-09-22_nutrition.md")["kind"], "nutrition")
+
+    def test_activity_file(self):
+        result = I.classify_source_path("activities/2026-09-22_trail.md")
+        self.assertEqual(result, {"path": "activities/2026-09-22_trail.md", "kind": "activity", "date": "2026-09-22"})
+
+    def test_week_file(self):
+        result = I.classify_source_path("planning/Semaine_2026-09-21.md")
+        self.assertEqual(result, {"path": "planning/Semaine_2026-09-21.md", "kind": "week", "date": "2026-09-21"})
+
+    def test_decision_file(self):
+        result = I.classify_source_path("planning/2026-09-20_decision_hrv-hold.md")
+        self.assertEqual(result, {"path": "planning/2026-09-20_decision_hrv-hold.md",
+                                  "kind": "decision", "date": "2026-09-20"})
+
+    def test_decision_in_a_subfolder_is_not_classified_as_decision(self):
+        """#55, revue de code : ancré `^planning/[^/]+$` — jamais le nom de
+        fichier seul (`Path(path).name`), qui aurait classé un chemin
+        `planning/archive/...` comme une décision LIABLE alors que
+        `arc_serve.DECISION_ID_RE` (id = nom sans extension, jamais un chemin)
+        ne désigne QUE `planning/<id>.md` : un sous-dossier aurait rendu le lien
+        de détail invariablement 404."""
+        result = I.classify_source_path("planning/archive/2026-09-20_decision_hrv-hold.md")
+        self.assertEqual(result["kind"], "other")
+
+    def test_decision_with_a_dotted_slug_is_not_classified_as_decision(self):
+        """Même motif que `classify()` (`test_classify_rejects_a_dotted_slug`) :
+        un point dans le slug empêcherait `Path(path).stem` de correspondre à
+        `arc_serve.DECISION_ID_RE`, qui n'en accepte aucun."""
+        result = I.classify_source_path("planning/2026-09-20_decision_dotted.v2.md")
+        self.assertEqual(result["kind"], "other")
+
+    def test_report_file(self):
+        result = I.classify_source_path("rapports/2026-09-21_rapport.md")
+        self.assertEqual(result["kind"], "report")
+        self.assertIsNone(result["date"])
+
+    def test_resource_and_unknown_paths_are_other(self):
+        self.assertEqual(I.classify_source_path("resources/running/acwr.md")["kind"], "other")
+        self.assertEqual(I.classify_source_path("planning/active_objective.md")["kind"], "other")
+
+    def test_none_is_other(self):
+        self.assertEqual(I.classify_source_path(None), {"path": None, "kind": "other", "date": None})
+
+    def test_never_matches_a_substring_only(self):
+        """Même discipline que `test_classify_does_not_match_substring_only` :
+        un fichier qui ne respecte pas le format exact reste `"other"`, jamais
+        classé par erreur sur un simple segment du nom."""
+        self.assertEqual(I.classify_source_path("planning/journal_decision_generale.md")["kind"], "other")
+        self.assertEqual(I.classify_source_path("activities/fit/12345.json")["kind"], "other")
+
 
 class TestDecisionCli(Workspace):
     """#100, revue de code : garde-fous CLI de `arc_index.py decisions` — refus

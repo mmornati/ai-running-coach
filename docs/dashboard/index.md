@@ -105,6 +105,11 @@ détaillée : comment la lire, d'où viennent ses données, que faire si elle es
     L'année en carte de chaleur et le cumul de distance comparé d'une année à
     l'autre.
 
+-   **[Décisions](views.md#decisions)** · *Pourquoi cette séance a-t-elle changé ?*
+
+    Le journal de chaque ajustement du coach — bilan matinal, garde-fou, blessure,
+    météo, demande de l'athlète — avec ce qui l'a justifié (capture d'écran à venir).
+
 -   [![Rapports](../assets/dashboard/vignette-rapport.webp)](views.md#rapports)
 
     **[Rapports](views.md#rapports)** · *Qu'en a conclu le coach ?*

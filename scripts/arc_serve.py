@@ -45,9 +45,10 @@ from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Optional, Tuple
-from urllib.parse import parse_qs, urlparse
+from urllib.parse import parse_qs, quote, urlparse
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+import arc_guardrails as G  # noqa: E402
 import arc_index as I  # noqa: E402
 import arc_metrics as M  # noqa: E402
 from coach_config import ConfigError  # noqa: E402
@@ -63,21 +64,44 @@ CONTENT_TYPES = {
     ".png": "image/png", ".jpg": "image/jpeg", ".json": "application/json",
     ".woff2": "font/woff2", ".ico": "image/x-icon",
 }
+# Identifiant STABLE d'une décision (#55) exposé par `/api/decision/<id>` : le nom de
+# fichier SANS son extension (`planning/<id>.md`), jamais le chemin absolu du
+# workspace. Motif volontairement plus strict que `arc_index._DECISION_FILENAME_RE`
+# (qui autorise `[^/]+` avant `.md`) : AUCUN point toléré dans le `<slug>` — bloque
+# par construction une tentative de remontée de répertoire (`..`) glissée dans l'id
+# d'URL, sans avoir à la détecter explicitement (`/api/decision/../../etc/passwd`
+# ne correspond simplement jamais à ce motif).
+DECISION_ID_RE = re.compile(r"^\d{4}-\d{2}-\d{2}_decision_[^/.]+$")
+GUARDRAILS_DOC_URL = "https://mmornati.github.io/ai-running-coach/guardrails/#les-sept-regles"
 
 # ---------------------------------------------------------------------------
 # Markdown → HTML (sous-ensemble : ce que les agents écrivent)
 # ---------------------------------------------------------------------------
 
+# Le groupe d'URL exclut EXPLICITEMENT `"'<>` (#55, revue de code) — en plus,
+# jamais à la place, de `quote=True` ci-dessous : la classe de caractères est
+# la protection *structurelle* (même si un futur appel oubliait d'échapper
+# avant substitution, un lien `[texte](https://a"onmouseover=...)` ne
+# correspondrait simplement plus à ce motif), `html.escape(quote=True)` est le
+# filet supplémentaire sur tout le reste du texte (dont `\1`, le libellé du
+# lien, jamais nettoyé par la classe de caractères de l'URL).
 _INLINE = [
     (re.compile(r"`([^`]+)`"), r"<code>\1</code>"),
     (re.compile(r"\*\*(.+?)\*\*"), r"<strong>\1</strong>"),
     (re.compile(r"(?<![*\w])\*(?!\s)(.+?)(?<!\s)\*(?![*\w])"), r"<em>\1</em>"),
-    (re.compile(r"\[([^\]]+)\]\((https?://[^)\s]+)\)"), r'<a href="\2" rel="noopener noreferrer">\1</a>'),
+    (re.compile(r"\[([^\]]+)\]\((https?://[^)\s\"'<>]+)\)"), r'<a href="\2" rel="noopener noreferrer">\1</a>'),
 ]
 
 
 def _inline(text: str) -> str:
-    out = html.escape(text, quote=False)
+    # `quote=True` (#55, revue de code — était `quote=False`) : sans lui, un
+    # `"` ou `'` littéral du texte source atterrissait tel quel dans l'attribut
+    # `href="\2"` généré ci-dessus, permettant à un lien malformé de sortir de
+    # l'attribut (`[texte](https://a" onmouseover="...")`) — la CSP du serveur
+    # bloque déjà l'exécution d'un script injecté, mais l'attribut lui-même ne
+    # doit jamais pouvoir s'échapper. Affecte aussi les autres appelants de
+    # `render_markdown` (`/api/report`, `/api/week`, `/api/decision/<id>`).
+    out = html.escape(text, quote=True)
     for pattern, repl in _INLINE:
         out = pattern.sub(repl, out)
     return out
@@ -146,6 +170,22 @@ def render_markdown(text: str) -> str:
             i += 1
         out.append("<p>" + _inline(" ".join(para)) + "</p>")
     return "\n".join(out)
+
+
+_LEADING_H1_RE = re.compile(r"^#[ \t]+[^\n]*\n+")
+
+
+def strip_leading_heading(text: str) -> str:
+    """Retire le titre `# ...` de tête d'un corps de fichier (#55, nit de revue),
+    s'il en ouvre le texte — jamais un `#` plus loin dans le corps. Utilisé
+    seulement là où une page affiche déjà ce même titre ailleurs (le résumé de
+    la décision, dans `header()`) : `render_markdown` l'aurait sinon rendu en
+    `<h2>` redondant juste sous le titre de page. `/api/report`/`/api/week`
+    n'appellent PAS cette fonction : leur titre de page (`report.title`) et le
+    `#` de tête de leur corps ne sont pas garantis identiques au même degré
+    (fichiers plus anciens, titres reformulés) — un retrait aveugle y risquerait
+    de faire disparaître un titre qui n'est PAS un doublon."""
+    return _LEADING_H1_RE.sub("", text, count=1)
 
 
 # ---------------------------------------------------------------------------
@@ -916,6 +956,163 @@ def api_files(store: Store, q: dict) -> dict:
     return {"items": store.backfill()}
 
 
+# ---------------------------------------------------------------------------
+# Journal des décisions (#55) : « Pourquoi aujourd'hui ? » + vue « Décisions »
+# ---------------------------------------------------------------------------
+
+
+def rule_info(rule_id: str) -> dict:
+    """Métadonnées STATIQUES d'une règle de garde-fou (#55), pour l'affichage à
+    côté d'un `rule_id` cité par `decision.rule_ids` — jamais le MESSAGE d'une
+    violation précise (celui-ci porte des valeurs mesurées, régénérées à chaque
+    évaluation par `arc_guardrails.evaluate`, et disparues une fois la décision
+    écrite : seul le `rule_id` traverse jusqu'ici). `label`/`default_severity`
+    viennent de `arc_guardrails.RULE_LABELS`/`DEFAULT_SEVERITY` (import LÉGER,
+    aucune ouverture d'index — voir l'en-tête du module) ; un `rule_id` inconnu
+    (règle retirée, faute de frappe historique — voir SKILL.md, `rule_ids` n'est
+    pas vérifié contre la liste vivante des règles) rend quand même un objet
+    exploitable plutôt qu'une exception, `label` retombant sur l'id lui-même."""
+    return {
+        "rule_id": rule_id,
+        "label": G.RULE_LABELS.get(rule_id, rule_id),
+        "default_severity": G.DEFAULT_SEVERITY.get(rule_id),
+        "doc_url": GUARDRAILS_DOC_URL,
+    }
+
+
+def resolve_source(store: Store, path: str) -> dict:
+    """Résout un chemin `sources`/`supersedes`/`session_ref.week` de décision
+    (#55) en `{"path", "kind", "label", "route"}` — `route` un hash de l'app
+    (`#/...`) vers une vue EXISTANTE du dashboard quand le chemin s'y prête,
+    `None` sinon (texte simple côté UI). Ne lit JAMAIS le fichier désigné —
+    `arc_index.classify_source_path` (pur) donne le genre par le NOM seul ;
+    ici, seules des requêtes SQL déjà utilisées par d'autres routes (`activity`/
+    `report`/`decision` par `source_path`) enrichissent le libellé quand c'est
+    bon marché. Aucun contenu de fichier n'est jamais renvoyé — la surface
+    exposée reste celle, déjà publique, des autres routes `/api/*`."""
+    info = I.classify_source_path(path)
+    kind, day = info["kind"], info["date"]
+    label, route = path, None
+    if kind == "health":
+        label, route = f"Santé du {day}", "#/sante"
+    elif kind == "weather":
+        label = f"Météo du {day}"
+    elif kind == "nutrition":
+        label, route = f"Nutrition du {day}", "#/nutrition"
+    elif kind == "week":
+        label, route = f"Semaine du {day}", f"#/semaine?debut={day}"
+    elif kind == "activity":
+        row = store.one("SELECT id, name, sport FROM activity WHERE source_path = ?", (path,))
+        label = (row and (row.get("name") or row.get("sport"))) or f"Séance du {day}"
+        route = f"#/seance/{row['id']}" if row else None
+    elif kind == "report":
+        row = store.one("SELECT title FROM report WHERE source_path = ?", (path,))
+        label = (row and row.get("title")) or path
+        route = f"#/rapport?path={quote(path, safe='')}"
+    elif kind == "decision":
+        row = store.one("SELECT summary FROM decision WHERE source_path = ?", (path,))
+        label = (row and row.get("summary")) or path
+        route = f"#/decision?id={quote(Path(path).stem, safe='')}"
+    return {"path": path, "kind": kind, "label": label, "route": route}
+
+
+def _decision_id(source_path: str) -> str:
+    return Path(source_path).stem
+
+
+def _enrich_decision(store: Store, d: dict) -> dict:
+    d = dict(d)
+    d["id"] = _decision_id(d["source_path"])
+    d["rules"] = [rule_info(rid) for rid in (d.get("rule_ids") or [])]
+    d["source_links"] = [resolve_source(store, p) for p in (d.get("sources") or [])]
+    return d
+
+
+DECISIONS_DEFAULT_DAYS = 90  # #55, revue de code : voir la docstring d'`api_decisions`.
+
+
+def api_decisions(store: Store, q: dict) -> dict:
+    """Journal des décisions (#54), plus récentes d'abord : `/api/decisions`.
+
+    `days` (fenêtre glissante se terminant à `today`) ; `trigger`/`outcome`
+    filtrent en plus ; `active=1` exclut `superseded`/`rejected_by_athlete`
+    (voir `arc_index.decisions_query`). Sans `days` NI `all=1`, la fenêtre
+    retombe sur `DECISIONS_DEFAULT_DAYS` (90 j) plutôt que de rendre tout le
+    journal — un workspace qui tourne depuis longtemps aurait fini par charger
+    des centaines de décisions à chaque ouverture de la vue « Décisions »
+    (revue de code #55, nit). `all=1` demande explicitement l'historique
+    complet (l'option « Tout » de la vue) : un appelant qui veut vraiment tout
+    le doit dire, jamais par la simple absence de `days`."""
+    today = _today(store)
+    days_raw = q.get("days", [""])[0]
+    show_all = q.get("all", [""])[0] in ("1", "true")
+    if days_raw.isdigit():
+        days = max(1, min(3650, int(days_raw)))
+    elif show_all:
+        days = None
+    else:
+        days = DECISIONS_DEFAULT_DAYS
+    trigger = q.get("trigger", [""])[0] or None
+    outcome = q.get("outcome", [""])[0] or None
+    active = q.get("active", [""])[0] in ("1", "true")
+    with store.lock:
+        rows = I.decisions_query(store.conn, today=today, days=days, trigger=trigger,
+                                 outcome=outcome, active=active)
+    return {"decisions": [_enrich_decision(store, d) for d in rows],
+            "trigger": trigger, "outcome": outcome, "days": days, "active": active}
+
+
+def api_decision(store: Store, decision_id: str):
+    """Détail d'une décision (#55) : `/api/decision/<id>` — `<id>` est le nom du
+    fichier SANS extension (`DECISION_ID_RE`, jamais un chemin). Recherché par
+    `_decision_id(source_path) == decision_id` sur TOUTES les lignes `decision`
+    connues (jamais en reconstruisant `planning/<id>.md` puis en l'égalant à
+    `source_path` — #55, revue de code : `arc_index.classify()` reste permissif
+    par conception, un fichier `decision` mal placé — sous-dossier de
+    `planning/`, comme un fichier hors contrat repris via son propre bloc
+    ```arc``` — peut donc exister dans l'index avec un `source_path` que la
+    reconstruction naïve ne retrouverait jamais, alors qu'il apparaît bien dans
+    `/api/decisions` : le lien de détail rendait alors 404 à tort). Aucun accès
+    disque avec `decision_id` : la ligne existe ou non dans l'index déjà
+    construit depuis de vrais fichiers workspace. Rend `None` (404) pour un id
+    malformé (dont toute tentative de remontée de répertoire, bloquée par le
+    motif — même un id contenant `/` ou `..` ne fait jamais correspondre
+    `_decision_id`, qui ne compare que des noms de fichier) ou une décision
+    inconnue — jamais de distinction entre les deux dans la réponse."""
+    if not decision_id or not DECISION_ID_RE.match(decision_id):
+        return None
+    row = next((r for r in store.rows("SELECT * FROM decision") if _decision_id(r["source_path"]) == decision_id), None)
+    if not row:
+        return None
+    source_path = row["source_path"]
+    d = dict(row)
+    body = d.pop("body_md") or ""
+    d.pop("data_json", None)
+    d.pop("arc_version", None)
+    d.pop("created_at_utc", None)   # détail d'implémentation du tri, pas une donnée du contrat
+    for key in ("inputs", "rule_ids", "sources", "before", "after", "session_ref"):
+        raw = d.pop(f"{key}_json", None)
+        d[key] = json.loads(raw) if raw else None
+    d = _enrich_decision(store, d)
+    d["supersedes_info"] = None
+    if d.get("supersedes"):
+        prev = store.one("SELECT source_path, summary, outcome, date FROM decision WHERE source_path = ?",
+                         (d["supersedes"],))
+        if prev:
+            d["supersedes_info"] = {**prev, "id": _decision_id(prev["source_path"])}
+    superseded_by = store.rows("SELECT source_path, summary, outcome, date FROM decision WHERE supersedes = ?",
+                               (source_path,))
+    d["superseded_by"] = [{**r, "id": _decision_id(r["source_path"])} for r in superseded_by]
+    d["session_ref_route"] = None
+    week_path = (d.get("session_ref") or {}).get("week") if d.get("session_ref") else None
+    if week_path:
+        week_info = I.classify_source_path(week_path)
+        if week_info["kind"] == "week":
+            d["session_ref_route"] = f"#/semaine?debut={week_info['date']}"
+    d["body_html"] = render_markdown(strip_leading_heading(I.C.body_after_block(body)))
+    return d
+
+
 ROUTES = {
     "/api/summary": api_summary, "/api/form": api_form, "/api/load": api_load,
     "/api/health": api_health, "/api/week": api_week, "/api/activities": api_activities,
@@ -923,7 +1120,7 @@ ROUTES = {
     "/api/calendar": api_calendar, "/api/nutrition": api_nutrition, "/api/fueling": api_fueling,
     "/api/decoupling": api_decoupling, "/api/vam": api_vam, "/api/descent": api_descent,
     "/api/durability": api_durability, "/api/files": api_files,
-    "/api/climb-segments": api_climb_segments,
+    "/api/climb-segments": api_climb_segments, "/api/decisions": api_decisions,
 }
 
 # ---------------------------------------------------------------------------
@@ -989,10 +1186,13 @@ class Handler(BaseHTTPRequestHandler):
             self.store.refresh()
             match = re.fullmatch(r"/api/activity/(\d+)", url.path)
             segment_match = re.fullmatch(r"/api/climb-segment/(\d+)", url.path)
+            decision_match = re.fullmatch(r"/api/decision/([^/]+)", url.path)
             if match:
                 payload = api_activity(self.store, int(match.group(1)))
             elif segment_match:
                 payload = api_climb_segment(self.store, int(segment_match.group(1)))
+            elif decision_match:
+                payload = api_decision(self.store, decision_match.group(1))
             elif url.path in ROUTES:
                 payload = ROUTES[url.path](self.store, q)
             else:

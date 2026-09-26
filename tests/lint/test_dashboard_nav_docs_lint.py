@@ -21,9 +21,10 @@ VIEWS_MD = REPO / "docs/dashboard/views.md"
 # de nav directes : atteintes par un lien depuis une autre vue plutôt que par
 # l'onglet de gauche. `views.md` les documente quand même, ailleurs que par une
 # entrée de nav (`## Rapports` couvre `rapport`, la fiche d'un rapport précis ;
-# `fichiers` a son propre titre malgré son libellé de nav construit dynamiquement,
-# voir NAV_LABEL_OVERRIDES ci-dessous).
-ROUTES_WITHOUT_NAV_ENTRY = {"rapport", "fichiers"}
+# `## Décisions` couvre `decision`, le détail d'une décision précise (#55), même
+# motif ; `fichiers` a son propre titre malgré son libellé de nav construit
+# dynamiquement, voir NAV_LABEL_OVERRIDES ci-dessous).
+ROUTES_WITHOUT_NAV_ENTRY = {"rapport", "fichiers", "decision"}
 
 # `fichiers` n'a pas de libellé fixe dans `renderNav` (construit avec le nombre de
 # fichiers hors contrat, `${s.incomplete_files} fichier(s) hors contrat`) — son

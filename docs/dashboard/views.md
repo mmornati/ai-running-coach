@@ -553,6 +553,48 @@ L'année en carte de chaleur — plus la case est foncée, plus la durée d'effo
 est longue — et la **distance cumulée**, comparée d'une année à l'autre. Les boutons
 d'année remontent l'historique.
 
+## Décisions
+
+**Pourquoi cette séance a-t-elle changé ?**
+
+Le principal reproche fait aux coachs IA commerciaux : on ne sait jamais vraiment
+*pourquoi* le plan a bougé. Le coach écrit ici une trace à chaque ajustement — bilan
+matinal qui allège une séance, garde-fou qui la bloque, blessure, changement de météo
+ou de plan de course, demande de l'athlète — jamais pour une séance qui se déroule
+comme prévu (voir [le contrat de données](../skills/workspace-data-contract.md#les-types-de-fichiers)
+et [les garde-fous](../guardrails.md)).
+
+Une liste chronologique (la plus récente d'abord), filtrable par **déclencheur** et par
+**résultat**, et par période (1 mois / 3 mois / 1 an / tout) ; les trois filtres se
+combinent et se retrouvent dans l'adresse de la page
+(`#/decisions?declencheur=guardrail&resultat=proposed`), donc se partagent ou se mettent
+en favori. Chaque ligne ouvre le détail de la décision :
+
+- l'état **avant / après** de ce qui a changé (durée, intensité, statut… seuls les
+  champs qui bougent, jamais la séance entière) ;
+- les **données** qui l'ont justifiée (`inputs`, ex. `hrv_personal_status`, `acwr_projected`) ;
+- la ou les **règles de garde-fou** concernées, avec un lien vers leur description ;
+- les **sources** citées — un lien direct vers la vue du tableau de bord concernée
+  (Santé, Semaine, une séance, un rapport…) quand c'est possible, un simple texte sinon
+  (jamais un fichier arbitraire n'est servi) ;
+- pour une décision remplacée par une réévaluation plus récente (`supersedes`) : un lien
+  vers l'ancienne décision, et réciproquement vers la nouvelle.
+
+Une décision **proposée** (`outcome: "proposed"`) porte la mention « en attente de ta
+confirmation » : rien n'a encore été réécrit dans le plan ni poussé au calendrier Garmin.
+
+| Alimentée par | Écrit par |
+|---|---|
+| `planning/<date>_decision_<slug>.md` | le coach (garde-fous, bilan matinal, météo, plan de course), le médical (blessure, disponibilité) |
+
+**Si c'est vide** — « Aucune décision sur cette période » : le coach n'a rien eu à
+ajuster sur la fenêtre choisie, élargissez-la ou retirez les filtres.
+
+L'encart **« Pourquoi aujourd'hui ? »** de la vue [Aujourd'hui](#aujourdhui) reprend la
+dernière décision ACTIVE datée d'aujourd'hui (à défaut, la plus récente des deux derniers
+jours, étiquetée avec sa propre date) : résumé en une phrase, déclencheur, données clés,
+règle(s), sources, résultat — et un lien vers ce journal complet.
+
 ## Rapports
 
 **Qu'est-ce que le coach en a conclu ?**
