@@ -289,7 +289,7 @@ sauté porte un `reason_code` explicite.
     professionnel dans ce cas — voir « Câblage agent » ci-dessous.
 
 Seuils réglables via `[injury_risk]` — voir
-[Configuration](configuration.md#le-drapeau-de-risque-de-blessure-injury-risk).
+[Configuration](configuration.md#le-drapeau-de-risque-de-blessure).
 
 ### Sortie JSON
 

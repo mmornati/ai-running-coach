@@ -183,7 +183,7 @@ les sources et le format de sortie.
     pied. Remettez `severity_r1_acwr_projected` à `"block"` si vous préférez la
     fermeté.
 
-## Le drapeau de risque de blessure — `[injury_risk]`
+## Le drapeau de risque de blessure
 
 ```toml
 [injury_risk]
@@ -197,7 +197,7 @@ mismatch_ratio_max = 1.3
 sleep_debt_alert_s = 36000               # 10 h, en secondes
 ```
 
-Drapeau composite ([#57](https://github.com/mmornati/ai-running-coach/issues/57),
+Section `[injury_risk]`. Drapeau composite ([#57](https://github.com/mmornati/ai-running-coach/issues/57),
 [`scripts/arc_guardrails.py injury-risk`](guardrails.md#drapeau-composite-de-risque-de-blessure-57))
 qui combine ACWR/monotonie réels, douleur déclarée, écart effort perçu/charge
 FC, dette de sommeil et verdict rouge récent en un niveau à 3 paliers
