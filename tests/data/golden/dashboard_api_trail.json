@@ -785,6 +785,9 @@
           "arc_version": 1,
           "avg_cadence_spm": 168.0,
           "avg_hr_bpm": 141.0,
+          "best_climb_vam_elapsed_m_h": null,
+          "best_vam_10min_m_h": null,
+          "best_vam_20min_m_h": null,
           "calories_kcal": 680.0,
           "carbs_g": null,
           "date": "2026-09-23",
@@ -820,6 +823,11 @@
           "weight_pre_kg": null
         },
         "body_html": "<h2>Séance du 2026-09-23 — Endurance fondamentale</h2>\n<h3>Analyse du coach</h3>\n<p>Séance <strong>endurance fondamentale</strong> conforme. FC moyenne 141 bpm, HRR 31.</p>\n<ul><li>Allure régulière sur le plat</li><li>Montées gérées en marche rapide</li></ul>",
+        "climbs": {
+          "climbs": [],
+          "reason": null,
+          "vam_by_grade_class": {}
+        },
         "hr_zones": {
           "bounds_bpm": [
             0.0,
@@ -5566,6 +5574,16 @@
           "trail_equivalence": "Trail : équivalence plat (prédictions) = distance + D+ × 1.75 (config/sports/trail.md : 1000 m D+ ≈ 1,5 à 2 km plat). Sert uniquement aux prédictions VDOT/Riegel ; à ne pas confondre avec le « km-effort ITRA » (`effort_km`, D+/100) affiché dans le volume hebdomadaire.",
           "trimp": "TRIMP de Banister : minutes × FCr × 0,64 × e^(k·FCr), FCr = (FC moy − FC repos) / (FC max − FC repos), k = 1,92 (homme) / 1,67 (femme).",
           "trimp_sex_default": "Sexe non renseigné dans le profil : k = 1,92 appliqué par défaut.",
+          "vam_best_window": "Comme une courbe de puissance en cyclisme (meilleure puissance moyenne sur des durées fixes), `best_vam_windows` cherche le plus grand gain net d'altitude sur une fenêtre d'AU MOINS 10 puis 20 minutes (approximativement — voir plus bas), glissée uniquement À L'INTÉRIEUR d'une montée détectée (jamais à travers une descente ou un plat entre deux montées, qui gonflerait artificiellement le gain sur la durée). Une montée plus courte que la fenêtre ne contribue à aucun des deux best (`None` si aucune montée de l'activité n'atteint la durée). Approximation liée à la résolution des échantillons (5 s par défaut) : le point de fin de fenêtre est le premier point dont l'écart au départ ATTEINT la durée demandée, jamais strictement plus court — la fenêtre réellement mesurée peut donc dépasser légèrement la durée nominale (jamais lui être inférieure), et la VAM est divisée par cette durée RÉELLEMENT mesurée (jamais par la durée nominale demandée), pour ne jamais surestimer le résultat d'un écart de résolution.",
+          "vam_detection": "Une montée est détectée sur l'altitude LISSÉE (moyenne glissante 3 points, même lissage que le GAP/#44) simplifiée en zigzag à hystérésis (creux/sommets séparés d'au moins 5 m, pour ignorer le bruit résiduel post-lissage — voir ASSUMPTIONS[\"zigzag\"]), rognée à son véritable début/fin (voir ASSUMPTIONS[\"trim\"]), puis retenue seulement si son gain net atteint 50 m ET sa pente moyenne (gain / distance) atteint 5 % — les DEUX critères, jamais un seul (un faux plat de 200 m de D+ sur 10 km ne doit pas compter comme une montée trail, et un mur de 20 m à 30 % non plus si le critère de D+ minimal existe pour écarter le bruit très local). Valeurs rondes documentées, pas calibrées sur un jeu de séances étiquetées trail/montagne — un réglage futur resterait localisé à ces deux constantes. Configurables par le workspace, voir `[metrics].climb_min_gain_m`/`climb_min_grade_pct` dans `config/workspace.toml`.",
+          "vam_gap_segmentation": "Une montée n'est JAMAIS détectée ni fusionnée à travers un trou de signal (montre en veille, perte GPS/altimètre — 30 s, même segmentation que le GAP/#44, `arc_elevation.segments_by_gap`) : deux morceaux de montée de part et d'autre d'une pause totale du capteur ne sont jamais recollés, même s'ils appartiennent visuellement à la même vraie montée — mieux vaut deux montées détectées séparément qu'une VAM faussée par un temps écoulé qui inclurait une pause dont la durée réelle est inconnue. Conséquence assumée : une montée coupée en deux par un trou de signal peut voir chacune de ses deux moitiés ÉCHOUER individuellement le filtre de D+/pente minimal (ASSUMPTIONS[\"detection\"]) alors que la montée entière, reconstituée, l'aurait franchi — deux montées manquées valent mieux qu'une VAM silencieusement faussée par une pause de durée inconnue.",
+          "vam_grade_classes": "Classes de pente moyenne (par montée) : <5%, 5-10%, 10-15%, 15-20%, >20% — la borne basse de la première classe non triviale (5-10%) coïncide avec `MIN_CLIMB_AVG_GRADE`, donc une montée tout juste détectée n'est jamais classée « <5 % » (ce libellé ne peut apparaître que si le seuil de détection est abaissé manuellement). Classement par montée, jamais par échantillon isolé : une montée fusionnée avec un replat interne garde une seule classe, celle de sa pente moyenne globale. La pente est ARRONDIE (0,1 point de pourcentage, la même précision que l'affichage) avant classement — une valeur brute juste sous une borne (ex. 9,98 %) qui s'affiche arrondie à « 10,0 % » doit tomber dans la classe « 10-15 % », pas dans « 5-10 % », pour ne jamais afficher un pourcentage et une classe visuellement incohérents. Classes en valeur absolue, symétriques : #47 (descente) pourra les réutiliser telles quelles pour ses propres classes de pente descendante si besoin — aucune classe dédiée à la descente n'est définie ici, ce choix reviendra à #47.",
+          "vam_merge": "Deux montées (déjà rognées, voir ASSUMPTIONS[\"trim\"]) consécutives séparées par un creux (replat, faux plat, courte descente) sont fusionnées en une seule si CE creux perd moins que le seuil applicable — le plus GRAND de 10 m (plancher absolu) et 12.5 % du plus petit des deux gains adjacents (`MERGE_DIP_RELATIVE_FRAC`) — sur moins de 200 m de distance horizontale (plancher ABSOLU — voir plus bas pour la marge de bruit qui s'y ajoute) : même un creux minuscule sur un long plateau de plusieurs centaines de mètres n'est jamais une simple respiration au milieu d'une montée continue. Le plancher de PERTE purement absolu (revue de code #46) coupait à tort une grosse montée alpine en plusieurs tronçons dès qu'un creux de 15 m interrompait ses 800 m de D+ — anecdotique à cette échelle, mais dépassant le plancher fixe de 10 m ; le seuil relatif corrige ce cas sans changer le comportement sur une montée trail modeste (où le plancher absolu reste généralement le plus grand des deux). Sans fusion, une montée réelle avec un replat au milieu (très courant en trail : plateau avant un dernier raidillon) serait artificiellement coupée en plusieurs montées plus courtes, chacune sous-estimant le vrai effort ascensionnel continu perçu par le coureur.\n\nMARGE DE BRUIT sur le seuil de DISTANCE (200 m, `_merge_climbs`, `noise_tol_m`) — revue de code #46, 3e passe, should-fix 1, corrigeant une régression introduite par le rognage adaptatif au bruit (ASSUMPTIONS[\"trim\"]) : un rognage plus large (bruit plus fort) déplace aussi le bord de CHAQUE montée d'environ `noise_tol_m` en altitude, donc d'environ `noise_tol_m / pente` en distance — deux bords, d'où une marge de `2 × noise_tol_m / pente_la_plus_faible_des_deux_montées`, plafonnée à 50 % de `MERGE_MAX_DIP_DIST_M` pour qu'une montée à pente proche du seuil minimal (`MIN_CLIMB_AVG_GRADE`) ne fasse pas diverger la marge. Sans cette correction, la distance de creux MESURÉE entre deux montées était élargie par le rognage adaptatif lui-même : mesuré sur un scénario de test dédié (montée alpine à deux creux de 15 m), 17 tirages sur 20 à σ ≈ 2 m de bruit scindaient À TORT la montée en 2 ou 3, contre un comportement stable (toujours fusionnée) avec la marge — #49 (progression sur une même montée) a besoin d'une identification de montée stable d'une exécution à l'autre pour la même séance.",
+          "vam_model": "VAM (Vitesse Ascensionnelle Moyenne) = gain d'altitude (m) / durée (h), sur une montée détectée. Terminologie d'origine cycliste, souvent associée informellement au préparateur Michele Ferrari dans la culture du cyclisme — AUCUNE publication vérifiable identifiée pour cette attribution précise, mentionnée uniquement comme repère historique, jamais comme une source citée. Le calcul lui-même (une division) n'est pas un modèle propriétaire : rien à approximer ni à reproduire, à la différence du GAP (arc_gap.py, Minetti et al. 2002).",
+          "vam_restricted_to_run_family": "Calculé UNIQUEMENT pour les séances de la famille course à pied (arc_metrics.sport_family == \"run\" : course, trail, randonnée, marche) avec des échantillons FIT ingérés — la randonnée et la marche (power-hiking) y ont toute leur place : la VAM en montée est un indicateur trail/montagne classique aussi bien en courant qu'en marchant vite.",
+          "vam_trim": "BLOQUANT (revue de code #46) : un extremum du zigzag peut se retrouver TRÈS loin de la vraie montée quand une longue approche plate (ou un long replat de sortie) ne crée elle-même aucun extremum — ex. 3 km plats + 100 m de montée + 3 km plats : le « creux » retenu par le zigzag reste au tout début des 3 km plats (rien n'y dépasse le seuil de bruit), ce qui dilue artificiellement la distance et donc la pente moyenne calculée (montée non détectée du tout, ou VAM faussée). `_trim_rise` corrige cela EN ROGNANT chaque montée brute AVANT toute fusion : sur l'intervalle du zigzag brut, le début est déplacé au DERNIER point encore à `tol` du minimum de l'intervalle, et la fin au PREMIER point déjà à `tol` du maximum — ce qui élimine toute approche plate en amont et tout replat en aval, sans dépendre de la position réelle de l'extremum détecté par le zigzag. `tol` est un PLANCHER (2 m, `TRIM_TOLERANCE_M`), volontairement plus petit que `SWING_NOISE_FLOOR_M` (sert à coller au plus près du vrai bas/haut de la montée, pas à filtrer du bruit d'extrema, rôle déjà tenu par le zigzag) — MAIS élargi au bruit réellement mesuré (`max(TRIM_TOLERANCE_M, 3 × sigma_bruit)`, `_robust_noise_sigma`, estimateur MAD sur la dérivée seconde de l'altitude déjà lissée) si besoin (revue de code #46, 2e passe, should-fix 2) : un plancher fixe de 2 m rognerait BIEN TROP sur un signal plus bruité que le cas nominal (mesuré : jusqu'à 1 350 m de vraie montée perdus et -20 % de VAM à σ ≈ 2 m après lissage) — le seuil s'adapte donc au bruit réel de CHAQUE segment plutôt que de supposer un bruit nominal universel. Rogner AVANT la fusion (jamais après) est essentiel : c'est ce qui permet à `MERGE_MAX_DIP_DIST_M` de mesurer la VRAIE distance du replat entre deux montées plutôt qu'une distance gonflée par des bouts de plat encore attachés aux deux montées.\n\nSECONDE LIMITE, également BLOQUANTE et corrigée en 2e passe de revue : un plateau interne SANS aucune vraie retombée d'altitude ≥ `SWING_NOISE_FLOOR_M` (ex. un plateau parfaitement plat, ou un faux plat de seulement quelques mètres sur plusieurs kilomètres) ne crée JAMAIS d'extremum au zigzag — deux montées séparées par un tel plateau restaient donc, avant cette correction, une SEULE montée brute continue, même sur un plateau de plusieurs kilomètres (le rognage seul coupe les DEUX EXTRÉMITÉS d'une montée brute, jamais un plateau interne). `_split_flat_plateaus` corrige ce cas, sur la montée DÉJÀ ROGNÉE à ses extrémités : tout intervalle interne dont la PENTE MOYENNE (pas la simple variation absolue d'altitude — voir plus bas pourquoi) reste sous `PLATEAU_SPLIT_MAX_GRADE` (2 %) sur AU MOINS `MERGE_MAX_DIP_DIST_M` (200 m) de distance horizontale est retiré, coupant la montée en plusieurs morceaux — un tel plateau ne pourrait de toute façon jamais être fusionné ensuite (son étendue dépasse justement le seuil de fusion par distance). Un critère de PENTE (et non de variation absolue bornée par `TRIM_TOLERANCE_M`, comme le rognage lui-même) est nécessaire ici : un plateau de 2 km avec 3-4 m de faux plat dépasse la tolérance de rognage (2 m par défaut) mais reste à une pente dérisoire (0,15-0,2 %) — un critère absolu aurait soit raté ce cas, soit (avec un seuil plus généreux) redoublé le rognage déjà appliqué et rogné excessivement une vraie montée sans aucun plateau (bug corrigé lors de cette même revue : appliquer le rognage une SECONDE fois sur un segment déjà rogné, avec le même seuil, double-rogne d'environ `TRIM_TOLERANCE_M` de chaque côté). Ordre d'exécution donc IMPORTANT : rognage des extrémités D'ABORD, découpage des plateaux internes ENSUITE sur le résultat déjà rogné, puis un second rognage UNIQUEMENT sur les nouveaux morceaux effectivement produits par un découpage (jamais sur une montée que le découpage aurait laissée intacte, déjà rognée à l'étape précédente).\n\nMARGE DE BORD, documentée honnêtement : une fenêtre de découpage de longueur `MERGE_MAX_DIP_DIST_M` peut englober jusqu'à `PLATEAU_SPLIT_MAX_GRADE × MERGE_MAX_DIP_DIST_M / pente_réelle_de_la_montée` de VRAIE montée à son bord côté plateau (ex. à 10 % de pente réelle, jusqu'à 40 m de distance / 4 m de D+) avant que la fenêtre ne dépasse le seuil de pente et cesse d'être jugée « plate » — le D+ d'une montée immédiatement adjacente à un plateau découpé peut donc être conservativement sous-estimé de quelques mètres. La VAM, elle, reste exacte sur une pente constante (le rognage/découpage affecte gain ET distance dans la même proportion), donc bien plus fiable que le D+ absolu dans ce cas précis.\n\nLIMITES CONNUES SUPPLÉMENTAIRES, documentées honnêtement (revue de code #46, 3e passe, should-fix 2) : un tronçon dont la pente RÉELLE est très proche de `PLATEAU_SPLIT_MAX_GRADE` peut basculer d'un côté ou de l'autre du seuil selon le bruit du tirage — coupé (traité comme un plateau) sur une exécution, fusionné dans la montée sur une autre, sans que rien de mal ne se passe dans les deux cas (les deux comportements restent défendables pour un tronçon à la limite de ce qui compte comme « plat »), mais le résultat exact n'est pas garanti reproductible à 100 % d'une séance par ailleurs identique à l'autre en présence de bruit. De même, à un bruit important (σ ≥ 2 m environ après lissage), le début mesuré d'une montée peut occasionnellement glisser de quelques dizaines de mètres sur une approche plate malgré le rognage adaptatif (`TRIM_TOLERANCE_NOISE_K × sigma_bruit`) : la marge s'adapte à l'écart-type mesuré, pas à chaque tirage individuel, donc un tirage particulièrement défavorable peut ponctuellement dépasser la marge type. Aucun des deux cas n'a été observé produire un résultat GROSSIÈREMENT faux (montée manquée, fusion à tort) dans les tests de cette histoire ; seule la précision fine des bornes peut varier.",
+          "vam_vam_basis": "DEUX VAM sont calculées et exposées pour chaque montée, jamais une seule : `vam_elapsed_m_h` (gain / durée ÉCOULÉE de la montée, arrêts compris — la définition usuelle, la plus simple à interpréter) et `vam_moving_m_h` (gain / durée de MOUVEMENT seulement, échantillons sous `arc_gap.STOPPED_SPEED_MS` exclus — insensible à une pause). Un long arrêt au milieu d'une montée (ravitaillement, photo) écrase `vam_elapsed_m_h` sans changer `vam_moving_m_h` : recommandation du projet — `vam_elapsed_m_h` reste la valeur mise en avant par défaut (c'est la question spontanée de l'athlète), `vam_moving_m_h` sert à comprendre un écart inattendu entre deux montées sinon comparables, jamais l'inverse (l'effort perçu du coureur inclut ses propres pauses, contrairement à un chronométrage de segment qui les exclurait).",
+          "vam_zigzag": "La simplification en zigzag suit l'algorithme standard « extremum courant confirmé » (pas une élimination a posteriori de petits segments) : un candidat (le point le plus haut/bas vu depuis le dernier extremum CONFIRMÉ) n'est confirmé comme extremum, et un nouveau candidat de sens opposé démarré, que lorsque le signal retrace d'au moins 5 m depuis ce candidat. Une PREMIÈRE VERSION de #46 (revue de code, BLOQUANT) éliminait après coup les petits segments d'un passage en revue des extrema locaux bruts, en reconsidérant à chaque suppression les swings des segments restants CONTRE des voisins différents de ceux d'origine — un vrai sommet intermédiaire pouvait alors être supprimé à tort (exemple qui casse cette version : altitudes [0, 100, 98, 103, 60] avec un seuil de 5 m rend [0, 1, 4] au lieu de [0, 1, 3, 4] — le sommet réel à 103 disparaît). L'algorithme courant ne présente pas ce défaut : chaque extremum confirmé l'est par une seule comparaison locale (retracement depuis le candidat courant), jamais reconsidéré ensuite.",
           "vo2max": "VO2max effective : VO2 de l'allure (Daniels) ÷ fraction de VO2max estimée par (FC moy / FC max − 0,37) / 0,64. Calculée depuis l'allure et la FC MOYENNES de la séance (pas de série seconde par seconde) : ordre de grandeur, pas une mesure. Séances de course de 20 min à 3 h seulement, FC moy ≥ 70 % de la FC max, allure effort ≤ 8:30/km ; tendance 30 j pondérée par la durée, plafonnée à 90 min par séance.",
           "weight_merge": "Fusion des deux sources de poids (#36) : le contrat n'a pas de champ d'heure de mesure dédié, mais `health.weight_kg` est renseigné pendant le bilan matinal (`morning_check`) — traité comme la pesée du matin — tandis que `nutrition.weight_kg` n'a aucune garantie d'horaire. Un jour où les deux sont présents : `health` gagne TOUJOURS, jamais de moyenne des deux sources ni de préférence à la plus récemment écrite. Un jour sans aucune des deux : absent, jamais 0. Doublon DANS une même source (deux fichiers santé, ou deux fichiers nutrition, pour la même date — pas d'heure de mesure pour départager) : le `source_path` le plus grand par ordre alphabétique gagne, appliqué en base par `arc_serve.py` (`ORDER BY date, source_path` avant fusion ; `ORDER BY date DESC, source_path DESC` pour la cible la plus récente) — jamais l'ordre arbitraire que rendrait SQLite sans tri explicite.",
           "weight_trend": "Moyenne mobile 7 j du poids fusionné (`weight_merge`) : moyenne des jours PRÉSENTS dans la fenêtre (jour manquant jamais compté 0), rendue seulement à partir de 3 jours pesés sur les 7, sinon `None`. `avg7_kg`/`gap_kg` exposés par `/api/nutrition` sont TOUJOURS la valeur DU JOUR (aujourd'hui), jamais la dernière moyenne non nulle trouvée plus tôt dans la fenêtre affichée — une pesée vieille de plusieurs semaines ne doit jamais s'afficher comme si elle datait d'aujourd'hui ; `avg7_date` porte la date effectivement utilisée. Écart à la cible = moyenne 7 j du jour − `target_weight_kg` le plus récent connu (nutrition uniquement dans le contrat) ; positif = au-dessus de la cible. Pente 4 semaines : régression des moindres carrés (x = jour, y = poids fusionné, PAS la moyenne lissée) sur les 28 derniers jours, convertie en kg/semaine (× 7) ; rendue seulement à partir de 5 jours pesés ET 14 jours d'écart entre la première et la dernière pesée de la fenêtre (sinon `None`) — sans ce second seuil, quelques pesées groupées sur deux ou trois jours donneraient une pente extrapolée sur 4 semaines à partir d'un intervalle bien trop court pour être fiable. Aucun commentaire normatif n'est dérivé de ces chiffres : chiffres seulement (voir issue #36)."
@@ -5787,6 +5805,8 @@
             "nutritionist",
             "course-strategist"
           ],
+          "climb_min_gain_m": 50.0,
+          "climb_min_grade": 0.05,
           "heat_threshold_c": 25.0,
           "hr_zones": "auto",
           "language": "fr",
@@ -5801,6 +5821,203 @@
           "sleep_need_s": 27000
         },
         "today": "2026-09-23"
+      },
+      "status": 200
+    },
+    "/api/vam": {
+      "body": {
+        "activities_n": 23,
+        "avg_best_climb_vam_elapsed_m_h": null,
+        "best_vam_10min_m_h": null,
+        "best_vam_20min_m_h": null,
+        "points": [
+          {
+            "best_climb_vam_elapsed_m_h": null,
+            "date": "2026-08-15",
+            "name": "Sortie longue",
+            "sport": "trail",
+            "vam_best_10min_m_h": null,
+            "vam_best_20min_m_h": null
+          },
+          {
+            "best_climb_vam_elapsed_m_h": null,
+            "date": "2026-08-16",
+            "name": "Endurance fondamentale",
+            "sport": "trail",
+            "vam_best_10min_m_h": null,
+            "vam_best_20min_m_h": null
+          },
+          {
+            "best_climb_vam_elapsed_m_h": null,
+            "date": "2026-08-18",
+            "name": "Côtes 8 × 90 s",
+            "sport": "running",
+            "vam_best_10min_m_h": null,
+            "vam_best_20min_m_h": null
+          },
+          {
+            "best_climb_vam_elapsed_m_h": null,
+            "date": "2026-08-19",
+            "name": "Endurance fondamentale",
+            "sport": "trail",
+            "vam_best_10min_m_h": null,
+            "vam_best_20min_m_h": null
+          },
+          {
+            "best_climb_vam_elapsed_m_h": null,
+            "date": "2026-08-22",
+            "name": "Sortie longue",
+            "sport": "trail",
+            "vam_best_10min_m_h": null,
+            "vam_best_20min_m_h": null
+          },
+          {
+            "best_climb_vam_elapsed_m_h": null,
+            "date": "2026-08-23",
+            "name": "Endurance fondamentale",
+            "sport": "trail",
+            "vam_best_10min_m_h": null,
+            "vam_best_20min_m_h": null
+          },
+          {
+            "best_climb_vam_elapsed_m_h": null,
+            "date": "2026-08-25",
+            "name": "Côtes 8 × 90 s",
+            "sport": "running",
+            "vam_best_10min_m_h": null,
+            "vam_best_20min_m_h": null
+          },
+          {
+            "best_climb_vam_elapsed_m_h": null,
+            "date": "2026-08-26",
+            "name": "Endurance fondamentale",
+            "sport": "trail",
+            "vam_best_10min_m_h": null,
+            "vam_best_20min_m_h": null
+          },
+          {
+            "best_climb_vam_elapsed_m_h": null,
+            "date": "2026-08-29",
+            "name": "Sortie longue",
+            "sport": "trail",
+            "vam_best_10min_m_h": null,
+            "vam_best_20min_m_h": null
+          },
+          {
+            "best_climb_vam_elapsed_m_h": null,
+            "date": "2026-08-30",
+            "name": "Endurance fondamentale",
+            "sport": "trail",
+            "vam_best_10min_m_h": null,
+            "vam_best_20min_m_h": null
+          },
+          {
+            "best_climb_vam_elapsed_m_h": null,
+            "date": "2026-09-01",
+            "name": "Côtes 8 × 90 s",
+            "sport": "running",
+            "vam_best_10min_m_h": null,
+            "vam_best_20min_m_h": null
+          },
+          {
+            "best_climb_vam_elapsed_m_h": null,
+            "date": "2026-09-02",
+            "name": "Endurance fondamentale",
+            "sport": "trail",
+            "vam_best_10min_m_h": null,
+            "vam_best_20min_m_h": null
+          },
+          {
+            "best_climb_vam_elapsed_m_h": null,
+            "date": "2026-09-05",
+            "name": "Sortie longue",
+            "sport": "trail",
+            "vam_best_10min_m_h": null,
+            "vam_best_20min_m_h": null
+          },
+          {
+            "best_climb_vam_elapsed_m_h": null,
+            "date": "2026-09-08",
+            "name": "Côtes 8 × 90 s",
+            "sport": "running",
+            "vam_best_10min_m_h": null,
+            "vam_best_20min_m_h": null
+          },
+          {
+            "best_climb_vam_elapsed_m_h": null,
+            "date": "2026-09-09",
+            "name": "Endurance fondamentale",
+            "sport": "trail",
+            "vam_best_10min_m_h": null,
+            "vam_best_20min_m_h": null
+          },
+          {
+            "best_climb_vam_elapsed_m_h": null,
+            "date": "2026-09-12",
+            "name": "Sortie longue",
+            "sport": "trail",
+            "vam_best_10min_m_h": null,
+            "vam_best_20min_m_h": null
+          },
+          {
+            "best_climb_vam_elapsed_m_h": null,
+            "date": "2026-09-13",
+            "name": "Endurance fondamentale",
+            "sport": "trail",
+            "vam_best_10min_m_h": null,
+            "vam_best_20min_m_h": null
+          },
+          {
+            "best_climb_vam_elapsed_m_h": null,
+            "date": "2026-09-15",
+            "name": "Côtes 8 × 90 s",
+            "sport": "running",
+            "vam_best_10min_m_h": null,
+            "vam_best_20min_m_h": null
+          },
+          {
+            "best_climb_vam_elapsed_m_h": null,
+            "date": "2026-09-16",
+            "name": "Endurance fondamentale",
+            "sport": "trail",
+            "vam_best_10min_m_h": null,
+            "vam_best_20min_m_h": null
+          },
+          {
+            "best_climb_vam_elapsed_m_h": null,
+            "date": "2026-09-19",
+            "name": "Sortie longue",
+            "sport": "trail",
+            "vam_best_10min_m_h": null,
+            "vam_best_20min_m_h": null
+          },
+          {
+            "best_climb_vam_elapsed_m_h": null,
+            "date": "2026-09-20",
+            "name": "Endurance fondamentale",
+            "sport": "trail",
+            "vam_best_10min_m_h": null,
+            "vam_best_20min_m_h": null
+          },
+          {
+            "best_climb_vam_elapsed_m_h": null,
+            "date": "2026-09-22",
+            "name": "Côtes 8 × 90 s",
+            "sport": "running",
+            "vam_best_10min_m_h": null,
+            "vam_best_20min_m_h": null
+          },
+          {
+            "best_climb_vam_elapsed_m_h": null,
+            "date": "2026-09-23",
+            "name": "Endurance fondamentale",
+            "sport": "trail",
+            "vam_best_10min_m_h": null,
+            "vam_best_20min_m_h": null
+          }
+        ],
+        "window_weeks": 12,
+        "with_climb_n": 0
       },
       "status": 200
     },

@@ -57,6 +57,19 @@ def main() -> int:
     if args.repeat is not None:
         os.environ["ARC_EVAL_REPEAT"] = str(args.repeat)
 
+    # `ARC_STRICT_METRICS=1` (revue de code #46, 4e passe) : la défense en
+    # profondeur de `arc_index.compute_metrics` rattrape en PRODUCTION toute
+    # exception inattendue d'un calcul dérivé des échantillons (zones, GAP,
+    # découplage, VAM) pour ne jamais faire échouer toute l'indexation à cause
+    # d'une seule séance — mais un VRAI bug de programmation ne doit jamais
+    # disparaître silencieusement dans un test, sous peine de rester invisible
+    # jusqu'à ce qu'un athlète le remarque sur son propre tableau de bord. Toute
+    # la suite (donc la CI, qui passe uniquement par ce point d'entrée) tourne
+    # donc avec ce garde-fou levé ; le seul test qui exerce délibérément le
+    # chemin de rattrapage (un détecteur monkeypatché pour lever) désactive la
+    # variable explicitement le temps de son propre appel.
+    os.environ["ARC_STRICT_METRICS"] = "1"
+
     sys.path.insert(0, str(REPO_ROOT))
     suite = build_suite(tiers)
 

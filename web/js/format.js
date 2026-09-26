@@ -51,6 +51,15 @@ export function sweatRate(litersPerHour, digits = 2) {
   return `${num(litersPerHour, digits)}${NBSP}l/h`;
 }
 
+// VAM (#46, vitesse ascensionnelle) : m/h en métrique, ft/h en impérial — même
+// conversion que `elevation()` (3,28084), appliquée ici au débit plutôt qu'à
+// une hauteur.
+export function vam(mPerHour, digits = 0) {
+  if (mPerHour === null || mPerHour === undefined) return "—";
+  if (UNITS === "imperial") return `${num(mPerHour * 3.28084, digits)}${NBSP}ft/h`;
+  return `${num(mPerHour, digits)}${NBSP}m/h`;
+}
+
 export function duration(s, { seconds = false } = {}) {
   if (s === null || s === undefined) return "—";
   const total = Math.round(s);

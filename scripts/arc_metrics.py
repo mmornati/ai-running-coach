@@ -1348,6 +1348,61 @@ def decoupling_trend(activities: List[dict], day: date, window_weeks: int = DECO
     }
 
 
+# Fenêtre de la tendance VAM (#46) : 12 semaines glissantes, même largeur que le
+# découplage (#45) — pas de raison connue d'en choisir une différente pour un
+# autre KPI dérivé des mêmes échantillons FIT.
+VAM_TREND_WEEKS = 12
+
+
+def vam_trend(activities: List[dict], day: date, window_weeks: int = VAM_TREND_WEEKS) -> dict:
+    """Tendance de la VAM (#46) sur les `window_weeks` dernières semaines glissantes
+    se terminant à `day` inclus, famille course à pied uniquement (course, trail,
+    randonnée, marche — voir `arc_climb.ASSUMPTIONS["restricted_to_run_family"]").
+    Contrairement à `decoupling_trend`, AUCUN seuil de durée minimale : une montée
+    peut être détectée sur une sortie courte, contrairement au découplage qui exige
+    une séance longue et stable.
+
+    `activities` : dicts portant au moins `date` (AAAA-MM-JJ) et `sport` ;
+    `best_climb_vam_elapsed_m_h`/`best_vam_10min_m_h`/`best_vam_20min_m_h` (déjà
+    dérivés à l'indexation par `arc_climb.climb_report`, JAMAIS recalculés ici)
+    optionnels — une activité sans montée détectée apparaît quand même dans
+    `points` avec ces trois champs à `None`, jamais silencieusement exclue de la
+    liste (seulement des moyennes)."""
+    start = day - timedelta(days=window_weeks * 7 - 1)
+    points = []
+    for act in activities:
+        iso = act.get("date")
+        if not iso or sport_family(act.get("sport")) != "run":
+            continue
+        try:
+            act_date = date.fromisoformat(iso)
+        except ValueError:
+            continue
+        if not (start <= act_date <= day):
+            continue
+        points.append({
+            "date": iso,
+            "sport": act.get("sport"),
+            "name": act.get("name"),
+            "best_climb_vam_elapsed_m_h": act.get("best_climb_vam_elapsed_m_h"),
+            "vam_best_10min_m_h": act.get("best_vam_10min_m_h"),
+            "vam_best_20min_m_h": act.get("best_vam_20min_m_h"),
+        })
+    points.sort(key=lambda p: p["date"])
+    best_climbs = [p["best_climb_vam_elapsed_m_h"] for p in points if p["best_climb_vam_elapsed_m_h"] is not None]
+    best_10 = [p["vam_best_10min_m_h"] for p in points if p["vam_best_10min_m_h"] is not None]
+    best_20 = [p["vam_best_20min_m_h"] for p in points if p["vam_best_20min_m_h"] is not None]
+    return {
+        "points": points,
+        "window_weeks": window_weeks,
+        "activities_n": len(points),
+        "with_climb_n": len(best_climbs),
+        "avg_best_climb_vam_elapsed_m_h": round(statistics.mean(best_climbs), 1) if best_climbs else None,
+        "best_vam_10min_m_h": max(best_10) if best_10 else None,
+        "best_vam_20min_m_h": max(best_20) if best_20 else None,
+    }
+
+
 def gear_mileage(activities: List[dict], gear_defs: List[dict]) -> dict:
     """Kilométrage cumulé par chaussure (#40). Voir `ASSUMPTIONS["gear_mileage"]`
     pour la méthode complète (attribution, chaussure par défaut, `gear_id` inconnu,

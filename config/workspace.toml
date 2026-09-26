@@ -111,6 +111,16 @@ morning_check = "full"
 # Indépendant de `morning_check` (jointure activité/météo, pas du bilan matinal).
 heat_threshold_c = 25.0
 
+[metrics]
+# VAM sur les montées détectées (#46) : gain d'altitude minimal (m) et pente
+# moyenne minimale (points de pourcentage, ex. 5 = 5 %) pour qu'une montée soit
+# détectée — les DEUX critères doivent être atteints. Défauts : 50 m et 5 %.
+# À adapter au terrain habituel (relever `climb_min_gain_m` en plaine
+# vallonnée pour ignorer les faux plats, l'abaisser en montagne pour capter de
+# courts raidillons).
+climb_min_gain_m = 50.0
+climb_min_grade_pct = 5.0
+
 [dashboard]
 # Tableau de bord local (`scripts/dashboard.sh`) : lecture seule, n'écoute que sur
 # 127.0.0.1 — l'adresse n'est volontairement pas configurable. Si le port est pris,
