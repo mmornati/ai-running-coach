@@ -221,8 +221,13 @@ et avant tout `schedule_workouts`/`schedule_week`, jamais après.
   confirmation.
 - **`ok=false`, synchronisation headless (`/garmin-daily-sync`)** : jamais de
   push ni d'écriture de plan, jamais même une proposition « applied » —
-  seulement une `decision` `outcome: "proposed"` et un segment dans la ligne
-  `Alerte :` du `resume` ; voir `skills/garmin-daily-sync/SKILL.md`.
+  seulement une `decision` `outcome: "proposed"`, datée du jour de la séance
+  flaguée (potentiellement DEMAIN, pas forcément le jour du run). Cette
+  décision fait alors passer la 5<sup>e</sup> ligne du `resume` de `Alerte :`
+  à `Pourquoi :` (raison de l'ajustement, #56 — l'étape 5 du skill interroge
+  le journal des décisions pour aujourd'hui ET demain) plutôt que de s'y
+  ajouter, et n'apparaît JAMAIS aussi dans la ligne `Alerte :` — voir
+  `skills/garmin-daily-sync/SKILL.md`.
 - **`ok=true` avec des `warn`/`info`** : écriture/push autorisés, la violation
   est mentionnée brièvement.
 - **Exit 2** : entrée invalide — le coach le signale et ne pousse rien ; ce

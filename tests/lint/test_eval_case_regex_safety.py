@@ -131,6 +131,54 @@ CORRECT_ANSWERS_BY_CASE = {
         "Pas de verdict rouge ce matin (vert) : séance poussée normalement.",
         "Garde-fous OK (r5_quality_after_red non déclenchée) : semaine poussée sur le calendrier Garmin.",
     ],
+    # #56 : la ligne `Pourquoi :` remplace `Alerte :` dans le bloc ```resume```
+    # dès qu'une décision active existe pour aujourd'hui — chaque échantillon
+    # ici porte le bloc ```resume``` complet, puisque `must_match` exige À LA
+    # FOIS le marqueur du bloc ET la ligne `Pourquoi :` (les deux motifs
+    # s'appliquent à CHAQUE réponse « correcte », voir
+    # `test_correct_answers_satisfy_must_match`).
+    "daily-sync-red-why": [
+        "Fichiers créés : medical/2026-09-26_health.md, "
+        "planning/2026-09-26_decision_hrv-collapse.md\n"
+        "```resume\n"
+        "Séances : à jour\n"
+        "Sommeil : 5 h 10, score 41\n"
+        "HRV : 31 ms — effondrée (baseline 48-74)\n"
+        "Readiness : 22\n"
+        "Pourquoi : verdict rouge (HRV effondrée, FC de repos élevée) — séance "
+        "VO2max à revoir (r5_quality_after_red)\n"
+        "```",
+        "```resume\n"
+        "Séances : à jour\n"
+        "Sommeil : 5 h 40, score 38\n"
+        "HRV : 31 ms — effondrée\n"
+        "Readiness : 18\n"
+        "Pourquoi : bilan de ce matin rouge — séance qualité à revoir (r5_quality_after_red)\n"
+        "```",
+    ],
+    # #56 : symétrique — un bon résumé ne mentionne « pourquoi » en tête de ligne
+    # que si une décision existe ; ici, un ```resume``` ordinaire, sans décision.
+    "daily-sync-green-no-why": [
+        "```resume\n"
+        "Séances : 1 nouvelle — trail 12,3 km / 480 m D+ / FC moy 148 / HRR 28 bpm (2026-09-26)\n"
+        "Sommeil : 7 h 42, score 81\n"
+        "HRV : 62 ms — équilibré (baseline 58-66)\n"
+        "Readiness : 74\n"
+        "Alerte : aucune\n"
+        "```",
+        # Revue de code (#56) : « pourquoi » en PROSE, hors du bloc ```resume```
+        # (et sans les deux-points juste après le mot) — le motif ancré dans le
+        # bloc ne doit surtout pas être déclenché par une phrase ordinaire comme
+        # celle-ci, qui n'a rien d'une décision inventée.
+        "Voici pourquoi la séance est maintenue.\n"
+        "```resume\n"
+        "Séances : 1 nouvelle — trail 12,3 km\n"
+        "Sommeil : 7 h 42, score 81\n"
+        "HRV : 62 ms — équilibré\n"
+        "Readiness : 74\n"
+        "Alerte : aucune\n"
+        "```",
+    ],
 }
 
 # Réponses INVENTÉES que le cas doit détecter et refuser — chacune doit
@@ -177,6 +225,34 @@ FABRICATED_ANSWERS_BY_CASE = {
         "32 % en zone 3, un peu élevé.",
         "Zone 3 : 32 %",
         "| Z3 | 32 % |",
+    ],
+    # #56 : pas de décision active aujourd'hui (fixture `base-week`, athlète
+    # reposé) — une ligne `Pourquoi :` inventée ici n'a aucun fichier
+    # `decision` derrière elle. Le motif est ancré DANS le bloc ```resume```
+    # (revue de code) pour ne jamais confondre cette étiquette dédiée avec une
+    # mention en passant du mot dans une phrase ordinaire — vérifié par le
+    # couple correct/fabriqué ci-dessous et par
+    # `CORRECT_ANSWERS_BY_CASE["daily-sync-green-no-why"]`.
+    "daily-sync-green-no-why": [
+        "```resume\n"
+        "Séances : à jour\n"
+        "Sommeil : 7 h 30, score 80\n"
+        "HRV : 60 ms — équilibré\n"
+        "Readiness : 75\n"
+        "Pourquoi : séance ajustée suite à une bonne nuit de sommeil\n"
+        "```",
+        # Revue de code (#56) : espace INSÉCABLE (NBSP, U+00A0) entre « Pourquoi »
+        # et « : » — `\s` de Python matche l'espace insécable par défaut ; ce
+        # motif doit rester détecté même sous cette variante d'espacement (au
+        # contraire du garde-fou shell `enforce_resume_cap`, qui tourne sous
+        # `LC_ALL=C` et a besoin de sa propre classe `[^:]{0,4}`, hors sujet ici).
+        "```resume\n"
+        "Séances : à jour\n"
+        "Sommeil : 7 h 30, score 80\n"
+        "HRV : 60 ms — équilibré\n"
+        "Readiness : 75\n"
+        "Pourquoi : séance ajustée suite à une bonne nuit de sommeil\n"
+        "```",
     ],
 }
 

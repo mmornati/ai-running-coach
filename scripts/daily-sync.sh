@@ -88,6 +88,56 @@ extract_resume() {
         END { printf "%s", last }'
 }
 
+# Garde-fou déterministe (#56) : skills/garmin-daily-sync/SKILL.md promet un
+# bloc ```resume de 5 lignes maximum, mais rien ne garantit qu'un run
+# (agent capricieux, sortie tronquée) le respecte réellement — ce script ne
+# doit jamais relayer une notification à rallonge sans y toucher. Tronque au
+# besoin, en PRÉSERVANT en priorité la ligne « Pourquoi : » (raison de
+# l'ajustement, #56) : elle est retirée des lignes gardées dans l'ordre puis
+# rajoutée en dernière position plutôt que d'être perdue si le dépassement
+# l'avait fait tomber au-delà des 5 premières. Sans ligne « Pourquoi : », se
+# contente de garder les 5 premières lignes tel quel. Un bloc déjà conforme
+# (<= 5 lignes) ressort inchangé — ce n'est qu'un filet de sécurité, pas le
+# mécanisme normal (voir le SKILL.md : la ligne « Pourquoi : » y remplace
+# `Alerte :` plutôt que de s'y ajouter, précisément pour ne jamais dépasser 5
+# lignes en fonctionnement normal).
+enforce_resume_cap() {
+    local resume="$1" max=5
+    local -a lines=()
+    local line
+    while IFS= read -r line; do
+        line="${line%$'\r'}"   # CRLF éventuel (sortie d'un runner Windows) avant le test de vide
+        [[ -n "$line" ]] && lines+=("$line")
+    done <<< "$resume"
+    if (( ${#lines[@]} <= max )); then
+        printf '%s\n' "$resume"
+        return 0
+    fi
+    local why="" idx
+    local -a rest=()
+    for idx in "${!lines[@]}"; do
+        # `[^:]{0,4}` plutôt que `[[:space:]]*` : sous `LC_ALL=C` (imposé par ce
+        # script), la classe POSIX `[[:space:]]` ne reconnaît que les espaces
+        # ASCII — une espace insécable (NBSP, U+00A0, 2 octets en UTF-8) entre
+        # « Pourquoi » et « : » ne matcherait pas et ferait perdre la ligne au
+        # lieu de la préserver. `[^:]{0,4}` accepte NBSP et tout espacement
+        # raisonnable sans dépendre de la locale.
+        if [[ -z "$why" && "${lines[$idx]}" =~ ^Pourquoi[^:]{0,4}: ]]; then
+            why="${lines[$idx]}"
+        else
+            rest+=("${lines[$idx]}")
+        fi
+    done
+    local budget="$max"
+    [[ -n "$why" ]] && budget=$((max - 1))
+    local -a kept=()
+    for ((idx = 0; idx < ${#rest[@]} && idx < budget; idx++)); do
+        kept+=("${rest[$idx]}")
+    done
+    [[ -n "$why" ]] && kept+=("$why")
+    printf '%s\n' "${kept[@]}"
+}
+
 # Identité des commits et des rebase faits par la machine coach : cron n'a souvent
 # aucune configuration git globale, et un rebase sans identité échoue.
 GIT_ID=(-c user.name="${GIT_AUTHOR_NAME:-ai-running-coach}" -c user.email="${GIT_AUTHOR_EMAIL:-coach@localhost}")
@@ -406,6 +456,7 @@ main() {
         warn "Aucun bloc \`\`\`resume trouvé — envoi des 5 dernières lignes de la sortie."
         resume="$(printf '%s\n' "$output" | tail -n 5)"
     fi
+    resume="$(enforce_resume_cap "$resume")"
     ok "Résumé :"
     printf '%s\n' "$resume"
 
@@ -420,6 +471,15 @@ main() {
         title="⚠️ Sync Garmin"; priority=4; tags="warning"
     elif printf '%s' "$resume" | grep -qi '^À jour'; then
         title="Sync Garmin — à jour"; priority=2; tags="running"
+    fi
+    # Une ligne « Pourquoi : » (#56) signale un ajustement (garde-fou r5…) : la
+    # notification mérite plus d'attention qu'une sync ordinaire, MÊME si elle
+    # part par ailleurs sur un « À jour » (priorité 2 par défaut) — mais ne
+    # descend jamais une priorité déjà plus grave (401, ERREUR, à 4 ou 5).
+    # Motif accordé avec `enforce_resume_cap` (NBSP-safe sous `LC_ALL=C`).
+    if printf '%s' "$resume" | grep -qE '^Pourquoi[^:]{0,4}:' && [[ "$priority" -lt 4 ]]; then
+        priority=4
+        tags="running,warning"
     fi
     # Index du tableau de bord : dérivé, jetable, et ignoré par git (.arc/ s'ignore
     # lui-même). Un tableau de bord ouvert voit ainsi la synchronisation sans attendre.
