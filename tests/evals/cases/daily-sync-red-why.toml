@@ -1,0 +1,58 @@
+# #56 — la raison de l'ajustement dans le bloc ```resume```. Historique santé
+# stable (48-50 bpm, HRV équilibrée 59-64 ms) sur les 7 derniers jours, puis
+# HRV effondrée (stub `hrv-collapsed.json`, #26) ET FC de repos nettement
+# élevée (stub `rhr-elevated.json`, 66 bpm vs ~48-49 bpm de référence — bien
+# au-delà du seuil « clairement élevée » d'`agents/medical.md`, > +7 bpm) le
+# jour même : verdict rouge, triptyque complet (HRV + FC de repos +
+# readiness, `[health].morning_check = "full"`). Une semaine plan avec une
+# séance VO2max (qualité) programmée `{{TODAY}}` déclenche le garde-fou r5
+# (`r5_quality_after_red`, #52/#53) : le skill headless écrit une `decision`
+# `outcome: "proposed"` (jamais `applied` en headless, voir
+# `skills/garmin-daily-sync/SKILL.md` étape 4) et l'étape 5 (#56) en tire la
+# ligne `Pourquoi :` du bloc ```resume```, qui REMPLACE la ligne `Alerte :`
+# (voir SKILL.md « Sortie OBLIGATOIRE ») — le budget de 5 lignes reste donc
+# respecté.
+id = "daily-sync-red-why"
+prompt = "/garmin-daily-sync"
+fixture = "daily-sync-red-why"
+
+[config.health]
+morning_check = "full"
+
+[stub.garmin.get_hrv_data]
+file = "hrv-collapsed.json"
+
+[stub.garmin.get_rhr_day]
+file = "rhr-elevated.json"
+
+[stub.garmin.get_training_readiness]
+file = "readiness-low.json"
+
+[expect]
+max_words = 220
+must_match = [
+  '```resume',
+  "(?m)^Pourquoi\\s*:.{0,80}(rouge|effondr|r5_quality_after_red)",
+]
+must_not_match = ["coach-setup"]
+files_with_arc_block = ["planning/*_decision_*.md"]
+
+[[expect.arc_field]]
+glob = "medical/*.md"
+path = "verdict"
+in = ["red"]
+
+[[expect.arc_field]]
+glob = "planning/*_decision_*.md"
+path = "trigger"
+in = ["guardrail"]
+
+[[expect.arc_field]]
+glob = "planning/*_decision_*.md"
+path = "rule_ids[*]"
+equals = "r5_quality_after_red"
+
+[[expect.arc_field]]
+glob = "planning/*_decision_*.md"
+path = "outcome"
+in = ["proposed"]

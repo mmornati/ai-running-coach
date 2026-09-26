@@ -88,6 +88,49 @@ extract_resume() {
         END { printf "%s", last }'
 }
 
+# Garde-fou déterministe (#56) : skills/garmin-daily-sync/SKILL.md promet un
+# bloc ```resume de 5 lignes maximum, mais rien ne garantit qu'un run
+# (agent capricieux, sortie tronquée) le respecte réellement — ce script ne
+# doit jamais relayer une notification à rallonge sans y toucher. Tronque au
+# besoin, en PRÉSERVANT en priorité la ligne « Pourquoi : » (raison de
+# l'ajustement, #56) : elle est retirée des lignes gardées dans l'ordre puis
+# rajoutée en dernière position plutôt que d'être perdue si le dépassement
+# l'avait fait tomber au-delà des 5 premières. Sans ligne « Pourquoi : », se
+# contente de garder les 5 premières lignes tel quel. Un bloc déjà conforme
+# (<= 5 lignes) ressort inchangé — ce n'est qu'un filet de sécurité, pas le
+# mécanisme normal (voir le SKILL.md : la ligne « Pourquoi : » y remplace
+# `Alerte :` plutôt que de s'y ajouter, précisément pour ne jamais dépasser 5
+# lignes en fonctionnement normal).
+enforce_resume_cap() {
+    local resume="$1" max=5
+    local -a lines=()
+    local line
+    while IFS= read -r line; do
+        [[ -n "$line" ]] && lines+=("$line")
+    done <<< "$resume"
+    if (( ${#lines[@]} <= max )); then
+        printf '%s\n' "$resume"
+        return 0
+    fi
+    local why="" idx
+    local -a rest=()
+    for idx in "${!lines[@]}"; do
+        if [[ -z "$why" && "${lines[$idx]}" =~ ^Pourquoi[[:space:]]*: ]]; then
+            why="${lines[$idx]}"
+        else
+            rest+=("${lines[$idx]}")
+        fi
+    done
+    local budget="$max"
+    [[ -n "$why" ]] && budget=$((max - 1))
+    local -a kept=()
+    for ((idx = 0; idx < ${#rest[@]} && idx < budget; idx++)); do
+        kept+=("${rest[$idx]}")
+    done
+    [[ -n "$why" ]] && kept+=("$why")
+    printf '%s\n' "${kept[@]}"
+}
+
 # Identité des commits et des rebase faits par la machine coach : cron n'a souvent
 # aucune configuration git globale, et un rebase sans identité échoue.
 GIT_ID=(-c user.name="${GIT_AUTHOR_NAME:-ai-running-coach}" -c user.email="${GIT_AUTHOR_EMAIL:-coach@localhost}")
@@ -406,6 +449,7 @@ main() {
         warn "Aucun bloc \`\`\`resume trouvé — envoi des 5 dernières lignes de la sortie."
         resume="$(printf '%s\n' "$output" | tail -n 5)"
     fi
+    resume="$(enforce_resume_cap "$resume")"
     ok "Résumé :"
     printf '%s\n' "$resume"
 

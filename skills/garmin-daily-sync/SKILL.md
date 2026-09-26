@@ -85,7 +85,16 @@ Remote Control) et l'IDE partagent. Il délègue tout à l'agent `coach` et au s
    l'alternative, elle écrit une NOUVELLE `decision` (`outcome: "applied"`,
    `supersedes: <chemin de la decision proposed ci-dessus>`) — ce skill headless ne le fait
    jamais lui-même.
-5. Si l'agent `coach` échoue (MCP indisponible, tokens Garmin expirés…), ne rien inventer :
+5. **Raison de l'ajustement pour la notification (#56).** Après la réindexation de l'étape 3
+   (decision et decision_rule y sont à jour, que la décision vienne d'être écrite à l'étape 4
+   ou d'une session interactive plus tôt dans la journée), interroger :
+   `python3 scripts/arc_index.py decisions --date <date du jour> --active`. Un résultat non
+   vide (`outcome` `"proposed"` ou `"applied"`) alimente la ligne `Pourquoi :` de la sortie
+   obligatoire ci-dessous, à partir de son champ `summary` — **jamais l'inverse** : pas de
+   décision trouvée pour aujourd'hui = pas de ligne `Pourquoi :`, ne jamais en inventer une à
+   partir d'une simple impression ou d'une alerte non tracée en `decision`. Un échec de cette
+   commande (index absent, erreur) ne bloque rien : traiter comme « aucune décision trouvée ».
+6. Si l'agent `coach` échoue (MCP indisponible, tokens Garmin expirés…), ne rien inventer :
    le résumé doit contenir `ERREUR : <cause>` (ex. « tokens Garmin expirés — relancer
    `uv run garmin-mcp-auth` »).
 
@@ -109,6 +118,31 @@ Sommeil : 7 h 42, score 81
 HRV : 62 ms — équilibré (baseline 58-66)
 Readiness : 74
 Alerte : aucune
+```
+````
+
+**Ligne `Pourquoi :` (#56) — remplace la ligne `Alerte :`, ne s'y ajoute jamais.**
+Le budget reste à 5 lignes : quand l'étape 5 a trouvé une `decision` active
+(`outcome` `"proposed"` ou `"applied"`) pour aujourd'hui, la 5<sup>e</sup> ligne change
+d'étiquette — `Pourquoi :` au lieu d'`Alerte :` — plutôt que d'en ajouter une
+sixième. Contenu : le champ `summary` de cette décision, tronqué à environ 12
+mots en gardant la règle ou la métrique qu'il cite (`rule_ids`/le chiffre qui a
+déclenché la décision) ; s'il y a plusieurs décisions actives le même jour,
+prendre la plus récente (`created_at`). Si d'autres alertes s'appliquaient par
+ailleurs (FIT non téléchargé, fichier hors contrat…), les concaténer à la
+suite, séparées par ` ; `, exactement comme elles l'auraient été derrière
+`Alerte :` — cette ligne ne perd aucune information, elle change seulement
+d'étiquette et gagne la raison en tête. Pas de décision active aujourd'hui =
+ligne `Alerte :` inchangée, jamais de `Pourquoi :` inventée à partir d'une
+simple alerte ou d'une impression non tracée en `decision` (étape 5).
+
+````
+```resume
+Séances : à jour
+Sommeil : 5 h 10, score 41
+HRV : 31 ms — effondrée (baseline 48-74)
+Readiness : 22
+Pourquoi : verdict rouge (HRV effondrée) — séance VO2max à revoir (r5_quality_after_red)
 ```
 ````
 

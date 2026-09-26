@@ -23,6 +23,8 @@ ARC_LLM_TESTS=1 python3 tests/run_tests.py --tier c --repeat 3
 | Scénario | Réussites | Verdict |
 |---|---|---|
 | `course-strategist-carbs-target` | — | — |
+| `daily-sync-green-no-why` | — | — |
+| `daily-sync-red-why` | — | — |
 | `daily-sync-resume-block` | — | — |
 | `doctor-token-expiring` | — | — |
 | `feedback-with-fit` | — | — |
@@ -56,4 +58,6 @@ ARC_LLM_TESTS=1 python3 tests/run_tests.py --tier c --repeat 3
 <!-- Régénéré via `python3 tests/evals/render_results.py --results <(echo '{}')`
      (#53) : `guardrail-block-red-verdict`/`guardrail-ok` ont été ajoutés par
      cette régénération. Date et modèle remis à `_jamais exécuté_`/« défaut » à
-     la main après régénération : aucune exécution réelle n'a eu lieu. -->
+     la main après régénération : aucune exécution réelle n'a eu lieu.
+     Idem (#56) : `daily-sync-red-why`/`daily-sync-green-no-why` ajoutés de la
+     même façon, même remise à la main. -->

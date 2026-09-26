@@ -1,0 +1,22 @@
+# Symétrique de `daily-sync-red-why` (#56) : athlète reposé (stubs canned par
+# défaut, aucun `[stub]`), pas de bilan rouge, pas de garde-fou déclenché — la
+# ligne `Pourquoi :` du bloc ```resume``` ne doit JAMAIS être inventée en
+# l'absence d'une `decision` réellement écrite (`skills/garmin-daily-sync/
+# SKILL.md`, étape 5). Réutilise la fixture `base-week` (déjà utilisée par
+# `daily-sync-resume-block`, athlète reposé, aucune semaine planifiée pour
+# aujourd'hui donc aucun risque de déclencher r5_quality_after_red).
+id = "daily-sync-green-no-why"
+prompt = "/garmin-daily-sync"
+fixture = "base-week"
+
+[config.health]
+morning_check = "full"
+
+[expect]
+must_match = ['```resume']
+# Ancré sur l'étiquette en tête de ligne (revue de code, #56) : un `(?m)^Pourquoi\s*:`
+# ne peut pas être déclenché par une mention en passant de « pourquoi » dans une
+# phrase (ex. « voici pourquoi je garde la séance ») — seule la ligne dédiée du
+# bloc ```resume``` matcherait.
+must_not_match = ["coach-setup", "(?m)^Pourquoi\\s*:"]
+files_absent = ["planning/*_decision_*.md"]
