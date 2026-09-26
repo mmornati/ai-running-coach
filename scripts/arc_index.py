@@ -788,75 +788,106 @@ def compute_metrics(conn, conf: dict, today: Optional[str] = None) -> None:
         if act.get("garmin_activity_id") and M.sport_family(act.get("sport")) == "run":
             act_samples = samples(conn, act["id"])
             if act_samples:
-                if zone_bounds:
-                    bounds, _method = zone_bounds
-                    zone_seconds = M.time_in_zone_seconds(act_samples, bounds, S.DEFAULT_RESOLUTION_S)
-                    conn.executemany(
-                        "INSERT INTO hr_zone_time (activity_id, zone, seconds) VALUES (?, ?, ?)",
-                        [(act["id"], zone, round(seconds, 1)) for zone, seconds in zone_seconds.items()],
+                # Défense en profondeur (revue de code #46, 3e passe, BLOQUANT) : un bug
+                # inattendu dans UN des calculs dérivés des échantillons (zones, GAP,
+                # découplage, VAM) — même déjà couvert par ses propres tests — ne doit
+                # JAMAIS faire échouer `index_workspace` pour TOUTES les activités : le
+                # tableau de bord et `/garmin-daily-sync` en dépendent à chaque
+                # rafraîchissement. Une exception ici est donc rattrapée, journalisée sur
+                # stderr avec l'id de l'activité (jamais silencieuse), toute ligne
+                # partiellement insérée pour CETTE activité dans les tables dérivées est
+                # purgée, et ses champs dérivés sont explicitement remis à NULL avec une
+                # raison explicite — l'indexation continue avec l'activité suivante,
+                # jamais un plantage global pour une seule séance à échantillons
+                # malformés ou un cas limite non anticipé par un détecteur.
+                try:
+                    if zone_bounds:
+                        bounds, _method = zone_bounds
+                        zone_seconds = M.time_in_zone_seconds(act_samples, bounds, S.DEFAULT_RESOLUTION_S)
+                        conn.executemany(
+                            "INSERT INTO hr_zone_time (activity_id, zone, seconds) VALUES (?, ?, ?)",
+                            [(act["id"], zone, round(seconds, 1)) for zone, seconds in zone_seconds.items()],
+                        )
+                    if seiler_thresholds:
+                        bucket_seconds = M.time_in_polarisation_seconds(
+                            act_samples, seiler_thresholds, S.DEFAULT_RESOLUTION_S)
+                        conn.executemany(
+                            "INSERT INTO hr_polarisation_time (activity_id, bucket, seconds) VALUES (?, ?, ?)",
+                            [(act["id"], bucket, round(seconds, 1)) for bucket, seconds in bucket_seconds.items()],
+                        )
+                    # GAP (#44, allure ajustée à la pente) : pente + vitesse GAP calculées une
+                    # seule fois par échantillon (`gap_sample_series`), réutilisées pour
+                    # l'allure globale ET par split — jamais recalculées deux fois pour la
+                    # même activité (voir `arc_gap.activity_gap_pace_from_series`).
+                    gap_series = G.gap_sample_series(act_samples)
+                    gap_pace = G.activity_gap_pace_from_series(gap_series, resolution_s=S.DEFAULT_RESOLUTION_S)
+                    conn.execute("UPDATE activity SET gap_pace_s_km = ? WHERE id = ?",
+                                 (round(gap_pace, 2) if gap_pace is not None else None, act["id"]))
+                    split_rows = conn.execute(
+                        "SELECT km, distance_m FROM activity_split WHERE activity_id = ?", (act["id"],)).fetchall()
+                    if split_rows:
+                        gap_by_km = G.split_gap_paces_from_series(gap_series, [dict(r) for r in split_rows],
+                                                                   resolution_s=S.DEFAULT_RESOLUTION_S)
+                        conn.executemany(
+                            "UPDATE activity_split SET gap_pace_s_km = ? WHERE activity_id = ? AND km = ?",
+                            [(round(v, 2) if v is not None else None, act["id"], km) for km, v in gap_by_km.items()],
+                        )
+                    # Découplage aérobie (#45, Pa:HR) et facteur d'efficacité : réutilise
+                    # `gap_series` déjà calculée ci-dessus via `decoupling_report_from_series`
+                    # (jamais un second calcul de pente/GAP pour la même activité) — le sport
+                    # est déjà restreint à la famille course à pied par le `if` englobant,
+                    # comme pour le GAP lui-même juste au-dessus.
+                    report = DC.decoupling_report_from_series(gap_series, resolution_s=S.DEFAULT_RESOLUTION_S)
+                    conn.execute(
+                        "UPDATE activity SET decoupling_pct = ?, ef_whole = ?, decoupling_reason = ? WHERE id = ?",
+                        (report["decoupling_pct"], report["ef_whole"], report["reason"], act["id"]),
                     )
-                if seiler_thresholds:
-                    bucket_seconds = M.time_in_polarisation_seconds(act_samples, seiler_thresholds, S.DEFAULT_RESOLUTION_S)
-                    conn.executemany(
-                        "INSERT INTO hr_polarisation_time (activity_id, bucket, seconds) VALUES (?, ?, ?)",
-                        [(act["id"], bucket, round(seconds, 1)) for bucket, seconds in bucket_seconds.items()],
+                    # VAM sur les montées détectées (#46) : détection PURE sur les échantillons
+                    # bruts (t_s/distance_m/altitude_m/speed_ms), indépendante du GAP/de la pente
+                    # fenêtrée calculée ci-dessus pour le GAP (`arc_climb.detect_climbs` a son
+                    # propre lissage/segmentation, voir `arc_climb.ASSUMPTIONS`) — jamais un
+                    # second calcul de pente au sens GAP, seulement une réutilisation du lissage
+                    # d'altitude déjà partagé (`arc_elevation.smooth_moving_average`). Seuils de
+                    # détection configurables par le workspace (`[metrics].climb_min_gain_m`/
+                    # `climb_min_grade_pct`, critère d'acceptation de #46 : « montée minimale
+                    # configurable »), résolus une fois pour toutes dans `conf` par `settings()`.
+                    climb = VC.detect_climbs(act_samples, min_gain_m=conf["climb_min_gain_m"],
+                                              min_avg_grade=conf["climb_min_grade"])
+                    if climb:
+                        conn.executemany(
+                            "INSERT INTO activity_climb (activity_id, idx, start_t_s, end_t_s, start_km, end_km, "
+                            "distance_m, gain_m, avg_grade, grade_class, duration_elapsed_s, duration_moving_s, "
+                            "vam_elapsed_m_h, vam_moving_m_h) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                            [(act["id"], c["index"], c["start_t_s"], c["end_t_s"], c["start_km"], c["end_km"],
+                              c["distance_m"], c["gain_m"], c["avg_grade"], c["grade_class"],
+                              c["duration_elapsed_s"], c["duration_moving_s"], c["vam_elapsed_m_h"],
+                              c["vam_moving_m_h"]) for c in climb],
+                        )
+                    windows = VC.best_vam_windows(act_samples, climb)
+                    best_climb_vam = max(
+                        (c["vam_elapsed_m_h"] for c in climb if c["vam_elapsed_m_h"] is not None), default=None)
+                    conn.execute(
+                        "UPDATE activity SET best_vam_10min_m_h = ?, best_vam_20min_m_h = ?, "
+                        "best_climb_vam_elapsed_m_h = ? WHERE id = ?",
+                        (windows["vam_best_10min_m_h"], windows["vam_best_20min_m_h"], best_climb_vam, act["id"]),
                     )
-                # GAP (#44, allure ajustée à la pente) : pente + vitesse GAP calculées une
-                # seule fois par échantillon (`gap_sample_series`), réutilisées pour
-                # l'allure globale ET par split — jamais recalculées deux fois pour la
-                # même activité (voir `arc_gap.activity_gap_pace_from_series`).
-                gap_series = G.gap_sample_series(act_samples)
-                gap_pace = G.activity_gap_pace_from_series(gap_series, resolution_s=S.DEFAULT_RESOLUTION_S)
-                conn.execute("UPDATE activity SET gap_pace_s_km = ? WHERE id = ?",
-                             (round(gap_pace, 2) if gap_pace is not None else None, act["id"]))
-                split_rows = conn.execute(
-                    "SELECT km, distance_m FROM activity_split WHERE activity_id = ?", (act["id"],)).fetchall()
-                if split_rows:
-                    gap_by_km = G.split_gap_paces_from_series(gap_series, [dict(r) for r in split_rows],
-                                                               resolution_s=S.DEFAULT_RESOLUTION_S)
-                    conn.executemany(
-                        "UPDATE activity_split SET gap_pace_s_km = ? WHERE activity_id = ? AND km = ?",
-                        [(round(v, 2) if v is not None else None, act["id"], km) for km, v in gap_by_km.items()],
+                except Exception as exc:  # noqa: BLE001 — défense en profondeur assumée, voir ci-dessus
+                    print(
+                        f"avertissement : calcul des métriques dérivées des échantillons a échoué pour "
+                        f"l'activité id={act['id']} (garmin_activity_id={act.get('garmin_activity_id')}) : "
+                        f"{exc!r} — champs dérivés remis à NULL, indexation poursuivie avec les activités "
+                        "suivantes.",
+                        file=sys.stderr,
                     )
-                # Découplage aérobie (#45, Pa:HR) et facteur d'efficacité : réutilise
-                # `gap_series` déjà calculée ci-dessus via `decoupling_report_from_series`
-                # (jamais un second calcul de pente/GAP pour la même activité) — le sport
-                # est déjà restreint à la famille course à pied par le `if` englobant,
-                # comme pour le GAP lui-même juste au-dessus.
-                report = DC.decoupling_report_from_series(gap_series, resolution_s=S.DEFAULT_RESOLUTION_S)
-                conn.execute(
-                    "UPDATE activity SET decoupling_pct = ?, ef_whole = ?, decoupling_reason = ? WHERE id = ?",
-                    (report["decoupling_pct"], report["ef_whole"], report["reason"], act["id"]),
-                )
-                # VAM sur les montées détectées (#46) : détection PURE sur les échantillons
-                # bruts (t_s/distance_m/altitude_m/speed_ms), indépendante du GAP/de la pente
-                # fenêtrée calculée ci-dessus pour le GAP (`arc_climb.detect_climbs` a son
-                # propre lissage/segmentation, voir `arc_climb.ASSUMPTIONS`) — jamais un
-                # second calcul de pente au sens GAP, seulement une réutilisation du lissage
-                # d'altitude déjà partagé (`arc_elevation.smooth_moving_average`). Seuils de
-                # détection configurables par le workspace (`[metrics].climb_min_gain_m`/
-                # `climb_min_grade_pct`, critère d'acceptation de #46 : « montée minimale
-                # configurable »), résolus une fois pour toutes dans `conf` par `settings()`.
-                climb = VC.detect_climbs(act_samples, min_gain_m=conf["climb_min_gain_m"],
-                                          min_avg_grade=conf["climb_min_grade"])
-                if climb:
-                    conn.executemany(
-                        "INSERT INTO activity_climb (activity_id, idx, start_t_s, end_t_s, start_km, end_km, "
-                        "distance_m, gain_m, avg_grade, grade_class, duration_elapsed_s, duration_moving_s, "
-                        "vam_elapsed_m_h, vam_moving_m_h) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                        [(act["id"], c["index"], c["start_t_s"], c["end_t_s"], c["start_km"], c["end_km"],
-                          c["distance_m"], c["gain_m"], c["avg_grade"], c["grade_class"],
-                          c["duration_elapsed_s"], c["duration_moving_s"], c["vam_elapsed_m_h"],
-                          c["vam_moving_m_h"]) for c in climb],
+                    conn.execute("DELETE FROM hr_zone_time WHERE activity_id = ?", (act["id"],))
+                    conn.execute("DELETE FROM hr_polarisation_time WHERE activity_id = ?", (act["id"],))
+                    conn.execute("DELETE FROM activity_climb WHERE activity_id = ?", (act["id"],))
+                    conn.execute(
+                        "UPDATE activity SET gap_pace_s_km = NULL, decoupling_pct = NULL, ef_whole = NULL, "
+                        "decoupling_reason = ?, best_vam_10min_m_h = NULL, best_vam_20min_m_h = NULL, "
+                        "best_climb_vam_elapsed_m_h = NULL WHERE id = ?",
+                        ("calcul impossible (erreur interne)", act["id"]),
                     )
-                windows = VC.best_vam_windows(act_samples, climb)
-                best_climb_vam = max(
-                    (c["vam_elapsed_m_h"] for c in climb if c["vam_elapsed_m_h"] is not None), default=None)
-                conn.execute(
-                    "UPDATE activity SET best_vam_10min_m_h = ?, best_vam_20min_m_h = ?, "
-                    "best_climb_vam_elapsed_m_h = ? WHERE id = ?",
-                    (windows["vam_best_10min_m_h"], windows["vam_best_20min_m_h"], best_climb_vam, act["id"]),
-                )
     conn.execute("DELETE FROM metric_day")
     dated = sorted(loads)
     if dated:

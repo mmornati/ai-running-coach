@@ -447,19 +447,79 @@ class TestZigzagPreservesTrueSummit(unittest.TestCase):
         self.assertEqual(pivots, [0, 3, 4])
 
 
+class TestSplitFlatPlateausNeverCrashesAtIndexZero(unittest.TestCase):
+    """Revue de code #46, BLOQUANT (3e passe) : `_split_flat_plateaus(a=0, ...)`
+    levait `IndexError` — `j = a - 1` valait -1 quand la montée rognée commence au
+    tout premier échantillon d'un segment (début d'activité, ou juste après un
+    trou de signal), et `distances[-1]` (indexation négative Python, jamais une
+    erreur immédiate) pointait alors sur le DERNIER élément du tableau au lieu de
+    « rien » — la boucle d'extension ne s'exécutait jamais, les files
+    min/max restaient vides, et `altitudes[max_dq[0]]` levait `IndexError` dès
+    que la condition de distance était malgré tout satisfaite. Repros exacts de
+    la revue, plus un balayage bruité sur `detect_climbs` complet (montée
+    commençant à t=0, donc `a == 0` garanti)."""
+
+    def test_repro_three_points(self):
+        # Ne doit jamais lever — la revue de code a mesuré un IndexError ici.
+        result = VC._split_flat_plateaus(0, 2, [0, 0, 0], [0, 250, 500],
+                                          max_gap_dist_m=200, max_grade=0.02)
+        self.assertEqual(result, [[0, 2]])
+
+    def test_repro_five_points(self):
+        result = VC._split_flat_plateaus(0, 4, [0, 0, 0, 0, 0], [0, 100, 200, 300, 400],
+                                          max_gap_dist_m=200, max_grade=0.02)
+        self.assertEqual(result, [[0, 4]])
+
+    def test_climb_starting_at_the_very_first_sample_of_the_activity(self):
+        """`a == 0` garanti : la montée commence dès le premier échantillon (pas
+        d'échauffement plat avant), plus longue que `MERGE_MAX_DIP_DIST_M` (200 m)
+        — le cas réel qui déclenchait le crash (revue de code, mesuré 8/~450
+        exécutions bruitées)."""
+        samples = _linear_climb_samples(duration_s=1800, gain_m=300.0, distance_m=3600.0)
+        climbs = VC.detect_climbs(samples)  # ne doit jamais lever
+        self.assertEqual(len(climbs), 1)
+        self.assertAlmostEqual(climbs[0]["vam_elapsed_m_h"], 600.0, delta=10.0)
+
+    def test_noisy_sweep_never_raises(self):
+        """50 graines × σ ∈ {1, 2, 3} m, sur les deux profils synthétiques de la
+        revue (montée seule démarrant à t=0, et montée/plateau/montée) — ne
+        vérifie qu'une seule chose : AUCUNE exception, quelle que soit la
+        graine (c'est précisément ce que la revue a détecté en défaut, pas un
+        critère de précision)."""
+        import random
+        for noise_m in (1.0, 2.0, 3.0):
+            for seed in range(1, 51):
+                rng = random.Random(seed * 1000 + int(noise_m))
+                samples = _linear_climb_samples(duration_s=1800, gain_m=300.0, distance_m=3600.0)
+                for s in samples:
+                    s["altitude_m"] += rng.uniform(-noise_m, noise_m)
+                try:
+                    VC.detect_climbs(samples)
+                except Exception as exc:  # noqa: BLE001 — précisément ce qu'on verrouille
+                    self.fail(f"detect_climbs a levé {exc!r} (noise_m={noise_m}, seed={seed})")
+
+                rng2 = random.Random(seed * 2000 + int(noise_m))
+                samples2 = _climb_plateau_climb_samples(dip_m=4.0, noise_m=noise_m, rng=rng2)
+                try:
+                    VC.detect_climbs(samples2)
+                except Exception as exc:  # noqa: BLE001
+                    self.fail(f"detect_climbs (plateau) a levé {exc!r} (noise_m={noise_m}, seed={seed})")
+
+
 class TestRelativeMergeThreshold(unittest.TestCase):
     """Revue de code #46, SHOULD-FIX : un plancher de fusion purement absolu coupe à
     tort une grosse montée alpine dès qu'un petit creux (anecdotique à cette
     échelle) dépasse ce plancher fixe."""
 
-    def _alpine_climb_with_two_dips(self, dip_loss_m):
+    def _alpine_climb_with_two_dips(self, dip_loss_m, *, rng=None, noise_m=0.0):
         out = []
         t = 0.0
         dist = 0.0
         alt = 0.0
 
         def _emit():
-            out.append({"t_s": t, "distance_m": dist, "altitude_m": alt,
+            a = alt + (rng.gauss(0, noise_m) if rng and noise_m else 0.0)
+            out.append({"t_s": t, "distance_m": dist, "altitude_m": a,
                          "speed_ms": 1.5, "hr_bpm": 150.0, "cadence_spm": 150.0})
 
         _emit()
@@ -507,6 +567,23 @@ class TestRelativeMergeThreshold(unittest.TestCase):
         samples = self._alpine_climb_with_two_dips(80.0)
         climbs = VC.detect_climbs(samples)
         self.assertGreaterEqual(len(climbs), 2, climbs)
+
+    def test_two_15m_dips_stay_merged_under_sigma2_noise(self):
+        """Revue de code #46, 3e passe, should-fix 1 : le rognage adaptatif au
+        bruit (ASSUMPTIONS["trim"]) élargit aussi la distance de creux MESURÉE
+        entre les deux montées — sans compenser le seuil de fusion par distance
+        (`_merge_climbs`, `noise_tol_m`), la montée alpine se scindait à tort
+        dans une majorité de tirages à σ ≈ 2 m (mesuré par la revue : 17/20).
+        50 graines, doit rester fusionnée en 1 montée à chaque fois."""
+        import random
+        fails = []
+        for seed in range(1, 51):
+            rng = random.Random(seed)
+            samples = self._alpine_climb_with_two_dips(15.0, rng=rng, noise_m=2.0)
+            climbs = VC.detect_climbs(samples)
+            if len(climbs) != 1:
+                fails.append((seed, len(climbs)))
+        self.assertEqual(fails, [], f"{len(fails)}/50 tirages scindés à tort : {fails[:5]}...")
 
 
 def _climb_plateau_climb_samples(*, dip_m=0.0, noise_m=0.0, rng=None):
@@ -786,6 +863,66 @@ class TestActivityClimbReportAndCli(Workspace):
         self.assertEqual(trend["activities_n"], 1)
         self.assertEqual(trend["with_climb_n"], 1)
         self.assertIsNotNone(trend["avg_best_climb_vam_elapsed_m_h"])
+
+
+class TestComputeMetricsSurvivesAnUnexpectedDetectorCrash(Workspace):
+    """Revue de code #46, 3e passe, défense en profondeur : un bug inattendu
+    dans UN détecteur dérivé des échantillons (GAP, découplage, zones, VAM) ne
+    doit JAMAIS faire échouer `index_workspace` pour toutes les activités — le
+    tableau de bord et `/garmin-daily-sync` en dépendent à chaque
+    rafraîchissement. Monkeypatch `arc_climb.detect_climbs` pour qu'il lève,
+    exactement le genre de défaut non anticipé qu'un correctif futur pourrait
+    introduire par erreur."""
+
+    GARMIN_ID_BROKEN = 90000000048
+    GARMIN_ID_OK = 90000000049
+
+    def test_one_activitys_crash_never_stops_indexing_the_rest(self):
+        self.write_activity(self.GARMIN_ID_BROKEN, day="2026-09-19")
+        self.write_fit_climb(self.GARMIN_ID_BROKEN, duration_s=1800, gain_m=300.0, distance_m=3600.0)
+        self.write_activity(self.GARMIN_ID_OK, day="2026-09-20")
+        self.write_fit_climb(self.GARMIN_ID_OK, duration_s=1800, gain_m=300.0, distance_m=3600.0)
+
+        original = I.VC.detect_climbs
+        calls = {"n": 0}
+
+        def _boom(samples, **kwargs):
+            # Lève au TOUT PREMIER appel seulement (ordre de traitement par date
+            # croissante : GARMIN_ID_BROKEN, 2026-09-19, avant GARMIN_ID_OK,
+            # 2026-09-20) — jamais au second, pour vérifier que l'indexation
+            # continue bel et bien après le plantage.
+            calls["n"] += 1
+            if calls["n"] == 1:
+                raise RuntimeError("bug injecté par le test")
+            return original(samples, **kwargs)
+
+        I.VC.detect_climbs = _boom
+        try:
+            import io
+            import contextlib
+            stderr = io.StringIO()
+            with contextlib.redirect_stderr(stderr):
+                self.index()
+        finally:
+            I.VC.detect_climbs = original
+
+        self.assertIn("bug injecté par le test", stderr.getvalue())
+        self.assertIn(str(self.activity_row(self.GARMIN_ID_BROKEN)["id"]), stderr.getvalue())
+
+        broken = self.activity_row(self.GARMIN_ID_BROKEN)
+        self.assertIsNone(broken["gap_pace_s_km"])
+        self.assertIsNone(broken["best_climb_vam_elapsed_m_h"])
+        self.assertIsNone(broken["decoupling_pct"])
+        self.assertEqual(broken["decoupling_reason"], "calcul impossible (erreur interne)")
+        broken_climb_rows = self.conn.execute(
+            "SELECT * FROM activity_climb WHERE activity_id = ?", (broken["id"],)).fetchall()
+        self.assertEqual(broken_climb_rows, [])
+
+        # La séance suivante, elle, doit être indexée NORMALEMENT — l'indexation
+        # n'a pas été interrompue par le plantage de la première.
+        ok = self.activity_row(self.GARMIN_ID_OK)
+        self.assertIsNotNone(ok["best_climb_vam_elapsed_m_h"])
+        self.assertAlmostEqual(ok["best_climb_vam_elapsed_m_h"], 600.0, delta=5.0)
 
 
 if __name__ == "__main__":

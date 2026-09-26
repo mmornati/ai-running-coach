@@ -156,12 +156,23 @@ MIN_CLIMB_AVG_GRADE = 0.05  # 5 % — aligné sur la première classe de pente c
 # `MERGE_DIP_RELATIVE_FRAC` × le plus petit des deux gains adjacents (pour une
 # grosse montée alpine, un creux de 15 m est anecdotique face à 800 m de D+,
 # mais dépasserait un plancher absolu de 10 m — revue de code #46). Le seuil de
-# DISTANCE, lui, reste absolu (`MERGE_MAX_DIP_DIST_M`) : un plateau de 2 km,
-# même sans perte d'altitude notable, n'est jamais une simple respiration au
-# milieu d'une montée continue.
+# DISTANCE, lui, reste un plancher ABSOLU (`MERGE_MAX_DIP_DIST_M`) : un plateau
+# de 2 km, même sans perte d'altitude notable, n'est jamais une simple
+# respiration au milieu d'une montée continue — mais une MARGE DE BRUIT (voir
+# `_merge_climbs`, `noise_tol_m`) s'y ajoute quand le rognage a dû être élargi
+# au bruit mesuré (ASSUMPTIONS["trim"]) : un rognage plus large déplace aussi la
+# distance de creux MESURÉE entre deux montées, et sans compenser, une grosse
+# montée alpine se scindait à tort plus souvent qu'avant l'ajout du rognage
+# adaptatif au bruit (revue de code #46, 3e passe, should-fix 1 — mesuré :
+# 17/20 tirages à σ ≈ 2 m scindaient à tort une montée alpine à deux creux de
+# 15 m, contre une poignée avant l'ajout de cette marge). Plafonnée à
+# `MERGE_DIST_MARGIN_CAP_FRAC` × `MERGE_MAX_DIP_DIST_M` pour qu'une montée à
+# pente proche du seuil minimal (`MIN_CLIMB_AVG_GRADE`) ne fasse pas diverger
+# la marge.
 MERGE_MAX_DIP_LOSS_M = 10.0
 MERGE_DIP_RELATIVE_FRAC = 0.125  # 12,5 %, milieu de la fourchette 10-15 % (revue de code #46)
 MERGE_MAX_DIP_DIST_M = 200.0
+MERGE_DIST_MARGIN_CAP_FRAC = 0.5
 
 # Seuil de bruit de la simplification en zigzag (#46) — nettement sous
 # `MIN_CLIMB_GAIN_M` : ne sert qu'à ignorer le bruit résiduel post-lissage,
@@ -314,7 +325,21 @@ ASSUMPTIONS = {
         "et cesse d'être jugée « plate » — le D+ d'une montée immédiatement adjacente à un plateau "
         "découpé peut donc être conservativement sous-estimé de quelques mètres. La VAM, elle, reste "
         "exacte sur une pente constante (le rognage/découpage affecte gain ET distance dans la même "
-        "proportion), donc bien plus fiable que le D+ absolu dans ce cas précis."
+        "proportion), donc bien plus fiable que le D+ absolu dans ce cas précis.\n\n"
+        "LIMITES CONNUES SUPPLÉMENTAIRES, documentées honnêtement (revue de code #46, 3e passe, "
+        "should-fix 2) : un tronçon dont la pente RÉELLE est très proche de `PLATEAU_SPLIT_MAX_GRADE` "
+        "peut basculer d'un côté ou de l'autre du seuil selon le bruit du tirage — coupé (traité comme "
+        "un plateau) sur une exécution, fusionné dans la montée sur une autre, sans que rien de mal ne se "
+        "passe dans les deux cas (les deux comportements restent défendables pour un tronçon à la limite "
+        "de ce qui compte comme « plat »), mais le résultat exact n'est pas garanti reproductible à 100 % "
+        "d'une séance par ailleurs identique à l'autre en présence de bruit. De même, à un bruit "
+        "important (σ ≥ 2 m environ après lissage), le début mesuré d'une montée peut occasionnellement "
+        "glisser de quelques dizaines de mètres sur une approche plate malgré le rognage adaptatif "
+        "(`TRIM_TOLERANCE_NOISE_K × sigma_bruit`) : la marge s'adapte à l'écart-type mesuré, pas à "
+        "chaque tirage individuel, donc un tirage particulièrement défavorable peut ponctuellement "
+        "dépasser la marge type. Aucun des deux cas n'a été observé produire un résultat GROSSIÈREMENT "
+        "faux (montée manquée, fusion à tort) dans les tests de cette histoire ; seule la précision fine "
+        "des bornes peut varier."
     ),
     "merge": (
         f"Deux montées (déjà rognées, voir ASSUMPTIONS[\"trim\"]) consécutives séparées par un creux "
@@ -322,30 +347,29 @@ ASSUMPTIONS = {
         f"seuil applicable — le plus GRAND de {MERGE_MAX_DIP_LOSS_M:.0f} m (plancher absolu) et "
         f"{MERGE_DIP_RELATIVE_FRAC * 100:.1f} % du plus petit des deux gains adjacents (`MERGE_DIP_"
         "RELATIVE_FRAC`) — sur moins de "
-        f"{MERGE_MAX_DIP_DIST_M:.0f} m de distance horizontale (seuil, LUI, resté ABSOLU : même un "
-        "creux minuscule sur un long plateau de plusieurs centaines de mètres n'est jamais une simple "
-        "respiration au milieu d'une montée continue). Le plancher purement absolu (revue de code #46) "
-        "coupait à tort une grosse montée alpine en plusieurs tronçons dès qu'un creux de 15 m "
-        "interrompait ses 800 m de D+ — anecdotique à cette échelle, mais dépassant le plancher fixe de "
-        "10 m ; le seuil relatif corrige ce cas sans changer le comportement sur une montée trail "
-        "modeste (où le plancher absolu reste généralement le plus grand des deux). Sans fusion, une "
-        "montée réelle avec un replat au milieu (très courant en trail : plateau avant un dernier "
-        "raidillon) serait artificiellement coupée en plusieurs montées plus courtes, chacune "
-        "sous-estimant le vrai effort ascensionnel continu perçu par le coureur.\n\n"
-        "LIMITE CONNUE, documentée honnêtement (revue de code #46, 2e passe, should-fix 3) : le seuil de "
-        f"DISTANCE ({MERGE_MAX_DIP_DIST_M:.0f} m), lui, reste volontairement ABSOLU — voir plus haut "
-        "pourquoi il ne doit jamais devenir trop généreux sur un plateau long. Conséquence assumée : un "
-        "bruit d'altitude suffisant peut occasionnellement déplacer le point où le zigzag confirme le "
-        "creux d'une petite descente intermédiaire, élargissant sa distance MESURÉE de quelques dizaines "
-        "de mètres par rapport à sa vraie étendue — dans de rares cas (mesuré : 15 à 25 % des tirages "
-        "aléatoires sur un scénario de test dédié), cela suffit à faire dépasser le seuil de 200 m à un "
-        "creux dont la vraie étendue y restait sous, coupant à tort une grosse montée alpine en deux. Non "
-        "corrigé ici (un seuil de distance relatif à la taille des montées adjacentes déplacerait le "
-        "problème plutôt que de le résoudre, et compliquerait la lecture du seuil pour un gain incertain) "
-        "— une piste pour une revue future si l'usage réel montre que ce n'est pas anecdotique : élargir "
-        "`MERGE_MAX_DIP_DIST_M` d'une marge proportionnelle au bruit mesuré (`_robust_noise_sigma`, comme "
-        "pour `_trim_rise`, voir ASSUMPTIONS[\"trim\"]), plutôt qu'un pourcentage arbitraire de la "
-        "distance des montées adjacentes."
+        f"{MERGE_MAX_DIP_DIST_M:.0f} m de distance horizontale (plancher ABSOLU — voir plus bas pour la "
+        "marge de bruit qui s'y ajoute) : même un creux minuscule sur un long plateau de plusieurs "
+        "centaines de mètres n'est jamais une simple respiration au milieu d'une montée continue. Le "
+        "plancher de PERTE purement absolu (revue de code #46) coupait à tort une grosse montée alpine "
+        "en plusieurs tronçons dès qu'un creux de 15 m interrompait ses 800 m de D+ — anecdotique à cette "
+        "échelle, mais dépassant le plancher fixe de 10 m ; le seuil relatif corrige ce cas sans changer "
+        "le comportement sur une montée trail modeste (où le plancher absolu reste généralement le plus "
+        "grand des deux). Sans fusion, une montée réelle avec un replat au milieu (très courant en trail : "
+        "plateau avant un dernier raidillon) serait artificiellement coupée en plusieurs montées plus "
+        "courtes, chacune sous-estimant le vrai effort ascensionnel continu perçu par le coureur.\n\n"
+        f"MARGE DE BRUIT sur le seuil de DISTANCE ({MERGE_MAX_DIP_DIST_M:.0f} m, `_merge_climbs`, "
+        "`noise_tol_m`) — revue de code #46, 3e passe, should-fix 1, corrigeant une régression introduite "
+        "par le rognage adaptatif au bruit (ASSUMPTIONS[\"trim\"]) : un rognage plus large (bruit plus "
+        "fort) déplace aussi le bord de CHAQUE montée d'environ `noise_tol_m` en altitude, donc d'environ "
+        "`noise_tol_m / pente` en distance — deux bords, d'où une marge de "
+        "`2 × noise_tol_m / pente_la_plus_faible_des_deux_montées`, plafonnée à "
+        f"{MERGE_DIST_MARGIN_CAP_FRAC * 100:.0f} % de `MERGE_MAX_DIP_DIST_M` pour qu'une montée à pente "
+        "proche du seuil minimal (`MIN_CLIMB_AVG_GRADE`) ne fasse pas diverger la marge. Sans cette "
+        "correction, la distance de creux MESURÉE entre deux montées était élargie par le rognage "
+        "adaptatif lui-même : mesuré sur un scénario de test dédié (montée alpine à deux creux de 15 m), "
+        "17 tirages sur 20 à σ ≈ 2 m de bruit scindaient À TORT la montée en 2 ou 3, contre un "
+        "comportement stable (toujours fusionnée) avec la marge — #49 (progression sur une même montée) a "
+        "besoin d'une identification de montée stable d'une exécution à l'autre pour la même séance."
     ),
     "gap_segmentation": (
         "Une montée n'est JAMAIS détectée ni fusionnée à travers un trou de signal (montre en veille, "
@@ -511,13 +535,30 @@ def _split_flat_plateaus(a: int, b: int, altitudes: Sequence[float], distances: 
     if b <= a or distances[b] - distances[a] < max_gap_dist_m:
         return [[a, b]]
     max_span = max_grade * max_gap_dist_m
-    j = a - 1
-    min_dq: List[int] = []
-    max_dq: List[int] = []
+    # `j` DÉMARRE À `a` (jamais `a - 1` : revue de code #46, 3e passe, BLOQUANT —
+    # `a` peut valoir 0 pour une montée qui commence au tout premier échantillon
+    # d'un segment sans trou de signal, ex. début d'activité ou juste après un
+    # trou ; `a - 1` valait alors -1, un index Python VALIDE mais qui pointe sur
+    # le DERNIER élément du tableau par indexation négative, jamais sur « rien »
+    # comme l'intention le supposait — la fenêtre de départ [i, j] se retrouvait
+    # ainsi accidentellement immense (de `i` jusqu'à la fin du tableau), la
+    # boucle d'extension ne s'exécutait jamais faute d'en avoir besoin, les
+    # files restaient VIDES, et `altitudes[max_dq[0]]` levait `IndexError` dès
+    # que la condition de distance était malgré tout satisfaite). Les files sont
+    # initialisées ICI avec `a` lui-même, jamais par extension depuis un index
+    # hors bornes.
+    j = a
+    min_dq: List[int] = [a]
+    max_dq: List[int] = [a]
     flat_ranges: List[Tuple[int, int]] = []
     for i in range(a, b + 1):
-        if j < i:
-            j = i - 1
+        if i > a:
+            # La fenêtre glisse d'un cran : retirer `i - 1` (maintenant hors
+            # bornes) des DEUX files s'il y figure encore en tête.
+            while min_dq and min_dq[0] < i:
+                min_dq.pop(0)
+            while max_dq and max_dq[0] < i:
+                max_dq.pop(0)
         # Étend `j` jusqu'à ce que la fenêtre [i, j] ATTEIGNE (ou dépasse)
         # `max_gap_dist_m` — la condition porte sur `j` (déjà inclus), pas sur
         # `j + 1` en anticipation : sinon la boucle s'arrête UN CRAN TROP TÔT,
@@ -532,10 +573,10 @@ def _split_flat_plateaus(a: int, b: int, altitudes: Sequence[float], distances: 
             while max_dq and altitudes[max_dq[-1]] <= altitudes[j]:
                 max_dq.pop()
             max_dq.append(j)
-        while min_dq and min_dq[0] < i:
-            min_dq.pop(0)
-        while max_dq and max_dq[0] < i:
-            max_dq.pop(0)
+        if not min_dq or not max_dq:
+            # Filet de sécurité (ne devrait plus se produire avec l'initialisation
+            # ci-dessus, gardé en défense en profondeur — jamais d'IndexError ici).
+            continue
         if distances[j] - distances[i] >= max_gap_dist_m:
             span = altitudes[max_dq[0]] - altitudes[min_dq[0]]
             if span <= max_span:
@@ -593,17 +634,32 @@ def _merge_climbs(rises: Sequence[Sequence[int]], altitudes: Sequence[float],
                    distances: Sequence[float], *,
                    max_dip_loss_m: float = MERGE_MAX_DIP_LOSS_M,
                    dip_relative_frac: float = MERGE_DIP_RELATIVE_FRAC,
-                   max_dip_dist_m: float = MERGE_MAX_DIP_DIST_M) -> List[List[int]]:
+                   max_dip_dist_m: float = MERGE_MAX_DIP_DIST_M,
+                   noise_tol_m: float = 0.0) -> List[List[int]]:
     """Fusionne deux montées (déjà ROGNÉES par `_trim_rise`) CONSÉCUTIVES
     (séparées par exactement un creux, garanti par l'alternance du zigzag) si
     ce creux perd moins que le seuil applicable — le plus GRAND de
     `max_dip_loss_m` (absolu) et `dip_relative_frac` × le plus petit des deux
-    gains adjacents (relatif, pour une grosse montée alpine) — sur moins de
-    `max_dip_dist_m` (seuil, lui, resté absolu) — voir ASSUMPTIONS["merge"].
-    Itératif jusqu'à stabilité (une fusion peut rapprocher deux autres montées
-    d'un creux qui, cumulé, dépasserait quand même le seuil — non : le creux
-    entre deux montées non adjacentes n'est jamais reconsidéré après une
-    fusion ailleurs, seule la liste se raccourcit)."""
+    gains adjacents (relatif, pour une grosse montée alpine) — sur moins que le
+    seuil de DISTANCE applicable (`max_dip_dist_m` + une marge de bruit, voir
+    `noise_tol_m` et ASSUMPTIONS["merge"]). Itératif jusqu'à stabilité (une
+    fusion peut rapprocher deux autres montées d'un creux qui, cumulé,
+    dépasserait quand même le seuil — non : le creux entre deux montées non
+    adjacentes n'est jamais reconsidéré après une fusion ailleurs, seule la
+    liste se raccourcit).
+
+    `noise_tol_m` (0 par défaut — aucune marge) : la tolérance de rognage
+    EFFECTIVE du segment (`detect_climbs`, déjà élargie au bruit mesuré, voir
+    ASSUMPTIONS["trim"]) — revue de code #46, 3e passe, should-fix 1 : un bruit
+    plus fort élargit `TRIM_TOLERANCE_M` effective, qui élargit à son tour la
+    distance du creux MESURÉE entre deux montées rognées plus largement à leurs
+    bords ; sans compenser le seuil de distance en conséquence, une grosse
+    montée alpine à petits creux se scinde à tort plus souvent que sans bruit.
+    La marge ajoutée est `2 × noise_tol_m / pente_la_plus_faible_des_deux_montées`
+    (le rognage déplace chaque bord d'environ `noise_tol_m` en ALTITUDE, donc
+    d'environ `noise_tol_m / pente` en DISTANCE — deux bords, d'où le facteur 2),
+    plafonnée à la moitié de `max_dip_dist_m` pour qu'une montée à pente proche
+    du seuil minimal (`MIN_CLIMB_AVG_GRADE`) ne voie pas ce plafond diverger."""
     merged = [list(r) for r in rises]
     changed = True
     while changed and len(merged) > 1:
@@ -617,7 +673,17 @@ def _merge_climbs(rises: Sequence[Sequence[int]], altitudes: Sequence[float],
             gain_a = altitudes[end_a] - altitudes[start_a]
             gain_b = altitudes[end_b] - altitudes[start_b]
             allowed_loss = max(max_dip_loss_m, dip_relative_frac * min(gain_a, gain_b))
-            if dip_loss <= allowed_loss and dip_dist <= max_dip_dist_m:
+            allowed_dist = max_dip_dist_m
+            if noise_tol_m > 0:
+                dist_a = distances[end_a] - distances[start_a]
+                dist_b = distances[end_b] - distances[start_b]
+                grades = [g for g, d in ((gain_a / dist_a if dist_a > 0 else None, dist_a),
+                                          (gain_b / dist_b if dist_b > 0 else None, dist_b))
+                          if g is not None and g > 0]
+                if grades:
+                    margin = min(2 * noise_tol_m / min(grades), max_dip_dist_m * MERGE_DIST_MARGIN_CAP_FRAC)
+                    allowed_dist = max_dip_dist_m + margin
+            if dip_loss <= allowed_loss and dip_dist <= allowed_dist:
                 merged[i][1] = merged[i + 1][1]
                 del merged[i + 1]
                 changed = True
@@ -725,7 +791,8 @@ def detect_climbs(samples: Sequence[dict], *,
         merged = _merge_climbs(split_rises, alt_v, dist_v,
                                 max_dip_loss_m=merge_max_dip_loss_m,
                                 dip_relative_frac=merge_dip_relative_frac,
-                                max_dip_dist_m=merge_max_dip_dist_m)
+                                max_dip_dist_m=merge_max_dip_dist_m,
+                                noise_tol_m=effective_tol)
 
         for start_local, end_local in merged:
             gain = alt_v[end_local] - alt_v[start_local]
