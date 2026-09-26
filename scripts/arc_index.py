@@ -1456,14 +1456,18 @@ def activity_zone_report(conn, conf: dict, garmin_activity_id: int) -> dict:
     "polarisation"}` — `reason` est toujours présent (`None` en cas de succès),
     `zone_seconds`/`polarisation` restent `None` si aucune zone n'est calculable, si
     la séance n'existe pas, ou si elle n'a pas d'échantillons ingérés — jamais une
-    exception, jamais un échec muet."""
+    exception, jamais un échec muet. `reason_code: "unknown_activity"` (#51, revue
+    de code) accompagne spécifiquement le cas « séance pas encore indexée » — un
+    MD pas encore écrit/indexé, PAS une absence de FIT — même code que
+    `activity_gap_report`/`activity_decoupling_report`/`activity_climb_report` ci-
+    dessous, pour que l'agent distingue les deux causes sans parser le texte."""
     resolution = athlete_hr_zone_resolution(conn, conf)
     if resolution["bounds_bpm"] is None:
         return {"garmin_activity_id": garmin_activity_id, **resolution, "zone_seconds": None, "polarisation": None}
     act = conn.execute("SELECT id FROM activity WHERE garmin_activity_id = ?", (garmin_activity_id,)).fetchone()
     if act is None:
         return {"garmin_activity_id": garmin_activity_id, **resolution, "reason": "aucune activité indexée pour ce garmin_activity_id",
-                "zone_seconds": None, "polarisation": None}
+                "reason_code": "unknown_activity", "zone_seconds": None, "polarisation": None}
     rows = conn.execute(
         "SELECT zone, seconds FROM hr_zone_time WHERE activity_id = ?", (act["id"],)).fetchall()
     pol_rows = conn.execute(
@@ -1490,9 +1494,11 @@ def activity_gap_report(conn, garmin_activity_id: int) -> dict:
     """Rapport GAP (#44) d'une séance : allure GAP globale (s/km) + par split, par
     `garmin_activity_id` — pour la CLI (`arc_index.py gap --activity`) et pour
     les agents en headless. Rend TOUJOURS `{"garmin_activity_id", "gap_pace_s_km",
-    "splits", "reason"}` (`reason` non nul explique un `None`), jamais une
-    exception ni un échec muet (même discipline que `activity_zone_report`,
-    #43) : activité introuvable, sport hors de la famille course à pied
+    "splits", "reason"}` (`reason` non nul explique un `None`), plus
+    `reason_code: "unknown_activity"` (#51) spécifiquement quand la séance n'est
+    pas (encore) indexée — jamais une exception ni un échec muet (même
+    discipline que `activity_zone_report`, #43) : activité introuvable, sport
+    hors de la famille course à pied
     (`arc_metrics.sport_family`), pas d'échantillon FIT ingéré, ou échantillons
     ingérés mais sans altitude exploitable (tapis de course, capteur
     barométrique absent, séance toujours à l'arrêt) sont QUATRE raisons
@@ -1502,7 +1508,7 @@ def activity_gap_report(conn, garmin_activity_id: int) -> dict:
                         (garmin_activity_id,)).fetchone()
     if act is None:
         return {"garmin_activity_id": garmin_activity_id, "gap_pace_s_km": None, "splits": None,
-                "reason": "aucune activité indexée pour ce garmin_activity_id"}
+                "reason": "aucune activité indexée pour ce garmin_activity_id", "reason_code": "unknown_activity"}
     if M.sport_family(act["sport"]) != "run":
         return {"garmin_activity_id": garmin_activity_id, "gap_pace_s_km": None, "splits": None,
                 "reason": "hors de la famille course à pied (arc_metrics.sport_family), voir "
@@ -1832,13 +1838,15 @@ def activity_decoupling_report(conn, garmin_activity_id: int) -> dict:
     headless (`coach`, #51). Lit les colonnes déjà calculées à l'indexation
     (`compute_metrics`), jamais un recalcul à la lecture — même discipline que
     `activity_gap_report` (#44). Rend TOUJOURS `{"garmin_activity_id",
-    "decoupling_pct", "ef_whole", "reason"}`, jamais une exception."""
+    "decoupling_pct", "ef_whole", "reason"}`, plus `reason_code:
+    "unknown_activity"` spécifiquement quand la séance n'est pas (encore)
+    indexée, jamais une exception."""
     act = conn.execute(
         "SELECT sport, decoupling_pct, ef_whole, decoupling_reason FROM activity WHERE garmin_activity_id = ?",
         (garmin_activity_id,)).fetchone()
     if act is None:
         return {"garmin_activity_id": garmin_activity_id, "decoupling_pct": None, "ef_whole": None,
-                "reason": "aucune activité indexée pour ce garmin_activity_id"}
+                "reason": "aucune activité indexée pour ce garmin_activity_id", "reason_code": "unknown_activity"}
     if M.sport_family(act["sport"]) != "run":
         return {"garmin_activity_id": garmin_activity_id, "decoupling_pct": None, "ef_whole": None,
                 "reason": "hors de la famille course à pied (arc_metrics.sport_family), voir "

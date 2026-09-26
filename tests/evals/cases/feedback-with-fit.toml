@@ -26,11 +26,14 @@ morning_check = "off"
 tools_called = ["get_activities"]
 files_with_arc_block = ["activities/*.md"]
 
-# Signale le dépassement d'intensité : les 30 % en zone 3 pour une séance
-# d'endurance, ET le fait que ce soit au-dessus de ce qui était prévu — deux
-# exigences distinctes (comme `sleep-debt`), pas une simple mention de la zone.
+# Signale le dépassement d'intensité : les 30 % en zone 3 (ou, formulation
+# prompt-compliant depuis la revue de code #51 — le coach cite maintenant
+# `polarisation.moderate_pct + high_pct`, pas les 5 zones affichées — "30 %
+# modéré"/"au-dessus du premier seuil") pour une séance d'endurance, ET le
+# fait que ce soit au-dessus de ce qui était prévu — deux exigences distinctes
+# (comme `sleep-debt`), pas une simple mention de la zone.
 must_match = [
-  '(zone\s*3|\bz3\b).{0,60}(30([.,]\d+)?\s*%|trente\s*(pour\s*cent|%))|(30([.,]\d+)?\s*%|trente\s*(pour\s*cent|%)).{0,60}(zone\s*3|\bz3\b)',
+  '((zone\s*3|\bz3\b|mod[ée]r[ée]e?|premier\s+seuil|seuil\s*1|tempo).{0,60}(30([.,]\d+)?\s*%|trente\s*(pour\s*cent|%))|(30([.,]\d+)?\s*%|trente\s*(pour\s*cent|%)).{0,60}(zone\s*3|\bz3\b|mod[ée]r[ée]e?|premier\s+seuil|seuil\s*1|tempo))',
   '(endurance.{0,80}(trop|d[ée]pass\w*|excessi\w*|au-dessus|plus\s+(intense|dur))|(trop|d[ée]pass\w*|excessi\w*|au-dessus|plus\s+(intense|dur)).{0,80}endurance)',
 ]
 # Garde-fou : le FIT EST disponible pour cette séance (fixture avec

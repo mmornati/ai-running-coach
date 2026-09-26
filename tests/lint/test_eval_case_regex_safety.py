@@ -87,6 +87,12 @@ CORRECT_ANSWERS_BY_CASE = {
         "Temps en zone 3 : 30,0 % du temps de mouvement — nettement au-dessus de ce qui était prévu "
         "pour une séance d'endurance.",
         "Zone 3 : 30.02 % du temps, largement plus intense qu'une sortie d'endurance ne le prévoyait.",
+        # Re-revue de code #51 : formulations « prompt-compliant » avec le
+        # découpage Seiler (`polarisation.moderate_pct + high_pct`), pas les 5
+        # zones affichées — le prompt cite désormais ce repère-là en premier.
+        "30 % du temps de mouvement au-dessus du premier seuil (intensité modérée), pour une séance "
+        "prévue en endurance.",
+        "Polarisation : 30 % modéré, 70 % facile — trop intense pour une endurance.",
     ],
     # #51 : symétrique sans FIT (fixture `feedback-without-fit`) — le coach dit
     # qu'il n'a pas de données FIT plutôt que d'inventer un chiffre.
@@ -142,6 +148,11 @@ FABRICATED_ANSWERS_BY_CASE = {
         "Découplage de 8 % sur cette sortie, bonne durabilité aérobie.",
         "VAM de 650 m/h sur la montée principale.",
         "Tu as passé 32 % du temps en zone 3, un peu élevé pour une endurance.",
+        # Re-revue de code #51 : formulations sans « temps »/« passé » explicite,
+        # que la version précédente du motif laissait passer.
+        "32 % en zone 3, un peu élevé.",
+        "Zone 3 : 32 %",
+        "| Z3 | 32 % |",
     ],
 }
 

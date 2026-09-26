@@ -128,10 +128,9 @@ outputs, only the Garmin one is stable across a `--rebuild`).
 Persist/validate that day's `activities/YYYY-MM-DD_*.md` WITH its
 `garmin_activity_id` FIRST (`workspace-data-contract`), THEN run the CLIs
 below, THEN write the KPI fields back into that same block. Skipping this
-order gets `reason_code: "unknown_activity"` (or, on `zones`/`gap`/
-`decoupling`, which don't set a code, a `reason` naming the same thing) with
-every field null — that means "not indexed yet, go write the MD and re-run",
-never "no FIT for this session".
+order gets `reason_code: "unknown_activity"` on every command, with every
+field null — that means "not indexed yet, go write the MD and re-run", never
+"no FIT for this session".
 
 | KPI | `<cmd>` | When | Caveat |
 |:---|:---|:---|:---|

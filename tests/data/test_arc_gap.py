@@ -458,6 +458,9 @@ class TestActivityGapReportAndCli(Workspace):
         report = I.activity_gap_report(self.conn, 123)
         self.assertIsNone(report["gap_pace_s_km"])
         self.assertIsNotNone(report["reason"])
+        # #51, revue de code : distingue « pas encore indexée » (l'agent doit
+        # écrire le MD puis relancer) d'un autre motif de `reason` sans code.
+        self.assertEqual(report["reason_code"], "unknown_activity")
 
     def test_non_run_family_has_explicit_reason(self):
         self.write_activity(self.GARMIN_ID, sport="indoor_cycling")

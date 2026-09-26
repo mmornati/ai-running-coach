@@ -23,16 +23,21 @@ tools_called = ["get_activities"]
 files_with_arc_block = ["activities/*.md"]
 
 # Pas de chiffre inventé : ni découplage/EF chiffré, ni VAM chiffrée, ni un
-# pourcentage de TEMPS PASSÉ en zone — mais NE DOIT PAS rejeter une réponse
+# pourcentage de temps passé en zone (formulation phrase, tableau `| Z3 | 32 % |`
+# ou notation compacte `Zone 3 : 32 %`) — mais NE DOIT PAS rejeter une réponse
 # correcte qui dit simplement « pas de données FIT », mentionne le mot « zone »
 # sans chiffre, ou cite un pourcentage de FC max/réserve sans rapport avec un
 # temps passé (« 75 % de ta FC max, en zone 2 » reste un repère instantané
-# légitime, pas un temps en zone inventé — d'où l'ancrage sur `temps`/`passé`
-# entre le `%` et la zone, pas un simple `\D{0,20}` générique).
+# légitime, pas un temps en zone inventé). Re-revue de code #51 : la version
+# précédente (ancrée sur `temps`/`passé` entre le `%` et la zone) manquait les
+# formulations sans ces mots (« 32 % en zone 3 », « Zone 3 : 32 % », un tableau
+# `| Z3 | 32 % |`) — motif à trois branches ci-dessous, chacune couvrant un
+# ordre/une forme différente (% puis zone avec connecteurs optionnels ; zone
+# puis séparateur `:`/`|`/`=` puis % ; `temps`/`passé` explicite entre les deux).
 must_not_match = [
   'd[ée]couplage\D{0,20}\d+([.,]\d+)?\s*%',
   '\bVAM\b\D{0,20}\d+',
-  '(zone\s*[1-5]|\bz[1-5]\b)\D{0,20}(temps|pass[ée])\D{0,20}\d+([.,]\d+)?\s*%|\d+([.,]\d+)?\s*%\D{0,20}(temps|pass[ée])\D{0,20}(zone\s*[1-5]|\bz[1-5]\b)',
+  '\d+([.,]\d+)?\s*%\s*(du\s+temps\s+(de\s+mouvement\s+)?)?(pass[ée]\s+)?(en\s+)?(zone\s*[1-5]|\bz[1-5]\b)|(zone\s*[1-5]|\bz[1-5]\b)\s*[:|=]?\s*\|?\s*\d+([.,]\d+)?\s*%|(temps|pass[ée])\D{0,20}\d+([.,]\d+)?\s*%\D{0,20}(zone\s*[1-5]|\bz[1-5]\b)',
 ]
 
 [[expect.arc_field]]
