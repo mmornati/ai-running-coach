@@ -97,6 +97,14 @@ export function paceFromSecPerKm(secPerKm) {
   return `${m}:${String(s === 60 ? 59 : s).padStart(2, "0")}/${UNITS === "imperial" ? "mi" : "km"}`;
 }
 
+// Efficacité en descente (#47) : ratio sans unité (1,00 = allure prédite par le
+// modèle à effort constant, voir `arc_descent.ASSUMPTIONS["indicator"]`) — jamais
+// une conversion d'unité (le ratio est indépendant de `[athlete].units`).
+export function efficiency(ratio, digits = 2) {
+  if (ratio === null || ratio === undefined) return "—";
+  return `${num(ratio, digits)}×`;
+}
+
 export function clock(s) {
   if (s === null || s === undefined) return "—";
   const total = Math.round(s);

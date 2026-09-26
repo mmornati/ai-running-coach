@@ -172,11 +172,29 @@ six semaines d'historique pour que la condition ait un sens.
   (« Séances » → une séance) détaille chaque montée (bornes, D+, pente
   moyenne, classe de pente, durée, VAM) dans son propre tableau.
 
+- **L'efficacité en descente** (#47) : un point par séance de la famille course à
+  pied où au moins une classe de pente descendante a été retenue — moyenne des
+  classes présentes de l'efficacité (vitesse GAP moyenne de la classe / allure GAP
+  de la séance entière, la référence « plat » de CETTE sortie ; voir
+  `scripts/arc_descent.py::ASSUMPTIONS["indicator"]`). Un repère pointillé à 1,00×
+  marque l'allure que prédirait le modèle de Minetti à effort métabolique constant.
+  **Ce modèle est connu pour surestimer le bénéfice des fortes descentes en
+  conditions réelles de trail** (voir [Marques et métriques](../marques.md)) : une
+  efficacité nettement sous 1,00× sur les classes les plus raides (au-delà de
+  -20 %, notamment) est donc **normale**, pas la preuve d'une mauvaise descente —
+  seule sa **tendance dans le temps, à pente égale**, est exploitable. Classes de
+  pente descendante (mirroir des classes ascendantes de la VAM, #46) : -5/-10 %,
+  -10/-15 %, -15/-20 %, < -20 % ; une classe dont le temps de mouvement (2 min) ou
+  la distance (300 m) reste sous le seuil sur cette séance n'apparaît simplement
+  pas (critère d'acceptation de #47). La fiche d'une séance individuelle détaille
+  chaque classe qualifiante (allure, distance, durée, efficacité) dans son propre
+  tableau.
+
 | Alimentée par | Calcul |
 |---|---|
 | `activities/*.md` (durée, FC moyenne, effort perçu) | `scripts/arc_metrics.py` : TRIMP, ou effort perçu sans FC |
 | `planning/Runner_Profile.md` (FC max, FC de repos) | indispensables au TRIMP |
-| `activities/fit/*.json` (échantillons ingérés) | temps en zone FC → polarisation 80/20 ; GAP → découplage aérobie/EF ; montées détectées → VAM |
+| `activities/fit/*.json` (échantillons ingérés) | temps en zone FC → polarisation 80/20 ; GAP → découplage aérobie/EF ; montées détectées → VAM ; classes de pente descendante → efficacité en descente |
 
 **Si les courbes sont plates ou bizarres** : renseignez la FC max et la FC de repos
 de référence du profil. Sans elles, la charge vient de l'effort perçu seul.
@@ -345,6 +363,15 @@ de fréquence cardiaque et d'effort perçu, un astérisque.
   une séance sans montée détectée (parcours plat, D+ ou pente sous le seuil de
   détection) affiche la section avec un message plutôt que la masquer — pour
   distinguer « pas de montée sur cette sortie » d'un bug d'affichage.
+- **L'efficacité en descente** (#47) : un tableau, une ligne par classe de pente
+  descendante qualifiante (allure, distance, durée de mouvement, indicateur
+  d'efficacité — voir la vue « Forme & charge » ci-dessus et
+  `scripts/arc_descent.py::ASSUMPTIONS` pour la méthode complète), plus l'allure
+  GAP de référence de la séance entière en pied de tableau. Réservé aux sports de
+  la famille course à pied avec échantillons FIT ; une séance sans classe
+  qualifiante affiche la section avec un message explicite plutôt que la masquer
+  (contrairement aux montées, l'absence est ici TOUJOURS documentée — critère
+  d'acceptation de #47).
 - **Les zones FC** (#43) : une barre empilée du temps passé dans chacune des 5 zones,
   avec les bornes intérieures (bpm, ex. « Z1 < 146 · Z2 146-155 · … · Z5 ≥ 172 ») et
   la méthode effective (FC au seuil, Karvonen ou %FC max — voir

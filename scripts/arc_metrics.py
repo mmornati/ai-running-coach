@@ -1403,6 +1403,76 @@ def vam_trend(activities: List[dict], day: date, window_weeks: int = VAM_TREND_W
     }
 
 
+# Fenêtre de la tendance d'efficacité en descente (#47) : 12 semaines glissantes,
+# même largeur que le découplage (#45) et la VAM (#46) — pas de raison connue
+# d'en choisir une différente pour un autre KPI dérivé des mêmes échantillons FIT.
+DESCENT_TREND_WEEKS = 12
+
+
+def descent_trend(rows: List[dict], day: date, window_weeks: int = DESCENT_TREND_WEEKS) -> dict:
+    """Tendance de l'efficacité en descente (#47) sur les `window_weeks` dernières
+    semaines glissantes se terminant à `day` inclus, famille course à pied
+    uniquement (déjà filtrée par la restriction de `arc_descent.descent_report`,
+    re-vérifiée ici comme les autres tendances). AUCUN seuil de durée minimale sur
+    la SÉANCE (comme `vam_trend`, contrairement à `decoupling_trend`) — seul le
+    seuil PAR CLASSE (`arc_descent.MIN_CLASS_DURATION_S`/`MIN_CLASS_DISTANCE_M`,
+    déjà appliqué en amont) filtre les lignes.
+
+    `rows` : une ligne par (activité, classe de pente descendante) RÉELLEMENT
+    présente (déjà dérivée à l'indexation par `arc_descent.descent_speed_by_grade_class`,
+    JAMAIS recalculée ici), portant au moins `date`, `sport`, `name`, `grade_class`,
+    `efficiency` (optionnel), `mean_pace_s_km` (optionnel).
+
+    Rend `{"points": [...], "classes": {label: {"points", "count", "avg_efficiency"}},
+    "window_weeks"}` : `points` porte UN point par activité (moyenne, non pondérée,
+    de l'efficacité de ses classes présentes — pour un graphique simple, une valeur
+    par sortie), `classes` porte le détail par classe de pente (pour le tableau/la
+    légende de la fiche séance) — seules les classes RÉELLEMENT représentées dans la
+    fenêtre apparaissent (critère d'acceptation de #47 : « classes sans assez de
+    données -> absentes »)."""
+    start = day - timedelta(days=window_weeks * 7 - 1)
+    by_activity: Dict[Tuple[str, Optional[str], Optional[str]], dict] = {}
+    by_class: Dict[str, list] = {}
+    for row in rows:
+        iso = row.get("date")
+        if not iso or sport_family(row.get("sport")) != "run":
+            continue
+        try:
+            act_date = date.fromisoformat(iso)
+        except ValueError:
+            continue
+        if not (start <= act_date <= day):
+            continue
+        cls = row.get("grade_class")
+        if cls is None:
+            continue
+        eff = row.get("efficiency")
+        key = (iso, row.get("name"), row.get("sport"))
+        entry = by_activity.setdefault(key, {
+            "date": iso, "sport": row.get("sport"), "name": row.get("name"), "efficiencies": [],
+        })
+        if eff is not None:
+            entry["efficiencies"].append(eff)
+        by_class.setdefault(cls, []).append({
+            "date": iso, "sport": row.get("sport"), "name": row.get("name"),
+            "efficiency": eff, "mean_pace_s_km": row.get("mean_pace_s_km"),
+        })
+    points = []
+    for entry in by_activity.values():
+        effs = entry.pop("efficiencies")
+        points.append({**entry, "avg_efficiency": round(statistics.mean(effs), 3) if effs else None})
+    points.sort(key=lambda p: p["date"])
+    classes_out = {}
+    for cls, pts in by_class.items():
+        pts.sort(key=lambda p: p["date"])
+        eff_vals = [p["efficiency"] for p in pts if p["efficiency"] is not None]
+        classes_out[cls] = {
+            "points": pts, "count": len(pts),
+            "avg_efficiency": round(statistics.mean(eff_vals), 3) if eff_vals else None,
+        }
+    return {"points": points, "classes": classes_out, "window_weeks": window_weeks}
+
+
 def gear_mileage(activities: List[dict], gear_defs: List[dict]) -> dict:
     """Kilométrage cumulé par chaussure (#40). Voir `ASSUMPTIONS["gear_mileage"]`
     pour la méthode complète (attribution, chaussure par défaut, `gear_id` inconnu,

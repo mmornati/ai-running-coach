@@ -19,6 +19,7 @@ sert au tableau de bord (`scripts/arc_serve.py`) et aux calculs de charge
     arc_index.py gap --activity GARMIN_ID                   # allure ajustée à la pente, globale + par split (#44)
     arc_index.py decoupling [--activity GARMIN_ID] [--weeks N]   # découplage aérobie (Pa:HR), EF (#45)
     arc_index.py vam [--activity GARMIN_ID] [--weeks N]           # VAM sur les montées détectées (#46)
+    arc_index.py descent [--activity GARMIN_ID] [--weeks N]        # efficacité en descente par classe de pente (#47)
 
 `hrv-baseline` n'a besoin d'aucun tableau de bord lancé (headless, `/garmin-daily-sync`
 compris) : elle réindexe puis rend le point du jour de `arc_metrics.hrv_baseline_series`
@@ -98,6 +99,15 @@ voir `arc_climb.ASSUMPTIONS`. Seuils de détection configurables :
 `config/workspace.toml`), résolus par `settings()` — critère d'acceptation de
 #46 (« montée minimale configurable »).
 
+`descent` (#47) rend, avec `--activity GARMIN_ID`, le détail d'efficacité en descente
+d'une séance par classe de pente (vitesse/allure moyenne, allure GAP de référence de
+la séance, indicateur d'efficacité — voir `arc_descent.ASSUMPTIONS["indicator"]`) ;
+sans `--activity`, la tendance sur les `--weeks` dernières semaines glissantes
+(défaut 12, comme `vam`). La table `activity_descent_class` est recalculée en entier
+à chaque passage de `index_workspace` (même discipline que GAP/#44, découplage/#45
+et VAM/#46), restreinte à la famille course à pied avec des échantillons FIT ingérés
+— voir `arc_descent.ASSUMPTIONS`.
+
 Options communes : `--workspace DIR` (sinon $ARC_WORKSPACE, le pointeur
 ~/.config/ai-running-coach/workspace, puis le moteur), `--db FICHIER` (défaut
 <workspace>/.arc/coach.db), `--memory` (base en mémoire, rien sur disque),
@@ -125,6 +135,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import arc_climb as VC  # noqa: E402
 import arc_contract as C  # noqa: E402
 import arc_decoupling as DC  # noqa: E402
+import arc_descent as DS  # noqa: E402
 import arc_gap as G  # noqa: E402
 import arc_legacy as L  # noqa: E402
 import arc_metrics as M  # noqa: E402
@@ -132,8 +143,8 @@ import arc_samples as S  # noqa: E402
 from coach_config import ConfigError, read_toml  # noqa: E402
 from coach_setup import ENGINE, workspace_root  # noqa: E402
 
-SCHEMA_VERSION = 13  # #46 : table `activity_climb` + colonnes `activity.best_vam_10min_m_h`/
-                      # `best_vam_20min_m_h`/`best_climb_vam_elapsed_m_h` (VAM sur les montées détectées)
+SCHEMA_VERSION = 14  # #47 : table `activity_descent_class` (efficacité en descente par classe de
+                      # pente, `arc_descent.py`) — voir #46 pour la version précédente
 DEFAULT_DB = ".arc/coach.db"
 DATA_DIRS = ("activities", "medical", "nutrition", "planning", "rapports")
 
@@ -431,6 +442,22 @@ CREATE TABLE activity_climb (
     duration_elapsed_s REAL, duration_moving_s REAL, vam_elapsed_m_h REAL, vam_moving_m_h REAL
 );
 CREATE INDEX activity_climb_activity ON activity_climb(activity_id);
+-- Efficacité en descente par classe de pente (#47, `arc_descent.py`), id INTERNE
+-- (`activity_id`, comme `activity_climb`/`hr_zone_time` — jamais `garmin_activity_id` :
+-- recréée en entier à chaque `compute_metrics`, sans purge par fichier). `grade_class` :
+-- voir `arc_descent.DESCENT_GRADE_CLASSES` (mirroir des classes ascendantes de #46).
+-- `efficiency` : vitesse GAP moyenne de la classe / allure GAP de référence de la
+-- séance entière (déjà en `activity.gap_pace_s_km`) — voir
+-- `arc_descent.ASSUMPTIONS["indicator"]` pour la lecture honnête de cet indicateur
+-- (le modèle de Minetti sous-jacent surestime le bénéfice des fortes descentes,
+-- une valeur < 1 sur les classes raides est attendue). Une activité sans classe
+-- qualifiante (durée/distance insuffisante par classe, ou hors famille course à
+-- pied/sans FIT) n'a simplement aucune ligne ici.
+CREATE TABLE activity_descent_class (
+    activity_id INTEGER, grade_class TEXT, count INTEGER, duration_moving_s REAL, distance_m REAL,
+    mean_speed_ms REAL, mean_pace_s_km REAL, mean_gap_speed_ms REAL, efficiency REAL
+);
+CREATE INDEX activity_descent_class_activity ON activity_descent_class(activity_id);
 """
 
 # Tables alimentées par fichier (colonne `source_path`) : purgées à la réindexation d'un fichier.
@@ -771,6 +798,7 @@ def compute_metrics(conn, conf: dict, today: Optional[str] = None) -> None:
     conn.execute("DELETE FROM hr_zone_time")
     conn.execute("DELETE FROM hr_polarisation_time")
     conn.execute("DELETE FROM activity_climb")
+    conn.execute("DELETE FROM activity_descent_class")
     for row in rows:
         act = dict(row)
         load, source = M.session_load(act, athlete)
@@ -885,6 +913,24 @@ def compute_metrics(conn, conf: dict, today: Optional[str] = None) -> None:
                         "best_climb_vam_elapsed_m_h = ? WHERE id = ?",
                         (windows["vam_best_10min_m_h"], windows["vam_best_20min_m_h"], best_climb_vam, act["id"]),
                     )
+                    # Efficacité en descente par classe de pente (#47) : réutilise `gap_series`
+                    # (pente + vitesse GAP par échantillon) ET `gap_pace` (allure GAP de la
+                    # séance entière, déjà calculée ci-dessus pour #44) comme référence « plat »
+                    # de CETTE séance — jamais un second calcul de pente/GAP, voir
+                    # `arc_descent.ASSUMPTIONS["reference"]`.
+                    reference_gap_speed_ms = (1000.0 / gap_pace) if gap_pace else None
+                    descent_classes = DS.descent_speed_by_grade_class(
+                        gap_series, reference_gap_speed_ms=reference_gap_speed_ms,
+                        resolution_s=S.DEFAULT_RESOLUTION_S)
+                    if descent_classes:
+                        conn.executemany(
+                            "INSERT INTO activity_descent_class (activity_id, grade_class, count, "
+                            "duration_moving_s, distance_m, mean_speed_ms, mean_pace_s_km, "
+                            "mean_gap_speed_ms, efficiency) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                            [(act["id"], cls, v["count"], v["duration_moving_s"], v["distance_m"],
+                              v["mean_speed_ms"], v["mean_pace_s_km"], v["mean_gap_speed_ms"], v["efficiency"])
+                             for cls, v in descent_classes.items()],
+                        )
                 except sqlite3.Error:
                     # Jamais rattrapé, `ARC_STRICT_METRICS` ou pas (voir le commentaire
                     # ci-dessus) : un verrou ou une base corrompue est un problème
@@ -905,6 +951,7 @@ def compute_metrics(conn, conf: dict, today: Optional[str] = None) -> None:
                     conn.execute("DELETE FROM hr_zone_time WHERE activity_id = ?", (act["id"],))
                     conn.execute("DELETE FROM hr_polarisation_time WHERE activity_id = ?", (act["id"],))
                     conn.execute("DELETE FROM activity_climb WHERE activity_id = ?", (act["id"],))
+                    conn.execute("DELETE FROM activity_descent_class WHERE activity_id = ?", (act["id"],))
                     conn.execute(
                         "UPDATE activity_split SET gap_pace_s_km = NULL WHERE activity_id = ?", (act["id"],))
                     conn.execute(
@@ -1296,9 +1343,13 @@ def index_workspace(conn, workspace: Path, today: Optional[str] = None) -> dict:
     # noms de clé possible avec `arc_gap`/`arc_decoupling`, ex. "model",
     # "restricted_to_run_family").
     vam_assumptions = {f"vam_{key}": value for key, value in VC.ASSUMPTIONS.items()}
+    # `arc_descent.ASSUMPTIONS` (#47) fusionné à PART lui aussi, sous des clés
+    # préfixées `descent_*` — même raison que `decoupling_*`/`vam_*` ci-dessus
+    # (collision possible, ex. "model", "restricted_to_run_family", "grade_classes").
+    descent_assumptions = {f"descent_{key}": value for key, value in DS.ASSUMPTIONS.items()}
     for key, value in (("settings", _j(conf)),
                        ("assumptions", _j({**M.ASSUMPTIONS, **G.ASSUMPTIONS, **decoupling_assumptions,
-                                           **vam_assumptions})),
+                                           **vam_assumptions, **descent_assumptions})),
                        ("today", today or date.today().isoformat())):
         conn.execute("INSERT OR REPLACE INTO meta VALUES (?, ?)", (key, value))
     conn.commit()
@@ -1603,12 +1654,70 @@ def vam_trend(conn, today: date, weeks: Optional[int] = None) -> dict:
     return M.vam_trend(rows, today, window_weeks)
 
 
+# ---------------------------------------------------------------------------
+# Efficacité en descente — par classe de pente (#47)
+# ---------------------------------------------------------------------------
+
+
+def activity_descent_report(conn, garmin_activity_id: int) -> dict:
+    """Rapport d'efficacité en descente (#47) d'une séance, par
+    `garmin_activity_id` — pour la CLI (`arc_index.py descent --activity`) et
+    pour les agents en headless. Lit les lignes/colonnes déjà calculées à
+    l'indexation (`compute_metrics`), jamais un recalcul à la lecture — même
+    discipline que `activity_climb_report` (#46). Rend TOUJOURS
+    `{"garmin_activity_id", "classes", "reference_gap_pace_s_km", "reason"}`,
+    jamais une exception."""
+    empty = {"garmin_activity_id": garmin_activity_id, "classes": {}, "reference_gap_pace_s_km": None}
+    act = conn.execute(
+        "SELECT id, sport, gap_pace_s_km FROM activity WHERE garmin_activity_id = ?",
+        (garmin_activity_id,)).fetchone()
+    if act is None:
+        return {**empty, "reason": "aucune activité indexée pour ce garmin_activity_id"}
+    if M.sport_family(act["sport"]) != "run":
+        return {**empty, "reason": "hors de la famille course à pied (arc_metrics.sport_family), voir "
+                                    "arc_descent.ASSUMPTIONS[\"restricted_to_run_family\"]"}
+    sample_count = conn.execute(
+        "SELECT COUNT(*) FROM activity_sample WHERE garmin_activity_id = ?", (garmin_activity_id,)
+    ).fetchone()[0]
+    if sample_count == 0:
+        return {**empty, "reason": "aucun échantillon FIT ingéré pour cette séance"}
+    rows = {r["grade_class"]: dict(r) for r in conn.execute(
+        "SELECT grade_class, count, duration_moving_s, distance_m, mean_speed_ms, mean_pace_s_km, "
+        "mean_gap_speed_ms, efficiency FROM activity_descent_class WHERE activity_id = ?",
+        (act["id"],)).fetchall()}
+    # Ordre `DESCENT_GRADE_CLASSES` (croissant), jamais un ordre SQL arbitraire sur
+    # une colonne texte (qui trierait "-10 à -15 %" avant "-5 à -10 %" alphabétiquement)
+    # — même discipline que `arc_climb.vam_by_grade_class`/l'UI (`GRADE_CLASS_ORDER`).
+    classes = {label: {k: v for k, v in rows[label].items() if k != "grade_class"}
+               for _lo, _hi, label in DS.DESCENT_GRADE_CLASSES if label in rows}
+    return {
+        "garmin_activity_id": garmin_activity_id,
+        "classes": classes,
+        "reference_gap_pace_s_km": act["gap_pace_s_km"],
+        "reason": None if classes else "aucune classe de pente descendante avec assez de données sur cette séance",
+    }
+
+
+def descent_trend(conn, today: date, weeks: Optional[int] = None) -> dict:
+    """Tendance de l'efficacité en descente (#47) — pour la CLI
+    (`arc_index.py descent --weeks`) et pour `coach`/le tableau de bord. Voir
+    `arc_metrics.descent_trend`/`arc_descent.ASSUMPTIONS` — AUCUN seuil de durée
+    minimale sur la séance (comme `vam_trend`), seul le seuil PAR CLASSE
+    (déjà appliqué à l'indexation) filtre les lignes."""
+    rows = [dict(r) for r in conn.execute(
+        "SELECT a.date AS date, a.sport AS sport, a.name AS name, dc.grade_class AS grade_class, "
+        "dc.efficiency AS efficiency, dc.mean_pace_s_km AS mean_pace_s_km "
+        "FROM activity_descent_class dc JOIN activity a ON a.id = dc.activity_id").fetchall()]
+    window_weeks = weeks if weeks and weeks > 0 else M.DESCENT_TREND_WEEKS
+    return M.descent_trend(rows, today, window_weeks)
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     parser.add_argument("command", nargs="?", default="index",
                         choices=("index", "backfill-plan", "status", "hrv-baseline", "sleep-debt",
                                  "heat-acclimation", "gear", "fueling", "samples", "zones", "gap",
-                                 "decoupling", "vam"))
+                                 "decoupling", "vam", "descent"))
     parser.add_argument("selector", nargs="?", default=None,
                         help="argument de la sous-commande (ex. garmin_activity_id pour « samples »)")
     parser.add_argument("--workspace")
@@ -1618,11 +1727,13 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--today", help="date de fin des séries (AAAA-MM-JJ)")
     parser.add_argument("--validate", nargs="+", metavar="FICHIER")
     parser.add_argument("--activity", type=int, metavar="GARMIN_ID",
-                        help="commande « zones »/« gap »/« decoupling »/« vam » : temps en zone, GAP, "
-                             "découplage ou montées/VAM d'une séance (garmin_activity_id)")
+                        help="commande « zones »/« gap »/« decoupling »/« vam »/« descent » : temps en "
+                             "zone, GAP, découplage, montées/VAM ou efficacité en descente d'une séance "
+                             "(garmin_activity_id)")
     parser.add_argument("--weeks", type=int, metavar="N",
-                        help="commande « zones »/« decoupling »/« vam » : polarisation ou tendance sur "
-                             "les N dernières semaines (défaut 8 pour « zones », 12 pour « decoupling »/« vam »)")
+                        help="commande « zones »/« decoupling »/« vam »/« descent » : polarisation ou "
+                             "tendance sur les N dernières semaines (défaut 8 pour « zones », 12 pour "
+                             "« decoupling »/« vam »/« descent »)")
     return parser
 
 
@@ -1720,6 +1831,14 @@ def main(argv=None) -> int:
             print(json.dumps(activity_climb_report(conn, garmin_id), ensure_ascii=False))
             return 0
         print(json.dumps(vam_trend(conn, today_date, args.weeks), ensure_ascii=False))
+        return 0
+    if args.command == "descent":
+        today_date = date.fromisoformat(args.today) if args.today else date.today()
+        garmin_id = args.activity if args.activity is not None else (int(args.selector) if args.selector else None)
+        if garmin_id is not None:
+            print(json.dumps(activity_descent_report(conn, garmin_id), ensure_ascii=False))
+            return 0
+        print(json.dumps(descent_trend(conn, today_date, args.weeks), ensure_ascii=False))
         return 0
     if args.command == "status":
         by_status = {row[0]: row[1] for row in conn.execute(

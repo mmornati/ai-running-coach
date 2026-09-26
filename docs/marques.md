@@ -37,6 +37,7 @@ publiés dans la littérature scientifique et portent ici des noms génériques 
 | **Allure ajustée à la pente** (« GAP ») | Coût énergétique de la course de Minetti AE *et al.*, *J Appl Physiol* 93:1039–1046 (2002) | Strava GAP, COROS Effort Pace, Suunto NGP — même principe (ajuster l'allure à la pente), calculs propriétaires non documentés publiquement dans le détail ; voir la limite du modèle ci-dessous |
 | **Découplage aérobie (Pa:HR)** et **facteur d'efficacité (EF)** | Formule publique : EF = allure ajustée à la pente (GAP) / FC ; découplage = variation d'EF entre les deux moitiés d'une séance | Terminologie « Pa:HR » (« Pace:HR ») et « Efficiency Factor » popularisée par la **marque** TrainingPeaks — même principe, calcul propriétaire non documenté publiquement ; notre calcul est indépendant, fondé sur notre propre GAP (ligne ci-dessus) |
 | **VAM** (vitesse ascensionnelle, gain d'altitude / durée sur une montée détectée) | Formule publique et triviale (une division) : terminologie d'origine cycliste, souvent associée informellement au préparateur Michele Ferrari — **aucune publication vérifiable identifiée** pour cette attribution précise, mentionnée uniquement comme repère historique | Segments de montée de la **marque** Strava, ClimbPro de la **marque** Garmin — concepts comparables (détecter des montées, en mesurer la performance), aucun calcul propriétaire reproduit |
+| **Efficacité en descente** (vitesse GAP moyenne par classe de pente descendante / allure GAP de référence de la séance) | **Approximation du projet**, construite à partir du même modèle de Minetti AE *et al.* (2002) que le GAP ci-dessus — aucune formule publiée équivalente identifiée ailleurs | Aucun concurrent grand public n'affiche publiquement d'indicateur comparable documenté ; voir l'avertissement ci-dessous sur la limite du modèle sous-jacent |
 
 !!! warning "GAP : approximation du projet, pas un équivalent des GAP propriétaires"
     Notre allure ajustée à la pente applique tel quel le modèle de laboratoire de
@@ -49,6 +50,17 @@ publiés dans la littérature scientifique et portent ici des noms génériques 
     ne peut pas être vérifiée pour eux spécifiquement. Notre GAP reste une
     **approximation du projet**, jamais une reproduction de Strava GAP, COROS
     Effort Pace ou Suunto NGP : ne pas présenter ces valeurs comme équivalentes.
+
+!!! warning "Efficacité en descente : un ratio à soi-même, pas une note absolue"
+    Notre efficacité en descente hérite directement de la limite du GAP ci-dessus
+    (même modèle de Minetti sous-jacent) : le modèle **surestime le bénéfice
+    métabolique des fortes descentes**. Une valeur nettement sous 1,00× sur les
+    classes de pente les plus raides (au-delà de -20 %, notamment) est donc
+    **attendue et normale** — prudence tactique, terrain technique, freinage
+    excentrique — jamais la preuve d'une mauvaise descente. Cet indicateur
+    compare l'athlète à lui-même (sa propre allure GAP de référence), jamais à
+    un score universel ni à un autre athlète : seule sa **tendance dans le
+    temps**, à classe de pente égale, est exploitable.
 
 !!! note "Valeurs non comparables"
     Notre condition, notre fatigue et notre forme sont calculées sur le **TRIMP**
