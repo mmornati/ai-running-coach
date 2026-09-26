@@ -715,11 +715,16 @@ class Workspace(unittest.TestCase):
         return I.index_workspace(self.conn, self.ws, today)
 
     def write_activity(self, garmin_id, day="2026-09-20", duration_s=1800, distance_m=3600,
-                        sport="trail"):
+                        sport="trail", splits=None):
+        extra = ""
+        if splits is not None:
+            cols = ["km", "distance_m", "duration_s"]
+            rows = [[s.get(c) for c in cols] for s in splits]
+            extra = f', "splits_cols": {json.dumps(cols)}, "splits": {json.dumps(rows)}'
         self.write(f"activities/{day}_{sport}.md", _arc_activity(
             f'{{"arc": 1, "kind": "activity", "date": "{day}", "sport": "{sport}", '
             f'"duration_s": {duration_s}, "distance_m": {distance_m}, '
-            f'"garmin_activity_id": {garmin_id}}}'
+            f'"garmin_activity_id": {garmin_id}{extra}}}'
         ))
 
     def write(self, rel: str, text: str) -> None:
@@ -878,7 +883,16 @@ class TestComputeMetricsSurvivesAnUnexpectedDetectorCrash(Workspace):
     GARMIN_ID_OK = 90000000049
 
     def test_one_activitys_crash_never_stops_indexing_the_rest(self):
-        self.write_activity(self.GARMIN_ID_BROKEN, day="2026-09-19")
+        # Revue de code #46, 4e passe : ce test exerce délibérément le chemin de
+        # RATTRAPAGE (pas le chemin strict de `ARC_STRICT_METRICS=1` que
+        # `tests/run_tests.py` active pour le reste de la suite/la CI) — la
+        # variable est explicitement désactivée le temps de cet appel, puis
+        # restaurée, pour ne jamais affecter les autres tests du même run.
+        import os
+        previous_strict = os.environ.pop("ARC_STRICT_METRICS", None)
+
+        splits = [{"km": 1, "distance_m": 1000.0, "duration_s": 370}]
+        self.write_activity(self.GARMIN_ID_BROKEN, day="2026-09-19", distance_m=1000, splits=splits)
         self.write_fit_climb(self.GARMIN_ID_BROKEN, duration_s=1800, gain_m=300.0, distance_m=3600.0)
         self.write_activity(self.GARMIN_ID_OK, day="2026-09-20")
         self.write_fit_climb(self.GARMIN_ID_OK, duration_s=1800, gain_m=300.0, distance_m=3600.0)
@@ -905,6 +919,10 @@ class TestComputeMetricsSurvivesAnUnexpectedDetectorCrash(Workspace):
                 self.index()
         finally:
             I.VC.detect_climbs = original
+            if previous_strict is None:
+                os.environ.pop("ARC_STRICT_METRICS", None)
+            else:
+                os.environ["ARC_STRICT_METRICS"] = previous_strict
 
         self.assertIn("bug injecté par le test", stderr.getvalue())
         self.assertIn(str(self.activity_row(self.GARMIN_ID_BROKEN)["id"]), stderr.getvalue())
@@ -917,12 +935,49 @@ class TestComputeMetricsSurvivesAnUnexpectedDetectorCrash(Workspace):
         broken_climb_rows = self.conn.execute(
             "SELECT * FROM activity_climb WHERE activity_id = ?", (broken["id"],)).fetchall()
         self.assertEqual(broken_climb_rows, [])
+        # Revue de code #46, 4e passe : le nettoyage doit aussi remettre à NULL
+        # `activity_split.gap_pace_s_km` de CETTE activité — sinon le split
+        # garderait une valeur calculée avant le plantage, incohérente avec le
+        # reste de l'activité remis à NULL.
+        broken_splits = self.conn.execute(
+            "SELECT gap_pace_s_km FROM activity_split WHERE activity_id = ?", (broken["id"],)).fetchall()
+        self.assertTrue(broken_splits, "le split de test n'a pas été indexé")
+        for row in broken_splits:
+            self.assertIsNone(row["gap_pace_s_km"])
 
         # La séance suivante, elle, doit être indexée NORMALEMENT — l'indexation
         # n'a pas été interrompue par le plantage de la première.
         ok = self.activity_row(self.GARMIN_ID_OK)
         self.assertIsNotNone(ok["best_climb_vam_elapsed_m_h"])
         self.assertAlmostEqual(ok["best_climb_vam_elapsed_m_h"], 600.0, delta=5.0)
+
+    def test_arc_strict_metrics_env_reraises_instead_of_swallowing(self):
+        """Revue de code #46, 4e passe, should-fix 1 : `ARC_STRICT_METRICS=1`
+        (celui que `tests/run_tests.py` active pour toute la suite) doit faire
+        REMONTER l'exception plutôt que la rattraper — un vrai bug de
+        programmation ne doit jamais disparaître silencieusement pendant les
+        tests/la CI."""
+        import os
+        self.write_activity(self.GARMIN_ID_BROKEN)
+        self.write_fit_climb(self.GARMIN_ID_BROKEN, duration_s=1800, gain_m=300.0, distance_m=3600.0)
+
+        original = I.VC.detect_climbs
+
+        def _boom(samples, **kwargs):
+            raise RuntimeError("bug injecté par le test")
+
+        previous_strict = os.environ.get("ARC_STRICT_METRICS")
+        os.environ["ARC_STRICT_METRICS"] = "1"
+        I.VC.detect_climbs = _boom
+        try:
+            with self.assertRaises(RuntimeError):
+                self.index()
+        finally:
+            I.VC.detect_climbs = original
+            if previous_strict is None:
+                os.environ.pop("ARC_STRICT_METRICS", None)
+            else:
+                os.environ["ARC_STRICT_METRICS"] = previous_strict
 
 
 if __name__ == "__main__":

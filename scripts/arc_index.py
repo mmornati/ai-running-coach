@@ -114,6 +114,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import os
 import sqlite3
 import sys
 from datetime import date, timedelta
@@ -800,6 +801,19 @@ def compute_metrics(conn, conf: dict, today: Optional[str] = None) -> None:
                 # raison explicite — l'indexation continue avec l'activité suivante,
                 # jamais un plantage global pour une seule séance à échantillons
                 # malformés ou un cas limite non anticipé par un détecteur.
+                #
+                # `ARC_STRICT_METRICS=1` (revue de code #46, 4e passe) désactive ce
+                # rattrapage et relève l'exception telle quelle : les suites de tests
+                # (`tests/run_tests.py`, donc la CI) tournent avec cette variable pour
+                # qu'un VRAI bug de programmation dans un des calculs dérivés fasse
+                # échouer le test qui l'a déclenché plutôt que de disparaître,
+                # silencieusement rattrapé, dans un `NULL` que rien ne signale comme une
+                # anomalie — le rattrapage silencieux n'est un comportement voulu qu'en
+                # PRODUCTION (workspace réel de l'athlète, `/garmin-daily-sync`), jamais
+                # pendant le développement. Une erreur SQLite (verrou, base corrompue)
+                # n'est, elle, JAMAIS rattrapée ici, `ARC_STRICT_METRICS` ou pas : un
+                # problème d'infrastructure de la base doit toujours remonter bruyamment,
+                # ce n'est pas ce que cette défense en profondeur vise à absorber.
                 try:
                     if zone_bounds:
                         bounds, _method = zone_bounds
@@ -871,7 +885,16 @@ def compute_metrics(conn, conf: dict, today: Optional[str] = None) -> None:
                         "best_climb_vam_elapsed_m_h = ? WHERE id = ?",
                         (windows["vam_best_10min_m_h"], windows["vam_best_20min_m_h"], best_climb_vam, act["id"]),
                     )
+                except sqlite3.Error:
+                    # Jamais rattrapé, `ARC_STRICT_METRICS` ou pas (voir le commentaire
+                    # ci-dessus) : un verrou ou une base corrompue est un problème
+                    # d'infrastructure, pas un défaut d'UN calcul dérivé — il doit
+                    # remonter bruyamment plutôt que de laisser croire à une activité
+                    # simplement sans métriques dérivées.
+                    raise
                 except Exception as exc:  # noqa: BLE001 — défense en profondeur assumée, voir ci-dessus
+                    if os.environ.get("ARC_STRICT_METRICS") == "1":
+                        raise
                     print(
                         f"avertissement : calcul des métriques dérivées des échantillons a échoué pour "
                         f"l'activité id={act['id']} (garmin_activity_id={act.get('garmin_activity_id')}) : "
@@ -882,6 +905,8 @@ def compute_metrics(conn, conf: dict, today: Optional[str] = None) -> None:
                     conn.execute("DELETE FROM hr_zone_time WHERE activity_id = ?", (act["id"],))
                     conn.execute("DELETE FROM hr_polarisation_time WHERE activity_id = ?", (act["id"],))
                     conn.execute("DELETE FROM activity_climb WHERE activity_id = ?", (act["id"],))
+                    conn.execute(
+                        "UPDATE activity_split SET gap_pace_s_km = NULL WHERE activity_id = ?", (act["id"],))
                     conn.execute(
                         "UPDATE activity SET gap_pace_s_km = NULL, decoupling_pct = NULL, ef_whole = NULL, "
                         "decoupling_reason = ?, best_vam_10min_m_h = NULL, best_vam_20min_m_h = NULL, "
