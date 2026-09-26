@@ -1923,6 +1923,16 @@ def _resolve_sessions(sessions: List[dict], by_date: Dict[str, List[dict]], toda
     return resolved
 
 
+def resolve_sessions(sessions: List[dict], by_date: Dict[str, List[dict]], today_iso: str) -> List[dict]:
+    """Enveloppe PUBLIQUE de `_resolve_sessions` (même contrat exact, voir sa
+    docstring) — promue en revue de code #98 (2e passe, nit) pour que des
+    consommateurs EXTERNES du module (`arc_guardrails.py`, qui a besoin de la
+    même logique d'appariement séance ↔ activité que `week_compliance` pour
+    reconstruire la charge réelle/projetée d'une semaine proposée) n'aient pas
+    à importer un nom privé (`_resolve_sessions`)."""
+    return _resolve_sessions(sessions, by_date, today_iso)
+
+
 def _ratio(actual_total: float, planned_total: float, has_planned: bool) -> Optional[float]:
     return round(actual_total / planned_total, 3) if has_planned and planned_total > 0 else None
 

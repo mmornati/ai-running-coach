@@ -150,6 +150,39 @@ Deux champs de la section « Physiologie » alimentent le
 [tableau de bord](dashboard/index.md) : **FC max** et **FC de repos de référence**
 (la **FC au seuil** et le **sexe**, facultatifs, affinent le calcul de charge).
 
+## Les garde-fous — `[guardrails]`
+
+```toml
+[guardrails]
+enabled = true
+r1_acwr_max = 1.3
+r2_volume_increase_max_pct = 10.0
+r2_volume_reference = "mean4"           # mean4 (défaut) | previous_week
+r3_elevation_increase_max_pct = 10.0
+r4_monotony_max = 2.0
+r6_long_run_share_max_pct = 35.0
+severity_r1_acwr_projected = "warn"     # info | warn | block
+```
+
+Le moteur de garde-fous déterministe ([`scripts/arc_guardrails.py`](guardrails.md))
+est un second avis purement calculé, consulté par le coach avant d'écrire une
+semaine et avant de la pousser au calendrier Garmin. Chaque règle (R1 à R7) a son
+seuil et sa sévérité propres — voir [la page dédiée](guardrails.md) pour le détail,
+les sources et le format de sortie.
+
+!!! note "Le style ne change jamais le fond, ici non plus"
+    Une violation `block` (par défaut : qualité après un verdict rouge
+    seulement — voir ci-dessous) reste bloquante quel que soit
+    `[coaching].style` — voir « Le style ne change jamais le fond » ci-dessus.
+
+!!! warning "R1 (ACWR) est `warn` par défaut, pas `block`"
+    Les seuils publiés pour le ratio de charge aiguë/chronique viennent
+    d'études en sports collectifs, avec une méthode de calcul différente de
+    celle utilisée ici (voyez [la page dédiée](guardrails.md#sources) pour le
+    détail) — la preuve est elle-même discutée dans la littérature de course à
+    pied. Remettez `severity_r1_acwr_projected` à `"block"` si vous préférez la
+    fermeté.
+
 ## Le tableau de bord — `[dashboard]`
 
 ```toml
