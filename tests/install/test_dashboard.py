@@ -118,6 +118,59 @@ class TestDashboardServer(InstallAsserts):
         self.assertIn("Bilan test", after)
 
 
+class TestDashboardAnalysisView(InstallAsserts):
+    """#50 — la vue « Analyse » (`#/analyse`) rassemble les tendances FIT (#43/#45-49)
+    sorties de « Forme & charge » : verrouille que le bundle JS sert bien cette route
+    et que chacun des endpoints qu'elle consomme répond sur un workspace synthétique
+    à échantillons FIT (`--with-samples`), y compris `/api/climb-segments` (#49),
+    servi depuis #49 mais jamais consommé par aucune vue avant #50."""
+
+    def setUp(self):
+        self.sb = Sandbox().__enter__()
+        self.ws = build(self.sb.root / "ws", days=120, today=__import__("datetime").date.fromisoformat(TODAY),
+                        with_samples=True)
+        self.server = Server(self.sb, ["python3", str(self.sb.repo / "scripts/arc_serve.py"),
+                                       "--workspace", str(self.ws), "--port", "0", "--today", TODAY])
+        self.assertIsNotNone(self.server.url, self.server.proc.stderr.read() if self.server.proc.poll() is not None else "pas d'URL")
+
+    def tearDown(self):
+        self.server.stop()
+        self.sb.__exit__(None, None, None)
+
+    def test_app_js_wires_the_analyse_route(self):
+        """Régression : la route `analyse` (nav + `ROUTES`) doit rester câblée dans le
+        bundle statique servi — un renommage de route sans mise à jour du HTML/JS
+        casserait silencieusement le lien de nav plutôt que de faire échouer un test."""
+        status, body, _ = self.server.get("/js/app.js")
+        self.assertEqual(status, 200)
+        text = body.decode("utf-8")
+        self.assertIn('analyse: viewAnalyse', text)
+        self.assertIn('["analyse", "Analyse"]', text)
+
+    def test_analyse_view_endpoints_respond(self):
+        """Chaque endpoint consommé par `viewAnalyse` (`web/js/app.js`) répond 200 sur
+        un workspace à échantillons FIT, `climb-segments` compris (#49)."""
+        for path in ("/api/load?weeks=26", "/api/decoupling?weeks=26", "/api/vam?weeks=26",
+                     "/api/descent?weeks=26", "/api/durability?weeks=26", "/api/climb-segments"):
+            status, body, _ = self.server.get(path)
+            self.assertEqual(status, 200, path)
+            json.loads(body)  # une réponse JSON valide, quelle que soit sa forme
+
+    def test_climb_segments_route_has_expected_shape(self):
+        """#49/#50 : `/api/climb-segments` (jamais affiché avant #50) rend une liste de
+        segments avec un `segment_id` exploitable par `#/montee/<id>` côté UI — jamais
+        de coordonnée GPS (`arc_climb_match.ASSUMPTIONS["privacy"]`)."""
+        status, body, _ = self.server.get("/api/climb-segments")
+        self.assertEqual(status, 200)
+        segments = json.loads(body)["segments"]
+        self.assertGreater(len(segments), 0, "workspace --with-samples : au moins un segment de montée attendu")
+        seg = segments[0]
+        for key in ("segment_id", "location", "gain_m", "distance_m", "avg_grade", "grade_class", "occurrences"):
+            self.assertIn(key, seg)
+        for leaked in ("lat", "lon", "latitude", "longitude"):
+            self.assertNotIn(leaked, seg, "aucune coordonnée GPS ne doit être exposée")
+
+
 class TestDashboardHealthMorningCheck(InstallAsserts):
     """#34/#37 — la ligne de base HRV personnelle et la dette de sommeil sont deux
     calculs dérivés de données de santé : ni l'un ni l'autre ne doit apparaître dans

@@ -102,6 +102,32 @@ la fatigue accumulée ; une forme franchement positive avant une course, c'est
 l'affûtage réussi. La tendance compte plus que le chiffre du jour. Il faut environ
 six semaines d'historique pour que la condition ait un sens.
 
+| Alimentée par | Calcul |
+|---|---|
+| `activities/*.md` (durée, FC moyenne, effort perçu) | `scripts/arc_metrics.py` : TRIMP, ou effort perçu sans FC |
+| `planning/Runner_Profile.md` (FC max, FC de repos) | indispensables au TRIMP |
+
+**Si les courbes sont plates ou bizarres** : renseignez la FC max et la FC de repos
+de référence du profil. Sans elles, la charge vient de l'effort perçu seul.
+
+!!! note "#50 — les tendances FIT ont déménagé"
+    Jusqu'à la story #50, cette vue affichait aussi la polarisation 80/20, le
+    découplage aérobie, la VAM, l'efficacité en descente et la durabilité : elles
+    surchargeaient une vue censée rester concentrée sur condition/fatigue/forme et
+    volume. Elles vivent désormais dans **[Analyse](#analyse)**, avec la liste des
+    montées reconnues d'une séance à l'autre (#49). Un lien de sélecteur de classe
+    de descente ouvert depuis avant #50 (`#/forme?jours=…&descente=…`) redirige
+    automatiquement vers son équivalent `#/analyse?semaines=…&descente=…` — rien à
+    refaire côté favoris ou liens partagés.
+
+## Analyse
+
+**Ma technique et ma durabilité progressent-elles ?**
+
+Les tendances calculées à partir des **échantillons FIT ingérés**
+(`activities/fit/*.json`, story #42), sur 3 mois, 6 mois ou un an — jamais
+disponibles à partir du seul résumé Markdown d'une séance :
+
 - **La polarisation 80/20** (#43) : une barre empilée par semaine — part du temps en
   zone FC **facile**, **modérée** et **difficile**, modèle à trois zones de Seiler
   (voir [Marques et métriques](../marques.md)). Les seuils bpm qui séparent ces trois
@@ -236,14 +262,28 @@ six semaines d'historique pour que la condition ait un sens.
   séance individuelle affiche le fade GAP (et le fade EF) comme un fait de
   séance, aux côtés du découplage aérobie.
 
+- **Segments de montée** (#49, #50) : une même montée, reconnue d'une séance à
+  l'autre (position GPS quand le FIT en porte, sinon profil distance/D+/pente,
+  voir `scripts/arc_climb_match.py`) — un tableau, une ligne par segment avec au
+  moins deux occurrences, sans jamais exposer de coordonnée GPS
+  (`arc_climb_match.ASSUMPTIONS["privacy"]`). Chaque ligne ouvre l'historique
+  complet du segment (`#/montee/<id>`) : toutes ses occurrences, un graphique VAM
+  par date, et la progression vs séance précédente/meilleure déjà affichée sur la
+  fiche de chaque séance (colonne « vs précédent/meilleur » de la table des
+  montées). Cette table existait côté API depuis #49 (`/api/climb-segments`) sans
+  être affichée nulle part avant #50.
+
 | Alimentée par | Calcul |
 |---|---|
-| `activities/*.md` (durée, FC moyenne, effort perçu) | `scripts/arc_metrics.py` : TRIMP, ou effort perçu sans FC |
-| `planning/Runner_Profile.md` (FC max, FC de repos) | indispensables au TRIMP |
 | `activities/fit/*.json` (échantillons ingérés) | temps en zone FC → polarisation 80/20 ; GAP → découplage aérobie/EF ; montées détectées → VAM ; classes de pente descendante → efficacité en descente ; premier/dernier tiers → durabilité (fade GAP/EF) ; position GPS des montées (si présente dans le FIT) → identité de montée entre séances (#49) |
 
-**Si les courbes sont plates ou bizarres** : renseignez la FC max et la FC de repos
-de référence du profil. Sans elles, la charge vient de l'effort perçu seul.
+**Si la vue est vide** : aucune de ces cinq sections n'apparaît tant qu'aucune
+activité n'a d'échantillons FIT ingérés — la vue l'explique alors en une seule
+fois (plutôt que cinq sections vides côte à côte) et renvoie au skill
+`fit-download` (`skills/fit-download/SKILL.md`) pour synchroniser les fichiers
+FIT depuis Garmin. Une section peut aussi rester absente individuellement (pas
+de séance à échantillons cette fenêtre, aucune sortie longue, aucun segment
+reconnu deux fois) sans que les autres en soient affectées.
 
 ## Santé
 

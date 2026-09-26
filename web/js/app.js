@@ -204,7 +204,7 @@ function renderObjective(s) {
 function renderNav(s) {
   const nutrition = s.settings.agents?.includes("nutritionist");
   const items = [
-    ["", "Aujourd'hui"], ["forme", "Forme & charge"], ["sante", "Santé"], ["semaine", "Semaine"],
+    ["", "Aujourd'hui"], ["forme", "Forme & charge"], ["analyse", "Analyse"], ["sante", "Santé"], ["semaine", "Semaine"],
     ["seances", "Séances"], ["performance", "Performance"], ["calendrier", "Calendrier"],
     ["rapports", "Rapports"], ...(nutrition ? [["nutrition", "Nutrition"]] : []),
   ];
@@ -357,10 +357,7 @@ async function viewToday() {
 
 async function viewForm(params) {
   const days = Number(params.get("jours")) || 180;
-  const [form, load, decoupling, vam, descent, durability] = await Promise.all([
-    api(`form?days=${days}`), api("load?weeks=26"), api("decoupling"), api("vam"), api("descent"),
-    api("durability"),
-  ]);
+  const [form, load] = await Promise.all([api(`form?days=${days}`), api("load?weeks=26")]);
   const s = SUMMARY;
   const trail = s.settings.sport === "trail";
   const series = form.series;
@@ -395,10 +392,6 @@ async function viewForm(params) {
 
   const periods = [[90, "3 mois"], [180, "6 mois"], [365, "1 an"]].map(([d, l]) => `<a class="seg ${d === days ? "is-on" : ""}" aria-current="${d === days ? "true" : "false"}" href="#/forme?jours=${d}">${l}</a>`).join("");
   const last = series[series.length - 1];
-  const { html: decouplingHtml, chart: decouplingChart, points: decouplingPoints } = decouplingSection(decoupling);
-  const { html: vamHtml, chart: vamChart, points: vamPoints } = vamSection(vam);
-  const { html: descentHtml, chart: descentChart, points: descentPoints } = descentTrendSection(descent, days, params.get("descente"));
-  const { html: durabilityHtml, chart: durabilityChart, points: durabilityPoints } = durabilitySection(durability);
   main.innerHTML = `${header("Forme & charge", `Charge par séance : TRIMP (fréquence cardiaque), repli sur l'effort perçu. <a href="#/performance">Hypothèses des modèles</a>`)}
     <div class="toolbar">${periods}</div>
     <section class="band"><h2>Courbe de forme</h2>
@@ -409,12 +402,9 @@ async function viewForm(params) {
     <section class="band"><h2>Volume hebdomadaire</h2>
       <p class="legend">${trail ? `<span class="legend__item"><span class="key key--bar"></span>Heures d'effort</span> <span class="legend__item"><span class="key key--dplus"></span>D+ cumulé</span>` : `<span class="legend__item"><span class="key key--bar"></span>Kilomètres</span>`}</p>
       <div class="chart-host" id="c-load">${loadChart.svg}</div><p class="readout" id="r-load"></p>
-      <dl class="facts facts--inline"><div><dt>Monotonie (7 j)</dt><dd>${F.num(load.monotony, 2)}</dd></div><div><dt>Strain (7 j)</dt><dd>${F.num(load.strain)}</dd></div><div><dt>Charge du jour</dt><dd>${F.num(last.load)}</dd></div></dl></section>
-    ${polarisationSection(load.polarisation_weeks, load.hr_zones_reason)}
-    ${decouplingHtml}
-    ${vamHtml}
-    ${descentHtml}
-    ${durabilityHtml}`;
+      <dl class="facts facts--inline"><div><dt>Monotonie (7 j)</dt><dd>${F.num(load.monotony, 2)}</dd></div><div><dt>Strain (7 j)</dt><dd>${F.num(load.strain)}</dd></div><div><dt>Charge du jour</dt><dd>${F.num(last.load)}</dd></div></dl>
+      <p class="muted">Polarisation des zones FC, découplage aérobie, VAM, efficacité en descente et
+        durabilité — issus des échantillons FIT ingérés — sont regroupés dans <a href="#/analyse">Analyse</a>.</p></section>`;
 
   attachCursor($("#c-form"), chart, (i) => {
     const p = series[i];
@@ -425,6 +415,61 @@ async function viewForm(params) {
     const w = weeks[i];
     readout($("#r-load"), `<strong>Semaine du ${F.dayShort(w.week_start)}</strong> · ${w.sessions} séance${w.sessions > 1 ? "s" : ""} · ${F.hours(w.duration_s)} · ${F.distance(w.distance_m)}${trail ? ` · ${F.elevation(w.elevation_m)} D+${w.effort_km ? ` · ${F.num(w.effort_km, 1)} km-effort` : ""}` : ` · ${F.pace(w.distance_m, w.duration_s)}`} · charge ${F.num(w.load)}`);
   });
+}
+
+// ---------------------------------------------------------------------------
+// Vue : Analyse (#50) — tendances FIT avancées, sorties de « Forme & charge »
+// ---------------------------------------------------------------------------
+
+/** Vue « Analyse » (#50) : rassemble les tendances calculées à partir des
+ * échantillons FIT ingérés (`activities/fit/*.json`, #42) — polarisation 80/20
+ * (#43), découplage aérobie (#45), VAM (#46), efficacité en descente (#47),
+ * durabilité (#48) et la liste des segments de montée connus (#49,
+ * `/api/climb-segments`, jusqu'ici jamais consommée par le tableau de bord).
+ * Ces sections vivaient auparavant dans « Forme & charge » (#43-#48), qui reste
+ * désormais concentrée sur la condition/fatigue/forme et le volume — voir
+ * `docs/dashboard/views.md`.
+ *
+ * Fenêtre en SEMAINES (`?semaines=`), pas en jours comme « Forme & charge » :
+ * toutes les tendances FIT interrogent déjà `/api/{decoupling,vam,descent,
+ * durability}?weeks=` et `/api/load?weeks=` côté serveur — un seul paramètre
+ * pour toute la vue, jamais une conversion approximative jours/semaines.
+ *
+ * Compatibilité des liens (#50) : l'ancien sélecteur de classe de descente
+ * vivait sur `#/forme?jours=…&descente=…` (#47) — `route()` redirige ces
+ * hashes vers `#/analyse?semaines=…&descente=…` plutôt que de les casser. */
+async function viewAnalyse(params) {
+  const weeks = Number(params.get("semaines")) || 26;
+  const [load, decoupling, vam, descent, durability, segments] = await Promise.all([
+    api(`load?weeks=${weeks}`), api(`decoupling?weeks=${weeks}`), api(`vam?weeks=${weeks}`),
+    api(`descent?weeks=${weeks}`), api(`durability?weeks=${weeks}`), api("climb-segments"),
+  ]);
+  const periods = [[12, "3 mois"], [26, "6 mois"], [52, "1 an"]].map(([w, l]) =>
+    `<a class="seg ${w === weeks ? "is-on" : ""}" aria-current="${w === weeks ? "true" : "false"}" href="#/analyse?semaines=${w}">${l}</a>`).join("");
+  const polarisationHtml = polarisationSection(load.polarisation_weeks, load.hr_zones_reason);
+  const { html: decouplingHtml, chart: decouplingChart, points: decouplingPoints } = decouplingSection(decoupling);
+  const { html: vamHtml, chart: vamChart, points: vamPoints } = vamSection(vam);
+  const { html: descentHtml, chart: descentChart, points: descentPoints } = descentTrendSection(descent, weeks, params.get("descente"));
+  const { html: durabilityHtml, chart: durabilityChart, points: durabilityPoints } = durabilitySection(durability);
+  const segmentsHtml = climbSegmentsSection(segments.segments);
+  const nothing = !polarisationHtml && !decouplingHtml && !vamHtml && !descentHtml && !durabilityHtml && !segmentsHtml;
+  if (nothing) {
+    main.innerHTML = header("Analyse", "Tendances calculées à partir des échantillons FIT (montre GPS) ingérés.")
+      + empty("Pas encore d'échantillons FIT", "Ces tendances (polarisation des zones FC, découplage aérobie, VAM, "
+        + "efficacité en descente, durabilité, historique des montées) exigent des échantillons FIT ingérés "
+        + "(<code>activities/fit/*.json</code>), pas seulement le résumé d'une séance. Chargez le skill "
+        + "<code>fit-download</code> (voir <code>skills/fit-download/SKILL.md</code>) pour les récupérer "
+        + "depuis Garmin, puis relancez l'indexation.");
+    return;
+  }
+  main.innerHTML = `${header("Analyse", `Tendances calculées à partir des échantillons FIT ingérés. <a href="#/performance">Hypothèses des modèles</a>`)}
+    <div class="toolbar">${periods}</div>
+    ${polarisationHtml}
+    ${decouplingHtml}
+    ${vamHtml}
+    ${descentHtml}
+    ${durabilityHtml}
+    ${segmentsHtml}`;
   wirePolarisationChart(load.polarisation_weeks);
   if (decouplingChart) {
     attachCursor($("#c-decoupling"), decouplingChart, (i) => {
@@ -458,7 +503,33 @@ async function viewForm(params) {
   }
 }
 
-/** Section « Polarisation 80/20 » de Forme & charge (#43) : une barre empilée par
+/** Section « Segments de montée » de la vue Analyse (#49, #50) : un tableau,
+ * une ligne par segment connu (`/api/climb-segments`, servi depuis #49 mais
+ * jusqu'ici jamais affiché nulle part dans le tableau de bord), lien vers
+ * l'historique complet (`#/montee/<id>`, `viewClimbSegment`). Jamais de
+ * coordonnée GPS ici (l'API n'en renvoie aucune, voir
+ * `arc_climb_match.ASSUMPTIONS["privacy"]`). Vide (pas de section) tant
+ * qu'aucun segment n'a encore été identifié (moins de deux occurrences d'une
+ * même montée, voir `arc_climb_match.py`). */
+function climbSegmentsSection(segments) {
+  if (!segments || !segments.length) return "";
+  const rows = segments.map((s) => `<tr><td><a href="#/montee/${s.segment_id}">${F.esc(s.location || "Montée")}</a></td>
+    <td class="num">${F.distance(s.distance_m, 2)}</td><td class="num">+${F.elevation(s.gain_m)}</td>
+    <td class="num">${F.num(s.avg_grade * 100, 1)} % <span class="tag">${F.esc(s.grade_class)}</span></td>
+    <td class="num">${F.num(s.occurrences)}</td>
+    <td class="num">${s.best_time_elapsed_s != null ? F.clock(s.best_time_elapsed_s).replace(/^0:/, "") : "—"}</td></tr>`).join("");
+  return `<section class="band"><h2>Segments de montée (${segments.length})</h2>
+    <p class="muted">Une même montée, reconnue d'une séance à l'autre (position GPS, ou à défaut profil
+      distance/D+/pente — #49) : au moins deux occurrences pour apparaître ici. Détail complet, occurrence
+      par occurrence, dans l'historique de chaque segment.</p>
+    <div class="table-wrap"><table class="data data--compact"><thead><tr>
+      <th scope="col">Lieu</th><th scope="col" class="num">Distance</th><th scope="col" class="num">D+</th>
+      <th scope="col" class="num">Pente moy.</th><th scope="col" class="num">Occurrences</th>
+      <th scope="col" class="num">Meilleur temps</th></tr></thead>
+      <tbody>${rows}</tbody></table></div></section>`;
+}
+
+/** Section « Polarisation 80/20 » de la vue Analyse (#43, #50) : une barre empilée par
  * semaine (facile / modérée / difficile, seuils Seiler DÉDIÉS à la méthode de zones
  * du profil — voir `arc_metrics.seiler_bounds`), en SVG (pas de style en ligne, CSP).
  * Une semaine sans AUCUNE activité à échantillons FIT (`polarisation: null`, voir
@@ -763,14 +834,24 @@ async function viewSession(id) {
     }), 0);
   }
   const wx = d.weather;
+  // Séance sans FIT (#50, critère d'acceptation) : `climbs.reason_code === "no_samples"`
+  // (`arc_serve.py::api_activity_climbs`, même `reason_code` porté par `descent` et
+  // implicitement par `hr_zones.zone_seconds`, les trois dérivés de la MÊME table
+  // `activity_sample` pour la même activité) signale l'absence totale d'échantillons
+  // FIT ingérés pour une séance de la famille course à pied — jamais un simple test
+  // sur le texte français de `reason` (fragile, même motif que `climbs.applicable`
+  // ci-dessus). Plutôt que d'empiler trois notes vides identiques (zones FC, montées,
+  // descente), une seule note consolidée remplace les trois (critère d'acceptation :
+  // « séance sans FIT : sections masquées proprement »).
+  const noFitSamples = !!(d.climbs && d.climbs.applicable !== false && d.climbs.reason_code === "no_samples");
   main.innerHTML = `${header(a.name || F.SPORT[a.sport] || "Séance", `${F.dayLong(a.date)} · ${F.SPORT[a.sport] || a.sport}${a.location ? " · " + F.esc(a.location) : ""}`)}
     <p><a href="#/seances">← Toutes les séances</a></p>
     <dl class="facts facts--grid">${facts.map(([k, v]) => `<div><dt>${k}</dt><dd>${v}</dd></div>`).join("")}</dl>
     ${wx ? `<p class="weather">${weatherChip(wx.category)} <span>${F.esc(wx.location)} · ${F.num(wx.temp_min_c)}–${F.num(wx.temp_max_c)} °C · vent ${F.num(wx.wind_kmh)} km/h</span></p>` : ""}
+    ${noFitSamples ? noFitSamplesNote() : hrZoneSection(d.hr_zones)}
     ${splitsHtml}
-    ${climbsSection(d.climbs)}
-    ${descentSection(d.descent)}
-    ${hrZoneSection(d.hr_zones)}
+    ${noFitSamples ? "" : climbsSection(d.climbs)}
+    ${noFitSamples ? "" : descentSection(d.descent)}
     <section class="band prose"><h2>Analyse du coach</h2>${d.body_html || "<p class=\"muted\">Pas de texte.</p>"}<p class="muted source">Source : <code>${F.esc(a.source_path)}</code></p></section>`;
 }
 
@@ -976,6 +1057,17 @@ function hrZoneBoundsLabel(bounds) {
   ].join(" · ") + " bpm";
 }
 
+/** Note unique remplaçant zones FC + montées + descente quand une séance de la
+ * famille course à pied n'a AUCUN échantillon FIT ingéré (#50, voir le calcul de
+ * `noFitSamples` dans `viewSession`) — plutôt que trois sections vides côte à
+ * côte disant chacune, à sa façon, la même chose. */
+function noFitSamplesNote() {
+  return `<section class="band"><h2>Détail avancé</h2>
+    ${note("Aucun échantillon FIT ingéré pour cette séance : zones FC, GAP par tour, montées (VAM) et "
+      + "efficacité en descente ne peuvent pas être calculés. Synchronisez le fichier FIT (skill "
+      + "<code>fit-download</code>) puis relancez l'indexation pour les activer.")}</section>`;
+}
+
 function hrZoneSection(hz) {
   const methodLabel = HR_ZONE_METHOD_LABEL[hz.method] || hz.method;
   if (!hz.bounds_bpm) {
@@ -1171,7 +1263,7 @@ function fuelingSection(fueling) {
   return { html, chart, points };
 }
 
-/** Section « Découplage aérobie » de Forme & charge (#45) : un point par sortie
+/** Section « Découplage aérobie » de la vue Analyse (#45, #50) : un point par sortie
  * longue (> `arc_metrics.LONG_RUN_MIN_DURATION_S`, 90 min) éligible (course à pied,
  * ≥ 60 min de mouvement, effort jugé stable — `arc_decoupling.ASSUMPTIONS`), Pa:HR
  * en pourcentage. Repère indicatif à 5 % (coaching endurance/ultra courant, pas un
@@ -1209,7 +1301,7 @@ function decouplingSection(trend) {
   return { html, chart, points };
 }
 
-/** Section « VAM » (vitesse ascensionnelle, #46) de Forme & charge : un point par
+/** Section « VAM » (vitesse ascensionnelle, #46) de la vue Analyse (#50) : un point par
  * séance de la famille course à pied où au moins une montée a été détectée
  * (D+ minimal et pente minimale, voir `arc_climb.ASSUMPTIONS`) — meilleure VAM
  * (temps écoulé) de la séance. Vide (pas de section) tant qu'aucune montée n'a
@@ -1243,7 +1335,7 @@ function vamSection(trend) {
   return { html, chart, points };
 }
 
-/** Section « Efficacité en descente » (#47) de Forme & charge : UNE SÉRIE PAR
+/** Section « Efficacité en descente » (#47) de la vue Analyse (#50) : UNE SÉRIE PAR
  * CLASSE DE PENTE, jamais un mélange (revue de code, should-fix 2, BLOQUANT) —
  * l'indicateur n'a de sens qu'« à pente égale » (voir
  * `arc_descent.ASSUMPTIONS["indicator"]`), donc le graphique affiche la classe
@@ -1255,7 +1347,7 @@ function vamSection(trend) {
  * cette raison, seul `trend.classes` (le détail par classe) alimente cette
  * vue. Classe par défaut : celle qui a le plus de points dans la fenêtre.
  * Vide (pas de section) tant qu'aucune classe n'a jamais été retenue. */
-function descentTrendSection(trend, days, selectedClass) {
+function descentTrendSection(trend, weeks, selectedClass) {
   const classes = trend.classes || {};
   const labels = DESCENT_GRADE_CLASS_ORDER.filter((cls) => classes[cls] && classes[cls].count);
   if (!labels.length) return { html: "", chart: null, points: [] };
@@ -1276,7 +1368,7 @@ function descentTrendSection(trend, days, selectedClass) {
   const fallbackValues = points.map((p) => (p.reference_source === "non_descent" ? p.efficiency : null));
   const fallbackCount = fallbackValues.filter((v) => v != null).length;
   const selector = labels.map((cls) =>
-    `<a class="seg ${cls === active ? "is-on" : ""}" aria-current="${cls === active ? "true" : "false"}" href="#/forme?jours=${days}&descente=${encodeURIComponent(cls)}">${F.esc(cls)}</a>`
+    `<a class="seg ${cls === active ? "is-on" : ""}" aria-current="${cls === active ? "true" : "false"}" href="#/analyse?semaines=${weeks}&descente=${encodeURIComponent(cls)}">${F.esc(cls)}</a>`
   ).join("");
   const chart = points.length ? timeChart(points.map((p) => p.date), [
     { type: "dots", values: flatValues, cls: "dot dot--descent" },
@@ -1308,7 +1400,7 @@ function descentTrendSection(trend, days, selectedClass) {
   return { html, chart, points };
 }
 
-/** Section « Durabilité » (#48) de Forme & charge : un point par sortie longue
+/** Section « Durabilité » (#48) de la vue Analyse (#50) : un point par sortie longue
  * (> `arc_metrics.LONG_RUN_MIN_DURATION_S`, 90 min) éligible (course à pied,
  * échauffement exclu puis trois tiers de mouvement égaux, portions/FC suffisantes
  * sur le premier ET le dernier tiers, pente comparable entre les deux —
@@ -1414,7 +1506,7 @@ async function viewFiles() {
 // ---------------------------------------------------------------------------
 
 const ROUTES = {
-  "": viewToday, forme: viewForm, sante: viewHealth, semaine: viewWeek, seances: viewSessions,
+  "": viewToday, forme: viewForm, analyse: viewAnalyse, sante: viewHealth, semaine: viewWeek, seances: viewSessions,
   performance: viewPerformance, calendrier: viewCalendar, rapports: viewReports, rapport: viewReport,
   nutrition: viewNutrition, fichiers: viewFiles,
 };
@@ -1424,6 +1516,19 @@ async function route() {
   const [path, query] = hash.split("?");
   const params = new URLSearchParams(query || "");
   const [name, arg] = path.split("/");
+  // Compatibilité des liens (#50) : le sélecteur de classe de descente vivait sur
+  // `#/forme?jours=…&descente=…` (#47) avant que ces tendances FIT ne rejoignent
+  // la vue Analyse — un lien partagé ou mis en favori avant #50 doit continuer à
+  // ouvrir la bonne classe plutôt que de renvoyer vers « Forme & charge » où la
+  // section a disparu. `jours` (1 jour) est converti en `semaines` (7 jours),
+  // borné comme le fait déjà chaque route `/api/*` côté serveur (4-52).
+  if (name === "forme" && params.has("descente")) {
+    const joursVal = Number(params.get("jours")) || 180;
+    const semaines = Math.max(4, Math.min(52, Math.round(joursVal / 7)));
+    const redirected = new URLSearchParams({ semaines: String(semaines), descente: params.get("descente") });
+    location.replace(`#/analyse?${redirected}`);
+    return;
+  }
   markNav(name);
   main.setAttribute("aria-busy", "true");
   try {
