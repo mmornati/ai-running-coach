@@ -396,7 +396,7 @@ async function viewForm(params) {
   const last = series[series.length - 1];
   const { html: decouplingHtml, chart: decouplingChart, points: decouplingPoints } = decouplingSection(decoupling);
   const { html: vamHtml, chart: vamChart, points: vamPoints } = vamSection(vam);
-  const { html: descentHtml, chart: descentChart, points: descentPoints } = descentTrendSection(descent);
+  const { html: descentHtml, chart: descentChart, points: descentPoints } = descentTrendSection(descent, days, params.get("descente"));
   main.innerHTML = `${header("Forme & charge", `Charge par séance : TRIMP (fréquence cardiaque), repli sur l'effort perçu. <a href="#/performance">Hypothèses des modèles</a>`)}
     <div class="toolbar">${periods}</div>
     <section class="band"><h2>Courbe de forme</h2>
@@ -438,7 +438,7 @@ async function viewForm(params) {
   if (descentChart) {
     attachCursor($("#c-descent"), descentChart, (i) => {
       const p = descentPoints[i];
-      readout($("#r-descent"), `<strong>${F.dayLong(p.date)}</strong> · ${F.esc(p.name || F.SPORT[p.sport] || p.sport)} · efficacité moyenne ${F.efficiency(p.avg_efficiency)}`);
+      readout($("#r-descent"), `<strong>${F.dayLong(p.date)}</strong> · ${F.esc(p.name || F.SPORT[p.sport] || p.sport)} · efficacité ${F.efficiency(p.efficiency)}${p.mean_grade != null ? ` · pente moy. ${F.num(Math.abs(p.mean_grade) * 100, 1)} %` : ""}`);
     });
   }
 }
@@ -774,10 +774,12 @@ const GRADE_CLASS_ORDER = ["<5%", "5-10%", "10-15%", "15-20%", ">20%"];
 function climbsSection(climbs) {
   const rows = (climbs && climbs.climbs) || [];
   const reason = climbs && climbs.reason;
-  if (reason && /famille course à pied/.test(reason)) {
-    // Séance qui n'a structurellement jamais pu avoir de montée (renforcement,
-    // vélo...) : section masquée plutôt qu'un message qui laisserait croire
-    // qu'une montée aurait pu y être détectée.
+  // `applicable === false` (jamais un test sur le texte français de `reason`,
+  // fragile aux reformulations — revue de code #47, nit) : séance qui n'a
+  // structurellement jamais pu avoir de montée (renforcement, vélo...), section
+  // masquée plutôt qu'un message qui laisserait croire qu'une montée aurait pu y
+  // être détectée.
+  if (climbs && climbs.applicable === false) {
     return "";
   }
   if (!rows.length) {
@@ -822,16 +824,20 @@ function climbsSection(climbs) {
 // Même ordre que `arc_descent.DESCENT_GRADE_CLASSES` (Python) — dupliqué ici
 // volontairement (pas de dépendance runtime entre le serveur Python et le JS
 // statique, même motif que `GRADE_CLASS_ORDER` ci-dessus) : à tenir à jour si
-// `DESCENT_GRADE_CLASSES` change côté serveur.
-const DESCENT_GRADE_CLASS_ORDER = ["-5 à -10 %", "-10 à -15 %", "-15 à -20 %", "< -20 %"];
+// `DESCENT_GRADE_CLASSES` change côté serveur. Scindé au-delà de -20 % (revue de
+// code #47) : le coût de Minetti n'est pas monotone en descente (voir
+// `arc_descent.ASSUMPTIONS["grade_classes"]`).
+const DESCENT_GRADE_CLASS_ORDER = ["-5 à -10 %", "-10 à -15 %", "-15 à -20 %", "-20 à -30 %", "< -30 %"];
+const DESCENT_REFERENCE_SOURCE_LABEL = { flat: "sections plates de la séance", non_descent: "hors forte descente (repli)" };
 
 function descentSection(descent) {
   const classes = (descent && descent.classes) || {};
   const reason = descent && descent.reason;
   const labels = DESCENT_GRADE_CLASS_ORDER.filter((cls) => classes[cls]);
-  if (reason && /famille course à pied/.test(reason)) {
-    // Séance qui n'a structurellement jamais pu avoir de descente classée
-    // (renforcement, vélo...) : section masquée, même motif que `climbsSection`.
+  // `applicable === false` (jamais un test sur le texte français de `reason` —
+  // revue de code #47, nit, même motif que `climbsSection`) : séance qui n'a
+  // structurellement jamais pu avoir de descente classée (renforcement, vélo...).
+  if (descent && descent.applicable === false) {
     return "";
   }
   if (!labels.length) {
@@ -840,24 +846,26 @@ function descentSection(descent) {
       : "Aucune classe de pente descendante avec assez de données sur cette séance.";
     return `<section class="band"><h2>Efficacité en descente</h2>${note(msg)}</section>`;
   }
+  const refSource = descent.reference_source ? DESCENT_REFERENCE_SOURCE_LABEL[descent.reference_source] : null;
   return `<section class="band"><h2>Efficacité en descente</h2>
-    <p class="muted">Efficacité = vitesse en descente comparée à celle prédite par le modèle
-      (Minetti) à partir de l'allure GAP de la séance — <strong>1,00×</strong> si l'effort
-      métabolique reste constant. Le modèle SURESTIME le bénéfice des fortes descentes en
-      conditions réelles de trail : une valeur bien sous 1,00× sur les pentes les plus raides
-      est normale (prudence, terrain technique), pas un mauvais résultat. C'est sa
-      <strong>tendance dans le temps</strong>, à pente égale, qui compte.
-      <a href="#/performance">Hypothèses des modèles</a></p>
+    <p class="muted">Efficacité = moyenne, pondérée par le temps, du ratio vitesse en descente /
+      vitesse prédite par le modèle (Minetti) à partir de l'allure GAP de référence de la séance —
+      <strong>1,00×</strong> si l'effort métabolique reste constant. Le modèle SURESTIME le bénéfice
+      des fortes descentes en conditions réelles de trail : une valeur bien sous 1,00× sur les pentes
+      les plus raides est normale (prudence, terrain technique), pas un mauvais résultat. C'est sa
+      <strong>tendance dans le temps, à pente égale</strong>, qui compte — jamais une comparaison entre
+      classes de pente différentes. <a href="#/performance">Hypothèses des modèles</a></p>
     <div class="table-wrap"><table class="data data--compact"><thead><tr>
-      <th scope="col">Pente</th><th scope="col" class="num">Allure</th>
+      <th scope="col">Pente</th><th scope="col" class="num">Pente moy.</th><th scope="col" class="num">Allure</th>
       <th scope="col" class="num">Distance</th><th scope="col" class="num">Durée</th>
       <th scope="col" class="num">Efficacité</th></tr></thead>
     <tbody>${labels.map((cls) => { const c = classes[cls]; return `<tr><td><span class="tag">${F.esc(cls)}</span></td>
+      <td class="num">${c.mean_grade != null ? `${F.num(Math.abs(c.mean_grade) * 100, 1)} %` : "—"}</td>
       <td class="num">${F.paceFromSecPerKm(c.mean_pace_s_km)}</td>
       <td class="num">${F.distance(c.distance_m, 2)}</td>
       <td class="num">${F.duration(c.duration_moving_s, { seconds: true })}</td>
-      <td class="num">${F.efficiency(c.efficiency)} <small class="muted">(${c.count})</small></td></tr>`; }).join("")}</tbody></table></div>
-    ${descent.reference_gap_pace_s_km != null ? `<p class="legend legend--small">Référence (GAP de la séance) : ${F.paceFromSecPerKm(descent.reference_gap_pace_s_km)}</p>` : ""}</section>`;
+      <td class="num">${F.efficiency(c.efficiency)} <small class="muted" title="Échantillons agrégés dans cette classe">(${c.count} éch.)</small></td></tr>`; }).join("")}</tbody></table></div>
+    ${descent.reference_gap_pace_s_km != null ? `<p class="legend legend--small">Référence (allure GAP, ${F.esc(refSource || "source inconnue")}) : ${F.paceFromSecPerKm(descent.reference_gap_pace_s_km)}</p>` : ""}</section>`;
 }
 
 /** Section « Zones FC » de la page séance (#43) : temps en zone en barre empilée
@@ -1088,9 +1096,15 @@ function decouplingSection(trend) {
   if (!points.length) return { html: "", chart: null, points: [] };
   const dates = points.map((p) => p.date);
   const chart = timeChart(dates, [
-    { type: "hline", value: 5, cls: "mark mark--decoupling-good", label: "Repère 5 %" },
     { type: "dots", values: points.map((p) => p.decoupling_pct), cls: "dot dot--decoupling" },
-  ], [], {
+  ], [
+    // Revue de code (#47) : un repère `hline` va dans `marks` (3e argument), jamais
+    // dans `layers` (2e) — `timeChart` (web/js/chart.js) n'y reconnaît que
+    // "line"/"area"/"band"/"bars"/"dots" et ignore silencieusement tout le reste, y
+    // compris un `hline` glissé par erreur : le repère « 5 % » n'était donc jamais
+    // dessiné.
+    { type: "hline", value: 5, cls: "mark mark--decoupling-good", label: "Repère 5 %" },
+  ], {
     height: 200, y: { zero: true }, label: "Découplage aérobie (Pa:HR) sur les sorties longues",
     yFormat: (v) => `${F.num(v, 1)} %`,
   });
@@ -1142,38 +1156,52 @@ function vamSection(trend) {
   return { html, chart, points };
 }
 
-/** Section « Efficacité en descente » (#47) de Forme & charge : un point par
- * séance de la famille course à pied où au moins une classe de pente
- * descendante a été retenue (durée/distance minimales, voir
- * `arc_descent.ASSUMPTIONS["thresholds"]`) — moyenne (non pondérée) de
- * l'efficacité de ses classes présentes, pour une lecture simple (une valeur
- * par sortie). Le détail par classe reste dans la légende en dessous du
- * graphique (même motif que `climbsSection`/`vam_by_grade_class`). Vide (pas
- * de section) tant qu'aucune classe n'a jamais été retenue. */
-function descentTrendSection(trend) {
-  const points = (trend.points || []).filter((p) => p.avg_efficiency != null);
+/** Section « Efficacité en descente » (#47) de Forme & charge : UNE SÉRIE PAR
+ * CLASSE DE PENTE, jamais un mélange (revue de code, should-fix 2, BLOQUANT) —
+ * l'indicateur n'a de sens qu'« à pente égale » (voir
+ * `arc_descent.ASSUMPTIONS["indicator"]`), donc le graphique affiche la classe
+ * choisie par le sélecteur (`?descente=<classe>` dans l'URL, comme les
+ * périodes de la courbe de forme) et JAMAIS une moyenne toutes classes
+ * confondues, qui mélangerait des pentes différentes d'une sortie à l'autre —
+ * `trend.activities[].avg_efficiency_all_classes` (arc_metrics.descent_trend)
+ * existe côté API mais n'est délibérément PAS affiché en graphique ici pour
+ * cette raison, seul `trend.classes` (le détail par classe) alimente cette
+ * vue. Classe par défaut : celle qui a le plus de points dans la fenêtre.
+ * Vide (pas de section) tant qu'aucune classe n'a jamais été retenue. */
+function descentTrendSection(trend, days, selectedClass) {
   const classes = trend.classes || {};
-  const labels = DESCENT_GRADE_CLASS_ORDER.filter((cls) => classes[cls]);
-  if (!points.length || !labels.length) return { html: "", chart: null, points: [] };
-  const dates = points.map((p) => p.date);
-  const chart = timeChart(dates, [
-    { type: "hline", value: 1, cls: "mark mark--descent-model" },
-    { type: "dots", values: points.map((p) => p.avg_efficiency), cls: "dot dot--descent" },
-  ], [], {
-    height: 200, label: "Efficacité en descente par sortie (moyenne des classes de pente présentes)",
+  const labels = DESCENT_GRADE_CLASS_ORDER.filter((cls) => classes[cls] && classes[cls].count);
+  if (!labels.length) return { html: "", chart: null, points: [] };
+  const active = labels.includes(selectedClass)
+    ? selectedClass
+    : labels.slice().sort((a, b) => classes[b].count - classes[a].count)[0];
+  const points = classes[active].points.filter((p) => p.efficiency != null);
+  const selector = labels.map((cls) =>
+    `<a class="seg ${cls === active ? "is-on" : ""}" href="#/forme?jours=${days}&descente=${encodeURIComponent(cls)}">${F.esc(cls)}</a>`
+  ).join("");
+  const chart = points.length ? timeChart(points.map((p) => p.date), [
+    { type: "dots", values: points.map((p) => p.efficiency), cls: "dot dot--descent" },
+  ], [
+    // `hline` va dans `marks` (3e argument), jamais dans `layers` (2e) — voir le
+    // même correctif sur `decouplingSection` ci-dessus.
+    { type: "hline", value: 1, cls: "mark mark--descent-model", label: "1,00×" },
+  ], {
+    height: 200, label: `Efficacité en descente, classe ${active}`,
     yFormat: (v) => F.efficiency(v),
-  });
+  }) : null;
   const classLegend = labels.map((cls) =>
     `<span class="legend__item">${F.esc(cls)} : ${F.efficiency(classes[cls].avg_efficiency)} <small class="muted">(${classes[cls].count})</small></span>`
   ).join(" · ");
   const html = `<section class="band"><h2>Efficacité en descente</h2>
     <p class="muted">Vitesse en descente comparée à celle prédite par le modèle de Minetti à partir de
-      l'allure GAP de la séance (<strong>1,00×</strong> = effort métabolique constant, repère pointillé).
-      Le modèle surestime le bénéfice des fortes descentes en conditions réelles de trail : une valeur
-      sous 1,00× sur les pentes les plus raides est normale, pas un mauvais résultat — seule la
-      <strong>tendance</strong>, à pente égale, est exploitable. <a href="#/performance">Hypothèses des modèles</a></p>
-    <p class="legend"><span class="legend__item"><span class="key key--descent"></span>Efficacité moyenne de la sortie</span></p>
-    <div class="chart-host" id="c-descent">${chart.svg}</div><p class="readout" id="r-descent"></p>
+      l'allure GAP de référence de la séance (<strong>1,00×</strong> = effort métabolique constant,
+      repère pointillé). Le modèle surestime le bénéfice des fortes descentes en conditions réelles de
+      trail : une valeur sous 1,00× sur les pentes les plus raides est normale, pas un mauvais résultat —
+      seule la <strong>tendance, à pente égale</strong>, est exploitable : une classe de pente ne se
+      compare JAMAIS à une autre. <a href="#/performance">Hypothèses des modèles</a></p>
+    <div class="toolbar">${selector}</div>
+    <p class="legend"><span class="legend__item"><span class="key key--descent"></span>Efficacité (classe ${F.esc(active)})</span></p>
+    ${chart ? `<div class="chart-host" id="c-descent">${chart.svg}</div><p class="readout" id="r-descent"></p>` : note("Pas assez de points pour cette classe.")}
     <p class="legend legend--small">Efficacité moyenne par classe de pente (${trend.window_weeks} sem.) : ${classLegend}</p>
   </section>`;
   return { html, chart, points };

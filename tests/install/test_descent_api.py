@@ -24,19 +24,32 @@ from tests.lib.synthetic import build
 TODAY = "2026-09-23"
 
 
-def _write_descent_fit(ws, garmin_id: int, *, duration_s=600, grade=-0.12, speed_ms=3.0,
+def _write_descent_fit(ws, garmin_id: int, *, flat_duration_s=360, flat_speed_ms=2.7,
+                        descent_duration_s=600, grade=-0.12, speed_ms=3.0,
                         resolution_s=5, alt0=1000.0) -> None:
-    """Descente linéaire déterministe (vérité connue : vitesse imposée) — écrite
+    """Plat (`flat_duration_s`, au-dessus de `arc_descent.MIN_REFERENCE_DURATION_S`)
+    puis descente linéaire déterministe (vérité connue : vitesse imposée) — écrite
     à la main comme `test_vam_api.py::_write_climb_fit`, jamais le générateur
-    aléatoire `sample_session`, pour un résultat reproductible octet pour octet."""
-    n = duration_s // resolution_s + 1
+    aléatoire `sample_session`, pour un résultat reproductible octet pour octet.
+    Le tronçon plat est nécessaire (revue de code #47, BLOQUANT) : la référence
+    de l'efficacité en descente vient désormais des sections plates de LA MÊME
+    séance, jamais de l'allure GAP de la séance entière — voir
+    `arc_descent.ASSUMPTIONS["reference"]`."""
     records = []
+    t = 0.0
     dist = 0.0
     alt = alt0
-    for i in range(n):
-        records.append({"t_s": float(i * resolution_s), "distance_m": round(dist, 2),
-                         "altitude_m": round(alt, 2), "hr_bpm": 140.0,
-                         "speed_ms": speed_ms, "cadence_spm": 165.0})
+    n_flat = int(flat_duration_s // resolution_s)
+    for _ in range(n_flat):
+        records.append({"t_s": t, "distance_m": round(dist, 2), "altitude_m": round(alt, 2),
+                         "hr_bpm": 140.0, "speed_ms": flat_speed_ms, "cadence_spm": 165.0})
+        t += resolution_s
+        dist += flat_speed_ms * resolution_s
+    n_descent = int(descent_duration_s // resolution_s) + 1
+    for _ in range(n_descent):
+        records.append({"t_s": t, "distance_m": round(dist, 2), "altitude_m": round(alt, 2),
+                         "hr_bpm": 140.0, "speed_ms": speed_ms, "cadence_spm": 165.0})
+        t += resolution_s
         dist += speed_ms * resolution_s
         alt += grade * speed_ms * resolution_s
     fit_dir = ws / "activities/fit"
@@ -86,24 +99,29 @@ class TestDescentApi(InstallAsserts):
         payload = json.loads(body)
         descent = payload["descent"]
         self.assertIsNone(descent["reason"])
+        self.assertIsNone(descent["reason_code"])
+        self.assertTrue(descent["applicable"])
         self.assertTrue(descent["classes"])
         self.assertIsNotNone(descent["reference_gap_pace_s_km"])
+        self.assertEqual(descent["reference_source"], "flat")
         for cls, v in descent["classes"].items():
             self.assertIsNotNone(v["efficiency"], cls)
             self.assertIsNotNone(v["mean_pace_s_km"], cls)
+            self.assertIsNotNone(v["mean_grade"], cls)
 
     def test_descent_endpoint_reports_the_activity_in_its_trend(self):
         status, body, _ = self.server.get("/api/descent")
         self.assertEqual(status, 200)
         trend = json.loads(body)
-        matches = [p for p in trend["points"] if p.get("avg_efficiency") is not None]
-        self.assertEqual(len(matches), 1, trend["points"])
+        matches = [p for p in trend["activities"] if p.get("avg_efficiency_all_classes") is not None]
+        self.assertEqual(len(matches), 1, trend["activities"])
+        self.assertIsNotNone(matches[0].get("activity_id"))
         self.assertTrue(trend["classes"])
 
     def test_non_run_activity_descent_has_an_explicit_reason_and_no_error(self):
         """Même discipline que `test_vam_api.py`, should-fix 5 de #46 : une
-        activité hors famille course à pied rend une `reason` explicite plutôt
-        qu'un `classes: {}` muet."""
+        activité hors famille course à pied rend une `reason`/`reason_code`
+        explicites (`applicable: false`) plutôt qu'un `classes: {}` muet."""
         activities = json.loads(self.server.get("/api/activities?limit=500")[1])["activities"]
         strength = next((a for a in activities if a["sport"] == "strength"), None)
         if strength is None:
@@ -113,3 +131,5 @@ class TestDescentApi(InstallAsserts):
         self.assertEqual(descent["classes"], {})
         self.assertIsNotNone(descent["reason"])
         self.assertIn("course à pied", descent["reason"])
+        self.assertEqual(descent["reason_code"], "not_run_family")
+        self.assertFalse(descent["applicable"])

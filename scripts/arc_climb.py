@@ -934,18 +934,26 @@ def climb_report(samples: Sequence[dict], sport: Optional[str], **kwargs) -> dic
     famille course à pied (voir ASSUMPTIONS["restricted_to_run_family"]).
 
     Rend TOUJOURS `{"climbs", "vam_best_10min_m_h", "vam_best_20min_m_h",
-    "vam_by_grade_class", "best_climb_vam_elapsed_m_h", "reason"}` — `reason`
-    explique un rapport vide/`None`, jamais une exception ni un échec muet
-    (même discipline que `arc_decoupling.decoupling_report`). Une séance
-    éligible sans aucune montée détectée (parcours plat) rend `climbs: []`
-    avec `reason: None` — absence de montée n'est jamais une erreur."""
+    "vam_by_grade_class", "best_climb_vam_elapsed_m_h", "reason", "reason_code",
+    "applicable"}` — `reason` explique un rapport vide/`None` en français,
+    jamais une exception ni un échec muet (même discipline que
+    `arc_decoupling.decoupling_report`). Une séance éligible sans aucune montée
+    détectée (parcours plat) rend `climbs: []` avec `reason: None` — absence de
+    montée n'est jamais une erreur. `reason_code`/`applicable` (#47, revue de
+    code, nit) : contrepartie stable et non localisée de `reason` — voir
+    `arc_descent.descent_report` pour la même discipline — `applicable` vaut
+    `False` UNIQUEMENT hors de la famille course à pied (l'UI masque alors la
+    section plutôt que de la présenter avec un message, jamais en testant le
+    texte français de `reason`)."""
     empty = {"climbs": [], "vam_best_10min_m_h": None, "vam_best_20min_m_h": None,
               "vam_by_grade_class": {}, "best_climb_vam_elapsed_m_h": None}
     if M.sport_family(sport) != "run":
         return {**empty, "reason": "hors de la famille course à pied (arc_metrics.sport_family), "
-                                    "voir ASSUMPTIONS[\"restricted_to_run_family\"]"}
+                                    "voir ASSUMPTIONS[\"restricted_to_run_family\"]",
+                "reason_code": "not_run_family", "applicable": False}
     if not samples:
-        return {**empty, "reason": "aucun échantillon FIT ingéré pour cette séance"}
+        return {**empty, "reason": "aucun échantillon FIT ingéré pour cette séance",
+                "reason_code": "no_samples", "applicable": True}
     climbs = detect_climbs(samples, **kwargs)
     windows = best_vam_windows(samples, climbs)
     best_climb_vam = max(
@@ -957,4 +965,6 @@ def climb_report(samples: Sequence[dict], sport: Optional[str], **kwargs) -> dic
         "vam_by_grade_class": vam_by_grade_class(climbs),
         "best_climb_vam_elapsed_m_h": best_climb_vam,
         "reason": None,
+        "reason_code": None,
+        "applicable": True,
     }

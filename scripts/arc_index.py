@@ -320,7 +320,8 @@ CREATE TABLE activity (
     gear_id TEXT, carbs_g REAL, fluid_intake_ml REAL, weight_pre_kg REAL, weight_post_kg REAL,
     sweat_rate_l_h REAL, gap_pace_s_km REAL, decoupling_pct REAL, ef_whole REAL,
     decoupling_reason TEXT, best_vam_10min_m_h REAL, best_vam_20min_m_h REAL,
-    best_climb_vam_elapsed_m_h REAL, body_md TEXT, data_json TEXT
+    best_climb_vam_elapsed_m_h REAL, descent_reference_gap_pace_s_km REAL,
+    descent_reference_source TEXT, body_md TEXT, data_json TEXT
 );
 CREATE INDEX activity_date ON activity(date);
 -- `gap_pace_s_km` (#44, allure ajustée à la pente, `arc_gap.py`) : recalculée en
@@ -339,6 +340,13 @@ CREATE INDEX activity_date ON activity(date);
 -- échantillons FIT ingérés — voir `arc_climb.ASSUMPTIONS`. Le détail par montée
 -- vit dans `activity_climb` ci-dessous, jamais ici (une activité peut avoir
 -- plusieurs montées).
+-- `descent_reference_gap_pace_s_km`/`descent_reference_source` (#47, efficacité en
+-- descente, `arc_descent.py`) : allure GAP de référence « plat » utilisée pour
+-- CETTE séance (voir `arc_descent.reference_gap_speed_ms`/ASSUMPTIONS["reference"]) —
+-- `descent_reference_source` vaut `"flat"` (sections réellement plates) ou
+-- `"non_descent"` (repli sur tout ce qui n'est pas une forte descente), jamais
+-- caché : une référence de repli reste moins fiable qu'une référence plate franche.
+-- NULL si aucune des deux n'est exploitable (voir `arc_descent.REASON_NO_REFERENCE`).
 CREATE TABLE activity_split (
     activity_id INTEGER, km INTEGER, distance_m REAL, duration_s REAL, elev_gain_m REAL,
     elev_loss_m REAL, avg_hr_bpm REAL, max_hr_bpm REAL, max_speed_kmh REAL,
@@ -446,16 +454,24 @@ CREATE INDEX activity_climb_activity ON activity_climb(activity_id);
 -- (`activity_id`, comme `activity_climb`/`hr_zone_time` — jamais `garmin_activity_id` :
 -- recréée en entier à chaque `compute_metrics`, sans purge par fichier). `grade_class` :
 -- voir `arc_descent.DESCENT_GRADE_CLASSES` (mirroir des classes ascendantes de #46).
--- `efficiency` : vitesse GAP moyenne de la classe / allure GAP de référence de la
--- séance entière (déjà en `activity.gap_pace_s_km`) — voir
+-- `efficiency` : moyenne pondérée par le temps du ratio par échantillon vitesse GAP
+-- / référence « plat » de LA SÉANCE — la référence est `activity.
+-- descent_reference_gap_pace_s_km`/`descent_reference_source` ci-dessous, JAMAIS
+-- l'allure GAP de toute la séance (`activity.gap_pace_s_km`, #44 : se contaminerait
+-- avec l'effort des descentes elles-mêmes — voir `arc_descent.ASSUMPTIONS
+-- ["reference"]`, BLOQUANT corrigé en revue de code). Voir
 -- `arc_descent.ASSUMPTIONS["indicator"]` pour la lecture honnête de cet indicateur
 -- (le modèle de Minetti sous-jacent surestime le bénéfice des fortes descentes,
 -- une valeur < 1 sur les classes raides est attendue). Une activité sans classe
--- qualifiante (durée/distance insuffisante par classe, ou hors famille course à
--- pied/sans FIT) n'a simplement aucune ligne ici.
+-- qualifiante (durée/distance insuffisante par classe, référence indisponible, ou
+-- hors famille course à pied/sans FIT) n'a simplement aucune ligne ici.
+-- `mean_grade` (revue de code #47) : pente RÉELLEMENT rencontrée en moyenne sur la
+-- classe (fraction signée), pas seulement son libellé — utile notamment sur les
+-- deux paniers larges au-delà de -20 % (`arc_descent.ASSUMPTIONS["grade_classes"]`,
+-- coût de Minetti non monotone en descente).
 CREATE TABLE activity_descent_class (
     activity_id INTEGER, grade_class TEXT, count INTEGER, duration_moving_s REAL, distance_m REAL,
-    mean_speed_ms REAL, mean_pace_s_km REAL, mean_gap_speed_ms REAL, efficiency REAL
+    mean_speed_ms REAL, mean_pace_s_km REAL, mean_gap_speed_ms REAL, mean_grade REAL, efficiency REAL
 );
 CREATE INDEX activity_descent_class_activity ON activity_descent_class(activity_id);
 """
@@ -914,21 +930,36 @@ def compute_metrics(conn, conf: dict, today: Optional[str] = None) -> None:
                         (windows["vam_best_10min_m_h"], windows["vam_best_20min_m_h"], best_climb_vam, act["id"]),
                     )
                     # Efficacité en descente par classe de pente (#47) : réutilise `gap_series`
-                    # (pente + vitesse GAP par échantillon) ET `gap_pace` (allure GAP de la
-                    # séance entière, déjà calculée ci-dessus pour #44) comme référence « plat »
-                    # de CETTE séance — jamais un second calcul de pente/GAP, voir
-                    # `arc_descent.ASSUMPTIONS["reference"]`.
-                    reference_gap_speed_ms = (1000.0 / gap_pace) if gap_pace else None
-                    descent_classes = DS.descent_speed_by_grade_class(
-                        gap_series, reference_gap_speed_ms=reference_gap_speed_ms,
-                        resolution_s=S.DEFAULT_RESOLUTION_S)
+                    # (pente + vitesse GAP par échantillon, jamais un second calcul) — la
+                    # référence « plat » de CETTE séance N'EST PLUS l'allure GAP de la séance
+                    # entière (`gap_pace`, ci-dessus, restée réservée à #44) : voir
+                    # `arc_descent.ASSUMPTIONS["reference"]` (BLOQUANT, revue de code) — l'allure
+                    # GAP globale se contamine avec l'effort des descentes à mesurer elles-mêmes,
+                    # faisant varier l'efficacité d'une même descente selon le reste du parcours.
+                    reference_speed, reference_source = DS.reference_gap_speed_ms(
+                        gap_series, resolution_s=S.DEFAULT_RESOLUTION_S)
+                    # Sans référence, aucune classe n'est stockée (voir
+                    # `arc_descent.descent_report`, même discipline) — jamais une
+                    # ligne à `efficiency: NULL` qui laisserait croire à un calcul
+                    # partiel plutôt qu'à une absence totale de résultat.
+                    descent_classes = (DS.descent_speed_by_grade_class(
+                        gap_series, reference_gap_speed_ms=reference_speed,
+                        resolution_s=S.DEFAULT_RESOLUTION_S) if reference_speed is not None else {})
+                    reference_pace = (1000.0 / reference_speed) if reference_speed else None
+                    conn.execute(
+                        "UPDATE activity SET descent_reference_gap_pace_s_km = ?, "
+                        "descent_reference_source = ? WHERE id = ?",
+                        (round(reference_pace, 2) if reference_pace is not None else None,
+                         reference_source, act["id"]),
+                    )
                     if descent_classes:
                         conn.executemany(
                             "INSERT INTO activity_descent_class (activity_id, grade_class, count, "
                             "duration_moving_s, distance_m, mean_speed_ms, mean_pace_s_km, "
-                            "mean_gap_speed_ms, efficiency) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                            "mean_gap_speed_ms, mean_grade, efficiency) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                             [(act["id"], cls, v["count"], v["duration_moving_s"], v["distance_m"],
-                              v["mean_speed_ms"], v["mean_pace_s_km"], v["mean_gap_speed_ms"], v["efficiency"])
+                              v["mean_speed_ms"], v["mean_pace_s_km"], v["mean_gap_speed_ms"],
+                              v["mean_grade"], v["efficiency"])
                              for cls, v in descent_classes.items()],
                         )
                 except sqlite3.Error:
@@ -957,7 +988,8 @@ def compute_metrics(conn, conf: dict, today: Optional[str] = None) -> None:
                     conn.execute(
                         "UPDATE activity SET gap_pace_s_km = NULL, decoupling_pct = NULL, ef_whole = NULL, "
                         "decoupling_reason = ?, best_vam_10min_m_h = NULL, best_vam_20min_m_h = NULL, "
-                        "best_climb_vam_elapsed_m_h = NULL WHERE id = ?",
+                        "best_climb_vam_elapsed_m_h = NULL, descent_reference_gap_pace_s_km = NULL, "
+                        "descent_reference_source = NULL WHERE id = ?",
                         ("calcul impossible (erreur interne)", act["id"]),
                     )
     conn.execute("DELETE FROM metric_day")
@@ -1610,22 +1642,28 @@ def activity_climb_report(conn, garmin_activity_id: int) -> dict:
     recalcul à la lecture — même discipline que `activity_gap_report` (#44) et
     `activity_decoupling_report` (#45). Rend TOUJOURS `{"garmin_activity_id",
     "climbs", "vam_best_10min_m_h", "vam_best_20min_m_h", "vam_by_grade_class",
-    "best_climb_vam_elapsed_m_h", "reason"}`, jamais une exception."""
+    "best_climb_vam_elapsed_m_h", "reason", "reason_code", "applicable"}`,
+    jamais une exception — voir `arc_climb.climb_report` pour la sémantique de
+    `reason_code`/`applicable` (#47, revue de code, nit : contrepartie stable,
+    non localisée, de `reason`)."""
     empty = {"garmin_activity_id": garmin_activity_id, "climbs": [], "vam_best_10min_m_h": None,
              "vam_best_20min_m_h": None, "vam_by_grade_class": {}, "best_climb_vam_elapsed_m_h": None}
     act = conn.execute(
         "SELECT id, sport, best_vam_10min_m_h, best_vam_20min_m_h, best_climb_vam_elapsed_m_h "
         "FROM activity WHERE garmin_activity_id = ?", (garmin_activity_id,)).fetchone()
     if act is None:
-        return {**empty, "reason": "aucune activité indexée pour ce garmin_activity_id"}
+        return {**empty, "reason": "aucune activité indexée pour ce garmin_activity_id",
+                "reason_code": "unknown_activity", "applicable": True}
     if M.sport_family(act["sport"]) != "run":
         return {**empty, "reason": "hors de la famille course à pied (arc_metrics.sport_family), voir "
-                                    "arc_climb.ASSUMPTIONS[\"restricted_to_run_family\"]"}
+                                    "arc_climb.ASSUMPTIONS[\"restricted_to_run_family\"]",
+                "reason_code": "not_run_family", "applicable": False}
     sample_count = conn.execute(
         "SELECT COUNT(*) FROM activity_sample WHERE garmin_activity_id = ?", (garmin_activity_id,)
     ).fetchone()[0]
     if sample_count == 0:
-        return {**empty, "reason": "aucun échantillon FIT ingéré pour cette séance"}
+        return {**empty, "reason": "aucun échantillon FIT ingéré pour cette séance",
+                "reason_code": "no_samples", "applicable": True}
     climbs = [dict(r) for r in conn.execute(
         "SELECT idx AS \"index\", start_t_s, end_t_s, start_km, end_km, distance_m, gain_m, avg_grade, "
         "grade_class, duration_elapsed_s, duration_moving_s, vam_elapsed_m_h, vam_moving_m_h "
@@ -1638,6 +1676,8 @@ def activity_climb_report(conn, garmin_activity_id: int) -> dict:
         "vam_by_grade_class": VC.vam_by_grade_class(climbs),
         "best_climb_vam_elapsed_m_h": act["best_climb_vam_elapsed_m_h"],
         "reason": None,
+        "reason_code": None,
+        "applicable": True,
     }
 
 
@@ -1665,36 +1705,50 @@ def activity_descent_report(conn, garmin_activity_id: int) -> dict:
     pour les agents en headless. Lit les lignes/colonnes déjà calculées à
     l'indexation (`compute_metrics`), jamais un recalcul à la lecture — même
     discipline que `activity_climb_report` (#46). Rend TOUJOURS
-    `{"garmin_activity_id", "classes", "reference_gap_pace_s_km", "reason"}`,
-    jamais une exception."""
-    empty = {"garmin_activity_id": garmin_activity_id, "classes": {}, "reference_gap_pace_s_km": None}
+    `{"garmin_activity_id", "classes", "reference_gap_pace_s_km",
+    "reference_source", "reason", "reason_code", "applicable"}`, jamais une
+    exception — voir `arc_descent.descent_report` pour la sémantique de
+    `reason_code`/`applicable` (contrepartie stable, non localisée, de
+    `reason`)."""
+    empty = {"garmin_activity_id": garmin_activity_id, "classes": {}, "reference_gap_pace_s_km": None,
+              "reference_source": None}
     act = conn.execute(
-        "SELECT id, sport, gap_pace_s_km FROM activity WHERE garmin_activity_id = ?",
-        (garmin_activity_id,)).fetchone()
+        "SELECT id, sport, descent_reference_gap_pace_s_km, descent_reference_source FROM activity "
+        "WHERE garmin_activity_id = ?", (garmin_activity_id,)).fetchone()
     if act is None:
-        return {**empty, "reason": "aucune activité indexée pour ce garmin_activity_id"}
+        return {**empty, "reason": DS.REASON_UNKNOWN_ACTIVITY, "reason_code": "unknown_activity",
+                "applicable": True}
     if M.sport_family(act["sport"]) != "run":
-        return {**empty, "reason": "hors de la famille course à pied (arc_metrics.sport_family), voir "
-                                    "arc_descent.ASSUMPTIONS[\"restricted_to_run_family\"]"}
+        return {**empty, "reason": DS.REASON_NOT_RUN_FAMILY, "reason_code": "not_run_family",
+                "applicable": False}
     sample_count = conn.execute(
         "SELECT COUNT(*) FROM activity_sample WHERE garmin_activity_id = ?", (garmin_activity_id,)
     ).fetchone()[0]
     if sample_count == 0:
-        return {**empty, "reason": "aucun échantillon FIT ingéré pour cette séance"}
+        return {**empty, "reason": DS.REASON_NO_SAMPLES, "reason_code": "no_samples", "applicable": True}
     rows = {r["grade_class"]: dict(r) for r in conn.execute(
         "SELECT grade_class, count, duration_moving_s, distance_m, mean_speed_ms, mean_pace_s_km, "
-        "mean_gap_speed_ms, efficiency FROM activity_descent_class WHERE activity_id = ?",
+        "mean_gap_speed_ms, mean_grade, efficiency FROM activity_descent_class WHERE activity_id = ?",
         (act["id"],)).fetchall()}
     # Ordre `DESCENT_GRADE_CLASSES` (croissant), jamais un ordre SQL arbitraire sur
     # une colonne texte (qui trierait "-10 à -15 %" avant "-5 à -10 %" alphabétiquement)
     # — même discipline que `arc_climb.vam_by_grade_class`/l'UI (`GRADE_CLASS_ORDER`).
     classes = {label: {k: v for k, v in rows[label].items() if k != "grade_class"}
                for _lo, _hi, label in DS.DESCENT_GRADE_CLASSES if label in rows}
+    reason = reason_code = None
+    if not classes:
+        if act["descent_reference_gap_pace_s_km"] is None:
+            reason, reason_code = DS.REASON_NO_REFERENCE, "no_reference"
+        else:
+            reason, reason_code = DS.REASON_NO_QUALIFYING_CLASS, "no_qualifying_class"
     return {
         "garmin_activity_id": garmin_activity_id,
         "classes": classes,
-        "reference_gap_pace_s_km": act["gap_pace_s_km"],
-        "reason": None if classes else "aucune classe de pente descendante avec assez de données sur cette séance",
+        "reference_gap_pace_s_km": act["descent_reference_gap_pace_s_km"],
+        "reference_source": act["descent_reference_source"],
+        "reason": reason,
+        "reason_code": reason_code,
+        "applicable": True,
     }
 
 
@@ -1703,11 +1757,17 @@ def descent_trend(conn, today: date, weeks: Optional[int] = None) -> dict:
     (`arc_index.py descent --weeks`) et pour `coach`/le tableau de bord. Voir
     `arc_metrics.descent_trend`/`arc_descent.ASSUMPTIONS` — AUCUN seuil de durée
     minimale sur la séance (comme `vam_trend`), seul le seuil PAR CLASSE
-    (déjà appliqué à l'indexation) filtre les lignes."""
+    (déjà appliqué à l'indexation) filtre les lignes. `a.id AS activity_id`
+    (revue de code, should-fix 3) : la clé de regroupement PAR ACTIVITÉ de
+    `arc_metrics.descent_trend` doit être l'id, jamais `(date, name, sport)` —
+    deux séances distinctes le même jour au même nom générique (« Trail »,
+    par exemple, deux sorties bi-quotidiennes) se seraient sinon vues fusionnées
+    à tort en une seule."""
     rows = [dict(r) for r in conn.execute(
-        "SELECT a.date AS date, a.sport AS sport, a.name AS name, dc.grade_class AS grade_class, "
-        "dc.efficiency AS efficiency, dc.mean_pace_s_km AS mean_pace_s_km "
-        "FROM activity_descent_class dc JOIN activity a ON a.id = dc.activity_id").fetchall()]
+        "SELECT a.id AS activity_id, a.date AS date, a.sport AS sport, a.name AS name, "
+        "dc.grade_class AS grade_class, dc.efficiency AS efficiency, dc.mean_pace_s_km AS mean_pace_s_km, "
+        "dc.mean_grade AS mean_grade FROM activity_descent_class dc "
+        "JOIN activity a ON a.id = dc.activity_id").fetchall()]
     window_weeks = weeks if weeks and weeks > 0 else M.DESCENT_TREND_WEEKS
     return M.descent_trend(rows, today, window_weeks)
 

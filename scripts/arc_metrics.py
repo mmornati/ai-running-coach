@@ -1420,18 +1420,30 @@ def descent_trend(rows: List[dict], day: date, window_weeks: int = DESCENT_TREND
 
     `rows` : une ligne par (activité, classe de pente descendante) RÉELLEMENT
     présente (déjà dérivée à l'indexation par `arc_descent.descent_speed_by_grade_class`,
-    JAMAIS recalculée ici), portant au moins `date`, `sport`, `name`, `grade_class`,
-    `efficiency` (optionnel), `mean_pace_s_km` (optionnel).
+    JAMAIS recalculée ici), portant `activity_id` (revue de code, should-fix 3 —
+    voir plus bas), `date`, `sport`, `name`, `grade_class`, `efficiency`
+    (optionnel), `mean_pace_s_km` (optionnel), `mean_grade` (optionnel).
 
-    Rend `{"points": [...], "classes": {label: {"points", "count", "avg_efficiency"}},
-    "window_weeks"}` : `points` porte UN point par activité (moyenne, non pondérée,
-    de l'efficacité de ses classes présentes — pour un graphique simple, une valeur
-    par sortie), `classes` porte le détail par classe de pente (pour le tableau/la
-    légende de la fiche séance) — seules les classes RÉELLEMENT représentées dans la
-    fenêtre apparaissent (critère d'acceptation de #47 : « classes sans assez de
-    données -> absentes »)."""
+    Rend `{"activities": [...], "classes": {label: {"points", "count",
+    "avg_efficiency"}}, "window_weeks"}`. `classes` — LE RÉSULTAT PRINCIPAL,
+    « à pente égale » (revue de code, should-fix 2) — porte le détail PAR
+    CLASSE (pour un graphique une série par classe, et pour le tableau/la
+    légende de la fiche séance) ; seules les classes RÉELLEMENT représentées
+    dans la fenêtre apparaissent (critère d'acceptation de #47 : « classes
+    sans assez de données -> absentes »). `activities` porte, EN PLUS, un
+    résumé PAR ACTIVITÉ — `avg_efficiency_all_classes` (moyenne NON PONDÉRÉE
+    des classes présentes CE JOUR-LÀ, TOUTES PENTES CONFONDUES) — nommé et
+    documenté sans ambiguïté : cette moyenne mélange des classes de pente
+    différentes d'une activité à l'autre (une sortie avec surtout de la
+    pente raide n'est PAS comparable à une sortie avec surtout du -5/-10 %) et
+    n'est donc JAMAIS le résultat à afficher pour juger d'une progression —
+    seul un usage informatif, jamais comparatif. Clé de regroupement PAR
+    ACTIVITÉ : `activity_id` (revue de code, should-fix 3, BLOQUANT) — jamais
+    `(date, name, sport)`, qui fusionnerait à tort deux séances distinctes du
+    même jour portant le même nom générique (« Trail », deux sorties
+    bi-quotidiennes, par exemple) en une seule."""
     start = day - timedelta(days=window_weeks * 7 - 1)
-    by_activity: Dict[Tuple[str, Optional[str], Optional[str]], dict] = {}
+    by_activity: Dict[object, dict] = {}
     by_class: Dict[str, list] = {}
     for row in rows:
         iso = row.get("date")
@@ -1447,21 +1459,29 @@ def descent_trend(rows: List[dict], day: date, window_weeks: int = DESCENT_TREND
         if cls is None:
             continue
         eff = row.get("efficiency")
-        key = (iso, row.get("name"), row.get("sport"))
+        # Clé PAR ACTIVITÉ = son id (revue de code, should-fix 3, BLOQUANT) — jamais
+        # `(date, name, sport)`, voir la docstring ci-dessus. Repli sur `(date, name,
+        # sport)` UNIQUEMENT si l'appelant n'a pas fourni `activity_id` (défense en
+        # profondeur pour un ancien appelant, jamais le chemin normal).
+        key = row.get("activity_id")
+        if key is None:
+            key = (iso, row.get("name"), row.get("sport"))
         entry = by_activity.setdefault(key, {
-            "date": iso, "sport": row.get("sport"), "name": row.get("name"), "efficiencies": [],
+            "activity_id": row.get("activity_id"), "date": iso, "sport": row.get("sport"),
+            "name": row.get("name"), "efficiencies": [],
         })
         if eff is not None:
             entry["efficiencies"].append(eff)
         by_class.setdefault(cls, []).append({
             "date": iso, "sport": row.get("sport"), "name": row.get("name"),
             "efficiency": eff, "mean_pace_s_km": row.get("mean_pace_s_km"),
+            "mean_grade": row.get("mean_grade"),
         })
-    points = []
+    activities = []
     for entry in by_activity.values():
         effs = entry.pop("efficiencies")
-        points.append({**entry, "avg_efficiency": round(statistics.mean(effs), 3) if effs else None})
-    points.sort(key=lambda p: p["date"])
+        activities.append({**entry, "avg_efficiency_all_classes": round(statistics.mean(effs), 3) if effs else None})
+    activities.sort(key=lambda p: p["date"])
     classes_out = {}
     for cls, pts in by_class.items():
         pts.sort(key=lambda p: p["date"])
@@ -1470,7 +1490,7 @@ def descent_trend(rows: List[dict], day: date, window_weeks: int = DESCENT_TREND
             "points": pts, "count": len(pts),
             "avg_efficiency": round(statistics.mean(eff_vals), 3) if eff_vals else None,
         }
-    return {"points": points, "classes": classes_out, "window_weeks": window_weeks}
+    return {"activities": activities, "classes": classes_out, "window_weeks": window_weeks}
 
 
 def gear_mileage(activities: List[dict], gear_defs: List[dict]) -> dict:
