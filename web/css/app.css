@@ -251,6 +251,11 @@ select { font: inherit; color: var(--ink); background: var(--surface); border: 1
 .chip--verdict-red, .chip--weather-red, .chip--status-missed, .chip--status-cancelled { color: var(--bad); background: var(--bad-bg); }
 .chip--weather-yellow { color: var(--yellow); background: var(--warn-bg); }
 .chip--weather-orange, .chip--gear-orange { color: var(--orange); background: var(--warn-bg); }
+/* Drapeau composite de risque de blessure (#57) : `moderate` reprend le ton
+   « à surveiller » (warn), `high` le ton « alerte » (bad) — mêmes variables de
+   thème que les autres pastilles, donc déjà correctes en sombre. */
+.chip--injury-moderate { color: var(--warn); background: var(--warn-bg); }
+.chip--injury-high { color: var(--bad); background: var(--bad-bg); }
 .chip--status-planned { color: var(--ink-soft); }
 /* Journal des décisions (#55) : issue d'une décision — le déclencheur (`chip--trigger-*`)
    reste sur la pastille neutre par défaut, aucune règle n'y correspondant volontairement. */

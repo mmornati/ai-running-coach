@@ -249,6 +249,8 @@ SCHEMA = {
             "verdict": _enum(VERDICT),
             "verdict_reason": "str",
             "missing_reason": "obj",
+            # #57 : douleur structurée déclarée le jour du fichier — voir SUBSCHEMA["pain"].
+            "pain": "[pain]",
         },
     },
     "weather": {
@@ -367,6 +369,22 @@ SCHEMA = {
 
 # Sous-schémas des listes d'objets (non utilisables comme `kind` de fichier).
 SUBSCHEMA = {
+    # `health.pain` (#57, drapeau composite de risque de blessure) : douleur
+    # STRUCTURÉE déclarée par l'athlète le jour du fichier (`health.date` fait
+    # foi comme date de l'entrée — pas de `date` propre ici, une entrée de
+    # douleur n'a de sens que rattachée au bilan du jour où elle est écrite).
+    # Champ VOLONTAIREMENT minimal : `location` (texte libre, ex. « genou
+    # droit ») et `score` (0-10, même échelle que `rpe` — sévérité perçue, pas
+    # une mesure clinique). Une liste (pas un objet unique) : plusieurs
+    # douleurs peuvent coexister le même jour (ex. genou ET tendon). Lu par
+    # `scripts/arc_guardrails.py::build_injury_risk_context` — le texte libre
+    # de la prose sous le bloc reste la SEULE description narrative (protocole,
+    # évolution) ; ce champ n'existait pas avant #57, jamais de dette de
+    # backfill (mêmes garanties que `decision`, voir SKILL.md).
+    "pain": {
+        "required": {"location": "str", "score": "pain_score"},
+        "optional": {},
+    },
     "session": {
         "required": {"date": "date", "sport": _enum(SPORTS), "title": "str"},
         "optional": {
@@ -542,6 +560,13 @@ def _check_value(spec: str, value, where: str, errors: list, warnings: list) -> 
     if spec == "rpe":
         if not _is_number(value) or not 0 <= value <= 10:
             fail("un RPE de 0 à 10")
+        return
+    if spec == "pain_score":
+        # `health.pain[].score` (#57) : même échelle 0-10 que `rpe`, mais un type
+        # DÉDIÉ — sévérité de douleur perçue, jamais un effort — pour ne jamais
+        # confondre les deux dans un message d'erreur.
+        if not _is_number(value) or not 0 <= value <= 10:
+            fail("un score de douleur de 0 à 10")
         return
     if spec == "gear_id":
         if not isinstance(value, str) or not value.strip():

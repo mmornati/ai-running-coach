@@ -139,6 +139,28 @@ decision that references it, THEN validate both:
 python3 scripts/arc_index.py --validate <week-file> <decision-file>
 ```
 
+### INJURY-RISK FLAG (#57 — read it, never diagnose)
+
+Before a weekly/daily validation, also check the composite injury-risk flag:
+
+```bash
+python3 scripts/arc_guardrails.py injury-risk
+```
+
+It combines ACWR, monotony, declared pain (`health.pain`), a perceived-effort
+vs measured-HR mismatch, sleep debt and a recent red verdict into a 3-level
+`level` (`low`/`moderate`/`high`), each contributing factor with its observed
+value and threshold, and a mandatory non-diagnostic `disclaimer`. At
+`moderate`/`high`, name the contributing factors in one sentence (cite
+`factors[].label`/`observed`/`threshold`) and adjust caution accordingly —
+never phrase it as a diagnosis (no naming a specific pathology), and never let
+it override a guardrail `block` or a medical instruction, only add to the
+caution already applied. If `[health].morning_check = "off"`, the
+health-derived factors (sleep debt, red verdict) are skipped by construction —
+say so rather than treating their absence as reassuring. Defer to `medical`
+(if enabled) for anything beyond training-load caution, especially a `high`
+level with pain reported.
+
 ### SESSION SCHEDULING (GARMIN CALENDAR PRIMARY)
 - **Guardrails first:** Before the first push of a session AND before re-pushing a changed one, run the guardrails check above on the week being pushed. A `block` never cancels the whole week: push every other session normally, propose a safe alternative for the flagged one, and push that alternative only once the athlete has confirmed it (see GUARDRAILS MANDATE). A `warn` still pushes, mentioned briefly.
 - **Push:** Use `schedule_workouts` with `{calendar_date, workout_data}` per session. **Inline `workout_data` is NOT idempotent** — check `get_scheduled_workouts` for the date first and delete the old workout_id if the session changed, or reuse the id if unchanged (see the `garmin-workout-scheduling` skill).

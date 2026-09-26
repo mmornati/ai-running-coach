@@ -4672,6 +4672,72 @@
       },
       "status": 200
     },
+    "/api/injury-risk": {
+      "body": {
+        "context": {
+          "morning_check": "full",
+          "today": "2026-09-23"
+        },
+        "disclaimer": "Signal de vigilance calculé à partir de repères d'entraînement et d'une douleur éventuellement déclarée — non-diagnostique, ne remplace jamais un avis médical professionnel. Aucun facteur ci-dessous ne prouve une blessure ; en cas de doute, ou de douleur qui persiste, consulte un professionnel de santé.",
+        "factors": [
+          {
+            "contributes": false,
+            "id": "acwr",
+            "label": "ACWR (charge aiguë/chronique) réel, aujourd'hui",
+            "observed": null,
+            "reason": "historique réel trop court (< 84 j) pour un ACWR significatif.",
+            "reason_code": "insufficient_history",
+            "threshold": null,
+            "weight": 0
+          },
+          {
+            "contributes": false,
+            "id": "monotony",
+            "label": "Monotonie de Foster réelle, 7 jours glissants",
+            "observed": 1.22,
+            "threshold": 2.0,
+            "weight": 0
+          },
+          {
+            "contributes": false,
+            "id": "pain",
+            "label": "Douleur déclarée (champ structuré `health.pain`)",
+            "observed": 0.0,
+            "threshold": 4.0,
+            "weight": 0
+          },
+          {
+            "contributes": false,
+            "id": "red_verdict",
+            "label": "Verdict santé rouge aujourd'hui ou hier",
+            "observed": null,
+            "threshold": "red",
+            "weight": 0
+          },
+          {
+            "contributes": false,
+            "id": "rpe_hr_mismatch",
+            "label": "Effort perçu (RPE) nettement supérieur à la charge mesurée par FC",
+            "observed": null,
+            "reason": "pas assez de séances avec à la fois FC moyenne et RPE déclaré (minimum 3 par fenêtre) pour comparer l'effort perçu à la charge mesurée.",
+            "reason_code": "no_rpe_hr_pairs",
+            "threshold": null,
+            "weight": 0
+          },
+          {
+            "contributes": false,
+            "id": "sleep_debt",
+            "label": "Dette de sommeil 7 jours",
+            "observed": 17977,
+            "threshold": 36000,
+            "weight": 0
+          }
+        ],
+        "level": "low",
+        "score": 0
+      },
+      "status": 200
+    },
     "/api/load": {
       "body": {
         "hr_zones_reason": null,

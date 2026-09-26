@@ -392,6 +392,24 @@ possibles.
 | `verdict` | `green` `amber` `red` | disponibilité du jour : maintenir / alléger / repos |
 | `verdict_reason` | texte | obligatoire avec `verdict` |
 | `missing_reason` | objet | |
+| `pain` | liste d'objets | douleur STRUCTURÉE déclarée ce jour-là (#57) — voir ci-dessous |
+
+**Douleur déclarée (`pain`, #57).** Une liste d'objets, un par zone douloureuse
+signalée le jour du fichier (`health.date` fait foi comme date — pas de `date`
+propre à chaque entrée) : **`location`** (texte libre, ex. « genou droit »),
+**`score`** (0-10, sévérité perçue — même échelle que `activity.rpe`, mais un
+champ distinct : de la douleur, jamais de l'effort). Lu par
+`scripts/arc_guardrails.py injury-risk` (drapeau composite de risque de
+blessure) pour repérer une douleur récente au-delà d'un seuil — voir
+`arc_guardrails.ASSUMPTIONS_INJURY_RISK["pain"]`. Le texte libre sous le bloc
+reste la SEULE description narrative (protocole, évolution) : ce champ est
+volontairement minimal, jamais un remplacement du récit médical.
+
+```arc
+{"arc": 1, "kind": "health", "date": "2026-09-24", "morning_check": "full",
+ "pain": [{"location": "genou droit", "score": 6}],
+ "verdict": "amber", "verdict_reason": "Douleur au genou signalée : séance de qualité annulée par prudence."}
+```
 
 ```arc
 {
