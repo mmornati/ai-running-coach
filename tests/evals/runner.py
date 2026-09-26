@@ -731,6 +731,55 @@ def _check_arc_field(case: dict, result: dict, assertions: list) -> list:
     return failures
 
 
+def _check_arc_field_absent(case: dict, result: dict, assertions: list) -> list:
+    """`arc_field_absent` (#51, revue de code) : l'inverse d'`arc_field`.
+
+    `arc_field` traite TOUJOURS un chemin qui ne résout à rien comme un échec
+    (#27, revue PR #72) — un garde-fou volontaire contre un chemin mal
+    orthographié qui « passerait » silencieusement — ce qui le rend inutilisable
+    pour affirmer qu'un champ ne doit PAS exister (ex. les clés KPI FIT sur une
+    activité sans échantillons, #51). Cette assertion dédiée exprime l'absence
+    voulue : chaque `path` de `paths` doit résoudre à RIEN dans CHAQUE fichier
+    écrit pendant le run correspondant au glob — un seul chemin qui résout à
+    une valeur, dans un seul fichier, est un échec."""
+    failures = []
+    for assertion in assertions:
+        if not isinstance(assertion, dict):
+            failures.append(f"arc_field_absent : entrée mal formée : {assertion!r}")
+            continue
+        glob_pattern, paths = assertion.get("glob"), assertion.get("paths")
+        if not glob_pattern or not paths:
+            failures.append("arc_field_absent : 'glob' et 'paths' sont obligatoires")
+            continue
+        if not isinstance(paths, list) or not paths:
+            failures.append("arc_field_absent : 'paths' doit être une liste non vide")
+            continue
+
+        new = _new_files(case, result, glob_pattern)
+        if not new:
+            failures.append(f"arc_field_absent : aucun fichier écrit ne correspond à {glob_pattern}")
+            continue
+
+        for fpath in new:
+            relpath = fpath.relative_to(result["workspace"])
+            block, problem = _load_arc_block(fpath)
+            if problem:
+                failures.append(f"arc_field_absent : {relpath} : {problem}")
+                continue
+            for path_expr in paths:
+                try:
+                    resolved = _resolve_json_path(block, path_expr)
+                except ValueError as exc:
+                    failures.append(f"arc_field_absent : {relpath} : chemin invalide {path_expr!r} : {exc}")
+                    continue
+                if resolved:
+                    found = ", ".join(f"{p} = {v!r}" for p, v in resolved)
+                    failures.append(
+                        f"arc_field_absent : {relpath} : {path_expr} présent alors qu'attendu absent ({found})"
+                    )
+    return failures
+
+
 def _check_tool_args_match(tool_calls: list, assertions: list) -> list:
     """`tool_args_match` : au moins UN appel doit satisfaire — mais, DANS cet
     appel, TOUTES les valeurs résolues par un `[*]` doivent satisfaire (#27,
@@ -960,6 +1009,9 @@ def check(case: dict, result: dict) -> list:
             failures.append(f"première ligne « {first.strip()[:80]} » ne correspond pas à /{pattern}/")
 
     failures.extend(_safe_check("arc_field", _check_arc_field, case, result, _as_list(expect.get("arc_field"))))
+    failures.extend(_safe_check(
+        "arc_field_absent", _check_arc_field_absent, case, result, _as_list(expect.get("arc_field_absent"))
+    ))
 
     tool_calls = _parse_tool_log(result["tool_calls"])
     failures.extend(_safe_check(

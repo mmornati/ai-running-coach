@@ -24,6 +24,7 @@ that reads either a FIT file or a Garmin JSON export and applies heuristics on s
 **Do NOT use this skill** when:
 - The user wants the global session analysis only (use the standard `coach` workflow on `get_activity`).
 - The data is incomplete (no FIT, no MCP access). In that case, fall back to split-level analysis and mention the limitation.
+- The question is a whole-session KPI (time in zone, decoupling/EF, GAP, VAM, descent efficiency, durability/fade) — those are computed by `scripts/arc_index.py` (`zones`/`decoupling`/`gap`/`vam`/`descent`/`durability`, #51), not by this segment detector. Reuse that CLI instead of approximating the same number from segments.
 
 ---
 
@@ -200,7 +201,7 @@ Last 5 minutes of the session by default.
 - **GPS noise**: smoothing mitigates but doesn't eliminate. Bursts shorter than the smoothing window (5 s) can be missed.
 - **Static threshold for stride**: 12 km/h is fine for an athlete running Z2 at ~5:30/km. For slower runners (6:30/km+) lower `--stride-threshold` to 10 km/h.
 - **FIT downloads can time out** via the Garmin MCP (`get_activity_fit_data` returns 30 s timeout for very large files). Fall back to `--activity-id` mode (1 km granularity) or to split-level manual analysis.
-- **HR drift detection**: only `climb` and `cooldown` modes include HR drift; for full Pa:HR decoupling use the standard `coach` workflow on the activity detail.
+- **HR drift detection**: only `climb` and `cooldown` modes include HR drift. For whole-session Pa:HR decoupling/EF, zones, GAP, VAM or durability, do NOT recompute them here — run `python3 scripts/arc_index.py decoupling|zones|gap|vam|durability --activity <garmin_activity_id>` instead (#51). This skill stays scoped to sub-segment detection (stride/sprint/interval/climb-as-drill boundaries) that those whole-session KPIs don't produce.
 - **No GPS-hole handling yet**: if the recording has long zero-speed gaps (tunnel, pause), the heuristic may mis-segment.
 
 ---

@@ -1,0 +1,58 @@
+# Symétrique de `feedback-with-fit` (#51) : même plan de semaine (endurance,
+# avant-hier), même activité canned du stub Garmin, mais AUCUN fichier
+# `activities/fit/*.json` dans la fixture — aucun échantillon FIT ingéré.
+#
+# Sans échantillons, `scripts/arc_index.py zones/gap/decoupling/vam --activity`
+# rendent tous une `reason` explicite (pas d'échec muet) : le coach ne doit
+# inventer NI le découplage, NI le temps en zone précis, NI la VAM — au plus
+# une phrase du type « pas de données FIT » s'il explique pourquoi le retour
+# est plus sommaire. Le bloc ```arc de l'activité qu'il persiste ne doit pas
+# non plus porter les champs dérivés du FIT (`gap_pace_s_km`, `decoupling_pct`,
+# `ef_whole`, `time_in_zone_s`, `best_climb_vam_m_h`) : il n'y a rien à y mettre
+# — vérifié avec `arc_field_absent`, le pendant négatif d'`arc_field` (qui, lui,
+# traite TOUJOURS un chemin introuvable comme un échec, voir `runner.py`).
+id = "feedback-without-fit"
+prompt = "Fais-moi un retour sur ma séance d'avant-hier, celle prévue en endurance dans mon plan de la semaine."
+fixture = "feedback-without-fit"
+
+[config.health]
+morning_check = "off"
+
+[expect]
+tools_called = ["get_activities"]
+files_with_arc_block = ["activities/*.md"]
+
+# Pas de chiffre inventé : ni découplage/EF chiffré, ni VAM chiffrée, ni un
+# pourcentage de temps passé en zone (formulation phrase, tableau `| Z3 | 32 % |`
+# ou notation compacte `Zone 3 : 32 %`) — mais NE DOIT PAS rejeter une réponse
+# correcte qui dit simplement « pas de données FIT », mentionne le mot « zone »
+# sans chiffre, ou cite un pourcentage de FC max/réserve sans rapport avec un
+# temps passé (« 75 % de ta FC max, en zone 2 » reste un repère instantané
+# légitime, pas un temps en zone inventé). Re-revue de code #51 : la version
+# précédente (ancrée sur `temps`/`passé` entre le `%` et la zone) manquait les
+# formulations sans ces mots (« 32 % en zone 3 », « Zone 3 : 32 % », un tableau
+# `| Z3 | 32 % |`) — motif à trois branches ci-dessous, chacune couvrant un
+# ordre/une forme différente (% puis zone avec connecteurs optionnels ; zone
+# puis séparateur `:`/`|`/`=` puis % ; `temps`/`passé` explicite entre les deux).
+must_not_match = [
+  'd[ée]couplage\D{0,20}\d+([.,]\d+)?\s*%',
+  '\bVAM\b\D{0,20}\d+',
+  '\d+([.,]\d+)?\s*%\s*(du\s+temps\s+(de\s+mouvement\s+)?)?(pass[ée]\s+)?(en\s+)?(zone\s*[1-5]|\bz[1-5]\b)|(zone\s*[1-5]|\bz[1-5]\b)\s*[:|=]?\s*\|?\s*\d+([.,]\d+)?\s*%|(temps|pass[ée])\D{0,20}\d+([.,]\d+)?\s*%\D{0,20}(zone\s*[1-5]|\bz[1-5]\b)',
+]
+
+[[expect.arc_field]]
+glob = "activities/*.md"
+path = "sport"
+in = ["trail", "running"]
+
+[[expect.arc_field]]
+glob = "activities/*.md"
+path = "distance_m"
+min = 20000
+
+# Aucun échantillon FIT dans le workspace : rien de dérivé du FIT n'était
+# calculable pour le coach — ces cinq clés ne doivent apparaître dans AUCUN
+# fichier `activities/*.md` écrit pendant le run.
+[[expect.arc_field_absent]]
+glob = "activities/*.md"
+paths = ["gap_pace_s_km", "decoupling_pct", "ef_whole", "time_in_zone_s", "best_climb_vam_m_h"]

@@ -475,6 +475,20 @@ class TestActivityZoneReportAndCli(Workspace):
         self.assertIsNone(report["zone_seconds"])
         self.assertIsNotNone(report["reason"])
 
+    def test_unknown_activity_has_explicit_reason_and_code(self):
+        """#51, revue de code : une séance jamais indexée (aucun `activities/*.md`
+        du tout, pas seulement « pas de FIT ») porte `reason_code:
+        "unknown_activity"` — même code que gap/decoupling/vam/climb-history,
+        pour que l'agent la distingue d'un autre motif de `reason` sans code
+        (ici, la même chose que « pas de profil », mais AVEC un code cette fois)."""
+        self.write_profile(hr_max=188, hr_rest=48)
+        self.index()
+        conf = I.settings(I.load_config(self.ws))
+        report = I.activity_zone_report(self.conn, conf, 123456789)
+        self.assertIsNone(report["zone_seconds"])
+        self.assertIsNotNone(report["reason"])
+        self.assertEqual(report["reason_code"], "unknown_activity")
+
     def test_activity_zone_report_reasons_without_samples(self):
         self.write_profile(hr_max=188, hr_rest=48)
         self.write_activity(self.GARMIN_ID)

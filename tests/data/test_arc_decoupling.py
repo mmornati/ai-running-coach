@@ -614,6 +614,9 @@ class TestActivityDecouplingReportAndCli(Workspace):
         report = I.activity_decoupling_report(self.conn, 123)
         self.assertIsNone(report["decoupling_pct"])
         self.assertIsNotNone(report["reason"])
+        # #51, revue de code : distingue « pas encore indexée » d'un autre
+        # motif de `reason` sans code (ex. sport hors famille course à pied).
+        self.assertEqual(report["reason_code"], "unknown_activity")
 
     def test_success_report_has_no_reason(self):
         records = _linear_drift_records(duration_s=3900, hr0=140.0, slope=0.0037)

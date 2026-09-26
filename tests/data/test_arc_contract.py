@@ -197,5 +197,70 @@ class TestGearSlug(unittest.TestCase):
         self.assertEqual(errors, [])
 
 
+class TestFitKpiFields(unittest.TestCase):
+    """#51, revue de code : `time_in_zone_s` et `decoupling_pct` ne sont pas de
+    simples `obj`/`num` — un objet mal formé ou une plage physiologiquement
+    absurde doit être signalé, pas recopié tel quel dans l'index."""
+
+    def base(self, **extra):
+        return {"arc": 1, "kind": "activity", "date": "2026-09-20", "sport": "running",
+                "duration_s": 4200, **extra}
+
+    def test_valid_time_in_zone_passes(self):
+        errors, warnings = C.validate(self.base(time_in_zone_s={"z1": 1470, "z2": 1470, "z3": 1260}))
+        self.assertEqual(errors, [])
+        self.assertEqual(warnings, [])
+
+    def test_unknown_zone_key_is_warned(self):
+        _, warnings = C.validate(self.base(time_in_zone_s={"z1": 100, "zz": 50}))
+        self.assertTrue(any("time_in_zone_s.zz" in w for w in warnings), warnings)
+
+    def test_negative_seconds_is_an_error(self):
+        errors, _ = C.validate(self.base(time_in_zone_s={"z1": -5}))
+        self.assertTrue(any("time_in_zone_s.z1" in e for e in errors), errors)
+
+    def test_non_numeric_seconds_is_an_error(self):
+        errors, _ = C.validate(self.base(time_in_zone_s={"z9": "x", "z1": "x"}))
+        # `z9` échoue déjà comme clé inconnue (avertissement) ; `z1` doit échouer
+        # comme valeur non numérique (erreur), pas être silencieusement accepté.
+        self.assertTrue(any("time_in_zone_s.z1" in e for e in errors), errors)
+
+    def test_seconds_above_duration_s_is_an_error(self):
+        errors, _ = C.validate(self.base(duration_s=3600, time_in_zone_s={"z1": 4000}))
+        self.assertTrue(any("time_in_zone_s.z1" in e and "3600" in e for e in errors), errors)
+
+    def test_seconds_equal_to_duration_s_is_accepted(self):
+        errors, _ = C.validate(self.base(duration_s=3600, time_in_zone_s={"z1": 3600}))
+        self.assertEqual(errors, [])
+
+    def test_decoupling_pct_within_range_is_silent(self):
+        errors, warnings = C.validate(self.base(decoupling_pct=12.9))
+        self.assertEqual(errors, [])
+        self.assertEqual(warnings, [])
+
+    def test_decoupling_pct_negative_within_range_is_silent(self):
+        """Une dérive négative (« monte en régime ») reste physiologiquement plausible."""
+        errors, warnings = C.validate(self.base(decoupling_pct=-8.0))
+        self.assertEqual(errors, [])
+        self.assertEqual(warnings, [])
+
+    def test_decoupling_pct_far_out_of_range_is_a_warning_not_an_error(self):
+        errors, warnings = C.validate(self.base(decoupling_pct=250.0))
+        self.assertEqual(errors, [])
+        self.assertTrue(any("decoupling_pct" in w for w in warnings), warnings)
+
+    def test_decoupling_pct_wrong_type_is_an_error(self):
+        errors, _ = C.validate(self.base(decoupling_pct="12%"))
+        self.assertTrue(any("decoupling_pct" in e for e in errors), errors)
+
+    def test_best_climb_vam_m_h_valid(self):
+        errors, _ = C.validate(self.base(best_climb_vam_m_h=620))
+        self.assertEqual(errors, [])
+
+    def test_best_climb_vam_m_h_negative_is_rejected(self):
+        errors, _ = C.validate(self.base(best_climb_vam_m_h=-10))
+        self.assertTrue(any("best_climb_vam_m_h" in e for e in errors), errors)
+
+
 if __name__ == "__main__":
     unittest.main()
