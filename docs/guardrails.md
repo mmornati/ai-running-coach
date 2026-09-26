@@ -30,14 +30,18 @@ Seuils et sévérités : `[guardrails]` de `config/workspace.toml`, voir
 
 ## Ce qui n'est jamais bloqué
 
-- **Historique réel insuffisant** — deux gardes distinctes :
+- **Historique réel insuffisant** — trois gardes distinctes :
     - moins de **84 jours** d'historique réel avant `week_start`
       (`MIN_HISTORY_DAYS_FOR_PROJECTION`, 2× la fenêtre de condition de
-      42 jours) : R1 et R4 sont **sautées** (`reason_code:
-      "insufficient_history"`), jamais évaluées sur un démarrage à froid du
-      modèle impulsion-réponse de Banister — sans cette garde, un nouvel
-      utilisateur avec 1 à 8 semaines d'historique lirait un ACWR de 3,18 à
-      1,34 sur une semaine pourtant parfaitement stable ;
+      42 jours) : R1 est **sautée** (`reason_code: "insufficient_history"`),
+      jamais évaluée sur un démarrage à froid du modèle impulsion-réponse de
+      Banister — sans cette garde, un nouvel utilisateur avec 1 à 8 semaines
+      d'historique lirait un ACWR de 3,18 à 1,34 sur une semaine pourtant
+      parfaitement stable ;
+    - moins de **14 jours** d'historique réel : R4 (monotonie) est sautée —
+      un plancher bien plus court que celui de R1, la fenêtre de monotonie
+      (moyenne/écart-type de charge brute sur 7 jours) n'ayant pas le biais de
+      démarrage à froid d'une moyenne mobile exponentielle ;
     - moins de **4 séances** de la famille course dans la semaine proposée :
       R6 est sautée (`reason_code: "too_few_sessions"`) — avec 3 séances ou
       moins, la plus longue dépasse presque toujours 35 % par pure
@@ -56,9 +60,11 @@ Seuils et sévérités : `[guardrails]` de `config/workspace.toml`, voir
 - **Semaine qui SUIT une course** (récupération) : R1 ne compare pas l'ACWR
   projeté au seuil brut, mais à un scénario « repos complet » calculé sur la
   même semaine (mêmes séances mises à zéro) — elle ne bloque QUE si la semaine
-  proposée aggrave le ratio par rapport à ce repos complet
-  (`reason_code: "acwr_elevated_by_recent_load"` sinon). Une fatigue
-  résiduelle de course, seule, ne bloque jamais une semaine de récupération.
+  proposée aggrave le ratio par rapport à ce repos complet. Sinon, une
+  violation `info` est quand même rendue (« ACWR déjà élevé [...] la
+  proposition ne l'augmente pas ») pour que le coach voie le chiffre : une
+  fatigue résiduelle de course, seule, ne bloque jamais une semaine de
+  récupération, mais n'est pas non plus passée sous silence.
 - **Bilan matinal désactivé** (`[health].morning_check = "off"`) : R5 est
   sautée (`reason_code: "health_check_disabled"`) — aucune donnée de santé
   n'est de toute façon récupérée dans ce mode.

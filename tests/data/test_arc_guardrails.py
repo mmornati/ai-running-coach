@@ -100,12 +100,15 @@ class TestR1Acwr(unittest.TestCase):
 
     def test_does_not_fire_when_it_does_not_worsen_the_baseline(self):
         """Revue de code #98, should-fix 6 : une semaine de récupération après une
-        course ne doit pas être bloquée si elle n'AGGRAVE pas le ratio par rapport
-        à un repos complet (ACWR déjà élevé par la charge résiduelle réelle)."""
+        course ne doit pas être BLOQUÉE si elle n'AGGRAVE pas le ratio par rapport
+        à un repos complet (ACWR déjà élevé par la charge résiduelle réelle) —
+        mais une violation `info` doit quand même être rendue (revue de code #98,
+        2e passe, nit : le coach doit voir le chiffre)."""
         ctx = base_context(acwr_projected=1.42, acwr_baseline=1.42)
         violation, skip = G._eval_r1(ctx, DEFAULT_GCONF)
-        self.assertIsNone(violation)
-        self.assertEqual(skip["reason_code"], "acwr_elevated_by_recent_load")
+        self.assertIsNone(skip)
+        self.assertIsNotNone(violation)
+        self.assertEqual(violation["severity"], "info")
 
     def test_fires_when_it_worsens_the_baseline(self):
         ctx = base_context(acwr_projected=1.42, acwr_baseline=1.20)
@@ -643,6 +646,56 @@ class TestEvaluateIntegration(unittest.TestCase):
         self.assertGreaterEqual(with_real["context"]["fatigue_projected"],
                                 without["context"]["fatigue_projected"])
 
+    def test_unmatched_real_activity_is_not_dropped(self):
+        """Revue de code #98, 2e passe, BLOCKER : une activité réelle de la
+        semaine sans AUCUNE séance proposée correspondante ne doit jamais
+        disparaître de la série (ex. une séance de renforcement retirée de la
+        proposition mais bien réalisée)."""
+        loads = {}
+        d = date(2026, 6, 1)
+        while d < date(2026, 9, 21):
+            loads[d.isoformat()] = 20.0
+            d = date.fromordinal(d.toordinal() + 1)
+        ctx_without_real = base_context(loads_by_date=loads, week_activities=[])
+        ctx_with_real = base_context(
+            loads_by_date=loads,
+            week_activities=[{"date": "2026-09-24", "sport": "trail", "load": 72.0}],
+        )
+        # Semaine proposée qui ne mentionne PLUS du tout cette sortie (par
+        # exemple parce qu'elle a été retirée du plan après coup, ou que la
+        # proposition ne couvre qu'un autre jour) — l'activité réelle du 24
+        # doit compter quand même.
+        w = week([session("2026-09-22", intensity="recovery", planned_duration_s=1800)])
+        without_real = G.evaluate(w, ctx_without_real, DEFAULT_GCONF)
+        with_real = G.evaluate(w, ctx_with_real, DEFAULT_GCONF)
+        self.assertGreater(with_real["context"]["fatigue_projected"],
+                           without_real["context"]["fatigue_projected"])
+
+    def test_partial_proposal_keeps_the_rest_of_the_weeks_real_loads(self):
+        """Revue de code #98, 2e passe, BLOCKER : une proposition qui ne couvre
+        QU'UN SEUL jour de la semaine (ex. seulement le dimanche) ne doit jamais
+        faire disparaître les activités réelles des autres jours déjà réalisés."""
+        loads = {}
+        d = date(2026, 6, 1)
+        while d < date(2026, 9, 21):
+            loads[d.isoformat()] = 20.0
+            d = date.fromordinal(d.toordinal() + 1)
+        week_activities = [
+            {"date": "2026-09-22", "sport": "trail", "load": 40.0},
+            {"date": "2026-09-24", "sport": "trail", "load": 210.0},   # ex. sortie longue 3h30
+            {"date": "2026-09-26", "sport": "trail", "load": 40.0},
+        ]
+        ctx = base_context(loads_by_date=loads, week_activities=week_activities, today="2026-09-27")
+        # Proposition PARTIELLE : seule la séance du dimanche est encore là.
+        partial_week = week([session("2026-09-27", intensity="recovery", planned_duration_s=1800)])
+        result = G.evaluate(partial_week, ctx, DEFAULT_GCONF)
+        # Référence : même historique, mais sans aucune activité réelle cette
+        # semaine (pour vérifier que le calcul CHANGE bien selon leur présence).
+        ctx_no_real = base_context(loads_by_date=loads, week_activities=[], today="2026-09-27")
+        result_no_real = G.evaluate(partial_week, ctx_no_real, DEFAULT_GCONF)
+        self.assertGreater(result["context"]["fatigue_projected"],
+                           result_no_real["context"]["fatigue_projected"])
+
 
 class TestInsufficientHistoryGate(unittest.TestCase):
     """Revue de code #98, blocker 1 : sans au moins `MIN_HISTORY_DAYS_FOR_PROJECTION`
@@ -658,15 +711,26 @@ class TestInsufficientHistoryGate(unittest.TestCase):
             d += timedelta(days=1)
         return base_context(loads_by_date=loads)
 
-    def test_three_weeks_of_history_is_skipped(self):
+    def test_three_weeks_of_history_skips_r1_but_not_r4(self):
+        """R1 (84 j requis) reste sautée à 21 j d'historique ; R4 (14 j requis
+        seulement, revue de code #98, 2e passe, nit) ne l'est plus."""
         ctx = self._steady_context(21)
         w = week([session(f"2026-09-{22 + i}", intensity="endurance",
                           planned_duration_s=3000) for i in range(6)])
         result = G.evaluate(w, ctx, DEFAULT_GCONF)
         skipped_ids = {s["rule_id"]: s["reason_code"] for s in result["skipped_rules"]}
         self.assertEqual(skipped_ids.get("r1_acwr_projected"), "insufficient_history")
-        self.assertEqual(skipped_ids.get("r4_monotony_projected"), "insufficient_history")
+        self.assertNotIn("r4_monotony_projected", skipped_ids)
         self.assertIsNone(result["context"]["acwr_projected"])
+        self.assertIsNotNone(result["context"]["monotony_projected"])
+
+    def test_less_than_monotony_minimum_skips_r4(self):
+        ctx = self._steady_context(10)  # < MIN_HISTORY_DAYS_FOR_MONOTONY (14 j)
+        w = week([session(f"2026-09-{22 + i}", intensity="endurance",
+                          planned_duration_s=3000) for i in range(6)])
+        result = G.evaluate(w, ctx, DEFAULT_GCONF)
+        skipped_ids = {s["rule_id"]: s["reason_code"] for s in result["skipped_rules"]}
+        self.assertEqual(skipped_ids.get("r4_monotony_projected"), "insufficient_history")
 
     def test_eight_weeks_of_history_is_still_skipped(self):
         """Repro exact de la revue de code #98 (blocker 1) : même à 8 semaines
@@ -839,6 +903,46 @@ class TestBuildContext(WorkspaceCase):
         ctx = G.build_context(self.conn, config, gc, date(2026, 9, 21), date(2026, 9, 20))
         self.assertAlmostEqual(ctx["recent_run_pace_s_km"], 360.0, places=3)
 
+    def test_recent_run_pace_excludes_hiking_and_walking(self):
+        """Revue de code #98, 2e passe, should-fix : la randonnée/la marche sont
+        nettement plus lentes et ne doivent jamais entrer dans la médiane
+        d'allure COURSE — sans quoi elles la gonfleraient (surestimation de la
+        durée d'une séance de course estimée depuis cette allure)."""
+        self.write("activities/2026-09-10_running.md",
+                    {"kind": "activity", "date": "2026-09-10", "sport": "running",
+                     "duration_s": 1800, "distance_m": 5000})   # 360 s/km
+        self.write("activities/2026-09-12_hiking.md",
+                    {"kind": "activity", "date": "2026-09-12", "sport": "hiking",
+                     "duration_s": 7200, "distance_m": 5000})   # 1440 s/km (marche)
+        self.index()
+        config = I.load_config(self.ws)
+        gc = G.guardrail_settings(config)
+        ctx = G.build_context(self.conn, config, gc, date(2026, 9, 21), date(2026, 9, 20))
+        # Médiane sur running SEUL (360 s/km) : la randonnée ne doit pas la faire
+        # dériver vers une allure plus lente.
+        self.assertAlmostEqual(ctx["recent_run_pace_s_km"], 360.0, places=3)
+
+    def test_recent_run_pace_uses_flat_equivalent_distance(self):
+        """Revue de code #98, 2e passe, should-fix : l'allure de référence doit
+        être calculée sur la distance ÉQUIVALENT PLAT (distance + D+ ×
+        TRAIL_FLAT_M_PER_M_DPLUS), pas la distance brute — sinon le D+ compterait
+        deux fois quand cette même allure sert ensuite à estimer une séance
+        elle-même prescrite en distance + D+."""
+        import arc_metrics as M
+        # 10 km + 500 m D+ en 1h. Équivalent plat = 10000 + 500*1.75 = 10875 m.
+        self.write("activities/2026-09-10_trail.md",
+                    {"kind": "activity", "date": "2026-09-10", "sport": "trail",
+                     "duration_s": 3600, "distance_m": 10000, "elevation_gain_m": 500})
+        self.index()
+        config = I.load_config(self.ws)
+        gc = G.guardrail_settings(config)
+        ctx = G.build_context(self.conn, config, gc, date(2026, 9, 21), date(2026, 9, 20))
+        expected = 3600 / ((10000 + 500 * M.TRAIL_FLAT_M_PER_M_DPLUS) / 1000.0)
+        self.assertAlmostEqual(ctx["recent_run_pace_s_km"], expected, places=3)
+        # Allure sur distance BRUTE (fausse, sans la correction D+) serait de
+        # 360 s/km — nettement différente : la correction doit être active.
+        self.assertNotAlmostEqual(ctx["recent_run_pace_s_km"], 360.0, places=1)
+
     def test_recent_run_pace_none_without_history(self):
         self.index()
         config = I.load_config(self.ws)
@@ -896,7 +1000,9 @@ class TestEndToEndOnWorkspace(WorkspaceCase):
         result = G.evaluate(w, ctx, gc)
         skipped = {s["rule_id"]: s["reason_code"] for s in result["skipped_rules"]}
         self.assertEqual(skipped.get("r1_acwr_projected"), "insufficient_history")
-        self.assertEqual(skipped.get("r4_monotony_projected"), "insufficient_history")
+        # R4 (14 j requis, revue de code #98, 2e passe, nit) EST évaluable ici
+        # (21 j d'historique réel), contrairement à R1 (84 j requis).
+        self.assertNotIn("r4_monotony_projected", skipped)
         self.assertEqual(result["context"]["distance_only_sessions_estimated"], ["2026-09-27"])
         # Historique réel présent mais toujours court : `history_span_days` doit
         # rester sous le seuil minimal.

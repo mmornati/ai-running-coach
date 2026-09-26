@@ -546,6 +546,27 @@ class TestWeekCompliance(unittest.TestCase):
         self.assertEqual(c["sessions_done"], 1)
 
 
+class TestResolveSessionsPublicWrapper(unittest.TestCase):
+    """`resolve_sessions` (revue de code #98, 2e passe, nit) : enveloppe publique
+    de `_resolve_sessions`, promue pour des consommateurs externes du module
+    (`arc_guardrails.py`) — même contrat exact, vérifié ici par équivalence
+    directe plutôt que redocumenté."""
+
+    def test_public_wrapper_matches_private_function(self):
+        sessions = [{"date": "2026-09-14", "sport": "running", "title": "Footing"}]
+
+        def fresh_by_date():
+            # `_resolve_sessions` mute le drapeau `_used` des activités en
+            # place : deux appels indépendants ont besoin de copies séparées.
+            return {"2026-09-14": [{"date": "2026-09-14", "sport": "running",
+                                    "duration_s": 1800, "_used": False}]}
+
+        self.assertEqual(
+            M.resolve_sessions(sessions, fresh_by_date(), "2026-09-20"),
+            M._resolve_sessions(sessions, fresh_by_date(), "2026-09-20"),
+        )
+
+
 class TestWeightMerge(unittest.TestCase):
     """#36 — fusion des deux sources de poids : `health.weight_kg` (mesure du matin) gagne
     toujours sur `nutrition.weight_kg`. Voir `M.ASSUMPTIONS["weight_merge"]`."""
