@@ -27,7 +27,8 @@ Options
     --target-distance Cible distance "MIN-MAX" km (ex. "30-32") → verdict compat
     --target-dp       Cible D+ en m (ex. 1500) → verdict compat
     --smooth          Fenêtre de lissage D+ (points, défaut 3) — réduit le bruit GPS
-    --min-gain        Seuil de détection d'une montée (m, défaut 15)
+    --min-gain        Gain net minimal d'une montée (m, défaut 15)
+    --min-grade       Pente moyenne minimale d'une montée (%, défaut 5)
     --min-climb-dist  Distance minimale d'une montée (m, défaut 100)
     --output          Fichier Markdown de sortie (défaut stdout)
     --json            Fichier JSON de sortie (dump structuré)
@@ -38,7 +39,8 @@ Sortie
 - Métadonnées (nom, type boucle, nb points)
 - Tableau des indicateurs clés (distance, D+/D-, alt min/max, D+ moyen/km)
 - Profil par km (D+ par km → localise les sections vallonnées)
-- Liste des montées significatives (km de début/fin, distance, gain, grade moyen)
+- Liste des montées significatives (km de début/fin, distance, gain, grade moyen),
+  détectées par le moteur (`scripts/arc_climb.py::detect_climbs`, voir `detect_climbs`)
 - Verdict compatibilité si --target-* fournis
 
 Prérequis
@@ -57,8 +59,13 @@ from pathlib import Path
 # depuis un workspace séparé — resolve() remonte au vrai dossier du moteur).
 sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "scripts"))
 from arc_elevation import smooth_moving_average  # noqa: E402
+import arc_climb  # noqa: E402
 
 NS = {"g": "http://www.topografix.com/GPX/1/1"}
+
+# Pente moyenne minimale d'une montée (%) — même valeur que le moteur
+# (`arc_climb.MIN_CLIMB_AVG_GRADE`, 5 %) : un faux plat n'est pas une montée.
+DEFAULT_MIN_GRADE_PCT = arc_climb.MIN_CLIMB_AVG_GRADE * 100.0
 
 
 # ---------------------------------------------------------------------------
@@ -164,52 +171,50 @@ def compute_metrics(pts: list[dict], smooth: int = 3) -> dict:
 # Détection des montées
 # ---------------------------------------------------------------------------
 
-def detect_climbs(pts: list[dict], metrics: dict, min_gain: float = 15.0, min_dist: float = 100.0) -> list[dict]:
-    """Détecte les montées : gain >= min_gain sur une distance >= min_dist."""
-    # reconstruction distance + altitude lissée (réutilise compute_metrics)
-    dist = [0.0]
-    for i in range(1, len(pts)):
-        dist.append(dist[-1] + haversine(pts[i - 1]["lat"], pts[i - 1]["lon"], pts[i]["lat"], pts[i]["lon"]))
+def gpx_samples(pts: list[dict]) -> list[dict]:
+    """Points GPX → échantillons normalisés attendus par `arc_climb.detect_climbs`
+    (`t_s, distance_m, altitude_m, speed_ms`).
+
+    `t_s` est l'INDEX du point, jamais la balise `<time>` : un GPX de parcours n'a
+    en général pas de temps, et quand il en a un (tracé Strava/Garmin enregistré),
+    une pause de l'enregistrement couperait une montée en deux via la segmentation
+    par trou de signal (`arc_climb.MAX_GAP_S`) — or ce skill analyse le TERRAIN, pas
+    une séance. Un pas constant de 1 garantit un seul segment continu. `speed_ms`
+    reste `None` : aucune VAM n'est tirée d'un GPX (durées sans signification)."""
+    samples = []
+    cum = 0.0
+    for i, p in enumerate(pts):
+        if i:
+            cum += haversine(pts[i - 1]["lat"], pts[i - 1]["lon"], p["lat"], p["lon"])
+        samples.append({"t_s": float(i), "distance_m": cum, "altitude_m": p["ele"], "speed_ms": None})
+    return samples
+
+
+def detect_climbs(pts: list[dict], metrics=None, min_gain: float = 15.0,
+                  min_dist: float = 100.0, min_grade_pct: float = DEFAULT_MIN_GRADE_PCT,
+                  smooth: int = 3) -> list[dict]:
+    """Montées du parcours via le détecteur canonique du moteur
+    (`scripts/arc_climb.py::detect_climbs` : lissage, zigzag à hystérésis, rognage
+    des approches/replats, découpage des plateaux, fusion des petits creux) —
+    mêmes bornes de montée que le tableau de bord et #49 pour un même profil.
+
+    Filtres propres au skill, appliqués par le détecteur (`min_gain`,
+    `min_grade_pct`) puis ici (`min_dist`, jamais un critère du moteur). `metrics`
+    n'est plus utilisé (conservé pour la compatibilité d'appel)."""
+    found = arc_climb.detect_climbs(gpx_samples(pts), min_gain_m=min_gain,
+                                    min_avg_grade=min_grade_pct / 100.0, smooth_taps=smooth)
     climbs = []
-    start_i = None
-    start_alt = None
-    start_dist = None
-    peak_alt = None
-    for i in range(len(pts)):
-        alt = pts[i]["ele"]
-        if alt is None:
+    for c in found:
+        if c["distance_m"] < min_dist:
             continue
-        if start_i is None or alt > (peak_alt if peak_alt is not None else alt):
-            if start_i is None:
-                start_i, start_alt, start_dist = i, alt, dist[i]
-                peak_alt = alt
-            else:
-                peak_alt = max(peak_alt, alt)
-        else:
-            gain = peak_alt - start_alt
-            length = dist[i - 1] - start_dist
-            if gain >= min_gain and length >= min_dist:
-                climbs.append({
-                    "start_km": round(start_dist / 1000, 2),
-                    "end_km": round(dist[i - 1] / 1000, 2),
-                    "distance_m": round(length, 1),
-                    "gain_m": round(gain, 1),
-                    "grade_pct": round(gain / length * 100, 1) if length > 0 else 0.0,
-                })
-            start_i, start_alt, start_dist = None, None, None
-            peak_alt = None
-    # flush final
-    if start_i is not None and peak_alt is not None:
-        gain = peak_alt - start_alt
-        length = dist[-1] - start_dist
-        if gain >= min_gain and length >= min_dist:
-            climbs.append({
-                "start_km": round(start_dist / 1000, 2),
-                "end_km": round(dist[-1] / 1000, 2),
-                "distance_m": round(length, 1),
-                "gain_m": round(gain, 1),
-                "grade_pct": round(gain / length * 100, 1) if length > 0 else 0.0,
-            })
+        climbs.append({
+            "start_km": round(c["start_km"], 2),
+            "end_km": round(c["end_km"], 2),
+            "distance_m": c["distance_m"],
+            "gain_m": c["gain_m"],
+            "grade_pct": round(c["avg_grade"] * 100, 1),
+            "grade_class": c["grade_class"],
+        })
     return climbs
 
 
@@ -276,6 +281,8 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--target-dp", type=float, help="Cible D+ en m")
     ap.add_argument("--smooth", type=int, default=3, help="Fenêtre de lissage D+ (points)")
     ap.add_argument("--min-gain", type=float, default=15.0, help="Gain min d'une montée (m)")
+    ap.add_argument("--min-grade", type=float, default=DEFAULT_MIN_GRADE_PCT,
+                    help="Pente moyenne min d'une montée (%%, défaut %(default).0f)")
     ap.add_argument("--min-climb-dist", type=float, default=100.0, help="Distance min d'une montée (m)")
     ap.add_argument("--output", type=Path, default=None, help="Fichier Markdown de sortie (défaut stdout)")
     ap.add_argument("--json", type=Path, default=None, help="Fichier JSON de sortie")
@@ -292,7 +299,8 @@ def main(argv: list[str] | None = None) -> int:
         return 1
 
     m = compute_metrics(pts, smooth=args.smooth)
-    climbs = detect_climbs(pts, m, min_gain=args.min_gain, min_dist=args.min_climb_dist)
+    climbs = detect_climbs(pts, m, min_gain=args.min_gain, min_dist=args.min_climb_dist,
+                           min_grade_pct=args.min_grade, smooth=args.smooth)
 
     target = {}
     if args.target_distance:
