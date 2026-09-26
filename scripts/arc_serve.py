@@ -78,16 +78,30 @@ GUARDRAILS_DOC_URL = "https://mmornati.github.io/ai-running-coach/guardrails/#le
 # Markdown → HTML (sous-ensemble : ce que les agents écrivent)
 # ---------------------------------------------------------------------------
 
+# Le groupe d'URL exclut EXPLICITEMENT `"'<>` (#55, revue de code) — en plus,
+# jamais à la place, de `quote=True` ci-dessous : la classe de caractères est
+# la protection *structurelle* (même si un futur appel oubliait d'échapper
+# avant substitution, un lien `[texte](https://a"onmouseover=...)` ne
+# correspondrait simplement plus à ce motif), `html.escape(quote=True)` est le
+# filet supplémentaire sur tout le reste du texte (dont `\1`, le libellé du
+# lien, jamais nettoyé par la classe de caractères de l'URL).
 _INLINE = [
     (re.compile(r"`([^`]+)`"), r"<code>\1</code>"),
     (re.compile(r"\*\*(.+?)\*\*"), r"<strong>\1</strong>"),
     (re.compile(r"(?<![*\w])\*(?!\s)(.+?)(?<!\s)\*(?![*\w])"), r"<em>\1</em>"),
-    (re.compile(r"\[([^\]]+)\]\((https?://[^)\s]+)\)"), r'<a href="\2" rel="noopener noreferrer">\1</a>'),
+    (re.compile(r"\[([^\]]+)\]\((https?://[^)\s\"'<>]+)\)"), r'<a href="\2" rel="noopener noreferrer">\1</a>'),
 ]
 
 
 def _inline(text: str) -> str:
-    out = html.escape(text, quote=False)
+    # `quote=True` (#55, revue de code — était `quote=False`) : sans lui, un
+    # `"` ou `'` littéral du texte source atterrissait tel quel dans l'attribut
+    # `href="\2"` généré ci-dessus, permettant à un lien malformé de sortir de
+    # l'attribut (`[texte](https://a" onmouseover="...")`) — la CSP du serveur
+    # bloque déjà l'exécution d'un script injecté, mais l'attribut lui-même ne
+    # doit jamais pouvoir s'échapper. Affecte aussi les autres appelants de
+    # `render_markdown` (`/api/report`, `/api/week`, `/api/decision/<id>`).
+    out = html.escape(text, quote=True)
     for pattern, repl in _INLINE:
         out = pattern.sub(repl, out)
     return out
@@ -156,6 +170,22 @@ def render_markdown(text: str) -> str:
             i += 1
         out.append("<p>" + _inline(" ".join(para)) + "</p>")
     return "\n".join(out)
+
+
+_LEADING_H1_RE = re.compile(r"^#[ \t]+[^\n]*\n+")
+
+
+def strip_leading_heading(text: str) -> str:
+    """Retire le titre `# ...` de tête d'un corps de fichier (#55, nit de revue),
+    s'il en ouvre le texte — jamais un `#` plus loin dans le corps. Utilisé
+    seulement là où une page affiche déjà ce même titre ailleurs (le résumé de
+    la décision, dans `header()`) : `render_markdown` l'aurait sinon rendu en
+    `<h2>` redondant juste sous le titre de page. `/api/report`/`/api/week`
+    n'appellent PAS cette fonction : leur titre de page (`report.title`) et le
+    `#` de tête de leur corps ne sont pas garantis identiques au même degré
+    (fichiers plus anciens, titres reformulés) — un retrait aveugle y risquerait
+    de faire disparaître un titre qui n'est PAS un doublon."""
+    return _LEADING_H1_RE.sub("", text, count=1)
 
 
 # ---------------------------------------------------------------------------
@@ -998,19 +1028,30 @@ def _enrich_decision(store: Store, d: dict) -> dict:
     return d
 
 
+DECISIONS_DEFAULT_DAYS = 90  # #55, revue de code : voir la docstring d'`api_decisions`.
+
+
 def api_decisions(store: Store, q: dict) -> dict:
     """Journal des décisions (#54), plus récentes d'abord : `/api/decisions`.
 
     `days` (fenêtre glissante se terminant à `today`) ; `trigger`/`outcome`
     filtrent en plus ; `active=1` exclut `superseded`/`rejected_by_athlete`
-    (voir `arc_index.decisions_query`). Sans `days`, rend TOUT le journal connu
-    — à l'appelant (la vue « Décisions ») de proposer une période par défaut
-    côté UI plutôt que de la forcer ici, comme les autres routes à fenêtre
-    optionnelle de ce module (`/api/reports`, par exemple, n'a pas non plus de
-    fenêtre par défaut)."""
+    (voir `arc_index.decisions_query`). Sans `days` NI `all=1`, la fenêtre
+    retombe sur `DECISIONS_DEFAULT_DAYS` (90 j) plutôt que de rendre tout le
+    journal — un workspace qui tourne depuis longtemps aurait fini par charger
+    des centaines de décisions à chaque ouverture de la vue « Décisions »
+    (revue de code #55, nit). `all=1` demande explicitement l'historique
+    complet (l'option « Tout » de la vue) : un appelant qui veut vraiment tout
+    le doit dire, jamais par la simple absence de `days`."""
     today = _today(store)
     days_raw = q.get("days", [""])[0]
-    days = max(1, min(3650, int(days_raw))) if days_raw.isdigit() else None
+    show_all = q.get("all", [""])[0] in ("1", "true")
+    if days_raw.isdigit():
+        days = max(1, min(3650, int(days_raw)))
+    elif show_all:
+        days = None
+    else:
+        days = DECISIONS_DEFAULT_DAYS
     trigger = q.get("trigger", [""])[0] or None
     outcome = q.get("outcome", [""])[0] or None
     active = q.get("active", [""])[0] in ("1", "true")
@@ -1023,19 +1064,27 @@ def api_decisions(store: Store, q: dict) -> dict:
 
 def api_decision(store: Store, decision_id: str):
     """Détail d'une décision (#55) : `/api/decision/<id>` — `<id>` est le nom du
-    fichier SANS extension (`DECISION_ID_RE`, jamais un chemin), résolu en
-    `planning/<id>.md` puis recherché par `source_path` (jamais lu sur disque
-    par ce chemin construit : la ligne existe ou non dans l'index déjà indexé
-    depuis de vrais fichiers workspace). Rend `None` (404) pour un id malformé
-    (dont toute tentative de remontée de répertoire, bloquée par le motif) ou
-    une décision inconnue — jamais de distinction entre les deux dans la
-    réponse, pour ne rien révéler de plus qu'un id absent."""
+    fichier SANS extension (`DECISION_ID_RE`, jamais un chemin). Recherché par
+    `_decision_id(source_path) == decision_id` sur TOUTES les lignes `decision`
+    connues (jamais en reconstruisant `planning/<id>.md` puis en l'égalant à
+    `source_path` — #55, revue de code : `arc_index.classify()` reste permissif
+    par conception, un fichier `decision` mal placé — sous-dossier de
+    `planning/`, comme un fichier hors contrat repris via son propre bloc
+    ```arc``` — peut donc exister dans l'index avec un `source_path` que la
+    reconstruction naïve ne retrouverait jamais, alors qu'il apparaît bien dans
+    `/api/decisions` : le lien de détail rendait alors 404 à tort). Aucun accès
+    disque avec `decision_id` : la ligne existe ou non dans l'index déjà
+    construit depuis de vrais fichiers workspace. Rend `None` (404) pour un id
+    malformé (dont toute tentative de remontée de répertoire, bloquée par le
+    motif — même un id contenant `/` ou `..` ne fait jamais correspondre
+    `_decision_id`, qui ne compare que des noms de fichier) ou une décision
+    inconnue — jamais de distinction entre les deux dans la réponse."""
     if not decision_id or not DECISION_ID_RE.match(decision_id):
         return None
-    source_path = f"planning/{decision_id}.md"
-    row = store.one("SELECT * FROM decision WHERE source_path = ?", (source_path,))
+    row = next((r for r in store.rows("SELECT * FROM decision") if _decision_id(r["source_path"]) == decision_id), None)
     if not row:
         return None
+    source_path = row["source_path"]
     d = dict(row)
     body = d.pop("body_md") or ""
     d.pop("data_json", None)
@@ -1060,7 +1109,7 @@ def api_decision(store: Store, decision_id: str):
         week_info = I.classify_source_path(week_path)
         if week_info["kind"] == "week":
             d["session_ref_route"] = f"#/semaine?debut={week_info['date']}"
-    d["body_html"] = render_markdown(I.C.body_after_block(body))
+    d["body_html"] = render_markdown(strip_leading_heading(I.C.body_after_block(body)))
     return d
 
 

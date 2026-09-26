@@ -1407,7 +1407,7 @@
           "intensity": "vo2max",
           "sport": "trail"
         },
-        "body_html": "<h2>Décision — bilan matinal</h2>\n<h3>Contexte</h3>\n<p>Bilan matinal : HRV sous la bande personnelle, séance allégée.</p>",
+        "body_html": "<h3>Contexte</h3>\n<p>Bilan matinal : HRV sous la bande personnelle, séance allégée.</p>",
         "created_at": "2026-09-23T07:10:00+02:00",
         "date": "2026-09-23",
         "garmin_workout_id": null,
@@ -1447,7 +1447,7 @@
     "/api/decisions": {
       "body": {
         "active": false,
-        "days": null,
+        "days": 90,
         "decisions": [
           {
             "after": {

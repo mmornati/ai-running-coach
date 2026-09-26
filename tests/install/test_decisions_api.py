@@ -19,7 +19,7 @@ import json
 from tests.install.test_dashboard import Server
 from tests.lib.asserts import InstallAsserts
 from tests.lib.sandbox import Sandbox
-from tests.lib.synthetic import build
+from tests.lib.synthetic import _block, build
 
 TODAY = "2026-09-23"
 
@@ -151,6 +151,118 @@ class TestDecisionsApi(InstallAsserts):
             self.assertEqual(status, 200)
             self.assertNotIn(str(self.ws).encode(), body)
             self.assertNotIn(str(self.sb.root).encode(), body)
+
+
+class TestDecisionsApiPlacementEdgeCases(InstallAsserts):
+    """#55, revue de code : un fichier `decision` mal placé (sous-dossier de
+    `planning/`) ou au slug mal formé (point) reste indexable — `classify()`
+    reste permissif par conception (le bloc ```arc fait foi) — mais son
+    identifiant `/api/decision/<id>` doit rester cohérent avec ce qui est
+    RÉELLEMENT listé par `/api/decisions` : un sous-dossier ne doit plus
+    produire un 404 sur un lien affiché par le journal ; un slug pointé reste
+    un cas connu, documenté, et signalé par `validate_file` (verrouillé côté
+    palier D dans `tests/data/test_arc_index.py`)."""
+
+    def setUp(self):
+        self.sb = Sandbox().__enter__()
+        self.addCleanup(self.sb.__exit__, None, None, None)
+        self.ws = build(self.sb.root / "ws", days=40, sport="trail", seed=12345,
+                        today=datetime.date.fromisoformat(TODAY))
+        subfolder_decision = {
+            "arc": 1, "kind": "decision", "date": "2026-09-01",
+            "created_at": "2026-09-01T07:00:00+02:00", "trigger": "guardrail",
+            "summary": "Décision archivée dans un sous-dossier.", "outcome": "applied",
+        }
+        (self.ws / "planning/archive").mkdir(parents=True, exist_ok=True)
+        (self.ws / "planning/archive/2026-09-01_decision_ancienne.md").write_text(
+            "# Décision archivée\n\n" + _block(subfolder_decision) + "\nTexte libre.\n", encoding="utf-8")
+        dotted_decision = {
+            "arc": 1, "kind": "decision", "date": "2026-09-02",
+            "created_at": "2026-09-02T07:00:00+02:00", "trigger": "guardrail",
+            "summary": "Décision au slug pointé.", "outcome": "applied",
+        }
+        (self.ws / "planning/2026-09-02_decision_dotted.v2.md").write_text(
+            "# Décision au slug pointé\n\n" + _block(dotted_decision) + "\nTexte libre.\n", encoding="utf-8")
+        self.server = Server(self.sb, ["python3", str(self.sb.repo / "scripts/arc_serve.py"),
+                                       "--workspace", str(self.ws), "--port", "0", "--today", TODAY])
+        self.addCleanup(self.server.stop)
+        self.assertIsNotNone(self.server.url,
+                             self.server.proc.stderr.read() if self.server.proc.poll() is not None else "pas d'URL")
+
+    def _get_json(self, path):
+        status, body, _ = self.server.get(path)
+        return status, (json.loads(body) if body else None)
+
+    def test_subfolder_decision_is_listed_and_its_detail_resolves(self):
+        status, payload = self._get_json("/api/decisions?days=3650")
+        listed = next((d for d in payload["decisions"] if d["summary"] == "Décision archivée dans un sous-dossier."), None)
+        self.assertIsNotNone(listed, payload["decisions"])
+        status, detail = self._get_json(f"/api/decision/{listed['id']}")
+        self.assertEqual(status, 200)
+        self.assertEqual(detail["summary"], "Décision archivée dans un sous-dossier.")
+
+    def test_dotted_slug_decision_is_listed_but_its_natural_id_404s(self):
+        """Limite CONNUE et documentée (`validate_file` avertit, voir palier D) :
+        `arc_serve.DECISION_ID_RE` n'accepte structurellement aucun point dans un
+        id — la décision reste visible dans le journal, sans lien de détail
+        exploitable, plutôt qu'un lien qui pointerait par erreur vers un autre
+        fichier."""
+        status, payload = self._get_json("/api/decisions?days=3650")
+        listed = next((d for d in payload["decisions"] if d["summary"] == "Décision au slug pointé."), None)
+        self.assertIsNotNone(listed, payload["decisions"])
+        self.assertIn(".", listed["id"])
+        status, _ = self._get_json(f"/api/decision/{listed['id']}")
+        self.assertEqual(status, 404)
+
+
+class TestDecisionsApiDefaultWindow(InstallAsserts):
+    """#55, revue de code (nit) : `/api/decisions` sans `days` ni `all=1` ne doit
+    plus rendre tout le journal (un workspace ancien finirait par en charger des
+    centaines à chaque ouverture de la vue) — fenêtre par défaut de 90 j, `all=1`
+    pour l'historique complet à la demande."""
+
+    def setUp(self):
+        self.sb = Sandbox().__enter__()
+        self.addCleanup(self.sb.__exit__, None, None, None)
+        self.ws = build(self.sb.root / "ws", days=40, sport="trail", seed=12345,
+                        today=datetime.date.fromisoformat(TODAY))
+        old_decision = {
+            "arc": 1, "kind": "decision", "date": "2026-01-01",
+            "created_at": "2026-01-01T07:00:00+01:00", "trigger": "guardrail",
+            "summary": "Décision vieille de plus de 90 jours.", "outcome": "applied",
+        }
+        (self.ws / "planning/2026-01-01_decision_ancienne-annee.md").write_text(
+            "# Vieille décision\n\n" + _block(old_decision) + "\nTexte libre.\n", encoding="utf-8")
+        self.server = Server(self.sb, ["python3", str(self.sb.repo / "scripts/arc_serve.py"),
+                                       "--workspace", str(self.ws), "--port", "0", "--today", TODAY])
+        self.addCleanup(self.server.stop)
+        self.assertIsNotNone(self.server.url,
+                             self.server.proc.stderr.read() if self.server.proc.poll() is not None else "pas d'URL")
+
+    def _get_json(self, path):
+        status, body, _ = self.server.get(path)
+        return status, (json.loads(body) if body else None)
+
+    def test_bare_route_defaults_to_90_days_and_excludes_the_old_one(self):
+        status, payload = self._get_json("/api/decisions")
+        self.assertEqual(status, 200)
+        self.assertEqual(payload["days"], 90)
+        summaries = [d["summary"] for d in payload["decisions"]]
+        self.assertNotIn("Décision vieille de plus de 90 jours.", summaries)
+
+    def test_all_1_returns_the_full_journal_including_the_old_one(self):
+        status, payload = self._get_json("/api/decisions?all=1")
+        self.assertEqual(status, 200)
+        self.assertIsNone(payload["days"])
+        summaries = [d["summary"] for d in payload["decisions"]]
+        self.assertIn("Décision vieille de plus de 90 jours.", summaries)
+
+    def test_explicit_days_still_overrides_the_default(self):
+        status, payload = self._get_json("/api/decisions?days=3650")
+        self.assertEqual(status, 200)
+        self.assertEqual(payload["days"], 3650)
+        summaries = [d["summary"] for d in payload["decisions"]]
+        self.assertIn("Décision vieille de plus de 90 jours.", summaries)
 
 
 if __name__ == "__main__":
