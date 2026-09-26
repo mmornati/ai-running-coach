@@ -178,6 +178,62 @@ function heatTile(heat) {
   return `<p class="weather">${chip("weather", n > 0 ? "orange" : "yellow", "Acclimatation chaleur")} <span>${bits.join(" · ")}</span></p>`;
 }
 
+// Libellés courts, en français, des facteurs du drapeau composite de risque de
+// blessure (#57) — affichage seulement, jamais recalculé côté client (l'API
+// `/api/injury-risk` rend déjà `factors[].label`, ce fallback ne sert que si un
+// futur id de facteur n'était pas encore connu de cette version du JS).
+const INJURY_FACTOR_FALLBACK = {
+  acwr: "ACWR élevé", monotony: "Monotonie élevée", pain: "Douleur déclarée",
+  rpe_hr_mismatch: "Effort perçu bien supérieur à la charge FC",
+  sleep_debt: "Dette de sommeil", red_verdict: "Verdict santé rouge récent",
+};
+
+/** Formatage PAR FACTEUR (#57, revue de code #104, should-fix 2) : l'API rend
+ * déjà `observed`/`threshold` dans l'unité pertinente pour chaque facteur
+ * (score /10 pour `pain`, heures pour `sleep_debt`, `null` pour `red_verdict`
+ * — un fait booléen n'a rien à comparer à un seuil), cette fonction n'ajoute
+ * QUE le suffixe d'unité et, pour `pain`, la zone déclarée (`location`).
+ * Jamais de conversion d'unité ici : elle vivrait alors en double (API +
+ * tuile), avec le risque qu'elles divergent. */
+function injuryFactorValueText(f) {
+  if (f.observed == null || f.threshold == null) return "";
+  if (f.id === "pain") {
+    const loc = f.location ? ` — ${F.esc(f.location)}` : "";
+    return ` <span class="muted">(${F.esc(String(f.observed))}/10, seuil ${F.esc(String(f.threshold))}/10)${loc}</span>`;
+  }
+  if (f.id === "sleep_debt") {
+    return ` <span class="muted">(${F.esc(String(f.observed))} h, seuil ${F.esc(String(f.threshold))} h)</span>`;
+  }
+  return ` <span class="muted">(${F.esc(String(f.observed))} vs seuil ${F.esc(String(f.threshold))})</span>`;
+}
+
+/** Tuile « Signal de vigilance blessure » (#57) — Aujourd'hui. N'apparaît QUE si
+ * le niveau est `moderate`/`high` (jamais pour `low`, pas un signal actionnable
+ * au quotidien) : facteurs contributeurs cités par leur libellé + valeur
+ * formatée par facteur (`injuryFactorValueText`), le disclaimer NON-diagnostique
+ * rendu par l'API tel quel (jamais reformulé ici — voir
+ * `arc_guardrails.INJURY_RISK_DISCLAIMER`), et une recommandation de
+ * consultation explicite dès `consult: true` (douleur sévère, ou niveau élevé
+ * avec douleur contributrice — voir `arc_guardrails.evaluate_injury_risk`). */
+function injuryRiskTile(risk) {
+  if (!risk || risk.level === "low") return "";
+  const contributing = (risk.factors || []).filter((f) => f.contributes);
+  if (!contributing.length) return "";
+  const label = risk.level === "high" ? "Signal de vigilance élevé" : "Signal de vigilance modéré";
+  const items = contributing.map((f) => {
+    const name = F.esc(f.label || INJURY_FACTOR_FALLBACK[f.id] || f.id);
+    return `<li>${name}${injuryFactorValueText(f)}</li>`;
+  }).join("");
+  const consult = risk.consult
+    ? `<p class="note">Consulte un professionnel de santé pour un avis avant de reprendre.</p>` : "";
+  return `<div role="note" aria-label="${F.esc(label)}">
+    <p class="weather">${chip("injury", risk.level, label)}</p>
+    <ul class="facts-list">${items}</ul>
+    ${consult}
+    <p class="muted">${F.esc(risk.disclaimer)}</p>
+  </div>`;
+}
+
 // Kilométrage chaussures et alerte d'usure (#40) : tuile « Aujourd'hui » — n'apparaît
 // que si au moins une chaussure (non retirée) a atteint son seuil. Le détail complet
 // (toutes les paires, retirées comprises) vit dans la vue Performance (`gearSection`).
@@ -316,8 +372,9 @@ async function decisionEncart(s) {
 
 async function viewToday() {
   const s = SUMMARY;
-  const [health, week, form, reports, decisionHtml] = await Promise.all([
+  const [health, week, form, reports, decisionHtml, injuryRisk] = await Promise.all([
     api("health?days=14"), api("week"), api("form?days=30"), api("reports"), decisionEncart(s),
+    api("injury-risk").catch(() => null),
   ]);
   const today = s.today;
   const mode = health.morning_check;
@@ -407,6 +464,7 @@ async function viewToday() {
     : "";
   const heatHtml = heatTile(s.heat_acclimation);
   const gearHtml = gearTile(s.gear);
+  const injuryRiskHtml = injuryRiskTile(injuryRisk);
 
   const f = form.series[form.series.length - 1];
   const formNow = f ? f.form : null;
@@ -418,6 +476,7 @@ async function viewToday() {
   main.innerHTML = `${header(F.dayLong(today).replace(/^./, (c) => c.toUpperCase()))}
     ${verdict}
     ${decisionHtml}
+    ${injuryRiskHtml ? `<section class="band" aria-labelledby="injury-risk-title"><h2 id="injury-risk-title">Signal de vigilance</h2>${injuryRiskHtml}</section>` : ""}
     <section class="band"><h2>Santé</h2>${triad}</section>
     <section class="band band--split"><div><h2>Au programme</h2>${sessionHtml}${weatherHtml}${heatHtml}${gearHtml}</div>
       <div><h2>Forme</h2>${formHtml}${complianceTrend(s.compliance_trend)}</div></section>

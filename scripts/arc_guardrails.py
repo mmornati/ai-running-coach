@@ -67,6 +67,18 @@ echo '{"week_start": "...", "sessions": [...]}' | python3 scripts/arc_guardrails
 python3 scripts/arc_guardrails.py check --week /tmp/proposed.json --workspace . --today 2026-09-20
 ```
 
+Troisième usage, drapeau composite de risque de blessure (#57, épopée #22) :
+combine ACWR/monotonie RÉELS (aucune semaine proposée, contrairement à `check`
+ci-dessus), douleur déclarée (`health.pain`) et écart effort perçu/charge FC en
+un score à 3 niveaux (`low`/`moderate`/`high`), toujours accompagné d'un
+`disclaimer` NON-diagnostique — voir `ASSUMPTIONS_INJURY_RISK` pour le détail
+de chaque facteur :
+
+```bash
+python3 scripts/arc_guardrails.py injury-risk
+python3 scripts/arc_guardrails.py injury-risk --today 2026-09-24 --workspace .
+```
+
 Choix : script DÉDIÉ plutôt qu'une sous-commande de `arc_index.py` (déjà
 2300+ lignes, focalisé sur l'indexation et les métriques dérivées). Les
 garde-fous sont un CONSOMMATEUR de l'index (comme le sont déjà les agents),
@@ -84,6 +96,7 @@ from __future__ import annotations
 import argparse
 import json
 import math
+import re
 import statistics
 import sys
 from datetime import date, timedelta
@@ -545,7 +558,7 @@ def _warn(message: str) -> None:
     print(f"avertissement : {message}", file=sys.stderr)
 
 
-def _positive_float_setting(section: dict, key: str, default: float) -> float:
+def _positive_float_setting(section: dict, key: str, default: float, section_name: str) -> float:
     raw = section.get(key)
     if raw in (None, ""):
         return default
@@ -564,13 +577,59 @@ def _positive_float_setting(section: dict, key: str, default: float) -> float:
     # toujours False, `inf > seuil` bloquerait tout — ni l'un ni l'autre n'est
     # une configuration valide).
     if value is None or not math.isfinite(value) or value <= 0:
-        _warn(f"[guardrails].{key} = {raw!r} n'est pas un nombre strictement positif valide — "
+        _warn(f"[{section_name}].{key} = {raw!r} n'est pas un nombre strictement positif valide — "
               f"défaut {default:g} appliqué.")
         return default
     return value
 
 
-def _bool_setting(section: dict, key: str, default: bool) -> bool:
+def _bounded_float_setting(section: dict, key: str, default: float, section_name: str,
+                            lo: float, hi: float, lo_inclusive: bool = False) -> float:
+    """Comme `_positive_float_setting`, mais borné à `(lo, hi]` (ou `[lo, hi]` si
+    `lo_inclusive`) — revue de code #104, should-fix 3 : un seuil de score sur 10
+    (`pain_score_threshold`/`pain_consult_threshold`) accepté à 15 désactiverait
+    silencieusement le facteur (jamais un score de douleur ne l'atteindrait), tout
+    comme `_positive_float_setting` seule ne rejette qu'une valeur négative ou
+    nulle, pas une valeur hors d'une plage métier précise."""
+    value = _positive_float_setting(section, key, default, section_name)
+    ok = (lo <= value if lo_inclusive else lo < value) and value <= hi
+    if not ok:
+        _warn(f"[{section_name}].{key} = {section.get(key)!r} hors de "
+              f"{'[' if lo_inclusive else '('}{lo:g}, {hi:g}] — défaut {default:g} appliqué.")
+        return default
+    return value
+
+
+def _positive_int_setting(section: dict, key: str, default: int, section_name: str, min_value: int = 1) -> int:
+    """Entier >= `min_value`, jamais en levant — revue de code #104, should-fix 3 :
+    `pain_window_days = 0.5` acceptée par un simple `int(_positive_float_setting(...))`
+    tombait à `0`, ce qui inverse silencieusement la fenêtre de douleur
+    (`today - timedelta(days=-1)` est APRÈS `today`) et désactive le facteur sans
+    aucun avertissement. Une valeur non entière (`2.5`) est aussi rejetée : un
+    nombre de jours n'a pas de sens fractionnaire ici."""
+    raw = section.get(key)
+    if raw in (None, ""):
+        return default
+    value = None
+    if not isinstance(raw, bool):
+        if isinstance(raw, int):
+            value = raw
+        elif isinstance(raw, float) and raw.is_integer():
+            value = int(raw)
+        elif isinstance(raw, str):
+            try:
+                stripped = raw.strip()
+                value = int(stripped) if re.fullmatch(r"-?\d+", stripped) else None
+            except ValueError:
+                value = None
+    if value is None or value < min_value:
+        _warn(f"[{section_name}].{key} = {raw!r} n'est pas un entier >= {min_value} valide — "
+              f"défaut {default:g} appliqué.")
+        return default
+    return value
+
+
+def _bool_setting(section: dict, key: str, default: bool, section_name: str) -> bool:
     raw = section.get(key)
     if raw in (None, ""):
         return default
@@ -582,17 +641,17 @@ def _bool_setting(section: dict, key: str, default: bool) -> bool:
             return True
         if normalised in ("false", "0"):
             return False
-    _warn(f"[guardrails].{key} = {raw!r} n'est pas un booléen valide — défaut {default} appliqué.")
+    _warn(f"[{section_name}].{key} = {raw!r} n'est pas un booléen valide — défaut {default} appliqué.")
     return default
 
 
-def _enum_setting(section: dict, key: str, allowed: Sequence[str], default: str) -> str:
+def _enum_setting(section: dict, key: str, allowed: Sequence[str], default: str, section_name: str) -> str:
     raw = section.get(key)
     if raw in (None, ""):
         return default
     if isinstance(raw, str) and raw.strip().lower() in allowed:
         return raw.strip().lower()
-    _warn(f"[guardrails].{key} = {raw!r} hors de {allowed} — défaut « {default} » appliqué.")
+    _warn(f"[{section_name}].{key} = {raw!r} hors de {allowed} — défaut « {default} » appliqué.")
     return default
 
 
@@ -602,22 +661,24 @@ def guardrail_settings(config: Dict[str, dict]) -> dict:
     avertissement sur stderr (voir les seuils `DEFAULT_*` en tête de module, qui font
     foi si `config/workspace.toml` ne porte pas encore de section `[guardrails]`,
     ex. workspace installé avant #52)."""
-    section = config.get("guardrails", {}) or {}
+    section_name = "guardrails"
+    section = config.get(section_name, {}) or {}
     severities: Dict[str, str] = {}
     for rule_id, default_severity in DEFAULT_SEVERITY.items():
-        severities[rule_id] = _enum_setting(section, f"severity_{rule_id}", SEVERITIES, default_severity)
+        severities[rule_id] = _enum_setting(
+            section, f"severity_{rule_id}", SEVERITIES, default_severity, section_name)
     return {
-        "enabled": _bool_setting(section, "enabled", True),
-        "r1_acwr_max": _positive_float_setting(section, "r1_acwr_max", DEFAULT_ACWR_MAX),
+        "enabled": _bool_setting(section, "enabled", True, section_name),
+        "r1_acwr_max": _positive_float_setting(section, "r1_acwr_max", DEFAULT_ACWR_MAX, section_name),
         "r2_volume_increase_max_pct": _positive_float_setting(
-            section, "r2_volume_increase_max_pct", DEFAULT_VOLUME_INCREASE_MAX_PCT),
+            section, "r2_volume_increase_max_pct", DEFAULT_VOLUME_INCREASE_MAX_PCT, section_name),
         "r2_volume_reference": _enum_setting(
-            section, "r2_volume_reference", ("previous_week", "mean4"), DEFAULT_VOLUME_REFERENCE),
+            section, "r2_volume_reference", ("previous_week", "mean4"), DEFAULT_VOLUME_REFERENCE, section_name),
         "r3_elevation_increase_max_pct": _positive_float_setting(
-            section, "r3_elevation_increase_max_pct", DEFAULT_ELEVATION_INCREASE_MAX_PCT),
-        "r4_monotony_max": _positive_float_setting(section, "r4_monotony_max", DEFAULT_MONOTONY_MAX),
+            section, "r3_elevation_increase_max_pct", DEFAULT_ELEVATION_INCREASE_MAX_PCT, section_name),
+        "r4_monotony_max": _positive_float_setting(section, "r4_monotony_max", DEFAULT_MONOTONY_MAX, section_name),
         "r6_long_run_share_max_pct": _positive_float_setting(
-            section, "r6_long_run_share_max_pct", DEFAULT_LONG_RUN_SHARE_MAX_PCT),
+            section, "r6_long_run_share_max_pct", DEFAULT_LONG_RUN_SHARE_MAX_PCT, section_name),
         "severity": severities,
     }
 
@@ -1328,6 +1389,538 @@ def evaluate(proposed_week: dict, context: dict, gconf: dict) -> dict:
 
 
 # ---------------------------------------------------------------------------
+# #57 — Drapeau composite de risque de blessure ("injury-risk")
+#
+# Combine des signaux déjà calculés ailleurs — ACWR/monotonie réels (mêmes
+# constantes et le même garde-fou d'historique que R1/R4 ci-dessus), douleur
+# STRUCTURÉE déclarée (`health.pain`, nouveau champ #57 — jamais le texte
+# libre, voir SKILL.md), et un écart entre l'effort PERÇU et la charge FC
+# MESURÉE — en un score déterministe à 3 niveaux (`INJURY_RISK_LEVELS`).
+# Jamais un diagnostic : `INJURY_RISK_DISCLAIMER` accompagne toujours la
+# sortie, et aucun message ne doit jamais nommer une pathologie (« tendinite »,
+# « fracture »…) — voir `RULE_LABELS`/`ASSUMPTIONS` ci-dessus pour la même
+# discipline sur les garde-fous.
+#
+# Même partage de rôles que `build_context`/`evaluate` : `build_injury_risk_
+# context` lit l'index (impur, jamais appelé par les tests unitaires) ;
+# `evaluate_injury_risk` est PURE (stdlib seule, déterministe pour un couple
+# `(context, gconf)` donné) — c'est elle que couvre le palier D.
+# ---------------------------------------------------------------------------
+
+INJURY_RISK_LEVELS = ("low", "moderate", "high")
+
+# Douleur déclarée (`health.pain`, SKILL.md) : fenêtre récente et seuil de
+# sévérité — CONVENTION DU PROJET, aucune étude ne fixe « 3 jours »/« 4/10 »
+# comme le bon repère (seulement le bon sens clinique de base : une douleur
+# d'hier compte encore aujourd'hui, une douleur légère 1-3/10 ne déclenche
+# rien). `score` est sur la même échelle 0-10 que `activity.rpe`, jamais
+# confondue avec elle (voir `arc_contract.SUBSCHEMA["pain"]`).
+PAIN_RECENT_WINDOW_DAYS = 3
+PAIN_SCORE_THRESHOLD = 4.0
+# Douleur SÉVÈRE (revue de code #104, decision du coordinateur, S1) : au-delà
+# de ce seuil, la douleur seule force `level: "high"` (quels que soient les
+# autres facteurs) et `consult: true` — voir `evaluate_injury_risk`. Valeur
+# volontairement plus haute que `PAIN_SCORE_THRESHOLD` (4/10, « à signaler ») :
+# 7/10 est le repère habituel d'une douleur sévère dans les échelles
+# numériques de douleur (0-10) utilisées en clinique, mais reste ici une
+# CONVENTION DU PROJET pour ce drapeau composite précis, pas une valeur
+# calibrée sur ce moteur.
+PAIN_CONSULT_THRESHOLD = 7.0
+
+# Écart entre l'effort PERÇU et la charge mesurée par FC : ratio (charge sRPE
+# équivalente / charge TRIMP RÉELLE) sur les séances qui portent À LA FOIS
+# `avg_hr_bpm` ET `rpe` (les deux calculs possibles pour la MÊME séance —
+# jamais un TRIMP d'un jour comparé au sRPE d'un autre), comparé à ce même
+# ratio sur une fenêtre de référence plus longue et non chevauchante (même
+# discipline que `_recent_run_pace_s_km`/`hrv_baseline_series`). CONVENTION DU
+# PROJET : aucune source publiée ne fixe ce ratio précis comme un seuil de
+# risque — le principe (le RPE reflète une fatigue centrale/périphérique que
+# la FC seule ne voit pas encore) est documenté, la valeur numérique ne l'est
+# pas. Voir `ASSUMPTIONS_INJURY_RISK["rpe_hr_mismatch"]`.
+RPE_HR_MISMATCH_RECENT_WINDOW_DAYS = 14
+RPE_HR_MISMATCH_BASELINE_WINDOW_DAYS = 90
+RPE_HR_MISMATCH_MIN_SESSIONS = 3
+RPE_HR_MISMATCH_RATIO_MAX = 1.3
+
+# Verdict rouge récent (aujourd'hui ou hier) — même fenêtre que R5
+# (`_eval_r5`, « le jour même ou le lendemain d'un verdict rouge »).
+RED_VERDICT_RECENT_WINDOW_DAYS = 2
+
+# Poids par facteur qui CONTRIBUE — CONVENTION DU PROJET, jamais un poids
+# validé cliniquement. La douleur pèse double : c'est le seul facteur déclaré
+# directement par l'athlète (les autres sont dérivés d'un modèle de charge ou
+# d'une mesure Garmin) — un signal de première main compte davantage qu'un
+# signal indirect.
+INJURY_RISK_WEIGHTS: Dict[str, int] = {
+    "acwr": 1, "monotony": 1, "pain": 2, "rpe_hr_mismatch": 1,
+    "sleep_debt": 1, "red_verdict": 1,
+}
+# Bornes du score PONDÉRÉ (somme des poids des facteurs qui contribuent) — 3
+# niveaux non-diagnostiques : `< INJURY_RISK_LEVEL_MODERATE_MIN` faible,
+# jusqu'à `< INJURY_RISK_LEVEL_HIGH_MIN` modéré, au-delà élevé. CONVENTION DU
+# PROJET (jamais une classification validée par une étude).
+INJURY_RISK_LEVEL_MODERATE_MIN = 2
+INJURY_RISK_LEVEL_HIGH_MIN = 4
+
+# Formulation NON-DIAGNOSTIQUE obligatoire (issue #57, critère d'acceptation) :
+# « signal de vigilance », jamais « risque de blessure avéré » ni le nom
+# d'une pathologie précise. Reformulé en revue de code #104 (nit) : « aucun
+# facteur ci-dessous ne prouve une blessure » restait une négation encore
+# assez proche du vocabulaire diagnostique (« blessure ») — « aucun de ces
+# facteurs, seul ou combiné, ne remplace un examen » reste tout aussi clair
+# sans reprendre le mot.
+INJURY_RISK_DISCLAIMER = (
+    "Signal de vigilance calculé à partir de repères d'entraînement et d'une "
+    "douleur éventuellement déclarée — non-diagnostique, ne remplace jamais "
+    "un avis médical professionnel. Aucun de ces facteurs, seul ou combiné, "
+    "ne remplace un examen ; en cas de doute, ou de douleur qui persiste, "
+    "consulte un professionnel de santé."
+)
+
+FACTOR_IDS: Tuple[str, ...] = tuple(sorted(INJURY_RISK_WEIGHTS))
+
+# Libellés COURTS, en français simple, sans jargon de schéma (jamais un nom de
+# champ contractuel entre backticks — revue de code #104, should-fix 2 : ce
+# sont les seuls libellés qu'un agent ou le tableau de bord affichent
+# directement à l'athlète ; la référence au champ `health.pain` reste
+# UNIQUEMENT dans `ASSUMPTIONS_INJURY_RISK`, jamais ici).
+FACTOR_LABELS: Dict[str, str] = {
+    "acwr": "ACWR (charge aiguë/chronique) réel, aujourd'hui",
+    "monotony": "Monotonie de Foster réelle, 7 jours glissants",
+    "pain": "Douleur déclarée",
+    "rpe_hr_mismatch": "Effort perçu (RPE) nettement supérieur à la charge mesurée par FC",
+    "sleep_debt": "Dette de sommeil 7 jours",
+    "red_verdict": "Verdict santé rouge aujourd'hui ou hier",
+}
+
+ASSUMPTIONS_INJURY_RISK: Dict[str, str] = {
+    "level": (
+        "Score = somme de `INJURY_RISK_WEIGHTS[id]` pour chaque facteur qui "
+        "CONTRIBUE (voir chaque facteur ci-dessous). Niveau : faible si "
+        f"score < {INJURY_RISK_LEVEL_MODERATE_MIN}, modéré si "
+        f"{INJURY_RISK_LEVEL_MODERATE_MIN} <= score < {INJURY_RISK_LEVEL_HIGH_MIN}, "
+        f"élevé si score >= {INJURY_RISK_LEVEL_HIGH_MIN} — CONVENTION DU PROJET, "
+        "jamais une classification validée par une étude clinique. Un facteur "
+        "SAUTÉ (historique insuffisant, champ absent, bilan matinal désactivé) "
+        "ne compte JAMAIS comme contribuant : un signal manquant n'est pas un "
+        "signal favorable, mais ce moteur ne devine jamais une aggravation "
+        "depuis une absence de donnée — voir `reason_code` sur chaque facteur "
+        "sauté. EXCEPTION (revue de code #104, decision du coordinateur, S1) : "
+        "une douleur SÉVÈRE (`pain` contribue ET observé >= "
+        "`[injury_risk].pain_consult_threshold`, défaut `PAIN_CONSULT_THRESHOLD` "
+        "7/10) force `level: \"high\"` seule, quel que soit le score pondéré des "
+        "autres facteurs — une douleur sévère déclarée n'a pas besoin d'un "
+        "second facteur pour justifier la prudence maximale. Voir "
+        "ASSUMPTIONS_INJURY_RISK['consult']."
+    ),
+    "consult": (
+        "`consult` (booléen, toujours présent en sortie) : `true` si le "
+        "facteur `pain` contribue ET que `level` vaut `\"high\"` — que ce soit "
+        "parce que la douleur seule dépasse `pain_consult_threshold` (voir "
+        "ASSUMPTIONS_INJURY_RISK['level']) ou parce que la combinaison d'autres "
+        "facteurs atteint déjà `\"high\"` alors qu'une douleur (même sous ce "
+        "second seuil) contribue aussi. Lu par `agents/medical.md` : recommander "
+        "explicitement un avis professionnel est le seul cas où l'agent va "
+        "au-delà d'un conseil d'entraînement/récupération — jamais un "
+        "diagnostic, seulement une orientation vers un examen."
+    ),
+    "acwr": (
+        "Réutilise EXACTEMENT `arc_metrics.daily_series` sur la charge réelle déjà "
+        "indexée (jamais une projection : contrairement à R1, aucune semaine "
+        "proposée n'entre ici), valeur du jour `today`. Seuil "
+        "`[injury_risk].acwr_max` (défaut `DEFAULT_ACWR_MAX`, 1.3 — même repère "
+        "Gabbett 2016 que R1, mêmes réserves scientifiques, voir "
+        "ASSUMPTIONS['acwr_projection'] plus haut). SAUTÉ (reason_code "
+        "`insufficient_history`) sous `MIN_HISTORY_DAYS_FOR_PROJECTION` (84 j) — "
+        "même garde-fou de démarrage à froid que R1."
+    ),
+    "monotony": (
+        "Réutilise EXACTEMENT `arc_metrics.daily_series` (fenêtre glissante 7 j "
+        "de charge brute), valeur du jour `today`. Seuil `[injury_risk].monotony_max` "
+        "(défaut `DEFAULT_MONOTONY_MAX`, 2.0 — Foster 1998, même source que R4). "
+        "SAUTÉ (reason_code `insufficient_history`) sous "
+        "`MIN_HISTORY_DAYS_FOR_MONOTONY` (14 j) ou si la fenêtre n'a pas encore "
+        "7 jours d'historique — même garde-fou que R4."
+    ),
+    "pain": (
+        "Maximum de `health.pain[].score` sur les fichiers santé des "
+        f"`PAIN_RECENT_WINDOW_DAYS` derniers jours ({PAIN_RECENT_WINDOW_DAYS}, "
+        "aujourd'hui inclus) — TOUS les fichiers de la fenêtre, jamais un seul "
+        "jour : une douleur signalée hier compte encore aujourd'hui. `location` "
+        "porte la zone déclarée à ce score maximal (premier trouvé si plusieurs "
+        "zones partagent le même score), exposée à côté de `observed`/"
+        "`threshold` pour que le facteur reste lisible sans rouvrir le fichier "
+        "santé. Seuil `[injury_risk].pain_score_threshold` (défaut "
+        f"{PAIN_SCORE_THRESHOLD:g}/10, validé dans `(0, 10]` — revue de code "
+        "#104, should-fix 3 : une valeur hors de cette plage, ex. 15, "
+        "désactiverait le facteur en silence, aucun score de douleur ne "
+        "pouvant jamais l'atteindre). SAUTÉ (reason_code `no_health_file` — "
+        "renommé depuis `no_pain_field` en revue de code #104, nit : le "
+        "facteur n'est jamais sauté faute du CHAMP `pain`, qui n'a pas besoin "
+        "d'exister pour qu'un jour compte comme « pas de douleur », seulement "
+        "faute de FICHIER santé sur la fenêtre) seulement si AUCUN fichier "
+        "santé n'existe du tout sur la fenêtre — distinct d'une fenêtre où des "
+        "fichiers existent mais ne rapportent aucune douleur : `pain` absent "
+        "du bloc, OU `pain: []` (douleur explicitement demandée, aucune "
+        "signalée) rendent tous deux `observed = 0`, facteur ÉVALUÉ, "
+        "contribue = faux — c'est une vraie observation d'absence de douleur, "
+        "pas un manque de donnée. Douleur SÉVÈRE (>= `pain_consult_threshold`, "
+        "défaut 7/10) : voir ASSUMPTIONS_INJURY_RISK['level']/['consult']."
+    ),
+    "rpe_hr_mismatch": (
+        "Ratio (charge sRPE équivalente / charge TRIMP réelle, `activity.load` "
+        "quand `load_source = 'trimp'`) sur les séances qui portent À LA FOIS "
+        "`avg_hr_bpm` ET `rpe` — MÉDIANE du ratio sur "
+        f"`RPE_HR_MISMATCH_RECENT_WINDOW_DAYS` jours ({RPE_HR_MISMATCH_RECENT_WINDOW_DAYS}) "
+        "comparée à la MÉDIANE sur une fenêtre de référence antérieure et NON "
+        f"chevauchante de `RPE_HR_MISMATCH_BASELINE_WINDOW_DAYS` jours "
+        f"({RPE_HR_MISMATCH_BASELINE_WINDOW_DAYS}). Contribue si "
+        "récent / référence > `[injury_risk].mismatch_ratio_max` (défaut "
+        f"{RPE_HR_MISMATCH_RATIO_MAX:g}, soit +{(RPE_HR_MISMATCH_RATIO_MAX - 1) * 100:.0f} %). "
+        f"SAUTÉ (reason_code `no_rpe_hr_pairs`) si l'une des deux fenêtres a moins de "
+        f"`RPE_HR_MISMATCH_MIN_SESSIONS` ({RPE_HR_MISMATCH_MIN_SESSIONS}) séances "
+        "avec les deux champs — jamais un ratio calculé sur un échantillon trop "
+        "petit pour être significatif. CONVENTION DU PROJET (voir plus haut) : "
+        "un écart RPE/FC en hausse est un principe documenté (Foster/Seiler), "
+        "pas ce seuil numérique précis."
+    ),
+    "sleep_debt": (
+        "Réutilise `arc_index.sleep_debt_today` (#37, même calcul que le tableau "
+        "de bord) — SAUTÉ (reason_code `health_check_disabled`) hors "
+        '`[health].morning_check = "full"` (la dette de sommeil n\'est jamais '
+        "calculée à `minimal`/`off`, voir AGENTS.md — sautée aux DEUX niveaux, "
+        "pas seulement à `off`). `observed`/`threshold` exposés en HEURES "
+        "(revue de code #104, should-fix 2 : le calcul interne reste en "
+        "secondes, `arc_metrics.SLEEP_DEBT_ALERT_S`, mais un agent qui cite "
+        "« 37800 » sans unité est illisible — arrondi à 0,1 h). Seuil "
+        "`[injury_risk].sleep_debt_alert_s` en secondes en configuration "
+        "(cohérent avec `arc_metrics.SLEEP_DEBT_ALERT_S`, 10 h cumulées sur "
+        "7 j), converti en heures uniquement dans la sortie du facteur."
+    ),
+    "red_verdict": (
+        "Verdict santé (`health.verdict`) du jour ou de la veille égal à "
+        '"red" — même fenêtre que R5 (`_eval_r5`). `observed`/`threshold` '
+        "valent TOUS DEUX `None` (revue de code #104, should-fix 2 : un fait "
+        "booléen — rouge ou non — n'a pas de « valeur observée contre un "
+        "seuil », contrairement à un ACWR ou une douleur ; afficher "
+        '« red vs seuil red » n\'apportait rien). SAUTÉ (reason_code '
+        '`health_check_disabled`) à `[health].morning_check = "off"` (aucun '
+        "verdict n'est posé à ce niveau, voir AGENTS.md) ; à `minimal`, un "
+        "verdict peut exister et est utilisé TEL QUEL, jamais recalculé ici — "
+        "même discipline que R5."
+    ),
+}
+
+
+def injury_risk_settings(config: Dict[str, dict]) -> dict:
+    """Résout `[injury_risk]` de la configuration fusionnée, jamais en levant —
+    même discipline que `guardrail_settings` ci-dessus. Chaque avertissement cite
+    désormais `[injury_risk]` (revue de code #104, should-fix 3 : les fonctions
+    `_positive_float_setting`/`_bool_setting`/`_enum_setting` sont PARTAGÉES avec
+    `guardrail_settings`, qui écrivait `[guardrails]` en dur — corrigé en leur
+    passant `section_name` explicitement)."""
+    section_name = "injury_risk"
+    section = config.get(section_name, {}) or {}
+    return {
+        "enabled": _bool_setting(section, "enabled", True, section_name),
+        "acwr_max": _positive_float_setting(section, "acwr_max", DEFAULT_ACWR_MAX, section_name),
+        "monotony_max": _positive_float_setting(section, "monotony_max", DEFAULT_MONOTONY_MAX, section_name),
+        # Score de douleur (0-10) : borné à `(0, 10]` (revue de code #104,
+        # should-fix 3) — au-delà de 10, aucun score déclaré ne pourrait jamais
+        # atteindre le seuil (facteur désactivé en silence) ; à 0 ou moins, tout
+        # jour sans douleur contribuerait (un score de 0 ne doit jamais être un
+        # seuil valide).
+        "pain_score_threshold": _bounded_float_setting(
+            section, "pain_score_threshold", PAIN_SCORE_THRESHOLD, section_name, 0.0, 10.0),
+        "pain_consult_threshold": _bounded_float_setting(
+            section, "pain_consult_threshold", PAIN_CONSULT_THRESHOLD, section_name, 0.0, 10.0),
+        # Entier >= 1 jour (revue de code #104, should-fix 3) : `0.5` acceptée
+        # par l'ancien `int(_positive_float_setting(...))` tombait à `0`, ce qui
+        # inverse la fenêtre (`today - timedelta(days=-1)` est APRÈS `today`) et
+        # désactive le facteur douleur en silence.
+        "pain_window_days": _positive_int_setting(
+            section, "pain_window_days", PAIN_RECENT_WINDOW_DAYS, section_name, min_value=1),
+        "mismatch_ratio_max": _positive_float_setting(
+            section, "mismatch_ratio_max", RPE_HR_MISMATCH_RATIO_MAX, section_name),
+        "sleep_debt_alert_s": _positive_float_setting(
+            section, "sleep_debt_alert_s", M.SLEEP_DEBT_ALERT_S, section_name),
+    }
+
+
+def _paired_rpe_hr_ratios(conn, start: date, end: date) -> List[float]:
+    """Ratio (charge sRPE équivalente / charge TRIMP réelle) de chaque séance de
+    `[start, end]` inclus qui porte à la fois `avg_hr_bpm` et `rpe`, ET dont la
+    charge stockée vient bien du TRIMP (`load_source = 'trimp'` — jamais une
+    séance où le TRIMP lui-même n'a pas pu être calculé malgré une FC présente,
+    ex. profil sans `hr_rest_bpm`/`hr_max_bpm`) — voir
+    `ASSUMPTIONS_INJURY_RISK["rpe_hr_mismatch"]`."""
+    rows = conn.execute(
+        "SELECT duration_s, rpe, load FROM activity WHERE date >= ? AND date <= ? "
+        "AND avg_hr_bpm IS NOT NULL AND rpe IS NOT NULL AND load IS NOT NULL "
+        "AND load_source = 'trimp'",
+        (start.isoformat(), end.isoformat())).fetchall()
+    ratios = []
+    for duration_s, rpe, load in rows:
+        if not duration_s or not load:
+            continue
+        srpe_equivalent = (duration_s / 60.0) * rpe * M.RPE_TO_TRIMP
+        ratios.append(srpe_equivalent / load)
+    return ratios
+
+
+def build_injury_risk_context(conn, config: Dict[str, dict], gconf: dict,
+                               today: Optional[date] = None) -> dict:
+    """Construit le `context` consommé par `evaluate_injury_risk`, en lisant
+    l'index dérivé — voir `ASSUMPTIONS_INJURY_RISK` pour la méthode complète de
+    chaque facteur. Impure (ouvre la base), jamais appelée par les tests
+    unitaires de `evaluate_injury_risk`."""
+    today = today or date.today()
+    settings = I.settings(config)
+    morning_check = settings["morning_check"]
+
+    # --- ACWR/monotonie RÉELS (aucune semaine proposée : pas de projection) ---
+    rows = conn.execute("SELECT date, load FROM activity WHERE load IS NOT NULL").fetchall()
+    loads_by_date: Dict[str, float] = {}
+    for d, load in rows:
+        loads_by_date[d] = loads_by_date.get(d, 0.0) + (load or 0.0)
+    if loads_by_date:
+        first_date = min(date.fromisoformat(d) for d in loads_by_date)
+        history_span_days = (today - first_date).days
+        series_start = min(first_date, today)
+    else:
+        history_span_days = 0
+        series_start = today
+    series = M.daily_series(loads_by_date, series_start, today)
+    last = series[-1] if series else {}
+    acwr_history_sufficient = history_span_days >= MIN_HISTORY_DAYS_FOR_PROJECTION
+    monotony_history_sufficient = history_span_days >= MIN_HISTORY_DAYS_FOR_MONOTONY
+
+    # --- Douleur déclarée récente (`health.pain`, via health_day.data_json — ce
+    # champ n'a pas sa propre colonne, voir `arc_index.store` : un champ liste
+    # d'objets reste dans le JSON brut, comme `readiness_factors`/`missing_reason`) ---
+    pain_window_days = gconf.get("pain_window_days", PAIN_RECENT_WINDOW_DAYS)
+    pain_start = today - timedelta(days=pain_window_days - 1)
+    health_rows = conn.execute(
+        "SELECT date, data_json FROM health_day WHERE date >= ? AND date <= ? ORDER BY date",
+        (pain_start.isoformat(), today.isoformat())).fetchall()
+    pain_found_any_health_file = len(health_rows) > 0
+    pain_max_score = 0.0
+    pain_location = None   # zone déclarée au score maximal — voir ASSUMPTIONS_INJURY_RISK["pain"]
+    for _d, data_json in health_rows:
+        if not data_json:
+            continue
+        try:
+            data = json.loads(data_json)
+        except (json.JSONDecodeError, TypeError):
+            continue
+        for entry in data.get("pain") or []:
+            if not isinstance(entry, dict):
+                continue
+            score = entry.get("score")
+            if isinstance(score, (int, float)) and not isinstance(score, bool) and float(score) > pain_max_score:
+                pain_max_score = float(score)
+                pain_location = entry.get("location") if isinstance(entry.get("location"), str) else None
+
+    # --- Écart effort perçu / charge FC mesurée ---
+    recent_start = today - timedelta(days=RPE_HR_MISMATCH_RECENT_WINDOW_DAYS - 1)
+    baseline_end = recent_start - timedelta(days=1)
+    baseline_start = baseline_end - timedelta(days=RPE_HR_MISMATCH_BASELINE_WINDOW_DAYS - 1)
+    recent_ratios = _paired_rpe_hr_ratios(conn, recent_start, today)
+    baseline_ratios = _paired_rpe_hr_ratios(conn, baseline_start, baseline_end)
+
+    # --- Dette de sommeil (#37, réutilise le calcul déjà exposé par arc_index) ---
+    sleep_debt = I.sleep_debt_today(conn, {"morning_check": morning_check}, today)
+
+    # --- Verdict rouge récent (même fenêtre que R5) ---
+    health_by_date = _health_verdicts(conn, today - timedelta(days=RED_VERDICT_RECENT_WINDOW_DAYS - 1), today)
+
+    return {
+        "today": today.isoformat(),
+        "morning_check": morning_check,
+        "acwr_today": last.get("acwr") if acwr_history_sufficient else None,
+        "acwr_history_sufficient": acwr_history_sufficient,
+        "monotony_today": last.get("monotony") if monotony_history_sufficient else None,
+        "monotony_history_sufficient": monotony_history_sufficient,
+        "pain_found_any_health_file": pain_found_any_health_file,
+        "pain_max_score": pain_max_score,
+        "pain_location": pain_location,
+        "pain_window_days": pain_window_days,
+        "recent_rpe_hr_ratios": recent_ratios,
+        "baseline_rpe_hr_ratios": baseline_ratios,
+        "sleep_debt_7d_s": sleep_debt.get("sleep_debt_7d_s"),
+        "health_by_date": health_by_date,
+    }
+
+
+def _factor(factor_id: str, observed, threshold, contributes: bool, **extra) -> dict:
+    """`**extra` : champs additionnels PROPRES à un facteur (ex. `location` pour
+    `pain`, revue de code #104, should-fix 2) — jamais recopiés d'un facteur à
+    l'autre, seulement ceux passés explicitement par l'appelant."""
+    return {"id": factor_id, "observed": observed, "threshold": threshold,
+            "contributes": contributes, "weight": INJURY_RISK_WEIGHTS[factor_id] if contributes else 0,
+            "label": FACTOR_LABELS[factor_id], **extra}
+
+
+def _factor_skip(factor_id: str, reason_code: str, reason: str) -> dict:
+    return {"id": factor_id, "observed": None, "threshold": None, "contributes": False,
+            "weight": 0, "reason_code": reason_code, "reason": reason, "label": FACTOR_LABELS[factor_id]}
+
+
+def _eval_acwr_factor(context: dict, gconf: dict) -> dict:
+    if not context.get("acwr_history_sufficient"):
+        return _factor_skip("acwr", "insufficient_history",
+                             "historique réel trop court (< "
+                             f"{MIN_HISTORY_DAYS_FOR_PROJECTION} j) pour un ACWR significatif.")
+    acwr = context.get("acwr_today")
+    if acwr is None:
+        return _factor_skip("acwr", "insufficient_history",
+                             "condition (fitness) trop faible pour un ACWR significatif — "
+                             "voir arc_metrics.ACWR_MIN_FITNESS.")
+    threshold = gconf["acwr_max"]
+    return _factor("acwr", round(acwr, 3), threshold, acwr > threshold)
+
+
+def _eval_monotony_factor(context: dict, gconf: dict) -> dict:
+    if not context.get("monotony_history_sufficient"):
+        return _factor_skip("monotony", "insufficient_history",
+                             f"historique réel trop court (< {MIN_HISTORY_DAYS_FOR_MONOTONY} j) "
+                             "pour une monotonie significative.")
+    monotony = context.get("monotony_today")
+    if monotony is None:
+        return _factor_skip("monotony", "insufficient_history",
+                             "monotonie non calculable (moins de 7 jours d'historique, ou charge "
+                             "quotidienne constante sur la fenêtre).")
+    threshold = gconf["monotony_max"]
+    return _factor("monotony", round(monotony, 3), threshold, monotony > threshold)
+
+
+def _eval_pain_factor(context: dict, gconf: dict) -> dict:
+    if not context.get("pain_found_any_health_file"):
+        return _factor_skip("pain", "no_health_file",
+                             "aucun fichier santé sur la fenêtre récente ("
+                             f"{context.get('pain_window_days', PAIN_RECENT_WINDOW_DAYS)} j) — "
+                             "rien à évaluer (absent de `pain` un jour où le fichier existe "
+                             "compte comme « pas de douleur », pas comme un manque de donnée).")
+    threshold = gconf["pain_score_threshold"]
+    observed = context.get("pain_max_score", 0.0)
+    # `location` (revue de code #104, should-fix 2) : zone déclarée au score
+    # maximal, pour que le facteur reste lisible sans rouvrir le fichier santé
+    # (« douleur 6/10 (seuil 4/10) — genou droit ») — `None` si le score
+    # maximal est 0 (aucune douleur déclarée) ou si l'entrée omettait `location`.
+    return _factor("pain", observed, threshold, observed >= threshold,
+                    location=context.get("pain_location"))
+
+
+def _eval_rpe_hr_mismatch_factor(context: dict, gconf: dict) -> dict:
+    recent = context.get("recent_rpe_hr_ratios") or []
+    baseline = context.get("baseline_rpe_hr_ratios") or []
+    if len(recent) < RPE_HR_MISMATCH_MIN_SESSIONS or len(baseline) < RPE_HR_MISMATCH_MIN_SESSIONS:
+        return _factor_skip("rpe_hr_mismatch", "no_rpe_hr_pairs",
+                             "pas assez de séances avec à la fois FC moyenne et RPE déclaré "
+                             f"(minimum {RPE_HR_MISMATCH_MIN_SESSIONS} par fenêtre) pour comparer "
+                             "l'effort perçu à la charge mesurée.")
+    baseline_median = statistics.median(baseline)
+    if baseline_median <= 0:
+        return _factor_skip("rpe_hr_mismatch", "no_rpe_hr_pairs",
+                             "ratio de référence non significatif (nul ou négatif).")
+    recent_median = statistics.median(recent)
+    ratio = recent_median / baseline_median
+    threshold = gconf["mismatch_ratio_max"]
+    return _factor("rpe_hr_mismatch", round(ratio, 3), threshold, ratio > threshold)
+
+
+def _eval_sleep_debt_factor(context: dict, gconf: dict) -> dict:
+    if context.get("morning_check") != "full":
+        return _factor_skip("sleep_debt", "health_check_disabled",
+                             'dette de sommeil calculée seulement en '
+                             '[health].morning_check = "full".')
+    debt_s = context.get("sleep_debt_7d_s")
+    if debt_s is None:
+        return _factor_skip("sleep_debt", "insufficient_history",
+                             "pas assez de nuits mesurées sur les 7 derniers jours.")
+    threshold_s = gconf["sleep_debt_alert_s"]
+    # Exposé en HEURES (revue de code #104, should-fix 2) : le calcul reste en
+    # secondes en interne (même échelle que `arc_metrics.SLEEP_DEBT_ALERT_S`),
+    # mais « 37800 vs seuil 36000 » n'est lisible pour personne — voir
+    # ASSUMPTIONS_INJURY_RISK["sleep_debt"].
+    observed_h = round(debt_s / 3600.0, 1)
+    threshold_h = round(threshold_s / 3600.0, 1)
+    return _factor("sleep_debt", observed_h, threshold_h, debt_s >= threshold_s)
+
+
+def _eval_red_verdict_factor(context: dict) -> dict:
+    if context.get("morning_check") == "off":
+        return _factor_skip("red_verdict", "health_check_disabled",
+                             'bilan matinal désactivé ([health].morning_check = "off") — '
+                             "aucun verdict n'est posé.")
+    health_by_date = context.get("health_by_date") or {}
+    today = context.get("today")
+    yesterday = (date.fromisoformat(today) - timedelta(days=1)).isoformat() if today else None
+    red = health_by_date.get(today) == "red" or (yesterday and health_by_date.get(yesterday) == "red")
+    # `observed`/`threshold` à `None` (revue de code #104, should-fix 2) : un
+    # fait booléen (rouge ou non) n'a pas de « valeur contre un seuil » —
+    # voir ASSUMPTIONS_INJURY_RISK["red_verdict"].
+    return _factor("red_verdict", None, None, red)
+
+
+def evaluate_injury_risk(context: dict, gconf: dict) -> dict:
+    """Cœur PUR du drapeau composite (#57) : aucune E/S, entièrement
+    déterministe pour un couple `(context, gconf)` donné — voir
+    `build_injury_risk_context` pour la forme de `context` et
+    `ASSUMPTIONS_INJURY_RISK` pour la méthode de chaque facteur."""
+    if not gconf.get("enabled", True):
+        return {
+            "level": "low", "score": 0, "consult": False,
+            "factors": [_factor_skip(fid, "injury_risk_disabled",
+                                      "[injury_risk].enabled = false — moteur désactivé.")
+                        for fid in FACTOR_IDS],
+            "disclaimer": INJURY_RISK_DISCLAIMER,
+            "context": {"today": context.get("today")},
+        }
+
+    factors = [
+        _eval_acwr_factor(context, gconf),
+        _eval_monotony_factor(context, gconf),
+        _eval_pain_factor(context, gconf),
+        _eval_rpe_hr_mismatch_factor(context, gconf),
+        _eval_sleep_debt_factor(context, gconf),
+        _eval_red_verdict_factor(context),
+    ]
+    factors.sort(key=lambda f: f["id"])
+    score = sum(f["weight"] for f in factors)
+    if score >= INJURY_RISK_LEVEL_HIGH_MIN:
+        level = "high"
+    elif score >= INJURY_RISK_LEVEL_MODERATE_MIN:
+        level = "moderate"
+    else:
+        level = "low"
+
+    # Douleur SÉVÈRE (decision du coordinateur, revue de code #104, S1) : force
+    # `level: "high"` À ELLE SEULE, quel que soit `score` — voir
+    # ASSUMPTIONS_INJURY_RISK['level']. `pain_factor` existe toujours dans
+    # `factors` (six facteurs fixes, jamais une liste partielle).
+    pain_factor = next(f for f in factors if f["id"] == "pain")
+    severe_pain = (pain_factor["contributes"] and pain_factor["observed"] is not None
+                   and pain_factor["observed"] >= gconf["pain_consult_threshold"])
+    if severe_pain:
+        level = "high"
+    # `consult` (voir ASSUMPTIONS_INJURY_RISK['consult']) : vrai à `level: "high"`
+    # SEULEMENT si la douleur y contribue — qu'elle soit sévère (ci-dessus) ou
+    # que d'autres facteurs aient déjà porté le niveau à `"high"` alors qu'une
+    # douleur, même sous le seuil sévère, contribue aussi.
+    consult = level == "high" and pain_factor["contributes"]
+
+    return {
+        "level": level,
+        "score": score,
+        "consult": consult,
+        "factors": factors,
+        "disclaimer": INJURY_RISK_DISCLAIMER,
+        "context": {"today": context.get("today"), "morning_check": context.get("morning_check")},
+    }
+
+
+# ---------------------------------------------------------------------------
 # CLI
 # ---------------------------------------------------------------------------
 
@@ -1371,10 +1964,14 @@ EXIT_CODES_HELP = (
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0], epilog=EXIT_CODES_HELP)
-    parser.add_argument("command", nargs="?", default="check", choices=("check",))
-    parser.add_argument("--week", required=True, metavar="FICHIER|-",
-                        help="semaine proposée : chemin d'un fichier (Markdown ```arc ou JSON brut) "
-                             "ou « - » pour lire le JSON/Markdown depuis stdin.")
+    # `injury-risk` (#57) : pas de semaine proposée (--week n'a de sens que pour
+    # `check`, rendu optionnel au niveau argparse et exigé à la main dans
+    # `main()` selon la sous-commande — voir juste en dessous).
+    parser.add_argument("command", nargs="?", default="check", choices=("check", "injury-risk"))
+    parser.add_argument("--week", metavar="FICHIER|-",
+                        help="(sous-commande « check », obligatoire) semaine proposée : chemin "
+                             "d'un fichier (Markdown ```arc ou JSON brut) ou « - » pour lire le "
+                             "JSON/Markdown depuis stdin.")
     parser.add_argument("--workspace")
     parser.add_argument("--db")
     parser.add_argument("--memory", action="store_true")
@@ -1409,6 +2006,23 @@ def main(argv=None) -> int:
         except ValueError:
             raise ConfigError(f"--today : date AAAA-MM-JJ attendue, « {args.today} » reçue.")
 
+    if args.command == "injury-risk":
+        if args.week:
+            raise ConfigError("--week : sans effet pour la sous-commande « injury-risk » (aucune "
+                               "semaine proposée n'y entre — voir --help).")
+        workspace = workspace_root(args.workspace)
+        conn = I.open_db(workspace, args.db, args.memory)
+        today = date.fromisoformat(args.today) if args.today else date.today()
+        I.index_workspace(conn, workspace, today.isoformat())
+        config = I.load_config(workspace)
+        gconf = injury_risk_settings(config)
+        context = build_injury_risk_context(conn, config, gconf, today)
+        result = evaluate_injury_risk(context, gconf)
+        print(json.dumps(result, ensure_ascii=False))
+        return 0   # informatif : jamais 1 (« injury-risk » n'a pas d'équivalent « bloquant »)
+
+    if not args.week:
+        raise ConfigError("--week : obligatoire pour la sous-commande « check » (voir --help).")
     proposed_week = _read_week_argument(args.week)
     week_start_raw = proposed_week.get("week_start")
     if not week_start_raw:

@@ -474,6 +474,42 @@ class TestDecision(unittest.TestCase):
         self.assertEqual(errors + warnings, [])
 
 
+class TestHealthPain(unittest.TestCase):
+    """`health.pain` (#57, revue de code #104, nit) : score 0-10, cap doux à
+    `PAIN_MAX_ENTRIES` entrées."""
+
+    def base(self, **extra):
+        return {"arc": 1, "kind": "health", "date": "2026-09-24", "morning_check": "full", **extra}
+
+    def test_valid_pain_entry_passes(self):
+        errors, warnings = C.validate(self.base(pain=[{"location": "genou droit", "score": 6}]))
+        self.assertEqual(errors + warnings, [])
+
+    def test_empty_pain_list_is_valid(self):
+        """`pain: []` = douleur explicitement demandée, aucune signalée."""
+        errors, warnings = C.validate(self.base(pain=[]))
+        self.assertEqual(errors + warnings, [])
+
+    def test_score_out_of_range_is_rejected(self):
+        errors, _ = C.validate(self.base(pain=[{"location": "genou", "score": 11}]))
+        self.assertTrue(any("score" in e for e in errors), errors)
+
+    def test_missing_location_is_rejected(self):
+        errors, _ = C.validate(self.base(pain=[{"score": 6}]))
+        self.assertTrue(any("location" in e for e in errors), errors)
+
+    def test_more_than_max_entries_warns_not_errors(self):
+        entries = [{"location": f"zone {i}", "score": 3} for i in range(C.PAIN_MAX_ENTRIES + 1)]
+        errors, warnings = C.validate(self.base(pain=entries))
+        self.assertEqual(errors, [])
+        self.assertTrue(any("pain" in w for w in warnings), warnings)
+
+    def test_exactly_max_entries_is_silent(self):
+        entries = [{"location": f"zone {i}", "score": 3} for i in range(C.PAIN_MAX_ENTRIES)]
+        errors, warnings = C.validate(self.base(pain=entries))
+        self.assertEqual(errors + warnings, [])
+
+
 class TestGuardrailRuleIdsMatchContractPattern(unittest.TestCase):
     """#100, revue de code : `arc_guardrails.RULE_IDS` et `arc_contract.RULE_ID_RE`
     ne doivent jamais diverger silencieusement — un `rule_id` réel qui ne

@@ -881,7 +881,11 @@ def store(conn, rel: str, kind: str, data: dict, arc_version: int) -> None:
                 **{col: split.get(col) for col in C.SPLIT_COLUMNS},
             })
     elif kind == "health":
-        cols = [k for k in C.SCHEMA["health"]["optional"] if k not in ("readiness_factors", "missing_reason")]
+        # `pain` (#57, liste d'objets) exclue comme `readiness_factors`/`missing_reason` :
+        # `health_day` n'a pas de colonne dédiée pour un champ non-scalaire, il reste
+        # accessible via `data_json` (voir `arc_guardrails.build_injury_risk_context`).
+        cols = [k for k in C.SCHEMA["health"]["optional"]
+                if k not in ("readiness_factors", "missing_reason", "pain")]
         _insert(conn, "health_day", {
             "source_path": rel, "arc_version": arc_version, "date": g("date"),
             "morning_check": g("morning_check"), **{k: g(k) for k in cols},

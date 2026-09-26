@@ -124,6 +124,12 @@ BODY_WEIGHT_KG_PLAUSIBLE = (30.0, 200.0)
 # de toute façon un résultat négatif plutôt que de le rejeter ici en amont.
 WEIGHT_POST_TOLERANCE_KG = 1.0
 
+# `health.pain` (#57, revue de code #104, nit) : une liste plus longue sent la
+# faute de saisie (copier-coller, entrées dupliquées) plutôt qu'un vrai
+# inventaire de zones douloureuses distinctes le même jour — avertissement,
+# jamais une erreur (un cas légitime, quoique rare, reste possible).
+PAIN_MAX_ENTRIES = 10
+
 # Colonnes de splits reconnues. `km` et `duration_s` sont obligatoires ; les
 # autres sont facultatives et dans n'importe quel ordre, puisque l'en-tête est
 # déclaré dans la donnée (`splits_cols`).
@@ -249,6 +255,8 @@ SCHEMA = {
             "verdict": _enum(VERDICT),
             "verdict_reason": "str",
             "missing_reason": "obj",
+            # #57 : douleur structurée déclarée le jour du fichier — voir SUBSCHEMA["pain"].
+            "pain": "[pain]",
         },
     },
     "weather": {
@@ -367,6 +375,22 @@ SCHEMA = {
 
 # Sous-schémas des listes d'objets (non utilisables comme `kind` de fichier).
 SUBSCHEMA = {
+    # `health.pain` (#57, drapeau composite de risque de blessure) : douleur
+    # STRUCTURÉE déclarée par l'athlète le jour du fichier (`health.date` fait
+    # foi comme date de l'entrée — pas de `date` propre ici, une entrée de
+    # douleur n'a de sens que rattachée au bilan du jour où elle est écrite).
+    # Champ VOLONTAIREMENT minimal : `location` (texte libre, ex. « genou
+    # droit ») et `score` (0-10, même échelle que `rpe` — sévérité perçue, pas
+    # une mesure clinique). Une liste (pas un objet unique) : plusieurs
+    # douleurs peuvent coexister le même jour (ex. genou ET tendon). Lu par
+    # `scripts/arc_guardrails.py::build_injury_risk_context` — le texte libre
+    # de la prose sous le bloc reste la SEULE description narrative (protocole,
+    # évolution) ; ce champ n'existait pas avant #57, jamais de dette de
+    # backfill (mêmes garanties que `decision`, voir SKILL.md).
+    "pain": {
+        "required": {"location": "str", "score": "pain_score"},
+        "optional": {},
+    },
     "session": {
         "required": {"date": "date", "sport": _enum(SPORTS), "title": "str"},
         "optional": {
@@ -542,6 +566,13 @@ def _check_value(spec: str, value, where: str, errors: list, warnings: list) -> 
     if spec == "rpe":
         if not _is_number(value) or not 0 <= value <= 10:
             fail("un RPE de 0 à 10")
+        return
+    if spec == "pain_score":
+        # `health.pain[].score` (#57) : même échelle 0-10 que `rpe`, mais un type
+        # DÉDIÉ — sévérité de douleur perçue, jamais un effort — pour ne jamais
+        # confondre les deux dans un message d'erreur.
+        if not _is_number(value) or not 0 <= value <= 10:
+            fail("un score de douleur de 0 à 10")
         return
     if spec == "gear_id":
         if not isinstance(value, str) or not value.strip():
@@ -759,6 +790,11 @@ def validate(data: dict) -> tuple:
         _check_time_in_zone(data, errors, warnings)
     if kind == "health" and data.get("verdict") and not data.get("verdict_reason"):
         errors.append("health.verdict_reason : obligatoire dès qu'un verdict est posé")
+    if kind == "health" and isinstance(data.get("pain"), list) and len(data["pain"]) > PAIN_MAX_ENTRIES:
+        warnings.append(
+            f"health.pain : {len(data['pain'])} entrées, plus de {PAIN_MAX_ENTRIES} — "
+            "vérifier qu'il ne s'agit pas d'un doublon plutôt que de zones distinctes"
+        )
     if kind == "activity":
         moving, total = data.get("moving_duration_s"), data.get("duration_s")
         if _is_number(moving) and _is_number(total) and moving > total:

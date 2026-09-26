@@ -1113,6 +1113,22 @@ def api_decision(store: Store, decision_id: str):
     return d
 
 
+def api_injury_risk(store: Store, q: dict) -> dict:
+    """Drapeau composite de risque de blessure (#57) : `/api/injury-risk`.
+
+    Délègue ENTIÈREMENT à `arc_guardrails` (mêmes fonctions que la CLI
+    `injury-risk`, jamais une seconde copie de la logique) — `[injury_risk]`
+    est lu depuis `I.load_config(store.workspace)` plutôt que
+    `store.meta("settings")` (qui ne porte que `arc_index.settings`, pas les
+    sections libres comme `[injury_risk]`)."""
+    today = _today(store)
+    with store.lock:
+        config = I.load_config(store.workspace)
+        gconf = G.injury_risk_settings(config)
+        context = G.build_injury_risk_context(store.conn, config, gconf, today)
+    return G.evaluate_injury_risk(context, gconf)
+
+
 ROUTES = {
     "/api/summary": api_summary, "/api/form": api_form, "/api/load": api_load,
     "/api/health": api_health, "/api/week": api_week, "/api/activities": api_activities,
@@ -1121,6 +1137,7 @@ ROUTES = {
     "/api/decoupling": api_decoupling, "/api/vam": api_vam, "/api/descent": api_descent,
     "/api/durability": api_durability, "/api/files": api_files,
     "/api/climb-segments": api_climb_segments, "/api/decisions": api_decisions,
+    "/api/injury-risk": api_injury_risk,
 }
 
 # ---------------------------------------------------------------------------
