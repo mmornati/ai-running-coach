@@ -59,7 +59,7 @@ Ne jamais réactiver silencieusement un niveau plus strict que celui configuré.
 | `activities/` | Journaux d'entraînement | `YYYY-MM-DD_type.md` (running, trail, strength, indoor_cycling, home_trainer, hiking, elliptical, rest) |
 | `medical/` | Sommeil, HRV, récupération, blessures, météo | `YYYY-MM-DD_health.md`, `YYYY-MM-DD_meteo.md` |
 | `nutrition/` | Journaux nutrition & plans de ravitaillement | `YYYY-MM-DD_nutrition.md` |
-| `planning/` | Plans d'entraînement, objectifs, stratégies de course | `active_objective.md` est la **source de vérité** de l'objectif courant ; `Runner_Profile.md` est le profil de l'athlète. Les deux sont installés depuis `templates/` par `/coach-setup`. |
+| `planning/` | Plans d'entraînement, objectifs, stratégies de course, **décisions tracées** | `active_objective.md` est la **source de vérité** de l'objectif courant ; `Runner_Profile.md` est le profil de l'athlète. Les deux sont installés depuis `templates/` par `/coach-setup`. Une décision (garde-fou, bilan matinal, blessure…) = un fichier `YYYY-MM-DD_decision_<slug>.md`. |
 | `rapports/` | Rapports de synthèse périodiques (propriété du **coach**) | `YYYY-MM-DD_rapport.md` |
 | `resources/` | Base de connaissances (langue des documents) : running, nutrition, santé, récupération | Matériel de référence, citer lors des conseils. **Catalogues produits** (optionnels) : `resources/nutrition/catalogue-produits-*.md` = valeurs nutritionnelles par produit de l'athlète |
 
@@ -69,7 +69,7 @@ Ne jamais réactiver silencieusement un niveau plus strict que celui configuré.
 ### Contrat de données
 
 Tout fichier écrit par un agent dans `activities/`, `medical/`, `nutrition/`,
-`planning/` (semaines, évaluations, plans de course) ou `rapports/` s'ouvre, sous
+`planning/` (semaines, évaluations, plans de course, décisions) ou `rapports/` s'ouvre, sous
 son titre, par **un bloc ```` ```arc ```` de JSON** conforme au skill
 `workspace-data-contract` : clés en anglais, unités SI, mesure absente = clé omise.
 Le texte libre reste en dessous. Valider après écriture avec

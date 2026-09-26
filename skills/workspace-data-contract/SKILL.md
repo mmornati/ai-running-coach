@@ -83,6 +83,7 @@ inattendu pour le dossier) se corrigent aussi.
 | `report` | `rapports/YYYY-MM-DD_rapport.md`, `rapports/YYYY-MM-DD_comparaison_<lieu>.md` | coach |
 | `course_eval` | `planning/YYYY-MM-DD_evaluation_parcours_<lieu>.md` | skill `gpx-analysis` |
 | `race_plan` | plan de course dans `planning/` | course-strategist |
+| `decision` | `planning/YYYY-MM-DD_decision_<slug>.md` | coach, medical (garde-fous, bilan matinal, blessure) |
 
 `planning/Runner_Profile.md` et `planning/active_objective.md` **n'ont pas de
 bloc** : l'athlète les édite à la main. Remplissez leurs puces
@@ -558,6 +559,174 @@ Reprend la sortie `--json` de `analyze_gpx.py` (skill `gpx-analysis`).
   "aid_stations": [{"km": 14.5, "name": "Mont-Saint-Aubert", "services": ["eau", "solide"], "cutoff": "10:30"}],
   "water_points": [{"km": 22.0, "source": "osm_drinking_water", "name": "Fontaine du village"}],
   "gear": ["frontale", "couverture de survie", "gobelet"]
+}
+```
+
+### `decision`
+
+Traçabilité d'un ajustement du coach (#54, épopée #22) : ce qui a changé, ce qui
+l'a justifié, avec quelle donnée à l'appui — pour que « pourquoi cette séance a
+changé » se lise dans un fichier plutôt que dans la prose d'une conversation
+disparue. Écrit par `coach` (garde-fous #52/#53, bilan matinal, météo,
+changement de plan de course) et par `medical` (blessure, disponibilité) dès
+qu'une séance est proposée, allégée, annulée ou déplacée — jamais pour une
+séance qui se déroule comme prévu.
+
+**Un fichier par décision** : `planning/AAAA-MM-JJ_decision_<slug>.md`, `<slug>`
+un court résumé en kebab-case du sujet (ex. `hrv-hold`, `annulation-cotes`).
+Plusieurs décisions le même jour → plusieurs fichiers, un `<slug>` différent
+pour chacun. Choix retenu plutôt qu'un tableau `decisions` dans le fichier
+semaine :
+
+- **une lecture reste indépendante d'une autre** — un backfill (jamais
+  nécessaire ici, voir plus bas), une réindexation partielle ou un lien direct
+  (`sources`, resume #56) n'ont pas besoin de charger ni de réécrire tout le
+  fichier semaine ;
+- **la cardinalité ne correspond pas** : une décision peut concerner une séance
+  qui n'existe dans AUCUN fichier semaine (annulation d'un bilan matinal avant
+  toute planification, ajustement d'un plan de course) — la forcer dans
+  `week.sessions` demanderait une séance fictive ou un schéma à deux formes ;
+  un fichier séparé n'a pas cette contrainte, `session_ref` (optionnel)
+  suffit à pointer vers une séance existante quand il y en a une ;
+- **cohérent avec le reste du contrat** : chaque `kind` déjà présent est
+  « un fichier, un objet » (`report`, `course_eval`…) — aucun autre type
+  n'imbrique une collection versionnée séparément dans un fichier qu'un autre
+  agent réécrit par ailleurs (le fichier semaine change à chaque sync/statut de
+  séance, ce qui aurait fait courir un risque de conflit d'écriture inutile) ;
+- coût accepté : une décision qui modifie une séance planifiée cite cette
+  séance par référence (`session_ref`) plutôt que par un lien de base de
+  données — c'est `scripts/arc_index.py decisions` qui assemble la vue, pas le
+  Markdown.
+
+| Clé | Type | Notes |
+|---|---|---|
+| **`date`** | date | jour auquel la décision s'applique (= date du nom de fichier) |
+| **`created_at`** | date-heure **avec fuseau obligatoire** | horodatage d'écriture (`Z` ou `+HH:MM`, jamais naïf) — départage plusieurs décisions du même `date`, voir note ci-dessous |
+| **`trigger`** | `morning_check` `guardrail` `athlete_request` `medical` `weather` `race` `other` | ce qui a déclenché la décision |
+| **`summary`** | texte | une phrase, dans la langue des documents — c'est elle qu'affichent l'encart « Pourquoi aujourd'hui ? » (#55) et la ligne « Pourquoi » du `resume` (#56) |
+| **`outcome`** | `applied` `proposed` `rejected_by_athlete` `superseded` | ce qu'il est advenu de la décision |
+| `inputs` | objet | valeurs clés qui l'ont justifiée, ex. `{"hrv_personal_status": "sous", "acwr_projected": 1.42}` — clés libres, en anglais, SI |
+| `rule_ids` | liste | `rule_id` de `scripts/arc_guardrails.py` concernés (`r1_acwr_projected` … `r7_consecutive_quality`, voir `RULE_IDS`) — format `rN_nom_de_regle` validé, pas la liste vivante des règles (voir note ci-dessous) |
+| `sources` | liste | chemins **relatifs au workspace** ayant justifié la décision, ex. `resources/running/acwr.md`, `medical/2026-09-20_health.md` — voir « chemins relatifs au workspace » ci-dessous pour ce qui est refusé |
+| `before` | objet | ce qui change dans la séance concernée, état AVANT — voir ci-dessous |
+| `after` | objet | même chose, état APRÈS — pour une annulation sans remplacement, écrivez `"after": {"status": "cancelled"}` explicitement (jamais une clé absente pour dire « annulé » : l'absence de `after` veut dire « pas encore de remplacement connu », pas « annulé ») |
+| `session_ref` | objet | **`week`** (chemin du fichier semaine), **`date`** (date de la séance) — quand la décision touche une séance déjà planifiée |
+| `garmin_workout_id` | entier | si un push Garmin a changé suite à la décision |
+| `supersedes` | texte | chemin **relatif au workspace** de la décision que celle-ci remplace — voir « Remplacer une décision » ci-dessous |
+
+`before`/`after` ne sont **pas** un objet `session` complet (voir `week`
+ci-dessus) : seuls les champs qui **changent** sont recopiés, tous facultatifs
+— `date`, `sport`, `title`, `intensity`, `planned_duration_s`, `status`. L'état
+COURANT complet de la séance reste dans le fichier semaine (`session_ref` pour
+le retrouver) ; dupliquer ici les champs inchangés créerait deux sources de
+vérité pour la même valeur.
+
+**Chemins relatifs au workspace** (`sources`, `supersedes`, `session_ref.week`) :
+un simple chemin POSIX depuis la racine du workspace, ex.
+`medical/2026-09-20_health.md`. Sont **refusés** : une URL (`https://…`,
+`mailto:…`, `file:…` — tout `:` dans la valeur), un chemin Windows
+(`C:\Users\...`), un antislash comme séparateur, un chemin qui commence par
+`~` (répertoire personnel) ou par `/` (absolu), et tout segment vide, `.` ou
+`..` (`resources//x.md`, ou une remontée du type `..` répétée) — jamais de
+remontée hors du workspace ni de racine déguisée.
+
+**`rule_ids` n'est pas vérifié contre la liste vivante des règles.**
+`scripts/arc_contract.py` ne peut pas importer `scripts/arc_guardrails.py`
+(qui importe déjà `arc_index`, lui-même dépendant de `arc_contract` : un
+import dans l'autre sens créerait un cycle) — la forme `rN_nom_de_regle` est
+donc validée par un **motif**, jamais contre `arc_guardrails.RULE_IDS`. Un
+`rule_id` qui ne correspond à AUCUNE règle connue (faute de frappe, règle
+retirée) n'est donc pas rejeté par le contrat lui-même ; recopiez le `rule_id`
+exact rendu par `scripts/arc_guardrails.py` (jamais un libellé inventé). Un
+test dédié de la suite du contrat vérifie que chaque `arc_guardrails.RULE_IDS`
+correspond bien au motif `arc_contract.RULE_ID_RE`, pour que les deux ne
+divergent jamais silencieusement.
+
+**`created_at` exige un fuseau explicite, et ne s'écarte pas de `date`.** Une
+date-heure NAÏVE (sans `Z` ni `+HH:MM`) est rejetée : le journal des décisions
+(`scripts/arc_index.py decisions`) trie plusieurs décisions du même jour par
+`created_at`, et comparer des horodatages sans savoir de quel fuseau ils
+viennent donnerait un ordre faux dès que deux décisions sont écrites depuis des
+fuseaux différents (l'index normalise en UTC pour ce tri, voir
+`arc_contract.decision_created_at_utc`). Au-delà d'un jour d'avance sur `date`
+(une décision du 20 septembre datée du 25), le validateur la rejette aussi —
+sentant la faute de frappe plutôt qu'un cas légitime ; cette comparaison se
+fait dans le fuseau PROPRE de `created_at`, tel qu'écrit, pas en UTC. Une
+décision écrite la veille au soir pour le lendemain (`created_at` antérieur à
+`date`) reste normale, sans aucune borne basse.
+
+**Jamais de dette de backfill.** `decision` est un type NEUF : aucun fichier
+écrit avant #54 ne peut en porter un. `scripts/arc_index.py backfill-plan`
+l'exclut explicitement, au même titre que `Runner_Profile.md`/
+`active_objective.md` — son absence pour une date donnée n'est jamais un
+manque à signaler, seulement l'absence de toute décision ce jour-là.
+
+**Ordre d'écriture.** Quand la décision modifie une séance planifiée : réécrire
+d'abord le fichier semaine (`week`, nouvel état de la séance), PUIS écrire le
+fichier `decision` qui la référence par `session_ref` — jamais l'inverse, pour
+qu'une décision publiée ne pointe jamais vers une séance qui ne reflète pas
+encore le changement. Valider les DEUX fichiers ensuite :
+
+```bash
+python3 scripts/arc_index.py --validate planning/Semaine_2026-09-21.md planning/2026-09-22_decision_hrv-hold.md
+```
+
+**Remplacer une décision (`supersedes`).** Une décision ne se réécrit jamais
+sur place une fois `outcome` posé à autre chose que `proposed` — un bloc
+`decision` est un instantané daté (`created_at`), pas un document qu'on
+corrige. Pour une décision qui change d'avis (ré-évaluation, nouvelle donnée) :
+
+1. écrire un NOUVEAU fichier `decision` avec `supersedes` pointant vers le
+   chemin de l'ancien ;
+2. puis rouvrir l'ANCIEN fichier et poser son `outcome` à `"superseded"`
+   (le seul champ qu'on réécrit sur un fichier `decision` déjà publié).
+
+`scripts/arc_index.py decisions --active` exclut alors `superseded` (et
+`rejected_by_athlete`) du journal courant, tout en gardant les deux fichiers
+pour l'historique complet.
+
+Bilan matinal qui bascule le plan en repos (garde-fou santé, #53) :
+
+```arc
+{
+  "arc": 1, "kind": "decision", "date": "2026-09-22", "created_at": "2026-09-22T07:10:00+02:00",
+  "trigger": "morning_check", "summary": "HRV sous la référence personnelle : séance de qualité reportée en récupération.",
+  "outcome": "applied",
+  "inputs": {"hrv_personal_status": "sous", "readiness_score": 52},
+  "sources": ["medical/2026-09-22_health.md"],
+  "before": {"date": "2026-09-22", "sport": "trail", "title": "Côtes 8 × 90 s", "intensity": "vo2max", "planned_duration_s": 4200},
+  "after": {"intensity": "recovery", "planned_duration_s": 2400, "title": "Footing de récupération 40 min"},
+  "session_ref": {"week": "planning/Semaine_2026-09-21.md", "date": "2026-09-22"}
+}
+```
+
+Garde-fou `block` (#53) qui annule une séance de qualité proposée le lendemain
+d'un verdict rouge :
+
+```arc
+{
+  "arc": 1, "kind": "decision", "date": "2026-09-24", "created_at": "2026-09-23T19:40:00+02:00",
+  "trigger": "guardrail", "summary": "Séance de qualité bloquée : verdict rouge la veille (r5_quality_after_red).",
+  "outcome": "applied", "rule_ids": ["r5_quality_after_red"],
+  "inputs": {"verdict_previous_day": "red"},
+  "sources": ["medical/2026-09-23_health.md"],
+  "before": {"date": "2026-09-24", "sport": "trail", "title": "Seuil 3 × 10 min", "intensity": "threshold"},
+  "after": {"intensity": "recovery", "title": "Footing de récupération 35 min"},
+  "session_ref": {"week": "planning/Semaine_2026-09-21.md", "date": "2026-09-24"}
+}
+```
+
+Décision qui en remplace une autre (`supersedes`) — la précédente restait
+`"proposed"`, une nouvelle donnée arrive avant qu'elle soit appliquée :
+
+```arc
+{
+  "arc": 1, "kind": "decision", "date": "2026-09-24", "created_at": "2026-09-24T06:30:00+02:00",
+  "trigger": "medical", "summary": "Douleur signalée : séance de qualité annulée plutôt qu'allégée.",
+  "outcome": "applied", "supersedes": "planning/2026-09-23_decision_allegement-qualite.md",
+  "sources": ["medical/2026-09-24_health.md"],
+  "after": {"status": "cancelled"},
+  "session_ref": {"week": "planning/Semaine_2026-09-21.md", "date": "2026-09-24"}
 }
 ```
 

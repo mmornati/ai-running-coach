@@ -9,6 +9,7 @@ import io
 import json
 import shutil
 import sqlite3
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -993,7 +994,7 @@ class TestGearSweatFuelIndex(Workspace):
         self.assertIsNone(rate)   # 4.5 l/h > SWEAT_RATE_PLAUSIBLE_L_H[1] (4.0)
 
     def test_schema_version_bumped_forces_rebuild(self):
-        self.assertEqual(I.SCHEMA_VERSION, 17)
+        self.assertEqual(I.SCHEMA_VERSION, 19)
 
     def test_real_v4_database_is_rebuilt_at_current_version(self):
         """Pas seulement « la constante vaut N » : une vraie base laissée par une
@@ -1192,6 +1193,220 @@ class TestFuelingCli(Workspace):
         result = I.fueling_trend(self.conn, date(2026, 9, 23))
         self.assertEqual(result["long_runs"], 1)
         self.assertEqual(result["max_carbs_per_hour_g"], 50.0)
+
+
+class TestDecisionIndex(Workspace):
+    """#54 : type `decision` — classification par nom de fichier, table dédiée
+    `decision`/`decision_rule`, tri, filtres et exclusion du backfill."""
+
+    def decision_block(self, date_, created_at, **extra):
+        payload = {
+            "arc": 1, "kind": "decision", "date": date_, "created_at": created_at,
+            "trigger": "guardrail", "summary": "Séance allégée.", "outcome": "applied",
+            **extra,
+        }
+        return arc(json.dumps(payload, ensure_ascii=False))
+
+    def test_classified_by_filename(self):
+        self.write("planning/2026-09-22_decision_hrv-hold.md",
+                   self.decision_block("2026-09-22", "2026-09-22T07:10:00+02:00"))
+        self.index()
+        self.assertEqual(self.status("planning/2026-09-22_decision_hrv-hold.md"), ("ok", 1))
+        self.assertEqual(self.conn.execute("SELECT COUNT(*) FROM decision").fetchone()[0], 1)
+
+    def test_stores_full_shape_and_rule_link_table(self):
+        self.write("planning/2026-09-24_decision_bloc-qualite.md", self.decision_block(
+            "2026-09-24", "2026-09-23T19:40:00+02:00",
+            rule_ids=["r5_quality_after_red"], sources=["medical/2026-09-23_health.md"],
+            before={"intensity": "threshold"}, after={"intensity": "recovery"},
+            session_ref={"week": "planning/Semaine_2026-09-21.md", "date": "2026-09-24"},
+            garmin_workout_id=445566,
+        ))
+        self.index()
+        row = dict(self.conn.execute("SELECT * FROM decision").fetchone())
+        self.assertEqual(row["date"], "2026-09-24")
+        self.assertEqual(row["trigger"], "guardrail")
+        self.assertEqual(row["garmin_workout_id"], 445566)
+        self.assertEqual(json.loads(row["rule_ids_json"]), ["r5_quality_after_red"])
+        self.assertEqual(json.loads(row["before_json"]), {"intensity": "threshold"})
+        self.assertEqual(json.loads(row["session_ref_json"])["week"], "planning/Semaine_2026-09-21.md")
+        rule_rows = self.conn.execute("SELECT rule_id FROM decision_rule").fetchall()
+        self.assertEqual([r[0] for r in rule_rows], ["r5_quality_after_red"])
+
+    def test_never_flagged_as_backfill_debt_even_when_invalid(self):
+        """Un fichier `_decision_` sans bloc valide reste hors contrat, mais n'est
+        JAMAIS une dette de backfill (#54 : type neuf, aucun historique à reprendre)."""
+        self.write("planning/2026-09-25_decision_incomplete.md", "# Décision\n\nTexte libre, pas de bloc.\n")
+        self.index()
+        paths = [item["path"] for item in I.backfill_items(self.conn)]
+        self.assertNotIn("planning/2026-09-25_decision_incomplete.md", paths)
+
+    def test_multiple_decisions_same_day_ordered_by_created_at(self):
+        self.write("planning/2026-09-22_decision_morning.md",
+                   self.decision_block("2026-09-22", "2026-09-22T07:10:00+02:00", summary="Premier."))
+        self.write("planning/2026-09-22_decision_evening.md",
+                   self.decision_block("2026-09-22", "2026-09-22T18:30:00+02:00", summary="Second."))
+        self.index()
+        result = I.decisions_query(self.conn)
+        self.assertEqual([d["summary"] for d in result], ["Second.", "Premier."])
+
+    def test_decisions_query_filters_by_date(self):
+        self.write("planning/2026-09-22_decision_a.md",
+                   self.decision_block("2026-09-22", "2026-09-22T07:10:00+02:00"))
+        self.write("planning/2026-09-23_decision_b.md",
+                   self.decision_block("2026-09-23", "2026-09-23T07:10:00+02:00"))
+        self.index()
+        result = I.decisions_query(self.conn, on_date="2026-09-23")
+        self.assertEqual(len(result), 1)
+        self.assertEqual(result[0]["date"], "2026-09-23")
+
+    def test_decisions_query_filters_by_trigger(self):
+        self.write("planning/2026-09-22_decision_a.md",
+                   self.decision_block("2026-09-22", "2026-09-22T07:10:00+02:00", trigger="morning_check"))
+        self.write("planning/2026-09-22_decision_b.md",
+                   self.decision_block("2026-09-22", "2026-09-22T08:00:00+02:00", trigger="guardrail"))
+        self.index()
+        result = I.decisions_query(self.conn, trigger="guardrail")
+        self.assertEqual(len(result), 1)
+        self.assertEqual(result[0]["trigger"], "guardrail")
+
+    def test_decisions_query_days_window(self):
+        self.write("planning/2026-09-10_decision_old.md",
+                   self.decision_block("2026-09-10", "2026-09-10T07:10:00+02:00"))
+        self.write("planning/2026-09-22_decision_recent.md",
+                   self.decision_block("2026-09-22", "2026-09-22T07:10:00+02:00"))
+        self.index()
+        result = I.decisions_query(self.conn, today=date(2026, 9, 23), days=7)
+        self.assertEqual(len(result), 1)
+        self.assertEqual(result[0]["date"], "2026-09-22")
+
+    def test_decisions_query_with_no_filter_returns_all(self):
+        self.write("planning/2026-09-10_decision_old.md",
+                   self.decision_block("2026-09-10", "2026-09-10T07:10:00+02:00"))
+        self.write("planning/2026-09-22_decision_recent.md",
+                   self.decision_block("2026-09-22", "2026-09-22T07:10:00+02:00"))
+        self.index()
+        self.assertEqual(len(I.decisions_query(self.conn)), 2)
+
+    def test_removed_file_purges_decision_rows(self):
+        path = "planning/2026-09-22_decision_hrv-hold.md"
+        self.write(path, self.decision_block(
+            "2026-09-22", "2026-09-22T07:10:00+02:00", rule_ids=["r1_acwr_projected"]))
+        self.index()
+        (self.ws / path).unlink()
+        self.index()
+        self.assertEqual(self.conn.execute("SELECT COUNT(*) FROM decision").fetchone()[0], 0)
+        self.assertEqual(self.conn.execute("SELECT COUNT(*) FROM decision_rule").fetchone()[0], 0)
+
+    # -- #100, revue de code -------------------------------------------------
+
+    def test_invalid_block_is_never_stored_as_a_ghost_decision(self):
+        """Un `trigger` invalide (bloc rejeté par le contrat) ne doit JAMAIS finir
+        en ligne `decision` — même partiellement/à NULL : `decision` n'a aucun
+        format hérité légitime, contrairement à `activity`/`health`."""
+        self.write("planning/2026-09-22_decision_bad-trigger.md", arc(
+            '{"arc": 1, "kind": "decision", "date": "2026-09-22", '
+            '"created_at": "2026-09-22T07:10:00+02:00", "trigger": "nope", '
+            '"summary": "x", "outcome": "applied"}'))
+        self.index()
+        self.assertEqual(self.status("planning/2026-09-22_decision_bad-trigger.md")[0], "invalid")
+        self.assertEqual(self.conn.execute("SELECT COUNT(*) FROM decision").fetchone()[0], 0)
+        self.assertEqual(I.decisions_query(self.conn), [])
+
+    def test_ordering_correct_across_timezone_offsets(self):
+        """#100, revue de code : `A` (07:00+02:00 = 05:00 UTC) est en fait
+        ANTÉRIEUR à `B` (06:00Z = 06:00 UTC) — un tri texte sur `created_at`
+        mettrait `A` en tête (« 07:00... » > « 06:00Z » lexicalement), un tri
+        sur `created_at_utc` doit mettre `B` en tête."""
+        self.write("planning/2026-09-22_decision_a.md", self.decision_block(
+            "2026-09-22", "2026-09-22T07:00:00+02:00", summary="A (05:00 UTC).", outcome="superseded"))
+        self.write("planning/2026-09-22_decision_b.md", self.decision_block(
+            "2026-09-22", "2026-09-22T06:00:00Z", summary="B (06:00 UTC)."))
+        self.index()
+        result = I.decisions_query(self.conn)
+        self.assertEqual([d["summary"] for d in result], ["B (06:00 UTC).", "A (05:00 UTC)."])
+
+    def test_stores_supersedes(self):
+        self.write("planning/2026-09-24_decision_new.md", self.decision_block(
+            "2026-09-24", "2026-09-24T06:30:00+02:00",
+            supersedes="planning/2026-09-23_decision_old.md"))
+        self.index()
+        row = dict(self.conn.execute("SELECT supersedes FROM decision").fetchone())
+        self.assertEqual(row["supersedes"], "planning/2026-09-23_decision_old.md")
+
+    def test_decisions_query_active_excludes_superseded_and_rejected(self):
+        self.write("planning/2026-09-20_decision_old.md",
+                   self.decision_block("2026-09-20", "2026-09-20T07:00:00+02:00",
+                                        summary="Remplacée.", outcome="superseded"))
+        self.write("planning/2026-09-21_decision_rejected.md",
+                   self.decision_block("2026-09-21", "2026-09-21T07:00:00+02:00",
+                                        summary="Refusée.", outcome="rejected_by_athlete"))
+        self.write("planning/2026-09-22_decision_current.md",
+                   self.decision_block("2026-09-22", "2026-09-22T07:00:00+02:00",
+                                        summary="Courante.", outcome="applied"))
+        self.index()
+        result = I.decisions_query(self.conn, active=True)
+        self.assertEqual([d["summary"] for d in result], ["Courante."])
+        self.assertEqual(len(I.decisions_query(self.conn)), 3)
+
+    def test_decisions_query_filters_by_outcome(self):
+        self.write("planning/2026-09-22_decision_a.md",
+                   self.decision_block("2026-09-22", "2026-09-22T07:00:00+02:00", outcome="proposed"))
+        self.write("planning/2026-09-22_decision_b.md",
+                   self.decision_block("2026-09-22", "2026-09-22T08:00:00+02:00", outcome="applied"))
+        self.index()
+        result = I.decisions_query(self.conn, outcome="proposed")
+        self.assertEqual(len(result), 1)
+        self.assertEqual(result[0]["outcome"], "proposed")
+
+    def test_classify_does_not_match_substring_only(self):
+        """L'ancien motif (`"_decision_" in name`) aurait classé n'importe quel
+        fichier contenant ce segment n'importe où — l'ancrage exige le format
+        exact `AAAA-MM-JJ_decision_<slug>.md`."""
+        self.assertIsNone(I.classify("planning/journal_decision_generale.md"))
+        self.assertIsNone(I.classify("planning/decision_2026-09-22.md"))
+        self.assertEqual(I.classify("planning/2026-09-22_decision_hrv-hold.md"), "decision")
+
+    def test_validate_file_warns_on_filename_date_mismatch(self):
+        path = self.ws / "planning/2026-09-22_decision_hrv-hold.md"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(self.decision_block("2026-09-23", "2026-09-23T07:10:00+02:00"), encoding="utf-8")
+        ok, errors, warnings = I.validate_file(path)
+        self.assertTrue(ok, errors)
+        self.assertTrue(any("2026-09-22" in w and "2026-09-23" in w for w in warnings), warnings)
+
+    def test_validate_file_no_warning_when_dates_match(self):
+        path = self.ws / "planning/2026-09-22_decision_hrv-hold.md"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(self.decision_block("2026-09-22", "2026-09-22T07:10:00+02:00"), encoding="utf-8")
+        ok, errors, warnings = I.validate_file(path)
+        self.assertTrue(ok, errors)
+        self.assertEqual(warnings, [])
+
+
+class TestDecisionCli(Workspace):
+    """#100, revue de code : garde-fous CLI de `arc_index.py decisions` — refus
+    explicite d'une combinaison ambiguë plutôt qu'une précédence silencieuse."""
+
+    def run_cli(self, *args):
+        cmd = [sys.executable, str(REPO / "scripts/arc_index.py"), "decisions",
+               "--workspace", str(self.ws), "--memory", *args]
+        return subprocess.run(cmd, capture_output=True, text=True)
+
+    def test_date_and_days_together_is_rejected(self):
+        result = self.run_cli("--date", "2026-09-22", "--days", "7")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("incompatibles", result.stderr)
+
+    def test_days_below_one_is_rejected(self):
+        result = self.run_cli("--days", "0")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("--days", result.stderr)
+
+    def test_days_one_is_accepted(self):
+        result = self.run_cli("--days", "1", "--today", "2026-09-22")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(json.loads(result.stdout), [])
 
 
 if __name__ == "__main__":

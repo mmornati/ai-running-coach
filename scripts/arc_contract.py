@@ -27,7 +27,8 @@ from __future__ import annotations
 import json
 import re
 import unicodedata
-from datetime import date, datetime
+from datetime import date, datetime, timezone
+from typing import Optional
 
 ARC_VERSION = 1
 
@@ -57,6 +58,23 @@ SESSION_STATUS = ("planned", "done", "missed", "moved", "cancelled")
 REPORT_TYPE = ("weekly", "monthly", "comparison", "race", "adhoc")
 COURSE_VERDICT = ("compatible", "partial", "incompatible")
 WATER_SOURCE = ("officiel", "osm_drinking_water", "osm_spring", "osm_cafe")
+
+# `decision` (#54) : traçabilité d'un ajustement du coach — déclencheur, entrées
+# qui l'ont justifié, règles de garde-fous concernées (#52), avant/après de la
+# séance touchée, issue. `DECISION_TRIGGER`/`DECISION_OUTCOME` ci-dessous.
+DECISION_TRIGGER = (
+    "morning_check", "guardrail", "athlete_request", "medical", "weather", "race", "other",
+)
+DECISION_OUTCOME = ("applied", "proposed", "rejected_by_athlete", "superseded")
+
+# `decision.rule_ids` référence les `rule_id` de `scripts/arc_guardrails.py`
+# (r1_acwr_projected … r7_consecutive_quality). Ce module ne les importe PAS :
+# `arc_guardrails` importe déjà `arc_index`, qui importe ce module — un import
+# dans l'autre sens créerait un cycle. La forme `rN_nom_de_regle` est donc
+# validée par un PATTERN, jamais contre la liste vivante des règles connues
+# (voir `skills/workspace-data-contract/SKILL.md`, section `decision`, pour le
+# renvoi explicite vers `arc_guardrails.RULE_IDS`).
+RULE_ID_RE = re.compile(r"^r\d+_[a-z][a-z0-9_]*$")
 
 # Matériel, sudation, glucides pendant l'effort (#39 — champs consommés par #40
 # kilométrage chaussures, #41 KPI glucides/h et taux de sudation).
@@ -316,6 +334,35 @@ SCHEMA = {
             "gear": "list",
         },
     },
+    "decision": {
+        "required": {
+            "date": "date",
+            # `datetime_tz`, pas le `datetime` générique des autres kinds (#100,
+            # revue de code) : un `created_at` NAÏF ne peut pas être comparé entre
+            # décisions écrites depuis des fuseaux différents (le tri du journal,
+            # `arc_index.decisions_query`, compare des instants absolus — voir
+            # `created_at_utc` plus bas). Un fuseau explicite (`Z` ou `+HH:MM`) est
+            # donc obligatoire ; une date-heure naïve est REJETÉE, pas devinée.
+            "created_at": "datetime_tz",
+            "trigger": _enum(DECISION_TRIGGER),
+            "summary": "str",
+            "outcome": _enum(DECISION_OUTCOME),
+        },
+        "optional": {
+            "inputs": "obj",
+            "rule_ids": "rule_ids",
+            "sources": "source_paths",
+            "before": "{session_change}",
+            "after": "{session_change}",
+            "session_ref": "{session_ref}",
+            "garmin_workout_id": "int+",
+            # `decision.supersedes` (#100, revue de code) : chemin de la décision
+            # REMPLACÉE par celle-ci — voir SKILL.md pour le protocole (écrire la
+            # nouvelle décision avec `supersedes`, puis remettre `outcome` de
+            # l'ancienne à `superseded`). Même validation de chemin que `sources`.
+            "supersedes": "workspace_path",
+        },
+    },
 }
 
 # Sous-schémas des listes d'objets (non utilisables comme `kind` de fichier).
@@ -342,6 +389,29 @@ SUBSCHEMA = {
         "required": {"km": "num+", "source": _enum(WATER_SOURCE)},
         "optional": {"name": "str"},
     },
+    # `decision.before`/`decision.after` (#54) : instantané PARTIEL d'une séance —
+    # tous les champs sont facultatifs (une annulation ne change que `status`, un
+    # simple allègement ne change que `intensity`/`planned_duration_s`…). Jamais
+    # un objet `session` complet du fichier semaine : seuls les champs qui
+    # CHANGENT ont à être recopiés ici, le reste se lit dans `session_ref`.
+    "session_change": {
+        "required": {},
+        "optional": {
+            "date": "date",
+            "sport": _enum(SPORTS),
+            "title": "str",
+            "intensity": _enum(INTENSITY),
+            "planned_duration_s": "num+",
+            "status": _enum(SESSION_STATUS),
+        },
+    },
+    # `decision.session_ref` (#54) : pointeur vers la séance du fichier semaine
+    # que la décision modifie — le fichier `week` reste la source de vérité de
+    # l'état COURANT de la séance, cette référence ne fait que la retrouver.
+    "session_ref": {
+        "required": {"week": "workspace_path", "date": "date"},
+        "optional": {},
+    },
 }
 
 KINDS = tuple(SCHEMA)
@@ -356,6 +426,7 @@ KIND_FOLDERS = {
     "report": "rapports",
     "course_eval": "planning",
     "race_plan": "planning",
+    "decision": "planning",
 }
 
 # ---------------------------------------------------------------------------
@@ -431,6 +502,15 @@ def _check_value(spec: str, value, where: str, errors: list, warnings: list) -> 
                 continue
             _check_object(sub, item, f"{where}[{i}]", errors, warnings)
         return
+    if spec.startswith("{") and spec.endswith("}"):
+        # Sous-objet UNIQUE (par opposition à `[kind]` ci-dessus, une liste) —
+        # `decision.before`/`after`/`session_ref` (#54).
+        sub = SUBSCHEMA[spec[1:-1]]
+        if not isinstance(value, dict):
+            fail("un objet")
+            return
+        _check_object(sub, value, where, errors, warnings)
+        return
     if spec in ("int", "int+"):
         if not isinstance(value, int) or isinstance(value, bool):
             fail("un entier")
@@ -483,6 +563,41 @@ def _check_value(spec: str, value, where: str, errors: list, warnings: list) -> 
         if not _is_number(value) or not lo <= value <= hi:
             fail(f"un poids en kg ({lo:g}-{hi:g})")
         return
+    if spec == "rule_ids":
+        # `decision.rule_ids` (#54) : identifiants de `arc_guardrails.RULE_IDS`,
+        # au format `rN_nom_de_regle`. Validé par PATTERN, pas contre la liste
+        # vivante des règles connues (voir la note au-dessus de `RULE_ID_RE`) —
+        # une règle future (`r8_...`) ou retirée n'invalide donc pas un bloc
+        # `decision` déjà écrit.
+        if not isinstance(value, list):
+            fail("une liste d'identifiants de règle (arc_guardrails.RULE_IDS)")
+            return
+        for i, item in enumerate(value):
+            if not isinstance(item, str) or not RULE_ID_RE.match(item):
+                errors.append(
+                    f"{where}[{i}] : identifiant de règle attendu au format rN_nom_de_regle, "
+                    f"{json.dumps(item, ensure_ascii=False)} trouvé"
+                )
+        return
+    if spec == "source_paths":
+        # `decision.sources` (#54) : liste de chemins relatifs au workspace —
+        # voir `_invalid_workspace_path_reason` pour ce qui est refusé.
+        if not isinstance(value, list):
+            fail("une liste de chemins relatifs au workspace")
+            return
+        for i, item in enumerate(value):
+            reason = _invalid_workspace_path_reason(item)
+            if reason:
+                errors.append(f"{where}[{i}] : {reason} ({json.dumps(item, ensure_ascii=False)})")
+        return
+    if spec == "workspace_path":
+        # `decision.supersedes`, `decision.session_ref.week` (#54/#100) : UN SEUL
+        # chemin relatif au workspace — même validation que chaque élément de
+        # `source_paths` ci-dessus, voir `_invalid_workspace_path_reason`.
+        reason = _invalid_workspace_path_reason(value)
+        if reason:
+            errors.append(f"{where} : {reason} ({json.dumps(value, ensure_ascii=False)})")
+        return
     if spec == "str":
         if not isinstance(value, str) or not value.strip():
             fail("une chaîne non vide")
@@ -517,7 +632,48 @@ def _check_value(spec: str, value, where: str, errors: list, warnings: list) -> 
         except ValueError:
             fail("une date-heure ISO 8601")
         return
+    if spec == "datetime_tz":
+        # `decision.created_at` (#100, revue de code) : fuseau OBLIGATOIRE, une
+        # date-heure naïve est REJETÉE (pas de fuseau deviné) — voir la note dans
+        # `SCHEMA["decision"]`.
+        if not isinstance(value, str):
+            fail("une date-heure ISO 8601 avec fuseau (Z ou +HH:MM)")
+            return
+        try:
+            parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+        except ValueError:
+            fail("une date-heure ISO 8601 avec fuseau (Z ou +HH:MM)")
+            return
+        if parsed.tzinfo is None:
+            fail("une date-heure avec fuseau explicite (Z ou +HH:MM) — une date-heure naïve "
+                 "ne peut pas être comparée entre décisions écrites depuis des fuseaux différents")
+        return
     raise AssertionError(f"type de schéma inconnu : {spec}")   # erreur de ce module
+
+
+# Chemin relatif au workspace (#54, durci #100 revue de code) : ni URL
+# (`scheme://…`, `mailto:…`), ni chemin Windows (`C:\…`), ni antislash (jamais
+# un séparateur valide dans ce contrat, y compris en préfixe d'un chemin
+# Windows relatif), ni `~` (répertoire personnel), ni segment vide/`.`/`..`
+# (racine absolue déguisée ou remontée hors du workspace). Un simple test
+# `"://" in item` ou `item.startswith("/")` (première version, #54) laissait
+# passer `C:\Users\x.md`, `~/secret.md`, `mailto:a@b`, `resources//x.md` — tous
+# refusés ici. Partagé par `source_paths` (liste) et `workspace_path` (un seul
+# chemin : `supersedes`, `session_ref.week`).
+def _invalid_workspace_path_reason(value) -> Optional[str]:
+    if not isinstance(value, str) or not value.strip():
+        return "chemin non vide attendu"
+    if "\\" in value:
+        return "antislash interdit (jamais un séparateur valide dans ce contrat)"
+    if ":" in value:
+        return "« : » interdit (pas d'URL comme mailto:/file:, pas de lettre de lecteur Windows)"
+    if value.startswith("~"):
+        return "chemin relatif au workspace attendu (pas de `~`)"
+    if value.startswith("/"):
+        return "chemin relatif au workspace attendu (pas de chemin absolu)"
+    if any(segment in ("", ".", "..") for segment in value.split("/")):
+        return "aucun segment vide, `.` ou `..` autorisé (pas de remontée hors du workspace)"
+    return None
 
 
 def _check_object(schema: dict, data: dict, where: str, errors: list, warnings: list) -> None:
@@ -617,7 +773,65 @@ def validate(data: dict) -> tuple:
                 f"activity.weight_post_kg : supérieur au poids avant effort de plus de "
                 f"{WEIGHT_POST_TOLERANCE_KG:g} kg — pesée à vérifier"
             )
+    if kind == "decision":
+        _check_decision_created_at(data, errors)
     return errors, warnings
+
+
+# `created_at` (horodatage d'écriture) ne doit pas s'écarter dans le futur, au-delà
+# d'une marge raisonnable, de `date` (le jour auquel la décision s'applique) : une
+# décision du 20 septembre datée du 25 sent la faute de frappe de date, pas un cas
+# légitime (une décision peut en revanche être écrite la VEILLE au soir — bilan du
+# lendemain préparé à l'avance — donc `created_at` antérieur à `date` reste normal,
+# aucune borne basse).
+#
+# Comparaison faite dans le FUSEAU PROPRE de `created_at`, tel qu'écrit — PAS
+# converti en UTC au préalable (contrairement à `decision_created_at_utc`
+# ci-dessous, qui sert au TRI et compare bien des instants absolus). Une
+# décision écrite à `2026-09-20T23:50:00+02:00` pour `date: "2026-09-21"` reste
+# donc « la veille au soir » (jour local 20) même si son équivalent UTC
+# (21h50 UTC, toujours le 20) tombe du même côté ici — mais un fuseau très
+# décalé (ex. `-11:00`) pourrait faire basculer le jour local d'un cran par
+# rapport à l'UTC. Choix délibéré : cette règle attrape une FAUTE DE FRAPPE
+# grossière (des jours d'écart), pas un calcul au fuseau près — le jour tel
+# qu'écrit par l'auteur de la décision est le plus significatif pour lui.
+DECISION_CREATED_AT_MAX_LEAD_DAYS = 1
+
+
+def _check_decision_created_at(data: dict, errors: list) -> None:
+    day, created_at = data.get("date"), data.get("created_at")
+    if not isinstance(day, str) or not isinstance(created_at, str):
+        return
+    try:
+        day_value = date.fromisoformat(day)
+        created_day = datetime.fromisoformat(created_at.replace("Z", "+00:00")).date()
+    except ValueError:
+        return   # déjà signalé par `_check_value` (format de date/date-heure invalide)
+    lead = (created_day - day_value).days
+    if lead > DECISION_CREATED_AT_MAX_LEAD_DAYS:
+        errors.append(
+            f"decision.created_at : {created_at} est postérieur de {lead} jour(s) à date "
+            f"({day}) — au-delà de {DECISION_CREATED_AT_MAX_LEAD_DAYS} jour, probable faute de frappe"
+        )
+
+
+def decision_created_at_utc(value) -> Optional[str]:
+    """`decision.created_at` normalisé en UTC, pour le TRI (#100, revue de code) :
+    trier `created_at` comme du texte mélange des décisions écrites depuis des
+    fuseaux différents dans le mauvais ordre (`07:00+02:00` textuellement après
+    `06:00Z`, alors que 07:00+02:00 = 05:00 UTC est en fait ANTÉRIEUR). Rend
+    `None` si `value` n'est pas une date-heure ISO 8601 avec fuseau explicite —
+    ne devrait pas arriver pour un bloc déjà validé (`datetime_tz` l'exige),
+    mais reste défensif pour un appelant qui indexerait un bloc invalide."""
+    if not isinstance(value, str):
+        return None
+    try:
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        return None
+    return parsed.astimezone(timezone.utc).isoformat()
 
 
 def split_rows(data: dict) -> list:
