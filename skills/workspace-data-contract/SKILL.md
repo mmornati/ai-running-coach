@@ -124,7 +124,7 @@ Types de valeurs ci-dessous : *entier*, *nombre* (≥ 0 sauf mention), *texte*,
 | `decoupling_pct` | nombre (signe libre) | découplage aérobie Pa:HR, % — voir « Champs KPI FIT » |
 | `ef_whole` | nombre | facteur d'efficacité séance entière — voir « Champs KPI FIT » |
 | `time_in_zone_s` | objet | temps en zone FC, secondes, clés `z1`…`z5` — voir « Champs KPI FIT » |
-| `vam_best_m_h` | nombre | meilleure VAM observée sur une montée de la séance, m/h — voir « Champs KPI FIT » |
+| `best_climb_vam_m_h` | nombre | meilleure VAM observée sur une montée de la séance, m/h — voir « Champs KPI FIT » |
 
 **Matériel, sudation, glucides.** `gear_id` référence la section « Matériel &
 lieux » du profil athlète (`planning/Runner_Profile.md`) : un identifiant
@@ -318,21 +318,24 @@ seulement dire « ingéré sans incident signalé ailleurs », jamais une mesure
 tolérance — à confirmer par l'athlète avant d'en faire un plafond dur. Détails :
 `arc_metrics.ASSUMPTIONS["fueling"]`.
 
-#### Champs KPI FIT : `gap_pace_s_km`, `decoupling_pct`, `ef_whole`, `time_in_zone_s`, `vam_best_m_h` (#51, épopée #21)
+#### Champs KPI FIT : `gap_pace_s_km`, `decoupling_pct`, `ef_whole`, `time_in_zone_s`, `best_climb_vam_m_h` (#51, épopée #21)
 
 Contrairement à `sweat_rate_l_h`/`carbs_per_hour_g` ci-dessus (jamais écrits
 par l'agent), ces cinq clés **sont** écrites dans le bloc — mais **jamais
 inventées ni recalculées à la main** : le coach les recopie de la sortie JSON
 des CLI dédiées, après les avoir lues pour construire le retour de séance
-(voir `agents/coach.md`, section KPI FIT) :
+(voir `agents/coach.md`, section KPI FIT). **Attention aux clés qui NE
+reprennent PAS le nom du champ source telles quelles** (colonne « Champ de la
+sortie JSON » ci-dessous) — ne devinez jamais le mapping à partir du seul nom
+de la clé du bloc :
 
 | Clé | Source (CLI) | Champ de la sortie JSON |
 |---|---|---|
-| `gap_pace_s_km` | `scripts/arc_index.py gap --activity ID` | `gap_pace_s_km` |
-| `decoupling_pct` | `scripts/arc_index.py decoupling --activity ID` | `decoupling_pct` |
-| `ef_whole` | `scripts/arc_index.py decoupling --activity ID` | `ef_whole` |
-| `time_in_zone_s` | `scripts/arc_index.py zones --activity ID` | `zone_seconds` (clés `"1"`…`"5"`, renommées `z1`…`z5` dans le bloc) |
-| `vam_best_m_h` | `scripts/arc_index.py vam --activity ID` | `best_climb_vam_elapsed_m_h` (meilleure VAM d'UNE montée gravie pendant la séance, temps écoulé — pas `best_vam_10min_m_h`/`best_vam_20min_m_h`, qui sont des fenêtres glissantes indépendantes des montées détectées) |
+| `gap_pace_s_km` | `scripts/arc_index.py gap --activity ID` | `gap_pace_s_km` (même nom) |
+| `decoupling_pct` | `scripts/arc_index.py decoupling --activity ID` | `decoupling_pct` (même nom) |
+| `ef_whole` | `scripts/arc_index.py decoupling --activity ID` | `ef_whole` (même nom) |
+| `time_in_zone_s` | `scripts/arc_index.py zones --activity ID` | `zone_seconds` — clés `"1"`…`"5"` dans la sortie, **renommées** `z1`…`z5` dans le bloc (jamais les buckets de polarisation `low`/`moderate`/`high`, un champ différent) |
+| `best_climb_vam_m_h` | `scripts/arc_index.py vam --activity ID` | `best_climb_vam_elapsed_m_h` — la meilleure VAM d'UNE montée gravie pendant la séance, temps écoulé. **PAS** `best_vam_10min_m_h`/`best_vam_20min_m_h` : ce sont deux fenêtres glissantes indépendantes des montées détectées, un chiffre différent qu'il ne faut pas confondre avec celui-ci |
 
 **Cette copie Markdown est un instantané narratif, jamais la source de
 vérité.** `scripts/arc_index.py` calcule sa PROPRE version de ces mêmes
@@ -344,7 +347,16 @@ l'index fait TOUJOURS foi** pour le tableau de bord, `arc_index.py` et toute
 requête SQL — jamais cette copie, qui peut dater d'avant un `--rebuild`, un
 changement de profil (FC max/repos) ou une nouvelle ingestion FIT. N'écrivez
 ces clés que si la CLI correspondante a rendu une valeur (jamais `reason`
-non nul) — sinon omettez la clé, exactement comme une mesure absente.
+non nul, ni `null` avec un `reason` vide) — sinon omettez la clé, exactement
+comme une mesure absente.
+
+Validation (`scripts/arc_contract.py`) : `time_in_zone_s` n'accepte que les
+clés `z1`…`z5`, une clé inconnue est un avertissement, et une valeur négative
+ou supérieure à `duration_s` de la même activité est une erreur (une seconde
+en zone ne peut pas dépasser la durée totale de la séance). `decoupling_pct`
+hors de -50 à 100 % déclenche un avertissement (à vérifier), pas un rejet :
+une dérive négative franche ou un découplage élevé restent physiologiquement
+possibles.
 
 ```arc
 {
@@ -352,7 +364,7 @@ non nul) — sinon omettez la clé, exactement comme une mesure absente.
   "moving_duration_s": 4200, "garmin_activity_id": 99000042, "distance_m": 11674, "avg_hr_bpm": 138,
   "gap_pace_s_km": 359.8, "decoupling_pct": 11.2, "ef_whole": 1.19,
   "time_in_zone_s": {"z1": 1470, "z2": 1470, "z3": 1260},
-  "vam_best_m_h": 620
+  "best_climb_vam_m_h": 620
 }
 ```
 

@@ -30,8 +30,8 @@ files_with_arc_block = ["activities/*.md"]
 # d'endurance, ET le fait que ce soit au-dessus de ce qui était prévu — deux
 # exigences distinctes (comme `sleep-debt`), pas une simple mention de la zone.
 must_match = [
-  '(zone\s*3|\bz3\b).{0,60}(30\s*%|trente\s*(pour\s*cent|%))|(30\s*%|trente\s*(pour\s*cent|%)).{0,60}(zone\s*3|\bz3\b)',
-  'endurance.{0,80}(trop|d[ée]pass\w*|excessi\w*|au-dessus|plus\s+(intense|dur))|(trop|d[ée]pass\w*|excessi\w*).{0,80}endurance',
+  '(zone\s*3|\bz3\b).{0,60}(30([.,]\d+)?\s*%|trente\s*(pour\s*cent|%))|(30([.,]\d+)?\s*%|trente\s*(pour\s*cent|%)).{0,60}(zone\s*3|\bz3\b)',
+  '(endurance.{0,80}(trop|d[ée]pass\w*|excessi\w*|au-dessus|plus\s+(intense|dur))|(trop|d[ée]pass\w*|excessi\w*|au-dessus|plus\s+(intense|dur)).{0,80}endurance)',
 ]
 # Garde-fou : le FIT EST disponible pour cette séance (fixture avec
 # `activities/fit/99000001.json`) — une réponse qui prétend ne pas avoir de

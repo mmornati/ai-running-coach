@@ -285,6 +285,83 @@ class TestArcFieldViaCheck(unittest.TestCase):
             self.assertTrue(any("JSON invalide" in f for f in failures), failures)
 
 
+class TestArcFieldAbsentViaCheck(unittest.TestCase):
+    """`arc_field_absent` (#51, revue de code) — le pendant négatif d'`arc_field` :
+    `arc_field` traite TOUJOURS un chemin introuvable comme un échec (#27), ce qui
+    le rend inutilisable pour affirmer qu'un champ ne doit PAS exister."""
+
+    def test_pass_when_fields_truly_absent(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            ws = Path(tmp) / "workspace"
+            _arc_activity_file(ws / "activities" / "2026-09-21_running.md", distance_m=10000)
+            case = {"id": "t", "fixture": "base-week", "expect": {
+                "arc_field_absent": [{"glob": "activities/*.md", "paths": ["decoupling_pct", "gap_pace_s_km"]}]
+            }}
+            self.assertEqual(runner.check(case, _result(ws)), [])
+
+    def test_fail_when_one_field_is_present(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            ws = Path(tmp) / "workspace"
+            _arc_activity_file(ws / "activities" / "2026-09-21_running.md", distance_m=10000, decoupling_pct=8.5)
+            case = {"id": "t", "fixture": "base-week", "expect": {
+                "arc_field_absent": [{"glob": "activities/*.md", "paths": ["decoupling_pct", "gap_pace_s_km"]}]
+            }}
+            failures = runner.check(case, _result(ws))
+            self.assertTrue(any("decoupling_pct" in f and "8.5" in f for f in failures), failures)
+            # `gap_pace_s_km` reste réellement absent : ne doit pas apparaître dans les échecs.
+            self.assertFalse(any("gap_pace_s_km" in f for f in failures), failures)
+
+    def test_fail_across_multiple_files_any_present_fails(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            ws = Path(tmp) / "workspace"
+            _arc_activity_file(ws / "activities" / "2026-09-21_running.md")
+            _arc_activity_file(ws / "activities" / "2026-09-22_running.md", ef_whole=1.2)
+            case = {"id": "t", "fixture": "base-week", "expect": {
+                "arc_field_absent": [{"glob": "activities/*.md", "paths": ["ef_whole"]}]
+            }}
+            failures = runner.check(case, _result(ws))
+            self.assertTrue(any("2026-09-22" in f and "ef_whole" in f for f in failures), failures)
+
+    def test_missing_glob_or_paths_is_a_failure_not_silent(self):
+        case = {"id": "t", "fixture": "base-week", "expect": {"arc_field_absent": [{"glob": "activities/*.md"}]}}
+        with tempfile.TemporaryDirectory() as tmp:
+            failures = runner.check(case, _result(Path(tmp)))
+            self.assertTrue(failures)
+
+    def test_no_file_written_is_a_failure(self):
+        case = {"id": "t", "fixture": "base-week", "expect": {
+            "arc_field_absent": [{"glob": "activities/*.md", "paths": ["decoupling_pct"]}]
+        }}
+        with tempfile.TemporaryDirectory() as tmp:
+            ws = Path(tmp) / "workspace"
+            ws.mkdir()
+            failures = runner.check(case, _result(ws))
+            self.assertTrue(any("aucun fichier" in f for f in failures), failures)
+
+    def test_malformed_path_is_a_failure(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            ws = Path(tmp) / "workspace"
+            _arc_activity_file(ws / "activities" / "2026-09-21_running.md")
+            case = {"id": "t", "fixture": "base-week", "expect": {
+                "arc_field_absent": [{"glob": "activities/*.md", "paths": ["items[abc].x"]}]
+            }}
+            failures = runner.check(case, _result(ws))
+            self.assertTrue(any("chemin invalide" in f for f in failures), failures)
+
+    def test_invalid_arc_block_is_reported_not_swallowed(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            ws = Path(tmp) / "workspace"
+            (ws / "activities").mkdir(parents=True)
+            (ws / "activities" / "2026-09-21_running.md").write_text(
+                "# Séance\n\n```arc\n{not valid json\n```\n", encoding="utf-8"
+            )
+            case = {"id": "t", "fixture": "base-week", "expect": {
+                "arc_field_absent": [{"glob": "activities/*.md", "paths": ["decoupling_pct"]}]
+            }}
+            failures = runner.check(case, _result(ws))
+            self.assertTrue(any("JSON invalide" in f for f in failures), failures)
+
+
 class TestToolArgsMatchViaCheck(unittest.TestCase):
     def test_pass_equals(self):
         with tempfile.TemporaryDirectory() as tmp:

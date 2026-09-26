@@ -123,6 +123,18 @@ SPLIT_COLUMNS = {
 }
 SPLIT_REQUIRED = ("km", "duration_s")
 
+# Clés reconnues de `activity.time_in_zone_s` (#51, revue de code) — les 5 zones
+# HR affichées, jamais les bornes de polarisation Seiler (`low`/`moderate`/`high`,
+# voir `scripts/arc_index.py zones`, table `hr_polarisation_time`), qui ne sont
+# pas ce champ.
+TIME_IN_ZONE_KEYS = ("z1", "z2", "z3", "z4", "z5")
+
+# Plage plausible d'un découplage Pa:HR (%, signe libre) — un avertissement, pas
+# une erreur : une dérive négative franche (l'athlète « monte en régime ») ou un
+# découplage élevé sur une séance dégradée restent possibles, mais une valeur
+# hors de cette plage sent la faute de frappe ou la recopie d'un mauvais champ.
+DECOUPLING_PCT_PLAUSIBLE = (-50.0, 100.0)
+
 # ---------------------------------------------------------------------------
 # Schéma
 #
@@ -176,12 +188,19 @@ SCHEMA = {
             # chaque passage, directement depuis les échantillons FIT ingérés : c'est
             # TOUJOURS elle qui fait foi pour le tableau de bord et les requêtes, jamais
             # cette copie Markdown (voir `skills/workspace-data-contract/SKILL.md`, section
-            # « Champs KPI FIT »). Noms alignés sur les colonnes dérivées correspondantes.
+            # « Champs KPI FIT »). `gap_pace_s_km`/`decoupling_pct`/`ef_whole` reprennent
+            # le nom EXACT de la colonne dérivée correspondante (`activity.gap_pace_s_km`/
+            # `decoupling_pct`/`ef_whole`) ; `time_in_zone_s` et `best_climb_vam_m_h` sont
+            # des clés DÉLIBÉRÉMENT différentes de leur source (`hr_zone_time`, clés `1`…`5`
+            # plutôt que `z1`…`z5` ; `activity.best_climb_vam_elapsed_m_h`, pas
+            # `best_vam_10min_m_h`/`best_vam_20min_m_h`, deux fenêtres glissantes distinctes
+            # d'une MEILLEURE MONTÉE gravie) — le mapping exact est documenté dans le skill,
+            # jamais à deviner depuis le nom seul.
             "gap_pace_s_km": "num+",
-            "decoupling_pct": "num",
+            "decoupling_pct": "decoupling_pct",
             "ef_whole": "num+",
             "time_in_zone_s": "obj",
-            "vam_best_m_h": "num+",
+            "best_climb_vam_m_h": "num+",
         },
     },
     "health": {
@@ -424,6 +443,14 @@ def _check_value(spec: str, value, where: str, errors: list, warnings: list) -> 
         elif spec == "num+" and value < 0:
             fail("un nombre positif")
         return
+    if spec == "decoupling_pct":
+        if not _is_number(value):
+            fail("un nombre (%, signe libre)")
+            return
+        lo, hi = DECOUPLING_PCT_PLAUSIBLE
+        if not lo <= value <= hi:
+            warnings.append(f"{where} : {value} hors de la plage plausible ({lo:g} à {hi:g} %) — à vérifier")
+        return
     if spec == "hr":
         if not _is_number(value) or not 20 <= value <= 250:
             fail("une fréquence cardiaque en bpm (20-250)")
@@ -534,6 +561,33 @@ def _check_splits(data: dict, errors: list) -> None:
                 _check_value(SPLIT_COLUMNS[col], value, f"activity.splits[{i}].{col}", errors, [])
 
 
+def _check_time_in_zone(data: dict, errors: list, warnings: list) -> None:
+    """`activity.time_in_zone_s` (#51, revue de code) : clés `z1`…`z5`
+    UNIQUEMENT (`TIME_IN_ZONE_KEYS` — pas les buckets de polarisation `low`/
+    `moderate`/`high`, un champ différent), valeurs numériques ≥ 0 et ≤
+    `duration_s` de la même activité — une seconde en zone ne peut pas
+    dépasser la durée totale de la séance qui la contient. `_check_value`
+    (spec `"obj"`) a déjà signalé un `time_in_zone_s` qui n'est pas un objet ;
+    cette fonction ne s'exécute que sur un objet effectivement présent."""
+    value = data.get("time_in_zone_s")
+    if not isinstance(value, dict):
+        return
+    duration = data.get("duration_s")
+    for key, seconds in value.items():
+        where = f"activity.time_in_zone_s.{key}"
+        if key not in TIME_IN_ZONE_KEYS:
+            warnings.append(f"{where} : clé inconnue, attendu une valeur parmi "
+                             f"{', '.join(TIME_IN_ZONE_KEYS)}")
+            continue
+        if not _is_number(seconds) or seconds < 0:
+            errors.append(f"{where} : un nombre de secondes positif attendu, "
+                           f"{json.dumps(seconds, ensure_ascii=False)} trouvé")
+            continue
+        if _is_number(duration) and seconds > duration:
+            errors.append(f"{where} : {seconds} s dépasse la durée totale de la séance "
+                           f"({duration} s)")
+
+
 def validate(data: dict) -> tuple:
     """Rend (erreurs, avertissements). Aucune erreur = bloc conforme."""
     errors, warnings = [], []
@@ -546,6 +600,7 @@ def validate(data: dict) -> tuple:
     _check_object(SCHEMA[kind], data, kind, errors, warnings)
     if kind == "activity":
         _check_splits(data, errors)
+        _check_time_in_zone(data, errors, warnings)
     if kind == "health" and data.get("verdict") and not data.get("verdict_reason"):
         errors.append("health.verdict_reason : obligatoire dès qu'un verdict est posé")
     if kind == "activity":

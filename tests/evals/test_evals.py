@@ -23,7 +23,7 @@ class TestCaseFilesAreValid(unittest.TestCase):
     KNOWN_EXPECTATIONS = {
         "must_match", "must_not_match", "tools_called", "tools_not_called",
         "files_created", "max_words", "first_line_matches", "files_with_arc_block", "files_absent",
-        "arc_field", "tool_args_match", "sqlite_query", "file_contains_any",
+        "arc_field", "arc_field_absent", "tool_args_match", "sqlite_query", "file_contains_any",
     }
 
     # Dérivés des modules qui font foi, pas dupliqués : un stub retiré de
@@ -148,6 +148,28 @@ class TestCaseFilesAreValid(unittest.TestCase):
                         )
                     if comparator == "in":
                         self.assertIsInstance(value, list, "arc_field : 'in' doit être une liste")
+
+    def test_arc_field_absent_assertions_are_well_formed(self):
+        """`arc_field_absent` (#51) : 'glob'/'paths' obligatoires, 'paths' une
+        liste non vide de chemins syntaxiquement valides — le pendant négatif
+        d'`arc_field` (voir sa docstring dans `runner.py` pour pourquoi
+        `arc_field` lui-même ne peut pas exprimer une absence)."""
+        allowed_keys = {"glob", "paths"}
+        for case in self.cases:
+            for assertion in runner._as_list(case["expect"].get("arc_field_absent")):
+                with self.subTest(case=case["id"], assertion=assertion):
+                    self.assertIn("glob", assertion, "arc_field_absent : 'glob' manquant")
+                    self.assertIn("paths", assertion, "arc_field_absent : 'paths' manquant")
+                    unknown = set(assertion) - allowed_keys
+                    self.assertFalse(unknown, f"arc_field_absent : clé(s) inconnue(s) {sorted(unknown)}")
+                    paths = assertion["paths"]
+                    self.assertIsInstance(paths, list, "arc_field_absent : 'paths' doit être une liste")
+                    self.assertTrue(paths, "arc_field_absent : 'paths' ne doit pas être vide")
+                    for path_expr in paths:
+                        try:
+                            runner._parse_json_path(path_expr)
+                        except ValueError as exc:
+                            self.fail(f"arc_field_absent : chemin invalide {path_expr!r} : {exc}")
 
     def test_tool_args_match_assertions_are_well_formed(self):
         """`tool_args_match` (#27) : `tool`/`path` obligatoires, chemin valide,

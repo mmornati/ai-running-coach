@@ -81,6 +81,12 @@ CORRECT_ANSWERS_BY_CASE = {
         "nettement ce qui était prévu.",
         "Ta séance d'endurance a dérivé au-dessus de l'intensité prévue : trente pour cent du temps en "
         "zone 3.",
+        # Revue de code #51 : formulations avec décimales telles que rendrait
+        # littéralement `zones --activity` (30,0 % / 30.02 %), pas seulement le
+        # nombre rond « 30 % ».
+        "Temps en zone 3 : 30,0 % du temps de mouvement — nettement au-dessus de ce qui était prévu "
+        "pour une séance d'endurance.",
+        "Zone 3 : 30.02 % du temps, largement plus intense qu'une sortie d'endurance ne le prévoyait.",
     ],
     # #51 : symétrique sans FIT (fixture `feedback-without-fit`) — le coach dit
     # qu'il n'a pas de données FIT plutôt que d'inventer un chiffre.
@@ -90,6 +96,10 @@ CORRECT_ANSWERS_BY_CASE = {
         "Aucun fichier FIT disponible pour cette activité, impossible de calculer le découplage ou le "
         "temps en zone précis — le ressenti rapporté et la FC moyenne suffisent pour ce point.",
         "Sans échantillons FIT, je ne peux pas te donner le détail par zone ni la VAM sur cette sortie.",
+        # Revue de code #51 : un pourcentage de FC max/réserve à un instant donné
+        # (pas un temps PASSÉ en zone) reste une observation légitime même sans
+        # FIT — ne doit pas être confondu avec un temps en zone inventé.
+        "FC moyenne 141 bpm, soit 75 % de ta FC max, en zone 2.",
     ],
 }
 

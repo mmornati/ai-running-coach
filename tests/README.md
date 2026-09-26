@@ -273,6 +273,24 @@ in = ["endurance", "tempo", "threshold"]  # Valeurs valides de l'énum `intensit
                                            # (scripts/arc_contract.py : INTENSITY)
 ```
 
+#### `arc_field_absent` — vérifier qu'un champ n'apparaît DANS AUCUN fichier (#51)
+
+Le pendant négatif d'`arc_field` : celui-ci traite TOUJOURS un chemin qui ne
+résout à rien comme un échec (garde-fou volontaire contre un chemin mal
+orthographié qui « passerait » silencieusement), ce qui le rend inutilisable
+pour affirmer qu'un champ ne DOIT PAS exister — ex. les clés KPI FIT
+(`gap_pace_s_km`, `decoupling_pct`…) sur une activité sans échantillons FIT.
+`arc_field_absent` prend `glob` et `paths` (une liste, pas un singulier) :
+chaque chemin doit résoudre à RIEN dans CHAQUE fichier écrit pendant le run
+correspondant au glob — un seul chemin qui résout à une valeur, dans un seul
+fichier, est un échec.
+
+```toml
+[[expect.arc_field_absent]]
+glob = "activities/*.md"
+paths = ["gap_pace_s_km", "decoupling_pct", "ef_whole", "time_in_zone_s", "best_climb_vam_m_h"]
+```
+
 #### `tool_args_match` — vérifier les arguments d'un appel d'outil
 
 Vérifie qu'**au moins un** appel de l'outil nommé a des arguments satisfaisant la

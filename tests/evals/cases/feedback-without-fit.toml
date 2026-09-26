@@ -8,7 +8,9 @@
 # une phrase du type « pas de données FIT » s'il explique pourquoi le retour
 # est plus sommaire. Le bloc ```arc de l'activité qu'il persiste ne doit pas
 # non plus porter les champs dérivés du FIT (`gap_pace_s_km`, `decoupling_pct`,
-# `ef_whole`, `time_in_zone_s`, `vam_best_m_h`) : il n'y a rien à y mettre.
+# `ef_whole`, `time_in_zone_s`, `best_climb_vam_m_h`) : il n'y a rien à y mettre
+# — vérifié avec `arc_field_absent`, le pendant négatif d'`arc_field` (qui, lui,
+# traite TOUJOURS un chemin introuvable comme un échec, voir `runner.py`).
 id = "feedback-without-fit"
 prompt = "Fais-moi un retour sur ma séance d'avant-hier, celle prévue en endurance dans mon plan de la semaine."
 fixture = "feedback-without-fit"
@@ -21,13 +23,16 @@ tools_called = ["get_activities"]
 files_with_arc_block = ["activities/*.md"]
 
 # Pas de chiffre inventé : ni découplage/EF chiffré, ni VAM chiffrée, ni un
-# pourcentage de temps en zone — mais NE DOIT PAS rejeter une réponse correcte
-# qui dit simplement « pas de données FIT » ou mentionne le mot « zone » sans
-# lui accoler de chiffre.
+# pourcentage de TEMPS PASSÉ en zone — mais NE DOIT PAS rejeter une réponse
+# correcte qui dit simplement « pas de données FIT », mentionne le mot « zone »
+# sans chiffre, ou cite un pourcentage de FC max/réserve sans rapport avec un
+# temps passé (« 75 % de ta FC max, en zone 2 » reste un repère instantané
+# légitime, pas un temps en zone inventé — d'où l'ancrage sur `temps`/`passé`
+# entre le `%` et la zone, pas un simple `\D{0,20}` générique).
 must_not_match = [
   'd[ée]couplage\D{0,20}\d+([.,]\d+)?\s*%',
   '\bVAM\b\D{0,20}\d+',
-  '\d+([.,]\d+)?\s*%\D{0,20}(zone\s*3|\bz3\b|en\s+zone)',
+  '(zone\s*[1-5]|\bz[1-5]\b)\D{0,20}(temps|pass[ée])\D{0,20}\d+([.,]\d+)?\s*%|\d+([.,]\d+)?\s*%\D{0,20}(temps|pass[ée])\D{0,20}(zone\s*[1-5]|\bz[1-5]\b)',
 ]
 
 [[expect.arc_field]]
@@ -40,8 +45,9 @@ glob = "activities/*.md"
 path = "distance_m"
 min = 20000
 
-# Aucun échantillon FIT dans le workspace : rien n'a pu être ingéré, donc rien
-# de dérivé du FIT n'était calculable pour le coach à recopier dans le bloc.
-[[expect.sqlite_query]]
-sql = "SELECT COUNT(*) FROM activity_sample"
-equals = 0
+# Aucun échantillon FIT dans le workspace : rien de dérivé du FIT n'était
+# calculable pour le coach — ces cinq clés ne doivent apparaître dans AUCUN
+# fichier `activities/*.md` écrit pendant le run.
+[[expect.arc_field_absent]]
+glob = "activities/*.md"
+paths = ["gap_pace_s_km", "decoupling_pct", "ef_whole", "time_in_zone_s", "best_climb_vam_m_h"]

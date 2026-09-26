@@ -117,44 +117,54 @@ misleading.
 
 ### FIT KPI MANDATE (session feedback, #51)
 
-For a session with `garmin_activity_id`, before writing feedback run the CLIs
-that apply — never eyeball splits alone when a finer KPI exists:
+Command: `python3 scripts/arc_index.py <cmd> --activity <garmin_activity_id>`
+(the `GARMIN_ID`, not the engine's internal `activity.id` — both appear in
+outputs, only the Garmin one is stable across a `--rebuild`).
 
-| KPI | Command | When | Caveat (one line) |
+**Order matters.** The CLI links FIT samples to a session through its indexed
+`activity` row — it can't see a session that has no `activities/*.md` yet.
+Persist/validate that day's `activities/YYYY-MM-DD_*.md` WITH its
+`garmin_activity_id` FIRST (`workspace-data-contract`), THEN run the CLIs
+below, THEN write the KPI fields back into that same block. Skipping this
+order gets `reason_code: "unknown_activity"` (or, on `zones`/`gap`/
+`decoupling`, which don't set a code, a `reason` naming the same thing) with
+every field null — that means "not indexed yet, go write the MD and re-run",
+never "no FIT for this session".
+
+| KPI | `<cmd>` | When | Caveat |
 |:---|:---|:---|:---|
-| Time in zone | `zones --activity ID` | Every run-family session | Compare vs the session's planned intensity, not in isolation |
-| Decoupling (Pa:HR) / EF | `decoupling --activity ID` | Moving time ≥ 60 min | Steady-effort/grade/HR-coverage eligibility, threshold from a controlled protocol |
-| GAP | `gap --activity ID` | Hilly/trail session | Minetti cost model, downhill bias |
-| VAM | `vam --activity ID` | Trail or a session with real climbs | 10/20-min windows, no minimum-duration gate |
-| Descent efficiency | `descent --activity ID` | Trail/hilly | Trend-only, flat-reference indicator, never a hard norm |
-| Durability (fade) | `durability --activity ID` | Duration > 90 min | Mountain/technical runs are often ineligible |
-| Climb history | `climb-history --activity ID` | A recognised climb (`vam` reports a `segment_id`) | Segment `id` is not stable across a `--rebuild` |
+| Time in zone | `zones` | Every run-family session | vs planned intensity, method-aware (below) |
+| Decoupling (Pa:HR) / EF | `decoupling` | Moving time ≥ 60 min | Controlled-protocol threshold, not a clinical norm |
+| GAP | `gap` | Hilly/trail session | Minetti model, downhill bias |
+| VAM | `vam` | Trail or real climbs | 10/20-min windows + per-climb, no duration gate |
+| Descent efficiency | `descent` | Trail/hilly | Trend-only, flat-reference, never a hard norm |
+| Durability (fade) | `durability` | Duration > 90 min | Mountain/technical runs often ineligible |
+| Climb history | `climb-history` | A recognised climb (`segment_id` from `vam`) | `id` unstable across `--rebuild` |
 
-Each command always returns a `reason`/`reason_code`/`applicable` when the KPI
-cannot be computed — read it before saying anything. **Never invent a value.**
-- A specific "not applicable" reason (wrong sport, too short, unstable effort,
-  no qualifying climb…): relay it in one short phrase, or omit the KPI
-  entirely at low verbosity — never guess at what the number would have been.
-- **No FIT samples at all** (`reason` names missing FIT samples): say nothing
-  about zones/GAP/decoupling/VAM/descent/durability for that session — at
-  most one line suggesting a FIT download (`fit-download` skill) if the
-  athlete asks why the feedback is thinner than usual.
-- **Time in zone vs intent:** for a planned `endurance`/`recovery` session,
-  flag it when a material share of the moving time lands in Z3 or above —
-  the athlete asked for aerobic work, not tempo. State the share and the
-  planned intensity together; don't just dump the zone table.
-- Cite decoupling with its caveat every time (controlled-protocol threshold
-  applied to an ordinary outdoor session) — never present 5 % as a validated
-  clinical cutoff.
-- Persist what you cited: load `workspace-data-contract` and write
-  `gap_pace_s_km`/`decoupling_pct`/`ef_whole`/`time_in_zone_s` (`z1`…`z5`)/
-  `vam_best_m_h` into that day's `activities/*.md` block — only the fields a
-  command actually returned (non-null, `reason` empty), never a placeholder.
-  The SQLite index recomputes its own copy from the FIT samples at every
-  pass and always wins for the dashboard; this Markdown copy is the
-  narrative record, see the skill's "Champs KPI FIT" section.
-- Respect `[coaching].verbosity`: at `brief`, one sentence per flagged KPI; at
-  `standard`/`detailed`, name the numbers.
+**Never invent a value.** A non-null `reason`/`reason_code` (`applicable` too
+on vam/descent/durability/climb-history) means "not applicable" — relay it in
+one short phrase, or omit the KPI at `brief`. Same for a **null value with an
+empty `reason`**: still not computable, omit it, never print `null`.
+**No FIT samples at all:** say nothing about any of these KPIs for that
+session — at most one line suggesting a FIT download (`fit-download` skill)
+if the athlete asks why the feedback is thinner than usual.
+
+**Time in zone vs intent:** for a planned `endurance`/`recovery` session,
+flag it when `zones`' `polarisation.moderate_pct + high_pct` exceeds roughly
+10 % of moving time — that's the method-aware Seiler split (first threshold),
+not the 5 displayed HR zones, whose "zone 3" boundary isn't comparable across
+`%maxHR`/LTHR/Karvonen. State the share and the planned intensity together.
+
+Cite decoupling's caveat every time (a controlled-protocol threshold applied
+to an ordinary outdoor session) — never present 5 % as clinically validated.
+
+Persist only what a command actually returned into that day's
+`activities/*.md` block — field-by-field mapping and naming in
+`workspace-data-contract`'s "Champs KPI FIT". The SQLite index recomputes its
+own copy from FIT at every pass and always wins for the dashboard.
+
+Respect `[coaching].verbosity`: `brief` = one sentence per flagged KPI;
+`standard`/`detailed` = name the numbers.
 
 ### MORNING HEALTH CHECK MANDATE (HRV + RESTING HR + READINESS)
 
