@@ -19,10 +19,11 @@
   - Dernier kilomètre
   - Récupérations / cooldowns
 - **Métriques d'exécution par segment** : allure, FC, cadence, etc.
+- **Montées** détectées par le moteur (`scripts/arc_climb.py`) : mêmes bornes que le tableau de bord et l'identité de montée entre séances (#49), avec classe de pente et VAM
 
 ## Script
 
-`skills/session-parts-analyzer/scripts/analyze_session_parts.py` — **stdlib uniquement**, aucune dépendance externe.
+`skills/session-parts-analyzer/scripts/analyze_session_parts.py` — stdlib (+ `fitparse` pour lire un FIT) ; importe le moteur (`scripts/arc_climb.py`, `scripts/arc_samples.py`).
 
 ## Utilisation
 

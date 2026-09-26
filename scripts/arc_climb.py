@@ -48,6 +48,12 @@ signal jamais franchis — voir `ASSUMPTIONS`). #49 (progression sur une même
 montée) pourra réutiliser `detect_climbs`/`climb_report` tels quels plutôt que
 réinventer une quatrième détection.
 
+Depuis, les deux détecteurs historiques ont été RETIRÉS : `analyze_gpx.py` et
+`analyze_session_parts.py` adaptent leurs entrées (points GPX, records FIT
+sous-échantillonnés comme l'index) puis appellent `detect_climbs` — ce module est
+le seul détecteur de montées du projet (voir
+`tests/data/test_skill_climb_detectors.py` pour la parité des bornes).
+
 ## Algorithme de détection
 
 1. **Segmentation par trou de signal** (`arc_elevation.segments_by_gap`,

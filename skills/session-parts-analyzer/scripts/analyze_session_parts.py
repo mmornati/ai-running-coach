@@ -29,6 +29,7 @@ Author: Trail Running Coach skill — sport-workspace / opencode
 from __future__ import annotations
 
 import argparse
+import bisect
 import json
 import math
 import statistics
@@ -37,6 +38,15 @@ from dataclasses import dataclass, asdict, field
 from pathlib import Path
 from typing import Iterable, List, Optional, Sequence
 
+# Moteur : scripts/ à la racine (le skill peut être atteint par un lien symbolique
+# depuis un workspace séparé — resolve() remonte au vrai dossier du moteur).
+sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "scripts"))
+import arc_climb  # noqa: E402
+import arc_samples  # noqa: E402
+
+# Résolution des échantillons passés au détecteur de montées — celle de l'index
+# (`arc_samples.DEFAULT_RESOLUTION_S`), pour des bornes identiques à #46/#49.
+CLIMB_RESOLUTION_S = arc_samples.DEFAULT_RESOLUTION_S
 
 # ---------------------------------------------------------------------------
 # Default thresholds — tunable via CLI flags
@@ -52,10 +62,13 @@ DEFAULTS = {
     "stride_recovery_max_s": 180,         # durée max (au-delà, fin du bloc LD)
     "stride_distance_min_m": 60,          # distance min d'une LD (~80 m cible)
     "stride_distance_max_m": 160,         # distance max d'une LD (~120 m cible)
-    # Climb detection
-    "climb_grade_min_pct": 4.0,           # pente min moyenne
-    "climb_min_distance_m": 250,
-    "climb_min_ascent_m": 15,
+    # Climb detection (moteur : scripts/arc_climb.py::detect_climbs)
+    "climb_grade_min_pct": 4.0,           # pente moyenne min (gain net / distance)
+    # 150 m (250 m avant la migration vers le moteur) : les bornes rognées du moteur
+    # sont plus courtes que l'ancienne fenêtre « pente instantanée ≥ seuil » — une
+    # côte de 300 m (drill de côtes) doit rester détectée.
+    "climb_min_distance_m": 150,
+    "climb_min_ascent_m": 15,             # gain net min (altitude lissée)
     # Sprint / interval
     "sprint_speed_threshold_kmh": 15.0,
     "sprint_min_duration_s": 4,
@@ -105,6 +118,10 @@ class Segment:
     recovery_before_s: Optional[float]  # gap from previous segment of same kind
     cadence_avg: Optional[float]
     flags: List[str] = field(default_factory=list)
+    # Montées seulement (`None` ailleurs) — voir `arc_climb.detect_climbs`.
+    grade_class: Optional[str] = None
+    vam_elapsed_m_h: Optional[float] = None
+    vam_moving_m_h: Optional[float] = None
 
     @property
     def delta_hr_in(self) -> Optional[float]:
@@ -368,57 +385,68 @@ def detect_strides(records: Sequence[Record], cfg: dict) -> List[Segment]:
     return segments
 
 
-def detect_climbs(records: Sequence[Record], cfg: dict) -> List[Segment]:
-    """Detect sustained climbs: grade ≥ threshold over ≥ min_distance with ≥ min_ascent."""
-    grade_min = cfg["climb_grade_min_pct"]
-    min_dist = cfg["climb_min_distance_m"]
-    min_ascent = cfg["climb_min_ascent_m"]
+def climb_samples(records: Sequence[Record], resolution_s: int = CLIMB_RESOLUTION_S) -> List[dict]:
+    """Records → échantillons normalisés (`t_s, distance_m, altitude_m, speed_ms`)
+    sous-échantillonnés comme à l'indexation (`arc_samples.downsample`, 5 s) : le
+    détecteur du moteur voit alors les mêmes points que `arc_index.py vam` et
+    l'identité de montée #49 (`arc_climb_match.py`), donc les mêmes bornes."""
+    raw = [{"t_s": r.t, "distance_m": r.distance_m, "altitude_m": r.elevation_m,
+            "speed_ms": r.speed_kmh / 3.6 if r.speed_kmh is not None else None}
+           for r in records]
+    return arc_samples.downsample(raw, resolution_s)
 
+
+def detect_climbs(records: Sequence[Record], cfg: dict) -> List[Segment]:
+    """Montées via le détecteur canonique du moteur (`scripts/arc_climb.py::detect_climbs` :
+    segmentation par trou de signal, lissage, zigzag à hystérésis, rognage, fusion des
+    petits creux), puis métriques d'exécution (FC, vitesse, cadence) sur les records bruts
+    de chaque montée. Seuils propres au skill : `climb_min_ascent_m` (gain net) et
+    `climb_grade_min_pct` (pente moyenne) passés au moteur, `climb_min_distance_m`
+    appliqué ici. Un seuil plus bas que celui de l'index ne change jamais les bornes
+    d'une montée que les deux retiennent : le filtre du moteur s'applique en dernier."""
+    samples = climb_samples(records)
+    found = arc_climb.detect_climbs(
+        samples,
+        min_gain_m=cfg["climb_min_ascent_m"],
+        min_avg_grade=cfg["climb_grade_min_pct"] / 100.0,
+        resolution_s=CLIMB_RESOLUTION_S,
+    )
+    times = [r.t for r in records]
     segments: List[Segment] = []
-    idx = 0
-    i = 0
-    n = len(records)
-    while i < n:
-        if (records[i].grade_pct is not None and
-                records[i].grade_pct >= grade_min):
-            j = i
-            while j < n and (records[j].grade_pct is not None and
-                             records[j].grade_pct >= grade_min):
-                j += 1
-            seg_records = records[i:j]
-            dist = seg_records[-1].distance_m - seg_records[0].distance_m
-            ascent = sum(
-                max(0, (seg_records[k].elevation_m or 0) - (seg_records[k - 1].elevation_m or 0))
-                for k in range(1, len(seg_records))
-                if seg_records[k].elevation_m is not None and
-                seg_records[k - 1].elevation_m is not None
-            )
-            if dist >= min_dist and ascent >= min_ascent:
-                speeds = [r.speed_kmh for r in seg_records]
-                hrs = [r.hr for r in seg_records if r.hr]
-                grades = [r.grade_pct for r in seg_records if r.grade_pct is not None]
-                segments.append(Segment(
-                    kind="climb",
-                    index=idx + 1,
-                    start_t=seg_records[0].t,
-                    end_t=seg_records[-1].t,
-                    duration_s=seg_records[-1].t - seg_records[0].t,
-                    distance_m=dist,
-                    avg_speed_kmh=sum(speeds) / len(speeds),
-                    max_speed_kmh=max(speeds),
-                    avg_hr_bpm=sum(hrs) / len(hrs) if hrs else None,
-                    max_hr_bpm=max(hrs) if hrs else None,
-                    hr_before_bpm=_avg_hr_window(records, i, look_back=15),
-                    hr_after_bpm=_avg_hr_window(records, j - 1, look_fwd=15),
-                    elevation_gain_m=ascent,
-                    avg_grade_pct=sum(grades) / len(grades) if grades else None,
-                    recovery_before_s=None,
-                    cadence_avg=None,
-                ))
-                idx += 1
-            i = j
-        else:
-            i += 1
+    for c in found:
+        if c["distance_m"] < cfg["climb_min_distance_m"]:
+            continue
+        # Records couverts par la montée : les buckets de `start_t_s` à `end_t_s`
+        # inclus (un bucket porte la borne inférieure de sa fenêtre de 5 s).
+        i = bisect.bisect_left(times, c["start_t_s"])
+        j = bisect.bisect_left(times, c["end_t_s"] + CLIMB_RESOLUTION_S)
+        seg_records = records[i:j]
+        if not seg_records:
+            continue
+        speeds = [r.speed_kmh for r in seg_records]
+        hrs = [r.hr for r in seg_records if r.hr]
+        cads = [r.cadence for r in seg_records if r.cadence]
+        segments.append(Segment(
+            kind="climb",
+            index=len(segments) + 1,
+            start_t=c["start_t_s"],
+            end_t=c["end_t_s"],
+            duration_s=c["duration_elapsed_s"],
+            distance_m=c["distance_m"],
+            avg_speed_kmh=sum(speeds) / len(speeds),
+            max_speed_kmh=max(speeds),
+            avg_hr_bpm=sum(hrs) / len(hrs) if hrs else None,
+            max_hr_bpm=max(hrs) if hrs else None,
+            hr_before_bpm=_avg_hr_window(records, i, look_back=15),
+            hr_after_bpm=_avg_hr_window(records, j - 1, look_fwd=15),
+            elevation_gain_m=c["gain_m"],
+            avg_grade_pct=round(c["avg_grade"] * 100, 1),
+            recovery_before_s=(c["start_t_s"] - segments[-1].end_t) if segments else None,
+            cadence_avg=sum(cads) / len(cads) if cads else None,
+            grade_class=c["grade_class"],
+            vam_elapsed_m_h=c["vam_elapsed_m_h"],
+            vam_moving_m_h=c["vam_moving_m_h"],
+        ))
     return segments
 
 
@@ -653,6 +681,17 @@ def render_markdown(part: str, segments: List[Segment], meta: dict) -> str:
     if avg_recov:
         lines.append(f"- Récupération moyenne entre segments : **{statistics.mean(avg_recov):.0f} s**")
     lines.append(f"- Segments flaggués : **{len(flagged)} / {len(segments)}**")
+    if part == "climb":
+        lines.append("")
+        lines.append("### Montées — pente et VAM")
+        lines.append("| # | Pente moy. | Classe | Gain net (m) | VAM écoulée (m/h) | VAM mouvement (m/h) |")
+        lines.append("|---|---|---|---|---|---|")
+        for s in segments:
+            vam_e = f"{s.vam_elapsed_m_h:.0f}" if s.vam_elapsed_m_h is not None else "—"
+            vam_m = f"{s.vam_moving_m_h:.0f}" if s.vam_moving_m_h is not None else "—"
+            grade = f"{s.avg_grade_pct:.1f} %" if s.avg_grade_pct is not None else "—"
+            lines.append(f"| #{s.index} | {grade} | {s.grade_class or '—'} | "
+                         f"{s.elevation_gain_m:+.0f} | {vam_e} | {vam_m} |")
     if flagged:
         lines.append("")
         lines.append("### Segments à revoir")
