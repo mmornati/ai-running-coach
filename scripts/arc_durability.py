@@ -3,14 +3,14 @@
 
 ## Principe
 
-Sur une sortie longue, prédicteur direct de la tenue en ultra : compare le
-dernier tiers (en temps de mouvement) à son premier tiers, sur l'allure
-ajustée à la pente (GAP, `arc_gap.py`, #44) et sur la fréquence cardiaque, la
-comparaison EF (GAP/FC) se faisant sur le SOUS-ENSEMBLE COMMUN d'échantillons
-où FC et GAP sont TOUS DEUX présents (jamais deux moyennes sur deux
-sous-ensembles différents, qui biaiseraient le ratio dès qu'un trou de FC ne
-coïncide pas avec un trou de GAP — même discipline que `arc_decoupling._ef`,
-#45) :
+Sur une sortie longue, indicateur de baisse de performance en fin de
+parcours : compare le dernier tiers (en temps de mouvement) à son premier
+tiers, sur l'allure ajustée à la pente (GAP, `arc_gap.py`, #44) et sur la
+fréquence cardiaque, la comparaison EF (GAP/FC) se faisant sur le
+SOUS-ENSEMBLE COMMUN d'échantillons où FC et GAP sont TOUS DEUX présents
+(jamais deux moyennes sur deux sous-ensembles différents, qui biaiseraient le
+ratio dès qu'un trou de FC ne coïncide pas avec un trou de GAP — même
+discipline que `arc_decoupling._ef`, #45) :
 
     fade GAP % = (GAP_1er_tiers − GAP_dernier_tiers) / GAP_1er_tiers × 100
     fade EF %  = (EF_1er_tiers  − EF_dernier_tiers)  / EF_1er_tiers  × 100
@@ -19,10 +19,24 @@ Une valeur POSITIVE signale une baisse de performance en fin de sortie (le
 sens attendu du mot « fade ») ; une valeur négative ou nulle signale une
 séance sans baisse mesurable, voire une deuxième partie plus rapide (négatif
 splitting). Repère de coaching indicatif, jamais un seuil validé
-cliniquement, calqué sur l'esprit du découplage aérobie (`arc_decoupling.py`,
+cliniquement, ni un « prédicteur » démontré de la tenue en ultra — aucune
+source vérifiable n'établit un tel lien quantifié pour ce calcul précis,
+seulement le raisonnement physiologique de bon sens (un athlète qui ralentit
+nettement en fin de sortie longue tient probablement moins bien l'effort
+prolongé) ; calqué sur l'esprit du découplage aérobie (`arc_decoupling.py`,
 #45) mais sur le DERNIER TIERS plutôt que la seconde moitié — le fade cible
-spécifiquement l'effondrement de fin de sortie longue (prédicteur d'ultra),
-pas une dérive linéaire sur toute la séance.
+spécifiquement l'effondrement de fin de sortie longue, pas une dérive
+linéaire sur toute la séance.
+
+### Lire fade GAP et fade EF ensemble (voir `ASSUMPTIONS["reading_gap_vs_ef"]`)
+
+Les deux chiffres racontent des histoires différentes, jamais à lire
+séparément : **fade EF nettement supérieur au fade GAP** signale une dérive
+cardiaque à allure comparable (la FC est montée alors que l'allure a peu
+changé — fatigue cardiovasculaire) ; **fade GAP marqué avec un fade EF proche
+de 0** signale que l'allure ET la FC ont baissé ENSEMBLE (l'athlète a
+volontairement ou involontairement réduit l'effort, pas seulement l'allure) —
+voir `ASSUMPTIONS["reading_gap_vs_ef"]` pour le détail complet.
 
 ## Réutilisation — rien de recalculé, helpers PARTAGÉS avec le découplage (#45)
 
@@ -68,6 +82,28 @@ la pente en forte déclivité, voir `arc_gap.ASSUMPTIONS["model"]`). AUCUNE
 règle d'« effort stable » contrairement au découplage (#45) : le fade de fin
 de sortie longue est précisément ce qu'on cherche à détecter, une sortie qui
 ralentit nettement en fin de parcours ne doit pas être écartée pour ça.
+
+## Limites connues (revue de code #48, honnêteté du repère)
+
+**Une bonne part des sorties longues en terrain montagneux est
+STRUCTURELLEMENT inéligible**, jamais un bug : un aller-retour à un sommet
+(montée dans le premier tiers, descente dans le dernier) ou un circuit
+« montée d'abord » (gros dénivelé en début de sortie, plus plat ensuite)
+déclenchent presque systématiquement `ASSUMPTIONS["grade_asymmetry"]` ou
+`ASSUMPTIONS["usable_running"]` (trop de pente forte/marche concentrée dans
+un seul tiers) — voir `ASSUMPTIONS["mountain_long_runs"]` pour le détail et
+la mesure sur un workspace synthétique de 365 jours (0/39 sorties longues
+éligibles sur un profil trail avec relief marqué). Le tiers du MILIEU n'est
+JAMAIS utilisé dans un ratio (voir `ASSUMPTIONS["portions"]`) : une grosse
+montée qui y est intégralement contenue n'a donc aucun effet sur
+l'éligibilité, mais une sortie où la montée déborde sur le premier ou le
+dernier tiers reste vulnérable à l'asymétrie ci-dessus. **Sans règle d'effort
+stable** (volontairement, voir ci-dessus), une course avec accélération
+finale (« kick »), un fartlek ou des intervalles en fin de sortie longue
+produisent un fade qui reflète le PLAN de la séance, pas une baisse de
+performance réelle — ce KPI n'est interprétable que sur une sortie à effort
+globalement continu (endurance fondamentale), jamais sur une séance à
+structure imposée.
 
 ## API réutilisable, pure (sans SQLite ni disque)
 
@@ -154,20 +190,52 @@ REASON_UNKNOWN_ACTIVITY = "aucune activité indexée pour ce garmin_activity_id"
 
 ASSUMPTIONS = {
     "model": (
-        "Durabilité sur les sorties longues (#48), prédicteur direct de la tenue en ultra : compare le "
-        "dernier tiers (temps de mouvement, post-échauffement) au premier tiers de la même sortie, sur "
-        "l'allure ajustée à la pente (GAP, arc_gap.py, #44) et sur la fréquence cardiaque — fade GAP % = "
-        "(GAP 1er tiers − GAP dernier tiers) / GAP 1er tiers × 100, fade EF % de même sur EF = GAP/FC. "
-        "GAP et FC moyens sont calculés sur le MÊME sous-ensemble commun d'échantillons (FC et GAP tous "
-        "deux présents) pour chaque tiers — jamais deux moyennes sur deux sous-ensembles différents, qui "
-        "biaiseraient le ratio EF dès qu'un trou de FC ne coïncide pas avec un trou de GAP (même "
-        "discipline que arc_decoupling.ASSUMPTIONS['model'], #45). Une valeur POSITIVE signale une baisse "
-        "de performance en fin de sortie (fade) ; négative ou nulle, une séance sans baisse mesurable, "
-        "voire un négative splitting. Repère de coaching indicatif, PAS un seuil validé cliniquement — "
-        "même prudence que le découplage aérobie (#45), dont ce module partage l'esprit et les helpers "
-        "d'éligibilité, mais sur le DERNIER TIERS plutôt que la seconde moitié : le fade cible "
-        "spécifiquement l'effondrement de fin de sortie longue, pas une dérive linéaire sur toute la "
-        "séance."
+        "Durabilité sur les sorties longues (#48), indicateur de baisse de performance en fin de "
+        "parcours : compare le dernier tiers (temps de mouvement, post-échauffement) au premier tiers de "
+        "la même sortie, sur l'allure ajustée à la pente (GAP, arc_gap.py, #44) et sur la fréquence "
+        "cardiaque — fade GAP % = (GAP 1er tiers − GAP dernier tiers) / GAP 1er tiers × 100, fade EF % de "
+        "même sur EF = GAP/FC. GAP et FC moyens sont calculés sur le MÊME sous-ensemble commun "
+        "d'échantillons (FC et GAP tous deux présents) pour chaque tiers — jamais deux moyennes sur deux "
+        "sous-ensembles différents, qui biaiseraient le ratio EF dès qu'un trou de FC ne coïncide pas "
+        "avec un trou de GAP (même discipline que arc_decoupling.ASSUMPTIONS['model'], #45). Une valeur "
+        "POSITIVE signale une baisse de performance en fin de sortie (fade) ; négative ou nulle, une "
+        "séance sans baisse mesurable, voire un négative splitting. Repère de coaching indicatif, PAS un "
+        "seuil validé cliniquement, ET PAS un « prédicteur » démontré de la tenue en ultra (revue de "
+        "code #48) : aucune source vérifiable n'établit un lien quantifié pour ce calcul précis, seulement "
+        "le raisonnement physiologique de bon sens qu'un ralentissement net en fin de sortie longue "
+        "reflète probablement une moins bonne tenue de l'effort prolongé — même prudence que le "
+        "découplage aérobie (#45), dont ce module partage l'esprit et les helpers d'éligibilité, mais sur "
+        "le DERNIER TIERS plutôt que la seconde moitié : le fade cible spécifiquement l'effondrement de "
+        "fin de sortie longue, pas une dérive linéaire sur toute la séance."
+    ),
+    "reading_gap_vs_ef": (
+        "Fade GAP et fade EF se lisent ENSEMBLE, jamais isolément (revue de code #48, nit) : un fade EF "
+        "NETTEMENT SUPÉRIEUR au fade GAP signale une dérive cardiaque À ALLURE COMPARABLE (la FC est "
+        "montée alors que l'allure a peu changé sur le dernier tiers — fatigue cardiovasculaire, même "
+        "phénomène que le découplage aérobie, #45, mais concentré en fin de sortie). Un fade GAP MARQUÉ "
+        "avec un fade EF PROCHE DE 0, à l'inverse, signale que l'allure ET la FC ont baissé ENSEMBLE dans "
+        "la même proportion (l'effort métabolique réel, lui, n'a pas changé) : l'athlète a réduit "
+        "l'intensité — volontairement (gestion tactique d'une sortie longue) ou involontairement (fatigue "
+        "musculaire/mécanique plutôt que cardiovasculaire) — pas seulement son allure. Un fade GAP ET un "
+        "fade EF tous deux marqués et proches combinent probablement les deux effets. Ni l'un ni l'autre "
+        "cas ne distingue une cause précise (chaleur, hydratation, nutrition, fatigue musculaire...) : ce "
+        "module mesure un SYMPTÔME, pas un diagnostic."
+    ),
+    "mountain_long_runs": (
+        "LIMITE CONNUE, documentée honnêtement (revue de code #48) : une bonne part des sorties longues "
+        "en terrain montagneux est STRUCTURELLEMENT inéligible, jamais un bug de seuil. Un aller-retour à "
+        "un sommet (montée concentrée dans le premier tiers, descente dans le dernier) ou un circuit "
+        "« montée d'abord » (gros dénivelé en début de sortie) déclenchent presque systématiquement "
+        "ASSUMPTIONS['grade_asymmetry'] ou ASSUMPTIONS['usable_running'] (trop de pente forte/marche "
+        "concentrée dans un seul tiers) — mesuré sur `tests.lib.synthetic.build(days=365, sport='trail', "
+        "seed=7, with_samples=True)` : 0 sortie longue éligible sur 40 (31 pour asymétrie de pente, 9 pour "
+        "manque de course exploitable). Le tiers du MILIEU n'est JAMAIS utilisé dans un ratio (voir "
+        "ASSUMPTIONS['portions']) : une grosse montée entièrement contenue dans ce tiers n'affecte donc "
+        "PAS l'éligibilité, mais une montée qui déborde sur le premier ou le dernier tiers reste "
+        "vulnérable à l'asymétrie ci-dessus. Un profil trail avec relief RÉPARTI (plusieurs bosses "
+        "comparables dans chaque tiers, comme les sorties vallonnées éligibles au découplage, #45) reste "
+        "éligible — c'est le déséquilibre CONCENTRÉ dans un seul tiers, pas le relief en général, qui "
+        "rend une sortie inéligible."
     ),
     "restricted_to_run_family": (
         "Calculé UNIQUEMENT pour les séances de la famille course à pied (arc_metrics.sport_family == "
@@ -233,7 +301,15 @@ ASSUMPTIONS = {
         "ici : le fade de fin de sortie longue (baisse nette d'allure sur le dernier tiers) est "
         "précisément le phénomène que ce KPI cherche à détecter — une sortie qui ralentit fortement en "
         "fin de parcours ne doit jamais être écartée pour cette raison, ce serait rejeter l'exact signal "
-        "recherché."
+        "recherché. CONTREPARTIE ASSUMÉE (revue de code #48, nit) : ce KPI n'est interprétable QUE sur une "
+        "sortie à effort globalement continu (endurance fondamentale). Une course avec accélération "
+        "finale (« kick », finish rapide), un fartlek ou des intervalles placés en fin de sortie longue "
+        "produisent un fade qui reflète le PLAN DE LA SÉANCE (allure volontairement variée), pas une "
+        "baisse de performance réelle — dans ces cas, ni le fade GAP ni le fade EF ne doivent être lus "
+        "comme un signal de durabilité, une valeur négative ou positive marquée y étant simplement "
+        "l'effet du plan d'entraînement. Aucune détection automatique de ce cas n'est faite ici (le "
+        "titre/l'intensité déclarée de la séance n'est pas consultée) : à l'athlète et au coach de savoir "
+        "que la séance avait une structure imposée avant d'interpréter le chiffre."
     ),
     "hr_by_third": (
         "La FC moyenne (pondérée par le temps, sur les échantillons utilisables — hors pente forte/"

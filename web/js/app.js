@@ -448,7 +448,12 @@ async function viewForm(params) {
   if (durabilityChart) {
     attachCursor($("#c-durability"), durabilityChart, (i) => {
       const p = durabilityPoints[i];
-      readout($("#r-durability"), `<strong>${F.dayLong(p.date)}</strong> · ${F.esc(p.name || F.SPORT[p.sport] || p.sport)} · fade GAP ${p.gap_fade_pct != null ? `${p.gap_fade_pct > 0 ? "+" : ""}${F.num(p.gap_fade_pct, 1)} %` : "—"}${p.ef_fade_pct != null ? ` · fade EF ${p.ef_fade_pct > 0 ? "+" : ""}${F.num(p.ef_fade_pct, 1)} %` : ""}`);
+      // FC par tiers (revue de code #48, nit) : affichée dans le readout au même
+      // titre que le fade lui-même — un fait de séance utile pour situer le fade
+      // (ex. distinguer une dérive cardiaque d'un effort simplement réduit).
+      const hrParts = [p.hr_first_third_bpm, p.hr_middle_third_bpm, p.hr_last_third_bpm]
+        .map((v) => (v != null ? F.num(v) : "—")).join("/");
+      readout($("#r-durability"), `<strong>${F.dayLong(p.date)}</strong> · ${F.esc(p.name || F.SPORT[p.sport] || p.sport)} · fade GAP ${p.gap_fade_pct != null ? `${p.gap_fade_pct > 0 ? "+" : ""}${F.num(p.gap_fade_pct, 1)} %` : "—"}${p.ef_fade_pct != null ? ` · fade EF ${p.ef_fade_pct > 0 ? "+" : ""}${F.num(p.ef_fade_pct, 1)} %` : ""} · FC 1er/milieu/dernier ${hrParts} bpm`);
     });
   }
 }
@@ -1246,18 +1251,38 @@ function descentTrendSection(trend, days, selectedClass) {
  * `arc_durability.ASSUMPTIONS`), fade GAP et fade EF entre le premier et le
  * dernier tiers, en pourcentage. Repère à 0 % (aucune baisse mesurée) — une
  * valeur POSITIVE signale un ralentissement en fin de sortie (fade), jamais une
- * amélioration. Fade EF en anneau creux (même motif que
- * `descentTrendSection`/`.dot--sweat`) : ce n'est pas la même grandeur que le
- * fade GAP, jamais confondue visuellement. Abscisses espacées par indice, comme
- * `decouplingSection` (#45) : les sorties longues sont trop irrégulières pour un
- * axe temporel continu lisible. */
+ * amélioration. Fade EF en anneau creux DESSINÉ EN PREMIER (revue de code #48,
+ * should-fix 1 : `fill: var(--surface)` dessiné APRÈS masquait totalement le
+ * point GAP dès que les deux fades sont proches — voir `web/css/app.css`,
+ * `.dot--durability-ef`) : le point GAP plein reste toujours visible par-dessus.
+ * Abscisses espacées par INDICE (pas par date réelle, voir `web/js/chart.js::x`),
+ * même motif que `decouplingSection` (#45) : les sorties longues sont trop
+ * irrégulières dans le temps pour qu'un axe continu reste lisible. Revue de
+ * code #48, should-fix 2 : une bonne part des sorties longues en montagne (voir
+ * `arc_durability.ASSUMPTIONS["mountain_long_runs"]`) est STRUCTURELLEMENT
+ * inéligible — quand `trend.long_runs > 0` mais `trend.measured_n === 0`, la
+ * section reste affichée avec un message (raison dominante) au lieu de
+ * disparaître silencieusement ; elle ne disparaît QUE si `trend.long_runs === 0`
+ * (aucune sortie longue du tout dans la fenêtre). */
 function durabilitySection(trend) {
+  if (!trend.long_runs) return { html: "", chart: null, points: [] };
   const points = trend.points.filter((p) => p.gap_fade_pct != null);
-  if (!points.length) return { html: "", chart: null, points: [] };
+  if (!points.length) {
+    const html = `<section class="band"><h2>Durabilité</h2>
+      <p class="muted">Baisse de performance en fin de sortie longue : allure ajustée à la pente (GAP) et
+        facteur d'efficacité (EF = GAP/FC) du dernier tiers de la sortie comparés au premier tiers.
+        <a href="#/performance">Hypothèses des modèles</a></p>
+      ${note(`${F.num(trend.long_runs)} sortie${trend.long_runs > 1 ? "s" : ""} longue${trend.long_runs > 1 ? "s" : ""}, aucune éligible${trend.dominant_reason ? ` — ${F.esc(trend.dominant_reason)}` : ""}.`)}
+      </section>`;
+    return { html, chart: null, points: [] };
+  }
   const dates = points.map((p) => p.date);
   const chart = timeChart(dates, [
+    // EF (anneau creux) dessiné EN PREMIER, GAP (point plein) par-dessus — voir
+    // le docstring ci-dessus (revue de code #48, should-fix 1) : l'ordre inverse
+    // masquait totalement le point GAP quand les deux fades sont proches.
+    { type: "dots", values: points.map((p) => p.ef_fade_pct), cls: "dot dot--durability-ef", r: 3.4 },
     { type: "dots", values: points.map((p) => p.gap_fade_pct), cls: "dot dot--durability-gap" },
-    { type: "dots", values: points.map((p) => p.ef_fade_pct), cls: "dot dot--durability-ef" },
   ], [
     // `hline` va dans `marks` (3e argument), jamais dans `layers` (2e) — voir le
     // correctif de #47 sur `decouplingSection`/`descentTrendSection`.
@@ -1267,16 +1292,19 @@ function durabilitySection(trend) {
     yFormat: (v) => `${F.num(v, 1)} %`,
   });
   const html = `<section class="band"><h2>Durabilité</h2>
-    <p class="muted">Baisse de performance en fin de sortie longue, prédicteur direct de la tenue en
-      ultra : allure ajustée à la pente (GAP) et facteur d'efficacité (EF = GAP/FC) du dernier tiers de
-      la sortie (temps de mouvement, échauffement exclu), comparés au premier tiers. Une valeur
-      POSITIVE signale un ralentissement en fin de sortie ; négative ou nulle, pas de baisse mesurable.
-      Repère de coaching indicatif, pas un seuil validé cliniquement. <a href="#/performance">Hypothèses
-      des modèles</a></p>
+    <p class="muted">Baisse de performance en fin de sortie longue : allure ajustée à la pente (GAP) et
+      facteur d'efficacité (EF = GAP/FC) du dernier tiers de la sortie (temps de mouvement, échauffement
+      exclu), comparés au premier tiers. Une valeur POSITIVE signale un ralentissement en fin de sortie ;
+      négative ou nulle, pas de baisse mesurable. Repère de coaching indicatif, pas un seuil validé
+      cliniquement, ni un lien démontré avec la tenue en ultra. <strong>Fade EF nettement supérieur au
+      fade GAP</strong> : dérive cardiaque à allure comparable. <strong>Fade GAP marqué, fade EF proche de
+      0</strong> : allure et FC ont baissé ensemble (effort réellement réduit). Sans règle d'effort
+      stable : une accélération finale, un fartlek ou des intervalles en fin de sortie longue faussent la
+      lecture. <a href="#/performance">Hypothèses des modèles</a></p>
     <p class="legend"><span class="legend__item"><span class="key key--durability-gap"></span>Fade GAP</span> <span class="legend__item"><span class="key key--durability-ef"></span>Fade EF</span></p>
     <div class="chart-host" id="c-durability">${chart.svg}</div><p class="readout" id="r-durability"></p>
     <dl class="facts facts--inline">
-      <div><dt>Sorties longues (${trend.window_weeks} sem.)</dt><dd>${F.num(trend.long_runs)}</dd></div>
+      <div><dt>Sorties longues (${trend.window_weeks} sem.)</dt><dd>${F.num(trend.long_runs)} <small class="muted">dont ${trend.measured_n} éligible${trend.measured_n > 1 ? "s" : ""}</small></dd></div>
       <div><dt>Fade GAP moyen</dt><dd>${trend.avg_gap_fade_pct != null ? `${trend.avg_gap_fade_pct > 0 ? "+" : ""}${F.num(trend.avg_gap_fade_pct, 1)} %<small class="muted"> sur ${trend.measured_n} sortie${trend.measured_n > 1 ? "s" : ""}</small>` : "—"}</dd></div>
     </dl></section>`;
   return { html, chart, points };

@@ -203,21 +203,38 @@ six semaines d'historique pour que la condition ait un sens.
   et fade EF entre le dernier et le premier tiers de la sortie (temps de
   mouvement, échauffement de 10 minutes exclu en premier, puis découpage en
   trois tiers égaux), en pourcentage. Une valeur **positive** signale un
-  ralentissement en fin de sortie (baisse de performance, prédicteur direct de
-  la tenue en ultra) ; négative ou nulle, pas de baisse mesurable, voire un
-  négative splitting. Repère à 0 %, jamais un seuil validé cliniquement — même
-  prudence que le découplage aérobie (#45), dont la durabilité partage
-  l'esprit et les règles d'éligibilité (couverture FC ≥ 80 % et au moins 10
-  minutes de course réellement exploitable sur le premier ET le dernier
-  tiers, pente comparable entre les deux, pentes fortes et marche exclues du
-  calcul mais jamais de la sortie entière), à une différence près : **aucune**
-  règle d'effort stable n'est appliquée — le fade de fin de sortie est
-  précisément ce que ce KPI cherche à détecter, une sortie qui ralentit
-  nettement en fin de parcours ne doit jamais être écartée pour cette raison
-  (voir `scripts/arc_durability.py::ASSUMPTIONS`). Une sortie longue non
-  éligible n'apparaît simplement pas sur ce graphique. La fiche d'une séance
-  individuelle affiche le fade GAP (et le fade EF) comme un fait de séance,
-  aux côtés du découplage aérobie.
+  ralentissement en fin de sortie ; négative ou nulle, pas de baisse mesurable,
+  voire un négative splitting. Repère à 0 %, jamais un seuil validé
+  cliniquement, ni un « prédicteur » démontré de la tenue en ultra (aucune
+  source vérifiable n'établit ce lien pour ce calcul précis, seulement le
+  raisonnement de bon sens) — même prudence que le découplage aérobie (#45),
+  dont la durabilité partage l'esprit et les règles d'éligibilité (couverture
+  FC ≥ 80 % et au moins 10 minutes de course réellement exploitable sur le
+  premier ET le dernier tiers, pente comparable entre les deux, pentes fortes
+  et marche exclues du calcul mais jamais de la sortie entière), à une
+  différence près : **aucune** règle d'effort stable n'est appliquée — le fade
+  de fin de sortie est précisément ce que ce KPI cherche à détecter. **Fade
+  GAP et fade EF se lisent ensemble** : un fade EF nettement supérieur au fade
+  GAP signale une dérive cardiaque à allure comparable (fatigue
+  cardiovasculaire) ; un fade GAP marqué avec un fade EF proche de 0 signale
+  que l'allure et la FC ont baissé ensemble (effort réellement réduit, pas
+  seulement l'allure). **Sans règle d'effort stable, une course avec
+  accélération finale, un fartlek ou des intervalles en fin de sortie longue
+  produisent un fade qui reflète le plan de la séance, pas une baisse de
+  performance réelle** — ce KPI n'est interprétable que sur une sortie à
+  effort globalement continu. **Limite connue, mesurée** : sur un workspace
+  synthétique de 365 jours (profil trail, relief marqué), 0 sortie longue sur
+  40 est éligible (31 pour asymétrie de pente entre le premier et le dernier
+  tiers, 9 pour manque de course exploitable) — un aller-retour à un sommet ou
+  un circuit « montée d'abord » sont STRUCTURELLEMENT souvent inéligibles,
+  jamais un bug (le tiers du milieu n'est jamais utilisé dans un ratio ; voir
+  `scripts/arc_durability.py::ASSUMPTIONS["mountain_long_runs"]`). **Quand des
+  sorties longues existent mais qu'aucune n'est éligible, la section reste
+  affichée** avec un message (« N sorties longues, aucune éligible — raison
+  dominante ») plutôt que de disparaître silencieusement ; elle ne disparaît
+  que s'il n'y a AUCUNE sortie longue du tout dans la fenêtre. La fiche d'une
+  séance individuelle affiche le fade GAP (et le fade EF) comme un fait de
+  séance, aux côtés du découplage aérobie.
 
 | Alimentée par | Calcul |
 |---|---|

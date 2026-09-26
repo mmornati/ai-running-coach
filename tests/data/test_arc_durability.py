@@ -292,12 +292,14 @@ class Workspace(unittest.TestCase):
         return I.index_workspace(self.conn, self.ws, today)
 
     def write_activity(self, garmin_id, day="2026-09-20", duration_s=LONG_DURATION_S, distance_m=16000,
-                        sport="trail", name="Sortie longue"):
-        self.write(f"activities/{day}_{sport}_{garmin_id}.md", (
-            "# Sortie\n\n```arc\n" + json.dumps({
-                "arc": 1, "kind": "activity", "date": day, "sport": sport, "name": name,
-                "duration_s": duration_s, "distance_m": distance_m, "garmin_activity_id": garmin_id,
-            }) + "\n```\n"))
+                        sport="trail", name="Sortie longue", moving_duration_s=None):
+        data = {
+            "arc": 1, "kind": "activity", "date": day, "sport": sport, "name": name,
+            "duration_s": duration_s, "distance_m": distance_m, "garmin_activity_id": garmin_id,
+        }
+        if moving_duration_s is not None:
+            data["moving_duration_s"] = moving_duration_s
+        self.write(f"activities/{day}_{sport}_{garmin_id}.md", "# Sortie\n\n```arc\n" + json.dumps(data) + "\n```\n")
 
     def write(self, rel: str, text: str) -> None:
         path = self.ws / rel
@@ -413,6 +415,54 @@ class TestDurabilityTrend(Workspace):
         trend = I.durability_trend(self.conn, __import__("datetime").date(2026, 9, 25))
         self.assertEqual(trend["long_runs"], 0)
 
+    def test_activity_id_is_carried_on_trend_points(self):
+        """Revue de code #48, should-fix 3 (cohérence avec `descent_trend`) :
+        chaque point de tendance porte l'id INTERNE de l'activité, jamais
+        seulement (date, name, sport)."""
+        records, _truth = sample_session(seed=4, duration_s=LONG_DURATION_S, fade_pct=8.0, noise=False)
+        self.write_activity(90000000152, day="2026-09-13", duration_s=LONG_DURATION_S)
+        self.write_fit_records(90000000152, records)
+        self.index()
+        trend = I.durability_trend(self.conn, __import__("datetime").date(2026, 9, 25))
+        row = self.activity_row(90000000152)
+        self.assertEqual(trend["points"][0]["activity_id"], row["id"])
+
+    def test_moving_duration_s_fallback_excludes_a_long_elapsed_but_short_moving_run(self):
+        """Revue de code #48, should-fix 2 : le filtre « sortie longue » de la
+        tendance préfère `moving_duration_s` (déclaré) à `duration_s` (écoulé)
+        quand il est renseigné — une activité de 100 minutes ÉCOULÉES mais
+        seulement 70 minutes de MOUVEMENT réel (beaucoup d'arrêts, ravitaillement)
+        ne doit PAS compter comme sortie longue (avant ce correctif, le filtre
+        sur `duration_s` seul l'aurait comptée à tort)."""
+        records, _truth = sample_session(seed=4, duration_s=LONG_DURATION_S, fade_pct=8.0, noise=False)
+        self.write_activity(90000000153, day="2026-09-13", duration_s=100 * 60, moving_duration_s=70 * 60)
+        self.write_fit_records(90000000153, records)
+        self.index()
+        trend = I.durability_trend(self.conn, __import__("datetime").date(2026, 9, 25))
+        self.assertEqual(trend["long_runs"], 0)
+
+    def test_dominant_reason_shown_when_no_long_run_is_eligible(self):
+        """Revue de code #48, should-fix 2 : quand des sorties longues existent
+        mais qu'aucune n'est éligible, `measured_n == 0` mais `long_runs > 0` —
+        `dominant_reason_code`/`dominant_reason` identifient la raison la plus
+        fréquente, pour que l'UI n'affiche jamais une section vide sans
+        explication."""
+        too_short_records, _truth = sample_session(duration_s=3000, fade_pct=8.0, noise=False)
+        # Deux sorties déclarées longues (moving_duration_s > 90 min) mais dont
+        # les échantillons FIT réels sont trop courts pour l'éligibilité —
+        # `durability_reason_code` vaudra "too_short" pour les deux.
+        self.write_activity(90000000154, day="2026-09-06", duration_s=95 * 60, moving_duration_s=95 * 60)
+        self.write_fit_records(90000000154, too_short_records)
+        self.write_activity(90000000155, day="2026-09-13", duration_s=95 * 60, moving_duration_s=95 * 60)
+        self.write_fit_records(90000000155, too_short_records)
+        self.index()
+        trend = I.durability_trend(self.conn, __import__("datetime").date(2026, 9, 25))
+        self.assertEqual(trend["long_runs"], 2)
+        self.assertEqual(trend["measured_n"], 0)
+        self.assertEqual(trend["dominant_reason_code"], "too_short")
+        self.assertIsNotNone(trend["dominant_reason"])
+        self.assertEqual(trend["reason_counts"], {"too_short": 2})
+
 
 class TestComputeMetricsSurvivesAnUnexpectedDurabilityCrash(Workspace):
     """Même défense en profondeur que #46/#47 (revue de code) : un bug
@@ -461,7 +511,12 @@ class TestComputeMetricsSurvivesAnUnexpectedDurabilityCrash(Workspace):
         self.assertIsNone(broken["durability_hr_first_third_bpm"])
         self.assertIsNone(broken["durability_hr_middle_third_bpm"])
         self.assertIsNone(broken["durability_hr_last_third_bpm"])
-        self.assertIsNone(broken["durability_reason_code"])
+        # Revue de code #48, should-fix 3 : le nettoyage de garde doit écrire un
+        # `reason_code` STABLE (`"internal_error"`), jamais NULL alors que
+        # `durability_reason` porte un texte — un `reason_code` NULL laisserait
+        # croire à une activité jamais évaluée plutôt qu'à un échec interne.
+        self.assertIsNotNone(broken["durability_reason"])
+        self.assertEqual(broken["durability_reason_code"], "internal_error")
         # Défense en profondeur partagée avec GAP/découplage/VAM/descente : la
         # ligne entière de champs dérivés est remise à NULL, pas seulement les
         # colonnes de durabilité.

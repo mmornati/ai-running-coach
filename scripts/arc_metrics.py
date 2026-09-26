@@ -1313,7 +1313,15 @@ def decoupling_trend(activities: List[dict], day: date, window_weeks: int = DECO
     `arc_decoupling.decoupling_report`, JAMAIS recalculés ici) optionnels — une
     sortie longue sans découplage calculable (séance non stable, échauffement trop
     long, etc.) apparaît quand même dans `points` avec `decoupling_pct: None`,
-    jamais silencieusement exclue de la liste (seulement de la moyenne)."""
+    jamais silencieusement exclue de la liste (seulement de la moyenne).
+
+    NOTE (revue de code #48) : ce filtre utilise `duration_s` (temps ÉCOULÉ) seul,
+    jamais `moving_duration_s` (temps de mouvement DÉCLARÉ, quand renseigné) —
+    `durability_trend` (#48) préfère désormais ce dernier quand il est disponible,
+    un meilleur proxy du temps de mouvement RÉEL. Non repris ICI : le changer
+    changerait quelles activités entrent dans une tendance déjà testée et
+    documentée (voir l'ATTENTION du docstring), pas un simple ajout — laissé tel
+    quel plutôt que retouché à la légère dans cette PR."""
     start = day - timedelta(days=window_weeks * 7 - 1)
     points = []
     for act in activities:
@@ -1521,19 +1529,53 @@ def durability_trend(activities: List[dict], day: date, window_weeks: int = DURA
     à pied, durée > `LONG_RUN_MIN_DURATION_S`) sont appliqués ici, que l'appelant
     ait ou non déjà pré-filtré sa requête.
 
+    ATTENTION, même limite documentée que `decoupling_trend` (#45, revue de code) :
+    « sortie longue » ici préfère `moving_duration_s` (temps de mouvement DÉCLARÉ au
+    contrat ```arc, quand l'auteur du fichier l'a renseigné — même repli que
+    `vo2max_effective`) et retombe sur `duration_s` (temps ÉCOULÉ) sinon — un
+    MEILLEUR proxy que `duration_s` seul, mais TOUJOURS distinct du temps de
+    mouvement RÉELLEMENT MESURÉ sur les échantillons FIT que `arc_durability`
+    utilise pour son propre seuil interne (`MIN_MOVING_DURATION_S`, appliqué à
+    l'indexation) : une activité dont ni `moving_duration_s` ni `duration_s` ne
+    dépassent 90 minutes n'apparaîtra pas ici, même si son mouvement FIT réel
+    dépasse le seuil (rare : `moving_duration_s`, quand renseigné, est cohérent
+    avec les arrêts déclarés) ; inversement `gap_fade_pct` peut rester `None` ici
+    (raison `too_short`) pour une activité qui APPARAÎT dans `points` (déclarée
+    longue) si son mouvement FIT réel n'atteint pas 90 minutes.
+
     `activities` : dicts portant au moins `date` (AAAA-MM-JJ), `duration_s` et
-    `sport` ; `durability_gap_fade_pct`/`durability_ef_fade_pct`/
-    `durability_hr_first_third_bpm`/`durability_hr_middle_third_bpm`/
-    `durability_hr_last_third_bpm` (déjà dérivés à l'indexation par
+    `sport` ; `activity_id` (id INTERNE, comme `descent_trend` — jamais
+    `(date, name, sport)`, qui fusionnerait à tort deux séances du même jour au
+    même nom générique), `moving_duration_s`, `durability_gap_fade_pct`/
+    `durability_ef_fade_pct`/`durability_hr_first_third_bpm`/
+    `durability_hr_middle_third_bpm`/`durability_hr_last_third_bpm`/
+    `durability_reason`/`durability_reason_code` (déjà dérivés à l'indexation par
     `arc_durability.durability_report`, JAMAIS recalculés ici) optionnels — une
     sortie longue sans fade calculable (portion trop courte, FC incomplète, pente
     trop asymétrique...) apparaît quand même dans `points` avec ces champs à
-    `None`, jamais silencieusement exclue de la liste (seulement des moyennes)."""
+    `None`/la raison correspondante, jamais silencieusement exclue de la liste
+    (seulement des moyennes).
+
+    `dominant_reason_code`/`dominant_reason` (revue de code #48, should-fix 2) :
+    le `reason_code` le plus fréquent parmi les sorties longues NON éligibles de
+    la fenêtre (`None` si `long_runs == measured_n`, aucune sortie non éligible) —
+    à égalité, le `reason_code` le plus tôt dans l'ordre alphabétique gagne (choix
+    arbitraire mais déterministe, pas de préférence physiologique entre deux
+    raisons ex æquo). Sert à afficher, quand `measured_n == 0`, un message du
+    type « N sorties longues, aucune éligible — <raison dominante> » plutôt que de
+    masquer silencieusement toute la section (voir `arc_durability.ASSUMPTIONS`
+    pour pourquoi un aller-retour ou un profil montagne « montée d'abord » sont
+    STRUCTURELLEMENT souvent inéligibles, pas un bug)."""
     start = day - timedelta(days=window_weeks * 7 - 1)
     points = []
     for act in activities:
         iso = act.get("date")
-        duration = act.get("duration_s")
+        # Préfère le temps de mouvement DÉCLARÉ (`moving_duration_s`) au temps
+        # ÉCOULÉ (`duration_s`) quand il est renseigné — même repli que
+        # `vo2max_effective` ci-dessus — voir l'ATTENTION du docstring pour la
+        # limite restante (ce n'est toujours pas le temps de mouvement MESURÉ
+        # sur les échantillons FIT, seul juge de l'éligibilité réelle).
+        duration = act.get("moving_duration_s") or act.get("duration_s")
         if not iso or not duration or duration <= LONG_RUN_MIN_DURATION_S:
             continue
         if sport_family(act.get("sport")) != "run":
@@ -1545,19 +1587,37 @@ def durability_trend(activities: List[dict], day: date, window_weeks: int = DURA
         if not (start <= act_date <= day):
             continue
         points.append({
+            "activity_id": act.get("activity_id"),
             "date": iso,
             "sport": act.get("sport"),
             "name": act.get("name"),
-            "duration_s": duration,
+            # `duration_s` reste TOUJOURS le temps ÉCOULÉ déclaré (`act.get("duration_s")`),
+            # jamais `duration` (la valeur utilisée pour le SEUIL d'entrée ci-dessus, qui
+            # peut être `moving_duration_s` par repli, voir l'ATTENTION du docstring) — un
+            # champ nommé `duration_s` qui contiendrait parfois une autre grandeur serait
+            # trompeur pour tout appelant (revue de code #48, nit). `moving_duration_s` est
+            # exposé À PART, tel quel (`None` si non déclaré), pour que l'appelant voie les
+            # deux et comprenne lequel a servi au filtre.
+            "duration_s": act.get("duration_s"),
+            "moving_duration_s": act.get("moving_duration_s"),
             "gap_fade_pct": act.get("durability_gap_fade_pct"),
             "ef_fade_pct": act.get("durability_ef_fade_pct"),
             "hr_first_third_bpm": act.get("durability_hr_first_third_bpm"),
             "hr_middle_third_bpm": act.get("durability_hr_middle_third_bpm"),
             "hr_last_third_bpm": act.get("durability_hr_last_third_bpm"),
+            "reason": act.get("durability_reason"),
+            "reason_code": act.get("durability_reason_code"),
         })
     points.sort(key=lambda p: p["date"])
     gap_measured = [p["gap_fade_pct"] for p in points if p["gap_fade_pct"] is not None]
     ef_measured = [p["ef_fade_pct"] for p in points if p["ef_fade_pct"] is not None]
+    reason_counts: Dict[str, int] = {}
+    for p in points:
+        if p["gap_fade_pct"] is None and p["reason_code"]:
+            reason_counts[p["reason_code"]] = reason_counts.get(p["reason_code"], 0) + 1
+    dominant_reason_code = max(sorted(reason_counts), key=lambda k: reason_counts[k]) if reason_counts else None
+    dominant_reason = (next((p["reason"] for p in points if p["reason_code"] == dominant_reason_code), None)
+                        if dominant_reason_code else None)
     return {
         "points": points,
         "window_weeks": window_weeks,
@@ -1565,6 +1625,9 @@ def durability_trend(activities: List[dict], day: date, window_weeks: int = DURA
         "measured_n": len(gap_measured),
         "avg_gap_fade_pct": round(statistics.mean(gap_measured), 2) if gap_measured else None,
         "avg_ef_fade_pct": round(statistics.mean(ef_measured), 2) if ef_measured else None,
+        "reason_counts": reason_counts,
+        "dominant_reason_code": dominant_reason_code,
+        "dominant_reason": dominant_reason,
     }
 
 

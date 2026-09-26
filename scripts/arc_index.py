@@ -1042,8 +1042,9 @@ def compute_metrics(conn, conf: dict, today: Optional[str] = None) -> None:
                         "descent_reference_source = NULL, durability_gap_fade_pct = NULL, "
                         "durability_ef_fade_pct = NULL, durability_hr_first_third_bpm = NULL, "
                         "durability_hr_middle_third_bpm = NULL, durability_hr_last_third_bpm = NULL, "
-                        "durability_reason = ?, durability_reason_code = NULL WHERE id = ?",
-                        ("calcul impossible (erreur interne)", "calcul impossible (erreur interne)", act["id"]),
+                        "durability_reason = ?, durability_reason_code = ? WHERE id = ?",
+                        ("calcul impossible (erreur interne)", "calcul impossible (erreur interne)",
+                         "internal_error", act["id"]),
                     )
     conn.execute("DELETE FROM metric_day")
     dated = sorted(loads)
@@ -1886,12 +1887,20 @@ def durability_trend(conn, today: date, weeks: Optional[int] = None) -> dict:
     """Tendance de durabilité (#48) — pour la CLI (`arc_index.py durability
     --weeks`) et pour `coach`/le tableau de bord. Voir
     `arc_metrics.durability_trend`/`arc_durability.ASSUMPTIONS` : sorties
-    longues (`duration_s` > `arc_metrics.LONG_RUN_MIN_DURATION_S`) de la
-    famille course à pied, comme `decoupling_trend`."""
+    longues (`moving_duration_s` déclaré, à défaut `duration_s` écoulé, >
+    `arc_metrics.LONG_RUN_MIN_DURATION_S`) de la famille course à pied.
+    `id AS activity_id` (revue de code #48, should-fix 3, cohérence avec
+    `descent_trend`) : clé de regroupement stable, jamais `(date, name,
+    sport)`. Aucun `WHERE` sur la durée ICI (contrairement à `api_decoupling`) :
+    le filtrage précis (moving_duration_s OU duration_s) est fait en Python par
+    `arc_metrics.durability_trend`, qui a besoin des DEUX colonnes pour
+    appliquer son repli — un `WHERE duration_s > ?` exclurait à tort une
+    activité dont seul `moving_duration_s` dépasse le seuil."""
     rows = [dict(r) for r in conn.execute(
-        "SELECT date, sport, name, duration_s, durability_gap_fade_pct, durability_ef_fade_pct, "
-        "durability_hr_first_third_bpm, durability_hr_middle_third_bpm, durability_hr_last_third_bpm "
-        "FROM activity").fetchall()]
+        "SELECT id AS activity_id, date, sport, name, duration_s, moving_duration_s, "
+        "durability_gap_fade_pct, durability_ef_fade_pct, durability_hr_first_third_bpm, "
+        "durability_hr_middle_third_bpm, durability_hr_last_third_bpm, durability_reason, "
+        "durability_reason_code FROM activity").fetchall()]
     window_weeks = weeks if weeks and weeks > 0 else M.DURABILITY_TREND_WEEKS
     return M.durability_trend(rows, today, window_weeks)
 

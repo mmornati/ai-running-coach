@@ -100,8 +100,12 @@ class TestDurabilityApi(InstallAsserts):
         matches = [p for p in trend["points"] if p.get("gap_fade_pct") is not None]
         self.assertEqual(len(matches), 1, trend["points"])
         self.assertAlmostEqual(matches[0]["gap_fade_pct"], 8.0, delta=0.5)
+        # Revue de code #48, should-fix 3 : id INTERNE porté sur chaque point,
+        # cohérence avec `/api/descent`.
+        self.assertEqual(matches[0]["activity_id"], self._activity_id())
         self.assertEqual(trend["measured_n"], 1)
         self.assertAlmostEqual(trend["avg_gap_fade_pct"], 8.0, delta=0.5)
+        self.assertIsNone(trend["dominant_reason_code"])
 
     def test_non_run_activity_durability_has_an_explicit_reason_and_no_error(self):
         """Même discipline que `test_descent_api.py`/`test_vam_api.py` : une

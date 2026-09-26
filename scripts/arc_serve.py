@@ -866,19 +866,25 @@ def api_durability(store: Store, q: dict) -> dict:
     """Tendance de durabilité sur les sorties longues (#48) : `/api/durability`.
 
     Additive : ne touche à aucune route existante. Délègue à `M.durability_trend`
-    sur les sorties longues de la famille course à pied (`duration_s` >
-    `M.LONG_RUN_MIN_DURATION_S`) de la fenêtre demandée (`weeks`, défaut
-    `M.DURABILITY_TREND_WEEKS`) — même filtre que `api_decoupling` (#45), sur lequel
-    la durabilité calque son esprit — voir `arc_durability.ASSUMPTIONS`.
+    sur les sorties longues de la famille course à pied (`moving_duration_s`
+    déclaré, à défaut `duration_s` écoulé, > `M.LONG_RUN_MIN_DURATION_S`) de la
+    fenêtre demandée (`weeks`, défaut `M.DURABILITY_TREND_WEEKS`) — voir
+    `arc_durability.ASSUMPTIONS`. `id AS activity_id` (revue de code #48,
+    should-fix 3, cohérence avec `api_descent`). Pas de `WHERE` sur la durée ICI
+    (contrairement à `api_decoupling`, revue de code #48) : `M.durability_trend`
+    a besoin des DEUX colonnes de durée pour appliquer son repli
+    `moving_duration_s or duration_s` — un `WHERE duration_s > ?` exclurait à
+    tort une activité dont seul `moving_duration_s` dépasse le seuil.
     """
     today = _today(store)
     weeks_raw = q.get("weeks", [""])[0]
     weeks = int(weeks_raw) if weeks_raw.isdigit() else M.DURABILITY_TREND_WEEKS
     weeks = max(4, min(52, weeks))
     rows = store.rows(
-        "SELECT date, sport, name, duration_s, durability_gap_fade_pct, durability_ef_fade_pct, "
-        "durability_hr_first_third_bpm, durability_hr_middle_third_bpm, durability_hr_last_third_bpm "
-        "FROM activity WHERE duration_s > ?", (M.LONG_RUN_MIN_DURATION_S,))
+        "SELECT id AS activity_id, date, sport, name, duration_s, moving_duration_s, "
+        "durability_gap_fade_pct, durability_ef_fade_pct, durability_hr_first_third_bpm, "
+        "durability_hr_middle_third_bpm, durability_hr_last_third_bpm, durability_reason, "
+        "durability_reason_code FROM activity")
     return M.durability_trend(rows, today, weeks)
 
 
