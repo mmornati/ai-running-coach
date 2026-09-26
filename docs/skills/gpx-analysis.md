@@ -12,7 +12,7 @@
 ## Fonctionnalités
 
 - Analyse du **profil d'élévation** (D+, D-, pentes)
-- Détection des **montées** et **descentes** significatives
+- Détection des **montées** significatives par le détecteur du moteur (`scripts/arc_climb.py`, le même que le tableau de bord) : approches plates rognées, replats courts fusionnés
 - Détermination du type de parcours (boucle, point-to-point)
 - **Verdict de compatibilité** avec une séance planifiée
 - Rapport Markdown structuré

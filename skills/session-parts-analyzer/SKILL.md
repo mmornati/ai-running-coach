@@ -8,15 +8,16 @@ description: Use to analyze specific portions of a Garmin session (strides/ligne
 This skill loads the **stride / climb / sprint / interval / cooldown segment detector** for Garmin activities.
 It produces a per-segment Markdown report with distance, pace, HR before/during/after, recovery gaps, and execution flags.
 
-The detector is implemented as a single self-contained Python script (`scripts/analyze_session_parts.py`)
-that reads either a FIT file or a Garmin JSON export and applies heuristics on smoothed speed / HR / grade.
+The detector is implemented as a Python script (`scripts/analyze_session_parts.py`)
+that reads either a FIT file or a Garmin JSON export and applies heuristics on smoothed speed / HR;
+climbs are delegated to the engine detector (`scripts/arc_climb.py`).
 
 ---
 
 ## When to use
 
 - **Stride / lignes droites analysis** — verify protocol: progressive acceleration, ~100 m work, ~100 m recovery, HR drop between reps.
-- **Climb detection** — flag sustained climbs (grade ≥ 4 % over ≥ 250 m with ≥ 15 m gain) and report HR drift.
+- **Climb detection** — sustained climbs (net gain ≥ 15 m, average grade ≥ 4 %, over ≥ 150 m) detected by the engine's canonical detector (`scripts/arc_climb.py`), with HR drift, grade class and VAM per climb.
 - **Sprint / interval work** — count reps, validate recovery gaps, check that HR returns to baseline between reps.
 - **Last km / cooldown** — distinguish finish-line surge from a true cool-down.
 - **Mixed sessions** — any time the user wants to know "what really happened in section X of the run".
@@ -156,9 +157,9 @@ Inside `DEFAULTS` (top of the script) you can also tune:
 | `stride_recovery_max_s` | 180 | Max recovery gap (beyond = end of block) |
 | `stride_distance_min_m` | 60 | Min distance for stride |
 | `stride_distance_max_m` | 160 | Max distance for stride |
-| `climb_grade_min_pct` | 4.0 | Min grade for climb |
-| `climb_min_distance_m` | 250 | Min distance for climb |
-| `climb_min_ascent_m` | 15 | Min ascent for climb |
+| `climb_grade_min_pct` | 4.0 | Min average grade (net gain / distance) for climb |
+| `climb_min_distance_m` | 150 | Min distance for climb (was 250 before the engine migration, see below) |
+| `climb_min_ascent_m` | 15 | Min net gain for climb |
 | `sprint_speed_threshold_kmh` | 15.0 | Min speed for sprint |
 | `sprint_min_duration_s` | 4 | Min sprint length |
 | `sprint_max_duration_s` | 12 | Max sprint length |
@@ -177,10 +178,14 @@ Inside `DEFAULTS` (top of the script) you can also tune:
 
 ### `climb`
 
-1. Walk the records. Open a new climb window when `grade_pct >= climb_grade_min_pct`.
-2. Close it when grade drops below threshold.
-3. Validate window has `distance >= climb_min_distance_m` AND `ascent >= climb_min_ascent_m`.
-4. Report HR before/after, average grade, max speed.
+Delegates to the engine's canonical detector, `scripts/arc_climb.py::detect_climbs` (#46) — the same one used by the dashboard VAM and by same-climb identity across sessions (#49, `scripts/arc_climb_match.py`):
+
+1. Records are converted to normalised samples (`t_s`, `distance_m`, `altitude_m`, `speed_ms`) and downsampled to the index resolution (5 s, `arc_samples.downsample`) so that climb boundaries are **identical** to those computed by `scripts/arc_index.py vam` for the same FIT.
+2. The engine segments on signal gaps (> 30 s, never bridged), smooths altitude, runs a hysteresis zigzag, trims flat approaches/exits, splits long internal plateaus and merges short dips.
+3. The skill filters with its own thresholds (`climb_min_ascent_m`, `climb_grade_min_pct` passed to the engine, `climb_min_distance_m` applied afterwards). Lower thresholds than the index never change the boundaries of a climb both keep: the engine filter is the last step.
+4. Execution metrics (speed, HR before/during/after, cadence) come from the raw records within the climb; recovery is the gap to the previous climb.
+
+Changes vs the former detector (instantaneous Garmin `grade` ≥ threshold): climbs are bounded on smoothed altitude rather than the noisy per-record grade, so a short flat no longer splits a climb and short dips are merged; `elevation_gain_m` is the **net** gain (was the sum of positive deltas); `avg_grade_pct` is net gain / distance (was the mean instantaneous grade); boundaries are trimmed, hence slightly shorter — which is why `climb_min_distance_m` went from 250 to 150 m. Added JSON keys (`null` for other parts): `grade_class`, `vam_elapsed_m_h`, `vam_moving_m_h`; the Markdown report gains a "Montées — pente et VAM" table.
 
 ### `sprint`
 
@@ -202,7 +207,7 @@ Last 5 minutes of the session by default.
 - **Static threshold for stride**: 12 km/h is fine for an athlete running Z2 at ~5:30/km. For slower runners (6:30/km+) lower `--stride-threshold` to 10 km/h.
 - **FIT downloads can time out** via the Garmin MCP (`get_activity_fit_data` returns 30 s timeout for very large files). Fall back to `--activity-id` mode (1 km granularity) or to split-level manual analysis.
 - **HR drift detection**: only `climb` and `cooldown` modes include HR drift. For whole-session Pa:HR decoupling/EF, zones, GAP, VAM or durability, do NOT recompute them here — run `python3 scripts/arc_index.py decoupling|zones|gap|vam|durability --activity <garmin_activity_id>` instead (#51). This skill stays scoped to sub-segment detection (stride/sprint/interval/climb-as-drill boundaries) that those whole-session KPIs don't produce.
-- **No GPS-hole handling yet**: if the recording has long zero-speed gaps (tunnel, pause), the heuristic may mis-segment.
+- **No GPS-hole handling for speed-based parts**: `stride`/`sprint`/`interval` may mis-segment across long gaps (tunnel, pause). `climb` never bridges a gap (> 30 s) — two halves of an interrupted climb are reported separately.
 
 ---
 
@@ -211,4 +216,5 @@ Last 5 minutes of the session by default.
 | Path | Role |
 |:-----|:-----|
 | `SKILL.md` | This file (load via the `skill` tool) |
-| `scripts/analyze_session_parts.py` | Self-contained detector + reporter (CLI) |
+| `scripts/analyze_session_parts.py` | Detector + reporter (CLI); climbs via the engine |
+| `../../scripts/arc_climb.py`, `../../scripts/arc_samples.py` | Engine climb detector and sample downsampling (imported) |
