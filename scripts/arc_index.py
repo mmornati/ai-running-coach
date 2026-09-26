@@ -21,6 +21,7 @@ sert au tableau de bord (`scripts/arc_serve.py`) et aux calculs de charge
     arc_index.py vam [--activity GARMIN_ID] [--weeks N]           # VAM sur les montées détectées (#46)
     arc_index.py descent [--activity GARMIN_ID] [--weeks N]        # efficacité en descente par classe de pente (#47)
     arc_index.py durability [--activity GARMIN_ID] [--weeks N]      # fade GAP/EF sur les sorties longues (#48)
+    arc_index.py climb-history [--segment ID | --activity GARMIN_ID]  # identité de montée entre séances (#49)
 
 `hrv-baseline` n'a besoin d'aucun tableau de bord lancé (headless, `/garmin-daily-sync`
 compris) : elle réindexe puis rend le point du jour de `arc_metrics.hrv_baseline_series`
@@ -122,6 +123,18 @@ la famille course à pied avec des échantillons FIT ingérés. Les colonnes
 recalculées en entier à chaque passage de `index_workspace` (même discipline que
 GAP/#44, découplage/#45, VAM/#46 et descente/#47).
 
+`climb-history` (#49) rend, avec `--segment ID`, l'historique complet d'un
+`climb_segment` (chaque occurrence : date, activité, temps, VAM, FC, dérive FC,
+progression vs occurrence précédente/meilleure — voir `arc_climb_match.py`) ; avec
+`--activity GARMIN_ID`, l'historique de CHAQUE segment gravi par cette activité ;
+sans argument, la liste résumée de tous les segments connus (id, lieu, profil,
+nombre d'occurrences, meilleur temps). `activity_climb.segment_id`/`hr_*`/`vs_*`
+sont recalculés en entier à chaque passage de `index_workspace`, comme les autres
+colonnes dérivées de l'épopée FIT — mais `climb_segment.id` n'est PAS stable d'une
+réindexation à l'autre (voir la table dans `DDL`) : un id noté puis réutilisé après
+un `--rebuild` peut ne plus exister (`reason_code: "unknown_segment"`, jamais une
+erreur bruyante).
+
 Options communes : `--workspace DIR` (sinon $ARC_WORKSPACE, le pointeur
 ~/.config/ai-running-coach/workspace, puis le moteur), `--db FICHIER` (défaut
 <workspace>/.arc/coach.db), `--memory` (base en mémoire, rien sur disque),
@@ -147,6 +160,7 @@ from typing import Dict, List, Optional, Tuple
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import arc_climb as VC  # noqa: E402
+import arc_climb_match as VM  # noqa: E402
 import arc_contract as C  # noqa: E402
 import arc_decoupling as DC  # noqa: E402
 import arc_descent as DS  # noqa: E402
@@ -158,8 +172,10 @@ import arc_samples as S  # noqa: E402
 from coach_config import ConfigError, read_toml  # noqa: E402
 from coach_setup import ENGINE, workspace_root  # noqa: E402
 
-SCHEMA_VERSION = 15  # #48 : colonnes `activity.durability_*` (fade GAP/EF et FC par tiers sur les
-                      # sorties longues, `arc_durability.py`) — voir #47 pour la version précédente
+SCHEMA_VERSION = 16  # #49 : colonnes GPS `activity_sample.lat`/`lon` remplies (#42 les réservait),
+                      # colonnes `activity_climb.segment_id`/`hr_*`/`vs_*` et table `climb_segment`
+                      # (identité de montée entre séances, `arc_climb_match.py`) — voir #48 pour la
+                      # version précédente
 DEFAULT_DB = ".arc/coach.db"
 DATA_DIRS = ("activities", "medical", "nutrition", "planning", "rapports")
 
@@ -433,9 +449,11 @@ CREATE TABLE metric_day (
 -- rowid change à chaque édition du Markdown et peut être réattribué après suppression).
 -- Le lien avec `activity` est résolu à LA LECTURE (`samples()`), jamais mis en cache.
 -- source_path permet de purger les lignes d'un fichier `activities/fit/<id>.json`
--- modifié ou supprimé, comme les autres tables par fichier. lat/lon restent NULL :
--- aucune source actuelle n'en fournit (voir arc_samples.py) — présentes pour un usage
--- futur, pas remplies par cette histoire.
+-- modifié ou supprimé, comme les autres tables par fichier. lat/lon (#49, réservées par
+-- #42) : remplies quand le FIT source porte un GPS exploitable (`arc_samples.GPS_KEYS`),
+-- NULL sinon (indoor, capteur coupé) — usage INTERNE uniquement (appariement de montée,
+-- `arc_climb_match.py`) : jamais exposées par l'API ni le CLI (voir
+-- `arc_climb_match.ASSUMPTIONS["privacy"]`).
 CREATE TABLE activity_sample (
     garmin_activity_id INTEGER, source_path TEXT, t_s REAL, distance_m REAL, altitude_m REAL,
     hr_bpm REAL, speed_ms REAL, cadence_spm REAL, lat REAL, lon REAL
@@ -474,12 +492,41 @@ CREATE INDEX hr_polarisation_time_activity ON hr_polarisation_time(activity_id);
 -- `arc_climb.ASSUMPTIONS["vam_basis"]` (les deux, jamais une seule). Une activité
 -- sans montée détectée (parcours plat, ou hors famille course à pied/sans FIT)
 -- n'a simplement aucune ligne ici.
+-- `segment_id`/`hr_first_third_bpm`/`hr_last_third_bpm`/`hr_drift_bpm_per_100m`/
+-- `vs_previous_pct`/`vs_best_pct` (#49, identité de montée entre séances,
+-- `arc_climb_match.py`) : `segment_id` référence `climb_segment.id` ci-dessous, `NULL`
+-- si cette montée n'a pu être appariée NI enregistrée comme nouveau segment (ne devrait
+-- pas arriver en pratique — voir `compute_metrics`). `hr_*`/`vs_*` : voir
+-- `arc_climb_match.ASSUMPTIONS["hr_drift"]`/["progression"], `NULL` si non calculables
+-- (gain trop faible, FC manquante, ou première occurrence du segment pour `vs_*`).
 CREATE TABLE activity_climb (
     activity_id INTEGER, idx INTEGER, start_t_s REAL, end_t_s REAL, start_km REAL, end_km REAL,
     distance_m REAL, gain_m REAL, avg_grade REAL, grade_class TEXT,
-    duration_elapsed_s REAL, duration_moving_s REAL, vam_elapsed_m_h REAL, vam_moving_m_h REAL
+    duration_elapsed_s REAL, duration_moving_s REAL, vam_elapsed_m_h REAL, vam_moving_m_h REAL,
+    segment_id INTEGER, hr_first_third_bpm REAL, hr_last_third_bpm REAL,
+    hr_drift_bpm_per_100m REAL, vs_previous_pct REAL, vs_best_pct REAL
 );
 CREATE INDEX activity_climb_activity ON activity_climb(activity_id);
+CREATE INDEX activity_climb_segment ON activity_climb(segment_id);
+-- Registre des montées reconnues comme « la même » d'une séance à l'autre (#49,
+-- `arc_climb_match.py`) — recalculé INTÉGRALEMENT à chaque `compute_metrics` (comme
+-- `activity_climb`/`hr_zone_time`, jamais une purge par fichier : l'id n'est donc PAS
+-- stable d'une réindexation à l'autre, seul `location`+signature de profil l'est en
+-- pratique — un consommateur externe doit toujours relire `segment_id` depuis
+-- `activity_climb`, jamais le mémoriser). `start_lat`/`start_lon`/`summit_lat`/
+-- `summit_lon` : position de la PREMIÈRE occurrence rencontrée (jamais mise à jour
+-- ensuite, un repère stable suffit à l'appariement futur — voir
+-- `arc_climb_match.ClimbSegmentIndex`), `NULL` si cette première occurrence n'avait pas
+-- de GPS exploitable (repli par lieu, voir `arc_climb_match.ASSUMPTIONS["fallback_matching"]`).
+-- USAGE INTERNE UNIQUEMENT pour les positions : jamais exposées par l'API/le CLI (voir
+-- `arc_climb_match.ASSUMPTIONS["privacy"]`) — seuls `id`/`location`/le profil/les
+-- agrégats (`occurrences`, `best_time_elapsed_s`) le sont.
+CREATE TABLE climb_segment (
+    id INTEGER PRIMARY KEY, location TEXT, gain_m REAL, distance_m REAL, avg_grade REAL,
+    grade_class TEXT, start_lat REAL, start_lon REAL, summit_lat REAL, summit_lon REAL,
+    first_seen_activity_id INTEGER, first_seen_date TEXT, occurrences INTEGER,
+    best_time_elapsed_s REAL, best_activity_id INTEGER
+);
 -- Efficacité en descente par classe de pente (#47, `arc_descent.py`), id INTERNE
 -- (`activity_id`, comme `activity_climb`/`hr_zone_time` — jamais `garmin_activity_id` :
 -- recréée en entier à chaque `compute_metrics`, sans purge par fichier). `grade_class` :
@@ -845,6 +892,17 @@ def compute_metrics(conn, conf: dict, today: Optional[str] = None) -> None:
     conn.execute("DELETE FROM hr_polarisation_time")
     conn.execute("DELETE FROM activity_climb")
     conn.execute("DELETE FROM activity_descent_class")
+    conn.execute("DELETE FROM climb_segment")
+    # Identité de montée entre séances (#49, `arc_climb_match.py`) : registre reconstruit
+    # INTÉGRALEMENT à chaque passage, comme les autres tables ci-dessus — `rows` est déjà
+    # trié par date croissante (`ORDER BY date`), donc traiter les activités DANS CET ORDRE
+    # suffit à obtenir une histoire chronologique par segment sans tri supplémentaire.
+    # `climb_registry` reste en mémoire pour toute la durée de cette fonction (jamais
+    # persisté tel quel) ; `segment_history` porte, PAR id de segment interne au registre,
+    # les occurrences déjà vues (temps écoulé, activité) pour calculer `vs_previous_pct`/
+    # `vs_best_pct` de l'occurrence SUIVANTE avant de s'y ajouter elle-même.
+    climb_registry = VM.ClimbSegmentIndex()
+    segment_history: Dict[int, dict] = {}
     for row in rows:
         act = dict(row)
         load, source = M.session_load(act, athlete)
@@ -942,14 +1000,51 @@ def compute_metrics(conn, conf: dict, today: Optional[str] = None) -> None:
                     climb = VC.detect_climbs(act_samples, min_gain_m=conf["climb_min_gain_m"],
                                               min_avg_grade=conf["climb_min_grade"])
                     if climb:
+                        # Identité de montée entre séances (#49) : pour CHAQUE montée détectée
+                        # de CETTE activité, apparier (ou enregistrer comme nouveau segment),
+                        # calculer la dérive FC et la progression vs occurrence(s) antérieure(s)
+                        # — voir `arc_climb_match.py` pour l'algorithme complet et ses limites
+                        # assumées.
+                        climb_rows = []
+                        for c in climb:
+                            endpoints = VM.climb_endpoints(act_samples, c) or {}
+                            candidate = {
+                                "start_lat": endpoints.get("start_lat"), "start_lon": endpoints.get("start_lon"),
+                                "end_lat": endpoints.get("end_lat"), "end_lon": endpoints.get("end_lon"),
+                                "gain_m": c["gain_m"], "distance_m": c["distance_m"],
+                                "avg_grade": c["avg_grade"], "grade_class": c["grade_class"],
+                                "location": act.get("location"),
+                            }
+                            segment = climb_registry.match(candidate)
+                            if segment is None:
+                                segment = climb_registry.add(candidate)
+                            segment_id = segment["id"]
+                            history = segment_history.setdefault(
+                                segment_id, {"occurrences": [], "first_activity_id": act["id"],
+                                             "first_date": act.get("date")})
+                            prev_times = [o["time_elapsed_s"] for o in history["occurrences"]
+                                          if o["time_elapsed_s"] is not None]
+                            vs_previous = (VM.progression_pct(prev_times[-1], c["duration_elapsed_s"])
+                                           if prev_times else None)
+                            vs_best = (VM.progression_pct(min(prev_times), c["duration_elapsed_s"])
+                                       if prev_times else None)
+                            history["occurrences"].append(
+                                {"time_elapsed_s": c["duration_elapsed_s"], "activity_id": act["id"]})
+                            hr = VM.hr_drift_bpm_per_100m(act_samples, c)
+                            climb_rows.append((
+                                act["id"], c["index"], c["start_t_s"], c["end_t_s"], c["start_km"], c["end_km"],
+                                c["distance_m"], c["gain_m"], c["avg_grade"], c["grade_class"],
+                                c["duration_elapsed_s"], c["duration_moving_s"], c["vam_elapsed_m_h"],
+                                c["vam_moving_m_h"], segment_id, hr["hr_first_third_bpm"],
+                                hr["hr_last_third_bpm"], hr["hr_drift_bpm_per_100m"], vs_previous, vs_best,
+                            ))
                         conn.executemany(
                             "INSERT INTO activity_climb (activity_id, idx, start_t_s, end_t_s, start_km, end_km, "
                             "distance_m, gain_m, avg_grade, grade_class, duration_elapsed_s, duration_moving_s, "
-                            "vam_elapsed_m_h, vam_moving_m_h) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                            [(act["id"], c["index"], c["start_t_s"], c["end_t_s"], c["start_km"], c["end_km"],
-                              c["distance_m"], c["gain_m"], c["avg_grade"], c["grade_class"],
-                              c["duration_elapsed_s"], c["duration_moving_s"], c["vam_elapsed_m_h"],
-                              c["vam_moving_m_h"]) for c in climb],
+                            "vam_elapsed_m_h, vam_moving_m_h, segment_id, hr_first_third_bpm, hr_last_third_bpm, "
+                            "hr_drift_bpm_per_100m, vs_previous_pct, vs_best_pct) "
+                            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                            climb_rows,
                         )
                     windows = VC.best_vam_windows(act_samples, climb)
                     best_climb_vam = max(
@@ -1046,6 +1141,30 @@ def compute_metrics(conn, conf: dict, today: Optional[str] = None) -> None:
                         ("calcul impossible (erreur interne)", "calcul impossible (erreur interne)",
                          "internal_error", act["id"]),
                     )
+    # Écriture du registre `climb_segment` (#49), une fois toutes les activités traitées :
+    # `climb_registry.segments` porte le profil/la position représentative (première
+    # occurrence), `segment_history` les occurrences vues (temps écoulé, activité) pour
+    # `occurrences`/`best_time_elapsed_s`/`best_activity_id`. Un segment enregistré en
+    # mémoire (`climb_registry.add`) mais sans occurrence dans `segment_history` ne peut
+    # arriver que si l'activité qui l'a créé a ensuite échoué (voir le `except Exception`
+    # ci-dessus, défense en profondeur) : ligne orpheline sans `activity_climb`
+    # correspondant, harmless (recalculée à la prochaine indexation), jamais affichée nulle
+    # part (l'UI/l'API partent toujours d'`activity_climb.segment_id`, jamais d'un survol
+    # de `climb_segment`).
+    for segment_id, history in segment_history.items():
+        seg = climb_registry.segments[segment_id - 1]
+        times = [(o["time_elapsed_s"], o["activity_id"]) for o in history["occurrences"]
+                 if o["time_elapsed_s"] is not None]
+        best_time, best_activity_id = min(times, default=(None, None), key=lambda t: t[0])
+        conn.execute(
+            "INSERT INTO climb_segment (id, location, gain_m, distance_m, avg_grade, grade_class, start_lat, "
+            "start_lon, summit_lat, summit_lon, first_seen_activity_id, first_seen_date, occurrences, "
+            "best_time_elapsed_s, best_activity_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (segment_id, seg["location"], seg["gain_m"], seg["distance_m"], seg["avg_grade"], seg["grade_class"],
+             seg["start_lat"], seg["start_lon"], seg["summit_lat"], seg["summit_lon"],
+             history["first_activity_id"], history["first_date"], len(history["occurrences"]),
+             best_time, best_activity_id),
+        )
     conn.execute("DELETE FROM metric_day")
     dated = sorted(loads)
     if dated:
@@ -1163,10 +1282,11 @@ def ingest_samples(conn, workspace: Path, resolution_s: int = S.DEFAULT_RESOLUTI
             S.normalise_records(raw, sport=sport["sport"] if sport else None), resolution_s)
         conn.executemany(
             "INSERT INTO activity_sample "
-            "(garmin_activity_id, source_path, t_s, distance_m, altitude_m, hr_bpm, speed_ms, cadence_spm) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            "(garmin_activity_id, source_path, t_s, distance_m, altitude_m, hr_bpm, speed_ms, cadence_spm, "
+            "lat, lon) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             [(garmin_id, rel, rec["t_s"], rec["distance_m"], rec["altitude_m"],
-              rec["hr_bpm"], rec["speed_ms"], rec["cadence_spm"]) for rec in records],
+              rec["hr_bpm"], rec["speed_ms"], rec["cadence_spm"],
+              rec.get("lat_deg"), rec.get("lon_deg")) for rec in records],
         )
         conn.execute(
             "INSERT OR REPLACE INTO sample_file VALUES (?, ?, ?, ?, ?, ?)",
@@ -1225,8 +1345,15 @@ def samples_by_garmin_id(conn, garmin_activity_id: int) -> dict:
     de fichier `activities/fit/<id>.json` et du CLI `arc_index.py samples`) — fonctionne
     même SANS activité indexée correspondante (FIT ingéré avant le Markdown) : c'est le
     but de stocker `activity_sample` par `garmin_activity_id` plutôt que par rowid."""
+    # `lat`/`lon` INCLUS ici (#49) : cette fonction sert à la fois de lecture INTERNE
+    # (`samples()`, réutilisée par `compute_metrics` pour l'appariement de montée,
+    # `arc_climb_match.py` — a besoin des positions) et de sortie du CLI `samples`
+    # (débogage local d'un fichier `activities/fit/<id>.json` déjà lisible tel quel sur
+    # le disque de l'athlète — pas une fuite nouvelle). Ce n'est PAS l'API du tableau de
+    # bord (`arc_serve.py`), qui n'appelle jamais cette fonction et ne renvoie jamais de
+    # coordonnée (voir `arc_climb_match.ASSUMPTIONS["privacy"]`).
     rows = conn.execute(
-        "SELECT t_s, distance_m, altitude_m, hr_bpm, speed_ms, cadence_spm "
+        "SELECT t_s, distance_m, altitude_m, hr_bpm, speed_ms, cadence_spm, lat AS lat_deg, lon AS lon_deg "
         "FROM activity_sample WHERE garmin_activity_id = ? ORDER BY t_s", (garmin_activity_id,),
     ).fetchall()
     result = {"garmin_activity_id": garmin_activity_id, "samples": [dict(r) for r in rows]}
@@ -1725,7 +1852,8 @@ def activity_climb_report(conn, garmin_activity_id: int) -> dict:
                 "reason_code": "no_samples", "applicable": True}
     climbs = [dict(r) for r in conn.execute(
         "SELECT idx AS \"index\", start_t_s, end_t_s, start_km, end_km, distance_m, gain_m, avg_grade, "
-        "grade_class, duration_elapsed_s, duration_moving_s, vam_elapsed_m_h, vam_moving_m_h "
+        "grade_class, duration_elapsed_s, duration_moving_s, vam_elapsed_m_h, vam_moving_m_h, segment_id, "
+        "hr_first_third_bpm, hr_last_third_bpm, hr_drift_bpm_per_100m, vs_previous_pct, vs_best_pct "
         "FROM activity_climb WHERE activity_id = ? ORDER BY idx", (act["id"],)).fetchall()]
     return {
         "garmin_activity_id": garmin_activity_id,
@@ -1738,6 +1866,51 @@ def activity_climb_report(conn, garmin_activity_id: int) -> dict:
         "reason_code": None,
         "applicable": True,
     }
+
+
+# ---------------------------------------------------------------------------
+# Identité de montée entre séances — historique par segment (#49)
+# ---------------------------------------------------------------------------
+
+
+def climb_segment_list(conn) -> List[dict]:
+    """Segments connus (#49, `arc_climb_match.py`), pour `/api/climb-segments` et le CLI
+    `climb-history` sans argument — jamais de position GPS exposée ici (voir
+    `arc_climb_match.ASSUMPTIONS["privacy"]`), seulement le lieu déclaré et la
+    signature de profil. Triés par occurrences décroissantes (les montées les plus
+    régulièrement gravies d'abord), puis par id pour un ordre stable à égalité."""
+    return [dict(r) for r in conn.execute(
+        "SELECT id AS segment_id, location, gain_m, distance_m, avg_grade, grade_class, occurrences, "
+        "best_time_elapsed_s, best_activity_id, first_seen_activity_id, first_seen_date "
+        "FROM climb_segment ORDER BY occurrences DESC, id").fetchall()]
+
+
+def climb_segment_history(conn, segment_id: int) -> dict:
+    """Historique complet d'un segment (#49) : chaque occurrence (date, activité,
+    temps écoulé/mouvement, VAM, FC, dérive, progression vs précédent/meilleur déjà
+    calculés à l'indexation) — pour `/api/climb-segment/<id>` et le CLI `climb-history
+    --segment ID`. Rend TOUJOURS un dict, jamais `None` (même discipline que les autres
+    rapports de l'épopée) : `reason`/`reason_code` explicites si le segment est
+    inconnu — un id de segment n'est PAS stable d'une réindexation à l'autre (voir la
+    table `climb_segment`), un id périmé est donc un cas attendu, pas une erreur de
+    programmation."""
+    seg = conn.execute(
+        "SELECT id AS segment_id, location, gain_m, distance_m, avg_grade, grade_class, occurrences, "
+        "best_time_elapsed_s, best_activity_id, first_seen_activity_id, first_seen_date "
+        "FROM climb_segment WHERE id = ?", (segment_id,)).fetchone()
+    if seg is None:
+        return {"segment_id": segment_id, "segment": None, "occurrences": [],
+                "reason": "segment inconnu (id périmé — les ids de climb_segment ne sont pas stables "
+                          "d'une réindexation à l'autre, voir arc_index.DDL)",
+                "reason_code": "unknown_segment", "applicable": True}
+    rows = conn.execute(
+        "SELECT ac.activity_id, a.date, a.name, ac.start_km, ac.end_km, ac.duration_elapsed_s, "
+        "ac.duration_moving_s, ac.vam_elapsed_m_h, ac.vam_moving_m_h, ac.hr_first_third_bpm, "
+        "ac.hr_last_third_bpm, ac.hr_drift_bpm_per_100m, ac.vs_previous_pct, ac.vs_best_pct "
+        "FROM activity_climb ac JOIN activity a ON a.id = ac.activity_id "
+        "WHERE ac.segment_id = ? ORDER BY a.date, ac.activity_id", (segment_id,)).fetchall()
+    return {"segment_id": segment_id, "segment": dict(seg), "occurrences": [dict(r) for r in rows],
+            "reason": None, "reason_code": None, "applicable": True}
 
 
 def vam_trend(conn, today: date, weeks: Optional[int] = None) -> dict:
@@ -1910,7 +2083,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("command", nargs="?", default="index",
                         choices=("index", "backfill-plan", "status", "hrv-baseline", "sleep-debt",
                                  "heat-acclimation", "gear", "fueling", "samples", "zones", "gap",
-                                 "decoupling", "vam", "descent", "durability"))
+                                 "decoupling", "vam", "descent", "durability", "climb-history"))
     parser.add_argument("selector", nargs="?", default=None,
                         help="argument de la sous-commande (ex. garmin_activity_id pour « samples »)")
     parser.add_argument("--workspace")
@@ -1927,6 +2100,8 @@ def build_parser() -> argparse.ArgumentParser:
                         help="commande « zones »/« decoupling »/« vam »/« descent »/« durability » : "
                              "polarisation ou tendance sur les N dernières semaines (défaut 8 pour "
                              "« zones », 12 pour « decoupling »/« vam »/« descent »/« durability »)")
+    parser.add_argument("--segment", type=int, metavar="SEGMENT_ID",
+                        help="commande « climb-history » : historique complet d'un segment (#49)")
     return parser
 
 
@@ -2040,6 +2215,33 @@ def main(argv=None) -> int:
             print(json.dumps(activity_durability_report(conn, garmin_id), ensure_ascii=False))
             return 0
         print(json.dumps(durability_trend(conn, today_date, args.weeks), ensure_ascii=False))
+        return 0
+    if args.command == "climb-history":
+        # #49 : `--segment ID` prime (historique direct d'un segment) ; sinon `--activity
+        # GARMIN_ID` (ou l'argument positionnel, même convention que les autres
+        # sous-commandes) rend l'historique de CHAQUE segment gravi par cette activité ;
+        # sans argument, la liste de tous les segments connus (résumé, jamais l'historique
+        # complet de chacun — trop volumineux pour un usage courant).
+        if args.segment is not None:
+            print(json.dumps(climb_segment_history(conn, args.segment), ensure_ascii=False))
+            return 0
+        garmin_id = args.activity if args.activity is not None else (int(args.selector) if args.selector else None)
+        if garmin_id is not None:
+            act_row = conn.execute(
+                "SELECT id FROM activity WHERE garmin_activity_id = ?", (garmin_id,)).fetchone()
+            if act_row is None:
+                print(json.dumps({"activity_id": None, "segments": [],
+                                   "reason": "aucune activité indexée pour ce garmin_activity_id",
+                                   "reason_code": "unknown_activity"}, ensure_ascii=False))
+                return 0
+            seg_ids = [r[0] for r in conn.execute(
+                "SELECT DISTINCT segment_id FROM activity_climb WHERE activity_id = ? "
+                "AND segment_id IS NOT NULL", (act_row[0],)).fetchall()]
+            print(json.dumps(
+                {"activity_id": act_row[0], "segments": [climb_segment_history(conn, sid) for sid in seg_ids]},
+                ensure_ascii=False))
+            return 0
+        print(json.dumps({"segments": climb_segment_list(conn)}, ensure_ascii=False))
         return 0
     if args.command == "status":
         by_status = {row[0]: row[1] for row in conn.execute(

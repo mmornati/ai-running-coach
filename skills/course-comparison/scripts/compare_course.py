@@ -57,6 +57,7 @@ import glob
 import json
 import os
 import re
+import sqlite3
 import sys
 from datetime import date, datetime
 from pathlib import Path
@@ -365,10 +366,90 @@ def _fmt_hr(v: Optional[float]) -> str:
     return f"{v:.0f}" if v is not None else "—"
 
 
+# ---------------------------------------------------------------------------
+# Intégration #49 — montées identifiées comme LA MÊME (base de données du moteur)
+# ---------------------------------------------------------------------------
+#
+# `render_report` (sections 1-4 ci-dessous) travaille UNIQUEMENT sur les fichiers
+# Markdown (`parse_activity_file`), km par km — c'est l'analyse par défaut de ce
+# skill, inchangée par #49. `climb_segment_report` ci-dessous est un COMPLÉMENT
+# optionnel : quand un index dérivé du moteur (`.arc/coach.db`, `scripts/
+# arc_index.py`, `compute_metrics`) existe déjà pour le workspace, il expose les
+# montées que #49 (`scripts/arc_climb_match.py`) a reconnues comme LA MÊME
+# ascension d'une séance à l'autre (géométrie GPS quand disponible, sinon repli
+# par lieu + profil) — plus précis qu'un simple numéro de km, et avec la
+# progression (temps, VAM, FC) déjà calculée. Absence d'index, base introuvable,
+# ou aucun segment au lieu demandé : `None`, JAMAIS une erreur — la sortie de ce
+# script reste UTILISABLE sans l'index (compatibilité ascendante, #49 critère
+# d'acceptation : « intégrer sans casser les sorties existantes »).
+
+
+def climb_segment_report(patterns: List[str], workspace_dir: Optional[str]) -> Optional[List[Dict[str, Any]]]:
+    """Segments de montée (#49, `climb_segment`) du lieu demandé (`patterns`, même
+    matching que `match_lieu`), avec leur dernière progression connue — `None` si
+    `workspace_dir` est absent, que `.arc/coach.db` n'existe pas encore (index jamais
+    construit), qu'il est illisible, ou qu'aucun segment ne correspond au lieu.
+    Lecture SEULE (`mode=ro`) : ce script ne modifie jamais l'index dérivé."""
+    if not workspace_dir:
+        return None
+    db_path = Path(workspace_dir) / ".arc" / "coach.db"
+    if not db_path.is_file():
+        return None
+    try:
+        conn = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
+        conn.row_factory = sqlite3.Row
+        segments = conn.execute(
+            "SELECT id, location, gain_m, distance_m, avg_grade, grade_class, occurrences, "
+            "best_time_elapsed_s FROM climb_segment").fetchall()
+        out = []
+        for seg in segments:
+            if not seg["location"] or not match_lieu({"lieu": seg["location"]}, patterns):
+                continue
+            last = conn.execute(
+                "SELECT a.date, ac.duration_elapsed_s, ac.vam_elapsed_m_h, ac.vs_previous_pct, "
+                "ac.vs_best_pct FROM activity_climb ac JOIN activity a ON a.id = ac.activity_id "
+                "WHERE ac.segment_id = ? ORDER BY a.date DESC LIMIT 1", (seg["id"],)).fetchone()
+            out.append({**dict(seg), "last_date": last["date"] if last else None,
+                        "last_duration_s": last["duration_elapsed_s"] if last else None,
+                        "last_vam_m_h": last["vam_elapsed_m_h"] if last else None,
+                        "last_vs_previous_pct": last["vs_previous_pct"] if last else None,
+                        "last_vs_best_pct": last["vs_best_pct"] if last else None})
+        return out or None
+    except sqlite3.Error:
+        return None
+    finally:
+        try:
+            conn.close()
+        except Exception:  # noqa: BLE001 — jamais faire échouer le rapport sur la fermeture
+            pass
+
+
+def render_climb_segment_section(segments: List[Dict[str, Any]]) -> str:
+    L = ["## 5. Montées identifiées comme la même ascension (index du moteur, #49)", "",
+         "_Différent de la section 3 ci-dessus (numéro de km) : ici, une même montée est "
+         "reconnue d'une séance à l'autre par géométrie GPS (ou, à défaut, par lieu + "
+         "profil), voir `scripts/arc_climb_match.py`. Cette section n'apparaît que si un "
+         "index du moteur (`.arc/coach.db`) est disponible pour ce workspace._", ""]
+    L.append("| Montée | Occurrences | Meilleur temps | Dernière VAM | Dernière progression |")
+    L.append("|:-------|:-----------:|---------------:|-------------:|:----------------------|")
+    for seg in segments:
+        best = parse_duration(seg["best_time_elapsed_s"]) if seg["best_time_elapsed_s"] is not None else "—"
+        vam = f"{seg['last_vam_m_h']:.0f} m/h" if seg.get("last_vam_m_h") is not None else "—"
+        prog = (f"{seg['last_vs_previous_pct']:+.1f} % vs précédente" if seg.get("last_vs_previous_pct") is not None
+                else "1ʳᵉ occurrence" if seg["occurrences"] == 1 else "—")
+        label = f"+{seg['gain_m']:.0f} m sur {seg['distance_m']/1000.0:.1f} km ({seg['grade_class']})"
+        L.append(f"| {label} | {seg['occurrences']} | {best} | {vam} | {prog} |")
+    L.append("")
+    return "\n".join(L)
+
+
 def render_report(ref: Dict[str, Any], others: List[Dict[str, Any]],
                   loop_length_km: Optional[float], tolerance_m: int,
-                  min_climb_m: float) -> str:
-    """Génère le rapport Markdown comparatif (FRENCH)."""
+                  min_climb_m: float, climb_segments: Optional[List[Dict[str, Any]]] = None) -> str:
+    """Génère le rapport Markdown comparatif (FRENCH). `climb_segments` (#49, optionnel,
+    voir `climb_segment_report`) : section 5 ajoutée SEULEMENT si non vide — `None`/liste
+    vide laisse la sortie byte pour byte identique à avant #49 (compatibilité ascendante,
+    critère d'acceptation)."""
     L = []
     L.append(f"# Comparaison de parcours — {ref.get('lieu') or ref.get('name')}")
     L.append("")
@@ -475,6 +556,11 @@ def render_report(ref: Dict[str, Any], others: List[Dict[str, Any]],
     else:
         L.append("Aucune autre séance trouvée sur ce parcours dans la plage donnée.")
     L.append("")
+
+    # --- Montées identifiées comme la même ascension (#49, optionnel) ---
+    if climb_segments:
+        L.append(render_climb_segment_section(climb_segments))
+
     return "\n".join(L)
 
 
@@ -500,6 +586,13 @@ def main(argv: Optional[List[str]] = None) -> int:
     ap.add_argument("--min-climb", type=float, default=40.0,
                     help="Seuil montée en m D+ sur 1 km (défaut 40)")
     ap.add_argument("--dir", default="activities", help="Dossier des activités")
+    ap.add_argument("--workspace", default=None,
+                    help="Racine du workspace (#49, optionnel) : si `.arc/coach.db` (index "
+                         "du moteur, `scripts/arc_index.py`) y existe déjà, une section "
+                         "supplémentaire liste les montées reconnues comme la même ascension "
+                         "d'une séance à l'autre (`climb_segment`, géométrie GPS ou repli par "
+                         "lieu+profil) — absent ou index introuvable : aucune section "
+                         "ajoutée, sortie inchangée (compatibilité ascendante)")
     ap.add_argument("--output", default=None, help="Fichier Markdown de sortie")
     ap.add_argument("--json", dest="json_out", default=None,
                     help="Fichier JSON de sortie (dump structuré)")
@@ -543,13 +636,15 @@ def main(argv: Optional[List[str]] = None) -> int:
     else:
         loop_len = args.loop_length
 
-    report = render_report(ref, others, loop_len, args.tolerance, args.min_climb)
+    climb_segments = climb_segment_report(patterns, args.workspace)
+    report = render_report(ref, others, loop_len, args.tolerance, args.min_climb, climb_segments)
 
     if args.json_out:
         payload = {
             "lieu": args.lieu,
             "reference": ref["date"],
             "loop_length_km": loop_len,
+            **({"climb_segments": climb_segments} if climb_segments else {}),
             "activities": [
                 {
                     "date": a["date"],

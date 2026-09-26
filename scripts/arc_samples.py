@@ -82,11 +82,23 @@ dont le tout premier `record` serait hors séquence ne doit jamais produire de
 `t_s` négatif), jamais une horloge murale absolue — un enregistrement sans
 `timestamp` lisible, ou une valeur non finie (`NaN`/`inf`, `fitparse` peut en
 produire sur un capteur défaillant), est écarté (jamais un `t_s` inventé qui
-décalerait tout ce qui suit). GPS (`position_lat`/`position_long`) n'est
-**jamais** repris : hors du format normalisé (voir `tests/lib/synthetic.py`),
-les colonnes `lat`/`lon` de la table `activity_sample` restent `NULL` pour
-toute donnée ingérée par ce module — présentes dans le schéma pour un usage
-futur, pas remplies ici.
+décalerait tout ce qui suit).
+
+**GPS (`lat_deg`/`lon_deg`, #49)** — repris depuis `position_lat`/`position_long`
+(entiers FIT en semi-cercles, `fitparse` ne les convertit PAS lui-même en degrés :
+conversion `valeur × 180 / 2³¹`, voir `_semicircle_to_deg`) quand le FIT les fournit,
+`None` sinon (capteur GPS absent/coupé, séance indoor, ou trou de signal ponctuel —
+jamais une valeur inventée). Colonnes `lat`/`lon` de `activity_sample`, réservées par
+#42 « pour un usage futur » : #49 (identité de montée entre séances, `arc_climb_match.py`)
+est cet usage — la position n'est utilisée QUE pour apparier une montée détectée à un
+`climb_segment` déjà vu (bornes début/sommet), **jamais exposée telle quelle par l'API**
+(voir `arc_climb_match.ASSUMPTIONS["privacy"]`) : le tableau de bord et
+`skills/course-comparison` ne reçoivent qu'un `segment_id` et un nom de lieu, jamais une
+coordonnée brute. Le format déjà normalisé (`tests/lib/synthetic.py::sample_session`)
+n'émet PAS ces clés par défaut (voir `tests/lint/test_synthetic_no_real_data.py`) — seul
+un appelant qui les fournit EXPLICITEMENT (paramètre `climb_route` de `sample_session`,
+coordonnées synthétiques déterministes, jamais un vrai lieu) les voit repassées telles
+quelles par `_clean_normalised`.
 
 ## Pauses et trous de signal : jamais interpolés
 
@@ -154,6 +166,17 @@ DEFAULT_RESOLUTION_S = 5
 
 NORMALISED_KEYS = ("t_s", "distance_m", "altitude_m", "hr_bpm", "speed_ms", "cadence_spm")
 
+# GPS (#49) — clés OPTIONNELLES, jamais requises : un enregistrement/échantillon sans
+# position reste valide, `lat_deg`/`lon_deg` valent alors `None`. Séparées de
+# `NORMALISED_KEYS` (toujours requises pour un `t_s` exploitable) à dessein.
+GPS_KEYS = ("lat_deg", "lon_deg")
+
+# FIT/ANT+ code les positions en "semi-cercles" (entier signé 32 bits, plage complète du
+# type = 360°) : conversion vers des degrés décimaux usuels. `fitparse` NE convertit PAS
+# lui-même `position_lat`/`position_long` (aucun scale/offset défini par le profil FIT
+# pour ces champs) — la conversion reste à la charge du consommateur, ici.
+_SEMICIRCLE_TO_DEG = 180.0 / (2 ** 31)
+
 # Sports FIT/Garmin « à pied » : seuls ceux-là voient leur `cadence` doublée (un
 # pied/min → deux pieds/min). Les noms couvrent à la fois les valeurs `fitparse`
 # habituelles ("running", "walking", "hiking") et leurs variantes composées que
@@ -184,8 +207,14 @@ ASSUMPTIONS = {
                          "FIT ingérés par ce moteur trail-running sont des séances à pied ; `download_fit.py` "
                          "lit le sport réel dans le message FIT `session` dès que possible pour éviter ce défaut.",
     "downsampling": f"Bucket de resolution_s secondes (défaut {DEFAULT_RESOLUTION_S} s), horodaté à sa borne "
-                     "inférieure. hr_bpm/speed_ms/cadence_spm : moyenne du bucket. distance_m/altitude_m : "
-                     "dernière valeur (temporellement) du bucket (cumuls monotones, jamais moyennés).",
+                     "inférieure. hr_bpm/speed_ms/cadence_spm : moyenne du bucket. distance_m/altitude_m/"
+                     "lat_deg/lon_deg : dernière valeur (temporellement) du bucket (cumuls monotones ou "
+                     "position, jamais moyennés).",
+    "gps": "lat_deg/lon_deg (#49) : degrés décimaux convertis depuis les semi-cercles FIT "
+           "(`position_lat`/`position_long`, `_semicircle_to_deg`), `None` si absents (indoor, capteur "
+           "coupé) — jamais une position inventée. Réservées à l'appariement de montée entre séances "
+           "(`arc_climb_match.py`, #49) : jamais exposées telles quelles par l'API du tableau de bord ni "
+           "par le CLI `climb-history` (voir `arc_climb_match.ASSUMPTIONS[\"privacy\"]`).",
     "missing_timestamp": "Un enregistrement fitparse sans `timestamp` exploitable, ou une valeur non finie "
                           "(NaN/inf), est écarté silencieusement (jamais de t_s inventé qui décalerait les "
                           "échantillons suivants). t0 = le PLUS ANCIEN horodatage exploitable, pas le premier "
@@ -252,6 +281,17 @@ def _parse_timestamp(value) -> Optional[datetime]:
     return parsed.replace(tzinfo=None) if parsed.tzinfo is not None else parsed
 
 
+def _semicircle_to_deg(value) -> Optional[float]:
+    """Semi-cercles FIT (`position_lat`/`position_long`) → degrés décimaux, `None` si
+    absent/non numérique/hors plage plausible (`abs(degrés) > 180`, un FIT corrompu peut
+    produire une valeur aberrante — jamais une position inventée en aval)."""
+    deg = _num(value)
+    if deg is None:
+        return None
+    deg *= _SEMICIRCLE_TO_DEG
+    return round(deg, 6) if abs(deg) <= 180.0 else None
+
+
 def _cadence_spm(record: dict, sport: Optional[str]) -> Optional[float]:
     raw = record.get("cadence")
     if raw is None:
@@ -286,6 +326,8 @@ def _normalise_fitparse(records: Sequence[dict], sport: Optional[str]) -> List[d
             "hr_bpm": _num(record.get("heart_rate")),
             "speed_ms": _num(_first_present(record, "enhanced_speed", "speed")),
             "cadence_spm": _cadence_spm(record, sport),
+            "lat_deg": _semicircle_to_deg(record.get("position_lat")),
+            "lon_deg": _semicircle_to_deg(record.get("position_long")),
         })
     out.sort(key=lambda r: r["t_s"])
     return out
@@ -293,7 +335,15 @@ def _normalise_fitparse(records: Sequence[dict], sport: Optional[str]) -> List[d
 
 def _clean_normalised(record: dict) -> Optional[dict]:
     cleaned = {key: _num(record.get(key)) for key in NORMALISED_KEYS}
-    return cleaned if cleaned["t_s"] is not None else None
+    if cleaned["t_s"] is None:
+        return None
+    # GPS (#49) : repassé tel quel si l'appelant l'a déjà fourni au format normalisé
+    # (`lat_deg`/`lon_deg` déjà en degrés décimaux, pas des semi-cercles ici — jamais
+    # reconverti une seconde fois) — `None` sinon, jamais une clé absente (forme de
+    # dict stable, comme le reste de ce module).
+    for key in GPS_KEYS:
+        cleaned[key] = _num(record.get(key))
+    return cleaned
 
 
 def normalise_records(raw, sport: Optional[str] = None) -> List[dict]:
@@ -354,6 +404,12 @@ def downsample(records: Sequence[dict], resolution_s: int = DEFAULT_RESOLUTION_S
             "hr_bpm": _mean(r.get("hr_bpm") for r in group),
             "speed_ms": _mean(r.get("speed_ms") for r in group),
             "cadence_spm": _mean(r.get("cadence_spm") for r in group),
+            # GPS (#49) : dernière position (temporellement) du bucket, même convention que
+            # distance_m/altitude_m — une moyenne de deux positions n'a aucun sens géométrique
+            # simple (et serait fausse en présence de courbure/méridien), la dernière position
+            # connue du bucket reste la plus proche de la borne du bucket suivant.
+            "lat_deg": last.get("lat_deg"),
+            "lon_deg": last.get("lon_deg"),
         })
     return out
 

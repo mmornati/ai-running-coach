@@ -204,9 +204,10 @@ in one sentence and let them decide.
   ```bash
   python3 skills/course-comparison/scripts/compare_course.py \
     --lieu "<Lieu>" --aliases "<Nom1>" "<Nom2>" --ref YYYY-MM-DD \
-    --loop-length <KM> --output /tmp/comparaison.md
+    --loop-length <KM> --workspace . --output /tmp/comparaison.md
   ```
 - **Prerequisite (vérifié avant chaque run) :** chaque fichier MD comparé (`activities/YYYY-MM-DD_type.md`) doit porter son bloc ```arc avec `location` et `splits` (fichiers anciens : le bloc YAML `## Données brutes Garmin (référence)` ET le tableau `## Analyse par splits (km)`). Si absent → sync Garmin (`garmin-sync-efficiency`) et persistance complète d'abord.
+- **`--workspace .` (identité de montée entre séances, story #49) :** ajoute une section supplémentaire (« Montées identifiées comme la même ascension ») quand l'index du moteur (`.arc/coach.db`, déjà construit par `scripts/arc_index.py`/le tableau de bord) contient des montées reconnues comme LA MÊME ascension d'une séance à l'autre (géométrie GPS quand disponible, sinon lieu + profil) — occurrences, meilleur temps, VAM, progression déjà calculés. Optionnel et purement additif : sans `--workspace`, ou si l'index n'existe pas encore, le rapport reste identique à avant (sections 1 à 4 uniquement).
 - **Interpretation obligatoire :** compare d'abord le **1er tour** (segments homologues), puis les **montées homologues** (même km / D+), en croisant FC, allure et HRR. Note explicitement les séances dont `recovery_hr_bpm` est absent (mesure manquante, pas un signal). Croise avec `medical/` (sommeil, HRV, charge) et météo avant de conclure sur la progression.
 - **Persistance du rapport :** écrire le résultat dans `rapports/YYYY-MM-DD_comparaison_<lieu>.md` (langue des documents, `config/workspace.toml` → `[language].documents`, défaut FRENCH) — à partir du stdout du script enrichi du commentaire coach.
 

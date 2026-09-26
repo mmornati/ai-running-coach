@@ -1391,6 +1391,12 @@
       },
       "status": 200
     },
+    "/api/climb-segments": {
+      "body": {
+        "segments": []
+      },
+      "status": 200
+    },
     "/api/decoupling": {
       "body": {
         "avg_decoupling_pct": null,

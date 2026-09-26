@@ -71,6 +71,51 @@ class TestNormaliseFitparseFormat(unittest.TestCase):
         self.assertEqual(S.normalise_records({"records": []}), [])
 
 
+class TestGpsSemicirclesToDegrees(unittest.TestCase):
+    """#49 : `position_lat`/`position_long` (semi-cercles FIT) -> `lat_deg`/`lon_deg`
+    (degrés décimaux) — `fitparse` ne convertit pas lui-même ces champs."""
+
+    def test_known_semicircle_conversion(self):
+        # 46° -> 46 / 180 * 2**31 semi-cercles (arrondi).
+        lat_semicircles = round(46.0 / 180.0 * (2 ** 31))
+        lon_semicircles = round(7.0 / 180.0 * (2 ** 31))
+        out = S.normalise_records([
+            {"timestamp": "2026-01-01 08:00:00", "distance": 0.0, "heart_rate": 120,
+             "position_lat": lat_semicircles, "position_long": lon_semicircles},
+        ])
+        self.assertAlmostEqual(out[0]["lat_deg"], 46.0, places=5)
+        self.assertAlmostEqual(out[0]["lon_deg"], 7.0, places=5)
+
+    def test_missing_position_is_none_not_zero(self):
+        out = S.normalise_records([{"timestamp": "2026-01-01 08:00:00", "distance": 0.0}])
+        self.assertIsNone(out[0]["lat_deg"])
+        self.assertIsNone(out[0]["lon_deg"])
+
+    def test_already_normalised_format_passes_through_lat_lon(self):
+        out = S.normalise_records([{"t_s": 0, "distance_m": 0.0, "altitude_m": 0.0, "hr_bpm": 140.0,
+                                     "speed_ms": 2.5, "cadence_spm": 170.0, "lat_deg": 46.5, "lon_deg": 7.5}])
+        self.assertEqual(out[0]["lat_deg"], 46.5)
+        self.assertEqual(out[0]["lon_deg"], 7.5)
+
+    def test_already_normalised_format_without_lat_lon_gives_none(self):
+        out = S.normalise_records([{"t_s": 0, "distance_m": 0.0, "altitude_m": 0.0, "hr_bpm": 140.0,
+                                     "speed_ms": 2.5, "cadence_spm": 170.0}])
+        self.assertIsNone(out[0]["lat_deg"])
+        self.assertIsNone(out[0]["lon_deg"])
+
+    def test_downsample_keeps_last_position_of_bucket(self):
+        records = [
+            {"t_s": 0.0, "distance_m": 0.0, "altitude_m": 0.0, "hr_bpm": 140.0, "speed_ms": 2.5,
+             "cadence_spm": 170.0, "lat_deg": 46.0, "lon_deg": 7.0},
+            {"t_s": 3.0, "distance_m": 7.5, "altitude_m": 0.0, "hr_bpm": 141.0, "speed_ms": 2.5,
+             "cadence_spm": 170.0, "lat_deg": 46.001, "lon_deg": 7.001},
+        ]
+        out = S.downsample(records, resolution_s=5)
+        self.assertEqual(len(out), 1)
+        self.assertEqual(out[0]["lat_deg"], 46.001)
+        self.assertEqual(out[0]["lon_deg"], 7.001)
+
+
 class TestCadenceSportGating(unittest.TestCase):
     """#42 revue PR #87 (should-fix 5) : doublement de la cadence uniquement pour les
     sports à pied — un FIT vélo verrait sinon sa cadence (déjà complète) doublée à tort."""
@@ -174,7 +219,8 @@ class TestNormaliseAlreadyNormalisedFormat(unittest.TestCase):
         out = S.normalise_records([{"t_s": "0", "distance_m": "1.5", "altitude_m": None,
                                      "hr_bpm": "140", "speed_ms": "2.5", "cadence_spm": "170"}])
         self.assertEqual(out, [{"t_s": 0.0, "distance_m": 1.5, "altitude_m": None,
-                                 "hr_bpm": 140.0, "speed_ms": 2.5, "cadence_spm": 170.0}])
+                                 "hr_bpm": 140.0, "speed_ms": 2.5, "cadence_spm": 170.0,
+                                 "lat_deg": None, "lon_deg": None}])
 
     def test_out_of_order_passthrough_records_are_sorted(self):
         """Le format déjà normalisé n'est pas garanti trié par la source : `normalise_records`

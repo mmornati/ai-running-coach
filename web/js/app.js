@@ -788,7 +788,16 @@ async function viewSession(id) {
  * partout, laissant croire à tort qu'une séance de renforcement aurait pu en
  * avoir une). Les deux VAM (temps écoulé/temps de mouvement, voir
  * `arc_climb.ASSUMPTIONS["vam_basis"]") sont toutes deux affichées : la seconde en
- * `<small>`, pour ne pas laisser croire qu'une seule existe. */
+ * `<small>`, pour ne pas laisser croire qu'une seule existe.
+ *
+ * Colonne « vs précédent/meilleur » (#49, identité de montée entre séances) :
+ * `segment_id`/`vs_previous_pct`/`vs_best_pct` déjà calculés à l'indexation
+ * (`arc_climb_match.py`) — un tiret pour la toute première occurrence d'un
+ * segment (rien à comparer, jamais un « 0 % » qui laisserait croire à une
+ * progression nulle mesurée), un lien vers l'historique complet
+ * (`#/montee/<segment_id>`) sinon. Une montée jamais appariée à AUCUN segment
+ * (ne devrait pas arriver, voir `arc_index.compute_metrics`) n'a simplement pas
+ * de lien, sans erreur. */
 // Même ordre que `arc_climb.GRADE_CLASSES` (Python) — dupliqué ici volontairement
 // (pas de dépendance runtime entre le serveur Python et le JS statique) : à tenir
 // à jour si `GRADE_CLASSES` change côté serveur.
@@ -823,13 +832,68 @@ function climbsSection(climbs) {
     <div class="table-wrap"><table class="data data--compact"><thead><tr>
       <th scope="col">#</th><th scope="col" class="num">Km</th><th scope="col" class="num">Distance</th>
       <th scope="col" class="num">D+</th><th scope="col" class="num">Pente moy.</th>
-      <th scope="col" class="num">Durée</th><th scope="col" class="num">VAM</th></tr></thead>
+      <th scope="col" class="num">Durée</th><th scope="col" class="num">VAM</th>
+      <th scope="col" class="num">vs précédent/meilleur</th></tr></thead>
     <tbody>${rows.map((c) => `<tr><td>${c.index}</td><td class="num">${F.distance(c.start_km * 1000, 1)} → ${F.distance(c.end_km * 1000, 1)}</td>
       <td class="num">${F.distance(c.distance_m, 2)}</td><td class="num">+${F.elevation(c.gain_m)}</td>
       <td class="num">${F.num(c.avg_grade * 100, 1)} % <span class="tag">${F.esc(c.grade_class)}</span></td>
       <td class="num">${F.clock(c.duration_elapsed_s).replace(/^0:/, "")}</td>
-      <td class="num">${F.vam(c.vam_elapsed_m_h)}<br><small class="muted">mvt ${F.vam(c.vam_moving_m_h)}</small></td></tr>`).join("")}</tbody></table></div>
+      <td class="num">${F.vam(c.vam_elapsed_m_h)}<br><small class="muted">mvt ${F.vam(c.vam_moving_m_h)}</small></td>
+      <td class="num">${climbProgressionCell(c)}</td></tr>`).join("")}</tbody></table></div>
     ${classLegend ? `<p class="legend legend--small">VAM moyenne par pente : ${classLegend}</p>` : ""}</section>`;
+}
+
+/** Cellule « vs précédent/meilleur » d'une ligne de `climbsSection` (#49) — voir la
+ * docstring de `climbsSection` ci-dessus pour la sémantique complète. */
+function climbProgressionCell(c) {
+  if (c.segment_id == null) return "—";
+  const link = `<a href="#/montee/${c.segment_id}">historique</a>`;
+  if (c.vs_previous_pct == null) return `<small class="muted">1ʳᵉ fois</small><br>${link}`;
+  const fmt = (pct) => `<span class="${pct > 0 ? "pos" : pct < 0 ? "neg" : ""}">${pct > 0 ? "+" : ""}${F.num(pct, 1)} %</span>`;
+  return `${fmt(c.vs_previous_pct)} <small class="muted">préc.</small>` +
+    (c.vs_best_pct != null && c.vs_best_pct !== c.vs_previous_pct
+      ? `<br>${fmt(c.vs_best_pct)} <small class="muted">meill.</small>` : "") +
+    `<br>${link}`;
+}
+
+/** Page « Historique d'une montée » (#49, `#/montee/<segment_id>`) : chaque
+ * occurrence connue du même segment (voir `arc_climb_match.py`), un graphique
+ * temps/VAM par date et un tableau détaillé — jamais de coordonnée GPS ici (l'API
+ * n'en renvoie aucune, voir `arc_climb_match.ASSUMPTIONS["privacy"]`). Un id
+ * périmé (`climb_segment.id` n'est pas stable d'une réindexation à l'autre, voir
+ * `arc_index.DDL`) rend une page d'erreur explicite plutôt qu'une page vide
+ * muette. */
+async function viewClimbSegment(id) {
+  const d = await api(`climb-segment/${id}`, { fresh: true });
+  if (!d.segment) {
+    main.innerHTML = header("Montée introuvable") +
+      empty("Cet historique n'existe plus", "L'identifiant de montée n'est pas stable d'une réindexation à l'autre : revenez à la séance pour retrouver le lien à jour.");
+    return;
+  }
+  const seg = d.segment;
+  const occ = d.occurrences;
+  const dates = occ.map((o) => o.date);
+  const chart = timeChart(dates, [
+    { type: "dots", values: occ.map((o) => o.vam_elapsed_m_h), cls: "dot dot--vam" },
+  ], [], { height: 200, y: { zero: true }, label: "VAM (temps écoulé) par occurrence", yFormat: (v) => F.vam(v) });
+  main.innerHTML = `${header(seg.location || "Montée", `${F.distance(seg.distance_m, 2)} · +${F.elevation(seg.gain_m)} · ${F.num(seg.avg_grade * 100, 1)} % (${F.esc(seg.grade_class)}) · ${seg.occurrences} occurrence${seg.occurrences > 1 ? "s" : ""}`)}
+    <div class="chart-host" id="c-segment">${chart.svg}</div><p class="readout" id="r-segment"></p>
+    <div class="table-wrap"><table class="data data--compact"><thead><tr>
+      <th scope="col">Date</th><th scope="col">Séance</th><th scope="col" class="num">Durée</th>
+      <th scope="col" class="num">VAM</th><th scope="col" class="num">FC (1ᵉʳ→3ᵉ tiers)</th>
+      <th scope="col" class="num">Dérive FC/100 m</th><th scope="col" class="num">vs précédent</th>
+      <th scope="col" class="num">vs meilleur</th></tr></thead>
+    <tbody>${occ.map((o) => `<tr><td><a href="#/seance/${o.activity_id}">${F.dayLong(o.date)}</a></td>
+      <td>${F.esc(o.name || "")}</td><td class="num">${F.clock(o.duration_elapsed_s).replace(/^0:/, "")}</td>
+      <td class="num">${F.vam(o.vam_elapsed_m_h)}</td>
+      <td class="num">${o.hr_first_third_bpm != null ? `${F.num(o.hr_first_third_bpm)} → ${F.num(o.hr_last_third_bpm)}` : "—"}</td>
+      <td class="num">${o.hr_drift_bpm_per_100m != null ? `${o.hr_drift_bpm_per_100m > 0 ? "+" : ""}${F.num(o.hr_drift_bpm_per_100m, 1)}` : "—"}</td>
+      <td class="num">${o.vs_previous_pct != null ? `${o.vs_previous_pct > 0 ? "+" : ""}${F.num(o.vs_previous_pct, 1)} %` : "—"}</td>
+      <td class="num">${o.vs_best_pct != null ? `${o.vs_best_pct > 0 ? "+" : ""}${F.num(o.vs_best_pct, 1)} %` : "—"}</td></tr>`).join("")}</tbody></table></div>`;
+  setTimeout(() => attachCursor($("#c-segment"), chart, (i) => {
+    const o = occ[i];
+    readout($("#r-segment"), `<strong>${F.dayLong(o.date)}</strong> · VAM ${F.vam(o.vam_elapsed_m_h)}${o.vs_previous_pct != null ? ` · ${o.vs_previous_pct > 0 ? "+" : ""}${F.num(o.vs_previous_pct, 1)} % vs précédent` : ""}`);
+  }), 0);
 }
 
 /** Section « Efficacité en descente » de la page séance (#47) : un tableau, une
@@ -1364,6 +1428,7 @@ async function route() {
   main.setAttribute("aria-busy", "true");
   try {
     if (name === "seance" && arg) await viewSession(Number(arg));
+    else if (name === "montee" && arg) await viewClimbSegment(Number(arg));
     else if (ROUTES[name]) await ROUTES[name](params);
     else main.innerHTML = header("Page introuvable") + `<p><a href="#/">Retour à aujourd'hui</a></p>`;
   } catch (err) {
