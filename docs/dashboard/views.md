@@ -172,11 +172,37 @@ six semaines d'historique pour que la condition ait un sens.
   (« Séances » → une séance) détaille chaque montée (bornes, D+, pente
   moyenne, classe de pente, durée, VAM) dans son propre tableau.
 
+- **L'efficacité en descente** (#47) : UNE SÉRIE PAR CLASSE de pente descendante
+  (sélecteur au-dessus du graphique, comme les périodes de la courbe de forme) —
+  jamais une moyenne toutes classes confondues, l'indicateur n'ayant de sens qu'« à
+  pente égale » (voir `scripts/arc_descent.py::ASSUMPTIONS["indicator"]`). Chaque
+  point est la moyenne, pondérée par le temps, du ratio PAR ÉCHANTILLON vitesse GAP
+  / allure GAP de référence de la séance — la référence est l'allure GAP mesurée
+  sur les sections RÉELLEMENT PLATES de CETTE sortie (au moins 5 minutes), ou à
+  défaut sur tout ce qui n'est PAS une forte descente (repli, la source effective
+  est affichée) — **jamais l'allure GAP de toute la séance**, qui se contaminerait
+  avec l'effort des descentes elles-mêmes et ferait varier l'efficacité d'une même
+  descente selon le reste du parcours. Un repère pointillé à 1,00× marque l'allure
+  que prédirait le modèle de Minetti à effort métabolique constant. **Ce modèle est
+  connu pour surestimer le bénéfice des fortes descentes en conditions réelles de
+  trail, de façon NON MONOTONE** (voir [Marques et métriques](../marques.md)) : une
+  efficacité nettement sous 1,00× sur les classes les plus raides est donc
+  **normale**, pas la preuve d'une mauvaise descente — seule sa **tendance dans le
+  temps, à pente égale**, est exploitable. Classes de pente descendante : les trois
+  classes intermédiaires -5/-10 %, -10/-15 %, -15/-20 % sont le miroir direct de la
+  VAM (#46) ; au-delà, DEUX classes distinctes -20/-30 % et < -30 % (jamais un
+  panier unique, le coût du modèle n'étant pas monotone en descente) ; une classe
+  dont le temps de mouvement (2 min) ou la distance (300 m) reste sous le seuil sur
+  cette séance n'apparaît simplement pas (critère d'acceptation de #47). La fiche
+  d'une séance individuelle détaille chaque classe qualifiante (pente moyenne
+  réellement rencontrée, allure, distance, durée, efficacité) dans son propre
+  tableau.
+
 | Alimentée par | Calcul |
 |---|---|
 | `activities/*.md` (durée, FC moyenne, effort perçu) | `scripts/arc_metrics.py` : TRIMP, ou effort perçu sans FC |
 | `planning/Runner_Profile.md` (FC max, FC de repos) | indispensables au TRIMP |
-| `activities/fit/*.json` (échantillons ingérés) | temps en zone FC → polarisation 80/20 ; GAP → découplage aérobie/EF ; montées détectées → VAM |
+| `activities/fit/*.json` (échantillons ingérés) | temps en zone FC → polarisation 80/20 ; GAP → découplage aérobie/EF ; montées détectées → VAM ; classes de pente descendante → efficacité en descente |
 
 **Si les courbes sont plates ou bizarres** : renseignez la FC max et la FC de repos
 de référence du profil. Sans elles, la charge vient de l'effort perçu seul.
@@ -345,6 +371,17 @@ de fréquence cardiaque et d'effort perçu, un astérisque.
   une séance sans montée détectée (parcours plat, D+ ou pente sous le seuil de
   détection) affiche la section avec un message plutôt que la masquer — pour
   distinguer « pas de montée sur cette sortie » d'un bug d'affichage.
+- **L'efficacité en descente** (#47) : un tableau, une ligne par classe de pente
+  descendante qualifiante (pente moyenne réellement rencontrée, allure, distance,
+  durée de mouvement, indicateur d'efficacité — voir la vue « Forme & charge »
+  ci-dessus et `scripts/arc_descent.py::ASSUMPTIONS` pour la méthode complète), plus
+  l'allure GAP de référence utilisée en pied de tableau — sections réellement
+  plates de CETTE séance, ou à défaut tout ce qui n'est pas une forte descente
+  (repli, la source est indiquée). Réservé aux sports de la famille course à pied
+  avec échantillons FIT ; une séance sans classe qualifiante affiche la section
+  avec un message explicite plutôt que la masquer
+  (contrairement aux montées, l'absence est ici TOUJOURS documentée — critère
+  d'acceptation de #47).
 - **Les zones FC** (#43) : une barre empilée du temps passé dans chacune des 5 zones,
   avec les bornes intérieures (bpm, ex. « Z1 < 146 · Z2 146-155 · … · Z5 ≥ 172 ») et
   la méthode effective (FC au seuil, Karvonen ou %FC max — voir

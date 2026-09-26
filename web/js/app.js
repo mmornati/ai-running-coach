@@ -357,8 +357,8 @@ async function viewToday() {
 
 async function viewForm(params) {
   const days = Number(params.get("jours")) || 180;
-  const [form, load, decoupling, vam] = await Promise.all([
-    api(`form?days=${days}`), api("load?weeks=26"), api("decoupling"), api("vam"),
+  const [form, load, decoupling, vam, descent] = await Promise.all([
+    api(`form?days=${days}`), api("load?weeks=26"), api("decoupling"), api("vam"), api("descent"),
   ]);
   const s = SUMMARY;
   const trail = s.settings.sport === "trail";
@@ -392,10 +392,11 @@ async function viewForm(params) {
       { type: "bars", values: weeks.map((w) => w.distance_m / 1000), cls: "bar" },
     ], [], { height: 200, y: { zero: true }, label: "Volume hebdomadaire en kilomètres", yFormat: (v) => `${F.num(v)} km` });
 
-  const periods = [[90, "3 mois"], [180, "6 mois"], [365, "1 an"]].map(([d, l]) => `<a class="seg ${d === days ? "is-on" : ""}" href="#/forme?jours=${d}">${l}</a>`).join("");
+  const periods = [[90, "3 mois"], [180, "6 mois"], [365, "1 an"]].map(([d, l]) => `<a class="seg ${d === days ? "is-on" : ""}" aria-current="${d === days ? "true" : "false"}" href="#/forme?jours=${d}">${l}</a>`).join("");
   const last = series[series.length - 1];
   const { html: decouplingHtml, chart: decouplingChart, points: decouplingPoints } = decouplingSection(decoupling);
   const { html: vamHtml, chart: vamChart, points: vamPoints } = vamSection(vam);
+  const { html: descentHtml, chart: descentChart, points: descentPoints } = descentTrendSection(descent, days, params.get("descente"));
   main.innerHTML = `${header("Forme & charge", `Charge par séance : TRIMP (fréquence cardiaque), repli sur l'effort perçu. <a href="#/performance">Hypothèses des modèles</a>`)}
     <div class="toolbar">${periods}</div>
     <section class="band"><h2>Courbe de forme</h2>
@@ -409,7 +410,8 @@ async function viewForm(params) {
       <dl class="facts facts--inline"><div><dt>Monotonie (7 j)</dt><dd>${F.num(load.monotony, 2)}</dd></div><div><dt>Strain (7 j)</dt><dd>${F.num(load.strain)}</dd></div><div><dt>Charge du jour</dt><dd>${F.num(last.load)}</dd></div></dl></section>
     ${polarisationSection(load.polarisation_weeks, load.hr_zones_reason)}
     ${decouplingHtml}
-    ${vamHtml}`;
+    ${vamHtml}
+    ${descentHtml}`;
 
   attachCursor($("#c-form"), chart, (i) => {
     const p = series[i];
@@ -431,6 +433,13 @@ async function viewForm(params) {
     attachCursor($("#c-vam"), vamChart, (i) => {
       const p = vamPoints[i];
       readout($("#r-vam"), `<strong>${F.dayLong(p.date)}</strong> · ${F.esc(p.name || F.SPORT[p.sport] || p.sport)} · meilleure montée ${F.vam(p.best_climb_vam_elapsed_m_h)}`);
+    });
+  }
+  if (descentChart) {
+    attachCursor($("#c-descent"), descentChart, (i) => {
+      const p = descentPoints[i];
+      const refNote = p.reference_source === "non_descent" ? " · référence de repli (anneau creux)" : "";
+      readout($("#r-descent"), `<strong>${F.dayLong(p.date)}</strong> · ${F.esc(p.name || F.SPORT[p.sport] || p.sport)} · efficacité ${F.efficiency(p.efficiency)}${p.mean_grade != null ? ` · pente moy. ${F.num(Math.abs(p.mean_grade) * 100, 1)} %` : ""}${refNote}`);
     });
   }
 }
@@ -580,7 +589,7 @@ async function viewHealth(params) {
         { type: "bars", values: s.map((p) => (p.sleep_debt_7d_s != null ? p.sleep_debt_7d_s / 3600 : null)), cls: (i, v) => `bar bar--sleep${v > debtAlertH ? " bar--alert" : v > debtWarnH ? " bar--warn" : ""}` },
       ], [], { height: 150, y: { min: 0 }, label: "Dette de sommeil cumulée en heures", yFormat: (v) => `${F.num(v)} h` }), false]);
   }
-  const periods = [[30, "1 mois"], [90, "3 mois"], [180, "6 mois"]].map(([d, l]) => `<a class="seg ${d === days ? "is-on" : ""}" href="#/sante?jours=${d}">${l}</a>`).join("");
+  const periods = [[30, "1 mois"], [90, "3 mois"], [180, "6 mois"]].map(([d, l]) => `<a class="seg ${d === days ? "is-on" : ""}" aria-current="${d === days ? "true" : "false"}" href="#/sante?jours=${d}">${l}</a>`).join("");
   main.innerHTML = `${header("Santé", mode === "minimal" ? "Bilan minimal : readiness seule." : "Triade du matin : HRV, FC de repos, readiness — et le verdict du coach, jour par jour.")}
     <div class="toolbar">${periods}</div>
     <p class="readout readout--sticky" id="r-health"></p>
@@ -738,6 +747,7 @@ async function viewSession(id) {
     ${wx ? `<p class="weather">${weatherChip(wx.category)} <span>${F.esc(wx.location)} · ${F.num(wx.temp_min_c)}–${F.num(wx.temp_max_c)} °C · vent ${F.num(wx.wind_kmh)} km/h</span></p>` : ""}
     ${splitsHtml}
     ${climbsSection(d.climbs)}
+    ${descentSection(d.descent)}
     ${hrZoneSection(d.hr_zones)}
     <section class="band prose"><h2>Analyse du coach</h2>${d.body_html || "<p class=\"muted\">Pas de texte.</p>"}<p class="muted source">Source : <code>${F.esc(a.source_path)}</code></p></section>`;
 }
@@ -765,10 +775,12 @@ const GRADE_CLASS_ORDER = ["<5%", "5-10%", "10-15%", "15-20%", ">20%"];
 function climbsSection(climbs) {
   const rows = (climbs && climbs.climbs) || [];
   const reason = climbs && climbs.reason;
-  if (reason && /famille course à pied/.test(reason)) {
-    // Séance qui n'a structurellement jamais pu avoir de montée (renforcement,
-    // vélo...) : section masquée plutôt qu'un message qui laisserait croire
-    // qu'une montée aurait pu y être détectée.
+  // `applicable === false` (jamais un test sur le texte français de `reason`,
+  // fragile aux reformulations — revue de code #47, nit) : séance qui n'a
+  // structurellement jamais pu avoir de montée (renforcement, vélo...), section
+  // masquée plutôt qu'un message qui laisserait croire qu'une montée aurait pu y
+  // être détectée.
+  if (climbs && climbs.applicable === false) {
     return "";
   }
   if (!rows.length) {
@@ -796,6 +808,65 @@ function climbsSection(climbs) {
       <td class="num">${F.clock(c.duration_elapsed_s).replace(/^0:/, "")}</td>
       <td class="num">${F.vam(c.vam_elapsed_m_h)}<br><small class="muted">mvt ${F.vam(c.vam_moving_m_h)}</small></td></tr>`).join("")}</tbody></table></div>
     ${classLegend ? `<p class="legend legend--small">VAM moyenne par pente : ${classLegend}</p>` : ""}</section>`;
+}
+
+/** Section « Efficacité en descente » de la page séance (#47) : un tableau, une
+ * ligne par classe de pente descendante RÉELLEMENT qualifiante (durée/distance
+ * minimales, voir `arc_descent.ASSUMPTIONS["thresholds"]`) — jamais une classe
+ * sans assez de données (critère d'acceptation de #47). `descent` vient de
+ * `/api/activity/<id>.descent` (`arc_serve.py::api_activity_descent`) et porte
+ * TOUJOURS une `reason` explicite quand `descent.classes` est vide, y compris
+ * pour un parcours sans descente qualifiante — contrairement aux montées
+ * (`climbsSection`), l'absence de classe est ici TOUJOURS documentée (jamais un
+ * état muet, voir `arc_descent.descent_report`). L'indicateur d'efficacité est
+ * un RATIO à l'athlète lui-même (via le modèle de Minetti), pas une note
+ * absolue — un rappel explicite de cette lecture accompagne le tableau (voir
+ * `arc_descent.ASSUMPTIONS["indicator"]`). */
+// Même ordre que `arc_descent.DESCENT_GRADE_CLASSES` (Python) — dupliqué ici
+// volontairement (pas de dépendance runtime entre le serveur Python et le JS
+// statique, même motif que `GRADE_CLASS_ORDER` ci-dessus) : à tenir à jour si
+// `DESCENT_GRADE_CLASSES` change côté serveur. Scindé au-delà de -20 % (revue de
+// code #47) : le coût de Minetti n'est pas monotone en descente (voir
+// `arc_descent.ASSUMPTIONS["grade_classes"]`).
+const DESCENT_GRADE_CLASS_ORDER = ["-5 à -10 %", "-10 à -15 %", "-15 à -20 %", "-20 à -30 %", "< -30 %"];
+const DESCENT_REFERENCE_SOURCE_LABEL = { flat: "sections plates de la séance", non_descent: "hors forte descente (repli)" };
+
+function descentSection(descent) {
+  const classes = (descent && descent.classes) || {};
+  const reason = descent && descent.reason;
+  const labels = DESCENT_GRADE_CLASS_ORDER.filter((cls) => classes[cls]);
+  // `applicable === false` (jamais un test sur le texte français de `reason` —
+  // revue de code #47, nit, même motif que `climbsSection`) : séance qui n'a
+  // structurellement jamais pu avoir de descente classée (renforcement, vélo...).
+  if (descent && descent.applicable === false) {
+    return "";
+  }
+  if (!labels.length) {
+    const msg = reason
+      ? F.esc(reason).replace(/^./, (c) => c.toUpperCase())
+      : "Aucune classe de pente descendante avec assez de données sur cette séance.";
+    return `<section class="band"><h2>Efficacité en descente</h2>${note(msg)}</section>`;
+  }
+  const refSource = descent.reference_source ? DESCENT_REFERENCE_SOURCE_LABEL[descent.reference_source] : null;
+  return `<section class="band"><h2>Efficacité en descente</h2>
+    <p class="muted">Efficacité = moyenne, pondérée par le temps, du ratio vitesse en descente /
+      vitesse prédite par le modèle (Minetti) à partir de l'allure GAP de référence de la séance —
+      <strong>1,00×</strong> si l'effort métabolique reste constant. Le modèle SURESTIME le bénéfice
+      des fortes descentes en conditions réelles de trail : une valeur bien sous 1,00× sur les pentes
+      les plus raides est normale (prudence, terrain technique), pas un mauvais résultat. C'est sa
+      <strong>tendance dans le temps, à pente égale</strong>, qui compte — jamais une comparaison entre
+      classes de pente différentes. <a href="#/performance">Hypothèses des modèles</a></p>
+    <div class="table-wrap"><table class="data data--compact"><thead><tr>
+      <th scope="col">Pente</th><th scope="col" class="num">Pente moy.</th><th scope="col" class="num">Allure</th>
+      <th scope="col" class="num">Distance</th><th scope="col" class="num">Durée</th>
+      <th scope="col" class="num">Efficacité</th></tr></thead>
+    <tbody>${labels.map((cls) => { const c = classes[cls]; return `<tr><td><span class="tag">${F.esc(cls)}</span></td>
+      <td class="num">${c.mean_grade != null ? `${F.num(Math.abs(c.mean_grade) * 100, 1)} %` : "—"}</td>
+      <td class="num">${F.paceFromSecPerKm(c.mean_pace_s_km)}</td>
+      <td class="num">${F.distance(c.distance_m, 2)}</td>
+      <td class="num">${F.duration(c.duration_moving_s, { seconds: true })}</td>
+      <td class="num">${F.efficiency(c.efficiency)} <small class="muted" title="Échantillons agrégés dans cette classe">(${c.count} éch.)</small></td></tr>`; }).join("")}</tbody></table></div>
+    ${descent.reference_gap_pace_s_km != null ? `<p class="legend legend--small">Référence (allure GAP, ${F.esc(refSource || "source inconnue")}) : ${F.paceFromSecPerKm(descent.reference_gap_pace_s_km)}</p>` : ""}</section>`;
 }
 
 /** Section « Zones FC » de la page séance (#43) : temps en zone en barre empilée
@@ -1026,9 +1097,15 @@ function decouplingSection(trend) {
   if (!points.length) return { html: "", chart: null, points: [] };
   const dates = points.map((p) => p.date);
   const chart = timeChart(dates, [
-    { type: "hline", value: 5, cls: "mark mark--decoupling-good", label: "Repère 5 %" },
     { type: "dots", values: points.map((p) => p.decoupling_pct), cls: "dot dot--decoupling" },
-  ], [], {
+  ], [
+    // Revue de code (#47) : un repère `hline` va dans `marks` (3e argument), jamais
+    // dans `layers` (2e) — `timeChart` (web/js/chart.js) n'y reconnaît que
+    // "line"/"area"/"band"/"bars"/"dots" et ignore silencieusement tout le reste, y
+    // compris un `hline` glissé par erreur : le repère « 5 % » n'était donc jamais
+    // dessiné.
+    { type: "hline", value: 5, cls: "mark mark--decoupling-good", label: "Repère 5 %" },
+  ], {
     height: 200, y: { zero: true }, label: "Découplage aérobie (Pa:HR) sur les sorties longues",
     yFormat: (v) => `${F.num(v, 1)} %`,
   });
@@ -1077,6 +1154,71 @@ function vamSection(trend) {
       <div><dt>Meilleure VAM 10 min</dt><dd>${best10 != null ? F.vam(best10) : "—"}</dd></div>
       <div><dt>Meilleure VAM 20 min</dt><dd>${best20 != null ? F.vam(best20) : "—"}</dd></div>
     </dl></section>`;
+  return { html, chart, points };
+}
+
+/** Section « Efficacité en descente » (#47) de Forme & charge : UNE SÉRIE PAR
+ * CLASSE DE PENTE, jamais un mélange (revue de code, should-fix 2, BLOQUANT) —
+ * l'indicateur n'a de sens qu'« à pente égale » (voir
+ * `arc_descent.ASSUMPTIONS["indicator"]`), donc le graphique affiche la classe
+ * choisie par le sélecteur (`?descente=<classe>` dans l'URL, comme les
+ * périodes de la courbe de forme) et JAMAIS une moyenne toutes classes
+ * confondues, qui mélangerait des pentes différentes d'une sortie à l'autre —
+ * `trend.activities[].avg_efficiency_all_classes` (arc_metrics.descent_trend)
+ * existe côté API mais n'est délibérément PAS affiché en graphique ici pour
+ * cette raison, seul `trend.classes` (le détail par classe) alimente cette
+ * vue. Classe par défaut : celle qui a le plus de points dans la fenêtre.
+ * Vide (pas de section) tant qu'aucune classe n'a jamais été retenue. */
+function descentTrendSection(trend, days, selectedClass) {
+  const classes = trend.classes || {};
+  const labels = DESCENT_GRADE_CLASS_ORDER.filter((cls) => classes[cls] && classes[cls].count);
+  if (!labels.length) return { html: "", chart: null, points: [] };
+  const active = labels.includes(selectedClass)
+    ? selectedClass
+    : labels.slice().sort((a, b) => classes[b].count - classes[a].count)[0];
+  const points = classes[active].points.filter((p) => p.efficiency != null);
+  // La référence peut venir de deux sources DIFFÉRENTES d'une séance à l'autre
+  // (`arc_descent.ASSUMPTIONS["reference"]`) — le plat de LA séance (`"flat"`),
+  // ou son repli hors forte descente (`"non_descent"`) quand elle n'a pas assez
+  // de plat. Les deux ne sont PAS sur la même échelle (revue de code : mesuré
+  // 0,664 en `flat` contre 0,548 en `non_descent` pour la MÊME descente) —
+  // JAMAIS tracées comme un seul point de même nature, sous peine de lire une
+  // chute d'efficacité là où seule la référence a changé de source. Repli
+  // affiché en anneau creux (même motif que `.dot--sweat`), avec sa propre
+  // légende, plutôt qu'exclu : la donnée reste réelle, juste moins fiable.
+  const flatValues = points.map((p) => (p.reference_source === "flat" ? p.efficiency : null));
+  const fallbackValues = points.map((p) => (p.reference_source === "non_descent" ? p.efficiency : null));
+  const fallbackCount = fallbackValues.filter((v) => v != null).length;
+  const selector = labels.map((cls) =>
+    `<a class="seg ${cls === active ? "is-on" : ""}" aria-current="${cls === active ? "true" : "false"}" href="#/forme?jours=${days}&descente=${encodeURIComponent(cls)}">${F.esc(cls)}</a>`
+  ).join("");
+  const chart = points.length ? timeChart(points.map((p) => p.date), [
+    { type: "dots", values: flatValues, cls: "dot dot--descent" },
+    { type: "dots", values: fallbackValues, cls: "dot dot--descent-fallback" },
+  ], [
+    // `hline` va dans `marks` (3e argument), jamais dans `layers` (2e) — voir le
+    // même correctif sur `decouplingSection` ci-dessus.
+    { type: "hline", value: 1, cls: "mark mark--descent-model", label: "1,00×" },
+  ], {
+    height: 200, label: `Efficacité en descente, classe ${active}`,
+    yFormat: (v) => F.efficiency(v),
+  }) : null;
+  const classLegend = labels.map((cls) =>
+    `<span class="legend__item">${F.esc(cls)} : ${F.efficiency(classes[cls].avg_efficiency)} <small class="muted">(${classes[cls].count})</small></span>`
+  ).join(" · ");
+  const html = `<section class="band"><h2>Efficacité en descente</h2>
+    <p class="muted">Vitesse en descente comparée à celle prédite par le modèle de Minetti à partir de
+      l'allure GAP de référence de la séance (<strong>1,00×</strong> = effort métabolique constant,
+      repère pointillé). Le modèle surestime le bénéfice des fortes descentes en conditions réelles de
+      trail : une valeur sous 1,00× sur les pentes les plus raides est normale, pas un mauvais résultat —
+      seule la <strong>tendance, à pente égale</strong>, est exploitable : une classe de pente ne se
+      compare JAMAIS à une autre. <a href="#/performance">Hypothèses des modèles</a></p>
+    <div class="toolbar">${selector}</div>
+    <p class="legend"><span class="legend__item"><span class="key key--descent"></span>Référence plate de la séance</span> <span class="legend__item"><span class="key key--descent-fallback"></span>Référence de repli (hors forte descente, pas de plat suffisant)</span></p>
+    ${chart ? `<div class="chart-host" id="c-descent">${chart.svg}</div><p class="readout" id="r-descent"></p>` : note("Pas assez de points pour cette classe.")}
+    ${fallbackCount ? `<p class="muted"><small>${fallbackCount} point${fallbackCount > 1 ? "s" : ""} en anneau creux : référence de repli, échelle différente d'un point plein — ne pas comparer directement.</small></p>` : ""}
+    <p class="legend legend--small">Efficacité moyenne par classe de pente (${trend.window_weeks} sem.) : ${classLegend}</p>
+  </section>`;
   return { html, chart, points };
 }
 

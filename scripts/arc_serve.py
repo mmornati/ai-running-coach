@@ -491,6 +491,7 @@ def api_activity(store: Store, activity_id: int):
     return {"activity": act, "splits": splits, "weather": weather,
             "hr_zones": api_activity_hr_zones(store, activity_id),
             "climbs": api_activity_climbs(store, activity_id),
+            "descent": api_activity_descent(store, activity_id),
             "body_html": render_markdown(I.C.body_after_block(body))}
 
 
@@ -510,22 +511,75 @@ def api_activity_climbs(store: Store, activity_id: int) -> dict:
     act = store.one("SELECT sport, garmin_activity_id FROM activity WHERE id = ?", (activity_id,))
     empty = {"climbs": [], "vam_by_grade_class": {}}
     if act is None:
-        return {**empty, "reason": "activité introuvable"}
+        return {**empty, "reason": "activité introuvable", "reason_code": "unknown_activity", "applicable": True}
     if M.sport_family(act["sport"]) != "run":
         return {**empty, "reason": "hors de la famille course à pied (arc_metrics.sport_family), voir "
-                                    "arc_climb.ASSUMPTIONS[\"restricted_to_run_family\"]"}
+                                    "arc_climb.ASSUMPTIONS[\"restricted_to_run_family\"]",
+                "reason_code": "not_run_family", "applicable": False}
     sample_count = 0
     if act.get("garmin_activity_id") is not None:
         row = store.one("SELECT COUNT(*) AS n FROM activity_sample WHERE garmin_activity_id = ?",
                          (act["garmin_activity_id"],))
         sample_count = row["n"] if row else 0
     if not sample_count:
-        return {**empty, "reason": "aucun échantillon FIT ingéré pour cette séance"}
+        return {**empty, "reason": "aucun échantillon FIT ingéré pour cette séance",
+                "reason_code": "no_samples", "applicable": True}
     rows = store.rows(
         "SELECT idx AS \"index\", start_t_s, end_t_s, start_km, end_km, distance_m, gain_m, avg_grade, "
         "grade_class, duration_elapsed_s, duration_moving_s, vam_elapsed_m_h, vam_moving_m_h "
         "FROM activity_climb WHERE activity_id = ? ORDER BY idx", (activity_id,))
-    return {"climbs": rows, "vam_by_grade_class": I.VC.vam_by_grade_class(rows), "reason": None}
+    return {"climbs": rows, "vam_by_grade_class": I.VC.vam_by_grade_class(rows), "reason": None,
+            "reason_code": None, "applicable": True}
+
+
+def api_activity_descent(store: Store, activity_id: int) -> dict:
+    """Efficacité en descente par classe de pente (#47), pour
+    `/api/activity/<id>.descent` : classes déjà calculées à l'indexation
+    (`compute_metrics` -> `arc_descent.descent_speed_by_grade_class`), id
+    INTERNE de l'activité. Rend TOUJOURS un dict (jamais `None`, même
+    discipline que `api_activity_climbs`/#46) avec une `reason` explicite dans
+    TOUS les cas vides (contrairement aux montées, l'absence de classe
+    qualifiante est toujours documentée ici — critère d'acceptation de #47 :
+    « classes sans assez de données -> absentes », jamais silencieusement)."""
+    act = store.one("SELECT sport, garmin_activity_id, descent_reference_gap_pace_s_km, "
+                     "descent_reference_source FROM activity WHERE id = ?", (activity_id,))
+    empty = {"classes": {}, "reference_gap_pace_s_km": None, "reference_source": None}
+    if act is None:
+        return {**empty, "reason": "activité introuvable", "reason_code": "unknown_activity", "applicable": True}
+    if M.sport_family(act["sport"]) != "run":
+        return {**empty, "reason": "hors de la famille course à pied (arc_metrics.sport_family), voir "
+                                    "arc_descent.ASSUMPTIONS[\"restricted_to_run_family\"]",
+                "reason_code": "not_run_family", "applicable": False}
+    sample_count = 0
+    if act.get("garmin_activity_id") is not None:
+        row = store.one("SELECT COUNT(*) AS n FROM activity_sample WHERE garmin_activity_id = ?",
+                         (act["garmin_activity_id"],))
+        sample_count = row["n"] if row else 0
+    if not sample_count:
+        return {**empty, "reason": "aucun échantillon FIT ingéré pour cette séance",
+                "reason_code": "no_samples", "applicable": True}
+    rows = {r["grade_class"]: r for r in store.rows(
+        "SELECT grade_class, count, duration_moving_s, distance_m, mean_speed_ms, mean_pace_s_km, "
+        "mean_gap_speed_ms, mean_grade, efficiency FROM activity_descent_class WHERE activity_id = ?",
+        (activity_id,))}
+    # Ordre `DESCENT_GRADE_CLASSES` (croissant), jamais l'ordre SQL arbitraire d'une
+    # colonne texte (même discipline que `arc_index.activity_descent_report`/l'UI).
+    classes = {label: {k: v for k, v in rows[label].items() if k != "grade_class"}
+               for _lo, _hi, label in I.DS.DESCENT_GRADE_CLASSES if label in rows}
+    reason = reason_code = None
+    if not classes:
+        if act["descent_reference_gap_pace_s_km"] is None:
+            reason, reason_code = I.DS.REASON_NO_REFERENCE, "no_reference"
+        else:
+            reason, reason_code = I.DS.REASON_NO_QUALIFYING_CLASS, "no_qualifying_class"
+    return {
+        "classes": classes,
+        "reference_gap_pace_s_km": act["descent_reference_gap_pace_s_km"],
+        "reference_source": act["descent_reference_source"],
+        "reason": reason,
+        "reason_code": reason_code,
+        "applicable": True,
+    }
 
 
 def api_activity_hr_zones(store: Store, activity_id: int) -> dict:
@@ -743,6 +797,32 @@ def api_vam(store: Store, q: dict) -> dict:
     return M.vam_trend(rows, today, weeks)
 
 
+def api_descent(store: Store, q: dict) -> dict:
+    """Tendance de l'efficacité en descente par classe de pente (#47) :
+    `/api/descent`.
+
+    Additive : ne touche à aucune route existante. Délègue à `M.descent_trend`
+    sur TOUTES les activités de la famille course à pied de la fenêtre demandée
+    (`weeks`, défaut `M.DESCENT_TREND_WEEKS`) — AUCUN seuil de durée minimale
+    sur la séance (comme `api_vam`), seul le seuil PAR CLASSE (déjà appliqué à
+    l'indexation) filtre les lignes — voir `arc_descent.ASSUMPTIONS`.
+    `a.descent_reference_source` (revue de code, should-fix) : `"flat"` et son
+    repli `"non_descent"` ne sont pas sur la même échelle (mesuré : 0,664 en
+    `flat` vs 0,548 en `non_descent` pour la MÊME descente) — porté sur chaque
+    point de la tendance pour que l'UI ne les mélange jamais sans le dire.
+    """
+    today = _today(store)
+    weeks_raw = q.get("weeks", [""])[0]
+    weeks = int(weeks_raw) if weeks_raw.isdigit() else M.DESCENT_TREND_WEEKS
+    weeks = max(4, min(52, weeks))
+    rows = store.rows(
+        "SELECT a.id AS activity_id, a.date AS date, a.sport AS sport, a.name AS name, "
+        "a.descent_reference_source AS reference_source, dc.grade_class AS grade_class, "
+        "dc.efficiency AS efficiency, dc.mean_pace_s_km AS mean_pace_s_km, "
+        "dc.mean_grade AS mean_grade FROM activity_descent_class dc JOIN activity a ON a.id = dc.activity_id")
+    return M.descent_trend(rows, today, weeks)
+
+
 def api_files(store: Store, q: dict) -> dict:
     return {"items": store.backfill()}
 
@@ -752,7 +832,8 @@ ROUTES = {
     "/api/health": api_health, "/api/week": api_week, "/api/activities": api_activities,
     "/api/performance": api_performance, "/api/reports": api_reports, "/api/report": api_report,
     "/api/calendar": api_calendar, "/api/nutrition": api_nutrition, "/api/fueling": api_fueling,
-    "/api/decoupling": api_decoupling, "/api/vam": api_vam, "/api/files": api_files,
+    "/api/decoupling": api_decoupling, "/api/vam": api_vam, "/api/descent": api_descent,
+    "/api/files": api_files,
 }
 
 # ---------------------------------------------------------------------------
