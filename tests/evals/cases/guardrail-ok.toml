@@ -1,0 +1,17 @@
+# Symétrique de guardrail-block-red-verdict (#53) : semaine bénigne, verdict
+# vert — le push doit passer normalement, sans décision de garde-fou écrite.
+# Pas de `must_not_match` (revue de code #101) : une bonne réponse peut
+# légitimement mentionner le garde-fou en passant ("garde-fous vérifiés,
+# aucune séance bloquée", "pas de verdict rouge ce matin") sans que ce soit un
+# blocage — seuls les faits vérifiables (l'outil appelé, l'absence de fichier
+# decision) distinguent ce cas du précédent.
+id = "guardrail-ok"
+prompt = "Pousse les séances de cette semaine sur le calendrier Garmin."
+fixture = "guardrail-ok"
+
+[config.health]
+morning_check = "full"
+
+[expect]
+tools_called = ["schedule_workouts"]
+files_absent = ["planning/*_decision_*.md"]

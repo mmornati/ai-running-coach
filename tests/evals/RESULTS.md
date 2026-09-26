@@ -27,6 +27,8 @@ ARC_LLM_TESTS=1 python3 tests/run_tests.py --tier c --repeat 3
 | `doctor-token-expiring` | — | — |
 | `feedback-with-fit` | — | — |
 | `feedback-without-fit` | — | — |
+| `guardrail-block-red-verdict` | — | — |
+| `guardrail-ok` | — | — |
 | `health-full-triad` | — | — |
 | `health-minimal-readiness-only` | — | — |
 | `health-off-no-health-file` | — | — |
@@ -52,6 +54,6 @@ ARC_LLM_TESTS=1 python3 tests/run_tests.py --tier c --repeat 3
 > puis remplacez ce tableau par le relevé obtenu.
 
 <!-- Régénéré via `python3 tests/evals/render_results.py --results <(echo '{}')`
-     (#51) : `feedback-with-fit`/`feedback-without-fit` ont été ajoutés par
+     (#53) : `guardrail-block-red-verdict`/`guardrail-ok` ont été ajoutés par
      cette régénération. Date et modèle remis à `_jamais exécuté_`/« défaut » à
      la main après régénération : aucune exécution réelle n'a eu lieu. -->

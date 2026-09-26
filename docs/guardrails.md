@@ -5,8 +5,11 @@ critique adressée aux coachs IA : une progression trop agressive — des
 blessures ont été rapportées avec des outils comparables. `scripts/
 arc_guardrails.py` est un second avis **purement calculé**, déterministe et
 testé, que le coach consulte avant d'écrire une semaine et avant de la pousser
-au calendrier Garmin (câblage dans l'agent : [#53](https://github.com/mmornati/ai-running-coach/issues/53),
-suit ce moteur).
+au calendrier Garmin — câblage effectif dans `agents/coach.md` et
+`skills/garmin-workout-scheduling/SKILL.md`
+([#53](https://github.com/mmornati/ai-running-coach/issues/53), voir
+« Câblage agent » ci-dessous), ce moteur restant lui-même indépendant de ce
+câblage.
 
 ## Les sept règles
 
@@ -187,12 +190,52 @@ pouvoir les distinguer sans ambiguïté :
 }
 ```
 
-`violations[].rule_id` et le format ci-dessus sont pensés pour
-[#54](https://github.com/mmornati/ai-running-coach/issues/54) (bloc `decision`,
-qui enregistrera les `rule_id` déclenchés) et
+`violations[].rule_id` et le format ci-dessus sont repris tels quels par
+[#54](https://github.com/mmornati/ai-running-coach/issues/54) (bloc
+`decision`, qui enregistre les `rule_id` déclenchés — voir « Câblage agent »
+ci-dessous) et pensés pour
 [#57](https://github.com/mmornati/ai-running-coach/issues/57) (drapeau
 composite de risque de blessure, qui combine `context.acwr_projected`/
 `context.monotony_projected` avec d'autres signaux).
+
+## Câblage agent (#53)
+
+Le moteur ci-dessus ne fait rien tant que personne ne l'appelle : `coach`
+(`agents/coach.md`, section « GUARDRAILS MANDATE ») et le skill
+`garmin-workout-scheduling` lancent `check` avant d'écrire un fichier semaine
+et avant tout `schedule_workouts`/`schedule_week`, jamais après.
+
+- **`ok=false` (exit 1, au moins un `block`), session interactive** : un
+  `block` ne bloque QUE la séance visée — les autres séances de la semaine
+  s'écrivent et se poussent normalement. Pour la séance flaguée, le coach ne
+  l'écrit ni ne la pousse telle quelle : il PROPOSE une alternative sûre (ex.
+  remplacer une séance de qualité par du facile/repos) en une phrase citant le
+  `message` de la violation, écrit tout de suite une `decision`
+  `outcome: "proposed"`, et ne pousse (ni n'écrit) l'alternative qu'une fois
+  l'athlète d'accord. Une fois confirmée : la décision devient un NOUVEAU
+  fichier `decision` (`outcome: "applied"`, `supersedes` vers le `proposed`
+  ci-dessus, qui repasse lui-même à `outcome: "superseded"`). Le style et
+  l'intensité de coaching (`[coaching].style`/`.intensity`), et les
+  « Préférences de coaching » du profil de l'athlète, ne changent que le ton
+  de cette phrase — jamais la décision, jamais l'ordre écriture-après-
+  confirmation.
+- **`ok=false`, synchronisation headless (`/garmin-daily-sync`)** : jamais de
+  push ni d'écriture de plan, jamais même une proposition « applied » —
+  seulement une `decision` `outcome: "proposed"` et un segment dans la ligne
+  `Alerte :` du `resume` ; voir `skills/garmin-daily-sync/SKILL.md`.
+- **`ok=true` avec des `warn`/`info`** : écriture/push autorisés, la violation
+  est mentionnée brièvement.
+- **Exit 2** : entrée invalide — le coach le signale et ne pousse rien ; ce
+  n'est jamais interprété comme un verdict de garde-fou.
+- **Traçabilité** : toute séance changée, remplacée ou annulée à cause d'une
+  violation (ou du bilan matinal, ou d'une donnée médicale) devient un fichier
+  `decision` (`planning/YYYY-MM-DD_decision_<slug>.md`, type `decision` du
+  [contrat de données](skills/workspace-data-contract.md#les-types-de-fichiers),
+  détaillé champ par champ dans `skills/workspace-data-contract/SKILL.md`) —
+  `trigger: "guardrail"`, `rule_ids` repris tels quels depuis `violations[].rule_id`,
+  `before`/`after` sur la séance concernée. Le fichier semaine n'est réécrit
+  qu'avec le contenu réellement appliqué (jamais la version encore flaguée),
+  et toujours AVANT le fichier `decision` qui le référence.
 
 ## Pour aller plus loin
 

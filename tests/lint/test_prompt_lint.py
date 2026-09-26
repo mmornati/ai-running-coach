@@ -242,3 +242,32 @@ class TestHeadlessSkill(unittest.TestCase):
             "le skill headless doit dire explicitement qu'il ne propose pas /coach-setup",
         )
         self.assertIn("ne jamais le proposer", text.lower())
+
+
+class TestGuardrailsWiring(unittest.TestCase):
+    """#53 — le moteur `arc_guardrails.py` (#52) ne fait rien tant que personne
+    ne l'appelle : verrouille que le coach et le skill de push Garmin citent
+    bien la commande et distinguent explicitement les trois issues (block /
+    warn-info / erreur d'entrée), pour qu'un futur refactor de ces prompts ne
+    puisse pas faire disparaître le câblage sans qu'un test le voie."""
+
+    COACH = REPO / "agents/coach.md"
+    SCHEDULING_SKILL = REPO / "skills/garmin-workout-scheduling/SKILL.md"
+
+    def test_coach_cites_the_guardrails_command(self):
+        text = self.COACH.read_text(encoding="utf-8")
+        self.assertIn("scripts/arc_guardrails.py check", text)
+
+    def test_coach_states_exit_1_and_exit_2_handling(self):
+        text = self.COACH.read_text(encoding="utf-8")
+        self.assertIn("Exit 1", text, "le coach doit nommer explicitement l'issue « block » (exit 1)")
+        self.assertIn("Exit 2", text, "le coach doit nommer explicitement l'issue « erreur d'entrée » (exit 2)")
+
+    def test_scheduling_skill_cites_the_guardrails_command(self):
+        text = self.SCHEDULING_SKILL.read_text(encoding="utf-8")
+        self.assertIn("scripts/arc_guardrails.py check", text)
+
+    def test_scheduling_skill_states_exit_1_and_exit_2_handling(self):
+        text = self.SCHEDULING_SKILL.read_text(encoding="utf-8")
+        self.assertIn("Exit 1", text, "le skill de push doit nommer explicitement l'issue « block » (exit 1)")
+        self.assertIn("Exit 2", text, "le skill de push doit nommer explicitement l'issue « erreur d'entrée » (exit 2)")
