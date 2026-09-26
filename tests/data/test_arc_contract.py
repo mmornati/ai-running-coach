@@ -379,6 +379,117 @@ class TestDecision(unittest.TestCase):
         errors, _ = C.validate(self.base(garmin_workout_id=-5))
         self.assertTrue(any("garmin_workout_id" in e for e in errors), errors)
 
+    # -- #100, revue de code : fuseau obligatoire sur created_at -------------
+
+    def test_created_at_naive_is_rejected(self):
+        errors, _ = C.validate(self.base(created_at="2026-09-22T07:10:00"))
+        self.assertTrue(any("created_at" in e for e in errors), errors)
+
+    def test_created_at_with_z_is_accepted(self):
+        errors, warnings = C.validate(self.base(
+            date="2026-09-22", created_at="2026-09-22T07:10:00Z"))
+        self.assertEqual(errors + warnings, [])
+
+    def test_created_at_with_offset_is_accepted(self):
+        errors, warnings = C.validate(self.base(
+            date="2026-09-22", created_at="2026-09-22T07:10:00+02:00"))
+        self.assertEqual(errors + warnings, [])
+
+    # -- #100, revue de code : chemins relatifs au workspace durcis ----------
+
+    def test_source_backslash_is_rejected(self):
+        errors, _ = C.validate(self.base(sources=["C:\\Users\\x.md"]))
+        self.assertTrue(any("sources" in e for e in errors), errors)
+
+    def test_source_windows_drive_letter_is_rejected(self):
+        errors, _ = C.validate(self.base(sources=["C:/Users/x.md"]))
+        self.assertTrue(any("sources" in e for e in errors), errors)
+
+    def test_source_leading_tilde_is_rejected(self):
+        errors, _ = C.validate(self.base(sources=["~/secret.md"]))
+        self.assertTrue(any("sources" in e for e in errors), errors)
+
+    def test_source_mailto_is_rejected(self):
+        errors, _ = C.validate(self.base(sources=["mailto:a@b"]))
+        self.assertTrue(any("sources" in e for e in errors), errors)
+
+    def test_source_file_scheme_is_rejected(self):
+        errors, _ = C.validate(self.base(sources=["file:/etc/passwd"]))
+        self.assertTrue(any("sources" in e for e in errors), errors)
+
+    def test_source_double_slash_empty_segment_is_rejected(self):
+        errors, _ = C.validate(self.base(sources=["resources//x.md"]))
+        self.assertTrue(any("sources" in e for e in errors), errors)
+
+    def test_source_windows_style_traversal_is_rejected(self):
+        errors, _ = C.validate(self.base(sources=["..\\..\\etc\\passwd"]))
+        self.assertTrue(any("sources" in e for e in errors), errors)
+
+    # -- `supersedes` (#100, revue de code) -----------------------------------
+
+    def test_supersedes_valid_path_is_accepted(self):
+        errors, warnings = C.validate(self.base(
+            supersedes="planning/2026-09-21_decision_allegement.md"))
+        self.assertEqual(errors + warnings, [])
+
+    def test_supersedes_absolute_path_is_rejected(self):
+        errors, _ = C.validate(self.base(supersedes="/etc/passwd"))
+        self.assertTrue(any("supersedes" in e for e in errors), errors)
+
+    def test_supersedes_backslash_is_rejected(self):
+        errors, _ = C.validate(self.base(supersedes="planning\\2026-09-21_decision_allegement.md"))
+        self.assertTrue(any("supersedes" in e for e in errors), errors)
+
+    def test_supersedes_tilde_is_rejected(self):
+        errors, _ = C.validate(self.base(supersedes="~/x.md"))
+        self.assertTrue(any("supersedes" in e for e in errors), errors)
+
+    def test_supersedes_colon_is_rejected(self):
+        errors, _ = C.validate(self.base(supersedes="C:/x.md"))
+        self.assertTrue(any("supersedes" in e for e in errors), errors)
+
+    def test_supersedes_dot_segment_is_rejected(self):
+        errors, _ = C.validate(self.base(supersedes="planning/./x.md"))
+        self.assertTrue(any("supersedes" in e for e in errors), errors)
+
+    def test_supersedes_parent_segment_is_rejected(self):
+        errors, _ = C.validate(self.base(supersedes="planning/../x.md"))
+        self.assertTrue(any("supersedes" in e for e in errors), errors)
+
+    # -- `session_ref.week` durci comme `sources`/`supersedes` (#100) --------
+
+    def test_session_ref_week_backslash_is_rejected(self):
+        errors, _ = C.validate(self.base(
+            session_ref={"week": "planning\\Semaine_2026-09-21.md", "date": "2026-09-22"}))
+        self.assertTrue(any("session_ref.week" in e for e in errors), errors)
+
+    def test_session_ref_week_tilde_is_rejected(self):
+        errors, _ = C.validate(self.base(
+            session_ref={"week": "~/Semaine_2026-09-21.md", "date": "2026-09-22"}))
+        self.assertTrue(any("session_ref.week" in e for e in errors), errors)
+
+    def test_session_ref_week_valid_path_is_accepted(self):
+        errors, warnings = C.validate(self.base(
+            session_ref={"week": "planning/Semaine_2026-09-21.md", "date": "2026-09-22"}))
+        self.assertEqual(errors + warnings, [])
+
+
+class TestGuardrailRuleIdsMatchContractPattern(unittest.TestCase):
+    """#100, revue de code : `arc_guardrails.RULE_IDS` et `arc_contract.RULE_ID_RE`
+    ne doivent jamais diverger silencieusement — un `rule_id` réel qui ne
+    matcherait plus le motif validé côté contrat casserait `decision.rule_ids`
+    pour toute nouvelle décision qui le cite."""
+
+    def test_every_known_rule_id_matches_the_contract_pattern(self):
+        import sys as _sys
+        from pathlib import Path as _Path
+        _sys.path.insert(0, str(_Path(__file__).resolve().parents[2] / "scripts"))
+        import arc_guardrails as G  # noqa: E402  (import tardif : évite le cycle au chargement du module)
+
+        self.assertGreater(len(G.RULE_IDS), 0)
+        for rule_id in G.RULE_IDS:
+            self.assertRegex(rule_id, C.RULE_ID_RE, f"rule_id {rule_id!r} ne matche pas RULE_ID_RE")
+
 
 if __name__ == "__main__":
     unittest.main()

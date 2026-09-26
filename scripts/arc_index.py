@@ -22,7 +22,8 @@ sert au tableau de bord (`scripts/arc_serve.py`) et aux calculs de charge
     arc_index.py descent [--activity GARMIN_ID] [--weeks N]        # efficacité en descente par classe de pente (#47)
     arc_index.py durability [--activity GARMIN_ID] [--weeks N]      # fade GAP/EF sur les sorties longues (#48)
     arc_index.py climb-history [--segment ID | --activity GARMIN_ID]  # identité de montée entre séances (#49)
-    arc_index.py decisions [--date D | --days N] [--trigger T]        # journal des décisions, en JSON (#54)
+    arc_index.py decisions [--date D | --days N] [--trigger T] [--outcome O] [--active]
+                                                                        # journal des décisions, en JSON (#54)
 
 `hrv-baseline` n'a besoin d'aucun tableau de bord lancé (headless, `/garmin-daily-sync`
 compris) : elle réindexe puis rend le point du jour de `arc_metrics.hrv_baseline_series`
@@ -136,14 +137,17 @@ réindexation à l'autre (voir la table dans `DDL`) : un id noté puis réutilis
 un `--rebuild` peut ne plus exister (`reason_code: "unknown_segment"`, jamais une
 erreur bruyante).
 
-`decisions` (#54) rend le journal des décisions (`planning/*_decision_*.md`), triées
-`date` puis `created_at` décroissants (plusieurs décisions le même jour : la plus
-récemment ÉCRITE en tête). `--date AAAA-MM-JJ` cible une date précise (prime sur
-`--days`) ; `--days N` une fenêtre glissante se terminant à `--today` ; `--trigger`
-filtre en plus par déclencheur (`morning_check`, `guardrail`…). Sans filtre, rend
-tout l'historique. Consommée par le tableau de bord (#55, encart « Pourquoi
-aujourd'hui ? » + journal filtrable) et par `/garmin-daily-sync` (#56, ligne
-« Pourquoi » du bloc `resume`).
+`decisions` (#54) rend le journal des décisions (`planning/AAAA-MM-JJ_decision_*.md`),
+triées `date` puis `created_at_utc` décroissants (plusieurs décisions le même jour :
+la plus récemment ÉCRITE en tête — comparaison en UTC, jamais un tri texte sur
+`created_at`, voir #100). `--date AAAA-MM-JJ` cible une date précise, INCOMPATIBLE
+avec `--days` (rejeté par la CLI, `ConfigError`, plutôt qu'une précédence
+silencieuse) ; `--days N` (>= 1) une fenêtre glissante se terminant à `--today` ;
+`--trigger`/`--outcome` filtrent en plus ; `--active` exclut les décisions
+`superseded`/`rejected_by_athlete` (journal courant — voir SKILL.md « Remplacer une
+décision »). Sans filtre de date, rend tout l'historique. Consommée par le tableau
+de bord (#55, encart « Pourquoi aujourd'hui ? » + journal filtrable) et par
+`/garmin-daily-sync` (#56, ligne « Pourquoi » du bloc `resume`).
 
 Options communes : `--workspace DIR` (sinon $ARC_WORKSPACE, le pointeur
 ~/.config/ai-running-coach/workspace, puis le moteur), `--db FICHIER` (défaut
@@ -162,6 +166,7 @@ import argparse
 import hashlib
 import json
 import os
+import re
 import sqlite3
 import sys
 from datetime import date, timedelta
@@ -182,10 +187,12 @@ import arc_samples as S  # noqa: E402
 from coach_config import ConfigError, read_toml  # noqa: E402
 from coach_setup import ENGINE, workspace_root  # noqa: E402
 
-SCHEMA_VERSION = 18  # #54 : nouveau type de contrat `decision` — tables `decision`
+SCHEMA_VERSION = 19  # #54 : nouveau type de contrat `decision` — tables `decision`
                       # (une ligne par fichier) et `decision_rule` (une ligne par rule_id
-                      # cité, pour le filtre par règle du futur journal des décisions, #55) —
-                      # voir #49 pour la version précédente
+                      # cité, pour le filtre par règle du futur journal des décisions, #55).
+                      # #100 (revue de code) : colonnes `decision.created_at_utc` (tri correct
+                      # entre fuseaux) et `decision.supersedes` — voir #49 pour la version
+                      # d'avant #54.
 DEFAULT_DB = ".arc/coach.db"
 DATA_DIRS = ("activities", "medical", "nutrition", "planning", "rapports")
 
@@ -459,15 +466,21 @@ CREATE TABLE aid_station (source_path TEXT, km REAL, name TEXT, cutoff TEXT, ser
 -- couvre déjà le seul filtre utile (#55 : décisions par règle). `created_at`
 -- départage plusieurs décisions du même `date` (ordre chronologique d'écriture,
 -- critère d'acceptation #54 : « plusieurs décisions le même jour, triées par
--- created_at »).
+-- created_at ») — `created_at_utc` (#100, revue de code) est la colonne
+-- RÉELLEMENT utilisée pour ce tri : `created_at` est un TEXTE ISO 8601, et
+-- trier du texte mélange des décisions écrites depuis des fuseaux différents
+-- dans le mauvais ordre (`07:00+02:00` textuellement après `06:00Z`, alors que
+-- 07:00+02:00 = 05:00 UTC est en fait ANTÉRIEUR) — voir
+-- `arc_contract.decision_created_at_utc`, calculée à l'écriture (`store()`),
+-- jamais recalculée à la lecture.
 CREATE TABLE decision (
-    source_path TEXT, arc_version INTEGER, date TEXT, created_at TEXT, trigger TEXT,
-    summary TEXT, outcome TEXT, garmin_workout_id INTEGER,
+    source_path TEXT, arc_version INTEGER, date TEXT, created_at TEXT, created_at_utc TEXT,
+    trigger TEXT, summary TEXT, outcome TEXT, garmin_workout_id INTEGER, supersedes TEXT,
     inputs_json TEXT, rule_ids_json TEXT, sources_json TEXT,
     before_json TEXT, after_json TEXT, session_ref_json TEXT,
     body_md TEXT, data_json TEXT
 );
-CREATE INDEX decision_date ON decision(date, created_at);
+CREATE INDEX decision_date ON decision(date, created_at_utc);
 -- Une ligne par `rule_id` cité dans `decision.rule_ids` (#54/#55) : permet de
 -- filtrer le journal des décisions par règle de garde-fou sans parser
 -- `rule_ids_json` à chaque requête.
@@ -641,6 +654,9 @@ def open_db(workspace: Path, db: Optional[str] = None, memory: bool = False,
 # ---------------------------------------------------------------------------
 
 
+_DECISION_FILENAME_RE = re.compile(r"^\d{4}-\d{2}-\d{2}_decision_[^/]+\.md$")
+
+
 def classify(rel: str) -> Optional[str]:
     """Type attendu d'après le chemin (None : fichier hors contrat, sauf bloc ```arc)."""
     parts = rel.split("/")
@@ -666,7 +682,11 @@ def classify(rel: str) -> Optional[str]:
             return "week"
         if "_evaluation_parcours_" in name:
             return "course_eval"
-        if "_decision_" in name:
+        if _DECISION_FILENAME_RE.match(name):
+            # Ancré (#100, revue de code) : un simple `"_decision_" in name`
+            # classait à tort n'importe quel fichier `planning/` contenant ce
+            # segment n'importe où (`journal_decision_generale.md`) — la
+            # convention est stricte, `AAAA-MM-JJ_decision_<slug>.md`.
             return "decision"
     return None
 
@@ -917,8 +937,10 @@ def store(conn, rel: str, kind: str, data: dict, arc_version: int) -> None:
     elif kind == "decision":
         _insert(conn, "decision", {
             "source_path": rel, "arc_version": arc_version, "date": g("date"),
-            "created_at": g("created_at"), "trigger": g("trigger"), "summary": g("summary"),
+            "created_at": g("created_at"), "created_at_utc": C.decision_created_at_utc(g("created_at")),
+            "trigger": g("trigger"), "summary": g("summary"),
             "outcome": g("outcome"), "garmin_workout_id": g("garmin_workout_id"),
+            "supersedes": g("supersedes"),
             "inputs_json": _j(g("inputs")), "rule_ids_json": _j(g("rule_ids")),
             "sources_json": _j(g("sources")), "before_json": _j(g("before")),
             "after_json": _j(g("after")), "session_ref_json": _j(g("session_ref")),
@@ -1634,7 +1656,15 @@ def index_workspace(conn, workspace: Path, today: Optional[str] = None) -> dict:
             # écarté est relu à chaque passe (sha vide) pour reprendre la main si l'autre disparaît.
             issues.append(f"doublon de {twin[0]} (même garmin_activity_id) : non compté")
             digest = ""
-        elif kind is not None and parsed_ok != "no":
+        elif kind is not None and parsed_ok != "no" and (kind != "decision" or parsed_ok == "ok"):
+            # `decision` (#100, revue de code) : PAS de repli légitime — il n'existe
+            # aucun format hérité pour ce type neuf (contrairement à `activity`/
+            # `health`/…, où `parsed_ok = "partial"` porte une vraie lecture best-
+            # effort). Un bloc `decision` invalide (`read_file` retombe alors sur
+            # `data = {}`, tout NULL) ne doit donc jamais être stocké : ce serait une
+            # ligne fantôme dans `decisions_query`/le futur journal (#55), aussi
+            # invisible dans `backfill_items` (exclu explicitement, voir plus bas)
+            # que dans le tableau de bord — silencieusement fausse plutôt qu'absente.
             store(conn, rel, kind, data, arc_version)
         conn.execute(
             "INSERT OR REPLACE INTO source_file VALUES (?, ?, ?, ?, ?, ?, ?)",
@@ -1759,6 +1789,19 @@ def validate_file(path: Path) -> Tuple[bool, List[str], List[str]]:
     expected = classify(f"{path.parent.name}/{path.name}")
     if expected and block.get("kind") in C.KINDS and block.get("kind") != expected:
         warnings.append(f"kind « {block.get('kind')} » inattendu pour ce fichier (« {expected} » attendu)")
+    if block.get("kind") == "decision":
+        # #100, revue de code : `date` du bloc doit correspondre à la date du nom de
+        # fichier (`AAAA-MM-JJ_decision_<slug>.md`) — ce n'est pas une erreur de
+        # contrat (le fichier reste indexable, `classify()` ne dépend que du nom),
+        # mais une décision retrouvée par sa date de fichier puis lue avec une AUTRE
+        # `date` dans le bloc induirait `session_ref`/le tableau de bord en erreur.
+        filename_day = L.filename_date(path.name)
+        block_day = block.get("date")
+        if filename_day and isinstance(block_day, str) and filename_day != block_day:
+            warnings.append(
+                f"date du nom de fichier ({filename_day}) différente de decision.date "
+                f"({block_day})"
+            )
     return not errors, errors, warnings
 
 
@@ -1883,16 +1926,35 @@ def fueling_trend(conn, today: date) -> dict:
 # ---------------------------------------------------------------------------
 
 
+# Exclus par `decisions_query(..., active=True)` (#100, revue de code) : une
+# décision remplacée (`supersedes`, voir SKILL.md « Remplacer une décision ») ou
+# refusée par l'athlète ne doit plus polluer le journal COURANT, sans pour
+# autant disparaître de l'historique complet (toujours accessible sans ce filtre).
+DECISION_INACTIVE_OUTCOMES = ("superseded", "rejected_by_athlete")
+
+
 def decisions_query(conn, today: Optional[date] = None, days: Optional[int] = None,
-                     trigger: Optional[str] = None, on_date: Optional[str] = None) -> List[dict]:
-    """Décisions journalisées, plus récentes d'abord (`date` puis `created_at`).
+                     trigger: Optional[str] = None, on_date: Optional[str] = None,
+                     outcome: Optional[str] = None, active: bool = False) -> List[dict]:
+    """Décisions journalisées, plus récentes d'abord (`date` puis `created_at_utc`).
 
     `on_date` (une date précise) prime sur `days` (fenêtre glissante se terminant
     à `today`, INCLUSE) — les deux filtres ne se combinent pas, comme les autres
-    sous-commandes de ce module (`--activity` prime sur `--weeks`). Sans aucun
-    filtre, rend TOUTES les décisions connues : à l'appelant de borner avec
-    `--days` pour un usage headless (#56) sur un historique qui grossit.
-    `trigger` filtre en plus, quel que soit le mode de sélection de date.
+    sous-commandes de ce module (`--activity` prime sur `--weeks`) ; la CLI
+    (`main`) rejette explicitement `--date` ET `--days` ensemble plutôt que de
+    laisser cette précédence silencieuse tromper un appelant headless. Sans
+    aucun filtre de date, rend TOUTES les décisions connues : à l'appelant de
+    borner avec `--days` pour un usage headless (#56) sur un historique qui
+    grossit. `trigger`/`outcome`/`active` filtrent en plus, quel que soit le
+    mode de sélection de date — `active=True` exclut `DECISION_INACTIVE_OUTCOMES`
+    (voir « Remplacer une décision » dans SKILL.md) et se combine avec `outcome`
+    (rare en pratique : `outcome="applied", active=True` est juste redondant,
+    jamais contradictoire, puisque `applied` n'est jamais inactif).
+
+    Tri sur `created_at_utc` (créée à l'écriture, `arc_contract.
+    decision_created_at_utc`), PAS sur `created_at` (texte ISO local : trier du
+    texte mélangerait l'ordre de décisions écrites depuis des fuseaux
+    différents, #100 revue de code).
     """
     where, params = [], []
     if on_date:
@@ -1906,9 +1968,16 @@ def decisions_query(conn, today: Optional[date] = None, days: Optional[int] = No
     if trigger:
         where.append("trigger = ?")
         params.append(trigger)
+    if outcome:
+        where.append("outcome = ?")
+        params.append(outcome)
+    if active:
+        placeholders = ", ".join("?" for _ in DECISION_INACTIVE_OUTCOMES)
+        where.append(f"(outcome IS NULL OR outcome NOT IN ({placeholders}))")
+        params.extend(DECISION_INACTIVE_OUTCOMES)
     clause = f"WHERE {' AND '.join(where)}" if where else ""
     rows = conn.execute(
-        f"SELECT * FROM decision {clause} ORDER BY date DESC, created_at DESC", params
+        f"SELECT * FROM decision {clause} ORDER BY date DESC, created_at_utc DESC", params
     ).fetchall()
     out = []
     for row in rows:
@@ -1919,6 +1988,7 @@ def decisions_query(conn, today: Optional[date] = None, days: Optional[int] = No
         d.pop("body_md", None)
         d.pop("data_json", None)
         d.pop("arc_version", None)
+        d.pop("created_at_utc", None)   # détail d'implémentation du tri, pas une donnée du contrat
         out.append(d)
     return out
 
@@ -2271,12 +2341,18 @@ def build_parser() -> argparse.ArgumentParser:
                         help="commande « samples » : inclut lat_deg/lon_deg dans la sortie "
                              "(désactivé par défaut depuis #49 — débogage GPS local uniquement)")
     parser.add_argument("--date", metavar="AAAA-MM-JJ",
-                        help="commande « decisions » : décisions d'une date précise (prime sur --days)")
+                        help="commande « decisions » : décisions d'une date précise "
+                             "(incompatible avec --days, voir plus bas)")
     parser.add_argument("--days", type=int, metavar="N",
-                        help="commande « decisions » : fenêtre glissante de N jours se terminant à "
-                             "--today (défaut : toutes les décisions connues)")
+                        help="commande « decisions » : fenêtre glissante de N jours (>= 1) se "
+                             "terminant à --today (défaut : toutes les décisions connues)")
     parser.add_argument("--trigger", choices=C.DECISION_TRIGGER,
                         help="commande « decisions » : ne garde que les décisions de ce déclencheur")
+    parser.add_argument("--outcome", choices=C.DECISION_OUTCOME,
+                        help="commande « decisions » : ne garde que les décisions de cette issue")
+    parser.add_argument("--active", action="store_true",
+                        help="commande « decisions » : exclut « superseded »/« rejected_by_athlete » "
+                             "(journal courant, voir DECISION_INACTIVE_OUTCOMES)")
     return parser
 
 
@@ -2434,8 +2510,18 @@ def main(argv=None) -> int:
                 date.fromisoformat(args.date)
             except ValueError:
                 raise ConfigError(f"--date : date AAAA-MM-JJ attendue, « {args.date} » reçue.")
+        if args.date and args.days is not None:
+            # Ambigu, jamais résolu silencieusement (#100, revue de code) : le
+            # `on_date` prime sur `days` DANS `decisions_query` (pour un appelant
+            # Python qui garderait `days` par défaut d'un appel générique), mais la
+            # CLI, elle, force l'appelant humain/headless à choisir.
+            raise ConfigError("commande « decisions » : --date et --days sont incompatibles, "
+                               "choisissez l'un ou l'autre.")
+        if args.days is not None and args.days < 1:
+            raise ConfigError(f"--days : un entier >= 1 attendu, « {args.days} » reçu.")
         today_date = date.fromisoformat(args.today) if args.today else date.today()
-        result = decisions_query(conn, today_date, args.days, args.trigger, args.date)
+        result = decisions_query(conn, today_date, args.days, args.trigger, args.date,
+                                  args.outcome, args.active)
         print(json.dumps(result, ensure_ascii=False))
         return 0
     if args.command == "status":
