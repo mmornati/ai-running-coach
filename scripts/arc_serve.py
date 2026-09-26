@@ -525,12 +525,36 @@ def api_activity_climbs(store: Store, activity_id: int) -> dict:
     if not sample_count:
         return {**empty, "reason": "aucun échantillon FIT ingéré pour cette séance",
                 "reason_code": "no_samples", "applicable": True}
+    # `segment_id`/`hr_*`/`vs_*` (#49, identité de montée entre séances) : colonnes SEULES
+    # exposées de l'appariement — jamais une position GPS (voir
+    # `arc_climb_match.ASSUMPTIONS["privacy"]`), `climb_segment` n'est d'ailleurs même pas
+    # jointe ici (le nécessaire est déjà dénormalisé sur `activity_climb` à l'indexation).
     rows = store.rows(
         "SELECT idx AS \"index\", start_t_s, end_t_s, start_km, end_km, distance_m, gain_m, avg_grade, "
-        "grade_class, duration_elapsed_s, duration_moving_s, vam_elapsed_m_h, vam_moving_m_h "
+        "grade_class, duration_elapsed_s, duration_moving_s, vam_elapsed_m_h, vam_moving_m_h, segment_id, "
+        "hr_first_third_bpm, hr_last_third_bpm, hr_drift_bpm_per_100m, vs_previous_pct, vs_best_pct "
         "FROM activity_climb WHERE activity_id = ? ORDER BY idx", (activity_id,))
     return {"climbs": rows, "vam_by_grade_class": I.VC.vam_by_grade_class(rows), "reason": None,
             "reason_code": None, "applicable": True}
+
+
+def api_climb_segments(store: Store, q: dict) -> dict:
+    """Segments de montée connus (#49), pour `/api/climb-segments` — résumé (id, lieu,
+    profil, occurrences, meilleur temps), jamais de position GPS (voir
+    `arc_climb_match.ASSUMPTIONS["privacy"]`)."""
+    with store.lock:
+        return {"segments": I.climb_segment_list(store.conn)}
+
+
+def api_climb_segment(store: Store, segment_id: int) -> dict:
+    """Historique complet d'un segment (#49), pour `/api/climb-segment/<id>` : chaque
+    occurrence (date, activité, temps, VAM, FC, dérive, progression vs précédent/
+    meilleur) déjà calculée à l'indexation — jamais de position GPS. Rend TOUJOURS un
+    dict (même discipline que `api_activity`), `reason_code: "unknown_segment"` explicite
+    si l'id ne correspond à aucun segment connu (id non stable d'une réindexation à
+    l'autre, voir `arc_index.DDL`)."""
+    with store.lock:
+        return I.climb_segment_history(store.conn, segment_id)
 
 
 def api_activity_descent(store: Store, activity_id: int) -> dict:
@@ -899,6 +923,7 @@ ROUTES = {
     "/api/calendar": api_calendar, "/api/nutrition": api_nutrition, "/api/fueling": api_fueling,
     "/api/decoupling": api_decoupling, "/api/vam": api_vam, "/api/descent": api_descent,
     "/api/durability": api_durability, "/api/files": api_files,
+    "/api/climb-segments": api_climb_segments,
 }
 
 # ---------------------------------------------------------------------------
@@ -963,8 +988,11 @@ class Handler(BaseHTTPRequestHandler):
         try:
             self.store.refresh()
             match = re.fullmatch(r"/api/activity/(\d+)", url.path)
+            segment_match = re.fullmatch(r"/api/climb-segment/(\d+)", url.path)
             if match:
                 payload = api_activity(self.store, int(match.group(1)))
+            elif segment_match:
+                payload = api_climb_segment(self.store, int(segment_match.group(1)))
             elif url.path in ROUTES:
                 payload = ROUTES[url.path](self.store, q)
             else:

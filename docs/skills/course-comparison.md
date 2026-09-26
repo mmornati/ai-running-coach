@@ -14,6 +14,12 @@
 - **Alignement des boucles/segments** comparables
 - Analyse des **montées** et du profil
 - **Rapport Markdown comparatif** avec les métriques clés
+- **Identité de montée entre séances** (`--workspace`, story #49, optionnel) : quand
+  l'index du moteur (`.arc/coach.db`) est disponible, une section supplémentaire
+  reconnaît la MÊME ascension gravie plusieurs fois (géométrie GPS, ou repli par
+  lieu + profil), avec occurrences, meilleur temps, VAM et progression déjà
+  calculés — voir `scripts/arc_climb_match.py`. Purement additif : sans
+  `--workspace`, la sortie est inchangée.
 
 ## Script
 

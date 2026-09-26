@@ -77,12 +77,33 @@ python3 skills/course-comparison/scripts/compare_course.py \
 
 ### Étape 3 — Lecture du rapport
 
-Le script émet un rapport Markdown dans la langue des documents (`config/workspace.toml` → `[language].documents`, défaut FRENCH) avec 4 sections :
+Le script émet un rapport Markdown dans la langue des documents (`config/workspace.toml` → `[language].documents`, défaut FRENCH) avec 4 sections (5 avec `--workspace`, voir ci-dessous) :
 
 1. **Comparaison globale** — un tableau par séance : distance, durée, allure, D+/D-, FC moy/max, HRR, TE. Lecture rapide de la progression brute.
 2. **Alignement des tours** — découpage de chaque séance en boucles de `--loop-length` km (ou auto-détectée). Lignes empilées par tour = **segments comparables** (ex. premier tour 1-10 km de chaque séance).
 3. **Montées comparables** — tous les km avec D+ ≥ seuil, par séance : allocation à FC identique sur la même bosse.
 4. **Verdict automatique** — delta % d'allure + delta FC bpm entre la référence et chaque autre séance (indicatif : à confirmer par l'analyse coach avec contexte fatigue/météo/blessure).
+5. **Montées identifiées comme la même ascension** (optionnel, `--workspace`, story #49) — quand l'index dérivé du moteur (`.arc/coach.db`, déjà construit par `scripts/arc_index.py`/le tableau de bord) contient des montées reconnues comme LA MÊME ascension d'une séance à l'autre (voir « Identité de montée entre séances » plus bas), affiche occurrences, meilleur temps, VAM et progression déjà calculés — plus précis que la section 3 (numéro de km), qui reste la valeur par défaut sans `--workspace`.
+
+### Identité de montée entre séances (`--workspace`, story #49)
+
+`--workspace <racine>` (optionnel, purement additif) active la section 5 si
+`<racine>/.arc/coach.db` existe déjà (index construit par une exécution préalable
+de `scripts/arc_index.py` ou du tableau de bord) et contient des segments
+(`climb_segment`, table alimentée par `scripts/arc_index.py::compute_metrics`) dont
+le lieu correspond à `--lieu`/`--aliases`. Une même montée y est reconnue d'une
+séance à l'autre par **géométrie GPS** (position de départ ET de sommet, tolérante
+au bruit de trace — voir `scripts/arc_climb_match.py`) quand les séances ont un FIT
+géolocalisé ingéré, ou par **repli conservateur** (lieu + profil : gain, longueur,
+classe de pente) sinon — jamais par simple numéro de km comme la section 3.
+**Sens** : gravir une montée compte, la descendre ne compte pas comme la même
+ascension. Sans `--workspace`, ou si l'index n'existe pas encore, le rapport est
+**identique** à avant cette fonctionnalité (compatibilité ascendante garantie par
+les tests) — aucune régression sur un usage existant.
+
+Aucune coordonnée GPS n'apparaît jamais dans le rapport ni le JSON produits : seuls
+un lieu (celui déjà déclaré par l'athlète) et un profil (gain, longueur, pente)
+sont exposés.
 
 ### Étape 4 — Interprétation coach (à enrichir)
 
@@ -96,7 +117,7 @@ Le script émet un rapport Markdown dans la langue des documents (`config/worksp
 | Fichier | Contenu |
 |:--------|:--------|
 | stdout / `--output` | Rapport Markdown FR |
-| `--json` | Structuré : liste des séances (distance, durée, D+, FC, HR, TE, montées) + `loop_length_km` |
+| `--json` | Structuré : liste des séances (distance, durée, D+, FC, HR, TE, montées) + `loop_length_km` + `climb_segments` (présent seulement avec `--workspace` et un index qualifiant, story #49) |
 
 ## Exemples
 
@@ -126,6 +147,7 @@ python3 skills/course-comparison/scripts/compare_course.py \
 |:-----|:-----|
 | `skills/course-comparison/SKILL.md` | Ce fichier (load via la tool `skill`) |
 | `skills/course-comparison/scripts/compare_course.py` | Analyse simplifiée + rapport (CLI) |
+| `scripts/arc_climb_match.py` | Identité de montée entre séances (story #49), lu en option via `--workspace`/l'index `.arc/coach.db` |
 | `skills/fit-download/scripts/download_fit.py` | Téléchargement FIT Garmin (bypass MCP, garminconnect + tokens locaux) — voir skill `fit-download` |
 | `skills/course-comparison/docs/fit-analysis.md` | Workflow analyse détaillée FIT (segments GPS sub-km) |
 | `examples/` | Exemples de rapport (à compléter) |

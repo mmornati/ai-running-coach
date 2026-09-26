@@ -240,7 +240,7 @@ six semaines d'historique pour que la condition ait un sens.
 |---|---|
 | `activities/*.md` (durée, FC moyenne, effort perçu) | `scripts/arc_metrics.py` : TRIMP, ou effort perçu sans FC |
 | `planning/Runner_Profile.md` (FC max, FC de repos) | indispensables au TRIMP |
-| `activities/fit/*.json` (échantillons ingérés) | temps en zone FC → polarisation 80/20 ; GAP → découplage aérobie/EF ; montées détectées → VAM ; classes de pente descendante → efficacité en descente ; premier/dernier tiers → durabilité (fade GAP/EF) |
+| `activities/fit/*.json` (échantillons ingérés) | temps en zone FC → polarisation 80/20 ; GAP → découplage aérobie/EF ; montées détectées → VAM ; classes de pente descendante → efficacité en descente ; premier/dernier tiers → durabilité (fade GAP/EF) ; position GPS des montées (si présente dans le FIT) → identité de montée entre séances (#49) |
 
 **Si les courbes sont plates ou bizarres** : renseignez la FC max et la FC de repos
 de référence du profil. Sans elles, la charge vient de l'effort perçu seul.
@@ -411,7 +411,17 @@ de fréquence cardiaque et d'effort perçu, un astérisque.
   tableau. Réservé aux sports de la famille course à pied avec échantillons FIT ;
   une séance sans montée détectée (parcours plat, D+ ou pente sous le seuil de
   détection) affiche la section avec un message plutôt que la masquer — pour
-  distinguer « pas de montée sur cette sortie » d'un bug d'affichage.
+  distinguer « pas de montée sur cette sortie » d'un bug d'affichage. Une colonne
+  **« vs précédent/meilleur »** (#49, identité de montée entre séances) complète
+  chaque ligne quand cette montée a été reconnue comme LA MÊME qu'une occurrence
+  antérieure (géométrie GPS quand disponible, sinon repli par lieu + profil — voir
+  `scripts/arc_climb_match.py`) : progression de temps face à l'occurrence
+  précédente et face à la meilleure occurrence connue, un tiret pour la toute
+  première occurrence (rien à comparer), et un lien **« historique »** vers une
+  page dédiée (`#/montee/<id>`) qui trace la VAM de chaque occurrence dans le temps
+  et détaille FC (premier/dernier tiers de la montée) et dérive FC par 100 m de D+.
+  Aucune coordonnée GPS n'est jamais exposée par le tableau de bord (positions
+  utilisées uniquement en interne pour l'appariement).
 - **L'efficacité en descente** (#47) : un tableau, une ligne par classe de pente
   descendante qualifiante (pente moyenne réellement rencontrée, allure, distance,
   durée de mouvement, indicateur d'efficacité — voir la vue « Forme & charge »
