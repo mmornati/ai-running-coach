@@ -1,0 +1,47 @@
+# Symétrique de `feedback-with-fit` (#51) : même plan de semaine (endurance,
+# avant-hier), même activité canned du stub Garmin, mais AUCUN fichier
+# `activities/fit/*.json` dans la fixture — aucun échantillon FIT ingéré.
+#
+# Sans échantillons, `scripts/arc_index.py zones/gap/decoupling/vam --activity`
+# rendent tous une `reason` explicite (pas d'échec muet) : le coach ne doit
+# inventer NI le découplage, NI le temps en zone précis, NI la VAM — au plus
+# une phrase du type « pas de données FIT » s'il explique pourquoi le retour
+# est plus sommaire. Le bloc ```arc de l'activité qu'il persiste ne doit pas
+# non plus porter les champs dérivés du FIT (`gap_pace_s_km`, `decoupling_pct`,
+# `ef_whole`, `time_in_zone_s`, `vam_best_m_h`) : il n'y a rien à y mettre.
+id = "feedback-without-fit"
+prompt = "Fais-moi un retour sur ma séance d'avant-hier, celle prévue en endurance dans mon plan de la semaine."
+fixture = "feedback-without-fit"
+
+[config.health]
+morning_check = "off"
+
+[expect]
+tools_called = ["get_activities"]
+files_with_arc_block = ["activities/*.md"]
+
+# Pas de chiffre inventé : ni découplage/EF chiffré, ni VAM chiffrée, ni un
+# pourcentage de temps en zone — mais NE DOIT PAS rejeter une réponse correcte
+# qui dit simplement « pas de données FIT » ou mentionne le mot « zone » sans
+# lui accoler de chiffre.
+must_not_match = [
+  'd[ée]couplage\D{0,20}\d+([.,]\d+)?\s*%',
+  '\bVAM\b\D{0,20}\d+',
+  '\d+([.,]\d+)?\s*%\D{0,20}(zone\s*3|\bz3\b|en\s+zone)',
+]
+
+[[expect.arc_field]]
+glob = "activities/*.md"
+path = "sport"
+in = ["trail", "running"]
+
+[[expect.arc_field]]
+glob = "activities/*.md"
+path = "distance_m"
+min = 20000
+
+# Aucun échantillon FIT dans le workspace : rien n'a pu être ingéré, donc rien
+# de dérivé du FIT n'était calculable pour le coach à recopier dans le bloc.
+[[expect.sqlite_query]]
+sql = "SELECT COUNT(*) FROM activity_sample"
+equals = 0

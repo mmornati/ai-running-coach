@@ -1,0 +1,101 @@
+# KPI FIT dans le retour de séance (#51, épopée #21).
+#
+# Fixture `feedback-with-fit` : un plan de semaine relatif (`planning/2d_semaine.md`,
+# matérialisé par le runner — #34) déclare la sortie d'avant-hier en intensité
+# « endurance » ; `activities/fit/99000001.json` porte des échantillons
+# synthétiques à vérité connue (`tests.lib.synthetic.sample_session`, seed fixe,
+# aucune donnée réelle) où 30 % du temps de mouvement tombe en zone 3 — un
+# dépassement net pour une séance d'endurance. Aucun fichier `activities/*.md`
+# n'existe encore : le coach doit synchroniser l'activité canned du stub
+# (`stub_garmin_mcp.CANNED["get_activities"]`, datée d'avant-hier) avant de
+# pouvoir en parler, exactement comme `sync-declared-fuel`.
+#
+# Le coach doit : lire l'intention planifiée (endurance), calculer le temps en
+# zone (`scripts/arc_index.py zones`) et le découplage/EF (`decoupling`) sur
+# l'activité (mouvement ≥ 60 min), signaler le dépassement d'intensité (30 % en
+# Z3 pour une séance prévue en endurance), puis persister les champs KPI dans le
+# bloc ```arc de l'activité (workspace-data-contract, section « Champs KPI FIT »).
+id = "feedback-with-fit"
+prompt = "Fais-moi un retour sur ma séance d'avant-hier, celle prévue en endurance dans mon plan de la semaine."
+fixture = "feedback-with-fit"
+
+[config.health]
+morning_check = "off"
+
+[expect]
+tools_called = ["get_activities"]
+files_with_arc_block = ["activities/*.md"]
+
+# Signale le dépassement d'intensité : les 30 % en zone 3 pour une séance
+# d'endurance, ET le fait que ce soit au-dessus de ce qui était prévu — deux
+# exigences distinctes (comme `sleep-debt`), pas une simple mention de la zone.
+must_match = [
+  '(zone\s*3|\bz3\b).{0,60}(30\s*%|trente\s*(pour\s*cent|%))|(30\s*%|trente\s*(pour\s*cent|%)).{0,60}(zone\s*3|\bz3\b)',
+  'endurance.{0,80}(trop|d[ée]pass\w*|excessi\w*|au-dessus|plus\s+(intense|dur))|(trop|d[ée]pass\w*|excessi\w*).{0,80}endurance',
+]
+# Garde-fou : le FIT EST disponible pour cette séance (fixture avec
+# `activities/fit/99000001.json`) — une réponse qui prétend ne pas avoir de
+# données FIT serait une régression du garde-fou inverse (cas
+# `feedback-without-fit`), pas une réponse prudente.
+must_not_match = [
+  'pas\s+de\s+(donn[ée]es?\s+)?FIT|aucune?\s+donn[ée]e\s+FIT',
+]
+
+[[expect.arc_field]]
+glob = "activities/*.md"
+path = "sport"
+in = ["trail", "running"]
+
+[[expect.arc_field]]
+glob = "activities/*.md"
+path = "distance_m"
+min = 20000
+
+[[expect.arc_field]]
+glob = "activities/*.md"
+path = "time_in_zone_s.z3"
+min = 2000
+
+[[expect.arc_field]]
+glob = "activities/*.md"
+path = "time_in_zone_s.z3"
+max = 4000
+
+[[expect.arc_field]]
+glob = "activities/*.md"
+path = "decoupling_pct"
+min = 5
+
+[[expect.arc_field]]
+glob = "activities/*.md"
+path = "decoupling_pct"
+max = 25
+
+[[expect.arc_field]]
+glob = "activities/*.md"
+path = "ef_whole"
+min = 0.5
+
+[[expect.arc_field]]
+glob = "activities/*.md"
+path = "gap_pace_s_km"
+min = 200
+
+[[expect.arc_field]]
+glob = "activities/*.md"
+path = "gap_pace_s_km"
+max = 600
+
+# L'index dérivé recalcule sa propre copie depuis les mêmes échantillons FIT
+# (indépendamment de ce que le coach a écrit) : la confirmation que la donnée
+# est réellement calculable pour cette séance, pas seulement recopiée.
+[[expect.sqlite_query]]
+sql = "SELECT decoupling_pct FROM activity WHERE garmin_activity_id = 99000001"
+min = 5
+
+[[expect.sqlite_query]]
+sql = """
+SELECT seconds FROM hr_zone_time
+WHERE zone = 3 AND activity_id = (SELECT id FROM activity WHERE garmin_activity_id = 99000001)
+"""
+min = 2500

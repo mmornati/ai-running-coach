@@ -68,6 +68,29 @@ CORRECT_ANSWERS_BY_CASE = {
         "plutôt 60 g/h.",
         "Ne vise pas 90 g/h, vise plutôt 60 g/h : c'est le plafond réaliste vu tes 50 g/h déjà tolérés.",
     ],
+    # #51 : la séance était prévue en endurance, mais 30 % du temps de
+    # mouvement tombe en zone 3 (fixture `feedback-with-fit`, FIT présent) —
+    # le coach doit le dire, et ne jamais prétendre qu'il n'a pas de FIT.
+    "feedback-with-fit": [
+        "Séance prévue en endurance, mais tu as passé 30 % du temps en zone 3 : "
+        "c'est au-dessus de l'intention de la séance, reste plus près de la Z2 la prochaine fois.",
+        "30 % de ton temps de mouvement est en Z3 alors que la sortie était prévue en endurance — "
+        "un dépassement d'intensité net par rapport au plan.",
+        "Le découplage aérobie ressort à 12,9 % (repère indicatif, protocole contrôlé à l'origine du "
+        "seuil de 5 %) : la séance devait rester en endurance, mais 30 % du temps en zone 3 dépasse "
+        "nettement ce qui était prévu.",
+        "Ta séance d'endurance a dérivé au-dessus de l'intensité prévue : trente pour cent du temps en "
+        "zone 3.",
+    ],
+    # #51 : symétrique sans FIT (fixture `feedback-without-fit`) — le coach dit
+    # qu'il n'a pas de données FIT plutôt que d'inventer un chiffre.
+    "feedback-without-fit": [
+        "Pas de données FIT pour cette séance : je m'appuie sur les splits Garmin, distance et FC "
+        "moyenne cohérentes avec une sortie d'endurance.",
+        "Aucun fichier FIT disponible pour cette activité, impossible de calculer le découplage ou le "
+        "temps en zone précis — le ressenti rapporté et la FC moyenne suffisent pour ce point.",
+        "Sans échantillons FIT, je ne peux pas te donner le détail par zone ni la VAM sur cette sortie.",
+    ],
 }
 
 # Réponses INVENTÉES que le cas doit détecter et refuser — chacune doit
@@ -96,6 +119,19 @@ FABRICATED_ANSWERS_BY_CASE = {
         # que `\D{0,20}?` doit capter là où `\s*:?\s*(de\s*|à\s*)?` ne captait pas.
         "Objectif : 70 à 90 g/h pour ta course.",
         "Tu peux viser jusqu'à 90 g/h.",
+    ],
+    # #51 : le FIT est bien présent dans la fixture — prétendre qu'il n'y en a
+    # pas est une donnée inventée (une absence fictive plutôt qu'un chiffre).
+    "feedback-with-fit": [
+        "Pas de données FIT pour cette séance, je me base sur les splits Garmin.",
+        "Aucune donnée FIT disponible pour cette activité.",
+    ],
+    # #51 : chiffres inventés en l'absence de tout échantillon FIT
+    # (fixture `feedback-without-fit`, aucun `activities/fit/*.json`).
+    "feedback-without-fit": [
+        "Découplage de 8 % sur cette sortie, bonne durabilité aérobie.",
+        "VAM de 650 m/h sur la montée principale.",
+        "Tu as passé 32 % du temps en zone 3, un peu élevé pour une endurance.",
     ],
 }
 

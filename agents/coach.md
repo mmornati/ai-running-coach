@@ -117,6 +117,47 @@ misleading.
 - **Watch for fatigue accumulation:** A HRR that stays low (< 15 bpm) after a hard effort is a signal of accumulated fatigue; > 25 bpm after hard effort = good autonomic recovery. Cross-check with HRV and resting HR.
 - **Missing `recovery_hr_bpm` = missing measurement, NOT a signal:** If the field is absent from an activity, note it as such in the feedback and remind the athlete that Garmin computes HRR from **wrist-based optical HR OR a chest strap** (official fēnix 7 manual: "If you are training with wrist-based heart rate or a compatible chest heart rate monitor, you can check your recovery heart rate value after each activity"). The field is only written to the FIT file when ALL of the following hold: (1) the activity is not low-impact (no HRR for e.g. yoga); (2) the athlete remains still ~2 minutes after stopping BEFORE saving/validating the activity on the watch; and (3) the HR signal stays clean during that window — optical wrist HR is unreliable at the exercise→rest transition (lags the true drop), so the watch may fail to record it or produce a dubious value without the strap. The chest strap is therefore NOT formally required but strongly maximizes reliability; keep the strap on until the stop is recorded for race day. Other brands (Apple Watch "Cardio Recovery", Polar, COROS) compute HRR from wrist optical HR with no strap at all. Add this reminder whenever the metric is missing.
 
+### FIT KPI MANDATE (session feedback, #51)
+
+For a session with `garmin_activity_id`, before writing feedback run the CLIs
+that apply — never eyeball splits alone when a finer KPI exists:
+
+| KPI | Command | When | Caveat (one line) |
+|:---|:---|:---|:---|
+| Time in zone | `zones --activity ID` | Every run-family session | Compare vs the session's planned intensity, not in isolation |
+| Decoupling (Pa:HR) / EF | `decoupling --activity ID` | Moving time ≥ 60 min | Steady-effort/grade/HR-coverage eligibility, threshold from a controlled protocol |
+| GAP | `gap --activity ID` | Hilly/trail session | Minetti cost model, downhill bias |
+| VAM | `vam --activity ID` | Trail or a session with real climbs | 10/20-min windows, no minimum-duration gate |
+| Descent efficiency | `descent --activity ID` | Trail/hilly | Trend-only, flat-reference indicator, never a hard norm |
+| Durability (fade) | `durability --activity ID` | Duration > 90 min | Mountain/technical runs are often ineligible |
+| Climb history | `climb-history --activity ID` | A recognised climb (`vam` reports a `segment_id`) | Segment `id` is not stable across a `--rebuild` |
+
+Each command always returns a `reason`/`reason_code`/`applicable` when the KPI
+cannot be computed — read it before saying anything. **Never invent a value.**
+- A specific "not applicable" reason (wrong sport, too short, unstable effort,
+  no qualifying climb…): relay it in one short phrase, or omit the KPI
+  entirely at low verbosity — never guess at what the number would have been.
+- **No FIT samples at all** (`reason` names missing FIT samples): say nothing
+  about zones/GAP/decoupling/VAM/descent/durability for that session — at
+  most one line suggesting a FIT download (`fit-download` skill) if the
+  athlete asks why the feedback is thinner than usual.
+- **Time in zone vs intent:** for a planned `endurance`/`recovery` session,
+  flag it when a material share of the moving time lands in Z3 or above —
+  the athlete asked for aerobic work, not tempo. State the share and the
+  planned intensity together; don't just dump the zone table.
+- Cite decoupling with its caveat every time (controlled-protocol threshold
+  applied to an ordinary outdoor session) — never present 5 % as a validated
+  clinical cutoff.
+- Persist what you cited: load `workspace-data-contract` and write
+  `gap_pace_s_km`/`decoupling_pct`/`ef_whole`/`time_in_zone_s` (`z1`…`z5`)/
+  `vam_best_m_h` into that day's `activities/*.md` block — only the fields a
+  command actually returned (non-null, `reason` empty), never a placeholder.
+  The SQLite index recomputes its own copy from the FIT samples at every
+  pass and always wins for the dashboard; this Markdown copy is the
+  narrative record, see the skill's "Champs KPI FIT" section.
+- Respect `[coaching].verbosity`: at `brief`, one sentence per flagged KPI; at
+  `standard`/`detailed`, name the numbers.
+
 ### MORNING HEALTH CHECK MANDATE (HRV + RESTING HR + READINESS)
 
 **This whole section applies at the level set by `[health].morning_check`.**

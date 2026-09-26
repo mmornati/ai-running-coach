@@ -169,6 +169,19 @@ SCHEMA = {
             "weight_pre_kg": "body_weight_kg",
             "weight_post_kg": "body_weight_kg",
             "missing_reason": "obj",
+            # KPI FIT (#51, épopée #21) : snapshot narratif écrit par le coach APRÈS
+            # avoir lu la sortie des CLI dédiées (`scripts/arc_index.py gap/decoupling/
+            # zones/vam --activity ID`) — jamais recalculé à la main. `scripts/arc_index.py`
+            # recalcule sa PROPRE copie de ces mêmes grandeurs dans l'index SQLite à
+            # chaque passage, directement depuis les échantillons FIT ingérés : c'est
+            # TOUJOURS elle qui fait foi pour le tableau de bord et les requêtes, jamais
+            # cette copie Markdown (voir `skills/workspace-data-contract/SKILL.md`, section
+            # « Champs KPI FIT »). Noms alignés sur les colonnes dérivées correspondantes.
+            "gap_pace_s_km": "num+",
+            "decoupling_pct": "num",
+            "ef_whole": "num+",
+            "time_in_zone_s": "obj",
+            "vam_best_m_h": "num+",
         },
     },
     "health": {
