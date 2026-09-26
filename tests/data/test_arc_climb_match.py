@@ -332,6 +332,121 @@ class TestGpsCandidateAdoptsGpsLessSegment(unittest.TestCase):
         self.assertIsNone(index.match(far_but_same_location))
 
 
+class TestAdoptionRollback(unittest.TestCase):
+    """2e revue de code #49, BLOQUANT : une adoption (ci-dessus) MUTE un segment déjà
+    existant (position écrite, entrées ajoutées au quadrillage spatial) — un `rollback`
+    qui ne faisait que tronquer `self.segments` (retirer les segments AJOUTÉS depuis le
+    point de reprise) ratait totalement une adoption, qui touche un segment PLUS ANCIEN
+    que ce point. `ClimbSegmentIndex._adoptions` doit permettre de la défaire."""
+
+    def _no_gps(self, **overrides):
+        base = dict(BASE_CLIMB)
+        for key in ("start_lat", "start_lon", "end_lat", "end_lon"):
+            base[key] = None
+        base.update(overrides)
+        return base
+
+    def test_rollback_undoes_an_adoption_including_grid_registration(self):
+        index = VM.ClimbSegmentIndex()
+        seg = index.add(self._no_gps(garmin_activity_id=1, climb_idx=1))
+        mark = index.mark()  # point de reprise APRÈS la création du segment sans GPS
+        gps_candidate = dict(BASE_CLIMB, gain_m=305.0, distance_m=3020.0)
+        matched = index.match(gps_candidate)  # déclenche l'adoption
+        self.assertEqual(matched["id"], seg["id"])
+        self.assertIsNotNone(seg["start_lat"], "précondition : l'adoption a bien eu lieu")
+
+        index.rollback(mark)
+
+        self.assertIsNone(seg["start_lat"], "l'adoption doit être défaite par rollback")
+        self.assertIsNone(seg["start_lon"])
+        self.assertIsNone(seg["summit_lat"])
+        self.assertIsNone(seg["mid_lat"])
+        # Les entrées de quadrillage ajoutées par l'adoption doivent être retirées : une
+        # recherche GPS directe (bas niveau, sans repasser par le repli) ne doit plus
+        # trouver ce segment à cette position.
+        grid_indices = index._grid_indices(gps_candidate["start_lat"], gps_candidate["start_lon"])
+        self.assertIsNone(index._match_gps(gps_candidate, grid_indices))
+
+    def test_segment_is_still_findable_via_fallback_after_rollback(self):
+        """Le rollback restaure l'état D'ORIGINE (sans GPS), pas un état « supprimé » —
+        le segment reste appariable par repli, et peut même être ré-adopté ensuite."""
+        index = VM.ClimbSegmentIndex()
+        seg = index.add(self._no_gps(garmin_activity_id=1, climb_idx=1))
+        mark = index.mark()
+        gps_candidate = dict(BASE_CLIMB, gain_m=305.0, distance_m=3020.0)
+        index.match(gps_candidate)
+        index.rollback(mark)
+
+        matched_again = index.match(gps_candidate)
+        self.assertIsNotNone(matched_again)
+        self.assertEqual(matched_again["id"], seg["id"])
+        self.assertIsNotNone(seg["start_lat"], "ré-adopté par ce second appariement")
+
+
+class TestDistinctLongClimbsAreNeverMergedByGpsMatching(unittest.TestCase):
+    """2e revue de code #49, BLOQUANT (should-fix) : SANS plafond ni contrôle de
+    mi-parcours, une tolérance purement proportionnelle à la longueur (8-10 %) fusionnait à
+    tort deux montées longues mais DISTINCTES partageant un départ proche — ex. deux montées
+    de 20 km à 1,5 km d'écart au sommet (8 % de 20 km = 1,6 km, plus large que l'écart réel),
+    ou deux montées en éventail depuis le même fond de vallée dont le milieu diverge
+    nettement alors que le départ ET le sommet restent chacun sous tolérance."""
+
+    def test_two_20km_climbs_1500m_apart_at_the_summit_are_not_merged(self):
+        """Le PLAFOND (`CLIMB_MATCH_POSITION_TOLERANCE_CAP_M`, 300 m) est ce qui empêche
+        la fusion ici : sans lui, 8 % de 20 km (1 600 m) aurait largement couvert l'écart
+        réel de sommet (1 500 m)."""
+        index = VM.ClimbSegmentIndex()
+        long_climb = {
+            "start_lat": BASE_LAT, "start_lon": BASE_LON,
+            "end_lat": BASE_LAT + 0.18, "end_lon": BASE_LON,          # ~20 km plein nord
+            "mid_lat": BASE_LAT + 0.09, "mid_lon": BASE_LON,
+            "gain_m": 1500.0, "distance_m": 20000.0, "avg_grade": 0.075, "grade_class": "5-10%",
+            "location": None, "garmin_activity_id": 1, "climb_idx": 1,
+        }
+        seg = index.add(long_climb)
+        # Sommet à ~1500 m à l'est du premier (à cette latitude, ~0.0135° de longitude ≈
+        # 1500 m compte tenu de cos(latitude)) — départ IDENTIQUE (même fond de vallée).
+        diverging = dict(long_climb, end_lon=BASE_LON + 0.0135, mid_lon=BASE_LON + 0.007,
+                         garmin_activity_id=2, climb_idx=1)
+        match = index.match(diverging)
+        self.assertIsNone(match, "deux montées à 1,5 km d'écart au sommet ne sont pas la même montée")
+        new_seg = index.add(diverging)
+        self.assertNotEqual(new_seg["id"], seg["id"])
+
+    def test_climbs_sharing_start_and_summit_but_diverging_at_the_midpoint_are_not_merged(self):
+        """Le CONTRÔLE DE MI-PARCOURS est ce qui empêche la fusion ici : départ ET sommet
+        IDENTIQUES (donc bien sous tolérance), mais un itinéraire « en arc » qui diverge
+        largement au milieu — sans ce contrôle, une tolérance basée uniquement sur
+        départ/sommet les aurait fusionnées à tort."""
+        index = VM.ClimbSegmentIndex()
+        climb_a = {
+            "start_lat": BASE_LAT, "start_lon": BASE_LON,
+            "end_lat": BASE_LAT + 0.03, "end_lon": BASE_LON,
+            "mid_lat": BASE_LAT + 0.015, "mid_lon": BASE_LON,          # ligne droite
+            "gain_m": 500.0, "distance_m": 5000.0, "avg_grade": 0.10, "grade_class": "5-10%",
+            "location": None, "garmin_activity_id": 1, "climb_idx": 1,
+        }
+        seg = index.add(climb_a)
+        # Même départ, même sommet, mais un milieu décalé d'environ 1,7 km vers l'est —
+        # un itinéraire en arc totalement différent entre les deux mêmes extrémités.
+        climb_b_bulging = dict(climb_a, mid_lon=BASE_LON + 0.02, garmin_activity_id=2, climb_idx=1)
+        match = index.match(climb_b_bulging)
+        self.assertIsNone(match, "un itinéraire en arc au milieu très différent n'est pas la même montée")
+        new_seg = index.add(climb_b_bulging)
+        self.assertNotEqual(new_seg["id"], seg["id"])
+
+    def test_a_missing_midpoint_on_one_side_never_blocks_an_otherwise_valid_match(self):
+        """Le contrôle de mi-parcours ne s'applique QUE si connu des deux côtés (trou de
+        signal ponctuel au milieu d'une montée par ailleurs bien appariée — ne doit jamais,
+        à lui seul, empêcher un appariement par ailleurs valide)."""
+        index = VM.ClimbSegmentIndex()
+        seg = index.add(dict(BASE_CLIMB, mid_lat=None, mid_lon=None, garmin_activity_id=1, climb_idx=1))
+        candidate = dict(BASE_CLIMB, mid_lat=BASE_LAT + 0.005, mid_lon=BASE_LON + 0.005)
+        match = index.match(candidate)
+        self.assertIsNotNone(match)
+        self.assertEqual(match["id"], seg["id"])
+
+
 class TestBucketingIsNotQuadratic(unittest.TestCase):
     """Critère d'acceptation #49 : « appariement efficace — bucketing spatial, pas
     O(n²) ». Un grand nombre de lieux distincts (donc, avec GPS, dans des cellules de

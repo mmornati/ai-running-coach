@@ -113,7 +113,7 @@ class TestGpsSemicirclesToDegrees(unittest.TestCase):
         plausible — rejetée en PAIRE."""
         out = S.normalise_records([
             {"timestamp": "2026-01-01 08:00:00", "distance": 0.0,
-             "position_lat": 0, "position_long": 0},
+             "position_lat": 0, "position_long": 0},  # coord-lint: île nulle intentionnelle
         ])
         self.assertIsNone(out[0]["lat_deg"])
         self.assertIsNone(out[0]["lon_deg"])
@@ -125,7 +125,7 @@ class TestGpsSemicirclesToDegrees(unittest.TestCase):
         lat_semicircles = round(-40.0 / 180.0 * (2 ** 31))
         out = S.normalise_records([
             {"timestamp": "2026-01-01 08:00:00", "distance": 0.0,
-             "position_lat": lat_semicircles, "position_long": 0},
+             "position_lat": lat_semicircles, "position_long": 0},  # coord-lint: lon nul intentionnel
         ])
         self.assertAlmostEqual(out[0]["lat_deg"], -40.0, places=5)
         self.assertEqual(out[0]["lon_deg"], 0.0)

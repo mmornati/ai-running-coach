@@ -100,10 +100,20 @@ CLIMB_MATCH_POSITION_TOLERANCE_M = 150.0
 # fin MESURÉS d'une montée d'une quantité qui croît avec le bruit ET, à bruit égal, avec la
 # longueur de la montée (un rognage à noise_tol_m fixe représente une fraction plus grande
 # d'une petite montée) — un plancher fixe seul sous-estime donc le glissement possible sur
-# une longue montée. 10 % est la plus PETITE fraction testée qui apparie 200/200 paires aux
-# deux niveaux de bruit mesurés ci-dessus (8 % suffisait aussi dans cette mesure précise,
-# 10 % retenu pour une marge de sécurité sur un bruit encore plus fort que celui testé).
-CLIMB_MATCH_POSITION_TOLERANCE_FRAC = 0.10
+# une longue montée.
+CLIMB_MATCH_POSITION_TOLERANCE_FRAC = 0.08
+
+# PLAFOND de la tolérance mise à l'échelle ci-dessus (2e revue de code #49, BLOQUANT — should-
+# fix) : SANS plafond, deux montées longues mais DISTINCTES (ex. deux montées de 5 km partant
+# du même fond de vallée, sommets à ~500 m l'un de l'autre — ou deux montées de 20 km à
+# 1,5 km d'écart) tombaient dans une tolérance devenue trop généreuse (8 % de 5 km = 400 m,
+# 8 % de 20 km = 1,6 km) et fusionnaient à tort en un seul segment (fausse progression). Le
+# plafond garde la tolérance sous la portée RÉELLE du quadrillage spatial (`GRID_CELL_DEG`,
+# voisinage 3×3 ≈ 1,1-1,7 km selon la latitude — un plafond ≥ à cette portée risquerait de
+# rater un vrai appariement dont la recherche par cellule n'aurait de toute façon pas ramené
+# le candidat) ET reste au-dessus du pire glissement mesuré (`CLIMB_MATCH_POSITION_TOLERANCE_M`,
+# jusqu'à 290 m à σ ≈ 4 m) avec une marge confortable.
+CLIMB_MATCH_POSITION_TOLERANCE_CAP_M = 300.0
 
 # Tolérance de profil (gain, longueur) — le plus GRAND d'un plancher absolu et d'une
 # fraction relative, même discipline que `arc_climb.MERGE_MAX_DIP_LOSS_M`/
@@ -139,18 +149,30 @@ ASSUMPTIONS = {
     ),
     "gps_matching": (
         "Avec position de départ ET de sommet connues des deux côtés : appariement si "
-        "`haversine_m(départs) <= tol` ET `haversine_m(sommets) <= tol` ET profil proche "
-        "(gain/longueur, voir `_profile_close`), où `tol = _position_tolerance_m(...)` = "
-        f"le plus GRAND de `CLIMB_MATCH_POSITION_TOLERANCE_M` ({CLIMB_MATCH_POSITION_TOLERANCE_M:.0f} m, "
+        "`haversine_m(départs) <= tol` ET `haversine_m(sommets) <= tol` ET (quand connu des "
+        "deux côtés) `haversine_m(mi-parcours) <= tol` ET profil proche (gain/longueur, voir "
+        "`_profile_close`), où `tol = _position_tolerance_m(...)` = le plus GRAND de "
+        f"`CLIMB_MATCH_POSITION_TOLERANCE_M` ({CLIMB_MATCH_POSITION_TOLERANCE_M:.0f} m, "
         f"plancher) et `CLIMB_MATCH_POSITION_TOLERANCE_FRAC` ({CLIMB_MATCH_POSITION_TOLERANCE_FRAC * 100:.0f} %) "
-        "× la longueur de la montée (voir le commentaire de ces deux constantes pour la mesure "
-        "qui justifie la mise à l'échelle — un plancher fixe seul est insuffisant sur une "
-        "longue montée à fort bruit). Comparaison APPARIÉE (départ à départ, sommet à "
-        "sommet), jamais croisée : c'est ce qui exclut une même trace parcourue en sens "
-        "inverse (voir docstring du module et ASSUMPTIONS['direction']). Quand plusieurs "
-        "segments connus satisfont ce critère (rare, deux montées très proches), celui dont "
-        "la somme des deux distances est la plus petite est retenu. Un candidat GPS qui ne "
-        "trouve AUCUN segment GPS compatible retente ensuite le repli sans GPS, restreint "
+        "× la longueur de la montée, PLAFONNÉ à `CLIMB_MATCH_POSITION_TOLERANCE_CAP_M` "
+        f"({CLIMB_MATCH_POSITION_TOLERANCE_CAP_M:.0f} m) — voir le commentaire de ces trois "
+        "constantes pour la mesure qui justifie la mise à l'échelle (un plancher fixe seul "
+        "est insuffisant sur une longue montée à fort bruit) ET le plafond (2e revue de code "
+        "#49, BLOQUANT : SANS lui, deux montées longues mais DISTINCTES — ex. deux montées "
+        "de 5 km depuis le même fond de vallée vers des sommets à ~500 m l'un de l'autre, ou "
+        "deux montées de 20 km à 1,5 km d'écart — fusionnaient à tort en un seul segment, "
+        "produisant une fausse progression). Le CONTRÔLE DE MI-PARCOURS (même revue, "
+        "BLOQUANT) complète le plafond : deux montées peuvent avoir un départ ET un sommet "
+        "chacun sous tolérance sans être la même montée si leurs itinéraires divergent au "
+        "milieu — la position à 50 % de la distance parcourue (`climb_endpoints`) doit AUSSI "
+        "être sous tolérance quand elle est connue des deux côtés (jamais un rejet sur la "
+        "seule absence ponctuelle de cette position — trou de signal possible exactement au "
+        "milieu). Comparaison APPARIÉE (départ à départ, sommet à sommet, milieu à milieu), "
+        "jamais croisée : c'est ce qui exclut une même trace parcourue en sens inverse (voir "
+        "docstring du module et ASSUMPTIONS['direction']). Quand plusieurs segments connus "
+        "satisfont ce critère (rare, deux montées très proches), celui dont la somme des "
+        "deux distances (départ + sommet) est la plus petite est retenu. Un candidat GPS qui "
+        "ne trouve AUCUN segment GPS compatible retente ensuite le repli sans GPS, restreint "
         "aux segments SANS position connue (voir ASSUMPTIONS['fallback_matching'], "
         "« adoption ») — sans quoi un segment créé par une toute première occurrence sans "
         "GPS ne pourrait plus jamais être retrouvé par une occurrence ultérieure AVEC GPS "
@@ -180,9 +202,15 @@ ASSUMPTIONS = {
         "segments SANS position connue (jamais à un segment déjà positionné : deux positions "
         "connues et incompatibles ne doivent jamais être ignorées au profit du lieu seul) — "
         "même règle « exactement un candidat, sinon aucun ». En cas d'appariement, le "
-        "segment ADOPTE la position du candidat (départ/sommet) et rejoint le quadrillage "
-        "spatial : les occurrences GPS suivantes le retrouveront directement, sans repasser "
-        "par ce repli."
+        "segment ADOPTE la position du candidat (départ/sommet/mi-parcours) et rejoint le "
+        "quadrillage spatial : les occurrences GPS suivantes le retrouveront directement, "
+        "sans repasser par ce repli. L'adoption est journalisée (`ClimbSegmentIndex."
+        "_adoptions`) pour que `rollback` puisse la défaire (restaurer l'ABSENCE de "
+        "position, retirer les entrées du quadrillage) si l'activité qui l'a déclenchée "
+        "échoue ensuite — sans ce journal, un `rollback` (voir `mark`/`rollback`) qui ne "
+        "faisait que tronquer `self.segments` ratait totalement une adoption, celle-ci "
+        "mutant un segment PLUS ANCIEN que le point de reprise, jamais un segment "
+        "nouvellement ajouté (2e revue de code #49, BLOQUANT)."
     ),
     "segment_id": (
         "`climb_segment.id` (#49, revue de code, BLOQUANT) = "
@@ -292,10 +320,13 @@ def haversine_m(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
 
 
 def climb_endpoints(act_samples: Sequence[dict], climb: dict) -> Optional[dict]:
-    """Position de départ et de sommet d'une montée détectée (`arc_climb.detect_climbs`),
-    à partir des échantillons de l'activité (`t_s`, `lat_deg`, `lon_deg`) — `None` si l'un
-    des deux (départ ou sommet) n'a aucune position exploitable dans la fenêtre de la
-    montée (séance sans GPS, ou trou de signal GPS aux deux bornes)."""
+    """Position de départ, de sommet ET de MI-PARCOURS (50 % de la distance parcourue
+    pendant la montée, #49 2e revue de code, BLOQUANT — voir ASSUMPTIONS["gps_matching"])
+    d'une montée détectée (`arc_climb.detect_climbs`), à partir des échantillons de
+    l'activité (`t_s`, `distance_m`, `lat_deg`, `lon_deg`) — `None` si le départ ou le
+    sommet n'a aucune position exploitable dans la fenêtre de la montée (séance sans GPS,
+    ou trou de signal GPS aux deux bornes) ; `mid_lat`/`mid_lon` peuvent rester `None`
+    isolément (trou de signal ponctuel au milieu de la montée) sans invalider le reste."""
     window = [s for s in act_samples
               if s.get("t_s") is not None and climb["start_t_s"] <= s["t_s"] <= climb["end_t_s"]]
     if not window:
@@ -305,8 +336,16 @@ def climb_endpoints(act_samples: Sequence[dict], climb: dict) -> Optional[dict]:
     end = next((s for s in reversed(ordered) if s.get("lat_deg") is not None and s.get("lon_deg") is not None), None)
     if start is None or end is None:
         return None
+    mid_lat = mid_lon = None
+    with_distance = [s for s in ordered if s.get("distance_m") is not None
+                      and s.get("lat_deg") is not None and s.get("lon_deg") is not None]
+    if with_distance:
+        target = (with_distance[0]["distance_m"] + with_distance[-1]["distance_m"]) / 2.0
+        nearest = min(with_distance, key=lambda s: abs(s["distance_m"] - target))
+        mid_lat, mid_lon = nearest["lat_deg"], nearest["lon_deg"]
     return {"start_lat": start["lat_deg"], "start_lon": start["lon_deg"],
-            "end_lat": end["lat_deg"], "end_lon": end["lon_deg"]}
+            "end_lat": end["lat_deg"], "end_lon": end["lon_deg"],
+            "mid_lat": mid_lat, "mid_lon": mid_lon}
 
 
 def hr_drift_bpm_per_100m(act_samples: Sequence[dict], climb: dict) -> dict:
@@ -347,7 +386,8 @@ def _position_tolerance_m(candidate: dict, segment: dict) -> float:
     mesures indépendantes, potentiellement toutes deux bruitées."""
     lengths = [v for v in (candidate.get("distance_m"), segment.get("distance_m")) if v]
     longest = max(lengths) if lengths else 0.0
-    return max(CLIMB_MATCH_POSITION_TOLERANCE_M, CLIMB_MATCH_POSITION_TOLERANCE_FRAC * longest)
+    scaled = max(CLIMB_MATCH_POSITION_TOLERANCE_M, CLIMB_MATCH_POSITION_TOLERANCE_FRAC * longest)
+    return min(scaled, CLIMB_MATCH_POSITION_TOLERANCE_CAP_M)
 
 
 def _norm_location(location: Optional[str]) -> Optional[str]:
@@ -395,29 +435,59 @@ class ClimbSegmentIndex:
         self.segments: List[dict] = []
         self._by_grid: Dict[Tuple[int, int], List[int]] = {}
         self._by_location: Dict[str, List[int]] = {}
+        # Journal d'adoption (2e revue de code #49, BLOQUANT) : chaque entrée
+        # `(idx, position_precedente)` enregistrée AVANT qu'une adoption (voir
+        # `_match_fallback`) n'écrase la position d'un segment déjà existant — nécessaire
+        # pour que `rollback` puisse défaire une adoption, pas seulement un `add` (un
+        # `rollback` qui ne remettait la position à zéro que via la troncature de
+        # `self.segments` ratait totalement les adoptions, qui mutent un segment
+        # D'INDEX < mark, jamais ajouté depuis).
+        self._adoptions: List[Tuple[int, dict]] = []
 
-    def mark(self) -> int:
-        """Point de reprise pour `rollback` — nombre de segments actuellement connus."""
-        return len(self.segments)
+    def mark(self) -> Tuple[int, int]:
+        """Point de reprise pour `rollback` — `(nombre de segments, nombre d'adoptions)`
+        actuellement connus. Un simple entier ne suffit plus depuis l'ajout du journal
+        d'adoption (voir `__init__`)."""
+        return len(self.segments), len(self._adoptions)
 
-    def rollback(self, mark: int) -> None:
-        """Retire tout segment ajouté depuis `mark` (voir `mark()`), y compris des index
-        spatial/lieu qui le référencent — sans effet si rien n'a été ajouté depuis."""
-        if mark >= len(self.segments):
-            return
-        del self.segments[mark:]
-        for key in list(self._by_grid):
-            kept = [i for i in self._by_grid[key] if i < mark]
-            if kept:
-                self._by_grid[key] = kept
-            else:
-                del self._by_grid[key]
-        for key in list(self._by_location):
-            kept = [i for i in self._by_location[key] if i < mark]
-            if kept:
-                self._by_location[key] = kept
-            else:
-                del self._by_location[key]
+    def rollback(self, mark: Tuple[int, int]) -> None:
+        """Défait tout ce qui s'est produit depuis `mark` (voir `mark()`) : segments
+        AJOUTÉS depuis (index/lieu compris) ET adoptions de position sur des segments
+        PLUS ANCIENS (position restaurée, quadrillage spatial nettoyé) — sans effet si
+        rien ne s'est produit depuis."""
+        segments_mark, adoptions_mark = mark
+        # Adoptions D'ABORD, en ordre INVERSE (dernière adoptée, première défaite) : une
+        # adoption peut avoir eu lieu sur un segment plus ancien que `segments_mark`, donc
+        # rien à voir avec la troncature de `self.segments` ci-dessous — les deux opérations
+        # sont indépendantes, mais l'ordre (adoptions puis troncature) évite de manipuler un
+        # index de segment déjà supprimé.
+        while len(self._adoptions) > adoptions_mark:
+            idx, previous = self._adoptions.pop()
+            if idx >= segments_mark:
+                continue  # ce segment sera de toute façon supprimé par la troncature ci-dessous
+            seg = self.segments[idx]
+            if seg.get("start_lat") is not None and seg.get("start_lon") is not None:
+                self._deregister_position(idx, seg["start_lat"], seg["start_lon"])
+            seg["start_lat"], seg["start_lon"] = previous["start_lat"], previous["start_lon"]
+            seg["summit_lat"], seg["summit_lon"] = previous["summit_lat"], previous["summit_lon"]
+            seg["mid_lat"], seg["mid_lon"] = previous["mid_lat"], previous["mid_lon"]
+            # La position PRÉCÉDENTE d'une adoption est toujours `None` (seuls des segments
+            # SANS position sont adoptés, voir `_match_fallback`) : rien à ré-enregistrer
+            # dans le quadrillage spatial ici.
+        if segments_mark < len(self.segments):
+            del self.segments[segments_mark:]
+            for key in list(self._by_grid):
+                kept = [i for i in self._by_grid[key] if i < segments_mark]
+                if kept:
+                    self._by_grid[key] = kept
+                else:
+                    del self._by_grid[key]
+            for key in list(self._by_location):
+                kept = [i for i in self._by_location[key] if i < segments_mark]
+                if kept:
+                    self._by_location[key] = kept
+                else:
+                    del self._by_location[key]
 
     def _grid_cells(self, lat: float, lon: float) -> List[Tuple[int, int]]:
         cx = math.floor(lat / GRID_CELL_DEG)
@@ -440,6 +510,18 @@ class ClimbSegmentIndex:
         for key in self._grid_cells(lat, lon):
             self._by_grid.setdefault(key, []).append(idx)
 
+    def _deregister_position(self, idx: int, lat: float, lon: float) -> None:
+        """Inverse de `_register_position` — utilisé UNIQUEMENT par `rollback` pour
+        défaire une adoption (voir le journal `_adoptions`)."""
+        for key in self._grid_cells(lat, lon):
+            bucket = self._by_grid.get(key)
+            if not bucket:
+                continue
+            if idx in bucket:
+                bucket.remove(idx)
+            if not bucket:
+                del self._by_grid[key]
+
     def _match_gps(self, candidate: dict, indices: List[int]) -> Optional[dict]:
         best, best_score = None, None
         for i in indices:
@@ -453,6 +535,18 @@ class ClimbSegmentIndex:
                                     seg["summit_lat"], seg["summit_lon"])
             if d_start > tol or d_summit > tol:
                 continue
+            # Contrôle de MI-PARCOURS (2e revue de code #49, BLOQUANT — should-fix) : deux
+            # montées longues mais DISTINCTES peuvent avoir un départ ET un sommet chacun
+            # sous tolérance (ex. deux montées de 5 km depuis le même fond de vallée, vers
+            # deux sommets voisins) sans être la même montée — leur MILIEU, lui, diverge
+            # nettement dès que les deux montées empruntent des itinéraires différents.
+            # Comparé seulement quand connu des deux côtés (`None` d'un côté : trou de
+            # signal ponctuel, jamais un candidat/segment rejeté sur cette seule absence).
+            if (candidate.get("mid_lat") is not None and candidate.get("mid_lon") is not None
+                    and seg.get("mid_lat") is not None and seg.get("mid_lon") is not None):
+                d_mid = haversine_m(candidate["mid_lat"], candidate["mid_lon"], seg["mid_lat"], seg["mid_lon"])
+                if d_mid > tol:
+                    continue
             if not _profile_close(candidate, seg):
                 continue
             score = d_start + d_summit
@@ -479,8 +573,17 @@ class ClimbSegmentIndex:
             # Adoption (ASSUMPTIONS["fallback_matching"]) : ce segment n'avait pas de
             # position, ce candidat en a une — il la prend, et rejoint le quadrillage
             # spatial pour que les occurrences GPS suivantes le retrouvent directement.
+            # Journalisée AVANT mutation (voir `_adoptions`/`rollback`, 2e revue de code
+            # #49, BLOQUANT) : un `rollback` ultérieur doit pouvoir restaurer l'ABSENCE de
+            # position de ce segment, pas seulement défaire un `add`.
+            self._adoptions.append((idx, {
+                "start_lat": seg["start_lat"], "start_lon": seg["start_lon"],
+                "summit_lat": seg["summit_lat"], "summit_lon": seg["summit_lon"],
+                "mid_lat": seg.get("mid_lat"), "mid_lon": seg.get("mid_lon"),
+            }))
             seg["start_lat"], seg["start_lon"] = candidate["start_lat"], candidate["start_lon"]
             seg["summit_lat"], seg["summit_lon"] = candidate["end_lat"], candidate["end_lon"]
+            seg["mid_lat"], seg["mid_lon"] = candidate.get("mid_lat"), candidate.get("mid_lon")
             self._register_position(idx, seg["start_lat"], seg["start_lon"])
         return seg
 
@@ -511,6 +614,7 @@ class ClimbSegmentIndex:
             "id": candidate["garmin_activity_id"] * SEGMENT_ID_CLIMB_MULTIPLIER + candidate["climb_idx"],
             "start_lat": candidate.get("start_lat"), "start_lon": candidate.get("start_lon"),
             "summit_lat": candidate.get("end_lat"), "summit_lon": candidate.get("end_lon"),
+            "mid_lat": candidate.get("mid_lat"), "mid_lon": candidate.get("mid_lon"),
             "gain_m": candidate.get("gain_m"), "distance_m": candidate.get("distance_m"),
             "avg_grade": candidate.get("avg_grade"), "grade_class": candidate.get("grade_class"),
             "location": candidate.get("location"),

@@ -75,14 +75,27 @@ _NUMBER = r"-?\d+(?:\.\d+)?"
 
 
 def _literal_assignment_pattern(names: tuple) -> "re.Pattern":
-    """`identifiant [:=] littéral_numérique` (dict Python `"clé": valeur` OU affectation
+    """`identifiant [:=] littéral_numérique` (dict Python `"clé": valeur` — la forme la
+    PLUS COURANTE dans ce dépôt, ex. `{"lat_deg": 45.9, "lon_deg": 6.8}` — OU affectation
     `nom = valeur`), `identifiant` matché en mot ENTIER — voir le commentaire de
-    `_LAT_NAMES`/`_LON_NAMES`. `round(NUMBER ...)` (idiome de conversion semi-cercles →
-    degrés utilisé par les tests de `arc_samples.py`) est reconnu explicitement en plus
-    d'un littéral nu : sans quoi `lat_semicircles = round(-40.0 / 180.0 * ...)` échapperait
-    à la détection."""
+    `_LAT_NAMES`/`_LON_NAMES`. `["']?` entre le nom et `[:=]` (revue de code #49, should-
+    fix) : une clé de dict Python est le plus souvent CITÉE (`"lat_deg":`), la guillemet
+    fermante se glissant entre le nom et le `:` — sans ce `?`, cette forme, la plus
+    fréquente dans les fixtures de ce dépôt, échappait entièrement à la détection (seule
+    la forme non citée `lat_deg = ...`, plus rare, était repérée). `round(NUMBER ...)`
+    (idiome de conversion semi-cercles → degrés utilisé par les tests de `arc_samples.py`)
+    est reconnu explicitement en plus d'un littéral nu : sans quoi
+    `lat_semicircles = round(-40.0 / 180.0 * ...)` échapperait à la détection.
+
+    LIMITE ASSUMÉE (revue de code #49, documentée plutôt que corrigée pour rester simple) :
+    une forme POSITIONNELLE (ex. `haversine_m(46.0, 7.0, 46.0, 7.0)`, sans nom de paramètre
+    dans le texte source) reste hors de portée d'un scan par nom d'identifiant — seules les
+    formes nommées (clé de dict, kwarg, affectation) sont couvertes. Ce scan reste un filet
+    de sécurité utile pour la convention de nommage réellement employée par ce dépôt
+    (`arc_samples.py`/`arc_climb_match.py`), pas une preuve d'absence totale de coordonnée
+    positionnelle ailleurs."""
     alt = "|".join(re.escape(n) for n in names)
-    return re.compile(rf"\b(?:{alt})\b\s*[:=]\s*(?:round\()?\s*({_NUMBER})")
+    return re.compile(rf"\b(?:{alt})\b[\"']?\s*[:=]\s*(?:round\()?\s*({_NUMBER})")
 
 
 _LAT_PATTERN = _literal_assignment_pattern(_LAT_NAMES)
@@ -154,6 +167,21 @@ class TestNoRealCoordinatesInTests(unittest.TestCase):
         self.assertIsNotNone(lon_match)
         self.assertFalse(SAFE_LAT_RANGE[0] <= float(lat_match.group(1)) <= SAFE_LAT_RANGE[1])
         self.assertFalse(SAFE_LON_RANGE[0] <= float(lon_match.group(1)) <= SAFE_LON_RANGE[1])
+
+    def test_the_pattern_catches_a_quoted_dict_key_the_most_common_form(self):
+        """Revue de code #49, should-fix : la forme `{"lat_deg": 45.9, "lon_deg": 6.8}`
+        (clé de dict CITÉE) est la plus fréquente de ce dépôt (fixtures FIT) — une version
+        antérieure du motif, qui n'attendait un `[:=]` que collé au nom SANS guillemet
+        intercalé, la ratait entièrement."""
+        snippet = '{"lat_deg": 45.9, "lon_deg": 6.8}'
+        lat_match = _LAT_PATTERN.search(snippet)
+        lon_match = _LON_PATTERN.search(snippet)
+        self.assertIsNotNone(lat_match, "clé citée lat_deg non détectée")
+        self.assertIsNotNone(lon_match, "clé citée lon_deg non détectée")
+        self.assertEqual(float(lat_match.group(1)), 45.9)
+        self.assertEqual(float(lon_match.group(1)), 6.8)
+        self.assertFalse(SAFE_LAT_RANGE[0] <= 45.9 <= SAFE_LAT_RANGE[1])
+        self.assertFalse(SAFE_LON_RANGE[0] <= 6.8 <= SAFE_LON_RANGE[1])
 
 
 if __name__ == "__main__":

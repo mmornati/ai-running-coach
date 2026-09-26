@@ -172,10 +172,11 @@ import arc_samples as S  # noqa: E402
 from coach_config import ConfigError, read_toml  # noqa: E402
 from coach_setup import ENGINE, workspace_root  # noqa: E402
 
-SCHEMA_VERSION = 16  # #49 : colonnes GPS `activity_sample.lat`/`lon` remplies (#42 les réservait),
+SCHEMA_VERSION = 17  # #49 : colonnes GPS `activity_sample.lat`/`lon` remplies (#42 les réservait),
                       # colonnes `activity_climb.segment_id`/`hr_*`/`vs_*` et table `climb_segment`
-                      # (identité de montée entre séances, `arc_climb_match.py`) — voir #48 pour la
-                      # version précédente
+                      # (identité de montée entre séances, `arc_climb_match.py`), + `climb_segment.
+                      # mid_lat`/`mid_lon` (contrôle de mi-parcours, 2e revue de code #49) — voir
+                      # #48 pour la version précédente
 DEFAULT_DB = ".arc/coach.db"
 DATA_DIRS = ("activities", "medical", "nutrition", "planning", "rapports")
 
@@ -510,20 +511,27 @@ CREATE INDEX activity_climb_activity ON activity_climb(activity_id);
 CREATE INDEX activity_climb_segment ON activity_climb(segment_id);
 -- Registre des montées reconnues comme « la même » d'une séance à l'autre (#49,
 -- `arc_climb_match.py`) — recalculé INTÉGRALEMENT à chaque `compute_metrics` (comme
--- `activity_climb`/`hr_zone_time`, jamais une purge par fichier : l'id n'est donc PAS
--- stable d'une réindexation à l'autre, seul `location`+signature de profil l'est en
--- pratique — un consommateur externe doit toujours relire `segment_id` depuis
--- `activity_climb`, jamais le mémoriser). `start_lat`/`start_lon`/`summit_lat`/
--- `summit_lon` : position de la PREMIÈRE occurrence rencontrée (jamais mise à jour
--- ensuite, un repère stable suffit à l'appariement futur — voir
--- `arc_climb_match.ClimbSegmentIndex`), `NULL` si cette première occurrence n'avait pas
--- de GPS exploitable (repli par lieu, voir `arc_climb_match.ASSUMPTIONS["fallback_matching"]`).
--- USAGE INTERNE UNIQUEMENT pour les positions : jamais exposées par l'API/le CLI (voir
--- `arc_climb_match.ASSUMPTIONS["privacy"]`) — seuls `id`/`location`/le profil/les
--- agrégats (`occurrences`, `best_time_elapsed_s`) le sont.
+-- `activity_climb`/`hr_zone_time`, jamais une purge par fichier). `id` DÉTERMINISTE
+-- (`garmin_activity_id × multiplicateur + index de montée` de la PREMIÈRE occurrence
+-- rencontrée, voir `arc_climb_match.ASSUMPTIONS["segment_id"]`) — stable d'une
+-- réindexation à l'autre SAUF si une occurrence encore plus ancienne du même segment est
+-- découverte plus tard (l'id change alors légitimement, sans affecter les autres
+-- segments) : un consommateur externe qui garde un id en cache doit donc rester tolérant
+-- à un id devenu inconnu (`reason_code: "unknown_segment"`), jamais le supposer éternel.
+-- `start_lat`/`start_lon`/`summit_lat`/`summit_lon`/`mid_lat`/`mid_lon` (mi-parcours, 2e
+-- revue de code #49 — voir `arc_climb_match.ASSUMPTIONS["gps_matching"]`) : position de la
+-- PREMIÈRE occurrence rencontrée (jamais mise à jour ensuite pour une occurrence
+-- ULTÉRIEURE, un repère stable suffit à l'appariement futur — voir
+-- `arc_climb_match.ClimbSegmentIndex`), sauf ADOPTION (une occurrence avec GPS fournit sa
+-- position à un segment qui n'en avait pas encore, voir
+-- `arc_climb_match.ASSUMPTIONS["fallback_matching"]`). `NULL` si aucune occurrence connue
+-- n'a encore de GPS exploitable. USAGE INTERNE UNIQUEMENT pour les positions : jamais
+-- exposées par l'API/le CLI (voir `arc_climb_match.ASSUMPTIONS["privacy"]`) — seuls
+-- `id`/`location`/le profil/les agrégats (`occurrences`, `best_time_elapsed_s`) le sont.
 CREATE TABLE climb_segment (
     id INTEGER PRIMARY KEY, location TEXT, gain_m REAL, distance_m REAL, avg_grade REAL,
     grade_class TEXT, start_lat REAL, start_lon REAL, summit_lat REAL, summit_lon REAL,
+    mid_lat REAL, mid_lon REAL,
     first_seen_activity_id INTEGER, first_seen_date TEXT, occurrences INTEGER,
     best_time_elapsed_s REAL, best_activity_id INTEGER
 );
@@ -1035,6 +1043,9 @@ def compute_metrics(conn, conf: dict, today: Optional[str] = None) -> None:
                             candidate = {
                                 "start_lat": endpoints.get("start_lat"), "start_lon": endpoints.get("start_lon"),
                                 "end_lat": endpoints.get("end_lat"), "end_lon": endpoints.get("end_lon"),
+                                # Mi-parcours (2e revue de code #49) : voir
+                                # `arc_climb_match.ASSUMPTIONS["gps_matching"]`.
+                                "mid_lat": endpoints.get("mid_lat"), "mid_lon": endpoints.get("mid_lon"),
                                 "gain_m": c["gain_m"], "distance_m": c["distance_m"],
                                 "avg_grade": c["avg_grade"], "grade_class": c["grade_class"],
                                 "location": act.get("location"),
@@ -1205,10 +1216,12 @@ def compute_metrics(conn, conf: dict, today: Optional[str] = None) -> None:
         best_time, best_activity_id = min(times, default=(None, None), key=lambda t: t[0])
         conn.execute(
             "INSERT INTO climb_segment (id, location, gain_m, distance_m, avg_grade, grade_class, start_lat, "
-            "start_lon, summit_lat, summit_lon, first_seen_activity_id, first_seen_date, occurrences, "
-            "best_time_elapsed_s, best_activity_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "start_lon, summit_lat, summit_lon, mid_lat, mid_lon, first_seen_activity_id, first_seen_date, "
+            "occurrences, best_time_elapsed_s, best_activity_id) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (segment_id, seg["location"], seg["gain_m"], seg["distance_m"], seg["avg_grade"], seg["grade_class"],
              seg["start_lat"], seg["start_lon"], seg["summit_lat"], seg["summit_lon"],
+             seg.get("mid_lat"), seg.get("mid_lon"),
              history["first_activity_id"], history["first_date"], len(history["occurrences"]),
              best_time, best_activity_id),
         )
