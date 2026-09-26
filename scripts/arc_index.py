@@ -20,6 +20,7 @@ sert au tableau de bord (`scripts/arc_serve.py`) et aux calculs de charge
     arc_index.py decoupling [--activity GARMIN_ID] [--weeks N]   # découplage aérobie (Pa:HR), EF (#45)
     arc_index.py vam [--activity GARMIN_ID] [--weeks N]           # VAM sur les montées détectées (#46)
     arc_index.py descent [--activity GARMIN_ID] [--weeks N]        # efficacité en descente par classe de pente (#47)
+    arc_index.py durability [--activity GARMIN_ID] [--weeks N]      # fade GAP/EF sur les sorties longues (#48)
 
 `hrv-baseline` n'a besoin d'aucun tableau de bord lancé (headless, `/garmin-daily-sync`
 compris) : elle réindexe puis rend le point du jour de `arc_metrics.hrv_baseline_series`
@@ -108,6 +109,19 @@ sans `--activity`, la tendance sur les `--weeks` dernières semaines glissantes
 et VAM/#46), restreinte à la famille course à pied avec des échantillons FIT ingérés
 — voir `arc_descent.ASSUMPTIONS`.
 
+`durability` (#48) rend, avec `--activity GARMIN_ID`, le détail de durabilité d'une
+séance (fade GAP et fade EF entre le premier et le dernier tiers de mouvement
+post-échauffement, FC par tiers, `reason`/`reason_code` explicites — voir
+`arc_durability.ASSUMPTIONS`) ; sans `--activity`, la tendance sur les `--weeks`
+dernières semaines glissantes (défaut 12, comme `decoupling`). Restreint aux
+sorties longues (`duration_s` > `arc_metrics.LONG_RUN_MIN_DURATION_S`, 90 min) de
+la famille course à pied avec des échantillons FIT ingérés. Les colonnes
+`activity.durability_gap_fade_pct`/`durability_ef_fade_pct`/
+`durability_hr_first_third_bpm`/`durability_hr_middle_third_bpm`/
+`durability_hr_last_third_bpm`/`durability_reason`/`durability_reason_code` sont
+recalculées en entier à chaque passage de `index_workspace` (même discipline que
+GAP/#44, découplage/#45, VAM/#46 et descente/#47).
+
 Options communes : `--workspace DIR` (sinon $ARC_WORKSPACE, le pointeur
 ~/.config/ai-running-coach/workspace, puis le moteur), `--db FICHIER` (défaut
 <workspace>/.arc/coach.db), `--memory` (base en mémoire, rien sur disque),
@@ -136,6 +150,7 @@ import arc_climb as VC  # noqa: E402
 import arc_contract as C  # noqa: E402
 import arc_decoupling as DC  # noqa: E402
 import arc_descent as DS  # noqa: E402
+import arc_durability as DU  # noqa: E402
 import arc_gap as G  # noqa: E402
 import arc_legacy as L  # noqa: E402
 import arc_metrics as M  # noqa: E402
@@ -143,8 +158,8 @@ import arc_samples as S  # noqa: E402
 from coach_config import ConfigError, read_toml  # noqa: E402
 from coach_setup import ENGINE, workspace_root  # noqa: E402
 
-SCHEMA_VERSION = 14  # #47 : table `activity_descent_class` (efficacité en descente par classe de
-                      # pente, `arc_descent.py`) — voir #46 pour la version précédente
+SCHEMA_VERSION = 15  # #48 : colonnes `activity.durability_*` (fade GAP/EF et FC par tiers sur les
+                      # sorties longues, `arc_durability.py`) — voir #47 pour la version précédente
 DEFAULT_DB = ".arc/coach.db"
 DATA_DIRS = ("activities", "medical", "nutrition", "planning", "rapports")
 
@@ -321,7 +336,10 @@ CREATE TABLE activity (
     sweat_rate_l_h REAL, gap_pace_s_km REAL, decoupling_pct REAL, ef_whole REAL,
     decoupling_reason TEXT, best_vam_10min_m_h REAL, best_vam_20min_m_h REAL,
     best_climb_vam_elapsed_m_h REAL, descent_reference_gap_pace_s_km REAL,
-    descent_reference_source TEXT, body_md TEXT, data_json TEXT
+    descent_reference_source TEXT, durability_gap_fade_pct REAL, durability_ef_fade_pct REAL,
+    durability_hr_first_third_bpm REAL, durability_hr_middle_third_bpm REAL,
+    durability_hr_last_third_bpm REAL, durability_reason TEXT, durability_reason_code TEXT,
+    body_md TEXT, data_json TEXT
 );
 CREATE INDEX activity_date ON activity(date);
 -- `gap_pace_s_km` (#44, allure ajustée à la pente, `arc_gap.py`) : recalculée en
@@ -347,6 +365,18 @@ CREATE INDEX activity_date ON activity(date);
 -- `"non_descent"` (repli sur tout ce qui n'est pas une forte descente), jamais
 -- caché : une référence de repli reste moins fiable qu'une référence plate franche.
 -- NULL si aucune des deux n'est exploitable (voir `arc_descent.REASON_NO_REFERENCE`).
+-- `durability_gap_fade_pct`/`durability_ef_fade_pct` (#48, durabilité sur les
+-- sorties longues, `arc_durability.py`) : fade du GAP et de l'EF (GAP/FC) entre le
+-- premier et le dernier tiers (temps de mouvement, post-échauffement) de la séance
+-- — même discipline de recalcul intégral à chaque `compute_metrics` que
+-- `decoupling_pct`/`ef_whole` ci-dessus, restreint à la famille course à pied avec
+-- échantillons FIT ingérés, sorties longues UNIQUEMENT (`duration_s` >
+-- `arc_metrics.LONG_RUN_MIN_DURATION_S`, 90 min). `durability_hr_first_third_bpm`/
+-- `_hr_middle_third_bpm`/`_hr_last_third_bpm` : FC moyenne par tiers, à titre
+-- descriptif (voir `arc_durability.ASSUMPTIONS["hr_by_third"]`). `durability_reason`/
+-- `durability_reason_code` portent TOUJOURS la raison d'un `durability_gap_fade_pct`
+-- NULL (durée insuffisante, échauffement, FC manquante, pente asymétrique...) —
+-- jamais un NULL muet, voir `arc_durability.ASSUMPTIONS`.
 CREATE TABLE activity_split (
     activity_id INTEGER, km INTEGER, distance_m REAL, duration_s REAL, elev_gain_m REAL,
     elev_loss_m REAL, avg_hr_bpm REAL, max_hr_bpm REAL, max_speed_kmh REAL,
@@ -962,6 +992,26 @@ def compute_metrics(conn, conf: dict, today: Optional[str] = None) -> None:
                               v["mean_grade"], v["efficiency"])
                              for cls, v in descent_classes.items()],
                         )
+                    # Durabilité sur les sorties longues (#48) : réutilise `gap_series`
+                    # (jamais un second calcul pente/GAP pour la même activité) — le
+                    # sport est déjà restreint à la famille course à pied par le `if`
+                    # englobant, comme pour le GAP/le découplage/la descente ci-dessus.
+                    # Aucun seuil de durée n'est appliqué ICI avant l'appel : c'est
+                    # `arc_durability.durability_report_from_series` elle-même qui
+                    # rend `eligible: False` avec une `reason`/`reason_code` explicites
+                    # sous `arc_metrics.LONG_RUN_MIN_DURATION_S` (même discipline que
+                    # le découplage, qui a son propre seuil interne à 60 min).
+                    dur_report = DU.durability_report_from_series(gap_series, resolution_s=S.DEFAULT_RESOLUTION_S)
+                    conn.execute(
+                        "UPDATE activity SET durability_gap_fade_pct = ?, durability_ef_fade_pct = ?, "
+                        "durability_hr_first_third_bpm = ?, durability_hr_middle_third_bpm = ?, "
+                        "durability_hr_last_third_bpm = ?, durability_reason = ?, "
+                        "durability_reason_code = ? WHERE id = ?",
+                        (dur_report["gap_fade_pct"], dur_report["ef_fade_pct"],
+                         dur_report["hr_first_third_bpm"], dur_report["hr_middle_third_bpm"],
+                         dur_report["hr_last_third_bpm"], dur_report["reason"], dur_report["reason_code"],
+                         act["id"]),
+                    )
                 except sqlite3.Error:
                     # Jamais rattrapé, `ARC_STRICT_METRICS` ou pas (voir le commentaire
                     # ci-dessus) : un verrou ou une base corrompue est un problème
@@ -989,8 +1039,12 @@ def compute_metrics(conn, conf: dict, today: Optional[str] = None) -> None:
                         "UPDATE activity SET gap_pace_s_km = NULL, decoupling_pct = NULL, ef_whole = NULL, "
                         "decoupling_reason = ?, best_vam_10min_m_h = NULL, best_vam_20min_m_h = NULL, "
                         "best_climb_vam_elapsed_m_h = NULL, descent_reference_gap_pace_s_km = NULL, "
-                        "descent_reference_source = NULL WHERE id = ?",
-                        ("calcul impossible (erreur interne)", act["id"]),
+                        "descent_reference_source = NULL, durability_gap_fade_pct = NULL, "
+                        "durability_ef_fade_pct = NULL, durability_hr_first_third_bpm = NULL, "
+                        "durability_hr_middle_third_bpm = NULL, durability_hr_last_third_bpm = NULL, "
+                        "durability_reason = ?, durability_reason_code = ? WHERE id = ?",
+                        ("calcul impossible (erreur interne)", "calcul impossible (erreur interne)",
+                         "internal_error", act["id"]),
                     )
     conn.execute("DELETE FROM metric_day")
     dated = sorted(loads)
@@ -1379,9 +1433,14 @@ def index_workspace(conn, workspace: Path, today: Optional[str] = None) -> dict:
     # préfixées `descent_*` — même raison que `decoupling_*`/`vam_*` ci-dessus
     # (collision possible, ex. "model", "restricted_to_run_family", "grade_classes").
     descent_assumptions = {f"descent_{key}": value for key, value in DS.ASSUMPTIONS.items()}
+    # `arc_durability.ASSUMPTIONS` (#48) fusionné à PART lui aussi, sous des clés
+    # préfixées `durability_*` — même raison que `decoupling_*`/`vam_*`/`descent_*`
+    # ci-dessus (collision possible, ex. "model", "restricted_to_run_family").
+    durability_assumptions = {f"durability_{key}": value for key, value in DU.ASSUMPTIONS.items()}
     for key, value in (("settings", _j(conf)),
                        ("assumptions", _j({**M.ASSUMPTIONS, **G.ASSUMPTIONS, **decoupling_assumptions,
-                                           **vam_assumptions, **descent_assumptions})),
+                                           **vam_assumptions, **descent_assumptions,
+                                           **durability_assumptions})),
                        ("today", today or date.today().isoformat())):
         conn.execute("INSERT OR REPLACE INTO meta VALUES (?, ?)", (key, value))
     conn.commit()
@@ -1779,12 +1838,79 @@ def descent_trend(conn, today: date, weeks: Optional[int] = None) -> dict:
     return M.descent_trend(rows, today, window_weeks)
 
 
+# ---------------------------------------------------------------------------
+# Durabilité sur les sorties longues (#48)
+# ---------------------------------------------------------------------------
+
+
+def activity_durability_report(conn, garmin_activity_id: int) -> dict:
+    """Rapport de durabilité (#48) d'une séance, par `garmin_activity_id` — pour
+    la CLI (`arc_index.py durability --activity`) et pour les agents en
+    headless. Lit les colonnes déjà calculées à l'indexation
+    (`compute_metrics`), jamais un recalcul à la lecture — même discipline que
+    `activity_decoupling_report` (#45)/`activity_gap_report` (#44). Rend
+    TOUJOURS `{"garmin_activity_id", "gap_fade_pct", "ef_fade_pct",
+    "hr_first_third_bpm", "hr_middle_third_bpm", "hr_last_third_bpm", "reason",
+    "reason_code", "applicable"}`, jamais une exception — voir
+    `arc_durability.durability_report` pour la sémantique de
+    `reason_code`/`applicable` (contrepartie stable, non localisée, de
+    `reason`)."""
+    empty = {"garmin_activity_id": garmin_activity_id, "gap_fade_pct": None, "ef_fade_pct": None,
+              "hr_first_third_bpm": None, "hr_middle_third_bpm": None, "hr_last_third_bpm": None}
+    act = conn.execute(
+        "SELECT sport, durability_gap_fade_pct, durability_ef_fade_pct, durability_hr_first_third_bpm, "
+        "durability_hr_middle_third_bpm, durability_hr_last_third_bpm, durability_reason, "
+        "durability_reason_code FROM activity WHERE garmin_activity_id = ?",
+        (garmin_activity_id,)).fetchone()
+    if act is None:
+        return {**empty, "reason": DU.REASON_UNKNOWN_ACTIVITY, "reason_code": "unknown_activity",
+                "applicable": True}
+    if M.sport_family(act["sport"]) != "run":
+        return {**empty, "reason": DU.REASON_NOT_RUN_FAMILY, "reason_code": "not_run_family",
+                "applicable": False}
+    if act["durability_gap_fade_pct"] is None and act["durability_reason"] is None:
+        return {**empty, "reason": DU.REASON_NO_SAMPLES, "reason_code": "no_samples", "applicable": True}
+    return {
+        "garmin_activity_id": garmin_activity_id,
+        "gap_fade_pct": act["durability_gap_fade_pct"],
+        "ef_fade_pct": act["durability_ef_fade_pct"],
+        "hr_first_third_bpm": act["durability_hr_first_third_bpm"],
+        "hr_middle_third_bpm": act["durability_hr_middle_third_bpm"],
+        "hr_last_third_bpm": act["durability_hr_last_third_bpm"],
+        "reason": act["durability_reason"],
+        "reason_code": act["durability_reason_code"],
+        "applicable": True,
+    }
+
+
+def durability_trend(conn, today: date, weeks: Optional[int] = None) -> dict:
+    """Tendance de durabilité (#48) — pour la CLI (`arc_index.py durability
+    --weeks`) et pour `coach`/le tableau de bord. Voir
+    `arc_metrics.durability_trend`/`arc_durability.ASSUMPTIONS` : sorties
+    longues (`moving_duration_s` déclaré, à défaut `duration_s` écoulé, >
+    `arc_metrics.LONG_RUN_MIN_DURATION_S`) de la famille course à pied.
+    `id AS activity_id` (revue de code #48, should-fix 3, cohérence avec
+    `descent_trend`) : clé de regroupement stable, jamais `(date, name,
+    sport)`. Aucun `WHERE` sur la durée ICI (contrairement à `api_decoupling`) :
+    le filtrage précis (moving_duration_s OU duration_s) est fait en Python par
+    `arc_metrics.durability_trend`, qui a besoin des DEUX colonnes pour
+    appliquer son repli — un `WHERE duration_s > ?` exclurait à tort une
+    activité dont seul `moving_duration_s` dépasse le seuil."""
+    rows = [dict(r) for r in conn.execute(
+        "SELECT id AS activity_id, date, sport, name, duration_s, moving_duration_s, "
+        "durability_gap_fade_pct, durability_ef_fade_pct, durability_hr_first_third_bpm, "
+        "durability_hr_middle_third_bpm, durability_hr_last_third_bpm, durability_reason, "
+        "durability_reason_code FROM activity").fetchall()]
+    window_weeks = weeks if weeks and weeks > 0 else M.DURABILITY_TREND_WEEKS
+    return M.durability_trend(rows, today, window_weeks)
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     parser.add_argument("command", nargs="?", default="index",
                         choices=("index", "backfill-plan", "status", "hrv-baseline", "sleep-debt",
                                  "heat-acclimation", "gear", "fueling", "samples", "zones", "gap",
-                                 "decoupling", "vam", "descent"))
+                                 "decoupling", "vam", "descent", "durability"))
     parser.add_argument("selector", nargs="?", default=None,
                         help="argument de la sous-commande (ex. garmin_activity_id pour « samples »)")
     parser.add_argument("--workspace")
@@ -1794,13 +1920,13 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--today", help="date de fin des séries (AAAA-MM-JJ)")
     parser.add_argument("--validate", nargs="+", metavar="FICHIER")
     parser.add_argument("--activity", type=int, metavar="GARMIN_ID",
-                        help="commande « zones »/« gap »/« decoupling »/« vam »/« descent » : temps en "
-                             "zone, GAP, découplage, montées/VAM ou efficacité en descente d'une séance "
-                             "(garmin_activity_id)")
+                        help="commande « zones »/« gap »/« decoupling »/« vam »/« descent »/« durability » : "
+                             "temps en zone, GAP, découplage, montées/VAM, efficacité en descente ou "
+                             "durabilité d'une séance (garmin_activity_id)")
     parser.add_argument("--weeks", type=int, metavar="N",
-                        help="commande « zones »/« decoupling »/« vam »/« descent » : polarisation ou "
-                             "tendance sur les N dernières semaines (défaut 8 pour « zones », 12 pour "
-                             "« decoupling »/« vam »/« descent »)")
+                        help="commande « zones »/« decoupling »/« vam »/« descent »/« durability » : "
+                             "polarisation ou tendance sur les N dernières semaines (défaut 8 pour "
+                             "« zones », 12 pour « decoupling »/« vam »/« descent »/« durability »)")
     return parser
 
 
@@ -1906,6 +2032,14 @@ def main(argv=None) -> int:
             print(json.dumps(activity_descent_report(conn, garmin_id), ensure_ascii=False))
             return 0
         print(json.dumps(descent_trend(conn, today_date, args.weeks), ensure_ascii=False))
+        return 0
+    if args.command == "durability":
+        today_date = date.fromisoformat(args.today) if args.today else date.today()
+        garmin_id = args.activity if args.activity is not None else (int(args.selector) if args.selector else None)
+        if garmin_id is not None:
+            print(json.dumps(activity_durability_report(conn, garmin_id), ensure_ascii=False))
+            return 0
+        print(json.dumps(durability_trend(conn, today_date, args.weeks), ensure_ascii=False))
         return 0
     if args.command == "status":
         by_status = {row[0]: row[1] for row in conn.execute(

@@ -198,11 +198,49 @@ six semaines d'historique pour que la condition ait un sens.
   réellement rencontrée, allure, distance, durée, efficacité) dans son propre
   tableau.
 
+- **La durabilité** (#48) : un point par sortie longue (plus de 90 minutes de
+  mouvement, la même borne que la tendance de découplage) éligible — fade GAP
+  et fade EF entre le dernier et le premier tiers de la sortie (temps de
+  mouvement, échauffement de 10 minutes exclu en premier, puis découpage en
+  trois tiers égaux), en pourcentage. Une valeur **positive** signale un
+  ralentissement en fin de sortie ; négative ou nulle, pas de baisse mesurable,
+  voire un négative splitting. Repère à 0 %, jamais un seuil validé
+  cliniquement, ni un « prédicteur » démontré de la tenue en ultra (aucune
+  source vérifiable n'établit ce lien pour ce calcul précis, seulement le
+  raisonnement de bon sens) — même prudence que le découplage aérobie (#45),
+  dont la durabilité partage l'esprit et les règles d'éligibilité (couverture
+  FC ≥ 80 % et au moins 10 minutes de course réellement exploitable sur le
+  premier ET le dernier tiers, pente comparable entre les deux, pentes fortes
+  et marche exclues du calcul mais jamais de la sortie entière), à une
+  différence près : **aucune** règle d'effort stable n'est appliquée — le fade
+  de fin de sortie est précisément ce que ce KPI cherche à détecter. **Fade
+  GAP et fade EF se lisent ensemble** : un fade EF nettement supérieur au fade
+  GAP signale une dérive cardiaque à allure comparable (fatigue
+  cardiovasculaire) ; un fade GAP marqué avec un fade EF proche de 0 signale
+  que l'allure et la FC ont baissé ensemble (effort réellement réduit, pas
+  seulement l'allure). **Sans règle d'effort stable, une course avec
+  accélération finale, un fartlek ou des intervalles en fin de sortie longue
+  produisent un fade qui reflète le plan de la séance, pas une baisse de
+  performance réelle** — ce KPI n'est interprétable que sur une sortie à
+  effort globalement continu. **Limite connue, mesurée** : sur un workspace
+  synthétique de 365 jours (profil trail, relief marqué), 0 sortie longue sur
+  40 est éligible (31 pour asymétrie de pente entre le premier et le dernier
+  tiers, 9 pour manque de course exploitable) — un aller-retour à un sommet ou
+  un circuit « montée d'abord » sont STRUCTURELLEMENT souvent inéligibles,
+  jamais un bug (le tiers du milieu n'est jamais utilisé dans un ratio ; voir
+  `scripts/arc_durability.py::ASSUMPTIONS["mountain_long_runs"]`). **Quand des
+  sorties longues existent mais qu'aucune n'est éligible, la section reste
+  affichée** avec un message (« N sorties longues, aucune éligible — raison
+  dominante ») plutôt que de disparaître silencieusement ; elle ne disparaît
+  que s'il n'y a AUCUNE sortie longue du tout dans la fenêtre. La fiche d'une
+  séance individuelle affiche le fade GAP (et le fade EF) comme un fait de
+  séance, aux côtés du découplage aérobie.
+
 | Alimentée par | Calcul |
 |---|---|
 | `activities/*.md` (durée, FC moyenne, effort perçu) | `scripts/arc_metrics.py` : TRIMP, ou effort perçu sans FC |
 | `planning/Runner_Profile.md` (FC max, FC de repos) | indispensables au TRIMP |
-| `activities/fit/*.json` (échantillons ingérés) | temps en zone FC → polarisation 80/20 ; GAP → découplage aérobie/EF ; montées détectées → VAM ; classes de pente descendante → efficacité en descente |
+| `activities/fit/*.json` (échantillons ingérés) | temps en zone FC → polarisation 80/20 ; GAP → découplage aérobie/EF ; montées détectées → VAM ; classes de pente descendante → efficacité en descente ; premier/dernier tiers → durabilité (fade GAP/EF) |
 
 **Si les courbes sont plates ou bizarres** : renseignez la FC max et la FC de repos
 de référence du profil. Sans elles, la charge vient de l'effort perçu seul.
@@ -354,7 +392,10 @@ de fréquence cardiaque et d'effort perçu, un astérisque.
   **découplage aérobie (Pa:HR)** (#45, facteur d'efficacité EF en complément) quand la
   séance est éligible (sortie course à pied d'au moins 60 minutes de mouvement, à
   effort stable — voir la section « Découplage aérobie » de « Forme & charge »
-  ci-dessus pour la méthode complète) ; absent sinon, jamais une valeur à zéro.
+  ci-dessus pour la méthode complète) ; absent sinon, jamais une valeur à zéro. La
+  **durabilité (fade GAP dernier tiers)** (#48, fade EF en complément) apparaît de la
+  même façon, quand la sortie est éligible (plus de 90 minutes de mouvement, voir la
+  section « Durabilité » de « Forme & charge » ci-dessus) ; absente sinon.
 - **La météo du jour**, si une prévision a été enregistrée.
 - **Les splits** : un graphique allure + FC, puis le tableau complet — temps, D+ / D-,
   FC, cadence et la lecture du coach pour chaque kilomètre quand il en a écrit une.
