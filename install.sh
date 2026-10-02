@@ -1774,7 +1774,7 @@ persist_llm() {
         ok "opencode : présent ($(opencode --version 2>/dev/null | head -1))"
     else
         warn "opencode absent — requis par le runner de sync et le chat sur $LLM_PROVIDER :"
-        warn "  curl -fsSL https://opencode.ai/install | bash   (ou : npm i -g opencode-ai ; brew install anomalyco/tap/opencode)"
+        warn "  curl -fsSL https://opencode.ai/v2/install | bash   (ou : npm i -g opencode-ai ; brew install anomalyco/tap/opencode)"
     fi
     if [[ "$LLM_PROVIDER" == "openrouter" ]]; then
         warn "Santé : limitez les fournisseurs OpenRouter à ceux qui ne conservent ni n'entraînent sur vos données (docs/mobile.md)."

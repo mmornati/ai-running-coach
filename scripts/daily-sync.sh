@@ -38,7 +38,7 @@ done
 
 # cron/launchd démarrent avec un PATH minimal : ajoute les emplacements usuels
 # de claude, codex, uv et garmin-mcp.
-export PATH="$HOME/.local/bin:$HOME/.claude/bin:$HOME/.cargo/bin:/opt/homebrew/bin:/usr/local/bin:$PATH"
+export PATH="$HOME/.local/bin:$HOME/.opencode/bin:$HOME/.claude/bin:$HOME/.cargo/bin:/opt/homebrew/bin:/usr/local/bin:$PATH"
 
 RUNNER="${RUNNER:-$(toml_get sync runner claude)}"
 LOOKBACK="$(toml_get sync lookback_days 2)"
@@ -407,7 +407,7 @@ build_command() {
             # Codex n'a pas de slash-command projet : on passe le corps du skill en prompt.
             CMD=(codex exec --full-auto --cd "$ARC_WORKSPACE" "$(skill_prompt)") ;;
         opencode)
-            have opencode || [[ "$DRY_RUN" -eq 1 ]] || die "opencode introuvable — installez OpenCode : curl -fsSL https://opencode.ai/install | bash"
+            have opencode || [[ "$DRY_RUN" -eq 1 ]] || die "opencode introuvable — installez OpenCode : curl -fsSL https://opencode.ai/v2/install | bash"
             [[ "$SYNC_MODEL" == */* ]] || die "[sync].model requis pour le runner opencode, au format fournisseur/modèle (ex. openrouter/deepseek/deepseek-v4.1-flash)."
             # Pas de slash-command projet garanti en mode headless (# À VÉRIFIER) :
             # on passe le corps du skill. Config locale (permissions, MCP) par
