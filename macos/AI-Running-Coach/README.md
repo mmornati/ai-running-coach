@@ -21,7 +21,7 @@ Depuis un Mac :
 scripts/build-macos-dmg.sh
 ```
 
-Le résultat est écrit dans `dist/AI-Running-Coach-<version>.dmg`. Le script compile une application universelle quand les SDK nécessaires sont disponibles, embarque une archive propre du moteur et crée un DMG avec un raccourci vers Applications.
+Le résultat est écrit dans `dist/AI-Running-Coach-<version>.dmg`. Le script compile une application universelle quand les SDK nécessaires sont disponibles, embarque uniquement les fichiers suivis nécessaires au moteur et crée un DMG avec un raccourci vers Applications.
 
 Pour une distribution publique sans alerte Gatekeeper, configurez une identité Developer ID et un profil `notarytool` :
 

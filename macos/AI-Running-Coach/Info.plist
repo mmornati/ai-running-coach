@@ -24,6 +24,8 @@
   <string>public.app-category.healthcare-fitness</string>
   <key>LSMinimumSystemVersion</key>
   <string>13.0</string>
+  <key>NSAppleEventsUsageDescription</key>
+  <string>AI Running Coach ouvre Terminal pour connecter votre compte sportif et lancer l’assistant IA choisi.</string>
   <key>NSHighResolutionCapable</key>
   <true/>
   <key>NSHumanReadableCopyright</key>

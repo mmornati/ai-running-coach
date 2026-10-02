@@ -9,7 +9,7 @@ L'application **AI Running Coach** évite le clonage Git, les options de ligne d
 3. Lancez l'application.
 4. Renseignez votre prénom, votre année de naissance, votre expérience, vos disponibilités et votre lieu d'entraînement ; les blessures, données physiologiques et préférences personnelles sont proposées juste en dessous mais peuvent attendre.
 5. Décrivez votre course et votre objectif. Si vous n'en avez pas encore, indiquez-le : la première conversation pourra servir à les définir.
-6. Choisissez votre source sportive, votre pratique, votre équipe et la façon de parler au coach.
+6. Choisissez votre source sportive, votre pratique, vos sports croisés, le ton et la longueur des retours, les unités, votre équipe et la façon de parler au coach.
 7. Cliquez sur **Installer mon coach**.
 
 Sur un Mac neuf, macOS peut proposer une fois ses outils système gratuits (Git et Python). Acceptez leur installation, puis cliquez sur **Réessayer** dans AI Running Coach ; aucun réglage technique n'est demandé.
@@ -22,7 +22,7 @@ L'application place :
 
 Vos séances, données de santé et plans ne sont donc jamais enfermés dans l'application. Une mise à jour ou une suppression de l'app ne supprime pas le dossier de données.
 
-L'assistant remplit aussi `planning/Runner_Profile.md` et `planning/active_objective.md` avec les réponses fournies. Dans le volet facultatif, on peut saisir les performances, allures, données physiologiques, blessures, motivations, sujets sensibles et plusieurs paires de chaussures avec leur date d'achat, kilométrage initial, usage et seuil d'usure. La première paire devient la paire par défaut si aucune ne l'était déjà.
+L'assistant remplit aussi `planning/Runner_Profile.md` et `planning/active_objective.md` avec les réponses fournies. Dans le volet facultatif, on peut saisir les performances, allures, VO2max, données physiologiques, blessures, motivations, sujets sensibles, sports croisés et plusieurs paires de chaussures avec leur date d'achat, kilométrage initial, usage et seuil d'usure. La première paire devient la paire par défaut si aucune ne l'était déjà.
 
 L'application passe par le même moteur que `/coach-setup` : un champ déjà rempli n'est jamais remplacé silencieusement, une paire existante n'est pas dupliquée et les libellés officiels du profil ou de l'objectif ne sont jamais renommés.
 
@@ -70,3 +70,5 @@ scripts/build-macos-dmg.sh
 ```
 
 Voir [`macos/AI-Running-Coach/README.md`](https://github.com/mmornati/ai-running-coach/tree/main/macos/AI-Running-Coach) pour la signature Developer ID et la notarisation Apple. Un DMG public doit être signé et notarié ; la signature ad hoc produite sans identité sert uniquement aux tests locaux.
+
+Le workflow **Tag a release** crée d'abord la release officielle, puis appelle le workflow macOS qui construit, signe et ajoute le DMG. Un tag poussé manuellement déclenche les deux workflows séparément ; le workflow macOS attend alors que la release existe avant d'y joindre le fichier.

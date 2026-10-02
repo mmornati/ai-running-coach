@@ -57,6 +57,30 @@ enum CoachingStyle: String, CaseIterable, Identifiable {
     }
 }
 
+enum CoachingIntensity: String, CaseIterable, Identifiable {
+    case gentle, balanced, strong
+    var id: String { rawValue }
+    var title: String {
+        switch self {
+        case .gentle: return "En douceur"
+        case .balanced: return "Équilibrée"
+        case .strong: return "Ferme"
+        }
+    }
+}
+
+enum CoachingVerbosity: String, CaseIterable, Identifiable {
+    case brief, standard, detailed
+    var id: String { rawValue }
+    var title: String {
+        switch self {
+        case .brief: return "Courte"
+        case .standard: return "Standard"
+        case .detailed: return "Détaillée"
+        }
+    }
+}
+
 enum SportChoice: String, CaseIterable, Identifiable {
     case trail, road
     var id: String { rawValue }
@@ -73,6 +97,12 @@ enum MorningCheck: String, CaseIterable, Identifiable {
         case .off: return "Désactivé"
         }
     }
+}
+
+enum UnitChoice: String, CaseIterable, Identifiable {
+    case metric, imperial
+    var id: String { rawValue }
+    var title: String { self == .metric ? "Métriques — km, m, kg" : "Impériales — miles, pieds, livres" }
 }
 
 enum ChatChoice: String, CaseIterable, Identifiable {
@@ -105,6 +135,7 @@ struct SetupChoices {
     var maxHeartRate = ""
     var restingHeartRate = ""
     var thresholdHeartRate = ""
+    var vo2Max = ""
     var sex = ""
     var zones = ""
     var referencePaces = ""
@@ -118,6 +149,12 @@ struct SetupChoices {
     var usualSlot = ""
     var accessibleTerrain = ""
     var equipment = ""
+    var crossCycling = false
+    var crossSwimming = false
+    var crossStrength = false
+    var crossHiking = false
+    var crossElliptical = false
+    var crossRowing = false
     var motivation = ""
     var coachingNoGo = ""
     var sensitiveTopics = ""
@@ -147,8 +184,13 @@ struct SetupChoices {
     var source: DataSource = .garmin
     var ide: IDEChoice = .claude
     var coachingStyle: CoachingStyle = .bienveillant
+    var coachingIntensity: CoachingIntensity = .balanced
+    var coachingVerbosity: CoachingVerbosity = .standard
     var sport: SportChoice = .trail
     var morningCheck: MorningCheck = .full
+    var documentsLanguage = "fr"
+    var responsesLanguage = "auto"
+    var units: UnitChoice = .metric
     var medical = true
     var nutritionist = true
     var strategist = true
@@ -161,6 +203,29 @@ struct SetupChoices {
         if nutritionist { result.append("nutritionist") }
         if strategist { result.append("course-strategist") }
         return result
+    }
+
+    var disciplines: [String] {
+        var result: [String] = []
+        if crossCycling { result.append("cycling") }
+        if crossSwimming { result.append("swimming") }
+        if crossStrength { result.append("strength") }
+        if crossHiking { result.append("hiking") }
+        if crossElliptical { result.append("elliptical") }
+        if crossRowing { result.append("rowing") }
+        return result
+    }
+
+    var disciplinesLabel: String {
+        let labels = [
+            crossCycling ? "vélo" : nil,
+            crossSwimming ? "natation" : nil,
+            crossStrength ? "renforcement" : nil,
+            crossHiking ? "randonnée" : nil,
+            crossElliptical ? "elliptique" : nil,
+            crossRowing ? "rameur" : nil
+        ].compactMap { $0 }
+        return labels.joined(separator: ", ")
     }
 
     var profileIsCompleteEnough: Bool {
@@ -226,6 +291,7 @@ final class CoachAppModel: ObservableObject {
     @Published var enrichmentError = ""
 
     private var dashboardProcess: Process?
+    private var dashboardBaseURL: URL?
     private let fm = FileManager.default
     private let defaults = UserDefaults.standard
 
@@ -265,11 +331,12 @@ final class CoachAppModel: ObservableObject {
         if let saved = defaults.string(forKey: "assistant"), let assistant = IDEChoice(rawValue: saved) {
             choices.ide = assistant
         }
-        if defaults.bool(forKey: "integratedChatEnabled") {
-            choices.chatChoice = .integrated
+        let installed = isInstalled
+        if installed {
+            choices.chatChoice = defaults.bool(forKey: "integratedChatEnabled") ? .integrated : .external
         }
-        phase = isInstalled ? .ready : .welcome
-        updateAvailable = isInstalled && defaults.string(forKey: "engineVersion") != bundleVersion
+        phase = installed ? .ready : .welcome
+        updateAvailable = installed && defaults.string(forKey: "engineVersion") != bundleVersion
         NotificationCenter.default.addObserver(
             forName: NSApplication.willTerminateNotification,
             object: nil,
@@ -306,6 +373,7 @@ final class CoachAppModel: ObservableObject {
         log = ""
         errorMessage = ""
         let selected = choices
+        let installationIDE: IDEChoice = selected.chatChoice == .integrated ? .opencode : selected.ide
 
         Task {
             do {
@@ -328,7 +396,7 @@ final class CoachAppModel: ObservableObject {
                 var args = [
                     "--workspace", selected.workspace,
                     "--source", selected.source.rawValue,
-                    "--ide", selected.ide.rawValue,
+                    "--ide", installationIDE.rawValue,
                     "--agents", selected.agents.joined(separator: ","),
                     "--no-auth"
                 ]
@@ -357,7 +425,7 @@ final class CoachAppModel: ObservableObject {
                 defaults.set(selected.workspace, forKey: "workspace")
                 defaults.set(selected.source.rawValue, forKey: "source")
                 defaults.set(selected.chatChoice == .integrated, forKey: "integratedChatEnabled")
-                defaults.set(selected.ide.rawValue, forKey: "assistant")
+                defaults.set(installationIDE.rawValue, forKey: "assistant")
                 defaults.set(bundleVersion, forKey: "engineVersion")
                 choices.openRouterAPIKey = ""
                 updateAvailable = false
@@ -391,7 +459,7 @@ final class CoachAppModel: ObservableObject {
                         engineURL.appendingPathComponent("install.sh").path,
                         "--workspace", workspaceURL.path,
                         "--source", choices.source.rawValue,
-                        "--ide", choices.ide.rawValue,
+                        "--ide", integratedChatEnabled ? IDEChoice.opencode.rawValue : choices.ide.rawValue,
                         "--no-auth"
                     ],
                     directory: engineURL,
@@ -490,7 +558,11 @@ final class CoachAppModel: ObservableObject {
         }
         let directory = fm.homeDirectoryForCurrentUser.appendingPathComponent(".config/ai-running-coach", isDirectory: true)
         let file = directory.appendingPathComponent("llm.env")
-        try fm.createDirectory(at: directory, withIntermediateDirectories: true)
+        try fm.createDirectory(
+            at: directory,
+            withIntermediateDirectories: true,
+            attributes: [.posixPermissions: 0o700]
+        )
         let previous = (try? String(contentsOf: file, encoding: .utf8)) ?? ""
         let kept = previous.split(separator: "\n", omittingEmptySubsequences: false).filter { line in
             let trimmed = line.trimmingCharacters(in: .whitespaces)
@@ -498,8 +570,25 @@ final class CoachAppModel: ObservableObject {
         }
         let contents = kept.joined(separator: "\n").trimmingCharacters(in: .newlines)
             + (kept.isEmpty ? "" : "\n") + "OPENROUTER_API_KEY=\(key)\n"
-        try contents.write(to: file, atomically: true, encoding: .utf8)
-        try fm.setAttributes([.posixPermissions: 0o600], ofItemAtPath: file.path)
+        let temporary = directory.appendingPathComponent(".llm.env.\(UUID().uuidString)")
+        guard fm.createFile(
+            atPath: temporary.path,
+            contents: contents.data(using: .utf8),
+            attributes: [.posixPermissions: 0o600]
+        ) else {
+            throw AppFailure("La clé OpenRouter n’a pas pu être enregistrée.")
+        }
+        do {
+            if fm.fileExists(atPath: file.path) {
+                _ = try fm.replaceItemAt(file, withItemAt: temporary)
+            } else {
+                try fm.moveItem(at: temporary, to: file)
+            }
+            try fm.setAttributes([.posixPermissions: 0o600], ofItemAtPath: file.path)
+        } catch {
+            try? fm.removeItem(at: temporary)
+            throw error
+        }
     }
 
     private func ensureOpenCode() async throws {
@@ -655,15 +744,15 @@ final class CoachAppModel: ObservableObject {
     private func applyConfiguration(_ selected: SetupChoices) async throws {
         let answers: [String: Any] = [
             "coaching.style": selected.coachingStyle.rawValue,
-            "coaching.intensity": "balanced",
-            "coaching.verbosity": "standard",
+            "coaching.intensity": selected.coachingIntensity.rawValue,
+            "coaching.verbosity": selected.coachingVerbosity.rawValue,
             "sport.primary": selected.sport.rawValue,
-            "sport.disciplines": [],
+            "sport.disciplines": selected.disciplines,
             "agents.enabled": selected.agents,
             "health.morning_check": selected.morningCheck.rawValue,
-            "language.documents": "fr",
-            "language.responses": "auto",
-            "athlete.units": "metric"
+            "language.documents": selected.documentsLanguage,
+            "language.responses": selected.responsesLanguage,
+            "athlete.units": selected.units.rawValue
         ]
         let data = try JSONSerialization.data(withJSONObject: answers, options: [.prettyPrinted, .sortedKeys])
         let answerFile = appSupport.appendingPathComponent("setup-answers.json")
@@ -695,6 +784,7 @@ final class CoachAppModel: ObservableObject {
             "FC max": selected.maxHeartRate,
             "FC de repos de référence": selected.restingHeartRate,
             "FC au seuil": selected.thresholdHeartRate,
+            "VO2max (Garmin)": selected.vo2Max,
             "Sexe": selected.sex,
             "Zones / seuils": selected.zones,
             "Allures de référence": selected.referencePaces,
@@ -708,6 +798,7 @@ final class CoachAppModel: ObservableObject {
             "Créneau habituel": selected.usualSlot,
             "Terrain accessible": selected.accessibleTerrain,
             "Équipement": selected.equipment,
+            "Sports croisés pratiqués": selected.disciplinesLabel,
             "Ce qui me motive": selected.motivation,
             "Ce qui ne marche pas avec moi": selected.coachingNoGo,
             "Sujets à ne pas commenter spontanément": selected.sensitiveTopics,
@@ -859,12 +950,14 @@ final class CoachAppModel: ObservableObject {
     }
 
     func launchDashboard(openChat: Bool = false) {
-        let destination = openChat ? "http://127.0.0.1:8765/chat.html" : "http://127.0.0.1:8765/"
         if dashboardProcess?.isRunning == true {
-            NSWorkspace.shared.open(URL(string: destination)!)
+            if let base = dashboardBaseURL {
+                NSWorkspace.shared.open(openChat ? base.appendingPathComponent("chat.html") : base)
+            }
             return
         }
         log = ""
+        dashboardBaseURL = nil
         let process = Process()
         let pipe = Pipe()
         process.executableURL = URL(fileURLWithPath: "/bin/bash")
@@ -882,13 +975,17 @@ final class CoachAppModel: ObservableObject {
                     let suffix = text[range.upperBound...]
                     let value = suffix.split(whereSeparator: { $0 == "\n" || $0 == "\r" }).first.map(String.init) ?? ""
                     if let url = URL(string: value) {
+                        self?.dashboardBaseURL = url
                         NSWorkspace.shared.open(openChat ? url.appendingPathComponent("chat.html") : url)
                     }
                 }
             }
         }
         process.terminationHandler = { [weak self] _ in
-            Task { @MainActor in self?.dashboardRunning = false }
+            Task { @MainActor in
+                self?.dashboardRunning = false
+                self?.dashboardBaseURL = nil
+            }
         }
         do {
             try process.run()
@@ -903,6 +1000,7 @@ final class CoachAppModel: ObservableObject {
     func stopDashboard() {
         dashboardProcess?.terminate()
         dashboardProcess = nil
+        dashboardBaseURL = nil
         dashboardRunning = false
     }
 
@@ -1069,6 +1167,7 @@ struct SetupView: View {
                                 ProfileField(label: "FC max", placeholder: "182 bpm", text: $model.choices.maxHeartRate)
                                 ProfileField(label: "FC de repos", placeholder: "47 bpm, valeur habituelle", text: $model.choices.restingHeartRate)
                                 ProfileField(label: "FC au seuil", placeholder: "170 bpm", text: $model.choices.thresholdHeartRate)
+                                ProfileField(label: "VO2max Garmin", placeholder: "52 ml/kg/min", text: $model.choices.vo2Max)
                                 ProfileField(label: "Sexe", placeholder: "Facultatif — F ou H", text: $model.choices.sex)
                                 ProfileField(label: "Zones / seuils", placeholder: "Z1 120–135, Z2 136–150…", text: $model.choices.zones)
                                 ProfileField(label: "Allures de référence", placeholder: "10 km en 45 min, semi en 1 h 40…", text: $model.choices.referencePaces)
@@ -1085,6 +1184,24 @@ struct SetupView: View {
                                 ProfileField(label: "Sujets sensibles", placeholder: "Le poids, sauf si je le demande…", text: $model.choices.sensitiveTopics)
                                 ProfileField(label: "Tolérance au risque", placeholder: "Prudent, équilibré ou agressif — et pourquoi", text: $model.choices.riskTolerance)
                                 ProfileField(label: "Me demander avant de supposer", placeholder: "Douleur, disponibilité, changement d’objectif…", text: $model.choices.askBeforeAssuming)
+                                Divider()
+                                Text("Sports croisés pratiqués").font(.headline)
+                                Text("Le coach ne programmera que les activités sélectionnées.")
+                                    .font(.caption).foregroundStyle(.secondary)
+                                Grid(alignment: .leading, horizontalSpacing: 28, verticalSpacing: 8) {
+                                    GridRow {
+                                        Toggle("Vélo", isOn: $model.choices.crossCycling)
+                                        Toggle("Natation", isOn: $model.choices.crossSwimming)
+                                    }
+                                    GridRow {
+                                        Toggle("Renforcement", isOn: $model.choices.crossStrength)
+                                        Toggle("Randonnée", isOn: $model.choices.crossHiking)
+                                    }
+                                    GridRow {
+                                        Toggle("Elliptique", isOn: $model.choices.crossElliptical)
+                                        Toggle("Rameur", isOn: $model.choices.crossRowing)
+                                    }
+                                }
                                 Divider()
                                 Text("Chaussures").font(.headline)
                                 Text("La première paire renseignée devient la paire utilisée par défaut quand une séance n’en précise aucune.")
@@ -1166,10 +1283,23 @@ struct SetupView: View {
                 }
 
                 GroupBox("4. Votre pratique") {
-                    Grid(alignment: .leading, horizontalSpacing: 18, verticalSpacing: 12) {
-                        GridRow { Text("Discipline"); Picker("", selection: $model.choices.sport) { ForEach(SportChoice.allCases) { Text($0.title).tag($0) } }.labelsHidden() }
-                        GridRow { Text("Style du coach"); Picker("", selection: $model.choices.coachingStyle) { ForEach(CoachingStyle.allCases) { Text($0.title).tag($0) } }.labelsHidden() }
-                        GridRow { Text("Bilan du matin"); Picker("", selection: $model.choices.morningCheck) { ForEach(MorningCheck.allCases) { Text($0.title).tag($0) } }.labelsHidden() }
+                    VStack(alignment: .leading, spacing: 12) {
+                        Grid(alignment: .leading, horizontalSpacing: 18, verticalSpacing: 12) {
+                            GridRow { Text("Discipline"); Picker("", selection: $model.choices.sport) { ForEach(SportChoice.allCases) { Text($0.title).tag($0) } }.labelsHidden() }
+                            GridRow { Text("Style du coach"); Picker("", selection: $model.choices.coachingStyle) { ForEach(CoachingStyle.allCases) { Text($0.title).tag($0) } }.labelsHidden() }
+                            GridRow { Text("Fermeté"); Picker("", selection: $model.choices.coachingIntensity) { ForEach(CoachingIntensity.allCases) { Text($0.title).tag($0) } }.labelsHidden() }
+                            GridRow { Text("Longueur des retours"); Picker("", selection: $model.choices.coachingVerbosity) { ForEach(CoachingVerbosity.allCases) { Text($0.title).tag($0) } }.labelsHidden() }
+                            GridRow { Text("Bilan du matin"); Picker("", selection: $model.choices.morningCheck) { ForEach(MorningCheck.allCases) { Text($0.title).tag($0) } }.labelsHidden() }
+                            GridRow { Text("Unités"); Picker("", selection: $model.choices.units) { ForEach(UnitChoice.allCases) { Text($0.title).tag($0) } }.labelsHidden() }
+                        }
+                        DisclosureGroup("Langues des documents et des réponses") {
+                            VStack(alignment: .leading, spacing: 10) {
+                                ProfileField(label: "Documents", placeholder: "fr", text: $model.choices.documentsLanguage)
+                                ProfileField(label: "Réponses", placeholder: "auto", text: $model.choices.responsesLanguage)
+                                Text("Utilisez un code court comme fr, en ou nl. « auto » répond dans la langue de votre message.")
+                                    .font(.caption).foregroundStyle(.secondary)
+                            }.padding(.top, 8)
+                        }
                     }.padding(8)
                 }
 

@@ -61,22 +61,24 @@ done
 iconutil -c icns "$ICONSET" -o "$RESOURCES/AppIcon.icns"
 
 echo "→ Embarquement du moteur"
-tar -czf "$PAYLOAD" -C "$ROOT" \
-    --exclude='./.git' \
-    --exclude='./dist' \
-    --exclude='./site' \
-    --exclude='./.arc' \
-    --exclude='./activities' \
-    --exclude='./medical' \
-    --exclude='./nutrition' \
-    --exclude='./planning' \
-    --exclude='./rapports' \
-    --exclude='./gear' \
-    --exclude='./resources' \
-    --exclude='./config/workspace.user.toml' \
-    --exclude='./logs' \
-    --exclude='./.DS_Store' \
-    .
+# La liste vient de Git : aucun cache, secret ou fichier personnel non suivi ne
+# peut se glisser dans un DMG construit depuis un poste de développement.
+git -C "$ROOT" ls-files -z -- \
+    . \
+    ':(exclude)activities/**' \
+    ':(exclude)medical/**' \
+    ':(exclude)nutrition/**' \
+    ':(exclude)planning/**' \
+    ':(exclude)rapports/**' \
+    ':(exclude)gear/**' \
+    ':(exclude)resources/**' \
+    ':(exclude)config/workspace.user.toml' \
+    ':(exclude)logs/**' \
+    ':(exclude)tests/**' \
+    ':(exclude)macos/**' \
+    ':(exclude).github/workflows/**' \
+    ':(exclude).impeccable/**' \
+    | tar --null -czf "$PAYLOAD" -C "$ROOT" -T -
 
 IDENTITY="${ARC_CODESIGN_IDENTITY:--}"
 echo "→ Signature de l'application"
