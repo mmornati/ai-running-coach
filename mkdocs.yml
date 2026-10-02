@@ -95,6 +95,7 @@ nav:
       - Stratège de course: agents/course-strategist.md
       - Médecin: agents/medical.md
       - Nutritionniste: agents/nutritionist.md
+      - Directeur sportif: agents/sports-director.md
   - Skills:
       - Vue d'ensemble: skills.md
       - Aujourd'hui (/today): skills/today.md

@@ -59,7 +59,7 @@ point d'entrée : elle doit donner envie de l'essayer.
 
 ## Capabilities and Constraints
 
-- 4 agents : `coach`, `course-strategist`, `medical`, `nutritionist` — **sélectionnables
+- 5 agents : `coach`, `course-strategist`, `medical`, `nutritionist`, `sports-director` — **sélectionnables
   à l'installation** (`--agents`, `--no-medical`).
 - 12 skills : analyse GPX, comparaison de parcours, planification Garmin, météo,
   analyse de séances, Intervals.icu (secondaire), téléchargement FIT, sync Garmin,

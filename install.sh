@@ -125,6 +125,7 @@ WORKSPACE_ARG=""   # --workspace DIR (défaut : le dossier du projet)
 REMOTE_CONTROL=0   # service Claude Code Remote Control (accès mobile)
 AGENTS_ARG=""      # --agents coach,medical,… (défaut : la config, sinon tous)
 ENABLED_AGENTS=""  # résolu par resolve_agents()
+NEW_AGENTS=""      # agents apparus depuis la dernière installation, activés d'office
 PRESET=""          # --preset laptop|coach-server|docker (défaut : aucun)
 SOURCE="garmin"    # --source garmin|intervals (#68) — source de données primaire
 LLM_PROVIDER=""    # --llm openrouter|anthropic|openai — chat + sync sur une API
@@ -673,8 +674,14 @@ all_agents() {
 # L'ensemble retenu est réécrit dans workspace.user.toml pour que l'installation
 # et l'exécution ne puissent pas diverger : le coach ne délègue qu'aux agents
 # listés là, et il n'y a donc qu'une seule vérité.
+# Agents connus d'une installation antérieure à `[agents].known` : les quatre
+# agents d'origine. Sans cette référence, un agent ajouté au moteur depuis
+# (ex. sports-director) serait impossible à distinguer d'un agent retiré par
+# l'athlète, et n'arriverait jamais chez les utilisateurs existants.
+LEGACY_KNOWN_AGENTS="coach medical nutritionist course-strategist"
+
 resolve_agents() {
-    local available requested="" excluded="" name keep skip
+    local available requested="" excluded="" name keep skip known
     available="$(all_agents)"
 
     if [[ "$AGENTS_ARG" == __all_but__:* ]]; then
@@ -686,6 +693,21 @@ resolve_agents() {
         requested="$(python3 "$PROJECT_ROOT/scripts/coach_config.py" get \
             --workspace "$WORKSPACE_ROOT" --section agents --key enabled 2>/dev/null | tr '\n' ' ')" \
             || requested=""
+        # Mise à jour : un agent du moteur absent de `[agents].known` est
+        # nouveau, il rejoint le staff (le défaut active tous les agents). Un
+        # agent connu mais absent de `enabled` a été retiré : il le reste.
+        if [[ -n "$requested" ]]; then
+            known="$(python3 "$PROJECT_ROOT/scripts/coach_config.py" get \
+                --workspace "$WORKSPACE_ROOT" --section agents --key known 2>/dev/null | tr '\n' ' ')" \
+                || known=""
+            [[ -n "${known// /}" ]] || known="$LEGACY_KNOWN_AGENTS"
+            for name in $available; do
+                printf '%s\n' $known $requested | grep -qx "$name" && continue
+                NEW_AGENTS="$NEW_AGENTS $name"
+            done
+            NEW_AGENTS="${NEW_AGENTS# }"
+            [[ -z "$NEW_AGENTS" ]] || requested="$requested $NEW_AGENTS"
+        fi
     fi
     [[ -n "$requested" ]] || requested="$available"
 
@@ -703,6 +725,13 @@ resolve_agents() {
     ENABLED_AGENTS="${ENABLED_AGENTS# }"
 
     [[ -n "$ENABLED_AGENTS" ]] || die "Aucun agent sélectionné — il en faut au moins un."
+    if [[ -n "$NEW_AGENTS" ]]; then
+        local without=""
+        for name in $ENABLED_AGENTS; do
+            printf '%s\n' $NEW_AGENTS | grep -qx "$name" || without="$without,$name"
+        done
+        ok "Nouvel agent activé : $NEW_AGENTS — pour le retirer : ./install.sh --agents ${without#,}"
+    fi
     printf '%s\n' $ENABLED_AGENTS | grep -qx coach \
         || die "L'agent « coach » est indispensable : c'est lui qui planifie et pousse vers Garmin."
     log "Staff : $ENABLED_AGENTS"
@@ -738,18 +767,25 @@ resolve_source() {
     log "Source de données : $SOURCE"
 }
 
-# Enregistre le staff retenu dans la config personnelle.
+# Enregistre le staff retenu dans la config personnelle, et les agents que le
+# moteur fournit à cet instant (`[agents].known`) : à la prochaine mise à jour,
+# seul un agent absent de cette liste sera considéré comme nouveau.
 persist_agents() {
     if [[ "$DRY_RUN" -eq 1 ]]; then
         printf '%s\n' "${C_YELLOW}[dry-run]${C_RESET} [agents].enabled = $ENABLED_AGENTS"
+        printf '%s\n' "${C_YELLOW}[dry-run]${C_RESET} [agents].known = $(all_agents | tr '\n' ' ')"
         return 0
     fi
     have python3 || return 0
-    local args=() name
+    local args=() known=() name
     for name in $ENABLED_AGENTS; do args+=(--list "$name"); done
+    for name in $(all_agents); do known+=(--list "$name"); done
     python3 "$PROJECT_ROOT/scripts/coach_config.py" set \
         --workspace "$WORKSPACE_ROOT" --section agents --key enabled "${args[@]}" >/dev/null \
         || warn "Impossible d'écrire [agents].enabled — vérifiez config/workspace.user.toml."
+    python3 "$PROJECT_ROOT/scripts/coach_config.py" set \
+        --workspace "$WORKSPACE_ROOT" --section agents --key known "${known[@]}" >/dev/null \
+        || warn "Impossible d'écrire [agents].known — vérifiez config/workspace.user.toml."
 }
 
 # Enregistre la source de données retenue (#68) — sans toucher aux autres clés
@@ -1899,6 +1935,7 @@ print_config_recap() {
     # Les préréglages ne touchent jamais au staff d'agents (voir apply_preset) :
     # « défaut » veut dire ici config/workspace.user.toml ou, à défaut, tous.
     recap_line "Agents" "$ENABLED_AGENTS" "$([[ "$EXPLICIT_AGENTS" -eq 1 ]] && echo "explicite" || echo "défaut")"
+    [[ -z "$NEW_AGENTS" ]] || recap_line "Nouveaux agents" "$NEW_AGENTS" "mise à jour"
     recap_line "$([[ "$SOURCE" == "intervals" ]] && echo "Auth Intervals.icu" || echo "Auth Garmin")" \
         "$([[ "$DO_AUTH" -eq 1 ]] && echo "activée" || echo "sautée")" "$(_config_origin "$EXPLICIT_DO_AUTH")"
     recap_line "Passerelle leanproxy" \

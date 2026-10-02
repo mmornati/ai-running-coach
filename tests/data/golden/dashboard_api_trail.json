@@ -8030,7 +8030,8 @@
             "coach",
             "medical",
             "nutritionist",
-            "course-strategist"
+            "course-strategist",
+            "sports-director"
           ],
           "chat_enabled": false,
           "climb_min_gain_m": 50.0,

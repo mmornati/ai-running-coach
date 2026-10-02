@@ -12,7 +12,7 @@ Le projet est **en français par défaut** (la langue des documents générés e
 
 | Composant | Description |
 |---|---|
-| 🧠 **4 agents spécialisés** | `coach`, `course-strategist`, `medical`, `nutritionist` — installez seulement ceux que vous voulez |
+| 🧠 **5 agents spécialisés** | `coach`, `course-strategist`, `medical`, `nutritionist`, `sports-director` — installez seulement ceux que vous voulez |
 | 🛠️ **20 skills** | commandes courtes `/today` `/why` `/week` `/race` `/log` `/inspection`, analyse GPX, comparaison de parcours, planification Garmin, météo, analyse de séances, Intervals.icu, diagnostic d'installation, inspection photo des chaussures, etc. |
 | 📡 **Accès Garmin Connect** | via `garmin-mcp` (mode direct, liste blanche d'outils) — passerelle `leanproxy-mcp` optionnelle |
 | 🚀 **Installation automatisée** | un script pour installer et configurer tout (uv, Garmin, IDE) |
@@ -148,7 +148,7 @@ Tout est décrit dans [la documentation de configuration](docs/configuration.md)
 
 ```
 ai-running-coach/
-├── agents/                  # Agents IA (coach, course-strategist, medical, nutritionist)
+├── agents/                  # Agents IA (coach, course-strategist, medical, nutritionist, sports-director)
 ├── skills/                  # Skills (analyse GPX, planification, météo, etc.)
 ├── scripts/                 # Machine « coach » : sync automatique, notifications, Remote Control
 ├── config/
