@@ -1,6 +1,6 @@
 # Source de données alternative intervals.icu (#68) : le sync headless doit
 # utiliser les outils du serveur MCP `intervals` (correspondance vérifiée
-# contre `eddmann/intervals-icu-mcp`, AGENTS.md → « Backends MCP ») et NE
+# contre `hhopke/intervals-icu-mcp`, AGENTS.md → « Backends MCP ») et NE
 # JAMAIS appeler le serveur `garmin` — bien que `garmin` reste TOUJOURS câblé
 # dans .mcp.json par le runner (`runner.build_workspace` : c'est le seul
 # serveur jamais sauté, avec ou sans section `[stub.garmin]`, contrairement à
@@ -14,7 +14,7 @@
 # vide ne scripterait rien silencieusement) : sans cette entrée, le runner ne
 # câblerait même pas le serveur `intervals` (`server != "garmin" and not
 # stub_section: continue` dans `runner.build_workspace` — seul `garmin` est
-# TOUJOURS câblé). `get_wellness_for_date` reste sur les données canned par
+# TOUJOURS câblé). `icu_get_wellness_for_date` reste sur les données canned par
 # défaut du stub (`stub_intervals_mcp.CANNED`), inutile de le surcharger.
 #
 # Fixture "base-week" : dates fixes (2026-03-xx), donc "aujourd'hui" et "hier"
@@ -27,11 +27,11 @@ fixture = "base-week"
 [config.data]
 source = "intervals"
 
-[stub.intervals.get_recent_activities]
+[stub.intervals.icu_get_recent_activities]
 file = "intervals-recent-activities.json"
 
 [expect]
 must_match = ['```resume']
-tools_called = ["get_wellness_for_date", "get_recent_activities"]
+tools_called = ["icu_get_wellness_for_date", "icu_get_recent_activities"]
 tools_not_called = ["get_hrv_data", "get_rhr_day", "get_training_readiness", "get_sleep_data", "get_activities", "get_activities_by_date"]
 files_with_arc_block = ["activities/*.md", "medical/*_health.md"]

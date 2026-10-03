@@ -198,6 +198,17 @@ requis, et seulement avec `--json`. Le script se relance dans l'environnement
 environnement n'a pas encore `fitparse` : relancez `./install.sh --source
 intervals`, qui l'ajoute sans réinstaller le serveur.
 
+### Le coach ne trouve pas `icu_get_wellness_for_date` (ou, à l'inverse, ne trouve que `get_wellness_for_date`)
+
+Source Intervals.icu uniquement. Les outils du serveur retenu depuis #165
+(`hhopke/intervals-icu-mcp`) portent le préfixe `icu_` ; l'ancien serveur
+(`eddmann/…`) les exposait sans préfixe. Si seuls les noms **sans** préfixe
+existent, l'ancien serveur est encore installé : `python3 scripts/coach_doctor.py
+--check intervals_mcp_pin`, puis `./install.sh --source intervals` et une
+**nouvelle** session (voir [Mise à jour](update.md#migration-vers-le-fork-hhopkeintervals-icu-mcp-165)).
+Si les outils `icu_*` existent déjà mais que votre session ne les voit pas : la
+session a été ouverte avant la mise à jour, rouvrez-en une.
+
 ### `download_fit.py` affiche `INDISPONIBLE` (Intervals.icu)
 
 L'activité a été importée dans Intervals.icu **depuis Strava** : l'API Strava
