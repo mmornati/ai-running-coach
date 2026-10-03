@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import sys
 import time
 from datetime import datetime, timedelta, timezone
@@ -751,6 +752,82 @@ class TestFitReader(InstallAsserts):
             self.assertIn("garmin-mcp", check["message"])
 
 
+class TestIntervalsMcpPin(InstallAsserts):
+    """#165 : le serveur intervals.icu installé par `uv tool` est-il au commit épinglé par install.sh ?
+    Une installation antérieure (eddmann@cb91d4a) expose des outils sans préfixe `icu_` : ⚠️ + commande
+    de mise à jour. Origine lue dans le `direct_url.json` de l'environnement — simulé ici."""
+
+    LEGACY = "https://github.com/eddmann/intervals-icu-mcp"
+    FORK = "https://github.com/hhopke/intervals-icu-mcp"
+
+    @staticmethod
+    def _pinned_commit(sb):
+        text = (sb.repo / "install.sh").read_text(encoding="utf-8")
+        return re.search(r'^INTERVALS_MCP_REF="git\+[^@"]+@([0-9a-f]{40})"', text, re.MULTILINE).group(1)
+
+    def _fake_install(self, sb, url, commit):
+        env = sb.home / ".local/share/uv/tools/intervals-icu-mcp"
+        py = env / "bin/python3"
+        py.parent.mkdir(parents=True)
+        py.write_text("#!/bin/sh\nexit 0\n")
+        py.chmod(0o755)
+        dist = env / "lib/python3.12/site-packages/intervals_icu_mcp-5.5.0.dist-info"
+        dist.mkdir(parents=True)
+        (dist / "direct_url.json").write_text(json.dumps({"url": url, "vcs_info": {"vcs": "git", "commit_id": commit}}))
+
+    def _check(self, sb, source="intervals"):
+        if source:
+            (sb.repo / "config").mkdir(exist_ok=True)
+            (sb.repo / "config/workspace.user.toml").write_text(f'[data]\nsource = "{source}"\n')
+        proc = sb.script("coach_doctor.py", "--json", "--workspace", str(sb.repo),
+                         "--tokens-dir", str(_fresh_tokens_dir(sb)), "--check", "intervals_mcp_pin")
+        return proc, _find(json.loads(proc.stdout), "intervals_mcp_pin")
+
+    def test_legacy_eddmann_install_is_a_warning_with_the_update_command(self):
+        with Sandbox() as sb:
+            self._fake_install(sb, self.LEGACY, "cb91d4a0f3b4dc21f57421e029c07a8e9af11649")
+            proc, check = self._check(sb)
+            self.assertSucceeded(proc)   # warning : jamais un code de sortie en échec
+            self.assertEqual(check["status"], "warning")
+            self.assertIn("eddmann", check["message"])
+            self.assertIn("icu_", check["message"])
+            self.assertEqual(check["fix"], "./install.sh --source intervals")
+
+    def test_install_at_the_pinned_commit_is_ok(self):
+        with Sandbox() as sb:
+            self._fake_install(sb, self.FORK, self._pinned_commit(sb))
+            _, check = self._check(sb)
+            self.assertEqual(check["status"], "ok")
+
+    def test_older_fork_commit_is_informational(self):
+        with Sandbox() as sb:
+            self._fake_install(sb, self.FORK, "0" * 40)
+            _, check = self._check(sb)
+            self.assertEqual(check["status"], "info")
+            self.assertEqual(check["fix"], "./install.sh --source intervals")
+
+    def test_custom_origin_is_left_alone(self):
+        with Sandbox() as sb:
+            self._fake_install(sb, "https://example.org/my-fork", "1" * 40)
+            _, check = self._check(sb)
+            self.assertEqual(check["status"], "info")
+            self.assertIsNone(check["fix"])
+
+    def test_unreadable_origin_is_informational(self):
+        with Sandbox() as sb:
+            _, check = self._check(sb)          # aucun environnement uv
+            self.assertEqual(check["status"], "info")
+
+    def test_garmin_source_is_not_applicable_even_with_a_legacy_install(self):
+        """Critère d'acceptation : les utilisateurs `[data].source = "garmin"` (défaut) ne sont pas touchés."""
+        with Sandbox() as sb:
+            self._fake_install(sb, self.LEGACY, "cb91d4a0f3b4dc21f57421e029c07a8e9af11649")
+            for source in (None, "garmin"):
+                _, check = self._check(sb, source or "garmin")
+                self.assertEqual(check["status"], "info")
+                self.assertIsNone(check["fix"])
+
+
 class TestDataSourceAware(InstallAsserts):
     """`[data].source = "intervals"` (#68) : ni `garmin_token` ni `garmin_mcp`
     ne doivent rapporter une panne — l'athlète n'a jamais eu de compte
@@ -965,7 +1042,8 @@ class TestJsonSchema(InstallAsserts):
             expected_ids = {
                 "garmin_token", "garmin_mcp", "config_files", "athlete_profile",
                 "index_freshness", "out_of_contract", "daily_sync_scheduled", "ntfy_configured",
-                "gear_sync", "gear_history", "fit_reader", "llm_config", "chat_service", "opencode_cli",
+                "gear_sync", "gear_history", "fit_reader", "intervals_mcp_pin",
+                "llm_config", "chat_service", "opencode_cli",
             }
             self.assertEqual({c["id"] for c in payload["checks"]}, expected_ids)
             for check in payload["checks"]:
