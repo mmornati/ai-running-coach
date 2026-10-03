@@ -135,6 +135,49 @@ class TestApply(SetupCase):
                 self.assertTrue((sb.repo / name).is_dir(), f"{name}/ manquant")
 
 
+class TestExportState(SetupCase):
+    def test_empty_templates_do_not_invent_an_objective_from_the_revision_table(self):
+        with Sandbox() as sb:
+            self.setup(sb, "--scaffold")
+            data = self.json_out(self.setup(sb, "--export-state"))
+            self.assertEqual(data["profile"], {})
+            self.assertEqual(data["objective"], {})
+            self.assertEqual(data["shoes"], [])
+
+    def test_exports_profile_objective_and_structured_shoes_for_the_app(self):
+        with Sandbox() as sb:
+            self.setup(sb, "--scaffold")
+            self.setup(sb, "--apply-profile", self.answers(sb, {
+                "Prénom / surnom": "Camille",
+                "Ce qui me motive": "Les grands objectifs",
+            }))
+            self.setup(sb, "--apply-objective", self.answers(sb, {
+                "Nom": "Trail des Crêtes",
+                "Date": "2027-06-12",
+            }))
+            self.setup(sb, "--apply-shoes", self.answers(sb, [{
+                "name": "Hoka Speedgoat 6",
+                "start_date": "2026-09-01",
+                "threshold_km": "750",
+                "start_km": "42.5",
+                "usage": "trail",
+            }]))
+
+            data = self.json_out(self.setup(sb, "--export-state"))
+
+            self.assertEqual(data["profile"]["prenom / surnom"], "Camille")
+            self.assertEqual(data["profile"]["ce qui me motive"], "Les grands objectifs")
+            self.assertEqual(data["objective"]["nom"], "Trail des Crêtes")
+            self.assertEqual(data["objective"]["date"], "2027-06-12")
+            self.assertEqual(data["shoes"], [{
+                "name": "Hoka Speedgoat 6",
+                "purchase_date": "2026-09-01",
+                "threshold_km": "750",
+                "starting_km": "42.5",
+                "usage": "trail",
+            }])
+
+
 class TestApplyProfile(SetupCase):
     """Story #65 — pré-remplissage Garmin confirmé, fusionné dans
     `planning/Runner_Profile.md` sans jamais écraser un champ déjà rempli."""

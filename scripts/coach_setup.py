@@ -11,6 +11,7 @@ idempotente — une valeur déjà écrite n'est jamais réécrite, donc relancer
     coach_setup.py --apply-profile p.json  # fusionne des valeurs CONFIRMÉES dans Runner_Profile.md (#65)
     coach_setup.py --apply-shoes s.json    # ajoute des chaussures structurées, sans doublon
     coach_setup.py --apply-objective o.json # remplit l'objectif actif sans écraser
+    coach_setup.py --export-state          # relit profil, chaussures et objectif pour l'interface
     coach_setup.py --status                # état de la configuration
 
 Bibliothèque standard uniquement (CONTRIBUTING.md).
@@ -509,6 +510,47 @@ def cmd_apply_objective(args) -> int:
     return 0
 
 
+def cmd_export_state(args) -> int:
+    """Expose l'état humain éditable sans modifier le workspace.
+
+    Les clés de profil et d'objectif sont les libellés normalisés déjà utilisés
+    par `arc_legacy.parse_bullets`. Les chaussures passent par le parseur de
+    référence afin que l'interface ne réinterprète pas leur Markdown.
+    """
+    workspace = workspace_root(args.workspace)
+    profile_path = workspace / PROFILE_FILE
+    objective_path = workspace / OBJECTIVE_FILE
+    profile_text = profile_path.read_text(encoding="utf-8") if profile_path.is_file() else ""
+    objective_text = objective_path.read_text(encoding="utf-8") if objective_path.is_file() else ""
+    # Le tableau « Journal des révisions » possède une colonne « Date » qui ne
+    # doit jamais être confondue avec la date de course laissée vide.
+    objective_fields = re.split(
+        r"^##\s+Journal des révisions\s*$", objective_text, maxsplit=1, flags=re.M | re.I
+    )[0]
+
+    shoes = []
+    for item in arc_legacy.parse_gear(profile_text):
+        if item.get("ignored"):
+            continue
+        threshold_m = item.get("threshold_m")
+        start_m = item.get("start_m")
+        shoes.append({
+            "name": str(item.get("name") or ""),
+            "purchase_date": str(item.get("start_date") or ""),
+            "threshold_km": _format_number(float(threshold_m) / 1000) if threshold_m is not None else "700",
+            "starting_km": _format_number(float(start_m) / 1000) if start_m is not None else "0",
+            "usage": str(item.get("usage") or ""),
+        })
+
+    print(json.dumps({
+        "workspace": str(workspace),
+        "profile": arc_legacy.parse_bullets(profile_text),
+        "objective": arc_legacy.parse_bullets(objective_fields),
+        "shoes": shoes,
+    }, ensure_ascii=False, indent=2))
+    return 0
+
+
 def cmd_apply(args) -> int:
     workspace = workspace_root(args.workspace)
     try:
@@ -591,6 +633,10 @@ def main(argv: list | None = None) -> int:
         "--apply-objective", metavar="FICHIER.json",
         help="remplit les champs vides de planning/active_objective.md sans écraser l'objectif existant",
     )
+    group.add_argument(
+        "--export-state", action="store_true",
+        help="relit le profil, les chaussures et l'objectif pour préremplir une interface",
+    )
     group.add_argument("--status", action="store_true")
     group.add_argument("--scaffold", action="store_true", help="installe les modèles sans rien demander")
     args = parser.parse_args(argv)
@@ -606,6 +652,8 @@ def main(argv: list | None = None) -> int:
             return cmd_apply_shoes(args)
         if args.apply_objective:
             return cmd_apply_objective(args)
+        if args.export_state:
+            return cmd_export_state(args)
         if args.scaffold:
             created = scaffold(workspace_root(args.workspace))
             print(json.dumps({"scaffolded": created}, ensure_ascii=False))

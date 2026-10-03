@@ -18,7 +18,7 @@ DMG="$ROOT/dist/AI-Running-Coach-$VERSION.dmg"
 PAYLOAD="$RESOURCES/engine.tar.gz"
 
 [[ "$(uname -s)" == "Darwin" ]] || { echo "La construction du DMG nécessite macOS." >&2; exit 1; }
-for tool in swiftc hdiutil codesign iconutil qlmanage sips lipo; do
+for tool in swiftc hdiutil codesign iconutil qlmanage sips lipo shasum; do
     command -v "$tool" >/dev/null 2>&1 || { echo "$tool est requis." >&2; exit 1; }
 done
 
@@ -42,10 +42,6 @@ for arch in arm64 x86_64; do
         -o "$output"
 done
 lipo -create "$ARM_BINARY" "$INTEL_BINARY" -output "$CONTENTS/MacOS/$APP_NAME"
-
-BUILD_NUMBER="${GITHUB_RUN_NUMBER:-1}"
-sed -e "s/__VERSION__/$VERSION/g" -e "s/__BUILD__/$BUILD_NUMBER/g" \
-    "$SOURCE_DIR/Info.plist" > "$CONTENTS/Info.plist"
 
 echo "→ Création de l'icône"
 ICON_WORK="$BUILD_ROOT/icon-work"
@@ -79,6 +75,16 @@ git -C "$ROOT" ls-files -z -- \
     ':(exclude).github/workflows/**' \
     ':(exclude).impeccable/**' \
     | tar --null -czf "$PAYLOAD" -C "$ROOT" -T -
+
+# Le numéro fonctionnel peut rester identique entre deux itérations d'un même
+# DMG. L'empreinte du moteur permet alors à l'application de voir que les
+# fichiers embarqués ont changé et d'actualiser sa copie dans Application Support.
+BUILD_NUMBER="${GITHUB_RUN_NUMBER:-1}"
+ENGINE_BUILD="$(shasum -a 256 "$PAYLOAD" | awk '{print $1}')"
+sed -e "s/__VERSION__/$VERSION/g" \
+    -e "s/__BUILD__/$BUILD_NUMBER/g" \
+    -e "s/__ENGINE_BUILD__/$ENGINE_BUILD/g" \
+    "$SOURCE_DIR/Info.plist" > "$CONTENTS/Info.plist"
 
 IDENTITY="${ARC_CODESIGN_IDENTITY:--}"
 echo "→ Signature de l'application"

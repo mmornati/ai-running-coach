@@ -62,6 +62,11 @@ class TestMacApp(unittest.TestCase):
             with self.subTest(contract=contract):
                 self.assertIn(contract, text)
 
+    def test_header_reuses_the_bundled_app_icon(self):
+        text = SOURCE.read_text(encoding="utf-8")
+        self.assertIn("NSApplication.shared.applicationIconImage", text)
+        self.assertNotIn('Image(systemName: "figure.trail.running")', text)
+
     def test_every_profile_label_exists_in_the_official_template(self):
         text = SOURCE.read_text(encoding="utf-8")
         block = text.split("let candidates: [String: String] = [", 1)[1].split("\n        ]", 1)[0]
@@ -117,6 +122,14 @@ class TestMacApp(unittest.TestCase):
         self.assertIn("model.synchronizeNow()", text)
         self.assertIn("Synchronisation terminée — les données sont à jour.", text)
 
+    def test_enrichment_reloads_the_persisted_profile_before_opening(self):
+        text = SOURCE.read_text(encoding="utf-8")
+        self.assertIn("func openEnrichment()", text)
+        self.assertIn('"--export-state"', text)
+        self.assertIn("applyEnrichmentState(state)", text)
+        self.assertIn("model.openEnrichment()", text)
+        self.assertIn("if result.code == 2", text)
+
     def test_full_coach_setup_choices_are_not_hardcoded(self):
         text = SOURCE.read_text(encoding="utf-8")
         for configured in (
@@ -145,6 +158,16 @@ class TestMacApp(unittest.TestCase):
         self.assertIn("notarytool submit", text)
         self.assertIn("stapler staple", text)
         self.assertIn("lipo -create", text)
+
+    def test_engine_updates_are_detected_even_when_the_app_version_is_unchanged(self):
+        source = SOURCE.read_text(encoding="utf-8")
+        build = BUILD.read_text(encoding="utf-8")
+        plist = PLIST.read_text(encoding="utf-8")
+        self.assertIn("ARCEngineBuild", plist)
+        self.assertIn("__ENGINE_BUILD__", plist)
+        self.assertIn('ENGINE_BUILD="$(shasum -a 256 "$PAYLOAD"', build)
+        self.assertIn('defaults.string(forKey: "engineBuild") != engineBuild', source)
+        self.assertIn('defaults.set(engineBuild, forKey: "engineBuild")', source)
 
     def test_release_workflow_builds_after_the_official_release(self):
         dmg = DMG_WORKFLOW.read_text(encoding="utf-8")

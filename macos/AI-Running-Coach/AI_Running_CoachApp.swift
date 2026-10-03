@@ -292,6 +292,7 @@ final class CoachAppModel: ObservableObject {
     @Published private(set) var wasUpdating = false
     @Published var showOptionalProfile = false
     @Published var showEnrichment = false
+    @Published var enrichmentLoading = false
     @Published var enrichmentSaving = false
     @Published var enrichmentError = ""
     @Published var manualSyncRunning = false
@@ -311,6 +312,7 @@ final class CoachAppModel: ObservableObject {
     var engineURL: URL { appSupport.appendingPathComponent("engine", isDirectory: true) }
     var workspaceURL: URL { URL(fileURLWithPath: choices.workspace).standardizedFileURL }
     var bundleVersion: String { Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "development" }
+    var engineBuild: String { Bundle.main.object(forInfoDictionaryKey: "ARCEngineBuild") as? String ?? bundleVersion }
 
     var isInstalled: Bool {
         fm.isExecutableFile(atPath: engineURL.appendingPathComponent("install.sh").path)
@@ -347,7 +349,10 @@ final class CoachAppModel: ObservableObject {
             choices.chatChoice = defaults.bool(forKey: "integratedChatEnabled") ? .integrated : .external
         }
         phase = installed ? .ready : .welcome
-        updateAvailable = installed && defaults.string(forKey: "engineVersion") != bundleVersion
+        updateAvailable = installed && (
+            defaults.string(forKey: "engineVersion") != bundleVersion
+            || defaults.string(forKey: "engineBuild") != engineBuild
+        )
         NotificationCenter.default.addObserver(
             forName: NSApplication.willTerminateNotification,
             object: nil,
@@ -440,6 +445,7 @@ final class CoachAppModel: ObservableObject {
                 defaults.set(selected.chatChoice == .integrated, forKey: "integratedChatEnabled")
                 defaults.set(installationIDE.rawValue, forKey: "assistant")
                 defaults.set(bundleVersion, forKey: "engineVersion")
+                defaults.set(engineBuild, forKey: "engineBuild")
                 choices.openRouterAPIKey = ""
                 updateAvailable = false
                 progress = 1
@@ -483,6 +489,7 @@ final class CoachAppModel: ObservableObject {
                 )
                 guard result.code == 0 else { throw AppFailure("La mise à jour s’est arrêtée (code \(result.code)).") }
                 defaults.set(bundleVersion, forKey: "engineVersion")
+                defaults.set(engineBuild, forKey: "engineBuild")
                 updateAvailable = false
                 progress = 1
                 progressTitle = "Mise à jour terminée"
@@ -510,6 +517,135 @@ final class CoachAppModel: ObservableObject {
                 enrichmentSaving = false
                 enrichmentError = error.localizedDescription
             }
+        }
+    }
+
+    func openEnrichment() {
+        guard !enrichmentLoading else { return }
+        enrichmentLoading = true
+        enrichmentError = ""
+        Task {
+            do {
+                var result = try await runProcess(
+                    executable: "/usr/bin/env",
+                    arguments: [
+                        "python3",
+                        engineURL.appendingPathComponent("scripts/coach_setup.py").path,
+                        "--workspace", workspaceURL.path,
+                        "--export-state"
+                    ],
+                    directory: engineURL,
+                    streamOutput: false
+                )
+                // Une app remplacée avec le même numéro 0.2.0 peut encore avoir
+                // l'ancien moteur dans Application Support. argparse renvoie 2
+                // quand cet ancien script ne connaît pas encore --export-state.
+                if result.code == 2 {
+                    try await installEngine()
+                    result = try await runProcess(
+                        executable: "/usr/bin/env",
+                        arguments: [
+                            "python3",
+                            engineURL.appendingPathComponent("scripts/coach_setup.py").path,
+                            "--workspace", workspaceURL.path,
+                            "--export-state"
+                        ],
+                        directory: engineURL,
+                        streamOutput: false
+                    )
+                }
+                guard result.code == 0,
+                      let data = result.output.data(using: .utf8),
+                      let state = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+                    throw AppFailure("Les informations enregistrées n’ont pas pu être relues.")
+                }
+                applyEnrichmentState(state)
+                showOptionalProfile = true
+            } catch {
+                enrichmentError = "Impossible de préremplir le formulaire : \(error.localizedDescription)"
+            }
+            enrichmentLoading = false
+            showEnrichment = true
+        }
+    }
+
+    private func applyEnrichmentState(_ state: [String: Any]) {
+        let profile = state["profile"] as? [String: Any] ?? [:]
+        let objective = state["objective"] as? [String: Any] ?? [:]
+        func value(_ source: [String: Any], _ key: String) -> String {
+            if let text = source[key] as? String { return text }
+            if let number = source[key] as? NSNumber { return number.stringValue }
+            return ""
+        }
+
+        choices.firstName = value(profile, "prenom / surnom")
+        choices.birthYear = value(profile, "annee de naissance")
+        choices.practiceYears = value(profile, "annees de pratique")
+        choices.weeklyAvailability = value(profile, "disponibilite hebdomadaire")
+        choices.impossibleDays = value(profile, "jours impossibles")
+        choices.lifeConstraints = value(profile, "contraintes de vie")
+        choices.maxHeartRate = value(profile, "fc max")
+        choices.restingHeartRate = value(profile, "fc de repos de reference")
+        choices.thresholdHeartRate = value(profile, "fc au seuil")
+        choices.vo2Max = value(profile, "vo2max (garmin)")
+        choices.sex = value(profile, "sexe")
+        choices.zones = value(profile, "zones / seuils")
+        choices.referencePaces = value(profile, "allures de reference")
+        choices.usualWeight = value(profile, "poids de forme")
+        choices.sleepNeed = value(profile, "besoin de sommeil")
+        choices.bestPerformances = value(profile, "meilleures performances")
+        choices.injuryHistory = value(profile, "antecedents de blessure")
+        choices.fragileAreas = value(profile, "zones fragiles a surveiller")
+        choices.recentBreaks = value(profile, "arrets recents")
+        choices.defaultLocation = value(profile, "lieu par defaut")
+        choices.usualSlot = value(profile, "creneau habituel")
+        choices.accessibleTerrain = value(profile, "terrain accessible")
+        choices.equipment = value(profile, "equipement")
+        choices.motivation = value(profile, "ce qui me motive")
+        choices.coachingNoGo = value(profile, "ce qui ne marche pas avec moi")
+        choices.sensitiveTopics = value(profile, "sujets a ne pas commenter spontanement")
+        choices.riskTolerance = value(profile, "tolerance au risque")
+        choices.askBeforeAssuming = value(profile, "quand me poser une question plutot que supposer")
+
+        let disciplines = Set(value(profile, "sports croises pratiques")
+            .lowercased().split { $0 == "," || $0 == ";" }.map { $0.trimmingCharacters(in: .whitespaces) })
+        choices.crossCycling = disciplines.contains("velo") || disciplines.contains("vélo") || disciplines.contains("cycling")
+        choices.crossSwimming = disciplines.contains("natation") || disciplines.contains("swimming")
+        choices.crossStrength = disciplines.contains("renforcement") || disciplines.contains("strength")
+        choices.crossHiking = disciplines.contains("randonnee") || disciplines.contains("randonnée") || disciplines.contains("hiking")
+        choices.crossElliptical = disciplines.contains("elliptique") || disciplines.contains("elliptical")
+        choices.crossRowing = disciplines.contains("rameur") || disciplines.contains("rowing")
+
+        choices.raceName = value(objective, "nom")
+        choices.raceDate = value(objective, "date")
+        choices.raceDistance = value(objective, "distance")
+        choices.raceElevation = value(objective, "denivele positif")
+        choices.raceLocation = value(objective, "lieu")
+        choices.raceLink = value(objective, "lien / trace gpx")
+        choices.primaryGoal = value(objective, "objectif principal")
+        choices.targetTime = value(objective, "temps vise")
+        choices.acceptableScenario = value(objective, "scenario acceptable / scenario noir")
+        choices.weeksRemaining = value(objective, "semaines restantes")
+        choices.startingVolume = value(objective, "volume hebdomadaire de depart")
+        choices.targetVolume = value(objective, "volume hebdomadaire cible")
+        choices.qualitySessions = value(objective, "seances qualite par semaine")
+        choices.objectiveUnavailability = value(objective, "indisponibilites")
+        choices.intermediateRaces = value(objective, "courses intermediaires")
+        choices.medicalLimits = value(objective, "limites medicales en cours")
+        choices.hasObjective = !objective.isEmpty
+
+        if let storedShoes = state["shoes"] as? [[String: Any]], !storedShoes.isEmpty {
+            choices.shoes = storedShoes.map { shoe in
+                ShoeChoice(
+                    name: value(shoe, "name"),
+                    purchaseDate: value(shoe, "purchase_date"),
+                    thresholdKm: value(shoe, "threshold_km"),
+                    startingKm: value(shoe, "starting_km"),
+                    usage: value(shoe, "usage")
+                )
+            }
+        } else {
+            choices.shoes = [ShoeChoice()]
         }
     }
 
@@ -1158,10 +1294,11 @@ struct BrandHeader: View {
     var subtitle: String
     var body: some View {
         HStack(spacing: 18) {
-            ZStack {
-                RoundedRectangle(cornerRadius: 18).fill(Color(red: 0.08, green: 0.25, blue: 0.18))
-                Image(systemName: "figure.trail.running").font(.system(size: 35, weight: .semibold)).foregroundStyle(Color(red: 0.64, green: 0.89, blue: 0.20))
-            }.frame(width: 72, height: 72)
+            Image(nsImage: NSApplication.shared.applicationIconImage)
+                .resizable()
+                .interpolation(.high)
+                .scaledToFit()
+                .frame(width: 72, height: 72)
             VStack(alignment: .leading, spacing: 4) {
                 Text("AI Running Coach").font(.system(size: 28, weight: .bold))
                 Text(subtitle).foregroundStyle(.secondary)
@@ -1574,7 +1711,10 @@ struct ReadyView: View {
             Divider()
             HStack {
                 Button("Vérifier l’installation") { model.runDiagnostics() }
-                Button("Compléter mon profil et mon objectif") { model.showEnrichment = true }
+                Button(model.enrichmentLoading ? "Chargement du profil…" : "Compléter mon profil et mon objectif") {
+                    model.openEnrichment()
+                }
+                .disabled(model.enrichmentLoading)
                 if model.isAuthenticated {
                     Button("Reconnecter le compte") { model.connectAccount() }
                 }
