@@ -741,7 +741,7 @@ def api_activity_climbs(store: Store, activity_id: int) -> dict:
     (`climbs: [], reason: None`), au lieu d'afficher partout le même message
     « aucune montée détectée » qui laisserait croire à tort qu'une séance de
     renforcement ou de vélo aurait pu en avoir une."""
-    act = store.one("SELECT sport, garmin_activity_id, intervals_activity_id FROM activity WHERE id = ?",
+    act = store.one("SELECT sport, garmin_activity_id, intervals_activity_id, strava_activity_id FROM activity WHERE id = ?",
                     (activity_id,))
     empty = {"climbs": [], "vam_by_grade_class": {}}
     if act is None:
@@ -799,7 +799,7 @@ def api_activity_descent(store: Store, activity_id: int) -> dict:
     TOUS les cas vides (contrairement aux montées, l'absence de classe
     qualifiante est toujours documentée ici — critère d'acceptation de #47 :
     « classes sans assez de données -> absentes », jamais silencieusement)."""
-    act = store.one("SELECT sport, garmin_activity_id, intervals_activity_id, descent_reference_gap_pace_s_km, "
+    act = store.one("SELECT sport, garmin_activity_id, intervals_activity_id, strava_activity_id, descent_reference_gap_pace_s_km, "
                      "descent_reference_source FROM activity WHERE id = ?", (activity_id,))
     empty = {"classes": {}, "reference_gap_pace_s_km": None, "reference_source": None}
     if act is None:

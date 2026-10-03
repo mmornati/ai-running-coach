@@ -225,6 +225,12 @@ SCHEMA = {
             # synchronisée depuis Intervals.icu porte celui-ci et omet
             # `garmin_activity_id`, jamais l'inverse.
             "intervals_activity_id": "str",
+            # Strava (#164, `[data].source = "strava"`) : identifiant d'activité Strava
+            # préfixé « s » (ex. "s12345678901") — l'API rend un entier sans préfixe,
+            # indiscernable d'un `garmin_activity_id` ; le préfixe est la convention du
+            # projet (voir `arc_samples.STRAVA_ID_RE`). Mêmes règles que ci-dessus :
+            # une activité Strava porte celui-ci et omet les deux autres.
+            "strava_activity_id": "strava_id",
             "name": "str",
             "location": "str",
             "start_time": "datetime",
@@ -890,6 +896,12 @@ def _check_value(spec: str, value, where: str, errors: list, warnings: list) -> 
     if spec == "str":
         if not isinstance(value, str) or not value.strip():
             fail("une chaîne non vide")
+        return
+    if spec == "strava_id":
+        # `strava_activity_id` (#164) : « s » + chiffres — un identifiant sans préfixe se
+        # confondrait avec un `garmin_activity_id` et ne se rattacherait à aucun échantillon.
+        if not isinstance(value, str) or not re.fullmatch(r"s\d+", value):
+            fail("« s » suivi des chiffres de l'identifiant Strava (ex. \"s12345678901\")")
         return
     if spec == "bool":
         if not isinstance(value, bool):

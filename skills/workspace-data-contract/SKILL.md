@@ -104,7 +104,8 @@ Types de valeurs ci-dessous : *entier*, *nombre* (≥ 0 sauf mention), *texte*,
 | **`duration_s`** | nombre | durée totale |
 | `garmin_activity_id` | entier | identifiant Garmin — clé de jointure, à toujours renseigner après un sync `[data].source = "garmin"` |
 | `intervals_activity_id` | texte | identifiant Intervals.icu (#68, ex. `"i12345678"`) — CHAÎNE, jamais confondue avec `garmin_activity_id` (entier). À renseigner à la place de `garmin_activity_id`, jamais en plus, après un sync `[data].source = "intervals"` |
-| `name` | texte | nom de l'activité (Garmin ou Intervals.icu selon la source) |
+| `strava_activity_id` | texte | identifiant Strava (#164) **préfixé `s`**, ex. `"s12345678901"` — l'API Strava rend un entier sans préfixe, indiscernable d'un `garmin_activity_id` ; le préfixe est la convention du projet (jamais le nombre seul : la validation le refuse). À renseigner à la place de `garmin_activity_id`, jamais en plus, après un sync `[data].source = "strava"` |
+| `name` | texte | nom de l'activité (Garmin, Intervals.icu ou Strava selon la source) |
 | `location` | texte | lieu / parcours (sert à la comparaison de parcours) |
 | `start_time` | date-heure | |
 | `distance_m` | nombre | |
@@ -243,7 +244,7 @@ méthode complète. En résumé :
   (toujours future). Clés OMISES sans usage sur 28 jours, pour une paire retirée
   ou déjà au seuil (`alert` : « seuil dépassé »). `near_threshold: true` dès 90 %
   du seuil. `arc_index.py gear --activities ID[,ID…]` (garmin_activity_id,
-  intervals_activity_id ou chemin du fichier des séances synchronisées dans CE run) ajoute
+  intervals_activity_id, strava_activity_id ou chemin du fichier des séances synchronisées dans CE run) ajoute
   `crossed_in_run: true` à la paire dont elles font franchir le seuil — base de
   l'alerte unique du `garmin-daily-sync` (par séance, pas par date : un second
   passage le même jour ne ré-émet rien), sans fichier d'état. Avec `--today`
@@ -534,7 +535,7 @@ de la clé du bloc :
 **Cette copie Markdown est un instantané narratif, jamais la source de
 vérité.** `scripts/arc_index.py` calcule sa PROPRE version de ces mêmes
 grandeurs à chaque passage (`index_workspace`), directement depuis les
-échantillons FIT ingérés (`activities/fit/<garmin_activity_id | intervals_activity_id>.json`) — dans
+échantillons FIT ingérés (`activities/fit/<garmin_activity_id | intervals_activity_id | strava_activity_id>.json`) — dans
 les colonnes dérivées `activity.gap_pace_s_km`/`decoupling_pct`/`ef_whole`/
 `best_climb_vam_elapsed_m_h` et la table `hr_zone_time`. **La valeur de
 l'index fait TOUJOURS foi** pour le tableau de bord, `arc_index.py` et toute
