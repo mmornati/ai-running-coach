@@ -151,13 +151,19 @@ heat_threshold_c = 25.0
 #   "intervals" — intervals.icu (ouvre le projet aux montres non-Garmin : COROS,
 #                 Suunto, Polar, Apple — tout ce qu'intervals.icu synchronise),
 #                 via le serveur MCP communautaire eddmann/intervals-icu-mcp
+#   "strava"    — Strava (#164), source « universelle » (toutes marques de montres) :
+#                 activités + flux par seconde (donc les KPI FIT : zones, GAP,
+#                 découplage, VAM…) via le serveur MCP communautaire r-huijts/strava-mcp
+#                 (npm, nécessite Node.js >= 18). Pas de HRV, de FC de repos, de sommeil
+#                 ni de readiness côté Strava : `[health].morning_check` se dégrade
+#                 explicitement. Voir docs/strava-setup.md.
 # Change la source des outils appelés par `coach`/`medical`/`garmin-daily-sync`
 # (voir la table de correspondance dans AGENTS.md) et la destination du push de
 # séances planifiées. Certaines fonctionnalités Garmin (téléchargement FIT,
 # upload de parcours, score de readiness algorithmique) n'ont pas d'équivalent
 # côté intervals.icu et sont alors explicitement indisponibles plutôt que
 # devinées — voir AGENTS.md, section « Backends MCP ». `./install.sh --source
-# intervals` installe le serveur correspondant et écrit cette clé.
+# intervals` (ou `--source strava`) installe le serveur correspondant et écrit cette clé.
 source = "garmin"
 
 [metrics]

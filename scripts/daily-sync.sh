@@ -89,7 +89,18 @@ SOURCE="$(toml_get data source garmin)"
 #     (une règle `Edit(…)` couvre tous les outils d'écriture de fichiers, Write compris).
 PYTHON_TOOLS="Bash(python3 scripts/*),Bash(python3 skills/*)"
 PROTECTED_PATHS="Edit(scripts/**),Edit(skills/**),Edit(local/skills/**),Edit(local/agents/**),Edit(.claude/**),Edit(.mcp.json)"
-if [[ "$SOURCE" == "intervals" ]]; then
+if [[ "$SOURCE" == "strava" ]]; then
+    # Source Strava (#164) : serveur MCP communautaire r-huijts/strava-mcp (nom « strava »,
+    # install.sh --source strava). Lecture seule : on autorise tout le serveur, puis on retire
+    # explicitement les trois outils qui agissent — `connect-strava` (ouvre un navigateur et un
+    # port local : personne pour répondre en headless), `disconnect-strava` (efface les jetons) et
+    # `star-segment` (ÉCRITURE côté Strava). Pas de leanproxy (garmin uniquement).
+    CLAUDE_TOOLS="mcp__strava,Agent,Task,Skill,Read,Write,Edit,Glob,Grep,$PYTHON_TOOLS"
+    CLAUDE_DISALLOWED="mcp__strava__connect-strava,mcp__strava__disconnect-strava,mcp__strava__star-segment"
+    CLAUDE_DISALLOWED+=",$PROTECTED_PATHS"
+    SOURCE_LABEL="Strava"
+    AUTH_CMD_HINT="demandez à l'agent (session interactive) d'exécuter l'outil connect-strava avec force=true"
+elif [[ "$SOURCE" == "intervals" ]]; then
     # Outils autorisés en mode non interactif : serveur MCP intervals (tous ses
     # outils), délégation au coach (Agent/Task), skills, lecture/écriture des
     # MD, scripts Python du projet. Rien d'autre. Pas de leanproxy : passerelle
@@ -207,6 +218,11 @@ for name, spec in servers.items():
     mcp[name] = entry
     for prefix in WRITE_PREFIXES:
         permission["%s_%s*" % (name, prefix)] = "deny"
+    if name.lower().startswith("strava"):
+        # Strava (#164) : outils de r-huijts/strava-mcp qui AGISSENT (noms à tirets, hors des
+        # préfixes ci-dessus) : connexion OAuth (navigateur), déconnexion, écriture Strava.
+        for tool in ("connect-strava", "disconnect-strava", "star-segment"):
+            permission["%s_%s" % (name, tool)] = "deny"
     if name == "leanproxy":
         # Passerelle : les outils appeles a travers elle echappent aux motifs ci-dessus.
         permission["leanproxy_*"] = "deny"
@@ -345,7 +361,7 @@ detect_provider_failure() {
     local err="$1"
     PROVIDER_FAILURE=""
     [[ -n "$err" ]] || return 1
-    if printf '%s' "$err" | grep -qiE 'garmin|intervals'; then
+    if printf '%s' "$err" | grep -qiE 'garmin|intervals|strava'; then
         return 1
     fi
     if printf '%s' "$err" | grep -qiE '(^|[^0-9])402([^0-9]|$)|insufficient (credits|funds)|payment required|credit balance|requires more credits|out of credits'; then
@@ -566,7 +582,7 @@ notify() {
 TOKEN_ALERT_SENT_THIS_RUN=0
 
 check_token_alert() {
-    # Garmin uniquement (#68) : intervals-icu-mcp n'a pas d'échéance de token
+    # Garmin uniquement (#68, #164) : intervals-icu-mcp et Strava n'ont pas d'échéance de token lisible ici
     # comparable (clé API + ID athlète, pas d'OAuth à durée limitée) —
     # `coach_doctor.py --check garmin_token` n'a d'ailleurs aucun sens à lire
     # ici pour cette source. Skip explicite, jamais une fausse alerte Garmin.
@@ -725,7 +741,14 @@ detect_auth_failure() {
     AUTH_FAILURE_KIND=""
     AUTH_FAILURE_LINE=""
     run_log="$(awk '/^===== /{buf=""} {buf = buf $0 ORS} END{printf "%s", buf}' "$LOG_FILE" 2>/dev/null)"
-    if [[ "$SOURCE" == "intervals" ]]; then
+    if [[ "$SOURCE" == "strava" ]]; then
+        # Textes réels du serveur r-huijts/strava-mcp (src/stravaClient.ts, commit épinglé par
+        # install.sh) : « Failed to refresh Strava access token » et « Missing refresh
+        # credentials. Please connect your Strava account first… » ; « Request failed with status
+        # code 401 » est le message standard d'axios, que ce serveur relaie.
+        raw_pattern='failed to refresh strava access token|missing refresh credentials|request failed with status code 401'
+        erreur_pattern='^ERREUR.*(connect-strava|jetons? strava|strava.*(expir|invalid|refus)|401)'
+    elif [[ "$SOURCE" == "intervals" ]]; then
         # Texte réel de `ICUAPIError` (intervals_icu_mcp/client.py, vérifié
         # contre eddmann/intervals-icu-mcp) pour un 401 : "Unauthorized. Check
         # your API key and athlete ID.", restitué tel quel par ResponseBuilder.
@@ -762,7 +785,7 @@ try:
 except (OSError, ValueError, AttributeError):
     sys.exit(1)
 # Serveur direct : « garmin » ou tout nom commençant par « intervals » (Intervals_icu, intervals-icu…), sans tenir compte de la casse.
-direct = [n for n in servers if n.lower() == "garmin" or n.lower().startswith("intervals")]
+direct = [n for n in servers if n.lower() == "garmin" or n.lower().startswith(("intervals", "strava"))]
 sys.exit(0 if "leanproxy" in servers and not direct else 1)
 ' "$MCP_CONFIG"
 }

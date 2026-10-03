@@ -167,6 +167,7 @@ CHECK_IDS = (
     "garmin_token", "garmin_mcp", "config_files", "athlete_profile",
     "index_freshness", "out_of_contract", "daily_sync_scheduled", "ntfy_configured",
     "gear_sync", "gear_history", "fit_reader", "llm_config", "chat_service", "opencode_cli",
+    "strava_connection",
 )
 
 CHAT_SYSTEMD_UNIT_REL = ".config/systemd/user/ai-running-coach-chat.service"
@@ -820,6 +821,13 @@ def check_fit_reader(config: dict, home: Path) -> dict:
     aucun appel réseau."""
     check_id = "fit_reader"
     source = (config.get("data") or {}).get("source", "garmin")
+    if source == "strava":
+        return build_check(
+            check_id, "info",
+            "[data].source = \"strava\" — aucun fichier FIT : les flux par seconde sont normalisés par "
+            "`download_fit.py --source strava` (stdlib), aucun lecteur `fitparse` requis.",
+            fix=None,
+        )
     tool = FIT_READER_TOOLS.get(source, FIT_READER_TOOLS["garmin"])
     fix = f"./install.sh --source {source}" if source in FIT_READER_TOOLS else "./install.sh"
     python = _tool_python(tool, home)
@@ -844,6 +852,80 @@ def check_fit_reader(config: dict, home: Path) -> dict:
         )
     return build_check(check_id, "ok", f"Lecteur FIT (fitparse) présent dans l'environnement « {tool} ».",
                        fix=None)
+
+
+# ---------------------------------------------------------------------------
+# strava_connection (#164)
+# ---------------------------------------------------------------------------
+
+STRAVA_TOKEN_REL = ".config/strava-mcp/config.json"
+STRAVA_WRAPPER_REL = ".config/ai-running-coach/strava-mcp/run.sh"
+STRAVA_NODE_MIN_MAJOR = 18
+
+
+def check_strava_connection(workspace: Path, config: dict, home: Path) -> dict:
+    """`[data].source = "strava"` : Node.js >= 18 (le serveur est un paquet npm lancé par `npx`),
+    wrapper du projet, serveur `strava` déclaré dans `.mcp.json`, fichier de jetons du serveur
+    (`~/.config/strava-mcp/config.json`) et ses droits. STATIQUE : lit seulement l'existence des clés
+    `accessToken`/`refreshToken`/`clientId`/`clientSecret` — JAMAIS leur valeur, qui n'est ni
+    affichée, ni journalisée, ni conservée. Aucun appel réseau : l'échéance du jeton d'accès (6 h)
+    n'est pas une alerte, le serveur et `download_fit.py` le rafraîchissent seuls ; seul un jeton de
+    rafraîchissement absent ou révoqué impose de relancer `connect-strava`. Hors source strava :
+    `info`, jamais une panne."""
+    check_id = "strava_connection"
+    source = (config.get("data") or {}).get("source", "garmin")
+    if source != "strava":
+        return build_check(check_id, "info",
+                           f"[data].source = \"{source}\" — connexion Strava non applicable.", fix=None)
+    fix_install = "./install.sh --source strava"
+    node = shutil.which("node")
+    if not node or not shutil.which("npx"):
+        return build_check(check_id, "error",
+                           f"Node.js (node + npx, version {STRAVA_NODE_MIN_MAJOR} ou plus) introuvable dans le PATH : "
+                           "le serveur MCP Strava ne peut pas démarrer.",
+                           fix="installer Node.js >= 18 (https://nodejs.org), puis " + fix_install)
+    try:
+        out = subprocess.run([node, "--version"], capture_output=True, text=True, timeout=10).stdout.strip()
+        major = int(out.lstrip("v").split(".")[0])
+    except (OSError, ValueError, subprocess.TimeoutExpired):
+        major = None
+    if major is not None and major < STRAVA_NODE_MIN_MAJOR:
+        return build_check(check_id, "error",
+                           f"Node.js {out} détecté : le serveur MCP Strava exige la version {STRAVA_NODE_MIN_MAJOR} ou plus.",
+                           fix="mettre à jour Node.js (https://nodejs.org)")
+    if not (home / STRAVA_WRAPPER_REL).is_file():
+        return build_check(check_id, "error", f"Wrapper MCP absent (~/{STRAVA_WRAPPER_REL}).", fix=fix_install)
+    try:
+        servers = json.loads((workspace / ".mcp.json").read_text(encoding="utf-8")).get("mcpServers") or {}
+    except (OSError, ValueError, AttributeError):
+        servers = {}
+    if not any(str(name).lower().startswith("strava") for name in servers):
+        return build_check(check_id, "error", "Aucun serveur MCP « strava » déclaré dans .mcp.json.", fix=fix_install)
+    token_file = home / STRAVA_TOKEN_REL
+    data = _read_json_object(token_file)
+    if data is None:
+        return build_check(check_id, "error",
+                           f"Compte Strava non connecté (~/{STRAVA_TOKEN_REL} absent ou illisible).",
+                           fix="demander à l'agent d'exécuter l'outil connect-strava (docs/strava-setup.md)")
+    if not data.get("refreshToken"):
+        return build_check(check_id, "error", "Jeton de rafraîchissement Strava absent : la connexion ne peut pas se renouveler.",
+                           fix="demander à l'agent d'exécuter connect-strava avec force=true")
+    if not (data.get("clientId") and data.get("clientSecret")):
+        return build_check(check_id, "warning",
+                           "Identifiants de l'application Strava (clientId/clientSecret) absents du fichier de jetons : "
+                           "le rafraîchissement automatique échouera.",
+                           fix="demander à l'agent d'exécuter connect-strava avec force=true")
+    try:
+        mode = token_file.stat().st_mode & 0o077
+    except OSError:
+        mode = 0
+    if mode:
+        return build_check(check_id, "warning",
+                           f"~/{STRAVA_TOKEN_REL} est lisible par d'autres utilisateurs (il contient le secret client et les jetons).",
+                           fix=f"chmod 600 ~/{STRAVA_TOKEN_REL}")
+    return build_check(check_id, "ok",
+                       "Strava : Node.js, wrapper, serveur MCP et jetons présents (valeurs non affichées ; la validité "
+                       "réelle du jeton n'est testée par aucun appel réseau ici).", fix=None)
 
 
 # ---------------------------------------------------------------------------
@@ -887,7 +969,7 @@ def _mcp_gateway_only(workspace: Path) -> bool:
     if not isinstance(servers, dict):
         return False
     # Serveur direct : « garmin » ou tout nom commençant par « intervals » (Intervals_icu…), sans tenir compte de la casse.
-    direct = [n for n in servers if str(n).lower() == "garmin" or str(n).lower().startswith("intervals")]
+    direct = [n for n in servers if str(n).lower() == "garmin" or str(n).lower().startswith(("intervals", "strava"))]
     return "leanproxy" in servers and not direct
 
 
@@ -1120,6 +1202,13 @@ def check_gear_sync(workspace: Path, config: dict) -> dict:
     """
     check_id = "gear_sync"
     source = (config.get("data") or {}).get("source", "garmin")
+    if source == "strava":
+        return build_check(
+            check_id, "info",
+            "[data].source = \"strava\" — le serveur Strava ne rend que le NOM de la paire (aucun identifiant "
+            "attribuable par séance) ; attribution via le chat/défaut.",
+            fix=None,
+        )
     if source == "intervals":
         return build_check(
             check_id, "info",
@@ -1205,9 +1294,10 @@ def check_gear_history(workspace: Path, config: dict) -> dict:
     `gear_id` — un seul `gear_id` déclaré ne fait donc pas taire le signal. STATIQUE (lit les blocs `arc` de
     `activities/`, jamais l'index ni Garmin) ; jamais un avertissement."""
     check_id = "gear_history"
-    if (config.get("data") or {}).get("source", "garmin") == "intervals":
+    source = (config.get("data") or {}).get("source", "garmin")
+    if source in ("intervals", "strava"):
         return build_check(check_id, "info",
-                           "[data].source = \"intervals\" — pas de matériel Garmin à rattraper.", fix=None)
+                           f"[data].source = \"{source}\" — pas de matériel Garmin à rattraper.", fix=None)
     with_id = without_gear = 0
     folder = workspace / "activities"
     for path in sorted(folder.glob("*.md")) if folder.is_dir() else []:
@@ -1231,7 +1321,7 @@ def check_gear_history(workspace: Path, config: dict) -> dict:
     return build_check(check_id, "ok", "Historique cohérent (pas de rattrapage du matériel à proposer).", fix=None)
 
 
-def check_garmin_check_not_applicable(check_id: str) -> dict:
+def check_garmin_check_not_applicable(check_id: str, source: str = "intervals") -> dict:
     """#68 : `[data].source = "intervals"` — ni tokens OAuth Garmin ni serveur
     MCP `garmin` à vérifier ici (aucun des deux n'est installé/enregistré
     avec cette source). Un statut `error`/`warning` serait un faux diagnostic
@@ -1239,7 +1329,7 @@ def check_garmin_check_not_applicable(check_id: str) -> dict:
     jamais eu de compte Garmin — `info`, jamais une panne."""
     return build_check(
         check_id, "info",
-        "[data].source = \"intervals\" — vérification Garmin non applicable.",
+        f"[data].source = \"{source}\" — vérification Garmin non applicable.",
         fix=None,
     )
 
@@ -1247,8 +1337,8 @@ def check_garmin_check_not_applicable(check_id: str) -> dict:
 def run_single_check(check_id: str, workspace: Path, now: datetime, tokens_dir: Path, probe_mcp: bool) -> dict:
     config = _load_config(workspace)
     source = (config.get("data") or {}).get("source", "garmin")
-    if check_id in ("garmin_token", "garmin_mcp") and source == "intervals":
-        return check_garmin_check_not_applicable(check_id)
+    if check_id in ("garmin_token", "garmin_mcp") and source in ("intervals", "strava"):
+        return check_garmin_check_not_applicable(check_id, source)
     if check_id == "garmin_token":
         return check_garmin_token(now, tokens_dir)
     if check_id == "garmin_mcp":
@@ -1277,6 +1367,8 @@ def run_single_check(check_id: str, workspace: Path, now: datetime, tokens_dir: 
         return check_chat_service(Path.home(), config)
     if check_id == "opencode_cli":
         return check_opencode_cli(config)
+    if check_id == "strava_connection":
+        return check_strava_connection(workspace, config, Path.home())
     raise ValueError(f"vérification inconnue : {check_id!r}")
 
 

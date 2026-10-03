@@ -137,9 +137,10 @@ fetch_domains = ["wttr.in", "overpass-api.de", "nominatim.openstreetmap.org"]
 # Tout autre serveur est refusé.
 # « leanproxy » : méta-outils de la passerelle (list_/search_) ; ses appels
 # invoke_tool sont ramenés au serveur réel par le backend (mcp:garmin.<outil>).
-servers = ["garmin", "intervals", "Intervals_icu", "leanproxy"]
-# Lectures : préfixes de noms d'outils.
-read_prefixes = ["get_", "count_", "list_", "download_", "search_"]
+# « strava » (#164, r-huijts/strava-mcp) nomme ses outils avec des tirets (get-recent-activities…).
+servers = ["garmin", "intervals", "Intervals_icu", "strava", "leanproxy"]
+# Lectures : préfixes de noms d'outils (les tirets sont ceux du serveur Strava).
+read_prefixes = ["get_", "count_", "list_", "download_", "search_", "get-", "list-", "check-", "explore-"]
 # Écritures : noms exacts ou motifs `*`. Un outil inconnu d'un serveur connu demande aussi l'approbation.
 write_tools = [
   "schedule_workout", "schedule_workouts", "schedule_week",
@@ -149,4 +150,6 @@ write_tools = [
   "add_*", "set_*", "log_*", "delete_*", "update_*", "remove_*",
   "add_or_update_event", "create_event", "bulk_create_events", "update_event",
   "delete_event", "delete_events*", "request_reload",
+  # Strava (#164) : connexion/déconnexion OAuth et écriture (étoile de segment) — jamais en lecture libre.
+  "connect-strava", "disconnect-strava", "star-segment",
 ]
