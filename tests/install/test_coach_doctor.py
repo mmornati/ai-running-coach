@@ -783,6 +783,12 @@ class TestIntervalsMcpPin(InstallAsserts):
                          "--tokens-dir", str(_fresh_tokens_dir(sb)), "--check", "intervals_mcp_pin")
         return proc, _find(json.loads(proc.stdout), "intervals_mcp_pin")
 
+    def test_legacy_url_written_with_dot_git_is_still_the_legacy_server(self):
+        with Sandbox() as sb:
+            self._fake_install(sb, self.LEGACY + ".git/", "cb91d4a0f3b4dc21f57421e029c07a8e9af11649")
+            _, check = self._check(sb)
+            self.assertEqual(check["status"], "warning")
+
     def test_legacy_eddmann_install_is_a_warning_with_the_update_command(self):
         with Sandbox() as sb:
             self._fake_install(sb, self.LEGACY, "cb91d4a0f3b4dc21f57421e029c07a8e9af11649")

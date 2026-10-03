@@ -878,7 +878,10 @@ def installed_intervals_origin(home: Path) -> Optional[tuple]:
         if not isinstance(info, dict):
             return None
         vcs = info.get("vcs_info") if isinstance(info.get("vcs_info"), dict) else {}
-        return str(info.get("url") or ""), str(vcs.get("commit_id") or "")
+        # Même dépôt écrit autrement (`….git`, barre finale) : même origine (cf. install.sh).
+        url = str(info.get("url") or "").rstrip("/")
+        url = url[:-len(".git")] if url.endswith(".git") else url
+        return url, str(vcs.get("commit_id") or "")
     return None
 
 

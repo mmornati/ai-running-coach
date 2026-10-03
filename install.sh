@@ -1088,6 +1088,9 @@ upgrade_intervals_pin_if_needed() {
     origin="$(intervals_installed_origin)"
     url="${origin%% *}"
     commit="${origin#* }"
+    # Même dépôt écrit autrement (`…/intervals-icu-mcp.git`, barre finale) : même origine.
+    url="${url%/}"
+    url="${url%.git}"
     if [[ -z "$origin" || -z "$url" ]]; then
         warn "Origine de l'installation intervals-icu-mcp illisible — non mise à jour (voir /coach-doctor, check intervals_mcp_pin)."
         return 0
