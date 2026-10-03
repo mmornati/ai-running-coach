@@ -53,6 +53,8 @@ Revenez ensuite dans l'app : l'état de connexion est vérifié lorsqu'elle repr
 
 Une fois le compte connecté, le service de synchronisation installé par l'application récupère les nouvelles données aux heures configurées. Garmin et Intervals.icu utilisent la même source choisie pendant l'installation ; les données récupérées sont persistées dans le dossier de travail avant d'être affichées par le coach ou le tableau de bord.
 
+Le bouton **Synchroniser maintenant** de l'écran principal lance exactement la même opération sans attendre la prochaine heure programmée. L'application affiche son avancement puis indique si les données sont à jour ou si une connexion demande votre attention.
+
 ## Lancer le coach au quotidien
 
 Ouvrez **AI Running Coach** depuis Applications, Spotlight ou le Dock, puis cliquez sur **Parler au coach** ou **Tableau de bord**. L'application démarre l'interface locale et ouvre le navigateur. Le serveur reste limité à `127.0.0.1` : il n'est pas exposé sur le réseau.

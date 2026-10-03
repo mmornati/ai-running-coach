@@ -28,6 +28,7 @@ class TestMacApp(unittest.TestCase):
             "Installer mon coach",
             "Tableau de bord",
             "Connecter mon compte",
+            "Synchroniser maintenant",
             "coach_doctor.py",
             "scripts/dashboard.sh",
             "--no-auth",
@@ -107,6 +108,14 @@ class TestMacApp(unittest.TestCase):
         self.assertIn('"--sync-runner", selected.syncRunner', text)
         self.assertIn("guard chatChoice == .external else { return IDEChoice.opencode.rawValue }", text)
         self.assertIn("le même assistant synchronisera automatiquement vos données", text)
+
+    def test_manual_sync_button_runs_the_same_headless_sync(self):
+        text = SOURCE.read_text(encoding="utf-8")
+        self.assertIn("func synchronizeNow()", text)
+        self.assertIn('engineURL.appendingPathComponent("scripts/daily-sync.sh").path', text)
+        self.assertIn('"ARC_WORKSPACE=\\(workspaceURL.path)"', text)
+        self.assertIn("model.synchronizeNow()", text)
+        self.assertIn("Synchronisation terminée — les données sont à jour.", text)
 
     def test_full_coach_setup_choices_are_not_hardcoded(self):
         text = SOURCE.read_text(encoding="utf-8")

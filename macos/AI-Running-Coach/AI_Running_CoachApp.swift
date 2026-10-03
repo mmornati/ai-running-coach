@@ -294,6 +294,9 @@ final class CoachAppModel: ObservableObject {
     @Published var showEnrichment = false
     @Published var enrichmentSaving = false
     @Published var enrichmentError = ""
+    @Published var manualSyncRunning = false
+    @Published var manualSyncStatus = ""
+    @Published var manualSyncFailed = false
 
     private var dashboardProcess: Process?
     private var dashboardBaseURL: URL?
@@ -936,6 +939,46 @@ final class CoachAppModel: ObservableObject {
         try? process.run()
     }
 
+    func synchronizeNow() {
+        guard !manualSyncRunning else { return }
+        guard isAuthenticated else {
+            manualSyncFailed = true
+            manualSyncStatus = "Connectez d’abord \(choices.source.title)."
+            return
+        }
+        manualSyncRunning = true
+        manualSyncFailed = false
+        manualSyncStatus = "Synchronisation en cours…"
+        Task {
+            do {
+                let result = try await runProcess(
+                    executable: "/usr/bin/env",
+                    arguments: [
+                        "ARC_WORKSPACE=\(workspaceURL.path)",
+                        engineURL.appendingPathComponent("scripts/daily-sync.sh").path
+                    ],
+                    directory: engineURL,
+                    streamOutput: false
+                )
+                let output = result.output
+                if output.localizedCaseInsensitiveContains("déjà en cours") {
+                    manualSyncStatus = "Une synchronisation est déjà en cours."
+                } else if output.localizedCaseInsensitiveContains("budget quotidien atteint") {
+                    manualSyncStatus = "Synchronisation reportée : plafond quotidien atteint."
+                } else if result.code == 0 && !output.localizedCaseInsensitiveContains("ERREUR :") {
+                    manualSyncStatus = "Synchronisation terminée — les données sont à jour."
+                } else {
+                    manualSyncFailed = true
+                    manualSyncStatus = "La synchronisation demande votre attention. Vérifiez les connexions ou le diagnostic."
+                }
+            } catch {
+                manualSyncFailed = true
+                manualSyncStatus = "Impossible de lancer la synchronisation : \(error.localizedDescription)"
+            }
+            manualSyncRunning = false
+        }
+    }
+
     func launchExternalCoach() {
         let assistant = choices.ide == .all ? IDEChoice.claude : choices.ide
         let home = fm.homeDirectoryForCurrentUser.path
@@ -1503,6 +1546,29 @@ struct ReadyView: View {
                     Button("Arrêter") { model.stopDashboard() }.controlSize(.large)
                 }
                 Button { model.openWorkspace() } label: { Label("Mes données", systemImage: "folder") }.controlSize(.large)
+            }
+
+            HStack(spacing: 12) {
+                Button {
+                    model.synchronizeNow()
+                } label: {
+                    HStack(spacing: 6) {
+                        if model.manualSyncRunning {
+                            ProgressView().controlSize(.small)
+                        } else {
+                            Image(systemName: "arrow.triangle.2.circlepath")
+                        }
+                        Text(model.manualSyncRunning ? "Synchronisation…" : "Synchroniser maintenant")
+                    }
+                }
+                .disabled(!model.isAuthenticated || model.manualSyncRunning)
+                .controlSize(.large)
+                if !model.manualSyncStatus.isEmpty {
+                    Text(model.manualSyncStatus)
+                        .font(.callout)
+                        .foregroundStyle(model.manualSyncFailed ? Color.red : Color.secondary)
+                }
+                Spacer()
             }
 
             Divider()
