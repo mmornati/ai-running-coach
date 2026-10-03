@@ -360,37 +360,70 @@ class TestIntervalsStubFraming(StubProcessTestCase):
         self.assertEqual(response["result"]["serverInfo"]["name"], "intervals-stub")
 
     def test_tools_call_default_wellness(self):
-        # Nom et forme vérifiés (#68, revue PR #116) contre eddmann/intervals-icu-mcp :
+        # Nom et forme vérifiés (#68, revue PR #116) contre hhopke/intervals-icu-mcp (#165, outils préfixés `icu_`) :
         # snake_case, enveloppe `{"data": {...}, "metadata": {...}}`
         # (`ResponseBuilder.build_response`), champ imbriqué `heart.resting_hr`
         # sous `data` (PAS `restingHR` plat, PAS de kebab-case, PAS un objet
         # racine sans enveloppe — hypothèses antérieures non vérifiées).
         proc = self.start()
         self.initialize(proc)
-        self.call(proc, "get_wellness_for_date")
+        self.call(proc, "icu_get_wellness_for_date")
         response = self.recv(proc)
         payload = json.loads(response["result"]["content"][0]["text"])
         self.assertIn("metadata", payload)
         self.assertIn("resting_hr", payload["data"]["heart"])
+
+    def _payload(self, tool, arguments=None):
+        proc = self.start()
+        self.initialize(proc)
+        self.call(proc, tool, arguments or {})
+        response = self.recv(proc)
+        return json.loads(response["result"]["content"][0]["text"])
+
+    def test_tool_names_carry_the_icu_prefix(self):
+        """#165 : le fork hhopke préfixe TOUS ses outils `icu_` — le stub aussi, jamais l'ancien nom nu."""
+        proc = self.start()
+        self.initialize(proc)
+        self.send(proc, {"jsonrpc": "2.0", "id": 9, "method": "tools/list", "params": {}})
+        names = [t["name"] for t in self.recv(proc)["result"]["tools"]]
+        self.assertTrue(names)
+        self.assertTrue(all(n.startswith("icu_") for n in names), names)
+
+    def test_workout_write_echoes_the_parse_result_without_workout_doc(self):
+        structured = self._payload("icu_create_event", {
+            "start_date": "2026-10-05", "name": "Endurance", "category": "WORKOUT",
+            "description": "Main Set\n- 60m 140-150bpm"})
+        self.assertTrue(structured["data"]["workout_parsed"])
+        self.assertGreaterEqual(structured["data"]["workout_steps"], 1)
+        self.assertNotIn("workout_doc", structured["data"])
+        plain = self._payload("icu_create_event", {
+            "start_date": "2026-10-05", "name": "Endurance", "category": "WORKOUT",
+            "description": "Cible FC : 140-150 bpm"})
+        self.assertFalse(plain["data"]["workout_parsed"])
+
+    def test_delete_event_returns_the_deleted_skipped_envelope(self):
+        data = self._payload("icu_delete_event", {"event_id": 42})["data"]
+        self.assertEqual(data["deleted"], [42])
+        self.assertEqual(data["skipped"], [])
 
     def test_shares_the_call_log_format_with_garmin(self):
         with tempfile.TemporaryDirectory() as tmp:
             log_path = Path(tmp) / "calls.log"
             proc = self.start(tool_log=log_path)
             self.initialize(proc)
-            self.call(proc, "get_recent_activities")
+            self.call(proc, "icu_get_recent_activities")
             self.recv(proc)
             entries = [json.loads(line) for line in log_path.read_text(encoding="utf-8").splitlines()]
-            self.assertEqual(entries[0]["tool"], "get_recent_activities")
+            self.assertEqual(entries[0]["tool"], "icu_get_recent_activities")
             self.assertEqual(entries[0]["server"], "intervals")
 
     def test_injected_error_matches_garmin_semantics(self):
         # `error = "empty"` vide tout le gabarit `default` — ici l'enveloppe
         # entière (`{"data": ..., "metadata": ...}`), pas seulement `data` :
         # écart de fidélité assumé et documenté en tête de stub_intervals_mcp.py.
-        proc = self.start(stub_config={"get_wellness_for_date": {"error": "empty"}})
+        proc = self.start(stub_config={"icu_get_wellness_for_date": {"error": "empty"}})
         self.initialize(proc)
-        self.call(proc, "get_wellness_for_date")
+        self.call(proc, "icu_get_wellness_for_date")
         response = self.recv(proc)
         payload = json.loads(response["result"]["content"][0]["text"])
         self.assertEqual(payload, {})

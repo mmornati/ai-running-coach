@@ -89,6 +89,18 @@ class PolicyTest(PolicyBase):
             for name in names:
                 self.assertEqual(self.d(f"mcp:{server}.{name}"), "ask", f"{server}.{name}")
 
+    def test_mcp_intervals_fork_icu_prefixe(self):
+        """#165 : le fork hhopke préfixe tous ses outils `icu_`. Lectures libres, écritures et
+        téléchargements (qui écrivent un fichier local, `output_path`) soumis à approbation."""
+        for name in ("icu_get_wellness_for_date", "icu_get_recent_activities", "icu_get_calendar_events",
+                     "icu_search_activities", "icu_get_gear_list"):
+            self.assertEqual(self.d(f"mcp:intervals.{name}"), "allow", name)
+        for name in ("icu_create_event", "icu_bulk_create_events", "icu_update_event", "icu_delete_event",
+                     "icu_bulk_delete_events", "icu_update_wellness", "icu_add_activity_message",
+                     "icu_duplicate_events", "icu_apply_training_plan", "icu_delete_activity",
+                     "icu_download_fit_file", "icu_download_activity_file"):
+            self.assertEqual(self.d(f"mcp:intervals.{name}"), "ask", name)
+
     def test_mcp_outil_inconnu_ou_serveur_inconnu(self):
         self.assertEqual(self.d("mcp:garmin.upsert_and_log"), "ask")        # inconnu d'un serveur connu
         self.assertEqual(self.d("mcp:hassmcp.get_entity"), "deny")
