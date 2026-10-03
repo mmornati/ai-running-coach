@@ -28,7 +28,10 @@
     équivalent intervals.icu (table de correspondance dans `AGENTS.md`) —
     sauf le push de séances, qui n'est PAS un simple changement de nom
     d'outil : voir [Configuration Intervals.icu](../intervals-setup.md) et le
-    skill `intervals-icu-best-practices`.
+    skill `intervals-icu-best-practices`. Avec `[data].source = "strava"` (#164) : serveur MCP
+    `strava` (table Garmin ↔ Strava dans `AGENTS.md`), lecture seule, **pas de HRV / FC de
+    repos / sommeil / readiness** (dit explicitement, jamais simulé), pas de calendrier ni de
+    push — voir [Configuration Strava](../strava-setup.md).
 
 ## Rôle
 

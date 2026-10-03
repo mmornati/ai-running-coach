@@ -106,12 +106,13 @@ avec `morning_check = "off"`.
 
 ```toml
 [data]
-source = "garmin"   # garmin (défaut) | intervals
+source = "garmin"   # garmin (défaut) | intervals | strava
 ```
 
-Écrite automatiquement par `./install.sh --source garmin|intervals` — voir
-[Configuration Garmin](garmin-setup.md) et
-[Configuration Intervals.icu](intervals-setup.md). Change les outils MCP
+Écrite automatiquement par `./install.sh --source garmin|intervals|strava` — voir
+[Configuration Garmin](garmin-setup.md),
+[Configuration Intervals.icu](intervals-setup.md) et
+[Configuration Strava](strava-setup.md). Change les outils MCP
 appelés par `coach`/`medical`/`garmin-daily-sync` pour les activités, la
 santé et le calendrier planifié (table de correspondance complète dans
 `AGENTS.md`). Sans montre Garmin, `intervals` ouvre le projet aux données
@@ -123,6 +124,13 @@ COROS/Suunto/Polar/Apple synchronisées sur Intervals.icu.
     câblé dans ce projet côté Intervals.icu — l'agent le dit explicitement
     plutôt que d'inventer une valeur. Détail dans
     [Configuration Intervals.icu](intervals-setup.md).
+
+!!! warning "Avec `strava` (#164)"
+    Strava n'expose ni HRV, ni FC de repos, ni sommeil, ni readiness : le bilan matinal
+    (`[health].morning_check`) est dit **indisponible** (jamais simulé), même à `full`, et il
+    n'y a ni calendrier ni push de séances. En revanche les flux par seconde alimentent les KPI
+    du FIT (zones, GAP, découplage, VAM…) via `download_fit.py --source strava`. Prérequis :
+    Node.js 18+. Détail dans [Configuration Strava](strava-setup.md).
 
 ## Le style de coaching — `[coaching]`
 

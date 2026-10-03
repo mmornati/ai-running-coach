@@ -44,6 +44,7 @@ Pour le reste, les traces de l'installation suffisent :
 | Service `ai-running-coach-remote` (`scripts/coach-remote.sh status`) | `--remote-control` |
 | `[agents].enabled` dans `config/workspace.user.toml` | `--agents …` (ou `--no-medical`) |
 | `[data].source = "intervals"` | `--source intervals` |
+| `[data].source = "strava"` | `--source strava` |
 | Dossiers `.claude/`, `.opencode/`, `.gemini/`… présents | `--ide …` |
 
 Une machine coach (daily-sync + Remote Control, Claude Code) correspond au préréglage

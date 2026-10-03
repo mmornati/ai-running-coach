@@ -36,6 +36,7 @@ n'apparaît jamais littéralement en sortie.)
 |---|---|---|
 | `garmin_token` | Âge/échéance des tokens Garmin (`~/.garminconnect` par défaut) | ⚠️ à moins de 14 jours de l'échéance, ❌ si expirés ou absents |
 | `garmin_mcp` | Présence/exécutabilité du binaire MCP `garmin` (aucun process lancé) | ❌ si la commande est introuvable ou non exécutable |
+| `strava_connection` | (#164, source `strava` seulement, sinon ℹ️) Node.js 18+, wrapper, serveur `strava` déclaré, jetons présents et non lisibles par d'autres — valeurs jamais lues ni affichées, aucun appel réseau | ❌ si Node.js/wrapper/serveur/jeton de rafraîchissement manquent, ⚠️ si identifiants client absents ou fichier lisible par d'autres |
 | `config_files` | `config/workspace.toml` et `config/workspace.user.toml` sont du TOML valide | ❌ si absent ou invalide, ⚠️ si validation stricte indisponible (Python < 3.11) |
 | `athlete_profile` | FC max / FC de repos renseignées dans `planning/Runner_Profile.md` | ℹ️ sinon — le coach utilise le RPE à la place |
 | `index_freshness` | `.arc/coach.db` à jour par rapport aux fichiers du workspace (y compris les fichiers supprimés) | ⚠️ si périmé ou si un fichier supprimé est encore indexé, ℹ️ si jamais construit |

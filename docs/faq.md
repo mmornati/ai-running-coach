@@ -18,6 +18,8 @@ Oui, le projet est **en français par défaut** : les agents, les skills et la d
 
 **Garmin Connect** (montres et capteurs Garmin) est la destination primaire par défaut, installée automatiquement par `./install.sh`. **Intervals.icu** (#68) peut aussi devenir la source primaire avec `./install.sh --source intervals` — voir [Configuration Intervals.icu](intervals-setup.md) — ou rester en secondaire, uniquement sur demande explicite à l'agent `coach`, voir [configurer Intervals.icu sans passer par `install.sh`](#comment-configurer-intervalsicu-sans-passer-par-installsh) ci-dessous.
 
+**Strava** (#164) — la source « universelle » de toutes les marques de montres — peut aussi être la source primaire avec `./install.sh --source strava` (Node.js 18+ requis) : voir [Configuration Strava](strava-setup.md). Sans HRV/sommeil/readiness ni push de séances, mais avec les flux par seconde pour les KPI.
+
 ## Installation
 
 ### Quels sont les prérequis ?
