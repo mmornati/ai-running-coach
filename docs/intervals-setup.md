@@ -145,8 +145,11 @@ d'outil** : le skill `intervals-icu-best-practices` remplace
 Le serveur protège aussi les suppressions : en mode `safe` (défaut,
 variable d'environnement `INTERVALS_ICU_DELETE_MODE` côté serveur),
 `icu_delete_event` ne supprime que les événements datés de demain ou plus
-tard, et les outils `icu_delete_activity`, `icu_delete_gear`,
-`icu_delete_sport_settings`… ne sont pas enregistrés du tout.
+tard, et seuls `icu_delete_activity`, `icu_delete_sport_settings` et
+`icu_delete_custom_item` ne sont pas enregistrés du tout (`full` uniquement).
+Attention : `icu_delete_gear`, `icu_delete_workout`, `icu_delete_workout_folder`
+et `icu_bulk_delete_events` restent enregistrés en `safe` (seul le mode `none`
+les retire) — `icu_delete_gear` supprime alors sans autre garde-fou.
 
 ## Fonctionnalités et champs indisponibles avec cette source
 
@@ -202,8 +205,8 @@ réinstaller le serveur).
 
 Vérifié dans le code source du serveur épinglé (`INTERVALS_MCP_REF`, `tools/gear.py`) : il expose
 un **inventaire** de matériel (`icu_get_gear_list` : id, nom, type, `usage.total_distance_km`, rappels)
-et des outils d'écriture (`icu_create_gear`, `icu_update_gear`, `icu_create_gear_reminder` ;
-`icu_delete_gear` seulement en mode de suppression `full`). En
+et des outils d'écriture (`icu_create_gear`, `icu_update_gear`, `icu_create_gear_reminder`,
+`icu_delete_gear` — enregistré dès le mode de suppression `safe` par défaut). En
 revanche les activités (`tools/activities.py`, `tools/activity_analysis.py`) ne portent **aucun champ
 matériel** : l'attribution par séance n'est donc **pas disponible** avec cette source. Le coach
 n'attribue jamais un matériel de lui-même : `gear_id` reste déclaré par vous en chat ou tombe
@@ -230,9 +233,13 @@ Ce qui a été **vérifié dans le code** :
   commande `icu-mcp-auth` qui n'existe pas : la bonne est `intervals-icu-mcp-auth`.)
 - **Suppressions** : `INTERVALS_ICU_DELETE_MODE` (`safe` par défaut, `full`,
   `none`) décide des outils **enregistrés** côté serveur — hors de portée du
-  modèle ; en `safe`, `icu_delete_activity`, `icu_delete_gear`,
-  `icu_delete_sport_settings`… n'existent pas et `icu_delete_event` ne touche que
-  les événements futurs.
+  modèle ; en `safe`, `icu_delete_activity`, `icu_delete_sport_settings` et
+  `icu_delete_custom_item` n'existent pas, `icu_delete_event` /
+  `icu_bulk_delete_events` ne touchent que les événements futurs, mais
+  `icu_delete_gear`, `icu_delete_workout` et `icu_delete_workout_folder` restent
+  disponibles (`none` les retire). Côté projet, toute suppression passe par une
+  confirmation explicite (politique du chat) et aucune n'est possible en run
+  headless (`scripts/daily-sync.sh`, `--disallowedTools`).
 - **Écriture locale** : `icu_download_activity_file`, `icu_download_fit_file` et
   `icu_download_gpx_file` écrivent un fichier à un chemin `output_path` fourni par
   l'appelant. C'est pourquoi la politique du chat (`config/chat-policy.toml`) les
