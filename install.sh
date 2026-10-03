@@ -3,7 +3,7 @@
 # ai-running-coach — Script d'installation
 #
 # Installe et configure tout ce qu'il faut pour utiliser les agents/skills de
-# coaching trail-running avec accès Garmin (ou Intervals.icu, --source intervals,
+# coaching trail-running avec accès Garmin (ou Intervals.icu, --source intervals, ou Strava, --source strava,
 # pour les athlètes sans montre Garmin — #68) :
 #   1. uv (gestionnaire Python)
 #   2. garmin-mcp + garmin-mcp-auth (accès Garmin Connect) — mode DIRECT par défaut,
@@ -24,6 +24,7 @@
 #   ./install.sh --ide claude       # installe pour un IDE précis
 #   ./install.sh --ide copilot      # GitHub Copilot (CLI, VS Code, agent cloud)
 #   ./install.sh --source intervals # Intervals.icu au lieu de Garmin (#68)
+#   ./install.sh --source strava    # Strava au lieu de Garmin (#164)
 #   ./install.sh --workspace DIR    # données + config IDE dans DIR (dépôt privé), moteur lié
 #   ./install.sh --agents LISTE     # staff à installer, ex. coach,nutritionist
 #   ./install.sh --no-medical       # tous les agents sauf le médecin
@@ -64,6 +65,19 @@ INTERVALS_MCP_REF="git+https://github.com/eddmann/intervals-icu-mcp@cb91d4a0f3b4
 # est donc lancé depuis ce dossier dédié, hors du projet, comme `$GARMIN_TOKENS_DIR`
 # ci-dessous pour Garmin.
 INTERVALS_ENV_DIR="$HOME/.config/ai-running-coach/intervals-icu-mcp"
+# Source Strava (#164) : serveur MCP communautaire r-huijts/strava-mcp, publié sur npm
+# (`@r-huijts/strava-mcp-server`, bin `strava-mcp-server`, stdio). Épinglé à la version 1.2.1,
+# vérifiée contre le commit ac43cc7b0aad2f218b9c42bd639aee696dbee531 du dépôt (package.json,
+# src/server.ts, src/config.ts) — l'identité entre ce commit et le tarball npm n'est PAS vérifiée
+# octet pour octet (à relire avant de relever la version). Documenté dans docs/strava-setup.md ;
+# mettre à jour les deux ensemble. Ce serveur reçoit le client secret de l'application Strava de
+# l'athlète et tourne à chaque synchronisation : ne jamais le laisser flotter sur `latest`.
+STRAVA_MCP_PKG="@r-huijts/strava-mcp-server@1.2.1"
+# Wrapper du projet (même rôle que celui d'intervals : une commande stable et reconnaissable
+# par le nettoyage au changement de source) ; les jetons, eux, vivent dans le fichier du SERVEUR
+# (~/.config/strava-mcp/config.json), jamais ici ni dans une config d'IDE.
+STRAVA_MCP_DIR="$HOME/.config/ai-running-coach/strava-mcp"
+STRAVA_TOKEN_FILE="$HOME/.config/strava-mcp/config.json"
 LEANPROXY_BREW_TAP="mmornati/leanproxy-mcp"
 LEANPROXY_FORMULA="leanproxy-mcp"
 GARMIN_TOKENS_DIR="$HOME/.garminconnect"
@@ -126,7 +140,7 @@ REMOTE_CONTROL=0   # service Claude Code Remote Control (accès mobile)
 AGENTS_ARG=""      # --agents coach,medical,… (défaut : la config, sinon tous)
 ENABLED_AGENTS=""  # résolu par resolve_agents()
 PRESET=""          # --preset laptop|coach-server|docker (défaut : aucun)
-SOURCE="garmin"    # --source garmin|intervals (#68) — source de données primaire
+SOURCE="garmin"    # --source garmin|intervals|strava (#68, #164) — source de données primaire
 LLM_PROVIDER=""    # --llm openrouter|anthropic|openai — chat + sync sur une API
 LLM_MODEL_ARG=""   # --model ID (avec --llm)
 LLM_BASE_URL_ARG="" # --base-url URL (avec --llm openai : API compatible OpenAI)
@@ -165,7 +179,7 @@ Usage :
   ./install.sh                    # installation (mode direct Garmin)
   ./install.sh --preset PRESET    # laptop | coach-server | docker — voir --help ci-dessous
   ./install.sh --ide IDE          # claude | copilot | opencode | gemini | cursor | windsurf
-  ./install.sh --source SOURCE    # garmin (défaut) | intervals — source de données primaire (#68)
+  ./install.sh --source SOURCE    # garmin (défaut) | intervals | strava — source de données primaire (#68, #164)
   ./install.sh --workspace DIR    # données + config IDE dans DIR (dépôt privé), moteur lié
   ./install.sh --agents LISTE     # staff à installer, ex. coach,nutritionist
   ./install.sh --no-medical       # tous les agents sauf le médecin
@@ -377,11 +391,11 @@ fi
 # config existante).
 validate_source() {
     case "$SOURCE" in
-        garmin|intervals) ;;
-        *) die "Source de données inconnue : « $SOURCE ». Valides : garmin, intervals (voir --help)." ;;
+        garmin|intervals|strava) ;;
+        *) die "Source de données inconnue : « $SOURCE ». Valides : garmin, intervals, strava (voir --help)." ;;
     esac
-    if [[ "$SOURCE" == "intervals" && "$USE_LEANPROXY" -eq 1 ]]; then
-        die "--use-leanproxy ne route que le serveur garmin — incompatible avec --source intervals (voir --help)."
+    if [[ "$SOURCE" != "garmin" && "$USE_LEANPROXY" -eq 1 ]]; then
+        die "--use-leanproxy ne route que le serveur garmin — incompatible avec --source $SOURCE (voir --help)."
     fi
 }
 
@@ -477,11 +491,11 @@ remove_json_key() {
 # cette story — le pré-existant garmin<->leanproxy (--use-leanproxy) n'est
 # pas traité ici, hors du périmètre de #68.
 stale_mcp_server_names() {
-    if [[ "$SOURCE" == "intervals" ]]; then
-        echo "garmin"
-    else
-        echo "intervals"
-    fi
+    case "$SOURCE" in
+        intervals) echo "garmin strava" ;;
+        strava) echo "garmin intervals" ;;
+        *) echo "intervals strava" ;;
+    esac
 }
 
 # Commande EXACTE que install.sh écrit pour un serveur donné — jamais celle
@@ -490,6 +504,7 @@ stale_mcp_expected_command() {
     case "$1" in
         garmin) echo "garmin-mcp" ;;
         intervals) echo "$INTERVALS_ENV_DIR/run.sh" ;;
+        strava) echo "$STRAVA_MCP_DIR/run.sh" ;;
         *) echo "" ;;
     esac
 }
@@ -1104,6 +1119,59 @@ install_intervals_mcp() {
 }
 
 # ---------------------------------------------------------------------------
+# 2ter. serveur MCP Strava (--source strava, #164)
+# ---------------------------------------------------------------------------
+# Installé À LA PLACE de garmin-mcp. Pas de binaire à installer : le serveur est un
+# paquet npm lancé par `npx` (épinglé, voir STRAVA_MCP_PKG) — Node.js >= 18 est le seul
+# prérequis. L'authentification OAuth n'est PAS faite ici : elle passe par l'outil
+# `connect-strava` du serveur (navigateur, http://localhost:8111), à lancer une fois depuis
+# l'agent, après avoir créé l'application API Strava de l'athlète (docs/strava-setup.md).
+write_strava_wrapper() {
+    local wrapper="$STRAVA_MCP_DIR/run.sh"
+    if [[ "$DRY_RUN" -eq 1 ]]; then
+        printf '%s\n' "${C_YELLOW}[dry-run]${C_RESET} écriture de $wrapper"
+        return 0
+    fi
+    mkdir -p "$STRAVA_MCP_DIR"
+    cat > "$wrapper" <<WRAPPER
+#!/usr/bin/env bash
+# Généré par install.sh (--source strava, #164). Les jetons Strava ne sont JAMAIS ici :
+# le serveur les lit/écrit dans ~/.config/strava-mcp/config.json.
+set -euo pipefail
+exec npx -y $STRAVA_MCP_PKG "\$@"
+WRAPPER
+    chmod +x "$wrapper"
+    ok "Wrapper écrit : $wrapper"
+}
+
+install_strava_mcp() {
+    log "Installation du serveur MCP Strava ($STRAVA_MCP_PKG, --source strava)"
+    if ! have node || ! have npx; then
+        if [[ "$DRY_RUN" -eq 1 ]]; then
+            warn "node/npx absents (dry-run) — requis pour --source strava (Node.js >= 18)."
+        else
+            die "Node.js (node + npx, version 18 ou plus) est requis pour --source strava — voir docs/strava-setup.md."
+        fi
+    else
+        local major
+        major="$(node --version 2>/dev/null | sed -e 's/^v//' -e 's/\..*$//')"
+        if [[ "$major" =~ ^[0-9]+$ ]] && (( major < 18 )); then
+            warn "Node.js $(node --version) détecté — ce serveur exige la version 18 ou plus."
+        else
+            ok "node : $(node --version 2>/dev/null)"
+        fi
+    fi
+    write_strava_wrapper
+    if [[ -f "$STRAVA_TOKEN_FILE" ]]; then
+        ok "Compte Strava déjà connecté ($STRAVA_TOKEN_FILE)"
+    else
+        warn "Compte Strava non connecté — après l'installation : créez votre application API sur"
+        warn "https://www.strava.com/settings/api (« Authorization Callback Domain » = localhost),"
+        warn "puis demandez à l'agent d'exécuter l'outil connect-strava (voir docs/strava-setup.md)."
+    fi
+}
+
+# ---------------------------------------------------------------------------
 # 3. leanproxy-mcp (optionnel — mode power user)
 # ---------------------------------------------------------------------------
 install_leanproxy() {
@@ -1229,12 +1297,23 @@ mcp_server_value_intervals_opencode() {
     printf '{"type": "local", "command": ["%s"], "enabled": true}' "$(json_escape "$INTERVALS_ENV_DIR/run.sh")"
 }
 
+# Source Strava (#164) : même principe — le wrapper, jamais de secret dans la config.
+mcp_server_value_strava() {
+    printf '{"command": "%s", "args": []}' "$(json_escape "$STRAVA_MCP_DIR/run.sh")"
+}
+
+mcp_server_value_strava_opencode() {
+    printf '{"type": "local", "command": ["%s"], "enabled": true}' "$(json_escape "$STRAVA_MCP_DIR/run.sh")"
+}
+
 # Valeur JSON du serveur, au format « mcpServers » (Claude, Copilot, Cursor,
 # Windsurf) puis au format OpenCode. Produites ici pour qu'il n'y ait qu'un
 # endroit à corriger quand la liste blanche (ou la source) change.
 mcp_server_value() {
     if [[ "$SOURCE" == "intervals" ]]; then
         mcp_server_value_intervals
+    elif [[ "$SOURCE" == "strava" ]]; then
+        mcp_server_value_strava
     elif [[ "$USE_LEANPROXY" -eq 1 ]]; then
         printf '{"command": "leanproxy-mcp", "args": []}'
     else
@@ -1246,6 +1325,8 @@ mcp_server_value() {
 mcp_server_value_opencode() {
     if [[ "$SOURCE" == "intervals" ]]; then
         mcp_server_value_intervals_opencode
+    elif [[ "$SOURCE" == "strava" ]]; then
+        mcp_server_value_strava_opencode
     elif [[ "$USE_LEANPROXY" -eq 1 ]]; then
         printf '{"type": "local", "command": ["leanproxy-mcp"], "enabled": true}'
     else
@@ -1258,6 +1339,8 @@ mcp_server_value_opencode() {
 mcp_server_name() {
     if [[ "$SOURCE" == "intervals" ]]; then
         echo "intervals"
+    elif [[ "$SOURCE" == "strava" ]]; then
+        echo "strava"
     elif [[ "$USE_LEANPROXY" -eq 1 ]]; then
         echo "leanproxy"
     else
@@ -1522,7 +1605,7 @@ install_daily_sync() {
     case "$mode" in
         schedule) ;;
         watch)
-            # intervals.icu n'est pas surveillé (pas de sonde équivalente) : heures fixes.
+            # intervals.icu et Strava ne sont pas surveillés (pas de sonde équivalente) : heures fixes.
             if [[ "$(data_source)" != "garmin" ]]; then
                 warn "[sync].mode = \"watch\" n'existe que pour [data].source = \"garmin\" — heures fixes ([sync].times)."
                 mode="schedule"
@@ -1812,7 +1895,27 @@ install_chat() {
 verify() {
     log "Vérification finale"
     local fail=0
-    if [[ "$SOURCE" == "intervals" ]]; then
+    if [[ "$SOURCE" == "strava" ]]; then
+        for cmd in node npx; do
+            if have "$cmd"; then
+                ok "$cmd : présent"
+            else
+                warn "$cmd : absent — Node.js >= 18 requis pour --source strava"
+                fail=1
+            fi
+        done
+        if [[ -f "$STRAVA_MCP_DIR/run.sh" ]]; then
+            ok "Wrapper MCP : présent ($STRAVA_MCP_DIR/run.sh)"
+        else
+            warn "Wrapper MCP absent ($STRAVA_MCP_DIR/run.sh) — relancez ./install.sh --source strava"
+            fail=1
+        fi
+        if [[ -f "$STRAVA_TOKEN_FILE" ]]; then
+            ok "Compte Strava : jetons présents ($STRAVA_TOKEN_FILE)"
+        else
+            warn "Compte Strava : non connecté — demandez à l'agent d'exécuter connect-strava (docs/strava-setup.md)"
+        fi
+    elif [[ "$SOURCE" == "intervals" ]]; then
         for cmd in uv intervals-icu-mcp; do
             if have "$cmd"; then
                 ok "$cmd : présent"
@@ -1899,7 +2002,7 @@ print_config_recap() {
     # Les préréglages ne touchent jamais au staff d'agents (voir apply_preset) :
     # « défaut » veut dire ici config/workspace.user.toml ou, à défaut, tous.
     recap_line "Agents" "$ENABLED_AGENTS" "$([[ "$EXPLICIT_AGENTS" -eq 1 ]] && echo "explicite" || echo "défaut")"
-    recap_line "$([[ "$SOURCE" == "intervals" ]] && echo "Auth Intervals.icu" || echo "Auth Garmin")" \
+    recap_line "$(case "$SOURCE" in intervals) echo "Auth Intervals.icu" ;; strava) echo "Auth Strava" ;; *) echo "Auth Garmin" ;; esac)" \
         "$([[ "$DO_AUTH" -eq 1 ]] && echo "activée" || echo "sautée")" "$(_config_origin "$EXPLICIT_DO_AUTH")"
     recap_line "Passerelle leanproxy" \
         "$([[ "$USE_LEANPROXY" -eq 1 ]] && echo "oui" || echo "non")" "$(_config_origin "$EXPLICIT_LEANPROXY")"
@@ -1932,8 +2035,11 @@ main() {
     require_cmd curl "Installez curl (macOS : déjà présent ; Linux : apt install curl)."
     require_cmd git "Installez git."
 
-    install_uv
-    if [[ "$SOURCE" == "intervals" ]]; then
+    # Strava : aucun outil Python à installer (serveur npm lancé par npx) — pas de uv.
+    [[ "$SOURCE" == "strava" ]] || install_uv
+    if [[ "$SOURCE" == "strava" ]]; then
+        install_strava_mcp
+    elif [[ "$SOURCE" == "intervals" ]]; then
         install_intervals_mcp
     else
         install_garmin_mcp
