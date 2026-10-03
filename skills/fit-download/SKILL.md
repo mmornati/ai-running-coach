@@ -24,7 +24,7 @@ Télécharge les fichiers FIT (et leurs records GPS en JSON) en **bypassant le c
 
 ## Workflow
 
-1. **Trouver les identifiants** : dans le bloc ```` ```arc ```` des fichiers MD d'activités (`garmin_activity_id` ou `intervals_activity_id`), ou via le MCP (`get_activities_by_date` / `get_recent_activities`).
+1. **Trouver les identifiants** : dans le bloc ```` ```arc ```` des fichiers MD d'activités (`garmin_activity_id` ou `intervals_activity_id`), ou via le MCP (`get_activities_by_date` / `icu_get_recent_activities`).
 2. **Télécharger** :
    ```bash
    python3 skills/fit-download/scripts/download_fit.py 24070286912 --json --output-dir /tmp/fits/

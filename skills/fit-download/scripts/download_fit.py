@@ -304,7 +304,7 @@ def _persist_fit(fit: bytes, activity_id, out_dir: Path, want_json: bool) -> Pat
 
 INTERVALS_API = "https://intervals.icu/api/v1"
 # Identifiant d'une activité importée dans Intervals.icu (fichier FIT/TCX/GPX) :
-# « i » + chiffres, ex. `i123456789` — la forme que `get_recent_activities` rend et
+# « i » + chiffres, ex. `i123456789` — la forme que `icu_get_recent_activities` rend et
 # que le contrat stocke dans `intervals_activity_id`. Une activité importée depuis
 # Strava porte, elle, un identifiant sans préfixe — et n'est de toute façon pas
 # redistribuable (voir `IntervalsUnavailable`).

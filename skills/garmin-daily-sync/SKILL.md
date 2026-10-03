@@ -24,7 +24,7 @@ Remote Control) et l'IDE partagent. Il délègue tout à l'agent `coach` et au s
   `garmin` ou est absente. À `intervals`, chaque outil `garmin` cité plus bas
   (activités, wellness/HRV/FC de repos/sommeil) est remplacé par son
   équivalent intervals.icu (table de correspondance dans `AGENTS.md`) : un
-  seul appel `get_wellness_for_date` couvre HRV + FC de repos + sommeil. Le
+  seul appel `icu_get_wellness_for_date` couvre HRV + FC de repos + sommeil. Le
   readiness Garmin n'a pas d'équivalent : à `full`, dire "readiness
   indisponible — source intervals.icu" au lieu d'un score ; ne jamais
   substituer le champ `subjective.readiness` (une valeur manuelle du jour,

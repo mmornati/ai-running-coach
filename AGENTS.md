@@ -61,7 +61,7 @@ readiness algorithmique équivalent à celui de Garmin — seul un champ
 `subjective.readiness` existe côté intervals.icu, une valeur manuelle du jour
 qui peut venir de l'athlète OU d'un appareil tiers synchronisé (Oura, Whoop...),
 jamais un score calculé par intervals.icu. À `full`, le bilan devient donc HRV + FC de repos
-(les deux dans le même appel `get_wellness_for_date`) **et l'indisponibilité du
+(les deux dans le même appel `icu_get_wellness_for_date`) **et l'indisponibilité du
 readiness est dite explicitement** ("readiness indisponible — source
 intervals.icu"), jamais remplacée par le champ subjectif présenté comme
 équivalent. À `minimal`, la ligne unique devient "readiness indisponible
@@ -131,7 +131,7 @@ a été faite avec `./install.sh --source intervals` (ou `[data].source =
 "intervals"` posé à la main).
 
 - **`garmin`** — activités, sommeil, HRV, readiness, **calendrier des séances planifiées**, upload parcours/séances. **Mode direct par défaut** : le serveur MCP `garmin` expose `garmin-mcp` avec une liste blanche d'outils (`GARMIN_ENABLED_TOOLS`). **Mode passerelle (optionnel, power user)** : `leanproxy_invoke_tool(server="garmin", tool="...")` via leanproxy-mcp (économie de tokens ~98 %, chargement paresseux des schémas). **PRIMAIRE si `[data].source = "garmin"` (défaut)** ; sinon non installé par `install.sh` (voir ci-dessous).
-- **`Intervals.icu`** — événements, wellness, activités, via le serveur MCP communautaire [`eddmann/intervals-icu-mcp`](https://github.com/eddmann/intervals-icu-mcp) (48 outils, `intervals-icu-mcp` + `intervals-icu-mcp-auth`, voir `docs/intervals-setup.md`). **PRIMAIRE si `[data].source = "intervals"`** (installé par `./install.sh --source intervals`) : `coach`/`medical`/`garmin-daily-sync` utilisent alors ses outils au lieu de ceux de `garmin`, table de correspondance ci-dessous. **SECONDAIRE sinon** (défaut) : uniquement si l'utilisateur le demande explicitement (skill `intervals-icu-best-practices`), serveur non installé par `install.sh`, configuration manuelle (`docs/faq.md`).
+- **`Intervals.icu`** — événements, wellness, activités, via le serveur MCP communautaire [`hhopke/intervals-icu-mcp`](https://github.com/hhopke/intervals-icu-mcp) (fork maintenu de `eddmann/intervals-icu-mcp`, 66 outils en mode de suppression `safe` par défaut, **tous préfixés `icu_`**, `intervals-icu-mcp` + `intervals-icu-mcp-auth`, voir `docs/intervals-setup.md`). **PRIMAIRE si `[data].source = "intervals"`** (installé par `./install.sh --source intervals`) : `coach`/`medical`/`garmin-daily-sync` utilisent alors ses outils au lieu de ceux de `garmin`, table de correspondance ci-dessous. **SECONDAIRE sinon** (défaut) : uniquement si l'utilisateur le demande explicitement (skill `intervals-icu-best-practices`), serveur non installé par `install.sh`, configuration manuelle (`docs/faq.md`).
 - **Absents localement** : `myfitnesspal` (utiliser les rapports manuels), `nexus-mcp` (RAG — déploiement Docker VPS uniquement ; localement utiliser `resources/` + historique MD)
 
 ### Correspondance des outils — Garmin ↔ intervals.icu (#68)
@@ -141,27 +141,33 @@ cadence, même persistance MD, même contrat `arc` **pour les lectures**.
 **Le push de séances n'est PAS un simple changement de nom d'outil** — voir
 l'avertissement sous la table. Noms et formes de réponse vérifiés dans le code
 source du serveur retenu (`src/intervals_icu_mcp/tools/*.py`, `client.py`,
-`response_builder.py`, commit `cb91d4a` — épinglé par `INTERVALS_MCP_REF` dans
-`install.sh`, documenté dans `docs/intervals-setup.md`), jamais devinés.
+`response_builder.py`, fork `hhopke/intervals-icu-mcp` au commit `5cd7e1a` (v5.5.0)
+— épinglé par `INTERVALS_MCP_REF` dans `install.sh`, documenté dans
+`docs/intervals-setup.md`, #165), jamais devinés. **Tous les outils de ce serveur
+portent le préfixe `icu_`** (`icu_get_wellness_for_date`…) ; l'ancien serveur
+(eddmann, épinglé avant #165) exposait les mêmes outils SANS préfixe : si les outils
+appelables n'ont pas ce préfixe, l'installation est périmée — le dire à l'athlète
+(`./install.sh --source intervals`, nouvelle session, `docs/update.md` ; `/coach-doctor`
+check `intervals_mcp_pin`) et ne pousser aucune séance en attendant.
 
 | Besoin | Outil `garmin` | Outil `intervals` | Note |
 |---|---|---|---|
-| HRV nocturne | `get_hrv_data` | `get_wellness_for_date` (`heart.hrv_rmssd`/`heart.hrv_sdnn`) | Un seul appel intervals.icu couvre HRV + FC de repos + sommeil. |
-| FC de repos | `get_rhr_day` | `get_wellness_for_date` (`heart.resting_hr`) | Idem — ne PAS appeler `get_wellness_data` (plage de dates) pour un seul jour. |
-| Sommeil | `get_sleep_data` | `get_wellness_for_date` (`sleep.*`) | |
+| HRV nocturne | `get_hrv_data` | `icu_get_wellness_for_date` (`heart.hrv_rmssd`/`heart.hrv_sdnn`) | Un seul appel intervals.icu couvre HRV + FC de repos + sommeil. |
+| FC de repos | `get_rhr_day` | `icu_get_wellness_for_date` (`heart.resting_hr`) | Idem — ne PAS appeler `icu_get_wellness_data` (plage de dates) pour un seul jour. |
+| Sommeil | `get_sleep_data` | `icu_get_wellness_for_date` (`sleep.*`) | |
 | Readiness algorithmique | `get_training_readiness` | **aucun équivalent** | intervals.icu n'expose que `subjective.readiness` — une valeur manuelle dans le champ wellness du jour, qui peut venir de l'athlète OU d'un appareil tiers synchronisé (Oura, Whoop...), jamais un score calculé par intervals.icu lui-même — jamais présenté comme équivalent au Training Readiness Garmin. Dire explicitement l'indisponibilité (voir `[health].morning_check` ci-dessus). |
-| Activités récentes | `get_activities` / `get_activities_by_date` | `get_recent_activities` | |
-| Détail d'une activité | `get_activity` | `get_activity_details` | Pas de fréquence cardiaque de récupération (HRR/`recovery_hr_bpm`) ni de `splits` par km sur ce serveur — champs omis, jamais inventés (impacte aussi `course-comparison`, qui exige `splits`). Pas de champ équivalent à `bmr_calories` identifié non plus : `calories_bmr_kcal` reste omis pour une activité synchronisée depuis cette source, jamais deviné. Renseigner `intervals_activity_id` (chaîne, ex. `"i12345678"`) sur `activities/*.md` au lieu de `garmin_activity_id` (entier) — `workspace-data-contract`. |
-| Durées d'une activité | `get_activity` | `get_activity_details` : `duration_s` ← `elapsed_time_seconds` (durée totale, pauses comprises), `moving_duration_s` ← `moving_time_seconds` | **Jamais `duration_s` depuis `get_recent_activities`** : cette liste ne renvoie que `moving_time_seconds` (temps en mouvement). Un `duration_s` égal au temps en mouvement fait refuser par la validation un temps en zone pourtant juste (`time_in_zone_s` > `duration_s`). |
-| Événements planifiés | `get_calendar_events` / `get_scheduled_workouts` | `get_calendar_events` / `get_upcoming_workouts` | |
-| Détail d'une séance planifiée | `get_workout_by_id` | `get_event` | Ne renvoie que id/date/name/category/description/type/metrics — jamais de structure de séance. |
-| Push d'une séance | `schedule_workouts` / `schedule_week` | `create_event` / `bulk_create_events` | **Pas un remplacement direct** — charger le skill `intervals-icu-best-practices` (pas `garmin-workout-scheduling`) : `create_event`/`update_event` n'ont PAS de paramètre structuré (pas de `workout_doc`) ; les cibles (#60) s'écrivent en texte dans `description` ; aucun upsert n'existe (vérifier `get_calendar_events` avant chaque push, pas de réutilisation de `workout_id`) ; la vérification post-push ne porte que sur les champs que `get_event` renvoie réellement. |
-| Matériel (inventaire) | `get_gear` (appeler avec `include_stats=False` : le défaut du serveur est `True`, un appel API par matériel) | `get_gear_list` | **Référence seulement** côté intervals.icu (id, nom, type, `usage.total_distance_km`) — jamais une attribution. Voir « Matériel » sous la table (#133). |
+| Activités récentes | `get_activities` / `get_activities_by_date` | `icu_get_recent_activities` | |
+| Détail d'une activité | `get_activity` | `icu_get_activity_details` | Pas de fréquence cardiaque de récupération (HRR/`recovery_hr_bpm`) ni de `splits` par km sur ce serveur — champs omis, jamais inventés (impacte aussi `course-comparison`, qui exige `splits`). Pas de champ équivalent à `bmr_calories` identifié non plus : `calories_bmr_kcal` reste omis pour une activité synchronisée depuis cette source, jamais deviné. Renseigner `intervals_activity_id` (chaîne, ex. `"i12345678"`) sur `activities/*.md` au lieu de `garmin_activity_id` (entier) — `workspace-data-contract`. |
+| Durées d'une activité | `get_activity` | `icu_get_activity_details` : `duration_s` ← `elapsed_time_seconds` (durée totale, pauses comprises), `moving_duration_s` ← `moving_time_seconds` | **Jamais `duration_s` depuis `icu_get_recent_activities`** : cette liste ne renvoie que `moving_time_seconds` (temps en mouvement). Un `duration_s` égal au temps en mouvement fait refuser par la validation un temps en zone pourtant juste (`time_in_zone_s` > `duration_s`). |
+| Événements planifiés | `get_calendar_events` / `get_scheduled_workouts` | `icu_get_calendar_events` / `icu_get_upcoming_workouts` | |
+| Détail d'une séance planifiée | `get_workout_by_id` | `icu_get_event` | Ne renvoie que id/date/name/category/description/type/tags/metrics — jamais de structure de séance (le résultat du parsing n'est écho que sur la réponse de `icu_create_event`/`icu_update_event`/`icu_bulk_create_events`). |
+| Push d'une séance | `schedule_workouts` / `schedule_week` | `icu_create_event` / `icu_bulk_create_events` | **Pas un remplacement direct** — charger le skill `intervals-icu-best-practices` (pas `garmin-workout-scheduling`) : `icu_create_event`/`icu_update_event` n'ont PAS de paramètre structuré (pas de `workout_doc`), mais la `description` d'un événement WORKOUT écrite dans la **syntaxe native intervals.icu** est analysée côté serveur en étapes structurées (cibles FC/zone de `scripts/arc_workout_targets.py` (#60) ; l'écho `workout_parsed`/`workout_steps` de la réponse d'écriture dit si l'analyse a réussi) — **repli : texte libre** quand `workout_parsed` vaut `false` ; une plage d'allure absolue n'est pas dans la syntaxe documentée (elle va dans le nom de l'événement) ; aucun upsert n'existe (vérifier `icu_get_calendar_events` avant chaque push, pas de réutilisation de `workout_id`) ; la vérification post-push porte sur l'écho d'analyse puis sur les champs que `icu_get_event` renvoie réellement ; en bulk, mêmes noms de champs que `icu_create_event` (`event_type`, `duration_seconds`…), les noms bruts de l'API sont refusés. |
+| Matériel (inventaire) | `get_gear` (appeler avec `include_stats=False` : le défaut du serveur est `True`, un appel API par matériel) | `icu_get_gear_list` | **Référence seulement** côté intervals.icu (id, nom, type, `usage.total_distance_km`) — jamais une attribution. Voir « Matériel » sous la table (#133). |
 | Matériel attaché à une activité | `get_activity_gear` | **aucun équivalent** | Le serveur intervals.icu n'a aucun champ matériel sur les activités : `gear_id` reste déclaré en chat ou `(par défaut)`, jamais deviné. |
 | Attacher un matériel à une activité | `add_gear_to_activity` (ÉCRITURE Garmin, confirmation explicite, jamais en headless) | **aucun équivalent** | Voir « Matériel » sous la table. |
-| Modifier/supprimer une séance planifiée | `delete_workout` / `unschedule_workout` | `update_event` / `delete_event` | `update_event` exige un `event_id` déjà existant — jamais un upsert. |
-| Profil athlète (référence, jamais substitué au profil déclaré) | — | `get_athlete_profile` | |
-| Charge/forme (vocabulaire générique du projet, jamais les noms TrainingPeaks) | — (calculée par `scripts/arc_index.py`) | `get_fitness_summary` | Ne jamais citer `ctl`/`atl`/`form` sous ces noms dans une réponse — reformuler en charge/condition/fatigue/forme comme partout ailleurs (`docs/marques.md`). |
+| Modifier/supprimer une séance planifiée | `delete_workout` / `unschedule_workout` | `icu_update_event` / `icu_delete_event` | `icu_update_event` exige un `event_id` déjà existant — jamais un upsert. `icu_delete_event` : en mode `safe` du serveur (défaut), seuls les événements datés de demain ou plus tard sont supprimés. |
+| Profil athlète (référence, jamais substitué au profil déclaré) | — | `icu_get_athlete_profile` | |
+| Charge/forme (vocabulaire générique du projet, jamais les noms TrainingPeaks) | — (calculée par `scripts/arc_index.py`) | `icu_get_fitness_summary` | Ne jamais citer `ctl`/`atl`/`form` sous ces noms dans une réponse — reformuler en charge/condition/fatigue/forme comme partout ailleurs (`docs/marques.md`). |
 
 **Téléchargement FIT — disponible avec les deux sources.** Le skill
 `fit-download` télécharge le FIT d'une séance intervals.icu par l'API REST
@@ -184,7 +190,7 @@ signalé une fois ; provenance dans `gear_source` ; un matériel Garmin non asso
 `(ignorée)` laisse `gear_id` absent avec `gear_source: "garmin_unmapped"` : la séance n'est alors
 jamais créditée à la paire par défaut). Un seul `get_activity_gear` par activité NOUVELLE. Aucune
 écriture Garmin sans confirmation dans la conversation, jamais en headless. **Avec
-`[data].source = "intervals"`** : le serveur épinglé expose `get_gear_list` (inventaire, à titre
+`[data].source = "intervals"`** : le serveur épinglé expose `icu_get_gear_list` (inventaire, à titre
 de référence — jamais utilisé pour attribuer) mais **aucun matériel par activité**
 (`src/intervals_icu_mcp/tools/activities.py`/`activity_analysis.py` n'ont pas de champ gear,
 vérifié au commit épinglé) : `gear_id` reste chat/`(par défaut)`, dit explicitement, jamais inventé.
@@ -202,6 +208,17 @@ jamais devinés ou simulés :**
   `course-strategist` reste limité à l'analyse GPX locale (skill
   `gpx-analysis`) — pas d'envoi du parcours vers la montre/l'app tierce.
 - **Score de readiness Garmin** : voir la table ci-dessus.
+
+**Revérifié sur le fork `hhopke` au commit épinglé (#165) — rien de nouveau pour ces
+quatre points** : toujours aucune FC de récupération (HRR), aucun `splits` par km
+(`icu_get_activity_intervals` renvoie les intervalles/tours de l'activité, pas des
+splits par km — non branché au contrat `arc`), aucun matériel attaché par activité
+(`gear` n'existe que sur l'inventaire `icu_get_gear_list`), aucun score de readiness
+calculé (seul `subjective.readiness`, valeur manuelle). Nouveautés de lecture
+**non exploitées** par le projet à ce jour : `nutrition.calories_burned` /
+`carbs_ingested_g` dans `icu_get_activity_details` (la dépense Garmin n'existe pas
+ici ; `calories_bmr_kcal` reste omis), courbes allure/FC (`icu_get_pace_curves`,
+`icu_get_hr_curves`), réglages par sport (`icu_get_sport_settings`).
 
 ## Règles de fraîcheur des données
 

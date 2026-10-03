@@ -131,7 +131,7 @@ risqueraient d'écraser la fusion l'un de l'autre.
      ce soit : la séance existe peut-être déjà côté Garmin/Intervals.icu sans
      avoir encore de fichier local. `[data].source = "garmin"` (défaut) :
      `get_activities`, fichier complet avec `garmin_activity_id`.
-     `[data].source = "intervals"` : `get_recent_activities`, fichier complet
+     `[data].source = "intervals"` : `icu_get_recent_activities`, fichier complet
      avec `intervals_activity_id` (chaîne) à la place — jamais les deux
      champs sur la même activité. Un sync réussi (l'un ou l'autre) — reprenez
      alors l'étape 2 dessus.

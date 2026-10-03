@@ -150,7 +150,7 @@ heat_threshold_c = 25.0
 #   "garmin"    — Garmin Connect, via garmin-mcp (défaut, comportement historique)
 #   "intervals" — intervals.icu (ouvre le projet aux montres non-Garmin : COROS,
 #                 Suunto, Polar, Apple — tout ce qu'intervals.icu synchronise),
-#                 via le serveur MCP communautaire eddmann/intervals-icu-mcp
+#                 via le serveur MCP communautaire hhopke/intervals-icu-mcp (#165)
 # Change la source des outils appelés par `coach`/`medical`/`garmin-daily-sync`
 # (voir la table de correspondance dans AGENTS.md) et la destination du push de
 # séances planifiées. Certaines fonctionnalités Garmin (téléchargement FIT,
