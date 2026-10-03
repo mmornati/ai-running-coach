@@ -22,9 +22,10 @@ en particulier (revue PR #116) :
 from __future__ import annotations
 
 import json
+import os
 
 from tests.lib.asserts import InstallAsserts
-from tests.lib.sandbox import Sandbox
+from tests.lib.sandbox import STUBS_DIR, Sandbox
 
 
 def _mcp_servers(sb: Sandbox) -> dict:
@@ -102,6 +103,91 @@ class TestSourceIntervals(InstallAsserts):
             self.assertFalse(
                 (sb.home / ".config/ai-running-coach/intervals-icu-mcp/run.sh").exists()
             )
+
+
+class TestIntervalsPinUpgrade(InstallAsserts):
+    """#165 : un simple rerun d'`install.sh --source intervals` met à niveau un serveur installé
+    depuis l'ancien dépôt (eddmann) ou un ancien commit — mais jamais une origine personnalisée, et
+    jamais rien quand l'installation est déjà au pin. Environnement `uv` simulé : binaire +
+    `direct_url.json` du dist-info (la source que lit `install.sh` et `coach_doctor.py`)."""
+
+    LEGACY = ("https://github.com/eddmann/intervals-icu-mcp", "cb91d4a0f3b4dc21f57421e029c07a8e9af11649")
+    FORK = "https://github.com/hhopke/intervals-icu-mcp"
+
+    def _fake_tool(self, sb, url, commit):
+        env = sb.home / ".local/share/uv/tools/intervals-icu-mcp"
+        (env / "bin").mkdir(parents=True)
+        exe = env / "bin/intervals-icu-mcp"
+        exe.write_text("#!/bin/sh\nexit 0\n")
+        exe.chmod(0o755)
+        py = env / "bin/python3"                  # `import fitparse` réussit : pas d'ajout de fitparse
+        py.write_text("#!/bin/sh\nexit 0\n")
+        py.chmod(0o755)
+        dist = env / "lib/python3.12/site-packages/intervals_icu_mcp-5.0.0.dist-info"
+        dist.mkdir(parents=True)
+        (dist / "direct_url.json").write_text(json.dumps({"url": url, "vcs_info": {"vcs": "git", "commit_id": commit}}))
+        link_dir = sb.home / ".local/bin"
+        link_dir.mkdir(parents=True, exist_ok=True)
+        (link_dir / "intervals-icu-mcp").symlink_to(exe)
+        return f"{link_dir}:{STUBS_DIR}:{os.environ.get('PATH', '')}"
+
+    def _install(self, sb, path):
+        return sb.install("--source", "intervals", "--no-auth", "--ide", "claude", PATH=path)
+
+    def _tool_installs(self, sb):
+        return [args for _, args in sb.stub_calls("uv") if args.startswith("tool install")]
+
+    def test_legacy_origin_is_reinstalled_at_the_pinned_commit(self):
+        with Sandbox() as sb:
+            path = self._fake_tool(sb, *self.LEGACY)
+            proc = self._install(sb, path)
+            self.assertSucceeded(proc)
+            installs = self._tool_installs(sb)
+            self.assertEqual(len(installs), 1, installs)
+            self.assertIn("--force", installs[0])
+            self.assertIn("--with fitparse", installs[0])
+            self.assertIn("hhopke/intervals-icu-mcp@", installs[0])
+            self.assertOutputContains(proc, "icu_")
+
+    def test_legacy_origin_written_with_dot_git_is_reinstalled_too(self):
+        with Sandbox() as sb:
+            path = self._fake_tool(sb, self.LEGACY[0] + ".git", self.LEGACY[1])
+            self.assertSucceeded(self._install(sb, path))
+            self.assertEqual(len(self._tool_installs(sb)), 1)
+
+    def test_unreadable_origin_is_never_reinstalled(self):
+        """Sans `direct_url.json` lisible : avertissement, jamais de réinstallation à l'aveugle."""
+        with Sandbox() as sb:
+            path = self._fake_tool(sb, *self.LEGACY)
+            for meta in (sb.home / ".local/share/uv/tools/intervals-icu-mcp").rglob("direct_url.json"):
+                meta.write_text("{pas du json")
+            proc = self._install(sb, path)
+            self.assertSucceeded(proc)
+            self.assertEqual(self._tool_installs(sb), [])
+            self.assertOutputContains(proc, "illisible")
+
+    def test_installation_at_the_pinned_commit_is_left_alone(self):
+        with Sandbox() as sb:
+            ref = [line for line in (sb.repo / "install.sh").read_text(encoding="utf-8").splitlines()
+                   if line.startswith("INTERVALS_MCP_REF=")][0]
+            sha = ref.rstrip('"').rsplit("@", 1)[1]
+            path = self._fake_tool(sb, self.FORK, sha)
+            self.assertSucceeded(self._install(sb, path))
+            self.assertEqual(self._tool_installs(sb), [])
+
+    def test_custom_origin_is_never_overwritten(self):
+        with Sandbox() as sb:
+            path = self._fake_tool(sb, "https://example.org/my-own-fork", "2" * 40)
+            proc = self._install(sb, path)
+            self.assertSucceeded(proc)
+            self.assertEqual(self._tool_installs(sb), [])
+            self.assertOutputContains(proc, "origine personnalisée")
+
+    def test_default_garmin_install_never_touches_the_intervals_server(self):
+        with Sandbox() as sb:
+            self._fake_tool(sb, *self.LEGACY)
+            self.assertSucceeded(sb.install("--no-auth", "--ide", "claude"))
+            self.assertFalse([a for a in self._tool_installs(sb) if "intervals" in a])
 
 
 class TestSwitchingSource(InstallAsserts):

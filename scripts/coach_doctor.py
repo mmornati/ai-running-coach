@@ -7,7 +7,8 @@ Vérifie l'installation SANS RIEN ÉCRIRE ni appeler le réseau *par défaut* :
 `config/workspace*.toml`, complétude du profil athlète (FC max / FC de repos),
 fraîcheur de l'index dérivé `.arc/coach.db`, nombre de fichiers hors contrat,
 planification du daily-sync (cron/launchd), configuration ntfy, lecteur FIT
-(`fitparse` dans l'environnement MCP de `[data].source`), et — chat avec
+(`fitparse` dans l'environnement MCP de `[data].source`), pin du serveur
+intervals.icu (`intervals_mcp_pin`, #165), et — chat avec
 le coach / sync sur une API — cohérence runner/backend/modèle/clé (`llm_config`),
 service du chat (`chat_service`), présence d'OpenCode (`opencode_cli`).
 
@@ -42,7 +43,8 @@ avant expiration des tokens, qui appelle ce script avec `--json`, éventuellemen
           "id": "garmin_token" | "garmin_mcp" | "config_files"
                 | "athlete_profile" | "index_freshness" | "out_of_contract"
                 | "daily_sync_scheduled" | "ntfy_configured" | "gear_sync"
-                | "gear_history" | "fit_reader" | "llm_config" | "chat_service" | "opencode_cli",
+                | "gear_history" | "fit_reader" | "intervals_mcp_pin" | "llm_config"
+                | "chat_service" | "opencode_cli",
           "status": "ok" | "warning" | "error" | "info",
           "message": "<texte français>",
           "fix": "<commande de correction>" | null
@@ -163,10 +165,19 @@ LAUNCHD_PLIST_REL = "Library/LaunchAgents/com.ai-running-coach.daily-sync.plist"
 
 GARMIN_MCP_INSTALL_FIX = "uv tool install --python 3.12 git+https://github.com/Taxuspt/garmin_mcp@cfc5d799ab0f165e837f1188a1d093c65838aaf7"
 
+# Pin du serveur MCP intervals.icu (#165) : DOIT rester identique à `INTERVALS_MCP_REF`
+# dans install.sh — tests/lint/test_data_source_parity.py le vérifie.
+INTERVALS_MCP_PINNED_URL = "https://github.com/hhopke/intervals-icu-mcp"
+INTERVALS_MCP_PINNED_COMMIT = "5cd7e1abf716ea28b7bc5a8da5b01860b4bf2aa4"
+# Ancien serveur (jusqu'à #165) : mêmes binaires, outils SANS préfixe `icu_`.
+INTERVALS_MCP_LEGACY_URL = "https://github.com/eddmann/intervals-icu-mcp"
+INTERVALS_MCP_UPDATE_FIX = "./install.sh --source intervals"
+
 CHECK_IDS = (
     "garmin_token", "garmin_mcp", "config_files", "athlete_profile",
     "index_freshness", "out_of_contract", "daily_sync_scheduled", "ntfy_configured",
-    "gear_sync", "gear_history", "fit_reader", "llm_config", "chat_service", "opencode_cli",
+    "gear_sync", "gear_history", "fit_reader", "intervals_mcp_pin",
+    "llm_config", "chat_service", "opencode_cli",
 )
 
 CHAT_SYSTEMD_UNIT_REL = ".config/systemd/user/ai-running-coach-chat.service"
@@ -847,6 +858,86 @@ def check_fit_reader(config: dict, home: Path) -> dict:
 
 
 # ---------------------------------------------------------------------------
+# intervals_mcp_pin (#165)
+# ---------------------------------------------------------------------------
+
+
+def installed_intervals_origin(home: Path) -> Optional[tuple]:
+    """Origine VCS `(url, commit)` du serveur `intervals-icu-mcp` installé par `uv tool`,
+    lue dans le `direct_url.json` (PEP 610) du dist-info de son environnement ; `None` si
+    l'environnement ou ce fichier est introuvable/illisible. Aucun réseau, aucun process."""
+    python = _tool_python("intervals-icu-mcp", home)
+    if python is None:
+        return None
+    env_dir = python.parent.parent
+    for path in sorted(env_dir.glob("lib/python*/site-packages/intervals_icu_mcp-*.dist-info/direct_url.json")):
+        try:
+            info = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            return None
+        if not isinstance(info, dict):
+            return None
+        vcs = info.get("vcs_info") if isinstance(info.get("vcs_info"), dict) else {}
+        # Même dépôt écrit autrement (`….git`, barre finale) : même origine (cf. install.sh).
+        url = str(info.get("url") or "").rstrip("/")
+        url = url[:-len(".git")] if url.endswith(".git") else url
+        return url, str(vcs.get("commit_id") or "")
+    return None
+
+
+def check_intervals_mcp_pin(config: dict, home: Path) -> dict:
+    """#165 : le serveur intervals.icu installé est-il au commit épinglé par `install.sh` ?
+
+    Une installation antérieure (eddmann/intervals-icu-mcp@cb91d4a) expose les outils SANS
+    préfixe `icu_` alors que le coach, ses skills et la politique du chat parlent désormais
+    `icu_*` : `warning` + commande de mise à jour. Jamais un `error` (rien n'est cassé côté
+    données). Ne concerne que `[data].source = "intervals"` — `info` ailleurs, un athlète
+    Garmin n'a rien à faire. Lecture locale seule (voir `installed_intervals_origin`)."""
+    check_id = "intervals_mcp_pin"
+    source = (config.get("data") or {}).get("source", "garmin")
+    if source != "intervals":
+        return build_check(
+            check_id, "info",
+            "[data].source != \"intervals\" — serveur intervals.icu non applicable.", fix=None,
+        )
+    origin = installed_intervals_origin(home)
+    if origin is None:
+        return build_check(
+            check_id, "info",
+            "Origine du serveur intervals-icu-mcp illisible (non installé par `uv tool`, ou "
+            "environnement introuvable) : pin non vérifié.",
+            fix=INTERVALS_MCP_UPDATE_FIX,
+        )
+    url, commit = origin
+    short = commit[:7] or "?"
+    if url == INTERVALS_MCP_LEGACY_URL:
+        return build_check(
+            check_id, "warning",
+            f"Serveur intervals-icu-mcp installé depuis l'ancien dépôt eddmann (@{short}) : ses outils "
+            "n'ont pas le préfixe `icu_` attendu par le coach (et sans push de séance structuré). "
+            "Relancer l'installation ; ouvrir ensuite une NOUVELLE session (docs/update.md).",
+            fix=INTERVALS_MCP_UPDATE_FIX,
+        )
+    if url == INTERVALS_MCP_PINNED_URL:
+        if commit == INTERVALS_MCP_PINNED_COMMIT:
+            return build_check(
+                check_id, "ok", f"Serveur intervals-icu-mcp au commit épinglé ({short}).", fix=None,
+            )
+        return build_check(
+            check_id, "info",
+            f"Serveur intervals-icu-mcp au commit {short}, différent du pin du projet "
+            f"({INTERVALS_MCP_PINNED_COMMIT[:7]}) : relancer l'installation pour s'aligner.",
+            fix=INTERVALS_MCP_UPDATE_FIX,
+        )
+    return build_check(
+        check_id, "info",
+        f"Serveur intervals-icu-mcp installé depuis une origine personnalisée ({url or '?'}) : "
+        "laissé tel quel, compatibilité des outils `icu_*` non garantie.",
+        fix=None,
+    )
+
+
+# ---------------------------------------------------------------------------
 # llm_config / chat_service / opencode_cli — chat et sync sur une API
 # ---------------------------------------------------------------------------
 
@@ -1124,7 +1215,7 @@ def check_gear_sync(workspace: Path, config: dict) -> dict:
         return build_check(
             check_id, "info",
             "[data].source = \"intervals\" — pas de matériel par séance côté intervals.icu "
-            "(inventaire `get_gear_list` en référence seulement) ; attribution via le chat/défaut.",
+            "(inventaire `icu_get_gear_list` en référence seulement) ; attribution via le chat/défaut.",
             fix=None,
         )
     tools, origin = _read_gear_whitelist(workspace)
@@ -1271,6 +1362,8 @@ def run_single_check(check_id: str, workspace: Path, now: datetime, tokens_dir: 
         return check_gear_history(workspace, config)
     if check_id == "fit_reader":
         return check_fit_reader(config, Path.home())
+    if check_id == "intervals_mcp_pin":
+        return check_intervals_mcp_pin(config, Path.home())
     if check_id == "llm_config":
         return check_llm_config(config, workspace)
     if check_id == "chat_service":

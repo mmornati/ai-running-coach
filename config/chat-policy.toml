@@ -138,8 +138,10 @@ fetch_domains = ["wttr.in", "overpass-api.de", "nominatim.openstreetmap.org"]
 # « leanproxy » : méta-outils de la passerelle (list_/search_) ; ses appels
 # invoke_tool sont ramenés au serveur réel par le backend (mcp:garmin.<outil>).
 servers = ["garmin", "intervals", "Intervals_icu", "leanproxy"]
-# Lectures : préfixes de noms d'outils.
-read_prefixes = ["get_", "count_", "list_", "download_", "search_"]
+# Lectures : préfixes de noms d'outils. « icu_get_ » / « icu_search_ » / « icu_list_ » : outils du
+# serveur intervals.icu (fork hhopke, #165), tous préfixés `icu_`. `icu_download_*` n'y figure PAS :
+# ces outils écrivent un fichier local (paramètre `output_path`) → approbation.
+read_prefixes = ["get_", "count_", "list_", "download_", "search_", "icu_get_", "icu_search_", "icu_list_"]
 # Écritures : noms exacts ou motifs `*`. Un outil inconnu d'un serveur connu demande aussi l'approbation.
 write_tools = [
   "schedule_workout", "schedule_workouts", "schedule_week",
@@ -149,4 +151,7 @@ write_tools = [
   "add_*", "set_*", "log_*", "delete_*", "update_*", "remove_*",
   "add_or_update_event", "create_event", "bulk_create_events", "update_event",
   "delete_event", "delete_events*", "request_reload",
+  # intervals.icu (fork hhopke, #165) : tout outil `icu_*` qui modifie quelque chose.
+  "icu_create_*", "icu_update_*", "icu_delete_*", "icu_bulk_*", "icu_add_*", "icu_apply_*",
+  "icu_duplicate_*",
 ]

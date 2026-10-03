@@ -60,7 +60,8 @@ Non, l'accès à Garmin Connect est requis pour la synchronisation des données.
 
 Depuis #68 : **oui, si vous le demandez** — `./install.sh --source intervals`
 installe et configure `intervals-icu-mcp` (serveur communautaire
-[`eddmann/intervals-icu-mcp`](https://github.com/eddmann/intervals-icu-mcp)),
+[`hhopke/intervals-icu-mcp`](https://github.com/hhopke/intervals-icu-mcp), fork
+maintenu de `eddmann/intervals-icu-mcp` depuis #165),
 **à la place** de `garmin-mcp`, et écrit `[data].source = "intervals"`. Voir
 [Configuration Intervals.icu](intervals-setup.md) pour le détail. Sans cette
 option, `install.sh` continue de n'installer que `garmin-mcp` (et, en option,
@@ -73,9 +74,12 @@ primaire, vous demandez explicitement un événement Intervals.icu de temps en
 temps) plutôt qu'en remplacement complet de Garmin :
 
 1. Suivez le README du serveur retenu par le projet
-   ([`eddmann/intervals-icu-mcp`](https://github.com/eddmann/intervals-icu-mcp))
+   ([`hhopke/intervals-icu-mcp`](https://github.com/hhopke/intervals-icu-mcp))
    pour l'installation exacte (clone + `uv sync`, ou `uv tool install`
    directement — voir [Configuration Intervals.icu](intervals-setup.md)).
+   Les outils portent le préfixe `icu_` : c'est le seul serveur dont les noms
+   d'outils sont ceux attendus par le coach (l'ancien `eddmann/…` expose les mêmes
+   outils sans préfixe).
 2. Ajoutez-le manuellement à la configuration MCP de votre IDE — **jamais de
    secret dans `.mcp.json`**, et **jamais un bloc `env` avec `${VAR}`** : le
    serveur charge ses identifiants depuis un `.env` relatif à SON répertoire

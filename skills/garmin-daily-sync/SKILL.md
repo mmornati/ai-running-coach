@@ -24,12 +24,17 @@ Remote Control) et l'IDE partagent. Il délègue tout à l'agent `coach` et au s
   `garmin` ou est absente. À `intervals`, chaque outil `garmin` cité plus bas
   (activités, wellness/HRV/FC de repos/sommeil) est remplacé par son
   équivalent intervals.icu (table de correspondance dans `AGENTS.md`) : un
-  seul appel `get_wellness_for_date` couvre HRV + FC de repos + sommeil. Le
+  seul appel `icu_get_wellness_for_date` couvre HRV + FC de repos + sommeil. Le
   readiness Garmin n'a pas d'équivalent : à `full`, dire "readiness
   indisponible — source intervals.icu" au lieu d'un score ; ne jamais
   substituer le champ `subjective.readiness` (une valeur manuelle du jour,
   pas un score calculé — voir AGENTS.md). Le serveur MCP interrogé est alors
-  `intervals`, pas `garmin` ; l'activité persistée porte `intervals_activity_id`
+  `intervals`, pas `garmin` ; ses outils portent le préfixe `icu_` (#165). Si
+  ce serveur n'expose que des noms SANS préfixe (ancienne installation
+  `eddmann`, pas encore mise à jour), lire avec ces mêmes noms sans préfixe
+  (mêmes outils de lecture), n'écrire rien côté intervals.icu (de toute façon
+  interdit ici) et ajouter à la ligne `Alerte :` « serveur intervals.icu à
+  mettre à jour : ./install.sh --source intervals (docs/update.md) » ; l'activité persistée porte `intervals_activity_id`
   (chaîne) au lieu de `garmin_activity_id` (entier), et omet HRR/`splits`
   (aucun équivalent). L'étape 2 (échantillons FIT) s'applique aussi, avec
   l'`intervals_activity_id` de la séance (`download_fit.py` lit la source dans

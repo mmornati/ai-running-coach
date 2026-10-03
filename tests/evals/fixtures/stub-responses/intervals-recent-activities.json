@@ -1,1 +1,1 @@
-{"data": {"activities": [{"id": "i99000099", "name": "Sortie longue", "start_date": "2026-03-08T12:05:00", "type": "Run", "distance_meters": 24800.0, "moving_time_seconds": 9660.0, "elevation_gain_meters": 890.0, "average_heartrate": 141}], "count": 1}, "metadata": {"query_type": "recent_activities"}}
+{"data": {"activities": [{"id": "i99000099", "name": "Sortie longue", "start_date": "2026-03-08T12:05:00", "type": "Run", "distance_meters": 24800.0, "moving_time_seconds": 9660.0, "elevation_gain_meters": 890.0, "average_heartrate": 141}], "count": 1}, "metadata": {}}

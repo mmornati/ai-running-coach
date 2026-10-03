@@ -81,9 +81,11 @@ DEFAULTS = {
     "web": {"fetch_domains": ["wttr.in", "overpass-api.de", "nominatim.openstreetmap.org"]},
     "mcp": {
         "servers": ["garmin", "intervals"],
-        "read_prefixes": ["get_", "count_", "list_", "download_"],
+        "read_prefixes": ["get_", "count_", "list_", "download_", "icu_get_", "icu_search_", "icu_list_"],
         "write_tools": ["schedule_*", "delete_*", "upload_*", "create_*", "add_*", "set_*", "log_*",
-                        "update_*", "remove_*", "request_reload"],
+                        "update_*", "remove_*", "request_reload",
+                        "icu_create_*", "icu_update_*", "icu_delete_*", "icu_bulk_*", "icu_add_*",
+                        "icu_apply_*", "icu_duplicate_*"],
     },
 }
 

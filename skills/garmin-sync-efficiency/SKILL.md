@@ -14,9 +14,9 @@ All Garmin tools are exposed by the `garmin` MCP server (direct mode) or via `le
 **`[data].source = "intervals"` (#68):** this whole skill still applies (check
 local files first, one date per call, persist immediately, no raw JSON) —
 against the `intervals` MCP server instead, whose tools cover the same needs
-with fewer calls: `get_wellness_for_date` alone returns sleep + HRV + resting
-HR (rules 3 above still apply, one call is still "one fetch"), `get_recent_activities`
-replaces `get_activities`. No equivalent for `get_training_readiness`, `upload_course`
+with fewer calls: `icu_get_wellness_for_date` alone returns sleep + HRV + resting
+HR (rules 3 above still apply, one call is still "one fetch"), `icu_get_recent_activities`
+replaces `get_activities` (all tools of the `intervals` server are prefixed `icu_`). No equivalent for `get_training_readiness`, `upload_course`
 or `upload_workout` — see the correspondence table in `AGENTS.md`.
 
 > **Resting HR:** use `get_rhr_day(date)`. It returns the value directly. `get_sleep_data` also contains it, but that payload can exceed 400 KB — never pull it just to read resting HR.
@@ -79,7 +79,7 @@ For each day, extract only what the file's ```arc block needs (schema: the
 - **HRV** → `hrv_overnight_ms`, `hrv_baseline_low_ms` / `hrv_baseline_high_ms`, `hrv_status`
 - **Resting HR** → `resting_hr_bpm` — **always** when `[health].morning_check = "full"`, never "if relevant". Safety rules depend on it, and it is what separates autonomic stress from systemic overload.
 - **Readiness** → `readiness_score`, `readiness_factors`
-- **Activity** → `garmin_activity_id`, `sport`, `duration_s`, `moving_duration_s` (`[data].source = "intervals"` : `elapsed_time_seconds` / `moving_time_seconds` of `get_activity_details` — never `duration_s` from `get_recent_activities`, which only returns the moving time, see `AGENTS.md`), `distance_m`, `elevation_gain_m` / `elevation_loss_m`, `avg_hr_bpm` / `max_hr_bpm`, `recovery_hr_bpm`, `training_effect_aerobic` / `training_effect_anaerobic`, `calories_kcal`, `calories_bmr_kcal` (copy `get_activity`'s `bmr_calories` field verbatim, never recomputed; `[data].source = "intervals"` has no known equivalent field, see the correspondence table in `AGENTS.md` — omit the key rather than guess), and the per-km `splits`
+- **Activity** → `garmin_activity_id`, `sport`, `duration_s`, `moving_duration_s` (`[data].source = "intervals"` : `elapsed_time_seconds` / `moving_time_seconds` of `icu_get_activity_details` — never `duration_s` from `icu_get_recent_activities`, which only returns the moving time, see `AGENTS.md`), `distance_m`, `elevation_gain_m` / `elevation_loss_m`, `avg_hr_bpm` / `max_hr_bpm`, `recovery_hr_bpm`, `training_effect_aerobic` / `training_effect_anaerobic`, `calories_kcal` (`[data].source = "intervals"` : `nutrition.calories_burned` of `icu_get_activity_details`, #165), `calories_bmr_kcal` (copy `get_activity`'s `bmr_calories` field verbatim, never recomputed; `[data].source = "intervals"` has no known equivalent field, see the correspondence table in `AGENTS.md` — omit the key rather than guess), and the per-km `splits`
 - **Gear** (#133, garmin source, new activities only) → `gear_id` + `gear_source`, taken from `arc_index.py gear-attribution`'s output, never from your own reading of `get_activity_gear`
 - **Body** → `weight_kg`, `stress_avg`, `body_battery_high` / `body_battery_low` (if relevant)
 
