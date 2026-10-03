@@ -79,6 +79,26 @@ class TestDataSourceAwareTools(InstallAsserts):
                 for rule in ("Edit(scripts/**)", "Edit(skills/**)", "Edit(.claude/**)", "Edit(.mcp.json)"):
                     self.assertOutputContains(proc, rule)
 
+    def test_intervals_source_forbids_every_write_tool_in_headless_runs(self):
+        """#165 : `mcp__intervals` autorise tout le serveur ; chaque outil `icu_*` qui n'est pas
+        une lecture (`icu_get_`/`icu_search_`/`icu_list_`) est retiré — écritures ET
+        téléchargements (`output_path`) —, ainsi que l'ancien nom sans préfixe (eddmann)."""
+        from tests.lint.test_data_source_parity import ICU_TOOLS
+        writes = sorted(t for t in ICU_TOOLS if not t.startswith(("icu_get_", "icu_search_", "icu_list_")))
+        self.assertGreater(len(writes), 30)
+        with Sandbox() as sb:
+            ws = self._workspace(sb, "intervals")
+            proc = sb.script("daily-sync.sh", "--dry-run", ARC_WORKSPACE=str(ws))
+            self.assertSucceeded(proc)
+            self.assertOutputContains(proc, "--disallowedTools")
+            for tool in writes:
+                self.assertOutputContains(proc, f"mcp__intervals__{tool},")
+            for legacy in ("create_event", "bulk_create_events", "update_event", "delete_event",
+                           "duplicate_event", "update_wellness"):
+                self.assertOutputContains(proc, f"mcp__intervals__{legacy},")
+            for read in ("icu_get_wellness_for_date", "icu_get_recent_activities", "icu_get_activity_details"):
+                self.assertOutputLacks(proc, f"mcp__intervals__{read}")
+
     def test_intervals_source_disallows_no_garmin_tool(self):
         with Sandbox() as sb:
             ws = self._workspace(sb, "intervals")

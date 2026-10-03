@@ -95,7 +95,32 @@ if [[ "$SOURCE" == "intervals" ]]; then
     # MD, scripts Python du projet. Rien d'autre. Pas de leanproxy : passerelle
     # garmin uniquement (install.sh refuse déjà --use-leanproxy + --source intervals).
     CLAUDE_TOOLS="mcp__intervals,Agent,Task,Skill,Read,Write,Edit,Glob,Grep,$PYTHON_TOOLS"
-    CLAUDE_DISALLOWED="$PROTECTED_PATHS"
+    # #165 : même règle que pour Garmin — le run headless n'écrit JAMAIS côté intervals.icu
+    # (personne ne peut confirmer). `mcp__intervals` autorise tout le serveur : on retire
+    # ses outils d'écriture (annotation `readOnlyHint: False` dans server.py du fork
+    # hhopke au commit épinglé) et ses téléchargements (`output_path` = écriture d'un
+    # fichier local arbitraire, hors des règles `Edit(…)` ; `fit-download` reste le
+    # chemin du projet). Les anciens noms sans préfixe (eddmann, avant #165) sont
+    # aussi retirés : une installation pas encore mise à jour reste protégée.
+    INTERVALS_WRITE_TOOLS="update_activity update_activity_streams bulk_create_manual_activities"
+    INTERVALS_WRITE_TOOLS+=" delete_activity update_wellness create_event update_event delete_event"
+    INTERVALS_WRITE_TOOLS+=" bulk_create_events bulk_update_event_access bulk_delete_events duplicate_events"
+    INTERVALS_WRITE_TOOLS+=" apply_training_plan create_workout update_workout delete_workout"
+    INTERVALS_WRITE_TOOLS+=" bulk_create_workouts create_workout_folder delete_workout_folder create_gear"
+    INTERVALS_WRITE_TOOLS+=" update_gear delete_gear create_gear_reminder update_gear_reminder"
+    INTERVALS_WRITE_TOOLS+=" update_sport_settings apply_sport_settings create_sport_settings"
+    INTERVALS_WRITE_TOOLS+=" delete_sport_settings add_activity_message create_custom_item"
+    INTERVALS_WRITE_TOOLS+=" update_custom_item delete_custom_item"
+    INTERVALS_WRITE_TOOLS+=" download_activity_file download_fit_file download_gpx_file"
+    CLAUDE_DISALLOWED=""
+    for _tool in $INTERVALS_WRITE_TOOLS; do
+        CLAUDE_DISALLOWED+="mcp__intervals__icu_${_tool},"
+    done
+    # Ancien serveur eddmann : mêmes noms sans préfixe (+ `duplicate_event` au singulier).
+    for _tool in $INTERVALS_WRITE_TOOLS duplicate_event; do
+        CLAUDE_DISALLOWED+="mcp__intervals__${_tool},"
+    done
+    CLAUDE_DISALLOWED+="$PROTECTED_PATHS"
     SOURCE_LABEL="Intervals.icu"
     AUTH_CMD_HINT="(cd \"$HOME/.config/ai-running-coach/intervals-icu-mcp\" && intervals-icu-mcp-auth)"
 else
