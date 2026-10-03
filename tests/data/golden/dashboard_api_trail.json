@@ -828,6 +828,7 @@
           "source_path": "activities/2026-09-23_trail.md",
           "sport": "trail",
           "start_time": "2026-09-23T12:10:00+02:00",
+          "strava_activity_id": null,
           "sweat_rate_l_h": null,
           "te_aerobic": 3.4,
           "te_anaerobic": 0.4,

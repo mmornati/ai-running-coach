@@ -966,6 +966,7 @@ class TestJsonSchema(InstallAsserts):
                 "garmin_token", "garmin_mcp", "config_files", "athlete_profile",
                 "index_freshness", "out_of_contract", "daily_sync_scheduled", "ntfy_configured",
                 "gear_sync", "gear_history", "fit_reader", "llm_config", "chat_service", "opencode_cli",
+                "strava_connection",
             }
             self.assertEqual({c["id"] for c in payload["checks"]}, expected_ids)
             for check in payload["checks"]:
