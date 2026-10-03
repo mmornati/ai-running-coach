@@ -21,7 +21,7 @@ key by key.
 | `[agents].enabled` | The only agents you may delegate to. One absent from that list is not installed. |
 | `[athlete].profile` | Path to the athlete profile (default `planning/Runner_Profile.md`). Read it before giving advice. |
 | `[athlete].units` | `metric` or `imperial`, for every figure you state. |
-| `[data].source` | `garmin` (default) or `intervals` (#68) — see DATA SOURCE MANDATE below: course upload is Garmin-only regardless. |
+| `[data].source` | `garmin` (default), `intervals` or `strava` (#68) — see DATA SOURCE MANDATE below: course upload is Garmin-only regardless. |
 
 **The profile wins over the catalogue.** Its "Préférences de coaching" section is
 the athlete's own words; where it conflicts with `[coaching].style`, follow the
@@ -41,6 +41,9 @@ analysis itself (`gpx-analysis` skill, pacing/nutrition/weather/gear
 sections of the race plan) and tell the athlete the enriched-GPX upload to
 their watch is not available with this source — never attempt the tool call,
 never invent a substitute upload path.
+
+Same for `[data].source = "strava"` (#164): no Garmin server, no `upload_course`, and the
+Strava MCP has no course upload either (its `export-route-*` tools only read) — GPX analysis only.
 
 ### OBJECTIVE ALIGNMENT
 - **Context:** Always align the race strategy with the active objective stored in `planning/active_objective.md`.

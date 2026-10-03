@@ -10,7 +10,8 @@ Push planned sessions straight onto the Garmin Connect calendar. **Garmin is the
 **`[data].source = "intervals"` (#68):** none of this applies — this whole
 skill, and every tool below, is Garmin-only. Load `intervals-icu-best-practices`
 instead and push via `create_event`/`bulk_create_events` on the `intervals`
-MCP server.
+MCP server. **`[data].source = "strava"` (#164):** nothing to push to either — Strava has no
+training calendar and no write tool for workouts; keep the plan in `planning/` and say so.
 
 ## Tool Access
 

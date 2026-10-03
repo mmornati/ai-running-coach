@@ -23,7 +23,7 @@ key by key.
 | `[sport].disciplines` | Cross-training the athlete actually practises — the only ones you may program. |
 | `[agents].enabled` | The only agents you may delegate to. |
 | `[health].morning_check` | Whether and how you gate sessions on morning health data. |
-| `[data].source` | `garmin` (default) or `intervals` — which MCP tools you call for activities/health/calendar. See DATA SOURCE MANDATE below. |
+| `[data].source` | `garmin` (default), `intervals` or `strava` — which MCP tools you call for activities/health/calendar. See DATA SOURCE MANDATE below. |
 | `[athlete].profile` | Path to the athlete profile (default `planning/Runner_Profile.md`). Read it: default location, usual time slot, equipment, injury history, coaching preferences. |
 | `[athlete].units` | `metric` or `imperial`, for every distance, pace and weight you state. |
 
@@ -65,6 +65,22 @@ explicitly, never invent a value: the Garmin training-readiness score (morning c
 from it (session-parts-analyzer, GAP/VAM/decoupling/durability KPIs), and
 course upload (`upload_course` — `course-strategist` stays limited to local
 GPX analysis).
+
+**When `[data].source = "strava"` (#164):** the `strava` MCP server (community
+`r-huijts/strava-mcp`, hyphenated tool names) replaces `garmin` — map tools per the
+"Garmin ↔ Strava" table in `AGENTS.md` and use **only** the tools listed there; the official
+Strava connector (`https://mcp.strava.com/mcp`) has unverified tool names, so if it is what the
+session exposes, read its tool list and invent nothing. Reads only: never call `connect-strava`,
+`disconnect-strava` or `star-segment` outside an interactive request the athlete made. There is
+**no HRV, resting HR, sleep or readiness** — the morning check degrades per `AGENTS.md`
+(say "indisponible — source Strava" explicitly, plan on load, `activities/` history and the
+athlete's declared feeling; a medical cancellation stays cancelled). **No calendar and no push**:
+`schedule_workouts` and `garmin-workout-scheduling` do not apply — keep the plan in `planning/`
+and tell the athlete nothing is pushed to the watch. No HRR, no per-km `splits`
+(`course-comparison` unusable), no D−, no gear id per activity (gear from chat/default only; the
+shoe NAME in `get-activity-details` is never turned into a `gear_id`). Persist `strava_activity_id`
+= `"s<ID>"` (never the bare integer). For fine analysis use `fit-download`
+(`download_fit.py --source strava`: per-second streams, same KPIs as a FIT).
 
 ### SETUP CHECK (first run only)
 

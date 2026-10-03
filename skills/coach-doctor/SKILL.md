@@ -30,7 +30,8 @@ commande de correction sous chaque ligne non ✅ :
 | `ntfy_configured` | Notifications push configurées (si activées) |
 | `gear_sync` | (#133) Liste blanche `GARMIN_ENABLED_TOOLS` de `.mcp.json` avec `get_gear`/`get_activity_gear` ; paires actives du profil sans segment `garmin: <uuid>` (ℹ️). **Statique : aucun appel Garmin** — lister le matériel Garmin sans puce est le rôle du coach (`get_gear`) |
 | `gear_history` | (#145) ≥ 5 séances avec `garmin_activity_id`, dont plus de la moitié sans `gear_id` : historique sans matériel (ℹ️ seulement). Propose le rattrapage `python3 scripts/garmin_gear_backfill.py` (simulation d'abord ; `--apply` seulement sur accord de l'athlète). **Statique : aucun appel Garmin.** |
-| `fit_reader` | `fitparse` importable dans l'environnement MCP de `[data].source` (`garmin-mcp` ou `intervals-icu-mcp`) — sans lui, les FIT téléchargés ne sont pas lus et les KPI fins restent vides. Correctif : `./install.sh --source <source>` |
+| `fit_reader` | `fitparse` importable dans l'environnement MCP de `[data].source` (`garmin-mcp` ou `intervals-icu-mcp`) — sans lui, les FIT téléchargés ne sont pas lus et les KPI fins restent vides. Correctif : `./install.sh --source <source>` ; informatif (ℹ️) avec `strava` : aucun FIT, flux normalisés en stdlib |
+| `strava_connection` | (#164, `[data].source = "strava"` seulement, sinon ℹ️) Node.js >= 18, wrapper `~/.config/ai-running-coach/strava-mcp/run.sh`, serveur `strava` dans `.mcp.json`, jetons du serveur (`~/.config/strava-mcp/config.json` : refresh token, clientId/clientSecret) et droits de lecture (⚠️ si lisible par d'autres : `chmod 600`). **Statique : valeurs jamais lues ni affichées, aucun appel réseau** ; l'échéance du jeton d'accès (6 h) n'est pas une alerte, il se rafraîchit seul |
 
 Un ❌ fait échouer la commande (code de sortie non nul) ; un ⚠️ ou un ℹ️ jamais
 — ce sont des dégradations connues, pas des pannes.

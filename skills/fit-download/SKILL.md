@@ -12,10 +12,14 @@ Télécharge les fichiers FIT (et leurs records GPS en JSON) en **bypassant le c
 | `garmin` (défaut) | `garmin_activity_id` (entier) | lib `garminconnect` de l'environnement `garmin-mcp` + **tokens locaux** `~/.garminconnect` — aucun mot de passe |
 | `intervals` | `intervals_activity_id` (`i<chiffres>`) | API REST Intervals.icu (stdlib) + la **clé API du serveur MCP** (`~/.config/ai-running-coach/intervals-icu-mcp/.env`) — aucune nouvelle configuration ; `fitparse` de l'environnement `intervals-icu-mcp` pour `--json` |
 
+| `strava` (#164) | `strava_activity_id` (`s<chiffres>`) | API REST Strava `GET /activities/<id>/streams` (stdlib) + les **jetons du serveur MCP communautaire** (`~/.config/strava-mcp/config.json`, rafraîchis et réécrits atomiquement, jamais affichés). **Pas de `.fit`** : les flux par seconde sont normalisés directement en `activities/fit/s<chiffres>.json` (même format, mêmes KPI), avec ou sans `--json` ; pas de `fitparse` requis |
+
 ## Pourquoi ce skill
 
 - Le MCP Garmin (`get_activity_fit_data`) **timeoute** sur les downloads FIT (payload de plusieurs Mo) — ne pas insister dessus pour un download. Côté Intervals.icu, le FIT passerait en base64 dans le contexte : même raison de passer par le script.
 - **Intervals.icu — activités importées depuis Strava** : l'API Strava interdit leur redistribution, aucun FIT n'existe. Le script les signale `INDISPONIBLE` (avec la raison) et continue : la séance reste valide, simplement sans KPI fins — ne jamais inventer de valeur FIT pour elle.
+
+- **Strava (#164)** : les données restent dans l'espace de travail privé de l'athlète (`activities/fit/` gitignoré) — accord API Strava : affichage réservé à l'utilisateur concerné, suppression à la fin de l'accord. Deux requêtes par séance (détail pour le sport, puis flux) ; limites d'API (par défaut 200 / 15 min, 2000 / jour, à vérifier pour votre application) : un `HTTP 429` est dit, pas contourné. Une activité saisie à la main n'a pas de flux (`INDISPONIBLE`). Pas de dynamique de course ni de HRR chez Strava : colonnes vides, jamais devinées.
 
 ## Quand l'utiliser
 
@@ -24,12 +28,12 @@ Télécharge les fichiers FIT (et leurs records GPS en JSON) en **bypassant le c
 
 ## Workflow
 
-1. **Trouver les identifiants** : dans le bloc ```` ```arc ```` des fichiers MD d'activités (`garmin_activity_id` ou `intervals_activity_id`), ou via le MCP (`get_activities_by_date` / `get_recent_activities`).
+1. **Trouver les identifiants** : dans le bloc ```` ```arc ```` des fichiers MD d'activités (`garmin_activity_id`, `intervals_activity_id` ou `strava_activity_id`), ou via le MCP (`get_activities_by_date` / `get_recent_activities`).
 2. **Télécharger** :
    ```bash
    python3 skills/fit-download/scripts/download_fit.py 24070286912 --json --output-dir /tmp/fits/
    python3 skills/fit-download/scripts/download_fit.py i123456789 --json   # Intervals.icu
-   # --source garmin|intervals → force la source (défaut : [data].source)
+   # --source garmin|intervals|strava → force la source (défaut : [data].source)
    # --json   → écrit aussi <id>.records.json (records GPS/HR/power/cadence, brut)
    #            + <output-dir>/fit/<id>.json (copie normalisée #42, voir scripts/arc_samples.py)
    # --from-dir activities/ → scanne tous les activity_id des MD
@@ -39,7 +43,7 @@ Télécharge les fichiers FIT (et leurs records GPS en JSON) en **bypassant le c
    quand le FIT n'a pas vocation à rester. **Pour que `scripts/arc_index.py` ingère les
    échantillons** (table `activity_sample`), le téléchargement doit se faire SANS
    `--output-dir` (ou avec `--output-dir <workspace>/activities`) : la copie normalisée
-   canonique est `activities/fit/<garmin_activity_id | intervals_activity_id>.json`, jetable et jamais versionnée
+   canonique est `activities/fit/<garmin_activity_id | intervals_activity_id | strava_activity_id>.json`, jetable et jamais versionnée
    (son propre `.gitignore` est créé automatiquement à la première écriture).
 3. **Analyser** le FIT avec `session-parts-analyzer` (`analyze_session_parts.py --fit ... --part climb|stride|...`) ou `course-comparison` (`compare_course.py --fit-dir`).
 4. **Persister** l'analyse (dérive, profil) dans le MD de l'activité dans la langue des documents (`config/workspace.toml` → `[language].documents`, défaut FRANÇAIS) — ne jamais dump le JSON brut en chat.

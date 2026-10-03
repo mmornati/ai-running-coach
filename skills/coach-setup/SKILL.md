@@ -75,7 +75,7 @@ libre par nature et ne rentre pas dans une clé de configuration.
 
 Avant de poser les questions physiologiques classiques, essayez de récupérer
 ce que Garmin sait déjà. **Uniquement si `[data].source = "garmin"` (défaut) —
-#68** : à `"intervals"`, le serveur MCP `garmin` n'est ni installé ni
+#68** : à `"intervals"` ou `"strava"`, le serveur MCP `garmin` n'est ni installé ni
 enregistré, sautez directement à la section suivante, sans tenter le moindre
 appel. Le déclencheur, à `"garmin"`, est le serveur MCP `garmin` qui
 **répond réellement** à un appel — `[agents].enabled` ne liste QUE les agents

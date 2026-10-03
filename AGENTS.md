@@ -23,7 +23,7 @@ héritage.
 | `[sport].disciplines` | Sports croisés réellement pratiqués — les seuls à programmer. |
 | `[agents].enabled` | **Seuls agents joignables.** Ne jamais déléguer à un agent absent. |
 | `[health].morning_check` | `full` \| `minimal` \| `off` — voir ci-dessous. |
-| `[data].source` | `garmin` (défaut) \| `intervals` — source de données primaire des agents. Voir « Backends MCP » et la table de correspondance des outils ci-dessous (#68). |
+| `[data].source` | `garmin` (défaut) \| `intervals` \| `strava` — source de données primaire des agents. Voir « Backends MCP » et les tables de correspondance des outils ci-dessous (#68, #164). |
 | `[health].heat_threshold_c` | Seuil (°C, borne incluse) « séance chaude » pour le KPI d'acclimatation à la chaleur (#38, `scripts/arc_index.py heat-acclimation`). Défaut `25.0`. Indépendant de `morning_check` ; une valeur invalide n'interrompt jamais l'index (repli sur le défaut, avertissement). |
 | `[athlete].profile` | Profil de l'athlète, défaut `planning/Runner_Profile.md`. |
 | `[athlete].units` | `metric` \| `imperial`. |
@@ -67,6 +67,16 @@ intervals.icu"), jamais remplacée par le champ subjectif présenté comme
 équivalent. À `minimal`, la ligne unique devient "readiness indisponible
 (source intervals.icu)" plutôt qu'un score. Voir la table de correspondance
 ci-dessous.
+
+**Avec `[data].source = "strava"` (#164) :** Strava n'expose ni HRV, ni FC de
+repos, ni sommeil, ni readiness (voir « Backends MCP » et la table
+Garmin ↔ Strava). Le bilan matinal ne peut donc **pas** s'appuyer sur des
+données de santé : à `full` comme à `minimal`, l'agent dit explicitement
+« HRV / FC de repos / readiness indisponibles — source Strava » (jamais un
+score ni une valeur inventés, jamais un « tout va bien » par défaut) et
+planifie sur la charge, l'historique `activities/` et le ressenti **déclaré par
+l'athlète** — comme à `off`, mais en le disant. Une séance annulée pour raison
+médicale (blessure, douleur déclarée) reste annulée.
 
 ## Carte des dossiers
 
@@ -132,6 +142,7 @@ a été faite avec `./install.sh --source intervals` (ou `[data].source =
 
 - **`garmin`** — activités, sommeil, HRV, readiness, **calendrier des séances planifiées**, upload parcours/séances. **Mode direct par défaut** : le serveur MCP `garmin` expose `garmin-mcp` avec une liste blanche d'outils (`GARMIN_ENABLED_TOOLS`). **Mode passerelle (optionnel, power user)** : `leanproxy_invoke_tool(server="garmin", tool="...")` via leanproxy-mcp (économie de tokens ~98 %, chargement paresseux des schémas). **PRIMAIRE si `[data].source = "garmin"` (défaut)** ; sinon non installé par `install.sh` (voir ci-dessous).
 - **`Intervals.icu`** — événements, wellness, activités, via le serveur MCP communautaire [`eddmann/intervals-icu-mcp`](https://github.com/eddmann/intervals-icu-mcp) (48 outils, `intervals-icu-mcp` + `intervals-icu-mcp-auth`, voir `docs/intervals-setup.md`). **PRIMAIRE si `[data].source = "intervals"`** (installé par `./install.sh --source intervals`) : `coach`/`medical`/`garmin-daily-sync` utilisent alors ses outils au lieu de ceux de `garmin`, table de correspondance ci-dessous. **SECONDAIRE sinon** (défaut) : uniquement si l'utilisateur le demande explicitement (skill `intervals-icu-best-practices`), serveur non installé par `install.sh`, configuration manuelle (`docs/faq.md`).
+- **`Strava`** (#164) — activités + flux par seconde. **PRIMAIRE si `[data].source = "strava"`** (installé par `./install.sh --source strava`, voir `docs/strava-setup.md`) : serveur MCP **communautaire** [`r-huijts/strava-mcp`](https://github.com/r-huijts/strava-mcp) (paquet npm `@r-huijts/strava-mcp-server`, épinglé à la version 1.2.1 par `STRAVA_MCP_PKG` dans `install.sh`, stdio, **Node.js >= 18**, application API Strava locale de l'athlète — client id/secret ; jetons dans `~/.config/strava-mcp/config.json`). Lecture seule **pour ce projet** : `connect-strava`, `disconnect-strava` et `star-segment` (écriture Strava) ne sont jamais appelés en headless (`daily-sync.sh` les interdit) et demandent une approbation dans le chat. Le **connecteur officiel Strava** (`https://mcp.strava.com/mcp`, HTTP + OAuth, lecture seule, abonnement payant) est une alternative **manuelle** pour Claude Code interactif (`claude mcp add --transport http strava-mcp https://mcp.strava.com/mcp`, article d'aide Strava 46190267796237) : ses noms d'outils et formes de réponse n'ont **pas pu être vérifiés** (OAuth requis) — la table de correspondance ci-dessous ne s'y applique pas, l'agent lit la liste d'outils exposée par la session et n'invente rien ; il ne sert pas au `garmin-daily-sync` headless.
 - **Absents localement** : `myfitnesspal` (utiliser les rapports manuels), `nexus-mcp` (RAG — déploiement Docker VPS uniquement ; localement utiliser `resources/` + historique MD)
 
 ### Correspondance des outils — Garmin ↔ intervals.icu (#68)
@@ -163,7 +174,57 @@ source du serveur retenu (`src/intervals_icu_mcp/tools/*.py`, `client.py`,
 | Profil athlète (référence, jamais substitué au profil déclaré) | — | `get_athlete_profile` | |
 | Charge/forme (vocabulaire générique du projet, jamais les noms TrainingPeaks) | — (calculée par `scripts/arc_index.py`) | `get_fitness_summary` | Ne jamais citer `ctl`/`atl`/`form` sous ces noms dans une réponse — reformuler en charge/condition/fatigue/forme comme partout ailleurs (`docs/marques.md`). |
 
-**Téléchargement FIT — disponible avec les deux sources.** Le skill
+### Correspondance des outils — Garmin ↔ Strava (#164)
+
+Ne s'applique que si `[data].source = "strava"` **avec le serveur communautaire
+`r-huijts/strava-mcp`** (version 1.2.1, commit `ac43cc7b0aad2f218b9c42bd639aee696dbee531`). Noms et
+paramètres vérifiés dans son code source (`src/server.ts`, `src/tools/*.ts`) ; les
+réponses sont du **texte formaté** (pas du JSON structuré, sauf les blocs « Complete Lap Data » /
+« Raw Athlete Zone Data » et le flux), jamais un schéma stable : lire les valeurs
+telles qu'imprimées, sans en déduire un champ absent.
+
+| Besoin | Outil `garmin` | Outil `strava` | Note |
+|---|---|---|---|
+| Activités récentes | `get_activities` / `get_activities_by_date` | `get-recent-activities` (`perPage`) ; `get-all-activities` (`startDate`, `endDate`, `activityTypes`, `sportTypes`, `maxActivities`, `maxApiCalls`) | Une ligne de texte par activité : type, nom, **`(ID: <entier>)`**, distance, date (jour seulement) — pas d'heure précise ni de durée dans `get-recent-activities`. Limites d'API Strava : voir `docs/strava-setup.md`. |
+| Détail d'une activité | `get_activity` | `get-activity-details` (`activityId`, entier) | Texte : type/`sport_type`, date locale, temps en mouvement ET écoulé, distance, D+, vitesse moy./max, cadence moy., puissance moy., FC moy./max, calories, description, **nom** du matériel (`Gear: <nom>`, pas d'identifiant), effort perçu, `suffer_score`. **Pas de D−, pas de FC de récupération (HRR), pas de `bmr_calories`, pas de splits par km** : champs omis du bloc `arc`, jamais inventés. Renseigner `strava_activity_id` = `"s<ID>"` (préfixe `s` du projet). |
+| Tours (laps) | `get_activity_splits` | `get-activity-laps` (`id`) | Laps tels que Strava les expose (blocs JSON bruts) — ce ne sont pas des splits par km réguliers. |
+| Zones FC de l'athlète | — (profil) | `get-athlete-zones` | Référence ; le profil déclaré de l'athlète prime. |
+| Matériel (inventaire) | `get_gear` | `get-athlete-shoes` | Chaussures avec distance cumulée côté Strava — **référence seulement**, jamais une attribution (voir « Matériel »). |
+| Matériel attaché à une activité | `get_activity_gear` | **aucun équivalent fiable** | `get-activity-details` ne donne que le NOM : `gear_id` reste déclaré en chat ou `(par défaut)`, jamais deviné depuis ce nom. |
+| Profil athlète | — | `get-athlete-profile`, `get-athlete-stats` | Référence, jamais substitués au profil déclaré. |
+| Flux par seconde (analyse fine) | `get_activity_fit_data` (timeoute) | **pas via le MCP** : skill `fit-download` (`download_fit.py --source strava`, API REST) | `get-activity-streams` existe (pagination, `summary_only`…) mais sert à l'exploration ; les KPI passent par les fichiers `activities/fit/s<id>.json` normalisés. |
+| Santé (HRV, FC de repos, sommeil, readiness) | `get_hrv_data`, `get_rhr_day`, `get_sleep_data`, `get_training_readiness` | **aucun équivalent** | Voir `[health].morning_check` : indisponibilité dite explicitement. |
+| Calendrier / push de séances | `get_scheduled_workouts`, `schedule_workouts`… | **aucun équivalent** | Strava n'a pas de calendrier d'entraînement. Le plan reste dans `planning/` ; dire que rien n'est poussé vers la montre. |
+| Outils qui AGISSENT (jamais en headless) | — | `connect-strava`, `disconnect-strava`, `star-segment` (écriture) | Réservés à une session interactive, avec confirmation explicite. |
+
+**Fonctionnalités/champs Garmin sans portage Strava — indisponibles et
+EXPLIQUÉS comme tels quand `[data].source = "strava"`, jamais devinés ou simulés :**
+
+- **HRV, FC de repos, sommeil, score de readiness** : aucun outil ; `[health].morning_check`
+  se dégrade explicitement (voir plus haut), y compris à `full`.
+- **Push de séances au calendrier, upload de parcours** (`upload_course`,
+  `course-strategist` reste limité à l'analyse GPX locale), **suppression de séance planifiée**.
+- **Fréquence cardiaque de récupération (HRR, `recovery_hr_bpm`)**, **splits par km** (donc
+  `course-comparison`, qui exige `splits`) : absents, omis du bloc `arc`.
+- **Dynamique de course** (temps de contact, balance, oscillation) : aucun flux Strava
+  équivalent — `arc_index.py gait-summary` n'a rien à dire pour ces séances.
+- **Identifiant de matériel par séance** : voir ci-dessus.
+- **Surveillance Garmin (`[sync].mode = "watch"`)** : heures fixes seulement.
+
+**Flux Strava → KPI (`download_fit.py --source strava`).** Strava ne sert pas de
+FIT : le script appelle l'API REST (`GET /activities/<id>/streams`, avec les jetons du
+serveur MCP communautaire, rafraîchis au besoin — jamais affichés) et normalise les flux
+par seconde en `activities/fit/s<chiffres>.json`, le même format que le FIT : zones, GAP,
+découplage, VAM, descente, durabilité, énergie modèle fonctionnent donc comme avec Garmin
+(hypothèse documentée : cadence doublée pour les sports à pied, à vérifier sur une vraie
+séance). Les données restent dans l'espace de travail **privé** de l'athlète
+(`activities/fit/` est gitignoré) : l'accord API Strava (mis à jour le 1er juin 2026)
+limite l'affichage des données à l'utilisateur concerné et impose leur suppression à
+la fin de l'accord — rien de Strava ne va dans un dépôt public, fixtures synthétiques
+uniquement. Cela lève aussi la limite « activité importée depuis Strava » d'intervals.icu
+pour qui connecte Strava directement.
+
+**Téléchargement FIT — disponible avec Garmin et intervals.icu ; flux par seconde avec Strava (voir au-dessus).** Le skill
 `fit-download` télécharge le FIT d'une séance intervals.icu par l'API REST
 (`download_fit.py <intervals_activity_id> --json`, source lue dans
 `[data].source`, clé API du serveur MCP) : `activities/fit/i<chiffres>.json` se
@@ -172,7 +233,8 @@ qu'avec Garmin (zones, GAP, découplage, VAM, descente, durabilité, dépense
 énergétique modèle), ainsi que `session-parts-analyzer`. **Exception : une
 activité importée dans intervals.icu depuis Strava** — l'API Strava interdit sa
 redistribution, aucun FIT n'existe : le script le dit (`INDISPONIBLE`), la
-séance reste valide sans ces KPI, jamais de valeur inventée.
+séance reste valide sans ces KPI, jamais de valeur inventée (avec `--source strava`,
+les flux sont lus directement chez Strava : voir plus haut).
 
 **Matériel (#133).** Avec `[data].source = "garmin"`, `get_gear` / `get_activity_gear`
 (lecture) et `add_gear_to_activity` (écriture) sont dans la liste blanche `GARMIN_TOOL_WHITELIST`.
@@ -187,7 +249,9 @@ jamais créditée à la paire par défaut). Un seul `get_activity_gear` par acti
 `[data].source = "intervals"`** : le serveur épinglé expose `get_gear_list` (inventaire, à titre
 de référence — jamais utilisé pour attribuer) mais **aucun matériel par activité**
 (`src/intervals_icu_mcp/tools/activities.py`/`activity_analysis.py` n'ont pas de champ gear,
-vérifié au commit épinglé) : `gear_id` reste chat/`(par défaut)`, dit explicitement, jamais inventé.
+vérifié au commit épinglé) : `gear_id` reste chat/`(par défaut)`, dit explicitement, jamais inventé. **Avec
+`[data].source = "strava"`** (#164) : `get-athlete-shoes` (inventaire, référence) et le NOM du matériel dans
+`get-activity-details` n'identifient aucune paire de façon attribuable — même règle : chat/`(par défaut)`.
 
 **Fonctionnalités/champs Garmin sans portage intervals.icu —
 indisponibles et EXPLIQUÉS comme tels quand `[data].source = "intervals"`,
@@ -219,11 +283,11 @@ jamais devinés ou simulés :**
 - `garmin-sync-efficiency` — discipline de récupération pour éviter l'explosion du contexte
 - `workspace-data-contract` — **schéma du bloc ```` ```arc ````** par type de fichier (activité, santé, météo, semaine, nutrition, rapport, évaluation de parcours, plan de course), unités SI, validation par `scripts/arc_index.py --validate`. Charger avant d'écrire un fichier du workspace.
 - `arc-backfill` — met au contrat les fichiers écrits avant lui, par lots, à partir de la liste produite par `python3 scripts/arc_index.py backfill-plan`.
-- `coach-doctor` — **diagnostic d'installation en une commande** (`/coach-doctor`, `python3 scripts/coach_doctor.py`) : âge/échéance des tokens Garmin, joignabilité du MCP `garmin`, validité TOML de la config, complétude du profil athlète, fraîcheur de l'index `.arc/coach.db`, fichiers hors contrat, planification du daily-sync, configuration ntfy, synchronisation du matériel Garmin (`gear_sync`, statique : liste blanche + segments `garmin:` du profil, aucun appel Garmin), historique sans matériel (`gear_history`, statique, ℹ️, plus de la moitié des séances à `garmin_activity_id` sans `gear_id` : propose le rattrapage `scripts/garmin_gear_backfill.py`)., lecteur FIT (`fitparse` dans l'environnement MCP de la source). Ne lit ni n'écrit rien de sensible ; à charger dès qu'un symptôme d'installation apparaît, avant de deviner la cause.
+- `coach-doctor` — **diagnostic d'installation en une commande** (`/coach-doctor`, `python3 scripts/coach_doctor.py`) : âge/échéance des tokens Garmin, joignabilité du MCP `garmin`, validité TOML de la config, complétude du profil athlète, fraîcheur de l'index `.arc/coach.db`, fichiers hors contrat, planification du daily-sync, configuration ntfy, synchronisation du matériel Garmin (`gear_sync`, statique : liste blanche + segments `garmin:` du profil, aucun appel Garmin), historique sans matériel (`gear_history`, statique, ℹ️, plus de la moitié des séances à `garmin_activity_id` sans `gear_id` : propose le rattrapage `scripts/garmin_gear_backfill.py`)., lecteur FIT (`fitparse` dans l'environnement MCP de la source), connexion Strava (`strava_connection`, #164 : Node.js >= 18, wrapper, serveur déclaré, jetons présents et non lisibles par d'autres — valeurs jamais affichées, aucun appel réseau). Ne lit ni n'écrit rien de sensible ; à charger dès qu'un symptôme d'installation apparaît, avant de deviner la cause.
 - `garmin-daily-sync` — **prompt d'orchestration headless** (`/garmin-daily-sync`) lancé par le cron de la machine coach (`scripts/daily-sync.sh`) — aux heures fixes, ou seulement quand Garmin a du neuf avec `[sync].mode = "watch"` (`scripts/garmin_watch.py`, sondage sans LLM, indice `trigger=` passé au skill) —, depuis le téléphone (Remote Control) ou l'IDE : délègue au `coach` + `garmin-sync-efficiency`, ne pose aucune question, ne récupère que les dates manquantes, termine par un bloc ```` ```resume ```` (≤ 5 lignes) envoyé en notification push (ntfy). Voir `docs/mobile.md`. Ajoute une ligne à `Alerte :` quand une séance synchronisée fait franchir son seuil d'usure à une paire de chaussures (#132, `arc_index.py gear --activities`, une seule fois par franchissement — identifié par la séance, pas par la date).
 - `weather-forecast` — récupération + persistance des prévisions météo (wttr.in via webfetch), résolution du lieu (override fichier semaine → `active_objective.md` défaut → profil défaut → demander), seuils de catégorie (🟢/🟡/🟠/🔴), créneau optimal par séance outdoor. Utilisé par l'agent `coach` à chaque validation hebdo/journalière.
 - `session-parts-analyzer` — analyse au niveau segment des drills (strides, montées, intervalles, sprints) depuis FIT/MCP. L'analyse détaillée délègue le téléchargement FIT à `fit-download`.
-- `fit-download` — **téléchargement des fichiers FIT + records GPS en bypassant le MCP** (qui timeoute sur les FIT) : `scripts/download_fit.py`, source suivant `[data].source` — Garmin via `garminconnect` + tokens locaux `~/.garminconnect`, ou intervals.icu via son API REST + la clé API du serveur MCP (activités importées depuis Strava exclues, voir « Backends MCP »). Charger dès qu'une séance doit être analysée à précision sub-km (profil de parcours, montées, dérive FC×élévation, analyse stride/sprint/intervalle, comparaison de parcours). Toujours persister l'analyse dans le MD de l'activité dans la langue des documents (`config/workspace.toml`), ne jamais dumper le JSON brut.
+- `fit-download` — (#164 : avec `[data].source = "strava"`, `download_fit.py --source strava` normalise les flux par seconde Strava en `activities/fit/s<id>.json`, aucun `.fit`) **téléchargement des fichiers FIT + records GPS en bypassant le MCP** (qui timeoute sur les FIT) : `scripts/download_fit.py`, source suivant `[data].source` — Garmin via `garminconnect` + tokens locaux `~/.garminconnect`, ou intervals.icu via son API REST + la clé API du serveur MCP (activités importées depuis Strava exclues, voir « Backends MCP »). Charger dès qu'une séance doit être analysée à précision sub-km (profil de parcours, montées, dérive FC×élévation, analyse stride/sprint/intervalle, comparaison de parcours). Toujours persister l'analyse dans le MD de l'activité dans la langue des documents (`config/workspace.toml`), ne jamais dumper le JSON brut.
 - **Rattrapage du matériel Garmin** (`scripts/garmin_gear_backfill.py`, #145) — attribue la paire Garmin aux séances **déjà** dans `activities/` (un appel `get_gear_activities` par paire), propose les puces `### Chaussures` manquantes. **Simulation par défaut**, `--apply` pour écrire ; ne remplace jamais un `gear_id` déjà présent (priorité athlète), respecte `(ignorée)`, ne pose jamais `(par défaut)`, refuse `--apply` si une paire Garmin est en erreur/tronquée, n'ajoute qu'un segment `garmin:` aux puces existantes. Dépend de `garminconnect` + jetons `~/.garminconnect` (exception documentée, comme `fit-download`). Le `coach` le propose UNE fois, en interactif seulement, toujours en simulation d'abord et `--apply` après un « oui » explicite ; `garmin-daily-sync` (headless) ne le lance jamais. Voir `docs/garmin-setup.md`.
 - `gpx-analysis` — **analyse générique de parcours GPX** (fichiers Strava/Garmin/course) via `scripts/analyze_gpx.py` (stdlib) : distance réelle, D+/D- (lissage anti-bruit), profil par km, montées significatives, boucle vs point-to-point, verdict de compatibilité vs une cible (distance/D+). Charger dès que l'utilisateur fournit un GPX et veut l'analyser ou l'évaluer contre une séance planifiée. Persister la fiche d'évaluation dans `planning/YYYY-MM-DD_evaluation_parcours_<lieu>.md` (langue des documents). Utilisé par `course-strategist` pour l'entrée GPX.
 - `gear-inspection` — **inspection photo des chaussures** (#135) : le coach la **propose** (jamais imposée) environ tous les 200 km d'une paire, à l'alerte de seuil ou sur demande (`python3 scripts/arc_index.py inspections`, jamais en headless) ; protocole photo (semelles, profil, arrière, tige, échelle), grille de lecture 🟢🟡🟠🔴, comparaison avec l'inspection précédente de la même paire, **indices** de foulée depuis la zone d'usure (signal faible, jamais un diagnostic ; aucune mesure en mm sans échelle ; jamais de changement de foulée recommandé sur une photo), relais à `medical` seulement s'il est dans `[agents].enabled`. Persiste `gear/YYYY-MM-DD_<gear_id>_inspection.md` (type `gear_inspection`) et produit, à la retraite d'une paire, son bilan de carrière (`arc_index.py gear-career --gear ID`). Dynamique de course mesurée (temps de contact, balance, oscillation — FIT, #151) : `python3 scripts/arc_index.py gait-summary [--weeks N]` (lecture seule, `/api/gait`, carte « Foulée » de la vue Santé) — tendances, confiance, désaccords usure/mesure (la mesure prime) ; sens gauche/droite de la balance non établi ; jamais un diagnostic, aucune modification de charge ; règles d'usage par les agents : story ultérieure. Re-extraction sur un FIT déjà téléchargé : `download_fit.py --refresh-dynamics` (skill `fit-download`).
