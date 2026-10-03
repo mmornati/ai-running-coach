@@ -214,11 +214,14 @@ quatre points** : toujours aucune FC de récupération (HRR), aucun `splits` par
 (`icu_get_activity_intervals` renvoie les intervalles/tours de l'activité, pas des
 splits par km — non branché au contrat `arc`), aucun matériel attaché par activité
 (`gear` n'existe que sur l'inventaire `icu_get_gear_list`), aucun score de readiness
-calculé (seul `subjective.readiness`, valeur manuelle). Nouveautés de lecture
-**non exploitées** par le projet à ce jour : `nutrition.calories_burned` /
-`carbs_ingested_g` dans `icu_get_activity_details` (la dépense Garmin n'existe pas
-ici ; `calories_bmr_kcal` reste omis), courbes allure/FC (`icu_get_pace_curves`,
-`icu_get_hr_curves`), réglages par sport (`icu_get_sport_settings`).
+calculé (seul `subjective.readiness`, valeur manuelle). **Champ déplacé** : la
+dépense de la séance est désormais `nutrition.calories_burned` dans
+`icu_get_activity_details` (c'était `other.calories` chez eddmann) — c'est elle
+qui alimente `calories_kcal` (référence de dépense de cette source, comme
+`calories` côté Garmin) ; `calories_bmr_kcal` reste omis. Nouveautés de lecture
+**non exploitées** par le projet à ce jour : `nutrition.carbs_ingested_g`,
+courbes allure/FC (`icu_get_pace_curves`, `icu_get_hr_curves`), réglages par
+sport (`icu_get_sport_settings`).
 
 ## Règles de fraîcheur des données
 
