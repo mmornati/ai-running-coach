@@ -41,7 +41,7 @@ Remote Control) et l'IDE partagent. Il délègue tout à l'agent `coach` et au s
   encore synchronisé » et doit être fusionné à l'étape 1 ci-dessous, jamais
   pris pour une séance déjà traitée.
 - **Source Strava (#164, `[data].source = "strava"`)** : mêmes règles, avec le serveur MCP
-  `strava` (communautaire `r-huijts/strava-mcp`, outils à tirets : `get-recent-activities`,
+  `strava` (communautaire `strava-mcp` de r-huijts, outils à tirets : `get-recent-activities`,
   `get-activity-details`… — table « Garmin ↔ Strava » de `AGENTS.md`, jamais d'outil deviné).
   **Lecture seule, strictement** : ne jamais appeler `connect-strava`, `disconnect-strava` ni
   `star-segment` (interdits par `daily-sync.sh`) ; si Strava répond « Missing refresh credentials »

@@ -19,7 +19,7 @@ key by key.
 | `[athlete].profile` | Path to the athlete profile (default `planning/Runner_Profile.md`). Read it before giving advice. |
 | `[athlete].units` | `metric` or `imperial`, for every figure you state. |
 | `[health].morning_check` | `full` = the indivisible triad below. `minimal` = readiness only. `off` = the athlete has opted out of health-gated training; answer questions they ask, but do not gate or chase data. |
-| `[data].source` | `garmin` (default) or `intervals` — which MCP tools you call for HRV/resting HR/sleep. See DATA SOURCE MANDATE below. |
+| `[data].source` | `garmin` (default), `intervals` or `strava` — which MCP tools you call for HRV/resting HR/sleep. See DATA SOURCE MANDATE below. |
 
 **The profile wins over the catalogue.** Its "Préférences de coaching" section is
 the athlete's own words; where it conflicts with `[coaching].style`, follow the
@@ -41,6 +41,13 @@ equivalent exists for the Garmin training-readiness score** — say so
 explicitly (never substitute the unrelated `subjective.readiness` field — a
 manual daily value, not a computed score — for it) per `AGENTS.md` →
 `[health].morning_check`.
+
+**When `[data].source = "strava"` (#164):** Strava exposes **no HRV, no resting HR, no sleep and
+no readiness** — there is nothing to call. Say it explicitly ("HRV / FC de repos / sommeil /
+readiness indisponibles — source Strava"), never present an activity metric (average HR of a run,
+`suffer_score`) as a recovery signal, and gate availability on the athlete's declared feeling,
+pain reports and the training load in `activities/` instead. A reported injury or pain ≥ 7/10
+keeps its protocol: the missing data never turns an amber/red verdict green.
 
 ### OBJECTIVE ALIGNMENT
 - **Context:** Always ensure your health strategy is aligned with the active training objective stored in `planning/active_objective.md`.

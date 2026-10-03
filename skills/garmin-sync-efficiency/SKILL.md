@@ -20,7 +20,7 @@ replaces `get_activities`. No equivalent for `get_training_readiness`, `upload_c
 or `upload_workout` — see the correspondence table in `AGENTS.md`.
 
 **`[data].source = "strava"` (#164):** same discipline against the `strava` MCP server
-(community `r-huijts/strava-mcp`, hyphenated tool names — see the Garmin ↔ Strava table in
+(community `strava-mcp` server by r-huijts, hyphenated tool names — see the Garmin ↔ Strava table in
 `AGENTS.md`): `get-recent-activities` lists (text, one line per activity with `(ID: n)`),
 `get-activity-details` per activity. Mind the Strava API rate limits (default 200 requests / 15 min,
 2000 / day — check your app): never loop over `get-activity-details` for a whole history, fetch only

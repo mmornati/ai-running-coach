@@ -67,7 +67,7 @@ course upload (`upload_course` — `course-strategist` stays limited to local
 GPX analysis).
 
 **When `[data].source = "strava"` (#164):** the `strava` MCP server (community
-`r-huijts/strava-mcp`, hyphenated tool names) replaces `garmin` — map tools per the
+`strava-mcp` by r-huijts, hyphenated tool names) replaces `garmin` — map tools per the
 "Garmin ↔ Strava" table in `AGENTS.md` and use **only** the tools listed there; the official
 Strava connector (`https://mcp.strava.com/mcp`) has unverified tool names, so if it is what the
 session exposes, read its tool list and invent nothing. Reads only: never call `connect-strava`,
