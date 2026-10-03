@@ -48,6 +48,7 @@ JSON-RPC 2.0 sur stdin/stdout, une requête par ligne. Bibliothèque standard.
 
 from __future__ import annotations
 
+import json
 import sys
 from datetime import date, timedelta
 from pathlib import Path
@@ -183,25 +184,61 @@ TOOLS = [
 ]
 
 
+# Champs d'écriture (paramètres de `icu_create_event`) -> clé de la réponse (`_event_to_dict`).
+_EVENT_RESPONSE_KEYS = {
+    "start_date": "start_date", "name": "name", "category": "category",
+    "description": "description", "event_type": "type", "duration_seconds": "duration_seconds",
+    "distance_meters": "distance_meters", "training_load": "training_load", "end_date": "end_date",
+    "tags": "tags",
+}
+
+
+def _event_echo(arguments: dict, event_id) -> dict:
+    """Écho d'un événement écrit, à la forme de `_event_to_dict` + `workout_doc_parse_info`
+    du fork : `workout_parsed`/`workout_steps` si des étapes `- …` sont reconnues, sinon
+    `workout_parsed: false` + `workout_parse_hint` (texte stocké tel quel). L'analyse réelle
+    est faite par Intervals.icu ; celle-ci n'en est qu'une approximation (lignes `- `)."""
+    result = {"id": event_id}
+    for arg, key in _EVENT_RESPONSE_KEYS.items():
+        if arguments.get(arg) not in (None, ""):
+            result[key] = arguments[arg]
+    if "category" in result:
+        result["category"] = str(result["category"]).upper()
+    description = str(arguments.get("description") or "")
+    if result.get("category") == "WORKOUT" and description:
+        steps = sum(1 for line in description.splitlines() if line.lstrip().startswith("- "))
+        if steps:
+            result.update({"workout_parsed": True, "workout_steps": steps})
+        else:
+            result.update({"workout_parsed": False, "workout_parse_hint": (
+                "Description saved as plain text, not a structured workout (no steps "
+                "parsed, no training load). See intervals-icu://workout-syntax.")})
+    return result
+
+
 def result_for(name: str, arguments: dict):
     if name in CANNED:
         return CANNED[name]
-    if name in ("icu_create_event", "icu_update_event", "icu_bulk_create_events"):
-        # Formes réelles vérifiées (event_management.py, fork #165) : un event unique
-        # écho des champs fournis pour icu_create_event/icu_update_event, une liste
-        # `events` pour icu_bulk_create_events ; chaque événement WORKOUT porte l'écho
-        # d'analyse `workout_parsed`/`workout_steps` (jamais de `workout_doc` en retour).
-        if name == "icu_bulk_create_events":
-            return _envelope({"events": []}, query_type="bulk_create_events")
-        echoed = {k: v for k, v in (arguments or {}).items() if k != "event_id"}
-        result = {"id": arguments.get("event_id", 123456), **echoed}
-        if str(echoed.get("category", "")).upper() == "WORKOUT" and echoed.get("description"):
-            parsed = "\n- " in "\n" + str(echoed["description"])
-            result["workout_parsed"] = parsed
-            if parsed:
-                result["workout_steps"] = str(echoed["description"]).count("\n- ") + (
-                    1 if str(echoed["description"]).startswith("- ") else 0)
-        return _envelope(result, query_type=name)
+    if name in ("icu_create_event", "icu_update_event"):
+        # Forme réelle vérifiée (`event_management._event_to_dict`, fork #165) : l'événement
+        # tel que l'API le rend — `start_date`, `type` (et non `event_type`), etc. — plus,
+        # pour un WORKOUT, l'écho d'analyse (jamais de `workout_doc` en retour).
+        return _envelope(_event_echo(arguments or {}, arguments.get("event_id", 123456)), query_type=name)
+    if name == "icu_bulk_create_events":
+        # `events` est une CHAÎNE JSON (liste d'objets, date `start_date_local`) ; la réponse
+        # liste chaque événement créé sous `data.events`, même forme que ci-dessus.
+        try:
+            items = json.loads((arguments or {}).get("events") or "[]")
+        except ValueError:
+            items = None
+        if not isinstance(items, list):
+            return {"error": {"message": "Invalid JSON format for events", "type": "validation_error",
+                              "timestamp": "1970-01-01T00:00:00"}}
+        events = [_event_echo({**item, "start_date": item.get("start_date_local")}, 123456 + i)
+                  for i, item in enumerate(items) if isinstance(item, dict)]
+        return _envelope({"events": events}, query_type="bulk_create_events",
+                         metadata={"message": f"Successfully created {len(events)} events",
+                                   "count": len(events)})
     if name == "icu_delete_event":
         event_id = (arguments or {}).get("event_id")
         return _envelope(

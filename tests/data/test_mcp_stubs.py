@@ -400,6 +400,30 @@ class TestIntervalsStubFraming(StubProcessTestCase):
             "start_date": "2026-10-05", "name": "Endurance", "category": "WORKOUT",
             "description": "Cible FC : 140-150 bpm"})
         self.assertFalse(plain["data"]["workout_parsed"])
+        self.assertIn("workout_parse_hint", plain["data"])
+        self.assertNotIn("workout_steps", plain["data"])
+
+    def test_write_echo_uses_the_response_keys_of_the_real_server(self):
+        """`_event_to_dict` du fork : `type` (jamais `event_type`) et `start_date` dans la réponse."""
+        data = self._payload("icu_create_event", {
+            "start_date": "2026-10-05", "name": "Endurance", "category": "WORKOUT",
+            "event_type": "Run", "duration_seconds": 3600})["data"]
+        self.assertEqual(data["type"], "Run")
+        self.assertNotIn("event_type", data)
+        self.assertEqual(data["start_date"], "2026-10-05")
+        self.assertEqual(data["duration_seconds"], 3600)
+
+    def test_bulk_create_lists_each_created_event_with_its_parse_echo(self):
+        events = json.dumps([
+            {"start_date_local": "2026-10-05", "name": "Endurance", "category": "WORKOUT",
+             "event_type": "Run", "description": "Main Set 4x\n- 8m 160-168bpm\n- 3m intensity=rest"},
+            {"start_date_local": "2026-10-07", "name": "Repos", "category": "NOTE"},
+        ])
+        data = self._payload("icu_bulk_create_events", {"events": events})["data"]
+        self.assertEqual([e["start_date"] for e in data["events"]], ["2026-10-05", "2026-10-07"])
+        self.assertTrue(data["events"][0]["workout_parsed"])
+        self.assertEqual(data["events"][0]["workout_steps"], 2)
+        self.assertNotIn("workout_parsed", data["events"][1])
 
     def test_delete_event_returns_the_deleted_skipped_envelope(self):
         data = self._payload("icu_delete_event", {"event_id": 42})["data"]
