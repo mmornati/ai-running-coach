@@ -94,6 +94,49 @@ class TestDataSourceAwareTools(InstallAsserts):
             self.assertOutputContains(proc, "mcp__garmin")
             self.assertOutputLacks(proc, "mcp__intervals")
 
+    def test_each_guided_assistant_has_a_headless_command(self):
+        expected = {
+            "claude": "claude -p",
+            "copilot": "copilot -p",
+            "opencode": "opencode run --format json",
+            "gemini": "gemini -p",
+            "cursor": "cursor-agent -p --force",
+        }
+        for runner, command in expected.items():
+            with self.subTest(runner=runner), Sandbox() as sb:
+                ws = self._workspace(sb, None)
+                config = ws / "config/workspace.user.toml"
+                config.write_text(config.read_text().replace('runner = "claude"', f'runner = "{runner}"'))
+                proc = sb.script("daily-sync.sh", "--dry-run", ARC_WORKSPACE=str(ws))
+                self.assertSucceeded(proc)
+                self.assertOutputContains(proc, command)
+
+    def test_copilot_prompt_mode_loads_workspace_mcp(self):
+        with Sandbox() as sb:
+            ws = self._workspace(sb, None)
+            config = ws / "config/workspace.user.toml"
+            config.write_text(config.read_text().replace('runner = "claude"', 'runner = "copilot"'))
+            proc = sb.script("daily-sync.sh", "--dry-run", ARC_WORKSPACE=str(ws))
+            self.assertSucceeded(proc)
+            self.assertOutputContains(proc, "GITHUB_COPILOT_PROMPT_MODE_WORKSPACE_MCP=true")
+            self.assertOutputContains(proc, "--allow-tool=garmin")
+
+    def test_gemini_headless_config_removes_remote_writes(self):
+        with Sandbox() as sb:
+            ws = self._workspace(sb, None)
+            config = ws / "config/workspace.user.toml"
+            config.write_text(config.read_text().replace('runner = "claude"', 'runner = "gemini"'))
+            (ws / ".gemini").mkdir()
+            (ws / ".gemini/settings.json").write_text(
+                '{"mcpServers":{"garmin":{"command":"garmin-mcp","args":["stdio"],'
+                '"env":{"GARMIN_ENABLED_TOOLS":"get_activities,schedule_workouts,get_sleep_data"}}}}'
+            )
+            proc = sb.script("daily-sync.sh", "--dry-run", ARC_WORKSPACE=str(ws))
+            self.assertSucceeded(proc)
+            self.assertOutputContains(proc, "GEMINI_CLI_SYSTEM_SETTINGS_PATH=")
+            self.assertOutputContains(proc, '"GARMIN_ENABLED_TOOLS": "get_activities,get_sleep_data"')
+            self.assertOutputLacks(proc, '"GARMIN_ENABLED_TOOLS": "get_activities,schedule_workouts')
+
 EXISTING_CRONTAB = """\
 # ma crontab à moi
 0 9 * * 1 /usr/local/bin/sauvegarde.sh

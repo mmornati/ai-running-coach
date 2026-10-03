@@ -2,12 +2,16 @@
 
 from __future__ import annotations
 
+import json
+
 from tests.lib.asserts import InstallAsserts
 from tests.lib.sandbox import Sandbox
 
 IDE_CONFIGS = [
     ".mcp.json",
+    ".gemini/settings.json",
     ".cursor/mcp.json",
+    ".cursor/cli.json",
     ".windsurf/mcp_config.json",
 ]
 WORK_DIRS = ["activities", "medical", "nutrition", "planning", "rapports", "resources", "gear"]
@@ -44,6 +48,22 @@ class TestFreshInstall(InstallAsserts):
         with Sandbox() as sb:
             self.assertSucceeded(sb.install())
             self.assertCalled(sb, "uv", "run garmin-mcp-auth")
+
+    def test_explicit_sync_runner_is_persisted(self):
+        with Sandbox() as sb:
+            proc = sb.install("--no-auth", "--daily-sync", "--sync-runner", "gemini", ARC_FAKE_UNAME="Darwin")
+            self.assertSucceeded(proc)
+            config = (sb.repo / "config/workspace.user.toml").read_text()
+            self.assertIn('[sync]', config)
+            self.assertIn('runner = "gemini"', config)
+
+    def test_cursor_headless_permissions_protect_the_engine(self):
+        with Sandbox() as sb:
+            self.assertSucceeded(sb.install("--no-auth", "--ide", "cursor"))
+            permissions = json.loads((sb.repo / ".cursor/cli.json").read_text())["permissions"]
+            self.assertIn("Write(activities/**)", permissions["allow"])
+            self.assertIn("Write(scripts/**)", permissions["deny"])
+            self.assertIn("Write(.mcp.json)", permissions["deny"])
 
 
 class TestIdempotency(InstallAsserts):

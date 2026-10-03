@@ -324,7 +324,7 @@ class OpenCodeBackend(ChatBackend):
         binary = self._binary()
         if not binary:
             return False, ("binaire opencode absent — installer OpenCode "
-                           "(curl -fsSL https://opencode.ai/install | bash, ou npm i -g opencode-ai)")
+                           "(curl -fsSL https://opencode.ai/v2/install | bash, ou npm i -g opencode-ai)")
         try:
             out = subprocess.run([binary, "--version"], capture_output=True, text=True, timeout=15)
         except (OSError, subprocess.SubprocessError) as exc:

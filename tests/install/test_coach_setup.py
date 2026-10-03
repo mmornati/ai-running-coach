@@ -8,6 +8,7 @@ risque d'écraser ses réglages.
 from __future__ import annotations
 
 import json
+import re
 
 from tests.lib.asserts import InstallAsserts
 from tests.lib.sandbox import Sandbox
@@ -374,6 +375,107 @@ class TestApplyProfile(SetupCase):
             self.assertFileContains(profile, "175")
             content = profile.read_text()
             self.assertNotIn("999", content)
+
+
+class TestApplyShoes(SetupCase):
+    """Assistant macOS : saisie structurée des chaussures dans le profil."""
+
+    def test_adds_multiple_shoes_and_only_the_first_is_default(self):
+        with Sandbox() as sb:
+            self.setup(sb, "--scaffold")
+            data = self.json_out(self.setup(sb, "--apply-shoes", self.answers(sb, [
+                {"name": "Hoka Speedgoat 6", "start_date": "2026-09-01", "threshold_km": "700", "usage": "trail"},
+                {"name": "Nike Pegasus", "start_km": "125.5", "usage": "route"},
+            ])))
+            self.assertEqual(data["added"], ["Hoka Speedgoat 6", "Nike Pegasus"])
+            profile = (sb.repo / "planning/Runner_Profile.md").read_text()
+            self.assertIn("- Hoka Speedgoat 6 — depuis 2026-09-01 — alerte 700 km — usage: trail (par défaut)", profile)
+            self.assertIn("- Nike Pegasus — départ 125.5 km — usage: route", profile)
+            visible = re.sub(r"<!--.*?-->", "", profile, flags=re.S)
+            self.assertEqual(visible.count("(par défaut)"), 1)
+
+    def test_rerun_skips_existing_name_without_rewriting(self):
+        with Sandbox() as sb:
+            self.setup(sb, "--scaffold")
+            answer = self.answers(sb, [{"name": "Hoka Speedgoat 6", "threshold_km": 700}])
+            self.setup(sb, "--apply-shoes", answer)
+            before = (sb.repo / "planning/Runner_Profile.md").read_text()
+            data = self.json_out(self.setup(sb, "--apply-shoes", answer))
+            self.assertEqual(data["added"], [])
+            self.assertEqual(data["skipped"], ["Hoka Speedgoat 6"])
+            self.assertEqual((sb.repo / "planning/Runner_Profile.md").read_text(), before)
+
+    def test_preserves_an_existing_default(self):
+        with Sandbox() as sb:
+            self.setup(sb, "--scaffold")
+            profile = sb.repo / "planning/Runner_Profile.md"
+            marker = "\n\n### Matériel\n"
+            profile.write_text(profile.read_text().replace(marker, "\n- Ancienne paire (par défaut)\n" + marker))
+            self.setup(sb, "--apply-shoes", self.answers(sb, [{"name": "Nouvelle paire"}]))
+            content = profile.read_text()
+            self.assertIn("- Ancienne paire (par défaut)", content)
+            self.assertIn("- Nouvelle paire", content)
+            visible = re.sub(r"<!--.*?-->", "", content, flags=re.S)
+            self.assertEqual(visible.count("(par défaut)"), 1)
+
+    def test_rejects_invalid_values_without_touching_the_profile(self):
+        with Sandbox() as sb:
+            self.setup(sb, "--scaffold")
+            profile = sb.repo / "planning/Runner_Profile.md"
+            before = profile.read_text()
+            proc = self.setup(sb, "--apply-shoes", self.answers(sb, [
+                {"name": "Paire injectée\n- Faux", "start_date": "hier", "threshold_km": -1},
+            ]))
+            self.assertFailed(proc, "chaussure injectante refusée")
+            self.assertEqual(profile.read_text(), before)
+
+    def test_rejects_non_finite_mileage(self):
+        with Sandbox() as sb:
+            self.setup(sb, "--scaffold")
+            proc = self.setup(sb, "--apply-shoes", self.answers(sb, [
+                {"name": "Paire", "threshold_km": "nan"},
+            ]))
+            self.assertFailed(proc, "kilométrage non fini refusé")
+
+
+class TestApplyObjective(SetupCase):
+    def test_fills_the_active_objective_without_renaming_labels(self):
+        with Sandbox() as sb:
+            self.setup(sb, "--scaffold")
+            data = self.json_out(self.setup(sb, "--apply-objective", self.answers(sb, {
+                "Nom": "Trail des Crêtes",
+                "Date": "2027-05-15",
+                "Distance": "52 km",
+                "Dénivelé positif": "2 800 m",
+                "Objectif principal": "finir en moins de 8 h",
+                "Lieu d'entraînement par défaut": "Annecy",
+            })))
+            self.assertIn("Nom", data["written"])
+            objective = (sb.repo / "planning/active_objective.md").read_text()
+            self.assertIn("- **Nom** : Trail des Crêtes", objective)
+            self.assertIn("- **Dénivelé positif** : 2 800 m", objective)
+            self.assertIn("- **Lieu d'entraînement par défaut** : Annecy", objective)
+
+    def test_never_overwrites_an_existing_objective(self):
+        with Sandbox() as sb:
+            self.setup(sb, "--scaffold")
+            first = self.answers(sb, {"Nom": "Premier trail"})
+            self.setup(sb, "--apply-objective", first)
+            second = self.answers(sb, {"Nom": "Course remplacée"})
+            data = self.json_out(self.setup(sb, "--apply-objective", second))
+            self.assertEqual(data["written"], [])
+            self.assertEqual(data["skipped"], ["Nom"])
+            objective = (sb.repo / "planning/active_objective.md").read_text()
+            self.assertIn("Premier trail", objective)
+            self.assertNotIn("Course remplacée", objective)
+
+    def test_rejects_unknown_or_injected_fields(self):
+        with Sandbox() as sb:
+            self.setup(sb, "--scaffold")
+            proc = self.setup(sb, "--apply-objective", self.answers(sb, {"Course secrète": "x"}))
+            self.assertFailed(proc, "libellé inconnu")
+            proc = self.setup(sb, "--apply-objective", self.answers(sb, {"Nom": "x\n- **Date** : demain"}))
+            self.assertFailed(proc, "retour à la ligne")
 
 
 class TestStatus(SetupCase):

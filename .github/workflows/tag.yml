@@ -2,13 +2,14 @@ name: Tag a release
 
 # Lancé à la main (onglet Actions → « Tag a release » → Run workflow) : calcule
 # la prochaine version SemVer à partir du dernier tag `v*`, pose un tag annoté
-# sur `main` et le pousse, puis enchaîne directement sur release.yml.
+# sur `main` et le pousse, puis enchaîne sur la release et son DMG macOS.
 #
 # Pourquoi l'appel direct (`uses: ./.github/workflows/release.yml`) plutôt que
 # de compter sur le déclencheur `push: tags` : un tag poussé avec le
 # GITHUB_TOKEN ne déclenche AUCUN autre workflow (garde-fou anti-boucle de
-# GitHub). Sans cet appel, la release ne serait jamais créée. Un tag poussé à la
-# main (`git push origin v1.2.3`) passe, lui, par le déclencheur de release.yml.
+# GitHub). Sans ces appels, la release et son DMG ne seraient jamais créés. Un
+# tag poussé à la main (`git push origin v1.2.3`) passe, lui, par les déclencheurs
+# de release.yml et macos-dmg.yml.
 on:
   workflow_dispatch:
     inputs:
@@ -23,7 +24,9 @@ on:
         required: false
 
 permissions:
-  contents: read
+  # Les trois jobs créent le tag, la release ou son DMG. Un workflow réutilisable
+  # ne peut pas élever les droits reçus de son appelant.
+  contents: write
 
 concurrency:
   group: release
@@ -97,3 +100,10 @@ jobs:
     uses: ./.github/workflows/release.yml
     with:
       tag: ${{ needs.tag.outputs.tag }}
+
+  macos-dmg:
+    needs: [tag, release]
+    uses: ./.github/workflows/macos-dmg.yml
+    with:
+      tag: ${{ needs.tag.outputs.tag }}
+    secrets: inherit
