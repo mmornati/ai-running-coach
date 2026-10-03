@@ -33,6 +33,8 @@ Deux modes sont proposés pendant l'installation :
 - **Chat intégré** : l'application installe le composant nécessaire et affiche ensuite **Parler au coach**. Il faut une clé OpenRouter, facturée à l'usage, et un plafond quotidien. La clé est conservée uniquement sur le Mac dans `~/.config/ai-running-coach/llm.env`, en mode privé ; elle n'est jamais placée dans le dossier de données ni affichée dans les journaux.
 - **Assistant IA habituel** : choisissez Claude Code, GitHub Copilot, OpenCode, Gemini CLI ou Cursor Agent. L'application installe automatiquement l'outil et prépare ses agents et sa connexion aux données, sans activer OpenRouter.
 
+La synchronisation Garmin ou Intervals.icu en arrière-plan est toujours activée. Avec le chat intégré, elle réutilise OpenCode, la même clé OpenRouter et le plafond quotidien de synchronisation. Avec un assistant habituel, elle utilise le mode non interactif de l'assistant choisi — Claude Code, Copilot, OpenCode, Gemini ou Cursor — et donc le même compte, sans installer ni facturer un second fournisseur en secret. Une seule connexion initiale à cet assistant peut être demandée ; il n'a ensuite pas besoin de rester ouvert.
+
 Dans ce second mode, il n'y a aucune commande à recopier. Après l'installation,
 **Parler au coach avec…** ouvre Terminal directement dans le dossier de données
 et lance l'assistant choisi. Au premier lancement seulement, celui-ci affiche sa
@@ -48,6 +50,8 @@ Le chat intégré envoie les messages et le contexte utile au fournisseur du mod
 Après l'installation, cliquez sur **Connecter mon compte**. Une fenêtre dédiée demande directement les informations Garmin Connect ou la clé Intervals.icu. Le mot de passe, la clé et le code MFA ne transitent pas par l'interface de l'application.
 
 Revenez ensuite dans l'app : l'état de connexion est vérifié lorsqu'elle reprend le premier plan.
+
+Une fois le compte connecté, le service de synchronisation installé par l'application récupère les nouvelles données aux heures configurées. Garmin et Intervals.icu utilisent la même source choisie pendant l'installation ; les données récupérées sont persistées dans le dossier de travail avant d'être affichées par le coach ou le tableau de bord.
 
 ## Lancer le coach au quotidien
 

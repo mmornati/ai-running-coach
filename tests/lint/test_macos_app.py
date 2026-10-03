@@ -36,6 +36,8 @@ class TestMacApp(unittest.TestCase):
             "--apply-objective",
             '"--llm", "openrouter"',
             '"--chat"',
+            '"--daily-sync"',
+            '"--sync-runner", selected.syncRunner',
             '"Prénom / surnom"',
             '"Années de pratique"',
             '"Disponibilité hebdomadaire"',
@@ -97,6 +99,14 @@ class TestMacApp(unittest.TestCase):
         text = SOURCE.read_text(encoding="utf-8")
         self.assertIn("selected.chatChoice == .integrated ? .opencode : selected.ide", text)
         self.assertIn("integratedChatEnabled ? IDEChoice.opencode.rawValue : choices.ide.rawValue", text)
+
+    def test_automatic_sync_uses_the_selected_assistant_headlessly(self):
+        text = SOURCE.read_text(encoding="utf-8")
+        self.assertIn("var syncRunner: String", text)
+        self.assertIn('"--daily-sync"', text)
+        self.assertIn('"--sync-runner", selected.syncRunner', text)
+        self.assertIn("guard chatChoice == .external else { return IDEChoice.opencode.rawValue }", text)
+        self.assertIn("le même assistant synchronisera automatiquement vos données", text)
 
     def test_full_coach_setup_choices_are_not_hardcoded(self):
         text = SOURCE.read_text(encoding="utf-8")

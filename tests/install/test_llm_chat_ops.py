@@ -136,12 +136,13 @@ class TestOpencodeRunnerDryRun(InstallAsserts):
                 self.assertSucceeded(proc)
                 self.assertOutputLacks(proc, "non pris en charge")
 
-    def test_model_is_required(self):
+    def test_subscription_mode_can_reuse_opencode_default_model(self):
         with Sandbox() as sb:
             _write_config(sb, '[sync]\nrunner = "opencode"\n')
             proc = sb.script("daily-sync.sh", "--dry-run")
-            self.assertFailed(proc)
-            self.assertOutputContains(proc, "[sync].model requis")
+            self.assertSucceeded(proc)
+            self.assertOutputContains(proc, "opencode run --format json")
+            self.assertOutputLacks(proc, "--model")
 
     def test_base_url_builds_an_openai_compatible_provider(self):
         with Sandbox() as sb:

@@ -3,7 +3,8 @@
 # ai-running-coach — synchronisation Garmin automatique (headless)
 #
 # Lance le skill /garmin-daily-sync avec l'exécuteur configuré (Claude Code,
-# Codex CLI ou OpenCode), journalise, extrait le bloc ```resume``` et l'envoie
+# Codex CLI, GitHub Copilot, OpenCode, Gemini CLI ou Cursor Agent), journalise,
+# extrait le bloc ```resume``` et l'envoie
 # en notification push via scripts/notify.sh. Par défaut : abonnement (pas de
 # clé API). Avec [sync].api_key_env : mode API (OpenRouter, Anthropic…), clé lue
 # dans ~/.config/ai-running-coach/llm.env et injectée dans le seul process du
@@ -12,7 +13,7 @@
 # Usage :
 #   scripts/daily-sync.sh              # exécution (appelée par cron/launchd)
 #   scripts/daily-sync.sh --dry-run    # affiche la commande sans l'exécuter
-#   scripts/daily-sync.sh --runner codex     # ou opencode
+#   scripts/daily-sync.sh --runner copilot   # ou claude|codex|opencode|gemini|cursor
 #   scripts/daily-sync.sh --trigger activity:123,morning   # passé par garmin_watch.py
 #
 # Configuration : section [sync] de config/workspace.toml (runner, model, base_url,
@@ -38,7 +39,8 @@ done
 
 # cron/launchd démarrent avec un PATH minimal : ajoute les emplacements usuels
 # de claude, codex, uv et garmin-mcp.
-export PATH="$HOME/.local/bin:$HOME/.opencode/bin:$HOME/.claude/bin:$HOME/.cargo/bin:/opt/homebrew/bin:/usr/local/bin:$PATH"
+MAC_APP_SUPPORT="$HOME/Library/Application Support/AI Running Coach"
+export PATH="$HOME/.local/bin:$HOME/.opencode/bin:$HOME/.claude/bin:$MAC_APP_SUPPORT/node-runtime/bin:$MAC_APP_SUPPORT/npm-tools/bin:$HOME/.cargo/bin:/opt/homebrew/bin:/usr/local/bin:$PATH"
 
 RUNNER="${RUNNER:-$(toml_get sync runner claude)}"
 LOOKBACK="$(toml_get sync lookback_days 2)"
@@ -63,6 +65,7 @@ RUNNER_ENV=()
 # Format de sortie du runner : text | claude-json | opencode-json (voir build_command).
 OUTPUT_KIND="text"
 OC_CONFIG_FILE="$ARC_WORKSPACE/.arc/sync/opencode.json"
+GEMINI_CONFIG_FILE="$ARC_WORKSPACE/.arc/sync/gemini-system.json"
 
 # Déclencheurs détectés par scripts/garmin_watch.py (#watch) : un indice pour
 # l'agent (quoi récupérer en priorité), jamais une restriction — les dates
@@ -97,6 +100,7 @@ if [[ "$SOURCE" == "intervals" ]]; then
     CLAUDE_TOOLS="mcp__intervals,Agent,Task,Skill,Read,Write,Edit,Glob,Grep,$PYTHON_TOOLS"
     CLAUDE_DISALLOWED="$PROTECTED_PATHS"
     SOURCE_LABEL="Intervals.icu"
+    MCP_SERVER_NAME="intervals"
     AUTH_CMD_HINT="(cd \"$HOME/.config/ai-running-coach/intervals-icu-mcp\" && intervals-icu-mcp-auth)"
 else
     # Outils autorisés en mode non interactif : serveur MCP garmin (tous ses outils),
@@ -116,6 +120,7 @@ else
     CLAUDE_DISALLOWED+=",mcp__garmin__unschedule_workout,mcp__garmin__unschedule_workouts,mcp__garmin__upload_course"
     CLAUDE_DISALLOWED+=",$PROTECTED_PATHS"
     SOURCE_LABEL="Garmin"
+    MCP_SERVER_NAME="garmin"
     AUTH_CMD_HINT="uv run garmin-mcp-auth"
 fi
 # En mode -p, un serveur MCP déclaré dans .mcp.json (portée projet) n'est chargé
@@ -217,7 +222,9 @@ permission.update({
     "bash": "deny", "webfetch": "deny", "websearch": "deny",
     "external_directory": "deny", "task": "allow", "skill": "allow",
 })
-config = {"$schema": "https://opencode.ai/config.json", "model": model, "permission": permission}
+config = {"$schema": "https://opencode.ai/config.json", "permission": permission}
+if model:
+    config["model"] = model
 if provider:
     config["provider"] = provider
 if mcp:
@@ -227,6 +234,52 @@ print(json.dumps(config, ensure_ascii=False, indent=2))
 
 opencode_config_json() {
     python3 -c "$OC_CONFIG_PY" "$SYNC_MODEL" "$SYNC_BASE_URL" "$API_KEY_ENV" "$MCP_CONFIG"
+}
+
+# Configuration de sécurité propre au run Gemini. Le fichier est chargé comme
+# couche système pour ce seul process : scripts Python du moteur + écritures MD,
+# serveur sportif limité à ses outils de lecture. La configuration interactive
+# de l'utilisateur n'est pas modifiée.
+GEMINI_CONFIG_PY='
+import json, sys
+path, source = sys.argv[1:3]
+try:
+    project = json.load(open(path, encoding="utf-8"))
+except (OSError, ValueError):
+    project = {}
+servers = project.get("mcpServers") or {}
+write_prefixes = ("schedule_", "upload_", "delete_", "unschedule_", "create_", "add_",
+                  "set_", "log_", "update_", "upsert_", "bulk_", "request_reload")
+intervals_reads = ["get_wellness_for_date", "get_recent_activities", "get_activity_details",
+                   "get_calendar_events", "get_upcoming_workouts", "get_event", "get_gear_list",
+                   "get_athlete_profile", "get_fitness_summary"]
+safe = {}
+for name, spec in servers.items():
+    if name != source or not isinstance(spec, dict):
+        continue
+    item = dict(spec)
+    item["trust"] = True
+    env = dict(item.get("env") or {})
+    tools = env.get("GARMIN_ENABLED_TOOLS", "")
+    if tools:
+        kept = [t for t in tools.split(",") if not t.startswith(write_prefixes)]
+        env["GARMIN_ENABLED_TOOLS"] = ",".join(kept)
+        item["includeTools"] = kept
+    elif source == "intervals":
+        item["includeTools"] = intervals_reads
+    if env:
+        item["env"] = env
+    safe[name] = item
+print(json.dumps({
+    "tools": {"core": ["read_file", "read_many_files", "list_directory", "glob", "grep_search",
+                         "write_file", "replace", "run_shell_command(python3 scripts/)",
+                         "run_shell_command(python3 skills/)"]},
+    "mcpServers": safe,
+}, ensure_ascii=False, indent=2))
+'
+
+gemini_config_json() {
+    python3 -c "$GEMINI_CONFIG_PY" "$ARC_WORKSPACE/.gemini/settings.json" "$MCP_SERVER_NAME"
 }
 
 # ---------------------------------------------------------------------------
@@ -360,7 +413,7 @@ detect_provider_failure() {
 }
 
 provider_label() {
-    if [[ "$RUNNER" == "opencode" ]]; then
+    if [[ "$RUNNER" == "opencode" && -n "$SYNC_MODEL" ]]; then
         local p="${SYNC_MODEL%%/*}"
         printf '%s' "${p:-fournisseur LLM}"
     else
@@ -368,8 +421,8 @@ provider_label() {
     fi
 }
 
-# Corps du skill sans son front matter, pour les exécuteurs qui n'ont pas de
-# slash-command projet (codex, opencode) : passé en prompt.
+# Corps du skill sans son front matter, passé directement aux exécuteurs
+# headless afin que le comportement ne dépende pas de leurs commandes projet.
 skill_prompt() {
     local body
     body="$(awk 'NR==1 && /^---$/ {fm=1; next} fm && /^---$/ {fm=0; next} !fm' "$SKILL_FILE")"
@@ -406,15 +459,34 @@ build_command() {
             have codex || [[ "$DRY_RUN" -eq 1 ]] || die "codex introuvable — installez Codex CLI : npm i -g @openai/codex"
             # Codex n'a pas de slash-command projet : on passe le corps du skill en prompt.
             CMD=(codex exec --full-auto --cd "$ARC_WORKSPACE" "$(skill_prompt)") ;;
+        copilot)
+            have copilot || [[ "$DRY_RUN" -eq 1 ]] || die "copilot introuvable — relancez l'installation guidée GitHub Copilot."
+            # Le MCP du workspace est chargé explicitement en mode prompt ; permissions
+            # minimales : lecture/écriture des MD, scripts Python du projet et source sportive.
+            CMD=(env GITHUB_COPILOT_PROMPT_MODE_WORKSPACE_MCP=true
+                 copilot -p "$(skill_prompt)" -s --no-ask-user
+                 --allow-tool=read --allow-tool=write
+                 '--allow-tool=shell(python3:*)' "--allow-tool=$MCP_SERVER_NAME") ;;
         opencode)
             have opencode || [[ "$DRY_RUN" -eq 1 ]] || die "opencode introuvable — installez OpenCode : curl -fsSL https://opencode.ai/v2/install | bash"
-            [[ "$SYNC_MODEL" == */* ]] || die "[sync].model requis pour le runner opencode, au format fournisseur/modèle (ex. openrouter/deepseek/deepseek-v4.1-flash)."
-            # Pas de slash-command projet garanti en mode headless (# À VÉRIFIER) :
-            # on passe le corps du skill. Config locale (permissions, MCP) par
-            # OPENCODE_CONFIG ; --format json pour lire coût et erreurs.
+            if [[ -n "$SYNC_MODEL" && "$SYNC_MODEL" != */* ]]; then
+                die "[sync].model doit être au format fournisseur/modèle (ex. openrouter/deepseek/deepseek-v4.1-flash)."
+            fi
+            # Sans modèle explicite, OpenCode réutilise le fournisseur/modèle choisi
+            # lors de sa connexion initiale. La config locale garde les permissions et MCP.
             OUTPUT_KIND="opencode-json"
-            CMD=(opencode run --format json --model "$SYNC_MODEL" --dir "$ARC_WORKSPACE" "$(skill_prompt)") ;;
-        *) die "Exécuteur inconnu : $RUNNER (claude|codex|opencode)" ;;
+            CMD=(opencode run --format json)
+            [[ -z "$SYNC_MODEL" ]] || CMD+=(--model "$SYNC_MODEL")
+            CMD+=(--dir "$ARC_WORKSPACE" "$(skill_prompt)") ;;
+        gemini)
+            have gemini || [[ "$DRY_RUN" -eq 1 ]] || die "gemini introuvable — relancez l'installation guidée Gemini CLI."
+            CMD=(env "GEMINI_CLI_SYSTEM_SETTINGS_PATH=$GEMINI_CONFIG_FILE"
+                 gemini -p "$(skill_prompt)" --output-format text --approval-mode yolo --skip-trust
+                 --allowed-mcp-server-names "$MCP_SERVER_NAME") ;;
+        cursor)
+            have cursor-agent || [[ "$DRY_RUN" -eq 1 ]] || die "cursor-agent introuvable — relancez l'installation guidée Cursor Agent."
+            CMD=(cursor-agent -p --force --output-format text "$(skill_prompt)") ;;
+        *) die "Exécuteur inconnu : $RUNNER (claude|codex|copilot|opencode|gemini|cursor)" ;;
     esac
 }
 
@@ -787,7 +859,7 @@ main() {
     load_llm_env || key_missing=1
 
     if [[ "$DRY_RUN" -eq 1 ]]; then
-        # Le prompt inline du skill (codex, opencode), multi-ligne, n'est montré que par sa
+        # Le prompt inline du skill, multi-ligne, n'est montré que par sa
         # taille ; les listes d'outils autorisés/interdits restent affichées en entier.
         local shown=() arg
         for arg in "${CMD[@]}"; do
@@ -805,6 +877,10 @@ main() {
         if [[ "$RUNNER" == "opencode" ]]; then
             printf '%s\n' "${C_YELLOW}[dry-run]${C_RESET} OPENCODE_CONFIG=$OC_CONFIG_FILE, contenu :"
             opencode_config_json
+        fi
+        if [[ "$RUNNER" == "gemini" ]]; then
+            printf '%s\n' "${C_YELLOW}[dry-run]${C_RESET} GEMINI_CLI_SYSTEM_SETTINGS_PATH=$GEMINI_CONFIG_FILE, contenu :"
+            gemini_config_json
         fi
         if budget_enforced; then
             printf '%s\n' "${C_YELLOW}[dry-run]${C_RESET} budget : $(spent_today_eur)/$DAILY_BUDGET_EUR EUR (cumul : $SPEND_FILE)"
@@ -855,6 +931,10 @@ main() {
         mkdir -p "$(dirname "$OC_CONFIG_FILE")"
         opencode_config_json > "$OC_CONFIG_FILE"
         exec_cmd=(env "OPENCODE_CONFIG=$OC_CONFIG_FILE" "${exec_cmd[@]}")
+    fi
+    if [[ "$RUNNER" == "gemini" ]]; then
+        mkdir -p "$(dirname "$GEMINI_CONFIG_FILE")"
+        gemini_config_json > "$GEMINI_CONFIG_FILE"
     fi
     # La clé n'est passée qu'à CE process (env), jamais exportée ici.
     if [[ "${#RUNNER_ENV[@]}" -gt 0 ]]; then

@@ -245,6 +245,11 @@ struct SetupChoices {
         guard let budget = Double(chatBudget.replacingOccurrences(of: ",", with: ".")) else { return false }
         return budget > 0
     }
+
+    var syncRunner: String {
+        guard chatChoice == .external else { return IDEChoice.opencode.rawValue }
+        return ide == .all ? IDEChoice.claude.rawValue : ide.rawValue
+    }
 }
 
 private final class OutputBuffer: @unchecked Sendable {
@@ -320,6 +325,9 @@ final class CoachAppModel: ObservableObject {
 
     var integratedChatEnabled: Bool { defaults.bool(forKey: "integratedChatEnabled") }
     var externalAssistantTitle: String { choices.ide.title }
+    var syncStatusDetail: String {
+        integratedChatEnabled ? "Automatique" : "Après la 1re connexion à \(externalAssistantTitle)"
+    }
 
     init() {
         if let saved = defaults.string(forKey: "workspace"), !saved.isEmpty {
@@ -398,7 +406,9 @@ final class CoachAppModel: ObservableObject {
                     "--source", selected.source.rawValue,
                     "--ide", installationIDE.rawValue,
                     "--agents", selected.agents.joined(separator: ","),
-                    "--no-auth"
+                    "--no-auth",
+                    "--daily-sync",
+                    "--sync-runner", selected.syncRunner
                 ]
                 if selected.chatChoice == .integrated {
                     args += [
@@ -453,15 +463,18 @@ final class CoachAppModel: ObservableObject {
                 try await installEngine()
                 progress = 0.35
                 progressTitle = "Vérification des composants"
+                let args = [
+                    engineURL.appendingPathComponent("install.sh").path,
+                    "--workspace", workspaceURL.path,
+                    "--source", choices.source.rawValue,
+                    "--ide", integratedChatEnabled ? IDEChoice.opencode.rawValue : choices.ide.rawValue,
+                    "--no-auth",
+                    "--daily-sync",
+                    "--sync-runner", choices.syncRunner
+                ]
                 let result = try await runProcess(
                     executable: "/bin/bash",
-                    arguments: [
-                        engineURL.appendingPathComponent("install.sh").path,
-                        "--workspace", workspaceURL.path,
-                        "--source", choices.source.rawValue,
-                        "--ide", integratedChatEnabled ? IDEChoice.opencode.rawValue : choices.ide.rawValue,
-                        "--no-auth"
-                    ],
+                    arguments: args,
                     directory: engineURL,
                     streamOutput: true
                 )
@@ -1319,7 +1332,7 @@ struct SetupView: View {
                         }
                         .pickerStyle(.segmented)
                         if model.choices.chatChoice == .integrated {
-                            Text("Vous retrouverez un bouton « Parler au coach » dans l’application. Ce chat utilise OpenRouter et nécessite une clé API facturée à l’usage ; votre plafond quotidien évite les surprises.")
+                            Text("Vous retrouverez un bouton « Parler au coach » dans l’application. Ce chat utilise OpenRouter et nécessite une clé API facturée à l’usage ; votre plafond quotidien évite les surprises. La synchronisation automatique des données sportives sera également activée.")
                                 .font(.callout).foregroundStyle(.secondary)
                             HStack {
                                 Text("Clé OpenRouter").frame(width: 170, alignment: .leading)
@@ -1334,6 +1347,8 @@ struct SetupView: View {
                                 ForEach(IDEChoice.guidedCases) { Text($0.title).tag($0) }
                             }
                             Text("L’application installe automatiquement l’assistant choisi. Ensuite, le bouton « Parler au coach » ouvre le bon dossier et lance l’assistant ; sa connexion s’affiche simplement au premier lancement.")
+                                .font(.caption).foregroundStyle(.secondary)
+                            Text("Après sa connexion initiale, le même assistant synchronisera automatiquement vos données en arrière-plan ; vous n’aurez pas à l’ouvrir pour cela.")
                                 .font(.caption).foregroundStyle(.secondary)
                         }
                     }.padding(8)
@@ -1425,6 +1440,12 @@ struct ReadyView: View {
                     color: model.isAuthenticated ? .green : .orange
                 )
                 StatusCard(title: "Données personnelles", detail: model.workspaceURL.lastPathComponent, icon: "folder.fill", color: .blue)
+                StatusCard(
+                    title: "Synchronisation",
+                    detail: model.syncStatusDetail,
+                    icon: "arrow.triangle.2.circlepath",
+                    color: .purple
+                )
             }
 
             if !model.isAuthenticated {
