@@ -100,7 +100,7 @@ class TestActivityRef(unittest.TestCase):
 
     def test_contract_validates_the_prefixed_id_only(self):
         import arc_contract as C
-        base = {"arc": 1, "kind": "activity", "date": "2026-09-29", "sport": "run", "duration_s": 60}
+        base = {"arc": 1, "kind": "activity", "date": "2026-09-29", "sport": "trail", "duration_s": 60}
         errors, _warnings = C.validate({**base, "strava_activity_id": "s123"})
         self.assertEqual(errors, [])
         for bad in (123, "123", "s", "i123"):
