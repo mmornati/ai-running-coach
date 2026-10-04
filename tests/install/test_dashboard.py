@@ -500,6 +500,23 @@ class TestDashboardLauncher(InstallAsserts):
         with Sandbox() as sb:
             self.assertFailed(sb.script("dashboard.sh", "--port", "abc", "--no-open"))
 
+    def test_corrupt_derived_index_is_rebuilt_automatically(self):
+        with Sandbox() as sb:
+            ws = build(sb.root / "ws", days=10)
+            arc = ws / ".arc"
+            arc.mkdir()
+            (arc / "coach.db").write_bytes(b"ancienne base sqlite corrompue")
+            server = Server(sb, [str(sb.repo / "scripts/dashboard.sh"), "--no-open", "--port", "0"],
+                            ARC_WORKSPACE=str(ws))
+            try:
+                self.assertIsNotNone(
+                    server.url,
+                    server.proc.stderr.read() if server.proc.poll() is not None else "pas d'URL",
+                )
+                self.assertEqual(server.get("/api/summary")[0], 200)
+            finally:
+                server.stop()
+
 
 class TestInstallWorkspaceWiring(InstallAsserts):
     OLD_BLOCK = """
@@ -574,4 +591,3 @@ class TestIndexNeverCommitted(InstallAsserts):
             self.assertIsFile(ws / ".arc/coach.db")
             status = sb.run(["git", "status", "--porcelain", "--untracked-files=all"], cwd=ws).stdout
             self.assertNotIn(".arc/", status, f"l'index apparaît dans git :\n{status}")
-

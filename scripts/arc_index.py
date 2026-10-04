@@ -892,6 +892,7 @@ PER_FILE_TABLES = (
 
 def open_db(workspace: Path, db: Optional[str] = None, memory: bool = False,
             rebuild: bool = False) -> sqlite3.Connection:
+    path = None
     if memory:
         conn = sqlite3.connect(":memory:", check_same_thread=False)
     else:
@@ -913,15 +914,33 @@ def open_db(workspace: Path, db: Optional[str] = None, memory: bool = False,
         current = int(row[0]) if row else None
     except sqlite3.DatabaseError:
         current = None
+
+    def reset_schema(connection: sqlite3.Connection) -> None:
+        for (name,) in connection.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall():
+            connection.execute(f'DROP TABLE IF EXISTS "{name}"')
+        connection.executescript(DDL)
+        connection.execute("INSERT INTO meta VALUES ('schema_version', ?)", (str(SCHEMA_VERSION),))
+        connection.commit()
+
     # --rebuild vide les tables sur place au lieu de supprimer le fichier : un serveur
     # déjà ouvert sur la base garderait sinon une connexion vers un fichier disparu.
     if rebuild or current != SCHEMA_VERSION:
-        # Base d'une autre version (ou vide) : elle est dérivée, on la recrée.
-        for (name,) in conn.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall():
-            conn.execute(f'DROP TABLE IF EXISTS "{name}"')
-        conn.executescript(DDL)
-        conn.execute("INSERT INTO meta VALUES ('schema_version', ?)", (str(SCHEMA_VERSION),))
-        conn.commit()
+        try:
+            # Base d'une autre version (ou vide) : elle est dérivée, on la recrée.
+            reset_schema(conn)
+        except sqlite3.DatabaseError as exc:
+            corrupt = "malformed" in str(exc).lower() or "not a database" in str(exc).lower()
+            if memory or path is None or not corrupt:
+                raise
+            # `.arc/coach.db` est un index entièrement dérivé des Markdown. Si
+            # SQLite ne peut même plus lire son catalogue, le supprimer est la
+            # seule réparation fiable ; les éventuels sidecars sont jetables aussi.
+            conn.close()
+            for candidate in (path, Path(f"{path}-wal"), Path(f"{path}-shm")):
+                candidate.unlink(missing_ok=True)
+            conn = sqlite3.connect(str(path), check_same_thread=False, timeout=10)
+            conn.row_factory = sqlite3.Row
+            reset_schema(conn)
     return conn
 
 
