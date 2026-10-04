@@ -27,6 +27,7 @@ pour eux. Relancer `install.sh` reste nécessaire pour tout ce qui est **génér
 | Bloc `.gitignore` du workspace | De nouveaux fichiers générés peuvent y être ajoutés. |
 | Crontab / launchd du daily-sync | Relus depuis `[sync].mode` (`schedule` : heures de `[sync].times` ; `watch` : sondage `scripts/garmin_watch.py`, voir [Le coach dans la poche](mobile.md#mode-watch-ne-payer-le-llm-que-quand-garmin-a-du-neuf)) ; les lignes marquées sont remplacées, le reste de la crontab est conservé (sauvegarde dans `~/.config/ai-running-coach/`). |
 | Unité Remote Control | Réécrite si son modèle a changé. |
+| Version du serveur `intervals-icu-mcp` (#165) | Source intervals.icu : `install.sh` réinstalle l'outil `uv` s'il n'est pas au commit épinglé (ancien serveur eddmann ou ancien commit du fork). `coach_doctor.py` le signale (`intervals_mcp_pin`). |
 | Lecteur FIT (`fitparse`) de l'environnement `intervals-icu-mcp` | Source intervals.icu : `fitparse` y est ajouté (sans réinstaller le serveur) pour que `fit-download` lise les FIT — sans lui, zones, GAP, VAM… restent vides. `coach_doctor.py` le signale (`fit_reader`). |
 
 Les tokens Garmin sont **vérifiés**, pas redemandés : l'authentification interactive ne
@@ -44,6 +45,7 @@ Pour le reste, les traces de l'installation suffisent :
 | Service `ai-running-coach-remote` (`scripts/coach-remote.sh status`) | `--remote-control` |
 | `[agents].enabled` dans `config/workspace.user.toml` | `--agents …` (ou `--no-medical`) |
 | `[data].source = "intervals"` | `--source intervals` |
+| `[data].source = "strava"` | `--source strava` |
 | Dossiers `.claude/`, `.opencode/`, `.gemini/`… présents | `--ide …` |
 
 Une machine coach (daily-sync + Remote Control, Claude Code) correspond au préréglage
@@ -101,8 +103,41 @@ uv tool upgrade garmin-mcp
 ```
 
 `intervals-icu-mcp` est épinglé à un commit précis (`INTERVALS_MCP_REF` dans
-`install.sh`) : quand ce commit change dans le moteur, réinstallez-le explicitement
-(voir [Configuration Intervals.icu](intervals-setup.md)).
+`install.sh`) : quand ce commit change dans le moteur, relancez
+`./install.sh --source intervals` — il compare l'origine de l'outil installé
+(`direct_url.json` de l'environnement `uv`) au pin et le réinstalle
+(`uv tool install --force`) s'il diffère. Une origine personnalisée (chemin
+local, autre fork) n'est jamais écrasée.
+
+### Migration vers le fork `hhopke/intervals-icu-mcp` (#165)
+
+Le projet utilisait `eddmann/intervals-icu-mcp@cb91d4a` ; il pointe désormais sur
+le fork maintenu [`hhopke/intervals-icu-mcp`](https://github.com/hhopke/intervals-icu-mcp)
+(v5.5.0). **Concerne uniquement `[data].source = "intervals"`** : avec la source
+Garmin (défaut), rien ne change.
+
+1. `git pull` dans le moteur, puis `./install.sh --source intervals` (ajoutez
+   vos autres options habituelles, `--no-auth` si les identifiants existent déjà).
+   L'ancien serveur est remplacé automatiquement ; **vos identifiants
+   (`~/.config/ai-running-coach/intervals-icu-mcp/.env`) et le wrapper `run.sh`
+   sont conservés** — mêmes noms de variables, même commande d'authentification.
+   Équivalent manuel : `uv tool install --python 3.12 --force --with fitparse
+   "git+https://github.com/hhopke/intervals-icu-mcp@5cd7e1abf716ea28b7bc5a8da5b01860b4bf2aa4"`
+   (ou `uv tool uninstall intervals-icu-mcp` puis la même commande sans `--force`).
+2. **Ouvrez une nouvelle session de coaching** : une session reprise garde les
+   outils MCP qu'elle avait au démarrage. Les outils du nouveau serveur portent le
+   préfixe `icu_` (`icu_get_wellness_for_date` au lieu de `get_wellness_for_date`) ;
+   le coach, les skills et la politique du chat parlent désormais ces noms.
+3. Vérifiez : `python3 scripts/coach_doctor.py --check intervals_mcp_pin` — ✅ au
+   commit épinglé, ⚠️ tant que l'ancien serveur est installé (le correctif est
+   affiché).
+
+Ce qui change pour vous : les séances poussées vers Intervals.icu sont
+désormais **structurées** quand c'est possible (étapes lisibles par la montre) au
+lieu d'un texte libre — voir [Configuration Intervals.icu](intervals-setup.md).
+Les séances déjà poussées ne sont pas modifiées. Retour arrière : `git reset`
+du moteur à la version précédente, puis `uv tool install --force` du commit
+`cb91d4a` de `eddmann/intervals-icu-mcp` (voir l'ancien `install.sh`).
 
 ## Revenir en arrière
 

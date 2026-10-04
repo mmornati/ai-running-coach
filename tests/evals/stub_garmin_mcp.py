@@ -180,6 +180,15 @@ TOOLS = [
     ("get_gear", "Inventaire du matériel Garmin Connect (include_stats optionnel)."),
     ("get_activity_gear", "Matériel attaché à une activité (activity_id)."),
     ("add_gear_to_activity", "Attache un matériel à une activité — ÉCRITURE côté Garmin."),
+    # #167 — journal alimentaire / hydratation (opt-in `[nutrition].garmin_sync`). Noms et formes
+    # vérifiés dans `garmin_mcp/nutrition.py`, `data_management.py`, `health_wellness.py` (ref épinglée).
+    ("get_custom_foods", "Aliments personnalisés (search, start, limit)."),
+    ("get_nutrition_daily_food_log", "Journal alimentaire d'une date."),
+    ("get_hydration_data", "Hydratation d'une date."),
+    ("create_custom_food", "Crée un aliment personnalisé — ÉCRITURE côté Garmin."),
+    ("log_custom_food", "Journalise un aliment personnalisé — ÉCRITURE côté Garmin."),
+    ("log_food", "Quick Add au journal alimentaire — ÉCRITURE côté Garmin."),
+    ("add_hydration_data", "Ajoute de l'hydratation — ÉCRITURE côté Garmin."),
     ("schedule_workouts", "Planifie des séances dans le calendrier Garmin."),
     ("schedule_week", "Planifie une semaine de séances."),
     ("upload_workout", "Téléverse une séance."),
@@ -192,6 +201,20 @@ TOOLS = [
 def result_for(name: str, arguments: dict):
     if name in CANNED:
         return CANNED[name]
+    # #167 : textes bruts réels de garmin-mcp pour « rien » ; écritures = accusés plausibles.
+    if name == "get_custom_foods":
+        return "No custom foods found."
+    if name == "get_nutrition_daily_food_log":
+        return f"No food log data found for {arguments.get('date')}."
+    if name == "get_hydration_data":
+        return f"No hydration data found for {arguments.get('date')}"
+    if name == "create_custom_food":
+        return {"foodMetaData": {"foodId": "f0e1d2c3b4a5968778695a4b3c2d1e0f", "foodName": arguments.get("food_name")},
+                "nutritionContents": [{"servingId": "1a2b3c4d5e6f70819293a4b5c6d7e8f9"}], "stub": True}
+    if name in ("log_custom_food", "log_food"):
+        return "Food logged successfully."
+    if name == "add_hydration_data":
+        return {"stub": True, "value_in_ml": arguments.get("value_in_ml"), "cdate": arguments.get("cdate")}
     if name == "add_gear_to_activity":
         return {"success": True, "stub": True, "activity_id": arguments.get("activity_id"),
                 "gear_uuid": arguments.get("gear_uuid")}

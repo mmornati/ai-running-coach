@@ -39,12 +39,22 @@ If `coach` is enabled **and** a `task`/subagent tool is available, delegate to
 >   `kind: "race_plan"` for this objective, story #59), name it and its pace/
 >   nutrition/gear scenario count without re-deriving new numbers.
 >
+> When `trail-shape` has `status: "ok"` (race still ahead), ALSO run
+> `python3 scripts/arc_index.py load-forecast` (#172) and handle EVERY
+> `status`: `ok` → report `race_day.form` (« forme prévue le jour J »), the
+> `peak_fatigue.week_start` and `acwr_max.value`, as an ESTIMATE from the planned
+> sessions (never a measurement), naming `weeks_unplanned` when > 0 (zero load
+> assumed → optimistic form); `no_plan` → say no session is planned before the
+> race; `insufficient_history` → say the history is too short (< 84 days) to
+> project, give no number; `no_objective`/`target_past` → skip the line. Never
+> mix it into the Trail Shape score (separate indicator).
+>
 > Do not write anything, do not create or edit a plan/race-plan file, do not
 > push anything to Garmin.
 
 If `coach` is not enabled, or if you cannot delegate at all (no `task`/
 subagent tool available, e.g. running as a bare Gemini CLI command), run
-`scripts/arc_index.py trail-shape` and look for a `race_plan` yourself.
+`scripts/arc_index.py trail-shape` (and `load-forecast`) and look for a `race_plan` yourself.
 
 ## Output contract
 
@@ -72,6 +82,10 @@ Then, respecting `[coaching].verbosity`:
 - the countdown detail (target distance/elevation, from `active_objective.md`);
 - the Trail Shape components/notes when `standard`/`detailed` (skip at
   `brief`), always naming a `"low"` `data_confidence` when it applies;
+- one line « Forme prévue le jour J : <forme> (estimation à partir du planifié,
+  <n> semaine(s) non planifiée(s))» from `load-forecast` when its `status` is
+  `ok`; otherwise one short line stating why it is unavailable (`no_plan`,
+  `insufficient_history`) — standard/detailed verbosity only, skipped at `brief`;
 - one line naming the race plan (scenario count, last updated) if one exists,
   or "aucun plan de course encore" — never inventing pace numbers here (that
   is `course-strategist`'s job, not this summary).

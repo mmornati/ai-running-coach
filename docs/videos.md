@@ -202,6 +202,48 @@ Vos données restent des fichiers Markdown chez vous : un bloc validé, un index
 
 </div>
 
+<div class="arc-video" markdown>
+
+[![Nouvelles portes d'entrée](video/sources-retours/poster.jpg)](video/sources-retours/index.html)
+
+<span class="arc-video__meta">Étape 13 · 1 min 49</span>
+
+### [Nouvelles portes d'entrée](video/sources-retours/index.html)
+
+Strava comme troisième source de données, retours en un geste par Telegram sans aucun modèle, et deux options à activer soi-même : le contexte du cycle et les apports poussés vers Garmin.
+
+[Regarder](video/sources-retours/index.html) · [English (1 min 53)](video/sources-retours/index.html?lang=en) · [La documentation](strava-setup.md)
+
+</div>
+
+<div class="arc-video" markdown>
+
+[![La nuit, la roche et le roadbook](video/ultra/poster.jpg)](video/ultra/index.html)
+
+<span class="arc-video__meta">Étape 14 · 1 min 49</span>
+
+### [La nuit, la roche et le roadbook](video/ultra/index.html)
+
+Préparer un ultra : la nuit calculée sur place (crépuscule, frontale, heure d'hiver), le dénivelé corrigé par un modèle de terrain, la technicité du sentier, puis le roadbook imprimable avec passages, barrières et matériel obligatoire.
+
+[Regarder](video/ultra/index.html) · [English (1 min 54)](video/ultra/index.html?lang=en) · [La documentation](agents/course-strategist.md)
+
+</div>
+
+<div class="arc-video" markdown>
+
+[![Construire son bloc](video/bloc/poster.jpg)](video/bloc/index.html)
+
+<span class="arc-video__meta">Étape 15 · 1 min 48</span>
+
+### [Construire son bloc](video/bloc/index.html)
+
+Un bloc d'entraînement qui ne s'invente plus : gabarits de périodisation, squelette semaine par semaine relu par les garde-fous, frise du bloc sur le tableau de bord, renforcement par phase et prévention ciblée.
+
+[Regarder](video/bloc/index.html) · [English (1 min 53)](video/bloc/index.html?lang=en) · [La documentation](plans.md)
+
+</div>
+
 </div>
 <!-- arc-videos:end -->
 

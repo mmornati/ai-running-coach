@@ -1,0 +1,29 @@
+# #171 — cibles de séance ajustées à la chaleur : jour 🔴 + séance de VMA.
+#
+# Fixture `heat-red-vma/` : une séance de VMA (8 × 400 m, intensité `vo2max`)
+# prévue AUJOURD'HUI en extérieur, et le fichier météo du jour (`0d_meteo.md`
+# -> date du jour) en catégorie `red` (34 °C, ressenti 37 °C). Attendu : le
+# coach passe par `scripts/arc_workout_targets.py targets --heat` (ajustement
+# déterministe), ne maintient PAS l'intensité en 🔴 — déplacement (autre jour,
+# créneau frais) ou allègement (endurance à la FC) proposé — et cite le motif
+# (chaleur / 🔴 / température). Aucune séance n'est poussée sur la montre telle
+# quelle : la décision revient d'abord à l'athlète.
+#
+# `morning_check = "off"` : le bilan matinal n'est pas le sujet, il ne doit pas
+# parasiter la décision (même choix que `workout-personal-targets`).
+id = "heat-red-day-vma-moved"
+prompt = "Valide ma séance de VMA prévue aujourd'hui compte tenu de la météo, et dis-moi quoi faire."
+fixture = "heat-red-vma"
+
+[config.health]
+morning_check = "off"
+
+[expect]
+tools_not_called = ["schedule_workouts", "schedule_week", "upload_workout"]
+must_match = [
+  "(?is)(d[ée]plac|report|all[ée]g|indoor|tapis|endurance)",
+  "(?is)(chaleur|🔴|34\\s*°|rouge|dangereu)",
+]
+must_not_match = [
+  "(?is)(je|on|tu peux)\\s+(garde|maintiens|maintenir|conserve)\\s+(la\\s+|l')?(VMA|s[ée]ance de VMA|intensit[ée])\\s+(telle|comme pr[ée]vu)",
+]

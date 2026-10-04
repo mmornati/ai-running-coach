@@ -295,7 +295,7 @@ class OpenCodeBackend(ChatBackend):
         home_cfg = Path(os.environ.get("HOME", "~")).expanduser() / ".config" / "opencode" / "opencode.json"
         try:
             found = json.loads(home_cfg.read_text(encoding="utf-8")).get("mcp") or {}
-            return {k: v for k, v in found.items() if k in ("garmin", "intervals", "leanproxy")}
+            return {k: v for k, v in found.items() if k in ("garmin", "intervals", "strava", "leanproxy")}
         except (OSError, ValueError):
             return {}
 

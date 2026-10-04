@@ -1,0 +1,17 @@
+# #166 — opt-in strict : sans `[health].cycle_tracking` (défaut `off`), AUCUN agent ne parle du
+# cycle, même avec une HRV basse (stub `hrv-collapsed.json`) — jamais d'hypothèse, jamais de
+# question, jamais d'appel d'outil `get_menstrual_*`.
+id = "cycle-off-no-mention"
+prompt = "Valide ma séance du jour."
+fixture = "base-week"
+
+[config.health]
+morning_check = "full"
+
+[stub.garmin.get_hrv_data]
+file = "hrv-collapsed.json"
+
+[expect]
+tools_called = ["get_hrv_data", "get_rhr_day", "get_training_readiness"]
+tools_not_called = ["get_menstrual_data_for_date", "get_menstrual_calendar_data"]
+must_not_match = ["(?i)cycle menstru|lutéal|luteal|folliculaire|menstruel|menstruation"]

@@ -4,7 +4,7 @@
 
 `ai-running-coach` est un projet open-source qui fournit des **agents IA** et des **skills** pour aider les coureurs à préparer un objectif (course, trail, ultra) avec l'aide d'un assistant IA dans leur IDE préféré.
 
-Le projet est **en français par défaut** (la langue des documents générés est configurable via `config/workspace.toml`). Il est connecté par défaut à **Garmin Connect**, installé et configuré automatiquement par `./install.sh`. **Intervals.icu** peut aussi être la source primaire — pour les athlètes sans montre Garmin (COROS, Suunto, Polar, Apple) — avec `./install.sh --source intervals` (voir [Configuration Intervals.icu](docs/intervals-setup.md)) ; sans cette option, il reste disponible en destination secondaire, uniquement sur demande explicite (configuration manuelle, voir [la FAQ](docs/faq.md#comment-configurer-intervalsicu-sans-passer-par-installsh)).
+Le projet est **en français par défaut** (la langue des documents générés est configurable via `config/workspace.toml`). Il est connecté par défaut à **Garmin Connect**, installé et configuré automatiquement par `./install.sh`. **Intervals.icu** peut aussi être la source primaire — pour les athlètes sans montre Garmin (COROS, Suunto, Polar, Apple) — avec `./install.sh --source intervals` (voir [Configuration Intervals.icu](docs/intervals-setup.md)) ; **Strava** (toutes marques de montres, flux par seconde pour les KPI, sans données de santé ni push de séances) avec `./install.sh --source strava` (voir [Configuration Strava](docs/strava-setup.md)) ; sans cette option, Intervals.icu reste disponible en destination secondaire, uniquement sur demande explicite (configuration manuelle, voir [la FAQ](docs/faq.md#comment-configurer-intervalsicu-sans-passer-par-installsh)). Pour COROS, voir [Montres COROS](docs/coros.md) (Intervals.icu recommandé ; le MCP officiel est audité mais non intégré).
 
 🎬 **[La bande-annonce](https://mmornati.github.io/ai-running-coach/video/)** et **[Le Sentier](https://mmornati.github.io/ai-running-coach/videos/)**, une série de courtes vidéos narrées en français et en anglais, une par fonctionnalité — chaque image est dessinée en JavaScript ([source](docs/video/), rendu MP4 : `uv run --with playwright scripts/render_video.py --episode all`).
 
@@ -13,12 +13,25 @@ Le projet est **en français par défaut** (la langue des documents générés e
 | Composant | Description |
 |---|---|
 | 🧠 **4 agents spécialisés** | `coach`, `course-strategist`, `medical`, `nutritionist` — installez seulement ceux que vous voulez |
-| 🛠️ **20 skills** | commandes courtes `/today` `/why` `/week` `/race` `/log` `/inspection`, analyse GPX, comparaison de parcours, planification Garmin, météo, analyse de séances, Intervals.icu, diagnostic d'installation, inspection photo des chaussures, etc. |
+| 🌙 **Pénalité de nuit en ultra** | le plan de course calcule, sans réseau, le crépuscule du lieu et pénalise la vitesse des sections courues de nuit (selon la pente), avec les heures de frontale par scénario |
+| 🗺️ **Roadbook imprimable** | une feuille A4 par scénario depuis le tableau de bord (vue Roadbook, lien depuis Trail Shape) : profil, sections, heures de passage, barrières et marges, ravitos avec ce qu'on y prend, matériel obligatoire — impression ou PDF du navigateur, sans dépendance |
+| ⛰️ **Technicité du terrain en ultra** | coefficient par section, déclaré ou dérivé d'OpenStreetMap (`sac_scale`, surface, visibilité ; option `--technicity osm`, réseau opt-in), pondéré par la pente, appliqué en plus du modèle pente → allure |
+| 🎯 **Recalibrage au débrief de course** | `arc_race_debrief.py --calibrate` attribue l'écart plan/réalisé à chaque facteur (nuit, technicité, chaleur, altitude) par contraste stratifié, refuse quand les groupes sont trop petits ou confondus, et propose des coefficients personnels cumulés d'une course à l'autre — écrits seulement après votre accord |
+| ⛰️ **Altitude en ultra** | pénalité de temps au-dessus de 1 500 m (approximation du projet, tirée d'une étude publiée), réduite par l'acclimatation déclarée et par l'exposition mesurée à l'entraînement (carte « Exposition à l'altitude » de la vue Santé) |
+| 🌡️ **Cibles ajustées à la chaleur** | par grosse chaleur, l'allure cible des séances (endurance, sortie longue, qualité) est ralentie de façon déterministe — FC inchangée, créneau frais proposé, jamais d'intensité maintenue en 🔴 (mêmes coefficients que le plan de course) |
+| 🛠️ **20 skills** | commandes courtes `/today` `/why` `/week` `/race` `/log` `/inspection`, analyse GPX (altitude corrigée par MNT en option), comparaison de parcours, planification Garmin, météo, analyse de séances, Intervals.icu, diagnostic d'installation, inspection photo des chaussures, etc. |
 | 📡 **Accès Garmin Connect** | via `garmin-mcp` (mode direct, liste blanche d'outils) — passerelle `leanproxy-mcp` optionnelle |
 | 🚀 **Installation automatisée** | un script pour installer et configurer tout (uv, Garmin, IDE) |
 | 👟 **Suivi du matériel** | kilométrage par paire depuis Garmin, prévision de retraite, équipement et kits, inspection photo (`/inspection`), contrôle du matériel de course |
 | 📊 **Tableau de bord local** | courbe de forme (condition / fatigue / forme), bilan santé du matin, semaine, séances et splits, prédictions — à côté du texte du coach (`scripts/dashboard.sh`, lecture seule, 127.0.0.1) |
+| 🗓️ **Gabarits de périodisation** | base / développement / spécifique / affûtage / récupération par format (trail court, marathon trail, ultra 80–100 km, 100 miles, semi et marathon route), en données vérifiées par un script contre les garde-fous — point de départ du bloc, jamais un plan imposé ; `plan-skeleton` en tire un squelette semaine par semaine vérifié par les garde-fous (proposition, écriture sur accord) — voir [Gabarits de périodisation](docs/plans.md) |
+| 🏋️ **Renforcement et mobilité** | bibliothèque d'exercices (consignes, progressions, matériel) et programmes par phase du bloc ou par usage (descente, cheville, hanches, pied), correspondance Garmin vérifiée dans le catalogue officiel, placement par rapport aux séances de qualité — approximations du projet, jamais un diagnostic ; **prévention ciblée** d'une douleur déclarée (gêne légère → routine douce, sinon consultation, jamais un diagnostic ; `medical` décide s'il est activé) — voir [Renforcement](docs/strength.md) |
+| 🎯 **Vitesse critique** | courbe allure-durée en GAP, vitesse critique et réserve anaérobie D′ estimées sur vos meilleurs efforts (refus explicite si les données manquent), cibles d'intervalles en % de la vitesse critique — voir [Vitesse critique](docs/vitesse-critique.md) |
+| 🔁 **Effet des décisions** | ce qui s'est passé après chaque décision du coach (HRV, douleur, charge, RPE… avant / après), même quand l'athlète ne l'a pas suivie — synthèse par déclencheur dans la vue « Décisions » ; corrélation, pas causalité, jamais utilisé pour assouplir un garde-fou |
 | 📱 **Le coach dans la poche** | synchronisation Garmin automatique + notification push, et dialogue avec le coach depuis le téléphone (Claude Code Remote Control) — sans renoncer à votre abonnement |
+| ✈️ **Bot Telegram** | retours en un geste sous le résumé du daily-sync (séance faite, RPE, douleur), écrits sans modèle ni clé d'API dans votre workspace ; conversation libre en option |
+| 🌙 **Cycle menstruel (opt-in)** | contexte facultatif du bilan matinal (phase du cycle), désactivé par défaut : jamais une règle ni un diagnostic, veille RED-S — voir [Cycle menstruel](docs/cycle-menstruel.md) |
+| 🍽️ **Apports vers Garmin (opt-in)** | le coach propose de pousser ce que vous déclarez (`/log`, rapports) vers le journal alimentaire et l'hydratation de Garmin Connect, désactivé par défaut, jamais sans votre « oui » — voir [Apports vers Garmin](docs/nutrition-garmin.md) |
 | 🎛️ **Coach configurable** | style de coaching, discipline (trail ou route), bilan santé matinal, profil d'athlète |
 | 📚 **Documentation** | guide de démarrage rapide, configuration, dépannage |
 
@@ -129,9 +142,9 @@ deux IDE, voir [IDE supportés](docs/ides.md)) :
 | Commande | Répond |
 |---|---|
 | `/today` | La séance du jour, le bilan matinal (au niveau configuré), le créneau météo si la séance est en extérieur |
-| `/why` | Pourquoi la dernière décision du coach (ou une décision nommée) a été prise — jamais une raison inventée |
+| `/why` | Pourquoi la dernière décision du coach (ou une décision nommée) a été prise — jamais une raison inventée ; peut citer le bilan personnel « ce qui s'est passé ensuite » (corrélation, pas causalité) |
 | `/week` | Le statut compact de la semaine en cours : réalisé/prévu, garde-fous |
-| `/race` | Le compte à rebours de votre objectif, le score Trail Shape, votre plan de course s'il existe |
+| `/race` | Le compte à rebours de votre objectif, le score Trail Shape, la forme prévue le jour J (estimation), votre plan de course s'il existe |
 | `/log` | Saisie libre en une phrase — ravitaillement, douleur, RPE — convertis en données du contrat sans jamais inventer une valeur |
 | `/inspection` | Lancer l'inspection photo d'une paire de chaussures : désigner la paire, protocole photo, où déposer les photos (`gear/photos/`) |
 
@@ -164,6 +177,7 @@ ai-running-coach/
 │   ├── coaching-styles.md   # Catalogue des styles de coaching
 │   ├── setup-questions.toml # Questions du premier démarrage
 │   ├── sports/              # Profils de sport (trail, route)
+│   ├── plans/               # Gabarits de périodisation (JSON, vérifiés par arc_plan_templates.py)
 │   └── gemini/commands/     # Commandes Gemini CLI (générées depuis agents/)
 ├── templates/               # Modèles installés dans votre workspace
 ├── tests/                   # Suite de tests (voir tests/README.md)
@@ -184,10 +198,14 @@ La documentation complète est disponible sur [GitHub Pages](https://mmornati.gi
 - [Configuration Garmin](docs/garmin-setup.md)
 - [Votre workspace privé (données versionnées, moteur lié)](docs/workspace.md)
 - [Le coach dans la poche (mobile + sync automatique)](docs/mobile.md)
+- [Le bot Telegram (retours en un geste, sans clé d'API)](docs/telegram.md)
 - [Mettre à jour (moteur, workspace, machine coach)](docs/update.md)
 - [Tableau de bord](docs/dashboard/index.md) · [Les vues](docs/dashboard/views.md) · [Migrer vos fichiers](docs/dashboard/migration.md) · [Mode headless](docs/dashboard/headless.md) · [Docker](docs/dashboard/docker.md)
 - [Les agents](docs/agents.md)
 - [Les skills](docs/skills.md)
+- [Gabarits de périodisation](docs/plans.md)
+- [Vitesse critique et courbe allure-durée](docs/vitesse-critique.md)
+- [Renforcement et mobilité (bibliothèque et programmes)](docs/strength.md)
 - [Base de connaissances (resources)](docs/resources.md)
 - [Dépannage](docs/troubleshooting.md)
 - [FAQ](docs/faq.md)

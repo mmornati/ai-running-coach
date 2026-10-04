@@ -28,6 +28,16 @@ correspond au `<slug>` du fichier, ou une partie de son contenu.
 - Le statut de la décision (`outcome`) : `applied`, `proposed` (rien n'a encore
   été poussé), `rejected_by_athlete` ou `superseded`.
 
+## Bilan personnel (#175)
+
+Après les faits, `/why` peut ajouter **une ligne** tirée de
+`python3 scripts/arc_index.py decision-effects` : « pour toi, jusqu'ici : … »
+(ce qui s'est passé après les décisions passées du même déclencheur). Règles :
+**corrélation, pas causalité** — dit explicitement ; pas de « tendance » sous
+5 cas évaluables (comptes bruts + avertissement de petit effectif) ; ce bilan
+n'est **jamais** utilisé pour assouplir un garde-fou `block`, une décision
+médicale ni un verdict rouge. Rien à dire (synthèse vide) : la ligne est omise.
+
 ## Ce qu'il ne fait jamais
 
 - Il n'invente jamais une raison à partir d'une simple alerte ou impression

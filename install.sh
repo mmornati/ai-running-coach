@@ -3,7 +3,7 @@
 # ai-running-coach — Script d'installation
 #
 # Installe et configure tout ce qu'il faut pour utiliser les agents/skills de
-# coaching trail-running avec accès Garmin (ou Intervals.icu, --source intervals,
+# coaching trail-running avec accès Garmin (ou Intervals.icu, --source intervals, ou Strava, --source strava,
 # pour les athlètes sans montre Garmin — #68) :
 #   1. uv (gestionnaire Python)
 #   2. garmin-mcp + garmin-mcp-auth (accès Garmin Connect) — mode DIRECT par défaut,
@@ -24,6 +24,9 @@
 #   ./install.sh --ide claude       # installe pour un IDE précis
 #   ./install.sh --ide copilot      # GitHub Copilot (CLI, VS Code, agent cloud)
 #   ./install.sh --source intervals # Intervals.icu au lieu de Garmin (#68)
+#   ./install.sh --source strava    # Strava au lieu de Garmin (#164)
+#   ./install.sh --cycle-tracking MODE # off (défaut) | garmin | intervals | manual — contexte du cycle menstruel, opt-in (#166)
+#   ./install.sh --nutrition-sync MODE # off (défaut) | ask — pousser les apports vers Garmin Connect, opt-in (#167)
 #   ./install.sh --workspace DIR    # données + config IDE dans DIR (dépôt privé), moteur lié
 #   ./install.sh --agents LISTE     # staff à installer, ex. coach,nutritionist
 #   ./install.sh --no-medical       # tous les agents sauf le médecin
@@ -33,6 +36,7 @@
 #   ./install.sh --remote-control   # service Remote Control (le coach dans la poche)
 #   ./install.sh --llm openrouter   # chat + sync sur une API (openrouter|anthropic|openai)
 #   ./install.sh --chat             # service du chat avec le coach (dashboard)
+#   ./install.sh --telegram         # bot Telegram : retours en un geste, sans LLM (docs/telegram.md)
 #   ./install.sh --dry-run          # affiche les actions sans rien exécuter
 #   ./install.sh --help
 #
@@ -49,21 +53,39 @@ VERSION="0.2.0"
 # synchronisation — un changement en amont ne doit jamais être exécuté sans relecture.
 # Mettre à jour après vérification du diff amont.
 GARMIN_MCP_REF="git+https://github.com/Taxuspt/garmin_mcp@cfc5d799ab0f165e837f1188a1d093c65838aaf7"
-# Source alternative (#68) : serveur MCP communautaire déjà référencé par
-# docs/faq.md avant cette story (hypothèse de travail des tests, désormais
-# celui réellement installé par --source intervals). project.scripts expose
-# `intervals-icu-mcp` + `intervals-icu-mcp-auth`, comme garmin_mcp/garmin-mcp-auth
-# ci-dessus — même mécanique `uv tool install git+…`.
-# Épinglé à un commit précis (vérifié : project.scripts, tools/*.py, réponses
-# JSON) plutôt qu'à `main` — un changement en amont (renommage d'outil, retrait
-# de champ) ne doit jamais casser silencieusement ce projet. Documenté dans
-# docs/intervals-setup.md ; mettre à jour les deux ensemble après vérification.
-INTERVALS_MCP_REF="git+https://github.com/eddmann/intervals-icu-mcp@cb91d4a0f3b4dc21f57421e029c07a8e9af11649"
+# Source alternative (#68) : serveur MCP communautaire retenu par --source
+# intervals. project.scripts expose `intervals-icu-mcp` + `intervals-icu-mcp-auth`,
+# comme garmin_mcp/garmin-mcp-auth ci-dessus — même mécanique `uv tool install`.
+# #165 : fork maintenu hhopke/intervals-icu-mcp (v5.5.0), qui remplace
+# eddmann/intervals-icu-mcp@cb91d4a (plus de commit depuis nov. 2025). Mêmes
+# binaires et même `.env` (INTERVALS_ICU_API_KEY / INTERVALS_ICU_ATHLETE_ID),
+# MAIS tous les outils sont préfixés `icu_` — voir AGENTS.md et
+# docs/intervals-setup.md.
+# Épinglé à un commit précis (vérifié dans le code : project.scripts, tools/*.py,
+# réponses JSON) plutôt qu'à `main` — un changement en amont (renommage d'outil,
+# retrait de champ) ne doit jamais casser silencieusement ce projet. Mettre à jour
+# ensemble : cette ligne, AGENTS.md, docs/intervals-setup.md et
+# scripts/coach_doctor.py (INTERVALS_MCP_PINNED_*) ; le lint
+# tests/lint/test_data_source_parity.py vérifie qu'ils concordent.
+INTERVALS_MCP_REF="git+https://github.com/hhopke/intervals-icu-mcp@5cd7e1abf716ea28b7bc5a8da5b01860b4bf2aa4"
 # Le serveur charge ses identifiants depuis un `.env` relatif à SON répertoire
 # de travail (pydantic-settings) — jamais depuis le dépôt : `intervals-icu-mcp-auth`
 # est donc lancé depuis ce dossier dédié, hors du projet, comme `$GARMIN_TOKENS_DIR`
 # ci-dessous pour Garmin.
 INTERVALS_ENV_DIR="$HOME/.config/ai-running-coach/intervals-icu-mcp"
+# Source Strava (#164) : serveur MCP communautaire r-huijts/strava-mcp, publié sur npm
+# (`@r-huijts/strava-mcp-server`, bin `strava-mcp-server`, stdio). Épinglé à la version 1.2.1,
+# publiée depuis le commit a68112aa12a88909593db0f4b1ac0f6aebed6e3a (`gitHead` du registre npm) :
+# noms d'outils et fichier de jetons vérifiés dans le dist/ du tarball et dans ce commit (la tête de
+# `main` a des outils non publiés — à relire avant de relever la version). Documenté dans docs/strava-setup.md ;
+# mettre à jour les deux ensemble. Ce serveur reçoit le client secret de l'application Strava de
+# l'athlète et tourne à chaque synchronisation : ne jamais le laisser flotter sur `latest`.
+STRAVA_MCP_PKG="@r-huijts/strava-mcp-server@1.2.1"
+# Wrapper du projet (même rôle que celui d'intervals : une commande stable et reconnaissable
+# par le nettoyage au changement de source) ; les jetons, eux, vivent dans le fichier du SERVEUR
+# (~/.config/strava-mcp/config.json), jamais ici ni dans une config d'IDE.
+STRAVA_MCP_DIR="$HOME/.config/ai-running-coach/strava-mcp"
+STRAVA_TOKEN_FILE="$HOME/.config/strava-mcp/config.json"
 LEANPROXY_BREW_TAP="mmornati/leanproxy-mcp"
 LEANPROXY_FORMULA="leanproxy-mcp"
 GARMIN_TOKENS_DIR="$HOME/.garminconnect"
@@ -74,6 +96,19 @@ LEANPROXY_SERVERS="$HOME/.config/leanproxy_servers.yaml"
 # Réduit la taxe de contexte (~151 outils → ~30) en mode direct.
 # Noms réels des outils garmin-mcp (sans préfixe garmin_).
 GARMIN_TOOL_WHITELIST="get_activities,get_activities_by_date,get_activity,get_activity_fit_data,get_activity_splits,get_activity_typed_splits,get_activity_split_summaries,get_sleep_data,get_hrv_data,get_rhr_day,get_training_readiness,get_calendar_events,get_courses,get_workouts,get_workout_by_id,get_scheduled_workouts,schedule_workouts,schedule_week,upload_workout,upload_course,create_strength_workout,delete_workout,unschedule_workout,unschedule_workouts,download_activity_file,get_stats,get_lactate_threshold,get_training_status,get_gear,get_activity_gear,add_gear_to_activity"
+# Outils de cycle menstruel (#166) : JAMAIS dans la liste blanche par défaut — ajoutés par
+# resolve_cycle_tracking() uniquement quand [health].cycle_tracking = "garmin" (opt-in) et que la
+# source est Garmin. Noms vérifiés dans src/garmin_mcp/womens_health.py du commit épinglé ci-dessus.
+# `get_pregnancy_summary` (même module) n'est volontairement PAS ajouté : hors périmètre.
+GARMIN_CYCLE_TOOLS="get_menstrual_data_for_date,get_menstrual_calendar_data"
+# Outils de nutrition/hydratation (#167) : JAMAIS dans la liste blanche par défaut — ajoutés par
+# resolve_nutrition_sync() uniquement quand [nutrition].garmin_sync = "ask" (opt-in) et que la source
+# est Garmin. Noms vérifiés dans src/garmin_mcp/nutrition.py, data_management.py (add_hydration_data)
+# et health_wellness.py (get_hydration_data) du commit épinglé ci-dessus. Volontairement ABSENTS :
+# delete_food_log, update_custom_food, upsert_and_log (écriture irréversible / qui écrase une entrée
+# de l'athlète — à corriger dans Garmin Connect). Les écritures restent derrière un « oui » explicite
+# et sont interdites en headless (scripts/daily-sync.sh).
+GARMIN_NUTRITION_TOOLS="get_custom_foods,get_custom_food_serving_units,get_nutrition_daily_food_log,get_nutrition_daily_meals,get_hydration_data,create_custom_food,log_custom_food,log_food,add_hydration_data"
 
 # Chat avec le coach et sync sur une API (--llm) : modèles par défaut, UNE constante
 # chacun. Identifiant OpenRouter « deepseek/deepseek-v4.1-flash » vérifié dans le catalogue
@@ -87,6 +122,8 @@ LLM_ANTHROPIC_CHAT_MODEL="claude-sonnet-5-5"
 LLM_ANTHROPIC_SYNC_MODEL="claude-haiku-4-5"
 # Clés API : dans ce fichier (mode 600), jamais dans le TOML ni dans le shell.
 LLM_ENV_FILE="${ARC_LLM_ENV:-$HOME/.config/ai-running-coach/llm.env}"
+# Jeton du bot Telegram (#174) : même discipline (mode 600, hors dépôt, jamais dans le TOML).
+TELEGRAM_ENV_FILE="$HOME/.config/ai-running-coach/telegram.env"
 
 # Détection du répertoire du projet (racine du dépôt) = le « moteur »
 # (agents, skills, scripts). Le workspace (données personnelles + config IDE)
@@ -126,12 +163,16 @@ REMOTE_CONTROL=0   # service Claude Code Remote Control (accès mobile)
 AGENTS_ARG=""      # --agents coach,medical,… (défaut : la config, sinon tous)
 ENABLED_AGENTS=""  # résolu par resolve_agents()
 PRESET=""          # --preset laptop|coach-server|docker (défaut : aucun)
-SOURCE="garmin"    # --source garmin|intervals (#68) — source de données primaire
+SOURCE="garmin"    # --source garmin|intervals|strava (#68, #164) — source de données primaire
+CYCLE_TRACKING="off" # --cycle-tracking off|garmin|intervals|manual (#166) — contexte du cycle, opt-in
+NUTRITION_SYNC="off" # --nutrition-sync off|ask (#167) — poussée des apports vers Garmin, opt-in
 LLM_PROVIDER=""    # --llm openrouter|anthropic|openai — chat + sync sur une API
 LLM_MODEL_ARG=""   # --model ID (avec --llm)
 LLM_BASE_URL_ARG="" # --base-url URL (avec --llm openai : API compatible OpenAI)
 DO_CHAT=0          # --chat : service du chat avec le coach
 CHAT_BUDGET=""     # --chat-budget EUR
+DO_TELEGRAM=0      # --telegram : bot Telegram (retours en un geste, #174)
+TELEGRAM_CHAT_ID="" # --telegram-chat-id ID : ajoute un chat à [telegram].allowed_chat_ids
 SYNC_BUDGET=""     # --sync-budget EUR
 SYNC_RUNNER_ARG="" # --sync-runner : exécuteur headless explicite
 
@@ -149,6 +190,8 @@ EXPLICIT_DAILY_SYNC=0
 EXPLICIT_REMOTE_CONTROL=0
 EXPLICIT_AGENTS=0
 EXPLICIT_SOURCE=0
+EXPLICIT_CYCLE=0   # --cycle-tracking passé (#166) : seul cas où [health].cycle_tracking est écrit
+EXPLICIT_NUTRITION=0 # --nutrition-sync passé (#167) : seul cas où [nutrition].garmin_sync est écrit
 # Vrai (1) uniquement quand --source a été passé explicitement ET que la
 # valeur résolue diffère de celle DÉJÀ en config (resolve_source()) — jamais
 # sur un simple rerun sans --source. C'est ce qui protège un serveur MCP
@@ -166,7 +209,9 @@ Usage :
   ./install.sh                    # installation (mode direct Garmin)
   ./install.sh --preset PRESET    # laptop | coach-server | docker — voir --help ci-dessous
   ./install.sh --ide IDE          # claude | copilot | opencode | gemini | cursor | windsurf
-  ./install.sh --source SOURCE    # garmin (défaut) | intervals — source de données primaire (#68)
+  ./install.sh --source SOURCE    # garmin (défaut) | intervals | strava — source de données primaire (#68, #164)
+  ./install.sh --cycle-tracking MODE # off (défaut) | garmin | intervals | manual — contexte du cycle menstruel, opt-in (#166)
+  ./install.sh --nutrition-sync MODE # off (défaut) | ask — pousser les apports vers Garmin Connect, opt-in (#167)
   ./install.sh --workspace DIR    # données + config IDE dans DIR (dépôt privé), moteur lié
   ./install.sh --agents LISTE     # staff à installer, ex. coach,nutritionist
   ./install.sh --no-medical       # tous les agents sauf le médecin
@@ -185,6 +230,8 @@ Usage :
   ./install.sh --chat             # active [chat] et installe le service (scripts/coach-chat.sh)
   ./install.sh --chat-budget EUR  # plafond quotidien du chat ([chat].daily_budget_eur)
   ./install.sh --sync-budget EUR  # plafond quotidien de la sync ([sync].daily_budget_eur)
+  ./install.sh --telegram         # active [telegram] et installe le service (scripts/coach-telegram.sh)
+  ./install.sh --telegram-chat-id ID # avec --telegram : autorise ce chat (liste blanche, jamais le jeton)
   ./install.sh --dry-run          # affiche les actions sans rien exécuter
   ./install.sh --help
 
@@ -196,6 +243,11 @@ API n'est jamais écrite dans la config : ~/.config/ai-running-coach/llm.env
 ATTENTION : n'exportez PAS ANTHROPIC_API_KEY dans votre shell ou votre profil :
 cela empêche Remote Control de fonctionner (docs/mobile.md). Le chat et la sync
 la lisent dans llm.env et ne la passent qu'à leur propre process.
+
+--telegram active [telegram].enabled et installe le service du bot. Le jeton du
+bot (BotFather) n'est JAMAIS une option de ligne de commande : ~/.config/ai-running-coach/telegram.env
+(mode 600, créé avec une ligne d'exemple commentée) — à remplir vous-même.
+Un rerun n'écrase jamais [telegram] : --telegram-chat-id AJOUTE un chat à la liste.
 
 Préréglages (--preset), chacun ne fait que composer les options ci-dessus —
 toute option passée explicitement l'emporte toujours, quel que soit l'ordre
@@ -330,6 +382,8 @@ while [[ $# -gt 0 ]]; do
         --preset) need_value "$@"; shift 2 ;;  # déjà résolu ci-dessus
         --ide) need_value "$@"; IDE="$2"; EXPLICIT_IDE=1; shift 2 ;;
         --source) need_value "$@"; SOURCE="$2"; EXPLICIT_SOURCE=1; shift 2 ;;
+        --cycle-tracking) need_value "$@"; CYCLE_TRACKING="$2"; EXPLICIT_CYCLE=1; shift 2 ;;
+        --nutrition-sync) need_value "$@"; NUTRITION_SYNC="$2"; EXPLICIT_NUTRITION=1; shift 2 ;;
         --no-auth) DO_AUTH=0; EXPLICIT_DO_AUTH=1; shift ;;
         --auth) DO_AUTH=1; EXPLICIT_DO_AUTH=1; shift ;;  # annule --no-auth composé par un préréglage
         --use-leanproxy) USE_LEANPROXY=1; EXPLICIT_LEANPROXY=1; shift ;;
@@ -347,6 +401,8 @@ while [[ $# -gt 0 ]]; do
         --base-url) need_value "$@"; LLM_BASE_URL_ARG="$2"; shift 2 ;;
         --chat) DO_CHAT=1; shift ;;
         --chat-budget) need_value "$@"; CHAT_BUDGET="$2"; shift 2 ;;
+        --telegram) DO_TELEGRAM=1; shift ;;
+        --telegram-chat-id) need_value "$@"; TELEGRAM_CHAT_ID="$2"; shift 2 ;;
         --sync-budget) need_value "$@"; SYNC_BUDGET="$2"; shift 2 ;;
         --dry-run) DRY_RUN=1; shift ;;
         --help|-h) usage ;;
@@ -360,6 +416,9 @@ validate_budget() {
     [[ "$value" =~ ^[0-9]+([.][0-9]+)?$ ]] && awk -v v="$value" 'BEGIN { exit !(v + 0 > 0) }' \
         || die "$flag : nombre strictement positif attendu en EUR (reçu « $value »)."
 }
+[[ -z "$TELEGRAM_CHAT_ID" || "$TELEGRAM_CHAT_ID" =~ ^-?[0-9]+$ ]] \
+    || die "--telegram-chat-id : identifiant numérique attendu (python3 scripts/arc_telegram.py whoami)."
+[[ -z "$TELEGRAM_CHAT_ID" || "$DO_TELEGRAM" -eq 1 ]] || die "--telegram-chat-id s'utilise avec --telegram."
 [[ -z "$CHAT_BUDGET" ]] || validate_budget --chat-budget "$CHAT_BUDGET"
 [[ -z "$SYNC_BUDGET" ]] || validate_budget --sync-budget "$SYNC_BUDGET"
 if [[ -n "$SYNC_RUNNER_ARG" ]]; then
@@ -381,16 +440,38 @@ elif [[ -n "$LLM_MODEL_ARG" || -n "$LLM_BASE_URL_ARG" ]]; then
     die "--model et --base-url s'utilisent avec --llm (voir --help)."
 fi
 
+# Valide $CYCLE_TRACKING (même principe que validate_source).
+validate_cycle_tracking() {
+    case "$CYCLE_TRACKING" in
+        off|garmin|intervals|manual) ;;
+        *) die "Mode de suivi du cycle inconnu : « $CYCLE_TRACKING ». Valides : off, garmin, intervals, manual (voir --help)." ;;
+    esac
+}
+if [[ "$EXPLICIT_CYCLE" -eq 1 ]]; then
+    validate_cycle_tracking
+fi
+
+# Valide $NUTRITION_SYNC (#167, même principe).
+validate_nutrition_sync() {
+    case "$NUTRITION_SYNC" in
+        off|ask) ;;
+        *) die "Mode de synchronisation nutrition inconnu : « $NUTRITION_SYNC ». Valides : off, ask (voir --help)." ;;
+    esac
+}
+if [[ "$EXPLICIT_NUTRITION" -eq 1 ]]; then
+    validate_nutrition_sync
+fi
+
 # Valide $SOURCE (défini ici pour être appelable dès l'analyse des arguments
 # ET depuis resolve_source() dans main(), qui peut réécrire $SOURCE depuis la
 # config existante).
 validate_source() {
     case "$SOURCE" in
-        garmin|intervals) ;;
-        *) die "Source de données inconnue : « $SOURCE ». Valides : garmin, intervals (voir --help)." ;;
+        garmin|intervals|strava) ;;
+        *) die "Source de données inconnue : « $SOURCE ». Valides : garmin, intervals, strava (voir --help)." ;;
     esac
-    if [[ "$SOURCE" == "intervals" && "$USE_LEANPROXY" -eq 1 ]]; then
-        die "--use-leanproxy ne route que le serveur garmin — incompatible avec --source intervals (voir --help)."
+    if [[ "$SOURCE" != "garmin" && "$USE_LEANPROXY" -eq 1 ]]; then
+        die "--use-leanproxy ne route que le serveur garmin — incompatible avec --source $SOURCE (voir --help)."
     fi
 }
 
@@ -486,11 +567,11 @@ remove_json_key() {
 # cette story — le pré-existant garmin<->leanproxy (--use-leanproxy) n'est
 # pas traité ici, hors du périmètre de #68.
 stale_mcp_server_names() {
-    if [[ "$SOURCE" == "intervals" ]]; then
-        echo "garmin"
-    else
-        echo "intervals"
-    fi
+    case "$SOURCE" in
+        intervals) echo "garmin strava" ;;
+        strava) echo "garmin intervals" ;;
+        *) echo "intervals strava" ;;
+    esac
 }
 
 # Commande EXACTE que install.sh écrit pour un serveur donné — jamais celle
@@ -499,6 +580,7 @@ stale_mcp_expected_command() {
     case "$1" in
         garmin) echo "garmin-mcp" ;;
         intervals) echo "$INTERVALS_ENV_DIR/run.sh" ;;
+        strava) echo "$STRAVA_MCP_DIR/run.sh" ;;
         *) echo "" ;;
     esac
 }
@@ -745,6 +827,119 @@ resolve_source() {
         SOURCE_CHANGED=1
     fi
     log "Source de données : $SOURCE"
+}
+
+# Détermine le mode de suivi du cycle (#166) : --cycle-tracking (explicite), sinon
+# [health].cycle_tracking de la configuration EXISTANTE, sinon "off". Une valeur invalide
+# EN CONFIG est traitée comme "off" avec un avertissement (jamais un échec : l'installation
+# d'un athlète qui n'a rien demandé ne doit pas casser). Seul le mode "garmin" (avec la
+# source Garmin) ajoute les outils get_menstrual_* à la liste blanche ; tout autre cas
+# laisse GARMIN_TOOL_WHITELIST strictement inchangée — un rerun avec "off" en config la
+# ramène donc à la liste par défaut (l'opt-in se retire comme il s'active).
+resolve_cycle_tracking() {
+    if [[ "$EXPLICIT_CYCLE" -eq 0 ]]; then
+        CYCLE_TRACKING="off"
+        if have python3; then
+            local previous
+            previous="$(python3 "$PROJECT_ROOT/scripts/coach_config.py" get \
+                --workspace "$WORKSPACE_ROOT" --section health --key cycle_tracking --default off 2>/dev/null)" \
+                || previous="off"
+            # Même tolérance que scripts/arc_cycle.py (casse et espaces ignorés) : sans elle, « Garmin »
+            # serait « garmin » pour les agents mais « off » ici — outils appelés mais jamais exposés.
+            previous="$(printf '%s' "$previous" | tr '[:upper:]' '[:lower:]' | tr -d '[:space:]')"
+            case "$previous" in
+                off|garmin|intervals|manual) CYCLE_TRACKING="$previous" ;;
+                "") ;;
+                *) warn "[health].cycle_tracking = « $previous » invalide (off, garmin, intervals, manual) — traité comme « off »." ;;
+            esac
+        fi
+    fi
+    if [[ "$CYCLE_TRACKING" == "garmin" ]]; then
+        if [[ "$SOURCE" == "garmin" ]]; then
+            GARMIN_TOOL_WHITELIST="$GARMIN_TOOL_WHITELIST,$GARMIN_CYCLE_TOOLS"
+            log "Suivi du cycle (opt-in) : outils get_menstrual_* ajoutés à la liste blanche garmin"
+        else
+            if [[ "$SOURCE" == "strava" ]]; then
+                warn "cycle_tracking = garmin avec la source Strava : Strava n'expose aucune donnée de cycle — les agents retomberont sur « manual » (voir docs/cycle-menstruel.md)."
+            else
+                warn "cycle_tracking = garmin sans source Garmin : aucun outil à exposer — utilisez « intervals » (champ menstrualPhase) ou « manual » (voir docs/configuration.md)."
+            fi
+        fi
+    elif [[ "$CYCLE_TRACKING" == "intervals" && "$SOURCE" != "intervals" ]]; then
+        warn "cycle_tracking = intervals sans source intervals.icu : les agents retomberont sur la déclaration manuelle (voir docs/configuration.md)."
+    fi
+}
+
+# Enregistre le mode de suivi du cycle — UNIQUEMENT si --cycle-tracking a été passé
+# explicitement (un rerun, ou une installation par défaut, n'écrit jamais cette clé).
+persist_cycle_tracking() {
+    [[ "$EXPLICIT_CYCLE" -eq 1 ]] || return 0
+    if [[ "$DRY_RUN" -eq 1 ]]; then
+        printf '%s\n' "${C_YELLOW}[dry-run]${C_RESET} [health].cycle_tracking = $CYCLE_TRACKING"
+        return 0
+    fi
+    have python3 || return 0
+    python3 "$PROJECT_ROOT/scripts/coach_config.py" set \
+        --workspace "$WORKSPACE_ROOT" --section health --key cycle_tracking --value "$CYCLE_TRACKING" >/dev/null \
+        || warn "Impossible d'écrire [health].cycle_tracking — vérifiez config/workspace.user.toml."
+}
+
+# Détermine la synchronisation nutrition (#167) : --nutrition-sync (explicite), sinon
+# [nutrition].garmin_sync de la configuration EXISTANTE, sinon "off". Valeur invalide EN CONFIG =
+# "off" + avertissement (jamais un échec). Seul "ask" (avec la source Garmin) ajoute les outils de
+# nutrition/hydratation à la liste blanche ; tout autre cas la laisse strictement inchangée — un
+# rerun avec "off" en config la ramène donc à la liste par défaut. Ne s'exécute qu'APRÈS
+# resolve_cycle_tracking : les deux extensions s'ajoutent, sans se connaître.
+resolve_nutrition_sync() {
+    if [[ "$EXPLICIT_NUTRITION" -eq 0 ]]; then
+        NUTRITION_SYNC="off"
+        if have python3; then
+            local previous
+            previous="$(python3 "$PROJECT_ROOT/scripts/coach_config.py" get \
+                --workspace "$WORKSPACE_ROOT" --section nutrition --key garmin_sync --default off 2>/dev/null)" \
+                || previous="off"
+            # Même tolérance que scripts/arc_nutrition_sync.py (casse et espaces ignorés).
+            previous="$(printf '%s' "$previous" | tr '[:upper:]' '[:lower:]' | tr -d '[:space:]')"
+            case "$previous" in
+                off|ask) NUTRITION_SYNC="$previous" ;;
+                "") ;;
+                *) warn "[nutrition].garmin_sync = « $previous » invalide (off, ask) — traité comme « off »." ;;
+            esac
+        fi
+    fi
+    if [[ "$NUTRITION_SYNC" == "ask" ]]; then
+        # Mode passerelle : `invoke_tool` est un outil unique, `scripts/daily-sync.sh` ne peut pas en
+        # retirer les écritures nutrition par nom — seule une consigne protégerait alors le run
+        # headless. On refuse donc d'exposer ces écritures derrière leanproxy (mode direct requis).
+        if [[ "$USE_LEANPROXY" -eq 1 ]]; then
+            if [[ "$EXPLICIT_NUTRITION" -eq 1 ]]; then
+                die "--nutrition-sync ask est incompatible avec --use-leanproxy : les écritures Garmin ne peuvent pas y être interdites en headless. Utilisez le mode direct (voir docs/nutrition-garmin.md)."
+            fi
+            warn "[nutrition].garmin_sync = « ask » ignoré en mode passerelle leanproxy (écritures non filtrables en headless) — aucun outil nutrition exposé ; mode direct requis."
+            return 0
+        fi
+        if [[ "$SOURCE" == "garmin" ]]; then
+            GARMIN_TOOL_WHITELIST="$GARMIN_TOOL_WHITELIST,$GARMIN_NUTRITION_TOOLS"
+            log "Synchronisation nutrition (opt-in) : outils de journal alimentaire et d'hydratation ajoutés à la liste blanche garmin"
+        else
+            # intervals.icu et Strava (#164) n'ont ni journal alimentaire ni hydratation : rien à pousser.
+            warn "[nutrition].garmin_sync = « ask » indisponible avec [data].source = « $SOURCE » (journal alimentaire et hydratation propres à Garmin Connect) — aucun outil exposé (voir docs/nutrition-garmin.md)."
+        fi
+    fi
+}
+
+# Enregistre la synchronisation nutrition — UNIQUEMENT si --nutrition-sync a été passé
+# explicitement (un rerun, ou une installation par défaut, n'écrit jamais cette clé).
+persist_nutrition_sync() {
+    [[ "$EXPLICIT_NUTRITION" -eq 1 ]] || return 0
+    if [[ "$DRY_RUN" -eq 1 ]]; then
+        printf '%s\n' "${C_YELLOW}[dry-run]${C_RESET} [nutrition].garmin_sync = $NUTRITION_SYNC"
+        return 0
+    fi
+    have python3 || return 0
+    python3 "$PROJECT_ROOT/scripts/coach_config.py" set \
+        --workspace "$WORKSPACE_ROOT" --section nutrition --key garmin_sync --value "$NUTRITION_SYNC" >/dev/null \
+        || warn "Impossible d'écrire [nutrition].garmin_sync — vérifiez config/workspace.user.toml."
 }
 
 # Enregistre le staff retenu dans la config personnelle.
@@ -1021,6 +1216,16 @@ install_garmin_mcp() {
 # `uv run intervals-icu-mcp-auth`) : le binaire est déjà sur le PATH une fois
 # `uv tool install` fait (comme garmin-mcp-auth), et `uv run` chercherait un
 # projet uv (pyproject.toml) dans le cwd — qui n'en est pas un ici.
+# `intervals-icu-mcp-auth` écrit le .env avec les droits par défaut (0644 : lisible par les
+# autres comptes de la machine) — constaté au test d'intégration de #165. La clé API ne doit
+# être lisible que par son propriétaire : on resserre à 0600 après l'authentification et à
+# chaque relance (idempotent ; jamais en dry-run).
+restrict_intervals_env() {
+    local env_file="$INTERVALS_ENV_DIR/.env"
+    [[ -f "$env_file" && "$DRY_RUN" -eq 0 ]] || return 0
+    chmod 600 "$env_file" && ok "Droits du fichier d'identifiants Intervals.icu : 600"
+}
+
 intervals_auth_cmd() { printf '(cd "%s" && intervals-icu-mcp-auth)' "$INTERVALS_ENV_DIR"; }
 
 # Écrit le wrapper que CHAQUE config MCP (toutes les IDE, voir mcp_server_value_intervals*)
@@ -1058,6 +1263,63 @@ EOF
     ok "Wrapper écrit : $wrapper"
 }
 
+# Origine VCS de l'installation `uv tool` en place : « <url> <commit> » (vide si
+# illisible — installation locale, outil sans direct_url.json…). Source : le
+# `direct_url.json` du dist-info (PEP 610), écrit par uv pour toute installation
+# depuis un dépôt ; aucun réseau. Même lecture que scripts/coach_doctor.py
+# (check `intervals_mcp_pin`).
+intervals_installed_origin() {
+    local exe env_dir
+    exe="$(command -v intervals-icu-mcp)" || return 0
+    env_dir="$(dirname "$(dirname "$(python3 -c 'import os,sys; print(os.path.realpath(sys.argv[1]))' "$exe")")")"
+    python3 - "$env_dir" <<'PYEOF'
+import glob, json, sys
+for path in glob.glob(sys.argv[1] + "/lib/python*/site-packages/intervals_icu_mcp-*.dist-info/direct_url.json"):
+    try:
+        info = json.load(open(path))
+        print(info.get("url", ""), (info.get("vcs_info") or {}).get("commit_id", ""))
+    except (OSError, ValueError):
+        pass
+    break
+PYEOF
+}
+
+# #165 : une installation antérieure épinglée sur eddmann/intervals-icu-mcp (ou sur
+# un ancien commit du fork) est remplacée par le pin courant — sans cela, `install.sh`
+# la laisserait en place pour toujours (« déjà installé ») alors que les docs, les
+# agents et les skills parlent les noms d'outils `icu_*` du fork. Uniquement pour
+# les origines amont CONNUES : une installation locale/personnalisée (chemin, autre
+# fork) n'est jamais écrasée.
+upgrade_intervals_pin_if_needed() {
+    local origin url commit want_url want_commit ref="${INTERVALS_MCP_REF#git+}"
+    want_url="${ref%@*}"
+    want_commit="${ref##*@}"
+    origin="$(intervals_installed_origin)"
+    url="${origin%% *}"
+    commit="${origin#* }"
+    # Même dépôt écrit autrement (`…/intervals-icu-mcp.git`, barre finale) : même origine.
+    url="${url%/}"
+    url="${url%.git}"
+    if [[ -z "$origin" || -z "$url" ]]; then
+        warn "Origine de l'installation intervals-icu-mcp illisible — non mise à jour (voir /coach-doctor, check intervals_mcp_pin)."
+        return 0
+    fi
+    case "$url" in
+        https://github.com/eddmann/intervals-icu-mcp|https://github.com/hhopke/intervals-icu-mcp) ;;
+        *)
+            warn "intervals-icu-mcp installé depuis une origine personnalisée ($url) — laissé tel quel."
+            return 0 ;;
+    esac
+    if [[ "$url" == "$want_url" && "$commit" == "$want_commit" ]]; then
+        ok "intervals-icu-mcp au commit épinglé (${want_commit:0:7})"
+        return 0
+    fi
+    log "Mise à jour de intervals-icu-mcp : ${url#https://github.com/}@${commit:0:7} -> ${want_url#https://github.com/}@${want_commit:0:7} (#165)"
+    warn "Les outils du serveur sont désormais préfixés « icu_ » — ouvrez une NOUVELLE session de coaching après l'installation (docs/update.md)."
+    run uv tool install --python 3.12 --force --with fitparse "$INTERVALS_MCP_REF" \
+        || warn "Mise à jour de intervals-icu-mcp échouée — l'ancienne version reste en place (voir /coach-doctor)."
+}
+
 install_intervals_mcp() {
     log "Installation de intervals-icu-mcp (accès Intervals.icu, --source intervals)"
     # `--with fitparse` : `skills/fit-download/scripts/download_fit.py --source
@@ -1068,6 +1330,7 @@ install_intervals_mcp() {
     # fichiers du serveur (et tout correctif local que l'athlète y aurait appliqué).
     if have intervals-icu-mcp; then
         ok "intervals-icu-mcp déjà installé : $(command -v intervals-icu-mcp)"
+        upgrade_intervals_pin_if_needed
         local tool_py
         # realpath via python3 : `readlink -f` n'existe pas sur les macOS anciens.
         tool_py="$(dirname "$(python3 -c 'import os,sys; print(os.path.realpath(sys.argv[1]))' \
@@ -1096,6 +1359,7 @@ install_intervals_mcp() {
         log "Authentification Intervals.icu (clé API + identifiant athlète, une seule fois)"
         if [[ -f "$INTERVALS_ENV_DIR/.env" ]]; then
             ok "Identifiants Intervals.icu présents ($INTERVALS_ENV_DIR/.env)"
+            restrict_intervals_env
         elif [[ "$DRY_RUN" -eq 1 ]]; then
             warn "Authentification Intervals.icu sautée (dry-run) — serait lancée dans $INTERVALS_ENV_DIR."
         else
@@ -1105,10 +1369,76 @@ install_intervals_mcp() {
             mkdir -p "$INTERVALS_ENV_DIR"
             (cd "$INTERVALS_ENV_DIR" && intervals-icu-mcp-auth) \
                 || die "Échec de l'authentification Intervals.icu (voir le message ci-dessus)."
+            restrict_intervals_env
         fi
     else
         warn "Authentification Intervals.icu sautée (--no-auth)."
         warn "Lancez plus tard : $(intervals_auth_cmd)"
+    fi
+}
+
+# ---------------------------------------------------------------------------
+# 2ter. serveur MCP Strava (--source strava, #164)
+# ---------------------------------------------------------------------------
+# Installé À LA PLACE de garmin-mcp. Pas de binaire à installer : le serveur est un
+# paquet npm lancé par `npx` (épinglé, voir STRAVA_MCP_PKG) — Node.js >= 18 est le seul
+# prérequis. L'authentification OAuth n'est PAS faite ici : elle passe par l'outil
+# `connect-strava` du serveur (navigateur, http://localhost:8111), à lancer une fois depuis
+# l'agent, après avoir créé l'application API Strava de l'athlète (docs/strava-setup.md).
+write_strava_wrapper() {
+    local wrapper="$STRAVA_MCP_DIR/run.sh"
+    if [[ "$DRY_RUN" -eq 1 ]]; then
+        printf '%s\n' "${C_YELLOW}[dry-run]${C_RESET} écriture de $wrapper"
+        return 0
+    fi
+    mkdir -p "$STRAVA_MCP_DIR"
+    # cron/launchd (garmin-daily-sync) démarrent avec un PATH minimal, sans les Node.js
+    # installés par nvm/fnm/asdf : le dossier de `npx` trouvé ICI est figé dans le wrapper
+    # (devant le PATH hérité), sinon le serveur ne démarrerait qu'en session interactive.
+    local node_dir="" node_path_line=""
+    if have npx; then
+        node_dir="$(cd "$(dirname "$(command -v npx)")" && pwd)"
+        node_path_line="export PATH=$(printf '%q' "$node_dir"):\"\$PATH\""
+    fi
+    cat > "$wrapper" <<WRAPPER
+#!/usr/bin/env bash
+# Généré par install.sh (--source strava, #164). Les jetons Strava ne sont JAMAIS ici :
+# le serveur les lit/écrit dans ~/.config/strava-mcp/config.json.
+# npx -y télécharge la version épinglée depuis le registre npm au premier lancement (puis
+# cache npm) : pas de vérification d'intégrité au-delà de celle de npm — voir docs/strava-setup.md.
+set -euo pipefail
+$node_path_line
+cd "\$(dirname "\${BASH_SOURCE[0]}")"
+exec npx -y $STRAVA_MCP_PKG "\$@"
+WRAPPER
+    chmod +x "$wrapper"
+    ok "Wrapper écrit : $wrapper"
+}
+
+install_strava_mcp() {
+    log "Installation du serveur MCP Strava ($STRAVA_MCP_PKG, --source strava)"
+    if ! have node || ! have npx; then
+        if [[ "$DRY_RUN" -eq 1 ]]; then
+            warn "node/npx absents (dry-run) — requis pour --source strava (Node.js >= 18)."
+        else
+            die "Node.js (node + npx, version 18 ou plus) est requis pour --source strava — voir docs/strava-setup.md."
+        fi
+    else
+        local major
+        major="$(node --version 2>/dev/null | sed -e 's/^v//' -e 's/\..*$//')"
+        if [[ "$major" =~ ^[0-9]+$ ]] && (( major < 18 )); then
+            warn "Node.js $(node --version) détecté — ce serveur exige la version 18 ou plus."
+        else
+            ok "node : $(node --version 2>/dev/null)"
+        fi
+    fi
+    write_strava_wrapper
+    if [[ -f "$STRAVA_TOKEN_FILE" ]]; then
+        ok "Compte Strava déjà connecté ($STRAVA_TOKEN_FILE)"
+    else
+        warn "Compte Strava non connecté — après l'installation : créez votre application API sur"
+        warn "https://www.strava.com/settings/api (« Authorization Callback Domain » = localhost),"
+        warn "puis demandez à l'agent d'exécuter l'outil connect-strava (voir docs/strava-setup.md)."
     fi
 }
 
@@ -1238,12 +1568,23 @@ mcp_server_value_intervals_opencode() {
     printf '{"type": "local", "command": ["%s"], "enabled": true}' "$(json_escape "$INTERVALS_ENV_DIR/run.sh")"
 }
 
+# Source Strava (#164) : même principe — le wrapper, jamais de secret dans la config.
+mcp_server_value_strava() {
+    printf '{"command": "%s", "args": []}' "$(json_escape "$STRAVA_MCP_DIR/run.sh")"
+}
+
+mcp_server_value_strava_opencode() {
+    printf '{"type": "local", "command": ["%s"], "enabled": true}' "$(json_escape "$STRAVA_MCP_DIR/run.sh")"
+}
+
 # Valeur JSON du serveur, au format « mcpServers » (Claude, Copilot, Cursor,
 # Windsurf) puis au format OpenCode. Produites ici pour qu'il n'y ait qu'un
 # endroit à corriger quand la liste blanche (ou la source) change.
 mcp_server_value() {
     if [[ "$SOURCE" == "intervals" ]]; then
         mcp_server_value_intervals
+    elif [[ "$SOURCE" == "strava" ]]; then
+        mcp_server_value_strava
     elif [[ "$USE_LEANPROXY" -eq 1 ]]; then
         printf '{"command": "leanproxy-mcp", "args": []}'
     else
@@ -1255,6 +1596,8 @@ mcp_server_value() {
 mcp_server_value_opencode() {
     if [[ "$SOURCE" == "intervals" ]]; then
         mcp_server_value_intervals_opencode
+    elif [[ "$SOURCE" == "strava" ]]; then
+        mcp_server_value_strava_opencode
     elif [[ "$USE_LEANPROXY" -eq 1 ]]; then
         printf '{"type": "local", "command": ["leanproxy-mcp"], "enabled": true}'
     else
@@ -1267,6 +1610,8 @@ mcp_server_value_opencode() {
 mcp_server_name() {
     if [[ "$SOURCE" == "intervals" ]]; then
         echo "intervals"
+    elif [[ "$SOURCE" == "strava" ]]; then
+        echo "strava"
     elif [[ "$USE_LEANPROXY" -eq 1 ]]; then
         echo "leanproxy"
     else
@@ -1545,7 +1890,7 @@ install_daily_sync() {
     case "$mode" in
         schedule) ;;
         watch)
-            # intervals.icu n'est pas surveillé (pas de sonde équivalente) : heures fixes.
+            # intervals.icu et Strava ne sont pas surveillés (pas de sonde équivalente) : heures fixes.
             if [[ "$(data_source)" != "garmin" ]]; then
                 warn "[sync].mode = \"watch\" n'existe que pour [data].source = \"garmin\" — heures fixes ([sync].times)."
                 mode="schedule"
@@ -1833,13 +2178,112 @@ install_chat() {
     fi
 }
 
+# Fichier du jeton Telegram : créé (mode 600) avec une ligne d'exemple COMMENTÉE si absent ;
+# on n'y écrit jamais de jeton, on n'en affiche jamais.
+ensure_telegram_env() {
+    if [[ "$DRY_RUN" -eq 1 ]]; then
+        printf '%s\n' "${C_YELLOW}[dry-run]${C_RESET} $TELEGRAM_ENV_FILE (mode 600, variable TELEGRAM_BOT_TOKEN)"
+        return 0
+    fi
+    if [[ ! -f "$TELEGRAM_ENV_FILE" ]]; then
+        mkdir -p "$(dirname "$TELEGRAM_ENV_FILE")"
+        ( umask 077; cat > "$TELEGRAM_ENV_FILE" <<'EOF'
+# Jeton du bot Telegram (BotFather) — mode 600, jamais versionné, jamais dans le TOML.
+# Une ligne NOM=valeur sans espace autour du « = ». Décommentez et complétez :
+# TELEGRAM_BOT_TOKEN=
+EOF
+        )
+        ok "Fichier du jeton créé : $TELEGRAM_ENV_FILE (mode 600)"
+    else
+        chmod 600 "$TELEGRAM_ENV_FILE" 2>/dev/null || true
+        if ! grep -qE "^[[:space:]]*(export[[:space:]]+)?#?[[:space:]]*TELEGRAM_BOT_TOKEN=" "$TELEGRAM_ENV_FILE"; then
+            printf '# TELEGRAM_BOT_TOKEN=\n' >> "$TELEGRAM_ENV_FILE"
+        fi
+    fi
+    if grep -qE "^[[:space:]]*(export[[:space:]]+)?TELEGRAM_BOT_TOKEN=.+" "$TELEGRAM_ENV_FILE"; then
+        ok "Jeton TELEGRAM_BOT_TOKEN présent (valeur non affichée)"
+    else
+        warn "Jeton absent : créez un bot avec @BotFather (docs/telegram.md) puis ajoutez TELEGRAM_BOT_TOKEN=<jeton> dans $TELEGRAM_ENV_FILE (mode 600, jamais dans le TOML)."
+    fi
+}
+
+# Ajoute $TELEGRAM_CHAT_ID à [telegram].allowed_chat_ids sans jamais retirer ni remplacer
+# un identifiant déjà autorisé.
+add_telegram_chat_id() {
+    [[ -n "$TELEGRAM_CHAT_ID" ]] || return 0
+    if [[ "$DRY_RUN" -eq 1 ]]; then
+        printf '%s\n' "${C_YELLOW}[dry-run]${C_RESET} [telegram].allowed_chat_ids += $TELEGRAM_CHAT_ID"
+        return 0
+    fi
+    have python3 || return 0
+    local current args=() id
+    current="$(effective_value telegram allowed_chat_ids)"
+    while IFS= read -r id; do
+        [[ -n "$id" ]] || continue
+        args+=(--list "$id")
+    done <<< "$current"
+    if printf '%s\n' "$current" | grep -qxF -- "$TELEGRAM_CHAT_ID"; then
+        ok "Chat $TELEGRAM_CHAT_ID déjà autorisé"
+        return 0
+    fi
+    args+=(--list "$TELEGRAM_CHAT_ID")
+    python3 "$PROJECT_ROOT/scripts/coach_config.py" set \
+        --workspace "$WORKSPACE_ROOT" --section telegram --key allowed_chat_ids "${args[@]}" >/dev/null \
+        && ok "Chat $TELEGRAM_CHAT_ID ajouté à [telegram].allowed_chat_ids" \
+        || warn "Impossible d'écrire [telegram].allowed_chat_ids — vérifiez config/workspace.user.toml."
+}
+
+install_telegram() {
+    [[ "$DO_TELEGRAM" -eq 1 ]] || return 0
+    log "Bot Telegram (scripts/coach-telegram.sh install)"
+    if [[ "$DRY_RUN" -eq 1 ]]; then
+        printf '%s\n' "${C_YELLOW}[dry-run]${C_RESET} [telegram].enabled = true"
+    else
+        have python3 && python3 "$PROJECT_ROOT/scripts/coach_config.py" set \
+            --workspace "$WORKSPACE_ROOT" --section telegram --key enabled --value true --type bool >/dev/null \
+            || warn "Impossible d'écrire [telegram].enabled — vérifiez config/workspace.user.toml."
+    fi
+    add_telegram_chat_id
+    ensure_telegram_env
+    if [[ "$(effective_value telegram chat_bridge)" == "true" ]]; then
+        log "Conversation libre activée : elle exige [chat].enabled = true et une clé d'API facturée (docs/telegram.md)."
+    else
+        log "Retours en un geste uniquement (sans clé d'API) ; la conversation libre est opt-in : [telegram].chat_bridge."
+    fi
+    if [[ "$DRY_RUN" -eq 1 ]]; then
+        ARC_WORKSPACE="$WORKSPACE_ROOT" ARC_DRY_RUN=1 "$PROJECT_ROOT/scripts/coach-telegram.sh" install --dry-run
+    else
+        ARC_WORKSPACE="$WORKSPACE_ROOT" "$PROJECT_ROOT/scripts/coach-telegram.sh" install
+    fi
+}
+
 # ---------------------------------------------------------------------------
 # 7. Vérification finale
 # ---------------------------------------------------------------------------
 verify() {
     log "Vérification finale"
     local fail=0
-    if [[ "$SOURCE" == "intervals" ]]; then
+    if [[ "$SOURCE" == "strava" ]]; then
+        for cmd in node npx; do
+            if have "$cmd"; then
+                ok "$cmd : présent"
+            else
+                warn "$cmd : absent — Node.js >= 18 requis pour --source strava"
+                fail=1
+            fi
+        done
+        if [[ -f "$STRAVA_MCP_DIR/run.sh" ]]; then
+            ok "Wrapper MCP : présent ($STRAVA_MCP_DIR/run.sh)"
+        else
+            warn "Wrapper MCP absent ($STRAVA_MCP_DIR/run.sh) — relancez ./install.sh --source strava"
+            fail=1
+        fi
+        if [[ -f "$STRAVA_TOKEN_FILE" ]]; then
+            ok "Compte Strava : jetons présents ($STRAVA_TOKEN_FILE)"
+        else
+            warn "Compte Strava : non connecté — demandez à l'agent d'exécuter connect-strava (docs/strava-setup.md)"
+        fi
+    elif [[ "$SOURCE" == "intervals" ]]; then
         for cmd in uv intervals-icu-mcp; do
             if have "$cmd"; then
                 ok "$cmd : présent"
@@ -1926,7 +2370,14 @@ print_config_recap() {
     # Les préréglages ne touchent jamais au staff d'agents (voir apply_preset) :
     # « défaut » veut dire ici config/workspace.user.toml ou, à défaut, tous.
     recap_line "Agents" "$ENABLED_AGENTS" "$([[ "$EXPLICIT_AGENTS" -eq 1 ]] && echo "explicite" || echo "défaut")"
-    recap_line "$([[ "$SOURCE" == "intervals" ]] && echo "Auth Intervals.icu" || echo "Auth Garmin")" \
+    # Pas de « case » dans $( ) : bash 3.2 (macOS) l'analyse mal et affiche le texte brut.
+    local auth_label
+    case "$SOURCE" in
+        intervals) auth_label="Auth Intervals.icu" ;;
+        strava) auth_label="Auth Strava" ;;
+        *) auth_label="Auth Garmin" ;;
+    esac
+    recap_line "$auth_label" \
         "$([[ "$DO_AUTH" -eq 1 ]] && echo "activée" || echo "sautée")" "$(_config_origin "$EXPLICIT_DO_AUTH")"
     recap_line "Passerelle leanproxy" \
         "$([[ "$USE_LEANPROXY" -eq 1 ]] && echo "oui" || echo "non")" "$(_config_origin "$EXPLICIT_LEANPROXY")"
@@ -1936,6 +2387,7 @@ print_config_recap() {
         "$([[ "$REMOTE_CONTROL" -eq 1 ]] && echo "oui" || echo "non")" "$(_config_origin "$EXPLICIT_REMOTE_CONTROL")"
     [[ -z "$LLM_PROVIDER" ]] || recap_line "Chat + sync sur API" "$LLM_PROVIDER" "explicite"
     [[ "$DO_CHAT" -eq 0 ]] || recap_line "Service du chat" "oui" "explicite"
+    [[ "$DO_TELEGRAM" -eq 0 ]] || recap_line "Bot Telegram" "oui" "explicite"
     recap_line "Workspace" "$WORKSPACE_ROOT" "$([[ -n "$WORKSPACE_ARG" ]] && echo "explicite" || echo "défaut")"
     recap_line "Dry-run" \
         "$([[ "$DRY_RUN" -eq 1 ]] && echo "oui" || echo "non")" "$([[ "$DRY_RUN" -eq 1 ]] && echo "explicite" || echo "défaut")"
@@ -1952,6 +2404,8 @@ main() {
     workspace_is_separate && log "Workspace : $WORKSPACE_ROOT (--workspace)"
     resolve_agents
     resolve_source
+    resolve_cycle_tracking
+    resolve_nutrition_sync
     print_config_recap
     [[ "$DRY_RUN" -eq 1 ]] && warn "Mode dry-run : aucune modification ne sera effectuée."
     echo
@@ -1959,8 +2413,11 @@ main() {
     require_cmd curl "Installez curl (macOS : déjà présent ; Linux : apt install curl)."
     require_cmd git "Installez git."
 
-    install_uv
-    if [[ "$SOURCE" == "intervals" ]]; then
+    # Strava : aucun outil Python à installer (serveur npm lancé par npx) — pas de uv.
+    [[ "$SOURCE" == "strava" ]] || install_uv
+    if [[ "$SOURCE" == "strava" ]]; then
+        install_strava_mcp
+    elif [[ "$SOURCE" == "intervals" ]]; then
         install_intervals_mcp
     else
         install_garmin_mcp
@@ -1973,6 +2430,8 @@ main() {
     create_workspace_config
     persist_agents
     persist_source
+    persist_cycle_tracking
+    persist_nutrition_sync
     persist_llm
     persist_sync_runner
     persist_budgets
@@ -1982,6 +2441,7 @@ main() {
     install_daily_sync
     install_remote_control
     install_chat
+    install_telegram
     verify
 }
 

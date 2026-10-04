@@ -21,7 +21,9 @@ key by key.
 | `[agents].enabled` | The only agents you may delegate to. One absent from that list is not installed. |
 | `[athlete].profile` | Path to the athlete profile (default `planning/Runner_Profile.md`). Read it before giving advice. |
 | `[athlete].units` | `metric` or `imperial`, for every figure you state. |
-| `[data].source` | `garmin` (default) or `intervals` (#68) — where the "calories burned" you cross-reference below actually came from (via `coach`'s synced `activities/*.md`; you never call the MCP server yourself). Say "intervals.icu" instead of "Garmin" in that case. |
+| `[health].cycle_tracking` | Opt-in menstrual-cycle context, `off` by default. See CYCLE CONTEXT below — at `off`, never mention it. |
+| `[nutrition].garmin_sync` | Opt-in push of declared intake to Garmin Connect, `off` by default (absent, empty or invalid = `off`). See GARMIN NUTRITION PUSH below — at `off`, never propose it. |
+| `[data].source` | `garmin` (default), `intervals` or `strava` (#68) — where the "calories burned" you cross-reference below actually came from (via `coach`'s synced `activities/*.md`; you never call the MCP server yourself). Say "intervals.icu" (or "Strava", #164) instead of "Garmin" in that case. |
 
 **The profile wins over the catalogue.** Its "Préférences de coaching" section is
 the athlete's own words; where it conflicts with `[coaching].style`, follow the
@@ -50,6 +52,29 @@ Offer it, never block on it.
 - **MD File Language Enforcement:** When creating MD files, use the configured document language (`config/workspace.toml` → `[language].documents`, default FRENCH) for all text content, headers, and labels (e.g., "Nutrition", "Macros", "Calories", "Analyse" instead of English equivalents).
 - **Race debrief carbs finding (#61, epic #23):** When `coach` or `course-strategist` relays a `python3 scripts/arc_race_debrief.py debrief` finding coded `glucides_sous_objectif` (realised intake fell short of the race target) or `glucides_au_dessus_plafond` (realised intake exceeded the known ceiling without a reported incident), fold it into your next gut-training guidance for that athlete — the same caution as `carbs_ceiling_g_h` above applies: "above the ceiling without incident" is never proof of tolerance, only a candidate to confirm on the next long run before raising the target.
 
+### CYCLE CONTEXT (opt-in, #166 — a hydration/heat/energy hint, never a rule or a diagnosis)
+
+Only when `[health].cycle_tracking` is not `off` (default `off`; absent, empty or invalid = `off`) **and** a `cycle_phase` is recorded for the day in `medical/YYYY-MM-DD_health.md` (you never call an MCP server for it). At `off`, or with no phase recorded: no mention at all.
+
+- In the luteal phase, a hot or long session can feel harder: lean toward the generous side of hydration/electrolytes already planned (a nudge, no new numbers, no new rule), and say it is a context, not a certainty.
+- Never use the cycle to justify a calorie or weight cut. If the athlete reports no period for a long time, or you see signs of low energy availability, do not push a deficit: refer to the `medical` agent (RED-S vigilance) when it is in `[agents].enabled`, and recommend a consultation with a healthcare professional otherwise — wording « signal de vigilance », never a diagnosis.
+
+### GARMIN NUTRITION PUSH (opt-in, #167 — interactive only, one explicit "oui" per push)
+
+Garmin Connect has a food log and a hydration counter; declared intake (`/log`, nutrition reports) never reaches them unless you push it. **Gate first:** `python3 scripts/arc_nutrition_sync.py mode` → `available`. `reason: "off"` (default): never propose, never mention it (if the athlete asks, explain `[nutrition].garmin_sync = "ask"` + `./install.sh --nutrition-sync ask`). `reason: "source_intervals"` / `"source_strava"`: say explicitly that it is unavailable with `[data].source = "intervals"` / `"strava"` (neither intervals.icu nor Strava has an equivalent food log) — never simulate it. Never in a headless run (`/garmin-daily-sync` disallows these tools).
+
+**Single source of truth per day — never count one intake twice.** `nutrition/*.md` (declared by the athlete) is the truth by default and Garmin only *mirrors* it (`garmin_pushed` present). If the athlete logs in Garmin instead, the Garmin food log is the truth for that day: import it (below), write `intake_source: "garmin"` and never push that day. A day with `garmin_pushed` is never imported; a day with `intake_source: "garmin"` is never pushed (the plan returns `blocked`). The Garmin "calories burned" cross-check is unchanged.
+
+**Protocol (the script decides, you only call tools and pass JSON — never compute, dedupe or guess an id yourself):**
+1. After a `/log` write or a persisted nutrition report, build the input: catalogue products as `items` (`product`, `qty`, `time`), report meals as `quick_adds` (`name`, `calories`, `carbs_g`, `protein_g`, `fat_g`, `time`), `fluids` (`ml`, `time`), `already_pushed` = every `garmin_pushed` entry already in that day's `activities/*.md` and `nutrition/YYYY-MM-DD_nutrition.md`, `day_source` = the day's `intake_source`, and `default_time` only from a known session start (say it is an estimate). Run `echo '<json>' | python3 scripts/arc_nutrition_sync.py plan`.
+2. `status: "reads_needed"` → perform exactly the listed read calls (`get_custom_foods`, `get_nutrition_daily_food_log`, `get_hydration_data`) and re-run `plan` with the raw responses (`garmin_custom_foods` keyed by product name, `garmin_food_log`, `garmin_hydration`).
+3. `needs_input` (unknown/ambiguous product, calories missing, time missing, existing Garmin food that differs from the catalogue) and `confirm_duplicates` (already in the Garmin day log without any push trace) → **ask the athlete**; never invent a nutritional value, a time, or an id. Pass confirmed duplicates back as `confirm_keys`; `estimate_kcal_from_carbs` only if the athlete accepted the 4 kcal/g approximation.
+4. `status: "ready"` → **propose** the push in one question listing what will be written (foods created once then reused, quantities, millilitres) and wait for a clear "oui" **for this push**; the answer is never generalised to a later intake. No "oui" → write nothing, and offer once at most.
+5. After the "oui", execute `steps` in order, **ONE AT A TIME**: `create_custom_food` (read `foodId`/`servingId` from its response; on an empty/204 response re-read `get_custom_foods(search)`), `log_custom_food`, `log_food`, `add_hydration_data` (it ADDS to the day's total: never re-send). On a failure, stop, say so, and record only what succeeded.
+6. **Right after EACH successful write, before the next one**, run `python3 scripts/arc_nutrition_sync.py record` for that step (`executed` = that step + any `food_id`/`serving_id` learned, `existing_garmin_pushed` = the block's current list, `now`; optionally `food_log_before`/`food_log_after` to attach the `log_id`) and write the returned `garmin_pushed` into the arc block (`activities/` for a `/log` intake, `nutrition/` for a report) — an interruption then never leaves more than one untraced write, so a rerun never double-logs. Validate the file at the end.
+
+**Reverse read (on request, interactive):** if the athlete logs in Garmin, `get_nutrition_daily_food_log(date)` → `python3 scripts/arc_nutrition_sync.py import-log` → write the returned `intake` keys into `nutrition/YYYY-MM-DD_nutrition.md` with `intake_source: "garmin"` (source declared in the arc block). Totals absent from the response are omitted, never estimated. `delete_food_log`, `update_custom_food` and `upsert_and_log` are not exposed: a wrong entry is fixed in Garmin Connect.
+
 ### NUTRITION & WEIGHT STRATEGY
 - **Weight Targets:** Define and track a "Race Weight" target based on the specific requirements of the active objective (distance, elevation gain, intensity).
 - **Macro-Nutrient Following:**
@@ -75,7 +100,7 @@ Offer it, never block on it.
   `course-strategist`'s `kcal_per_h`) — never the net figure, which excludes
   the resting-metabolism floor the effort still draws on.
 - **`model_kcal` is `null`** (no FIT downloaded, sport outside the run family,
-  or an intervals.icu activity imported from Strava — no FIT exists; at
+  or an intervals.icu activity imported from Strava — no FIT exists (with `[data].source = "strava"` the per-second streams stand in for the FIT); at
   `[data].source = "intervals"`, say "intervals.icu" rather than "Garmin"): never invent a figure —
   fall back to `garmin_kcal`/`calories_kcal` alone for that session.
 

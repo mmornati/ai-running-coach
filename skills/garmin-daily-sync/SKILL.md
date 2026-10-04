@@ -24,12 +24,17 @@ Remote Control) et l'IDE partagent. Il délègue tout à l'agent `coach` et au s
   `garmin` ou est absente. À `intervals`, chaque outil `garmin` cité plus bas
   (activités, wellness/HRV/FC de repos/sommeil) est remplacé par son
   équivalent intervals.icu (table de correspondance dans `AGENTS.md`) : un
-  seul appel `get_wellness_for_date` couvre HRV + FC de repos + sommeil. Le
+  seul appel `icu_get_wellness_for_date` couvre HRV + FC de repos + sommeil. Le
   readiness Garmin n'a pas d'équivalent : à `full`, dire "readiness
   indisponible — source intervals.icu" au lieu d'un score ; ne jamais
   substituer le champ `subjective.readiness` (une valeur manuelle du jour,
   pas un score calculé — voir AGENTS.md). Le serveur MCP interrogé est alors
-  `intervals`, pas `garmin` ; l'activité persistée porte `intervals_activity_id`
+  `intervals`, pas `garmin` ; ses outils portent le préfixe `icu_` (#165). Si
+  ce serveur n'expose que des noms SANS préfixe (ancienne installation
+  `eddmann`, pas encore mise à jour), lire avec ces mêmes noms sans préfixe
+  (mêmes outils de lecture), n'écrire rien côté intervals.icu (de toute façon
+  interdit ici) et ajouter à la ligne `Alerte :` « serveur intervals.icu à
+  mettre à jour : ./install.sh --source intervals (docs/update.md) » ; l'activité persistée porte `intervals_activity_id`
   (chaîne) au lieu de `garmin_activity_id` (entier), et omet HRR/`splits`
   (aucun équivalent). L'étape 2 (échantillons FIT) s'applique aussi, avec
   l'`intervals_activity_id` de la séance (`download_fit.py` lit la source dans
@@ -40,6 +45,19 @@ Remote Control) et l'IDE partagent. Il délègue tout à l'agent `coach` et au s
   fichier `/log` déjà présent pour une date, sans cet identifiant, reste « pas
   encore synchronisé » et doit être fusionné à l'étape 1 ci-dessous, jamais
   pris pour une séance déjà traitée.
+- **Source Strava (#164, `[data].source = "strava"`)** : mêmes règles, avec le serveur MCP
+  `strava` (communautaire `strava-mcp` de r-huijts, outils à tirets : `get-recent-activities`,
+  `get-activity-details`… — table « Garmin ↔ Strava » de `AGENTS.md`, jamais d'outil deviné).
+  **Lecture seule, strictement** : ne jamais appeler `connect-strava`, `disconnect-strava` ni
+  `star-segment` (interdits par `daily-sync.sh`) ; si Strava répond « Missing refresh credentials »
+  ou un 401, écrire `ERREUR : jetons Strava absents ou expirés — relancer connect-strava dans
+  une session interactive` et s'arrêter. Aucune donnée de santé (HRV, FC de repos, sommeil,
+  readiness) : le bilan matinal est dit « indisponible — source Strava », jamais rempli. L'activité
+  persistée porte `strava_activity_id` (`"s<ID>"`, préfixe du projet) et omet HRR/`splits`/D−.
+  Marqueur « pas encore synchronisé » : l'absence de `strava_activity_id`. L'étape 2 s'applique
+  avec cet identifiant (`download_fit.py --source strava`, flux par seconde, pas de `.fit`).
+  Un « 429 » (limite de l'API Strava) n'est pas une erreur d'authentification : le noter dans
+  `Alerte :` et s'arrêter proprement.
 - **Pas de contrôle de premier démarrage** : le coach propose `/coach-setup` quand aucune
   configuration n'existe. **Ici, ne jamais le proposer** : personne ne peut répondre, et la
   proposition finirait dans la notification push. Travailler avec les défauts et le signaler
@@ -68,6 +86,11 @@ Remote Control) et l'IDE partagent. Il délègue tout à l'agent `coach` et au s
   coach le propose en session interactive). **Aucune écriture côté Garmin en headless** : `add_gear_to_activity` ne
   s'appelle jamais ici, personne ne peut confirmer. Avec `[data].source = "intervals"`, aucun
   matériel par séance n'est lisible (voir `AGENTS.md`) : `gear_id` reste absent, jamais deviné.
+- **Apports vers Garmin (#167, opt-in `[nutrition].garmin_sync`)** : **aucune écriture nutrition
+  ni hydratation côté Garmin en headless** — `log_food`, `log_custom_food`, `create_custom_food`,
+  `add_hydration_data` ne s'appellent jamais ici (personne ne peut confirmer) ; `scripts/daily-sync.sh`
+  les retire explicitement. N'importez pas non plus le journal alimentaire Garmin dans `nutrition/` :
+  c'est une lecture interactive, à la demande (`agents/nutritionist.md`).
 
 - **Déclencheurs (`trigger=…`, facultatif)** : posés par `scripts/garmin_watch.py` quand la
   surveillance (`[sync].mode = "watch"`) a vu du neuf chez Garmin — `morning` (sommeil du
@@ -111,7 +134,7 @@ Remote Control) et l'IDE partagent. Il délègue tout à l'agent `coach` et au s
    > "No gear data found…" when nothing is attached: then write nothing. Report a non-empty
    > `conflict` (Garmin says A, athlete says B — athlete kept) and any `unmapped_garmin` /
    > `ambiguous` result (NOT `ignored_garmin`: those stay silent) in your summary, once per gear, by gear NAME (from `get_activity_gear`'s `displayName`,
-   > never a raw uuid), never attribute them. NEVER call `add_gear_to_activity` here. For TODAY's `medical/YYYY-MM-DD_health.md`, when `morning_check` is
+   > never a raw uuid), never attribute them. NEVER call `add_gear_to_activity` here, nor any Garmin nutrition/hydration write (`log_food`, `log_custom_food`, `create_custom_food`, `add_hydration_data`). For TODAY's `medical/YYYY-MM-DD_health.md`, when `morning_check` is
    > `full` or `minimal`, record the gatekeeper `verdict` (`green`/`amber`/`red`) and
    > `verdict_reason` per the morning-check rules (`agents/medical.md`) — never leave it to
    > chance, step 4 below depends on it; document language from `config/workspace.toml` for
@@ -123,7 +146,7 @@ Remote Control) et l'IDE partagent. Il délègue tout à l'agent `coach` et au s
    > alert such as low HRV, poor sleep, HRR missing).
 2. **Échantillons FIT (#42, best-effort)** : pour chaque activité running/trail dont un
    fichier a été créé à l'étape 1, télécharger son FIT : `python3
-   skills/fit-download/scripts/download_fit.py <garmin_activity_id | intervals_activity_id> --json` (sans
+   skills/fit-download/scripts/download_fit.py <garmin_activity_id | intervals_activity_id | s<strava_activity_id>> --json` (sans
    `--output-dir` : la copie normalisée canonique doit atterrir dans `activities/fit/`
    du workspace pour être ingérée à l'étape suivante). **Best-effort et non bloquant** :
    un échec (tokens `garminconnect` absents/expirés, clé API intervals.icu refusée,
@@ -144,7 +167,7 @@ Remote Control) et l'IDE partagent. Il délègue tout à l'agent `coach` et au s
    (`/log`, #67) qui reçoit ses premiers champs Garmin. Une séance dont le fichier portait déjà
    ses données Garmin (simple re-fusion, second passage le même jour) n'en fait **jamais** partie.
    Lancer `python3 scripts/arc_index.py gear --activities <id1>,<id2>,…` avec, pour chacune, son
-   `garmin_activity_id` (ou `intervals_activity_id`, ou à défaut le chemin `activities/….md`).
+   `garmin_activity_id` (ou `intervals_activity_id`, `strava_activity_id`, ou à défaut le chemin `activities/….md`).
    Pour chaque paire du JSON qui porte `crossed_in_run: true`, ajouter le segment
    « Chaussures : <nom> a atteint son seuil (<distance_m/1000> km) » à la ligne `Alerte :`
    unique (concaténé avec ` ; `, jamais une ligne de plus). Méthode : `crossed_in_run` n'est vrai

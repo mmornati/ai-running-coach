@@ -363,3 +363,43 @@ export function yearCalendar(year, byDate, valueOf, bucketOf) {
   const width = 28 + 54 * (cell + gap);
   return `<svg class="chart chart--cal" viewBox="0 0 ${width} ${16 + 7 * (cell + gap)}" role="img" aria-label="Calendrier ${year}" xmlns="${NS}">${parts.join("")}</svg>`;
 }
+
+/** Frise du bloc (#193) : une colonne par semaine planifiée, teinte = phase, hauteur = volume prévu,
+ * trait = volume réalisé, pastille = semaine allégée, drapeau = course, cadre = semaine courante.
+ * Chaque semaine est un LIEN (`<a>`, focalisable au clavier) ; aucune couleur ni taille en `style` :
+ * tout passe par les classes `.frise-*` (CSP). Dimensions fixes en px (`width`/`height`) : le défilement
+ * horizontal est dans la carte (`.chart-host--frise`), jamais dans la page.
+ * `items` : { href, aria, tip, phase, phaseText, tick, h (0–1|null), d (0–1|null), light, current, selected, race }. */
+export function blockFrise(items, label) {
+  const cw = 46, gap = 4, top = 22, barH = 64, left = 6;
+  const parts = [];
+  items.forEach((it, i) => {
+    const x = left + i * (cw + gap);
+    const hh = Math.max(4, Math.round(barH * Math.max(0, Math.min(1, it.h ?? 0))));
+    const cls = ["frise-cell", `frise-cell--${it.phase}`, it.h == null ? "frise-cell--noplan" : ""].filter(Boolean).join(" ");
+    const state = `${it.current ? " is-current" : ""}${it.selected ? " is-selected" : ""}`;
+    let g = `<rect class="frise-track" x="${x}" y="${top}" width="${cw}" height="${barH}" rx="4"/>`;
+    g += `<rect class="${cls}" x="${x}" y="${top + barH - hh}" width="${cw}" height="${hh}" rx="4"/>`;
+    if (it.d != null) {
+      const dy = top + barH - Math.max(2, Math.round(barH * Math.max(0, Math.min(1, it.d))));
+      g += `<line class="frise-done-case" x1="${x + 3}" x2="${x + cw - 3}" y1="${dy}" y2="${dy}"/><line class="frise-done" x1="${x + 3}" x2="${x + cw - 3}" y1="${dy}" y2="${dy}"/>`;
+    }
+    g += `<rect class="frise-focus${state}" x="${x - 1.5}" y="${top - 1.5}" width="${cw + 3}" height="${barH + 3}" rx="5.5"/>`;
+    if (it.light) g += `<circle class="frise-light" cx="${x + cw / 2}" cy="${top + barH + 9}" r="3.5"/>`;
+    g += `<text class="tick frise-tick${state}" x="${x + cw / 2}" y="${top - 7}" text-anchor="middle">${esc(it.tick)}</text>`;
+    if (it.race) g += `<path class="frise-flag" d="M${x + 4} ${top + 4} v20 M${x + 4} ${top + 4} h14 l-3 5 l3 5 h-14"/>`;
+    parts.push(`<a href="${esc(it.href)}" aria-label="${esc(it.aria)}" data-i="${i}"><title>${esc(it.tip)}</title>${g}</a>`);
+  });
+  // Étiquettes de phase : une par suite de semaines de même phase, seulement si elle tient dans la largeur.
+  let i = 0;
+  while (i < items.length) {
+    let j = i;
+    while (j + 1 < items.length && items[j + 1].phaseText === items[i].phaseText) j++;
+    const width = (j - i + 1) * (cw + gap) - gap;
+    if (width >= 62 && items[i].phaseText) parts.push(`<text class="frise-phase" x="${left + i * (cw + gap)}" y="${top + barH + 30}">${esc(items[i].phaseText)}</text>`);
+    i = j + 1;
+  }
+  const width = left * 2 + items.length * (cw + gap) - gap;
+  const height = top + barH + 38;
+  return `<svg class="chart chart--frise" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" role="group" aria-label="${esc(label)}" xmlns="${NS}">${parts.join("")}</svg>`;
+}

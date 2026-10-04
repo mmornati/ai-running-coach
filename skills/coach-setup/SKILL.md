@@ -47,6 +47,7 @@ Deux questions méritent un mot de contexte si l'athlète hésite :
 | Question | Ce qu'il faut savoir |
 |---|---|
 | `agents` | `coach` est indispensable : c'est lui qui planifie et pousse vers Garmin. Les trois autres sont optionnels. Retirer `medical` **ne désactive pas** le bilan santé matinal — c'est la question suivante qui le fait. |
+| `cycle_tracking` | Facultative et **jamais présumée** : ne la posez pas autrement que telle quelle (aucune hypothèse sur le sexe ou le genre de l'athlète, aucun commentaire si la réponse est « non » ou si l'athlète passe : « / » retient `off`). Posée **une seule fois** (une fois répondue, y compris `off`, elle ne revient plus). Le cycle ne sert que de contexte au bilan matinal. Si l'athlète choisit `garmin`, dites-lui de relancer l'installation (`install.sh`) pour exposer les outils `get_menstrual_*` (sans cela, aucune donnée n'est lue) ; `intervals` et `manual` n'exigent rien de plus. |
 | `morning_check` | `off` convient à une montre sans HRV, ou à quelqu'un qui ne veut pas que son entraînement dépende de ces données. Le coach planifie alors sur la charge et le ressenti déclaré. |
 
 ## 3. Écrire
@@ -75,7 +76,7 @@ libre par nature et ne rentre pas dans une clé de configuration.
 
 Avant de poser les questions physiologiques classiques, essayez de récupérer
 ce que Garmin sait déjà. **Uniquement si `[data].source = "garmin"` (défaut) —
-#68** : à `"intervals"`, le serveur MCP `garmin` n'est ni installé ni
+#68** : à `"intervals"` ou `"strava"`, le serveur MCP `garmin` n'est ni installé ni
 enregistré, sautez directement à la section suivante, sans tenter le moindre
 appel. Le déclencheur, à `"garmin"`, est le serveur MCP `garmin` qui
 **répond réellement** à un appel — `[agents].enabled` ne liste QUE les agents

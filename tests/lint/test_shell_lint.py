@@ -119,6 +119,9 @@ class TestPrerequisitesAreHonest(unittest.TestCase):
         (r"\$\{[A-Za-z_][A-Za-z0-9_]*(\[[^]]*\])?\^\^", "${var^^}"),
         (r"\bcoproc\b", "coproc"),
         (r"\[\[\s+-v\s", "[[ -v ]]"),
+        # Pas bash 4 à proprement parler, mais bash 3.2 (macOS) analyse mal un
+        # « case » non parenthésé dans $( ) : le texte brut s'affiche (#164).
+        (r"\$\(\s*case\b", "case dans $( )"),
     ]
 
     def test_no_bash4_only_constructs(self):

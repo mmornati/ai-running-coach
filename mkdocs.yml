@@ -78,9 +78,12 @@ nav:
       - Configuration: configuration.md
       - Configuration Garmin: garmin-setup.md
       - Configuration Intervals.icu: intervals-setup.md
+      - Configuration Strava: strava-setup.md
+      - Montres COROS: coros.md
       - IDE supportés: ides.md
       - Votre workspace privé: workspace.md
       - Le coach dans la poche: mobile.md
+      - Le bot Telegram: telegram.md
       - Mettre à jour: update.md
   - Tableau de bord:
       - Prise en main: dashboard/index.md
@@ -90,6 +93,8 @@ nav:
       - Derrière un reverse proxy (Docker): dashboard/docker.md
       - Le chat avec le coach: dashboard/chat.md
   - Dépense énergétique modèle: energie.md
+  - Vitesse critique et courbe allure-durée: vitesse-critique.md
+  - Renforcement et mobilité: strength.md
   - Agents:
       - Vue d'ensemble: agents.md
       - Coach: agents/coach.md
@@ -118,9 +123,13 @@ nav:
       - Saisie libre (/log): skills/log.md
       - Inspection des chaussures: skills/gear-inspection.md
       - Faire inspecter une paire (/inspection): skills/inspection.md
+  - Correction altimétrique (MNT): elevation.md
   - Garde-fous: guardrails.md
+  - Gabarits de périodisation: plans.md
   - Ressources:
       - Base de connaissances: resources.md
+      - Cycle menstruel (opt-in): cycle-menstruel.md
+      - Apports vers Garmin (opt-in): nutrition-garmin.md
   - Dépannage: troubleshooting.md
   - Marques et métriques: marques.md
   - FAQ: faq.md

@@ -1,0 +1,29 @@
+# Poussée des apports vers Garmin (#167) : avec `[nutrition].garmin_sync = "ask"`, après un `/log`
+# le coach PROPOSE de pousser l'apport (question), mais n'écrit RIEN côté Garmin tant que l'athlète
+# n'a pas dit « oui » (le runner `claude -p` n'a personne pour répondre).
+#
+# `must_match` : une proposition à la forme interrogative visant Garmin (verbe de proposition à la
+# 2ᵉ personne près de « Garmin », ou verbe d'action + Garmin + « ? »). Un « Garmin » nu ne suffit pas.
+# Dates relatives uniquement : le prompt ne cite aucune date, « ce matin » = aujourd'hui.
+id = "nutrition-garmin-push-asks"
+prompt = "/log Sortie de ce matin, trail, 1h30 : 2 gels + 500 ml au km 15, RPE 6"
+fixture = "log-freeform"
+
+[config.nutrition]
+garmin_sync = "ask"
+
+[expect]
+files_with_arc_block = ["activities/*.md"]
+tools_not_called = ["create_custom_food", "log_custom_food", "log_food", "add_hydration_data", "delete_food_log"]
+must_match = [
+  "((veux-tu|voulez-vous|souhaites-tu|souhaitez-vous|d[ée]sires-tu)[^\\n]{0,160}Garmin)|(Garmin[^\\n]{0,160}(veux-tu|voulez-vous|souhaites-tu|souhaitez-vous))|((pouss|envoy|report|journalis|enregistr)[^\\n]{0,100}Garmin[^\\n]{0,100}\\?)",
+]
+
+[[expect.arc_field]]
+glob = "activities/*.md"
+path = "carbs_g"
+equals = 64
+
+[[expect.arc_field_absent]]
+glob = "activities/*.md"
+paths = ["garmin_pushed"]

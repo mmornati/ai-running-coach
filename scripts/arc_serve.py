@@ -59,9 +59,11 @@ from typing import Optional, Tuple
 from urllib.parse import parse_qs, quote, urlparse, urlsplit
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+import arc_block_timeline as BT  # noqa: E402
 import arc_guardrails as G  # noqa: E402
 import arc_index as I  # noqa: E402
 import arc_metrics as M  # noqa: E402
+import arc_roadbook as RB  # noqa: E402
 from coach_config import ConfigError  # noqa: E402
 
 LOOPBACK = "127.0.0.1"                   # défaut : le tableau de bord ne sort pas de la machine
@@ -232,6 +234,8 @@ class Store:
         self.last_index = 0.0
         self.last_counts: dict = {}
         self.metrics_cache = I.MetricsCache()
+        # Courbes allure-durée par séance (#169), voir `arc_index.pace_curve(curve_cache=...)`.
+        self.pace_curve_cache: dict = {}
         self.ready = threading.Event()
         self.background = background
         self._stop = threading.Event()
@@ -250,6 +254,7 @@ class Store:
                     # les échantillons vont être réingérés.
                     self.conn.close()
                     self.metrics_cache.clear()
+                    self.pace_curve_cache.clear()
                     self.conn = I.open_db(self.workspace, self.db, self.memory, rebuild=True)
                     counts = I.index_workspace(self.conn, self.workspace, self.today, self.metrics_cache)
                 self.last_counts = counts
@@ -320,6 +325,21 @@ class Store:
         """Réutilise `arc_index.gait_summary` (#151) — voir aussi la CLI `gait-summary`."""
         with self.lock:
             return I.gait_summary(self.conn, today, weeks)
+
+    def altitude_exposure(self, today: date, days: Optional[int]) -> dict:
+        """Réutilise `arc_index.altitude_exposure` (#185) — voir aussi la CLI `altitude-exposure`."""
+        with self.lock:
+            return I.altitude_exposure(self.conn, today, days)
+
+    def pace_curve(self, today: date, days: Optional[int], lt_speed_ms: Optional[float]) -> dict:
+        """Réutilise `arc_index.pace_curve` (#169) — voir aussi la CLI `pace-curve`."""
+        with self.lock:
+            return I.pace_curve(self.conn, today, days, lt_speed_ms, curve_cache=self.pace_curve_cache)
+
+    def decision_effects(self, today: date, days: Optional[int], trigger: Optional[str]) -> dict:
+        """Réutilise `arc_index.decision_effects` (#175) — voir aussi la CLI `decision-effects`."""
+        with self.lock:
+            return I.decision_effects(self.conn, today, days, trigger)
 
     def gear_detail(self, gear_id: str, today: date):
         """Réutilise `arc_index.gear_detail` (#147) — fiche d'une paire/d'un objet, `None` si inconnu."""
@@ -408,8 +428,12 @@ def api_summary(store: Store, q: dict) -> dict:
         objective["weeks_left"] = round((race - today).days / 7, 1)
     athlete = _strip(store.one("SELECT * FROM athlete LIMIT 1"), "body_md", "source_path")
     latest = store.one("SELECT * FROM metric_day WHERE date <= ? ORDER BY date DESC LIMIT 1", (today.isoformat(),))
+    # Contexte du cycle (#166) retiré : aucune carte ne l'affiche (docs/cycle-menstruel.md), une
+    # donnée aussi personnelle ne sort donc pas de l'index par l'API — et la réponse reste
+    # identique à celle d'avant #166 pour qui n'a rien activé.
     health = _strip(store.one("SELECT * FROM health_day WHERE date <= ? ORDER BY date DESC LIMIT 1",
-                              (today.isoformat(),)), "body_md", "data_json")
+                              (today.isoformat(),)), "body_md", "data_json",
+                    "cycle_phase", "cycle_day", "cycle_source")
     files = store.rows("SELECT parsed_ok, COUNT(*) AS n FROM source_file WHERE kind IS NOT NULL "
                        "AND kind NOT IN ('athlete','objective') GROUP BY parsed_ok")
     # `collision` (#69, revue de code) : un item de `backfill()` peut être un
@@ -455,6 +479,21 @@ def api_summary(store: Store, q: dict) -> dict:
     }
 
 
+def api_pace_curve(store: Store, q: dict) -> dict:
+    """Courbe allure-durée GAP, vitesse critique CS et D′ (#169) : `/api/pace-curve?days=N&lt_speed_ms=V`.
+    Additive : ne touche à aucune route existante. Délègue à `arc_index.pace_curve` (mêmes chiffres que
+    la CLI `pace-curve`) ; `days` (1 à 730, défaut 365) = profondeur de la tendance. Refus explicite et
+    motivé quand les données ne permettent pas l'ajustement — jamais une CS inventée. Aucune donnée GPS
+    ni de santé."""
+    days_raw = q.get("days", [""])[0]
+    days = max(1, min(730, int(days_raw))) if days_raw.isdigit() else None
+    try:
+        lt = float(q.get("lt_speed_ms", [""])[0])
+    except ValueError:
+        lt = None
+    return store.pace_curve(_today(store), days, lt)
+
+
 def api_gait(store: Store, q: dict) -> dict:
     """Synthèse « Foulée » (#151) : `/api/gait?weeks=N` (défaut 26, 1 à 104). Additive : ne touche à
     aucune route existante. Délègue à `arc_index.gait_summary` (mêmes chiffres que la CLI
@@ -463,6 +502,26 @@ def api_gait(store: Store, q: dict) -> dict:
     weeks_raw = q.get("weeks", [""])[0]
     weeks = int(weeks_raw) if weeks_raw.isdigit() else I.GAIT_DEFAULT_WEEKS
     return store.gait(_today(store), max(1, min(104, weeks)))
+
+
+def api_decision_effects(store: Store, q: dict) -> dict:
+    """Effet des décisions (#175) : `/api/decision-effects?days=N&trigger=T` (défaut 180 j, 1 à 3650).
+    Additive. Délègue à `arc_index.decision_effects` (mêmes chiffres que la CLI) — effets DÉRIVÉS, jamais
+    stockés ; corrélation, pas causalité (`caveat`)."""
+    days_raw = q.get("days", [""])[0]
+    days = max(1, min(3650, int(days_raw))) if days_raw.isdigit() else None
+    trigger = q.get("trigger", [""])[0] or None
+    if trigger and trigger not in I.C.DECISION_TRIGGER:
+        trigger = None
+    return store.decision_effects(_today(store), days, trigger)
+
+
+def api_altitude_exposure(store: Store, q: dict) -> dict:
+    """Exposition à l'altitude (#185) : `/api/altitude-exposure[?days=N]` (défaut : fenêtres 14 et
+    28 j). Additive. Délègue à `arc_index.altitude_exposure` (mêmes chiffres que la CLI) ; aucune
+    coordonnée GPS ni donnée de santé."""
+    raw = q.get("days", [""])[0]
+    return store.altitude_exposure(_today(store), max(1, min(365, int(raw))) if raw.isdigit() else None)
 
 
 def api_assumptions(store: Store, q: dict) -> dict:
@@ -532,6 +591,18 @@ def api_load(store: Store, q: dict) -> dict:
         hr_zones_reason = I.athlete_hr_zone_resolution(store.conn, conf)["reason"]
     return {"weeks": list(buckets.values()), "monotony": latest.get("monotony"), "strain": latest.get("strain"),
             "polarisation_weeks": polarisation, "hr_zones_reason": hr_zones_reason}
+
+
+def api_load_forecast(store: Store, q: dict) -> dict:
+    """Projection de charge sur le bloc (#172) : `/api/load-forecast`. Délègue à `arc_index.load_forecast`
+    (même fonction que la CLI) ; `until=AAAA-MM-JJ` optionnel. Estimation à partir du planifié, jamais une mesure."""
+    until = q.get("until", [""])[0] or None
+    today = _today(store)
+    try:
+        with store.lock:
+            return I.load_forecast(store.conn, today, until)
+    except I.ConfigError as exc:
+        return {"status": "invalid_until", "reason": str(exc)}
 
 
 def api_health(store: Store, q: dict) -> dict:
@@ -741,7 +812,7 @@ def api_activity_climbs(store: Store, activity_id: int) -> dict:
     (`climbs: [], reason: None`), au lieu d'afficher partout le même message
     « aucune montée détectée » qui laisserait croire à tort qu'une séance de
     renforcement ou de vélo aurait pu en avoir une."""
-    act = store.one("SELECT sport, garmin_activity_id, intervals_activity_id FROM activity WHERE id = ?",
+    act = store.one("SELECT sport, garmin_activity_id, intervals_activity_id, strava_activity_id FROM activity WHERE id = ?",
                     (activity_id,))
     empty = {"climbs": [], "vam_by_grade_class": {}}
     if act is None:
@@ -799,7 +870,7 @@ def api_activity_descent(store: Store, activity_id: int) -> dict:
     TOUS les cas vides (contrairement aux montées, l'absence de classe
     qualifiante est toujours documentée ici — critère d'acceptation de #47 :
     « classes sans assez de données -> absentes », jamais silencieusement)."""
-    act = store.one("SELECT sport, garmin_activity_id, intervals_activity_id, descent_reference_gap_pace_s_km, "
+    act = store.one("SELECT sport, garmin_activity_id, intervals_activity_id, strava_activity_id, descent_reference_gap_pace_s_km, "
                      "descent_reference_source FROM activity WHERE id = ?", (activity_id,))
     empty = {"classes": {}, "reference_gap_pace_s_km": None, "reference_source": None}
     if act is None:
@@ -947,6 +1018,28 @@ def api_report(store: Store, q: dict):
     if not row:
         return None
     return {**_strip(row, "body_md"), "body_html": render_markdown(I.C.body_after_block(row["body_md"] or ""))}
+
+
+def api_block(store: Store, q: dict) -> dict:
+    """Frise du bloc planifié (#193) : phases semaine par semaine + repère de course. Lecture seule de
+    l'index (`week`, `activity`, `objective`) ; la logique pure vit dans `arc_block_timeline`."""
+    today = _today(store)
+    weeks = store.rows("SELECT week_start, phase, week_type, target_duration_s, target_distance_m, "
+                       "target_elevation_m FROM week WHERE shadowed = 0 ORDER BY week_start")
+    starts = BT.select_block([w["week_start"] for w in weeks if w["week_start"]], today, BT.block_bridgeable(weeks))
+    done: dict = {}
+    if starts:
+        last = date.fromisoformat(starts[-1]) + timedelta(days=6)
+        for row in store.rows("SELECT date, distance_m, duration_s, elevation_gain_m FROM activity "
+                              "WHERE sport != 'rest' AND date >= ? AND date <= ?", (starts[0], last.isoformat())):
+            ws = _monday(date.fromisoformat(row["date"])).isoformat()
+            agg = done.setdefault(ws, {"duration_s": 0, "distance_m": 0, "elevation_m": 0, "sessions": 0})
+            agg["duration_s"] += row["duration_s"] or 0
+            agg["distance_m"] += row["distance_m"] or 0
+            agg["elevation_m"] += row["elevation_gain_m"] or 0
+            agg["sessions"] += 1
+    obj = store.one("SELECT name, race_date FROM objective WHERE race_date IS NOT NULL ORDER BY source_path LIMIT 1")
+    return BT.build(weeks, done, obj["race_date"] if obj else None, today, obj["name"] if obj else None)
 
 
 def api_calendar(store: Store, q: dict) -> dict:
@@ -1169,6 +1262,42 @@ def api_trail_shape(store: Store, q: dict) -> dict:
     today = _today(store)
     with store.lock:
         return I.trail_shape_report(store.conn, today)
+
+
+def api_roadbook(store: Store, q: dict) -> dict:
+    """Roadbook imprimable d'un plan de course (#187) : `/api/roadbook?plan=<fichier>&scenario=`.
+
+    Délègue ENTIÈREMENT à `arc_roadbook.build_roadbook` (heures de passage et marges de barrière :
+    `arc_race_pacing`, matériel : `arc_index.equipment_race_check`, #134) — aucun calcul ici. Sans
+    `plan`, le prochain plan dont la date n'est pas passée (sinon le plus récent) ; `scenario`
+    (`safe|realistic|ambitious`) ne garde que ce scénario, absent ou inconnu = les trois (la page
+    bascule sans nouvel appel). Lecture seule, aucune donnée de santé."""
+    plan = (q.get("plan", [""])[0] or "").strip()
+    wanted = (q.get("scenario", [""])[0] or "").strip()
+    today = _today(store)                  # avant le verrou : `store.meta` le prend aussi
+    with store.lock:
+        plans = [dict(r) for r in store.conn.execute(
+            "SELECT source_path AS path, race_name, race_date FROM race_plan ORDER BY race_date DESC, source_path")]
+        if not plans:
+            return {"status": "no_plan", "plans": [],
+                    "message": "Aucun plan de course indexé : demande-le au course-strategist."}
+        check = I.equipment_race_check(store.conn, plan or None, today, store.workspace)
+        if check.get("error"):
+            return {"status": "plan_not_found", "plans": plans, "message": check["error"]}
+        row = store.conn.execute("SELECT data_json FROM race_plan WHERE source_path = ?",
+                                 (check["race_plan"],)).fetchone()
+    try:
+        data = json.loads(row["data_json"] or "{}")
+    except ValueError:
+        data = {}
+    model = RB.build_roadbook(data, plan_path=check["race_plan"], gear_check=check)
+    model["plans"] = plans
+    if wanted in RB.SCENARIOS:
+        model["scenarios"] = {wanted: model["scenarios"][wanted]}
+        model["default_scenario"] = wanted
+    elif wanted and wanted != "all":
+        model["warnings"].append(f"scénario inconnu « {wanted} » : les trois scénarios sont renvoyés")
+    return model
 
 
 def api_slope_model(store: Store, q: dict) -> dict:
@@ -1461,13 +1590,15 @@ ROUTES = {
     "/api/summary": api_summary, "/api/assumptions": api_assumptions, "/api/form": api_form, "/api/load": api_load,
     "/api/health": api_health, "/api/week": api_week, "/api/activities": api_activities,
     "/api/performance": api_performance, "/api/reports": api_reports, "/api/report": api_report,
-    "/api/calendar": api_calendar, "/api/nutrition": api_nutrition, "/api/fueling": api_fueling,
+    "/api/calendar": api_calendar, "/api/block": api_block, "/api/nutrition": api_nutrition, "/api/fueling": api_fueling,
     "/api/decoupling": api_decoupling, "/api/vam": api_vam, "/api/descent": api_descent,
     "/api/durability": api_durability, "/api/slope-model": api_slope_model, "/api/files": api_files,
     "/api/trail-shape": api_trail_shape, "/api/energy-trend": api_energy_trend,
     "/api/climb-segments": api_climb_segments, "/api/decisions": api_decisions,
     "/api/injury-risk": api_injury_risk, "/api/performance-index": api_performance_index,
-    "/api/gait": api_gait,
+    "/api/gait": api_gait, "/api/altitude-exposure": api_altitude_exposure, "/api/pace-curve": api_pace_curve,
+    "/api/decision-effects": api_decision_effects, "/api/load-forecast": api_load_forecast,
+    "/api/roadbook": api_roadbook,
 }
 
 # ---------------------------------------------------------------------------

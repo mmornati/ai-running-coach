@@ -153,23 +153,36 @@ SEGMENT_ID_CLIMB_MULTIPLIER = 10_000
 # le CLI (`--segment`) et les liens `#/montee/<id>` déjà mémorisés. À reconsidérer
 # dans une évolution dédiée si un troisième espace d'identifiants apparaît.
 INTERVALS_SEED_OFFSET = 500_000_000_000
+# Troisième espace (#164) : une séance Strava (`s<chiffres>`, entier Strava ~2·10¹⁰ aujourd'hui)
+# est décalée de 10¹¹, entre les identifiants Garmin (~2·10¹⁰) et le décalage Intervals.icu
+# (5·10¹¹) ; ses chiffres doivent rester sous l'écart (4·10¹¹), sinon `ValueError`.
+STRAVA_SEED_OFFSET = 100_000_000_000
 # Plus grande graine dont les identifiants de segment (`graine × SEGMENT_ID_CLIMB_MULTIPLIER
 # + indice`) restent sous `Number.MAX_SAFE_INTEGER` (2⁵³ − 1) — au-delà, le tableau de bord
 # arrondirait silencieusement l'identifiant. Chiffres Intervals.icu admis : < ~4·10¹¹.
 MAX_SEGMENT_SEED = (2 ** 53 - 1) // SEGMENT_ID_CLIMB_MULTIPLIER - 1
 _INTERVALS_ID_RE = re.compile(r"^i(\d+)$")   # même forme que `arc_samples.INTERVALS_ID_RE`
+_STRAVA_ID_RE = re.compile(r"^s(\d+)$")      # même forme que `arc_samples.STRAVA_ID_RE`
 
 
 def segment_seed(ref) -> int:
     """Graine entière de `climb_segment.id` pour l'identifiant externe d'une séance :
-    le `garmin_activity_id` tel quel, ou `INTERVALS_SEED_OFFSET + chiffres` pour un
-    `intervals_activity_id` (`i123456789` → 500 123 456 789) — voir ASSUMPTIONS["segment_id"].
+    le `garmin_activity_id` tel quel, `INTERVALS_SEED_OFFSET + chiffres` pour un
+    `intervals_activity_id` (`i123456789` → 500 123 456 789) ou `STRAVA_SEED_OFFSET + chiffres`
+    pour un `strava_activity_id` (#164) — voir ASSUMPTIONS["segment_id"].
     `ValueError` sur un identifiant mal formé ou une graine au-delà de `MAX_SEGMENT_SEED` :
     jamais un identifiant faux produit en silence."""
-    if isinstance(ref, str):
+    if isinstance(ref, str) and _STRAVA_ID_RE.match(ref):
+        digits = int(ref[1:])
+        if digits >= INTERVALS_SEED_OFFSET - STRAVA_SEED_OFFSET:
+            raise ValueError(f"identifiant Strava hors bornes : {ref!r} (chiffres < "
+                             f"{INTERVALS_SEED_OFFSET - STRAVA_SEED_OFFSET})")
+        seed = STRAVA_SEED_OFFSET + digits
+    elif isinstance(ref, str):
         match = _INTERVALS_ID_RE.match(ref)
         if not match:
-            raise ValueError(f"identifiant Intervals.icu invalide : {ref!r} (attendu « i » + chiffres)")
+            raise ValueError(f"identifiant Intervals.icu ou Strava invalide : {ref!r} "
+                             "(attendu « i » ou « s » + chiffres)")
         seed = INTERVALS_SEED_OFFSET + int(match.group(1))
     else:
         seed = int(ref)
@@ -257,7 +270,7 @@ ASSUMPTIONS = {
         "index_de_la_montée_dans_cette_activité` (1-based, `arc_climb.detect_climbs` "
         "l'attribue déjà) — graine = `garmin_activity_id`, ou `INTERVALS_SEED_OFFSET + "
         "chiffres de l'intervals_activity_id` pour une séance Intervals.icu (#68, "
-        "`segment_seed` : espace disjoint, jamais de collision avec un id Garmin) — JAMAIS un compteur séquentiel assigné dans l'ordre de "
+        "`segment_seed` : espace disjoint, jamais de collision avec un id Garmin ; `STRAVA_SEED_OFFSET + chiffres` pour une séance Strava, #164) — JAMAIS un compteur séquentiel assigné dans l'ordre de "
         "traitement des activités (bug corrigé : avec un compteur, indexer une activité "
         "plus ANCIENNE que celles déjà connues décalait l'id de TOUS les segments créés "
         "après elle dans l'ordre chronologique, même sans aucun rapport avec la nouvelle "

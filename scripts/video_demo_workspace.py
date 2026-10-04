@@ -29,6 +29,8 @@ montées de la séance restent alors vides).
 from __future__ import annotations
 
 import argparse
+import contextlib
+import io
 import json
 import re
 import shutil
@@ -596,6 +598,89 @@ couverture de survie obligatoire. Chaussures : Crête Pro (bleue), sous le seuil
 *Plan indicatif, ne remplace pas un avis médical ni la lecture du règlement de la course.*""")
 
 
+# ---------------------------------------------------------------------------
+# Ultra des Crêtes (épisode 14) : un plan de nuit, calculé par le vrai moteur de pacing
+# ---------------------------------------------------------------------------
+# Le projet de l'an prochain de Camille : 66 km, ~3 600 m D+, départ à 16 h le samedi du passage à
+# l'heure d'hiver. Parcours SYNTHÉTIQUE (profil rectiligne inventé, coordonnées jamais écrites dans le
+# workspace) passé dans `arc_race_pacing.build_race_plan` : nuit (#184), technicité simulée à partir de
+# chemins OpenStreetMap fictifs (#186), segments, passages. Rien n'est dessiné à la main : le roadbook
+# montré à l'écran est celui que le tableau de bord calcule vraiment.
+
+ULTRA_DATE = date(2027, 10, 30)
+ULTRA_PROFILE = [(0, 1000), (8, 1750), (13, 1450), (22, 2350), (28, 1650), (34, 2150), (41, 1250),
+                 (49, 2300), (55, 2000), (60, 2450), (66, 1100)]          # (km, altitude m) fictifs
+ULTRA_BINS = [(-0.15, 2.7, 140), (-0.08, 3.0, 140), (0.0, 2.6, 145), (0.08, 1.25, 155), (0.15, 0.9, 162)]
+ULTRA_STATIONS = [
+    {"km": 13, "name": "Col de la Combe", "services": ["eau", "solide", "soupe"], "cutoff": "+03:15",
+     "take": ["2 gels", "500 ml de boisson d'effort"]},
+    {"km": 28, "name": "Refuge du Houx", "services": ["eau", "solide", "soupe"], "cutoff": "+06:00",
+     "take": ["1 barre", "500 ml d'eau"]},
+    {"km": 41, "name": "Base de vie des Crêtes", "services": ["repas chaud", "eau"], "stop_s": 600,
+     "cutoff": "+08:30", "take": ["repas chaud", "piles de frontale"]},
+    {"km": 55, "name": "Bergerie haute", "services": ["eau", "solide"], "cutoff": "+13:00",
+     "take": ["2 gels", "caféine"]},
+]
+# Tronçons techniques (km, km, tags OSM fictifs) ; le reste du parcours est une piste facile.
+ULTRA_WAYS = [
+    (0, 66, {"highway": "track", "tracktype": "grade2"}),
+    (6, 13, {"highway": "path", "sac_scale": "mountain_hiking"}),
+    (18, 25, {"highway": "path", "sac_scale": "alpine_hiking", "surface": "rock", "trail_visibility": "bad"}),
+    (30, 34, {"highway": "path", "sac_scale": "mountain_hiking"}),
+    (44, 53, {"highway": "path", "sac_scale": "demanding_mountain_hiking", "surface": "rock"}),
+    (57, 61, {"highway": "path", "sac_scale": "alpine_hiking", "trail_visibility": "bad"}),
+]
+
+
+def _ultra_elevation(d_m: float) -> float:
+    km = d_m / 1000.0
+    for (k0, e0), (k1, e1) in zip(ULTRA_PROFILE, ULTRA_PROFILE[1:]):
+        if k0 <= km <= k1:
+            u = (km - k0) / (k1 - k0)
+            return e0 + (e1 - e0) * (u * u * (3 - 2 * u) * 0.35 + u * 0.65)
+    return float(ULTRA_PROFILE[-1][1])
+
+
+def ultra_pacing() -> dict:
+    """Plan de pacing de l'Ultra des Crêtes : le vrai `build_race_plan`, sur un parcours inventé."""
+    import math
+    import arc_race_pacing as RP
+    lat, lon, step = 45.05, 6.45, 25.0                      # zone alpine imaginaire, jamais persistée
+    m_per_deg = 111320.0 * math.cos(math.radians(lat))
+    pts = [{"lat": lat, "lon": lon + i * step / m_per_deg, "ele": _ultra_elevation(i * step)}
+           for i in range(int(66000 / step) + 1)]
+    bins = [{"grade_mid": g, "speed_ms": v, "source": "personal", "ci_low_speed_ms": v * 0.92,
+             "ci_high_speed_ms": v * 1.06, "hr_bpm": h} for g, v, h in ULTRA_BINS]
+    ways = [{"tags": tags, "geom": [(lat, lon + a * 1000 / m_per_deg), (lat, lon + b * 1000 / m_per_deg)]}
+            for a, b, tags in ULTRA_WAYS]
+    techno = {"ways": ways, "osm_requested": True, "osm_status": "ok", "osm_baseline": 1.06,
+              "osm_baseline_label": "sac_scale=mountain_hiking"}
+    return RP.build_race_plan(pts, bins, aid_stations=ULTRA_STATIONS, fade_pct=4.0, start_time="16:00",
+                              race_date=ULTRA_DATE.isoformat(), segment_m=1500.0, tz="Europe/Paris",
+                              technicity=techno)
+
+
+def write_ultra_plan(root: Path) -> None:
+    pacing = ultra_pacing()
+    totals = pacing["totals"]
+    write(root, "planning/2026-09-27_ultra_ultra-des-cretes.md", "Plan de course — Ultra des Crêtes", {
+        "arc": 1, "kind": "race_plan", "date": "2026-09-27", "race_name": "Ultra des Crêtes",
+        "race_date": ULTRA_DATE.isoformat(), "start_time": f"{ULTRA_DATE.isoformat()}T16:00",
+        "timezone": "Europe/Paris", "distance_m": totals["distance_m"], "elevation_gain_m": totals["elevation_gain_m"],
+        "target_time_s": totals["time_s"]["realistic"], "scenarios": dict(totals["time_s"]),
+        "aid_stations": ULTRA_STATIONS,
+        "gear": ["Frontale", "Frontale de secours", "Couverture de survie", "Poche à eau", "Veste imperméable"],
+        "notes": ["Rien de nouveau le jour J", "Frontale allumée dès 18 h 56", "Caféine après H+8 seulement"],
+        "emergency": ["Organisation : numéro au dos du dossard", "Abandon possible à chaque ravito"],
+        "segments": pacing["segments"],
+    }, """## Projet de l'an prochain
+
+Ultra de nuit, départ à 16 h : la nuit tombe au km 20 environ et dure plus de douze heures, à cheval sur
+le passage à l'heure d'hiver. Plan fictif de démonstration (parcours inventé), à recalibrer avec la saison.
+
+*Plan indicatif, ne remplace pas un avis médical ni la lecture du règlement de la course.*""")
+
+
 def _week_stats(root: Path, monday: date) -> dict:
     n = secs = gain = 0
     for path in activity_files(root):
@@ -718,10 +803,38 @@ def set_departure(root: Path) -> int:
 
 
 # ---------------------------------------------------------------------------
+# Bloc d'entraînement (épisode 15) : squelette écrit par le VRAI `plan-skeleton`
+# ---------------------------------------------------------------------------
+
+BLOC_OBJECTIVE = {                    # variante « bloc » : le Trail des Crêtes (22 nov.) n'a que 7 semaines, gabarit trop court
+    "Nom": "Trail du Solstice", "Date": "2026-12-27", "Distance": "42 km", "Dénivelé positif": "2 000 m",
+    "Temps visé": "6 h 20", "Scénario acceptable / scénario noir": "acceptable : 7 h 00 · noir : abandon sur blessure",
+    "Semaines restantes": "13",
+}
+
+
+def write_skeleton(root: Path) -> None:
+    """Vise la course de fin décembre (objectif actif de la variante), puis écrit les semaines du bloc avec
+    `arc_index.py plan-skeleton --write`
+    (gabarit marathon_trail, volume tenu lu dans l'index, chaque semaine vérifiée par les garde-fous) : rien n'est
+    inventé ici, c'est la sortie réelle de la commande. À la date du film (J-54 du Trail des Crêtes) ce même
+    gabarit, appliqué à la course du 22 novembre, répond honnêtement « trop court » (7 semaines pour 12)."""
+    import arc_index as I
+    text = _fill_template((REPO / "templates/active_objective.template.md").read_text(encoding="utf-8"),
+                          {**OBJECTIVE_VALUES, **BLOC_OBJECTIVE})
+    text = text.replace("|  |  |  |", "| 2026-09-29 | Objectif fixé : Trail du Solstice | Squelette du bloc généré par plan-skeleton |")
+    (root / "planning/active_objective.md").write_text(text, encoding="utf-8")
+    with contextlib.redirect_stdout(io.StringIO()):              # la sortie JSON de la commande n'intéresse pas
+        rc = I.main(["plan-skeleton", "--workspace", str(root), "--today", TODAY.isoformat(), "--write"])
+    if rc not in (0, None):
+        raise RuntimeError(f"plan-skeleton --write a échoué ({rc})")
+
+
+# ---------------------------------------------------------------------------
 # Assemblage
 # ---------------------------------------------------------------------------
 
-def build_demo(root: Path, *, with_samples: bool = True, force: bool = False) -> Path:
+def build_demo(root: Path, *, with_samples: bool = True, force: bool = False, bloc: bool = False) -> Path:
     root = Path(root)
     if root.exists() and any(root.iterdir()):
         if not force:
@@ -745,11 +858,14 @@ def build_demo(root: Path, *, with_samples: bool = True, force: bool = False) ->
     write_decisions(root)
     write_weather(root)
     write_race_plan(root)
+    write_ultra_plan(root)
     write_reports(root)
     if with_samples:
         write_samples(root)
     set_departure(root)
     write_inspections(root)                       # après le départ : kilométrages cohérents avec la fiche
+    if bloc:                                      # épisode 15 seulement : les autres épisodes gardent le workspace d'origine
+        write_skeleton(root)                      # en dernier : lit le volume tenu dans l'index
     return root
 
 

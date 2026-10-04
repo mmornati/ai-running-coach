@@ -82,6 +82,16 @@ Garder les autres champs en mémoire seulement si utile (visibilité, pression).
 - Pluie modérée (🟡) → OK si matériel imperméable ; vent fort → allure GPS compromise, courir **au cardio** (pas au GPS).
 - Chaleur 🟠 + séance longue (> 90 min) → emporter ≥ 1L/h + électrolytes + casquette.
 
+## Cibles de séance ajustées à la chaleur (#171)
+
+Les seuils du tableau « Catégories & seuils » (température, vent, pluie, UV) sont repris par `scripts/arc_heat.py` (`WEATHER_*`) — **toute modification du tableau doit y être reportée** : un test du dépôt (palier B) échoue si les deux divergent. L'ajustement des cibles d'entraînement est **déterministe, dans le script**, jamais dans le prompt. Pour une séance de course à pied en extérieur un jour chaud (> 25 °C) ou 🔴 : `python3 scripts/arc_workout_targets.py targets --heat --session …` (lit ce fichier météo du jour). Il renvoie `heat_adjustment` (facteur sur l'allure, action, motif, rappels hydratation/sodium reliés au taux de sudation) :
+
+- endurance / sortie longue : durée conservée, **allure** ralentie, **FC inchangée** ;
+- qualité / allure course : créneau frais d'abord (cette section), sinon allures abaissées ou séance déplacée ; **jamais d'intensité maintenue en 🔴** ;
+- la température retenue est `temp_min_c` pour le créneau `morning`, `temp_max_c` sinon (le bloc n'a pas de température horaire) ; `feels_like_c` la remplace s'il est plus élevé (sauf au créneau `morning` : le ressenti du fichier est journalier) ; `humidity_pct` absent → repli sur la température seule, dit dans `notes`.
+
+Citer le motif (`reason`) dans le rapport ; les mêmes coefficients que le pacing de course (`ASSUMPTIONS["heat"]`, source unique `scripts/arc_heat.py`).
+
 ## Persistance — `medical/YYYY-MM-DD_meteo.md`
 
 **Une fois par jour, par lieu.** Le fichier s'ouvre par son bloc ```arc (`kind: weather` : `location`, `category` en `green` / `yellow` / `orange` / `red`, `best_slot` en `morning` / `midday` / `evening` / `none`, valeurs en °C, km/h, mm — voir le skill `workspace-data-contract`), puis le texte ci-dessous. Format dans la langue des documents (`config/workspace.toml` → `[language].documents`, défaut FRENCH) :
@@ -113,6 +123,10 @@ Garder les autres champs en mémoire seulement si utile (visibilité, pression).
 ```
 
 **Ne PAS refetcher** un jour qui a déjà son fichier < 24 h (règle d'idempotence).
+
+## Contexte du cycle (opt-in, #166) — chaleur et hydratation
+
+**Seulement si** `[health].cycle_tracking` n'est pas `off` (défaut `off` ; absent, vide ou invalide = `off`) **et** qu'une `cycle_phase` est enregistrée pour le jour dans `medical/YYYY-MM-DD_health.md` : en phase lutéale, une séance 🟡/🟠 par temps chaud peut être ressentie comme plus difficile — ajoutez au plus UNE ligne de contexte à la section météo (« chaleur : prévoir hydratation et électrolytes plutôt généreux »). Jamais une catégorie recalculée, jamais un seuil modifié, jamais un diagnostic. À `off`, ou sans phase enregistrée : aucune mention.
 
 ## Workflow coach (référence)
 

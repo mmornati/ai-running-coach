@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""Téléchargeur de fichiers FIT — Garmin Connect ou Intervals.icu, sans passer par le MCP.
+"""Téléchargeur de fichiers FIT — Garmin Connect ou Intervals.icu, ou flux Strava, sans passer par le MCP.
 
-Deux sources, choisies par `--source` (défaut : `[data].source` du workspace, #68) :
+Trois sources, choisies par `--source` (défaut : `[data].source` du workspace, #68) :
 
 - **`garmin`** — résout le timeout MCP de `get_activity_fit_data` (records GPS =
   payload de plusieurs Mo qui dépasse le timeout côté client). Utilise la librairie
@@ -15,6 +15,14 @@ Deux sources, choisies par `--source` (défaut : `[data].source` du workspace, #
   HealthFit/RunGap…) — SAUF celles importées depuis Strava, que l'API Strava interdit
   de redistribuer : elles sont détectées (`source = "STRAVA"`) et sautées avec une
   raison explicite, jamais un FIT vide ni une valeur inventée.
+- **`strava`** (#164) — Strava ne sert PAS de fichier FIT : l'API REST (`GET /activities/<id>/streams`,
+  bibliothèque standard `urllib`) rend les flux par seconde (temps, distance, altitude, FC, vitesse
+  lissée, cadence, GPS), normalisés par `arc_samples.strava_streams_to_records` vers le même
+  `activities/fit/s<chiffres>.json` que le FIT — donc les mêmes KPI. Authentifié par les jetons du
+  serveur MCP communautaire (`~/.config/strava-mcp/config.json`, écrit par son outil `connect-strava`) ;
+  un jeton expiré est rafraîchi (le nouveau jeton, rotatif, est réécrit atomiquement dans ce même
+  fichier) — aucun secret n'est jamais affiché. Pas de `.fit` brut ni de `<id>.records.json` : la
+  copie normalisée est toujours écrite, avec ou sans `--json`.
 
 Usage:
   download_fit.py 12345678901                          # -> activities/12345678901.fit
@@ -25,7 +33,7 @@ Usage:
   download_fit.py i123456789 --json --source intervals # -> activities/i123456789.fit (+ fit/i123456789.json)
 
 Options:
-  --source       garmin | intervals (défaut: [data].source du workspace, sinon garmin)
+  --source       garmin | intervals | strava (défaut: [data].source du workspace, sinon garmin)
   --output-dir   Répertoire de sortie (défaut: activities/)
   --json         Écrit aussi <id>.records.json (bruts fitparse) ET la copie normalisée
                  activities/fit/<id>.json (#42 — ingérée par `scripts/arc_index.py`)
@@ -44,7 +52,8 @@ Options:
   --python PATH  Interpréteur contenant garminconnect/fitparse (auto-détecté sinon)
 
 Identifiants : un entier pour Garmin (`garmin_activity_id` du bloc ```arc), une
-chaîne `i<chiffres>` pour Intervals.icu (`intervals_activity_id`). La copie
+chaîne `i<chiffres>` pour Intervals.icu (`intervals_activity_id`), `s<chiffres>` pour Strava
+(`strava_activity_id`, préfixe du projet — l'API rend l'entier nu). La copie
 normalisée porte ce même identifiant dans son nom (`fit/i123456789.json`) : c'est
 lui qu'`arc_index.py` utilise pour la rattacher à la séance.
 
@@ -121,6 +130,8 @@ _RELAUNCH = {
         "fix": "→ relancez ./install.sh --source intervals (installe fitparse dans l'environnement "
                "intervals-icu-mcp), ou passez --python vers un interpréteur qui a fitparse",
     },
+    # Strava (#164) : téléchargement stdlib et pas de FIT à lire — aucun module, aucun relancement.
+    "strava": {"module": None, "env": "STRAVA_PYTHON", "tool": None, "fix": ""},
 }
 
 
@@ -304,7 +315,7 @@ def _persist_fit(fit: bytes, activity_id, out_dir: Path, want_json: bool) -> Pat
 
 INTERVALS_API = "https://intervals.icu/api/v1"
 # Identifiant d'une activité importée dans Intervals.icu (fichier FIT/TCX/GPX) :
-# « i » + chiffres, ex. `i123456789` — la forme que `get_recent_activities` rend et
+# « i » + chiffres, ex. `i123456789` — la forme que `icu_get_recent_activities` rend et
 # que le contrat stocke dans `intervals_activity_id`. Une activité importée depuis
 # Strava porte, elle, un identifiant sans préfixe — et n'est de toute façon pas
 # redistribuable (voir `IntervalsUnavailable`).
@@ -427,6 +438,178 @@ def _download_one_intervals(activity_id: str, out_dir: Path, want_json: bool, ap
     if not fit:
         raise IntervalsUnavailable("fichier FIT vide renvoyé par Intervals.icu")
     return _persist_fit(fit, activity_id, out_dir, want_json)
+
+
+# ---------------------------------------------------------------------------
+# Source Strava (#164) — flux par seconde via l'API REST, bibliothèque standard uniquement
+# ---------------------------------------------------------------------------
+
+STRAVA_API = "https://www.strava.com/api/v3"
+STRAVA_TOKEN_URL = "https://www.strava.com/oauth/token"
+# Fichier de jetons du serveur MCP communautaire r-huijts/strava-mcp (clés camelCase `clientId`,
+# `clientSecret`, `accessToken`, `refreshToken`, `expiresAt` en secondes epoch — src/config.ts du
+# commit épinglé par install.sh). Une seule connexion OAuth pour le MCP ET pour ce script.
+STRAVA_CONFIG_FILE = Path("~/.config/strava-mcp/config.json")
+STRAVA_ID_RE = re.compile(r"^s\d+$")
+# Flux demandés (`keys`, avec `key_by_type=true` — exigé par l'API) : ceux que normalise
+# `arc_samples.strava_streams_to_records`. La puissance (`watts`) n'est pas demandée : aucune
+# colonne d'échantillon ne la porte.
+STRAVA_STREAM_KEYS = "time,distance,altitude,heartrate,velocity_smooth,cadence,latlng"
+# Marge (s) avant `expiresAt` à partir de laquelle on rafraîchit le jeton d'accès.
+_STRAVA_REFRESH_MARGIN_S = 120
+
+
+class StravaError(RuntimeError):
+    """Échec d'un appel à l'API Strava (réseau, authentification, statut HTTP, jetons absents).
+    Les messages ne contiennent JAMAIS un jeton, un secret client ou un corps de réponse."""
+
+
+class StravaUnavailable(StravaError):
+    """Activité sans flux récupérable (saisie manuelle, introuvable, d'un autre athlète) — jamais
+    une panne : une raison à dire à l'athlète, la séance reste valide sans échantillons."""
+
+
+class StravaTokens:
+    """Jetons Strava lus dans le fichier du serveur MCP communautaire, rafraîchis au besoin.
+
+    Le jeton de rafraîchissement de Strava est ROTATIF : chaque rafraîchissement en émet un nouveau
+    et invalide l'ancien — il est donc réécrit sur place (même fichier que le MCP, atomiquement,
+    mode 0600, autres clés conservées) avant toute autre utilisation, sinon le MCP serait
+    déconnecté. Si le serveur MCP tourne en même temps, il relit ce fichier à chaque démarrage
+    seulement : éviter de lancer un téléchargement pendant une session MCP qui rafraîchit aussi.
+    `opener`/`now` injectables pour les tests (aucun appel réseau, aucune horloge réelle)."""
+
+    def __init__(self, path: Path | None = None, opener=None, now=None):
+        import time
+
+        self.path = (path or STRAVA_CONFIG_FILE).expanduser()
+        self.opener = opener
+        self._now = now or time.time
+        self.data = self._load()
+        if not (self.data.get("accessToken") and self.data.get("refreshToken")):
+            raise StravaError(
+                f"jetons Strava introuvables ({STRAVA_CONFIG_FILE}) — lancez `./install.sh --source strava` "
+                "puis demandez à l'agent d'exécuter l'outil `connect-strava` du serveur strava, "
+                "voir docs/strava-setup.md")
+
+    def _load(self) -> dict:
+        try:
+            data = json.loads(self.path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            return {}
+        return data if isinstance(data, dict) else {}
+
+    @property
+    def access_token(self) -> str:
+        expires = self.data.get("expiresAt")
+        if isinstance(expires, (int, float)) and expires - self._now() < _STRAVA_REFRESH_MARGIN_S:
+            self.refresh()
+        return self.data["accessToken"]
+
+    def refresh(self) -> None:
+        """Échange le jeton de rafraîchissement (POST `/oauth/token`) et persiste le résultat."""
+        import urllib.error
+        import urllib.parse
+        import urllib.request
+
+        client_id = os.environ.get("STRAVA_CLIENT_ID") or self.data.get("clientId")
+        client_secret = os.environ.get("STRAVA_CLIENT_SECRET") or self.data.get("clientSecret")
+        if not (client_id and client_secret and self.data.get("refreshToken")):
+            raise StravaError("rafraîchissement impossible : clientId/clientSecret absents — relancer "
+                              "`connect-strava` (voir docs/strava-setup.md)")
+        body = urllib.parse.urlencode({
+            "client_id": client_id, "client_secret": client_secret,
+            "grant_type": "refresh_token", "refresh_token": self.data["refreshToken"]}).encode()
+        req = urllib.request.Request(STRAVA_TOKEN_URL, data=body, headers={
+            "User-Agent": "ai-running-coach/download_fit"})
+        try:
+            with (self.opener or urllib.request.urlopen)(req, timeout=_HTTP_TIMEOUT_S) as resp:
+                fresh = json.loads(resp.read().decode("utf-8"))
+        except urllib.error.HTTPError as exc:
+            raise StravaError(f"HTTP {exc.code} au rafraîchissement du jeton Strava — reconnecter le compte "
+                              "(`connect-strava`, voir docs/strava-setup.md)") from exc
+        except urllib.error.URLError as exc:
+            raise StravaError(f"Strava injoignable ({exc.reason})") from exc
+        except ValueError as exc:
+            raise StravaError("réponse illisible au rafraîchissement du jeton Strava") from exc
+        if not (isinstance(fresh, dict) and fresh.get("access_token") and fresh.get("refresh_token")):
+            raise StravaError("réponse de rafraîchissement Strava incomplète")
+        self.data.update(accessToken=fresh["access_token"], refreshToken=fresh["refresh_token"],
+                         expiresAt=fresh.get("expires_at"))
+        self._persist()
+
+    def _persist(self) -> None:
+        # Fusion avec le contenu actuel du fichier (le MCP a pu y écrire entre-temps), puis
+        # remplacement atomique : jamais un fichier de jetons à moitié écrit.
+        merged = {**self._load(), **self.data}
+        tmp = self.path.with_name(self.path.name + f".tmp{os.getpid()}")
+        fd = os.open(str(tmp), os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+        try:
+            with os.fdopen(fd, "w", encoding="utf-8") as fh:
+                json.dump(merged, fh, indent=2)
+            os.replace(tmp, self.path)
+        finally:
+            if tmp.exists():
+                tmp.unlink()
+
+
+def _strava_get(path: str, tokens: StravaTokens, opener=None, _retry: bool = True):
+    """GET JSON authentifié (Bearer). Un 401 déclenche UN rafraîchissement puis une relance.
+    Erreurs expliquées sans jamais citer le jeton ni le corps de la réponse."""
+    import urllib.error
+    import urllib.request
+
+    req = urllib.request.Request(f"{STRAVA_API}{path}", headers={
+        "Authorization": f"Bearer {tokens.access_token}", "User-Agent": "ai-running-coach/download_fit"})
+    try:
+        with (opener or urllib.request.urlopen)(req, timeout=_HTTP_TIMEOUT_S) as resp:
+            return json.loads(resp.read().decode("utf-8"))
+    except urllib.error.HTTPError as exc:
+        if exc.code == 401 and _retry:
+            tokens.refresh()
+            return _strava_get(path, tokens, opener, _retry=False)
+        if exc.code == 401:
+            raise StravaError(f"HTTP 401 sur {path} : jeton Strava refusé même après rafraîchissement — "
+                              "reconnecter le compte (`connect-strava`)") from exc
+        if exc.code == 403:
+            raise StravaError(f"HTTP 403 sur {path} : accès refusé — portée OAuth insuffisante "
+                              "(activity:read_all requise pour les activités privées) ou activité d'un autre "
+                              "athlète ; reconnecter le compte avec les bonnes portées") from exc
+        if exc.code == 429:
+            raise StravaError(f"HTTP 429 sur {path} : limite de requêtes de l'API Strava atteinte (par défaut "
+                              "100 requêtes de lecture / 15 min et 1000 / jour par application, partagées avec "
+                              "le serveur MCP) ; deux requêtes par séance : réessayer plus tard, par petits lots") from exc
+        if exc.code == 404:
+            raise StravaUnavailable(f"HTTP 404 sur {path} : activité introuvable, ou sans flux "
+                                    "(saisie manuelle)") from exc
+        raise StravaError(f"HTTP {exc.code} sur {path}") from exc
+    except urllib.error.URLError as exc:
+        raise StravaError(f"Strava injoignable ({exc.reason})") from exc
+    except ValueError as exc:
+        raise StravaError(f"réponse illisible de Strava sur {path}") from exc
+
+
+def _download_one_strava(activity_id: str, out_dir: Path, tokens: StravaTokens, opener=None) -> Path:
+    """Flux d'une activité Strava → copie normalisée `<out_dir>/fit/s<chiffres>.json`. Deux requêtes
+    (détail pour le sport, puis flux). Données privées de l'athlète : écrites seulement dans son espace
+    de travail (`activities/fit/` est gitignoré), jamais redistribuées (accord API Strava)."""
+    import arc_samples as S  # noqa: E402 (sys.path déjà préparé en tête de module)
+
+    if not STRAVA_ID_RE.match(activity_id):
+        raise StravaUnavailable(
+            f"identifiant « {activity_id} » : forme s<chiffres> attendue (strava_activity_id) — "
+            "l'API Strava rend un entier nu, à préfixer par « s »")
+    num = activity_id[1:]
+    meta = _strava_get(f"/activities/{num}", tokens, opener)
+    if isinstance(meta, dict) and meta.get("manual"):
+        raise StravaUnavailable("activité saisie à la main : aucun flux par seconde")
+    sport = (meta.get("sport_type") or meta.get("type")) if isinstance(meta, dict) else None
+    streams = _strava_get(f"/activities/{num}/streams?keys={STRAVA_STREAM_KEYS}&key_by_type=true", tokens, opener)
+    records = S.strava_streams_to_records(streams, sport)
+    if not records:
+        raise StravaUnavailable("aucun flux `time` exploitable renvoyé par Strava")
+    _write_canonical_samples(activity_id, records, out_dir)
+    return out_dir / "fit" / f"{activity_id}.json"
 
 
 def _read_fit(fit: bytes) -> tuple[list[dict], str | None]:
@@ -563,13 +746,15 @@ def _activity_id_from_arc(text: str, source: str = "garmin"):
     m = re.search(r"^```arc[ \t]*\n(.*?)\n```", text, re.M | re.S)
     if not m:
         return None
-    key = "intervals_activity_id" if source == "intervals" else "garmin_activity_id"
+    key = {"intervals": "intervals_activity_id", "strava": "strava_activity_id"}.get(source, "garmin_activity_id")
     try:
         value = json.loads(m.group(1)).get(key)
     except (ValueError, AttributeError):
         return None
     if source == "intervals":
         return value if isinstance(value, str) and INTERVALS_ID_RE.match(value) else None
+    if source == "strava":
+        return value if isinstance(value, str) and STRAVA_ID_RE.match(value) else None
     return value if isinstance(value, int) and not isinstance(value, bool) else None
 
 
@@ -609,8 +794,9 @@ def _configured_source() -> str:
 
 def _parse_ids(raw: list[str], source: str, ap: argparse.ArgumentParser) -> list:
     """Entiers pour Garmin ; chaînes pour Intervals.icu (validées au téléchargement,
-    pour qu'un identifiant Strava sans préfixe reçoive une raison explicite)."""
-    if source == "intervals":
+    pour qu'un identifiant Strava sans préfixe reçoive une raison explicite) ; chaînes
+    aussi pour Strava (`s<chiffres>`, validées au téléchargement)."""
+    if source in ("intervals", "strava"):
         return list(raw)
     ids = []
     for value in raw:
@@ -641,9 +827,9 @@ def main(argv: list[str] | None = None) -> int:
         description="Télécharge des fichiers FIT (Garmin Connect ou Intervals.icu) sans passer par le MCP."
     )
     ap.add_argument("activity_ids", nargs="*",
-                    help="identifiants à télécharger (entier Garmin, ou i<chiffres> Intervals.icu)")
+                    help="identifiants à télécharger (entier Garmin, i<chiffres> Intervals.icu, s<chiffres> Strava)")
     ap.add_argument("--source", choices=sorted(_RELAUNCH), default=None,
-                    help="garmin | intervals (défaut : [data].source du workspace, sinon garmin)")
+                    help="garmin | intervals | strava (défaut : [data].source du workspace, sinon garmin)")
     ap.add_argument("--output-dir", type=Path, default=None, help="Répertoire de sortie (défaut: activities/)")
     ap.add_argument("--json", action="store_true", help="Écrit aussi <id>.records.json")
     ap.add_argument("--overwrite", action="store_true", help="Réécrire même si présent")
@@ -656,7 +842,7 @@ def main(argv: list[str] | None = None) -> int:
     args = ap.parse_args(argv)
 
     source = args.source or _configured_source()
-    if args.python:
+    if args.python and source != "strava":
         os.environ[_RELAUNCH[source]["env"]] = str(args.python)
     if args.refresh_dynamics:
         # Hors ligne, quelle que soit la source : ni `garminconnect` ni tokens ni clé API — seul
@@ -678,7 +864,7 @@ def main(argv: list[str] | None = None) -> int:
         return 1 if result["failed"] else 0
     # Intervals.icu : le téléchargement est stdlib, seul `--json` (lecture fitparse) a
     # besoin d'un autre interpréteur. Garmin : garminconnect est requis dans tous les cas.
-    if source == "garmin" or args.json:
+    if source == "garmin" or (args.json and source == "intervals"):
         _auto_relaunch(sys.argv[1:] if argv is None else list(argv), source)
 
     ids = _parse_ids(args.activity_ids, source, ap)
@@ -691,7 +877,16 @@ def main(argv: list[str] | None = None) -> int:
     out_dir = args.output_dir or _activity_dir_out()
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    if source == "intervals":
+    if source == "strava":
+        try:
+            tokens = StravaTokens()
+        except StravaError as exc:
+            print(f"ERREUR : {exc}", file=sys.stderr)
+            return 2
+
+        def fetch(aid):
+            return _download_one_strava(aid, out_dir, tokens)
+    elif source == "intervals":
         try:
             api_key = _intervals_api_key()
         except IntervalsError as exc:
@@ -711,7 +906,8 @@ def main(argv: list[str] | None = None) -> int:
             return _download_one(client, aid, out_dir, args.json)
 
     counts = _download_all(ids, fetch, lambda aid: _should_skip_download(
-        out_dir / f"{aid}.fit", out_dir, aid, overwrite=args.overwrite, want_json=args.json))
+        out_dir / f"{aid}.fit", out_dir, aid, overwrite=args.overwrite,
+        want_json=args.json or source == "strava"))
     suffix = f", {counts['unavailable']} sans FIT disponible" if counts["unavailable"] else ""
     if counts["skipped"]:
         suffix += f", {counts['skipped']} déjà présents"
@@ -733,7 +929,7 @@ def _download_all(ids, fetch, should_skip) -> dict:
         try:
             fetch(aid)
             counts["ok"] += 1
-        except IntervalsUnavailable as e:
+        except (IntervalsUnavailable, StravaUnavailable) as e:
             # Pas une panne : la séance reste valide sans échantillons — raison dite, puis on continue.
             counts["unavailable"] += 1
             print(f"INDISPONIBLE {aid}: {e}", file=sys.stderr)

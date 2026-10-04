@@ -13,7 +13,7 @@
 <div class="arc-skill"><span class="arc-skill__name"><a href="skills/today.md">Aujourd'hui (/today)</a></span><span class="arc-skill__desc">Statut du jour : séance, bilan matinal au niveau configuré, créneau météo</span></div>
 <div class="arc-skill"><span class="arc-skill__name"><a href="skills/why.md">Pourquoi (/why)</a></span><span class="arc-skill__desc">Explique la dernière décision (ou une décision nommée) du journal des décisions</span></div>
 <div class="arc-skill"><span class="arc-skill__name"><a href="skills/week.md">Semaine (/week)</a></span><span class="arc-skill__desc">Statut compact de la semaine en cours : réalisé/prévu, garde-fous</span></div>
-<div class="arc-skill"><span class="arc-skill__name"><a href="skills/race.md">Course (/race)</a></span><span class="arc-skill__desc">Compte à rebours de l'objectif, score Trail Shape, plan de course</span></div>
+<div class="arc-skill"><span class="arc-skill__name"><a href="skills/race.md">Course (/race)</a></span><span class="arc-skill__desc">Compte à rebours de l'objectif, score Trail Shape, forme prévue le jour J, plan de course</span></div>
 <div class="arc-skill"><span class="arc-skill__name"><a href="skills/gpx-analysis.md">Analyse GPX</a></span><span class="arc-skill__desc">Analyse générique d'un fichier GPX et production d'un rapport Markdown structuré</span></div>
 <div class="arc-skill"><span class="arc-skill__name"><a href="skills/course-comparison.md">Comparaison de parcours</a></span><span class="arc-skill__desc">Analyse comparative de séances sur un même parcours/lieu</span></div>
 <div class="arc-skill"><span class="arc-skill__name"><a href="skills/garmin-workout-scheduling.md">Planification Garmin</a></span><span class="arc-skill__desc">Push de séances planifiées dans le calendrier Garmin Connect</span></div>
@@ -81,8 +81,12 @@ agents ou par les commandes courtes plutôt que par un skill dédié :
 | `arc_log.py` | skill `log` (`/log`) | Arithmétique, correspondance catalogue et fusion idempotente pour la saisie libre |
 | `arc_race_pacing.py` | `course-strategist` | Allures de course par segment depuis le modèle personnel pente → allure (#59) |
 | `arc_race_debrief.py` | `coach`, `course-strategist` | Débrief post-course plan vs réalisé, par segment (#61) |
-| `arc_workout_targets.py` | `coach` | Cibles personnelles d'une séance structurée — zones FC, allure GAP, D+ de côte (#60) |
+| `arc_workout_targets.py` | `coach` | Cibles personnelles d'une séance structurée — zones FC, allure GAP, D+ de côte (#60), plage en % de la vitesse critique quand l'ajustement est valide (#169) |
+| `arc_strength.py` | `coach`, `arc_index.py strength` | Bibliothèque de renforcement/mobilité et programmes par phase ou usage (#191) : validation, repli matériel, charge utile Garmin vérifiée ou texte intervals.icu — voir [Renforcement et mobilité](strength.md) |
+| `arc_cs.py` | `arc_index.py pace-curve`, `arc_workout_targets.py` | Courbe allure-durée en GAP, vitesse critique et D′ (#169) — fonctions pures, voir [Vitesse critique](vitesse-critique.md) |
+| `arc_plan_templates.py` | `coach` | Gabarits de périodisation (`config/plans/*.json`) : chargement, validation contre les garde-fous, résolution semaine par semaine (#189) — voir [Gabarits de périodisation](plans.md) |
 | `arc_trail_shape.py` | `coach`, `/race` | Score Trail Shape, préparation à l'objectif actif (#63) |
+| `arc_load_forecast.py` | `coach`, `/race` | Projection de condition/fatigue/forme jusqu'à la course, comparaison de plans (#172) |
 | `garmin_gear_backfill.py` | `coach` (interactif, sur accord), à la main | Rattrape le matériel Garmin sur l'historique (#145) : simulation par défaut, `--apply` ; dépend de `garminconnect` (via l'environnement garmin-mcp), voir [Rattraper le matériel de l'historique](garmin-setup.md#rattraper-le-materiel-de-lhistorique) |
 
 ### Sous-commandes de `arc_index.py`
@@ -99,6 +103,7 @@ python3 scripts/arc_index.py <commande> [options]
 | `hrv-baseline` | Baseline HRV personnelle (moyenne glissante 7 j de ln(HRV) vs référence 60 j ± 0,5 ET) |
 | `sleep-debt` | Dette de sommeil sur 7 jours (#37) |
 | `heat-acclimation` | Séances « chaudes » sur 14 jours vs `[health].heat_threshold_c` (#38) |
+| `altitude-exposure` | Séances et temps au-dessus de 1 500 / 2 000 m sur 14 et 28 jours (`--days N`), d'après les échantillons FIT ; altitude manquante dite, jamais comptée comme nulle (#185) |
 | `gear` | Kilométrage des chaussures et seuils d'alerte (#40) |
 | `gear-attribution` | Priorité d'attribution du matériel d'une séance : déclaration de l'athlète > Garmin > défaut (`--garmin-gear`, `--chat-gear`, #133) |
 | `equipment` | Matériel hors chaussures : usage (km, h, séances, jours), déclencheurs typés, kits (`--kit`), alerte unique (`--activities`, `--since`), contrôle du matériel d'un plan de course (`--race-plan`) (#134) |
@@ -112,10 +117,14 @@ python3 scripts/arc_index.py <commande> [options]
 | `descent` | Efficacité en descente |
 | `durability` | Fade d'endurance sur séance longue (> 90 min) |
 | `energy` | Dépense énergétique modèle (RE3 + marche) vs Garmin, contrôle d'écart |
+| `pace-curve` | Courbe allure-durée en GAP (42/90/365 j), vitesse critique et D′, tendance ; `--days N`, `--lt-speed-ms V` (contrôle avec le seuil lactique Garmin) (#169) |
 | `climb-history` | Historique d'une montée reconnue d'une séance à l'autre (`--segment`, #49) |
 | `decisions` | Journal des décisions tracées (filtrable par date, fenêtre, déclencheur, issue) |
 | `slope-model` | Modèle personnel pente → allure (#58) |
 | `trail-shape` | Score Trail Shape (#63) |
+| `load-forecast` | Projection de charge jusqu'à la course : forme prévue le jour J, `--compare` (#172) |
+| `plan-skeleton` | Squelette de bloc semaine par semaine (gabarit + date de course + volume tenu + disponibilité) : dry run JSON/`--text`, `--write` pour `planning/Semaine_<lundi>.md` sans écrasement, garde-fous par semaine, forme prévue le jour J (#190) |
+| `plan-templates` | Gabarits de périodisation : liste, choix par distance (`--distance-km`), détail résolu (`--format`, `--weeks`) ; JSON par défaut, `--text` pour un tableau lisible (#189) |
 
 `python3 scripts/arc_index.py --help` liste toutes les options associées à
 chaque commande.

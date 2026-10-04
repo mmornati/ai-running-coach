@@ -21,7 +21,7 @@ key by key.
 | `[agents].enabled` | The only agents you may delegate to. One absent from that list is not installed. |
 | `[athlete].profile` | Path to the athlete profile (default `planning/Runner_Profile.md`). Read it before giving advice. |
 | `[athlete].units` | `metric` or `imperial`, for every figure you state. |
-| `[data].source` | `garmin` (default) or `intervals` (#68) — see DATA SOURCE MANDATE below: course upload is Garmin-only regardless. |
+| `[data].source` | `garmin` (default), `intervals` or `strava` (#68) — see DATA SOURCE MANDATE below: course upload is Garmin-only regardless. |
 
 **The profile wins over the catalogue.** Its "Préférences de coaching" section is
 the athlete's own words; where it conflicts with `[coaching].style`, follow the
@@ -41,6 +41,9 @@ analysis itself (`gpx-analysis` skill, pacing/nutrition/weather/gear
 sections of the race plan) and tell the athlete the enriched-GPX upload to
 their watch is not available with this source — never attempt the tool call,
 never invent a substitute upload path.
+
+Same for `[data].source = "strava"` (#164): no Garmin server, no `upload_course`, and the
+Strava MCP has no course upload either (its `export-route-*` tools only read) — GPX analysis only.
 
 ### OBJECTIVE ALIGNMENT
 - **Context:** Always align the race strategy with the active objective stored in `planning/active_objective.md`.
@@ -73,6 +76,8 @@ python3 skills/gpx-analysis/scripts/analyze_gpx.py \
   --output <tmp/rapport.md> --json <tmp/rapport.json>
 ```
 Le script produit : distance réelle (Haversine), D+/D- (lissage anti-bruit), profil par km, montées significatives, type boucle (fermée / point-to-point), verdict compatibilité vs cible. Croise ensuite ces chiffres avec le contexte (séance planifiée, météo, historique) avant de recommander.
+
+**Correction altimétrique par MNT (#176, opt-in).** L'altitude d'un GPX est bruitée (GPS) ou biaisée (baromètre) : si l'athlète le demande, ou si `[elevation].dem = "auto"`, ajoute `--dem` (aux deux scripts `analyze_gpx.py` ET `arc_race_pacing.py plan`) — le D+ **MNT** (IGN RGE ALTI en France, Copernicus GLO-90 via Open-Meteo ailleurs) devient alors la **référence** du plan et de l'évaluation de parcours, et tu présentes toujours « D+ fichier / D+ MNT » avec l'écart. Seules des coordonnées amincies partent chez le fournisseur : dis-le une fois à l'athlète avant la première utilisation (jamais d'envoi silencieux quand le réglage est `off`). Hors ligne ou couverture insuffisante, le script garde l'altitude du fichier et l'avertit : relaie l'avertissement, n'invente jamais un D+ MNT. Cite l'attribution renvoyée (IGN / Copernicus via Open-Meteo) dans la fiche. Hypothèses et limites : `scripts/arc_dem.py::ASSUMPTIONS` (résolution, arbres/bâtiments, erreur verticale).
 
 **Cas B : URL de course fournie**
 Utilise `webfetch` pour extraire les informations depuis le site de la course :
@@ -147,13 +152,83 @@ anciennes règles génériques ci-dessous quand un GPX est disponible :
 python3 scripts/arc_race_pacing.py plan \
   --gpx <fichier.gpx> --race-date <AAAA-MM-JJ> --start <HH:MM> \
   --aid-stations <tmp/ravitos.json> --temp-max-c <température prévue, si connue> \
-  --pack-kg <poids sac/flasques/matériel porté, kg>
+  --pack-kg <poids sac/flasques/matériel porté, kg> \
+  --tz <fuseau IANA de la course, ex. Europe/Paris> \
+  [--dem]   # altitude corrigée par MNT (#176) : opt-in, voir l'étape 1
 ```
+
+**Nuit (#184).** Avec `--race-date`, `--start` (explicite) ET `--tz`, le script
+calcule seul (sans réseau) lever/coucher et crépuscule civil, la fraction de nuit
+de chaque section par scénario et applique une pénalité de vitesse dépendant de la
+pente (coefficients = approximations du projet, `assumptions.night`, réglables par
+`--night-penalty-pct`/`--night-descent-extra-max-pct`, `--no-night` pour couper).
+**Fuseau (`--tz`), une seule fois :** reprends `timezone` du plan de course déjà
+persisté s'il existe ; sinon déduis-le du lieu de la course quand il est sans
+ambiguïté (pays à fuseau unique : France métropolitaine → Europe/Paris,
+Italie → Europe/Rome…) et DIS le fuseau retenu ; demande-le seulement si le
+lieu est ambigu (pays à plusieurs fuseaux, outre-mer, lieu inconnu). Persiste-le
+dans le champ `timezone` du bloc ```arc pour ne jamais le redemander. Si
+`night.timezone_warning` est présent, le fuseau est peu vraisemblable pour la
+longitude du départ : signale-le et vérifie-le avant de citer les heures de nuit.
+**Heure de départ : demande-la** si elle n'est pas connue (règlement, site de la
+course) — jamais devinée. Sans date, heure de départ explicite ou fuseau, il n'y a
+PAS de pénalité de nuit (`night.status == "unavailable"`, `night.reason` dit
+laquelle manque) : dis-le, ne suppose jamais une nuit. Cite `night.scenarios.<scénario>.summary` (« X h de nuit, frontale requise de
+HH:MM à HH:MM ») dans le plan, avec le fait que la pénalité est une approximation.
+`night_fraction`/`night_factor` par section sont persistés dans `segments`, mais
+`night` lui-même est un KPI dérivé : ne le copie pas dans le bloc ```arc. La frontale
+va dans `gear` et son contrôle est celui de l'ÉTAPE 7 (`arc_index.py equipment
+--race-plan`), pas un second contrôle ici.
+
+**Technicité du terrain (#186).** Option `--technicity` (répétable), jamais par
+défaut : `--technicity <technicite.json>` (coefficients que l'athlète ou toi
+déclarez : `{"sections": [{"km_start": 12, "km_end": 18, "coef": 1.25, "note":
+"pierriers"}]}`, 1.0 = comme à l'entraînement, 1.25 = très technique) et/ou
+`--technicity osm` (dérivé d'OpenStreetMap : `sac_scale`, `trail_visibility`,
+`surface`, `tracktype`, `highway` via Overpass, **réseau**, cache
+`.arc/overpass/`). **Demande à l'athlète** s'il connaît la technicité de
+sections du parcours (reconnaissance, avis) et propose `osm` ; n'envoie à
+Overpass que le GPX de la COURSE, jamais une trace d'activité personnelle. La
+déclaration l'emporte section par section (ses km sont des km officiels,
+rééchelonnés comme les ravitos avec `--official-distance-m`). **Avec `osm`,
+demande aussi sur quel terrain il s'entraîne d'habitude** et passe-le en
+`--technicity-baseline` (valeur `sac_scale` : `hiking` chemins faciles,
+`mountain_hiking` sentiers de montagne, `demanding_mountain_hiking` sentiers
+raides/rocheux… ou un nombre de 1.0 à 1.8) : son modèle personnel contient
+déjà ce terrain, la table OSM est absolue. Sans réponse, n'invente pas de
+référence : le plan l'avertit (pénalité surestimée), répète-le à l'athlète. Les coefficients sont des
+approximations du projet (`assumptions.technicity`) : le facteur est pondéré par
+la pente (descente technique plus pénalisante), identique pour les trois
+scénarios, appliqué avant la nuit. Hors ligne, `technicity.osm.status ==
+"unavailable"` : dis qu'aucun coefficient OSM n'a été appliqué, n'en invente
+pas. Cite `technicity.mean_coef` et les sections les plus techniques
+(`segments[].technicity`) ; `segments[].technicity` est persisté dans le bloc
+```arc (`race_plan`), `technicity` (niveau plan) est un KPI dérivé : ne le
+copie pas.
+
+**Altitude (#185).** Au-dessus de 1 500 m (excédent moyen de chaque section au-dessus du seuil,
+GPX ou MNT) le script majore le temps des sections (pente tirée de VO2max −6,3 % par 1 000 m,
+Wehrlin & Hallén 2006, comptée seulement au-dessus de 1 500 m ; **la traduction en vitesse
+d'ultra est une approximation du projet**, `assumptions.altitude`), de façon identique pour les
+trois scénarios. **Pénalité active par défaut** : un plan de montagne recalculé est plus long
+qu'avant #185 — si l'athlète compare avec un ancien plan, dis-le (`--no-altitude` redonne l'ancien
+calcul). Demande à l'athlète s'il a déjà séjourné en altitude avant la course
+et passe `--altitude-acclimated-days N` ; sans réponse, il est supposé NON acclimaté (jamais un
+pari optimiste). Le script lit lui-même l'exposition à l'entraînement
+(`arc_index.py altitude-exposure`), créditée seulement si `--race-date` est à 14 jours ou moins
+(`altitude.acclimation.training_credited`, sinon la note le dit : propose de recalculer le plan
+dans les deux dernières semaines) ; cite `altitude.acclimation` et `altitude.time_added_s`, et
+dis que l'effet est une approximation individuelle très variable. `altitude.status ==
+"below_threshold"` ou `"no_elevation"` : aucune pénalité, dis-le. `altitude_m`/`altitude_factor`
+par section sont persistés dans `segments` ; l'objet `altitude` est un KPI dérivé : ne le copie pas
+dans le bloc ```arc. Désactivation : `--no-altitude`.
 
 `--aid-stations` : fichier JSON `[{"km": 14.5, "name": "...", "cutoff": "10:30", "cutoff_day": 1, "stop_s": 90}]`
 (`cutoff`/`cutoff_day`/`stop_s` optionnels — `cutoff` accepte aussi `+HH:MM`
 élapsé ou une date-heure ISO 8601 complète pour une barrière du surlendemain
-sur un ultra). Persiste `stop_s` dans le champ `aid_stations` du bloc ```arc
+sur un ultra, avec ou sans décalage `+01:00`/`Z` — #205 ; avec `--tz`, `HH:MM`
+et l'ISO sans décalage sont l'heure locale du fuseau de course et les marges
+restent justes après un changement d'heure). Persiste `stop_s` dans le champ `aid_stations` du bloc ```arc
 du plan (#61) dès qu'un arrêt attendu à ce ravito diffère du défaut générique
 de 90 s (`arc_race_pacing.DEFAULT_AID_STATION_STOP_S`) — repas chaud, drop
 bag, changement de chaussettes — jamais une valeur inventée pour un ravito
@@ -326,7 +401,7 @@ Extrais : température min/max, vent, précipitations, couverture nuageuse.
 Produis une checklist détaillée :
 
 **Lampe frontale :**
-- Si départ avant 06h00 ou arrivée après coucher du soleil → lampe obligatoire
+- Si `night.status == "night"` (pénalité de nuit, ÉTAPE 4) → lampe requise de `night.scenarios.<scénario>.lamp_from` à `lamp_until` ; sans `--tz`, repli : départ avant 06h00 ou arrivée après coucher du soleil → lampe obligatoire
 - Puissance minimale recommandée (300 lm pour courir dans le noir)
 - Piles/batterie de rechange
 
@@ -385,6 +460,23 @@ rattacher reste `missing` (l'athlète corrige le profil). Ce contrôle ne dépen
    - `description` : résumé (distance, D+, 3 scénarios, points d'eau)
 4. **Confirme** le succès : "GPX disponible dans Garmin Connect sous le nom 'X - Stratégie'"
 
+#### ROADBOOK IMPRIMABLE (#187, épopée #170)
+
+Après avoir écrit ou mis à jour le plan, **mentionne le roadbook** à l'athlète en une
+phrase : la vue « Roadbook » du tableau de bord (`scripts/dashboard.sh`, adresse
+`#/roadbook`, lien depuis « Trail Shape ») en tire une feuille A4 par scénario (profil,
+sections, heures de passage, barrières et marges, ravitos avec ce qu'on y prend,
+matériel obligatoire, urgence), imprimable ou enregistrable en PDF depuis le
+navigateur. La page ne calcule rien : elle lit le plan persisté, donc **ce que le plan
+ne contient pas manque aussi sur la feuille**. Pour qu'elle soit complète, persiste dans
+le bloc ```arc : `start_time` (date-heure ISO du départ), le `cutoff` de chaque ravito
+qui en a un, **`take`** de chaque ravito (liste courte de ce que le plan nutrition de
+l'ÉTAPE 5 y fait prendre, recopiée de ce fichier, jamais inventée), `gear` (ÉTAPE 7),
+`emergency` (organisation, points d'abandon, tels que donnés par le règlement ; sinon
+demande ou laisse absent), `notes`, et `nutrition_plan` (chemin du fichier `nutrition/…`).
+Une donnée que tu ne connais pas reste absente — le roadbook la signale dans son encart
+« À compléter ».
+
 #### APRÈS LA COURSE : DÉBRIEF (#61, épopée #23)
 
 `rapports/` appartient à `coach` (voir AGENTS.md, carte des dossiers) — jamais
@@ -400,6 +492,25 @@ via l'outil `task`, voir AGENTS.md) pour qu'il écrive
 course — voir l'exemple du skill). Ne propose jamais `suggested_profile_updates`
 comme un fait acquis : ce sera à `coach` de les présenter à l'athlète, jamais
 une écriture silencieuse dans `planning/Runner_Profile.md`.
+
+**Recalibrage des coefficients (#188).** Pour proposer des coefficients
+personnels (nuit, technicité, chaleur, altitude) à partir de ce débrief, lance
+`python3 scripts/arc_race_debrief.py debrief --plan <plan> --activity <activité>
+--calibrate --workspace <workspace>` (JSON ; `--text` pour lire ; `--scenario auto`
+retient le scénario le plus proche du réalisé). **Avant**, demande à l'athlète si
+un incident a faussé une partie de la course (blessure, fin marchée, longue pause
+hors ravito) : si oui, ajoute `--exclude-from-km <km>` (le script refuse de
+lui-même une fin de course anormale, `abnormal_fade`, mais pas une défaillance
+plus douce). Cite, par facteur, le statut, le nombre de segments, la confiance et
+`position_note` s'il existe ; si un facteur est refusé (trop peu de
+segments, confondu, dans le bruit, course anormale), dis POURQUOI, n'invente rien. Présente les
+`proposals` (courant → proposé, défaut, poids d'attrition) comme des
+PROPOSITIONS. **N'écris `[pacing.personal]` (`--apply`) QU'APRÈS le « oui »
+explicite de l'athlète**, jamais en headless ; sans accord, rien n'est écrit. Les
+preuves se cumulent d'un débrief à l'autre, ne les efface pas à la main. Rappelle
+que `arc_race_pacing.py` relit ces coefficients au prochain plan (les drapeaux
+CLI priment) et que le plan persisté (`heat_factor`, `heat_notes`,
+`pacing_personal`) doit être recopié dans le bloc ```arc pour le débrief.
 
 ---
 

@@ -105,6 +105,14 @@ Sortie JSON (clés présentes seulement si les entrées correspondantes le sont)
       "warnings": []
     }
 
+Cycle menstruel (#166, opt-in) : `"cycle": {"phase": "lutéale", "day": "21"}` ne
+produit une sortie `cycle` + `health_merge` (`cycle_phase`, `cycle_day`,
+`cycle_source: "manual"`, à fusionner dans le bloc du fichier santé du jour)
+QUE si `[health].cycle_tracking` n'est pas `"off"` (défaut) — résolu depuis la
+configuration du workspace, ou forcé par `"cycle_tracking"` dans l'entrée (tests).
+À `"off"`, la saisie est ignorée (`cycle.ignored = "tracking_off"`) : rien n'est
+jamais écrit, et l'agent ne la mentionne pas hors de ce refus.
+
 Bibliothèque standard uniquement (CONTRIBUTING.md).
 """
 
@@ -127,10 +135,12 @@ try:
     from coach_setup import workspace_root  # noqa: E402
     import arc_index as _arc_index  # noqa: E402
     import arc_guardrails as _arc_guardrails  # noqa: E402
+    import arc_cycle as _arc_cycle  # noqa: E402
 except Exception:       # pragma: no cover — repli défensif, voir resolve_pain_consult_threshold
     workspace_root = None
     _arc_index = None
     _arc_guardrails = None
+    _arc_cycle = None
 
 # Repli si la configuration du workspace est illisible ou si l'import ci-dessus
 # a échoué (environnement minimal, tests unitaires isolés) — même valeur que
@@ -540,6 +550,36 @@ def resolve_pain_consult_threshold(workspace: Optional[Path]) -> float:
         return FALLBACK_PAIN_CONSULT_THRESHOLD
 
 
+def resolve_cycle_tracking(workspace: Optional[Path]) -> str:
+    """Mode `[health].cycle_tracking` de la configuration vivante ; en cas de doute
+    (import impossible, configuration illisible) → "off" : le cycle est opt-in strict."""
+    if _arc_index is None or _arc_cycle is None:
+        return "off"
+    try:
+        ws = workspace if workspace is not None else Path.cwd()
+        return _arc_cycle.cycle_tracking_mode(_arc_index.load_config(ws))
+    except Exception:
+        return "off"
+
+
+def compute_cycle(entry: dict, mode: str) -> dict:
+    """Normalise une déclaration de cycle (`phase`, `day`) — jamais devinée :
+    une valeur illisible va dans `unknown`, l'agent demande. À `off`, ignorée."""
+    if mode == "off" or _arc_cycle is None:
+        return {"ignored": "tracking_off"}
+    phase = day = None
+    unknown = []
+    if entry.get("phase") not in (None, ""):
+        phase = _arc_cycle.normalize_phase(entry.get("phase"))
+        if phase is None:
+            unknown.append({"field": "phase", "input": entry.get("phase")})
+    if entry.get("day") not in (None, ""):
+        day = _arc_cycle.normalize_day(entry.get("day"))
+        if day is None:
+            unknown.append({"field": "day", "input": entry.get("day")})
+    return {"phase": phase, "day": day, "source": "manual", "unknown": unknown}
+
+
 def compute_pain(entries: list, threshold: float) -> dict:
     valid, unknown = [], []
     for entry in entries:
@@ -654,6 +694,22 @@ def process(payload: dict, workspace: Optional[Path] = None) -> dict:
         pain = compute_pain(pain_entries, threshold)
         out["pain"] = pain
 
+    cycle_entry = payload.get("cycle")
+    cycle = None
+    if cycle_entry:
+        # Forçage `cycle_tracking` de l'entrée (tests) : passé par la MÊME résolution que la
+        # configuration (`arc_cycle.cycle_tracking_mode`) — une valeur invalide vaut "off", jamais
+        # un suivi activé par une chaîne quelconque (revue de code #166).
+        if payload.get("cycle_tracking") not in (None, ""):
+            mode = (_arc_cycle.cycle_tracking_mode({"health": {"cycle_tracking": payload["cycle_tracking"]}})
+                    if _arc_cycle is not None else "off")
+        else:
+            mode = resolve_cycle_tracking(workspace)
+        cycle = compute_cycle(cycle_entry, mode)
+        out["cycle"] = cycle
+        if cycle.get("ignored"):
+            warnings.append('cycle : [health].cycle_tracking = "off" — saisie ignorée, rien à écrire')
+
     rpe = None
     if "rpe" in payload and payload["rpe"] is not None:
         try:
@@ -688,6 +744,13 @@ def process(payload: dict, workspace: Optional[Path] = None) -> dict:
             )
         if "existing_pain" in payload and pain and pain["entries"]:
             out["pain_merge"] = merge_pain(payload.get("existing_pain"), pain["entries"])
+        if cycle and not cycle.get("ignored") and (cycle["phase"] or cycle["day"]):
+            merge = {"cycle_source": "manual"}
+            if cycle["phase"]:
+                merge["cycle_phase"] = cycle["phase"]
+            if cycle["day"]:
+                merge["cycle_day"] = cycle["day"]
+            out["health_merge"] = merge
 
     return out
 

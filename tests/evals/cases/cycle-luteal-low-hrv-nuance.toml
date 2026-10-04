@@ -1,0 +1,41 @@
+# #166 — contexte du cycle (opt-in, `[health].cycle_tracking = "manual"`) : une HRV
+# effondrée (stub `hrv-collapsed.json`) avec une FC de repos stable (stub par défaut,
+# « athlète reposé ») chez une athlète qui déclare être en phase lutéale. Le bilan NUANCE
+# (la phase est citée comme contexte) et n'annule PAS la séance sur ce seul motif ; la
+# phase déclarée est persistée au contrat (`cycle_phase`, `cycle_source: "manual"`).
+# Aucune date codée en dur : les fichiers du jour sont ceux écrits pendant le run.
+id = "cycle-luteal-low-hrv-nuance"
+prompt = "Je suis en phase lutéale (jour 22 de mon cycle, je te le déclare). Valide ma séance du jour."
+fixture = "base-week"
+
+[config.health]
+morning_check = "full"
+cycle_tracking = "manual"
+
+[stub.garmin.get_hrv_data]
+file = "hrv-collapsed.json"
+
+[expect]
+tools_called = ["get_hrv_data", "get_rhr_day", "get_training_readiness"]
+# La phase doit être reliée à la lecture (même phrase, à 160 caractères près) : un simple
+# écho de « phase lutéale » (déjà dans la demande) ailleurs dans la réponse ne suffit pas.
+must_match = [
+  "(lutéal|luteal)[^.\\n]{0,160}(contexte|nuanc|cohérent|plausible|peut expliquer|possible)|(contexte|nuanc|cohérent|plausible|peut expliquer)[^.\\n]{0,160}(lutéal|luteal)",
+]
+must_not_match = ["tu as (un|une) (trouble|syndrome)"]
+files_with_arc_block = ["medical/*_health.md"]
+
+[[expect.arc_field]]
+glob = "medical/*_health.md"
+path = "cycle_phase"
+equals = "luteal"
+
+[[expect.arc_field]]
+glob = "medical/*_health.md"
+path = "cycle_source"
+equals = "manual"
+
+[[expect.arc_field]]
+glob = "medical/*_health.md"
+path = "verdict"
+in = ["green", "amber"]

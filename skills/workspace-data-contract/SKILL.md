@@ -104,7 +104,8 @@ Types de valeurs ci-dessous : *entier*, *nombre* (≥ 0 sauf mention), *texte*,
 | **`duration_s`** | nombre | durée totale |
 | `garmin_activity_id` | entier | identifiant Garmin — clé de jointure, à toujours renseigner après un sync `[data].source = "garmin"` |
 | `intervals_activity_id` | texte | identifiant Intervals.icu (#68, ex. `"i12345678"`) — CHAÎNE, jamais confondue avec `garmin_activity_id` (entier). À renseigner à la place de `garmin_activity_id`, jamais en plus, après un sync `[data].source = "intervals"` |
-| `name` | texte | nom de l'activité (Garmin ou Intervals.icu selon la source) |
+| `strava_activity_id` | texte | identifiant Strava (#164) **préfixé `s`**, ex. `"s12345678901"` — l'API Strava rend un entier sans préfixe, indiscernable d'un `garmin_activity_id` ; le préfixe est la convention du projet (jamais le nombre seul : la validation le refuse). À renseigner à la place de `garmin_activity_id`, jamais en plus, après un sync `[data].source = "strava"` |
+| `name` | texte | nom de l'activité (Garmin, Intervals.icu ou Strava selon la source) |
 | `location` | texte | lieu / parcours (sert à la comparaison de parcours) |
 | `start_time` | date-heure | |
 | `distance_m` | nombre | |
@@ -125,6 +126,7 @@ Types de valeurs ci-dessous : *entier*, *nombre* (≥ 0 sauf mention), *texte*,
 | `fluid_intake_ml` | nombre | liquide ingéré pendant l'effort, 0-10 000 ml |
 | `weight_pre_kg`, `weight_post_kg` | nombre | pesée avant / après effort, 30-200 kg |
 | `gear_ids` | liste de textes | matériel hors chaussures porté sur la séance (slugs, mêmes règles que `gear_id`, 30 max, sans doublon) — voir « Matériel hors chaussures » ci-dessous |
+| `garmin_pushed` | liste d'objets | apport `/log` poussé vers Garmin Connect après un « oui » (#167, opt-in `[nutrition].garmin_sync`) — mêmes entrées que `nutrition.garmin_pushed` (section `nutrition`) ; sert l'idempotence, jamais écrite en headless |
 | `missing_reason` | objet | clé absente → cause |
 | `gap_pace_s_km` | nombre | GAP global de la séance, s/km — voir « Champs KPI FIT » |
 | `decoupling_pct` | nombre (signe libre) | découplage aérobie Pa:HR, % — voir « Champs KPI FIT » |
@@ -243,7 +245,7 @@ méthode complète. En résumé :
   (toujours future). Clés OMISES sans usage sur 28 jours, pour une paire retirée
   ou déjà au seuil (`alert` : « seuil dépassé »). `near_threshold: true` dès 90 %
   du seuil. `arc_index.py gear --activities ID[,ID…]` (garmin_activity_id,
-  intervals_activity_id ou chemin du fichier des séances synchronisées dans CE run) ajoute
+  intervals_activity_id, strava_activity_id ou chemin du fichier des séances synchronisées dans CE run) ajoute
   `crossed_in_run: true` à la paire dont elles font franchir le seuil — base de
   l'alerte unique du `garmin-daily-sync` (par séance, pas par date : un second
   passage le même jour ne ré-émet rien), sans fichier d'état. Avec `--today`
@@ -534,7 +536,7 @@ de la clé du bloc :
 **Cette copie Markdown est un instantané narratif, jamais la source de
 vérité.** `scripts/arc_index.py` calcule sa PROPRE version de ces mêmes
 grandeurs à chaque passage (`index_workspace`), directement depuis les
-échantillons FIT ingérés (`activities/fit/<garmin_activity_id | intervals_activity_id>.json`) — dans
+échantillons FIT ingérés (`activities/fit/<garmin_activity_id | intervals_activity_id | strava_activity_id>.json`) — dans
 les colonnes dérivées `activity.gap_pace_s_km`/`decoupling_pct`/`ef_whole`/
 `best_climb_vam_elapsed_m_h` et la table `hr_zone_time`. **La valeur de
 l'index fait TOUJOURS foi** pour le tableau de bord, `arc_index.py` et toute
@@ -609,6 +611,9 @@ mm ÷ 1000), pourcentages inchangés. Toutes optionnelles :
 | `verdict_reason` | texte | obligatoire avec `verdict` |
 | `missing_reason` | objet | |
 | `pain` | liste d'objets | douleur STRUCTURÉE déclarée ce jour-là (#57) — voir ci-dessous |
+| `cycle_phase` | `menstrual` `follicular` `ovulation` `luteal` | **opt-in** (#166) : phase du cycle du jour, voir « Contexte du cycle » ci-dessous |
+| `cycle_day` | entier 1-60 | jour du cycle, si la source le donne |
+| `cycle_source` | `garmin` `intervals` `manual` | d'où vient la phase (`manual` = déclarée par l'athlète via `/log`) |
 
 **Douleur déclarée (`pain`, #57).** Une liste d'objets, un par zone douloureuse
 signalée le jour du fichier (`health.date` fait foi comme date — pas de `date`
@@ -631,6 +636,23 @@ n'existe que pour l'agent qui écrit le fichier. Plus de
 {"arc": 1, "kind": "health", "date": "2026-09-24", "morning_check": "full",
  "pain": [{"location": "genou droit", "score": 6}],
  "verdict": "amber", "verdict_reason": "Douleur au genou signalée : séance de qualité annulée par prudence."}
+```
+
+**Contexte du cycle (`cycle_phase`, `cycle_day`, `cycle_source`, #166).** Ces
+trois clés n'existent QUE si `[health].cycle_tracking` n'est pas `"off"`
+(défaut) : à `"off"`, ne jamais les écrire ni les demander — zéro mention. Elles
+portent un CONTEXTE de lecture du bilan matinal (HRV, FC de repos), jamais une
+règle de décision ni un diagnostic. Phase/jour absents (source muette, pas
+d'entrée du jour) = clés omises, jamais devinées ni reportées de la veille.
+Valeurs d'une source ou dites par l'athlète : normalisées par
+`scripts/arc_cycle.py` (`normalize_phase`/`normalize_day`) ou, pour une saisie
+`/log`, par `scripts/arc_log.py`.
+
+```arc
+{"arc": 1, "kind": "health", "date": "2026-09-23", "morning_check": "full",
+ "hrv_overnight_ms": 41, "resting_hr_bpm": 52,
+ "cycle_phase": "luteal", "cycle_day": 22, "cycle_source": "manual",
+ "verdict": "green", "verdict_reason": "HRV un peu basse, cohérente avec la phase lutéale (contexte) ; aucun autre signal : séance maintenue."}
 ```
 
 ```arc
@@ -705,13 +727,21 @@ voir plus bas) prend sa place, jamais un statut Garmin inventé.
 | **`sessions`** | liste d'objets | une séance par entrée, voir ci-dessous |
 | `phase` | texte | phase du plan (« Base », « Spécifique », « Affûtage »…) |
 | `target_duration_s`, `target_distance_m`, `target_elevation_m` | nombre | volume visé |
+| `week_type`, `quality_sessions`, `long_run_target_s`, `strength_emphasis` | `build` `recovery` `taper` `race` `lead_in` `post_race` ; entier ; nombre (s) ; texte | squelette de bloc (#190, `arc_index.py plan-skeleton`) — facultatifs, jamais requis d'une semaine écrite à la main |
 
 Chaque séance : **`date`** (date), **`sport`** (comme `activity`), **`title`**
 (texte), et `planned_duration_s`, `planned_distance_m`, `planned_elevation_m`
 (nombres), `intensity` (`rest` `recovery` `endurance` `tempo` `threshold`
-`vo2max` `race` `strength`), `outdoor` (booléen), `garmin_workout_id`
+`vo2max` `race` `strength`), `placeholder` (booléen, #190 : créneau posé par `plan-skeleton`, à habiller par le coach, qui retire le drapeau), `outdoor` (booléen), `garmin_workout_id`
 (entier, après le push), `status` (`planned` `done` `missed` `moved`
-`cancelled`), `weather_category` et `best_slot` (comme `weather`).
+`cancelled`), `weather_category` et `best_slot` (comme `weather`), et
+`heat_adjustment` (#171, objet optionnel : trace de l'ajustement des cibles à
+la chaleur, à recopier telle que produite par `arc_workout_targets.py targets
+--heat` → `trace.heat_adjustment` — `factor` (facteur sur l'allure, FC
+inchangée) obligatoire ; `temp_c` (omis si aucune température connue, ex. 🔴
+dû au seul vent/orage), `temp_basis` (`temperature` `feels_like`), `action`,
+`category`, `acclimated`, `slot`, `dew_point_c`, `reason` facultatifs). Jamais
+calculé à la main.
 
 Tenez `status` à jour quand une séance est réalisée, manquée ou déplacée.
 
@@ -843,10 +873,19 @@ ordinaire.
 | `carbs_g`, `protein_g`, `fat_g` | nombre |
 | `hydration_ml` | nombre |
 | `weight_kg`, `target_weight_kg` | nombre |
+| `intake_source` | `manual` (défaut implicite : déclaré par l'athlète) `garmin` (journal alimentaire Garmin importé, #167) — une seule source de vérité par jour |
+| `garmin_pushed` | liste `{key, kind, name?, qty?, ml?, food_id?, serving_id?, log_id?, at?}` — écritures confirmées vers Garmin Connect (#167) ; `key` = empreinte de `scripts/arc_nutrition_sync.py`, une clé déjà présente n'est jamais repoussée ; `kind` = `create_custom_food` `log_custom_food` `log_food` `add_hydration_data`. Même clé acceptée sur `activity` pour un apport `/log` en cours d'effort |
 
 ```arc
 {"arc": 1, "kind": "nutrition", "date": "2026-09-20", "intake_kcal": 2650, "burned_kcal": 2900, "carbs_g": 360, "protein_g": 120, "fat_g": 80, "hydration_ml": 2500, "weight_kg": 68.4, "target_weight_kg": 67.5}
 ```
+
+#### Entrée de `garmin_pushed` (#167)
+
+Une entrée par écriture confirmée vers Garmin Connect, produite par `scripts/arc_nutrition_sync.py record`
+(jamais composée à la main) : **`key`** (empreinte, ce qui rend la relance idempotente), **`kind`**,
+et selon la nature `name`, `qty` (portions), `ml` (hydratation), `food_id`, `serving_id`, `log_id`
+(seulement s'il a été relu sans ambiguïté), `at` (horodatage ISO de la poussée).
 
 ### `report`
 
@@ -925,11 +964,20 @@ Reprend la sortie `--json` de `analyze_gpx.py` (skill `gpx-analysis`).
 | **`race_date`** | date | |
 | `distance_m`, `elevation_gain_m`, `target_time_s` | nombre | |
 | `start_time` | date-heure | départ |
+| `timezone` | texte | fuseau IANA de la course (ex. Europe/Paris, #184) — l'entrée `--tz` de la pénalité de nuit de `arc_race_pacing.py`, persistée pour ne pas la redemander au recalcul |
 | `scenarios` | objet | `{"ambitious": s, "realistic": s, "safe": s}` en secondes |
-| `aid_stations` | liste d'objets | **`km`**, **`name`**, `services` (liste), `cutoff` (`HH:MM`, `+HH:MM` élapsé, ou date-heure ISO 8601 — barrière du surlendemain d'un ultra, #59), `cutoff_day` (entier, avec `cutoff` en `HH:MM` seulement), `stop_s` (nombre, secondes — temps d'arrêt PRÉVU à ce ravito, #61 : repris par `arc_race_pacing.py`/`arc_race_debrief.py` au lieu du défaut générique (90 s) dès qu'il est renseigné ; à ne persister que pour un ravito dont l'arrêt attendu diffère vraiment du défaut, ex. repas chaud ou drop bag) |
+| `heat_factor`, `heat_notes`, `pacing_personal` | nombre, liste, objet | sortie de `arc_race_pacing.py` : facteur de chaleur du plan et ses notes, coefficients personnels `[pacing.personal]` réellement appliqués (#188) — recopiés tels quels, lus par `arc_race_debrief.py --calibrate` pour recalibrer ; absents sur un plan ancien |
+| `aid_stations` | liste d'objets | **`km`**, **`name`**, `services` (liste), `cutoff` (`HH:MM`, `+HH:MM` élapsé, ou date-heure ISO 8601, avec ou sans décalage `+01:00`/`Z` — barrière du surlendemain d'un ultra, #59/#205 ; heures murales lues dans le fuseau `timezone` du plan quand il est connu), `cutoff_day` (entier, avec `cutoff` en `HH:MM` seulement), `stop_s` (nombre, secondes — temps d'arrêt PRÉVU à ce ravito, #61 : repris par `arc_race_pacing.py`/`arc_race_debrief.py` au lieu du défaut générique (90 s) dès qu'il est renseigné ; à ne persister que pour un ravito dont l'arrêt attendu diffère vraiment du défaut, ex. repas chaud ou drop bag) |
 | `water_points` | liste d'objets | **`km`**, **`source`** (`officiel` `osm_drinking_water` `osm_spring` `osm_cafe`), `name` |
 | `gear` | liste | matériel obligatoire et conseillé |
+| `notes`, `emergency` | liste | consignes de course et urgence (organisation, points d'abandon) imprimées telles quelles par le roadbook (#187) — absentes = dites absentes, jamais inventées |
+| `nutrition_plan` | chemin du workspace | fichier `nutrition/…` du plan de ravitaillement (#187) |
 | `segments` | liste d'objets | allures par segment depuis le modèle personnel (#59) — voir ci-dessous |
+
+`take` d'un ravito (`aid_stations[]`, #187) : liste de textes courts — ce que le plan nutrition fait
+**prendre** à ce ravito (« 2 gels », « 500 ml »), recopié du fichier `nutrition/`, jamais
+déduit ; distinct de `services` (ce que le ravito sert). Le roadbook du tableau de bord
+(vue « Roadbook », `/api/roadbook`) l'imprime à côté du ravito.
 
 **`segments` (#59, `scripts/arc_race_pacing.py`).** Un segment par pièce de course
 (découpage par distance cible + fusion des pentes similaires, voir la docstring
@@ -948,13 +996,16 @@ réalisé segment par segment sans recalculer sa propre segmentation.
 | `reason_code` | `extrapolated` `no_model` `missing_elevation` | raison informative attachée à la prédiction, voir `notes` |
 | `predicted_time_s` | objet | temps prédit par scénario, secondes — **mêmes clés que `scenarios` ci-dessus** (`ambitious`/`realistic`/`safe`) |
 | `pace_s_km` | objet | allure prédite par scénario, s/km, mêmes clés |
+| `night_fraction`, `night_factor` | objet | pénalité de nuit (#184) : part du temps de la section courue de nuit, et multiplicateur de temps appliqué, par scénario (mêmes clés) — présents seulement si le plan comporte de la nuit (`--race-date`, `--start` et `--tz` fournis) |
+| `technicity` | objet | coefficient de technicité du terrain (#186) : `{coef, effective_factor, source (declared/osm/none), tags, coverage_pct, osm_coef?}` — présent seulement si `--technicity` a été demandé ; `effective_factor` est le multiplicateur de temps réellement appliqué (même pour les trois scénarios) |
+| `altitude_m`, `altitude_factor` | nombre | pénalité d'altitude (#185) : altitude moyenne de la section (m) et multiplicateur de temps appliqué (le même pour les trois scénarios) — présents seulement si une section dépasse le seuil (1 500 m) |
 | `notes` | liste | avertissements courts (ex. extrapolation hors plage du modèle, altitude GPX manquante) |
 
 ```arc
 {
   "arc": 1, "kind": "race_plan", "date": "2026-09-20", "race_name": "Trail des Collines",
   "race_date": "2026-11-15", "distance_m": 52000, "elevation_gain_m": 2400,
-  "start_time": "2026-11-15T07:30:00+01:00", "target_time_s": 25200,
+  "start_time": "2026-11-15T07:30:00+01:00", "timezone": "Europe/Paris", "target_time_s": 25200,
   "scenarios": {"ambitious": 23400, "realistic": 25200, "safe": 27900},
   "aid_stations": [{"km": 14.5, "name": "Mont-Saint-Aubert", "services": ["eau", "solide"], "cutoff": "10:30"}],
   "water_points": [{"km": 22.0, "source": "osm_drinking_water", "name": "Fontaine du village"}],

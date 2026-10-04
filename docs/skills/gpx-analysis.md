@@ -35,6 +35,7 @@
 - Détermination du type de parcours (boucle, point-to-point)
 - **Verdict de compatibilité** avec une séance planifiée
 - Rapport Markdown structuré
+- **Correction altimétrique par MNT** (`--dem`, opt-in, #176) : IGN RGE ALTI en France, Copernicus GLO-90 via Open-Meteo ailleurs ; le D+ MNT devient la référence et le rapport affiche « D+ fichier / D+ MNT ». Seules des coordonnées amincies sont envoyées — voir [Correction altimétrique](../elevation.md)
 
 ## Script
 
@@ -43,8 +44,12 @@
 ## Utilisation
 
 ```bash
-python3 skills/gpx-analysis/scripts/analyze_gpx.py <fichier.gpx>
+python3 skills/gpx-analysis/scripts/analyze_gpx.py --gpx <fichier.gpx>
+# avec altitude corrigée par MNT (opt-in, hors ligne : altitude du fichier conservée)
+python3 skills/gpx-analysis/scripts/analyze_gpx.py --gpx <fichier.gpx> --dem
 ```
+
+`--dem` / `--no-dem` / `--dem-step` / `--workspace` : voir [la page dédiée](../elevation.md) (sources, licences et attributions, vie privée, hypothèses). Réglage permanent : `[elevation].dem = "auto"`.
 
 ## Fichier source
 

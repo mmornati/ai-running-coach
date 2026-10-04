@@ -90,6 +90,9 @@ def log(msg: str) -> None:
 # route : hash ; wait : sélecteur à attendre ; scroll : (sélecteur, texte) amené en haut ; full : page entière ;
 # boxes : nom -> {sel, text?, closest?, nth?}
 
+ULTRA_ROUTE = "roadbook?plan=planning/2026-09-27_ultra_ultra-des-cretes.md&scenario=realistic"   # épisode 14
+
+
 def B(sel, text=None, closest=None, nth=0):
     return {"sel": sel, "text": text, "closest": closest, "nth": nth}
 
@@ -165,6 +168,34 @@ SHOTS = [
          boxes={"rapport": B(".prose"), "tableau": B(".prose table")}),
     dict(name="performance", view="Performance", route="performance", wait="main h2",
          desc="Performance : VO2max estimée et indices.", boxes={"premier-bloc": B("main section.band")}),
+    dict(name="roadbook", view="Roadbook", route=ULTRA_ROUTE, wait=".rb-sheet.is-active .rb-table",
+         desc="Roadbook de l'Ultra des Crêtes (scénario réaliste, départ 16 h) : profil relatif avec la nuit hachurée, sections, passages à l'heure locale.",
+         boxes={"entete": B(".rb-sheet.is-active .rb-head"), "profil": B(".rb-sheet.is-active .rb-profile"),
+                "sections": B(".rb-sheet.is-active .rb-table")}),
+    dict(name="roadbook-sections", view="Roadbook", route=ULTRA_ROUTE, wait=".rb-sheet.is-active .rb-table",
+         scroll=(".rb-sheet.is-active .rb-table-wrap", None, 110),
+         desc="Roadbook : passages, barrières avec leur marge (« TENDU »), ravitos avec ce qu'on y prend, drapeau nuit et frontale.",
+         boxes={"sections": B(".rb-sheet.is-active .rb-table"), "nuit": B(".rb-sheet.is-active .rb-night-tag"),
+                "barriere-tendue": B(".rb-sheet.is-active .rb-cut--tendu", closest="td"),
+                "a-prendre": B(".rb-sheet.is-active .rb-take"), "passage": B(".rb-sheet.is-active tr.rb-row--night td.num", nth=2)}),
+    dict(name="roadbook-materiel", view="Roadbook", route=ULTRA_ROUTE, wait=".rb-sheet.is-active .rb-gearlist",
+         scroll=(".rb-sheet.is-active .rb-cols", None, 110),
+         desc="Roadbook : matériel obligatoire en liste à cocher, statut contre l'inventaire, urgence et consignes.",
+         boxes={"materiel": B(".rb-sheet.is-active .rb-gearlist"), "manquant": B(".rb-sheet.is-active .rb-gear--bad"),
+                "consignes": B(".rb-sheet.is-active .rb-cols")}),
+]
+
+
+# Épisode 15 : le bloc, sur une variante du workspace de Camille dont l'objectif est la course de fin décembre
+# (`demo.build_demo(bloc=True)` : le squelette est écrit par le vrai `plan-skeleton --write`).
+BLOC_SHOTS = [
+    dict(name="bloc-frise", view="Semaine", route="semaine", wait=".band--frise .frise-cell",
+         desc="Frise du bloc (vue Semaine) : 12 semaines du 5 octobre au 27 décembre, phases (Base, Développement, Spécifique, Affûtage), semaines allégées, drapeau de course, récupération post-course.",
+         boxes={"frise": B(".band--frise"), "colonnes": B(".band--frise svg"), "legende": B(".band--frise .legend"),
+                "lecture": B("#frise-readout"), "drapeau": B(".band--frise .frise-flag")}),
+    dict(name="bloc-semaine", view="Semaine", route="semaine?debut=2026-10-12", wait=".band--frise .frise-cell", reload=False,
+         desc="Semaine du 12 octobre du squelette : créneaux de séance à habiller (« à définir »), la frise du bloc en tête.",
+         boxes={"frise": B(".band--frise"), "semaine": B(".week")}),
 ]
 
 
@@ -258,7 +289,7 @@ class Recorder:
         log(f"  {name}: {webp.stat().st_size // 1024} Ko, {len(found)} cadres")
 
     def write_manifest(self) -> None:
-        order = {s["name"]: i for i, s in enumerate(SHOTS)}
+        order = {s["name"]: i for i, s in enumerate(SHOTS + BLOC_SHOTS)}
         data = {"generated_for": "Camille — mardi 2026-09-29 (J-54), workspace fictif", "shots": sorted(
             self.entries, key=lambda e: order.get(e["name"], 999))}
         text = json.dumps(data, ensure_ascii=False, indent=1)
@@ -285,9 +316,10 @@ def new_context(browser, vp):
     return ctx
 
 
-def open_view(page, base, route, wait, scroll=None):
+def open_view(page, base, route, wait, scroll=None, reload=True):
     page.goto(f"{base}/#/{route}")
-    page.reload()                                  # état propre malgré le changement de hash
+    if reload:
+        page.reload()                              # état propre malgré le changement de hash
     page.wait_for_selector(wait, timeout=20000)
     page.wait_for_timeout(500)
     page.evaluate("window.scrollTo(0, 0)")
@@ -332,6 +364,28 @@ def capture_dashboard(rec, browser, base, only):
         open_view(page, base, shot["route"].format(act=act), shot["wait"], shot.get("scroll"))
         rec.snap(page, shot["name"], shot["view"], shot["desc"], vp, shot["boxes"], shot.get("full", False))
     ctx.close()
+
+
+def capture_bloc(rec, browser, tmp, only):
+    """Variante « bloc » du workspace (objectif de fin décembre + squelette), servie à part : les autres
+    captures de la série ne changent pas."""
+    shots = [sh for sh in BLOC_SHOTS if not only or sh["name"] in only]
+    if not shots:
+        return
+    ws = tmp / "workspace-bloc"
+    demo.build_demo(ws, bloc=True)
+    dash = Service([sys.executable, str(REPO / "scripts/arc_serve.py"), "--workspace", str(ws), "--today", TODAY,
+                    "--memory", "--port", "0"])
+    try:
+        vp = {**DESKTOP, "label": "desktop 1440×900 @2x"}
+        for shot in shots:
+            ctx = new_context(browser, {**DESKTOP})       # un contexte par capture : le routeur garde la semaine ouverte
+            page = ctx.new_page()
+            open_view(page, dash.url.rstrip("/"), shot["route"], shot["wait"], shot.get("scroll"), shot.get("reload", True))
+            rec.snap(page, shot["name"], shot["view"], shot["desc"], vp, shot["boxes"], shot.get("full", False))
+            ctx.close()
+    finally:
+        dash.stop()
 
 
 def capture_mobile_dashboard(rec, browser, base, only):
@@ -465,6 +519,8 @@ def main() -> int:
                 capture_dashboard(rec, browser, base, only)
                 log("tableau de bord (mobile)…")
                 capture_mobile_dashboard(rec, browser, base, only)
+                log("bloc (variante du workspace)…")
+                capture_bloc(rec, browser, tmp, only)
                 log("chat…")
                 capture_chat(rec, browser, base, ws, chat_port, tmp, only)
                 browser.close()

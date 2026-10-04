@@ -55,6 +55,16 @@ class TestDataSourceAwareTools(InstallAsserts):
             self.assertOutputContains(proc, "mcp__garmin__add_gear_to_activity")
             self.assertOutputContains(proc, "mcp__garmin__remove_gear_from_activity")
 
+    def test_garmin_source_forbids_nutrition_writes_in_headless_runs(self):
+        """#167 : jamais d'écriture journal alimentaire / hydratation sans le « oui » de l'athlète."""
+        with Sandbox() as sb:
+            ws = self._workspace(sb, None)
+            proc = sb.script("daily-sync.sh", "--dry-run", ARC_WORKSPACE=str(ws))
+            self.assertSucceeded(proc)
+            for tool in ("log_food", "log_custom_food", "create_custom_food", "update_custom_food",
+                         "upsert_and_log", "delete_food_log", "add_hydration_data"):
+                self.assertOutputContains(proc, f"mcp__garmin__{tool}")
+
     def test_garmin_source_forbids_workout_writes_in_headless_runs(self):
         """Le run non surveillé ne pousse ni ne supprime jamais de séance/parcours chez Garmin."""
         with Sandbox() as sb:
@@ -78,6 +88,26 @@ class TestDataSourceAwareTools(InstallAsserts):
                 self.assertOutputContains(proc, "--disallowedTools")
                 for rule in ("Edit(scripts/**)", "Edit(skills/**)", "Edit(.claude/**)", "Edit(.mcp.json)"):
                     self.assertOutputContains(proc, rule)
+
+    def test_intervals_source_forbids_every_write_tool_in_headless_runs(self):
+        """#165 : `mcp__intervals` autorise tout le serveur ; chaque outil `icu_*` qui n'est pas
+        une lecture (`icu_get_`/`icu_search_`/`icu_list_`) est retiré — écritures ET
+        téléchargements (`output_path`) —, ainsi que l'ancien nom sans préfixe (eddmann)."""
+        from tests.lint.test_data_source_parity import ICU_TOOLS
+        writes = sorted(t for t in ICU_TOOLS if not t.startswith(("icu_get_", "icu_search_", "icu_list_")))
+        self.assertGreater(len(writes), 30)
+        with Sandbox() as sb:
+            ws = self._workspace(sb, "intervals")
+            proc = sb.script("daily-sync.sh", "--dry-run", ARC_WORKSPACE=str(ws))
+            self.assertSucceeded(proc)
+            self.assertOutputContains(proc, "--disallowedTools")
+            for tool in writes:
+                self.assertOutputContains(proc, f"mcp__intervals__{tool},")
+            for legacy in ("create_event", "bulk_create_events", "update_event", "delete_event",
+                           "duplicate_event", "update_wellness"):
+                self.assertOutputContains(proc, f"mcp__intervals__{legacy},")
+            for read in ("icu_get_wellness_for_date", "icu_get_recent_activities", "icu_get_activity_details"):
+                self.assertOutputLacks(proc, f"mcp__intervals__{read}")
 
     def test_intervals_source_disallows_no_garmin_tool(self):
         with Sandbox() as sb:

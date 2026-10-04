@@ -15,6 +15,14 @@ propriétaire (`AGENTS.md`) :
 | Ravitaillement, hydratation **et** RPE de la séance (tout `activity_merge`, voir ci-dessous) | `activities/YYYY-MM-DD_<type>.md` (séance du jour) | `carbs_g`, `fluid_intake_ml`, `rpe` | **Un seul agent, jamais deux** : `nutritionist` si activé (`[agents].enabled`, `agents/nutritionist.md` en fait déjà son ressort pour le ravitaillement en cours d'effort), sinon `coach` — celui qui écrit applique la totalité d'`activity_merge` en une seule passe, `rpe` inclus, même si `rpe` n'a rien de nutritionnel : le séparer forcerait deux agents à éditer le même fichier dans le même `/log` |
 | Douleur | `medical/YYYY-MM-DD_health.md` | `pain` (liste `{location, score}`) | `medical` si activé, sinon `coach` dans la limite de sa compétence |
 
+Une **quatrième** nature n'existe que si `[health].cycle_tracking` n'est pas `off`
+(défaut `off`, jamais présumée) : la **phase du cycle** déclarée (« phase lutéale »,
+« jour 21 du cycle ») → `medical/YYYY-MM-DD_health.md`, clés `cycle_phase`, `cycle_day`,
+`cycle_source: "manual"` (même agent que la douleur). Voir « Cycle (opt-in) » plus bas.
+**À `off`, ne tentez jamais d'extraire ni de demander une information de cycle** : une
+phrase qui en parlerait quand même est signalée en une ligne (« le suivi du cycle est
+désactivé — `[health].cycle_tracking` »), rien n'est écrit.
+
 **Aucune de ces trois natures ne va dans `nutrition/`** : ce dossier reste le
 journal d'apport quotidien déclaré séparément (`agents/nutritionist.md`) —
 l'apport EN COURS D'EFFORT vit sur l'activité elle-même
@@ -131,7 +139,7 @@ risqueraient d'écraser la fusion l'un de l'autre.
      ce soit : la séance existe peut-être déjà côté Garmin/Intervals.icu sans
      avoir encore de fichier local. `[data].source = "garmin"` (défaut) :
      `get_activities`, fichier complet avec `garmin_activity_id`.
-     `[data].source = "intervals"` : `get_recent_activities`, fichier complet
+     `[data].source = "intervals"` : `icu_get_recent_activities`, fichier complet
      avec `intervals_activity_id` (chaîne) à la place — jamais les deux
      champs sur la même activité. Un sync réussi (l'un ou l'autre) — reprenez
      alors l'étape 2 dessus.
@@ -191,6 +199,13 @@ risqueraient d'écraser la fusion l'un de l'autre.
    l'athlète, jamais une valeur 7/10 supposée en dur, voir `agents/medical.md`) :
    recommandez explicitement une consultation dans votre réponse, en plus de
    l'avoir écrit dans `pain`.
+   **Prévention ciblée (#192) :** une douleur légère déclarée peut donner lieu, À LA PROCHAINE
+   INTERACTION et jamais automatiquement, à la proposition d'une routine douce de la bibliothèque
+   (`python3 scripts/arc_index.py prevention`) — le coach propose, `medical` (s'il est activé) décide,
+   sinon le coach applique les règles du script en disant « ce n'est pas un avis médical ». Un score
+   ≥ seuil ou une douleur vive/gonflée : aucun exercice, consultation. Une PREMIÈRE déclaration légère
+   ne donne aucun exercice : le coach observe et pose trois questions (nouvelle ? vive ? gonflement ?).
+   Voir `docs/strength.md`.
 4. Validez : `python3 scripts/arc_index.py --validate <fichier>`.
 
 ### Position dans la séance (km, temps écoulé)
@@ -223,6 +238,33 @@ précédent) et lisez `duplicate` en retour.
   un gel ») plutôt que de rejouer la fusion en silence — si oui, reformulez
   l'appel avec un `raw_text` légèrement différent (ex. horodaté) pour que le
   script la traite comme une nouvelle entrée distincte.
+
+## Cycle (opt-in, #166)
+
+Uniquement si `[health].cycle_tracking` n'est pas `off`. Extrayez `cycle` :
+`{"phase": "<tel que dit>", "day": "<tel que dit>"}` (l'un ou l'autre suffit), passez-le à
+`scripts/arc_log.py` — qui lit la configuration vivante du workspace — et recopiez
+`health_merge` (`cycle_phase`, `cycle_day`, `cycle_source: "manual"`) dans le bloc
+```arc du fichier santé du jour, comme `pain_merge`. Une sortie
+`cycle.ignored = "tracking_off"` → n'écrivez rien. `cycle.unknown` (phase ou jour
+illisible) → **demandez**, ne devinez jamais une phase. Le cycle reste un CONTEXTE de
+lecture du bilan matinal : aucun diagnostic, aucune règle, aucun commentaire sur la
+régularité.
+
+## Poussée vers Garmin (opt-in, #167)
+
+Après l'écriture et la ligne de confirmation, **uniquement** si `python3 scripts/arc_nutrition_sync.py mode`
+rend `available: true` (`[nutrition].garmin_sync = "ask"`, source Garmin) : **proposez** de pousser
+l'apport (`nutrition_items` appariés, `fluid_intake_ml`) vers le journal alimentaire et l'hydratation de
+Garmin Connect. À `off` (défaut) : n'en parlez pas. Avec `[data].source = "intervals"` ou `"strava"` : dites en une ligne
+que c'est indisponible, ne simulez rien. **Jamais en headless, jamais sans un « oui » explicite pour CETTE
+poussée.** Le protocole complet (plan → lectures → question → écritures → `record` → `garmin_pushed` dans le
+bloc ```arc de l'activité) est celui de `GARMIN NUTRITION PUSH` dans `agents/nutritionist.md` ; le script
+`scripts/arc_nutrition_sync.py` fait toute la décision (création unique des aliments personnalisés, doublons,
+idempotence) — vous ne faites qu'appeler les outils et passer du JSON. Produit hors catalogue ou calories
+absentes : demandez la valeur d'étiquette, ne poussez jamais une valeur devinée. Une saisie déjà dans
+`garmin_pushed` (même clé) n'est jamais repoussée. Une journée alimentée depuis le journal Garmin
+(`intake_source: "garmin"`) n'est jamais poussée : une seule source de vérité par jour.
 
 ## Confirmation
 

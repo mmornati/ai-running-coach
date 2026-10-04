@@ -1,0 +1,165 @@
+{
+  "schema_version": 1,
+  "id": "route_marathon",
+  "label": "Marathon route (42,2 km)",
+  "sport": "road",
+  "applies_to": {
+    "distance_km": {
+      "min": 30,
+      "max": 60
+    }
+  },
+  "reference": {
+    "distance_km": 42.2
+  },
+  "weeks": {
+    "min": 12,
+    "default": 16,
+    "max": 20
+  },
+  "peak_week_indicative": {
+    "duration_h": {
+      "min": 4,
+      "max": 9
+    }
+  },
+  "stretch_order": [
+    "development",
+    "specific",
+    "base",
+    "taper"
+  ],
+  "phases": [
+    {
+      "id": "base",
+      "label": "Base",
+      "weeks": {
+        "min": 3,
+        "max": 6
+      },
+      "volume_pct": {
+        "start": 88,
+        "end": 92
+      },
+      "intensity": {
+        "easy_pct": 88,
+        "moderate_pct": 4,
+        "hard_pct": 8
+      },
+      "quality_sessions": 1,
+      "long_run": {
+        "share_pct": 30,
+        "cap_min": 120
+      },
+      "strength": "force_maximale"
+    },
+    {
+      "id": "development",
+      "label": "Développement",
+      "weeks": {
+        "min": 4,
+        "max": 7
+      },
+      "volume_pct": {
+        "start": 92,
+        "end": 96
+      },
+      "intensity": {
+        "easy_pct": 82,
+        "moderate_pct": 4,
+        "hard_pct": 14
+      },
+      "quality_sessions": 2,
+      "long_run": {
+        "share_pct": 32,
+        "cap_min": 150
+      },
+      "strength": "force_endurance"
+    },
+    {
+      "id": "specific",
+      "label": "Spécifique",
+      "weeks": {
+        "min": 3,
+        "max": 6
+      },
+      "volume_pct": {
+        "start": 97,
+        "end": 100
+      },
+      "intensity": {
+        "easy_pct": 80,
+        "moderate_pct": 4,
+        "hard_pct": 16
+      },
+      "quality_sessions": 2,
+      "long_run": {
+        "share_pct": 34,
+        "cap_min": 180
+      },
+      "strength": "entretien"
+    },
+    {
+      "id": "taper",
+      "label": "Affûtage",
+      "weeks": {
+        "min": 2,
+        "max": 3
+      },
+      "volume_pct": {
+        "start": 70,
+        "end": 50
+      },
+      "intensity": {
+        "easy_pct": 80,
+        "moderate_pct": 4,
+        "hard_pct": 16
+      },
+      "quality_sessions": 2,
+      "long_run": {
+        "share_pct": 30,
+        "cap_min": 90
+      },
+      "strength": "entretien"
+    },
+    {
+      "id": "recovery",
+      "label": "Récupération (après la course)",
+      "weeks": {
+        "min": 1,
+        "max": 2
+      },
+      "volume_pct": {
+        "start": 45,
+        "end": 60
+      },
+      "intensity": {
+        "easy_pct": 95,
+        "moderate_pct": 5,
+        "hard_pct": 0
+      },
+      "quality_sessions": 0,
+      "long_run": {
+        "share_pct": 30,
+        "cap_min": 60
+      },
+      "strength": "mobilite",
+      "post_race": true
+    }
+  ],
+  "recovery_week": {
+    "every_n_weeks": 4,
+    "volume_factor": 0.8,
+    "quality_sessions_max": 1,
+    "phases": [
+      "base",
+      "development",
+      "specific"
+    ]
+  },
+  "sources": [
+    "Mujika I, Padilla S. Scientific bases for precompetition tapering strategies. Med Sci Sports Exerc 2003;35(7):1182-1187, doi 10.1249/01.MSS.0000074448.73931.11 (direction de l'affûtage uniquement : volume réduit, intensité conservée).",
+    "Seiler S. What is best practice for training intensity and duration distribution in endurance athletes? Int J Sports Physiol Perform 2010;5(3):276-291, doi 10.1123/ijspp.5.3.276 (direction de la distribution polarisée uniquement)."
+  ],
+  "caveat": "approximation du projet : points de départ prudents, à adapter au profil de l'athlète, au bilan matinal et aux garde-fous (jamais une prescription publiée)."
+}

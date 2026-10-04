@@ -1,0 +1,159 @@
+{
+  "title": {
+    "fr": "Construire son bloc",
+    "en": "Building your block"
+  },
+  "summary": {
+    "fr": "Un bloc d'entraînement qui ne s'invente plus : gabarits de périodisation, squelette semaine par semaine relu par les garde-fous, frise du bloc sur le tableau de bord, renforcement par phase et prévention ciblée."
+  },
+  "scenes": [
+    {
+      "id": "bib",
+      "min": 4.6,
+      "lead": 1.2,
+      "fr": [
+        "Étape quinze : construire son bloc."
+      ],
+      "en": [
+        "Stage fifteen: building your block."
+      ]
+    },
+    {
+      "id": "templates",
+      "min": 11,
+      "chapter": {
+        "fr": "Gabarits",
+        "en": "Templates"
+      },
+      "fr": [
+        "Six gabarits de périodisation, par distance, livrés avec le moteur.",
+        "Cinq phases, et un pic déduit du volume déjà tenu, jamais inventé."
+      ],
+      "en": [
+        "Six periodisation templates, by distance, ship with the engine.",
+        "Five phases, and a peak derived from the volume you already hold, never invented."
+      ]
+    },
+    {
+      "id": "skeleton",
+      "min": 11,
+      "chapter": {
+        "fr": "Le squelette",
+        "en": "The skeleton"
+      },
+      "fr": [
+        "Camille vise un quarante-deux kilomètres le vingt-sept décembre. Le squelette du bloc se calcule d'abord à blanc.",
+        "Gabarit, date, volume tenu, disponibilités : douze semaines relues par les garde-fous."
+      ],
+      "en": [
+        "Camille aims for a forty-two kilometre race on December twenty-seventh. The block skeleton is first computed as a dry run.",
+        "Template, date, held volume, availability: twelve weeks reviewed by the guardrails."
+      ]
+    },
+    {
+      "id": "short",
+      "min": 9,
+      "chapter": {
+        "fr": "Trop court",
+        "en": "Too short"
+      },
+      "fr": [
+        "Et le Trail des Crêtes, dans sept semaines ? Le gabarit en demande douze.",
+        "Le coach le dit, et ne comprime jamais sous le minimum."
+      ],
+      "en": [
+        "And the Trail des Crêtes, seven weeks away? The template needs twelve.",
+        "The coach says so, and never squeezes below the minimum."
+      ]
+    },
+    {
+      "id": "write",
+      "min": 10,
+      "chapter": {
+        "fr": "Un oui",
+        "en": "A yes"
+      },
+      "fr": [
+        "Après un oui explicite, une semaine par fichier, sans écraser l'existant.",
+        "Semaine de course : la veille libre, puis trois jours sans courir."
+      ],
+      "en": [
+        "After an explicit yes, one file per week, never overwriting.",
+        "Race week: the day before free, then three days without running."
+      ]
+    },
+    {
+      "id": "frise",
+      "min": 11,
+      "chapter": {
+        "fr": "La frise",
+        "en": "The timeline"
+      },
+      "fr": [
+        "Sur le tableau de bord, la frise du bloc : une colonne par semaine, la teinte donne la phase, la hauteur le volume.",
+        "Chaque semaine s'ouvre : des créneaux à habiller, jamais des séances inventées."
+      ],
+      "en": [
+        "On the dashboard, the block timeline: one column per week, the tint is the phase, the height the volume.",
+        "Each week opens up: slots to fill in, never invented sessions."
+      ]
+    },
+    {
+      "id": "strength",
+      "min": 11,
+      "chapter": {
+        "fr": "Renforcement",
+        "en": "Strength"
+      },
+      "fr": [
+        "Le renforcement suit la phase : force, endurance de force, excentrique, puis entretien à l'affûtage.",
+        "La séance part vers la montre sur un oui explicite, jamais en automatique."
+      ],
+      "en": [
+        "Strength follows the phase: strength, strength endurance, eccentric work, then maintenance in the taper.",
+        "The session goes to the watch on an explicit yes, never automatically."
+      ]
+    },
+    {
+      "id": "prevention",
+      "min": 12,
+      "chapter": {
+        "fr": "Prévention",
+        "en": "Prevention"
+      },
+      "fr": [
+        "Une douleur déclarée n'ouvre pas un exercice au hasard. Légère et inconnue : on observe. Vive ou trop forte : on consulte.",
+        "Seule une gêne légère, confirmée et stable ouvre une routine douce. Pas un avis médical, jamais un diagnostic."
+      ],
+      "en": [
+        "A declared pain never opens an exercise by chance. Mild and unknown: we observe. Sharp or too high: we consult.",
+        "Only a mild, confirmed, stable niggle opens a gentle routine. Not medical advice, never a diagnosis."
+      ]
+    },
+    {
+      "id": "pages",
+      "min": 7,
+      "chapter": {
+        "fr": "Les pages",
+        "en": "The pages"
+      },
+      "fr": [
+        "Deux pages de documentation : les gabarits et le squelette, puis le renforcement et la prévention."
+      ],
+      "en": [
+        "Two documentation pages: templates and the skeleton, then strength and prevention."
+      ]
+    },
+    {
+      "id": "finish",
+      "min": 6,
+      "lead": 2.2,
+      "fr": [
+        "Pour aller plus loin : la page « Gabarits de périodisation » de la documentation."
+      ],
+      "en": [
+        "To go further: the “Periodisation templates” page of the documentation."
+      ]
+    }
+  ]
+}

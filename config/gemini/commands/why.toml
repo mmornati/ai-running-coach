@@ -71,6 +71,17 @@ Then, respecting `[coaching].verbosity`:
 - `outcome` (`applied`, `proposed`, `rejected_by_athlete`, `superseded`) —
   when `proposed`, say explicitly that nothing was pushed yet.
 
+**Optional personal synthesis (#175).** After the facts above, you MAY add ONE
+line from `python3 scripts/arc_index.py decision-effects --trigger <trigger of
+the decision>` (JSON; `synthesis[].statement` of the group with the same
+trigger, `action` and outcome as this decision's entry in `effects[]`) —
+"for you, so far: <statement>". Rules: state that correlation is not causation
+(`caveat`); cite a trend ONLY when `trend_allowed` is true (n >= 5), otherwise
+give the raw counts plus the small-sample `warning`; this synthesis is NEVER
+used to relax a `block` guardrail, a medical decision or a red verdict, and it
+never changes what the decision says. Skip the line when the synthesis is
+empty — never invent one.
+
 No decision found for the requested date/slug: say so in the first line and
 stop there — never substitute a guess, a training-load observation, or a
 health alert that was never written as a `decision`.

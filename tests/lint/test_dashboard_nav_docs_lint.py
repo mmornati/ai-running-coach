@@ -24,8 +24,9 @@ VIEWS_MD = REPO / "docs/dashboard/views.md"
 # entrée de nav (`## Rapports` couvre `rapport`, la fiche d'un rapport précis ;
 # `## Décisions` couvre `decision`, le détail d'une décision précise (#55), même
 # motif ; `fichiers` a son propre titre malgré son libellé de nav construit
-# dynamiquement, voir NAV_LABEL_OVERRIDES ci-dessous).
-ROUTES_WITHOUT_NAV_ENTRY = {"rapport", "fichiers", "decision"}
+# dynamiquement, voir NAV_LABEL_OVERRIDES ci-dessous ; `roadbook` (#187), sous-page de
+# Trail Shape, a son `## Roadbook`).
+ROUTES_WITHOUT_NAV_ENTRY = {"rapport", "fichiers", "decision", "roadbook"}
 
 # `fichiers` n'a pas de libellé fixe dans `renderNav` (construit avec le nombre de
 # fichiers hors contrat, `${s.incomplete_files} fichier(s) hors contrat`) — son

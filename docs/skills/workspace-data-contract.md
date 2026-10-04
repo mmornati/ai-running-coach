@@ -55,7 +55,7 @@ formulation du modèle.
 | Type | Fichier |
 |---|---|
 | `activity` | `activities/AAAA-MM-JJ_<type>.md` |
-| `health` | `medical/AAAA-MM-JJ_health.md` — sommeil, HRV, FC de repos, readiness, **verdict du jour** |
+| `health` | `medical/AAAA-MM-JJ_health.md` — sommeil, HRV, FC de repos, readiness, **verdict du jour**, contexte du cycle (opt-in, #166) |
 | `weather` | `medical/AAAA-MM-JJ_meteo.md` |
 | `week` | `planning/Semaine_AAAA-MM-JJ.md`, daté du **lundi** — un fichier par semaine, ou un seul fichier multi-semaines (bloc `weeks`, un plan de 10 semaines peut tenir dans 1 fichier) — séances datées, lieu de la semaine |
 | `nutrition` | `nutrition/AAAA-MM-JJ_nutrition.md` |

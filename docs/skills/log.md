@@ -37,6 +37,8 @@
   - `pain` (`{location, score}`) → `medical/YYYY-MM-DD_health.md` (agent `medical` si activé, sinon `coach`)
   - Une douleur ≥ `[injury_risk].pain_consult_threshold` (résolu depuis la configuration vivante, 7/10 par défaut) déclenche une recommandation de consultation immédiate
   - Une synchronisation Garmin ultérieure ne bloque ni ne duplique un fichier créé par `/log` : `garmin-sync-efficiency` fusionne ses champs dans le même fichier plutôt que d'en créer un second
+- **Cycle menstruel (opt-in, #166)** : seulement si `[health].cycle_tracking` n'est pas `off` (défaut), une phase ou un jour de cycle déclaré (« phase lutéale », « jour 21 ») est normalisé par le script et écrit en `cycle_phase`/`cycle_day`/`cycle_source: "manual"` dans `medical/YYYY-MM-DD_health.md` ; à `off`, la saisie est ignorée et rien n'est écrit. Voir [Cycle menstruel](../cycle-menstruel.md).
+- **Poussée vers Garmin (opt-in, #167)** : seulement si `[nutrition].garmin_sync = "ask"`, la confirmation est suivie d'une **proposition** de pousser l'apport vers Garmin Connect (jamais automatique, jamais en headless, « oui » explicite par poussée). À `off` (défaut) : aucune mention. Voir [Apports vers Garmin](../nutrition-garmin.md).
 - Une position déclarée (« au km 15 ») reste du texte libre sous le bloc — aucune clé du contrat ne la porte
 - Confirmation en **une ligne**, nommant le produit apparié : ce qui a été écrit, où
 

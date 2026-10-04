@@ -1,0 +1,1434 @@
+{
+ "schema_version": 1,
+ "exercises": [
+  {
+   "id": "squat_poids_du_corps",
+   "name": "Squat au poids du corps",
+   "group": "force",
+   "targets": [
+    "quadriceps",
+    "fessiers"
+   ],
+   "equipment": [
+    "none"
+   ],
+   "mode": "reps",
+   "unilateral": false,
+   "cues": [
+    "Pieds à largeur de bassin, pointes légèrement ouvertes.",
+    "Descendre assis vers l'arrière, genoux dans l'axe des pieds, talons au sol.",
+    "Remonter en poussant le sol, sans verrouiller brutalement les genoux."
+   ],
+   "progressions": [
+    "squat_gobelet"
+   ],
+   "regressions": [],
+   "caution": "Arrêter si une douleur aiguë apparaît (pas une simple fatigue musculaire) et en parler à un professionnel de santé.",
+   "garmin": {
+    "category": "SQUAT",
+    "exercise": "AIR_SQUAT"
+   }
+  },
+  {
+   "id": "squat_gobelet",
+   "name": "Squat gobelet (haltère)",
+   "group": "force",
+   "targets": [
+    "quadriceps",
+    "fessiers"
+   ],
+   "equipment": [
+    "dumbbell"
+   ],
+   "mode": "reps",
+   "unilateral": false,
+   "cues": [
+    "Haltère tenu contre la poitrine, coudes sous l'haltère.",
+    "Buste droit, descente contrôlée jusqu'à la profondeur confortable.",
+    "Garder les talons au sol et le dos neutre."
+   ],
+   "progressions": [
+    "fente_bulgare"
+   ],
+   "regressions": [
+    "squat_poids_du_corps"
+   ],
+   "caution": "Arrêter si une douleur aiguë apparaît (pas une simple fatigue musculaire) et en parler à un professionnel de santé.",
+   "garmin": {
+    "category": "SQUAT",
+    "exercise": "GOBLET_SQUAT"
+   }
+  },
+  {
+   "id": "squat_excentrique_lent",
+   "name": "Squat à descente lente (excentrique)",
+   "group": "force",
+   "targets": [
+    "quadriceps_excentrique",
+    "fessiers"
+   ],
+   "equipment": [
+    "none"
+   ],
+   "mode": "reps",
+   "unilateral": false,
+   "cues": [
+    "Descendre en 4 à 5 secondes, sous contrôle total.",
+    "Marquer une courte pause en bas, remonter en 1 seconde.",
+    "Genoux dans l'axe des pieds, aucun effondrement vers l'intérieur."
+   ],
+   "progressions": [
+    "descente_de_marche_excentrique"
+   ],
+   "regressions": [
+    "chaise_murale"
+   ],
+   "caution": "Courbatures fréquentes (surtout les premières séances) : démarrer avec peu de séries.",
+   "garmin": {
+    "category": "SQUAT",
+    "exercise": "AIR_SQUAT"
+   }
+  },
+  {
+   "id": "chaise_murale",
+   "name": "Chaise murale (isométrique)",
+   "group": "force",
+   "targets": [
+    "quadriceps"
+   ],
+   "equipment": [
+    "none"
+   ],
+   "mode": "time",
+   "unilateral": false,
+   "cues": [
+    "Dos au mur, cuisses proches de l'horizontale, genoux au-dessus des chevilles.",
+    "Respiration régulière, poids réparti sur les talons.",
+    "Se relever dès que la position se dégrade."
+   ],
+   "progressions": [
+    "squat_excentrique_lent"
+   ],
+   "regressions": [],
+   "caution": "Arrêter si une douleur aiguë apparaît (pas une simple fatigue musculaire) et en parler à un professionnel de santé.",
+   "garmin": {
+    "category": "SQUAT",
+    "exercise": "BODY_WEIGHT_WALL_SQUAT"
+   }
+  },
+  {
+   "id": "montee_de_marche",
+   "name": "Montée de marche",
+   "group": "force",
+   "targets": [
+    "quadriceps",
+    "fessiers",
+    "equilibre"
+   ],
+   "equipment": [
+    "step"
+   ],
+   "mode": "reps",
+   "unilateral": true,
+   "cues": [
+    "Pied entier posé sur la marche, bassin stable.",
+    "Monter en poussant avec la jambe d'appui, redescendre lentement.",
+    "Ne pas se propulser avec la jambe au sol."
+   ],
+   "progressions": [
+    "montee_de_marche_lestee"
+   ],
+   "regressions": [
+    "squat_poids_du_corps"
+   ],
+   "caution": "Arrêter si une douleur aiguë apparaît (pas une simple fatigue musculaire) et en parler à un professionnel de santé.",
+   "garmin": {
+    "category": "SQUAT",
+    "exercise": "STEP_UP"
+   }
+  },
+  {
+   "id": "montee_de_marche_lestee",
+   "name": "Montée de marche lestée",
+   "group": "force",
+   "targets": [
+    "quadriceps",
+    "fessiers"
+   ],
+   "equipment": [
+    "step",
+    "dumbbell"
+   ],
+   "mode": "reps",
+   "unilateral": true,
+   "cues": [
+    "Un haltère dans chaque main, bras le long du corps.",
+    "Même technique que la montée de marche, vitesse contrôlée.",
+    "Hauteur de marche : genou à environ 90 degrés."
+   ],
+   "progressions": [],
+   "regressions": [
+    "montee_de_marche"
+   ],
+   "caution": "Arrêter si une douleur aiguë apparaît (pas une simple fatigue musculaire) et en parler à un professionnel de santé.",
+   "garmin": {
+    "category": "SQUAT",
+    "exercise": "DUMBBELL_STEP_UP"
+   }
+  },
+  {
+   "id": "descente_de_marche_excentrique",
+   "name": "Descente de marche contrôlée (excentrique)",
+   "group": "force",
+   "targets": [
+    "quadriceps_excentrique",
+    "fessiers"
+   ],
+   "equipment": [
+    "step"
+   ],
+   "mode": "reps",
+   "unilateral": true,
+   "cues": [
+    "Debout sur une marche, descendre lentement (3 à 4 secondes) en fléchissant la jambe d'appui.",
+    "Effleurer le sol du talon opposé, puis remonter avec l'aide des deux jambes.",
+    "Genou aligné sur le deuxième orteil, bassin horizontal."
+   ],
+   "progressions": [],
+   "regressions": [
+    "squat_excentrique_lent"
+   ],
+   "caution": "Exercice très sollicitant pour les quadriceps : progresser par petits paliers de séries.",
+   "garmin": null
+  },
+  {
+   "id": "fente_arriere",
+   "name": "Fente arrière",
+   "group": "force",
+   "targets": [
+    "quadriceps",
+    "fessiers",
+    "equilibre"
+   ],
+   "equipment": [
+    "none"
+   ],
+   "mode": "reps",
+   "unilateral": true,
+   "cues": [
+    "Grand pas en arrière, genou arrière vers le sol sans le poser brutalement.",
+    "Buste gainé, poids sur le talon du pied avant.",
+    "Pousser avec la jambe avant pour revenir."
+   ],
+   "progressions": [
+    "fente_arriere_lestee"
+   ],
+   "regressions": [
+    "squat_poids_du_corps"
+   ],
+   "caution": "Arrêter si une douleur aiguë apparaît (pas une simple fatigue musculaire) et en parler à un professionnel de santé.",
+   "garmin": {
+    "category": "LUNGE",
+    "exercise": "LUNGE"
+   }
+  },
+  {
+   "id": "fente_arriere_lestee",
+   "name": "Fente arrière lestée",
+   "group": "force",
+   "targets": [
+    "quadriceps",
+    "fessiers"
+   ],
+   "equipment": [
+    "dumbbell"
+   ],
+   "mode": "reps",
+   "unilateral": true,
+   "cues": [
+    "Un haltère dans chaque main, bras le long du corps.",
+    "Même technique que la fente arrière, rythme contrôlé.",
+    "Charge qui laisse 2 répétitions de réserve."
+   ],
+   "progressions": [
+    "fente_bulgare"
+   ],
+   "regressions": [
+    "fente_arriere"
+   ],
+   "caution": "Arrêter si une douleur aiguë apparaît (pas une simple fatigue musculaire) et en parler à un professionnel de santé.",
+   "garmin": {
+    "category": "LUNGE",
+    "exercise": "DUMBBELL_REVERSE_LUNGE"
+   }
+  },
+  {
+   "id": "fente_bulgare",
+   "name": "Fente bulgare (pied arrière surélevé)",
+   "group": "force",
+   "targets": [
+    "quadriceps",
+    "fessiers",
+    "equilibre"
+   ],
+   "equipment": [
+    "dumbbell",
+    "box"
+   ],
+   "mode": "reps",
+   "unilateral": true,
+   "cues": [
+    "Pied arrière posé sur un banc ou une chaise stable, pied avant assez loin.",
+    "Descendre à la verticale, buste légèrement penché, genou avant dans l'axe.",
+    "Haltères le long du corps."
+   ],
+   "progressions": [],
+   "regressions": [
+    "fente_arriere_lestee"
+   ],
+   "caution": "Arrêter si une douleur aiguë apparaît (pas une simple fatigue musculaire) et en parler à un professionnel de santé.",
+   "garmin": {
+    "category": "LUNGE",
+    "exercise": "DUMBBELL_BULGARIAN_SPLIT_SQUAT"
+   }
+  },
+  {
+   "id": "fente_laterale",
+   "name": "Fente latérale",
+   "group": "force",
+   "targets": [
+    "adducteurs",
+    "quadriceps",
+    "fessiers"
+   ],
+   "equipment": [
+    "none"
+   ],
+   "mode": "reps",
+   "unilateral": true,
+   "cues": [
+    "Grand pas sur le côté, fléchir la jambe d'appui, l'autre jambe reste tendue.",
+    "Orteils vers l'avant, talon de la jambe fléchie au sol.",
+    "Pousser pour revenir au centre."
+   ],
+   "progressions": [],
+   "regressions": [
+    "squat_poids_du_corps"
+   ],
+   "caution": "Arrêter si une douleur aiguë apparaît (pas une simple fatigue musculaire) et en parler à un professionnel de santé.",
+   "garmin": {
+    "category": "LUNGE",
+    "exercise": "SIDE_LUNGE"
+   }
+  },
+  {
+   "id": "pont_fessier",
+   "name": "Pont fessier",
+   "group": "force",
+   "targets": [
+    "fessiers",
+    "ischio_jambiers"
+   ],
+   "equipment": [
+    "none"
+   ],
+   "mode": "reps",
+   "unilateral": false,
+   "cues": [
+    "Allongé, pieds à plat près des fesses, genoux à 90 degrés.",
+    "Monter le bassin jusqu'à l'alignement épaules-genoux, serrer les fessiers.",
+    "Ne pas cambrer le bas du dos en haut du mouvement."
+   ],
+   "progressions": [
+    "pont_fessier_unilateral"
+   ],
+   "regressions": [],
+   "caution": "Arrêter si une douleur aiguë apparaît (pas une simple fatigue musculaire) et en parler à un professionnel de santé.",
+   "garmin": {
+    "category": "HIP_RAISE",
+    "exercise": "HIP_RAISE"
+   }
+  },
+  {
+   "id": "pont_fessier_unilateral",
+   "name": "Pont fessier unilatéral",
+   "group": "force",
+   "targets": [
+    "fessiers",
+    "ischio_jambiers",
+    "gainage"
+   ],
+   "equipment": [
+    "none"
+   ],
+   "mode": "reps",
+   "unilateral": true,
+   "cues": [
+    "Une jambe tendue en l'air, bassin horizontal pendant tout le mouvement.",
+    "Pousser dans le talon de la jambe d'appui.",
+    "Contrôler la descente."
+   ],
+   "progressions": [
+    "pont_fessier_pied_sureleve"
+   ],
+   "regressions": [
+    "pont_fessier"
+   ],
+   "caution": "Arrêter si une douleur aiguë apparaît (pas une simple fatigue musculaire) et en parler à un professionnel de santé.",
+   "garmin": {
+    "category": "HIP_RAISE",
+    "exercise": "SINGLE_LEG_HIP_RAISE"
+   }
+  },
+  {
+   "id": "pont_fessier_pied_sureleve",
+   "name": "Pont fessier unilatéral, pied surélevé",
+   "group": "force",
+   "targets": [
+    "fessiers",
+    "ischio_jambiers"
+   ],
+   "equipment": [
+    "box"
+   ],
+   "mode": "reps",
+   "unilateral": true,
+   "cues": [
+    "Pied d'appui posé sur un banc ou une chaise stable, épaules au sol.",
+    "Monter le bassin sans rotation, tenir 1 seconde.",
+    "Amplitude plus grande que le pont au sol : rester progressif."
+   ],
+   "progressions": [],
+   "regressions": [
+    "pont_fessier_unilateral"
+   ],
+   "caution": "Arrêter si une douleur aiguë apparaît (pas une simple fatigue musculaire) et en parler à un professionnel de santé.",
+   "garmin": {
+    "category": "HIP_RAISE",
+    "exercise": "SINGLE_LEG_HIP_RAISE_WITH_FOOT_ON_BENCH"
+   }
+  },
+  {
+   "id": "souleve_de_terre_roumain_unilateral",
+   "name": "Soulevé de terre roumain à une jambe (haltère)",
+   "group": "force",
+   "targets": [
+    "ischio_jambiers",
+    "fessiers",
+    "equilibre"
+   ],
+   "equipment": [
+    "dumbbell"
+   ],
+   "mode": "reps",
+   "unilateral": true,
+   "cues": [
+    "Charnière de hanche : le buste bascule, la jambe libre part en arrière, dos neutre.",
+    "Genou d'appui légèrement fléchi, haltère près de la jambe.",
+    "Remonter en poussant la hanche vers l'avant."
+   ],
+   "progressions": [],
+   "regressions": [
+    "bonjour_elastique",
+    "pont_fessier_unilateral"
+   ],
+   "caution": "Arrêter si une douleur aiguë apparaît (pas une simple fatigue musculaire) et en parler à un professionnel de santé.",
+   "garmin": {
+    "category": "DEADLIFT",
+    "exercise": "SINGLE_LEG_ROMANIAN_DEADLIFT_WITH_DUMBBELL"
+   }
+  },
+  {
+   "id": "bonjour_elastique",
+   "name": "Good morning avec élastique (charnière de hanche)",
+   "group": "force",
+   "targets": [
+    "ischio_jambiers",
+    "fessiers"
+   ],
+   "equipment": [
+    "elastic"
+   ],
+   "mode": "reps",
+   "unilateral": false,
+   "cues": [
+    "Élastique sous les pieds et sur la nuque ou les épaules.",
+    "Charnière de hanche, dos neutre, genoux légèrement fléchis.",
+    "Remonter en serrant les fessiers."
+   ],
+   "progressions": [
+    "souleve_de_terre_roumain_unilateral"
+   ],
+   "regressions": [
+    "pont_fessier"
+   ],
+   "caution": "Arrêter si une douleur aiguë apparaît (pas une simple fatigue musculaire) et en parler à un professionnel de santé.",
+   "garmin": {
+    "category": "LEG_CURL",
+    "exercise": "BAND_GOOD_MORNING"
+   }
+  },
+  {
+   "id": "flexion_jambe_glissante",
+   "name": "Flexion de jambes glissante (ischio-jambiers)",
+   "group": "force",
+   "targets": [
+    "ischio_jambiers"
+   ],
+   "equipment": [
+    "none"
+   ],
+   "mode": "reps",
+   "unilateral": false,
+   "cues": [
+    "Allongé, talons sur une serviette posée sur un sol lisse, bassin relevé.",
+    "Fléchir en ramenant les talons vers les fesses, bassin haut.",
+    "Revenir lentement (excentrique), bassin immobile."
+   ],
+   "progressions": [
+    "flexion_jambe_glissante_unilaterale",
+    "nordique_assiste"
+   ],
+   "regressions": [
+    "pont_fessier"
+   ],
+   "caution": "Sensation de tension ischio-jambiers normale ; arrêter en cas de crampe vive ou de douleur localisée.",
+   "garmin": {
+    "category": "LEG_CURL",
+    "exercise": "SLIDING_LEG_CURL"
+   }
+  },
+  {
+   "id": "flexion_jambe_glissante_unilaterale",
+   "name": "Flexion de jambes glissante à une jambe",
+   "group": "force",
+   "targets": [
+    "ischio_jambiers"
+   ],
+   "equipment": [
+    "none"
+   ],
+   "mode": "reps",
+   "unilateral": true,
+   "cues": [
+    "Même position, un seul talon sur la serviette, l'autre jambe pliée ou tendue en l'air.",
+    "Bassin haut et horizontal pendant tout le mouvement.",
+    "Descente lente."
+   ],
+   "progressions": [],
+   "regressions": [
+    "flexion_jambe_glissante"
+   ],
+   "caution": "Arrêter si une douleur aiguë apparaît (pas une simple fatigue musculaire) et en parler à un professionnel de santé.",
+   "garmin": {
+    "category": "LEG_CURL",
+    "exercise": "SINGLE_LEG_SLIDING_LEG_CURL"
+   }
+  },
+  {
+   "id": "nordique_assiste",
+   "name": "Nordique assisté (ischio-jambiers, excentrique)",
+   "group": "force",
+   "targets": [
+    "ischio_jambiers"
+   ],
+   "equipment": [
+    "none"
+   ],
+   "mode": "reps",
+   "unilateral": false,
+   "cues": [
+    "À genoux, chevilles calées (partenaire ou meuble lourd), corps gainé de la tête aux genoux.",
+    "Se laisser tomber vers l'avant le plus lentement possible, mains prêtes à amortir.",
+    "Se repousser avec les mains pour revenir, sans effort concentrique."
+   ],
+   "progressions": [],
+   "regressions": [
+    "flexion_jambe_glissante_unilaterale"
+   ],
+   "caution": "Très forte charge excentrique : progresser très prudemment, quelques répétitions suffisent.",
+   "garmin": null
+  },
+  {
+   "id": "mollet_debout",
+   "name": "Montée sur pointes (mollets)",
+   "group": "force",
+   "targets": [
+    "mollet_gastrocnemien"
+   ],
+   "equipment": [
+    "none"
+   ],
+   "mode": "reps",
+   "unilateral": false,
+   "cues": [
+    "Debout, monter sur la pointe des pieds le plus haut possible.",
+    "Tenir 1 seconde en haut, redescendre lentement.",
+    "Chevilles droites, pas de roulement vers l'extérieur."
+   ],
+   "progressions": [
+    "mollet_unipodal"
+   ],
+   "regressions": [],
+   "caution": "Arrêter si une douleur aiguë apparaît (pas une simple fatigue musculaire) et en parler à un professionnel de santé.",
+   "garmin": {
+    "category": "CALF_RAISE",
+    "exercise": "STANDING_CALF_RAISE"
+   }
+  },
+  {
+   "id": "mollet_unipodal",
+   "name": "Montée sur pointe à une jambe",
+   "group": "force",
+   "targets": [
+    "mollet_gastrocnemien"
+   ],
+   "equipment": [
+    "none"
+   ],
+   "mode": "reps",
+   "unilateral": true,
+   "cues": [
+    "Appui léger d'une main pour l'équilibre, pas pour s'aider.",
+    "Amplitude complète : talon bas, puis le plus haut possible.",
+    "Tempo lent, 2 secondes à la montée, 2 secondes à la descente."
+   ],
+   "progressions": [
+    "mollet_unipodal_lestee",
+    "mollet_excentrique_marche"
+   ],
+   "regressions": [
+    "mollet_debout"
+   ],
+   "caution": "Arrêter si une douleur aiguë apparaît (pas une simple fatigue musculaire) et en parler à un professionnel de santé.",
+   "garmin": {
+    "category": "CALF_RAISE",
+    "exercise": "SINGLE_LEG_STANDING_CALF_RAISE"
+   }
+  },
+  {
+   "id": "mollet_unipodal_lestee",
+   "name": "Montée sur pointe à une jambe, lestée",
+   "group": "force",
+   "targets": [
+    "mollet_gastrocnemien",
+    "soleaire"
+   ],
+   "equipment": [
+    "dumbbell",
+    "step"
+   ],
+   "mode": "reps",
+   "unilateral": true,
+   "cues": [
+    "Un haltère dans la main du côté travaillé, pointe de pied sur le bord d'une marche.",
+    "Amplitude complète, tempo lent (3 secondes à la descente).",
+    "Charge qui laisse 2 répétitions de réserve."
+   ],
+   "progressions": [],
+   "regressions": [
+    "mollet_unipodal"
+   ],
+   "caution": "Arrêter si une douleur aiguë apparaît (pas une simple fatigue musculaire) et en parler à un professionnel de santé.",
+   "garmin": {
+    "category": "CALF_RAISE",
+    "exercise": "SINGLE_LEG_STANDING_DUMBBELL_CALF_RAISE"
+   }
+  },
+  {
+   "id": "soleaire_genou_flechi",
+   "name": "Montée sur pointe genou fléchi (soléaire)",
+   "group": "force",
+   "targets": [
+    "soleaire"
+   ],
+   "equipment": [
+    "none"
+   ],
+   "mode": "reps",
+   "unilateral": true,
+   "cues": [
+    "Genou fléchi à environ 30-45 degrés, maintenu pendant tout le mouvement.",
+    "Monter lentement sur la pointe du pied, tenir 1 seconde.",
+    "Redescendre en 3 secondes."
+   ],
+   "progressions": [],
+   "regressions": [
+    "mollet_debout"
+   ],
+   "caution": "Arrêter si une douleur aiguë apparaît (pas une simple fatigue musculaire) et en parler à un professionnel de santé.",
+   "garmin": {
+    "category": "CALF_RAISE",
+    "exercise": "SINGLE_LEG_BENT_KNEE_CALF_RAISE"
+   }
+  },
+  {
+   "id": "mollet_excentrique_marche",
+   "name": "Descente de pointe excentrique sur marche",
+   "group": "force",
+   "targets": [
+    "mollet_gastrocnemien",
+    "soleaire"
+   ],
+   "equipment": [
+    "step"
+   ],
+   "mode": "reps",
+   "unilateral": true,
+   "cues": [
+    "Monter sur les deux pieds, puis redescendre sur un seul pied en 4 secondes, talon sous le niveau de la marche.",
+    "Garder le genou tendu (gastrocnémien) puis, sur une série, fléchi (soléaire).",
+    "Remonter avec les deux jambes."
+   ],
+   "progressions": [],
+   "regressions": [
+    "mollet_unipodal"
+   ],
+   "caution": "Charge excentrique élevée pour le tendon d'Achille : introduire progressivement.",
+   "garmin": {
+    "category": "CALF_RAISE",
+    "exercise": "SINGLE_LEG_STANDING_CALF_RAISE"
+   }
+  },
+  {
+   "id": "tibial_elastique",
+   "name": "Flexion dorsale de cheville avec élastique",
+   "group": "force",
+   "targets": [
+    "tibial_anterieur"
+   ],
+   "equipment": [
+    "elastic"
+   ],
+   "mode": "reps",
+   "unilateral": true,
+   "cues": [
+    "Assis, élastique accroché derrière le pied et tenu devant, talon au sol.",
+    "Ramener la pointe du pied vers le tibia, sans bouger la jambe.",
+    "Revenir lentement."
+   ],
+   "progressions": [],
+   "regressions": [
+    "tibial_mur"
+   ],
+   "caution": "Arrêter si une douleur aiguë apparaît (pas une simple fatigue musculaire) et en parler à un professionnel de santé.",
+   "garmin": {
+    "category": "WARM_UP",
+    "exercise": "ANKLE_DORSIFLEXION_WITH_BAND"
+   }
+  },
+  {
+   "id": "tibial_mur",
+   "name": "Relevé de pointes dos au mur",
+   "group": "force",
+   "targets": [
+    "tibial_anterieur"
+   ],
+   "equipment": [
+    "none"
+   ],
+   "mode": "reps",
+   "unilateral": false,
+   "cues": [
+    "Dos et fessiers contre un mur, talons à environ 30 cm du mur, jambes tendues.",
+    "Relever les pointes de pieds vers les tibias, puis redescendre sans toucher le sol.",
+    "Mouvement lent et complet."
+   ],
+   "progressions": [
+    "tibial_elastique"
+   ],
+   "regressions": [],
+   "caution": "Arrêter si une douleur aiguë apparaît (pas une simple fatigue musculaire) et en parler à un professionnel de santé.",
+   "garmin": null
+  },
+  {
+   "id": "pied_court",
+   "name": "Pied court (activation du pied)",
+   "group": "proprioception",
+   "targets": [
+    "intrinseques_pied"
+   ],
+   "equipment": [
+    "none"
+   ],
+   "mode": "reps",
+   "unilateral": true,
+   "cues": [
+    "Pied à plat : rapprocher l'avant du pied du talon sans plier les orteils.",
+    "L'arche du pied se soulève, les orteils restent allongés.",
+    "Tenir 5 secondes, relâcher, répéter."
+   ],
+   "progressions": [],
+   "regressions": [],
+   "caution": "Arrêter si une douleur aiguë apparaît (pas une simple fatigue musculaire) et en parler à un professionnel de santé.",
+   "garmin": null
+  },
+  {
+   "id": "serviette_orteils",
+   "name": "Rapprocher une serviette avec les orteils",
+   "group": "proprioception",
+   "targets": [
+    "intrinseques_pied"
+   ],
+   "equipment": [
+    "none"
+   ],
+   "mode": "reps",
+   "unilateral": true,
+   "cues": [
+    "Assis, pied à plat sur une serviette posée sur un sol lisse.",
+    "Froncer la serviette vers soi en fléchissant les orteils, talon fixe.",
+    "Mouvement lent, sans crispation de la jambe."
+   ],
+   "progressions": [],
+   "regressions": [
+    "pied_court"
+   ],
+   "caution": "Arrêter si une douleur aiguë apparaît (pas une simple fatigue musculaire) et en parler à un professionnel de santé.",
+   "garmin": null
+  },
+  {
+   "id": "marche_pointes_halteres",
+   "name": "Marche sur pointes avec haltères",
+   "group": "force",
+   "targets": [
+    "mollet_gastrocnemien",
+    "intrinseques_pied",
+    "gainage"
+   ],
+   "equipment": [
+    "dumbbell"
+   ],
+   "mode": "time",
+   "unilateral": false,
+   "cues": [
+    "Un haltère dans chaque main, rester haut sur les pointes.",
+    "Petits pas contrôlés, buste droit et gainé.",
+    "Garder les chevilles alignées."
+   ],
+   "progressions": [],
+   "regressions": [
+    "mollet_debout"
+   ],
+   "caution": "Arrêter si une douleur aiguë apparaît (pas une simple fatigue musculaire) et en parler à un professionnel de santé.",
+   "garmin": {
+    "category": "CARRY",
+    "exercise": "FARMERS_WALK_ON_TOES"
+   }
+  },
+  {
+   "id": "equilibre_unipodal",
+   "name": "Équilibre unipodal",
+   "group": "proprioception",
+   "targets": [
+    "equilibre",
+    "intrinseques_pied",
+    "fessiers"
+   ],
+   "equipment": [
+    "none"
+   ],
+   "mode": "time",
+   "unilateral": true,
+   "cues": [
+    "Appui sur un pied, genou légèrement fléchi, bassin horizontal.",
+    "Garder le pied actif : orteils étalés, arche maintenue.",
+    "Progression : yeux fermés ou surface instable, seulement quand la tenue est stable."
+   ],
+   "progressions": [],
+   "regressions": [],
+   "caution": "Arrêter si une douleur aiguë apparaît (pas une simple fatigue musculaire) et en parler à un professionnel de santé.",
+   "garmin": null
+  },
+  {
+   "id": "saut_squat",
+   "name": "Saut squat",
+   "group": "pliometrie",
+   "targets": [
+    "pliometrie",
+    "quadriceps",
+    "fessiers"
+   ],
+   "equipment": [
+    "none"
+   ],
+   "mode": "reps",
+   "unilateral": false,
+   "cues": [
+    "Descente rapide mais contrôlée, saut vertical.",
+    "Réception silencieuse, genoux fléchis, pieds à plat.",
+    "Stopper la série dès que la réception devient bruyante ou désordonnée."
+   ],
+   "progressions": [
+    "fente_sautee_alternee",
+    "saut_sur_box"
+   ],
+   "regressions": [],
+   "caution": "Introduire seulement après une base de force ; jamais en cas de gêne aux tendons, genoux ou chevilles.",
+   "garmin": {
+    "category": "PLYO",
+    "exercise": "BODY_WEIGHT_JUMP_SQUAT"
+   }
+  },
+  {
+   "id": "rebonds_cheville",
+   "name": "Rebonds sur les chevilles (pogos)",
+   "group": "pliometrie",
+   "targets": [
+    "pliometrie",
+    "mollet_gastrocnemien"
+   ],
+   "equipment": [
+    "none"
+   ],
+   "mode": "reps",
+   "unilateral": false,
+   "cues": [
+    "Petits sauts rapides, genoux presque tendus, contact au sol le plus bref possible.",
+    "Rebondir sur l'avant du pied, buste haut.",
+    "Séries courtes (10 à 20 contacts) : la qualité prime."
+   ],
+   "progressions": [],
+   "regressions": [
+    "mollet_debout"
+   ],
+   "caution": "Charge tendineuse élevée (Achille) : démarrer très bas, jamais en cas de douleur au tendon d'Achille.",
+   "garmin": null
+  },
+  {
+   "id": "saut_lateral",
+   "name": "Saut latéral (patineur)",
+   "group": "pliometrie",
+   "targets": [
+    "pliometrie",
+    "abducteurs_hanche",
+    "equilibre"
+   ],
+   "equipment": [
+    "none"
+   ],
+   "mode": "reps",
+   "unilateral": true,
+   "cues": [
+    "Bondir d'un pied sur l'autre sur le côté, tenir la réception 1 seconde.",
+    "Genou dans l'axe du pied à la réception.",
+    "Pas d'élan excessif : la précision prime sur la distance."
+   ],
+   "progressions": [],
+   "regressions": [
+    "saut_squat"
+   ],
+   "caution": "Introduire seulement après une base de force et d'équilibre unipodal.",
+   "garmin": {
+    "category": "PLYO",
+    "exercise": "LATERAL_LEAP_AND_HOP"
+   }
+  },
+  {
+   "id": "fente_sautee_alternee",
+   "name": "Fente sautée alternée",
+   "group": "pliometrie",
+   "targets": [
+    "pliometrie",
+    "quadriceps",
+    "fessiers"
+   ],
+   "equipment": [
+    "none"
+   ],
+   "mode": "reps",
+   "unilateral": true,
+   "cues": [
+    "Changer de jambe en l'air, réception amortie en fente.",
+    "Buste gainé, genou avant dans l'axe.",
+    "Séries courtes (6 à 8 sauts par jambe)."
+   ],
+   "progressions": [],
+   "regressions": [
+    "saut_squat"
+   ],
+   "caution": "Exercice exigeant : réservé aux athlètes déjà à l'aise avec saut squat et fente.",
+   "garmin": {
+    "category": "PLYO",
+    "exercise": "ALTERNATING_JUMP_LUNGE"
+   }
+  },
+  {
+   "id": "saut_sur_box",
+   "name": "Saut sur box",
+   "group": "pliometrie",
+   "targets": [
+    "pliometrie",
+    "quadriceps",
+    "fessiers"
+   ],
+   "equipment": [
+    "box"
+   ],
+   "mode": "reps",
+   "unilateral": false,
+   "cues": [
+    "Box stable et basse au départ, saut avec les deux pieds.",
+    "Réception souple, pieds entiers sur la box, puis redescendre en marchant.",
+    "Ne jamais redescendre de la box en sautant : on descend en marchant."
+   ],
+   "progressions": [],
+   "regressions": [
+    "saut_squat"
+   ],
+   "caution": "Box stable obligatoire ; réservé à un athlète déjà à l'aise en pliométrie.",
+   "garmin": {
+    "category": "PLYO",
+    "exercise": "BOX_JUMP"
+   }
+  },
+  {
+   "id": "coquille_elastique",
+   "name": "Coquille (clam shell) avec élastique",
+   "group": "force",
+   "targets": [
+    "abducteurs_hanche",
+    "fessiers"
+   ],
+   "equipment": [
+    "elastic"
+   ],
+   "mode": "reps",
+   "unilateral": true,
+   "cues": [
+    "Allongé sur le côté, hanches et genoux fléchis, élastique au-dessus des genoux.",
+    "Ouvrir le genou du haut sans faire pivoter le bassin.",
+    "Revenir lentement."
+   ],
+   "progressions": [],
+   "regressions": [
+    "abduction_allongee_cote"
+   ],
+   "caution": "Arrêter si une douleur aiguë apparaît (pas une simple fatigue musculaire) et en parler à un professionnel de santé.",
+   "garmin": {
+    "category": "BANDED_EXERCISES",
+    "exercise": "CLAM_SHELLS"
+   }
+  },
+  {
+   "id": "marche_laterale_elastique",
+   "name": "Marche latérale avec élastique",
+   "group": "force",
+   "targets": [
+    "abducteurs_hanche",
+    "fessiers"
+   ],
+   "equipment": [
+    "elastic"
+   ],
+   "mode": "reps",
+   "unilateral": false,
+   "cues": [
+    "Élastique au-dessus des genoux ou des chevilles, genoux légèrement fléchis.",
+    "Pas latéraux contrôlés, tension constante, bassin horizontal.",
+    "Orteils vers l'avant."
+   ],
+   "progressions": [],
+   "regressions": [
+    "abduction_allongee_cote"
+   ],
+   "caution": "Arrêter si une douleur aiguë apparaît (pas une simple fatigue musculaire) et en parler à un professionnel de santé.",
+   "garmin": {
+    "category": "BANDED_EXERCISES",
+    "exercise": "LATERAL_BAND_WALKS"
+   }
+  },
+  {
+   "id": "abduction_allongee_cote",
+   "name": "Abduction de hanche allongé sur le côté",
+   "group": "force",
+   "targets": [
+    "abducteurs_hanche",
+    "fessiers"
+   ],
+   "equipment": [
+    "none"
+   ],
+   "mode": "reps",
+   "unilateral": true,
+   "cues": [
+    "Allongé sur le côté, jambe du bas pliée, jambe du haut tendue dans le prolongement du corps.",
+    "Lever la jambe de 30 à 40 cm sans faire pivoter le bassin.",
+    "Descendre lentement."
+   ],
+   "progressions": [
+    "coquille_elastique",
+    "marche_laterale_elastique"
+   ],
+   "regressions": [],
+   "caution": "Arrêter si une douleur aiguë apparaît (pas une simple fatigue musculaire) et en parler à un professionnel de santé.",
+   "garmin": {
+    "category": "HIP_STABILITY",
+    "exercise": "SIDE_LYING_LEG_RAISE"
+   }
+  },
+  {
+   "id": "extension_hanche_quadrupedie",
+   "name": "Extension de hanche à quatre pattes",
+   "group": "force",
+   "targets": [
+    "fessiers",
+    "gainage"
+   ],
+   "equipment": [
+    "none"
+   ],
+   "mode": "reps",
+   "unilateral": true,
+   "cues": [
+    "À quatre pattes, dos plat, abdominaux engagés.",
+    "Pousser le talon vers l'arrière et le haut sans cambrer.",
+    "Revenir sans poser le genou."
+   ],
+   "progressions": [],
+   "regressions": [],
+   "caution": "Arrêter si une douleur aiguë apparaît (pas une simple fatigue musculaire) et en parler à un professionnel de santé.",
+   "garmin": {
+    "category": "HIP_STABILITY",
+    "exercise": "QUADRUPED_HIP_EXTENSION"
+   }
+  },
+  {
+   "id": "planche",
+   "name": "Planche (gainage ventral)",
+   "group": "force",
+   "targets": [
+    "gainage"
+   ],
+   "equipment": [
+    "none"
+   ],
+   "mode": "time",
+   "unilateral": false,
+   "cues": [
+    "Avant-bras au sol, corps aligné de la tête aux talons.",
+    "Fessiers et abdominaux serrés, bas du dos neutre.",
+    "Respirer normalement."
+   ],
+   "progressions": [],
+   "regressions": [
+    "insecte_mort"
+   ],
+   "caution": "Arrêter si une douleur aiguë apparaît (pas une simple fatigue musculaire) et en parler à un professionnel de santé.",
+   "garmin": {
+    "category": "PLANK",
+    "exercise": "PLANK"
+   }
+  },
+  {
+   "id": "planche_laterale",
+   "name": "Planche latérale",
+   "group": "force",
+   "targets": [
+    "gainage",
+    "abducteurs_hanche"
+   ],
+   "equipment": [
+    "none"
+   ],
+   "mode": "time",
+   "unilateral": true,
+   "cues": [
+    "Appui sur l'avant-bras, corps aligné, bassin haut.",
+    "Ne pas laisser le bassin tomber ni basculer vers l'avant.",
+    "Genoux au sol pour faciliter."
+   ],
+   "progressions": [
+    "planche_laterale_jambe_levee"
+   ],
+   "regressions": [],
+   "caution": "Arrêter si une douleur aiguë apparaît (pas une simple fatigue musculaire) et en parler à un professionnel de santé.",
+   "garmin": {
+    "category": "PLANK",
+    "exercise": "SIDE_PLANK"
+   }
+  },
+  {
+   "id": "planche_laterale_jambe_levee",
+   "name": "Planche latérale avec jambe levée",
+   "group": "force",
+   "targets": [
+    "gainage",
+    "abducteurs_hanche"
+   ],
+   "equipment": [
+    "none"
+   ],
+   "mode": "reps",
+   "unilateral": true,
+   "cues": [
+    "Position de planche latérale stable, lever la jambe du haut sans perdre l'alignement.",
+    "Tenir 1 à 2 secondes en haut.",
+    "Redescendre sous contrôle."
+   ],
+   "progressions": [],
+   "regressions": [
+    "planche_laterale"
+   ],
+   "caution": "Arrêter si une douleur aiguë apparaît (pas une simple fatigue musculaire) et en parler à un professionnel de santé.",
+   "garmin": {
+    "category": "PLANK",
+    "exercise": "SIDE_PLANK_WITH_LEG_LIFT"
+   }
+  },
+  {
+   "id": "insecte_mort",
+   "name": "Insecte mort (dead bug)",
+   "group": "force",
+   "targets": [
+    "gainage"
+   ],
+   "equipment": [
+    "none"
+   ],
+   "mode": "reps",
+   "unilateral": true,
+   "cues": [
+    "Sur le dos, bras tendus vers le plafond, hanches et genoux à 90 degrés.",
+    "Étendre le bras et la jambe opposés en gardant le bas du dos plaqué.",
+    "Mouvement lent, expirer à l'extension."
+   ],
+   "progressions": [
+    "planche"
+   ],
+   "regressions": [],
+   "caution": "Arrêter si une douleur aiguë apparaît (pas une simple fatigue musculaire) et en parler à un professionnel de santé.",
+   "garmin": {
+    "category": "HIP_STABILITY",
+    "exercise": "DEAD_BUG"
+   }
+  },
+  {
+   "id": "etirement_mollet",
+   "name": "Étirement des mollets",
+   "group": "mobilite",
+   "targets": [
+    "mollet_gastrocnemien",
+    "soleaire",
+    "mobilite_cheville"
+   ],
+   "equipment": [
+    "none"
+   ],
+   "mode": "time",
+   "unilateral": true,
+   "cues": [
+    "Mains au mur, jambe arrière tendue, talon au sol.",
+    "Pencher le bassin vers le mur jusqu'à une tension supportable.",
+    "Alterner genou tendu (gastrocnémien) et genou fléchi (soléaire)."
+   ],
+   "progressions": [],
+   "regressions": [],
+   "caution": "Arrêter si une douleur aiguë apparaît (pas une simple fatigue musculaire) et en parler à un professionnel de santé.",
+   "garmin": {
+    "category": "WARM_UP",
+    "exercise": "STRETCH_CALF"
+   }
+  },
+  {
+   "id": "mobilite_cheville_genou_mur",
+   "name": "Mobilité de cheville genou au mur",
+   "group": "mobilite",
+   "targets": [
+    "mobilite_cheville"
+   ],
+   "equipment": [
+    "none"
+   ],
+   "mode": "time",
+   "unilateral": true,
+   "cues": [
+    "Pied à quelques centimètres du mur, talon au sol.",
+    "Amener le genou vers le mur sans décoller le talon.",
+    "Reculer le pied progressivement pour augmenter l'amplitude."
+   ],
+   "progressions": [],
+   "regressions": [],
+   "caution": "Arrêter si une douleur aiguë apparaît (pas une simple fatigue musculaire) et en parler à un professionnel de santé.",
+   "garmin": null
+  },
+  {
+   "id": "etirement_flechisseurs_hanche",
+   "name": "Étirement des fléchisseurs de hanche (fente)",
+   "group": "mobilite",
+   "targets": [
+    "mobilite_hanche",
+    "quadriceps"
+   ],
+   "equipment": [
+    "none"
+   ],
+   "mode": "time",
+   "unilateral": true,
+   "cues": [
+    "Un genou au sol, bassin basculé vers l'arrière, fessier serré.",
+    "Avancer légèrement le bassin jusqu'à sentir l'avant de la hanche.",
+    "Ne pas cambrer le bas du dos."
+   ],
+   "progressions": [],
+   "regressions": [],
+   "caution": "Arrêter si une douleur aiguë apparaît (pas une simple fatigue musculaire) et en parler à un professionnel de santé.",
+   "garmin": {
+    "category": "WARM_UP",
+    "exercise": "STRETCH_LUNGING_HIP_FLEXOR"
+   }
+  },
+  {
+   "id": "etirement_ischio",
+   "name": "Étirement des ischio-jambiers",
+   "group": "mobilite",
+   "targets": [
+    "ischio_jambiers",
+    "mobilite_hanche"
+   ],
+   "equipment": [
+    "none"
+   ],
+   "mode": "time",
+   "unilateral": true,
+   "cues": [
+    "Debout ou allongé, jambe tendue, buste incliné depuis la hanche, dos long.",
+    "Tension supportable, jamais de douleur vive."
+   ],
+   "progressions": [],
+   "regressions": [],
+   "caution": "Arrêter si une douleur aiguë apparaît (pas une simple fatigue musculaire) et en parler à un professionnel de santé.",
+   "garmin": {
+    "category": "WARM_UP",
+    "exercise": "STRETCH_HAMSTRING"
+   }
+  },
+  {
+   "id": "etirement_quadriceps",
+   "name": "Étirement des quadriceps",
+   "group": "mobilite",
+   "targets": [
+    "quadriceps",
+    "mobilite_hanche"
+   ],
+   "equipment": [
+    "none"
+   ],
+   "mode": "time",
+   "unilateral": true,
+   "cues": [
+    "Debout, talon vers la fesse, genoux joints, bassin basculé vers l'arrière.",
+    "Rester stable, appui sur un mur si besoin."
+   ],
+   "progressions": [],
+   "regressions": [],
+   "caution": "Arrêter si une douleur aiguë apparaît (pas une simple fatigue musculaire) et en parler à un professionnel de santé.",
+   "garmin": {
+    "category": "WARM_UP",
+    "exercise": "STRETCH_QUAD"
+   }
+  },
+  {
+   "id": "pigeon",
+   "name": "Posture du pigeon (fessiers, rotateurs de hanche)",
+   "group": "mobilite",
+   "targets": [
+    "mobilite_hanche",
+    "fessiers"
+   ],
+   "equipment": [
+    "none"
+   ],
+   "mode": "time",
+   "unilateral": true,
+   "cues": [
+    "Jambe avant fléchie devant le bassin, jambe arrière allongée.",
+    "Buste incliné vers l'avant jusqu'à une tension supportable.",
+    "Respiration lente."
+   ],
+   "progressions": [],
+   "regressions": [],
+   "caution": "Arrêter si une douleur aiguë apparaît (pas une simple fatigue musculaire) et en parler à un professionnel de santé.",
+   "garmin": {
+    "category": "WARM_UP",
+    "exercise": "STRETCH_PIGEON_POSE"
+   }
+  },
+  {
+   "id": "mobilite_90_90",
+   "name": "Mobilité de hanche 90/90",
+   "group": "mobilite",
+   "targets": [
+    "mobilite_hanche"
+   ],
+   "equipment": [
+    "none"
+   ],
+   "mode": "time",
+   "unilateral": false,
+   "cues": [
+    "Assis, jambes fléchies à 90 degrés de chaque côté.",
+    "Pivoter doucement d'un côté à l'autre, buste droit.",
+    "Utiliser les mains en appui si nécessaire."
+   ],
+   "progressions": [],
+   "regressions": [],
+   "caution": "Arrêter si une douleur aiguë apparaît (pas une simple fatigue musculaire) et en parler à un professionnel de santé.",
+   "garmin": {
+    "category": "WARM_UP",
+    "exercise": "STRETCH_90_90"
+   }
+  },
+  {
+   "id": "rotation_thoracique",
+   "name": "Rotation thoracique",
+   "group": "mobilite",
+   "targets": [
+    "mobilite_thoracique"
+   ],
+   "equipment": [
+    "none"
+   ],
+   "mode": "reps",
+   "unilateral": true,
+   "cues": [
+    "À quatre pattes, une main derrière la tête.",
+    "Tourner le buste en ouvrant le coude vers le plafond.",
+    "Suivre le coude du regard."
+   ],
+   "progressions": [],
+   "regressions": [],
+   "caution": "Arrêter si une douleur aiguë apparaît (pas une simple fatigue musculaire) et en parler à un professionnel de santé.",
+   "garmin": {
+    "category": "WARM_UP",
+    "exercise": "THORACIC_ROTATION"
+   }
+  },
+  {
+   "id": "balancier_jambes",
+   "name": "Balancier de jambes (échauffement dynamique)",
+   "group": "mobilite",
+   "targets": [
+    "mobilite_hanche",
+    "ischio_jambiers"
+   ],
+   "equipment": [
+    "none"
+   ],
+   "mode": "reps",
+   "unilateral": true,
+   "cues": [
+    "Debout, appui sur un mur ou un appui stable.",
+    "Balancer la jambe d'avant en arrière, amplitude croissante.",
+    "Buste droit, mouvement fluide."
+   ],
+   "progressions": [],
+   "regressions": [],
+   "caution": "Arrêter si une douleur aiguë apparaît (pas une simple fatigue musculaire) et en parler à un professionnel de santé.",
+   "garmin": {
+    "category": "WARM_UP",
+    "exercise": "FORWARD_AND_BACKWARD_LEG_SWINGS"
+   }
+  }
+ ]
+}

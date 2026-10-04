@@ -91,7 +91,7 @@ def fs_list_input(path: Any, pattern: Any = None, glob: Any = None) -> dict:
 
 
 def _server_label(server: str) -> str:
-    return {"garmin": "Garmin", "intervals": "intervals.icu"}.get(server, server)
+    return {"garmin": "Garmin", "intervals": "intervals.icu", "strava": "Strava"}.get(server, server)
 
 
 def display_input(workspace: Any, tool: str, tool_input: dict) -> dict:

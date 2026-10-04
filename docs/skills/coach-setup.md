@@ -44,6 +44,7 @@ tant qu'aucune configuration n'existe — ils le proposent, ils ne l'imposent pa
 | Bilan matinal | Si l'entraînement dépend de la HRV, de la FC de repos et de la readiness |
 | Langues | Langue des documents, langue des réponses |
 | Unités | Métriques ou impériales |
+| Cycle menstruel | Facultatif, neutre, posé une seule fois (`off` par défaut) : contexte du bilan matinal, voir [Cycle menstruel](../cycle-menstruel.md) |
 
 ## Où vont les réponses
 

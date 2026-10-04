@@ -1,0 +1,150 @@
+{
+  "schema_version": 1,
+  "status": "approximation_projet",
+  "note": "Correspondance zone de douleur déclarée -> routine DOUCE de prévention de la bibliothèque (#192, épopée #173). Zones anatomiques seulement : jamais de diagnostic, jamais de traitement. Tous les seuils et dosages sont des approximations du projet, pas un protocole publié ; l'avis du professionnel de santé (ou de l'agent medical) prime toujours.",
+  "thresholds": {
+    "window_days": 14,
+    "gentle_max_score": 3,
+    "persistence_days": 7,
+    "worsening_min_delta": 1,
+    "confirm_min_span_days": 2
+  },
+  "acute_keywords": ["aigu", "aigue", "vive", "vives", "vif", "soudain", "soudaine", "brutal", "brutale", "gonfl*", "enfl*", "craquement", "claquage", "blocage", "bloque"],
+  "never_in_prevention": ["descente_de_marche_excentrique", "mollet_excentrique_marche", "squat_excentrique_lent", "nordique_assiste"],
+  "observe_questions": [
+    "Est-ce nouveau (jamais ressenti à cet endroit) ou une gêne que tu connais déjà ?",
+    "Est-ce vif ou apparu brusquement (pendant un effort, un faux pas) ?",
+    "Vois-tu un gonflement, ou est-ce que ça gêne la marche ?"
+  ],
+  "progression_rule": "Rester au niveau doux (2 séries, effort facile) tant que la gêne est déclarée ; ne passer à la progression indiquée qu'après au moins 14 jours sans aucune gêne, et revenir au niveau doux au moindre retour de la douleur. Approximation du projet.",
+  "zones": [
+    {
+      "id": "tendon_achille",
+      "label": "Tendon d'Achille (arrière de la cheville)",
+      "synonyms": ["tendon d achille", "achille", "talon d achille"],
+      "use": "cheville",
+      "exercises": [
+        {"exercise": "mollet_debout", "sets": 2, "reps": 10, "each_side": false},
+        {"exercise": "soleaire_genou_flechi", "sets": 2, "reps": 10, "each_side": true},
+        {"exercise": "equilibre_unipodal", "sets": 2, "seconds": 30, "each_side": true}
+      ],
+      "notes": ["Montées lentes et contrôlées seulement : pas d'étirement appuyé de la cheville, pas de descente excentrique sur une marche, ni saut ni impact tant que la gêne est déclarée."]
+    },
+    {
+      "id": "cheville",
+      "label": "Cheville",
+      "synonyms": ["cheville", "chevilles", "malleole"],
+      "use": "cheville",
+      "exercises": [
+        {"exercise": "mobilite_cheville_genou_mur", "sets": 2, "seconds": 30, "each_side": true},
+        {"exercise": "equilibre_unipodal", "sets": 2, "seconds": 30, "each_side": true},
+        {"exercise": "mollet_debout", "sets": 2, "reps": 12, "each_side": false},
+        {"exercise": "tibial_mur", "sets": 2, "reps": 12, "each_side": false}
+      ],
+      "notes": []
+    },
+    {
+      "id": "mollet",
+      "label": "Mollet",
+      "synonyms": ["mollet", "mollets", "gastrocnemien", "soleaire", "jumeau"],
+      "use": "cheville",
+      "exercises": [
+        {"exercise": "mobilite_cheville_genou_mur", "sets": 2, "seconds": 30, "each_side": true},
+        {"exercise": "soleaire_genou_flechi", "sets": 2, "reps": 10, "each_side": true},
+        {"exercise": "mollet_debout", "sets": 2, "reps": 10, "each_side": false},
+        {"exercise": "equilibre_unipodal", "sets": 2, "seconds": 30, "each_side": true}
+      ],
+      "notes": ["Pas d'étirement appuyé du mollet tant que la gêne est déclarée : mobilité sans forcer, montées sur pointes lentes."]
+    },
+    {
+      "id": "tibia",
+      "label": "Tibia (face interne de la jambe)",
+      "synonyms": ["tibia", "perioste", "tibial", "tibiale", "devant de la jambe", "face interne de la jambe"],
+      "use": "cheville",
+      "exercises": [
+        {"exercise": "tibial_mur", "sets": 2, "reps": 12, "each_side": false},
+        {"exercise": "tibial_elastique", "sets": 2, "reps": 12, "each_side": true},
+        {"exercise": "mollet_debout", "sets": 2, "reps": 10, "each_side": false},
+        {"exercise": "pied_court", "sets": 2, "reps": 10, "each_side": true}
+      ],
+      "notes": ["Gêne au tibia : alléger aussi l'impact de la course (surface plus souple, volume inchangé ou réduit) — décision du coach, jamais un traitement."]
+    },
+    {
+      "id": "genou",
+      "label": "Genou (face avant ou externe)",
+      "synonyms": ["genou", "genoux", "rotule", "face avant du genou", "face externe du genou", "bandelette"],
+      "use": "hanches",
+      "exercises": [
+        {"exercise": "pont_fessier", "sets": 2, "reps": 12, "each_side": false},
+        {"exercise": "coquille_elastique", "sets": 2, "reps": 12, "each_side": true},
+        {"exercise": "planche_laterale", "sets": 2, "seconds": 20, "each_side": true},
+        {"exercise": "extension_hanche_quadrupedie", "sets": 2, "reps": 10, "each_side": true}
+      ],
+      "notes": ["Pas de fentes, de squats, de chaise murale ni de sauts tant que la gêne est déclarée : routine douce centrée sur les hanches, genou peu fléchi."]
+    },
+    {
+      "id": "hanche",
+      "label": "Hanche (ou aine)",
+      "synonyms": ["hanche", "hanches", "aine", "bassin"],
+      "use": "hanches",
+      "exercises": [
+        {"exercise": "mobilite_90_90", "sets": 2, "seconds": 30, "each_side": false},
+        {"exercise": "pont_fessier", "sets": 2, "reps": 12, "each_side": false},
+        {"exercise": "coquille_elastique", "sets": 2, "reps": 12, "each_side": true},
+        {"exercise": "planche_laterale", "sets": 2, "seconds": 20, "each_side": true}
+      ],
+      "notes": []
+    },
+    {
+      "id": "fessier",
+      "label": "Fessier",
+      "synonyms": ["fessier", "fessiers", "fesse", "fesses", "piriforme"],
+      "use": "hanches",
+      "exercises": [
+        {"exercise": "pont_fessier", "sets": 2, "reps": 12, "each_side": false},
+        {"exercise": "extension_hanche_quadrupedie", "sets": 2, "reps": 10, "each_side": true},
+        {"exercise": "abduction_allongee_cote", "sets": 2, "reps": 12, "each_side": true},
+        {"exercise": "mobilite_90_90", "sets": 2, "seconds": 30, "each_side": false}
+      ],
+      "notes": []
+    },
+    {
+      "id": "ischio",
+      "label": "Ischio-jambiers (arrière de la cuisse)",
+      "synonyms": ["ischio", "ischios", "ischio jambiers", "ischio jambier", "arriere de cuisse", "arriere de la cuisse"],
+      "use": null,
+      "exercises": [
+        {"exercise": "pont_fessier", "sets": 2, "reps": 10, "each_side": false},
+        {"exercise": "extension_hanche_quadrupedie", "sets": 2, "reps": 8, "each_side": true},
+        {"exercise": "insecte_mort", "sets": 2, "reps": 8, "each_side": true}
+      ],
+      "notes": ["Ni étirement, ni balancier de jambe ample, ni flexion de jambes glissante ou nordique (travail excentrique) tant que la gêne est déclarée."]
+    },
+    {
+      "id": "pied",
+      "label": "Pied (voûte plantaire, talon)",
+      "synonyms": ["pied", "pieds", "voute plantaire", "voute", "plantaire", "talon", "metatarse", "orteil", "orteils"],
+      "use": "pied",
+      "exercises": [
+        {"exercise": "pied_court", "sets": 2, "reps": 10, "each_side": true},
+        {"exercise": "serviette_orteils", "sets": 2, "reps": 10, "each_side": true},
+        {"exercise": "equilibre_unipodal", "sets": 2, "seconds": 30, "each_side": true},
+        {"exercise": "mollet_debout", "sets": 2, "reps": 10, "each_side": false}
+      ],
+      "notes": []
+    },
+    {
+      "id": "bas_du_dos",
+      "label": "Bas du dos",
+      "synonyms": ["bas du dos", "dos", "lombaire", "lombaires", "reins"],
+      "use": null,
+      "exercises": [
+        {"exercise": "insecte_mort", "sets": 2, "reps": 8, "each_side": true},
+        {"exercise": "extension_hanche_quadrupedie", "sets": 2, "reps": 8, "each_side": true},
+        {"exercise": "pont_fessier", "sets": 2, "reps": 10, "each_side": false},
+        {"exercise": "rotation_thoracique", "sets": 2, "reps": 8, "each_side": true}
+      ],
+      "notes": ["Gêne au dos : toute douleur qui irradie dans la jambe, ou accompagnée d'un engourdissement, impose de consulter sans attendre."]
+    }
+  ]
+}

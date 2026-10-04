@@ -147,5 +147,25 @@ class TestPrevWeekStartPlaceholder(unittest.TestCase):
         self.assertNotEqual(_dt.date.fromisoformat(buggy_week_start).weekday(), 0)
 
 
+class TestWeekStartPlusPlaceholder(unittest.TestCase):
+    """`{{WEEK_START+N}}` (#172) : N jours après le lundi de la semaine ISO courante — N = 7 donne
+    toujours un lundi, quel que soit le jour du run."""
+
+    def test_offsets_from_monday_whatever_the_weekday(self):
+        for today in (_dt.date(2026, 9, 28), _dt.date(2026, 10, 3), _dt.date(2026, 10, 4)):  # lundi, samedi, dimanche
+            with self.subTest(today=today):
+                tmp = Path(tempfile.mkdtemp(prefix="arc-evals-week-plus-"))
+                self.addCleanup(shutil.rmtree, tmp, ignore_errors=True)
+                (tmp / "planning").mkdir()
+                (tmp / "planning" / "plan.md").write_text(
+                    "{{WEEK_START}} {{WEEK_START+7}} {{WEEK_START+8}} {{WEEK_START+20}}", encoding="utf-8")
+                with mock.patch.object(runner, "date", _fixed_date_class(today)):
+                    runner._materialize_relative_dates(tmp)
+                monday = today - _dt.timedelta(days=today.weekday())
+                expected = " ".join((monday + _dt.timedelta(days=n)).isoformat() for n in (0, 7, 8, 20))
+                self.assertEqual((tmp / "planning" / "plan.md").read_text(encoding="utf-8"), expected)
+                self.assertEqual((monday + _dt.timedelta(days=7)).weekday(), 0)
+
+
 if __name__ == "__main__":
     unittest.main()

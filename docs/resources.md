@@ -161,6 +161,13 @@ Oui, mais les agents ne peuvent pas les lire directement. Ajoutez une **descript
 
 **Non.** Le dossier `resources/` est exclu du dépôt via `.gitignore`. Il reste strictement local à votre machine.
 
+### Une page de référence est fournie pour le cycle menstruel
+
+[Cycle menstruel (opt-in)](cycle-menstruel.md) est livrée avec la documentation (le dossier
+`resources/` étant exclu du dépôt) ; elle cite ses sources (consensus IOC sur le RED-S 2023,
+méta-analyse McNulty 2020). Copiez-la dans `resources/health/` si vous voulez que les agents la
+consultent comme le reste de votre base.
+
 ### Que se passe-t-il si je n'ai pas de ressources ?
 
 Les agents fonctionnent sans ressources, mais utilisent alors des **valeurs génériques** et des conseils moins précis. Ajouter vos documents améliore significativement la qualité des recommandations.

@@ -110,6 +110,39 @@ chaude ET que l'athlète a peu été exposé à la chaleur récemment
 (`arc_index.heat_acclimation_today`, #38) : un pari optimiste sur une
 acclimatation supposée serait plus dangereux qu'un plan trop prudent.
 
+## Nuit (voir `ASSUMPTIONS["night"]`, #184)
+
+Avec `--race-date`, `--start` explicite et `--tz`, l'heure d'horloge de chaque section
+(par scénario, arrêts ravito compris) est confrontée au crépuscule civil calculé localement
+(`arc_solar.py`) ; le temps de la section est multiplié par `1 + fraction de nuit × pénalité`
+(pénalité dépendant de la pente, approximation du projet), en itérant (bornée) puisque la
+pénalité décale les sections suivantes, et en gardant `prudent >= réaliste >= ambitieux`.
+Sans ces entrées, ou de jour : sortie inchangée (clé additive `night` seulement).
+
+## Technicité du terrain (voir `ASSUMPTIONS["technicity"]`, #186)
+
+Option `--technicity` (fichier JSON déclaré et/ou `osm`) : coefficient par section,
+déclaré par l'athlète ou dérivé des tags OpenStreetMap (`sac_scale`, `trail_visibility`,
+`surface`, `tracktype`, `highway`) via Overpass (réseau, opt-in, cache `.arc/overpass/`),
+pondéré par la pente (descente technique plus pénalisante), appliqué de façon identique
+aux trois scénarios avant la nuit. Sans l'option : sortie inchangée (aucune clé).
+
+## Altitude (voir `ASSUMPTIONS["altitude"]`, #185)
+
+Facteur de temps par section dès que l'altitude moyenne dépasse 1 500 m (pente tirée de
+Wehrlin & Hallén 2006, traduction vers la vitesse = approximation du projet), réduit par
+l'acclimatation déclarée (`--altitude-acclimated-days`) et l'exposition à l'entraînement
+(`arc_index.py altitude-exposure`), surcoût mis à l'échelle par `[pacing.personal].altitude_scale`
+(#188 ; `--altitude-loss-pct` prime). Appliqué après la technicité et avant la nuit, identique
+pour les trois scénarios ; sous le seuil partout : sortie inchangée (clé additive `altitude`
+seulement).
+
+Ordre des étapes de `build_race_plan` : (correction MNT #176, faite par `main` avant l'appel) →
+modèle pente -> allure, chaleur comprise (`predict_segments`, facteur scalaire par section) →
+fade (renormalisé neutre en temps sous 6 h) → technicité → altitude → nuit. Chaleur, technicité
+et altitude sont des facteurs multiplicatifs indépendants de l'horloge : leur ordre ne change le
+résultat qu'à l'arrondi près ; la nuit vient en dernier car elle lit les heures de passage.
+
 ## Allure de BASE : endurance mise à l'échelle de l'intensité de course (voir `ASSUMPTIONS["base_pace"]`)
 
 `arc_slope_model.predict_speed` rend une allure de la bande « endurance »
@@ -153,16 +186,19 @@ import math
 import statistics
 import sys
 import xml.etree.ElementTree as ET
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
-from typing import Dict, List, Optional, Sequence, Set, Tuple
+from typing import Any, Dict, List, Optional, Sequence, Set, Tuple
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+import arc_altitude as AL  # noqa: E402
 import arc_contract as C  # noqa: E402
 import arc_elevation as EL  # noqa: E402
 import arc_energy as EN  # noqa: E402
 import arc_metrics as M  # noqa: E402
 import arc_slope_model as SL  # noqa: E402
+import arc_pacing_personal as PP  # noqa: E402
+import arc_technicity as TECH  # noqa: E402
 from coach_setup import workspace_root  # noqa: E402 (revue de code #107 : même résolution que arc_index.py/arc_guardrails.py, jamais un simple Path(".") qui ignore ARC_WORKSPACE/le pointeur)
 
 # ---------------------------------------------------------------------------
@@ -266,17 +302,14 @@ FADE_LAST_THIRD_MEAN_FACTOR = 4.0 / 3.0
 # extrême — approximation du projet, pas une mesure.
 FADE_MIN_SPEED_FACTOR = 0.05
 
-# Seuils météo — repris TELS QUELS de `agents/course-strategist.md` (ÉTAPE 6),
-# approximation du projet documentée là, jamais une source physiologique
-# vérifiable pour ces pourcentages précis.
-HEAT_HOT_C = 25.0
-HEAT_COLD_C = 5.0
-HEAT_HOT_TIME_FACTOR = 1.10
-HEAT_COLD_TIME_FACTOR = 1.05
-# Supplément si la course est prévue chaude ET que l'athlète a peu été exposé
-# à la chaleur récemment (#38) — approximation du projet, pas une mesure.
-HEAT_UNACCLIMATED_EXTRA_FACTOR = 1.05
-HEAT_ACCLIMATION_MIN_HOT_SESSIONS = 2
+# Seuils/facteurs de chaleur : SOURCE UNIQUE dans `arc_heat.py` (#171), partagée avec
+# l'ajustement des séances d'entraînement ; ré-exportés ici sous leurs noms historiques
+# (valeurs reprises TELLES QUELLES de `agents/course-strategist.md`, ÉTAPE 6 — approximation
+# du projet, voir `ASSUMPTIONS["heat"]`).
+from arc_heat import (  # noqa: E402,F401
+    HEAT_ACCLIMATION_MIN_HOT_SESSIONS, HEAT_COLD_C, HEAT_COLD_TIME_FACTOR, HEAT_HOT_C,
+    HEAT_HOT_TIME_FACTOR, HEAT_UNACCLIMATED_EXTRA_FACTOR, heat_time_factor, resolve_acclimated,
+)
 
 # Ravitaillement : temps d'arrêt par défaut si non précisé par station (#59) —
 # approximation du projet (un ravito simple, ni drop bag ni repas chaud).
@@ -306,6 +339,30 @@ DEFAULT_PACK_KG = 0.0
 # fausserait silencieusement la masse totale et donc tout le calcul d'énergie.
 PACK_KG_MIN = 0.0
 PACK_KG_MAX = 30.0
+
+# Pénalité de NUIT (#184, épopée #170) — voir `ASSUMPTIONS["night"]`. TOUS ces coefficients
+# sont des APPROXIMATIONS DU PROJET : aucune source vérifiée n'en donne la valeur pour un
+# athlète donné (visibilité réduite, vigilance, foulée prudente sur terrain technique).
+# Pénalité de TEMPS (%) à pleine nuit sur plat/montée :
+NIGHT_BASE_PENALTY_PCT = 5.0
+# Supplément de temps (points de %) par point de % de DESCENTE au-delà de
+# `NIGHT_DESCENT_FREE_GRADE_PCT`, plafonné à `NIGHT_DESCENT_EXTRA_MAX_PCT` : on freine
+# davantage en descente de nuit (le sol se lit mal) qu'à plat.
+NIGHT_DESCENT_FREE_GRADE_PCT = 2.0
+NIGHT_DESCENT_EXTRA_PER_GRADE_PCT = 0.6
+NIGHT_DESCENT_EXTRA_MAX_PCT = 8.0
+# Bornes de validation des options CLI (rejette une saisie manifestement fausse).
+NIGHT_PENALTY_PCT_MAX = 30.0
+# Itérations (bornées) du calcul, car la pénalité décale l'heure de passage des sections
+# suivantes, donc leur fraction de nuit ; critère d'arrêt sur le facteur (écart absolu max).
+NIGHT_MAX_ITERATIONS = 8
+NIGHT_CONVERGENCE_TOL = 1e-4
+# Contrôle de vraisemblance du fuseau (`--tz`) : écart (heures) au-delà duquel le décalage UTC
+# du fuseau au départ s'éloigne trop de l'heure solaire de la longitude du départ (lon / 15).
+# Les fuseaux réels s'en écartent de 0 à ~3 h (Espagne l'été ≈ +2 h, ouest de la Chine ≈ +3 h) :
+# au-delà, le fuseau est probablement faux (course sur un autre continent). Approximation du projet,
+# simple AVERTISSEMENT, jamais un refus.
+NIGHT_TZ_SUSPECT_OFFSET_H = 3.5
 
 
 def _round_passage(seconds: float) -> int:
@@ -518,7 +575,13 @@ ASSUMPTIONS = {
         "départ, 2 = lendemain, etc. ; SANS `cutoff_day`, une heure antérieure à l'heure de départ est "
         "supposée le LENDEMAIN, comportement historique conservé) ; `+HH:MM` élapsé depuis le départ "
         "(les heures peuvent dépasser 24, ex. `+30:00` pour un ultra) ; une date-heure ISO 8601 complète "
-        "(`2026-11-16T10:30:00`) pour une barrière à une date/heure absolue sans ambiguïté. Comparée à "
+        "(`2026-11-16T10:30:00`) pour une barrière à une date/heure absolue sans ambiguïté, éventuellement "
+        "avec décalage (`2026-10-25T12:00:00+01:00`, `…Z` — #205). Un seul parseur "
+        "(`_parse_cutoff_dt`) : quand le fuseau de course est connu (`--tz`, champ `timezone` du plan, "
+        "#184), `HH:MM` et l'ISO sans décalage sont des heures murales de ce fuseau, l'ISO avec décalage "
+        "un instant exact, et les marges sont calculées en temps ABSOLU — justes après un changement "
+        "d'heure en pleine course. Sans fuseau connu : heure murale du départ ; une barrière avec "
+        "décalage garde alors sa propre heure murale (aucun fuseau deviné). Comparée à "
         "l'heure de passage CUMULÉE de chaque scénario (départ + temps de segment + arrêts ravito). "
         "Marge = barrière − passage. `\"ok\"` si marge ≥ `CUTOFF_MARGIN_OK_S` (30 min — approximation du "
         "projet, pas une règle de course réelle), `\"tendu\"` si 0 ≤ marge < 30 min, `\"hors_delai\"` "
@@ -653,6 +716,123 @@ ASSUMPTIONS = {
         "qui veut savoir SI une calibration a été appliquée lit ce seul champ, jamais une comparaison "
         "manuelle brut/calibré."
     ),
+    "night": (
+        "Pénalité de NUIT (#184, épopée #170). Le calcul n'a lieu que si TROIS entrées sont connues : "
+        "la date de course (`--race-date`), l'heure de départ EXPLICITE (`--start`, jamais le défaut "
+        "07:00) et le fuseau horaire IANA (`--tz`, ex. Europe/Paris) ; sinon `night.status = "
+        "\"unavailable\"` avec la raison, AUCUN facteur de nuit n'est appliqué et la sortie reste "
+        "identique à celle d'avant #184 (hors la clé additive `night`). `--no-night` le désactive "
+        "explicitement. Heures de lever/coucher et crépuscule civil calculées localement, sans réseau "
+        "(`arc_solar.py`, algorithme NOAA, approximation de l'ordre de la minute) à la position du "
+        "PREMIER point du GPX (approximation : sur un ultra qui traverse plusieurs degrés de longitude, "
+        "l'écart est de ~4 min par degré). « Nuit » = soleil à plus de 6° sous l'horizon (crépuscule "
+        "civil, convention) : c'est la limite retenue pour la frontale, avec une marge à prévoir "
+        "côté athlète (forêt, ciel couvert).\n\n"
+        "**Fraction de nuit par section et par scénario** (`night_fraction`, part du TEMPS DE COURSE "
+        "de la section — arrêts ravito exclus — passée de nuit) d'après l'heure d'horloge de chaque "
+        "section, déduite du départ, des temps de section déjà pénalisés et des arrêts ravito. "
+        "**Facteur** (`night_factor`, multiplicateur du temps) = 1 + `night_fraction` × pénalité, "
+        "avec pénalité = `NIGHT_BASE_PENALTY_PCT` (5 %) à plat/en montée, plus en DESCENTE "
+        "`NIGHT_DESCENT_EXTRA_PER_GRADE_PCT` (0,6 point par % de pente au-delà de "
+        "`NIGHT_DESCENT_FREE_GRADE_PCT` = 2 %), plafonné à `NIGHT_DESCENT_EXTRA_MAX_PCT` (8 points) "
+        "— la pente utilisée est la pente MOYENNE de la section (`grade_mean_pct`). **Approximations "
+        "du projet, jamais des mesures** : aucune source vérifiée ne chiffre ces pourcentages pour "
+        "cet athlète ; réglables par `--night-penalty-pct` et `--night-descent-extra-max-pct`, et "
+        "l'écart réel s'apprend au débrief (#188).\n\n"
+        "**Itération** : la pénalité ralentit, donc décale l'heure de passage des sections suivantes "
+        "et leur fraction de nuit. Le calcul itère (au plus `NIGHT_MAX_ITERATIONS` = 8 passes, arrêt "
+        "quand le facteur varie de moins de `NIGHT_CONVERGENCE_TOL`) ; `night.iterations` et "
+        "`night.converged` le disent. **Cohérence des scénarios** : après chaque passe le temps de "
+        "chaque section est forcé à `prudent >= réaliste >= ambitieux` (une section de nuit pleine "
+        "pénalisée pour l'un et de jour pour l'autre ne doit jamais inverser l'ordre) ; "
+        "`night.scenario_order_clamped_segments` compte les sections concernées. La pénalité "
+        "s'applique APRÈS la renormalisation neutre du fade et la chaleur, et avant les passages et "
+        "barrières horaires (qui en tiennent donc compte).\n\n"
+        "**Résumé par scénario** (`night.scenarios[s]`) : `night_duration_s` (temps passé de nuit "
+        "entre le départ et l'arrivée, arrêts compris — on a besoin de lumière à l'arrêt aussi), "
+        "`lamp_from`/`lamp_until` (premier et dernier instant de nuit pendant la course, heure "
+        "locale ISO) et `summary` en français. Une course entièrement de jour n'émet AUCUN champ "
+        "`night_*` par section (`night.status = \"daylight\"`). Le contrôle de la frontale dans le "
+        "matériel obligatoire reste celui de `arc_index.py equipment --race-plan` (#134) : "
+        "`night.gear_hint` y renvoie, rien n'est dupliqué ici. Cas polaire : nuit blanche = zéro nuit, "
+        "nuit polaire = nuit continue (masque calculé sur l'altitude du soleil minute par minute).\n\n"
+        "**Horloge** : le temps écoulé est compté en UTC (une course qui traverse le passage à l'heure "
+        "d'hiver ne glisse pas d'une heure) ; seul l'affichage (`lamp_from`, `summary`) est en heure "
+        "locale du fuseau, décalage du moment compris. Une section dont l'ordre des scénarios a été "
+        "forcé porte un `night_factor` qui inclut ce forçage (multiplicateur réellement appliqué), pas "
+        "seulement la nuit. **Fuseau** : aucune base hors-ligne lieu → fuseau dans la bibliothèque "
+        "standard, le fuseau est donc une ENTRÉE ; contrôle grossier de vraisemblance seulement "
+        "(`NIGHT_TZ_SUSPECT_OFFSET_H` = 3,5 h d'écart entre le décalage UTC du fuseau et l'heure "
+        "solaire de la longitude du départ → `night.timezone_warning` et avertissement, jamais un "
+        "refus ; une erreur d'une heure passe inaperçue)."
+    ),
+    "technicity": (
+        "Coefficient de TECHNICITÉ du terrain par section (#186, épopée #170), appliqué EN PLUS du modèle "
+        "pente -> allure, de la chaleur et de la nuit ; opt-in (`--technicity`), sinon l'étape n'existe pas "
+        "(aucune clé `technicity`, temps inchangés octet pour octet). Deux sources, la déclaration gagnant "
+        "section par section : (a) **déclarée** (`--technicity fichier.json`, "
+        "`{\"sections\": [{\"km_start\", \"km_end\", \"coef\", \"note\"}]}`, coef dans [0,8 ; 1,8], 1,0 = terrain "
+        "« comme à l'entraînement », 1,25 = très technique ; km OFFICIELS, rééchelonnés sur la distance "
+        "mesurée du GPX avec `--official-distance-m` comme les ravitos) — retenue pour un segment couvert à "
+        "au moins 50 % ; "
+        "(b) **dérivée d'OpenStreetMap** (`--technicity osm`, RÉSEAU, jamais par défaut) : requête Overpass "
+        "(`out tags geom`) des chemins `highway` (path, track, footway, steps, routes mineures) dans une boîte "
+        "autour de chaque tronçon de ~8 km de la trace (marge 60 m, boîtes arrondies à ~10 m), trace "
+        "échantillonnée tous les 40 m, appariement au chemin le plus proche à moins de 20 m "
+        "(`MATCH_RADIUS_M`), coefficient du segment = moyenne pondérée par la distance des points appariés ; "
+        "moins de 30 % de points appariés -> aucun coefficient (source `none`, 1,0), jamais une valeur "
+        "inventée. Réponses mises en cache dans `<workspace>/.arc/overpass/` (une requête = un fichier) ; une "
+        "requête à la fois, 1,5 s de pause entre deux requêtes réseau, User-Agent explicite (politique de "
+        "l'instance publique) ; HTTP 429/502/503/504 -> au plus 2 nouvelles tentatives (`Retry-After` ou "
+        "5 s puis 10 s, plafond 30 s) ; une réponse HTTP 200 portant une erreur d'exécution Overpass "
+        "(`remark`, ex. délai dépassé) est un ÉCHEC, jamais mise en cache. Le cache n'expire pas (les tags "
+        "OSM évoluent lentement) : supprimer `.arc/overpass/` pour rafraîchir. **Seuls des GPX de COURSE** sont concernés : seules des boîtes englobantes "
+        "arrondies partent, jamais une trace d'activité personnelle. Hors ligne ou Overpass en erreur -> "
+        "`technicity.osm.status = \"unavailable\"`, note explicite et avertissement, aucun coefficient OSM "
+        "(tout ou rien : pas de coefficient sur la moitié d'un parcours).\n\n"
+        "**Table tags -> coefficient (APPROXIMATIONS DU PROJET, jamais des mesures ni une source "
+        "publiée)** : surcoût de temps (coef - 1) par tag. `sac_scale` : hiking 0 / mountain_hiking +6 % / "
+        "demanding_mountain_hiking +15 % / alpine_hiking +30 % / demanding_alpine_hiking +45 % / "
+        "difficult_alpine_hiking +60 %. `trail_visibility` : excellent, good 0 / intermediate +5 % / bad +12 % "
+        "/ horrible +25 % / no +35 %. `surface` : asphalt, paved, concrete, compacted, fine_gravel 0 / gravel, "
+        "unpaved, ground, dirt, earth +3 % / grass +4 % / pebblestone +8 % / rock +12 % / sand, mud, snow "
+        "+15 %. `tracktype` : grade1-2 0 / grade3 +3 % / grade4 +6 % / grade5 +10 %. `highway` : steps +15 % / "
+        "path +2 % / autres 0. Ordre de grandeur seulement : en T5-T6 (passages d'escalade facile, "
+        "désescalade) le ralentissement réel peut dépasser +60 %, le plafond reste prudent dans l'autre "
+        "sens (pas de prédiction extrême tirée d'un tag). **Combinaison** : surcoût dominant + la moitié du deuxième (les tags sont "
+        "corrélés : un sentier alpin est presque toujours « mauvaise visibilité » et « rocheux », on "
+        "n'additionne pas), plafonné à 1,8. Un coefficient dérivé d'OSM ne descend JAMAIS sous 1,0 (aucun "
+        "crédit de vitesse tiré de tags incertains) ; une valeur de tag inconnue est ignorée, jamais "
+        "devinée ; un chemin sans aucun tag exploitable vaut 1,0.\n\n"
+        "**Pente** : le surcoût est pondéré par la pente MOYENNE de la section — `effective_factor` = 1 + "
+        "(coef - 1) × poids : ×0,7 en montée (> +2 %, l'effort y est limité par la puissance plus que par "
+        "l'appui), ×1,0 à plat (|pente| <= 2 %), de ×1,0 à ×1,5 en descente (pleine à -12 %) car un terrain "
+        "technique ralentit surtout la descente. Pente inconnue = ×1,0. Approximations du projet.\n\n"
+        "**Composition et scénarios** : `effective_factor` multiplie les temps (et allures) de la section "
+        "pour les TROIS scénarios à l'identique — un même facteur positif sur trois temps ordonnés conserve "
+        "prudent >= réaliste >= ambitieux par construction (aucun écrêtage nécessaire), et la dispersion des "
+        "scénarios reste relative ; aucune donnée ne justifie de moduler la technicité par scénario. L'étape "
+        "s'applique APRÈS le fade neutre et la chaleur et AVANT la nuit : la technicité est une propriété du "
+        "terrain, pas de l'horloge, et l'itération de nuit part des temps déjà corrigés, donc des heures de "
+        "passage cohérentes (les deux facteurs se multiplient). **Limite à connaître** : le modèle personnel "
+        "pente -> allure a été appris sur les sorties de l'athlète, qui contiennent déjà son terrain habituel "
+        "— un coefficient DÉCLARÉ exprime l'écart par rapport à CE terrain (1,0 = « comme à "
+        "l'entraînement »). La table OSM, elle, est ABSOLUE (1,0 = chemin facile) : elle est donc rapportée "
+        "au terrain habituel déclaré par `--technicity-baseline` (nombre ou valeur `sac_scale`, ex. "
+        "`mountain_hiking` = 1,06) — coef appliqué = max(1,0 ; coef OSM / référence), valeur absolue "
+        "conservée dans `osm_coef`. Sans référence déclarée, la référence vaut 1,0 et un avertissement dit "
+        "que la pénalité est surestimée pour un athlète qui s'entraîne déjà en montagne (double comptage) ; "
+        "la référence n'est JAMAIS dérivée des traces d'entraînement (ce serait envoyer des traces "
+        "personnelles à Overpass). OSM décrit le chemin, pas l'état du jour (boue, neige, "
+        "éboulis récents) et ses tags sont inégalement renseignés. Réglable (fichier déclaré), jamais une "
+        "vérité ; l'écart réel s'apprend au débrief (#188).\n\n"
+        "**Sortie** : par section `technicity` = `{coef, effective_factor, source (declared | osm | none), "
+        "tags (déclaration : notes ; OSM : trois tags les plus présents), coverage_pct, osm_coef si référence}` ; "
+        "au niveau du plan "
+        "`technicity` = `{status, sources_requested, osm, distance_pct_by_source, mean_coef, max_coef, "
+        "scenario_scaling}`."
+    ),
+    "altitude": AL.ASSUMPTIONS["race_penalty"] + " " + AL.ASSUMPTIONS["acclimation"],
 }
 
 
@@ -961,31 +1141,6 @@ def scale_fade_to_duration(fade_pct: float, predicted_duration_s: Optional[float
         return fade_pct
     scale = min(1.0, max(0.0, predicted_duration_s / M.LONG_RUN_MIN_DURATION_S))
     return fade_pct * scale
-
-
-def heat_time_factor(temp_max_c: Optional[float], *, acclimated: Optional[bool] = None) -> Tuple[float, List[str]]:
-    """Facteur multiplicatif sur le TEMPS (>= 1.0) pour la météo prévue — voir
-    `ASSUMPTIONS["heat"]`. `acclimated=False` ajoute le supplément
-    `HEAT_UNACCLIMATED_EXTRA_FACTOR` si `temp_max_c` dépasse `HEAT_HOT_C`.
-    Rend `(facteur, notes)`."""
-    if temp_max_c is None:
-        return 1.0, ["aucune prévision météo fournie : aucun ajustement chaleur/froid appliqué"]
-    notes = []
-    factor = 1.0
-    if temp_max_c > HEAT_HOT_C:
-        factor *= HEAT_HOT_TIME_FACTOR
-        notes.append(f"chaleur prévue ({temp_max_c:g} °C > {HEAT_HOT_C:g} °C) : temps × {HEAT_HOT_TIME_FACTOR:g} "
-                     "(approximation du projet)")
-        if acclimated is False:
-            factor *= HEAT_UNACCLIMATED_EXTRA_FACTOR
-            notes.append(f"faible acclimatation chaleur récente (#38) : supplément × "
-                         f"{HEAT_UNACCLIMATED_EXTRA_FACTOR:g} (approximation du projet, évaluée sur les 14 "
-                         "jours précédant --today)")
-    elif temp_max_c < HEAT_COLD_C:
-        factor *= HEAT_COLD_TIME_FACTOR
-        notes.append(f"froid prévu ({temp_max_c:g} °C < {HEAT_COLD_C:g} °C) : temps × {HEAT_COLD_TIME_FACTOR:g} "
-                     "(approximation du projet)")
-    return factor, notes
 
 
 def _scale_prediction_speeds(prediction: dict, factor: float) -> dict:
@@ -1500,54 +1655,115 @@ def _parse_hhmm(value: str, *, label: str) -> Tuple[int, int]:
     return hh, mm
 
 
-def _parse_cutoff_dt(cutoff: Optional[str], cutoff_day: Optional[int], start_dt: datetime) -> Optional[datetime]:
-    """Résout une barrière horaire en date-heure absolue — voir
-    `ASSUMPTIONS["cutoffs"]` pour les trois formats acceptés (`HH:MM`
-    [+ `cutoff_day` optionnel], `+HH:MM` élapsé, date-heure ISO 8601). Rend
-    `None` si `cutoff` est absent ou illisible (jamais une exception : une
-    barrière mal formée ne doit pas faire échouer tout le plan)."""
-    if not cutoff:
+def _as_instant(dt: datetime, zone) -> datetime:
+    """Instant comparable (#205) : UTC si `dt` porte un décalage ou si le fuseau de
+    course `zone` est connu (heure murale `dt` interprétée dans `zone`), sinon heure
+    murale naïve. Toute soustraction/comparaison se fait ensuite en temps ABSOLU — deux
+    datetimes du MÊME `ZoneInfo` se comparent sinon à l'heure murale (faux d'1 h après
+    un changement d'heure)."""
+    if dt.tzinfo is not None:
+        return dt.astimezone(timezone.utc)
+    if zone is not None:
+        # Heure ambiguë (recul) ou inexistante (avance) : le plus TÔT des deux instants
+        # possibles — une barrière n'est jamais rendue plus généreuse qu'écrite.
+        return min(dt.replace(tzinfo=zone, fold=f).astimezone(timezone.utc) for f in (0, 1))
+    return dt
+
+
+def has_offset_cutoff(aid_stations: Sequence[dict]) -> bool:
+    """Vrai si une barrière est une date-heure ISO AVEC décalage (`+01:00`, `Z`) : sans fuseau de
+    course connu, elle n'est comparée qu'à son heure murale (#205) — l'appelant le signale."""
+    for station in aid_stations:
+        cutoff = station.get("cutoff")
+        if not isinstance(cutoff, str) or "T" not in cutoff:
+            continue
+        try:
+            if datetime.fromisoformat(cutoff.strip().replace("Z", "+00:00")).tzinfo is not None:
+                return True
+        except ValueError:
+            continue
+    return False
+
+
+def _race_clock(start_dt: datetime, zone=None) -> Tuple[datetime, Any, datetime]:
+    """Normalise le départ (#205) : rend `(start_wall, race_tz, start_abs)` — heure murale
+    NAÏVE du départ dans le fuseau de course, ce fuseau (`zone`, sinon le décalage d'un
+    départ daté, sinon `None`) et l'instant absolu du départ (`_as_instant`)."""
+    race_tz = zone if zone is not None else start_dt.tzinfo
+    if start_dt.tzinfo is not None:
+        start_wall = start_dt.astimezone(race_tz).replace(tzinfo=None)
+    else:
+        start_wall = start_dt
+    return start_wall, race_tz, _as_instant(start_wall, race_tz)
+
+
+def _parse_cutoff_dt(cutoff: Optional[str], cutoff_day: Optional[int], start_dt: datetime,
+                     zone=None) -> Optional[datetime]:
+    """Résout une barrière horaire en instant absolu comparable au départ
+    `_race_clock(start_dt, zone)[2]` — voir `ASSUMPTIONS["cutoffs"]` pour les quatre
+    formes acceptées (`HH:MM` [+ `cutoff_day` optionnel], `+HH:MM` élapsé, date-heure
+    ISO 8601 naïve ou avec décalage `+01:00`/`Z`). Seul parseur des barrières (#205) :
+    `HH:MM` et l'ISO naïve sont des heures murales du fuseau de course `zone` quand il est
+    connu ; `+HH:MM` est du temps écoulé absolu. Rend `None` si `cutoff` est absent ou
+    illisible (jamais une exception : une barrière mal formée ne doit pas faire échouer
+    tout le plan)."""
+    if not isinstance(cutoff, str) or not cutoff.strip():
         return None
+    start_wall, race_tz, start_abs = _race_clock(start_dt, zone)
     text = cutoff.strip()
     if text.startswith("+"):
         try:
             hh_s, mm_s = text[1:].split(":")
-            return start_dt + timedelta(hours=int(hh_s), minutes=int(mm_s))
+            return start_abs + timedelta(hours=int(hh_s), minutes=int(mm_s))
         except ValueError:
             return None
     if "T" in text:
         try:
-            return datetime.fromisoformat(text)
+            parsed = datetime.fromisoformat(text.replace("Z", "+00:00"))
         except ValueError:
             return None
+        if parsed.tzinfo is not None and race_tz is None:
+            # Départ en heure murale sans fuseau connu : seule l'heure murale de la barrière
+            # (dans son propre décalage) est comparable — aucun fuseau deviné.
+            return parsed.replace(tzinfo=None)
+        return _as_instant(parsed, race_tz)
     try:
         hh, mm = _parse_hhmm(text, label="aid_station.cutoff")
     except ValueError:
         return None
-    day_offset = (cutoff_day - 1) if cutoff_day else 0
-    cutoff_dt = (start_dt + timedelta(days=day_offset)).replace(hour=hh, minute=mm, second=0, microsecond=0)
-    if not cutoff_day and cutoff_dt < start_dt:
-        cutoff_dt += timedelta(days=1)
-    return cutoff_dt
+    try:
+        day_offset = (int(cutoff_day) - 1) if cutoff_day else 0
+    except (TypeError, ValueError):
+        return None
+    if day_offset < 0:
+        return None
+    cutoff_wall = (start_wall + timedelta(days=day_offset)).replace(hour=hh, minute=mm, second=0, microsecond=0)
+    if not cutoff_day and cutoff_wall < start_wall:
+        cutoff_wall += timedelta(days=1)
+    return _as_instant(cutoff_wall, race_tz)
 
 
 def check_cutoffs(aid_station_passages: Sequence[dict], aid_stations: Sequence[dict],
-                   start_dt: datetime) -> List[dict]:
+                   start_dt: datetime, zone=None) -> List[dict]:
     """Marge de chaque scénario face à une barrière horaire — voir
-    `ASSUMPTIONS["cutoffs"]`. Une station sans `cutoff` (ou dont le `cutoff`
-    est illisible) n'apparaît pas dans le résultat (rien à vérifier)."""
+    `ASSUMPTIONS["cutoffs"]`. `start_dt` : départ naïf (heure murale) ou daté ;
+    `zone` : fuseau de course (`tzinfo`, #184) quand il est connu — marges alors
+    calculées en temps absolu, justes après un changement d'heure (#205). Une station
+    sans `cutoff` (ou dont le `cutoff` est illisible) n'apparaît pas dans le résultat
+    (rien à vérifier)."""
     by_km = {round(a["km"], 6): a for a in aid_stations if a.get("cutoff")}
+    start_abs = _race_clock(start_dt, zone)[2]
     out = []
     for passage in aid_station_passages:
         station = by_km.get(round(passage["km"], 6))
         if station is None:
             continue
-        cutoff_dt = _parse_cutoff_dt(station.get("cutoff"), station.get("cutoff_day"), start_dt)
+        cutoff_dt = _parse_cutoff_dt(station.get("cutoff"), station.get("cutoff_day"), start_dt, zone)
         if cutoff_dt is None:
             continue
         entry = {"km": passage["km"], "name": passage.get("name"), "cutoff": station["cutoff"]}
         for scenario in SCENARIOS:
-            passage_dt = start_dt + timedelta(seconds=passage[scenario])
+            passage_dt = start_abs + timedelta(seconds=passage[scenario])
             margin_s = round((cutoff_dt - passage_dt).total_seconds())
             status = "ok" if margin_s >= CUTOFF_MARGIN_OK_S else ("tendu" if margin_s >= 0 else "hors_delai")
             entry[scenario] = {"margin_s": margin_s, "status": status}
@@ -1602,6 +1818,428 @@ def _renormalize_fade_time_neutral(segments: Sequence[dict], provisional_totals:
     return out, note
 
 
+# ---------------------------------------------------------------------------
+# Pénalité de nuit (#184, voir ASSUMPTIONS["night"])
+# ---------------------------------------------------------------------------
+
+def night_penalty_fraction(grade_mean_pct: Optional[float], *, base_pct: float = NIGHT_BASE_PENALTY_PCT,
+                            descent_extra_max_pct: float = NIGHT_DESCENT_EXTRA_MAX_PCT) -> float:
+    """Pénalité de temps (fraction, 0.05 = +5 %) à PLEINE nuit pour une section de pente
+    moyenne `grade_mean_pct` : `base_pct` à plat/en montée, plus un supplément proportionnel à
+    la pente de descente au-delà de `NIGHT_DESCENT_FREE_GRADE_PCT`, plafonné à
+    `descent_extra_max_pct`. Une pente inconnue (`None`) vaut plat. Approximation du projet."""
+    extra = 0.0
+    if grade_mean_pct is not None and grade_mean_pct < -NIGHT_DESCENT_FREE_GRADE_PCT:
+        extra = min(descent_extra_max_pct,
+                    NIGHT_DESCENT_EXTRA_PER_GRADE_PCT * (-grade_mean_pct - NIGHT_DESCENT_FREE_GRADE_PCT))
+    return (base_pct + extra) / 100.0
+
+
+def _stops_after_segments(segments: Sequence[dict], aid_stations: Sequence[dict]) -> Tuple[List[float], float]:
+    """Secondes d'arrêt ravito APRÈS chaque segment (même règle que `compute_passages` :
+    un ravito est traversé dès que son `km` <= `km_end` du segment), et total des arrêts
+    rattachés au-delà de la fin du GPX."""
+    stops = [0.0] * len(segments)
+    idx = 0
+    aid_sorted = sorted(aid_stations, key=lambda a: a["km"])
+    for i, seg in enumerate(segments):
+        while idx < len(aid_sorted) and aid_sorted[idx]["km"] <= seg["km_end"]:
+            stops[i] += aid_sorted[idx].get("stop_s", DEFAULT_AID_STATION_STOP_S)
+            idx += 1
+    beyond = sum(a.get("stop_s", DEFAULT_AID_STATION_STOP_S) for a in aid_sorted[idx:])
+    return stops, beyond
+
+
+def build_night_mask(segments: Sequence[dict], aid_stations: Sequence[dict], start_dt: datetime,
+                      lat: float, lon: float, *, base_pct: float = NIGHT_BASE_PENALTY_PCT,
+                      descent_extra_max_pct: float = NIGHT_DESCENT_EXTRA_MAX_PCT):
+    """Masque de nuit couvrant largement la course (borne haute = temps le plus lent × pénalité
+    maximale + tous les arrêts + 1 h de marge)."""
+    import arc_solar as SOLAR
+    slowest = max((sum(seg["predicted_time_s"][s] or 0 for seg in segments) for s in SCENARIOS), default=0)
+    stops, beyond = _stops_after_segments(segments, aid_stations)
+    horizon_s = slowest * (1.0 + (base_pct + descent_extra_max_pct) / 100.0) + sum(stops) + beyond + 3600.0
+    start_utc = start_dt.astimezone(timezone.utc)
+    return SOLAR.NightMask(start_utc, start_utc + timedelta(seconds=horizon_s), lat, lon)
+
+
+def apply_night_penalty(segments: Sequence[dict], aid_stations: Sequence[dict], start_dt: datetime, mask, *,
+                         base_pct: float = NIGHT_BASE_PENALTY_PCT,
+                         descent_extra_max_pct: float = NIGHT_DESCENT_EXTRA_MAX_PCT,
+                         max_iterations: int = NIGHT_MAX_ITERATIONS) -> Tuple[List[dict], dict]:
+    """Applique la pénalité de nuit — pure. `start_dt` : départ CONSCIENT (fuseau), `mask` :
+    `arc_solar.NightMask`. Rend `(segments, info)`. Si aucune section n'est courue de nuit dans
+    aucun scénario, rend `segments` INCHANGÉS (aucun champ ajouté) avec
+    `info["has_night"] = False`. Sinon chaque segment gagne `night_fraction` et `night_factor`
+    (objets par scénario) et ses temps/allures pénalisés. `info` : `has_night`, `iterations`,
+    `converged`, `clamped_segments`."""
+    n = len(segments)
+    stops, _beyond = _stops_after_segments(segments, aid_stations)
+    base = {s: [seg["predicted_time_s"][s] for seg in segments] for s in SCENARIOS}
+    pen = [night_penalty_fraction(seg.get("grade_mean_pct"), base_pct=base_pct,
+                                  descent_extra_max_pct=descent_extra_max_pct) for seg in segments]
+    factor = {s: [1.0] * n for s in SCENARIOS}
+
+    def times_from(factors):
+        t = {s: [None if base[s][i] is None else base[s][i] * factors[s][i] for i in range(n)] for s in SCENARIOS}
+        clamped = set()
+        for i in range(n):  # prudent >= réaliste >= ambitieux, section par section
+            for slower, faster in (("realistic", "ambitious"), ("safe", "realistic")):
+                a, b = t[slower][i], t[faster][i]
+                if a is not None and b is not None and a < b - 1e-9:
+                    t[slower][i] = b
+                    clamped.add(i)
+        return t, clamped
+
+    # Horloge en UTC : `datetime` conscient + `timedelta` ajoute du temps MURAL dans le fuseau
+    # (zoneinfo), faux d'une heure après un changement d'heure en pleine course (dernier
+    # dimanche d'octobre en Europe) — le temps écoulé, lui, est absolu.
+    start_utc = start_dt.astimezone(timezone.utc)
+
+    def walk(t):
+        fractions = {s: [0.0] * n for s in SCENARIOS}
+        for s in SCENARIOS:
+            clock = start_utc
+            for i in range(n):
+                dur = t[s][i]
+                if dur is None:
+                    continue
+                end = clock + timedelta(seconds=dur)
+                if dur > 0:
+                    fractions[s][i] = min(1.0, mask.night_seconds(clock, end) / dur)
+                clock = end + timedelta(seconds=stops[i])
+        return fractions
+
+    iterations, converged = 0, False
+    for iterations in range(1, max_iterations + 1):
+        t, _ = times_from(factor)
+        fractions = walk(t)
+        new_factor = {s: [1.0 + fractions[s][i] * pen[i] for i in range(n)] for s in SCENARIOS}
+        delta = max((abs(new_factor[s][i] - factor[s][i]) for s in SCENARIOS for i in range(n)), default=0.0)
+        factor = new_factor
+        if delta < NIGHT_CONVERGENCE_TOL:
+            converged = True
+            break
+    t, clamped = times_from(factor)
+    fractions = walk(t)
+
+    has_night = any(f > 1e-9 for s in SCENARIOS for f in fractions[s])
+    info = {"has_night": has_night, "iterations": iterations, "converged": converged,
+            "clamped_segments": len(clamped)}
+    if not has_night:
+        return list(segments), info
+
+    out = []
+    for i, seg in enumerate(segments):
+        new_time: Dict[str, Optional[int]] = {}
+        new_pace: Dict[str, Optional[float]] = {}
+        nf: Dict[str, Optional[float]] = {}
+        nfac: Dict[str, Optional[float]] = {}
+        for s in SCENARIOS:
+            old = seg["predicted_time_s"][s]
+            if old is None:
+                new_time[s], new_pace[s], nf[s], nfac[s] = None, seg["pace_s_km"][s], None, None
+                continue
+            eff = t[s][i] / old if old else 1.0
+            if abs(eff - 1.0) < 1e-12:
+                new_time[s], new_pace[s] = old, seg["pace_s_km"][s]
+            else:
+                new_time[s] = int(round(t[s][i] / SEGMENT_ROUND_S)) * SEGMENT_ROUND_S
+                p = seg["pace_s_km"][s]
+                new_pace[s] = round(p * eff, 1) if p is not None else None
+            nf[s] = round(fractions[s][i], 3)
+            nfac[s] = round(eff, 4)
+        out.append({**seg, "predicted_time_s": new_time, "pace_s_km": new_pace,
+                    "night_fraction": nf, "night_factor": nfac})
+    return out, info
+
+
+def _fmt_local(dt: datetime, ref: datetime) -> str:
+    days = (dt.date() - ref.date()).days
+    return dt.strftime("%H:%M") + (f" (J+{days})" if days > 0 else "")
+
+
+def night_scenario_summary(mask, start_dt: datetime, total_s: Optional[float], tz) -> dict:
+    """Résumé de nuit d'un scénario sur la course entière, départ -> arrivée (arrêts compris)."""
+    if total_s is None:
+        return {"night_duration_s": None, "summary": "temps de course indisponible : pas de résumé de nuit"}
+    start_utc = start_dt.astimezone(timezone.utc)  # temps écoulé absolu (changement d'heure)
+    end = start_utc + timedelta(seconds=total_s)
+    windows = mask.night_windows(start_utc, end)
+    night_s = round(mask.night_seconds(start_utc, end))
+    if not windows:
+        return {"night_duration_s": 0, "summary": "aucune nuit pendant la course, frontale non requise"}
+    local = [(a.astimezone(tz), b.astimezone(tz)) for a, b in windows]
+    ref = start_dt.astimezone(tz)
+    spans = "; ".join(f"{_fmt_local(a, ref)} à {_fmt_local(b, ref)}" for a, b in local)
+    if night_s >= 3600:
+        amount = f"{night_s / 3600.0:.1f}".replace(".", ",") + " h"
+    else:  # « 0,0 h de nuit » pour 2 min de crépuscule serait trompeur
+        amount = f"{max(1, round(night_s / 60.0))} min"
+    return {
+        "night_duration_s": night_s,
+        "lamp_from": local[0][0].isoformat(timespec="minutes"),
+        "lamp_until": local[-1][1].isoformat(timespec="minutes"),
+        "summary": f"{amount} de nuit, frontale requise de {spans}",
+    }
+
+
+NIGHT_GEAR_HINT = (
+    "Frontale (et piles/batterie de rechange) à inscrire dans `gear` du plan ; le contrôle contre "
+    "l'inventaire est celui de `python3 scripts/arc_index.py equipment --race-plan <plan>` (#134).")
+
+
+def night_unavailable(status: str, reason: str, note: str) -> dict:
+    return {"status": status, "reason": reason, "note": note}
+
+
+def timezone_plausibility_warning(start_dt: datetime, lon: float, tz_name: str) -> Optional[str]:
+    """Avertissement (français) si le décalage UTC du fuseau au départ s'écarte de plus de
+    `NIGHT_TZ_SUSPECT_OFFSET_H` de l'heure solaire de la longitude `lon` (lon / 15 h), écart
+    ramené dans [-12, 12[ h ; `None` sinon. Contrôle grossier : il attrape un fuseau d'un autre
+    continent, pas une erreur d'une heure."""
+    offset_h = start_dt.utcoffset().total_seconds() / 3600.0
+    diff = (offset_h - lon / 15.0 + 12.0) % 24.0 - 12.0
+    if abs(diff) <= NIGHT_TZ_SUSPECT_OFFSET_H:
+        return None
+    return (f"fuseau « {tz_name} » (UTC{offset_h:+g} h au départ) peu vraisemblable pour la longitude "
+            f"{lon:.2f}° du départ (heure solaire ≈ UTC{lon / 15.0:+.1f} h) : vérifier --tz, les heures "
+            "de nuit en dépendent")
+
+
+def _night_stage(pts, segments, aid_stations, hh, mm, race_date, tz, start_time_known, enabled,
+                 base_pct, descent_extra_max_pct):
+    """Étape « nuit » de `build_race_plan` (#184). Rend `(night, mask, start_dt, tzinfo)` ;
+    `night` porte `_apply`/`_segments` (clés privées retirées par l'appelant) quand des
+    sections sont pénalisées."""
+    if not enabled:
+        return night_unavailable("disabled", "disabled",
+                                 "pénalité de nuit désactivée (--no-night)"), None, None, None
+    missing = None
+    if not race_date:
+        missing = ("no_race_date", "date de course inconnue (--race-date) : facteur de nuit non appliqué")
+    elif not start_time_known:
+        missing = ("no_start_time", "heure de départ non fournie (--start) : facteur de nuit non appliqué")
+    elif not tz:
+        missing = ("no_timezone", "fuseau horaire non fourni (--tz, ex. Europe/Paris) : facteur de nuit "
+                                  "non appliqué")
+    elif not pts:
+        missing = ("no_gpx_position", "aucune position GPX : facteur de nuit non appliqué")
+    if missing:
+        return night_unavailable("unavailable", *missing), None, None, None
+
+    import arc_solar as SOLAR
+    zone = SOLAR.resolve_timezone(tz)
+    base_date = date.fromisoformat(race_date)
+    start_dt = datetime(base_date.year, base_date.month, base_date.day, hh, mm, tzinfo=zone)
+    lat, lon = pts[0]["lat"], pts[0]["lon"]
+    tz_warning = timezone_plausibility_warning(start_dt, lon, tz)
+    mask = build_night_mask(segments, aid_stations, start_dt, lat, lon, base_pct=base_pct,
+                            descent_extra_max_pct=descent_extra_max_pct)
+    new_segments, info = apply_night_penalty(segments, aid_stations, start_dt, mask, base_pct=base_pct,
+                                             descent_extra_max_pct=descent_extra_max_pct)
+    sun = SOLAR.local_sun_times(base_date, lat, lon, zone)
+    night = {
+        "status": "night" if info["has_night"] else "daylight",
+        "timezone": tz,
+        "location": {"lat": round(lat, 4), "lon": round(lon, 4), "source": "gpx_start"},
+        "parameters": {
+            "base_penalty_pct": base_pct, "descent_extra_max_pct": descent_extra_max_pct,
+            "descent_free_grade_pct": NIGHT_DESCENT_FREE_GRADE_PCT,
+            "descent_extra_per_grade_pct": NIGHT_DESCENT_EXTRA_PER_GRADE_PCT,
+            "twilight": "civil (soleil à 6° sous l'horizon)",
+        },
+        "sun": {k: (v.isoformat(timespec="minutes") if hasattr(v, "isoformat") else v)
+                for k, v in sun.items() if k != "solar_noon"},
+        "iterations": info["iterations"], "converged": info["converged"],
+        "scenario_order_clamped_segments": info["clamped_segments"],
+        "scenarios": {},
+        "gear_hint": NIGHT_GEAR_HINT,
+    }
+    if tz_warning:
+        night["timezone_warning"] = tz_warning
+    if info["has_night"]:
+        night["_apply"] = True
+        night["_segments"] = new_segments
+    return night, mask, start_dt, zone
+
+
+def _technicity_stage(pts, segments, technicity, scale: Optional[float] = None):
+    """Étape « technicité » de `build_race_plan` (#186). `technicity` : `None` (non demandée ->
+    `(segments, None, [])`, sortie inchangée octet pour octet) ou `{"declared": [...]|None,
+    "ways": [...]|None, "osm_requested": bool, "osm_status": str, "osm_note": str|None,
+    "osm_info": dict|None}` résolu par l'appelant (réseau et disque jamais ici). `scale` :
+    coefficient personnel `[pacing.personal].technicity_scale` (#188), multiplie le SURCOÛT
+    (coef - 1) de chaque section portant un coefficient ; `None` = inchangé. Rend
+    `(segments, plan_technicity, warnings)`."""
+    if technicity is None:
+        return segments, None, []
+    declared, ways = technicity.get("declared"), technicity.get("ways")
+    baseline = float(technicity.get("osm_baseline") or 1.0)
+    baseline_label = technicity.get("osm_baseline_label") or ""
+    coefs = TECH.section_coefficients(segments, pts, declared=declared, ways=ways, osm_baseline=baseline)
+    if scale is not None and abs(scale - 1.0) > 1e-12:
+        for seg, c in zip(segments, coefs):
+            if c["source"] == "none":
+                continue
+            c["coef_before_scale"] = c["coef"]
+            c["coef"] = round(min(TECH.COEF_MAX, max(TECH.COEF_MIN_DECLARED, 1.0 + (c["coef"] - 1.0) * scale)), 3)
+            c["effective_factor"] = round(TECH.effective_factor(c["coef"], seg.get("grade_mean_pct")), 4)
+    warnings: List[str] = []
+    osm_block = None
+    if technicity.get("osm_requested"):
+        osm_block = {"status": technicity.get("osm_status"), "note": technicity.get("osm_note"),
+                     "match_radius_m": TECH.MATCH_RADIUS_M,
+                     "baseline": {"coef": round(baseline, 3),
+                                  "source": "declared" if baseline_label else "default",
+                                  **({"label": baseline_label} if baseline_label else {})},
+                     **(technicity.get("osm_info") or {})}
+    info = {
+        "status": "applied" if any(c["source"] != "none" for c in coefs) else "no_coefficient",
+        "sources_requested": [k for k, v in (("declared", declared), ("osm", technicity.get("osm_requested")))
+                               if v],
+        "osm": osm_block,
+        "scenario_scaling": "identique pour les trois scénarios (voir ASSUMPTIONS['technicity'])",
+        **TECH.summarize(segments, coefs),
+        **({"personal_scale": scale} if scale is not None and abs(scale - 1.0) > 1e-12 else {}),
+    }
+    if technicity.get("osm_note"):
+        warnings.append(technicity["osm_note"])
+    if any(c["source"] == "osm" for c in coefs) and not baseline_label:
+        warnings.append("Technicité OSM sans terrain de référence (--technicity-baseline) : les coefficients "
+                        "sont comptés depuis un chemin facile, alors que le modèle personnel contient déjà le "
+                        "terrain habituel de l'athlète — s'il s'entraîne déjà sur sentier de montagne, la "
+                        "pénalité est surestimée (voir ASSUMPTIONS['technicity']).")
+    if info["status"] == "no_coefficient":
+        warnings.append("Technicité demandée mais aucune section n'a de coefficient (déclaration absente "
+                        "ou OSM sans couverture suffisante) : temps inchangés.")
+    return TECH.apply_to_segments(segments, coefs, SCENARIOS, SEGMENT_ROUND_S), info, warnings
+
+
+# ---------------------------------------------------------------------------
+# Pénalité d'altitude (#185, voir ASSUMPTIONS["altitude"])
+# ---------------------------------------------------------------------------
+
+def _segment_altitudes(pts: Sequence[dict], segments: Sequence[dict], threshold_m: float
+                       ) -> List[Tuple[Optional[float], Optional[float], Optional[float]]]:
+    """Par section : `(altitude moyenne, excédent moyen au-dessus de threshold_m, altitude max)`
+    en m, moyenne et excédent pondérés par la distance (`None` sans altitude) — l'excédent nourrit
+    le facteur, la moyenne l'affichage (voir `AL.ASSUMPTIONS["race_penalty"]`). Avec la
+    correction MNT (#176), `pts` porte déjà les altitudes corrigées."""
+    dist_m = _cumulative_distances(pts)
+    out: List[Tuple[Optional[float], Optional[float], Optional[float]]] = []
+    for seg in segments:
+        lo, hi = seg["km_start"] * 1000.0 - 0.5, seg["km_end"] * 1000.0 + 0.5
+        sel = [(p["ele"], d) for p, d in zip(pts, dist_m) if p.get("ele") is not None and lo <= d <= hi]
+        if not sel:
+            out.append((None, None, None))
+            continue
+        num = den = 0.0
+        for (a0, d0), (a1, d1) in zip(sel, sel[1:]):
+            num += (d1 - d0) * (a0 + a1) / 2.0
+            den += d1 - d0
+        mean = num / den if den > 0 else sum(a for a, _ in sel) / len(sel)
+        excess = AL.excess_above([a for a, _ in sel], [d for _, d in sel], threshold_m)
+        out.append((mean, excess, max(a for a, _ in sel)))
+    return out
+
+
+def apply_altitude_penalty(pts: Sequence[dict], segments: Sequence[dict], *, credit: float = 0.0,
+                            threshold_m: float = AL.ALTITUDE_THRESHOLD_M,
+                            loss_pct_per_1000m: float = AL.ALTITUDE_VO2MAX_LOSS_PCT_PER_1000M,
+                            scale: float = 1.0) -> Tuple[List[dict], dict]:
+    """Applique le facteur d'altitude section par section — pure. Rend `(segments, info)` ;
+    si aucune section ne dépasse `threshold_m`, `segments` est rendu INCHANGÉ (aucun champ
+    ajouté). Sinon chaque section gagne `altitude_m` et `altitude_factor` (scalaire, identique
+    pour les trois scénarios : l'ordre prudent >= réaliste >= ambitieux est conservé) et ses
+    temps/allures majorés. `scale` : coefficient personnel `[pacing.personal].altitude_scale`
+    (#188) — multiplie le SURCOÛT (facteur − 1) de chaque section, comme `technicity_scale` :
+    c'est exactement ce qu'estime `arc_pacing_calibration` (ratio surcoût réel / surcoût prévu)."""
+    triples = _segment_altitudes(pts, segments, threshold_m)
+    alts = [a for a, _, _ in triples]
+    factors = [AL.altitude_time_factor(None if ex is None else threshold_m + ex, credit=credit,
+                                       threshold_m=threshold_m, loss_pct_per_1000m=loss_pct_per_1000m)
+               for _, ex, _ in triples]
+    if abs(scale - 1.0) > 1e-12:
+        factors = [1.0 + (f - 1.0) * scale if f > 1.0 else f for f in factors]
+    known = [a for a in alts if a is not None]
+    peaks = [m for (_, _, m), f in zip(triples, factors) if m is not None and f > 1.0]
+    info = {"max_mean_altitude_m": round(max(known)) if known else None,
+            "max_altitude_m": round(max(peaks)) if peaks else None,
+            "sections_above": sum(1 for f in factors if f > 1.0), "applied": any(f > 1.0 for f in factors)}
+    if not info["applied"]:
+        return list(segments), info
+    out = []
+    for seg, alt, f in zip(segments, alts, factors):
+        new_time, new_pace = {}, {}
+        for s in SCENARIOS:
+            old = seg["predicted_time_s"][s]
+            p = seg["pace_s_km"][s]
+            if f == 1.0 or old is None:
+                new_time[s], new_pace[s] = old, p
+            else:
+                new_time[s] = int(round(old * f / SEGMENT_ROUND_S)) * SEGMENT_ROUND_S
+                new_pace[s] = round(p * f, 1) if p is not None else None
+        out.append({**seg, "predicted_time_s": new_time, "pace_s_km": new_pace,
+                    "altitude_m": round(alt) if alt is not None else None, "altitude_factor": round(f, 4)})
+    return out, info
+
+
+def _altitude_stage(pts, segments, enabled, threshold_m, loss_pct, acclimated_days, exposure, coverage,
+                    race_date=None, scale: Optional[float] = None):
+    """Étape « altitude » de `build_race_plan` (#185). `scale` : `[pacing.personal].altitude_scale`
+    (#188, `None` = inchangé), multiplie le surcoût de chaque section. Rend
+    `(altitude, segments, warnings)`."""
+    personal = scale is not None and abs(scale - 1.0) > 1e-12
+    params = {"threshold_m": threshold_m, "vo2max_loss_pct_per_1000m": loss_pct,
+              "altitude_cap_m": AL.ALTITUDE_CAP_M, "measured_max_m": AL.ALTITUDE_MEASURED_MAX_M,
+              "source": "Wehrlin & Hallén 2006, doi:10.1007/s00421-005-0081-9 ; "
+                        "traduction vitesse = approximation du projet"}
+    if not enabled:
+        return {"status": "disabled", "note": "pénalité d'altitude désactivée (--no-altitude)"}, segments, []
+    if coverage <= 0.0:
+        return {"status": "no_elevation", "note": "aucune altitude dans le GPX : pénalité d'altitude non "
+                                                   "appliquée"}, segments, []
+    _probe, info = apply_altitude_penalty(pts, segments, credit=0.0, threshold_m=threshold_m,
+                                          loss_pct_per_1000m=loss_pct)
+    if not info["applied"]:
+        return {"status": "below_threshold", "max_mean_altitude_m": info["max_mean_altitude_m"],
+                "note": f"toutes les sections sous {threshold_m:.0f} m : aucun effet",
+                "parameters": params}, segments, []
+    hours = AL.training_hours_ge(exposure)
+    lead_ok, lead_note = AL.training_credit_lead(exposure, race_date)
+    credit = AL.altitude_credit(acclimated_days, hours if lead_ok else None)
+    new_segments, info = apply_altitude_penalty(pts, segments, credit=credit["total"], threshold_m=threshold_m,
+                                                loss_pct_per_1000m=loss_pct, scale=scale if personal else 1.0)
+    before = {s: sum(x["predicted_time_s"][s] or 0 for x in segments) for s in SCENARIOS}
+    after = {s: sum(x["predicted_time_s"][s] or 0 for x in new_segments) for s in SCENARIOS}
+    altitude = {
+        "status": "applied", "max_mean_altitude_m": info["max_mean_altitude_m"],
+        "max_altitude_m": info["max_altitude_m"],
+        "sections_above": info["sections_above"],
+        "elevation_source": "gpx",
+        "acclimation": {"declared_days": acclimated_days, "training_hours_ge_1500m_28d": (
+            round(hours, 2) if hours is not None else None), "credit": credit,
+            "training_credited": bool(lead_ok and hours),
+            "note": ("aucune acclimatation déclarée ni exposition mesurée créditée : athlète supposé non acclimaté"
+                     if credit["total"] == 0 else "crédit d'acclimatation appliqué (approximation du projet)")
+                    + (f" ; {lead_note}" if hours else "")},
+        "time_added_s": {s: after[s] - before[s] for s in SCENARIOS},
+        "parameters": {**params, **({"personal_scale": scale} if personal else {})},
+    }
+    added_min = (after["realistic"] - before["realistic"]) / 60.0
+    warnings = [f"altitude : {info['sections_above']} section(s) au-dessus de {threshold_m:.0f} m (point haut "
+                f"{info['max_altitude_m']} m), temps réaliste "
+                + (f"+{round(added_min)} min" if added_min >= 1 else "+< 1 min")
+                + " — pénalité appliquée par défaut depuis #185 (`--no-altitude` pour l'ancien calcul), "
+                "approximation du projet (ASSUMPTIONS['altitude'])"
+                + (f" ; coefficient personnel altitude_scale = {scale:g} ([pacing.personal])" if personal else "")]
+    if info["max_altitude_m"] is not None and info["max_altitude_m"] > AL.ALTITUDE_MEASURED_MAX_M:
+        warnings.append(f"altitude > {AL.ALTITUDE_MEASURED_MAX_M:.0f} m sur le parcours : hors de la plage "
+                        "mesurée par la source, pénalité extrapolée")
+    return altitude, new_segments, warnings
+
+
 def build_race_plan(pts: Sequence[dict], bins: Sequence[dict], *,
                      aid_stations: Optional[Sequence[dict]] = None,
                      fade_pct: float = 0.0, fade_source: str = "generic",
@@ -1618,7 +2256,17 @@ def build_race_plan(pts: Sequence[dict], bins: Sequence[dict], *,
                      pack_kg: float = DEFAULT_PACK_KG, pack_kg_provided: bool = True,
                      calibration_band: Optional[str] = None,
                      calibration_band_source: Optional[str] = None,
-                     calibration: Optional[dict] = None) -> dict:
+                     calibration: Optional[dict] = None,
+                     tz: Optional[str] = None, start_time_known: bool = True,
+                     night_enabled: bool = True, night_penalty_pct: float = NIGHT_BASE_PENALTY_PCT,
+                     night_descent_extra_max_pct: float = NIGHT_DESCENT_EXTRA_MAX_PCT,
+                     technicity: Optional[dict] = None,
+                     heat_hot_factor: Optional[float] = None, technicity_scale: Optional[float] = None,
+                     personal_applied: Optional[dict] = None,
+                     altitude_enabled: bool = True, altitude_threshold_m: float = AL.ALTITUDE_THRESHOLD_M,
+                     altitude_loss_pct_per_1000m: float = AL.ALTITUDE_VO2MAX_LOSS_PCT_PER_1000M,
+                     altitude_acclimated_days: Optional[int] = None,
+                     altitude_exposure: Optional[dict] = None, altitude_scale: Optional[float] = None) -> dict:
     """Assemble le plan de course complet — pure (aucun accès disque), pour que
     la CLI et les tests partagent exactement le même chemin de calcul.
 
@@ -1629,8 +2277,24 @@ def build_race_plan(pts: Sequence[dict], bins: Sequence[dict], *,
     `resolve_calibration_band` pour les deux premiers), jamais par cette
     fonction (qui reste pure).
 
+    `tz` (nom IANA), `start_time_known` (faux = `start_time` est le défaut, pas un choix),
+    `night_*` : pénalité de nuit (#184, `ASSUMPTIONS["night"]`) — appliquée seulement si la date
+    de course, l'heure de départ explicite et le fuseau sont connus, sinon la clé additive
+    `night` dit pourquoi et les temps restent ceux d'avant #184.
+
+    `technicity` : coefficient de technicité par section (#186, `ASSUMPTIONS["technicity"]`), résolu par
+    l'appelant ; `None` (défaut) = étape absente, sortie inchangée.
+
+    `altitude_*` : pénalité d'altitude (#185, `ASSUMPTIONS["altitude"]`) — facteur de temps par
+    section au-dessus du seuil, réduit par `altitude_acclimated_days` (déclaré) et par
+    `altitude_exposure` (rapport de `arc_index.altitude_exposure`, résolu par l'appelant) ;
+    sous le seuil partout, seule la clé additive `altitude` s'ajoute. `altitude_scale` :
+    `[pacing.personal].altitude_scale` (#188), résolu par l'appelant (`None` si
+    `--altitude-loss-pct` est donné : le drapeau CLI prime) ; consigné dans `pacing_personal`
+    seulement quand la pénalité est réellement appliquée.
+
     Lève `ValueError` si `start_time` n'est pas un `HH:MM` valide (revue de
-    code #59, nit : jamais un repli silencieux sur 07:00)."""
+    code #59, nit : jamais un repli silencieux sur 07:00) ou si `tz` est inconnu."""
     hh, mm = _parse_hhmm(start_time, label="--start")
     base_date = date.fromisoformat(race_date) if race_date else date.today()
     start_dt = datetime(base_date.year, base_date.month, base_date.day, hh, mm)
@@ -1658,8 +2322,16 @@ def build_race_plan(pts: Sequence[dict], bins: Sequence[dict], *,
     raw_segments = segment_course(pts, target_segment_m=segment_m)
     total_measured_m = raw_segments[-1]["km_end"] * 1000.0 if raw_segments else None
     aid_stations = rescale_aid_stations(aid_stations, total_measured_m, official_distance_m)
+    if technicity and technicity.get("declared") and official_distance_m and official_distance_m > 0 \
+            and total_measured_m:
+        # Les km DÉCLARÉS sont des km officiels (roadbook), comme ceux des ravitos : même
+        # rééchelonnement sur la distance mesurée du GPX (#186, revue de code).
+        ratio = total_measured_m / official_distance_m
+        technicity = {**technicity, "declared": [
+            {**sec, "km_start": round(sec["km_start"] * ratio, 3), "km_end": round(sec["km_end"] * ratio, 3)}
+            for sec in technicity["declared"]]}
 
-    heat_factor, heat_notes = heat_time_factor(temp_max_c, acclimated=acclimated)
+    heat_factor, heat_notes = heat_time_factor(temp_max_c, acclimated=acclimated, hot_factor=heat_hot_factor)
     if acclimation_note:
         heat_notes = [*heat_notes, acclimation_note]
 
@@ -1704,8 +2376,47 @@ def build_race_plan(pts: Sequence[dict], bins: Sequence[dict], *,
             f"{FADE_TIME_NEUTRAL_MAX_DURATION_S / 3600.0:.0f} h) : le fade reste ADDITIF (pas neutralisé) "
             "malgré une prédiction Riegel/VDOT — voir ASSUMPTIONS['fade'].")
 
+    # Technicité du terrain (#186) : propriété du TERRAIN, pas de l'horloge -> AVANT la nuit, dont
+    # l'itération part ainsi des temps de section déjà corrigés (heures de passage cohérentes).
+    segments, technicity_info, technicity_warnings = _technicity_stage(pts, segments, technicity, technicity_scale)
+    warnings.extend(technicity_warnings)
+
+    # Altitude AVANT la nuit : facteur indépendant de l'horloge, il décale les passages que
+    # l'itération de nuit lit ensuite (composition multiplicative chaleur x altitude x nuit).
+    altitude, segments, altitude_warnings = _altitude_stage(
+        pts, segments, altitude_enabled, altitude_threshold_m, altitude_loss_pct_per_1000m,
+        altitude_acclimated_days, altitude_exposure, coverage, race_date, altitude_scale)
+    warnings.extend(altitude_warnings)
+    if altitude.get("status") == "applied" and (altitude.get("parameters") or {}).get("personal_scale"):
+        personal_applied = {**(personal_applied or {}), "altitude_scale": altitude_scale}
+
+    night, night_mask, night_start_dt, night_tzinfo = _night_stage(
+        pts, segments, aid_stations, hh, mm, race_date, tz, start_time_known, night_enabled,
+        night_penalty_pct, night_descent_extra_max_pct)
+    if night.pop("_apply", None) is not None:
+        segments = night.pop("_segments")
+    if night.get("timezone_warning"):
+        warnings.append(night["timezone_warning"])
+
     passages = compute_passages(segments, aid_stations)
-    cutoffs = check_cutoffs(passages["aid_station_passages"], aid_stations, start_dt)
+    if night_mask is not None:
+        for scenario in SCENARIOS:
+            night["scenarios"][scenario] = night_scenario_summary(
+                night_mask, night_start_dt, passages["totals_s"][scenario], night_tzinfo)
+    # Fuseau de course pour les barrières (#205) : celui de la nuit s'il a été résolu, sinon `--tz`
+    # même sans pénalité de nuit (un fuseau illisible n'est alors qu'un avertissement).
+    cutoff_zone = night_tzinfo
+    if cutoff_zone is None and tz and any(a.get("cutoff") for a in aid_stations):
+        import arc_solar as SOLAR
+        try:
+            cutoff_zone = SOLAR.resolve_timezone(tz)
+        except ValueError as exc:
+            warnings.append(f"barrières horaires calculées à l'heure murale : {exc}")
+    if cutoff_zone is None and has_offset_cutoff(aid_stations):
+        warnings.append(
+            "barrière horaire avec décalage (+HH:MM/Z) sans fuseau de course (--tz) : comparée à son "
+            "heure murale, marge fausse si ce décalage n'est pas celui du départ")
+    cutoffs = check_cutoffs(passages["aid_station_passages"], aid_stations, start_dt, cutoff_zone)
     for aid_passage in passages["aid_station_passages"]:
         if aid_passage.get("note"):
             warnings.append(aid_passage["note"])
@@ -1743,6 +2454,10 @@ def build_race_plan(pts: Sequence[dict], bins: Sequence[dict], *,
         "fade_notes": fade_notes,
         "heat_factor": round(heat_factor, 3),
         "heat_notes": heat_notes,
+        "night": night,
+        **({"technicity": technicity_info} if technicity_info is not None else {}),
+        **({"pacing_personal": personal_applied} if personal_applied else {}),
+        "altitude": altitude,
         "start_time": start_time,
         "race_date": race_date,
         "warnings": warnings,
@@ -1782,21 +2497,9 @@ def _resolve_model_bins(conn, conf: dict, args) -> Tuple[List[dict], Optional[fl
 
 def _resolve_acclimated(conn, conf: dict, today_date: date,
                          temp_max_c: Optional[float]) -> Tuple[Optional[bool], Optional[str]]:
-    """`(acclimated, note)` — voir `ASSUMPTIONS["heat"]` : `None` (statut
-    inconnu, jamais assimilé à une non-acclimatation) dès que la fenêtre de 14
-    jours n'a AUCUNE séance exploitable (`sessions_considered == 0`), pas
-    seulement aucune séance chaude."""
-    if temp_max_c is None or temp_max_c <= HEAT_HOT_C:
-        return None, None
-    import arc_index as IDX  # noqa: E402
-    report = IDX.heat_acclimation_today(conn, conf, today_date)
-    if not report.get("sessions_considered"):
-        return None, None
-    hot_sessions = report.get("hot_sessions")
-    if hot_sessions is None:
-        return None, None
-    note = f"acclimatation chaleur évaluée sur les 14 jours précédant {today_date.isoformat()} (#38)"
-    return hot_sessions >= HEAT_ACCLIMATION_MIN_HOT_SESSIONS, note
+    """`(acclimated, note)` — voir `ASSUMPTIONS["heat"]` ; logique partagée dans
+    `arc_heat.resolve_acclimated` (#171)."""
+    return resolve_acclimated(conn, conf, today_date, temp_max_c)
 
 
 def _flat_equivalent_m(distance_m: Optional[float], elevation_gain_m: Optional[float], primary: str) -> float:
@@ -2020,6 +2723,71 @@ def _validate_pack_kg(value: Optional[float]) -> float:
     return value
 
 
+def _validate_night_pct(value: Optional[float], default: float, label: str) -> float:
+    """Valide une option de pénalité de nuit (%) : `None` -> défaut ; non finie ou hors
+    `[0, NIGHT_PENALTY_PCT_MAX]` -> `ValueError` (jamais acceptée silencieusement)."""
+    if value is None:
+        return default
+    if not math.isfinite(value) or not (0.0 <= value <= NIGHT_PENALTY_PCT_MAX):
+        raise ValueError(f"{label} : valeur entre 0 et {NIGHT_PENALTY_PCT_MAX:g} attendue, « {value} » reçue.")
+    return value
+
+
+def _resolve_technicity(values: Optional[Sequence[str]], pts: Sequence[dict], workspace: Path,
+                        baseline: Optional[str] = None) -> Optional[dict]:
+    """Entrées CLI `--technicity` -> dict pour `build_race_plan` (I/O ici : fichier déclaré, Overpass).
+    `None` si l'option est absente. Hors ligne / Overpass en erreur : pas de coefficient OSM,
+    note explicite, jamais fatal. Lève `ValueError` (TechnicityError) sur une déclaration invalide."""
+    if not values:
+        if baseline:
+            raise TECH.TechnicityError("--technicity-baseline n'a de sens qu'avec --technicity osm")
+        return None
+    declared, want_osm = None, False
+    for v in values:
+        if v.strip().lower() == "osm":
+            want_osm = True
+        else:
+            declared = (declared or []) + TECH.load_declared(Path(v))
+    base_coef, base_label = TECH.parse_baseline(baseline)
+    if base_label and not want_osm:
+        raise TECH.TechnicityError("--technicity-baseline n'a de sens qu'avec --technicity osm")
+    out = {"declared": declared, "ways": None, "osm_requested": want_osm,
+           "osm_baseline": base_coef, "osm_baseline_label": base_label}
+    if want_osm:
+        try:
+            ways, info = TECH.fetch_ways(pts, cache_dir=Path(workspace) / ".arc" / "overpass")
+            out.update(ways=ways, osm_status="ok", osm_note=None, osm_info={**info, "ways_found": len(ways)})
+        except TECH.OverpassError as exc:
+            out.update(osm_status="unavailable", osm_info=None,
+                       osm_note=f"OpenStreetMap indisponible ({exc}) : aucun coefficient de technicité "
+                                "dérivé d'OSM (déclarez --technicity fichier.json ou réessayez en ligne).")
+    return out
+
+
+def _validate_altitude_options(args) -> Tuple[float, float, Optional[int]]:
+    """Valide `--altitude-threshold-m`, `--altitude-loss-pct` et `--altitude-acclimated-days`
+    (jamais acceptées silencieusement hors bornes)."""
+    thr = AL.ALTITUDE_THRESHOLD_M if args.altitude_threshold_m is None else args.altitude_threshold_m
+    if not math.isfinite(thr) or not (0.0 <= thr <= AL.ALTITUDE_CAP_M):
+        raise ValueError(f"--altitude-threshold-m : valeur entre 0 et {AL.ALTITUDE_CAP_M:g} attendue, « {thr} » reçue.")
+    loss = AL.ALTITUDE_VO2MAX_LOSS_PCT_PER_1000M if args.altitude_loss_pct is None else args.altitude_loss_pct
+    if not math.isfinite(loss) or not (0.0 <= loss <= AL.ALTITUDE_LOSS_PCT_MAX):
+        raise ValueError(f"--altitude-loss-pct : valeur entre 0 et {AL.ALTITUDE_LOSS_PCT_MAX:g} attendue, « {loss} » reçue.")
+    days = args.altitude_acclimated_days
+    if days is not None and not (0 <= days <= AL.ALTITUDE_ACCLIMATED_DAYS_MAX):
+        raise ValueError(f"--altitude-acclimated-days : entier entre 0 et {AL.ALTITUDE_ACCLIMATED_DAYS_MAX} attendu, « {days} » reçu.")
+    return thr, loss, days
+
+
+def _note_elevation_source(plan: dict) -> None:
+    """Quand la correction MNT (#176) a été appliquée (`elevation_dem` du plan, statut autre que
+    `unavailable`), les altitudes vues par la pénalité d'altitude sont celles du MNT : le dit."""
+    dem = plan.get("elevation_dem")
+    alt = plan.get("altitude") or {}
+    if dem and dem.get("status") != "unavailable" and alt.get("status") == "applied":
+        alt["elevation_source"] = "dem"
+
+
 def _read_temp_max_c(args) -> Optional[float]:
     if args.temp_max_c is not None:
         return float(args.temp_max_c)
@@ -2048,7 +2816,40 @@ def build_arg_parser() -> argparse.ArgumentParser:
     ap.add_argument("--segment-m", type=float, default=DEFAULT_SEGMENT_M, dest="segment_m",
                      help="longueur cible d'un segment, en mètres (défaut 750)")
     ap.add_argument("--race-date", metavar="AAAA-MM-JJ", dest="race_date", help="date de la course")
-    ap.add_argument("--start", default="07:00", help="heure de départ HH:MM (défaut 07:00)")
+    ap.add_argument("--start", default=None, help="heure de départ HH:MM (défaut 07:00 ; sans cette option "
+                                                    "explicite, aucune pénalité de nuit n'est appliquée)")
+    ap.add_argument("--tz", default=None,
+                     help="fuseau horaire IANA de la course (ex. Europe/Paris) : requis, avec --race-date et "
+                          "--start, pour la pénalité de nuit (heures de lever/coucher calculées localement)")
+    ap.add_argument("--no-night", action="store_true", dest="no_night",
+                     help="désactive la pénalité de nuit (voir ASSUMPTIONS['night'])")
+    ap.add_argument("--night-penalty-pct", type=float, dest="night_penalty_pct",
+                     help=f"pénalité de temps (%%) à pleine nuit sur plat/montée (défaut "
+                          f"{NIGHT_BASE_PENALTY_PCT:g}, approximation du projet)")
+    ap.add_argument("--night-descent-extra-max-pct", type=float, dest="night_descent_extra_max_pct",
+                     help=f"supplément maximal (points de %%) de pénalité de nuit en descente (défaut "
+                          f"{NIGHT_DESCENT_EXTRA_MAX_PCT:g}, approximation du projet)")
+    ap.add_argument("--technicity", action="append", dest="technicity", metavar="FICHIER.json|osm",
+                     help="coefficient de technicité du terrain par section (#186, ASSUMPTIONS['technicity']) : "
+                          "un fichier JSON déclaré {\"sections\": [{\"km_start\", \"km_end\", \"coef\"}]} et/ou "
+                          "`osm` (dérivé d'OpenStreetMap via Overpass, RÉSEAU, opt-in, GPX de COURSE seulement ; "
+                          "cache <workspace>/.arc/overpass). Répétable ; la déclaration l'emporte section par "
+                          "section. Absent = comportement inchangé")
+    ap.add_argument("--technicity-baseline", dest="technicity_baseline", metavar="COEF|sac_scale",
+                     help="terrain HABITUEL d'entraînement de l'athlète, pour ancrer les coefficients OSM "
+                          "(son modèle pente -> allure le contient déjà) : nombre dans [1.0, 1.8] ou valeur "
+                          "sac_scale (ex. mountain_hiking). Défaut : 1.0 = chemin facile, avec avertissement")
+    ap.add_argument("--no-altitude", action="store_true", dest="no_altitude",
+                     help="désactive la pénalité d'altitude (voir ASSUMPTIONS['altitude'])")
+    ap.add_argument("--altitude-threshold-m", type=float, dest="altitude_threshold_m",
+                     help=f"altitude (m) au-dessus de laquelle la pénalité s'applique (défaut "
+                          f"{AL.ALTITUDE_THRESHOLD_M:g}, choix du projet)")
+    ap.add_argument("--altitude-loss-pct", type=float, dest="altitude_loss_pct",
+                     help=f"perte de VO2max (%% par 1000 m) retenue (défaut "
+                          f"{AL.ALTITUDE_VO2MAX_LOSS_PCT_PER_1000M:g}, Wehrlin & Hallén 2006)")
+    ap.add_argument("--altitude-acclimated-days", type=int, dest="altitude_acclimated_days",
+                     help="jours déjà passés en altitude avant la course (acclimatation DÉCLARÉE ; sans "
+                          "cette option, athlète supposé non acclimaté sauf exposition mesurée à l'entraînement)")
     ap.add_argument("--aid-stations", dest="aid_stations_path",
                      help="fichier JSON : liste d'objets {km, name, cutoff?, cutoff_day?, stop_s?}")
     ap.add_argument("--official-distance-m", type=float, dest="official_distance_m",
@@ -2072,6 +2873,13 @@ def build_arg_parser() -> argparse.ArgumentParser:
                           "voir ASSUMPTIONS['energy']) — force le choix explicitement ; sans cette "
                           "option, dérivé du D+/km RÉEL de ce GPX (TRAIL_GAIN_M_PER_KM), jamais du "
                           "profil général de l'athlète ([sport].primary)")
+    ap.add_argument("--dem", action="store_true",
+                     help="altitude corrigée par MNT public (IGN France / Copernicus ailleurs, #176) : "
+                          "le D+ MNT devient la référence du plan, le D+ du fichier reste affiché "
+                          "(`elevation_dem`). Envoie des coordonnées amincies au fournisseur ; hors "
+                          "ligne, altitudes du fichier conservées avec un avertissement")
+    ap.add_argument("--no-dem", action="store_true", dest="no_dem",
+                     help="désactive la correction MNT même avec [elevation].dem = \"auto\"")
     return ap
 
 
@@ -2084,14 +2892,52 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     if len(pts) < 2:
         print(f"ERREUR : GPX sans trace exploitable — {args.gpx}", file=sys.stderr)
         return 1
+    start_time_known = args.start is not None
+    args.start = args.start or "07:00"
     try:
         hh, mm = _parse_hhmm(args.start, label="--start")
+        # Priorité : drapeau CLI > `[pacing.personal]` (#188) > défaut du projet. Validé après
+        # lecture de la config (les défauts doivent rester dans [0, NIGHT_PENALTY_PCT_MAX]).
+        workspace = workspace_root(args.workspace)
+        personal = PP.read_workspace(workspace)
+        for warning in personal["warnings"]:
+            print(f"avertissement : {warning}", file=sys.stderr)
+        personal_values = personal["values"]
+        night_penalty_pct = _validate_night_pct(
+            args.night_penalty_pct, personal_values.get("night_penalty_pct", NIGHT_BASE_PENALTY_PCT),
+            "--night-penalty-pct")
+        night_descent_extra_max_pct = _validate_night_pct(
+            args.night_descent_extra_max_pct, NIGHT_DESCENT_EXTRA_MAX_PCT, "--night-descent-extra-max-pct")
+        altitude_threshold_m, altitude_loss_pct, altitude_acclimated_days = _validate_altitude_options(args)
     except ValueError as exc:
         print(f"ERREUR : {exc}", file=sys.stderr)
         return 1
     print(f"heure de départ effective : {hh:02d}:{mm:02d}", file=sys.stderr)
 
-    workspace = workspace_root(args.workspace)
+    dem_info = None
+    if args.dem and args.no_dem:
+        print("ERREUR : --dem et --no-dem sont incompatibles.", file=sys.stderr)
+        return 1
+    import arc_dem as DEM
+    dem_settings = DEM.load_settings(workspace)
+    if args.dem or (dem_settings["dem"] == "auto" and not args.no_dem):
+        dem_res = DEM.resample_track(
+            pts, step_m=dem_settings["step_m"],
+            cache=DEM.DemCache(DEM.cache_path(workspace), enabled=dem_settings["cache"]))
+        if dem_res["status"] == "unavailable":
+            dem_info = {"status": "unavailable", "error": dem_res["report"].get("error")}
+            print(f"AVERTISSEMENT : correction MNT indisponible ({dem_info['error']}) — "
+                  "altitudes du fichier conservées.", file=sys.stderr)
+        else:
+            dem_info = {"status": dem_res["status"],
+                        # D+ fichier mesuré comme le plan l'aurait fait sans --dem (lissage
+                        # 3 points, sans seuil : `course_totals`) : l'écart affiché est
+                        # exactement l'effet de la correction sur le plan.
+                        **DEM.compare_gain_loss([p.get("ele") for p in pts], dem_res["ele"],
+                                                file_smooth=EL.DEFAULT_SMOOTH_TAPS, file_min_step_m=0.0),
+                        "step_m": dem_res["report"]["step_m"], "providers": dem_res["report"]["providers"],
+                        "attribution": dem_res["report"]["attribution"]}
+            pts = [{**p, "ele": z} for p, z in zip(pts, dem_res["ele"])]
 
     # Index ouvert et reconstruit UNE SEULE FOIS (revue de code #59 : trois
     # réindexations indépendantes coûtaient ≈ 7,6 s contre ≈ 2,5 s pour une
@@ -2105,6 +2951,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     bins, flat_reference_speed_ms = _resolve_model_bins(conn, conf, args)
     fade_pct, fade_source = _resolve_fade(conn, today_date, args)
     temp_max_c = _read_temp_max_c(args)
+    altitude_exposure = None if args.no_altitude else IDX.altitude_exposure(conn, today_date)
     acclimated, acclimation_note = _resolve_acclimated(conn, conf, today_date, temp_max_c)
     # La cible d'intensité est TOUJOURS le GPX ANALYSÉ, jamais l'objectif (voir
     # ASSUMPTIONS["base_pace"], 2ᵉ revue de code #59, BLOQUANT).
@@ -2112,6 +2959,11 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     intensity_factor, intensity_source, _race_flat_speed, intensity_notes, safe_scenario_factor = \
         _resolve_intensity_factor(conn, conf, flat_reference_speed_ms, gpx_distance_m, gpx_elevation_gain_m)
     aid_stations = _load_aid_stations(args.aid_stations_path)
+    try:
+        technicity = _resolve_technicity(args.technicity, pts, workspace, args.technicity_baseline)
+    except ValueError as exc:
+        print(f"ERREUR : {exc}", file=sys.stderr)
+        return 1
 
     # Poids de l'athlète à la date de la COURSE — MÊME résolveur que
     # `activity_energy`, voir ASSUMPTIONS["energy"] : jamais une seconde
@@ -2138,6 +2990,16 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         print(f"ERREUR : {exc}", file=sys.stderr)
         return 1
 
+    # Coefficients personnels réellement appliqués (#188), consignés dans le plan : le débrief
+    # en a besoin pour que ses estimations restent absolues (voir `arc_pacing_calibration`).
+    personal_applied: Dict[str, float] = {}
+    if args.night_penalty_pct is None and "night_penalty_pct" in personal_values and not args.no_night:
+        personal_applied["night_penalty_pct"] = night_penalty_pct
+    if technicity is not None and "technicity_scale" in personal_values:
+        personal_applied["technicity_scale"] = personal_values["technicity_scale"]
+    if temp_max_c is not None and temp_max_c > HEAT_HOT_C and "heat_hot_factor" in personal_values:
+        personal_applied["heat_hot_factor"] = personal_values["heat_hot_factor"]
+
     try:
         plan = build_race_plan(
             pts, bins, aid_stations=aid_stations, fade_pct=fade_pct, fade_source=fade_source,
@@ -2150,10 +3012,27 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             weight_kg=weight_kg, weight_source=weight_source,
             pack_kg=pack_kg, pack_kg_provided=pack_kg_provided,
             calibration_band=calibration_band, calibration_band_source=calibration_band_source,
-            calibration=calibration)
+            calibration=calibration, tz=args.tz, start_time_known=start_time_known,
+            night_enabled=not args.no_night, night_penalty_pct=night_penalty_pct,
+            night_descent_extra_max_pct=night_descent_extra_max_pct, technicity=technicity,
+            heat_hot_factor=personal_values.get("heat_hot_factor"),
+            technicity_scale=personal_values.get("technicity_scale"), personal_applied=personal_applied,
+            altitude_enabled=not args.no_altitude, altitude_threshold_m=altitude_threshold_m,
+            altitude_loss_pct_per_1000m=altitude_loss_pct, altitude_acclimated_days=altitude_acclimated_days,
+            altitude_exposure=altitude_exposure,
+            # Priorité : --altitude-loss-pct (CLI) > [pacing.personal].altitude_scale > défaut.
+            altitude_scale=(personal_values.get("altitude_scale") if args.altitude_loss_pct is None else None))
     except ValueError as exc:
         print(f"ERREUR : {exc}", file=sys.stderr)
         return 1
+    if dem_info is not None:
+        plan["elevation_dem"] = dem_info
+        if dem_info["status"] != "unavailable":
+            plan.setdefault("warnings", []).append(
+                f"altitude corrigée par MNT (D+ fichier {dem_info['file_gain_m']:.0f} m, D+ MNT "
+                f"{dem_info['dem_gain_m']:.0f} m) : le plan repose sur le D+ MNT — "
+                + " ".join(dem_info["attribution"]))
+    _note_elevation_source(plan)
     print(json.dumps(plan, ensure_ascii=False))
     return 0
 

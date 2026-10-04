@@ -317,6 +317,55 @@ class TestDashboardGaitApi(InstallAsserts):
         self.assertIn("gait.mount()", text)
 
 
+class TestDashboardAltitudeExposureApi(InstallAsserts):
+    """#185 — `/api/altitude-exposure` (carte « Exposition à l'altitude » de la vue Santé) : forme,
+    paramètre `days`, aucune fuite de position, câblage de la carte."""
+
+    def setUp(self):
+        self.sb = Sandbox().__enter__()
+        self.ws = build(self.sb.root / "ws", days=120, today=__import__("datetime").date.fromisoformat(TODAY),
+                        with_samples=True)
+        self.server = Server(self.sb, ["python3", str(self.sb.repo / "scripts/arc_serve.py"),
+                                       "--workspace", str(self.ws), "--port", "0", "--today", TODAY])
+        self.assertIsNotNone(self.server.url, self.server.proc.stderr.read() if self.server.proc.poll() is not None else "pas d'URL")
+
+    def tearDown(self):
+        self.server.stop()
+        self.sb.__exit__(None, None, None)
+
+    def get(self, path):
+        status, body, _ = self.server.get(path)
+        self.assertEqual(status, 200, path)
+        return json.loads(body)
+
+    def test_shape_default_windows(self):
+        a = self.get("/api/altitude-exposure")
+        for key in ("status", "note", "windows", "thresholds_m", "assumption"):
+            self.assertIn(key, a)
+        self.assertEqual(sorted(a["windows"]), ["14", "28"])
+        self.assertEqual(a["thresholds_m"], [1500, 2000])
+        self.assertIn(a["status"], ("none", "exposed", "no_altitude", "no_activity"))
+        w = a["windows"]["28"]
+        for key in ("sessions", "sessions_with_altitude", "sessions_without_altitude", "thresholds"):
+            self.assertIn(key, w)
+
+    def test_days_parameter(self):
+        self.assertEqual(list(self.get("/api/altitude-exposure?days=7")["windows"]), ["7"])
+        self.assertEqual(list(self.get("/api/altitude-exposure?days=9999")["windows"]), ["365"])
+        self.assertEqual(sorted(self.get("/api/altitude-exposure?days=abc")["windows"]), ["14", "28"])
+
+    def test_no_gps_leak(self):
+        text = json.dumps(self.get("/api/altitude-exposure"))
+        for leaked in ("lat_deg", "lon_deg", "latitude", "longitude", "hrv", "readiness"):
+            self.assertNotIn(leaked, text)
+
+    def test_app_js_wires_the_card_in_the_health_view(self):
+        status, body, _ = self.server.get("/js/app.js")
+        text = body.decode("utf-8")
+        self.assertIn('api("altitude-exposure")', text)
+        self.assertIn("function altitudeCard", text)
+
+
 class TestDashboardAnalysisViewEmptyState(InstallAsserts):
     """#50, revue de code (should-fix 1) : sur un workspace SANS échantillon FIT nulle
     part (`build(..., with_samples=False)`, le défaut), `viewAnalyse` doit afficher

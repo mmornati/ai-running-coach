@@ -49,12 +49,27 @@ HRV_STATUS = ("balanced", "unbalanced", "low", "poor", "no_status")
 # depuis ce fichier (le tableau de bord, lui, recalcule toujours en direct).
 HRV_PERSONAL_STATUS = ("sous", "dans_la_norme", "au_dessus", "en_construction")
 VERDICT = ("green", "amber", "red")
+# Contexte du cycle menstruel (#166, opt-in `[health].cycle_tracking`) — voir scripts/arc_cycle.py.
+CYCLE_PHASE = ("menstrual", "follicular", "ovulation", "luteal")
+CYCLE_SOURCE = ("garmin", "intervals", "manual")
+CYCLE_DAY_PLAUSIBLE = (1, 60)
+# Apports poussés vers Garmin Connect (#167, opt-in `[nutrition].garmin_sync`) — voir
+# scripts/arc_nutrition_sync.py : source du jour et nature des écritures tracées.
+INTAKE_SOURCE = ("manual", "garmin")
+GARMIN_PUSH_KIND = ("create_custom_food", "log_custom_food", "log_food", "add_hydration_data")
 WEATHER_CATEGORY = ("green", "yellow", "orange", "red")
 SLOT = ("morning", "midday", "evening", "none")
+# Action recommandée par l'ajustement chaleur d'une séance (#171, `scripts/arc_heat.py`).
+HEAT_ACTION = ("none", "slow_pace", "prefer_cool_slot", "lower_pace_targets",
+               "reschedule_or_lighten", "reschedule_or_indoor")
+# Base de `heat_adjustment.temp_c` : température du créneau ou ressenti (s'il est plus élevé).
+HEAT_TEMP_BASIS = ("temperature", "feels_like")
 INTENSITY = (
     "rest", "recovery", "endurance", "tempo", "threshold", "vo2max", "race", "strength",
 )
 SESSION_STATUS = ("planned", "done", "missed", "moved", "cancelled")
+# Type de semaine d'un squelette de bloc (#190, `scripts/arc_plan_skeleton.py`).
+WEEK_TYPE = ("build", "recovery", "taper", "race", "lead_in", "post_race")
 REPORT_TYPE = ("weekly", "monthly", "comparison", "race", "race_debrief", "adhoc")
 COURSE_VERDICT = ("compatible", "partial", "incompatible")
 WATER_SOURCE = ("officiel", "osm_drinking_water", "osm_spring", "osm_cafe")
@@ -225,6 +240,12 @@ SCHEMA = {
             # synchronisée depuis Intervals.icu porte celui-ci et omet
             # `garmin_activity_id`, jamais l'inverse.
             "intervals_activity_id": "str",
+            # Strava (#164, `[data].source = "strava"`) : identifiant d'activité Strava
+            # préfixé « s » (ex. "s12345678901") — l'API rend un entier sans préfixe,
+            # indiscernable d'un `garmin_activity_id` ; le préfixe est la convention du
+            # projet (voir `arc_samples.STRAVA_ID_RE`). Mêmes règles que ci-dessus :
+            # une activité Strava porte celui-ci et omet les deux autres.
+            "strava_activity_id": "strava_id",
             "name": "str",
             "location": "str",
             "start_time": "datetime",
@@ -267,6 +288,9 @@ SCHEMA = {
             # LA chaussure). Absent = aucun objet attribué, jamais « aucun » écrit en liste vide
             # (une liste vide est acceptée mais sans effet). Ancien fichier sans `gear_ids` : valide.
             "gear_ids": "gear_id_list",
+            # #167 : apport en cours d'effort (`/log`) poussé vers Garmin Connect, après un « oui »
+            # explicite — trace d'idempotence (voir SUBSCHEMA["garmin_push"]), jamais écrite en headless.
+            "garmin_pushed": "[garmin_push]",
             "missing_reason": "obj",
             # KPI FIT (#51, épopée #21) : snapshot narratif écrit par le coach APRÈS
             # avoir lu la sortie des CLI dédiées (`scripts/arc_index.py gap/decoupling/
@@ -331,6 +355,11 @@ SCHEMA = {
             "missing_reason": "obj",
             # #57 : douleur structurée déclarée le jour du fichier — voir SUBSCHEMA["pain"].
             "pain": "[pain]",
+            # #166 : contexte du cycle (opt-in `[health].cycle_tracking`, jamais écrit à "off") —
+            # un CONTEXTE de lecture du bilan matinal, jamais une règle ni un diagnostic.
+            "cycle_phase": _enum(CYCLE_PHASE),
+            "cycle_day": "cycle_day",
+            "cycle_source": _enum(CYCLE_SOURCE),
         },
     },
     "weather": {
@@ -382,6 +411,11 @@ SCHEMA = {
             "target_duration_s": "num+",
             "target_distance_m": "num+",
             "target_elevation_m": "num+",
+            # #190 : champs du squelette de bloc (`arc_index.py plan-skeleton`), tous facultatifs.
+            "week_type": _enum(WEEK_TYPE),
+            "quality_sessions": "int+",
+            "long_run_target_s": "num+",
+            "strength_emphasis": "str",
             # #69, plan multi-semaines : liste de `week_entry` (même forme qu'une
             # semaine unique ci-dessus), une entrée par semaine. Mutuellement
             # exclusif avec les champs de semaine unique au premier niveau — un
@@ -400,6 +434,10 @@ SCHEMA = {
             "burned_kcal": "num+",
             "weight_kg": "num+",
             "target_weight_kg": "num+",
+            # #167 : source de vérité de l'apport du jour (une seule par jour, jamais deux) et
+            # trace de ce qui a été poussé vers Garmin — voir SUBSCHEMA["garmin_push"].
+            "intake_source": _enum(INTAKE_SOURCE),
+            "garmin_pushed": "[garmin_push]",
         },
     },
     "report": {
@@ -426,11 +464,27 @@ SCHEMA = {
             "distance_m": "num+",
             "elevation_gain_m": "num+",
             "start_time": "datetime",
+            # Fuseau IANA de la course (#184, ex. "Europe/Paris") : entrée `--tz` de la pénalité
+            # de nuit, persistée pour qu'un recalcul ne redemande pas le fuseau.
+            "timezone": "str",
+            # Chaleur du plan (`arc_race_pacing`, #38) et coefficients personnels réellement
+            # appliqués (`[pacing.personal]`, #188) : lus par `arc_pacing_calibration` au débrief
+            # pour que ses estimations restent absolues. Optionnels (plans anciens : absents).
+            "heat_factor": "num+",
+            "heat_notes": "list",
+            "pacing_personal": "obj",
             "target_time_s": "num+",
             "scenarios": "obj",
             "aid_stations": "[aid_station]",
             "water_points": "[water_point]",
             "gear": "list",
+            # Roadbook imprimable (#187) : `notes` (consignes de course), `emergency` (urgence :
+            # numéro de l'organisation, abandon, points de repli) et `nutrition_plan` (chemin du
+            # fichier `nutrition/…` du plan de ravitaillement) — imprimés tels quels, absents =
+            # dits absents par le roadbook, jamais inventés.
+            "notes": "list",
+            "emergency": "list",
+            "nutrition_plan": "workspace_path",
             # `segments` (#59, allures par segment depuis le modèle personnel) : socle
             # de #61 (débrief post-course, comparaison plan vs réalisé PAR SEGMENT) —
             # voir `scripts/arc_race_pacing.py::segment_course`/`predict_segments` pour
@@ -514,6 +568,22 @@ SUBSCHEMA = {
         "required": {"location": "str", "score": "pain_score"},
         "optional": {},
     },
+    # `nutrition.garmin_pushed` / `activity.garmin_pushed` (#167) : une entrée par écriture
+    # confirmée par l'athlète vers Garmin Connect. `key` (empreinte déterministe de
+    # scripts/arc_nutrition_sync.py) rend une relance idempotente : une clé déjà présente
+    # n'est jamais re-poussée. `log_id` n'est posé que s'il a été relu sans ambiguïté.
+    "garmin_push": {
+        "required": {"key": "str", "kind": _enum(GARMIN_PUSH_KIND)},
+        "optional": {
+            "name": "str",
+            "qty": "num+",
+            "ml": "num+",
+            "food_id": "str",
+            "serving_id": "str",
+            "log_id": "str",
+            "at": "datetime",
+        },
+    },
     # `week.weeks[]` (#69, plan multi-semaines) : exactement la forme d'une semaine
     # unique historique (`SCHEMA["week"]` avant #69) — `week_start`/`location`/
     # `sessions` obligatoires, le reste facultatif. Jamais utilisable comme `kind`
@@ -530,6 +600,11 @@ SUBSCHEMA = {
             "target_duration_s": "num+",
             "target_distance_m": "num+",
             "target_elevation_m": "num+",
+            # #190 : champs du squelette de bloc (`arc_index.py plan-skeleton`), tous facultatifs.
+            "week_type": _enum(WEEK_TYPE),
+            "quality_sessions": "int+",
+            "long_run_target_s": "num+",
+            "strength_emphasis": "str",
         },
     },
     "session": {
@@ -544,6 +619,25 @@ SUBSCHEMA = {
             "status": _enum(SESSION_STATUS),
             "weather_category": _enum(WEATHER_CATEGORY),
             "best_slot": _enum(SLOT),
+            "heat_adjustment": "{heat_adjustment}",
+            # #190 : créneau posé par `plan-skeleton`, à habiller par le coach (qui retire le drapeau).
+            "placeholder": "bool",
+        },
+    },
+    # `session.heat_adjustment` (#171) : trace de l'ajustement des cibles à la chaleur prévue,
+    # produite par `arc_workout_targets.py targets --heat` (champ `trace`). `factor` = facteur
+    # sur l'ALLURE (>= 1, FC cible inchangée) ; `reason` = motif cité à l'athlète.
+    "heat_adjustment": {
+        "required": {"factor": "num+"},
+        "optional": {
+            "temp_c": "num",
+            "temp_basis": _enum(HEAT_TEMP_BASIS),
+            "action": _enum(HEAT_ACTION),
+            "category": _enum(WEATHER_CATEGORY),
+            "acclimated": "bool",
+            "slot": _enum(SLOT),
+            "dew_point_c": "num",
+            "reason": "str",
         },
     },
     # `gear_inspection.wear_zones[]` (#135) : une zone d'usure constatée sur UNE semelle.
@@ -572,7 +666,11 @@ SUBSCHEMA = {
         # `course-strategist` seulement quand un temps d'arrêt différent du défaut est
         # réellement attendu (ravito avec repas chaud, drop bag…) — jamais une valeur
         # inventée pour un ravito simple.
-        "optional": {"services": "list", "cutoff": "str", "cutoff_day": "int+", "stop_s": "num+"},
+        # `take` (#187) : ce que l'athlète PREND à ce ravito d'après le plan nutrition
+        # (liste de textes courts, ex. « 2 gels », « 500 ml »), imprimé tel quel par le
+        # roadbook — distinct de `services` (ce que le ravito SERT). Jamais déduit.
+        "optional": {"services": "list", "cutoff": "str", "cutoff_day": "int+", "stop_s": "num+",
+                     "take": "list"},
     },
     "water_point": {
         "required": {"km": "num+", "source": _enum(WATER_SOURCE)},
@@ -598,6 +696,19 @@ SUBSCHEMA = {
             "reason_code": _enum(RACE_SEGMENT_REASON_CODE),
             "predicted_time_s": "obj",
             "pace_s_km": "obj",
+            # Pénalité de nuit (#184, `arc_race_pacing.apply_night_penalty`) : fraction du temps
+            # de la section courue de nuit et multiplicateur de temps, par scénario (mêmes clés
+            # que `predicted_time_s`). Absents si le plan n'a pas de nuit.
+            "night_fraction": "obj",
+            "night_factor": "obj",
+            # Technicité du terrain (#186, `arc_technicity`) : `{coef, effective_factor, source, tags,
+            # coverage_pct, osm_coef?}`. Absent si `--technicity` n'a pas été demandé.
+            "technicity": "obj",
+            # Pénalité d'altitude (#185, `arc_race_pacing.apply_altitude_penalty`) : altitude
+            # moyenne (m) de la section et multiplicateur de temps (identique aux trois
+            # scénarios). Absents si aucune section ne dépasse le seuil.
+            "altitude_m": "num",
+            "altitude_factor": "num+",
             "notes": "list",
         },
     },
@@ -768,6 +879,11 @@ def _check_value(spec: str, value, where: str, errors: list, warnings: list) -> 
         if not _is_number(value) or not 0 < value < 100:
             fail("un pourcentage strictement entre 0 et 100")
         return
+    if spec == "cycle_day":
+        lo, hi = CYCLE_DAY_PLAUSIBLE
+        if not isinstance(value, int) or isinstance(value, bool) or not lo <= value <= hi:
+            fail(f"un jour de cycle entier de {lo} à {hi}")
+        return
     if spec == "hr":
         if not _is_number(value) or not 20 <= value <= 250:
             fail("une fréquence cardiaque en bpm (20-250)")
@@ -890,6 +1006,12 @@ def _check_value(spec: str, value, where: str, errors: list, warnings: list) -> 
     if spec == "str":
         if not isinstance(value, str) or not value.strip():
             fail("une chaîne non vide")
+        return
+    if spec == "strava_id":
+        # `strava_activity_id` (#164) : « s » + chiffres — un identifiant sans préfixe se
+        # confondrait avec un `garmin_activity_id` et ne se rattacherait à aucun échantillon.
+        if not isinstance(value, str) or not re.fullmatch(r"s\d+", value):
+            fail("« s » suivi des chiffres de l'identifiant Strava (ex. \"s12345678901\")")
         return
     if spec == "bool":
         if not isinstance(value, bool):

@@ -1,0 +1,187 @@
+{
+  "schema_version": 1,
+  "id": "ultra_80_100",
+  "label": "Ultra 80–100 km",
+  "sport": "trail",
+  "applies_to": {
+    "distance_km": {
+      "min": 60,
+      "max": 130
+    }
+  },
+  "reference": {
+    "distance_km": 90,
+    "elevation_gain_m": 4500
+  },
+  "weeks": {
+    "min": 16,
+    "default": 20,
+    "max": 24
+  },
+  "peak_week_indicative": {
+    "duration_h": {
+      "min": 8,
+      "max": 13
+    }
+  },
+  "stretch_order": [
+    "development",
+    "specific",
+    "base",
+    "taper"
+  ],
+  "phases": [
+    {
+      "id": "base",
+      "label": "Base",
+      "weeks": {
+        "min": 4,
+        "max": 7
+      },
+      "volume_pct": {
+        "start": 86,
+        "end": 90
+      },
+      "elevation_pct": {
+        "start": 86,
+        "end": 90
+      },
+      "intensity": {
+        "easy_pct": 90,
+        "moderate_pct": 3,
+        "hard_pct": 7
+      },
+      "quality_sessions": 1,
+      "long_run": {
+        "share_pct": 28,
+        "cap_min": 180
+      },
+      "strength": "force_maximale"
+    },
+    {
+      "id": "development",
+      "label": "Développement",
+      "weeks": {
+        "min": 5,
+        "max": 8
+      },
+      "volume_pct": {
+        "start": 91,
+        "end": 96
+      },
+      "elevation_pct": {
+        "start": 91,
+        "end": 96
+      },
+      "intensity": {
+        "easy_pct": 86,
+        "moderate_pct": 4,
+        "hard_pct": 10
+      },
+      "quality_sessions": 2,
+      "long_run": {
+        "share_pct": 30,
+        "cap_min": 240
+      },
+      "strength": "force_endurance"
+    },
+    {
+      "id": "specific",
+      "label": "Spécifique",
+      "weeks": {
+        "min": 4,
+        "max": 7
+      },
+      "volume_pct": {
+        "start": 97,
+        "end": 100
+      },
+      "elevation_pct": {
+        "start": 97,
+        "end": 100
+      },
+      "intensity": {
+        "easy_pct": 84,
+        "moderate_pct": 4,
+        "hard_pct": 12
+      },
+      "quality_sessions": 2,
+      "long_run": {
+        "share_pct": 33,
+        "cap_min": 360
+      },
+      "strength": "pliometrie_excentrique"
+    },
+    {
+      "id": "taper",
+      "label": "Affûtage",
+      "weeks": {
+        "min": 2,
+        "max": 3
+      },
+      "volume_pct": {
+        "start": 68,
+        "end": 45
+      },
+      "elevation_pct": {
+        "start": 62,
+        "end": 40
+      },
+      "intensity": {
+        "easy_pct": 84,
+        "moderate_pct": 4,
+        "hard_pct": 12
+      },
+      "quality_sessions": 1,
+      "long_run": {
+        "share_pct": 30,
+        "cap_min": 120
+      },
+      "strength": "entretien"
+    },
+    {
+      "id": "recovery",
+      "label": "Récupération (après la course)",
+      "weeks": {
+        "min": 2,
+        "max": 2
+      },
+      "volume_pct": {
+        "start": 40,
+        "end": 55
+      },
+      "elevation_pct": {
+        "start": 25,
+        "end": 40
+      },
+      "intensity": {
+        "easy_pct": 95,
+        "moderate_pct": 5,
+        "hard_pct": 0
+      },
+      "quality_sessions": 0,
+      "long_run": {
+        "share_pct": 30,
+        "cap_min": 60
+      },
+      "strength": "mobilite",
+      "post_race": true
+    }
+  ],
+  "recovery_week": {
+    "every_n_weeks": 4,
+    "volume_factor": 0.8,
+    "quality_sessions_max": 1,
+    "phases": [
+      "base",
+      "development",
+      "specific"
+    ],
+    "elevation_factor": 0.8
+  },
+  "sources": [
+    "Mujika I, Padilla S. Scientific bases for precompetition tapering strategies. Med Sci Sports Exerc 2003;35(7):1182-1187, doi 10.1249/01.MSS.0000074448.73931.11 (direction de l'affûtage uniquement : volume réduit, intensité conservée).",
+    "Seiler S. What is best practice for training intensity and duration distribution in endurance athletes? Int J Sports Physiol Perform 2010;5(3):276-291, doi 10.1123/ijspp.5.3.276 (direction de la distribution polarisée uniquement)."
+  ],
+  "caveat": "approximation du projet : points de départ prudents, à adapter au profil de l'athlète, au bilan matinal et aux garde-fous (jamais une prescription publiée)."
+}

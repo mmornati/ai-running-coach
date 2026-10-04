@@ -1,8 +1,9 @@
 // Tableau de bord ai-running-coach — lecture seule, servi par scripts/arc_serve.py.
 import * as F from "./format.js";
 import { navItems } from "./nav.js";
-import { timeChart, attachCursor, verdictStrip, yearCalendar } from "./chart.js";
+import { timeChart, attachCursor, verdictStrip, yearCalendar, blockFrise } from "./chart.js";
 import { resampleByDistance, colorModes, sessionMap } from "./map.js";
+import { roadbookHtml, wireRoadbook } from "./roadbook.js";
 
 const $ = (sel, root = document) => root.querySelector(sel);
 const main = $("#main");
@@ -32,6 +33,23 @@ const weatherChip = (w) => (w ? chip("weather", w, F.WEATHER[w] || w) : "");
 const statusChip = (s) => (s ? chip("status", s, F.STATUS[s] || s) : "");
 const triggerChip = (t) => (t ? chip("trigger", t, F.TRIGGER[t] || t) : "");
 const outcomeChip = (o) => (o ? chip("outcome", o, F.DECISION_OUTCOME[o] || o) : "");
+const effectChip = (e) => (e ? chip("effect", e, F.DECISION_EFFECT[e] || e) : "");
+
+// Effet des décisions (#175) : détail d'une évaluation (signaux, fenêtres, chiffres).
+// Valeurs arrondies à l'affichage (moyennes de fenêtre : 3 décimales côté API) ; conformité en %.
+const effectValue = (signal, v) => (signal === "compliance" ? `${F.num(v * 100)} %` : F.num(v, 1));
+function effectDetailHtml(ev) {
+  if (!ev) return "";
+  const rows = (ev.signals || []).map((s) => `<tr><th scope="row">${F.esc(s.label)}</th>
+      <td>${F.dayShort(s.pre.from)} → ${F.dayShort(s.pre.to)} (${s.pre.n})</td><td>${F.dayShort(s.post.from)} → ${F.dayShort(s.post.to)} (${s.post.n})</td>
+      <td>${effectValue(s.signal, s.pre_value)} → ${effectValue(s.signal, s.post_value)}</td><td>${F.esc(F.DECISION_EFFECT[s.verdict] || s.verdict)}</td></tr>`).join("");
+  const skipped = (ev.skipped || []).map((s) => `<li>${F.esc(s.label)} : ${F.esc(s.reason)}</li>`).join("");
+  return `${ev.reason ? `<p class="muted">${F.esc(ev.reason)}${ev.mature_on ? ` (au plus tôt le ${F.dayLong(ev.mature_on)})` : ""}</p>` : ""}
+    ${ev.action && F.DECISION_ACTION[ev.action] ? `<p class="muted">Nature de l'action (déduite de l'avant / après) : ${F.esc(F.DECISION_ACTION[ev.action])}</p>` : ""}
+    ${(ev.overlaps || []).length ? `<p class="muted">Autre(s) décision(s) dans la même fenêtre : effets confondus.</p>` : ""}
+    ${rows ? `<div class="table-wrap"><table class="data data--compact"><thead><tr><th scope="col">Signal</th><th scope="col">Avant (n)</th><th scope="col">Après (n)</th><th scope="col">Valeurs</th><th scope="col">Lecture</th></tr></thead><tbody>${rows}</tbody></table></div>` : ""}
+    ${skipped ? `<p class="muted">Signaux non évalués :</p><ul>${skipped}</ul>` : ""}`;
+}
 
 // Journal des décisions (#55) : lien de la documentation des garde-fous (#52),
 // cité depuis « Décisions » et depuis l'encart « Pourquoi aujourd'hui ? ».
@@ -614,7 +632,9 @@ function markNav(route) {
       || (route === "montee" && a.dataset.route === "analyse")
       // `#/decision?id=…` (#55, détail d'une décision) : même motif que `rapport`
       // ci-dessus, sous-page de « Décisions » sans onglet dédié.
-      || (route === "decision" && a.dataset.route === "decisions");
+      || (route === "decision" && a.dataset.route === "decisions")
+      // `#/roadbook` (#187, roadbook imprimable d'un plan de course) : sous-page de Trail Shape.
+      || (route === "roadbook" && a.dataset.route === "trail-shape");
     a.toggleAttribute("aria-current", on);
     if (on) {
       a.setAttribute("aria-current", "page");
@@ -801,9 +821,44 @@ async function viewToday() {
 // Vue : Forme & charge
 // ---------------------------------------------------------------------------
 
+/** Projection de charge jusqu'à la course (#172) : « forme prévue le jour J » ou l'état honnête d'indisponibilité. */
+function forecastBlock(fc) {
+  if (!fc) return "";
+  if (fc.status !== "ok") {
+    const why = {
+      no_objective: "Aucun objectif actif : pas de date de course vers laquelle projeter la forme.",
+      no_plan: "Aucune séance planifiée d'ici la course : écrivez les semaines pour obtenir une projection.",
+      insufficient_history: "Historique insuffisant (moins de 84 jours) : la projection serait faussée par le démarrage de la condition.",
+      target_past: "La date de la course est passée : rien à projeter.",
+      invalid_until: "Date de projection invalide.",
+    }[fc.status] || fc.reason || "";
+    return why ? note(`Projection indisponible. ${F.esc(why)}`) : "";
+  }
+  const day = fc.race_day || fc.end;
+  const peak = fc.peak_fatigue;
+  const acwr = fc.acwr_max;
+  const unplanned = fc.weeks_unplanned
+    ? ` ${fc.weeks_unplanned} semaine${fc.weeks_unplanned > 1 ? "s" : ""} non planifiée${fc.weeks_unplanned > 1 ? "s" : ""} : charge supposée nulle, la forme prévue est alors optimiste.` : "";
+  const cal = fc.calibration || {};
+  const scale = cal.applied
+    ? ` Charge planifiée recalée ×${F.num(cal.scale, 2)} sur vos ${cal.pairs} dernières séances planifiées réalisées.`
+    : cal.ratio == null
+      ? " Charge planifiée non recalée (trop peu de séances planifiées réalisées pour mesurer l'écart réel / estimé)."
+      : ` Charge planifiée non recalée (écart réel / estimé ×${F.num(cal.ratio, 2)} jugé aberrant : vérifier FC de repos / max).`;
+  return `<dl class="facts facts--inline">
+      <div><dt>${fc.race_day ? "Forme prévue le jour J" : "Forme prévue à la date visée"}</dt><dd class="${day.form >= 0 ? "pos" : "neg"}">${day.form > 0 ? "+" : ""}${F.num(day.form, 1)}</dd></div>
+      <div><dt>Pic de fatigue</dt><dd>${peak ? `sem. du ${F.dayShort(peak.week_start)}` : "—"}</dd></div>
+      <div><dt>ACWR projeté (max)</dt><dd>${acwr ? F.num(acwr.value, 2) : "—"}</dd></div></dl>
+    <p class="muted">Projection = <strong>estimation</strong> à partir du planifié (même modèle de charge que les garde-fous), pas une mesure.${scale}${unplanned} ${hypLink("charge")}</p>`;
+}
+
 async function viewForm(params) {
   const days = Number(params.get("jours")) || 180;
-  const [form, load] = await Promise.all([api(`form?days=${days}`), api("load?weeks=26")]);
+  const [form, load, forecast] = await Promise.all([
+    api(`form?days=${days}`), api("load?weeks=26"),
+    // La projection est un plus : son absence (erreur réseau/serveur) ne casse jamais la vue.
+    api("load-forecast").catch(() => null),
+  ]);
   const s = SUMMARY;
   const trail = s.settings.sport === "trail";
   const series = form.series;
@@ -811,16 +866,37 @@ async function viewForm(params) {
     main.innerHTML = header("Forme & charge") + empty("Pas encore de séances", "La courbe de forme se construit à partir des séances indexées. Il faut environ six semaines d'historique pour qu'elle soit parlante.");
     return;
   }
-  const dates = series.map((p) => p.date);
+  const histDates = series.map((p) => p.date);
+  // Prolongement en pointillés jusqu'à la course (#172) : ESTIMATION à partir du planifié, jamais une mesure.
+  const projected = forecast && forecast.status === "ok"
+    ? forecast.series.filter((p) => p.projected && p.date > histDates[histDates.length - 1])
+      // Le jour J s'arrête « en entrant dans la journée » (comme la valeur affichée) : la charge de la
+      // course elle-même ne dessine pas un pic de fatigue au bout de la courbe.
+      .map((p) => (forecast.race_day && p.date === forecast.race_day.date
+        ? { ...p, ...forecast.race_day, load: null, entering: true } : p))
+    : [];
+  const nHist = series.length;
+  const dates = histDates.concat(projected.map((p) => p.date));
+  const histOnly = (key) => series.map((p) => p[key]).concat(projected.map(() => null));
+  // Le dernier point réel ancre le tracé pointillé : il se raccorde à la courbe pleine.
+  const projOnly = (key) => series.map((p, i) => (i === nHist - 1 ? p[key] : null)).concat(projected.map((p) => p[key]));
   const marks = [{ type: "hline", value: 0, cls: "mark mark--zero" }];
   if (form.race_date) marks.push({ type: "vline", date: form.race_date, cls: "mark mark--race", label: "Course" });
-  const chart = timeChart(dates, [
-    { type: "area", values: series.map((p) => p.form), cls: "area area--form" },
-    { type: "line", values: series.map((p) => p.fitness), cls: "line line--fitness" },
-    { type: "line", values: series.map((p) => p.fatigue), cls: "line line--fatigue" },
-  ], marks, { height: 250, label: "Condition, fatigue et forme", yFormat: (v) => F.num(v) });
-  const acwr = timeChart(dates, [
-    { type: "band", lo: dates.map(() => form.acwr_safe[0]), hi: dates.map(() => form.acwr_safe[1]), cls: "band-fill" },
+  const layers = [
+    { type: "area", values: histOnly("form"), cls: "area area--form" },
+    { type: "line", values: histOnly("fitness"), cls: "line line--fitness" },
+    { type: "line", values: histOnly("fatigue"), cls: "line line--fatigue" },
+  ];
+  if (projected.length) {
+    layers.push(
+      { type: "area", values: projOnly("form"), cls: "area area--form area--projected" },
+      { type: "line", values: projOnly("fitness"), cls: "line line--fitness line--projected" },
+      { type: "line", values: projOnly("fatigue"), cls: "line line--fatigue line--projected" },
+    );
+  }
+  const chart = timeChart(dates, layers, marks, { height: 250, label: "Condition, fatigue et forme", yFormat: (v) => F.num(v) });
+  const acwr = timeChart(histDates, [
+    { type: "band", lo: histDates.map(() => form.acwr_safe[0]), hi: histDates.map(() => form.acwr_safe[1]), cls: "band-fill" },
     { type: "line", values: series.map((p) => p.acwr), cls: "line line--acwr" },
   ], [], { height: 140, y: { min: 0, max: Math.max(2, ...series.map((p) => p.acwr || 0)) }, label: "Ratio charge aiguë / chronique", yFormat: (v) => F.num(v, 1) });
 
@@ -841,8 +917,9 @@ async function viewForm(params) {
   main.innerHTML = `${header("Forme & charge", `Charge par séance : TRIMP (fréquence cardiaque), repli sur l'effort perçu. ${hypLink("charge")}`)}
     <div class="toolbar">${periods}</div>
     <section class="band"><h2>Courbe de forme</h2>
-      <p class="legend"><span class="legend__item"><span class="key key--fitness"></span>Condition (42 j)</span> <span class="legend__item"><span class="key key--fatigue"></span>Fatigue (7 j)</span> <span class="legend__item"><span class="key key--form"></span>Forme</span></p>
-      <div class="chart-host" id="c-form">${chart.svg}</div><p class="readout" id="r-form"></p></section>
+      <p class="legend"><span class="legend__item"><span class="key key--fitness"></span>Condition (42 j)</span> <span class="legend__item"><span class="key key--fatigue"></span>Fatigue (7 j)</span> <span class="legend__item"><span class="key key--form"></span>Forme</span>${projected.length ? ` <span class="legend__item"><span class="key key--projected"></span>Projection (pointillés)</span>` : ""}</p>
+      <div class="chart-host" id="c-form">${chart.svg}</div><p class="readout" id="r-form"></p>
+      ${forecastBlock(forecast)}</section>
     <section class="band"><h2>Ratio charge aiguë / chronique</h2><p class="muted">Repère indicatif ${F.num(form.acwr_safe[0], 1)} – ${F.num(form.acwr_safe[1], 1)}, pas un seuil de blessure.</p>
       <div class="chart-host" id="c-acwr">${acwr.svg}</div></section>
     <section class="band"><h2>Volume hebdomadaire</h2>
@@ -853,6 +930,11 @@ async function viewForm(params) {
         durabilité — issus des échantillons FIT ingérés — sont regroupés dans <a href="#/analyse">Analyse</a>.</p></section>`;
 
   attachCursor($("#c-form"), chart, (i) => {
+    if (i >= nHist) {
+      const q = projected[i - nHist];
+      readout($("#r-form"), `<strong>${F.dayLong(q.date)}</strong> · <em>projection (estimation)</em> · ${q.entering ? "en entrant dans la journée (course non comptée)" : `charge ${F.num(q.load)}`} · condition ${F.num(q.fitness, 1)} · fatigue ${F.num(q.fatigue, 1)} · forme ${q.form > 0 ? "+" : ""}${F.num(q.form, 1)}`);
+      return;
+    }
     const p = series[i];
     readout($("#r-form"), `<strong>${F.dayLong(p.date)}</strong> · charge ${F.num(p.load)} · condition ${F.num(p.fitness, 1)} · fatigue ${F.num(p.fatigue, 1)} · forme ${p.form > 0 ? "+" : ""}${F.num(p.form, 1)} · ACWR ${F.num(p.acwr, 2)}`);
   });
@@ -1274,6 +1356,25 @@ function gaitCard(g) {
   };
 }
 
+/** Carte « Exposition à l'altitude » de la vue Santé (#185) : séances et temps au-dessus de 1 500 / 2 000 m
+ * sur 14 et 28 jours (échantillons FIT). Indicateur d'exposition, pas un modèle d'acclimatation. */
+function altitudeCard(a) {
+  const head = `<h2>Exposition à l'altitude</h2>`;
+  if (!a) return "";
+  if (a.status === "no_activity" || a.status === "no_altitude") {
+    return `<section class="band" id="altitude">${head}${empty(a.status === "no_altitude" ? "Pas d'altitude dans les séances" : "Pas de séance récente", a.status === "no_altitude" ? `Des séances existent, mais aucune n'a d'échantillon d'altitude : échantillons FIT absents ou capteur muet (<code>skills/fit-download</code>). Ce n'est pas une exposition nulle.` : `Aucune séance indexée sur la fenêtre : rien à mesurer.`)}</section>`;
+  }
+  const rows = Object.values(a.windows).map((w) => {
+    const t15 = w.thresholds["1500"], t20 = w.thresholds["2000"];
+    const missing = w.sessions_without_altitude ? `<small class="muted"> · ${w.sessions_without_altitude} sans altitude (non comptée${w.sessions_without_altitude > 1 ? "s" : ""})</small>` : "";
+    return `<tr><th scope="row">${w.window_days} jours${missing}</th><td class="num">${t15.sessions} séance${t15.sessions > 1 ? "s" : ""} · ${F.duration(t15.duration_s)}</td><td class="num">${t20.sessions} séance${t20.sessions > 1 ? "s" : ""} · ${F.duration(t20.duration_s)}</td><td class="num">${w.max_altitude_m != null ? `${F.num(w.max_altitude_m)}${NB}m` : "—"}</td></tr>`;
+  }).join("");
+  return `<section class="band" id="altitude">${head}
+    <p class="muted">Temps passé en altitude à l'entraînement d'après les échantillons FIT (séances de terrain) : ${F.esc(a.note)}.</p>
+    <div class="table-wrap"><table class="data data--compact"><thead><tr><th scope="col">Fenêtre</th><th scope="col" class="num">≥ 1${NB}500${NB}m</th><th scope="col" class="num">≥ 2${NB}000${NB}m</th><th scope="col" class="num">Max</th></tr></thead><tbody>${rows}</tbody></table></div>
+    <p class="note">Une séance compte au seuil à partir de 5 minutes au-dessus. Altitude barométrique ou GPS approximative près d'un seuil. Cette exposition réduit légèrement la pénalité d'altitude du plan d'une course à 14 jours ou moins (approximation du projet) ; ce n'est pas un modèle d'acclimatation.</p></section>`;
+}
+
 // ---------------------------------------------------------------------------
 // Vue : Santé
 // ---------------------------------------------------------------------------
@@ -1282,18 +1383,19 @@ async function viewHealth(params) {
   const days = Number(params.get("jours")) || 90;
   // La carte « Foulée » (#151) ne dépend pas du bilan matinal : elle est montrée même quand celui-ci est
   // désactivé ou vide. Son échec ne doit jamais masquer la vue Santé.
-  const [data, gaitData] = await Promise.all([api(`health?days=${days}`), api("gait").catch(() => null)]);
+  const [data, gaitData, altData] = await Promise.all([api(`health?days=${days}`), api("gait").catch(() => null), api("altitude-exposure").catch(() => null)]);
   const gait = gaitCard(gaitData);
+  const altitude = altitudeCard(altData);   // idem : un échec n'empêche jamais la vue Santé
   const mode = data.morning_check;
   if (mode === "off") {
-    main.innerHTML = header("Santé") + empty("Bilan matinal désactivé", "Avec <code>[health].morning_check = \"off\"</code>, le coach ne récupère ni HRV, ni FC de repos, ni readiness : leur absence ici n'est pas un manque. Passez à <code>minimal</code> ou <code>full</code> pour suivre ces courbes.") + gait.html;
+    main.innerHTML = header("Santé") + empty("Bilan matinal désactivé", "Avec <code>[health].morning_check = \"off\"</code>, le coach ne récupère ni HRV, ni FC de repos, ni readiness : leur absence ici n'est pas un manque. Passez à <code>minimal</code> ou <code>full</code> pour suivre ces courbes.") + gait.html + altitude;
     gait.mount();
     return;
   }
   const s = data.series;
   const dates = s.map((p) => p.date);
   if (!s.some((p) => p.readiness_score != null || p.hrv_overnight_ms != null || p.resting_hr_bpm != null)) {
-    main.innerHTML = header("Santé") + empty("Pas encore de données de santé", "Les fichiers <code>medical/AAAA-MM-JJ_health.md</code> écrits par la synchronisation alimentent ces courbes.") + gait.html;
+    main.innerHTML = header("Santé") + empty("Pas encore de données de santé", "Les fichiers <code>medical/AAAA-MM-JJ_health.md</code> écrits par la synchronisation alimentent ces courbes.") + gait.html + altitude;
     gait.mount();
     return;
   }
@@ -1348,7 +1450,7 @@ async function viewHealth(params) {
   main.innerHTML = `${header("Santé", mode === "minimal" ? "Bilan minimal : readiness seule." : "Triade du matin : HRV, FC de repos, readiness — et le verdict du coach, jour par jour.")}
     <div class="toolbar">${periods}</div>
     <p class="readout readout--sticky" id="r-health"></p>
-    ${charts.map(([id, title, sub, c, strip]) => `<section class="band"><h2>${title}</h2>${sub ? `<p class="muted">${sub}</p>` : ""}<div class="chart-host" id="c-${id}">${c.svg}</div>${strip ? `<div class="strip-host">${verdictStrip(dates, s.map((p) => p.verdict))}<p class="legend legend--small"><span class="legend__item"><span class="key key--green"></span>Maintenir</span> <span class="legend__item"><span class="key key--amber"></span>Alléger</span> <span class="legend__item"><span class="key key--red"></span>Repos</span> — verdicts du coach</p></div>` : ""}</section>`).join("")}${gait.html}`;
+    ${charts.map(([id, title, sub, c, strip]) => `<section class="band"><h2>${title}</h2>${sub ? `<p class="muted">${sub}</p>` : ""}<div class="chart-host" id="c-${id}">${c.svg}</div>${strip ? `<div class="strip-host">${verdictStrip(dates, s.map((p) => p.verdict))}<p class="legend legend--small"><span class="legend__item"><span class="key key--green"></span>Maintenir</span> <span class="legend__item"><span class="key key--amber"></span>Alléger</span> <span class="legend__item"><span class="key key--red"></span>Repos</span> — verdicts du coach</p></div>` : ""}</section>`).join("")}${gait.html}${altitude}`;
   const show = (i) => {
     const p = s[i];
     const bits = [`<strong>${F.dayLong(p.date)}</strong>`];
@@ -1373,9 +1475,70 @@ async function viewHealth(params) {
 // Vue : Semaine
 // ---------------------------------------------------------------------------
 
+/** Frise du bloc planifié (#193) : phases semaine par semaine, volume prévu/réalisé, drapeau de course.
+ * `selected` : lundi de la semaine affichée (vue Semaine). Rien n'est rendu sans plan au contrat ;
+ * une erreur d'API ne casse jamais la vue qui l'accueille. Retourne `{ html, mount }` (`mount` branche
+ * le lecteur de détail et recentre la frise, une fois le HTML inséré). */
+async function friseSection(selected = null) {
+  let b;
+  try { b = await api("block"); } catch { return { html: "", mount: () => {} }; }
+  if (!b || b.status !== "ok" || !b.weeks.length) return { html: "", mount: () => {} };
+  const TYPE = { build: "construction", recovery: "allégée", taper: "affûtage", race: "course", lead_in: "mise en route", post_race: "récupération post-course" };
+  const peak = Math.max(1, ...b.weeks.map((w) => Math.max(w.target_duration_s || 0, (w.done && w.done.duration_s) || 0)));
+  const describe = (w) => {
+    const bits = [`Semaine du ${F.dayShort(w.week_start)}`, w.phase_label];
+    if (w.week_type) bits.push(TYPE[w.week_type] || w.week_type);
+    if (!w.planned) bits.push("aucun fichier de semaine (trou dans le bloc)");
+    else bits.push(w.target_duration_s ? `prévu ${F.duration(w.target_duration_s)}${w.target_elevation_m ? ` · ${F.elevation(w.target_elevation_m)}` : ""}` : "volume prévu non renseigné");
+    if (w.done) bits.push(`réalisé ${F.duration(w.done.duration_s)}${w.done.elevation_m ? ` · ${F.elevation(w.done.elevation_m)}` : ""}${w.done.partial ? " (semaine en cours)" : ""}`);
+    if (w.status === "current") bits.push("semaine en cours");
+    if (w.is_race_week) bits.push("semaine de course");
+    return bits.join(", ");
+  };
+  const items = b.weeks.map((w) => {
+    const d = F.parseDate(w.week_start);
+    return {
+      href: `#/semaine?debut=${w.week_start}`, aria: describe(w), tip: describe(w), phase: w.phase,
+      phaseText: w.phase_label,
+      tick: `${String(d.getDate()).padStart(2, "0")}/${String(d.getMonth() + 1).padStart(2, "0")}`,
+      h: w.target_duration_s ? w.target_duration_s / peak : null, d: w.done ? w.done.duration_s / peak : null,
+      light: w.light, current: w.status === "current", selected: w.week_start === selected, race: w.is_race_week,
+    };
+  });
+  const present = new Set(b.weeks.map((w) => w.phase));
+  const keys = b.phases.filter((p) => present.has(p.id)).map((p) => `<span class="legend__item"><span class="key key--phase-${p.id}"></span>${F.esc(p.label)}</span>`);
+  if (present.has("other")) keys.push(`<span class="legend__item"><span class="key key--phase-other"></span>Autre libellé</span>`);
+  if (present.has("unknown")) keys.push(`<span class="legend__item"><span class="key key--phase-unknown"></span>Phase inconnue</span>`);
+  if (present.has("missing")) keys.push(`<span class="legend__item"><span class="key key--phase-missing"></span>Semaine sans plan</span>`);
+  const idx = b.weeks.findIndex((w) => w.status === "current");
+  const race = b.race;
+  const raceTxt = race ? (race.in_block ? `course le ${F.dateLong(race.date)}${race.days_left >= 0 ? ` (dans ${race.days_left} j)` : ""}` : `course le ${F.dateLong(race.date)}, hors des semaines planifiées`) : "";
+  const pos = idx >= 0 ? `Semaine ${idx + 1} sur ${b.weeks.length} du bloc` : (b.weeks[0].status === "future" ? `Bloc de ${b.weeks.length} semaines à venir` : `Bloc de ${b.weeks.length} semaines terminé`);
+  const unknownTxt = b.unknown_weeks ? ` · ${b.unknown_weeks} semaine${b.unknown_weeks > 1 ? "s" : ""} sans phase renseignée (plan antérieur au squelette de bloc ?)` : "";
+  const missingTxt = b.missing_weeks ? ` · ${b.missing_weeks} semaine sans fichier dans le bloc` : "";
+  const html = `<section class="band band--frise" aria-labelledby="frise-title"><h2 id="frise-title">Frise du bloc</h2>
+    <p class="legend">${keys.join("")}<span class="legend__item"><span class="key key--frise-light"></span>Semaine allégée</span><span class="legend__item"><span class="key key--frise-done"></span>Réalisé</span></p>
+    <div class="chart-host chart-host--frise" id="frise-host">${blockFrise(items, "Phases du bloc planifié, une colonne par semaine")}</div>
+    <p class="readout" id="frise-readout" aria-live="polite">${F.esc(pos)}${raceTxt ? ` · ${F.esc(raceTxt)}` : ""}${F.esc(unknownTxt)}${F.esc(missingTxt)}</p></section>`;
+  const mount = () => {
+    const host = $("#frise-host");
+    const readout = $("#frise-readout");
+    if (!host) return;
+    const initial = readout.textContent;
+    const show = (ev) => { const a = ev.target.closest && ev.target.closest("a[data-i]"); if (a) readout.textContent = describe(b.weeks[Number(a.dataset.i)]); };
+    host.addEventListener("mouseover", show);
+    host.addEventListener("focusin", show);
+    host.addEventListener("mouseleave", () => { readout.textContent = initial; });
+    const target = host.querySelector(".frise-focus.is-selected") || host.querySelector(".frise-focus.is-current");
+    if (target) host.scrollLeft = Math.max(0, target.getBoundingClientRect().left - host.getBoundingClientRect().left + host.scrollLeft - host.clientWidth / 2);
+  };
+  return { html, mount };
+}
+
 async function viewWeek(params) {
   const start = params.get("debut");
   const w = await api(start ? `week?start=${start}` : "week");
+  const frise = await friseSection(w.week_start);
   const known = w.known_weeks;
   const prev = F.addDays(w.week_start, -7);
   const next = F.addDays(w.week_start, 7);
@@ -1396,10 +1559,12 @@ async function viewWeek(params) {
   main.innerHTML = `${header(`Semaine du ${F.dayShort(w.week_start)}`, w.week ? `${F.esc(w.week.location || "")}${w.week.phase ? " · " + F.esc(w.week.phase) : ""}` : "Pas de plan de semaine au contrat pour ces dates.")}
     <div class="toolbar"><a class="seg" href="#/semaine?debut=${prev}">← Précédente</a><a class="seg" href="#/semaine">Cette semaine</a><a class="seg" href="#/semaine?debut=${next}">Suivante →</a>
       ${known.length ? `<label class="select">Plans : <select id="weeks">${known.slice().reverse().map((k) => `<option value="${k}" ${k === w.week_start ? "selected" : ""}>${F.dayShort(k)}</option>`).join("")}</select></label>` : ""}</div>
+    ${frise.html}
     <ol class="week">${cols}</ol>
     <section class="band"><h2>Réalisé</h2><dl class="facts facts--inline"><div><dt>Séances</dt><dd>${w.activities.length}</dd></div><div><dt>Durée</dt><dd>${F.hours(totalS)}${target.target_duration_s ? ` <small>/ ${F.hours(target.target_duration_s)}</small>` : ""}</dd></div><div><dt>Distance</dt><dd>${F.distance(totalM)}${target.target_distance_m ? ` <small>/ ${F.distance(target.target_distance_m, 0)}</small>` : ""}</dd></div></dl></section>
     ${complianceSection(w.compliance, trail)}
     ${w.body_html ? `<section class="band prose"><h2>Plan du coach</h2>${w.body_html}</section>` : ""}`;
+  frise.mount();
   const sel = $("#weeks");
   if (sel) sel.addEventListener("change", () => { location.hash = `#/semaine?debut=${sel.value}`; });
 }
@@ -2306,9 +2471,86 @@ function slopeModelSection(model, band) {
   return { html, chart, bins };
 }
 
+// Libellé d'une durée de la courbe allure-durée (30 s, 5 min, 2 h) — axe x par INDICE.
+function paceCurveDurationLabel(s) {
+  if (s < 60) return `${s} s`;
+  if (s < 3600) return `${Math.round(s / 60)} min`;
+  return `${F.num(s / 3600, s % 3600 ? 1 : 0)} h`;
+}
+
+/** Section « Vitesse critique et courbe allure-durée » (#169) : meilleure allure GAP par durée
+ * (fenêtres 42 j / 90 j / 365 j, axe y inversé : plus rapide en haut), CS/D′ de la fenêtre de
+ * 90 j avec sa qualité (n, R², erreur standard), tendance. Aucun calcul côté client : tout vient
+ * de `/api/pace-curve`. Un ajustement refusé affiche son motif (« données insuffisantes »), jamais
+ * une valeur. Axe x par indice de durée (échelle non linéaire, comme `slopeModelSection`). */
+function paceCurveSection(data) {
+  const title = "<h2>Vitesse critique et courbe allure-durée</h2>";
+  if (!data) return { html: `<section class="band">${title}${note("Courbe indisponible.")}</section>` };
+  const w90 = data.windows.find((w) => w.window_days === data.trend_window_days) || data.windows[0];
+  if (!data.n_activities || !w90 || !w90.curve.length) {
+    return { html: `<section class="band">${title}${note(`Données insuffisantes : ${F.esc(data.reason || "aucune séance de course avec échantillons FIT (altitude) sur la période")}.`)}</section>` };
+  }
+  const durs = data.durations_s;
+  // Seules quelques durées sont étiquetées sur l'axe (lisibilité mobile) ; le survol nomme chacune.
+  const LABELLED = [60, 300, 600, 1200, 3600, 7200];
+  const xLabels = durs.map((d) => (LABELLED.includes(d) ? paceCurveDurationLabel(d) : ""));
+  const series = (w) => durs.map((d) => { const r = w.curve.find((c) => c.duration_s === d); return r ? r.pace_s_km : null; });
+  const isolated = (vals) => vals.map((v, i) => (v != null && (i === 0 || vals[i - 1] == null) && (i + 1 >= vals.length || vals[i + 1] == null) ? v : null));
+  const byDays = Object.fromEntries(data.windows.map((w) => [w.window_days, w]));
+  const main90 = series(w90);
+  const layers = [];
+  if (byDays[365]) layers.push({ type: "line", values: series(byDays[365]), cls: "line line--slope-generic" });
+  if (byDays[42]) layers.push({ type: "line", values: series(byDays[42]), cls: "line line--fatigue" });
+  layers.push({ type: "line", values: main90, cls: "line line--slope" }, { type: "dots", values: isolated(main90), cls: "dot dot--slope", r: 3 });
+  const marks = [];
+  const fit = data.current;
+  if (fit && fit.valid) marks.push({ type: "hline", value: fit.cs_pace_s_km, cls: "mark", label: "CS" });
+  const all = layers.flatMap((l) => l.values).filter((v) => v != null);
+  const lo = Math.min(...all), hi = Math.max(...all);
+  const margin = (hi - lo) * 0.1 || 10;
+  const chart = timeChart(xLabels, layers, marks, {
+    height: 220, y: { invert: true, min: Math.max(0, lo - margin), max: hi + margin },
+    label: "Meilleure allure ajustée à la pente par durée", yFormat: (v) => F.paceFromSecPerKm(v), xLabels,
+  });
+  let fitHtml;
+  if (fit && fit.valid) {
+    fitHtml = `<p class="lead-num">${F.paceFromSecPerKm(fit.cs_pace_s_km)} <small>vitesse critique (GAP) · réserve anaérobie D′ ${F.num(fit.d_prime_m, 0)} m</small></p>
+      <p class="muted">Qualité ${F.esc(fit.quality)} : ${fit.n_points} efforts de 3 à 20 min, incertitude ± ${F.num(fit.cs_se_pct, 1)} % sur la vitesse critique
+      (± ${F.num(fit.cs_se_ms * 3.6, 2)} km/h) et ± ${F.num(fit.d_prime_se_m, 0)} m sur D′, R² ${F.num(fit.r2, 3)}. Estimation à partir des meilleurs efforts
+      d'entraînement, pas d'un test : un effort jamais couru à fond la sous-estime.</p>`;
+  } else {
+    fitHtml = note(`Données insuffisantes pour ajuster la vitesse critique : ${F.esc((fit && fit.reason) || "aucun effort exploitable")}.`);
+  }
+  const chk = data.threshold_check;
+  const chkHtml = chk && chk.available
+    ? `<p class="muted">Seuil lactique Garmin : écart ${chk.delta_pct > 0 ? "+" : ""}${F.num(chk.delta_pct, 1)} % avec la vitesse critique${chk.diverges ? " — divergence signalée, aucune des deux valeurs n'est préférée" : ""}.</p>` : "";
+  // Tendance : un point tous les 28 j (meilleur de 90 j) ; les refus laissent un trou, jamais une valeur reportée.
+  const tr = data.trend;
+  const trVals = tr.map((p) => (p.status === "ok" ? p.cs_pace_s_km : null));
+  let trendHtml = "", trendChart = null;
+  if (trVals.some((v) => v != null)) {
+    const tv = trVals.filter((v) => v != null);
+    const tlo = Math.min(...tv), thi = Math.max(...tv), tm = (thi - tlo) * 0.2 || 10;
+    trendChart = timeChart(tr.map((p) => p.date), [
+      { type: "line", values: trVals, cls: "line line--slope" }, { type: "dots", values: trVals, cls: "dot dot--slope", r: 3 },
+    ], [], { height: 160, y: { invert: true, min: Math.max(0, tlo - tm), max: thi + tm }, label: "Vitesse critique (allure GAP), tendance", yFormat: (v) => F.paceFromSecPerKm(v) });
+    trendHtml = `<h3>Tendance</h3><div class="chart-host" id="c-cstrend">${trendChart.svg}</div><p class="readout" id="r-cstrend"></p>`;
+  }
+  const html = `<section class="band">${title}
+    <p class="muted">Meilleure allure ajustée à la pente (GAP) tenue sur chaque durée, sur ${F.num(data.n_activities)} sortie${data.n_activities > 1 ? "s" : ""}
+      de course avec FIT. ${hypLink("vitesse-critique")}</p>
+    ${fitHtml}${chkHtml}
+    <p class="legend"><span class="legend__item"><span class="key key--slope"></span>90 jours</span>
+      <span class="legend__item"><span class="key key--fatigue"></span>42 jours</span>
+      <span class="legend__item"><span class="key key--slope-generic"></span>365 jours</span></p>
+    <div class="chart-host" id="c-pcurve">${chart.svg}</div><p class="readout" id="r-pcurve"></p>${trendHtml}
+    ${data.skipped_no_grade ? `<p class="legend legend--small">${data.skipped_no_grade} séance${data.skipped_no_grade > 1 ? "s" : ""} sans altitude exploitable écartée${data.skipped_no_grade > 1 ? "s" : ""}.</p>` : ""}</section>`;
+  return { html, chart, w90, durs, trendChart, tr };
+}
+
 async function viewPerformance(params) {
   const band = params && params.get("bande") === "all" ? "all" : "endurance";
-  const [p, slope] = await Promise.all([api("performance"), api(`slope-model?band=${band}`)]);
+  const [p, slope, pace] = await Promise.all([api("performance"), api(`slope-model?band=${band}`), api("pace-curve").catch(() => null)]);
   const trail = p.sport === "trail";
   let chartHtml = empty("Pas encore d'estimation", "La VO2max effective s'estime sur les séances de course d'au moins 20 minutes, à plus de 70 % de la FC max, avec distance et FC moyenne.");
   let c = null;
@@ -2321,11 +2563,13 @@ async function viewPerformance(params) {
   const rec = p.records.length ? `<table class="data data--compact"><thead><tr><th scope="col">Distance</th><th scope="col" class="num">Temps</th><th scope="col" class="num">Allure</th><th scope="col">Date</th></tr></thead><tbody>${p.records.map((r) => `<tr><th scope="row">${r.km} km</th><td class="num">${F.clock(r.time_s)}</td><td class="num">${F.pace(r.km * 1000, r.time_s)}</td><td>${F.dayShort(r.date)} ${r.date.slice(0, 4)}</td></tr>`).join("")}</tbody></table>` : note("Pas de splits kilométriques indexés : les records se calculent sur les séances qui en ont.");
   const { html: slopeHtml, chart: slopeChart, bins: slopeBins } = slopeModelSection(slope, band);
   const { html: indexHtml, charts: indexCharts } = performanceIndexSection(SUMMARY.performance_index);
+  const paceSec = paceCurveSection(pace);
   main.innerHTML = `${header("Performance", "Estimations modélisées à partir des moyennes de chaque séance : des ordres de grandeur, pas des mesures.")}
     <section class="band"><h2>VO2max effective</h2>${p.vo2max_current ? `<p class="lead-num">${F.num(p.vo2max_current, 1)} <small>ml/kg/min, tendance 30 j${p.vo2max_date !== SUMMARY.today ? ` au ${F.dayShort(p.vo2max_date)}` : ""}</small></p>` : ""}${chartHtml}</section>
     <section class="band band--split"><div><h2>Prédictions</h2><table class="data data--compact"><thead><tr><th scope="col">Distance</th><th scope="col" class="num">VDOT</th><th scope="col" class="num">Riegel</th></tr></thead><tbody>${pred}</tbody></table>
       ${trail ? note("En trail, la distance « effort » ajoute le dénivelé (1000 m D+ ≈ 1,75 km de plat, <code>config/sports/trail.md</code>). Sable, vent et barrières ne sont pas modélisés.") : ""}</div>
       <div><h2>Records</h2>${rec}</div></section>
+    ${paceSec.html}
     ${slopeHtml}
     <p class="note">Kilométrage des chaussures, équipement et inspections : <a href="#/materiel">vue Matériel</a>.</p>
     ${indexHtml}
@@ -2336,6 +2580,16 @@ async function viewPerformance(params) {
     const hrTxt = b.hr_bpm != null ? ` · FC médiane ${F.num(b.hr_bpm, 0)} bpm` : "";
     const runTxt = b.run_share != null && b.run_share < 0.95 ? ` · couru ${F.num(b.run_share * 100, 0)} %` : "";
     readout($("#r-slope"), `<strong>${slopeGradeLabel(b)}</strong> · ${F.paceFromSecPerKm(b.pace_s_km)} · ${b.source === "personal" ? `personnel (${b.n_activities} séance${b.n_activities > 1 ? "s" : ""})` : "générique"}${hrTxt}${runTxt}`);
+  });
+  if (paceSec.chart) attachCursor($("#c-pcurve"), paceSec.chart, (i) => {
+    const r = paceSec.w90.curve.find((c) => c.duration_s === paceSec.durs[i]);
+    readout($("#r-pcurve"), r
+      ? `<strong>${paceCurveDurationLabel(r.duration_s)}</strong> · ${F.paceFromSecPerKm(r.pace_s_km)} (GAP) · ${F.dayShort(r.date)} ${r.date.slice(0, 4)}`
+      : `<strong>${paceCurveDurationLabel(paceSec.durs[i])}</strong> · pas d'effort exploitable sur 90 j`);
+  });
+  if (paceSec.trendChart) attachCursor($("#c-cstrend"), paceSec.trendChart, (i) => {
+    const p = paceSec.tr[i];
+    readout($("#r-cstrend"), `<strong>${F.dateLong(p.date)}</strong> · ${p.status === "ok" ? `${F.paceFromSecPerKm(p.cs_pace_s_km)} · D′ ${F.num(p.d_prime_m, 0)} m · R² ${F.num(p.r2, 3)}` : F.esc(p.reason || "pas d'ajustement")}`);
   });
   for (const c2 of indexCharts) {
     attachCursor($(`#${c2.id}`), c2.chart, (i) => readout($(`#${c2.readoutId}`),
@@ -2353,7 +2607,7 @@ async function viewPerformance(params) {
 // regroupement par modèle et les libellés ne vivent qu'ici ; une clé inconnue tombe
 // dans « Autres » avec un libellé dérivé de son nom — jamais masquée.
 const HYP_FAMILIES = [
-  { id: "charge", title: "Charge & forme", keys: ["trimp", "trimp_sex_default", "srpe", "form", "acwr", "monotony", "compliance"] },
+  { id: "charge", title: "Charge & forme", keys: ["trimp", "trimp_sex_default", "srpe", "form", "acwr", "monotony", "compliance", "load_forecast"] },
   { id: "performance", title: "Performance", keys: ["vo2max", "prediction", "trail_equivalence", "records", "effort_km"] },
   { id: "sante", title: "Santé & récupération", keys: ["hrv_baseline", "sleep_debt", "heat_acclimation"] },
   { id: "zones", title: "Zones FC & foulée", keys: ["hr_zones", "gait"] },
@@ -2366,11 +2620,12 @@ const HYP_FAMILIES = [
   { id: "durabilite", title: "Durabilité", prefix: "durability_" },
   { id: "pente", title: "Allure selon la pente", prefix: "slope_model_" },
   { id: "energie", title: "Dépense énergétique", prefix: "energy_" },
+  { id: "vitesse-critique", title: "Vitesse critique et D′", prefix: "cs_" },
 ];
 const HYP_LABELS = {
   trimp: "TRIMP de Banister", trimp_sex_default: "Sexe non renseigné", srpe: "Charge sans FC (session-RPE)",
   form: "Condition, fatigue et forme", acwr: "Ratio fatigue / condition (ACWR)", monotony: "Monotonie et strain",
-  compliance: "Conformité plan vs réalisé", vo2max: "VO2max effective", prediction: "Prédictions de course",
+  compliance: "Conformité plan vs réalisé", load_forecast: "Projection de charge jusqu'à la course", vo2max: "VO2max effective", prediction: "Prédictions de course",
   trail_equivalence: "Équivalence plat en trail", records: "Records", effort_km: "Km-effort ITRA",
   hrv_baseline: "Ligne de base HRV", sleep_debt: "Dette de sommeil", heat_acclimation: "Acclimatation à la chaleur",
   hr_zones: "Zones FC et polarisation 80/20", gait: "Synthèse « Foulée »",
@@ -2397,6 +2652,9 @@ const HYP_SUFFIX = {
   time_weighting: "Pondération par le temps", missing_speed: "Vitesse manquante", missing_elevation: "Altitude manquante",
   mass_linearity: "Linéarité en masse", no_exception: "Entrées incomplètes", race_pacing_integration: "Plan de course",
   delta_alert: "Seuil d'alerte d'écart", calibration: "Calibration personnelle",
+  gap_basis: "Vitesses en GAP", windows_and_gaps: "Fenêtres et trous de signal",
+  best_efforts_not_tests: "Meilleurs efforts, pas des tests", refusal: "Refus explicite", trend: "Tendance",
+  targets: "Cibles d'intervalles", quality: "Qualité de l'ajustement", lactate_crosscheck: "Contrôle avec le seuil lactique Garmin",
 };
 
 /** Lien vers une famille d'hypothèses (`#/hypotheses?modele=<id>`), depuis n'importe quelle vue. */
@@ -2789,12 +3047,15 @@ function trailShapeComponentRow(c) {
   </div>`;
 }
 
+// Accès au roadbook imprimable (#187) depuis la zone « course » du tableau de bord.
+const ROADBOOK_LINK = `<p class="rb-link"><a href="#/roadbook">Roadbook imprimable du plan de course</a> <span class="muted">— profil, passages, barrières, ravitos et matériel, à imprimer ou en PDF.</span></p>`;
+
 async function viewTrailShape() {
   const r = await api("trail-shape");
   const sub = "Sorties longues, volume et D+ en moyenne sur les 8 dernières semaines glissantes, comparés aux exigences de l'objectif actif — un indicateur parmi d'autres, jamais un verdict.";
   if (r.status !== "ok") {
     const title = TRAIL_SHAPE_EMPTY_TITLE[r.status] || r.status;
-    main.innerHTML = `${header("Trail Shape", sub)}${empty(title, (r.notes || []).map((n) => F.esc(n.message)).join("<br>") || "Pas assez d'information pour calculer ce score.")}`;
+    main.innerHTML = `${header("Trail Shape", sub)}${empty(title, (r.notes || []).map((n) => F.esc(n.message)).join("<br>") || "Pas assez d'information pour calculer ce score.")}${ROADBOOK_LINK}`;
     return;
   }
   const o = r.objective || {};
@@ -2812,7 +3073,31 @@ async function viewTrailShape() {
     </section>
     <section class="band ts-components">${rows}</section>
     <section class="band"><h2>Formule</h2><p class="muted">${F.esc(r.formula)}</p>
-      ${note("Score calculé uniquement à partir de l'historique d'entraînement (aucune donnée de santé — HRV, FC de repos, readiness — n'y entre). Aucun affûtage n'est détecté : une baisse de volume dans les dernières semaines avant la course peut simplement refléter un affûtage réussi.")}</section>`;
+      ${note("Score calculé uniquement à partir de l'historique d'entraînement (aucune donnée de santé — HRV, FC de repos, readiness — n'y entre). Aucun affûtage n'est détecté : une baisse de volume dans les dernières semaines avant la course peut simplement refléter un affûtage réussi.")}</section>
+    ${ROADBOOK_LINK}`;
+}
+
+// ---------------------------------------------------------------------------
+// Vue : Roadbook imprimable (#187) — sous-page de Trail Shape (zone « course »)
+// ---------------------------------------------------------------------------
+
+async function viewRoadbook(params) {
+  const plan = params.get("plan");
+  const r = await api(`roadbook${plan ? `?plan=${encodeURIComponent(plan)}` : ""}`, { fresh: true });
+  const sub = "Une feuille par scénario : profil, sections, heures de passage, barrières, ravitos et matériel obligatoire — à imprimer ou à enregistrer en PDF.";
+  if (r.status !== "ok") {
+    const plans = (r.plans || []).map((p) => `<li><a href="#/roadbook?plan=${encodeURIComponent(p.path)}">${F.esc(p.race_name || p.path)}</a></li>`).join("");
+    main.innerHTML = `${header("Roadbook", sub)}${empty(r.status === "no_plan" ? "Aucun plan de course" : "Plan introuvable", `${F.esc(r.message || "")}${plans ? `</p><ul>${plans}</ul><p>` : ""}`)}`;
+    return;
+  }
+  const { html, active } = roadbookHtml(r, params.get("scenario"));
+  main.innerHTML = `<div class="rb-page">${header("Roadbook", sub)}${html}</div>`;
+  if (!active) return;
+  wireRoadbook($(".rb-page", main), (name) => {
+    const q = new URLSearchParams(location.hash.split("?")[1] || "");
+    q.set("scenario", name);
+    history.replaceState(null, "", `#/roadbook?${q}`);
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -2821,6 +3106,7 @@ async function viewTrailShape() {
 
 async function viewCalendar(params) {
   const cal = await api("calendar");
+  const frise = await friseSection();
   const years = Object.keys(cal.cumulative).sort();
   if (!years.length) {
     main.innerHTML = header("Calendrier") + empty("Aucune séance", "Le calendrier se remplit avec les séances indexées.");
@@ -2844,11 +3130,13 @@ async function viewCalendar(params) {
   const monthLabels = cumDates.map((_, i) => (i % 31 === 0 ? ["janv.", "févr.", "mars", "avr.", "mai", "juin", "juil.", "août", "sept.", "oct.", "nov.", "déc."][i / 31] || "" : ""));
   const cum = timeChart(cumDates, cumLayers, [], { height: 200, y: { zero: true }, xLabels: monthLabels, label: "Distance cumulée par année", yFormat: (v) => `${F.num(v)} km` });
   main.innerHTML = `${header("Calendrier", trail ? "Intensité : durée d'effort du jour." : "Intensité : durée d'effort du jour.")}
+    ${frise.html}
     <div class="toolbar">${years.map((y) => `<a class="seg ${y === year ? "is-on" : ""}" href="#/calendrier?annee=${y}">${y}</a>`).join("")}</div>
     <section class="band"><div class="chart-host chart-host--cal">${yearCalendar(Number(year), byDate, value, bucket)}</div>
       <p class="legend legend--small">Moins <span class="key cal--1"></span><span class="key cal--2"></span><span class="key cal--3"></span><span class="legend__item"><span class="key cal--4"></span>Plus (&lt; 40 min, 40–75, 75–120, &gt; 2 h)</span></p></section>
     <section class="band"><h2>Distance cumulée</h2><p class="legend">${years.slice(-3).map((y, k, arr) => `<span class="key key--year-${arr.length - 1 - k}"></span>${y}`).join(" ")}</p>
       <div class="chart-host chart-host--nox">${cum.svg}</div></section>`;
+  frise.mount();
 }
 
 // ---------------------------------------------------------------------------
@@ -3354,6 +3642,22 @@ async function viewDecisions(params) {
   if (outcome) qs.set("outcome", outcome);
   const data = await api(`decisions?${qs}`);
   const list = data.decisions || [];
+  // Effet des décisions (#175) : même fenêtre/déclencheur ; une indisponibilité ne casse jamais le journal.
+  let effects = null;
+  try {
+    const eq = new URLSearchParams({ days: String(showAll ? 3650 : days) });
+    if (trigger) eq.set("trigger", trigger);
+    effects = await api(`decision-effects?${eq}`);
+  } catch { effects = null; }
+  const effectById = new Map(((effects && effects.effects) || []).map((e) => [e.id, e]));
+  // Journal vide : l'état vide ci-dessous suffit, pas de carte de synthèse redondante au-dessus.
+  const synthesisHtml = !effects || !list.length ? "" : `<section class="band" aria-labelledby="effets-title">
+      <h2 id="effets-title">Ce qui s'est passé ensuite</h2>
+      ${(effects.synthesis || []).length
+        ? `<ul>${effects.synthesis.map((g) => `<li>${F.esc(g.statement)}${g.trend ? ` — tendance ${F.esc(g.trend)}` : ""}${g.warning ? ` <span class="muted">(${F.esc(g.warning)})</span>` : ""}</li>`).join("")}</ul>`
+        : `<p class="muted">Pas encore de décision évaluable : il faut qu'une décision appliquée (ou refusée) soit suivie de quelques jours de données pour être comparée avant / après.</p>`}
+      ${note(F.esc(effects.caveat))}
+    </section>`;
   const periods = [[30, "1 mois"], [90, "3 mois"], [365, "1 an"], ["tout", "Tout"]];
   const toolbarPeriods = periods.map(([value, label]) => {
     const on = value === "tout" ? showAll : value === days;
@@ -3365,7 +3669,7 @@ async function viewDecisions(params) {
     const ruleTxt = (d.rules || []).map((r) => F.esc(r.label || r.rule_id)).join(", ");
     return `<li>
       <a href="#/decision?id=${encodeURIComponent(d.id)}"><strong>${F.esc(d.summary)}</strong></a>
-      <span class="list__meta">${F.dayLong(d.date)} · ${triggerChip(d.trigger)} ${outcomeChip(d.outcome)}${ruleTxt ? ` · ${ruleTxt}` : ""}${d.supersedes ? " · remplace une décision précédente" : ""}</span>
+      <span class="list__meta">${F.dayLong(d.date)} · ${triggerChip(d.trigger)} ${outcomeChip(d.outcome)}${ruleTxt ? ` · ${ruleTxt}` : ""}${d.supersedes ? " · remplace une décision précédente" : ""}${effectById.get(d.id) ? ` · ${effectChip(effectById.get(d.id).effect)}` : ""}</span>
     </li>`;
   }).join("");
   const currentHashDays = showAll ? "tout" : days;
@@ -3374,6 +3678,7 @@ async function viewDecisions(params) {
       <label class="select">Déclencheur : <select id="f-declencheur"><option value="">Tous</option>${triggerOptions}</select></label>
       <label class="select">Résultat : <select id="f-resultat"><option value="">Tous</option>${outcomeOptions}</select></label>
     </div>
+    ${synthesisHtml}
     ${list.length ? `<ul class="list">${items}</ul>`
       : empty("Aucune décision sur cette période", "Le coach écrit une décision quand il ajuste, allège ou reporte une séance — bilan matinal, garde-fou, ou demande de l'athlète.")}`;
   $("#f-declencheur").addEventListener("change", (e) => { location.hash = decisionFilterHash({ trigger: e.target.value, outcome, days: currentHashDays }); });
@@ -3393,6 +3698,12 @@ async function viewDecision(params) {
     main.innerHTML = header("Décision introuvable") + empty("Décision introuvable", `Aucune décision ne correspond à cet identifiant. <a href="#/decisions">Retour au journal</a>.`);
     return;
   }
+  let effectHtml = "";
+  try {
+    const eff = await api(`decision-effects?days=3650`);
+    const ev = (eff.effects || []).find((e) => e.id === id);
+    if (ev) effectHtml = `<section class="band"><h2>Ce qui s'est passé ensuite ${effectChip(ev.effect)}</h2>${effectDetailHtml(ev)}${note(F.esc(eff.caveat))}</section>`;
+  } catch { effectHtml = ""; }
   const before = d.before || {}, after = d.after || {};
   // Diff avant/après (revue de code #55, should-fix 1) : une clé ABSENTE de
   // `after` (le contrat n'y recopie que les champs qui CHANGENT — voir
@@ -3426,6 +3737,7 @@ async function viewDecision(params) {
     ${d.outcome === "proposed" ? note("En attente de ta confirmation.") : ""}
     ${diffHtml ? `<section class="band"><h2>Avant / après</h2>${diffHtml}</section>` : ""}
     ${inputsHtml ? `<section class="band"><h2>Données</h2>${inputsHtml}</section>` : ""}
+    ${effectHtml}
     ${rulesHtml ? `<section class="band"><h2>Règles</h2>${rulesHtml}</section>` : ""}
     ${sourcesHtml ? `<section class="band"><h2>Sources</h2>${sourcesHtml}</section>` : ""}
     ${d.session_ref_route ? `<p><a href="${d.session_ref_route}">Voir la semaine concernée</a></p>` : ""}
@@ -3456,7 +3768,7 @@ function daysToWeeksPeriod(days) {
 
 const ROUTES = {
   "": viewToday, forme: viewForm, analyse: viewAnalyse, sante: viewHealth, semaine: viewWeek, seances: viewSessions,
-  performance: viewPerformance, materiel: viewMateriel, "trail-shape": viewTrailShape, calendrier: viewCalendar, rapports: viewReports, rapport: viewReport,
+  performance: viewPerformance, materiel: viewMateriel, "trail-shape": viewTrailShape, roadbook: viewRoadbook, calendrier: viewCalendar, rapports: viewReports, rapport: viewReport,
   nutrition: viewNutrition, fichiers: viewFiles, hypotheses: viewHypotheses, decisions: viewDecisions, decision: viewDecision,
 };
 

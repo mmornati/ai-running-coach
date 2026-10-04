@@ -1,0 +1,27 @@
+# Projection de charge sur le bloc (#172) : une question d'affûtage doit être répondue CHIFFRES À
+# L'APPUI, pas par une impression. Fixture `load-forecast-taper/` : ~110 jours d'historique (au-delà du
+# plancher de 84 j de R1), un objectif dans 20 jours après le lundi courant (`{{WEEK_START+20}}`) et trois
+# semaines planifiées SANS affûtage (la semaine de course reste chargée) — dates relatives, jamais codées
+# en dur. `python3 scripts/arc_index.py load-forecast` rend une forme prévue le jour J faible ou
+# négative ; le prompt ne donne AUCUN chiffre : la preuve que l'agent a lancé la CLI est la forme prévue
+# citée en chiffre signé.
+#
+# `must_match` : (1) une forme prévue chiffrée (nombre, signé ou non, à moins de 40 caractères de « forme »
+# et de « jour J »/« course »), (2) la projection présentée comme une ESTIMATION à partir du planifié
+# (jamais une mesure). `must_not_match` : les sigles de marque (docs/marques.md) ne sont jamais utilisés.
+id = "load-forecast-taper"
+prompt = "Mon affûtage est-il suffisant ? Serai-je frais le jour de la course avec le plan actuel ?"
+fixture = "load-forecast-taper"
+
+[config.health]
+morning_check = "off"
+
+[expect]
+must_match = [
+  "forme.{0,60}(jour J|jour de la course|course).{0,40}[+\\-−–]?\\s?\\d|(jour J|jour de la course).{0,60}forme.{0,40}[+\\-−–]?\\s?\\d",
+  "(estimation|estim[ée]e?|projection|pr[ée]vu).{0,120}(planifi|plan)",
+]
+must_not_match = [
+  "\\b(CTL|ATL|TSB)\\b",
+]
+tools_not_called = ["schedule_workouts", "schedule_week", "upload_workout", "upload_course", "unschedule_workout"]

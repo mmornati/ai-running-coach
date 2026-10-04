@@ -295,6 +295,11 @@ select { font: inherit; color: var(--ink); background: var(--surface); border: 1
 .chip--outcome-proposed { color: var(--warn); background: var(--warn-bg); }
 .chip--outcome-rejected_by_athlete { color: var(--bad); background: var(--bad-bg); }
 .chip--outcome-superseded { color: var(--ink-faint); background: var(--surface-2); }
+/* Effet des décisions (#175) : évolution APRÈS la décision (corrélation) — mêmes variables de thème. */
+.chip--effect-improved { color: var(--ok); background: var(--ok-bg); }
+.chip--effect-neutral { color: var(--ink-soft); background: var(--surface-2); }
+.chip--effect-worsened { color: var(--bad); background: var(--bad-bg); }
+.chip--effect-insufficient_data { color: var(--ink-faint); background: var(--surface-2); }
 /* Inspection photo des chaussures (#135) : mêmes teintes que la météo 🟢🟡🟠🔴 */
 .chip--gearcond-green { color: var(--ok); background: var(--ok-bg); }
 .chip--gearcond-yellow { color: var(--yellow); background: var(--warn-bg); }
@@ -358,6 +363,9 @@ select { font: inherit; color: var(--ink); background: var(--surface); border: 1
 .chart .line--year-1 { stroke: var(--s-year-1); }
 .chart .line--year-2 { stroke: var(--s-year-2); }
 .chart .area--form { fill: var(--s-form-pos); }
+/* Projection jusqu'à la course (#172) : mêmes couleurs, tracé pointillé et aire atténuée — une estimation, pas une mesure. */
+.chart .line--projected { stroke-dasharray: 6 4; }
+.chart .area--projected { opacity: 0.5; }
 .chart .band-fill { fill: var(--s-band); }
 /* Modèle personnel pente -> allure (#58) : trait plein pour la courbe personnelle
    (paniers avec assez de données), trait pointillé pour la courbe générique de
@@ -454,6 +462,7 @@ select { font: inherit; color: var(--ink); background: var(--surface); border: 1
 .legend__item { white-space: nowrap; display: inline-flex; align-items: center; }
 .key { display: inline-block; width: 0.95rem; height: 0.28rem; border-radius: 2px; margin-right: 0.3rem; vertical-align: middle; }
 .key--fitness { background: var(--s-fitness); } .key--fatigue { background: var(--s-fatigue); } .key--form { background: var(--s-form-pos); height: 0.6rem; }
+.key--projected { background: none; border-top: 2px dashed var(--ink-soft); height: 0; }
 .key--bar { background: var(--s-bar); height: 0.6rem; } .key--dplus, .key--rhr { background: var(--s-dplus); }
 .key--gap { background: var(--s-gap); }
 .key--green { background: var(--ok); height: 0.6rem; } .key--amber { background: var(--warn); height: 0.6rem; } .key--red { background: var(--bad); height: 0.6rem; }
@@ -834,4 +843,167 @@ button.seg:focus-visible, .link-btn:focus-visible { outline: 2px solid var(--foc
   .profile__row { grid-template-columns: minmax(0, 1fr); }
   .profile__label { margin-top: 0.4rem; }
   .map-bar { padding: 0.55rem 0.6rem; }
+}
+
+/* ---------------------------------------------------------------- roadbook (#187) */
+
+.sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
+.rb-link { margin-top: 1.25rem; }
+.rb-controls { margin-bottom: 1rem; }
+.rb-controls .toolbar { gap: 0.5rem; }
+.rb-controls__label { color: var(--ink-faint); font-size: 0.82rem; margin-right: 0.15rem; }
+.rb-picks { display: inline-flex; gap: 0.4rem; }
+.rb-actions { display: inline-flex; flex-wrap: wrap; gap: 0.4rem; margin-left: auto; }
+.rb .rb-sheet { display: none; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 1.25rem 1.4rem; }
+.rb .rb-sheet.is-active { display: block; }
+.seg { font: inherit; font-size: 0.86rem; cursor: pointer; }
+.seg:disabled { opacity: 0.4; cursor: not-allowed; }
+.rb-title { margin: 0; font: 700 1.5rem/1.2 var(--display); letter-spacing: -0.02em; }
+.rb-meta { margin: 0.2rem 0 0; color: var(--ink-soft); }
+.rb-scenario { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.3rem 1.2rem; margin: 0.6rem 0 0.4rem; }
+.rb-scenario__name { font: 700 1rem/1 var(--display); color: var(--pine); text-transform: uppercase; letter-spacing: 0.04em; }
+.rb h3 { margin: 1.1rem 0 0.4rem; font: 600 0.95rem/1.3 var(--text); }
+.rb-profile { display: block; width: 100%; height: auto; margin: 0.4rem 0 0.2rem; }
+.rb-area { fill: var(--s-band); stroke: none; }
+.rb-line { fill: none; stroke: var(--pine); stroke-width: 2; stroke-linejoin: round; }
+.rb-grid { stroke: var(--line); stroke-width: 1; }
+.rb-tick { stroke: var(--ink-faint); stroke-width: 1; }
+.rb-ticklabel { fill: var(--ink-faint); font: 11px var(--text); }
+.rb-hatch { stroke: var(--ink-faint); stroke-width: 1.4; }
+.rb-night { opacity: 0.85; }
+.rb-aid line { stroke: var(--ink-soft); stroke-width: 1; stroke-dasharray: 3 3; }
+.rb-aid circle { fill: var(--surface); stroke: var(--pine); stroke-width: 2; }
+.rb-aid text { fill: var(--ink); font: 600 11px var(--text); }
+.rb-table-wrap { margin-top: 0.5rem; }
+.rb-table td, .rb-table th { vertical-align: top; }
+.rb-km { white-space: nowrap; }
+.rb-take { margin-top: 0.15rem; }
+.rb-serv { font-size: 0.82rem; }
+.rb-night-tag { display: inline-block; font-size: 0.74rem; font-weight: 700; letter-spacing: 0.02em; padding: 0.05rem 0.4rem; border: 1px solid var(--ink-soft); border-radius: 0.3rem; color: var(--ink); }
+.rb-row--night td { background: var(--surface-2); }
+.rb-cut { font-weight: 600; }
+.rb-cut--tendu, .rb-cut--tendu + br + .rb-cut__margin { color: var(--warn); }
+.rb-cut--hors_delai, .rb-cut--hors_delai + br + .rb-cut__margin { color: var(--bad); font-weight: 700; }
+.rb-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 0 2rem; }
+.rb-list { margin: 0.2rem 0; padding-left: 1.2rem; }
+.rb-gearlist { list-style: none; margin: 0; padding: 0; }
+.rb-gear { display: flex; gap: 0.55rem; align-items: baseline; padding: 0.15rem 0; }
+.rb-box { flex: none; width: 0.85em; height: 0.85em; border: 1.5px solid var(--ink); border-radius: 2px; transform: translateY(0.1em); }
+.rb-gear--warn .rb-gear__status { color: var(--warn); }
+.rb-gear--bad .rb-gear__status { color: var(--bad); font-weight: 600; }
+.rb-gear--muted .rb-gear__status, .rb-gear--ok .rb-gear__status { color: var(--ink-faint); }
+.rb-gaps { margin-top: 0.8rem; padding-top: 0.2rem; border-top: 1px dashed var(--line-strong); font-size: 0.88rem; }
+.rb-profile-cap { margin: 0 0 0.4rem; font-size: 0.78rem; }
+.rb-foot { margin: 0.9rem 0 0; font-size: 0.78rem; }
+@media (max-width: 36em) {
+  .rb .rb-sheet { padding: 1rem 0.8rem; }
+  .rb-cols { grid-template-columns: 1fr; }
+  .rb-actions { margin-left: 0; }
+  .rb-title { font-size: 1.25rem; }
+  .rb-ticklabel { font-size: 15px; }
+  .rb-aid text { font-size: 15px; }
+  /* Tableau empilé : une carte par section, libellés devant chaque valeur (pas de défilement latéral). */
+  .rb-table-wrap { overflow: visible; border: 0; background: transparent; }
+  .rb-table, .rb-table tbody, .rb-table tr, .rb-table td { display: block; width: 100%; }
+  .rb-table thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0, 0, 0, 0); }
+  .rb-table tr { border: 1px solid var(--line); border-radius: var(--radius-sm); margin-bottom: 0.6rem; padding: 0.35rem 0.6rem; background: var(--surface); }
+  .rb-table td { border: 0; padding: 0.15rem 0; text-align: left; }
+  .rb-table td.num { white-space: normal; text-align: left; }
+  .rb-table td:empty { display: none; }
+  .rb-table td[data-label]::before { content: attr(data-label) " : "; color: var(--ink-faint); font-size: 0.78rem; }
+  .rb-table td.rb-km { font-weight: 700; font-size: 1rem; }
+}
+
+/* Impression : A4 portrait, noir et blanc lisible, sans cadre ni navigation. Les jetons de thème sont
+   forcés en clair quel que soit le thème écran (un PDF ne doit jamais sortir sombre). */
+@media print {
+  @page { size: A4 portrait; margin: 12mm; }
+  :root, :root:not([data-theme="light"]), :root[data-theme="dark"], :root[data-theme="light"] {
+    --bg: #fff; --surface: #fff; --surface-2: #eee; --ink: #000; --ink-soft: #222; --ink-faint: #444;
+    --line: #999; --line-strong: #666; --pine: #000; --s-band: #ddd; --warn: #000; --bad: #000; --ok: #000;
+    color-scheme: light;
+  }
+  html, body { background: #fff; color: #000; font-size: 9.5pt; line-height: 1.35; }
+  .top, .nav, .skip, .rb-controls, .rb-page > .view-head, .rb-link { display: none !important; }
+  .shell { display: block; min-height: 0; }
+  .main { max-width: none; padding: 0; opacity: 1; }
+  .rb .rb-sheet, .rb .rb-sheet.is-active { border: 0; border-radius: 0; padding: 0; background: #fff; }
+  .rb .rb-sheet { display: none; }
+  .rb .rb-sheet.is-active { display: block; }
+  .rb-all .rb-sheet { display: block !important; break-before: page; }
+  .rb-all .rb-sheet:first-child { break-before: auto; }
+  .rb-title { font-size: 16pt; }
+  .rb-scenario__name { color: #000; }
+  .rb-profile { max-height: 52mm; }
+  .rb-line { stroke: #000; }
+  .rb-hatch { stroke: #000; }
+  .rb-table-wrap { overflow: visible; border: 1px solid #000; border-radius: 0; }
+  .data { font-size: 8.5pt; }
+  .rb-table th, .rb-table td { padding: 2pt 4pt; border-bottom: 0.5pt solid #888; }
+  .rb-table thead { display: table-header-group; }
+  .rb-table tr { break-inside: avoid; }
+  .rb-table thead th { position: static; background: #eee; color: #000; font-weight: 700; }
+  .rb-row--night td { background: #eee; }
+  .rb-night-tag { border-color: #000; }
+  .rb-cut--tendu, .rb-cut--hors_delai { text-decoration: underline; }
+  .rb-cut--hors_delai { font-weight: 800; }
+  .rb h3 { font-size: 10pt; break-after: avoid; }
+  .rb-cols { break-inside: avoid; }
+  .rb-box { border-color: #000; }
+  .rb-gaps { break-inside: avoid; }
+  a { color: #000; text-decoration: none; }
+}
+
+/* ---------------------------------------------------------------- frise du bloc (#193) */
+/* Teinte = phase du gabarit ; l'information n'est jamais portée par la couleur seule (libellé de phase
+   sous la frise, légende, aria-label de chaque semaine). Contraste visé : >= 3:1 contre la carte. */
+:root {
+  --ph-base: #5f8f73; --ph-development: #2f6b9a; --ph-specific: #b0712f; --ph-taper: #6a4c93;
+  --ph-recovery: #2f8a8a; --ph-other: #6b7a72; --ph-unknown: #8a948d;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --ph-base: #7cc39b; --ph-development: #6fa8dc; --ph-specific: #e0a45c; --ph-taper: #b39ddb;
+    --ph-recovery: #5fc2c2; --ph-other: #8b9a92; --ph-unknown: #7a867f;
+  }
+}
+:root[data-theme="dark"] {
+  --ph-base: #7cc39b; --ph-development: #6fa8dc; --ph-specific: #e0a45c; --ph-taper: #b39ddb;
+  --ph-recovery: #5fc2c2; --ph-other: #8b9a92; --ph-unknown: #7a867f;
+}
+.chart-host--frise { overflow-x: auto; overflow-y: hidden; padding-bottom: 0.3rem; max-width: 100%; }
+.chart-host--frise .chart { width: auto; max-width: none; }
+.chart--frise a { cursor: pointer; }
+.chart--frise .frise-track { fill: var(--surface-2); stroke: var(--line); }
+.chart--frise .frise-cell { fill: var(--ph-unknown); }
+.chart--frise .frise-cell--base { fill: var(--ph-base); } .chart--frise .frise-cell--development { fill: var(--ph-development); }
+.chart--frise .frise-cell--specific { fill: var(--ph-specific); } .chart--frise .frise-cell--taper { fill: var(--ph-taper); }
+.chart--frise .frise-cell--recovery { fill: var(--ph-recovery); } .chart--frise .frise-cell--other { fill: var(--ph-other); }
+/* Phase inconnue : jamais une teinte de phase — fond neutre + contour pointillé. */
+.chart--frise .frise-cell--unknown { fill: var(--surface-2); stroke: var(--ph-unknown); stroke-width: 1.5; stroke-dasharray: 4 3; }
+/* Semaine sans fichier comblée dans un bloc du squelette : ni teinte ni volume, contour discret. */
+.chart--frise .frise-cell--missing { fill: transparent; stroke: var(--line-strong); stroke-width: 1; stroke-dasharray: 2 3; }
+.chart--frise .frise-cell--noplan { opacity: 0.55; }
+.chart--frise .frise-done-case { stroke: var(--surface); stroke-width: 6; stroke-linecap: round; }
+.chart--frise .frise-done { stroke: var(--ink); stroke-width: 3; stroke-linecap: round; }
+.chart--frise .frise-focus { fill: transparent; stroke: none; }
+.chart--frise .frise-focus.is-current { stroke: var(--lime-strong); stroke-width: 2.5; }
+.chart--frise .frise-focus.is-selected { stroke: var(--ink); stroke-width: 2; }
+.chart--frise a:hover .frise-focus { stroke: var(--ink-soft); stroke-width: 1.5; }
+.chart--frise a:focus-visible { outline: none; }
+.chart--frise a:focus-visible .frise-focus { stroke: var(--focus); stroke-width: 3; }
+.chart--frise .frise-light { fill: var(--surface); stroke: var(--ink-soft); stroke-width: 1.5; }
+.chart--frise .frise-tick.is-current, .chart--frise .frise-tick.is-selected { fill: var(--ink); font-weight: 700; }
+.chart--frise .frise-flag { fill: var(--lime-strong); stroke: var(--pine-deep); stroke-width: 1.6; stroke-linejoin: round; stroke-linecap: round; }
+.chart--frise .frise-phase { fill: var(--ink-soft); font: 600 11px var(--text); }
+.key--phase-base { background: var(--ph-base); height: 0.6rem; } .key--phase-development { background: var(--ph-development); height: 0.6rem; }
+.key--phase-specific { background: var(--ph-specific); height: 0.6rem; } .key--phase-taper { background: var(--ph-taper); height: 0.6rem; }
+.key--phase-recovery { background: var(--ph-recovery); height: 0.6rem; } .key--phase-other { background: var(--ph-other); height: 0.6rem; }
+.key--phase-unknown { background: var(--surface-2); border: 1.5px dashed var(--ph-unknown); height: 0.6rem; }
+.key--phase-missing { background: transparent; border: 1px dashed var(--line-strong); height: 0.6rem; }
+.key--frise-light { width: 0.6rem; height: 0.6rem; border-radius: 50%; background: var(--surface); border: 1.5px solid var(--ink-soft); }
+.key--frise-done { background: var(--ink); height: 0.2rem; }
+@media (max-width: 36em) {
+  /* Frise à dimensions fixes en px (pas de réduction par viewBox) : on rétablit la taille normale du texte. */
+  .chart--frise .tick, .chart--frise .frise-phase { font-size: 11px; }
 }

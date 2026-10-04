@@ -7,9 +7,11 @@ Vérifie l'installation SANS RIEN ÉCRIRE ni appeler le réseau *par défaut* :
 `config/workspace*.toml`, complétude du profil athlète (FC max / FC de repos),
 fraîcheur de l'index dérivé `.arc/coach.db`, nombre de fichiers hors contrat,
 planification du daily-sync (cron/launchd), configuration ntfy, lecteur FIT
-(`fitparse` dans l'environnement MCP de `[data].source`), et — chat avec
+(`fitparse` dans l'environnement MCP de `[data].source`), pin du serveur
+intervals.icu (`intervals_mcp_pin`, #165), et — chat avec
 le coach / sync sur une API — cohérence runner/backend/modèle/clé (`llm_config`),
-service du chat (`chat_service`), présence d'OpenCode (`opencode_cli`).
+service du chat (`chat_service`), présence d'OpenCode (`opencode_cli`), bot Telegram
+(`telegram` : liste blanche, jeton hors dépôt en mode 600, service vivant — jamais le jeton affiché).
 
 Usage :
     scripts/coach_doctor.py                 # tableau ✅/⚠️/❌ en français
@@ -42,7 +44,8 @@ avant expiration des tokens, qui appelle ce script avec `--json`, éventuellemen
           "id": "garmin_token" | "garmin_mcp" | "config_files"
                 | "athlete_profile" | "index_freshness" | "out_of_contract"
                 | "daily_sync_scheduled" | "ntfy_configured" | "gear_sync"
-                | "gear_history" | "fit_reader" | "llm_config" | "chat_service" | "opencode_cli",
+                | "gear_history" | "fit_reader" | "intervals_mcp_pin" | "llm_config"
+                | "chat_service" | "opencode_cli" | "telegram",
           "status": "ok" | "warning" | "error" | "info",
           "message": "<texte français>",
           "fix": "<commande de correction>" | null
@@ -163,10 +166,19 @@ LAUNCHD_PLIST_REL = "Library/LaunchAgents/com.ai-running-coach.daily-sync.plist"
 
 GARMIN_MCP_INSTALL_FIX = "uv tool install --python 3.12 git+https://github.com/Taxuspt/garmin_mcp@cfc5d799ab0f165e837f1188a1d093c65838aaf7"
 
+# Pin du serveur MCP intervals.icu (#165) : DOIT rester identique à `INTERVALS_MCP_REF`
+# dans install.sh — tests/lint/test_data_source_parity.py le vérifie.
+INTERVALS_MCP_PINNED_URL = "https://github.com/hhopke/intervals-icu-mcp"
+INTERVALS_MCP_PINNED_COMMIT = "5cd7e1abf716ea28b7bc5a8da5b01860b4bf2aa4"
+# Ancien serveur (jusqu'à #165) : mêmes binaires, outils SANS préfixe `icu_`.
+INTERVALS_MCP_LEGACY_URL = "https://github.com/eddmann/intervals-icu-mcp"
+INTERVALS_MCP_UPDATE_FIX = "./install.sh --source intervals"
+
 CHECK_IDS = (
     "garmin_token", "garmin_mcp", "config_files", "athlete_profile",
     "index_freshness", "out_of_contract", "daily_sync_scheduled", "ntfy_configured",
-    "gear_sync", "gear_history", "fit_reader", "llm_config", "chat_service", "opencode_cli",
+    "gear_sync", "gear_history", "fit_reader", "intervals_mcp_pin",
+    "llm_config", "chat_service", "opencode_cli", "strava_connection", "telegram",
 )
 
 CHAT_SYSTEMD_UNIT_REL = ".config/systemd/user/ai-running-coach-chat.service"
@@ -820,6 +832,13 @@ def check_fit_reader(config: dict, home: Path) -> dict:
     aucun appel réseau."""
     check_id = "fit_reader"
     source = (config.get("data") or {}).get("source", "garmin")
+    if source == "strava":
+        return build_check(
+            check_id, "info",
+            "[data].source = \"strava\" — aucun fichier FIT : les flux par seconde sont normalisés par "
+            "`download_fit.py --source strava` (stdlib), aucun lecteur `fitparse` requis.",
+            fix=None,
+        )
     tool = FIT_READER_TOOLS.get(source, FIT_READER_TOOLS["garmin"])
     fix = f"./install.sh --source {source}" if source in FIT_READER_TOOLS else "./install.sh"
     python = _tool_python(tool, home)
@@ -844,6 +863,172 @@ def check_fit_reader(config: dict, home: Path) -> dict:
         )
     return build_check(check_id, "ok", f"Lecteur FIT (fitparse) présent dans l'environnement « {tool} ».",
                        fix=None)
+
+
+# ---------------------------------------------------------------------------
+# strava_connection (#164)
+# ---------------------------------------------------------------------------
+
+STRAVA_TOKEN_REL = ".config/strava-mcp/config.json"
+STRAVA_WRAPPER_REL = ".config/ai-running-coach/strava-mcp/run.sh"
+STRAVA_NODE_MIN_MAJOR = 18
+
+
+def check_strava_connection(workspace: Path, config: dict, home: Path) -> dict:
+    """`[data].source = "strava"` : Node.js >= 18 (le serveur est un paquet npm lancé par `npx`),
+    wrapper du projet, serveur `strava` déclaré dans `.mcp.json`, fichier de jetons du serveur
+    (`~/.config/strava-mcp/config.json`) et ses droits. STATIQUE : lit seulement l'existence des clés
+    `accessToken`/`refreshToken`/`clientId`/`clientSecret` — JAMAIS leur valeur, qui n'est ni
+    affichée, ni journalisée, ni conservée. Aucun appel réseau : l'échéance du jeton d'accès (6 h)
+    n'est pas une alerte, le serveur et `download_fit.py` le rafraîchissent seuls ; seul un jeton de
+    rafraîchissement absent ou révoqué impose de relancer `connect-strava`. Hors source strava :
+    `info`, jamais une panne."""
+    check_id = "strava_connection"
+    source = (config.get("data") or {}).get("source", "garmin")
+    if source != "strava":
+        return build_check(check_id, "info",
+                           f"[data].source = \"{source}\" — connexion Strava non applicable.", fix=None)
+    fix_install = "./install.sh --source strava"
+    node = shutil.which("node")
+    if not node or not shutil.which("npx"):
+        return build_check(check_id, "error",
+                           f"Node.js (node + npx, version {STRAVA_NODE_MIN_MAJOR} ou plus) introuvable dans le PATH : "
+                           "le serveur MCP Strava ne peut pas démarrer.",
+                           fix="installer Node.js >= 18 (https://nodejs.org), puis " + fix_install)
+    try:
+        out = subprocess.run([node, "--version"], capture_output=True, text=True, timeout=10).stdout.strip()
+        major = int(out.lstrip("v").split(".")[0])
+    except (OSError, ValueError, subprocess.TimeoutExpired):
+        major = None
+    if major is not None and major < STRAVA_NODE_MIN_MAJOR:
+        return build_check(check_id, "error",
+                           f"Node.js {out} détecté : le serveur MCP Strava exige la version {STRAVA_NODE_MIN_MAJOR} ou plus.",
+                           fix="mettre à jour Node.js (https://nodejs.org)")
+    if not (home / STRAVA_WRAPPER_REL).is_file():
+        return build_check(check_id, "error", f"Wrapper MCP absent (~/{STRAVA_WRAPPER_REL}).", fix=fix_install)
+    try:
+        servers = json.loads((workspace / ".mcp.json").read_text(encoding="utf-8")).get("mcpServers") or {}
+    except (OSError, ValueError, AttributeError):
+        servers = {}
+    if not any(str(name).lower().startswith("strava") for name in servers):
+        return build_check(check_id, "error", "Aucun serveur MCP « strava » déclaré dans .mcp.json.", fix=fix_install)
+    token_file = home / STRAVA_TOKEN_REL
+    data = _read_json_object(token_file)
+    if data is None:
+        return build_check(check_id, "error",
+                           f"Compte Strava non connecté (~/{STRAVA_TOKEN_REL} absent ou illisible).",
+                           fix="demander à l'agent d'exécuter l'outil connect-strava (docs/strava-setup.md)")
+    if not data.get("refreshToken"):
+        return build_check(check_id, "error", "Jeton de rafraîchissement Strava absent : la connexion ne peut pas se renouveler.",
+                           fix="demander à l'agent d'exécuter connect-strava avec force=true")
+    if not (data.get("clientId") and data.get("clientSecret")):
+        return build_check(check_id, "warning",
+                           "Identifiants de l'application Strava (clientId/clientSecret) absents du fichier de jetons : "
+                           "le rafraîchissement automatique échouera.",
+                           fix="demander à l'agent d'exécuter connect-strava avec force=true")
+    try:
+        mode = token_file.stat().st_mode & 0o077
+    except OSError:
+        mode = 0
+    if mode:
+        return build_check(check_id, "warning",
+                           f"~/{STRAVA_TOKEN_REL} est lisible par d'autres utilisateurs (il contient le secret client et les jetons).",
+                           fix=f"chmod 600 ~/{STRAVA_TOKEN_REL}")
+    return build_check(check_id, "ok",
+                       "Strava : Node.js, wrapper, serveur MCP et jetons présents (valeurs non affichées ; la validité "
+                       "réelle du jeton n'est testée par aucun appel réseau ici).", fix=None)
+
+# ---------------------------------------------------------------------------
+# intervals_mcp_pin (#165)
+# ---------------------------------------------------------------------------
+
+
+def installed_intervals_origin(home: Path) -> Optional[tuple]:
+    """Origine VCS `(url, commit)` du serveur `intervals-icu-mcp` installé par `uv tool`,
+    lue dans le `direct_url.json` (PEP 610) du dist-info de son environnement ; `None` si
+    l'environnement ou ce fichier est introuvable/illisible. Aucun réseau, aucun process."""
+    python = _tool_python("intervals-icu-mcp", home)
+    if python is None:
+        return None
+    env_dir = python.parent.parent
+    for path in sorted(env_dir.glob("lib/python*/site-packages/intervals_icu_mcp-*.dist-info/direct_url.json")):
+        try:
+            info = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            return None
+        if not isinstance(info, dict):
+            return None
+        vcs = info.get("vcs_info") if isinstance(info.get("vcs_info"), dict) else {}
+        # Même dépôt écrit autrement (`….git`, barre finale) : même origine (cf. install.sh).
+        url = str(info.get("url") or "").rstrip("/")
+        url = url[:-len(".git")] if url.endswith(".git") else url
+        return url, str(vcs.get("commit_id") or "")
+    return None
+
+
+def check_intervals_mcp_pin(config: dict, home: Path) -> dict:
+    """#165 : le serveur intervals.icu installé est-il au commit épinglé par `install.sh` ?
+
+    Une installation antérieure (eddmann/intervals-icu-mcp@cb91d4a) expose les outils SANS
+    préfixe `icu_` alors que le coach, ses skills et la politique du chat parlent désormais
+    `icu_*` : `warning` + commande de mise à jour. Jamais un `error` (rien n'est cassé côté
+    données). Ne concerne que `[data].source = "intervals"` — `info` ailleurs, un athlète
+    Garmin n'a rien à faire. Lecture locale seule (voir `installed_intervals_origin`)."""
+    check_id = "intervals_mcp_pin"
+    source = (config.get("data") or {}).get("source", "garmin")
+    if source != "intervals":
+        return build_check(
+            check_id, "info",
+            "[data].source != \"intervals\" — serveur intervals.icu non applicable.", fix=None,
+        )
+    origin = installed_intervals_origin(home)
+    if origin is None:
+        return build_check(
+            check_id, "info",
+            "Origine du serveur intervals-icu-mcp illisible (non installé par `uv tool`, ou "
+            "environnement introuvable) : pin non vérifié.",
+            fix=INTERVALS_MCP_UPDATE_FIX,
+        )
+    url, commit = origin
+    short = commit[:7] or "?"
+    if url == INTERVALS_MCP_LEGACY_URL:
+        return build_check(
+            check_id, "warning",
+            f"Serveur intervals-icu-mcp installé depuis l'ancien dépôt eddmann (@{short}) : ses outils "
+            "n'ont pas le préfixe `icu_` attendu par le coach (et sans push de séance structuré). "
+            "Relancer l'installation ; ouvrir ensuite une NOUVELLE session (docs/update.md).",
+            fix=INTERVALS_MCP_UPDATE_FIX,
+        )
+    if url == INTERVALS_MCP_PINNED_URL:
+        if commit == INTERVALS_MCP_PINNED_COMMIT:
+            env_file = home / ".config" / "ai-running-coach" / "intervals-icu-mcp" / ".env"
+            try:
+                too_open = env_file.is_file() and (env_file.stat().st_mode & 0o077) != 0
+            except OSError:
+                too_open = False
+            if too_open:
+                # La clé API ne doit être lisible que par son propriétaire (jamais lue ici).
+                return build_check(
+                    check_id, "warning",
+                    f"Serveur intervals-icu-mcp au commit épinglé ({short}), mais le fichier "
+                    "d'identifiants est lisible par d'autres comptes de la machine.",
+                    fix=f"chmod 600 {env_file}",
+                )
+            return build_check(
+                check_id, "ok", f"Serveur intervals-icu-mcp au commit épinglé ({short}).", fix=None,
+            )
+        return build_check(
+            check_id, "info",
+            f"Serveur intervals-icu-mcp au commit {short}, différent du pin du projet "
+            f"({INTERVALS_MCP_PINNED_COMMIT[:7]}) : relancer l'installation pour s'aligner.",
+            fix=INTERVALS_MCP_UPDATE_FIX,
+        )
+    return build_check(
+        check_id, "info",
+        f"Serveur intervals-icu-mcp installé depuis une origine personnalisée ({url or '?'}) : "
+        "laissé tel quel, compatibilité des outils `icu_*` non garantie.",
+        fix=None,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -887,7 +1072,7 @@ def _mcp_gateway_only(workspace: Path) -> bool:
     if not isinstance(servers, dict):
         return False
     # Serveur direct : « garmin » ou tout nom commençant par « intervals » (Intervals_icu…), sans tenir compte de la casse.
-    direct = [n for n in servers if str(n).lower() == "garmin" or str(n).lower().startswith("intervals")]
+    direct = [n for n in servers if str(n).lower() == "garmin" or str(n).lower().startswith(("intervals", "strava"))]
     return "leanproxy" in servers and not direct
 
 
@@ -1027,6 +1212,76 @@ def check_chat_service(home: Path, config: dict) -> dict:
     )
 
 
+# ---------------------------------------------------------------------------
+# telegram — bot Telegram (#174)
+# ---------------------------------------------------------------------------
+
+TELEGRAM_SYSTEMD_UNIT_REL = ".config/systemd/user/ai-running-coach-telegram.service"
+TELEGRAM_LAUNCHD_PLIST_REL = "Library/LaunchAgents/com.ai-running-coach.telegram.plist"
+TELEGRAM_DEFAULT_TOKEN_FILE = "~/.config/ai-running-coach/telegram.env"
+TELEGRAM_TOKEN_RE = re.compile(r"^\d{5,}:[A-Za-z0-9_-]{20,}$")
+# Le service écrit un battement à chaque interrogation (≤ poll_timeout_s + marge) : au-delà, il est mort.
+TELEGRAM_HEARTBEAT_MAX_AGE_S = 300
+
+
+def check_telegram(workspace: Path, home: Path, config: dict, now: datetime) -> dict:
+    """`info`/`warning` uniquement : un bot arrêté est une dégradation de confort. Ne lit le jeton
+    que pour en tester le FORMAT et n'affiche jamais sa valeur."""
+    check_id = "telegram"
+    tg = config.get("telegram") or {}
+    if not tg.get("enabled"):
+        return build_check(check_id, "info", "Bot Telegram désactivé ([telegram].enabled = false).",
+                           fix="./install.sh --telegram")
+    problems: list = []
+    ids = tg.get("allowed_chat_ids")
+    if not isinstance(ids, list) or not [i for i in ids if str(i).strip()]:
+        problems.append("[telegram].allowed_chat_ids est vide (tout est refusé ; python3 scripts/arc_telegram.py whoami)")
+    token_path = Path(os.path.expanduser(str(tg.get("token_file") or TELEGRAM_DEFAULT_TOKEN_FILE)))
+    if not token_path.is_file():
+        problems.append(f"fichier du jeton absent ({token_path})")
+    else:
+        try:
+            mode = token_path.stat().st_mode & 0o777
+            text = token_path.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            mode, text = 0o600, ""
+        if mode & 0o077:
+            problems.append(f"{token_path} est lisible par d'autres utilisateurs (mode {oct(mode)[2:]}, attendu 600)")
+        values = [m.group(1).strip().strip("\"'") for m in
+                  (re.match(r"^\s*(?:export\s+)?TELEGRAM_BOT_TOKEN=(.*)$", line) for line in text.splitlines()) if m]
+        values = [v for v in values if v]
+        if not values:
+            problems.append("TELEGRAM_BOT_TOKEN non défini dans le fichier du jeton")
+        elif not TELEGRAM_TOKEN_RE.match(values[-1]):
+            problems.append("TELEGRAM_BOT_TOKEN : format inattendu (valeur non affichée)")
+    if os.environ.get("TELEGRAM_BOT_TOKEN"):
+        problems.append("TELEGRAM_BOT_TOKEN est exporté dans l'environnement : à garder dans le fichier du jeton seulement")
+    if tg.get("chat_bridge"):
+        chat = config.get("chat") or {}
+        if not chat.get("enabled"):
+            problems.append("chat_bridge = true mais [chat].enabled = false (la conversation libre répondra qu'elle est indisponible)")
+        elif str(chat.get("auth") or "local") != "local":
+            problems.append("chat_bridge exige [chat].auth = \"local\"")
+    darwin = _uname() == "Darwin"
+    unit = home / (TELEGRAM_LAUNCHD_PLIST_REL if darwin else TELEGRAM_SYSTEMD_UNIT_REL)
+    beat = workspace / ".arc/telegram/heartbeat"
+    alive = False
+    try:
+        alive = (now.timestamp() - beat.stat().st_mtime) <= TELEGRAM_HEARTBEAT_MAX_AGE_S
+    except OSError:
+        pass
+    if not alive:
+        if not unit.is_file():
+            problems.append("aucun service installé et aucun signe de vie du bot")
+        else:
+            problems.append("service installé mais sans signe de vie récent (scripts/coach-telegram.sh logs)")
+    if problems:
+        fix = "scripts/coach-telegram.sh restart && scripts/coach-telegram.sh logs" if unit.is_file() else "./install.sh --telegram"
+        return build_check(check_id, "warning", "Bot Telegram à revoir : " + " ; ".join(problems) + ".", fix=fix)
+    bridge = "conversation libre activée" if tg.get("chat_bridge") else "retours en un geste seulement"
+    return build_check(check_id, "ok", f"Bot Telegram actif ({bridge} ; jeton non affiché).", fix=None)
+
+
 def _find_opencode() -> Optional[str]:
     extra = [str(Path.home() / ".local/bin"), str(Path.home() / ".opencode/bin"),
              "/opt/homebrew/bin", "/usr/local/bin"]
@@ -1121,11 +1376,18 @@ def check_gear_sync(workspace: Path, config: dict) -> dict:
     """
     check_id = "gear_sync"
     source = (config.get("data") or {}).get("source", "garmin")
+    if source == "strava":
+        return build_check(
+            check_id, "info",
+            "[data].source = \"strava\" — le serveur Strava ne rend que le NOM de la paire (aucun identifiant "
+            "attribuable par séance) ; attribution via le chat/défaut.",
+            fix=None,
+        )
     if source == "intervals":
         return build_check(
             check_id, "info",
             "[data].source = \"intervals\" — pas de matériel par séance côté intervals.icu "
-            "(inventaire `get_gear_list` en référence seulement) ; attribution via le chat/défaut.",
+            "(inventaire `icu_get_gear_list` en référence seulement) ; attribution via le chat/défaut.",
             fix=None,
         )
     tools, origin = _read_gear_whitelist(workspace)
@@ -1206,9 +1468,10 @@ def check_gear_history(workspace: Path, config: dict) -> dict:
     `gear_id` — un seul `gear_id` déclaré ne fait donc pas taire le signal. STATIQUE (lit les blocs `arc` de
     `activities/`, jamais l'index ni Garmin) ; jamais un avertissement."""
     check_id = "gear_history"
-    if (config.get("data") or {}).get("source", "garmin") == "intervals":
+    source = (config.get("data") or {}).get("source", "garmin")
+    if source in ("intervals", "strava"):
         return build_check(check_id, "info",
-                           "[data].source = \"intervals\" — pas de matériel Garmin à rattraper.", fix=None)
+                           f"[data].source = \"{source}\" — pas de matériel Garmin à rattraper.", fix=None)
     with_id = without_gear = 0
     folder = workspace / "activities"
     for path in sorted(folder.glob("*.md")) if folder.is_dir() else []:
@@ -1232,7 +1495,7 @@ def check_gear_history(workspace: Path, config: dict) -> dict:
     return build_check(check_id, "ok", "Historique cohérent (pas de rattrapage du matériel à proposer).", fix=None)
 
 
-def check_garmin_check_not_applicable(check_id: str) -> dict:
+def check_garmin_check_not_applicable(check_id: str, source: str = "intervals") -> dict:
     """#68 : `[data].source = "intervals"` — ni tokens OAuth Garmin ni serveur
     MCP `garmin` à vérifier ici (aucun des deux n'est installé/enregistré
     avec cette source). Un statut `error`/`warning` serait un faux diagnostic
@@ -1240,7 +1503,7 @@ def check_garmin_check_not_applicable(check_id: str) -> dict:
     jamais eu de compte Garmin — `info`, jamais une panne."""
     return build_check(
         check_id, "info",
-        "[data].source = \"intervals\" — vérification Garmin non applicable.",
+        f"[data].source = \"{source}\" — vérification Garmin non applicable.",
         fix=None,
     )
 
@@ -1248,8 +1511,8 @@ def check_garmin_check_not_applicable(check_id: str) -> dict:
 def run_single_check(check_id: str, workspace: Path, now: datetime, tokens_dir: Path, probe_mcp: bool) -> dict:
     config = _load_config(workspace)
     source = (config.get("data") or {}).get("source", "garmin")
-    if check_id in ("garmin_token", "garmin_mcp") and source == "intervals":
-        return check_garmin_check_not_applicable(check_id)
+    if check_id in ("garmin_token", "garmin_mcp") and source in ("intervals", "strava"):
+        return check_garmin_check_not_applicable(check_id, source)
     if check_id == "garmin_token":
         return check_garmin_token(now, tokens_dir)
     if check_id == "garmin_mcp":
@@ -1272,12 +1535,18 @@ def run_single_check(check_id: str, workspace: Path, now: datetime, tokens_dir: 
         return check_gear_history(workspace, config)
     if check_id == "fit_reader":
         return check_fit_reader(config, Path.home())
+    if check_id == "intervals_mcp_pin":
+        return check_intervals_mcp_pin(config, Path.home())
     if check_id == "llm_config":
         return check_llm_config(config, workspace)
     if check_id == "chat_service":
         return check_chat_service(Path.home(), config)
     if check_id == "opencode_cli":
         return check_opencode_cli(config)
+    if check_id == "strava_connection":
+        return check_strava_connection(workspace, config, Path.home())
+    if check_id == "telegram":
+        return check_telegram(workspace, Path.home(), config, now)
     raise ValueError(f"vérification inconnue : {check_id!r}")
 
 
