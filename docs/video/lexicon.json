@@ -39,5 +39,33 @@
     "readiness": "readiness",
     "HRV": "H R V",
     "RPE": "R P E"
+  },
+  "fr@microsoft": {
+    "_doc": "Voix Microsoft (moteurs edge et azure) : multilingues, elles disent les mots anglais d'elles-mêmes ; seuls les sigles et commandes ont besoin d'aide.",
+    "IDE": "I D E",
+    "MCP": "M C P",
+    "HRV": "H R V",
+    "GPX": "G P X",
+    "RPE": "R P E",
+    "API": "A P I",
+    "CLI": "C L I",
+    "uv": "U V",
+    "cd": "C D",
+    "macOS": "mac O S",
+    "SI": "S I",
+    "SQLite": "S Q Lite",
+    "jour J": "jour J",
+    "ntfy": "notify",
+    "garmin-mcp": "Garmin M C P",
+    "ai-running-coach": "AI running coach",
+    "/coach-setup": "slash coach setup",
+    "/coach-doctor": "slash coach doctor",
+    "/arc-backfill": "slash arc backfill",
+    "/why": "slash why",
+    "/today": "slash today",
+    "/week": "slash week",
+    "/race": "slash race",
+    "/log": "slash log",
+    "/inspection": "slash inspection"
   }
 }

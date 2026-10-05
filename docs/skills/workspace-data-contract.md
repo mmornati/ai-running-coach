@@ -12,7 +12,7 @@ comparaison de parcours, jamais la prose.
 
 <div markdown>
 
-<span class="arc-video__meta">En vidéo · Étape 12 · 1 min 32</span>
+<span class="arc-video__meta">En vidéo · Étape 12 · 1 min 42</span>
 
 **[Vos données, votre sentier](../video/donnees/index.html)** — Vos données restent des fichiers Markdown chez vous : un bloc validé, un index jetable, un tableau de bord local, et ce qui quitte la machine.
 
@@ -55,7 +55,7 @@ formulation du modèle.
 | Type | Fichier |
 |---|---|
 | `activity` | `activities/AAAA-MM-JJ_<type>.md` |
-| `health` | `medical/AAAA-MM-JJ_health.md` — sommeil, HRV, FC de repos, readiness, **verdict du jour** |
+| `health` | `medical/AAAA-MM-JJ_health.md` — sommeil, HRV, FC de repos, readiness, **verdict du jour**, contexte du cycle (opt-in, #166) |
 | `weather` | `medical/AAAA-MM-JJ_meteo.md` |
 | `week` | `planning/Semaine_AAAA-MM-JJ.md`, daté du **lundi** — un fichier par semaine, ou un seul fichier multi-semaines (bloc `weeks`, un plan de 10 semaines peut tenir dans 1 fichier) — séances datées, lieu de la semaine |
 | `nutrition` | `nutrition/AAAA-MM-JJ_nutrition.md` |

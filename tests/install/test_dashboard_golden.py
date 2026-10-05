@@ -235,6 +235,9 @@ def _endpoint_urls(server: Server) -> dict:
     activities = json.loads(server.get("/api/activities?limit=1")[1]).get("activities", [])
     if activities:
         urls["/api/activity/{first}"] = f"/api/activity/{activities[0]['id']}"
+        # Trace de la carte de la page séance : routée à part, comme ci-dessus ; 40 points
+        # suffisent à figer la forme de la réponse sans alourdir le golden (budget de taille).
+        urls["/api/activity/{first}/track?points=40"] = f"/api/activity/{activities[0]['id']}/track?points=40"
 
     reports = json.loads(server.get("/api/reports")[1]).get("reports", [])
     if reports:

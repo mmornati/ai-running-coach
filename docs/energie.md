@@ -12,7 +12,7 @@ fonctionne, ce qu'il vaut, et ses limites.
 
 <div markdown>
 
-<span class="arc-video__meta">En vidéo · Étape 08 · 1 min 35</span>
+<span class="arc-video__meta">En vidéo · Étape 08 · 1 min 43</span>
 
 **[Ravito](video/ravito/index.html)** — Une phrase libre devient des données : le modèle extrait, le script calcule, et ne devine jamais un produit.
 

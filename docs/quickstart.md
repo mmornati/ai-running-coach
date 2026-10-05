@@ -9,7 +9,7 @@ Ce guide vous permet d'installer et de configurer `ai-running-coach` en quelques
 
 <div markdown>
 
-<span class="arc-video__meta">En vidéo · Étape 01 · 1 min 34</span>
+<span class="arc-video__meta">En vidéo · Étape 01 · 1 min 45</span>
 
 **[Ligne de départ](video/ligne-de-depart/index.html)** — Du git clone au premier /today : installation, authentification Garmin, /coach-setup et /coach-doctor en moins de deux minutes.
 
@@ -64,7 +64,7 @@ Lors de la première installation, le script lance l'authentification Garmin Con
 |---|---|
 | `--preset NOM` | Préréglage qui compose les options ci-dessous : `laptop`, `coach-server` ou `docker` — voir [Préréglages](#prereglages) |
 | `--ide claude` | Installe pour un IDE précis (`claude`, `copilot`, `opencode`, `gemini`, `cursor`, `windsurf`) |
-| `--source intervals` | Source de données primaire : `garmin` (défaut) ou `intervals` (sans montre Garmin) — voir [Configuration Intervals.icu](intervals-setup.md) |
+| `--source intervals` | Source de données primaire : `garmin` (défaut), `intervals` (sans montre Garmin) ou `strava` (Node.js 18+) — voir [Configuration Intervals.icu](intervals-setup.md) et [Configuration Strava](strava-setup.md) |
 | `--agents LISTE` | Staff à installer, ex. `coach,nutritionist` — voir [Configuration](configuration.md#le-staff-agents) |
 | `--no-medical` | Tous les agents sauf le médecin |
 | `--no-auth` | Saute l'authentification Garmin |

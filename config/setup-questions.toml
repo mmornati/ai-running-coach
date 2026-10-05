@@ -126,3 +126,17 @@ default = "metric"
 kind = "select"
 options = ["metric", "imperial"]
 labels = ["Métriques — km, m D+, kg", "Impériales — miles, pieds, livres"]
+
+[cycle_tracking]
+key = "health.cycle_tracking"
+prompt = "Souhaitez-vous que le coach tienne compte du cycle menstruel, si cela vous concerne ?"
+help = "Facultatif, et jamais présumé : « off » (défaut) = aucune donnée de cycle lue, aucune mention. Le cycle ne sert que de contexte au bilan matinal, jamais de règle ni de diagnostic. Un choix « garmin » demande de relancer ./install.sh pour exposer les outils correspondants. Détail : docs/cycle-menstruel.md"
+default = "off"
+kind = "select"
+options = ["off", "garmin", "intervals", "manual"]
+labels = [
+  "Non, ne pas en tenir compte (défaut)",
+  "Oui, lu depuis Garmin Connect",
+  "Oui, lu depuis intervals.icu (champ de phase du cycle)",
+  "Oui, que je déclare moi-même (/log)",
+]

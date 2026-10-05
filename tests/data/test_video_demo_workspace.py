@@ -88,6 +88,18 @@ class TestDemoWorkspace(unittest.TestCase):
         self.assertEqual(plan["scenarios"], {"ambitious": 20280, "realistic": 21900, "safe": 24000})
         self.assertEqual([a["km"] for a in plan["aid_stations"]], [12, 24, 34])
 
+    def test_plan_ultra_de_nuit(self):
+        """Épisode 14 : plan calculé par le vrai moteur, nuit et technicité présentes, rien d'autre ne bouge."""
+        plan = block(self.root / "planning/2026-09-27_ultra_ultra-des-cretes.md")
+        self.assertEqual((plan["race_date"], plan["timezone"]), ("2027-10-30", "Europe/Paris"))
+        self.assertEqual([a["km"] for a in plan["aid_stations"]], [13, 28, 41, 55])
+        self.assertTrue(all("take" in a and "cutoff" in a for a in plan["aid_stations"]))
+        segs = plan["segments"]
+        self.assertTrue(any(s["night_fraction"]["realistic"] > 0 for s in segs))
+        self.assertTrue(any(s["technicity"]["coef"] > 1.1 for s in segs))
+        self.assertLessEqual(plan["scenarios"]["ambitious"], plan["scenarios"]["realistic"])
+        self.assertLessEqual(plan["scenarios"]["realistic"], plan["scenarios"]["safe"])
+
     def test_inspections_et_photos(self):
         files = sorted((self.root / "gear").glob("*_inspection.md"))
         self.assertEqual(len(files), 2)
@@ -111,6 +123,19 @@ class TestDemoWorkspace(unittest.TestCase):
             other = V.build_demo(Path(tmp) / "ws2", with_samples=False)
             for rel in ("medical/2026-09-29_health.md", "activities/2026-09-27_trail.md", "planning/Runner_Profile.md"):
                 self.assertEqual((self.root / rel).read_text(encoding="utf-8"), (other / rel).read_text(encoding="utf-8"))
+
+    def test_variante_bloc_ecrit_par_plan_skeleton(self):
+        """Épisode 15 : le squelette vient de la vraie commande ; le workspace par défaut n'en a pas."""
+        self.assertFalse((self.root / "planning/Semaine_2026-10-05.md").exists())
+        with tempfile.TemporaryDirectory() as tmp:
+            root = V.build_demo(Path(tmp) / "ws-bloc", with_samples=False, bloc=True)
+            weeks = sorted(root.glob("planning/Semaine_2026-1[0-2]-*.md"))
+            self.assertEqual(len(weeks), 13)                        # 12 semaines du gabarit + la récupération post-course
+            self.assertIn("Trail du Solstice", (root / "planning/active_objective.md").read_text(encoding="utf-8"))
+            for path in weeks:
+                errors, _warnings = C.validate(block(path))
+                self.assertEqual(errors, [], f"{path.name} : {errors}")
+            self.assertEqual(block(weeks[0])["phase"], "Base")
 
 
 if __name__ == "__main__":

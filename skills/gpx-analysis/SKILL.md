@@ -55,14 +55,29 @@ python3 skills/gpx-analysis/scripts/analyze_gpx.py \
 | `--output` | stdout | Fichier Markdown de sortie |
 | `--json` | — | Dump JSON structuré |
 | `--quiet` | false | Silencieux |
+| `--dem` | false | Altitude corrigée par MNT public (#176) : IGN RGE ALTI en France, Copernicus GLO-90 via Open-Meteo ailleurs. Opt-in |
+| `--no-dem` | false | Désactive la correction même avec `[elevation].dem = "auto"` |
+| `--dem-step` | config / 50 m | Pas d'amincissement des coordonnées envoyées |
+| `--workspace` | auto | Workspace (config `[elevation]`, cache local) |
 
 ## Notes techniques
 
 - **Stdlib uniquement** (xml.etree + math) — aucune dépendance.
 - **Namespace-agnostic** : fonctionne avec ou sans préfixe XML (`<trkpt>` vs `<g:trkpt>`).
 - **Altitude** : champ `<ele>` ; lissage glissant pour neutraliser le bruit GPS.
-- **D+** : somme des élévations > 1 m après lissage → valeur conservative proche du baromètre.
+- **D+** : somme des pas d'altitude strictement supérieurs à 1 m après lissage (un pas d'exactement 1,0 m est ignoré) → valeur conservative proche du baromètre. Le **profil par km** applique la même règle, pas par pas : la somme des D+/D- par km égale le total (à l'arrondi au dixième près par km). Limite : sur un GPX très finement échantillonné, une pente douce donne des pas de moins de 1 m et n'est pas comptée — `--dem` (sans seuil) est alors la référence.
 - **Boucle fermée** : si retour-à-départ < 300 m.
+
+## Correction altimétrique par MNT (#176)
+
+L'altitude d'un GPX (GPS seul) est bruitée, celle d'un baromètre dérive : `--dem` rééchantillonne la trace sur un **modèle numérique de terrain** — IGN RGE ALTI (Géoplateforme) pour les points de France métropolitaine, Copernicus GLO-90 via Open-Meteo ailleurs et là où l'IGN n'a pas de donnée. Le D+ MNT devient la **référence** (verdict, profil par km, montées) et le rapport affiche `D+ fichier / D+ MNT` avec l'écart.
+
+- **Désactivé par défaut** : sans `--dem` et avec `[elevation].dem = "off"`, aucun appel réseau. `[elevation].dem = "auto"` l'active pour les GPX de course (itinéraires publics) ; `--no-dem` l'annule.
+- **Vie privée** : seules des coordonnées arrondies, amincies (un point tous les 50 m), sont envoyées à data.geopf.fr (IGN) ou api.open-meteo.com. Un GPX qui est l'enregistrement d'une SÉANCE personnelle (domicile en début/fin de trace) ne doit pas être envoyé sans l'accord explicite de l'athlète ; les séances FIT passent par `arc_index.py dem-check` (opt-in `[privacy].dem_for_activities`).
+- **Hors ligne** : le script garde l'altitude du fichier et avertit (`status = "unavailable"` dans `--json`) — relayer l'avertissement, ne jamais inventer un D+ MNT.
+- Cache local du workspace (fichier `dem-cache.json`, jamais dans le dépôt). Hypothèses et limites : `scripts/arc_dem.py::ASSUMPTIONS`.
+- **Attribution** à reprendre dans la fiche d'évaluation : la ligne `_Altitudes : …_` du rapport (IGN — Licence Ouverte Etalab 2.0 ; Copernicus DEM GLO-90 via Open-Meteo.com).
+- Le bloc ```arc `course_eval` reste en altitude de référence (MNT si `--dem` a réussi) ; reporter `elevation_gain_m` depuis `metrics` du `--json`, et `dem.comparison` en texte libre.
 
 ## Détection des montées
 
@@ -78,6 +93,7 @@ Le script délègue au détecteur canonique du moteur, `scripts/arc_climb.py::de
 |:-----|:-----|
 | `SKILL.md` | Ce fichier |
 | `scripts/analyze_gpx.py` | Analyseur GPX générique + rapport (CLI) |
+| `../../scripts/arc_dem.py` | Correction altimétrique par MNT (#176), appelé par `--dem` |
 | `../../scripts/arc_climb.py` | Détecteur de montées du moteur (importé) |
 
 Base directory: skills/gpx-analysis

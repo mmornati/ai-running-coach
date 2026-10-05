@@ -54,7 +54,7 @@ flowchart TB
 - La **planification hebdomadaire** et l'ajustement des séances
 - Les **garde-fous** (`scripts/arc_guardrails.py`) avant toute écriture/push, et le **journal de décisions** qui en garde la trace (`planning/YYYY-MM-DD_decision_<slug>.md`)
 - Les **cibles personnelles d'une séance** (zones FC, allure GAP, D+ de côte — `scripts/arc_workout_targets.py`) avant chaque push Garmin
-- Le score **Trail Shape** (préparation à l'objectif actif) et le **kilométrage des chaussures**
+- Le score **Trail Shape** (préparation à l'objectif actif), la **projection de forme jusqu'à la course** (estimation à partir du planifié) et le **kilométrage des chaussures**
 - Les **indices de performance ITRA/UTMB**, en lecture seule
 - Le **débrief post-course** plan vs réalisé, par segment
 - Le **push des séances dans le calendrier Garmin Connect**

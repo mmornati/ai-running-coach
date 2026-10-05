@@ -1,34 +1,34 @@
 /* Généré par scripts/video_narration.py — ne pas éditer. */
 window.ARC_TIMING = {
  "en": {
-  "digest": "4e1df4704272e2fd",
-  "duration": 97.451,
+  "digest": "d648bb44909baf0d",
+  "duration": 100.368,
   "scenes": [
    {
     "id": "bib",
     "start": 0.0,
-    "d": 4.6,
+    "d": 4.608,
     "cues": [
      {
       "s": 1.2,
-      "e": 3.909,
+      "e": 4.008,
       "text": "Stage seven: anatomy of a run."
      }
     ]
    },
    {
     "id": "fit",
-    "start": 4.6,
-    "d": 14.314,
+    "start": 4.608,
+    "d": 14.65,
     "cues": [
      {
       "s": 0.5,
-      "e": 4.873,
+      "e": 5.564,
       "text": "Sunday: eighteen kilometers, eight hundred twenty meters of climbing."
      },
      {
-      "s": 5.223,
-      "e": 13.714,
+      "s": 5.914,
+      "e": 14.05,
       "text": "The MCP server times out on FIT files, so the skill downloads them locally, no password needed. One measurement per second."
      }
     ],
@@ -36,17 +36,17 @@ window.ARC_TIMING = {
    },
    {
     "id": "zones",
-    "start": 18.914,
-    "d": 10.495,
+    "start": 19.258,
+    "d": 10.45,
     "cues": [
      {
       "s": 0.5,
-      "e": 2.932,
+      "e": 2.876,
       "text": "Time spent in each heart rate zone."
      },
      {
-      "s": 3.282,
-      "e": 9.895,
+      "s": 3.226,
+      "e": 9.85,
       "text": "And pace adjusted for grade, which flattens the climbs so an uphill can be compared to flat ground."
      }
     ],
@@ -54,17 +54,17 @@ window.ARC_TIMING = {
    },
    {
     "id": "drift",
-    "start": 29.409,
-    "d": 12.522,
+    "start": 29.708,
+    "d": 13.306,
     "cues": [
      {
       "s": 0.5,
-      "e": 6.025,
+      "e": 6.236,
       "text": "Aerobic decoupling compares first-half efficiency with second-half efficiency."
      },
      {
-      "s": 6.375,
-      "e": 11.922,
+      "s": 6.586,
+      "e": 12.706,
       "text": "Here, three point eight percent: under the five percent marker. A marker, not a norm."
      }
     ],
@@ -72,17 +72,17 @@ window.ARC_TIMING = {
    },
    {
     "id": "climbs",
-    "start": 41.931,
+    "start": 43.014,
     "d": 9.0,
     "cues": [
      {
       "s": 0.5,
-      "e": 4.169,
+      "e": 4.172,
       "text": "Three climbs detected, each with its vertical speed."
      },
      {
-      "s": 4.519,
-      "e": 7.485,
+      "s": 4.522,
+      "e": 8.122,
       "text": "And downhill, efficiency by grade class."
      }
     ],
@@ -90,17 +90,17 @@ window.ARC_TIMING = {
    },
    {
     "id": "durability",
-    "start": 50.931,
-    "d": 10.0,
+    "start": 52.014,
+    "d": 10.186,
     "cues": [
      {
       "s": 0.5,
-      "e": 4.319,
+      "e": 4.556,
       "text": "Durability: the last third of the run, compared with the first."
      },
      {
-      "s": 4.669,
-      "e": 9.341,
+      "s": 4.906,
+      "e": 9.586,
       "text": "Then heart rate recovery, read against comparable efforts, never alone."
      }
     ],
@@ -108,17 +108,17 @@ window.ARC_TIMING = {
    },
    {
     "id": "energy",
-    "start": 60.931,
-    "d": 10.197,
+    "start": 62.2,
+    "d": 10.978,
     "cues": [
      {
       "s": 0.5,
-      "e": 5.599,
+      "e": 6.044,
       "text": "Two calorie figures: Garmin, which stays the reference, and an independent model."
      },
      {
-      "s": 5.949,
-      "e": 9.597,
+      "s": 6.394,
+      "e": 10.378,
       "text": "Beyond fifteen percent apart, a flag. Here, four."
      }
     ],
@@ -126,12 +126,12 @@ window.ARC_TIMING = {
    },
    {
     "id": "parts",
-    "start": 71.128,
-    "d": 9.0,
+    "start": 73.178,
+    "d": 9.164,
     "cues": [
      {
       "s": 0.5,
-      "e": 7.156,
+      "e": 8.564,
       "text": "For hill reps or strides, the analysis isolates every repetition: pace, heart rate, cadence."
      }
     ],
@@ -139,17 +139,17 @@ window.ARC_TIMING = {
    },
    {
     "id": "compare",
-    "start": 80.128,
-    "d": 10.0,
+    "start": 82.342,
+    "d": 10.858,
     "cues": [
      {
       "s": 0.5,
-      "e": 6.495,
+      "e": 7.508,
       "text": "Same course, three runs: the comparison recognizes the climbs and shows the progress."
      },
      {
-      "s": 6.845,
-      "e": 9.234,
+      "s": 7.858,
+      "e": 10.258,
       "text": "Twelve minutes faster since June."
      }
     ],
@@ -157,21 +157,26 @@ window.ARC_TIMING = {
    },
    {
     "id": "finish",
-    "start": 90.128,
-    "d": 7.323,
+    "start": 93.2,
+    "d": 7.168,
     "cues": [
      {
       "s": 2.2,
-      "e": 6.723,
+      "e": 6.568,
       "text": "To go further: the “Session analysis” page of the documentation."
      }
     ]
    }
-  ]
+  ],
+  "engine": "edge",
+  "voice": {
+   "voice": "en-US-AndrewMultilingualNeural",
+   "rate": "+0%"
+  }
  },
  "fr": {
-  "digest": "8e4631f39f4d9ede",
-  "duration": 92.009,
+  "digest": "4c21cc7be7528762",
+  "duration": 98.93,
   "scenes": [
    {
     "id": "bib",
@@ -180,7 +185,7 @@ window.ARC_TIMING = {
     "cues": [
      {
       "s": 1.2,
-      "e": 2.992,
+      "e": 3.936,
       "text": "Étape sept : disséquer une sortie."
      }
     ]
@@ -188,16 +193,16 @@ window.ARC_TIMING = {
    {
     "id": "fit",
     "start": 4.6,
-    "d": 12.799,
+    "d": 13.906,
     "cues": [
      {
       "s": 0.5,
-      "e": 3.913,
+      "e": 4.82,
       "text": "Dimanche : dix-huit kilomètres, huit cent vingt mètres de dénivelé."
      },
      {
-      "s": 4.263,
-      "e": 12.199,
+      "s": 5.17,
+      "e": 13.306,
       "text": "Le serveur MCP expire sur les fichiers FIT : le skill les télécharge donc en local, sans mot de passe. Une mesure par seconde."
      }
     ],
@@ -205,17 +210,17 @@ window.ARC_TIMING = {
    },
    {
     "id": "zones",
-    "start": 17.399,
-    "d": 9.0,
+    "start": 18.506,
+    "d": 9.37,
     "cues": [
      {
       "s": 0.5,
-      "e": 3.316,
+      "e": 3.62,
       "text": "Le temps passé dans chaque zone de fréquence cardiaque."
      },
      {
-      "s": 3.666,
-      "e": 8.295,
+      "s": 3.97,
+      "e": 8.77,
       "text": "Et l'allure ajustée à la pente, qui aplatit les côtes pour comparer une montée à du plat."
      }
     ],
@@ -223,17 +228,17 @@ window.ARC_TIMING = {
    },
    {
     "id": "drift",
-    "start": 26.399,
-    "d": 11.434,
+    "start": 27.876,
+    "d": 12.754,
     "cues": [
      {
       "s": 0.5,
-      "e": 5.727,
+      "e": 5.588,
       "text": "Le découplage aérobie compare l'efficacité de la première moitié à celle de la seconde."
      },
      {
-      "s": 6.077,
-      "e": 10.834,
+      "s": 5.938,
+      "e": 12.154,
       "text": "Ici, trois virgule huit pour cent : sous le repère de cinq. Un repère, pas une norme."
      }
     ],
@@ -241,17 +246,17 @@ window.ARC_TIMING = {
    },
    {
     "id": "climbs",
-    "start": 37.833,
+    "start": 40.63,
     "d": 9.0,
     "cues": [
      {
       "s": 0.5,
-      "e": 3.913,
+      "e": 4.532,
       "text": "Trois montées détectées, chacune avec sa vitesse ascensionnelle."
      },
      {
-      "s": 4.263,
-      "e": 7.25,
+      "s": 4.882,
+      "e": 8.386,
       "text": "Et en descente, l'efficacité par classe de pente."
      }
     ],
@@ -259,17 +264,17 @@ window.ARC_TIMING = {
    },
    {
     "id": "durability",
-    "start": 46.833,
-    "d": 10.0,
+    "start": 49.63,
+    "d": 10.906,
     "cues": [
      {
       "s": 0.5,
-      "e": 4.297,
+      "e": 4.964,
       "text": "La durabilité : le dernier tiers de la sortie, comparé au premier."
      },
      {
-      "s": 4.647,
-      "e": 9.191,
+      "s": 5.314,
+      "e": 10.306,
       "text": "Puis la récupération cardiaque, lue face à des efforts équivalents, jamais seule."
      }
     ],
@@ -277,17 +282,17 @@ window.ARC_TIMING = {
    },
    {
     "id": "energy",
-    "start": 56.833,
-    "d": 9.621,
+    "start": 60.536,
+    "d": 11.938,
     "cues": [
      {
       "s": 0.5,
-      "e": 5.3,
+      "e": 5.804,
       "text": "Deux chiffres de calories : Garmin, qui reste la référence, et un modèle indépendant."
      },
      {
-      "s": 5.65,
-      "e": 9.021,
+      "s": 6.154,
+      "e": 11.338,
       "text": "Au-delà de quinze pour cent d'écart, une alerte. Ici, quatre."
      }
     ],
@@ -295,12 +300,12 @@ window.ARC_TIMING = {
    },
    {
     "id": "parts",
-    "start": 66.454,
+    "start": 72.474,
     "d": 9.0,
     "cues": [
      {
       "s": 0.5,
-      "e": 6.495,
+      "e": 7.244,
       "text": "Pour des côtes ou des lignes droites, l'analyse isole chaque répétition : allure, fréquence cardiaque, cadence."
      }
     ],
@@ -308,17 +313,17 @@ window.ARC_TIMING = {
    },
    {
     "id": "compare",
-    "start": 75.454,
+    "start": 81.474,
     "d": 10.0,
     "cues": [
      {
       "s": 0.5,
-      "e": 5.535,
+      "e": 6.02,
       "text": "Même parcours, trois sorties : le comparateur reconnaît les montées et montre la progression."
      },
      {
-      "s": 5.885,
-      "e": 7.805,
+      "s": 6.37,
+      "e": 8.77,
       "text": "Douze minutes plus vite depuis juin."
      }
     ],
@@ -326,16 +331,21 @@ window.ARC_TIMING = {
    },
    {
     "id": "finish",
-    "start": 85.454,
-    "d": 6.555,
+    "start": 91.474,
+    "d": 7.456,
     "cues": [
      {
       "s": 2.2,
-      "e": 5.955,
+      "e": 6.856,
       "text": "Pour aller plus loin : la page « Analyse de séances » de la documentation."
      }
     ]
    }
-  ]
+  ],
+  "engine": "edge",
+  "voice": {
+   "voice": "fr-FR-RemyMultilingualNeural",
+   "rate": "+0%"
+  }
  }
 };

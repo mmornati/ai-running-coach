@@ -12,7 +12,7 @@ calendrier — et le texte du coach à côté des chiffres.
 
 <div markdown>
 
-<span class="arc-video__meta">En vidéo · Étape 05 · 1 min 22</span>
+<span class="arc-video__meta">En vidéo · Étape 05 · 1 min 29</span>
 
 **[Tour du propriétaire](../video/tableau-de-bord/index.html)** — Visite guidée du tableau de bord local, en lecture seule : une question par vue.
 
@@ -229,9 +229,13 @@ contrat » dans le menu). Pour tout remettre d'aplomb : [Migrer vos fichiers](mi
 - Lecture seule : il n'écrit que sa propre base, dans `.arc/`.
 - Une page tierce qui tenterait de l'atteindre en se faisant passer pour
   `localhost` est refusée (protection contre le *DNS rebinding*).
-- Vos données ne quittent pas la machine. Seules les polices de caractères (Inter,
-  Sora) sont chargées depuis Google Fonts à l'ouverture de la page ; hors ligne,
-  le navigateur se rabat sur ses polices système.
+- Vos données ne quittent pas la machine. Deux ressources viennent de l'extérieur :
+  les polices de caractères (Inter, Sora), depuis Google Fonts ; hors ligne, le
+  navigateur se rabat sur ses polices système. Et les tuiles du fond de carte de la
+  page séance (OpenTopoMap par défaut) : le serveur de tuiles voit la zone affichée,
+  jamais la trace ni la séance. Pour n'en charger aucune, posez
+  `map_tiles = ""` dans la section `[dashboard]` de `config/workspace.user.toml` et
+  relancez le tableau de bord : la trace s'affiche alors sur un fond uni.
 
 Pour le consulter depuis une autre machine, passez par un tunnel SSH plutôt que
 d'ouvrir un port : voir [Machine coach & mode headless](headless.md). Si votre serveur

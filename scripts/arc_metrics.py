@@ -2717,6 +2717,55 @@ ASSUMPTIONS["gait"] = (
     "`arc_gait.ASSUMPTIONS`."
 )
 
+# ---------------------------------------------------------------------------
+# Projection de charge sur le bloc (#172) — `scripts/arc_load_forecast.py`
+# ---------------------------------------------------------------------------
+
+ASSUMPTIONS["load_forecast"] = (
+    "Projection de charge sur le bloc (#172, `arc_index.py load-forecast`, `/api/load-forecast`) : ESTIMATION "
+    "à partir du planifié, jamais une mesure. Point de départ = l'état réel d'aujourd'hui (condition 42 j, "
+    "fatigue 7 j, `daily_series`) ; chaque jour planifié jusqu'à la date de l'objectif reçoit la charge estimée "
+    "de ses séances — le MÊME estimateur que R1 (`ASSUMPTIONS[\"projected_load\"]` : minutes planifiées × "
+    "RPE attendu par intensité × `RPE_TO_TRIMP`, durée estimée depuis la distance à l'allure récente), jamais un "
+    "second modèle. Réserves : (1) le RPE attendu par intensité est une approximation maison, et une séance réelle "
+    "avec FC (TRIMP de Banister) pèse selon la physiologie de l'athlète environ 0,9 à 1,45 fois son estimation — "
+    "écart qui se cumule et gonfle la forme prévue (≈ +12 sur trois semaines à 1,3). La charge PROJETÉE (jamais "
+    "la réelle) est donc RECALÉE par le rapport charge réelle / charge estimée des séances planifiées des 56 "
+    "derniers jours appariées à une activité (même appariement que la conformité, `calibration` dans la sortie) — "
+    "une mise à l'échelle du même estimateur, pas un second modèle ; non appliqué sous 5 séances appariées ou hors "
+    "[0,5 ; 2] (dit dans la sortie). Recalé, l'ACWR projeté d'une semaine peut différer légèrement du chiffre de "
+    "R1, qui reste non recalé ; (2) un jour sans séance planifiée compte 0 de charge (repos supposé, jamais une "
+    "moyenne récente extrapolée) : une semaine non planifiée est comptée (`weeks_unplanned`) et rend la forme "
+    "prévue trop optimiste si l'athlète s'entraîne en réalité ; (3) une séance planifiée sans durée ni distance "
+    "exploitable pèse 0 (`unresolved_duration_dates`) ; (4) la forme prévue le jour J est l'état « en entrant "
+    "dans la journée » (condition et fatigue de la veille, forme = leur différence, comme la courbe réelle) : la "
+    "charge de la course elle-même n'y entre pas, ni dans le pic de fatigue, l'ACWR max ou la charge totale du "
+    "bloc (tous lus jusqu'à la veille de la date visée) ; "
+    "(5) condition et ACWR héritent du démarrage à froid de la moyenne exponentielle : sous "
+    "`arc_guardrails.MIN_HISTORY_DAYS_FOR_PROJECTION` (84 j d'historique réel) aucune projection n'est rendue "
+    "(`insufficient_history`) ; (6) l'ACWR projeté (maximum sur tout le bloc, et par semaine) reprend le seuil "
+    "prudent de R1, dont les réserves scientifiques restent celles de `ASSUMPTIONS[\"acwr_projection\"]` ; "
+    "(7) aucune donnée de santé (HRV, sommeil, blessure) n'entre dans la projection — un bilan matinal rouge "
+    "annule une séance quel que soit ce que la projection indique. La comparaison de plans remplace les semaines "
+    "de même lundi et ne chiffre que l'écart d'estimations : à lire comme un ordre de grandeur pour justifier "
+    "un affûtage, pas comme une prédiction de performance."
+)
+
+
+ASSUMPTIONS["decision_effects"] = (
+    "Effet des décisions (#175, `arc_index.py decision-effects`, `/api/decision-effects`) : pour chaque décision "
+    "`applied` ou `rejected_by_athlete` du journal, comparaison d'une fenêtre AVANT (3 jours se terminant au jour "
+    "de la décision pour les séries quotidiennes ; 14 jours pour les séances) et d'une fenêtre APRÈS (J+1 à J+N, "
+    "N = 3 pour bilan matinal/météo, 7 pour blessure/garde-fou/demande/course/autre) sur les signaux du "
+    "déclencheur (HRV, FC de repos, readiness ; douleur ; écart d'ACWR à la zone 0,8–1,3 ; RPE, découplage, "
+    "conformité). Tolérances « neutre » : HRV ±5 %, FC de repos ±2 bpm, readiness ±5, douleur ±1, ACWR ±0,1, RPE "
+    "±1, découplage ±2 points, conformité ±15 points — APPROXIMATIONS DU PROJET, pas des normes. Un signal "
+    "absent est sauté, jamais imputé ; fenêtre non écoulée ou aucun signal → `insufficient_data`. Synthèse par "
+    "déclencheur × nature de l'action (dérivée de `before`/`after`) × issue, décisions aux fenêtres chevauchantes signalées ; sous 5 cas évaluables, comptes bruts sans « tendance ». CORRÉLATION, PAS CAUSALITÉ : "
+    "jamais utilisé pour assouplir un garde-fou `block`, une décision médicale ni un verdict rouge. Effets "
+    "dérivés, jamais stockés ; méthode détaillée : `arc_decision_effects.ASSUMPTIONS`."
+)
+
 
 def gear_inspection_status(shoes: List[dict], inspections: List[dict],
                            interval_m: float = GEAR_INSPECTION_INTERVAL_M,

@@ -9,7 +9,7 @@
 
 <div markdown>
 
-<span class="arc-video__meta">En vidéo · Étape 07 · 1 min 32</span>
+<span class="arc-video__meta">En vidéo · Étape 07 · 1 min 39</span>
 
 **[Disséquer une sortie](../video/analyse-seance/index.html)** — Une sortie trail passée au scalpel : FIT, zones, allure ajustée, dérive, montées, durabilité, HRR, énergie, comparaison.
 

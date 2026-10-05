@@ -1108,6 +1108,101 @@ class TestCutoffFormats(unittest.TestCase):
         self.assertEqual(RP.check_cutoffs(self._passage(3600), stations, start), [])
 
 
+class TestCutoffTimezones(unittest.TestCase):
+    """Barrières datées et changement d'heure (#205) : un seul parseur, toutes les formes, marges en
+    temps absolu dans le fuseau de course. Course du 25/10/2026, Europe/Paris : 03:00 CEST -> 02:00 CET."""
+
+    @classmethod
+    def setUpClass(cls):
+        from zoneinfo import ZoneInfo
+        cls.paris = ZoneInfo("Europe/Paris")
+        cls.start = datetime(2026, 10, 24, 20, 0)        # 20:00 CEST, heure murale (naïve)
+
+    def _margin(self, cutoff, elapsed_s, zone=None, start=None, **station):
+        stations = [{"km": 10.0, "name": "Ravito", "cutoff": cutoff, **station}]
+        passages = [{"km": 10.0, "name": "Ravito", "safe": elapsed_s, "realistic": elapsed_s,
+                     "ambitious": elapsed_s}]
+        out = RP.check_cutoffs(passages, stations, start or self.start, zone)
+        self.assertEqual(len(out), 1, f"barrière « {cutoff} » ignorée")
+        return out[0]["realistic"]["margin_s"]
+
+    def test_offset_iso_cutoff_without_timezone_no_longer_raises(self):
+        # Reproduction de l'issue : départ naïf, barrière ISO avec décalage, aucun fuseau -> TypeError
+        # avant #205. L'heure murale de la barrière est gardée (aucun fuseau deviné).
+        self.assertEqual(self._margin("2026-10-25T12:00:00+01:00", 15 * 3600), 3600)
+
+    def test_offset_iso_cutoff_is_an_exact_instant_with_race_timezone(self):
+        # 20:00 CEST = 18:00 UTC ; 12:00+01:00 = 11:00 UTC -> 17 h après le départ.
+        self.assertEqual(self._margin("2026-10-25T12:00:00+01:00", 16 * 3600, self.paris), 3600)
+        self.assertEqual(self._margin("2026-10-25T11:00:00Z", 16 * 3600, self.paris), 3600)
+
+    def test_naive_iso_cutoff_is_race_local_wall_clock_across_dst(self):
+        # 12:00 locale le 25 (CET, après le recul) = 17 h réelles après 20:00 CEST la veille,
+        # et non 16 h comme en simple différence murale.
+        self.assertEqual(self._margin("2026-10-25T12:00:00", 16 * 3600, self.paris), 3600)
+        self.assertEqual(self._margin("2026-10-25T12:00:00", 16 * 3600), 0)   # sans fuseau : heure murale
+
+    def test_hhmm_cutoff_after_the_dst_change_has_the_real_margin(self):
+        self.assertEqual(self._margin("12:00", 16 * 3600, self.paris, cutoff_day=2), 3600)
+        # Sans cutoff_day : 12:00 < 20:00 -> lendemain, même résultat.
+        self.assertEqual(self._margin("12:00", 16 * 3600, self.paris), 3600)
+
+    def test_elapsed_cutoff_stays_elapsed_time_across_dst(self):
+        self.assertEqual(self._margin("+17:00", 16 * 3600, self.paris), 3600)
+        self.assertEqual(self._margin("+17:00", 16 * 3600), 3600)
+
+    def test_aware_start_is_accepted(self):
+        start = datetime(2026, 10, 24, 20, 0, tzinfo=self.paris)
+        self.assertEqual(self._margin("12:00", 16 * 3600, start=start, cutoff_day=2), 3600)
+        self.assertEqual(self._margin("2026-10-25T12:00:00+01:00", 16 * 3600, start=start), 3600)
+
+    def test_malformed_cutoff_day_is_ignored_not_raised(self):
+        passages = [{"km": 10.0, "safe": 3600, "realistic": 3600, "ambitious": 3600}]
+        for day in ("lendemain", "0", -1):
+            stations = [{"km": 10.0, "name": "Ravito", "cutoff": "12:00", "cutoff_day": day}]
+            self.assertEqual(RP.check_cutoffs(passages, stations, self.start, self.paris), [], day)
+
+    def test_cutoff_in_the_spring_forward_gap_is_never_more_lenient(self):
+        # 29/03/2026, Europe/Paris : 02:00 CET -> 03:00 CEST, 02:30 n'existe pas. Elle ne doit pas
+        # tomber APRÈS 03:00 (barrière plus généreuse qu'écrite).
+        start = datetime(2026, 3, 28, 20, 0)
+        gap = self._margin("02:30", 3600, self.paris, start=start)
+        after = self._margin("03:00", 3600, self.paris, start=start)
+        self.assertLessEqual(gap, after)
+
+    def test_offset_cutoff_without_timezone_is_flagged(self):
+        pts = _straight_course(_ClimbFlatDescentProfile())
+        stations = [{"km": 1.5, "name": "Ravito 1", "cutoff": "2026-11-15T22:00:00Z"}]
+        plan = RP.build_race_plan(
+            pts, GENERIC_BINS, aid_stations=stations, fade_pct=0.0, fade_source="generic",
+            start_time="07:00", race_date="2026-11-15", segment_m=500.0)
+        self.assertTrue(any("sans fuseau de course" in w for w in plan["warnings"]))
+        with_tz = RP.build_race_plan(
+            pts, GENERIC_BINS, aid_stations=stations, fade_pct=0.0, fade_source="generic",
+            start_time="07:00", race_date="2026-11-15", segment_m=500.0, tz="Europe/Paris")
+        self.assertFalse(any("sans fuseau de course" in w for w in with_tz["warnings"]))
+
+    def test_build_race_plan_with_offset_cutoff_does_not_crash(self):
+        # Chemin de la CLI `plan` : barrière ISO datée, avec et sans --tz, avec et sans nuit.
+        pts = _straight_course(_ClimbFlatDescentProfile())
+        stations = [{"km": 1.5, "name": "Ravito 1", "cutoff": "2026-11-15T23:00:00+01:00"}]
+        for kw in ({}, {"tz": "Europe/Paris"}, {"tz": "Europe/Paris", "night_enabled": False}):
+            plan = RP.build_race_plan(
+                pts, GENERIC_BINS, aid_stations=stations, fade_pct=0.0, fade_source="generic",
+                start_time="07:00", race_date="2026-11-15", segment_m=500.0, **kw)
+            self.assertEqual(plan["cutoffs"][0]["realistic"]["status"], "ok", kw)
+
+    def test_build_race_plan_with_unknown_tz_and_no_night_warns(self):
+        pts = _straight_course(_ClimbFlatDescentProfile())
+        stations = [{"km": 1.5, "name": "Ravito 1", "cutoff": "23:00"}]
+        plan = RP.build_race_plan(
+            pts, GENERIC_BINS, aid_stations=stations, fade_pct=0.0, fade_source="generic",
+            start_time="07:00", race_date="2026-11-15", segment_m=500.0, tz="Pas/UnFuseau",
+            night_enabled=False)
+        self.assertEqual(plan["cutoffs"][0]["realistic"]["status"], "ok")
+        self.assertTrue(any("heure murale" in w for w in plan["warnings"]))
+
+
 # ---------------------------------------------------------------------------
 # Résolveurs CLI (`_resolve_*`) — conn SQLite en mémoire, sans fichiers réels
 # ---------------------------------------------------------------------------

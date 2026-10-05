@@ -1,73 +1,73 @@
 WEBVTT
 
 1
-00:00:01.200 --> 00:00:03.583
+00:00:01.200 --> 00:00:04.474
 Étape cinq : le tour du propriétaire.
 
 2
-00:00:05.100 --> 00:00:08.891
+00:00:05.324 --> 00:00:09.678
 Le tableau de bord tient en une commande : dashboard.sh.
 
 3
-00:00:08.991 --> 00:00:15.940
+00:00:09.778 --> 00:00:16.364
 Il s'ouvre sur cent vingt-sept point zéro point zéro point un, en lecture seule, construit depuis vos fichiers Markdown.
 
 4
-00:00:16.040 --> 00:00:19.533
+00:00:16.464 --> 00:00:20.218
 Un fichier écrit par le coach apparaît en trente secondes.
 
 5
-00:00:20.383 --> 00:00:23.129
+00:00:21.068 --> 00:00:24.774
 Aujourd'hui : je cours, j'allège ou je me repose ?
 
 6
-00:00:23.229 --> 00:00:27.319
+00:00:24.874 --> 00:00:29.756
 Verdict et raison, bilan du matin, programme du jour avec sa météo.
 
 7
-00:00:28.383 --> 00:00:30.404
+00:00:30.606 --> 00:00:33.640
 Semaine : le prévu face au fait.
 
 8
-00:00:30.504 --> 00:00:35.575
+00:00:33.740 --> 00:00:39.054
 Le seuil de mardi est annulé, les côtes glissent à jeudi : la règle sept l'explique.
 
 9
-00:00:36.425 --> 00:00:39.299
+00:00:39.904 --> 00:00:44.186
 Forme et charge : condition, fatigue, forme.
 
 10
-00:00:39.399 --> 00:00:43.489
+00:00:44.286 --> 00:00:48.760
 Et Trail Shape : la préparation couvre-t-elle ce que la course exigera ?
 
 11
-00:00:44.425 --> 00:00:47.555
+00:00:49.610 --> 00:00:53.940
 Séances : la sortie de dimanche, dix-huit kilomètres.
 
 12
-00:00:47.655 --> 00:00:50.358
+00:00:54.040 --> 00:00:57.482
 Montées détectées, puis splits au kilomètre.
 
 13
-00:00:52.425 --> 00:00:55.320
+00:00:58.332 --> 00:01:01.750
 Décisions : pourquoi cette séance a-t-elle changé ?
 
 14
-00:00:55.420 --> 00:00:58.230
+00:01:01.850 --> 00:01:05.436
 Chaque fiche montre l'avant, l'après et les sources.
 
 15
-00:01:00.425 --> 00:01:04.280
+00:01:06.332 --> 00:01:12.294
 Et aussi : santé, nutrition, rapports, performance, calendrier.
 
 16
-00:01:07.425 --> 00:01:09.382
+00:01:13.332 --> 00:01:15.838
 Tout tient aussi sur un téléphone.
 
 17
-00:01:09.482 --> 00:01:14.254
+00:01:15.938 --> 00:01:21.180
 Derrière un reverse proxy, en Docker, le workspace reste en lecture seule.
 
 18
-00:01:17.125 --> 00:01:21.258
+00:01:23.730 --> 00:01:28.324
 Pour aller plus loin : la page consacrée aux vues, dans la documentation.

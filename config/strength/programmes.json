@@ -1,0 +1,715 @@
+{
+ "schema_version": 1,
+ "status": "approximation_projet",
+ "sources": [
+  {
+   "id": "blagrove2018",
+   "citation": "Blagrove RC, Howatson G, Hayes PR. Effects of Strength Training on the Physiological Determinants of Middle- and Long-Distance Running Performance: A Systematic Review. Sports Med. 2018;48(5):1117-1149.",
+   "doi": "10.1007/s40279-017-0835-7",
+   "used_for": "direction : un entraînement de force (lourd ou explosif) peut améliorer l'économie de course et des indicateurs de performance chez les coureurs d'endurance ; aucun dosage n'en est repris"
+  },
+  {
+   "id": "beattie2014",
+   "citation": "Beattie K, Kenny IC, Lyons M, Carson BP. The Effect of Strength Training on Performance in Endurance Athletes. Sports Med. 2014;44(6):845-865.",
+   "doi": "10.1007/s40279-014-0157-y",
+   "used_for": "direction : même constat chez les athlètes d'endurance ; aucun dosage n'en est repris"
+  }
+ ],
+ "placement": {
+  "high": {
+   "min_h_before_quality": 48,
+   "min_h_before_long_run": 48,
+   "min_days_before_race": 7
+  },
+  "moderate": {
+   "min_h_before_quality": 24,
+   "min_h_before_long_run": 36,
+   "min_days_before_race": 5
+  },
+  "low": {
+   "min_h_before_quality": 0,
+   "min_h_before_long_run": 0,
+   "min_days_before_race": 2
+  }
+ },
+ "phase_volume_factor": {
+  "base": 1.0,
+  "development": 1.0,
+  "specific": 1.0,
+  "taper": 0.67
+ },
+ "programmes": [
+  {
+   "id": "base_force_generale",
+   "kind": "phase",
+   "emphasis": "force_maximale",
+   "phase": "base",
+   "label": "Base — force (charges lourdes progressives)",
+   "purpose": "Développer la force des jambes et des hanches (emphase « force maximale » du gabarit) : charges lourdes, peu de répétitions, récupérations longues, sur une technique d'abord maîtrisée.",
+   "sessions_per_week": {
+    "min": 1,
+    "max": 2
+   },
+   "duration_min": 40,
+   "fatigue": "moderate",
+   "warmup": [
+    "balancier_jambes",
+    "pont_fessier"
+   ],
+   "blocks": [
+    {
+     "exercise": "squat_gobelet",
+     "sets": 4,
+     "reps": 6,
+     "rest_s": 120,
+     "tempo": "3-0-1",
+     "load": "Charge lourde laissant 1 à 2 répétitions de réserve (RPE 8) ; musculation nouvelle : 2 semaines à 10 répétitions, RPE 7.",
+     "each_side": false
+    },
+    {
+     "exercise": "souleve_de_terre_roumain_unilateral",
+     "sets": 3,
+     "reps": 6,
+     "rest_s": 120,
+     "tempo": "3-0-1",
+     "load": "Charge lourde laissant 1 à 2 répétitions de réserve (RPE 8) ; musculation nouvelle : 2 semaines à 10 répétitions, RPE 7.",
+     "each_side": true
+    },
+    {
+     "exercise": "montee_de_marche_lestee",
+     "sets": 3,
+     "reps": 6,
+     "rest_s": 120,
+     "load": "Charge lourde laissant 1 à 2 répétitions de réserve (RPE 8) ; musculation nouvelle : 2 semaines à 10 répétitions, RPE 7.",
+     "each_side": true
+    },
+    {
+     "exercise": "mollet_unipodal_lestee",
+     "sets": 3,
+     "reps": 8,
+     "rest_s": 90,
+     "tempo": "2-1-2",
+     "load": "Charge lourde laissant 1 à 2 répétitions de réserve (RPE 8) ; musculation nouvelle : 2 semaines à 10 répétitions, RPE 7.",
+     "each_side": true
+    },
+    {
+     "exercise": "pont_fessier_unilateral",
+     "sets": 3,
+     "reps": 10,
+     "rest_s": 60,
+     "each_side": true
+    },
+    {
+     "exercise": "planche_laterale",
+     "sets": 3,
+     "seconds": 30,
+     "rest_s": 45,
+     "each_side": true
+    },
+    {
+     "exercise": "planche",
+     "sets": 2,
+     "seconds": 40,
+     "rest_s": 45,
+     "each_side": false
+    }
+   ],
+   "cooldown": [
+    "etirement_mollet",
+    "etirement_flechisseurs_hanche"
+   ],
+   "notes": [
+    "Progression : ajouter une répétition par séance jusqu'à 8, puis augmenter la charge et revenir à 6.",
+    "Programme générique : privilégier l'amplitude propre et le contrôle plutôt que la charge."
+   ]
+  },
+  {
+   "id": "developpement_force_pliometrie",
+   "kind": "phase",
+   "emphasis": "force_endurance",
+   "phase": "development",
+   "label": "Développement — force-endurance et introduction à la pliométrie",
+   "purpose": "Prolonger la force acquise vers l'endurance de force (emphase « force-endurance » du gabarit) : charges modérées, plus de répétitions, récupérations courtes, et quelques contacts pliométriques frais avant les séances spécifiques.",
+   "sessions_per_week": {
+    "min": 1,
+    "max": 2
+   },
+   "duration_min": 45,
+   "fatigue": "moderate",
+   "warmup": [
+    "balancier_jambes",
+    "pont_fessier",
+    "mobilite_cheville_genou_mur"
+   ],
+   "blocks": [
+    {
+     "exercise": "saut_squat",
+     "sets": 2,
+     "reps": 5,
+     "rest_s": 60,
+     "load": "Contacts frais et qualitatifs ; arrêter à la première réception dégradée.",
+     "each_side": false
+    },
+    {
+     "exercise": "fente_bulgare",
+     "sets": 3,
+     "reps": 10,
+     "rest_s": 60,
+     "tempo": "2-0-1",
+     "load": "Charge modérée laissant 2 à 3 répétitions de réserve (RPE 7).",
+     "each_side": true
+    },
+    {
+     "exercise": "souleve_de_terre_roumain_unilateral",
+     "sets": 3,
+     "reps": 10,
+     "rest_s": 60,
+     "tempo": "2-0-1",
+     "load": "Charge modérée laissant 2 à 3 répétitions de réserve (RPE 7).",
+     "each_side": true
+    },
+    {
+     "exercise": "mollet_unipodal_lestee",
+     "sets": 3,
+     "reps": 15,
+     "rest_s": 45,
+     "tempo": "2-1-2",
+     "load": "Charge modérée laissant 2 à 3 répétitions de réserve (RPE 7).",
+     "each_side": true
+    },
+    {
+     "exercise": "pont_fessier_pied_sureleve",
+     "sets": 3,
+     "reps": 12,
+     "rest_s": 45,
+     "each_side": true
+    },
+    {
+     "exercise": "planche_laterale_jambe_levee",
+     "sets": 3,
+     "reps": 8,
+     "rest_s": 45,
+     "each_side": true
+    }
+   ],
+   "cooldown": [
+    "etirement_mollet",
+    "etirement_quadriceps"
+   ],
+   "notes": [
+    "La pliométrie vient en début de séance (muscles frais) et reste symbolique : 10 contacts environ.",
+    "Si la base de force est récente, rester sur le programme de base une ou deux semaines de plus."
+   ]
+  },
+  {
+   "id": "specifique_excentrique_pliometrie",
+   "kind": "phase",
+   "emphasis": "pliometrie_excentrique",
+   "phase": "specific",
+   "label": "Spécifique — excentrique et pliométrie",
+   "purpose": "Préparer les muscles à la descente et aux appuis rapides : excentrique des quadriceps, des mollets et des ischio-jambiers, pliométrie courte.",
+   "sessions_per_week": {
+    "min": 1,
+    "max": 2
+   },
+   "duration_min": 45,
+   "fatigue": "high",
+   "warmup": [
+    "balancier_jambes",
+    "mobilite_cheville_genou_mur",
+    "pont_fessier"
+   ],
+   "blocks": [
+    {
+     "exercise": "saut_lateral",
+     "sets": 3,
+     "reps": 6,
+     "rest_s": 60,
+     "each_side": true
+    },
+    {
+     "exercise": "fente_sautee_alternee",
+     "sets": 2,
+     "reps": 6,
+     "rest_s": 75,
+     "load": "Si réception hésitante : remplacer par saut squat.",
+     "each_side": true
+    },
+    {
+     "exercise": "rebonds_cheville",
+     "sets": 3,
+     "reps": 10,
+     "rest_s": 45,
+     "each_side": false
+    },
+    {
+     "exercise": "descente_de_marche_excentrique",
+     "sets": 3,
+     "reps": 8,
+     "rest_s": 90,
+     "tempo": "4-0-1",
+     "each_side": true
+    },
+    {
+     "exercise": "mollet_excentrique_marche",
+     "sets": 3,
+     "reps": 8,
+     "rest_s": 75,
+     "tempo": "4-1-1",
+     "each_side": true
+    },
+    {
+     "exercise": "flexion_jambe_glissante",
+     "sets": 3,
+     "reps": 6,
+     "rest_s": 75,
+     "tempo": "4-0-1",
+     "each_side": false
+    },
+    {
+     "exercise": "planche_laterale_jambe_levee",
+     "sets": 2,
+     "reps": 8,
+     "rest_s": 45,
+     "each_side": true
+    }
+   ],
+   "cooldown": [
+    "etirement_mollet",
+    "etirement_quadriceps",
+    "etirement_ischio"
+   ],
+   "notes": [
+    "Fatigue musculaire retardée probable : ne jamais placer cette séance la veille d'une séance de qualité ou d'une sortie longue.",
+    "Une seule séance par semaine suffit pour démarrer ; la deuxième seulement si la première est bien récupérée."
+   ]
+  },
+  {
+   "id": "affutage_entretien",
+   "kind": "phase",
+   "emphasis": "entretien",
+   "phase": "taper",
+   "label": "Affûtage — entretien à faible volume",
+   "purpose": "Garder le niveau de force acquis sans fatigue résiduelle : moins de séries, aucune nouveauté, aucune pliométrie ni excentrique intense.",
+   "sessions_per_week": {
+    "min": 1,
+    "max": 1
+   },
+   "duration_min": 25,
+   "fatigue": "low",
+   "warmup": [
+    "balancier_jambes"
+   ],
+   "blocks": [
+    {
+     "exercise": "squat_poids_du_corps",
+     "sets": 2,
+     "reps": 8,
+     "rest_s": 60,
+     "load": "Facile : RPE 5-6.",
+     "each_side": false
+    },
+    {
+     "exercise": "souleve_de_terre_roumain_unilateral",
+     "sets": 2,
+     "reps": 6,
+     "rest_s": 60,
+     "load": "Facile : RPE 5-6.",
+     "each_side": true
+    },
+    {
+     "exercise": "mollet_unipodal",
+     "sets": 2,
+     "reps": 8,
+     "rest_s": 45,
+     "each_side": true
+    },
+    {
+     "exercise": "pont_fessier_unilateral",
+     "sets": 2,
+     "reps": 8,
+     "rest_s": 45,
+     "each_side": true
+    },
+    {
+     "exercise": "planche_laterale",
+     "sets": 2,
+     "seconds": 30,
+     "rest_s": 30,
+     "each_side": true
+    }
+   ],
+   "cooldown": [
+    "etirement_mollet"
+   ],
+   "notes": [
+    "Dernière séance au moins 2 jours avant la course (règle de placement « faible », approximation du projet) ; plus tôt si l'athlète en ressent encore la fatigue.",
+    "Aucun exercice nouveau pendant l'affûtage ; en cas de fatigue anormale, supprimer la séance."
+   ]
+  },
+  {
+   "id": "recuperation_mobilite",
+   "kind": "phase",
+   "emphasis": "mobilite",
+   "phase": "recovery",
+   "label": "Récupération — mobilité",
+   "purpose": "Entretenir l'amplitude articulaire et relâcher les chaînes sollicitées pendant une période de récupération, sans charge.",
+   "sessions_per_week": {
+    "min": 2,
+    "max": 3
+   },
+   "duration_min": 20,
+   "fatigue": "low",
+   "warmup": [],
+   "blocks": [
+    {
+     "exercise": "mobilite_cheville_genou_mur",
+     "sets": 2,
+     "seconds": 30,
+     "rest_s": 15,
+     "each_side": true
+    },
+    {
+     "exercise": "etirement_mollet",
+     "sets": 2,
+     "seconds": 40,
+     "rest_s": 15,
+     "each_side": true
+    },
+    {
+     "exercise": "etirement_flechisseurs_hanche",
+     "sets": 2,
+     "seconds": 40,
+     "rest_s": 15,
+     "each_side": true
+    },
+    {
+     "exercise": "etirement_ischio",
+     "sets": 2,
+     "seconds": 40,
+     "rest_s": 15,
+     "each_side": true
+    },
+    {
+     "exercise": "pigeon",
+     "sets": 2,
+     "seconds": 45,
+     "rest_s": 15,
+     "each_side": true
+    },
+    {
+     "exercise": "mobilite_90_90",
+     "sets": 2,
+     "seconds": 45,
+     "rest_s": 15,
+     "each_side": false
+    },
+    {
+     "exercise": "rotation_thoracique",
+     "sets": 2,
+     "reps": 8,
+     "rest_s": 15,
+     "each_side": true
+    }
+   ],
+   "cooldown": [],
+   "notes": [
+    "Tension supportable uniquement : jamais de douleur vive ni de rebond.",
+    "Peut se faire le soir, après une séance, ou lors d'un jour de repos."
+   ]
+  },
+  {
+   "id": "usage_descente",
+   "kind": "usage",
+   "use": "descente",
+   "label": "Descente — quadriceps et mollets en excentrique",
+   "purpose": "Préparer les quadriceps, les mollets et les releveurs de pied aux longues descentes (trail) par du travail excentrique progressif.",
+   "phases": [
+    "development",
+    "specific"
+   ],
+   "sessions_per_week": {
+    "min": 1,
+    "max": 2
+   },
+   "duration_min": 35,
+   "fatigue": "high",
+   "warmup": [
+    "balancier_jambes",
+    "mobilite_cheville_genou_mur"
+   ],
+   "blocks": [
+    {
+     "exercise": "chaise_murale",
+     "sets": 3,
+     "seconds": 40,
+     "rest_s": 60,
+     "each_side": false
+    },
+    {
+     "exercise": "squat_excentrique_lent",
+     "sets": 3,
+     "reps": 8,
+     "rest_s": 75,
+     "tempo": "5-1-1",
+     "each_side": false
+    },
+    {
+     "exercise": "descente_de_marche_excentrique",
+     "sets": 3,
+     "reps": 8,
+     "rest_s": 90,
+     "tempo": "4-0-1",
+     "each_side": true
+    },
+    {
+     "exercise": "fente_laterale",
+     "sets": 2,
+     "reps": 8,
+     "rest_s": 60,
+     "each_side": true
+    },
+    {
+     "exercise": "mollet_excentrique_marche",
+     "sets": 3,
+     "reps": 8,
+     "rest_s": 75,
+     "tempo": "4-1-1",
+     "each_side": true
+    },
+    {
+     "exercise": "tibial_elastique",
+     "sets": 2,
+     "reps": 15,
+     "rest_s": 30,
+     "each_side": true
+    }
+   ],
+   "cooldown": [
+    "etirement_quadriceps",
+    "etirement_mollet"
+   ],
+   "notes": [
+    "Courbatures attendues au début : commencer par 1 à 2 séries par exercice.",
+    "Ne pas la placer la veille d'une séance de qualité ou d'une sortie longue."
+   ]
+  },
+  {
+   "id": "usage_cheville",
+   "kind": "usage",
+   "use": "cheville",
+   "label": "Cheville — mollets, soléaire, releveurs et équilibre",
+   "purpose": "Renforcer progressivement la région cheville-mollet et la stabilité unipodale, sans impact.",
+   "phases": [
+    "base",
+    "development",
+    "specific",
+    "taper",
+    "recovery"
+   ],
+   "sessions_per_week": {
+    "min": 2,
+    "max": 3
+   },
+   "duration_min": 25,
+   "fatigue": "low",
+   "warmup": [
+    "mobilite_cheville_genou_mur"
+   ],
+   "blocks": [
+    {
+     "exercise": "mollet_debout",
+     "sets": 2,
+     "reps": 15,
+     "rest_s": 45,
+     "tempo": "2-1-2",
+     "each_side": false
+    },
+    {
+     "exercise": "soleaire_genou_flechi",
+     "sets": 3,
+     "reps": 12,
+     "rest_s": 45,
+     "tempo": "3-1-2",
+     "each_side": true
+    },
+    {
+     "exercise": "mollet_unipodal",
+     "sets": 3,
+     "reps": 10,
+     "rest_s": 60,
+     "tempo": "2-1-2",
+     "each_side": true
+    },
+    {
+     "exercise": "tibial_elastique",
+     "sets": 2,
+     "reps": 15,
+     "rest_s": 30,
+     "each_side": true
+    },
+    {
+     "exercise": "equilibre_unipodal",
+     "sets": 3,
+     "seconds": 30,
+     "rest_s": 30,
+     "each_side": true
+    }
+   ],
+   "cooldown": [
+    "etirement_mollet"
+   ],
+   "notes": [
+    "Aucune douleur au tendon d'Achille pendant ou après l'exercice : sinon réduire l'amplitude puis en parler à un professionnel de santé."
+   ]
+  },
+  {
+   "id": "usage_hanches",
+   "kind": "usage",
+   "use": "hanches",
+   "label": "Hanches et stabilité du bassin",
+   "purpose": "Renforcer les fessiers, les abducteurs de hanche et le gainage latéral pour stabiliser le bassin à l'appui unipodal.",
+   "phases": [
+    "base",
+    "development",
+    "specific",
+    "taper",
+    "recovery"
+   ],
+   "sessions_per_week": {
+    "min": 2,
+    "max": 3
+   },
+   "duration_min": 25,
+   "fatigue": "low",
+   "warmup": [
+    "balancier_jambes",
+    "mobilite_90_90"
+   ],
+   "blocks": [
+    {
+     "exercise": "coquille_elastique",
+     "sets": 2,
+     "reps": 15,
+     "rest_s": 30,
+     "each_side": true
+    },
+    {
+     "exercise": "marche_laterale_elastique",
+     "sets": 3,
+     "reps": 10,
+     "rest_s": 45,
+     "each_side": false
+    },
+    {
+     "exercise": "abduction_allongee_cote",
+     "sets": 2,
+     "reps": 15,
+     "rest_s": 30,
+     "each_side": true
+    },
+    {
+     "exercise": "pont_fessier_unilateral",
+     "sets": 3,
+     "reps": 10,
+     "rest_s": 45,
+     "each_side": true
+    },
+    {
+     "exercise": "extension_hanche_quadrupedie",
+     "sets": 2,
+     "reps": 10,
+     "rest_s": 30,
+     "each_side": true
+    },
+    {
+     "exercise": "planche_laterale",
+     "sets": 3,
+     "seconds": 30,
+     "rest_s": 30,
+     "each_side": true
+    },
+    {
+     "exercise": "insecte_mort",
+     "sets": 2,
+     "reps": 8,
+     "rest_s": 30,
+     "each_side": true
+    }
+   ],
+   "cooldown": [
+    "pigeon",
+    "etirement_flechisseurs_hanche"
+   ],
+   "notes": [
+    "Qualité du geste d'abord : bassin horizontal, aucune compensation du dos."
+   ]
+  },
+  {
+   "id": "usage_pied",
+   "kind": "usage",
+   "use": "pied",
+   "label": "Pied — activation et équilibre",
+   "purpose": "Activer les muscles du pied et travailler l'équilibre unipodal ; faible charge, à pratiquer régulièrement.",
+   "phases": [
+    "base",
+    "development",
+    "specific",
+    "taper",
+    "recovery"
+   ],
+   "sessions_per_week": {
+    "min": 2,
+    "max": 4
+   },
+   "duration_min": 15,
+   "fatigue": "low",
+   "warmup": [],
+   "blocks": [
+    {
+     "exercise": "pied_court",
+     "sets": 3,
+     "reps": 10,
+     "rest_s": 20,
+     "each_side": true
+    },
+    {
+     "exercise": "serviette_orteils",
+     "sets": 2,
+     "reps": 15,
+     "rest_s": 20,
+     "each_side": true
+    },
+    {
+     "exercise": "mollet_debout",
+     "sets": 3,
+     "reps": 12,
+     "rest_s": 45,
+     "tempo": "3-1-1",
+     "each_side": false
+    },
+    {
+     "exercise": "marche_pointes_halteres",
+     "sets": 3,
+     "seconds": 30,
+     "rest_s": 45,
+     "load": "Haltères légers.",
+     "each_side": false
+    },
+    {
+     "exercise": "equilibre_unipodal",
+     "sets": 3,
+     "seconds": 30,
+     "rest_s": 30,
+     "each_side": true
+    }
+   ],
+   "cooldown": [
+    "etirement_mollet"
+   ],
+   "notes": [
+    "Pieds nus ou chaussures minimales à la maison si le revêtement le permet, sans forcer."
+   ]
+  }
+ ]
+}

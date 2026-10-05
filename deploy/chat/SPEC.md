@@ -172,7 +172,10 @@ constant); `--llm anthropic` → chat `claude-sonnet-5-5`, sync `claude-haiku-4-
   `upload_workout(s)`, `upload_course`, `delete_course`, `create_*_workout`, `add_*`,
   `set_*`, `log_*`, `create_custom_food`, `update_custom_food`, `delete_*`,
   `add_or_update_event`, `create_event`, `bulk_create_events`, `update_event`,
-  `delete_event(s)*`, `request_reload`); unknown tool on those servers → ask.
+  `delete_event(s)*`, `request_reload`; intervals fork (#165): every `icu_create_*`,
+  `icu_update_*`, `icu_delete_*`, `icu_bulk_*`, `icu_add_*`, `icu_apply_*`,
+  `icu_duplicate_*`; reads `icu_get_*`/`icu_search_*`/`icu_list_*`, while
+  `icu_download_*` — which writes a local file — asks); unknown tool on those servers → ask.
 - `other:*` → deny. Pre-approved hashes (resume) → allow.
 
 ## Backend adapters (details for agent backends)

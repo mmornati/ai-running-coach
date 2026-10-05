@@ -17,7 +17,7 @@ appel irait à l'encontre de ces mêmes règles.
 
 <div markdown>
 
-<span class="arc-video__meta">En vidéo · Étape 02 · 1 min 11</span>
+<span class="arc-video__meta">En vidéo · Étape 02 · 1 min 19</span>
 
 **[Le réveil du traileur](../video/bilan-matinal/index.html)** — HRV, FC de repos et readiness lues ensemble chaque matin : le verdict, sa raison, et comment régler le bilan.
 

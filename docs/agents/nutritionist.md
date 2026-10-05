@@ -9,7 +9,7 @@
 
 <div markdown>
 
-<span class="arc-video__meta">En vidéo · Étape 08 · 1 min 35</span>
+<span class="arc-video__meta">En vidéo · Étape 08 · 1 min 43</span>
 
 **[Ravito](../video/ravito/index.html)** — Une phrase libre devient des données : le modèle extrait, le script calcule, et ne devine jamais un produit.
 
@@ -59,6 +59,21 @@ Voir [Dépense énergétique modèle](../energie.md) pour une explication compl�
 
 !!! note "Pas de MyFitnessPal"
     Il n'y a **pas** de serveur MCP MyFitnessPal dans cet environnement. Les apports quotidiens proviennent des **rapports manuels** de l'utilisateur en conversation.
+
+### Contexte du cycle menstruel (opt-in, #166)
+
+Seulement si `[health].cycle_tracking` n'est pas `off` et qu'une phase est enregistrée : un mot de contexte sur l'hydratation (côté généreux en phase lutéale par temps chaud), jamais une restriction calorique justifiée par le cycle ; signes de faible disponibilité énergétique → renvoi vers `medical` / un professionnel de santé. Voir [Cycle menstruel](../cycle-menstruel.md).
+
+### Poussée des apports vers Garmin (opt-in, #167)
+
+Seulement si `[nutrition].garmin_sync = "ask"` (défaut `off` : aucune mention) et source Garmin
+(avec intervals.icu : indisponible, dit explicitement). Après un `/log` ou un rapport nutrition,
+l'agent **propose** de pousser l'apport vers le journal alimentaire et l'hydratation de Garmin ;
+`python3 scripts/arc_nutrition_sync.py plan` décide (aliments personnalisés créés une fois puis
+réutilisés, doublons, idempotence), l'agent n'appelle que les outils, après un « oui » explicite
+pour cette poussée, jamais en headless. Trace dans `garmin_pushed`. **Une seule source de vérité par
+jour** : un jour importé depuis Garmin (`intake_source: "garmin"`) n'est jamais repoussé, un jour
+poussé n'est jamais réimporté. Voir [Apports vers Garmin](../nutrition-garmin.md).
 
 ### Catalogues de produits (optionnels)
 

@@ -210,6 +210,11 @@ RELATIVE_DATE_NAME = re.compile(r"^(\d+)d_(.+)$")
 # au moment d'écrire la fixture (voir `fixtures/trail-shape/`).
 TODAY_PLUS_RE = re.compile(r"\{\{TODAY\+(\d+)\}\}")
 
+# `{{WEEK_START+N}}` (#172) : N jours après le lundi de la semaine ISO courante (N = 7 : lundi de la
+# semaine suivante ; N = 8 : son mardi…). Sert un plan de plusieurs semaines À VENIR dont les `week_start`
+# doivent rester de vrais lundis quel que soit le jour du run (voir `fixtures/load-forecast-taper/`).
+WEEK_START_PLUS_RE = re.compile(r"\{\{WEEK_START\+(\d+)\}\}")
+
 
 def _materialize_relative_dates(workspace: Path) -> None:
     today = date.today()
@@ -261,12 +266,16 @@ def _materialize_relative_dates(workspace: Path) -> None:
         except (UnicodeDecodeError, OSError):
             continue
         has_today_plus = TODAY_PLUS_RE.search(content)
-        if not has_today_plus and not any(
+        has_week_plus = WEEK_START_PLUS_RE.search(content)
+        if not has_today_plus and not has_week_plus and not any(
                 tok in content for tok in ("{{TODAY}}", "{{WEEK_START}}", "{{PREV_WEEK_START}}")):
             continue
         if has_today_plus:
             content = TODAY_PLUS_RE.sub(
                 lambda m: (today + timedelta(days=int(m.group(1)))).isoformat(), content)
+        if has_week_plus:
+            content = WEEK_START_PLUS_RE.sub(
+                lambda m: (week_start + timedelta(days=int(m.group(1)))).isoformat(), content)
         content = (content.replace("{{TODAY}}", today_iso)
                    .replace("{{PREV_WEEK_START}}", prev_week_start_iso)
                    .replace("{{WEEK_START}}", week_start_iso))

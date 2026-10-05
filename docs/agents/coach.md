@@ -9,7 +9,7 @@
 
 <div markdown>
 
-<span class="arc-video__meta">En vidéo · Étape 03 · 1 min 31</span>
+<span class="arc-video__meta">En vidéo · Étape 03 · 1 min 46</span>
 
 **[Le plan qui sait dire non](../video/garde-fous/index.html)** — Sept garde-fous calculés relisent la semaine avant son écriture et son envoi au calendrier Garmin : un second avis déterministe et testé.
 
@@ -28,7 +28,10 @@
     équivalent intervals.icu (table de correspondance dans `AGENTS.md`) —
     sauf le push de séances, qui n'est PAS un simple changement de nom
     d'outil : voir [Configuration Intervals.icu](../intervals-setup.md) et le
-    skill `intervals-icu-best-practices`.
+    skill `intervals-icu-best-practices`. Avec `[data].source = "strava"` (#164) : serveur MCP
+    `strava` (table Garmin ↔ Strava dans `AGENTS.md`), lecture seule, **pas de HRV / FC de
+    repos / sommeil / readiness** (dit explicitement, jamais simulé), pas de calendrier ni de
+    push — voir [Configuration Strava](../strava-setup.md).
 
 ## Rôle
 
@@ -59,7 +62,7 @@ L'agent **coach** est l'agent principal du projet. Il est le point d'entrée pou
 
 Pour chaque séance, le coach fournit :
 
-1. **Renforcement** : nom de l'exercice, technique, séries, répétitions, charge, RPE, matériel
+1. **Renforcement** : nom de l'exercice, technique, séries, répétitions, charge, RPE, matériel — les exercices viennent de la **bibliothèque livrée** (`arc_index.py strength`, voir [Renforcement et mobilité](../strength.md)), jamais inventés ; matériel inconnu → le coach demande, programmes marqués « approximation du projet », placement relatif aux séances de qualité ; **douleur déclarée (#192)** : `arc_index.py prevention` — routine douce seulement pour une gêne légère, connue et stable, sinon aucun exercice et consultation ; `medical` décide s'il est activé, sinon le coach applique les règles et dit « ce n'est pas un avis médical » (voir [Prévention ciblée](../strength.md#prevention-ciblee))
 2. **Fractionné** : splits détaillés avec allure, FC et/ou cadence cibles
 3. **Z1/Z2 (aérobie)** : attentes claires (ex. « rester strictement sous 140 bpm »)
 4. **Matériel** : liste explicite pour chaque séance
@@ -72,6 +75,16 @@ Pour chaque séance, le coach fournit :
 - **`warn`/`info` (code 0)** : écriture/push autorisés, la violation est mentionnée brièvement.
 - **Traçabilité obligatoire** : toute séance changée, remplacée ou annulée (garde-fou, bilan matinal, donnée médicale) devient un fichier `planning/YYYY-MM-DD_decision_<slug>.md` — la semaine modifiée est réécrite d'abord, la décision qui la référence ensuite, les deux validés avec `scripts/arc_index.py --validate`.
 
+### Bilan personnel des décisions (#175)
+
+Le coach peut citer ce qui s'est passé après les décisions passées de l'athlète
+(`python3 scripts/arc_index.py decision-effects`, par déclencheur × nature de l'action déduite de
+`before`/`after` × issue : « allègement après bilan matinal : 7 fois, 5 améliorées » ; décisions aux
+fenêtres chevauchantes signalées). Effets **dérivés**, jamais stockés ni écrits dans les fichiers
+de décision. Règles dures : **corrélation, pas causalité** (dit explicitement) ; aucune
+« tendance » sous 5 cas évaluables ; ce bilan n'assouplit **jamais** un garde-fou `block`, une
+décision médicale ni un verdict rouge ; le coach ne recalcule jamais un effet lui-même.
+
 ### Cibles personnelles d'une séance (#60)
 
 Avant de construire le `workout_data` d'un push Garmin, le coach lance
@@ -82,6 +95,32 @@ endurance/récupération, et le D+ attendu (borne basse) pour un travail de côt
 Une cible dont la **valeur** ressort `null` est retirée du DTO Garmin plutôt
 que devinée.
 
+Pour les séances `tempo`/`threshold`/`vo2max`, la même sortie porte `cs_target`
+(#169) : une plage de vitesse en % de la **vitesse critique** de l'athlète,
+**en complément** de la zone FC et seulement si l'ajustement est valide (sinon
+`null` + motif : le coach s'en tient à la zone FC). Le coach cite la qualité de
+l'ajustement, rappelle que l'allure est « équivalent plat » (GAP), et signale —
+sans trancher — un écart de plus de 5 % avec le seuil lactique Garmin. La courbe
+elle-même : `python3 scripts/arc_index.py pace-curve`. Voir
+[Vitesse critique](../vitesse-critique.md).
+
+### Gabarits de périodisation (#189)
+
+Pour un nouveau bloc, le coach part du gabarit qui correspond à l'objectif
+(`python3 scripts/arc_index.py plan-templates --distance-km <D>` ; sans
+gabarit adapté, il construit le bloc comme avant et le dit) puis l'adapte au
+profil, au bilan matinal et à l'historique. Un gabarit est un **point de
+départ** : il ne remplace ni le profil, ni le bilan matinal, ni les
+garde-fous, que chaque semaine écrite passe toujours.
+
+Pour **construire** le bloc, le coach lance
+`python3 scripts/arc_index.py plan-skeleton` (dry run) : squelette semaine par
+semaine depuis la semaine en cours jusqu'à la course (volume tenu, disponibilité
+du profil, garde-fous, forme prévue le jour J). Il le **présente** et
+n'écrit (`--write`) qu'après un « oui » explicite de l'athlète — jamais
+d'écrasement d'une semaine existante —, puis habille les créneaux de séance.
+Voir [Gabarits de périodisation](../plans.md).
+
 ### Score Trail Shape (#63)
 
 `python3 scripts/arc_index.py trail-shape` compare les 8 dernières semaines
@@ -90,6 +129,20 @@ longue sortie, D+ max en une séance, durabilité). Le coach le cite comme **un
 indicateur parmi d'autres** dans les rapports hebdomadaires et les
 validations — jamais un verdict à lui seul, et jamais sans le score/les
 composantes chiffrés.
+
+### Projection de charge jusqu'à la course (#172)
+
+Pour toute question d'affûtage (« serai-je frais le jour J ? ») ou avant d'ajuster
+les dernières semaines d'un bloc, le coach lance
+`python3 scripts/arc_index.py load-forecast` et **cite les chiffres** :
+forme prévue le jour J, semaine du pic de fatigue, ACWR projeté. Pour justifier une
+variante d'affûtage, il écrit les semaines alternatives dans un fichier temporaire et
+compare avec `--compare` (écart de forme prévue le jour J, de pic de fatigue et de
+charge totale). C'est une **estimation à partir du planifié** — même estimateur de
+charge que les garde-fous, aucun second modèle, recalée sur le rapport réel / estimé
+de vos séances passées quand il est mesurable — dite comme telle, avec les semaines
+non planifiées nommées. Elle ne remplace ni le bilan matinal, ni les garde-fous, et
+ne modifie pas le score Trail Shape.
 
 ### Kilométrage des chaussures (#40)
 
@@ -166,6 +219,12 @@ rapports hebdomadaires. Les pistes d'ajustement du profil
 (`suggested_profile_updates`) restent des propositions présentées à
 l'athlète, jamais une écriture silencieuse dans `planning/Runner_Profile.md`.
 
+**Recalibrage des coefficients (#188).** Avec `--calibrate`, le même script
+mesure l'erreur attribuable à la nuit, à la technicité, à la chaleur et à
+l'altitude et **propose** des coefficients personnels (voir
+[le stratège de course](course-strategist.md#recalibrage-des-coefficients-au-debrief-188)) ;
+`[pacing.personal]` n'est écrit qu'après un « oui » explicite de l'athlète.
+
 ### Bilan matinal (HRV + FC de repos + readiness)
 
 - **Le triptyque est indivisible** : avant de valider, maintenir, ajuster ou annuler une séance, les **trois** métriques doivent être récupérées et rapportées — HRV nocturne (`get_hrv_data`), **FC de repos (`get_rhr_day`)** et training readiness (`get_training_readiness`). HRV + readiness sans FC de repos = bilan incomplet.
@@ -192,6 +251,10 @@ l'athlète, jamais une écriture silencieuse dans `planning/Runner_Profile.md`.
 - **Les valeurs limites sont des avertissements** : le seuil est strict (`> +5`), donc exactement +5 ne déclenche pas d'annulation — mais doit être signalé comme tel et recontrôlé le lendemain.
 - **La readiness est un score dérivé, pas une mesure** : fortement pondérée par le sommeil. Vérifier la fenêtre de sommeil enregistrée face à l'heure de coucher déclarée — une montre qui démarre en retard déprime mécaniquement le score de sommeil et la readiness, alors que HRV et FC de repos restent valides.
 - **Moyenne hebdomadaire ≠ nuit dernière** : le statut `UNBALANCED` porte sur la moyenne 7 jours. Rapporter les deux valeurs.
+
+### Contexte du cycle menstruel (opt-in, #166)
+
+Seulement si `[health].cycle_tracking` n'est pas `off` (défaut : **aucune mention, aucun appel**). La phase du jour (Garmin, intervals.icu ou déclarée via `/log`) est ajoutée en **une ligne de contexte** à côté d'une HRV/FC de repos décalée et persistée (`cycle_phase`, `cycle_day`, `cycle_source`) ; elle n'est jamais une règle, jamais un diagnostic, et ne relâche jamais un verdict rouge, un garde-fou ou un signal de blessure. Voir [Cycle menstruel](../cycle-menstruel.md).
 
 ### Récupération cardiaque (HRR)
 
@@ -224,6 +287,7 @@ pourquoi, ou rien du tout en réponse brève.
   3. `planning/Runner_Profile.md` → lieu par défaut
   4. Sinon → demander à l'utilisateur
 - **Sortie par séance** : catégorie météo (🟢/🟡/🟠/🔴), heure optimale, ajustements concrets
+- **Cibles ajustées à la chaleur (#171)** : un jour chaud (> 25 °C) ou 🔴, le coach lance `python3 scripts/arc_workout_targets.py targets --heat --session …` — l'ajustement est déterministe (script, mêmes coefficients que le pacing de course, source unique `scripts/arc_heat.py`), jamais calculé dans le prompt. Endurance / sortie longue : durée conservée, **allure** cible ralentie, **FC inchangée** (la FC prime). Qualité / allure course : créneau frais d'abord, sinon allures abaissées ou séance déplacée ; **jamais d'intensité maintenue en 🔴** (déplacement ou allègement en endurance à la FC proposé, séance d'origine non poussée). Rappel hydratation/sodium relié au taux de sudation (`arc_index.py fueling`). Le motif est cité, tracé dans le bloc `arc` de la semaine (`heat_adjustment`) et dans la séance poussée (allure ajustée + note de chaleur dans la description). Renforcement/indoor : inchangés. Le froid reste hors périmètre à l'entraînement. Sans humidité dans la météo, repli sur la température seule (dit explicitement). Indépendant de `[health].morning_check`.
 
 ### Indices de performance (ITRA / UTMB)
 

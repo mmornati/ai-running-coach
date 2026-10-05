@@ -1,69 +1,69 @@
 WEBVTT
 
 1
-00:00:01.200 --> 00:00:03.690
+00:00:01.200 --> 00:00:03.898
 Stage four: talk to your coach.
 
 2
-00:00:05.100 --> 00:00:09.702
+00:00:05.100 --> 00:00:09.862
 Camille feels drained. In the Coach tab, one sentence is enough.
 
 3
-00:00:09.802 --> 00:00:12.121
+00:00:09.962 --> 00:00:12.324
 Should the threshold still happen?
 
 4
-00:00:12.971 --> 00:00:18.128
+00:00:13.174 --> 00:00:18.728
 The coach answers in the open: every file read, every tool called, shown.
 
 5
-00:00:18.228 --> 00:00:23.448
+00:00:18.828 --> 00:00:24.910
 H R V thirty-eight, resting heart rate fifty-two, readiness thirty-four.
 
 6
-00:00:24.298 --> 00:00:31.076
+00:00:25.760 --> 00:00:32.946
 It suggests easing off: forty-five easy minutes. But nothing reaches Garmin without your approval.
 
 7
-00:00:31.176 --> 00:00:35.181
+00:00:33.046 --> 00:00:37.616
 Camille clicks Apply: session scheduled, decision written.
 
 8
-00:00:36.031 --> 00:00:40.334
+00:00:38.466 --> 00:00:43.084
 And Saturday? The coach keeps the long run, with an early start.
 
 9
-00:00:42.031 --> 00:00:46.932
+00:00:44.466 --> 00:00:49.204
 The coach reads the workspace and Garmin, and writes your Markdown files.
 
 10
-00:00:47.032 --> 00:00:53.852
+00:00:49.304 --> 00:00:56.322
 But any write to Garmin or Intervals.icu waits for your approval. A free shell? Refused.
 
 11
-00:00:54.702 --> 00:01:01.501
+00:00:57.172 --> 00:01:03.398
 The chat stays local: the dashboard listens on 127.0.0.1.
 
 12
-00:01:01.601 --> 00:01:05.691
+00:01:03.498 --> 00:01:08.092
 And spending is capped: one euro per turn, two per day.
 
 13
-00:01:06.541 --> 00:01:09.756
+00:01:08.942 --> 00:01:12.432
 On a phone, the card stays front and centre.
 
 14
-00:01:09.856 --> 00:01:15.077
+00:01:12.532 --> 00:01:17.942
 Unanswered, a notification summarises the change, with no health data.
 
 15
-00:01:15.927 --> 00:01:21.532
+00:01:18.792 --> 00:01:24.850
 An API key, not your subscription: Claude, or OpenRouter with DeepSeek.
 
 16
-00:01:21.632 --> 00:01:25.892
+00:01:24.950 --> 00:01:29.712
 Here, replies are scripted: a demo backend, no cost.
 
 17
-00:01:28.442 --> 00:01:33.257
+00:01:32.262 --> 00:01:36.496
 To go further: the “Chat with the coach” page of the documentation.

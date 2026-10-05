@@ -1,73 +1,73 @@
 WEBVTT
 
 1
-00:00:01.200 --> 00:00:02.709
+00:00:01.200 --> 00:00:03.706
 Étape huit : ravito.
 
 2
-00:00:05.100 --> 00:00:13.563
+00:00:05.100 --> 00:00:13.582
 Camille tape /log, puis une phrase : deux gels et cinq cents millilitres au kilomètre quinze, genou gauche trois sur dix, RPE sept.
 
 3
-00:00:13.663 --> 00:00:15.791
+00:00:13.682 --> 00:00:16.356
 Le modèle y repère cinq morceaux.
 
 4
-00:00:16.641 --> 00:00:20.816
+00:00:17.206 --> 00:00:21.776
 Mais il ne calcule rien : il passe ces entités à un petit script Python.
 
 5
-00:00:20.916 --> 00:00:27.502
+00:00:21.876 --> 00:00:28.822
 Le script cherche chaque produit dans le catalogue de Camille : deux gels, vingt-cinq grammes pièce, cinquante grammes.
 
 6
-00:00:27.602 --> 00:00:31.308
+00:00:28.922 --> 00:00:33.780
 Le modèle extrait, le script calcule. Jamais l'inverse.
 
 7
-00:00:32.158 --> 00:00:35.139
+00:00:34.630 --> 00:00:38.384
 Un produit inconnu ? Deux barres qui se ressemblent ?
 
 8
-00:00:35.239 --> 00:00:40.545
+00:00:38.484 --> 00:00:44.158
 Le coach demande. Il n'invente jamais une valeur, et le reste de la phrase n'attend pas.
 
 9
-00:00:41.395 --> 00:00:45.293
+00:00:45.008 --> 00:00:49.410
 Glucides, liquide et effort rejoignent le fichier de la séance.
 
 10
-00:00:45.393 --> 00:00:47.542
+00:00:49.510 --> 00:00:52.136
 La douleur va dans le dossier santé.
 
 11
-00:00:47.642 --> 00:00:49.897
+00:00:52.236 --> 00:00:54.982
 Rien n'est écrasé ni compté deux fois.
 
 12
-00:00:50.747 --> 00:00:53.045
+00:00:55.832 --> 00:00:59.394
 Trois sur dix : le coach note, c'est tout.
 
 13
-00:00:53.145 --> 00:00:59.560
+00:00:59.494 --> 00:01:06.632
 À sept sur dix, seuil réglable, il recommande de consulter. L'outil ne remplace pas un avis médical.
 
 14
-00:01:00.410 --> 00:01:07.828
+00:01:07.482 --> 00:01:14.500
 Sur les sorties de plus de quatre-vingt-dix minutes, le script retient le meilleur débit réellement avalé : cinquante-six grammes par heure.
 
 15
-00:01:07.928 --> 00:01:14.791
+00:01:14.600 --> 00:01:22.122
 Plus dix de marge : un plafond à soixante-six. Avec les pesées avant et après, il en tire aussi le taux de sudation.
 
 16
-00:01:15.641 --> 00:01:20.200
+00:01:22.972 --> 00:01:27.950
 Le jour J : soixante grammes de glucides par heure, sous le plafond de Camille.
 
 17
-00:01:20.300 --> 00:01:28.572
+00:01:28.050 --> 00:01:35.764
 Après chaque sortie, une ligne compare la dépense Garmin et celle du modèle : alerte au-delà de quinze pour cent. Garmin reste la référence.
 
 18
-00:01:31.122 --> 00:01:34.401
+00:01:38.314 --> 00:01:42.572
 Pour aller plus loin : la page « log » de la documentation.

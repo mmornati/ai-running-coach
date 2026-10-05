@@ -1,34 +1,34 @@
 /* Généré par scripts/video_narration.py — ne pas éditer. */
 window.ARC_TIMING = {
  "en": {
-  "digest": "6c232c21ee7f43ff",
-  "duration": 99.267,
+  "digest": "0555fac332e172d0",
+  "duration": 101.556,
   "scenes": [
    {
     "id": "bib",
     "start": 0.0,
-    "d": 4.6,
+    "d": 4.608,
     "cues": [
      {
       "s": 1.2,
-      "e": 3.355,
+      "e": 4.008,
       "text": "Stage nine: wear and tear."
      }
     ]
    },
    {
     "id": "odometer",
-    "start": 4.6,
-    "d": 11.029,
+    "start": 4.608,
+    "d": 10.594,
     "cues": [
      {
       "s": 0.5,
-      "e": 7.583,
+      "e": 6.98,
       "text": "Each session is credited to a pair: the blue Crête Pro, six hundred and twelve kilometres of seven hundred."
      },
      {
-      "s": 7.933,
-      "e": 10.429,
+      "s": 7.33,
+      "e": 9.994,
       "text": "Retirement: about two weeks away."
      }
     ],
@@ -36,22 +36,22 @@ window.ARC_TIMING = {
    },
    {
     "id": "alert",
-    "start": 15.629,
-    "d": 9.608,
+    "start": 15.202,
+    "d": 10.032,
     "cues": [
      {
       "s": 0.5,
-      "e": 4.404,
+      "e": 4.316,
       "text": "One run pushes the pair past seven hundred kilometres."
      },
      {
-      "s": 4.754,
-      "e": 7.506,
+      "s": 4.666,
+      "e": 7.21,
       "text": "The sync adds it to the notification."
      },
      {
-      "s": 7.856,
-      "e": 9.008,
+      "s": 7.56,
+      "e": 9.432,
       "text": "Once only."
      }
     ],
@@ -59,22 +59,22 @@ window.ARC_TIMING = {
    },
    {
     "id": "protocol",
-    "start": 25.237,
-    "d": 13.128,
+    "start": 25.234,
+    "d": 13.656,
     "cues": [
      {
       "s": 0.5,
-      "e": 4.489,
+      "e": 4.676,
       "text": "Every two hundred kilometres, the coach suggests an inspection."
      },
      {
-      "s": 4.839,
-      "e": 8.189,
+      "s": 5.026,
+      "e": 8.506,
       "text": "Type /inspection: it asks for five views."
      },
      {
-      "s": 8.539,
-      "e": 12.528,
+      "s": 8.856,
+      "e": 13.056,
       "text": "Both soles, profile, heel, upper, and a coin for scale."
      }
     ],
@@ -82,17 +82,17 @@ window.ARC_TIMING = {
    },
    {
     "id": "reading",
-    "start": 38.365,
-    "d": 10.474,
+    "start": 38.89,
+    "d": 10.234,
     "cues": [
      {
       "s": 0.5,
-      "e": 4.937,
+      "e": 4.916,
       "text": "The verdict comes in four colours, justified by what the coach sees."
      },
      {
-      "s": 5.287,
-      "e": 9.874,
+      "s": 5.266,
+      "e": 9.634,
       "text": "Above all, it compares with the previous inspection: the surest signal."
      }
     ],
@@ -100,27 +100,27 @@ window.ARC_TIMING = {
    },
    {
     "id": "hints",
-    "start": 48.839,
-    "d": 12.006,
+    "start": 49.124,
+    "d": 12.23,
     "cues": [
      {
       "s": 0.5,
-      "e": 3.935,
+      "e": 4.196,
       "text": "Worn on the outer heel: a hint of heel strike."
      },
      {
-      "s": 4.285,
-      "e": 5.906,
+      "s": 4.546,
+      "e": 6.418,
       "text": "Never a diagnosis."
      },
      {
-      "s": 6.256,
-      "e": 8.368,
+      "s": 6.768,
+      "e": 9.12,
       "text": "No coin, no millimetres."
      },
      {
-      "s": 8.718,
-      "e": 11.406,
+      "s": 9.47,
+      "e": 11.63,
       "text": "And no stride advice from a photo."
      }
     ],
@@ -128,22 +128,22 @@ window.ARC_TIMING = {
    },
    {
     "id": "measured",
-    "start": 60.845,
-    "d": 11.955,
+    "start": 61.354,
+    "d": 12.744,
     "cues": [
      {
       "s": 0.5,
-      "e": 4.895,
+      "e": 5.228,
       "text": "When the watch measures your stride, the measurement wins over the sole."
      },
      {
-      "s": 5.245,
-      "e": 8.658,
+      "s": 5.578,
+      "e": 9.202,
       "text": "Balance is a gap from fifty percent, never a foot."
      },
      {
-      "s": 9.008,
-      "e": 11.355,
+      "s": 9.552,
+      "e": 12.144,
       "text": "No measurement? The coach says so."
      }
     ],
@@ -151,22 +151,22 @@ window.ARC_TIMING = {
    },
    {
     "id": "kits",
-    "start": 72.8,
-    "d": 11.955,
+    "start": 74.098,
+    "d": 12.384,
     "cues": [
      {
       "s": 0.5,
-      "e": 5.961,
+      "e": 6.092,
       "text": "Beyond shoes, the trail kit has its own thresholds: head torch, bladder, poles."
      },
      {
-      "s": 6.311,
-      "e": 8.039,
+      "s": 6.442,
+      "e": 8.314,
       "text": "Flagged once at sync."
      },
      {
-      "s": 8.389,
-      "e": 11.355,
+      "s": 8.664,
+      "e": 11.784,
       "text": "And before a night run: the head torch battery."
      }
     ],
@@ -174,17 +174,17 @@ window.ARC_TIMING = {
    },
    {
     "id": "career",
-    "start": 84.755,
-    "d": 7.893,
+    "start": 86.482,
+    "d": 8.434,
     "cues": [
      {
       "s": 0.5,
-      "e": 3.38,
+      "e": 3.284,
       "text": "A retired pair gets a career summary."
      },
      {
-      "s": 3.73,
-      "e": 7.293,
+      "s": 3.634,
+      "e": 7.834,
       "text": "Distance, sessions, longest run, last inspection."
      }
     ],
@@ -192,21 +192,26 @@ window.ARC_TIMING = {
    },
    {
     "id": "finish",
-    "start": 92.648,
-    "d": 6.619,
+    "start": 94.916,
+    "d": 6.64,
     "cues": [
      {
       "s": 2.2,
-      "e": 6.019,
+      "e": 6.04,
       "text": "To go further: the “Shoe inspection” documentation page."
      }
     ]
    }
-  ]
+  ],
+  "engine": "edge",
+  "voice": {
+   "voice": "en-US-AndrewMultilingualNeural",
+   "rate": "+0%"
+  }
  },
  "fr": {
-  "digest": "ddb2ff5c6e517a21",
-  "duration": 92.374,
+  "digest": "37d9b8316d3515a7",
+  "duration": 106.924,
   "scenes": [
    {
     "id": "bib",
@@ -215,7 +220,7 @@ window.ARC_TIMING = {
     "cues": [
      {
       "s": 1.2,
-      "e": 2.48,
+      "e": 3.504,
       "text": "Étape neuf : l'usure."
      }
     ]
@@ -223,16 +228,16 @@ window.ARC_TIMING = {
    {
     "id": "odometer",
     "start": 4.6,
-    "d": 9.941,
+    "d": 10.498,
     "cues": [
      {
       "s": 0.5,
-      "e": 6.729,
+      "e": 6.668,
       "text": "Chaque séance est attribuée à une paire : ici la Crête Pro bleue de Camille, six cent douze kilomètres sur sept cents."
      },
      {
-      "s": 7.079,
-      "e": 9.341,
+      "s": 7.018,
+      "e": 9.898,
       "text": "Retraite prévue dans environ deux semaines."
      }
     ],
@@ -240,22 +245,22 @@ window.ARC_TIMING = {
    },
    {
     "id": "alert",
-    "start": 14.541,
-    "d": 8.221,
+    "start": 15.098,
+    "d": 10.032,
     "cues": [
      {
       "s": 0.5,
-      "e": 3.06,
+      "e": 3.596,
       "text": "Une séance fait franchir les sept cents kilomètres."
      },
      {
-      "s": 3.41,
-      "e": 6.269,
+      "s": 3.946,
+      "e": 7.21,
       "text": "La synchronisation l'écrit dans la notification."
      },
      {
-      "s": 6.619,
-      "e": 7.621,
+      "s": 7.56,
+      "e": 9.432,
       "text": "Une seule fois."
      }
     ],
@@ -263,22 +268,22 @@ window.ARC_TIMING = {
    },
    {
     "id": "protocol",
-    "start": 22.762,
-    "d": 11.976,
+    "start": 25.13,
+    "d": 13.944,
     "cues": [
      {
       "s": 0.5,
-      "e": 3.828,
+      "e": 4.172,
       "text": "Tous les deux cents kilomètres, le coach propose une inspection."
      },
      {
-      "s": 4.178,
-      "e": 6.823,
+      "s": 4.522,
+      "e": 7.618,
       "text": "Tapez /inspection : il demande cinq vues."
      },
      {
-      "s": 7.173,
-      "e": 11.376,
+      "s": 7.968,
+      "e": 13.344,
       "text": "Les deux semelles, le profil, l'arrière, la tige, et une pièce pour l'échelle."
      }
     ],
@@ -286,17 +291,17 @@ window.ARC_TIMING = {
    },
    {
     "id": "reading",
-    "start": 34.738,
-    "d": 9.983,
+    "start": 39.074,
+    "d": 10.762,
     "cues": [
      {
       "s": 0.5,
-      "e": 4.489,
+      "e": 4.94,
       "text": "Le verdict tient en quatre couleurs, justifiées par ce que le coach voit."
      },
      {
-      "s": 4.839,
-      "e": 9.383,
+      "s": 5.29,
+      "e": 10.162,
       "text": "Surtout, il compare avec l'inspection précédente : le signal le plus fiable."
      }
     ],
@@ -304,27 +309,27 @@ window.ARC_TIMING = {
    },
    {
     "id": "hints",
-    "start": 44.721,
-    "d": 11.195,
+    "start": 49.836,
+    "d": 13.454,
     "cues": [
      {
       "s": 0.5,
-      "e": 3.785,
+      "e": 4.1,
       "text": "Usé côté extérieur du talon : indice d'une attaque talon."
      },
      {
-      "s": 4.135,
-      "e": 5.522,
+      "s": 4.45,
+      "e": 6.418,
       "text": "Jamais un diagnostic."
      },
      {
-      "s": 5.872,
-      "e": 8.091,
+      "s": 6.768,
+      "e": 9.768,
       "text": "Sans pièce, aucune mesure en millimètres."
      },
      {
-      "s": 8.441,
-      "e": 10.595,
+      "s": 10.118,
+      "e": 12.854,
       "text": "Jamais de conseil de foulée sur une photo."
      }
     ],
@@ -332,22 +337,22 @@ window.ARC_TIMING = {
    },
    {
     "id": "measured",
-    "start": 55.916,
-    "d": 10.611,
+    "start": 63.29,
+    "d": 12.312,
     "cues": [
      {
       "s": 0.5,
-      "e": 3.999,
+      "e": 4.484,
       "text": "Si la montre mesure la foulée, la mesure prime sur la semelle."
      },
      {
-      "s": 4.349,
-      "e": 7.869,
+      "s": 4.834,
+      "e": 8.914,
       "text": "La balance se lit en écart à cinquante pour cent, jamais en pied."
      },
      {
-      "s": 8.219,
-      "e": 10.011,
+      "s": 9.264,
+      "e": 11.712,
       "text": "Pas de mesure : le coach le dit."
      }
     ],
@@ -355,22 +360,22 @@ window.ARC_TIMING = {
    },
    {
     "id": "kits",
-    "start": 66.527,
-    "d": 11.229,
+    "start": 75.602,
+    "d": 13.632,
     "cues": [
      {
       "s": 0.5,
-      "e": 4.511,
+      "e": 5.852,
       "text": "Hors chaussures, le kit trail long a ses seuils : frontale, poche à eau, bâtons."
      },
      {
-      "s": 4.861,
-      "e": 7.335,
+      "s": 6.202,
+      "e": 9.346,
       "text": "Alerte à la synchronisation, une seule fois."
      },
      {
-      "s": 7.685,
-      "e": 10.629,
+      "s": 9.696,
+      "e": 13.032,
       "text": "Et avant une sortie de nuit : la batterie de la frontale."
      }
     ],
@@ -378,17 +383,17 @@ window.ARC_TIMING = {
    },
    {
     "id": "career",
-    "start": 77.756,
-    "d": 7.807,
+    "start": 89.234,
+    "d": 10.138,
     "cues": [
      {
       "s": 0.5,
-      "e": 3.657,
+      "e": 4.58,
       "text": "Une paire retirée ? Le coach écrit son bilan de carrière."
      },
      {
-      "s": 4.007,
-      "e": 7.207,
+      "s": 4.93,
+      "e": 9.538,
       "text": "Kilomètres, séances, plus longue sortie, dernière inspection."
      }
     ],
@@ -396,16 +401,21 @@ window.ARC_TIMING = {
    },
    {
     "id": "finish",
-    "start": 85.563,
-    "d": 6.811,
+    "start": 99.372,
+    "d": 7.552,
     "cues": [
      {
       "s": 2.2,
-      "e": 6.211,
+      "e": 6.952,
       "text": "Pour aller plus loin : la page « Inspection des chaussures » de la documentation."
      }
     ]
    }
-  ]
+  ],
+  "engine": "edge",
+  "voice": {
+   "voice": "fr-FR-RemyMultilingualNeural",
+   "rate": "+0%"
+  }
  }
 };

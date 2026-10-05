@@ -89,13 +89,49 @@ SOURCE="$(toml_get data source garmin)"
 #     (une règle `Edit(…)` couvre tous les outils d'écriture de fichiers, Write compris).
 PYTHON_TOOLS="Bash(python3 scripts/*),Bash(python3 skills/*)"
 PROTECTED_PATHS="Edit(scripts/**),Edit(skills/**),Edit(local/skills/**),Edit(local/agents/**),Edit(.claude/**),Edit(.mcp.json)"
-if [[ "$SOURCE" == "intervals" ]]; then
+if [[ "$SOURCE" == "strava" ]]; then
+    # Source Strava (#164) : serveur MCP communautaire r-huijts/strava-mcp (nom « strava »,
+    # install.sh --source strava). Lecture seule : on autorise tout le serveur, puis on retire
+    # explicitement les trois outils qui agissent — `connect-strava` (ouvre un navigateur et un
+    # port local : personne pour répondre en headless), `disconnect-strava` (efface les jetons) et
+    # `star-segment` (ÉCRITURE côté Strava). Pas de leanproxy (garmin uniquement).
+    CLAUDE_TOOLS="mcp__strava,Agent,Task,Skill,Read,Write,Edit,Glob,Grep,$PYTHON_TOOLS"
+    CLAUDE_DISALLOWED="mcp__strava__connect-strava,mcp__strava__disconnect-strava,mcp__strava__star-segment"
+    CLAUDE_DISALLOWED+=",$PROTECTED_PATHS"
+    SOURCE_LABEL="Strava"
+    AUTH_CMD_HINT="demandez à l'agent (session interactive) d'exécuter l'outil connect-strava avec force=true"
+elif [[ "$SOURCE" == "intervals" ]]; then
     # Outils autorisés en mode non interactif : serveur MCP intervals (tous ses
     # outils), délégation au coach (Agent/Task), skills, lecture/écriture des
     # MD, scripts Python du projet. Rien d'autre. Pas de leanproxy : passerelle
     # garmin uniquement (install.sh refuse déjà --use-leanproxy + --source intervals).
     CLAUDE_TOOLS="mcp__intervals,Agent,Task,Skill,Read,Write,Edit,Glob,Grep,$PYTHON_TOOLS"
-    CLAUDE_DISALLOWED="$PROTECTED_PATHS"
+    # #165 : même règle que pour Garmin — le run headless n'écrit JAMAIS côté intervals.icu
+    # (personne ne peut confirmer). `mcp__intervals` autorise tout le serveur : on retire
+    # ses outils d'écriture (annotation `readOnlyHint: False` dans server.py du fork
+    # hhopke au commit épinglé) et ses téléchargements (`output_path` = écriture d'un
+    # fichier local arbitraire, hors des règles `Edit(…)` ; `fit-download` reste le
+    # chemin du projet). Les anciens noms sans préfixe (eddmann, avant #165) sont
+    # aussi retirés : une installation pas encore mise à jour reste protégée.
+    INTERVALS_WRITE_TOOLS="update_activity update_activity_streams bulk_create_manual_activities"
+    INTERVALS_WRITE_TOOLS+=" delete_activity update_wellness create_event update_event delete_event"
+    INTERVALS_WRITE_TOOLS+=" bulk_create_events bulk_update_event_access bulk_delete_events duplicate_events"
+    INTERVALS_WRITE_TOOLS+=" apply_training_plan create_workout update_workout delete_workout"
+    INTERVALS_WRITE_TOOLS+=" bulk_create_workouts create_workout_folder delete_workout_folder create_gear"
+    INTERVALS_WRITE_TOOLS+=" update_gear delete_gear create_gear_reminder update_gear_reminder"
+    INTERVALS_WRITE_TOOLS+=" update_sport_settings apply_sport_settings create_sport_settings"
+    INTERVALS_WRITE_TOOLS+=" delete_sport_settings add_activity_message create_custom_item"
+    INTERVALS_WRITE_TOOLS+=" update_custom_item delete_custom_item"
+    INTERVALS_WRITE_TOOLS+=" download_activity_file download_fit_file download_gpx_file"
+    CLAUDE_DISALLOWED=""
+    for _tool in $INTERVALS_WRITE_TOOLS; do
+        CLAUDE_DISALLOWED+="mcp__intervals__icu_${_tool},"
+    done
+    # Ancien serveur eddmann : mêmes noms sans préfixe (+ `duplicate_event` au singulier).
+    for _tool in $INTERVALS_WRITE_TOOLS duplicate_event; do
+        CLAUDE_DISALLOWED+="mcp__intervals__${_tool},"
+    done
+    CLAUDE_DISALLOWED+="$PROTECTED_PATHS"
     SOURCE_LABEL="Intervals.icu"
     AUTH_CMD_HINT="(cd \"$HOME/.config/ai-running-coach/intervals-icu-mcp\" && intervals-icu-mcp-auth)"
 else
@@ -114,6 +150,11 @@ else
     CLAUDE_DISALLOWED+=",mcp__garmin__schedule_workouts,mcp__garmin__schedule_week,mcp__garmin__upload_workout"
     CLAUDE_DISALLOWED+=",mcp__garmin__create_strength_workout,mcp__garmin__delete_workout"
     CLAUDE_DISALLOWED+=",mcp__garmin__unschedule_workout,mcp__garmin__unschedule_workouts,mcp__garmin__upload_course"
+    # #167 : idem pour le journal alimentaire et l'hydratation (poussée des apports, opt-in
+    # `[nutrition].garmin_sync`) — jamais d'écriture nutrition sans le « oui » de l'athlète.
+    CLAUDE_DISALLOWED+=",mcp__garmin__log_food,mcp__garmin__log_custom_food,mcp__garmin__create_custom_food"
+    CLAUDE_DISALLOWED+=",mcp__garmin__update_custom_food,mcp__garmin__upsert_and_log,mcp__garmin__delete_food_log"
+    CLAUDE_DISALLOWED+=",mcp__garmin__add_hydration_data"
     CLAUDE_DISALLOWED+=",$PROTECTED_PATHS"
     SOURCE_LABEL="Garmin"
     AUTH_CMD_HINT="uv run garmin-mcp-auth"
@@ -207,6 +248,11 @@ for name, spec in servers.items():
     mcp[name] = entry
     for prefix in WRITE_PREFIXES:
         permission["%s_%s*" % (name, prefix)] = "deny"
+    if name.lower().startswith("strava"):
+        # Strava (#164) : outils de r-huijts/strava-mcp qui AGISSENT (noms à tirets, hors des
+        # préfixes ci-dessus) : connexion OAuth (navigateur), déconnexion, écriture Strava.
+        for tool in ("connect-strava", "disconnect-strava", "star-segment"):
+            permission["%s_%s" % (name, tool)] = "deny"
     if name == "leanproxy":
         # Passerelle : les outils appeles a travers elle echappent aux motifs ci-dessus.
         permission["leanproxy_*"] = "deny"
@@ -345,7 +391,7 @@ detect_provider_failure() {
     local err="$1"
     PROVIDER_FAILURE=""
     [[ -n "$err" ]] || return 1
-    if printf '%s' "$err" | grep -qiE 'garmin|intervals'; then
+    if printf '%s' "$err" | grep -qiE 'garmin|intervals|strava'; then
         return 1
     fi
     if printf '%s' "$err" | grep -qiE '(^|[^0-9])402([^0-9]|$)|insufficient (credits|funds)|payment required|credit balance|requires more credits|out of credits'; then
@@ -534,6 +580,22 @@ notify() {
     "$NOTIFY" --title "$title" --priority "$priority" --tags "$tags" "$*" || warn "Notification non envoyée."
 }
 
+# Telegram (#174) : résumé du run + boutons de retour en un geste (séance faite, RPE, douleur).
+# ADDITIF à ntfy (les deux peuvent être actifs) et jamais bloquant : un échec Telegram ne doit
+# ni faire échouer la synchronisation ni masquer le push ntfy. Sans modèle ni clé d'API.
+telegram_summary() {
+    local title="$1" priority="$2"
+    shift 2
+    [[ "$(toml_get telegram enabled false)" == "true" && "$(toml_get telegram send_summary true)" == "true" ]] || return 0
+    if [[ "$DRY_RUN" -eq 1 ]]; then
+        printf '%s\n' "${C_YELLOW}[dry-run]${C_RESET} arc_telegram.py send-summary --title \"$title\" — $*"
+        return 0
+    fi
+    printf '%s' "$*" | python3 "$ARC_ENGINE_ROOT/scripts/arc_telegram.py" send-summary \
+        --workspace "$ARC_WORKSPACE" --title "$title" --priority "$priority" >>"$LOG_FILE" 2>&1 \
+        || warn "Résumé Telegram non envoyé (voir $LOG_FILE)."
+}
+
 # =============================================================================
 # Alerte d'expiration des tokens Garmin (#32)
 #
@@ -566,7 +628,7 @@ notify() {
 TOKEN_ALERT_SENT_THIS_RUN=0
 
 check_token_alert() {
-    # Garmin uniquement (#68) : intervals-icu-mcp n'a pas d'échéance de token
+    # Garmin uniquement (#68, #164) : intervals-icu-mcp et Strava n'ont pas d'échéance de token lisible ici
     # comparable (clé API + ID athlète, pas d'OAuth à durée limitée) —
     # `coach_doctor.py --check garmin_token` n'a d'ailleurs aucun sens à lire
     # ici pour cette source. Skip explicite, jamais une fausse alerte Garmin.
@@ -725,9 +787,16 @@ detect_auth_failure() {
     AUTH_FAILURE_KIND=""
     AUTH_FAILURE_LINE=""
     run_log="$(awk '/^===== /{buf=""} {buf = buf $0 ORS} END{printf "%s", buf}' "$LOG_FILE" 2>/dev/null)"
-    if [[ "$SOURCE" == "intervals" ]]; then
+    if [[ "$SOURCE" == "strava" ]]; then
+        # Textes réels du serveur r-huijts/strava-mcp (src/stravaClient.ts, commit épinglé par
+        # install.sh) : « Failed to refresh Strava access token » et « Missing refresh
+        # credentials. Please connect your Strava account first… » ; « Request failed with status
+        # code 401 » est le message standard d'axios, que ce serveur relaie.
+        raw_pattern='failed to refresh strava access token|missing refresh credentials|request failed with status code 401'
+        erreur_pattern='^ERREUR.*(connect-strava|jetons? strava|strava.*(expir|invalid|refus)|401)'
+    elif [[ "$SOURCE" == "intervals" ]]; then
         # Texte réel de `ICUAPIError` (intervals_icu_mcp/client.py, vérifié
-        # contre eddmann/intervals-icu-mcp) pour un 401 : "Unauthorized. Check
+        # contre hhopke/intervals-icu-mcp, identique chez eddmann) pour un 401 : "Unauthorized. Check
         # your API key and athlete ID.", restitué tel quel par ResponseBuilder.
         raw_pattern='unauthorized\. check your api key and athlete id'
         erreur_pattern='^ERREUR.*(intervals-icu-mcp-auth|cl[ée] api|athlete id|401)'
@@ -762,7 +831,7 @@ try:
 except (OSError, ValueError, AttributeError):
     sys.exit(1)
 # Serveur direct : « garmin » ou tout nom commençant par « intervals » (Intervals_icu, intervals-icu…), sans tenir compte de la casse.
-direct = [n for n in servers if n.lower() == "garmin" or n.lower().startswith("intervals")]
+direct = [n for n in servers if n.lower() == "garmin" or n.lower().startswith(("intervals", "strava"))]
 sys.exit(0 if "leanproxy" in servers and not direct else 1)
 ' "$MCP_CONFIG"
 }
@@ -975,6 +1044,7 @@ main() {
         priority=4
     fi
     notify "$title" "$priority" "$tags" "$resume"
+    telegram_summary "$title" "$priority" "$resume"
 }
 
 main "$@"

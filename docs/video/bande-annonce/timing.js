@@ -1,34 +1,34 @@
 /* Généré par scripts/video_narration.py — ne pas éditer. */
 window.ARC_TIMING = {
  "en": {
-  "digest": "98aa2bd369d1d5ab",
-  "duration": 92.773,
+  "digest": "e9ac821eb15e38c1",
+  "duration": 94.178,
   "scenes": [
    {
     "id": "intro",
     "start": 0.0,
-    "d": 6.3,
+    "d": 6.372,
     "cues": [
      {
       "s": 0.9,
-      "e": 5.7,
+      "e": 5.772,
       "text": "ai-running-coach: your trail training staff, right inside your editor."
      }
     ]
    },
    {
     "id": "problem",
-    "start": 6.3,
-    "d": 8.447,
+    "start": 6.372,
+    "d": 9.418,
     "cues": [
      {
       "s": 0.5,
-      "e": 5.961,
+      "e": 6.596,
       "text": "Your watch measures everything: sleep, heart rate variability, pace, elevation."
      },
      {
-      "s": 6.311,
-      "e": 7.847,
+      "s": 6.946,
+      "e": 8.818,
       "text": "But who connects the dots?"
      }
     ],
@@ -36,12 +36,12 @@ window.ARC_TIMING = {
    },
    {
     "id": "arch",
-    "start": 14.747,
-    "d": 9.249,
+    "start": 15.79,
+    "d": 8.972,
     "cues": [
      {
       "s": 0.5,
-      "e": 8.649,
+      "e": 8.372,
       "text": "The coach reads your Garmin data, or Intervals.icu, and writes everything as Markdown, inside your IDE."
      }
     ],
@@ -49,17 +49,17 @@ window.ARC_TIMING = {
    },
    {
     "id": "staff",
-    "start": 23.996,
-    "d": 9.471,
+    "start": 24.762,
+    "d": 9.298,
     "cues": [
      {
       "s": 0.5,
-      "e": 6.431,
+      "e": 6.476,
       "text": "Four specialists work together: coach, race strategist, sports doctor and nutritionist."
      },
      {
-      "s": 6.781,
-      "e": 8.871,
+      "s": 6.826,
+      "e": 8.698,
       "text": "Keep only the ones you need."
      }
     ],
@@ -67,17 +67,17 @@ window.ARC_TIMING = {
    },
    {
     "id": "morning",
-    "start": 33.467,
-    "d": 11.562,
+    "start": 34.06,
+    "d": 12.01,
     "cues": [
      {
       "s": 0.5,
-      "e": 7.497,
+      "e": 7.868,
       "text": "Every morning, three signals decide the session. Today they're in the red: threshold becomes an easy run."
      },
      {
-      "s": 7.847,
-      "e": 10.962,
+      "s": 8.218,
+      "e": 11.41,
       "text": "And /why gives the reason, never made up."
      }
     ],
@@ -85,17 +85,17 @@ window.ARC_TIMING = {
    },
    {
     "id": "plan",
-    "start": 45.029,
-    "d": 10.431,
+    "start": 46.07,
+    "d": 10.402,
     "cues": [
      {
       "s": 0.5,
-      "e": 4.105,
+      "e": 4.124,
       "text": "The week's plan goes through seven computed guardrails."
      },
      {
-      "s": 4.455,
-      "e": 9.831,
+      "s": 4.474,
+      "e": 9.802,
       "text": "Two hard days in a row? Hills move to Thursday, then everything goes to your watch."
      }
     ],
@@ -103,12 +103,12 @@ window.ARC_TIMING = {
    },
    {
     "id": "race",
-    "start": 55.46,
-    "d": 9.4,
+    "start": 56.472,
+    "d": 9.716,
     "cues": [
      {
       "s": 0.5,
-      "e": 8.585,
+      "e": 9.116,
       "text": "On race day, your course is split segment by segment: paces from your own model, three scenarios, and the fuelling to match."
      }
     ],
@@ -116,17 +116,17 @@ window.ARC_TIMING = {
    },
    {
     "id": "trace",
-    "start": 64.86,
-    "d": 10.005,
+    "start": 66.188,
+    "d": 10.258,
     "cues": [
      {
       "s": 0.5,
-      "e": 3.145,
+      "e": 2.852,
       "text": "Everything stays yours, in Markdown."
      },
      {
-      "s": 3.495,
-      "e": 9.405,
+      "s": 3.202,
+      "e": 9.658,
       "text": "A disposable SQLite index feeds a local dashboard: fitness, fatigue, form."
      }
     ],
@@ -134,12 +134,12 @@ window.ARC_TIMING = {
    },
    {
     "id": "pocket",
-    "start": 74.865,
-    "d": 8.908,
+    "start": 76.446,
+    "d": 8.732,
     "cues": [
      {
       "s": 0.5,
-      "e": 8.308,
+      "e": 8.132,
       "text": "And the coach follows you everywhere: automatic sync, a push notification, and short commands that get straight to the point."
      }
     ],
@@ -147,53 +147,58 @@ window.ARC_TIMING = {
    },
    {
     "id": "outro",
-    "start": 83.773,
+    "start": 85.178,
     "d": 9.0,
     "cues": [
      {
       "s": 0.5,
-      "e": 5.044,
+      "e": 5.444,
       "text": "One clone, one install, a short interview with /coach-setup…"
      },
      {
-      "s": 5.6,
-      "e": 7.371,
+      "s": 5.794,
+      "e": 7.666,
       "text": "Ready to run smarter?"
      }
     ],
     "chapter": "Let's go"
    }
-  ]
+  ],
+  "engine": "edge",
+  "voice": {
+   "voice": "en-US-AndrewMultilingualNeural",
+   "rate": "+0%"
+  }
  },
  "fr": {
-  "digest": "acdc68baa00fd0d6",
-  "duration": 88.867,
+  "digest": "d809a0d3746679f6",
+  "duration": 94.83,
   "scenes": [
    {
     "id": "intro",
     "start": 0.0,
-    "d": 6.3,
+    "d": 6.708,
     "cues": [
      {
       "s": 0.9,
-      "e": 5.7,
+      "e": 6.108,
       "text": "ai-running-coach : votre staff d'entraînement trail, directement dans votre éditeur."
      }
     ]
    },
    {
     "id": "problem",
-    "start": 6.3,
-    "d": 7.4,
+    "start": 6.708,
+    "d": 9.01,
     "cues": [
      {
       "s": 0.5,
-      "e": 4.873,
+      "e": 6.188,
       "text": "Votre montre mesure tout : sommeil, variabilité cardiaque, allure, dénivelé."
      },
      {
-      "s": 5.223,
-      "e": 6.461,
+      "s": 6.538,
+      "e": 8.41,
       "text": "Mais qui relie les points ?"
      }
     ],
@@ -201,12 +206,12 @@ window.ARC_TIMING = {
    },
    {
     "id": "arch",
-    "start": 13.7,
+    "start": 15.718,
     "d": 8.4,
     "cues": [
      {
       "s": 0.5,
-      "e": 6.644,
+      "e": 7.004,
       "text": "Le coach lit vos données Garmin, ou Intervals.icu, et écrit tout en Markdown, dans votre IDE."
      }
     ],
@@ -214,17 +219,17 @@ window.ARC_TIMING = {
    },
    {
     "id": "staff",
-    "start": 22.1,
-    "d": 9.365,
+    "start": 24.118,
+    "d": 9.994,
     "cues": [
      {
       "s": 0.5,
-      "e": 6.623,
+      "e": 6.956,
       "text": "Quatre spécialistes travaillent ensemble : coach, stratège de course, médecin du sport et nutritionniste."
      },
      {
-      "s": 6.973,
-      "e": 8.765,
+      "s": 7.306,
+      "e": 9.394,
       "text": "Gardez seulement ceux qu'il vous faut."
      }
     ],
@@ -232,17 +237,17 @@ window.ARC_TIMING = {
    },
    {
     "id": "morning",
-    "start": 31.465,
-    "d": 11.391,
+    "start": 34.112,
+    "d": 12.706,
     "cues": [
      {
       "s": 0.5,
-      "e": 7.156,
+      "e": 8.132,
       "text": "Chaque matin, trois signaux décident de la séance. Ce matin, ils sont au rouge : le seuil devient une endurance douce."
      },
      {
-      "s": 7.506,
-      "e": 10.791,
+      "s": 8.482,
+      "e": 12.106,
       "text": "Et la commande /why donne la raison, sans rien inventer."
      }
     ],
@@ -250,17 +255,17 @@ window.ARC_TIMING = {
    },
    {
     "id": "plan",
-    "start": 42.856,
-    "d": 10.0,
+    "start": 46.818,
+    "d": 10.402,
     "cues": [
      {
       "s": 0.5,
-      "e": 3.551,
+      "e": 3.98,
       "text": "Le plan de la semaine passe par sept garde-fous calculés."
      },
      {
-      "s": 3.901,
-      "e": 8.509,
+      "s": 4.33,
+      "e": 9.802,
       "text": "Deux séances dures d'affilée ? Les côtes glissent à jeudi, puis tout part sur votre montre."
      }
     ],
@@ -268,12 +273,12 @@ window.ARC_TIMING = {
    },
    {
     "id": "race",
-    "start": 52.856,
-    "d": 9.463,
+    "start": 57.22,
+    "d": 9.476,
     "cues": [
      {
       "s": 0.5,
-      "e": 8.863,
+      "e": 8.876,
       "text": "Le jour J, votre course est découpée segment par segment : allures tirées de votre propre modèle, trois scénarios, et le ravitaillement qui va avec."
      }
     ],
@@ -281,17 +286,17 @@ window.ARC_TIMING = {
    },
    {
     "id": "trace",
-    "start": 62.319,
-    "d": 8.597,
+    "start": 66.696,
+    "d": 10.234,
     "cues": [
      {
       "s": 0.5,
-      "e": 2.207,
+      "e": 2.972,
       "text": "Tout reste chez vous, en Markdown."
      },
      {
-      "s": 2.557,
-      "e": 7.997,
+      "s": 3.322,
+      "e": 9.634,
       "text": "Un index SQLite jetable alimente un tableau de bord local : condition, fatigue, forme."
      }
     ],
@@ -299,12 +304,12 @@ window.ARC_TIMING = {
    },
    {
     "id": "pocket",
-    "start": 70.916,
-    "d": 8.951,
+    "start": 76.93,
+    "d": 8.9,
     "cues": [
      {
       "s": 0.5,
-      "e": 8.351,
+      "e": 8.3,
       "text": "Et le coach vous suit partout : synchronisation automatique, notification sur le téléphone, et des commandes courtes pour aller à l'essentiel."
      }
     ],
@@ -312,22 +317,27 @@ window.ARC_TIMING = {
    },
    {
     "id": "outro",
-    "start": 79.867,
+    "start": 85.83,
     "d": 9.0,
     "cues": [
      {
       "s": 0.5,
-      "e": 4.724,
+      "e": 5.252,
       "text": "Un clone, une installation, un court entretien avec /coach-setup…"
      },
      {
-      "s": 5.6,
-      "e": 7.051,
+      "s": 5.602,
+      "e": 7.474,
       "text": "Prêt à courir plus malin ?"
      }
     ],
     "chapter": "C'est parti"
    }
-  ]
+  ],
+  "engine": "edge",
+  "voice": {
+   "voice": "fr-FR-RemyMultilingualNeural",
+   "rate": "+0%"
+  }
  }
 };

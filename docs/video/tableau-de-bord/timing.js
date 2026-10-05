@@ -1,8 +1,8 @@
 /* Généré par scripts/video_narration.py — ne pas éditer. */
 window.ARC_TIMING = {
  "en": {
-  "digest": "00fed8d8dcc134af",
-  "duration": 84.998,
+  "digest": "637c191f65dfdb88",
+  "duration": 86.218,
   "scenes": [
    {
     "id": "bib",
@@ -11,7 +11,7 @@ window.ARC_TIMING = {
     "cues": [
      {
       "s": 1.2,
-      "e": 3.461,
+      "e": 3.768,
       "text": "Stage five: the owner's tour."
      }
     ]
@@ -19,21 +19,21 @@ window.ARC_TIMING = {
    {
     "id": "launch",
     "start": 4.6,
-    "d": 16.712,
+    "d": 16.584,
     "cues": [
      {
       "s": 0.5,
-      "e": 4.276,
+      "e": 4.604,
       "text": "The dashboard is one command: dashboard.sh."
      },
      {
-      "s": 4.626,
-      "e": 11.879,
+      "s": 4.954,
+      "e": 11.746,
       "text": "It opens on 127.0.0.1, read-only, built from your Markdown files."
      },
      {
-      "s": 12.229,
-      "e": 16.112,
+      "s": 12.096,
+      "e": 15.984,
       "text": "A file written by the coach shows up within thirty seconds."
      }
     ],
@@ -41,17 +41,17 @@ window.ARC_TIMING = {
    },
    {
     "id": "today",
-    "start": 21.312,
-    "d": 8.191,
+    "start": 21.184,
+    "d": 8.794,
     "cues": [
      {
       "s": 0.5,
-      "e": 3.081,
+      "e": 3.188,
       "text": "Today: do I run, ease off or rest?"
      },
      {
-      "s": 3.431,
-      "e": 7.591,
+      "s": 3.538,
+      "e": 8.194,
       "text": "Verdict and reason, morning check, today's plan with its weather."
      }
     ],
@@ -59,17 +59,17 @@ window.ARC_TIMING = {
    },
    {
     "id": "week",
-    "start": 29.503,
-    "d": 9.45,
+    "start": 29.978,
+    "d": 9.37,
     "cues": [
      {
       "s": 0.5,
-      "e": 2.505,
+      "e": 2.444,
       "text": "Week: planned versus done."
      },
      {
-      "s": 2.855,
-      "e": 8.85,
+      "s": 2.794,
+      "e": 8.77,
       "text": "Tuesday's threshold is cancelled, hills slide to Thursday: rule seven explains why."
      }
     ],
@@ -77,17 +77,17 @@ window.ARC_TIMING = {
    },
    {
     "id": "form",
-    "start": 38.953,
-    "d": 8.533,
+    "start": 39.348,
+    "d": 8.698,
     "cues": [
      {
       "s": 0.5,
-      "e": 3.679,
+      "e": 3.908,
       "text": "Fitness and load: condition, fatigue, form."
      },
      {
-      "s": 4.029,
-      "e": 7.933,
+      "s": 4.258,
+      "e": 8.098,
       "text": "And Trail Shape: does training cover what the race will demand?"
      }
     ],
@@ -95,17 +95,17 @@ window.ARC_TIMING = {
    },
    {
     "id": "session",
-    "start": 47.486,
-    "d": 8.0,
+    "start": 48.046,
+    "d": 8.722,
     "cues": [
      {
       "s": 0.5,
-      "e": 3.679,
+      "e": 4.388,
       "text": "Sessions: Sunday's run, eighteen kilometres."
      },
      {
-      "s": 4.029,
-      "e": 6.973,
+      "s": 4.738,
+      "e": 8.122,
       "text": "Detected climbs, then kilometre splits."
      }
     ],
@@ -113,17 +113,17 @@ window.ARC_TIMING = {
    },
    {
     "id": "decisions",
-    "start": 55.486,
+    "start": 56.768,
     "d": 8.0,
     "cues": [
      {
       "s": 0.5,
-      "e": 3.209,
+      "e": 3.452,
       "text": "Decisions: why did this session change?"
      },
      {
-      "s": 3.559,
-      "e": 6.674,
+      "s": 3.802,
+      "e": 7.306,
       "text": "Each entry shows before, after and sources."
      }
     ],
@@ -131,12 +131,12 @@ window.ARC_TIMING = {
    },
    {
     "id": "more",
-    "start": 63.486,
+    "start": 64.768,
     "d": 7.0,
     "cues": [
      {
       "s": 0.5,
-      "e": 4.575,
+      "e": 5.876,
       "text": "And also: health, nutrition, reports, performance, calendar."
      }
     ],
@@ -144,17 +144,17 @@ window.ARC_TIMING = {
    },
    {
     "id": "mobile",
-    "start": 70.486,
-    "d": 8.0,
+    "start": 71.768,
+    "d": 8.074,
     "cues": [
      {
       "s": 0.5,
-      "e": 2.612,
+      "e": 2.372,
       "text": "It all fits on a phone too."
      },
      {
-      "s": 2.962,
-      "e": 7.229,
+      "s": 2.722,
+      "e": 7.474,
       "text": "Behind a reverse proxy, in Docker, the workspace stays read-only."
      }
     ],
@@ -162,52 +162,57 @@ window.ARC_TIMING = {
    },
    {
     "id": "finish",
-    "start": 78.486,
-    "d": 6.512,
+    "start": 79.842,
+    "d": 6.376,
     "cues": [
      {
       "s": 2.2,
-      "e": 5.912,
+      "e": 5.776,
       "text": "To go further: the “Views” page of the documentation."
      }
     ]
    }
-  ]
+  ],
+  "engine": "edge",
+  "voice": {
+   "voice": "en-US-AndrewMultilingualNeural",
+   "rate": "+0%"
+  }
  },
  "fr": {
-  "digest": "c2f8ab9298161ec5",
-  "duration": 81.608,
+  "digest": "9bc823258a40e06a",
+  "duration": 88.674,
   "scenes": [
    {
     "id": "bib",
     "start": 0.0,
-    "d": 4.6,
+    "d": 4.824,
     "cues": [
      {
       "s": 1.2,
-      "e": 3.333,
+      "e": 4.224,
       "text": "Étape cinq : le tour du propriétaire."
      }
     ]
    },
    {
     "id": "launch",
-    "start": 4.6,
-    "d": 15.283,
+    "start": 4.824,
+    "d": 15.744,
     "cues": [
      {
       "s": 0.5,
-      "e": 4.041,
+      "e": 4.604,
       "text": "Le tableau de bord tient en une commande : dashboard.sh."
      },
      {
-      "s": 4.391,
-      "e": 11.09,
+      "s": 4.954,
+      "e": 11.29,
       "text": "Il s'ouvre sur cent vingt-sept point zéro point zéro point un, en lecture seule, construit depuis vos fichiers Markdown."
      },
      {
-      "s": 11.44,
-      "e": 14.683,
+      "s": 11.64,
+      "e": 15.144,
       "text": "Un fichier écrit par le coach apparaît en trente secondes."
      }
     ],
@@ -215,17 +220,17 @@ window.ARC_TIMING = {
    },
    {
     "id": "today",
-    "start": 19.883,
-    "d": 8.0,
+    "start": 20.568,
+    "d": 9.538,
     "cues": [
      {
       "s": 0.5,
-      "e": 2.996,
+      "e": 3.956,
       "text": "Aujourd'hui : je cours, j'allège ou je me repose ?"
      },
      {
-      "s": 3.346,
-      "e": 7.186,
+      "s": 4.306,
+      "e": 8.938,
       "text": "Verdict et raison, bilan du matin, programme du jour avec sa météo."
      }
     ],
@@ -233,17 +238,17 @@ window.ARC_TIMING = {
    },
    {
     "id": "week",
-    "start": 27.883,
-    "d": 8.042,
+    "start": 30.106,
+    "d": 9.298,
     "cues": [
      {
       "s": 0.5,
-      "e": 2.271,
+      "e": 3.284,
       "text": "Semaine : le prévu face au fait."
      },
      {
-      "s": 2.621,
-      "e": 7.442,
+      "s": 3.634,
+      "e": 8.698,
       "text": "Le seuil de mardi est annulé, les côtes glissent à jeudi : la règle sept l'explique."
      }
     ],
@@ -251,17 +256,17 @@ window.ARC_TIMING = {
    },
    {
     "id": "form",
-    "start": 35.925,
-    "d": 8.0,
+    "start": 39.404,
+    "d": 9.706,
     "cues": [
      {
       "s": 0.5,
-      "e": 3.124,
+      "e": 4.532,
       "text": "Forme et charge : condition, fatigue, forme."
      },
      {
-      "s": 3.474,
-      "e": 7.314,
+      "s": 4.882,
+      "e": 9.106,
       "text": "Et Trail Shape : la préparation couvre-t-elle ce que la course exigera ?"
      }
     ],
@@ -269,17 +274,17 @@ window.ARC_TIMING = {
    },
    {
     "id": "session",
-    "start": 43.925,
-    "d": 8.0,
+    "start": 49.11,
+    "d": 8.722,
     "cues": [
      {
       "s": 0.5,
-      "e": 3.38,
+      "e": 4.58,
       "text": "Séances : la sortie de dimanche, dix-huit kilomètres."
      },
      {
-      "s": 3.73,
-      "e": 6.183,
+      "s": 4.93,
+      "e": 8.122,
       "text": "Montées détectées, puis splits au kilomètre."
      }
     ],
@@ -287,17 +292,17 @@ window.ARC_TIMING = {
    },
    {
     "id": "decisions",
-    "start": 51.925,
+    "start": 57.832,
     "d": 8.0,
     "cues": [
      {
       "s": 0.5,
-      "e": 3.145,
+      "e": 3.668,
       "text": "Décisions : pourquoi cette séance a-t-elle changé ?"
      },
      {
-      "s": 3.495,
-      "e": 6.055,
+      "s": 4.018,
+      "e": 7.354,
       "text": "Chaque fiche montre l'avant, l'après et les sources."
      }
     ],
@@ -305,12 +310,12 @@ window.ARC_TIMING = {
    },
    {
     "id": "more",
-    "start": 59.925,
+    "start": 65.832,
     "d": 7.0,
     "cues": [
      {
       "s": 0.5,
-      "e": 4.105,
+      "e": 6.212,
       "text": "Et aussi : santé, nutrition, rapports, performance, calendrier."
      }
     ],
@@ -318,17 +323,17 @@ window.ARC_TIMING = {
    },
    {
     "id": "mobile",
-    "start": 66.925,
-    "d": 8.0,
+    "start": 72.832,
+    "d": 8.698,
     "cues": [
      {
       "s": 0.5,
-      "e": 2.207,
+      "e": 2.756,
       "text": "Tout tient aussi sur un téléphone."
      },
      {
-      "s": 2.557,
-      "e": 7.079,
+      "s": 3.106,
+      "e": 8.098,
       "text": "Derrière un reverse proxy, en Docker, le workspace reste en lecture seule."
      }
     ],
@@ -336,16 +341,21 @@ window.ARC_TIMING = {
    },
    {
     "id": "finish",
-    "start": 74.925,
-    "d": 6.683,
+    "start": 81.53,
+    "d": 7.144,
     "cues": [
      {
       "s": 2.2,
-      "e": 6.083,
+      "e": 6.544,
       "text": "Pour aller plus loin : la page consacrée aux vues, dans la documentation."
      }
     ]
    }
-  ]
+  ],
+  "engine": "edge",
+  "voice": {
+   "voice": "fr-FR-RemyMultilingualNeural",
+   "rate": "+0%"
+  }
  }
 };

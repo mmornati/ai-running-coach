@@ -1,0 +1,20 @@
+# Catégories des notes de release générées par GitHub (`gh release create
+# --generate-notes`, voir workflows/release.yml). Une PR va dans la PREMIÈRE
+# catégorie dont elle porte un label ; sans label, elle tombe dans « Autres ».
+changelog:
+  exclude:
+    labels: [skip-changelog, duplicate, invalid, wontfix]
+    authors: [dependabot, github-actions]
+  categories:
+    - title: 🚀 Nouveautés
+      labels: [enhancement, feature, epic, story]
+    - title: 🐛 Corrections
+      labels: [bug]
+    - title: ♿ Accessibilité
+      labels: [accessibility]
+    - title: 📚 Documentation
+      labels: [documentation]
+    - title: 🧪 Tests
+      labels: [testing]
+    - title: Autres changements
+      labels: ["*"]

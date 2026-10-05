@@ -10,7 +10,7 @@ la lire, **d'où viennent ses données** — et que faire quand elle reste vide.
 
 <div markdown>
 
-<span class="arc-video__meta">En vidéo · Étape 05 · 1 min 22</span>
+<span class="arc-video__meta">En vidéo · Étape 05 · 1 min 29</span>
 
 **[Tour du propriétaire](../video/tableau-de-bord/index.html)** — Visite guidée du tableau de bord local, en lecture seule : une question par vue.
 
@@ -106,6 +106,26 @@ Trois graphiques, sur 3 mois, 6 mois ou un an :
   la forme devient positive : vous êtes frais. Le jour de course est marqué ; on
   voit ici la fatigue bondir à plus de 200 le 13 septembre, puis la forme redevenir
   positive pendant la reprise.
+- **La projection jusqu'à la course** (#172) prolonge ces trois courbes **en
+  pointillés** depuis aujourd'hui jusqu'à la date de l'objectif actif, et affiche
+  trois repères sous le graphique : la **forme prévue le jour J**, la **semaine du
+  pic de fatigue** et l'**ACWR projeté** (maximum sur le bloc). La charge de chaque
+  séance planifiée est **estimée** (durée × intensité prescrite, le même estimateur
+  que les [garde-fous](../guardrails.md)) : c'est une estimation à partir du
+  planifié, **jamais une mesure**. Comme une séance réelle avec fréquence cardiaque
+  pèse souvent plus (ou moins) que son estimation, la charge planifiée est **recalée**
+  sur le rapport réel / estimé de vos séances planifiées des 56 derniers jours (au
+  moins 5 séances appariées) — le recalage, ou son absence, est écrit sous la courbe.
+  La forme prévue le jour J est celle **en entrant dans la journée** : la charge de la
+  course elle-même n'y compte pas. Un jour sans séance compte pour une charge nulle ;
+  les semaines non planifiées sont comptées et signalées, car elles rendent la forme
+  prévue optimiste. Rien n'est tracé — la raison est écrite à la place — sans objectif
+  actif, sans séance planifiée avant la course, ou avec moins de 84 jours d'historique
+  (même plancher que le garde-fou R1). La même projection, hors tableau de bord :
+  `python3 scripts/arc_index.py load-forecast [--until AAAA-MM-JJ] [--text]`
+  (`/api/load-forecast`) ; `--compare <fichier>` oppose le plan actuel à une variante
+  d'affûtage (les semaines de même lundi sont remplacées) et chiffre l'écart de forme
+  le jour J.
 - **Le ratio charge aiguë / chronique** (ACWR) et sa bande 0,8 – 1,3 — un repère
   indicatif, discuté dans la littérature, pas un seuil de blessure. Il n'est pas
   tracé tant que l'historique est trop mince pour avoir un sens.
@@ -129,6 +149,7 @@ six semaines d'historique pour que la condition ait un sens.
 |---|---|
 | `activities/*.md` (durée, FC moyenne, effort perçu) | `scripts/arc_metrics.py` : TRIMP, ou effort perçu sans FC |
 | `planning/Runner_Profile.md` (FC max, FC de repos) | indispensables au TRIMP |
+| `planning/*.md` (séances planifiées), `planning/active_objective.md` (date de course) | projection jusqu'à la course (#172), `scripts/arc_load_forecast.py` |
 
 **Si les courbes sont plates ou bizarres** : renseignez la FC max et la FC de repos
 de référence du profil. Sans elles, la charge vient de l'effort perçu seul.
@@ -442,6 +463,26 @@ rattrapage — sur un FIT déjà téléchargé avant #151, relancer
 balance : elle reste alors absente, jamais remplacée par 50 %. Sans inspection, la carte invite à
 en demander une au coach.
 
+### Exposition à l'altitude
+
+**Combien de temps ai-je passé en altitude ?**
+
+Une carte sous « Foulée » dans la vue Santé (#185), elle aussi indépendante du bilan matinal. Pour
+les fenêtres de **14 et 28 jours**, le nombre de séances et le temps passés **au-dessus de
+1 500 m et de 2 000 m**, et l'altitude maximale atteinte, d'après les échantillons FIT. Une séance
+compte à un seuil à partir de 5 minutes au-dessus (un col franchi 30 s ne compte pas). Seules les séances de terrain
+sont prises en compte (salle, piscine et repos exclus).
+
+**Comment la lire** : c'est un **indicateur d'exposition**, pas un modèle d'acclimatation. L'altitude
+barométrique ou GPS est approximative près d'un seuil. Une séance **sans altitude** (échantillons FIT
+absents, capteur muet) est comptée à part (« sans altitude, non comptée »), jamais comme une
+exposition nulle. Cette exposition réduit légèrement la pénalité d'altitude du plan de course
+quand la course a lieu dans les 14 jours (approximation du projet, voir [l'agent Course Strategist](../agents/course-strategist.md#penalite-daltitude-185)).
+
+**Si c'est vide** : sans séance sur la fenêtre, ou sans aucune altitude dans les séances, la carte
+l'écrit et pointe vers `skills/fit-download` ; rien n'est inventé. Hors tableau de bord :
+`python3 scripts/arc_index.py altitude-exposure [--days N]` (`/api/altitude-exposure`).
+
 ## Semaine
 
 **Qu'est-ce qui était prévu, qu'est-ce qui a été fait ?**
@@ -454,6 +495,25 @@ Le plan de la semaine face au réalisé. Pour chaque jour :
   *Annulée* ; ici, le footing du mardi a été couru le mercredi ;
 - **la catégorie météo** du jour (*Optimal*, *Vigilance*…) quand une prévision existe ;
 - **les séances réellement enregistrées**, sous le plan : un clic ouvre leur détail.
+
+En tête de la vue (et de **Calendrier**), la **frise du bloc** (#193) : une colonne par
+semaine planifiée, du début du bloc courant à la course (et la semaine de récupération qui
+la suit). La teinte donne la **phase** (*Base*, *Développement*, *Spécifique*, *Affûtage*,
+*Récupération*), la hauteur le **volume prévu**, le trait noir le **réalisé** (partiel pour la
+semaine en cours), une pastille marque une **semaine allégée**, un drapeau la **semaine de
+course**, et un cadre vert la **semaine en cours**. Chaque colonne est un lien vers la vue
+Semaine de ce lundi (clavier : Tab puis Entrée) ; survol ou focus affichent le détail
+sous la frise. Sur téléphone, la frise défile horizontalement dans sa carte.
+
+La frise ne devine rien : la phase vient du champ `phase` de la semaine, reconnu seulement
+s'il correspond à un libellé du gabarit (c'est ce qu'écrit `plan-skeleton`, #190). Une semaine
+sans phase (fichier antérieur) est tracée en pointillé « Phase inconnue » ; un autre libellé
+libre est affiché tel quel, sans teinte de phase. Le bloc est la suite de semaines planifiées
+aux lundis consécutifs qui contient la semaine courante (sinon la prochaine, sinon la plus
+récente). Une **seule** semaine sans fichier entre deux semaines écrites par `plan-skeleton`
+(semaine de vacances, fichier supprimé) ne coupe pas le bloc : elle apparaît en contour
+pointillé « Semaine sans plan », jamais remplie. Deux semaines manquantes d'affilée, ou une
+voisine écrite à la main, coupent le bloc. Les données viennent de `/api/block`.
 
 En dessous, **le réalisé face à la cible** de la semaine (18,2 km sur 40 visés), puis
 **la conformité** — le KPI de l'épopée #20 (story #33) : % de séances faites, ratio
@@ -546,7 +606,23 @@ faute de fréquence cardiaque et d'effort perçu, un astérisque.
 
 ![Détail d'une séance : chiffres clés, météo, splits et analyse du coach](../assets/dashboard/seance.webp)
 
-- **Les chiffres clés** : distance, durée, allure, D+ / D-, FC moyenne et max, **HRR**
+- **La carte** : la trace GPS des échantillons FIT sur un fond topographique
+  (OpenTopoMap par défaut, `[dashboard].map_tiles`), colorée au choix par **allure**
+  (quintiles de la séance), **FC** (les mêmes zones que la barre « Zones FC »),
+  **pente** ou d'une seule couleur. Les montées détectées sont surlignées et
+  numérotées comme dans leur tableau ; « Sur la carte », dans ce tableau, cadre la
+  montée. Sans GPS (tapis, intérieur) ou sans FIT, une note le dit et la page reste
+  complète. Le serveur de tuiles ne voit que la zone affichée, jamais la trace ; un
+  `map_tiles = ""` coupe tout fond de carte (trace seule, hors ligne).
+- **Le profil** : altitude (montées détectées ombrées), FC, allure et cadence le
+  long de la distance, sur un axe commun. Un seul curseur relie les quatre graphiques
+  **et la carte** : survoler le profil déplace un point sur la trace, survoler la
+  trace place le curseur du profil, avec la lecture complète (distance, altitude,
+  pente, FC, allure, cadence, temps écoulé). Les arrêts (ravitaillement, pause) ne
+  sont pas des allures : au-delà de 20 min/km, la courbe s'interrompt.
+- **Les chiffres clés**, en trois groupes (effort, cœur, contexte) à côté de la
+  carte : distance, durée (en mouvement, et totale quand les pauses dépassent une
+  minute), allure, D+ / D-, FC moyenne et max, **HRR**
   (récupération cardiaque — « non mesuré » avec sa raison quand Garmin ne l'a pas),
   effet d'entraînement, charge, VO2max estimée quand la séance s'y prête, et le
   **découplage aérobie (Pa:HR)** (#45, facteur d'efficacité EF en complément) quand la
@@ -556,7 +632,13 @@ faute de fréquence cardiaque et d'effort perçu, un astérisque.
   **durabilité (fade GAP dernier tiers)** (#48, fade EF en complément) apparaît de la
   même façon, quand la sortie est éligible (plus de 90 minutes de mouvement, voir la
   section « Durabilité » de [Analyse](#analyse)) ; absente sinon.
-- **La météo du jour**, si une prévision a été enregistrée.
+- **La météo du jour**, si une prévision a été enregistrée, et le matériel porté.
+- **Ressenti & ravitaillement** : ce que vous avez déclaré, souvent avec `/log` —
+  effort perçu, glucides et boisson (et leur débit horaire), pesées avant/après,
+  taux de sudation, douleurs du jour (fichier santé). Absent si rien n'est déclaré.
+- **La foulée de la séance** (#151) : moyennes de la dynamique de course mesurée par
+  la montre (temps de contact, balance, oscillation, ratio vertical, longueur de
+  pas, cadence). Les tendances restent dans la carte « Foulée » de [Santé](#sante).
 - **Les zones FC** (#43) : une barre empilée du temps passé dans chacune des 5 zones,
   avec les bornes intérieures (bpm, ex. « Z1 < 146 · Z2 146-155 · … · Z5 ≥ 172 ») et
   la méthode effective (FC au seuil, Karvonen ou %FC max — voir
@@ -592,8 +674,8 @@ faute de fréquence cardiaque et d'effort perçu, un astérisque.
   page dédiée (`#/montee/<id>`) qui trace la VAM de chaque occurrence dans le temps
   et détaille FC (premier/dernier tiers de la montée) et dérive FC par 100 m de D+ —
   la même page que la liste des « Segments de montée » de [Analyse](#analyse).
-  Aucune coordonnée GPS n'est jamais exposée par le tableau de bord (positions
-  utilisées uniquement en interne pour l'appariement).
+  Les pages de montée n'exposent aucune coordonnée GPS : seule la carte de la page
+  séance (`/api/activity/<id>/track`) en renvoie.
 - **L'efficacité en descente** (#47) : un tableau, une ligne par classe de pente
   descendante qualifiante (pente moyenne réellement rencontrée, allure, distance,
   durée de mouvement, indicateur d'efficacité — voir la section « Efficacité en
@@ -696,6 +778,18 @@ kilomètre : pas de graphique, c'est normal.
   power-hiking sur les fortes pentes n'est jamais retirée (c'est comment vous
   bougez réellement sur cette pente), seulement signalée au survol quand elle
   domine le panier.
+- **Vitesse critique et courbe allure-durée** (#169) : la **meilleure allure GAP** (ajustée
+  à la pente) que vous avez tenue sur chaque durée de 30 s à 2 h, sur 42, 90 et
+  365 jours, et, quand les données le permettent, votre **vitesse critique** et votre
+  **réserve anaérobie D′** (ajustement sur les meilleurs efforts de 3 à 20 min, avec
+  sa qualité : nombre de points, incertitude sur chaque paramètre, R²) et leur **tendance** (un point
+  tous les 28 jours). Ce ne sont pas des mesures de laboratoire : un effort jamais
+  couru à fond sous-estime la vitesse critique. Quand l'ajustement est impossible
+  (moins de 3 efforts, une seule séance, courbe plate…), la carte affiche
+  « Données insuffisantes » et le motif — jamais une valeur. Le détail, les
+  motifs de refus et l'usage par le coach : [Vitesse critique](../vitesse-critique.md).
+  Hors tableau de bord : `python3 scripts/arc_index.py pace-curve [--days N] [--lt-speed-ms V]`
+  (API : `/api/pace-curve`).
 - **Hypothèses** : un lien vers la vue [Hypothèses](#hypotheses), qui réunit toutes les
   formules et leurs limites.
 
@@ -902,6 +996,70 @@ score sans que ce soit un problème.
 | `planning/active_objective.md` (distance, D+, date de course) | `scripts/arc_trail_shape.py` |
 | `activities/*.md` (course/trail des 8 dernières semaines) | `scripts/arc_metrics.py` (km-effort ITRA #35, durabilité #48), `scripts/arc_trail_shape.py` |
 
+## Roadbook
+
+**Qu'ai-je dans la poche le jour J ?**
+
+<!-- arc-video:ultra -->
+<div class="arc-video-card" markdown>
+
+[![La nuit, la roche et le roadbook](../video/ultra/poster.jpg)](../video/ultra/index.html)
+
+<div markdown>
+
+<span class="arc-video__meta">En vidéo · Étape 14 · 1 min 49</span>
+
+**[La nuit, la roche et le roadbook](../video/ultra/index.html)** — Préparer un ultra : la nuit calculée sur place (crépuscule, frontale, heure d'hiver), le dénivelé corrigé par un modèle de terrain, la technicité du sentier, puis le roadbook imprimable avec passages, barrières et matériel obligatoire.
+
+[Regarder](../video/ultra/index.html) · [English](../video/ultra/index.html?lang=en) · [Toutes les vidéos](../videos.md)
+
+</div>
+
+</div>
+<!-- /arc-video -->
+
+Une feuille imprimable par scénario (#187, épopée #170), accessible par le lien
+« Roadbook imprimable du plan de course » en bas de [Trail Shape](#trail-shape)
+(adresse `#/roadbook`, `?plan=<fichier>` pour choisir un plan, `?scenario=safe|realistic|ambitious`).
+Elle lit le plan de course persisté dans `planning/` (bloc ```` ```arc ````
+`kind: race_plan`, écrit par `course-strategist`) et ne calcule rien de plus :
+heures de passage et marges de barrière viennent de `scripts/arc_race_pacing.py`,
+le contrôle du matériel de `arc_index.py equipment --race-plan` (#134).
+Les heures de passage sont en **heure locale réelle** du fuseau `timezone` du plan :
+une course qui traverse le changement d'heure reste juste (même règle que la nuit, #184),
+marges de barrière comprises : `arc_race_pacing.py` les calcule en temps absolu dans le même
+fuseau (#205) ; un avertissement signale simplement le changement d'heure.
+
+Une feuille contient :
+
+- l'en-tête (course, date, heure de départ, distance, D+/D−, temps du scénario,
+  heure d'arrivée, objectif du plan) ;
+- le **profil d'élévation**, avec les ravitos numérotés (R1, R2…) et la nuit
+  hachurée — **relatif au départ** : le plan ne contient pas l'altitude absolue ;
+- les **sections** (de ravito à ravito) : km, distance, D+/D−, temps, heure de
+  passage et durée écoulée, barrière horaire avec sa marge (texte « TENDU » /
+  « HORS DÉLAI », jamais la seule couleur), ravito avec **ce qu'on y prend**
+  (`take` du plan nutrition) et ce qu'il sert, drapeau **nuit / frontale** ;
+- le **matériel obligatoire** en liste à cocher, avec son statut contre l'inventaire
+  (prêt, à vérifier, jamais utilisé à l'entraînement, non retrouvé) ;
+- l'**urgence et les consignes** du plan (`emergency`, `notes`), et un encart
+  « À compléter / à savoir » qui liste **tout ce qui manque** au plan (pas de
+  départ renseigné, pas de barrière, `take` absent…) : une donnée absente est
+  dite absente, jamais inventée.
+
+Le sélecteur de scénario bascule sans nouvel appel. **Imprimer / PDF** ouvre la
+boîte d'impression du navigateur (`window.print()`, aucun service ni
+dépendance : choisissez « Enregistrer au format PDF ») ; **Imprimer les 3
+scénarios** met un scénario par page. La feuille d'impression est en A4
+portrait, noir et blanc lisible quel que soit le thème de l'écran, sans
+navigation, tableau à 9 pt. Sur téléphone, le tableau devient une carte par
+section.
+
+| Alimentée par | Calcul |
+|---|---|
+| `planning/*.md` (`race_plan` : `segments`, `aid_stations` dont `take`/`cutoff`, `start_time`, `gear`, `notes`, `emergency`) | `scripts/arc_roadbook.py` (`/api/roadbook`), `scripts/arc_race_pacing.py` (`compute_passages`, `check_cutoffs`) |
+| `planning/Runner_Profile.md`, `activities/*.md` (matériel) | `arc_index.equipment_race_check` (#134) |
+
 ## Calendrier
 
 **Suis-je régulier ?**
@@ -910,7 +1068,8 @@ score sans que ce soit un problème.
 
 L'année en carte de chaleur — plus la case est foncée, plus la durée d'effort du jour
 est longue — et la **distance cumulée**, comparée d'une année à l'autre. Les boutons
-d'année remontent l'historique.
+d'année remontent l'historique. Au-dessus, la **frise du bloc** planifié (voir
+[Semaine](#semaine)) quand un plan existe.
 
 ## Décisions
 
@@ -938,6 +1097,22 @@ en favori. Chaque ligne ouvre le détail de la décision :
   (jamais un fichier arbitraire n'est servi) ;
 - pour une décision remplacée par une réévaluation plus récente (`supersedes`) : un lien
   vers l'ancienne décision, et réciproquement vers la nouvelle.
+
+**Ce qui s'est passé ensuite (#175).** Une carte de synthèse en tête de liste (par déclencheur,
+nature de l'action et issue : « Allègement après bilan matinal — décisions appliquées : 7
+évaluée(s) (5 améliorée(s), …) » ; la nature — allègement, annulation, report, renforcement,
+remplacement — est déduite des champs `before`/`after` de la décision, jamais du texte ; deux
+décisions dont les fenêtres se chevauchent sont signalées, leurs effets étant confondus),
+une pastille d'évolution sur chaque ligne et, dans le détail, les signaux utilisés (HRV, FC de
+repos, readiness, douleur, ACWR, RPE, découplage, conformité) avec leurs fenêtres avant / après
+et les chiffres. Les décisions refusées par l'athlète sont évaluées aussi (que se passe-t-il quand
+le conseil n'est pas suivi). Garde-fous de lecture : **corrélation, pas causalité** ; sous 5 cas
+évaluables, comptes bruts et avertissement de petit effectif, jamais de « tendance » ; jamais
+utilisé pour assouplir un garde-fou `block`, une décision médicale ni un verdict rouge. Les effets
+sont **dérivés** (recalculés à chaque lecture depuis l'index, rien n'est écrit dans les fichiers de
+décision) ; sans donnée suffisante, l'état vide le dit (« Données insuffisantes », fenêtre pas
+encore écoulée). API : `/api/decision-effects` ; CLI :
+`python3 scripts/arc_index.py decision-effects [--trigger T] [--days N] [--text]` (JSON par défaut).
 
 Une décision **proposée** (`outcome: "proposed"`) porte la mention « en attente de ta
 confirmation » : rien n'a encore été réécrit dans le plan ni poussé au calendrier Garmin.
@@ -1095,13 +1270,14 @@ nourrit :
 | Aujourd'hui | `medical/<date>_health.md`, `medical/<date>_meteo.md`, `planning/Semaine_<lundi>.md` | synchronisation, coach |
 | Forme & charge | `activities/*.md`, `planning/Runner_Profile.md` | synchronisation, vous |
 | Analyse | `activities/fit/*.json`, `planning/Runner_Profile.md` | skill `fit-download`, synchronisation |
-| Santé | `medical/<date>_health.md` ; carte Foulée : `activities/fit/*.json`, `gear/*_inspection.md` | synchronisation, coach, skill `fit-download` |
+| Santé | `medical/<date>_health.md` ; cartes Foulée et Exposition à l'altitude : `activities/fit/*.json`, `gear/*_inspection.md` (Foulée) | synchronisation, coach, skill `fit-download` |
 | Semaine | `planning/Semaine_<lundi>.md`, `activities/*.md` | coach, synchronisation |
 | Séances | `activities/<date>_<sport>.md` | synchronisation |
 | Performance | `activities/*.md`, `planning/Runner_Profile.md`, `planning/active_objective.md` | synchronisation, vous |
 | Matériel | `planning/Runner_Profile.md`, `activities/*.md`, `gear/*.md` | vous, coach, synchronisation |
 | Trail Shape | `activities/*.md` (8 dernières semaines), `planning/active_objective.md` | synchronisation, vous |
-| Calendrier | `activities/*.md` | synchronisation |
+| Roadbook | `planning/*.md` (plan de course : segments, ravitos, matériel), `planning/Runner_Profile.md` | `course-strategist`, vous |
+| Calendrier | `activities/*.md`, `planning/Semaine_<lundi>.md` (frise du bloc) | synchronisation, coach |
 | Rapports | `rapports/*.md` | coach |
 | Nutrition | `nutrition/<date>_nutrition.md` | nutritionniste |
 | Hypothèses | aucun fichier du workspace : les modules de calcul (`scripts/arc_*.py`) | — |

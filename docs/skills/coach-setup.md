@@ -10,7 +10,7 @@ entretien court et écrit le résultat au bon endroit.
 
 <div markdown>
 
-<span class="arc-video__meta">En vidéo · Étape 01 · 1 min 34</span>
+<span class="arc-video__meta">En vidéo · Étape 01 · 1 min 45</span>
 
 **[Ligne de départ](../video/ligne-de-depart/index.html)** — Du git clone au premier /today : installation, authentification Garmin, /coach-setup et /coach-doctor en moins de deux minutes.
 
@@ -44,6 +44,7 @@ tant qu'aucune configuration n'existe — ils le proposent, ils ne l'imposent pa
 | Bilan matinal | Si l'entraînement dépend de la HRV, de la FC de repos et de la readiness |
 | Langues | Langue des documents, langue des réponses |
 | Unités | Métriques ou impériales |
+| Cycle menstruel | Facultatif, neutre, posé une seule fois (`off` par défaut) : contexte du bilan matinal, voir [Cycle menstruel](../cycle-menstruel.md) |
 
 ## Où vont les réponses
 

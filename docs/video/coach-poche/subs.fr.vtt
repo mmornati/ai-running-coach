@@ -1,69 +1,69 @@
 WEBVTT
 
 1
-00:00:01.200 --> 00:00:03.391
+00:00:01.200 --> 00:00:04.282
 Étape dix : le coach dans la poche.
 
 2
-00:00:05.100 --> 00:00:09.211
+00:00:05.132 --> 00:00:09.870
 Chez Camille, une machine reste allumée toute la nuit : la machine coach.
 
 3
-00:00:09.311 --> 00:00:16.964
+00:00:09.970 --> 00:00:17.204
 Elle garde les fichiers et les accès Garmin, et un cron lance la synchronisation à sept heures quinze, puis à quatorze heures quinze.
 
 4
-00:00:17.814 --> 00:00:23.419
+00:00:18.054 --> 00:00:24.136
 Ou, en mode veille, un petit script interroge Garmin toutes les quinze minutes, sans aucun modèle.
 
 5
-00:00:23.519 --> 00:00:25.945
+00:00:24.236 --> 00:00:27.486
 Rien de neuf : zéro jeton dépensé.
 
 6
-00:00:26.045 --> 00:00:30.625
+00:00:27.586 --> 00:00:32.660
 Une séance ou un sommeil à récupérer : alors seulement, le coach se réveille.
 
 7
-00:00:31.475 --> 00:00:36.226
+00:00:33.510 --> 00:00:38.440
 Le coach ne récupère que les dates dont le fichier manque, et écrit le Markdown.
 
 8
-00:00:36.326 --> 00:00:38.902
+00:00:38.540 --> 00:00:41.550
 Il termine par un résumé de cinq lignes.
 
 9
-00:00:39.752 --> 00:00:43.970
+00:00:42.400 --> 00:00:46.970
 Ce résumé part en notification sur le téléphone, via ntfy.
 
 10
-00:00:44.070 --> 00:00:48.224
+00:00:47.070 --> 00:00:52.480
 Sommeil, variabilité cardiaque, readiness : tout est là avant le café.
 
 11
-00:00:49.074 --> 00:00:54.679
+00:00:53.330 --> 00:00:59.532
 Besoin d'en savoir plus ? L'appli Claude se connecte à la machine coach, par Remote Control.
 
 12
-00:00:54.779 --> 00:01:01.557
+00:00:59.632 --> 00:01:06.962
 Camille tape /today, /why, /week ou /race : des réponses courtes, qui ne modifient jamais le plan.
 
 13
-00:01:02.407 --> 00:01:09.633
+00:01:07.812 --> 00:01:14.998
 Le tableau de bord se lit aussi sur le téléphone : le verdict du jour, la semaine, et la carte d'approbation du coach.
 
 14
-00:01:10.483 --> 00:01:17.794
+00:01:15.848 --> 00:01:24.090
 Soyons honnêtes. Pas d'application maison qui utilise votre abonnement : seule une clé API, facturée au token, le permet.
 
 15
-00:01:17.894 --> 00:01:21.750
+00:01:24.190 --> 00:01:28.184
 Envoyer des photos de chaussures depuis le téléphone n'est pas validé.
 
 16
-00:01:21.850 --> 00:01:25.492
+00:01:28.284 --> 00:01:32.254
 Et si la machine s'éteint, il reste le plan B dans le cloud.
 
 17
-00:01:28.042 --> 00:01:32.281
+00:01:34.804 --> 00:01:39.734
 Pour aller plus loin : la page « Le coach dans la poche » de la documentation.

@@ -1,8 +1,8 @@
 /* Généré par scripts/video_narration.py — ne pas éditer. */
 window.ARC_TIMING = {
  "en": {
-  "digest": "efcbdcfd48a7b2c2",
-  "duration": 74.49,
+  "digest": "aeefb59b3749b6a1",
+  "duration": 78.042,
   "scenes": [
    {
     "id": "bib",
@@ -11,7 +11,7 @@ window.ARC_TIMING = {
     "cues": [
      {
       "s": 1.2,
-      "e": 3.376,
+      "e": 3.648,
       "text": "Stage two: the morning check."
      }
     ]
@@ -19,16 +19,16 @@ window.ARC_TIMING = {
    {
     "id": "alarm",
     "start": 4.6,
-    "d": 9.194,
+    "d": 9.73,
     "cues": [
      {
       "s": 0.5,
-      "e": 6.58,
+      "e": 7.148,
       "text": "Tuesday, six thirty. On Camille's plan: a threshold session, five times six minutes."
      },
      {
-      "s": 6.93,
-      "e": 8.594,
+      "s": 7.498,
+      "e": 9.13,
       "text": "But the night was short."
      }
     ],
@@ -36,17 +36,17 @@ window.ARC_TIMING = {
    },
    {
     "id": "triptych",
-    "start": 13.794,
-    "d": 16.106,
+    "start": 14.33,
+    "d": 16.786,
     "cues": [
      {
       "s": 0.5,
-      "e": 9.439,
+      "e": 9.956,
       "text": "Before any decision, the coach reads three signals, always together: overnight heart rate variability, resting heart rate, and readiness."
      },
      {
-      "s": 9.789,
-      "e": 15.506,
+      "s": 10.306,
+      "e": 16.186,
       "text": "Three nights below the personal band, six beats above normal, readiness at thirty-four."
      }
     ],
@@ -54,17 +54,17 @@ window.ARC_TIMING = {
    },
    {
     "id": "verdict",
-    "start": 29.9,
-    "d": 11.263,
+    "start": 31.116,
+    "d": 12.73,
     "cues": [
      {
       "s": 0.5,
-      "e": 2.079,
+      "e": 2.372,
       "text": "Verdict: ease off."
      },
      {
-      "s": 2.429,
-      "e": 10.663,
+      "s": 2.722,
+      "e": 12.13,
       "text": "Threshold waits for the signals to recover. Tonight, forty-five minutes of easy running, between six and seven: the coolest slot."
      }
     ],
@@ -72,17 +72,17 @@ window.ARC_TIMING = {
    },
    {
     "id": "trace",
-    "start": 41.163,
-    "d": 8.042,
+    "start": 43.846,
+    "d": 8.0,
     "cues": [
      {
       "s": 0.5,
-      "e": 3.977,
+      "e": 4.076,
       "text": "The decision is written to a file, with its sources."
      },
      {
-      "s": 4.327,
-      "e": 7.442,
+      "s": 4.426,
+      "e": 7.186,
       "text": "It shows up on the dashboard, under “Why today?”."
      }
     ],
@@ -90,17 +90,17 @@ window.ARC_TIMING = {
    },
    {
     "id": "why",
-    "start": 49.205,
-    "d": 8.789,
+    "start": 51.846,
+    "d": 8.938,
     "cues": [
      {
       "s": 0.5,
-      "e": 5.812,
+      "e": 6.116,
       "text": "And if Camille asks why, the /why command answers by quoting the measurements."
      },
      {
-      "s": 6.162,
-      "e": 8.189,
+      "s": 6.466,
+      "e": 8.338,
       "text": "Never by making things up."
      }
     ],
@@ -108,17 +108,17 @@ window.ARC_TIMING = {
    },
    {
     "id": "levels",
-    "start": 57.994,
-    "d": 9.941,
+    "start": 60.784,
+    "d": 10.93,
     "cues": [
      {
       "s": 0.5,
-      "e": 4.98,
+      "e": 5.78,
       "text": "Too much data? The check is configurable: full, minimal, or off."
      },
      {
-      "s": 5.33,
-      "e": 9.341,
+      "s": 6.13,
+      "e": 10.33,
       "text": "And the coach never quietly switches a stricter level back on."
      }
     ],
@@ -126,21 +126,26 @@ window.ARC_TIMING = {
    },
    {
     "id": "finish",
-    "start": 67.935,
-    "d": 6.555,
+    "start": 71.714,
+    "d": 6.328,
     "cues": [
      {
       "s": 2.2,
-      "e": 5.955,
+      "e": 5.728,
       "text": "To go further: the “Today” page of the documentation."
      }
     ]
    }
-  ]
+  ],
+  "engine": "edge",
+  "voice": {
+   "voice": "en-US-AndrewMultilingualNeural",
+   "rate": "+0%"
+  }
  },
  "fr": {
-  "digest": "0494832fe92b5867",
-  "duration": 71.249,
+  "digest": "c5a58ef6e5198b2c",
+  "duration": 78.594,
   "scenes": [
    {
     "id": "bib",
@@ -149,7 +154,7 @@ window.ARC_TIMING = {
     "cues": [
      {
       "s": 1.2,
-      "e": 3.163,
+      "e": 3.888,
       "text": "Étape deux : le réveil du traileur."
      }
     ]
@@ -157,16 +162,16 @@ window.ARC_TIMING = {
    {
     "id": "alarm",
     "start": 4.6,
-    "d": 7.701,
+    "d": 9.994,
     "cues": [
      {
       "s": 0.5,
-      "e": 5.279,
+      "e": 7.076,
       "text": "Mardi matin, six heures trente. Au programme de Camille : un seuil, cinq fois six minutes."
      },
      {
-      "s": 5.629,
-      "e": 7.101,
+      "s": 7.426,
+      "e": 9.394,
       "text": "Mais la nuit a été courte."
      }
     ],
@@ -174,17 +179,17 @@ window.ARC_TIMING = {
    },
    {
     "id": "triptych",
-    "start": 12.301,
-    "d": 16.085,
+    "start": 14.594,
+    "d": 16.114,
     "cues": [
      {
       "s": 0.5,
-      "e": 9.609,
+      "e": 9.476,
       "text": "Avant toute décision, le coach lit trois signaux, toujours ensemble : la variabilité cardiaque de la nuit, la fréquence cardiaque de repos, et la readiness."
      },
      {
-      "s": 9.959,
-      "e": 15.485,
+      "s": 9.826,
+      "e": 15.514,
       "text": "Trois nuits sous la bande personnelle, six battements de plus que d'habitude, une readiness à trente-quatre."
      }
     ],
@@ -192,17 +197,17 @@ window.ARC_TIMING = {
    },
    {
     "id": "verdict",
-    "start": 28.386,
-    "d": 11.69,
+    "start": 30.708,
+    "d": 12.61,
     "cues": [
      {
       "s": 0.5,
-      "e": 1.737,
+      "e": 2.468,
       "text": "Verdict : alléger."
      },
      {
-      "s": 2.087,
-      "e": 11.09,
+      "s": 2.818,
+      "e": 12.01,
       "text": "Le seuil attendra le retour des signaux. Ce soir, quarante-cinq minutes d'endurance fondamentale, entre dix-huit et dix-neuf heures : le créneau le plus frais."
      }
     ],
@@ -210,17 +215,17 @@ window.ARC_TIMING = {
    },
    {
     "id": "trace",
-    "start": 40.076,
-    "d": 8.0,
+    "start": 43.318,
+    "d": 9.706,
     "cues": [
      {
       "s": 0.5,
-      "e": 3.593,
+      "e": 4.412,
       "text": "La décision est écrite dans un fichier, avec ses sources."
      },
      {
-      "s": 3.943,
-      "e": 7.207,
+      "s": 4.762,
+      "e": 9.106,
       "text": "On la retrouve dans le tableau de bord, sous « Pourquoi aujourd'hui ? »."
      }
     ],
@@ -228,17 +233,17 @@ window.ARC_TIMING = {
    },
    {
     "id": "why",
-    "start": 48.076,
+    "start": 53.024,
     "d": 8.0,
     "cues": [
      {
       "s": 0.5,
-      "e": 5.087,
+      "e": 5.132,
       "text": "Et si Camille demande pourquoi, la commande /why répond en citant les mesures."
      },
      {
-      "s": 5.437,
-      "e": 6.674,
+      "s": 5.482,
+      "e": 7.354,
       "text": "Jamais en inventant."
      }
     ],
@@ -246,17 +251,17 @@ window.ARC_TIMING = {
    },
    {
     "id": "levels",
-    "start": 56.076,
-    "d": 9.109,
+    "start": 61.024,
+    "d": 10.57,
     "cues": [
      {
       "s": 0.5,
-      "e": 4.511,
+      "e": 6.044,
       "text": "Trop de données ? Le bilan se règle : complet, minimal, ou désactivé."
      },
      {
-      "s": 4.861,
-      "e": 8.509,
+      "s": 6.394,
+      "e": 9.97,
       "text": "Et le coach ne réactive jamais en douce un niveau plus strict."
      }
     ],
@@ -264,16 +269,21 @@ window.ARC_TIMING = {
    },
    {
     "id": "finish",
-    "start": 65.185,
-    "d": 6.064,
+    "start": 71.594,
+    "d": 7.0,
     "cues": [
      {
       "s": 2.2,
-      "e": 5.464,
+      "e": 6.4,
       "text": "Pour aller plus loin : la page « Aujourd'hui » de la documentation."
      }
     ]
    }
-  ]
+  ],
+  "engine": "edge",
+  "voice": {
+   "voice": "fr-FR-RemyMultilingualNeural",
+   "rate": "+0%"
+  }
  }
 };

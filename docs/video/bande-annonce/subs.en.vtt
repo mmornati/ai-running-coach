@@ -1,65 +1,65 @@
 WEBVTT
 
 1
-00:00:00.900 --> 00:00:05.950
+00:00:00.900 --> 00:00:06.022
 ai-running-coach: your trail training staff, right inside your editor.
 
 2
-00:00:06.800 --> 00:00:12.511
+00:00:06.872 --> 00:00:13.218
 Your watch measures everything: sleep, heart rate variability, pace, elevation.
 
 3
-00:00:12.611 --> 00:00:14.397
+00:00:13.318 --> 00:00:15.440
 But who connects the dots?
 
 4
-00:00:15.247 --> 00:00:23.646
+00:00:16.290 --> 00:00:24.412
 The coach reads your Garmin data, or Intervals.icu, and writes everything as Markdown, inside your IDE.
 
 5
-00:00:24.496 --> 00:00:30.677
+00:00:25.262 --> 00:00:31.488
 Four specialists work together: coach, race strategist, sports doctor and nutritionist.
 
 6
-00:00:30.777 --> 00:00:33.117
+00:00:31.588 --> 00:00:33.710
 Keep only the ones you need.
 
 7
-00:00:33.967 --> 00:00:41.214
+00:00:34.560 --> 00:00:42.178
 Every morning, three signals decide the session. Today they're in the red: threshold becomes an easy run.
 
 8
-00:00:41.314 --> 00:00:44.679
+00:00:42.278 --> 00:00:45.720
 And /why gives the reason, never made up.
 
 9
-00:00:45.529 --> 00:00:49.384
+00:00:46.570 --> 00:00:50.444
 The week's plan goes through seven computed guardrails.
 
 10
-00:00:49.484 --> 00:00:55.110
+00:00:50.544 --> 00:00:56.122
 Two hard days in a row? Hills move to Thursday, then everything goes to your watch.
 
 11
-00:00:55.960 --> 00:01:04.295
+00:00:56.972 --> 00:01:05.838
 On race day, your course is split segment by segment: paces from your own model, three scenarios, and the fuelling to match.
 
 12
-00:01:05.360 --> 00:01:08.255
+00:01:06.688 --> 00:01:09.290
 Everything stays yours, in Markdown.
 
 13
-00:01:08.355 --> 00:01:14.515
+00:01:09.390 --> 00:01:16.096
 A disposable SQLite index feeds a local dashboard: fitness, fatigue, form.
 
 14
-00:01:15.365 --> 00:01:23.423
+00:01:16.946 --> 00:01:24.828
 And the coach follows you everywhere: automatic sync, a push notification, and short commands that get straight to the point.
 
 15
-00:01:24.273 --> 00:01:29.067
+00:01:25.678 --> 00:01:30.872
 One clone, one install, a short interview with /coach-setup…
 
 16
-00:01:29.373 --> 00:01:31.394
+00:01:30.972 --> 00:01:33.094
 Ready to run smarter?

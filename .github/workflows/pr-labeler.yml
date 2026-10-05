@@ -1,0 +1,44 @@
+name: PR labeler
+
+# Pose un label d'après le préfixe du titre de la PR, pour ranger les notes de
+# release générées par GitHub (voir .github/release.yml) :
+#   feat… → enhancement · fix… → bug · docs… → documentation · test… → testing
+# Accepte « feat(x): », « feat: » et la forme française « feat(x) : ».
+# Ne retire jamais un label : un label posé à la main l'emporte toujours.
+on:
+  pull_request:
+    types: [opened, edited, reopened]
+
+permissions:
+  contents: read
+
+jobs:
+  label:
+    # Une PR de fork reçoit un jeton en lecture seule : elle ne peut pas être
+    # labellisée ici (pas de pull_request_target, voir tests/lint) — à la main.
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: write
+    steps:
+      - name: Label depuis le titre
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          PR: ${{ github.event.pull_request.number }}
+          TITLE: ${{ github.event.pull_request.title }}
+        run: |
+          set -euo pipefail
+          prefix() { grep -qiE "^$1(\([^)]*\))?!? ?:" <<< "$TITLE"; }
+          label=""
+          if   prefix 'feat(ure)?'; then label=enhancement
+          elif prefix 'fix';        then label=bug
+          elif prefix 'docs?';      then label=documentation
+          elif prefix 'tests?';     then label=testing
+          fi
+          if [ -z "$label" ]; then
+            echo "Aucun préfixe reconnu dans le titre — pas de label."
+            exit 0
+          fi
+          gh pr edit "$PR" --add-label "$label"
+          echo "Label « $label » posé sur #$PR."

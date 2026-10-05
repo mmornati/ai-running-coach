@@ -1,0 +1,10 @@
+# Poussée des apports vers Garmin (#167) : opt-in strict. Sans `[nutrition].garmin_sync` (défaut
+# `off`), `/log` ne propose JAMAIS de pousser vers Garmin et n'appelle aucun outil nutrition.
+id = "nutrition-garmin-off-no-proposal"
+prompt = "/log Sortie de ce matin, trail, 1h30 : 2 gels + 500 ml au km 15, RPE 6"
+fixture = "log-freeform"
+
+[expect]
+files_with_arc_block = ["activities/*.md"]
+tools_not_called = ["create_custom_food", "log_custom_food", "log_food", "add_hydration_data", "get_custom_foods", "get_nutrition_daily_food_log"]
+must_not_match = ["(?i)(pouss|envoy|journalis|synchronis)[^\\n]{0,80}(vers )?Garmin[^\\n]{0,80}(nutrition|alimentaire|hydratation|apport)"]

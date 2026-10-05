@@ -11,8 +11,10 @@ vit dans `skills/fit-download/scripts/download_fit.py`, qui l'importe aussi.
 
 Chemin canonique : `activities/fit/<id>.json`, un objet JSON
 `{"activity_id": <id>, "records": [...]}` — `<id>` est le `garmin_activity_id`
-(entier) d'une séance Garmin, ou l'`intervals_activity_id` (chaîne `i<chiffres>`,
-#68) d'une séance synchronisée depuis Intervals.icu (voir `parse_activity_ref`).
+(entier) d'une séance Garmin, l'`intervals_activity_id` (chaîne `i<chiffres>`,
+#68) d'une séance synchronisée depuis Intervals.icu, ou le `strava_activity_id` (chaîne
+`s<chiffres>`, #164) d'une séance Strava dont les flux par seconde ont été normalisés
+par `strava_streams_to_records` (voir `parse_activity_ref`).
 Le générateur synthétique (`tests/lib/synthetic.py::_write_samples`) y ajoute une
 clé `truth`, ignorée ici. Ce dossier est une donnée **brute et jetable** —
 reconstruisible à tout moment depuis les fichiers FIT réels (Garmin Connect ou
@@ -95,8 +97,9 @@ conversion `valeur × 180 / 2³¹`, voir `_semicircle_to_deg`) quand le FIT les 
 jamais une valeur inventée). Colonnes `lat`/`lon` de `activity_sample`, réservées par
 #42 « pour un usage futur » : #49 (identité de montée entre séances, `arc_climb_match.py`)
 est cet usage — la position n'est utilisée QUE pour apparier une montée détectée à un
-`climb_segment` déjà vu (bornes début/sommet), **jamais exposée telle quelle par l'API**
-(voir `arc_climb_match.ASSUMPTIONS["privacy"]`) : le tableau de bord et
+`climb_segment` déjà vu (bornes début/sommet) — et pour la carte de la page séance du
+tableau de bord, seule route qui l'expose (`/api/activity/<id>/track`, voir
+`arc_climb_match.ASSUMPTIONS["privacy"]`) : les routes de montée et
 `skills/course-comparison` ne reçoivent qu'un `segment_id` et un nom de lieu, jamais une
 coordonnée brute. Le format déjà normalisé (`tests/lib/synthetic.py::sample_session`)
 n'émet PAS ces clés (voir `tests/lint/test_synthetic_no_real_data.py`) : `sample_session`
@@ -186,6 +189,13 @@ DEFAULT_RESOLUTION_S = 5
 # chiffres, ex. `i123456789` — voir `parse_activity_ref`.
 INTERVALS_ID_RE = re.compile(r"^i\d+$")
 
+# Identifiant Strava d'une activité (#164) : « s » + chiffres, ex. `s12345678901`. L'API
+# Strava rend un entier 64 bits SANS préfixe, indiscernable d'un `garmin_activity_id` : le
+# préfixe `s` est une convention de CE projet (comme le `i` d'Intervals.icu, qui lui est
+# natif), il garde les trois espaces d'identifiants disjoints dans `activities/fit/<id>.json`
+# et dans l'index. Voir `parse_activity_ref`.
+STRAVA_ID_RE = re.compile(r"^s\d+$")
+
 # Saut minimal (m) entre une plage d'altitude à 0,0 m et la mesure valide voisine pour
 # la traiter en valeur sentinelle — voir ASSUMPTIONS["zero_altitude"].
 ZERO_ALTITUDE_JUMP_M = 20.0
@@ -239,7 +249,7 @@ _TIMESTAMP_FORMATS = (
 )
 
 ASSUMPTIONS = {
-    "canonical_path": "Échantillons bruts : activities/fit/<garmin_activity_id | intervals_activity_id>.json, "
+    "canonical_path": "Échantillons bruts : activities/fit/<garmin_activity_id | intervals_activity_id | strava_activity_id>.json, "
                        "{'activity_id', 'records'} — jetable, jamais versionné (voir docstring du module).",
     "cadence_doubling": "Le champ FIT `cadence` d'une séance à pied (course, marche, randonnée — "
                          "CADENCE_DOUBLING_SPORTS) compte les foulées d'UN pied/min ; cadence_spm = "
@@ -302,6 +312,19 @@ ASSUMPTIONS = {
                   "dernière mesure de la séance ne couvre rien (N mesures = N − 1 intervalles). Somme des covered_s ≤ durée écoulée entre la première et "
                   "la dernière mesure. `resolution_s <= 1` (pas de regroupement) : pas de covered_s, "
                   "min(dt, resolution_s) suffit alors.",
+    "strava_streams": "Flux Strava (#164, `strava_streams_to_records`) : `time` (s depuis le départ) → t_s ; "
+                       "`distance` (m) → distance_m ; `altitude` (m) → altitude_m ; `heartrate` (bpm) → "
+                       "hr_bpm ; `velocity_smooth` (m/s, vitesse LISSÉE par Strava, pas la vitesse brute du "
+                       "capteur) → speed_ms ; `cadence` → cadence_spm ; `latlng` ([lat, lon] en degrés) → "
+                       "lat_deg/lon_deg. Un flux dont la longueur diffère de celui de `time` est écarté en "
+                       "entier (jamais tronqué ni réaligné au jugé). Cadence : doublée pour les sports à pied "
+                       "(`STRAVA_FOOT_SPORTS`), comme le champ FIT — HYPOTHÈSE à vérifier sur une vraie séance "
+                       "(la référence de l'API documente `cadence` en RPM sans préciser un ou deux pieds). Dynamique de course (temps de contact, balance, "
+                       "oscillation) : AUCUN flux équivalent chez Strava → colonnes à None, jamais devinées. "
+                       "Résolution : la copie complète (`resolution` omise) à la seconde que l'API sert pour les "
+                       "activités enregistrées avec une montre ; une activité sans flux (saisie manuelle) n'en a "
+                       "aucun. Les données restent dans l'espace de travail privé de l'athlète (accord API "
+                       "Strava) : jamais dans le dépôt public.",
     "gaps": "Les pauses/trous de signal (montre en veille, perte GPS/FC) ne sont JAMAIS interpolés : le t_s du "
             "record suivant reprend tel quel, sans bucket comblé pour la période silencieuse. dt entre deux "
             "échantillons consécutifs (avant ou après sous-échantillonnage) peut donc dépasser resolution_s — "
@@ -596,15 +619,79 @@ def downsample(records: Sequence[dict], resolution_s: int = DEFAULT_RESOLUTION_S
     return out
 
 
-def parse_activity_ref(value) -> Optional[Union[int, str]]:
-    """Identifiant externe d'une séance : un entier (`garmin_activity_id`) ou une
-    chaîne `i<chiffres>` (`intervals_activity_id`, #68). Accepte un entier, ou une
-    chaîne de chiffres (→ `int`) ou de la forme `i123` (→ `str`, inchangée). `None`
-    pour tout le reste (booléen, vide, forme inconnue) — jamais deviné.
+# Sports Strava (`sport_type`/`type`) à pied : cadence à doubler, comme CADENCE_DOUBLING_SPORTS
+# côté FIT — voir ASSUMPTIONS["strava_streams"] (hypothèse à vérifier).
+STRAVA_FOOT_SPORTS = frozenset({"run", "trailrun", "virtualrun", "walk", "hike"})
 
-    Les deux espaces ne se chevauchent pas : le préfixe `i` distingue sans ambiguïté
-    un identifiant Intervals.icu d'un identifiant Garmin, dans un nom de fichier
-    (`activities/fit/i123456789.json`) comme en argument de CLI."""
+
+def _stream_data(streams, key: str):
+    """`data` du flux `key` — `streams` est soit l'objet `key_by_type=true` de l'API Strava
+    (`{"time": {"data": [...]}, ...}`), soit la liste par défaut (`[{"type": "time", "data":
+    [...]}, ...]`). `None` si absent ou mal formé."""
+    if isinstance(streams, dict):
+        entry = streams.get(key)
+    else:
+        entry = next((e for e in (streams or []) if isinstance(e, dict) and e.get("type") == key), None)
+    data = entry.get("data") if isinstance(entry, dict) else None
+    return data if isinstance(data, list) else None
+
+
+def strava_streams_to_records(streams, sport_type: Optional[str] = None) -> List[dict]:
+    """Flux par seconde Strava (#164) → liste de dicts au format NORMALISÉ (`NORMALISED_KEYS`
+    + `GPS_KEYS`), prête pour `normalise_records` (qui la nettoie et masque les altitudes
+    sentinelles) et donc pour la même chaîne de KPI que le FIT (zones, GAP, découplage, VAM,
+    descente, durabilité, énergie). Fonction pure.
+
+    Rend `[]` sans flux `time` exploitable : sans horloge, aucun échantillon n'est datable —
+    jamais un `t_s` inventé. Un autre flux dont la longueur diffère de `time` est ignoré en
+    entier (voir ASSUMPTIONS["strava_streams"]). `sport_type` (`Run`, `TrailRun`, `Ride`…,
+    insensible à la casse) gouverne le doublement de la cadence ; `None` = doublé, comme
+    `normalise_records` sans sport."""
+    time_s = _stream_data(streams, "time")
+    if not time_s:
+        return []
+    n = len(time_s)
+
+    def column(key: str):
+        data = _stream_data(streams, key)
+        return data if data is not None and len(data) == n else None
+
+    distance, altitude = column("distance"), column("altitude")
+    heartrate, speed = column("heartrate"), column("velocity_smooth")
+    cadence, latlng = column("cadence"), column("latlng")
+    double = sport_type is None or str(sport_type).lower() in STRAVA_FOOT_SPORTS
+
+    def at(col, i):
+        return _num(col[i]) if col is not None else None
+
+    out = []
+    for i in range(n):
+        t = _num(time_s[i])
+        if t is None:
+            continue
+        cad = at(cadence, i)
+        lat = lon = None
+        if latlng is not None and isinstance(latlng[i], (list, tuple)) and len(latlng[i]) == 2:
+            lat, lon = _num(latlng[i][0]), _num(latlng[i][1])
+        out.append({
+            "t_s": t, "distance_m": at(distance, i), "altitude_m": at(altitude, i),
+            "hr_bpm": at(heartrate, i), "speed_ms": at(speed, i),
+            "cadence_spm": cad * 2 if (cad is not None and double) else cad,
+            "lat_deg": lat, "lon_deg": lon,
+        })
+    return out
+
+
+def parse_activity_ref(value) -> Optional[Union[int, str]]:
+    """Identifiant externe d'une séance : un entier (`garmin_activity_id`), une
+    chaîne `i<chiffres>` (`intervals_activity_id`, #68) ou `s<chiffres>`
+    (`strava_activity_id`, #164). Accepte un entier, ou une chaîne de chiffres
+    (→ `int`) ou de la forme `i123`/`s123` (→ `str`, inchangée). `None` pour tout le
+    reste (booléen, vide, forme inconnue) — jamais deviné.
+
+    Les trois espaces ne se chevauchent pas : le préfixe (`i`, `s`) distingue sans
+    ambiguïté un identifiant Intervals.icu ou Strava d'un identifiant Garmin, dans un
+    nom de fichier (`activities/fit/i123456789.json`) comme en argument de CLI."""
     if isinstance(value, bool):
         return None
     if isinstance(value, int):
@@ -614,15 +701,15 @@ def parse_activity_ref(value) -> Optional[Union[int, str]]:
     value = value.strip()
     if value.isdigit():
         return int(value)
-    return value if INTERVALS_ID_RE.match(value) else None
+    return value if (INTERVALS_ID_RE.match(value) or STRAVA_ID_RE.match(value)) else None
 
 
 def sample_file_activity_id(path) -> Optional[Union[int, str]]:
     """Identifiant de séance porté par un chemin canonique `<id>.json` (nom de fichier) :
-    entier Garmin (`24070286912.json`) ou chaîne Intervals.icu (`i123456789.json`),
-    voir `parse_activity_ref`.
+    entier Garmin (`24070286912.json`), chaîne Intervals.icu (`i123456789.json`) ou
+    Strava (`s12345678901.json`), voir `parse_activity_ref`.
 
-    `None` si le nom de fichier n'a aucune de ces deux formes — appelant alors replié
+    `None` si le nom de fichier n'a aucune de ces formes — appelant alors replié
     sur la clé `activity_id` du contenu JSON (voir `arc_index.ingest_samples`)."""
     stem = path.stem if hasattr(path, "stem") else path.rsplit("/", 1)[-1].rsplit(".", 1)[0]
     return parse_activity_ref(stem)

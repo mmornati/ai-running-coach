@@ -1,69 +1,69 @@
 WEBVTT
 
 1
-00:00:01.200 --> 00:00:04.735
+00:00:01.200 --> 00:00:05.146
 Stage six: race day, segment by segment.
 
 2
-00:00:05.585 --> 00:00:09.206
+00:00:05.996 --> 00:00:09.294
 Drop in the GPX file for the Trail des Crêtes.
 
 3
-00:00:09.306 --> 00:00:16.873
+00:00:09.394 --> 00:00:17.012
 The skill measures real distance and smoothed elevation, finds the climbs, and tells loop from point-to-point.
 
 4
-00:00:17.723 --> 00:00:23.797
+00:00:17.862 --> 00:00:23.992
 Next, Camille's personal curve: the pace actually held on each grade in past sessions.
 
 5
-00:00:23.897 --> 00:00:29.032
+00:00:24.092 --> 00:00:29.958
 Where history is thin, the generic model steps in. And the plan says so.
 
 6
-00:00:29.882 --> 00:00:35.124
+00:00:30.808 --> 00:00:35.594
 The course is cut into segments of similar grade, each timed from that curve.
 
 7
-00:00:35.224 --> 00:00:41.682
+00:00:35.694 --> 00:00:43.384
 Three scenarios: safe, six forty. Realistic, six oh five. Ambitious, five thirty-eight.
 
 8
-00:00:41.782 --> 00:00:48.517
+00:00:43.484 --> 00:00:49.806
 Aid stations at kilometers twelve, twenty-four, thirty-four, plus OpenStreetMap water points.
 
 9
-00:00:49.367 --> 00:00:55.057
+00:00:50.656 --> 00:00:56.498
 Each section gets a planned energy cost, in kilocalories per hour, pack included.
 
 10
-00:00:55.157 --> 00:01:00.164
+00:00:56.598 --> 00:01:02.224
 Next to it, sixty grams of carbs per hour: the gap is flagged, never hidden.
 
 11
-00:01:01.014 --> 00:01:07.963
+00:01:03.074 --> 00:01:09.828
 Mandatory gear is checked against your inventory: missing, never used in training, or flagged for wear.
 
 12
-00:01:08.063 --> 00:01:10.318
+00:01:09.928 --> 00:01:12.050
 Nothing new on race day.
 
 13
-00:01:11.168 --> 00:01:14.362
+00:01:12.900 --> 00:01:16.102
 The course and aid stations go to the watch.
 
 14
-00:01:14.462 --> 00:01:21.069
+00:01:16.202 --> 00:01:22.980
 And the /race command gives the countdown: minus fifty-four days, with the Trail Shape score.
 
 15
-00:01:21.919 --> 00:01:27.502
+00:01:23.830 --> 00:01:29.816
 The day after, the debrief compares plan and actual race, segment by segment.
 
 16
-00:01:27.602 --> 00:01:31.436
+00:01:29.916 --> 00:01:33.862
 Pace gap, late-race fade, carbs per hour taken.
 
 17
-00:01:33.986 --> 00:01:38.737
+00:01:36.412 --> 00:01:40.886
 To go further: the “Course strategist” page of the documentation.

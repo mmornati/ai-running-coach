@@ -1,73 +1,73 @@
 WEBVTT
 
 1
-00:00:01.200 --> 00:00:03.391
+00:00:01.200 --> 00:00:03.394
 Stage eight: fuel stop.
 
 2
-00:00:05.100 --> 00:00:13.158
+00:00:05.100 --> 00:00:14.278
 Camille types /log, then one sentence: two gels and half a litre, left knee three out of ten, RPE seven.
 
 3
-00:00:13.258 --> 00:00:15.727
+00:00:14.378 --> 00:00:17.148
 The model spots five pieces.
 
 4
-00:00:16.577 --> 00:00:21.798
+00:00:17.998 --> 00:00:23.192
 But it computes nothing: it hands these entities to a small Python script.
 
 5
-00:00:21.898 --> 00:00:28.718
+00:00:23.292 --> 00:00:30.406
 The script finds each product in the catalogue: two gels, twenty-five grams each, fifty grams.
 
 6
-00:00:28.818 --> 00:00:32.887
+00:00:30.506 --> 00:00:35.052
 The model extracts, the script computes. Never the reverse.
 
 7
-00:00:33.737 --> 00:00:36.846
+00:00:35.902 --> 00:00:38.960
 An unknown product? Two similar bars?
 
 8
-00:00:36.946 --> 00:00:42.614
+00:00:39.060 --> 00:00:44.806
 The coach asks. It never invents a value, and the rest of the sentence doesn't wait.
 
 9
-00:00:43.464 --> 00:00:46.914
+00:00:45.656 --> 00:00:49.290
 Carbs, fluid and effort join the session file.
 
 10
-00:00:47.014 --> 00:00:49.781
+00:00:49.390 --> 00:00:51.704
 The pain goes to the health folder.
 
 11
-00:00:49.881 --> 00:00:53.054
+00:00:51.804 --> 00:00:55.006
 Nothing is overwritten or counted twice.
 
 12
-00:00:53.904 --> 00:00:57.055
+00:00:55.856 --> 00:00:59.346
 Three out of ten: logged, nothing more.
 
 13
-00:00:57.155 --> 00:01:05.341
+00:00:59.446 --> 00:01:07.712
 At seven out of ten, an adjustable threshold, it recommends seeing a professional. Not a substitute for medical advice.
 
 14
-00:01:06.191 --> 00:01:12.457
+00:01:08.562 --> 00:01:14.956
 On runs over ninety minutes, the script keeps your best real rate: fifty-six grams an hour.
 
 15
-00:01:12.557 --> 00:01:19.442
+00:01:15.056 --> 00:01:22.434
 Ten more for margin: a ceiling of sixty-six. Weigh-ins before and after also give the sweat rate.
 
 16
-00:01:20.292 --> 00:01:24.531
+00:01:23.284 --> 00:01:27.686
 Race day: sixty grams of carbs an hour, under the ceiling.
 
 17
-00:01:24.631 --> 00:01:33.628
+00:01:27.786 --> 00:01:37.156
 After each run, one line sets Garmin's energy figure against the model's: flagged beyond fifteen percent. Garmin stays the reference.
 
 18
-00:01:36.178 --> 00:01:40.012
+00:01:39.706 --> 00:01:43.484
 To go further: the “log” page of the documentation.

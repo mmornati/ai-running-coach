@@ -1,73 +1,73 @@
 WEBVTT
 
 1
-00:00:01.200 --> 00:00:03.711
+00:00:01.200 --> 00:00:04.018
 Stage five: the owner's tour.
 
 2
-00:00:05.100 --> 00:00:09.126
+00:00:05.100 --> 00:00:09.454
 The dashboard is one command: dashboard.sh.
 
 3
-00:00:09.226 --> 00:00:16.729
+00:00:09.554 --> 00:00:16.596
 It opens on 127.0.0.1, read-only, built from your Markdown files.
 
 4
-00:00:16.829 --> 00:00:20.962
+00:00:16.696 --> 00:00:20.834
 A file written by the coach shows up within thirty seconds.
 
 5
-00:00:21.812 --> 00:00:24.643
+00:00:21.684 --> 00:00:24.622
 Today: do I run, ease off or rest?
 
 6
-00:00:24.743 --> 00:00:29.153
+00:00:24.722 --> 00:00:29.628
 Verdict and reason, morning check, today's plan with its weather.
 
 7
-00:00:30.003 --> 00:00:32.258
+00:00:30.478 --> 00:00:32.672
 Week: planned versus done.
 
 8
-00:00:32.358 --> 00:00:38.603
+00:00:32.772 --> 00:00:38.998
 Tuesday's threshold is cancelled, hills slide to Thursday: rule seven explains why.
 
 9
-00:00:39.453 --> 00:00:42.882
+00:00:39.848 --> 00:00:43.506
 Fitness and load: condition, fatigue, form.
 
 10
-00:00:42.982 --> 00:00:47.136
+00:00:43.606 --> 00:00:47.696
 And Trail Shape: does training cover what the race will demand?
 
 11
-00:00:47.986 --> 00:00:51.415
+00:00:48.546 --> 00:00:52.684
 Sessions: Sunday's run, eighteen kilometres.
 
 12
-00:00:51.515 --> 00:00:54.709
+00:00:52.784 --> 00:00:56.418
 Detected climbs, then kilometre splits.
 
 13
-00:00:55.986 --> 00:00:58.945
+00:00:57.268 --> 00:01:00.470
 Decisions: why did this session change?
 
 14
-00:00:59.045 --> 00:01:02.410
+00:01:00.570 --> 00:01:04.324
 Each entry shows before, after and sources.
 
 15
-00:01:03.986 --> 00:01:08.311
+00:01:05.268 --> 00:01:10.894
 And also: health, nutrition, reports, performance, calendar.
 
 16
-00:01:10.986 --> 00:01:13.348
+00:01:12.268 --> 00:01:14.390
 It all fits on a phone too.
 
 17
-00:01:13.448 --> 00:01:17.965
+00:01:14.490 --> 00:01:19.492
 Behind a reverse proxy, in Docker, the workspace stays read-only.
 
 18
-00:01:20.686 --> 00:01:24.648
+00:01:22.042 --> 00:01:25.868
 To go further: the “Views” page of the documentation.

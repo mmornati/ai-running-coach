@@ -21,6 +21,15 @@ export function distance(m, digits = 1) {
   return `${num(m / 1000, digits)}${NBSP}km`;
 }
 
+// Valeur de distance SANS unité (axes de graphique, colonnes « de → à ») et son unité.
+export function distanceValue(m, digits = 1) {
+  return num(UNITS === "imperial" ? m / 1609.344 : m / 1000, digits);
+}
+
+export function distanceUnit() {
+  return UNITS === "imperial" ? "mi" : "km";
+}
+
 export function elevation(m) {
   if (m === null || m === undefined) return "—";
   if (UNITS === "imperial") return `${num(m * 3.28084)}${NBSP}ft`;
@@ -172,6 +181,18 @@ export const TRIGGER = {
 };
 export const DECISION_OUTCOME = {
   applied: "Appliquée", proposed: "Proposée", rejected_by_athlete: "Refusée par l'athlète", superseded: "Remplacée",
+};
+
+// Effet d'une décision (#175) : ce qui s'est passé APRÈS (corrélation, jamais une causalité — d'où
+// des libellés d'évolution, pas de « efficace »).
+export const DECISION_EFFECT = {
+  improved: "Évolution favorable", neutral: "Évolution stable", worsened: "Évolution défavorable",
+  insufficient_data: "Données insuffisantes",
+};
+// Nature de l'action (#175, revue) : déduite de `before`/`after` par `arc_decision_effects.action_kind`.
+export const DECISION_ACTION = {
+  lighten: "allègement", cancel: "annulation", move: "report", intensify: "renforcement",
+  replace: "remplacement", other: "autre changement", unspecified: "non précisée",
 };
 
 // Échappement pour les chaînes insérées dans le DOM par innerHTML.

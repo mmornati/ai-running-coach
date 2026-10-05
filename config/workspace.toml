@@ -144,20 +144,52 @@ morning_check = "full"
 # d'acclimatation à la chaleur (#38, `temp_max_c` du jour ≥ ce seuil, borne incluse).
 # Indépendant de `morning_check` (jointure activité/météo, pas du bilan matinal).
 heat_threshold_c = 25.0
+# Contexte du cycle menstruel (#166) — OPT-IN STRICT, jamais présumé.
+#   "off"    — défaut : aucune donnée de cycle récupérée, aucun outil exposé,
+#              aucune mention par les agents
+#   "garmin" — phase lue sur Garmin Connect (outils get_menstrual_* de garmin-mcp,
+#              ajoutés à la liste blanche SEULEMENT dans ce mode : relancer
+#              `./install.sh` après le changement, voir docs/configuration.md).
+#   "intervals" — [data].source = "intervals" : champ wellness menstrualPhase
+#              d'intervals.icu, lu avec le bilan matinal (aucune installation à refaire)
+#   "manual" — phase déclarée par vous-même via /log
+# Le cycle est un CONTEXTE de lecture (HRV, FC de repos, hydratation, chaleur),
+# jamais une règle automatique ni un diagnostic. Valeur invalide = "off" + avertissement.
+cycle_tracking = "off"
+
+[nutrition]
+# Poussée des apports vers Garmin Connect (#167) — OPT-IN STRICT.
+#   "off" — défaut : rien n'est jamais poussé, aucun outil de journal alimentaire/hydratation
+#           n'est exposé (liste blanche inchangée)
+#   "ask" — après un /log ou un rapport nutrition, le coach PROPOSE de pousser l'apport vers le
+#           journal alimentaire et l'hydratation de Garmin Connect ; chaque poussée exige un
+#           « oui » explicite, n'a jamais lieu en headless (daily-sync) et reste idempotente
+#           (trace `garmin_pushed`). Les outils ne sont ajoutés à la liste blanche qu'à
+#           l'installation : relancer `./install.sh` après le changement (ou
+#           `./install.sh --nutrition-sync ask`).
+# Indisponible avec [data].source = "intervals" ou "strava" (dit explicitement). Valeur invalide = "off".
+# Une seule source de vérité par jour : voir docs/configuration.md.
+garmin_sync = "off"
 
 [data]
 # Source de données primaire des agents (#68).
 #   "garmin"    — Garmin Connect, via garmin-mcp (défaut, comportement historique)
 #   "intervals" — intervals.icu (ouvre le projet aux montres non-Garmin : COROS,
 #                 Suunto, Polar, Apple — tout ce qu'intervals.icu synchronise),
-#                 via le serveur MCP communautaire eddmann/intervals-icu-mcp
+#                 via le serveur MCP communautaire hhopke/intervals-icu-mcp (#165)
+#   "strava"    — Strava (#164), source « universelle » (toutes marques de montres) :
+#                 activités + flux par seconde (donc les KPI FIT : zones, GAP,
+#                 découplage, VAM…) via le serveur MCP communautaire r-huijts/strava-mcp
+#                 (npm, nécessite Node.js >= 18). Pas de HRV, de FC de repos, de sommeil
+#                 ni de readiness côté Strava : `[health].morning_check` se dégrade
+#                 explicitement. Voir docs/strava-setup.md.
 # Change la source des outils appelés par `coach`/`medical`/`garmin-daily-sync`
 # (voir la table de correspondance dans AGENTS.md) et la destination du push de
 # séances planifiées. Certaines fonctionnalités Garmin (téléchargement FIT,
 # upload de parcours, score de readiness algorithmique) n'ont pas d'équivalent
 # côté intervals.icu et sont alors explicitement indisponibles plutôt que
 # devinées — voir AGENTS.md, section « Backends MCP ». `./install.sh --source
-# intervals` installe le serveur correspondant et écrit cette clé.
+# intervals` (ou `--source strava`) installe le serveur correspondant et écrit cette clé.
 source = "garmin"
 
 [metrics]
@@ -272,8 +304,67 @@ ntfy_delay_s = 60
 # pour une autre conversation ou une approbation tardive. 0 = tout le reste du jour.
 turn_budget_max_eur = 1.0
 
+[telegram]
+# Bot Telegram (#174, voir docs/telegram.md) : retours en un geste SANS modèle ni clé d'API
+# (boutons du résumé quotidien : séance faite / pas faite / décalée, RPE, douleur), écrits
+# dans le workspace par la même logique que /log. Désactivé par défaut ; installé par
+# `./install.sh --telegram` (service `scripts/coach-telegram.sh`, interrogation périodique :
+# aucune adresse publique à exposer).
+enabled = false
+# Fichier du jeton du bot (ligne TELEGRAM_BOT_TOKEN=…), HORS dépôt, mode 600 — jamais dans ce TOML.
+token_file = "~/.config/ai-running-coach/telegram.env"
+# Identifiants des chats autorisés (liste blanche). Vide = tout est refusé. Se récupère avec
+# `python3 scripts/arc_telegram.py whoami` (voir docs/telegram.md). Exemple : ["123456789"].
+allowed_chat_ids = []
+# Envoie le résumé de la synchronisation quotidienne (avec ses boutons) sur Telegram, en plus
+# de ntfy s'il est configuré.
+send_summary = true
+# Conversation libre (niveau 2) : relaie le texte libre au service du chat du tableau de bord
+# (mêmes politique, approbations et plafond de dépense). Exige [chat].enabled = true et une clé
+# d'API facturée (docs/mobile.md). false = les retours en un geste seulement.
+chat_bridge = false
+# Durée (s) d'une interrogation longue de l'API Telegram (getUpdates).
+poll_timeout_s = 30
+
 [dashboard]
 # Tableau de bord local (`scripts/dashboard.sh`) : lecture seule, n'écoute que sur
 # 127.0.0.1 — l'adresse n'est volontairement pas configurable. Si le port est pris,
 # les 9 suivants sont essayés.
 port = 8765
+# Fond de carte de la page séance (trace GPS des échantillons FIT). Modèle d'URL de tuiles
+# raster `{z}/{x}/{y}` (`{s}` = sous-domaine a/b/c), en https. La seule ressource externe
+# que le tableau de bord charge en plus des polices : le serveur de tuiles voit la zone
+# affichée, jamais la trace. Vide = aucune tuile, trace seule sur fond uni (hors ligne).
+# Modifier ces clés demande de relancer le tableau de bord (en-tête Content-Security-Policy).
+map_tiles = "https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png"
+map_attribution = "© OpenStreetMap contributors, SRTM · style © OpenTopoMap (CC-BY-SA)"
+
+[elevation]
+# Correction altimétrique par modèle numérique de terrain (#176, scripts/arc_dem.py,
+# docs/elevation.md). DÉSACTIVÉE par défaut : aucune coordonnée ne quitte votre machine.
+#   "off"  — défaut ; la correction n'a lieu que sur demande (`analyze_gpx.py --dem`,
+#            `arc_race_pacing.py --dem`)
+#   "auto" — les GPX de COURSE (itinéraires publics : analyse de parcours, plan de course)
+#            sont corrigés d'office ; repli sur l'altitude du fichier hors ligne (avec avertissement)
+# Fournisseurs : IGN RGE ALTI (Géoplateforme, France métropolitaine) puis Copernicus GLO-90
+# via Open-Meteo (ailleurs). Seules des coordonnées arrondies, amincies, sont envoyées.
+# Valeur invalide = "off" + avertissement.
+dem = "off"
+# Pas d'amincissement des coordonnées envoyées (m, 5 à 500) : un point tous les `step_m`.
+step_m = 50
+# Cache local des altitudes (<workspace>/.arc/dem-cache.json, jamais dans le dépôt).
+cache = true
+
+[privacy]
+# Séances personnelles (`arc_index.py dem-check <séance>`) : une trace d'activité révèle votre
+# domicile. Tant que `false` (défaut), AUCUNE trace de séance n'est envoyée à un service
+# d'altimétrie. `true` = autorise la comparaison altitude enregistrée / MNT (jamais un
+# remplacement), début et fin de trace exclus (`dem_trim_m`). Indépendant de [elevation].dem.
+dem_for_activities = false
+# Mètres retirés au début ET à la fin de chaque trace de séance avant envoi (200 à 5000).
+# Protection PARTIELLE : la trace restante passe souvent encore près de chez vous.
+dem_trim_m = 500
+
+# [pacing.personal] — coefficients de pacing personnels (#188). Section ABSENTE par défaut :
+# écrite par `arc_race_debrief.py --calibrate --apply` après accord explicite de l'athlète,
+# dans config/workspace.user.toml (voir docs/configuration.md). Ne rien décommenter ici.

@@ -1,65 +1,65 @@
 WEBVTT
 
 1
-00:00:00.900 --> 00:00:05.950
+00:00:00.900 --> 00:00:06.358
 ai-running-coach : votre staff d'entraînement trail, directement dans votre éditeur.
 
 2
-00:00:06.800 --> 00:00:11.423
+00:00:07.208 --> 00:00:13.146
 Votre montre mesure tout : sommeil, variabilité cardiaque, allure, dénivelé.
 
 3
-00:00:11.523 --> 00:00:13.011
+00:00:13.246 --> 00:00:15.368
 Mais qui relie les points ?
 
 4
-00:00:14.200 --> 00:00:20.594
+00:00:16.218 --> 00:00:22.972
 Le coach lit vos données Garmin, ou Intervals.icu, et écrit tout en Markdown, dans votre IDE.
 
 5
-00:00:22.600 --> 00:00:28.973
+00:00:24.618 --> 00:00:31.324
 Quatre spécialistes travaillent ensemble : coach, stratège de course, médecin du sport et nutritionniste.
 
 6
-00:00:29.073 --> 00:00:31.115
+00:00:31.424 --> 00:00:33.762
 Gardez seulement ceux qu'il vous faut.
 
 7
-00:00:31.965 --> 00:00:38.871
+00:00:34.612 --> 00:00:42.494
 Chaque matin, trois signaux décident de la séance. Ce matin, ils sont au rouge : le seuil devient une endurance douce.
 
 8
-00:00:38.971 --> 00:00:42.506
+00:00:42.594 --> 00:00:46.468
 Et la commande /why donne la raison, sans rien inventer.
 
 9
-00:00:43.356 --> 00:00:46.657
+00:00:47.318 --> 00:00:51.048
 Le plan de la semaine passe par sept garde-fous calculés.
 
 10
-00:00:46.757 --> 00:00:51.615
+00:00:51.148 --> 00:00:56.870
 Deux séances dures d'affilée ? Les côtes glissent à jeudi, puis tout part sur votre montre.
 
 11
-00:00:53.356 --> 00:01:01.969
+00:00:57.720 --> 00:01:06.346
 Le jour J, votre course est découpée segment par segment : allures tirées de votre propre modèle, trois scénarios, et le ravitaillement qui va avec.
 
 12
-00:01:02.819 --> 00:01:04.776
+00:01:07.196 --> 00:01:09.918
 Tout reste chez vous, en Markdown.
 
 13
-00:01:04.876 --> 00:01:10.566
+00:01:10.018 --> 00:01:16.580
 Un index SQLite jetable alimente un tableau de bord local : condition, fatigue, forme.
 
 14
-00:01:11.416 --> 00:01:19.517
+00:01:17.430 --> 00:01:25.480
 Et le coach vous suit partout : synchronisation automatique, notification sur le téléphone, et des commandes courtes pour aller à l'essentiel.
 
 15
-00:01:20.367 --> 00:01:24.841
+00:01:26.330 --> 00:01:31.332
 Un clone, une installation, un court entretien avec /coach-setup…
 
 16
-00:01:25.467 --> 00:01:27.168
+00:01:31.432 --> 00:01:33.554
 Prêt à courir plus malin ?

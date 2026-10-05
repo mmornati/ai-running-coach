@@ -1,61 +1,61 @@
 WEBVTT
 
 1
-00:00:01.200 --> 00:00:03.583
+00:00:01.200 --> 00:00:04.834
 Étape douze : vos données, votre sentier.
 
 2
-00:00:05.100 --> 00:00:11.494
+00:00:05.684 --> 00:00:13.638
 Tout ce que le coach sait de Camille tient dans un dossier : séances, santé, nutrition, plans, rapports, matériel.
 
 3
-00:00:11.594 --> 00:00:16.793
+00:00:13.738 --> 00:00:19.532
 Des fichiers Markdown, que vous lisez, éditez et versionnez dans votre propre dépôt privé.
 
 4
-00:00:17.643 --> 00:00:25.765
+00:00:20.382 --> 00:00:29.608
 Chaque séance s'ouvre par un petit bloc de données : clés en anglais, unités SI. Une mesure absente est une clé absente, jamais un zéro.
 
 5
-00:00:25.865 --> 00:00:28.056
+00:00:29.708 --> 00:00:32.814
 Dessous, le texte libre du coach.
 
 6
-00:00:28.156 --> 00:00:31.670
+00:00:32.914 --> 00:00:37.028
 Après chaque écriture, la validation vérifie le bloc.
 
 7
-00:00:32.520 --> 00:00:36.461
+00:00:37.878 --> 00:00:42.160
 Le tableau de bord lit ces blocs dans une base SQLite dérivée.
 
 8
-00:00:36.561 --> 00:00:43.189
+00:00:42.260 --> 00:00:49.494
 Supprimez-la : rien n'est perdu, elle se reconstruit depuis vos fichiers. Le Markdown reste la source de vérité.
 
 9
-00:00:44.039 --> 00:00:49.345
+00:00:50.344 --> 00:00:56.474
 Une commande ouvre le tableau de bord sur votre machine, en lecture seule. Rien à installer.
 
 10
-00:00:52.039 --> 00:00:58.348
+00:00:58.344 --> 00:01:05.146
 Votre source se choisit : Garmin par défaut, ou Intervals.icu, avec l'option source intervals.
 
 11
-00:00:58.448 --> 00:01:04.714
+00:01:05.246 --> 00:01:12.096
 Avec Intervals, pas de score de readiness, ni de splits au kilomètre : l'outil le dit, il ne les invente pas.
 
 12
-00:01:05.564 --> 00:01:10.102
+00:01:12.946 --> 00:01:18.020
 Côté vie privée : vos fichiers restent sur votre machine, hors du dépôt public.
 
 13
-00:01:10.202 --> 00:01:18.175
+00:01:18.120 --> 00:01:26.506
 Mais ce que le modèle lit pour vous répondre voyage, dans les requêtes, jusqu'au fournisseur de votre IDE. C'est le cas de tout assistant.
 
 14
-00:01:19.025 --> 00:01:25.291
+00:01:27.356 --> 00:01:34.398
 Des fichiers d'avant ? /arc-backfill les met au contrat, dix par passe, sans inventer la moindre valeur.
 
 15
-00:01:27.841 --> 00:01:31.376
+00:01:36.948 --> 00:01:41.518
 Pour aller plus loin : la page « workspace » de la documentation.

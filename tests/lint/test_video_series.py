@@ -22,6 +22,7 @@ import re
 import sys
 import unittest
 from contextlib import redirect_stderr
+from unittest import mock
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent.parent
@@ -125,3 +126,42 @@ class TestGeneratedFilesAreFresh(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestNarrationEngines(unittest.TestCase):
+    """Moteurs de voix : le lexique s'adapte au moteur, kokoro reste inchangé."""
+
+    def setUp(self):
+        self.ep = episode_dirs()[0]
+
+    def test_ipa_entries_per_engine(self):
+        text = "Le coach et Garmin."
+        self.assertIn("[[kˈotʃ]]", video_narration.pronounce(text, "fr", self.ep, "kokoro"))
+        self.assertIn("[[kˈotʃ|coach]]", video_narration.pronounce(text, "fr", self.ep, "azure"))
+        self.assertEqual(video_narration.pronounce(text, "fr", self.ep, "kyutai"), text)
+
+    def test_replacement_is_never_reread(self):
+        # « coach » dans le remplacement `[[…|ai-running-coach]]` ne doit pas être resubstitué
+        lex = {"ai-running-coach": "[[a i]]", "coach": "[[k]]"}
+        with mock.patch.object(video_narration, "lexicon", return_value=lex):
+            out = video_narration.pronounce("ai-running-coach", "fr", self.ep, "azure")
+        self.assertEqual(out, "[[a i|ai-running-coach]]")
+
+    def test_microsoft_family_lexicon(self):
+        for engine in ("edge", "azure"):
+            out = video_narration.pronounce("Tapez /why dans votre IDE.", "fr", self.ep, engine)
+            self.assertEqual(out, "Tapez slash why dans votre I D E.", engine)
+        self.assertNotIn("_doc", video_narration.lexicon(self.ep, "fr", "edge"))
+
+    def test_azure_ssml_uses_phoneme_tags(self):
+        eng = video_narration.make_engine("azure")
+        ssml = eng.ssml("Le [[kˈotʃ|coach]] & moi", eng.voices["fr"])
+        self.assertIn('<phoneme alphabet="ipa" ph="kˈotʃ">coach</phoneme>', ssml)
+        self.assertIn("&amp; moi", ssml)
+
+    def test_kokoro_digest_ignores_missing_engine_fields(self):
+        data = video_narration.load_script(self.ep)
+        self.assertEqual(video_narration.script_digest(self.ep, data, "fr"),
+                         video_narration.script_digest(self.ep, data, "fr", "kokoro", None))
+        self.assertNotEqual(video_narration.script_digest(self.ep, data, "fr"),
+                            video_narration.script_digest(self.ep, data, "fr", "kyutai"))

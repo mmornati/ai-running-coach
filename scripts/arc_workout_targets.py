@@ -100,6 +100,20 @@ explicitement, ex. `--structure-text`) ou, à défaut, au `title` de la séance
 — sans quoi un répétitif de côte planifié dans une semaine réelle serait
 tout simplement INATTEIGNABLE par ce module (revue de code #107, point 7).
 
+## Cibles en % de la vitesse critique (#169) — SEULEMENT si l'ajustement est valide
+
+`cs_target_for_intensity(intensity, cs_fit)` : pour `tempo`/`threshold`/`vo2max`,
+une plage de vitesse GAP en % de la vitesse critique (`arc_cs`, `CS_INTENSITY_PCT`)
+**en complément** des zones FC, jamais à leur place. `cs_fit` = `arc_cs.fit_cs` (ou
+`arc_index.pace_curve(...)["current"]`) ; un ajustement refusé, absent ou une
+intensité sans mapping rend `reason_code` et AUCUNE vitesse — jamais une CS
+supposée. Au-dessus de la CS (vo2max), `d_prime_budget_s` donne la durée cumulée
+tenable à la borne haute (D′ / (v − CS)) : une répétition plus longue la dépasserait.
+Les pourcentages sont une **approximation du projet** (`arc_cs.ASSUMPTIONS["targets"]`).
+La cible est en vitesse GAP (« équivalent plat ») : sur une pente, la vitesse
+réelle est plus basse (voir `arc_gap`). Contrôle de cohérence avec le seuil lactique
+Garmin : `arc_cs.compare_threshold` (signalé, jamais arbitré).
+
 ## Unités du DTO Garmin (skills/garmin-workout-scheduling/SKILL.md)
 
 - **FC** (`targetType: heart.rate.zone`, bornes personnalisées) :
@@ -125,6 +139,21 @@ tout simplement INATTEIGNABLE par ce module (revue de code #107, point 7).
   existent) : c'est une information de PROVENANCE/PRÉVISION à afficher dans
   la description du pas ou au coureur, jamais un champ du DTO.
 
+## Ajustement à la chaleur prévue — `targets --heat` (#171)
+
+`apply_heat(result, session, …)` (logique pure dans `arc_heat.py`, mêmes
+coefficients que le pacing de course) ajoute au résultat : `heat_adjustment`
+(facteur, action, motif, rappels hydratation), un `pace_target.adjusted` (m/s,
+bornes ralenties) quand une allure plate existe, un `declared_pace` ralenti
+quand `--pace-s-km` est fourni, et `trace` = le fragment `heat_adjustment` du
+contrat `arc` (clé optionnelle d'une séance de semaine). La cible FC
+(`hr_target`) n'est JAMAIS modifiée (la FC prime). C'est `pace_target.adjusted`
+(et non `pace_target`) qu'il faut pousser dans le DTO quand
+`heat_adjustment.applies` est vrai. Voir `arc_heat.ASSUMPTIONS`. Une cible en %
+de la vitesse critique (`cs_target`, #169) est ralentie du même facteur
+(`cs_target.adjusted`, même règle : seulement si l'intensité est maintenue) ;
+`d_prime_budget_s` n'est pas recalculé (effet de la chaleur sur D′ non modélisé).
+
 Stdlib uniquement (CONTRIBUTING.md).
 """
 
@@ -132,9 +161,12 @@ from __future__ import annotations
 
 import sys
 from pathlib import Path
+from datetime import date
 from typing import Dict, List, Optional, Sequence, Tuple
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+import arc_cs as CS  # noqa: E402
+import arc_heat as H  # noqa: E402
 import arc_metrics as M  # noqa: E402
 import arc_slope_model as SL  # noqa: E402
 from coach_setup import workspace_root  # noqa: E402 (même résolution que arc_index.py/arc_guardrails.py)
@@ -377,9 +409,37 @@ def hill_repeat_targets(structure: dict, bins: Sequence[dict], *, band: str = DE
             "reason": prediction["reason"], "reason_code": prediction["reason_code"]}
 
 
+# Plages de vitesse en fraction de la CS, par intensité planifiée — approximation du projet
+# (voir `arc_cs.ASSUMPTIONS["targets"]`) ; recovery/endurance restent pilotées par FC/allure plate.
+CS_INTENSITY_PCT = {"tempo": (0.88, 0.95), "threshold": (0.95, 1.00), "vo2max": (1.02, 1.10)}
+
+
+def cs_target_for_intensity(intensity: Optional[str], cs_fit: Optional[dict]) -> dict:
+    """Cible de vitesse GAP en % de la vitesse critique (#169) — voir la section du docstring de module.
+    Rend toujours un dict ; `speed_low_ms`/`speed_high_ms` valent `None` (avec `reason_code`) quand
+    l'ajustement n'est pas valide ou que l'intensité n'a pas de mapping."""
+    base = {"source": "critical_speed", "intensity": intensity, "pct_low": None, "pct_high": None,
+            "speed_low_ms": None, "speed_high_ms": None, "pace_slow_s_km": None, "pace_fast_s_km": None,
+            "d_prime_budget_s": None, "cs_ms": None, "quality": None, "reason": None, "reason_code": None}
+    if intensity not in CS_INTENSITY_PCT:
+        return {**base, "reason": f"intensité « {intensity} » sans cible en % de la vitesse critique",
+                "reason_code": "unmapped_intensity"}
+    if not cs_fit or not cs_fit.get("valid"):
+        why = (cs_fit or {}).get("reason") or "vitesse critique non calculée"
+        return {**base, "reason": f"vitesse critique indisponible : {why}",
+                "reason_code": (cs_fit or {}).get("reason_code") or "no_cs_fit"}
+    lo, hi = CS_INTENSITY_PCT[intensity]
+    cs = cs_fit["cs_ms"]
+    v_lo, v_hi = cs * lo, cs * hi
+    return {**base, "pct_low": lo, "pct_high": hi, "speed_low_ms": round(v_lo, 3), "speed_high_ms": round(v_hi, 3),
+            "pace_slow_s_km": speed_ms_to_pace_s_km(v_lo), "pace_fast_s_km": speed_ms_to_pace_s_km(v_hi),
+            "d_prime_budget_s": (round(b, 1) if (b := CS.d_prime_budget_s(cs_fit, v_hi)) is not None else None),
+            "cs_ms": cs, "quality": cs_fit.get("quality")}
+
+
 def build_session_targets(session: dict, *, athlete: dict, bins: Sequence[dict],
                            hr_zones_method: Optional[str] = None, band: str = DEFAULT_BAND,
-                           structure_text: Optional[str] = None) -> dict:
+                           structure_text: Optional[str] = None, cs_fit: Optional[dict] = None) -> dict:
     """Point d'entrée unique : `session` (voir `arc_contract.SUBSCHEMA["session"]`,
     plus une clé `structure` optionnelle, HORS contrat `arc` — `arc_contract`
     n'a pas de clé dédiée pour un répétitif de côte, l'ajouter au bloc ```arc
@@ -394,7 +454,9 @@ def build_session_targets(session: dict, *, athlete: dict, bins: Sequence[dict],
     planifié dans une semaine réelle serait tout simplement INATTEIGNABLE par
     ce module, faute de champ `structure` dans le contrat).
 
-    Rend `{"intensity", "sport", "hr_target", "pace_target", "hill_repeats"}` —
+    Rend `{"intensity", "sport", "hr_target", "pace_target", "hill_repeats", "cs_target"}` —
+    `cs_target` (#169) : cible en % de la vitesse critique (`cs_target_for_intensity`), `None`
+    quand `cs_fit` n'est pas fourni ou pour un répétitif de côte ;
     `pace_target` est `None` quand une structure de côte a été reconnue
     (explicite ou depuis le texte) ; `hill_repeats` est `None` sinon."""
     intensity = session.get("intensity")
@@ -404,13 +466,79 @@ def build_session_targets(session: dict, *, athlete: dict, bins: Sequence[dict],
         return {
             "intensity": intensity, "sport": session.get("sport"),
             "hr_target": hr_target, "pace_target": None,
-            "hill_repeats": hill_repeat_targets(structure, bins, band=band),
+            "hill_repeats": hill_repeat_targets(structure, bins, band=band), "cs_target": None,
         }
     return {
         "intensity": intensity, "sport": session.get("sport"),
         "hr_target": hr_target, "pace_target": flat_pace_target_for_intensity(intensity, bins),
         "hill_repeats": None,
+        "cs_target": cs_target_for_intensity(intensity, cs_fit) if cs_fit is not None else None,
     }
+
+
+def apply_heat(result: dict, session: dict, *, temp_c: Optional[float], feels_like_c: Optional[float] = None,
+               humidity_pct: Optional[float] = None, category: Optional[str] = None,
+               acclimated: Optional[bool] = None, slot: Optional[str] = None,
+               sweat_rate_l_h: Optional[float] = None, declared_pace_s_km: Optional[float] = None) -> dict:
+    """Complète `result` (sortie de `build_session_targets`) avec l'ajustement
+    chaleur (#171) — voir docstring du module. Ne touche jamais `hr_target`."""
+    adj = H.heat_adjustment(H.classify_session(session), temp_c=temp_c, feels_like_c=feels_like_c,
+                            humidity_pct=humidity_pct, category=category, acclimated=acclimated,
+                            slot=slot, sweat_rate_l_h=sweat_rate_l_h)
+    result["heat_adjustment"] = adj
+    keep = adj["applies"] and adj["intensity_maintained"]
+    factor = adj["factor"] if keep else 1.0
+    pace = result.get("pace_target")
+    if keep and pace and pace.get("speed_low_ms") is not None:
+        low, high = H.slow_speed_ms(pace["speed_low_ms"], factor), H.slow_speed_ms(pace["speed_high_ms"], factor)
+        pace["adjusted"] = {
+            "speed_low_ms": low, "speed_high_ms": high,
+            "pace_low_s_km": speed_ms_to_pace_s_km(high), "pace_high_s_km": speed_ms_to_pace_s_km(low),
+            "factor": factor,
+        }
+    # #169 × #171 : une cible en % de la vitesse critique est ralentie du MÊME facteur que `pace_target`
+    # (la CS vient de meilleurs efforts courus surtout par temps tempéré : par la chaleur, la vitesse tenable
+    # à une même intensité baisse de la même façon). `cs_target` d'origine intact (non ajusté), comme
+    # `pace_target`. `d_prime_budget_s` n'est PAS recalculé : l'effet de la chaleur sur D′ n'est pas
+    # modélisé — le budget non ajusté reste la borne à ne pas dépasser. Rien en 🔴 (intensité non maintenue).
+    cs = result.get("cs_target")
+    if keep and cs and cs.get("speed_low_ms") is not None:
+        low, high = H.slow_speed_ms(cs["speed_low_ms"], factor), H.slow_speed_ms(cs["speed_high_ms"], factor)
+        cs["adjusted"] = {
+            "speed_low_ms": low, "speed_high_ms": high,
+            "pace_slow_s_km": speed_ms_to_pace_s_km(low), "pace_fast_s_km": speed_ms_to_pace_s_km(high),
+            "factor": factor,
+        }
+    if declared_pace_s_km is not None:
+        result["declared_pace"] = {
+            "pace_s_km": declared_pace_s_km,
+            "adjusted_pace_s_km": round(H.slow_pace_s_km(declared_pace_s_km, factor), 1) if keep else None,
+            "factor": factor if keep else None,
+        }
+    if adj["applies"]:
+        # Mesure absente = clé omise (contrat `arc`) : jamais de `temp_c` fictif quand le 🔴 vient
+        # du vent/de la pluie/de l'orage sans température connue.
+        trace = {"factor": adj["factor"], "action": adj["action"], "category": adj["category"],
+                 "reason": adj["reason"]}
+        for key in ("temp_c", "temp_basis", "acclimated", "slot", "dew_point_c"):
+            if adj.get(key) is not None:
+                trace[key] = adj[key]
+        result["trace"] = {"heat_adjustment": trace}
+    return result
+
+
+def slot_temperature(weather: Optional[dict], slot: Optional[str]) -> Tuple[Optional[float], Optional[str]]:
+    """Température du créneau depuis un bloc météo : `temp_min_c` pour `morning`,
+    `temp_max_c` sinon (borne prudente, voir `arc_heat.ASSUMPTIONS`). Rend
+    `(température, note)`."""
+    if not weather:
+        return None, "aucun fichier météo indexé pour ce jour : fournir --temp-c ou persister la météo"
+    tmin, tmax = weather.get("temp_min_c"), weather.get("temp_max_c")
+    if slot == "morning" and tmin is not None:
+        return tmin, "température du créneau matin = temp_min_c du jour"
+    if tmax is not None:
+        return tmax, "température = temp_max_c du jour (borne prudente, pas de température horaire)"
+    return tmin, "température = temp_min_c du jour (temp_max_c absent)"
 
 
 # ---------------------------------------------------------------------------
@@ -737,7 +865,83 @@ def build_arg_parser():
     ap.add_argument("--band", choices=SL.BANDS, default=DEFAULT_BAND,
                      help="bande du modèle pente -> allure (défaut : endurance)")
     ap.add_argument("--today", metavar="AAAA-MM-JJ")
+    ap.add_argument("--lt-speed-ms", type=float, dest="lt_speed_ms", metavar="V",
+                     help="vitesse (m/s) au seuil lactique Garmin : ajoute `cs_target.threshold_check` "
+                          "(divergence signalée avec la CS, jamais arbitrée)")
+    ap.add_argument("--heat", action="store_true",
+                     help="ajuster les cibles d'allure à la chaleur prévue (#171) : météo du jour de la séance "
+                          "lue dans l'index, ou --temp-c")
+    ap.add_argument("--temp-c", dest="temp_c", type=float, help="température du créneau (°C), prime sur la météo indexée")
+    ap.add_argument("--feels-like-c", dest="feels_like_c", type=float, help="ressenti (°C)")
+    ap.add_argument("--humidity-pct", dest="humidity_pct", type=float, help="humidité relative (%%)")
+    ap.add_argument("--category", choices=H.WEATHER_ORDER,
+                     help="catégorie météo du créneau retenu (green/yellow/orange/red) ; défaut : composantes non thermiques "
+                          "(vent/pluie/UV/orage) du fichier météo, la chaleur étant déduite de la température du créneau")
+    ap.add_argument("--slot", choices=("morning", "midday", "evening", "none"),
+                     help="créneau retenu (défaut : best_slot de la séance, sinon du fichier météo)")
+    ap.add_argument("--pace-s-km", dest="pace_s_km", type=float,
+                     help="allure cible déclarée (s/km) à ralentir selon la chaleur (séances de qualité)")
     return ap
+
+
+def _load_weather(conn, day: Optional[str]) -> Tuple[Optional[dict], Optional[str]]:
+    """Fichier météo indexé du jour (`weather_day`) ; plusieurs lieux le même
+    jour -> `None` + note (jamais un choix arbitraire : fournir --temp-c)."""
+    import json
+    if not day:
+        return None, "séance sans date : météo introuvable"
+    rows = [dict(r) for r in conn.execute("SELECT * FROM weather_day WHERE date = ?", (day,)).fetchall()]
+    if not rows:
+        return None, None
+    if len(rows) > 1:
+        return None, f"plusieurs fichiers météo le {day} (lieux différents) : fournir --temp-c"
+    row = rows[0]
+    try:
+        extra = json.loads(row.get("data_json") or "{}")
+    except ValueError:
+        extra = {}
+    row["humidity_pct"] = extra.get("humidity_pct")
+    row["thunderstorm"] = extra.get("thunderstorm")
+    return row, None
+
+
+def _heat_from_cli(args, conn, conf: dict, session: dict, result: dict) -> None:
+    """Résout les entrées de `apply_heat` depuis les options et l'index (météo
+    du jour, acclimatation #38, taux de sudation `fueling`)."""
+    from datetime import date as _date
+    import arc_index as IDX  # noqa: E402
+    today = _date.fromisoformat(args.today) if args.today else _date.today()
+    weather, wnote = _load_weather(conn, session.get("date"))
+    slot = args.slot or session.get("best_slot") or (weather or {}).get("best_slot")
+    if args.temp_c is not None:
+        temp_c, tnote = args.temp_c, "température fournie par --temp-c"
+    else:
+        temp_c, tnote = slot_temperature(weather, slot)
+    feels = args.feels_like_c
+    fnote = None
+    if feels is None and (weather or {}).get("feels_like_c") is not None:
+        if args.temp_c is None and slot == "morning" and (weather or {}).get("temp_min_c") is not None:
+            # Le ressenti du fichier est une valeur JOURNALIÈRE (proche du pic de chaleur) : l'appliquer
+            # au créneau matin, évalué sur `temp_min_c`, annulerait le bénéfice du créneau frais.
+            fnote = "ressenti du jour non appliqué au créneau matin (valeur journalière, pas celle du créneau)"
+        else:
+            feels = weather["feels_like_c"]
+    humidity = args.humidity_pct if args.humidity_pct is not None else (weather or {}).get("humidity_pct")
+    # Catégorie : --category (créneau retenu, évalué par le coach) ; sinon composantes NON thermiques du
+    # fichier météo (vent/pluie/UV/orage) — jamais la catégorie « du jour », calculée sur la température
+    # max, qui s'appliquerait à tort à un créneau frais (la chaleur est déduite de la température du créneau).
+    category = H.worst_category(args.category, H.category_from_other(weather))
+    if category is None:
+        category = session.get("weather_category")
+    temps = [t for t in (temp_c, feels) if t is not None]
+    acclimated, anote = H.resolve_acclimated(conn, conf, today, max(temps) if temps else None)
+    sweat = IDX.fueling_trend(conn, today).get("median_sweat_rate_l_h")
+    apply_heat(result, session, temp_c=temp_c, feels_like_c=feels, humidity_pct=humidity, category=category,
+               acclimated=acclimated, slot=slot, sweat_rate_l_h=sweat, declared_pace_s_km=args.pace_s_km)
+    notes = result["heat_adjustment"]["notes"]
+    for extra in (wnote, tnote, fnote, anote):
+        if extra:
+            notes.append(extra)
 
 
 def main(argv: Optional[Sequence[str]] = None) -> int:
@@ -778,9 +982,18 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                 "restent calculées, mais corrigez la collision avant de pousser ce plan.",
                 file=sys.stderr)
 
+    # #169 : la CS n'est calculée que pour une intensité qui en a besoin (coût : lecture des échantillons).
+    cs_fit = None
+    if session.get("intensity") in CS_INTENSITY_PCT:
+        today_date = date.fromisoformat(args.today) if args.today else date.today()
+        cs_fit = IDX.pace_curve(conn, today_date)["current"] or {}
     result = build_session_targets(session, athlete=athlete, bins=bins,
                                     hr_zones_method=conf.get("hr_zones"), band=args.band,
-                                    structure_text=args.structure_text)
+                                    structure_text=args.structure_text, cs_fit=cs_fit)
+    if args.lt_speed_ms is not None and result.get("cs_target") is not None:
+        result["cs_target"]["threshold_check"] = CS.compare_threshold(cs_fit, args.lt_speed_ms)
+    if args.heat:
+        _heat_from_cli(args, conn, conf, session, result)
     print(json.dumps(result, ensure_ascii=False))
     return 0
 

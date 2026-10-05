@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+. "$(dirname "$0")/_common.sh"
+stub_init "$@"
+exit 0

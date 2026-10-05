@@ -12,7 +12,7 @@ Claude (Pro/Max) ou ChatGPT (Codex).
 
 <div markdown>
 
-<span class="arc-video__meta">En vidéo · Étape 10 · 1 min 33</span>
+<span class="arc-video__meta">En vidéo · Étape 10 · 1 min 40</span>
 
 **[Le coach dans la poche](video/coach-poche/index.html)** — La machine coach, la synchronisation automatique (horaires ou veille), la notification push, Remote Control et les commandes courtes, le tableau de bord mobile, et ce qui n'est pas possible.
 
@@ -44,6 +44,11 @@ Claude (Pro/Max) ou ChatGPT (Codex).
     (plafond de dépense quotidien, clé isolée dans `llm.env`), qui ne remplace pas
     Remote Control.
 
+    Une exception utile : un bot qui **n'appelle aucun modèle** n'a pas ce problème. Le
+    [bot Telegram](telegram.md) (#174) répond en un geste à la notification — « séance faite »,
+    RPE, douleur — par de simples écritures déterministes dans votre workspace : aucune clé
+    d'API, aucun coût. Seule sa conversation libre (opt-in) passe par le chat facturé.
+
 La seule voie qui préserve l'abonnement : utiliser les **surfaces distantes officielles**
 des éditeurs, en gardant une **machine « coach »** où vivent le workspace (`activities/`,
 `medical/`, `planning/`…), les tokens Garmin et le serveur MCP.
@@ -52,6 +57,7 @@ des éditeurs, en gardant une **machine « coach »** où vivent le workspace (`
 |---|---|---|---|
 | Parler au coach depuis le téléphone | **Claude Code Remote Control** — `claude remote-control` tourne sur la machine coach, l'appli Claude (iOS/Android) ou claude.ai/code s'y connecte | ✅ Pro/Max/Team/Enterprise (clé API refusée) | Le processus doit rester lancé (service systemd/launchd fourni) |
 | Idem avec Codex | **Codex Remote** — appli Codex sur macOS + appli ChatGPT | ✅ ChatGPT Plus/Pro | macOS uniquement (le mode CLI est expérimental) |
+| Répondre au coach en un geste (RPE, douleur, séance faite) | **[Bot Telegram](telegram.md)** — boutons sous le résumé du daily-sync, écrits sans modèle dans le workspace | ✅ aucun modèle appelé, donc aucune clé | Telegram peut lire ces messages (voir la page dédiée) ; la conversation libre est une option facturée |
 | Synchronisation automatique | **cron/launchd → `claude -p` ou `codex exec`** (CLI officiels, headless) | ✅ | — |
 | Synchronisation automatique sans abonnement | **cron/launchd → `opencode run`** sur OpenRouter (ou toute API compatible OpenAI), ou `claude -p` avec clé API — voir [ci-dessous](#synchronisation-sur-openrouter-ou-toute-api-compatible-openai) | ❌ clé API, facturé au token | Plafond quotidien, clé dans `llm.env` |
 | Machine éteinte | *Routines cloud* Claude (voir [plan B](#plan-b-cloud-anthropic-sans-machine-a-la-maison)) | ✅ Pro (5 exécutions/jour) / Max (15) | Workspace dans un dépôt GitHub, tokens Garmin en secrets |
@@ -196,6 +202,11 @@ scripts/setup-ntfy.sh
     synchronisation rencontre un vrai refus d'authentification (401). Réglages :
     `[notifications].token_alerts` / `token_alert_days` dans
     `config/workspace.toml` — détail dans [Dépannage](troubleshooting.md#alerte-push-avant-expiration-des-tokens-32).
+
+!!! tip "Répondre depuis la notification : Telegram"
+    ntfy est à sens unique. Pour répondre en un appui (RPE, douleur, « séance faite »),
+    ajoutez le [bot Telegram](telegram.md) : `./install.sh --telegram`. Il complète ntfy
+    (le résumé part sur les deux canaux) et n'a besoin d'aucune clé d'API.
 
 ### 4. Synchronisation automatique
 

@@ -9,7 +9,7 @@
 
 <div markdown>
 
-<span class="arc-video__meta">En vidéo · Étape 09 · 1 min 32</span>
+<span class="arc-video__meta">En vidéo · Étape 09 · 1 min 47</span>
 
 **[Usure](../video/materiel/index.html)** — Du kilométrage à l'inspection photo : alerte de seuil, verdict en quatre couleurs, indices de foulée (jamais un diagnostic), foulée mesurée, kits et bilan de carrière.
 

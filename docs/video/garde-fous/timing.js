@@ -1,39 +1,39 @@
 /* Généré par scripts/video_narration.py — ne pas éditer. */
 window.ARC_TIMING = {
  "en": {
-  "digest": "a4080a6bc0761ce7",
-  "duration": 99.887,
+  "digest": "fb68b1a6f5155953",
+  "duration": 102.156,
   "scenes": [
    {
     "id": "bib",
     "start": 0.0,
-    "d": 4.6,
+    "d": 4.608,
     "cues": [
      {
       "s": 1.2,
-      "e": 3.803,
+      "e": 4.008,
       "text": "Stage three: the plan that says no."
      }
     ]
    },
    {
     "id": "week",
-    "start": 4.6,
-    "d": 13.171,
+    "start": 4.608,
+    "d": 13.944,
     "cues": [
      {
       "s": 0.5,
-      "e": 4.575,
+      "e": 4.628,
       "text": "Monday, September twenty-eighth: the coach drafts Camille's week."
      },
      {
-      "s": 4.925,
-      "e": 8.765,
+      "s": 4.978,
+      "e": 9.49,
       "text": "Threshold Tuesday, hills Wednesday, long run Saturday."
      },
      {
-      "s": 9.115,
-      "e": 12.571,
+      "s": 9.84,
+      "e": 13.344,
       "text": "First, a second opinion. Computed, not guessed."
      }
     ],
@@ -41,22 +41,22 @@ window.ARC_TIMING = {
    },
    {
     "id": "load",
-    "start": 17.771,
-    "d": 15.88,
+    "start": 18.552,
+    "d": 16.128,
     "cues": [
      {
       "s": 0.5,
-      "e": 7.263,
+      "e": 7.028,
       "text": "Four guardrails measure load. Projected load ratio: one point one eight, under one point three."
      },
      {
-      "s": 7.613,
-      "e": 12.263,
+      "s": 7.378,
+      "e": 12.322,
       "text": "Volume up six percent, elevation under five: both below ten."
      },
      {
-      "s": 12.613,
-      "e": 15.28,
+      "s": 12.672,
+      "e": 15.528,
       "text": "Monotony: one point six, under two."
      }
     ],
@@ -64,17 +64,17 @@ window.ARC_TIMING = {
    },
    {
     "id": "health",
-    "start": 33.651,
-    "d": 13.695,
+    "start": 34.68,
+    "d": 13.954,
     "cues": [
      {
       "s": 0.5,
-      "e": 6.687,
+      "e": 6.788,
       "text": "No quality session after a red health verdict: none here. It's the only guardrail that blocks."
      },
      {
-      "s": 7.037,
-      "e": 13.095,
+      "s": 7.138,
+      "e": 13.354,
       "text": "The long run is thirty-nine percent of volume, above thirty-five: a warning, not a block."
      }
     ],
@@ -82,22 +82,22 @@ window.ARC_TIMING = {
    },
    {
     "id": "back2back",
-    "start": 47.346,
-    "d": 12.083,
+    "start": 48.634,
+    "d": 12.888,
     "cues": [
      {
       "s": 0.5,
-      "e": 4.084,
+      "e": 4.412,
       "text": "Seventh guardrail: quality on consecutive days."
      },
      {
-      "s": 4.434,
-      "e": 7.655,
+      "s": 4.762,
+      "e": 8.266,
       "text": "Threshold Tuesday, hills Wednesday: warning."
      },
      {
-      "s": 8.005,
-      "e": 11.483,
+      "s": 8.616,
+      "e": 12.288,
       "text": "Hills move to Thursday, the easy run to Wednesday."
      }
     ],
@@ -105,12 +105,12 @@ window.ARC_TIMING = {
    },
    {
     "id": "trace",
-    "start": 59.429,
+    "start": 61.522,
     "d": 9.0,
     "cues": [
      {
       "s": 0.5,
-      "e": 6.004,
+      "e": 6.284,
       "text": "The change is written to a decision file: the rule that fired, the before, the after."
      }
     ],
@@ -118,17 +118,17 @@ window.ARC_TIMING = {
    },
    {
     "id": "targets",
-    "start": 68.429,
-    "d": 9.962,
+    "start": 70.522,
+    "d": 9.922,
     "cues": [
      {
       "s": 0.5,
-      "e": 3.807,
+      "e": 3.884,
       "text": "Every session gets targets computed for Camille."
      },
      {
-      "s": 4.157,
-      "e": 9.362,
+      "s": 4.234,
+      "e": 9.322,
       "text": "Heart rate zone, slope-adjusted pace, and expected climb per hill repeat."
      }
     ],
@@ -136,22 +136,22 @@ window.ARC_TIMING = {
    },
    {
     "id": "push",
-    "start": 78.391,
-    "d": 14.643,
+    "start": 80.444,
+    "d": 14.736,
     "cues": [
      {
       "s": 0.5,
-      "e": 6.345,
+      "e": 6.284,
       "text": "Check rerun: the quality alert is gone. Push to the Garmin calendar, without duplicates."
      },
      {
-      "s": 6.695,
-      "e": 9.725,
+      "s": 6.634,
+      "e": 9.778,
       "text": "Then it reads the calendar back to verify."
      },
      {
-      "s": 10.075,
-      "e": 14.043,
+      "s": 10.128,
+      "e": 14.136,
       "text": "A computed, tested second opinion. Not a model's hunch."
      }
     ],
@@ -159,21 +159,26 @@ window.ARC_TIMING = {
    },
    {
     "id": "finish",
-    "start": 93.034,
-    "d": 6.853,
+    "start": 95.18,
+    "d": 6.976,
     "cues": [
      {
       "s": 2.2,
-      "e": 6.253,
+      "e": 6.376,
       "text": "To go further: the “Guardrails” page of the documentation."
      }
     ]
    }
-  ]
+  ],
+  "engine": "edge",
+  "voice": {
+   "voice": "en-US-AndrewMultilingualNeural",
+   "rate": "+0%"
+  }
  },
  "fr": {
-  "digest": "c7e2a931e1a7fbf4",
-  "duration": 90.99,
+  "digest": "e23e2277e73add3e",
+  "duration": 106.06,
   "scenes": [
    {
     "id": "bib",
@@ -182,7 +187,7 @@ window.ARC_TIMING = {
     "cues": [
      {
       "s": 1.2,
-      "e": 3.163,
+      "e": 3.768,
       "text": "Étape trois : le plan qui sait dire non."
      }
     ]
@@ -190,21 +195,21 @@ window.ARC_TIMING = {
    {
     "id": "week",
     "start": 4.6,
-    "d": 10.888,
+    "d": 14.232,
     "cues": [
      {
       "s": 0.5,
-      "e": 4.319,
+      "e": 4.652,
       "text": "Lundi vingt-huit septembre : le coach rédige la semaine de Camille."
      },
      {
-      "s": 4.669,
-      "e": 7.314,
+      "s": 5.002,
+      "e": 8.986,
       "text": "Seuil mardi, côtes mercredi, sortie longue samedi."
      },
      {
-      "s": 7.664,
-      "e": 10.288,
+      "s": 9.336,
+      "e": 13.632,
       "text": "D'abord, un second avis. Calculé, pas deviné."
      }
     ],
@@ -212,22 +217,22 @@ window.ARC_TIMING = {
    },
    {
     "id": "load",
-    "start": 15.488,
-    "d": 13.469,
+    "start": 18.832,
+    "d": 16.56,
     "cues": [
      {
       "s": 0.5,
-      "e": 6.665,
+      "e": 7.628,
       "text": "Quatre garde-fous mesurent la charge. Ratio de charge projeté : un virgule dix-huit, sous un virgule trois."
      },
      {
-      "s": 7.015,
-      "e": 10.493,
+      "s": 7.978,
+      "e": 12.394,
       "text": "Volume plus six pour cent, dénivelé sous cinq : tous deux sous dix."
      },
      {
-      "s": 10.843,
-      "e": 12.869,
+      "s": 12.744,
+      "e": 15.96,
       "text": "Monotonie : un virgule six, sous deux."
      }
     ],
@@ -235,17 +240,17 @@ window.ARC_TIMING = {
    },
    {
     "id": "health",
-    "start": 28.957,
-    "d": 13.226,
+    "start": 35.392,
+    "d": 14.314,
     "cues": [
      {
       "s": 0.5,
-      "e": 5.897,
+      "e": 6.74,
       "text": "Pas de séance de qualité après un verdict rouge : aucune ici. C'est le seul garde-fou qui bloque."
      },
      {
-      "s": 6.247,
-      "e": 12.626,
+      "s": 7.09,
+      "e": 13.714,
       "text": "La sortie longue pèse trente-neuf pour cent du volume, au-dessus de trente-cinq : un avertissement, pas un blocage."
      }
     ],
@@ -253,22 +258,22 @@ window.ARC_TIMING = {
    },
    {
     "id": "back2back",
-    "start": 42.183,
-    "d": 9.928,
+    "start": 49.706,
+    "d": 12.624,
     "cues": [
      {
       "s": 0.5,
-      "e": 3.06,
+      "e": 3.836,
       "text": "Septième garde-fou : qualité deux jours de suite."
      },
      {
-      "s": 3.41,
-      "e": 5.522,
+      "s": 4.186,
+      "e": 7.666,
       "text": "Seuil mardi, côtes mercredi : alerte."
      },
      {
-      "s": 5.872,
-      "e": 9.328,
+      "s": 8.016,
+      "e": 12.024,
       "text": "Les côtes passent à jeudi, l'endurance fondamentale à mercredi."
      }
     ],
@@ -276,12 +281,12 @@ window.ARC_TIMING = {
    },
    {
     "id": "trace",
-    "start": 52.111,
+    "start": 62.33,
     "d": 9.0,
     "cues": [
      {
       "s": 0.5,
-      "e": 5.343,
+      "e": 6.164,
       "text": "Le changement est écrit dans un fichier de décision : la règle déclenchée, l'avant, l'après."
      }
     ],
@@ -289,17 +294,17 @@ window.ARC_TIMING = {
    },
    {
     "id": "targets",
-    "start": 61.111,
-    "d": 9.791,
+    "start": 71.33,
+    "d": 11.17,
     "cues": [
      {
       "s": 0.5,
-      "e": 4.255,
+      "e": 4.988,
       "text": "Chaque séance reçoit des cibles calculées pour Camille, jamais génériques."
      },
      {
-      "s": 4.605,
-      "e": 9.191,
+      "s": 5.338,
+      "e": 10.57,
       "text": "Zone cardiaque, allure à plat corrigée de la pente, dénivelé attendu par côte."
      }
     ],
@@ -307,22 +312,22 @@ window.ARC_TIMING = {
    },
    {
     "id": "push",
-    "start": 70.902,
-    "d": 13.896,
+    "start": 82.5,
+    "d": 16.32,
     "cues": [
      {
       "s": 0.5,
-      "e": 5.897,
+      "e": 6.908,
       "text": "Contrôle relancé : l'alerte de qualité a disparu. Envoi au calendrier Garmin, sans doublon."
      },
      {
-      "s": 6.247,
-      "e": 9.298,
+      "s": 7.258,
+      "e": 10.522,
       "text": "Puis on relit le calendrier pour vérifier chaque séance."
      },
      {
-      "s": 9.648,
-      "e": 13.296,
+      "s": 10.872,
+      "e": 15.72,
       "text": "Un second avis calculé, testé. Pas une intuition de modèle."
      }
     ],
@@ -330,16 +335,21 @@ window.ARC_TIMING = {
    },
    {
     "id": "finish",
-    "start": 84.798,
-    "d": 6.192,
+    "start": 98.82,
+    "d": 7.24,
     "cues": [
      {
       "s": 2.2,
-      "e": 5.592,
+      "e": 6.64,
       "text": "Pour aller plus loin : la page « Les garde-fous » de la documentation."
      }
     ]
    }
-  ]
+  ],
+  "engine": "edge",
+  "voice": {
+   "voice": "fr-FR-RemyMultilingualNeural",
+   "rate": "+0%"
+  }
  }
 };

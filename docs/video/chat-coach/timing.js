@@ -1,8 +1,8 @@
 /* Généré par scripts/video_narration.py — ne pas éditer. */
 window.ARC_TIMING = {
  "en": {
-  "digest": "7997f02b5b29184b",
-  "duration": 93.607,
+  "digest": "d9fd101bf882617f",
+  "duration": 96.846,
   "scenes": [
    {
     "id": "bib",
@@ -11,7 +11,7 @@ window.ARC_TIMING = {
     "cues": [
      {
       "s": 1.2,
-      "e": 3.44,
+      "e": 3.648,
       "text": "Stage four: talk to your coach."
      }
     ]
@@ -19,16 +19,16 @@ window.ARC_TIMING = {
    {
     "id": "ask",
     "start": 4.6,
-    "d": 7.871,
+    "d": 8.074,
     "cues": [
      {
       "s": 0.5,
-      "e": 4.852,
+      "e": 5.012,
       "text": "Camille feels drained. In the Coach tab, one sentence is enough."
      },
      {
-      "s": 5.202,
-      "e": 7.271,
+      "s": 5.362,
+      "e": 7.474,
       "text": "Should the threshold still happen?"
      }
     ],
@@ -36,17 +36,17 @@ window.ARC_TIMING = {
    },
    {
     "id": "answer",
-    "start": 12.471,
-    "d": 11.327,
+    "start": 12.674,
+    "d": 12.586,
     "cues": [
      {
       "s": 0.5,
-      "e": 5.407,
+      "e": 5.804,
       "text": "The coach answers in the open: every file read, every tool called, shown."
      },
      {
-      "s": 5.757,
-      "e": 10.727,
+      "s": 6.154,
+      "e": 11.986,
       "text": "H R V thirty-eight, resting heart rate fifty-two, readiness thirty-four."
      }
     ],
@@ -54,17 +54,17 @@ window.ARC_TIMING = {
    },
    {
     "id": "approval",
-    "start": 23.798,
-    "d": 11.733,
+    "start": 25.26,
+    "d": 12.706,
     "cues": [
      {
       "s": 0.5,
-      "e": 7.028,
+      "e": 7.436,
       "text": "It suggests easing off: forty-five easy minutes. But nothing reaches Garmin without your approval."
      },
      {
-      "s": 7.378,
-      "e": 11.133,
+      "s": 7.786,
+      "e": 12.106,
       "text": "Camille clicks Apply: session scheduled, decision written."
      }
     ],
@@ -72,12 +72,12 @@ window.ARC_TIMING = {
    },
    {
     "id": "samedi",
-    "start": 35.531,
+    "start": 37.966,
     "d": 6.0,
     "cues": [
      {
       "s": 0.5,
-      "e": 4.553,
+      "e": 4.868,
       "text": "And Saturday? The coach keeps the long run, with an early start."
      }
     ],
@@ -85,17 +85,17 @@ window.ARC_TIMING = {
    },
    {
     "id": "rules",
-    "start": 41.531,
-    "d": 12.671,
+    "start": 43.966,
+    "d": 12.706,
     "cues": [
      {
       "s": 0.5,
-      "e": 5.151,
+      "e": 4.988,
       "text": "The coach reads the workspace and Garmin, and writes your Markdown files."
      },
      {
-      "s": 5.501,
-      "e": 12.071,
+      "s": 5.338,
+      "e": 12.106,
       "text": "But any write to Garmin or Intervals.icu waits for your approval. A free shell? Refused."
      }
     ],
@@ -103,17 +103,17 @@ window.ARC_TIMING = {
    },
    {
     "id": "budget",
-    "start": 54.202,
-    "d": 11.839,
+    "start": 56.672,
+    "d": 11.77,
     "cues": [
      {
       "s": 0.5,
-      "e": 7.049,
+      "e": 6.476,
       "text": "The chat stays local: the dashboard listens on 127.0.0.1."
      },
      {
-      "s": 7.399,
-      "e": 11.239,
+      "s": 6.826,
+      "e": 11.17,
       "text": "And spending is capped: one euro per turn, two per day."
      }
     ],
@@ -121,17 +121,17 @@ window.ARC_TIMING = {
    },
    {
     "id": "phone",
-    "start": 66.041,
-    "d": 9.386,
+    "start": 68.442,
+    "d": 9.85,
     "cues": [
      {
       "s": 0.5,
-      "e": 3.465,
+      "e": 3.74,
       "text": "On a phone, the card stays front and centre."
      },
      {
-      "s": 3.815,
-      "e": 8.786,
+      "s": 4.09,
+      "e": 9.25,
       "text": "Unanswered, a notification summarises the change, with no health data."
      }
     ],
@@ -139,17 +139,17 @@ window.ARC_TIMING = {
    },
    {
     "id": "backends",
-    "start": 75.427,
-    "d": 10.815,
+    "start": 78.292,
+    "d": 11.77,
     "cues": [
      {
       "s": 0.5,
-      "e": 5.855,
+      "e": 6.308,
       "text": "An API key, not your subscription: Claude, or OpenRouter with DeepSeek."
      },
      {
-      "s": 6.205,
-      "e": 10.215,
+      "s": 6.658,
+      "e": 11.17,
       "text": "Here, replies are scripted: a demo backend, no cost."
      }
     ],
@@ -157,21 +157,26 @@ window.ARC_TIMING = {
    },
    {
     "id": "finish",
-    "start": 86.242,
-    "d": 7.365,
+    "start": 90.062,
+    "d": 6.784,
     "cues": [
      {
       "s": 2.2,
-      "e": 6.765,
+      "e": 6.184,
       "text": "To go further: the “Chat with the coach” page of the documentation."
      }
     ]
    }
-  ]
+  ],
+  "engine": "edge",
+  "voice": {
+   "voice": "en-US-AndrewMultilingualNeural",
+   "rate": "+0%"
+  }
  },
  "fr": {
-  "digest": "749d5c9dcd627692",
-  "duration": 83.989,
+  "digest": "a498f9ff2952d36c",
+  "duration": 93.15,
   "scenes": [
    {
     "id": "bib",
@@ -180,7 +185,7 @@ window.ARC_TIMING = {
     "cues": [
      {
       "s": 1.2,
-      "e": 3.184,
+      "e": 3.912,
       "text": "Étape quatre : parler à son coach."
      }
     ]
@@ -188,16 +193,16 @@ window.ARC_TIMING = {
    {
     "id": "ask",
     "start": 4.6,
-    "d": 7.0,
+    "d": 7.642,
     "cues": [
      {
       "s": 0.5,
-      "e": 3.807,
+      "e": 4.82,
       "text": "Camille se sent à plat. Dans l'onglet Coach, une phrase suffit."
      },
      {
-      "s": 4.157,
-      "e": 5.607,
+      "s": 5.17,
+      "e": 7.042,
       "text": "On fait quand même le seuil ?"
      }
     ],
@@ -205,17 +210,17 @@ window.ARC_TIMING = {
    },
    {
     "id": "answer",
-    "start": 11.6,
-    "d": 9.0,
+    "start": 12.242,
+    "d": 10.402,
     "cues": [
      {
       "s": 0.5,
-      "e": 3.913,
+      "e": 4.868,
       "text": "Le coach répond à vue : chaque fichier lu, chaque outil appelé apparaît."
      },
      {
-      "s": 4.263,
-      "e": 8.103,
+      "s": 5.218,
+      "e": 9.802,
       "text": "H R V trente-huit, repos cinquante-deux, readiness trente-quatre."
      }
     ],
@@ -223,17 +228,17 @@ window.ARC_TIMING = {
    },
    {
     "id": "approval",
-    "start": 20.6,
-    "d": 10.602,
+    "start": 22.644,
+    "d": 12.01,
     "cues": [
      {
       "s": 0.5,
-      "e": 6.111,
+      "e": 6.5,
       "text": "Il propose d'alléger : quarante-cinq minutes faciles. Mais rien ne part chez Garmin sans votre accord."
      },
      {
-      "s": 6.461,
-      "e": 10.002,
+      "s": 6.85,
+      "e": 11.41,
       "text": "Camille clique sur Appliquer : séance planifiée, décision écrite."
      }
     ],
@@ -241,12 +246,12 @@ window.ARC_TIMING = {
    },
    {
     "id": "samedi",
-    "start": 31.202,
+    "start": 34.654,
     "d": 6.0,
     "cues": [
      {
       "s": 0.5,
-      "e": 4.212,
+      "e": 5.252,
       "text": "Et samedi ? Le coach garde la sortie longue, départ tôt le matin."
      }
     ],
@@ -254,17 +259,17 @@ window.ARC_TIMING = {
    },
    {
     "id": "rules",
-    "start": 37.202,
-    "d": 11.498,
+    "start": 40.654,
+    "d": 12.586,
     "cues": [
      {
       "s": 0.5,
-      "e": 4.447,
+      "e": 4.796,
       "text": "Le coach lit le workspace et Garmin, et écrit vos fichiers Markdown."
      },
      {
-      "s": 4.797,
-      "e": 10.898,
+      "s": 5.146,
+      "e": 11.986,
       "text": "Mais toute écriture vers Garmin ou Intervals.icu attend votre accord. Un shell libre ? Refusé."
      }
     ],
@@ -272,17 +277,17 @@ window.ARC_TIMING = {
    },
    {
     "id": "budget",
-    "start": 48.7,
-    "d": 10.474,
+    "start": 53.24,
+    "d": 11.146,
     "cues": [
      {
       "s": 0.5,
-      "e": 5.855,
+      "e": 5.948,
       "text": "Le chat reste local : le tableau de bord écoute sur cent vingt-sept point zéro point zéro point un."
      },
      {
-      "s": 6.205,
-      "e": 9.874,
+      "s": 6.298,
+      "e": 10.546,
       "text": "Et la dépense est plafonnée : un euro par tour, deux euros par jour."
      }
     ],
@@ -290,17 +295,17 @@ window.ARC_TIMING = {
    },
    {
     "id": "phone",
-    "start": 59.174,
-    "d": 8.17,
+    "start": 64.386,
+    "d": 9.658,
     "cues": [
      {
       "s": 0.5,
-      "e": 3.209,
+      "e": 3.716,
       "text": "Sur téléphone, la carte reste au premier plan."
      },
      {
-      "s": 3.559,
-      "e": 7.57,
+      "s": 4.066,
+      "e": 9.058,
       "text": "Sans réponse, une notification résume le changement, sans données de santé."
      }
     ],
@@ -308,17 +313,17 @@ window.ARC_TIMING = {
    },
    {
     "id": "backends",
-    "start": 67.344,
-    "d": 9.898,
+    "start": 74.044,
+    "d": 11.554,
     "cues": [
      {
       "s": 0.5,
-      "e": 5.001,
+      "e": 5.708,
       "text": "Une clé API, pas votre abonnement : Claude, ou OpenRouter avec DeepSeek."
      },
      {
-      "s": 5.351,
-      "e": 9.298,
+      "s": 6.058,
+      "e": 10.954,
       "text": "Ici, les réponses sont scriptées : un backend de démonstration, sans coût."
      }
     ],
@@ -326,16 +331,21 @@ window.ARC_TIMING = {
    },
    {
     "id": "finish",
-    "start": 77.242,
-    "d": 6.747,
+    "start": 85.598,
+    "d": 7.552,
     "cues": [
      {
       "s": 2.2,
-      "e": 6.147,
+      "e": 6.952,
       "text": "Pour aller plus loin : la page « Le chat avec le coach » de la documentation."
      }
     ]
    }
-  ]
+  ],
+  "engine": "edge",
+  "voice": {
+   "voice": "fr-FR-RemyMultilingualNeural",
+   "rate": "+0%"
+  }
  }
 };

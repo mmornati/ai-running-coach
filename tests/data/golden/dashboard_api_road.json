@@ -828,6 +828,7 @@
           "source_path": "activities/2026-09-23_running.md",
           "sport": "running",
           "start_time": "2026-09-23T12:10:00+02:00",
+          "strava_activity_id": null,
           "sweat_rate_l_h": null,
           "te_aerobic": 3.4,
           "te_anaerobic": 0.4,
@@ -906,6 +907,35 @@
           "weight_kg": 68.6,
           "weight_source": "health_day"
         },
+        "gait": {
+          "notes": {},
+          "values": {
+            "cadence_spm": {
+              "source": "samples",
+              "value": 172.0
+            },
+            "ground_contact_s": {
+              "source": "samples",
+              "value": 0.25
+            },
+            "stance_balance_pct": {
+              "source": "samples",
+              "value": 50.4
+            },
+            "step_length_m": {
+              "source": "samples",
+              "value": 1.17
+            },
+            "vertical_oscillation_m": {
+              "source": "samples",
+              "value": 0.095
+            },
+            "vertical_ratio_pct": {
+              "source": "samples",
+              "value": 8.6
+            }
+          }
+        },
         "gear": {
           "equipment": [],
           "shoe": {
@@ -941,6 +971,7 @@
             "3": 1645.0
           }
         },
+        "pain": [],
         "splits": [
           {
             "activity_id": 28,
@@ -1102,11 +1133,335 @@
       },
       "status": 200
     },
+    "/api/activity/{first}/track?points=40": {
+      "body": {
+        "alt": [
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          3.6,
+          7.3,
+          10.9,
+          14.6,
+          18.2,
+          21.8,
+          25.4,
+          29.1,
+          27.3,
+          23.6,
+          20.0,
+          16.4,
+          12.7,
+          9.1,
+          5.5,
+          1.8,
+          1.8,
+          5.5,
+          9.1,
+          12.7,
+          16.4,
+          20.0,
+          23.6,
+          27.3,
+          29.1,
+          25.4,
+          21.8,
+          18.2,
+          14.6,
+          10.9,
+          7.3,
+          3.6,
+          0.2
+        ],
+        "cad": [
+          172.0,
+          172.0,
+          172.0,
+          172.0,
+          172.0,
+          172.0,
+          172.0,
+          172.0,
+          172.0,
+          172.0,
+          172.0,
+          172.0,
+          172.0,
+          172.0,
+          172.0,
+          172.0,
+          172.0,
+          172.0,
+          172.0,
+          172.0,
+          172.0,
+          172.0,
+          172.0,
+          172.0,
+          172.0,
+          172.0,
+          172.0,
+          172.0,
+          172.0,
+          172.0,
+          172.0,
+          172.0,
+          172.0,
+          172.0,
+          172.0,
+          172.0,
+          172.0,
+          172.0,
+          172.0,
+          172.0
+        ],
+        "d": [
+          0.0,
+          270.0,
+          540.0,
+          810.0,
+          1080.0,
+          1350.0,
+          1620.0,
+          1890.0,
+          2160.0,
+          2430.0,
+          2700.0,
+          2970.0,
+          3240.0,
+          3510.0,
+          3780.0,
+          4050.0,
+          4320.0,
+          4590.0,
+          4860.0,
+          5130.0,
+          5400.0,
+          5670.0,
+          5940.0,
+          6210.0,
+          6480.0,
+          6750.0,
+          7020.0,
+          7290.0,
+          7560.0,
+          7830.0,
+          8100.0,
+          8370.0,
+          8640.0,
+          8910.0,
+          9180.0,
+          9450.0,
+          9720.0,
+          9990.0,
+          10260.0,
+          10516.5
+        ],
+        "has_gps": false,
+        "hr": [
+          150.0,
+          150.0,
+          150.0,
+          150.0,
+          150.0,
+          150.0,
+          150.0,
+          150.0,
+          150.0,
+          150.0,
+          150.0,
+          150.0,
+          150.0,
+          150.0,
+          150.0,
+          150.0,
+          150.0,
+          150.0,
+          150.0,
+          150.0,
+          150.0,
+          150.0,
+          150.0,
+          155.0,
+          155.0,
+          155.0,
+          155.0,
+          155.0,
+          155.0,
+          155.0,
+          155.0,
+          155.0,
+          155.0,
+          155.0,
+          155.0,
+          155.0,
+          155.0,
+          155.0,
+          155.0,
+          155.0
+        ],
+        "points": 40,
+        "reason_code": "no_gps",
+        "spd": [
+          2.7,
+          2.7,
+          2.7,
+          2.7,
+          2.7,
+          2.7,
+          2.7,
+          2.7,
+          2.7,
+          2.7,
+          2.7,
+          2.7,
+          2.7,
+          2.7,
+          2.7,
+          2.7,
+          2.7,
+          2.7,
+          2.7,
+          2.7,
+          2.7,
+          2.7,
+          2.7,
+          2.7,
+          2.7,
+          2.7,
+          2.7,
+          2.7,
+          2.7,
+          2.7,
+          2.7,
+          2.7,
+          2.7,
+          2.7,
+          2.7,
+          2.7,
+          2.7,
+          2.7,
+          2.7,
+          2.7
+        ],
+        "t": [
+          0.0,
+          100.0,
+          200.0,
+          300.0,
+          400.0,
+          500.0,
+          600.0,
+          700.0,
+          800.0,
+          900.0,
+          1000.0,
+          1100.0,
+          1200.0,
+          1300.0,
+          1400.0,
+          1500.0,
+          1600.0,
+          1700.0,
+          1800.0,
+          1900.0,
+          2000.0,
+          2100.0,
+          2200.0,
+          2300.0,
+          2400.0,
+          2500.0,
+          2600.0,
+          2700.0,
+          2800.0,
+          2900.0,
+          3000.0,
+          3100.0,
+          3200.0,
+          3300.0,
+          3400.0,
+          3500.0,
+          3600.0,
+          3700.0,
+          3800.0,
+          3895.0
+        ]
+      },
+      "status": 200
+    },
+    "/api/altitude-exposure": {
+      "body": {
+        "as_of": "2026-09-23",
+        "assumption": "Exposition à l'altitude à l'entraînement (#185, `arc_index.py altitude-exposure`, sur le modèle de `heat-acclimation`). Fenêtres glissantes de 14 et 28 jours (`--days N` pour une seule) se terminant à `--today` (`as_of`), séances de terrain seulement (salle, piscine, repos exclus : `EXPOSURE_EXCLUDED_SPORTS`). Source : les ÉCHANTILLONS FIT ingérés (`activity_sample.altitude_m`) ; le temps au-dessus de chaque seuil (1 500 m, 2 000 m) est la somme des `covered_s` (1 s si absent). Une séance compte au seuil si elle y passe au moins `EXPOSURE_MIN_SESSION_S` (5 min). Les résumés d'activité du contrat ne portent aucune altitude absolue (seulement le dénivelé) : une séance SANS échantillon ou sans altitude est comptée à part (`sessions_without_altitude`), jamais comme exposition nulle. Altitude barométrique ou GPS bruitée (quelques dizaines de mètres) : l'exposition près d'un seuil est approximative. Ce n'est pas un modèle d'acclimatation physiologique : un indicateur d'exposition.",
+        "min_session_s": 300.0,
+        "note": "aucune séance ≥ 1500 m sur 28 jours",
+        "status": "none",
+        "thresholds_m": [
+          1500,
+          2000
+        ],
+        "windows": {
+          "14": {
+            "max_altitude_m": 30,
+            "sessions": 8,
+            "sessions_with_altitude": 1,
+            "sessions_without_altitude": 7,
+            "thresholds": {
+              "1500": {
+                "duration_s": 0,
+                "sessions": 0,
+                "threshold_m": 1500
+              },
+              "2000": {
+                "duration_s": 0,
+                "sessions": 0,
+                "threshold_m": 2000
+              }
+            },
+            "window_days": 14
+          },
+          "28": {
+            "max_altitude_m": 30,
+            "sessions": 15,
+            "sessions_with_altitude": 1,
+            "sessions_without_altitude": 14,
+            "thresholds": {
+              "1500": {
+                "duration_s": 0,
+                "sessions": 0,
+                "threshold_m": 1500
+              },
+              "2000": {
+                "duration_s": 0,
+                "sessions": 0,
+                "threshold_m": 2000
+              }
+            },
+            "window_days": 28
+          }
+        }
+      },
+      "status": 200
+    },
     "/api/assumptions": {
       "body": {
         "assumptions": {
           "acwr": "ACWR = fatigue / condition, affiché dès que la condition atteint 10. La zone 0.8–1.3 est un repère indicatif, discuté dans la littérature, pas un seuil de blessure.",
           "compliance": "Conformité plan vs réalisé : séances de repos hors calcul (sport ou intensité `rest`), `cancelled` exclue du dénominateur (le contrat n'a pas de motif d'annulation distinct médical/autre), `moved` exclue (pas de date cible dans le contrat), séance future de la semaine en cours jamais comptée manquée, séance du jour même sans activité encore en attente (pas manquée), `done` sans activité chiffrée exclue des ratios durée/D+ (comptée en séance faite seulement), appariement séance ↔ activité par date + sport (route/trail/randonnée/marche et variantes vélo interchangeables), les `done` explicites réservant leur activité avant les séances sans statut.",
+          "cs_best_efforts_not_tests": "Les « meilleurs efforts » viennent de l'entraînement et de la course, pas d'un test à l'épuisement : si l'athlète n'a jamais couru à fond sur une durée, le meilleur effort sous-estime sa capacité réelle et la CS ressort BASSE (jamais haute par construction). Les points d'un ajustement proviennent de séances différentes (jusqu'à toute la fenêtre de dates), pas d'une même journée : une forme qui évolue sur la fenêtre brouille l'ajustement. Une fenêtre courte hérite aussi de tout effort plus long (le meilleur 3 min d'un effort de 10 min est au moins sa vitesse moyenne) : une seule séance fournit ainsi toute une courbe (par dilution au-delà de l'effort) : un ajustement dont tous les points viennent d'une seule séance est refusé, jamais une CS. Même avec 2 séances, des points hérités d'un effort plus long restent des bornes basses. La qualité (n, R², erreur standard) est toujours rapportée ; une CS issue d'un ajustement « moyenne » ou « faible » est un ordre de grandeur.",
+          "cs_gap_basis": "Les vitesses de la courbe sont des vitesses GAP (allure ajustée à la pente, modèle de Minetti, voir arc_gap.ASSUMPTIONS) : la CS est donc une vitesse « équivalent plat ». Les limites du GAP s'héritent : bruit de pente sur un instant, surestimation probable du gain en forte descente. Une séance sans altitude exploitable (tapis, capteur barométrique absent) est ÉCARTÉE de la courbe (comptée dans `skipped_no_grade`), jamais supposée plate.",
+          "cs_lactate_crosscheck": "Contrôle de cohérence avec le seuil lactique estimé par Garmin (quand l'athlète le renseigne) : un écart de plus de 5 % entre CS et vitesse au seuil est SIGNALÉ, jamais arbitré — les deux sont des estimations par des méthodes différentes (CS : meilleurs efforts de l'athlète ; seuil Garmin : algorithme propriétaire non documenté publiquement dans le détail). Le seuil lactique et la CS ne désignent pas exactement la même intensité : un écart modéré est normal. Une vitesse au seuil hors de 1,5-7 m/s est refusée (unité probablement mal convertie), jamais comparée.",
+          "cs_model": "Vitesse critique (CS) et réserve anaérobie D′ : modèle hyperbolique à 2 paramètres, distance = CS × durée + D′, ajusté par moindres carrés sur les meilleurs efforts de 3 à 20 minutes. C'est l'équivalent en course à pied du couple puissance critique / W′ du cyclisme (Jones AM & Vanhatalo A (2017), « The 'Critical Power' Concept: Applications to Sports Performance with a Focus on Intermittent High-Intensity Exercise », Sports Med 47(Suppl 1):65-78, doi: 10.1007/s40279-017-0688-0 ; Poole DC, Burnley M, Vanhatalo A, Rossiter HB & Jones AM (2016), « Critical Power », Med Sci Sports Exerc 48(11):2320-2334, doi: 10.1249/mss.0000000000000939 — références vérifiées via Crossref ; ces articles décrivent le concept de puissance critique, son transfert à la vitesse critique en course est une approximation du projet). La fenêtre 3-20 min et les seuils de validité (au moins 3 points, rapport de durées d'au moins 3, R² d'au moins 0,95, D′ entre 30 et 1000 m) sont des choix du projet, pas des valeurs publiées.",
+          "cs_quality": "Qualité d'un ajustement accepté jugée sur l'erreur standard RELATIVE de chaque paramètre (erreur standard de la pente et de l'ordonnée de la régression, rapportée à la CS et à D′) : « bonne » si au moins 4 points, CS à ±2 % et D′ à ±10 % ; « moyenne » si CS à ±5 % et D′ à ±25 % ; « faible » sinon. Le R² n'y entre pas : la distance croissant presque proportionnellement à la durée, il dépasse 0,99 même pour des efforts peu cohérents (il ne sert que de garde-fou grossier, seuil 0,95). Seuils : approximation du projet, pas des valeurs publiées.",
+          "cs_refusal": "Refus explicite (jamais d'extrapolation silencieuse) : moins de 3 durées disponibles entre 3 et 20 min, points issus d'une seule séance, rapport de durées inférieur à 3, D′ hors de [30 ; 1000] m (courbe plate ou ajustement incohérent), CS non positive ou R² sous 0,95 — le motif est rendu dans `reason`/`reason_code`.",
+          "cs_targets": "Cibles d'intervalles en % de la CS (arc_workout_targets) : seuil 95-100 %, tempo 88-95 %, VO2max 102-110 % de la CS, UNIQUEMENT quand l'ajustement est valide. Ces pourcentages sont une approximation du projet (pas des valeurs publiées) : au-dessus de la CS, la durée tenable est bornée par D′ (D′ / (v − CS)) ; une cible ne doit jamais dépasser ce budget. Elles complètent les zones de fréquence cardiaque, jamais ne les remplacent. Par la chaleur (targets --heat, #171), elles sont ralenties du même facteur que les autres cibles d'allure (cs_target.adjusted) ; le budget D′ n'est pas recalculé (effet de la chaleur sur D′ non modélisé).",
+          "cs_trend": "Tendance de la CS : un ajustement indépendant tous les 28 jours, chacun sur le meilleur de 90 jours se terminant à ce point (une fenêtre de 42 jours contient rarement assez d'efforts de 3 à 20 min). Un point sans ajustement valide rend son motif de refus, jamais une valeur reportée du point précédent.",
+          "cs_windows_and_gaps": "Fenêtres glissantes sur le temps ÉCOULÉ, grille régulière à la résolution des échantillons (5 s) : une fenêtre n'est retenue que si les échantillons couvrent au moins 95 % de sa durée (covered_s) ; un trou de signal ou une pause non enregistrée (pause automatique de la montre) la disqualifie, jamais interpolé. Un arrêt enregistré (vitesse nulle, ex. ravitaillement en trail) compte comme du temps couvert à vitesse nulle : un meilleur effort qui enjambe un ravitaillement est donc pénalisé. Compromis assumé : des fenêtres sur le temps de MOUVEMENT recolleraient les morceaux de part et d'autre de l'arrêt, alors que D′ se reconstitue pendant l'arrêt — un effort intermittent passerait pour un effort continu et gonflerait CS et D′. Sur le temps écoulé, l'erreur va dans le sens prudent (CS basse). Résolution de 5 s : la fenêtre de 30 s est la plus courte exploitable ; un pic de vitesse GPS isolé peut gonfler les durées très courtes (hors ajustement CS/D′, qui part de 3 min).",
+          "decision_effects": "Effet des décisions (#175, `arc_index.py decision-effects`, `/api/decision-effects`) : pour chaque décision `applied` ou `rejected_by_athlete` du journal, comparaison d'une fenêtre AVANT (3 jours se terminant au jour de la décision pour les séries quotidiennes ; 14 jours pour les séances) et d'une fenêtre APRÈS (J+1 à J+N, N = 3 pour bilan matinal/météo, 7 pour blessure/garde-fou/demande/course/autre) sur les signaux du déclencheur (HRV, FC de repos, readiness ; douleur ; écart d'ACWR à la zone 0,8–1,3 ; RPE, découplage, conformité). Tolérances « neutre » : HRV ±5 %, FC de repos ±2 bpm, readiness ±5, douleur ±1, ACWR ±0,1, RPE ±1, découplage ±2 points, conformité ±15 points — APPROXIMATIONS DU PROJET, pas des normes. Un signal absent est sauté, jamais imputé ; fenêtre non écoulée ou aucun signal → `insufficient_data`. Synthèse par déclencheur × nature de l'action (dérivée de `before`/`after`) × issue, décisions aux fenêtres chevauchantes signalées ; sous 5 cas évaluables, comptes bruts sans « tendance ». CORRÉLATION, PAS CAUSALITÉ : jamais utilisé pour assouplir un garde-fou `block`, une décision médicale ni un verdict rouge. Effets dérivés, jamais stockés ; méthode détaillée : `arc_decision_effects.ASSUMPTIONS`.",
           "decoupling_grade_asymmetry": "Si la pente moyenne (pondérée par le temps, sur les échantillons utilisés pour l'EF) diffère de plus de 3 points entre les deux moitiés (ex. un aller-retour avec la montée dans une moitié et la descente dans l'autre), l'activité est jugée inéligible : le GAP corrige l'effet de la pente sur l'allure, mais pas parfaitement (biais connu du modèle de Minetti en forte descente, arc_gap.ASSUMPTIONS) — un profil trop différent entre les deux moitiés peut donc produire un découplage mesuré qui reflète surtout le relief, pas une vraie dérive cardiaque.",
           "decoupling_halves": "Les deux moitiés (post-échauffement) sont découpées sur le TEMPS DE MOUVEMENT cumulé, jamais la distance ni le temps écoulé : une moitié plus lente (fatigue, montée) couvrirait sinon moins de distance mais devrait rester comparable en durée réelle d'effort. Chaque moitié doit conserver au moins 10 minutes de mouvement, sinon l'activité est jugée inéligible (durée exploitable insuffisante après exclusion de l'échauffement).",
           "decoupling_hr_coverage": "Chaque moitié doit avoir au moins 80 % de son temps de mouvement couvert par une FC présente — TOUT terrain confondu, pente forte et marche COMPRISES : sous ce seuil (capteur FC décroché sur une longue portion), la moyenne de cette moitié porterait sur une fraction non représentative de son temps réel, ce qui peut fausser le découplage mesuré dans un sens ou dans l'autre selon ce qui manque. Distinct d'une absence totale de FC (séance sans capteur), qui a sa propre raison plus tôt dans le pipeline, ET distinct de la couverture RÉELLEMENT UTILISABLE pour l'EF (voir ASSUMPTIONS['usable_running']) : une sortie en montagne peut avoir une FC complète (100 % de couverture ici) tout en manquant de portions courues exploitables (beaucoup de pente forte/marche) — mélanger les deux critères en un seul (revue de code #45, correction apportée) rejetait à tort la plupart des sorties de montagne réelles avec une FC pourtant complète (ex. mesuré sur des profils synthétiques : vallonné ±12 % à 64-86 % de « couverture » avant correction, ±15-25 % à 13-51 %, répétitions à allure adaptée ±10 % à 33 %, alors que la FC y était mesurée à 100 % du temps).",
@@ -1163,6 +1518,7 @@
           "heat_acclimation": "Acclimatation à la chaleur (#38) : sur les 14 derniers jours (aujourd'hui inclus), jointure de chaque activité OUTDOOR avec le fichier météo (`medical/*_meteo.md`) du MÊME JOUR calendaire. Outdoor / indoor : un sport listé dans `INDOOR_SPORTS` (`strength`, `indoor_cycling`, `home_trainer`, `elliptical`, `rest`) est exclu ; tout autre sport connu du contrat (`running`, `trail`, `hiking`, `walking`, `cycling`, `swimming`, `rowing`) est traité comme outdoor par défaut — le contrat ne distingue une variante indoor que pour le cyclisme (`indoor_cycling`/`home_trainer` vs `cycling`) ; `swimming`/`rowing` peuvent en pratique se pratiquer en piscine ou sur ergomètre, mais faute d'un `outdoor` explicite au niveau de l'activité (contrairement à `week.sessions[].outdoor`, réservé au plan), les compter en outdoor par défaut reste la lecture la plus proche du contrat existant. Séance « chaude » : `temp_max_c` DU JOUR ≥ seuil (borne INCLUSE), défaut 25 °C, configurable (`[health].heat_threshold_c`). Le contrat n'a pas d'heure de mesure météo infra-journalière : `temp_max_c` est le maximum du jour entier, pas la température à l'heure de départ de la séance (`start_time`) — une approximation CONSERVATRICE (une séance matinale par jour caniculaire peut compter « chaude » alors qu'elle s'est déroulée avant la pointe de chaleur) assumée en l'absence de données horaires ; le raffiner demanderait une série météo horaire, hors contrat actuel. `temp_max_c` peut lui-même être une PRÉVISION écrite plusieurs jours avant la séance (le skill `weather-forecast` ne refetch pas un jour déjà persisté, règle d'idempotence < 24 h) et non une mesure a posteriori : un écart entre la prévision et la météo réelle du jour n'est pas corrigé rétroactivement. Plusieurs fichiers météo le même jour (plusieurs lieux) : priorité au fichier dont `location` correspond à celui de l'activité — comparaison sur le nom de VILLE (avant la première virgule, ex. « Annecy » dans « Annecy, France »), accents et casse ignorés (`normalize_location`), pas une égalité de chaîne stricte. À défaut de correspondance (activité sans lieu, ou aucun fichier météo du jour ne correspond) MAIS que tous les fichiers du jour s'accordent sur le verdict chaud/pas chaud (même seuil), ce verdict est quand même retenu — peu importe lequel des lieux est le bon puisqu'ils concluent tous pareil (`_resolve_hot`). S'ils divergent (au moins un chaud, au moins un non), l'activité est traitée comme SANS météo plutôt que de deviner laquelle s'applique — voir `sessions_without_weather` ci-dessous. Un seul fichier météo ce jour-là : il s'applique, quel que soit son lieu — c'est le fichier de la séance d'ENTRAÎNEMENT du jour (le skill `weather-forecast` fetch d'abord le lieu d'entraînement) ; ce raccourci n'est PAS repris pour la météo de la course d'un objectif (`objective_forecast_hot`, `scripts/arc_serve.py::api_heat_acclimation`), où un lieu de course lointain ne doit jamais hériter du seul fichier du jour si ce fichier ne le nomme pas explicitement (`pick_weather_strict`, sans ce raccourci). Absence TOTALE de fichier météo pour le jour : la séance n'est ni chaude ni froide, elle est IGNORÉE du compte (`hot_sessions`/`hot_duration_s`) et comptée séparément dans `sessions_without_weather` — sans quoi un simple trou de synchronisation météo ferait baisser artificiellement le compte de séances chaudes. Rendu : `hot_sessions` (nombre), `hot_duration_s` (somme de `duration_s` des séances chaudes), `sessions_considered` (total des séances outdoor de la fenêtre, chaudes ou non, hors sans-météo), `sessions_without_weather`, `window_days`, `threshold_c`. Aucun seuil minimal de séances avant affichage (contrairement à `sleep_debt`/`hrv_baseline`) : `0` séance chaude sur la fenêtre est une réponse valide en soi, pas une valeur bruitée à masquer. `[health].heat_threshold_c` invalide (texte non numérique, booléen, section absente…) : jamais d'exception qui casserait TOUT appel de `scripts/arc_index.py` (index, hrv-baseline, sleep-debt, heat-acclimation) ni l'actualisation du tableau de bord — repli sur le défaut avec un avertissement, voir `arc_index.py::settings`.",
           "hr_zones": "Zones FC, temps en zone et polarisation 80/20 (#43) : des APPROXIMATIONS d'entraînement, jamais une mesure physiologique directe (pas de test d'effort, pas de lactate, pas de seuils ventilatoires mesurés) — voir plus bas pour la polarisation, la plus approximative des deux. 5 zones, méthode de calcul des bornes choisie par PRÉCÉDENCE (configurable, `[athlete].hr_zones` dans `config/workspace.toml`, valeurs `\"auto\"` (défaut) | `\"lthr\"` | `\"karvonen\"` | `\"percent_max\"`, insensible à la casse, tout le reste retombant sur `\"auto\"` avec un avertissement — voir `arc_index.py::_hr_zone_method` — une valeur explicite FORCE cette méthode, sans repli si les champs qu'elle demande manquent, auquel cas aucune zone n'est calculée MAIS la raison est rendue explicitement par `hr_zone_resolution` (jamais une simple absence silencieuse) : 1) LTHR (`hr_threshold_bpm` du profil, « FC au seuil ») si renseignée — Friel (« The Triathlete's Training Bible »), zones course à pied à 5 paliers : Z1 0-85 %, Z2 85-90 %, Z3 90-95 %, Z4 95-100 %, Z5 100-150 % de la LTHR (dernière borne ouverte vers le haut) — Friel décrit en réalité trois paliers au-dessus du seuil (5a/5b/5c) que notre Z5 FUSIONNE, pour rester à 5 zones partout dans le projet ; 2) Karvonen (réserve FC = FC max - FC repos, `hr_max_bpm`/`hr_rest_bpm` du profil) sinon, bornes à 50 %, 60 %, 70 %, 80 %, 90 %, 100 % de la réserve — MÊME convention que `tests/lib/synthetic.py::KARVONEN_HRR_PCT`, ce qui permet aux tests de temps en zone (palier D) de comparer directement le temps en zone calculé à la vérité connue du générateur synthétique sur le profil type (FC repos 48, FC max 188 -> bornes 118/132/146/160/174/188 bpm) — NOTE : le workspace synthétique type renseigne AUSSI une FC au seuil (172 bpm), donc `\"auto\"` y résout en réalité sur LTHR, pas Karvonen (voir tests/README.md) ; cette comparaison directe ne vaut que si `[athlete].hr_zones = \"karvonen\"` est forcé, ou si le profil ne porte pas de FC au seuil ; 3) %FCmax sinon (`hr_max_bpm` seul suffit), bornes à 0 %, 60 %, 70 %, 80 %, 90 %, 150 % de la FC max — convention à 5 zones courante quand ni la FC de repos ni la FC au seuil ne sont connues ; 4) aucune zone calculée si même la FC max manque (`hr_zone_bounds` rend `None`) — jamais de bornes inventées. `hr_zone_of` sature : tout ce qui est sous la 2ᵉ borne tombe en zone 1, tout ce qui est au-delà de la 5ᵉ (dernière) borne tombe en zone 5, la 1ʳᵉ et la 6ᵉ valeur de chaque tuple ne sont que des repères d'affichage internes (JAMAIS montrées telles quelles à l'utilisateur : l'interface n'affiche que les bornes intérieures, « Z1 < X », « Z5 ≥ Y », le temps sous le plancher théorique de Z1 comptant quand même en Z1). Restreint aux sports de la famille course à pied (`arc_metrics.sport_family(sport) == \"run\"` : course, trail, randonnée, marche) : le renforcement et le vélo (d'intérieur ou non) sont EXCLUS du temps en zone et de la polarisation, même avec des échantillons FIT ingérés — une FC élevée en renforcement (musculation, gainage) répond à un effort essentiellement anaérobie/technique sans rapport avec les zones aérobies d'endurance, et le vélo a en pratique une FC au seuil différente de la course à pied que le profil ne renseigne pas séparément ; les compter gonflerait ou fausserait silencieusement la polarisation hebdomadaire. La randonnée et la marche restent incluses (même famille `\"run\"` que le reste du projet, ex. `GEAR_WEAR_SPORTS`, `effort_km`) : leur FC répond au même modèle aérobie que la course, à une intensité différente. Temps en zone (`time_in_zone_seconds`) : calculé sur les échantillons déjà sous-échantillonnés de `arc_index.samples`/`samples_by_garmin_id` (résolution par défaut 5 s, `arc_samples.DEFAULT_RESOLUTION_S`), triés par `t_s`. Chaque échantillon pèse la durée `dt` jusqu'au suivant, PLAFONNÉE à la résolution du sous-échantillonnage : une pause ou un trou de signal (`arc_samples.ASSUMPTIONS[\"gaps\"]`, `dt` peut dépasser la résolution après un trou) n'est donc JAMAIS compté comme du temps en zone — sans ce plafond, une montre restée en veille 30 min gonflerait artificiellement la zone où la FC se trouvait juste avant la pause. Le DERNIER échantillon d'une séance (pas de suivant pour mesurer `dt`) est compté pour la résolution nominale de son propre bucket. Un `hr_bpm` absent (`None`, capteur décroché) est ignoré : ni zone, ni secondes comptées pour cet échantillon — cohérent avec le reste du projet (mesure absente = absente, jamais 0). Recalculé pour CHAQUE activité à CHAQUE passage de `arc_index.index_workspace` (jamais mis en cache par fichier comme les tables `PER_FILE_TABLES`) : un changement du profil (FC max/repos/seuil, ou `[athlete].hr_zones`) est donc répercuté dès le prochain index, incrémental ou `--rebuild`, sans étape supplémentaire. Polarisation (`seiler_bounds` + `polarisation_shares`, modèle 3 zones de Seiler) : ENCORE PLUS approximative que le temps en zone, parce que le seuil qui sépare « facile » de « modérée » et « modérée » de « difficile » ne tombe PAS sur les mêmes bornes bpm que les 5 zones affichées selon la méthode — `seiler_bounds` calcule donc deux bornes bpm DÉDIÉES par méthode (voir sa docstring pour le détail par méthode) plutôt que de regrouper aveuglément les 5 zones affichées : le mapping Z1+Z2/Z3/Z4+Z5 n'est physiologiquement correct QUE pour Karvonen (Karvonen, Kentala & Mustala 1957 pour la réserve elle-même) ; pour LTHR, Z4 (95-99 % LTHR) reste sous le second seuil Seiler (donc « modérée », pas « difficile ») ; pour %FCmax, les seuils (82 %/87 %) sont une APPROXIMATION MAISON de l'emplacement typique de VT1/VT2 en %FCmax, SANS source vérifiée (pas une valeur tirée telle quelle de la littérature) — indépendants des bornes de zones affichées (60/70/80/90 %). Calculée UNIQUEMENT sur les activités qui ont des échantillons FIT ingérés (`hr_polarisation_time` non vide) ; une semaine sans AUCUNE activité avec échantillons rend `None` sur tous ses champs (jamais 0 % ni une part calculée sur zéro seconde) — une semaine avec au moins une activité datée sans FIT associé n'est pas `None` pour autant, cette activité est simplement absente de la somme.",
           "hrv_baseline": "Ligne de base HRV personnelle : moyenne glissante 7 j de ln(HRV nocturne) (min. 5 jours valides sur 7, sinon aucune valeur), comparée à une référence glissante 60 j de ln(HRV) (moyenne et écart-type, min. 30 jours valides, sinon « en construction ») ± 0.5 écart-type — une largeur de bande couramment retenue comme « plus petit changement significatif » (smallest worthwhile change) sur le lnRMSSD 7 j (Plews, Laursen & Buchheit 2013). La fenêtre de référence se termine 7 j AVANT le jour évalué (jours j-7 à j-66) : elle ne recouvre JAMAIS la fenêtre courte, sinon la moyenne 7 j se retrouve diluée dans sa propre référence et l'écart entre les deux est mécaniquement rétréci. Hypothèse : `hrv_overnight_ms` (moyenne nocturne Garmin) est traité comme une mesure de type rMSSD — Garmin ne documente pas publiquement l'algorithme exact. Le passage au log réduit l'asymétrie de la distribution du rMSSD (Plews et al. 2012 ; Plews, Laursen & Buchheit 2013). Un jour sans mesure n'est jamais compté comme 0, il est simplement absent des deux fenêtres. CV 7 j = écart-type / moyenne de ln(HRV) (pas des valeurs brutes) sur la fenêtre courte, en pourcentage : Plews et al. (2012) évaluent la stabilité de la modulation parasympathique sur le coefficient de variation du lnRMSSD hebdomadaire, pas sur la valeur brute. Kiviniemi et al. (2007) est cité comme PRÉCÉDENT de l'entraînement individualisé guidé par une bande statistique (± 1 écart-type autour de la puissance HF de la variabilité cardiaque, une mesure et une largeur différentes de celles retenues ici) — pas comme source de la largeur ± 0,5 ET ni du CV appliqués dans ce module. Écart-type demandé aux deux fenêtres : population (division par N, pas N-1), cohérent avec le reste du module (`daily_series`, monotonie de Foster). Ce statut n'est calculé et affiché qu'en `[health].morning_check = \"full\"` : en `minimal`, seule la readiness est exposée (rien qui dépende de l'HRV) ; en `off`, aucune donnée de santé n'est récupérée.",
+          "load_forecast": "Projection de charge sur le bloc (#172, `arc_index.py load-forecast`, `/api/load-forecast`) : ESTIMATION à partir du planifié, jamais une mesure. Point de départ = l'état réel d'aujourd'hui (condition 42 j, fatigue 7 j, `daily_series`) ; chaque jour planifié jusqu'à la date de l'objectif reçoit la charge estimée de ses séances — le MÊME estimateur que R1 (`ASSUMPTIONS[\"projected_load\"]` : minutes planifiées × RPE attendu par intensité × `RPE_TO_TRIMP`, durée estimée depuis la distance à l'allure récente), jamais un second modèle. Réserves : (1) le RPE attendu par intensité est une approximation maison, et une séance réelle avec FC (TRIMP de Banister) pèse selon la physiologie de l'athlète environ 0,9 à 1,45 fois son estimation — écart qui se cumule et gonfle la forme prévue (≈ +12 sur trois semaines à 1,3). La charge PROJETÉE (jamais la réelle) est donc RECALÉE par le rapport charge réelle / charge estimée des séances planifiées des 56 derniers jours appariées à une activité (même appariement que la conformité, `calibration` dans la sortie) — une mise à l'échelle du même estimateur, pas un second modèle ; non appliqué sous 5 séances appariées ou hors [0,5 ; 2] (dit dans la sortie). Recalé, l'ACWR projeté d'une semaine peut différer légèrement du chiffre de R1, qui reste non recalé ; (2) un jour sans séance planifiée compte 0 de charge (repos supposé, jamais une moyenne récente extrapolée) : une semaine non planifiée est comptée (`weeks_unplanned`) et rend la forme prévue trop optimiste si l'athlète s'entraîne en réalité ; (3) une séance planifiée sans durée ni distance exploitable pèse 0 (`unresolved_duration_dates`) ; (4) la forme prévue le jour J est l'état « en entrant dans la journée » (condition et fatigue de la veille, forme = leur différence, comme la courbe réelle) : la charge de la course elle-même n'y entre pas, ni dans le pic de fatigue, l'ACWR max ou la charge totale du bloc (tous lus jusqu'à la veille de la date visée) ; (5) condition et ACWR héritent du démarrage à froid de la moyenne exponentielle : sous `arc_guardrails.MIN_HISTORY_DAYS_FOR_PROJECTION` (84 j d'historique réel) aucune projection n'est rendue (`insufficient_history`) ; (6) l'ACWR projeté (maximum sur tout le bloc, et par semaine) reprend le seuil prudent de R1, dont les réserves scientifiques restent celles de `ASSUMPTIONS[\"acwr_projection\"]` ; (7) aucune donnée de santé (HRV, sommeil, blessure) n'entre dans la projection — un bilan matinal rouge annule une séance quel que soit ce que la projection indique. La comparaison de plans remplace les semaines de même lundi et ne chiffre que l'écart d'estimations : à lire comme un ordre de grandeur pour justifier un affûtage, pas comme une prédiction de performance.",
           "model": "Coût énergétique de la course selon la pente (Minetti AE et al., 2002, J Appl Physiol 93:1039-1046, mesuré sur tapis roulant jusqu'à ±45 % de pente) : allure ajustée = allure mesurée multipliée par le rapport entre le coût énergétique de la pente réelle et celui du plat. Une pente au-delà de ±45 % est plafonnée à cette valeur avant le calcul, jamais extrapolée au-delà (le modèle n'a jamais été mesuré aussi loin). LIMITE CONNUE, documentée honnêtement : ce type de modèle de laboratoire a tendance à surestimer le gain métabolique des fortes descentes en conditions réelles de trail (freinage, terrain technique, prudence). Cette allure ajustée reste une approximation du projet fondée sur ce modèle, PAS une reproduction des calculs propriétaires (non documentés publiquement) des montres ou services du marché — voir docs/marques.md.",
           "monotony": "Monotonie de Foster = moyenne / écart-type de la charge quotidienne sur 7 j ; strain = charge 7 j × monotonie.",
           "noise_robustness": "Le modèle est sensible près du plat : un bruit de pente de quelques % sur un SEUL instant peut changer son allure ajustée de plusieurs %. Mais sur une moyenne (un split ou une séance entière), cette erreur s'annule presque complètement — c'est pourquoi la fiabilité de cette allure s'apprécie sur la durée, jamais instant par instant.",
@@ -1200,6 +1556,89 @@
           "weight_merge": "Fusion des deux sources de poids (#36) : le contrat n'a pas de champ d'heure de mesure dédié, mais `health.weight_kg` est renseigné pendant le bilan matinal (`morning_check`) — traité comme la pesée du matin — tandis que `nutrition.weight_kg` n'a aucune garantie d'horaire. Un jour où les deux sont présents : `health` gagne TOUJOURS, jamais de moyenne des deux sources ni de préférence à la plus récemment écrite. Un jour sans aucune des deux : absent, jamais 0. Doublon DANS une même source (deux fichiers santé, ou deux fichiers nutrition, pour la même date — pas d'heure de mesure pour départager) : le `source_path` le plus grand par ordre alphabétique gagne, appliqué en base par `arc_serve.py` (`ORDER BY date, source_path` avant fusion ; `ORDER BY date DESC, source_path DESC` pour la cible la plus récente) — jamais l'ordre arbitraire que rendrait SQLite sans tri explicite.",
           "weight_trend": "Moyenne mobile 7 j du poids fusionné (`weight_merge`) : moyenne des jours PRÉSENTS dans la fenêtre (jour manquant jamais compté 0), rendue seulement à partir de 3 jours pesés sur les 7, sinon `None`. `avg7_kg`/`gap_kg` exposés par `/api/nutrition` sont TOUJOURS la valeur DU JOUR (aujourd'hui), jamais la dernière moyenne non nulle trouvée plus tôt dans la fenêtre affichée — une pesée vieille de plusieurs semaines ne doit jamais s'afficher comme si elle datait d'aujourd'hui ; `avg7_date` porte la date effectivement utilisée. Écart à la cible = moyenne 7 j du jour − `target_weight_kg` le plus récent connu (nutrition uniquement dans le contrat) ; positif = au-dessus de la cible. Pente 4 semaines : régression des moindres carrés (x = jour, y = poids fusionné, PAS la moyenne lissée) sur les 28 derniers jours, convertie en kg/semaine (× 7) ; rendue seulement à partir de 5 jours pesés ET 14 jours d'écart entre la première et la dernière pesée de la fenêtre (sinon `None`) — sans ce second seuil, quelques pesées groupées sur deux ou trois jours donneraient une pente extrapolée sur 4 semaines à partir d'un intervalle bien trop court pour être fiable. Aucun commentaire normatif n'est dérivé de ces chiffres : chiffres seulement (voir issue #36)."
         }
+      },
+      "status": 200
+    },
+    "/api/block": {
+      "body": {
+        "current_week_start": "2026-09-21",
+        "missing_weeks": 0,
+        "phases": [
+          {
+            "id": "base",
+            "label": "Base"
+          },
+          {
+            "id": "development",
+            "label": "Développement"
+          },
+          {
+            "id": "specific",
+            "label": "Spécifique"
+          },
+          {
+            "id": "taper",
+            "label": "Affûtage"
+          },
+          {
+            "id": "recovery",
+            "label": "Récupération"
+          }
+        ],
+        "race": {
+          "date": "2026-11-16",
+          "days_left": 54,
+          "in_block": false,
+          "name": "Marathon de Lille",
+          "week_start": "2026-11-16"
+        },
+        "status": "ok",
+        "today": "2026-09-23",
+        "unknown_weeks": 0,
+        "weeks": [
+          {
+            "done": {
+              "distance_m": 51000.0,
+              "duration_s": 20157.0,
+              "elevation_m": 146.0,
+              "partial": false,
+              "sessions": 5
+            },
+            "is_race_week": false,
+            "light": false,
+            "phase": "specific",
+            "phase_label": "Spécifique",
+            "phase_text": "Spécifique",
+            "planned": true,
+            "status": "past",
+            "target_distance_m": null,
+            "target_duration_s": 28800.0,
+            "target_elevation_m": null,
+            "week_start": "2026-09-14",
+            "week_type": null
+          },
+          {
+            "done": {
+              "distance_m": 22000.0,
+              "duration_s": 7341.0,
+              "elevation_m": 78.0,
+              "partial": true,
+              "sessions": 2
+            },
+            "is_race_week": false,
+            "light": false,
+            "phase": "specific",
+            "phase_label": "Spécifique",
+            "phase_text": "Spécifique",
+            "planned": true,
+            "status": "current",
+            "target_distance_m": null,
+            "target_duration_s": 28800.0,
+            "target_elevation_m": null,
+            "week_start": "2026-09-21",
+            "week_type": null
+          }
+        ]
       },
       "status": 200
     },
@@ -1554,6 +1993,83 @@
     "/api/climb-segments": {
       "body": {
         "segments": []
+      },
+      "status": 200
+    },
+    "/api/decision-effects": {
+      "body": {
+        "caveat": "Corrélation, pas causalité : ce bilan décrit ce qui s'est passé après les décisions, pas ce qu'elles ont causé. Il n'assouplit jamais un garde-fou `block`, une décision médicale ni un verdict rouge.",
+        "days": 180,
+        "effects": [
+          {
+            "action": "move",
+            "date": "2026-09-22",
+            "effect": "insufficient_data",
+            "horizon_days": 7,
+            "id": "2026-09-22_decision_qualite-deplacee",
+            "outcome": "proposed",
+            "reason": "décision seulement proposée : rien n'a été appliqué, aucun effet à mesurer",
+            "reason_code": "proposed",
+            "signals": [],
+            "skipped": [],
+            "source_path": "planning/2026-09-22_decision_qualite-deplacee.md",
+            "summary": "Séance de qualité déplacée à la demande de l'athlète : réunion professionnelle.",
+            "trigger": "athlete_request"
+          },
+          {
+            "action": "lighten",
+            "date": "2026-09-19",
+            "effect": "insufficient_data",
+            "horizon_days": 7,
+            "id": "2026-09-19_decision_acwr-ajuste",
+            "mature_on": "2026-09-26",
+            "outcome": "applied",
+            "overlaps": [],
+            "reason": "fenêtre d'observation pas encore écoulée",
+            "reason_code": "window_open",
+            "signals": [],
+            "skipped": [],
+            "source_path": "planning/2026-09-19_decision_acwr-ajuste.md",
+            "summary": "ACWR projeté ramené sous le seuil après raccourcissement de la sortie longue.",
+            "trigger": "guardrail"
+          },
+          {
+            "action": "lighten",
+            "date": "2026-09-18",
+            "effect": "insufficient_data",
+            "horizon_days": 7,
+            "id": "2026-09-18_decision_acwr-projete",
+            "outcome": "superseded",
+            "reason": "décision remplacée par une réévaluation plus récente : l'effet est porté par la suivante",
+            "reason_code": "superseded",
+            "signals": [],
+            "skipped": [],
+            "source_path": "planning/2026-09-18_decision_acwr-projete.md",
+            "summary": "ACWR projeté au-delà du seuil : sortie longue raccourcie.",
+            "trigger": "guardrail"
+          }
+        ],
+        "min_sample_for_trend": 5,
+        "synthesis": [
+          {
+            "action": "lighten",
+            "improved": 0,
+            "insufficient_data": 1,
+            "n": 0,
+            "neutral": 0,
+            "outcome": "applied",
+            "overlapping": 0,
+            "statement": "Allègement après garde-fou — décisions appliquées : 0 évaluée(s) ; 1 sans données suffisantes",
+            "total": 1,
+            "trend": null,
+            "trend_allowed": false,
+            "trigger": "guardrail",
+            "warning": "aucune décision évaluable pour l'instant",
+            "worsened": 0
+          }
+        ],
+        "today": "2026-09-23",
+        "trigger": null
       },
       "status": 200
     },
@@ -6466,6 +6982,27 @@
       },
       "status": 200
     },
+    "/api/load-forecast": {
+      "body": {
+        "assumptions_ref": "arc_metrics.ASSUMPTIONS[\"load_forecast\"] (/api/assumptions)",
+        "calibration": {
+          "applied": true,
+          "pairs": 6,
+          "ratio": 1.023,
+          "reason": null,
+          "scale": 1.023,
+          "window_days": 56
+        },
+        "history_span_days": 39,
+        "is_estimate": true,
+        "race_date": "2026-11-16",
+        "reason": "Historique réel insuffisant (39 j < 84 j) : la condition (moyenne exponentielle 42 j) démarre à zéro et fausserait la forme prévue — même plancher que le garde-fou R1.",
+        "status": "insufficient_history",
+        "target_date": "2026-11-16",
+        "today": "2026-09-23"
+      },
+      "status": 200
+    },
     "/api/load?weeks=6": {
       "body": {
         "hr_zones_reason": null,
@@ -7052,6 +7589,523 @@
       },
       "status": 200
     },
+    "/api/pace-curve": {
+      "body": {
+        "current": {
+          "cs_ms": null,
+          "cs_pace_s_km": null,
+          "d_prime_m": null,
+          "n_points": 7,
+          "reason": "tous les efforts viennent d'une seule séance (minimum 2 séances différentes) : une seule séance ne permet pas d'ajuster CS et D′",
+          "reason_code": "single_source",
+          "status": "refused",
+          "valid": false
+        },
+        "durations_s": [
+          30,
+          60,
+          120,
+          180,
+          300,
+          480,
+          600,
+          720,
+          900,
+          1200,
+          1800,
+          2700,
+          3600,
+          5400,
+          7200
+        ],
+        "n_activities": 1,
+        "reason": null,
+        "skipped_no_grade": 0,
+        "threshold_check": {
+          "available": false,
+          "reason": "vitesse au seuil lactique non fournie"
+        },
+        "today": "2026-09-23",
+        "trend": [
+          {
+            "cs_ms": null,
+            "cs_pace_s_km": null,
+            "d_prime_m": null,
+            "date": "2025-09-24",
+            "n_points": 0,
+            "r2": null,
+            "reason": "0 effort(s) exploitable(s) entre 3 et 20 min (minimum 3) : données insuffisantes",
+            "reason_code": "insufficient_points",
+            "status": "refused"
+          },
+          {
+            "cs_ms": null,
+            "cs_pace_s_km": null,
+            "d_prime_m": null,
+            "date": "2025-10-22",
+            "n_points": 0,
+            "r2": null,
+            "reason": "0 effort(s) exploitable(s) entre 3 et 20 min (minimum 3) : données insuffisantes",
+            "reason_code": "insufficient_points",
+            "status": "refused"
+          },
+          {
+            "cs_ms": null,
+            "cs_pace_s_km": null,
+            "d_prime_m": null,
+            "date": "2025-11-19",
+            "n_points": 0,
+            "r2": null,
+            "reason": "0 effort(s) exploitable(s) entre 3 et 20 min (minimum 3) : données insuffisantes",
+            "reason_code": "insufficient_points",
+            "status": "refused"
+          },
+          {
+            "cs_ms": null,
+            "cs_pace_s_km": null,
+            "d_prime_m": null,
+            "date": "2025-12-17",
+            "n_points": 0,
+            "r2": null,
+            "reason": "0 effort(s) exploitable(s) entre 3 et 20 min (minimum 3) : données insuffisantes",
+            "reason_code": "insufficient_points",
+            "status": "refused"
+          },
+          {
+            "cs_ms": null,
+            "cs_pace_s_km": null,
+            "d_prime_m": null,
+            "date": "2026-01-14",
+            "n_points": 0,
+            "r2": null,
+            "reason": "0 effort(s) exploitable(s) entre 3 et 20 min (minimum 3) : données insuffisantes",
+            "reason_code": "insufficient_points",
+            "status": "refused"
+          },
+          {
+            "cs_ms": null,
+            "cs_pace_s_km": null,
+            "d_prime_m": null,
+            "date": "2026-02-11",
+            "n_points": 0,
+            "r2": null,
+            "reason": "0 effort(s) exploitable(s) entre 3 et 20 min (minimum 3) : données insuffisantes",
+            "reason_code": "insufficient_points",
+            "status": "refused"
+          },
+          {
+            "cs_ms": null,
+            "cs_pace_s_km": null,
+            "d_prime_m": null,
+            "date": "2026-03-11",
+            "n_points": 0,
+            "r2": null,
+            "reason": "0 effort(s) exploitable(s) entre 3 et 20 min (minimum 3) : données insuffisantes",
+            "reason_code": "insufficient_points",
+            "status": "refused"
+          },
+          {
+            "cs_ms": null,
+            "cs_pace_s_km": null,
+            "d_prime_m": null,
+            "date": "2026-04-08",
+            "n_points": 0,
+            "r2": null,
+            "reason": "0 effort(s) exploitable(s) entre 3 et 20 min (minimum 3) : données insuffisantes",
+            "reason_code": "insufficient_points",
+            "status": "refused"
+          },
+          {
+            "cs_ms": null,
+            "cs_pace_s_km": null,
+            "d_prime_m": null,
+            "date": "2026-05-06",
+            "n_points": 0,
+            "r2": null,
+            "reason": "0 effort(s) exploitable(s) entre 3 et 20 min (minimum 3) : données insuffisantes",
+            "reason_code": "insufficient_points",
+            "status": "refused"
+          },
+          {
+            "cs_ms": null,
+            "cs_pace_s_km": null,
+            "d_prime_m": null,
+            "date": "2026-06-03",
+            "n_points": 0,
+            "r2": null,
+            "reason": "0 effort(s) exploitable(s) entre 3 et 20 min (minimum 3) : données insuffisantes",
+            "reason_code": "insufficient_points",
+            "status": "refused"
+          },
+          {
+            "cs_ms": null,
+            "cs_pace_s_km": null,
+            "d_prime_m": null,
+            "date": "2026-07-01",
+            "n_points": 0,
+            "r2": null,
+            "reason": "0 effort(s) exploitable(s) entre 3 et 20 min (minimum 3) : données insuffisantes",
+            "reason_code": "insufficient_points",
+            "status": "refused"
+          },
+          {
+            "cs_ms": null,
+            "cs_pace_s_km": null,
+            "d_prime_m": null,
+            "date": "2026-07-29",
+            "n_points": 0,
+            "r2": null,
+            "reason": "0 effort(s) exploitable(s) entre 3 et 20 min (minimum 3) : données insuffisantes",
+            "reason_code": "insufficient_points",
+            "status": "refused"
+          },
+          {
+            "cs_ms": null,
+            "cs_pace_s_km": null,
+            "d_prime_m": null,
+            "date": "2026-08-26",
+            "n_points": 0,
+            "r2": null,
+            "reason": "0 effort(s) exploitable(s) entre 3 et 20 min (minimum 3) : données insuffisantes",
+            "reason_code": "insufficient_points",
+            "status": "refused"
+          },
+          {
+            "cs_ms": null,
+            "cs_pace_s_km": null,
+            "d_prime_m": null,
+            "date": "2026-09-23",
+            "n_points": 7,
+            "r2": null,
+            "reason": "tous les efforts viennent d'une seule séance (minimum 2 séances différentes) : une seule séance ne permet pas d'ajuster CS et D′",
+            "reason_code": "single_source",
+            "status": "refused"
+          }
+        ],
+        "trend_window_days": 90,
+        "windows": [
+          {
+            "curve": [
+              {
+                "date": "2026-09-23",
+                "duration_s": 30,
+                "pace_s_km": 344.4126694603617,
+                "ref": 90000000039,
+                "speed_ms": 2.9034936536069837
+              },
+              {
+                "date": "2026-09-23",
+                "duration_s": 60,
+                "pace_s_km": 344.44112057116376,
+                "ref": 90000000039,
+                "speed_ms": 2.9032538227194435
+              },
+              {
+                "date": "2026-09-23",
+                "duration_s": 120,
+                "pace_s_km": 344.44112057116376,
+                "ref": 90000000039,
+                "speed_ms": 2.9032538227194435
+              },
+              {
+                "date": "2026-09-23",
+                "duration_s": 180,
+                "pace_s_km": 344.44428265495475,
+                "ref": 90000000039,
+                "speed_ms": 2.9032271701305743
+              },
+              {
+                "date": "2026-09-23",
+                "duration_s": 300,
+                "pace_s_km": 344.4468123637896,
+                "ref": 90000000039,
+                "speed_ms": 2.903205848059479
+              },
+              {
+                "date": "2026-09-23",
+                "duration_s": 480,
+                "pace_s_km": 344.4458637186221,
+                "ref": 90000000039,
+                "speed_ms": 2.9032138438361397
+              },
+              {
+                "date": "2026-09-23",
+                "duration_s": 600,
+                "pace_s_km": 344.4477607625838,
+                "ref": 90000000039,
+                "speed_ms": 2.903197854403432
+              },
+              {
+                "date": "2026-09-23",
+                "duration_s": 720,
+                "pace_s_km": 344.44823492200646,
+                "ref": 90000000039,
+                "speed_ms": 2.903193857928842
+              },
+              {
+                "date": "2026-09-23",
+                "duration_s": 900,
+                "pace_s_km": 346.63159683677736,
+                "ref": 90000000039,
+                "speed_ms": 2.884907230401394
+              },
+              {
+                "date": "2026-09-23",
+                "duration_s": 1200,
+                "pace_s_km": 352.2763576934306,
+                "ref": 90000000039,
+                "speed_ms": 2.838680422801046
+              },
+              {
+                "date": "2026-09-23",
+                "duration_s": 1800,
+                "pace_s_km": 363.1583360946322,
+                "ref": 90000000039,
+                "speed_ms": 2.7536198418406093
+              },
+              {
+                "date": "2026-09-23",
+                "duration_s": 2700,
+                "pace_s_km": 361.6097271488836,
+                "ref": 90000000039,
+                "speed_ms": 2.7654123352391884
+              },
+              {
+                "date": "2026-09-23",
+                "duration_s": 3600,
+                "pace_s_km": 367.417372371402,
+                "ref": 90000000039,
+                "speed_ms": 2.721700374551574
+              }
+            ],
+            "fit": {
+              "cs_ms": null,
+              "cs_pace_s_km": null,
+              "d_prime_m": null,
+              "n_points": 7,
+              "reason": "tous les efforts viennent d'une seule séance (minimum 2 séances différentes) : une seule séance ne permet pas d'ajuster CS et D′",
+              "reason_code": "single_source",
+              "status": "refused",
+              "valid": false
+            },
+            "window_days": 42
+          },
+          {
+            "curve": [
+              {
+                "date": "2026-09-23",
+                "duration_s": 30,
+                "pace_s_km": 344.4126694603617,
+                "ref": 90000000039,
+                "speed_ms": 2.9034936536069837
+              },
+              {
+                "date": "2026-09-23",
+                "duration_s": 60,
+                "pace_s_km": 344.44112057116376,
+                "ref": 90000000039,
+                "speed_ms": 2.9032538227194435
+              },
+              {
+                "date": "2026-09-23",
+                "duration_s": 120,
+                "pace_s_km": 344.44112057116376,
+                "ref": 90000000039,
+                "speed_ms": 2.9032538227194435
+              },
+              {
+                "date": "2026-09-23",
+                "duration_s": 180,
+                "pace_s_km": 344.44428265495475,
+                "ref": 90000000039,
+                "speed_ms": 2.9032271701305743
+              },
+              {
+                "date": "2026-09-23",
+                "duration_s": 300,
+                "pace_s_km": 344.4468123637896,
+                "ref": 90000000039,
+                "speed_ms": 2.903205848059479
+              },
+              {
+                "date": "2026-09-23",
+                "duration_s": 480,
+                "pace_s_km": 344.4458637186221,
+                "ref": 90000000039,
+                "speed_ms": 2.9032138438361397
+              },
+              {
+                "date": "2026-09-23",
+                "duration_s": 600,
+                "pace_s_km": 344.4477607625838,
+                "ref": 90000000039,
+                "speed_ms": 2.903197854403432
+              },
+              {
+                "date": "2026-09-23",
+                "duration_s": 720,
+                "pace_s_km": 344.44823492200646,
+                "ref": 90000000039,
+                "speed_ms": 2.903193857928842
+              },
+              {
+                "date": "2026-09-23",
+                "duration_s": 900,
+                "pace_s_km": 346.63159683677736,
+                "ref": 90000000039,
+                "speed_ms": 2.884907230401394
+              },
+              {
+                "date": "2026-09-23",
+                "duration_s": 1200,
+                "pace_s_km": 352.2763576934306,
+                "ref": 90000000039,
+                "speed_ms": 2.838680422801046
+              },
+              {
+                "date": "2026-09-23",
+                "duration_s": 1800,
+                "pace_s_km": 363.1583360946322,
+                "ref": 90000000039,
+                "speed_ms": 2.7536198418406093
+              },
+              {
+                "date": "2026-09-23",
+                "duration_s": 2700,
+                "pace_s_km": 361.6097271488836,
+                "ref": 90000000039,
+                "speed_ms": 2.7654123352391884
+              },
+              {
+                "date": "2026-09-23",
+                "duration_s": 3600,
+                "pace_s_km": 367.417372371402,
+                "ref": 90000000039,
+                "speed_ms": 2.721700374551574
+              }
+            ],
+            "fit": {
+              "cs_ms": null,
+              "cs_pace_s_km": null,
+              "d_prime_m": null,
+              "n_points": 7,
+              "reason": "tous les efforts viennent d'une seule séance (minimum 2 séances différentes) : une seule séance ne permet pas d'ajuster CS et D′",
+              "reason_code": "single_source",
+              "status": "refused",
+              "valid": false
+            },
+            "window_days": 90
+          },
+          {
+            "curve": [
+              {
+                "date": "2026-09-23",
+                "duration_s": 30,
+                "pace_s_km": 344.4126694603617,
+                "ref": 90000000039,
+                "speed_ms": 2.9034936536069837
+              },
+              {
+                "date": "2026-09-23",
+                "duration_s": 60,
+                "pace_s_km": 344.44112057116376,
+                "ref": 90000000039,
+                "speed_ms": 2.9032538227194435
+              },
+              {
+                "date": "2026-09-23",
+                "duration_s": 120,
+                "pace_s_km": 344.44112057116376,
+                "ref": 90000000039,
+                "speed_ms": 2.9032538227194435
+              },
+              {
+                "date": "2026-09-23",
+                "duration_s": 180,
+                "pace_s_km": 344.44428265495475,
+                "ref": 90000000039,
+                "speed_ms": 2.9032271701305743
+              },
+              {
+                "date": "2026-09-23",
+                "duration_s": 300,
+                "pace_s_km": 344.4468123637896,
+                "ref": 90000000039,
+                "speed_ms": 2.903205848059479
+              },
+              {
+                "date": "2026-09-23",
+                "duration_s": 480,
+                "pace_s_km": 344.4458637186221,
+                "ref": 90000000039,
+                "speed_ms": 2.9032138438361397
+              },
+              {
+                "date": "2026-09-23",
+                "duration_s": 600,
+                "pace_s_km": 344.4477607625838,
+                "ref": 90000000039,
+                "speed_ms": 2.903197854403432
+              },
+              {
+                "date": "2026-09-23",
+                "duration_s": 720,
+                "pace_s_km": 344.44823492200646,
+                "ref": 90000000039,
+                "speed_ms": 2.903193857928842
+              },
+              {
+                "date": "2026-09-23",
+                "duration_s": 900,
+                "pace_s_km": 346.63159683677736,
+                "ref": 90000000039,
+                "speed_ms": 2.884907230401394
+              },
+              {
+                "date": "2026-09-23",
+                "duration_s": 1200,
+                "pace_s_km": 352.2763576934306,
+                "ref": 90000000039,
+                "speed_ms": 2.838680422801046
+              },
+              {
+                "date": "2026-09-23",
+                "duration_s": 1800,
+                "pace_s_km": 363.1583360946322,
+                "ref": 90000000039,
+                "speed_ms": 2.7536198418406093
+              },
+              {
+                "date": "2026-09-23",
+                "duration_s": 2700,
+                "pace_s_km": 361.6097271488836,
+                "ref": 90000000039,
+                "speed_ms": 2.7654123352391884
+              },
+              {
+                "date": "2026-09-23",
+                "duration_s": 3600,
+                "pace_s_km": 367.417372371402,
+                "ref": 90000000039,
+                "speed_ms": 2.721700374551574
+              }
+            ],
+            "fit": {
+              "cs_ms": null,
+              "cs_pace_s_km": null,
+              "d_prime_m": null,
+              "n_points": 7,
+              "reason": "tous les efforts viennent d'une seule séance (minimum 2 séances différentes) : une seule séance ne permet pas d'ajuster CS et D′",
+              "reason_code": "single_source",
+              "status": "refused",
+              "valid": false
+            },
+            "window_days": 365
+          }
+        ]
+      },
+      "status": 200
+    },
     "/api/performance": {
       "body": {
         "objective": {
@@ -7372,6 +8426,14 @@
             "title": "Bilan de la semaine du 2026-08-31"
           }
         ]
+      },
+      "status": 200
+    },
+    "/api/roadbook": {
+      "body": {
+        "message": "Aucun plan de course indexé : demande-le au course-strategist.",
+        "plans": [],
+        "status": "no_plan"
       },
       "status": 200
     },
@@ -7931,9 +8993,12 @@
           "chat_enabled": false,
           "climb_min_gain_m": 50.0,
           "climb_min_grade": 0.05,
+          "cycle_tracking": "off",
           "heat_threshold_c": 25.0,
           "hr_zones": "auto",
           "language": "fr",
+          "map_attribution": "© OpenStreetMap contributors, SRTM · style © OpenTopoMap (CC-BY-SA)",
+          "map_tiles": "https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png",
           "morning_check": "full",
           "profile": "planning/Runner_Profile.md",
           "slope_model_months": 6,
@@ -8450,7 +9515,8 @@
           "target_distance_m": null,
           "target_duration_s": 28800.0,
           "target_elevation_m": null,
-          "week_start": "2026-09-21"
+          "week_start": "2026-09-21",
+          "week_type": null
         },
         "week_start": "2026-09-21"
       },

@@ -185,7 +185,7 @@ configuration dynamique de Traefik. Avec un point d'entrée HTTPS géré par Tra
 | Pas d'accès sans connexion | Middleware d'authentification obligatoire, compose refuse de démarrer sans |
 | Pas de *DNS rebinding* | Seul `ARC_DASHBOARD_HOST` est accepté ; le serveur refuse de démarrer s'il n'est pas déclaré |
 | Lecture seule côté HTTP | `POST`, `PUT`, `DELETE`, `PATCH` → 405 |
-| Contenu verrouillé | En-tête `Content-Security-Policy` strict, émis par le serveur |
+| Contenu verrouillé | En-tête `Content-Security-Policy` strict, émis par le serveur ; seul l'hôte de `[dashboard].map_tiles` (tuiles de carte) y est ajouté aux images |
 
 !!! note "En-têtes de sécurité ajoutés par le proxy"
     Si un middleware de votre point d'entrée définit lui-même

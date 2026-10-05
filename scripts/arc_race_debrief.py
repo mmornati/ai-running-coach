@@ -99,6 +99,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import sys
 from pathlib import Path
 from typing import Dict, List, Optional, Sequence, Tuple
@@ -868,6 +869,9 @@ def build_race_debrief(plan: dict, activity: dict, *,
     }
     if fade:
         result["fade"] = fade
+    night = night_error_summary(segments, segment_debriefs, scenario)
+    if night:
+        result["night"] = night
     if carbs:
         result["carbs"] = carbs
     if weather:
@@ -875,6 +879,45 @@ def build_race_debrief(plan: dict, activity: dict, *,
     if aid_times is not None:
         result["aid_station_times"] = aid_times
     return _drop_none(result)
+
+
+# Fraction de nuit à partir de laquelle une section compte comme « de nuit » / en dessous de
+# laquelle elle compte comme « de jour » pour l'erreur de la pénalité de nuit (#184, prépare
+# #188) : approximation du projet, les sections entre les deux (crépuscule) sont ignorées.
+NIGHT_SEGMENT_MIN_FRACTION = 0.5
+DAY_SEGMENT_MAX_FRACTION = 0.05
+
+
+def night_error_summary(segments: Sequence[dict], segment_debriefs: Sequence[dict],
+                         scenario: str) -> Optional[dict]:
+    """Erreur plan/réalisé des sections de NUIT, séparée de celle des sections de jour (#184,
+    prépare #188). Le temps planifié inclut déjà la pénalité de nuit : `delta_pct` d'une
+    section de nuit mesure donc l'erreur RÉSIDUELLE de la pénalité (positif = plus lent que
+    prévu malgré elle), à comparer à celle des sections de jour. Moyenne pondérée par le temps
+    planifié, sections de résolution `high` uniquement (`ASSUMPTIONS['resolution']`). `None`
+    si le plan n'a pas de `night_fraction` ou si aucune section de nuit n'est comparable."""
+    fractions = {seg["id"]: (seg.get("night_fraction") or {}).get(scenario) for seg in segments}
+    groups: Dict[str, List[Tuple[float, float]]] = {"night": [], "day": []}
+    for entry in segment_debriefs:
+        frac = fractions.get(entry["id"])
+        if frac is None or entry.get("resolution") != "high" or entry.get("delta_pct") is None \
+                or not entry.get("planned_time_s"):
+            continue
+        if frac >= NIGHT_SEGMENT_MIN_FRACTION:
+            groups["night"].append((entry["delta_pct"], entry["planned_time_s"]))
+        elif frac <= DAY_SEGMENT_MAX_FRACTION:
+            groups["day"].append((entry["delta_pct"], entry["planned_time_s"]))
+    if not groups["night"]:
+        return None
+    out: Dict[str, object] = {}
+    for key, items in groups.items():
+        if items:
+            den = sum(w for _, w in items)
+            out[f"{key}_segments"] = len(items)
+            out[f"{key}_delta_pct"] = round(sum(d * w for d, w in items) / den, 1)
+    if "day_delta_pct" in out:
+        out["night_minus_day_pct"] = round(out["night_delta_pct"] - out["day_delta_pct"], 1)
+    return out
 
 
 def _weather_subset(weather: dict) -> dict:
@@ -1026,8 +1069,23 @@ def build_arg_parser() -> argparse.ArgumentParser:
     ap.add_argument("command", choices=("debrief",), help="sous-commande (seule « debrief » existe)")
     ap.add_argument("--plan", required=True, type=Path, help="fichier plan de course (kind: race_plan)")
     ap.add_argument("--activity", required=True, type=Path, help="fichier activité de la course (kind: activity)")
-    ap.add_argument("--scenario", choices=("safe", "realistic", "ambitious"), default=DEFAULT_SCENARIO,
-                     help="scénario du plan utilisé comme référence (défaut realistic)")
+    ap.add_argument("--scenario", choices=("safe", "realistic", "ambitious", "auto"), default=DEFAULT_SCENARIO,
+                     help="scénario du plan utilisé comme référence (défaut realistic) ; « auto » "
+                          "(avec --calibrate seulement) retient celui dont le temps total est le plus "
+                          "proche du réalisé")
+    ap.add_argument("--calibrate", action="store_true",
+                     help="recalibrage des coefficients de pacing (#188) : erreur attribuable à chaque "
+                          "facteur (nuit, technicité, chaleur, altitude) et PROPOSITION de coefficients "
+                          "personnels, JSON par défaut (--text pour lire) ; n'applique rien")
+    ap.add_argument("--text", action="store_true", help="avec --calibrate : rendu lisible au lieu du JSON")
+    ap.add_argument("--exclude-from-km", type=float, dest="exclude_from_km",
+                     help="avec --calibrate : écarte les segments au-delà de ce km (blessure, fin de course "
+                          "marchée… déclarée par l'athlète) pour ne calibrer que la partie normale")
+    ap.add_argument("--apply", action="store_true",
+                     help="avec --calibrate : écrit les propositions dans [pacing.personal] de "
+                          "config/workspace.user.toml. UNIQUEMENT après confirmation explicite de l'athlète")
+    ap.add_argument("--workspace", help="racine du workspace (config personnelle et preuves cumulées ; "
+                                        "défaut : ARC_WORKSPACE, puis le workspace mémorisé)")
     ap.add_argument("--carbs-target-g-h", type=float, dest="carbs_target_g_h",
                      help="objectif glucides/h du plan nutrition (aucun champ structuré ne le porte, #61)")
     ap.add_argument("--carbs-actual-g-h", type=float, dest="carbs_actual_g_h",
@@ -1063,21 +1121,57 @@ def _load_fit_samples(path: Optional[Path]) -> Optional[List[dict]]:
     return SA.normalise_records(raw)
 
 
+def _run_calibration(args, plan: dict, activity: dict, common: dict, actual_weather: Optional[dict]) -> int:
+    """`--calibrate` (#188) : calcul du débrief puis attribution par facteur et proposition."""
+    import arc_pacing_calibration as CAL
+    import arc_pacing_personal as PP
+    from coach_setup import workspace_root
+    workspace = workspace_root(args.workspace)
+    existing = PP.read_workspace(workspace)
+    if args.scenario == "auto":
+        scenario, debrief = CAL.select_scenario(plan, lambda sc: build_race_debrief(plan, activity, scenario=sc, **common))
+    else:
+        scenario = args.scenario
+        debrief = build_race_debrief(plan, activity, scenario=scenario, **common)
+    report = CAL.calibrate(plan, debrief, scenario=scenario, existing=existing, actual_weather=actual_weather,
+                           exclude_from_km=args.exclude_from_km)
+    if args.apply:
+        patch = report["config_patch"]
+        if not patch["values"] and not patch["evidence"]:
+            report["applied_note"] = "rien à écrire (aucune proposition ni preuve nouvelle)"
+        else:
+            evidence, _ = PP.parse_evidence(patch["evidence"])
+            path = PP.write_workspace(workspace, patch["values"], evidence)
+            report["applied"] = True
+            report["applied_path"] = str(path)
+    print(CAL.render_text(report) if args.text else json.dumps(report, ensure_ascii=False))
+    return 0
+
+
 def main(argv: Optional[Sequence[str]] = None) -> int:
     args = build_arg_parser().parse_args(argv)
+    if args.scenario == "auto" and not args.calibrate:
+        print("ERREUR : --scenario auto n'a de sens qu'avec --calibrate", file=sys.stderr)
+        return 1
+    if (args.text or args.apply or args.exclude_from_km is not None) and not args.calibrate:
+        print("ERREUR : --text, --apply et --exclude-from-km n'ont de sens qu'avec --calibrate", file=sys.stderr)
+        return 1
+    if args.exclude_from_km is not None and not (args.exclude_from_km > 0 and math.isfinite(args.exclude_from_km)):
+        print("ERREUR : --exclude-from-km attend un km positif", file=sys.stderr)
+        return 1
     try:
         plan = load_block(args.plan, expected_kind="race_plan")
         activity = load_block(args.activity, expected_kind="activity")
         planned_weather = load_block(args.planned_weather, expected_kind="weather") if args.planned_weather else None
         actual_weather = load_block(args.actual_weather, expected_kind="weather") if args.actual_weather else None
         fit_samples = _load_fit_samples(args.fit)
-        debrief = build_race_debrief(
-            plan, activity, scenario=args.scenario,
-            carbs_target_g_h=args.carbs_target_g_h, carbs_actual_g_h=args.carbs_actual_g_h,
-            carbs_ceiling_g_h=args.carbs_ceiling_g_h,
-            planned_weather=planned_weather, actual_weather=actual_weather,
-            fit_samples=fit_samples,
-        )
+        common = dict(carbs_target_g_h=args.carbs_target_g_h, carbs_actual_g_h=args.carbs_actual_g_h,
+                      carbs_ceiling_g_h=args.carbs_ceiling_g_h,
+                      planned_weather=planned_weather, actual_weather=actual_weather,
+                      fit_samples=fit_samples)
+        if args.calibrate:
+            return _run_calibration(args, plan, activity, common, actual_weather)
+        debrief = build_race_debrief(plan, activity, scenario=args.scenario, **common)
     except DebriefError as exc:
         print(f"ERREUR : {exc}", file=sys.stderr)
         return 1

@@ -12,7 +12,7 @@ rien vers Garmin.
 
 <div markdown>
 
-<span class="arc-video__meta">En vidéo · Étape 03 · 1 min 31</span>
+<span class="arc-video__meta">En vidéo · Étape 03 · 1 min 46</span>
 
 **[Le plan qui sait dire non](../video/garde-fous/index.html)** — Sept garde-fous calculés relisent la semaine avant son écriture et son envoi au calendrier Garmin : un second avis déterministe et testé.
 

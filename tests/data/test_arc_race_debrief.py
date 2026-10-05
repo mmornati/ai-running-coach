@@ -672,5 +672,30 @@ class TestRealPlanNonRegression(unittest.TestCase):
         self.assertAlmostEqual(result_a["alignment"]["actual_distance_m"], 10288.0, places=0)
 
 
+class TestNightErrorSummary(unittest.TestCase):
+    """Erreur des sections de nuit séparée de celle des sections de jour (#184, prépare #188)."""
+
+    def _night_plan(self):
+        plan = _plan()
+        for i, seg in enumerate(plan["segments"]):
+            night = 1.0 if i >= 2 else 0.0
+            seg["night_fraction"] = {"safe": night, "realistic": night, "ambitious": night}
+        return plan
+
+    def test_night_sections_error_reported_separately(self):
+        activity = _activity([(1, 300), (2, 300), (3, 330), (4, 330)])
+        result = D.build_race_debrief(self._night_plan(), activity)
+        night = result["night"]
+        self.assertEqual(night["night_segments"], 2)
+        self.assertEqual(night["day_segments"], 2)
+        self.assertAlmostEqual(night["night_delta_pct"], 10.0, places=1)
+        self.assertAlmostEqual(night["day_delta_pct"], 0.0, places=1)
+        self.assertAlmostEqual(night["night_minus_day_pct"], 10.0, places=1)
+
+    def test_plan_without_night_fraction_has_no_night_key(self):
+        activity = _activity([(1, 300), (2, 300), (3, 300), (4, 300)])
+        self.assertNotIn("night", D.build_race_debrief(_plan(), activity))
+
+
 if __name__ == "__main__":
     unittest.main()

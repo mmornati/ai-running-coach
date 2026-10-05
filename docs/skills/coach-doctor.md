@@ -36,6 +36,7 @@ n'apparaît jamais littéralement en sortie.)
 |---|---|---|
 | `garmin_token` | Âge/échéance des tokens Garmin (`~/.garminconnect` par défaut) | ⚠️ à moins de 14 jours de l'échéance, ❌ si expirés ou absents |
 | `garmin_mcp` | Présence/exécutabilité du binaire MCP `garmin` (aucun process lancé) | ❌ si la commande est introuvable ou non exécutable |
+| `strava_connection` | (#164, source `strava` seulement, sinon ℹ️) Node.js 18+, wrapper, serveur `strava` déclaré, jetons présents et non lisibles par d'autres — valeurs jamais lues ni affichées, aucun appel réseau | ❌ si Node.js/wrapper/serveur/jeton de rafraîchissement manquent, ⚠️ si identifiants client absents ou fichier lisible par d'autres |
 | `config_files` | `config/workspace.toml` et `config/workspace.user.toml` sont du TOML valide | ❌ si absent ou invalide, ⚠️ si validation stricte indisponible (Python < 3.11) |
 | `athlete_profile` | FC max / FC de repos renseignées dans `planning/Runner_Profile.md` | ℹ️ sinon — le coach utilise le RPE à la place |
 | `index_freshness` | `.arc/coach.db` à jour par rapport aux fichiers du workspace (y compris les fichiers supprimés) | ⚠️ si périmé ou si un fichier supprimé est encore indexé, ℹ️ si jamais construit |
@@ -45,6 +46,8 @@ n'apparaît jamais littéralement en sortie.)
 | `gear_sync` | Synchronisation du matériel Garmin (#133) : la liste blanche `GARMIN_ENABLED_TOOLS` de `.mcp.json` contient `get_gear` et `get_activity_gear`, et les paires actives du profil portent un segment `garmin: <uuid>`. **Statique — le doctor n'appelle jamais Garmin** ; lister le matériel Garmin sans puce est fait par le coach (`get_gear`) | ⚠️ si la liste blanche est antérieure à #133 (relancer `./install.sh`), ℹ️ si des paires actives ne sont pas associées (ou liste blanche illisible en mode passerelle), ℹ️ sous la source intervals.icu |
 | `gear_history` | (#145) Historique sans matériel : au moins 5 séances avec `garmin_activity_id`, dont plus de la moitié sans `gear_id` (ℹ️, jamais ⚠️) — propose `python3 scripts/garmin_gear_backfill.py` (simulation). **Statique : aucun appel Garmin.** |
 | `fit_reader` | `fitparse` présent dans l'environnement MCP de la source (`garmin-mcp` ou `intervals-icu-mcp`), pour lire les FIT téléchargés | ⚠️ si absent : zones, GAP, VAM… restent vides — relancer `./install.sh --source <source>` |
+| `intervals_mcp_pin` | (#165) Serveur `intervals-icu-mcp` installé par `uv tool` au commit épinglé par `install.sh` ? Lu dans le `direct_url.json` de son environnement — aucun réseau. Sans objet hors `[data].source = "intervals"` | ⚠️ si installé depuis l'ancien dépôt `eddmann` (outils sans préfixe `icu_`) — `./install.sh --source intervals` puis nouvelle session ; ℹ️ si commit différent du pin, origine personnalisée ou illisible |
+| `telegram` | (#174, `[telegram].enabled` seulement, sinon ℹ️) Liste blanche `allowed_chat_ids` non vide, fichier du jeton présent en mode 600 avec un `TELEGRAM_BOT_TOKEN` au bon format (valeur jamais affichée), jeton non exporté dans l'environnement, `chat_bridge` cohérent avec `[chat]`, service vivant (battement `.arc/telegram/heartbeat` de moins de 5 min). Aucun appel réseau | ⚠️ au plus (un bot arrêté est une perte de confort), jamais ❌ |
 
 Un ❌ fait échouer la commande (code de sortie non nul). Un ⚠️ ou un ℹ️ jamais —
 ce sont des dégradations connues, pas des pannes.

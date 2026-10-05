@@ -56,7 +56,7 @@ Ce que vous perdez en retirant un agent :
 
 <div markdown>
 
-<span class="arc-video__meta">En vidéo · Étape 02 · 1 min 11</span>
+<span class="arc-video__meta">En vidéo · Étape 02 · 1 min 19</span>
 
 **[Le réveil du traileur](video/bilan-matinal/index.html)** — HRV, FC de repos et readiness lues ensemble chaque matin : le verdict, sa raison, et comment régler le bilan.
 
@@ -106,16 +106,89 @@ avec `morning_check = "off"`.
     booléen) ne fait planter ni `scripts/arc_index.py`, ni le tableau de bord :
     un avertissement est affiché et le défaut (25 °C) s'applique à la place.
 
+## Les coefficients de pacing personnels — `[pacing.personal]`
+
+```toml
+[pacing.personal]
+night_penalty_pct = 6.5    # pénalité de nuit à pleine nuit, % (défaut 5.0 ; 0 à 30)
+technicity_scale = 1.2     # échelle du surcoût de technicité (défaut 1.0 ; 0,25 à 3)
+heat_hot_factor = 1.14     # facteur de temps au-dessus du seuil chaud (défaut 1.10 ; 1,0 à 1,4)
+altitude_scale = 1.1       # échelle du surcoût d'altitude (défaut 1.0 ; 0,25 à 3) — #185
+evidence = ["2026-09-27|trail-x|night|14|7.8"]   # preuves cumulées, une par course et facteur
+```
+
+Section **absente par défaut**, dans `config/workspace.user.toml` (jamais le
+fichier versionné). Elle est écrite par
+`arc_race_debrief.py … --calibrate --apply`, **uniquement après la confirmation
+explicite de l'athlète** au débrief d'une course (voir
+[le stratège de course](agents/course-strategist.md#recalibrage-des-coefficients-au-debrief-188)) ;
+vous pouvez aussi la renseigner à la main. `arc_race_pacing.py` la lit à chaque
+plan : **drapeau CLI** (`--night-penalty-pct`, `--altitude-loss-pct`) **>**
+`[pacing.personal]` **>** défaut du projet. `technicity_scale` et `altitude_scale`
+multiplient le **surcoût** de chaque section (facteur − 1) : avec
+`altitude_scale = 1.1`, une section à +8 % devient +8,8 % ; c'est la grandeur
+que mesure le recalibrage. `altitude_scale` ne joue que si la pénalité
+d'altitude s'applique (section au-dessus du seuil, sans `--no-altitude`) et
+s'efface devant `--altitude-loss-pct`. Sans la section, le plan est identique octet pour octet.
+`evidence` est tenue par le script : ne la modifiez pas à la main.
+
+!!! warning "Une valeur invalide ne casse jamais le plan"
+    Une valeur non numérique ou hors bornes est ignorée avec un avertissement
+    et le défaut s'applique.
+
+## Le cycle menstruel — `[health].cycle_tracking` (#166)
+
+```toml
+[health]
+cycle_tracking = "off"   # off (défaut) | garmin | intervals | manual
+```
+
+**Opt-in strict.** À `off` (défaut, ou clé absente), aucune donnée de cycle n'est lue, aucun outil
+n'est exposé et aucun agent n'en parle. `garmin` ajoute à la liste blanche `GARMIN_ENABLED_TOOLS`
+les outils `get_menstrual_data_for_date` et `get_menstrual_calendar_data` — **relancez
+`./install.sh`** après le changement (ou installez avec `--cycle-tracking garmin`, qui écrit la
+clé) ; `intervals` lit le champ `menstrualPhase` d'intervals.icu, `manual` la déclaration via
+`/log`. Avec `[data].source = "strava"` (#164), seul `manual` a un effet : Strava n'expose
+aucune donnée de cycle. Le cycle n'est qu'un **contexte** de lecture du bilan matinal : jamais une règle, jamais un
+diagnostic, jamais un assouplissement d'un verdict rouge.
+
+!!! warning "Une valeur invalide ne casse rien"
+    Une valeur hors de `off`/`garmin`/`intervals`/`manual` est traitée comme `off`, avec un
+    avertissement : jamais d'exception, jamais de suivi activé par accident.
+
+Détail, vérifications et sources : [Cycle menstruel](cycle-menstruel.md).
+
+## La poussée des apports vers Garmin — `[nutrition].garmin_sync` (#167)
+
+```toml
+[nutrition]
+garmin_sync = "off"   # off (défaut) | ask
+```
+
+**Opt-in strict.** À `off` (défaut, ou clé absente), rien n'est poussé, aucun outil n'est exposé et
+aucun agent n'en parle. `ask` : après un `/log` ou un rapport nutrition, le coach **propose** de
+pousser l'apport vers le journal alimentaire et l'hydratation de Garmin Connect ; chaque poussée
+exige un « oui » explicite, n'a jamais lieu en headless (`/garmin-daily-sync`) et reste idempotente.
+Les outils ne sont ajoutés à la liste blanche qu'à l'installation : **relancez `./install.sh`**
+après le changement (ou installez avec `--nutrition-sync ask`, qui écrit la clé). Indisponible avec
+`[data].source = "intervals"` ou `"strava"`, et en mode passerelle `--use-leanproxy` (refusé : les écritures n'y
+sont pas filtrables en headless). Une seule source de vérité par jour (fichiers du dépôt **ou** journal
+Garmin, jamais les deux) : voir [Apports vers Garmin](nutrition-garmin.md).
+
+!!! warning "Une valeur invalide ne casse rien"
+    Une valeur hors de `off`/`ask` est traitée comme `off`, avec un avertissement.
+
 ## La source de données — `[data].source` (#68)
 
 ```toml
 [data]
-source = "garmin"   # garmin (défaut) | intervals
+source = "garmin"   # garmin (défaut) | intervals | strava
 ```
 
-Écrite automatiquement par `./install.sh --source garmin|intervals` — voir
-[Configuration Garmin](garmin-setup.md) et
-[Configuration Intervals.icu](intervals-setup.md). Change les outils MCP
+Écrite automatiquement par `./install.sh --source garmin|intervals|strava` — voir
+[Configuration Garmin](garmin-setup.md),
+[Configuration Intervals.icu](intervals-setup.md) et
+[Configuration Strava](strava-setup.md). Change les outils MCP
 appelés par `coach`/`medical`/`garmin-daily-sync` pour les activités, la
 santé et le calendrier planifié (table de correspondance complète dans
 `AGENTS.md`). Sans montre Garmin, `intervals` ouvre le projet aux données
@@ -128,6 +201,13 @@ COROS/Suunto/Polar/Apple synchronisées sur Intervals.icu.
     plutôt que d'inventer une valeur. Détail dans
     [Configuration Intervals.icu](intervals-setup.md).
 
+!!! warning "Avec `strava` (#164)"
+    Strava n'expose ni HRV, ni FC de repos, ni sommeil, ni readiness : le bilan matinal
+    (`[health].morning_check`) est dit **indisponible** (jamais simulé), même à `full`, et il
+    n'y a ni calendrier ni push de séances. En revanche les flux par seconde alimentent les KPI
+    du FIT (zones, GAP, découplage, VAM…) via `download_fit.py --source strava`. Prérequis :
+    Node.js 18+. Détail dans [Configuration Strava](strava-setup.md).
+
 ## Le style de coaching — `[coaching]`
 
 <!-- arc-video:styles-coaching -->
@@ -137,7 +217,7 @@ COROS/Suunto/Polar/Apple synchronisées sur Intervals.icu.
 
 <div markdown>
 
-<span class="arc-video__meta">En vidéo · Étape 11 · 1 min 31</span>
+<span class="arc-video__meta">En vidéo · Étape 11 · 1 min 46</span>
 
 **[Trois voix, une décision](video/styles-coaching/index.html)** — La même décision dite par trois styles de coaching : le ton, la fermeté et la longueur se règlent, jamais le verdict.
 
@@ -246,6 +326,28 @@ Détection des montées (VAM, #46) : les **deux** critères doivent être attein
 pour qu'une montée soit reconnue. Ajustez au terrain habituel — montez
 `climb_min_gain_m` en plaine vallonnée pour ignorer les faux plats,
 descendez-le en montagne pour capter de courts raidillons.
+
+## La correction d'altitude — `[elevation]` et `[privacy]` (#176)
+
+```toml
+[elevation]
+dem = "off"      # "off" (défaut) | "auto"
+step_m = 50      # pas d'amincissement des coordonnées envoyées (m)
+cache = true     # cache local <workspace>/.arc/dem-cache.json
+
+[privacy]
+dem_for_activities = false   # opt-in : comparaison altitude enregistrée / MNT d'une séance
+dem_trim_m = 500             # mètres jamais envoyés en début et fin de séance (200 à 5000)
+```
+
+Rééchantillonne l'altitude d'un GPX de course sur un modèle numérique de terrain
+(IGN RGE ALTI en France, Copernicus GLO-90 via Open-Meteo ailleurs). **Rien n'est
+envoyé par défaut** : `dem = "auto"` corrige d'office les parcours de course
+(`analyze_gpx.py`, `arc_race_pacing.py`), `--dem` le fait pour un appel ; les
+traces de séances ne partent qu'avec `dem_for_activities = true`, sans leurs
+`dem_trim_m` premiers et derniers mètres (protection partielle du domicile). Seules des
+coordonnées arrondies et amincies sont envoyées. Détails, licences, limites :
+[Correction altimétrique](elevation.md).
 
 ## Les garde-fous — `[guardrails]`
 
@@ -400,6 +502,24 @@ commentaires `: ping` du flux SSE, 15 s), `ARC_OPENCODE_TRACE` (fichier où reco
 d'OpenCode — contenu des échanges compris : diagnostic seulement, fichier à supprimer ensuite).
 `./install.sh --chat-budget EUR` écrit `daily_budget_eur`. Le diagnostic :
 `python3 scripts/coach_doctor.py --check llm_config` (et `chat_service`, `opencode_cli`).
+
+## Le bot Telegram — `[telegram]` (#174)
+
+Canal optionnel, désactivé par défaut ([page dédiée](telegram.md)). Installé par
+`./install.sh --telegram` (`scripts/coach-telegram.sh`).
+
+| Clé | Effet |
+|---|---|
+| `enabled` | `false` (défaut) \| `true`. |
+| `token_file` | Fichier du jeton du bot (`TELEGRAM_BOT_TOKEN=…`), hors dépôt, mode 600 (défaut `~/.config/ai-running-coach/telegram.env`). Le jeton n'est jamais dans le TOML. |
+| `allowed_chat_ids` | Liste blanche des identifiants de chat. **Vide = tout est refusé.** Un chat inconnu ne reçoit aucune réponse. |
+| `send_summary` | `true` (défaut) : le résumé du daily-sync part aussi sur Telegram, avec ses boutons (en plus de ntfy s'il est configuré). |
+| `chat_bridge` | `false` (défaut). `true` : le texte libre est relayé au service du chat (`[chat]`), avec sa politique, ses approbations et son plafond ; exige `[chat].enabled = true`, `auth = "local"` et une clé d'API facturée. |
+| `poll_timeout_s` | Durée d'une interrogation longue `getUpdates` (30 s). |
+
+Les retours en un geste ne demandent aucune clé d'API. Variable d'environnement de test :
+`ARC_TELEGRAM_API_BASE` (https, ou http en boucle locale seulement). Le diagnostic :
+`python3 scripts/coach_doctor.py --check telegram`.
 
 ## Notifications et synchronisation
 

@@ -9,7 +9,7 @@
 
 <div markdown>
 
-<span class="arc-video__meta">En vidéo · Étape 10 · 1 min 33</span>
+<span class="arc-video__meta">En vidéo · Étape 10 · 1 min 40</span>
 
 **[Le coach dans la poche](../video/coach-poche/index.html)** — La machine coach, la synchronisation automatique (horaires ou veille), la notification push, Remote Control et les commandes courtes, le tableau de bord mobile, et ce qui n'est pas possible.
 

@@ -1,69 +1,69 @@
 WEBVTT
 
 1
-00:00:01.200 --> 00:00:03.882
+00:00:01.200 --> 00:00:04.090
 Stage ten: coach in your pocket.
 
 2
-00:00:05.100 --> 00:00:09.894
+00:00:05.100 --> 00:00:09.718
 At Camille's place, one machine stays on all night: the coach machine.
 
 3
-00:00:09.994 --> 00:00:17.945
+00:00:09.818 --> 00:00:16.860
 It holds the files and the Garmin access, and a cron job runs the sync at seven fifteen, then at two fifteen.
 
 4
-00:00:18.795 --> 00:00:25.104
+00:00:17.710 --> 00:00:24.248
 Or, in watch mode, a small script polls Garmin every fifteen minutes, with no model at all.
 
 5
-00:00:25.204 --> 00:00:28.035
+00:00:24.348 --> 00:00:27.430
 Nothing new: zero tokens spent.
 
 6
-00:00:28.135 --> 00:00:32.972
+00:00:27.530 --> 00:00:32.556
 A run or a night's sleep to fetch: only then does the coach wake up.
 
 7
-00:00:33.822 --> 00:00:39.021
+00:00:33.406 --> 00:00:38.144
 The coach only fetches the dates whose file is missing, and writes the Markdown.
 
 8
-00:00:39.121 --> 00:00:41.846
+00:00:38.244 --> 00:00:40.606
 It ends with a five-line summary.
 
 9
-00:00:42.696 --> 00:00:47.703
+00:00:41.456 --> 00:00:46.098
 That summary lands on the phone as a push notification, through ntfy.
 
 10
-00:00:47.803 --> 00:00:52.832
+00:00:46.198 --> 00:00:51.512
 Sleep, heart rate variability, readiness: it's all there before the coffee.
 
 11
-00:00:53.682 --> 00:00:58.945
+00:00:52.362 --> 00:00:57.244
 Want to know more? The Claude app connects to the coach machine through Remote Control.
 
 12
-00:00:59.045 --> 00:01:06.271
+00:00:57.344 --> 00:01:05.418
 Camille types /today, /why, /week or /race: short answers that never change the plan.
 
 13
-00:01:07.121 --> 00:01:13.856
+00:01:06.268 --> 00:01:12.590
 The dashboard reads fine on a phone too: today's verdict, the week, and the coach's approval card.
 
 14
-00:01:15.121 --> 00:01:23.051
+00:01:14.268 --> 00:01:22.294
 Let's be honest. No home-made app can use your subscription: only an API key, billed per token, allows it.
 
 15
-00:01:23.151 --> 00:01:27.113
+00:01:22.394 --> 00:01:26.244
 Sending shoe photos from the phone is not validated.
 
 16
-00:01:27.213 --> 00:01:31.090
+00:01:26.344 --> 00:01:29.882
 And if the machine goes off, there is plan B in the cloud.
 
 17
-00:01:33.640 --> 00:01:38.370
+00:01:32.432 --> 00:01:37.098
 To go further: the “Coach in your pocket” page of the documentation.

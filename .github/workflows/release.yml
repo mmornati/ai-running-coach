@@ -1,0 +1,46 @@
+name: Release
+
+# Crée la release GitHub du tag, avec le même nom que le tag (v1.0.0 → « v1.0.0 »).
+# Notes générées par GitHub (`--generate-notes`) : la liste des PR fusionnées
+# depuis le tag précédent, rangées par catégories selon .github/release.yml,
+# avec les nouveaux contributeurs et le lien « Full Changelog » (compare).
+# Première release : toutes les PR depuis le début de l'historique.
+#
+# Deux entrées : un tag poussé à la main, ou l'appel depuis tag.yml (un tag
+# poussé par le GITHUB_TOKEN ne déclenche pas `push: tags`, voir tag.yml).
+on:
+  push:
+    tags: ["v*"]
+  workflow_call:
+    inputs:
+      tag:
+        type: string
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Création de la release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ inputs.tag || github.ref_name }}
+        run: |
+          set -euo pipefail
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "La release $TAG existe déjà — rien à faire."
+            exit 0
+          fi
+
+          args=(--title "$TAG" --generate-notes --verify-tag)
+          # Un suffixe (v1.1.0-rc.1, v2.0.0-beta) = pré-version, jamais « Latest ».
+          case "$TAG" in *-*) args+=(--prerelease) ;; esac
+
+          gh release create "$TAG" "${args[@]}"
+          echo "### Release [$TAG]($(gh release view "$TAG" --json url -q .url)) publiée" >> "$GITHUB_STEP_SUMMARY"

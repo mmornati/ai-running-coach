@@ -13,6 +13,7 @@ sert au tableau de bord (`scripts/arc_serve.py`) et aux calculs de charge
     arc_index.py hrv-baseline            # ligne de base HRV personnelle du jour, en JSON (#34)
     arc_index.py sleep-debt               # dette de sommeil 7 j du jour, en JSON (#37)
     arc_index.py heat-acclimation         # acclimatation à la chaleur, 14 j, en JSON (#38)
+    arc_index.py altitude-exposure [--days N]   # exposition à l'altitude (≥ 1 500 / 2 000 m), 14 et 28 j (#185)
     arc_index.py fueling                  # glucides/h et sudation, sorties longues, en JSON (#41)
     arc_index.py samples GARMIN_ID         # échantillons ingérés d'une séance, en JSON (#42)
     arc_index.py zones [--activity GARMIN_ID] [--weeks N]   # zones FC, temps en zone, polarisation (#43)
@@ -24,10 +25,33 @@ sert au tableau de bord (`scripts/arc_serve.py`) et aux calculs de charge
     arc_index.py climb-history [--segment ID | --activity GARMIN_ID]  # identité de montée entre séances (#49)
     arc_index.py decisions [--date D | --days N] [--trigger T] [--outcome O] [--active]
                                                                         # journal des décisions, en JSON (#54)
+    arc_index.py decision-effects [--trigger T] [--days N] [--text]
+                                                                        # ce qui s'est passé après chaque décision, en JSON (#175)
     arc_index.py energy [--activity GARMIN_ID | --date D | --since D] [--limit N] [--assumptions]
                                                                         # dépense modèle vs Garmin, en JSON
+    arc_index.py pace-curve [--days N] [--lt-speed-ms V]              # courbe allure-durée GAP, CS/D′ (#169)
     arc_index.py energy --calibration [--weeks N]                     # calibration personnelle (ratio
                                                                         # Garmin/modèle par panier route/trail)
+    arc_index.py plan-templates [--format ID | --distance-km D [--sport S]] [--weeks N] [--text]
+                                                                        # gabarits de périodisation (#189)
+    arc_index.py strength [--phase P] [--use U] [--equipment LISTE] [--text | --garmin-json]
+                                                                        # bibliothèque de renforcement (#191)
+    arc_index.py prevention [--days N] [--acute ZONE,…] [--known ZONE,…] [--equipment LISTE] [--text]
+                                                                        # prévention ciblée liée aux douleurs (#192)
+
+`strength` (#191, épopée #173) choisit un programme de renforcement/mobilité de la bibliothèque livrée avec
+le moteur (`config/strength/`, `arc_strength.py`) par phase du bloc et/ou par usage (descente, cheville,
+hanches, pied), remplace les exercices selon le matériel disponible (`--equipment`, sinon la puce
+« Équipement » du profil ; inconnu → question, jamais deviné) et rend la sélection en JSON, en `--text`
+(description intervals.icu / chat) ou en `--garmin-json` (charge utile `create_strength_workout`, aucune
+écriture). Sans `--phase` ni `--use` : le catalogue. Lecture seule, sans index. Approximations du projet.
+
+`prevention` (#192, épopée #173) relie les douleurs DÉCLARÉES des `--days` derniers jours (14 par défaut,
+`health.pain` des `medical/*_health.md`) à une routine douce de la bibliothèque, après des garde-fous
+déterministes (score >= `[injury_risk].pain_consult_threshold`, douleur aiguë `--acute`, aggravation,
+persistance > 7 jours, drapeau de risque de blessure → consultation, aucun exercice). Jamais un diagnostic ;
+`[agents].enabled` décide qui tranche (`medical` s'il est activé, sinon le coach avec « ce n'est pas un avis
+médical »). Lecture seule : rien n'est écrit ni poussé. Voir `arc_prevention.py`.
 
 `hrv-baseline` n'a besoin d'aucun tableau de bord lancé (headless, `/garmin-daily-sync`
 compris) : elle réindexe puis rend le point du jour de `arc_metrics.hrv_baseline_series`
@@ -207,6 +231,35 @@ asymétrie des inspections photo, `confidence` (effectifs) et `contradictions` (
 l'usure). Jamais un diagnostic, aucune modification de charge — voir `arc_gait.ASSUMPTIONS` et
 `arc_metrics.ASSUMPTIONS["gait"]`. Lecture seule ; `/api/gait` la sert au tableau de bord.
 
+`load-forecast [--until DATE] [--compare FICHIER] [--text]` (#172) projette condition / fatigue / forme jour
+par jour de l'état réel d'aujourd'hui jusqu'à la date de l'objectif actif (ou `--until`), à partir de la
+charge ESTIMÉE des séances planifiées (même estimateur que le garde-fou R1, jamais un second modèle) :
+forme prévue le jour J, semaine de pic de fatigue, ACWR projeté sur le bloc. Jour sans séance = charge nulle,
+semaines non planifiées comptées ; états honnêtes `no_objective` / `no_plan` / `insufficient_history`
+(même plancher que R1) / `target_past`. `--compare` oppose le plan actuel à un plan modifié (les semaines de
+même lundi sont remplacées) et chiffre les écarts. Estimation, jamais une mesure — voir
+`arc_metrics.ASSUMPTIONS["load_forecast"]`. Sortie JSON comme les autres commandes ; `--text` pour un résumé
+lisible. Lecture seule ; `/api/load-forecast` la sert au tableau de bord.
+
+`plan-templates` (#189, épopée #173) liste les gabarits de périodisation livrés avec le moteur
+(`config/plans/*.json`) ; avec `--format ID` (ou `--distance-km D [--sport trail|road]` pour le
+choisir selon l'objectif), rend le gabarit résolu semaine par semaine (en % de la semaine pic) pour
+`--weeks N` (défaut : celui du gabarit) et le verdict de cohérence avec les garde-fous du workspace
+(`[guardrails]`). Sans `--sport`, le sport vient de `[sport].primary`. Lecture seule, sans index ni
+base — voir `arc_plan_templates.py`. JSON par défaut (comme les autres sous-commandes), `--text` pour
+un tableau lisible. Un point de départ, jamais un plan : le squelette daté est `plan-skeleton`.
+
+`plan-skeleton [--format ID] [--race-date AAAA-MM-JJ] [--held-hours H] [--held-elevation-m M] [--long-run-day J]
+[--text] [--write]` (#190, épopée #173) génère le squelette du bloc, semaine par semaine, de la semaine en cours à
+la semaine de course (+ récupération post-course) : gabarit (`--format`, sinon choisi d'après la distance de
+l'objectif actif), volume/D+ TENUS sur les 4 dernières semaines (pic = tenu × `peak_from_current`, jamais inventé ;
+`--held-hours` pour un volume déclaré), disponibilité du profil, et créneaux de séance `placeholder` à habiller par
+le coach. Chaque semaine passe `arc_guardrails.evaluate` (jamais une semaine `block` émise) ; la forme prévue le
+jour J est projetée par `load-forecast`. Par défaut un DRY RUN (JSON, ou `--text`) ; `--write` écrit un
+`planning/Semaine_<lundi>.md` par semaine, refuse d'écraser (liste les conflits) et valide les fichiers — voir
+`arc_plan_skeleton.py`. États honnêtes : `too_short` (options), `no_history`, `no_objective`, `no_template`,
+`target_past`, `needs_review`.
+
 Options communes : `--workspace DIR` (sinon $ARC_WORKSPACE, le pointeur
 ~/.config/ai-running-coach/workspace, puis le moteur), `--db FICHIER` (défaut
 <workspace>/.arc/coach.db), `--memory` (base en mémoire, rien sur disque),
@@ -233,10 +286,15 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple, Union
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+import arc_altitude as AL  # noqa: E402
 import arc_climb as VC  # noqa: E402
 import arc_climb_match as VM  # noqa: E402
 import arc_contract as C  # noqa: E402
+import arc_cs as CS  # noqa: E402
+import arc_cycle as CY  # noqa: E402
+import arc_decision_effects as DE  # noqa: E402
 import arc_decoupling as DC  # noqa: E402
+import arc_dem as DEM  # noqa: E402
 import arc_descent as DS  # noqa: E402
 import arc_durability as DU  # noqa: E402
 import arc_energy as EN  # noqa: E402
@@ -244,8 +302,11 @@ import arc_gait as GT  # noqa: E402
 import arc_gap as G  # noqa: E402
 import arc_legacy as L  # noqa: E402
 import arc_metrics as M  # noqa: E402
+import arc_plan_templates as PT  # noqa: E402
+import arc_prevention as PV  # noqa: E402
 import arc_samples as S  # noqa: E402
 import arc_slope_model as SL  # noqa: E402
+import arc_strength as SG  # noqa: E402
 import arc_trail_shape as TS  # noqa: E402
 from coach_config import ConfigError, read_toml  # noqa: E402
 from coach_setup import ENGINE, workspace_root  # noqa: E402
@@ -307,7 +368,20 @@ from coach_setup import ENGINE, workspace_root  # noqa: E402
 # capteur ne les fournit pas — `arc_samples.ASSUMPTIONS["running_dynamics"]`) — sans ce bump, une base déjà
 # construite n'a pas les colonnes (« no such column »). Version 32 (31 = #68 FIT Intervals.icu). Les
 # `activities/fit/*.json` existants n'en portent pas : les re-extraire avec `download_fit.py --refresh-dynamics`.
-SCHEMA_VERSION = 32
+# #166 : `health_day` gagne `cycle_phase`/`cycle_day`/`cycle_source` (contexte du cycle, opt-in
+# `[health].cycle_tracking`, NULL par défaut) — version 33, sans ce bump l'ingestion d'un fichier santé
+# portant ces clés échouerait avec « no such column » sur une base déjà construite.
+# Strava (#164, `[data].source = "strava"`) : `activity`, `activity_sample` et `sample_file` gagnent la
+# colonne `strava_activity_id` (TEXT, `s<chiffres>`) — troisième espace d'identifiants externes, disjoint
+# des deux autres (`arc_samples.parse_activity_ref`). Version 34 (33 = #166 cycle) : sans ce bump, une base déjà construite
+# n'a pas la colonne et l'insertion échouerait avec « no such column ».
+# #193 : `week` gagne `week_type` (type de semaine du squelette de bloc #190, NULL pour les semaines plus
+# anciennes) — la frise du bloc (`/api/block`) en a besoin. Version 35 (34 = Strava) : sans ce bump,
+# l'insertion d'une semaine échouerait avec « no such column » sur une base déjà construite.
+SCHEMA_VERSION = 35
+# Colonnes d'identifiant externe d'une séance, dans l'ordre de priorité de `activity_ref` — une séance n'en
+# porte qu'une (`workspace-data-contract`) ; Garmin prime si un fichier ancien en porte plusieurs.
+REF_COLUMNS = ("garmin_activity_id", "intervals_activity_id", "strava_activity_id")
 DEFAULT_DB = ".arc/coach.db"
 DATA_DIRS = ("activities", "medical", "nutrition", "planning", "rapports", "gear")
 
@@ -331,6 +405,27 @@ def load_config(workspace: Path) -> Dict[str, dict]:
             if isinstance(values, dict):
                 merged.setdefault(section, {}).update(values)
     return merged
+
+
+DEFAULT_MAP_TILES = "https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png"
+DEFAULT_MAP_ATTRIBUTION = "© OpenStreetMap contributors, SRTM · style © OpenTopoMap (CC-BY-SA)"
+_MAP_TILES_RE = re.compile(r"https://(\{s\}\.)?[a-z0-9-]+(\.[a-z0-9-]+)+(:\d+)?/[^\s\"'<>]*\{z\}[^\s\"'<>]*")
+
+
+def _map_tiles(config: Dict[str, dict]) -> str:
+    """`[dashboard].map_tiles`, jamais en levant : modèle d'URL de tuiles en https, hôte littéral
+    (seul `{s}.` est permis en tête, pour les sous-domaines), `{z}` présent. Absente = défaut ;
+    vide, ou invalide (avertissement) = `""`, la carte n'affiche que la trace. L'hôte alimente
+    l'en-tête Content-Security-Policy (`arc_serve.tile_origin`) : rien d'autre n'y entre."""
+    value = config.get("dashboard", {}).get("map_tiles", DEFAULT_MAP_TILES)
+    if not isinstance(value, str):
+        value = ""
+    value = value.strip()
+    if value and not _MAP_TILES_RE.fullmatch(value):
+        print(f"avertissement : [dashboard].map_tiles « {value} » ignoré (https://hôte/…{{z}}/{{x}}/{{y}}… attendu) : "
+              "carte sans fond.", file=sys.stderr)
+        return ""
+    return value
 
 
 def _heat_threshold_c(config: Dict[str, dict]) -> float:
@@ -448,6 +543,9 @@ def settings(config: Dict[str, dict]) -> dict:
         "sport": config.get("sport", {}).get("primary", "trail") or "trail",
         "morning_check": config.get("health", {}).get("morning_check", "full") or "full",
         "heat_threshold_c": _heat_threshold_c(config),
+        # Contexte du cycle menstruel (#166) : "off" (défaut) | "garmin" | "intervals" | "manual" ; toute autre
+        # valeur → "off" avec avertissement (scripts/arc_cycle.py), jamais une exception.
+        "cycle_tracking": CY.cycle_tracking_mode(config),
         "agents": list(agents),
         "units": config.get("athlete", {}).get("units", "metric") or "metric",
         "profile": config.get("athlete", {}).get("profile", "planning/Runner_Profile.md"),
@@ -455,6 +553,9 @@ def settings(config: Dict[str, dict]) -> dict:
         "language": config.get("language", {}).get("documents", "fr") or "fr",
         # Page « Coach » (chat) : n'affiche l'entrée de nav que si le service est activé.
         "chat_enabled": bool(config.get("chat", {}).get("enabled", False)),
+        # Fond de carte de la page séance : modèle d'URL validé (`""` = trace seule) et mention légale.
+        "map_tiles": _map_tiles(config),
+        "map_attribution": str(config.get("dashboard", {}).get("map_attribution", DEFAULT_MAP_ATTRIBUTION) or ""),
         # VAM sur les montées détectées (#46, critère d'acceptation : « montée
         # minimale configurable (D+, pente) ») — `climb_min_grade_pct` en points de
         # pourcentage au workspace (ex. 5, pas 0.05), converti ici en fraction pour
@@ -530,7 +631,8 @@ CREATE TABLE objective (
 );
 CREATE TABLE activity (
     id INTEGER PRIMARY KEY, source_path TEXT, arc_version INTEGER, date TEXT, sport TEXT,
-    name TEXT, location TEXT, garmin_activity_id INTEGER, intervals_activity_id TEXT, start_time TEXT,
+    name TEXT, location TEXT, garmin_activity_id INTEGER, intervals_activity_id TEXT, strava_activity_id TEXT,
+    start_time TEXT,
     distance_m REAL, duration_s REAL, moving_duration_s REAL, elevation_gain_m REAL,
     elevation_loss_m REAL, avg_hr_bpm REAL, max_hr_bpm REAL, recovery_hr_bpm REAL,
     avg_cadence_spm REAL, calories_kcal REAL, calories_bmr_kcal REAL, te_aerobic REAL, te_anaerobic REAL, rpe REAL,
@@ -593,7 +695,8 @@ CREATE TABLE health_day (
     hrv_overnight_ms REAL, hrv_baseline_low_ms REAL, hrv_baseline_high_ms REAL, hrv_status TEXT,
     hrv_personal_low_ms REAL, hrv_personal_high_ms REAL, hrv_personal_status TEXT,
     resting_hr_bpm REAL, readiness_score REAL, body_battery_high REAL, body_battery_low REAL,
-    stress_avg REAL, weight_kg REAL, verdict TEXT, verdict_reason TEXT, body_md TEXT, data_json TEXT
+    stress_avg REAL, weight_kg REAL, verdict TEXT, verdict_reason TEXT,
+    cycle_phase TEXT, cycle_day INTEGER, cycle_source TEXT, body_md TEXT, data_json TEXT
 );
 CREATE INDEX health_date ON health_day(date);
 CREATE TABLE weather_day (
@@ -610,7 +713,7 @@ CREATE TABLE weather_day (
 CREATE TABLE week (
     source_path TEXT, arc_version INTEGER, week_start TEXT, location TEXT, phase TEXT,
     target_duration_s REAL, target_distance_m REAL, target_elevation_m REAL, body_md TEXT,
-    shadowed INTEGER DEFAULT 0
+    shadowed INTEGER DEFAULT 0, week_type TEXT
 );
 CREATE TABLE planned_session (
     source_path TEXT, week_start TEXT, date TEXT, sport TEXT, title TEXT,
@@ -680,16 +783,18 @@ CREATE TABLE metric_day (
 -- `arc_climb_match.ASSUMPTIONS["privacy"]`).
 -- `intervals_activity_id` (#68) : même rôle que `garmin_activity_id` pour une séance
 -- synchronisée depuis Intervals.icu — exactement UNE des deux colonnes est renseignée
--- par ligne, selon la forme de l'identifiant du fichier (`arc_samples.parse_activity_ref`).
+-- par ligne, selon la forme de l'identifiant du fichier (`arc_samples.parse_activity_ref`) ;
+-- `strava_activity_id` (#164) : troisième espace (`s<chiffres>`), même règle.
 CREATE TABLE activity_sample (
     garmin_activity_id INTEGER, source_path TEXT, t_s REAL, distance_m REAL, altitude_m REAL,
     hr_bpm REAL, speed_ms REAL, cadence_spm REAL, lat REAL, lon REAL, covered_s REAL,
-    intervals_activity_id TEXT,
+    intervals_activity_id TEXT, strava_activity_id TEXT,
     ground_contact_s REAL, stance_balance_pct REAL, vertical_oscillation_m REAL, vertical_ratio_pct REAL,
     step_length_m REAL
 );
 CREATE INDEX activity_sample_garmin ON activity_sample(garmin_activity_id);
 CREATE INDEX activity_sample_intervals ON activity_sample(intervals_activity_id);
+CREATE INDEX activity_sample_strava ON activity_sample(strava_activity_id);
 CREATE INDEX activity_sample_source ON activity_sample(source_path);
 -- Suivi des fichiers `activities/fit/*.json` — table DÉDIÉE, jamais `source_file` :
 -- `source_file` est lu par `backfill_items` et `scripts/coach_doctor.py` en supposant
@@ -698,7 +803,7 @@ CREATE INDEX activity_sample_source ON activity_sample(source_path);
 -- fantôme après --rebuild.
 CREATE TABLE sample_file (
     path TEXT PRIMARY KEY, sha256 TEXT, mtime REAL, garmin_activity_id INTEGER,
-    status TEXT, issues TEXT, intervals_activity_id TEXT
+    status TEXT, issues TEXT, intervals_activity_id TEXT, strava_activity_id TEXT
 );
 -- Temps en zone FC (#43), par activité (id INTERNE, comme `activity_split` — jamais
 -- `garmin_activity_id` : la ligne est recréée à chaque `compute_metrics`, sans purge
@@ -970,12 +1075,15 @@ def expected_keys(kind: str, data: dict, conf: dict) -> List[str]:
     """Clés dont l'absence est une dette (au-delà des clés obligatoires du contrat)."""
     if kind == "activity":
         sport = data.get("sport")
-        keys = ["garmin_activity_id"]
+        # Séance Strava (#164) : ni `garmin_activity_id` ni `splits` par km n'existent à la source
+        # (AGENTS.md, « Backends MCP ») — jamais une dette. Les autres sources : inchangé.
+        strava = bool(data.get("strava_activity_id"))
+        keys = [] if strava else ["garmin_activity_id"]
         if sport not in ("strength", "rest", "home_trainer", "indoor_cycling", "elliptical"):
             keys.append("distance_m")
         if sport != "rest":
             keys.append("avg_hr_bpm")
-        if sport in M.RUNNING_SPORTS:
+        if sport in M.RUNNING_SPORTS and not strava:
             keys.append("splits")
         return keys
     if kind == "health":
@@ -1150,6 +1258,7 @@ def store(conn, rel: str, kind: str, data: dict, arc_version: int) -> None:
             "source_path": rel, "arc_version": arc_version, "date": g("date"), "sport": g("sport"),
             "name": g("name"), "location": g("location"), "garmin_activity_id": g("garmin_activity_id"),
             "intervals_activity_id": g("intervals_activity_id"),
+            "strava_activity_id": g("strava_activity_id"),
             "start_time": g("start_time"), "distance_m": g("distance_m"), "duration_s": g("duration_s"),
             "moving_duration_s": g("moving_duration_s"), "elevation_gain_m": g("elevation_gain_m"),
             "elevation_loss_m": g("elevation_loss_m"), "avg_hr_bpm": g("avg_hr_bpm"),
@@ -1202,7 +1311,8 @@ def store(conn, rel: str, kind: str, data: dict, arc_version: int) -> None:
             ge = entry.get
             _insert(conn, "week", {
                 "source_path": rel, "arc_version": arc_version, "week_start": ge("week_start"),
-                "location": ge("location"), "phase": ge("phase"), "target_duration_s": ge("target_duration_s"),
+                "location": ge("location"), "phase": ge("phase"), "week_type": ge("week_type"),
+                "target_duration_s": ge("target_duration_s"),
                 "target_distance_m": ge("target_distance_m"), "target_elevation_m": ge("target_elevation_m"),
                 "body_md": body,
             })
@@ -1445,7 +1555,7 @@ def _sample_stats(conn) -> Dict[int, list]:
     stats = {}
     # Clé = identifiant externe (entier Garmin ou chaîne Intervals.icu, #68 — jamais en
     # collision, voir `arc_samples.parse_activity_ref`), comme `activity_ref(act)`.
-    for col in ("garmin_activity_id", "intervals_activity_id"):
+    for col in REF_COLUMNS:
         for row in conn.execute(
             f"SELECT {col}, COUNT(*), TOTAL(t_s), MIN(t_s), MAX(t_s), "
             "COUNT(distance_m), TOTAL(distance_m), COUNT(altitude_m), TOTAL(altitude_m), "
@@ -2037,14 +2147,18 @@ def _sample_file_activity_id(path: Path, raw) -> Optional[Union[int, str]]:
 def ref_column(ref: Union[int, str]) -> str:
     """Colonne qui porte l'identifiant externe `ref` — dans `activity`, `activity_sample`
     ET `sample_file`, qui la nomment toutes trois pareil : `intervals_activity_id` pour
-    une chaîne (`i<chiffres>`, #68), `garmin_activity_id` pour un entier. Nom de colonne
+    une chaîne `i<chiffres>` (#68), `strava_activity_id` pour une chaîne `s<chiffres>` (#164),
+    `garmin_activity_id` pour un entier. Nom de colonne
     tiré d'une liste FERMÉE, jamais d'une valeur utilisateur : sûr à interpoler en SQL."""
-    return "intervals_activity_id" if isinstance(ref, str) else "garmin_activity_id"
+    if not isinstance(ref, str):
+        return "garmin_activity_id"
+    return "strava_activity_id" if S.STRAVA_ID_RE.match(ref) else "intervals_activity_id"
 
 
 def activity_ref(act) -> Optional[Union[int, str]]:
     """Identifiant externe auquel les échantillons d'une activité sont rattachés :
-    `garmin_activity_id` s'il existe, sinon `intervals_activity_id` (#68) — le contrat
+    `garmin_activity_id` s'il existe, sinon `intervals_activity_id` (#68), sinon
+    `strava_activity_id` (#164) — le contrat
     n'en renseigne qu'un par séance (`workspace-data-contract`), Garmin prime si un
     fichier ancien porte les deux. `None` : séance sans identifiant externe (saisie
     manuelle), donc sans échantillons possibles."""
@@ -2054,8 +2168,11 @@ def activity_ref(act) -> Optional[Union[int, str]]:
     garmin = act["garmin_activity_id"] if "garmin_activity_id" in keys else None
     if garmin is not None:
         return garmin
-    intervals = act["intervals_activity_id"] if "intervals_activity_id" in keys else None
-    return S.parse_activity_ref(intervals) if intervals else None
+    for col in REF_COLUMNS[1:]:
+        value = act[col] if col in keys else None
+        if value:
+            return S.parse_activity_ref(value)
+    return None
 
 
 def ref_label(ref: Union[int, str]) -> dict:
@@ -2078,7 +2195,8 @@ def parse_activity_selector(value, command: str) -> Optional[Union[int, str]]:
     ref = S.parse_activity_ref(value)
     if ref is None:
         raise ConfigError(f"commande « {command} » : identifiant de séance attendu — entier "
-                          f"(garmin_activity_id) ou i<chiffres> (intervals_activity_id) — « {value} » reçu.")
+                          f"(garmin_activity_id), i<chiffres> (intervals_activity_id) ou s<chiffres> (strava_activity_id) "
+                          f"— « {value} » reçu.")
     return ref
 
 
@@ -2155,7 +2273,7 @@ def ingest_samples(conn, workspace: Path, resolution_s: int = S.DEFAULT_RESOLUTI
                 "INSERT OR REPLACE INTO sample_file (path, sha256, mtime, status, issues) VALUES (?, ?, ?, ?, ?)",
                 (rel, digest, path.stat().st_mtime, "invalid",
                  _j(["identifiant de séance introuvable (nom de fichier ni entier Garmin ni i<chiffres> "
-                     "Intervals.icu, et clé activity_id absente ou invalide)"])),
+                     "Intervals.icu ni s<chiffres> Strava, et clé activity_id absente ou invalide)"])),
             )
             counts["invalid"] += 1
             continue
@@ -2201,7 +2319,7 @@ def sample_coverage(conn) -> dict:
     # Les deux espaces d'identifiants (#68) comptés séparément puis additionnés : une
     # ligne n'en porte jamais qu'un, voir la DDL de `activity_sample`. `unlinked_garmin_ids`
     # garde son nom historique (consommé par `status`) mais couvre les deux sources.
-    for col in ("garmin_activity_id", "intervals_activity_id"):
+    for col in REF_COLUMNS:
         linked += conn.execute(
             f"SELECT COUNT(DISTINCT {col}) FROM activity_sample "
             f"WHERE {col} IN (SELECT {col} FROM activity WHERE {col} IS NOT NULL)"
@@ -2225,7 +2343,7 @@ def samples(conn, activity_id: int) -> List[dict]:
     — jamais mis en cache sur un rowid : voir `ingest_samples` pour le bug que cette
     résolution tardive corrige (rowid réutilisé/instable).
     """
-    row = conn.execute("SELECT garmin_activity_id, intervals_activity_id FROM activity WHERE id = ?",
+    row = conn.execute("SELECT garmin_activity_id, intervals_activity_id, strava_activity_id FROM activity WHERE id = ?",
                        (activity_id,)).fetchone()
     ref = activity_ref(row)
     if ref is None:
@@ -2249,8 +2367,8 @@ def samples_by_ref(conn, ref: Union[int, str]) -> dict:
     # `arc_climb_match.py` — a besoin des positions) et de sortie du CLI `samples`
     # (débogage local d'un fichier `activities/fit/<id>.json` déjà lisible tel quel sur
     # le disque de l'athlète — pas une fuite nouvelle). Ce n'est PAS l'API du tableau de
-    # bord (`arc_serve.py`), qui n'appelle jamais cette fonction et ne renvoie jamais de
-    # coordonnée (voir `arc_climb_match.ASSUMPTIONS["privacy"]`).
+    # bord (`arc_serve.py`), qui n'appelle jamais cette fonction : sa seule route à
+    # coordonnées passe par `track` (voir `arc_climb_match.ASSUMPTIONS["privacy"]`).
     col = ref_column(ref)
     rows = conn.execute(
         "SELECT t_s, distance_m, altitude_m, hr_bpm, speed_ms, cadence_spm, lat AS lat_deg, lon AS lon_deg, "
@@ -2268,6 +2386,81 @@ def count_samples(conn, ref: Optional[Union[int, str]]) -> int:
     if ref is None:
         return 0
     return conn.execute(f"SELECT COUNT(*) FROM activity_sample WHERE {ref_column(ref)} = ?", (ref,)).fetchone()[0]
+
+
+# Plafond de points renvoyés par `track` : la carte et les graphiques liés de la page séance
+# n'en tirent rien de plus, et la réponse reste sous ~100 ko pour une sortie de plusieurs heures.
+TRACK_MAX_POINTS = 1500
+_TRACK_COLUMNS = (("d", "distance_m", 1), ("t", "t_s", 0), ("lat", "lat", 6), ("lon", "lon", 6),
+                  ("alt", "altitude_m", 1), ("hr", "hr_bpm", 0), ("spd", "speed_ms", 2),
+                  ("cad", "cadence_spm", 0))
+
+
+def track(conn, activity_id: int, max_points: int = TRACK_MAX_POINTS) -> Optional[dict]:
+    """Trace d'une séance pour la carte et les graphiques liés de la page séance —
+    `/api/activity/<id>/track`. `None` si l'activité n'existe pas.
+
+    Colonnes parallèles (`d`, `t`, `lat`, `lon`, `alt`, `hr`, `spd`, `cad`, une valeur ou
+    `None` par point) plutôt qu'un objet par point : deux à trois fois plus léger. Au-delà de
+    `max_points`, un point sur n est gardé (le dernier toujours, pour que la trace finisse à
+    l'arrivée). `reason_code` : `no_samples` (aucun FIT ingéré), `no_gps` (échantillons sans
+    position — tapis, home trainer : les graphiques restent possibles, pas la carte).
+
+    Seule route qui expose des coordonnées GPS, voir `arc_climb_match.ASSUMPTIONS["privacy"]`."""
+    row = conn.execute("SELECT garmin_activity_id, intervals_activity_id, strava_activity_id FROM activity WHERE id = ?",
+                       (activity_id,)).fetchone()
+    if row is None:
+        return None
+    ref = activity_ref(row)
+    rows = [] if ref is None else conn.execute(
+        f"SELECT {', '.join(col for _, col, _ in _TRACK_COLUMNS)} FROM activity_sample "
+        f"WHERE {ref_column(ref)} = ? ORDER BY t_s", (ref,)).fetchall()
+    if not rows:
+        return {"reason_code": "no_samples", "points": 0}
+    step = max(1, -(-len(rows) // max(2, max_points)))   # plafond de la division
+    kept = rows[::step]
+    if kept[-1] is not rows[-1]:
+        kept.append(rows[-1])
+    out: Dict[str, Any] = {key: [None if r[col] is None else round(r[col], digits) for r in kept]
+                           for key, col, digits in _TRACK_COLUMNS}
+    out["points"] = len(kept)
+    fixes = [(la, lo) for la, lo in zip(out["lat"], out["lon"]) if la is not None and lo is not None]
+    out["has_gps"] = bool(fixes)
+    if fixes:
+        lats, lons = [p[0] for p in fixes], [p[1] for p in fixes]
+        out["bounds"] = [[min(lats), min(lons)], [max(lats), max(lons)]]
+    else:
+        out["reason_code"] = "no_gps"
+        out.pop("lat")
+        out.pop("lon")
+    return out
+
+
+def session_gait(conn, activity_id: int) -> Optional[dict]:
+    """Dynamique de course d'UNE séance (#151, même règle que `gait_summary` : moyenne pondérée par
+    `covered_s`, repli sur le bloc `arc`, `arc_gait.resolve_session`) pour la page séance. `None`
+    hors course à pied, ou quand seule la cadence est connue (elle ne dit rien de la dynamique)."""
+    row = conn.execute("SELECT sport, data_json, garmin_activity_id, intervals_activity_id, strava_activity_id FROM activity "
+                       "WHERE id = ?", (activity_id,)).fetchone()
+    if row is None or row["sport"] not in M.RUNNING_SPORTS:
+        return None
+    ref = activity_ref(row)
+    sampled: Dict[str, Any] = {}
+    if ref is not None:
+        weight = "CASE WHEN covered_s IS NULL OR covered_s <= 0 THEN 1.0 ELSE covered_s END"
+        cols = [f"SUM(CASE WHEN {m} IS NOT NULL THEN {m} * {weight} END) / "
+                f"NULLIF(SUM(CASE WHEN {m} IS NOT NULL THEN {weight} END), 0) AS {m}" for m in GT.METRICS]
+        found = conn.execute(f"SELECT {', '.join(cols)} FROM activity_sample WHERE {ref_column(ref)} = ?",
+                             (ref,)).fetchone()
+        sampled = dict(found) if found else {}
+    try:
+        arc = json.loads(row["data_json"] or "{}")
+    except (TypeError, ValueError):
+        arc = {}
+    values, notes = GT.resolve_session(sampled, arc if isinstance(arc, dict) else {})
+    if not any(m != "cadence_spm" for m in values):
+        return None
+    return {"values": values, "notes": notes}
 
 
 # ---------------------------------------------------------------------------
@@ -2499,7 +2692,7 @@ def activity_energy_report(conn, ref: Union[int, str]) -> dict:
     est `None` — jamais une exception ni un échec muet, même discipline que
     `activity_gap_report`/`activity_descent_report`."""
     act = conn.execute(
-        "SELECT id, garmin_activity_id, intervals_activity_id, date, name, sport, calories_kcal, calories_bmr_kcal FROM activity "
+        "SELECT id, garmin_activity_id, intervals_activity_id, strava_activity_id, date, name, sport, calories_kcal, calories_bmr_kcal FROM activity "
         f"WHERE {ref_column(ref)} = ?", (ref,)).fetchone()
     if act is None:
         empty = _energy_session_dict({**ref_label(ref)}, None)
@@ -2538,7 +2731,7 @@ def energy_report(conn, *, activity: Optional[Union[int, str]] = None, day: Opti
     if activity is not None:
         sessions = [activity_energy_report(conn, activity)]
     else:
-        cols = "id, garmin_activity_id, intervals_activity_id, date, name, sport, calories_kcal, calories_bmr_kcal"
+        cols = "id, garmin_activity_id, intervals_activity_id, strava_activity_id, date, name, sport, calories_kcal, calories_bmr_kcal"
         placeholders = ", ".join("?" for _ in ENERGY_ELIGIBLE_SPORTS)
         if day:
             rows = conn.execute(
@@ -2574,7 +2767,7 @@ def activity_energy_report_by_id(conn, activity_id: int) -> dict:
     `energy_report`/`activity_energy_report`) : aucun second calcul du
     delta/flag ici, seule la clause `WHERE` change."""
     act = conn.execute(
-        "SELECT id, garmin_activity_id, intervals_activity_id, date, name, sport, calories_kcal, calories_bmr_kcal FROM activity "
+        "SELECT id, garmin_activity_id, intervals_activity_id, strava_activity_id, date, name, sport, calories_kcal, calories_bmr_kcal FROM activity "
         "WHERE id = ?", (activity_id,)).fetchone()
     if act is None:
         empty = _energy_session_dict({}, None)
@@ -2626,7 +2819,7 @@ def energy_trend(conn, today: date, weeks: int = ENERGY_TREND_WEEKS) -> dict:
     de ce panier dans la fenêtre, jamais 0 (qui laisserait croire à un accord
     parfait mesuré)."""
     start = today - timedelta(days=weeks * 7 - 1)
-    cols = "id, garmin_activity_id, intervals_activity_id, date, name, sport, calories_kcal, calories_bmr_kcal"
+    cols = "id, garmin_activity_id, intervals_activity_id, strava_activity_id, date, name, sport, calories_kcal, calories_bmr_kcal"
     placeholders = ", ".join("?" for _ in ENERGY_ELIGIBLE_SPORTS)
     rows = conn.execute(
         f"SELECT {cols} FROM activity WHERE date >= ? AND date <= ? AND sport IN ({placeholders}) "
@@ -2698,7 +2891,7 @@ def energy_calibration(conn, today: date, weeks: int = EN.CALIBRATION_WINDOW_WEE
     — chaque panier via `arc_energy.calibration_band_report` (`n`,
     `ratio_median`, `ratio_iqr`, `status`, `factor`)."""
     start = today - timedelta(days=weeks * 7 - 1)
-    cols = "id, garmin_activity_id, intervals_activity_id, date, name, sport, calories_kcal, calories_bmr_kcal"
+    cols = "id, garmin_activity_id, intervals_activity_id, strava_activity_id, date, name, sport, calories_kcal, calories_bmr_kcal"
     placeholders = ", ".join("?" for _ in ENERGY_ELIGIBLE_SPORTS)
     rows = conn.execute(
         f"SELECT {cols} FROM activity WHERE date >= ? AND date <= ? AND sport IN ({placeholders}) "
@@ -2893,7 +3086,8 @@ def metrics_fingerprint(conn, conf: dict, today: str) -> str:
     for row in conn.execute("SELECT path, kind, sha256, parsed_ok, issues FROM source_file ORDER BY path"):
         h.update(repr(tuple(row)).encode("utf-8"))
     for row in conn.execute(
-            "SELECT path, sha256, garmin_activity_id, intervals_activity_id, status FROM sample_file ORDER BY path"):
+            "SELECT path, sha256, garmin_activity_id, intervals_activity_id, strava_activity_id, status "
+            "FROM sample_file ORDER BY path"):
         h.update(repr(tuple(row)).encode("utf-8"))
     return h.hexdigest()
 
@@ -2927,7 +3121,7 @@ def index_workspace(conn, workspace: Path, today: Optional[str] = None,
         if kind == "activity":
             # Même règle pour les deux espaces d'identifiants (#68) : une séance
             # Intervals.icu décrite dans deux fichiers compterait sinon deux fois.
-            twin_key = next((k for k in ("garmin_activity_id", "intervals_activity_id") if data.get(k)), None)
+            twin_key = next((k for k in REF_COLUMNS if data.get(k)), None)
         if twin_key:
             twin = conn.execute(f"SELECT source_path FROM activity WHERE {twin_key} = ? AND source_path != ?",
                                 (data[twin_key], rel)).fetchone()
@@ -3012,11 +3206,13 @@ def index_workspace(conn, workspace: Path, today: Optional[str] = None,
     # `decoupling_*`/`vam_*`/`descent_*`/`durability_*`/`slope_model_*` ci-dessus
     # (collision possible, ex. "model", "no_exception").
     energy_assumptions = {f"energy_{key}": value for key, value in EN.ASSUMPTIONS.items()}
+    # `arc_cs.ASSUMPTIONS` (#169) fusionné à PART, sous des clés préfixées `cs_`.
+    cs_assumptions = {f"cs_{key}": value for key, value in CS.ASSUMPTIONS.items()}
     for key, value in (("settings", _j(conf)),
                        ("assumptions", _j({**M.ASSUMPTIONS, **G.ASSUMPTIONS, **decoupling_assumptions,
                                            **vam_assumptions, **descent_assumptions,
                                            **durability_assumptions, **slope_model_assumptions,
-                                           **energy_assumptions})),
+                                           **energy_assumptions, **cs_assumptions})),
                        ("today", today or date.today().isoformat())):
         conn.execute("INSERT OR REPLACE INTO meta VALUES (?, ?)", (key, value))
     conn.commit()
@@ -3336,12 +3532,12 @@ def _gear_activities(conn) -> List[dict]:
         # défaut par `depuis` (revue PR #85, blocker 1) — jamais utilisée pour
         # exclure une activité à `gear_id` explicite. `id`/`name`/`duration_s` : bilan de carrière.
         "SELECT id, name, duration_s, sport, distance_m, gear_id, gear_source, date, garmin_activity_id, "
-        "intervals_activity_id, source_path "
+        "intervals_activity_id, strava_activity_id, source_path "
         "FROM activity WHERE gear_id IS NOT NULL OR sport IN "
         f"({', '.join('?' for _ in M.GEAR_WEAR_SPORTS)}) ORDER BY date, id", M.GEAR_WEAR_SPORTS).fetchall()]
     for a in activities:
         a["refs"] = [str(v) for v in (a.pop("garmin_activity_id"), a.pop("intervals_activity_id"),
-                                       a.pop("source_path")) if v is not None]
+                                       a.pop("strava_activity_id"), a.pop("source_path")) if v is not None]
     return activities
 
 
@@ -3374,14 +3570,14 @@ def _equipment_defs(conn) -> List[dict]:
 def _equipment_activities(conn) -> List[dict]:
     activities = [dict(r) for r in conn.execute(
         "SELECT id, name, sport, date, distance_m, duration_s, gear_ids, garmin_activity_id, "
-        "intervals_activity_id, source_path FROM activity WHERE gear_ids IS NOT NULL")]
+        "intervals_activity_id, strava_activity_id, source_path FROM activity WHERE gear_ids IS NOT NULL")]
     for a in activities:
         try:
             a["gear_ids"] = [g for g in json.loads(a["gear_ids"]) if isinstance(g, str)]
         except (TypeError, ValueError):
             a["gear_ids"] = []
         a["refs"] = [str(v) for v in (a.pop("garmin_activity_id"), a.pop("intervals_activity_id"),
-                                       a.pop("source_path")) if v is not None]
+                                       a.pop("strava_activity_id"), a.pop("source_path")) if v is not None]
     return activities
 
 
@@ -3689,6 +3885,34 @@ def decoupling_trend(conn, today: date, weeks: Optional[int] = None) -> dict:
 # ---------------------------------------------------------------------------
 
 
+def activity_dem_check(conn, workspace: Path, ref: Union[int, str], *, http_get=None) -> dict:
+    """Compare l'altitude enregistrée d'une séance au MNT (#176) — OPT-IN STRICT : sans
+    `[privacy].dem_for_activities = true`, aucune coordonnée ne part et le rapport le dit
+    (`status = "disabled"`). Lecture seule : l'altitude enregistrée n'est JAMAIS remplacée ni
+    écrite dans l'index ou le Markdown ; seule la comparaison D+ enregistré / D+ MNT et le biais
+    moyen sont rendus. Début/fin de trace (`[privacy].dem_trim_m`, 500 m par défaut) non
+    envoyés — protection partielle du domicile, voir `arc_dem.ASSUMPTIONS["privacy"]`. Jamais d'exception réseau :
+    `status = "unavailable"` + raison (repli hors ligne)."""
+    label = ref_label(ref)
+    cfg = DEM.load_settings(workspace)
+    if not cfg["activities"]:
+        return {**label, "status": "disabled",
+                "reason": "correction MNT des séances désactivée : une trace d'activité révèle votre "
+                          "domicile. Activez `[privacy].dem_for_activities = true` dans "
+                          "config/workspace.user.toml pour l'autoriser (voir docs/elevation.md)."}
+    act = conn.execute(f"SELECT id FROM activity WHERE {ref_column(ref)} = ?", (ref,)).fetchone()
+    if act is None:
+        return {**label, "status": "unknown_activity", "reason": unknown_activity_reason(ref)}
+    rows = samples_by_ref(conn, ref)["samples"]
+    if not rows:
+        return {**label, "status": "no_samples", "reason": "aucun échantillon FIT ingéré pour cette séance"}
+    cache = DEM.DemCache(DEM.cache_path(workspace), enabled=cfg["cache"])
+    result = DEM.activity_check(rows, cache=cache, http_get=http_get, trim_m=cfg["activity_trim_m"])
+    return {**label, **result, "attribution": result.get("report", {}).get("attribution", []),
+            "note": "comparaison seulement — l'altitude enregistrée n'est pas modifiée (le baromètre "
+                    "reste souvent meilleur sur un FIT récent)"}
+
+
 def activity_climb_report(conn, ref: Union[int, str]) -> dict:
     """Rapport VAM (#46) d'une séance, par `garmin_activity_id` — pour la CLI
     (`arc_index.py vam --activity`) et pour les agents en headless. Lit les
@@ -3845,8 +4069,9 @@ def recompute_slope_model(conn, conf: dict, band: str, months: int, today: Optio
     if band == "endurance" and seiler_thresholds:
         easy_hr_bpm, moderate_hr_bpm = seiler_thresholds
     rows = conn.execute(
-        "SELECT id, date, garmin_activity_id, intervals_activity_id, sport FROM activity "
+        "SELECT id, date, garmin_activity_id, intervals_activity_id, strava_activity_id, sport FROM activity "
         "WHERE garmin_activity_id IS NOT NULL OR intervals_activity_id IS NOT NULL "
+        "OR strava_activity_id IS NOT NULL "
         "ORDER BY date").fetchall()
     activities = []
     for row in rows:
@@ -4054,6 +4279,28 @@ def trail_shape_report(conn, today: date) -> dict:
         "SELECT date, sport, name, distance_m, elevation_gain_m, duration_s, moving_duration_s, "
         "durability_gap_fade_pct, durability_reason, durability_reason_code FROM activity").fetchall()]
     return TS.trail_shape_report(objective, rows, today)
+
+
+def load_forecast(conn, today: date, until: Optional[str] = None, compare: Optional[str] = None) -> dict:
+    """Projection de charge sur le bloc (#172) — commande « load-forecast » et `/api/load-forecast`.
+
+    Délègue ENTIÈREMENT à `arc_load_forecast` (import PARESSEUX : ce module importe `arc_guardrails`,
+    qui importe `arc_index`). `until` : AAAA-MM-JJ ; `compare` : chemin d'un fichier semaine(s) (ou `-`)."""
+    import arc_guardrails as GR
+    import arc_load_forecast as LF
+    until_date = None
+    if until:
+        try:
+            until_date = date.fromisoformat(until)
+        except ValueError:
+            raise ConfigError(f"--until : date AAAA-MM-JJ attendue, « {until} » reçue.")
+    alternative = None
+    if compare is not None:
+        try:
+            alternative = LF.alternative_weeks_from_block(GR._read_week_argument(compare))
+        except (ValueError, OSError, ConfigError) as exc:
+            raise ConfigError(f"--compare : {str(exc).removeprefix('--week : ')}")
+    return LF.load_forecast(conn, today, until_date, alternative)
 
 
 def _inspection_rows(conn, gear_id: Optional[str] = None) -> List[dict]:
@@ -4295,6 +4542,34 @@ def gear_of_activity(conn, activity_id: int, today: Optional[date] = None) -> di
     return out
 
 
+def altitude_exposure(conn, today: Optional[date] = None, days: Optional[int] = None) -> dict:
+    """Exposition à l'altitude à l'entraînement (#185) — commande « altitude-exposure » et
+    `/api/altitude-exposure`. Fenêtres de 14 et 28 j (ou `days`), temps et séances au-dessus de
+    1 500 / 2 000 m d'après les échantillons FIT (`activity_sample.altitude_m`). Une séance sans
+    altitude est comptée à part, jamais comme exposition nulle : voir `arc_altitude.ASSUMPTIONS["exposure"]`."""
+    today = today or date.today()
+    windows = (max(1, min(365, int(days))),) if days else AL.EXPOSURE_WINDOWS_DAYS
+    since = today - timedelta(days=max(windows) - 1)
+    weight = "CASE WHEN covered_s IS NULL OR covered_s <= 0 THEN 1.0 ELSE covered_s END"
+    thr_cols = ", ".join(f"SUM(CASE WHEN altitude_m >= ? THEN {weight} END) AS ge_{t}"
+                         for t in AL.EXPOSURE_THRESHOLDS_M)
+    ref = "CAST(COALESCE(garmin_activity_id, intervals_activity_id, strava_activity_id) AS TEXT)"
+    sql = (f"SELECT a.date, s.max_alt, s.alt_s, {', '.join('s.ge_' + str(t) for t in AL.EXPOSURE_THRESHOLDS_M)} "
+           f"FROM activity a LEFT JOIN (SELECT {ref} AS ref, MAX(altitude_m) AS max_alt, "
+           f"SUM(CASE WHEN altitude_m IS NOT NULL THEN {weight} END) AS alt_s, {thr_cols} "
+           f"FROM activity_sample GROUP BY {ref}) s "
+           f"ON s.ref = CAST(COALESCE(a.garmin_activity_id, a.intervals_activity_id, a.strava_activity_id) AS TEXT) "
+           f"WHERE a.date >= ? AND a.date <= ? "
+           f"AND COALESCE(a.sport, '') NOT IN ({', '.join('?' for _ in AL.EXPOSURE_EXCLUDED_SPORTS)}) "
+           f"ORDER BY a.date, a.id")
+    rows = []
+    for r in conn.execute(sql, (*AL.EXPOSURE_THRESHOLDS_M, since.isoformat(), today.isoformat(),
+                                *AL.EXPOSURE_EXCLUDED_SPORTS)):
+        rows.append({"date": r["date"], "max_altitude_m": r["max_alt"], "altitude_s": r["alt_s"],
+                     "above_s": {t: r[f"ge_{t}"] or 0.0 for t in AL.EXPOSURE_THRESHOLDS_M}})
+    return AL.exposure_report(rows, today, windows)
+
+
 GAIT_DEFAULT_WEEKS = 26
 
 
@@ -4309,11 +4584,11 @@ def _gait_session_rows(conn, since: date, until: date) -> List[dict]:
         cols.append(f"SUM(CASE WHEN {metric_col(metric)} IS NOT NULL THEN {metric_col(metric)} * {weight} END) / "
                     f"NULLIF(SUM(CASE WHEN {metric_col(metric)} IS NOT NULL THEN {weight} END), 0) AS {metric}")
     marks = ",".join("?" for _ in M.RUNNING_SPORTS)
-    ref = "CAST(COALESCE(garmin_activity_id, intervals_activity_id) AS TEXT)"
+    ref = "CAST(COALESCE(garmin_activity_id, intervals_activity_id, strava_activity_id) AS TEXT)"
     sql = (f"SELECT a.id AS activity_id, a.date, a.name, a.sport, a.data_json, "
            f"{', '.join('s.' + m for m in GT.METRICS)} FROM activity a LEFT JOIN ("
            f"SELECT {ref} AS ref, {', '.join(cols)} FROM activity_sample GROUP BY {ref}) s "
-           f"ON s.ref = CAST(COALESCE(a.garmin_activity_id, a.intervals_activity_id) AS TEXT) "
+           f"ON s.ref = CAST(COALESCE(a.garmin_activity_id, a.intervals_activity_id, a.strava_activity_id) AS TEXT) "
            f"WHERE a.sport IN ({marks}) AND a.date >= ? AND a.date <= ? ORDER BY a.date, a.id")
     return [dict(r) for r in conn.execute(sql, (*M.RUNNING_SPORTS, since.isoformat(), until.isoformat()))]
 
@@ -4344,16 +4619,162 @@ def gait_summary(conn, today: Optional[date] = None, weeks: int = GAIT_DEFAULT_W
     return GT.gait_summary(sessions, _inspection_rows(conn), today, weeks, names)
 
 
+PACE_CURVE_LOOKBACK_DAYS = 365 + CS.TREND_WINDOW_DAYS   # fenêtre 365 j + profondeur de tendance par défaut
+
+
+def pace_curve(conn, today: Optional[date] = None, days: Optional[int] = None,
+               lt_speed_ms: Optional[float] = None, curve_cache: Optional[dict] = None) -> dict:
+    """Courbe allure-durée en GAP, vitesse critique CS et réserve anaérobie D′ (#169) — commande
+    « pace-curve » et `/api/pace-curve`.
+
+    Calculée À LA LECTURE depuis `activity_sample` (séances de course route/trail avec FIT
+    ingéré, `arc_metrics.RUNNING_SPORTS`) : aucune table nouvelle. Tout le détail (fenêtres
+    glissantes sur temps écoulé, couverture, refus explicites, qualité) : `arc_cs.ASSUMPTIONS`.
+    `days` : profondeur de la tendance (défaut 365). `lt_speed_ms` : vitesse au seuil lactique
+    fournie par l'appelant (agent), pour le contrôle de cohérence — jamais lue ici.
+    N'est pas soumis à `[health].morning_check` : aucune donnée de santé.
+
+    `curve_cache` (tableau de bord, `arc_serve.Store`, revue de code #169) : dict EN MÉMOIRE
+    `ref -> (empreinte, résultat de arc_cs.activity_curve)`. L'empreinte est celle du CONTENU
+    des échantillons (`_sample_stats`, comme `MetricsCache`) : des échantillons modifiés donnent
+    une autre empreinte, jamais une courbe périmée. Sans lui (CLI, tests) : recalcul intégral.
+    Mesuré sur 450 séances de 1 à 2 h : ~1,3 s sans cache, ~0,2 s avec."""
+    today = today or date.today()
+    depth = days if days and days > 0 else CS.TREND_DEFAULT_DAYS
+    lookback = max(PACE_CURVE_LOOKBACK_DAYS, depth + CS.TREND_WINDOW_DAYS)
+    since = (today - timedelta(days=lookback - 1)).isoformat()
+    marks = ",".join("?" for _ in M.RUNNING_SPORTS)
+    rows = conn.execute(
+        f"SELECT id, date, {', '.join(REF_COLUMNS)} FROM activity "
+        f"WHERE sport IN ({marks}) AND date >= ? AND date <= ? ORDER BY date, id",
+        (*M.RUNNING_SPORTS, since, today.isoformat())).fetchall()
+    curves = []
+    skipped_no_grade = 0
+    stats = _sample_stats(conn) if curve_cache is not None else {}
+    seen = set()
+    for row in rows:
+        ref = activity_ref(row)
+        if ref is None:
+            continue
+        if curve_cache is not None:
+            if ref not in stats:
+                continue   # aucun échantillon : même effet que la requête vide ci-dessous
+            fingerprint = _digest(stats[ref])
+            seen.add(ref)
+            hit = curve_cache.get(ref)
+            if hit is not None and hit[0] == fingerprint:
+                result = hit[1]
+            else:
+                result = None
+        else:
+            result = None
+        if result is None:
+            samples_rows = conn.execute(
+                "SELECT t_s, distance_m, altitude_m, speed_ms, covered_s "
+                f"FROM activity_sample WHERE {ref_column(ref)} = ? ORDER BY t_s", (ref,)).fetchall()
+            if not samples_rows:
+                continue
+            result = CS.activity_curve([dict(r) for r in samples_rows])
+            if curve_cache is not None:
+                curve_cache[ref] = (fingerprint, result)
+        if result["reason_code"] == "no_grade":
+            skipped_no_grade += 1
+            continue
+        if result["curve"]:
+            curves.append({"date": row["date"], "ref": ref, "curve": result["curve"]})
+    if curve_cache is not None:
+        for stale in [k for k in curve_cache if k not in seen]:
+            del curve_cache[stale]   # taille bornée par le nombre de séances de la période
+    report = CS.build_report(curves, today, days=depth, skipped_no_grade=skipped_no_grade)
+    report["threshold_check"] = CS.compare_threshold(report["current"], lt_speed_ms)
+    return report
+
+
+DECISION_EFFECTS_DEFAULT_DAYS = 180
+
+
+def _decision_effect_data(conn) -> dict:
+    """Séries lues dans l'index pour `arc_decision_effects` (aucune imputation : un jour sans mesure est
+    simplement absent). Douleur = pire `score` de `health.pain` du jour ; `pain: []` explicite = 0, clé
+    absente = pas de mesure."""
+    health: Dict[str, dict] = {}
+    for r in conn.execute("SELECT date, hrv_overnight_ms, resting_hr_bpm, readiness_score, data_json "
+                          "FROM health_day ORDER BY date, source_path"):
+        row = health.setdefault(r["date"], {})
+        for key, col in (("hrv_ms", "hrv_overnight_ms"), ("rhr_bpm", "resting_hr_bpm"),
+                         ("readiness", "readiness_score")):
+            if row.get(key) is None and r[col] is not None:
+                row[key] = r[col]
+        try:
+            pain = (json.loads(r["data_json"] or "{}") or {}).get("pain")
+        except (TypeError, ValueError):
+            pain = None
+        if isinstance(pain, list):
+            scores = [p.get("score") for p in pain if isinstance(p, dict)
+                      and isinstance(p.get("score"), (int, float)) and not isinstance(p.get("score"), bool)]
+            row["pain_max"] = max(scores) if scores else 0.0
+    acwr = {r["date"]: r["acwr"] for r in conn.execute("SELECT date, acwr FROM metric_day") if r["acwr"] is not None}
+    sessions = [dict(r) for r in conn.execute("SELECT date, rpe, decoupling_pct FROM activity")]
+    planned = [dict(r) for r in conn.execute(
+        "SELECT date, status FROM planned_session WHERE COALESCE(shadowed, 0) = 0")]
+    return {"health": health, "acwr": acwr, "sessions": sessions, "planned": planned}
+
+
+def decision_effects(conn, today: Optional[date] = None, days: Optional[int] = None,
+                     trigger: Optional[str] = None) -> dict:
+    """Effet des décisions (#175) — commande « decision-effects » et `/api/decision-effects`.
+
+    Évalue (fonctions pures de `arc_decision_effects`) les décisions de la fenêtre (`days`, défaut
+    `DECISION_EFFECTS_DEFAULT_DAYS`, se terminant à `today`) ; synthèse par déclencheur × action × issue
+    avec avertissement de petit effectif. Le chevauchement (`overlaps`) se lit contre TOUTES les
+    décisions connues, quel que soit le filtre `trigger`/`days` : une décision d'un autre déclencheur
+    prise dans la même fenêtre confond tout autant l'effet. DÉRIVÉ, jamais stocké : voir
+    `arc_decision_effects.ASSUMPTIONS`."""
+    today = today or date.today()
+    days = DECISION_EFFECTS_DEFAULT_DAYS if days is None else days
+    every = decisions_query(conn)
+    for d in every:
+        d["id"] = Path(d["source_path"]).stem
+    start = (today - timedelta(days=days - 1)).isoformat()
+    rows = [d for d in every if start <= str(d.get("date") or "") <= today.isoformat()
+            and (not trigger or d.get("trigger") == trigger)]
+    data = _decision_effect_data(conn)
+    evaluations = DE.evaluate_all(rows, data, today, context=every)
+    for ev, d in zip(evaluations, rows):
+        ev["summary"] = d.get("summary")
+    return {"today": today.isoformat(), "days": days, "trigger": trigger, "effects": evaluations,
+            "synthesis": DE.synthesize(evaluations), "min_sample_for_trend": DE.MIN_SAMPLE_FOR_TREND,
+            "caveat": DE.CAVEAT}
+
+
+def decision_effects_text(report: dict) -> str:
+    """Rendu lisible de `decision_effects` (CLI avec `--text`)."""
+    lines = [f"Effet des décisions — {report['days']} derniers jours (au {report['today']})", ""]
+    if not report["effects"]:
+        lines.append("Aucune décision sur cette période.")
+    for g in report["synthesis"]:
+        lines.append(f"• {g['statement']}")
+        lines.append(f"    {g['warning']}" if g.get("warning") else f"    tendance : {g['trend']}")
+    if report["effects"]:
+        lines.append("")
+    for ev in report["effects"]:
+        why = f" ({ev['reason']})" if ev.get("reason") else ""
+        lines.append(f"- {ev['date']} {ev['trigger']}/{ev['action']}/{ev['outcome']} → {ev['effect']}{why}")
+    lines += ["", report["caveat"]]
+    return "\n".join(lines)
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     parser.add_argument("command", nargs="?", default="index",
                         choices=("index", "backfill-plan", "status", "hrv-baseline", "sleep-debt",
-                                 "heat-acclimation", "gear", "gear-attribution", "performance-index", "fueling", "samples",
+                                 "heat-acclimation", "altitude-exposure", "gear", "gear-attribution", "performance-index", "fueling", "samples",
                                  "zones", "gap", "decoupling", "vam", "descent", "durability",
                                  "climb-history", "decisions", "slope-model", "trail-shape", "energy", "equipment",
-                                 "inspections", "gear-career", "gait-summary"))
+                                 "inspections", "gear-career", "gait-summary", "pace-curve",
+                                 "decision-effects", "load-forecast", "plan-templates", "strength", "dem-check", "prevention", "plan-skeleton"))
     parser.add_argument("selector", nargs="?", default=None,
-                        help="argument de la sous-commande (ex. garmin_activity_id ou intervals_activity_id "
+                        help="argument de la sous-commande (ex. garmin_activity_id, intervals_activity_id ou strava_activity_id "
                              "pour « samples »)")
     parser.add_argument("--workspace")
     parser.add_argument("--db")
@@ -4365,7 +4786,7 @@ def build_parser() -> argparse.ArgumentParser:
                         help="commande « zones »/« gap »/« decoupling »/« vam »/« descent »/« durability »/"
                              "« energy » : temps en zone, GAP, découplage, montées/VAM, efficacité en "
                              "descente, durabilité ou dépense énergétique d'une séance (garmin_activity_id "
-                             "entier, ou intervals_activity_id i<chiffres>)")
+                             "entier, intervals_activity_id i<chiffres> ou strava_activity_id s<chiffres>)")
     parser.add_argument("--weeks", type=int, metavar="N",
                         help="commande « zones »/« decoupling »/« vam »/« descent »/« durability »/"
                              "« energy --calibration »/« gait-summary » : polarisation ou tendance sur les N "
@@ -4393,7 +4814,7 @@ def build_parser() -> argparse.ArgumentParser:
                              "et --today marque `crossed_in_run` ; sans cette option, jamais")
     parser.add_argument("--activities", metavar="ID[,ID…]",
                         help="commande « gear » (#132) : séances synchronisées dans CE run "
-                             "(garmin_activity_id, intervals_activity_id ou chemin du fichier, séparés par "
+                             "(garmin_activity_id, intervals_activity_id, strava_activity_id ou chemin du fichier, séparés par "
                              "des virgules) — ajoute `crossed_in_run` à la paire dont elles franchissent le seuil")
     parser.add_argument("--garmin-gear", metavar="UUID[,UUID…]",
                         help="commande « gear-attribution » (#133) : uuid du matériel Garmin (get_activity_gear ou "
@@ -4432,6 +4853,9 @@ def build_parser() -> argparse.ArgumentParser:
                         help="commande « decisions » : ne garde que les décisions de ce déclencheur")
     parser.add_argument("--outcome", choices=C.DECISION_OUTCOME,
                         help="commande « decisions » : ne garde que les décisions de cette issue")
+    parser.add_argument("--text", action="store_true",
+                        help="commandes « decision-effects », « load-forecast », « plan-templates », « strength », « prevention » et « plan-skeleton » : "
+                             "rendu texte lisible (défaut : JSON, comme les autres sous-commandes)")
     parser.add_argument("--active", action="store_true",
                         help="commande « decisions » : exclut « superseded »/« rejected_by_athlete » "
                              "(journal courant, voir DECISION_INACTIVE_OUTCOMES)")
@@ -4439,10 +4863,167 @@ def build_parser() -> argparse.ArgumentParser:
                         help="commande « slope-model » : fenêtre d'historique (mois) — sans cette option, "
                              "le modèle déjà stocké (fenêtre `[metrics].slope_model_months`) est renvoyé "
                              "tel quel ; avec elle, recalculé à la volée pour cette fenêtre (#58)")
+    parser.add_argument("--lt-speed-ms", type=float, metavar="V", dest="lt_speed_ms",
+                        help="commande « pace-curve » (#169) : vitesse (m/s) au seuil lactique Garmin, "
+                             "pour le contrôle de cohérence avec la CS (signalé, jamais arbitré)")
+    parser.add_argument("--phase", metavar="P",
+                        help="commande « strength » (#191) : phase du bloc (base, development, specific, taper, "
+                             "recovery — ou leur libellé français, ou l'emphase du gabarit #189)")
+    parser.add_argument("--use", metavar="U",
+                        help="commande « strength » (#191) : usage ciblé (descente, cheville, hanches, pied)")
+    parser.add_argument("--equipment", metavar="LISTE",
+                        help="commande « strength » (#191) : matériel disponible, séparé par des virgules "
+                             "(none, elastic, dumbbell, step, box) ; sans lui, lu dans le profil de l'athlète")
+    parser.add_argument("--acute", metavar="ZONES",
+                        help="commande « prevention » (#192) : zones (séparées par des virgules) que l'athlète décrit "
+                             "comme nouvelles, vives ou gonflées — aucune routine, consultation")
+    parser.add_argument("--known", metavar="ZONES",
+                        help="commande « prevention » (#192) : zones dont l'athlète a LUI-MÊME confirmé une gêne "
+                             "connue, non aiguë et stable — lève seulement l'attente d'une deuxième déclaration")
+    parser.add_argument("--garmin-json", action="store_true", dest="garmin_json",
+                        help="commande « strength » (#191) : charge utile Garmin (workout_data + arguments de "
+                             "create_strength_workout) au lieu de la sélection ; aucune écriture")
+    parser.add_argument("--json", action="store_true",
+                        help="commandes « pace-curve », « decision-effects », « load-forecast », « plan-templates », « strength » et « plan-skeleton » : "
+                             "sortie JSON (déjà le défaut, accepté pour la clarté ; l'emporte sur --text)")
+    parser.add_argument("--until", metavar="AAAA-MM-JJ",
+                        help="commande « load-forecast » (#172) : date de fin de la projection (défaut : date de "
+                             "l'objectif actif)")
+    parser.add_argument("--compare", metavar="FICHIER",
+                        help="commande « load-forecast » (#172) : plan modifié à comparer au plan actuel — fichier "
+                             "semaine(s) (bloc ```arc ou JSON, `weeks[]` ou une semaine), `-` pour stdin ; les "
+                             "semaines de même lundi REMPLACENT celles du plan actuel")
+    parser.add_argument("--format", metavar="ID", dest="plan_format",
+                        help="commandes « plan-templates » (#189) et « plan-skeleton » (#190) : identifiant du gabarit (ex. marathon_trail)")
+    parser.add_argument("--distance-km", type=float, metavar="D", dest="distance_km",
+                        help="commande « plan-templates » (#189) : choisit le gabarit d'après la distance de l'objectif")
+    parser.add_argument("--race-date", metavar="AAAA-MM-JJ", dest="race_date",
+                        help="commande « plan-skeleton » (#190) : date de course (défaut : objectif actif)")
+    parser.add_argument("--held-hours", type=float, metavar="H", dest="held_hours",
+                        help="commande « plan-skeleton » : volume hebdomadaire (heures) DÉCLARÉ par l'athlète, qui "
+                             "remplace celui des 4 dernières semaines de l'index")
+    parser.add_argument("--held-elevation-m", type=float, metavar="M", dest="held_elevation_m",
+                        help="commande « plan-skeleton » : D+ hebdomadaire (m) déclaré")
+    parser.add_argument("--long-run-day", metavar="JOUR", dest="long_run_day",
+                        help="commande « plan-skeleton » : jour de la sortie longue (défaut : profil, sinon dimanche)")
+    parser.add_argument("--write", action="store_true",
+                        help="commande « plan-skeleton » : écrit les semaines dans planning/ (jamais d'écrasement) ; "
+                             "sans cette option, un dry run")
     parser.add_argument("--band", choices=SL.BANDS, default="endurance",
                         help="commande « slope-model » : bande d'effort (défaut « endurance », voir "
                              "arc_slope_model.ASSUMPTIONS['population'])")
     return parser
+
+
+def plan_templates_cli(args, workspace: Path) -> int:
+    """`arc_index.py plan-templates` (#189) — lecture seule, sans index. Les seuils de
+    cohérence viennent de `[guardrails]` du workspace (R2/R3/R6), comme `arc_guardrails`."""
+    import arc_guardrails as GR   # import tardif : arc_guardrails importe arc_index
+    config = load_config(workspace)
+    gset = GR.guardrail_settings(config)
+    limits = {k: gset[k] for k in PT.GUARDRAIL_DEFAULTS}
+    if args.weeks is not None and args.weeks < 1:
+        raise ConfigError(f"--weeks : un entier >= 1 attendu, « {args.weeks} » reçu.")
+    if args.sport and args.sport not in PT.SPORTS:
+        raise ConfigError(f"--sport : « {args.sport} » inconnu pour les gabarits (attendu : {', '.join(PT.SPORTS)}).")
+    # Sans --sport : `[sport].primary` du workspace (route → gabarits route), comme arc_guardrails.
+    sport = args.sport or settings(config)["sport"]
+    if sport not in PT.SPORTS:
+        sport = "trail"
+    try:
+        report = PT.plan_templates_report(
+            template_id=args.plan_format, n_weeks=args.weeks, distance_km=args.distance_km,
+            sport=sport, limits=limits)
+    except PT.PlanTemplateError as exc:
+        raise ConfigError(str(exc))
+    if args.json or not args.text:
+        print(json.dumps(report, ensure_ascii=False))
+        return 0
+    if "template" in report:
+        print(PT.render_text(report["template"], report["weeks"], report["n_weeks"], report["problems"]))
+        for note in report["notes"]:
+            print("Remarque : " + note)
+    elif report.get("matched", True) is None:
+        print(report["reason"])
+    else:
+        for t in report["templates"]:
+            d = t["distance_km"]
+            print(f"{t['id']:<16} {t['sport']:<5} [{d['min']:g}, {d['max']:g}[ km  "
+                  f"{t['weeks']['min']}–{t['weeks']['max']} sem. (défaut {t['weeks']['default']})  {t['label']}")
+        print("Vérifications garde-fous : " + ("conforme." if not report["problems"] else "; ".join(report["problems"])))
+        for note in report["notes"]:
+            print("Remarque : " + note)
+    return 0
+
+
+def strength_cli(args, workspace: Path) -> int:
+    """`arc_index.py strength` (#191) — lecture seule, sans index : la bibliothèque est livrée avec le moteur
+    (`config/strength/`). JSON par défaut, `--text` lisible, `--garmin-json` pour la charge utile Garmin."""
+    fmt = "garmin" if args.garmin_json else ("text" if args.text and not args.json else "json")
+    try:
+        profile = settings(load_config(workspace))["profile"]     # `[athlete].profile`, comme coach_doctor
+        print(SG.run(args.phase, args.use, args.equipment, workspace, fmt, profile))
+    except SG.StrengthError as exc:
+        raise ConfigError(str(exc))
+    return 0
+
+
+def prevention_cli(conn, args, workspace: Path, today: date) -> str:
+    """`arc_index.py prevention` (#192) — lecture seule. Seuil de consultation, agents activés et drapeau de
+    risque de blessure sont lus dans la configuration vivante ; un drapeau illisible est dit, jamais supposé
+    bas : `injury_risk.unavailable` vaut alors true et aucune routine n'est proposée."""
+    import arc_guardrails as G      # import tardif : arc_guardrails importe arc_index
+    config = load_config(workspace)
+    conf = settings(config)
+    gconf = G.injury_risk_settings(config)
+    try:
+        risk = G.evaluate_injury_risk(G.build_injury_risk_context(conn, config, gconf, today), gconf)
+    except Exception:       # pragma: no cover — repli défensif : le drapeau n'est pas évalué, jamais « bas »
+        risk = {"unavailable": True}
+    fmt = "text" if args.text and not args.json else "json"
+    try:
+        return PV.run(conn, today, args.days, args.acute, args.equipment, workspace, conf["profile"],
+                      gconf["pain_consult_threshold"], "medical" in conf["agents"], risk, fmt, args.known)
+    except (PV.PreventionError, SG.StrengthError) as exc:
+        raise ConfigError(str(exc))
+
+
+def plan_skeleton_cli(args, conn, workspace: Path) -> int:
+    """`arc_index.py plan-skeleton` (#190) — dry run par défaut ; `--write` écrit `planning/Semaine_*.md`."""
+    import arc_plan_skeleton as PS
+    today_date = date.fromisoformat(args.today) if args.today else date.today()
+    for flag, value in (("--held-hours", args.held_hours), ("--held-elevation-m", args.held_elevation_m)):
+        if value is not None and value < 0:
+            raise ConfigError(f"{flag} : une valeur >= 0 attendue, « {value} » reçue.")
+    if args.race_date:
+        try:
+            date.fromisoformat(args.race_date)
+        except ValueError:
+            raise ConfigError(f"--race-date : date AAAA-MM-JJ attendue, « {args.race_date} » reçue.")
+    config = load_config(workspace)
+    try:
+        report = PS.skeleton_report(
+            conn=conn, config=config, workspace=workspace, today=today_date, template_id=args.plan_format,
+            race_date=args.race_date, held_hours=args.held_hours, held_elevation_m=args.held_elevation_m,
+            long_run_day=args.long_run_day)
+        PS.attach_forecast(conn, today_date, report)
+    except (PS.SkeletonError, PT.PlanTemplateError) as exc:
+        raise ConfigError(str(exc))
+    report["conflicts"] = PS.find_conflicts(workspace, report)
+    code = 0
+    if args.write:
+        report["write"] = PS.write_weeks(workspace, report, validate_file)
+        code = 0 if report["write"]["written"] else 1
+    if args.json or not args.text:
+        print(json.dumps(report, ensure_ascii=False))
+    else:
+        print(PS.render_text(report))
+        if args.write:
+            w = report["write"]
+            print("Écrit : " + (", ".join(w["written"]) if w["written"] else "rien — " + str(w["refused"])))
+            for c in w["conflicts"]:
+                print(f"  conflit : semaine du {c['week_start']} déjà dans {c['file']}")
+    return code
 
 
 def main(argv=None) -> int:
@@ -4466,6 +5047,10 @@ def main(argv=None) -> int:
         return 0 if all_ok else 1
 
     workspace = workspace_root(args.workspace)
+    if args.command == "plan-templates":
+        return plan_templates_cli(args, workspace)
+    if args.command == "strength":
+        return strength_cli(args, workspace)
     conn = open_db(workspace, args.db, args.memory, args.rebuild)
     counts = index_workspace(conn, workspace, args.today)
     if args.command == "hrv-baseline":
@@ -4510,10 +5095,38 @@ def main(argv=None) -> int:
             report.update(gear_photo_dropbox(conn, workspace))
         print(json.dumps(report, ensure_ascii=False))
         return 1 if "error" in report else 0
+    if args.command == "prevention":
+        if args.days is not None and args.days < 1:
+            raise ConfigError(f"--days : un entier >= 1 attendu, « {args.days} » reçu.")
+        today_date = date.fromisoformat(args.today) if args.today else date.today()
+        print(prevention_cli(conn, args, workspace, today_date))
+        return 0
+    if args.command == "decision-effects":
+        if args.days is not None and args.days < 1:
+            raise ConfigError(f"--days : un entier >= 1 attendu, « {args.days} » reçu.")
+        today_date = date.fromisoformat(args.today) if args.today else date.today()
+        report = decision_effects(conn, today_date, args.days, args.trigger)
+        print(decision_effects_text(report) if args.text and not args.json else json.dumps(report, ensure_ascii=False))
+        return 0
+    if args.command == "altitude-exposure":
+        today_date = date.fromisoformat(args.today) if args.today else date.today()
+        print(json.dumps(altitude_exposure(conn, today_date, args.days), ensure_ascii=False))
+        return 0
     if args.command == "gait-summary":
         today_date = date.fromisoformat(args.today) if args.today else date.today()
         print(json.dumps(gait_summary(conn, today_date, args.weeks or GAIT_DEFAULT_WEEKS), ensure_ascii=False))
         return 0
+    if args.command == "load-forecast":
+        today_date = date.fromisoformat(args.today) if args.today else date.today()
+        report = load_forecast(conn, today_date, args.until, args.compare)
+        if args.text:
+            import arc_load_forecast as LF
+            print(LF.render_text(report))
+        else:
+            print(json.dumps(report, ensure_ascii=False))
+        return 0
+    if args.command == "plan-skeleton":
+        return plan_skeleton_cli(args, conn, workspace)
     if args.command == "gear-career":
         if not args.gear:
             raise ConfigError("commande « gear-career » : --gear GEAR_ID est obligatoire.")
@@ -4521,6 +5134,12 @@ def main(argv=None) -> int:
         career = gear_career(conn, args.gear, today_date)
         print(json.dumps(career, ensure_ascii=False))
         return 1 if "error" in career else 0
+    if args.command == "pace-curve":
+        today_date = date.fromisoformat(args.today) if args.today else date.today()
+        if args.days is not None and args.days < 1:
+            raise ConfigError(f"--days : un entier >= 1 attendu, « {args.days} » reçu.")
+        print(json.dumps(pace_curve(conn, today_date, args.days, args.lt_speed_ms), ensure_ascii=False))
+        return 0
     if args.command == "performance-index":
         today_date = date.fromisoformat(args.today) if args.today else date.today()
         print(json.dumps(performance_index(conn, today_date), ensure_ascii=False))
@@ -4569,6 +5188,12 @@ def main(argv=None) -> int:
             raise ConfigError("commande « gap » : garmin_activity_id attendu "
                                "(--activity ou argument positionnel, ex. arc_index.py gap 19287537093).")
         print(json.dumps(activity_gap_report(conn, ref), ensure_ascii=False))
+        return 0
+    if args.command == "dem-check":
+        ref = parse_activity_selector(args.activity if args.activity is not None else args.selector, args.command)
+        if ref is None:
+            raise ConfigError("commande « dem-check » : identifiant de séance requis (--activity ou argument positionnel).")
+        print(json.dumps(activity_dem_check(conn, workspace, ref), ensure_ascii=False))
         return 0
     if args.command == "decoupling":
         today_date = date.fromisoformat(args.today) if args.today else date.today()

@@ -14,7 +14,9 @@ assertions vivent dans ce fichier séparé.
 from __future__ import annotations
 
 import json
+import os
 import sys
+import time
 from datetime import date, timedelta
 from pathlib import Path
 
@@ -54,11 +56,32 @@ class TestMultiWeekPlanView(InstallAsserts):
         self.server.stop()
         self.sb.__exit__(None, None, None)
 
+    def _ok_files(self) -> int:
+        return json.loads(self.server.get("/api/summary")[1])["files"].get("ok", 0)
+
     def _write_multi_week_plan(self, rel: str, weeks: list) -> None:
+        """Écrit le plan PUIS attend que le fil d'index l'ait pris en compte.
+
+        Une requête ne réindexe jamais (`Store`, verrouillé par
+        `tests/data/test_arc_serve_perf.test_requests_never_trigger_a_reindex`) :
+        le fichier n'apparaît qu'au passage SUIVANT du fil d'arrière-plan. Lire
+        aussitôt après l'écriture faisait dépendre le test d'une course — gagnée
+        seulement si l'écriture tombait dans le premier index, avant que
+        `discover()` n'ait parcouru `planning/` (instable sur `macos-latest`).
+        Écriture atomique (`os.replace`) : le fil ne lit jamais un fichier à
+        moitié écrit ; attente bornée sur le compte de fichiers au contrat."""
+        before = self._ok_files()
         block = {"arc": 1, "kind": "week", "weeks": weeks}
-        (self.ws / rel).write_text(
+        target = self.ws / rel
+        tmp = target.with_name(target.name + ".tmp")
+        tmp.write_text(
             f"# Plan multi-semaines\n\n```arc\n{json.dumps(block, ensure_ascii=False)}\n```\n\nTexte du coach.\n",
             encoding="utf-8")
+        os.replace(tmp, target)
+        deadline = time.monotonic() + 15
+        while self._ok_files() <= before:
+            self.assertLess(time.monotonic(), deadline, f"{rel} jamais indexé par le fil d'arrière-plan")
+            time.sleep(0.05)
 
     def test_each_week_of_a_multi_week_file_is_served_individually(self):
         week1 = (CURRENT_MONDAY + timedelta(weeks=3)).isoformat()

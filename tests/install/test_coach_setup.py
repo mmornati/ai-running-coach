@@ -395,6 +395,7 @@ class TestStatus(SetupCase):
                 "sport.disciplines": ["cycling"], "agents.enabled": ["coach"],
                 "health.morning_check": "full", "language.documents": "fr",
                 "language.responses": "auto", "athlete.units": "metric",
+                "health.cycle_tracking": "off",
             }
             self.setup(sb, "--apply", self.answers(sb, every))
             data = self.json_out(self.setup(sb, "--status"))

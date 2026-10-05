@@ -9,7 +9,7 @@
 
 <div markdown>
 
-<span class="arc-video__meta">En vidéo · Étape 07 · 1 min 32</span>
+<span class="arc-video__meta">En vidéo · Étape 07 · 1 min 39</span>
 
 **[Disséquer une sortie](../video/analyse-seance/index.html)** — Une sortie trail passée au scalpel : FIT, zones, allure ajustée, dérive, montées, durabilité, HRR, énergie, comparaison.
 
@@ -26,6 +26,8 @@
 - Le MCP Garmin (`get_activity_fit_data`) **timeoute** sur les téléchargements FIT (payloads de plusieurs Mo)
 - **Garmin** : le script `download_fit.py` utilise la lib `garminconnect` installée dans l'environnement `garmin-mcp` + les **tokens locaux** `~/.garminconnect` → **aucun mot de passe** nécessaire
 - **Intervals.icu** : le script appelle l'API REST avec la **clé API déjà configurée pour le serveur MCP** → aucune nouvelle configuration. Fonctionne pour toutes les montres qu'Intervals.icu synchronise (Garmin, COROS, Suunto, Polar, Apple Watch via HealthFit…), **sauf les activités importées depuis Strava**, que l'API Strava interdit de redistribuer (signalées `INDISPONIBLE`, jamais inventées). Voir [Intervals.icu — Fichiers FIT](../intervals-setup.md#fichiers-fit)
+
+- **Strava** (#164) : pas de fichier FIT — le script appelle l'API REST (`/activities/<id>/streams`, bibliothèque standard) avec les **jetons du serveur MCP communautaire** (rafraîchis et réécrits atomiquement, jamais affichés) et normalise les flux par seconde directement en `activities/fit/s<chiffres>.json` : mêmes KPI que le FIT. Voir [Configuration Strava](../strava-setup.md#flux-par-seconde-et-kpi)
 
 ## Quand l'utiliser
 
@@ -45,7 +47,7 @@
 `skills/fit-download/scripts/download_fit.py` — nécessite `garminconnect` + `fitparse` pour Garmin (environnement `garmin-mcp`), `fitparse` seul pour Intervals.icu avec `--json` (environnement `intervals-icu-mcp`, installé par `./install.sh --source intervals`).
 
 Avec `--json`, écrit aussi une copie **normalisée** au chemin canonique
-`activities/fit/<id>.json` — `<id>` = `garmin_activity_id` ou `intervals_activity_id` (unités SI, mapping documenté dans
+`activities/fit/<id>.json` — `<id>` = `garmin_activity_id`, `intervals_activity_id` ou `strava_activity_id` (`s<chiffres>`) (unités SI, mapping documenté dans
 `scripts/arc_samples.py`) — c'est ce fichier que `scripts/arc_index.py` ingère dans la
 table dérivée `activity_sample` (voir [Mode headless](../dashboard/headless.md)).
 Donnée brute et jetable, jamais versionnée.

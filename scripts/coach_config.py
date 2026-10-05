@@ -326,7 +326,7 @@ def cmd_remove_json_key(args) -> int:
     """Retire une clé d'un fichier JSON si elle existe — sans effet sinon.
 
     Utilisé par `install.sh` pour nettoyer l'entrée MCP de l'ancienne source
-    de données (garmin/intervals, #68) quand `--source` bascule RÉELLEMENT
+    de données (garmin/intervals/strava, #68, #164) quand `--source` bascule RÉELLEMENT
     (jamais sur un simple rerun, voir `SOURCE_CHANGED` dans `install.sh`) :
     sans cela, un IDE se retrouve avec les deux serveurs déclarés après un
     changement de source, dont un qui ne répond plus.

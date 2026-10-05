@@ -12,7 +12,7 @@ qu'en session dans votre IDE : le chat n'invente aucune source de vérité.
 
 <div markdown>
 
-<span class="arc-video__meta">En vidéo · Étape 04 · 1 min 24</span>
+<span class="arc-video__meta">En vidéo · Étape 04 · 1 min 33</span>
 
 **[Parler à son coach](../video/chat-coach/index.html)** — Le chat du tableau de bord : trace des outils, carte d'approbation, politique de permissions, budget et fournisseurs.
 

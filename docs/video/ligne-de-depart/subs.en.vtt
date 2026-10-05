@@ -1,69 +1,69 @@
 WEBVTT
 
 1
-00:00:01.200 --> 00:00:03.669
+00:00:01.200 --> 00:00:03.634
 Stage one: the start line.
 
 2
-00:00:05.100 --> 00:00:10.619
+00:00:05.100 --> 00:00:11.662
 To get going, three lines: a git clone, a cd, then install dot sh.
 
 3
-00:00:10.719 --> 00:00:16.260
+00:00:11.762 --> 00:00:17.772
 On macOS or Linux, with bash, curl and git. The script does the rest.
 
 4
-00:00:17.110 --> 00:00:23.077
+00:00:18.622 --> 00:00:25.136
 It installs uv, then garmin-mcp, limited to an allow-list of tools.
 
 5
-00:00:23.177 --> 00:00:32.622
+00:00:25.236 --> 00:00:34.822
 It sets up your IDE: Claude Code, Copilot, OpenCode, Gemini CLI, Cursor or Windsurf. Plus your working folders.
 
 6
-00:00:33.472 --> 00:00:38.671
+00:00:35.672 --> 00:00:41.130
 Choose your staff: coach and nutritionist only, or everyone but the doctor.
 
 7
-00:00:38.771 --> 00:00:45.997
+00:00:41.230 --> 00:00:48.464
 No Garmin watch? Use Intervals dot I C U. The workspace option keeps your data in a private repo.
 
 8
-00:00:46.847 --> 00:00:50.745
+00:00:49.314 --> 00:00:53.188
 One Garmin Connect sign-in, two-factor code included.
 
 9
-00:00:50.845 --> 00:00:56.684
+00:00:53.288 --> 00:00:58.770
 The tokens stay in your home folder, valid for about six months. Never in the project.
 
 10
-00:00:57.534 --> 00:01:04.205
+00:00:59.620 --> 00:01:06.758
 In your IDE, /coach-setup runs a short interview: staff, discipline, coaching style.
 
 11
-00:01:04.305 --> 00:01:08.523
+00:01:06.858 --> 00:01:11.476
 Garmin pre-fills your profile, and you confirm each value.
 
 12
-00:01:08.623 --> 00:01:12.116
+00:01:11.576 --> 00:01:15.402
 The result: an athlete profile and a goal sheet.
 
 13
-00:01:12.966 --> 00:01:21.664
+00:01:16.252 --> 00:01:25.766
 In doubt? /coach-doctor checks the install without writing anything: tokens, Garmin server, config, profile, index.
 
 14
-00:01:21.764 --> 00:01:23.102
+00:01:25.866 --> 00:01:27.988
 All green.
 
 15
-00:01:23.952 --> 00:01:26.421
+00:01:28.838 --> 00:01:31.344
 First question: /today.
 
 16
-00:01:26.521 --> 00:01:31.400
+00:01:31.444 --> 00:01:37.070
 Today's session, the morning check, and the weather window. In three lines.
 
 17
-00:01:34.652 --> 00:01:37.398
+00:01:39.620 --> 00:01:42.366
 To go further: the quick start guide.

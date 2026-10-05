@@ -1,0 +1,159 @@
+{
+  "title": {
+    "fr": "Nouvelles portes d'entrée",
+    "en": "New ways in"
+  },
+  "summary": {
+    "fr": "Strava comme troisième source de données, retours en un geste par Telegram sans aucun modèle, et deux options à activer soi-même : le contexte du cycle et les apports poussés vers Garmin."
+  },
+  "scenes": [
+    {
+      "id": "bib",
+      "min": 4.6,
+      "lead": 1.2,
+      "fr": [
+        "Étape treize : nouvelles portes d'entrée."
+      ],
+      "en": [
+        "Stage thirteen: new ways in."
+      ]
+    },
+    {
+      "id": "source",
+      "min": 9,
+      "chapter": {
+        "fr": "Strava",
+        "en": "Strava"
+      },
+      "fr": [
+        "Camille change de montre : Strava devient une troisième source de données, à la place de Garmin, jamais en plus.",
+        "Un seul choix à l'installation, et qui reste sur Garmin ne voit rien changer."
+      ],
+      "en": [
+        "Camille switches watches: Strava becomes a third data source, instead of Garmin, never on top of it.",
+        "One choice at install time, and anyone staying on Garmin sees no change."
+      ]
+    },
+    {
+      "id": "streams",
+      "min": 9,
+      "chapter": {
+        "fr": "Flux par seconde",
+        "en": "Per-second streams"
+      },
+      "fr": [
+        "Le coach lit les flux par seconde de chaque sortie,",
+        "et en tire les mêmes indicateurs qu'avec un fichier FIT : zones, allure ajustée, découplage, durabilité, énergie."
+      ],
+      "en": [
+        "The coach reads the per-second streams of every run,",
+        "and computes the same indicators as with a FIT file: zones, adjusted pace, decoupling, durability, energy."
+      ]
+    },
+    {
+      "id": "nohealth",
+      "min": 9,
+      "chapter": {
+        "fr": "Soyons honnêtes",
+        "en": "Being honest"
+      },
+      "fr": [
+        "Soyons honnêtes : ni HRV, ni sommeil, ni readiness.",
+        "Le bilan matinal dit « indisponible, source Strava », et le coach ne simule rien."
+      ],
+      "en": [
+        "Let's be honest: no HRV, no sleep, no readiness.",
+        "The morning check says “unavailable, Strava source”, and the coach simulates nothing."
+      ]
+    },
+    {
+      "id": "buttons",
+      "min": 10,
+      "chapter": {
+        "fr": "Un geste",
+        "en": "One tap"
+      },
+      "fr": [
+        "Sous le résumé du matin, un bot Telegram : séance faite, effort ressenti, douleur.",
+        "Un RPE de sept, et le fichier est écrit, sans modèle, sans clé d'API."
+      ],
+      "en": [
+        "Under the morning summary, a Telegram bot: session done, perceived effort, pain.",
+        "An RPE of seven, and the file is written, with no model and no API key."
+      ]
+    },
+    {
+      "id": "safety",
+      "min": 10,
+      "chapter": {
+        "fr": "Sans surprise",
+        "en": "No surprises"
+      },
+      "fr": [
+        "Une douleur à sept sur dix déclenche le même conseil de consultation que /log.",
+        "Liste blanche stricte, et soyons clairs : Telegram peut lire ces messages."
+      ],
+      "en": [
+        "A pain of seven out of ten triggers the same advice to see a professional as /log.",
+        "Strict allow list, and let's be clear: Telegram can read these messages."
+      ]
+    },
+    {
+      "id": "cycle",
+      "min": 10,
+      "chapter": {
+        "fr": "Le cycle, en option",
+        "en": "Cycle context, opt-in"
+      },
+      "fr": [
+        "Deux options, désactivées par défaut. D'abord, le cycle menstruel : tant qu'on ne l'active pas, aucune mention.",
+        "Activé, c'est un contexte à côté d'une HRV basse, jamais une règle : un verdict rouge reste rouge."
+      ],
+      "en": [
+        "Two options, both off by default. First, the menstrual cycle: until you turn it on, no mention.",
+        "Once on, it is context next to a low HRV, never a rule: a red verdict stays red."
+      ]
+    },
+    {
+      "id": "push",
+      "min": 12.5,
+      "chapter": {
+        "fr": "Vers Garmin",
+        "en": "Back to Garmin"
+      },
+      "fr": [
+        "Ensuite, les apports déclarés avec /log peuvent partir vers Garmin.",
+        "Le coach propose, attend un oui explicite, et écrit une étape à la fois."
+      ],
+      "en": [
+        "Next, the intake declared with /log can go to Garmin.",
+        "The coach proposes, waits for an explicit yes, and writes one step at a time."
+      ]
+    },
+    {
+      "id": "pages",
+      "min": 8,
+      "chapter": {
+        "fr": "Les pages",
+        "en": "The pages"
+      },
+      "fr": [
+        "Chaque porte a sa page dans la documentation."
+      ],
+      "en": [
+        "Each door has its page in the documentation."
+      ]
+    },
+    {
+      "id": "finish",
+      "min": 6,
+      "lead": 2.2,
+      "fr": [
+        "Pour aller plus loin : la page « Configuration Strava » de la documentation."
+      ],
+      "en": [
+        "To go further: the “Strava setup” page of the documentation."
+      ]
+    }
+  ]
+}

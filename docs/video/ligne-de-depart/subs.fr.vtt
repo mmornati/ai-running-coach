@@ -1,69 +1,69 @@
 WEBVTT
 
 1
-00:00:01.200 --> 00:00:03.050
+00:00:01.200 --> 00:00:04.042
 Étape un : la ligne de départ.
 
 2
-00:00:05.100 --> 00:00:09.745
+00:00:05.100 --> 00:00:11.014
 Pour partir, trois lignes : un git clone, un cd, puis install point sh.
 
 3
-00:00:09.845 --> 00:00:15.087
+00:00:11.114 --> 00:00:18.036
 Sur macOS ou Linux, avec bash, curl et git. Le reste, le script s'en charge.
 
 4
-00:00:15.937 --> 00:00:20.496
+00:00:18.886 --> 00:00:24.128
 Il installe uv, puis garmin-mcp, restreint à une liste blanche d'outils.
 
 5
-00:00:20.596 --> 00:00:29.956
+00:00:24.228 --> 00:00:34.078
 Il configure votre IDE : Claude Code, Copilot, OpenCode, Gemini CLI, Cursor ou Windsurf, et crée vos dossiers de travail, hors du dépôt.
 
 6
-00:00:30.806 --> 00:00:35.387
+00:00:34.928 --> 00:00:40.098
 Choisissez le staff : coach et nutritionniste seulement, ou tous sauf le médecin.
 
 7
-00:00:35.487 --> 00:00:42.094
+00:00:40.198 --> 00:00:48.080
 Sans montre Garmin ? Source Intervals point i cé u. Et l'option workspace range vos données dans un dépôt privé.
 
 8
-00:00:42.944 --> 00:00:48.015
+00:00:48.930 --> 00:00:54.100
 Une seule authentification Garmin Connect, code de double vérification compris.
 
 9
-00:00:48.115 --> 00:00:53.805
+00:00:54.200 --> 00:01:00.354
 Les jetons restent dans votre dossier personnel, valides environ six mois. Jamais dans le projet.
 
 10
-00:00:54.655 --> 00:01:00.686
+00:01:01.204 --> 00:01:08.270
 Dans votre IDE, /coach-setup mène un court entretien : staff, discipline, style du coach.
 
 11
-00:01:00.786 --> 00:01:04.684
+00:01:08.370 --> 00:01:12.460
 Garmin pré-remplit votre profil, vous confirmez chaque valeur.
 
 12
-00:01:04.784 --> 00:01:08.170
+00:01:12.560 --> 00:01:16.602
 Résultat : un profil d'athlète et une fiche d'objectif.
 
 13
-00:01:09.020 --> 00:01:17.185
+00:01:17.452 --> 00:01:26.870
 Un doute ? /coach-doctor vérifie l'installation sans rien écrire : jetons, serveur Garmin, configuration, profil, index.
 
 14
-00:01:17.285 --> 00:01:18.452
+00:01:26.970 --> 00:01:29.092
 Tout est vert.
 
 15
-00:01:19.302 --> 00:01:21.365
+00:01:29.942 --> 00:01:32.832
 Première question : /today.
 
 16
-00:01:21.465 --> 00:01:25.961
+00:01:32.932 --> 00:01:38.654
 La séance du jour, le bilan matinal, et le créneau météo. En trois lignes.
 
 17
-00:01:30.002 --> 00:01:33.153
+00:01:41.204 --> 00:01:44.694
 Pour aller plus loin : le guide de démarrage rapide.

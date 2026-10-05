@@ -73,6 +73,15 @@ journalise son argv et la *présence* (jamais la valeur) de la clé ; leviers
 `opencode`/`claude` de la machine se place dans `$HOME/.local/bin` du bac à sable
 (`daily-sync.sh` y préfixe son `PATH`).
 
+`tests/install/test_telegram_ops.py` (#174) verrouille le bot Telegram : `install.sh --telegram`
+(unité systemd/LaunchAgent sans secret, fichier du jeton en mode 600, rerun idempotent qui
+n'écrase ni config ni jeton, `--telegram-chat-id` qui ajoute sans remplacer), `coach-telegram.sh`,
+le check `telegram` du doctor (jamais la valeur du jeton) et le résumé de `daily-sync.sh` envoyé
+avec ses boutons. L'API Telegram y est un faux serveur local, `tests/lib/telegram_stub.py` (aucun
+réseau, aucun vrai jeton) ; la logique (callbacks → écritures `arc`, idempotence, liste blanche,
+seuil de douleur, pont vers un vrai `arc_chat` en backend `mock`) est au palier D
+(`tests/data/test_arc_telegram.py`).
+
 **Tests ignorés.** `TestCoachRemote` s'ignore là où `screen` ou `tmux` existe
 dans `/opt/homebrew/bin` ou `/usr/local/bin` : `coach-remote.sh` rajoute ces
 dossiers au `PATH`, donc « aucun gestionnaire de services » n'y est pas une
