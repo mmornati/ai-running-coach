@@ -53,9 +53,29 @@ vient qu'après.
 | **Préparation** | Une course qui sert l'objectif principal (terrain, durée, ravitaillement, premier dossard), placée hors de l'affûtage |
 | **Plaisir** | Course pour l'ambiance ou sortie entre amis, courue sous l'effort de course |
 
-Les écarts entre courses sont **calculés par un script Python**, jamais de tête.
+Les écarts entre courses et le jour de la semaine de chaque date sont
+**calculés par un script Python**, jamais de tête. Une course annoncée un jour
+de semaine est signalée comme suspecte.
+
 Les règles de récupération et d'affûtage sont pour l'instant des règles
-provisoires, annoncées comme telles.
+provisoires, annoncées comme telles. Elles sont fixes, pour que deux questions
+ne reçoivent pas deux réponses différentes. La taille d'une course se mesure en
+km-effort (distance en km + D+ en m / 100) :
+
+| Course (km-effort) | Récupération avant une course courue à fond | Affûtage si objectif principal |
+|---|---|---|
+| jusqu'à 15 | 2 semaines | 10 jours |
+| 15 à 30 | 3 semaines | 2 semaines |
+| 30 à 60 | 4 semaines | 2 semaines |
+| plus de 60 | 6 semaines | 3 semaines |
+
+Aucune course pendant l'affûtage de l'objectif principal, même une course
+Plaisir. Une course de Préparation doit avoir fini sa récupération avant le
+début de l'affûtage. Une course Plaisir demande 1 semaine avant la course
+suivante courue à fond.
+
+La course recommandée est toujours une course où l'on peut encore s'inscrire.
+Une course complète n'apparaît qu'en second, « si un dossard se libère ».
 
 ## Sources et garde-fous
 
@@ -80,8 +100,12 @@ recherche web de l'environnement (WebSearch / WebFetch sous Claude Code,
 L'agent peut consulter un autre agent **avant** de recommander, dans trois cas
 seulement, et uniquement si cet agent est dans `[agents].enabled` :
 
-- **`medical`** : blessure en cours ou zone fragile concernée par une course
-  plus ambitieuse. Son avis l'emporte.
+- **`medical`** : obligatoire quand le profil déclare une blessure, des
+  antécédents ou une zone fragile, et que la course recommandée est plus
+  longue que votre plus longue sortie, a plus de D+ que votre plus grosse
+  sortie, ou ajoute une contrainte nouvelle (nuit, longues descentes, terrain
+  technique). Cela vaut aussi pour un format de remplacement. Son avis
+  l'emporte.
 - **`coach`** : quand la recommandation dépend d'une condition d'entraînement
   (« 3 séances par semaine dès l'hiver »), pour la course finale seulement.
 - **`course-strategist`** : quand vous hésitez entre une ou deux finalistes dont

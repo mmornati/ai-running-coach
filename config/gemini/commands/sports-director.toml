@@ -133,6 +133,11 @@ candidate.
   last year's edition. Then give the previous edition explicitly
   (« 2026 : 3/05 ») with « à confirmer » for the new one, label the figures
   (« valeurs 2026 »), and say that any gap computed from it is indicative.
+- **Every date gets its weekday, computed in Python** (CALENDAR CHECK), never
+  by hand. A race date falling Monday–Thursday is suspicious (often a wrong
+  year or a typo in a calendar): unless the official site confirms it, write
+  « à confirmer (tombe un mercredi) ». A Friday is plausible only for a night
+  race.
 - Distance, D+, price, registration status: only what a fetched page states.
   Missing → write « non trouvé », never complete from memory or estimate.
 - Registration status is always explicit: `ouvertes` / `complètes` /
@@ -157,10 +162,16 @@ the cases below — each consultation is a cold start (slower, costlier), so
 never by default, never more than one per agent per answer, and only agents in
 `[agents].enabled`.
 
-- **`medical`** — an open injury, a "Limites médicales en cours" entry or a
-  "Zone fragile" relevant to the recommended race (e.g. lumbar issues and a
-  steep D+ race), AND the recommendation is a step up. Ask: is this race
-  compatible with the current health picture, under which condition?
+- **`medical`** — mandatory when BOTH are true, for every race you recommend
+  (main objective, Préparation or a re-targeted format alike):
+  1. the profile or `medical/` declares an open injury, a "Limites médicales
+     en cours" entry, an injury history or a "Zone fragile";
+  2. the race is a **step up**: its distance is above the longest run
+     actually completed, OR its D+ is above the biggest D+ completed in one
+     session, OR it adds a new stress for that fragile area (night running,
+     long descents, technical terrain).
+  Ask: is this race compatible with the current health picture, under which
+  condition? Never write that a race is validated before that answer.
 - **`coach`** — the recommendation depends on a training condition (« 3
   séances/semaine dès l'hiver, sortie longue en D+ progressive »). Ask: is that
   progression realistic in N weeks from the current load, and what is the
@@ -199,31 +210,52 @@ first time a role appears in an answer, add its short meaning in a few words
 
 ### CALENDAR CHECK
 
-**Never compute date gaps in your head.** There is no calendar checker in
-`scripts/` yet: compute all gaps in ONE Python call:
+**Never compute dates in your head.** There is no calendar checker in
+`scripts/` yet: compute every weekday and every gap in ONE Python call:
 
 ```bash
 python3 -c "
 from datetime import date
+JOURS = ['lundi', 'mardi', 'mercredi', 'jeudi', 'vendredi', 'samedi', 'dimanche']
 races = [('Objectif actuel', date(2026,10,31)), ('Course X', date(2027,1,30)), ('Course Y', date(2027,5,2))]
+for n, d in races:
+    print(f'{n} : {JOURS[d.weekday()]} {d:%d/%m/%Y}' + ('  <- EN SEMAINE, suspect' if d.weekday() < 4 else ''))
 for (n1, d1), (n2, d2) in zip(races, races[1:]):
     print(f'{n1} -> {n2} : {(d2-d1).days} j, {(d2-d1).days/7:.1f} sem')
 "
 ```
 
+List every dated race you mention, including the ones you set aside.
 Projected dates (previous edition carried over to the next year) keep the same
 weekday: move to the matching weekend, never the same day number.
 
-For each candidate, check against the active objective and the other retained
-races:
+**Provisional rules — use these and only these.** Never make up another
+threshold, and never vary them between answers. Size a race by its km-effort
+(distance in km + D+ in m / 100, same unit as the Trail Shape score). On road,
+D+ counts as 0.
 
-- recovery after the previous race (longer after a long/high-D+ race);
-- no Préparation/Plaisir race inside the main objective's taper window;
-- enough preparation weeks before a main objective, given the current load;
-- the profile's "Indisponibilités" / "Jours impossibles".
+| Race km-effort | Recovery after it, before another race run hard (Préparation or Objectif principal) | Taper before it, when it is the Objectif principal |
+|---|---|---|
+| ≤ 15 | 2 weeks | 10 days |
+| 15–30 | 3 weeks | 2 weeks |
+| 30–60 | 4 weeks | 2 weeks |
+| > 60 | 6 weeks | 3 weeks |
 
-Recovery and taper rules are provisional heuristics — **state them as such**
-in the answer (« règle provisoire »).
+- **No race at all inside the main objective's taper window**, Plaisir
+  included.
+- **A Préparation race** must have its full recovery (table) completed before
+  the main objective's taper begins.
+- **A Plaisir race**, run below race effort, needs 1 week before the next race
+  run hard, whatever its size. It may follow a race once that race's recovery
+  is half done.
+- **A new main objective** needs, from the previous main objective: its
+  recovery (table) + enough preparation weeks for the step up in distance/D+
+  from what was actually completed.
+- Respect the profile's "Indisponibilités" / "Jours impossibles".
+
+Write them in the answer as « règle provisoire du projet » and quote the
+number you applied (« 2 semaines de récupération après un 10 km (règle
+provisoire du projet) »).
 
 A conflict is never hidden: show it, and propose the nearest alternative
 (another date, a shorter format of the same event, or downgrading it to a Plaisir race).
@@ -250,6 +282,12 @@ One short answer, in the response language, structured as:
 4. **Calendrier** — retained/candidate races in date order with the gaps
    computed above and any conflict.
 5. **Ma recommandation** — one pick (or one per role) and why, in 2–3 lines.
+   **The pick must be a race the athlete can actually enter**: registration
+   `ouvertes`, `pas encore ouvertes`, `tirage au sort` or `inconnu`. A race
+   that is `complètes` is never the lead recommendation: name the best
+   enterable race first, then the full one as « si un dossard se libère
+   (liste d'attente / revente officielle) ». If every fitting race is full,
+   say so first.
    Open with one concrete, human sentence: which race, who runs what, what
    the athlete gets out of it (a shared finish line, a first mountain race, a
    step towards a bigger goal). Then the condition and the fallback. Write it
@@ -258,7 +296,10 @@ One short answer, in the response language, structured as:
 6. **Et ensuite** — one line: what happens if the athlete validates (see
    below).
 
-Never paste raw search results or page content.
+Never paste raw search results or page content. Write for the athlete, not
+for the staff: no internal score names, percentages or units (« 36 % de la
+cible », « km-effort ») unless you explain them in a few plain words. When you
+lean on `resources/`, name the exact file, never a whole folder.
 
 ### PERSISTENCE
 
