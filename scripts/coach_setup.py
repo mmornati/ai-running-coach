@@ -388,10 +388,10 @@ def apply_shoes(workspace: Path, shoes: list) -> dict:
     heading = re.search(r"^### Chaussures\s*$", text, flags=re.M | re.I)
     if not heading:
         raise ConfigError(f"section « ### Chaussures » introuvable dans {PROFILE_FILE}.")
-    next_heading = re.search(r"^### Matériel\s*$", text[heading.end():], flags=re.M | re.I)
-    if not next_heading:
-        raise ConfigError(f"section « ### Matériel » introuvable après « ### Chaussures » dans {PROFILE_FILE}.")
-    insertion = heading.end() + next_heading.start()
+    # Fin de la section : le titre suivant, quel qu'il soit (« ### Matériel » depuis
+    # #134, autre chose sur un profil plus ancien), sinon la fin du fichier.
+    next_heading = re.search(r"^#{1,3} ", text[heading.end():], flags=re.M)
+    insertion = heading.end() + next_heading.start() if next_heading else len(text)
 
     existing = arc_legacy.parse_gear(text)
     existing_names = {str(item.get("name") or "").strip().casefold() for item in existing}
@@ -436,7 +436,8 @@ def apply_shoes(workspace: Path, shoes: list) -> dict:
     if lines:
         before = text[:insertion].rstrip()
         after = text[insertion:].lstrip("\n")
-        path.write_text(before + "\n\n" + "\n".join(lines) + "\n\n" + after, encoding="utf-8")
+        tail = "\n\n" + after if after else "\n"
+        path.write_text(before + "\n\n" + "\n".join(lines) + tail, encoding="utf-8")
     return {"added": added, "skipped": skipped}
 
 
@@ -446,6 +447,8 @@ def cmd_apply_shoes(args) -> int:
         shoes = json.loads(Path(args.apply_shoes).read_text(encoding="utf-8"))
     except json.JSONDecodeError as exc:
         raise ConfigError(f"{args.apply_shoes} : JSON invalide — {exc}") from exc
+    except OSError as exc:
+        raise ConfigError(f"{args.apply_shoes} : fichier illisible — {exc.strerror}") from exc
     result = apply_shoes(workspace, shoes)
     print(json.dumps({"workspace": str(workspace), **result}, ensure_ascii=False, indent=2))
     return 0

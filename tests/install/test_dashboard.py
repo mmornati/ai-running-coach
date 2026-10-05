@@ -640,3 +640,18 @@ class TestIndexNeverCommitted(InstallAsserts):
             self.assertIsFile(ws / ".arc/coach.db")
             status = sb.run(["git", "status", "--porcelain", "--untracked-files=all"], cwd=ws).stdout
             self.assertNotIn(".arc/", status, f"l'index apparaît dans git :\n{status}")
+
+
+class TestCorruptIndexRepairScope(InstallAsserts):
+    def test_explicit_db_that_is_not_sqlite_is_never_replaced(self):
+        """La réparation ne vise que l'index : un `--db` mal orienté échoue sans écraser le fichier."""
+        with Sandbox() as sb:
+            ws = build(sb.root / "ws", days=3)
+            target = ws / "planning/Runner_Profile.md"
+            target.parent.mkdir(parents=True, exist_ok=True)
+            content = "# Mon profil\n\n" + "Contenu à ne jamais perdre.\n" * 20
+            target.write_text(content, encoding="utf-8")
+            proc = sb.run(["python3", str(sb.repo / "scripts/arc_index.py"),
+                           "--workspace", str(ws), "--db", str(target)])
+            self.assertNotEqual(proc.returncode, 0)
+            self.assertEqual(target.read_text(encoding="utf-8"), content)

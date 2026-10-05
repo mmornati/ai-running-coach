@@ -35,6 +35,8 @@ Deux modes sont proposés pendant l'installation :
 
 La synchronisation Garmin ou Intervals.icu en arrière-plan est toujours activée. Avec le chat intégré, elle réutilise OpenCode, la même clé OpenRouter et le plafond quotidien de synchronisation. Avec un assistant habituel, elle utilise le mode non interactif de l'assistant choisi — Claude Code, Copilot, OpenCode, Gemini ou Cursor — et donc le même compte, sans installer ni facturer un second fournisseur en secret. Une seule connexion initiale à cet assistant peut être demandée ; il n'a ensuite pas besoin de rester ouvert.
 
+Quel que soit l'assistant, la synchronisation en arrière-plan n'écrit **jamais** côté Garmin, Intervals.icu ou Strava : les outils d'écriture de la source sont refusés un par un (Copilot : `--deny-tool` ; Gemini : `excludeTools` ; Cursor : règles `Mcp(serveur:outil)` de `.cursor/cli.json`, vérifiées avant chaque run). Avec Cursor, ces refus valent aussi en session interactive : pousser une séance vers la montre se fait alors avec un autre assistant. Le mode passerelle (`--use-leanproxy`) n'est pas pris en charge par ces assistants pour la synchronisation : utilisez le mode direct.
+
 Dans ce second mode, il n'y a aucune commande à recopier. Après l'installation,
 **Parler au coach avec…** ouvre Terminal directement dans le dossier de données
 et lance l'assistant choisi. Au premier lancement seulement, celui-ci affiche sa

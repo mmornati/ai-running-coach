@@ -835,7 +835,9 @@ final class CoachAppModel: ObservableObject {
         let destination = appSupport.appendingPathComponent("npm-tools", isDirectory: true)
         let result = try await runProcess(
             executable: npm.path,
-            arguments: ["install", "--prefix", destination.path, "@google/gemini-cli"],
+            // `-g` : avec `--prefix`, la commande `gemini` va dans npm-tools/bin, le
+            // dossier ajouté au PATH (sans `-g`, elle resterait dans node_modules/.bin).
+            arguments: ["install", "-g", "--prefix", destination.path, "@google/gemini-cli"],
             directory: appSupport,
             streamOutput: true
         )

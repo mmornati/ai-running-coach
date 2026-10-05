@@ -62,6 +62,12 @@ class TestMacApp(unittest.TestCase):
             with self.subTest(contract=contract):
                 self.assertIn(contract, text)
 
+    def test_gemini_is_installed_where_the_path_looks(self):
+        """`npm install --prefix` sans `-g` met la commande dans node_modules/.bin, hors du PATH."""
+        text = SOURCE.read_text(encoding="utf-8")
+        self.assertIn('["install", "-g", "--prefix", destination.path, "@google/gemini-cli"]', text)
+        self.assertIn('appendingPathComponent("npm-tools/bin")', text)
+
     def test_header_reuses_the_bundled_app_icon(self):
         text = SOURCE.read_text(encoding="utf-8")
         self.assertIn("NSApplication.shared.applicationIconImage", text)

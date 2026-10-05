@@ -167,6 +167,100 @@ class TestDataSourceAwareTools(InstallAsserts):
             self.assertOutputContains(proc, '"GARMIN_ENABLED_TOOLS": "get_activities,get_sleep_data"')
             self.assertOutputLacks(proc, '"GARMIN_ENABLED_TOOLS": "get_activities,schedule_workouts')
 
+    # -- revue PR #163 : exécuteurs copilot / gemini / cursor ------------------
+
+    def _runner_workspace(self, sb: Sandbox, source: str | None, runner: str) -> Path:
+        ws = self._workspace(sb, source)
+        config = ws / "config/workspace.user.toml"
+        config.write_text(config.read_text().replace('runner = "claude"', f'runner = "{runner}"'))
+        return ws
+
+    def test_strava_source_works_with_every_new_runner(self):
+        """`MCP_SERVER_NAME` doit exister aussi pour Strava (sinon `set -u` arrête le script)."""
+        for runner in ("copilot", "gemini", "cursor"):
+            with self.subTest(runner=runner), Sandbox() as sb:
+                ws = self._runner_workspace(sb, "strava", runner)
+                proc = sb.script("daily-sync.sh", "--dry-run", ARC_WORKSPACE=str(ws))
+                self.assertSucceeded(proc)
+                self.assertOutputLacks(proc, "MCP_SERVER_NAME")
+
+    def test_copilot_denies_every_remote_write_of_the_source(self):
+        """`--allow-tool=<serveur>` autorise tout le serveur : chaque écriture est refusée par nom."""
+        expected = {
+            None: ("garmin", ["schedule_workouts", "upload_workout", "delete_workout",
+                              "add_gear_to_activity", "log_food", "upload_course"]),
+            "intervals": ("intervals", ["icu_create_event", "icu_update_event", "icu_delete_event",
+                                        "icu_bulk_create_events", "icu_update_wellness"]),
+            "strava": ("strava", ["connect-strava", "disconnect-strava", "star-segment"]),
+        }
+        for source, (server, tools) in expected.items():
+            with self.subTest(source=source), Sandbox() as sb:
+                ws = self._runner_workspace(sb, source, "copilot")
+                proc = sb.script("daily-sync.sh", "--dry-run", ARC_WORKSPACE=str(ws))
+                self.assertSucceeded(proc)
+                self.assertOutputContains(proc, f"--allow-tool={server}")
+                for tool in tools:
+                    self.assertOutputContains(proc, f"--deny-tool={server}({tool})")
+
+    def test_gemini_intervals_allows_the_pinned_icu_tool_names(self):
+        """Le fork hhopke (#165) préfixe ses outils par `icu_` : la liste blanche doit suivre."""
+        with Sandbox() as sb:
+            ws = self._runner_workspace(sb, "intervals", "gemini")
+            (ws / ".gemini").mkdir()
+            (ws / ".gemini/settings.json").write_text('{"mcpServers":{"intervals":{"command":"x"}}}')
+            proc = sb.script("daily-sync.sh", "--dry-run", ARC_WORKSPACE=str(ws))
+            self.assertSucceeded(proc)
+            for tool in ("icu_get_wellness_for_date", "icu_get_recent_activities", "icu_get_activity_details"):
+                self.assertOutputContains(proc, f'"{tool}"')
+            self.assertOutputLacks(proc, '"get_wellness_for_date"')
+            self.assertOutputContains(proc, '"excludeTools"')
+            self.assertOutputContains(proc, '"icu_create_event"')
+
+    def test_gemini_strava_excludes_the_tools_that_act(self):
+        with Sandbox() as sb:
+            ws = self._runner_workspace(sb, "strava", "gemini")
+            (ws / ".gemini").mkdir()
+            (ws / ".gemini/settings.json").write_text('{"mcpServers":{"strava":{"command":"x"}}}')
+            proc = sb.script("daily-sync.sh", "--dry-run", ARC_WORKSPACE=str(ws))
+            self.assertSucceeded(proc)
+            self.assertOutputContains(proc, "--allowed-mcp-server-names strava")
+            for tool in ("connect-strava", "disconnect-strava", "star-segment"):
+                self.assertOutputContains(proc, f'"{tool}"')
+
+    def test_gateway_only_config_is_refused_for_name_filtering_runners(self):
+        """Derrière leanproxy, copilot/gemini/cursor ne voient aucun outil : échec explicite, pas un run à vide."""
+        configs = {"copilot": ".mcp.json", "gemini": ".gemini/settings.json", "cursor": ".cursor/mcp.json"}
+        for runner, rel in configs.items():
+            with self.subTest(runner=runner), Sandbox() as sb:
+                ws = self._runner_workspace(sb, None, runner)
+                (ws / rel).parent.mkdir(parents=True, exist_ok=True)
+                (ws / rel).write_text('{"mcpServers":{"leanproxy":{"command":"leanproxy-mcp"}}}')
+                proc = sb.script("daily-sync.sh", "--dry-run", ARC_WORKSPACE=str(ws))
+                self.assertOutputContains(proc, f"{runner} + leanproxy non pris en charge")
+
+    def test_cursor_force_requires_write_denials_in_cli_json(self):
+        """`cursor-agent --force` approuve tout ce qui n'est pas refusé : pas de run sans les refus."""
+        with Sandbox() as sb:
+            fakebin = sb.root / "fakebin"
+            fakebin.mkdir()
+            agent = fakebin / "cursor-agent"
+            agent.write_text("#!/bin/sh\necho RAN >> \"$0.log\"\n")
+            agent.chmod(0o755)
+            ws = self._runner_workspace(sb, None, "cursor")
+            path = f"{fakebin}:{sb.env()['PATH']}"
+            proc = sb.script("daily-sync.sh", ARC_WORKSPACE=str(ws), PATH=path)
+            self.assertNotEqual(proc.returncode, 0)
+            self.assertOutputContains(proc, "ne refuse pas les outils d'écriture")
+            self.assertFalse((fakebin / "cursor-agent.log").exists())
+
+    def test_cursor_loads_project_mcp_servers_in_print_mode(self):
+        with Sandbox() as sb:
+            ws = self._runner_workspace(sb, None, "cursor")
+            proc = sb.script("daily-sync.sh", "--dry-run", ARC_WORKSPACE=str(ws))
+            self.assertSucceeded(proc)
+            self.assertOutputContains(proc, "--approve-mcps")
+
+
 EXISTING_CRONTAB = """\
 # ma crontab à moi
 0 9 * * 1 /usr/local/bin/sauvegarde.sh

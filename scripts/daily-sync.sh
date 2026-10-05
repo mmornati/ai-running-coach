@@ -23,6 +23,8 @@
 # =============================================================================
 set -euo pipefail
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib/config.sh"
+# shellcheck source=lib/sync_tools.sh
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib/sync_tools.sh"
 
 DRY_RUN=0
 RUNNER=""
@@ -102,6 +104,7 @@ if [[ "$SOURCE" == "strava" ]]; then
     CLAUDE_DISALLOWED="mcp__strava__connect-strava,mcp__strava__disconnect-strava,mcp__strava__star-segment"
     CLAUDE_DISALLOWED+=",$PROTECTED_PATHS"
     SOURCE_LABEL="Strava"
+    MCP_SERVER_NAME="strava"
     AUTH_CMD_HINT="demandez à l'agent (session interactive) d'exécuter l'outil connect-strava avec force=true"
 elif [[ "$SOURCE" == "intervals" ]]; then
     # Outils autorisés en mode non interactif : serveur MCP intervals (tous ses
@@ -116,22 +119,10 @@ elif [[ "$SOURCE" == "intervals" ]]; then
     # fichier local arbitraire, hors des règles `Edit(…)` ; `fit-download` reste le
     # chemin du projet). Les anciens noms sans préfixe (eddmann, avant #165) sont
     # aussi retirés : une installation pas encore mise à jour reste protégée.
-    INTERVALS_WRITE_TOOLS="update_activity update_activity_streams bulk_create_manual_activities"
-    INTERVALS_WRITE_TOOLS+=" delete_activity update_wellness create_event update_event delete_event"
-    INTERVALS_WRITE_TOOLS+=" bulk_create_events bulk_update_event_access bulk_delete_events duplicate_events"
-    INTERVALS_WRITE_TOOLS+=" apply_training_plan create_workout update_workout delete_workout"
-    INTERVALS_WRITE_TOOLS+=" bulk_create_workouts create_workout_folder delete_workout_folder create_gear"
-    INTERVALS_WRITE_TOOLS+=" update_gear delete_gear create_gear_reminder update_gear_reminder"
-    INTERVALS_WRITE_TOOLS+=" update_sport_settings apply_sport_settings create_sport_settings"
-    INTERVALS_WRITE_TOOLS+=" delete_sport_settings add_activity_message create_custom_item"
-    INTERVALS_WRITE_TOOLS+=" update_custom_item delete_custom_item"
-    INTERVALS_WRITE_TOOLS+=" download_activity_file download_fit_file download_gpx_file"
+    # Liste partagée avec les autres exécuteurs : scripts/lib/sync_tools.sh.
     CLAUDE_DISALLOWED=""
-    for _tool in $INTERVALS_WRITE_TOOLS; do
-        CLAUDE_DISALLOWED+="mcp__intervals__icu_${_tool},"
-    done
     # Ancien serveur eddmann : mêmes noms sans préfixe (+ `duplicate_event` au singulier).
-    for _tool in $INTERVALS_WRITE_TOOLS duplicate_event; do
+    for _tool in $(sync_write_tools intervals); do
         CLAUDE_DISALLOWED+="mcp__intervals__${_tool},"
     done
     CLAUDE_DISALLOWED+="$PROTECTED_PATHS"
@@ -288,17 +279,14 @@ opencode_config_json() {
 # de l'utilisateur n'est pas modifiée.
 GEMINI_CONFIG_PY='
 import json, sys
-path, source = sys.argv[1:3]
+path, source, prefixes, reads, writes = sys.argv[1:6]
 try:
     project = json.load(open(path, encoding="utf-8"))
 except (OSError, ValueError):
     project = {}
 servers = project.get("mcpServers") or {}
-write_prefixes = ("schedule_", "upload_", "delete_", "unschedule_", "create_", "add_",
-                  "set_", "log_", "update_", "upsert_", "bulk_", "request_reload")
-intervals_reads = ["get_wellness_for_date", "get_recent_activities", "get_activity_details",
-                   "get_calendar_events", "get_upcoming_workouts", "get_event", "get_gear_list",
-                   "get_athlete_profile", "get_fitness_summary"]
+write_prefixes = tuple(prefixes.split())
+writes = writes.split()
 safe = {}
 for name, spec in servers.items():
     if name != source or not isinstance(spec, dict):
@@ -307,15 +295,22 @@ for name, spec in servers.items():
     item["trust"] = True
     env = dict(item.get("env") or {})
     tools = env.get("GARMIN_ENABLED_TOOLS", "")
-    if tools:
+    if source == "garmin" and tools:
         kept = [t for t in tools.split(",") if not t.startswith(write_prefixes)]
         env["GARMIN_ENABLED_TOOLS"] = ",".join(kept)
         item["includeTools"] = kept
-    elif source == "intervals":
-        item["includeTools"] = intervals_reads
+    elif source != "garmin":
+        item["includeTools"] = reads.split()
+    # Refus nommés en plus de la liste blanche : excludeTools prime sur includeTools.
+    item["excludeTools"] = writes
     if env:
         item["env"] = env
     safe[name] = item
+if not safe:
+    # Serveur absent (mode passerelle leanproxy, IDE non configuré) : un run sans
+    # aucun outil de données « réussirait » à vide. On échoue explicitement.
+    sys.stderr.write(f"serveur MCP « {source} » absent de {path}\n")
+    sys.exit(3)
 print(json.dumps({
     "tools": {"core": ["read_file", "read_many_files", "list_directory", "glob", "grep_search",
                          "write_file", "replace", "run_shell_command(python3 scripts/)",
@@ -325,7 +320,25 @@ print(json.dumps({
 '
 
 gemini_config_json() {
-    python3 -c "$GEMINI_CONFIG_PY" "$ARC_WORKSPACE/.gemini/settings.json" "$MCP_SERVER_NAME"
+    python3 -c "$GEMINI_CONFIG_PY" "$ARC_WORKSPACE/.gemini/settings.json" "$MCP_SERVER_NAME" \
+        "$SYNC_GARMIN_WRITE_PREFIXES" "$(sync_read_tools "$SOURCE" | tr '\n' ' ')" \
+        "$(sync_write_tools "$SOURCE" | tr '\n' ' ')"
+}
+
+# Cursor : chaque outil d'écriture de la source est-il refusé (`Mcp(serveur:outil)`)
+# dans .cursor/cli.json ? Sans ces refus, `--force` les approuverait en headless.
+cursor_denies_writes() {
+    # shellcheck disable=SC2046  # un nom d'outil par mot (aucun ne contient d'espace)
+    python3 -c '
+import json, sys
+path, server = sys.argv[1:3]
+try:
+    deny = (json.load(open(path, encoding="utf-8")).get("permissions") or {}).get("deny") or []
+except (OSError, ValueError, AttributeError):
+    sys.exit(1)
+missing = [t for t in sys.argv[3:] if f"Mcp({server}:{t})" not in deny]
+sys.exit(1 if missing else 0)
+' "$ARC_WORKSPACE/.cursor/cli.json" "$MCP_SERVER_NAME" $(sync_write_tools "$SOURCE")
 }
 
 # ---------------------------------------------------------------------------
@@ -509,10 +522,16 @@ build_command() {
             have copilot || [[ "$DRY_RUN" -eq 1 ]] || die "copilot introuvable — relancez l'installation guidée GitHub Copilot."
             # Le MCP du workspace est chargé explicitement en mode prompt ; permissions
             # minimales : lecture/écriture des MD, scripts Python du projet et source sportive.
+            # `--allow-tool=<serveur>` autorise TOUT le serveur : ses outils d'écriture sont
+            # refusés un par un (`--deny-tool` prime toujours sur `--allow-tool`).
             CMD=(env GITHUB_COPILOT_PROMPT_MODE_WORKSPACE_MCP=true
                  copilot -p "$(skill_prompt)" -s --no-ask-user
                  --allow-tool=read --allow-tool=write
-                 '--allow-tool=shell(python3:*)' "--allow-tool=$MCP_SERVER_NAME") ;;
+                 '--allow-tool=shell(python3:*)' "--allow-tool=$MCP_SERVER_NAME")
+            local _tool
+            for _tool in $(sync_write_tools "$SOURCE"); do
+                CMD+=("--deny-tool=$MCP_SERVER_NAME($_tool)")
+            done ;;
         opencode)
             have opencode || [[ "$DRY_RUN" -eq 1 ]] || die "opencode introuvable — installez OpenCode : curl -fsSL https://opencode.ai/v2/install | bash"
             if [[ -n "$SYNC_MODEL" && "$SYNC_MODEL" != */* ]]; then
@@ -531,7 +550,13 @@ build_command() {
                  --allowed-mcp-server-names "$MCP_SERVER_NAME") ;;
         cursor)
             have cursor-agent || [[ "$DRY_RUN" -eq 1 ]] || die "cursor-agent introuvable — relancez l'installation guidée Cursor Agent."
-            CMD=(cursor-agent -p --force --output-format text "$(skill_prompt)") ;;
+            # `--force` approuve tout ce qui n'est pas refusé explicitement : on ne le passe
+            # que si .cursor/cli.json refuse bien les outils d'écriture de la source
+            # (écrits par install.sh). `--approve-mcps` : sans lui, le mode -p ne charge
+            # pas les serveurs MCP du projet.
+            cursor_denies_writes || [[ "$DRY_RUN" -eq 1 ]] \
+                || die "Cursor : .cursor/cli.json ne refuse pas les outils d'écriture $SOURCE_LABEL — relancez ./install.sh (ou l'installation guidée) avant la synchronisation."
+            CMD=(cursor-agent -p --force --approve-mcps --trust --output-format text "$(skill_prompt)") ;;
         *) die "Exécuteur inconnu : $RUNNER (claude|codex|copilot|opencode|gemini|cursor)" ;;
     esac
 }
@@ -895,7 +920,8 @@ detect_auth_failure() {
 # entièrement, ce qui empêcherait toute lecture Garmin. On échoue vite plutôt que de
 # synchroniser « à vide ».
 mcp_gateway_only() {
-    [[ -f "$MCP_CONFIG" ]] || return 1
+    local config="${1:-$MCP_CONFIG}"
+    [[ -f "$config" ]] || return 1
     python3 -c '
 import json, sys
 try:
@@ -905,7 +931,7 @@ except (OSError, ValueError, AttributeError):
 # Serveur direct : « garmin » ou tout nom commençant par « intervals » (Intervals_icu, intervals-icu…), sans tenir compte de la casse.
 direct = [n for n in servers if n.lower() == "garmin" or n.lower().startswith(("intervals", "strava"))]
 sys.exit(0 if "leanproxy" in servers and not direct else 1)
-' "$MCP_CONFIG"
+' "$config"
 }
 
 main() {
@@ -913,13 +939,21 @@ main() {
     log "Synchronisation $SOURCE_LABEL — exécuteur : $RUNNER, fenêtre : $LOOKBACK jour(s)${TRIGGER:+, déclencheurs : $TRIGGER}"
     log "Workspace : $ARC_WORKSPACE (moteur : $ARC_ENGINE_ROOT)"
 
-    if [[ "$RUNNER" == "opencode" ]] && mcp_gateway_only; then
-        local gateway_msg="opencode + leanproxy non pris en charge pour la synchronisation — utilisez le mode direct (./install.sh sans --use-leanproxy) ou le runner claude."
+    # Même refus pour les exécuteurs qui filtrent par nom de serveur/outil (copilot,
+    # gemini, cursor) : à travers la passerelle, le filtre ne voit aucun outil de
+    # données et la synchronisation « réussirait » à vide.
+    local runner_mcp_config="$MCP_CONFIG"
+    case "$RUNNER" in
+        gemini) runner_mcp_config="$ARC_WORKSPACE/.gemini/settings.json" ;;
+        cursor) runner_mcp_config="$ARC_WORKSPACE/.cursor/mcp.json" ;;
+    esac
+    if [[ "$RUNNER" =~ ^(opencode|copilot|gemini|cursor)$ ]] && mcp_gateway_only "$runner_mcp_config"; then
+        local gateway_msg="$RUNNER + leanproxy non pris en charge pour la synchronisation — utilisez le mode direct (./install.sh sans --use-leanproxy) ou le runner claude."
         if [[ "$DRY_RUN" -eq 1 ]]; then
             warn "$gateway_msg"
         else
             err "$gateway_msg"
-            notify "🚫 Sync $SOURCE_LABEL — opencode + leanproxy non pris en charge" 4 "no_entry,warning" "$gateway_msg"
+            notify "🚫 Sync $SOURCE_LABEL — $RUNNER + leanproxy non pris en charge" 4 "no_entry,warning" "$gateway_msg"
             exit 1
         fi
     fi
@@ -949,7 +983,7 @@ main() {
         fi
         if [[ "$RUNNER" == "gemini" ]]; then
             printf '%s\n' "${C_YELLOW}[dry-run]${C_RESET} GEMINI_CLI_SYSTEM_SETTINGS_PATH=$GEMINI_CONFIG_FILE, contenu :"
-            gemini_config_json
+            gemini_config_json || warn "Gemini : aucun serveur $SOURCE_LABEL utilisable — la synchronisation réelle s'arrêterait ici."
         fi
         if budget_enforced; then
             printf '%s\n' "${C_YELLOW}[dry-run]${C_RESET} budget : $(spent_today_eur)/$DAILY_BUDGET_EUR EUR (cumul : $SPEND_FILE)"
@@ -1003,7 +1037,8 @@ main() {
     fi
     if [[ "$RUNNER" == "gemini" ]]; then
         mkdir -p "$(dirname "$GEMINI_CONFIG_FILE")"
-        gemini_config_json > "$GEMINI_CONFIG_FILE"
+        gemini_config_json > "$GEMINI_CONFIG_FILE" \
+            || die "Gemini : serveur MCP $MCP_SERVER_NAME absent de .gemini/settings.json — relancez ./install.sh (ou l'installation guidée)."
     fi
     # La clé n'est passée qu'à CE process (env), jamais exportée ici.
     if [[ "${#RUNNER_ENV[@]}" -gt 0 ]]; then

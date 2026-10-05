@@ -523,7 +523,7 @@ json_escape() {
 
 # Fusionne une clé dans un fichier JSON sans toucher au reste (scripts/coach_config.py).
 merge_json_key() {
-    local file="$1" section="$2" name="$3" value="$4" template="${5:-}"
+    local file="$1" section="$2" name="$3" value="$4" template="${5:-}" union="${6:-}"
     if [[ "$DRY_RUN" -eq 1 ]]; then
         printf '%s\n' "${C_YELLOW}[dry-run]${C_RESET} fusion de « $name » dans $file"
         return 0
@@ -531,7 +531,7 @@ merge_json_key() {
     have python3 || { warn "python3 absent : $file non modifié (ajoutez « $name » à la main)."; return 0; }
     python3 "$PROJECT_ROOT/scripts/coach_config.py" merge-json \
         --file "$file" --section "$section" --name "$name" --value "$value" \
-        ${template:+--template "$template"} >/dev/null \
+        ${template:+--template "$template"} ${union:+--union-lists} >/dev/null \
         || die "Échec de la mise à jour de $file (voir le message ci-dessus)."
 }
 
@@ -1757,8 +1757,21 @@ write_cursor_config() {
     cleanup_stale_mcp_server "$cfg" mcpServers
     merge_json_key "$cfg" mcpServers "$(mcp_server_name)" "$(mcp_server_value)"
     ok "Serveur MCP $(mcp_server_name) présent dans $cfg"
+    # Refus des outils d'écriture de la source (`Mcp(serveur:outil)`, prioritaires sur
+    # tout « allow ») : la synchronisation headless lance `cursor-agent --force`, qui
+    # approuverait sinon une écriture Garmin/intervals.icu/Strava sans personne pour
+    # confirmer. scripts/daily-sync.sh vérifie leur présence avant chaque run.
+    # shellcheck source=scripts/lib/sync_tools.sh
+    source "$PROJECT_ROOT/scripts/lib/sync_tools.sh"
+    local server tool mcp_deny=""
+    case "$SOURCE" in intervals|strava) server="$SOURCE" ;; *) server="garmin" ;; esac
+    for tool in $(sync_write_tools "$server"); do
+        mcp_deny+=",\"Mcp($server:$tool)\""
+    done
+    # Fusion par listes : les règles allow/deny ajoutées par l'utilisateur sont conservées.
     merge_json_key "$permissions" "" permissions \
-        '{"allow":["Read(**)","Write(activities/**)","Write(medical/**)","Write(nutrition/**)","Write(planning/**)","Write(rapports/**)","Write(gear/**)","Shell(python3)"],"deny":["Write(scripts/**)","Write(skills/**)","Write(local/**)","Write(config/**)","Write(.mcp.json)","Write(.cursor/**)","Write(.github/**)","Write(.gemini/**)","Write(.claude/**)","Write(.opencode/**)","Write(install.sh)","Read(**/.env*)","Shell(rm)","Shell(git)","Shell(gh)"]}'
+        '{"allow":["Read(**)","Write(activities/**)","Write(medical/**)","Write(nutrition/**)","Write(planning/**)","Write(rapports/**)","Write(gear/**)","Shell(python3)"],"deny":["Write(scripts/**)","Write(skills/**)","Write(local/**)","Write(config/**)","Write(.mcp.json)","Write(.cursor/**)","Write(.github/**)","Write(.gemini/**)","Write(.claude/**)","Write(.opencode/**)","Write(install.sh)","Read(**/.env*)","Shell(rm)","Shell(git)","Shell(gh)"'"$mcp_deny"']}' \
+        "" union
     ok "Permissions Cursor limitées aux données du coach ($permissions)"
 }
 
@@ -1844,6 +1857,10 @@ check_runners() {
         cursor) have cursor-agent && ok "cursor-agent : présent ($(cursor-agent --version 2>/dev/null | head -1))" \
             || warn "cursor-agent absent — lancez l'installation guidée puis connectez Cursor une fois." ;;
     esac
+    # Remote Control repose sur Claude Code quel que soit l'exécuteur de synchronisation.
+    if [[ "$REMOTE_CONTROL" -eq 1 && "$runner" != "claude" ]] && ! have claude; then
+        warn "claude absent — requis pour --remote-control : curl -fsSL https://claude.ai/install.sh | bash   (puis 'claude' → /login)"
+    fi
 }
 
 # ---------------------------------------------------------------------------

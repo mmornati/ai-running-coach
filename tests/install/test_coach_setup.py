@@ -437,6 +437,31 @@ class TestApplyShoes(SetupCase):
             visible = re.sub(r"<!--.*?-->", "", profile, flags=re.S)
             self.assertEqual(visible.count("(par défaut)"), 1)
 
+    def test_adds_shoes_to_a_profile_older_than_the_equipment_section(self):
+        """Profil d'avant #134 (pas de « ### Matériel ») : la paire va en fin de section Chaussures."""
+        with Sandbox() as sb:
+            self.setup(sb, "--scaffold")
+            path = sb.repo / "planning/Runner_Profile.md"
+            text = path.read_text()
+            start = text.index("### Matériel")
+            end = text.find("\n#", start + 1)
+            path.write_text(text[:start] + (text[end + 1:] if end != -1 else ""))
+            self.assertNotIn("### Matériel", path.read_text())
+            data = self.json_out(self.setup(sb, "--apply-shoes", self.answers(sb, [{"name": "Hoka Speedgoat 6"}])))
+            self.assertEqual(data["added"], ["Hoka Speedgoat 6"])
+            profile = path.read_text()
+            shoes = profile[profile.index("### Chaussures"):]
+            self.assertIn("- Hoka Speedgoat 6 (par défaut)", shoes.split("\n#", 1)[0])
+
+    def test_adds_shoes_when_the_shoes_section_ends_the_file(self):
+        with Sandbox() as sb:
+            self.setup(sb, "--scaffold")
+            path = sb.repo / "planning/Runner_Profile.md"
+            text = path.read_text()
+            path.write_text(text[:text.index("### Chaussures")] + "### Chaussures\n")
+            self.setup(sb, "--apply-shoes", self.answers(sb, [{"name": "Nike Pegasus"}]))
+            self.assertTrue(path.read_text().endswith("### Chaussures\n\n- Nike Pegasus (par défaut)\n"))
+
     def test_rerun_skips_existing_name_without_rewriting(self):
         with Sandbox() as sb:
             self.setup(sb, "--scaffold")

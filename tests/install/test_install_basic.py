@@ -65,6 +65,32 @@ class TestFreshInstall(InstallAsserts):
             self.assertIn("Write(scripts/**)", permissions["deny"])
             self.assertIn("Write(.mcp.json)", permissions["deny"])
 
+    def test_cursor_permissions_deny_remote_writes_of_the_source(self):
+        """La synchro headless lance `cursor-agent --force` : les écritures distantes doivent être refusées."""
+        for args, server, tool in (((), "garmin", "schedule_workouts"),
+                                   (("--source", "intervals"), "intervals", "icu_create_event"),
+                                   (("--source", "strava"), "strava", "star-segment")):
+            with self.subTest(server=server), Sandbox() as sb:
+                self.assertSucceeded(sb.install("--no-auth", "--ide", "cursor", *args))
+                permissions = json.loads((sb.repo / ".cursor/cli.json").read_text())["permissions"]
+                self.assertIn(f"Mcp({server}:{tool})", permissions["deny"])
+
+    def test_cursor_permissions_keep_user_rules(self):
+        """Une réinstallation complète les listes allow/deny, sans effacer les règles de l'utilisateur."""
+        with Sandbox() as sb:
+            (sb.repo / ".cursor").mkdir()
+            (sb.repo / ".cursor/cli.json").write_text(json.dumps({
+                "editor": {"vimMode": True},
+                "permissions": {"allow": ["Shell(ls)"], "deny": ["Shell(curl)"]},
+            }))
+            self.assertSucceeded(sb.install("--no-auth", "--ide", "cursor"))
+            data = json.loads((sb.repo / ".cursor/cli.json").read_text())
+            self.assertEqual(data["editor"], {"vimMode": True})
+            self.assertIn("Shell(ls)", data["permissions"]["allow"])
+            self.assertIn("Shell(curl)", data["permissions"]["deny"])
+            self.assertIn("Write(activities/**)", data["permissions"]["allow"])
+            self.assertIn("Write(scripts/**)", data["permissions"]["deny"])
+
 
 class TestIdempotency(InstallAsserts):
     def test_second_run_changes_nothing(self):

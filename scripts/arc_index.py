@@ -974,6 +974,7 @@ PER_FILE_TABLES = (
 def open_db(workspace: Path, db: Optional[str] = None, memory: bool = False,
             rebuild: bool = False) -> sqlite3.Connection:
     path = None
+    sqlite_header = False
     if memory:
         conn = sqlite3.connect(":memory:", check_same_thread=False)
     else:
@@ -985,6 +986,11 @@ def open_db(workspace: Path, db: Optional[str] = None, memory: bool = False,
             marker = path.parent / ".gitignore"
             if not marker.exists():
                 marker.write_text("# Index dérivé du tableau de bord : jetable, jamais versionné.\n*\n", encoding="utf-8")
+        try:
+            with path.open("rb") as handle:
+                sqlite_header = handle.read(16) == b"SQLite format 3\x00"
+        except OSError:
+            sqlite_header = False
         # Le tableau de bord et la synchronisation peuvent indexer en même temps :
         # on attend le verrou plutôt que d'échouer.
         conn = sqlite3.connect(str(path), check_same_thread=False, timeout=10)
@@ -1011,7 +1017,10 @@ def open_db(workspace: Path, db: Optional[str] = None, memory: bool = False,
             reset_schema(conn)
         except sqlite3.DatabaseError as exc:
             corrupt = "malformed" in str(exc).lower() or "not a database" in str(exc).lower()
-            if memory or path is None or not corrupt:
+            # Jamais sur un fichier qui n'a pas été une base SQLite : un `--db` mal
+            # orienté (ex. un Markdown) doit échouer, pas être remplacé. L'index par
+            # défaut (.arc/coach.db) peut l'être même si son en-tête est abîmé.
+            if memory or path is None or not corrupt or (db and not sqlite_header):
                 raise
             # `.arc/coach.db` est un index entièrement dérivé des Markdown. Si
             # SQLite ne peut même plus lire son catalogue, le supprimer est la
