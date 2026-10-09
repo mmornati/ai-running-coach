@@ -185,7 +185,7 @@ CHAT_SYSTEMD_UNIT_REL = ".config/systemd/user/ai-running-coach-chat.service"
 CHAT_LAUNCHD_PLIST_REL = "Library/LaunchAgents/com.ai-running-coach.chat.plist"
 # Borne dure du sondage de santé du service du chat (boucle locale).
 CHAT_HEALTH_TIMEOUT_S = 2.0
-OPENCODE_INSTALL_FIX = "curl -fsSL https://opencode.ai/install | bash"
+OPENCODE_INSTALL_FIX = "curl -fsSL https://opencode.ai/v2/install | bash"
 
 
 def build_check(check_id: str, status: str, message: str, fix: Optional[str], **extra: Any) -> dict:
@@ -1095,12 +1095,13 @@ def check_llm_config(config: dict, workspace: Optional[Path] = None) -> dict:
         )
 
     problems: list = []
-    if runner not in ("claude", "codex", "opencode"):
+    if runner not in ("claude", "codex", "copilot", "opencode", "gemini", "cursor"):
         problems.append(f"[sync].runner inconnu (« {runner} »)")
-    if runner == "opencode" and "/" not in str(sync.get("model") or ""):
+    sync_model = str(sync.get("model") or "")
+    if runner == "opencode" and sync_model and "/" not in sync_model:
         problems.append("[sync].model doit être au format fournisseur/modèle pour le runner opencode")
-    if sync_key and runner == "codex":
-        problems.append("[sync].api_key_env est ignoré par le runner codex")
+    if sync_key and runner in ("codex", "copilot", "gemini", "cursor"):
+        problems.append(f"[sync].api_key_env est ignoré par le runner {runner}")
     if runner == "opencode" and workspace is not None and _mcp_gateway_only(workspace):
         problems.append("opencode + leanproxy non pris en charge pour la synchronisation — utilisez le mode direct")
     if chat_on:

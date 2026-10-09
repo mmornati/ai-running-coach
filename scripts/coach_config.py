@@ -312,7 +312,18 @@ def cmd_merge_json(args) -> int:
         container = nxt
 
     value = json.loads(args.value)
-    if container.get(args.name) == value:
+    current = container.get(args.name)
+    if args.union_lists and isinstance(current, dict) and isinstance(value, dict):
+        # Fusion par listes (ex. permissions allow/deny de .cursor/cli.json) : les
+        # entrées déjà présentes, dont celles ajoutées par l'utilisateur, sont gardées.
+        merged = dict(current)
+        for key, items in value.items():
+            if isinstance(items, list) and isinstance(merged.get(key), list):
+                merged[key] = merged[key] + [i for i in items if i not in merged[key]]
+            elif key not in merged:
+                merged[key] = items
+        value = merged
+    if current == value:
         print(f"inchangé: {path} ({args.name})")
         return 0
 
@@ -440,6 +451,8 @@ def build_parser() -> argparse.ArgumentParser:
     merge.add_argument("--name", required=True, help="clé à insérer dans la section")
     merge.add_argument("--value", required=True, help="valeur JSON")
     merge.add_argument("--template", default="", help="contenu JSON initial si le fichier est absent")
+    merge.add_argument("--union-lists", action="store_true",
+                       help="objet existant : ajoute les éléments manquants de ses listes au lieu de le remplacer")
     merge.set_defaults(func=cmd_merge_json)
 
     remove_key = sub.add_parser("remove-json-key", help="retire une clé d'un fichier JSON si présente")

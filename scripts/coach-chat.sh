@@ -36,7 +36,7 @@ while [[ $# -gt 0 ]]; do
 done
 [[ -n "$ACTION" ]] || { sed -n '3,23p' "$0" | sed 's/^# \{0,1\}//'; exit 1; }
 
-export PATH="$HOME/.local/bin:$HOME/.claude/bin:$HOME/.cargo/bin:/opt/homebrew/bin:/usr/local/bin:$PATH"
+export PATH="$HOME/.local/bin:$HOME/.opencode/bin:$HOME/.claude/bin:$HOME/.cargo/bin:/opt/homebrew/bin:/usr/local/bin:$PATH"
 
 SERVICE_NAME="ai-running-coach-chat"
 SYSTEMD_UNIT="$HOME/.config/systemd/user/$SERVICE_NAME.service"
@@ -140,7 +140,7 @@ Wants=network-online.target
 [Service]
 Type=simple
 WorkingDirectory=$ARC_WORKSPACE
-Environment=PATH=$HOME/.local/bin:$HOME/.claude/bin:$HOME/.cargo/bin:/usr/local/bin:/usr/bin:/bin
+Environment=PATH=$HOME/.local/bin:$HOME/.opencode/bin:$HOME/.claude/bin:$HOME/.cargo/bin:/usr/local/bin:/usr/bin:/bin
 Environment=HOME=$HOME
 Environment=ARC_WORKSPACE=$ARC_WORKSPACE
 EnvironmentFile=-$LLM_ENV_FILE
@@ -179,7 +179,7 @@ install_launchd() {
   <key>EnvironmentVariables</key>
   <dict>
     <key>ARC_WORKSPACE</key><string>$(xml_escape "$ARC_WORKSPACE")</string>
-    <key>PATH</key><string>$(xml_escape "$HOME")/.local/bin:$(xml_escape "$HOME")/.claude/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string>
+    <key>PATH</key><string>$(xml_escape "$HOME")/.local/bin:$(xml_escape "$HOME")/.opencode/bin:$(xml_escape "$HOME")/.claude/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string>
     <key>HOME</key><string>$(xml_escape "$HOME")</string>
   </dict>
   <key>RunAtLoad</key><true/>

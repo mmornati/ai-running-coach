@@ -549,6 +549,23 @@ class TestDashboardLauncher(InstallAsserts):
         with Sandbox() as sb:
             self.assertFailed(sb.script("dashboard.sh", "--port", "abc", "--no-open"))
 
+    def test_corrupt_derived_index_is_rebuilt_automatically(self):
+        with Sandbox() as sb:
+            ws = build(sb.root / "ws", days=10)
+            arc = ws / ".arc"
+            arc.mkdir()
+            (arc / "coach.db").write_bytes(b"ancienne base sqlite corrompue")
+            server = Server(sb, [str(sb.repo / "scripts/dashboard.sh"), "--no-open", "--port", "0"],
+                            ARC_WORKSPACE=str(ws))
+            try:
+                self.assertIsNotNone(
+                    server.url,
+                    server.proc.stderr.read() if server.proc.poll() is not None else "pas d'URL",
+                )
+                self.assertEqual(server.get("/api/summary")[0], 200)
+            finally:
+                server.stop()
+
 
 class TestInstallWorkspaceWiring(InstallAsserts):
     OLD_BLOCK = """
@@ -624,3 +641,17 @@ class TestIndexNeverCommitted(InstallAsserts):
             status = sb.run(["git", "status", "--porcelain", "--untracked-files=all"], cwd=ws).stdout
             self.assertNotIn(".arc/", status, f"l'index apparaît dans git :\n{status}")
 
+
+class TestCorruptIndexRepairScope(InstallAsserts):
+    def test_explicit_db_that_is_not_sqlite_is_never_replaced(self):
+        """La réparation ne vise que l'index : un `--db` mal orienté échoue sans écraser le fichier."""
+        with Sandbox() as sb:
+            ws = build(sb.root / "ws", days=3)
+            target = ws / "planning/Runner_Profile.md"
+            target.parent.mkdir(parents=True, exist_ok=True)
+            content = "# Mon profil\n\n" + "Contenu à ne jamais perdre.\n" * 20
+            target.write_text(content, encoding="utf-8")
+            proc = sb.run(["python3", str(sb.repo / "scripts/arc_index.py"),
+                           "--workspace", str(ws), "--db", str(target)])
+            self.assertNotEqual(proc.returncode, 0)
+            self.assertEqual(target.read_text(encoding="utf-8"), content)

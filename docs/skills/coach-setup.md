@@ -54,6 +54,15 @@ tant qu'aucune configuration n'existe — ils le proposent, ils ne l'imposent pa
 | `planning/Runner_Profile.md` | Votre profil : physiologie, blessures, matériel, préférences. Installé depuis un modèle, rempli en conversation. |
 | `planning/active_objective.md` | L'objectif en cours, installé depuis un modèle. |
 
+L'application macOS utilise aussi `coach_setup.py --apply-shoes` pour ajouter
+les paires saisies pendant l'assistant. La commande ajoute des puces conformes
+à la section `### Chaussures`, ignore une paire de même nom déjà présente et ne
+remplace jamais la paire par défaut existante.
+
+Elle utilise `--apply-objective` pour compléter les champs vides de
+`planning/active_objective.md` depuis le questionnaire graphique. Les libellés
+restent ceux du modèle et un objectif déjà saisi n'est jamais écrasé.
+
 ## Pré-remplissage physiologique depuis Garmin
 
 Si le serveur MCP `garmin` répond, le coach essaie de récupérer :

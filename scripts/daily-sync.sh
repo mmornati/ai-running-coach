@@ -3,7 +3,8 @@
 # ai-running-coach — synchronisation Garmin automatique (headless)
 #
 # Lance le skill /garmin-daily-sync avec l'exécuteur configuré (Claude Code,
-# Codex CLI ou OpenCode), journalise, extrait le bloc ```resume``` et l'envoie
+# Codex CLI, GitHub Copilot, OpenCode, Gemini CLI ou Cursor Agent), journalise,
+# extrait le bloc ```resume``` et l'envoie
 # en notification push via scripts/notify.sh. Par défaut : abonnement (pas de
 # clé API). Avec [sync].api_key_env : mode API (OpenRouter, Anthropic…), clé lue
 # dans ~/.config/ai-running-coach/llm.env et injectée dans le seul process du
@@ -12,7 +13,7 @@
 # Usage :
 #   scripts/daily-sync.sh              # exécution (appelée par cron/launchd)
 #   scripts/daily-sync.sh --dry-run    # affiche la commande sans l'exécuter
-#   scripts/daily-sync.sh --runner codex     # ou opencode
+#   scripts/daily-sync.sh --runner copilot   # ou claude|codex|opencode|gemini|cursor
 #   scripts/daily-sync.sh --trigger activity:123,morning   # passé par garmin_watch.py
 #
 # Configuration : section [sync] de config/workspace.toml (runner, model, base_url,
@@ -22,6 +23,8 @@
 # =============================================================================
 set -euo pipefail
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib/config.sh"
+# shellcheck source=lib/sync_tools.sh
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib/sync_tools.sh"
 
 DRY_RUN=0
 RUNNER=""
@@ -38,7 +41,8 @@ done
 
 # cron/launchd démarrent avec un PATH minimal : ajoute les emplacements usuels
 # de claude, codex, uv et garmin-mcp.
-export PATH="$HOME/.local/bin:$HOME/.claude/bin:$HOME/.cargo/bin:/opt/homebrew/bin:/usr/local/bin:$PATH"
+MAC_APP_SUPPORT="$HOME/Library/Application Support/AI Running Coach"
+export PATH="$HOME/.local/bin:$HOME/.opencode/bin:$HOME/.claude/bin:$MAC_APP_SUPPORT/node-runtime/bin:$MAC_APP_SUPPORT/npm-tools/bin:$HOME/.cargo/bin:/opt/homebrew/bin:/usr/local/bin:$PATH"
 
 RUNNER="${RUNNER:-$(toml_get sync runner claude)}"
 LOOKBACK="$(toml_get sync lookback_days 2)"
@@ -63,6 +67,7 @@ RUNNER_ENV=()
 # Format de sortie du runner : text | claude-json | opencode-json (voir build_command).
 OUTPUT_KIND="text"
 OC_CONFIG_FILE="$ARC_WORKSPACE/.arc/sync/opencode.json"
+GEMINI_CONFIG_FILE="$ARC_WORKSPACE/.arc/sync/gemini-system.json"
 
 # Déclencheurs détectés par scripts/garmin_watch.py (#watch) : un indice pour
 # l'agent (quoi récupérer en priorité), jamais une restriction — les dates
@@ -99,6 +104,7 @@ if [[ "$SOURCE" == "strava" ]]; then
     CLAUDE_DISALLOWED="mcp__strava__connect-strava,mcp__strava__disconnect-strava,mcp__strava__star-segment"
     CLAUDE_DISALLOWED+=",$PROTECTED_PATHS"
     SOURCE_LABEL="Strava"
+    MCP_SERVER_NAME="strava"
     AUTH_CMD_HINT="demandez à l'agent (session interactive) d'exécuter l'outil connect-strava avec force=true"
 elif [[ "$SOURCE" == "intervals" ]]; then
     # Outils autorisés en mode non interactif : serveur MCP intervals (tous ses
@@ -113,26 +119,15 @@ elif [[ "$SOURCE" == "intervals" ]]; then
     # fichier local arbitraire, hors des règles `Edit(…)` ; `fit-download` reste le
     # chemin du projet). Les anciens noms sans préfixe (eddmann, avant #165) sont
     # aussi retirés : une installation pas encore mise à jour reste protégée.
-    INTERVALS_WRITE_TOOLS="update_activity update_activity_streams bulk_create_manual_activities"
-    INTERVALS_WRITE_TOOLS+=" delete_activity update_wellness create_event update_event delete_event"
-    INTERVALS_WRITE_TOOLS+=" bulk_create_events bulk_update_event_access bulk_delete_events duplicate_events"
-    INTERVALS_WRITE_TOOLS+=" apply_training_plan create_workout update_workout delete_workout"
-    INTERVALS_WRITE_TOOLS+=" bulk_create_workouts create_workout_folder delete_workout_folder create_gear"
-    INTERVALS_WRITE_TOOLS+=" update_gear delete_gear create_gear_reminder update_gear_reminder"
-    INTERVALS_WRITE_TOOLS+=" update_sport_settings apply_sport_settings create_sport_settings"
-    INTERVALS_WRITE_TOOLS+=" delete_sport_settings add_activity_message create_custom_item"
-    INTERVALS_WRITE_TOOLS+=" update_custom_item delete_custom_item"
-    INTERVALS_WRITE_TOOLS+=" download_activity_file download_fit_file download_gpx_file"
+    # Liste partagée avec les autres exécuteurs : scripts/lib/sync_tools.sh.
     CLAUDE_DISALLOWED=""
-    for _tool in $INTERVALS_WRITE_TOOLS; do
-        CLAUDE_DISALLOWED+="mcp__intervals__icu_${_tool},"
-    done
     # Ancien serveur eddmann : mêmes noms sans préfixe (+ `duplicate_event` au singulier).
-    for _tool in $INTERVALS_WRITE_TOOLS duplicate_event; do
+    for _tool in $(sync_write_tools intervals); do
         CLAUDE_DISALLOWED+="mcp__intervals__${_tool},"
     done
     CLAUDE_DISALLOWED+="$PROTECTED_PATHS"
     SOURCE_LABEL="Intervals.icu"
+    MCP_SERVER_NAME="intervals"
     AUTH_CMD_HINT="(cd \"$HOME/.config/ai-running-coach/intervals-icu-mcp\" && intervals-icu-mcp-auth)"
 else
     # Outils autorisés en mode non interactif : serveur MCP garmin (tous ses outils),
@@ -157,6 +152,7 @@ else
     CLAUDE_DISALLOWED+=",mcp__garmin__add_hydration_data"
     CLAUDE_DISALLOWED+=",$PROTECTED_PATHS"
     SOURCE_LABEL="Garmin"
+    MCP_SERVER_NAME="garmin"
     AUTH_CMD_HINT="uv run garmin-mcp-auth"
 fi
 # En mode -p, un serveur MCP déclaré dans .mcp.json (portée projet) n'est chargé
@@ -263,7 +259,9 @@ permission.update({
     "bash": "deny", "webfetch": "deny", "websearch": "deny",
     "external_directory": "deny", "task": "allow", "skill": "allow",
 })
-config = {"$schema": "https://opencode.ai/config.json", "model": model, "permission": permission}
+config = {"$schema": "https://opencode.ai/config.json", "permission": permission}
+if model:
+    config["model"] = model
 if provider:
     config["provider"] = provider
 if mcp:
@@ -273,6 +271,74 @@ print(json.dumps(config, ensure_ascii=False, indent=2))
 
 opencode_config_json() {
     python3 -c "$OC_CONFIG_PY" "$SYNC_MODEL" "$SYNC_BASE_URL" "$API_KEY_ENV" "$MCP_CONFIG"
+}
+
+# Configuration de sécurité propre au run Gemini. Le fichier est chargé comme
+# couche système pour ce seul process : scripts Python du moteur + écritures MD,
+# serveur sportif limité à ses outils de lecture. La configuration interactive
+# de l'utilisateur n'est pas modifiée.
+GEMINI_CONFIG_PY='
+import json, sys
+path, source, prefixes, reads, writes = sys.argv[1:6]
+try:
+    project = json.load(open(path, encoding="utf-8"))
+except (OSError, ValueError):
+    project = {}
+servers = project.get("mcpServers") or {}
+write_prefixes = tuple(prefixes.split())
+writes = writes.split()
+safe = {}
+for name, spec in servers.items():
+    if name != source or not isinstance(spec, dict):
+        continue
+    item = dict(spec)
+    item["trust"] = True
+    env = dict(item.get("env") or {})
+    tools = env.get("GARMIN_ENABLED_TOOLS", "")
+    if source == "garmin" and tools:
+        kept = [t for t in tools.split(",") if not t.startswith(write_prefixes)]
+        env["GARMIN_ENABLED_TOOLS"] = ",".join(kept)
+        item["includeTools"] = kept
+    elif source != "garmin":
+        item["includeTools"] = reads.split()
+    # Refus nommés en plus de la liste blanche : excludeTools prime sur includeTools.
+    item["excludeTools"] = writes
+    if env:
+        item["env"] = env
+    safe[name] = item
+if not safe:
+    # Serveur absent (mode passerelle leanproxy, IDE non configuré) : un run sans
+    # aucun outil de données « réussirait » à vide. On échoue explicitement.
+    sys.stderr.write(f"serveur MCP « {source} » absent de {path}\n")
+    sys.exit(3)
+print(json.dumps({
+    "tools": {"core": ["read_file", "read_many_files", "list_directory", "glob", "grep_search",
+                         "write_file", "replace", "run_shell_command(python3 scripts/)",
+                         "run_shell_command(python3 skills/)"]},
+    "mcpServers": safe,
+}, ensure_ascii=False, indent=2))
+'
+
+gemini_config_json() {
+    python3 -c "$GEMINI_CONFIG_PY" "$ARC_WORKSPACE/.gemini/settings.json" "$MCP_SERVER_NAME" \
+        "$SYNC_GARMIN_WRITE_PREFIXES" "$(sync_read_tools "$SOURCE" | tr '\n' ' ')" \
+        "$(sync_write_tools "$SOURCE" | tr '\n' ' ')"
+}
+
+# Cursor : chaque outil d'écriture de la source est-il refusé (`Mcp(serveur:outil)`)
+# dans .cursor/cli.json ? Sans ces refus, `--force` les approuverait en headless.
+cursor_denies_writes() {
+    # shellcheck disable=SC2046  # un nom d'outil par mot (aucun ne contient d'espace)
+    python3 -c '
+import json, sys
+path, server = sys.argv[1:3]
+try:
+    deny = (json.load(open(path, encoding="utf-8")).get("permissions") or {}).get("deny") or []
+except (OSError, ValueError, AttributeError):
+    sys.exit(1)
+missing = [t for t in sys.argv[3:] if f"Mcp({server}:{t})" not in deny]
+sys.exit(1 if missing else 0)
+' "$ARC_WORKSPACE/.cursor/cli.json" "$MCP_SERVER_NAME" $(sync_write_tools "$SOURCE")
 }
 
 # ---------------------------------------------------------------------------
@@ -406,7 +472,7 @@ detect_provider_failure() {
 }
 
 provider_label() {
-    if [[ "$RUNNER" == "opencode" ]]; then
+    if [[ "$RUNNER" == "opencode" && -n "$SYNC_MODEL" ]]; then
         local p="${SYNC_MODEL%%/*}"
         printf '%s' "${p:-fournisseur LLM}"
     else
@@ -414,8 +480,8 @@ provider_label() {
     fi
 }
 
-# Corps du skill sans son front matter, pour les exécuteurs qui n'ont pas de
-# slash-command projet (codex, opencode) : passé en prompt.
+# Corps du skill sans son front matter, passé directement aux exécuteurs
+# headless afin que le comportement ne dépende pas de leurs commandes projet.
 skill_prompt() {
     local body
     body="$(awk 'NR==1 && /^---$/ {fm=1; next} fm && /^---$/ {fm=0; next} !fm' "$SKILL_FILE")"
@@ -452,15 +518,46 @@ build_command() {
             have codex || [[ "$DRY_RUN" -eq 1 ]] || die "codex introuvable — installez Codex CLI : npm i -g @openai/codex"
             # Codex n'a pas de slash-command projet : on passe le corps du skill en prompt.
             CMD=(codex exec --full-auto --cd "$ARC_WORKSPACE" "$(skill_prompt)") ;;
+        copilot)
+            have copilot || [[ "$DRY_RUN" -eq 1 ]] || die "copilot introuvable — relancez l'installation guidée GitHub Copilot."
+            # Le MCP du workspace est chargé explicitement en mode prompt ; permissions
+            # minimales : lecture/écriture des MD, scripts Python du projet et source sportive.
+            # `--allow-tool=<serveur>` autorise TOUT le serveur : ses outils d'écriture sont
+            # refusés un par un (`--deny-tool` prime toujours sur `--allow-tool`).
+            CMD=(env GITHUB_COPILOT_PROMPT_MODE_WORKSPACE_MCP=true
+                 copilot -p "$(skill_prompt)" -s --no-ask-user
+                 --allow-tool=read --allow-tool=write
+                 '--allow-tool=shell(python3:*)' "--allow-tool=$MCP_SERVER_NAME")
+            local _tool
+            for _tool in $(sync_write_tools "$SOURCE"); do
+                CMD+=("--deny-tool=$MCP_SERVER_NAME($_tool)")
+            done ;;
         opencode)
-            have opencode || [[ "$DRY_RUN" -eq 1 ]] || die "opencode introuvable — installez OpenCode : curl -fsSL https://opencode.ai/install | bash"
-            [[ "$SYNC_MODEL" == */* ]] || die "[sync].model requis pour le runner opencode, au format fournisseur/modèle (ex. openrouter/deepseek/deepseek-v4.1-flash)."
-            # Pas de slash-command projet garanti en mode headless (# À VÉRIFIER) :
-            # on passe le corps du skill. Config locale (permissions, MCP) par
-            # OPENCODE_CONFIG ; --format json pour lire coût et erreurs.
+            have opencode || [[ "$DRY_RUN" -eq 1 ]] || die "opencode introuvable — installez OpenCode : curl -fsSL https://opencode.ai/v2/install | bash"
+            if [[ -n "$SYNC_MODEL" && "$SYNC_MODEL" != */* ]]; then
+                die "[sync].model doit être au format fournisseur/modèle (ex. openrouter/deepseek/deepseek-v4.1-flash)."
+            fi
+            # Sans modèle explicite, OpenCode réutilise le fournisseur/modèle choisi
+            # lors de sa connexion initiale. La config locale garde les permissions et MCP.
             OUTPUT_KIND="opencode-json"
-            CMD=(opencode run --format json --model "$SYNC_MODEL" --dir "$ARC_WORKSPACE" "$(skill_prompt)") ;;
-        *) die "Exécuteur inconnu : $RUNNER (claude|codex|opencode)" ;;
+            CMD=(opencode run --format json)
+            [[ -z "$SYNC_MODEL" ]] || CMD+=(--model "$SYNC_MODEL")
+            CMD+=(--dir "$ARC_WORKSPACE" "$(skill_prompt)") ;;
+        gemini)
+            have gemini || [[ "$DRY_RUN" -eq 1 ]] || die "gemini introuvable — relancez l'installation guidée Gemini CLI."
+            CMD=(env "GEMINI_CLI_SYSTEM_SETTINGS_PATH=$GEMINI_CONFIG_FILE"
+                 gemini -p "$(skill_prompt)" --output-format text --approval-mode yolo --skip-trust
+                 --allowed-mcp-server-names "$MCP_SERVER_NAME") ;;
+        cursor)
+            have cursor-agent || [[ "$DRY_RUN" -eq 1 ]] || die "cursor-agent introuvable — relancez l'installation guidée Cursor Agent."
+            # `--force` approuve tout ce qui n'est pas refusé explicitement : on ne le passe
+            # que si .cursor/cli.json refuse bien les outils d'écriture de la source
+            # (écrits par install.sh). `--approve-mcps` : sans lui, le mode -p ne charge
+            # pas les serveurs MCP du projet.
+            cursor_denies_writes || [[ "$DRY_RUN" -eq 1 ]] \
+                || die "Cursor : .cursor/cli.json ne refuse pas les outils d'écriture $SOURCE_LABEL — relancez ./install.sh (ou l'installation guidée) avant la synchronisation."
+            CMD=(cursor-agent -p --force --approve-mcps --trust --output-format text "$(skill_prompt)") ;;
+        *) die "Exécuteur inconnu : $RUNNER (claude|codex|copilot|opencode|gemini|cursor)" ;;
     esac
 }
 
@@ -823,7 +920,8 @@ detect_auth_failure() {
 # entièrement, ce qui empêcherait toute lecture Garmin. On échoue vite plutôt que de
 # synchroniser « à vide ».
 mcp_gateway_only() {
-    [[ -f "$MCP_CONFIG" ]] || return 1
+    local config="${1:-$MCP_CONFIG}"
+    [[ -f "$config" ]] || return 1
     python3 -c '
 import json, sys
 try:
@@ -833,7 +931,7 @@ except (OSError, ValueError, AttributeError):
 # Serveur direct : « garmin » ou tout nom commençant par « intervals » (Intervals_icu, intervals-icu…), sans tenir compte de la casse.
 direct = [n for n in servers if n.lower() == "garmin" or n.lower().startswith(("intervals", "strava"))]
 sys.exit(0 if "leanproxy" in servers and not direct else 1)
-' "$MCP_CONFIG"
+' "$config"
 }
 
 main() {
@@ -841,13 +939,21 @@ main() {
     log "Synchronisation $SOURCE_LABEL — exécuteur : $RUNNER, fenêtre : $LOOKBACK jour(s)${TRIGGER:+, déclencheurs : $TRIGGER}"
     log "Workspace : $ARC_WORKSPACE (moteur : $ARC_ENGINE_ROOT)"
 
-    if [[ "$RUNNER" == "opencode" ]] && mcp_gateway_only; then
-        local gateway_msg="opencode + leanproxy non pris en charge pour la synchronisation — utilisez le mode direct (./install.sh sans --use-leanproxy) ou le runner claude."
+    # Même refus pour les exécuteurs qui filtrent par nom de serveur/outil (copilot,
+    # gemini, cursor) : à travers la passerelle, le filtre ne voit aucun outil de
+    # données et la synchronisation « réussirait » à vide.
+    local runner_mcp_config="$MCP_CONFIG"
+    case "$RUNNER" in
+        gemini) runner_mcp_config="$ARC_WORKSPACE/.gemini/settings.json" ;;
+        cursor) runner_mcp_config="$ARC_WORKSPACE/.cursor/mcp.json" ;;
+    esac
+    if [[ "$RUNNER" =~ ^(opencode|copilot|gemini|cursor)$ ]] && mcp_gateway_only "$runner_mcp_config"; then
+        local gateway_msg="$RUNNER + leanproxy non pris en charge pour la synchronisation — utilisez le mode direct (./install.sh sans --use-leanproxy) ou le runner claude."
         if [[ "$DRY_RUN" -eq 1 ]]; then
             warn "$gateway_msg"
         else
             err "$gateway_msg"
-            notify "🚫 Sync $SOURCE_LABEL — opencode + leanproxy non pris en charge" 4 "no_entry,warning" "$gateway_msg"
+            notify "🚫 Sync $SOURCE_LABEL — $RUNNER + leanproxy non pris en charge" 4 "no_entry,warning" "$gateway_msg"
             exit 1
         fi
     fi
@@ -856,7 +962,7 @@ main() {
     load_llm_env || key_missing=1
 
     if [[ "$DRY_RUN" -eq 1 ]]; then
-        # Le prompt inline du skill (codex, opencode), multi-ligne, n'est montré que par sa
+        # Le prompt inline du skill, multi-ligne, n'est montré que par sa
         # taille ; les listes d'outils autorisés/interdits restent affichées en entier.
         local shown=() arg
         for arg in "${CMD[@]}"; do
@@ -874,6 +980,10 @@ main() {
         if [[ "$RUNNER" == "opencode" ]]; then
             printf '%s\n' "${C_YELLOW}[dry-run]${C_RESET} OPENCODE_CONFIG=$OC_CONFIG_FILE, contenu :"
             opencode_config_json
+        fi
+        if [[ "$RUNNER" == "gemini" ]]; then
+            printf '%s\n' "${C_YELLOW}[dry-run]${C_RESET} GEMINI_CLI_SYSTEM_SETTINGS_PATH=$GEMINI_CONFIG_FILE, contenu :"
+            gemini_config_json || warn "Gemini : aucun serveur $SOURCE_LABEL utilisable — la synchronisation réelle s'arrêterait ici."
         fi
         if budget_enforced; then
             printf '%s\n' "${C_YELLOW}[dry-run]${C_RESET} budget : $(spent_today_eur)/$DAILY_BUDGET_EUR EUR (cumul : $SPEND_FILE)"
@@ -924,6 +1034,11 @@ main() {
         mkdir -p "$(dirname "$OC_CONFIG_FILE")"
         opencode_config_json > "$OC_CONFIG_FILE"
         exec_cmd=(env "OPENCODE_CONFIG=$OC_CONFIG_FILE" "${exec_cmd[@]}")
+    fi
+    if [[ "$RUNNER" == "gemini" ]]; then
+        mkdir -p "$(dirname "$GEMINI_CONFIG_FILE")"
+        gemini_config_json > "$GEMINI_CONFIG_FILE" \
+            || die "Gemini : serveur MCP $MCP_SERVER_NAME absent de .gemini/settings.json — relancez ./install.sh (ou l'installation guidée)."
     fi
     # La clé n'est passée qu'à CE process (env), jamais exportée ici.
     if [[ "${#RUNNER_ENV[@]}" -gt 0 ]]; then

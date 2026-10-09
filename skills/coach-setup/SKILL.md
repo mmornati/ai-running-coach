@@ -183,6 +183,19 @@ configuré (voir AGENTS.md § Bilan matinal).
 Une fois ce pré-remplissage traité (ou ignoré si Garmin n'est pas disponible),
 enchaînez normalement sur les champs restants en conversation libre.
 
+L'application macOS peut aussi fournir des paires déjà confirmées via
+`python3 scripts/coach_setup.py --apply-shoes <fichier.json>`. Cette entrée
+structurée appartient à l'assistant graphique : elle ajoute les paires dans
+`### Chaussures`, ignore les doublons de nom et conserve toute paire par défaut
+existante. En conversation, continuez à suivre les règles de confirmation et
+d'association Garmin de la section Matériel d'`AGENTS.md`.
+
+Elle peut de la même façon compléter `planning/active_objective.md` via
+`--apply-objective <fichier.json>`. Seuls les libellés exacts du modèle sont
+acceptés et une valeur déjà présente n'est jamais remplacée. L'athlète peut
+indiquer qu'il n'a pas encore d'objectif : dans ce cas, ne rien inventer et le
+définir avec lui pendant la première conversation.
+
 #### Mode passerelle (leanproxy)
 
 Si l'installation utilise `--use-leanproxy`, appelez ces trois outils via

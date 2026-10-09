@@ -2,12 +2,16 @@
 
 from __future__ import annotations
 
+import json
+
 from tests.lib.asserts import InstallAsserts
 from tests.lib.sandbox import Sandbox
 
 IDE_CONFIGS = [
     ".mcp.json",
+    ".gemini/settings.json",
     ".cursor/mcp.json",
+    ".cursor/cli.json",
     ".windsurf/mcp_config.json",
 ]
 WORK_DIRS = ["activities", "medical", "nutrition", "planning", "rapports", "resources", "gear"]
@@ -44,6 +48,48 @@ class TestFreshInstall(InstallAsserts):
         with Sandbox() as sb:
             self.assertSucceeded(sb.install())
             self.assertCalled(sb, "uv", "run garmin-mcp-auth")
+
+    def test_explicit_sync_runner_is_persisted(self):
+        with Sandbox() as sb:
+            proc = sb.install("--no-auth", "--daily-sync", "--sync-runner", "gemini", ARC_FAKE_UNAME="Darwin")
+            self.assertSucceeded(proc)
+            config = (sb.repo / "config/workspace.user.toml").read_text()
+            self.assertIn('[sync]', config)
+            self.assertIn('runner = "gemini"', config)
+
+    def test_cursor_headless_permissions_protect_the_engine(self):
+        with Sandbox() as sb:
+            self.assertSucceeded(sb.install("--no-auth", "--ide", "cursor"))
+            permissions = json.loads((sb.repo / ".cursor/cli.json").read_text())["permissions"]
+            self.assertIn("Write(activities/**)", permissions["allow"])
+            self.assertIn("Write(scripts/**)", permissions["deny"])
+            self.assertIn("Write(.mcp.json)", permissions["deny"])
+
+    def test_cursor_permissions_deny_remote_writes_of_the_source(self):
+        """La synchro headless lance `cursor-agent --force` : les écritures distantes doivent être refusées."""
+        for args, server, tool in (((), "garmin", "schedule_workouts"),
+                                   (("--source", "intervals"), "intervals", "icu_create_event"),
+                                   (("--source", "strava"), "strava", "star-segment")):
+            with self.subTest(server=server), Sandbox() as sb:
+                self.assertSucceeded(sb.install("--no-auth", "--ide", "cursor", *args))
+                permissions = json.loads((sb.repo / ".cursor/cli.json").read_text())["permissions"]
+                self.assertIn(f"Mcp({server}:{tool})", permissions["deny"])
+
+    def test_cursor_permissions_keep_user_rules(self):
+        """Une réinstallation complète les listes allow/deny, sans effacer les règles de l'utilisateur."""
+        with Sandbox() as sb:
+            (sb.repo / ".cursor").mkdir()
+            (sb.repo / ".cursor/cli.json").write_text(json.dumps({
+                "editor": {"vimMode": True},
+                "permissions": {"allow": ["Shell(ls)"], "deny": ["Shell(curl)"]},
+            }))
+            self.assertSucceeded(sb.install("--no-auth", "--ide", "cursor"))
+            data = json.loads((sb.repo / ".cursor/cli.json").read_text())
+            self.assertEqual(data["editor"], {"vimMode": True})
+            self.assertIn("Shell(ls)", data["permissions"]["allow"])
+            self.assertIn("Shell(curl)", data["permissions"]["deny"])
+            self.assertIn("Write(activities/**)", data["permissions"]["allow"])
+            self.assertIn("Write(scripts/**)", data["permissions"]["deny"])
 
 
 class TestIdempotency(InstallAsserts):
