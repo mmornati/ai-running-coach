@@ -534,6 +534,22 @@ def _spread_segments(distance_m: float, gain_m: float, loss_m: float, n: int = 2
     return tuple(segments)
 
 
+def _final_distance_noiseless(duration_s: int, base_speed_ms: float, segments: tuple,
+                              slope_factor_fn: Callable[[float], float]) -> float:
+    """Distance finale (`records[-1]["distance_m"]`) de `sample_session(..., noise=False)`
+    sans fade ni trou de signal, sans construire `records` ni `truth`.
+
+    Même intégration seconde par seconde, dans le même ordre d'opérations flottantes :
+    le résultat est identique au bit près, pour une fraction du coût — la dichotomie
+    de `_calibrate_base_speed` l'appelle jusqu'à 20 fois par séance.
+    """
+    segments = tuple(tuple(s) for s in segments)
+    distance = 0.0
+    for _ in range(duration_s):
+        distance += max(0.1, base_speed_ms * slope_factor_fn(_grade_at(distance, segments)))
+    return round(distance, 3) if duration_s > 0 else 0.0
+
+
 def _calibrate_base_speed(duration_s: int, target_distance_m: float, segments: tuple,
                            slope_factor_fn: Callable[[float], float],
                            tol_rel: float = 0.01, max_iter: int = 20) -> float:
@@ -544,9 +560,7 @@ def _calibrate_base_speed(duration_s: int, target_distance_m: float, segments: t
     mid = (lo + hi) / 2
     for _ in range(max_iter):
         mid = (lo + hi) / 2
-        recs, _ = sample_session(seed=0, duration_s=duration_s, base_speed_ms=mid,
-                                  segments=segments, slope_factor_fn=slope_factor_fn, noise=False)
-        dist = recs[-1]["distance_m"] if recs else 0.0
+        dist = _final_distance_noiseless(duration_s, mid, segments, slope_factor_fn)
         if abs(dist - target_distance_m) <= tol_rel * max(target_distance_m, 1.0):
             break
         if dist < target_distance_m:
