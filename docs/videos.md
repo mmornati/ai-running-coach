@@ -286,6 +286,20 @@ L'application macOS : un questionnaire à la place des lignes de commande, le ch
 
 </div>
 
+<div class="arc-video" markdown>
+
+[![Le home trainer, à votre mesure](video/home-trainer/poster.jpg)](video/home-trainer/index.html)
+
+<span class="arc-video__meta">Étape 19 · 1 min 27</span>
+
+### [Le home trainer, à votre mesure](video/home-trainer/index.html)
+
+Un parcours MyWhoosh qui tient dans la durée de la séance : puissance calibrée sur vos propres séances, catalogue des parcours, modèle de temps à ±10 %, nom du parcours sur la montre, calendrier MyWhoosh proposé, carte Home trainer du tableau de bord.
+
+[Regarder](video/home-trainer/index.html) · [English (1 min 29)](video/home-trainer/index.html?lang=en) · [La documentation](skills/mywhoosh-route.md)
+
+</div>
+
 </div>
 <!-- arc-videos:end -->
 
