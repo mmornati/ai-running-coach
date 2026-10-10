@@ -1,5 +1,23 @@
 # Application macOS
 
+<!-- arc-video:sans-terminal -->
+<div class="arc-video-card" markdown>
+
+[![Sans terminal](video/sans-terminal/poster.jpg)](video/sans-terminal/index.html)
+
+<div markdown>
+
+<span class="arc-video__meta">En vidéo · Étape 18 · 1 min 39</span>
+
+**[Sans terminal](video/sans-terminal/index.html)** — L'application macOS : un questionnaire à la place des lignes de commande, le chat intégré ou votre assistant habituel, des données qui restent chez vous, une synchronisation qui n'écrit jamais chez Garmin, et la pesée du matin lue en lecture seule.
+
+[Regarder](video/sans-terminal/index.html) · [English](video/sans-terminal/index.html?lang=en) · [Toutes les vidéos](videos.md)
+
+</div>
+
+</div>
+<!-- /arc-video -->
+
 L'application **AI Running Coach** évite le clonage Git, les options de ligne de commande et le lancement manuel du tableau de bord.
 
 ## Installer

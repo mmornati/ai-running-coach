@@ -1,0 +1,143 @@
+{
+  "title": {
+    "fr": "L'allure juste",
+    "en": "The honest pace"
+  },
+  "summary": {
+    "fr": "La pente, la durée et la chaleur ramenées à une allure juste : modèle de Kay et carte GAP, courbe allure-durée et vitesse critique, cibles de séance en pourcentage de cette vitesse, puis ralenties par la chaleur, FC inchangée."
+  },
+  "scenes": [
+    {
+      "id": "bib",
+      "min": 4.6,
+      "lead": 1.2,
+      "fr": [
+        "Étape seize : l'allure juste."
+      ],
+      "en": [
+        "Stage sixteen: the honest pace."
+      ]
+    },
+    {
+      "id": "kay",
+      "min": 12,
+      "chapter": {
+        "fr": "La pente",
+        "en": "The slope"
+      },
+      "fr": [
+        "Une côte et un plat courus au même effort n'ont pas la même allure. L'allure ajustée à la pente, la GAP, les rend comparables.",
+        "Le modèle de Kay, tiré de records de courses de montagne, remplace celui de Minetti : en descente, personne ne court deux fois plus vite qu'à plat."
+      ],
+      "en": [
+        "A climb and a flat run at the same effort don't share the same pace. Grade adjusted pace, GAP, makes them comparable.",
+        "Kay's model, fitted on mountain race records, replaces Minetti's: nobody runs downhill twice as fast as on the flat."
+      ]
+    },
+    {
+      "id": "map",
+      "min": 11,
+      "chapter": {
+        "fr": "La carte",
+        "en": "The map"
+      },
+      "fr": [
+        "Sur la page séance, la carte passe en mode GAP : la trace se colore selon l'allure ajustée à la pente.",
+        "Sur le profil, l'allure brute plonge dans la montée ; la GAP en pointillés reste presque plate, signe d'un effort régulier."
+      ],
+      "en": [
+        "On the session page, the map switches to GAP mode: the track is coloured by grade adjusted pace.",
+        "On the profile, raw pace sinks on the climb; the dotted GAP stays almost flat, the sign of an even effort."
+      ]
+    },
+    {
+      "id": "curve",
+      "min": 12,
+      "chapter": {
+        "fr": "La courbe",
+        "en": "The curve"
+      },
+      "fr": [
+        "Des meilleurs efforts de Camille, de trente secondes à deux heures, naît sa courbe allure-durée.",
+        "Entre trois et vingt minutes, une droite donne sa vitesse critique, quatre minutes dix-sept au kilomètre, et sa réserve D′ : quatre-vingt-quinze mètres."
+      ],
+      "en": [
+        "From Camille's best efforts, thirty seconds to two hours, comes her pace-duration curve.",
+        "Between three and twenty minutes, a straight line gives her critical speed, four seventeen per kilometre, and her D′ reserve: ninety-five metres."
+      ]
+    },
+    {
+      "id": "refusal",
+      "min": 9,
+      "chapter": {
+        "fr": "Ou rien",
+        "en": "Or nothing"
+      },
+      "fr": [
+        "Moins de trois durées, une seule séance, une courbe trop plate : le calcul refuse, et dit pourquoi.",
+        "Ce sont des efforts d'entraînement, pas un test : la vitesse critique ressort basse, jamais flatteuse."
+      ],
+      "en": [
+        "Fewer than three durations, a single session, a curve too flat: the fit refuses, and says why.",
+        "These are training efforts, not a test: critical speed comes out low, never flattering."
+      ]
+    },
+    {
+      "id": "targets",
+      "min": 12,
+      "chapter": {
+        "fr": "Les cibles",
+        "en": "The targets"
+      },
+      "fr": [
+        "Pour un seuil, la cible devient quatre minutes dix-sept à quatre minutes trente, à côté de la zone de fréquence cardiaque, jamais à sa place.",
+        "La montre de Camille estime son seuil à quatre minutes une : six pour cent d'écart. Le coach le signale, avec les deux valeurs, sans trancher."
+      ],
+      "en": [
+        "For a threshold session, the target becomes four seventeen to four thirty, next to the heart-rate zone, never instead of it.",
+        "Camille's watch puts her threshold at four oh one: a six percent gap. The coach flags it, with both values, without picking one."
+      ]
+    },
+    {
+      "id": "heat",
+      "min": 13,
+      "chapter": {
+        "fr": "La chaleur",
+        "en": "The heat"
+      },
+      "fr": [
+        "Vingt-neuf degrés annoncés samedi. La sortie longue garde sa durée ; l'allure cible ralentit de quinze pour cent, la fréquence cardiaque ne bouge pas.",
+        "Et en rouge, l'intensité n'est jamais maintenue : la séance est déplacée, ou allégée en endurance."
+      ],
+      "en": [
+        "Twenty-nine degrees forecast on Saturday. The long run keeps its duration; the target pace slows by fifteen percent, heart rate stays put.",
+        "And in the red, intensity is never kept: the session is moved, or lightened to endurance."
+      ]
+    },
+    {
+      "id": "pages",
+      "min": 7,
+      "chapter": {
+        "fr": "Les pages",
+        "en": "The pages"
+      },
+      "fr": [
+        "Deux pages de documentation : l'allure ajustée à la pente, puis la vitesse critique."
+      ],
+      "en": [
+        "Two documentation pages: grade adjusted pace, then critical speed."
+      ]
+    },
+    {
+      "id": "finish",
+      "min": 6,
+      "lead": 2.2,
+      "fr": [
+        "Pour aller plus loin : la page « Vitesse critique » de la documentation."
+      ],
+      "en": [
+        "To go further: the “Critical speed” page of the documentation."
+      ]
+    }
+  ]
+}

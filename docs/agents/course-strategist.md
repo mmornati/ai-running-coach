@@ -250,6 +250,24 @@ l'objet `altitude` (`status` : `applied`, `below_threshold`, `no_elevation`, `di
 
 ## Recalibrage des coefficients au débrief (#188)
 
+<!-- arc-video:avant-apres -->
+<div class="arc-video-card" markdown>
+
+[![Avant, après](../video/avant-apres/poster.jpg)](../video/avant-apres/index.html)
+
+<div markdown>
+
+<span class="arc-video__meta">En vidéo · Étape 17 · 1 min 57</span>
+
+**[Avant, après](../video/avant-apres/index.html)** — Regarder devant et derrière, sans jamais inventer : forme projetée jusqu'au jour J et affûtage chiffré, pénalité d'altitude du plan de course, ce qui a suivi chaque décision du coach, puis le débrief qui propose des coefficients personnels.
+
+[Regarder](../video/avant-apres/index.html) · [English](../video/avant-apres/index.html?lang=en) · [Toutes les vidéos](../videos.md)
+
+</div>
+
+</div>
+<!-- /arc-video -->
+
 Nuit, technicité, chaleur et altitude sont des **hypothèses du projet**
 (`ASSUMPTIONS`). Après la course, `scripts/arc_race_debrief.py debrief --plan …
 --activity … --calibrate --workspace <workspace>` mesure l'erreur qui revient à

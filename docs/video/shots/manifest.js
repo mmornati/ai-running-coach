@@ -764,6 +764,228 @@ window.ARC_SHOTS = {
    }
   },
   {
+   "name": "gap-carte",
+   "file": "gap-carte.webp",
+   "view": "Séance",
+   "viewport": "desktop 1440×900 @2x",
+   "width": 1440,
+   "height": 900,
+   "scale": 2,
+   "description": "Carte de la séance du 27 septembre en mode « GAP » : la trace colorée par l'allure ajustée à la pente (trace fictive, sans fond de carte).",
+   "boxes": {
+    "carte": [
+     248,
+     100.0,
+     603.0,
+     575.4
+    ],
+    "modes": [
+     249,
+     569.0,
+     601.0,
+     105.4
+    ],
+    "bouton-gap": [
+     332.3,
+     579.6,
+     55.8,
+     34.5
+    ],
+    "legende": [
+     261,
+     622.1,
+     577.0,
+     42.7
+    ],
+    "effort": [
+     886.4,
+     107.4,
+     350.2,
+     311.5
+    ]
+   }
+  },
+  {
+   "name": "gap-profil",
+   "file": "gap-profil.webp",
+   "view": "Séance",
+   "viewport": "desktop 1440×900 @2x",
+   "width": 1440,
+   "height": 900,
+   "scale": 2,
+   "description": "Profil de la même séance : altitude, FC, allure et GAP en pointillés (plate quand l'effort est régulier).",
+   "boxes": {
+    "profil": [
+     248,
+     89.6,
+     1008,
+     789.2
+    ],
+    "legende-gap": [
+     411.8,
+     634.5,
+     211.0,
+     20.8
+    ],
+    "allure": [
+     342.6,
+     634.5,
+     892.4,
+     20.8
+    ]
+   }
+  },
+  {
+   "name": "vitesse-critique",
+   "file": "vitesse-critique.webp",
+   "view": "Performance",
+   "viewport": "desktop 1440×900 @2x",
+   "width": 1440,
+   "height": 900,
+   "scale": 2,
+   "description": "Vitesse critique 4:17/km (GAP), réserve D′ 94 m, qualité « bonne » ; courbe allure-durée sur 42/90/365 jours et tendance.",
+   "boxes": {
+    "section": [
+     248,
+     70.8,
+     1008,
+     818.3
+    ],
+    "valeur": [
+     269,
+     164.6,
+     966,
+     32.0
+    ],
+    "qualite": [
+     269,
+     211.6,
+     966,
+     46.5
+    ],
+    "courbe": [
+     269,
+     300.3,
+     966,
+     279.6
+    ],
+    "tendance": [
+     269,
+     636.8,
+     966,
+     203.4
+    ]
+   }
+  },
+  {
+   "name": "forme-projection",
+   "file": "forme-projection.webp",
+   "view": "Forme & charge",
+   "viewport": "desktop 1440×900 @2x",
+   "width": 1440,
+   "height": 900,
+   "scale": 2,
+   "description": "Forme & charge : projection en pointillés jusqu'au Trail des Crêtes (22 novembre), forme prévue le jour J, pic de fatigue, ACWR projeté.",
+   "boxes": {
+    "courbe": [
+     248,
+     242.7,
+     1008,
+     561.2
+    ],
+    "graphe": [
+     269,
+     320.1,
+     966,
+     317.8
+    ],
+    "reperes": [
+     269,
+     667.5,
+     966,
+     40.6
+    ],
+    "forme-j": [
+     269,
+     667.5,
+     135.7,
+     40.6
+    ],
+    "acwr": [
+     573.7,
+     667.5,
+     122.7,
+     40.6
+    ],
+    "estimation": [
+     269,
+     723.1,
+     966,
+     46.5
+    ]
+   }
+  },
+  {
+   "name": "decisions-effets",
+   "file": "decisions-effets.webp",
+   "view": "Décisions",
+   "viewport": "desktop 1440×900 @2x",
+   "width": 1440,
+   "height": 900,
+   "scale": 2,
+   "description": "Journal des décisions : « Ce qui s'est passé ensuite », synthèse par déclencheur et nature d'action, corrélation pas causalité.",
+   "boxes": {
+    "synthese": [
+     248,
+     219.5,
+     1008,
+     294.9
+    ],
+    "favorable": [
+     309,
+     275.1,
+     926,
+     46.5
+    ],
+    "refusees": [
+     309,
+     321.6,
+     926,
+     46.5
+    ],
+    "avertissement": [
+     269,
+     429.6,
+     621.8,
+     65.4
+    ],
+    "journal": [
+     248,
+     522.4,
+     1008,
+     377.6
+    ]
+   }
+  },
+  {
+   "name": "decision-effet",
+   "file": "decision-effet.webp",
+   "view": "Décision",
+   "viewport": "desktop 1440×900 @2x",
+   "width": 1440,
+   "height": 900,
+   "scale": 2,
+   "description": "Une décision du 20 août : HRV, FC de repos et readiness avant (J-2 à J) et après (J+1 à J+3) l'allègement.",
+   "boxes": {
+    "effet": [
+     248,
+     300.8,
+     1008,
+     328.5
+    ]
+   }
+  },
+  {
    "name": "mobile-aujourdhui",
    "file": "mobile-aujourdhui.webp",
    "view": "Aujourd'hui",

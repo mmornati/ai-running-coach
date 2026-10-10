@@ -1,0 +1,57 @@
+WEBVTT
+
+1
+00:00:01.200 --> 00:00:04.074
+Stage eighteen: no terminal needed.
+
+2
+00:00:05.100 --> 00:00:12.561
+A DMG, dragged into Applications. On first launch, a questionnaire replaces the command lines.
+
+3
+00:00:12.661 --> 00:00:18.543
+First name, availability, race, data source, coaching tone: the rest can wait.
+
+4
+00:00:19.393 --> 00:00:28.624
+Two ways to talk to the coach. The built-in chat, with an OpenRouter key and a daily cap; the key stays on this Mac, in a private file.
+
+5
+00:00:28.724 --> 00:00:38.766
+Or your usual assistant: Claude Code, Copilot, OpenCode, Gemini or Cursor. The app installs it, then opens it in the right folder.
+
+6
+00:00:39.616 --> 00:00:46.778
+The engine lives in the app, your data in Documents: updating or deleting the app never touches it.
+
+7
+00:00:46.878 --> 00:00:53.656
+The Garmin account connects in a separate window: password and MFA code never go through the app.
+
+8
+00:00:54.506 --> 00:00:59.897
+Then, a single screen: talk to the coach, the dashboard, my data, sync now.
+
+9
+00:00:59.997 --> 00:01:04.322
+The dashboard stays on this machine, never exposed to the network.
+
+10
+00:01:05.172 --> 00:01:15.918
+Sync runs on its own, with the chosen assistant. It never writes to Garmin, Intervals.icu or Strava: every write tool is denied, one by one.
+
+11
+00:01:16.768 --> 00:01:22.821
+And the scale talks to the coach: the morning weigh-in is read from Garmin Connect, read only.
+
+12
+00:01:22.921 --> 00:01:31.384
+A day without a weigh-in stays without a weight. The weight you give in chat wins; beyond a one-kilo gap, the coach flags it once.
+
+13
+00:01:32.234 --> 00:01:37.753
+Two documentation pages: the macOS app, then the Garmin connection.
+
+14
+00:01:40.934 --> 00:01:45.557
+To go further: the “macOS app” page of the documentation.

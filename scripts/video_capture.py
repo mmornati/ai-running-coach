@@ -199,6 +199,41 @@ BLOC_SHOTS = [
 ]
 
 
+# Épisodes 16 et 17 : variante « suite » du workspace (`demo.build_demo(suite=True)`) — efforts qui permettent
+# d'ajuster la vitesse critique, trace fictive sans fond de carte, bloc planifié jusqu'à la course, décisions
+# passées à évaluer. `click` = (sélecteur, texte) cliqué avant la capture (mode de la carte).
+SUITE_SHOTS = [
+    dict(name="gap-carte", view="Séance", route="seance/{act}", wait=".session-map .map-bar", click=(".map-bar button", "GAP"),
+         scroll=(".session-map", None, 100),
+         desc="Carte de la séance du 27 septembre en mode « GAP » : la trace colorée par l'allure ajustée à la pente (trace fictive, sans fond de carte).",
+         boxes={"carte": B(".session-map"), "modes": B(".map-bar"), "bouton-gap": B(".map-bar button", "GAP"),
+                "legende": B("#s-map-legend"), "effort": B("main .ledger__group", "Effort")}),
+    dict(name="gap-profil", view="Séance", route="seance/{act}", wait="section.profile svg", scroll=("section.profile", None, 90),
+         desc="Profil de la même séance : altitude, FC, allure et GAP en pointillés (plate quand l'effort est régulier).",
+         boxes={"profil": B("section.profile"), "legende-gap": B("section.profile .legend__item", "GAP"),
+                "allure": B("section.profile .legend", "GAP")}),
+    dict(name="vitesse-critique", view="Performance", route="performance", wait="main h2",
+         scroll=("main h2", "Vitesse critique", 90),
+         desc="Vitesse critique 4:17/km (GAP), réserve D′ 94 m, qualité « bonne » ; courbe allure-durée sur 42/90/365 jours et tendance.",
+         boxes={"section": h2("Vitesse critique"), "valeur": B("main p.lead-num", "vitesse critique"),
+                "qualite": B("main p.muted", "Qualité"), "courbe": B("#c-pcurve"), "tendance": B("#c-cstrend")}),
+    dict(name="forme-projection", view="Forme & charge", route="forme", wait="#c-form svg",
+         desc="Forme & charge : projection en pointillés jusqu'au Trail des Crêtes (22 novembre), forme prévue le jour J, pic de fatigue, ACWR projeté.",
+         boxes={"courbe": h2("Courbe de forme"), "graphe": B("#c-form"), "reperes": B(".facts--inline"),
+                "forme-j": B(".facts--inline div", "Forme prévue"), "acwr": B(".facts--inline div", "ACWR"),
+                "estimation": B("main section.band p.muted", "estimation")}),
+    dict(name="decisions-effets", view="Décisions", route="decisions", wait="#effets-title",
+         desc="Journal des décisions : « Ce qui s'est passé ensuite », synthèse par déclencheur et nature d'action, corrélation pas causalité.",
+         boxes={"synthese": B("#effets-title", closest="section"), "favorable": B("#effets-title + ul li", "appliquées"),
+                "refusees": B("#effets-title + ul li", "refusées"), "avertissement": B("#effets-title ~ p.note"),
+                "journal": B("main .list")}),
+    dict(name="decision-effet", view="Décision", route="decision?id=2026-08-20_decision_bilan-matinal", wait="main h2",
+         scroll=("main h2", "Ce qui s'est passé ensuite", 90),
+         desc="Une décision du 20 août : HRV, FC de repos et readiness avant (J-2 à J) et après (J+1 à J+3) l'allègement.",
+         boxes={"effet": h2("Ce qui s'est passé ensuite"), "avant-apres": h2("Avant / après")}),
+]
+
+
 # ---------------------------------------------------------------------------
 # Services
 # ---------------------------------------------------------------------------
@@ -289,7 +324,7 @@ class Recorder:
         log(f"  {name}: {webp.stat().st_size // 1024} Ko, {len(found)} cadres")
 
     def write_manifest(self) -> None:
-        order = {s["name"]: i for i, s in enumerate(SHOTS + BLOC_SHOTS)}
+        order = {s["name"]: i for i, s in enumerate(SHOTS + BLOC_SHOTS + SUITE_SHOTS)}
         data = {"generated_for": "Camille — mardi 2026-09-29 (J-54), workspace fictif", "shots": sorted(
             self.entries, key=lambda e: order.get(e["name"], 999))}
         text = json.dumps(data, ensure_ascii=False, indent=1)
@@ -382,6 +417,49 @@ def capture_bloc(rec, browser, tmp, only):
             ctx = new_context(browser, {**DESKTOP})       # un contexte par capture : le routeur garde la semaine ouverte
             page = ctx.new_page()
             open_view(page, dash.url.rstrip("/"), shot["route"], shot["wait"], shot.get("scroll"), shot.get("reload", True))
+            rec.snap(page, shot["name"], shot["view"], shot["desc"], vp, shot["boxes"], shot.get("full", False))
+            ctx.close()
+    finally:
+        dash.stop()
+
+
+CLICK_JS = """
+([sel, text]) => {
+  const el = [...document.querySelectorAll(sel)].find((n) => !text || n.textContent.trim() === text);
+  if (!el) return false;
+  el.click();
+  return true;
+}
+"""
+
+
+def capture_suite(rec, browser, tmp, only):
+    """Variante « suite » du workspace (épisodes 16-17), servie à part comme la variante « bloc »."""
+    shots = [sh for sh in SUITE_SHOTS if not only or sh["name"] in only]
+    if not shots:
+        return
+    ws = tmp / "workspace-suite"
+    demo.build_demo(ws, suite=True)
+    dash = Service([sys.executable, str(REPO / "scripts/arc_serve.py"), "--workspace", str(ws), "--today", TODAY,
+                    "--memory", "--port", "0"])
+    try:
+        base = dash.url.rstrip("/")
+        act = activity_id(base)
+        vp = {**DESKTOP, "label": "desktop 1440×900 @2x"}
+        for shot in shots:
+            ctx = new_context(browser, {**DESKTOP})
+            page = ctx.new_page()
+            open_view(page, base, shot["route"].format(act=act), shot["wait"])
+            if shot.get("click"):
+                if not page.evaluate(CLICK_JS, list(shot["click"])):
+                    log(f"  (clic impossible : {shot['click']})")
+                page.wait_for_timeout(600)
+            if shot.get("scroll"):
+                sel, text = shot["scroll"][0], shot["scroll"][1]
+                offset = shot["scroll"][2] if len(shot["scroll"]) > 2 else 100
+                if not page.evaluate(SCROLL_JS, [sel, text, offset]):
+                    log(f"  (défilement impossible : {sel} {text})")
+                page.wait_for_timeout(300)
             rec.snap(page, shot["name"], shot["view"], shot["desc"], vp, shot["boxes"], shot.get("full", False))
             ctx.close()
     finally:
@@ -521,6 +599,8 @@ def main() -> int:
                 capture_mobile_dashboard(rec, browser, base, only)
                 log("bloc (variante du workspace)…")
                 capture_bloc(rec, browser, tmp, only)
+                log("suite (variante du workspace)…")
+                capture_suite(rec, browser, tmp, only)
                 log("chat…")
                 capture_chat(rec, browser, base, ws, chat_port, tmp, only)
                 browser.close()

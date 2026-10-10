@@ -52,6 +52,24 @@ Seuils et sévérités : `[guardrails]` de `config/workspace.toml`, voir
 
 ## Au-delà de la semaine : la projection jusqu'à la course
 
+<!-- arc-video:avant-apres -->
+<div class="arc-video-card" markdown>
+
+[![Avant, après](video/avant-apres/poster.jpg)](video/avant-apres/index.html)
+
+<div markdown>
+
+<span class="arc-video__meta">En vidéo · Étape 17 · 1 min 57</span>
+
+**[Avant, après](video/avant-apres/index.html)** — Regarder devant et derrière, sans jamais inventer : forme projetée jusqu'au jour J et affûtage chiffré, pénalité d'altitude du plan de course, ce qui a suivi chaque décision du coach, puis le débrief qui propose des coefficients personnels.
+
+[Regarder](video/avant-apres/index.html) · [English](video/avant-apres/index.html?lang=en) · [Toutes les vidéos](videos.md)
+
+</div>
+
+</div>
+<!-- /arc-video -->
+
 Les règles R1/R4 ne regardent que la semaine proposée. Pour voir l'effet d'un
 plan sur **tout le bloc** (forme prévue le jour J, semaine de pic de fatigue, ACWR
 projeté), `python3 scripts/arc_index.py load-forecast` réutilise exactement la

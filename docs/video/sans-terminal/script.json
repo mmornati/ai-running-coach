@@ -1,0 +1,141 @@
+{
+  "title": {
+    "fr": "Sans terminal",
+    "en": "No terminal needed"
+  },
+  "summary": {
+    "fr": "L'application macOS : un questionnaire à la place des lignes de commande, le chat intégré ou votre assistant habituel, des données qui restent chez vous, une synchronisation qui n'écrit jamais chez Garmin, et la pesée du matin lue en lecture seule."
+  },
+  "scenes": [
+    {
+      "id": "bib",
+      "min": 4.6,
+      "lead": 1.2,
+      "fr": [
+        "Étape dix-huit : sans terminal."
+      ],
+      "en": [
+        "Stage eighteen: no terminal needed."
+      ]
+    },
+    {
+      "id": "install",
+      "min": 11,
+      "chapter": {
+        "fr": "Installer",
+        "en": "Install"
+      },
+      "fr": [
+        "Un DMG, glissé dans Applications. Au premier lancement, un questionnaire remplace les lignes de commande.",
+        "Prénom, disponibilités, course, source de données, ton du coach : le reste peut attendre."
+      ],
+      "en": [
+        "A DMG, dragged into Applications. On first launch, a questionnaire replaces the command lines.",
+        "First name, availability, race, data source, coaching tone: the rest can wait."
+      ]
+    },
+    {
+      "id": "assistant",
+      "min": 12,
+      "chapter": {
+        "fr": "Parler au coach",
+        "en": "Talk to the coach"
+      },
+      "fr": [
+        "Deux façons de parler au coach. Le chat intégré, avec une clé OpenRouter et un plafond par jour ; la clé reste sur ce Mac, dans un fichier privé.",
+        "Ou votre assistant habituel : Claude Code, Copilot, OpenCode, Gemini ou Cursor. L'application l'installe, puis l'ouvre dans le bon dossier."
+      ],
+      "en": [
+        "Two ways to talk to the coach. The built-in chat, with an OpenRouter key and a daily cap; the key stays on this Mac, in a private file.",
+        "Or your usual assistant: Claude Code, Copilot, OpenCode, Gemini or Cursor. The app installs it, then opens it in the right folder."
+      ]
+    },
+    {
+      "id": "data",
+      "min": 11,
+      "chapter": {
+        "fr": "Vos données",
+        "en": "Your data"
+      },
+      "fr": [
+        "Le moteur vit dans l'application, vos données dans Documents : une mise à jour ou une suppression de l'app ne les touche pas.",
+        "Le compte Garmin se connecte dans une fenêtre à part : mot de passe et code MFA ne passent jamais par l'application."
+      ],
+      "en": [
+        "The engine lives in the app, your data in Documents: updating or deleting the app never touches it.",
+        "The Garmin account connects in a separate window: password and MFA code never go through the app."
+      ]
+    },
+    {
+      "id": "home",
+      "min": 10,
+      "chapter": {
+        "fr": "Au quotidien",
+        "en": "Every day"
+      },
+      "fr": [
+        "Ensuite, un seul écran : parler au coach, le tableau de bord, mes données, synchroniser maintenant.",
+        "Le tableau de bord reste sur cette machine, jamais exposé au réseau."
+      ],
+      "en": [
+        "Then, a single screen: talk to the coach, the dashboard, my data, sync now.",
+        "The dashboard stays on this machine, never exposed to the network."
+      ]
+    },
+    {
+      "id": "sync",
+      "min": 10,
+      "chapter": {
+        "fr": "En arrière-plan",
+        "en": "In the background"
+      },
+      "fr": [
+        "La synchronisation tourne seule, avec l'assistant choisi. Elle n'écrit jamais chez Garmin, Intervals.icu ou Strava : chaque outil d'écriture est refusé, un par un."
+      ],
+      "en": [
+        "Sync runs on its own, with the chosen assistant. It never writes to Garmin, Intervals.icu or Strava: every write tool is denied, one by one."
+      ]
+    },
+    {
+      "id": "weight",
+      "min": 12,
+      "chapter": {
+        "fr": "La pesée",
+        "en": "The scale"
+      },
+      "fr": [
+        "Et la balance parle au coach : la pesée du matin est lue dans Garmin Connect, en lecture seule.",
+        "Un jour sans pesée reste sans poids. Le poids donné en chat prime ; au-delà d'un kilo d'écart, le coach le signale une fois."
+      ],
+      "en": [
+        "And the scale talks to the coach: the morning weigh-in is read from Garmin Connect, read only.",
+        "A day without a weigh-in stays without a weight. The weight you give in chat wins; beyond a one-kilo gap, the coach flags it once."
+      ]
+    },
+    {
+      "id": "pages",
+      "min": 7,
+      "chapter": {
+        "fr": "Les pages",
+        "en": "The pages"
+      },
+      "fr": [
+        "Deux pages de documentation : l'application macOS, puis la connexion Garmin."
+      ],
+      "en": [
+        "Two documentation pages: the macOS app, then the Garmin connection."
+      ]
+    },
+    {
+      "id": "finish",
+      "min": 6,
+      "lead": 2.2,
+      "fr": [
+        "Pour aller plus loin : la page « Application macOS » de la documentation."
+      ],
+      "en": [
+        "To go further: the “macOS app” page of the documentation."
+      ]
+    }
+  ]
+}

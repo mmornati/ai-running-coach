@@ -1,0 +1,157 @@
+{
+  "title": {
+    "fr": "Avant, après",
+    "en": "Before and after"
+  },
+  "summary": {
+    "fr": "Regarder devant et derrière, sans jamais inventer : forme projetée jusqu'au jour J et affûtage chiffré, pénalité d'altitude du plan de course, ce qui a suivi chaque décision du coach, puis le débrief qui propose des coefficients personnels."
+  },
+  "scenes": [
+    {
+      "id": "bib",
+      "min": 4.6,
+      "lead": 1.2,
+      "fr": [
+        "Étape dix-sept : avant, après."
+      ],
+      "en": [
+        "Stage seventeen: before and after."
+      ]
+    },
+    {
+      "id": "forecast",
+      "min": 12,
+      "chapter": {
+        "fr": "Projection",
+        "en": "Forecast"
+      },
+      "fr": [
+        "Huit semaines planifiées jusqu'au Trail des Crêtes : la courbe de forme se prolonge en pointillés, jusqu'au jour J.",
+        "Forme prévue : plus vingt-six. Pic de fatigue la semaine du deux novembre. Une estimation à partir du planifié, jamais une mesure."
+      ],
+      "en": [
+        "Eight weeks planned up to the Trail des Crêtes: the form curve carries on as a dotted line, all the way to race day.",
+        "Forecast form: plus twenty-six. Peak fatigue in the week of November second. An estimate from the plan, never a measurement."
+      ]
+    },
+    {
+      "id": "taper",
+      "min": 10,
+      "chapter": {
+        "fr": "Affûtage",
+        "en": "Taper"
+      },
+      "fr": [
+        "Et si l'affûtage ne durait qu'une semaine ? La variante est comparée au plan actuel.",
+        "Six points de forme en moins le jour J, onze de fatigue en plus : deux semaines calmes se justifient, chiffres à l'appui."
+      ],
+      "en": [
+        "What if the taper lasted only one week? The variant is compared with the current plan.",
+        "Six points of form lost on race day, eleven more of fatigue: two quiet weeks are justified, with numbers."
+      ]
+    },
+    {
+      "id": "altitude",
+      "min": 11,
+      "chapter": {
+        "fr": "Altitude",
+        "en": "Altitude"
+      },
+      "fr": [
+        "L'an prochain, l'Ultra des Crêtes monte à deux mille quatre cent cinquante mètres. Au-dessus de mille cinq cents, chaque section ralentit avec son altitude.",
+        "Dix-sept minutes de plus, pour une athlète supposée non acclimatée ; deux semaines en altitude en reprennent la moitié, jamais tout."
+      ],
+      "en": [
+        "Next year, the Ultra des Crêtes climbs to two thousand four hundred and fifty metres. Above fifteen hundred, each section slows with its altitude.",
+        "Seventeen more minutes, for an athlete assumed not acclimatised; two weeks at altitude win back half of it, never all."
+      ]
+    },
+    {
+      "id": "effects",
+      "min": 12,
+      "chapter": {
+        "fr": "Ensuite",
+        "en": "Afterwards"
+      },
+      "fr": [
+        "Derrière, chaque décision du coach a une suite : HRV, FC de repos et readiness, trois jours avant, trois jours après.",
+        "Six allègements évalués, cinq suivis d'une évolution favorable. Le seul conseil refusé a été suivi d'une dégradation."
+      ],
+      "en": [
+        "Looking back, every coach decision has an aftermath: HRV, resting heart rate and readiness, three days before, three days after.",
+        "Six lightened sessions assessed, five followed by an improvement. The only advice turned down was followed by a decline."
+      ]
+    },
+    {
+      "id": "caveat",
+      "min": 9,
+      "chapter": {
+        "fr": "Prudence",
+        "en": "Caution"
+      },
+      "fr": [
+        "Corrélation, pas causalité : le sommeil, la météo ou le hasard jouent aussi. Un cas ne fait pas une tendance, il en faut cinq.",
+        "Et ce bilan n'assouplit jamais un garde-fou, une décision médicale ni un verdict rouge."
+      ],
+      "en": [
+        "Correlation, not causation: sleep, weather or chance play their part too. One case is not a trend; it takes five.",
+        "And this review never relaxes a guardrail, a medical decision or a red verdict."
+      ]
+    },
+    {
+      "id": "debrief",
+      "min": 12,
+      "chapter": {
+        "fr": "Le débrief",
+        "en": "The debrief"
+      },
+      "fr": [
+        "Après une course, le débrief compare le plan au réalisé, segment par segment, et attribue l'écart à chaque facteur.",
+        "Aux Lucioles, la nuit a coûté douze pour cent, contre cinq prévus. Le coach propose huit : ramené vers le défaut tant que les preuves sont rares."
+      ],
+      "en": [
+        "After a race, the debrief compares plan and reality, segment by segment, and assigns the gap to each factor.",
+        "At the Lucioles, the night cost twelve percent, against five planned. The coach proposes eight: pulled towards the default while evidence is scarce."
+      ]
+    },
+    {
+      "id": "apply",
+      "min": 9,
+      "chapter": {
+        "fr": "Un oui",
+        "en": "A yes"
+      },
+      "fr": [
+        "Rien n'est écrit sans un oui explicite. Ensuite, chaque plan de course relit ces coefficients personnels, et le débrief suivant les affine."
+      ],
+      "en": [
+        "Nothing is written without an explicit yes. From then on, every race plan reads these personal coefficients, and the next debrief refines them."
+      ]
+    },
+    {
+      "id": "pages",
+      "min": 7,
+      "chapter": {
+        "fr": "Les pages",
+        "en": "The pages"
+      },
+      "fr": [
+        "Trois pages de documentation : la projection de charge, l'effet des décisions, le stratège de course."
+      ],
+      "en": [
+        "Three documentation pages: load forecast, decision effects, the course strategist."
+      ]
+    },
+    {
+      "id": "finish",
+      "min": 6,
+      "lead": 2.2,
+      "fr": [
+        "Pour aller plus loin : la page « /why » de la documentation."
+      ],
+      "en": [
+        "To go further: the “/why” page of the documentation."
+      ]
+    }
+  ]
+}
