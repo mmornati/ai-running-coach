@@ -13,6 +13,7 @@ soutenu par eux.
 | TrainingPeaks®, TSS®, NP®, IF® | Peaksware LLC (groupe Garmin depuis juillet 2026) | Non utilisés par le projet ; « Pa:HR »/« Efficiency Factor » cités uniquement pour situer notre découplage aérobie/EF (formule publique, voir l'équivalence ci-dessous) |
 | CTL, ATL, TSB | revendiqués par Peaksware LLC | Cités seulement pour l'équivalence ci-dessous |
 | Intervals.icu, Strava | leurs éditeurs respectifs | Services tiers, facultatifs |
+| Open Wearables, Oura, WHOOP, Polar (Nightly Recharge), Ultrahuman, Withings, Apple Health, Samsung Health, Google Health / Fitbit | leurs éditeurs respectifs | Appareils et services cités dans l'audit Open Wearables, aucune donnée lue à ce jour |
 | Strava GAP, COROS Effort Pace, Suunto NGP | leurs éditeurs respectifs (Strava, Inc. ; COROS ; Suunto Oy) | Cités uniquement pour situer notre allure ajustée à la pente parmi des calculs équivalents du marché (voir l'équivalence ci-dessous) — non utilisés par le projet, calculs propriétaires non reproduits |
 
 Ces noms sont cités uniquement pour désigner les services avec lesquels le projet
