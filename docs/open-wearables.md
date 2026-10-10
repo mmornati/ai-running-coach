@@ -13,7 +13,7 @@ Commit épinglé de tout ce qui suit : tag `0.9.0` =
 `main` a aussi été relue au commit `12941a4cb10fd77755d5b0007d8f267c5fea451b`
 (2 octobre 2026), uniquement là où c'est dit.
 
-Version testée par le client : `ff8527a52ad8a96cd1ebe8c19344295c934ae9dc` (tag `0.9.0`) — **prévue**, à confirmer par #219, qui revérifiera au dernier tag publié avant de figer le commit utilisé par le futur client (`OW_REF` de `scripts/arc_openwearables.py`).
+Version testée par le client : `ff8527a52ad8a96cd1ebe8c19344295c934ae9dc` (tag `0.9.0`) — dernier tag publié, endpoints et champs relus dans les sources à ce commit par le client `scripts/arc_openwearables.py` (#219, `OW_REF`). Le client existe ; son usage par les agents (bilan matinal) reste **prévu** (#220, #221).
 
 ## Décision
 
