@@ -6,6 +6,7 @@
     python3 tests/run_tests.py --tier c     # évals d'exécution (modèle léger)
     python3 tests/run_tests.py --tier d     # données : contrat, index dérivé, métriques
     python3 tests/run_tests.py --tier all
+    python3 tests/run_tests.py --tier a --shard 2/3   # 2e tiers du palier A (CI parallèle)
 
 Le palier C coûte des jetons et n'est pas déterministe : il est ignoré sauf si
 ARC_LLM_TESTS=1 et que le runner est authentifié. Voir tests/README.md.
@@ -42,12 +43,49 @@ def build_suite(tiers: list) -> unittest.TestSuite:
     return suite
 
 
+def iter_cases(suite):
+    for sub in suite:
+        if isinstance(sub, unittest.TestSuite):
+            yield from iter_cases(sub)
+        else:
+            yield sub
+
+
+def parse_shard(value: str) -> tuple:
+    try:
+        index, total = (int(part) for part in value.split("/", 1))
+    except ValueError:
+        raise argparse.ArgumentTypeError(f"attendu I/N (p. ex. 1/3), reçu {value!r}")
+    if not 1 <= index <= total:
+        raise argparse.ArgumentTypeError(f"I doit être entre 1 et N, reçu {value!r}")
+    return index, total
+
+
+def shard_suite(suite: unittest.TestSuite, index: int, total: int) -> unittest.TestSuite:
+    """Garde la part `index`/`total` de la suite, découpée PAR CLASSE (jamais au milieu
+    d'une classe : `setUpClass` reste partagé). Répartition déterministe, gloutonne sur
+    le nombre de cas pour équilibrer les parts : toutes les parts réunies = la suite."""
+    classes: dict = {}
+    for case in iter_cases(suite):
+        key = f"{type(case).__module__}.{type(case).__qualname__}"
+        classes.setdefault(key, []).append(case)
+    loads = [0] * total
+    buckets: list = [[] for _ in range(total)]
+    for key in sorted(classes, key=lambda k: (-len(classes[k]), k)):
+        target = loads.index(min(loads))
+        loads[target] += len(classes[key])
+        buckets[target].extend(classes[key])
+    return unittest.TestSuite(buckets[index - 1])
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--tier", default="abd", help="a, b, c, d, une combinaison (« abd ») ou « all »")
     parser.add_argument("-v", "--verbose", action="count", default=1)
     parser.add_argument("--repeat", type=int, default=None, help="palier C : répétitions par cas")
     parser.add_argument("-k", "--filter", default=None, help="ne garder que les tests dont le nom contient ce motif")
+    parser.add_argument("--shard", type=parse_shard, default=None, metavar="I/N",
+                        help="ne lancer que la part I sur N (découpage par classe, pour la CI parallèle)")
     args = parser.parse_args()
 
     tiers = list(TIERS) if args.tier == "all" else [t for t in args.tier if t in TIERS]
@@ -74,15 +112,14 @@ def main() -> int:
     suite = build_suite(tiers)
 
     if args.filter:
-        def keep(test):
-            for sub in test:
-                if isinstance(sub, unittest.TestSuite):
-                    yield from keep(sub)
-                elif args.filter in sub.id():
-                    yield sub
-        suite = unittest.TestSuite(keep(suite))
+        suite = unittest.TestSuite(case for case in iter_cases(suite) if args.filter in case.id())
 
-    print(f"Paliers : {', '.join(f'{t} ({TIERS[t][1]})' for t in tiers)}\n")
+    shard_note = ""
+    if args.shard:
+        suite = shard_suite(suite, *args.shard)
+        shard_note = f" — part {args.shard[0]}/{args.shard[1]} ({suite.countTestCases()} cas)"
+
+    print(f"Paliers : {', '.join(f'{t} ({TIERS[t][1]})' for t in tiers)}{shard_note}\n")
     # Les tests les plus lents en fin de sortie : la seule façon de savoir où part
     # le temps sur un runner CI (le palier A est ~15× plus lent sur macOS).
     runner_opts = {"durations": 25} if sys.version_info >= (3, 12) else {}
