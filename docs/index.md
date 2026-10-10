@@ -121,7 +121,7 @@ Le staff vous suit sur tout le parcours d'une préparation — et chaque étape 
 <div class="arc-section" markdown>
   <div class="arc-section__inner" markdown>
 
-## Vingt skills, prêts à l'emploi
+## Vingt et un skills, prêts à l'emploi
 
 Des protocoles précis que l'IA suit à la lettre. Six d'entre eux sont des commandes courtes, pensées pour le téléphone : cinq pour une question, une réponse, et `/inspection` pour une inspection guidée.
 { .arc-section__intro }

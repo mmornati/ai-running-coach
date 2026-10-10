@@ -261,7 +261,8 @@ class TestNormaliseAlreadyNormalisedFormat(unittest.TestCase):
                                  "hr_bpm": 140.0, "speed_ms": 2.5, "cadence_spm": 170.0,
                                  "lat_deg": None, "lon_deg": None,
                                  # dynamique de course (#151) : absente = None, jamais 0
-                                 **{key: None for key in S.DYNAMICS_KEYS}}])
+                                 **{key: None for key in S.DYNAMICS_KEYS},
+                                 S.POWER_KEY: None}])
 
     def test_out_of_order_passthrough_records_are_sorted(self):
         """Le format déjà normalisé n'est pas garanti trié par la source : `normalise_records`

@@ -116,6 +116,7 @@ nav:
       - Analyse de séances: skills/session-parts-analyzer.md
       - Intervals.icu: skills/intervals-icu-best-practices.md
       - Téléchargement FIT: skills/fit-download.md
+      - Parcours MyWhoosh: skills/mywhoosh-route.md
       - Sync quotidienne (headless): skills/garmin-daily-sync.md
       - Premier démarrage: skills/coach-setup.md
       - Contrat de données: skills/workspace-data-contract.md

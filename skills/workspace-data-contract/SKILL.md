@@ -135,6 +135,7 @@ Types de valeurs ci-dessous : *entier*, *nombre* (≥ 0 sauf mention), *texte*,
 | `best_climb_vam_m_h` | nombre | meilleure VAM observée sur une montée de la séance, m/h — voir « Champs KPI FIT » |
 | `avg_ground_contact_s`, `avg_vertical_oscillation_m`, `avg_step_length_m` | nombre | dynamique de course Garmin (#151), moyennes de séance en secondes / mètres — voir « Dynamique de course » |
 | `avg_stance_balance_pct`, `avg_vertical_ratio_pct` | nombre (0-100 exclus) | balance du temps de contact et ratio vertical, % — voir « Dynamique de course » |
+| `avg_power_w`, `max_power_w`, `normalized_power_w` | nombre (W) | vélo / home trainer : `avg_power_watts`, `max_power_watts`, `normalized_power_watts` de `get_activity`, recopiés ; clé absente = pas de capteur, jamais 0. La relation puissance ↔ FC (`arc_index.py power-hr`) se calcule sur les échantillons FIT, jamais sur ces moyennes |
 
 **Matériel, sudation, glucides.** `gear_id` référence la section « Matériel &
 lieux » du profil athlète (`planning/Runner_Profile.md`) : un identifiant
@@ -765,7 +766,13 @@ la chaleur, à recopier telle que produite par `arc_workout_targets.py targets
 inchangée) obligatoire ; `temp_c` (omis si aucune température connue, ex. 🔴
 dû au seul vent/orage), `temp_basis` (`temperature` `feels_like`), `action`,
 `category`, `acclimated`, `slot`, `dew_point_c`, `reason` facultatifs). Jamais
-calculé à la main.
+calculé à la main. Et `virtual_route` (objet optionnel, séance home trainer avec
+`[home_trainer].platform` actif : parcours virtuel retenu, à recopier tel que produit par
+`mywhoosh_route.py suggest` → champ `virtual_route` du parcours choisi — `platform`
+(`mywhoosh`), `route_id` (entier), `name` obligatoires ; `world`, `world_id`, `laps`,
+`distance_m`, `elevation_gain_m` (totaux sur tous les tours), `predicted_s` (ESTIMATION
+±10 %, jamais une mesure), `target_power_w`, `mywhoosh_task_id` (après inscription au
+calendrier MyWhoosh) facultatifs).
 
 Tenez `status` à jour quand une séance est réalisée, manquée ou déplacée.
 

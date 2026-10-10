@@ -72,6 +72,9 @@ HEAT_ACTION = ("none", "slow_pace", "prefer_cool_slot", "lower_pace_targets",
                "reschedule_or_lighten", "reschedule_or_indoor")
 # Base de `heat_adjustment.temp_c` : température du créneau ou ressenti (s'il est plus élevé).
 HEAT_TEMP_BASIS = ("temperature", "feels_like")
+# Plateformes de home trainer connues (`[home_trainer].platform`, hors « off »).
+VIRTUAL_PLATFORMS = ("mywhoosh",)
+
 INTENSITY = (
     "rest", "recovery", "endurance", "tempo", "threshold", "vo2max", "race", "strength",
 )
@@ -331,6 +334,13 @@ SCHEMA = {
             "avg_vertical_oscillation_m": "num+",
             "avg_vertical_ratio_pct": "gait_pct",
             "avg_step_length_m": "num+",
+            # Puissance (vélo, home trainer) : copie déclarative des champs `avg_power_watts`,
+            # `max_power_watts`, `normalized_power_watts` de `get_activity` (Garmin), W. Clé ABSENTE =
+            # pas de capteur, jamais 0. La relation puissance ↔ FC (`arc_index.py power-hr`) se calcule
+            # sur les échantillons FIT (`activity_sample.power_w`), jamais sur ces moyennes.
+            "avg_power_w": "num+",
+            "max_power_w": "num+",
+            "normalized_power_w": "num+",
         },
     },
     "health": {
@@ -634,6 +644,8 @@ SUBSCHEMA = {
             "heat_adjustment": "{heat_adjustment}",
             # #190 : créneau posé par `plan-skeleton`, à habiller par le coach (qui retire le drapeau).
             "placeholder": "bool",
+            # Home trainer : parcours virtuel choisi (skill `mywhoosh-route`), voir SUBSCHEMA.
+            "virtual_route": "{virtual_route}",
         },
     },
     # `session.heat_adjustment` (#171) : trace de l'ajustement des cibles à la chaleur prévue,
@@ -650,6 +662,24 @@ SUBSCHEMA = {
             "slot": _enum(SLOT),
             "dew_point_c": "num",
             "reason": "str",
+        },
+    },
+    # `session.virtual_route` : parcours virtuel retenu pour une séance home trainer
+    # (`skills/mywhoosh-route`, `mywhoosh_route.py suggest`). `predicted_s` est une ESTIMATION
+    # (±10 %), jamais une mesure ; `target_power_w` = puissance du bloc principal tirée de la
+    # calibration puissance ↔ FC (la FC reste la consigne). `mywhoosh_task_id` : trace
+    # d'idempotence de la sortie inscrite au calendrier MyWhoosh (opt-in, « oui » explicite).
+    "virtual_route": {
+        "required": {"platform": _enum(VIRTUAL_PLATFORMS), "route_id": "int+", "name": "str"},
+        "optional": {
+            "world": "str",
+            "world_id": "int+",
+            "laps": "int+",
+            "distance_m": "num+",
+            "elevation_gain_m": "num+",
+            "predicted_s": "num+",
+            "target_power_w": "num+",
+            "mywhoosh_task_id": "str",
         },
     },
     # `gear_inspection.wear_zones[]` (#135) : une zone d'usure constatée sur UNE semelle.

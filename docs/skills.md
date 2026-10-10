@@ -4,7 +4,7 @@
 ![](assets/ridge.jpg)
 </div>
 
-`ai-running-coach` fournit **20 skills** que les agents chargent à la demande pour des tâches spécifiques.
+`ai-running-coach` fournit **21 skills** que les agents chargent à la demande pour des tâches spécifiques.
 
 ## Vue d'ensemble
 
@@ -22,6 +22,7 @@
 <div class="arc-skill"><span class="arc-skill__name"><a href="skills/session-parts-analyzer.md">Analyse de séances</a></span><span class="arc-skill__desc">Analyse de portions spécifiques d'une séance Garmin</span></div>
 <div class="arc-skill"><span class="arc-skill__name"><a href="skills/intervals-icu-best-practices.md">Intervals.icu</a></span><span class="arc-skill__desc">Création et mise à jour d'événements Intervals.icu</span></div>
 <div class="arc-skill"><span class="arc-skill__name"><a href="skills/fit-download.md">Téléchargement FIT</a></span><span class="arc-skill__desc">Téléchargement de fichiers FIT Garmin en bypassant le canal MCP</span></div>
+<div class="arc-skill"><span class="arc-skill__name"><a href="skills/mywhoosh-route.md">Parcours MyWhoosh</a></span><span class="arc-skill__desc">Parcours MyWhoosh qui tient dans la durée d'une séance home trainer, à la puissance tenue dans la plage FC</span></div>
 <div class="arc-skill"><span class="arc-skill__name"><a href="skills/garmin-daily-sync.md">Sync quotidienne</a></span><span class="arc-skill__desc">Synchronisation Garmin sans surveillance (cron, téléphone) avec résumé pour notification</span></div>
 <div class="arc-skill"><span class="arc-skill__name"><a href="skills/coach-setup.md">Premier démarrage</a></span><span class="arc-skill__desc">Entretien de configuration : staff d'agents, discipline, style de coaching, bilan santé, profil d'athlète</span></div>
 <div class="arc-skill"><span class="arc-skill__name"><a href="skills/workspace-data-contract.md">Contrat de données</a></span><span class="arc-skill__desc">Schéma JSON du bloc <code>arc</code> pour la persistance structurée des données</span></div>
@@ -67,6 +68,7 @@ Certains skills incluent des scripts Python, dans leur propre dossier :
 | `analyze_gpx.py` | gpx-analysis | stdlib uniquement |
 | `compare_course.py` | course-comparison | stdlib uniquement |
 | `analyze_session_parts.py` | session-parts-analyzer | stdlib uniquement |
+| `mywhoosh_route.py` | mywhoosh-route | stdlib uniquement (API MyWhoosh non officielle pour `fetch`) |
 | `download_fit.py` | fit-download | `garminconnect` + `fitparse` (environnement garmin-mcp) ; Intervals.icu : `fitparse` (environnement intervals-icu-mcp) |
 | `coach_setup.py` | coach-setup | stdlib uniquement |
 | `coach_doctor.py` | coach-doctor | stdlib uniquement |
