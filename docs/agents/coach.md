@@ -119,7 +119,13 @@ semaine depuis la semaine en cours jusqu'à la course (volume tenu, disponibilit
 du profil, garde-fous, forme prévue le jour J). Il le **présente** et
 n'écrit (`--write`) qu'après un « oui » explicite de l'athlète — jamais
 d'écrasement d'une semaine existante —, puis habille les créneaux de séance.
-Voir [Gabarits de périodisation](../plans.md).
+Quand la course est loin, la mise en route qui précède le gabarit **fait
+monter** le volume (≤ +4 %/semaine, plafonnée par les garde-fous, #204) ; le
+squelette compare aussi le pic, le D+ et la sortie longue aux **exigences de
+la course** (cibles du score Trail Shape) et le coach relaie tout écart
+signalé — bloc trop court pour l'objectif, mise en route plus longue
+(`--lead-in-weeks`), course plus tardive ou objectif revu —, sans jamais forcer
+les garde-fous. Voir [Gabarits de périodisation](../plans.md).
 
 ### Score Trail Shape (#63)
 

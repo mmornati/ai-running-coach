@@ -250,7 +250,7 @@ base — voir `arc_plan_templates.py`. JSON par défaut (comme les autres sous-c
 un tableau lisible. Un point de départ, jamais un plan : le squelette daté est `plan-skeleton`.
 
 `plan-skeleton [--format ID] [--race-date AAAA-MM-JJ] [--held-hours H] [--held-elevation-m M] [--long-run-day J]
-[--text] [--write]` (#190, épopée #173) génère le squelette du bloc, semaine par semaine, de la semaine en cours à
+[--lead-in ramp|flat] [--lead-in-weeks K] [--text] [--write]` (#190, épopée #173) génère le squelette du bloc, semaine par semaine, de la semaine en cours à
 la semaine de course (+ récupération post-course) : gabarit (`--format`, sinon choisi d'après la distance de
 l'objectif actif), volume/D+ TENUS sur les 4 dernières semaines (pic = tenu × `peak_from_current`, jamais inventé ;
 `--held-hours` pour un volume déclaré), disponibilité du profil, et créneaux de séance `placeholder` à habiller par
@@ -258,7 +258,10 @@ le coach. Chaque semaine passe `arc_guardrails.evaluate` (jamais une semaine `bl
 jour J est projetée par `load-forecast`. Par défaut un DRY RUN (JSON, ou `--text`) ; `--write` écrit un
 `planning/Semaine_<lundi>.md` par semaine, refuse d'écraser (liste les conflits) et valide les fichiers — voir
 `arc_plan_skeleton.py`. États honnêtes : `too_short` (options), `no_history`, `no_objective`, `no_template`,
-`target_past`, `needs_review`.
+`target_past`, `needs_review`. #204 : la mise en route (semaines au-delà du maximum du gabarit, ou
+`--lead-in-weeks K`) fait monter le volume (≤ +4 %/semaine, plafonnée par R2/R3 ; `--lead-in flat` pour
+l'ancien comportement) et `race_demand` compare pic, D+ et sortie longue aux cibles du score Trail Shape
+(avertissement sous 75 %).
 
 Options communes : `--workspace DIR` (sinon $ARC_WORKSPACE, le pointeur
 ~/.config/ai-running-coach/workspace, puis le moteur), `--db FICHIER` (défaut
@@ -4934,6 +4937,12 @@ def build_parser() -> argparse.ArgumentParser:
                         help="commande « plan-skeleton » : D+ hebdomadaire (m) déclaré")
     parser.add_argument("--long-run-day", metavar="JOUR", dest="long_run_day",
                         help="commande « plan-skeleton » : jour de la sortie longue (défaut : profil, sinon dimanche)")
+    parser.add_argument("--lead-in", choices=("ramp", "flat"), default="ramp", dest="lead_in",
+                        help="commande « plan-skeleton » (#204) : mise en route qui monte (ramp, défaut : ≤ +4 %%/semaine, "
+                             "plafonnée par R2/R3) ou au volume tenu (flat)")
+    parser.add_argument("--lead-in-weeks", type=int, metavar="K", dest="lead_in_weeks",
+                        help="commande « plan-skeleton » (#204) : au moins K semaines de mise en route, prises sur le "
+                             "gabarit sans jamais descendre sous son minimum")
     parser.add_argument("--write", action="store_true",
                         help="commande « plan-skeleton » : écrit les semaines dans planning/ (jamais d'écrasement) ; "
                              "sans cette option, un dry run")
@@ -5033,7 +5042,7 @@ def plan_skeleton_cli(args, conn, workspace: Path) -> int:
         report = PS.skeleton_report(
             conn=conn, config=config, workspace=workspace, today=today_date, template_id=args.plan_format,
             race_date=args.race_date, held_hours=args.held_hours, held_elevation_m=args.held_elevation_m,
-            long_run_day=args.long_run_day)
+            long_run_day=args.long_run_day, lead_in=args.lead_in, lead_in_weeks=args.lead_in_weeks)
         PS.attach_forecast(conn, today_date, report)
     except (PS.SkeletonError, PT.PlanTemplateError) as exc:
         raise ConfigError(str(exc))
