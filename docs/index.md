@@ -7,9 +7,9 @@ hide:
 <div class="arc-section" markdown>
   <div class="arc-section__inner" markdown>
 
-## Quatre spécialistes, un seul objectif : le vôtre
+## Cinq spécialistes, un seul objectif : le vôtre
 
-`ai-running-coach` transforme votre IDE en staff d'entraînement complet. Quatre agents IA open source, en français par défaut, coordonnés par un coach — chacun avec ses skills, ses données et ses protocoles. Vous décrivez votre objectif, ils construisent le plan. <!-- count:agents -->
+`ai-running-coach` transforme votre IDE en staff d'entraînement complet. Cinq agents IA open source, en français par défaut, coordonnés par un coach — chacun avec ses skills, ses données et ses protocoles. Vous décrivez votre objectif, ils construisent le plan. <!-- count:agents -->
 { .arc-section__intro }
 
 <div class="arc-team" markdown>
@@ -59,6 +59,18 @@ Il lit HRV, FC de repos, readiness et dette de sommeil avant chaque séance, lè
 Il gère macros, poids de course et plans de ravitaillement, mesure vos glucides par heure et votre sudation sur les sorties longues, en croisant vos apports avec les calories brûlées Garmin.
 
 > « Que dois-je manger pendant la course ? »
+
+</div>
+
+<div class="arc-agent" markdown>
+
+<span class="arc-agent__icon">:material-compass-outline:</span>
+
+### Directeur sportif
+
+Il choisit avec vous quelle course faire, et quand. Il part de ce que vous avez réellement couru, propose une progression réaliste, cherche les courses sur le web et vérifie chaque date sur le site de l'organisateur. Quand une distance est hors de portée, il le dit, et vous trouve le format qui vous convient.
+
+> « Je cherche un trail entre amis en juin. »
 
 </div>
 

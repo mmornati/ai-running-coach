@@ -57,7 +57,7 @@ class TestGet(CoachConfigCase):
             self.assertSucceeded(proc)
             self.assertEqual(
                 proc.stdout.split(),
-                ["coach", "medical", "nutritionist", "course-strategist"],
+                ["coach", "medical", "nutritionist", "course-strategist", "sports-director"],
             )
 
 

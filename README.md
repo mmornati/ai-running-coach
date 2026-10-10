@@ -12,7 +12,7 @@ Le projet est **en français par défaut** (la langue des documents générés e
 
 | Composant | Description |
 |---|---|
-| 🧠 **4 agents spécialisés** | `coach`, `course-strategist`, `medical`, `nutritionist` — installez seulement ceux que vous voulez |
+| 🧠 **5 agents spécialisés** | `coach`, `course-strategist`, `medical`, `nutritionist`, `sports-director` — installez seulement ceux que vous voulez |
 | 🌙 **Pénalité de nuit en ultra** | le plan de course calcule, sans réseau, le crépuscule du lieu et pénalise la vitesse des sections courues de nuit (selon la pente), avec les heures de frontale par scénario |
 | 🗺️ **Roadbook imprimable** | une feuille A4 par scénario depuis le tableau de bord (vue Roadbook, lien depuis Trail Shape) : profil, sections, heures de passage, barrières et marges, ravitos avec ce qu'on y prend, matériel obligatoire — impression ou PDF du navigateur, sans dépendance |
 | ⛰️ **Technicité du terrain en ultra** | coefficient par section, déclaré ou dérivé d'OpenStreetMap (`sac_scale`, surface, visibilité ; option `--technicity osm`, réseau opt-in), pondéré par la pente, appliqué en plus du modèle pente → allure |
@@ -169,7 +169,7 @@ Tout est décrit dans [la documentation de configuration](docs/configuration.md)
 
 ```
 ai-running-coach/
-├── agents/                  # Agents IA (coach, course-strategist, medical, nutritionist)
+├── agents/                  # Agents IA (coach, course-strategist, medical, nutritionist, sports-director)
 ├── skills/                  # Skills (analyse GPX, planification, météo, etc.)
 ├── scripts/                 # Machine « coach » : sync automatique, notifications, Remote Control
 ├── config/

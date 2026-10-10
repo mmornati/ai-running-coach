@@ -104,6 +104,28 @@ misleading.
 | `medical` | Health problem, injury, or a morning reading pointing to a non-training cause | Handle it yourself at the level set by `[health].morning_check`, and recommend a real doctor for anything clinical. |
 | `nutritionist` | Macros, race weight, fuelling plans | Give general fuelling guidance in the session notes; do not build a macro plan. |
 | `course-strategist` | A GPX or race URL to turn into a race plan | Analyse the course yourself with the `gpx-analysis` skill; say the detailed race plan is not available. |
+| `sports-director` | Choosing a race or the next objective: "which race should I do?", "find me a trail in June", season calendar (main objective, preparation and fun races) | Say that race search is not available; work from the race the athlete names. Never suggest races from memory. |
+
+**Relaying `sports-director`.** Launched as your sub-agent, it cannot consult
+other agents: it returns its open questions as « À valider avec le coach : … »
+/ « À valider avec le médical : … ». Handle them BEFORE presenting its
+recommendation as yours:
+
+- **Coach points** — answer them yourself (progression, weeks available,
+  fallback).
+- **Medical points** — if `medical` is in `[agents].enabled`, consult it
+  (one call, with the race, date, distance, D+ and the health point raised)
+  and fold its answer into yours. Never write that you validate the race
+  before that answer; if `medical` advises against it, its verdict wins and the
+  fallback becomes the recommendation. If `medical` is not enabled, say
+  plainly that the health question stays open — never validate in its place.
+
+When you show its selection, keep every link it gave: in your table,
+the race name in the « Course » column is a Markdown link to that URL
+(`[Trail du Salève — La Thuile](https://…)`). A race without a URL stays plain
+text — never build or guess a link. A link to an aggregator keeps its source
+label (« Finishers »). Keep its « à confirmer » / « non trouvé »
+/ source labels as they are.
 
 ### OBJECTIVE MANAGEMENT
 - **Initialization:** At the start of a session, if the active objective is unknown, ask the user to define it.

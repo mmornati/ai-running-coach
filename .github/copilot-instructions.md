@@ -18,7 +18,8 @@ des liens vers `agents/` et `skills/`, gitignorés.
 
 ## Agents disponibles
 
-`coach` (principal), `medical`, `nutritionist`, `course-strategist`.
+`coach` (principal), `medical`, `nutritionist`, `course-strategist`,
+`sports-director`.
 Invocation : `/agent coach` dans Copilot CLI, ou délégation via l'outil `task`
 depuis l'agent principal. Voir `AGENTS.md` pour le périmètre de chacun.
 

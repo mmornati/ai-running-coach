@@ -33,6 +33,21 @@ pour eux. Relancer `install.sh` reste nécessaire pour tout ce qui est **génér
 Les tokens Garmin sont **vérifiés**, pas redemandés : l'authentification interactive ne
 se relance que s'ils sont absents ou expirés.
 
+## Nouveaux agents
+
+Quand le moteur gagne un agent (ex. `sports-director`), la mise à jour **l'active
+d'office**, même si vous relancez `install.sh` sans `--agents` :
+
+```text
+✔ Nouvel agent activé : sports-director — pour le retirer : ./install.sh --agents coach,medical,nutritionist,course-strategist
+```
+
+`install.sh` retient dans `config/workspace.user.toml` → `[agents].known` les agents
+que le moteur fournissait lors de la dernière installation. Un agent absent de cette
+liste est nouveau et rejoint votre staff ; un agent que vous aviez retiré (connu, mais
+absent de `[agents].enabled`) le reste. Une installation antérieure à `known` est
+traitée comme connaissant les quatre agents d'origine.
+
 ## Retrouver ses options d'installation
 
 `install.sh` ne mémorise que le chemin du workspace (`~/.config/ai-running-coach/workspace`).

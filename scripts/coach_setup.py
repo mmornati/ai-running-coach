@@ -581,6 +581,11 @@ def cmd_apply(args) -> int:
             continue
         set_toml_key(workspace / "config/workspace.user.toml", section, key, value)
         written.append(f"{section}.{key}")
+        if (section, key) == ("agents", "enabled") and current_value(workspace, "agents", "known") is None:
+            # L'athlète a vu tous les agents proposés : un agent qu'il n'a pas
+            # coché est retiré, pas nouveau (voir resolve_agents, install.sh).
+            set_toml_key(workspace / "config/workspace.user.toml", "agents", "known",
+                         list(question["options"]))
 
     created = scaffold(workspace)
     print(json.dumps(

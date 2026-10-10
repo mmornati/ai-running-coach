@@ -428,6 +428,11 @@ html:has(.arc-hero) .md-content {
   gap: 1.4rem;
 }
 
+/* Nombre impair d'agents : le dernier occupe toute la ligne. */
+.arc-team > .arc-agent:last-child:nth-child(odd) {
+  grid-column: 1 / -1;
+}
+
 .md-typeset .arc-agent {
   display: flex;
   flex-direction: column;

@@ -120,7 +120,7 @@ disciplines = []
 # Agents installés et joignables. Retirez-en pour alléger votre staff : le coach
 # ne délègue qu'aux agents listés ici, et `./install.sh` n'installe que ceux-là.
 # `./install.sh --no-medical` ou `--agents coach,nutritionist` écrit cette clé.
-enabled = ["coach", "medical", "nutritionist", "course-strategist"]
+enabled = ["coach", "medical", "nutritionist", "course-strategist", "sports-director"]
 
 [coaching]
 # Comment le coach vous parle. Voir `config/coaching-styles.md` pour ce que

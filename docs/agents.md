@@ -4,7 +4,7 @@
 ![](assets/trail-runner.jpg)
 </div>
 
-`ai-running-coach` fournit **4 agents spécialisés** qui collaborent pour vous aider à préparer votre objectif. Vous choisissez lesquels installer.
+`ai-running-coach` fournit **5 agents spécialisés** qui collaborent pour vous aider à préparer votre objectif. Vous choisissez lesquels installer.
 
 ## Choisir son staff
 
@@ -35,6 +35,9 @@ flowchart TB
     Coach["🏃 Coach<br/>(agent principal)"] -->|délègue| CS["🗺️ Stratège de course"]
     Coach -->|délègue| Med["🩺 Médecin du sport"]
     Coach -->|délègue| Nut["🥗 Nutritionniste"]
+    Coach -->|délègue| DS["🧭 Directeur sportif"]
+    DS -.->|consulte| Med
+    DS -.->|consulte| Coach
 ```
 
 ## Les agents
@@ -119,6 +122,23 @@ flowchart TB
 
 </div>
 
+<div class="arc-agent" markdown>
+
+### 🧭 Directeur sportif
+
+`sports-director.md` — Choisit avec vous **quelle course, et quand** :
+
+- **Prochain objectif** : une progression réaliste à partir de ce que vous avez réellement couru (plus longue sortie, plus gros D+, débriefs, Trail Shape)
+- **Recherche de courses** sous contraintes (période, zone, distance, D+, sortie entre amis), par recherche web
+- **Chaque course sourcée** : date vérifiée sur le site officiel, sinon « à confirmer » ; jamais une course inventée
+- **Faisabilité d'abord** : dit clairement quand une distance est hors de portée, puis propose un format adapté (le même événement, une distance plus courte)
+- **Calendrier de saison** : rôles **Objectif principal**, **Préparation** et **Plaisir**, écarts de récupération calculés
+- Consulte le **médecin** ou le **coach** dans des cas précis, et ne modifie jamais `planning/active_objective.md` lui-même
+
+[→ Détails de l'agent directeur sportif](agents/sports-director.md)
+
+</div>
+
 </div>
 
 ## Comment les agents collaborent
@@ -129,6 +149,7 @@ flowchart TB
    - **Stratège de course** : analyse du parcours et stratégie
    - **Médecin** : évaluation de la récupération et de la santé
    - **Nutritionniste** : plan nutritionnel
+   - **Directeur sportif** : choix de la prochaine course et calendrier de saison
 4. Chaque agent **persiste** ses résultats dans les dossiers dédiés (`planning/`, `medical/`, `nutrition/`, `rapports/`)
 
 ## Dossiers de travail
