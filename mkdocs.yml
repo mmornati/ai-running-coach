@@ -80,6 +80,7 @@ nav:
       - Configuration Intervals.icu: intervals-setup.md
       - Configuration Strava: strava-setup.md
       - Montres COROS: coros.md
+      - Open Wearables (audit): open-wearables.md
       - IDE supportés: ides.md
       - Votre workspace privé: workspace.md
       - Le coach dans la poche: mobile.md

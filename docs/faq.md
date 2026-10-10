@@ -141,6 +141,13 @@ Dans les dossiers de travail du projet : `activities/`, `medical/`, `nutrition/`
 
 Non. Les dossiers de données personnelles sont exclus du dépôt via `.gitignore`. Le projet ne contient que des agents, des skills et de la documentation.
 
+### Puis-je utiliser une bague Oura/WHOOP, une Apple Watch, une montre Polar/Suunto/COROS ?
+
+Oui pour l'entraînement, via Intervals.icu ou Strava selon l'appareil ; pour la santé du bilan matinal
+(HRV, FC de repos), certaines bagues passent par Intervals.icu et une option Open Wearables est prévue
+mais pas encore livrée (#216). Voir le guide [Quelle source pour mon appareil ?](configuration.md#quelle-source-pour-mon-appareil)
+et l'[audit d'Open Wearables](open-wearables.md).
+
 ### Puis-je utiliser mes propres documents de référence ?
 
 Oui. Placez vos documents dans `resources/` (par exemple `resources/nutrition/catalogue-produits-*.md` pour les catalogues produits).
