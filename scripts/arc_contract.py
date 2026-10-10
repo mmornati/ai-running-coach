@@ -1474,12 +1474,18 @@ def _check_health_provenance(data: dict, errors: list) -> None:
             if data.get(key) is not None:
                 errors.append(f"health.{key} : valeur Garmin, incompatible avec health_source « openwearables » "
                               "(le score natif va dans provider_scores, sans être remis sur 100)")
+    if data.get("health_provider") == "apple" and data.get("hrv_overnight_ms") is not None:
+        errors.append("health.hrv_overnight_ms : Apple Health ne fournit que la HRV en SDNN, non comparable au "
+                      "RMSSD — utiliser hrv_sdnn_ms")
     scores = data.get("provider_scores")
     if not isinstance(scores, list):
         return
     for i, entry in enumerate(scores):
         if not isinstance(entry, dict):
             continue
+        if entry.get("provider") and data.get("health_provider") and entry["provider"] != data["health_provider"]:
+            errors.append(f"health.provider_scores[{i}].provider : « {entry['provider']} » diffère de "
+                          f"health_provider « {data['health_provider']} » (une seule source santé par fichier)")
         lo, hi, value = entry.get("scale_min"), entry.get("scale_max"), entry.get("value")
         if not (_is_number(lo) and _is_number(hi) and _is_number(value)):
             continue

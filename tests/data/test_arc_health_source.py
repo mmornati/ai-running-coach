@@ -84,11 +84,43 @@ class TestConfigResolution(unittest.TestCase):
             self.assertEqual(out, ("primary", ""), provider)
             self.assertIn("refusé", err)
 
-    def test_unknown_provider_falls_back(self):
+    def test_unknown_provider_stays_openwearables_with_warning(self):
+        """Faute de frappe : on n'abandonne pas Open Wearables en silence (jamais de repli sur Garmin)."""
         cfg = {"health": {"source": "openwearables", "openwearables": {"provider": "fitbit-legacy"}}}
         out, err = self.resolve(cfg, warn=True)
-        self.assertEqual(out, ("primary", ""))
-        self.assertIn("avertissement", err)
+        self.assertEqual(out, ("openwearables", ""))
+        self.assertIn("configuration incomplète", err)
+
+    def test_empty_provider_warns_once_and_stays_openwearables(self):
+        cfg = {"health": {"source": "openwearables", "openwearables": {"provider": ""}}}
+        out, err = self.resolve(cfg, warn=True)
+        self.assertEqual(out, ("openwearables", ""))
+        self.assertEqual(err.count("configuration incomplète : [health.openwearables].provider vide"), 1)
+        self.assertEqual(self.resolve(cfg, warn=False)[1], "")
+
+    def test_settings_warns_only_once(self):
+        buf = io.StringIO()
+        with contextlib.redirect_stderr(buf):
+            conf = I.settings({"health": {"source": "openwearables"}})
+        self.assertEqual((conf["health_source"], conf["health_provider"]), ("openwearables", ""))
+        self.assertEqual(buf.getvalue().count("configuration incomplète"), 1)
+
+    def test_load_config_nested_merge_keeps_shared_defaults(self):
+        tmp = Path(tempfile.mkdtemp(prefix="arc-health-source-cfg-"))
+        self.addCleanup(shutil.rmtree, tmp, ignore_errors=True)
+        (tmp / "config").mkdir()
+        (tmp / "config/workspace.toml").write_text(
+            '[health]\nsource = "primary"\n\n[health.openwearables]\nprovider = ""\nstale_after_h = 36\n'
+            'api_key_file = "~/shared.key"\n', encoding="utf-8")
+        (tmp / "config/workspace.user.toml").write_text(
+            '[health.openwearables]\nprovider = "oura"\n', encoding="utf-8")
+        ow = HS.openwearables_section(I.load_config(tmp))
+        self.assertEqual((ow["provider"], ow["stale_after_h"], ow["api_key_file"]), ("oura", 36, "~/shared.key"))
+        # une valeur vide du fichier perso gagne encore, dans la sous-table
+        (tmp / "config/workspace.user.toml").write_text(
+            '[health.openwearables]\napi_key_file = ""\n', encoding="utf-8")
+        ow = HS.openwearables_section(I.load_config(tmp))
+        self.assertEqual((ow["api_key_file"], ow["stale_after_h"]), ("", 36))
 
     def test_settings_carry_the_resolved_source(self):
         conf = I.settings({"health": {"source": "bogus"}, "data": {"source": "intervals"}})
@@ -159,6 +191,16 @@ class TestContract(unittest.TestCase):
         errors, _ = validate(health_block("2026-09-24", provider_scores=[self.score(category="strain")]))
         self.assertTrue(errors)
 
+    def test_apple_rmssd_refused(self):
+        errors, _ = validate(health_block("2026-09-24", hrv=44, source="openwearables", provider="apple"))
+        self.assertTrue(any("hrv_sdnn_ms" in e for e in errors), errors)
+
+    def test_provider_score_provider_mismatch_refused(self):
+        score = {"category": "readiness", "value": 80, "scale_min": 0, "scale_max": 100, "provider": "whoop"}
+        errors, _ = validate(health_block("2026-09-24", rhr=50, source="openwearables", provider="oura",
+                                          provider_scores=[score]))
+        self.assertTrue(any("provider_scores[0].provider" in e for e in errors), errors)
+
     def test_unknown_health_source_refused(self):
         errors, _ = validate(health_block("2026-09-24", source="strava"))
         self.assertTrue(any("health_source" in e for e in errors), errors)
@@ -200,6 +242,12 @@ class Workspace(unittest.TestCase):
     def health(self, day, hrv=None, rhr=None, source=None, provider=None, **extra):
         (self.ws / f"medical/{day}_health.md").write_text(
             arc(health_block(day, hrv, rhr, source, provider, **extra)), encoding="utf-8")
+
+    def pain_only(self, day):
+        """Fichier santé SANS mesure ni provenance (douleur seule, comme /log ou Telegram)."""
+        (self.ws / f"medical/{day}_health.md").write_text(arc({
+            "arc": 1, "kind": "health", "date": day, "morning_check": "full",
+            "pain": [{"location": "genou", "score": 3}]}), encoding="utf-8")
 
     def conn(self):
         conn = I.open_db(self.ws, memory=True)
@@ -264,6 +312,27 @@ class TestHrvBaselinePerSource(Workspace):
                                   "FROM health_day LIMIT 1").fetchone()
         self.assertEqual(tuple(row), (44.0, None, "openwearables", "apple"))
 
+    def test_switch_to_sdnn_only_source_does_not_keep_garmin_baseline(self):
+        """Nuits Garmin puis nuits Apple SDNN seul : la source courante est Apple, aucun statut Garmin."""
+        for i in range(70):
+            day = iso(-69 + i)
+            if i < 63:
+                self.health(day, hrv=60.0, source="garmin")
+            else:
+                self.health(day, rhr=50, source="openwearables", provider="apple", hrv_sdnn_ms=44.0)
+        point = I.hrv_baseline_today(self.conn(), {"morning_check": "full"}, TODAY)
+        self.assertEqual((point["health_source"], point["health_provider"]), ("openwearables", "apple"))
+        self.assertIsNone(point["hrv_personal_status"])
+        self.assertIsNone(point.get("hrv_personal_mean7_ms"))
+
+    def test_pain_only_file_does_not_change_the_baseline_source(self):
+        for i in range(70):
+            self.health(iso(-69 + i), hrv=60.0, source="openwearables", provider="oura")
+        self.pain_only(iso(0))
+        point = I.hrv_baseline_today(self.conn(), {"morning_check": "full", "data_source": "garmin"}, TODAY)
+        self.assertEqual((point["health_source"], point["health_provider"]), ("openwearables", "oura"))
+        self.assertEqual(point["hrv_personal_status"], "dans_la_norme")
+
     def test_provider_scores_stay_in_data_json_only(self):
         self.health(iso(0), hrv=58, source="openwearables", provider="oura", provider_scores=[
             {"category": "readiness", "value": 82, "scale_min": 0, "scale_max": 100, "provider": "oura"}])
@@ -321,6 +390,20 @@ class TestDecisionEffects(Workspace):
             {"health": health}, TODAY)
         self.assertEqual(ev["effect"], "improved")
 
+    def test_pain_only_file_is_not_a_source_change(self):
+        """Période Oura + fichier de douleur seule dans la fenêtre : pas de changement de source."""
+        self.decision()
+        d0 = date.fromisoformat(self.DAY)
+        for off in range(-2, 8):
+            self.health((d0 + timedelta(days=off)).isoformat(), hrv=70 if off > 0 else 50, rhr=48 if off > 0 else 55,
+                        source="openwearables", provider="oura")
+        pain_day = (d0 + timedelta(days=8)).isoformat()
+        self.pain_only(pain_day)
+        data = I._decision_effect_data(self.conn(), "garmin")
+        self.assertNotIn("source", data["health"][pain_day])
+        self.assertFalse(DE.source_changes(data, d0 - timedelta(days=2), d0 + timedelta(days=8)))
+        self.assertNotIn("excluded_source_change", self.report()["effects"][0])
+
     def test_old_vs_explicit_default_source_is_not_a_change(self):
         self.decision()
         d0 = date.fromisoformat(self.DAY)
@@ -359,13 +442,26 @@ class TestDashboardApi(Workspace):
         self.assertEqual(old["hrv_personal_status"], "dans_la_norme")
         self.assertEqual(old["rhr_median7"], 45)
 
-    def test_default_workspace_reports_garmin_unchanged(self):
+    def test_pain_only_today_is_not_a_source_change(self):
+        for i in range(30):
+            self.health(iso(-29 + i), hrv=95.0, rhr=60, source="openwearables", provider="oura")
+        self.pain_only(iso(0))
+        body = S.api_health(self.store(), {"days": ["20"]})
+        self.assertEqual(body["source"]["health_source"], "openwearables")
+        self.assertEqual(body["source"]["health_provider"], "oura")
+        self.assertFalse(body["source"]["changed"])
+
+    def test_default_workspace_output_is_unchanged(self):
+        """Source principale unique : aucune clé `source` (sortie identique à avant #218), jamais « Strava »."""
         for i in range(20):
             self.health(iso(-19 + i), hrv=60.0, rhr=45)
+        self.pain_only(iso(0))
         body = S.api_health(self.store(), {"days": ["10"]})
-        self.assertEqual(body["source"], {"health_source": "garmin", "health_provider": None,
-                                          "label": "Garmin", "changed": False})
+        self.assertNotIn("source", body)
         self.assertNotIn("health_source", body["series"][-1])
+
+    def test_strava_data_source_is_never_labelled_strava(self):
+        self.assertNotIn("Strava", HS.label("strava"))
 
 
 class TestSchema(unittest.TestCase):

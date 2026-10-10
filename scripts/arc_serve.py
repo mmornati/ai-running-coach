@@ -648,9 +648,9 @@ def api_health(store: Store, q: dict) -> dict:
     # personnelle et la médiane FC de repos d'un jour ne portent que sur SA source. Une seule clé (cas
     # historique) : calcul identique à avant.
     default_source = settings.get("data_source") or HS.DEFAULT_DATA_SOURCE
-    key_by_date = {d: HS.source_key(r["health_source"], r["health_provider"], default_source)
-                   for d, r in by_date.items()}
-    current_key = key_by_date[max(key_by_date)] if key_by_date else HS.source_key(
+    # Un fichier sans mesure (douleur seule) n'a pas de clé : il ne définit ni la source courante ni un changement.
+    key_by_date = {d: k for d, r in by_date.items() if (k := HS.row_key(r, default_source)) is not None}
+    current_key = HS.current_key(rows, today.isoformat(), default_source) or HS.source_key(
         settings.get("health_source") if settings.get("health_source") == "openwearables" else None,
         settings.get("health_provider"), default_source)
     hrv_baseline_by_date = {}
@@ -676,7 +676,7 @@ def api_health(store: Store, q: dict) -> dict:
         day_key = key_by_date.get(day.isoformat(), current_key)
         window = [by_date[d]["resting_hr_bpm"] for d in
                   ((day - timedelta(days=k)).isoformat() for k in range(1, 8))
-                  if d in by_date and by_date[d]["resting_hr_bpm"] is not None and key_by_date[d] == day_key]
+                  if d in by_date and by_date[d]["resting_hr_bpm"] is not None and key_by_date.get(d) == day_key]
         median = statistics.median(window) if len(window) >= 3 else None
         point = {"date": day.isoformat(), "rhr_median7": median}
         if row:
@@ -696,14 +696,18 @@ def api_health(store: Store, q: dict) -> dict:
             point.update({k: v for k, v in debt.items() if k != "date"})
         series.append(point)
     source, provider = HS.split_key(current_key)
-    return {"series": series, "morning_check": mode,
-            # Source santé COURANTE (#218) : celle de la ligne la plus récente ; `changed` = plus d'une source
-            # sur la période affichée (la bande personnelle ne couvre alors que chaque source pour elle-même).
-            "source": {"health_source": source, "health_provider": provider, "label": HS.label(current_key),
-                       "changed": len({key_by_date[d] for d in key_by_date if d >= start}) > 1},
-            "thresholds": {"rhr_warn": 5, "rhr_alert": 7,
-                           "sleep_debt_warn_h": M.SLEEP_DEBT_WARN_S / 3600,
-                           "sleep_debt_alert_h": M.SLEEP_DEBT_ALERT_S / 3600}}
+    out = {"series": series, "morning_check": mode,
+           "thresholds": {"rhr_warn": 5, "rhr_alert": 7,
+                          "sleep_debt_warn_h": M.SLEEP_DEBT_WARN_S / 3600,
+                          "sleep_debt_alert_h": M.SLEEP_DEBT_ALERT_S / 3600}}
+    # Source santé COURANTE (#218), exposée seulement quand elle dit quelque chose : Open Wearables, ou un
+    # changement de source sur la période (la bande personnelle ne couvre alors que chaque source pour
+    # elle-même). Utilisateur par défaut (une seule source principale) : sortie inchangée.
+    changed = len({key_by_date[d] for d in key_by_date if d >= start}) > 1
+    if source == "openwearables" or changed:
+        out["source"] = {"health_source": source, "health_provider": provider, "label": HS.label(current_key),
+                         "changed": changed}
+    return out
 
 
 def _week_sessions_and_activities(store: Store, monday: date) -> Tuple[list, list]:

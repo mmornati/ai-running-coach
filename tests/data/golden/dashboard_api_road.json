@@ -6186,12 +6186,6 @@
             "verdict_reason": "Triade dans la norme : séance maintenue."
           }
         ],
-        "source": {
-          "changed": false,
-          "health_provider": null,
-          "health_source": "garmin",
-          "label": "Garmin"
-        },
         "thresholds": {
           "rhr_alert": 7,
           "rhr_warn": 5,
@@ -6598,12 +6592,6 @@
             "verdict_reason": "Triade dans la norme : séance maintenue."
           }
         ],
-        "source": {
-          "changed": false,
-          "health_provider": null,
-          "health_source": "garmin",
-          "label": "Garmin"
-        },
         "thresholds": {
           "rhr_alert": 7,
           "rhr_warn": 5,

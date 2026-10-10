@@ -571,6 +571,7 @@ def home_trainer_platform(config: Dict[str, dict]) -> str:
 def settings(config: Dict[str, dict]) -> dict:
     """Les réglages qui changent ce que l'index attend et ce que le tableau affiche."""
     agents = config.get("agents", {}).get("enabled", ["coach", "medical", "nutritionist", "course-strategist"])
+    health_source, health_provider = HS.effective_health_source(config)   # un seul appel : un seul avertissement
     return {
         "sport": config.get("sport", {}).get("primary", "trail") or "trail",
         "morning_check": config.get("health", {}).get("morning_check", "full") or "full",
@@ -581,8 +582,8 @@ def settings(config: Dict[str, dict]) -> dict:
         # Source de la santé du bilan matinal (#218) : "primary" (défaut, = [data].source) | "openwearables" ;
         # valeur invalide → "primary" avec avertissement (scripts/arc_health_source.py). `data_source` sert
         # de source effective aux fichiers santé sans `health_source` (antérieurs à #218).
-        "health_source": HS.effective_health_source(config)[0],
-        "health_provider": HS.effective_health_source(config, warn=False)[1],
+        "health_source": health_source,
+        "health_provider": health_provider,
         "data_source": HS.data_source(config),
         "agents": list(agents),
         "units": config.get("athlete", {}).get("units", "metric") or "metric",
@@ -3529,18 +3530,18 @@ def hrv_baseline_today(conn, conf: dict, today: date) -> dict:
                 "reason": "ligne de base personnelle calculée seulement en "
                           '[health].morning_check = "full"'}
     rows = conn.execute(
-        "SELECT date, hrv_overnight_ms, health_source, health_provider FROM health_day "
-        "WHERE hrv_overnight_ms IS NOT NULL ORDER BY date, source_path"
+        "SELECT date, hrv_overnight_ms, hrv_sdnn_ms, resting_hr_bpm, sleep_total_s, readiness_score, "
+        "health_source, health_provider FROM health_day ORDER BY date, source_path"
     ).fetchall()
-    # #218 : la ligne de base ne porte que sur les lignes de MÊME source effective que la plus récente
-    # (pour `openwearables`, même fabricant) — jamais deux capteurs/méthodes dans une même référence.
+    # #218 : la ligne de base ne porte que sur les lignes de MÊME source effective que la dernière ligne AVEC
+    # mesure (pour `openwearables`, même fabricant) — jamais deux capteurs/méthodes dans une même référence.
+    # Règle partagée avec /api/health (`arc_health_source.current_key`).
     default_source = conf.get("data_source") or HS.DEFAULT_DATA_SOURCE
-    keyed = [(row[0], row[1], HS.source_key(row[2], row[3], default_source)) for row in rows]
-    until_today = [item for item in keyed if item[0] <= today.isoformat()]
-    key = until_today[-1][2] if until_today else HS.source_key(
+    key = HS.current_key(rows, today.isoformat(), default_source) or HS.source_key(
         conf.get("health_source") if conf.get("health_source") == "openwearables" else None,
         conf.get("health_provider"), default_source)
-    hrv_by_date = {d: v for d, v, k in keyed if k == key}
+    hrv_by_date = {r["date"]: r["hrv_overnight_ms"] for r in rows
+                   if r["hrv_overnight_ms"] is not None and HS.row_key(r, default_source) == key}
     point = M.hrv_baseline_series(hrv_by_date, today, today)[0]
     source, provider = HS.split_key(key)
     return {**point, "morning_check": mode, "health_source": source, "health_provider": provider}
@@ -4938,10 +4939,13 @@ def _decision_effect_data(conn, data_source: str = HS.DEFAULT_DATA_SOURCE) -> di
     absente = pas de mesure. `source` (#218) = source effective du jour (`arc_health_source.source_key`) : une
     fenêtre qui en couvre deux est exclue des comparaisons santé (`arc_decision_effects.source_changes`)."""
     health: Dict[str, dict] = {}
-    for r in conn.execute("SELECT date, hrv_overnight_ms, resting_hr_bpm, readiness_score, data_json, "
-                          "health_source, health_provider FROM health_day ORDER BY date, source_path"):
+    for r in conn.execute("SELECT date, hrv_overnight_ms, hrv_sdnn_ms, resting_hr_bpm, sleep_total_s, "
+                          "readiness_score, data_json, health_source, health_provider "
+                          "FROM health_day ORDER BY date, source_path"):
         row = health.setdefault(r["date"], {})
-        row.setdefault("source", HS.source_key(r["health_source"], r["health_provider"], data_source))
+        key = HS.row_key(r, data_source)       # None = fichier sans mesure (douleur seule) : pas de source
+        if key and "source" not in row:
+            row["source"] = key
         for key, col in (("hrv_ms", "hrv_overnight_ms"), ("rhr_bpm", "resting_hr_bpm"),
                          ("readiness", "readiness_score")):
             if row.get(key) is None and r[col] is not None:

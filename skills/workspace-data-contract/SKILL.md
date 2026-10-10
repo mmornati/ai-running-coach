@@ -712,7 +712,9 @@ Apple Health (SDNN seulement) :
 Les lignes de base HRV/FC de repos (`arc_index.py hrv-baseline`, tableau de bord) ne
 portent que sur UNE source effective (celle de la ligne la plus récente ; pour
 `openwearables`, un seul fabricant) : après un changement de source la référence
-repart de zéro (`en_construction`).
+ne porte que sur les nuits de la source courante (`en_construction` tant qu'elle en manque).
+Un fichier santé sans mesure (douleur seule) n'a pas de source. `hrv_overnight_ms` est refusé
+quand `health_provider` vaut `apple` (SDNN seulement : `hrv_sdnn_ms`).
 
 **Contexte du cycle (`cycle_phase`, `cycle_day`, `cycle_source`, #166).** Ces
 trois clés n'existent QUE si `[health].cycle_tracking` n'est pas `"off"`
