@@ -1,0 +1,130 @@
+{
+  "title": {
+    "fr": "Quelle course, et quand ?",
+    "en": "Which race, and when?"
+  },
+  "summary": {
+    "fr": "L'agent directeur sportif : l'historique réel avant toute recherche, la faisabilité dite d'emblée, des courses sourcées sur le web et jamais inventées, un calendrier de saison calculé, l'avis médical qui l'emporte, et un objectif proposé sans jamais être écrit à votre place."
+  },
+  "poster": 2.8,
+  "scenes": [
+    {
+      "id": "bib",
+      "min": 4.6,
+      "lead": 1.2,
+      "fr": [
+        "Étape vingt : quelle course, et quand ?"
+      ],
+      "en": [
+        "Stage twenty: which race, and when?"
+      ]
+    },
+    {
+      "id": "staff",
+      "min": 10,
+      "chapter": {
+        "fr": "Le rôle",
+        "en": "The role"
+      },
+      "fr": [
+        "Le coach prépare un objectif déjà choisi, le stratège prépare le jour J.",
+        "Le directeur sportif s'occupe de l'étape d'avant : quelle course, et quand."
+      ],
+      "en": [
+        "The coach prepares a goal that's already chosen, the strategist prepares race day.",
+        "The sports director handles the step before: which race, and when."
+      ]
+    },
+    {
+      "id": "history",
+      "min": 12,
+      "chapter": {
+        "fr": "Où j'en suis",
+        "en": "Where I stand"
+      },
+      "fr": [
+        "Des amis proposent à Camille un trail en juin : quatre-vingts kilomètres, mille cinq cents mètres de dénivelé.",
+        "Avant de chercher, l'agent lit ce qu'elle a réellement couru : plus longue sortie, plus gros dénivelé, volume des douze dernières semaines, et son genou gauche, à surveiller."
+      ],
+      "en": [
+        "Some friends invite Camille to a trail race in June: eighty kilometres, fifteen hundred metres of climbing.",
+        "Before searching, the agent reads what she has actually run: longest run, biggest climb, volume over the last twelve weeks, and her left knee, one to watch."
+      ]
+    },
+    {
+      "id": "verdict",
+      "min": 13,
+      "chapter": {
+        "fr": "Faisable ?",
+        "en": "Feasible?"
+      },
+      "fr": [
+        "Le verdict vient d'abord, faits à l'appui : quatre-vingts kilomètres en juin, pour toi, je te le déconseille.",
+        "Mais il ne refuse pas : même course, même jour, même arrivée, sur le format trente-cinq kilomètres. Et une seule question : mille cinq cents mètres sur quatre-vingts kilomètres, c'est très roulant. Voulu ?"
+      ],
+      "en": [
+        "The verdict comes first, with the facts: eighty kilometres in June, for you, I'd advise against it.",
+        "But it doesn't refuse: same event, same day, same finish line, on the thirty-five kilometre format. And one question only: fifteen hundred metres over eighty kilometres is very runnable. Intended?"
+      ]
+    },
+    {
+      "id": "search",
+      "min": 13,
+      "chapter": {
+        "fr": "Des courses sourcées",
+        "en": "Sourced races"
+      },
+      "fr": [
+        "Il n'existe pas d'API des courses : l'agent cherche sur le web, comme vous. Chaque course vient d'une page consultée, jamais de sa mémoire.",
+        "Date vérifiée sur le site de l'organisateur, sinon « à confirmer ». Un chiffre absent est écrit « non trouvé ». Et une course complète ne passe jamais en premier."
+      ],
+      "en": [
+        "There's no race API: the agent searches the web, like you would. Every race comes from a page it actually read, never from memory.",
+        "Dates checked on the organiser's site, otherwise “to be confirmed”. A missing figure reads “not found”. And a sold-out race is never the first pick."
+      ]
+    },
+    {
+      "id": "season",
+      "min": 13,
+      "chapter": {
+        "fr": "La saison",
+        "en": "The season"
+      },
+      "fr": [
+        "Chaque course reçoit un rôle : objectif principal, préparation, ou plaisir.",
+        "Jours de la semaine et écarts sont calculés par un script, jamais de tête. Récupération, affûtage : des règles provisoires, fixes, citées à chaque fois. Rien dans l'affûtage de l'objectif."
+      ],
+      "en": [
+        "Each race gets a role: main objective, preparation, or fun.",
+        "Weekdays and gaps are computed by a script, never in its head. Recovery, taper: provisional rules, fixed, quoted every time. Nothing inside the main objective's taper."
+      ]
+    },
+    {
+      "id": "handoff",
+      "min": 13,
+      "chapter": {
+        "fr": "La main au staff",
+        "en": "Back to the staff"
+      },
+      "fr": [
+        "L'ultra dépasse tout ce que Camille a couru, et son genou est fragile : le médical est consulté, et son avis l'emporte.",
+        "Puis l'agent propose les valeurs de l'objectif, sans jamais écrire le fichier à votre place. Rien n'est poussé vers la montre, rien ne tourne en automatique. Le coach prend le relais."
+      ],
+      "en": [
+        "The ultra goes beyond anything Camille has run, and her knee is fragile: the medical agent is consulted, and its word wins.",
+        "Then the agent proposes the objective's values, without ever writing the file for you. Nothing goes to the watch, nothing runs on autopilot. The coach takes over."
+      ]
+    },
+    {
+      "id": "finish",
+      "min": 6,
+      "lead": 2.2,
+      "fr": [
+        "Pour aller plus loin : la page « Directeur sportif » de la documentation."
+      ],
+      "en": [
+        "To go further: the “Sports director” page of the documentation."
+      ]
+    }
+  ]
+}

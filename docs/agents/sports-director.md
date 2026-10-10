@@ -2,6 +2,24 @@
 
 > **Description** : Sports Director — trouve des courses organisées (trail ou route) adaptées à la demande et à l'historique de l'athlète, et conseille sur le prochain objectif et le calendrier de saison (objectif principal, courses de préparation et courses plaisir). Chaque course vient du web, jamais inventée.
 
+<!-- arc-video:directeur-sportif -->
+<div class="arc-video-card" markdown>
+
+[![Quelle course, et quand ?](../video/directeur-sportif/poster.jpg)](../video/directeur-sportif/index.html)
+
+<div markdown>
+
+<span class="arc-video__meta">En vidéo · Étape 20 · 1 min 49</span>
+
+**[Quelle course, et quand ?](../video/directeur-sportif/index.html)** — L'agent directeur sportif : l'historique réel avant toute recherche, la faisabilité dite d'emblée, des courses sourcées sur le web et jamais inventées, un calendrier de saison calculé, l'avis médical qui l'emporte, et un objectif proposé sans jamais être écrit à votre place.
+
+[Regarder](../video/directeur-sportif/index.html) · [English](../video/directeur-sportif/index.html?lang=en) · [Toutes les vidéos](../videos.md)
+
+</div>
+
+</div>
+<!-- /arc-video -->
+
 ## Rôle
 
 Le staff prépare très bien un objectif **déjà choisi** : le coach construit

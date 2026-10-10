@@ -300,6 +300,20 @@ Un parcours MyWhoosh qui tient dans la durée de la séance : puissance calibré
 
 </div>
 
+<div class="arc-video" markdown>
+
+[![Quelle course, et quand ?](video/directeur-sportif/poster.jpg)](video/directeur-sportif/index.html)
+
+<span class="arc-video__meta">Étape 20 · 1 min 49</span>
+
+### [Quelle course, et quand ?](video/directeur-sportif/index.html)
+
+L'agent directeur sportif : l'historique réel avant toute recherche, la faisabilité dite d'emblée, des courses sourcées sur le web et jamais inventées, un calendrier de saison calculé, l'avis médical qui l'emporte, et un objectif proposé sans jamais être écrit à votre place.
+
+[Regarder](video/directeur-sportif/index.html) · [English (2 min 02)](video/directeur-sportif/index.html?lang=en) · [La documentation](agents/sports-director.md)
+
+</div>
+
 </div>
 <!-- arc-videos:end -->
 
