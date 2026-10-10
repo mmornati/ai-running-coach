@@ -545,6 +545,63 @@ class TestTrailShapeCli(Workspace):
         self.assertFalse(by_id["max_dplus"]["eligible"])
 
 
+class TestHistorySummaryCli(Workspace):
+    """#159 — `arc_index.py history-summary` : ce que `sports-director` lit avant
+    de proposer une course (records à pied, volume hebdo, charge, rapports de
+    course), sans requête SQLite à la main."""
+
+    def activity(self, day: str, sport: str, distance_m: float, elevation_gain_m: float = 0) -> None:
+        self.write(f"activities/{day}_{sport}.md", arc(
+            f'{{"arc": 1, "kind": "activity", "date": "{day}", "sport": "{sport}", '
+            f'"duration_s": 3600, "distance_m": {distance_m}, "elevation_gain_m": {elevation_gain_m}}}'))
+
+    def report(self, day: str, report_type: str) -> None:
+        self.write(f"rapports/{day}_rapport.md", arc(
+            f'{{"arc": 1, "kind": "report", "date": "{day}", "report_type": "{report_type}", '
+            f'"title": "Rapport {report_type}"}}'))
+
+    def test_records_come_from_foot_sports_only(self):
+        self.activity("2026-09-13", "trail", 109000, 1900)
+        self.activity("2026-08-01", "running", 30000, 3100)
+        self.activity("2026-09-20", "indoor_cycling", 150000, 0)
+        self.index()
+        records = I.history_summary(self.conn, date(2026, 9, 23))["records"]
+        self.assertEqual(records["longest_distance"]["date"], "2026-09-13")
+        self.assertEqual(records["biggest_elevation_gain"]["elevation_gain_m"], 3100)
+
+    def test_weeks_are_monday_aligned_and_zero_filled(self):
+        self.activity("2026-09-21", "running", 10000, 50)
+        self.activity("2026-09-23", "trail", 12000, 300)
+        self.index()
+        weeks = I.history_summary(self.conn, date(2026, 9, 23), weeks=3)["weeks"]
+        self.assertEqual([w["week_start"] for w in weeks], ["2026-09-07", "2026-09-14", "2026-09-21"])
+        self.assertEqual(weeks[0]["sessions"], 0)
+        self.assertEqual((weeks[2]["sessions"], weeks[2]["distance_m"], weeks[2]["elevation_gain_m"]),
+                         (2, 22000, 350))
+
+    def test_sync_gap_marks_the_load_as_stale(self):
+        self.activity("2026-09-01", "running", 10000)
+        self.index()
+        summary = I.history_summary(self.conn, date(2026, 9, 23))
+        self.assertEqual(summary["stale_days"], 22)
+        self.assertTrue(summary["load"]["stale"])
+
+    def test_both_race_report_types_are_listed(self):
+        self.report("2026-09-18", "race")
+        self.report("2026-06-02", "race_debrief")
+        self.report("2026-09-21", "weekly")
+        self.index()
+        races = I.history_summary(self.conn, date(2026, 9, 23))["races"]
+        self.assertEqual([r["report_type"] for r in races], ["race", "race_debrief"])
+
+    def test_empty_workspace_is_explicit(self):
+        self.index()
+        summary = I.history_summary(self.conn, date(2026, 9, 23))
+        self.assertIsNone(summary["last_activity_date"])
+        self.assertIsNone(summary["records"]["longest_distance"])
+        self.assertEqual(summary["races"], [])
+
+
 class TestHeatAcclimationCli(Workspace):
     """#38 — `arc_index.py heat-acclimation` : jointure activité outdoor / météo réelle
     (fichiers indexés, pas des dicts à la main comme `test_arc_metrics.py`), et

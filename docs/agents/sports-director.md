@@ -25,8 +25,10 @@ Exemples de demandes :
 ### Prochain objectif
 
 L'agent lit d'abord ce que vous avez **réellement** couru : plus longue sortie,
-plus gros D+, débriefs de course, charge récente (`scripts/arc_index.py status`),
-score Trail Shape, blessures en cours. Il propose ensuite une **marche suivante
+plus gros D+, volume des dernières semaines, charge récente et rapports de course
+(`scripts/arc_index.py history-summary`), score Trail Shape, blessures en cours.
+Si rien n'a été synchronisé depuis plus d'une semaine, il le dit : la charge
+affichée reflète alors le trou de synchronisation, pas du repos. Il propose ensuite une **marche suivante
 réaliste**, souvent en deux options (« consolider » ou « monter d'une marche »),
 avec le nombre de semaines de préparation nécessaire. La recherche de courses ne
 vient qu'après.

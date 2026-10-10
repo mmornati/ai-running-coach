@@ -41,14 +41,24 @@ Read only what the request needs — never dump raw data in the conversation.
 - **Active objective** (`planning/active_objective.md`): current main objective, date,
   "Courses intermédiaires", "Indisponibilités", "Limites médicales en cours".
 - **History** (via the index, never re-derived by hand):
-  - `python3 scripts/arc_index.py status` — recent load;
+  - `python3 scripts/arc_index.py history-summary [--weeks N]` — longest
+    distance and biggest D+ actually completed on foot (`records`), weekly
+    volume of the last N weeks (default 12), latest load state, and the race
+    reports to read. Never query `.arc/coach.db` by hand. If `load.stale` is
+    true, nothing was synced for `stale_days` days: the load (and its ratio)
+    reflects a sync gap, not rest — say so and do not lean on it;
   - `python3 scripts/arc_index.py trail-shape` — readiness for the active
-    objective (an indicator, never a verdict);
+    objective (an indicator, never a verdict; `race_past` once it is run);
   - `python3 scripts/arc_index.py performance-index` — declared indices;
-  - `rapports/*` with `report_type: race_debrief` — how past races went
-    (fade, pacing, fueling issues are strong signals for the next step);
-  - longest distance and largest D+ actually completed: read them from
-    `activities/` arc blocks (`distance_m`, `elevation_gain_m`), not from memory.
+  - the reports listed in `races` (`report_type` `race` or `race_debrief`) —
+    how past races went (fade, pacing, fueling issues are strong signals for
+    the next step).
+
+  **Which D+ counts.** `records` gives the D+ recorded by the watch. Compare a
+  race with the athlete's past *races* on official figures (the objective or
+  race report gives them) and quote the recorded value next to it when the two
+  differ (« 1 768 m officiels, 1 992 m mesurés »); for training sessions, the
+  recorded value is the only one.
 - **Medical**: the latest `medical/*_health.md` and any open injury. An open
   injury or a "Limites médicales en cours" entry → say so first, and if
   `medical` is in `[agents].enabled`, state that the choice of an ambitious
