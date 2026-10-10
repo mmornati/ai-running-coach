@@ -239,10 +239,12 @@ session is pushed as `sportType` cycling (id 2) with the step target still the a
 (`hr_target.bounds_bpm`, custom `heart.rate.zone`) — the route does not change the target. The chosen route goes in
 the text the athlete sees on the watch and in Garmin Connect:
 
-- `workoutName` = the suggestion's `garmin_workout_name` (e.g. `HT Z2 70min - Limmat Loop x2`) — short, so the watch
-  shows the route;
-- `description` = route, world, laps, predicted time with its ±10 % band, target power (a cue only) and
-  « la FC commande ».
+- `workoutName` = the suggestion's `garmin_workout_name` (e.g. `HT Z2 70min - Limmat Loop x2 (Switzerland)`) — short,
+  so the watch shows the route and its MyWhoosh world;
+- `description` = the suggestion's `garmin_description`, verbatim: where to find it in the app
+  (`Free Ride > <world> > <route>`), loop and laps, distance and D+, predicted time with its ±10 % band, target power
+  (a cue only), « la FC commande », and an OpenStreetMap link to the position MyWhoosh gives for the route (an
+  approximate landmark, never claimed exact).
 
 A Garmin power target (`power.zone`) is NOT used: its DTO has not been verified by this project, and HR stays the
 reference. Idempotency is unchanged: a changed route = a changed session (delete the old `workout_id`, re-push).

@@ -27,7 +27,8 @@ mywhoosh_calendar = "ask"   # facultatif : proposer aussi l'inscription au calen
 
 Renseignez votre équipement dans le profil, section « ### Vélo & home trainer » (home trainer, vélo,
 masse du vélo, FTP déclarée). Le coach s'en charge ensuite à chaque séance home trainer : il propose
-deux ou trois parcours, écrit celui que vous choisissez dans le nom et la description de la séance
+deux ou trois parcours — chacun avec où le trouver dans l'application (*Free Ride > Switzerland >
+Limmat Loop*) et un lien de carte vers la position que MyWhoosh indique —, écrit celui que vous choisissez dans le nom et la description de la séance
 poussée sur votre montre Garmin, et le trace dans la semaine.
 
 ## Utilisation manuelle
@@ -63,6 +64,7 @@ téléchargées : `python3 skills/fit-download/scripts/download_fit.py --refresh
 ## Confidentialité et limites
 
 - Le mot de passe MyWhoosh est lu au terminal (`getpass`), jamais écrit ni transmis à l'assistant ; seul le jeton d'accès est gardé, en mode 600 (`~/.config/ai-running-coach/mywhoosh-token.json`) ; le catalogue des parcours est mis en cache (`~/.cache/ai-running-coach/mywhoosh_routes.json`). L'inscription au calendrier MyWhoosh n'a lieu qu'avec `mywhoosh_calendar = "ask"` et votre « oui » explicite.
+- MyWhoosh n'accepte **qu'une session par compte** (« You are already logged in from another device ») : connectez-vous sur la machine qui fait tourner le coach, ou copiez-y le fichier du jeton depuis celle déjà connectée (`scp -p ~/.config/ai-running-coach/mywhoosh-token.json <serveur>:.config/ai-running-coach/`, mode 600). L'identifiant d'appareil y est gardé, une reconnexion à l'échéance reste « le même appareil ».
 - L'API utilisée n'est **pas officielle** (documentée par la communauté : [mywhoosh-api](https://github.com/mywhoosh-community/mywhoosh-api)) et peut changer sans préavis. Les comptes sans mot de passe (connexion Google / Apple) ne peuvent pas l'utiliser.
 - Les temps sont des **estimations à ±10 %** (approximation du projet), recoupées sur les temps publiés par mywhooshinfo.com pour un parcours de référence. Le drafting (groupe, bots) accélère : le temps prévu suppose une sortie en solo.
 - Pendant la séance, **la FC commande** : si elle sort de la plage, baissez la puissance, quitte à ne pas finir le parcours.

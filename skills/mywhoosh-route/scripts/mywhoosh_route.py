@@ -83,14 +83,42 @@ def _request(url: str, *, method: str = "GET", token: str | None = None, body: d
     return json.loads(raw) if raw else {}
 
 
-def _jwt_exp(token: str) -> int | None:
-    """Échéance (epoch) lue dans la charge utile du JWT, sans vérifier la signature."""
+def _jwt_payload(token: str) -> dict:
+    """Charge utile du JWT, sans vérifier la signature ({} si illisible)."""
     try:
         payload = token.split(".")[1]
         payload += "=" * (-len(payload) % 4)
-        return int(json.loads(base64.urlsafe_b64decode(payload))["exp"])
-    except (IndexError, KeyError, ValueError, TypeError):
+        data = json.loads(base64.urlsafe_b64decode(payload))
+        return data if isinstance(data, dict) else {}
+    except (IndexError, ValueError, TypeError):
+        return {}
+
+
+def _jwt_exp(token: str) -> int | None:
+    """Échéance (epoch) lue dans la charge utile du JWT."""
+    try:
+        return int(_jwt_payload(token)["exp"])
+    except (KeyError, ValueError, TypeError):
         return None
+
+
+def device_id(path: Path) -> str:
+    """Identifiant d'appareil STABLE : MyWhoosh n'accepte qu'une session par compte et
+    refuse une connexion depuis un « autre appareil » tant que la précédente est active.
+    Un nouvel identifiant à chaque connexion faisait de chaque relance (ou de chaque
+    machine) un nouvel appareil. Ordre : celui gardé dans le fichier du jeton, sinon
+    celui du jeton (même expiré), sinon un nouveau."""
+    try:
+        data = json.loads(path.read_text())
+    except (OSError, ValueError):
+        data = {}
+    if isinstance(data, dict):
+        if data.get("device_id"):
+            return str(data["device_id"])
+        from_token = _jwt_payload(str(data.get("access_token") or "")).get("deviceId")
+        if from_token:
+            return str(from_token)
+    return str(uuid.uuid4())
 
 
 def load_token(path: Path, now: float | None = None) -> str | None:
@@ -105,13 +133,14 @@ def load_token(path: Path, now: float | None = None) -> str | None:
     return token
 
 
-def save_token(path: Path, token: str) -> None:
-    """Écrit le jeton en mode 600 (création atomique), comme les jetons Garmin."""
+def save_token(path: Path, token: str, device: str | None = None) -> None:
+    """Écrit le jeton (et l'identifiant d'appareil) en mode 600, création atomique,
+    comme les jetons Garmin."""
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp = path.with_suffix(".tmp")
     fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
     with os.fdopen(fd, "w") as f:
-        json.dump({"access_token": token}, f)
+        json.dump({"access_token": token, **({"device_id": device} if device else {})}, f)
     os.replace(tmp, path)
 
 
@@ -126,16 +155,31 @@ def login(args, *, interactive: bool = True) -> str | None:
         return None
     user = getattr(args, "username", None) or os.environ.get("MYWHOOSH_USERNAME") or input("E-mail MyWhoosh : ").strip()
     pwd = os.environ.get("MYWHOOSH_PASSWORD") or getpass.getpass("Mot de passe MyWhoosh : ")
+    device = device_id(args.token_file)
     resp = _request(LOGIN_URL, method="POST", body={
         "Username": user, "Password": pwd, "Platform": "Android", "Action": 1001,
-        "CorrelationId": str(uuid.uuid4()), "DeviceId": str(uuid.uuid4()), "Authorization": "",
+        "CorrelationId": str(uuid.uuid4()), "DeviceId": device, "Authorization": "",
     })
     del pwd
     if not resp.get("Success") or not resp.get("AccessToken"):
-        print(f"Connexion refusée : {resp.get('Message') or 'réponse inattendue'}", file=sys.stderr)
+        message = resp.get("Message") or "réponse inattendue"
+        print(f"Connexion refusée : {message}", file=sys.stderr)
+        if "another device" in message.lower() or "autre appareil" in message.lower():
+            print("MyWhoosh n'accepte qu'une session par compte. Copier le fichier du jeton depuis la "
+                  f"machine déjà connectée ({args.token_file}, mode 600), ou attendre son échéance.",
+                  file=sys.stderr)
         return None
-    save_token(args.token_file, resp["AccessToken"])
+    save_token(args.token_file, resp["AccessToken"], device)
     return resp["AccessToken"]
+
+
+def _coords(lat, lon) -> dict:
+    """`{"lat", "lon"}` (4 décimales) si plausibles, sinon {} — jamais (0, 0)."""
+    if not all(isinstance(v, (int, float)) for v in (lat, lon)):
+        return {}
+    if not (-90 <= lat <= 90 and -180 <= lon <= 180) or (lat == 0 and lon == 0):
+        return {}
+    return {"lat": round(float(lat), 4), "lon": round(float(lon), 4)}
 
 
 def flatten_routes(worlds: list) -> list[dict]:
@@ -161,6 +205,10 @@ def flatten_routes(worlds: list) -> list[dict]:
                 "difficulty": r.get("Difficulty"),
                 "route_type": r.get("RouteType"),
                 "loop": r.get("RouteType") == "E_Circuit",
+                # Position indiquée par MyWhoosh (`Latitude`/`Longitude`) : le plus souvent le lieu réel
+                # dont le parcours est tiré (Limmat Loop ≈ Zurich, Bruges, Al Qudra ≈ Dubaï), mais pas
+                # toujours (Hudayriyat Outer Loop : ~100 km de l'île réelle) — jamais présentée comme exacte.
+                **_coords(r.get("Latitude"), r.get("Longitude")),
             })
     return out
 
@@ -330,12 +378,51 @@ def _fmt(s: float) -> str:
 
 
 def garmin_label(route: dict, duration_min: float, zone: int | None) -> str:
-    """Nom court pour le `workoutName` Garmin : la montre l'affiche, le parcours s'y retrouve.
-    ASCII seulement pour la partie fixe (comme les noms poussés par le coach) ; le nom du
-    parcours est gardé tel que MyWhoosh l'écrit, pour le retrouver dans l'application."""
+    """Nom court pour le `workoutName` Garmin : la montre l'affiche, le parcours ET son monde
+    s'y retrouvent. ASCII seulement pour la partie fixe (comme les noms poussés par le coach) ;
+    parcours et monde sont gardés tels que MyWhoosh les écrit, pour les retrouver dans l'application."""
     laps = f" x{route['laps']}" if route.get("laps", 1) > 1 else ""
     z = f" Z{zone}" if zone else ""
-    return f"HT{z} {duration_min:.0f}min - {route['name']}{laps}"
+    world = f" ({route['world']})" if route.get("world") else ""
+    return f"HT{z} {duration_min:.0f}min - {route['name']}{laps}{world}"
+
+
+def app_path(route: dict) -> str:
+    """Chemin dans l'application : Free Ride > <monde> > <parcours>."""
+    return " > ".join(x for x in ("Free Ride", route.get("world"), route["name"]) if x)
+
+
+def map_url(route: dict) -> str | None:
+    """Lien OpenStreetMap vers la position que MyWhoosh indique pour le parcours (construit localement,
+    aucun appel réseau). Repère approximatif, pas un lieu garanti."""
+    if "lat" not in route or "lon" not in route:
+        return None
+    lat, lon = route["lat"], route["lon"]
+    return f"https://www.openstreetmap.org/?mlat={lat}&mlon={lon}#map=12/{lat}/{lon}"
+
+
+def _km(m: float) -> str:
+    return f"{m / 1000:.1f}".replace(".", ",")
+
+
+def garmin_description(route: dict, target_w: float, hr_band: list[float] | None) -> str:
+    """Texte de la `description` Garmin (langue des documents : français) — où trouver le parcours,
+    tours, distance, temps prévu avec sa bande, repère de puissance, et la règle « la FC commande ».
+    Sans accents, comme les descriptions déjà poussées par le coach (affichage montre)."""
+    laps = route.get("laps", 1)
+    kind = "boucle" if _is_loop(route) else "point a point"
+    tours = f", {laps} tours" if laps > 1 else ""
+    hr = f" ({round(hr_band[0])}-{round(hr_band[1])} bpm)" if hr_band else ""
+    parts = [
+        f"MyWhoosh : {app_path(route)} ({kind}{tours} = {_km(route['distance_m'] * laps)} km, "
+        f"D+ {route['elevation_gain_m'] * laps} m).",
+        f"Temps prevu ~{_fmt(route['predicted_s'])} (estimation {_fmt(route['low_s'])}-{_fmt(route['high_s'])}).",
+        f"Repere puissance ~{round(target_w)} W{hr} : la FC commande.",
+    ]
+    url = map_url(route)
+    if url:
+        parts.append(f"Carte (position MyWhoosh) : {url}")
+    return " ".join(parts)
 
 
 def virtual_route(route: dict, target_w: float) -> dict:
@@ -401,6 +488,11 @@ def cmd_suggest(args) -> int:
                   overrun_min=args.overrun_min, max_laps=args.max_laps, top=args.top)
     for r in res:
         r["garmin_workout_name"] = garmin_label(r, args.duration_min, preset["zone"])
+        r["app_path"] = app_path(r)
+        url = map_url(r)
+        if url:
+            r["map_url"] = url
+        r["garmin_description"] = garmin_description(r, target, hr_band)
         r["virtual_route"] = virtual_route(r, target)
     out = {"duration_min": args.duration_min, "intensity": args.intensity or "endurance",
            "hr_band_bpm": [round(x) for x in hr_band] if hr_band else None,
@@ -417,9 +509,11 @@ def cmd_suggest(args) -> int:
         print("Aucun parcours ne tient dans la séance avec ces filtres.")
     for r in res:
         laps = f" × {r['laps']} tours" if r["laps"] > 1 else ""
-        print(f"- {r['name']} ({r['world']}, difficulté {r.get('difficulty')}) : {r['distance_m'] / 1000:.1f} km, "
-              f"D+ {r['elevation_gain_m']} m ({r['m_per_km']} m/km){laps} → {_fmt(r['predicted_s'])} "
-              f"[{_fmt(r['low_s'])}–{_fmt(r['high_s'])}], remplit {r['fill'] * 100:.0f} %")
+        print(f"- {r['app_path']} ({'boucle' if _is_loop(r) else 'point à point'}, difficulté {r.get('difficulty')}) : "
+              f"{r['distance_m'] / 1000:.1f} km, D+ {r['elevation_gain_m']} m ({r['m_per_km']} m/km){laps} → "
+              f"{_fmt(r['predicted_s'])} [{_fmt(r['low_s'])}–{_fmt(r['high_s'])}], remplit {r['fill'] * 100:.0f} %")
+        if r.get("map_url"):
+            print(f"    carte (position indiquée par MyWhoosh) : {r['map_url']}")
     return 0
 
 

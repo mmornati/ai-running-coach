@@ -56,17 +56,23 @@ planifiée (ex. « Home trainer Z2 70 min »), à partir :
    viennent de la calibration (dernière pesée, profil), surchargeables
    (`--weight-kg`, `--bike-kg`). Plusieurs tours seulement sur une boucle (`E_Circuit`) ;
    les parcours d'événement (difficulté 0) sont écartés. JSON par défaut : chaque
-   parcours porte `garmin_workout_name` et `virtual_route`.
-4. **Réponse à l'athlète** (langue des réponses) : 2-3 parcours au plus, avec km, D+,
-   tours, temps prévu **et sa bande ±10 %**, puissance cible, et la consigne : **la FC
+   parcours porte `app_path` (où le trouver : `Free Ride > Switzerland > Limmat Loop`),
+   `map_url` (carte OpenStreetMap de la position indiquée par MyWhoosh, quand elle existe),
+   `garmin_workout_name`, `garmin_description` et `virtual_route`.
+4. **Réponse à l'athlète** (langue des réponses) : 2-3 parcours au plus, chacun avec **où
+   le trouver** (`app_path` : monde puis parcours, boucle ou point à point), km, D+, tours,
+   temps prévu **et sa bande ±10 %**, puissance cible ; le lien de carte (`map_url`) est un
+   repère : c'est la position que MyWhoosh indique, le plus souvent le lieu réel du parcours
+   mais pas toujours (ne jamais l'affirmer exacte). Puis la consigne : **la FC
    commande, pas la puissance ni le parcours** — si la FC sort de la plage, baisser la
    puissance, quitte à ne pas finir le parcours. Rappeler les consignes d'arrêt de la
    séance telles qu'écrites dans le fichier semaine, sans les assouplir. En headless,
    retenir le premier et le dire dans le résumé.
 5. **Calendrier Garmin** (skill `garmin-workout-scheduling`, section « Home trainer
-   route ») : `workoutName` = `garmin_workout_name` ; `description` = parcours, tours,
-   temps prévu (bande), puissance cible, « la FC commande ». La cible de l'étape reste
-   la plage FC (`arc_workout_targets.py`).
+   route ») : `workoutName` = `garmin_workout_name` (parcours, tours et monde) ;
+   `description` = `garmin_description` tel quel (où le trouver, tours, distance, temps
+   prévu et bande, repère de puissance, « la FC commande », lien de carte). La cible de
+   l'étape reste la plage FC (`arc_workout_targets.py`).
 6. **Trace** : recopier `virtual_route` du parcours choisi dans la séance du bloc `arc`
    de la semaine (`workspace-data-contract`), puis
    `python3 scripts/arc_index.py --validate <fichier>`.
@@ -97,6 +103,13 @@ python3 skills/mywhoosh-route/scripts/mywhoosh_route.py tasks 2026-10-10 2026-10
   (`~/.config/ai-running-coach/mywhoosh-token.json`, jamais affiché) ; le catalogue est
   mis en cache (`~/.cache/ai-running-coach/mywhoosh_routes.json`). À relancer si
   MyWhoosh ajoute des parcours, ou quand le jeton a expiré (`tasks`/`schedule` le disent).
+- **Une seule session par compte** : MyWhoosh refuse une connexion « depuis un autre
+  appareil » tant qu'une session est active. Se connecter sur la machine qui fait tourner
+  le coach, ou y copier le fichier du jeton (`scp -p`, mode 600) depuis celle déjà
+  connectée. L'identifiant d'appareil est gardé dans ce fichier et réutilisé à chaque
+  reconnexion : relancer `fetch` à l'échéance ne crée pas de nouvel appareil.
+- Un catalogue récupéré avant l'ajout des positions n'a pas de `map_url` : relancer
+  `fetch` (sans mot de passe tant que le jeton est valide).
 - Les comptes MyWhoosh sans mot de passe (connexion Google / Apple) ne peuvent pas
   utiliser cette API : le dire, ne pas chercher de contournement.
 

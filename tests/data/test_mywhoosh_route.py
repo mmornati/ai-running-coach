@@ -55,7 +55,8 @@ class TestFlattenRoutes(unittest.TestCase):
         worlds = [{"WorldName": "Arabia", "WorldId": 1, "Routes": [
             {"Id": 1, "Name": "Jabel Hafeet ", "Km": 16.5, "Elevation": 735, "Difficulty": 4,
              "RouteType": "E_Sprint", "bIsAvailableForFreeRide": True},
-            {"Id": 22, "Name": "Al Qudra", "Km": 12.3, "Elevation": 24, "Difficulty": 1, "RouteType": "E_Circuit"},
+            {"Id": 22, "Name": "Al Qudra", "Km": 12.3, "Elevation": 24, "Difficulty": 1, "RouteType": "E_Circuit",
+             "Latitude": -40.12345678, "Longitude": -130.98765432},
             {"Id": 2, "Name": "Event only", "Km": 10, "Elevation": 10, "bIsAvailableForFreeRide": False},
             {"Id": 3, "Name": "No km", "Elevation": 10},
         ]}]
@@ -65,6 +66,13 @@ class TestFlattenRoutes(unittest.TestCase):
         self.assertEqual(out[0]["world_id"], 1)
         self.assertFalse(out[0]["loop"])
         self.assertTrue(out[1]["loop"])
+        self.assertNotIn("lat", out[0])                       # sans position : pas de clé, jamais (0, 0)
+        self.assertEqual((out[1]["lat"], out[1]["lon"]), (-40.1235, -130.9877))
+
+    def test_null_island_and_out_of_range_dropped(self):
+        self.assertEqual(M._coords(0, 0), {})
+        self.assertEqual(M._coords(95, 10), {})
+        self.assertEqual(M._coords(None, 10), {})
 
     def test_empty_response(self):
         self.assertEqual(M.flatten_routes(None), [])
@@ -85,6 +93,35 @@ class TestToken(unittest.TestCase):
             self.assertIsNone(M.load_token(path))
             M.save_token(path, _jwt(1_000_000_100))
             self.assertIsNone(M.load_token(path, now=1_000_000_000))   # échéance dans < 5 min
+
+    def test_device_id_is_stable_across_logins(self):
+        with tempfile.TemporaryDirectory() as d:
+            path = Path(d) / "token.json"
+            first = M.device_id(path)                      # aucun fichier : nouvel identifiant
+            M.save_token(path, _jwt(1_000_000_100), first)
+            self.assertEqual(M.device_id(path), first)     # gardé, même jeton expiré
+            payload = base64.urlsafe_b64encode(json.dumps({"exp": 1, "deviceId": "dev-42"}).encode()).decode()
+            path.write_text(json.dumps({"access_token": f"h.{payload.rstrip('=')}.s"}))
+            self.assertEqual(M.device_id(path), "dev-42")  # ancien fichier : repris du jeton
+
+    def test_login_reuses_device_id(self):
+        with tempfile.TemporaryDirectory() as d:
+            path = Path(d) / "token.json"
+            M.save_token(path, _jwt(1_000_000_100), "dev-7")
+
+            class Args:
+                token_file = path
+                username = "athlete@example.org"
+            sent = {}
+
+            def fake(url, **kw):
+                sent.update(kw.get("body") or {})
+                return {"Success": True, "AccessToken": _jwt(2_000_000_000)}
+            with patch.object(M, "_request", side_effect=fake), patch("getpass.getpass", return_value="x"), \
+                    patch.object(sys.stdin, "isatty", return_value=True):
+                self.assertTrue(M.login(Args()))
+            self.assertEqual(sent["DeviceId"], "dev-7")
+            self.assertEqual(json.loads(path.read_text())["device_id"], "dev-7")
 
     def test_non_interactive_login_never_prompts(self):
         class Args:
@@ -147,11 +184,31 @@ class TestSuggest(unittest.TestCase):
     def test_labels_and_trace(self):
         r = self._run()[0]
         label = M.garmin_label(r, 70, 2)
-        self.assertEqual(label, f"HT Z2 70min - {r['name']}" + (f" x{r['laps']}" if r["laps"] > 1 else ""))
+        self.assertEqual(label, f"HT Z2 70min - {r['name']}" + (f" x{r['laps']}" if r["laps"] > 1 else "") + " (T)")
         trace = M.virtual_route(r, 155.4)
         self.assertEqual(trace["platform"], "mywhoosh")
         self.assertEqual(trace["target_power_w"], 155)
         self.assertEqual(trace["distance_m"], r["distance_m"] * r["laps"])
+
+
+class TestWhere(unittest.TestCase):
+    ROUTE = {**ROUTES[0], "world": "Switzerland", "lat": -40.5, "lon": -130.25, "laps": 2,
+             "predicted_s": 4217, "low_s": 3795, "high_s": 4639}
+
+    def test_app_path_and_map(self):
+        self.assertEqual(M.app_path(self.ROUTE), "Free Ride > Switzerland > Flat 12k")
+        self.assertEqual(M.map_url(self.ROUTE),
+                         "https://www.openstreetmap.org/?mlat=-40.5&mlon=-130.25#map=12/-40.5/-130.25")
+        self.assertIsNone(M.map_url(ROUTES[0]))
+
+    def test_garmin_description_says_where_and_hr_rules(self):
+        desc = M.garmin_description(self.ROUTE, 141.2, [124, 138])
+        self.assertIn("MyWhoosh : Free Ride > Switzerland > Flat 12k (boucle, 2 tours = 24,6 km, D+ 48 m).", desc)
+        self.assertIn("~1h10 (estimation 1h03-1h17)", desc)
+        self.assertIn("~141 W (124-138 bpm) : la FC commande.", desc)
+        self.assertIn("Carte (position MyWhoosh) : https://www.openstreetmap.org/", desc)
+        no_pos = {k: v for k, v in self.ROUTE.items() if k not in ("lat", "lon")}
+        self.assertNotIn("Carte", M.garmin_description(no_pos, 141, None))
 
 
 class TestCliSuggest(unittest.TestCase):
@@ -176,6 +233,8 @@ class TestCliSuggest(unittest.TestCase):
         self.assertEqual(data["bike_kg"], 8.5)
         self.assertEqual(data["max_difficulty"], 2)
         self.assertTrue(all("garmin_workout_name" in r and "virtual_route" in r for r in data["routes"]))
+        self.assertTrue(all(r["app_path"].startswith("Free Ride > T > ") for r in data["routes"]))
+        self.assertTrue(all("garmin_description" in r for r in data["routes"]))
 
     def test_low_half_lowers_target(self):
         full = json.loads(self._cli()[1])["target_power_w"]
