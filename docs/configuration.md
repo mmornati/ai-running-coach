@@ -252,6 +252,31 @@ dans la semaine (`virtual_route`). Voir [Parcours MyWhoosh](skills/mywhoosh-rout
   pas de puissance ; les re-extraire avec `python3 skills/fit-download/scripts/download_fit.py
   --refresh-dynamics` (ou les re-télécharger avec `--json --overwrite`).
 
+## Quelle source pour mon appareil ?
+
+Deux questions distinctes : d'où viennent **vos séances** (`[data].source`, voir la
+section suivante) et d'où vient **la santé du bilan matinal** (HRV, FC de repos,
+readiness). Le tableau donne le chemin supporté par appareil. Les appareils
+synchronisés par Intervals.icu viennent de sa
+[page bien-être](https://www.intervals.icu/features/wellness/), relue le
+10 octobre 2026.
+
+| Appareil | Entraînement (`[data].source`) | Santé du bilan matinal | Remarque |
+|---|---|---|---|
+| Garmin | `garmin` (direct) | Garmin | référence du projet ; jamais via Open Wearables (programme développeur réservé aux entités légales : `garmin-api-integration.mdx` d'Open Wearables, voir [l'audit](open-wearables.md)) ; intégration directe décrite dans [Configuration Garmin](garmin-setup.md) |
+| COROS | `intervals` | Intervals.icu (si synchronisée) | MCP officiel audité, hors périmètre : [Montres COROS](coros.md) |
+| Suunto | `intervals` | Intervals.icu | l'API cloud de Suunto n'est pas ouverte aux particuliers ([FAQ Suunto](https://apizone.suunto.com/faq), relue le 10 octobre 2026) |
+| Polar | `intervals` | Intervals.icu ; Open Wearables (Nightly Recharge) **prévu** (#216) | Polar est listée sur la page bien-être d'Intervals.icu (relue le 10 octobre 2026) ; accès libre-service et scores Nightly Recharge : `polar-api-integration.mdx` d'Open Wearables ([audit](open-wearables.md)) |
+| Huawei, Amazfit | `intervals` | Intervals.icu | listés sur la page bien-être d'Intervals.icu ; non testé ici |
+| Apple Watch | `strava` (non vérifié : approximation du projet), ou `intervals` via une appli tierce (HealthFit, citée dans [Intervals.icu](intervals-setup.md)) | Open Wearables + son app mobile (bêta) **prévu** (#216) ; HRV en SDNN, jamais mélangée au RMSSD (`coverage.mdx` d'Open Wearables) | Intervals.icu indique synchroniser Apple Health « using 3rd party apps » (page bien-être, relue le 10 octobre 2026) |
+| Bague Oura, WHOOP | — | Intervals.icu si `[data].source = "intervals"` ; sinon Open Wearables **prévu** (#216) | Oura et WHOOP sont listées sur la page bien-être d'Intervals.icu (relue le 10 octobre 2026) ; accès : `oura-api-integration.mdx`, `whoop-api-integration.mdx` d'Open Wearables |
+| Pixel Watch / Fitbit | `strava` (à confirmer : non vérifié, approximation du projet) | Open Wearables **prévu** (#216) | l'ancienne API Fitbit s'arrête le 30 octobre 2026 ([Google](https://developers.google.com/health/about), relue le 10 octobre 2026) ; la lecture Pixel Watch / Fitbit passe par l'API Google Health (`google-api-integration.mdx` d'Open Wearables) |
+| Ultrahuman, Withings | — | Open Wearables **prévu** (#216) | `ultrahuman-api-integration.mdx`, `withings-api-integration.mdx` d'Open Wearables ; aucun chemin d'entraînement identifié |
+
+« **Prévu** » = décrit dans l'épopée #216 mais **pas encore livré** : la clé
+`[health].source` existe (#218), mais la lecture Open Wearables n'est pas encore livrée. Détail des capacités et limites de chaque
+fournisseur : [Open Wearables (audit)](open-wearables.md).
+
 ## La source de données — `[data].source` (#68)
 
 ```toml

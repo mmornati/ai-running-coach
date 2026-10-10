@@ -47,6 +47,8 @@ stubs, `coach-doctor`).
 
 ## Aujourd'hui : COROS via Intervals.icu
 
+Pour les autres appareils : [Quelle source pour mon appareil ?](configuration.md#quelle-source-pour-mon-appareil).
+
 La montre synchronise ses activités et une partie de son bien-être vers
 Intervals.icu (via l'intégration entre les deux comptes : sommeil et FC de
 repos ; la HRV n'arrive pas chez tous les utilisateurs selon le
