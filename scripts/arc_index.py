@@ -304,6 +304,7 @@ import arc_descent as DS  # noqa: E402
 import arc_durability as DU  # noqa: E402
 import arc_energy as EN  # noqa: E402
 import arc_gait as GT  # noqa: E402
+import arc_health_source as HS  # noqa: E402
 import arc_gap as G  # noqa: E402
 import arc_legacy as L  # noqa: E402
 import arc_metrics as M  # noqa: E402
@@ -392,7 +393,10 @@ from coach_setup import ENGINE, workspace_root  # noqa: E402
 # et `planned_session` gagne `virtual_route` (JSON, parcours virtuel choisi) — version 37 (36 = #222) : sans
 # ce bump, l'insertion échouerait avec « no such column ». Les `activities/fit/*.json` existants n'ont pas de
 # puissance : les re-extraire avec `download_fit.py --refresh-dynamics` (ré-extrait toutes les clés).
-SCHEMA_VERSION = 37
+# #218 : `health_day` gagne `health_source`/`health_provider`/`hrv_sdnn_ms` (provenance santé, NULL pour les
+# fichiers antérieurs — source effective = `[data].source`, `arc_health_source`) — version 38 (37 = home
+# trainer) : sans ce bump, l'insertion d'un fichier santé portant ces clés échouerait (« no such column »).
+SCHEMA_VERSION = 38
 # Colonnes d'identifiant externe d'une séance, dans l'ordre de priorité de `activity_ref` — une séance n'en
 # porte qu'une (`workspace-data-contract`) ; Garmin prime si un fichier ancien en porte plusieurs.
 REF_COLUMNS = ("garmin_activity_id", "intervals_activity_id", "strava_activity_id")
@@ -417,7 +421,14 @@ def load_config(workspace: Path) -> Dict[str, dict]:
     for path in (shared, workspace / "config/workspace.user.toml"):
         for section, values in read_toml(path).items():
             if isinstance(values, dict):
-                merged.setdefault(section, {}).update(values)
+                target = merged.setdefault(section, {})
+                for key, value in values.items():
+                    # Sous-table imbriquée (`[health.openwearables]` avec `tomllib`) : fusion clé par clé aussi,
+                    # sinon une valeur personnelle effacerait les autres défauts de la sous-table.
+                    if isinstance(value, dict) and isinstance(target.get(key), dict):
+                        target[key].update(value)
+                    else:
+                        target[key] = value
     return merged
 
 
@@ -560,6 +571,7 @@ def home_trainer_platform(config: Dict[str, dict]) -> str:
 def settings(config: Dict[str, dict]) -> dict:
     """Les réglages qui changent ce que l'index attend et ce que le tableau affiche."""
     agents = config.get("agents", {}).get("enabled", ["coach", "medical", "nutritionist", "course-strategist"])
+    health_source, health_provider = HS.effective_health_source(config)   # un seul appel : un seul avertissement
     return {
         "sport": config.get("sport", {}).get("primary", "trail") or "trail",
         "morning_check": config.get("health", {}).get("morning_check", "full") or "full",
@@ -567,6 +579,12 @@ def settings(config: Dict[str, dict]) -> dict:
         # Contexte du cycle menstruel (#166) : "off" (défaut) | "garmin" | "intervals" | "manual" ; toute autre
         # valeur → "off" avec avertissement (scripts/arc_cycle.py), jamais une exception.
         "cycle_tracking": CY.cycle_tracking_mode(config),
+        # Source de la santé du bilan matinal (#218) : "primary" (défaut, = [data].source) | "openwearables" ;
+        # valeur invalide → "primary" avec avertissement (scripts/arc_health_source.py). `data_source` sert
+        # de source effective aux fichiers santé sans `health_source` (antérieurs à #218).
+        "health_source": health_source,
+        "health_provider": health_provider,
+        "data_source": HS.data_source(config),
         "agents": list(agents),
         "units": config.get("athlete", {}).get("units", "metric") or "metric",
         "profile": config.get("athlete", {}).get("profile", "planning/Runner_Profile.md"),
@@ -720,7 +738,8 @@ CREATE TABLE health_day (
     hrv_personal_low_ms REAL, hrv_personal_high_ms REAL, hrv_personal_status TEXT,
     resting_hr_bpm REAL, readiness_score REAL, body_battery_high REAL, body_battery_low REAL,
     stress_avg REAL, weight_kg REAL, weight_origin TEXT, weight_garmin_kg REAL, verdict TEXT, verdict_reason TEXT,
-    cycle_phase TEXT, cycle_day INTEGER, cycle_source TEXT, body_md TEXT, data_json TEXT
+    cycle_phase TEXT, cycle_day INTEGER, cycle_source TEXT, health_source TEXT, health_provider TEXT,
+    hrv_sdnn_ms REAL, body_md TEXT, data_json TEXT
 );
 CREATE INDEX health_date ON health_day(date);
 CREATE TABLE weather_day (
@@ -1140,6 +1159,11 @@ def expected_keys(kind: str, data: dict, conf: dict) -> List[str]:
         return keys
     if kind == "health":
         mode = data.get("morning_check") or conf["morning_check"]
+        if data.get("health_source") == "openwearables":
+            # #218 : le score natif d'un autre fabricant va dans `provider_scores`, jamais dans
+            # `readiness_score` (valeur Garmin) — son absence n'est donc pas une dette.
+            return {"full": ["sleep_total_s", "hrv_overnight_ms", "resting_hr_bpm", "verdict"],
+                    "minimal": ["verdict"]}.get(mode, [])
         return {
             "full": ["sleep_total_s", "hrv_overnight_ms", "resting_hr_bpm", "readiness_score", "verdict"],
             "minimal": ["readiness_score", "verdict"],
@@ -1340,7 +1364,7 @@ def store(conn, rel: str, kind: str, data: dict, arc_version: int) -> None:
         # `health_day` n'a pas de colonne dédiée pour un champ non-scalaire, il reste
         # accessible via `data_json` (voir `arc_guardrails.build_injury_risk_context`).
         cols = [k for k in C.SCHEMA["health"]["optional"]
-                if k not in ("readiness_factors", "missing_reason", "pain")]
+                if k not in ("readiness_factors", "missing_reason", "pain", "provider_scores", "health_device")]
         _insert(conn, "health_day", {
             "source_path": rel, "arc_version": arc_version, "date": g("date"),
             "morning_check": g("morning_check"), **{k: g(k) for k in cols},
@@ -3506,11 +3530,21 @@ def hrv_baseline_today(conn, conf: dict, today: date) -> dict:
                 "reason": "ligne de base personnelle calculée seulement en "
                           '[health].morning_check = "full"'}
     rows = conn.execute(
-        "SELECT date, hrv_overnight_ms FROM health_day WHERE hrv_overnight_ms IS NOT NULL"
+        "SELECT date, hrv_overnight_ms, hrv_sdnn_ms, resting_hr_bpm, sleep_total_s, readiness_score, "
+        "health_source, health_provider FROM health_day ORDER BY date, source_path"
     ).fetchall()
-    hrv_by_date = {row[0]: row[1] for row in rows}
+    # #218 : la ligne de base ne porte que sur les lignes de MÊME source effective que la dernière ligne AVEC
+    # mesure (pour `openwearables`, même fabricant) — jamais deux capteurs/méthodes dans une même référence.
+    # Règle partagée avec /api/health (`arc_health_source.current_key`).
+    default_source = conf.get("data_source") or HS.DEFAULT_DATA_SOURCE
+    key = HS.current_key(rows, today.isoformat(), default_source) or HS.source_key(
+        conf.get("health_source") if conf.get("health_source") == "openwearables" else None,
+        conf.get("health_provider"), default_source)
+    hrv_by_date = {r["date"]: r["hrv_overnight_ms"] for r in rows
+                   if r["hrv_overnight_ms"] is not None and HS.row_key(r, default_source) == key}
     point = M.hrv_baseline_series(hrv_by_date, today, today)[0]
-    return {**point, "morning_check": mode}
+    source, provider = HS.split_key(key)
+    return {**point, "morning_check": mode, "health_source": source, "health_provider": provider}
 
 
 def athlete_sleep_need_s(row) -> float:
@@ -4899,14 +4933,19 @@ def pace_curve(conn, today: Optional[date] = None, days: Optional[int] = None,
 DECISION_EFFECTS_DEFAULT_DAYS = 180
 
 
-def _decision_effect_data(conn) -> dict:
+def _decision_effect_data(conn, data_source: str = HS.DEFAULT_DATA_SOURCE) -> dict:
     """Séries lues dans l'index pour `arc_decision_effects` (aucune imputation : un jour sans mesure est
     simplement absent). Douleur = pire `score` de `health.pain` du jour ; `pain: []` explicite = 0, clé
-    absente = pas de mesure."""
+    absente = pas de mesure. `source` (#218) = source effective du jour (`arc_health_source.source_key`) : une
+    fenêtre qui en couvre deux est exclue des comparaisons santé (`arc_decision_effects.source_changes`)."""
     health: Dict[str, dict] = {}
-    for r in conn.execute("SELECT date, hrv_overnight_ms, resting_hr_bpm, readiness_score, data_json "
+    for r in conn.execute("SELECT date, hrv_overnight_ms, hrv_sdnn_ms, resting_hr_bpm, sleep_total_s, "
+                          "readiness_score, data_json, health_source, health_provider "
                           "FROM health_day ORDER BY date, source_path"):
         row = health.setdefault(r["date"], {})
+        key = HS.row_key(r, data_source)       # None = fichier sans mesure (douleur seule) : pas de source
+        if key and "source" not in row:
+            row["source"] = key
         for key, col in (("hrv_ms", "hrv_overnight_ms"), ("rhr_bpm", "resting_hr_bpm"),
                          ("readiness", "readiness_score")):
             if row.get(key) is None and r[col] is not None:
@@ -4927,7 +4966,7 @@ def _decision_effect_data(conn) -> dict:
 
 
 def decision_effects(conn, today: Optional[date] = None, days: Optional[int] = None,
-                     trigger: Optional[str] = None) -> dict:
+                     trigger: Optional[str] = None, data_source: str = HS.DEFAULT_DATA_SOURCE) -> dict:
     """Effet des décisions (#175) — commande « decision-effects » et `/api/decision-effects`.
 
     Évalue (fonctions pures de `arc_decision_effects`) les décisions de la fenêtre (`days`, défaut
@@ -4944,7 +4983,7 @@ def decision_effects(conn, today: Optional[date] = None, days: Optional[int] = N
     start = (today - timedelta(days=days - 1)).isoformat()
     rows = [d for d in every if start <= str(d.get("date") or "") <= today.isoformat()
             and (not trigger or d.get("trigger") == trigger)]
-    data = _decision_effect_data(conn)
+    data = _decision_effect_data(conn, data_source)
     evaluations = DE.evaluate_all(rows, data, today, context=every)
     for ev, d in zip(evaluations, rows):
         ev["summary"] = d.get("summary")
@@ -5318,7 +5357,8 @@ def main(argv=None) -> int:
         if args.days is not None and args.days < 1:
             raise ConfigError(f"--days : un entier >= 1 attendu, « {args.days} » reçu.")
         today_date = date.fromisoformat(args.today) if args.today else date.today()
-        report = decision_effects(conn, today_date, args.days, args.trigger)
+        report = decision_effects(conn, today_date, args.days, args.trigger,
+                                  HS.data_source(load_config(workspace)))
         print(decision_effects_text(report) if args.text and not args.json else json.dumps(report, ensure_ascii=False))
         return 0
     if args.command == "power-hr":

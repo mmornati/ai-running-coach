@@ -133,7 +133,27 @@ REASONS = {
     "window_open": "fenêtre d'observation pas encore écoulée",
     "no_signal": "aucun signal exploitable avant ET après",
     "bad_date": "date de décision illisible",
+    "source_change": "la source des données de santé a changé dans la fenêtre : HRV, FC de repos et readiness "
+                     "ne se comparent pas d'une source à l'autre",
 }
+
+# Signaux issus des fichiers santé : leur comparaison avant/après n'a de sens que sur UNE source (#218).
+SOURCE_SENSITIVE_SIGNALS = ("hrv", "rhr", "readiness")
+
+
+def source_changes(data: dict, start: date, end: date) -> bool:
+    """Vrai si les jours de santé de [start, end] viennent de plus d'une source effective
+    (`health[jour]["source"]`, posé par `arc_index._decision_effect_data`). Une donnée sans clé de source
+    (appelant antérieur à #218, tests) ne déclenche rien : comportement inchangé."""
+    health = data.get("health") or {}
+    keys = set()
+    day = start
+    while day <= end:
+        key = (health.get(day.isoformat()) or {}).get("source")
+        if key:
+            keys.add(key)
+        day += timedelta(days=1)
+    return len(keys) > 1
 
 ASSUMPTIONS = {
     "not_causal": (
@@ -306,6 +326,10 @@ def evaluate_signal(signal: str, data: dict, day: date, horizon: int) -> dict:
     """Un signal : moyennes AVANT/APRÈS, variation, verdict — ou `skipped` avec la raison."""
     spec = SIGNALS[signal]
     (pre_s, pre_e), (post_s, post_e) = _windows(signal, day, horizon)
+    if signal in SOURCE_SENSITIVE_SIGNALS and source_changes(data, pre_s, post_e):
+        return {"signal": signal, "label": spec["label"], "source_change": True,
+                "skipped": "source de santé changée dans la fenêtre (HRV, FC de repos et readiness "
+                           "non comparables d'une source à l'autre)"}
     pre_vals = _window_values(signal, data, pre_s, pre_e)
     post_vals = _window_values(signal, data, post_s, post_e)
     base = {"signal": signal, "label": spec["label"],
@@ -360,14 +384,18 @@ def evaluate_decision(decision: dict, data: dict, today: date) -> dict:
     mature = day + timedelta(days=horizon)
     if today < mature:
         return done("insufficient_data", "window_open", mature_on=mature.isoformat())
+    excluded = 0
     for signal in plan["signals"]:
         res = evaluate_signal(signal, data, day, horizon)
         if "skipped" in res:
             out["skipped"].append({"signal": signal, "label": res["label"], "reason": res["skipped"]})
+            excluded += 1 if res.get("source_change") else 0
         else:
             out["signals"].append(res)
+    if excluded:
+        out["excluded_source_change"] = excluded     # clé absente = aucune exclusion (sortie inchangée)
     if not out["signals"]:
-        return done("insufficient_data", "no_signal")
+        return done("insufficient_data", "source_change" if excluded else "no_signal")
     verdicts = {s["verdict"] for s in out["signals"]}
     if "improved" in verdicts and "worsened" not in verdicts:
         effect = "improved"
@@ -427,6 +455,8 @@ def synthesize(evaluations: Iterable[dict]) -> List[dict]:
         g[ev["effect"]] += 1
         if ev["effect"] != "insufficient_data" and ev.get("overlaps"):
             g["overlapping"] += 1
+        if ev.get("excluded_source_change"):
+            g["excluded_source_change"] = g.get("excluded_source_change", 0) + 1   # absent = aucune
     out = []
     for g in groups.values():
         n = g["improved"] + g["neutral"] + g["worsened"]
@@ -446,6 +476,9 @@ def synthesize(evaluations: Iterable[dict]) -> List[dict]:
                      "(effets confondus)")
         if g["insufficient_data"]:
             text += f" ; {g['insufficient_data']} sans données suffisantes"
+        if g.get("excluded_source_change"):
+            text += (f" ; {g['excluded_source_change']} avec un changement de source de santé dans la fenêtre "
+                     "(signaux santé exclus, jamais comparés d'une source à l'autre)")
         if n == 0:
             g["trend"] = None
             g["warning"] = "aucune décision évaluable pour l'instant"

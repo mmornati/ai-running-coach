@@ -58,6 +58,17 @@ CYCLE_DAY_PLAUSIBLE = (1, 60)
 # fichier antérieur à #222, donc déclaré (seule voie d'écriture d'alors). Voir
 # scripts/arc_weight_sync.py pour la règle de priorité (l'athlète prime le même jour).
 WEIGHT_ORIGINS = ("garmin", "chat")
+# Provenance des données santé du bilan matinal (#218, épopée #216) : d'où viennent HRV, FC de repos et
+# sommeil du fichier (scripts/arc_health_source.py). Clé absente = fichier antérieur, réputé venir de
+# `[data].source`. Une seule source santé par fichier.
+HEALTH_SOURCES = ("garmin", "intervals", "openwearables")
+# Catégories d'un score NATIF de fabricant (`health.provider_scores`) ; la charge (`strain`) n'est pas un
+# signal de récupération et n'a pas toujours d'échelle bornée : exclue.
+PROVIDER_SCORE_CATEGORIES = ("readiness", "recovery", "sleep")
+# Clés qui restent des valeurs GARMIN : jamais remplies depuis `openwearables` (le score natif d'un autre
+# fabricant va dans `provider_scores`, sans être remis sur 100).
+GARMIN_ONLY_HEALTH_KEYS = ("readiness_score", "readiness_factors", "sleep_score",
+                           "body_battery_high", "body_battery_low", "stress_avg")
 # Écart au-delà duquel une pesée Garmin écartée au profit de la valeur déclarée est
 # signalée (une seule fois, mémorisée par `weight_garmin_kg`).
 WEIGHT_CONFLICT_KG = 1.0
@@ -372,6 +383,14 @@ SCHEMA = {
             # voir WEIGHT_ORIGINS et scripts/arc_weight_sync.py.
             "weight_origin": _enum(WEIGHT_ORIGINS),
             "weight_garmin_kg": "body_weight_kg",
+            # #218 : provenance santé (jamais d'appel réseau ici). `hrv_overnight_ms` reste un RMSSD quelle que
+            # soit la source ; la HRV en SDNN (Apple Health) va dans `hrv_sdnn_ms`, jamais mélangée. Les scores
+            # natifs d'un fabricant sont nommés et gardent leur échelle (`provider_scores`).
+            "health_source": _enum(HEALTH_SOURCES),
+            "health_provider": "str",
+            "health_device": "str",
+            "hrv_sdnn_ms": "num+",
+            "provider_scores": "[provider_score]",
             "verdict": _enum(VERDICT),
             "verdict_reason": "str",
             "missing_reason": "obj",
@@ -589,6 +608,14 @@ SUBSCHEMA = {
     "pain": {
         "required": {"location": "str", "score": "pain_score"},
         "optional": {},
+    },
+    # `health.provider_scores` (#218) : score NATIF d'un fabricant, nommé et sur SON échelle
+    # (`scale_min`/`scale_max` obligatoires) — jamais remis sur 100, jamais présenté comme le Training
+    # Readiness Garmin. Cohérence (échelle croissante, valeur dans l'échelle) : `_check_health_provenance`.
+    "provider_score": {
+        "required": {"category": _enum(PROVIDER_SCORE_CATEGORIES), "value": "num",
+                     "scale_min": "num", "scale_max": "num", "provider": "str"},
+        "optional": {"qualifier": "str"},
     },
     # `nutrition.garmin_pushed` / `activity.garmin_pushed` (#167) : une entrée par écriture
     # confirmée par l'athlète vers Garmin Connect. `key` (empreinte déterministe de
@@ -1335,6 +1362,7 @@ def validate(data: dict) -> tuple:
         errors.append("health.verdict_reason : obligatoire dès qu'un verdict est posé")
     if kind == "health":
         _check_health_weight(data, errors)
+        _check_health_provenance(data, errors)
     if kind == "health" and isinstance(data.get("pain"), list) and len(data["pain"]) > PAIN_MAX_ENTRIES:
         warnings.append(
             f"health.pain : {len(data['pain'])} entrées, plus de {PAIN_MAX_ENTRIES} — "
@@ -1432,6 +1460,39 @@ def _check_health_weight(data: dict, errors: list) -> None:
             errors.append("health.weight_garmin_kg : exige weight_kg (valeur déclarée retenue)")
         elif origin == "garmin":
             errors.append("health.weight_garmin_kg : incompatible avec weight_origin « garmin »")
+
+
+def _check_health_provenance(data: dict, errors: list) -> None:
+    """Cohérence de la provenance santé (#218). `health_provider` n'a de sens que pour
+    `openwearables` ; les clés Garmin (readiness, sommeil noté, body battery, stress) ne sont jamais
+    remplies depuis `openwearables` ; chaque score natif tient dans son échelle."""
+    source = data.get("health_source")
+    if data.get("health_provider") is not None and source != "openwearables":
+        errors.append("health.health_provider : exige health_source « openwearables »")
+    if source == "openwearables":
+        for key in GARMIN_ONLY_HEALTH_KEYS:
+            if data.get(key) is not None:
+                errors.append(f"health.{key} : valeur Garmin, incompatible avec health_source « openwearables » "
+                              "(le score natif va dans provider_scores, sans être remis sur 100)")
+    if data.get("health_provider") == "apple" and data.get("hrv_overnight_ms") is not None:
+        errors.append("health.hrv_overnight_ms : Apple Health ne fournit que la HRV en SDNN, non comparable au "
+                      "RMSSD — utiliser hrv_sdnn_ms")
+    scores = data.get("provider_scores")
+    if not isinstance(scores, list):
+        return
+    for i, entry in enumerate(scores):
+        if not isinstance(entry, dict):
+            continue
+        if entry.get("provider") and data.get("health_provider") and entry["provider"] != data["health_provider"]:
+            errors.append(f"health.provider_scores[{i}].provider : « {entry['provider']} » diffère de "
+                          f"health_provider « {data['health_provider']} » (une seule source santé par fichier)")
+        lo, hi, value = entry.get("scale_min"), entry.get("scale_max"), entry.get("value")
+        if not (_is_number(lo) and _is_number(hi) and _is_number(value)):
+            continue
+        if not lo < hi:
+            errors.append(f"health.provider_scores[{i}] : scale_min ({lo}) doit être < scale_max ({hi})")
+        elif not lo <= value <= hi:
+            errors.append(f"health.provider_scores[{i}].value : {value} hors de l'échelle {lo}-{hi}")
 
 
 def _check_decision_created_at(data: dict, errors: list) -> None:

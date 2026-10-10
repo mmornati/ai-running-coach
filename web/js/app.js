@@ -1448,6 +1448,7 @@ async function viewHealth(params) {
   }
   const periods = [[30, "1 mois"], [90, "3 mois"], [180, "6 mois"]].map(([d, l]) => `<a class="seg ${d === days ? "is-on" : ""}" aria-current="${d === days ? "true" : "false"}" href="#/sante?jours=${d}">${l}</a>`).join("");
   main.innerHTML = `${header("Santé", mode === "minimal" ? "Bilan minimal : readiness seule." : "Triade du matin : HRV, FC de repos, readiness — et le verdict du coach, jour par jour.")}
+    ${data.source?.label ? `<p class="muted" id="health-source">Source : ${F.esc(data.source.label)}${data.source.changed ? " — la source a changé sur la période : chaque jour est comparé à la référence de sa propre source ; après le changement, la référence repart de zéro." : ""}</p>` : ""}
     <div class="toolbar">${periods}</div>
     <p class="readout readout--sticky" id="r-health"></p>
     ${charts.map(([id, title, sub, c, strip]) => `<section class="band"><h2>${title}</h2>${sub ? `<p class="muted">${sub}</p>` : ""}<div class="chart-host" id="c-${id}">${c.svg}</div>${strip ? `<div class="strip-host">${verdictStrip(dates, s.map((p) => p.verdict))}<p class="legend legend--small"><span class="legend__item"><span class="key key--green"></span>Maintenir</span> <span class="legend__item"><span class="key key--amber"></span>Alléger</span> <span class="legend__item"><span class="key key--red"></span>Repos</span> — verdicts du coach</p></div>` : ""}</section>`).join("")}${gait.html}${altitude}`;

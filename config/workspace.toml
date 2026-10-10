@@ -157,6 +157,29 @@ heat_threshold_c = 25.0
 # Le cycle est un CONTEXTE de lecture (HRV, FC de repos, hydratation, chaleur),
 # jamais une règle automatique ni un diagnostic. Valeur invalide = "off" + avertissement.
 cycle_tracking = "off"
+# Source des données de santé du bilan matinal (HRV, FC de repos, sommeil, readiness) — OPT-IN STRICT (#218).
+#   "primary"       — défaut : celle de [data].source (comportement historique, inchangé)
+#   "openwearables" — instance Open Wearables auto-hébergée, lecture seule (prévue, épopée #216) ;
+#                     jamais pour des données Garmin.
+# Valeur invalide = "primary" + avertissement. Indépendant de `cycle_tracking`. HRV et FC de repos ne
+# sont jamais comparées d'une source à l'autre (lignes de base par source).
+source = "primary"
+
+[health.openwearables]
+# Ne sert que si source = "openwearables". Valeurs personnelles : à poser dans
+# `workspace.user.toml` (jamais la clé d'API elle-même ici).
+# URL de l'API (pas celle du portail), ex. "http://192.168.1.10:8000"
+base_url = ""
+# UN seul fournisseur santé : oura | whoop | polar | ultrahuman | withings |
+# google_health | apple | health_connect | samsung | suunto
+# ("garmin" et "strava" sont refusés : Garmin passe en direct, Strava n'a aucune donnée santé.)
+provider = ""
+# Vide = l'unique utilisateur visible par la clé d'API
+user_id = ""
+# Clé d'API hors dépôt, mode 600
+api_key_file = "~/.config/ai-running-coach/openwearables.key"
+# Au-delà (heures), les données sont dites périmées
+stale_after_h = 36
 
 [nutrition]
 # Poussée des apports vers Garmin Connect (#167) — OPT-IN STRICT.

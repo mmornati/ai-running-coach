@@ -88,6 +88,52 @@ morning_check = "full"   # full | minimal | off
 Passez à `minimal` ou `off` si votre montre ne mesure pas la HRV, ou si vous ne
 souhaitez pas que votre entraînement dépende de ces données.
 
+### La source de la santé — `[health].source` (#218)
+
+```toml
+[health]
+source = "primary"   # primary | openwearables
+
+[health.openwearables]
+base_url = ""        # URL de l'API (pas celle du portail)
+provider = ""        # UN fournisseur : oura | whoop | polar | ultrahuman | withings | google_health | apple | health_connect | samsung | suunto
+user_id = ""         # vide = l'unique utilisateur visible par la clé d'API
+api_key_file = "~/.config/ai-running-coach/openwearables.key"   # hors dépôt, mode 600
+stale_after_h = 36   # au-delà, les données sont dites périmées
+```
+
+| Valeur | Effet |
+|---|---|
+| `primary` | Défaut : la santé vient de `[data].source` (Garmin, intervals.icu, rien avec Strava). Comportement inchangé. |
+| `openwearables` | *Prévue (épopée #216, stories client et agents à venir).* Santé lue depuis une instance Open Wearables auto-hébergée, en lecture seule. **Jamais** pour des données Garmin. |
+
+Une valeur invalide donne `primary` et un avertissement ; un `provider` `garmin`
+(la donnée Garmin passe en direct) ou `strava` (aucune donnée de santé) est refusé de
+même. Ces valeurs sont personnelles : posez-les dans `config/workspace.user.toml`, jamais
+la clé d'API elle-même. La clé est indépendante de `cycle_tracking`.
+
+Ce que cette clé garantit déjà, côté données (aucun appel réseau à ce stade) :
+
+- chaque fichier `medical/*_health.md` peut dire d'où viennent ses mesures
+  (`health_source`, `health_provider`, `health_device`) ; un fichier antérieur est réputé
+  venir de `[data].source` (hypothèse du projet) ;
+- `hrv_overnight_ms` reste un **RMSSD** ; une HRV en **SDNN** (Apple Health) va dans
+  `hrv_sdnn_ms` et n'est jamais mélangée ni comparée ;
+- le score natif d'un fabricant (« Readiness Oura 82/100 ») garde son nom et son échelle
+  (`provider_scores`) : jamais remis sur 100, jamais présenté comme le Training Readiness
+  Garmin ;
+- la ligne de base HRV/FC de repos, l'effet des décisions et la bande du tableau de bord ne
+  portent que sur **une seule source** : la référence ne porte que sur les nuits de la source
+  courante (« en construction » tant qu'elle en manque ; revenir à une source précédente
+  réutilise ses anciennes nuits) au lieu de mélanger deux capteurs. La dette de sommeil, elle,
+  reste calculée toutes sources confondues (approximation du projet) ;
+- **attention au changement de `[data].source`** : un fichier santé sans `health_source` est
+  réputé venir de la source configurée, donc changer `[data].source` ré-étiquette d'un coup
+  tout l'historique sans provenance. Avant de changer, posez `health_source` sur ces fichiers
+  (skill `arc-backfill`) ;
+- un fichier santé sans mesure (douleur seule, via `/log` ou Telegram) n'a pas de source et ne
+  compte jamais comme un changement de source.
+
 ## Le seuil de chaleur — `[health].heat_threshold_c`
 
 ```toml

@@ -610,6 +610,11 @@ mm ÷ 1000), pourcentages inchangés. Toutes optionnelles :
 | `weight_kg` | nombre | poids du jour : pesée Garmin (`get_daily_weigh_ins`, #222) ou valeur déclarée par l'athlète — voir « Poids du jour » ci-dessous |
 | `weight_origin` | `garmin` `chat` | provenance de `weight_kg` (#222) ; absente = fichier d'avant #222, lu comme déclaré |
 | `weight_garmin_kg` | 30-200 | pesée Garmin ÉCARTÉE au profit de la valeur déclarée, écart > 1 kg (#222) — signalé une seule fois |
+| `health_source` | `garmin` `intervals` `openwearables` | d'où viennent HRV, FC de repos et sommeil de CE fichier (#218) — une seule source santé par fichier. **Absent = fichier antérieur**, réputé venir de `[data].source` (hypothèse du projet, `arc_health_source.ASSUMPTIONS`) |
+| `health_provider` | texte | fabricant amont quand `health_source = "openwearables"` (`oura`, `whoop`, `polar`…) ; refusé sinon |
+| `health_device` | texte | modèle d'appareil tel que rapporté par la source |
+| `hrv_sdnn_ms` | nombre > 0 | HRV en **SDNN** (Apple Health). Jamais dans `hrv_overnight_ms`, qui reste du RMSSD quelle que soit la source |
+| `provider_scores` | liste d'objets | scores **natifs** du fabricant (#218), voir « Provenance de la santé » ci-dessous |
 | `verdict` | `green` `amber` `red` | disponibilité du jour : maintenir / alléger / repos |
 | `verdict_reason` | texte | obligatoire avec `verdict` |
 | `missing_reason` | objet | |
@@ -662,6 +667,54 @@ autour de l'effort, déclaratives).
 {"arc": 1, "kind": "health", "date": "2026-09-25", "morning_check": "full",
  "weight_kg": 68.2, "weight_origin": "garmin"}
 ```
+
+**Provenance de la santé (`health_source`, `health_provider`, `health_device`,
+`hrv_sdnn_ms`, `provider_scores`, #218).** `[health].source` (défaut `primary` :
+la santé vient de `[data].source`) peut désigner une autre source ; le fichier dit
+d'où viennent ses mesures. Règles, validées par `arc_index.py --validate` :
+
+- `hrv_overnight_ms` = RMSSD nocturne, quelle que soit la source. Une HRV en SDNN
+  (Apple Health) va dans `hrv_sdnn_ms` et JAMAIS dans `hrv_overnight_ms` ; elle
+  n'entre dans aucune ligne de base. RMSSD et SDNN ne sont pas comparables.
+- `readiness_score`, `readiness_factors`, `sleep_score`, `body_battery_high`,
+  `body_battery_low` et `stress_avg` restent les valeurs **Garmin** : refusés avec
+  `health_source: "openwearables"`. Le score natif d'un autre fabricant va dans
+  `provider_scores`, sous son nom et sur son échelle, **sans être remis sur 100** ni
+  présenté comme le Training Readiness Garmin.
+- Une seule source santé par fichier ; jamais deux sources fusionnées dans un même jour.
+- Une mesure que la source ne fournit pas = clé omise + `missing_reason`, jamais une
+  valeur approchée d'une autre méthode.
+
+Chaque entrée de `provider_scores` : **`category`** (`readiness`, `recovery` ou
+`sleep` ; la charge n'est pas un signal de récupération), **`value`** (nombre),
+**`scale_min`** et **`scale_max`** (obligatoires, `scale_min` < `scale_max`, `value`
+dans l'échelle), **`provider`** (texte, le fabricant), `qualifier` (texte, ex. `GOOD`).
+
+```arc
+{"arc": 1, "kind": "health", "date": "2026-10-09", "morning_check": "full",
+ "health_source": "openwearables", "health_provider": "oura", "health_device": "Oura Ring 4",
+ "sleep_total_s": 27000, "hrv_overnight_ms": 58, "resting_hr_bpm": 49,
+ "provider_scores": [{"category": "readiness", "value": 82, "scale_min": 0, "scale_max": 100,
+                      "provider": "oura", "qualifier": "GOOD"}],
+ "verdict": "green", "verdict_reason": "Readiness Oura 82/100 (score natif, non comparable à Garmin), HRV et FC de repos stables : séance maintenue."}
+```
+
+Apple Health (SDNN seulement) :
+
+```arc
+{"arc": 1, "kind": "health", "date": "2026-10-10", "morning_check": "full",
+ "health_source": "openwearables", "health_provider": "apple",
+ "sleep_total_s": 26400, "hrv_sdnn_ms": 44, "resting_hr_bpm": 52,
+ "missing_reason": {"hrv_overnight_ms": "Apple Health ne fournit que la HRV en SDNN, non comparable au RMSSD"},
+ "verdict": "green", "verdict_reason": "FC de repos stable, sommeil correct ; HRV en SDNN seulement, pas de comparaison au RMSSD : séance maintenue."}
+```
+
+Les lignes de base HRV/FC de repos (`arc_index.py hrv-baseline`, tableau de bord) ne
+portent que sur UNE source effective (celle de la ligne la plus récente ; pour
+`openwearables`, un seul fabricant) : après un changement de source la référence
+ne porte que sur les nuits de la source courante (`en_construction` tant qu'elle en manque).
+Un fichier santé sans mesure (douleur seule) n'a pas de source. `hrv_overnight_ms` est refusé
+quand `health_provider` vaut `apple` (SDNN seulement : `hrv_sdnn_ms`).
 
 **Contexte du cycle (`cycle_phase`, `cycle_day`, `cycle_source`, #166).** Ces
 trois clés n'existent QUE si `[health].cycle_tracking` n'est pas `"off"`
