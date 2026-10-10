@@ -1174,10 +1174,17 @@ groupées sur deux ou trois jours ne donnent pas une tendance fiable sur 4 semai
 des chiffres, jamais un avis sur ce qu'il faudrait en faire. En unités impériales
 (`[athlete].units = "imperial"`), le poids s'affiche en livres.
 
+**Provenance de la pesée (#222).** Une pesée lue dans Garmin Connect (balance Garmin ou saisie
+dans l'app, `weight_origin: "garmin"` du fichier santé) est un disque plein ; une pesée que vous
+avez déclarée (en chat, dans le fichier nutrition, ou un fichier santé d'avant #222) est un
+anneau creux. La légende ne montre que les types présents, le curseur dit la provenance du
+point survolé, et « Dernière pesée » donne la valeur, la date et la provenance de la pesée la
+plus récente. Le même jour, une valeur déclarée prime sur Garmin : c'est elle qui est tracée.
+
 | Alimentée par | Écrit par |
 |---|---|
 | `nutrition/<date>_nutrition.md` (valeurs chiffrées) | le nutritionniste |
-| `medical/<date>_health.md` (poids du bilan matinal) | le coach / la synchronisation santé |
+| `medical/<date>_health.md` (poids du bilan matinal : pesée Garmin ou valeur déclarée, `weight_origin`) | le coach / la synchronisation santé (`scripts/arc_weight_sync.py`) |
 
 **Glucides & sudation, sorties longues (#41).** Un point par sortie longue
 (`duration_s` > 90 min) des 12 dernières semaines glissantes : glucides ingérés par

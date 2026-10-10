@@ -150,6 +150,9 @@ else
     CLAUDE_DISALLOWED+=",mcp__garmin__log_food,mcp__garmin__log_custom_food,mcp__garmin__create_custom_food"
     CLAUDE_DISALLOWED+=",mcp__garmin__update_custom_food,mcp__garmin__upsert_and_log,mcp__garmin__delete_food_log"
     CLAUDE_DISALLOWED+=",mcp__garmin__add_hydration_data"
+    # #222 : le poids se LIT dans Garmin (get_daily_weigh_ins/get_weigh_ins), jamais il ne s'y écrit.
+    CLAUDE_DISALLOWED+=",mcp__garmin__add_weigh_in,mcp__garmin__add_weigh_in_with_timestamps"
+    CLAUDE_DISALLOWED+=",mcp__garmin__delete_weigh_ins,mcp__garmin__add_body_composition"
     CLAUDE_DISALLOWED+=",$PROTECTED_PATHS"
     SOURCE_LABEL="Garmin"
     MCP_SERVER_NAME="garmin"

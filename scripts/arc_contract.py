@@ -53,6 +53,14 @@ VERDICT = ("green", "amber", "red")
 CYCLE_PHASE = ("menstrual", "follicular", "ovulation", "luteal")
 CYCLE_SOURCE = ("garmin", "intervals", "manual")
 CYCLE_DAY_PLAUSIBLE = (1, 60)
+# Provenance de `health.weight_kg` (#222) : `garmin` = pesée lue dans Garmin Connect
+# (`get_daily_weigh_ins`/`get_weigh_ins`), `chat` = déclarée par l'athlète. Clé absente =
+# fichier antérieur à #222, donc déclaré (seule voie d'écriture d'alors). Voir
+# scripts/arc_weight_sync.py pour la règle de priorité (l'athlète prime le même jour).
+WEIGHT_ORIGINS = ("garmin", "chat")
+# Écart au-delà duquel une pesée Garmin écartée au profit de la valeur déclarée est
+# signalée (une seule fois, mémorisée par `weight_garmin_kg`).
+WEIGHT_CONFLICT_KG = 1.0
 # Apports poussés vers Garmin Connect (#167, opt-in `[nutrition].garmin_sync`) — voir
 # scripts/arc_nutrition_sync.py : source du jour et nature des écritures tracées.
 INTAKE_SOURCE = ("manual", "garmin")
@@ -350,6 +358,10 @@ SCHEMA = {
             "body_battery_low": "score",
             "stress_avg": "score",
             "weight_kg": "num+",
+            # #222 : provenance du poids du jour, et pesée Garmin écartée (l'athlète prime) —
+            # voir WEIGHT_ORIGINS et scripts/arc_weight_sync.py.
+            "weight_origin": _enum(WEIGHT_ORIGINS),
+            "weight_garmin_kg": "body_weight_kg",
             "verdict": _enum(VERDICT),
             "verdict_reason": "str",
             "missing_reason": "obj",
@@ -1291,6 +1303,8 @@ def validate(data: dict) -> tuple:
         _check_time_in_zone(data, errors, warnings)
     if kind == "health" and data.get("verdict") and not data.get("verdict_reason"):
         errors.append("health.verdict_reason : obligatoire dès qu'un verdict est posé")
+    if kind == "health":
+        _check_health_weight(data, errors)
     if kind == "health" and isinstance(data.get("pain"), list) and len(data["pain"]) > PAIN_MAX_ENTRIES:
         warnings.append(
             f"health.pain : {len(data['pain'])} entrées, plus de {PAIN_MAX_ENTRIES} — "
@@ -1374,6 +1388,20 @@ def _check_gear_inspection(data: dict, errors: list, warnings: list) -> None:
 # grossière (des jours d'écart), pas un calcul au fuseau près — le jour tel
 # qu'écrit par l'auteur de la décision est le plus significatif pour lui.
 DECISION_CREATED_AT_MAX_LEAD_DAYS = 1
+
+
+def _check_health_weight(data: dict, errors: list) -> None:
+    """Cohérence de la provenance du poids (#222) : `weight_origin` décrit `weight_kg`,
+    il n'existe pas sans lui ; `weight_garmin_kg` (pesée Garmin écartée) n'a de sens que
+    si le poids retenu est celui de l'athlète — une pesée Garmin retenue n'a rien à écarter."""
+    origin = data.get("weight_origin")
+    if origin is not None and data.get("weight_kg") is None:
+        errors.append("health.weight_origin : exige weight_kg")
+    if data.get("weight_garmin_kg") is not None:
+        if data.get("weight_kg") is None:
+            errors.append("health.weight_garmin_kg : exige weight_kg (valeur déclarée retenue)")
+        elif origin == "garmin":
+            errors.append("health.weight_garmin_kg : incompatible avec weight_origin « garmin »")
 
 
 def _check_decision_created_at(data: dict, errors: list) -> None:

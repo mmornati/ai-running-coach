@@ -252,6 +252,17 @@ l'altitude et **propose** des coefficients personnels (voir
 - **La readiness est un score dérivé, pas une mesure** : fortement pondérée par le sommeil. Vérifier la fenêtre de sommeil enregistrée face à l'heure de coucher déclarée — une montre qui démarre en retard déprime mécaniquement le score de sommeil et la readiness, alors que HRV et FC de repos restent valides.
 - **Moyenne hebdomadaire ≠ nuit dernière** : le statut `UNBALANCED` porte sur la moyenne 7 jours. Rapporter les deux valeurs.
 
+### Poids du jour (#222)
+
+Avec la source Garmin, le coach lit la pesée du jour dans Garmin Connect
+(`get_daily_weigh_ins`, lecture seule) au bilan matinal et l'écrit dans `weight_kg` du
+fichier santé (`weight_origin: "garmin"`) selon `scripts/arc_weight_sync.py plan`. Un jour
+sans pesée reste sans poids (jamais la valeur de la veille). Un poids que vous donnez en
+chat prime sur Garmin le même jour ; un écart de plus de 1 kg est signalé une seule fois, en
+une ligne neutre (jamais si le poids figure dans vos « sujets à ne pas commenter »). Le rappel
+de pesée hebdomadaire de votre profil est sauté quand Garmin a déjà le poids du jour. Aucune
+écriture du poids côté Garmin. Voir [Poids lu dans Garmin Connect](../garmin-setup.md#poids-lu-dans-garmin-connect-222).
+
 ### Contexte du cycle menstruel (opt-in, #166)
 
 Seulement si `[health].cycle_tracking` n'est pas `off` (défaut : **aucune mention, aucun appel**). La phase du jour (Garmin, intervals.icu ou déclarée via `/log`) est ajoutée en **une ligne de contexte** à côté d'une HRV/FC de repos décalée et persistée (`cycle_phase`, `cycle_day`, `cycle_source`) ; elle n'est jamais une règle, jamais un diagnostic, et ne relâche jamais un verdict rouge, un garde-fou ou un signal de blessure. Voir [Cycle menstruel](../cycle-menstruel.md).

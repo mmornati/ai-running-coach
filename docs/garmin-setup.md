@@ -45,7 +45,7 @@ Le script d'installation enregistre le serveur MCP `garmin` dans votre IDE avec 
       "command": "garmin-mcp",
       "args": ["stdio"],
       "env": {
-        "GARMIN_ENABLED_TOOLS": "get_activities,get_activities_by_date,get_activity,get_activity_fit_data,get_activity_splits,get_activity_typed_splits,get_activity_split_summaries,get_sleep_data,get_hrv_data,get_rhr_day,get_training_readiness,get_calendar_events,get_courses,get_workouts,get_workout_by_id,get_scheduled_workouts,schedule_workouts,schedule_week,upload_workout,upload_course,create_strength_workout,delete_workout,unschedule_workout,unschedule_workouts,download_activity_file,get_stats,get_lactate_threshold,get_training_status,get_gear,get_activity_gear,add_gear_to_activity"
+        "GARMIN_ENABLED_TOOLS": "get_activities,get_activities_by_date,get_activity,get_activity_fit_data,get_activity_splits,get_activity_typed_splits,get_activity_split_summaries,get_sleep_data,get_hrv_data,get_rhr_day,get_training_readiness,get_calendar_events,get_courses,get_workouts,get_workout_by_id,get_scheduled_workouts,schedule_workouts,schedule_week,upload_workout,upload_course,create_strength_workout,delete_workout,unschedule_workout,unschedule_workouts,download_activity_file,get_stats,get_lactate_threshold,get_training_status,get_gear,get_activity_gear,add_gear_to_activity,get_daily_weigh_ins,get_weigh_ins"
       }
     }
   }
@@ -103,7 +103,7 @@ servers:
         args:
             - stdio
         env:
-            - GARMIN_ENABLED_TOOLS: "get_activities,get_activities_by_date,get_activity,get_activity_fit_data,get_activity_splits,get_activity_typed_splits,get_activity_split_summaries,get_sleep_data,get_hrv_data,get_rhr_day,get_training_readiness,get_calendar_events,get_courses,get_workouts,get_workout_by_id,get_scheduled_workouts,schedule_workouts,schedule_week,upload_workout,upload_course,create_strength_workout,delete_workout,unschedule_workout,unschedule_workouts,download_activity_file,get_stats,get_lactate_threshold,get_training_status,get_gear,get_activity_gear,add_gear_to_activity"
+            - GARMIN_ENABLED_TOOLS: "get_activities,get_activities_by_date,get_activity,get_activity_fit_data,get_activity_splits,get_activity_typed_splits,get_activity_split_summaries,get_sleep_data,get_hrv_data,get_rhr_day,get_training_readiness,get_calendar_events,get_courses,get_workouts,get_workout_by_id,get_scheduled_workouts,schedule_workouts,schedule_week,upload_workout,upload_course,create_strength_workout,delete_workout,unschedule_workout,unschedule_workouts,download_activity_file,get_stats,get_lactate_threshold,get_training_status,get_gear,get_activity_gear,add_gear_to_activity,get_daily_weigh_ins,get_weigh_ins"
         cwd: .
       timeout: 300s
       connect_timeout: 10s
@@ -185,6 +185,38 @@ confirmation explicite dans la conversation, jamais en synchronisation automatiq
   `get_gear,get_activity_gear,add_gear_to_activity`. `/coach-doctor` (`gear_sync`) signale une liste
   blanche trop ancienne et les paires du profil sans `garmin:` — sans jamais contacter Garmin.
 - **Source intervals.icu.** Voir [Configuration Intervals.icu](intervals-setup.md#materiel-et-attribution-par-seance).
+
+## Poids lu dans Garmin Connect (#222)
+
+Si vous vous pesez avec une balance Garmin (Index S2…) ou saisissez votre poids dans Garmin
+Connect, vous n'avez plus à le redonner au coach. Deux outils de **lecture** sont dans la liste
+blanche : `get_daily_weigh_ins` (pesées d'un jour) et `get_weigh_ins` (pesées d'une plage de dates).
+
+- **Quand.** Pendant le bilan matinal et la synchronisation automatique, la pesée du jour est lue et
+  écrite dans `weight_kg` du fichier santé du jour (`medical/AAAA-MM-JJ_health.md`), avec
+  `weight_origin: "garmin"`. Le fichier santé du jour sans poids est relu à chaque passage : une
+  pesée faite après la première synchronisation du matin est prise au passage suivant.
+- **Le jour de la pesée seulement.** Un jour sans pesée Garmin n'a pas de poids : la valeur de la
+  veille n'est jamais recopiée. Le modèle de dépense énergétique reprend déjà la dernière pesée
+  connue à la date de chaque séance. Plusieurs pesées le même jour : la plus ancienne (celle du
+  matin) est retenue.
+- **Votre déclaration prime.** Un poids que vous donnez en chat le même jour (`weight_origin:
+  "chat"`) n'est jamais remplacé par Garmin. Si les deux diffèrent de plus de 1 kg, le coach le
+  signale une seule fois (la pesée Garmin écartée est gardée dans `weight_garmin_kg`). Si votre
+  profil demande un rappel de pesée hebdomadaire, il est sauté quand Garmin a déjà le poids du jour.
+- **Rattrapage (facultatif, à la demande).** Un seul appel `get_weigh_ins` sur une plage de dates
+  remplit les fichiers santé existants qui n'ont pas de poids — aucun fichier n'est créé pour
+  cela.
+- **Lecture seule.** `add_weigh_in`, `add_weigh_in_with_timestamps`, `delete_weigh_ins` et
+  `add_body_composition` ne sont jamais exposés, et `scripts/daily-sync.sh` les retire en plus.
+  La composition corporelle (`get_body_composition`) n'est pas lue. Les pesées avant/après
+  séance (`weight_pre_kg`, `weight_post_kg`) restent déclaratives.
+- **Règles exécutées par un script.** `python3 scripts/arc_weight_sync.py plan` décide quoi écrire
+  (pesée retenue, priorité, signalement) ; l'agent écrit ce qu'il rend, sans recalculer.
+- **Installations existantes.** Relancez `./install.sh` pour mettre à jour la liste blanche de
+  `.mcp.json`. En mode passerelle, ajoutez `get_daily_weigh_ins,get_weigh_ins` à la main à
+  `GARMIN_ENABLED_TOOLS` de `~/.config/leanproxy_servers.yaml`.
+- **Sources intervals.icu et Strava.** Rien n'est lu : le poids reste celui que vous déclarez.
 
 ## Rattraper le matériel de l'historique
 
@@ -314,6 +346,7 @@ Les agents accèdent aux outils Garmin directement (mode direct) ou via `leanpro
 
 - **Activités** : liste, détails, fichiers FIT
 - **Santé** : HRV, sommeil, stress, fréquence cardiaque au repos
+- **Poids** : pesées du jour ou d'une plage de dates (lecture seule, #222)
 - **Calendrier** : séances planifiées, push d'entraînements
 - **Planification** : création de séances (course, fractionné, renforcement)
 

@@ -73,6 +73,18 @@ Remote Control) et l'IDE partagent. Il délègue tout à l'agent `coach` et au s
   remplit (voir `agents/coach.md`). Ce skill tourne sans personne pour répondre : ne JAMAIS les
   demander, ne JAMAIS les deviner. Les laisser absents du bloc ```arc est le comportement
   normal d'une synchronisation headless, pas un manque à signaler.
+- **Poids du jour (#222, source `garmin` uniquement)** : `weight_kg` du fichier santé se LIT dans
+  Garmin Connect (`get_daily_weigh_ins(date)`, lecture seule) et la décision est celle de
+  `python3 scripts/arc_weight_sync.py plan --garmin '<réponse brute>' --date <date>` — clés
+  `set`/`remove` écrites telles quelles, jamais recalculées. Un jour sans pesée Garmin n'a pas de
+  `weight_kg` (jamais la valeur de la veille). Une valeur déjà déclarée par l'athlète est conservée ;
+  un `flag` (écart > 1 kg) va dans la ligne `Alerte :`, une seule fois (le script le garantit via
+  `weight_garmin_kg`). Le fichier santé d'AUJOURD'HUI sans `weight_kg` est relu à chaque passage
+  (un seul `get_daily_weigh_ins`), même s'il est déjà synchronisé : la pesée arrive souvent après
+  la première synchronisation du matin. **Jamais d'écriture du poids côté Garmin** (`add_weigh_in`,
+  `add_weigh_in_with_timestamps`, `delete_weigh_ins`, `add_body_composition` : hors liste blanche,
+  retirés par `scripts/daily-sync.sh`). Avec `[data].source = "intervals"` ou `"strava"` : rien à lire,
+  `weight_kg` reste déclaratif.
 - **Matériel (#133, source `garmin` uniquement)** : `gear_id` peut venir du matériel que la
   montre a attaché à la séance (`get_activity_gear`), et seulement si une puce du profil porte
   le `garmin: <uuid>` correspondant. Priorité : `gear_id` déjà déclaré par l'athlète (`/log`, chat) >
@@ -115,7 +127,12 @@ Remote Control) et l'IDE partagent. Il délègue tout à l'agent `coach` et au s
    > athlete-declared fields, before any sync ran: see `garmin-sync-efficiency`'s "not yet
    > synced" marker). For each date that is missing OR not yet synced, fetch from the `garmin`
    > MCP server: activities (with splits and `recovery_hr_bpm`), sleep, HRV, training
-   > readiness, resting HR / body battery. If a not-yet-synced file already exists for that
+   > readiness, resting HR / body battery, and the day's weigh-in (`get_daily_weigh_ins(date)`,
+   > `[data].source = "garmin"` only — pass the raw reply to `python3 scripts/arc_weight_sync.py
+   > plan --garmin '<reply>' --date <date>` and write its `set`/`remove` keys as returned, never a
+   > weight copied from another day; also re-check TODAY's health file once when it has no
+   > `weight_kg` yet, even if already synced; report any `flag` once in your summary; never call
+   > `add_weigh_in`/`delete_weigh_ins`). If a not-yet-synced file already exists for that
    > date, MERGE the fetched Garmin fields into it — same file, never a second one for the
    > same session — preserving every athlete-declared key it already carries (`carbs_g`,
    > `fluid_intake_ml`, `rpe`, `gear_id`, `gear_ids`, `weight_pre_kg`, `weight_post_kg` on an activity;

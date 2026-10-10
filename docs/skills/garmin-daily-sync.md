@@ -55,6 +55,12 @@ Il **n'ajoute aucune logique** : il délègue à l'agent `coach` et au skill
    `Alerte :`, une fois par run ; `gear_source: "garmin_unmapped"` l'exclut de la paire par défaut ;
    une puce `(ignorée)` fait taire l'alerte). Aucune écriture côté Garmin (`add_gear_to_activity`) en headless, jamais. Voir
    [Synchronisation du matériel Garmin](../garmin-setup.md#synchronisation-du-materiel-garmin).
+7. **Poids (#222, source Garmin)** : la pesée du jour (`get_daily_weigh_ins`, lecture seule)
+   alimente `weight_kg` + `weight_origin: "garmin"` du fichier santé, selon
+   `scripts/arc_weight_sync.py plan` — jamais la valeur de la veille, jamais par-dessus une
+   valeur déclarée par l'athlète (un écart > 1 kg va sur la ligne `Alerte :`, une seule fois).
+   Le fichier santé du jour sans poids est relu à chaque passage. Aucune écriture du poids côté
+   Garmin. Voir [Poids lu dans Garmin Connect](../garmin-setup.md#poids-lu-dans-garmin-connect-222).
 
 ## Fichier source
 

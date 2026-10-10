@@ -378,7 +378,10 @@ from coach_setup import ENGINE, workspace_root  # noqa: E402
 # #193 : `week` gagne `week_type` (type de semaine du squelette de bloc #190, NULL pour les semaines plus
 # anciennes) — la frise du bloc (`/api/block`) en a besoin. Version 35 (34 = Strava) : sans ce bump,
 # l'insertion d'une semaine échouerait avec « no such column » sur une base déjà construite.
-SCHEMA_VERSION = 35
+# #222 : `health_day` gagne `weight_origin` (`garmin` | `chat`, provenance du poids du jour) et
+# `weight_garmin_kg` (pesée Garmin écartée au profit de la valeur déclarée) — version 36 (35 = #193) :
+# les colonnes de `health_day` suivent le contrat, sans ce bump l'insertion échouerait.
+SCHEMA_VERSION = 36
 # Colonnes d'identifiant externe d'une séance, dans l'ordre de priorité de `activity_ref` — une séance n'en
 # porte qu'une (`workspace-data-contract`) ; Garmin prime si un fichier ancien en porte plusieurs.
 REF_COLUMNS = ("garmin_activity_id", "intervals_activity_id", "strava_activity_id")
@@ -695,7 +698,7 @@ CREATE TABLE health_day (
     hrv_overnight_ms REAL, hrv_baseline_low_ms REAL, hrv_baseline_high_ms REAL, hrv_status TEXT,
     hrv_personal_low_ms REAL, hrv_personal_high_ms REAL, hrv_personal_status TEXT,
     resting_hr_bpm REAL, readiness_score REAL, body_battery_high REAL, body_battery_low REAL,
-    stress_avg REAL, weight_kg REAL, verdict TEXT, verdict_reason TEXT,
+    stress_avg REAL, weight_kg REAL, weight_origin TEXT, weight_garmin_kg REAL, verdict TEXT, verdict_reason TEXT,
     cycle_phase TEXT, cycle_day INTEGER, cycle_source TEXT, body_md TEXT, data_json TEXT
 );
 CREATE INDEX health_date ON health_day(date);

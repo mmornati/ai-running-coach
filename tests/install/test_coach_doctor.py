@@ -886,6 +886,40 @@ class TestDataSourceAware(InstallAsserts):
             self.assertIn("expires_at", token_check)
 
 
+class TestWeightSync(InstallAsserts):
+    """#222 — `weight_sync` : liste blanche des pesées, statique, jamais un avertissement."""
+
+    def _check(self, sb, tools=None):
+        if tools is not None:
+            (sb.repo / ".mcp.json").write_text(json.dumps({"mcpServers": {"garmin": {
+                "command": "garmin-mcp", "args": ["stdio"], "env": {"GARMIN_ENABLED_TOOLS": tools}}}}))
+        proc = sb.script("coach_doctor.py", "--json", "--check", "weight_sync",
+                         "--tokens-dir", str(_fresh_tokens_dir(sb)))
+        self.assertSucceeded(proc)
+        return _find(json.loads(proc.stdout), "weight_sync")
+
+    def test_old_whitelist_is_info_with_reinstall_fix(self):
+        with Sandbox() as sb:
+            check = self._check(sb, "get_activities,get_gear")
+            self.assertEqual(check["status"], "info")
+            self.assertIn("get_daily_weigh_ins", check["message"])
+            self.assertIn("install.sh", check["fix"])
+
+    def test_current_whitelist_is_ok(self):
+        with Sandbox() as sb:
+            self.assertEqual(self._check(sb, "get_activities,get_daily_weigh_ins,get_weigh_ins")["status"], "ok")
+
+    def test_unreadable_whitelist_is_ok(self):
+        with Sandbox() as sb:
+            self.assertEqual(self._check(sb)["status"], "ok")
+
+    def test_non_garmin_source_is_info(self):
+        with Sandbox() as sb:
+            (sb.repo / "config").mkdir(exist_ok=True)
+            (sb.repo / "config/workspace.user.toml").write_text('[data]\nsource = "strava"\n')
+            self.assertEqual(self._check(sb)["status"], "info")
+
+
 class TestGearSync(InstallAsserts):
     """#133 — `gear_sync` : vérification STATIQUE (liste blanche de `.mcp.json` + profil), jamais d'appel Garmin."""
 
@@ -1065,7 +1099,7 @@ class TestJsonSchema(InstallAsserts):
                 "garmin_token", "garmin_mcp", "config_files", "athlete_profile",
                 "index_freshness", "out_of_contract", "daily_sync_scheduled", "ntfy_configured",
                 "gear_sync", "gear_history", "fit_reader", "intervals_mcp_pin",
-                "llm_config", "chat_service", "opencode_cli", "strava_connection", "telegram",
+                "llm_config", "chat_service", "opencode_cli", "strava_connection", "telegram", "weight_sync",
             }
             self.assertEqual({c["id"] for c in payload["checks"]}, expected_ids)
             for check in payload["checks"]:

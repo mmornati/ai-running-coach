@@ -606,7 +606,9 @@ mm ÷ 1000), pourcentages inchangés. Toutes optionnelles :
 | `readiness_factors` | objet | facteurs Garmin, ex. `{"sleep": 62, "hrv": 80}` |
 | `body_battery_high`, `body_battery_low` | 0-100 | |
 | `stress_avg` | 0-100 | |
-| `weight_kg` | nombre | |
+| `weight_kg` | nombre | poids du jour : pesée Garmin (`get_daily_weigh_ins`, #222) ou valeur déclarée par l'athlète — voir « Poids du jour » ci-dessous |
+| `weight_origin` | `garmin` `chat` | provenance de `weight_kg` (#222) ; absente = fichier d'avant #222, lu comme déclaré |
+| `weight_garmin_kg` | 30-200 | pesée Garmin ÉCARTÉE au profit de la valeur déclarée, écart > 1 kg (#222) — signalé une seule fois |
 | `verdict` | `green` `amber` `red` | disponibilité du jour : maintenir / alléger / repos |
 | `verdict_reason` | texte | obligatoire avec `verdict` |
 | `missing_reason` | objet | |
@@ -638,6 +640,28 @@ n'existe que pour l'agent qui écrit le fichier. Plus de
  "verdict": "amber", "verdict_reason": "Douleur au genou signalée : séance de qualité annulée par prudence."}
 ```
 
+**Poids du jour (`weight_kg`, `weight_origin`, `weight_garmin_kg`, #222).** Avec
+`[data].source = "garmin"`, la pesée est lue dans Garmin Connect
+(`get_daily_weigh_ins(date)` ; rattrapage : un seul `get_weigh_ins(start, end)`) et la
+réponse BRUTE passée à `python3 scripts/arc_weight_sync.py plan --garmin '<réponse>'
+--date <date>` (ou sur l'entrée standard : `echo '<réponse>' | python3 scripts/arc_weight_sync.py
+plan --date <date>`, la forme qu'accepte le chat ; ajouter `--existing-only` pour un rattrapage) : il dit quelles clés poser
+(`set`), retirer (`remove`) et s'il faut signaler un écart (`flag`). Règles, jamais à
+refaire à la main : la pesée la plus ancienne du jour est retenue ; un jour sans pesée
+Garmin n'a PAS de `weight_kg` (jamais la valeur de la veille recopiée — la lecture prend
+déjà la dernière pesée connue) ; une valeur déclarée par l'athlète le même jour
+(`weight_origin: "chat"`, ou clé absente) prime toujours, la pesée Garmin écartée allant
+dans `weight_garmin_kg` quand l'écart dépasse 1 kg (signalé une seule fois). Quand
+l'athlète DÉCLARE son poids : `arc_weight_sync.py plan --date <date> --declared-kg <kg>`.
+`weight_origin` exige `weight_kg` ; `weight_garmin_kg` est refusé avec
+`weight_origin: "garmin"`. Ne concerne ni `weight_pre_kg` ni `weight_post_kg` (pesées
+autour de l'effort, déclaratives).
+
+```arc
+{"arc": 1, "kind": "health", "date": "2026-09-25", "morning_check": "full",
+ "weight_kg": 68.2, "weight_origin": "garmin"}
+```
+
 **Contexte du cycle (`cycle_phase`, `cycle_day`, `cycle_source`, #166).** Ces
 trois clés n'existent QUE si `[health].cycle_tracking` n'est pas `"off"`
 (défaut) : à `"off"`, ne jamais les écrire ni les demander — zéro mention. Elles
@@ -664,7 +688,7 @@ Valeurs d'une source ou dites par l'athlète : normalisées par
   "hrv_overnight_ms": 62, "hrv_baseline_low_ms": 58, "hrv_baseline_high_ms": 66, "hrv_status": "balanced",
   "resting_hr_bpm": 47, "readiness_score": 74,
   "readiness_factors": {"sleep": 62, "sleep_history": 70, "hrv": 80, "acute_load": 75},
-  "body_battery_high": 88, "body_battery_low": 24, "stress_avg": 31, "weight_kg": 68.4,
+  "body_battery_high": 88, "body_battery_low": 24, "stress_avg": 31, "weight_kg": 68.4, "weight_origin": "garmin",
   "verdict": "amber",
   "verdict_reason": "HRV bas, FC de repos stable : stress autonome, garder l'aérobie et couper l'intensité."
 }

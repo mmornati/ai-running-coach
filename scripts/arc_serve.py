@@ -1084,16 +1084,23 @@ def api_nutrition(store: Store, q: dict) -> dict:
         "SELECT date, weight_kg FROM nutrition_day WHERE date >= ? AND date <= ? ORDER BY date, source_path",
         (fetch_from, today.isoformat()))
     health_weight_rows = store.rows(
-        "SELECT date, weight_kg FROM health_day WHERE date >= ? AND date <= ? ORDER BY date, source_path",
-        (fetch_from, today.isoformat()))
+        "SELECT date, weight_kg, weight_origin FROM health_day WHERE date >= ? AND date <= ? "
+        "ORDER BY date, source_path", (fetch_from, today.isoformat()))
     nutrition_weight_by_date = {r["date"]: r["weight_kg"] for r in nutrition_weight_rows if r["weight_kg"] is not None}
     health_weight_by_date = {r["date"]: r["weight_kg"] for r in health_weight_rows if r["weight_kg"] is not None}
-    merged_by_date = {}
+    health_origin_by_date = {r["date"]: r["weight_origin"] for r in health_weight_rows if r["weight_kg"] is not None}
+    merged_by_date, origin_by_date = {}, {}
     for d in set(nutrition_weight_by_date) | set(health_weight_by_date):
         v = M.merge_weight_kg(health_weight_by_date.get(d), nutrition_weight_by_date.get(d))
         if v is not None:
             merged_by_date[d] = v
+            # Provenance du point retenu (#222) : `garmin` seulement si la pesée de santé gagne ET
+            # vient de Garmin (`weight_origin`) ; sinon déclarée par l'athlète (`chat`, fichier
+            # santé d'avant #222 sans la clé, ou poids du fichier nutrition).
+            from_health = health_weight_by_date.get(d) is not None
+            origin_by_date[d] = "garmin" if from_health and health_origin_by_date.get(d) == "garmin" else "athlete"
     weight_points = M.weight_avg7_series(merged_by_date, start_date, today)
+    latest_day = max((d for d in merged_by_date if d <= today.isoformat()), default=None)
     # Cible la plus récente connue à ce jour (le contrat ne la porte que sur `nutrition`) —
     # pas bornée à `fetch_from` : une cible fixée il y a longtemps et jamais changée reste
     # valide. Même règle de doublon que ci-dessus, dans le même sens (date la plus récente
@@ -1115,9 +1122,13 @@ def api_nutrition(store: Store, q: dict) -> dict:
     slope = M.weight_slope_kg_per_week(merged_by_date, today)
     return {
         "days": rows,
-        "weight_series": [{"date": p["date"], "weight_kg_merged": p["weight_kg"], "weight_avg7_kg": p["weight_avg7_kg"]}
+        "weight_series": [{"date": p["date"], "weight_kg_merged": p["weight_kg"], "weight_avg7_kg": p["weight_avg7_kg"],
+                           "weight_origin": origin_by_date.get(p["date"]) if p["weight_kg"] is not None else None}
                           for p in weight_points],
         "weight": {
+            # Dernière pesée connue (fenêtre de calcul comprise) et sa provenance (#222).
+            "latest": ({"date": latest_day, "weight_kg": merged_by_date[latest_day],
+                        "origin": origin_by_date[latest_day]} if latest_day else None),
             "avg7_kg": latest_avg7, "avg7_date": today.isoformat() if latest_avg7 is not None else None,
             "target_kg": target_weight_kg,
             "gap_kg": M.weight_target_gap_kg(latest_avg7, target_weight_kg),

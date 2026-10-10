@@ -30,6 +30,7 @@ L'agent **nutritionist** optimise la nutrition pour l'entraînement trail.
 ### Stratégie nutritionnelle
 
 - **Objectifs de poids** : définit et suit un « poids de course » cible selon l'objectif actif
+- **Provenance du poids (#222)** : le poids du jour vient du fichier santé (`weight_kg`), lu dans Garmin Connect (`weight_origin: "garmin"`) ou déclaré (`"chat"`) — l'agent ne redemande jamais un poids que Garmin a déjà ; un poids déclaré passe par `scripts/arc_weight_sync.py plan --declared-kg` et prime sur Garmin
 - **Suivi des macros** :
   1. Surveille glucides, protéines et lipides par rapport à la charge d'entraînement Garmin
   2. Feedback sur la recharge en glycogène après les séances intenses ou longues

@@ -95,7 +95,7 @@ LEANPROXY_SERVERS="$HOME/.config/leanproxy_servers.yaml"
 # Liste blanche des outils Garmin utilisés par les agents/skills du projet.
 # Réduit la taxe de contexte (~151 outils → ~30) en mode direct.
 # Noms réels des outils garmin-mcp (sans préfixe garmin_).
-GARMIN_TOOL_WHITELIST="get_activities,get_activities_by_date,get_activity,get_activity_fit_data,get_activity_splits,get_activity_typed_splits,get_activity_split_summaries,get_sleep_data,get_hrv_data,get_rhr_day,get_training_readiness,get_calendar_events,get_courses,get_workouts,get_workout_by_id,get_scheduled_workouts,schedule_workouts,schedule_week,upload_workout,upload_course,create_strength_workout,delete_workout,unschedule_workout,unschedule_workouts,download_activity_file,get_stats,get_lactate_threshold,get_training_status,get_gear,get_activity_gear,add_gear_to_activity"
+GARMIN_TOOL_WHITELIST="get_activities,get_activities_by_date,get_activity,get_activity_fit_data,get_activity_splits,get_activity_typed_splits,get_activity_split_summaries,get_sleep_data,get_hrv_data,get_rhr_day,get_training_readiness,get_calendar_events,get_courses,get_workouts,get_workout_by_id,get_scheduled_workouts,schedule_workouts,schedule_week,upload_workout,upload_course,create_strength_workout,delete_workout,unschedule_workout,unschedule_workouts,download_activity_file,get_stats,get_lactate_threshold,get_training_status,get_gear,get_activity_gear,add_gear_to_activity,get_daily_weigh_ins,get_weigh_ins"
 # Outils de cycle menstruel (#166) : JAMAIS dans la liste blanche par défaut — ajoutés par
 # resolve_cycle_tracking() uniquement quand [health].cycle_tracking = "garmin" (opt-in) et que la
 # source est Garmin. Noms vérifiés dans src/garmin_mcp/womens_health.py du commit épinglé ci-dessus.
