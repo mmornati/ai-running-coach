@@ -10,7 +10,7 @@ from __future__ import annotations
 from tests.lib.asserts import InstallAsserts
 from tests.lib.sandbox import Sandbox
 
-ALL = {"coach", "medical", "nutritionist", "course-strategist"}
+ALL = {"coach", "medical", "nutritionist", "course-strategist", "sports-director"}
 SURFACES = (".claude/agents", ".opencode/agents", ".github/agents")
 
 
@@ -109,6 +109,52 @@ class TestReconfiguration(AgentSelectionCase):
             before = sb.tree()
             self.assertSucceeded(sb.install("--no-auth"))
             self.assertTreeUnchanged(before, sb.tree(), "réinstallation non idempotente")
+
+
+class TestNewAgentOnUpdate(AgentSelectionCase):
+    """Un agent ajouté au moteur doit arriver chez les utilisateurs existants.
+
+    `install.sh` réécrit `[agents].enabled` à chaque passage : sans
+    `[agents].known`, un nouvel agent serait indiscernable d'un agent retiré
+    par l'athlète, et une mise à jour ne l'installerait jamais.
+    """
+
+    LEGACY = ["coach", "medical", "nutritionist", "course-strategist"]
+
+    def write_user_config(self, sb: Sandbox, enabled: list) -> None:
+        listed = ", ".join(f'"{name}"' for name in enabled)
+        (sb.repo / "config/workspace.user.toml").write_text(f"[agents]\nenabled = [{listed}]\n")
+
+    def test_install_from_before_known_gets_the_new_agent(self):
+        with Sandbox() as sb:
+            self.write_user_config(sb, self.LEGACY)
+            proc = sb.install("--no-auth")
+            self.assertSucceeded(proc)
+            self.assertEqual(self.installed(sb), ALL)
+            self.assertIn("sports-director", self.enabled_in_config(sb))
+            self.assertOutputContains(proc, "Nouvel agent activé : sports-director")
+
+    def test_an_agent_removed_before_known_stays_removed(self):
+        with Sandbox() as sb:
+            self.write_user_config(sb, ["coach", "nutritionist", "course-strategist"])
+            self.assertSucceeded(sb.install("--no-auth"))
+            self.assertEqual(self.installed(sb), ALL - {"medical"})
+
+    def test_a_deselected_agent_is_not_reactivated(self):
+        with Sandbox() as sb:
+            self.assertSucceeded(sb.install("--no-auth", "--agents", "coach,medical"))
+            proc = sb.install("--no-auth")
+            self.assertSucceeded(proc)
+            self.assertEqual(self.installed(sb), {"coach", "medical"})
+            self.assertNotIn("Nouvel agent", proc.stdout + proc.stderr)
+
+    def test_known_lists_every_engine_agent(self):
+        with Sandbox() as sb:
+            self.assertSucceeded(sb.install("--no-auth", "--agents", "coach"))
+            proc = sb.run(["python3", str(sb.repo / "scripts/coach_config.py"), "get",
+                           "--workspace", str(sb.repo), "--section", "agents", "--key", "known"])
+            self.assertSucceeded(proc)
+            self.assertEqual(set(proc.stdout.split()), ALL)
 
 
 class TestSkillsAreNotFiltered(AgentSelectionCase):

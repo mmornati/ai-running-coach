@@ -4342,6 +4342,66 @@ def durability_trend(conn, today: date, weeks: Optional[int] = None) -> dict:
     return M.durability_trend(rows, today, window_weeks)
 
 
+HISTORY_DEFAULT_WEEKS = 12
+HISTORY_STALE_DAYS = 7
+
+
+def history_summary(conn, today: date, weeks: int = HISTORY_DEFAULT_WEEKS) -> dict:
+    """Ce que l'athlète a RÉELLEMENT fait, pour `sports-director` (#159) : records
+    à pied (plus longue sortie, plus gros D+ en une séance), volume hebdomadaire
+    des N dernières semaines, dernier état de charge de `metric_day` et rapports
+    de course (`race`, `race_debrief`). Lecture seule, aucun second calcul.
+
+    D+ : la valeur ENREGISTRÉE (montre/fichier) ; un chiffre officiel de course
+    vit dans le rapport ou l'objectif, jamais ici. `stale_days` dit depuis
+    combien de jours aucune activité n'est indexée : au-delà de
+    `HISTORY_STALE_DAYS`, la charge (et l'ACWR) reflète un trou de
+    synchronisation, pas un repos — `load.stale` le signale."""
+    foot = tuple(M.RUNNING_SPORTS) + ("hiking",)
+    marks = ",".join("?" * len(foot))
+    cols = "date, sport, name, distance_m, elevation_gain_m, duration_s, source_path"
+
+    def best(column: str) -> Optional[dict]:
+        row = conn.execute(
+            f"SELECT {cols} FROM activity WHERE sport IN ({marks}) AND {column} IS NOT NULL "
+            f"AND date <= ? ORDER BY {column} DESC, date DESC LIMIT 1", (*foot, today.isoformat())).fetchone()
+        return dict(row) if row else None
+
+    last = conn.execute("SELECT MAX(date) FROM activity WHERE date <= ?", (today.isoformat(),)).fetchone()[0]
+    stale_days = (today - date.fromisoformat(last)).days if last else None
+
+    monday = today - timedelta(days=today.weekday())
+    first = monday - timedelta(weeks=weeks - 1)
+    by_week = {(first + timedelta(weeks=i)).isoformat(): {
+        "week_start": (first + timedelta(weeks=i)).isoformat(), "sessions": 0,
+        "distance_m": 0.0, "elevation_gain_m": 0.0, "duration_s": 0.0} for i in range(weeks)}
+    for row in conn.execute(
+            f"SELECT date, distance_m, elevation_gain_m, duration_s FROM activity "
+            f"WHERE sport IN ({marks}) AND date >= ? AND date <= ?",
+            (*foot, first.isoformat(), today.isoformat())):
+        d = date.fromisoformat(row["date"])
+        week = by_week[(d - timedelta(days=d.weekday())).isoformat()]
+        week["sessions"] += 1
+        for key in ("distance_m", "elevation_gain_m", "duration_s"):
+            week[key] += row[key] or 0.0
+
+    load_row = conn.execute(
+        "SELECT date, fitness, fatigue, form, acwr FROM metric_day WHERE date <= ? "
+        "ORDER BY date DESC LIMIT 1", (today.isoformat(),)).fetchone()
+    load = dict(load_row) if load_row else None
+    if load is not None:
+        load["stale"] = stale_days is not None and stale_days > HISTORY_STALE_DAYS
+
+    races = [dict(r) for r in conn.execute(
+        "SELECT date, report_type, title, location, source_path FROM report "
+        "WHERE report_type IN ('race', 'race_debrief') ORDER BY date DESC")]
+    return {
+        "today": today.isoformat(), "last_activity_date": last, "stale_days": stale_days,
+        "records": {"longest_distance": best("distance_m"), "biggest_elevation_gain": best("elevation_gain_m")},
+        "weeks": list(by_week.values()), "load": load, "races": races,
+    }
+
+
 def trail_shape_report(conn, today: date) -> dict:
     """Rapport « Trail Shape » (#63) — pour la CLI (`arc_index.py trail-shape`)
     et pour `coach`/le tableau de bord. Délègue ENTIÈREMENT à
@@ -4919,7 +4979,7 @@ def build_parser() -> argparse.ArgumentParser:
                                  "climb-history", "decisions", "slope-model", "trail-shape", "energy", "equipment",
                                  "inspections", "gear-career", "gait-summary", "pace-curve",
                                  "decision-effects", "load-forecast", "plan-templates", "strength", "dem-check", "prevention", "plan-skeleton",
-                                 "power-hr"))
+                                 "power-hr", "history-summary"))
     parser.add_argument("selector", nargs="?", default=None,
                         help="argument de la sous-commande (ex. garmin_activity_id, intervals_activity_id ou strava_activity_id "
                              "pour « samples »)")
@@ -4936,9 +4996,9 @@ def build_parser() -> argparse.ArgumentParser:
                              "entier, intervals_activity_id i<chiffres> ou strava_activity_id s<chiffres>)")
     parser.add_argument("--weeks", type=int, metavar="N",
                         help="commande « zones »/« decoupling »/« vam »/« descent »/« durability »/"
-                             "« energy --calibration »/« gait-summary » : polarisation ou tendance sur les N "
+                             "« energy --calibration »/« gait-summary »/« history-summary » : polarisation ou tendance sur les N "
                              "dernières semaines (défaut 8 pour « zones », 12 pour « decoupling »/« vam »/"
-                             "« descent »/« durability », 26 pour « energy --calibration »/« gait-summary »)")
+                             "« descent »/« durability »/« history-summary », 26 pour « energy --calibration »/« gait-summary »)")
     parser.add_argument("--segment", type=int, metavar="SEGMENT_ID",
                         help="commande « climb-history » : historique complet d'un segment (#49)")
     parser.add_argument("--with-gps", action="store_true",
@@ -5496,6 +5556,11 @@ def main(argv=None) -> int:
                               ensure_ascii=False))
             return 0
         print(json.dumps(slope_model_report(conn, args.band), ensure_ascii=False))
+        return 0
+    if args.command == "history-summary":
+        today_date = date.fromisoformat(args.today) if args.today else date.today()
+        print(json.dumps(history_summary(conn, today_date, args.weeks or HISTORY_DEFAULT_WEEKS),
+                         ensure_ascii=False))
         return 0
     if args.command == "trail-shape":
         today_date = date.fromisoformat(args.today) if args.today else date.today()

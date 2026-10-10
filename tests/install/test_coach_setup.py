@@ -76,6 +76,9 @@ class TestApply(SetupCase):
             self.assertIn('primary = "road"', cfg)
             self.assertIn('morning_check = "off"', cfg)
             self.assertIn('enabled = ["coach", "nutritionist"]', cfg)
+            # Les agents non cochés sont retirés, pas nouveaux : install.sh ne
+            # doit pas les réactiver à la prochaine mise à jour.
+            self.assertIn('known = ["coach", "medical", "nutritionist", "course-strategist", "sports-director"]', cfg)
 
     def test_rerun_changes_nothing(self):
         with Sandbox() as sb:

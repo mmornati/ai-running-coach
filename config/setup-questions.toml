@@ -81,14 +81,15 @@ labels = [
 key = "agents.enabled"
 prompt = "Quel staff voulez-vous ?"
 help = "Seuls les agents choisis sont installés, et le coach ne délègue qu'à eux."
-default = "coach,medical,nutritionist,course-strategist"
+default = "coach,medical,nutritionist,course-strategist,sports-director"
 kind = "multi"
-options = ["coach", "medical", "nutritionist", "course-strategist"]
+options = ["coach", "medical", "nutritionist", "course-strategist", "sports-director"]
 labels = [
   "Coach — plans, analyse des séances, calendrier Garmin (indispensable)",
   "Médecin — sommeil, HRV, récupération, protocoles blessure",
   "Nutritionniste — macros, poids de forme, plans de ravitaillement",
   "Stratège de course — analyse GPX, plan de course, allures par scénario",
+  "Directeur sportif — recherche de courses, prochain objectif, calendrier de saison",
 ]
 
 [morning_check]

@@ -19,7 +19,7 @@ Rien n'interdit de les éditer à la main ensuite.
 
 ```toml
 [agents]
-enabled = ["coach", "medical", "nutritionist", "course-strategist"]
+enabled = ["coach", "medical", "nutritionist", "course-strategist", "sports-director"]
 ```
 
 Seuls les agents listés sont installés, et le coach ne délègue qu'à eux. `coach`
@@ -31,7 +31,10 @@ est indispensable : c'est lui qui planifie et pousse vers le calendrier Garmin.
 ```
 
 L'option écrit `[agents].enabled`, si bien qu'une réinstallation sans option
-respecte votre choix. Réactiver un agent le réinstalle ; le désactiver le retire
+respecte votre choix. `install.sh` écrit aussi `[agents].known`, la liste des agents
+connus à cet instant : un agent ajouté au moteur par une mise à jour est activé
+d'office, un agent que vous avez retiré reste retiré (voir
+[Mettre à jour](update.md#nouveaux-agents)). Réactiver un agent le réinstalle ; le désactiver le retire
 pour de bon des dossiers `.claude/agents`, `.opencode/agents` et
 `.github/agents`.
 
@@ -42,6 +45,7 @@ Ce que vous perdez en retirant un agent :
 | `medical` | Plus de gatekeeper ni de protocole blessure. Le coach applique lui-même `[health].morning_check` et vous renvoie vers un vrai médecin pour tout ce qui est clinique. |
 | `nutritionist` | Plus de plan de macros ni de poids de forme. Le coach garde des conseils de ravitaillement génériques dans les notes de séance. |
 | `course-strategist` | Plus de plan de course détaillé. Le coach analyse quand même un GPX avec le skill `gpx-analysis`. |
+| `sports-director` | Plus de recherche de courses ni de conseil sur le prochain objectif. Le coach continue de préparer l'objectif que vous inscrivez dans `planning/active_objective.md`. |
 
 ## Le bilan matinal — `[health]`
 
