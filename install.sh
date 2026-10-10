@@ -1161,7 +1161,7 @@ verify_openwearables() {
     [[ "$DRY_RUN" -eq 0 ]] || return 0
     have python3 || return 0
     local out rc=0
-    out="$(python3 "$PROJECT_ROOT/scripts/arc_openwearables.py" --workspace "$WORKSPACE_ROOT" check --json 2>/dev/null)" || rc=$?
+    out="$(python3 "$PROJECT_ROOT/scripts/arc_openwearables.py" --workspace "$WORKSPACE_ROOT" check --json --timeout 5 2>/dev/null)" || rc=$?
     if [[ "$rc" -eq 0 ]]; then
         local summary
         summary="$(printf '%s' "$out" | python3 -c '

@@ -949,7 +949,7 @@ detect_auth_failure() {
 # ---------------------------------------------------------------------------
 # Santé Open Wearables (#220) — contrôle préalable, JAMAIS bloquant pour la synchronisation Garmin
 # ---------------------------------------------------------------------------
-# Un seul `arc_openwearables.py check` avant le run : une instance morte (sortie 3, « unreachable »),
+# Un seul `arc_openwearables.py check --timeout 5` avant le run (délai borné par requête) : une instance morte (sortie 3, « unreachable »),
 # une clé refusée (« auth ») ou une configuration incomplète (sortie 2) sont journalisées et ajoutées en
 # UNE ligne au résumé, une fois par jour (marqueur, comme le budget) — le run Garmin continue. La clé
 # n'est lue que par le script, jamais passée en argument ni en variable d'environnement, jamais journalisée
@@ -958,7 +958,7 @@ OW_NOTICE=""
 ow_preflight() {
     [[ "$HEALTH_OW" -eq 1 ]] || return 0
     local out="" rc=0 code="" marker
-    out="$(python3 "$ARC_ENGINE_ROOT/scripts/arc_openwearables.py" --workspace "$ARC_WORKSPACE" check --json 2>>"$LOG_FILE")" || rc=$?
+    out="$(python3 "$ARC_ENGINE_ROOT/scripts/arc_openwearables.py" --workspace "$ARC_WORKSPACE" check --json --timeout 5 2>>"$LOG_FILE")" || rc=$?
     if [[ "$rc" -eq 0 ]]; then
         log "Santé Open Wearables : instance joignable."
         return 0

@@ -1290,3 +1290,14 @@ class TestOpenWearables(InstallAsserts):
             _, check = self._run(sb, "--probe-ow")
             self.assertEqual(check["status"], "warning")
             self.assertIn("user_id", check["fix"])
+
+    def test_sdk_provider_without_connection_is_info_not_an_error(self):
+        from tests.data.test_arc_openwearables import OWStub
+        bundle = self._bundle(2)
+        bundle["connections"] = []
+        with Sandbox() as sb, OWStub(bundle) as stub:
+            self._setup(sb, provider="apple", base=stub.base)
+            proc, check = self._run(sb, "--probe-ow")
+            self.assertEqual(check["status"], "info", check)
+            self.assertIn("inconnue", check["message"])
+            self.assertEqual(proc.returncode, 0)

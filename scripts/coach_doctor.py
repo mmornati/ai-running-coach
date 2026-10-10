@@ -1507,8 +1507,10 @@ def check_weight_sync(workspace: Path, config: dict) -> dict:
 
 OW_INSTALL_FIX = ("voir docs/open-wearables.md#installation, puis "
                   "./install.sh --health-source openwearables --ow-url URL --ow-provider FABRICANT")
-# Borne dure sur l'appel `check` du client (3 requêtes) ; au-delà, l'instance est dite injoignable.
-OW_PROBE_TIMEOUT_S = float(os.environ.get("ARC_OW_PROBE_TIMEOUT_S", "8"))
+# Délai d'UNE requête passé au client (`check --timeout`), et marge de sécurité du sous-processus : le client
+# enchaîne au plus 3 requêtes, un délai n'est jamais rejoué ; au-delà de la marge, l'instance est dite injoignable.
+OW_REQUEST_TIMEOUT_S = 3.0
+OW_PROBE_TIMEOUT_S = float(os.environ.get("ARC_OW_PROBE_TIMEOUT_S", str(OW_REQUEST_TIMEOUT_S * 4)))
 
 
 def _ow_key_file(ow: dict) -> str:
@@ -1567,7 +1569,8 @@ def _ow_probe(workspace: Path) -> tuple:
     processus, ni dans argv). Rend (code de sortie | None si délai dépassé, JSON | {})."""
     script = Path(__file__).resolve().parent / "arc_openwearables.py"
     try:
-        proc = subprocess.run([sys.executable, str(script), "--workspace", str(workspace), "check", "--json"],
+        proc = subprocess.run([sys.executable, str(script), "--workspace", str(workspace), "check", "--json",
+                               "--timeout", f"{OW_REQUEST_TIMEOUT_S:g}"],
                               capture_output=True, text=True, timeout=OW_PROBE_TIMEOUT_S)
     except subprocess.TimeoutExpired:
         return None, {}
@@ -1629,13 +1632,19 @@ def check_openwearables(workspace: Path, config: dict, now: datetime, probe: boo
                                f"{label} : plusieurs utilisateurs sur l'instance et aucun user_id configuré.",
                                fix="renseigner [health.openwearables].user_id (UUID de l'athlète) dans "
                                    "config/workspace.user.toml")
+        if kind == "refused_provider":
+            return build_check(check_id, "error", f"{label} : fournisseur refusé (Garmin se lit en direct, "
+                               "Strava n'a aucune donnée de santé).", fix=OW_INSTALL_FIX)
         return build_check(check_id, "error", f"{label} : configuration refusée par le client ({kind or 'inconnue'}).",
                            fix=OW_INSTALL_FIX)
     if code != 0 or not payload:
         return build_check(check_id, "error", f"{label} : réponse du client inexploitable.", fix=OW_INSTALL_FIX)
     fresh = payload.get("freshness") if isinstance(payload.get("freshness"), dict) else {}
     warnings = []
-    if payload.get("provider_connected") is not True:
+    client_codes = {w.get("code") for w in (payload.get("warnings") or []) if isinstance(w, dict)}
+    # Fournisseur SDK absent de la liste des connexions : fraîcheur INCONNUE, ni panne ni périmé.
+    freshness_unknown = "freshness_unknown" in client_codes
+    if payload.get("provider_connected") is not True and not (freshness_unknown and fresh.get("status") == "unknown"):
         warnings.append(f"fabricant non actif côté Open Wearables (statut : {fresh.get('status') or 'inconnu'})")
     age = None
     last = fresh.get("last_synced_at")
@@ -1649,12 +1658,21 @@ def check_openwearables(workspace: Path, config: dict, now: datetime, probe: boo
                         + (f" ({age:.0f} h)" if age is not None else ""))
     if payload.get("shape_ok") is not True:
         warnings.append(f"version d'Open Wearables non testée (réponses différentes de la version {OW.TESTED_VERSION})")
-    provider_codes = {w.get("code") for w in (payload.get("warnings") or []) if isinstance(w, dict)}
+    if "insecure_transport" in client_codes:
+        warnings.append("base_url en http:// vers un hôte non local : la clé d'API circule en clair "
+                        "(utiliser https:// ou un VPN)")
+    if "summary_hrv_multi_source" in client_codes:
+        warnings.append("HRV du résumé de sommeil ignorée : plusieurs fabricants connectés à Open Wearables")
+    provider_codes = client_codes
     if warnings:
         fix = ("vérifier la connexion du fabricant dans le portail Open Wearables ; version non testée : "
                "docs/open-wearables.md" if "shape_mismatch" in provider_codes or payload.get("shape_ok") is not True
                else "vérifier la connexion du fabricant dans le portail Open Wearables (docs/troubleshooting.md)")
         return build_check(check_id, "warning", f"{label} : " + " ; ".join(warnings) + ".", fix=fix)
+    if freshness_unknown:
+        return build_check(check_id, "info",
+                           f"{label} : API compatible ({tested}) ; fraîcheur de la synchro inconnue "
+                           "(fournisseur de l'application mobile OW, absent de la liste des connexions).", fix=None)
     when = f"dernière synchro il y a {age:.0f} h" if age is not None else "ancienneté de la synchro inconnue"
     return build_check(check_id, "ok", f"{label} : {when}, API compatible ({tested}).", fix=None)
 
