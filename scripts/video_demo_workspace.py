@@ -17,13 +17,15 @@ l'histoire sont réécrits par-dessus pour que chaque vue du tableau de bord rac
   générées, jamais de vraies photos).
 
 Garanties : aucune donnée réelle (jamais de lecture du workspace de l'utilisateur), aucune coordonnée
-GPS, identifiants Garmin ≥ `FAKE_ACTIVITY_ID_BASE`, aucun sigle déposé par TrainingPeaks. Chaque fichier
+GPS réelle (la variante `--suite` trace une boucle fictive en plein océan, sans fond de carte), identifiants Garmin ≥ `FAKE_ACTIVITY_ID_BASE`, aucun sigle déposé par TrainingPeaks. Chaque fichier
 écrit respecte le contrat `arc` (`python3 scripts/arc_index.py --validate`).
 
 `--force` remplace un dossier existant, mais SEULEMENT s'il porte le marqueur `.arc-video-demo` posé
 par ce script (ou s'il est vide) : jamais d'effacement d'un vrai workspace.
 `--no-samples` saute les échantillons FIT seconde par seconde (rapide ; les vues « Analyse » et les
 montées de la séance restent alors vides).
+`--bloc` (épisode 15) et `--suite` (épisodes 16-17) construisent les variantes du workspace : les autres
+épisodes gardent le workspace d'origine.
 """
 
 from __future__ import annotations
@@ -32,6 +34,7 @@ import argparse
 import contextlib
 import io
 import json
+import math
 import re
 import shutil
 import struct
@@ -831,10 +834,180 @@ def write_skeleton(root: Path) -> None:
 
 
 # ---------------------------------------------------------------------------
+# Variante « suite » (épisodes 16 et 17) : de quoi ajuster une vitesse critique, une trace à carte,
+# un bloc planifié jusqu'à la course et un historique de décisions à évaluer
+# ---------------------------------------------------------------------------
+
+# Efforts posés dans les séances « Seuil » des dix dernières semaines : (date, début s, durée s). Vitesse =
+# CS(date) + D′ / durée (modèle CS/D′, docs/vitesse-critique.md), CS montant doucement de 3,80 à 3,86 m/s
+# (4:23 → 4:19/km), D′ 120 m, tenue à 98-99 % (efforts d'entraînement, pas des tests à l'épuisement).
+EFFORTS = (
+    ("2026-07-21", 700, 300), ("2026-07-28", 600, 720), ("2026-08-04", 700, 180), ("2026-08-11", 600, 1200),
+    ("2026-08-18", 700, 420), ("2026-08-25", 600, 900), ("2026-09-01", 700, 240), ("2026-09-08", 600, 600),
+    ("2026-09-15", 700, 360), ("2026-09-22", 600, 1080),
+)
+CS_START_MS, CS_GAIN_MS_PER_DAY, D_PRIME_M = 3.80, 0.001, 120.0
+# Trace GPS FICTIVE de la sortie du dimanche : une boucle tracée en plein Atlantique (0° N, 25° O, aucun lieu
+# réel), servie SANS fond de carte (`[dashboard].map_tiles = ""`) : la carte ne montre que la trace.
+GPS_ORIGIN = (0.05, -25.0)
+
+
+def _cs_speed(day: str, duration_s: int) -> float:
+    days = (date.fromisoformat(day) - date(2026, 7, 21)).days
+    return (CS_START_MS + CS_GAIN_MS_PER_DAY * days + D_PRIME_M / duration_s) * (0.98 + 0.01 * (duration_s % 2 == 0))
+
+
+def _sample_file(root: Path, day: str) -> Path:
+    path = next(p for p in activity_files(root) if p.name.startswith(day) and "running" in p.name)
+    return root / f"activities/fit/{read_block(path)['garmin_activity_id']}.json"
+
+
+def plant_efforts(root: Path) -> None:
+    """Remplace une fenêtre de chaque séance « Seuil » par un effort soutenu à allure constante (± 0,6 %, bruit
+    déterministe), sur le plat ; la distance cumulée est recalculée à partir de la fenêtre, le reste de la
+    séance garde ses incréments. La FC monte vers 172 bpm pendant l'effort."""
+    for day, start, duration in EFFORTS:
+        path = _sample_file(root, day)
+        doc = json.loads(path.read_text(encoding="utf-8"))
+        recs = doc["records"]
+        v = _cs_speed(day, duration)
+        i0 = next(i for i, r in enumerate(recs) if r["t_s"] >= start)
+        i1 = next((i for i, r in enumerate(recs) if r["t_s"] >= start + duration), len(recs) - 1)
+        alt0, alt1 = recs[i0]["altitude_m"], recs[i1]["altitude_m"]
+        old = [r["distance_m"] for r in recs]
+        for i in range(i0, len(recs)):
+            r = recs[i]
+            dt = r["t_s"] - recs[i - 1]["t_s"] if i else 1
+            if i < i1:
+                k = (i - i0) / max(i1 - i0, 1)
+                r["speed_ms"] = round(v * (1 + 0.006 * math.sin(i * 0.7)), 3)
+                r["distance_m"] = round(recs[i - 1]["distance_m"] + r["speed_ms"] * dt, 3)
+                r["altitude_m"] = round(alt0 + (alt1 - alt0) * k, 2)
+                r["hr_bpm"] = round(min(174.0, 150 + 22 * (1 - math.exp(-(r["t_s"] - start) / 90))), 1)
+            else:
+                r["distance_m"] = round(recs[i - 1]["distance_m"] + (old[i] - old[i - 1]), 3)
+        path.write_text(json.dumps(doc, ensure_ascii=False), encoding="utf-8")
+
+
+def add_fictional_gps(root: Path) -> None:
+    """Boucle fictive de 18,2 km pour la sortie du dimanche 27 (aucune coordonnée réelle, voir GPS_ORIGIN)."""
+    gid = read_block(root / f"activities/{STORY_ACTIVITY.isoformat()}_trail.md")["garmin_activity_id"]
+    path = root / f"activities/fit/{gid}.json"
+    doc = json.loads(path.read_text(encoding="utf-8"))
+    total = doc["records"][-1]["distance_m"] or 1.0
+    lat0, lon0 = GPS_ORIGIN
+    for r in doc["records"]:
+        a = 2 * math.pi * r["distance_m"] / total
+        x = math.cos(a) + 0.18 * math.cos(2 * a + 0.6) + 0.05 * math.sin(5 * a)
+        y = 0.58 * math.sin(a) + 0.14 * math.sin(2 * a + 1.9) + 0.05 * math.cos(4 * a)
+        r["lat_deg"] = round(lat0 + 0.0215 * y, 6)
+        r["lon_deg"] = round(lon0 + 0.0215 * x, 6)
+    path.write_text(json.dumps(doc, ensure_ascii=False), encoding="utf-8")
+    cfg = root / "config/workspace.user.toml"
+    cfg.write_text(cfg.read_text(encoding="utf-8") + '\n[dashboard]\nmap_tiles = ""\n', encoding="utf-8")
+
+
+# Historique de décisions : (date, déclencheur, résultat, HRV/FC repos/readiness AVANT (J-2..J), APRÈS (J+1..J+3)).
+# Les bilans matinaux allègent quand la triade plonge ; une fois Camille a gardé son seuil (refus).
+DECISION_HISTORY = (
+    ("2026-07-08", "morning_check", "applied", (46, 52, 40), (60, 47, 68)),
+    ("2026-07-23", "morning_check", "applied", (45, 51, 37), (59, 46, 66)),
+    ("2026-08-06", "morning_check", "applied", (47, 52, 41), (61, 47, 70)),
+    ("2026-08-20", "morning_check", "applied", (44, 53, 36), (57, 48, 63)),
+    ("2026-08-27", "morning_check", "rejected_by_athlete", (46, 52, 39), (43, 54, 33)),
+    ("2026-09-03", "morning_check", "applied", (45, 52, 38), (58, 47, 66)),
+    ("2026-09-10", "morning_check", "applied", (47, 51, 42), (49, 50, 45)),
+)
+
+
+def _set_health(root: Path, day: date, hrv: int, rhr: int, ready: int) -> None:
+    path = root / f"medical/{day.isoformat()}_health.md"
+    if path.exists():
+        mutate(path, lambda d: d.update({"hrv_overnight_ms": hrv, "resting_hr_bpm": rhr, "readiness_score": ready,
+                                         "hrv_status": "balanced" if hrv >= 52 else "low"}))
+
+
+def write_decision_history(root: Path) -> None:
+    for day_s, trigger, outcome, pre, post in DECISION_HISTORY:
+        day = date.fromisoformat(day_s)
+        for k in (2, 1, 0):
+            _set_health(root, day - timedelta(days=k), pre[0] + k, pre[1] - (k > 0), pre[2] + 2 * k)
+        for k in (1, 2, 3):
+            _set_health(root, day + timedelta(days=k), post[0] - (3 - k), post[1] + (k == 1), post[2] - 2 * (3 - k))
+        kept = outcome == "rejected_by_athlete"
+        write(root, f"planning/{day_s}_decision_bilan-matinal.md", "Décision — bilan matinal", {
+            "arc": 1, "kind": "decision", "date": day_s, "created_at": f"{day_s}T07:10:00+02:00",
+            "trigger": trigger, "outcome": outcome,
+            "summary": (f"HRV {pre[0]} ms sous la bande 52–70, readiness {pre[2]} : "
+                        + ("allègement proposé, Camille garde son seuil." if kept else "seuil remplacé par une EF.")),
+            "inputs": {"hrv_overnight_ms": pre[0], "hrv_band_low_ms": 52, "hrv_band_high_ms": 70,
+                       "resting_hr_bpm": pre[1], "readiness_score": pre[2]},
+            "sources": [f"medical/{day_s}_health.md"],
+            "before": {"title": "Seuil 4 × 8 min", "intensity": "threshold", "planned_duration_s": 3600},
+            "after": {"title": "Endurance fondamentale 45 min", "intensity": "endurance", "planned_duration_s": 2700},
+        }, "## Contexte\n\nBilan matinal sous la bande personnelle : " + (
+            "le coach propose d'alléger ; Camille préfère maintenir sa séance de seuil." if kept
+            else "la séance de qualité est remplacée par de l'endurance fondamentale.")
+            + "\n\n*Ne remplace pas un avis médical.*")
+
+
+# Bloc planifié jusqu'au Trail des Crêtes : (lundi, phase, [(jour, sport, titre, intensité, durée min, D+)]).
+_WEEK_PATTERN = ((1, "running", "Seuil 3 × 10 min", "threshold", 70, 0), (2, "running", "Endurance fondamentale", "endurance", 50, 0),
+                 (3, "trail", "Côtes 10 × 1 min", "vo2max", 65, 380), (5, "trail", "Sortie longue", "endurance", 0, 0),
+                 (6, "running", "Endurance fondamentale", "endurance", 45, 0))
+PLAN_WEEKS = (   # lundi, phase, durée de la sortie longue (min) et son D+, facteur sur les autres séances
+    ("2026-10-05", "Spécifique", 165, 1000, 1.0), ("2026-10-12", "Spécifique", 180, 1150, 1.05),
+    ("2026-10-19", "Spécifique", 120, 700, 0.8), ("2026-10-26", "Spécifique", 195, 1250, 1.05),
+    ("2026-11-02", "Spécifique", 180, 1100, 1.0), ("2026-11-09", "Affûtage", 120, 700, 0.75),
+    ("2026-11-16", "Affûtage", 0, 0, 0.5),
+)
+SHORT_TAPER = (  # variante : affûtage d'une seule semaine (la semaine du 9 novembre reste une semaine de charge)
+    ("2026-11-09", "Spécifique", 195, 1250, 1.05),
+)
+
+
+def _plan_week(monday_s: str, phase: str, long_min: int, long_dplus: int, factor: float) -> dict:
+    monday = date.fromisoformat(monday_s)
+    sessions = []
+    race_week = long_min == 0
+    for day, sport, title, intensity, minutes, dplus in _WEEK_PATTERN:
+        when = (monday + timedelta(days=day)).isoformat()
+        if race_week and day >= 5:
+            continue
+        if day == 5:
+            minutes, dplus, title = long_min, long_dplus, f"Sortie longue {long_min // 60} h {long_min % 60:02d}"
+        else:
+            minutes = round(minutes * factor / 5) * 5
+            dplus = round(dplus * factor, -1)
+        s = {"date": when, "sport": sport, "title": title, "intensity": intensity, "outdoor": True,
+             "planned_duration_s": minutes * 60, "status": "planned"}
+        if dplus:
+            s["planned_elevation_m"] = dplus
+        sessions.append(s)
+    if race_week:
+        sessions.append({"date": RACE_DATE.isoformat(), "sport": "trail", "title": "Trail des Crêtes — 42 km",
+                         "intensity": "race", "outdoor": True, "planned_duration_s": 22800,
+                         "planned_elevation_m": 2100, "status": "planned"})
+    total = sum(s["planned_duration_s"] for s in sessions if s["intensity"] != "race")
+    return {"week_start": monday_s, "location": CITY, "phase": phase, "target_duration_s": total, "sessions": sessions}
+
+
+def write_planned_block(root: Path) -> None:
+    for week in PLAN_WEEKS:
+        data = _plan_week(*week)
+        write(root, f"planning/Semaine_{week[0]}.md", f"Semaine du {week[0]}", {"arc": 1, "kind": "week", **data},
+              f"## Intention\n\nPhase {week[1].lower()} avant le Trail des Crêtes.")
+    variant = {"weeks": [_plan_week(*w) for w in SHORT_TAPER]}
+    (root / "planning/variante_affutage-court.json").write_text(json.dumps(variant, ensure_ascii=False, indent=1) + "\n",
+                                                               encoding="utf-8")
+
+
+# ---------------------------------------------------------------------------
 # Assemblage
 # ---------------------------------------------------------------------------
 
-def build_demo(root: Path, *, with_samples: bool = True, force: bool = False, bloc: bool = False) -> Path:
+def build_demo(root: Path, *, with_samples: bool = True, force: bool = False, bloc: bool = False,
+               suite: bool = False) -> Path:
     root = Path(root)
     if root.exists() and any(root.iterdir()):
         if not force:
@@ -866,6 +1039,12 @@ def build_demo(root: Path, *, with_samples: bool = True, force: bool = False, bl
     write_inspections(root)                       # après le départ : kilométrages cohérents avec la fiche
     if bloc:                                      # épisode 15 seulement : les autres épisodes gardent le workspace d'origine
         write_skeleton(root)                      # en dernier : lit le volume tenu dans l'index
+    if suite:                                     # épisodes 16 et 17 seulement, même règle
+        if with_samples:
+            plant_efforts(root)
+            add_fictional_gps(root)
+        write_decision_history(root)
+        write_planned_block(root)
     return root
 
 
@@ -874,9 +1053,13 @@ def main(argv=None) -> int:
     parser.add_argument("dir")
     parser.add_argument("--force", action="store_true", help="reconstruit un workspace de démonstration existant")
     parser.add_argument("--no-samples", action="store_true", help="sans échantillons FIT (rapide)")
+    parser.add_argument("--bloc", action="store_true", help="variante de l'épisode 15 (squelette de bloc)")
+    parser.add_argument("--suite", action="store_true",
+                        help="variante des épisodes 16-17 (efforts, trace fictive, bloc planifié, décisions passées)")
     args = parser.parse_args(argv)
     try:
-        root = build_demo(Path(args.dir), with_samples=not args.no_samples, force=args.force)
+        root = build_demo(Path(args.dir), with_samples=not args.no_samples, force=args.force, bloc=args.bloc,
+                          suite=args.suite)
     except FileExistsError as exc:
         print(f"erreur : {exc}", file=sys.stderr)
         return 1

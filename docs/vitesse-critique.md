@@ -1,5 +1,23 @@
 # Vitesse critique et courbe allure-durée
 
+<!-- arc-video:allure-juste -->
+<div class="arc-video-card" markdown>
+
+[![L'allure juste](video/allure-juste/poster.jpg)](video/allure-juste/index.html)
+
+<div markdown>
+
+<span class="arc-video__meta">En vidéo · Étape 16 · 1 min 48</span>
+
+**[L'allure juste](video/allure-juste/index.html)** — La pente, la durée et la chaleur ramenées à une allure juste : modèle de Kay et carte GAP, courbe allure-durée et vitesse critique, cibles de séance en pourcentage de cette vitesse, puis ralenties par la chaleur, FC inchangée.
+
+[Regarder](video/allure-juste/index.html) · [English](video/allure-juste/index.html?lang=en) · [Toutes les vidéos](videos.md)
+
+</div>
+
+</div>
+<!-- /arc-video -->
+
 Le tableau de bord (vue [Performance](dashboard/views.md#performance)) et le
 coach estiment votre **vitesse critique** (CS) et votre **réserve anaérobie D′**
 à partir de vos propres séances, sans test à l'épuisement. Cette page explique ce

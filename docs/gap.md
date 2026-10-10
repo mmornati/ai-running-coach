@@ -1,5 +1,23 @@
 # Allure ajustée à la pente (GAP)
 
+<!-- arc-video:allure-juste -->
+<div class="arc-video-card" markdown>
+
+[![L'allure juste](video/allure-juste/poster.jpg)](video/allure-juste/index.html)
+
+<div markdown>
+
+<span class="arc-video__meta">En vidéo · Étape 16 · 1 min 48</span>
+
+**[L'allure juste](video/allure-juste/index.html)** — La pente, la durée et la chaleur ramenées à une allure juste : modèle de Kay et carte GAP, courbe allure-durée et vitesse critique, cibles de séance en pourcentage de cette vitesse, puis ralenties par la chaleur, FC inchangée.
+
+[Regarder](video/allure-juste/index.html) · [English](video/allure-juste/index.html?lang=en) · [Toutes les vidéos](videos.md)
+
+</div>
+
+</div>
+<!-- /arc-video -->
+
 L'**allure ajustée à la pente** (GAP, *Grade Adjusted Pace*) est l'allure que vous
 auriez tenue **sur du plat** pour le même effort de course. En montée elle est plus
 rapide que votre allure réelle, en descente douce plus lente. Elle rend comparables

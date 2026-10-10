@@ -1,0 +1,21 @@
+{
+ "fr": {
+  "DMG": "dé èm gé",
+  "MFA": "èm èf a",
+  "OpenRouter": "[[ɔpœn ʁutœʁ]]"
+ },
+ "en": {
+  "DMG": "D M G",
+  "MFA": "M F A"
+ },
+ "fr@microsoft": {
+  "DMG": "D M G",
+  "MFA": "M F A",
+  "OpenRouter": "Open Router"
+ },
+ "en@microsoft": {
+  "DMG": "D M G",
+  "MFA": "M F A",
+  "OpenRouter": "Open Router"
+ }
+}

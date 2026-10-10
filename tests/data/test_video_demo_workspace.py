@@ -137,6 +137,29 @@ class TestDemoWorkspace(unittest.TestCase):
                 self.assertEqual(errors, [], f"{path.name} : {errors}")
             self.assertEqual(block(weeks[0])["phase"], "Base")
 
+    def test_variante_suite(self):
+        """Épisodes 16-17 : bloc planifié jusqu'à la course, variante d'affûtage hors index, décisions passées."""
+        self.assertFalse((self.root / "planning/2026-08-20_decision_bilan-matinal.md").exists())
+        with tempfile.TemporaryDirectory() as tmp:
+            root = V.build_demo(Path(tmp) / "ws-suite", with_samples=False, suite=True)
+            weeks = sorted(root.glob("planning/Semaine_2026-1[01]-*.md"))
+            self.assertEqual(len(weeks), 7)
+            decisions = [root / f"planning/{d[0]}_decision_bilan-matinal.md" for d in V.DECISION_HISTORY]
+            for path in weeks + decisions:
+                errors, _warnings = C.validate(block(path))
+                self.assertEqual(errors, [], f"{path.name} : {errors}")
+            race_week = block(root / "planning/Semaine_2026-11-16.md")["sessions"]
+            self.assertEqual(race_week[-1]["date"], V.RACE_DATE.isoformat())
+            variant = json.loads((root / "planning/variante_affutage-court.json").read_text(encoding="utf-8"))
+            self.assertEqual([w["week_start"] for w in variant["weeks"]], ["2026-11-09"])
+
+    def test_efforts_suivent_le_modele_cs(self):
+        """Vitesse des efforts posés = CS(date) + D′/durée, tenue à 98-99 % ; plus rapide sur les efforts courts."""
+        v = [V._cs_speed("2026-09-22", d) for d in (180, 600, 1200)]
+        self.assertGreater(v[0], v[1])
+        self.assertGreater(v[1], v[2])
+        self.assertTrue(3.7 < v[2] < 4.0)
+
 
 if __name__ == "__main__":
     unittest.main()

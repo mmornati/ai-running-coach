@@ -244,6 +244,48 @@ Un bloc d'entraînement qui ne s'invente plus : gabarits de périodisation, sque
 
 </div>
 
+<div class="arc-video" markdown>
+
+[![L'allure juste](video/allure-juste/poster.jpg)](video/allure-juste/index.html)
+
+<span class="arc-video__meta">Étape 16 · 1 min 48</span>
+
+### [L'allure juste](video/allure-juste/index.html)
+
+La pente, la durée et la chaleur ramenées à une allure juste : modèle de Kay et carte GAP, courbe allure-durée et vitesse critique, cibles de séance en pourcentage de cette vitesse, puis ralenties par la chaleur, FC inchangée.
+
+[Regarder](video/allure-juste/index.html) · [English (1 min 57)](video/allure-juste/index.html?lang=en) · [La documentation](vitesse-critique.md)
+
+</div>
+
+<div class="arc-video" markdown>
+
+[![Avant, après](video/avant-apres/poster.jpg)](video/avant-apres/index.html)
+
+<span class="arc-video__meta">Étape 17 · 1 min 57</span>
+
+### [Avant, après](video/avant-apres/index.html)
+
+Regarder devant et derrière, sans jamais inventer : forme projetée jusqu'au jour J et affûtage chiffré, pénalité d'altitude du plan de course, ce qui a suivi chaque décision du coach, puis le débrief qui propose des coefficients personnels.
+
+[Regarder](video/avant-apres/index.html) · [English (2 min 11)](video/avant-apres/index.html?lang=en) · [La documentation](skills/why.md)
+
+</div>
+
+<div class="arc-video" markdown>
+
+[![Sans terminal](video/sans-terminal/poster.jpg)](video/sans-terminal/index.html)
+
+<span class="arc-video__meta">Étape 18 · 1 min 39</span>
+
+### [Sans terminal](video/sans-terminal/index.html)
+
+L'application macOS : un questionnaire à la place des lignes de commande, le chat intégré ou votre assistant habituel, des données qui restent chez vous, une synchronisation qui n'écrit jamais chez Garmin, et la pesée du matin lue en lecture seule.
+
+[Regarder](video/sans-terminal/index.html) · [English (1 min 46)](video/sans-terminal/index.html?lang=en) · [La documentation](macos.md)
+
+</div>
+
 </div>
 <!-- arc-videos:end -->
 

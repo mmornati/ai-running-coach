@@ -188,6 +188,24 @@ confirmation explicite dans la conversation, jamais en synchronisation automatiq
 
 ## Poids lu dans Garmin Connect (#222)
 
+<!-- arc-video:sans-terminal -->
+<div class="arc-video-card" markdown>
+
+[![Sans terminal](video/sans-terminal/poster.jpg)](video/sans-terminal/index.html)
+
+<div markdown>
+
+<span class="arc-video__meta">En vidéo · Étape 18 · 1 min 39</span>
+
+**[Sans terminal](video/sans-terminal/index.html)** — L'application macOS : un questionnaire à la place des lignes de commande, le chat intégré ou votre assistant habituel, des données qui restent chez vous, une synchronisation qui n'écrit jamais chez Garmin, et la pesée du matin lue en lecture seule.
+
+[Regarder](video/sans-terminal/index.html) · [English](video/sans-terminal/index.html?lang=en) · [Toutes les vidéos](videos.md)
+
+</div>
+
+</div>
+<!-- /arc-video -->
+
 Si vous vous pesez avec une balance Garmin (Index S2…) ou saisissez votre poids dans Garmin
 Connect, vous n'avez plus à le redonner au coach. Deux outils de **lecture** sont dans la liste
 blanche : `get_daily_weigh_ins` (pesées d'un jour) et `get_weigh_ins` (pesées d'une plage de dates).

@@ -51,6 +51,9 @@ const SERIES = [
   { n: 13, dir: "sources-retours", docs: "strava-setup/", fr: "Nouvelles portes d'entrée", en: "New ways in" },
   { n: 14, dir: "ultra", docs: "agents/course-strategist/", fr: "La nuit, la roche et le roadbook", en: "The night, the rock and the roadbook" },
   { n: 15, dir: "bloc", docs: "plans/", fr: "Construire son bloc", en: "Building your block" },
+  { n: 16, dir: "allure-juste", docs: "vitesse-critique/", fr: "L'allure juste", en: "The honest pace" },
+  { n: 17, dir: "avant-apres", docs: "skills/why/", fr: "Avant, après", en: "Before and after" },
+  { n: 18, dir: "sans-terminal", docs: "macos/", fr: "Sans terminal", en: "No terminal needed" },
 ];
 
 const UI = {
