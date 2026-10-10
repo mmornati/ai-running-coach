@@ -27,6 +27,8 @@
 #   ./install.sh --source strava    # Strava au lieu de Garmin (#164)
 #   ./install.sh --cycle-tracking MODE # off (défaut) | garmin | intervals | manual — contexte du cycle menstruel, opt-in (#166)
 #   ./install.sh --nutrition-sync MODE # off (défaut) | ask — pousser les apports vers Garmin Connect, opt-in (#167)
+#   ./install.sh --health-source S     # primary (défaut) | openwearables — santé du bilan matinal lue chez Open Wearables, opt-in (#220)
+#     --ow-url URL --ow-provider P     #   instance Open Wearables et UN fabricant (oura, whoop, polar…) ; --ow-key-file F importe la clé
 #   ./install.sh --workspace DIR    # données + config IDE dans DIR (dépôt privé), moteur lié
 #   ./install.sh --agents LISTE     # staff à installer, ex. coach,nutritionist
 #   ./install.sh --no-medical       # tous les agents sauf le médecin
@@ -167,6 +169,12 @@ PRESET=""          # --preset laptop|coach-server|docker (défaut : aucun)
 SOURCE="garmin"    # --source garmin|intervals|strava (#68, #164) — source de données primaire
 CYCLE_TRACKING="off" # --cycle-tracking off|garmin|intervals|manual (#166) — contexte du cycle, opt-in
 NUTRITION_SYNC="off" # --nutrition-sync off|ask (#167) — poussée des apports vers Garmin, opt-in
+HEALTH_SOURCE=""   # --health-source primary|openwearables (#220) — santé du bilan matinal, opt-in
+OW_URL=""          # --ow-url URL (avec --health-source openwearables)
+OW_PROVIDER=""     # --ow-provider P (avec --health-source openwearables)
+OW_KEY_FILE_ARG="" # --ow-key-file FICHIER : clé d'API à importer (jamais passée en argument)
+OW_KEY_FILE_DEFAULT="$HOME/.config/ai-running-coach/openwearables.key" # = défaut de [health.openwearables].api_key_file
+HEALTH_EFFECTIVE="primary" # résolu par resolve_health_source()
 LLM_PROVIDER=""    # --llm openrouter|anthropic|openai — chat + sync sur une API
 LLM_MODEL_ARG=""   # --model ID (avec --llm)
 LLM_BASE_URL_ARG="" # --base-url URL (avec --llm openai : API compatible OpenAI)
@@ -193,6 +201,7 @@ EXPLICIT_AGENTS=0
 EXPLICIT_SOURCE=0
 EXPLICIT_CYCLE=0   # --cycle-tracking passé (#166) : seul cas où [health].cycle_tracking est écrit
 EXPLICIT_NUTRITION=0 # --nutrition-sync passé (#167) : seul cas où [nutrition].garmin_sync est écrit
+EXPLICIT_HEALTH=0  # --health-source passé (#220) : seul cas où [health].source et [health.openwearables] sont écrits
 # Vrai (1) uniquement quand --source a été passé explicitement ET que la
 # valeur résolue diffère de celle DÉJÀ en config (resolve_source()) — jamais
 # sur un simple rerun sans --source. C'est ce qui protège un serveur MCP
@@ -385,6 +394,10 @@ while [[ $# -gt 0 ]]; do
         --source) need_value "$@"; SOURCE="$2"; EXPLICIT_SOURCE=1; shift 2 ;;
         --cycle-tracking) need_value "$@"; CYCLE_TRACKING="$2"; EXPLICIT_CYCLE=1; shift 2 ;;
         --nutrition-sync) need_value "$@"; NUTRITION_SYNC="$2"; EXPLICIT_NUTRITION=1; shift 2 ;;
+        --health-source) need_value "$@"; HEALTH_SOURCE="$2"; EXPLICIT_HEALTH=1; shift 2 ;;
+        --ow-url) need_value "$@"; OW_URL="$2"; shift 2 ;;
+        --ow-provider) need_value "$@"; OW_PROVIDER="$2"; shift 2 ;;
+        --ow-key-file) need_value "$@"; OW_KEY_FILE_ARG="$2"; shift 2 ;;
         --no-auth) DO_AUTH=0; EXPLICIT_DO_AUTH=1; shift ;;
         --auth) DO_AUTH=1; EXPLICIT_DO_AUTH=1; shift ;;  # annule --no-auth composé par un préréglage
         --use-leanproxy) USE_LEANPROXY=1; EXPLICIT_LEANPROXY=1; shift ;;
@@ -461,6 +474,46 @@ validate_nutrition_sync() {
 }
 if [[ "$EXPLICIT_NUTRITION" -eq 1 ]]; then
     validate_nutrition_sync
+fi
+
+# Valide les options Open Wearables (#220) : échec immédiat, avant tout travail. Les fournisseurs
+# reprennent scripts/arc_health_source.py (PROVIDERS / REFUSED_PROVIDERS ; un test de lint compare).
+OW_PROVIDERS="oura whoop polar ultrahuman withings google_health apple health_connect samsung suunto"
+validate_health_source() {
+    case "$HEALTH_SOURCE" in
+        primary|openwearables) ;;
+        *) die "Source de santé inconnue : « $HEALTH_SOURCE ». Valides : primary, openwearables (voir --help)." ;;
+    esac
+    if [[ "$HEALTH_SOURCE" != "openwearables" ]]; then
+        [[ -z "$OW_URL$OW_PROVIDER$OW_KEY_FILE_ARG" ]] \
+            || die "--ow-url, --ow-provider et --ow-key-file s'utilisent avec --health-source openwearables."
+        return 0
+    fi
+    if [[ -n "$OW_PROVIDER" ]]; then
+        OW_PROVIDER="$(printf '%s' "$OW_PROVIDER" | tr '[:upper:]' '[:lower:]')"
+        case "$OW_PROVIDER" in
+            garmin) die "--ow-provider garmin refusé : Garmin se lit en direct (garmin-mcp), jamais via Open Wearables (docs/open-wearables.md)." ;;
+            strava) die "--ow-provider strava refusé : Strava n'expose aucune donnée de santé (HRV, FC de repos, sommeil)." ;;
+        esac
+        case " $OW_PROVIDERS " in
+            *" $OW_PROVIDER "*) ;;
+            *) die "Fournisseur Open Wearables inconnu : « $OW_PROVIDER ». Valides : $OW_PROVIDERS." ;;
+        esac
+    fi
+    if [[ -n "$OW_URL" ]]; then
+        local url_re='^https?://[][A-Za-z0-9._:-]+(/[A-Za-z0-9._~/%-]*)?$'
+        [[ "$OW_URL" =~ $url_re ]] \
+            || die "--ow-url invalide : http(s)://hôte[:port] attendu, sans identifiants ni paramètres."
+        OW_URL="${OW_URL%/}"
+    fi
+    if [[ -n "$OW_KEY_FILE_ARG" && ! -f "$OW_KEY_FILE_ARG" ]]; then
+        die "--ow-key-file : fichier introuvable."
+    fi
+}
+if [[ "$EXPLICIT_HEALTH" -eq 1 ]]; then
+    validate_health_source
+elif [[ -n "$OW_URL$OW_PROVIDER$OW_KEY_FILE_ARG" ]]; then
+    die "--ow-url, --ow-provider et --ow-key-file s'utilisent avec --health-source openwearables."
 fi
 
 # Valide $SOURCE (défini ici pour être appelable dès l'analyse des arguments
@@ -982,6 +1035,148 @@ persist_nutrition_sync() {
     python3 "$PROJECT_ROOT/scripts/coach_config.py" set \
         --workspace "$WORKSPACE_ROOT" --section nutrition --key garmin_sync --value "$NUTRITION_SYNC" >/dev/null \
         || warn "Impossible d'écrire [nutrition].garmin_sync — vérifiez config/workspace.user.toml."
+}
+
+# ---------------------------------------------------------------------------
+# Santé du bilan matinal : Open Wearables (#220, épopée #216) — opt-in strict
+# ---------------------------------------------------------------------------
+# On n'installe PAS Open Wearables (l'athlète le déploie lui-même) et on ne déclare AUCUN serveur MCP :
+# le projet lit son API REST par scripts/arc_openwearables.py. install.sh pose seulement la configuration
+# ([health].source, [health.openwearables]) et stocke la clé d'API hors dépôt, en mode 600, sans jamais
+# l'afficher ni la passer en argument.
+
+# Valeur d'une clé de [health.openwearables] dans la configuration effective (user > shared),
+# imbriquée ou en section plate. Jamais utilisée pour la clé d'API elle-même.
+ow_config_value() {
+    have python3 || return 0
+    python3 - "$PROJECT_ROOT/scripts" "$WORKSPACE_ROOT" "$1" <<'PYEOF' 2>/dev/null || true
+import sys
+from pathlib import Path
+sys.path.insert(0, sys.argv[1])
+import coach_config
+ws, key = Path(sys.argv[2]), sys.argv[3]
+for path in coach_config.config_paths(ws):
+    try:
+        data = coach_config.read_toml(path)
+    except Exception:
+        continue
+    nested = (data.get("health") or {}).get("openwearables")
+    for sect in (nested, data.get("health.openwearables")):
+        if isinstance(sect, dict) and sect.get(key) not in (None, ""):
+            print(sect[key])
+            raise SystemExit(0)
+PYEOF
+}
+
+# Détermine la source santé effective (#220) : --health-source (explicite), sinon [health].source de la
+# configuration EXISTANTE. Une valeur inconnue en config vaut « primary » (jamais un échec). Seul le
+# cas explicite écrit quoi que ce soit ; un rerun sans option ne touche à rien.
+resolve_health_source() {
+    if [[ "$EXPLICIT_HEALTH" -eq 1 ]]; then
+        HEALTH_EFFECTIVE="$HEALTH_SOURCE"
+    else
+        HEALTH_EFFECTIVE="primary"
+        local previous
+        previous="$(effective_value health source | tr '[:upper:]' '[:lower:]' | tr -d '[:space:]')"
+        [[ "$previous" == "openwearables" ]] && HEALTH_EFFECTIVE="openwearables"
+    fi
+    if [[ "$HEALTH_EFFECTIVE" == "openwearables" ]]; then
+        # Le récapitulatif et verify() citent l'URL et le fournisseur effectifs.
+        [[ -n "$OW_URL" ]] || OW_URL="$(ow_config_value base_url)"
+        [[ -n "$OW_PROVIDER" ]] || OW_PROVIDER="$(ow_config_value provider)"
+        if [[ "$EXPLICIT_HEALTH" -eq 1 ]]; then
+            [[ -n "$OW_URL" ]] || die "--health-source openwearables exige --ow-url (adresse de votre instance Open Wearables, ex. http://127.0.0.1:8000)."
+            [[ -n "$OW_PROVIDER" ]] || die "--health-source openwearables exige --ow-provider (UN fabricant : $OW_PROVIDERS)."
+        fi
+    fi
+}
+
+# Enregistre la source santé — UNIQUEMENT si --health-source a été passé explicitement. « primary »
+# remet seulement [health].source : ni l'URL, ni le fournisseur, ni la clé d'API ne sont supprimés.
+persist_health_source() {
+    [[ "$EXPLICIT_HEALTH" -eq 1 ]] || return 0
+    if [[ "$DRY_RUN" -eq 1 ]]; then
+        printf '%s\n' "${C_YELLOW}[dry-run]${C_RESET} [health].source = $HEALTH_SOURCE"
+        if [[ "$HEALTH_SOURCE" == "openwearables" ]]; then
+            printf '%s\n' "${C_YELLOW}[dry-run]${C_RESET} [health.openwearables].base_url = $OW_URL"
+            printf '%s\n' "${C_YELLOW}[dry-run]${C_RESET} [health.openwearables].provider = $OW_PROVIDER"
+        fi
+        return 0
+    fi
+    have python3 || return 0
+    local set_cfg=(python3 "$PROJECT_ROOT/scripts/coach_config.py" set --workspace "$WORKSPACE_ROOT")
+    "${set_cfg[@]}" --section health --key source --value "$HEALTH_SOURCE" >/dev/null \
+        || warn "Impossible d'écrire [health].source — vérifiez config/workspace.user.toml."
+    [[ "$HEALTH_SOURCE" == "openwearables" ]] || return 0
+    "${set_cfg[@]}" --section health.openwearables --key base_url --value "$OW_URL" >/dev/null \
+        || warn "Impossible d'écrire [health.openwearables].base_url — vérifiez config/workspace.user.toml."
+    "${set_cfg[@]}" --section health.openwearables --key provider --value "$OW_PROVIDER" >/dev/null \
+        || warn "Impossible d'écrire [health.openwearables].provider — vérifiez config/workspace.user.toml."
+}
+
+# Fichier de la clé d'API (mode 600, HORS dépôt) — jamais affichée, jamais en argument, jamais dans le
+# workspace ni dans .mcp.json. Ordre : --ow-key-file (import explicite, remplace) > fichier déjà présent
+# (conservé, jamais redemandé : un rerun ne touche pas à la clé) > saisie sans écho sur un terminal
+# (sauf --no-auth) > avertissement avec la marche à suivre.
+ensure_ow_key() {
+    [[ "$HEALTH_EFFECTIVE" == "openwearables" ]] || return 0
+    local key_file
+    key_file="$(ow_config_value api_key_file)"
+    [[ -n "$key_file" ]] || key_file="$OW_KEY_FILE_DEFAULT"
+    key_file="${key_file/#\~/$HOME}"
+    if [[ "$DRY_RUN" -eq 1 ]]; then
+        printf '%s\n' "${C_YELLOW}[dry-run]${C_RESET} clé d'API Open Wearables : $key_file (mode 600, saisie sans écho ou --ow-key-file)"
+        return 0
+    fi
+    local key=""
+    if [[ -n "$OW_KEY_FILE_ARG" ]]; then
+        key="$(tr -d '[:space:]' < "$OW_KEY_FILE_ARG" 2>/dev/null)" || key=""
+        [[ -n "$key" ]] || die "--ow-key-file : fichier vide ou illisible."
+    elif [[ -s "$key_file" ]]; then
+        chmod 600 "$key_file" 2>/dev/null || true
+        ok "Clé d'API Open Wearables : présente ($key_file, mode 600, valeur non affichée)"
+        return 0
+    elif [[ "$DO_AUTH" -eq 1 && -t 0 ]]; then
+        printf '%s' "Clé d'API Open Wearables (saisie masquée, créée dans le portail OW) : " >&2
+        IFS= read -r -s key || key=""
+        printf '\n' >&2
+        key="$(printf '%s' "$key" | tr -d '[:space:]')"
+    fi
+    if [[ -z "$key" ]]; then
+        warn "Clé d'API Open Wearables absente : créez-la dans le portail OW puis relancez avec --ow-key-file FICHIER, ou écrivez-la dans $key_file (mode 600, une ligne, jamais dans le dépôt) — voir docs/open-wearables.md#installation."
+        return 0
+    fi
+    mkdir -p "$(dirname "$key_file")"
+    ( umask 077; printf '%s\n' "$key" > "$key_file.tmp.$$" ) \
+        && chmod 600 "$key_file.tmp.$$" && mv -f "$key_file.tmp.$$" "$key_file" \
+        || { rm -f "$key_file.tmp.$$"; die "Impossible d'écrire le fichier de clé Open Wearables ($key_file)."; }
+    key=""
+    ok "Clé d'API Open Wearables enregistrée : $key_file (mode 600, valeur non affichée)"
+}
+
+# Contrôle de joignabilité en fin d'installation : un seul appel `check` au client (valeurs jamais
+# affichées). Un échec avertit, il n'interrompt jamais l'installation.
+verify_openwearables() {
+    [[ "$HEALTH_EFFECTIVE" == "openwearables" ]] || return 0
+    [[ "$DRY_RUN" -eq 0 ]] || return 0
+    have python3 || return 0
+    local out rc=0
+    out="$(python3 "$PROJECT_ROOT/scripts/arc_openwearables.py" --workspace "$WORKSPACE_ROOT" check --json 2>/dev/null)" || rc=$?
+    if [[ "$rc" -eq 0 ]]; then
+        local summary
+        summary="$(printf '%s' "$out" | python3 -c '
+import json, sys
+d = json.load(sys.stdin)
+print("fournisseur %s connecté : %s ; forme conforme à Open Wearables %s : %s ; synchro périmée : %s" % (
+    d.get("provider"), "oui" if d.get("provider_connected") else "non", d.get("tested_version"),
+    "oui" if d.get("shape_ok") else "non", d.get("stale")))
+' 2>/dev/null)" || summary=""
+        ok "Open Wearables : joignable${summary:+ — $summary}"
+    elif [[ "$rc" -eq 2 ]]; then
+        warn "Open Wearables : configuration incomplète (clé d'API, fournisseur ou adresse) — lancez /coach-doctor ou voir docs/open-wearables.md#installation."
+    else
+        warn "Open Wearables : instance injoignable ou clé refusée — lancez /coach-doctor (docs/troubleshooting.md)."
+    fi
 }
 
 # Enregistre le staff retenu dans la config personnelle, et les agents que le
@@ -2460,6 +2655,10 @@ print_config_recap() {
     [[ -z "$LLM_PROVIDER" ]] || recap_line "Chat + sync sur API" "$LLM_PROVIDER" "explicite"
     [[ "$DO_CHAT" -eq 0 ]] || recap_line "Service du chat" "oui" "explicite"
     [[ "$DO_TELEGRAM" -eq 0 ]] || recap_line "Bot Telegram" "oui" "explicite"
+    # Opt-in strict : aucune ligne tant que la santé n'est pas lue chez Open Wearables (#220).
+    [[ "$HEALTH_EFFECTIVE" != "openwearables" ]] \
+        || recap_line "Santé" "Open Wearables (${OW_PROVIDER:-?}) — ${OW_URL:-?}" \
+            "$([[ "$EXPLICIT_HEALTH" -eq 1 ]] && echo "explicite" || echo "config")"
     recap_line "Workspace" "$WORKSPACE_ROOT" "$([[ -n "$WORKSPACE_ARG" ]] && echo "explicite" || echo "défaut")"
     recap_line "Dry-run" \
         "$([[ "$DRY_RUN" -eq 1 ]] && echo "oui" || echo "non")" "$([[ "$DRY_RUN" -eq 1 ]] && echo "explicite" || echo "défaut")"
@@ -2478,6 +2677,7 @@ main() {
     resolve_source
     resolve_cycle_tracking
     resolve_nutrition_sync
+    resolve_health_source
     print_config_recap
     [[ "$DRY_RUN" -eq 1 ]] && warn "Mode dry-run : aucune modification ne sera effectuée."
     echo
@@ -2504,6 +2704,8 @@ main() {
     persist_source
     persist_cycle_tracking
     persist_nutrition_sync
+    persist_health_source
+    ensure_ow_key
     persist_llm
     persist_sync_runner
     persist_budgets
@@ -2515,6 +2717,7 @@ main() {
     install_chat
     install_telegram
     verify
+    verify_openwearables
 }
 
 main "$@"

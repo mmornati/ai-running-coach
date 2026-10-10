@@ -218,6 +218,29 @@ Connectez la montre, ou l'app qui l'exporte, directement à Intervals.icu pour
 les séances suivantes. `HTTP 401/403` signale en revanche une clé API refusée :
 régénérez-la sur https://intervals.icu/settings (section *Developer*).
 
+### Santé Open Wearables : instance injoignable, 401, `provider_mismatch`, données périmées
+
+Seulement si `[health].source = "openwearables"` (voir [Open Wearables](open-wearables.md#installation)).
+Commencez par `python3 scripts/coach_doctor.py --check openwearables --probe-ow` : il dit laquelle de ces
+pannes vous concerne, sans jamais afficher la clé d'API. La synchronisation Garmin n'est jamais bloquée par une
+panne d'Open Wearables.
+
+- **Instance injoignable** : l'instance (`docker compose up -d`) ne tourne pas ou `[health.openwearables].base_url`
+  est faux (c'est l'adresse de l'API, pas celle du portail). Corrigez-la en relançant
+  `./install.sh --health-source openwearables --ow-url URL --ow-provider FABRICANT`.
+- **401, clé refusée** : la clé a été révoquée ou remplacée. Créez-en une nouvelle dans le portail d'OW puis
+  `./install.sh --health-source openwearables --ow-url URL --ow-provider FABRICANT --ow-key-file FICHIER`.
+- **Fichier de clé en mode 644 (ou lisible par d'autres)** : `chmod 600 ~/.config/ai-running-coach/openwearables.key`.
+- **`provider_mismatch`** : OW retient UNE source par date selon ses priorités et ce n'est pas votre fabricant.
+  Dans le portail : Settings → Priorities, placez le fournisseur choisi en tête. Tant que ce n'est pas fait, la
+  nuit n'est pas utilisée (une seule source de santé par jour).
+- **Données périmées (`stale`)** : la dernière synchronisation est plus ancienne que
+  `[health.openwearables].stale_after_h` (36 h par défaut). Vérifiez dans le portail que le fournisseur est
+  connecté (statut `active`, pas `expired` ni `revoked`), que le worker et le planificateur d'OW tournent, et
+  reconnectez-le si besoin.
+- **Fournisseur absent ou inconnu** : `provider` vide ou faute de frappe ne repasse pas sur la source principale,
+  il laisse la configuration incomplète — le diagnostic le signale.
+
 ### Les autres scripts échouent
 
 Les scripts `analyze_gpx.py`, `compare_course.py` et `analyze_session_parts.py` utilisent **uniquement la stdlib Python** — aucune dépendance externe n'est nécessaire.

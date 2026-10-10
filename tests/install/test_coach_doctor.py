@@ -1099,7 +1099,7 @@ class TestJsonSchema(InstallAsserts):
                 "garmin_token", "garmin_mcp", "config_files", "athlete_profile",
                 "index_freshness", "out_of_contract", "daily_sync_scheduled", "ntfy_configured",
                 "gear_sync", "gear_history", "fit_reader", "intervals_mcp_pin",
-                "llm_config", "chat_service", "opencode_cli", "strava_connection", "telegram", "weight_sync",
+                "llm_config", "chat_service", "opencode_cli", "strava_connection", "telegram", "weight_sync", "openwearables",
             }
             self.assertEqual({c["id"] for c in payload["checks"]}, expected_ids)
             for check in payload["checks"]:
@@ -1150,3 +1150,143 @@ def _find(payload: dict, check_id: str) -> dict:
         if check["id"] == check_id:
             return check
     raise AssertionError(f"check {check_id!r} absent de {payload['checks']}")
+
+
+class TestOpenWearables(InstallAsserts):
+    """#220 — `openwearables` : configuration + clé d'API (mode 600, valeur jamais affichée) sans réseau ;
+    avec `--probe-ow`, UN `arc_openwearables.py check`. Hors opt-in : `info`, rien d'alarmant."""
+
+    SECRET = "sk-0123456789abcdef0123456789abcdef"      # = FAKE_KEY du faux serveur
+
+    def _setup(self, sb, provider="oura", mode=0o600, source="openwearables", key=True, base="http://127.0.0.1:9"):
+        (sb.repo / "config").mkdir(exist_ok=True)
+        lines = []
+        if source:
+            lines += ["[health]", f'source = "{source}"', ""]
+        lines += ["[health.openwearables]", f'provider = "{provider}"', f'base_url = "{base}"',
+                  f'api_key_file = "{sb.root / "ow.key"}"']
+        (sb.repo / "config/workspace.user.toml").write_text("\n".join(lines) + "\n")
+        key_file = sb.root / "ow.key"
+        if key:
+            key_file.write_text(self.SECRET + "\n")
+            key_file.chmod(mode)
+        return key_file
+
+    def _run(self, sb, *extra, **env):
+        proc = sb.script("coach_doctor.py", "--json", "--check", "openwearables",
+                         "--tokens-dir", str(_fresh_tokens_dir(sb)), *extra, **env)
+        out = json.loads(proc.stdout)
+        self.assertNotIn(self.SECRET, proc.stdout + proc.stderr)
+        return proc, _find(out, "openwearables")
+
+    def _bundle(self, hours_ago=2):
+        import copy
+        from tests.data.test_arc_openwearables import load
+        bundle = copy.deepcopy(load("oura"))
+        stamp = (datetime.now(timezone.utc) - timedelta(hours=hours_ago)).strftime("%Y-%m-%dT%H:%M:%SZ")
+        bundle["connections"][0]["last_synced_at"] = stamp
+        return bundle
+
+    def test_not_opted_in_is_info_and_calm(self):
+        with Sandbox() as sb:
+            for source in (None, "primary"):
+                self._setup(sb, source=source, key=False)
+                proc, check = self._run(sb, "--probe-ow")
+                self.assertEqual(check["status"], "info")
+                self.assertEqual(proc.returncode, 0)
+                self.assertNotIn("clé", check["message"])
+
+    def test_default_run_makes_no_network_call_and_is_ok_when_configured(self):
+        with Sandbox() as sb:
+            self._setup(sb)
+            proc, check = self._run(sb)
+            self.assertEqual(check["status"], "ok", check)
+            self.assertIn("--probe-ow", check["message"])
+            self.assertIn("0.9.0", check["message"])
+
+    def test_mode_644_is_an_error_with_chmod_fix(self):
+        with Sandbox() as sb:
+            self._setup(sb, mode=0o644)
+            proc, check = self._run(sb)
+            self.assertEqual(check["status"], "error")
+            self.assertEqual(proc.returncode, 1)
+            self.assertIn("chmod 600", check["fix"])
+
+    def test_missing_key_file_is_an_error(self):
+        with Sandbox() as sb:
+            self._setup(sb, key=False)
+            proc, check = self._run(sb)
+            self.assertEqual(check["status"], "error")
+            self.assertIn("install.sh", check["fix"])
+
+    def test_empty_unknown_and_refused_providers_are_flagged(self):
+        with Sandbox() as sb:
+            for provider, word in (("", "vide"), ("ouraa", "inconnu"), ("garmin", "refusé"), ("strava", "refusé")):
+                self._setup(sb, provider=provider)
+                _, check = self._run(sb)
+                self.assertEqual(check["status"], "error", provider)
+                self.assertIn(word, check["message"])
+                self.assertIn("docs/open-wearables.md#installation", check["fix"])
+
+    def test_nominal_probe_is_ok_with_the_tested_version(self):
+        from tests.data.test_arc_openwearables import OWStub
+        with Sandbox() as sb, OWStub(self._bundle(2)) as stub:
+            self._setup(sb, base=stub.base)
+            proc, check = self._run(sb, "--probe-ow")
+            self.assertEqual(check["status"], "ok", check)
+            self.assertRegex(check["message"], r"il y a [12] h")
+            self.assertIn("testée : 0.9.0", check["message"])
+            self.assertTrue(stub.log)
+
+    def test_rejected_key_is_an_error_without_leaking_it(self):
+        from tests.data.test_arc_openwearables import OWStub
+        with Sandbox() as sb, OWStub(self._bundle(2), key="une-autre-cle") as stub:
+            self._setup(sb, base=stub.base)
+            proc, check = self._run(sb, "--probe-ow")
+            self.assertEqual(check["status"], "error")
+            self.assertIn("401", check["message"])
+            self.assertEqual(proc.returncode, 1)
+
+    def test_dead_instance_is_an_error(self):
+        with Sandbox() as sb:
+            self._setup(sb, base="http://127.0.0.1:9")
+            _, check = self._run(sb, "--probe-ow")
+            self.assertEqual(check["status"], "error")
+            self.assertIn("injoignable", check["message"])
+
+    def test_stale_sync_is_a_warning(self):
+        from tests.data.test_arc_openwearables import OWStub
+        with Sandbox() as sb, OWStub(self._bundle(100)) as stub:
+            self._setup(sb, base=stub.base)
+            proc, check = self._run(sb, "--probe-ow")
+            self.assertEqual(check["status"], "warning")
+            self.assertIn("stale_after_h", check["message"])
+            self.assertEqual(proc.returncode, 0)
+
+    def test_inactive_provider_and_unknown_shape_are_warnings(self):
+        from tests.data.test_arc_openwearables import OWStub
+        bundle = self._bundle(2)
+        bundle["connections"][0]["status"] = "expired"
+        with Sandbox() as sb, OWStub(bundle) as stub:
+            self._setup(sb, base=stub.base)
+            _, check = self._run(sb, "--probe-ow")
+            self.assertEqual(check["status"], "warning")
+            self.assertIn("non actif", check["message"])
+        bundle = self._bundle(2)
+        bundle["sleep"] = {"data": [{"unexpected": 1}], "pagination": {}}
+        with Sandbox() as sb, OWStub(bundle) as stub:
+            self._setup(sb, base=stub.base)
+            _, check = self._run(sb, "--probe-ow")
+            self.assertEqual(check["status"], "warning")
+            self.assertIn("non testée", check["message"])
+
+    def test_two_users_without_user_id_is_a_warning(self):
+        from tests.data.test_arc_openwearables import OWStub, load
+        bundle = self._bundle(2)
+        two = load("users_two")
+        bundle["users"] = two["users"] if "users" in two else two
+        with Sandbox() as sb, OWStub(bundle) as stub:
+            self._setup(sb, base=stub.base)
+            _, check = self._run(sb, "--probe-ow")
+            self.assertEqual(check["status"], "warning")
+            self.assertIn("user_id", check["fix"])

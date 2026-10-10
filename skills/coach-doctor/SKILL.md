@@ -34,6 +34,7 @@ commande de correction sous chaque ligne non ✅ :
 | `fit_reader` | `fitparse` importable dans l'environnement MCP de `[data].source` (`garmin-mcp` ou `intervals-icu-mcp`) — sans lui, les FIT téléchargés ne sont pas lus et les KPI fins restent vides. Correctif : `./install.sh --source <source>` ; informatif (ℹ️) avec `strava` : aucun FIT, flux normalisés en stdlib |
 | `intervals_mcp_pin` | (#165) Source intervals.icu : le serveur `intervals-icu-mcp` installé par `uv tool` est-il au commit épinglé ? ⚠️ s'il vient encore de l'ancien dépôt `eddmann` (outils sans préfixe `icu_`) — correctif `./install.sh --source intervals`, puis NOUVELLE session. ℹ️ ailleurs (source Garmin : non applicable). Lecture locale du `direct_url.json`, aucun réseau |
 | `strava_connection` | (#164, `[data].source = "strava"` seulement, sinon ℹ️) Node.js >= 18, wrapper `~/.config/ai-running-coach/strava-mcp/run.sh`, serveur `strava` dans `.mcp.json`, jetons du serveur (`~/.config/strava-mcp/config.json` : refresh token, clientId/clientSecret) et droits de lecture (⚠️ si lisible par d'autres : `chmod 600`). **Statique : valeurs jamais lues ni affichées, aucun appel réseau** ; l'échéance du jeton d'accès (6 h) n'est pas une alerte, il se rafraîchit seul |
+| `openwearables` | (#220, `[health].source = "openwearables"` seulement, sinon ℹ️ « non utilisé ») Fournisseur valide (ni vide, ni inconnu, ni `garmin`/`strava`), adresse, fichier de clé d'API présent, non vide et en **mode 600** (**valeur jamais lue ni affichée**) ; ❌ sinon. Avec `--probe-ow`, UN `arc_openwearables.py check` (délai borné) : ❌ injoignable ou clé refusée (401), ⚠️ fabricant non actif, synchro plus vieille que `stale_after_h`, version d'Open Wearables non testée, plusieurs utilisateurs sans `user_id`. Sans `--probe-ow`, aucun appel réseau |
 | `telegram` | (#174, `[telegram].enabled` seulement, sinon ℹ️) Liste blanche non vide, fichier du jeton en mode 600 au bon format (**valeur jamais affichée**), jeton non exporté, `chat_bridge` cohérent avec `[chat]`, service vivant (battement de moins de 5 min). ⚠️ au plus, aucun appel réseau |
 
 Un ❌ fait échouer la commande (code de sortie non nul) ; un ⚠️ ou un ℹ️ jamais
@@ -93,6 +94,11 @@ changez pas les noms de champs sans mettre à jour les deux.
   `--probe-mcp` — **ce drapeau contacte Garmin Connect** : ne le proposez à
   l'athlète que s'il demande explicitement une vérification plus poussée que
   « le binaire est-il installé ? ».
+- **Open Wearables** (#220) : le contrôle `openwearables` est local par défaut. Seul
+  `--probe-ow` fait UN appel à l'instance de l'athlète (jamais à un tiers) — à ajouter
+  uniquement si `[health].source = "openwearables"` et que l'athlète veut savoir si
+  l'instance répond, si la clé est acceptée ou si la synchro est récente. Hors de cette
+  option de configuration, ne parlez pas d'Open Wearables : le contrôle reste un ℹ️.
 - Il ne remplace pas `/coach-setup` (configuration initiale) ni
   `scripts/setup-ntfy.sh` (configuration des notifications) — il vous dit
   seulement lequel lancer.

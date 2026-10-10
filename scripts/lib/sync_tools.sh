@@ -28,6 +28,12 @@ SYNC_GARMIN_WRITE_TOOLS+=" delete_food_log add_hydration_data add_weigh_in add_w
 SYNC_GARMIN_WRITE_TOOLS+=" delete_weigh_ins add_body_composition set_blood_pressure set_activity_name"
 SYNC_GARMIN_WRITE_TOOLS+=" request_reload download_activity_file"
 
+# Santé Garmin (#220) : refusée au run headless quand la santé du bilan matinal vient d'Open Wearables
+# (`[health].source = "openwearables"` avec `[data].source = "garmin"`) — une seule source santé par jour.
+# Sans cette condition (SYNC_DENY_GARMIN_HEALTH=1 posé par daily-sync.sh), aucune liste ne change.
+SYNC_GARMIN_HEALTH_TOOLS="get_hrv_data get_rhr_day get_sleep_data get_training_readiness"
+SYNC_DENY_GARMIN_HEALTH="${SYNC_DENY_GARMIN_HEALTH:-0}"
+
 # intervals.icu (#165) : outils sans `readOnlyHint` + téléchargements (`output_path`).
 SYNC_INTERVALS_WRITE_TOOLS="update_activity update_activity_streams bulk_create_manual_activities"
 SYNC_INTERVALS_WRITE_TOOLS+=" delete_activity update_wellness create_event update_event delete_event"
@@ -56,7 +62,10 @@ SYNC_STRAVA_READ_TOOLS+=" get-activity-streams get-athlete-zones get-athlete-pro
 sync_write_tools() {
     local tool
     case "$1" in
-        garmin) for tool in $SYNC_GARMIN_WRITE_TOOLS; do printf '%s\n' "$tool"; done ;;
+        garmin) for tool in $SYNC_GARMIN_WRITE_TOOLS; do printf '%s\n' "$tool"; done
+            if [[ "$SYNC_DENY_GARMIN_HEALTH" -eq 1 ]]; then
+                for tool in $SYNC_GARMIN_HEALTH_TOOLS; do printf '%s\n' "$tool"; done
+            fi ;;
         intervals)
             for tool in $SYNC_INTERVALS_WRITE_TOOLS; do printf 'icu_%s\n' "$tool"; done
             for tool in $SYNC_INTERVALS_WRITE_TOOLS duplicate_event; do printf '%s\n' "$tool"; done ;;
@@ -75,9 +84,19 @@ sync_read_tools() {
                 for prefix in $SYNC_GARMIN_WRITE_PREFIXES; do
                     [[ "$tool" == "$prefix"* ]] && keep=0
                 done
+                if [[ "$SYNC_DENY_GARMIN_HEALTH" -eq 1 && " $SYNC_GARMIN_HEALTH_TOOLS " == *" $tool "* ]]; then
+                    keep=0
+                fi
                 [[ "$keep" -eq 0 ]] || printf '%s\n' "$tool"
             done ;;
         intervals) for tool in $SYNC_INTERVALS_READ_TOOLS; do printf 'icu_%s\n' "$tool"; done ;;
         strava) for tool in $SYNC_STRAVA_READ_TOOLS; do printf '%s\n' "$tool"; done ;;
     esac
+}
+
+# Outils santé Garmin refusés pour cette source (vide hors du cas Open Wearables + Garmin), un par ligne.
+sync_health_denied_tools() {
+    local tool
+    [[ "$1" == "garmin" && "$SYNC_DENY_GARMIN_HEALTH" -eq 1 ]] || return 0
+    for tool in $SYNC_GARMIN_HEALTH_TOOLS; do printf '%s\n' "$tool"; done
 }

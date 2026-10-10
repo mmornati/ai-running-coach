@@ -11,7 +11,10 @@ planification du daily-sync (cron/launchd), configuration ntfy, lecteur FIT
 intervals.icu (`intervals_mcp_pin`, #165), et — chat avec
 le coach / sync sur une API — cohérence runner/backend/modèle/clé (`llm_config`),
 service du chat (`chat_service`), présence d'OpenCode (`opencode_cli`), bot Telegram
-(`telegram` : liste blanche, jeton hors dépôt en mode 600, service vivant — jamais le jeton affiché).
+(`telegram` : liste blanche, jeton hors dépôt en mode 600, service vivant — jamais le jeton affiché),
+connexion Strava (`strava_connection`, #164), pesées Garmin (`weight_sync`, #222) et santé Open Wearables
+(`openwearables`, #220 : configuration et clé d'API en mode 600 — valeur jamais affichée ; joignabilité
+seulement avec `--probe-ow`).
 
 Usage :
     scripts/coach_doctor.py                 # tableau ✅/⚠️/❌ en français
@@ -21,6 +24,7 @@ Usage :
     scripts/coach_doctor.py --tokens-dir DIR                  # override des tokens Garmin
     scripts/coach_doctor.py --check garmin_token              # une seule vérification (#32)
     scripts/coach_doctor.py --probe-mcp     # handshake MCP réel — CONTACTE Garmin Connect
+    scripts/coach_doctor.py --probe-ow      # appel réel à l'instance Open Wearables (un seul `check`)
 
 Aucun champ de ce script n'affiche jamais le CONTENU d'un token — seuls des
 métadonnées (chemins, dates d'échéance, nombre de jours restants) apparaissent
@@ -45,7 +49,8 @@ avant expiration des tokens, qui appelle ce script avec `--json`, éventuellemen
                 | "athlete_profile" | "index_freshness" | "out_of_contract"
                 | "daily_sync_scheduled" | "ntfy_configured" | "gear_sync"
                 | "gear_history" | "fit_reader" | "intervals_mcp_pin" | "llm_config"
-                | "chat_service" | "opencode_cli" | "telegram" | "weight_sync",
+                | "chat_service" | "opencode_cli" | "strava_connection" | "telegram"
+                | "weight_sync" | "openwearables",
           "status": "ok" | "warning" | "error" | "info",
           "message": "<texte français>",
           "fix": "<commande de correction>" | null
@@ -179,6 +184,7 @@ CHECK_IDS = (
     "index_freshness", "out_of_contract", "daily_sync_scheduled", "ntfy_configured",
     "gear_sync", "gear_history", "fit_reader", "intervals_mcp_pin",
     "llm_config", "chat_service", "opencode_cli", "strava_connection", "telegram", "weight_sync",
+    "openwearables",
 )
 
 CHAT_SYSTEMD_UNIT_REL = ".config/systemd/user/ai-running-coach-chat.service"
@@ -1495,6 +1501,164 @@ def check_weight_sync(workspace: Path, config: dict) -> dict:
     return build_check(check_id, "ok", "Pesées Garmin lisibles (lecture seule).", fix=None)
 
 
+# ---------------------------------------------------------------------------
+# openwearables (#220, épopée #216)
+# ---------------------------------------------------------------------------
+
+OW_INSTALL_FIX = ("voir docs/open-wearables.md#installation, puis "
+                  "./install.sh --health-source openwearables --ow-url URL --ow-provider FABRICANT")
+# Borne dure sur l'appel `check` du client (3 requêtes) ; au-delà, l'instance est dite injoignable.
+OW_PROBE_TIMEOUT_S = float(os.environ.get("ARC_OW_PROBE_TIMEOUT_S", "8"))
+
+
+def _ow_key_file(ow: dict) -> str:
+    return (os.environ.get("ARC_OW_API_KEY_FILE") or str(ow.get("api_key_file") or "")).strip()
+
+
+def _ow_static_problems(ow: dict, provider: str) -> list:
+    """Problèmes de configuration locale (sans réseau) : liste de (message, fix)."""
+    import urllib.parse
+    import arc_health_source as HS
+
+    problems = []
+    if not provider:
+        problems.append(("[health.openwearables].provider vide : le client refuse de lire sans fabricant "
+                         f"(valeurs : {', '.join(HS.PROVIDERS)}).", OW_INSTALL_FIX))
+    elif provider in HS.REFUSED_PROVIDERS:
+        why = ("Garmin se lit en direct, jamais par Open Wearables" if provider == "garmin"
+               else "Strava n'a aucune donnée de santé")
+        problems.append((f"[health.openwearables].provider = « {provider} » refusé : {why}.", OW_INSTALL_FIX))
+    elif provider not in HS.PROVIDERS:
+        problems.append((f"[health.openwearables].provider = « {provider} » inconnu (faute de frappe ?) — "
+                         f"valeurs : {', '.join(HS.PROVIDERS)}.", OW_INSTALL_FIX))
+    base_url = (os.environ.get("ARC_OW_BASE_URL") or str(ow.get("base_url") or "")).strip()
+    if not base_url:
+        problems.append(("[health.openwearables].base_url vide.", OW_INSTALL_FIX))
+    else:
+        parsed = urllib.parse.urlsplit(base_url)
+        if parsed.scheme not in ("http", "https") or not parsed.hostname or parsed.username or parsed.password:
+            problems.append(("[health.openwearables].base_url invalide (http(s)://hôte[:port], sans identifiants).",
+                             OW_INSTALL_FIX))
+    key_file = _ow_key_file(ow)
+    if not key_file:
+        problems.append(("[health.openwearables].api_key_file vide.", OW_INSTALL_FIX))
+        return problems
+    path = Path(key_file).expanduser()
+    try:
+        st = path.stat()
+    except OSError:
+        problems.append((f"Fichier de clé d'API absent ({key_file}).",
+                         "créer la clé dans le portail Open Wearables puis ./install.sh --health-source "
+                         "openwearables --ow-key-file FICHIER (docs/open-wearables.md#installation)"))
+        return problems
+    if st.st_mode & 0o077:
+        problems.append((f"Fichier de clé d'API lisible par d'autres comptes (mode {st.st_mode & 0o777:o}).",
+                         f"chmod 600 {key_file}"))
+    try:
+        if not path.read_text(encoding="utf-8").strip():
+            problems.append((f"Fichier de clé d'API vide ({key_file}).", OW_INSTALL_FIX))
+    except (OSError, UnicodeDecodeError):
+        problems.append((f"Fichier de clé d'API illisible ({key_file}).", f"chmod 600 {key_file}"))
+    return problems
+
+
+def _ow_probe(workspace: Path) -> tuple:
+    """Un seul `arc_openwearables.py check --json` (sous-processus : la clé n'entre jamais dans ce
+    processus, ni dans argv). Rend (code de sortie | None si délai dépassé, JSON | {})."""
+    script = Path(__file__).resolve().parent / "arc_openwearables.py"
+    try:
+        proc = subprocess.run([sys.executable, str(script), "--workspace", str(workspace), "check", "--json"],
+                              capture_output=True, text=True, timeout=OW_PROBE_TIMEOUT_S)
+    except subprocess.TimeoutExpired:
+        return None, {}
+    except OSError:
+        return 3, {}
+    try:
+        payload = json.loads(proc.stdout)
+    except (ValueError, TypeError):
+        payload = {}
+    return proc.returncode, payload if isinstance(payload, dict) else {}
+
+
+def check_openwearables(workspace: Path, config: dict, now: datetime, probe: bool = False) -> dict:
+    """`[health].source = "openwearables"` : configuration (fabricant, adresse, fichier de clé d'API en
+    mode 600 — la valeur n'est jamais lue ici ni affichée) ; avec `--probe-ow` UN appel au client
+    (`arc_openwearables.py check`, délai borné) : instance joignable, clé acceptée, fabricant connecté et
+    synchronisé récemment, forme de réponse compatible avec la version testée. Sans l'opt-in (clé absente
+    ou `primary`) : `info`, jamais une panne ni un message alarmant — la fonction ne fait alors rien d'autre."""
+    import arc_health_source as HS
+    import arc_openwearables as OW
+
+    check_id = "openwearables"
+    raw = (config.get("health") or {}).get("source")
+    if not (isinstance(raw, str) and raw.strip().lower() == "openwearables"):
+        return build_check(check_id, "info", "Santé : source principale — Open Wearables non utilisé.", fix=None)
+    ow = HS.openwearables_section(config)
+    provider_raw = ow.get("provider")
+    provider = provider_raw.strip().lower() if isinstance(provider_raw, str) else ""
+    label = f"Open Wearables ({provider or 'fabricant ?'})"
+    problems = _ow_static_problems(ow, provider)
+    if problems:
+        return build_check(check_id, "error", f"{label} : " + " ".join(m for m, _ in problems),
+                           fix=" ; ".join(dict.fromkeys(f for _, f in problems)))
+    tested = f"testée : {OW.TESTED_VERSION}"
+    if not probe:
+        return build_check(
+            check_id, "ok",
+            f"{label} : configuration complète, clé d'API présente en mode 600 (valeur non affichée). "
+            f"Joignabilité non testée (relancer avec --probe-ow ; version {tested}).", fix=None)
+    code, payload = _ow_probe(workspace)
+    error = payload.get("error") if isinstance(payload.get("error"), dict) else {}
+    kind = str(error.get("code") or "")
+    if code is None:
+        return build_check(check_id, "error",
+                           f"{label} : l'instance ne répond pas dans le délai ({OW_PROBE_TIMEOUT_S:g} s).",
+                           fix="démarrer l'instance (docker compose up -d) ou vérifier [health.openwearables].base_url "
+                               "(docs/troubleshooting.md)")
+    if code == 3:
+        if kind == "auth":
+            return build_check(check_id, "error", f"{label} : clé d'API refusée (401).",
+                               fix="créer une nouvelle clé dans le portail Open Wearables puis ./install.sh "
+                                   "--health-source openwearables --ow-key-file FICHIER (docs/troubleshooting.md)")
+        return build_check(check_id, "error", f"{label} : instance injoignable ou réponse inexploitable.",
+                           fix="démarrer l'instance (docker compose up -d) ou vérifier [health.openwearables].base_url "
+                               "(docs/troubleshooting.md)")
+    if code == 2:
+        if kind == "ambiguous_user":
+            return build_check(check_id, "warning",
+                               f"{label} : plusieurs utilisateurs sur l'instance et aucun user_id configuré.",
+                               fix="renseigner [health.openwearables].user_id (UUID de l'athlète) dans "
+                                   "config/workspace.user.toml")
+        return build_check(check_id, "error", f"{label} : configuration refusée par le client ({kind or 'inconnue'}).",
+                           fix=OW_INSTALL_FIX)
+    if code != 0 or not payload:
+        return build_check(check_id, "error", f"{label} : réponse du client inexploitable.", fix=OW_INSTALL_FIX)
+    fresh = payload.get("freshness") if isinstance(payload.get("freshness"), dict) else {}
+    warnings = []
+    if payload.get("provider_connected") is not True:
+        warnings.append(f"fabricant non actif côté Open Wearables (statut : {fresh.get('status') or 'inconnu'})")
+    age = None
+    last = fresh.get("last_synced_at")
+    if isinstance(last, str):
+        try:
+            age = max(0.0, (now - _parse_iso(last)).total_seconds() / 3600)
+        except (ValueError, OverflowError):
+            age = None
+    if payload.get("stale") is True:
+        warnings.append("dernière synchronisation plus ancienne que [health.openwearables].stale_after_h"
+                        + (f" ({age:.0f} h)" if age is not None else ""))
+    if payload.get("shape_ok") is not True:
+        warnings.append(f"version d'Open Wearables non testée (réponses différentes de la version {OW.TESTED_VERSION})")
+    provider_codes = {w.get("code") for w in (payload.get("warnings") or []) if isinstance(w, dict)}
+    if warnings:
+        fix = ("vérifier la connexion du fabricant dans le portail Open Wearables ; version non testée : "
+               "docs/open-wearables.md" if "shape_mismatch" in provider_codes or payload.get("shape_ok") is not True
+               else "vérifier la connexion du fabricant dans le portail Open Wearables (docs/troubleshooting.md)")
+        return build_check(check_id, "warning", f"{label} : " + " ; ".join(warnings) + ".", fix=fix)
+    when = f"dernière synchro il y a {age:.0f} h" if age is not None else "ancienneté de la synchro inconnue"
+    return build_check(check_id, "ok", f"{label} : {when}, API compatible ({tested}).", fix=None)
+
+
 GEAR_HISTORY_MIN_ACTIVITIES = 5
 GEAR_HISTORY_MIN_RATIO = 0.5
 
@@ -1545,7 +1709,8 @@ def check_garmin_check_not_applicable(check_id: str, source: str = "intervals") 
     )
 
 
-def run_single_check(check_id: str, workspace: Path, now: datetime, tokens_dir: Path, probe_mcp: bool) -> dict:
+def run_single_check(check_id: str, workspace: Path, now: datetime, tokens_dir: Path, probe_mcp: bool,
+                     probe_ow: bool = False) -> dict:
     config = _load_config(workspace)
     source = (config.get("data") or {}).get("source", "garmin")
     if check_id in ("garmin_token", "garmin_mcp") and source in ("intervals", "strava"):
@@ -1586,11 +1751,14 @@ def run_single_check(check_id: str, workspace: Path, now: datetime, tokens_dir: 
         return check_strava_connection(workspace, config, Path.home())
     if check_id == "telegram":
         return check_telegram(workspace, Path.home(), config, now)
+    if check_id == "openwearables":
+        return check_openwearables(workspace, config, now, probe_ow)
     raise ValueError(f"vérification inconnue : {check_id!r}")
 
 
-def run_all_checks(workspace: Path, now: datetime, tokens_dir: Path, probe_mcp: bool = False) -> list:
-    return [run_single_check(check_id, workspace, now, tokens_dir, probe_mcp) for check_id in CHECK_IDS]
+def run_all_checks(workspace: Path, now: datetime, tokens_dir: Path, probe_mcp: bool = False,
+                   probe_ow: bool = False) -> list:
+    return [run_single_check(check_id, workspace, now, tokens_dir, probe_mcp, probe_ow) for check_id in CHECK_IDS]
 
 
 def render_table(checks: list) -> str:
@@ -1674,6 +1842,11 @@ def build_parser() -> argparse.ArgumentParser:
         "--probe-mcp", action="store_true",
         help="handshake MCP réel au lieu d'une simple vérification de présence — CONTACTE Garmin Connect",
     )
+    parser.add_argument(
+        "--probe-ow", action="store_true",
+        help="appel réel à l'instance Open Wearables (un seul `arc_openwearables.py check`) — sans effet hors "
+             "[health].source = \"openwearables\"",
+    )
     return parser
 
 
@@ -1684,9 +1857,9 @@ def main(argv: Optional[list] = None) -> int:
     tokens_dir = resolve_tokens_dir(args.tokens_dir, workspace)
 
     if args.check:
-        checks = [run_single_check(args.check, workspace, now, tokens_dir, args.probe_mcp)]
+        checks = [run_single_check(args.check, workspace, now, tokens_dir, args.probe_mcp, args.probe_ow)]
     else:
-        checks = run_all_checks(workspace, now, tokens_dir, probe_mcp=args.probe_mcp)
+        checks = run_all_checks(workspace, now, tokens_dir, probe_mcp=args.probe_mcp, probe_ow=args.probe_ow)
     has_error = any(check["status"] == "error" for check in checks)
 
     if args.json:

@@ -37,6 +37,7 @@ n'apparaît jamais littéralement en sortie.)
 | `garmin_token` | Âge/échéance des tokens Garmin (`~/.garminconnect` par défaut) | ⚠️ à moins de 14 jours de l'échéance, ❌ si expirés ou absents |
 | `garmin_mcp` | Présence/exécutabilité du binaire MCP `garmin` (aucun process lancé) | ❌ si la commande est introuvable ou non exécutable |
 | `strava_connection` | (#164, source `strava` seulement, sinon ℹ️) Node.js 18+, wrapper, serveur `strava` déclaré, jetons présents et non lisibles par d'autres — valeurs jamais lues ni affichées, aucun appel réseau | ❌ si Node.js/wrapper/serveur/jeton de rafraîchissement manquent, ⚠️ si identifiants client absents ou fichier lisible par d'autres |
+| `openwearables` | (#220, `[health].source = "openwearables"` seulement, sinon ℹ️) Fournisseur valide, adresse, fichier de clé d'API présent et en mode 600 (valeur jamais lue ni affichée). Avec `--probe-ow` : un seul appel à l'instance via `arc_openwearables.py check` (délai borné) | ❌ configuration incomplète, clé absente ou lisible par d'autres, fournisseur `garmin`/`strava`/inconnu, instance injoignable, clé refusée (401) ; ⚠️ fabricant non actif, synchro périmée, version non testée, plusieurs utilisateurs sans `user_id` |
 | `config_files` | `config/workspace.toml` et `config/workspace.user.toml` sont du TOML valide | ❌ si absent ou invalide, ⚠️ si validation stricte indisponible (Python < 3.11) |
 | `athlete_profile` | FC max / FC de repos renseignées dans `planning/Runner_Profile.md` | ℹ️ sinon — le coach utilise le RPE à la place |
 | `index_freshness` | `.arc/coach.db` à jour par rapport aux fichiers du workspace (y compris les fichiers supprimés) | ⚠️ si périmé ou si un fichier supprimé est encore indexé, ℹ️ si jamais construit |
@@ -66,6 +67,9 @@ Un vrai handshake MCP `initialize`, borné dans le temps, reste disponible :
 ```bash
 python3 scripts/coach_doctor.py --probe-mcp   # CONTACTE Garmin Connect
 ```
+
+De même, le contrôle `openwearables` (#220) reste local : seul `--probe-ow` fait un appel, à l'instance
+Open Wearables de l'athlète (un seul `arc_openwearables.py check`, délai borné).
 
 ## Méthode de détection de l'échéance des tokens
 
@@ -111,6 +115,7 @@ python3 scripts/coach_doctor.py --tokens-dir /chemin/de/test     # override du r
 python3 scripts/coach_doctor.py --now 2026-09-24T12:00:00+00:00  # horloge figée (tests)
 python3 scripts/coach_doctor.py --check garmin_token             # une seule vérification, sans MCP
 python3 scripts/coach_doctor.py --probe-mcp                      # handshake MCP réel (contacte Garmin)
+python3 scripts/coach_doctor.py --check openwearables --probe-ow # joignabilité d'Open Wearables (#220)
 ```
 
 ## Quand le lancer

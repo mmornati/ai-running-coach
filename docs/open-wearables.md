@@ -13,7 +13,7 @@ Commit épinglé de tout ce qui suit : tag `0.9.0` =
 `main` a aussi été relue au commit `12941a4cb10fd77755d5b0007d8f267c5fea451b`
 (2 octobre 2026), uniquement là où c'est dit.
 
-Version testée par le client : `ff8527a52ad8a96cd1ebe8c19344295c934ae9dc` (tag `0.9.0`) — dernier tag publié, endpoints et champs relus dans les sources à ce commit par le client `scripts/arc_openwearables.py` (#219, `OW_REF`). Le client existe ; son usage par les agents (bilan matinal) reste **prévu** (#220, #221).
+Version testée par le client : `ff8527a52ad8a96cd1ebe8c19344295c934ae9dc` (tag `0.9.0`) — dernier tag publié, endpoints et champs relus dans les sources à ce commit par le client `scripts/arc_openwearables.py` (#219, `OW_REF`). Le client et l'installation (`--health-source`, #220) existent ; l'usage par les agents (bilan matinal) reste **prévu** (#221).
 
 ## Décision
 
@@ -146,6 +146,71 @@ prévue lira l'API REST d'OW par un script du dépôt (même précédent que
   arrivera avec la prochaine version. Pour la couper : `TELEMETRY_ENABLED=false`
   ou `DO_NOT_TRACK=1` (`docs/dev-guides/telemetry.mdx` à `main`, commit
   `12941a4cb10fd77755d5b0007d8f267c5fea451b`).
+
+## Installation
+
+On **n'installe pas** Open Wearables (OW) : vous le déployez vous-même en suivant sa documentation, puis le
+projet s'y **branche** (comme à un compte intervals.icu ou Strava). Aucun serveur MCP n'est déclaré ni retiré :
+`.mcp.json`, `opencode.json` et les configurations des IDE restent intacts, le projet lit l'API REST d'OW par
+`scripts/arc_openwearables.py` (lecture seule, aucune écriture chez OW ni chez le fournisseur).
+
+1. **Déployer OW** selon sa documentation, avec des **images épinglées** sur un tag stable
+   (`themomentum/open-wearables-backend:<tag>` et `themomentum/open-wearables-frontend:<tag>`, jamais
+   `nightly`). Coupez la télémétrie anonyme (`TELEMETRY_ENABLED=false` ou `DO_NOT_TRACK=1`) : elle sera activée
+   par défaut à partir de la version qui suivra `0.9.0` (voir « Coût d'hébergement »). **Changez le mot de passe
+   administrateur par défaut.**
+2. **Créer une clé d'API** dans le portail d'OW. Elle ne sera jamais écrite dans le dépôt.
+3. **Créer l'application développeur** chez le fournisseur de santé (Oura, WHOOP, Polar, Withings…) puis le
+   **connecter** à OW. Oura et Withings exigent une redirection **HTTPS publique** : un tunnel suffit, le temps
+   de l'OAuth seulement ; ensuite la synchronisation se fait par sondage horaire, sans URL publique à garder ouverte.
+4. **Régler les priorités** dans le portail (Settings → Priorities) pour que le fournisseur choisi l'emporte.
+   Sinon le client signale `provider_mismatch` et n'utilise pas la nuit (une seule source de santé par jour).
+5. **Garder OW sur le réseau local** ou derrière un VPN (Tailscale…), sans l'exposer publiquement.
+6. **Brancher le projet** :
+
+   ```bash
+   ./install.sh --health-source openwearables --ow-url http://127.0.0.1:8000 --ow-provider oura
+   ```
+
+   - `--ow-url` : l'adresse de l'**API** (pas celle du portail) ; `--ow-provider` : UN fabricant parmi `oura`,
+     `whoop`, `polar`, `ultrahuman`, `withings`, `google_health`, `apple`, `health_connect`, `samsung`, `suunto`.
+     `garmin` (Garmin passe en direct) et `strava` (aucune donnée de santé) sont refusés.
+   - La **clé d'API** est demandée **sans écho** (sur un terminal) et écrite dans
+     `~/.config/ai-running-coach/openwearables.key` en **mode 600**, hors dépôt ; elle n'est jamais affichée, ni
+     passée en argument, ni écrite dans `.mcp.json` ou le workspace. Sans terminal (ou avec `--no-auth`), importez-la
+     avec `--ow-key-file FICHIER` ; un fichier déjà présent est conservé et n'est jamais redemandé.
+   - L'installation écrit seulement `[health].source`, `[health.openwearables].base_url` et `.provider` dans
+     `config/workspace.user.toml` ; un `./install.sh` relancé sans l'option ne touche à rien. `--dry-run` affiche
+     ce qui serait fait.
+   - Pour revenir en arrière : `./install.sh --health-source primary` remet `[health].source = "primary"` et ne
+     supprime ni l'URL, ni le fournisseur, ni la clé.
+7. **Vérifier** : `python3 scripts/coach_doctor.py --check openwearables --probe-ow` (ou `/coach-doctor` : le
+   contrôle de configuration est local et ne contacte pas OW sans `--probe-ow`).
+
+### Synchronisation automatique (daily-sync)
+
+Avec `[health].source = "openwearables"` et `[data].source = "garmin"`, `scripts/daily-sync.sh` **refuse** à
+l'exécuteur les quatre outils santé Garmin (`get_hrv_data`, `get_rhr_day`, `get_sleep_data`,
+`get_training_readiness`) : la règle « une seule source de santé par jour » est imposée, pas seulement demandée
+(avec la passerelle leanproxy, seule la consigne du skill protège, comme pour les écritures). Avec
+`[data].source = "intervals"`, rien n'est refusé : `icu_get_wellness_for_date` sert aussi à la phase du cycle.
+
+Avant chaque run, le script fait un seul `arc_openwearables.py check`. Si l'instance est morte ou la clé refusée,
+**la synchronisation Garmin continue** : le problème est journalisé et ajouté en une ligne au résumé (au plus une
+fois par jour). Les activités sont toujours lues chez Garmin.
+
+`[sync].mode = "watch"` reste réservé à `[data].source = "garmin"`. Avec une santé Open Wearables, le déclencheur
+`morning` de `scripts/garmin_watch.py` s'appuie toujours sur le sommeil **Garmin** comme signal de réveil, ce qui
+peut précéder la synchronisation chez OW : la nuit peut donc ne pas être encore arrivée. Le comportement des
+agents dans ce cas (pas de fichier santé tant que la nuit n'est pas arrivée) est **prévu** (#221).
+
+### Diagnostic
+
+`/coach-doctor` (contrôle `openwearables`) vérifie le fournisseur, l'adresse, la présence et le **mode 600** du
+fichier de clé (valeur jamais affichée) ; avec `--probe-ow`, il fait un appel à l'instance : joignable, clé
+acceptée, fournisseur connecté et synchronisé récemment, forme de réponse compatible avec la version testée.
+Hors de l'option `[health].source = "openwearables"`, le contrôle dit seulement « non utilisé ». Pannes
+courantes : voir [Dépannage](troubleshooting.md#sante-open-wearables-instance-injoignable-401-provider_mismatch-donnees-perimees).
 
 ## Ce qui ferait changer la décision
 

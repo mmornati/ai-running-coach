@@ -33,6 +33,8 @@ URL = re.compile(r"https?://[^\s)>\]`]+")
 # Fichiers qui, une fois livrés, citeront le commit utilisé par le client.
 CONSUMERS = ("scripts/arc_openwearables.py", "scripts/coach_doctor.py", "install.sh")
 HOSTING = "the-momentum/open-wearables"
+# Exemples d'adresses locales (#220 : `--ow-url http://127.0.0.1:8000`) : pas des faits externes à dater.
+LOCAL_HOSTS = ("://127.0.0.1", "://localhost")
 
 
 def _ow_refs(rel: str) -> set[str]:
@@ -86,7 +88,7 @@ class TestOpenWearablesAudit(unittest.TestCase):
 
     def test_every_external_fact_is_dated(self):
         text = DOC.read_text(encoding="utf-8")
-        urls = [m for m in URL.finditer(text) if HOSTING not in m.group(0)]
+        urls = [m for m in URL.finditer(text) if HOSTING not in m.group(0) and not any(h in m.group(0) for h in LOCAL_HOSTS)]
         self.assertTrue(urls, "la page doit citer des sources externes")
         for m in urls:
             window = text[max(0, m.start() - 200) : m.end() + 200]
