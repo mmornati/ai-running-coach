@@ -467,6 +467,7 @@ select { font: inherit; color: var(--ink); background: var(--surface); border: 1
 .key--projected { background: none; border-top: 2px dashed var(--ink-soft); height: 0; }
 .key--bar { background: var(--s-bar); height: 0.6rem; } .key--dplus, .key--rhr { background: var(--s-dplus); }
 .key--gap { background: var(--s-gap); }
+.key--pace { background: var(--s-sweat); }
 .key--green { background: var(--ok); height: 0.6rem; } .key--amber { background: var(--warn); height: 0.6rem; } .key--red { background: var(--bad); height: 0.6rem; }
 .key--year-0 { background: var(--s-year-0); } .key--year-1 { background: var(--s-year-1); } .key--year-2 { background: var(--s-year-2); }
 /* Poids (#36) : même couleur pour les trois séries (violet), mais forme distincte —

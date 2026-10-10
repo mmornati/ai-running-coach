@@ -615,8 +615,9 @@ faute de fréquence cardiaque et d'effort perçu, un astérisque.
   montée. Sans GPS (tapis, intérieur) ou sans FIT, une note le dit et la page reste
   complète. Le serveur de tuiles ne voit que la zone affichée, jamais la trace ; un
   `map_tiles = ""` coupe tout fond de carte (trace seule, hors ligne).
-- **Le profil** : altitude (montées détectées ombrées), FC, allure et cadence le
-  long de la distance, sur un axe commun. Un seul curseur relie les quatre graphiques
+- **Le profil** : altitude (montées détectées ombrées), FC, allure (avec la GAP en
+  pointillés pour la course à pied) et cadence le long de la distance, sur un axe
+  commun. Un seul curseur relie les quatre graphiques
   **et la carte** : survoler le profil déplace un point sur la trace, survoler la
   trace place le curseur du profil, avec la lecture complète (distance, altitude,
   pente, FC, allure, GAP, cadence, temps écoulé). Les arrêts (ravitaillement, pause) ne
