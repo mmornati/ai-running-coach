@@ -39,8 +39,8 @@ approximations du projet**, pas des valeurs publiées.
 **meilleure allure moyenne** que vous avez tenue, à partir des échantillons FIT
 (regroupés par pas de 5 s à l'indexation) :
 
-- en **GAP** (allure ajustée à la pente, [modèle de Minetti](marques.md)) : une
-  côte et un plat de même coût énergétique se valent. La vitesse critique est donc
+- en **GAP** (allure ajustée à la pente, [modèle de Kay](gap.md)) : une
+  côte et un plat de même effort de course se valent. La vitesse critique est donc
   une vitesse « équivalent plat » ; sur une pente réelle, l'allure à tenir est plus
   lente. Les limites du GAP (bruit de pente, descentes) s'appliquent ;
 - sur des **fenêtres glissantes de temps écoulé** : un effort « de 10 min » qui

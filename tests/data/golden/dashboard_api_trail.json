@@ -13,12 +13,12 @@
             "arc_version": 1,
             "avg_hr_bpm": 141.0,
             "date": "2026-09-23",
-            "decoupling_pct": 3.25,
+            "decoupling_pct": 3.24,
             "distance_m": 10000.0,
             "duration_s": 3764.0,
-            "ef_whole": 1.0648,
+            "ef_whole": 1.0657,
             "elevation_gain_m": 425.0,
-            "gap_pace_s_km": 369.62,
+            "gap_pace_s_km": 369.36,
             "gear_id": null,
             "id": 28,
             "load": 95.49,
@@ -664,12 +664,12 @@
             "arc_version": 1,
             "avg_hr_bpm": 141.0,
             "date": "2026-09-23",
-            "decoupling_pct": 3.25,
+            "decoupling_pct": 3.24,
             "distance_m": 10000.0,
             "duration_s": 3764.0,
-            "ef_whole": 1.0648,
+            "ef_whole": 1.0657,
             "elevation_gain_m": 425.0,
-            "gap_pace_s_km": 369.62,
+            "gap_pace_s_km": 369.36,
             "gear_id": null,
             "id": 28,
             "load": 95.49,
@@ -792,9 +792,9 @@
           "calories_kcal": 680.0,
           "carbs_g": null,
           "date": "2026-09-23",
-          "decoupling_pct": 3.25,
+          "decoupling_pct": 3.24,
           "decoupling_reason": null,
-          "descent_reference_gap_pace_s_km": 369.62,
+          "descent_reference_gap_pace_s_km": 369.36,
           "descent_reference_source": "flat",
           "distance_m": 10000.0,
           "durability_ef_fade_pct": null,
@@ -805,11 +805,11 @@
           "durability_reason": "durée de mouvement insuffisante (≤ 90 min), voir arc_durability.ASSUMPTIONS[\"min_duration\"]",
           "durability_reason_code": "too_short",
           "duration_s": 3764.0,
-          "ef_whole": 1.0648,
+          "ef_whole": 1.0657,
           "elevation_gain_m": 425.0,
           "elevation_loss_m": 339.0,
           "fluid_intake_ml": null,
-          "gap_pace_s_km": 369.62,
+          "gap_pace_s_km": 369.36,
           "garmin_activity_id": 90000000039,
           "gear_id": null,
           "gear_ids": null,
@@ -849,7 +849,7 @@
           "classes": {},
           "reason": "aucune classe de pente descendante avec assez de données sur cette séance (voir ASSUMPTIONS[\"thresholds\"])",
           "reason_code": "no_qualifying_class",
-          "reference_gap_pace_s_km": 369.62,
+          "reference_gap_pace_s_km": 369.36,
           "reference_source": "flat"
         },
         "durability": {
@@ -924,11 +924,11 @@
             },
             "step_length_m": {
               "source": "samples",
-              "value": 1.169999999999996
+              "value": 1.17
             },
             "vertical_oscillation_m": {
               "source": "samples",
-              "value": 0.09500000000000086
+              "value": 0.095
             },
             "vertical_ratio_pct": {
               "source": "samples",
@@ -995,7 +995,7 @@
             "duration_s": 346.0,
             "elev_gain_m": 13.0,
             "elev_loss_m": 11.0,
-            "gap_pace_s_km": 359.95,
+            "gap_pace_s_km": 363.08,
             "km": 2,
             "label": "Allure",
             "max_hr_bpm": null,
@@ -1009,7 +1009,7 @@
             "duration_s": 409.0,
             "elev_gain_m": 89.0,
             "elev_loss_m": 62.0,
-            "gap_pace_s_km": 344.44,
+            "gap_pace_s_km": 351.99,
             "km": 3,
             "label": "Montée",
             "max_hr_bpm": null,
@@ -1023,7 +1023,7 @@
             "duration_s": 404.0,
             "elev_gain_m": 69.0,
             "elev_loss_m": 46.0,
-            "gap_pace_s_km": 351.9,
+            "gap_pace_s_km": 357.21,
             "km": 4,
             "label": "Montée",
             "max_hr_bpm": null,
@@ -1037,7 +1037,7 @@
             "duration_s": 393.0,
             "elev_gain_m": 70.0,
             "elev_loss_m": 83.0,
-            "gap_pace_s_km": 398.5,
+            "gap_pace_s_km": 388.14,
             "km": 5,
             "label": "Montée",
             "max_hr_bpm": null,
@@ -1051,7 +1051,7 @@
             "duration_s": 393.0,
             "elev_gain_m": 79.0,
             "elev_loss_m": 49.0,
-            "gap_pace_s_km": 398.5,
+            "gap_pace_s_km": 388.14,
             "km": 6,
             "label": "Montée",
             "max_hr_bpm": null,
@@ -1065,7 +1065,7 @@
             "duration_s": 368.0,
             "elev_gain_m": 28.0,
             "elev_loss_m": 30.0,
-            "gap_pace_s_km": 347.99,
+            "gap_pace_s_km": 354.49,
             "km": 7,
             "label": "Allure",
             "max_hr_bpm": null,
@@ -1079,7 +1079,7 @@
             "duration_s": 369.0,
             "elev_gain_m": 24.0,
             "elev_loss_m": 24.0,
-            "gap_pace_s_km": 344.45,
+            "gap_pace_s_km": 351.99,
             "km": 8,
             "label": "Allure",
             "max_hr_bpm": null,
@@ -1093,7 +1093,7 @@
             "duration_s": 342.0,
             "elev_gain_m": 0.0,
             "elev_loss_m": 0.0,
-            "gap_pace_s_km": 380.39,
+            "gap_pace_s_km": 376.44,
             "km": 9,
             "label": "Allure",
             "max_hr_bpm": null,
@@ -1107,7 +1107,7 @@
             "duration_s": 340.0,
             "elev_gain_m": 0.0,
             "elev_loss_m": 0.0,
-            "gap_pace_s_km": 398.37,
+            "gap_pace_s_km": 388.06,
             "km": 10,
             "label": "Retour au calme",
             "max_hr_bpm": null,
@@ -1268,40 +1268,40 @@
           1.0,
           1.0,
           1.0,
-          1.037,
-          1.076,
-          1.075,
-          1.075,
-          1.076,
-          1.075,
-          1.075,
-          1.076,
-          1.075,
-          0.929,
-          0.929,
-          0.929,
-          0.929,
-          0.929,
-          0.93,
-          0.929,
-          0.929,
-          1.075,
-          1.076,
-          1.075,
-          1.075,
-          1.076,
-          1.075,
-          1.076,
-          1.075,
-          0.93,
-          0.929,
-          0.929,
-          0.929,
-          0.929,
-          0.93,
-          0.929,
-          0.929,
-          0.946
+          1.025,
+          1.052,
+          1.052,
+          1.052,
+          1.052,
+          1.052,
+          1.052,
+          1.052,
+          1.052,
+          0.954,
+          0.954,
+          0.954,
+          0.954,
+          0.954,
+          0.954,
+          0.954,
+          0.954,
+          1.052,
+          1.052,
+          1.052,
+          1.052,
+          1.052,
+          1.052,
+          1.052,
+          1.052,
+          0.954,
+          0.954,
+          0.954,
+          0.954,
+          0.954,
+          0.954,
+          0.954,
+          0.954,
+          0.965
         ],
         "has_gps": false,
         "hr": [
@@ -1495,7 +1495,7 @@
           "acwr": "ACWR = fatigue / condition, affiché dès que la condition atteint 10. La zone 0.8–1.3 est un repère indicatif, discuté dans la littérature, pas un seuil de blessure.",
           "compliance": "Conformité plan vs réalisé : séances de repos hors calcul (sport ou intensité `rest`), `cancelled` exclue du dénominateur (le contrat n'a pas de motif d'annulation distinct médical/autre), `moved` exclue (pas de date cible dans le contrat), séance future de la semaine en cours jamais comptée manquée, séance du jour même sans activité encore en attente (pas manquée), `done` sans activité chiffrée exclue des ratios durée/D+ (comptée en séance faite seulement), appariement séance ↔ activité par date + sport (route/trail/randonnée/marche et variantes vélo interchangeables), les `done` explicites réservant leur activité avant les séances sans statut.",
           "cs_best_efforts_not_tests": "Les « meilleurs efforts » viennent de l'entraînement et de la course, pas d'un test à l'épuisement : si l'athlète n'a jamais couru à fond sur une durée, le meilleur effort sous-estime sa capacité réelle et la CS ressort BASSE (jamais haute par construction). Les points d'un ajustement proviennent de séances différentes (jusqu'à toute la fenêtre de dates), pas d'une même journée : une forme qui évolue sur la fenêtre brouille l'ajustement. Une fenêtre courte hérite aussi de tout effort plus long (le meilleur 3 min d'un effort de 10 min est au moins sa vitesse moyenne) : une seule séance fournit ainsi toute une courbe (par dilution au-delà de l'effort) : un ajustement dont tous les points viennent d'une seule séance est refusé, jamais une CS. Même avec 2 séances, des points hérités d'un effort plus long restent des bornes basses. La qualité (n, R², erreur standard) est toujours rapportée ; une CS issue d'un ajustement « moyenne » ou « faible » est un ordre de grandeur.",
-          "cs_gap_basis": "Les vitesses de la courbe sont des vitesses GAP (allure ajustée à la pente, modèle de Minetti, voir arc_gap.ASSUMPTIONS) : la CS est donc une vitesse « équivalent plat ». Les limites du GAP s'héritent : bruit de pente sur un instant, surestimation probable du gain en forte descente. Une séance sans altitude exploitable (tapis, capteur barométrique absent) est ÉCARTÉE de la courbe (comptée dans `skipped_no_grade`), jamais supposée plate.",
+          "cs_gap_basis": "Les vitesses de la courbe sont des vitesses GAP (allure ajustée à la pente, modèle de Kay 2012, voir arc_gap.ASSUMPTIONS) : la CS est donc une vitesse « équivalent plat ». Les limites du GAP s'héritent : bruit de pente sur un instant, gain en descente généreux pour la plupart des athlètes. Une séance sans altitude exploitable (tapis, capteur barométrique absent) est ÉCARTÉE de la courbe (comptée dans `skipped_no_grade`), jamais supposée plate.",
           "cs_lactate_crosscheck": "Contrôle de cohérence avec le seuil lactique estimé par Garmin (quand l'athlète le renseigne) : un écart de plus de 5 % entre CS et vitesse au seuil est SIGNALÉ, jamais arbitré — les deux sont des estimations par des méthodes différentes (CS : meilleurs efforts de l'athlète ; seuil Garmin : algorithme propriétaire non documenté publiquement dans le détail). Le seuil lactique et la CS ne désignent pas exactement la même intensité : un écart modéré est normal. Une vitesse au seuil hors de 1,5-7 m/s est refusée (unité probablement mal convertie), jamais comparée.",
           "cs_model": "Vitesse critique (CS) et réserve anaérobie D′ : modèle hyperbolique à 2 paramètres, distance = CS × durée + D′, ajusté par moindres carrés sur les meilleurs efforts de 3 à 20 minutes. C'est l'équivalent en course à pied du couple puissance critique / W′ du cyclisme (Jones AM & Vanhatalo A (2017), « The 'Critical Power' Concept: Applications to Sports Performance with a Focus on Intermittent High-Intensity Exercise », Sports Med 47(Suppl 1):65-78, doi: 10.1007/s40279-017-0688-0 ; Poole DC, Burnley M, Vanhatalo A, Rossiter HB & Jones AM (2016), « Critical Power », Med Sci Sports Exerc 48(11):2320-2334, doi: 10.1249/mss.0000000000000939 — références vérifiées via Crossref ; ces articles décrivent le concept de puissance critique, son transfert à la vitesse critique en course est une approximation du projet). La fenêtre 3-20 min et les seuils de validité (au moins 3 points, rapport de durées d'au moins 3, R² d'au moins 0,95, D′ entre 30 et 1000 m) sont des choix du projet, pas des valeurs publiées.",
           "cs_quality": "Qualité d'un ajustement accepté jugée sur l'erreur standard RELATIVE de chaque paramètre (erreur standard de la pente et de l'ordonnée de la régression, rapportée à la CS et à D′) : « bonne » si au moins 4 points, CS à ±2 % et D′ à ±10 % ; « moyenne » si CS à ±5 % et D′ à ±25 % ; « faible » sinon. Le R² n'y entre pas : la distance croissant presque proportionnellement à la durée, il dépasse 0,99 même pour des efforts peu cohérents (il ne sert que de garde-fou grossier, seuil 0,95). Seuils : approximation du projet, pas des valeurs publiées.",
@@ -1504,26 +1504,26 @@
           "cs_trend": "Tendance de la CS : un ajustement indépendant tous les 28 jours, chacun sur le meilleur de 90 jours se terminant à ce point (une fenêtre de 42 jours contient rarement assez d'efforts de 3 à 20 min). Un point sans ajustement valide rend son motif de refus, jamais une valeur reportée du point précédent.",
           "cs_windows_and_gaps": "Fenêtres glissantes sur le temps ÉCOULÉ, grille régulière à la résolution des échantillons (5 s) : une fenêtre n'est retenue que si les échantillons couvrent au moins 95 % de sa durée (covered_s) ; un trou de signal ou une pause non enregistrée (pause automatique de la montre) la disqualifie, jamais interpolé. Un arrêt enregistré (vitesse nulle, ex. ravitaillement en trail) compte comme du temps couvert à vitesse nulle : un meilleur effort qui enjambe un ravitaillement est donc pénalisé. Compromis assumé : des fenêtres sur le temps de MOUVEMENT recolleraient les morceaux de part et d'autre de l'arrêt, alors que D′ se reconstitue pendant l'arrêt — un effort intermittent passerait pour un effort continu et gonflerait CS et D′. Sur le temps écoulé, l'erreur va dans le sens prudent (CS basse). Résolution de 5 s : la fenêtre de 30 s est la plus courte exploitable ; un pic de vitesse GPS isolé peut gonfler les durées très courtes (hors ajustement CS/D′, qui part de 3 min).",
           "decision_effects": "Effet des décisions (#175, `arc_index.py decision-effects`, `/api/decision-effects`) : pour chaque décision `applied` ou `rejected_by_athlete` du journal, comparaison d'une fenêtre AVANT (3 jours se terminant au jour de la décision pour les séries quotidiennes ; 14 jours pour les séances) et d'une fenêtre APRÈS (J+1 à J+N, N = 3 pour bilan matinal/météo, 7 pour blessure/garde-fou/demande/course/autre) sur les signaux du déclencheur (HRV, FC de repos, readiness ; douleur ; écart d'ACWR à la zone 0,8–1,3 ; RPE, découplage, conformité). Tolérances « neutre » : HRV ±5 %, FC de repos ±2 bpm, readiness ±5, douleur ±1, ACWR ±0,1, RPE ±1, découplage ±2 points, conformité ±15 points — APPROXIMATIONS DU PROJET, pas des normes. Un signal absent est sauté, jamais imputé ; fenêtre non écoulée ou aucun signal → `insufficient_data`. Synthèse par déclencheur × nature de l'action (dérivée de `before`/`after`) × issue, décisions aux fenêtres chevauchantes signalées ; sous 5 cas évaluables, comptes bruts sans « tendance ». CORRÉLATION, PAS CAUSALITÉ : jamais utilisé pour assouplir un garde-fou `block`, une décision médicale ni un verdict rouge. Effets dérivés, jamais stockés ; méthode détaillée : `arc_decision_effects.ASSUMPTIONS`.",
-          "decoupling_grade_asymmetry": "Si la pente moyenne (pondérée par le temps, sur les échantillons utilisés pour l'EF) diffère de plus de 3 points entre les deux moitiés (ex. un aller-retour avec la montée dans une moitié et la descente dans l'autre), l'activité est jugée inéligible : le GAP corrige l'effet de la pente sur l'allure, mais pas parfaitement (biais connu du modèle de Minetti en forte descente, arc_gap.ASSUMPTIONS) — un profil trop différent entre les deux moitiés peut donc produire un découplage mesuré qui reflète surtout le relief, pas une vraie dérive cardiaque.",
+          "decoupling_grade_asymmetry": "Si la pente moyenne (pondérée par le temps, sur les échantillons utilisés pour l'EF) diffère de plus de 3 points entre les deux moitiés (ex. un aller-retour avec la montée dans une moitié et la descente dans l'autre), l'activité est jugée inéligible : le GAP corrige l'effet de la pente sur l'allure, mais pas parfaitement (modèle de pente généreux en descente, arc_gap.ASSUMPTIONS) — un profil trop différent entre les deux moitiés peut donc produire un découplage mesuré qui reflète surtout le relief, pas une vraie dérive cardiaque.",
           "decoupling_halves": "Les deux moitiés (post-échauffement) sont découpées sur le TEMPS DE MOUVEMENT cumulé, jamais la distance ni le temps écoulé : une moitié plus lente (fatigue, montée) couvrirait sinon moins de distance mais devrait rester comparable en durée réelle d'effort. Chaque moitié doit conserver au moins 10 minutes de mouvement, sinon l'activité est jugée inéligible (durée exploitable insuffisante après exclusion de l'échauffement).",
           "decoupling_hr_coverage": "Chaque moitié doit avoir au moins 80 % de son temps de mouvement couvert par une FC présente — TOUT terrain confondu, pente forte et marche COMPRISES : sous ce seuil (capteur FC décroché sur une longue portion), la moyenne de cette moitié porterait sur une fraction non représentative de son temps réel, ce qui peut fausser le découplage mesuré dans un sens ou dans l'autre selon ce qui manque. Distinct d'une absence totale de FC (séance sans capteur), qui a sa propre raison plus tôt dans le pipeline, ET distinct de la couverture RÉELLEMENT UTILISABLE pour l'EF (voir ASSUMPTIONS['usable_running']) : une sortie en montagne peut avoir une FC complète (100 % de couverture ici) tout en manquant de portions courues exploitables (beaucoup de pente forte/marche) — mélanger les deux critères en un seul (revue de code #45, correction apportée) rejetait à tort la plupart des sorties de montagne réelles avec une FC pourtant complète (ex. mesuré sur des profils synthétiques : vallonné ±12 % à 64-86 % de « couverture » avant correction, ±15-25 % à 13-51 %, répétitions à allure adaptée ±10 % à 33 %, alors que la FC y était mesurée à 100 % du temps).",
           "decoupling_min_duration": "Séance de 60 minutes de mouvement minimum (échauffement compris) — sous ce seuil, deux moitiés seraient trop courtes pour distinguer une vraie dérive cardiaque du bruit normal séance à séance.",
           "decoupling_model": "Découplage aérobie (Pa:HR) et facteur d'efficacité (EF), sur le modèle popularisé par la marque TrainingPeaks (voir docs/marques.md) : EF = vitesse GAP moyenne (m/min, pondérée par le temps) / FC moyenne (bpm) sur une moitié de séance (hors échauffement) ; découplage % = (EF première moitié − EF seconde moitié) / EF première moitié × 100. Le GAP (arc_gap.py, #44), jamais la vitesse brute, est utilisé aux deux moitiés pour qu'une côte ou une descente ne fausse pas la comparaison — un profil de pente trop différent entre les deux moitiés rend quand même l'activité inéligible (ASSUMPTIONS['grade_asymmetry']), le GAP ne corrigeant pas parfaitement ce cas. Un découplage sous 5 % est un repère de coaching courant pour une bonne durabilité aérobie — PAS un seuil validé cliniquement, issu d'un protocole CONTRÔLÉ (Uphill Athlete, allure constante en conditions maîtrisées, https://uphillathlete.com/aerobic-training/heart-rate-drift/), jamais présenté comme une norme applicable telle quelle à n'importe quelle sortie de terrain.",
           "decoupling_restricted_to_run_family": "Calculé UNIQUEMENT pour les séances de la famille course à pied (arc_metrics.sport_family == \"run\") avec des échantillons FIT ingérés — même restriction et même raison que les zones FC (#43) et le GAP (#44) : une FC de renforcement ou de vélo n'a pas le même sens physiologique.",
           "decoupling_steady_effort": "Règle d'« effort stable » (portions non stables exclues, critère d'acceptation #45) : moyenne glissante du GAP sur une fenêtre CENTRÉE de 30 secondes (moyenne simple, pas pondérée par le temps — une simplification raisonnable vu la résolution quasi uniforme des échantillons sous-échantillonnés), calculée échantillon par échantillon sur les portions utilisables (mouvement, hors pente forte/marche, voir ASSUMPTIONS['steep_grade_and_walking']). Part du temps de mouvement dont cette moyenne glissante reste à 15 % de la médiane de toutes les fenêtres : sous 60 %, l'activité est jugée non stable (fractionné probable) et le découplage n'est pas calculé. Une fenêtre GLISSANTE et CENTRÉE (pas des seaux disjoints d'une minute) est nécessaire pour détecter un fractionné dont la période coïncide avec la taille du seau — un fractionné 30 s/30 s moyenné dans des seaux d'une minute contient toujours UN cycle complet effort/récupération par seau, ce qui annule artificiellement sa variabilité mesurée (piège corrigé lors de la revue de code de #45). Ni le titre/l'intensité déclarée de la séance, ni une détection d'intervalles plus sophistiquée (repérage de pics répétés) ne sont utilisés : cette règle statistique unique reste volontairement simple. Avec moins de 20 points glissants exploitables, le jugement n'est pas fiable et cette règle est ignorée (pas assez de points pour distinguer un vrai fractionné d'un artefact). LIMITE CONNUE, documentée honnêtement (revue de code #45) : cette règle juge la dispersion autour d'une médiane UNIQUE pour toute la séance, elle ne distingue donc pas un vrai fractionné d'un bloc tempo unique et soutenu (ex. 20 minutes à allure seuil au milieu d'une sortie sinon facile) — selon sa durée relative au reste de la séance, un tel bloc peut soit être absorbé sans déclencher le seuil (la médiane glisse peu, l'essentiel du temps reste proche d'elle), soit déclencher à tort un verdict « non stable » alors qu'il s'agit d'un seul changement de régime contrôlé, pas d'une alternance répétée. Un test dédié (repérage d'un unique plateau soutenu plutôt qu'une alternance) pourrait affiner ce cas mais n'est pas fait ici, pour rester volontairement simple.",
-          "decoupling_steep_grade_and_walking": "Les échantillons de pente forte (au-delà de ±12 %) et de marche/power-hiking (vitesse sous 1.4 m/s) sont exclus du calcul de l'EF ET de la détection d'effort stable, dans les DEUX moitiés — jamais de la séance dans son ensemble (elle reste éligible si le reste suffit). Au-delà du seuil de pente, le modèle de Minetti (#44) est moins fiable (voir arc_gap.ASSUMPTIONS) et ces portions sont le plus souvent marchées ; les mélanger à l'EF de la course fausserait la comparaison entre moitiés. Conséquence assumée pour un ultra couru en run/walk : le découplage porte alors UNIQUEMENT sur les portions courues, jamais sur la marche — une sortie très majoritairement marchée devient inéligible par manque de couverture (ASSUMPTIONS['hr_coverage']) plutôt que de mélanger deux régimes physiologiques différents dans une seule moyenne.",
+          "decoupling_steep_grade_and_walking": "Les échantillons de pente forte (au-delà de ±12 %) et de marche/power-hiking (vitesse sous 1.4 m/s) sont exclus du calcul de l'EF ET de la détection d'effort stable, dans les DEUX moitiés — jamais de la séance dans son ensemble (elle reste éligible si le reste suffit). Au-delà du seuil de pente, le modèle de pente (#44) est moins fiable (voir arc_gap.ASSUMPTIONS) et ces portions sont le plus souvent marchées ; les mélanger à l'EF de la course fausserait la comparaison entre moitiés. Conséquence assumée pour un ultra couru en run/walk : le découplage porte alors UNIQUEMENT sur les portions courues, jamais sur la marche — une sortie très majoritairement marchée devient inéligible par manque de couverture (ASSUMPTIONS['hr_coverage']) plutôt que de mélanger deux régimes physiologiques différents dans une seule moyenne.",
           "decoupling_stopped_samples": "Les instants à l'arrêt (vitesse sous arc_gap.STOPPED_SPEED_MS — feu rouge, ravitaillement, pause) sont exclus du découpage en deux moitiés, qui se fait sur le TEMPS DE MOUVEMENT cumulé (jamais le temps écoulé) : une pause au milieu de la séance ne doit pas déplacer artificiellement la frontière entre les deux moitiés, ni peser dans la moyenne d'une moitié.",
           "decoupling_usable_running": "Indépendamment de la couverture FC ci-dessus, chaque moitié doit conserver au moins 10 minutes de temps RÉELLEMENT COURU exploitable (FC et GAP présents, hors pente forte et marche, voir ASSUMPTIONS['steep_grade_and_walking']) — une DURÉE ABSOLUE, jamais une part relative du temps de mouvement (une part minimale pénaliserait à tort les sorties de montagne où la pente forte/la marche occupent une portion importante mais où il reste largement assez de course exploitable en minutes). Sous ce seuil, l'activité est jugée inéligible : « trop peu de portions courues exploitables », distinct de « FC incomplète » ci-dessus — deux causes différentes du même symptôme (aucun chiffre affiché).",
           "decoupling_warmup": "Les 10 premières minutes ÉCOULÉES (depuis le premier échantillon, arrêts compris dans ce décompte) sont exclues EN PREMIER, puis les échantillons restants sont partagés en deux moitiés ÉGALES de temps de mouvement — c'est le protocole standard (Uphill Athlete ; Friel/TrainingPeaks), pas un choix du projet : sur une dérive purement linéaire, exclure d'abord ou fixer la frontière avant de retirer l'échauffement donnent le même résultat. La FC met plusieurs minutes à atteindre son régime de croisière (retard cardiovasculaire) ; l'inclure gonflerait artificiellement l'EF de la première moitié (FC encore basse pour l'allure déjà courue) et donc le découplage mesuré. Valeur ronde documentée, pas calibrée sur des données réelles. Le refroidissement (fin de séance) n'est volontairement PAS exclu séparément : le découpage en deux moitiés absorbe déjà une petite portion finale plus lente dans la seconde moitié, et une exclusion dédiée ajouterait un paramètre de plus sans justification aussi claire que l'échauffement.",
           "decoupling_whole_activity_ef": "Le facteur d'efficacité « séance entière » (ef_whole) est calculé sur TOUS les échantillons utilisables post-échauffement en mouvement (les deux moitiés réunies, mêmes exclusions que l'EF par moitié), pour une valeur unique comparable d'une séance à l'autre dans la tendance (indépendante du découpage en deux moitiés).",
-          "descent_grade_classes": "Classes de pente descendante retenues : -5 à -10 %, -10 à -15 %, -15 à -20 %, -20 à -30 %, < -30 % — les 3 classes intermédiaires (5-10/10-15/15-20 %) sont le MIROIR direct des classes ascendantes correspondantes d'`arc_climb.GRADE_CLASSES` (#46), qui anticipait explicitement cette réutilisation. Au-delà de -20 %, en revanche, PAS de miroir direct de la classe ascendante `>20%` : le coût énergétique de Minetti N'EST PAS monotone en descente (contrairement à la montée, où C(i) croît sans cesse avec la pente) — il DIMINUE jusqu'à un minimum vers -18 % (C(i)/C(0) ≈ 0,495, le point où le modèle prédit le plus grand bénéfice) puis RE-AUGMENTE : -20 % ≈ 0,50, -25 % ≈ 0,562, -30 % ≈ 0,684, -45 % (plafond du modèle, `arc_gap.CLAMP_GRADE`) ≈ 1,12, DÉJÀ AU-DESSUS du coût du plat. Un panier ouvert unique `< -20 %` mélangerait donc des pentes aux prédictions radicalement différentes (bénéfice quasi maximal à -20 %, quasi neutre à -30 %, pénalisant à -45 %) : sa valeur refléterait alors le RELIEF traversé plutôt que l'EFFICACITÉ de l'athlète. Scindé en `-20 à -30 %` et `< -30 %` en conséquence — asymétrie ASSUMÉE avec la VAM (#46), qui n'a pas ce problème (montée strictement monotone). `mean_grade` (pente moyenne pondérée par le temps de la classe, voir `descent_speed_by_grade_class`) reste exposé pour que le tableau de bord montre la pente réellement rencontrée à côté du libellé, y compris à l'intérieur d'un panier large. Une pente descendante sous 5 % n'est pas classée (quasi-plat).",
-          "descent_indicator": "« Efficacité en descente » = moyenne pondérée par le temps du ratio PAR ÉCHANTILLON (vitesse GAP de l'échantillon / référence plate de la séance) sur les échantillons d'une classe — PRÉCISION IMPORTANTE (revue de code) : ceci équivaut algébriquement à (moyenne pondérée par le temps de la vitesse GAP sur la classe) / référence UNIQUEMENT parce que la référence est une CONSTANTE de la séance qui sort de la moyenne — ce n'est PAS la même chose que (vitesse moyenne mesurée sur la classe) / (référence × C(0)/C(pente MOYENNE de la classe)), un calcul à pente unique qui ne coïnciderait pas en général avec la vraie moyenne pondérée du fait de la non-linéarité de C (inégalité de Jensen) — voir la docstring du module pour le détail. Une valeur de 1,0 signifie que l'athlète maintient, en moyenne sur la classe, le même effort métabolique (au sens du modèle de Minetti) qu'à son allure plate de référence. LIMITE CONNUE, documentée honnêtement (voir arc_gap.ASSUMPTIONS['model']) : le modèle de Minetti SURESTIME le gain métabolique des fortes descentes en conditions réelles de trail (freinage excentrique, terrain technique, prudence tactique) — une efficacité BIEN EN DESSOUS de 1,0 sur les classes les plus raides est donc ATTENDUE et NORMALE, jamais la preuve d'une mauvaise descente. Cet indicateur n'a de sens qu'en TENDANCE, dans le temps, à classe de pente égale — jamais comme un score absolu à comparer entre athlètes ou à un seuil universel.",
-          "descent_model": "Aucun nouveau modèle physiologique : ce module réutilise tel quel le coût énergétique de Minetti AE et al. (2002, J Appl Physiol 93:1039-1046) déjà appliqué par le GAP (arc_gap.py, #44) — jamais un second calcul du polynôme, seulement la vitesse GAP déjà produite par `arc_gap.gap_sample_series`, agrégée par classe de pente descendante.",
+          "descent_grade_classes": "Classes de pente descendante retenues : -5 à -10 %, -10 à -15 %, -15 à -20 %, -20 à -30 %, < -30 % — les 3 classes intermédiaires (5-10/10-15/15-20 %) sont le MIROIR direct des classes ascendantes correspondantes d'`arc_climb.GRADE_CLASSES` (#46), qui anticipait explicitement cette réutilisation. Au-delà de -20 %, en revanche, PAS de miroir direct de la classe ascendante `>20%` : le modèle de pente (Kay 2012) N'EST PAS monotone en descente (contrairement à la montée, où p(pente)/p0 croît sans cesse avec la pente) — il DIMINUE jusqu'à un minimum vers -10 % (≈ 0,81, le point où le modèle prédit le plus grand bénéfice) puis RE-AUGMENTE : -20 % ≈ 0,97, -25 % ≈ 1,16, -30 % ≈ 1,38, -45 % (borne du modèle, `arc_gap.CLAMP_GRADE`) ≈ 2,08, AU-DESSUS de l'allure du plat dès -21 %. Un panier ouvert unique `< -20 %` mélangerait donc des pentes aux prédictions radicalement différentes (quasi neutre à -20 %, pénalisant à -30 %, très pénalisant à -45 %) : sa valeur refléterait alors le RELIEF traversé plutôt que l'EFFICACITÉ de l'athlète. Scindé en `-20 à -30 %` et `< -30 %` en conséquence — asymétrie ASSUMÉE avec la VAM (#46), qui n'a pas ce problème (montée strictement monotone). `mean_grade` (pente moyenne pondérée par le temps de la classe, voir `descent_speed_by_grade_class`) reste exposé pour que le tableau de bord montre la pente réellement rencontrée à côté du libellé, y compris à l'intérieur d'un panier large. Une pente descendante sous 5 % n'est pas classée (quasi-plat).",
+          "descent_indicator": "« Efficacité en descente » = moyenne pondérée par le temps du ratio PAR ÉCHANTILLON (vitesse GAP de l'échantillon / référence plate de la séance) sur les échantillons d'une classe — PRÉCISION IMPORTANTE (revue de code) : ceci équivaut algébriquement à (moyenne pondérée par le temps de la vitesse GAP sur la classe) / référence UNIQUEMENT parce que la référence est une CONSTANTE de la séance qui sort de la moyenne — ce n'est PAS la même chose que (vitesse moyenne mesurée sur la classe) / (référence × p0/p(pente MOYENNE de la classe)), un calcul à pente unique qui ne coïnciderait pas en général avec la vraie moyenne pondérée du fait de la non-linéarité de p (inégalité de Jensen) — voir la docstring du module pour le détail. Une valeur de 1,0 signifie que l'athlète descend, en moyenne sur la classe, comme un coureur de montagne entraîné (modèle de Kay) à partir de son allure plate de référence. LIMITE CONNUE, documentée honnêtement (voir arc_gap.ASSUMPTIONS['model'] et docs/gap.md) : le modèle reste généreux en descente pour la plupart des athlètes (un amateur moyen gagne quelques % là où le modèle en prévoit près de 18 %), et ne voit ni le terrain technique ni la prudence — une efficacité EN DESSOUS de 1,0 est donc FRÉQUENTE, jamais la preuve d'une mauvaise descente. Cet indicateur n'a de sens qu'en TENDANCE, dans le temps, à classe de pente égale — jamais comme un score absolu à comparer entre athlètes ou à un seuil universel.",
+          "descent_model": "Aucun nouveau modèle : ce module réutilise tel quel le modèle de pente (Kay A., 2012, J Quant Anal Sports 8(4)) déjà appliqué par le GAP (arc_gap.py, #44) — jamais un second calcul du polynôme, seulement la vitesse GAP déjà produite par `arc_gap.gap_sample_series`, agrégée par classe de pente descendante.",
           "descent_moving_only": "Les échantillons à l'arrêt (vitesse sous `arc_gap.STOPPED_SPEED_MS`) sont exclus de l'agrégation ET de la référence, comme pour l'allure GAP de la séance entière (`arc_gap.ASSUMPTIONS['stopped_samples']`) — une pause en pleine descente (photo, prudence sur un passage technique) ne doit pas tirer la vitesse moyenne de sa classe vers le bas.",
           "descent_reference": "BLOQUANT (revue de code) : une première version utilisait l'allure GAP DE LA SÉANCE ENTIÈRE comme référence — ceci mélange dans la référence elle-même l'effort de montée, de plat ET des descentes à mesurer, si bien qu'une MÊME descente (même pente, même vitesse) obtenait une efficacité différente selon le reste du parcours (mesuré : 0,68 à 0,89 pour une descente identique selon le relief environnant), et une descente plus longue changeait sa PROPRE efficacité en pesant plus lourd dans sa propre référence. La référence est donc désormais l'allure GAP pondérée par le temps, échantillons en mouvement seulement, restreinte aux échantillons dont `|pente| < MIN_DESCENT_GRADE` (5 %) — retenue seulement si elle couvre au moins `MIN_REFERENCE_DURATION_S` (5 min). À défaut (profil de trail montagnard sans replat suffisant), repli sur l'allure GAP pondérée par le temps de TOUS les échantillons HORS forte descente (`pente > -MIN_DESCENT_GRADE`, donc plat ET montée, JAMAIS les descentes elles-mêmes, qui contamineraient à nouveau la référence par ce qu'elle doit mesurer), même seuil de durée. Sans l'un ou l'autre : `REASON_NO_REFERENCE`, jamais une référence bruitée sur trop peu de données. La source retenue (`\"flat\"` ou `\"non_descent\"`) est exposée telle quelle (`reference_source`) — une référence de repli reste moins fiable qu'une référence plate franche, jamais cachée à l'utilisateur.",
           "descent_restricted_to_run_family": "Calculé UNIQUEMENT pour les séances de la famille course à pied (arc_metrics.sport_family == \"run\" : course, trail, randonnée, marche) avec des échantillons FIT ingérés — même restriction que le GAP (#44), le découplage (#45) et la VAM (#46).",
           "descent_thresholds": "Une classe de pente descendante n'est retenue que si SES échantillons couvrent au moins 120 s de temps de mouvement OU 300 m de distance (l'un des deux suffit, jamais les deux exigés ensemble comme le filtre de détection de montée d'#46, qui répond à un besoin différent) — sous ces deux seuils, l'agrégat serait statistiquement trop bruité pour être exploitable. La référence « plat » elle-même exige 300 s (voir ASSUMPTIONS['reference']) : plus large, une référence bruitée fausserait l'efficacité de TOUTES les classes de la séance, pas d'une seule. Seuils ronds, non calibrés sur un jeu de séances étiquetées.",
-          "durability_grade_asymmetry": "Si la pente moyenne (pondérée par le temps, échantillons utilisés pour le fade) diffère de plus de 3 points entre le premier et le dernier tiers (ex. un aller-retour avec la montée principale dans un tiers et la descente dans l'autre), la séance est jugée inéligible — même seuil et même justification que `arc_decoupling.ASSUMPTIONS['grade_asymmetry']` (#45) : le GAP corrige l'effet de la pente sur l'allure, mais pas parfaitement (biais connu du modèle de Minetti en forte descente) — un profil trop différent entre les deux tiers comparés produirait un fade qui reflète surtout le relief traversé, pas la fatigue.",
+          "durability_grade_asymmetry": "Si la pente moyenne (pondérée par le temps, échantillons utilisés pour le fade) diffère de plus de 3 points entre le premier et le dernier tiers (ex. un aller-retour avec la montée principale dans un tiers et la descente dans l'autre), la séance est jugée inéligible — même seuil et même justification que `arc_decoupling.ASSUMPTIONS['grade_asymmetry']` (#45) : le GAP corrige l'effet de la pente sur l'allure, mais pas parfaitement (modèle de pente généreux en descente) — un profil trop différent entre les deux tiers comparés produirait un fade qui reflète surtout le relief traversé, pas la fatigue.",
           "durability_hr_by_third": "La FC moyenne (pondérée par le temps, sur les échantillons utilisables — hors pente forte/marche, voir ASSUMPTIONS['steep_grade_and_walking']) est exposée pour les TROIS tiers (`hr_first_third_bpm`/`hr_middle_third_bpm`/`hr_last_third_bpm`), à titre descriptif — c'est un fait de séance utile pour la fiche, indépendant du fade lui-même (qui ne compare que le premier et le dernier tiers). Le tiers du milieu peut donc afficher une FC même quand le fade global est `None` (ex. tiers du milieu couvert, premier ou dernier trop court).",
           "durability_hr_coverage": "Le premier ET le dernier tiers doivent avoir au moins 80 % de leur temps de mouvement couvert par une FC présente — tout terrain confondu, pente forte et marche COMPRISES, même seuil et même justification que `arc_decoupling.ASSUMPTIONS['hr_coverage']` (#45). Le tiers du milieu n'est PAS soumis à cette vérification (il n'entre dans aucun ratio de fade).",
           "durability_min_duration": "Séance de plus de 90 minutes de mouvement (échauffement compris) — la même borne « sortie longue » que `arc_metrics.LONG_RUN_MIN_DURATION_S`, déjà utilisée par les glucides/h (#41) et la tendance de découplage (#45) : une seule définition de sortie longue dans tout le projet. Comparaison STRICTE, pas ≥.",
@@ -1533,7 +1533,7 @@
           "durability_portions": "Le premier ET le dernier tiers (post-échauffement, temps de mouvement) doivent chacun couvrir au moins 10 minutes de mouvement — sous ce seuil, la moyenne pondérée d'un tiers deviendrait trop sensible à un seul échantillon bruité (même seuil que `arc_decoupling.ASSUMPTIONS['halves']`, transposé à un tiers plutôt qu'une moitié). Le tiers du milieu n'est soumis à AUCUN seuil de durée minimale : il n'entre dans aucun ratio de fade, seulement dans le calcul descriptif de sa propre FC moyenne.",
           "durability_reading_gap_vs_ef": "Fade GAP et fade EF se lisent ENSEMBLE, jamais isolément (revue de code #48, nit) : un fade EF NETTEMENT SUPÉRIEUR au fade GAP signale une dérive cardiaque À ALLURE COMPARABLE (la FC est montée alors que l'allure a peu changé sur le dernier tiers — fatigue cardiovasculaire, même phénomène que le découplage aérobie, #45, mais concentré en fin de sortie). Un fade GAP MARQUÉ avec un fade EF PROCHE DE 0, à l'inverse, signale que l'allure ET la FC ont baissé ENSEMBLE dans la même proportion (l'effort métabolique réel, lui, n'a pas changé) : l'athlète a réduit l'intensité — volontairement (gestion tactique d'une sortie longue) ou involontairement (fatigue musculaire/mécanique plutôt que cardiovasculaire) — pas seulement son allure. Un fade GAP ET un fade EF tous deux marqués et proches combinent probablement les deux effets. Ni l'un ni l'autre cas ne distingue une cause précise (chaleur, hydratation, nutrition, fatigue musculaire...) : ce module mesure un SYMPTÔME, pas un diagnostic.",
           "durability_restricted_to_run_family": "Calculé UNIQUEMENT pour les séances de la famille course à pied (arc_metrics.sport_family == \"run\") avec des échantillons FIT ingérés — même restriction que le GAP (#44), le découplage (#45), la VAM (#46) et la descente (#47).",
-          "durability_steep_grade_and_walking": "Les échantillons de pente forte et de marche/power-hiking sont exclus du calcul du fade ET de la FC par tiers, dans les TROIS tiers — jamais de la séance dans son ensemble (elle reste éligible si le reste suffit) — même seuils et même justification que `arc_decoupling.ASSUMPTIONS['steep_grade_and_walking']` (#45) : au-delà d'environ 12 % le modèle de Minetti (#44) est moins fiable, et ces portions sont le plus souvent marchées plutôt que courues.",
+          "durability_steep_grade_and_walking": "Les échantillons de pente forte et de marche/power-hiking sont exclus du calcul du fade ET de la FC par tiers, dans les TROIS tiers — jamais de la séance dans son ensemble (elle reste éligible si le reste suffit) — même seuils et même justification que `arc_decoupling.ASSUMPTIONS['steep_grade_and_walking']` (#45) : au-delà d'environ 12 % le modèle de pente (#44) est moins fiable, et ces portions sont le plus souvent marchées plutôt que courues.",
           "durability_usable_running": "Indépendamment de la couverture FC ci-dessus, le premier ET le dernier tiers doivent chacun conserver au moins 10 minutes de temps RÉELLEMENT COURU exploitable (FC et GAP présents, hors pente forte et marche) — une DURÉE ABSOLUE, jamais une part relative, même discipline que `arc_decoupling.ASSUMPTIONS['usable_running']` (#45) : une sortie de montagne où la pente forte/la marche occupent une portion importante d'un tiers reste éligible tant qu'il reste assez de course exploitable en minutes.",
           "durability_warmup": "Les 10 premières minutes ÉCOULÉES (arrêts compris dans ce décompte) sont exclues EN PREMIER, puis le reste est partagé en TROIS portions ÉGALES de temps de mouvement — même protocole et même justification que `arc_decoupling.ASSUMPTIONS['warmup']` (#45) : la FC met plusieurs minutes à atteindre son régime de croisière, l'inclure fausserait la mesure du premier tiers à la baisse (dérive apparente sous-estimée).",
           "effort_km": "Km-effort ITRA : pour les activités de la famille course (`SPORT_FAMILY` = \"run\" : running, trail, hiking, walking — cyclisme exclu), effort_km = distance_km + D+_m / 100. Absence de D+ : 0 m utilisé. Absence de distance : l'activité n'est pas comptée. Somme hebdomadaire calculée sur les valeurs brutes puis arrondie une seule fois (pas la somme de valeurs déjà arrondies par activité). Distinct de l'« équivalence plat » (`trail_equivalence`, D+ × 1,75) utilisée pour les prédictions.",
@@ -1561,7 +1561,7 @@
           "hr_zones": "Zones FC, temps en zone et polarisation 80/20 (#43) : des APPROXIMATIONS d'entraînement, jamais une mesure physiologique directe (pas de test d'effort, pas de lactate, pas de seuils ventilatoires mesurés) — voir plus bas pour la polarisation, la plus approximative des deux. 5 zones, méthode de calcul des bornes choisie par PRÉCÉDENCE (configurable, `[athlete].hr_zones` dans `config/workspace.toml`, valeurs `\"auto\"` (défaut) | `\"lthr\"` | `\"karvonen\"` | `\"percent_max\"`, insensible à la casse, tout le reste retombant sur `\"auto\"` avec un avertissement — voir `arc_index.py::_hr_zone_method` — une valeur explicite FORCE cette méthode, sans repli si les champs qu'elle demande manquent, auquel cas aucune zone n'est calculée MAIS la raison est rendue explicitement par `hr_zone_resolution` (jamais une simple absence silencieuse) : 1) LTHR (`hr_threshold_bpm` du profil, « FC au seuil ») si renseignée — Friel (« The Triathlete's Training Bible »), zones course à pied à 5 paliers : Z1 0-85 %, Z2 85-90 %, Z3 90-95 %, Z4 95-100 %, Z5 100-150 % de la LTHR (dernière borne ouverte vers le haut) — Friel décrit en réalité trois paliers au-dessus du seuil (5a/5b/5c) que notre Z5 FUSIONNE, pour rester à 5 zones partout dans le projet ; 2) Karvonen (réserve FC = FC max - FC repos, `hr_max_bpm`/`hr_rest_bpm` du profil) sinon, bornes à 50 %, 60 %, 70 %, 80 %, 90 %, 100 % de la réserve — MÊME convention que `tests/lib/synthetic.py::KARVONEN_HRR_PCT`, ce qui permet aux tests de temps en zone (palier D) de comparer directement le temps en zone calculé à la vérité connue du générateur synthétique sur le profil type (FC repos 48, FC max 188 -> bornes 118/132/146/160/174/188 bpm) — NOTE : le workspace synthétique type renseigne AUSSI une FC au seuil (172 bpm), donc `\"auto\"` y résout en réalité sur LTHR, pas Karvonen (voir tests/README.md) ; cette comparaison directe ne vaut que si `[athlete].hr_zones = \"karvonen\"` est forcé, ou si le profil ne porte pas de FC au seuil ; 3) %FCmax sinon (`hr_max_bpm` seul suffit), bornes à 0 %, 60 %, 70 %, 80 %, 90 %, 150 % de la FC max — convention à 5 zones courante quand ni la FC de repos ni la FC au seuil ne sont connues ; 4) aucune zone calculée si même la FC max manque (`hr_zone_bounds` rend `None`) — jamais de bornes inventées. `hr_zone_of` sature : tout ce qui est sous la 2ᵉ borne tombe en zone 1, tout ce qui est au-delà de la 5ᵉ (dernière) borne tombe en zone 5, la 1ʳᵉ et la 6ᵉ valeur de chaque tuple ne sont que des repères d'affichage internes (JAMAIS montrées telles quelles à l'utilisateur : l'interface n'affiche que les bornes intérieures, « Z1 < X », « Z5 ≥ Y », le temps sous le plancher théorique de Z1 comptant quand même en Z1). Restreint aux sports de la famille course à pied (`arc_metrics.sport_family(sport) == \"run\"` : course, trail, randonnée, marche) : le renforcement et le vélo (d'intérieur ou non) sont EXCLUS du temps en zone et de la polarisation, même avec des échantillons FIT ingérés — une FC élevée en renforcement (musculation, gainage) répond à un effort essentiellement anaérobie/technique sans rapport avec les zones aérobies d'endurance, et le vélo a en pratique une FC au seuil différente de la course à pied que le profil ne renseigne pas séparément ; les compter gonflerait ou fausserait silencieusement la polarisation hebdomadaire. La randonnée et la marche restent incluses (même famille `\"run\"` que le reste du projet, ex. `GEAR_WEAR_SPORTS`, `effort_km`) : leur FC répond au même modèle aérobie que la course, à une intensité différente. Temps en zone (`time_in_zone_seconds`) : calculé sur les échantillons déjà sous-échantillonnés de `arc_index.samples`/`samples_by_garmin_id` (résolution par défaut 5 s, `arc_samples.DEFAULT_RESOLUTION_S`), triés par `t_s`. Chaque échantillon pèse la durée `dt` jusqu'au suivant, PLAFONNÉE à la résolution du sous-échantillonnage : une pause ou un trou de signal (`arc_samples.ASSUMPTIONS[\"gaps\"]`, `dt` peut dépasser la résolution après un trou) n'est donc JAMAIS compté comme du temps en zone — sans ce plafond, une montre restée en veille 30 min gonflerait artificiellement la zone où la FC se trouvait juste avant la pause. Le DERNIER échantillon d'une séance (pas de suivant pour mesurer `dt`) est compté pour la résolution nominale de son propre bucket. Un `hr_bpm` absent (`None`, capteur décroché) est ignoré : ni zone, ni secondes comptées pour cet échantillon — cohérent avec le reste du projet (mesure absente = absente, jamais 0). Recalculé pour CHAQUE activité à CHAQUE passage de `arc_index.index_workspace` (jamais mis en cache par fichier comme les tables `PER_FILE_TABLES`) : un changement du profil (FC max/repos/seuil, ou `[athlete].hr_zones`) est donc répercuté dès le prochain index, incrémental ou `--rebuild`, sans étape supplémentaire. Polarisation (`seiler_bounds` + `polarisation_shares`, modèle 3 zones de Seiler) : ENCORE PLUS approximative que le temps en zone, parce que le seuil qui sépare « facile » de « modérée » et « modérée » de « difficile » ne tombe PAS sur les mêmes bornes bpm que les 5 zones affichées selon la méthode — `seiler_bounds` calcule donc deux bornes bpm DÉDIÉES par méthode (voir sa docstring pour le détail par méthode) plutôt que de regrouper aveuglément les 5 zones affichées : le mapping Z1+Z2/Z3/Z4+Z5 n'est physiologiquement correct QUE pour Karvonen (Karvonen, Kentala & Mustala 1957 pour la réserve elle-même) ; pour LTHR, Z4 (95-99 % LTHR) reste sous le second seuil Seiler (donc « modérée », pas « difficile ») ; pour %FCmax, les seuils (82 %/87 %) sont une APPROXIMATION MAISON de l'emplacement typique de VT1/VT2 en %FCmax, SANS source vérifiée (pas une valeur tirée telle quelle de la littérature) — indépendants des bornes de zones affichées (60/70/80/90 %). Calculée UNIQUEMENT sur les activités qui ont des échantillons FIT ingérés (`hr_polarisation_time` non vide) ; une semaine sans AUCUNE activité avec échantillons rend `None` sur tous ses champs (jamais 0 % ni une part calculée sur zéro seconde) — une semaine avec au moins une activité datée sans FIT associé n'est pas `None` pour autant, cette activité est simplement absente de la somme.",
           "hrv_baseline": "Ligne de base HRV personnelle : moyenne glissante 7 j de ln(HRV nocturne) (min. 5 jours valides sur 7, sinon aucune valeur), comparée à une référence glissante 60 j de ln(HRV) (moyenne et écart-type, min. 30 jours valides, sinon « en construction ») ± 0.5 écart-type — une largeur de bande couramment retenue comme « plus petit changement significatif » (smallest worthwhile change) sur le lnRMSSD 7 j (Plews, Laursen & Buchheit 2013). La fenêtre de référence se termine 7 j AVANT le jour évalué (jours j-7 à j-66) : elle ne recouvre JAMAIS la fenêtre courte, sinon la moyenne 7 j se retrouve diluée dans sa propre référence et l'écart entre les deux est mécaniquement rétréci. Hypothèse : `hrv_overnight_ms` (moyenne nocturne Garmin) est traité comme une mesure de type rMSSD — Garmin ne documente pas publiquement l'algorithme exact. Le passage au log réduit l'asymétrie de la distribution du rMSSD (Plews et al. 2012 ; Plews, Laursen & Buchheit 2013). Un jour sans mesure n'est jamais compté comme 0, il est simplement absent des deux fenêtres. CV 7 j = écart-type / moyenne de ln(HRV) (pas des valeurs brutes) sur la fenêtre courte, en pourcentage : Plews et al. (2012) évaluent la stabilité de la modulation parasympathique sur le coefficient de variation du lnRMSSD hebdomadaire, pas sur la valeur brute. Kiviniemi et al. (2007) est cité comme PRÉCÉDENT de l'entraînement individualisé guidé par une bande statistique (± 1 écart-type autour de la puissance HF de la variabilité cardiaque, une mesure et une largeur différentes de celles retenues ici) — pas comme source de la largeur ± 0,5 ET ni du CV appliqués dans ce module. Écart-type demandé aux deux fenêtres : population (division par N, pas N-1), cohérent avec le reste du module (`daily_series`, monotonie de Foster). Ce statut n'est calculé et affiché qu'en `[health].morning_check = \"full\"` : en `minimal`, seule la readiness est exposée (rien qui dépende de l'HRV) ; en `off`, aucune donnée de santé n'est récupérée.",
           "load_forecast": "Projection de charge sur le bloc (#172, `arc_index.py load-forecast`, `/api/load-forecast`) : ESTIMATION à partir du planifié, jamais une mesure. Point de départ = l'état réel d'aujourd'hui (condition 42 j, fatigue 7 j, `daily_series`) ; chaque jour planifié jusqu'à la date de l'objectif reçoit la charge estimée de ses séances — le MÊME estimateur que R1 (`ASSUMPTIONS[\"projected_load\"]` : minutes planifiées × RPE attendu par intensité × `RPE_TO_TRIMP`, durée estimée depuis la distance à l'allure récente), jamais un second modèle. Réserves : (1) le RPE attendu par intensité est une approximation maison, et une séance réelle avec FC (TRIMP de Banister) pèse selon la physiologie de l'athlète environ 0,9 à 1,45 fois son estimation — écart qui se cumule et gonfle la forme prévue (≈ +12 sur trois semaines à 1,3). La charge PROJETÉE (jamais la réelle) est donc RECALÉE par le rapport charge réelle / charge estimée des séances planifiées des 56 derniers jours appariées à une activité (même appariement que la conformité, `calibration` dans la sortie) — une mise à l'échelle du même estimateur, pas un second modèle ; non appliqué sous 5 séances appariées ou hors [0,5 ; 2] (dit dans la sortie). Recalé, l'ACWR projeté d'une semaine peut différer légèrement du chiffre de R1, qui reste non recalé ; (2) un jour sans séance planifiée compte 0 de charge (repos supposé, jamais une moyenne récente extrapolée) : une semaine non planifiée est comptée (`weeks_unplanned`) et rend la forme prévue trop optimiste si l'athlète s'entraîne en réalité ; (3) une séance planifiée sans durée ni distance exploitable pèse 0 (`unresolved_duration_dates`) ; (4) la forme prévue le jour J est l'état « en entrant dans la journée » (condition et fatigue de la veille, forme = leur différence, comme la courbe réelle) : la charge de la course elle-même n'y entre pas, ni dans le pic de fatigue, l'ACWR max ou la charge totale du bloc (tous lus jusqu'à la veille de la date visée) ; (5) condition et ACWR héritent du démarrage à froid de la moyenne exponentielle : sous `arc_guardrails.MIN_HISTORY_DAYS_FOR_PROJECTION` (84 j d'historique réel) aucune projection n'est rendue (`insufficient_history`) ; (6) l'ACWR projeté (maximum sur tout le bloc, et par semaine) reprend le seuil prudent de R1, dont les réserves scientifiques restent celles de `ASSUMPTIONS[\"acwr_projection\"]` ; (7) aucune donnée de santé (HRV, sommeil, blessure) n'entre dans la projection — un bilan matinal rouge annule une séance quel que soit ce que la projection indique. La comparaison de plans remplace les semaines de même lundi et ne chiffre que l'écart d'estimations : à lire comme un ordre de grandeur pour justifier un affûtage, pas comme une prédiction de performance.",
-          "model": "Coût énergétique de la course selon la pente (Minetti AE et al., 2002, J Appl Physiol 93:1039-1046, mesuré sur tapis roulant jusqu'à ±45 % de pente) : allure ajustée = allure mesurée multipliée par le rapport entre le coût énergétique de la pente réelle et celui du plat. Une pente au-delà de ±45 % est plafonnée à cette valeur avant le calcul, jamais extrapolée au-delà (le modèle n'a jamais été mesuré aussi loin). LIMITE CONNUE, documentée honnêtement : ce type de modèle de laboratoire a tendance à surestimer le gain métabolique des fortes descentes en conditions réelles de trail (freinage, terrain technique, prudence). Cette allure ajustée reste une approximation du projet fondée sur ce modèle, PAS une reproduction des calculs propriétaires (non documentés publiquement) des montres ou services du marché — voir docs/marques.md.",
+          "model": "Allure ajustée à la pente selon des records de course (Kay A., 2012, J Quant Anal Sports 8(4), 91 courses de montée et 15 de descente) : allure ajustée = allure mesurée divisée par le rapport entre l'allure attendue sur cette pente et celle du plat. Au-delà de +32 % et de -26 %, la courbe est prolongée en ligne droite (comme le propose l'article) ; au-delà de ±45 %, la pente est plafonnée. Ce modèle remplace celui de Minetti et al. (2002, laboratoire), qui surestimait le coût des montées et, surtout, le gain des descentes. LIMITE CONNUE : tiré de coureurs entraînés, il reste généreux en descente (gain maximal d'environ 18 % vers -10 %) — un écart en descente mesure donc surtout le niveau de descendeur. Il ne voit pas la technicité du terrain. Approximation du projet, PAS une reproduction des calculs propriétaires des montres ou services du marché — voir docs/gap.md et docs/marques.md.",
           "monotony": "Monotonie de Foster = moyenne / écart-type de la charge quotidienne sur 7 j ; strain = charge 7 j × monotonie.",
           "noise_robustness": "Le modèle est sensible près du plat : un bruit de pente de quelques % sur un SEUL instant peut changer son allure ajustée de plusieurs %. Mais sur une moyenne (un split ou une séance entière), cette erreur s'annule presque complètement — c'est pourquoi la fiabilité de cette allure s'apprécie sur la durée, jamais instant par instant.",
           "prediction": "Prédictions VDOT (Daniels) depuis la tendance VO2max, et Riegel depuis le meilleur effort récent (exposant 1,06 route / 1,15 trail).",
@@ -1569,7 +1569,7 @@
           "restricted_to_run_family": "Allure ajustée calculée UNIQUEMENT pour les séances de la famille course à pied (course, trail, randonnée, marche) avec des données seconde par seconde disponibles — absente sinon (renforcement, vélo, ou séance sans ces données). Même restriction et même raison que le temps passé dans chaque zone de fréquence cardiaque (#43).",
           "sleep_debt": "Dette de sommeil 7 j (#37) : somme, sur les nuits des 7 derniers jours AVEC une mesure de `sleep_total_s`, de max(0, besoin − sommeil réalisé de la nuit). Une nuit ABSENTE de `medical/*_health.md` n'est jamais comptée comme un manque de 0 h (elle est simplement ignorée, comme dans `hrv_baseline`/`weight_trend`) — sans quoi un simple trou de synchronisation gonflerait artificiellement la dette. Le résultat n'est rendu qu'à partir de 4 nuits mesurées sur les 7, sinon `None` — `nights_counted` est TOUJOURS rendu, y compris `None`, pour que l'appelant sache s'il manque une nuit ou sept. Nuits EXCÉDENTAIRES (sommeil > besoin) : chaque nuit est plafonnée à 0 avant sommation (`max(0, …)`), jamais sommée en négatif — une dette « nette » qui autoriserait un excédent à compenser un déficit d'une autre nuit suppose une récupération linéaire et immédiate que la littérature sur la dette de sommeil ne documente pas (contrairement, par exemple, à la charge d'entraînement où un jour de repos réduit authentiquement la fatigue accumulée) ; deux nuits courtes suivies d'une longue nuit restent donc un déficit réel, pas un solde nul. Ce plafonnage par nuit est délibérément plus CONSERVATEUR qu'un modèle de remboursement partiel (« recovery sleep ») : la littérature sur la privation chronique de sommeil documente une récupération réelle mais partielle et non linéaire des déficits (ex. Belenky et al. 2003 ; Banks & Dinges 2007, revue sur la dette de sommeil cumulative et la récupération incomplète après une seule nuit de rattrapage) — nous ne modélisons aucun remboursement du tout, par prudence, plutôt que de choisir un taux de remboursement partiel arbitraire et invérifiable sur ce workspace. Seuils d'AFFICHAGE (tableau de bord, prose des agents), repères indicatifs et non médicaux, même statut que `ACWR_SAFE` : 5 h cumulées sur la fenêtre → « à surveiller », 10 h → « nettement », allègement recommandé — exposés par `/api/health` (`thresholds.sleep_debt_warn_h`/`sleep_debt_alert_h`), jamais recalculés séparément côté JS. Besoin (`sleep_need_s`) : lu dans `planning/Runner_Profile.md` (« Besoin de sommeil », `arc_legacy.parse_profile`), sinon 7.5 h par défaut (7 h 30, valeur de l'issue #37) — jamais 8 h, chiffre plus courant mais non retenu ici. Calculé et exposé seulement en `[health].morning_check = \"full\"` (même porte que `hrv_baseline` : en `minimal`, seule la readiness sort du bilan matinal ; en `off`, aucune donnée de santé n'est même récupérée) — voir `scripts/arc_index.py sleep-debt` pour l'appel headless utilisé par les agents `coach`/`medical`.",
           "slope_model_aggregation_cost": "Chaque séance est réduite à, au plus, une valeur par panier (moyenne pondérée par le temps DE CETTE séance, `activity_bin_summaries`) AVANT combinaison entre séances — jamais un regroupement de tous les échantillons de toutes les séances en une seule liste géante avant de calculer une médiane globale, qui serait couteux en mémoire sur un historique de centaines de séances sans bénéfice de robustesse supplémentaire. Réutilise `arc_gap.gap_sample_series` déjà calculée pour le GAP/le découplage/la durabilité de la même activité (arc_index.compute_metrics) — jamais un second calcul de pente.",
-          "slope_model_fallback": "Un panier sans assez de données personnelles (< 180 s de temps pondéré cumulé OU < 2 séances distinctes) retombe sur le modèle générique de Minetti et al. 2002 (#44, `arc_gap.minetti_cost`) appliqué à la référence plate PERSONNELLE de l'athlète (médiane des paniers personnels proches de 0 %) : allure prédite = référence plate x coût(0)/coût(pente) — l'inverse de la formule GAP, puisqu'on veut ici l'allure brute prédite à effort constant, pas l'allure ajustée à plat. `source: 'generic'` marque ce repli. Sans référence plate personnelle du tout, aucune prédiction générique n'est possible (reason_code='no_flat_reference') : le modèle générique a lui-même besoin d'un point d'ancrage personnel, il n'invente jamais une vitesse plate par défaut. PLAFOND DE DESCENTE (revue de code #58, BLOQUANT) : inverser la formule GAP pour PRÉDIRE une vitesse brute (plutôt que l'appliquer à une vitesse déjà mesurée, comme le fait #44) amplifie le biais connu de Minetti en forte descente (`arc_gap.ASSUMPTIONS['model']`) jusqu'à des vitesses non plausibles (le coût prédit peut s'effondrer avant le plafonnage de pente de `arc_gap.CLAMP_GRADE`) : la vitesse générique en descente est donc plafonnée à `GENERIC_DOWNHILL_SPEED_CAP_RATIO` (1.3×) la référence plate, ET, si au moins une descente personnelle est connue, jamais au-delà de la plus rapide d'entre elles (repère mesuré, plus fiable que le plafond générique) — voir `_generic_downhill_cap`.",
+          "slope_model_fallback": "Un panier sans assez de données personnelles (< 180 s de temps pondéré cumulé OU < 2 séances distinctes) retombe sur le modèle générique de Kay 2012 (#44, `arc_gap.gap_factor`, le même que le GAP) appliqué à la référence plate PERSONNELLE de l'athlète (médiane des paniers personnels proches de 0 %) : allure prédite = référence plate x p(pente)/p0 — l'inverse de la formule GAP, puisqu'on veut ici l'allure brute prédite à effort constant, pas l'allure ajustée à plat. `source: 'generic'` marque ce repli. Sans référence plate personnelle du tout, aucune prédiction générique n'est possible (reason_code='no_flat_reference') : le modèle générique a lui-même besoin d'un point d'ancrage personnel, il n'invente jamais une vitesse plate par défaut. PLAFOND DE DESCENTE (revue de code #58, BLOQUANT) : la vitesse générique en descente est plafonnée à `GENERIC_DOWNHILL_SPEED_CAP_RATIO` (1.3×) la référence plate — garde-fou instauré avec l'ancien modèle de Minetti (jusqu'à 2× la vitesse plate), que Kay (≈ 1,23× au plus) n'atteint plus en pratique — ET, si au moins une descente personnelle est connue, jamais au-delà de la plus rapide d'entre elles : le modèle générique, tiré de coureurs entraînés, reste généreux en descente pour la plupart des athlètes (`arc_gap.ASSUMPTIONS['model']`), une descente mesurée est un repère plus fiable — voir `_generic_downhill_cap`.",
           "slope_model_grade_bins": "Paniers de pente de 2.5 points de pourcentage, CENTRÉS SUR 0 (le panier « -1.2/+1.2% » contient le plat exact, jamais scindé en deux paniers dont aucun n'est réellement le plat), jusqu'à environ ±31 % (arrondi au panier supérieur, voir `_grade_bins`), plus deux paniers ouverts au-delà — voir GRADE_BINS. Beaucoup plus fins que les classes de montée/descente déjà affichées (arc_climb.GRADE_CLASSES, arc_descent.DESCENT_GRADE_CLASSES), qui servent un affichage synthétique, pas l'ajustement d'une courbe.",
           "slope_model_interpolation": "`predict_speed` interpole linéairement entre les vitesses des DEUX paniers dont le POINT MILIEU encadre la pente demandée (jamais une simple table de paliers, qui produirait des discontinuités à chaque frontière de panier) ; au-delà du point milieu du panier extrême (queue ouverte), la valeur est prolongée à PLAT (jamais une extrapolation polynomiale hors de tout point mesuré), signalé par `reason_code='extrapolated'` (informatif, `speed_ms` reste renseignée). Le point milieu d'un panier ouvert est un point d'ancrage NOMINAL (une demi-largeur de panier au-delà de sa borne fermée), pas une pente réellement typique de la queue. `source: 'mixed'` (vraie interpolation entre un panier personnel et un panier générique) met `hr_bpm`/`ci_low_speed_ms`/`ci_high_speed_ms` à `None` : interpoler une FC ou un IQR entre deux provenances différentes ne produirait un nombre qui n'a de sens dans AUCUNE des deux, jamais affiché comme une mesure.",
           "slope_model_population": "Par défaut (band='endurance'), une ACTIVITÉ ENTIÈRE (jamais un sous-ensemble de ses échantillons) est retenue par DEUX règles, dans cet ordre (2ᵉ revue de code #58, should-fix) : 1) si une séance planifiée existe pour la même date/famille de sport (`planned_session.intensity`), elle tranche seule — 'recovery'/'endurance' inclut, 'tempo' ou plus dur exclut, sans jamais regarder la FC (le plan porte l'intention réelle de la séance) ; 2) sans plan, repli sur deux bornes FC (65 % du temps au moins sous le seuil facile/modéré de Seiler ET 10 % au plus au-dessus du seuil modéré/difficile, arc_metrics.seiler_bounds, #43) — volontairement plus lâche qu'un seuil unique, qui rejetait à tort des sorties vallonnées réellement faciles dont une part du temps tombe en zone modérée à cause du seul relief (voir Seiler & Kjerland, 2006, Scand J Med Sci Sports 16:49-56, sur la distinction entre l'objectif d'une séance et le simple temps passé en zone). Sélection au niveau de l'ACTIVITÉ, jamais de l'échantillon individuel (revue de code #58, BLOQUANT) : filtrer chaque échantillon par sa propre FC introduirait un biais de sélection sur les montées, où la FC monte avec un retard physiologique sur l'effort. `selected_by` (dict {'plan': n, 'hr': n}) compte les activités RETENUES par méthode. band='all' lève cette restriction (tous efforts, famille course à pied) — à lire comme « comment je bouge sur cette pente », jamais comme une allure d'endurance. Sans plan ET sans seuils FC résolus, band='endurance' ne peut classer aucune activité (reason_code='no_hr_threshold').",
@@ -1589,7 +1589,7 @@
           "vam_gap_segmentation": "Une montée n'est JAMAIS détectée ni fusionnée à travers un trou de signal (montre en veille, perte GPS/altimètre — 30 s, même segmentation que le GAP/#44, `arc_elevation.segments_by_gap`) : deux morceaux de montée de part et d'autre d'une pause totale du capteur ne sont jamais recollés, même s'ils appartiennent visuellement à la même vraie montée — mieux vaut deux montées détectées séparément qu'une VAM faussée par un temps écoulé qui inclurait une pause dont la durée réelle est inconnue. Conséquence assumée : une montée coupée en deux par un trou de signal peut voir chacune de ses deux moitiés ÉCHOUER individuellement le filtre de D+/pente minimal (ASSUMPTIONS[\"detection\"]) alors que la montée entière, reconstituée, l'aurait franchi — deux montées manquées valent mieux qu'une VAM silencieusement faussée par une pause de durée inconnue.",
           "vam_grade_classes": "Classes de pente moyenne (par montée) : <5%, 5-10%, 10-15%, 15-20%, >20% — la borne basse de la première classe non triviale (5-10%) coïncide avec `MIN_CLIMB_AVG_GRADE`, donc une montée tout juste détectée n'est jamais classée « <5 % » (ce libellé ne peut apparaître que si le seuil de détection est abaissé manuellement). Classement par montée, jamais par échantillon isolé : une montée fusionnée avec un replat interne garde une seule classe, celle de sa pente moyenne globale. La pente est ARRONDIE (0,1 point de pourcentage, la même précision que l'affichage) avant classement — une valeur brute juste sous une borne (ex. 9,98 %) qui s'affiche arrondie à « 10,0 % » doit tomber dans la classe « 10-15 % », pas dans « 5-10 % », pour ne jamais afficher un pourcentage et une classe visuellement incohérents. Classes en valeur absolue, symétriques : #47 (descente) pourra les réutiliser telles quelles pour ses propres classes de pente descendante si besoin — aucune classe dédiée à la descente n'est définie ici, ce choix reviendra à #47.",
           "vam_merge": "Deux montées (déjà rognées, voir ASSUMPTIONS[\"trim\"]) consécutives séparées par un creux (replat, faux plat, courte descente) sont fusionnées en une seule si CE creux perd moins que le seuil applicable — le plus GRAND de 10 m (plancher absolu) et 12.5 % du plus petit des deux gains adjacents (`MERGE_DIP_RELATIVE_FRAC`) — sur moins de 200 m de distance horizontale (plancher ABSOLU — voir plus bas pour la marge de bruit qui s'y ajoute) : même un creux minuscule sur un long plateau de plusieurs centaines de mètres n'est jamais une simple respiration au milieu d'une montée continue. Le plancher de PERTE purement absolu (revue de code #46) coupait à tort une grosse montée alpine en plusieurs tronçons dès qu'un creux de 15 m interrompait ses 800 m de D+ — anecdotique à cette échelle, mais dépassant le plancher fixe de 10 m ; le seuil relatif corrige ce cas sans changer le comportement sur une montée trail modeste (où le plancher absolu reste généralement le plus grand des deux). Sans fusion, une montée réelle avec un replat au milieu (très courant en trail : plateau avant un dernier raidillon) serait artificiellement coupée en plusieurs montées plus courtes, chacune sous-estimant le vrai effort ascensionnel continu perçu par le coureur.\n\nMARGE DE BRUIT sur le seuil de DISTANCE (200 m, `_merge_climbs`, `noise_tol_m`) — revue de code #46, 3e passe, should-fix 1, corrigeant une régression introduite par le rognage adaptatif au bruit (ASSUMPTIONS[\"trim\"]) : un rognage plus large (bruit plus fort) déplace aussi le bord de CHAQUE montée d'environ `noise_tol_m` en altitude, donc d'environ `noise_tol_m / pente` en distance — deux bords, d'où une marge de `2 × noise_tol_m / pente_la_plus_faible_des_deux_montées`, plafonnée à 50 % de `MERGE_MAX_DIP_DIST_M` pour qu'une montée à pente proche du seuil minimal (`MIN_CLIMB_AVG_GRADE`) ne fasse pas diverger la marge. Sans cette correction, la distance de creux MESURÉE entre deux montées était élargie par le rognage adaptatif lui-même : mesuré sur un scénario de test dédié (montée alpine à deux creux de 15 m), 17 tirages sur 20 à σ ≈ 2 m de bruit scindaient À TORT la montée en 2 ou 3, contre un comportement stable (toujours fusionnée) avec la marge — #49 (progression sur une même montée) a besoin d'une identification de montée stable d'une exécution à l'autre pour la même séance.",
-          "vam_model": "VAM (Vitesse Ascensionnelle Moyenne) = gain d'altitude (m) / durée (h), sur une montée détectée. Terminologie d'origine cycliste, souvent associée informellement au préparateur Michele Ferrari dans la culture du cyclisme — AUCUNE publication vérifiable identifiée pour cette attribution précise, mentionnée uniquement comme repère historique, jamais comme une source citée. Le calcul lui-même (une division) n'est pas un modèle propriétaire : rien à approximer ni à reproduire, à la différence du GAP (arc_gap.py, Minetti et al. 2002).",
+          "vam_model": "VAM (Vitesse Ascensionnelle Moyenne) = gain d'altitude (m) / durée (h), sur une montée détectée. Terminologie d'origine cycliste, souvent associée informellement au préparateur Michele Ferrari dans la culture du cyclisme — AUCUNE publication vérifiable identifiée pour cette attribution précise, mentionnée uniquement comme repère historique, jamais comme une source citée. Le calcul lui-même (une division) n'est pas un modèle propriétaire : rien à approximer ni à reproduire, à la différence du GAP (arc_gap.py, Kay 2012).",
           "vam_restricted_to_run_family": "Calculé UNIQUEMENT pour les séances de la famille course à pied (arc_metrics.sport_family == \"run\" : course, trail, randonnée, marche) avec des échantillons FIT ingérés — la randonnée et la marche (power-hiking) y ont toute leur place : la VAM en montée est un indicateur trail/montagne classique aussi bien en courant qu'en marchant vite.",
           "vam_trim": "BLOQUANT (revue de code #46) : un extremum du zigzag peut se retrouver TRÈS loin de la vraie montée quand une longue approche plate (ou un long replat de sortie) ne crée elle-même aucun extremum — ex. 3 km plats + 100 m de montée + 3 km plats : le « creux » retenu par le zigzag reste au tout début des 3 km plats (rien n'y dépasse le seuil de bruit), ce qui dilue artificiellement la distance et donc la pente moyenne calculée (montée non détectée du tout, ou VAM faussée). `_trim_rise` corrige cela EN ROGNANT chaque montée brute AVANT toute fusion : sur l'intervalle du zigzag brut, le début est déplacé au DERNIER point encore à `tol` du minimum de l'intervalle, et la fin au PREMIER point déjà à `tol` du maximum — ce qui élimine toute approche plate en amont et tout replat en aval, sans dépendre de la position réelle de l'extremum détecté par le zigzag. `tol` est un PLANCHER (2 m, `TRIM_TOLERANCE_M`), volontairement plus petit que `SWING_NOISE_FLOOR_M` (sert à coller au plus près du vrai bas/haut de la montée, pas à filtrer du bruit d'extrema, rôle déjà tenu par le zigzag) — MAIS élargi au bruit réellement mesuré (`max(TRIM_TOLERANCE_M, 3 × sigma_bruit)`, `_robust_noise_sigma`, estimateur MAD sur la dérivée seconde de l'altitude déjà lissée) si besoin (revue de code #46, 2e passe, should-fix 2) : un plancher fixe de 2 m rognerait BIEN TROP sur un signal plus bruité que le cas nominal (mesuré : jusqu'à 1 350 m de vraie montée perdus et -20 % de VAM à σ ≈ 2 m après lissage) — le seuil s'adapte donc au bruit réel de CHAQUE segment plutôt que de supposer un bruit nominal universel. Rogner AVANT la fusion (jamais après) est essentiel : c'est ce qui permet à `MERGE_MAX_DIP_DIST_M` de mesurer la VRAIE distance du replat entre deux montées plutôt qu'une distance gonflée par des bouts de plat encore attachés aux deux montées.\n\nSECONDE LIMITE, également BLOQUANTE et corrigée en 2e passe de revue : un plateau interne SANS aucune vraie retombée d'altitude ≥ `SWING_NOISE_FLOOR_M` (ex. un plateau parfaitement plat, ou un faux plat de seulement quelques mètres sur plusieurs kilomètres) ne crée JAMAIS d'extremum au zigzag — deux montées séparées par un tel plateau restaient donc, avant cette correction, une SEULE montée brute continue, même sur un plateau de plusieurs kilomètres (le rognage seul coupe les DEUX EXTRÉMITÉS d'une montée brute, jamais un plateau interne). `_split_flat_plateaus` corrige ce cas, sur la montée DÉJÀ ROGNÉE à ses extrémités : tout intervalle interne dont la PENTE MOYENNE (pas la simple variation absolue d'altitude — voir plus bas pourquoi) reste sous `PLATEAU_SPLIT_MAX_GRADE` (2 %) sur AU MOINS `MERGE_MAX_DIP_DIST_M` (200 m) de distance horizontale est retiré, coupant la montée en plusieurs morceaux — un tel plateau ne pourrait de toute façon jamais être fusionné ensuite (son étendue dépasse justement le seuil de fusion par distance). Un critère de PENTE (et non de variation absolue bornée par `TRIM_TOLERANCE_M`, comme le rognage lui-même) est nécessaire ici : un plateau de 2 km avec 3-4 m de faux plat dépasse la tolérance de rognage (2 m par défaut) mais reste à une pente dérisoire (0,15-0,2 %) — un critère absolu aurait soit raté ce cas, soit (avec un seuil plus généreux) redoublé le rognage déjà appliqué et rogné excessivement une vraie montée sans aucun plateau (bug corrigé lors de cette même revue : appliquer le rognage une SECONDE fois sur un segment déjà rogné, avec le même seuil, double-rogne d'environ `TRIM_TOLERANCE_M` de chaque côté). Ordre d'exécution donc IMPORTANT : rognage des extrémités D'ABORD, découpage des plateaux internes ENSUITE sur le résultat déjà rogné, puis un second rognage UNIQUEMENT sur les nouveaux morceaux effectivement produits par un découpage (jamais sur une montée que le découpage aurait laissée intacte, déjà rognée à l'étape précédente).\n\nMARGE DE BORD, documentée honnêtement : une fenêtre de découpage de longueur `MERGE_MAX_DIP_DIST_M` peut englober jusqu'à `PLATEAU_SPLIT_MAX_GRADE × MERGE_MAX_DIP_DIST_M / pente_réelle_de_la_montée` de VRAIE montée à son bord côté plateau (ex. à 10 % de pente réelle, jusqu'à 40 m de distance / 4 m de D+) avant que la fenêtre ne dépasse le seuil de pente et cesse d'être jugée « plate » — le D+ d'une montée immédiatement adjacente à un plateau découpé peut donc être conservativement sous-estimé de quelques mètres. La VAM, elle, reste exacte sur une pente constante (le rognage/découpage affecte gain ET distance dans la même proportion), donc bien plus fiable que le D+ absolu dans ce cas précis.\n\nLIMITES CONNUES SUPPLÉMENTAIRES, documentées honnêtement (revue de code #46, 3e passe, should-fix 2) : un tronçon dont la pente RÉELLE est très proche de `PLATEAU_SPLIT_MAX_GRADE` peut basculer d'un côté ou de l'autre du seuil selon le bruit du tirage — coupé (traité comme un plateau) sur une exécution, fusionné dans la montée sur une autre, sans que rien de mal ne se passe dans les deux cas (les deux comportements restent défendables pour un tronçon à la limite de ce qui compte comme « plat »), mais le résultat exact n'est pas garanti reproductible à 100 % d'une séance par ailleurs identique à l'autre en présence de bruit. De même, à un bruit important (σ ≥ 2 m environ après lissage), le début mesuré d'une montée peut occasionnellement glisser de quelques dizaines de mètres sur une approche plate malgré le rognage adaptatif (`TRIM_TOLERANCE_NOISE_K × sigma_bruit`) : la marge s'adapte à l'écart-type mesuré, pas à chaque tirage individuel, donc un tirage particulièrement défavorable peut ponctuellement dépasser la marge type. Aucun des deux cas n'a été observé produire un résultat GROSSIÈREMENT faux (montée manquée, fusion à tort) dans les tests de cette histoire ; seule la précision fine des bornes peut varier.",
           "vam_vam_basis": "DEUX VAM sont calculées et exposées pour chaque montée, jamais une seule : `vam_elapsed_m_h` (gain / durée ÉCOULÉE de la montée, arrêts compris — la définition usuelle, la plus simple à interpréter) et `vam_moving_m_h` (gain / durée de MOUVEMENT seulement, échantillons sous `arc_gap.STOPPED_SPEED_MS` exclus — insensible à une pause). Un long arrêt au milieu d'une montée (ravitaillement, photo) écrase `vam_elapsed_m_h` sans changer `vam_moving_m_h` : recommandation du projet — `vam_elapsed_m_h` reste la valeur mise en avant par défaut (c'est la question spontanée de l'athlète), `vam_moving_m_h` sert à comprendre un écart inattendu entre deux montées sinon comparables, jamais l'inverse (l'effort perçu du coureur inclut ses propres pauses, contrairement à un chronométrage de segment qui les exclurait).",
@@ -8049,93 +8049,93 @@
               {
                 "date": "2026-09-23",
                 "duration_s": 30,
-                "pace_s_km": 344.4126694603617,
+                "pace_s_km": 351.9615518796255,
                 "ref": 90000000039,
-                "speed_ms": 2.9034936536069837
+                "speed_ms": 2.8412194305303275
               },
               {
                 "date": "2026-09-23",
                 "duration_s": 60,
-                "pace_s_km": 344.44112057116376,
+                "pace_s_km": 351.98279096218454,
                 "ref": 90000000039,
-                "speed_ms": 2.9032538227194435
+                "speed_ms": 2.841047987790504
               },
               {
                 "date": "2026-09-23",
                 "duration_s": 120,
-                "pace_s_km": 344.44112057116376,
+                "pace_s_km": 351.98279096219017,
                 "ref": 90000000039,
-                "speed_ms": 2.9032538227194435
+                "speed_ms": 2.841047987790459
               },
               {
                 "date": "2026-09-23",
                 "duration_s": 180,
-                "pace_s_km": 344.44428265495475,
+                "pace_s_km": 351.98515184963287,
                 "ref": 90000000039,
-                "speed_ms": 2.9032271701305743
+                "speed_ms": 2.841028931888574
               },
               {
                 "date": "2026-09-23",
                 "duration_s": 300,
-                "pace_s_km": 344.4468123637896,
+                "pace_s_km": 351.9870405823909,
                 "ref": 90000000039,
-                "speed_ms": 2.903205848059479
+                "speed_ms": 2.8410136871670604
               },
               {
                 "date": "2026-09-23",
                 "duration_s": 480,
-                "pace_s_km": 344.4458637186221,
+                "pace_s_km": 351.9863323052325,
                 "ref": 90000000039,
-                "speed_ms": 2.9032138438361397
+                "speed_ms": 2.841019403937618
               },
               {
                 "date": "2026-09-23",
                 "duration_s": 600,
-                "pace_s_km": 344.4477607625838,
+                "pace_s_km": 351.98774848837917,
                 "ref": 90000000039,
-                "speed_ms": 2.903197854403432
+                "speed_ms": 2.841007973415344
               },
               {
                 "date": "2026-09-23",
                 "duration_s": 720,
-                "pace_s_km": 344.44823492200646,
+                "pace_s_km": 351.9881023801035,
                 "ref": 90000000039,
-                "speed_ms": 2.903193857928842
+                "speed_ms": 2.8410051170426325
               },
               {
                 "date": "2026-09-23",
                 "duration_s": 900,
-                "pace_s_km": 346.63159683677736,
+                "pace_s_km": 353.5709210599452,
                 "ref": 90000000039,
-                "speed_ms": 2.884907230401394
+                "speed_ms": 2.8282868879662697
               },
               {
                 "date": "2026-09-23",
                 "duration_s": 1200,
-                "pace_s_km": 352.2763576934306,
+                "pace_s_km": 357.62627002683496,
                 "ref": 90000000039,
-                "speed_ms": 2.838680422801046
+                "speed_ms": 2.796215165974702
               },
               {
                 "date": "2026-09-23",
                 "duration_s": 1800,
-                "pace_s_km": 363.1583360946322,
+                "pace_s_km": 365.103135264722,
                 "ref": 90000000039,
-                "speed_ms": 2.7536198418406093
+                "speed_ms": 2.7389521026022936
               },
               {
                 "date": "2026-09-23",
                 "duration_s": 2700,
-                "pace_s_km": 361.6097271488836,
+                "pace_s_km": 363.9042114024377,
                 "ref": 90000000039,
-                "speed_ms": 2.7654123352391884
+                "speed_ms": 2.7479758921891424
               },
               {
                 "date": "2026-09-23",
                 "duration_s": 3600,
-                "pace_s_km": 367.417372371402,
+                "pace_s_km": 367.88573395759573,
                 "ref": 90000000039,
-                "speed_ms": 2.721700374551574
+                "speed_ms": 2.718235331504496
               }
             ],
             "fit": {
@@ -8155,93 +8155,93 @@
               {
                 "date": "2026-09-23",
                 "duration_s": 30,
-                "pace_s_km": 344.4126694603617,
+                "pace_s_km": 351.9615518796255,
                 "ref": 90000000039,
-                "speed_ms": 2.9034936536069837
+                "speed_ms": 2.8412194305303275
               },
               {
                 "date": "2026-09-23",
                 "duration_s": 60,
-                "pace_s_km": 344.44112057116376,
+                "pace_s_km": 351.98279096218454,
                 "ref": 90000000039,
-                "speed_ms": 2.9032538227194435
+                "speed_ms": 2.841047987790504
               },
               {
                 "date": "2026-09-23",
                 "duration_s": 120,
-                "pace_s_km": 344.44112057116376,
+                "pace_s_km": 351.98279096219017,
                 "ref": 90000000039,
-                "speed_ms": 2.9032538227194435
+                "speed_ms": 2.841047987790459
               },
               {
                 "date": "2026-09-23",
                 "duration_s": 180,
-                "pace_s_km": 344.44428265495475,
+                "pace_s_km": 351.98515184963287,
                 "ref": 90000000039,
-                "speed_ms": 2.9032271701305743
+                "speed_ms": 2.841028931888574
               },
               {
                 "date": "2026-09-23",
                 "duration_s": 300,
-                "pace_s_km": 344.4468123637896,
+                "pace_s_km": 351.9870405823909,
                 "ref": 90000000039,
-                "speed_ms": 2.903205848059479
+                "speed_ms": 2.8410136871670604
               },
               {
                 "date": "2026-09-23",
                 "duration_s": 480,
-                "pace_s_km": 344.4458637186221,
+                "pace_s_km": 351.9863323052325,
                 "ref": 90000000039,
-                "speed_ms": 2.9032138438361397
+                "speed_ms": 2.841019403937618
               },
               {
                 "date": "2026-09-23",
                 "duration_s": 600,
-                "pace_s_km": 344.4477607625838,
+                "pace_s_km": 351.98774848837917,
                 "ref": 90000000039,
-                "speed_ms": 2.903197854403432
+                "speed_ms": 2.841007973415344
               },
               {
                 "date": "2026-09-23",
                 "duration_s": 720,
-                "pace_s_km": 344.44823492200646,
+                "pace_s_km": 351.9881023801035,
                 "ref": 90000000039,
-                "speed_ms": 2.903193857928842
+                "speed_ms": 2.8410051170426325
               },
               {
                 "date": "2026-09-23",
                 "duration_s": 900,
-                "pace_s_km": 346.63159683677736,
+                "pace_s_km": 353.5709210599452,
                 "ref": 90000000039,
-                "speed_ms": 2.884907230401394
+                "speed_ms": 2.8282868879662697
               },
               {
                 "date": "2026-09-23",
                 "duration_s": 1200,
-                "pace_s_km": 352.2763576934306,
+                "pace_s_km": 357.62627002683496,
                 "ref": 90000000039,
-                "speed_ms": 2.838680422801046
+                "speed_ms": 2.796215165974702
               },
               {
                 "date": "2026-09-23",
                 "duration_s": 1800,
-                "pace_s_km": 363.1583360946322,
+                "pace_s_km": 365.103135264722,
                 "ref": 90000000039,
-                "speed_ms": 2.7536198418406093
+                "speed_ms": 2.7389521026022936
               },
               {
                 "date": "2026-09-23",
                 "duration_s": 2700,
-                "pace_s_km": 361.6097271488836,
+                "pace_s_km": 363.9042114024377,
                 "ref": 90000000039,
-                "speed_ms": 2.7654123352391884
+                "speed_ms": 2.7479758921891424
               },
               {
                 "date": "2026-09-23",
                 "duration_s": 3600,
-                "pace_s_km": 367.417372371402,
+                "pace_s_km": 367.88573395759573,
                 "ref": 90000000039,
-                "speed_ms": 2.721700374551574
+                "speed_ms": 2.718235331504496
               }
             ],
             "fit": {
@@ -8261,93 +8261,93 @@
               {
                 "date": "2026-09-23",
                 "duration_s": 30,
-                "pace_s_km": 344.4126694603617,
+                "pace_s_km": 351.9615518796255,
                 "ref": 90000000039,
-                "speed_ms": 2.9034936536069837
+                "speed_ms": 2.8412194305303275
               },
               {
                 "date": "2026-09-23",
                 "duration_s": 60,
-                "pace_s_km": 344.44112057116376,
+                "pace_s_km": 351.98279096218454,
                 "ref": 90000000039,
-                "speed_ms": 2.9032538227194435
+                "speed_ms": 2.841047987790504
               },
               {
                 "date": "2026-09-23",
                 "duration_s": 120,
-                "pace_s_km": 344.44112057116376,
+                "pace_s_km": 351.98279096219017,
                 "ref": 90000000039,
-                "speed_ms": 2.9032538227194435
+                "speed_ms": 2.841047987790459
               },
               {
                 "date": "2026-09-23",
                 "duration_s": 180,
-                "pace_s_km": 344.44428265495475,
+                "pace_s_km": 351.98515184963287,
                 "ref": 90000000039,
-                "speed_ms": 2.9032271701305743
+                "speed_ms": 2.841028931888574
               },
               {
                 "date": "2026-09-23",
                 "duration_s": 300,
-                "pace_s_km": 344.4468123637896,
+                "pace_s_km": 351.9870405823909,
                 "ref": 90000000039,
-                "speed_ms": 2.903205848059479
+                "speed_ms": 2.8410136871670604
               },
               {
                 "date": "2026-09-23",
                 "duration_s": 480,
-                "pace_s_km": 344.4458637186221,
+                "pace_s_km": 351.9863323052325,
                 "ref": 90000000039,
-                "speed_ms": 2.9032138438361397
+                "speed_ms": 2.841019403937618
               },
               {
                 "date": "2026-09-23",
                 "duration_s": 600,
-                "pace_s_km": 344.4477607625838,
+                "pace_s_km": 351.98774848837917,
                 "ref": 90000000039,
-                "speed_ms": 2.903197854403432
+                "speed_ms": 2.841007973415344
               },
               {
                 "date": "2026-09-23",
                 "duration_s": 720,
-                "pace_s_km": 344.44823492200646,
+                "pace_s_km": 351.9881023801035,
                 "ref": 90000000039,
-                "speed_ms": 2.903193857928842
+                "speed_ms": 2.8410051170426325
               },
               {
                 "date": "2026-09-23",
                 "duration_s": 900,
-                "pace_s_km": 346.63159683677736,
+                "pace_s_km": 353.5709210599452,
                 "ref": 90000000039,
-                "speed_ms": 2.884907230401394
+                "speed_ms": 2.8282868879662697
               },
               {
                 "date": "2026-09-23",
                 "duration_s": 1200,
-                "pace_s_km": 352.2763576934306,
+                "pace_s_km": 357.62627002683496,
                 "ref": 90000000039,
-                "speed_ms": 2.838680422801046
+                "speed_ms": 2.796215165974702
               },
               {
                 "date": "2026-09-23",
                 "duration_s": 1800,
-                "pace_s_km": 363.1583360946322,
+                "pace_s_km": 365.103135264722,
                 "ref": 90000000039,
-                "speed_ms": 2.7536198418406093
+                "speed_ms": 2.7389521026022936
               },
               {
                 "date": "2026-09-23",
                 "duration_s": 2700,
-                "pace_s_km": 361.6097271488836,
+                "pace_s_km": 363.9042114024377,
                 "ref": 90000000039,
-                "speed_ms": 2.7654123352391884
+                "speed_ms": 2.7479758921891424
               },
               {
                 "date": "2026-09-23",
                 "duration_s": 3600,
-                "pace_s_km": 367.417372371402,
+                "pace_s_km": 367.88573395759573,
                 "ref": 90000000039,
-                "speed_ms": 2.721700374551574
+                "speed_ms": 2.718235331504496
               }
             ],
             "fit": {

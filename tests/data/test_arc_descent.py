@@ -267,12 +267,12 @@ class TestDescentReportEfficiencyEqualsOneOnARealFlatPlusDescentRoute(unittest.T
     référence est calculée par le VRAI pipeline (`descent_report` ->
     `reference_gap_speed_ms`) à partir d'un tronçon plat séparé, et la vitesse
     de descente est choisie pour correspondre exactement à la prédiction du
-    modèle à partir de CETTE référence — `v_flat × C(0)/C(pente)`."""
+    modèle à partir de CETTE référence — `v_flat / gap_factor(pente)`."""
 
     def test_descent_at_the_models_predicted_speed_scores_close_to_one(self):
         grade = -0.12
         v_flat = 2.7
-        predicted_descent_speed = v_flat * G.MINETTI_FLAT_COST / G.minetti_cost(grade)
+        predicted_descent_speed = v_flat / G.gap_factor(grade)
         samples = _flat_then_descent_samples(descent_duration_s=300, grade=grade,
                                               speed_ms=predicted_descent_speed,
                                               flat_duration_s=360, flat_speed_ms=v_flat)

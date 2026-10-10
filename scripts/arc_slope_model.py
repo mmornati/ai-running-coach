@@ -4,9 +4,9 @@
 
 ## Pourquoi (vs le GAP générique de #44)
 
-Le GAP (`arc_gap.py`, #44) applique à TOUS les athlètes le même modèle de
-laboratoire (Minetti et al. 2002) : allure ajustée = allure mesurée ×
-coût(pente)/coût(plat). C'est une approximation raisonnable en l'absence de
+Le GAP (`arc_gap.py`, #44) applique à TOUS les athlètes le même modèle
+générique (Kay 2012, records de course) : allure ajustée = allure mesurée ×
+p(pente)/p(plat). C'est une approximation raisonnable en l'absence de
 données individuelles, mais un athlète réel a sa PROPRE courbe pente -> allure
 (foulée, technique de descente, habitude du power-hiking en côte, etc.) — que
 seule son historique de séances peut révéler. Ce module ajuste cette courbe
@@ -151,21 +151,23 @@ résumés (un par séance par panier, un ordre de grandeur negligeable même sur
 découplage/la durabilité de la même activité, jamais un second calcul de
 pente).
 
-## Repli — modèle générique (Minetti, #44) quand l'historique manque
+## Repli — modèle générique (Kay, #44) quand l'historique manque
 
 Un panier sans assez de données personnelles (`MIN_BIN_TIME_S`/
 `MIN_BIN_ACTIVITIES`) retombe sur le modèle générique de #44 : allure prédite
 = référence plate personnelle (médiane des paniers proches de 0 %, EUX-MÊMES
 personnels ; à défaut, aucune prédiction générique n'est possible — voir
-`reason_code="no_flat_reference"`) × coût(0)/coût(pente) — l'inverse de la
+`reason_code="no_flat_reference"`) ÷ `arc_gap.gap_factor(pente)` — l'inverse de la
 formule GAP (`arc_gap.gap_speed_ms`), puisqu'on VEUT ici l'allure brute
 prédite à effort constant, pas l'allure ajustée à plat. `source: "generic"`
 marque explicitement ce repli, jamais confondu avec une donnée personnelle.
-En DESCENTE, cette inversion amplifie le biais connu de Minetti en forte
-descente (`arc_gap.ASSUMPTIONS["model"]`) jusqu'à des vitesses non plausibles
-(revue de code #58, BLOQUANT) : plafonnée à `GENERIC_DOWNHILL_SPEED_CAP_RATIO`
-(1,3×) la référence plate, et jamais au-delà de la descente personnelle la
-plus rapide connue quand il en existe une — voir `_generic_downhill_cap`.
+En DESCENTE, la vitesse générique reste plafonnée (revue de code #58,
+BLOQUANT, à l'époque du modèle de Minetti qui prédisait jusqu'à 2× la vitesse
+plate) : `GENERIC_DOWNHILL_SPEED_CAP_RATIO` (1,3×) la référence plate — garde-fou
+que Kay (gain maximal ≈ 1,23×) n'atteint plus en pratique — et jamais au-delà
+de la descente personnelle la plus rapide connue quand il en existe une, ce qui
+reste utile : le modèle générique est généreux en descente pour la plupart des
+athlètes (`arc_gap.ASSUMPTIONS["model"]`) — voir `_generic_downhill_cap`.
 
 ## Lissage — léger, jamais forcé à la monotonie
 
@@ -174,8 +176,8 @@ Après le calcul par panier (personnel ou générique), un lissage à 3 points
 suite ordonnée des vitesses prédites — pour atténuer le bruit d'échantillonnage
 entre paniers voisins peu fréquentés, RIEN de plus : la monotonie n'est PAS
 forcée (une descente peut légitimement ralentir au-delà d'un certain point,
-voir `arc_gap.ASSUMPTIONS["model"]` sur le biais connu de Minetti en forte
-descente) — forcer une courbe monotone effacerait ce signal réel. `source`
+voir `arc_gap.ASSUMPTIONS["model"]` : le modèle générique lui-même ralentit
+au-delà de -10 %) — forcer une courbe monotone effacerait ce signal réel. `source`
 par panier reste celui du panier D'ORIGINE (personnel ou générique) même après
 lissage : le lissage change la valeur affichée, jamais l'étiquette de
 provenance.
@@ -294,8 +296,8 @@ ACTIVITY_BIN_TIME_WEIGHT_CAP_S = 600.0
 
 # Plafond de vitesse du repli générique en DESCENTE (revue de code #58,
 # BLOQUANT) : coefficient maximal appliqué à la référence plate personnelle —
-# voir ASSUMPTIONS['fallback'] pour la justification complète (biais connu de
-# Minetti en forte descente, `arc_gap.ASSUMPTIONS["model"]`).
+# voir ASSUMPTIONS['fallback'] pour la justification complète. Instauré quand le repli
+# était Minetti (jusqu'à 2× la vitesse plate) ; Kay (≈ 1,23× au plus) ne l'atteint plus.
 GENERIC_DOWNHILL_SPEED_CAP_RATIO = 1.3
 
 
@@ -397,20 +399,20 @@ ASSUMPTIONS = {
     "fallback": (
         "Un panier sans assez de données personnelles "
         f"(< {MIN_BIN_TIME_S:.0f} s de temps pondéré cumulé OU < {MIN_BIN_ACTIVITIES} séances distinctes) "
-        "retombe sur le modèle générique de Minetti et al. 2002 (#44, `arc_gap.minetti_cost`) appliqué à la "
-        "référence plate PERSONNELLE de l'athlète (médiane des paniers personnels proches de 0 %) : allure "
-        "prédite = référence plate x coût(0)/coût(pente) — l'inverse de la formule GAP, puisqu'on veut ici "
+        "retombe sur le modèle générique de Kay 2012 (#44, `arc_gap.gap_factor`, le même que le GAP) appliqué "
+        "à la référence plate PERSONNELLE de l'athlète (médiane des paniers personnels proches de 0 %) : allure "
+        "prédite = référence plate x p(pente)/p0 — l'inverse de la formule GAP, puisqu'on veut ici "
         "l'allure brute prédite à effort constant, pas l'allure ajustée à plat. `source: 'generic'` marque "
         "ce repli. Sans référence plate personnelle du tout, aucune prédiction générique n'est possible "
         "(reason_code='no_flat_reference') : le modèle générique a lui-même besoin d'un point d'ancrage "
         "personnel, il n'invente jamais une vitesse plate par défaut. PLAFOND DE DESCENTE (revue de code "
-        "#58, BLOQUANT) : inverser la formule GAP pour PRÉDIRE une vitesse brute (plutôt que l'appliquer à "
-        "une vitesse déjà mesurée, comme le fait #44) amplifie le biais connu de Minetti en forte descente "
-        "(`arc_gap.ASSUMPTIONS['model']`) jusqu'à des vitesses non plausibles (le coût prédit peut s'effondrer "
-        f"avant le plafonnage de pente de `arc_gap.CLAMP_GRADE`) : la vitesse générique en descente est donc "
-        f"plafonnée à `GENERIC_DOWNHILL_SPEED_CAP_RATIO` ({GENERIC_DOWNHILL_SPEED_CAP_RATIO:.1f}×) la référence "
-        "plate, ET, si au moins une descente personnelle est connue, jamais au-delà de la plus rapide d'entre "
-        "elles (repère mesuré, plus fiable que le plafond générique) — voir `_generic_downhill_cap`."
+        "#58, BLOQUANT) : la vitesse générique en descente est plafonnée à "
+        f"`GENERIC_DOWNHILL_SPEED_CAP_RATIO` ({GENERIC_DOWNHILL_SPEED_CAP_RATIO:.1f}×) la référence plate — "
+        "garde-fou instauré avec l'ancien modèle de Minetti (jusqu'à 2× la vitesse plate), que Kay (≈ 1,23× au "
+        "plus) n'atteint plus en pratique — ET, si au moins une descente personnelle est connue, jamais au-delà "
+        "de la plus rapide d'entre elles : le modèle générique, tiré de coureurs entraînés, reste généreux en "
+        "descente pour la plupart des athlètes (`arc_gap.ASSUMPTIONS['model']`), une descente mesurée est un "
+        "repère plus fiable — voir `_generic_downhill_cap`."
     ),
     "smoothing": (
         f"Lissage à 3 points ({SMOOTH_WEIGHTS[0]:.2f}/{SMOOTH_WEIGHTS[1]:.2f}/{SMOOTH_WEIGHTS[2]:.2f}, "
@@ -733,14 +735,10 @@ def _flat_reference(combined: Dict[str, dict]) -> Tuple[Optional[float], Optiona
 
 def _generic_downhill_cap(mid: float, flat_speed: float, personal_downhill_speeds: Sequence[float]) -> float:
     """Plafond de vitesse du repli générique sur un panier de DESCENTE (`mid`
-    < 0) — revue de code #58, BLOQUANT : le modèle de Minetti, inversé pour
-    PRÉDIRE une vitesse brute à partir d'une référence plate (voir
-    ASSUMPTIONS['fallback']), diverge en forte descente bien au-delà de
-    vitesses plausibles (le coût métabolique prédit peut devenir très faible
-    voire proche de zéro avant le plafonnage de pente de `arc_gap.CLAMP_GRADE`,
-    donnant un rapport coût(0)/coût(pente) énorme) — voir
-    `arc_gap.ASSUMPTIONS["model"]` sur le biais CONNU de Minetti en forte
-    descente. Le plafond retenu (`GENERIC_DOWNHILL_SPEED_CAP_RATIO`, 1,3× la
+    < 0) — revue de code #58, BLOQUANT, à l'époque où le repli était le modèle
+    de Minetti, qui prédisait en forte descente jusqu'à 2× la vitesse plate. Le
+    modèle de Kay (`arc_gap.gap_factor`, ≈ 1,23× au plus) ne l'atteint plus, mais
+    le garde-fou reste. Le plafond retenu (`GENERIC_DOWNHILL_SPEED_CAP_RATIO`, 1,3× la
     référence plate) est un jugement d'ingénierie, pas une valeur mesurée ; en
     présence de descentes PERSONNELLES connues, le plafond ne dépasse en plus
     JAMAIS la plus rapide d'entre elles (une descente personnelle plus lente
@@ -754,7 +752,7 @@ def _generic_downhill_cap(mid: float, flat_speed: float, personal_downhill_speed
 def apply_fallback_and_smoothing(combined: Dict[str, dict], *,
                                   min_bin_time_s: float = MIN_BIN_TIME_S,
                                   min_activities: int = MIN_BIN_ACTIVITIES) -> dict:
-    """Repli générique (Minetti) + lissage léger — voir ASSUMPTIONS['fallback']/
+    """Repli générique (Kay, `arc_gap.gap_factor`) + lissage léger — voir ASSUMPTIONS['fallback']/
     ['smoothing']. Rend `{"bins": [...], "flat_reference_speed_ms", "reason",
     "reason_code"}` — `reason_code="no_flat_reference"` et `bins: []` si même le
     repli générique est impossible (aucune donnée plate personnelle du tout)."""
@@ -790,15 +788,15 @@ def apply_fallback_and_smoothing(combined: Dict[str, dict], *,
                 "source": "generic", "n_samples": 0, "n_activities": 0, "effective_time_s": 0.0,
                 "run_share": None,
             })
-    # Repli générique (Minetti), calculé APRÈS avoir connu toutes les vitesses
+    # Repli générique (`arc_gap.gap_factor`, la même courbe que la GAP), calculé APRÈS avoir connu toutes les vitesses
     # personnelles (nécessaire au plafond de descente ci-dessous, voir
     # `_generic_downhill_cap` — ASSUMPTIONS['fallback'], BLOQUANT).
     personal_downhill_speeds = [b["speed_ms"] for b in raw if b["source"] == "personal" and b["grade_mid"] < 0]
     for b in raw:
         if b["source"] != "generic":
             continue
-        cost = G.minetti_cost(b["grade_mid"])
-        speed = flat_speed * (G.MINETTI_FLAT_COST / cost) if cost else None
+        factor = G.gap_factor(b["grade_mid"])
+        speed = flat_speed / factor if factor else None
         if speed is not None and b["grade_mid"] < 0:
             speed = min(speed, _generic_downhill_cap(b["grade_mid"], flat_speed, personal_downhill_speeds))
         b["speed_ms"] = speed
@@ -806,7 +804,7 @@ def apply_fallback_and_smoothing(combined: Dict[str, dict], *,
     # `source`/`hr_bpm`/`ci_*` (repère de provenance et de dispersion inchangés).
     # RESTREINT AUX VOISINS DE MÊME PROVENANCE (revue de code #58, BLOQUANT) :
     # lisser un panier PERSONNEL avec un voisin GÉNÉRIQUE (potentiellement très
-    # éloigné, voir le biais de Minetti ci-dessus) contaminait une donnée
+    # éloigné en descente, voir ASSUMPTIONS['fallback']) contaminait une donnée
     # mesurée avec un repli théorique — un panier personnel isolé entre deux
     # génériques n'est donc PAS lissé du tout (reste sa propre valeur brute),
     # jamais tiré vers le générique voisin.

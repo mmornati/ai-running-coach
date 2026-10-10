@@ -93,6 +93,7 @@ nav:
       - Derrière un reverse proxy (Docker): dashboard/docker.md
       - Le chat avec le coach: dashboard/chat.md
   - Dépense énergétique modèle: energie.md
+  - Allure ajustée à la pente (GAP): gap.md
   - Vitesse critique et courbe allure-durée: vitesse-critique.md
   - Renforcement et mobilité: strength.md
   - Agents:

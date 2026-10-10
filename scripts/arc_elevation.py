@@ -35,9 +35,9 @@ GPS glitché — traité comme non exploitable, jamais comme une pente nulle).
 
 ## Robustesse au bruit — pourquoi l'agrégat compte, pas l'échantillon isolé
 
-Le modèle de coût énergétique utilisé en aval (Minetti, `arc_gap.py`) est très
-sensible près du plat (dérivée `dC/di` en `i=0` ≈ 19,5 J/kg/m par unité de
-pente) : un bruit de pente de quelques % sur un SEUL échantillon peut changer
+Le modèle de pente utilisé en aval (Kay 2012, `arc_gap.py`) est très
+sensible près du plat (dérivée relative en `m=0` ≈ 3,6 par unité de
+pente, soit environ +3,6 % d'allure par point de pente) : un bruit de pente de quelques % sur un SEUL échantillon peut changer
 sa vitesse GAP instantanée de plusieurs %. Mais ce bruit est proche de
 moyenne nulle sur une séance entière : agrégé (moyenne pondérée par le temps
 sur un split ou une séance), l'erreur résiduelle est du second ordre
@@ -84,7 +84,7 @@ ASSUMPTIONS = {
         "bornes de SON segment."
     ),
     "noise_robustness": (
-        "Le modèle de coût énergétique en aval (Minetti, `arc_gap.py`) est sensible près du "
+        "Le modèle de pente en aval (Kay 2012, `arc_gap.py`) est sensible près du "
         "plat : un bruit de pente de quelques % sur un SEUL échantillon peut changer sa "
         "vitesse GAP instantanée de plusieurs %. Agrégé (moyenne pondérée par le temps sur un "
         "split ou une séance entière), l'erreur résiduelle est du second ordre et négligeable "

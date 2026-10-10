@@ -101,9 +101,9 @@ WARMUP_S = 10 * 60.0
 MIN_HALF_MOVING_S = 10 * 60.0
 
 # Pentes fortes exclues du calcul d'EF ET de la détection d'effort stable
-# (#45, revue de code) : au-delà d'environ 12 %, le modèle de Minetti (#44)
-# est moins fiable (voir `arc_gap.ASSUMPTIONS["model"]`, sous-estimation du
-# coût réel des fortes descentes) et ces portions sont, de toute façon, le
+# (#45, revue de code) : au-delà d'environ 12 %, le modèle de pente (#44)
+# est moins fiable (voir `arc_gap.ASSUMPTIONS["model"]`, généreux en descente,
+# vérifié sur données réelles seulement jusqu'à ~12 %) et ces portions sont, de toute façon, le
 # plus souvent marchées plutôt que courues — les mélanger à l'EF d'une
 # séance de course fausserait la comparaison entre moitiés bien plus qu'elle
 # ne l'éclairerait. Un profil résiduellement asymétrique entre les deux
@@ -115,8 +115,8 @@ STEEP_GRADE_FRACTION = 0.12
 
 # Vitesse en dessous de laquelle un échantillon est traité comme de la marche
 # ou du power-hiking plutôt que de la course (#45, revue de code) : régime
-# physiologique différent (économie de marche, pas le modèle de course de
-# Minetti), exclu de l'EF et de la détection d'effort stable pour la même
+# physiologique différent (économie de marche, pas le modèle de pente de la
+# course), exclu de l'EF et de la détection d'effort stable pour la même
 # raison que les pentes fortes ci-dessus — PAS de la séance dans son
 # ensemble (voir ASSUMPTIONS["steep_grade_and_walking"] pour ce que cela
 # implique sur un ultra couru en run/walk). Plus haut que
@@ -216,7 +216,7 @@ ASSUMPTIONS = {
         f"Les échantillons de pente forte (au-delà de ±{STEEP_GRADE_FRACTION * 100:.0f} %) et de marche/"
         f"power-hiking (vitesse sous {WALKING_SPEED_MS:.1f} m/s) sont exclus du calcul de l'EF ET de la "
         "détection d'effort stable, dans les DEUX moitiés — jamais de la séance dans son ensemble (elle "
-        "reste éligible si le reste suffit). Au-delà du seuil de pente, le modèle de Minetti (#44) est "
+        "reste éligible si le reste suffit). Au-delà du seuil de pente, le modèle de pente (#44) est "
         "moins fiable (voir arc_gap.ASSUMPTIONS) et ces portions sont le plus souvent marchées ; les "
         "mélanger à l'EF de la course fausserait la comparaison entre moitiés. Conséquence assumée pour "
         "un ultra couru en run/walk : le découplage porte alors UNIQUEMENT sur les portions courues, "
@@ -253,8 +253,8 @@ ASSUMPTIONS = {
         f"Si la pente moyenne (pondérée par le temps, sur les échantillons utilisés pour l'EF) diffère "
         f"de plus de {GRADE_ASYMMETRY_MAX * 100:.0f} points entre les deux moitiés (ex. un aller-retour "
         "avec la montée dans une moitié et la descente dans l'autre), l'activité est jugée inéligible : "
-        "le GAP corrige l'effet de la pente sur l'allure, mais pas parfaitement (biais connu du modèle "
-        "de Minetti en forte descente, arc_gap.ASSUMPTIONS) — un profil trop différent entre les deux "
+        "le GAP corrige l'effet de la pente sur l'allure, mais pas parfaitement (modèle de pente "
+        "généreux en descente, arc_gap.ASSUMPTIONS) — un profil trop différent entre les deux "
         "moitiés peut donc produire un découplage mesuré qui reflète surtout le relief, pas une vraie "
         "dérive cardiaque."
     ),

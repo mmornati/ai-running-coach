@@ -2136,14 +2136,14 @@ async function viewClimbSegment(id) {
  * pour un parcours sans descente qualifiante — contrairement aux montées
  * (`climbsSection`), l'absence de classe est ici TOUJOURS documentée (jamais un
  * état muet, voir `arc_descent.descent_report`). L'indicateur d'efficacité est
- * un RATIO à l'athlète lui-même (via le modèle de Minetti), pas une note
+ * un RATIO à l'athlète lui-même (via le modèle de pente de Kay), pas une note
  * absolue — un rappel explicite de cette lecture accompagne le tableau (voir
  * `arc_descent.ASSUMPTIONS["indicator"]`). */
 // Même ordre que `arc_descent.DESCENT_GRADE_CLASSES` (Python) — dupliqué ici
 // volontairement (pas de dépendance runtime entre le serveur Python et le JS
 // statique, même motif que `GRADE_CLASS_ORDER` ci-dessus) : à tenir à jour si
 // `DESCENT_GRADE_CLASSES` change côté serveur. Scindé au-delà de -20 % (revue de
-// code #47) : le coût de Minetti n'est pas monotone en descente (voir
+// code #47) : le modèle de pente n'est pas monotone en descente (voir
 // `arc_descent.ASSUMPTIONS["grade_classes"]`).
 const DESCENT_GRADE_CLASS_ORDER = ["-5 à -10 %", "-10 à -15 %", "-15 à -20 %", "-20 à -30 %", "< -30 %"];
 const DESCENT_REFERENCE_SOURCE_LABEL = { flat: "sections plates de la séance", non_descent: "hors forte descente (repli)" };
@@ -2167,10 +2167,10 @@ function descentSection(descent) {
   const refSource = descent.reference_source ? DESCENT_REFERENCE_SOURCE_LABEL[descent.reference_source] : null;
   return `<section class="band"><h2>Efficacité en descente</h2>
     <p class="muted">Efficacité = moyenne, pondérée par le temps, du ratio vitesse en descente /
-      vitesse prédite par le modèle (Minetti) à partir de l'allure GAP de référence de la séance —
-      <strong>1,00×</strong> si l'effort métabolique reste constant. Le modèle SURESTIME le bénéfice
-      des fortes descentes en conditions réelles de trail : une valeur bien sous 1,00× sur les pentes
-      les plus raides est normale (prudence, terrain technique), pas un mauvais résultat. C'est sa
+      vitesse prédite par le modèle (Kay, records de course) à partir de l'allure GAP de référence de la
+      séance — <strong>1,00×</strong> = descendre comme un coureur de montagne entraîné. Le modèle est
+      généreux en descente pour la plupart des coureurs : une valeur sous 1,00× est fréquente (prudence,
+      terrain technique, marche), pas un mauvais résultat. C'est sa
       <strong>tendance dans le temps, à pente égale</strong>, qui compte — jamais une comparaison entre
       classes de pente différentes. ${hypLink("descente")}</p>
     <div class="table-wrap"><table class="data data--compact"><thead><tr>
@@ -2367,7 +2367,7 @@ function slopeGradeLabel(b) {
  * un graphique allure (F.paceFromSecPerKm, imperial-aware) vs pente, avec une
  * bande d'intervalle interquartile (repère de dispersion, pas un IC statistique
  * au sens strict — voir `arc_slope_model.ASSUMPTIONS['robust_stats']`) et une
- * courbe générique de comparaison (repli Minetti). Les DEUX courbes viennent
+ * courbe générique de comparaison (repli Kay). Les DEUX courbes viennent
  * directement de `b.pace_s_km` par panier, TELLES QUE `/api/slope-model` les
  * renvoie (déjà lissées avec leurs voisins de même provenance — voir
  * `arc_slope_model.ASSUMPTIONS['smoothing']`) : rien n'est recalculé côté
@@ -2475,13 +2475,13 @@ function slopeModelSection(model, band) {
     <p class="muted">Allure typique (médiane pondérée par le temps et la récence, demi-vie
       ${F.num(model.half_life_days, 0)} j) par classe de pente, sur les ${F.num(model.months)} derniers mois
       (${F.num(model.n_activities)} séance${model.n_activities > 1 ? "s" : ""}), bande <strong>${bandLabel}</strong>.
-      Repli sur le modèle générique (Minetti, trait pointillé) quand l'historique manque sur une classe.
+      Repli sur le modèle générique (Kay, trait pointillé) quand l'historique manque sur une classe.
       La bande grisée est un repère de dispersion (quartiles), pas un intervalle de confiance statistique.
       <a href="#/performance?bande=${other}">Voir la bande « ${otherLabel} »</a> ·
       ${hypLink("pente")}</p>
     <p class="legend"><span class="legend__item"><span class="key key--slope-band"></span>Dispersion (quartiles)</span>
       <span class="legend__item"><span class="key key--slope"></span>Personnel</span>
-      <span class="legend__item"><span class="key key--slope-generic"></span>Générique (Minetti)</span>
+      <span class="legend__item"><span class="key key--slope-generic"></span>Générique (Kay)</span>
       ${hasHr ? `<span class="legend__item"><span class="key key--slope-hr"></span>FC médiane</span>` : ""}</p>
     <div class="chart-host" id="c-slope">${chart.svg}</div><p class="readout" id="r-slope"></p>
     ${model.flat_reference_speed_ms ? `<p class="legend legend--small">Référence plate personnelle : ${F.paceFromSecPerKm(1000 / model.flat_reference_speed_ms)}</p>` : ""}</section>`;
@@ -2648,7 +2648,7 @@ const HYP_LABELS = {
   hr_zones: "Zones FC et polarisation 80/20", gait: "Synthèse « Foulée »",
   weight_merge: "Fusion des sources de poids", weight_trend: "Tendance du poids", sweat_rate: "Taux de sudation",
   fueling: "Glucides par heure", gear_mileage: "Kilométrage des chaussures", equipment_usage: "Matériel hors chaussures",
-  gear_inspection: "Inspection photo", model: "Modèle de Minetti", grade_source: "Calcul de la pente",
+  gear_inspection: "Inspection photo", model: "Modèle de pente (Kay)", grade_source: "Calcul de la pente",
   split_distance_default: "Split sans distance", noise_robustness: "Sensibilité au bruit de pente",
 };
 const HYP_SUFFIX = {
@@ -2773,7 +2773,7 @@ async function viewHypotheses(params) {
         return entries.length ? familyHtml(g, entries, needle, true) : "";
       }).join("");
       body.innerHTML = `<p class="results__sum" aria-live="polite"><strong>${F.num(shown)} hypothèse${shown > 1 ? "s" : ""}</strong> sur ${F.num(total)} contiennent « ${F.esc(needle)} »</p>`
-        + (html || empty("Aucune hypothèse ne contient ce terme", "Essayez un mot plus court, ou le nom d'un modèle (Banister, Minetti, Daniels…)."));
+        + (html || empty("Aucune hypothèse ne contient ce terme", "Essayez un mot plus court, ou le nom d'un modèle (Banister, Kay, Daniels…)."));
       qs.set("q", st.q);
     } else {
       const i = groups.findIndex((g) => g.id === st.fam);
@@ -3392,10 +3392,10 @@ function descentTrendSection(trend, weeks, selectedClass) {
     `<span class="legend__item">${F.esc(cls)} : ${F.efficiency(classes[cls].avg_efficiency)} <small class="muted">(${classes[cls].count})</small></span>`
   ).join(" · ");
   const html = `<section class="band"><h2>Efficacité en descente</h2>
-    <p class="muted">Vitesse en descente comparée à celle prédite par le modèle de Minetti à partir de
-      l'allure GAP de référence de la séance (<strong>1,00×</strong> = effort métabolique constant,
-      repère pointillé). Le modèle surestime le bénéfice des fortes descentes en conditions réelles de
-      trail : une valeur sous 1,00× sur les pentes les plus raides est normale, pas un mauvais résultat —
+    <p class="muted">Vitesse en descente comparée à celle prédite par le modèle de pente (Kay, records
+      de course) à partir de l'allure GAP de référence de la séance (<strong>1,00×</strong> = descendre
+      comme un coureur de montagne entraîné, repère pointillé). Le modèle est généreux en descente pour
+      la plupart des coureurs : une valeur sous 1,00× est fréquente, pas un mauvais résultat —
       seule la <strong>tendance, à pente égale</strong>, est exploitable : une classe de pente ne se
       compare JAMAIS à une autre. ${hypLink("descente")}</p>
     <div class="toolbar">${selector}</div>

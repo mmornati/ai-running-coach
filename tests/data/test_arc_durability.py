@@ -197,8 +197,7 @@ class TestGradeAsymmetry(unittest.TestCase):
                 grade = grade3
             else:
                 grade = 0.0
-            cost = G.minetti_cost(grade)
-            speed = target_gap * G.MINETTI_FLAT_COST / cost
+            speed = target_gap / G.gap_factor(grade)
             distance += speed
             altitude += speed * grade
             records.append({"t_s": t, "distance_m": round(distance, 2), "altitude_m": round(altitude, 2),
