@@ -40,6 +40,8 @@ laboratoire.
 
 - `minetti_cost(grade)` : coût C(i) après clamp — seule fonction que #58
   pourrait un jour remplacer par un modèle personnel pente → allure appris.
+- `gap_factor(grade)` : rapport C(pente)/C(0) d'un point (colonne `gf` de la trace de la
+  page séance, `arc_index.track`, qui en tire le mode « GAP » de la carte).
 - `gap_speed_ms(speed_ms, grade)` : vitesse GAP d'un point.
 - `gap_sample_series(samples, ...)` : `samples` (normalisés, triés ou non) →
   copie triée par `t_s`, augmentée de `"grade"` (`arc_elevation.grade_series`)
@@ -160,16 +162,21 @@ def minetti_cost(grade: Optional[float]) -> Optional[float]:
     return c5 * i**5 + c4 * i**4 + c3 * i**3 + c2 * i**2 + c1 * i + c0
 
 
+def gap_factor(grade: Optional[float]) -> Optional[float]:
+    """Rapport C(pente)/C(0) : vitesse GAP = vitesse mesurée × ce facteur, allure GAP =
+    allure mesurée ÷ ce facteur. `None` si la pente est inconnue."""
+    cost = minetti_cost(grade)
+    return None if cost is None else cost / MINETTI_FLAT_COST
+
+
 def gap_speed_ms(speed_ms: Optional[float], grade: Optional[float]) -> Optional[float]:
     """Vitesse « allure ajustée à la pente » : vitesse mesurée × C(pente)/C(0).
     `None` si la vitesse ou la pente sont inconnues (jamais une vitesse
     inventée)."""
-    if speed_ms is None or grade is None:
+    if speed_ms is None:
         return None
-    cost = minetti_cost(grade)
-    if cost is None:
-        return None
-    return speed_ms * (cost / MINETTI_FLAT_COST)
+    factor = gap_factor(grade)
+    return None if factor is None else speed_ms * factor
 
 
 def gap_sample_series(samples: Sequence[dict], *, window_m: float = E.DEFAULT_GRADE_WINDOW_M,

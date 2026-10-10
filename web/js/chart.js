@@ -23,6 +23,15 @@ function niceTicks(min, max, count = 4) {
   return { lo, hi, ticks };
 }
 
+/** Graduations multiples de `step` couvrant [min, max]. */
+function stepTicks(min, max, step) {
+  const lo = Math.floor(min / step) * step;
+  const hi = Math.ceil(max / step) * step;
+  const ticks = [];
+  for (let v = lo; v <= hi + step / 2; v += step) ticks.push(Math.round(v * 1000) / 1000);
+  return { lo, hi, ticks };
+}
+
 function pathFrom(points) {
   let d = "";
   let pen = false;
@@ -97,7 +106,9 @@ export function timeChart(dates, layers, marks = [], opts = {}) {
     let max = o.max ?? Math.max(...vals);
     if (o.zero) { min = Math.min(0, min); max = Math.max(0, max); }
     if (!Number.isFinite(min) || !Number.isFinite(max)) { min = 0; max = 1; }
-    const t = niceTicks(min, max, o.ticks || 4);
+    // `o.step` : pas imposé (ex. allure en minutes, où les pas décimaux 1/2/5 de
+    // `niceTicks` tombent mal) ; sinon pas « rond » choisi par `niceTicks`.
+    const t = o.step ? stepTicks(min, max, o.step) : niceTicks(min, max, o.ticks || 4);
     const lo = o.min ?? t.lo;
     const hi = o.max ?? t.hi;
     // `o.invert` (défaut absent = comportement inchangé) : la petite valeur en haut,

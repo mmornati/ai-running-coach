@@ -1012,7 +1012,10 @@ def _window_values(by_date: Dict[str, float], day: date, days: int, end_offset: 
 
 
 def _mean(values: List[float]) -> float:
-    return sum(values) / len(values)
+    # `math.fsum` (somme exacte) et non `sum` : Python 3.12 a changé `sum` sur les
+    # flottants (sommation compensée), ce qui fait basculer les arrondis `x.x5` selon
+    # la version — golden instables entre 3.10 en local et 3.12 en CI (#227).
+    return math.fsum(values) / len(values)
 
 
 def _population_sd(values: List[float], mean: float) -> float:

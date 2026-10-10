@@ -12,11 +12,16 @@ from __future__ import annotations
 import datetime
 import json
 import re
+import sys
+from pathlib import Path
 
-from tests.install.test_dashboard import Server
-from tests.lib.sandbox import Sandbox
-from tests.lib.asserts import InstallAsserts
-from tests.lib.synthetic import build
+sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "scripts"))
+
+import arc_gap as G  # noqa: E402
+from tests.install.test_dashboard import Server  # noqa: E402
+from tests.lib.sandbox import Sandbox  # noqa: E402
+from tests.lib.asserts import InstallAsserts  # noqa: E402
+from tests.lib.synthetic import build  # noqa: E402
 
 TODAY = "2026-09-26"
 
@@ -93,6 +98,19 @@ class TestActivityTrackApi(_TrackSandbox):
         self.assertLess(lat0, lat1)
         self.assertLess(lon0, lon1)
         self.assertTrue(-46.0 <= lat0 <= -34.0)
+
+    def test_track_carries_gap_factor_for_run_family(self):
+        """`gf` = C(pente)/C(0) (`arc_gap.gap_factor`) aligné sur les autres colonnes — la carte
+        en tire son mode « GAP ». Le profil de `_write_fit` monte de 1 m tous les 15 m (6,7 %) puis
+        retombe d'un coup : en pleine montée, le facteur est celui de cette pente."""
+        track = json.loads(self.server.get(f"/api/activity/{self._activity_id_for(self.gps_id)}/track")[1])
+        self.assertEqual(len(track["gf"]), track["points"])
+        known = [v for v in track["gf"] if v is not None]
+        self.assertGreater(len(known), track["points"] // 2)
+        expected = G.gap_factor(1 / 15)
+        self.assertGreater(expected, 1.0)
+        close = [v for v in known if abs(v - expected) < 0.01]
+        self.assertGreater(len(close), len(known) // 2)
 
     def test_track_is_capped_and_keeps_the_finish(self):
         aid = self._activity_id_for(self.long_id)

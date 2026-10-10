@@ -2430,6 +2430,17 @@ _TRACK_COLUMNS = (("d", "distance_m", 1), ("t", "t_s", 0), ("lat", "lat", 6), ("
                   ("cad", "cadence_spm", 0))
 
 
+def _track_gap_factors(rows) -> List[Optional[float]]:
+    """Facteur de pente GAP (`arc_gap.gap_factor`) de chaque échantillon de `rows`, dans le même
+    ordre — pente de `arc_gap.gap_sample_series`, la même que l'allure GAP de la séance."""
+    samples = [{"_i": i, "t_s": r["t_s"], "distance_m": r["distance_m"], "altitude_m": r["altitude_m"],
+                "speed_ms": r["speed_ms"]} for i, r in enumerate(rows)]
+    factors: List[Optional[float]] = [None] * len(rows)
+    for s in G.gap_sample_series(samples):
+        factors[s["_i"]] = G.gap_factor(s["grade"])
+    return factors
+
+
 def track(conn, activity_id: int, max_points: int = TRACK_MAX_POINTS) -> Optional[dict]:
     """Trace d'une séance pour la carte et les graphiques liés de la page séance —
     `/api/activity/<id>/track`. `None` si l'activité n'existe pas.
@@ -2440,9 +2451,14 @@ def track(conn, activity_id: int, max_points: int = TRACK_MAX_POINTS) -> Optiona
     l'arrivée). `reason_code` : `no_samples` (aucun FIT ingéré), `no_gps` (échantillons sans
     position — tapis, home trainer : les graphiques restent possibles, pas la carte).
 
+    Famille course à pied seulement : `gf`, facteur de pente C(pente)/C(0) de chaque point
+    (`arc_gap.gap_factor`, pente calculée sur TOUS les échantillons avant l'échantillonnage,
+    exactement comme l'allure GAP de la séance) — le navigateur en tire l'allure ajustée à la
+    pente de la carte (allure ÷ facteur moyen de la fenêtre) sans seconde copie du modèle.
+
     Seule route qui expose des coordonnées GPS, voir `arc_climb_match.ASSUMPTIONS["privacy"]`."""
-    row = conn.execute("SELECT garmin_activity_id, intervals_activity_id, strava_activity_id FROM activity WHERE id = ?",
-                       (activity_id,)).fetchone()
+    row = conn.execute("SELECT sport, garmin_activity_id, intervals_activity_id, strava_activity_id FROM activity "
+                       "WHERE id = ?", (activity_id,)).fetchone()
     if row is None:
         return None
     ref = activity_ref(row)
@@ -2452,11 +2468,15 @@ def track(conn, activity_id: int, max_points: int = TRACK_MAX_POINTS) -> Optiona
     if not rows:
         return {"reason_code": "no_samples", "points": 0}
     step = max(1, -(-len(rows) // max(2, max_points)))   # plafond de la division
-    kept = rows[::step]
-    if kept[-1] is not rows[-1]:
-        kept.append(rows[-1])
+    picked = list(range(0, len(rows), step))
+    if picked[-1] != len(rows) - 1:
+        picked.append(len(rows) - 1)
+    kept = [rows[i] for i in picked]
     out: Dict[str, Any] = {key: [None if r[col] is None else round(r[col], digits) for r in kept]
                            for key, col, digits in _TRACK_COLUMNS}
+    if M.sport_family(row["sport"]) == "run":
+        factors = _track_gap_factors(rows)
+        out["gf"] = [None if factors[i] is None else round(factors[i], 3) for i in picked]
     out["points"] = len(kept)
     fixes = [(la, lo) for la, lo in zip(out["lat"], out["lon"]) if la is not None and lo is not None]
     out["has_gps"] = bool(fixes)
