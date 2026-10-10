@@ -227,8 +227,8 @@ synchronisés par Intervals.icu viennent de sa
 | Pixel Watch / Fitbit | `strava` (à confirmer : non vérifié, approximation du projet) | Open Wearables **prévu** (#216) | l'ancienne API Fitbit s'arrête le 30 octobre 2026 ([Google](https://developers.google.com/health/about), relue le 10 octobre 2026) ; la lecture Pixel Watch / Fitbit passe par l'API Google Health (`google-api-integration.mdx` d'Open Wearables) |
 | Ultrahuman, Withings | — | Open Wearables **prévu** (#216) | `ultrahuman-api-integration.mdx`, `withings-api-integration.mdx` d'Open Wearables ; aucun chemin d'entraînement identifié |
 
-« **Prévu** » = décrit dans l'épopée #216 mais **pas encore livré** : aucune clé
-`[health].source` n'existe à ce jour. Détail des capacités et limites de chaque
+« **Prévu** » = décrit dans l'épopée #216 mais **pas encore livré** : la clé
+`[health].source` existe (#218), mais la lecture Open Wearables n'est pas encore livrée. Détail des capacités et limites de chaque
 fournisseur : [Open Wearables (audit)](open-wearables.md).
 
 ## La source de données — `[data].source` (#68)
