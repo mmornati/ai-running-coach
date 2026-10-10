@@ -54,6 +54,7 @@ const SERIES = [
   { n: 16, dir: "allure-juste", docs: "vitesse-critique/", fr: "L'allure juste", en: "The honest pace" },
   { n: 17, dir: "avant-apres", docs: "skills/why/", fr: "Avant, après", en: "Before and after" },
   { n: 18, dir: "sans-terminal", docs: "macos/", fr: "Sans terminal", en: "No terminal needed" },
+  { n: 19, dir: "home-trainer", docs: "skills/mywhoosh-route/", fr: "Le home trainer, à votre mesure", en: "The home trainer, sized to you" },
 ];
 
 const UI = {

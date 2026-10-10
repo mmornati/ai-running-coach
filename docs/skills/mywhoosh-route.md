@@ -2,6 +2,24 @@
 
 > **Description** : propose un parcours MyWhoosh (free ride) **qui tient dans la durée** d'une séance home trainer planifiée, à la puissance que vous tenez réellement dans la plage de fréquence cardiaque de la séance.
 
+<!-- arc-video:home-trainer -->
+<div class="arc-video-card" markdown>
+
+[![Le home trainer, à votre mesure](../video/home-trainer/poster.jpg)](../video/home-trainer/index.html)
+
+<div markdown>
+
+<span class="arc-video__meta">En vidéo · Étape 19 · 1 min 27</span>
+
+**[Le home trainer, à votre mesure](../video/home-trainer/index.html)** — Un parcours MyWhoosh qui tient dans la durée de la séance : puissance calibrée sur vos propres séances, catalogue des parcours, modèle de temps à ±10 %, nom du parcours sur la montre, calendrier MyWhoosh proposé, carte Home trainer du tableau de bord.
+
+[Regarder](../video/home-trainer/index.html) · [English](../video/home-trainer/index.html?lang=en) · [Toutes les vidéos](../videos.md)
+
+</div>
+
+</div>
+<!-- /arc-video -->
+
 ## Pourquoi ce skill existe
 
 Une séance « home trainer Z2 70 min » laisse un choix : quel parcours rouler ? Trop court, on tourne en rond ; trop long, on ne le finit pas ; trop vallonné, la FC sort de la zone. Ce skill croise trois choses :

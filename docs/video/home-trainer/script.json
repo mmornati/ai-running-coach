@@ -1,0 +1,128 @@
+{
+  "title": {
+    "fr": "Le home trainer, à votre mesure",
+    "en": "The home trainer, sized to you"
+  },
+  "summary": {
+    "fr": "Un parcours MyWhoosh qui tient dans la durée de la séance : puissance calibrée sur vos propres séances, catalogue des parcours, modèle de temps à ±10 %, nom du parcours sur la montre, calendrier MyWhoosh proposé, carte Home trainer du tableau de bord."
+  },
+  "poster": 2.8,
+  "scenes": [
+    {
+      "id": "bib",
+      "min": 4.6,
+      "lead": 1.2,
+      "fr": [
+        "Étape dix-neuf : le home trainer, à votre mesure."
+      ],
+      "en": [
+        "Stage nineteen: the home trainer, sized to you."
+      ]
+    },
+    {
+      "id": "watts",
+      "min": 12,
+      "chapter": {
+        "fr": "Vos watts",
+        "en": "Your watts"
+      },
+      "fr": [
+        "Il pleut : Camille roulera soixante-dix minutes à la maison, en zone deux. Mais combien de watts, en zone deux ?",
+        "Le coach le calcule sur ses propres fichiers FIT : la puissance face à la fréquence cardiaque, séance après séance. Environ cent quarante watts. Une estimation, pas un test."
+      ],
+      "en": [
+        "It's raining: Camille will ride seventy minutes at home, in zone two. But how many watts is zone two?",
+        "The coach works it out from her own FIT files: power against heart rate, ride after ride. About a hundred and forty watts. An estimate, not a test."
+      ]
+    },
+    {
+      "id": "catalogue",
+      "min": 10,
+      "chapter": {
+        "fr": "Les parcours",
+        "en": "The routes"
+      },
+      "fr": [
+        "Cent seize parcours MyWhoosh, récupérés une fois avec son compte : distance, dénivelé, difficulté, boucle ou point à point.",
+        "Le mot de passe se tape dans un terminal. Jamais dans le chat."
+      ],
+      "en": [
+        "A hundred and sixteen MyWhoosh routes, fetched once with her account: distance, climbing, difficulty, loop or point to point.",
+        "The password is typed in a terminal. Never in the chat."
+      ]
+    },
+    {
+      "id": "fit",
+      "min": 13,
+      "chapter": {
+        "fr": "Le bon parcours",
+        "en": "The right route"
+      },
+      "fr": [
+        "Le modèle calcule le temps de chaque parcours à sa puissance, avec son poids et celui du vélo.",
+        "Trop court, trop long, trop raide pour de l'endurance : écartés. Limmat Loop, deux tours : une heure dix, à dix pour cent près."
+      ],
+      "en": [
+        "The model works out each route's time at her power, with her weight and the bike's.",
+        "Too short, too long, too steep for an endurance ride: out. Limmat Loop, two laps: one hour ten, give or take ten percent."
+      ]
+    },
+    {
+      "id": "watch",
+      "min": 11,
+      "chapter": {
+        "fr": "Sur la montre",
+        "en": "On the watch"
+      },
+      "fr": [
+        "Le parcours part sur la montre, dans le nom de la séance, et dans la semaine.",
+        "La cible reste la fréquence cardiaque. Si elle monte, on baisse les watts, quitte à ne pas finir le tour."
+      ],
+      "en": [
+        "The route goes to the watch, in the workout name, and into the week.",
+        "The target stays heart rate. If it climbs, ease off the watts, even if the lap goes unfinished."
+      ]
+    },
+    {
+      "id": "calendar",
+      "min": 9,
+      "chapter": {
+        "fr": "Le calendrier",
+        "en": "The calendar"
+      },
+      "fr": [
+        "L'inscrire aussi au calendrier MyWhoosh ? Le coach le propose, montre ce qu'il va écrire, et attend un oui. Jamais en mode automatique."
+      ],
+      "en": [
+        "Add it to the MyWhoosh calendar too? The coach offers, shows what it will write, and waits for a yes. Never in automatic mode."
+      ]
+    },
+    {
+      "id": "card",
+      "min": 10,
+      "chapter": {
+        "fr": "Le tableau de bord",
+        "en": "The dashboard"
+      },
+      "fr": [
+        "Dans la vue Matériel, la carte Home trainer : le matériel déclaré, les watts par zone, et les dernières séances avec puissance.",
+        "Le tout reste désactivé tant que vous ne l'activez pas."
+      ],
+      "en": [
+        "In the Gear view, the Home trainer card: the declared equipment, the watts per zone, and the latest rides with power.",
+        "All of it stays off until you switch it on."
+      ]
+    },
+    {
+      "id": "finish",
+      "min": 6,
+      "lead": 2.2,
+      "fr": [
+        "Pour aller plus loin : la page « Parcours MyWhoosh » de la documentation."
+      ],
+      "en": [
+        "To go further: the “MyWhoosh routes” page of the documentation."
+      ]
+    }
+  ]
+}
