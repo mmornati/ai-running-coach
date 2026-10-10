@@ -180,6 +180,8 @@ C'est une **proposition** : un *dry run* par défaut, rien n'est écrit sans
 python3 scripts/arc_index.py plan-skeleton --text                      # gabarit choisi d'après l'objectif actif
 python3 scripts/arc_index.py plan-skeleton --format ultra_80_100 --race-date 2027-02-14
 python3 scripts/arc_index.py plan-skeleton --held-hours 5 --held-elevation-m 1200   # volume déclaré
+python3 scripts/arc_index.py plan-skeleton --lead-in-weeks 2           # 2 semaines de mise en route prises au gabarit
+python3 scripts/arc_index.py plan-skeleton --lead-in flat              # mise en route au volume tenu (comportement #190)
 python3 scripts/arc_index.py plan-skeleton --write                     # écrit planning/Semaine_<lundi>.md
 ```
 
@@ -203,13 +205,15 @@ jours disponibles — pas des séances : le coach les habille.
   dérivé est sous le pic indicatif du gabarit, un avertissement le dit (d'abord
   une mise en route qui fait réellement monter le volume tenu, puis relancer
   `plan-skeleton`, ou un objectif revu — jamais un gabarit étiré). Un plafond
-  d'heures du profil ramène le pic à ce plafond, et le dit.
+  d'heures du profil ramène le pic à ce plafond, et le dit. Après une mise en
+  route en rampe, le « volume tenu » de cette règle est le volume **atteint**
+  en fin de mise en route (voir plus bas).
 - **Trop court** (moins de semaines que le minimum du gabarit) :
   `status: "too_short"`, aucune semaine, options explicites (format plus court,
   date de course au plus tôt, bloc sans gabarit). **Trop long** (plus que le
-  maximum) : des semaines de mise en route (`lead_in`) au volume tenu, avec une
-  semaine allégée tous les N, avant le gabarit. Elles ne font **pas** monter le
-  volume : le pic reste volume tenu × `peak_from_current`.
+  maximum) : des semaines de mise en route (`lead_in`), avec une semaine
+  allégée tous les N, avant le gabarit. Elles **font monter le volume** (#204,
+  voir [La mise en route qui construit](#la-mise-en-route-qui-construit)).
 - **Pas d'historique** (moins d'1 h par semaine) : `status: "no_history"` — le
   coach demande le volume actuel de l'athlète, jamais inventé.
 - **Départ** : le lundi de la semaine en cours si c'est aujourd'hui, sinon le
@@ -248,6 +252,69 @@ jours disponibles — pas des séances : le coach les habille.
 Les coefficients propres au squelette (poids des sorties faciles, durée du
 créneau de renforcement, séances par défaut…) sont des « approximations du
 projet », listés dans `ASSUMPTIONS` de `scripts/arc_plan_skeleton.py`.
+
+### La mise en route qui construit
+
+Un gabarit décrit la forme d'un bloc **à partir d'une base déjà construite** :
+il démarre à 83–92 % de son pic, et sa règle (pic = volume tenu ×
+`peak_from_current`) ne fait gagner qu’environ +9 à +21 % sur tout le bloc selon le format.
+Construire cette base est le rôle de la mise en route (#204).
+
+- **Quand** : les semaines au-delà du maximum du gabarit, ou
+  `--lead-in-weeks K` pour en prendre K au gabarit (qui raccourcit alors, sans
+  jamais descendre sous son minimum : la commande refuse et dit combien de
+  semaines restent possibles). Plus de semaines que demandé ? L'excédent
+  l'emporte.
+- **Comment** (`--lead-in ramp`, défaut) : chaque semaine pleine vise
+  **+4 %** face à la précédente, plafonnée **d'emblée** par le seuil R2 (durée)
+  et R3 (D+) face à la référence configurée (`mean4` ou `previous_week`), et par
+  le plafond d'heures du profil — une semaine plafonnée le dit. Une semaine
+  allégée tous les N (facteur du gabarit × la dernière semaine pleine), jamais
+  la dernière avant le gabarit. Chaque semaine repasse ensuite les garde-fous
+  comme les autres : aucune semaine `block` n'est émise.
+- **Puis** : le gabarit part du volume **atteint** en fin de mise en route
+  (`peak.base`, `peak.lead_in_gain_pct`) et le pic vaut ce volume ×
+  `peak_from_current` — la règle de #189 inchangée, appliquée à un volume tenu
+  plus haut.
+- **Ordres de grandeur** (seuil R2 par défaut, référence `mean4`) : environ
+  +8 % en 2 semaines, +16 % en 6, +28 % en 12. Une course à 18 semaines d'un
+  ultra (gabarit de 16 à 24 semaines) n'en laisse que 2 : la mise en route ne
+  remplace pas une base construite plus tôt.
+- **`--lead-in flat`** garde le comportement de #190 (mise en route au volume
+  tenu, pic inchangé).
+
+Le taux de +4 % est une approximation du projet (`LEAD_IN_RAMP_PCT`) ; les
+garde-fous restent la référence.
+
+### Le contrôle face aux exigences de la course (`race_demand`)
+
+Un squelette peut passer tous les garde-fous et rester très en dessous de ce
+que la course demande (une sortie longue de 2 h 40 pour un 85 km). Le
+squelette le **dit** : `race_demand` compare le bloc aux cibles du
+[score Trail Shape](agents/coach.md#score-trail-shape-63) — les mêmes
+fonctions, aucune seconde formule :
+
+| Composante | Squelette | Cible |
+|---|---|---|
+| Volume de la semaine pic | durée × allure tenue + D+/100 (km-effort) | `weekly_volume_target_km` (km-effort de la course) |
+| D+ de la semaine pic (trail) | D+ visé le plus haut | cible de km-effort × part du D+ dans l'effort de la course |
+| D+ max d'une séance (trail) | créneau le plus dénivelé | `min(50 % du D+ de la course, 2 500 m)` |
+| Plus longue sortie | sortie longue visée × allure tenue | `longest_run_target_m` (60 % de la distance, entre 30 et 60 km) |
+| Volume cible déclaré | pic (durée, distance) | « Volume hebdomadaire cible » de l'objectif actif, s'il est rempli |
+| Sortie longue / temps de course | part en % | information seulement, sans seuil (plan de course, sinon temps visé) |
+
+- Le D+ hebdomadaire n'ajoute aucun coefficient : la même densité de
+  dénivelé que la course (pour 85 km / 4 500 m, environ 2 400 m la semaine pic).
+- Le squelette se compte en durée : la distance vient de l'allure moyenne
+  **tenue**. Sans distance tenue (volume déclaré en heures seules), les
+  composantes en km sont dites **non évaluables**, jamais devinées ; de même
+  sans D+ de course, ou si l'objectif actif vise une autre date que
+  `--race-date`.
+- Sous **75 %** de la cible (approximation du projet, `DEMAND_WARN_RATIO`),
+  la composante est `short` et un avertissement l'explique, avec les options :
+  mise en route plus longue (`--lead-in-weeks`), course plus tardive, objectif
+  revu ou base construite d'abord. Le contrôle **n'écrit rien et ne modifie
+  aucune semaine** : jamais un garde-fou forcé pour combler l'écart.
 
 ## D'où viennent les chiffres
 

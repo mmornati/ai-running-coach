@@ -1,4 +1,4 @@
-"""Palier D — squelette de bloc (#190, `scripts/arc_plan_skeleton.py`).
+"""Palier D — squelette de bloc (#190, #204, `scripts/arc_plan_skeleton.py`).
 
 Volume tenu + objectif synthétiques → squelette qui respecte les proportions du gabarit (#189), passe
 `arc_guardrails.evaluate` semaine par semaine, gère `too_short` / mise en route / disponibilité, n'écrase
@@ -53,11 +53,11 @@ def race_after(weeks: int) -> date:
 
 
 def build(template=MARATHON, weeks=None, availability=AVAIL, held_=None, sport="trail", gconf=GCONF, today=TODAY,
-          context_factory=None, race=None):
+          context_factory=None, race=None, **kw):
     weeks = weeks or template["weeks"]["default"]
     return PS.build_skeleton(template=template, today=today, race_date=race or race_after(weeks),
                              held=held_ or held(), availability=availability, gconf=gconf,
-                             context_factory=context_factory or factory(sport), templates=TEMPLATES)
+                             context_factory=context_factory or factory(sport), templates=TEMPLATES, **kw)
 
 
 class TestProportions(unittest.TestCase):
@@ -222,9 +222,13 @@ class TestLengthCases(unittest.TestCase):
             self.assertEqual(sk["status"], "ok", n)
             self.assertEqual(sk["lead_in_weeks"], 0)
 
-    def test_lead_in_weeks_at_held_volume(self):
+    def test_flat_lead_in_weeks_at_held_volume(self):
+        """`--lead-in flat` : le comportement de #190 (mise en route au volume tenu), conservé en option (#204)."""
         n = MARATHON["weeks"]["max"] + 6
-        sk = build(MARATHON, weeks=n)
+        sk = build(MARATHON, weeks=n, lead_in="flat")
+        self.assertEqual(sk["lead_in"]["mode"], "flat")
+        self.assertEqual(sk["peak"]["base"]["source"], "held")
+        self.assertEqual(sk["peak"]["lead_in_gain_pct"], 0.0)
         self.assertEqual(sk["status"], "ok")
         self.assertEqual(sk["lead_in_weeks"], 6)
         lead = [w for w in sk["weeks"] if w["type"] in ("lead_in", "recovery") and w["week"] <= 6]
@@ -446,6 +450,14 @@ class TestWrite(unittest.TestCase):
             self.assertEqual(warnings, [], rel)
         self.assertEqual(PS.find_conflicts(self.tmp, self.sk).__len__(), len(self.sk["weeks"]))
 
+    def test_ramped_lead_in_weeks_are_written_and_validate(self):
+        """#204 : une semaine de mise en route en rampe n'a pas de % du pic ; son fichier s'écrit et se valide."""
+        sk = build(MARATHON, weeks=MARATHON["weeks"]["max"] + 2, held_=held(6, 1500, 50))
+        self.assertIsNone(sk["weeks"][0]["volume_pct_of_peak"])
+        self.assertIn("mise en route en rampe", PS.week_markdown(sk, sk["weeks"][0]))
+        out = PS.write_weeks(self.tmp, sk, I.validate_file)
+        self.assertEqual(len(out["written"]), len(sk["weeks"]))
+
     def test_never_overwrites_a_week_file(self):
         target = self.tmp / "planning" / f"Semaine_{self.sk['weeks'][3]['week_start']}.md"
         target.write_text("# à moi\n", encoding="utf-8")
@@ -481,7 +493,8 @@ def _write_arc(path: Path, data: dict):
     path.write_text(f"# T\n\n```arc\n{json.dumps({'arc': 1, **data}, ensure_ascii=False)}\n```\n\ntexte\n", encoding="utf-8")
 
 
-class TestCli(unittest.TestCase):
+class _CliWorkspace(unittest.TestCase):
+    """Workspace synthétique (historique trail, objectif 42 km, profil) pour les tests de la CLI."""
     RACE = race_after(MARATHON["weeks"]["default"]).isoformat()
 
     def setUp(self):
@@ -513,6 +526,8 @@ class TestCli(unittest.TestCase):
                                "--workspace", str(self.ws), "--today", TODAY.isoformat(), *args],
                               capture_output=True, text=True, timeout=300)
 
+
+class TestCli(_CliWorkspace):
     def test_dry_run_json_by_default_and_writes_nothing(self):
         proc = self._cli()
         self.assertEqual(proc.returncode, 0, proc.stderr)
@@ -611,6 +626,233 @@ class TestCli(unittest.TestCase):
         finally:
             conn.close()
         self.assertEqual(seen, [[TODAY.isoformat()]])
+
+
+# ---------------------------------------------------------------------------
+# #204 : mise en route qui fait monter le volume, contrôle face aux exigences de la course
+# ---------------------------------------------------------------------------
+
+import sqlite3  # noqa: E402
+
+import arc_trail_shape as TS  # noqa: E402
+
+ISSUE_HELD = dict(hours=7.0, elev=900.0, distance_km=56.0)           # scénario de l'issue #204
+ISSUE_OBJECTIVE = {"name": "Ultra", "distance_m": 85000.0, "elevation_gain_m": 4500.0}
+
+
+def _r2r3(week):
+    return [v for v in week["guardrails"]["violations"]
+            if v["rule_id"] in ("r2_weekly_volume_jump", "r3_weekly_elevation_jump")]
+
+
+class TestLeadInRamp(unittest.TestCase):
+    N = ULTRA["weeks"]["max"] + 6
+
+    def test_ramp_is_the_default_and_builds_the_volume(self):
+        sk = build(ULTRA, weeks=self.N, held_=held(**ISSUE_HELD))
+        flat = build(ULTRA, weeks=self.N, held_=held(**ISSUE_HELD), lead_in="flat")
+        self.assertEqual(sk["status"], "ok")
+        self.assertEqual(sk["lead_in"], {"mode": "ramp", "weeks": 6, "requested_weeks": None,
+                                         "ramp_pct": PS.LEAD_IN_RAMP_PCT})
+        lead = sk["weeks"][:6]
+        builds = [w["target_duration_s"] for w in lead if w["type"] == "lead_in"]
+        self.assertEqual(builds, sorted(builds))                       # jamais une baisse entre semaines pleines
+        self.assertGreater(builds[-1], 7 * 3600 * 1.08)
+        previous = 7 * 3600
+        for w in lead:
+            if w["type"] == "lead_in":
+                self.assertLessEqual(w["target_duration_s"], previous * (1 + PS.LEAD_IN_RAMP_PCT / 100) + PS.ROUND_S * 2)
+                previous = w["target_duration_s"]
+            else:                                                       # semaine allégée : facteur du gabarit
+                self.assertEqual(w["type"], "recovery")
+                self.assertAlmostEqual(w["target_duration_s"], previous * ULTRA["recovery_week"]["volume_factor"],
+                                       delta=PS.ROUND_S * 3)
+        self.assertNotEqual(lead[-1]["type"], "recovery")
+        # Le gabarit part du volume atteint : pic = dernière semaine de mise en route × facteur (#189 inchangé).
+        self.assertEqual(sk["peak"]["base"]["source"], "lead_in")
+        self.assertAlmostEqual(sk["peak"]["base"]["duration_s"], builds[-1], delta=1)
+        self.assertAlmostEqual(sk["peak"]["duration_s"], builds[-1] * sk["peak"]["volume_factor"], delta=2)
+        self.assertGreater(sk["peak"]["lead_in_gain_pct"], 10)
+        self.assertGreater(sk["peak"]["duration_s"], flat["peak"]["duration_s"] * 1.1)
+        self.assertIsNone(lead[0]["volume_pct_of_peak"])               # pas un pourcentage du pic : une rampe
+        self.assertTrue(sk["summary"]["block_free"])
+
+    def test_ramp_never_trips_r2_r3_with_either_reference(self):
+        for ref in ("mean4", "previous_week"):
+            gconf = G.guardrail_settings({"guardrails": {"r2_volume_reference": ref}})
+            sk = build(ULTRA, weeks=self.N, held_=held(**ISSUE_HELD), gconf=gconf)
+            self.assertEqual(sk["status"], "ok", ref)
+            self.assertTrue(sk["summary"]["block_free"], ref)
+            for w in sk["weeks"][:6]:
+                if ref == "mean4":
+                    self.assertEqual(_r2r3(w), [], (ref, w["week_start"]))
+                self.assertEqual(w["adjustments"], [], (ref, w["week_start"]))   # plafonnée d'emblée, jamais réduite après coup
+            flat = build(ULTRA, weeks=self.N, held_=held(**ISSUE_HELD), gconf=gconf, lead_in="flat")
+            self.assertGreater(sk["peak"]["duration_s"], flat["peak"]["duration_s"], ref)
+
+    def test_ramp_respects_the_profile_hour_ceiling(self):
+        avail = dict(AVAIL, max_weekly_s=int(7.2 * 3600))
+        sk = build(ULTRA, weeks=self.N, held_=held(**ISSUE_HELD), availability=avail)
+        for w in sk["weeks"]:
+            self.assertLessEqual(w["target_duration_s"], 7.2 * 3600 + PS.ROUND_S, w["week_start"])
+        self.assertTrue(any("plafond" in f for w in sk["weeks"][:6] for f in w["flags"]))
+
+    def test_ramp_is_deterministic(self):
+        a = build(ULTRA, weeks=self.N, held_=held(**ISSUE_HELD))
+        b = build(ULTRA, weeks=self.N, held_=held(**ISSUE_HELD))
+        self.assertEqual(json.dumps(a, sort_keys=True, default=str), json.dumps(b, sort_keys=True, default=str))
+
+    def test_no_lead_in_means_no_change(self):
+        """Sans semaine de mise en route, le squelette est celui de #190, quel que soit le mode."""
+        for n in (ULTRA["weeks"]["min"], 18, ULTRA["weeks"]["max"]):
+            a = build(ULTRA, weeks=n, held_=held(**ISSUE_HELD))
+            b = build(ULTRA, weeks=n, held_=held(**ISSUE_HELD), lead_in="flat")
+            self.assertEqual(a["lead_in_weeks"], 0)
+            self.assertEqual([w["target_duration_s"] for w in a["weeks"]], [w["target_duration_s"] for w in b["weeks"]])
+            self.assertEqual(a["peak"]["duration_s"], b["peak"]["duration_s"])
+
+    def test_lead_in_weeks_borrows_from_the_template_down_to_its_minimum(self):
+        sk = build(ULTRA, weeks=18, held_=held(**ISSUE_HELD), lead_in_weeks=2)
+        self.assertEqual(sk["lead_in_weeks"], 2)
+        self.assertEqual(sk["lead_in"]["requested_weeks"], 2)
+        self.assertEqual(sk["phase_weeks"], PT.allocate_phase_weeks(ULTRA, 16))
+        self.assertEqual([w["type"] for w in sk["weeks"][:2]], ["lead_in", "lead_in"])
+        self.assertGreater(sk["peak"]["duration_s"], build(ULTRA, weeks=18, held_=held(**ISSUE_HELD))["peak"]["duration_s"])
+        self.assertTrue(sk["summary"]["block_free"])
+        with self.assertRaises(PS.SkeletonError) as ctx:
+            build(ULTRA, weeks=18, lead_in_weeks=3)
+        self.assertIn("au plus 2", str(ctx.exception))
+        # Moins que l'excédent naturel : l'excédent l'emporte.
+        self.assertEqual(build(ULTRA, weeks=self.N, lead_in_weeks=1)["lead_in_weeks"], 6)
+        with self.assertRaises(PS.SkeletonError):
+            build(ULTRA, weeks=18, lead_in_weeks=-1)
+        with self.assertRaises(PS.SkeletonError):
+            build(ULTRA, weeks=18, lead_in="steep")
+
+
+class TestRaceDemand(unittest.TestCase):
+    def _issue(self, **kw):
+        return build(ULTRA, weeks=18, held_=held(**ISSUE_HELD), objective=dict(ISSUE_OBJECTIVE), **kw)
+
+    @staticmethod
+    def _component(sk, cid):
+        return next(c for c in sk["race_demand"]["components"] if c["id"] == cid)
+
+    def test_issue_scenario_is_flagged(self):
+        sk = self._issue()
+        d = sk["race_demand"]
+        self.assertEqual(d["status"], "short")
+        self.assertEqual(d["warn_ratio"], PS.DEMAND_WARN_RATIO)
+        for cid in ("long_run", "weekly_elevation", "max_session_elevation"):
+            self.assertEqual(self._component(sk, cid)["status"], "short", cid)
+        self.assertTrue(any(w.startswith("exigence de course — plus longue sortie") for w in sk["warnings"]))
+        self.assertTrue(any("jamais forcer les garde-fous" in w for w in sk["warnings"]))
+        self.assertTrue(sk["summary"]["block_free"])                  # un avertissement, jamais une correction
+
+    def test_targets_are_trail_shape_targets(self):
+        sk = self._issue()
+        effort = TS._race_effort_km(85000, 4500)
+        self.assertEqual(self._component(sk, "long_run")["target"], round(TS.longest_run_target_m(85000), 1))
+        self.assertEqual(self._component(sk, "weekly_volume")["target"], round(TS.weekly_volume_target_km(effort), 1))
+        self.assertEqual(self._component(sk, "max_session_elevation")["target"],
+                         round(min(4500 * TS.MAX_DPLUS_SESSION_RATIO, TS.MAX_DPLUS_TARGET_CAP_M), 1))
+        self.assertAlmostEqual(self._component(sk, "weekly_elevation")["target"],
+                               TS.weekly_volume_target_km(effort) * 45 / effort * 100, delta=0.1)
+        long_run = self._component(sk, "long_run")
+        self.assertAlmostEqual(long_run["observed"], long_run["observed_duration_s"] * 56000 / (7 * 3600), delta=0.1)
+
+    def test_comfortable_objective_is_ok(self):
+        sk = build(PT.get_template("trail_court", TEMPLATES), weeks=12, held_=held(6, 1200, 50),
+                   objective={"distance_m": 20000.0, "elevation_gain_m": 600.0})
+        self.assertEqual(sk["race_demand"]["status"], "ok")
+        self.assertFalse(any(w.startswith("exigence de course") for w in sk["warnings"]))
+
+    def test_unknown_distance_is_never_guessed(self):
+        sk = build(ULTRA, weeks=18, held_=held(7, 900), objective=dict(ISSUE_OBJECTIVE))   # déclaré sans distance
+        for cid in ("long_run", "weekly_volume"):
+            c = self._component(sk, cid)
+            self.assertEqual(c["status"], "unavailable", cid)
+            self.assertIsNone(c["observed"])
+            self.assertIn("jamais devinée", c["reason"])
+        self.assertEqual(self._component(sk, "weekly_elevation")["status"], "short")   # le D+ reste évaluable
+
+    def test_without_objective_or_for_another_race(self):
+        sk = build(ULTRA, weeks=18, held_=held(**ISSUE_HELD))
+        self.assertEqual(sk["race_demand"]["status"], "unavailable")
+        self.assertIn("distance", sk["race_demand"]["reason"])
+        other = build(ULTRA, weeks=18, held_=held(**ISSUE_HELD),
+                      objective={**ISSUE_OBJECTIVE, "race_date": "2030-01-01"})
+        self.assertEqual(other["race_demand"]["status"], "unavailable")
+        self.assertIn("2030-01-01", other["race_demand"]["reason"])
+
+    def test_road_has_no_elevation_components(self):
+        sk = build(ROUTE, weeks=16, sport="road", held_=held(5, 0, 55),
+                   objective={"distance_m": 42195.0})
+        ids = {c["id"] for c in sk["race_demand"]["components"]}
+        self.assertNotIn("weekly_elevation", ids)
+        self.assertNotIn("max_session_elevation", ids)
+        self.assertIn("long_run", ids)
+
+    def test_declared_weekly_target_and_race_time_information(self):
+        sk = self._issue(race_time={"seconds": 14 * 3600, "source": "objective.target_time_s"})
+        sk_obj = build(ULTRA, weeks=18, held_=held(**ISSUE_HELD), objective={**ISSUE_OBJECTIVE, "weekly_target_s": 9 * 3600},
+                       race_time={"seconds": 14 * 3600, "source": "objective.target_time_s"})
+        declared = self._component(sk_obj, "declared_weekly_duration")
+        self.assertEqual(declared["target"], 9 * 3600)
+        self.assertEqual(declared["status"], "ok")
+        info = self._component(sk, "long_run_vs_race_time")
+        self.assertEqual(info["status"], "info")
+        self.assertAlmostEqual(info["observed"], info["long_run_s"] / (14 * 3600) * 100, delta=0.1)
+        self.assertFalse(any("temps de course" in w for w in sk["warnings"]))     # information, jamais un avertissement
+
+    def test_text_render_shows_the_check(self):
+        text = PS.render_text(self._issue())
+        self.assertIn("Exigences de la course", text)
+        self.assertIn("⚠", text)
+        ramp = PS.render_text(build(ULTRA, weeks=ULTRA["weeks"]["max"] + 6, held_=held(**ISSUE_HELD)))
+        self.assertIn("Mise en route en rampe", ramp)
+
+
+class TestExpectedRaceTime(unittest.TestCase):
+    def setUp(self):
+        self.conn = sqlite3.connect(":memory:")
+        self.conn.row_factory = sqlite3.Row
+        self.conn.execute("CREATE TABLE race_plan (source_path TEXT, date TEXT, race_name TEXT, race_date TEXT, "
+                          "distance_m REAL, elevation_gain_m REAL, target_time_s REAL, body_md TEXT, data_json TEXT)")
+
+    def tearDown(self):
+        self.conn.close()
+
+    def test_race_plan_then_objective_then_nothing(self):
+        race = date(2027, 2, 14)
+        obj = {"race_date": race.isoformat(), "target_time_s": 50000}
+        self.assertEqual(PS.expected_race_time(self.conn, race, obj),
+                         {"seconds": 50000.0, "source": "objective.target_time_s"})
+        self.assertIsNone(PS.expected_race_time(self.conn, race, {"race_date": "2030-01-01", "target_time_s": 1}))
+        self.conn.execute("INSERT INTO race_plan (date, race_date, target_time_s, data_json) VALUES (?, ?, ?, ?)",
+                          ("2026-10-01", race.isoformat(), 48000, json.dumps({"scenarios": {"realistic": 47000}})))
+        self.assertEqual(PS.expected_race_time(self.conn, race, obj),
+                         {"seconds": 47000.0, "source": "race_plan.scenarios.realistic"})
+
+
+class TestCliLeadIn(_CliWorkspace):
+    """#204 côté CLI : options `--lead-in` / `--lead-in-weeks`, `race_demand` dans la sortie."""
+
+    def test_lead_in_options_and_race_demand(self):
+        data = json.loads(self._cli("--lead-in", "flat").stdout)
+        self.assertEqual(data["lead_in"]["mode"], "flat")
+        self.assertIn(data["race_demand"]["status"], ("ok", "short"))
+        self.assertTrue(data["race_demand"]["components"])
+        n = data["n_weeks"]
+        borrow = n - MARATHON["weeks"]["min"]
+        data = json.loads(self._cli("--lead-in-weeks", str(borrow)).stdout)
+        self.assertEqual(data["lead_in_weeks"], borrow)
+        bad = self._cli("--lead-in-weeks", str(borrow + 1))
+        self.assertNotEqual(bad.returncode, 0)
+        self.assertIn("--lead-in-weeks", bad.stderr)
+        self.assertNotIn("Traceback", bad.stderr)
+        text = self._cli("--text").stdout
+        self.assertIn("Exigences de la course", text)
 
 
 if __name__ == "__main__":
