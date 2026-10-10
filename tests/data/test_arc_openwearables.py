@@ -13,6 +13,7 @@ import socket
 import sys
 import tempfile
 import threading
+import time
 import unittest
 from datetime import datetime, timedelta, timezone
 from http.server import BaseHTTPRequestHandler
@@ -182,7 +183,8 @@ class NominalTests(Base):
         with OWStub(load("polar")) as stub:
             res = self.health_day(stub)
         scores = {s["category"]: s for s in res["arc"]["provider_scores"]}
-        self.assertEqual(set(scores), {"readiness", "recovery"})
+        self.assertEqual(set(scores), {"readiness", "recovery", "sleep"})
+        self.assertEqual((scores["sleep"]["value"], scores["sleep"]["scale_max"]), (80, 100))
         self.assertEqual((scores["readiness"]["value"], scores["readiness"]["scale_min"], scores["readiness"]["scale_max"]),
                          (7, 0, 10))
         self.assertEqual((scores["recovery"]["value"], scores["recovery"]["scale_min"], scores["recovery"]["scale_max"]),
@@ -488,7 +490,8 @@ class ConfigTests(Base):
                 self.write_config(provider=provider)
                 code, out, _ = self.run_cli(stub.base, "health-day", "--json")
                 self.assertEqual(code, 2, provider)
-                self.assertIn(json.loads(out)["error"]["code"], ("no_provider", "not_enabled"))
+                expected = "no_provider" if provider == "ouraa" else "refused_provider"
+                self.assertEqual(json.loads(out)["error"]["code"], expected, provider)
             self.assertEqual(stub.log, [])
 
     def test_not_enabled_when_source_is_primary(self):
@@ -574,6 +577,284 @@ class CheckTests(Base):
         self.assertEqual(code, 0)
         self.assertFalse(res["provider_connected"])
         self.assertFalse(res["ok"])
+
+
+def at_tz(name):
+    """Fuseau de la machine pour la durée d'un test (l'athlète en UTC−4, par exemple)."""
+    class _Ctx:
+        def __enter__(self):
+            self.old = os.environ.get("TZ")
+            os.environ["TZ"] = name
+            time.tzset()
+
+        def __exit__(self, *exc):
+            if self.old is None:
+                os.environ.pop("TZ", None)
+            else:
+                os.environ["TZ"] = self.old
+            time.tzset()
+    return _Ctx()
+
+
+def shift_night(bundle, start, end, offset):
+    sleep = bundle["sleep"]["data"][0]
+    sleep["start_time"], sleep["end_time"], sleep["zone_offset"] = start, end, offset
+
+
+class RealTimingTests(Base):
+    """Horodatages tels que OW 0.9.0 les produit (relus dans les sources, commit épinglé)."""
+
+    def ts_window(self, stub):
+        q = next(q for p, q, _ in stub.log if p.endswith("/timeseries"))
+        return OW.parse_dt(q["start_time"][0]), OW.parse_dt(q["end_time"][0])
+
+    def test_oura_resting_hr_recorded_at_sleep_start_the_evening_before(self):
+        # `lowest_heart_rate` -> resting_heart_rate à `start_dt` (début du sommeil, 23:05 locale la veille)
+        self.write_config("oura")
+        with OWStub(load("oura")) as stub:
+            res = self.health_day(stub)
+            start, _ = self.ts_window(stub)
+        self.assertEqual(res["arc"]["resting_hr_bpm"], 47)
+        self.assertNotIn("resting_hr_bpm", res["unavailable"])
+        self.assertLessEqual(start, OW.parse_dt("2026-10-04T21:00:00Z"))      # début − 5 min, borne incluse
+
+    def test_resting_hr_takes_the_night_sample_before_a_day_sample(self):
+        self.write_config("oura")
+        bundle = load("oura")
+        day = {**bundle["timeseries"]["data"][0], "timestamp": "2026-10-05T10:00:00Z", "value": 60}
+        bundle["timeseries"]["data"].append(day)
+        with OWStub(bundle) as stub:
+            res = self.health_day(stub)
+        self.assertEqual(res["arc"]["resting_hr_bpm"], 47)
+
+    def test_resting_hr_falls_back_to_local_date_without_night(self):
+        self.write_config("oura")
+        bundle = load("oura")
+        bundle["sleep"]["data"] = []
+        bundle["timeseries"]["data"][0]["timestamp"] = "2026-10-05T07:00:00Z"
+        with OWStub(bundle) as stub:
+            res = self.health_day(stub)
+        self.assertEqual(res["arc"]["resting_hr_bpm"], 47)
+        bundle["timeseries"]["data"][0]["timestamp"] = "2026-10-04T21:05:00Z"        # veille : pas de repli
+        with OWStub(bundle) as stub:
+            res = self.health_day(stub)
+        self.assertNotIn("resting_hr_bpm", res["arc"])
+
+    def test_oura_scores_at_local_midnight(self):
+        self.write_config("oura")
+        with OWStub(load("oura")) as stub:
+            res = self.health_day(stub)
+        self.assertEqual([(s["category"], s["value"]) for s in res["arc"]["provider_scores"]],
+                         [("readiness", 82), ("sleep", 77)])
+
+    def test_athlete_in_utc_minus_4(self):
+        # Nuit 23:05 -> 06:45 locales (UTC−4) ; aucun score ne porte de zone_offset ; TZ de la machine = New York
+        self.write_config("polar")
+        bundle = load("polar")
+        shift_night(bundle, "2026-10-05T03:05:00Z", "2026-10-05T10:45:00Z", "-04:00")
+        sc = bundle["scores"]["data"]
+        sc[0]["recorded_at"] = "2026-10-05T10:45:00Z"      # readiness : réveil
+        sc[1]["recorded_at"] = "2026-10-05T00:00:00Z"      # Nightly Recharge : date naïve lue en UTC = 20:00 la veille
+        sc[3]["recorded_at"] = "2026-10-05T03:05:00Z"      # sommeil : début de la nuit = 23:05 la veille
+        with at_tz("America/New_York"), OWStub(bundle) as stub:
+            res = self.health_day(stub)
+        got = {s["category"]: s["value"] for s in res["arc"]["provider_scores"]}
+        self.assertEqual(got, {"readiness": 7, "recovery": 4, "sleep": 80})
+        self.assertNotIn("readiness", res["unavailable"])
+
+    def test_sleep_score_of_another_night_is_not_attributed(self):
+        self.write_config("polar")
+        bundle = load("polar")
+        sc = bundle["scores"]["data"]
+        sc[3]["recorded_at"] = "2026-10-05T21:05:00Z"      # la nuit SUIVANTE (23:05 locale le jour D)
+        with OWStub(bundle) as stub:
+            res = self.health_day(stub)
+        self.assertNotIn("sleep", [s["category"] for s in res["arc"]["provider_scores"]])
+        sc[3]["recorded_at"] = "2026-10-03T21:05:00Z"      # la nuit précédente
+        with OWStub(bundle) as stub:
+            res = self.health_day(stub)
+        self.assertNotIn("sleep", [s["category"] for s in res["arc"]["provider_scores"]])
+
+    def test_date_only_score_uses_the_utc_date(self):
+        self.write_config("polar")
+        bundle = load("polar")
+        bundle["scores"]["data"][1]["recorded_at"] = "2026-10-04T00:00:00Z"      # Nightly Recharge de la veille
+        with OWStub(bundle) as stub:
+            res = self.health_day(stub)
+        self.assertNotIn("recovery", [s["category"] for s in res["arc"]["provider_scores"]])
+
+    def test_polar_has_no_resting_hr(self):
+        self.write_config("polar")
+        with OWStub(load("polar")) as stub:
+            res = self.health_day(stub)
+        self.assertNotIn("resting_hr_bpm", res["arc"])
+        self.assertIn("polar", res["unavailable"]["resting_hr_bpm"])
+
+
+class SummaryHrvSourcesTests(Base):
+    def multi_source(self):
+        bundle = load("oura")
+        bundle["connections"].append({**bundle["connections"][0], "id": "00000000-0000-4000-8000-0000000000d2",
+                                      "provider": "apple"})
+        base = bundle["timeseries"]["data"][0]
+        bundle["timeseries"]["data"] += [
+            {**base, "timestamp": "2026-10-05T00:00:00Z", "type": "heart_rate_variability_rmssd", "value": 40,
+             "unit": "ms"},
+            {**base, "timestamp": "2026-10-05T02:00:00Z", "type": "heart_rate_variability_rmssd", "value": 50,
+             "unit": "ms"},
+            {**base, "timestamp": "2026-10-05T01:00:00Z", "type": "heart_rate_variability_sdnn", "value": 70,
+             "unit": "ms"},
+        ]
+        return bundle
+
+    def test_other_connection_makes_the_summary_hrv_unusable(self):
+        self.write_config("oura")
+        with OWStub(self.multi_source()) as stub:
+            res = self.health_day(stub)
+            types = sorted(sum((q.get("types", []) for p, q, _ in stub.log if p.endswith("/timeseries")), []))
+        self.assertEqual(res["arc"]["hrv_overnight_ms"], 45.0)          # série Oura, pas les 48.2 du résumé
+        self.assertEqual(res["arc"]["hrv_sdnn_ms"], 70)
+        codes = [w["code"] for w in res["warnings"]]
+        self.assertIn("summary_hrv_multi_source", codes)
+        self.assertIn("hrv_from_timeseries", codes)
+        self.assertEqual(types, ["heart_rate_variability_rmssd", "heart_rate_variability_sdnn",
+                                 "resting_heart_rate"])
+        self.assert_contract(res["arc"])
+
+    def test_multi_source_without_series_reports_unavailable(self):
+        self.write_config("oura")
+        bundle = self.multi_source()
+        bundle["timeseries"]["data"] = bundle["timeseries"]["data"][:1]
+        with OWStub(bundle) as stub:
+            res = self.health_day(stub)
+        self.assertNotIn("hrv_overnight_ms", res["arc"])
+        self.assertIn("hrv_overnight_ms", res["unavailable"])
+
+    def test_sole_connection_keeps_the_summary_hrv(self):
+        self.write_config("oura")
+        with OWStub(load("oura")) as stub:
+            res = self.health_day(stub)
+        self.assertEqual(res["arc"]["hrv_overnight_ms"], 48.2)
+        self.assertNotIn("summary_hrv_multi_source", [w["code"] for w in res["warnings"]])
+
+
+class FreshnessEdgeTests(Base):
+    def test_sdk_provider_never_synced_is_unknown_not_stale(self):
+        self.write_config("apple")
+        bundle = load("apple")
+        bundle["connections"][0]["last_synced_at"] = None
+        with OWStub(bundle) as stub:
+            res = self.health_day(stub)
+        self.assertEqual(res["freshness"]["status"], "active")
+        self.assertIsNone(res["freshness"]["stale"])
+        self.assertIn("freshness_unknown", [w["code"] for w in res["warnings"]])
+        self.assertNotIn("stale", [w["code"] for w in res["warnings"]])
+
+    def test_cloud_provider_never_synced_is_stale(self):
+        self.write_config("oura")
+        bundle = load("oura")
+        bundle["connections"][0]["last_synced_at"] = None
+        with OWStub(bundle) as stub:
+            res = self.health_day(stub)
+        self.assertTrue(res["freshness"]["stale"])
+
+
+class TimeoutAndTransportTests(Base):
+    def slow_server(self, delay, counter):
+        class Slow(BaseHTTPRequestHandler):
+            def log_message(self, *a):
+                pass
+
+            def do_GET(self):
+                counter.append(self.path)
+                time.sleep(delay)
+                try:
+                    body = b"{}"
+                    self.send_response(200)
+                    self.send_header("Content-Length", str(len(body)))
+                    self.end_headers()
+                    self.wfile.write(body)
+                except OSError:
+                    pass
+
+        httpd = ThreadingHTTPServer(("127.0.0.1", 0), Slow)
+        httpd.daemon_threads = True
+        threading.Thread(target=httpd.serve_forever, daemon=True).start()
+        self.addCleanup(httpd.server_close)
+        self.addCleanup(httpd.shutdown)
+        return f"http://127.0.0.1:{httpd.server_address[1]}"
+
+    def test_timeout_option_bounds_the_wait_and_is_not_retried(self):
+        self.write_config("oura")
+        seen: list = []
+        base = self.slow_server(1.5, seen)
+        started = time.monotonic()
+        code, out, _ = self.run_cli(base, "check", "--json", "--timeout", "0.3")
+        elapsed = time.monotonic() - started
+        self.assertEqual(code, 3)
+        self.assertEqual(json.loads(out)["error"]["code"], "unreachable")
+        self.assertLess(elapsed, 1.2)
+        self.assertEqual(len(seen), 1)          # un délai n'est jamais rejoué
+
+    def test_timeout_env_and_global_position(self):
+        self.write_config("oura")
+        seen: list = []
+        base = self.slow_server(1.5, seen)
+        code, _, _ = self.run_cli(base, "--timeout", "0.3", "health-day", "--json")
+        self.assertEqual(code, 3)
+        code, _, _ = self.run_cli(base, "check", "--json", env={"ARC_OW_TIMEOUT": "0.3"})
+        self.assertEqual(code, 3)
+        self.assertEqual(len(seen), 2)
+
+    def test_bad_timeout_exits_2(self):
+        self.write_config("oura")
+        for value in ("0", "-1", "abc", "nan", "1000"):
+            code, _, _ = self.run_cli("http://127.0.0.1:9", "check", "--timeout", value)
+            self.assertEqual(code, 2, value)
+        code, out, _ = self.run_cli("http://127.0.0.1:9", "check", "--json", env={"ARC_OW_TIMEOUT": "zzz"})
+        self.assertEqual(code, 2)
+        self.assertEqual(json.loads(out)["error"]["code"], "bad_timeout")
+
+    def test_connection_error_is_retried_exactly_once(self):
+        self.write_config("oura")
+        hits: list = []
+
+        class Drop(BaseHTTPRequestHandler):
+            def log_message(self, *a):
+                pass
+
+            def do_GET(self):
+                hits.append(self.path)
+                self.connection.close()          # coupure sans réponse
+
+        httpd = ThreadingHTTPServer(("127.0.0.1", 0), Drop)
+        httpd.daemon_threads = True
+        threading.Thread(target=httpd.serve_forever, daemon=True).start()
+        self.addCleanup(httpd.server_close)
+        self.addCleanup(httpd.shutdown)
+        code, out, _ = self.run_cli(f"http://127.0.0.1:{httpd.server_address[1]}", "check", "--json")
+        self.assertEqual(code, 3)
+        self.assertEqual(json.loads(out)["error"]["code"], "unreachable")
+        self.assertEqual(len(hits), 2)
+
+    def config_warnings(self, url):
+        self.write_config("oura")
+        with mock.patch.dict(os.environ, {"ARC_OW_BASE_URL": url, "ARC_OW_API_KEY_FILE": str(self.key_file)}):
+            return [w["code"] for w in OW._config(str(self.ws))["warnings"]]
+
+    def test_insecure_transport_warning(self):
+        for url in ("http://ow.example.com", "http://1.1.1.1:8000", "http://8.8.8.8"):
+            self.assertEqual(self.config_warnings(url), ["insecure_transport"], url)
+        for url in ("http://127.0.0.1:8000", "http://localhost:8000", "http://192.168.1.20:8000",
+                    "http://10.0.0.5", "http://[::1]:8000", "http://open-wearables:8000", "http://ow.lan",
+                    "https://ow.example.com"):
+            self.assertEqual(self.config_warnings(url), [], url)
+
+    def test_loopback_http_has_no_transport_warning_in_the_output(self):
+        self.write_config("oura")
+        with OWStub(load("oura")) as stub:
+            res = self.health_day(stub)
+        self.assertNotIn("insecure_transport", [w["code"] for w in res["warnings"]])
 
 
 class PinTests(unittest.TestCase):

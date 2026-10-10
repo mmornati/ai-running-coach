@@ -6,13 +6,15 @@ workspace (c'est l'agent qui persiste). Le serveur MCP d'OW ne suffit pas au bil
 à la durée, aucun score, séries brutes volumineuses) : on lit l'API REST, comme `download_fit.py` contourne
 un MCP inadapté. La sortie est du JSON déterministe, le modèle n'a rien à calculer.
 
-    python3 scripts/arc_openwearables.py check [--json]
-    python3 scripts/arc_openwearables.py health-day [--date AAAA-MM-JJ] [--json]
-    (option commune : --workspace DIR)
+    python3 scripts/arc_openwearables.py check [--json] [--timeout S]
+    python3 scripts/arc_openwearables.py health-day [--date AAAA-MM-JJ] [--json] [--timeout S]
+    (option commune : --workspace DIR ; `--timeout S` = délai d'UNE requête, défaut 10 s, ou $ARC_OW_TIMEOUT)
 
 Codes de sortie : 0 = appel réussi (même si des mesures manquent) ; 2 = configuration incomplète ou
 invalide (y compris fournisseur absent : le client REFUSE de lire sans fournisseur) ; 3 = OW injoignable,
-clé refusée ou réponse inexploitable. Jamais de traceback.
+clé refusée ou réponse inexploitable. Jamais de traceback. Un délai dépassé n'est jamais rejoué (seule une
+erreur de connexion immédiate l'est, une fois) : l'attente maximale d'une commande qui échoue sur un délai
+est donc ≈ `--timeout` (le diagnostic de #220 passe 3 s).
 
 Version vérifiée : OW `0.9.0` = commit `ff8527a52ad8a96cd1ebe8c19344295c934ae9dc` (dernier tag publié à la
 date de rédaction ; `OW_TAG`/`OW_REF`/`TESTED_VERSION` ci-dessous). Tous les endpoints, paramètres, en-têtes
@@ -62,6 +64,7 @@ import json
 import math
 import os
 import re
+import ipaddress
 import socket
 import sys
 import urllib.error
@@ -81,7 +84,10 @@ TESTED_VERSION = OW_TAG
 
 API_PREFIX = "/api/v1"
 API_KEY_HEADER = "X-Open-Wearables-API-Key"
-TIMEOUT_S = 10
+TIMEOUT_S = 10            # délai par défaut d'UNE requête (secondes), surchargé par --timeout / ARC_OW_TIMEOUT
+MAX_TIMEOUT_S = 120
+RHR_LEAD = timedelta(minutes=5)       # marge avant le début de la nuit (voir ASSUMPTIONS["resting_hr"])
+SCORE_MARGIN = timedelta(hours=1)     # marge autour de la nuit pour un score de sommeil (idem « score_date »)
 MAX_BODY_BYTES = 8 * 1024 * 1024
 PAGE_LIMIT = 1000
 USERS_LIMIT = 100
@@ -118,25 +124,50 @@ ASSUMPTIONS = {
                      "(`_filter_by_priority`). Si `source.provider` diffère du fournisseur configuré, l'entrée "
                      "est ignorée (avertissement `provider_mismatch`) : une seule source santé par jour, "
                      "jamais un mélange de fabricants.",
-    "resting_hr": "FC de repos = dernier échantillon `resting_heart_rate` du fournisseur dont la date locale "
-                  "(`timestamp` + `zone_offset`) est D. La sémantique varie selon le fabricant (Oura : FC "
-                  "minimale de la nuit) : les lignes de base sont par source (#218), jamais comparées entre "
-                  "fabricants.",
+    "resting_hr": "FC de repos = dernier échantillon `resting_heart_rate` du fournisseur tombé dans la nuit "
+                  "principale [début − 5 min ; fin] : chez Oura, `lowest_heart_rate` est enregistrée au DÉBUT du "
+                  "sommeil (`SLEEP_SCALAR_SERIES`, `providers/oura/coverage.py` ; `recorded_at=start_dt`, "
+                  "`providers/oura/data_247.py` ~L850), donc la veille au soir pour un coucher avant minuit. Aucun "
+                  "échantillon dans la nuit (ou nuit inconnue) : repli sur le dernier échantillon dont la date locale "
+                  "(`timestamp` + `zone_offset`) est D. La sémantique varie selon le fabricant : les lignes de base "
+                  "sont par source (#218), jamais comparées entre fabricants.",
     "hrv_fallback": "HRV RMSSD de secours (série temporelle) seulement si `avg_hrv_rmssd_ms` est absent : "
                     "moyenne des échantillons compris dans la fenêtre du sommeil principal, jamais au-delà "
                     "(une HRV diurne n'est pas une HRV nocturne). Sans fenêtre de sommeil connue : aucune.",
+    "summary_hrv_sources": "`avg_hrv_rmssd_ms`/`avg_hrv_sdnn_ms` du résumé de sommeil sont la moyenne des "
+                           "échantillons de TOUTES les sources de l'utilisateur dans la fenêtre de la nuit "
+                           "(`repositories/event_record_repository.py` ~L716-741 : filtre `DataSource.user_id` "
+                           "seul). Elles ne sont donc utilisées que si le fournisseur configuré est la SEULE "
+                           "connexion de l'utilisateur (liste `/connections`). Sinon : RMSSD/SDNN recalculées "
+                           "depuis la série temporelle filtrée par `provider` dans la fenêtre du sommeil, "
+                           "avertissement `summary_hrv_multi_source`.",
     "score_scales": "Table `SCORE_RANGES` recopiée de `HEALTH_SCORE_RANGES` (OW 0.9.0). Couple (catégorie, "
                     "fournisseur) absent, ou valeur hors échelle : score écarté + avertissement, jamais une "
                     "échelle devinée ni un score remis sur 100.",
-    "score_date": "Un score appartient au jour D si la date locale de `recorded_at` + `zone_offset` vaut D "
-                  "(approximation du projet : OW ne documente pas de convention de jour pour les scores) ; "
-                  "plusieurs scores de même catégorie le même jour : le plus récent.",
+    "score_date": "OW ne documente aucune convention de jour pour `recorded_at` d'un score et AUCUN fournisseur ne "
+                  "renseigne `zone_offset` d'un score (seule la strain WHOOP). Constaté dans les sources 0.9.0 : "
+                  "score de SOMMEIL Polar/WHOOP = début de la nuit (`polar/data_247.py` ~L295, "
+                  "`whoop/data_247.py`) ; Oura = `timestamp` d'Oura (minuit local) ou, à défaut, minuit UTC du "
+                  "jour ; Nightly Recharge Polar (`recovery`) = `datetime.fromisoformat(date)` naïf, lu comme "
+                  "minuit UTC. Règles (approximations du projet) : (1) `recorded_at` à exactement 00:00:00 UTC sans "
+                  "`zone_offset` = date seule, on prend la date UTC ; (2) score de sommeil avec nuit connue : "
+                  "`recorded_at` dans [début − 1 h ; fin + 1 h], ou minuit local du jour D (convention Oura) ; "
+                  "(3) sinon date locale (`zone_offset` du score, à défaut celui de la nuit, à défaut le fuseau de la "
+                  "machine) = D. Plusieurs scores de même catégorie : le plus récent.",
     "sdk_freshness": "Fournisseurs SDK (apple, health_connect, samsung) absents de la liste des connexions : "
                      "fraîcheur « inconnue », jamais devinée (non vérifié sur une instance).",
     "apple_hrv": "Apple Health ne fournit que la SDNN : toute valeur RMSSD qui serait renvoyée pour `apple` est "
                  "ignorée (le contrat interdit `hrv_overnight_ms` pour apple).",
-    "check_shape": "Sans nuit dans la fenêtre, `shape_ok` ne juge que l'enveloppe de la réponse (clés `data` et "
-                   "`pagination`) et le dit par un avertissement.",
+    "check_shape": "`check` valide la forme des entrées de sommeil de la fenêtre D−1…D+1 (toutes, pas seulement "
+                   "celle de D). Sans nuit dans la fenêtre, `shape_ok` ne juge que l'enveloppe de la réponse (clés "
+                   "`data` et `pagination`) et le dit par un avertissement.",
+    "timeout_retry": "`--timeout S` (ou `ARC_OW_TIMEOUT`) borne chaque requête. Une requête n'est rejouée UNE fois "
+                     "que sur une erreur de connexion immédiate (refus, coupure) ; un DÉLAI dépassé n'est jamais "
+                     "rejoué et interrompt la commande : la durée d'attente maximale est donc ≈ S secondes pour une "
+                     "commande qui échoue sur un délai.",
+    "transport": "Une `base_url` en `http://` vers un hôte ni local ni privé (hors boucle locale, RFC 1918, "
+                 "`*.local`, `*.lan`, `*.internal`, noms sans point) envoie la clé en clair : avertissement "
+                 "`insecure_transport`, sans blocage.",
 }
 
 
@@ -164,6 +195,16 @@ def _config(workspace: Optional[str]) -> dict:
         conf = arc_index.load_config(workspace_root(workspace))
     except Exception:
         raise OWError(EXIT_CONFIG, "config", "Configuration illisible (config/workspace*.toml).")
+    health = conf.get("health") if isinstance(conf.get("health"), dict) else {}
+    raw_source = str(health.get("source") or "").strip().lower()
+    raw_provider = HS.openwearables_section(conf).get("provider")
+    raw_provider = raw_provider.strip().lower() if isinstance(raw_provider, str) else ""
+    if raw_source == "openwearables" and raw_provider in HS.REFUSED_PROVIDERS:
+        why = ("la donnée Garmin est lue en direct, jamais via Open Wearables" if raw_provider == "garmin"
+               else "Strava n'a aucune donnée de santé")
+        raise OWError(EXIT_CONFIG, "refused_provider",
+                      f"Fournisseur « {raw_provider} » refusé ({why}) : choisir un autre fabricant dans "
+                      "[health.openwearables].provider.")
     source, provider = HS.effective_health_source(conf)
     if source != "openwearables":
         raise OWError(EXIT_CONFIG, "not_enabled",
@@ -197,8 +238,39 @@ def _config(workspace: Optional[str]) -> dict:
             raise ValueError
     except (TypeError, ValueError):
         stale_after_h = DEFAULT_STALE_AFTER_H
+    warnings: List[dict] = []
+    if parsed.scheme == "http" and not _is_private_host(parsed.hostname):
+        warnings.append(_warn("insecure_transport", "base_url en http:// vers un hôte non local : la clé d'API "
+                              "circule en clair. Utiliser https:// (ou un hôte privé)."))
     return {"provider": provider, "base_url": base_url, "user_id": user_id, "key_file": key_file,
-            "stale_after_h": stale_after_h}
+            "stale_after_h": stale_after_h, "warnings": warnings}
+
+
+def _is_private_host(host: str) -> bool:
+    """Vrai pour une boucle locale, une adresse privée ou un nom manifestement interne (approximation)."""
+    host = (host or "").strip("[]").lower().rstrip(".")
+    try:
+        ip = ipaddress.ip_address(host)
+        return ip.is_loopback or ip.is_private or ip.is_link_local
+    except ValueError:
+        pass
+    return host == "localhost" or "." not in host or host.endswith(
+        (".localhost", ".local", ".lan", ".internal", ".home.arpa"))
+
+
+def resolve_timeout(cli_value: Optional[float]) -> float:
+    """Délai par requête : `--timeout` > `ARC_OW_TIMEOUT` > `TIMEOUT_S`. Lève OWError(2) si invalide."""
+    raw = cli_value if cli_value is not None else os.environ.get("ARC_OW_TIMEOUT")
+    if raw in (None, ""):
+        return float(TIMEOUT_S)
+    try:
+        value = float(raw)
+    except (TypeError, ValueError):
+        value = float("nan")
+    if not math.isfinite(value) or not 0 < value <= MAX_TIMEOUT_S:
+        raise OWError(EXIT_CONFIG, "bad_timeout", f"Délai invalide (attendu : nombre de secondes, "
+                      f"0 < S ≤ {MAX_TIMEOUT_S}).")
+    return value
 
 
 def _read_key(key_file: str) -> Tuple[str, List[dict]]:
@@ -235,9 +307,10 @@ class _NoRedirect(urllib.request.HTTPRedirectHandler):
 class Client:
     """Appels GET authentifiés. La clé ne sort jamais de cet objet."""
 
-    def __init__(self, base_url: str, key: str, opener=None):
+    def __init__(self, base_url: str, key: str, opener=None, timeout: float = TIMEOUT_S):
         self._base = base_url
         self._key = key
+        self._timeout = timeout
         self._opener = opener or urllib.request.build_opener(_NoRedirect)
 
     def get(self, path: str, params: Optional[list] = None):
@@ -248,7 +321,7 @@ class Client:
             API_KEY_HEADER: self._key, "Accept": "application/json"})
         for attempt in (0, 1):
             try:
-                with self._opener.open(request, timeout=TIMEOUT_S) as response:
+                with self._opener.open(request, timeout=self._timeout) as response:
                     body = response.read(MAX_BODY_BYTES + 1)
                 break
             except urllib.error.HTTPError as err:
@@ -260,10 +333,14 @@ class Client:
                                   "(refusée) : vérifier base_url.")
                 raise OWError(EXIT_UNREACHABLE, "http", f"Open Wearables a répondu HTTP {status}.",
                               {"http_status": status})
-            except (urllib.error.URLError, socket.timeout, ConnectionError, OSError):
+            except (urllib.error.URLError, socket.timeout, ConnectionError, OSError) as err:
+                if _is_timeout(err):      # un délai n'est jamais rejoué : l'attente reste bornée par --timeout
+                    raise OWError(EXIT_UNREACHABLE, "unreachable",
+                                  f"Open Wearables ne répond pas (délai de {self._timeout:g} s dépassé).")
                 if attempt == 0:
                     continue
-                raise OWError(EXIT_UNREACHABLE, "unreachable", "Open Wearables injoignable (connexion ou délai).")
+                raise OWError(EXIT_UNREACHABLE, "unreachable", "Open Wearables injoignable (connexion refusée "
+                              "ou coupée).")
             except Exception:
                 raise OWError(EXIT_UNREACHABLE, "unreachable", "Open Wearables injoignable (réponse invalide).")
         if len(body) > MAX_BODY_BYTES:
@@ -272,6 +349,12 @@ class Client:
             return json.loads(body.decode("utf-8"))
         except (ValueError, UnicodeDecodeError):
             raise OWError(EXIT_UNREACHABLE, "bad_response", "Réponse d'Open Wearables illisible (JSON invalide).")
+
+
+def _is_timeout(err: BaseException) -> bool:
+    if isinstance(err, socket.timeout):
+        return True
+    return isinstance(err, urllib.error.URLError) and isinstance(err.reason, socket.timeout)
 
 
 def _expect(value, kind, what: str):
@@ -366,12 +449,14 @@ def resolve_user(client: Client, configured_id: str) -> Tuple[str, int]:
 
 
 def fetch_connection(client: Client, user_id: str, provider: str, stale_after_h: float,
-                     now: datetime) -> Tuple[dict, List[dict]]:
-    """Étape 2. Rend (fraîcheur, avertissements). `freshness.status` : active | revoked | expired | absent |
-    unknown (fournisseur SDK absent de la liste)."""
+                     now: datetime) -> Tuple[dict, List[dict], bool]:
+    """Étape 2. Rend (fraîcheur, avertissements, source_unique). `freshness.status` : active | revoked |
+    expired | absent | unknown (fournisseur SDK absent de la liste). `source_unique` : toutes les connexions
+    listées appartiennent au fournisseur configuré (condition d'usage de la HRV du résumé de sommeil)."""
     payload = _expect(client.get(f"/users/{user_id}/connections"), list, "connexions")
     mine = [c for c in payload if isinstance(c, dict) and str(c.get("provider", "")).lower() == provider]
     warnings: List[dict] = []
+    sole = all(isinstance(c, dict) and str(c.get("provider", "")).lower() == provider for c in payload)
     fresh = {"provider": provider, "status": "absent", "last_synced_at": None, "stale": None}
     if not mine:
         if provider in SDK_PROVIDERS:
@@ -380,7 +465,7 @@ def fetch_connection(client: Client, user_id: str, provider: str, stale_after_h:
                                   "absent de la liste des connexions."))
         else:
             warnings.append(_warn("not_connected", f"{provider} n'est pas connecté dans Open Wearables."))
-        return fresh, warnings
+        return fresh, warnings, sole
     mine.sort(key=lambda c: (c.get("status") == "active", str(c.get("last_synced_at") or "")), reverse=True)
     conn = mine[0]
     status = str(conn.get("status") or "").lower()
@@ -393,8 +478,11 @@ def fetch_connection(client: Client, user_id: str, provider: str, stale_after_h:
     if fresh["status"] != "active":
         warnings.append(_warn("not_active", f"Connexion {provider} « {fresh['status']} » : reconnecter le "
                               "fournisseur dans le portail Open Wearables."))
-        return fresh, warnings
-    if synced is None:
+        return fresh, warnings, sole
+    if synced is None and provider in SDK_PROVIDERS:
+        warnings.append(_warn("freshness_unknown", f"Fraîcheur de {provider} inconnue : fournisseur SDK sans "
+                              "date de dernière synchronisation."))
+    elif synced is None:
         fresh["stale"] = True
         warnings.append(_warn("stale", f"{provider} n'a encore jamais synchronisé : données périmées."))
     else:
@@ -403,7 +491,7 @@ def fetch_connection(client: Client, user_id: str, provider: str, stale_after_h:
             hours = int((now - synced).total_seconds() // 3600)
             warnings.append(_warn("stale", f"Dernière synchronisation de {provider} il y a {hours} h "
                                   f"(seuil {stale_after_h:g} h) : données périmées."))
-    return fresh, warnings
+    return fresh, warnings, sole
 
 
 def _window(day: date) -> List[Tuple[str, str]]:
@@ -480,7 +568,29 @@ def fetch_scores(client: Client, user_id: str, provider: str, day: date) -> List
     return out
 
 
-def native_scores(raw: List[dict], day: date, provider: str, default_tz) -> Tuple[List[dict], List[dict]]:
+def score_belongs_to_day(category: str, score: dict, day: date, default_tz,
+                         window: Optional[Tuple[datetime, datetime]]) -> bool:
+    """Un score est-il celui du jour D ? Règles et sources : `ASSUMPTIONS["score_date"]`."""
+    moment = parse_dt(score.get("recorded_at"))
+    if moment is None:
+        return False
+    if moment.tzinfo is None:
+        moment = moment.replace(tzinfo=timezone.utc)
+    utc = moment.astimezone(timezone.utc)
+    if not score.get("zone_offset") and utc.time() == datetime.min.time():
+        return utc.date() == day          # date seule (minuit UTC sans fuseau) : la date UTC EST le jour
+    local = localize(score.get("recorded_at"), score.get("zone_offset"), default_tz)
+    if local is None:
+        return False
+    if category == "sleep" and window is not None:
+        if window[0] - SCORE_MARGIN <= local <= window[1] + SCORE_MARGIN:
+            return True
+        return local.date() == day and local.time() == datetime.min.time()     # minuit local (Oura)
+    return local.date() == day
+
+
+def native_scores(raw: List[dict], day: date, provider: str, default_tz,
+                  window: Optional[Tuple[datetime, datetime]] = None) -> Tuple[List[dict], List[dict]]:
     """Scores natifs du jour D, sur leur échelle d'origine. Rend (provider_scores, avertissements)."""
     latest: Dict[str, Tuple[datetime, dict]] = {}
     warnings: List[dict] = []
@@ -491,7 +601,7 @@ def native_scores(raw: List[dict], day: date, provider: str, default_tz) -> Tupl
             continue          # strain/activité/etc. et scores calculés par OW : hors périmètre
         if origin and origin != provider:
             continue
-        if local_date(score.get("recorded_at"), score.get("zone_offset"), default_tz) != day:
+        if not score_belongs_to_day(category, score, day, default_tz, window):
             continue
         value = _num(score.get("value"))
         if value is None:
@@ -520,7 +630,8 @@ def native_scores(raw: List[dict], day: date, provider: str, default_tz) -> Tupl
 
 # ------------------------------------------------------------------------------------------------ health-day
 
-def build_health_day(client: Client, cfg: dict, user_id: str, fresh: dict, day: date) -> dict:
+def build_health_day(client: Client, cfg: dict, user_id: str, fresh: dict, day: date,
+                     sole_source: bool = True) -> dict:
     provider = cfg["provider"]
     local_tz = datetime.now().astimezone().tzinfo
     warnings: List[dict] = []
@@ -563,6 +674,13 @@ def build_health_day(client: Client, cfg: dict, user_id: str, fresh: dict, day: 
         rmssd, sdnn = _num(sleep.get("avg_hrv_rmssd_ms")), _num(sleep.get("avg_hrv_sdnn_ms"))
         rmssd = rmssd if rmssd and rmssd > 0 else None
         sdnn = sdnn if sdnn and sdnn > 0 else None
+        if not sole_source:
+            if rmssd is not None or sdnn is not None:
+                warnings.append(_warn("summary_hrv_multi_source", "HRV du résumé de sommeil ignorée : OW la moyenne "
+                                      "sur TOUTES les sources de l'utilisateur, et d'autres connexions que "
+                                      f"{provider} existent. HRV recalculée depuis la série temporelle de "
+                                      f"{provider} (fenêtre du sommeil)."))
+            rmssd = sdnn = None
         if provider == "apple" and rmssd is not None:
             warnings.append(_warn("apple_rmssd_ignored", "RMSSD renvoyée pour apple : ignorée (Apple Health "
                                   "ne fournit que la SDNN)."))
@@ -574,16 +692,18 @@ def build_health_day(client: Client, cfg: dict, user_id: str, fresh: dict, day: 
 
     # Étape 4 : FC de repos (et HRV de secours si le résumé n'en a pas) sur une fenêtre encadrant la nuit.
     anchor = datetime(day.year, day.month, day.day, tzinfo=sleep_tz or local_tz)
-    win_start = window[0] if window else anchor - timedelta(hours=6)             # D−1 18:00 locale
+    win_start = min(window[0] - RHR_LEAD, anchor) if window else anchor - timedelta(hours=6)  # D−1 18:00 locale
     win_end = anchor + timedelta(hours=12)                                         # D 12:00 locale
     if window and window[1] > win_end:
         win_end = window[1]
     want_hrv_series = rmssd is None and provider != "apple" and window is not None
-    types = ["resting_heart_rate"] + (["heart_rate_variability_rmssd"] if want_hrv_series else [])
+    want_sdnn_series = not sole_source and sdnn is None and window is not None
+    types = ["resting_heart_rate"] + (["heart_rate_variability_rmssd"] if want_hrv_series else []) \
+        + (["heart_rate_variability_sdnn"] if want_sdnn_series else [])
     samples, truncated = fetch_timeseries(client, user_id, provider, win_start, win_end, types)
     if truncated:
         warnings.append(_warn("timeseries_truncated", f"Séries temporelles tronquées après {MAX_PAGES} pages."))
-    rhr_samples, hrv_samples = [], []
+    rhr_night, rhr_day, hrv_samples, sdnn_samples = [], [], [], []
     for s in samples:
         value = _num(s.get("value"))
         if value is None or value <= 0:
@@ -591,10 +711,16 @@ def build_health_day(client: Client, cfg: dict, user_id: str, fresh: dict, day: 
         moment = localize(s.get("timestamp"), s.get("zone_offset"), sleep_tz or local_tz)
         if moment is None:
             continue
-        if s.get("type") == "resting_heart_rate" and moment.date() == day:
-            rhr_samples.append((moment, value, s))
+        if s.get("type") == "resting_heart_rate":
+            if window and window[0] - RHR_LEAD <= moment <= window[1]:
+                rhr_night.append((moment, value, s))
+            if moment.date() == day:
+                rhr_day.append((moment, value, s))
         elif s.get("type") == "heart_rate_variability_rmssd" and window and window[0] <= moment <= window[1]:
             hrv_samples.append(value)
+        elif s.get("type") == "heart_rate_variability_sdnn" and window and window[0] <= moment <= window[1]:
+            sdnn_samples.append(value)
+    rhr_samples = rhr_night or rhr_day     # la nuit principale d'abord ; sinon la date locale D
     if rhr_samples:
         rhr_samples.sort(key=lambda t: t[0])
         bpm = int(round(rhr_samples[-1][1]))
@@ -608,11 +734,14 @@ def build_health_day(client: Client, cfg: dict, user_id: str, fresh: dict, day: 
     if rmssd is None and hrv_samples:
         arc["hrv_overnight_ms"] = _round(round(sum(hrv_samples) / len(hrv_samples), 1))
         warnings.append(_warn("hrv_from_timeseries", "HRV RMSSD recalculée depuis la série temporelle "
-                              "(fenêtre du sommeil), faute de moyenne dans le résumé."))
+                              "(fenêtre du sommeil), faute de moyenne exploitable dans le résumé."))
+    if want_sdnn_series and sdnn_samples:
+        sdnn = sum(sdnn_samples) / len(sdnn_samples)
+        arc["hrv_sdnn_ms"] = _round(round(sdnn, 1))
 
     # Étape 5 : scores natifs.
     scores, score_warnings = native_scores(fetch_scores(client, user_id, provider, day), day, provider,
-                                           sleep_tz or local_tz)
+                                           sleep_tz or local_tz, window)
     warnings.extend(score_warnings)
     if scores:
         arc["provider_scores"] = scores
@@ -647,7 +776,7 @@ def run_check(client: Client, cfg: dict, now: datetime, day: date) -> dict:
            "tested_version": TESTED_VERSION, "warnings": []}
     user_id, count = resolve_user(client, cfg["user_id"])
     out["user"] = {"resolved": True, "count": count}
-    fresh, warnings = fetch_connection(client, user_id, cfg["provider"], cfg["stale_after_h"], now)
+    fresh, warnings, _ = fetch_connection(client, user_id, cfg["provider"], cfg["stale_after_h"], now)
     out["warnings"].extend(warnings)
     out["provider_connected"] = fresh["status"] == "active"
     out["stale"] = fresh["stale"]
@@ -716,14 +845,27 @@ def _date_arg(raw: str) -> date:
         raise argparse.ArgumentTypeError("date attendue au format AAAA-MM-JJ")
 
 
+_TIMEOUT_HELP = (f"Délai d'UNE requête, en secondes (défaut {TIMEOUT_S}, ou $ARC_OW_TIMEOUT). Un délai dépassé "
+                 "interrompt la commande (code 3), sans nouvel essai.")
+
+
+def _timeout_arg(raw: str) -> float:
+    try:
+        return resolve_timeout(float(raw))
+    except (ValueError, OWError):
+        raise argparse.ArgumentTypeError(f"nombre de secondes attendu (0 < S ≤ {MAX_TIMEOUT_S})")
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Client REST Open Wearables (lecture seule, #219).")
     parser.add_argument("--workspace", help="Workspace (sinon $ARC_WORKSPACE, pointeur, moteur).")
+    parser.add_argument("--timeout", type=_timeout_arg, default=None, help=_TIMEOUT_HELP)
     sub = parser.add_subparsers(dest="command", required=True)
     for name, helptext in (("check", "État de la connexion, de l'utilisateur et de la forme des réponses."),
                            ("health-day", "Santé d'un jour (sommeil, HRV, FC de repos, scores natifs).")):
         p = sub.add_parser(name, help=helptext)
         p.add_argument("--json", action="store_true", help="Sortie JSON sur stdout.")
+        p.add_argument("--timeout", type=_timeout_arg, default=argparse.SUPPRESS, help=_TIMEOUT_HELP)
         if name == "health-day":
             p.add_argument("--date", type=_date_arg, help="Jour local AAAA-MM-JJ (défaut : aujourd'hui).")
     return parser
@@ -736,15 +878,16 @@ def main(argv: Optional[list] = None, opener=None) -> int:
     try:
         cfg = _config(args.workspace)
         key, key_warnings = _read_key(cfg["key_file"])
-        client = Client(cfg["base_url"], key, opener)
+        key_warnings = cfg["warnings"] + key_warnings
+        client = Client(cfg["base_url"], key, opener, resolve_timeout(getattr(args, "timeout", None)))
         if args.command == "check":
             result = run_check(client, cfg, datetime.now(timezone.utc), day)
             result["warnings"] = key_warnings + result["warnings"]
         else:
             user_id, _ = resolve_user(client, cfg["user_id"])
-            fresh, conn_warnings = fetch_connection(client, user_id, cfg["provider"], cfg["stale_after_h"],
-                                                    datetime.now(timezone.utc))
-            result = build_health_day(client, cfg, user_id, fresh, day)
+            fresh, conn_warnings, sole = fetch_connection(client, user_id, cfg["provider"], cfg["stale_after_h"],
+                                                          datetime.now(timezone.utc))
+            result = build_health_day(client, cfg, user_id, fresh, day, sole)
             result["warnings"] = key_warnings + conn_warnings + result["warnings"]
         _emit(result, args.command, as_json)
         return EXIT_OK

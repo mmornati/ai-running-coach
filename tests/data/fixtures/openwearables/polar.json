@@ -35,7 +35,7 @@
           "provider": "polar",
           "source": "polar",
           "device": "Polar Grit X2",
-          "device_type": "ring",
+          "device_type": "watch",
           "device_name": "Polar Grit X2"
         },
         "start_time": "2026-10-04T21:05:00Z",
@@ -66,31 +66,15 @@
     }
   },
   "timeseries": {
-    "data": [
-      {
-        "timestamp": "2026-10-05T03:00:00Z",
-        "zone_offset": "+02:00",
-        "type": "resting_heart_rate",
-        "value": 44,
-        "unit": "bpm",
-        "source": {
-          "provider": "polar",
-          "source": "polar",
-          "device": "Polar Grit X2",
-          "device_type": "ring",
-          "device_name": "Polar Grit X2"
-        },
-        "is_daily_total": null
-      }
-    ],
+    "data": [],
     "pagination": {
       "next_cursor": null,
       "has_more": false,
-      "total_count": 1
+      "total_count": 0
     },
     "metadata": {
       "resolution": "raw",
-      "sample_count": 1
+      "sample_count": 0
     }
   },
   "scores": {
@@ -100,32 +84,44 @@
         "category": "readiness",
         "value": 7,
         "qualifier": null,
-        "recorded_at": "2026-10-05T05:00:00Z",
-        "zone_offset": "+02:00",
+        "recorded_at": "2026-10-05T04:45:00Z",
+        "zone_offset": null,
         "components": null,
         "data_source_id": null,
         "provider": "polar",
         "event_record_id": null
       },
       {
-        "id": "00000000-0000-4000-8000-0000000000c1",
+        "id": "00000000-0000-4000-8000-0000000000c2",
         "category": "recovery",
         "value": 4,
         "qualifier": "OK",
-        "recorded_at": "2026-10-05T05:00:00Z",
-        "zone_offset": "+02:00",
+        "recorded_at": "2026-10-05T00:00:00Z",
+        "zone_offset": null,
         "components": null,
         "data_source_id": null,
         "provider": "polar",
         "event_record_id": null
       },
       {
-        "id": "00000000-0000-4000-8000-0000000000c1",
+        "id": "00000000-0000-4000-8000-0000000000c3",
         "category": "strain",
         "value": 1234.5,
         "qualifier": null,
-        "recorded_at": "2026-10-05T05:00:00Z",
-        "zone_offset": "+02:00",
+        "recorded_at": "2026-10-05T00:00:00Z",
+        "zone_offset": null,
+        "components": null,
+        "data_source_id": null,
+        "provider": "polar",
+        "event_record_id": null
+      },
+      {
+        "id": "00000000-0000-4000-8000-0000000000c4",
+        "category": "sleep",
+        "value": 80,
+        "qualifier": null,
+        "recorded_at": "2026-10-04T21:05:00Z",
+        "zone_offset": null,
         "components": null,
         "data_source_id": null,
         "provider": "polar",
@@ -134,7 +130,7 @@
     ],
     "pagination": {
       "has_more": false,
-      "total_count": 3
+      "total_count": 4
     },
     "metadata": {}
   }

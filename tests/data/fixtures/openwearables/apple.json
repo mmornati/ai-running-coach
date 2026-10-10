@@ -35,7 +35,7 @@
           "provider": "apple",
           "source": "apple",
           "device": "Apple Watch",
-          "device_type": "ring",
+          "device_type": "watch",
           "device_name": "Apple Watch"
         },
         "start_time": "2026-10-04T21:05:00Z",
@@ -77,7 +77,7 @@
           "provider": "apple",
           "source": "apple",
           "device": "Apple Watch",
-          "device_type": "ring",
+          "device_type": "watch",
           "device_name": "Apple Watch"
         },
         "is_daily_total": null

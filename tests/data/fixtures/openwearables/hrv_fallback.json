@@ -68,7 +68,7 @@
   "timeseries": {
     "data": [
       {
-        "timestamp": "2026-10-05T04:50:00Z",
+        "timestamp": "2026-10-04T21:05:00Z",
         "zone_offset": "+02:00",
         "type": "resting_heart_rate",
         "value": 47,
