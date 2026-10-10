@@ -1908,6 +1908,10 @@ function profileSection(p, climbs, showElevation) {
   const hasGap = has(p.gap);
   const paceR = has(p.pace) ? robust(perMin(p.pace), hasGap ? perMin(p.gap) : []) : null;
   const cadR = has(p.cad) ? robust(p.cad) : null;
+  // Pas de l'axe d'allure en minutes (30 s, 1, 2, 3, 5 min) : le plus fin qui garde au plus quatre
+  // graduations dans l'axe — avec les pas décimaux 1/2/5 génériques, un axe 5:00–14:20 n'en
+  // montrait qu'une (« 10:00 »).
+  const paceStep = (y) => [0.5, 1, 2, 3, 5].find((s) => Math.floor(y.max / s) - Math.ceil(y.min / s) + 1 <= 4) || 10;
   const paceFmt = (v) => `${Math.floor(v)}:${String(Math.round((v % 1) * 60) % 60).padStart(2, "0")}`;
   const specs = [
     showElevation && has(p.alt) && { id: "alt", title: "Altitude", height: 170, label: "Altitude le long de la séance", yFormat: (v) => F.num(v),
@@ -1916,7 +1920,7 @@ function profileSection(p, climbs, showElevation) {
         { type: "line", values: p.alt, cls: "line line--elev" }] },
     has(p.hr) && { id: "hr", title: "FC", height: 110, label: "Fréquence cardiaque le long de la séance", yFormat: (v) => F.num(v),
       layers: [{ type: "line", values: p.hr, cls: "line line--rhr" }] },
-    paceR && { id: "pace", title: hasGap ? "Allure · GAP" : "Allure", height: 110, y: { ...paceR.y, invert: true },
+    paceR && { id: "pace", title: hasGap ? "Allure<br>GAP" : "Allure", height: 110, y: { ...paceR.y, invert: true, step: paceStep(paceR.y) },
       label: hasGap ? "Allure et allure ajustée à la pente le long de la séance, plus rapide en haut" : "Allure le long de la séance, plus rapide en haut", yFormat: paceFmt,
       layers: [{ type: "line", values: paceR.values, cls: "line line--pace" },
         ...(hasGap ? [{ type: "line", values: paceR.extra, cls: "line line--gap" }] : [])] },
@@ -1932,12 +1936,14 @@ function profileSection(p, climbs, showElevation) {
     const y = sp.id === "alt" ? sp.y : { ...(sp.y || {}), ticks: 2 };
     return { ...sp, c: timeChart(xs, sp.layers, [], { height: sp.height + (last ? 20 : 0), y, xLabels: last ? labels : labels.map(() => ""), label: sp.label, yFormat: sp.yFormat }) };
   });
-  const climbKey = climbs.length && rows[0].id === "alt" ? `<span class="legend__item"><span class="key key--climb"></span>Montées détectées</span>` : "";
-  const gapKey = hasGap && paceR ? `<span class="legend__item"><span class="key key--pace"></span>Allure</span> <span class="legend__item"><span class="key key--gap"></span>GAP (allure ajustée à la pente)</span>` : "";
-  const keys = [climbKey, gapKey].filter(Boolean).join(" ");
+  // Légende de chaque graphique juste sous lui (montées sous l'altitude, allure/GAP sous l'allure),
+  // alignée sur le début des courbes — jamais une légende commune en tête du profil.
+  const legends = {
+    alt: climbs.length ? `<span class="legend__item"><span class="key key--climb"></span>Montées détectées</span>` : "",
+    pace: hasGap ? `<span class="legend__item"><span class="key key--pace"></span>Allure</span> <span class="legend__item"><span class="key key--gap"></span>GAP (allure ajustée à la pente)</span>` : "",
+  };
   const html = `<section class="band profile"><h2>Profil</h2>
-    ${keys ? `<p class="legend">${keys}</p>` : ""}
-    <div class="profile__stack">${rows.map((r) => `<div class="profile__row"><span class="profile__label" aria-hidden="true">${r.title}</span><div class="chart-host chart-host--nox" id="c-prof-${r.id}">${r.c.svg}</div></div>`).join("")}</div>
+    <div class="profile__stack">${rows.map((r) => `<div class="profile__row"><span class="profile__label" aria-hidden="true">${r.title}</span><div class="chart-host chart-host--nox" id="c-prof-${r.id}">${r.c.svg}</div></div>${legends[r.id] ? `<p class="legend profile__legend">${legends[r.id]}</p>` : ""}`).join("")}</div>
     <p class="readout readout--sticky" id="r-prof" aria-live="polite"></p></section>`;
   const show = (j) => {
     const km = (p.d[j] - p.d[0]) / 1000;

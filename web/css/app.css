@@ -457,7 +457,7 @@ select { font: inherit; color: var(--ink); background: var(--surface); border: 1
 
 .readout { min-height: 1.5rem; margin: 0.35rem 0 0; color: var(--ink-soft); font-size: 0.88rem; font-variant-numeric: tabular-nums; }
 .readout strong { color: var(--ink); font-weight: 600; }
-.readout--sticky { position: sticky; top: 3.8rem; z-index: 2; background: var(--bg); padding: 0.45rem 0; margin: 0; border-bottom: 1px solid var(--line); min-height: 2.4rem; }
+.readout--sticky { position: sticky; top: 3.8rem; z-index: 2; background: var(--bg); padding: 0.45rem 0.90rem; margin: 0; border: 1px solid var(--line); min-height: 2.4rem; border-radius: var(--radius-sm); }
 
 .legend { display: flex; flex-wrap: wrap; align-items: center; gap: 0.3rem 0.8rem; margin: 0 0 0.3rem; color: var(--ink-soft); font-size: 0.84rem; }
 .legend--small { font-size: 0.78rem; color: var(--ink-faint); margin-top: 0.3rem; }
@@ -819,9 +819,10 @@ button.seg:focus-visible, .link-btn:focus-visible { outline: 2px solid var(--foc
 .ledger__group:first-child .ledger__rows div:nth-child(-n+3) dd small { display: block; font: 400 0.74rem/1.3 var(--text); letter-spacing: 0; }
 .ledger .chip { vertical-align: middle; }
 
-.profile__stack { display: grid; gap: 0.15rem; }
+.profile__stack { display: grid; gap: 0.15rem; margin-bottom: 1rem }
 .profile__row { display: grid; grid-template-columns: 4.6rem minmax(0, 1fr); align-items: center; }
 .profile__label { color: var(--ink-faint); font-size: 0.78rem; }
+.profile__legend { margin: 0 0 0.4rem 4.6rem; }
 .profile .chart-host { margin: 0; }
 .chart .area--elev { fill: var(--s-band); }
 .chart .area--climb { fill: var(--s-dplus); opacity: 0.22; }
@@ -846,6 +847,7 @@ button.seg:focus-visible, .link-btn:focus-visible { outline: 2px solid var(--foc
 @media (max-width: 36em) {
   .profile__row { grid-template-columns: minmax(0, 1fr); }
   .profile__label { margin-top: 0.4rem; }
+  .profile__legend { margin-left: 0; }
   .map-bar { padding: 0.55rem 0.6rem; }
 }
 
