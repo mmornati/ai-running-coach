@@ -1,0 +1,57 @@
+WEBVTT
+
+1
+00:00:01.200 --> 00:00:03.221
+Étape vingt : quelle course, et quand ?
+
+2
+00:00:05.100 --> 00:00:09.979
+Le coach prépare un objectif déjà choisi, le stratège prépare le jour J.
+
+3
+00:00:10.079 --> 00:00:14.020
+Le directeur sportif s'occupe de l'étape d'avant : quelle course, et quand.
+
+4
+00:00:15.100 --> 00:00:21.131
+Des amis proposent à Camille un trail en juin : quatre-vingts kilomètres, mille cinq cents mètres de dénivelé.
+
+5
+00:00:21.231 --> 00:00:30.463
+Avant de chercher, l'agent lit ce qu'elle a réellement couru : plus longue sortie, plus gros dénivelé, volume des douze dernières semaines, et son genou gauche, à surveiller.
+
+6
+00:00:31.313 --> 00:00:37.366
+Le verdict vient d'abord, faits à l'appui : quatre-vingts kilomètres en juin, pour toi, je te le déconseille.
+
+7
+00:00:37.466 --> 00:00:48.361
+Mais il ne refuse pas : même course, même jour, même arrivée, sur le format trente-cinq kilomètres. Et une seule question : mille cinq cents mètres sur quatre-vingts kilomètres, c'est très roulant. Voulu ?
+
+8
+00:00:49.211 --> 00:00:57.205
+Il n'existe pas d'API des courses : l'agent cherche sur le web, comme vous. Chaque course vient d'une page consultée, jamais de sa mémoire.
+
+9
+00:00:57.305 --> 00:01:06.408
+Date vérifiée sur le site de l'organisateur, sinon « à confirmer ». Un chiffre absent est écrit « non trouvé ». Et une course complète ne passe jamais en premier.
+
+10
+00:01:07.258 --> 00:01:11.903
+Chaque course reçoit un rôle : objectif principal, préparation, ou plaisir.
+
+11
+00:01:12.003 --> 00:01:23.197
+Jours de la semaine et écarts sont calculés par un script, jamais de tête. Récupération, affûtage : des règles provisoires, fixes, citées à chaque fois. Rien dans l'affûtage de l'objectif.
+
+12
+00:01:24.047 --> 00:01:31.166
+L'ultra dépasse tout ce que Camille a couru, et son genou est fragile : le médical est consulté, et son avis l'emporte.
+
+13
+00:01:31.266 --> 00:01:41.607
+Puis l'agent propose les valeurs de l'objectif, sans jamais écrire le fichier à votre place. Rien n'est poussé vers la montre, rien ne tourne en automatique. Le coach prend le relais.
+
+14
+00:01:44.157 --> 00:01:48.290
+Pour aller plus loin : la page « Directeur sportif » de la documentation.

@@ -1,0 +1,57 @@
+WEBVTT
+
+1
+00:00:01.200 --> 00:00:04.117
+Stage twenty: which race, and when?
+
+2
+00:00:05.100 --> 00:00:10.683
+The coach prepares a goal that's already chosen, the strategist prepares race day.
+
+3
+00:00:10.783 --> 00:00:15.513
+The sports director handles the step before: which race, and when.
+
+4
+00:00:16.363 --> 00:00:23.760
+Some friends invite Camille to a trail race in June: eighty kilometres, fifteen hundred metres of climbing.
+
+5
+00:00:23.860 --> 00:00:34.136
+Before searching, the agent reads what she has actually run: longest run, biggest climb, volume over the last twelve weeks, and her left knee, one to watch.
+
+6
+00:00:34.986 --> 00:00:41.700
+The verdict comes first, with the facts: eighty kilometres in June, for you, I'd advise against it.
+
+7
+00:00:41.800 --> 00:00:55.575
+But it doesn't refuse: same event, same day, same finish line, on the thirty-five kilometre format. And one question only: fifteen hundred metres over eighty kilometres is very runnable. Intended?
+
+8
+00:00:56.425 --> 00:01:05.550
+There's no race API: the agent searches the web, like you would. Every race comes from a page it actually read, never from memory.
+
+9
+00:01:05.650 --> 00:01:15.628
+Dates checked on the organiser's site, otherwise “to be confirmed”. A missing figure reads “not found”. And a sold-out race is never the first pick.
+
+10
+00:01:16.478 --> 00:01:21.144
+Each race gets a role: main objective, preparation, or fun.
+
+11
+00:01:21.244 --> 00:01:33.142
+Weekdays and gaps are computed by a script, never in its head. Recovery, taper: provisional rules, fixed, quoted every time. Nothing inside the main objective's taper.
+
+12
+00:01:33.992 --> 00:01:42.733
+The ultra goes beyond anything Camille has run, and her knee is fragile: the medical agent is consulted, and its word wins.
+
+13
+00:01:42.833 --> 00:01:54.005
+Then the agent proposes the objective's values, without ever writing the file for you. Nothing goes to the watch, nothing runs on autopilot. The coach takes over.
+
+14
+00:01:56.555 --> 00:02:01.413
+To go further: the “Sports director” page of the documentation.
