@@ -389,6 +389,8 @@ select { font: inherit; color: var(--ink); background: var(--surface); border: 1
 .chart .dot { stroke: var(--surface); stroke-width: 1.2; }
 .chart .dot--hrv { fill: var(--s-hrv); } .chart .dot--rhr { fill: var(--s-rhr); } .chart .dot--dplus { fill: var(--s-dplus); }
 .chart .dot--weight { fill: var(--s-weight); }
+/* Pesée déclarée par l'athlète (#222) : anneau creux, la pesée Garmin reste un disque plein. */
+.chart .dot--weight-declared { fill: var(--surface); stroke: var(--s-weight); stroke-width: 1.6; }
 .chart .dot--carbs { fill: var(--s-carbs); }
 .chart .dot--decoupling { fill: var(--s-decoupling); }
 .chart .dot--vam { fill: var(--s-vam); }
@@ -471,6 +473,7 @@ select { font: inherit; color: var(--ink); background: var(--surface); border: 1
    point pour le poids quotidien, trait plein pour la moyenne 7 j, trait pointillé pour
    la cible — pour rester lisible même sans percevoir la couleur (daltonisme, N&B). */
 .key--weight { background: var(--s-weight); border-radius: 50%; width: 0.5rem; height: 0.5rem; }
+.key--weight-declared { background: var(--surface); border: 1.6px solid var(--s-weight); border-radius: 50%; width: 0.5rem; height: 0.5rem; }
 .key--weight-avg { background: var(--s-weight); height: 0.22rem; }
 .key--target { background: repeating-linear-gradient(to right, var(--s-weight) 0 4px, transparent 4px 7px); height: 0.22rem; }
 /* Glucides/h et sudation (#41) : point pour glucides/h par sortie longue, trait

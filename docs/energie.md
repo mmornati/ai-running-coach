@@ -91,7 +91,9 @@ l'agent coach. Les causes les plus fréquentes, ni certaines ni exhaustives :
 - une forte chaleur, qui augmente le travail cardiovasculaire réel sans que le
   modèle du projet ne le compense (voir [Les limites](#les-limites)) ;
 - un poids de référence périmé (le modèle a besoin du poids de l'athlète à la
-  date de la séance).
+  date de la séance ; avec une balance Garmin ou une saisie dans Garmin Connect,
+  la pesée est lue automatiquement — voir
+  [Poids lu dans Garmin Connect](garmin-setup.md#poids-lu-dans-garmin-connect-222)).
 
 Ce signalement est un point de vigilance, jamais un verdict sur la séance ni
 sur la fiabilité de l'une ou l'autre source.

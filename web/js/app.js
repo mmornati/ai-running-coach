@@ -3155,6 +3155,9 @@ async function viewReport(params) {
     <article class="prose">${r.body_html}</article><p class="muted source">Source : <code>${F.esc(r.source_path)}</code></p>`;
 }
 
+/** Provenance d'une pesée (#222, `weight_origin` de `/api/nutrition`). */
+const WEIGHT_ORIGIN_LABEL = { garmin: "Garmin", athlete: "déclarée" };
+
 /** Section « Poids » de la vue Nutrition (#36) : points quotidiens (fusion santé/nutrition,
  * santé prioritaire — voir `ASSUMPTIONS["weight_merge"]` côté serveur), moyenne mobile 7 j
  * et cible. Chiffres seulement, aucun commentaire normatif sur le poids (issue #36).
@@ -3165,20 +3168,29 @@ function weightSection(weightSeries, weight) {
   const marks = weight.target_kg != null
     ? [{ type: "hline", value: weight.target_kg, cls: "mark mark--target", label: `Cible ${F.weight(weight.target_kg)}` }]
     : [];
+  // Provenance (#222) : pesée Garmin = disque plein, pesée déclarée = anneau creux — la forme
+  // distingue les deux séries sans dépendre de la couleur.
+  const pick = (origin) => weightSeries.map((p) => (p.weight_origin === origin ? p.weight_kg_merged : null));
+  const hasGarmin = weightSeries.some((p) => p.weight_origin === "garmin");
+  const hasDeclared = weightSeries.some((p) => p.weight_origin === "athlete");
   const chart = timeChart(dates, [
     { type: "line", values: weightSeries.map((p) => p.weight_avg7_kg), cls: "line line--weight-avg" },
-    { type: "dots", values: weightSeries.map((p) => p.weight_kg_merged), cls: "dot dot--weight" },
-  ], marks, { height: 200, label: "Poids quotidien, moyenne mobile 7 jours et cible", yFormat: (v) => F.weight(v) });
+    { type: "dots", values: pick("garmin"), cls: "dot dot--weight" },
+    { type: "dots", values: pick("athlete"), cls: "dot dot--weight-declared" },
+  ], marks, { height: 200, label: "Poids quotidien (pesées Garmin et déclarées), moyenne mobile 7 jours et cible", yFormat: (v) => F.weight(v) });
   const gapTxt = weight.gap_kg != null ? `${weight.gap_kg > 0 ? "+" : ""}${F.weight(weight.gap_kg)}` : "—";
   const slopeTxt = weight.slope_kg_per_week != null ? `${weight.slope_kg_per_week > 0 ? "+" : ""}${F.weightRate(weight.slope_kg_per_week)}` : "—";
   // `avg7_kg` (et `gap_kg`, qui en dérive) est TOUJOURS la valeur du jour même (jamais la
   // dernière moyenne non nulle trouvée plus tôt dans la fenêtre, voir arc_serve.py) : un
   // « — » ici signifie « pas assez de pesées récentes », pas une absence de data ancienne.
+  const latest = weight.latest;
+  const latestTxt = latest ? `${F.weight(latest.weight_kg)}<small> au ${F.dayShort(latest.date)} · ${WEIGHT_ORIGIN_LABEL[latest.origin] || "—"}</small>` : "—";
   const avg7Txt = weight.avg7_kg != null ? `${F.weight(weight.avg7_kg)}<small> au ${F.dayShort(weight.avg7_date)}</small>` : "—";
   const html = `<section class="band"><h2>Poids</h2>
-    <p class="legend"><span class="legend__item"><span class="key key--weight"></span>Poids quotidien</span> <span class="legend__item"><span class="key key--weight-avg"></span>Moyenne 7 j</span>${weight.target_kg != null ? ` <span class="legend__item"><span class="key key--target"></span>Cible</span>` : ""}</p>
+    <p class="legend">${hasGarmin ? `<span class="legend__item"><span class="key key--weight"></span>Pesée Garmin</span> ` : ""}${hasDeclared ? `<span class="legend__item"><span class="key key--weight-declared"></span>Pesée déclarée</span> ` : ""}<span class="legend__item"><span class="key key--weight-avg"></span>Moyenne 7 j</span>${weight.target_kg != null ? ` <span class="legend__item"><span class="key key--target"></span>Cible</span>` : ""}</p>
     <div class="chart-host" id="c-weight">${chart.svg}</div><p class="readout" id="r-weight"></p>
     <dl class="facts facts--inline">
+      <div><dt>Dernière pesée</dt><dd>${latestTxt}</dd></div>
       <div><dt>Moyenne 7 j</dt><dd>${avg7Txt}</dd></div>
       <div><dt>Cible</dt><dd>${F.weight(weight.target_kg)}</dd></div>
       <div><dt>Écart à la cible</dt><dd>${gapTxt}</dd></div>
@@ -3573,7 +3585,8 @@ async function viewNutrition() {
   if (weightChart) {
     attachCursor($("#c-weight"), weightChart, (i) => {
       const p = weight_series[i];
-      readout($("#r-weight"), `<strong>${F.dayLong(p.date)}</strong> · poids ${F.weight(p.weight_kg_merged)} · moyenne 7 j ${F.weight(p.weight_avg7_kg)}`);
+      const origin = p.weight_origin ? ` <small class="muted">(${WEIGHT_ORIGIN_LABEL[p.weight_origin]})</small>` : "";
+      readout($("#r-weight"), `<strong>${F.dayLong(p.date)}</strong> · poids ${F.weight(p.weight_kg_merged)}${origin} · moyenne 7 j ${F.weight(p.weight_avg7_kg)}`);
     });
   }
   if (fuelingChart) {

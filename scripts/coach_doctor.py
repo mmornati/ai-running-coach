@@ -45,7 +45,7 @@ avant expiration des tokens, qui appelle ce script avec `--json`, éventuellemen
                 | "athlete_profile" | "index_freshness" | "out_of_contract"
                 | "daily_sync_scheduled" | "ntfy_configured" | "gear_sync"
                 | "gear_history" | "fit_reader" | "intervals_mcp_pin" | "llm_config"
-                | "chat_service" | "opencode_cli" | "telegram",
+                | "chat_service" | "opencode_cli" | "telegram" | "weight_sync",
           "status": "ok" | "warning" | "error" | "info",
           "message": "<texte français>",
           "fix": "<commande de correction>" | null
@@ -178,7 +178,7 @@ CHECK_IDS = (
     "garmin_token", "garmin_mcp", "config_files", "athlete_profile",
     "index_freshness", "out_of_contract", "daily_sync_scheduled", "ntfy_configured",
     "gear_sync", "gear_history", "fit_reader", "intervals_mcp_pin",
-    "llm_config", "chat_service", "opencode_cli", "strava_connection", "telegram",
+    "llm_config", "chat_service", "opencode_cli", "strava_connection", "telegram", "weight_sync",
 )
 
 CHAT_SYSTEMD_UNIT_REL = ".config/systemd/user/ai-running-coach-chat.service"
@@ -1458,6 +1458,43 @@ def check_gear_sync(workspace: Path, config: dict) -> dict:
     )
 
 
+WEIGHT_TOOLS_REQUIRED = ("get_daily_weigh_ins", "get_weigh_ins")
+
+
+def check_weight_sync(workspace: Path, config: dict) -> dict:
+    """#222 — poids lu dans Garmin Connect, vérifié STATIQUEMENT (aucun appel Garmin) : la liste
+    blanche contient les deux outils de LECTURE des pesées. Jamais un avertissement : sans eux, le
+    poids reste simplement déclaratif. Liste illisible → rien n'est affirmé."""
+    check_id = "weight_sync"
+    source = (config.get("data") or {}).get("source", "garmin")
+    if source != "garmin":
+        return build_check(
+            check_id, "info",
+            f"[data].source = \"{source}\" — le poids n'est pas lu à la source ; il reste celui que "
+            "l'athlète déclare.",
+            fix=None,
+        )
+    tools, origin = _read_gear_whitelist(workspace)
+    if tools is None:
+        return build_check(
+            check_id, "ok",
+            "Liste blanche non lue (fichier absent ou illisible, mode passerelle ou config manuelle) — "
+            "rien à signaler.", fix=None,
+        )
+    missing = [t for t in WEIGHT_TOOLS_REQUIRED if t not in tools]
+    if missing:
+        fix = ("éditez GARMIN_ENABLED_TOOLS dans ~/.config/leanproxy_servers.yaml : ajoutez "
+               "get_daily_weigh_ins,get_weigh_ins" if origin == "leanproxy"
+               else "./install.sh (relancez-le : la liste blanche de .mcp.json est mise à jour)")
+        return build_check(
+            check_id, "info",
+            f"Liste blanche `GARMIN_ENABLED_TOOLS` sans {', '.join(missing)} — le poids n'est pas lu "
+            "dans Garmin Connect, il reste déclaratif.",
+            fix=fix,
+        )
+    return build_check(check_id, "ok", "Pesées Garmin lisibles (lecture seule).", fix=None)
+
+
 GEAR_HISTORY_MIN_ACTIVITIES = 5
 GEAR_HISTORY_MIN_RATIO = 0.5
 
@@ -1533,6 +1570,8 @@ def run_single_check(check_id: str, workspace: Path, now: datetime, tokens_dir: 
         return check_gear_sync(workspace, config)
     if check_id == "gear_history":
         return check_gear_history(workspace, config)
+    if check_id == "weight_sync":
+        return check_weight_sync(workspace, config)
     if check_id == "fit_reader":
         return check_fit_reader(config, Path.home())
     if check_id == "intervals_mcp_pin":
