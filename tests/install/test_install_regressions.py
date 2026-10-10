@@ -162,6 +162,34 @@ class TestWorkspaceMode(InstallAsserts):
             self.assertPopulated(ws / "agents", minimum=4)
             self.assertPopulated(ws / "skills", minimum=9)
 
+    def test_engine_config_read_by_agents_is_linked(self):
+        """Les agents lisent config/coaching-styles.md et config/sports/<primary>.md
+        par chemin relatif : sans lien, un workspace séparé n'y trouvait rien."""
+        with Sandbox() as sb:
+            ws = sb.root / "workspace-prive"
+            ws.mkdir()
+            for _ in range(2):  # idempotent : la seconde passe ne casse rien
+                self.assertSucceeded(sb.install("--no-auth", "--workspace", str(ws)))
+                for rel in ("config/coaching-styles.md", "config/sports", "config/workspace.toml", "scripts"):
+                    link = ws / rel
+                    self.assertTrue(link.is_symlink(), f"{rel} n'est pas un lien")
+                    self.assertEqual(link.resolve(), (sb.repo / rel).resolve())
+                self.assertIsFile(ws / "config/sports/trail.md")
+                self.assertFalse((ws / "config/sports/sports").exists(), "lien imbriqué dans config/sports")
+            gitignore = (ws / ".gitignore").read_text()
+            for entry in ("/config/coaching-styles.md", "/config/sports"):
+                self.assertIn(entry, gitignore.splitlines())
+
+    def test_dry_run_announces_engine_config_links(self):
+        with Sandbox() as sb:
+            ws = sb.root / "workspace-prive"
+            ws.mkdir()
+            proc = sb.install("--no-auth", "--dry-run", "--workspace", str(ws))
+            self.assertSucceeded(proc)
+            self.assertOutputContains(proc, "config/coaching-styles.md")
+            self.assertOutputContains(proc, "config/sports")
+            self.assertFalse((ws / "config/sports").exists())
+
 
 class TestArgumentParsing(InstallAsserts):
     def test_missing_flag_value_is_a_clean_error(self):
