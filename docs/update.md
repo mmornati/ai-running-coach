@@ -23,6 +23,7 @@ pour eux. Relancer `install.sh` reste nécessaire pour tout ce qui est **génér
 | Élément | Pourquoi relancer `install.sh` |
 |---|---|
 | Catalogue `agents/` et `skills/` du workspace | Un nouveau skill (ex. `/today`, `/log`, `coach-doctor`) n'apparaît qu'une fois son lien créé. |
+| Liens `config/coaching-styles.md` et `config/sports` du workspace | Ajoutés après coup : un workspace installé avant ne les a pas, et les agents ne trouvent alors ni le style de coaching (`[coaching].style`) ni le profil de sport (`[sport].primary`). Relancer `install.sh --workspace …` une fois. |
 | `.mcp.json` | La liste blanche d'outils Garmin (`GARMIN_ENABLED_TOOLS`) évolue avec les skills ; l'ancienne reste figée dans le fichier. |
 | Bloc `.gitignore` du workspace | De nouveaux fichiers générés peuvent y être ajoutés. |
 | Crontab / launchd du daily-sync | Relus depuis `[sync].mode` (`schedule` : heures de `[sync].times` ; `watch` : sondage `scripts/garmin_watch.py`, voir [Le coach dans la poche](mobile.md#mode-watch-ne-payer-le-llm-que-quand-garmin-a-du-neuf)) ; les lignes marquées sont remplacées, le reste de la crontab est conservé (sauvegarde dans `~/.config/ai-running-coach/`). |

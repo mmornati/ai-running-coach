@@ -722,6 +722,19 @@ link_file() {
     ok "Lien créé : $link -> $target"
 }
 
+# Idem pour un dossier (scripts/, config/sports/) — un vrai dossier existant est
+# conservé, avec $3 pour expliquer la conséquence.
+link_dir() {
+    local target="$1" link="$2" consequence="$3"
+    [[ -d "$target" ]] || { warn "Cible introuvable, lien ignoré : $target"; return 0; }
+    if [[ -e "$link" && ! -L "$link" ]]; then
+        warn "$link existe et n'est pas un lien — conservé ; $consequence"
+        return 0
+    fi
+    ln -sfn "$target" "$link"
+    ok "Lien créé : $link -> $target"
+}
+
 # ---------------------------------------------------------------------------
 # 0. Workspace séparé (--workspace DIR)
 # ---------------------------------------------------------------------------
@@ -1019,11 +1032,12 @@ populate_catalog() {
 # Entrées que le bloc généré doit contenir. Une installation plus ancienne a
 # déjà un bloc : on n'y ajoute que ce qui manque (sinon une nouvelle entrée,
 # comme l'index du tableau de bord, n'atteindrait jamais les workspaces existants).
-# /scripts sans « / » final : c'est un lien, et un motif « dossier/ » ne couvre pas
+# /scripts et /config/sports sans « / » final : ce sont des liens, et un motif « dossier/ » ne couvre pas
 # un lien symbolique — `git add -A` (git_autocommit) l'aurait versionné.
 # *.bak : sauvegardes que install.sh et coach_config.py laissent à côté des fichiers.
 WORKSPACE_IGNORES=(
-    /agents/ /skills/ /scripts /AGENTS.md /config/workspace.toml config/workspace.user.toml
+    /agents/ /skills/ /scripts /AGENTS.md /config/workspace.toml /config/coaching-styles.md /config/sports
+    config/workspace.user.toml
     /.mcp.json /.claude/ /.opencode/ /.gemini/ /.cursor/ /.windsurf/ /.github/agents /.github/skills
     /logs/ /.arc/ .DS_Store __pycache__/ '*.bak'
 )
@@ -1076,6 +1090,8 @@ $marker
 /scripts
 /AGENTS.md
 /config/workspace.toml
+/config/coaching-styles.md
+/config/sports
 # Config personnelle : contient le sujet ntfy, qui fait office de secret
 config/workspace.user.toml
 # Configs IDE générées
@@ -1123,17 +1139,19 @@ prepare_workspace() {
     log "Préparation du workspace : $WORKSPACE_ROOT (moteur : $PROJECT_ROOT)"
     run mkdir -p "$WORKSPACE_ROOT/config" "$WORKSPACE_ROOT/local/agents" "$WORKSPACE_ROOT/local/skills"
     if [[ "$DRY_RUN" -eq 1 ]]; then
-        printf '%s\n' "${C_YELLOW}[dry-run]${C_RESET} liens AGENTS.md, config/workspace.toml → moteur"
+        printf '%s\n' "${C_YELLOW}[dry-run]${C_RESET} liens AGENTS.md, config/workspace.toml, config/coaching-styles.md, config/sports, scripts → moteur"
     else
         link_file "$PROJECT_ROOT/AGENTS.md" "$WORKSPACE_ROOT/AGENTS.md"
         link_file "$PROJECT_ROOT/config/workspace.toml" "$WORKSPACE_ROOT/config/workspace.toml"
+        # Les agents lisent ces deux-là par chemin relatif ([coaching].style,
+        # [sport].primary). config/plans/ et config/strength/ n'ont pas besoin de
+        # lien : les scripts les résolvent depuis le moteur (Path(__file__).resolve()).
+        link_file "$PROJECT_ROOT/config/coaching-styles.md" "$WORKSPACE_ROOT/config/coaching-styles.md"
+        link_dir "$PROJECT_ROOT/config/sports" "$WORKSPACE_ROOT/config/sports" \
+            "les agents n'y trouveront pas les profils de sport du moteur."
         # Les agents appellent `python3 scripts/arc_index.py …` depuis le workspace.
-        if [[ -e "$WORKSPACE_ROOT/scripts" && ! -L "$WORKSPACE_ROOT/scripts" ]]; then
-            warn "$WORKSPACE_ROOT/scripts existe et n'est pas un lien — conservé ; les agents n'y trouveront pas les scripts du moteur."
-        else
-            ln -sfn "$PROJECT_ROOT/scripts" "$WORKSPACE_ROOT/scripts"
-            ok "Lien créé : $WORKSPACE_ROOT/scripts -> $PROJECT_ROOT/scripts"
-        fi
+        link_dir "$PROJECT_ROOT/scripts" "$WORKSPACE_ROOT/scripts" \
+            "les agents n'y trouveront pas les scripts du moteur."
     fi
     populate_catalog agents
     populate_catalog skills

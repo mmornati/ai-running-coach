@@ -37,6 +37,7 @@ jour du moteur sans rien copier**, séparez-les avec `--workspace`.
 │   généré par install.sh, ignoré par git (bloc ajouté à .gitignore) :
 ├── agents/  skills/                ← catalogues de liens : moteur + local/
 ├── AGENTS.md  config/workspace.toml  scripts/ → liens vers le moteur
+├── config/coaching-styles.md  config/sports/  → liens vers le moteur (lus par les agents)
 ├── .mcp.json  .claude/  .opencode/  .gemini/  .cursor/  .windsurf/  .github/agents|skills
 ├── .arc/                           ← index du tableau de bord (dérivé, jetable)
 └── logs/
