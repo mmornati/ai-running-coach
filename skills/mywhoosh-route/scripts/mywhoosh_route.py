@@ -83,14 +83,42 @@ def _request(url: str, *, method: str = "GET", token: str | None = None, body: d
     return json.loads(raw) if raw else {}
 
 
-def _jwt_exp(token: str) -> int | None:
-    """Échéance (epoch) lue dans la charge utile du JWT, sans vérifier la signature."""
+def _jwt_payload(token: str) -> dict:
+    """Charge utile du JWT, sans vérifier la signature ({} si illisible)."""
     try:
         payload = token.split(".")[1]
         payload += "=" * (-len(payload) % 4)
-        return int(json.loads(base64.urlsafe_b64decode(payload))["exp"])
-    except (IndexError, KeyError, ValueError, TypeError):
+        data = json.loads(base64.urlsafe_b64decode(payload))
+        return data if isinstance(data, dict) else {}
+    except (IndexError, ValueError, TypeError):
+        return {}
+
+
+def _jwt_exp(token: str) -> int | None:
+    """Échéance (epoch) lue dans la charge utile du JWT."""
+    try:
+        return int(_jwt_payload(token)["exp"])
+    except (KeyError, ValueError, TypeError):
         return None
+
+
+def device_id(path: Path) -> str:
+    """Identifiant d'appareil STABLE : MyWhoosh n'accepte qu'une session par compte et
+    refuse une connexion depuis un « autre appareil » tant que la précédente est active.
+    Un nouvel identifiant à chaque connexion faisait de chaque relance (ou de chaque
+    machine) un nouvel appareil. Ordre : celui gardé dans le fichier du jeton, sinon
+    celui du jeton (même expiré), sinon un nouveau."""
+    try:
+        data = json.loads(path.read_text())
+    except (OSError, ValueError):
+        data = {}
+    if isinstance(data, dict):
+        if data.get("device_id"):
+            return str(data["device_id"])
+        from_token = _jwt_payload(str(data.get("access_token") or "")).get("deviceId")
+        if from_token:
+            return str(from_token)
+    return str(uuid.uuid4())
 
 
 def load_token(path: Path, now: float | None = None) -> str | None:
@@ -105,13 +133,14 @@ def load_token(path: Path, now: float | None = None) -> str | None:
     return token
 
 
-def save_token(path: Path, token: str) -> None:
-    """Écrit le jeton en mode 600 (création atomique), comme les jetons Garmin."""
+def save_token(path: Path, token: str, device: str | None = None) -> None:
+    """Écrit le jeton (et l'identifiant d'appareil) en mode 600, création atomique,
+    comme les jetons Garmin."""
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp = path.with_suffix(".tmp")
     fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
     with os.fdopen(fd, "w") as f:
-        json.dump({"access_token": token}, f)
+        json.dump({"access_token": token, **({"device_id": device} if device else {})}, f)
     os.replace(tmp, path)
 
 
@@ -126,15 +155,21 @@ def login(args, *, interactive: bool = True) -> str | None:
         return None
     user = getattr(args, "username", None) or os.environ.get("MYWHOOSH_USERNAME") or input("E-mail MyWhoosh : ").strip()
     pwd = os.environ.get("MYWHOOSH_PASSWORD") or getpass.getpass("Mot de passe MyWhoosh : ")
+    device = device_id(args.token_file)
     resp = _request(LOGIN_URL, method="POST", body={
         "Username": user, "Password": pwd, "Platform": "Android", "Action": 1001,
-        "CorrelationId": str(uuid.uuid4()), "DeviceId": str(uuid.uuid4()), "Authorization": "",
+        "CorrelationId": str(uuid.uuid4()), "DeviceId": device, "Authorization": "",
     })
     del pwd
     if not resp.get("Success") or not resp.get("AccessToken"):
-        print(f"Connexion refusée : {resp.get('Message') or 'réponse inattendue'}", file=sys.stderr)
+        message = resp.get("Message") or "réponse inattendue"
+        print(f"Connexion refusée : {message}", file=sys.stderr)
+        if "another device" in message.lower() or "autre appareil" in message.lower():
+            print("MyWhoosh n'accepte qu'une session par compte. Copier le fichier du jeton depuis la "
+                  f"machine déjà connectée ({args.token_file}, mode 600), ou attendre son échéance.",
+                  file=sys.stderr)
         return None
-    save_token(args.token_file, resp["AccessToken"])
+    save_token(args.token_file, resp["AccessToken"], device)
     return resp["AccessToken"]
 
 

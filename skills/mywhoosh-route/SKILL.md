@@ -97,6 +97,11 @@ python3 skills/mywhoosh-route/scripts/mywhoosh_route.py tasks 2026-10-10 2026-10
   (`~/.config/ai-running-coach/mywhoosh-token.json`, jamais affiché) ; le catalogue est
   mis en cache (`~/.cache/ai-running-coach/mywhoosh_routes.json`). À relancer si
   MyWhoosh ajoute des parcours, ou quand le jeton a expiré (`tasks`/`schedule` le disent).
+- **Une seule session par compte** : MyWhoosh refuse une connexion « depuis un autre
+  appareil » tant qu'une session est active. Se connecter sur la machine qui fait tourner
+  le coach, ou y copier le fichier du jeton (`scp -p`, mode 600) depuis celle déjà
+  connectée. L'identifiant d'appareil est gardé dans ce fichier et réutilisé à chaque
+  reconnexion : relancer `fetch` à l'échéance ne crée pas de nouvel appareil.
 - Les comptes MyWhoosh sans mot de passe (connexion Google / Apple) ne peuvent pas
   utiliser cette API : le dire, ne pas chercher de contournement.
 

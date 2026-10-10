@@ -86,6 +86,35 @@ class TestToken(unittest.TestCase):
             M.save_token(path, _jwt(1_000_000_100))
             self.assertIsNone(M.load_token(path, now=1_000_000_000))   # échéance dans < 5 min
 
+    def test_device_id_is_stable_across_logins(self):
+        with tempfile.TemporaryDirectory() as d:
+            path = Path(d) / "token.json"
+            first = M.device_id(path)                      # aucun fichier : nouvel identifiant
+            M.save_token(path, _jwt(1_000_000_100), first)
+            self.assertEqual(M.device_id(path), first)     # gardé, même jeton expiré
+            payload = base64.urlsafe_b64encode(json.dumps({"exp": 1, "deviceId": "dev-42"}).encode()).decode()
+            path.write_text(json.dumps({"access_token": f"h.{payload.rstrip('=')}.s"}))
+            self.assertEqual(M.device_id(path), "dev-42")  # ancien fichier : repris du jeton
+
+    def test_login_reuses_device_id(self):
+        with tempfile.TemporaryDirectory() as d:
+            path = Path(d) / "token.json"
+            M.save_token(path, _jwt(1_000_000_100), "dev-7")
+
+            class Args:
+                token_file = path
+                username = "athlete@example.org"
+            sent = {}
+
+            def fake(url, **kw):
+                sent.update(kw.get("body") or {})
+                return {"Success": True, "AccessToken": _jwt(2_000_000_000)}
+            with patch.object(M, "_request", side_effect=fake), patch("getpass.getpass", return_value="x"), \
+                    patch.object(sys.stdin, "isatty", return_value=True):
+                self.assertTrue(M.login(Args()))
+            self.assertEqual(sent["DeviceId"], "dev-7")
+            self.assertEqual(json.loads(path.read_text())["device_id"], "dev-7")
+
     def test_non_interactive_login_never_prompts(self):
         class Args:
             token_file = Path("/nonexistent/token.json")
