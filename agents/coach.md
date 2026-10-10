@@ -297,7 +297,7 @@ field null — that means "not indexed yet, go write the MD and re-run", never
 |:---|:---|:---|:---|
 | Time in zone | `zones` | Every run-family session | vs planned intensity, method-aware (below) |
 | Decoupling (Pa:HR) / EF | `decoupling` | Moving time ≥ 60 min | Controlled-protocol threshold, not a clinical norm |
-| GAP | `gap` | Hilly/trail session | Minetti model, downhill bias |
+| GAP | `gap` | Hilly/trail session | Kay race-record model, generous downhill |
 | VAM | `vam` | Trail or real climbs | 10/20-min windows + per-climb, no duration gate |
 | Descent efficiency | `descent` | Trail/hilly | Trend-only, flat-reference, never a hard norm |
 | Durability (fade) | `durability` | Duration > 90 min | Mountain/technical runs often ineligible |

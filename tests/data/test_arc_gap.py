@@ -4,12 +4,12 @@ Familles de tests :
 - `arc_elevation.grade_series`/`smooth_moving_average` : pente sur fenêtre de
   distance (jamais une différence brute entre deux échantillons de 5 s), trous
   de signal jamais traversés, robustesse à un bruit d'altitude injecté.
-- `arc_gap.minetti_cost`/`gap_speed_ms` : valeurs de référence du modèle de
-  Minetti et al. 2002 (calculées à la main dans les docstrings ci-dessous),
-  clampage hors de ±45 %, identité sur le plat.
-- Séances SYNTHÉTIQUES construites à partir du modèle de Minetti lui-même
+- `arc_gap.gap_factor`/`gap_speed_ms` : valeurs de référence du modèle de
+  Kay 2012 (calculées à la main dans les docstrings ci-dessous), prolongement
+  par la tangente, clampage hors de ±45 %, identité sur le plat.
+- Séances SYNTHÉTIQUES construites à partir du modèle de la GAP lui-même
   (PAS `tests.lib.synthetic.sample_session`, dont le `default_slope_factor`
-  n'est volontairement PAS Minetti — voir `tests/README.md`) : le GAP doit
+  n'est volontairement PAS le modèle de la GAP — voir `tests/README.md`) : le GAP doit
   recouvrer la vitesse « plat équivalent » imposée à la génération.
 - `arc_gap.split_gap_paces`/`split_boundaries` : mapping des échantillons aux
   splits par distance cumulée.
@@ -122,37 +122,52 @@ class TestGradeSeries(unittest.TestCase):
 
 
 # ---------------------------------------------------------------------------
-# arc_gap : coût de Minetti, GAP par échantillon
+# arc_gap : modèle de pente (Kay), GAP par échantillon
 # ---------------------------------------------------------------------------
 
 
-class TestMinettiCost(unittest.TestCase):
-    def test_flat_cost_is_3_6(self):
-        """C(0) = 155.4*0 - 30.4*0 - 43.3*0 + 46.3*0 + 19.5*0 + 3.6 = 3.6 (le
-        terme constant du polynôme, littéralement)."""
-        self.assertEqual(G.minetti_cost(0.0), 3.6)
+class TestKayPaceRatio(unittest.TestCase):
+    """Modèle de la GAP : quartique de Kay (2012, tableau 1), prolongée par sa tangente."""
+
+    def test_flat_is_one(self):
+        self.assertEqual(G.gap_factor(0.0), 1.0)
 
     def test_uphill_10_percent_matches_hand_computation(self):
-        """C(0.10), calculé à la main (i=0.1, i²=0.01, i³=0.001, i⁴=0.0001, i⁵=0.00001) :
-        155.4×0.00001 − 30.4×0.0001 − 43.3×0.001 + 46.3×0.01 + 19.5×0.1 + 3.6
-        = 0.001554 − 0.00304 − 0.0433 + 0.463 + 1.95 + 3.6 = 5.968214 J/kg/m."""
-        self.assertAlmostEqual(G.minetti_cost(0.10), 5.968214, places=6)
+        """1 + 3,639×0,1 + 17,757×0,01 − 3,100×0,001 − 23,834×0,0001
+        = 1 + 0,3639 + 0,17757 − 0,0031 − 0,0023834 = 1,5359866."""
+        self.assertAlmostEqual(G.gap_factor(0.10), 1.5359866, places=6)
 
     def test_downhill_10_percent_matches_hand_computation(self):
-        """C(-0.10) : mêmes puissances qu'au-dessus, signe alterné sur les impairs :
-        −0.001554 − 0.00304 + 0.0433 + 0.463 − 1.95 + 3.6 = 2.151706 J/kg/m —
-        moins cher que le plat, comme attendu pour une pente négative modérée."""
-        self.assertAlmostEqual(G.minetti_cost(-0.10), 2.151706, places=6)
-        self.assertLess(G.minetti_cost(-0.10), G.minetti_cost(0.0))
+        """1 − 0,3639 + 0,17757 + 0,0031 − 0,0023834 = 0,8143866 : plus rapide que le plat."""
+        self.assertAlmostEqual(G.gap_factor(-0.10), 0.8143866, places=6)
+
+    def test_fastest_pace_near_minus_10_percent(self):
+        """Allure la plus rapide de l'article : m1 = −0,1026, p1/p0 = 0,1405/0,1726 ≈ 0,814."""
+        grades = [g / 1000 for g in range(-300, 1)]
+        fastest = min(grades, key=G.gap_factor)
+        self.assertAlmostEqual(fastest, -0.1026, delta=0.002)
+        self.assertAlmostEqual(G.gap_factor(fastest), 0.814, delta=0.002)
+
+    def test_steep_downhill_slower_than_flat(self):
+        """Au-delà de −20 %, descendre redevient plus lent que le plat (contrairement à Minetti)."""
+        self.assertGreater(G.gap_factor(-0.25), 1.0)
+
+    def test_continuous_at_the_joins(self):
+        for edge in (G.KAY_DOWNHILL_CRITICAL, G.KAY_UPHILL_INFLECTION):
+            below, above = G.gap_factor(edge - 1e-6), G.gap_factor(edge + 1e-6)
+            self.assertAlmostEqual(below, above, places=4)
+
+    def test_tangent_beyond_the_joins_keeps_increasing(self):
+        """La quartique redescendrait au-delà de ses bornes ; la tangente, non."""
+        self.assertGreater(G.gap_factor(0.40), G.gap_factor(G.KAY_UPHILL_INFLECTION))
+        self.assertGreater(G.gap_factor(-0.40), G.gap_factor(G.KAY_DOWNHILL_CRITICAL))
 
     def test_clamped_beyond_valid_range(self):
-        """Au-delà de ±45 %, la pente est clampée : C(0.9) == C(0.45), jamais une
-        extrapolation du polynôme (qui diverge violemment au-delà)."""
-        self.assertEqual(G.minetti_cost(0.9), G.minetti_cost(0.45))
-        self.assertEqual(G.minetti_cost(-0.9), G.minetti_cost(-0.45))
+        self.assertEqual(G.gap_factor(0.9), G.gap_factor(0.45))
+        self.assertEqual(G.gap_factor(-0.9), G.gap_factor(-0.45))
 
-    def test_none_grade_is_none_cost(self):
-        self.assertIsNone(G.minetti_cost(None))
+    def test_none_grade_is_none(self):
+        self.assertIsNone(G.gap_factor(None))
 
 
 class TestGapSpeed(unittest.TestCase):
@@ -173,18 +188,17 @@ class TestGapSpeed(unittest.TestCase):
 
 
 # ---------------------------------------------------------------------------
-# Séances synthétiques dérivées DIRECTEMENT du modèle de Minetti (pas
+# Séances synthétiques dérivées DIRECTEMENT du modèle de la GAP (pas
 # `tests.lib.synthetic.sample_session`, voir tests/README.md et la docstring
 # du module) : le GAP doit recouvrer la vitesse « plat équivalent » imposée.
 # ---------------------------------------------------------------------------
 
 
-def _minetti_samples(grade: float, flat_equivalent_speed_ms: float, *, n=90, dt=5):
+def _model_samples(grade: float, flat_equivalent_speed_ms: float, *, n=90, dt=5):
     """Échantillons synthétiques : vitesse mesurée = vitesse « plat équivalent »
-    imposée / (C(pente)/C(0)) — l'inverse exact de `gap_speed_ms`, pour que le
+    imposée / `gap_factor(pente)` — l'inverse exact de `gap_speed_ms`, pour que le
     GAP recalculé retrouve `flat_equivalent_speed_ms`."""
-    cost_ratio = G.minetti_cost(grade) / G.minetti_cost(0.0)
-    measured_speed = flat_equivalent_speed_ms / cost_ratio
+    measured_speed = flat_equivalent_speed_ms / G.gap_factor(grade)
     samples = []
     dist = 0.0
     alt = 0.0
@@ -200,18 +214,18 @@ class TestActivityGapRecoversFlatEquivalent(unittest.TestCase):
     FLAT_EQUIV_SPEED = 2.8  # m/s -> allure plat équivalente imposée
 
     def test_flat(self):
-        samples = _minetti_samples(0.0, self.FLAT_EQUIV_SPEED)
+        samples = _model_samples(0.0, self.FLAT_EQUIV_SPEED)
         pace = G.activity_gap_pace_s_km(samples)
         self.assertAlmostEqual(pace, 1000.0 / self.FLAT_EQUIV_SPEED, delta=1.0)
 
     def test_15_percent_uphill(self):
-        samples = _minetti_samples(0.15, self.FLAT_EQUIV_SPEED)
+        samples = _model_samples(0.15, self.FLAT_EQUIV_SPEED)
         pace = G.activity_gap_pace_s_km(samples)
         expected = 1000.0 / self.FLAT_EQUIV_SPEED
         self.assertAlmostEqual(pace, expected, delta=expected * 0.02)  # ±2 % (effets de bord de fenêtre)
 
     def test_15_percent_downhill(self):
-        samples = _minetti_samples(-0.15, self.FLAT_EQUIV_SPEED)
+        samples = _model_samples(-0.15, self.FLAT_EQUIV_SPEED)
         pace = G.activity_gap_pace_s_km(samples)
         expected = 1000.0 / self.FLAT_EQUIV_SPEED
         self.assertAlmostEqual(pace, expected, delta=expected * 0.02)
@@ -278,7 +292,7 @@ class TestSplitDistanceDrift(unittest.TestCase):
     autant."""
 
     def test_last_split_absorbs_the_extra_distance(self):
-        samples = _minetti_samples(0.0, 2.8, n=250)  # ~1400 m réellement parcourus
+        samples = _model_samples(0.0, 2.8, n=250)  # ~1400 m réellement parcourus
         splits = [{"km": 1, "distance_m": 1000.0}]     # ne déclare que 1000 m
         paces = G.split_gap_paces(samples, splits)
         # Sans l'extension de la borne, les échantillons au-delà de 1000 m
@@ -319,9 +333,9 @@ class TestSplitBoundaries(unittest.TestCase):
 
 class TestSplitGapPaces(unittest.TestCase):
     def test_two_splits_flat_then_uphill(self):
-        flat = _minetti_samples(0.0, 2.8, n=100)
+        flat = _model_samples(0.0, 2.8, n=100)
         # Split 1 (0-1000 m, ~ km 1) est plat ; split 2 (1000 m et au-delà) grimpe à 15 %.
-        uphill = _minetti_samples(0.15, 2.8, n=100)
+        uphill = _model_samples(0.15, 2.8, n=100)
         offset_dist = flat[-1]["distance_m"] + flat[-1]["speed_ms"] * 5
         offset_t = flat[-1]["t_s"] + 5
         for i, s in enumerate(uphill):
@@ -341,7 +355,7 @@ class TestSplitGapPaces(unittest.TestCase):
         self.assertEqual(G.split_gap_paces([{"t_s": 0}], []), {})
 
     def test_split_without_any_sample_in_range_is_none(self):
-        samples = _minetti_samples(0.0, 2.7, n=20)  # séance courte, ne couvre qu'un seul split
+        samples = _model_samples(0.0, 2.7, n=20)  # séance courte, ne couvre qu'un seul split
         splits = [{"km": 1, "distance_m": 1000.0}, {"km": 2, "distance_m": 1000.0}]
         paces = G.split_gap_paces(samples, splits)
         self.assertIsNone(paces.get(2))

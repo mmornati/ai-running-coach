@@ -111,7 +111,7 @@ python3 scripts/arc_index.py <commande> [options]
 | `fueling` | Plafond de glucides/h réellement toléré (sorties longues running/trail, #41) |
 | `samples` | Échantillons FIT bruts d'une activité (`--activity`) |
 | `zones` | Temps en zone + polarisation 80/20 (#43) |
-| `gap` | Allure ajustée à la pente (GAP, modèle de Minetti) |
+| `gap` | Allure ajustée à la pente (GAP, modèle de Kay, voir [gap.md](gap.md)) |
 | `decoupling` | Découplage Pa:HR / efficacité aérobie |
 | `vam` | Vitesse ascensionnelle moyenne, par montée détectée et par fenêtre (#46) |
 | `descent` | Efficacité en descente |

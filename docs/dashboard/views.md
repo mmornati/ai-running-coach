@@ -253,11 +253,11 @@ disponibles à partir du seul résumé Markdown d'une séance :
   est affichée) — **jamais l'allure GAP de toute la séance**, qui se contaminerait
   avec l'effort des descentes elles-mêmes et ferait varier l'efficacité d'une même
   descente selon le reste du parcours. Un repère pointillé à 1,00× marque l'allure
-  que prédirait le modèle de Minetti à effort métabolique constant. **Ce modèle est
-  connu pour surestimer le bénéfice des fortes descentes en conditions réelles de
-  trail, de façon NON MONOTONE** (voir [Marques et métriques](../marques.md)) : une
-  efficacité nettement sous 1,00× sur les classes les plus raides est donc
-  **normale**, pas la preuve d'une mauvaise descente — seule sa **tendance dans le
+  que prédirait le modèle de pente (Kay, tiré de records de course) : 1,00× = descendre
+  comme un coureur de montagne entraîné. **Ce modèle est généreux en descente pour la
+  plupart des coureurs, et non monotone** (gain maximal vers -10 %, pénalité au-delà
+  de -21 % ; voir [Allure ajustée à la pente (GAP)](../gap.md)) : une efficacité sous 1,00×
+  est donc **fréquente**, pas la preuve d'une mauvaise descente — seule sa **tendance dans le
   temps, à pente égale**, est exploitable. Classes de pente descendante : les trois
   classes intermédiaires -5/-10 %, -10/-15 %, -15/-20 % sont le miroir direct de la
   VAM (#46) ; au-delà, DEUX classes distinctes -20/-30 % et < -30 % (jamais un
@@ -766,14 +766,13 @@ kilomètre : pas de graphique, c'est normal.
   trouvée avant de l'écrire. Rien n'apparaît tant qu'aucun indice n'est déclaré.
 - **Modèle personnel pente → allure** (#58) : votre allure typique par classe de
   pente fine, apprise sur les six derniers mois (par défaut) de vos propres
-  séances — pas le modèle générique de laboratoire (Minetti) appliqué à tout le
+  séances — pas le modèle générique (Kay, records de course) appliqué à tout le
   monde. La bande grisée est un repère de dispersion (quartiles), pas un
   intervalle de confiance statistique ; la courbe pointillée est le repli
   générique, affiché pour comparaison sur les classes de pente encore sans
-  assez de données, PLAFONNÉ en descente (jamais une allure implausible : le
-  modèle de Minetti, inversé pour prédire une vitesse plutôt que l'appliquer à
-  une vitesse déjà mesurée, amplifierait sinon son biais connu en forte
-  descente). Bande « endurance » par défaut : une SÉANCE ENTIÈRE est retenue si
+  assez de données, PLAFONNÉ en descente (jamais plus vite que 1,3× l'allure
+  plate, ni que votre descente la plus rapide connue : le modèle générique, tiré
+  de coureurs entraînés, est généreux en descente). Bande « endurance » par défaut : une SÉANCE ENTIÈRE est retenue si
   au moins 80 % de son temps reste sous le seuil facile/modéré (FC), jamais un
   filtre instant par instant — qui biaiserait les montées, où la FC monte avec
   un retard sur l'effort. Un lien bascule vers « tous efforts ». Marche/

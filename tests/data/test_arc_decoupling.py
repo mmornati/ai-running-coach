@@ -116,8 +116,7 @@ def _two_grade_halves_records(duration_s=3900, grade1=0.02, grade2=-0.02, target
     distance = altitude = 0.0
     for t in range(duration_s):
         grade = grade1 if t < mid else grade2
-        cost = G.minetti_cost(grade)
-        speed = target_gap * G.MINETTI_FLAT_COST / cost
+        speed = target_gap / G.gap_factor(grade)
         distance += speed
         altitude += speed * grade
         records.append({"t_s": t, "distance_m": round(distance, 2), "altitude_m": round(altitude, 2),
@@ -266,8 +265,7 @@ class TestHrGapCoverage(unittest.TestCase):
         sign = 1
         for t in range(duration_s):
             grade = 0.12 * sign
-            cost = G.minetti_cost(grade)
-            speed = target_gap * G.MINETTI_FLAT_COST / cost
+            speed = target_gap / G.gap_factor(grade)
             distance += speed
             altitude += speed * grade
             records.append({"t_s": t, "distance_m": round(distance, 2), "altitude_m": round(altitude, 2),
@@ -322,8 +320,7 @@ class TestGradeAsymmetry(unittest.TestCase):
                 grade = 0.08 if offset < quarter else -0.08
             else:
                 grade = 0.0
-            cost = G.minetti_cost(grade)
-            speed = target_gap * G.MINETTI_FLAT_COST / cost
+            speed = target_gap / G.gap_factor(grade)
             distance += speed
             altitude += speed * grade
             records.append({"t_s": t, "distance_m": round(distance, 2), "altitude_m": round(altitude, 2),
@@ -383,8 +380,7 @@ class TestSteadyEffort(unittest.TestCase):
         for t in range(duration_s):
             pos = distance % cycle_len
             grade = (moderate_grade if pos < moderate_len else steep_grade) * sign
-            cost = G.minetti_cost(grade)
-            speed = target_gap * G.MINETTI_FLAT_COST / cost
+            speed = target_gap / G.gap_factor(grade)
             distance += speed
             altitude += speed * grade
             records.append({"t_s": t, "distance_m": round(distance, 2), "altitude_m": round(altitude, 2),

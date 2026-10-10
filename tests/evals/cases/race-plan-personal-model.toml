@@ -7,7 +7,7 @@
 # à vérité connue via `tests.lib.synthetic.sample_session`) suffisants pour
 # établir une référence plate PERSONNELLE (`arc_slope_model`, #58 :
 # `MIN_BIN_ACTIVITIES = 2`, `MIN_BIN_TIME_S = 180`), mais AUCUNE donnée
-# personnelle en côte/descente — le repli générique (Minetti) s'applique donc à
+# personnelle en côte/descente — le repli générique (Kay) s'applique donc à
 # ces segments-là. `scripts/arc_race_pacing.py plan` sur ce GPX rend
 # systématiquement un plan à provenance MIXTE : le segment plat central
 # (`segments[1]`, deuxième segment déterministe de la segmentation par défaut,

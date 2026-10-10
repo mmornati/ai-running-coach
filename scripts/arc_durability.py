@@ -268,7 +268,7 @@ ASSUMPTIONS = {
         "la FC par tiers, dans les TROIS tiers — jamais de la séance dans son ensemble (elle reste "
         "éligible si le reste suffit) — même seuils et même justification que "
         "`arc_decoupling.ASSUMPTIONS['steep_grade_and_walking']` (#45) : au-delà d'environ 12 % le "
-        "modèle de Minetti (#44) est moins fiable, et ces portions sont le plus souvent marchées plutôt "
+        "modèle de pente (#44) est moins fiable, et ces portions sont le plus souvent marchées plutôt "
         "que courues."
     ),
     "hr_coverage": (
@@ -292,7 +292,7 @@ ASSUMPTIONS = {
         "aller-retour avec la montée principale dans un tiers et la descente dans l'autre), la séance "
         "est jugée inéligible — même seuil et même justification que "
         "`arc_decoupling.ASSUMPTIONS['grade_asymmetry']` (#45) : le GAP corrige l'effet de la pente sur "
-        "l'allure, mais pas parfaitement (biais connu du modèle de Minetti en forte descente) — un "
+        "l'allure, mais pas parfaitement (modèle de pente généreux en descente) — un "
         "profil trop différent entre les deux tiers comparés produirait un fade qui reflète surtout le "
         "relief traversé, pas la fatigue."
     ),

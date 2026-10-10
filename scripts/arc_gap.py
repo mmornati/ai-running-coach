@@ -1,47 +1,47 @@
 #!/usr/bin/env python3
 """Allure ajustée à la pente — GAP (« Grade Adjusted Pace », #44, épopée #21).
 
-Modèle : coût énergétique de la course selon la pente (**Minetti AE et al.,
-2002**, « Energy cost of walking and running at extreme uphill and downhill
-slopes », J Appl Physiol 93:1039–1046), mesuré sur tapis roulant jusqu'à ±45 % :
+Modèle : rapport d'allure selon la pente tiré de RECORDS DE COURSE (**Kay A.,
+2012**, « Pace and critical gradient for hill runners: an analysis of race
+records », Journal of Quantitative Analysis in Sports 8(4), modèle quartique
+du tableau 1, 91 courses de montée et 15 de descente) :
 
-    C(i) = 155.4 i^5 − 30.4 i^4 − 43.3 i^3 + 46.3 i^2 + 19.5 i + 3.6   (J/kg/m)
+    p(m)/p0 = 1 + 3,639 m + 17,757 m² − 3,100 m³ − 23,834 m⁴
 
-`i` est la pente en fraction (0,10 = 10 %). Vitesse GAP = vitesse mesurée ×
-C(pente) / C(0) : l'allure « équivalent plat » qui coûterait la même énergie
-métabolique par mètre que l'allure réellement courue sur cette pente.
+`m` est la pente en fraction (0,10 = 10 %). Vitesse GAP = vitesse mesurée ×
+p(pente)/p0 : l'allure « équivalent plat » qu'un coureur de montagne
+entraîné tiendrait sur le plat pour le même effort de course. Choix motivé,
+comparaison avec Minetti et al. (2002, modèle de laboratoire utilisé
+jusqu'ici) et limites : `docs/gap.md`.
 
-## Clampage — pente hors de la plage validée
+## Bornes — hors de la plage où la quartique est réaliste
 
-`i` est clampé à ±`CLAMP_GRADE` (0,45, la borne haute de la plage étudiée par
-Minetti et al.) avant d'entrer dans le polynôme : au-delà, celui-ci n'a jamais
-été validé et diverge violemment (un polynôme de degré 5 extrapolé explose).
-Ce n'est jamais une extrapolation, seulement un plafond documenté.
+La quartique a des points d'inflexion (au-delà, elle redescendrait) : en
+montée au-delà de `KAY_UPHILL_INFLECTION` (+32,14 %) et en descente au-delà
+de la pente critique `KAY_DOWNHILL_CRITICAL` (−26,32 %, vitesse verticale de
+descente maximale), elle est PROLONGÉE PAR SA TANGENTE (continuité de la
+valeur et de la pente), comme le propose l'article (section 4.3). La pente
+est en outre bornée à ±`CLAMP_GRADE` (0,45) : jamais une extrapolation au-delà.
 
-## Limite connue du modèle, documentée honnêtement (revue #44)
+## Limite connue du modèle, documentée honnêtement
 
-Minetti et al. 2002 modélise la course de LABORATOIRE (tapis, foulée
-contrôlée). La littérature sur l'économie de course suggère que ce type de
-modèle a tendance à SURESTIMER le gain métabolique des descentes très raides
-en conditions réelles de trail (freinage excentrique, terrain technique,
-appuis prudents, prudence tactique) — un phénomène qu'aucune montre ou
-service grand public ne documente publiquement dans le détail de son propre
-calcul. Ce module reste une **approximation du projet** fondée sur Minetti tel
-quel — PAS une reproduction des marques Strava GAP, COROS Effort Pace ou Suunto NGP (citées à titre de repère uniquement dans `docs/marques.md`, jamais
-une revendication d'équivalence : nous ne connaissons pas le détail de leurs
-calculs propriétaires respectifs). Sur les fortes descentes (au-delà d'environ
--20 %), le GAP calculé ici est donc probablement trop optimiste (allure
-« plat équivalent » surestimée) : #47 (efficacité en descente) et #58 (modèle
-personnel pente → allure appris sur l'historique de l'athlète) pourront
-affiner ce point avec des données réelles plutôt que le modèle de
-laboratoire.
+Coureurs d'élite masculins, en course, sur sentiers de montagne bien tracés :
+la courbe décrit très bien les MONTÉES de coureurs amateurs (vérifié, voir
+`docs/gap.md`), mais reste trop généreuse en DESCENTE pour la plupart d'entre
+eux (gain d'environ 18 % vers −10 %, quand un amateur moyen ne gagne que
+quelques %). Elle ne voit pas la technicité du terrain. Ce module reste une
+**approximation du projet** fondée sur Kay tel quel — PAS une reproduction
+des marques Strava GAP, COROS Effort Pace ou Suunto NGP (citées à titre de
+repère uniquement dans `docs/marques.md`, jamais une revendication
+d'équivalence : nous ne connaissons pas le détail de leurs calculs
+propriétaires respectifs). #58 (modèle personnel pente → allure appris sur
+l'historique de l'athlète) affine la prévision avec ses données réelles.
 
 ## API réutilisable, pure (sans SQLite ni disque) — pour #45, #47, #48, #58
 
-- `minetti_cost(grade)` : coût C(i) après clamp — seule fonction que #58
-  pourrait un jour remplacer par un modèle personnel pente → allure appris.
-- `gap_factor(grade)` : rapport C(pente)/C(0) d'un point (colonne `gf` de la trace de la
-  page séance, `arc_index.track`, qui en tire le mode « GAP » de la carte).
+- `gap_factor(grade)` / `kay_pace_ratio(grade)` : rapport p(pente)/p0 d'un point, SEULE
+  formule pente → allure du projet (colonne `gf` de la trace de la page séance,
+  `arc_index.track`, qui en tire le mode « GAP » de la carte ; repli générique de #58).
 - `gap_speed_ms(speed_ms, grade)` : vitesse GAP d'un point.
 - `gap_sample_series(samples, ...)` : `samples` (normalisés, triés ou non) →
   copie triée par `t_s`, augmentée de `"grade"` (`arc_elevation.grade_series`)
@@ -79,13 +79,19 @@ from typing import Dict, List, Optional, Sequence
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import arc_elevation as E  # noqa: E402
 
-# Coefficients de Minetti et al. 2002, i^5 -> i^0 (J/kg/m).
-MINETTI_COEFFS = (155.4, -30.4, -43.3, 46.3, 19.5, 3.6)
-MINETTI_FLAT_COST = MINETTI_COEFFS[-1]  # C(0) = 3.6 J/kg/m, littéralement le terme constant
-
-# Plage de validité approximative du modèle (tapis, jusqu'à ±45 %) : au-delà,
-# la pente est CLAMPÉE avant d'entrer dans C(i), jamais extrapolée.
+# Borne de pente : au-delà de ±45 %, la pente est CLAMPÉE avant d'entrer dans le modèle,
+# jamais extrapolée (aucune course de l'article n'est aussi raide).
 CLAMP_GRADE = 0.45
+
+# Modèle de la GAP : Kay A. (2012), « Pace and critical gradient for hill runners: an
+# analysis of race records », J Quant Anal Sports 8(4), modèle quartique du tableau 1
+# (α1…α4, allure relative à l'allure du plat, records de 91 courses de montée et 15 de
+# descente). Bornes publiées dans l'article (section 4.3) : point d'inflexion en montée
+# (au-delà, la quartique redescendrait) et pente critique de descente (vitesse verticale
+# maximale) — au-delà de chacune, prolongement par la tangente.
+KAY_COEFFS = (3.639, 17.757, -3.100, -23.834)
+KAY_UPHILL_INFLECTION = 0.3214
+KAY_DOWNHILL_CRITICAL = -0.2632
 
 # Aligné sur `arc_samples.DEFAULT_RESOLUTION_S` : résolution nominale des
 # échantillons sous-échantillonnés lus depuis `arc_index.samples`.
@@ -101,16 +107,17 @@ STOPPED_SPEED_MS = 0.2
 
 ASSUMPTIONS = {
     "model": (
-        "Coût énergétique de la course selon la pente (Minetti AE et al., 2002, J Appl Physiol "
-        "93:1039-1046, mesuré sur tapis roulant jusqu'à ±45 % de pente) : allure ajustée = "
-        "allure mesurée multipliée par le rapport entre le coût énergétique de la pente réelle "
-        "et celui du plat. Une pente au-delà de ±45 % est plafonnée à cette valeur avant le "
-        "calcul, jamais extrapolée au-delà (le modèle n'a jamais été mesuré aussi loin). LIMITE "
-        "CONNUE, documentée honnêtement : ce type de modèle de laboratoire a tendance à "
-        "surestimer le gain métabolique des fortes descentes en conditions réelles de trail "
-        "(freinage, terrain technique, prudence). Cette allure ajustée reste une approximation "
-        "du projet fondée sur ce modèle, PAS une reproduction des calculs propriétaires (non "
-        "documentés publiquement) des montres ou services du marché — voir docs/marques.md."
+        "Allure ajustée à la pente selon des records de course (Kay A., 2012, J Quant Anal Sports "
+        "8(4), 91 courses de montée et 15 de descente) : allure ajustée = allure mesurée divisée "
+        "par le rapport entre l'allure attendue sur cette pente et celle du plat. Au-delà de +32 % "
+        "et de -26 %, la courbe est prolongée en ligne droite (comme le propose l'article) ; au-delà "
+        "de ±45 %, la pente est plafonnée. Ce modèle remplace celui de Minetti et al. (2002, "
+        "laboratoire), qui surestimait le coût des montées et, surtout, le gain des descentes. "
+        "LIMITE CONNUE : tiré de coureurs entraînés, il reste généreux en descente (gain maximal "
+        "d'environ 18 % vers -10 %) — un écart en descente mesure donc surtout le niveau de "
+        "descendeur. Il ne voit pas la technicité du terrain. Approximation du projet, PAS une "
+        "reproduction des calculs propriétaires des montres ou services du marché — voir "
+        "docs/gap.md et docs/marques.md."
     ),
     "grade_source": (
         "La pente est calculée sur une fenêtre de distance (20 à 50 m), après un lissage de "
@@ -150,27 +157,41 @@ ASSUMPTIONS = {
 }
 
 
-def minetti_cost(grade: Optional[float]) -> Optional[float]:
-    """Coût énergétique C(i) en J/kg/m (Minetti et al. 2002), `grade` clampé à
-    ±`CLAMP_GRADE` avant évaluation du polynôme. `None` en entrée -> `None`
-    (pente non calculable, voir `arc_elevation.grade_series`) — jamais un coût
-    inventé."""
+def _kay_quartic(m: float) -> float:
+    a1, a2, a3, a4 = KAY_COEFFS
+    return 1.0 + a1 * m + a2 * m**2 + a3 * m**3 + a4 * m**4
+
+
+def _kay_quartic_slope(m: float) -> float:
+    a1, a2, a3, a4 = KAY_COEFFS
+    return a1 + 2 * a2 * m + 3 * a3 * m**2 + 4 * a4 * m**3
+
+
+def kay_pace_ratio(grade: Optional[float]) -> Optional[float]:
+    """Rapport allure(pente)/allure(plat) de Kay (2012), voir `ASSUMPTIONS["model"]` :
+    quartique publiée entre `KAY_DOWNHILL_CRITICAL` et `KAY_UPHILL_INFLECTION`, prolongée
+    au-delà par sa tangente (continuité de la valeur et de la pente, comme le propose
+    l'article), pente bornée à ±`CLAMP_GRADE`. `None` si la pente est inconnue."""
     if grade is None:
         return None
-    i = max(-CLAMP_GRADE, min(CLAMP_GRADE, grade))
-    c5, c4, c3, c2, c1, c0 = MINETTI_COEFFS
-    return c5 * i**5 + c4 * i**4 + c3 * i**3 + c2 * i**2 + c1 * i + c0
+    m = max(-CLAMP_GRADE, min(CLAMP_GRADE, grade))
+    for edge in (KAY_DOWNHILL_CRITICAL, KAY_UPHILL_INFLECTION):
+        if (edge < 0 and m < edge) or (edge > 0 and m > edge):
+            return _kay_quartic(edge) + _kay_quartic_slope(edge) * (m - edge)
+    return _kay_quartic(m)
 
 
 def gap_factor(grade: Optional[float]) -> Optional[float]:
-    """Rapport C(pente)/C(0) : vitesse GAP = vitesse mesurée × ce facteur, allure GAP =
-    allure mesurée ÷ ce facteur. `None` si la pente est inconnue."""
-    cost = minetti_cost(grade)
-    return None if cost is None else cost / MINETTI_FLAT_COST
+    """Facteur de pente de la GAP : vitesse GAP = vitesse mesurée × ce facteur, allure GAP =
+    allure mesurée ÷ ce facteur (1 sur le plat, > 1 en montée). Modèle de Kay (2012),
+    `kay_pace_ratio` — SEULE formule de pente → allure du projet (GAP, splits, carte,
+    découplage, durabilité, descente, vitesse critique, repli du modèle personnel).
+    `None` si la pente est inconnue."""
+    return kay_pace_ratio(grade)
 
 
 def gap_speed_ms(speed_ms: Optional[float], grade: Optional[float]) -> Optional[float]:
-    """Vitesse « allure ajustée à la pente » : vitesse mesurée × C(pente)/C(0).
+    """Vitesse « allure ajustée à la pente » : vitesse mesurée × p(pente)/p0 (`gap_factor`).
     `None` si la vitesse ou la pente sont inconnues (jamais une vitesse
     inventée)."""
     if speed_ms is None:

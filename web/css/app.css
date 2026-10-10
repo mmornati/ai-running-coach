@@ -369,7 +369,7 @@ select { font: inherit; color: var(--ink); background: var(--surface); border: 1
 .chart .band-fill { fill: var(--s-band); }
 /* Modèle personnel pente -> allure (#58) : trait plein pour la courbe personnelle
    (paniers avec assez de données), trait pointillé pour la courbe générique de
-   comparaison (repli Minetti sur la référence plate personnelle) — forme
+   comparaison (repli Kay sur la référence plate personnelle) — forme
    distincte, comme les autres paires personnel/générique du tableau de bord. */
 .chart .line--slope { stroke: var(--s-slope); stroke-width: 2.2; }
 .chart .line--slope-generic { stroke: var(--s-slope-generic); stroke-width: 1.4; stroke-dasharray: 4 3; }

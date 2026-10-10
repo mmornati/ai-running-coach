@@ -499,8 +499,8 @@ def _generic_bins() -> list:
     for lo, hi, label in SL.GRADE_BINS:
         mid = (lo + hi) / 2.0 if lo > float("-inf") and hi < float("inf") else (lo if hi == float("inf") else hi)
         flat_speed = 2.8
-        cost = SL.G.minetti_cost(mid) if hasattr(SL, "G") else None
-        speed = flat_speed if cost is None else flat_speed * (SL.G.MINETTI_FLAT_COST / cost if cost else 1.0)
+        factor = SL.G.gap_factor(mid)
+        speed = flat_speed if not factor else flat_speed / factor
         bins.append({"grade_lo": lo, "grade_hi": hi, "grade_mid": mid, "label": label,
                      "speed_ms": speed, "ci_low_speed_ms": speed * 0.9, "ci_high_speed_ms": speed * 1.1,
                      "hr_bpm": None, "source": "generic", "n_samples": 0, "n_activities": 0,

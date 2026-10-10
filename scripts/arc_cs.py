@@ -129,9 +129,9 @@ ASSUMPTIONS = {
         "pas des valeurs publiées."
     ),
     "gap_basis": (
-        "Les vitesses de la courbe sont des vitesses GAP (allure ajustée à la pente, modèle de Minetti, voir "
+        "Les vitesses de la courbe sont des vitesses GAP (allure ajustée à la pente, modèle de Kay 2012, voir "
         "arc_gap.ASSUMPTIONS) : la CS est donc une vitesse « équivalent plat ». Les limites du GAP s'héritent : "
-        "bruit de pente sur un instant, surestimation probable du gain en forte descente. Une séance sans "
+        "bruit de pente sur un instant, gain en descente généreux pour la plupart des athlètes. Une séance sans "
         "altitude exploitable (tapis, capteur barométrique absent) est ÉCARTÉE de la courbe (comptée dans "
         "`skipped_no_grade`), jamais supposée plate."
     ),

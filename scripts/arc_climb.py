@@ -17,7 +17,7 @@ informel, jamais comme une source citée (voir CONTRIBUTING.md, « citer
 uniquement ce qui est vérifiable »). Le calcul lui-même est une simple
 division (gain d'altitude / temps), pas un modèle propriétaire : rien à
 reproduire ni à approximer, contrairement au GAP (`arc_gap.py`, #44, modèle de
-Minetti). Des fonctionnalités de segmentation de montée existent chez
+Kay 2012). Des fonctionnalités de segmentation de montée existent chez
 plusieurs marques (segments de montée de la marque Strava, ClimbPro de la
 marque Garmin) : ce module s'en inspire pour le principe (détecter des
 montées, mesurer leur VAM) mais n'en reproduit aucun calcul propriétaire —
@@ -244,7 +244,7 @@ ASSUMPTIONS = {
         "Michele Ferrari dans la culture du cyclisme — AUCUNE publication vérifiable identifiée pour "
         "cette attribution précise, mentionnée uniquement comme repère historique, jamais comme une "
         "source citée. Le calcul lui-même (une division) n'est pas un modèle propriétaire : rien à "
-        "approximer ni à reproduire, à la différence du GAP (arc_gap.py, Minetti et al. 2002)."
+        "approximer ni à reproduire, à la différence du GAP (arc_gap.py, Kay 2012)."
     ),
     "restricted_to_run_family": (
         "Calculé UNIQUEMENT pour les séances de la famille course à pied (arc_metrics.sport_family == "

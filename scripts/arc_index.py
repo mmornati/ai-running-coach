@@ -100,8 +100,8 @@ jamais un regroupement des 5 zones) recalculées en entier à chaque passage de
 seuil) ou de `[athlete].hr_zones` est répercuté sans étape à part. Voir
 `arc_metrics.ASSUMPTIONS["hr_zones"]`.
 
-`gap` (#44) rend l'allure ajustée à la pente (« GAP », coût énergétique de
-Minetti et al. 2002 — voir `arc_gap.py`) d'une séance : allure globale et par
+`gap` (#44) rend l'allure ajustée à la pente (« GAP », modèle de Kay 2012 tiré
+de records de course — voir `arc_gap.py` et `docs/gap.md`) d'une séance : allure globale et par
 split, `--activity GARMIN_ID` obligatoire (ou en argument positionnel).
 `activity.gap_pace_s_km` et `activity_split.gap_pace_s_km` sont recalculées en
 entier à chaque passage de `index_workspace` (même discipline que les tables
@@ -887,14 +887,14 @@ CREATE TABLE climb_segment (
 -- avec l'effort des descentes elles-mêmes — voir `arc_descent.ASSUMPTIONS
 -- ["reference"]`, BLOQUANT corrigé en revue de code). Voir
 -- `arc_descent.ASSUMPTIONS["indicator"]` pour la lecture honnête de cet indicateur
--- (le modèle de Minetti sous-jacent surestime le bénéfice des fortes descentes,
--- une valeur < 1 sur les classes raides est attendue). Une activité sans classe
+-- (le modèle de pente sous-jacent, tiré de coureurs entraînés, est généreux en
+-- descente : une valeur < 1 est fréquente). Une activité sans classe
 -- qualifiante (durée/distance insuffisante par classe, référence indisponible, ou
 -- hors famille course à pied/sans FIT) n'a simplement aucune ligne ici.
 -- `mean_grade` (revue de code #47) : pente RÉELLEMENT rencontrée en moyenne sur la
 -- classe (fraction signée), pas seulement son libellé — utile notamment sur les
 -- deux paniers larges au-delà de -20 % (`arc_descent.ASSUMPTIONS["grade_classes"]`,
--- coût de Minetti non monotone en descente).
+-- modèle de pente non monotone en descente).
 CREATE TABLE activity_descent_class (
     activity_id INTEGER, grade_class TEXT, count INTEGER, duration_moving_s REAL, distance_m REAL,
     mean_speed_ms REAL, mean_pace_s_km REAL, mean_gap_speed_ms REAL, mean_grade REAL, efficiency REAL
@@ -931,7 +931,7 @@ CREATE INDEX activity_energy_activity ON activity_energy(activity_id);
 -- (pas par activité, comme `climb_segment` ci-dessus) : recalculé INTÉGRALEMENT à chaque
 -- `compute_metrics`, jamais de purge partielle. Une ligne par (`band`, panier de pente) —
 -- voir `arc_slope_model.GRADE_BINS` pour les bornes/étiquettes. `source` : "personal"
--- (données de l'athlète suffisantes sur ce panier) ou "generic" (repli Minetti sur la
+-- (données de l'athlète suffisantes sur ce panier) ou "generic" (repli Kay sur la
 -- référence plate personnelle, voir `arc_slope_model.ASSUMPTIONS['fallback']`).
 -- `ci_low_speed_ms`/`ci_high_speed_ms` : repère de dispersion (IQR pondéré), PAS un
 -- intervalle de confiance statistique au sens strict — voir ASSUMPTIONS['robust_stats'].
@@ -3230,8 +3230,7 @@ def index_workspace(conn, workspace: Path, today: Optional[str] = None,
     conn.execute("INSERT OR REPLACE INTO meta VALUES ('metrics_fingerprint', ?)", (fingerprint,))
     # `arc_gap.ASSUMPTIONS` (#44) fusionné à celles d'`arc_metrics` : la section
     # « Hypothèses » du tableau de bord (`/api/summary` -> `web/js/app.js`) doit
-    # exposer la limite connue du modèle de Minetti (surestimation des fortes
-    # descentes) au même titre que les autres approximations du projet — jamais
+    # exposer la limite connue du modèle de pente (généreux en descente) au même titre que les autres approximations du projet — jamais
     # cachée dans un module que cette agrégation oublierait. `arc_decoupling.ASSUMPTIONS`
     # (#45) fusionné à PART, sous des clés préfixées `decoupling_*` (revue de code) :
     # `arc_decoupling` et `arc_gap` partagent des noms de clé (`model`,

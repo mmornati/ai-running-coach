@@ -256,8 +256,8 @@ RE3_F = 1.056
 RE3_G = 43.0
 
 # Coefficients du polynôme MARCHE de Minetti et al. 2002 (J Appl Physiol
-# 93:1039-1046), i^5 -> i^0, coût NET en J/kg/m — même article que le polynôme
-# COURSE d'`arc_gap.MINETTI_COEFFS`, mais une formule DIFFÉRENTE (marche).
+# 93:1039-1046), i^5 -> i^0, coût NET en J/kg/m — le polynôme MARCHE de l'article
+# (le polynôme COURSE servait à l'ancien GAP, remplacé par Kay 2012, voir docs/gap.md).
 MINETTI_WALK_COEFFS = (280.5, -58.7, -76.8, 51.9, 19.6, 2.5)
 
 # Seuil marche/course (m/s) — décision de projet, cohérent avec le script de

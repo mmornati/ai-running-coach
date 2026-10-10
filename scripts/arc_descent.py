@@ -23,22 +23,22 @@ temps sont propres à ce module.
 
 ## Indicateur : efficacité en descente, PAS une comparaison brute au modèle
 
-Comparer une allure de descente au modèle de Minetti (`arc_gap.py`, #44) en
-valeur absolue n'aurait aucun sens : le modèle EST déjà connu pour surestimer
-le gain métabolique des fortes descentes en conditions réelles de trail (voir
-`arc_gap.ASSUMPTIONS["model"]`). L'indicateur retenu compare donc l'athlète À
+Comparer une allure de descente au modèle de pente (Kay 2012, `arc_gap.py`,
+#44) en valeur absolue n'aurait pas grand sens : tiré de coureurs entraînés,
+le modèle reste généreux en descente pour la plupart des athlètes (voir
+`arc_gap.ASSUMPTIONS["model"]` et `docs/gap.md`). L'indicateur retenu compare donc l'athlète À
 LUI-MÊME, via le modèle, plutôt qu'au modèle en absolu.
 
 Pour UN échantillon isolé, la vitesse GAP (`arc_gap.gap_speed_ms`, déjà
-`vitesse mesurée × C(pente)/C(0)`) rend le ratio demandé par l'issue :
+`vitesse mesurée × p(pente)/p0`) rend le ratio demandé par l'issue :
 
-    efficacité(t) = vitesse(t) / (référence plate × C(0)/C(pente(t)))
+    efficacité(t) = vitesse(t) / (référence plate × p0/p(pente(t)))
                   = vitesse GAP(t) / référence plate
 
 Sur une CLASSE de pente (plusieurs échantillons à pentes légèrement
 différentes), la valeur retenue est la MOYENNE PONDÉRÉE PAR LE TEMPS de ce
 ratio par échantillon — jamais le ratio d'une vitesse moyenne de classe à une
-pente moyenne de classe unique (`C` n'étant pas linéaire, les deux ne
+pente moyenne de classe unique (`p` n'étant pas linéaire, les deux ne
 coïncident pas en général, inégalité de Jensen). Comme la référence est une
 CONSTANTE de la séance (facteur qui sort de la moyenne), cela revient
 exactement à :
@@ -52,11 +52,10 @@ algébrique ne vaut que parce que la référence ne varie pas d'un échantillon 
 l'autre à l'intérieur d'une même classe).
 
 **Lecture** : `efficacité = 1.0` signifie que l'athlète descend exactement à
-l'allure que prédirait le modèle s'il maintenait le même effort métabolique
-qu'à son allure plate de référence. Le modèle étant connu pour SURESTIMER le
-bénéfice énergétique des fortes descentes (`arc_gap.ASSUMPTIONS["model"]`),
-une valeur `< 1.0` sur les classes les plus raides est ATTENDUE et NORMALE —
-ce n'est PAS la preuve d'une mauvaise descente. **C'est la TENDANCE de cet
+l'allure que prédirait le modèle (un coureur de montagne entraîné) à partir
+de son allure plate de référence. Le modèle étant généreux en descente pour
+la plupart des athlètes (`arc_gap.ASSUMPTIONS["model"]`), une valeur `< 1.0`
+est FRÉQUENTE — ce n'est PAS la preuve d'une mauvaise descente. **C'est la TENDANCE de cet
 indicateur dans le temps, à classe de pente égale, qui est exploitable**,
 jamais sa valeur absolue isolée — voir `ASSUMPTIONS["indicator"]`.
 
@@ -99,13 +98,14 @@ deux est atteint — voir `ASSUMPTIONS["thresholds"]`.
 réutilisées telles quelles côté descente ; ce module reprend le MIROIR des 3
 classes ascendantes intermédiaires (`5-10 %` -> `-5 à -10 %`, etc.), voir
 `ASSUMPTIONS["grade_classes"]`. Au-delà de -20 %, en revanche, la classe
-ascendante `>20%` n'a PAS de miroir direct valable : le coût énergétique de
-Minetti n'est PAS monotone en descente (contrairement à la montée) — il
-DIMINUE jusqu'à un minimum vers -18 % (C(i)/C(0) ≈ 0,495) puis RE-AUGMENTE
-(-25 % : 0,562 ; -30 % : 0,684 ; -45 %, le plafond du modèle : 1,12, DÉJÀ
-au-dessus du coût du plat). Un unique panier `< -20 %` mélangerait donc des
-pentes aux prédictions de modèle radicalement différentes (proches du
-bénéfice maximal à -20 %, quasi neutres à -30 %, pénalisantes à -45 %) : la
+ascendante `>20%` n'a PAS de miroir direct valable : le modèle de pente (Kay
+2012) n'est PAS monotone en descente (contrairement à la montée) — le rapport
+d'allure p(pente)/p0 DIMINUE jusqu'à un minimum vers -10 % (≈ 0,81) puis
+RE-AUGMENTE, revient au plat vers -21 % et le dépasse ensuite (-25 % : 1,16 ;
+-30 % : 1,38 ; -45 %, la borne du modèle : 2,08). Un unique panier `< -20 %`
+mélangerait donc des pentes aux prédictions de modèle radicalement
+différentes (quasi neutres à -20 %, pénalisantes à -30 %, très pénalisantes
+à -45 %) : la
 classe se lirait alors comme un indicateur du RELIEF traversé (quelle pente
 moyenne le panier a-t-il vu ce jour-là) plutôt que de l'EFFICACITÉ de
 l'athlète. Ce module scinde donc ce panier en deux : `-20 à -30 %` et
@@ -150,7 +150,7 @@ MIN_DESCENT_GRADE = VC.MIN_CLIMB_AVG_GRADE
 
 # Classes de pente descendante — MIROIR des 3 classes ascendantes intermédiaires
 # de `arc_climb.GRADE_CLASSES` (#46), scindées différemment au-delà de -20 % (voir
-# la docstring du module : le coût de Minetti n'est pas monotone en descente,
+# la docstring du module : le modèle de pente n'est pas monotone en descente,
 # contrairement à la montée — un panier ouvert unique au-delà de -20 % mélangerait
 # des pentes aux prédictions radicalement différentes).
 DESCENT_GRADE_CLASSES: Tuple[Tuple[float, float, str], ...] = (
@@ -195,9 +195,9 @@ REASON_UNKNOWN_ACTIVITY = "aucune activité indexée pour ce garmin_activity_id"
 
 ASSUMPTIONS = {
     "model": (
-        "Aucun nouveau modèle physiologique : ce module réutilise tel quel le coût énergétique de "
-        "Minetti AE et al. (2002, J Appl Physiol 93:1039-1046) déjà appliqué par le GAP (arc_gap.py, "
-        "#44) — jamais un second calcul du polynôme, seulement la vitesse GAP déjà produite par "
+        "Aucun nouveau modèle : ce module réutilise tel quel le modèle de pente (Kay A., 2012, J Quant "
+        "Anal Sports 8(4)) déjà appliqué par le GAP (arc_gap.py, #44) — jamais un second calcul du "
+        "polynôme, seulement la vitesse GAP déjà produite par "
         "`arc_gap.gap_sample_series`, agrégée par classe de pente descendante."
     ),
     "indicator": (
@@ -206,15 +206,15 @@ ASSUMPTIONS = {
         "PRÉCISION IMPORTANTE (revue de code) : ceci équivaut algébriquement à (moyenne pondérée par "
         "le temps de la vitesse GAP sur la classe) / référence UNIQUEMENT parce que la référence est "
         "une CONSTANTE de la séance qui sort de la moyenne — ce n'est PAS la même chose que (vitesse "
-        "moyenne mesurée sur la classe) / (référence × C(0)/C(pente MOYENNE de la classe)), un calcul "
+        "moyenne mesurée sur la classe) / (référence × p0/p(pente MOYENNE de la classe)), un calcul "
         "à pente unique qui ne coïnciderait pas en général avec la vraie moyenne pondérée du fait de la "
-        "non-linéarité de C (inégalité de Jensen) — voir la docstring du module pour le détail. Une "
-        "valeur de 1,0 signifie que l'athlète maintient, en moyenne sur la classe, le même effort "
-        "métabolique (au sens du modèle de Minetti) qu'à son allure plate de référence. LIMITE CONNUE, "
-        "documentée honnêtement (voir arc_gap.ASSUMPTIONS['model']) : le modèle de Minetti SURESTIME le "
-        "gain métabolique des fortes descentes en conditions réelles de trail (freinage excentrique, "
-        "terrain technique, prudence tactique) — une efficacité BIEN EN DESSOUS de 1,0 sur les classes "
-        "les plus raides est donc ATTENDUE et NORMALE, jamais la preuve d'une mauvaise descente. Cet "
+        "non-linéarité de p (inégalité de Jensen) — voir la docstring du module pour le détail. Une "
+        "valeur de 1,0 signifie que l'athlète descend, en moyenne sur la classe, comme un coureur de "
+        "montagne entraîné (modèle de Kay) à partir de son allure plate de référence. LIMITE CONNUE, "
+        "documentée honnêtement (voir arc_gap.ASSUMPTIONS['model'] et docs/gap.md) : le modèle reste "
+        "généreux en descente pour la plupart des athlètes (un amateur moyen gagne quelques % là où le "
+        "modèle en prévoit près de 18 %), et ne voit ni le terrain technique ni la prudence — une "
+        "efficacité EN DESSOUS de 1,0 est donc FRÉQUENTE, jamais la preuve d'une mauvaise descente. Cet "
         "indicateur n'a de sens qu'en TENDANCE, dans le temps, à classe de pente égale — jamais comme un "
         "score absolu à comparer entre athlètes ou à un seuil universel."
     ),
@@ -262,13 +262,13 @@ ASSUMPTIONS = {
         "— les 3 classes intermédiaires (5-10/10-15/15-20 %) sont le MIROIR direct des classes "
         "ascendantes correspondantes d'`arc_climb.GRADE_CLASSES` (#46), qui anticipait explicitement "
         "cette réutilisation. Au-delà de -20 %, en revanche, PAS de miroir direct de la classe "
-        "ascendante `>20%` : le coût énergétique de Minetti N'EST PAS monotone en descente (contrairement "
-        "à la montée, où C(i) croît sans cesse avec la pente) — il DIMINUE jusqu'à un minimum vers -18 % "
-        "(C(i)/C(0) ≈ 0,495, le point où le modèle prédit le plus grand bénéfice) puis RE-AUGMENTE : "
-        "-20 % ≈ 0,50, -25 % ≈ 0,562, -30 % ≈ 0,684, -45 % (plafond du modèle, `arc_gap.CLAMP_GRADE`) ≈ "
-        "1,12, DÉJÀ AU-DESSUS du coût du plat. Un panier ouvert unique `< -20 %` mélangerait donc des "
-        "pentes aux prédictions radicalement différentes (bénéfice quasi maximal à -20 %, quasi neutre "
-        "à -30 %, pénalisant à -45 %) : sa valeur refléterait alors le RELIEF traversé plutôt que "
+        "ascendante `>20%` : le modèle de pente (Kay 2012) N'EST PAS monotone en descente (contrairement "
+        "à la montée, où p(pente)/p0 croît sans cesse avec la pente) — il DIMINUE jusqu'à un minimum vers "
+        "-10 % (≈ 0,81, le point où le modèle prédit le plus grand bénéfice) puis RE-AUGMENTE : -20 % ≈ "
+        "0,97, -25 % ≈ 1,16, -30 % ≈ 1,38, -45 % (borne du modèle, `arc_gap.CLAMP_GRADE`) ≈ 2,08, "
+        "AU-DESSUS de l'allure du plat dès -21 %. Un panier ouvert unique `< -20 %` mélangerait donc des "
+        "pentes aux prédictions radicalement différentes (quasi neutre à -20 %, pénalisant à -30 %, "
+        "très pénalisant à -45 %) : sa valeur refléterait alors le RELIEF traversé plutôt que "
         "l'EFFICACITÉ de l'athlète. Scindé en `-20 à -30 %` et `< -30 %` en conséquence — asymétrie "
         "ASSUMÉE avec la VAM (#46), qui n'a pas ce problème (montée strictement monotone). "
         "`mean_grade` (pente moyenne pondérée par le temps de la classe, voir "
