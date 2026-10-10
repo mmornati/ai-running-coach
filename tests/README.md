@@ -82,6 +82,12 @@ réseau, aucun vrai jeton) ; la logique (callbacks → écritures `arc`, idempot
 seuil de douleur, pont vers un vrai `arc_chat` en backend `mock`) est au palier D
 (`tests/data/test_arc_telegram.py`).
 
+Tout faux service HTTP d'un test se construit avec `tests/lib/local_http.py`
+(`HTTPServer`/`ThreadingHTTPServer` sans `socket.getfqdn` au démarrage) : la version
+de la bibliothèque standard bloque ~35 s sur les runners macOS de GitHub. Le lint
+`tests/lint/test_http_server_bind_lint.py` refuse un serveur `http.server` sans
+`server_bind` redéfini, dans `scripts/` comme dans `tests/`.
+
 **Tests ignorés.** `TestCoachRemote` s'ignore là où `screen` ou `tmux` existe
 dans `/opt/homebrew/bin` ou `/usr/local/bin` : `coach-remote.sh` rajoute ces
 dossiers au `PATH`, donc « aucun gestionnaire de services » n'y est pas une

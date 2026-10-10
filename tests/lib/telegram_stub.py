@@ -14,7 +14,9 @@ from __future__ import annotations
 import json
 import threading
 import time
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from http.server import BaseHTTPRequestHandler
+
+from tests.lib.local_http import ThreadingHTTPServer
 
 FAKE_TOKEN = "123456789:AAFakeTokenForTestsOnly_0123456789abcdefg"
 

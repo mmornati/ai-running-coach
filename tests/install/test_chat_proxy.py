@@ -15,11 +15,12 @@ import sys
 import threading
 import time
 import unittest
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from http.server import BaseHTTPRequestHandler
 from pathlib import Path
 
 from tests.install.test_dashboard import Server
 from tests.lib.asserts import InstallAsserts
+from tests.lib.local_http import ThreadingHTTPServer
 from tests.lib.sandbox import Sandbox
 from tests.lib.synthetic import build
 

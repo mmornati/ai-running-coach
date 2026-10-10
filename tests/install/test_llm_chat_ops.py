@@ -18,6 +18,7 @@ from datetime import date
 from pathlib import Path
 
 from tests.lib.asserts import InstallAsserts
+from tests.lib.local_http import HTTPServer as LocalHTTPServer
 from tests.lib.sandbox import STUBS_DIR, Sandbox
 
 SECRET = "sk-or-SECRET-VALUE-0123456789"
@@ -670,7 +671,7 @@ class TestDoctorLlmChecks(InstallAsserts):
             def log_message(self, *args):
                 pass
 
-        server = http.server.HTTPServer(("127.0.0.1", 0), Handler)
+        server = LocalHTTPServer(("127.0.0.1", 0), Handler)
         thread = threading.Thread(target=server.serve_forever, daemon=True)
         thread.start()
         try:
@@ -699,7 +700,7 @@ class TestDoctorLlmChecks(InstallAsserts):
             def log_message(self, *args):
                 pass
 
-        server = http.server.HTTPServer(("127.0.0.1", 0), Handler)
+        server = LocalHTTPServer(("127.0.0.1", 0), Handler)
         thread = threading.Thread(target=server.serve_forever, daemon=True)
         thread.start()
         try:

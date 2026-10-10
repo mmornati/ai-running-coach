@@ -42,6 +42,7 @@ import re
 import secrets
 import signal
 import socket
+import socketserver
 import sys
 import threading
 import time
@@ -1454,6 +1455,14 @@ def make_server(workspace: Path, cfg: dict, backend: ChatBackend, notif: Optiona
     class Server(ThreadingHTTPServer):
         daemon_threads = True
         allow_reuse_address = True
+
+        def server_bind(self) -> None:
+            # Sans `socket.getfqdn(host)` (cf. `arc_serve.Server`) : ~35 s de blocage
+            # au démarrage sur un résolveur lent (runners macOS de GitHub, Mac hors ligne).
+            socketserver.TCPServer.server_bind(self)
+            host, port = self.server_address[:2]
+            self.server_name = str(host)
+            self.server_port = port
 
     # Sous-classe par serveur : deux services dans un même processus (tests) ne se marchent pas dessus.
     bound = type("BoundHandler", (Handler,), {"service": service})
