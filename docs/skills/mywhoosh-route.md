@@ -27,7 +27,8 @@ mywhoosh_calendar = "ask"   # facultatif : proposer aussi l'inscription au calen
 
 Renseignez votre équipement dans le profil, section « ### Vélo & home trainer » (home trainer, vélo,
 masse du vélo, FTP déclarée). Le coach s'en charge ensuite à chaque séance home trainer : il propose
-deux ou trois parcours, écrit celui que vous choisissez dans le nom et la description de la séance
+deux ou trois parcours — chacun avec où le trouver dans l'application (*Free Ride > Switzerland >
+Limmat Loop*) et un lien de carte vers la position que MyWhoosh indique —, écrit celui que vous choisissez dans le nom et la description de la séance
 poussée sur votre montre Garmin, et le trace dans la semaine.
 
 ## Utilisation manuelle

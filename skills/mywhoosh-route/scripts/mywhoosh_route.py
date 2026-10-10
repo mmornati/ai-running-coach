@@ -173,6 +173,15 @@ def login(args, *, interactive: bool = True) -> str | None:
     return resp["AccessToken"]
 
 
+def _coords(lat, lon) -> dict:
+    """`{"lat", "lon"}` (4 décimales) si plausibles, sinon {} — jamais (0, 0)."""
+    if not all(isinstance(v, (int, float)) for v in (lat, lon)):
+        return {}
+    if not (-90 <= lat <= 90 and -180 <= lon <= 180) or (lat == 0 and lon == 0):
+        return {}
+    return {"lat": round(float(lat), 4), "lon": round(float(lon), 4)}
+
+
 def flatten_routes(worlds: list) -> list[dict]:
     """Réponse brute de ``/free-ride/routes`` (liste de mondes) → liste plate de
     parcours roulables en free ride, avec seulement les champs utiles.
@@ -196,6 +205,10 @@ def flatten_routes(worlds: list) -> list[dict]:
                 "difficulty": r.get("Difficulty"),
                 "route_type": r.get("RouteType"),
                 "loop": r.get("RouteType") == "E_Circuit",
+                # Position indiquée par MyWhoosh (`Latitude`/`Longitude`) : le plus souvent le lieu réel
+                # dont le parcours est tiré (Limmat Loop ≈ Zurich, Bruges, Al Qudra ≈ Dubaï), mais pas
+                # toujours (Hudayriyat Outer Loop : ~100 km de l'île réelle) — jamais présentée comme exacte.
+                **_coords(r.get("Latitude"), r.get("Longitude")),
             })
     return out
 
@@ -365,12 +378,51 @@ def _fmt(s: float) -> str:
 
 
 def garmin_label(route: dict, duration_min: float, zone: int | None) -> str:
-    """Nom court pour le `workoutName` Garmin : la montre l'affiche, le parcours s'y retrouve.
-    ASCII seulement pour la partie fixe (comme les noms poussés par le coach) ; le nom du
-    parcours est gardé tel que MyWhoosh l'écrit, pour le retrouver dans l'application."""
+    """Nom court pour le `workoutName` Garmin : la montre l'affiche, le parcours ET son monde
+    s'y retrouvent. ASCII seulement pour la partie fixe (comme les noms poussés par le coach) ;
+    parcours et monde sont gardés tels que MyWhoosh les écrit, pour les retrouver dans l'application."""
     laps = f" x{route['laps']}" if route.get("laps", 1) > 1 else ""
     z = f" Z{zone}" if zone else ""
-    return f"HT{z} {duration_min:.0f}min - {route['name']}{laps}"
+    world = f" ({route['world']})" if route.get("world") else ""
+    return f"HT{z} {duration_min:.0f}min - {route['name']}{laps}{world}"
+
+
+def app_path(route: dict) -> str:
+    """Chemin dans l'application : Free Ride > <monde> > <parcours>."""
+    return " > ".join(x for x in ("Free Ride", route.get("world"), route["name"]) if x)
+
+
+def map_url(route: dict) -> str | None:
+    """Lien OpenStreetMap vers la position que MyWhoosh indique pour le parcours (construit localement,
+    aucun appel réseau). Repère approximatif, pas un lieu garanti."""
+    if "lat" not in route or "lon" not in route:
+        return None
+    lat, lon = route["lat"], route["lon"]
+    return f"https://www.openstreetmap.org/?mlat={lat}&mlon={lon}#map=12/{lat}/{lon}"
+
+
+def _km(m: float) -> str:
+    return f"{m / 1000:.1f}".replace(".", ",")
+
+
+def garmin_description(route: dict, target_w: float, hr_band: list[float] | None) -> str:
+    """Texte de la `description` Garmin (langue des documents : français) — où trouver le parcours,
+    tours, distance, temps prévu avec sa bande, repère de puissance, et la règle « la FC commande ».
+    Sans accents, comme les descriptions déjà poussées par le coach (affichage montre)."""
+    laps = route.get("laps", 1)
+    kind = "boucle" if _is_loop(route) else "point a point"
+    tours = f", {laps} tours" if laps > 1 else ""
+    hr = f" ({round(hr_band[0])}-{round(hr_band[1])} bpm)" if hr_band else ""
+    parts = [
+        f"MyWhoosh : {app_path(route)} ({kind}{tours} = {_km(route['distance_m'] * laps)} km, "
+        f"D+ {route['elevation_gain_m'] * laps} m).",
+        f"Temps prevu ~{_fmt(route['predicted_s'])} (estimation {_fmt(route['low_s'])}-{_fmt(route['high_s'])}).",
+        f"Repere puissance ~{round(target_w)} W{hr} : la FC commande.",
+    ]
+    url = map_url(route)
+    if url:
+        parts.append(f"Carte (position MyWhoosh) : {url}")
+    return " ".join(parts)
 
 
 def virtual_route(route: dict, target_w: float) -> dict:
@@ -436,6 +488,11 @@ def cmd_suggest(args) -> int:
                   overrun_min=args.overrun_min, max_laps=args.max_laps, top=args.top)
     for r in res:
         r["garmin_workout_name"] = garmin_label(r, args.duration_min, preset["zone"])
+        r["app_path"] = app_path(r)
+        url = map_url(r)
+        if url:
+            r["map_url"] = url
+        r["garmin_description"] = garmin_description(r, target, hr_band)
         r["virtual_route"] = virtual_route(r, target)
     out = {"duration_min": args.duration_min, "intensity": args.intensity or "endurance",
            "hr_band_bpm": [round(x) for x in hr_band] if hr_band else None,
@@ -452,9 +509,11 @@ def cmd_suggest(args) -> int:
         print("Aucun parcours ne tient dans la séance avec ces filtres.")
     for r in res:
         laps = f" × {r['laps']} tours" if r["laps"] > 1 else ""
-        print(f"- {r['name']} ({r['world']}, difficulté {r.get('difficulty')}) : {r['distance_m'] / 1000:.1f} km, "
-              f"D+ {r['elevation_gain_m']} m ({r['m_per_km']} m/km){laps} → {_fmt(r['predicted_s'])} "
-              f"[{_fmt(r['low_s'])}–{_fmt(r['high_s'])}], remplit {r['fill'] * 100:.0f} %")
+        print(f"- {r['app_path']} ({'boucle' if _is_loop(r) else 'point à point'}, difficulté {r.get('difficulty')}) : "
+              f"{r['distance_m'] / 1000:.1f} km, D+ {r['elevation_gain_m']} m ({r['m_per_km']} m/km){laps} → "
+              f"{_fmt(r['predicted_s'])} [{_fmt(r['low_s'])}–{_fmt(r['high_s'])}], remplit {r['fill'] * 100:.0f} %")
+        if r.get("map_url"):
+            print(f"    carte (position indiquée par MyWhoosh) : {r['map_url']}")
     return 0
 
 
