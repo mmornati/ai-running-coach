@@ -172,6 +172,23 @@ cycle_tracking = "off"
 # Une seule source de vérité par jour : voir docs/configuration.md.
 garmin_sync = "off"
 
+[home_trainer]
+# Plateforme de home trainer de l'athlète — OPT-IN STRICT (skill `mywhoosh-route`).
+#   "off"      — défaut : aucun parcours virtuel proposé, aucun agent n'en parle
+#   "mywhoosh" — pour chaque séance home trainer planifiée, le coach propose un parcours
+#                MyWhoosh qui tient dans la durée, à la puissance que l'athlète tient dans
+#                la plage FC visée (calibrée sur ses séances : `arc_index.py power-hr`), et
+#                l'écrit dans le nom/la description de la séance poussée au calendrier Garmin.
+#                Catalogue des parcours à récupérer une fois, en session interactive :
+#                `python3 skills/mywhoosh-route/scripts/mywhoosh_route.py fetch`.
+# Valeur inconnue = "off". L'équipement (home trainer, vélo, masse, FTP déclarée) se déclare dans le
+# profil, section « ### Vélo & home trainer ».
+platform = "off"
+# Inscription de la sortie au calendrier MyWhoosh (ÉCRITURE, API non officielle) :
+#   "off" — défaut : rien n'est écrit chez MyWhoosh
+#   "ask" — le coach PROPOSE d'inscrire la sortie ; « oui » explicite à chaque fois, jamais en headless
+mywhoosh_calendar = "off"
+
 [data]
 # Source de données primaire des agents (#68).
 #   "garmin"    — Garmin Connect, via garmin-mcp (défaut, comportement historique)

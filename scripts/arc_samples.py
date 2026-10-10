@@ -214,6 +214,12 @@ GPS_KEYS = ("lat_deg", "lon_deg")
 DYNAMICS_KEYS = ("ground_contact_s", "stance_balance_pct", "vertical_oscillation_m",
                  "vertical_ratio_pct", "step_length_m")
 
+# Puissance (vélo, home trainer — capteur de puissance ou home trainer connecté) : clé OPTIONNELLE
+# comme le GPS. `None` = pas de capteur ; 0 W est une VRAIE mesure (roue libre), jamais écartée.
+# Bornes : `POWER_PLAUSIBLE_W` ; hors plage → `None` (pic de capteur), jamais clampée.
+POWER_KEY = "power_w"
+POWER_PLAUSIBLE_W = (0.0, 2500.0)
+
 # Plages physiologiquement plausibles : hors plage → mesure absente (`None`), jamais clampée.
 # Un capteur qui renvoie 0 (pas de mesure) ou une valeur aberrante ne doit pas tirer une moyenne.
 DYNAMICS_PLAUSIBLE = {
@@ -271,6 +277,9 @@ ASSUMPTIONS = {
                          "moyenne des valeurs présentes du bucket (comme cadence_spm). Le SENS de la balance "
                          "(quel pied porte le pourcentage) n'est pas établi par le profil FIT de `fitparse` : "
                          "voir arc_gait.ASSUMPTIONS[\"balance_side\"].",
+    "power": "power_w (W) : champ FIT `power` du record, tel quel (aucune échelle). Absent = pas de capteur "
+             "(`None`), 0 = roue libre (mesure réelle, gardée). Hors POWER_PLAUSIBLE_W (0-2500 W) → `None`. "
+             "Sous-échantillonnage : moyenne du bucket (comme hr_bpm).",
     "downsampling": f"Bucket de resolution_s secondes (défaut {DEFAULT_RESOLUTION_S} s), horodaté à sa borne "
                      "inférieure. hr_bpm/speed_ms/cadence_spm : moyenne du bucket. distance_m/altitude_m/"
                      "lat_deg/lon_deg : dernière valeur (temporellement) du bucket (cumuls monotones ou "
@@ -431,6 +440,14 @@ def _dynamics(record: dict) -> dict:
     return {k: _plausible(k, v) for k, v in raw.items()}
 
 
+def _power_w(value) -> Optional[float]:
+    number = _num(value)
+    if number is None:
+        return None
+    lo, hi = POWER_PLAUSIBLE_W
+    return number if lo <= number <= hi else None
+
+
 def _scaled(value, factor: float) -> Optional[float]:
     number = _num(value)
     return None if number is None else number * factor
@@ -479,6 +496,7 @@ def _normalise_fitparse(records: Sequence[dict], sport: Optional[str]) -> List[d
             "lat_deg": lat_deg,
             "lon_deg": lon_deg,
             **_dynamics(record),
+            POWER_KEY: _power_w(record.get("power")),
         })
     out.sort(key=lambda r: r["t_s"])
     return out
@@ -498,6 +516,7 @@ def _clean_normalised(record: dict) -> Optional[dict]:
     # rejouée) — `None` si absente, jamais une clé manquante.
     for key in DYNAMICS_KEYS:
         cleaned[key] = _plausible(key, _num(record.get(key)))
+    cleaned[POWER_KEY] = _power_w(record.get(POWER_KEY))
     return cleaned
 
 
@@ -615,6 +634,7 @@ def downsample(records: Sequence[dict], resolution_s: int = DEFAULT_RESOLUTION_S
             # Dynamique de course (#151) : moyenne des valeurs PRÉSENTES du bucket (une mesure
             # absente reste absente — jamais 0, jamais 50 % de balance).
             **{key: _mean(r.get(key) for r in group) for key in DYNAMICS_KEYS},
+            POWER_KEY: _mean(r.get(POWER_KEY) for r in group),
         })
     return out
 

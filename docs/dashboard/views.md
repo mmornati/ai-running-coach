@@ -943,6 +943,33 @@ ne peuvent donc pas diverger.
 | `planning/Runner_Profile.md` → « Matériel & lieux » (`### Chaussures`, `### Matériel`) | `arc_legacy.parse_gear`, `arc_legacy.parse_equipment` |
 | `activities/*.md` (`gear_id`, `gear_ids`, distance, durée) | `arc_metrics.attribute_gear`, `arc_index.gear_mileage`, `arc_index.equipment_usage`, `/api/gear/<id>` (#147) |
 | `gear/*.md` (inspections photo) | `arc_index.gear_inspections` (#135) |
+| `planning/Runner_Profile.md` → « Vélo & home trainer », `activities/*.md` et `activities/fit/*.json` (séances vélo/home trainer) | `arc_index.power_hr`, `arc_power.calibrate`, `/api/power-hr` |
+
+### Home trainer
+
+**Quelle puissance je tiens dans chaque zone FC sur home trainer ?**
+
+Une carte en bas de la vue Matériel, montrée seulement s'il y a quelque chose à dire : équipement
+déclaré dans « Vélo & home trainer » du profil (home trainer, vélo, masse du vélo, FTP déclarée),
+plateforme virtuelle configurée (`[home_trainer].platform`, ex. MyWhoosh) ou relation déjà calibrée.
+Elle affiche :
+
+- l'**équipement déclaré**, le poids du jour et, si une FTP est déclarée, son rapport W/kg ;
+- la **puissance par zone FC** du profil, tirée d'une relation puissance ↔ FC calibrée sur les
+  fenêtres stables de 5 min des séances vélo/home trainer de la période (180 jours par défaut) :
+  écart type du résidu (± W), nombre de fenêtres, plage de FC observée ; une zone hors de cette
+  plage porte la mention **extrapolée** ;
+- les **dernières séances avec puissance** (puissance moyenne et normalisée, FC moyenne).
+
+**Comment la lire** : c'est une **estimation** (approximation du projet), jamais une mesure : la
+relation bouge avec la forme, la chaleur et la fatigue. Pendant la séance, **la FC reste la
+consigne**. La page d'une séance affiche aussi « Puissance moy. » et « Puissance norm. » quand
+la séance en porte.
+
+**Si c'est vide** : sans séance avec puissance et FC dans les échantillons FIT, ou avec trop peu
+de fenêtres stables, la carte dit pourquoi en clair et pointe vers `skills/fit-download` — aucun
+chiffre n'est inventé. Hors tableau de bord : `python3 scripts/arc_index.py power-hr [--days N]
+[--text]` (`/api/power-hr[?days=N]`).
 
 ## Trail Shape
 
@@ -1282,7 +1309,7 @@ nourrit :
 | Semaine | `planning/Semaine_<lundi>.md`, `activities/*.md` | coach, synchronisation |
 | Séances | `activities/<date>_<sport>.md` | synchronisation |
 | Performance | `activities/*.md`, `planning/Runner_Profile.md`, `planning/active_objective.md` | synchronisation, vous |
-| Matériel | `planning/Runner_Profile.md`, `activities/*.md`, `gear/*.md` | vous, coach, synchronisation |
+| Matériel | `planning/Runner_Profile.md`, `activities/*.md`, `gear/*.md` ; carte Home trainer : `activities/fit/*.json` (séances vélo/home trainer) | vous, coach, synchronisation, skill `fit-download` |
 | Trail Shape | `activities/*.md` (8 dernières semaines), `planning/active_objective.md` | synchronisation, vous |
 | Roadbook | `planning/*.md` (plan de course : segments, ravitos, matériel), `planning/Runner_Profile.md` | `course-strategist`, vous |
 | Calendrier | `activities/*.md`, `planning/Semaine_<lundi>.md` (frise du bloc) | synchronisation, coach |

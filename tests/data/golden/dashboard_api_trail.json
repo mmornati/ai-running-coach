@@ -785,6 +785,7 @@
           "arc_version": 1,
           "avg_cadence_spm": 168.0,
           "avg_hr_bpm": 141.0,
+          "avg_power_w": null,
           "best_climb_vam_elapsed_m_h": null,
           "best_vam_10min_m_h": null,
           "best_vam_20min_m_h": null,
@@ -820,9 +821,11 @@
           "load_source": "trimp",
           "location": "Tournai",
           "max_hr_bpm": 161.0,
+          "max_power_w": null,
           "missing_reason": null,
           "moving_duration_s": 3734.0,
           "name": "Endurance fondamentale",
+          "normalized_power_w": null,
           "recovery_hr_bpm": 31.0,
           "rpe": null,
           "source_path": "activities/2026-09-23_trail.md",
@@ -8639,6 +8642,31 @@
       },
       "status": 200
     },
+    "/api/power-hr": {
+      "body": {
+        "assumptions": {
+          "method": "Fenêtres de 300 s, pas de 60 s, après 600 s ; FC décalée de 60 s ; puissance régulière (écart-type ≤ 35% de la moyenne, moyenne ≥ 40 W) ; régression P = a + b·FC ; refus sous 30 fenêtres.",
+          "zones": "Puissance d'une zone = droite évaluée aux bornes de la zone FC du profil ; « extrapolated » quand la zone sort de la plage de FC observée (moins fiable)."
+        },
+        "days": 180,
+        "equipment": {},
+        "fit": null,
+        "hr_zone_method": "lthr",
+        "hr_zone_reason": null,
+        "platform": "off",
+        "reason": "aucune séance vélo/home trainer avec puissance et FC dans les échantillons FIT",
+        "recent": [],
+        "sessions": [],
+        "sessions_in_window": 0,
+        "since": "2026-03-28",
+        "status": "no_power_samples",
+        "until": "2026-09-23",
+        "weight_kg": 68.9,
+        "weight_source": "health_day",
+        "zones": []
+      },
+      "status": 200
+    },
     "/api/report": {
       "body": {
         "error": "introuvable"
@@ -8718,11 +8746,15 @@
     "/api/summary": {
       "body": {
         "athlete": {
+          "bike_mass_kg": null,
           "birth_year": null,
           "default_location": "Tournai",
+          "ftp_declared_w": null,
           "hr_max_bpm": 188,
           "hr_rest_bpm": 48,
           "hr_threshold_bpm": 172,
+          "ht_bike": null,
+          "ht_trainer": null,
           "name": null,
           "sex": "male",
           "sleep_need_s": null,
@@ -9255,6 +9287,7 @@
           "climb_min_grade": 0.05,
           "cycle_tracking": "off",
           "heat_threshold_c": 25.0,
+          "home_trainer_platform": "off",
           "hr_zones": "auto",
           "language": "fr",
           "map_attribution": "© OpenStreetMap contributors, SRTM · style © OpenTopoMap (CC-BY-SA)",
@@ -9626,6 +9659,7 @@
             "sport": "trail",
             "status": "done",
             "title": "Côtes 8 × 90 s",
+            "virtual_route": null,
             "weather_category": null,
             "week_start": "2026-09-21"
           },
@@ -9642,6 +9676,7 @@
             "sport": "running",
             "status": "planned",
             "title": "Endurance fondamentale 50 min",
+            "virtual_route": null,
             "weather_category": null,
             "week_start": "2026-09-21"
           },
@@ -9658,6 +9693,7 @@
             "sport": "strength",
             "status": "planned",
             "title": "Renforcement 40 min",
+            "virtual_route": null,
             "weather_category": null,
             "week_start": "2026-09-21"
           },
@@ -9674,6 +9710,7 @@
             "sport": "trail",
             "status": "planned",
             "title": "Sortie longue 25 km / 900 m D+",
+            "virtual_route": null,
             "weather_category": null,
             "week_start": "2026-09-21"
           },
@@ -9690,6 +9727,7 @@
             "sport": "running",
             "status": "planned",
             "title": "Footing récupération 40 min",
+            "virtual_route": null,
             "weather_category": null,
             "week_start": "2026-09-21"
           }

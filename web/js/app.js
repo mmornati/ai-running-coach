@@ -1744,6 +1744,8 @@ async function viewSession(id) {
     ...(a.durability_gap_fade_pct != null ? [["Durabilité <small class=\"muted\">fade GAP dernier tiers</small>",
       `<span class="${a.durability_gap_fade_pct > 0 ? "neg" : ""}">${a.durability_gap_fade_pct > 0 ? "+" : ""}${F.num(a.durability_gap_fade_pct, 1)} %</span>${a.durability_ef_fade_pct != null ? `<small class="muted"> · EF ${a.durability_ef_fade_pct > 0 ? "+" : ""}${F.num(a.durability_ef_fade_pct, 1)} %</small>` : ""}`]] : []),
     ...(a.avg_cadence_spm ? [["Cadence", `${F.num(a.avg_cadence_spm)} pas/min`]] : []),
+    ...(a.avg_power_w != null ? [["Puissance moy.", `${F.num(a.avg_power_w)} W`]] : []),
+    ...(a.normalized_power_w != null ? [["Puissance norm.", `${F.num(a.normalized_power_w)} W`]] : []),
     ...(a.vo2max_est ? [["VO2max estimée", F.num(a.vo2max_est, 1)]] : []),
   ];
   const wx = d.weather;
@@ -2881,15 +2883,62 @@ function gearIgnoredSection(ignored) {
     ${note("Matériel Garmin volontairement non suivi : ses séances ne sont attribuées à aucune paire et n'entrent dans aucun kilométrage.")}</section>`;
 }
 
+const HT_PLATFORM = { mywhoosh: "MyWhoosh" };
+const HT_STATUS = {
+  no_power_samples: "Pas encore de puissance dans les séances",
+  insufficient_data: "Pas assez de données pour calibrer",
+};
+
+/** Carte « Home trainer » de la vue Matériel : équipement vélo déclaré, relation puissance ↔ FC calibrée
+ * (`/api/power-hr`, `arc_index.power_hr`) et dernières séances avec puissance. Rien si rien à montrer ;
+ * hors statut `ok`, la raison en clair, jamais un chiffre inventé. */
+function homeTrainerCard(p) {
+  if (!p) return "";
+  const eq = p.equipment || {};
+  const platform = p.platform && p.platform !== "off" ? p.platform : null;
+  if (!Object.keys(eq).length && p.status !== "ok" && !platform) return "";
+  const facts = [
+    ...(eq.ht_trainer ? [["Home trainer", F.esc(eq.ht_trainer)]] : []),
+    ...(eq.ht_bike ? [["Vélo", F.esc(eq.ht_bike)]] : []),
+    ...(eq.bike_mass_kg != null ? [["Masse du vélo", F.weight(eq.bike_mass_kg)]] : []),
+    ...(platform ? [["Plateforme", F.esc(HT_PLATFORM[platform] || platform)]] : []),
+    ...(eq.ftp_declared_w != null ? [["FTP déclarée", `${F.num(eq.ftp_declared_w)}${NB}W`]] : []),
+    ...(p.weight_kg != null ? [["Poids", `${F.weight(p.weight_kg)}${eq.ftp_declared_w ? `<small class="muted"> · ${F.num(eq.ftp_declared_w / p.weight_kg, 2)}${NB}W/kg</small>` : ""}`]] : []),
+  ];
+  const factsHtml = facts.length ? `<dl class="facts facts--grid">${facts.map(([k, v]) => `<div><dt>${k}</dt><dd>${v}</dd></div>`).join("")}</dl>` : "";
+  const span = `${F.dayShort(p.since)} ${p.since.slice(0, 4)} → ${F.dayShort(p.until)} ${p.until.slice(0, 4)}`;
+  let relation;
+  if (p.status === "ok" && p.fit) {
+    const f = p.fit;
+    const zones = (p.zones || []).map((z) => `<tr><th scope="row">Z${z.zone}${z.extrapolated ? ` <span class="tag">extrapolée</span>` : ""}</th><td class="num">${F.num(z.bounds_bpm[0])}–${F.num(z.bounds_bpm[1])}${NB}bpm</td><td class="num">${F.num(z.power_w[0])}–${F.num(z.power_w[1])}${NB}W</td></tr>`).join("");
+    const zonesHtml = zones
+      ? `<div class="table-wrap"><table class="data data--compact"><thead><tr><th scope="col">Zone FC</th><th scope="col" class="num">FC</th><th scope="col" class="num">Puissance estimée</th></tr></thead><tbody>${zones}</tbody></table></div>`
+      : `<p class="muted">Pas de zones FC exploitables dans le profil${p.hr_zone_reason ? ` : ${F.esc(p.hr_zone_reason)}` : ""}.</p>`;
+    relation = `<h3>Puissance par zone FC</h3>
+      <p class="muted">Relation calibrée sur ${F.num(f.windows)} fenêtres stables de 5${NB}min (${p.sessions.length} séance${p.sessions.length > 1 ? "s" : ""}, ${span}) : ±${F.num(f.resid_sd_w)}${NB}W d'écart type, FC observée ${F.num(f.hr_range_bpm[0])}–${F.num(f.hr_range_bpm[1])}${NB}bpm. Une zone hors de cette plage est extrapolée.</p>
+      ${zonesHtml}`;
+  } else {
+    relation = `<h3>Puissance par zone FC</h3>${empty(HT_STATUS[p.status] || "Calibration indisponible", `${F.esc(p.reason || "relation puissance ↔ FC non calculable")} (${span}). Les séances vélo/home trainer doivent avoir leurs échantillons FIT avec puissance et FC (<code>skills/fit-download</code>).`)}`;
+  }
+  const recent = (p.recent || []).length
+    ? `<h3>Dernières séances avec puissance</h3><div class="table-wrap"><table class="data data--compact"><thead><tr><th scope="col">Date</th><th scope="col">Séance</th><th scope="col" class="num">Durée</th><th scope="col" class="num">FC moy.</th><th scope="col" class="num">Puissance moy.</th><th scope="col" class="num">Puissance norm.</th></tr></thead><tbody>${p.recent.map((r) => `<tr><td class="nowrap">${F.dayShort(r.date)} <span class="muted">${r.date.slice(0, 4)}</span></td><td>${F.esc(r.name || F.SPORT[r.sport] || r.sport)}${r.name && r.name !== (F.SPORT[r.sport] || r.sport) ? ` <span class="muted">${F.esc(F.SPORT[r.sport] || r.sport)}</span>` : ""}</td><td class="num">${r.duration_s ? F.duration(r.duration_s) : "—"}</td><td class="num">${r.avg_hr_bpm != null ? `${F.num(r.avg_hr_bpm)}${NB}bpm` : "—"}</td><td class="num">${F.num(r.avg_power_w)}${NB}W</td><td class="num">${r.normalized_power_w != null ? `${F.num(r.normalized_power_w)}${NB}W` : "—"}</td></tr>`).join("")}</tbody></table></div>`
+    : "";
+  return `<section class="band" id="home-trainer"><h2>Home trainer</h2>
+    ${factsHtml}${relation}${recent}
+    ${note("Estimation (approximation du projet), jamais une mesure : la relation puissance ↔ FC bouge avec la forme, la chaleur et la fatigue. Pendant la séance, la FC reste la consigne.")}</section>`;
+}
+
 async function viewMateriel() {
   const s = SUMMARY;
   const has = (s.gear?.shoes?.length || s.gear?.unknown?.length || s.equipment?.items?.length || s.equipment?.unknown?.length || s.gear_ignored?.length);
+  const ht = homeTrainerCard(await api("power-hr").catch(() => null));   // un échec n'empêche jamais la vue Matériel
   main.innerHTML = `${header("Matériel", `Mon matériel est-il en état ? Que dois-je remplacer ? ${HYPOTHESES_LINK}`)}
     ${has ? `${gearAlertsSection(s)}
     ${gearSection(s.gear, s.gear_inspections)}
     ${equipmentSection(s.equipment)}
     ${gearInspectionSection(s.gear_inspections)}
-    ${gearIgnoredSection(s.gear_ignored)}` : gearEmptyState()}`;
+    ${gearIgnoredSection(s.gear_ignored)}` : gearEmptyState()}
+    ${ht}`;
 }
 
 function gearSessionsTable(sessions) {

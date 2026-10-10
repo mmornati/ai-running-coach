@@ -331,6 +331,13 @@ class Store:
         with self.lock:
             return I.altitude_exposure(self.conn, today, days)
 
+    def power_hr(self, today: date, days: Optional[int]) -> dict:
+        """Réutilise `arc_index.power_hr` (home trainer) — voir aussi la CLI `power-hr`. `meta("settings")`
+        porte `arc_index.settings` (plateforme `home_trainer_platform`, méthode des zones FC)."""
+        conf = self.meta("settings") or {}
+        with self.lock:
+            return I.power_hr(self.conn, conf, today, days)
+
     def pace_curve(self, today: date, days: Optional[int], lt_speed_ms: Optional[float]) -> dict:
         """Réutilise `arc_index.pace_curve` (#169) — voir aussi la CLI `pace-curve`."""
         with self.lock:
@@ -522,6 +529,15 @@ def api_altitude_exposure(store: Store, q: dict) -> dict:
     coordonnée GPS ni donnée de santé."""
     raw = q.get("days", [""])[0]
     return store.altitude_exposure(_today(store), max(1, min(365, int(raw))) if raw.isdigit() else None)
+
+
+def api_power_hr(store: Store, q: dict) -> dict:
+    """Home trainer : `/api/power-hr[?days=N]` (défaut 180 j, 1 à 730). Additive. Délègue à
+    `arc_index.power_hr` (mêmes chiffres que la CLI `power-hr`) : relation puissance ↔ FC calibrée,
+    puissance par zone FC, équipement vélo déclaré, dernières séances avec puissance. Une ESTIMATION
+    (approximation du projet), jamais une mesure ; la FC reste la consigne pendant la séance."""
+    raw = q.get("days", [""])[0]
+    return store.power_hr(_today(store), max(1, min(730, int(raw))) if raw.isdigit() else None)
 
 
 def api_assumptions(store: Store, q: dict) -> dict:
@@ -1609,7 +1625,7 @@ ROUTES = {
     "/api/injury-risk": api_injury_risk, "/api/performance-index": api_performance_index,
     "/api/gait": api_gait, "/api/altitude-exposure": api_altitude_exposure, "/api/pace-curve": api_pace_curve,
     "/api/decision-effects": api_decision_effects, "/api/load-forecast": api_load_forecast,
-    "/api/roadbook": api_roadbook,
+    "/api/roadbook": api_roadbook, "/api/power-hr": api_power_hr,
 }
 
 # ---------------------------------------------------------------------------
