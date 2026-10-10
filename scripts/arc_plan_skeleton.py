@@ -31,9 +31,12 @@ volume du squelette est celui de la COURSE À PIED : le renforcement s'ajoute, h
 - Moins de semaines que `weeks.min` du gabarit → `status: "too_short"`, aucune semaine
   générée, options explicites (format plus court, date de course plus tardive, bloc sans
   gabarit). Jamais de compression sous les minima.
-- Plus de semaines que `weeks.max` → `lead_in_weeks` semaines de mise en route AVANT le
-  gabarit, au volume tenu (semaine allégée tous les N comme le gabarit) ; le gabarit
-  démarre alors sur son dernier `weeks.max` semaines.
+- Plus de semaines que `weeks.max` (ou `--lead-in-weeks K`) → `lead_in_weeks` semaines de mise
+  en route AVANT le gabarit (semaine allégée tous les N comme le gabarit). Par défaut (#204) elles
+  FONT MONTER le volume (+`LEAD_IN_RAMP_PCT` %/semaine, plafonné par R2/R3) et le gabarit part du
+  volume atteint ; `lead_in="flat"` les garde au volume tenu (#190).
+- Contrôle face aux exigences de la course (#204, `race_demand`) : pic, D+, sortie longue
+  comparés aux cibles du score Trail Shape ; un écart fort est AVERTI, jamais corrigé en silence.
 - Pas d'historique exploitable (< `MIN_HELD_DURATION_S` par semaine en moyenne) →
   `status: "no_history"` : l'athlète déclare son volume (`--held-hours`), jamais inventé.
 - La semaine en cours est déjà entamée (`today` ≠ lundi) → le squelette démarre lundi
@@ -98,6 +101,9 @@ MAX_ADJUST_ATTEMPTS = 6
 LONG_RUN_FLOOR_FACTOR = 1.15         # plancher de la sortie longue face à une part égale
 ROUND_S = 60                         # durées arrondies à la minute
 ROUND_ELEV_M = 10                    # D+ arrondi à la dizaine de mètres
+LEAD_IN_MODES = ("ramp", "flat")     # mise en route qui monte (défaut, #204) ou au volume tenu (#190)
+LEAD_IN_RAMP_PCT = 4.0               # hausse visée par semaine de mise en route, plafonnée par R2/R3 (approximation du projet)
+DEMAND_WARN_RATIO = 0.75             # sous ce ratio squelette / exigence de course : avertissement (approximation du projet)
 
 DAY_NAMES_FR = ("lundi", "mardi", "mercredi", "jeudi", "vendredi", "samedi", "dimanche")
 _DAY_ALIASES = {
@@ -139,10 +145,29 @@ ASSUMPTIONS = {
         "déjà écrites ne sont pas écrasées). Cette semaine en cours est SUPPOSÉE au volume tenu dans la "
         "référence R2/R3 de la première semaine générée."),
     "lead_in": (
-        "Plus de semaines que `weeks.max` : l'excédent devient des semaines de mise en route au volume "
-        "tenu (le gabarit démarre justement à ce volume), avec une semaine allégée tous les N comme le "
-        "gabarit, jamais la dernière avant le gabarit. Choix de conception du projet : un étirement du "
-        "gabarit au-delà de ses bornes n'est pas vérifié par `validate_template`."),
+        "Plus de semaines que `weeks.max` (ou `--lead-in-weeks K`, qui raccourcit le gabarit sans jamais "
+        "descendre sous `weeks.min`) : l'excédent devient des semaines de mise en route AVANT le gabarit, "
+        "avec une semaine allégée tous les N comme le gabarit, jamais la dernière avant le gabarit. Mode "
+        f"`ramp` (défaut, #204) : chaque semaine de construction vise +{LEAD_IN_RAMP_PCT:g} % face à la "
+        "précédente, plafonnée d'emblée par le seuil R2/R3 face à la référence configurée (et par le plafond "
+        "d'heures du profil) ; la semaine allégée vaut le facteur du gabarit × la dernière semaine de "
+        "construction. Le gabarit part alors du volume ATTEINT en fin de mise en route (dernière semaine de "
+        "construction émise), et le pic = ce volume × `peak_from_current` — la règle de #189 inchangée, "
+        "appliquée à un volume tenu plus haut. Mode `flat` (#190) : mise en route au volume tenu, le pic ne "
+        "bouge pas. Le taux de hausse est une approximation du projet ; R2/R3 restent la référence. Choix de "
+        "conception du projet : un étirement du gabarit au-delà de ses bornes n'est pas vérifié par "
+        "`validate_template`."),
+    "race_demand": (
+        "Contrôle face aux exigences de la course (#204) : les CIBLES sont celles du score Trail Shape "
+        "(`arc_trail_shape` : volume hebdomadaire en km-effort, plus longue sortie, D+ max d'une séance — "
+        "mêmes fonctions, aucune seconde formule), plus le D+ hebdomadaire = cible de km-effort × part du D+ "
+        "dans l'effort de la course (même densité de dénivelé que la course, sans nouveau coefficient), et le "
+        "« volume hebdomadaire cible » déclaré dans l'objectif actif s'il existe. Le squelette est converti en "
+        "distance avec l'allure moyenne TENUE (distance / durée des 4 semaines) : sans distance tenue, les "
+        "composantes en km sont dites non évaluables, jamais devinées. Avertissement sous "
+        f"{DEMAND_WARN_RATIO:g} × la cible (approximation du projet). La part de la sortie longue dans le temps "
+        "de course prévu (plan de course, sinon temps visé) est rendue pour information, sans seuil. Ce "
+        "contrôle n'écrit rien et ne modifie aucune semaine : il dit l'écart, le coach en parle."),
     "availability": (
         "Disponibilité lue dans `planning/Runner_Profile.md` (« Disponibilité hebdomadaire » : nombre de "
         "séances et plus grande durée en heures citée ; « Jours impossibles » ; « Sortie longue » facultatif). "
@@ -667,6 +692,7 @@ def _lead_in_records(first: dict, template: dict, count: int) -> List[dict]:
     for j in range(1, count + 1):
         r = dict(first)
         r["kind"] = "lead_in"
+        r["lead_in_block"] = True
         if j % rec["every_n_weeks"] == 0 and j < count:
             r["kind"] = "recovery_week"
             r["volume_pct"] = round(first["volume_pct"] * rec["volume_factor"], 1)
@@ -692,10 +718,220 @@ def too_short_options(templates: List[dict], sport: str, n_weeks: int, template:
     return options
 
 
+# ---------------------------------------------------------------------------
+# Exigences de la course (#204)
+# ---------------------------------------------------------------------------
+
+DEMAND_LABELS_FR = {
+    "weekly_volume": "volume de la semaine pic (km-effort)",
+    "weekly_elevation": "D+ de la semaine pic",
+    "long_run": "plus longue sortie",
+    "max_session_elevation": "D+ max d'une séance",
+    "declared_weekly_duration": "volume hebdomadaire cible déclaré (durée)",
+    "declared_weekly_distance": "volume hebdomadaire cible déclaré (distance)",
+    "long_run_vs_race_time": "plus longue sortie / temps de course prévu",
+}
+DEMAND_UNITS = {"weekly_volume": "km_effort", "weekly_elevation": "m_elevation", "long_run": "m",
+                "max_session_elevation": "m_elevation", "declared_weekly_duration": "s",
+                "declared_weekly_distance": "m", "long_run_vs_race_time": "pct"}
+
+
+def _fmt_demand(value: Optional[float], unit: str) -> str:
+    if value is None:
+        return "—"
+    if unit == "km_effort":
+        return f"{value:.0f} km-effort"
+    if unit == "m":
+        return f"{value / 1000:.1f} km"
+    if unit == "m_elevation":
+        return f"{value:.0f} m D+"
+    if unit == "s":
+        return _h(value)
+    return f"{value:.0f} %"
+
+
+def _demand_component(cid: str, target: Optional[float], observed: Optional[float], reason: Optional[str] = None,
+                      **extra: Any) -> dict:
+    out: Dict[str, Any] = {"id": cid, "label": DEMAND_LABELS_FR[cid], "unit": DEMAND_UNITS[cid]}
+    if reason or target is None or observed is None or target <= 0:
+        out.update({"status": "unavailable", "target": None, "observed": None, "ratio": None,
+                    "reason": reason or "valeur non évaluable."})
+        return out
+    ratio = observed / target
+    out.update({"status": "short" if ratio < DEMAND_WARN_RATIO else "ok", "target": round(target, 1),
+                "observed": round(observed, 1), "ratio": round(ratio, 2)})
+    out.update(extra)
+    return out
+
+
+def race_demand(weeks: List[dict], held: dict, objective: Optional[dict], sport: str,
+                race_time: Optional[dict] = None, race_date: Optional[str] = None) -> dict:
+    """Compare le squelette aux exigences de la course (#204). PURE, lecture seule.
+
+    Cibles : celles du score Trail Shape (`arc_trail_shape`, mêmes fonctions), plus le D+ hebdomadaire de
+    même densité que la course et le volume cible déclaré dans l'objectif. Le squelette se compte en durée :
+    la distance vient de l'allure moyenne TENUE (`held`), sinon les composantes en km sont non évaluables.
+    Rend `{status, warn_ratio, race, basis, components, _warnings}` ; `_warnings` est retiré par l'appelant."""
+    import arc_trail_shape as TS
+    obj = objective or {}
+    distance_m = obj.get("distance_m") or 0.0
+    race_e = obj.get("elevation_gain_m") or 0.0
+    out: Dict[str, Any] = {"status": "unavailable", "warn_ratio": DEMAND_WARN_RATIO,
+                           "race": {"distance_m": distance_m or None, "elevation_gain_m": race_e or None},
+                           "components": [], "_warnings": []}
+    if race_date and obj.get("race_date") and obj["race_date"] != race_date:
+        out["race"] = {"distance_m": None, "elevation_gain_m": None}
+        out["reason"] = (f"l'objectif actif vise le {obj['race_date']}, pas la course du {race_date} (`--race-date`) : "
+                         "exigences de cette course inconnues, jamais empruntées à un autre objectif.")
+        return out
+    if not distance_m:
+        out["reason"] = "distance de l'objectif inconnue : exigences de la course non évaluables."
+        return out
+    training = [w for w in weeks if w["type"] not in (TYPE_RACE, TYPE_POST_RACE)]
+    if not training:
+        out["reason"] = "aucune semaine d'entraînement émise."
+        return out
+    speed = (held["distance_m"] / held["duration_s"]) if held.get("distance_m") and held.get("duration_s") else None
+    no_speed = ("distance tenue inconnue (volume déclaré en heures sans distance) : la conversion durée → distance "
+                "n'est pas possible, jamais devinée.")
+    race_effort = TS._race_effort_km(distance_m, race_e)
+    out["race"]["effort_km"] = round(race_effort, 1)
+    out["basis"] = {"held_speed_m_s": round(speed, 3) if speed else None,
+                    "source": "arc_trail_shape (cibles) + allure moyenne tenue (conversion)"}
+    comps: List[dict] = []
+
+    week_volume_target = TS.weekly_volume_target_km(race_effort)
+    if speed:
+        peak_w = max(training, key=lambda w: w["target_duration_s"] * speed / 1000 + (w.get("target_elevation_m") or 0) / 100)
+        peak_effort = peak_w["target_duration_s"] * speed / 1000 + (peak_w.get("target_elevation_m") or 0) / 100
+        comps.append(_demand_component("weekly_volume", week_volume_target, peak_effort, week_start=peak_w["week_start"]))
+    else:
+        comps.append(_demand_component("weekly_volume", week_volume_target, None, no_speed))
+
+    if sport == "trail":
+        peak_e = max((w.get("target_elevation_m") or 0) for w in training)
+        if race_e > 0 and race_effort > 0:
+            dplus_target = week_volume_target * (race_e / 100.0) / race_effort * 100.0
+            comps.append(_demand_component("weekly_elevation", dplus_target, peak_e))
+            session_e = [s.get("planned_elevation_m") or 0 for w in training for s in w["entry"]["sessions"]
+                         if s.get("placeholder") and s.get("sport") != "strength"]
+            comps.append(_demand_component("max_session_elevation",
+                                           min(race_e * TS.MAX_DPLUS_SESSION_RATIO, TS.MAX_DPLUS_TARGET_CAP_M),
+                                           max(session_e or [0])))
+        else:
+            for cid in ("weekly_elevation", "max_session_elevation"):
+                comps.append(_demand_component(cid, None, None, "D+ de l'objectif inconnu ou nul."))
+
+    long_s = max((w.get("long_run_target_s") or 0) for w in training)
+    if speed:
+        comps.append(_demand_component("long_run", TS.longest_run_target_m(distance_m), long_s * speed,
+                                       observed_duration_s=long_s))
+    else:
+        comps.append(_demand_component("long_run", TS.longest_run_target_m(distance_m), None, no_speed))
+
+    peak_s = max(w["target_duration_s"] for w in training)
+    if obj.get("weekly_target_s"):
+        comps.append(_demand_component("declared_weekly_duration", obj["weekly_target_s"], peak_s))
+    if obj.get("weekly_target_m"):
+        comps.append(_demand_component("declared_weekly_distance", obj["weekly_target_m"],
+                                       peak_s * speed if speed else None, None if speed else no_speed))
+
+    info = None
+    if race_time and race_time.get("seconds") and long_s:
+        info = {"id": "long_run_vs_race_time", "label": DEMAND_LABELS_FR["long_run_vs_race_time"], "unit": "pct",
+                "status": "info", "observed": round(long_s / race_time["seconds"] * 100, 1),
+                "race_time_s": round(race_time["seconds"]), "race_time_source": race_time.get("source"),
+                "long_run_s": long_s}
+        comps.append(info)
+
+    out["components"] = comps
+    scored = [c for c in comps if c["status"] in ("ok", "short")]
+    short = [c for c in scored if c["status"] == "short"]
+    out["status"] = "short" if short else "ok" if scored else "unavailable"
+    for c in short:
+        out["_warnings"].append(
+            f"exigence de course — {c['label']} : {_fmt_demand(c['observed'], c['unit'])} pour une cible de "
+            f"{_fmt_demand(c['target'], c['unit'])} ({round(c['ratio'] * 100)} %, seuil "
+            f"{round(DEMAND_WARN_RATIO * 100)} %, approximation du projet).")
+    if short:
+        out["_warnings"].append(
+            "ce bloc construit nettement moins que ce que la course demande : allonger la mise en route "
+            "(`--lead-in-weeks`, si la date le permet), viser une course plus tardive, revoir l'objectif ou construire "
+            "d'abord la base — jamais forcer les garde-fous.")
+    return out
+
+
+def _derive_peak(base_s: float, base_e: float, base_source: str, factors: dict, availability: dict,
+                 template: dict, sport: str) -> Tuple[float, Optional[float], bool, List[str]]:
+    """Pic = volume de départ du gabarit × `peak_from_current` (#189), plafonné par la disponibilité.
+
+    `base_source` : `held` (volume tenu) ou `lead_in` (volume atteint en fin de mise en route, #204).
+    Rend `(pic en s, pic D+ en m ou None, plafonné ?, avertissements)`."""
+    warnings: List[str] = []
+    peak_s = base_s * factors["volume_factor"]
+    capped = False
+    max_s = availability.get("max_weekly_s")
+    if max_s and peak_s > max_s:
+        warnings.append(f"pic dérivé {_h(peak_s)} > plafond de disponibilité {_h(max_s)} : "
+                        "pic ramené au plafond (le bloc part alors sous le volume tenu).")
+        peak_s, capped = float(max_s), True
+    peak_e = None
+    if sport == "trail":
+        if base_e > 0:
+            peak_e = base_e * factors["elevation_factor"]
+        else:
+            warnings.append("D+ tenu nul sur les 4 dernières semaines : D+ cible non dérivable (R3 non vérifiable) "
+                            "— `--held-elevation-m` si l'athlète en fait réellement.")
+    ind = template["peak_week_indicative"]["duration_h"]
+    if peak_s / 3600 < ind["min"]:
+        tail = ("la mise en route en rampe (#204) ne suffit pas à l'atteindre" if base_source == "lead_in" else
+                "les semaines `lead_in` du squelette restent, elles, au volume tenu (`--lead-in flat`)"
+                if base_source == "held_flat" else
+                "`--lead-in-weeks` peut ajouter une mise en route qui monte si la date le permet")
+        warnings.append(f"pic dérivé {_h(peak_s)} sous le pic indicatif du gabarit ({ind['min']:g}–{ind['max']:g} h) : "
+                        "proposer d'abord une mise en route qui FASSE MONTER le volume tenu (semaines écrites et vérifiées "
+                        "par les garde-fous, puis relancer `plan-skeleton`) ou revoir l'objectif — jamais étirer le "
+                        f"gabarit ; {tail}.")
+    return peak_s, peak_e, capped, warnings
+
+
+def _ramp_target(last_build: float, chain: List[dict], chain_types: List[str], key: str, threshold_pct: float,
+                 reference: str, step: int, ceiling: Optional[float] = None) -> Tuple[float, bool]:
+    """Cible d'une semaine de construction de la mise en route (#204) : +`LEAD_IN_RAMP_PCT` % face à la
+    dernière semaine de construction, plafonnée d'emblée par le seuil R2/R3 face à la référence configurée
+    (comme `arc_guardrails` la calculera) — jamais une hausse que le garde-fou refuserait. Rend
+    `(cible, plafonnée ?)`."""
+    want = last_build * (1 + LEAD_IN_RAMP_PCT / 100.0)
+    lighter = (TYPE_RECOVERY, TYPE_TAPER, TYPE_RACE, TYPE_POST_RACE)
+    if reference == "previous_week" and chain_types and chain_types[-1] in lighter:
+        # Reprise après une semaine allégée : même tolérance que `_is_rebound` (dernière semaine pleine + seuil).
+        ref = last_build
+    else:
+        ref = _reference(chain, reference).get(key) or 0.0
+    cap = ref * (1 + threshold_pct / 100.0) * CAP_MARGIN if ref > 0 else want
+    target = min(want, cap)
+    if ceiling:
+        target = min(target, float(ceiling))
+    cut = target < want - 1e-6
+    if cut:
+        # Arrondi par défaut au pas des créneaux (minute, 10 m) : l'arrondi au plus proche ne doit pas repasser le seuil.
+        target = (int(target) // step) * step
+    return target, cut
+
+
 def build_skeleton(*, template: dict, today: date, race_date: date, held: dict, availability: dict,
                    gconf: dict, context_factory: Callable, location: str = "à définir", objective: Optional[dict] = None,
-                   templates: Optional[List[dict]] = None) -> dict:
-    """Squelette complet. PURE (le `context_factory` est le seul accès au monde extérieur)."""
+                   templates: Optional[List[dict]] = None, lead_in: str = "ramp", lead_in_weeks: Optional[int] = None,
+                   race_time: Optional[dict] = None) -> dict:
+    """Squelette complet. PURE (le `context_factory` est le seul accès au monde extérieur).
+
+    `lead_in` : `ramp` (défaut, #204) ou `flat` (#190). `lead_in_weeks` : nombre MINIMAL de semaines de mise en
+    route demandé (le gabarit est raccourci d'autant, jamais sous `weeks.min`). `race_time` :
+    `{"seconds", "source"}` du temps de course prévu (information du contrôle `race_demand`)."""
+    if lead_in not in LEAD_IN_MODES:
+        raise SkeletonError(f"--lead-in : {' ou '.join(LEAD_IN_MODES)} attendu, « {lead_in} » reçu.")
+    if lead_in_weeks is not None and lead_in_weeks < 0:
+        raise SkeletonError(f"--lead-in-weeks : un entier >= 0 attendu, « {lead_in_weeks} » reçu.")
     sport = template["sport"]
     primary = "trail" if sport == "trail" else "running"
     current = _monday(today)
@@ -724,33 +960,28 @@ def build_skeleton(*, template: dict, today: date, race_date: date, held: dict, 
                           "demander à l'athlète son volume hebdomadaire actuel (`--held-hours`, `--held-elevation-m`) "
                           "— jamais inventé."}
 
-    n_eff = min(n_weeks, wk["max"])
-    lead = n_weeks - n_eff
+    lead = max(0, n_weeks - wk["max"])
+    if lead_in_weeks is not None and lead_in_weeks > lead:
+        if n_weeks - lead_in_weeks < wk["min"]:
+            raise SkeletonError(
+                f"--lead-in-weeks {lead_in_weeks} : il ne resterait que {n_weeks - lead_in_weeks} semaine(s) au gabarit "
+                f"« {template['id']} », qui en exige au moins {wk['min']} (au plus {n_weeks - wk['min']} semaine(s) "
+                "de mise en route jusqu'à cette course).")
+        lead = lead_in_weeks
+    n_eff = n_weeks - lead
+    ramp = lead_in == "ramp" and lead > 0
     resolved = PT.resolve_weeks(template, n_eff, with_recovery=True)
     pre = [w for w in resolved if not w["post_race"]]
     post = [w for w in resolved if w["post_race"]]
     factors = PT.peak_from_current(pre, sport)
     warnings: List[str] = list(availability.get("notes") or [])
-    peak_s = held_s * factors["volume_factor"]
+    peak_s: Optional[float] = None
+    peak_e: Optional[float] = None
     capped = False
-    max_s = availability.get("max_weekly_s")
-    if max_s and peak_s > max_s:
-        warnings.append(f"pic dérivé {_h(peak_s)} > plafond de disponibilité {_h(max_s)} : "
-                        "pic ramené au plafond (le bloc part alors sous le volume tenu).")
-        peak_s, capped = float(max_s), True
-    peak_e = None
-    if sport == "trail":
-        if held_e > 0:
-            peak_e = held_e * factors["elevation_factor"]
-        else:
-            warnings.append("D+ tenu nul sur les 4 dernières semaines : D+ cible non dérivable (R3 non vérifiable) "
-                            "— `--held-elevation-m` si l'athlète en fait réellement.")
-    ind = template["peak_week_indicative"]["duration_h"]
-    if peak_s / 3600 < ind["min"]:
-        warnings.append(f"pic dérivé {_h(peak_s)} sous le pic indicatif du gabarit ({ind['min']:g}–{ind['max']:g} h) : "
-                        "proposer d'abord une mise en route qui FASSE MONTER le volume tenu (semaines écrites et vérifiées "
-                        "par les garde-fous, puis relancer `plan-skeleton`) ou revoir l'objectif — jamais étirer le "
-                        "gabarit ; les semaines `lead_in` du squelette restent, elles, au volume tenu.")
+    if not ramp:
+        peak_s, peak_e, capped, peak_warnings = _derive_peak(held_s, held_e, "held_flat" if lead else "held",
+                                                             factors, availability, template, sport)
+        warnings += peak_warnings
     distance_per_s = held["distance_m"] / held_s if sport == "road" and held["distance_m"] > 0 else None
 
     sessions_per_week = availability.get("sessions_per_week") or DEFAULT_SESSIONS_PER_WEEK
@@ -778,16 +1009,46 @@ def build_skeleton(*, template: dict, today: date, race_date: date, held: dict, 
     # Types parallèles à `chain` (semaines réelles/supposée = pleines) : reprise après semaine allégée.
     chain_types: List[str] = ["held"] * len(chain)
     lighter = (TYPE_RECOVERY, TYPE_TAPER, TYPE_RACE, TYPE_POST_RACE)
+    reference = gconf.get("r2_volume_reference", G.DEFAULT_VOLUME_REFERENCE)
+    # Dernière semaine de construction de la mise en route (#204) : départ de la rampe et du gabarit.
+    last_build_s, last_build_e = held_s, held_e
+    lead_base: Optional[dict] = None
     for idx, (rec, typ) in enumerate(records):
         ws = start + timedelta(days=7 * idx)
-        target_s = peak_s * rec["volume_pct"] / 100.0
-        target_e = peak_e * rec["elevation_pct"] / 100.0 if peak_e and rec.get("elevation_pct") else None
+        ramp_flags: List[str] = []
+        if ramp and rec.get("lead_in_block"):
+            rw = template["recovery_week"]
+            if typ == TYPE_RECOVERY:
+                target_s = last_build_s * rw["volume_factor"]
+                target_e = last_build_e * rw.get("elevation_factor", rw["volume_factor"]) if sport == "trail" and last_build_e > 0 else None
+            else:
+                target_s, cut_s = _ramp_target(last_build_s, chain, chain_types, "duration_s",
+                                               gconf["r2_volume_increase_max_pct"], reference, ROUND_S,
+                                               availability.get("max_weekly_s"))
+                target_e, cut_e = None, False
+                if sport == "trail" and last_build_e > 0:
+                    target_e, cut_e = _ramp_target(last_build_e, chain, chain_types, "elevation_gain_m",
+                                                   gconf["r3_elevation_increase_max_pct"], reference, ROUND_ELEV_M)
+                if cut_s or cut_e:
+                    ramp_flags.append(f"mise en route : hausse ramenée sous +{LEAD_IN_RAMP_PCT:g} % par le seuil "
+                                      + ("R2/R3" if cut_s and cut_e else "R2" if cut_s else "R3")
+                                      + (" ou le plafond d'heures du profil" if cut_s and availability.get("max_weekly_s") else "")
+                                      + ".")
+        else:
+            if peak_s is None:
+                # Fin de la mise en route en rampe : le gabarit part du volume ATTEINT (#204).
+                lead_base = {"duration_s": last_build_s, "elevation_m": last_build_e}
+                peak_s, peak_e, capped, peak_warnings = _derive_peak(last_build_s, last_build_e, "lead_in", factors,
+                                                                     availability, template, sport)
+                warnings += peak_warnings
+            target_s = peak_s * rec["volume_pct"] / 100.0
+            target_e = peak_e * rec["elevation_pct"] / 100.0 if peak_e and rec.get("elevation_pct") else None
         spec = {"week_start": ws, "record": rec, "type": typ, "target_duration_s": target_s,
                 "target_elevation_m": target_e, "availability": availability, "race_date": race_date,
                 "sport": primary, "location": location, "distance_per_s": distance_per_s, "n_run": n_run,
                 "strength": strength_slot, "objective": objective}
         rebound_ref = None
-        if gconf.get("r2_volume_reference") == "previous_week" and chain_types[-1] in (TYPE_RECOVERY, TYPE_POST_RACE):
+        if reference == "previous_week" and chain_types[-1] in (TYPE_RECOVERY, TYPE_POST_RACE):
             rebound_ref = next((c for c, t in zip(reversed(chain), reversed(chain_types)) if t not in lighter), None)
         entry, verdict, adjustments = settle_week(spec, chain, entries_for_ctx, context_factory, gconf, race_date,
                                                   rebound_ref)
@@ -798,23 +1059,35 @@ def build_skeleton(*, template: dict, today: date, race_date: date, held: dict, 
             # La semaine n'est pas émise : la chaîne suppose le volume cible pour les suivantes.
             chain.append({"duration_s": target_s, "distance_m": 0.0, "elevation_gain_m": target_e or 0.0})
             continue
-        flags = entry.pop("_flags")
+        flags = ramp_flags + entry.pop("_flags")
         if rebound_ref is not None and any(v["rule_id"] in ("r2_weekly_volume_jump", "r3_weekly_elevation_jump")
                                            for v in verdict["violations"]):
             flags.append("reprise après une semaine allégée (ou post-course) : R2/R3 avertit face à la semaine précédente "
                          "(référence `previous_week`), mais reste sous la dernière semaine non allégée + seuil.")
-        chain.append(_run_totals(entry))
+        totals = _run_totals(entry)
+        chain.append(totals)
+        if ramp and rec.get("lead_in_block") and typ != TYPE_RECOVERY:
+            last_build_s = totals["duration_s"]
+            if sport == "trail" and last_build_e > 0:
+                last_build_e = totals["elevation_gain_m"]
         entries_for_ctx.append({"week_start": entry["week_start"], "sessions": entry["sessions"]})
         weeks_out.append({
             "week": idx + 1, "week_start": entry["week_start"], "phase": rec["phase"], "phase_label": rec["phase_label"],
             "type": typ, "type_label": TYPE_LABELS_FR[typ],
-            "volume_pct_of_peak": rec["volume_pct"], "elevation_pct_of_peak": rec.get("elevation_pct"),
+            "volume_pct_of_peak": None if ramp and rec.get("lead_in_block") else rec["volume_pct"],
+            "elevation_pct_of_peak": None if ramp and rec.get("lead_in_block") else rec.get("elevation_pct"),
             "target_duration_s": entry["target_duration_s"], "target_duration_h": round(entry["target_duration_s"] / 3600, 2),
             "target_elevation_m": entry.get("target_elevation_m"), "target_distance_m": entry.get("target_distance_m"),
             "quality_sessions": entry["quality_sessions"], "long_run_target_s": entry.get("long_run_target_s"),
             "long_run_cap_min": rec["long_run_cap_min"], "intensity_split": rec["intensity"],
             "strength_emphasis": rec["strength"], "flags": flags, "adjustments": adjustments,
             "guardrails": verdict, "entry": entry})
+
+    held_view = _held_view(held)
+    start_base = lead_base or {"duration_s": held_s, "elevation_m": held_e}
+    gain = (start_base["duration_s"] / held_s - 1) * 100 if held_s else 0.0
+    demand = race_demand(weeks_out, held, objective, sport, race_time, race_date.isoformat())
+    warnings += demand.pop("_warnings", [])
 
     status = STATUS_NEEDS_REVIEW if unresolved else STATUS_OK
     summary = {"weeks": len(weeks_out), "block_free": all(w["guardrails"]["level"] != "block" for w in weeks_out),
@@ -824,11 +1097,20 @@ def build_skeleton(*, template: dict, today: date, race_date: date, held: dict, 
     return {**base, "status": status,
             "reason": None if not unresolved else f"{len(unresolved)} semaine(s) non émise(s) : blocage des garde-fous persistant.",
             "lead_in_weeks": lead, "phase_weeks": PT.allocate_phase_weeks(template, n_eff),
-            "held": _held_view(held),
+            "lead_in": {"mode": lead_in, "weeks": lead, "requested_weeks": lead_in_weeks,
+                        "ramp_pct": LEAD_IN_RAMP_PCT if ramp else 0.0},
+            "held": held_view,
             "peak": {"duration_s": round(peak_s), "duration_h": round(peak_s / 3600, 2),
                      "elevation_m": round(peak_e) if peak_e else None,
                      "volume_factor": factors["volume_factor"], "elevation_factor": factors.get("elevation_factor"),
-                     "capped_by_availability": capped, "indicative_h": ind},
+                     "capped_by_availability": capped,
+                     "indicative_h": template["peak_week_indicative"]["duration_h"],
+                     "base": {"source": "lead_in" if lead_base else "held",
+                              "duration_s": round(start_base["duration_s"]),
+                              "duration_h": round(start_base["duration_s"] / 3600, 2),
+                              "elevation_m": round(start_base["elevation_m"]) if start_base["elevation_m"] else None},
+                     "lead_in_gain_pct": round(gain, 1)},
+            "race_demand": demand,
             "slots": {"run_slots_per_week": n_run, "strength_slot": strength_slot},
             "warnings": warnings, "weeks": weeks_out, "unresolved": unresolved, "summary": summary}
 
@@ -862,7 +1144,8 @@ def choose_template(templates: List[dict], template_id: Optional[str], objective
 def skeleton_report(*, conn, config: dict, workspace: Path, today: date, template_id: Optional[str] = None,
                     race_date: Optional[str] = None, held_hours: Optional[float] = None,
                     held_elevation_m: Optional[float] = None, long_run_day: Optional[str] = None,
-                    directory: Optional[Path] = None) -> dict:
+                    directory: Optional[Path] = None, lead_in: str = "ramp",
+                    lead_in_weeks: Optional[int] = None) -> dict:
     """Squelette complet depuis l'index et le workspace (impur)."""
     import arc_index as I
     templates = PT.load_templates(directory)
@@ -911,12 +1194,39 @@ def skeleton_report(*, conn, config: dict, workspace: Path, today: date, templat
     factory = default_context_factory(conn, config, gconf, today)
     result = build_skeleton(template=template, today=today, race_date=race_d, held=held, availability=availability,
                             gconf=gconf, context_factory=factory, location=location, objective=objective,
-                            templates=templates)
+                            templates=templates, lead_in=lead_in, lead_in_weeks=lead_in_weeks,
+                            race_time=expected_race_time(conn, race_d, objective))
     if location == "à définir":
         result.setdefault("warnings", []).append(
             "aucun lieu d'entraînement (objectif actif, profil) : `location` = « à définir » ; à renseigner avant "
             "la météo.")
     return result
+
+
+def expected_race_time(conn, race_date: date, objective: Optional[dict]) -> Optional[dict]:
+    """Temps de course prévu (#204, information du contrôle `race_demand`) : scénario réaliste du plan de course
+    le plus récent pour cette date (`arc_race_pacing`), sinon son `target_time_s`, sinon le temps visé de
+    l'objectif actif (même date). `None` sinon — jamais estimé ici."""
+    iso = race_date.isoformat()
+    try:
+        row = conn.execute("SELECT target_time_s, data_json FROM race_plan WHERE race_date = ? "
+                           "ORDER BY date DESC LIMIT 1", (iso,)).fetchone()
+    except Exception:  # index ancien sans table `race_plan`
+        row = None
+    if row:
+        try:
+            scenarios = (json.loads(row["data_json"] or "{}") or {}).get("scenarios") or {}
+        except (TypeError, ValueError):
+            scenarios = {}
+        realistic = scenarios.get("realistic") if isinstance(scenarios, dict) else None
+        if isinstance(realistic, (int, float)) and realistic > 0:
+            return {"seconds": float(realistic), "source": "race_plan.scenarios.realistic"}
+        if row["target_time_s"]:
+            return {"seconds": float(row["target_time_s"]), "source": "race_plan.target_time_s"}
+    obj = objective or {}
+    if obj.get("target_time_s") and obj.get("race_date") in (None, iso):
+        return {"seconds": float(obj["target_time_s"]), "source": "objective.target_time_s"}
+    return None
 
 
 def attach_forecast(conn, today: date, result: dict) -> dict:
@@ -985,7 +1295,9 @@ def week_markdown(result: dict, w: dict) -> str:
              "(`placeholder: true`) : le coach définit le contenu, les cibles et retire le drapeau.", "",
              f"- Volume course à pied visé : {w['target_duration_h']:g} h"
              + (f", D+ {w['target_elevation_m']:g} m" if w.get("target_elevation_m") else "")
-             + f" ({w['volume_pct_of_peak']:g} % du pic de {result['peak']['duration_h']:g} h).",
+             + (f" ({w['volume_pct_of_peak']:g} % du pic de {result['peak']['duration_h']:g} h)."
+                if w.get("volume_pct_of_peak") is not None else
+                f" (mise en route en rampe, avant le gabarit ; pic de {result['peak']['duration_h']:g} h)."),
              f"- Séances de qualité : {w['quality_sessions']} ; renforcement : {STRENGTH_LABELS_FR.get(w['strength_emphasis'])}.",
              "- Répartition d'intensité visée (facile / modérée / dure) : "
              f"{w['intensity_split']['easy_pct']:g} / {w['intensity_split']['moderate_pct']:g} / "
@@ -1063,7 +1375,10 @@ def render_text(result: dict) -> str:
              f"{result['start_week']} à la semaine de course"
              + (f" (dont {result['lead_in_weeks']} de mise en route)." if result["lead_in_weeks"] else "."),
              f"Volume tenu ({held['source']}) : {_h(held['duration_s'])}/sem, D+ {held['elevation_gain_m']} m. "
-             f"Pic = ×{p['volume_factor']:g} → {_h(p['duration_s'])}"
+             + (f"Mise en route en rampe ({result['lead_in']['weeks']} sem., ≤ +{result['lead_in']['ramp_pct']:g} %/sem.) : "
+              f"{_h(p['base']['duration_s'])}/sem atteintes (+{p['lead_in_gain_pct']:g} %). "
+              if p.get("base", {}).get("source") == "lead_in" else "")
+             + f"Pic = ×{p['volume_factor']:g} → {_h(p['duration_s'])}"
              + (f", D+ {p['elevation_m']} m" if p["elevation_m"] else "") + ".",
              "Proposition (dry run) : rien n'est écrit sans `--write`. Les séances sont des créneaux à habiller.", ""]
     lines.append("Sem | Début      | Phase / type                   | Durée   | D+ m | Q | Sortie longue | Renfo | Garde-fous")
@@ -1077,6 +1392,20 @@ def render_text(result: dict) -> str:
     for u in result.get("unresolved") or []:
         lines.append(f"NON ÉMISE : semaine du {u['week_start']} ({u['phase']}) — "
                      + "; ".join(v["message"] for v in u["guardrails"]["violations"] if v["severity"] == "block"))
+    demand = result.get("race_demand") or {}
+    if demand.get("components"):
+        lines.append(f"Exigences de la course (cibles Trail Shape, avertissement sous {round(demand['warn_ratio'] * 100)} %) :")
+        for c in demand["components"]:
+            if c["status"] == "unavailable":
+                lines.append(f"  - {c['label']} : non évaluable ({c['reason']})")
+            elif c["status"] == "info":
+                lines.append(f"  - {c['label']} : {c['observed']:g} % ({_h(c['long_run_s'])} pour {_h(c['race_time_s'])}, "
+                             f"source {c['race_time_source']}) — information, sans seuil.")
+            else:
+                lines.append(f"  - {c['label']} : {_fmt_demand(c['observed'], c['unit'])} / {_fmt_demand(c['target'], c['unit'])} "
+                             f"({round(c['ratio'] * 100)} %){' ⚠' if c['status'] == 'short' else ''}")
+    elif demand.get("reason"):
+        lines.append(f"Exigences de la course : non évaluables ({demand['reason']})")
     for warn in result.get("warnings") or []:
         lines.append(f"Attention : {warn}")
     fc = result.get("forecast")

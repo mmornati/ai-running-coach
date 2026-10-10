@@ -77,6 +77,7 @@ Garmin Connect has a food log and a hydration counter; declared intake (`/log`, 
 
 ### NUTRITION & WEIGHT STRATEGY
 - **Weight Targets:** Define and track a "Race Weight" target based on the specific requirements of the active objective (distance, elevation gain, intensity).
+- **Where the weight comes from (#222):** the day's weight lives in `medical/YYYY-MM-DD_health.md` (`weight_kg`, with `weight_origin`: `garmin` = Garmin Connect weigh-in, `chat` = declared). Read the trend from `/api/nutrition` (`weight_series`, `weight.latest`) or the index — never ask the athlete for a weight Garmin already has. When the athlete DECLARES a weight, record it with `python3 scripts/arc_weight_sync.py plan --date <date> --declared-kg <kg>` (it wins over Garmin; a gap > 1 kg is flagged once, neutrally). Never write a weight to Garmin.
 - **Macro-Nutrient Following:**
   1. Monitor Glucides (Carbohydrates), Proteins, and Lipids against training load from Garmin.
   2. Provide specific feedback on glycogen replenishment after high-intensity or long-duration sessions.

@@ -147,5 +147,39 @@ class TestAvg7AndGapAreAsOfToday(NutritionApi):
         self.assertEqual(resp["weight"]["gap_kg"], 3.0)
 
 
+class TestWeightOrigin(NutritionApi):
+    """#222 : chaque point de poids dit sa provenance (`garmin` | `athlete`), et `weight.latest`
+    donne la dernière pesée connue avec la sienne."""
+
+    def origin_of(self, resp: dict, date: str):
+        return next((p["weight_origin"] for p in resp["weight_series"] if p["date"] == date), "ABSENT")
+
+    def test_garmin_health_weight_is_tagged_garmin(self):
+        self.write("medical/2026-06-29_health.md", arc(
+            '{"arc": 1, "kind": "health", "date": "2026-06-29", "morning_check": "full", '
+            '"weight_kg": 70.0, "weight_origin": "garmin"}'))
+        self.write("medical/2026-06-30_health.md", arc(
+            '{"arc": 1, "kind": "health", "date": "2026-06-30", "morning_check": "full", '
+            '"weight_kg": 69.5, "weight_origin": "chat", "weight_garmin_kg": 71.0}'))
+        resp = self.api()
+        self.assertEqual(self.origin_of(resp, "2026-06-29"), "garmin")
+        self.assertEqual(self.origin_of(resp, "2026-06-30"), "athlete")
+        self.assertEqual(self.weight_of(resp, "2026-06-30"), 69.5)
+        self.assertEqual(resp["weight"]["latest"], {"date": "2026-06-30", "weight_kg": 69.5, "origin": "athlete"})
+
+    def test_legacy_and_nutrition_weights_are_the_athlete(self):
+        self.write("medical/2026-06-28_health.md", arc(
+            '{"arc": 1, "kind": "health", "date": "2026-06-28", "morning_check": "full", "weight_kg": 70.0}'))
+        self.write("nutrition/2026-06-29_nutrition.md", arc(
+            '{"arc": 1, "kind": "nutrition", "date": "2026-06-29", "weight_kg": 70.2}'))
+        resp = self.api()
+        self.assertEqual(self.origin_of(resp, "2026-06-28"), "athlete")
+        self.assertEqual(self.origin_of(resp, "2026-06-29"), "athlete")
+        self.assertIsNone(self.origin_of(resp, "2026-06-30"))
+
+    def test_no_weight_no_latest(self):
+        self.assertIsNone(self.api()["weight"]["latest"])
+
+
 if __name__ == "__main__":
     unittest.main()

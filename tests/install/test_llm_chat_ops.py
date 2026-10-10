@@ -18,6 +18,7 @@ from datetime import date
 from pathlib import Path
 
 from tests.lib.asserts import InstallAsserts
+from tests.lib.local_http import HTTPServer as LocalHTTPServer
 from tests.lib.sandbox import STUBS_DIR, Sandbox
 
 SECRET = "sk-or-SECRET-VALUE-0123456789"
@@ -136,12 +137,13 @@ class TestOpencodeRunnerDryRun(InstallAsserts):
                 self.assertSucceeded(proc)
                 self.assertOutputLacks(proc, "non pris en charge")
 
-    def test_model_is_required(self):
+    def test_subscription_mode_can_reuse_opencode_default_model(self):
         with Sandbox() as sb:
             _write_config(sb, '[sync]\nrunner = "opencode"\n')
             proc = sb.script("daily-sync.sh", "--dry-run")
-            self.assertFailed(proc)
-            self.assertOutputContains(proc, "[sync].model requis")
+            self.assertSucceeded(proc)
+            self.assertOutputContains(proc, "opencode run --format json")
+            self.assertOutputLacks(proc, "--model")
 
     def test_base_url_builds_an_openai_compatible_provider(self):
         with Sandbox() as sb:
@@ -471,7 +473,7 @@ class TestInstallLlm(InstallAsserts):
         with Sandbox() as sb:
             proc = sb.install("--no-auth", "--ide", "claude", "--llm", "openrouter", hide=("opencode",))
             self.assertSucceeded(proc)
-            self.assertOutputContains(proc, "curl -fsSL https://opencode.ai/install | bash")
+            self.assertOutputContains(proc, "curl -fsSL https://opencode.ai/v2/install | bash")
 
     def test_dry_run_writes_nothing(self):
         with Sandbox() as sb:
@@ -669,7 +671,7 @@ class TestDoctorLlmChecks(InstallAsserts):
             def log_message(self, *args):
                 pass
 
-        server = http.server.HTTPServer(("127.0.0.1", 0), Handler)
+        server = LocalHTTPServer(("127.0.0.1", 0), Handler)
         thread = threading.Thread(target=server.serve_forever, daemon=True)
         thread.start()
         try:
@@ -698,7 +700,7 @@ class TestDoctorLlmChecks(InstallAsserts):
             def log_message(self, *args):
                 pass
 
-        server = http.server.HTTPServer(("127.0.0.1", 0), Handler)
+        server = LocalHTTPServer(("127.0.0.1", 0), Handler)
         thread = threading.Thread(target=server.serve_forever, daemon=True)
         thread.start()
         try:
@@ -729,6 +731,5 @@ class TestDoctorLlmChecks(InstallAsserts):
                              PATH=f"{empty}:{os.path.dirname(os.popen('command -v python3').read().strip())}:/usr/bin:/bin")
             check = json.loads(proc.stdout)["checks"][0]
             if check["status"] == "warning":
-                self.assertIn("opencode.ai/install", check["fix"])
+                self.assertIn("opencode.ai/v2/install", check["fix"])
             self.assertNotEqual(check["status"], "error")
-

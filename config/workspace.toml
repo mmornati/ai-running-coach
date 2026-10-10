@@ -43,13 +43,14 @@ token_alerts = true
 token_alert_days = [14, 3]
 
 [sync]
-# Synchronisation Garmin automatique (voir docs/mobile.md et scripts/daily-sync.sh).
-# Exécuteur headless : "claude" (Claude Code, `claude -p`) | "codex" (Codex CLI, `codex exec`)
-# | "opencode" (OpenCode, `opencode run` — OpenRouter ou toute API compatible OpenAI).
+# Synchronisation automatique de la source sportive (voir docs/mobile.md et scripts/daily-sync.sh).
+# Exécuteur headless : "claude" | "codex" | "copilot" | "opencode" |
+# "gemini" | "cursor". L'application macOS choisit automatiquement celui qui
+# correspond à l'assistant sélectionné ; une seule connexion initiale suffit.
 runner = "claude"
-# Modèle du runner : requis pour "opencode" (format fournisseur/modèle, ex.
-# "openrouter/deepseek/deepseek-v4.1-flash"), optionnel en mode API pour "claude"
-# (passé à `--model`). Vide = le modèle par défaut de l'abonnement.
+# Modèle du runner : optionnel pour "opencode" (format fournisseur/modèle, ex.
+# "openrouter/deepseek/deepseek-v4.1-flash") et pour "claude" en mode API
+# (passé à `--model`). Vide = le modèle par défaut du compte connecté.
 model = ""
 # Point d'accès d'une API compatible OpenAI autre qu'OpenRouter (runner "opencode").
 base_url = ""

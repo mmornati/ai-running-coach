@@ -34,6 +34,7 @@ allowed_prefixes = [
   "python3 scripts/arc_guardrails.py",
   "python3 scripts/arc_cycle.py",
   "python3 scripts/arc_nutrition_sync.py",
+  "python3 scripts/arc_weight_sync.py",
   "python3 scripts/arc_workout_targets.py",
   "python3 scripts/arc_race_debrief.py",
   "python3 scripts/coach_doctor.py",
@@ -42,7 +43,7 @@ allowed_prefixes = [
 # Scripts qui lisent du JSON sur l'entrée standard (le skill `log` : `echo '<json>' | python3
 # scripts/arc_log.py`). Seules deux formes sans expansion sont acceptées : chaîne entre
 # apostrophes passée par `|`, ou heredoc à délimiteur entre apostrophes (`<< 'EOF'`).
-stdin_scripts = ["scripts/arc_log.py", "scripts/arc_nutrition_sync.py"]
+stdin_scripts = ["scripts/arc_log.py", "scripts/arc_nutrition_sync.py", "scripts/arc_weight_sync.py"]
 
 # Options par script (relevées dans l'argparse de chaque script) :
 #   flags           options sans valeur ;
@@ -75,6 +76,13 @@ value_options = ["--last-period", "--today"]
 # (JSON sur l'entrée standard, ou `--input`). Les ÉCRITURES Garmin (log_food, log_custom_food,
 # create_custom_food, add_hydration_data) sont des outils MCP : voir `[mcp].write_tools` — « ask ».
 [shell.scripts."scripts/arc_nutrition_sync.py"]
+read_options = ["--input"]
+
+# Poids du jour lu dans Garmin (#222) : décision pure, lit les fichiers santé, n'écrit rien et
+# n'appelle pas Garmin (réponse de get_daily_weigh_ins/get_weigh_ins passée par `--garmin` ou stdin).
+[shell.scripts."scripts/arc_weight_sync.py"]
+flags = ["--existing-only"]
+value_options = ["--garmin", "--date", "--declared-kg"]
 read_options = ["--input"]
 
 [shell.scripts."scripts/arc_race_pacing.py"]

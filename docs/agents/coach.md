@@ -119,7 +119,13 @@ semaine depuis la semaine en cours jusqu'à la course (volume tenu, disponibilit
 du profil, garde-fous, forme prévue le jour J). Il le **présente** et
 n'écrit (`--write`) qu'après un « oui » explicite de l'athlète — jamais
 d'écrasement d'une semaine existante —, puis habille les créneaux de séance.
-Voir [Gabarits de périodisation](../plans.md).
+Quand la course est loin, la mise en route qui précède le gabarit **fait
+monter** le volume (≤ +4 %/semaine, plafonnée par les garde-fous, #204) ; le
+squelette compare aussi le pic, le D+ et la sortie longue aux **exigences de
+la course** (cibles du score Trail Shape) et le coach relaie tout écart
+signalé — bloc trop court pour l'objectif, mise en route plus longue
+(`--lead-in-weeks`), course plus tardive ou objectif revu —, sans jamais forcer
+les garde-fous. Voir [Gabarits de périodisation](../plans.md).
 
 ### Score Trail Shape (#63)
 
@@ -251,6 +257,17 @@ l'altitude et **propose** des coefficients personnels (voir
 - **Les valeurs limites sont des avertissements** : le seuil est strict (`> +5`), donc exactement +5 ne déclenche pas d'annulation — mais doit être signalé comme tel et recontrôlé le lendemain.
 - **La readiness est un score dérivé, pas une mesure** : fortement pondérée par le sommeil. Vérifier la fenêtre de sommeil enregistrée face à l'heure de coucher déclarée — une montre qui démarre en retard déprime mécaniquement le score de sommeil et la readiness, alors que HRV et FC de repos restent valides.
 - **Moyenne hebdomadaire ≠ nuit dernière** : le statut `UNBALANCED` porte sur la moyenne 7 jours. Rapporter les deux valeurs.
+
+### Poids du jour (#222)
+
+Avec la source Garmin, le coach lit la pesée du jour dans Garmin Connect
+(`get_daily_weigh_ins`, lecture seule) au bilan matinal et l'écrit dans `weight_kg` du
+fichier santé (`weight_origin: "garmin"`) selon `scripts/arc_weight_sync.py plan`. Un jour
+sans pesée reste sans poids (jamais la valeur de la veille). Un poids que vous donnez en
+chat prime sur Garmin le même jour ; un écart de plus de 1 kg est signalé une seule fois, en
+une ligne neutre (jamais si le poids figure dans vos « sujets à ne pas commenter »). Le rappel
+de pesée hebdomadaire de votre profil est sauté quand Garmin a déjà le poids du jour. Aucune
+écriture du poids côté Garmin. Voir [Poids lu dans Garmin Connect](../garmin-setup.md#poids-lu-dans-garmin-connect-222).
 
 ### Contexte du cycle menstruel (opt-in, #166)
 

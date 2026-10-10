@@ -170,24 +170,40 @@ class TestDashboardServer(InstallAsserts):
         self.assertIn("Bilan test", after)
 
 
-class TestDashboardAnalysisView(InstallAsserts):
+class SampleServerCase(InstallAsserts):
+    """Un seul workspace à échantillons FIT (120 jours) et un seul serveur PAR CLASSE :
+    les cas qui en héritent ne font que des GET, et reconstruire l'index + relancer le
+    serveur à chaque cas coûtait ~10 s chacun en CI."""
+
+    @classmethod
+    def setUpClass(cls):
+        super().setUpClass()
+        cls.sb = Sandbox().__enter__()
+        try:
+            cls.ws = build(cls.sb.root / "ws", days=120, today=__import__("datetime").date.fromisoformat(TODAY),
+                           with_samples=True)
+            cls.server = Server(cls.sb, ["python3", str(cls.sb.repo / "scripts/arc_serve.py"),
+                                         "--workspace", str(cls.ws), "--port", "0", "--today", TODAY])
+            if cls.server.url is None:
+                raise RuntimeError(cls.server.proc.stderr.read() if cls.server.proc.poll() is not None else "pas d'URL")
+        except BaseException:
+            cls.sb.__exit__(None, None, None)
+            raise
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.server.stop()
+        cls.sb.__exit__(None, None, None)
+        super().tearDownClass()
+
+
+class TestDashboardAnalysisView(SampleServerCase):
     """#50 — la vue « Analyse » (`#/analyse`) rassemble les tendances FIT (#43/#45-49)
     sorties de « Forme & charge » : verrouille que le bundle JS sert bien cette route
     et que chacun des endpoints qu'elle consomme répond sur un workspace synthétique
     à échantillons FIT (`--with-samples`), y compris `/api/climb-segments` (#49),
     servi depuis #49 mais jamais consommé par aucune vue avant #50."""
 
-    def setUp(self):
-        self.sb = Sandbox().__enter__()
-        self.ws = build(self.sb.root / "ws", days=120, today=__import__("datetime").date.fromisoformat(TODAY),
-                        with_samples=True)
-        self.server = Server(self.sb, ["python3", str(self.sb.repo / "scripts/arc_serve.py"),
-                                       "--workspace", str(self.ws), "--port", "0", "--today", TODAY])
-        self.assertIsNotNone(self.server.url, self.server.proc.stderr.read() if self.server.proc.poll() is not None else "pas d'URL")
-
-    def tearDown(self):
-        self.server.stop()
-        self.sb.__exit__(None, None, None)
 
     def test_app_js_wires_the_analyse_route(self):
         """Régression : la route `analyse` (nav + `ROUTES`) doit rester câblée dans le
@@ -248,22 +264,11 @@ class TestDashboardAnalysisView(InstallAsserts):
             self.assertIn("flag", s)
 
 
-class TestDashboardGaitApi(InstallAsserts):
+class TestDashboardGaitApi(SampleServerCase):
     """#151 — `/api/gait` (carte « Foulée » de la vue Santé) sur un workspace à échantillons FIT
     (dynamique de course synthétique, `tests.lib.synthetic.add_running_dynamics`) ET deux inspections
     de paires différentes (indices d'attaque opposés) : mesures, confiance, désaccords, forme JSON."""
 
-    def setUp(self):
-        self.sb = Sandbox().__enter__()
-        self.ws = build(self.sb.root / "ws", days=120, today=__import__("datetime").date.fromisoformat(TODAY),
-                        with_samples=True)
-        self.server = Server(self.sb, ["python3", str(self.sb.repo / "scripts/arc_serve.py"),
-                                       "--workspace", str(self.ws), "--port", "0", "--today", TODAY])
-        self.assertIsNotNone(self.server.url, self.server.proc.stderr.read() if self.server.proc.poll() is not None else "pas d'URL")
-
-    def tearDown(self):
-        self.server.stop()
-        self.sb.__exit__(None, None, None)
 
     def get(self, path):
         status, body, _ = self.server.get(path)
@@ -317,21 +322,10 @@ class TestDashboardGaitApi(InstallAsserts):
         self.assertIn("gait.mount()", text)
 
 
-class TestDashboardAltitudeExposureApi(InstallAsserts):
+class TestDashboardAltitudeExposureApi(SampleServerCase):
     """#185 — `/api/altitude-exposure` (carte « Exposition à l'altitude » de la vue Santé) : forme,
     paramètre `days`, aucune fuite de position, câblage de la carte."""
 
-    def setUp(self):
-        self.sb = Sandbox().__enter__()
-        self.ws = build(self.sb.root / "ws", days=120, today=__import__("datetime").date.fromisoformat(TODAY),
-                        with_samples=True)
-        self.server = Server(self.sb, ["python3", str(self.sb.repo / "scripts/arc_serve.py"),
-                                       "--workspace", str(self.ws), "--port", "0", "--today", TODAY])
-        self.assertIsNotNone(self.server.url, self.server.proc.stderr.read() if self.server.proc.poll() is not None else "pas d'URL")
-
-    def tearDown(self):
-        self.server.stop()
-        self.sb.__exit__(None, None, None)
 
     def get(self, path):
         status, body, _ = self.server.get(path)
@@ -549,6 +543,23 @@ class TestDashboardLauncher(InstallAsserts):
         with Sandbox() as sb:
             self.assertFailed(sb.script("dashboard.sh", "--port", "abc", "--no-open"))
 
+    def test_corrupt_derived_index_is_rebuilt_automatically(self):
+        with Sandbox() as sb:
+            ws = build(sb.root / "ws", days=10)
+            arc = ws / ".arc"
+            arc.mkdir()
+            (arc / "coach.db").write_bytes(b"ancienne base sqlite corrompue")
+            server = Server(sb, [str(sb.repo / "scripts/dashboard.sh"), "--no-open", "--port", "0"],
+                            ARC_WORKSPACE=str(ws))
+            try:
+                self.assertIsNotNone(
+                    server.url,
+                    server.proc.stderr.read() if server.proc.poll() is not None else "pas d'URL",
+                )
+                self.assertEqual(server.get("/api/summary")[0], 200)
+            finally:
+                server.stop()
+
 
 class TestInstallWorkspaceWiring(InstallAsserts):
     OLD_BLOCK = """
@@ -624,3 +635,17 @@ class TestIndexNeverCommitted(InstallAsserts):
             status = sb.run(["git", "status", "--porcelain", "--untracked-files=all"], cwd=ws).stdout
             self.assertNotIn(".arc/", status, f"l'index apparaît dans git :\n{status}")
 
+
+class TestCorruptIndexRepairScope(InstallAsserts):
+    def test_explicit_db_that_is_not_sqlite_is_never_replaced(self):
+        """La réparation ne vise que l'index : un `--db` mal orienté échoue sans écraser le fichier."""
+        with Sandbox() as sb:
+            ws = build(sb.root / "ws", days=3)
+            target = ws / "planning/Runner_Profile.md"
+            target.parent.mkdir(parents=True, exist_ok=True)
+            content = "# Mon profil\n\n" + "Contenu à ne jamais perdre.\n" * 20
+            target.write_text(content, encoding="utf-8")
+            proc = sb.run(["python3", str(sb.repo / "scripts/arc_index.py"),
+                           "--workspace", str(ws), "--db", str(target)])
+            self.assertNotEqual(proc.returncode, 0)
+            self.assertEqual(target.read_text(encoding="utf-8"), content)

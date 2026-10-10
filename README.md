@@ -73,6 +73,14 @@ Voir [la documentation du tableau de bord](docs/dashboard/index.md).
 
 ## 🚀 Installation rapide
 
+### Sur Mac — application graphique
+
+Téléchargez le fichier `.dmg` depuis la page des versions, glissez **AI Running Coach** dans Applications, puis laissez l'assistant vous guider jusqu'au profil, aux chaussures, à l'objectif et au choix du chat. Le chat intégré fonctionne avec OpenRouter ; le mode « assistant habituel » installe automatiquement Claude Code, Copilot, OpenCode, Gemini CLI ou Cursor Agent et le lance ensuite au bon endroit. Dans les deux cas, le même assistant synchronise ensuite Garmin ou Intervals.icu automatiquement en arrière-plan, sans devoir rester ouvert. La même application sert ensuite à parler au coach, lancer le tableau de bord, compléter vos informations, retrouver vos données, vérifier l'installation et reconnecter le compte sportif.
+
+Voir le guide [Application macOS](docs/macos.md).
+
+### Installation en ligne de commande
+
 ```bash
 git clone https://github.com/mmornati/ai-running-coach.git
 cd ai-running-coach

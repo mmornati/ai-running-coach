@@ -250,7 +250,7 @@ base — voir `arc_plan_templates.py`. JSON par défaut (comme les autres sous-c
 un tableau lisible. Un point de départ, jamais un plan : le squelette daté est `plan-skeleton`.
 
 `plan-skeleton [--format ID] [--race-date AAAA-MM-JJ] [--held-hours H] [--held-elevation-m M] [--long-run-day J]
-[--text] [--write]` (#190, épopée #173) génère le squelette du bloc, semaine par semaine, de la semaine en cours à
+[--lead-in ramp|flat] [--lead-in-weeks K] [--text] [--write]` (#190, épopée #173) génère le squelette du bloc, semaine par semaine, de la semaine en cours à
 la semaine de course (+ récupération post-course) : gabarit (`--format`, sinon choisi d'après la distance de
 l'objectif actif), volume/D+ TENUS sur les 4 dernières semaines (pic = tenu × `peak_from_current`, jamais inventé ;
 `--held-hours` pour un volume déclaré), disponibilité du profil, et créneaux de séance `placeholder` à habiller par
@@ -258,7 +258,10 @@ le coach. Chaque semaine passe `arc_guardrails.evaluate` (jamais une semaine `bl
 jour J est projetée par `load-forecast`. Par défaut un DRY RUN (JSON, ou `--text`) ; `--write` écrit un
 `planning/Semaine_<lundi>.md` par semaine, refuse d'écraser (liste les conflits) et valide les fichiers — voir
 `arc_plan_skeleton.py`. États honnêtes : `too_short` (options), `no_history`, `no_objective`, `no_template`,
-`target_past`, `needs_review`.
+`target_past`, `needs_review`. #204 : la mise en route (semaines au-delà du maximum du gabarit, ou
+`--lead-in-weeks K`) fait monter le volume (≤ +4 %/semaine, plafonnée par R2/R3 ; `--lead-in flat` pour
+l'ancien comportement) et `race_demand` compare pic, D+ et sortie longue aux cibles du score Trail Shape
+(avertissement sous 75 %).
 
 Options communes : `--workspace DIR` (sinon $ARC_WORKSPACE, le pointeur
 ~/.config/ai-running-coach/workspace, puis le moteur), `--db FICHIER` (défaut
@@ -378,7 +381,10 @@ from coach_setup import ENGINE, workspace_root  # noqa: E402
 # #193 : `week` gagne `week_type` (type de semaine du squelette de bloc #190, NULL pour les semaines plus
 # anciennes) — la frise du bloc (`/api/block`) en a besoin. Version 35 (34 = Strava) : sans ce bump,
 # l'insertion d'une semaine échouerait avec « no such column » sur une base déjà construite.
-SCHEMA_VERSION = 35
+# #222 : `health_day` gagne `weight_origin` (`garmin` | `chat`, provenance du poids du jour) et
+# `weight_garmin_kg` (pesée Garmin écartée au profit de la valeur déclarée) — version 36 (35 = #193) :
+# les colonnes de `health_day` suivent le contrat, sans ce bump l'insertion échouerait.
+SCHEMA_VERSION = 36
 # Colonnes d'identifiant externe d'une séance, dans l'ordre de priorité de `activity_ref` — une séance n'en
 # porte qu'une (`workspace-data-contract`) ; Garmin prime si un fichier ancien en porte plusieurs.
 REF_COLUMNS = ("garmin_activity_id", "intervals_activity_id", "strava_activity_id")
@@ -695,7 +701,7 @@ CREATE TABLE health_day (
     hrv_overnight_ms REAL, hrv_baseline_low_ms REAL, hrv_baseline_high_ms REAL, hrv_status TEXT,
     hrv_personal_low_ms REAL, hrv_personal_high_ms REAL, hrv_personal_status TEXT,
     resting_hr_bpm REAL, readiness_score REAL, body_battery_high REAL, body_battery_low REAL,
-    stress_avg REAL, weight_kg REAL, verdict TEXT, verdict_reason TEXT,
+    stress_avg REAL, weight_kg REAL, weight_origin TEXT, weight_garmin_kg REAL, verdict TEXT, verdict_reason TEXT,
     cycle_phase TEXT, cycle_day INTEGER, cycle_source TEXT, body_md TEXT, data_json TEXT
 );
 CREATE INDEX health_date ON health_day(date);
@@ -973,6 +979,8 @@ PER_FILE_TABLES = (
 
 def open_db(workspace: Path, db: Optional[str] = None, memory: bool = False,
             rebuild: bool = False) -> sqlite3.Connection:
+    path = None
+    sqlite_header = False
     if memory:
         conn = sqlite3.connect(":memory:", check_same_thread=False)
     else:
@@ -984,6 +992,11 @@ def open_db(workspace: Path, db: Optional[str] = None, memory: bool = False,
             marker = path.parent / ".gitignore"
             if not marker.exists():
                 marker.write_text("# Index dérivé du tableau de bord : jetable, jamais versionné.\n*\n", encoding="utf-8")
+        try:
+            with path.open("rb") as handle:
+                sqlite_header = handle.read(16) == b"SQLite format 3\x00"
+        except OSError:
+            sqlite_header = False
         # Le tableau de bord et la synchronisation peuvent indexer en même temps :
         # on attend le verrou plutôt que d'échouer.
         conn = sqlite3.connect(str(path), check_same_thread=False, timeout=10)
@@ -994,15 +1007,36 @@ def open_db(workspace: Path, db: Optional[str] = None, memory: bool = False,
         current = int(row[0]) if row else None
     except sqlite3.DatabaseError:
         current = None
+
+    def reset_schema(connection: sqlite3.Connection) -> None:
+        for (name,) in connection.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall():
+            connection.execute(f'DROP TABLE IF EXISTS "{name}"')
+        connection.executescript(DDL)
+        connection.execute("INSERT INTO meta VALUES ('schema_version', ?)", (str(SCHEMA_VERSION),))
+        connection.commit()
+
     # --rebuild vide les tables sur place au lieu de supprimer le fichier : un serveur
     # déjà ouvert sur la base garderait sinon une connexion vers un fichier disparu.
     if rebuild or current != SCHEMA_VERSION:
-        # Base d'une autre version (ou vide) : elle est dérivée, on la recrée.
-        for (name,) in conn.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall():
-            conn.execute(f'DROP TABLE IF EXISTS "{name}"')
-        conn.executescript(DDL)
-        conn.execute("INSERT INTO meta VALUES ('schema_version', ?)", (str(SCHEMA_VERSION),))
-        conn.commit()
+        try:
+            # Base d'une autre version (ou vide) : elle est dérivée, on la recrée.
+            reset_schema(conn)
+        except sqlite3.DatabaseError as exc:
+            corrupt = "malformed" in str(exc).lower() or "not a database" in str(exc).lower()
+            # Jamais sur un fichier qui n'a pas été une base SQLite : un `--db` mal
+            # orienté (ex. un Markdown) doit échouer, pas être remplacé. L'index par
+            # défaut (.arc/coach.db) peut l'être même si son en-tête est abîmé.
+            if memory or path is None or not corrupt or (db and not sqlite_header):
+                raise
+            # `.arc/coach.db` est un index entièrement dérivé des Markdown. Si
+            # SQLite ne peut même plus lire son catalogue, le supprimer est la
+            # seule réparation fiable ; les éventuels sidecars sont jetables aussi.
+            conn.close()
+            for candidate in (path, Path(f"{path}-wal"), Path(f"{path}-shm")):
+                candidate.unlink(missing_ok=True)
+            conn = sqlite3.connect(str(path), check_same_thread=False, timeout=10)
+            conn.row_factory = sqlite3.Row
+            reset_schema(conn)
     return conn
 
 
@@ -4906,6 +4940,12 @@ def build_parser() -> argparse.ArgumentParser:
                         help="commande « plan-skeleton » : D+ hebdomadaire (m) déclaré")
     parser.add_argument("--long-run-day", metavar="JOUR", dest="long_run_day",
                         help="commande « plan-skeleton » : jour de la sortie longue (défaut : profil, sinon dimanche)")
+    parser.add_argument("--lead-in", choices=("ramp", "flat"), default="ramp", dest="lead_in",
+                        help="commande « plan-skeleton » (#204) : mise en route qui monte (ramp, défaut : ≤ +4 %%/semaine, "
+                             "plafonnée par R2/R3) ou au volume tenu (flat)")
+    parser.add_argument("--lead-in-weeks", type=int, metavar="K", dest="lead_in_weeks",
+                        help="commande « plan-skeleton » (#204) : au moins K semaines de mise en route, prises sur le "
+                             "gabarit sans jamais descendre sous son minimum")
     parser.add_argument("--write", action="store_true",
                         help="commande « plan-skeleton » : écrit les semaines dans planning/ (jamais d'écrasement) ; "
                              "sans cette option, un dry run")
@@ -5005,7 +5045,7 @@ def plan_skeleton_cli(args, conn, workspace: Path) -> int:
         report = PS.skeleton_report(
             conn=conn, config=config, workspace=workspace, today=today_date, template_id=args.plan_format,
             race_date=args.race_date, held_hours=args.held_hours, held_elevation_m=args.held_elevation_m,
-            long_run_day=args.long_run_day)
+            long_run_day=args.long_run_day, lead_in=args.lead_in, lead_in_weeks=args.lead_in_weeks)
         PS.attach_forecast(conn, today_date, report)
     except (PS.SkeletonError, PT.PlanTemplateError) as exc:
         raise ConfigError(str(exc))

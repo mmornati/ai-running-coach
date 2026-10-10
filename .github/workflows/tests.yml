@@ -19,15 +19,71 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  changes:
+    # Décide QUOI lancer, en quelques secondes, avant de réserver le moindre runner
+    # macOS. Sur une PR, macOS ne tourne que si elle touche ce qui dépend vraiment
+    # de l'OS (bash 3.2, sed BSD, launchctl, gestion de processus) : tout le reste du
+    # code est du Python stdlib, déjà couvert sur Ubuntu. Sur `main` et en
+    # déclenchement manuel, macOS tourne TOUJOURS : une régression passée entre les
+    # mailles est rattrapée au plus tard au merge.
+    name: Plan
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      matrix: ${{ steps.plan.outputs.matrix }}
+      macos: ${{ steps.plan.outputs.macos }}
+    steps:
+      - id: plan
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EVENT: ${{ github.event_name }}
+          REPO: ${{ github.repository }}
+          PR: ${{ github.event.pull_request.number }}
+          # Chemins sensibles à l'OS. En cas de doute, ajouter ici plutôt qu'ailleurs :
+          # un macOS de trop coûte quelques minutes, un macOS manquant un bug en prod.
+          MACOS_PATHS: >-
+            ^install\.sh$|\.sh$|^scripts/lib/|^tests/lib/|^macos/|^config/workspace\.toml$|^scripts/(coach_doctor|coach_config|coach_setup|garmin_watch|arc_telegram|arc_chat[a-z_]*)\.py$|^tests/install/test_(install|agent_selection|daily_sync|coach_|scripts|token_expiry|config_parser|cycle_tracking|nutrition_sync|llm_chat_ops|telegram_ops|chat_)|^tests/data/test_arc_chat|^tests/run_tests\.py$|^\.github/workflows/tests\.yml$
+        run: |
+          set -euo pipefail
+          macos=true
+          if [ "$EVENT" = pull_request ]; then
+            files=$(gh api "repos/$REPO/pulls/$PR/files" --paginate --jq '.[].filename')
+            if printf '%s\n' "$files" | grep -Eq "$MACOS_PATHS"; then
+              printf '%s\n' "$files" | grep -E "$MACOS_PATHS" | sed 's/^/macOS requis par : /'
+            else
+              macos=false
+              echo "Aucun fichier sensible à l'OS : macOS ignoré (Ubuntu couvre tout)."
+            fi
+          fi
+          echo "macos=$macos" >> "$GITHUB_OUTPUT"
+          # Paliers découpés en parts (`run_tests.py --shard`, par classe) lancées en
+          # parallèle : le palier A seul prenait 6 min sur Ubuntu et 9 min sur macOS.
+          MACOS="$macos" python3 - >> "$GITHUB_OUTPUT" <<'PY'
+          import json, os
+          rows = [
+              {"os": "ubuntu-latest", "tier": "b", "label": "B lint + shellcheck", "shellcheck": True, "dryrun": True},
+              *({"os": "ubuntu-latest", "tier": "a", "shard": f"{i}/3", "label": f"A {i}/3"} for i in (1, 2, 3)),
+              *({"os": "ubuntu-latest", "tier": "d", "shard": f"{i}/2", "label": f"D {i}/2"} for i in (1, 2)),
+          ]
+          if os.environ["MACOS"] == "true":
+              rows += [
+                  *({"os": "macos-latest", "tier": "a", "shard": f"{i}/2", "label": f"A {i}/2"} for i in (1, 2)),
+                  {"os": "macos-latest", "tier": "bd", "label": "B + D", "dryrun": True},
+              ]
+          print("matrix=" + json.dumps({"include": rows}))
+          PY
+
   tests:
-    name: ${{ matrix.os }}
+    name: ${{ matrix.os }} · ${{ matrix.label }}
+    needs: changes
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
-      matrix:
-        # macOS n'est pas optionnel : bash 3.2, le sed de BSD et launchctl sont
-        # des cibles de premier plan, et aucun workflow ne les couvrait.
-        os: [ubuntu-latest, macos-latest]
+      # macOS n'est pas optionnel quand il est concerné : bash 3.2, le sed de BSD et
+      # launchctl sont des cibles de premier plan (voir `changes` pour le filtrage).
+      matrix: ${{ fromJSON(needs.changes.outputs.matrix) }}
 
     steps:
       - uses: actions/checkout@v5
@@ -39,28 +95,37 @@ jobs:
       - name: Version de bash
         run: bash --version | head -1
 
-      - name: Installer shellcheck (Linux)
-        if: runner.os == 'Linux'
-        run: sudo apt-get update && sudo apt-get install -y shellcheck
-
-      - name: Installer shellcheck (macOS)
-        if: runner.os == 'macOS'
-        run: brew install shellcheck
-
+      # shellcheck est préinstallé sur les images Ubuntu de GitHub ; sa sortie ne
+      # dépend pas de l'OS, inutile de le relancer sur macOS.
       - name: shellcheck
-        run: shellcheck -S warning install.sh scripts/*.sh scripts/lib/*.sh tests/lib/stubs/*
+        if: matrix.shellcheck
+        run: |
+          command -v shellcheck >/dev/null || { sudo apt-get update && sudo apt-get install -y shellcheck; }
+          shellcheck -S warning install.sh scripts/*.sh scripts/lib/*.sh tests/lib/stubs/*
 
-      - name: Palier A — intégration de l'installation
-        run: python3 tests/run_tests.py --tier a
-
-      - name: Palier B — lint prompts & configuration
-        run: python3 tests/run_tests.py --tier b
-
-      - name: Palier D — données (contrat, index dérivé, métriques)
-        run: python3 tests/run_tests.py --tier d
+      - name: Palier(s) ${{ matrix.tier }}${{ matrix.shard && format(' — part {0}', matrix.shard) || '' }}
+        run: python3 tests/run_tests.py --tier "${{ matrix.tier }}" ${{ matrix.shard && format('--shard {0}', matrix.shard) || '' }}
 
       - name: Aperçu --dry-run (aucune écriture attendue)
+        if: matrix.dryrun
         run: ./install.sh --dry-run --no-auth
+
+  result:
+    # Un seul statut stable (« Tests ») à exiger dans une règle de protection de
+    # branche, quel que soit le découpage de la matrice ou la présence de macOS.
+    name: Tests
+    if: always()
+    needs: [changes, tests]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Bilan
+        env:
+          CHANGES: ${{ needs.changes.result }}
+          TESTS: ${{ needs.tests.result }}
+          MACOS: ${{ needs.changes.outputs.macos }}
+        run: |
+          echo "plan=$CHANGES tests=$TESTS macos=$MACOS"
+          [ "$CHANGES" = success ] && [ "$TESTS" = success ]
 
   docker:
     # Le conteneur du tableau de bord : construit, démarré sur un workspace en
@@ -115,5 +180,7 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements-docs.txt
       - run: pip install -r requirements-docs.txt
       - run: mkdocs build --strict

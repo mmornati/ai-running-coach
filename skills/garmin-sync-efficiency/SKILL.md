@@ -9,7 +9,7 @@ Garmin MCP responses are verbose JSON. Pulling wide date ranges or raw payloads 
 
 ## Tool Access
 
-All Garmin tools are exposed by the `garmin` MCP server (direct mode) or via `leanproxy_invoke_tool(server="garmin", ...)` (power-user mode). Useful tools include `get_sleep_data`, `get_hrv_data`, `get_rhr_day`, `get_training_readiness`, `get_activities`, `upload_course`, `upload_workout`, `get_courses`.
+All Garmin tools are exposed by the `garmin` MCP server (direct mode) or via `leanproxy_invoke_tool(server="garmin", ...)` (power-user mode). Useful tools include `get_sleep_data`, `get_hrv_data`, `get_rhr_day`, `get_training_readiness`, `get_daily_weigh_ins` / `get_weigh_ins` (#222, read-only), `get_activities`, `upload_course`, `upload_workout`, `get_courses`.
 
 **`[data].source = "intervals"` (#68):** this whole skill still applies (check
 local files first, one date per call, persist immediately, no raw JSON) —
@@ -89,7 +89,8 @@ For each day, extract only what the file's ```arc block needs (schema: the
 - **Readiness** → `readiness_score`, `readiness_factors`
 - **Activity** → `garmin_activity_id`, `sport`, `duration_s`, `moving_duration_s` (`[data].source = "intervals"` : `elapsed_time_seconds` / `moving_time_seconds` of `icu_get_activity_details` — never `duration_s` from `icu_get_recent_activities`, which only returns the moving time, see `AGENTS.md`), `distance_m`, `elevation_gain_m` / `elevation_loss_m`, `avg_hr_bpm` / `max_hr_bpm`, `recovery_hr_bpm`, `training_effect_aerobic` / `training_effect_anaerobic`, `calories_kcal` (`[data].source = "intervals"` : `nutrition.calories_burned` of `icu_get_activity_details`, #165), `calories_bmr_kcal` (copy `get_activity`'s `bmr_calories` field verbatim, never recomputed; `[data].source = "intervals"` has no known equivalent field, see the correspondence table in `AGENTS.md` — omit the key rather than guess), and the per-km `splits`
 - **Gear** (#133, garmin source, new activities only) → `gear_id` + `gear_source`, taken from `arc_index.py gear-attribution`'s output, never from your own reading of `get_activity_gear`
-- **Body** → `weight_kg`, `stress_avg`, `body_battery_high` / `body_battery_low` (if relevant)
+- **Body** → `stress_avg`, `body_battery_high` / `body_battery_low` (if relevant)
+- **Weight** (#222, garmin source) → `weight_kg` + `weight_origin` (and `weight_garmin_kg` when the athlete's same-day value wins), taken from `scripts/arc_weight_sync.py plan`'s `set`/`remove` output for `get_daily_weigh_ins(date)` — never from your own reading of the reply. No weigh-in that day = no `weight_kg` (never carried over). Backfill: ONE `get_weigh_ins(start, end)` call for the whole range, then `arc_weight_sync.py plan --existing-only` (never creates a health file just for a weight). The weight write tools (`add_weigh_in`, `add_weigh_in_with_timestamps`, `delete_weigh_ins`, `add_body_composition`) are never called.
 
 Which health keys are expected follows `[health].morning_check`: `minimal` → readiness
 only; `off` → no health file at all.

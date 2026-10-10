@@ -7327,6 +7327,11 @@
           "avg7_date": "2026-09-23",
           "avg7_kg": 69.0,
           "gap_kg": 2.0,
+          "latest": {
+            "date": "2026-09-23",
+            "origin": "athlete",
+            "weight_kg": 68.9
+          },
           "slope_kg_per_week": -0.027,
           "target_kg": 67.0
         },
@@ -7334,302 +7339,362 @@
           {
             "date": "2026-07-26",
             "weight_avg7_kg": null,
-            "weight_kg_merged": null
+            "weight_kg_merged": null,
+            "weight_origin": null
           },
           {
             "date": "2026-07-27",
             "weight_avg7_kg": null,
-            "weight_kg_merged": null
+            "weight_kg_merged": null,
+            "weight_origin": null
           },
           {
             "date": "2026-07-28",
             "weight_avg7_kg": null,
-            "weight_kg_merged": null
+            "weight_kg_merged": null,
+            "weight_origin": null
           },
           {
             "date": "2026-07-29",
             "weight_avg7_kg": null,
-            "weight_kg_merged": null
+            "weight_kg_merged": null,
+            "weight_origin": null
           },
           {
             "date": "2026-07-30",
             "weight_avg7_kg": null,
-            "weight_kg_merged": null
+            "weight_kg_merged": null,
+            "weight_origin": null
           },
           {
             "date": "2026-07-31",
             "weight_avg7_kg": null,
-            "weight_kg_merged": null
+            "weight_kg_merged": null,
+            "weight_origin": null
           },
           {
             "date": "2026-08-01",
             "weight_avg7_kg": null,
-            "weight_kg_merged": null
+            "weight_kg_merged": null,
+            "weight_origin": null
           },
           {
             "date": "2026-08-02",
             "weight_avg7_kg": null,
-            "weight_kg_merged": null
+            "weight_kg_merged": null,
+            "weight_origin": null
           },
           {
             "date": "2026-08-03",
             "weight_avg7_kg": null,
-            "weight_kg_merged": null
+            "weight_kg_merged": null,
+            "weight_origin": null
           },
           {
             "date": "2026-08-04",
             "weight_avg7_kg": null,
-            "weight_kg_merged": null
+            "weight_kg_merged": null,
+            "weight_origin": null
           },
           {
             "date": "2026-08-05",
             "weight_avg7_kg": null,
-            "weight_kg_merged": null
+            "weight_kg_merged": null,
+            "weight_origin": null
           },
           {
             "date": "2026-08-06",
             "weight_avg7_kg": null,
-            "weight_kg_merged": null
+            "weight_kg_merged": null,
+            "weight_origin": null
           },
           {
             "date": "2026-08-07",
             "weight_avg7_kg": null,
-            "weight_kg_merged": null
+            "weight_kg_merged": null,
+            "weight_origin": null
           },
           {
             "date": "2026-08-08",
             "weight_avg7_kg": null,
-            "weight_kg_merged": null
+            "weight_kg_merged": null,
+            "weight_origin": null
           },
           {
             "date": "2026-08-09",
             "weight_avg7_kg": null,
-            "weight_kg_merged": null
+            "weight_kg_merged": null,
+            "weight_origin": null
           },
           {
             "date": "2026-08-10",
             "weight_avg7_kg": null,
-            "weight_kg_merged": null
+            "weight_kg_merged": null,
+            "weight_origin": null
           },
           {
             "date": "2026-08-11",
             "weight_avg7_kg": null,
-            "weight_kg_merged": null
+            "weight_kg_merged": null,
+            "weight_origin": null
           },
           {
             "date": "2026-08-12",
             "weight_avg7_kg": null,
-            "weight_kg_merged": null
+            "weight_kg_merged": null,
+            "weight_origin": null
           },
           {
             "date": "2026-08-13",
             "weight_avg7_kg": null,
-            "weight_kg_merged": null
+            "weight_kg_merged": null,
+            "weight_origin": null
           },
           {
             "date": "2026-08-14",
             "weight_avg7_kg": null,
-            "weight_kg_merged": null
+            "weight_kg_merged": null,
+            "weight_origin": null
           },
           {
             "date": "2026-08-15",
             "weight_avg7_kg": null,
-            "weight_kg_merged": null
+            "weight_kg_merged": null,
+            "weight_origin": null
           },
           {
             "date": "2026-08-16",
             "weight_avg7_kg": null,
-            "weight_kg_merged": 69.1
+            "weight_kg_merged": 69.1,
+            "weight_origin": "athlete"
           },
           {
             "date": "2026-08-17",
             "weight_avg7_kg": null,
-            "weight_kg_merged": 69.1
+            "weight_kg_merged": 69.1,
+            "weight_origin": "athlete"
           },
           {
             "date": "2026-08-18",
             "weight_avg7_kg": 69.0,
-            "weight_kg_merged": 68.9
+            "weight_kg_merged": 68.9,
+            "weight_origin": "athlete"
           },
           {
             "date": "2026-08-19",
             "weight_avg7_kg": 69.1,
-            "weight_kg_merged": 69.3
+            "weight_kg_merged": 69.3,
+            "weight_origin": "athlete"
           },
           {
             "date": "2026-08-20",
             "weight_avg7_kg": 69.1,
-            "weight_kg_merged": null
+            "weight_kg_merged": null,
+            "weight_origin": null
           },
           {
             "date": "2026-08-21",
             "weight_avg7_kg": 69.1,
-            "weight_kg_merged": 68.9
+            "weight_kg_merged": 68.9,
+            "weight_origin": "athlete"
           },
           {
             "date": "2026-08-22",
             "weight_avg7_kg": 69.1,
-            "weight_kg_merged": 69.3
+            "weight_kg_merged": 69.3,
+            "weight_origin": "athlete"
           },
           {
             "date": "2026-08-23",
             "weight_avg7_kg": 69.1,
-            "weight_kg_merged": 69.0
+            "weight_kg_merged": 69.0,
+            "weight_origin": "athlete"
           },
           {
             "date": "2026-08-24",
             "weight_avg7_kg": 69.1,
-            "weight_kg_merged": 69.2
+            "weight_kg_merged": 69.2,
+            "weight_origin": "athlete"
           },
           {
             "date": "2026-08-25",
             "weight_avg7_kg": 69.1,
-            "weight_kg_merged": null
+            "weight_kg_merged": null,
+            "weight_origin": null
           },
           {
             "date": "2026-08-26",
             "weight_avg7_kg": 69.0,
-            "weight_kg_merged": 68.8
+            "weight_kg_merged": 68.8,
+            "weight_origin": "athlete"
           },
           {
             "date": "2026-08-27",
             "weight_avg7_kg": 69.0,
-            "weight_kg_merged": 69.1
+            "weight_kg_merged": 69.1,
+            "weight_origin": "athlete"
           },
           {
             "date": "2026-08-28",
             "weight_avg7_kg": 69.1,
-            "weight_kg_merged": 69.1
+            "weight_kg_merged": 69.1,
+            "weight_origin": "athlete"
           },
           {
             "date": "2026-08-29",
             "weight_avg7_kg": 69.0,
-            "weight_kg_merged": 69.0
+            "weight_kg_merged": 69.0,
+            "weight_origin": "athlete"
           },
           {
             "date": "2026-08-30",
             "weight_avg7_kg": 69.0,
-            "weight_kg_merged": null
+            "weight_kg_merged": null,
+            "weight_origin": null
           },
           {
             "date": "2026-08-31",
             "weight_avg7_kg": 69.0,
-            "weight_kg_merged": 68.8
+            "weight_kg_merged": 68.8,
+            "weight_origin": "athlete"
           },
           {
             "date": "2026-09-01",
             "weight_avg7_kg": 69.0,
-            "weight_kg_merged": 69.1
+            "weight_kg_merged": 69.1,
+            "weight_origin": "athlete"
           },
           {
             "date": "2026-09-02",
             "weight_avg7_kg": 69.0,
-            "weight_kg_merged": 69.2
+            "weight_kg_merged": 69.2,
+            "weight_origin": "athlete"
           },
           {
             "date": "2026-09-03",
             "weight_avg7_kg": 69.0,
-            "weight_kg_merged": 69.0
+            "weight_kg_merged": 69.0,
+            "weight_origin": "athlete"
           },
           {
             "date": "2026-09-04",
             "weight_avg7_kg": 69.0,
-            "weight_kg_merged": null
+            "weight_kg_merged": null,
+            "weight_origin": null
           },
           {
             "date": "2026-09-05",
             "weight_avg7_kg": 69.0,
-            "weight_kg_merged": 68.8
+            "weight_kg_merged": 68.8,
+            "weight_origin": "athlete"
           },
           {
             "date": "2026-09-06",
             "weight_avg7_kg": 68.9,
-            "weight_kg_merged": 68.6
+            "weight_kg_merged": 68.6,
+            "weight_origin": "athlete"
           },
           {
             "date": "2026-09-07",
             "weight_avg7_kg": 69.0,
-            "weight_kg_merged": 69.0
+            "weight_kg_merged": 69.0,
+            "weight_origin": "athlete"
           },
           {
             "date": "2026-09-08",
             "weight_avg7_kg": 68.9,
-            "weight_kg_merged": 69.0
+            "weight_kg_merged": 69.0,
+            "weight_origin": "athlete"
           },
           {
             "date": "2026-09-09",
             "weight_avg7_kg": 68.9,
-            "weight_kg_merged": null
+            "weight_kg_merged": null,
+            "weight_origin": null
           },
           {
             "date": "2026-09-10",
             "weight_avg7_kg": 68.9,
-            "weight_kg_merged": 69.1
+            "weight_kg_merged": 69.1,
+            "weight_origin": "athlete"
           },
           {
             "date": "2026-09-11",
             "weight_avg7_kg": 68.9,
-            "weight_kg_merged": 68.7
+            "weight_kg_merged": 68.7,
+            "weight_origin": "athlete"
           },
           {
             "date": "2026-09-12",
             "weight_avg7_kg": 68.9,
-            "weight_kg_merged": 68.7
+            "weight_kg_merged": 68.7,
+            "weight_origin": "athlete"
           },
           {
             "date": "2026-09-13",
             "weight_avg7_kg": 68.9,
-            "weight_kg_merged": 68.6
+            "weight_kg_merged": 68.6,
+            "weight_origin": "athlete"
           },
           {
             "date": "2026-09-14",
             "weight_avg7_kg": 68.8,
-            "weight_kg_merged": null
+            "weight_kg_merged": null,
+            "weight_origin": null
           },
           {
             "date": "2026-09-15",
             "weight_avg7_kg": 68.8,
-            "weight_kg_merged": 68.9
+            "weight_kg_merged": 68.9,
+            "weight_origin": "athlete"
           },
           {
             "date": "2026-09-16",
             "weight_avg7_kg": 68.8,
-            "weight_kg_merged": 69.0
+            "weight_kg_merged": 69.0,
+            "weight_origin": "athlete"
           },
           {
             "date": "2026-09-17",
             "weight_avg7_kg": 68.8,
-            "weight_kg_merged": 69.0
+            "weight_kg_merged": 69.0,
+            "weight_origin": "athlete"
           },
           {
             "date": "2026-09-18",
             "weight_avg7_kg": 68.8,
-            "weight_kg_merged": 68.4
+            "weight_kg_merged": 68.4,
+            "weight_origin": "athlete"
           },
           {
             "date": "2026-09-19",
             "weight_avg7_kg": 69.0,
-            "weight_kg_merged": 70.3
+            "weight_kg_merged": 70.3,
+            "weight_origin": "athlete"
           },
           {
             "date": "2026-09-20",
             "weight_avg7_kg": 69.1,
-            "weight_kg_merged": 68.8
+            "weight_kg_merged": 68.8,
+            "weight_origin": "athlete"
           },
           {
             "date": "2026-09-21",
             "weight_avg7_kg": 69.0,
-            "weight_kg_merged": 68.5
+            "weight_kg_merged": 68.5,
+            "weight_origin": "athlete"
           },
           {
             "date": "2026-09-22",
             "weight_avg7_kg": 69.0,
-            "weight_kg_merged": 68.9
+            "weight_kg_merged": 68.9,
+            "weight_origin": "athlete"
           },
           {
             "date": "2026-09-23",
             "weight_avg7_kg": 69.0,
-            "weight_kg_merged": 68.9
+            "weight_kg_merged": 68.9,
+            "weight_origin": "athlete"
           }
         ]
       },
@@ -7687,6 +7752,11 @@
           "avg7_date": "2026-09-23",
           "avg7_kg": 69.0,
           "gap_kg": 2.0,
+          "latest": {
+            "date": "2026-09-23",
+            "origin": "athlete",
+            "weight_kg": 68.9
+          },
           "slope_kg_per_week": -0.027,
           "target_kg": 67.0
         },
@@ -7694,37 +7764,44 @@
           {
             "date": "2026-09-17",
             "weight_avg7_kg": 68.8,
-            "weight_kg_merged": 69.0
+            "weight_kg_merged": 69.0,
+            "weight_origin": "athlete"
           },
           {
             "date": "2026-09-18",
             "weight_avg7_kg": 68.8,
-            "weight_kg_merged": 68.4
+            "weight_kg_merged": 68.4,
+            "weight_origin": "athlete"
           },
           {
             "date": "2026-09-19",
             "weight_avg7_kg": 69.0,
-            "weight_kg_merged": 70.3
+            "weight_kg_merged": 70.3,
+            "weight_origin": "athlete"
           },
           {
             "date": "2026-09-20",
             "weight_avg7_kg": 69.1,
-            "weight_kg_merged": 68.8
+            "weight_kg_merged": 68.8,
+            "weight_origin": "athlete"
           },
           {
             "date": "2026-09-21",
             "weight_avg7_kg": 69.0,
-            "weight_kg_merged": 68.5
+            "weight_kg_merged": 68.5,
+            "weight_origin": "athlete"
           },
           {
             "date": "2026-09-22",
             "weight_avg7_kg": 69.0,
-            "weight_kg_merged": 68.9
+            "weight_kg_merged": 68.9,
+            "weight_origin": "athlete"
           },
           {
             "date": "2026-09-23",
             "weight_avg7_kg": 69.0,
-            "weight_kg_merged": 68.9
+            "weight_kg_merged": 68.9,
+            "weight_origin": "athlete"
           }
         ]
       },
@@ -9061,7 +9138,9 @@
           "stress_avg": 33.0,
           "verdict": "green",
           "verdict_reason": "Triade dans la norme : séance maintenue.",
-          "weight_kg": 68.9
+          "weight_garmin_kg": null,
+          "weight_kg": 68.9,
+          "weight_origin": null
         },
         "heat_acclimation": {
           "hot_duration_s": 0,

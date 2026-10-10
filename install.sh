@@ -95,7 +95,7 @@ LEANPROXY_SERVERS="$HOME/.config/leanproxy_servers.yaml"
 # Liste blanche des outils Garmin utilisés par les agents/skills du projet.
 # Réduit la taxe de contexte (~151 outils → ~30) en mode direct.
 # Noms réels des outils garmin-mcp (sans préfixe garmin_).
-GARMIN_TOOL_WHITELIST="get_activities,get_activities_by_date,get_activity,get_activity_fit_data,get_activity_splits,get_activity_typed_splits,get_activity_split_summaries,get_sleep_data,get_hrv_data,get_rhr_day,get_training_readiness,get_calendar_events,get_courses,get_workouts,get_workout_by_id,get_scheduled_workouts,schedule_workouts,schedule_week,upload_workout,upload_course,create_strength_workout,delete_workout,unschedule_workout,unschedule_workouts,download_activity_file,get_stats,get_lactate_threshold,get_training_status,get_gear,get_activity_gear,add_gear_to_activity"
+GARMIN_TOOL_WHITELIST="get_activities,get_activities_by_date,get_activity,get_activity_fit_data,get_activity_splits,get_activity_typed_splits,get_activity_split_summaries,get_sleep_data,get_hrv_data,get_rhr_day,get_training_readiness,get_calendar_events,get_courses,get_workouts,get_workout_by_id,get_scheduled_workouts,schedule_workouts,schedule_week,upload_workout,upload_course,create_strength_workout,delete_workout,unschedule_workout,unschedule_workouts,download_activity_file,get_stats,get_lactate_threshold,get_training_status,get_gear,get_activity_gear,add_gear_to_activity,get_daily_weigh_ins,get_weigh_ins"
 # Outils de cycle menstruel (#166) : JAMAIS dans la liste blanche par défaut — ajoutés par
 # resolve_cycle_tracking() uniquement quand [health].cycle_tracking = "garmin" (opt-in) et que la
 # source est Garmin. Noms vérifiés dans src/garmin_mcp/womens_health.py du commit épinglé ci-dessus.
@@ -175,6 +175,7 @@ CHAT_BUDGET=""     # --chat-budget EUR
 DO_TELEGRAM=0      # --telegram : bot Telegram (retours en un geste, #174)
 TELEGRAM_CHAT_ID="" # --telegram-chat-id ID : ajoute un chat à [telegram].allowed_chat_ids
 SYNC_BUDGET=""     # --sync-budget EUR
+SYNC_RUNNER_ARG="" # --sync-runner : exécuteur headless explicite
 
 # Options qu'un préréglage peut fixer ; « explicite » gagne toujours, quel que
 # soit l'ordre des arguments (voir apply_preset() et la note plus bas).
@@ -220,6 +221,7 @@ Usage :
   ./install.sh --use-leanproxy    # mode passerelle leanproxy (power user)
   ./install.sh --skip-leanproxy   # mode direct (annule --use-leanproxy d'un préréglage)
   ./install.sh --daily-sync       # cron/launchd : sync Garmin aux heures de [sync].times
+  ./install.sh --sync-runner CLI  # claude | codex | copilot | opencode | gemini | cursor
   ./install.sh --no-daily-sync    # désactive la sync (annule --daily-sync d'un préréglage)
   ./install.sh --remote-control   # service Remote Control (le coach dans la poche)
   ./install.sh --no-remote-control # désactive Remote Control (annule --remote-control d'un préréglage)
@@ -391,6 +393,7 @@ while [[ $# -gt 0 ]]; do
         --agents) need_value "$@"; AGENTS_ARG="$2"; EXPLICIT_AGENTS=1; shift 2 ;;
         --no-medical) AGENTS_ARG="${AGENTS_ARG:-__all_but__}:medical"; EXPLICIT_AGENTS=1; shift ;;
         --daily-sync) DAILY_SYNC=1; EXPLICIT_DAILY_SYNC=1; shift ;;
+        --sync-runner) need_value "$@"; SYNC_RUNNER_ARG="$2"; shift 2 ;;
         --no-daily-sync) DAILY_SYNC=0; EXPLICIT_DAILY_SYNC=1; shift ;;  # annule --daily-sync composé par un préréglage
         --remote-control) REMOTE_CONTROL=1; EXPLICIT_REMOTE_CONTROL=1; shift ;;
         --no-remote-control) REMOTE_CONTROL=0; EXPLICIT_REMOTE_CONTROL=1; shift ;;  # annule --remote-control composé par un préréglage
@@ -419,6 +422,12 @@ validate_budget() {
 [[ -z "$TELEGRAM_CHAT_ID" || "$DO_TELEGRAM" -eq 1 ]] || die "--telegram-chat-id s'utilise avec --telegram."
 [[ -z "$CHAT_BUDGET" ]] || validate_budget --chat-budget "$CHAT_BUDGET"
 [[ -z "$SYNC_BUDGET" ]] || validate_budget --sync-budget "$SYNC_BUDGET"
+if [[ -n "$SYNC_RUNNER_ARG" ]]; then
+    case "$SYNC_RUNNER_ARG" in
+        claude|codex|copilot|opencode|gemini|cursor) ;;
+        *) die "Exécuteur de synchronisation inconnu : « $SYNC_RUNNER_ARG ». Valides : claude, codex, copilot, opencode, gemini, cursor." ;;
+    esac
+fi
 if [[ -n "$LLM_PROVIDER" ]]; then
     case "$LLM_PROVIDER" in
         openrouter|anthropic) ;;
@@ -515,7 +524,7 @@ json_escape() {
 
 # Fusionne une clé dans un fichier JSON sans toucher au reste (scripts/coach_config.py).
 merge_json_key() {
-    local file="$1" section="$2" name="$3" value="$4" template="${5:-}"
+    local file="$1" section="$2" name="$3" value="$4" template="${5:-}" union="${6:-}"
     if [[ "$DRY_RUN" -eq 1 ]]; then
         printf '%s\n' "${C_YELLOW}[dry-run]${C_RESET} fusion de « $name » dans $file"
         return 0
@@ -523,7 +532,7 @@ merge_json_key() {
     have python3 || { warn "python3 absent : $file non modifié (ajoutez « $name » à la main)."; return 0; }
     python3 "$PROJECT_ROOT/scripts/coach_config.py" merge-json \
         --file "$file" --section "$section" --name "$name" --value "$value" \
-        ${template:+--template "$template"} >/dev/null \
+        ${template:+--template "$template"} ${union:+--union-lists} >/dev/null \
         || die "Échec de la mise à jour de $file (voir le message ci-dessus)."
 }
 
@@ -1648,6 +1657,9 @@ mcp_server_name() {
 
 write_opencode_config() {
     log "Configuration OpenCode"
+    # Le runner headless partage ce fichier projet avec les autres CLI ; la
+    # configuration globale OpenCode reste utile pour le fournisseur choisi.
+    write_project_mcp_json
     # ~/.config/opencode/opencode.json est GLOBAL : d'autres projets y déclarent
     # leurs propres serveurs MCP. On insère la clé, on ne réécrit pas le fichier.
     local cfg="$HOME/.config/opencode/opencode.json"
@@ -1759,7 +1771,7 @@ unapprove_claude_project_mcp() {
 
 write_gemini_config() {
     log "Configuration Gemini CLI"
-    local dir="$WORKSPACE_ROOT/.gemini/commands"
+    local dir="$WORKSPACE_ROOT/.gemini/commands" cfg="$WORKSPACE_ROOT/.gemini/settings.json"
     if [[ "$DRY_RUN" -eq 0 ]]; then
         mkdir -p "$dir"
     fi
@@ -1770,14 +1782,33 @@ write_gemini_config() {
     else
         warn "Aucun template Gemini trouvé dans config/gemini/commands"
     fi
+    cleanup_stale_mcp_server "$cfg" mcpServers
+    merge_json_key "$cfg" mcpServers "$(mcp_server_name)" "$(mcp_server_value)"
+    ok "Serveur MCP $(mcp_server_name) présent dans $cfg"
 }
 
 write_cursor_config() {
     log "Configuration Cursor"
-    local cfg="$WORKSPACE_ROOT/.cursor/mcp.json"
+    local cfg="$WORKSPACE_ROOT/.cursor/mcp.json" permissions="$WORKSPACE_ROOT/.cursor/cli.json"
     cleanup_stale_mcp_server "$cfg" mcpServers
     merge_json_key "$cfg" mcpServers "$(mcp_server_name)" "$(mcp_server_value)"
     ok "Serveur MCP $(mcp_server_name) présent dans $cfg"
+    # Refus des outils d'écriture de la source (`Mcp(serveur:outil)`, prioritaires sur
+    # tout « allow ») : la synchronisation headless lance `cursor-agent --force`, qui
+    # approuverait sinon une écriture Garmin/intervals.icu/Strava sans personne pour
+    # confirmer. scripts/daily-sync.sh vérifie leur présence avant chaque run.
+    # shellcheck source=scripts/lib/sync_tools.sh
+    source "$PROJECT_ROOT/scripts/lib/sync_tools.sh"
+    local server tool mcp_deny=""
+    case "$SOURCE" in intervals|strava) server="$SOURCE" ;; *) server="garmin" ;; esac
+    for tool in $(sync_write_tools "$server"); do
+        mcp_deny+=",\"Mcp($server:$tool)\""
+    done
+    # Fusion par listes : les règles allow/deny ajoutées par l'utilisateur sont conservées.
+    merge_json_key "$permissions" "" permissions \
+        '{"allow":["Read(**)","Write(activities/**)","Write(medical/**)","Write(nutrition/**)","Write(planning/**)","Write(rapports/**)","Write(gear/**)","Shell(python3)"],"deny":["Write(scripts/**)","Write(skills/**)","Write(local/**)","Write(config/**)","Write(.mcp.json)","Write(.cursor/**)","Write(.github/**)","Write(.gemini/**)","Write(.claude/**)","Write(.opencode/**)","Write(install.sh)","Read(**/.env*)","Shell(rm)","Shell(git)","Shell(gh)"'"$mcp_deny"']}' \
+        "" union
+    ok "Permissions Cursor limitées aux données du coach ($permissions)"
 }
 
 write_windsurf_config() {
@@ -1840,22 +1871,31 @@ EOF
 }
 
 # ---------------------------------------------------------------------------
-# 6c. Exécuteurs headless (Claude Code / Codex CLI) — machine « coach »
+# 6c. Exécuteurs headless — machine « coach »
 # ---------------------------------------------------------------------------
 # Les fonctionnalités mobiles reposent sur les CLI officiels (abonnement, pas de
 # clé API). On ne les installe pas à la place de l'utilisateur : on vérifie et
 # on affiche la commande officielle.
 check_runners() {
-    if have claude; then
-        ok "claude : présent ($(claude --version 2>/dev/null | head -1))"
-    else
-        warn "claude absent — requis pour --remote-control et [sync].runner = \"claude\" :"
-        warn "  curl -fsSL https://claude.ai/install.sh | bash   (puis 'claude' → /login, compte claude.ai)"
-    fi
-    if have codex; then
-        ok "codex : présent ($(codex --version 2>/dev/null | head -1))"
-    else
-        warn "codex absent — optionnel ([sync].runner = \"codex\") : npm i -g @openai/codex  (puis 'codex login --device-auth')"
+    local runner
+    runner="${SYNC_RUNNER_ARG:-$(ARC_WORKSPACE="$WORKSPACE_ROOT" bash -c 'source "$0/scripts/lib/config.sh"; toml_get sync runner claude' "$PROJECT_ROOT")}"
+    case "$runner" in
+        claude) have claude && ok "claude : présent ($(claude --version 2>/dev/null | head -1))" \
+            || warn "claude absent — lancez l'installation guidée puis connectez le compte une fois." ;;
+        codex) have codex && ok "codex : présent ($(codex --version 2>/dev/null | head -1))" \
+            || warn "codex absent — installez Codex CLI puis connectez le compte une fois." ;;
+        copilot) have copilot && ok "copilot : présent ($(copilot --version 2>/dev/null | head -1))" \
+            || warn "copilot absent — lancez l'installation guidée puis connectez GitHub une fois." ;;
+        opencode) have opencode && ok "opencode : présent ($(opencode --version 2>/dev/null | head -1))" \
+            || warn "opencode absent — lancez l'installation guidée puis configurez le fournisseur une fois." ;;
+        gemini) have gemini && ok "gemini : présent ($(gemini --version 2>/dev/null | head -1))" \
+            || warn "gemini absent — lancez l'installation guidée puis connectez Google une fois." ;;
+        cursor) have cursor-agent && ok "cursor-agent : présent ($(cursor-agent --version 2>/dev/null | head -1))" \
+            || warn "cursor-agent absent — lancez l'installation guidée puis connectez Cursor une fois." ;;
+    esac
+    # Remote Control repose sur Claude Code quel que soit l'exécuteur de synchronisation.
+    if [[ "$REMOTE_CONTROL" -eq 1 && "$runner" != "claude" ]] && ! have claude; then
+        warn "claude absent — requis pour --remote-control : curl -fsSL https://claude.ai/install.sh | bash   (puis 'claude' → /login)"
     fi
 }
 
@@ -1895,7 +1935,7 @@ install_daily_sync() {
     if [[ "$DAILY_SYNC" -eq 0 ]]; then
         return 0
     fi
-    log "Synchronisation Garmin automatique (scripts/daily-sync.sh)"
+    log "Synchronisation automatique $(data_source) (scripts/daily-sync.sh)"
     local sync="$PROJECT_ROOT/scripts/daily-sync.sh" times t hour minute mode interval
     local watch="$PROJECT_ROOT/scripts/garmin_watch.py"
     mode="$(sync_setting mode schedule)"
@@ -2155,7 +2195,7 @@ persist_llm() {
         ok "opencode : présent ($(opencode --version 2>/dev/null | head -1))"
     else
         warn "opencode absent — requis par le runner de sync et le chat sur $LLM_PROVIDER :"
-        warn "  curl -fsSL https://opencode.ai/install | bash   (ou : npm i -g opencode-ai ; brew install anomalyco/tap/opencode)"
+        warn "  curl -fsSL https://opencode.ai/v2/install | bash   (ou : npm i -g opencode-ai ; brew install anomalyco/tap/opencode)"
     fi
     if [[ "$LLM_PROVIDER" == "openrouter" ]]; then
         warn "Santé : limitez les fournisseurs OpenRouter à ceux qui ne conservent ni n'entraînent sur vos données (docs/mobile.md)."
@@ -2165,6 +2205,10 @@ persist_llm() {
 persist_budgets() {
     [[ -z "$CHAT_BUDGET" ]] || llm_set chat daily_budget_eur "$CHAT_BUDGET" float
     [[ -z "$SYNC_BUDGET" ]] || llm_set sync daily_budget_eur "$SYNC_BUDGET" float
+}
+
+persist_sync_runner() {
+    [[ -z "$SYNC_RUNNER_ARG" ]] || llm_set sync runner "$SYNC_RUNNER_ARG"
 }
 
 install_chat() {
@@ -2443,6 +2487,7 @@ main() {
     persist_cycle_tracking
     persist_nutrition_sync
     persist_llm
+    persist_sync_runner
     persist_budgets
     if [[ "$DAILY_SYNC" -eq 1 || "$REMOTE_CONTROL" -eq 1 ]]; then
         check_runners

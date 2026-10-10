@@ -52,6 +52,11 @@ class PolicyTest(PolicyBase):
     def test_shell_liste_blanche_sans_metacaracteres(self):
         self.assertEqual(self.d("shell", {"command": "python3 scripts/arc_index.py energy"}), "allow")
         self.assertEqual(self.d("shell", {"command": "python3 scripts/arc_log.py --help"}), "allow")
+        # #222 : décision du poids — options déclarées et réponse Garmin passée sur stdin.
+        self.assertEqual(self.d("shell", {"command": "python3 scripts/arc_weight_sync.py plan --date 2026-10-10 "
+                                                     "--declared-kg 70.2"}), "allow")
+        self.assertEqual(self.d("shell", {"command": "echo '{\"date\": \"2026-10-10\", \"measurements\": []}' | "
+                                                     "python3 scripts/arc_weight_sync.py plan"}), "allow")
         for command in ("rm -rf /", "python3 scripts/arc_index.py; rm x", "python3 scripts/arc_index.py | sh",
                         "python3 scripts/arc_index.py $(id)", "python3 scripts/arc_index.py > /tmp/x",
                         "python3 scripts/arc_index.py `id`", "python3 scripts/arc_index.py\nrm x",

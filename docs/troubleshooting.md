@@ -129,7 +129,7 @@ ne sont jamais présentés comme un problème Garmin :
 | `💸 Sync Garmin suspendue — budget atteint` | Le cumul du jour (`logs/.sync-spend-AAAA-MM-JJ`) atteint `[sync].daily_budget_eur`. Le run est sauté, sans erreur. | Relancez demain, ou relevez `./install.sh --sync-budget EUR`. |
 | `⚠ hors contrat arc : …` (dans le résumé) | Un fichier écrit par le modèle pendant le run ne respecte pas le bloc `arc`. | Voir `logs/sync-AAAA-MM-JJ.log` ; changez de modèle (`[sync].model`) si cela se répète. |
 
-`opencode introuvable` : `curl -fsSL https://opencode.ai/install | bash`. Un refus
+`opencode introuvable` : `curl -fsSL https://opencode.ai/v2/install | bash`. Un refus
 d'authentification **Garmin** garde sa notification habituelle
 (`🔑 Authentification Garmin refusée`, voir plus haut).
 
