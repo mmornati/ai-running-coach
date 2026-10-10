@@ -61,6 +61,7 @@ from urllib.parse import parse_qs, quote, urlparse, urlsplit
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import arc_block_timeline as BT  # noqa: E402
 import arc_guardrails as G  # noqa: E402
+import arc_health_source as HS  # noqa: E402
 import arc_index as I  # noqa: E402
 import arc_metrics as M  # noqa: E402
 import arc_roadbook as RB  # noqa: E402
@@ -345,8 +346,9 @@ class Store:
 
     def decision_effects(self, today: date, days: Optional[int], trigger: Optional[str]) -> dict:
         """Réutilise `arc_index.decision_effects` (#175) — voir aussi la CLI `decision-effects`."""
+        data_source = (self.meta("settings") or {}).get("data_source") or "garmin"   # avant le verrou : `meta` le prend
         with self.lock:
-            return I.decision_effects(self.conn, today, days, trigger)
+            return I.decision_effects(self.conn, today, days, trigger, data_source)
 
     def gear_detail(self, gear_id: str, today: date):
         """Réutilise `arc_index.gear_detail` (#147) — fiche d'une paire/d'un objet, `None` si inconnu."""
@@ -642,11 +644,24 @@ def api_health(store: Store, q: dict) -> dict:
     rows = store.rows("SELECT * FROM health_day WHERE date >= ? AND date <= ? ORDER BY date",
                       (fetch_from, today.isoformat()))
     by_date = {r["date"]: r for r in rows}
+    # Source effective de chaque jour (#218) : HRV et FC de repos ne se comparent qu'à clé égale — la bande
+    # personnelle et la médiane FC de repos d'un jour ne portent que sur SA source. Une seule clé (cas
+    # historique) : calcul identique à avant.
+    default_source = settings.get("data_source") or HS.DEFAULT_DATA_SOURCE
+    key_by_date = {d: HS.source_key(r["health_source"], r["health_provider"], default_source)
+                   for d, r in by_date.items()}
+    current_key = key_by_date[max(key_by_date)] if key_by_date else HS.source_key(
+        settings.get("health_source") if settings.get("health_source") == "openwearables" else None,
+        settings.get("health_provider"), default_source)
     hrv_baseline_by_date = {}
     sleep_debt_by_date = {}
     if mode == "full":
-        hrv_by_date = {d: r["hrv_overnight_ms"] for d, r in by_date.items() if r["hrv_overnight_ms"] is not None}
-        hrv_baseline_by_date = {p["date"]: p for p in M.hrv_baseline_series(hrv_by_date, start_date, today)}
+        for key in sorted(set(key_by_date.values()) or {current_key}):
+            hrv_by_date = {d: r["hrv_overnight_ms"] for d, r in by_date.items()
+                           if r["hrv_overnight_ms"] is not None and key_by_date[d] == key}
+            for p in M.hrv_baseline_series(hrv_by_date, start_date, today):
+                if key_by_date.get(p["date"], current_key) == key:
+                    hrv_baseline_by_date[p["date"]] = p
         # Dette de sommeil 7 j (#37) : même porte que la ligne de base HRV ci-dessus
         # (rien hors "full", voir ASSUMPTIONS["sleep_debt"]). Besoin lu au profil
         # (`athlete.sleep_need_s`), sinon 7 h 30 par défaut — résolution partagée
@@ -658,9 +673,10 @@ def api_health(store: Store, q: dict) -> dict:
     for i in range(days):
         day = date.fromisoformat(start) + timedelta(days=i)
         row = by_date.get(day.isoformat())
+        day_key = key_by_date.get(day.isoformat(), current_key)
         window = [by_date[d]["resting_hr_bpm"] for d in
                   ((day - timedelta(days=k)).isoformat() for k in range(1, 8))
-                  if d in by_date and by_date[d]["resting_hr_bpm"] is not None]
+                  if d in by_date and by_date[d]["resting_hr_bpm"] is not None and key_by_date[d] == day_key]
         median = statistics.median(window) if len(window) >= 3 else None
         point = {"date": day.isoformat(), "rhr_median7": median}
         if row:
@@ -668,6 +684,8 @@ def api_health(store: Store, q: dict) -> dict:
                 "hrv_overnight_ms", "hrv_baseline_low_ms", "hrv_baseline_high_ms", "hrv_status",
                 "resting_hr_bpm", "readiness_score", "sleep_total_s", "sleep_score", "sleep_deep_s",
                 "sleep_rem_s", "sleep_light_s", "verdict", "verdict_reason", "morning_check")})
+            # Provenance (#218) : posée seulement quand le fichier la déclare (fichiers antérieurs : clés absentes).
+            point.update({k: row[k] for k in ("health_source", "health_provider", "hrv_sdnn_ms") if row[k] is not None})
             rhr = row["resting_hr_bpm"]
             point["rhr_delta"] = round(rhr - median, 1) if rhr is not None and median is not None else None
         baseline = hrv_baseline_by_date.get(day.isoformat())
@@ -677,7 +695,12 @@ def api_health(store: Store, q: dict) -> dict:
         if debt:
             point.update({k: v for k, v in debt.items() if k != "date"})
         series.append(point)
+    source, provider = HS.split_key(current_key)
     return {"series": series, "morning_check": mode,
+            # Source santé COURANTE (#218) : celle de la ligne la plus récente ; `changed` = plus d'une source
+            # sur la période affichée (la bande personnelle ne couvre alors que chaque source pour elle-même).
+            "source": {"health_source": source, "health_provider": provider, "label": HS.label(current_key),
+                       "changed": len({key_by_date[d] for d in key_by_date if d >= start}) > 1},
             "thresholds": {"rhr_warn": 5, "rhr_alert": 7,
                            "sleep_debt_warn_h": M.SLEEP_DEBT_WARN_S / 3600,
                            "sleep_debt_alert_h": M.SLEEP_DEBT_ALERT_S / 3600}}

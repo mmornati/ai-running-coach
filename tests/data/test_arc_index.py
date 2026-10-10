@@ -1397,7 +1397,7 @@ class TestGearSweatFuelIndex(Workspace):
         self.assertIsNone(rate)   # 4.5 l/h > SWEAT_RATE_PLAUSIBLE_L_H[1] (4.0)
 
     def test_schema_version_bumped_forces_rebuild(self):
-        self.assertEqual(I.SCHEMA_VERSION, 37)   # home trainer : puissance, vélo, virtual_route (36 = #222 : health_day.weight_origin (35 = #193 week.week_type, 34 = #164 strava_activity_id, 33 = #166 cycle, 32 = #151, 31 = #68))
+        self.assertEqual(I.SCHEMA_VERSION, 38)   # #218 : health_day.health_source/health_provider/hrv_sdnn_ms (37 = home trainer : puissance, vélo, virtual_route (36 = #222 : health_day.weight_origin (35 = #193 week.week_type, 34 = #164 strava_activity_id, 33 = #166 cycle, 32 = #151, 31 = #68))
 
     def test_schema_version_28_adds_equipment_table_and_gear_ids_column(self):
         """#134 : table `equipment` + colonne `activity.gear_ids` — une base d'avant est reconstruite."""
