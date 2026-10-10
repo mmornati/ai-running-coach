@@ -76,6 +76,20 @@
 - **Équipement** : <!-- salle de sport, home trainer, haltères, tapis -->
 - **Sports croisés pratiqués** : <!-- vélo, natation, renforcement -->
 
+### Vélo & home trainer
+
+<!--
+  Facultatif — seulement si vous roulez sur home trainer. Sert à choisir un parcours
+  virtuel à la durée d'une séance (skill mywhoosh-route, `[home_trainer]` dans la config)
+  et à la carte « Home trainer » du tableau de bord. La puissance que vous tenez en
+  zone 2 n'est PAS à écrire ici : elle est calculée sur vos séances (`arc_index.py power-hr`).
+-->
+
+- **Home trainer** : <!-- modèle, ex. « Wahoo KICKR » -->
+- **Vélo sur home trainer** : <!-- ex. « Van Rysel EDR » -->
+- **Masse du vélo** : <!-- en kg, ex. « 8,5 kg » ; vide = 8 kg par défaut -->
+- **FTP déclarée** : <!-- en W, issue d'un vrai test (20 min, rampe), ex. « 230 W (test 2026-10-01) » -->
+
 ### Chaussures
 
 <!--

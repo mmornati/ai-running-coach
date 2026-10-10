@@ -1353,6 +1353,11 @@ def parse_performance_index(text: str) -> Tuple[List[Dict[str, Any]], List[str]]
 # Fichiers édités par l'humain : profil et objectif (libellés du modèle)
 # ---------------------------------------------------------------------------
 
+def _plausible_num(value: Optional[float], lo: float, hi: float) -> Optional[float]:
+    """Valeur déclarée gardée seulement dans une plage plausible (sinon absente, jamais clampée)."""
+    return value if value is not None and lo <= value <= hi else None
+
+
 def parse_profile(text: str) -> Dict[str, Any]:
     """`planning/Runner_Profile.md` → champs utiles aux calculs (SI)."""
     b = parse_bullets(text)
@@ -1372,6 +1377,12 @@ def parse_profile(text: str) -> Dict[str, Any]:
         "default_location": _pick(b, "lieu par defaut"),
         "usual_slot": _pick(b, "creneau habituel"),
         "name": _pick(b, "prenom / surnom", "prenom"),
+        # Section « ### Vélo & home trainer » : équipement DÉCLARÉ. Libellés choisis pour ne
+        # jamais entrer en collision de préfixe avec « poids » (poids de l'athlète) ni « fc ».
+        "ht_trainer": _pick(b, "home trainer"),
+        "ht_bike": _pick(b, "velo sur home trainer"),
+        "bike_mass_kg": _plausible_num(parse_fr_number(_pick(b, "masse du velo")), 3, 30),
+        "ftp_declared_w": _plausible_num(parse_fr_number(_pick(b, "ftp declaree", "ftp")), 50, 600),
     }
     gear = parse_gear(text)
     if gear:

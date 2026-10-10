@@ -13,6 +13,7 @@ sert au tableau de bord (`scripts/arc_serve.py`) et aux calculs de charge
     arc_index.py hrv-baseline            # ligne de base HRV personnelle du jour, en JSON (#34)
     arc_index.py sleep-debt               # dette de sommeil 7 j du jour, en JSON (#37)
     arc_index.py heat-acclimation         # acclimatation à la chaleur, 14 j, en JSON (#38)
+    arc_index.py power-hr [--days N] [--text]  # home trainer : puissance ↔ FC, W par zone FC, équipement vélo
     arc_index.py altitude-exposure [--days N]   # exposition à l'altitude (≥ 1 500 / 2 000 m), 14 et 28 j (#185)
     arc_index.py fueling                  # glucides/h et sudation, sorties longues, en JSON (#41)
     arc_index.py samples GARMIN_ID         # échantillons ingérés d'une séance, en JSON (#42)
@@ -290,6 +291,7 @@ from typing import Any, Dict, List, Optional, Tuple, Union
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import arc_altitude as AL  # noqa: E402
+import arc_power as PW  # noqa: E402
 import arc_climb as VC  # noqa: E402
 import arc_climb_match as VM  # noqa: E402
 import arc_contract as C  # noqa: E402
@@ -384,7 +386,13 @@ from coach_setup import ENGINE, workspace_root  # noqa: E402
 # #222 : `health_day` gagne `weight_origin` (`garmin` | `chat`, provenance du poids du jour) et
 # `weight_garmin_kg` (pesée Garmin écartée au profit de la valeur déclarée) — version 36 (35 = #193) :
 # les colonnes de `health_day` suivent le contrat, sans ce bump l'insertion échouerait.
-SCHEMA_VERSION = 36
+# Home trainer (MyWhoosh) : `activity` gagne `avg_power_w`/`max_power_w`/`normalized_power_w`,
+# `activity_sample` gagne `power_w` (`arc_samples.POWER_KEY`), `athlete` gagne l'équipement vélo déclaré
+# (`ht_trainer`, `ht_bike`, `bike_mass_kg`, `ftp_declared_w`, section « ### Vélo & home trainer » du profil)
+# et `planned_session` gagne `virtual_route` (JSON, parcours virtuel choisi) — version 37 (36 = #222) : sans
+# ce bump, l'insertion échouerait avec « no such column ». Les `activities/fit/*.json` existants n'ont pas de
+# puissance : les re-extraire avec `download_fit.py --refresh-dynamics` (ré-extrait toutes les clés).
+SCHEMA_VERSION = 37
 # Colonnes d'identifiant externe d'une séance, dans l'ordre de priorité de `activity_ref` — une séance n'en
 # porte qu'une (`workspace-data-contract`) ; Garmin prime si un fichier ancien en porte plusieurs.
 REF_COLUMNS = ("garmin_activity_id", "intervals_activity_id", "strava_activity_id")
@@ -542,6 +550,13 @@ def _positive_int_at_least_1(config: Dict[str, dict], section: str, key: str, de
     return rounded
 
 
+def home_trainer_platform(config: Dict[str, dict]) -> str:
+    """`[home_trainer].platform` normalisée : une valeur de `arc_contract.VIRTUAL_PLATFORMS`, sinon "off"
+    (absente, vide ou inconnue — opt-in strict, jamais devinée)."""
+    raw = str((config.get("home_trainer") or {}).get("platform") or "").strip().lower()
+    return raw if raw in C.VIRTUAL_PLATFORMS else "off"
+
+
 def settings(config: Dict[str, dict]) -> dict:
     """Les réglages qui changent ce que l'index attend et ce que le tableau affiche."""
     agents = config.get("agents", {}).get("enabled", ["coach", "medical", "nutritionist", "course-strategist"])
@@ -556,6 +571,8 @@ def settings(config: Dict[str, dict]) -> dict:
         "units": config.get("athlete", {}).get("units", "metric") or "metric",
         "profile": config.get("athlete", {}).get("profile", "planning/Runner_Profile.md"),
         "hr_zones": _hr_zone_method(config),
+        # Home trainer : plateforme virtuelle (`[home_trainer].platform`), "off" si absente ou inconnue.
+        "home_trainer_platform": home_trainer_platform(config),
         "language": config.get("language", {}).get("documents", "fr") or "fr",
         # Page « Coach » (chat) : n'affiche l'entrée de nav que si le service est activé.
         "chat_enabled": bool(config.get("chat", {}).get("enabled", False)),
@@ -589,7 +606,8 @@ CREATE TABLE source_file (
 CREATE TABLE athlete (
     source_path TEXT, name TEXT, hr_max_bpm INTEGER, hr_rest_bpm INTEGER,
     hr_threshold_bpm INTEGER, sex TEXT, weight_kg REAL, birth_year INTEGER,
-    default_location TEXT, usual_slot TEXT, sleep_need_s REAL, body_md TEXT
+    default_location TEXT, usual_slot TEXT, sleep_need_s REAL,
+    ht_trainer TEXT, ht_bike TEXT, bike_mass_kg REAL, ftp_declared_w REAL, body_md TEXT
 );
 CREATE TABLE gear (
     source_path TEXT, gear_id TEXT, name TEXT, start_date TEXT, threshold_m REAL,
@@ -650,7 +668,7 @@ CREATE TABLE activity (
     descent_reference_source TEXT, durability_gap_fade_pct REAL, durability_ef_fade_pct REAL,
     durability_hr_first_third_bpm REAL, durability_hr_middle_third_bpm REAL,
     durability_hr_last_third_bpm REAL, durability_reason TEXT, durability_reason_code TEXT,
-    gear_ids TEXT,
+    gear_ids TEXT, avg_power_w REAL, max_power_w REAL, normalized_power_w REAL,
     body_md TEXT, data_json TEXT
 );
 CREATE INDEX activity_date ON activity(date);
@@ -725,7 +743,7 @@ CREATE TABLE planned_session (
     source_path TEXT, week_start TEXT, date TEXT, sport TEXT, title TEXT,
     planned_duration_s REAL, planned_distance_m REAL, planned_elevation_m REAL,
     intensity TEXT, outdoor INTEGER, garmin_workout_id INTEGER, status TEXT,
-    weather_category TEXT, best_slot TEXT, shadowed INTEGER DEFAULT 0
+    weather_category TEXT, best_slot TEXT, shadowed INTEGER DEFAULT 0, virtual_route TEXT
 );
 CREATE TABLE nutrition_day (
     source_path TEXT, date TEXT, intake_kcal REAL, carbs_g REAL, protein_g REAL, fat_g REAL,
@@ -796,7 +814,7 @@ CREATE TABLE activity_sample (
     hr_bpm REAL, speed_ms REAL, cadence_spm REAL, lat REAL, lon REAL, covered_s REAL,
     intervals_activity_id TEXT, strava_activity_id TEXT,
     ground_contact_s REAL, stance_balance_pct REAL, vertical_oscillation_m REAL, vertical_ratio_pct REAL,
-    step_length_m REAL
+    step_length_m REAL, power_w REAL
 );
 CREATE INDEX activity_sample_garmin ON activity_sample(garmin_activity_id);
 CREATE INDEX activity_sample_intervals ON activity_sample(intervals_activity_id);
@@ -1243,7 +1261,10 @@ def store(conn, rel: str, kind: str, data: dict, arc_version: int) -> None:
             "hr_rest_bpm": g("hr_rest_bpm"), "hr_threshold_bpm": g("hr_threshold_bpm"),
             "sex": g("sex"), "weight_kg": g("weight_kg"), "birth_year": g("birth_year"),
             "default_location": g("default_location"), "usual_slot": g("usual_slot"),
-            "sleep_need_s": g("sleep_need_s"), "body_md": body,
+            "sleep_need_s": g("sleep_need_s"),
+            "ht_trainer": g("ht_trainer"), "ht_bike": g("ht_bike"),
+            "bike_mass_kg": g("bike_mass_kg"), "ftp_declared_w": g("ftp_declared_w"),
+            "body_md": body,
         })
         for shoe in g("gear") or []:
             if not isinstance(shoe, dict) or not shoe.get("gear_id"):
@@ -1304,6 +1325,8 @@ def store(conn, rel: str, kind: str, data: dict, arc_version: int) -> None:
             "gear_id": g("gear_id"), "gear_source": g("gear_source"), "carbs_g": g("carbs_g"), "fluid_intake_ml": g("fluid_intake_ml"),
             "weight_pre_kg": g("weight_pre_kg"), "weight_post_kg": g("weight_post_kg"),
             "gear_ids": _j(g("gear_ids")),
+            "avg_power_w": g("avg_power_w"), "max_power_w": g("max_power_w"),
+            "normalized_power_w": g("normalized_power_w"),
             "body_md": body,
             "data_json": _data_json(data),
         })
@@ -1360,6 +1383,7 @@ def store(conn, rel: str, kind: str, data: dict, arc_version: int) -> None:
                         "planned_elevation_m", "intensity", "garmin_workout_id", "status",
                         "weather_category", "best_slot")},
                     "outdoor": None if s.get("outdoor") is None else int(bool(s["outdoor"])),
+                    "virtual_route": _j(s.get("virtual_route")),
                 })
     elif kind == "nutrition":
         _insert(conn, "nutrition_day", {
@@ -2319,11 +2343,11 @@ def ingest_samples(conn, workspace: Path, resolution_s: int = S.DEFAULT_RESOLUTI
             "INSERT INTO activity_sample "
             f"({col}, source_path, t_s, distance_m, altitude_m, hr_bpm, speed_ms, cadence_spm, "
             "lat, lon, covered_s, ground_contact_s, stance_balance_pct, vertical_oscillation_m, "
-            "vertical_ratio_pct, step_length_m) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "vertical_ratio_pct, step_length_m, power_w) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             [(ref, rel, rec["t_s"], rec["distance_m"], rec["altitude_m"],
               rec["hr_bpm"], rec["speed_ms"], rec["cadence_spm"],
               rec.get("lat_deg"), rec.get("lon_deg"), rec.get("covered_s"),
-              *(rec.get(key) for key in S.DYNAMICS_KEYS)) for rec in records],
+              *(rec.get(key) for key in S.DYNAMICS_KEYS), rec.get(S.POWER_KEY)) for rec in records],
         )
         conn.execute(
             f"INSERT OR REPLACE INTO sample_file (path, sha256, mtime, {col}, status, issues) "
@@ -4623,6 +4647,75 @@ def altitude_exposure(conn, today: Optional[date] = None, days: Optional[int] = 
     return AL.exposure_report(rows, today, windows)
 
 
+POWER_HR_DEFAULT_DAYS = 180
+
+
+def power_hr(conn, conf: dict, today: Optional[date] = None, days: Optional[int] = None) -> dict:
+    """Home trainer — commande « power-hr » et `/api/power-hr`. Relation puissance ↔ FC calibrée sur
+    les échantillons FIT des séances vélo/home trainer de la fenêtre (`arc_power.calibrate`), puissance
+    par zone FC du profil, équipement déclaré (« ### Vélo & home trainer ») et dernières séances avec
+    puissance. Lecture seule ; voir `arc_power.ASSUMPTIONS`."""
+    today = today or date.today()
+    days = max(1, min(730, int(days))) if days else POWER_HR_DEFAULT_DAYS
+    since = today - timedelta(days=days - 1)
+    marks = ", ".join("?" for _ in PW.POWER_SPORTS)
+    acts = conn.execute(
+        f"SELECT id, date, sport, name, duration_s, avg_hr_bpm, avg_power_w, normalized_power_w, "
+        f"garmin_activity_id, intervals_activity_id, strava_activity_id FROM activity "
+        f"WHERE sport IN ({marks}) AND date >= ? AND date <= ? ORDER BY date, id",
+        (*PW.POWER_SPORTS, since.isoformat(), today.isoformat())).fetchall()
+    sessions = []
+    for a in acts:
+        ref = next((a[c] for c in REF_COLUMNS if a[c] is not None), None)
+        if ref is None:
+            continue
+        col = ref_column(ref)
+        samples = [dict(r) for r in conn.execute(
+            f"SELECT t_s, hr_bpm, power_w FROM activity_sample WHERE {col} = ? ORDER BY t_s", (ref,))]
+        sessions.append({"ref": str(ref), "date": a["date"], "sport": a["sport"], "samples": samples})
+    zones = athlete_hr_zone_resolution(conn, conf)
+    report = PW.calibrate(sessions, zones.get("bounds_bpm"), float(S.DEFAULT_RESOLUTION_S))
+    athlete = conn.execute("SELECT * FROM athlete LIMIT 1").fetchone()
+    athlete = dict(athlete) if athlete else {}
+    weight, weight_source = resolve_weight_kg_as_of(conn, today.isoformat(), athlete)
+    recent = [{"date": a["date"], "sport": a["sport"], "name": a["name"], "duration_s": a["duration_s"],
+               "avg_hr_bpm": a["avg_hr_bpm"], "avg_power_w": a["avg_power_w"],
+               "normalized_power_w": a["normalized_power_w"]}
+              for a in reversed(acts) if a["avg_power_w"] is not None][:5]
+    return {
+        **report,
+        "since": since.isoformat(), "until": today.isoformat(), "days": days,
+        "platform": conf.get("home_trainer_platform", "off"),
+        "hr_zone_method": zones.get("method"), "hr_zone_reason": zones.get("reason"),
+        "equipment": {k: athlete.get(k) for k in ("ht_trainer", "ht_bike", "bike_mass_kg", "ftp_declared_w")
+                      if athlete.get(k) is not None},
+        "weight_kg": weight, "weight_source": weight_source,
+        "recent": recent,
+        "sessions_in_window": len(acts),
+    }
+
+
+def power_hr_text(report: dict) -> str:
+    lines = [f"Home trainer — puissance ↔ FC ({report['since']} → {report['until']})"]
+    eq = report.get("equipment") or {}
+    if eq:
+        lines.append("Équipement : " + " · ".join(
+            v for v in (eq.get("ht_trainer"), eq.get("ht_bike"),
+                        f"vélo {eq['bike_mass_kg']:g} kg" if eq.get("bike_mass_kg") else None,
+                        f"FTP déclarée {eq['ftp_declared_w']:g} W" if eq.get("ftp_declared_w") else None) if v))
+    if report["status"] != "ok":
+        lines.append(f"Calibration indisponible : {report.get('reason')}")
+        return "\n".join(lines)
+    f = report["fit"]
+    lines.append(f"P ≈ {f['slope_w_per_bpm']:.2f} × FC {f['intercept_w']:+.0f} W "
+                 f"(±{f['resid_sd_w']:.0f} W, {f['windows']} fenêtres, FC {f['hr_range_bpm'][0]}-{f['hr_range_bpm'][1]})")
+    for z in report.get("zones") or []:
+        flag = " (extrapolé)" if z["extrapolated"] else ""
+        lines.append(f"  Z{z['zone']} {z['bounds_bpm'][0]}-{z['bounds_bpm'][1]} bpm → "
+                     f"{z['power_w'][0]}-{z['power_w'][1]} W{flag}")
+    return "\n".join(lines)
+
+
 GAIT_DEFAULT_WEEKS = 26
 
 
@@ -4825,7 +4918,8 @@ def build_parser() -> argparse.ArgumentParser:
                                  "zones", "gap", "decoupling", "vam", "descent", "durability",
                                  "climb-history", "decisions", "slope-model", "trail-shape", "energy", "equipment",
                                  "inspections", "gear-career", "gait-summary", "pace-curve",
-                                 "decision-effects", "load-forecast", "plan-templates", "strength", "dem-check", "prevention", "plan-skeleton"))
+                                 "decision-effects", "load-forecast", "plan-templates", "strength", "dem-check", "prevention", "plan-skeleton",
+                                 "power-hr"))
     parser.add_argument("selector", nargs="?", default=None,
                         help="argument de la sous-commande (ex. garmin_activity_id, intervals_activity_id ou strava_activity_id "
                              "pour « samples »)")
@@ -5166,6 +5260,11 @@ def main(argv=None) -> int:
         today_date = date.fromisoformat(args.today) if args.today else date.today()
         report = decision_effects(conn, today_date, args.days, args.trigger)
         print(decision_effects_text(report) if args.text and not args.json else json.dumps(report, ensure_ascii=False))
+        return 0
+    if args.command == "power-hr":
+        today_date = date.fromisoformat(args.today) if args.today else date.today()
+        report = power_hr(conn, settings(load_config(workspace)), today_date, args.days)
+        print(power_hr_text(report) if args.text else json.dumps(report, ensure_ascii=False))
         return 0
     if args.command == "altitude-exposure":
         today_date = date.fromisoformat(args.today) if args.today else date.today()

@@ -232,6 +232,23 @@ Alternative helper: `create_strength_workout(name, exercises)` — simpler but e
 6. VERIFY: `get_scheduled_workouts(start_date, end_date)` for the week → confirm each date, duration, name, and NO duplicates; `get_workout_by_id` for any structured detail (loops/reps/weight).
 7. Persist: note the pushed session (workout_id, date) in the week's `planning/` MD file.
 
+## Home trainer route (MyWhoosh)
+
+Only when `[home_trainer].platform = "mywhoosh"` (skill `mywhoosh-route`): a `home_trainer`/`indoor_cycling`
+session is pushed as `sportType` cycling (id 2) with the step target still the athlete's HR range
+(`hr_target.bounds_bpm`, custom `heart.rate.zone`) — the route does not change the target. The chosen route goes in
+the text the athlete sees on the watch and in Garmin Connect:
+
+- `workoutName` = the suggestion's `garmin_workout_name` (e.g. `HT Z2 70min - Limmat Loop x2 (Switzerland)`) — short,
+  so the watch shows the route and its MyWhoosh world;
+- `description` = the suggestion's `garmin_description`, verbatim: where to find it in the app
+  (`Free Ride > <world> > <route>`), loop and laps, distance and D+, predicted time with its ±10 % band, target power
+  (a cue only), « la FC commande », and an OpenStreetMap link to the position MyWhoosh gives for the route (an
+  approximate landmark, never claimed exact).
+
+A Garmin power target (`power.zone`) is NOT used: its DTO has not been verified by this project, and HR stays the
+reference. Idempotency is unchanged: a changed route = a changed session (delete the old `workout_id`, re-push).
+
 ## Reliability & Batching (tested 2026-08-11)
 
 - **Keep batches small (≤ 4-5 schedules per call).** An 8-entry batch in ONE `schedule_workouts` call failed with a JSON parse error ("Expected ']'") on the live server. Split the week into chunks of 3-5 and push sequentially.

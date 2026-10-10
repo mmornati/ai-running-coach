@@ -149,6 +149,10 @@ struct SetupChoices {
     var usualSlot = ""
     var accessibleTerrain = ""
     var equipment = ""
+    var homeTrainer = ""
+    var homeTrainerBike = ""
+    var bikeMass = ""
+    var declaredFtp = ""
     var crossCycling = false
     var crossSwimming = false
     var crossStrength = false
@@ -601,6 +605,10 @@ final class CoachAppModel: ObservableObject {
         choices.usualSlot = value(profile, "creneau habituel")
         choices.accessibleTerrain = value(profile, "terrain accessible")
         choices.equipment = value(profile, "equipement")
+        choices.homeTrainer = value(profile, "home trainer")
+        choices.homeTrainerBike = value(profile, "velo sur home trainer")
+        choices.bikeMass = value(profile, "masse du velo")
+        choices.declaredFtp = value(profile, "ftp declaree")
         choices.motivation = value(profile, "ce qui me motive")
         choices.coachingNoGo = value(profile, "ce qui ne marche pas avec moi")
         choices.sensitiveTopics = value(profile, "sujets a ne pas commenter spontanement")
@@ -952,6 +960,10 @@ final class CoachAppModel: ObservableObject {
             "Créneau habituel": selected.usualSlot,
             "Terrain accessible": selected.accessibleTerrain,
             "Équipement": selected.equipment,
+            "Home trainer": selected.homeTrainer,
+            "Vélo sur home trainer": selected.homeTrainerBike,
+            "Masse du vélo": selected.bikeMass,
+            "FTP déclarée": selected.declaredFtp,
             "Sports croisés pratiqués": selected.disciplinesLabel,
             "Ce qui me motive": selected.motivation,
             "Ce qui ne marche pas avec moi": selected.coachingNoGo,
@@ -1357,6 +1369,10 @@ struct SetupView: View {
                                 ProfileField(label: "Créneau habituel", placeholder: "Pause de midi, tôt le matin, soir…", text: $model.choices.usualSlot)
                                 ProfileField(label: "Terrain accessible", placeholder: "Forêt, piste, côtes, salle…", text: $model.choices.accessibleTerrain)
                                 ProfileField(label: "Équipement disponible", placeholder: "Home trainer, haltères, tapis…", text: $model.choices.equipment)
+                                ProfileField(label: "Home trainer", placeholder: "Wahoo KICKR…", text: $model.choices.homeTrainer)
+                                ProfileField(label: "Vélo sur home trainer", placeholder: "Vélo de route…", text: $model.choices.homeTrainerBike)
+                                ProfileField(label: "Masse du vélo", placeholder: "8,5 kg", text: $model.choices.bikeMass)
+                                ProfileField(label: "FTP déclarée", placeholder: "230 W, issue d'un vrai test", text: $model.choices.declaredFtp)
                                 Divider()
                                 Text("Physiologie — laissez vide ce que vous ne connaissez pas").font(.headline)
                                 ProfileField(label: "FC max", placeholder: "182 bpm", text: $model.choices.maxHeartRate)

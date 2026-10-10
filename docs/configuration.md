@@ -174,6 +174,34 @@ Garmin, jamais les deux) : voir [Apports vers Garmin](nutrition-garmin.md).
 !!! warning "Une valeur invalide ne casse rien"
     Une valeur hors de `off`/`ask` est traitée comme `off`, avec un avertissement.
 
+## Le home trainer — `[home_trainer]`
+
+```toml
+[home_trainer]
+platform = "off"            # off (défaut) | mywhoosh
+mywhoosh_calendar = "off"   # off (défaut) | ask
+```
+
+**Opt-in strict.** À `off` (défaut, clé absente ou valeur inconnue), aucun parcours virtuel n'est
+proposé et aucun agent n'en parle. `mywhoosh` : pour chaque séance home trainer planifiée, le coach
+propose deux ou trois parcours MyWhoosh qui tiennent dans la durée de la séance, à la puissance que
+vous tenez réellement dans la plage FC visée — calibrée sur vos propres séances
+(`python3 scripts/arc_index.py power-hr`, carte « Home trainer » de la vue Matériel). Le parcours
+choisi est écrit dans le nom et la description de la séance poussée au calendrier Garmin, et tracé
+dans la semaine (`virtual_route`). Voir [Parcours MyWhoosh](skills/mywhoosh-route.md).
+
+- **Catalogue** : à récupérer une fois, en session interactive (vous tapez vous-même le mot de passe) :
+  `python3 skills/mywhoosh-route/scripts/mywhoosh_route.py fetch`. Le jeton est gardé en mode 600
+  dans `~/.config/ai-running-coach/`, jamais affiché.
+- **`mywhoosh_calendar = "ask"`** : le coach **propose** aussi d'inscrire la sortie au calendrier
+  MyWhoosh — « oui » explicite à chaque fois, jamais en headless. API non officielle : la première
+  inscription est relue pour vérification.
+- **Équipement** : home trainer, vélo, masse du vélo et FTP déclarée se renseignent dans le profil,
+  section « ### Vélo & home trainer ». La puissance tenue en zone 2 n'y figure pas : elle est calculée.
+- **Puissance des séances passées** : les échantillons FIT téléchargés avant cette fonctionnalité n'ont
+  pas de puissance ; les re-extraire avec `python3 skills/fit-download/scripts/download_fit.py
+  --refresh-dynamics` (ou les re-télécharger avec `--json --overwrite`).
+
 ## La source de données — `[data].source` (#68)
 
 ```toml
