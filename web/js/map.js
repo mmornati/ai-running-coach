@@ -1,5 +1,5 @@
 // Carte et profil de la page séance : trace GPS des échantillons FIT
-// (`/api/activity/<id>/track`), colorée par allure, FC ou pente, liée aux graphiques
+// (`/api/activity/<id>/track`), colorée par allure, GAP, FC ou pente, liée aux graphiques
 // du profil par un curseur commun. Leaflet (copié dans `web/vendor/leaflet/`, aucun
 // CDN) n'est chargé qu'ici, à la première carte affichée. Les couleurs viennent du CSS
 // (classes `trk--b0…b4`), jamais d'un style en ligne : CSP de `arc_serve.py`.
@@ -44,7 +44,9 @@ function interp(xs, ys, d, from) {
  * les graphiques reçoivent ~600 points à pas de distance constant, pour qu'un rang
  * régulier de `timeChart` soit une vraie échelle de distance. Allure et pente sont
  * dérivées du temps et de l'altitude sur une fenêtre glissante (jamais de la vitesse
- * instantanée, trop bruitée). Rend `null` sans distance exploitable.
+ * instantanée, trop bruitée). GAP (famille course à pied) : allure de la même fenêtre
+ * divisée par le facteur de pente moyen `gf` calculé par le serveur (`arc_gap.gap_factor`,
+ * jamais une seconde copie du modèle ici). Rend `null` sans distance exploitable.
  */
 export function resampleByDistance(track, target = 600) {
   const idx = [];
@@ -57,8 +59,8 @@ export function resampleByDistance(track, target = 600) {
   if (total < 200) return null;
   const step = Math.max(10, total / target);
   const n = Math.floor(total / step) + 1;
-  const cols = { t: pick("t"), alt: pick("alt"), hr: pick("hr"), cad: pick("cad"), lat: pick("lat"), lon: pick("lon") };
-  const out = { step, n, d: [], t: [], alt: [], hr: [], cad: [], lat: [], lon: [], pace: [], grade: [] };
+  const cols = { t: pick("t"), alt: pick("alt"), hr: pick("hr"), cad: pick("cad"), lat: pick("lat"), lon: pick("lon"), gf: pick("gf") };
+  const out = { step, n, d: [], t: [], alt: [], hr: [], cad: [], lat: [], lon: [], gf: [], pace: [], gap: [], grade: [] };
   const cursor = Object.fromEntries(Object.keys(cols).map((k) => [k, 0]));
   for (let j = 0; j < n; j++) {
     const d = xs[0] + j * step;
@@ -80,7 +82,15 @@ export function resampleByDistance(track, target = 600) {
     const span = (Math.min(n - 1, j + wPace) - Math.max(0, j - wPace)) * step;
     const pace = t0 != null && t1 != null && span > 0 ? ((t1 - t0) / span) * 1000 : null;
     // Au-delà de 20 min/km, la montre était à l'arrêt (pause, ravitaillement) : pas une allure.
-    out.pace.push(pace != null && pace > 90 && pace < 1200 ? pace : null);
+    const moving = pace != null && pace > 90 && pace < 1200;
+    out.pace.push(moving ? pace : null);
+    // Facteur moyen sur la même fenêtre : à pas de distance constant, c'est la moyenne
+    // pondérée par la distance, donc allure ÷ facteur = temps ÷ distance « équivalent plat ».
+    let sum = 0, cnt = 0;
+    for (let k = Math.max(0, j - wPace); k <= Math.min(n - 1, j + wPace); k++) {
+      if (out.gf[k] != null) { sum += out.gf[k]; cnt++; }
+    }
+    out.gap.push(moving && cnt ? pace / (sum / cnt) : null);
     const a0 = at(out.alt, j - wGrade), a1 = at(out.alt, j + wGrade);
     const gspan = (Math.min(n - 1, j + wGrade) - Math.max(0, j - wGrade)) * step;
     out.grade.push(a0 != null && a1 != null && gspan > 0 ? (a1 - a0) / gspan : null);
@@ -116,6 +126,13 @@ export function colorModes(profile, hrBounds) {
     // Allure : plus RAPIDE = classe plus haute (couleur plus chaude), comme une zone FC.
     modes.pace = { label: "Allure", bin: (j) => { const b = binOf(profile.pace[j], paceEdges); return b == null ? null : 4 - b; },
       legend: ["la plus lente", "", "", "", "la plus rapide"], legendNote: "quintiles de la séance" };
+  }
+  const gapEdges = quantiles(profile.gap, [0.2, 0.4, 0.6, 0.8]);
+  if (gapEdges) {
+    // GAP : l'effort à pente neutralisée — une côte montée à bonne allure ajustée ressort
+    // aussi chaud qu'un plat rapide. Quintiles propres à la GAP de la séance.
+    modes.gap = { label: "GAP", bin: (j) => { const b = binOf(profile.gap[j], gapEdges); return b == null ? null : 4 - b; },
+      legend: ["la plus lente", "", "", "", "la plus rapide"], legendNote: "allure ajustée à la pente, quintiles de la séance" };
   }
   if (hrBounds && profile.hr.some((v) => v != null)) {
     const edges = hrBounds.slice(1, 5);

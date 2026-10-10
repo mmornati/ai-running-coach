@@ -608,8 +608,9 @@ faute de fréquence cardiaque et d'effort perçu, un astérisque.
 
 - **La carte** : la trace GPS des échantillons FIT sur un fond topographique
   (OpenTopoMap par défaut, `[dashboard].map_tiles`), colorée au choix par **allure**
-  (quintiles de la séance), **FC** (les mêmes zones que la barre « Zones FC »),
-  **pente** ou d'une seule couleur. Les montées détectées sont surlignées et
+  (quintiles de la séance), **GAP** (allure ajustée à la pente, même modèle que la GAP
+  de la séance, quintiles de la séance — course à pied seulement), **FC** (les mêmes
+  zones que la barre « Zones FC »), **pente** ou d'une seule couleur. Les montées détectées sont surlignées et
   numérotées comme dans leur tableau ; « Sur la carte », dans ce tableau, cadre la
   montée. Sans GPS (tapis, intérieur) ou sans FIT, une note le dit et la page reste
   complète. Le serveur de tuiles ne voit que la zone affichée, jamais la trace ; un
@@ -618,7 +619,7 @@ faute de fréquence cardiaque et d'effort perçu, un astérisque.
   long de la distance, sur un axe commun. Un seul curseur relie les quatre graphiques
   **et la carte** : survoler le profil déplace un point sur la trace, survoler la
   trace place le curseur du profil, avec la lecture complète (distance, altitude,
-  pente, FC, allure, cadence, temps écoulé). Les arrêts (ravitaillement, pause) ne
+  pente, FC, allure, GAP, cadence, temps écoulé). Les arrêts (ravitaillement, pause) ne
   sont pas des allures : au-delà de 20 min/km, la courbe s'interrompt.
 - **Les chiffres clés**, en trois groupes (effort, cœur, contexte) à côté de la
   carte : distance, durée (en mouvement, et totale quand les pauses dépassent une

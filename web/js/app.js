@@ -1757,7 +1757,7 @@ async function viewSession(id) {
   const group = (title, rows) => (rows.length ? `<section class="ledger__group"><h2>${title}</h2><dl class="ledger__rows">${rows.map(([k, v]) => `<div><dt>${k}</dt><dd>${v}</dd></div>`).join("")}</dl></section>` : "");
 
   const modes = profile ? colorModes(profile, d.hr_zones?.bounds_bpm) : {};
-  const modeOrder = ["pace", "hr", "grade", "plain"].filter((k) => modes[k]);
+  const modeOrder = ["pace", "gap", "hr", "grade", "plain"].filter((k) => modes[k]);
   const firstMode = modeOrder[0];
   const mapHtml = hasMap ? `<figure class="session-map">
       <div class="map" id="s-map" role="region" aria-label="Carte de la séance : trace GPS"></div>
@@ -1937,6 +1937,7 @@ function profileSection(p, climbs, showElevation) {
       + (g != null ? ` · pente ${g > 0 ? "+" : ""}${F.num(g * 100, 0)}${NB}%` : "")
       + (p.hr[j] != null ? ` · ${F.num(p.hr[j])}${NB}bpm` : "")
       + (p.pace[j] != null ? ` · ${F.paceFromSecPerKm(p.pace[j])}` : "")
+      + (p.gap[j] != null ? ` · GAP ${F.paceFromSecPerKm(p.gap[j])}` : "")
       + (p.cad[j] != null ? ` · ${F.num(p.cad[j])}${NB}pas/min` : "")
       + (p.t[j] != null ? ` <span class="muted">· ${F.clockShort(p.t[j] - (p.t[0] || 0))}</span>` : ""));
   };
