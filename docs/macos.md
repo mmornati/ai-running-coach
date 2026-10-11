@@ -22,9 +22,9 @@ L'application **AI Running Coach** évite le clonage Git, les options de ligne d
 
 ## Installer
 
-1. Téléchargez `AI-Running-Coach-<version>.dmg` depuis la page des versions.
+1. Téléchargez `AI-Running-Coach-<version>-unsigned.dmg` depuis la [page des versions](https://github.com/mmornati/ai-running-coach/releases/latest). Une seule image sert aux Mac Apple Silicon et Intel (macOS 13 ou plus récent).
 2. Ouvrez le DMG et glissez **AI Running Coach** dans **Applications**.
-3. Lancez l'application.
+3. Lancez l'application. Elle n'est pas signée par Apple : la première fois, macOS la bloque. Fermez l'alerte, ouvrez **Réglages Système → Confidentialité et sécurité**, puis cliquez sur **Ouvrir quand même** (une seule fois). En Terminal, `xattr -dr com.apple.quarantine "/Applications/AI Running Coach.app"` produit le même effet.
 4. Renseignez votre prénom, votre année de naissance, votre expérience, vos disponibilités et votre lieu d'entraînement ; les blessures, données physiologiques et préférences personnelles sont proposées juste en dessous mais peuvent attendre.
 5. Décrivez votre course et votre objectif. Si vous n'en avez pas encore, indiquez-le : la première conversation pourra servir à les définir.
 6. Choisissez votre source sportive, votre pratique, vos sports croisés, le ton et la longueur des retours, les unités, votre équipe et la façon de parler au coach.
@@ -95,6 +95,8 @@ Le DMG se construit sur macOS avec :
 scripts/build-macos-dmg.sh
 ```
 
-Voir [`macos/AI-Running-Coach/README.md`](https://github.com/mmornati/ai-running-coach/tree/main/macos/AI-Running-Coach) pour la signature Developer ID et la notarisation Apple. Un DMG public doit être signé et notarié ; la signature ad hoc produite sans identité sert uniquement aux tests locaux.
+Voir [`macos/AI-Running-Coach/README.md`](https://github.com/mmornati/ai-running-coach/tree/main/macos/AI-Running-Coach) pour la signature Developer ID et la notarisation Apple. Le projet n'a pas de compte Apple Developer : le workflow publie donc un DMG signé ad hoc, nommé `…-unsigned.dmg`, accompagné de son empreinte `.sha256`, et ajoute aux notes de la release la marche à suivre pour l'ouvrir. Si les secrets `MACOS_CERTIFICATE_P12`, `MACOS_CERTIFICATE_PASSWORD`, `MACOS_SIGNING_IDENTITY`, `APPLE_ID`, `APPLE_TEAM_ID` et `APPLE_APP_PASSWORD` sont un jour ajoutés, le même workflow signe, notarise et publie le DMG sous son nom normal.
 
-Le workflow **Tag a release** écrit le numéro dans le fichier `VERSION` (commit `chore(release)` sur `main`, qui porte le tag), d'où le DMG tire son numéro. Il crée ensuite la release officielle, puis appelle le workflow macOS qui construit, signe et ajoute le DMG. Un tag poussé manuellement déclenche les deux workflows séparément, sans réécrire `VERSION` : le mettre à jour soi-même avant de taguer ; le workflow macOS attend alors que la release existe avant d'y joindre le fichier.
+Pour joindre le DMG à une release existante : onglet Actions → **Application macOS** → Run workflow, avec le tag dans le champ « tag ».
+
+Le workflow **Tag a release** écrit le numéro dans le fichier `VERSION` (commit `chore(release)` sur `main`, qui porte le tag), d'où le DMG tire son numéro. Il crée ensuite la release officielle, puis appelle le workflow macOS qui construit le DMG (signé si les secrets Apple existent) et le joint à la release. Un tag poussé manuellement déclenche les deux workflows séparément, sans réécrire `VERSION` : le mettre à jour soi-même avant de taguer ; le workflow macOS attend alors que la release existe avant d'y joindre le fichier.

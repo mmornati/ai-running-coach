@@ -1,7 +1,17 @@
 name: Application macOS
 
+# Sans identité Apple (secrets MACOS_*/APPLE_*), le DMG est signé ad hoc,
+# publié sous le nom « …-unsigned.dmg » avec son empreinte SHA-256, et la
+# release reçoit la marche à suivre pour l'ouvrir malgré Gatekeeper. Dès que
+# les secrets existent, le même workflow signe, notarise et publie le DMG normal.
 on:
   workflow_dispatch:
+    inputs:
+      tag:
+        description: "Tag d'une release existante à laquelle joindre le DMG (vide = artefact seul)"
+        type: string
+        required: false
+        default: ""
   workflow_call:
     inputs:
       tag:
@@ -55,16 +65,34 @@ jobs:
       - name: Construire le DMG universel
         run: scripts/build-macos-dmg.sh
 
+      - name: Nommer le DMG et calculer son empreinte
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          dmgs=(dist/AI-Running-Coach-*.dmg)
+          [ "${#dmgs[@]}" -eq 1 ] || { echo "::error::Un seul DMG attendu, trouvé : ${dmgs[*]:-aucun}"; exit 1; }
+          dmg="${dmgs[0]}"
+          if [ "${ARC_SIGNED_RELEASE:-}" != "true" ]; then
+            mv "$dmg" "${dmg%.dmg}-unsigned.dmg"
+            dmg="${dmg%.dmg}-unsigned.dmg"
+          fi
+          name="$(basename "$dmg")"
+          (cd dist && shasum -a 256 "$name" > "$name.sha256")
+          echo "ARC_DMG_NAME=$name" >> "$GITHUB_ENV"
+
       - uses: actions/upload-artifact@v4
         with:
           name: AI-Running-Coach-macOS
-          path: dist/AI-Running-Coach-*.dmg
+          path: |
+            dist/AI-Running-Coach-*.dmg
+            dist/AI-Running-Coach-*.dmg.sha256
           if-no-files-found: error
 
       - name: Publier sur la version GitHub
-        if: ${{ env.ARC_SIGNED_RELEASE == 'true' && (inputs.tag != '' || startsWith(github.ref, 'refs/tags/')) }}
+        if: ${{ inputs.tag != '' || startsWith(github.ref, 'refs/tags/') }}
         env:
           GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
           TAG: ${{ inputs.tag || github.ref_name }}
         run: |
           set -euo pipefail
@@ -78,4 +106,27 @@ jobs:
             fi
             sleep 5
           done
-          gh release upload "$TAG" dist/AI-Running-Coach-*.dmg --clobber
+          gh release upload "$TAG" "dist/$ARC_DMG_NAME" "dist/$ARC_DMG_NAME.sha256" --clobber
+
+          # Notes d'ouverture ajoutées une seule fois (marqueur), seulement sans signature Apple.
+          if [ "${ARC_SIGNED_RELEASE:-}" != "true" ]; then
+            notes="$RUNNER_TEMP/notes.md"
+            gh release view "$TAG" --json body -q .body > "$notes"
+            if ! grep -q 'arc-macos-unsigned' "$notes"; then
+              cat >> "$notes" <<EOF_NOTES
+
+          <!-- arc-macos-unsigned -->
+          ## Application macOS
+
+          \`$ARC_DMG_NAME\` : application universelle (Apple Silicon et Intel), macOS 13 ou plus récent.
+          Elle n'est **pas signée par Apple** : au premier lancement, macOS la bloque.
+
+          1. Ouvrez le DMG et glissez **AI Running Coach** dans **Applications**.
+          2. Lancez-la une fois, fermez l'alerte, puis ouvrez **Réglages Système → Confidentialité et sécurité** et cliquez sur **Ouvrir quand même**.
+
+          Empreinte SHA-256 : \`$ARC_DMG_NAME.sha256\` (\`shasum -a 256 -c $ARC_DMG_NAME.sha256\`).
+          EOF_NOTES
+              gh release edit "$TAG" --notes-file "$notes"
+            fi
+          fi
+          echo "### DMG \`$ARC_DMG_NAME\` joint à la release $TAG" >> "$GITHUB_STEP_SUMMARY"
