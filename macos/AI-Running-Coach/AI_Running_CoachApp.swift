@@ -292,7 +292,20 @@ final class CoachAppModel: ObservableObject {
     @Published var dashboardRunning = false
     @Published var diagnostics = ""
     @Published var showDiagnostics = false
+    let appUpdater = AppUpdater()
     @Published var updateAvailable = false
+    @Published var updateWaiting = false
+    private var automaticUpdateAttempted = false
+
+    var operationInProgress: Bool {
+        phase == .installing || manualSyncRunning || enrichmentSaving || enrichmentLoading
+    }
+
+    func applyPendingEngineUpdate() {
+        guard updateAvailable, !automaticUpdateAttempted, !operationInProgress else { return }
+        automaticUpdateAttempted = true
+        updateEngine()
+    }
     @Published private(set) var wasUpdating = false
     @Published var showOptionalProfile = false
     @Published var showEnrichment = false
@@ -318,8 +331,13 @@ final class CoachAppModel: ObservableObject {
     var bundleVersion: String { Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "development" }
     var engineBuild: String { Bundle.main.object(forInfoDictionaryKey: "ARCEngineBuild") as? String ?? bundleVersion }
 
+    var engineRecoveryPending: Bool {
+        fm.fileExists(atPath: appSupport.appendingPathComponent("engine.previous").path)
+    }
+
     var isInstalled: Bool {
-        fm.isExecutableFile(atPath: engineURL.appendingPathComponent("install.sh").path)
+        (fm.isExecutableFile(atPath: engineURL.appendingPathComponent("install.sh").path)
+            || fm.isExecutableFile(atPath: appSupport.appendingPathComponent("engine.previous/install.sh").path))
             && fm.fileExists(atPath: workspaceURL.appendingPathComponent("config/workspace.user.toml").path)
     }
 
@@ -354,9 +372,10 @@ final class CoachAppModel: ObservableObject {
         }
         phase = installed ? .ready : .welcome
         updateAvailable = installed && (
-            defaults.string(forKey: "engineVersion") != bundleVersion
+            engineRecoveryPending || defaults.string(forKey: "engineVersion") != bundleVersion
             || defaults.string(forKey: "engineBuild") != engineBuild
         )
+        appUpdater.isBusy = { [weak self] in self?.operationInProgress ?? false }
         NotificationCenter.default.addObserver(
             forName: NSApplication.willTerminateNotification,
             object: nil,
@@ -464,6 +483,8 @@ final class CoachAppModel: ObservableObject {
     }
 
     func updateEngine() {
+        guard !operationInProgress else { return }
+        updateWaiting = false
         wasUpdating = true
         phase = .installing
         progress = 0.05
@@ -473,11 +494,20 @@ final class CoachAppModel: ObservableObject {
         Task {
             do {
                 try await ensureDeveloperTools()
-                try await installEngine()
+                guard let helper = Bundle.main.url(forResource: "arc_engine_update", withExtension: "py"),
+                      let archive = Bundle.main.url(forResource: "engine", withExtension: "tar.gz") else {
+                    throw AppFailure("Le moteur embarqué est introuvable. Téléchargez à nouveau l’application.")
+                }
+                dashboardProcess?.terminate()
+                dashboardProcess = nil
+                dashboardBaseURL = nil
+                dashboardRunning = false
                 progress = 0.35
                 progressTitle = "Vérification des composants"
                 let args = [
-                    engineURL.appendingPathComponent("install.sh").path,
+                    "python3", helper.path,
+                    "--archive", archive.path, "--engine", engineURL.path,
+                    "--workspace", workspaceURL.path, "--",
                     "--workspace", workspaceURL.path,
                     "--source", choices.source.rawValue,
                     "--ide", integratedChatEnabled ? IDEChoice.opencode.rawValue : choices.ide.rawValue,
@@ -486,11 +516,25 @@ final class CoachAppModel: ObservableObject {
                     "--sync-runner", choices.syncRunner
                 ]
                 let result = try await runProcess(
-                    executable: "/bin/bash",
+                    executable: "/usr/bin/env",
                     arguments: args,
-                    directory: engineURL,
+                    directory: appSupport,
                     streamOutput: true
                 )
+                if result.code == 75 {
+                    updateWaiting = true
+                    phase = .ready
+                    Task { @MainActor in
+                        while updateWaiting {
+                            try? await Task.sleep(nanoseconds: 30_000_000_000)
+                            if updateWaiting && !operationInProgress {
+                                updateEngine()
+                                return
+                            }
+                        }
+                    }
+                    return
+                }
                 guard result.code == 0 else { throw AppFailure("La mise à jour s’est arrêtée (code \(result.code)).") }
                 defaults.set(bundleVersion, forKey: "engineVersion")
                 defaults.set(engineBuild, forKey: "engineBuild")
@@ -530,7 +574,7 @@ final class CoachAppModel: ObservableObject {
         enrichmentError = ""
         Task {
             do {
-                var result = try await runProcess(
+                let result = try await runProcess(
                     executable: "/usr/bin/env",
                     arguments: [
                         "python3",
@@ -541,22 +585,10 @@ final class CoachAppModel: ObservableObject {
                     directory: engineURL,
                     streamOutput: false
                 )
-                // Une app remplacée avec le même numéro 0.2.0 peut encore avoir
-                // l'ancien moteur dans Application Support. argparse renvoie 2
-                // quand cet ancien script ne connaît pas encore --export-state.
+                // Ne jamais remplacer le moteur depuis ce parcours : la mise à
+                // jour dédiée prend le verrou de synchronisation et garde un secours.
                 if result.code == 2 {
-                    try await installEngine()
-                    result = try await runProcess(
-                        executable: "/usr/bin/env",
-                        arguments: [
-                            "python3",
-                            engineURL.appendingPathComponent("scripts/coach_setup.py").path,
-                            "--workspace", workspaceURL.path,
-                            "--export-state"
-                        ],
-                        directory: engineURL,
-                        streamOutput: false
-                    )
+                    throw AppFailure("Mettez à jour le moteur depuis l’accueil, puis réessayez.")
                 }
                 guard result.code == 0,
                       let data = result.output.data(using: .utf8),
@@ -1663,7 +1695,7 @@ struct ReadyView: View {
             if model.updateAvailable {
                 GroupBox {
                     HStack {
-                        Label("Une nouvelle version du moteur est incluse dans l’application.", systemImage: "arrow.down.circle.fill")
+                        Label(model.updateWaiting ? "Le moteur sera mis à jour après la synchronisation en cours." : "Une nouvelle version du moteur est incluse dans l’application.", systemImage: "arrow.down.circle.fill")
                         Spacer()
                         Button("Mettre à jour") { model.updateEngine() }.buttonStyle(.borderedProminent)
                     }.padding(8)
@@ -1787,7 +1819,7 @@ struct FailedView: View {
 }
 
 struct RootView: View {
-    @StateObject private var model = CoachAppModel()
+    @ObservedObject var model: CoachAppModel
     var body: some View {
         Group {
             switch model.phase {
@@ -1798,14 +1830,47 @@ struct RootView: View {
             }
         }
         .frame(minWidth: 780, minHeight: 620)
+        .task { model.applyPendingEngineUpdate() }
+    }
+}
+
+struct UpdateSettingsView: View {
+    @ObservedObject var updater: AppUpdater
+    var body: some View {
+        Form {
+            Toggle("Rechercher automatiquement les mises à jour", isOn: Binding(
+                get: { updater.automaticallyChecks }, set: { updater.automaticallyChecks = $0 }))
+            Toggle("Télécharger et installer automatiquement", isOn: Binding(
+                get: { updater.automaticallyDownloads }, set: { updater.automaticallyDownloads = $0 }))
+            Text("Les mises à jour suivent les versions publiées. Vos données personnelles sont conservées.")
+                .font(.caption).foregroundStyle(.secondary)
+            if !updater.isAvailable {
+                Text("Les mises à jour ne sont pas configurées pour cette version de développement.")
+            }
+        }.padding(24).frame(width: 460).disabled(!updater.isAvailable)
+    }
+}
+
+struct UpdateCommands: Commands {
+    @ObservedObject var updater: AppUpdater
+    var body: some Commands {
+        CommandGroup(after: .appInfo) {
+            Button("Rechercher une mise à jour…") { updater.checkForUpdates() }
+                .disabled(!updater.canCheckForUpdates)
+        }
     }
 }
 
 @main
 struct AIRunningCoachApp: App {
+    @StateObject private var model = CoachAppModel()
     var body: some Scene {
-        WindowGroup { RootView() }
+        WindowGroup { RootView(model: model) }
             .windowStyle(.hiddenTitleBar)
-            .commands { CommandGroup(replacing: .newItem) {} }
+            .commands {
+                CommandGroup(replacing: .newItem) {}
+                UpdateCommands(updater: model.appUpdater)
+            }
+        Settings { UpdateSettingsView(updater: model.appUpdater) }
     }
 }

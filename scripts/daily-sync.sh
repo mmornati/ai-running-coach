@@ -23,6 +23,12 @@
 # =============================================================================
 set -euo pipefail
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib/config.sh"
+# Le verrou partagé couvre toute la sync, y compris ses lectures de configuration.
+# La mise à jour macOS prend le même verrou en exclusif avant de remplacer le moteur.
+if [[ "${ARC_ENGINE_LOCKED:-}" != "1" ]]; then
+    exec python3 "$ARC_ENGINE_ROOT/scripts/arc_engine_update.py" --workspace "$ARC_WORKSPACE" \
+        --sync -- /bin/bash "$0" "$@"
+fi
 # shellcheck source=lib/sync_tools.sh
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib/sync_tools.sh"
 

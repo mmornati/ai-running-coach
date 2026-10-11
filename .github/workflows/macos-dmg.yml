@@ -52,13 +52,47 @@ jobs:
           echo "ARC_NOTARY_PROFILE=ai-running-coach-ci" >> "$GITHUB_ENV"
           echo "ARC_SIGNED_RELEASE=true" >> "$GITHUB_ENV"
 
+      - name: Configurer les mises à jour des versions publiées
+        if: ${{ inputs.tag != '' || startsWith(github.ref, 'refs/tags/') }}
+        env:
+          TAG: ${{ inputs.tag || github.ref_name }}
+          PUBLIC_KEY: ${{ vars.SPARKLE_PUBLIC_KEY }}
+          PRIVATE_KEY: ${{ secrets.SPARKLE_PRIVATE_KEY }}
+        run: |
+          set -euo pipefail
+          if [[ "${ARC_SIGNED_RELEASE:-}" != true || -z "$PUBLIC_KEY" || -z "$PRIVATE_KEY" ]]; then
+            echo "::error::Une release exige la signature Apple et les clés SPARKLE_PUBLIC_KEY / SPARKLE_PRIVATE_KEY."
+            exit 1
+          fi
+          echo "ARC_APP_VERSION=${TAG#v}" >> "$GITHUB_ENV"
+          echo "ARC_SPARKLE_PUBLIC_KEY=$PUBLIC_KEY" >> "$GITHUB_ENV"
+          echo "ARC_UPDATE_FEED_URL=https://github.com/$GITHUB_REPOSITORY/releases/latest/download/appcast.xml" >> "$GITHUB_ENV"
+
       - name: Construire le DMG universel
         run: scripts/build-macos-dmg.sh
+
+      - name: Signer le flux de mises à jour
+        if: ${{ env.ARC_SIGNED_RELEASE == 'true' && (inputs.tag != '' || startsWith(github.ref, 'refs/tags/')) }}
+        env:
+          TAG: ${{ inputs.tag || github.ref_name }}
+          PRIVATE_KEY: ${{ secrets.SPARKLE_PRIVATE_KEY }}
+        run: |
+          set -euo pipefail
+          SPARKLE_DIR="$(scripts/fetch-sparkle.sh)"
+          mkdir -p dist/updates
+          cp dist/AI-Running-Coach-*.dmg dist/updates/
+          printf '%s' "$PRIVATE_KEY" | "$SPARKLE_DIR/bin/generate_appcast" --ed-key-file - \
+            --maximum-deltas 0 \
+            --download-url-prefix "https://github.com/$GITHUB_REPOSITORY/releases/download/$TAG/" \
+            --link "https://github.com/$GITHUB_REPOSITORY/releases/tag/$TAG" dist/updates
+          test -s dist/updates/appcast.xml
 
       - uses: actions/upload-artifact@v4
         with:
           name: AI-Running-Coach-macOS
-          path: dist/AI-Running-Coach-*.dmg
+          path: |
+            dist/AI-Running-Coach-*.dmg
+            dist/updates/appcast.xml
           if-no-files-found: error
 
       - name: Publier sur la version GitHub
@@ -78,4 +112,4 @@ jobs:
             fi
             sleep 5
           done
-          gh release upload "$TAG" dist/AI-Running-Coach-*.dmg --clobber
+          gh release upload "$TAG" dist/AI-Running-Coach-*.dmg dist/updates/appcast.xml --clobber
