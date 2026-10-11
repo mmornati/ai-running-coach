@@ -20,6 +20,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from unittest import mock
 import urllib.error
 import urllib.request
 from datetime import datetime, timedelta
@@ -263,11 +264,48 @@ class TestRunnerWiring(unittest.TestCase):
     def test_stop_http_stubs_is_idempotent_and_cases_without_a_stub_start_nothing(self):
         cases = {c["id"]: c for c in runner.load_cases()}
         with tempfile.TemporaryDirectory(prefix="arc-ow-nostub-") as tmp:
-            workspace = runner.build_workspace(Path(tmp), cases["health-primary-no-mention"])
+            workspace = runner.build_workspace(Path(tmp), cases["health-full-triad"])
             self.assertNotIn(str(workspace), runner._HTTP_STUBS)
-            self.assertNotIn("openwearables", (workspace / "config" / "workspace.user.toml").read_text(encoding="utf-8"))
+            user_toml = workspace / "config" / "workspace.user.toml"
+            self.assertTrue(not user_toml.exists() or "openwearables" not in user_toml.read_text(encoding="utf-8"))
             runner.stop_http_stubs(workspace)
             runner.stop_http_stubs(workspace)
+
+    def test_primary_case_keeps_primary_but_a_stub_runs_to_log_a_silent_call(self):
+        cases = {c["id"]: c for c in runner.load_cases()}
+        with tempfile.TemporaryDirectory(prefix="arc-ow-primary-") as tmp:
+            workspace = runner.build_workspace(Path(tmp), cases["health-primary-no-mention"])
+            try:
+                self.assertIn(str(workspace), runner._HTTP_STUBS)
+                config = (workspace / "config" / "workspace.user.toml").read_text(encoding="utf-8")
+                self.assertIn('source = "primary"', config)
+                self.assertNotIn('source = "openwearables"', config)
+            finally:
+                runner.stop_http_stubs(workspace)
+
+    def test_a_failure_after_the_stub_started_stops_it(self):
+        cases = {c["id"]: c for c in runner.load_cases()}
+        started = []
+        real_start = runner._start_http_stubs
+
+        def spy(*args, **kwargs):
+            result = real_start(*args, **kwargs)
+            started.extend(p for procs in runner._HTTP_STUBS.values() for p in procs)
+            return result
+
+        with tempfile.TemporaryDirectory(prefix="arc-ow-fail-") as tmp:
+            with mock.patch.object(runner, "_start_http_stubs", spy), \
+                    mock.patch.object(runner, "_write_fake_tokens", side_effect=RuntimeError("boom")):
+                with self.assertRaises(RuntimeError):
+                    runner.build_workspace(Path(tmp), cases["health-ow-full-strava"])
+        self.assertTrue(started and all(p.poll() is not None for p in started))
+
+    def test_subtable_numbers_are_bare_and_top_level_ones_keep_the_historical_string(self):
+        toml = runner._overrides_to_toml({"sync": {"lookback_days": 3},
+                                          "health": {"openwearables": {"stale_after_h": 36, "provider": "oura"}}})
+        self.assertIn('lookback_days = "3"', toml)
+        self.assertIn("stale_after_h = 36", toml)
+        self.assertIn('provider = "oura"', toml)
 
     def test_a_started_stub_is_stopped(self):
         cases = {c["id"]: c for c in runner.load_cases()}

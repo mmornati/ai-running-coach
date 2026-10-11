@@ -164,10 +164,14 @@ def _stop_all_http_stubs() -> None:
         stop_http_stubs(Path(workspace))
 
 
-def _toml_scalar(value) -> str:
+def _toml_scalar(value, bare_numbers: bool = False) -> str:
     # Comportement historique conservé : un entier est écrit comme CHAÎNE (`lookback_days = "3"`).
+    # `bare_numbers` (sous-tables seulement, ex. `[health.openwearables]`, #221) écrit entiers et
+    # décimaux nus, comme le lit `arc_openwearables.py` (`stale_after_h = 36`).
     if isinstance(value, bool):
         return "true" if value else "false"
+    if bare_numbers and isinstance(value, (int, float)):
+        return repr(value)
     if isinstance(value, list):
         return "[" + ", ".join(f'"{v}"' for v in value) + "]"
     return f'"{value}"'
@@ -188,7 +192,7 @@ def _overrides_to_toml(overrides: dict) -> str:
         lines.append("")
         for sub, sub_values in subtables.items():
             lines.append(f"[{section}.{sub}]")
-            lines.extend(f"{key} = {_toml_scalar(value)}" for key, value in sub_values.items())
+            lines.extend(f"{key} = {_toml_scalar(value, bare_numbers=True)}" for key, value in sub_values.items())
             lines.append("")
     return "\n".join(lines)
 
@@ -443,25 +447,29 @@ def build_workspace(root: Path, case: dict) -> Path:
     if not skills_link.exists():
         skills_link.symlink_to(REPO / "skills")
 
-    overrides = copy.deepcopy(case.get("config", {}))
-    # Open Wearables (#221) : le serveur HTTP factice est lancé ici, et la configuration du workspace de test
-    # pointe dessus — `[health].source` (sauf si le cas le fixe), `[health.openwearables]` avec l'adresse du
-    # serveur, le fournisseur (`oura` par défaut) et un fichier de clé EN MODE 600 hors du workspace.
-    http_stubs = _start_http_stubs(root, workspace, case)
-    if "openwearables" in http_stubs:
-        key_file = root / ".ow-api.key"
-        key_file.write_text(OW_STUB_KEY + "\n", encoding="utf-8")
-        key_file.chmod(0o600)
-        health = overrides.setdefault("health", {})
-        health.setdefault("source", "openwearables")
-        ow_section = health.setdefault("openwearables", {})
-        ow_section.setdefault("provider", OW_DEFAULT_PROVIDER)
-        ow_section["base_url"] = http_stubs["openwearables"]
-        ow_section["api_key_file"] = str(key_file)
-    if overrides:
-        (workspace / "config/workspace.user.toml").write_text(_overrides_to_toml(overrides), encoding="utf-8")
+    try:
+        overrides = copy.deepcopy(case.get("config", {}))
+        # Open Wearables (#221) : le serveur HTTP factice est lancé ici, et la configuration du workspace de test
+        # pointe dessus — `[health].source` (sauf si le cas le fixe), `[health.openwearables]` avec l'adresse du
+        # serveur, le fournisseur (`oura` par défaut) et un fichier de clé EN MODE 600 hors du workspace.
+        http_stubs = _start_http_stubs(root, workspace, case)
+        if "openwearables" in http_stubs:
+            key_file = root / ".ow-api.key"
+            key_file.write_text(OW_STUB_KEY + "\n", encoding="utf-8")
+            key_file.chmod(0o600)
+            health = overrides.setdefault("health", {})
+            health.setdefault("source", "openwearables")
+            ow_section = health.setdefault("openwearables", {})
+            ow_section.setdefault("provider", OW_DEFAULT_PROVIDER)
+            ow_section["base_url"] = http_stubs["openwearables"]
+            ow_section["api_key_file"] = str(key_file)
+        if overrides:
+            (workspace / "config/workspace.user.toml").write_text(_overrides_to_toml(overrides), encoding="utf-8")
 
-    _write_fake_tokens(root, case)
+        _write_fake_tokens(root, case)
+    except BaseException:
+        stop_http_stubs(workspace)      # ne jamais laisser un serveur factice orphelin si la suite échoue
+        raise
     return workspace
 
 

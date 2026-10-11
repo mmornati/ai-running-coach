@@ -27,7 +27,7 @@ or `upload_workout` — see the correspondence table in `AGENTS.md`.
 the dates still missing. No health data exists (HRV/resting HR/sleep/readiness): say so, never
 fetch a substitute. Marker "not yet synced" = no `strava_activity_id` in the file.
 
-**`[health].source = "openwearables"` (#221, opt-in; at `primary` — the default — ignore this paragraph and never mention it):** the health keys (sleep, HRV, resting HR, native score) of a day come from ONE call, `python3 scripts/arc_openwearables.py health-day --date <date> --json`, never from the Garmin or intervals.icu health tools (one health source per day); activities still follow `[data].source`. Persist its `arc` object as is. A health file with no night yet is not written (headless) so the next run retries; See `agents/coach.md`, HEALTH SOURCE.
+**`[health].source = "openwearables"` (#221, opt-in; at `primary` — the default — ignore this paragraph and never mention it):** the health keys (sleep, HRV, resting HR, native score) of a day come from ONE call, `python3 scripts/arc_openwearables.py health-day --date <date> --json`, never from the Garmin or intervals.icu health tools (one health source per day); activities still follow `[data].source`. Persist its `arc` object as is. A health file with no night yet (no `sleep_total_s` and no HRV) is not written (headless) so the next run retries. Such a file carries no Garmin-only key: no `body_battery_*`, `stress_avg`, `sleep_score` or `readiness_*` (the contract rejects them), so the « Body » extraction below does not apply to it. See `agents/coach.md`, HEALTH SOURCE.
 
 > **Resting HR:** use `get_rhr_day(date)`. It returns the value directly. `get_sleep_data` also contains it, but that payload can exceed 400 KB — never pull it just to read resting HR.
 
@@ -48,7 +48,9 @@ fetch a substitute. Marker "not yet synced" = no `strava_activity_id` in the fil
    `garmin_activity_id` from before a source switch) — or a `medical/*.md` file with **none of**
    `hrv_overnight_ms`, `hrv_sdnn_ms`, `resting_hr_bpm`, `readiness_score`, `provider_scores`, `sleep_total_s` (health keys are
    the SAME regardless of source — see the correspondence table in `AGENTS.md`; no
-   source-specific health marker exists). Its presence must never suppress
+   source-specific health marker exists). **Exception for an Open Wearables file** (`health_source: "openwearables"`): a day-level
+   `resting_hr_bpm` or `provider_scores` alone does not make it synced — it needs `sleep_total_s`, `hrv_overnight_ms` or `hrv_sdnn_ms`
+   (the night), otherwise the next sync fetches it again and merges. Its presence must never suppress
    that day's fetch. Once fetched, MERGE the fetched fields into that SAME file — never write
    a second file for the same date/session — and **never overwrite an athlete-declared key**:
    `carbs_g`, `fluid_intake_ml`, `rpe`, `gear_id`, `gear_ids`, `weight_pre_kg`, `weight_post_kg`
@@ -91,7 +93,7 @@ For each day, extract only what the file's ```arc block needs (schema: the
 - **Readiness** → `readiness_score`, `readiness_factors`
 - **Activity** → `garmin_activity_id`, `sport`, `duration_s`, `moving_duration_s` (`[data].source = "intervals"` : `elapsed_time_seconds` / `moving_time_seconds` of `icu_get_activity_details` — never `duration_s` from `icu_get_recent_activities`, which only returns the moving time, see `AGENTS.md`), `distance_m`, `elevation_gain_m` / `elevation_loss_m`, `avg_hr_bpm` / `max_hr_bpm`, `recovery_hr_bpm`, `training_effect_aerobic` / `training_effect_anaerobic`, `calories_kcal` (`[data].source = "intervals"` : `nutrition.calories_burned` of `icu_get_activity_details`, #165), `calories_bmr_kcal` (copy `get_activity`'s `bmr_calories` field verbatim, never recomputed; `[data].source = "intervals"` has no known equivalent field, see the correspondence table in `AGENTS.md` — omit the key rather than guess), `avg_power_w` / `max_power_w` / `normalized_power_w` (cycling / home trainer only: `get_activity`'s `avg_power_watts` / `max_power_watts` / `normalized_power_watts` verbatim — key absent when there is no power sensor, never 0), and the per-km `splits`
 - **Gear** (#133, garmin source, new activities only) → `gear_id` + `gear_source`, taken from `arc_index.py gear-attribution`'s output, never from your own reading of `get_activity_gear`
-- **Body** → `stress_avg`, `body_battery_high` / `body_battery_low` (if relevant)
+- **Body** → `stress_avg`, `body_battery_high` / `body_battery_low` (if relevant; never in a file whose `health_source` is `openwearables`)
 - **Weight** (#222, garmin source) → `weight_kg` + `weight_origin` (and `weight_garmin_kg` when the athlete's same-day value wins), taken from `scripts/arc_weight_sync.py plan`'s `set`/`remove` output for `get_daily_weigh_ins(date)` — never from your own reading of the reply. No weigh-in that day = no `weight_kg` (never carried over). Backfill: ONE `get_weigh_ins(start, end)` call for the whole range, then `arc_weight_sync.py plan --existing-only` (never creates a health file just for a weight). The weight write tools (`add_weigh_in`, `add_weigh_in_with_timestamps`, `delete_weigh_ins`, `add_body_composition`) are never called.
 
 Which health keys are expected follows `[health].morning_check`: `minimal` → readiness

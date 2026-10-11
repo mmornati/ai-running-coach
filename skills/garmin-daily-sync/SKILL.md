@@ -74,14 +74,26 @@ Remote Control) et l'IDE partagent. Il délègue tout à l'agent `coach` et au s
   « Training Readiness », jamais remis sur 100, jamais dans `readiness_score`/`sleep_score` ; une HRV en
   SDNN (Apple Health) reste indicative, « HRV RMSSD indisponible » ; une ligne de base HRV
   `en_construction` est dite (« ligne de base en reconstruction — N nuits avec <fabricant> »).
+  **Jamais de clé propre à Garmin** dans un fichier Open Wearables : ni body battery
+  (`get_body_battery`, `get_body_battery_events`), ni stress (`get_stress_data`, `get_stress_summary`,
+  `get_all_day_stress`), ni score de sommeil Garmin, ni `readiness_*` — n'écrire ni `body_battery_*`, ni
+  `stress_avg`, ni `sleep_score`, ni `readiness_score`/`readiness_factors` (le contrat les refuse, et deux
+  sources seraient mélangées). `scripts/daily-sync.sh` refuse ces outils par nom pour la plupart des
+  exécuteurs ; `codex` et la passerelle leanproxy ne filtrent pas : la consigne reste la seule protection.
   **Pannes et retards, dits et jamais lissés :** sortie 3 → aucun fichier santé, un segment
   `Alerte : santé Open Wearables indisponible : instance injoignable` (ou « clé refusée ») dans la ligne
-  `Alerte :` unique, et la synchronisation des séances continue ; **nuit de D pas encore arrivée** (ni
-  `sleep_total_s`, ni HRV dans `arc`, `unavailable` le dit — synchronisation en retard, typique en mode
-  `watch`) → **n'écrire AUCUN fichier santé** pour cette date, pour que le run suivant réessaie, et le
-  dire dans le résumé ; fichier `/log` déjà présent (douleur seule) : le laisser intact ; `freshness.stale`
-  → « dernière synchronisation Open Wearables il y a 40 h ». Un manque ne fait **jamais** passer un
-  verdict orange ou rouge au vert et n'est jamais remplacé par un « tout va bien ».
+  `Alerte :` unique, et la synchronisation des séances continue ; sortie 2 → même traitement, segment
+  `Alerte : santé Open Wearables : configuration incomplète` (fix : `/coach-doctor`, jamais proposé ici) ;
+  **nuit de D pas encore arrivée** = ni `sleep_total_s`, ni HRV (`hrv_overnight_ms`, `hrv_sdnn_ms`) dans
+  `arc` — même si le script rend une FC de repos du jour ou des `provider_scores` ; `unavailable` le dit,
+  synchronisation en retard, typique en mode `watch` → **n'écrire AUCUN fichier santé** pour cette date
+  (pesée comprise : la pesée Garmin du jour est différée, relue au run suivant dès que le fichier existe),
+  pour que le run suivant réessaie, et le dire dans le résumé ; fichier `/log` déjà présent (douleur
+  seule) : le laisser intact ; `freshness.stale` → recopier le `message` de l'avertissement (il porte
+  l'âge, ne rien calculer) ; `not_active`/`not_connected` → fabricant à reconnecter dans le portail Open
+  Wearables ; `unknown_score_scale`/`score_out_of_range` → score natif écarté, dit « indisponible ». Un
+  manque ne fait **jamais** passer un verdict orange ou rouge au vert et n'est jamais remplacé par un
+  « tout va bien ».
 - **Pas de contrôle de premier démarrage** : le coach propose `/coach-setup` quand aucune
   configuration n'existe. **Ici, ne jamais le proposer** : personne ne peut répondre, et la
   proposition finirait dans la notification push. Travailler avec les défauts et le signaler
@@ -151,15 +163,15 @@ Remote Control) et l'IDE partagent. Il délègue tout à l'agent `coach` et au s
    > athlete-declared fields, before any sync ran: see `garmin-sync-efficiency`'s "not yet
    > synced" marker). For each date that is missing OR not yet synced, fetch from the `garmin`
    > MCP server: activities (with splits and `recovery_hr_bpm`), sleep, HRV, training
-   > readiness, resting HR / body battery, and the day's weigh-in (`get_daily_weigh_ins(date)`,
+   > readiness, resting HR / body battery (body battery and stress only when `[health].source` is `primary`), and the day's weigh-in (`get_daily_weigh_ins(date)`,
    > `[data].source = "garmin"` only — pass the raw reply to `python3 scripts/arc_weight_sync.py
    > plan --garmin '<reply>' --date <date>` and write its `set`/`remove` keys as returned, never a
    > weight copied from another day; also re-check TODAY's health file once when it has no
    > `weight_kg` yet, even if already synced; report any `flag` once in your summary; never call
    > `add_weigh_in`/`delete_weigh_ins`). **If `[health].source = "openwearables"` (#221): the sleep, HRV, readiness and resting HR items above
    > do NOT come from `garmin` — read them with ONE `python3 scripts/arc_openwearables.py health-day --date <date> --json` per date, persist its `arc` object as is,
-   > and follow the « Source de la santé » rules of the skill (no Garmin health tool, no health file when the night is not there yet, never a
-   > Garmin readiness).** If a not-yet-synced file already exists for that
+   > and follow the « Source de la santé » rules of the skill (no Garmin health tool, no body battery, no stress, no Garmin sleep score or readiness key in that file,
+   > no health file at all — weigh-in included — while the night is not there yet: no `sleep_total_s` and no HRV).** If a not-yet-synced file already exists for that
    > date, MERGE the fetched Garmin fields into it — same file, never a second one for the
    > same session — preserving every athlete-declared key it already carries (`carbs_g`,
    > `fluid_intake_ml`, `rpe`, `gear_id`, `gear_ids`, `weight_pre_kg`, `weight_post_kg` on an activity;

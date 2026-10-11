@@ -26,6 +26,6 @@ error = "empty"
 [expect]
 tools_called = ["ow_sleep_summary"]
 tools_not_called = ["get_hrv_data", "get_rhr_day", "get_sleep_data", "get_training_readiness"]
-must_match = ['```resume', "pas encore|nouvel essai|prochain passage|réessa|en attente|en retard|aucune nuit"]
+must_match = ['```resume', "Santé\\s*:.*(pas encore|nouvel essai|prochain passage|réessa|en attente|en retard|aucune nuit)"]
 must_not_match = ["coach-setup", "tout va bien"]
 files_absent = ["medical/*_health.md"]

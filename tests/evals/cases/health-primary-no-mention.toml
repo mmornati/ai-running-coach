@@ -8,7 +8,15 @@ fixture = "base-week"
 
 [config.health]
 morning_check = "full"
+source = "primary"
+
+# Un serveur Open Wearables factice tourne MALGRÉ `source = "primary"` (adresse, fournisseur et clé sont
+# posés dans la configuration du workspace) : un appel silencieux de l'agent serait donc journalisé, au lieu
+# de rester invisible faute de serveur. `ow_recovery_summary` n'est déclaré que pour démarrer le serveur.
+[stub.openwearables.ow_recovery_summary]
+error = "empty"
 
 [expect]
 tools_called = ["get_hrv_data", "get_rhr_day", "get_training_readiness"]
+tools_not_called = ["ow_users", "ow_sleep_summary", "ow_recovery_summary", "ow_timeseries", "ow_health_scores"]
 must_not_match = ["Open ?Wearables|arc_openwearables"]

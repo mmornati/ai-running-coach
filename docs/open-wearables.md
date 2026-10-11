@@ -205,10 +205,6 @@ la passerelle leanproxy n'en a aucun non plus. Avec `[data].source = "intervals"
 `icu_get_wellness_for_date` sert aussi à la phase du cycle. Le fichier de clé est en outre interdit en lecture
 à l'exécuteur `claude` (`Read(<fichier>)`).
 
-> **En attendant #221** : les consignes des agents n'utilisent pas encore Open Wearables. Avec une santé Open
-> Wearables et des activités Garmin, les outils santé Garmin étant refusés, **le bilan matinal headless n'a pas de
-> santé** (il le dit, sans inventer) ; la lecture de la santé chez Open Wearables par les agents arrive avec #221.
-
 Avant chaque run, le script fait un seul `arc_openwearables.py check`. Si l'instance est morte ou la clé refusée,
 **la synchronisation Garmin continue** : le problème est journalisé et ajouté en une ligne au résumé (au plus une
 fois par jour). Les activités sont toujours lues chez Garmin.
@@ -259,9 +255,18 @@ repos ni le sommeil : **une seule source de santé par jour**. Les séances, ell
   ressenti déclaré, jamais sur la bande de l'ancienne source.
 - **Pannes et retards, toujours dits.** Instance injoignable ou clé refusée : « santé Open Wearables indisponible »
   (en interactif, `/coach-doctor` est proposé ; en headless, une mention dans la ligne `Alerte :` du résumé).
-  Nuit pas encore arrivée ou données périmées (« dernière synchronisation Open Wearables il y a 40 h ») : dit aussi.
+  Configuration incomplète : « santé Open Wearables : configuration incomplète », même traitement.
+  « Nuit pas encore arrivée » veut dire : ni durée de sommeil, ni HRV (même si une FC de repos du jour est là) ;
+  en headless, **aucun** fichier santé n'est alors écrit (pesée du jour comprise, relue au run suivant) et le
+  résumé le dit. Données périmées (message d'avertissement recopié, avec l'âge), fabricant non connecté ou
+  connexion inactive (à reconnecter dans le portail Open Wearables), score natif écarté faute d'échelle connue :
+  dits aussi.
   Jamais un « tout va bien » par défaut, et une donnée manquante ne fait jamais passer un verdict orange ou rouge au
   vert ; une douleur déclarée ou une annulation médicale garde son protocole.
+- **Rien de propre à Garmin.** Ni body battery, ni stress, ni score de sommeil Garmin, ni `readiness_*` dans un
+  fichier santé Open Wearables (le contrat les refuse). Les outils correspondants sont refusés par nom en
+  headless pour la plupart des exécuteurs ; en session interactive, avec `codex` et avec la passerelle leanproxy,
+  rien ne filtre : la consigne des agents est la protection.
 - **Fichier santé.** `medical/AAAA-MM-JJ_health.md` porte l'objet `arc` rendu par le script (`health_source`,
   `health_provider`, `health_device`…), `morning_check`, `verdict`, `verdict_reason` et `missing_reason` (recopié
   des mesures indisponibles), validé par `arc_index.py --validate`. Tout fichier santé qui porte une mesure dit sa

@@ -83,6 +83,9 @@ class TestOpenWearablesAudit(unittest.TestCase):
         # La page décrit l'option au présent, avec son opt-in strict, et ne promet plus rien comme à venir.
         text = DOC.read_text(encoding="utf-8")
         self.assertNotIn("pas encore livrée", text)
+        self.assertNotIn("En attendant #221", text)
+        self.assertNotIn("n'utilisent pas encore Open Wearables", text)
+        self.assertNotRegex(text, r"(?i)arrive avec #221")
         self.assertNotRegex(text, r"(?i)\*\*prévus?\*\*")
         self.assertNotRegex(text, r"(?i)\b(l'option|cette lecture) (est )?prévue\b")
         self.assertIn('[health].source = "openwearables"', text)

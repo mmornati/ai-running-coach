@@ -615,6 +615,8 @@ UNSATISFYING_ANSWERS_BY_CASE = {
     "health-ow-not-synced-headless": [
         "```resume\nSéances : à jour\nSanté : 7 h 15 de sommeil, HRV 48 ms\nAlerte : aucune\n```",
         "Aucun fichier santé écrit aujourd'hui.",
+        # faux positif d'un motif non ancré : « pas encore » porte sur la ligne des séances, pas sur la santé.
+        "```resume\nSéances : pas encore de nouvelle séance\nSanté : 7 h 15 de sommeil, HRV 48 ms\nAlerte : aucune\n```",
     ],
 }
 
