@@ -1861,7 +1861,6 @@ struct UpdateCommands: Commands {
     }
 }
 
-@main
 struct AIRunningCoachApp: App {
     @StateObject private var model = CoachAppModel()
     var body: some Scene {
@@ -1872,5 +1871,19 @@ struct AIRunningCoachApp: App {
                 UpdateCommands(updater: model.appUpdater)
             }
         Settings { UpdateSettingsView(updater: model.appUpdater) }
+    }
+}
+
+// Vérifie le chargement réel de toutes les bibliothèques sans initialiser le
+// modèle, ouvrir de fenêtre, lire le profil ou déclencher une mise à jour.
+@main
+enum CoachEntryPoint {
+    @MainActor
+    static func main() {
+        if CommandLine.arguments.contains("--smoke-test") {
+            print("AI Running Coach : bibliothèques chargées.")
+            return
+        }
+        AIRunningCoachApp.main()
     }
 }

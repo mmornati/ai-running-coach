@@ -95,11 +95,18 @@ python3 "$SCRIPT_DIR/arc_macos_plist.py" --template "$SOURCE_DIR/Info.plist" \
 
 IDENTITY="${ARC_CODESIGN_IDENTITY:--}"
 echo "→ Signature de l'application"
+# Une signature ad hoc n'a pas de Team ID : activer la validation des
+# bibliothèques du hardened runtime empêcherait de charger Sparkle au lancement.
+# Les distributions Developer ID conservent le hardened runtime et l'horodatage.
+SIGN_OPTIONS=()
+if [[ "$IDENTITY" != "-" ]]; then
+    SIGN_OPTIONS=(--options runtime --timestamp)
+fi
 # Signature de l'intérieur vers l'extérieur, y compris les services Sparkle.
 FRAMEWORK="$CONTENTS/Frameworks/Sparkle.framework/Versions/B"
 for component in "$FRAMEWORK/XPCServices/Downloader.xpc" "$FRAMEWORK/XPCServices/Installer.xpc" \
     "$FRAMEWORK/Autoupdate" "$FRAMEWORK/Updater.app" "$CONTENTS/Frameworks/Sparkle.framework" "$APP"; do
-    codesign --force --options runtime --timestamp --sign "$IDENTITY" "$component"
+    codesign --force ${SIGN_OPTIONS[@]+"${SIGN_OPTIONS[@]}"} --sign "$IDENTITY" "$component"
 done
 codesign --verify --deep --strict "$APP"
 

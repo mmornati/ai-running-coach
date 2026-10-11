@@ -47,3 +47,16 @@ class TestMacUpdateMetadata(unittest.TestCase):
         ):
             with self.subTest(kwargs=kwargs), self.assertRaises(ValueError):
                 self.config(**kwargs)
+
+    def test_local_signing_does_not_enable_library_validation_without_team_id(self):
+        build = (ROOT / "scripts/build-macos-dmg.sh").read_text()
+        self.assertIn('if [[ "$IDENTITY" != "-" ]]; then', build)
+        self.assertIn('SIGN_OPTIONS=(--options runtime --timestamp)', build)
+        self.assertNotIn('codesign --force --options runtime --timestamp --sign "$IDENTITY" "$component"', build)
+
+    def test_smoke_test_exits_before_starting_the_real_app(self):
+        source = (ROOT / "macos/AI-Running-Coach/AI_Running_CoachApp.swift").read_text()
+        entry = source.split('enum CoachEntryPoint {', 1)[1]
+        self.assertLess(entry.index('"--smoke-test"'), entry.index('AIRunningCoachApp.main()'))
+        test = (ROOT / "scripts/test-macos-update.sh").read_text()
+        self.assertIn("'--smoke-test'], check=True, timeout=15", test)

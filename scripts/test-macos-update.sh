@@ -23,6 +23,13 @@ unset ARC_NOTARY_PROFILE
 mkdir -p "$TEST_ROOT/updates"
 for version in 0.0.1-test 0.0.2-test; do
     ARC_APP_VERSION="$version" scripts/build-macos-dmg.sh
+    # Le vrai exécutable doit charger Sparkle avec sa signature finale. Une
+    # simple compilation ne détecte pas un refus de bibliothèque par dyld.
+    python3 - <<'PYTEST'
+import subprocess
+subprocess.run(['dist/macos-build/AI Running Coach.app/Contents/MacOS/AI Running Coach',
+                '--smoke-test'], check=True, timeout=15)
+PYTEST
     cp "dist/AI-Running-Coach-$version.dmg" "$TEST_ROOT/updates/"
     if [[ "$version" == 0.0.1-test ]]; then
         ditto "dist/macos-build/AI Running Coach.app" "$TEST_ROOT/Previous.app"

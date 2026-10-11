@@ -84,6 +84,11 @@ scripts/test-macos-update.sh
 Le second test construit deux vrais DMG universels avec une clé Ed25519 éphémère,
 crée un flux signé, fait découvrir la nouvelle version par Sparkle sur un serveur
 HTTP de boucle locale, vérifie les signatures puis vérifie le refus d'un DMG altéré.
+Il lance aussi le véritable exécutable avec `--smoke-test` : toutes ses bibliothèques
+sont chargées par macOS avant de quitter, sans initialiser le modèle ni lire de données.
+Les builds ad hoc n'activent pas le hardened runtime (absence de Team ID) ; les
+builds Developer ID le conservent. Ce test détecte les refus de chargement de Sparkle
+que la compilation seule ne voit pas.
 Il ne remplace aucune application installée et n'utilise ni le trousseau ni les
 préférences de l'application réelle. Il tourne dans le job macOS de la CI.
 La notarisation et le remplacement final d'une app Developer ID doivent également
