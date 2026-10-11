@@ -85,6 +85,20 @@ mkdir -p "$LOG_DIR"
 # « Backends MCP », et install.sh --source). Décide le serveur MCP autorisé,
 # le libellé des notifications et la commande de renouvellement suggérée.
 SOURCE="$(toml_get data source garmin)"
+# Santé du bilan matinal (#220, épopée #216) — [health].source, défaut « primary » (rien ne change).
+# « openwearables » : l'agent lit la santé du jour chez Open Wearables (scripts/arc_openwearables.py,
+# lecture seule). Opt-in strict : sans cette valeur, aucun appel et aucun message OW dans ce script.
+HEALTH_SOURCE="$(toml_get health source primary | tr '[:upper:]' '[:lower:]' | tr -d '[:space:]')"
+HEALTH_OW=0
+SYNC_DENY_GARMIN_HEALTH=0
+if [[ "$HEALTH_SOURCE" == "openwearables" ]]; then
+    HEALTH_OW=1
+    # « Une seule source santé par jour » IMPOSÉE, pas seulement demandée : avec une santé Open Wearables
+    # et des activités Garmin, les quatre outils santé Garmin sont refusés à l'exécuteur
+    # (scripts/lib/sync_tools.sh : SYNC_GARMIN_HEALTH_TOOLS). Avec intervals.icu on ne refuse RIEN :
+    # icu_get_wellness_for_date sert aussi à la phase du cycle ; la règle passe alors par le prompt.
+    [[ "$SOURCE" != "garmin" ]] || SYNC_DENY_GARMIN_HEALTH=1
+fi
 # Durcissement du run non surveillé : une consigne injectée dans une donnée synchronisée
 # (nom d'activité, description d'événement, fichier tiré par `git pull`) ne doit pas pouvoir
 # exécuter du Python arbitraire ni réécrire ce que cron exécutera ensuite.
@@ -153,10 +167,24 @@ else
     # #222 : le poids se LIT dans Garmin (get_daily_weigh_ins/get_weigh_ins), jamais il ne s'y écrit.
     CLAUDE_DISALLOWED+=",mcp__garmin__add_weigh_in,mcp__garmin__add_weigh_in_with_timestamps"
     CLAUDE_DISALLOWED+=",mcp__garmin__delete_weigh_ins,mcp__garmin__add_body_composition"
+    # #220 : santé lue chez Open Wearables → pas de santé Garmin le même jour (liste partagée).
+    # LIMITE (comme pour les écritures) : derrière la passerelle leanproxy, `invoke_tool` est un outil
+    # unique non filtrable par sous-outil — seule la consigne du skill protège alors.
+    if [[ "$SYNC_DENY_GARMIN_HEALTH" -eq 1 ]]; then
+        for _tool in $SYNC_GARMIN_HEALTH_TOOLS; do
+            CLAUDE_DISALLOWED+=",mcp__garmin__${_tool}"
+        done
+    fi
     CLAUDE_DISALLOWED+=",$PROTECTED_PATHS"
     SOURCE_LABEL="Garmin"
     MCP_SERVER_NAME="garmin"
     AUTH_CMD_HINT="uv run garmin-mcp-auth"
+fi
+if [[ "$HEALTH_OW" -eq 1 ]]; then
+    # #220 : l'agent n'a jamais à lire la clé d'API Open Wearables (seul le script la lit).
+    _ow_key="$(toml_get health.openwearables api_key_file "$HOME/.config/ai-running-coach/openwearables.key")"
+    CLAUDE_DISALLOWED+=",Read(${_ow_key/#\~/$HOME})"
+    unset _ow_key
 fi
 # En mode -p, un serveur MCP déclaré dans .mcp.json (portée projet) n'est chargé
 # que s'il a été approuvé interactivement ; on le passe explicitement.
@@ -213,6 +241,7 @@ OC_CONFIG_PY='
 import json, sys
 
 model, base_url, api_key_env, mcp_path = sys.argv[1:5]
+denied_health = sys.argv[5].split() if len(sys.argv) > 5 else []
 provider_id, _, model_id = model.partition("/")
 provider = {}
 if base_url:
@@ -239,7 +268,8 @@ for name, spec in servers.items():
     tools = env.get("GARMIN_ENABLED_TOOLS")
     if tools:
         env["GARMIN_ENABLED_TOOLS"] = ",".join(
-            t for t in tools.split(",") if not t.startswith(WRITE_PREFIXES))
+            t for t in tools.split(",")
+            if not t.startswith(WRITE_PREFIXES) and t not in denied_health)
     entry = {"type": "local", "command": [spec["command"]] + [str(a) for a in spec.get("args") or []],
              "enabled": True}
     if env:
@@ -247,6 +277,10 @@ for name, spec in servers.items():
     mcp[name] = entry
     for prefix in WRITE_PREFIXES:
         permission["%s_%s*" % (name, prefix)] = "deny"
+    if name.lower() == "garmin":
+        # Santé lue chez Open Wearables (#220) : les outils santé Garmin sont refusés explicitement.
+        for tool in denied_health:
+            permission["%s_%s" % (name, tool)] = "deny"
     if name.lower().startswith("strava"):
         # Strava (#164) : outils de r-huijts/strava-mcp qui AGISSENT (noms à tirets, hors des
         # préfixes ci-dessus) : connexion OAuth (navigateur), déconnexion, écriture Strava.
@@ -273,7 +307,8 @@ print(json.dumps(config, ensure_ascii=False, indent=2))
 '
 
 opencode_config_json() {
-    python3 -c "$OC_CONFIG_PY" "$SYNC_MODEL" "$SYNC_BASE_URL" "$API_KEY_ENV" "$MCP_CONFIG"
+    python3 -c "$OC_CONFIG_PY" "$SYNC_MODEL" "$SYNC_BASE_URL" "$API_KEY_ENV" "$MCP_CONFIG" \
+        "$(sync_health_denied_tools "$SOURCE" | tr '\n' ' ')"
 }
 
 # Configuration de sécurité propre au run Gemini. Le fichier est chargé comme
@@ -299,7 +334,7 @@ for name, spec in servers.items():
     env = dict(item.get("env") or {})
     tools = env.get("GARMIN_ENABLED_TOOLS", "")
     if source == "garmin" and tools:
-        kept = [t for t in tools.split(",") if not t.startswith(write_prefixes)]
+        kept = [t for t in tools.split(",") if not t.startswith(write_prefixes) and t not in writes]
         env["GARMIN_ENABLED_TOOLS"] = ",".join(kept)
         item["includeTools"] = kept
     elif source != "garmin":
@@ -325,13 +360,16 @@ print(json.dumps({
 gemini_config_json() {
     python3 -c "$GEMINI_CONFIG_PY" "$ARC_WORKSPACE/.gemini/settings.json" "$MCP_SERVER_NAME" \
         "$SYNC_GARMIN_WRITE_PREFIXES" "$(sync_read_tools "$SOURCE" | tr '\n' ' ')" \
-        "$(sync_write_tools "$SOURCE" | tr '\n' ' ')"
+        "$(sync_deny_tools "$SOURCE" | tr '\n' ' ')"
 }
 
 # Cursor : chaque outil d'écriture de la source est-il refusé (`Mcp(serveur:outil)`)
 # dans .cursor/cli.json ? Sans ces refus, `--force` les approuverait en headless.
-cursor_denies_writes() {
-    # shellcheck disable=SC2046  # un nom d'outil par mot (aucun ne contient d'espace)
+# Les refus santé Garmin (#220) se vérifient À PART (cursor_denies_health) : leur absence avertit, sans bloquer.
+cursor_denies_writes() { cursor_denies_list "$(sync_write_tools "$SOURCE" | tr '\n' ' ')"; }
+cursor_denies_health() { cursor_denies_list "$(sync_health_denied_tools "$SOURCE" | tr '\n' ' ')"; }
+cursor_denies_list() {
+    # shellcheck disable=SC2086  # un nom d'outil par mot (aucun ne contient d'espace)
     python3 -c '
 import json, sys
 path, server = sys.argv[1:3]
@@ -341,7 +379,7 @@ except (OSError, ValueError, AttributeError):
     sys.exit(1)
 missing = [t for t in sys.argv[3:] if f"Mcp({server}:{t})" not in deny]
 sys.exit(1 if missing else 0)
-' "$ARC_WORKSPACE/.cursor/cli.json" "$MCP_SERVER_NAME" $(sync_write_tools "$SOURCE")
+' "$ARC_WORKSPACE/.cursor/cli.json" "$MCP_SERVER_NAME" $1
 }
 
 # ---------------------------------------------------------------------------
@@ -460,7 +498,7 @@ detect_provider_failure() {
     local err="$1"
     PROVIDER_FAILURE=""
     [[ -n "$err" ]] || return 1
-    if printf '%s' "$err" | grep -qiE 'garmin|intervals|strava'; then
+    if printf '%s' "$err" | grep -qiE 'garmin|intervals|strava|open ?wearables'; then
         return 1
     fi
     if printf '%s' "$err" | grep -qiE '(^|[^0-9])402([^0-9]|$)|insufficient (credits|funds)|payment required|credit balance|requires more credits|out of credits'; then
@@ -532,7 +570,7 @@ build_command() {
                  --allow-tool=read --allow-tool=write
                  '--allow-tool=shell(python3:*)' "--allow-tool=$MCP_SERVER_NAME")
             local _tool
-            for _tool in $(sync_write_tools "$SOURCE"); do
+            for _tool in $(sync_deny_tools "$SOURCE"); do
                 CMD+=("--deny-tool=$MCP_SERVER_NAME($_tool)")
             done ;;
         opencode)
@@ -559,6 +597,9 @@ build_command() {
             # pas les serveurs MCP du projet.
             cursor_denies_writes || [[ "$DRY_RUN" -eq 1 ]] \
                 || die "Cursor : .cursor/cli.json ne refuse pas les outils d'écriture $SOURCE_LABEL — relancez ./install.sh (ou l'installation guidée) avant la synchronisation."
+            if [[ "$SYNC_DENY_GARMIN_HEALTH" -eq 1 ]] && ! cursor_denies_health && [[ "$DRY_RUN" -ne 1 ]]; then
+                warn "Cursor : .cursor/cli.json ne refuse pas les outils santé Garmin (santé lue chez Open Wearables) — seule la consigne du skill l'impose ; relancez ./install.sh."
+            fi
             CMD=(cursor-agent -p --force --approve-mcps --trust --output-format text "$(skill_prompt)") ;;
         *) die "Exécuteur inconnu : $RUNNER (claude|codex|copilot|opencode|gemini|cursor)" ;;
     esac
@@ -587,7 +628,7 @@ extract_resume() {
 # `Alerte :` plutôt que de s'y ajouter, précisément pour ne jamais dépasser 5
 # lignes en fonctionnement normal).
 enforce_resume_cap() {
-    local resume="$1" max=5
+    local resume="$1" max="${2:-5}"
     local -a lines=()
     local line
     while IFS= read -r line; do
@@ -917,6 +958,45 @@ detect_auth_failure() {
     return 1
 }
 
+# ---------------------------------------------------------------------------
+# Santé Open Wearables (#220) — contrôle préalable, JAMAIS bloquant pour la synchronisation Garmin
+# ---------------------------------------------------------------------------
+# Un seul `arc_openwearables.py check --timeout 5` avant le run (délai borné par requête) : une instance morte (sortie 3, « unreachable »),
+# une clé refusée (« auth ») ou une configuration incomplète (sortie 2) sont journalisées et ajoutées en
+# UNE ligne au résumé, une fois par jour (marqueur, comme le budget) — le run Garmin continue. La clé
+# n'est lue que par le script, jamais passée en argument ni en variable d'environnement, jamais journalisée
+# (le script ne la restitue pas). Sans `[health].source = "openwearables"`, cette fonction ne fait rien.
+OW_NOTICE=""
+ow_preflight() {
+    [[ "$HEALTH_OW" -eq 1 ]] || return 0
+    local out="" rc=0 code="" marker
+    out="$(python3 "$ARC_ENGINE_ROOT/scripts/arc_openwearables.py" --workspace "$ARC_WORKSPACE" check --json --timeout 5 2>>"$LOG_FILE")" || rc=$?
+    if [[ "$rc" -eq 0 ]]; then
+        log "Santé Open Wearables : instance joignable."
+        return 0
+    fi
+    code="$(printf '%s' "$out" | python3 -c '
+import json, sys
+try:
+    print((json.load(sys.stdin).get("error") or {}).get("code", ""))
+except Exception:
+    print("")
+' 2>/dev/null)" || code=""
+    case "$code" in
+        auth) OW_NOTICE="Santé Open Wearables : clé d'API refusée (401) — renouvelez-la dans le portail OW puis ./install.sh --health-source openwearables --ow-key-file FICHIER" ;;
+        unreachable|http|bad_response|redirect) OW_NOTICE="Santé Open Wearables : instance injoignable — la santé du jour n'est pas lue (Garmin synchronisé normalement)" ;;
+        *) OW_NOTICE="Santé Open Wearables : configuration incomplète ou invalide — lancez /coach-doctor" ;;
+    esac
+    warn "$OW_NOTICE (code $rc, ${code:-inconnu}) — voir docs/troubleshooting.md"
+    marker="$LOG_DIR/.sync-ow-notified-$(date +%F)"
+    if [[ -e "$marker" ]]; then
+        OW_NOTICE=""
+    else
+        : > "$marker"
+    fi
+    return 0
+}
+
 # Passerelle leanproxy SEULE dans .mcp.json (aucun serveur direct garmin/intervals) ?
 # Sous opencode, les outils appelés à travers la passerelle (leanproxy_invoke_tool)
 # échappent aux permissions par outil : la config générée refuse donc leanproxy_*
@@ -1026,6 +1106,7 @@ main() {
         exit 0
     fi
     git_pull_before_run
+    ow_preflight
 
     local output rc=0
     {
@@ -1108,7 +1189,13 @@ main() {
         warn "Aucun bloc \`\`\`resume trouvé — envoi des 5 dernières lignes de la sortie."
         resume="$(printf '%s\n' "$output" | tail -n 5)"
     fi
-    resume="$(enforce_resume_cap "$resume")"
+    if [[ -n "$OW_NOTICE" ]]; then
+        # L'alerte Open Wearables compte dans les 5 lignes du résumé : on réserve sa place AVANT le plafond.
+        resume="$(enforce_resume_cap "$resume" 4)
+⚠ $OW_NOTICE"
+    else
+        resume="$(enforce_resume_cap "$resume")"
+    fi
     ok "Résumé :"
     printf '%s\n' "$resume"
 
@@ -1160,6 +1247,10 @@ main() {
         resume="$resume
 ⚠ git : commit/push du workspace échoué — voir logs/"
         priority=4
+    fi
+    if [[ -n "$OW_NOTICE" ]]; then
+        [[ "$priority" -ge 4 ]] || priority=4
+        tags="$tags,warning"
     fi
     notify "$title" "$priority" "$tags" "$resume"
     telegram_summary "$title" "$priority" "$resume"

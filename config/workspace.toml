@@ -159,8 +159,9 @@ heat_threshold_c = 25.0
 cycle_tracking = "off"
 # Source des données de santé du bilan matinal (HRV, FC de repos, sommeil, readiness) — OPT-IN STRICT (#218).
 #   "primary"       — défaut : celle de [data].source (comportement historique, inchangé)
-#   "openwearables" — instance Open Wearables auto-hébergée, lecture seule (prévue, épopée #216) ;
-#                     jamais pour des données Garmin.
+#   "openwearables" — instance Open Wearables auto-hébergée, lecture seule (épopée #216) ;
+#                     jamais pour des données Garmin. Se pose par
+#                     ./install.sh --health-source openwearables --ow-url … --ow-provider … (docs/open-wearables.md).
 # Valeur invalide = "primary" + avertissement. Indépendant de `cycle_tracking`. HRV et FC de repos ne
 # sont jamais comparées d'une source à l'autre (lignes de base par source).
 source = "primary"

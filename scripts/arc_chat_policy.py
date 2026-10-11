@@ -120,7 +120,7 @@ DEFAULT_SCRIPTS = {
         "read_options": ["--plan", "--activity", "--planned-weather", "--actual-weather", "--fit"],
     },
     "scripts/coach_doctor.py": {
-        "flags": ["--json", "--probe-mcp"], "value_options": ["--check", "--now"],
+        "flags": ["--json", "--probe-mcp", "--probe-ow", "--no-probe-ow"], "value_options": ["--check", "--now"],
     },
     "skills/session-parts-analyzer/scripts/analyze_session_parts.py": {
         "flags": ["--quiet"],

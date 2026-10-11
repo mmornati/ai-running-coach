@@ -105,7 +105,7 @@ stale_after_h = 36   # au-delà, les données sont dites périmées
 | Valeur | Effet |
 |---|---|
 | `primary` | Défaut : la santé vient de `[data].source` (Garmin, intervals.icu, rien avec Strava). Comportement inchangé. |
-| `openwearables` | *Prévue (épopée #216, stories client et agents à venir).* Santé lue depuis une instance Open Wearables auto-hébergée, en lecture seule. **Jamais** pour des données Garmin. |
+| `openwearables` | Santé lue depuis une instance Open Wearables auto-hébergée, en lecture seule. **Jamais** pour des données Garmin. **Disponible à l'installation** (`./install.sh --health-source openwearables --ow-url … --ow-provider …`, [Installation](open-wearables.md#installation), #220) et contrôlée par `/coach-doctor` ; l'usage par les agents (bilan matinal) est **prévu** (#221). |
 
 Une valeur invalide donne `primary` et un avertissement ; un `provider` `garmin`
 (la donnée Garmin passe en direct) ou `strava` (aucune donnée de santé) est refusé de
