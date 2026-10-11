@@ -31,4 +31,4 @@ ARC_NOTARY_PROFILE="ai-running-coach" \
 scripts/build-macos-dmg.sh
 ```
 
-Le profil de notarisation se crée une fois avec `xcrun notarytool store-credentials`. Sans ces variables, le script produit une version ad hoc adaptée au développement local.
+Le profil de notarisation se crée une fois avec `xcrun notarytool store-credentials`. Sans ces variables, le script produit une version signée ad hoc : c'est elle que le workflow de release publie aujourd'hui sous le nom `AI-Running-Coach-<version>-unsigned.dmg` (le projet n'a pas de compte Apple Developer), avec son empreinte SHA-256 et les instructions d'ouverture dans les notes de la release.
