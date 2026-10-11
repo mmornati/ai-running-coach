@@ -1,0 +1,56 @@
+# #221 — santé du bilan matinal lue chez Open Wearables (`[health].source = "openwearables"`) alors que
+# l'entraînement vient de Strava (`[data].source = "strava"`) : le message de dégradation « HRV / FC de repos /
+# readiness indisponibles — source Strava » disparaît au profit des données Oura (serveur HTTP factice
+# `stub_openwearables_http.py`, fournisseur `oura` par défaut : HRV RMSSD 48,2 ms, FC de repos 47 bpm,
+# Readiness Oura 82/100, relatifs à la date du run).
+#
+# Ce que le cas vérifie : les appels de lecture du script (`ow_sleep_summary`, `ow_health_scores`), jamais le
+# résumé de récupération obsolète (`ow_recovery_summary`, scripté « vide » ici pour que le serveur factice démarre
+# sans rien changer aux données), aucun outil santé Garmin même si le serveur `garmin` reste câblé, un fichier
+# santé conforme au contrat qui porte sa provenance, le score nommé « Oura » et JAMAIS présenté comme le
+# Training Readiness Garmin.
+#
+# `must_not_match` : « Training Readiness » n'est pas interdit en soi — une bonne réponse peut dire que le
+# score Oura n'est « pas comparable au Training Readiness Garmin ». Seul le présenter COMME un Training
+# Readiness (« Training Readiness 82 », « Training Readiness : 82 », « Training Readiness Oura 82 ») est une
+# faute ; les formes sont vérifiées par tests/lint/test_eval_case_regex_safety.py.
+id = "health-ow-full-strava"
+prompt = "Valide ma séance de demain."
+fixture = "base-week"
+
+[config.data]
+source = "strava"
+
+[config.health]
+morning_check = "full"
+
+[config.agents]
+enabled = ["coach", "medical"]
+
+[stub.openwearables.ow_recovery_summary]
+error = "empty"
+
+[expect]
+tools_called = ["ow_sleep_summary", "ow_health_scores"]
+tools_not_called = ["ow_recovery_summary", "get_hrv_data", "get_rhr_day", "get_sleep_data", "get_training_readiness"]
+must_match = ["Oura"]
+must_not_match = [
+  "Training Readiness\\s*(?:[:=]|de|à|\\(?Oura\\)?)?\\s*\\d{1,3}\\b",
+  "indisponibles?\\s*[—–-]\\s*source Strava",
+]
+files_with_arc_block = ["medical/*_health.md"]
+
+[[expect.arc_field]]
+glob = "medical/*_health.md"
+path = "health_source"
+equals = "openwearables"
+
+[[expect.arc_field]]
+glob = "medical/*_health.md"
+path = "health_provider"
+equals = "oura"
+
+[[expect.arc_field]]
+glob = "medical/*_health.md"
+path = "provider_scores[*].provider"
+equals = "oura"

@@ -1,0 +1,14 @@
+# #221 — opt-in strict : sans `[health].source` (défaut `primary`), AUCUN agent ne parle d'Open Wearables, ne
+# l'appelle ni n'y fait allusion (même règle que `cycle-off-no-mention` pour le cycle et
+# `nutrition-garmin-off-no-proposal` pour la poussée nutrition). La santé vient de Garmin comme avant : le
+# triptyque complet est lu.
+id = "health-primary-no-mention"
+prompt = "Valide ma séance de demain."
+fixture = "base-week"
+
+[config.health]
+morning_check = "full"
+
+[expect]
+tools_called = ["get_hrv_data", "get_rhr_day", "get_training_readiness"]
+must_not_match = ["Open ?Wearables|arc_openwearables"]

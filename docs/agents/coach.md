@@ -269,6 +269,16 @@ une ligne neutre (jamais si le poids figure dans vos « sujets à ne pas comment
 de pesée hebdomadaire de votre profil est sauté quand Garmin a déjà le poids du jour. Aucune
 écriture du poids côté Garmin. Voir [Poids lu dans Garmin Connect](../garmin-setup.md#poids-lu-dans-garmin-connect-222).
 
+### Source de la santé (opt-in, #221)
+
+Seulement si `[health].source = "openwearables"` (défaut `primary` : **aucun appel, aucune mention**). Le bilan matinal
+lit alors HRV, FC de repos et sommeil chez Open Wearables par **un seul appel par jour**
+(`scripts/arc_openwearables.py health-day`) à la place des outils santé Garmin ; le score natif du fabricant est nommé
+(« Readiness Oura 82/100 »), jamais présenté comme le Training Readiness Garmin ni remis sur 100 ; une HRV en SDNN
+reste indicative ; une panne, une nuit pas encore arrivée ou des données périmées sont dites, jamais remplacées par un
+« tout va bien ». Les séances viennent toujours de `[data].source`. Voir
+[Le bilan matinal avec Open Wearables](../open-wearables.md#le-bilan-matinal-avec-open-wearables).
+
 ### Contexte du cycle menstruel (opt-in, #166)
 
 Seulement si `[health].cycle_tracking` n'est pas `off` (défaut : **aucune mention, aucun appel**). La phase du jour (Garmin, intervals.icu ou déclarée via `/log`) est ajoutée en **une ligne de contexte** à côté d'une HRV/FC de repos décalée et persistée (`cycle_phase`, `cycle_day`, `cycle_source`) ; elle n'est jamais une règle, jamais un diagnostic, et ne relâche jamais un verdict rouge, un garde-fou ou un signal de blessure. Voir [Cycle menstruel](../cycle-menstruel.md).

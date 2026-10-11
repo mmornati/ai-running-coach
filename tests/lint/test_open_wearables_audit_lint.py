@@ -78,13 +78,26 @@ class TestOpenWearablesAudit(unittest.TestCase):
             for other in _ow_refs(rel):
                 self.assertEqual(other, client, f"{rel} : OW_REF différent de scripts/arc_openwearables.py")
 
-    def test_health_integration_is_future_tense(self):
-        # #221 (livraison de `[health].source`) devra mettre à jour ce test et la
-        # page : « prévu » / « pas encore livrée » ne seront plus vrais à ce moment.
+    def test_health_integration_is_documented_as_delivered(self):
+        # #221 a livré la lecture santé par les agents : « prévu » / « pas encore livrée » ne sont plus vrais.
+        # La page décrit l'option au présent, avec son opt-in strict, et ne promet plus rien comme à venir.
         text = DOC.read_text(encoding="utf-8")
-        self.assertIn("prévu", text)
-        self.assertNotRegex(text, r"(?i)\b(est|sont) (désormais )?(branchée?s?|livrée?s?)\b")
-        self.assertIn("pas encore livrée", text)
+        self.assertNotIn("pas encore livrée", text)
+        self.assertNotRegex(text, r"(?i)\*\*prévus?\*\*")
+        self.assertNotRegex(text, r"(?i)\b(l'option|cette lecture) (est )?prévue\b")
+        self.assertIn('[health].source = "openwearables"', text)
+        self.assertIn("## Le bilan matinal avec Open Wearables", text)
+        self.assertIn("sont livrés", text)
+        # Les règles du bilan matinal sont dites : une seule source par jour, score natif nommé et jamais converti.
+        for needle in ("une seule source de santé par jour", "Nommer, jamais convertir", "SDNN", "tout va bien"):
+            self.assertIn(needle, text)
+
+    def test_other_docs_no_longer_promise_the_health_option(self):
+        for rel in ("docs/configuration.md", "docs/faq.md", "docs/marques.md"):
+            text = (REPO / rel).read_text(encoding="utf-8")
+            self.assertNotRegex(text, r"(?i)open wearables[^\n]{0,40}\*\*prévu\*\*", rel)
+            self.assertNotIn("pas encore livrée", text, rel)
+            self.assertNotIn("aucune donnée lue à ce jour", text, rel)
 
     def test_every_external_fact_is_dated(self):
         text = DOC.read_text(encoding="utf-8")

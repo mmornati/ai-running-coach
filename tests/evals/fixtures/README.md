@@ -131,3 +131,28 @@ car `test_stub_section_is_well_formed` exige `file` ou `error` sur toute
 entrée `[stub.intervals.<outil>]` (une section vide ne câblerait rien
 silencieusement), et c'est la seule entrée nécessaire pour que le runner
 enregistre le serveur `intervals` (voir le commentaire du cas).
+
+## Serveur HTTP `openwearables` (#221)
+
+Open Wearables n'est pas un serveur MCP : `scripts/arc_openwearables.py` lit son API REST. Le stub
+`tests/evals/stub_openwearables_http.py` est donc un vrai petit serveur HTTP (stdlib, 127.0.0.1), que le runner
+lance **seulement** si le cas déclare au moins une entrée `[stub.openwearables.<nom>]` (il n'apparaît jamais dans
+`.mcp.json`). Le runner écrit alors dans `config/workspace.user.toml` du workspace de test `[health].source =
+"openwearables"` (sauf si le cas le fixe) et `[health.openwearables]` : l'adresse du serveur, le fournisseur
+(`oura` par défaut, ou `apple` via `[config.health.openwearables] provider = "apple"`) et un fichier de clé factice
+**en mode 600, hors du workspace**. L'agent exécute donc le VRAI script contre le faux serveur ; le serveur est
+arrêté à la fin de chaque exécution (`runner.stop_http_stubs`).
+
+Noms stables journalisés dans `ARC_TOOL_LOG` (format commun, `server = "openwearables"`) : `ow_users`,
+`ow_connections`, `ow_sleep_summary`, `ow_timeseries`, `ow_health_scores`, `ow_recovery_summary` (endpoint obsolète
+que le client ne doit **jamais** appeler : un cas le scripte `error = "empty"` pour faire démarrer le serveur sans
+rien changer aux données, et vérifie `tools_not_called = ["ow_recovery_summary"]`). `tools_called`,
+`tools_not_called` et `tool_args_match` fonctionnent sans changement.
+
+Données par défaut : une nuit pour la date LOCALE du jour du run (jamais une date figée) — pour `oura` HRV RMSSD
+48,2 ms, FC de repos 47 bpm, scores natifs Readiness 82/100 et Sommeil 77/100 (plus un score `internal` et une charge
+`whoop` que le client doit écarter), connexion synchronisée il y a 1 h ; pour `apple` HRV en SDNN (52 ms)
+seulement, aucun score, aucune connexion listée. `error = "401"`, `"timeout"` (le runner règle `ARC_OW_TIMEOUT=3` pour
+que le client abandonne vite) et `"empty"` (réponse bien formée mais vide : « la nuit n'est pas encore arrivée »)
+s'appliquent par endpoint ; `file = "….json"` (sous `stub-responses/`) accepte les jetons `{{TODAY}}`, `{{TODAY-N}}`,
+`{{NOW-Nh}}` et `{{TZ}}`. Le serveur est verrouillé par le palier D (`tests/data/test_ow_eval_stub.py`).

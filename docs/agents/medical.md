@@ -48,6 +48,13 @@ L'agent **medical** est le spécialiste de la récupération et de la santé. Il
 
 Seulement si `[health].cycle_tracking` n'est pas `off` : une ligne de contexte (phase) à côté de la HRV/FC de repos, jamais un assouplissement d'un verdict rouge. Une absence prolongée de règles (environ 3 mois, `scripts/arc_cycle.py gap`) ou de données de cycle est signalée comme **signal de vigilance RED-S**, avec recommandation de consulter un professionnel de santé — jamais un diagnostic. Voir [Cycle menstruel](../cycle-menstruel.md).
 
+### Source de la santé (opt-in, #221)
+
+Seulement si `[health].source = "openwearables"` (défaut `primary` : aucune mention) : HRV, FC de repos, sommeil et
+score natif viennent d'Open Wearables (un appel par jour), les mêmes règles que pour le `coach` s'appliquent, et une donnée
+manquante ne fait jamais passer un verdict orange ou rouge au vert. Voir
+[Le bilan matinal avec Open Wearables](../open-wearables.md#le-bilan-matinal-avec-open-wearables).
+
 ### Coordination (délégation)
 
 - **Vers le Coach** : contraintes médicales spécifiques (ex. « éviter le dénivelé, réduire l'intensité 3 jours »)

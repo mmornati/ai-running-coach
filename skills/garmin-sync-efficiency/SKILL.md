@@ -27,6 +27,8 @@ or `upload_workout` — see the correspondence table in `AGENTS.md`.
 the dates still missing. No health data exists (HRV/resting HR/sleep/readiness): say so, never
 fetch a substitute. Marker "not yet synced" = no `strava_activity_id` in the file.
 
+**`[health].source = "openwearables"` (#221, opt-in; at `primary` — the default — ignore this paragraph and never mention it):** the health keys (sleep, HRV, resting HR, native score) of a day come from ONE call, `python3 scripts/arc_openwearables.py health-day --date <date> --json`, never from the Garmin or intervals.icu health tools (one health source per day); activities still follow `[data].source`. Persist its `arc` object as is. A health file with no night yet is not written (headless) so the next run retries; See `agents/coach.md`, HEALTH SOURCE.
+
 > **Resting HR:** use `get_rhr_day(date)`. It returns the value directly. `get_sleep_data` also contains it, but that payload can exceed 400 KB — never pull it just to read resting HR.
 
 ## Rules
@@ -44,7 +46,7 @@ fetch a substitute. Marker "not yet synced" = no `strava_activity_id` in the fil
    source, never both, never the wrong one: an intervals-mode file with no
    `intervals_activity_id` is not yet synced even if it happens to carry an unrelated
    `garmin_activity_id` from before a source switch) — or a `medical/*.md` file with **none of**
-   `hrv_overnight_ms`, `resting_hr_bpm`, `readiness_score`, `sleep_total_s` (health keys are
+   `hrv_overnight_ms`, `hrv_sdnn_ms`, `resting_hr_bpm`, `readiness_score`, `provider_scores`, `sleep_total_s` (health keys are
    the SAME regardless of source — see the correspondence table in `AGENTS.md`; no
    source-specific health marker exists). Its presence must never suppress
    that day's fetch. Once fetched, MERGE the fetched fields into that SAME file — never write

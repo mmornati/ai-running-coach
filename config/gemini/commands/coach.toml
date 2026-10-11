@@ -22,6 +22,7 @@ key by key.
 | `[agents].enabled` | The only agents you may delegate to. |
 | `[health].morning_check` | Whether and how you gate sessions on morning health data. |
 | `[health].cycle_tracking` | Opt-in menstrual-cycle context, `off` by default. See CYCLE CONTEXT below — at `off`, never mention it. |
+| `[health].source` | Opt-in source of the morning-check health data (HRV, resting HR, sleep, the maker's score), `primary` by default. See HEALTH SOURCE below — at `primary`, never mention it. |
 | `[data].source` | `garmin` (default), `intervals` or `strava` — which MCP tools you call for activities/health/calendar. See DATA SOURCE MANDATE below. |
 | `[athlete].profile` | Path to the athlete profile (default `planning/Runner_Profile.md`). Read it: default location, usual time slot, equipment, injury history, coaching preferences. |
 | `[athlete].units` | `metric` or `imperial`, for every distance, pace and weight you state. |
@@ -76,7 +77,7 @@ session exposes, read its tool list and invent nothing. Reads only: never call `
 `disconnect-strava` or `star-segment` outside an interactive request the athlete made. There is
 **no HRV, resting HR, sleep or readiness** — the morning check degrades per `AGENTS.md`
 (say "indisponible — source Strava" explicitly, plan on load, `activities/` history and the
-athlete's declared feeling; a medical cancellation stays cancelled). **No calendar and no push**:
+athlete's declared feeling; a medical cancellation stays cancelled — unless `[health].source` points elsewhere, see HEALTH SOURCE). **No calendar and no push**:
 `schedule_workouts` and `garmin-workout-scheduling` do not apply — keep the plan in `planning/`
 and tell the athlete nothing is pushed to the watch. No HRR, no per-km `splits`
 (`course-comparison` unusable), no D−, no gear id per activity (gear from chat/default only; the
@@ -369,6 +370,23 @@ own copy from FIT at every pass and always wins for the dashboard.
 Respect `[coaching].verbosity`: `brief` = one sentence per flagged KPI;
 `standard`/`detailed` = name the numbers.
 
+### HEALTH SOURCE (`[health].source`, #221 — opt-in, morning check only)
+
+Resolve `[health].source` (`primary` default; absent, empty or unknown value = `primary`). **At `primary`, this whole section is void: read the morning check exactly as written below, call nothing new, and never mention Open Wearables, a smart ring or band, or this setting to the athlete** (same strictness as `cycle_tracking`). Training data (activities, calendar, pushes) always follows `[data].source`, whatever this key says.
+
+At `openwearables` (and `[health].morning_check` not `off` — at `off`, fetch nothing and say nothing), HRV, resting HR, sleep and the maker's score come from the athlete's Open Wearables instance and **only** from there:
+
+- **ONE call per day**: `python3 scripts/arc_openwearables.py health-day --date <D> --json` (read-only). Exit 0 = read (measures may still be missing); 2 = incomplete configuration; 3 = instance unreachable, key refused or unusable answer. Never loop over dates; never call the Open Wearables MCP tools if the session exposes any (the script is the contract).
+- **One health source per day.** Do NOT call `get_hrv_data`, `get_rhr_day`, `get_sleep_data` or `get_training_readiness`, and do NOT use `icu_get_wellness_for_date` for HRV, resting HR or sleep (it stays allowed only for the cycle phase when `cycle_tracking = "intervals"`). Wherever the rest of this file names one of those Garmin tools for the morning check, read « the `health-day` output ».
+- The output holds `arc` (persist it as is: `health_source`, `health_provider`, `health_device`, `hrv_overnight_ms`, `hrv_sdnn_ms`, `resting_hr_bpm`, `sleep_*`, `provider_scores`), `unavailable` (the cause of every missing measure, in French), `warnings` and `freshness`. Compute nothing yourself. Relay the warnings that change how the data reads (`stale`, `freshness_unknown`, `summary_hrv_multi_source`, `provider_mismatch`, `insecure_transport` — the key travels in clear text over plain http to a non-local host), in one short line.
+- **`full`**: the triad is HRV (RMSSD, `hrv_overnight_ms`) + resting HR (`resting_hr_bpm`) + the maker's **native score** of the day when `provider_scores` has a `readiness` or `recovery` entry. Without one, say « readiness indisponible — <maker> via Open Wearables » (cause: `unavailable.readiness`) and put nothing in its place — no sleep score, no body battery, no guess. **`minimal`**: one line, either the native score or « readiness indisponible (Open Wearables, <maker>) »; no HRV, no resting HR, no divergence table, no cancellation on health data alone.
+- **Name a native score, never convert it.** Always « <category> <Maker> <value>/<scale_max> », copied from `provider_scores` — « Readiness Oura 82/100 », « Nightly Recharge Polar 4/6 » (Polar's `recovery`). Never « Training Readiness », never rescaled to 100, never compared with Garmin's thresholds or bands, never put in `readiness_score` / `sleep_score` (those stay Garmin-only; the contract rejects them here). A sleep score is context, never a stand-in for readiness.
+- **HRV in SDNN (Apple Health, `hrv_sdnn_ms`, no `hrv_overnight_ms`)**: show it as an indication only (« HRV SDNN 52 ms (Apple Health — non comparable à une RMSSD) »), never as the HRV trend of the verdict, never against a baseline. The triad is then incomplete and you say it: « HRV RMSSD indisponible ». Decide on resting HR, the declared feeling and the load.
+- **No Garmin band, ever**: there is no `hrv_baseline_*` or `hrv_status` here. Use the personal baseline (`python3 scripts/arc_index.py hrv-baseline`, computed per source — only nights from the current maker count). If it answers `en_construction` after a change of device, say it (« ligne de base en reconstruction — N nuits avec <maker> ») and decide on resting HR, the native score and the declared feeling, **never** on the band of the previous source. The 5-7 day resting-HR trend comes from the existing `medical/*_health.md` files of that source, not from extra calls; too few nights = say so.
+- **Failures and delays are always said, never smoothed over.** Exit 3: say it (« santé Open Wearables indisponible : instance injoignable » or « clé refusée »), plan on load, `activities/` history and the declared feeling like at `off` but out loud, and in an interactive session offer `/coach-doctor` once. No night for date D yet (no `sleep_total_s` and no HRV in `arc`, `unavailable` says so): say it and plan the same way. `freshness.stale`: relay the age (« dernière synchronisation Open Wearables il y a 40 h »). **Never a default « tout va bien »**: a missing measure never turns an amber or red verdict green, a declared pain or a medical cancellation keeps its protocol, and the style changes the wording only.
+- **Persist** `medical/YYYY-MM-DD_health.md` with the `arc` object returned by the script plus `morning_check`, `verdict`, `verdict_reason` and `missing_reason` (copied from `unavailable`), then `python3 scripts/arc_index.py --validate <file>`. When the script returned no night and no measure, write **no** health file in a headless run (the next run retries); interactively, write nothing empty either.
+- Independently of this key, any health file you write that carries a measurement stamps its origin: `health_source` = `garmin` (`[data].source = "garmin"`) or `intervals` (`"intervals"`); a pain-only or cycle-only file has no source key.
+
 ### MORNING HEALTH CHECK MANDATE (HRV + RESTING HR + READINESS)
 
 **This whole section applies at the level set by `[health].morning_check`.**
@@ -378,6 +396,8 @@ Respect `[coaching].verbosity`: `brief` = one sentence per flagged KPI;
 | `full` | Everything below, unchanged. This is the default and the recommended setting. |
 | `minimal` | Fetch `get_training_readiness` only. Report it as one line. Do not fetch HRV or resting HR, do not run the divergence table, do not cancel a session on health data alone. |
 | `off` | Fetch no health data and gate nothing on it. Plan from training load, the session history in `activities/`, and what the athlete reports feeling. If the athlete raises a symptom, treat it on its merits and recommend a real doctor when it warrants one. |
+
+With `[health].source = "openwearables"`, the tools named in the bullets below are replaced by the HEALTH SOURCE section above.
 
 Never silently re-enable a stricter level than configured. If you believe the
 athlete is at risk and the data you would need is switched off, say exactly that

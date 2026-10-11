@@ -1,0 +1,31 @@
+# #221 — synchronisation headless alors que la nuit du jour n'est pas encore arrivée chez Open Wearables
+# (synchronisation en retard, cas typique du mode `watch`) : le serveur factice répond « vide » pour le sommeil,
+# les séries temporelles et les scores. Le skill n'écrit alors AUCUN fichier santé (pour que le run suivant
+# réessaie — il ne récupère que les fichiers manquants) et le bloc `resume` le dit, sans question et sans jamais
+# se rabattre sur les outils santé Garmin (une seule source santé par jour).
+#
+# `files_absent = ["medical/*_health.md"]` couvre toutes les dates de la fenêtre de rattrapage (aujourd'hui,
+# hier…) : le serveur factice ne renvoie rien pour aucune, et un fichier santé écrit — quelle que soit sa date —
+# serait un fichier vide ou inventé. Pas de date en dur : le motif ne dépend pas du jour du run.
+id = "health-ow-not-synced-headless"
+prompt = "/garmin-daily-sync"
+fixture = "configured"
+
+[config.health]
+morning_check = "full"
+
+[stub.openwearables.ow_sleep_summary]
+error = "empty"
+
+[stub.openwearables.ow_timeseries]
+error = "empty"
+
+[stub.openwearables.ow_health_scores]
+error = "empty"
+
+[expect]
+tools_called = ["ow_sleep_summary"]
+tools_not_called = ["get_hrv_data", "get_rhr_day", "get_sleep_data", "get_training_readiness"]
+must_match = ['```resume', "pas encore|nouvel essai|prochain passage|réessa|en attente|en retard|aucune nuit"]
+must_not_match = ["coach-setup", "tout va bien"]
+files_absent = ["medical/*_health.md"]

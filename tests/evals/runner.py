@@ -13,11 +13,14 @@ assertion sur un fichier, pas une devinette sur du texte.
 
 from __future__ import annotations
 
+import atexit
+import copy
 import fnmatch
 import hashlib
 import json
 import os
 import re
+import select
 import shutil
 import sqlite3
 import subprocess
@@ -62,6 +65,22 @@ STUB_SCRIPTS = {
 }
 
 
+# Serveurs HTTP factices (#221) : Open Wearables est lu par un client REST, pas par MCP — le stub est un vrai
+# serveur sur 127.0.0.1, lancé par `build_workspace` quand le cas déclare `[stub.openwearables.*]` et arrêté par
+# `stop_http_stubs`. Ils ne figurent PAS dans `.mcp.json` (aucun outil MCP à exposer à l'agent).
+HTTP_STUB_SCRIPTS = {
+    "openwearables": TESTS_DIR / "evals" / "stub_openwearables_http.py",
+}
+# Clé d'API FACTICE du serveur de test (jamais un secret) et fournisseur par défaut des cas Open Wearables.
+OW_STUB_KEY = "sk-eval-0000000000000000000000000000"
+OW_DEFAULT_PROVIDER = "oura"
+# Délai d'UNE requête du client (`ARC_OW_TIMEOUT`) pour un cas qui scripte `error = "timeout"` côté OW : court,
+# pour que le client abandonne bien avant que le stub (qui attend ~8 s) ne coupe la connexion.
+OW_CLIENT_TIMEOUT_S = "3"
+HTTP_STUB_START_TIMEOUT_S = 15.0
+_HTTP_STUBS: dict = {}      # racine du workspace -> [Popen]
+
+
 def _write_stub_config(root: Path, server: str, stub_section) -> Path | None:
     """Dépose la section `[stub.<server>]` d'un cas en JSON pour le stub.
 
@@ -90,6 +109,88 @@ def _uses_timeout_error(case: dict) -> bool:
             if str(override.get("error")) == "timeout":
                 return True
     return False
+
+
+def _uses_ow_timeout(case: dict) -> bool:
+    """Un cas script-t-il un `error = "timeout"` côté Open Wearables ? Détermine si `run_case` règle
+    `ARC_OW_TIMEOUT` (le client REST abandonne alors en quelques secondes, pas en 10)."""
+    section = case.get("stub", {}).get("openwearables") or {}
+    return any(str(override.get("error")) == "timeout" for override in section.values())
+
+
+def _start_http_stubs(root: Path, workspace: Path, case: dict) -> dict:
+    """Lance les serveurs HTTP factices déclarés par le cas. Rend `{serveur: base_url}`."""
+    started = {}
+    for server, script in HTTP_STUB_SCRIPTS.items():
+        section = case.get("stub", {}).get(server)
+        if not section:
+            continue
+        config_path = _write_stub_config(root, server, section)
+        ow_config = case.get("config", {}).get("health", {}).get("openwearables") or {}
+        provider = str(ow_config.get("provider") or OW_DEFAULT_PROVIDER)
+        env = dict(os.environ, ARC_TOOL_LOG=str(workspace / ".tool-calls.log"),
+                   ARC_STUB_CONFIG=str(config_path) if config_path else "",
+                   ARC_OW_STUB_PROVIDER=provider, ARC_OW_STUB_KEY=OW_STUB_KEY)
+        proc = subprocess.Popen([sys.executable, str(script)], stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+                                text=True, env=env, cwd=str(root))
+        _HTTP_STUBS.setdefault(str(workspace), []).append(proc)
+        ready, _, _ = select.select([proc.stdout], [], [], HTTP_STUB_START_TIMEOUT_S)
+        line = proc.stdout.readline().strip() if ready else ""
+        if not line.startswith("PORT="):
+            stop_http_stubs(workspace)
+            raise RuntimeError(f"le serveur HTTP factice {server} n'a pas démarré (sortie : {line!r})")
+        started[server] = f"http://127.0.0.1:{int(line.split('=', 1)[1])}"
+    return started
+
+
+def stop_http_stubs(workspace: Path) -> None:
+    """Arrête les serveurs HTTP factices lancés pour ce workspace (idempotent, ne lève jamais)."""
+    for proc in _HTTP_STUBS.pop(str(workspace), []):
+        try:
+            proc.terminate()
+            proc.wait(timeout=5)
+        except Exception:      # noqa: BLE001 — l'arrêt d'un faux serveur ne doit jamais casser un cas
+            try:
+                proc.kill()
+            except Exception:  # noqa: BLE001
+                pass
+        if proc.stdout:
+            proc.stdout.close()
+
+
+@atexit.register
+def _stop_all_http_stubs() -> None:
+    for workspace in list(_HTTP_STUBS):
+        stop_http_stubs(Path(workspace))
+
+
+def _toml_scalar(value) -> str:
+    # Comportement historique conservé : un entier est écrit comme CHAÎNE (`lookback_days = "3"`).
+    if isinstance(value, bool):
+        return "true" if value else "false"
+    if isinstance(value, list):
+        return "[" + ", ".join(f'"{v}"' for v in value) + "]"
+    return f'"{value}"'
+
+
+def _overrides_to_toml(overrides: dict) -> str:
+    """`[config.*]` d'un cas -> `workspace.user.toml`. Une valeur qui est elle-même une table
+    (`[config.health.openwearables]`) devient la sous-table `[health.openwearables]`."""
+    lines = []
+    for section, values in overrides.items():
+        lines.append(f"[{section}]")
+        subtables = {}
+        for key, value in values.items():
+            if isinstance(value, dict):
+                subtables[key] = value
+            else:
+                lines.append(f"{key} = {_toml_scalar(value)}")
+        lines.append("")
+        for sub, sub_values in subtables.items():
+            lines.append(f"[{section}.{sub}]")
+            lines.extend(f"{key} = {_toml_scalar(value)}" for key, value in sub_values.items())
+            lines.append("")
+    return "\n".join(lines)
 
 
 def enabled() -> bool:
@@ -342,20 +443,23 @@ def build_workspace(root: Path, case: dict) -> Path:
     if not skills_link.exists():
         skills_link.symlink_to(REPO / "skills")
 
-    overrides = case.get("config", {})
+    overrides = copy.deepcopy(case.get("config", {}))
+    # Open Wearables (#221) : le serveur HTTP factice est lancé ici, et la configuration du workspace de test
+    # pointe dessus — `[health].source` (sauf si le cas le fixe), `[health.openwearables]` avec l'adresse du
+    # serveur, le fournisseur (`oura` par défaut) et un fichier de clé EN MODE 600 hors du workspace.
+    http_stubs = _start_http_stubs(root, workspace, case)
+    if "openwearables" in http_stubs:
+        key_file = root / ".ow-api.key"
+        key_file.write_text(OW_STUB_KEY + "\n", encoding="utf-8")
+        key_file.chmod(0o600)
+        health = overrides.setdefault("health", {})
+        health.setdefault("source", "openwearables")
+        ow_section = health.setdefault("openwearables", {})
+        ow_section.setdefault("provider", OW_DEFAULT_PROVIDER)
+        ow_section["base_url"] = http_stubs["openwearables"]
+        ow_section["api_key_file"] = str(key_file)
     if overrides:
-        lines = []
-        for section, values in overrides.items():
-            lines.append(f"[{section}]")
-            for key, value in values.items():
-                if isinstance(value, list):
-                    lines.append(f"{key} = [" + ", ".join(f'"{v}"' for v in value) + "]")
-                elif isinstance(value, bool):
-                    lines.append(f"{key} = {'true' if value else 'false'}")
-                else:
-                    lines.append(f'{key} = "{value}"')
-            lines.append("")
-        (workspace / "config/workspace.user.toml").write_text("\n".join(lines), encoding="utf-8")
+        (workspace / "config/workspace.user.toml").write_text(_overrides_to_toml(overrides), encoding="utf-8")
 
     _write_fake_tokens(root, case)
     return workspace
@@ -428,6 +532,8 @@ def run_case(case: dict, workspace: Path, timeout: int = 300) -> dict:
     )
     if _uses_timeout_error(case):
         env.setdefault("MCP_TOOL_TIMEOUT", MCP_TOOL_TIMEOUT_MS)
+    if _uses_ow_timeout(case):
+        env.setdefault("ARC_OW_TIMEOUT", OW_CLIENT_TIMEOUT_S)
     try:
         completed = subprocess.run(
             command, cwd=str(workspace), env=env, capture_output=True, text=True, timeout=timeout,

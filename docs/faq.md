@@ -144,8 +144,8 @@ Non. Les dossiers de données personnelles sont exclus du dépôt via `.gitignor
 ### Puis-je utiliser une bague Oura/WHOOP, une Apple Watch, une montre Polar/Suunto/COROS ?
 
 Oui pour l'entraînement, via Intervals.icu ou Strava selon l'appareil ; pour la santé du bilan matinal
-(HRV, FC de repos), certaines bagues passent par Intervals.icu et une option Open Wearables est prévue
-mais pas encore livrée (#216). Voir le guide [Quelle source pour mon appareil ?](configuration.md#quelle-source-pour-mon-appareil)
+(HRV, FC de repos), certaines bagues passent par Intervals.icu, et l'option Open Wearables (`[health].source`, #216) lit
+la santé d'une instance que vous hébergez vous-même. Voir le guide [Quelle source pour mon appareil ?](configuration.md#quelle-source-pour-mon-appareil)
 et l'[audit d'Open Wearables](open-wearables.md).
 
 ### Puis-je utiliser mes propres documents de référence ?
