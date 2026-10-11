@@ -62,8 +62,45 @@ jobs:
           echo "ARC_NOTARY_PROFILE=ai-running-coach-ci" >> "$GITHUB_ENV"
           echo "ARC_SIGNED_RELEASE=true" >> "$GITHUB_ENV"
 
+      - name: Configurer les mises à jour des versions publiées
+        if: ${{ inputs.tag != '' || startsWith(github.ref, 'refs/tags/') }}
+        env:
+          TAG: ${{ inputs.tag || github.ref_name }}
+          PUBLIC_KEY: ${{ vars.SPARKLE_PUBLIC_KEY }}
+          PRIVATE_KEY: ${{ secrets.SPARKLE_PRIVATE_KEY }}
+        run: |
+          set -euo pipefail
+          echo "ARC_APP_VERSION=${TAG#v}" >> "$GITHUB_ENV"
+          # Sans signature Apple, le DMG « -unsigned » est publié sans mises à jour automatiques.
+          if [[ "${ARC_SIGNED_RELEASE:-}" != true ]]; then
+            echo "::notice::DMG non signé : mises à jour automatiques désactivées."
+            exit 0
+          fi
+          if [[ -z "$PUBLIC_KEY" || -z "$PRIVATE_KEY" ]]; then
+            echo "::error::Une release signée exige les clés SPARKLE_PUBLIC_KEY / SPARKLE_PRIVATE_KEY."
+            exit 1
+          fi
+          echo "ARC_SPARKLE_PUBLIC_KEY=$PUBLIC_KEY" >> "$GITHUB_ENV"
+          echo "ARC_UPDATE_FEED_URL=https://github.com/$GITHUB_REPOSITORY/releases/latest/download/appcast.xml" >> "$GITHUB_ENV"
+
       - name: Construire le DMG universel
         run: scripts/build-macos-dmg.sh
+
+      - name: Signer le flux de mises à jour
+        if: ${{ env.ARC_SIGNED_RELEASE == 'true' && (inputs.tag != '' || startsWith(github.ref, 'refs/tags/')) }}
+        env:
+          TAG: ${{ inputs.tag || github.ref_name }}
+          PRIVATE_KEY: ${{ secrets.SPARKLE_PRIVATE_KEY }}
+        run: |
+          set -euo pipefail
+          SPARKLE_DIR="$(scripts/fetch-sparkle.sh)"
+          mkdir -p dist/updates
+          cp dist/AI-Running-Coach-*.dmg dist/updates/
+          printf '%s' "$PRIVATE_KEY" | "$SPARKLE_DIR/bin/generate_appcast" --ed-key-file - \
+            --maximum-deltas 0 \
+            --download-url-prefix "https://github.com/$GITHUB_REPOSITORY/releases/download/$TAG/" \
+            --link "https://github.com/$GITHUB_REPOSITORY/releases/tag/$TAG" dist/updates
+          test -s dist/updates/appcast.xml
 
       - name: Nommer le DMG et calculer son empreinte
         run: |
@@ -86,6 +123,7 @@ jobs:
           path: |
             dist/AI-Running-Coach-*.dmg
             dist/AI-Running-Coach-*.dmg.sha256
+            dist/updates/appcast.xml
           if-no-files-found: error
 
       - name: Publier sur la version GitHub
@@ -106,7 +144,12 @@ jobs:
             fi
             sleep 5
           done
-          gh release upload "$TAG" "dist/$ARC_DMG_NAME" "dist/$ARC_DMG_NAME.sha256" --clobber
+          assets=("dist/$ARC_DMG_NAME" "dist/$ARC_DMG_NAME.sha256")
+          # Flux Sparkle seulement pour une release signée (voir « Signer le flux de mises à jour »).
+          if [ -f dist/updates/appcast.xml ]; then
+            assets+=(dist/updates/appcast.xml)
+          fi
+          gh release upload "$TAG" "${assets[@]}" --clobber
 
           # Notes d'ouverture ajoutées une seule fois (marqueur), seulement sans signature Apple.
           if [ "${ARC_SIGNED_RELEASE:-}" != "true" ]; then

@@ -8,7 +8,9 @@ ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 SOURCE_DIR="$ROOT/macos/AI-Running-Coach"
 # Fichier VERSION à la racine, réécrit par le workflow « Tag a release » dans le
 # commit qui porte le tag : le DMG d'une release porte donc toujours son numéro.
+# ARC_APP_VERSION le remplace (workflow de release, test des mises à jour).
 VERSION="$(tr -d '[:space:]' 2>/dev/null < "$ROOT/VERSION" || true)"
+VERSION="${ARC_APP_VERSION:-$VERSION}"
 [[ -n "$VERSION" ]] || { echo "Version introuvable dans VERSION" >&2; exit 1; }
 
 BUILD_ROOT="$ROOT/dist/macos-build"
@@ -31,6 +33,12 @@ if [[ -e "$BUILD_ROOT" ]]; then
 fi
 mkdir -p "$CONTENTS/MacOS" "$RESOURCES"
 
+SPARKLE_DIR="$("$SCRIPT_DIR/fetch-sparkle.sh")"
+mkdir -p "$CONTENTS/Frameworks"
+ditto "$SPARKLE_DIR/Sparkle.framework" "$CONTENTS/Frameworks/Sparkle.framework"
+cp "$SPARKLE_DIR/LICENSE" "$RESOURCES/Sparkle-LICENSE.txt"
+cp "$SCRIPT_DIR/arc_engine_update.py" "$RESOURCES/arc_engine_update.py"
+
 echo "→ Compilation de l'application"
 ARM_BINARY="$BUILD_ROOT/app-arm64"
 INTEL_BINARY="$BUILD_ROOT/app-x86_64"
@@ -39,8 +47,9 @@ for arch in arm64 x86_64; do
     [[ "$arch" == "x86_64" ]] && output="$INTEL_BINARY"
     swiftc -swift-version 5 -O -parse-as-library \
         -target "$arch-apple-macos13.0" \
-        -framework SwiftUI -framework AppKit \
-        "$SOURCE_DIR/AI_Running_CoachApp.swift" \
+        -framework SwiftUI -framework AppKit -F "$SPARKLE_DIR" -framework Sparkle \
+        -Xlinker -rpath -Xlinker @executable_path/../Frameworks \
+        "$SOURCE_DIR/"*.swift \
         -o "$output"
 done
 lipo -create "$ARM_BINARY" "$INTEL_BINARY" -output "$CONTENTS/MacOS/$APP_NAME"
@@ -81,16 +90,28 @@ git -C "$ROOT" ls-files -z -- \
 # Le numéro fonctionnel peut rester identique entre deux itérations d'un même
 # DMG. L'empreinte du moteur permet alors à l'application de voir que les
 # fichiers embarqués ont changé et d'actualiser sa copie dans Application Support.
-BUILD_NUMBER="${GITHUB_RUN_NUMBER:-1}"
+BUILD_NUMBER="${GITHUB_RUN_NUMBER:-0}.${GITHUB_RUN_ATTEMPT:-0}"
 ENGINE_BUILD="$(shasum -a 256 "$PAYLOAD" | awk '{print $1}')"
-sed -e "s/__VERSION__/$VERSION/g" \
-    -e "s/__BUILD__/$BUILD_NUMBER/g" \
-    -e "s/__ENGINE_BUILD__/$ENGINE_BUILD/g" \
-    "$SOURCE_DIR/Info.plist" > "$CONTENTS/Info.plist"
+python3 "$SCRIPT_DIR/arc_macos_plist.py" --template "$SOURCE_DIR/Info.plist" \
+    --output "$CONTENTS/Info.plist" --version "$VERSION" --build "$BUILD_NUMBER" \
+    --engine-hash "$ENGINE_BUILD"
 
 IDENTITY="${ARC_CODESIGN_IDENTITY:--}"
 echo "→ Signature de l'application"
-codesign --force --deep --options runtime --timestamp --sign "$IDENTITY" "$APP"
+# Une signature ad hoc n'a pas de Team ID : activer la validation des
+# bibliothèques du hardened runtime empêcherait de charger Sparkle au lancement.
+# Les distributions Developer ID conservent le hardened runtime et l'horodatage.
+SIGN_OPTIONS=()
+if [[ "$IDENTITY" != "-" ]]; then
+    SIGN_OPTIONS=(--options runtime --timestamp)
+fi
+# Signature de l'intérieur vers l'extérieur, y compris les services Sparkle.
+FRAMEWORK="$CONTENTS/Frameworks/Sparkle.framework/Versions/B"
+for component in "$FRAMEWORK/XPCServices/Downloader.xpc" "$FRAMEWORK/XPCServices/Installer.xpc" \
+    "$FRAMEWORK/Autoupdate" "$FRAMEWORK/Updater.app" "$CONTENTS/Frameworks/Sparkle.framework" "$APP"; do
+    codesign --force ${SIGN_OPTIONS[@]+"${SIGN_OPTIONS[@]}"} --sign "$IDENTITY" "$component"
+done
+codesign --verify --deep --strict "$APP"
 
 STAGE="$BUILD_ROOT/dmg"
 mkdir -p "$STAGE"

@@ -1,5 +1,9 @@
 # Mettre à jour
 
+**Installation avec l'application Mac :** les versions publiées sont proposées dans
+l'app, puis le moteur est actualisé au relancement. Voir [Mises à jour macOS](macos.md#mises-a-jour).
+Les commandes ci-dessous concernent les installations par clonage Git.
+
 `ai-running-coach` s'installe par un simple `git clone` : mettre à jour, c'est **tirer
 le moteur** puis **relancer `install.sh` avec les mêmes options** que lors de
 l'installation. Vos données (workspace) ne sont jamais touchées ; `install.sh` est

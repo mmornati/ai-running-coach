@@ -32,3 +32,64 @@ scripts/build-macos-dmg.sh
 ```
 
 Le profil de notarisation se crée une fois avec `xcrun notarytool store-credentials`. Sans ces variables, le script produit une version signée ad hoc : c'est elle que le workflow de release publie aujourd'hui sous le nom `AI-Running-Coach-<version>-unsigned.dmg` (le projet n'a pas de compte Apple Developer), avec son empreinte SHA-256 et les instructions d'ouverture dans les notes de la release.
+
+## Mises à jour automatiques
+
+L'app embarque Sparkle 2.10.0 (archive officielle et SHA-256 épinglés dans
+`scripts/fetch-sparkle.sh`). Le framework et ses services sont signés avant l'app.
+Le menu **Rechercher une mise à jour…** et les réglages permettent la vérification
+périodique et l'installation automatique facultative. Les builds locaux sans flux
+ni clé publique désactivent ces actions.
+
+La distribution suit les **releases stables**, jamais la tête de `main`. Le workflow
+macOS utilise le tag pour la version visible et le numéro de workflow/tentative
+comme suffixe du numéro de construction. Il publie ensemble le DMG et `appcast.xml` ;
+le flux est accessible via `releases/latest/download/appcast.xml`. Les préversions
+ne deviennent pas la release « Latest » et ne sont donc pas proposées sur ce canal.
+
+Configuration initiale du dépôt GitHub, en plus des secrets Apple existants :
+
+- variable `SPARKLE_PUBLIC_KEY` : clé publique Ed25519 ;
+- secret `SPARKLE_PRIVATE_KEY` : clé privée correspondante, au format exporté par
+  `generate_keys` ; elle est transmise sur l'entrée standard de `generate_appcast`,
+  jamais en argument ni dans l'app.
+
+Générer et exporter ces clés avec les outils officiels de Sparkle :
+[`generate_keys`](https://sparkle-project.org/documentation/). Conserver une copie
+privée sécurisée : les versions déjà distribuées font confiance à cette clé.
+Une release non signée publie le DMG `-unsigned` sans mises à jour automatiques
+(ni clé ni flux) ; une release signée échoue explicitement si les clés Sparkle manquent. Le déclenchement manuel sans tag reste utilisable pour un DMG local.
+Les forks utilisent automatiquement leur propre URL GitHub de distribution.
+
+Pour un build local avec mises à jour configurées, fournir `ARC_SPARKLE_PUBLIC_KEY`
+et `ARC_UPDATE_FEED_URL` (HTTPS), avec éventuellement `ARC_APP_VERSION=X.Y.Z`.
+La configuration incomplète ou invalide est refusée avant signature.
+
+Au lancement, un moteur différent est installé automatiquement par le helper
+embarqué `arc_engine_update.py`. Un verrou exclusif attend la fin des synchronisations
+(verrou partagé dans `daily-sync.sh`, ancien verrou PID également respecté). Un
+échec de configuration restaure les fichiers de l'ancien moteur et affiche une
+possibilité de réessayer. Les modifications externes déjà effectuées par
+`install.sh` (services, composants installés) ne sont pas annulées. Le workspace
+personnel doit rester séparé du moteur ; les préférences de version ne sont avancées
+qu'après succès. La restauration ne touche pas aux journaux ni au profil de l'athlète.
+
+### Vérification locale et CI
+
+```bash
+python3 -m unittest tests.install.test_engine_update tests.lint.test_macos_updates
+scripts/test-macos-update.sh
+```
+
+Le second test construit deux vrais DMG universels avec une clé Ed25519 éphémère,
+crée un flux signé, fait découvrir la nouvelle version par Sparkle sur un serveur
+HTTP de boucle locale, vérifie les signatures puis vérifie le refus d'un DMG altéré.
+Il lance aussi le véritable exécutable avec `--smoke-test` : toutes ses bibliothèques
+sont chargées par macOS avant de quitter, sans initialiser le modèle ni lire de données.
+Les builds ad hoc n'activent pas le hardened runtime (absence de Team ID) ; les
+builds Developer ID le conservent. Ce test détecte les refus de chargement de Sparkle
+que la compilation seule ne voit pas.
+Il ne remplace aucune application installée et n'utilise ni le trousseau ni les
+préférences de l'application réelle. Il tourne dans le job macOS de la CI.
+La notarisation et le remplacement final d'une app Developer ID doivent également
+être vérifiés lors de la première publication signée sur un Mac de recette.

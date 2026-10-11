@@ -184,3 +184,15 @@ jobs:
           cache-dependency-path: requirements-docs.txt
       - run: pip install -r requirements-docs.txt
       - run: mkdocs build --strict
+
+  macos-app:
+    name: Application macOS · compilation et flux de mise à jour
+    needs: changes
+    if: needs.changes.outputs.macos == 'true'
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: Tester les transactions du moteur
+        run: python3 -m unittest tests.install.test_engine_update tests.lint.test_macos_updates
+      - name: Construire et vérifier deux versions avec une clé éphémère
+        run: scripts/test-macos-update.sh

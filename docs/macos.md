@@ -85,7 +85,28 @@ L'écran d'accueil permet aussi de :
 - compléter plus tard le profil, l'objectif et les chaussures depuis le même questionnaire graphique ;
 - relancer le diagnostic d'installation ;
 - reconnecter le compte lorsque son accès expire ;
-- mettre à jour le moteur, lorsqu'une nouvelle version de l'application en contient un, sans effacer les données personnelles.
+- réessayer la mise à jour du moteur si une installation a été interrompue.
+
+## Mises à jour
+
+L'application recherche automatiquement les nouvelles **versions publiées**.
+Le menu **AI Running Coach → Rechercher une mise à jour…** permet aussi une
+vérification immédiate. Dans les réglages, vous pouvez désactiver cette recherche
+ou activer le téléchargement et l'installation automatiques.
+
+Après remplacement et relancement de l'app, son moteur est mis à jour automatiquement.
+Si une synchronisation est en cours, l'app attend sa fin et réessaie toutes les
+30 secondes. En cas d'échec de configuration, les fichiers de l'ancien moteur sont
+restaurés et un bouton permet de réessayer. Vos données personnelles restent dans
+leur dossier séparé.
+
+Les modifications de `main` arrivent à la prochaine version publiée ; elles ne
+sont pas installées individuellement. Une dernière installation manuelle du DMG
+est nécessaire pour passer d'une ancienne app sans ce mécanisme à la première
+version qui l'intègre. Les builds de développement sans configuration de signature
+Sparkle n'effectuent pas de recherche de mise à jour.
+Le DMG `-unsigned` publié aujourd'hui (sans signature Apple) n'embarque pas
+non plus de flux de mises à jour : installez chaque nouvelle version à la main.
 
 ## Pour les mainteneurs
 
