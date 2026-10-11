@@ -24,6 +24,10 @@ COPY scripts/ scripts/
 COPY web/ web/
 COPY config/ config/
 COPY VERSION VERSION
+# COPY garde les droits de l'hôte : un `git pull` lancé avec un umask 077 laisse
+# des fichiers en 600, illisibles par l'utilisateur 1000 (« Permission denied »
+# au démarrage). Le moteur est en lecture pour tous dans l'image.
+RUN chmod -R a+rX /app
 
 # Utilisateur non root ; remplacé par `user:` dans compose pour lire le
 # workspace de l'hôte avec son propriétaire.

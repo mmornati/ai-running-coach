@@ -43,6 +43,13 @@ class TestDockerfile(unittest.TestCase):
         self.assertTrue(users, "aucune instruction USER : le conteneur tournerait en root")
         self.assertNotIn(users[-1].split(":")[0], ("0", "root"))
 
+    def test_engine_readable_by_container_user(self):
+        """Des fichiers en 600 sur l'hôte (umask 077) ne doivent pas casser le démarrage."""
+        chmod = re.search(r"^RUN\s+chmod\s+-R\s+a\+rX\s+/app\s*$", self.text, re.MULTILINE)
+        self.assertTrue(chmod, "RUN chmod -R a+rX /app manquant")
+        self.assertLess(self.text.rindex("\nCOPY "), chmod.start(), "le chmod doit suivre le dernier COPY")
+        self.assertLess(chmod.start(), self.text.index("\nUSER "), "le chmod doit précéder USER (root requis)")
+
     def test_memory_index_on_mounted_workspace(self):
         """Le workspace est monté en lecture seule : l'index doit vivre en mémoire."""
         entry = re.search(r"^ENTRYPOINT\s+(.+)$", self.text, re.MULTILINE).group(1)
