@@ -1,6 +1,6 @@
 // Tableau de bord ai-running-coach — lecture seule, servi par scripts/arc_serve.py.
 import * as F from "./format.js";
-import { navItems } from "./nav.js";
+import { navItems, showVersion } from "./nav.js";
 import { timeChart, attachCursor, verdictStrip, yearCalendar, blockFrise } from "./chart.js";
 import { resampleByDistance, colorModes, sessionMap } from "./map.js";
 import { roadbookHtml, wireRoadbook } from "./roadbook.js";
@@ -3895,6 +3895,7 @@ async function route() {
 
 async function boot() {
   setupTheme();
+  showVersion();
   try {
     SUMMARY = await api("summary");
     F.setUnits(SUMMARY.settings.units);

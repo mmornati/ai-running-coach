@@ -10,3 +10,17 @@ export function navItems(settings) {
     ["hypotheses", "Hypothèses"],
   ];
 }
+
+// Version du moteur sous le nom, dans l'en-tête des deux pages. Absente (`null`) ou
+// serveur plus ancien sans `/api/version` : rien n'est affiché.
+export async function showVersion() {
+  const box = document.getElementById("version");
+  if (!box) return;
+  try {
+    const res = await fetch("api/version", { headers: { Accept: "application/json" } });
+    const { version } = res.ok ? await res.json() : {};
+    if (!version) return;
+    box.textContent = version;
+    box.hidden = false;
+  } catch { /* information de confort : jamais bloquante */ }
+}

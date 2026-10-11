@@ -97,4 +97,4 @@ scripts/build-macos-dmg.sh
 
 Voir [`macos/AI-Running-Coach/README.md`](https://github.com/mmornati/ai-running-coach/tree/main/macos/AI-Running-Coach) pour la signature Developer ID et la notarisation Apple. Un DMG public doit être signé et notarié ; la signature ad hoc produite sans identité sert uniquement aux tests locaux.
 
-Le workflow **Tag a release** crée d'abord la release officielle, puis appelle le workflow macOS qui construit, signe et ajoute le DMG. Un tag poussé manuellement déclenche les deux workflows séparément ; le workflow macOS attend alors que la release existe avant d'y joindre le fichier.
+Le workflow **Tag a release** écrit le numéro dans le fichier `VERSION` (commit `chore(release)` sur `main`, qui porte le tag), d'où le DMG tire son numéro. Il crée ensuite la release officielle, puis appelle le workflow macOS qui construit, signe et ajoute le DMG. Un tag poussé manuellement déclenche les deux workflows séparément, sans réécrire `VERSION` : le mettre à jour soi-même avant de taguer ; le workflow macOS attend alors que la release existe avant d'y joindre le fichier.

@@ -65,6 +65,7 @@ import arc_health_source as HS  # noqa: E402
 import arc_index as I  # noqa: E402
 import arc_metrics as M  # noqa: E402
 import arc_roadbook as RB  # noqa: E402
+import arc_version as V  # noqa: E402
 from coach_config import ConfigError  # noqa: E402
 
 LOOPBACK = "127.0.0.1"                   # défaut : le tableau de bord ne sort pas de la machine
@@ -1760,6 +1761,8 @@ class Handler(BaseHTTPRequestHandler):
         url = urlparse(self.path)
         if url.path == "/healthz":              # sonde du conteneur : ne réindexe pas
             self._json(HTTPStatus.OK, {"status": "ok"})
+        elif url.path == "/api/version":        # hors de ROUTES : ne réindexe pas, ne dépend pas des données
+            self._json(HTTPStatus.OK, {"version": V.cached_engine_version()})
         elif url.path.startswith(CHAT_PREFIX) and self.chat_port:
             self._chat_proxy()
         elif url.path == "/media/gear-photo":

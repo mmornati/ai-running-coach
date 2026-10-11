@@ -6,8 +6,10 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 SOURCE_DIR="$ROOT/macos/AI-Running-Coach"
-VERSION="$(sed -n 's/^VERSION="\([^"]*\)"/\1/p' "$ROOT/install.sh" | head -1)"
-[[ -n "$VERSION" ]] || { echo "Version introuvable dans install.sh" >&2; exit 1; }
+# Fichier VERSION à la racine, réécrit par le workflow « Tag a release » dans le
+# commit qui porte le tag : le DMG d'une release porte donc toujours son numéro.
+VERSION="$(tr -d '[:space:]' 2>/dev/null < "$ROOT/VERSION" || true)"
+[[ -n "$VERSION" ]] || { echo "Version introuvable dans VERSION" >&2; exit 1; }
 
 BUILD_ROOT="$ROOT/dist/macos-build"
 APP_NAME="AI Running Coach"

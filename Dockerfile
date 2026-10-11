@@ -23,6 +23,7 @@ WORKDIR /app
 COPY scripts/ scripts/
 COPY web/ web/
 COPY config/ config/
+COPY VERSION VERSION
 
 # Utilisateur non root ; remplacé par `user:` dans compose pour lire le
 # workspace de l'hôte avec son propriétaire.

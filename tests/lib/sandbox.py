@@ -37,6 +37,7 @@ STUBS_DIR = TESTS_DIR / "lib" / "stubs"
 # images de docs/) est inutile aux tests et coûte du temps à chaque cas.
 COPIED = [
     "install.sh",
+    "VERSION",
     "AGENTS.md",
     "agents",
     "skills",

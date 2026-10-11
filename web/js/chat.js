@@ -1,7 +1,7 @@
 // Page « Coach » : conversation en streaming (SSE) avec le service de chat.
 // Aucun innerHTML sur du texte venu du modèle : tout passe par textContent / createElement.
 import * as F from "./format.js";
-import { navItems } from "./nav.js";
+import { navItems, showVersion } from "./nav.js";
 
 const $ = (s, root = document) => root.querySelector(s);
 const API = "api/chat";
@@ -1055,6 +1055,7 @@ async function boot() {
   setupTheme();
   setupComposer();
   loadContext();
+  showVersion();
   window.addEventListener("hashchange", checkHash);
 
   let status;
