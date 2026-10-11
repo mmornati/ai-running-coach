@@ -43,10 +43,11 @@ jobs:
       # CLAUDE_CODE_SUBPROCESS_ENV_SCRUB needs bubblewrap: without it the
       # Claude Code install aborts ("bubblewrap is required…"). Ubuntu 24.04
       # also blocks unprivileged user namespaces via AppArmor, which bwrap uses.
-      - name: Install bubblewrap
+      # The Bash sandbox also needs socat, otherwise Claude falls back to read-only.
+      - name: Install bubblewrap and socat
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y -qq bubblewrap
+          sudo apt-get install -y -qq bubblewrap socat
           sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0 || true
 
       - name: Run Claude Code
