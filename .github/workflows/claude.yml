@@ -40,6 +40,15 @@ jobs:
         with:
           fetch-depth: 1
 
+      # CLAUDE_CODE_SUBPROCESS_ENV_SCRUB needs bubblewrap: without it the
+      # Claude Code install aborts ("bubblewrap is required…"). Ubuntu 24.04
+      # also blocks unprivileged user namespaces via AppArmor, which bwrap uses.
+      - name: Install bubblewrap
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq bubblewrap
+          sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0 || true
+
       - name: Run Claude Code
         id: claude
         uses: anthropics/claude-code-action@v1
