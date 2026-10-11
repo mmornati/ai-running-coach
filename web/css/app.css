@@ -134,6 +134,8 @@ small { font-size: 0.82em; }
 @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .top { background: #0a1510; border-bottom: 1px solid var(--line); } }
 .brand { display: inline-flex; align-items: center; gap: 0.55rem; color: #e7ede9; text-decoration: none; font: 700 0.98rem/1 var(--display); letter-spacing: -0.02em; }
 .brand__mark { width: 1.35rem; height: 1.35rem; fill: var(--lime); }
+.brand__name { display: flex; flex-direction: column; gap: 0.2rem; min-width: 0; }
+.brand__version { font: 500 0.7rem/1 "Inter", system-ui, sans-serif; letter-spacing: 0; color: #b8c4bd; font-variant-numeric: tabular-nums; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .objective { display: flex; align-items: center; gap: 0.85rem; min-width: 0; }
 .objective__count { font: 700 1.05rem/1 var(--display); letter-spacing: -0.02em; color: var(--lime); white-space: nowrap; font-variant-numeric: tabular-nums; }
 .objective__count.is-past { color: #b8c4bd; }
@@ -142,6 +144,12 @@ small { font-size: 0.82em; }
 .objective__text span { color: #b8c4bd; font-size: 0.82rem; }
 .objective__none { color: #b8c4bd; font-size: 0.88rem; }
 .objective__none code { background: rgba(255, 255, 255, 0.08); color: #e7ede9; }
+.top__actions { display: flex; align-items: center; gap: 0.6rem; }
+.update-pill { display: inline-flex; align-items: center; gap: 0.4rem; padding: 0.35rem 0.75rem; border-radius: 999px; background: color-mix(in srgb, var(--lime) 18%, transparent); border: 1px solid color-mix(in srgb, var(--lime) 55%, transparent); color: #e7ede9; font-size: 0.8rem; font-weight: 600; text-decoration: none; white-space: nowrap; }
+.update-pill::before { content: ""; width: 0.45rem; height: 0.45rem; border-radius: 50%; background: var(--lime); }
+.update-pill:hover { background: color-mix(in srgb, var(--lime) 30%, transparent); }
+.update-pill:focus-visible { outline: 2px solid var(--lime); outline-offset: 2px; }
+.update-pill[hidden] { display: none; }
 .icon-btn { display: grid; place-items: center; width: 2.2rem; height: 2.2rem; border: 1px solid rgba(231, 237, 233, 0.25); border-radius: 50%; background: transparent; color: #e7ede9; cursor: pointer; transition: background 160ms ease; }
 .icon-btn:hover { background: rgba(231, 237, 233, 0.12); }
 .icon-btn svg { width: 1.05rem; height: 1.05rem; fill: currentColor; }
@@ -684,6 +692,7 @@ mark { background: color-mix(in srgb, var(--lime) 55%, transparent); color: inhe
 @media (max-width: 60em) {
   .top { grid-template-columns: auto minmax(0, 1fr) auto; padding: 0.6rem 1rem; }
   .brand span { display: none; }
+  .update-pill__long { display: none; }
   .shell { grid-template-columns: minmax(0, 1fr); }
   .nav { position: sticky; top: 3.4rem; z-index: 4; flex-direction: row; overflow-x: auto; padding: 0.5rem 1rem; gap: 0.3rem; background: var(--bg); border-bottom: 1px solid var(--line); scrollbar-width: none; }
   .nav a { white-space: nowrap; padding: 0.4rem 0.7rem; font-size: 0.88rem; }
@@ -819,10 +828,20 @@ button.seg:focus-visible, .link-btn:focus-visible { outline: 2px solid var(--foc
 .ledger__group:first-child .ledger__rows div:nth-child(-n+3) dd small { display: block; font: 400 0.74rem/1.3 var(--text); letter-spacing: 0; }
 .ledger .chip { vertical-align: middle; }
 
-.profile__stack { display: grid; gap: 0.15rem; margin-bottom: 1rem }
+.profile__stack { position: relative; display: grid; gap: 0.15rem; margin-bottom: 1rem }
 .profile__row { display: grid; grid-template-columns: 4.6rem minmax(0, 1fr); align-items: center; }
-.profile__label { color: var(--ink-faint); font-size: 0.78rem; }
-.profile__legend { margin: 0 0 0.4rem 4.6rem; }
+.profile__label { display: flex; flex-direction: column; gap: 0.3rem; color: var(--ink-faint); font-size: 0.78rem; }
+.profile__key { display: inline-flex; align-items: center; gap: 0.35rem; font-size: 0.72rem; color: var(--ink-soft); white-space: nowrap; }
+.profile__key .key { flex: none; }
+/* Infobulle du profil : suit le curseur, au-dessus des graphiques (pointer-events: none pour
+   ne jamais voler le survol), comme celle de Strava. */
+.profile__tip { position: absolute; top: 0.25rem; z-index: 3; pointer-events: none; min-width: 8.5rem; padding: 0.45rem 0.65rem; background: var(--surface); border: 1px solid var(--line-strong); border-radius: var(--radius-sm); box-shadow: var(--shadow); font-size: 0.8rem; font-variant-numeric: tabular-nums; }
+.profile__tip[hidden] { display: none; }
+.profile__tip-time { margin: 0 0 0.25rem; color: var(--ink-faint); font-size: 0.75rem; }
+.profile__tip dl { display: grid; grid-template-columns: auto auto; gap: 0.1rem 0.6rem; margin: 0; }
+.profile__tip dl div { display: contents; }
+.profile__tip dt { color: var(--ink-soft); }
+.profile__tip dd { margin: 0; color: var(--ink); font-weight: 600; text-align: right; }
 .profile .chart-host { margin: 0; }
 .chart .area--elev { fill: var(--s-band); }
 .chart .area--climb { fill: var(--s-dplus); opacity: 0.22; }
@@ -830,7 +849,6 @@ button.seg:focus-visible, .link-btn:focus-visible { outline: 2px solid var(--foc
 .chart .line--pace { stroke: var(--s-sweat); stroke-width: 1.6; }
 .chart .line--cad { stroke: var(--s-energy); stroke-width: 1.4; }
 .key--climb { background: var(--s-dplus); opacity: 0.45; height: 0.6rem; }
-.profile .readout--sticky { top: 3.6rem; }
 
 /* La colonne utile dépend de la nav latérale, pas de l'écran : requête de conteneur. */
 .main { container-type: inline-size; }

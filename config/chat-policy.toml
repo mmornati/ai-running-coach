@@ -39,6 +39,7 @@ allowed_prefixes = [
   "python3 scripts/arc_workout_targets.py",
   "python3 scripts/arc_race_debrief.py",
   "python3 scripts/coach_doctor.py",
+  "python3 scripts/arc_update_check.py",
   "python3 skills/session-parts-analyzer/scripts/analyze_session_parts.py",
 ]
 # Scripts qui lisent du JSON sur l'entrée standard (le skill `log` : `echo '<json>' | python3
@@ -154,6 +155,12 @@ value_options = ["--since", "--gear"]
 ask_flags = ["--apply"]
 
 [shell.scripts."scripts/arc_energy.py"]
+
+# Lecture seule (un appel GitHub au plus) : le chat peut dire si une release existe. La mise à
+# jour elle-même (scripts/update-coach.sh) n'est pas exécutable depuis le chat : terminal ou
+# session de l'assistant seulement. --notify-once (écrit un état) et --hook : daily-sync et hook.
+[shell.scripts."scripts/arc_update_check.py"]
+flags = ["--json", "--force"]
 
 [web]
 # Domaines joignables par `web.fetch` (le domaine exact ou un sous-domaine). `web.search` est refusé.

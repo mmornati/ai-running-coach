@@ -98,6 +98,15 @@ class TestDashboardServer(InstallAsserts):
         self.assertEqual((status, json.loads(body)), (200, {"status": "ok"}))
         self.assertEqual(self.server.get("/healthz", host="evil.example")[0], 403)
 
+    def test_version(self):
+        """Version du moteur pour l'en-tête : hors index, derrière le même contrôle d'hôte.
+        Le bac à sable n'a pas de `.git` : la valeur vient du fichier VERSION recopié."""
+        status, body, _ = self.server.get("/api/version")
+        expected = "v" + (self.sb.repo / "VERSION").read_text(encoding="utf-8").strip()
+        # Vérification des releases coupée dans le bac à sable (ARC_UPDATE_CHECK=off) : jamais de réseau.
+        self.assertEqual((status, json.loads(body)), (200, {"version": expected, "update": None}))
+        self.assertEqual(self.server.get("/api/version", host="evil.example")[0], 403)
+
     def test_read_only(self):
         self.assertEqual(self.server.get("/api/summary", method="POST")[0], 405)
 

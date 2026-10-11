@@ -37,6 +37,7 @@ STUBS_DIR = TESTS_DIR / "lib" / "stubs"
 # images de docs/) est inutile aux tests et coûte du temps à chaque cas.
 COPIED = [
     "install.sh",
+    "VERSION",
     "AGENTS.md",
     "agents",
     "skills",
@@ -186,6 +187,8 @@ class Sandbox:
             LANG="C",
         )
         env.setdefault("ARC_STUB_FAIL", "")
+        # Vérification des releases GitHub (`arc_update_check.py`) : jamais d'appel réseau en test.
+        env.setdefault("ARC_UPDATE_CHECK", "off")
         env.update(extra)
 
         resolved = Path(env["HOME"]).resolve()

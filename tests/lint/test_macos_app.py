@@ -175,6 +175,15 @@ class TestMacApp(unittest.TestCase):
         self.assertIn('defaults.string(forKey: "engineBuild") != engineBuild', source)
         self.assertIn('defaults.set(engineBuild, forKey: "engineBuild")', source)
 
+    def test_unsigned_dmg_is_still_published_on_releases(self):
+        dmg = DMG_WORKFLOW.read_text(encoding="utf-8")
+        # Sans compte Apple Developer, la publication ne doit pas dépendre de la signature.
+        publish = dmg[dmg.index("- name: Publier sur la version GitHub"):]
+        self.assertNotIn("ARC_SIGNED_RELEASE == 'true' &&", publish.splitlines()[1])
+        self.assertIn("-unsigned.dmg", dmg)
+        self.assertIn(".sha256", dmg)
+        self.assertIn("arc-macos-unsigned", dmg)
+
     def test_release_workflow_builds_after_the_official_release(self):
         dmg = DMG_WORKFLOW.read_text(encoding="utf-8")
         tag = TAG_WORKFLOW.read_text(encoding="utf-8")
