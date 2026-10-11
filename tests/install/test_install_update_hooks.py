@@ -72,3 +72,42 @@ class TestClaudeUpdateHook(InstallAsserts):
             self.assertEqual(len(hooks), 1, settings)
             self.assertIn("--hook", hooks[0]["command"])
             self.assertIn(str(sb.repo), hooks[0]["command"])
+
+
+class TestSetClaudeHook(InstallAsserts):
+    """`coach_config.py set-claude-hook` : remplace notre hook, jamais empilé."""
+
+    def run_set(self, settings, command):
+        import subprocess
+        import sys
+        from pathlib import Path
+        repo = Path(__file__).resolve().parents[2]
+        entry = {"matcher": "startup", "hooks": [{"type": "command", "command": command, "timeout": 10}]}
+        subprocess.run([sys.executable, str(repo / "scripts/coach_config.py"), "set-claude-hook",
+                        "--file", str(settings), "--event", "SessionStart",
+                        "--marker", HOOK_SCRIPT, "--value", json.dumps(entry)],
+                       check=True, capture_output=True, text=True)
+        return json.loads(settings.read_text(encoding="utf-8"))
+
+    def test_moved_engine_replaces_the_old_hook_and_keeps_user_hooks(self):
+        import tempfile
+        from pathlib import Path
+        with tempfile.TemporaryDirectory() as tmp:
+            settings = Path(tmp) / ".claude/settings.json"
+            settings.parent.mkdir()
+            mine = {"matcher": "startup", "hooks": [{"type": "command", "command": "echo bonjour"}]}
+            settings.write_text(json.dumps({"hooks": {"SessionStart": [mine]}}), encoding="utf-8")
+            self.run_set(settings, f"python3 /ancien/{HOOK_SCRIPT} --hook")
+            data = self.run_set(settings, f"python3 /nouveau/{HOOK_SCRIPT} --hook")
+            self.assertIn(mine, data["hooks"]["SessionStart"])
+            hooks = update_hooks(data)
+            self.assertEqual([h["command"] for h in hooks], [f"python3 /nouveau/{HOOK_SCRIPT} --hook"])
+
+    def test_install_quotes_paths_for_the_shell(self):
+        with Sandbox() as sb:
+            self.assertSucceeded(sb.install("--no-auth", "--ide", "claude"))
+            settings = json.loads((sb.repo / ".claude/settings.json").read_text(encoding="utf-8"))
+            command = update_hooks(settings)[0]["command"]
+            import shlex
+            self.assertEqual(shlex.split(command),
+                             ["python3", f"{sb.repo}/{HOOK_SCRIPT}", "--hook", "--workspace", str(sb.repo)])

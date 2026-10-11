@@ -433,7 +433,11 @@ def api_version(workspace: Path) -> dict:
     """Version du moteur et release plus récente éventuelle (`arc_update_check`, cache de 24 h :
     au plus un appel GitHub par jour, rien si `[update].check = false`). Les notes de version
     restent hors de la réponse : le bandeau renvoie vers la page de la release."""
-    state = U.check(workspace, current=V.cached_engine_version())
+    current = V.cached_engine_version()
+    if current is None:
+        # Version inconnue (ni .git ni VERSION) : aucune alerte possible, ni git ni réseau relancés.
+        return {"version": None, "update": None}
+    state = U.check(workspace, current=current)
     update = None
     if state["update_available"]:
         update = {"latest": state["latest"], "url": state["url"], "command": state["command"]}

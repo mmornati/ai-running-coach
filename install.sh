@@ -1956,15 +1956,23 @@ write_claude_config() {
 # Hook SessionStart (nouvelles sessions seulement, pas les reprises) : si une release plus
 # récente existe, arc_update_check.py --hook ajoute une ligne au contexte et Claude la
 # mentionne une fois. Muet si à jour, hors ligne, en headless (ARC_HEADLESS) ou avec
-# [update].check = false. Fusion par listes : les hooks SessionStart de l'utilisateur restent.
+# [update].check = false. Les hooks SessionStart de l'utilisateur restent ; une version
+# antérieure du nôtre (moteur déplacé, options changées) est remplacée, jamais empilée.
+# Chemins protégés par shlex.quote : la commande est interprétée par un shell.
 install_claude_update_hook() {
     local settings="$WORKSPACE_ROOT/.claude/settings.json" value
+    if [[ "$DRY_RUN" -eq 1 ]]; then
+        printf '%s\n' "${C_YELLOW}[dry-run]${C_RESET} hook SessionStart « nouvelle version » dans $settings"
+        return 0
+    fi
     have python3 || { warn "python3 absent : hook « nouvelle version » non installé."; return 0; }
-    value="$(python3 -c 'import json, sys
-cmd = "python3 " + json.dumps(sys.argv[1] + "/scripts/arc_update_check.py") + " --hook --workspace " + json.dumps(sys.argv[2])
-print(json.dumps({"SessionStart": [{"matcher": "startup", "hooks": [{"type": "command", "command": cmd, "timeout": 10}]}]}))' \
+    value="$(python3 -c 'import json, shlex, sys
+cmd = "python3 " + shlex.quote(sys.argv[1] + "/scripts/arc_update_check.py") + " --hook --workspace " + shlex.quote(sys.argv[2])
+print(json.dumps({"matcher": "startup", "hooks": [{"type": "command", "command": cmd, "timeout": 10}]}))' \
         "$PROJECT_ROOT" "$WORKSPACE_ROOT")"
-    merge_json_key "$settings" "" hooks "$value" "" union
+    python3 "$PROJECT_ROOT/scripts/coach_config.py" set-claude-hook --file "$settings" \
+        --event SessionStart --marker "scripts/arc_update_check.py" --value "$value" >/dev/null \
+        || die "Échec de la mise à jour de $settings (voir le message ci-dessus)."
 }
 
 write_copilot_config() {

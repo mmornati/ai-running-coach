@@ -728,13 +728,20 @@ notify() {
 # Nouvelle release du moteur : notification séparée, UNE fois par release (état dans
 # logs/.update-notified), jamais mêlée au résumé du run. Au plus un appel GitHub par
 # 24 h (cache de arc_update_check.py) ; [update].check = false ou un échec réseau : rien.
+# La release n'est mémorisée qu'APRÈS un envoi réussi : ntfy en panne = nouvel essai au run suivant.
 check_update_notice() {
     [[ "$DRY_RUN" -eq 0 ]] || return 0
-    local message
+    local message state_file="$LOG_DIR/.update-notified"
     message="$(python3 "$ARC_ENGINE_ROOT/scripts/arc_update_check.py" --workspace "$ARC_WORKSPACE" \
-        --notify-once "$LOG_DIR/.update-notified" 2>>"$LOG_FILE")" || return 0
+        --notify-once "$state_file" 2>>"$LOG_FILE")" || return 0
     [[ -n "$message" ]] || return 0
-    notify "🆕 Nouvelle version d'ai-running-coach" 3 "package" "$message"
+    if ! "$NOTIFY" --title "🆕 Nouvelle version d'ai-running-coach" --priority 3 --tags "package" "$message"; then
+        warn "Notification de nouvelle version non envoyée : nouvel essai au prochain run."
+        return 0
+    fi
+    python3 "$ARC_ENGINE_ROOT/scripts/arc_update_check.py" --workspace "$ARC_WORKSPACE" \
+        --mark-notified "$state_file" 2>>"$LOG_FILE" \
+        || warn "Release notifiée mais non mémorisée ($state_file) : elle pourrait être renvoyée."
 }
 
 # Telegram (#174) : résumé du run + boutons de retour en un geste (séance faite, RPE, douleur).

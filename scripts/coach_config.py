@@ -11,6 +11,7 @@ Ce module ne dépend que de la bibliothèque standard (voir CONTRIBUTING.md).
 
 Sous-commandes :
     merge-json          insère une clé dans un fichier JSON, en préservant le reste
+    set-claude-hook     pose UN hook Claude Code d'un événement, en remplaçant ses versions antérieures
     approve-claude-mcp  pré-approuve un serveur MCP de projet dans ~/.claude.json
     get                 lit une clé TOML (user.toml > workspace.toml > défaut)
     set                 écrit une clé dans workspace.user.toml sans toucher au reste
@@ -333,6 +334,41 @@ def cmd_merge_json(args) -> int:
     return 0
 
 
+def cmd_set_claude_hook(args) -> int:
+    """Remplace dans `hooks.<event>` toute commande contenant `marker` par l'entrée donnée.
+
+    Une simple union de listes empilerait l'ancienne version (chemins d'un moteur déplacé,
+    délai ou options modifiés) à côté de la nouvelle. Les hooks de l'utilisateur sont gardés ;
+    une entrée vidée de nos commandes disparaît."""
+    path = Path(args.file)
+    data = read_json(path)
+    hooks = data.setdefault("hooks", {})
+    if not isinstance(hooks, dict):
+        raise ConfigError(f"{path} : « hooks » n'est pas un objet JSON.")
+    current = hooks.get(args.event) or []
+    if not isinstance(current, list):
+        raise ConfigError(f"{path} : « hooks.{args.event} » n'est pas une liste.")
+    entry = json.loads(args.value)
+    kept = []
+    for item in current:
+        if isinstance(item, dict) and isinstance(item.get("hooks"), list):
+            commands = [h for h in item["hooks"]
+                        if not (isinstance(h, dict) and args.marker in str(h.get("command", "")))]
+            if not commands:
+                continue
+            if len(commands) != len(item["hooks"]):
+                item = {**item, "hooks": commands}
+        kept.append(item)
+    kept.append(entry)
+    if kept == current:
+        print(f"inchangé: {path} (hooks.{args.event})")
+        return 0
+    hooks[args.event] = kept
+    write_json(path, data)
+    print(f"hook posé: hooks.{args.event} dans {path}")
+    return 0
+
+
 def cmd_remove_json_key(args) -> int:
     """Retire une clé d'un fichier JSON si elle existe — sans effet sinon.
 
@@ -454,6 +490,13 @@ def build_parser() -> argparse.ArgumentParser:
     merge.add_argument("--union-lists", action="store_true",
                        help="objet existant : ajoute les éléments manquants de ses listes au lieu de le remplacer")
     merge.set_defaults(func=cmd_merge_json)
+
+    hook = sub.add_parser("set-claude-hook", help="pose un hook Claude Code, versions antérieures remplacées")
+    hook.add_argument("--file", required=True)
+    hook.add_argument("--event", required=True, help="ex. « SessionStart »")
+    hook.add_argument("--marker", required=True, help="sous-chaîne identifiant nos commandes (anciennes versions)")
+    hook.add_argument("--value", required=True, help="entrée JSON {matcher, hooks: [...]}")
+    hook.set_defaults(func=cmd_set_claude_hook)
 
     remove_key = sub.add_parser("remove-json-key", help="retire une clé d'un fichier JSON si présente")
     remove_key.add_argument("--file", required=True)

@@ -154,9 +154,33 @@ class Check(unittest.TestCase):
         state = self.run_check()
         marker = self.tmp / "logs/.update-notified"
         self.assertIn("v1.2.0", U.notify_once(state, marker))
+        self.assertTrue(U.mark_notified(state, marker))
         self.assertIsNone(U.notify_once(state, marker))
         state["latest"] = "v1.3.0"
         self.assertIn("v1.3.0", U.notify_once(state, marker))
+
+    def test_release_is_renotified_until_the_send_is_confirmed(self):
+        state = self.run_check()
+        marker = self.tmp / "logs/.update-notified"
+        self.assertIsNotNone(U.notify_once(state, marker))
+        self.assertFalse(marker.exists(), "release mémorisée avant l'envoi")
+        self.assertIsNotNone(U.notify_once(state, marker), "envoi échoué : la release doit revenir")
+
+    def test_disabled_by_string_or_empty_value(self):
+        for raw in ('"off"', '"false"', '"non"', '""', "0"):
+            with self.subTest(value=raw):
+                (self.workspace / "config/workspace.user.toml").write_text(
+                    f"[update]\ncheck = {raw}\n", encoding="utf-8")
+                self.assertFalse(U.enabled(self.workspace))
+        (self.workspace / "config/workspace.user.toml").write_text('[update]\ncheck = "on"\n', encoding="utf-8")
+        self.assertTrue(U.enabled(self.workspace))
+
+    def test_unknown_local_version_never_fetches(self):
+        for current in ("", "abc1234"):
+            with self.subTest(current=current):
+                state = self.run_check(current=current,
+                                       fetch=lambda: self.fail("appel réseau sans version locale connue"))
+                self.assertFalse(state["update_available"])
 
     def test_notify_once_silent_when_up_to_date(self):
         state = self.run_check(current="v1.2.0")
@@ -188,6 +212,12 @@ class Cli(unittest.TestCase):
 
     def test_hook_is_silent_in_headless_runs(self):
         self.assertEqual(self.run_main("--hook", env={"ARC_HEADLESS": "1"}), "")
+
+    def test_api_version_skips_the_check_when_the_version_is_unknown(self):
+        import arc_serve
+        with mock.patch.object(arc_serve.V, "cached_engine_version", return_value=None), \
+                mock.patch.object(arc_serve.U, "check", side_effect=AssertionError("check() appelé")):
+            self.assertEqual(arc_serve.api_version(self.tmp), {"version": None, "update": None})
 
     def test_default_output_is_one_line(self):
         self.assertEqual(len(self.run_main().strip().splitlines()), 1)

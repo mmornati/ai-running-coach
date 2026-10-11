@@ -5,7 +5,8 @@ Une seule vérification, partagée par trois surfaces :
 
 - le tableau de bord (`/api/version` de `arc_serve.py`, bandeau dans l'en-tête) ;
 - Claude Code (hook `SessionStart` écrit par `install.sh`, mode `--hook`) ;
-- la notification du daily-sync (mode `--notify-once`, une fois par release).
+- la notification du daily-sync (mode `--notify-once`, puis `--mark-notified` une fois
+  l'envoi réussi : une notification perdue est retentée au run suivant).
 
 Réseau : au plus UN appel par 24 h (`releases/latest` de l'API GitHub, délai 3 s),
 résultat gardé dans `~/.cache/ai-running-coach/update-check.json`. Rien n'est
@@ -13,8 +14,9 @@ envoyé hormis la requête elle-même. Un échec (hors ligne, quota, réponse
 inattendue) n'affiche rien, ne casse rien et n'est pas retenté avant 1 h
 (mémorisé dans le cache, et en mémoire si le cache n'est pas inscriptible).
 
-Désactivation : `[update].check = false` dans `config/workspace.user.toml`, ou
-`ARC_UPDATE_CHECK=off` dans l'environnement (bac à sable des tests).
+Désactivation : `[update].check = false` (ou `"off"`, `"non"`, vide…) dans
+`config/workspace.user.toml`, ou `ARC_UPDATE_CHECK=off` dans l'environnement (bac à
+sable des tests). Une version locale inconnue ne déclenche aucun appel réseau.
 
 Comparaison : seule une release STRICTEMENT plus récente que la version locale
 compte. Un moteur sur `main` après la v1.1.0 (`v1.1.0-24-gaa77fc7`) n'est pas
@@ -24,6 +26,7 @@ alerté pour la v1.1.0 ; une version locale inconnue n'alerte jamais.
     python3 scripts/arc_update_check.py --json --force  # état complet, cache ignoré
     python3 scripts/arc_update_check.py --hook          # contexte Claude Code (SessionStart)
     python3 scripts/arc_update_check.py --notify-once logs/.update-notified
+    python3 scripts/arc_update_check.py --mark-notified logs/.update-notified
 """
 
 from __future__ import annotations
@@ -86,7 +89,11 @@ def enabled(workspace: Optional[Path]) -> bool:
         except Exception:  # TOML invalide : coach_doctor le signale, ici on garde le défaut
             continue
         if "check" in section:
-            return section["check"] is not False
+            # Clé présente mais vide = héritage annulé (AGENTS.md) : vide vaut désactivé.
+            value = section["check"]
+            if isinstance(value, bool):
+                return value
+            return str(value).strip().lower() not in DISABLED_VALUES | {""}
     return True
 
 
@@ -153,8 +160,8 @@ def check(workspace: Optional[Path], *, force: bool = False, now: Optional[float
     result = {"enabled": enabled(workspace), "current": current, "latest": None,
               "update_available": False, "url": None, "published_at": None,
               "notes": "", "checked_at": None, "command": UPDATE_COMMAND}
-    if not result["enabled"]:
-        return result
+    if not result["enabled"] or not parse_version(current):
+        return result  # version locale inconnue : aucune alerte possible, donc aucun appel
     now = time.time() if now is None else now
     path = cache or cache_file()
     cached = _read_cache(path)
@@ -194,8 +201,21 @@ def hook_context(state: dict) -> str:
             "n'en parle pas pendant une décision médicale ni dans un run headless.")
 
 
+def _writable(path: Path) -> bool:
+    """`path` pourra-t-il être écrit (lui-même, ou son plus proche dossier existant) ?"""
+    if path.exists():
+        return os.access(path, os.W_OK)
+    for parent in path.parents:
+        if parent.exists():
+            return os.access(parent, os.W_OK)
+    return False
+
+
 def notify_once(state: dict, state_file: Path) -> Optional[str]:
-    """Message à envoyer si cette release n'a pas encore été notifiée (puis la mémorise)."""
+    """Message à envoyer si cette release n'a pas encore été notifiée.
+
+    Ne mémorise rien : l'appelant appelle `mark_notified` APRÈS un envoi réussi, sinon une
+    notification perdue (ntfy injoignable) ne serait jamais retentée."""
     if not state["update_available"]:
         return None
     try:
@@ -203,12 +223,21 @@ def notify_once(state: dict, state_file: Path) -> Optional[str]:
             return None
     except OSError:
         pass
+    if not _writable(state_file):
+        return None  # sans mémoire possible, on notifierait à chaque run : mieux vaut se taire
+    return summary_line(state)
+
+
+def mark_notified(state: dict, state_file: Path) -> bool:
+    """Mémorise la release comme notifiée (après un envoi réussi)."""
+    if not state["update_available"]:
+        return False
     try:
         state_file.parent.mkdir(parents=True, exist_ok=True)
         state_file.write_text(state["latest"] + "\n", encoding="utf-8")
     except OSError:
-        return None  # sans mémoire, on notifierait à chaque run : mieux vaut se taire
-    return summary_line(state)
+        return False
+    return True
 
 
 def main(argv: Optional[list] = None) -> int:
@@ -219,7 +248,9 @@ def main(argv: Optional[list] = None) -> int:
     mode.add_argument("--json", action="store_true", help="état complet en JSON")
     mode.add_argument("--hook", action="store_true", help="contexte pour un hook SessionStart de Claude Code")
     mode.add_argument("--notify-once", type=Path, metavar="FICHIER_ÉTAT",
-                      help="une ligne seulement pour une release pas encore notifiée")
+                      help="une ligne seulement pour une release pas encore notifiée (ne mémorise rien)")
+    mode.add_argument("--mark-notified", type=Path, metavar="FICHIER_ÉTAT",
+                      help="mémorise la release courante comme notifiée (après un envoi réussi)")
     args = parser.parse_args(argv)
 
     if args.hook and os.environ.get("ARC_HEADLESS"):
@@ -241,6 +272,8 @@ def main(argv: Optional[list] = None) -> int:
         message = notify_once(state, args.notify_once)
         if message:
             print(message)
+    elif args.mark_notified:
+        return 0 if mark_notified(state, args.mark_notified) else 1
     elif state["update_available"]:
         print(summary_line(state))
     return 0
