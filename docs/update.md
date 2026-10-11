@@ -9,6 +9,19 @@ idempotent et ne remplace jamais une réponse de `/coach-setup` ni votre
 ## En bref
 
 ```bash
+scripts/update-coach.sh      # ou /update-coach dans votre assistant
+```
+
+Il fait exactement les trois étapes ci-dessous, avec les options de votre dernière
+installation (mémorisées par `install.sh` dans `~/.config/ai-running-coach/install-args`),
+et refuse plutôt que de forcer : moteur hors de `main`, modifications locales, options
+inconnues (installation antérieure à leur mémorisation). Une nouvelle release est
+signalée par le tableau de bord, au démarrage de Claude Code et par la notification du
+daily-sync — voir [Mettre à jour (/update-coach)](skills/update-coach.md).
+
+À la main :
+
+```bash
 cd ~/ai-running-coach
 git pull --ff-only
 ./install.sh <les mêmes options qu'à l'installation>
@@ -50,6 +63,10 @@ absent de `[agents].enabled`) le reste. Une installation antérieure à `known` 
 traitée comme connaissant les quatre agents d'origine.
 
 ## Retrouver ses options d'installation
+
+Depuis `/update-coach`, `install.sh` mémorise ses options dans
+`~/.config/ai-running-coach/install-args` à chaque installation réussie : il suffit de
+les retrouver UNE fois pour une installation plus ancienne.
 
 `install.sh` ne mémorise que le chemin du workspace (`~/.config/ai-running-coach/workspace`).
 Pour le reste, les traces de l'installation suffisent :

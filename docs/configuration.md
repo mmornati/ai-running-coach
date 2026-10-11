@@ -620,6 +620,20 @@ Les retours en un geste ne demandent aucune clé d'API. Variable d'environnement
 `ARC_TELEGRAM_API_BASE` (https, ou http en boucle locale seulement). Le diagnostic :
 `python3 scripts/coach_doctor.py --check telegram`.
 
+## Les nouvelles versions — `[update]`
+
+```toml
+[update]
+check = true   # défaut
+```
+
+Au plus une fois par jour, `scripts/arc_update_check.py` demande à GitHub la dernière
+release (`releases/latest`, rien d'autre n'est envoyé) et la compare à votre moteur. Une
+version plus récente est signalée par le tableau de bord (pastille dans l'en-tête), au
+démarrage d'une session Claude Code et, une fois par release, par la notification du
+daily-sync. `check = false` coupe tout : aucun appel réseau, aucune mention. Voir
+[Mettre à jour (/update-coach)](skills/update-coach.md).
+
 ## Notifications et synchronisation
 
 `[notifications]` et `[sync]` sont décrits dans

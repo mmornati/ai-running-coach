@@ -362,6 +362,9 @@ apply_preset() {
 # doivent produire le même résultat. Les valeurs du préréglage ne sont donc
 # appliquées qu'AUX DÉFAUTS, avant que la boucle ci-dessous ne lise les
 # options explicites (qui, elles, écrivent directement sur ces variables).
+# Arguments tels que reçus, mémorisés en fin d'installation réussie (persist_install_args) :
+# scripts/update-coach.sh relance install.sh avec exactement les mêmes options.
+INSTALL_ARGS=("$@")
 _scan_args=("$@")
 _scan_n=${#_scan_args[@]}
 _scan_i=0
@@ -1946,6 +1949,21 @@ write_claude_config() {
             mcp_server_key_exists "$cfg" mcpServers "$stale" || unapprove_claude_project_mcp "$stale"
         done
     fi
+    install_claude_update_hook
+}
+
+# Hook SessionStart (nouvelles sessions seulement, pas les reprises) : si une release plus
+# récente existe, arc_update_check.py --hook ajoute une ligne au contexte et Claude la
+# mentionne une fois. Muet si à jour, hors ligne, en headless (ARC_HEADLESS) ou avec
+# [update].check = false. Fusion par listes : les hooks SessionStart de l'utilisateur restent.
+install_claude_update_hook() {
+    local settings="$WORKSPACE_ROOT/.claude/settings.json" value
+    have python3 || { warn "python3 absent : hook « nouvelle version » non installé."; return 0; }
+    value="$(python3 -c 'import json, sys
+cmd = "python3 " + json.dumps(sys.argv[1] + "/scripts/arc_update_check.py") + " --hook --workspace " + json.dumps(sys.argv[2])
+print(json.dumps({"SessionStart": [{"matcher": "startup", "hooks": [{"type": "command", "command": cmd, "timeout": 10}]}]}))' \
+        "$PROJECT_ROOT" "$WORKSPACE_ROOT")"
+    merge_json_key "$settings" "" hooks "$value" "" union
 }
 
 write_copilot_config() {
@@ -2772,6 +2790,29 @@ main() {
     install_telegram
     verify
     verify_openwearables
+    persist_install_args
+}
+
+# Mémorise les options de CETTE installation, une par ligne, pour que scripts/update-coach.sh
+# (/update-coach) relance install.sh à l'identique après un git pull. Écrit seulement après une
+# installation complète, jamais en dry-run. Aucun secret : install.sh ne reçoit que des chemins.
+persist_install_args() {
+    [[ "$DRY_RUN" -eq 0 ]] || return 0
+    local file arg
+    file="$(dirname "$WORKSPACE_STATE_FILE")/install-args"
+    for arg in ${INSTALL_ARGS[@]+"${INSTALL_ARGS[@]}"}; do
+        if [[ "$arg" == *$'\n'* ]]; then
+            warn "Option sur plusieurs lignes : options d'installation non mémorisées ($file)."
+            return 0
+        fi
+    done
+    mkdir -p "$(dirname "$file")"
+    if [[ "${#INSTALL_ARGS[@]}" -eq 0 ]]; then
+        : > "$file"   # aucune option : fichier vide (printf écrirait une ligne vide)
+    else
+        printf '%s\n' "${INSTALL_ARGS[@]}" > "$file"
+    fi
+    ok "Options d'installation mémorisées pour les mises à jour : $file"
 }
 
 main "$@"
