@@ -4,7 +4,7 @@
 ![](assets/ridge.jpg)
 </div>
 
-`ai-running-coach` fournit **21 skills** que les agents chargent à la demande pour des tâches spécifiques.
+`ai-running-coach` fournit **22 skills** que les agents chargent à la demande pour des tâches spécifiques.
 
 ## Vue d'ensemble
 
@@ -28,6 +28,7 @@
 <div class="arc-skill"><span class="arc-skill__name"><a href="skills/workspace-data-contract.md">Contrat de données</a></span><span class="arc-skill__desc">Schéma JSON du bloc <code>arc</code> pour la persistance structurée des données</span></div>
 <div class="arc-skill"><span class="arc-skill__name"><a href="skills/arc-backfill.md">Backfill du contrat</a></span><span class="arc-skill__desc">Migration des fichiers Markdown existants pour les conformer au contrat de données</span></div>
 <div class="arc-skill"><span class="arc-skill__name"><a href="skills/coach-doctor.md">Diagnostic d'installation</a></span><span class="arc-skill__desc">Vérification en une commande des tokens Garmin, du MCP, de la configuration et du daily-sync</span></div>
+<div class="arc-skill"><span class="arc-skill__name"><a href="skills/update-coach.md">Mettre à jour (/update-coach)</a></span><span class="arc-skill__desc">Nouvelle version signalée par le tableau de bord, Claude et la notification ; mise à jour du moteur avec vos options d'installation, après votre « oui »</span></div>
 <div class="arc-skill"><span class="arc-skill__name"><a href="skills/gear-inspection.md">Inspection des chaussures</a></span><span class="arc-skill__desc">Photos des semelles : état 🟢🟡🟠🔴, comparaison avec l'inspection précédente, indices de foulée (jamais un diagnostic)</span></div>
 <div class="arc-skill"><span class="arc-skill__name"><a href="skills/inspection.md">Inspection d'une paire (/inspection)</a></span><span class="arc-skill__desc">Désigner la paire, protocole photo, dépôt des photos dans gear/photos/, puis lecture par gear-inspection</span></div>
 <div class="arc-skill"><span class="arc-skill__name"><a href="skills/log.md">Saisie libre (/log)</a></span><span class="arc-skill__desc">Ravitaillement, douleur et RPE en une phrase, convertis en blocs arc sans jamais inventer une valeur nutritionnelle</span></div>

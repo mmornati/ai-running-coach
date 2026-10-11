@@ -1,0 +1,84 @@
+# Généré par scripts/build-gemini-commands.py — NE PAS ÉDITER À LA MAIN.
+# Source : skills/update-coach/SKILL.md
+description = "Commande courte /update-coach — met à jour le moteur ai-running-coach vers la dernière version. Vérifie la release disponible (scripts/arc_update_check.py), montre les nouveautés, demande un « oui » explicite, puis lance scripts/update-coach.sh (avance rapide de main, ./install.sh avec les options mémorisées de la dernière installation, coach_doctor.py). Les données du workspace ne sont jamais touchées. Interactive uniquement, jamais en headless, jamais sans confirmation. Charger quand l'athlète tape /update-coach, demande s'il y a une nouvelle version ou comment mettre à jour, ou répond oui à l'annonce d'une nouvelle version."
+prompt = '''
+# `/update-coach` — mettre à jour le moteur
+
+Toute la mise à jour est faite par `scripts/update-coach.sh` : ce skill ne fait
+qu'expliquer, demander l'accord de l'athlète et relayer le résultat. Ne lancez
+jamais `git pull`, `git merge` ou `install.sh` vous-même.
+
+**Interactif uniquement.** En headless (`garmin-daily-sync`, `ARC_HEADLESS`),
+ne rien lancer : la notification du daily-sync signale déjà la release.
+
+## 1. Y a-t-il une nouvelle version ?
+
+```bash
+python3 scripts/arc_update_check.py --json --force
+```
+
+- `update_available: false` : dire en une ligne que le moteur est à jour
+  (`current`), et s'arrêter. `latest` absent avec `error` : la vérification a
+  échoué (hors ligne…) — le dire, puis passer quand même à l'étape 2, qui
+  interroge git directement.
+- `enabled: false` : l'athlète a coupé la vérification (`[update].check = false`).
+  S'il demande quand même la mise à jour, passer à l'étape 2.
+- `update_available: true` : résumer `notes` (les notes de la release) en
+  quelques puces dans la langue des réponses — nouveautés d'abord, corrections
+  ensuite, sans recopier la liste brute des PR — avec le lien `url`.
+
+## 2. Ce qui va se passer
+
+```bash
+scripts/update-coach.sh --check
+```
+
+Ne modifie rien. Relayer selon le code de sortie :
+
+| Code | Sens | Quoi dire |
+|---|---|---|
+| 0 | « Déjà à jour », ou mise à jour possible (version installée → nouvelle version, commande `install.sh …` qui sera relancée) | Montrer ces trois lignes telles quelles |
+| 3 | Moteur sans git | Application macOS : la mise à jour passe par l'application. Image Docker : `git pull` dans le dépôt source puis `docker compose up -d --build`. Rien d'autre à faire ici |
+| 4 | Options de la dernière installation inconnues | Installation antérieure à leur mémorisation : aider l'athlète à les retrouver (`docs/update.md`, « Retrouver ses options d'installation »), puis lui faire relancer **lui-même** `install.sh <options>` une fois — elles seront mémorisées pour la prochaine fois |
+| 5 | Moteur hors de `main`, modifications locales ou commits locaux | Ne rien forcer : citer le message et renvoyer vers `docs/update.md`. Un développeur gère ses branches lui-même |
+| 1 | Erreur (réseau, git) | Citer le message tel quel |
+
+## 3. Confirmation, puis mise à jour
+
+Seulement si l'étape 2 a rendu 0 avec une mise à jour possible : demander
+« Mettre à jour maintenant ? ». Sans « oui » explicite, s'arrêter. Après le oui :
+
+```bash
+scripts/update-coach.sh --yes
+```
+
+`install.sh` peut être long (dépendances `uv`, serveur MCP). Sans terminal
+(cas de l'assistant), le script le relance avec `--no-auth` : aucune
+authentification interactive ne peut bloquer. Si `coach_doctor.py` signale
+ensuite des jetons expirés, donner la commande de renouvellement qu'il affiche,
+à lancer par l'athlète dans son propre terminal.
+
+La mise à jour amène le moteur à la **dernière release publiée** (celle annoncée),
+jamais aux commits non publiés de `main`.
+
+## 4. Après la mise à jour
+
+Relayer la fin de la sortie : version installée, et les ❌/⚠️ de
+`coach_doctor.py` avec leur commande de correction (même règle que le skill
+`coach-doctor`). Rappeler en une ligne qu'il faut **ouvrir une nouvelle
+session** de l'assistant (agents et skills relus) et relancer le tableau de
+bord (`scripts/dashboard.sh`, ou `docker compose up -d --build` pour l'image
+Docker).
+
+## Règles
+
+- Jamais sans « oui » explicite de l'athlète ; jamais en headless.
+- Jamais `--force`, `git reset`, `git stash` ni modification du dépôt pour
+  contourner un refus (codes 4 et 5) : expliquer, ne pas forcer.
+- Ne jamais relancer `install.sh` avec des options devinées.
+- La mise à jour ne change ni le profil, ni l'objectif, ni les décisions, ni les
+  données du workspace : le dire si l'athlète s'inquiète pour ses données.
+
+---
+Demande de l'utilisateur : {{args}}
+'''

@@ -362,6 +362,10 @@ apply_preset() {
 # doivent produire le même résultat. Les valeurs du préréglage ne sont donc
 # appliquées qu'AUX DÉFAUTS, avant que la boucle ci-dessous ne lise les
 # options explicites (qui, elles, écrivent directement sur ces variables).
+# Arguments tels que reçus, mémorisés en fin d'installation réussie (persist_install_args) :
+# scripts/update-coach.sh relance install.sh avec exactement les mêmes options.
+INSTALL_ARGS=("$@")
+INSTALL_CWD="$PWD"   # update-coach.sh relance depuis la racine du moteur : chemins relatifs rendus absolus
 _scan_args=("$@")
 _scan_n=${#_scan_args[@]}
 _scan_i=0
@@ -1946,6 +1950,29 @@ write_claude_config() {
             mcp_server_key_exists "$cfg" mcpServers "$stale" || unapprove_claude_project_mcp "$stale"
         done
     fi
+    install_claude_update_hook
+}
+
+# Hook SessionStart (nouvelles sessions seulement, pas les reprises) : si une release plus
+# récente existe, arc_update_check.py --hook ajoute une ligne au contexte et Claude la
+# mentionne une fois. Muet si à jour, hors ligne, en headless (ARC_HEADLESS) ou avec
+# [update].check = false. Les hooks SessionStart de l'utilisateur restent ; une version
+# antérieure du nôtre (moteur déplacé, options changées) est remplacée, jamais empilée.
+# Chemins protégés par shlex.quote : la commande est interprétée par un shell.
+install_claude_update_hook() {
+    local settings="$WORKSPACE_ROOT/.claude/settings.json" value
+    if [[ "$DRY_RUN" -eq 1 ]]; then
+        printf '%s\n' "${C_YELLOW}[dry-run]${C_RESET} hook SessionStart « nouvelle version » dans $settings"
+        return 0
+    fi
+    have python3 || { warn "python3 absent : hook « nouvelle version » non installé."; return 0; }
+    value="$(python3 -c 'import json, shlex, sys
+cmd = "python3 " + shlex.quote(sys.argv[1] + "/scripts/arc_update_check.py") + " --hook --workspace " + shlex.quote(sys.argv[2])
+print(json.dumps({"matcher": "startup", "hooks": [{"type": "command", "command": cmd, "timeout": 10}]}))' \
+        "$PROJECT_ROOT" "$WORKSPACE_ROOT")"
+    python3 "$PROJECT_ROOT/scripts/coach_config.py" set-claude-hook --file "$settings" \
+        --event SessionStart --marker "scripts/arc_update_check.py" --value "$value" >/dev/null \
+        || die "Échec de la mise à jour de $settings (voir le message ci-dessus)."
 }
 
 write_copilot_config() {
@@ -2772,6 +2799,45 @@ main() {
     install_telegram
     verify
     verify_openwearables
+    persist_install_args
+}
+
+# Mémorise les options de configuration de cette installation, une par ligne, pour que
+# scripts/update-coach.sh (/update-coach) relance install.sh à l'identique après un git pull.
+# --no-auth/--auth/--dry-run ne décrivent pas la configuration : jamais mémorisés. Une relance
+# sans autre option (« ./install.sh --no-auth ») garde les options déjà mémorisées — sinon elle
+# effacerait, par exemple, le --daily-sync que la mise à jour doit rejouer. Écrit seulement après
+# une installation complète, jamais en dry-run. Aucun secret : install.sh ne reçoit que des chemins.
+persist_install_args() {
+    [[ "$DRY_RUN" -eq 0 ]] || return 0
+    local file arg prev="" kept=()
+    file="$(dirname "$WORKSPACE_STATE_FILE")/install-args"
+    for arg in ${INSTALL_ARGS[@]+"${INSTALL_ARGS[@]}"}; do
+        if [[ "$arg" == *$'\n'* ]]; then
+            warn "Option sur plusieurs lignes : options d'installation non mémorisées ($file)."
+            return 0
+        fi
+        # Valeur de chemin relative : résolue contre le dossier d'où install.sh a été lancé,
+        # sinon la relance (depuis la racine du moteur) viserait un autre dossier.
+        case "$prev" in
+            --workspace|--ow-key-file) [[ "$arg" == /* ]] || arg="$INSTALL_CWD/${arg#./}" ;;
+        esac
+        case "$arg" in
+            --no-auth|--auth|--dry-run) ;;
+            *) kept+=("$arg") ;;
+        esac
+        prev="$arg"
+    done
+    if [[ "${#kept[@]}" -eq 0 && -f "$file" ]]; then
+        return 0
+    fi
+    mkdir -p "$(dirname "$file")"
+    if [[ "${#kept[@]}" -eq 0 ]]; then
+        : > "$file"   # aucune option : fichier vide (printf écrirait une ligne vide)
+    else
+        printf '%s\n' "${kept[@]}" > "$file"
+    fi
+    ok "Options d'installation mémorisées pour les mises à jour : $file"
 }
 
 main "$@"

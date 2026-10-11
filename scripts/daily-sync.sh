@@ -52,6 +52,10 @@ LOG_DIR="$ARC_WORKSPACE/logs"
 LOG_FILE="$LOG_DIR/sync-$(date +%F).log"
 LOCK_FILE="$LOG_DIR/.sync.lock"
 NOTIFY="$ARC_ENGINE_ROOT/scripts/notify.sh"
+# Le runner hérite de cette variable : le hook SessionStart « nouvelle version »
+# (arc_update_check.py --hook) se tait en headless ; la notification dédiée
+# (check_update_notice) s'en charge.
+export ARC_HEADLESS=1
 
 # Mode API / modèle (#chat) : [sync].api_key_env non vide = clé lue dans llm.env
 # (jamais dans le TOML). model : requis pour opencode, optionnel pour claude API.
@@ -721,6 +725,25 @@ notify() {
     "$NOTIFY" --title "$title" --priority "$priority" --tags "$tags" "$*" || warn "Notification non envoyée."
 }
 
+# Nouvelle release du moteur : notification séparée, UNE fois par release (état dans
+# logs/.update-notified), jamais mêlée au résumé du run. Au plus un appel GitHub par
+# 24 h (cache de arc_update_check.py) ; [update].check = false ou un échec réseau : rien.
+# La release n'est mémorisée qu'APRÈS un envoi réussi : ntfy en panne = nouvel essai au run suivant.
+check_update_notice() {
+    [[ "$DRY_RUN" -eq 0 ]] || return 0
+    local message state_file="$LOG_DIR/.update-notified"
+    message="$(python3 "$ARC_ENGINE_ROOT/scripts/arc_update_check.py" --workspace "$ARC_WORKSPACE" \
+        --notify-once "$state_file" 2>>"$LOG_FILE")" || return 0
+    [[ -n "$message" ]] || return 0
+    if ! "$NOTIFY" --title "🆕 Nouvelle version d'ai-running-coach" --priority 3 --tags "package" "$message"; then
+        warn "Notification de nouvelle version non envoyée : nouvel essai au prochain run."
+        return 0
+    fi
+    python3 "$ARC_ENGINE_ROOT/scripts/arc_update_check.py" --workspace "$ARC_WORKSPACE" \
+        --mark-notified "$state_file" 2>>"$LOG_FILE" \
+        || warn "Release notifiée mais non mémorisée ($state_file) : elle pourrait être renvoyée."
+}
+
 # Telegram (#174) : résumé du run + boutons de retour en un geste (séance faite, RPE, douleur).
 # ADDITIF à ntfy (les deux peuvent être actifs) et jamais bloquant : un échec Telegram ne doit
 # ni faire échouer la synchronisation ni masquer le push ntfy. Sans modèle ni clé d'API.
@@ -1254,6 +1277,7 @@ main() {
     fi
     notify "$title" "$priority" "$tags" "$resume"
     telegram_summary "$title" "$priority" "$resume"
+    check_update_notice
 }
 
 main "$@"

@@ -103,7 +103,8 @@ class TestDashboardServer(InstallAsserts):
         Le bac à sable n'a pas de `.git` : la valeur vient du fichier VERSION recopié."""
         status, body, _ = self.server.get("/api/version")
         expected = "v" + (self.sb.repo / "VERSION").read_text(encoding="utf-8").strip()
-        self.assertEqual((status, json.loads(body)), (200, {"version": expected}))
+        # Vérification des releases coupée dans le bac à sable (ARC_UPDATE_CHECK=off) : jamais de réseau.
+        self.assertEqual((status, json.loads(body)), (200, {"version": expected, "update": None}))
         self.assertEqual(self.server.get("/api/version", host="evil.example")[0], 403)
 
     def test_read_only(self):

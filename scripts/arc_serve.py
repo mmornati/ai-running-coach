@@ -65,6 +65,7 @@ import arc_health_source as HS  # noqa: E402
 import arc_index as I  # noqa: E402
 import arc_metrics as M  # noqa: E402
 import arc_roadbook as RB  # noqa: E402
+import arc_update_check as U  # noqa: E402
 import arc_version as V  # noqa: E402
 from coach_config import ConfigError  # noqa: E402
 
@@ -426,6 +427,21 @@ def api_heat_acclimation(store: Store, today: date, settings: dict, objective: O
             objective_forecast_hot = race_weather["temp_max_c"] >= threshold_c
     result["objective_forecast_hot"] = objective_forecast_hot
     return result
+
+
+def api_version(workspace: Path) -> dict:
+    """Version du moteur et release plus récente éventuelle (`arc_update_check`, cache de 24 h :
+    au plus un appel GitHub par jour, rien si `[update].check = false`). Les notes de version
+    restent hors de la réponse : le bandeau renvoie vers la page de la release."""
+    current = V.cached_engine_version()
+    if current is None:
+        # Version inconnue (ni .git ni VERSION) : aucune alerte possible, ni git ni réseau relancés.
+        return {"version": None, "update": None}
+    state = U.check(workspace, current=current)
+    update = None
+    if state["update_available"]:
+        update = {"latest": state["latest"], "url": state["url"], "command": state["command"]}
+    return {"version": state["current"], "update": update}
 
 
 def api_summary(store: Store, q: dict) -> dict:
@@ -1762,7 +1778,7 @@ class Handler(BaseHTTPRequestHandler):
         if url.path == "/healthz":              # sonde du conteneur : ne réindexe pas
             self._json(HTTPStatus.OK, {"status": "ok"})
         elif url.path == "/api/version":        # hors de ROUTES : ne réindexe pas, ne dépend pas des données
-            self._json(HTTPStatus.OK, {"version": V.cached_engine_version()})
+            self._json(HTTPStatus.OK, api_version(self.store.workspace))
         elif url.path.startswith(CHAT_PREFIX) and self.chat_port:
             self._chat_proxy()
         elif url.path == "/media/gear-photo":

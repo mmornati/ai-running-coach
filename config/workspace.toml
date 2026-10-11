@@ -42,6 +42,14 @@ token_alerts = true
 # d'expiration — sans effet sur la notification 401 explicite, elle toujours active.
 token_alert_days = [14, 3]
 
+[update]
+# Nouvelle version disponible ? (scripts/arc_update_check.py) Au plus un appel par 24 h à
+# l'API GitHub (`releases/latest`, aucune donnée envoyée hormis la requête), signalé par le
+# tableau de bord, au démarrage d'une session Claude Code et, une fois par release, par la
+# notification du daily-sync. Mise à jour : /update-coach ou scripts/update-coach.sh.
+# false = aucun appel, aucune mention.
+check = true
+
 [sync]
 # Synchronisation automatique de la source sportive (voir docs/mobile.md et scripts/daily-sync.sh).
 # Exécuteur headless : "claude" | "codex" | "copilot" | "opencode" |

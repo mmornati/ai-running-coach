@@ -1,0 +1,113 @@
+"""Palier A — ce qu'install.sh prépare pour les mises à jour : options mémorisées
+(relues par scripts/update-coach.sh) et hook « nouvelle version » de Claude Code."""
+
+from __future__ import annotations
+
+import json
+from pathlib import Path
+
+from tests.lib.asserts import InstallAsserts
+from tests.lib.sandbox import Sandbox
+
+HOOK_SCRIPT = "scripts/arc_update_check.py"
+
+
+def update_hooks(settings: dict) -> list:
+    return [hook for entry in settings.get("hooks", {}).get("SessionStart", [])
+            for hook in entry.get("hooks", []) if HOOK_SCRIPT in hook.get("command", "")]
+
+
+class TestInstallArgs(InstallAsserts):
+    def test_options_are_remembered_after_a_successful_install(self):
+        with Sandbox() as sb:
+            self.assertSucceeded(sb.install("--no-auth", "--ide", "claude"))
+            args = (sb.home / ".config/ai-running-coach/install-args").read_text(encoding="utf-8")
+            self.assertEqual(args.splitlines(), ["--ide", "claude"], "--no-auth ne se rejoue pas")
+
+    def test_plain_rerun_keeps_remembered_options(self):
+        with Sandbox() as sb:
+            self.assertSucceeded(sb.install("--no-auth", "--ide", "claude", "--no-medical"))
+            self.assertSucceeded(sb.install("--no-auth"))
+            args = (sb.home / ".config/ai-running-coach/install-args").read_text(encoding="utf-8")
+            self.assertEqual(args.splitlines(), ["--ide", "claude", "--no-medical"])
+
+    def test_new_options_replace_remembered_ones(self):
+        with Sandbox() as sb:
+            self.assertSucceeded(sb.install("--no-auth", "--ide", "claude"))
+            self.assertSucceeded(sb.install("--no-auth", "--ide", "opencode"))
+            args = (sb.home / ".config/ai-running-coach/install-args").read_text(encoding="utf-8")
+            self.assertEqual(args.splitlines(), ["--ide", "opencode"])
+
+    def test_relative_paths_are_remembered_as_absolute(self):
+        with Sandbox() as sb:
+            self.assertSucceeded(sb.install("--no-auth", "--ide", "claude", "--workspace", "./ws-relatif",
+                                            cwd=sb.home))
+            args = (sb.home / ".config/ai-running-coach/install-args").read_text(encoding="utf-8")
+            remembered = args.splitlines()
+            self.assertEqual(remembered[:3], ["--ide", "claude", "--workspace"])
+            # Chemin physique : sur macOS, /var est un lien vers /private/var (getcwd le résout).
+            self.assertTrue(remembered[3].startswith("/"), remembered)
+            self.assertEqual(Path(remembered[3]).resolve(), (sb.home / "ws-relatif").resolve())
+
+    def test_dry_run_remembers_nothing(self):
+        with Sandbox() as sb:
+            self.assertSucceeded(sb.install("--no-auth", "--dry-run"))
+            self.assertFalse((sb.home / ".config/ai-running-coach/install-args").exists())
+
+
+class TestClaudeUpdateHook(InstallAsserts):
+    def test_hook_installed_once_and_user_hooks_kept(self):
+        with Sandbox() as sb:
+            settings_path = sb.repo / ".claude/settings.json"
+            settings_path.parent.mkdir(parents=True, exist_ok=True)
+            mine = {"matcher": "startup", "hooks": [{"type": "command", "command": "echo bonjour"}]}
+            settings_path.write_text(json.dumps({"hooks": {"SessionStart": [mine]}}), encoding="utf-8")
+
+            self.assertSucceeded(sb.install("--no-auth", "--ide", "claude"))
+            self.assertSucceeded(sb.install("--no-auth", "--ide", "claude"))   # idempotent
+
+            settings = json.loads(settings_path.read_text(encoding="utf-8"))
+            self.assertIn(mine, settings["hooks"]["SessionStart"], "hook de l'utilisateur perdu")
+            hooks = update_hooks(settings)
+            self.assertEqual(len(hooks), 1, settings)
+            self.assertIn("--hook", hooks[0]["command"])
+            self.assertIn(str(sb.repo), hooks[0]["command"])
+
+
+class TestSetClaudeHook(InstallAsserts):
+    """`coach_config.py set-claude-hook` : remplace notre hook, jamais empilé."""
+
+    def run_set(self, settings, command):
+        import subprocess
+        import sys
+        from pathlib import Path
+        repo = Path(__file__).resolve().parents[2]
+        entry = {"matcher": "startup", "hooks": [{"type": "command", "command": command, "timeout": 10}]}
+        subprocess.run([sys.executable, str(repo / "scripts/coach_config.py"), "set-claude-hook",
+                        "--file", str(settings), "--event", "SessionStart",
+                        "--marker", HOOK_SCRIPT, "--value", json.dumps(entry)],
+                       check=True, capture_output=True, text=True)
+        return json.loads(settings.read_text(encoding="utf-8"))
+
+    def test_moved_engine_replaces_the_old_hook_and_keeps_user_hooks(self):
+        import tempfile
+        from pathlib import Path
+        with tempfile.TemporaryDirectory() as tmp:
+            settings = Path(tmp) / ".claude/settings.json"
+            settings.parent.mkdir()
+            mine = {"matcher": "startup", "hooks": [{"type": "command", "command": "echo bonjour"}]}
+            settings.write_text(json.dumps({"hooks": {"SessionStart": [mine]}}), encoding="utf-8")
+            self.run_set(settings, f"python3 /ancien/{HOOK_SCRIPT} --hook")
+            data = self.run_set(settings, f"python3 /nouveau/{HOOK_SCRIPT} --hook")
+            self.assertIn(mine, data["hooks"]["SessionStart"])
+            hooks = update_hooks(data)
+            self.assertEqual([h["command"] for h in hooks], [f"python3 /nouveau/{HOOK_SCRIPT} --hook"])
+
+    def test_install_quotes_paths_for_the_shell(self):
+        with Sandbox() as sb:
+            self.assertSucceeded(sb.install("--no-auth", "--ide", "claude"))
+            settings = json.loads((sb.repo / ".claude/settings.json").read_text(encoding="utf-8"))
+            command = update_hooks(settings)[0]["command"]
+            import shlex
+            self.assertEqual(shlex.split(command),
+                             ["python3", f"{sb.repo}/{HOOK_SCRIPT}", "--hook", "--workspace", str(sb.repo)])

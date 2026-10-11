@@ -133,7 +133,7 @@ Le staff vous suit sur tout le parcours d'une préparation — et chaque étape 
 <div class="arc-section" markdown>
   <div class="arc-section__inner" markdown>
 
-## Vingt et un skills, prêts à l'emploi
+## Vingt-deux skills, prêts à l'emploi
 
 Des protocoles précis que l'IA suit à la lettre. Six d'entre eux sont des commandes courtes, pensées pour le téléphone : cinq pour une question, une réponse, et `/inspection` pour une inspection guidée.
 { .arc-section__intro }
@@ -186,6 +186,7 @@ Des protocoles précis que l'IA suit à la lettre. Six d'entre eux sont des comm
 <ul>
 <li><a href="skills/coach-setup/">Premier démarrage</a><span>staff, discipline, style, profil</span></li>
 <li><a href="skills/coach-doctor/">Diagnostic d'installation</a><span>tokens, MCP, config, daily-sync</span></li>
+<li><a href="skills/update-coach/">Mettre à jour</a><span>nouvelle version signalée, mise à jour en une commande</span></li>
 <li><a href="skills/workspace-data-contract/">Contrat de données</a><span>le schéma lu par l'index et le tableau de bord</span></li>
 <li><a href="skills/arc-backfill/">Backfill du contrat</a><span>mettre à niveau vos anciens fichiers</span></li>
 </ul>
