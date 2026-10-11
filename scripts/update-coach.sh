@@ -109,7 +109,7 @@ if [[ "$MODE" == "ask" ]]; then
     [[ "$answer" =~ ^[oOyY] ]] || die "Mise à jour annulée."
 fi
 
-log "Avance rapide de main jusqu'à $target…"
+log "Avance rapide de main jusqu'à ${target}…"
 git -C "$ENGINE" merge --ff-only --quiet "$target_commit" || die "git merge --ff-only a échoué."
 log "Réinstallation avec les mêmes options…"
 if [[ -t 0 ]]; then
