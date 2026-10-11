@@ -66,7 +66,9 @@ traitée comme connaissant les quatre agents d'origine.
 
 Depuis `/update-coach`, `install.sh` mémorise ses options dans
 `~/.config/ai-running-coach/install-args` à chaque installation réussie : il suffit de
-les retrouver UNE fois pour une installation plus ancienne.
+les retrouver UNE fois pour une installation plus ancienne. `--no-auth`, `--auth` et
+`--dry-run` ne sont jamais mémorisés, et une relance sans autre option (`./install.sh --no-auth`)
+garde les options déjà mémorisées.
 
 `install.sh` ne mémorise que le chemin du workspace (`~/.config/ai-running-coach/workspace`).
 Pour le reste, les traces de l'installation suffisent :

@@ -2793,24 +2793,34 @@ main() {
     persist_install_args
 }
 
-# Mémorise les options de CETTE installation, une par ligne, pour que scripts/update-coach.sh
-# (/update-coach) relance install.sh à l'identique après un git pull. Écrit seulement après une
-# installation complète, jamais en dry-run. Aucun secret : install.sh ne reçoit que des chemins.
+# Mémorise les options de configuration de cette installation, une par ligne, pour que
+# scripts/update-coach.sh (/update-coach) relance install.sh à l'identique après un git pull.
+# --no-auth/--auth/--dry-run ne décrivent pas la configuration : jamais mémorisés. Une relance
+# sans autre option (« ./install.sh --no-auth ») garde les options déjà mémorisées — sinon elle
+# effacerait, par exemple, le --daily-sync que la mise à jour doit rejouer. Écrit seulement après
+# une installation complète, jamais en dry-run. Aucun secret : install.sh ne reçoit que des chemins.
 persist_install_args() {
     [[ "$DRY_RUN" -eq 0 ]] || return 0
-    local file arg
+    local file arg kept=()
     file="$(dirname "$WORKSPACE_STATE_FILE")/install-args"
     for arg in ${INSTALL_ARGS[@]+"${INSTALL_ARGS[@]}"}; do
         if [[ "$arg" == *$'\n'* ]]; then
             warn "Option sur plusieurs lignes : options d'installation non mémorisées ($file)."
             return 0
         fi
+        case "$arg" in
+            --no-auth|--auth|--dry-run) ;;
+            *) kept+=("$arg") ;;
+        esac
     done
+    if [[ "${#kept[@]}" -eq 0 && -f "$file" ]]; then
+        return 0
+    fi
     mkdir -p "$(dirname "$file")"
-    if [[ "${#INSTALL_ARGS[@]}" -eq 0 ]]; then
+    if [[ "${#kept[@]}" -eq 0 ]]; then
         : > "$file"   # aucune option : fichier vide (printf écrirait une ligne vide)
     else
-        printf '%s\n' "${INSTALL_ARGS[@]}" > "$file"
+        printf '%s\n' "${kept[@]}" > "$file"
     fi
     ok "Options d'installation mémorisées pour les mises à jour : $file"
 }

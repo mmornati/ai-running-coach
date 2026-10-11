@@ -21,7 +21,21 @@ class TestInstallArgs(InstallAsserts):
         with Sandbox() as sb:
             self.assertSucceeded(sb.install("--no-auth", "--ide", "claude"))
             args = (sb.home / ".config/ai-running-coach/install-args").read_text(encoding="utf-8")
-            self.assertEqual(args.splitlines(), ["--no-auth", "--ide", "claude"])
+            self.assertEqual(args.splitlines(), ["--ide", "claude"], "--no-auth ne se rejoue pas")
+
+    def test_plain_rerun_keeps_remembered_options(self):
+        with Sandbox() as sb:
+            self.assertSucceeded(sb.install("--no-auth", "--ide", "claude", "--no-medical"))
+            self.assertSucceeded(sb.install("--no-auth"))
+            args = (sb.home / ".config/ai-running-coach/install-args").read_text(encoding="utf-8")
+            self.assertEqual(args.splitlines(), ["--ide", "claude", "--no-medical"])
+
+    def test_new_options_replace_remembered_ones(self):
+        with Sandbox() as sb:
+            self.assertSucceeded(sb.install("--no-auth", "--ide", "claude"))
+            self.assertSucceeded(sb.install("--no-auth", "--ide", "opencode"))
+            args = (sb.home / ".config/ai-running-coach/install-args").read_text(encoding="utf-8")
+            self.assertEqual(args.splitlines(), ["--ide", "opencode"])
 
     def test_dry_run_remembers_nothing(self):
         with Sandbox() as sb:
