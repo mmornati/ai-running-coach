@@ -49,7 +49,9 @@ set -euo pipefail
 # ---------------------------------------------------------------------------
 # Constantes
 # ---------------------------------------------------------------------------
-VERSION="0.2.0"
+# Numéro de la dernière release : fichier VERSION, réécrit par le workflow « Tag a release ».
+VERSION="$(tr -d '[:space:]' 2>/dev/null < "$(dirname "${BASH_SOURCE[0]}")/VERSION" || true)"
+VERSION="${VERSION:-inconnue}"
 # Épinglé à un commit précis, comme INTERVALS_MCP_REF ci-dessous : ce serveur reçoit le
 # mot de passe et le code MFA Garmin à l'authentification, puis tourne à chaque
 # synchronisation — un changement en amont ne doit jamais être exécuté sans relecture.

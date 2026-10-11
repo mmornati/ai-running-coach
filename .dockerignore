@@ -1,8 +1,9 @@
-# Seuls scripts/, web/ et config/ entrent dans l'image (voir Dockerfile).
+# Seuls scripts/, web/, config/ et VERSION entrent dans l'image (voir Dockerfile).
 *
 !scripts/
 !web/
 !config/
+!VERSION
 # Personnel (sujet ntfy, réglages) : le conteneur lit la configuration utilisateur
 # depuis le workspace monté, jamais depuis l'image.
 config/workspace.user.toml

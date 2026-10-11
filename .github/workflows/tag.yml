@@ -82,13 +82,23 @@ jobs:
           fi
           echo "tag=$tag" >> "$GITHUB_OUTPUT"
 
-      - name: Création et push du tag
+      # Le fichier VERSION est réécrit dans un commit sur main, et le tag est posé
+      # sur ce commit : le moteur embarqué du DMG, l'image Docker et `install.sh`
+      # lisent ainsi le bon numéro sans `.git`. Si main a avancé entre-temps, le
+      # push est refusé (pas de force-push) : relancer le workflow suffit.
+      - name: Commit de VERSION, création et push du tag
         env:
           TAG: ${{ steps.next.outputs.tag }}
         run: |
           set -euo pipefail
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          echo "${TAG#v}" > VERSION
+          if ! git diff --quiet -- VERSION; then
+            git add VERSION
+            git commit -m "chore(release) : $TAG"
+            git push origin HEAD:main
+          fi
           git tag -a "$TAG" -m "Release $TAG"
           git push origin "refs/tags/$TAG"
           echo "### Tag \`$TAG\` poussé sur \`$(git rev-parse --short HEAD)\`" >> "$GITHUB_STEP_SUMMARY"

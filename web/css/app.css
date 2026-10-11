@@ -134,6 +134,8 @@ small { font-size: 0.82em; }
 @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .top { background: #0a1510; border-bottom: 1px solid var(--line); } }
 .brand { display: inline-flex; align-items: center; gap: 0.55rem; color: #e7ede9; text-decoration: none; font: 700 0.98rem/1 var(--display); letter-spacing: -0.02em; }
 .brand__mark { width: 1.35rem; height: 1.35rem; fill: var(--lime); }
+.brand__name { display: flex; flex-direction: column; gap: 0.2rem; min-width: 0; }
+.brand__version { font: 500 0.7rem/1 "Inter", system-ui, sans-serif; letter-spacing: 0; color: #b8c4bd; font-variant-numeric: tabular-nums; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .objective { display: flex; align-items: center; gap: 0.85rem; min-width: 0; }
 .objective__count { font: 700 1.05rem/1 var(--display); letter-spacing: -0.02em; color: var(--lime); white-space: nowrap; font-variant-numeric: tabular-nums; }
 .objective__count.is-past { color: #b8c4bd; }
