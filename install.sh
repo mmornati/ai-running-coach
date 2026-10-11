@@ -222,6 +222,10 @@ Usage :
   ./install.sh --source SOURCE    # garmin (défaut) | intervals | strava — source de données primaire (#68, #164)
   ./install.sh --cycle-tracking MODE # off (défaut) | garmin | intervals | manual — contexte du cycle menstruel, opt-in (#166)
   ./install.sh --nutrition-sync MODE # off (défaut) | ask — pousser les apports vers Garmin Connect, opt-in (#167)
+  ./install.sh --health-source S  # primary (défaut) | openwearables — santé du bilan matinal chez Open Wearables, opt-in (#220)
+  ./install.sh --ow-url URL       # avec --health-source openwearables : adresse de votre instance (http://hôte[:port])
+  ./install.sh --ow-provider P    # avec --health-source openwearables : UN fabricant (oura, whoop, polar…)
+  ./install.sh --ow-key-file F    # avec --health-source openwearables : importe la clé d'API (copiée hors dépôt, mode 600)
   ./install.sh --workspace DIR    # données + config IDE dans DIR (dépôt privé), moteur lié
   ./install.sh --agents LISTE     # staff à installer, ex. coach,nutritionist
   ./install.sh --no-medical       # tous les agents sauf le médecin
@@ -479,6 +483,27 @@ fi
 # Valide les options Open Wearables (#220) : échec immédiat, avant tout travail. Les fournisseurs
 # reprennent scripts/arc_health_source.py (PROVIDERS / REFUSED_PROVIDERS ; un test de lint compare).
 OW_PROVIDERS="oura whoop polar ultrahuman withings google_health apple health_connect samsung suunto"
+# Contrôles du fournisseur et de l'URL Open Wearables — appelés aussi sur les valeurs relues de la
+# configuration (resolve_health_source) : une valeur écrite à la main n'échappe pas à la validation.
+check_ow_provider() {
+    [[ -n "$OW_PROVIDER" ]] || return 0
+    OW_PROVIDER="$(printf '%s' "$OW_PROVIDER" | tr '[:upper:]' '[:lower:]')"
+    case "$OW_PROVIDER" in
+        garmin) die "--ow-provider garmin refusé : Garmin se lit en direct (garmin-mcp), jamais via Open Wearables (docs/open-wearables.md)." ;;
+        strava) die "--ow-provider strava refusé : Strava n'expose aucune donnée de santé (HRV, FC de repos, sommeil)." ;;
+    esac
+    case " $OW_PROVIDERS " in
+        *" $OW_PROVIDER "*) ;;
+        *) die "Fournisseur Open Wearables inconnu : « $OW_PROVIDER ». Valides : $OW_PROVIDERS." ;;
+    esac
+}
+check_ow_url() {
+    [[ -n "$OW_URL" ]] || return 0
+    local url_re='^https?://[][A-Za-z0-9._:-]+(/[A-Za-z0-9._~/%-]*)?$'
+    [[ "$OW_URL" =~ $url_re ]] \
+        || die "Adresse Open Wearables invalide : http(s)://hôte[:port] attendu, sans identifiants ni paramètres."
+    OW_URL="${OW_URL%/}"
+}
 validate_health_source() {
     case "$HEALTH_SOURCE" in
         primary|openwearables) ;;
@@ -489,23 +514,8 @@ validate_health_source() {
             || die "--ow-url, --ow-provider et --ow-key-file s'utilisent avec --health-source openwearables."
         return 0
     fi
-    if [[ -n "$OW_PROVIDER" ]]; then
-        OW_PROVIDER="$(printf '%s' "$OW_PROVIDER" | tr '[:upper:]' '[:lower:]')"
-        case "$OW_PROVIDER" in
-            garmin) die "--ow-provider garmin refusé : Garmin se lit en direct (garmin-mcp), jamais via Open Wearables (docs/open-wearables.md)." ;;
-            strava) die "--ow-provider strava refusé : Strava n'expose aucune donnée de santé (HRV, FC de repos, sommeil)." ;;
-        esac
-        case " $OW_PROVIDERS " in
-            *" $OW_PROVIDER "*) ;;
-            *) die "Fournisseur Open Wearables inconnu : « $OW_PROVIDER ». Valides : $OW_PROVIDERS." ;;
-        esac
-    fi
-    if [[ -n "$OW_URL" ]]; then
-        local url_re='^https?://[][A-Za-z0-9._:-]+(/[A-Za-z0-9._~/%-]*)?$'
-        [[ "$OW_URL" =~ $url_re ]] \
-            || die "--ow-url invalide : http(s)://hôte[:port] attendu, sans identifiants ni paramètres."
-        OW_URL="${OW_URL%/}"
-    fi
+    check_ow_provider
+    check_ow_url
     if [[ -n "$OW_KEY_FILE_ARG" && ! -f "$OW_KEY_FILE_ARG" ]]; then
         die "--ow-key-file : fichier introuvable."
     fi
@@ -1062,7 +1072,7 @@ for path in coach_config.config_paths(ws):
         continue
     nested = (data.get("health") or {}).get("openwearables")
     for sect in (nested, data.get("health.openwearables")):
-        if isinstance(sect, dict) and sect.get(key) not in (None, ""):
+        if isinstance(sect, dict) and key in sect:
             print(sect[key])
             raise SystemExit(0)
 PYEOF
@@ -1087,6 +1097,9 @@ resolve_health_source() {
         if [[ "$EXPLICIT_HEALTH" -eq 1 ]]; then
             [[ -n "$OW_URL" ]] || die "--health-source openwearables exige --ow-url (adresse de votre instance Open Wearables, ex. http://127.0.0.1:8000)."
             [[ -n "$OW_PROVIDER" ]] || die "--health-source openwearables exige --ow-provider (UN fabricant : $OW_PROVIDERS)."
+            # Valeurs relues de la configuration : mêmes contrôles que sur la ligne de commande.
+            check_ow_provider
+            check_ow_url
         fi
     fi
 }
@@ -1124,6 +1137,14 @@ ensure_ow_key() {
     key_file="$(ow_config_value api_key_file)"
     [[ -n "$key_file" ]] || key_file="$OW_KEY_FILE_DEFAULT"
     key_file="${key_file/#\~/$HOME}"
+    # Jamais dans le dépôt ni dans le workspace (donnée versionnable/synchronisée) : refus, même en dry-run.
+    local key_abs root
+    key_abs="$(python3 -c 'import os,sys; print(os.path.abspath(sys.argv[1]))' "$key_file" 2>/dev/null)" || key_abs="$key_file"
+    for root in "$PROJECT_ROOT" "$WORKSPACE_ROOT"; do
+        if [[ "$key_abs" == "$root" || "$key_abs" == "$root"/* ]]; then
+            die "[health.openwearables].api_key_file ($key_abs) est dans le dépôt ou le workspace : la clé d'API doit rester hors de l'un comme de l'autre (défaut : $OW_KEY_FILE_DEFAULT)."
+        fi
+    done
     if [[ "$DRY_RUN" -eq 1 ]]; then
         printf '%s\n' "${C_YELLOW}[dry-run]${C_RESET} clé d'API Open Wearables : $key_file (mode 600, saisie sans écho ou --ow-key-file)"
         return 0
@@ -1146,7 +1167,7 @@ ensure_ow_key() {
         warn "Clé d'API Open Wearables absente : créez-la dans le portail OW puis relancez avec --ow-key-file FICHIER, ou écrivez-la dans $key_file (mode 600, une ligne, jamais dans le dépôt) — voir docs/open-wearables.md#installation."
         return 0
     fi
-    mkdir -p "$(dirname "$key_file")"
+    ( umask 077; mkdir -p "$(dirname "$key_file")" )
     ( umask 077; printf '%s\n' "$key" > "$key_file.tmp.$$" ) \
         && chmod 600 "$key_file.tmp.$$" && mv -f "$key_file.tmp.$$" "$key_file" \
         || { rm -f "$key_file.tmp.$$"; die "Impossible d'écrire le fichier de clé Open Wearables ($key_file)."; }
@@ -2017,10 +2038,41 @@ write_cursor_config() {
     for tool in $(sync_write_tools "$server"); do
         mcp_deny+=",\"Mcp($server:$tool)\""
     done
+    # Santé lue chez Open Wearables avec des activités Garmin (#220) : les outils santé Garmin sont refusés
+    # aussi (une seule source santé par jour). Quand on revient à « primary », on retire ces seules entrées.
+    local health_denied="" want_health_deny=0
+    if [[ "$HEALTH_EFFECTIVE" == "openwearables" && "$server" == "garmin" ]]; then
+        want_health_deny=1
+    fi
+    SYNC_DENY_GARMIN_HEALTH=1
+    health_denied="$(sync_health_denied_tools garmin | tr '\n' ' ')"
+    SYNC_DENY_GARMIN_HEALTH=0
+    if [[ "$want_health_deny" -eq 1 ]]; then
+        for tool in $health_denied; do
+            mcp_deny+=",\"Mcp(garmin:$tool)\""
+        done
+    fi
     # Fusion par listes : les règles allow/deny ajoutées par l'utilisateur sont conservées.
     merge_json_key "$permissions" "" permissions \
         '{"allow":["Read(**)","Write(activities/**)","Write(medical/**)","Write(nutrition/**)","Write(planning/**)","Write(rapports/**)","Write(gear/**)","Shell(python3)"],"deny":["Write(scripts/**)","Write(skills/**)","Write(local/**)","Write(config/**)","Write(.mcp.json)","Write(.cursor/**)","Write(.github/**)","Write(.gemini/**)","Write(.claude/**)","Write(.opencode/**)","Write(install.sh)","Read(**/.env*)","Shell(rm)","Shell(git)","Shell(gh)"'"$mcp_deny"']}' \
         "" union
+    if [[ "$want_health_deny" -eq 0 && "$DRY_RUN" -eq 0 && -f "$permissions" ]] && have python3; then
+        python3 - "$permissions" "$health_denied" <<'PYEOF' || warn "Impossible de retirer les refus santé Garmin de $permissions."
+import json, sys
+path, tools = sys.argv[1], sys.argv[2].split()
+with open(path, encoding="utf-8") as fh:
+    data = json.load(fh)
+deny = (data.get("permissions") or {}).get("deny")
+if isinstance(deny, list):
+    drop = {"Mcp(garmin:%s)" % t for t in tools}
+    kept = [d for d in deny if d not in drop]
+    if len(kept) != len(deny):
+        data["permissions"]["deny"] = kept
+        with open(path, "w", encoding="utf-8") as fh:
+            json.dump(data, fh, ensure_ascii=False, indent=2)
+            fh.write("\n")
+PYEOF
+    fi
     ok "Permissions Cursor limitées aux données du coach ($permissions)"
 }
 

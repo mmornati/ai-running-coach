@@ -1191,18 +1191,51 @@ class TestOpenWearables(InstallAsserts):
         with Sandbox() as sb:
             for source in (None, "primary"):
                 self._setup(sb, source=source, key=False)
-                proc, check = self._run(sb, "--probe-ow")
+                proc, check = self._run(sb)
                 self.assertEqual(check["status"], "info")
                 self.assertEqual(proc.returncode, 0)
                 self.assertNotIn("clé", check["message"])
 
-    def test_default_run_makes_no_network_call_and_is_ok_when_configured(self):
-        with Sandbox() as sb:
-            self._setup(sb)
-            proc, check = self._run(sb)
+    def test_no_probe_flag_makes_no_network_call_and_is_ok_when_configured(self):
+        from tests.data.test_arc_openwearables import OWStub
+        with Sandbox() as sb, OWStub(self._bundle(2)) as stub:
+            self._setup(sb, base=stub.base)
+            proc, check = self._run(sb, "--no-probe-ow")
             self.assertEqual(check["status"], "ok", check)
-            self.assertIn("--probe-ow", check["message"])
+            self.assertIn("--no-probe-ow", check["message"])
             self.assertIn("0.9.0", check["message"])
+            self.assertFalse(stub.log, "aucun appel réseau avec --no-probe-ow")
+
+    def test_probe_is_automatic_without_any_flag(self):
+        """Décision #220 : l'instance est celle de l'athlète, le contrôle l'appelle d'office."""
+        from tests.data.test_arc_openwearables import OWStub
+        with Sandbox() as sb, OWStub(self._bundle(2)) as stub:
+            self._setup(sb, base=stub.base)
+            _, check = self._run(sb)
+            self.assertTrue(stub.log, "le doctor doit joindre l'instance sans option")
+            self.assertEqual(check["status"], "ok", check)
+        with Sandbox() as sb:
+            self._setup(sb, base="http://127.0.0.1:9")
+            _, check = self._run(sb)
+            self.assertEqual(check["status"], "error")
+            self.assertIn("injoignable", check["message"])
+
+    def test_legacy_probe_ow_flag_is_still_accepted(self):
+        from tests.data.test_arc_openwearables import OWStub
+        with Sandbox() as sb, OWStub(self._bundle(2)) as stub:
+            self._setup(sb, base=stub.base)
+            proc, check = self._run(sb, "--probe-ow")
+            self.assertEqual(proc.returncode, 0)
+            self.assertEqual(check["status"], "ok", check)
+
+    def test_empty_key_file_is_flagged_by_size_without_reading_it(self):
+        with Sandbox() as sb:
+            key = self._setup(sb)
+            key.write_text("")
+            key.chmod(0o600)
+            _, check = self._run(sb, "--no-probe-ow")
+            self.assertEqual(check["status"], "error")
+            self.assertIn("vide", check["message"])
 
     def test_mode_644_is_an_error_with_chmod_fix(self):
         with Sandbox() as sb:
@@ -1232,7 +1265,7 @@ class TestOpenWearables(InstallAsserts):
         from tests.data.test_arc_openwearables import OWStub
         with Sandbox() as sb, OWStub(self._bundle(2)) as stub:
             self._setup(sb, base=stub.base)
-            proc, check = self._run(sb, "--probe-ow")
+            proc, check = self._run(sb)
             self.assertEqual(check["status"], "ok", check)
             self.assertRegex(check["message"], r"il y a [12] h")
             self.assertIn("testée : 0.9.0", check["message"])
@@ -1242,7 +1275,7 @@ class TestOpenWearables(InstallAsserts):
         from tests.data.test_arc_openwearables import OWStub
         with Sandbox() as sb, OWStub(self._bundle(2), key="une-autre-cle") as stub:
             self._setup(sb, base=stub.base)
-            proc, check = self._run(sb, "--probe-ow")
+            proc, check = self._run(sb)
             self.assertEqual(check["status"], "error")
             self.assertIn("401", check["message"])
             self.assertEqual(proc.returncode, 1)
@@ -1250,7 +1283,7 @@ class TestOpenWearables(InstallAsserts):
     def test_dead_instance_is_an_error(self):
         with Sandbox() as sb:
             self._setup(sb, base="http://127.0.0.1:9")
-            _, check = self._run(sb, "--probe-ow")
+            _, check = self._run(sb)
             self.assertEqual(check["status"], "error")
             self.assertIn("injoignable", check["message"])
 
@@ -1258,7 +1291,7 @@ class TestOpenWearables(InstallAsserts):
         from tests.data.test_arc_openwearables import OWStub
         with Sandbox() as sb, OWStub(self._bundle(100)) as stub:
             self._setup(sb, base=stub.base)
-            proc, check = self._run(sb, "--probe-ow")
+            proc, check = self._run(sb)
             self.assertEqual(check["status"], "warning")
             self.assertIn("stale_after_h", check["message"])
             self.assertEqual(proc.returncode, 0)
@@ -1269,14 +1302,14 @@ class TestOpenWearables(InstallAsserts):
         bundle["connections"][0]["status"] = "expired"
         with Sandbox() as sb, OWStub(bundle) as stub:
             self._setup(sb, base=stub.base)
-            _, check = self._run(sb, "--probe-ow")
+            _, check = self._run(sb)
             self.assertEqual(check["status"], "warning")
             self.assertIn("non actif", check["message"])
         bundle = self._bundle(2)
         bundle["sleep"] = {"data": [{"unexpected": 1}], "pagination": {}}
         with Sandbox() as sb, OWStub(bundle) as stub:
             self._setup(sb, base=stub.base)
-            _, check = self._run(sb, "--probe-ow")
+            _, check = self._run(sb)
             self.assertEqual(check["status"], "warning")
             self.assertIn("non testée", check["message"])
 
@@ -1287,7 +1320,7 @@ class TestOpenWearables(InstallAsserts):
         bundle["users"] = two["users"] if "users" in two else two
         with Sandbox() as sb, OWStub(bundle) as stub:
             self._setup(sb, base=stub.base)
-            _, check = self._run(sb, "--probe-ow")
+            _, check = self._run(sb)
             self.assertEqual(check["status"], "warning")
             self.assertIn("user_id", check["fix"])
 
@@ -1297,7 +1330,7 @@ class TestOpenWearables(InstallAsserts):
         bundle["connections"] = []
         with Sandbox() as sb, OWStub(bundle) as stub:
             self._setup(sb, provider="apple", base=stub.base)
-            proc, check = self._run(sb, "--probe-ow")
+            proc, check = self._run(sb)
             self.assertEqual(check["status"], "info", check)
             self.assertIn("inconnue", check["message"])
             self.assertEqual(proc.returncode, 0)

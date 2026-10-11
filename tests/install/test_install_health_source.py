@@ -189,3 +189,69 @@ class TestHealthSourceInstall(InstallAsserts):
         text = (Path(__file__).resolve().parents[2] / "install.sh").read_text()
         match = re.search(r'^OW_PROVIDERS="([^"]+)"', text, re.M)
         self.assertEqual(tuple(match.group(1).split()), arc_health_source.PROVIDERS)
+
+
+class TestHealthSourceReview(InstallAsserts):
+    """Corrections de revue (#220)."""
+
+    def test_values_read_back_from_config_are_validated(self):
+        for toml in ('[health.openwearables]\nprovider = "garmin"\nbase_url = "http://127.0.0.1:8000"\n',
+                     '[health.openwearables]\nprovider = "oura"\nbase_url = "http://u:p@h"\n',
+                     '[health.openwearables]\nprovider = "ouraa"\nbase_url = "http://127.0.0.1:8000"\n'):
+            with self.subTest(toml=toml), Sandbox() as sb:
+                (sb.repo / "config/workspace.user.toml").write_text(toml)
+                proc = sb.install("--dry-run", *BASE, "--health-source", "openwearables", **DARWIN)
+                self.assertNotEqual(proc.returncode, 0, proc.stdout + proc.stderr)
+
+    def test_api_key_file_inside_repo_or_workspace_is_refused(self):
+        with Sandbox() as sb:
+            (sb.repo / "config/workspace.user.toml").write_text(
+                f'[health.openwearables]\napi_key_file = "{sb.repo}/secrets/ow.key"\n')
+            proc = sb.install("--dry-run", *BASE, *OW, **DARWIN)
+            self.assertNotEqual(proc.returncode, 0)
+            self.assertIn("hors de l'un comme de l'autre", proc.stdout + proc.stderr)
+            self.assertFalse((sb.repo / "secrets").exists())
+
+    def test_present_but_empty_value_wins_over_the_shared_default(self):
+        with Sandbox() as sb:
+            shared = sb.repo / "config/workspace.toml"
+            shared.write_text(shared.read_text().replace(
+                'base_url = ""', 'base_url = "http://192.168.1.10:8000"', 1))
+            (sb.repo / "config/workspace.user.toml").write_text('[health.openwearables]\nbase_url = ""\n')
+            proc = sb.install("--dry-run", *BASE, "--health-source", "openwearables",
+                              "--ow-provider", "oura", **DARWIN)
+            self.assertNotEqual(proc.returncode, 0, proc.stdout + proc.stderr)
+            self.assertIn("--ow-url", proc.stdout + proc.stderr)
+
+    def test_help_lists_the_openwearables_options(self):
+        with Sandbox() as sb:
+            proc = sb.install("--help", **DARWIN)
+            out = proc.stdout + proc.stderr
+            for option in ("--health-source", "--ow-url", "--ow-provider", "--ow-key-file"):
+                self.assertIn(option, out)
+
+    def test_key_directory_is_created_under_a_private_umask(self):
+        text = (Path(__file__).resolve().parents[2] / "install.sh").read_text()
+        self.assertIn('( umask 077; mkdir -p "$(dirname "$key_file")" )', text)
+
+    def test_cursor_denies_garmin_health_tools_with_openwearables_and_removes_only_them_on_primary(self):
+        health = ("get_hrv_data", "get_rhr_day", "get_sleep_data", "get_training_readiness")
+        with Sandbox() as sb:
+            (sb.repo / ".cursor").mkdir()
+            (sb.repo / ".cursor/cli.json").write_text(json.dumps({"permissions": {"deny": ["Shell(curl)"]}}))
+            self.assertSucceeded(sb.install(*BASE, "--ide", "cursor", **DARWIN))
+            deny = json.loads((sb.repo / ".cursor/cli.json").read_text())["permissions"]["deny"]
+            for tool in health:
+                self.assertNotIn(f"Mcp(garmin:{tool})", deny, "défaut : aucun refus santé")
+            self.assertSucceeded(sb.install(*BASE, "--ide", "cursor", *OW, **DARWIN))
+            deny = json.loads((sb.repo / ".cursor/cli.json").read_text())["permissions"]["deny"]
+            for tool in health + ("get_body_battery", "get_stress_data"):
+                self.assertIn(f"Mcp(garmin:{tool})", deny)
+            self.assertIn("Mcp(garmin:schedule_workouts)", deny)
+            # Retour à « primary » : seules ces entrées partent, les règles de l'utilisateur restent.
+            self.assertSucceeded(sb.install(*BASE, "--ide", "cursor", "--health-source", "primary", **DARWIN))
+            deny = json.loads((sb.repo / ".cursor/cli.json").read_text())["permissions"]["deny"]
+            for tool in health:
+                self.assertNotIn(f"Mcp(garmin:{tool})", deny)
+            self.assertIn("Shell(curl)", deny)
+            self.assertIn("Mcp(garmin:schedule_workouts)", deny)

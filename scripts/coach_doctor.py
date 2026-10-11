@@ -14,7 +14,8 @@ service du chat (`chat_service`), présence d'OpenCode (`opencode_cli`), bot Tel
 (`telegram` : liste blanche, jeton hors dépôt en mode 600, service vivant — jamais le jeton affiché),
 connexion Strava (`strava_connection`, #164), pesées Garmin (`weight_sync`, #222) et santé Open Wearables
 (`openwearables`, #220 : configuration et clé d'API en mode 600 — valeur jamais affichée ; joignabilité
-seulement avec `--probe-ow`).
+testée AUTOMATIQUEMENT quand `[health].source = "openwearables"` et que la configuration est complète —
+l'instance est celle de l'athlète ; `--no-probe-ow` pour rester hors ligne).
 
 Usage :
     scripts/coach_doctor.py                 # tableau ✅/⚠️/❌ en français
@@ -24,7 +25,7 @@ Usage :
     scripts/coach_doctor.py --tokens-dir DIR                  # override des tokens Garmin
     scripts/coach_doctor.py --check garmin_token              # une seule vérification (#32)
     scripts/coach_doctor.py --probe-mcp     # handshake MCP réel — CONTACTE Garmin Connect
-    scripts/coach_doctor.py --probe-ow      # appel réel à l'instance Open Wearables (un seul `check`)
+    scripts/coach_doctor.py --no-probe-ow   # Open Wearables : configuration seule, aucun appel réseau
 
 Aucun champ de ce script n'affiche jamais le CONTENU d'un token — seuls des
 métadonnées (chemins, dates d'échéance, nombre de jours restants) apparaissent
@@ -1556,11 +1557,10 @@ def _ow_static_problems(ow: dict, provider: str) -> list:
     if st.st_mode & 0o077:
         problems.append((f"Fichier de clé d'API lisible par d'autres comptes (mode {st.st_mode & 0o777:o}).",
                          f"chmod 600 {key_file}"))
-    try:
-        if not path.read_text(encoding="utf-8").strip():
-            problems.append((f"Fichier de clé d'API vide ({key_file}).", OW_INSTALL_FIX))
-    except (OSError, UnicodeDecodeError):
-        problems.append((f"Fichier de clé d'API illisible ({key_file}).", f"chmod 600 {key_file}"))
+    # Taille seulement : le contenu de la clé n'est jamais lu ici (un fichier d'espaces seuls est
+    # attrapé par le client à l'appel réel).
+    if st.st_size == 0:
+        problems.append((f"Fichier de clé d'API vide ({key_file}).", OW_INSTALL_FIX))
     return problems
 
 
@@ -1583,10 +1583,11 @@ def _ow_probe(workspace: Path) -> tuple:
     return proc.returncode, payload if isinstance(payload, dict) else {}
 
 
-def check_openwearables(workspace: Path, config: dict, now: datetime, probe: bool = False) -> dict:
+def check_openwearables(workspace: Path, config: dict, now: datetime, probe: bool = True) -> dict:
     """`[health].source = "openwearables"` : configuration (fabricant, adresse, fichier de clé d'API en
-    mode 600 — la valeur n'est jamais lue ici ni affichée) ; avec `--probe-ow` UN appel au client
-    (`arc_openwearables.py check`, délai borné) : instance joignable, clé acceptée, fabricant connecté et
+    mode 600 — la valeur n'est jamais lue ici ni affichée) ; puis, sauf `--no-probe-ow`, UN appel au client
+    (`arc_openwearables.py check`, 3 s par requête, sous-processus plafonné à 12 s ; l'instance est celle de
+    l'athlète) : instance joignable, clé acceptée, fabricant connecté et
     synchronisé récemment, forme de réponse compatible avec la version testée. Sans l'opt-in (clé absente
     ou `primary`) : `info`, jamais une panne ni un message alarmant — la fonction ne fait alors rien d'autre."""
     import arc_health_source as HS
@@ -1609,7 +1610,7 @@ def check_openwearables(workspace: Path, config: dict, now: datetime, probe: boo
         return build_check(
             check_id, "ok",
             f"{label} : configuration complète, clé d'API présente en mode 600 (valeur non affichée). "
-            f"Joignabilité non testée (relancer avec --probe-ow ; version {tested}).", fix=None)
+            f"Joignabilité non testée (--no-probe-ow ; version {tested}).", fix=None)
     code, payload = _ow_probe(workspace)
     error = payload.get("error") if isinstance(payload.get("error"), dict) else {}
     kind = str(error.get("code") or "")
@@ -1663,10 +1664,9 @@ def check_openwearables(workspace: Path, config: dict, now: datetime, probe: boo
                         "(utiliser https:// ou un VPN)")
     if "summary_hrv_multi_source" in client_codes:
         warnings.append("HRV du résumé de sommeil ignorée : plusieurs fabricants connectés à Open Wearables")
-    provider_codes = client_codes
     if warnings:
         fix = ("vérifier la connexion du fabricant dans le portail Open Wearables ; version non testée : "
-               "docs/open-wearables.md" if "shape_mismatch" in provider_codes or payload.get("shape_ok") is not True
+               "docs/open-wearables.md" if payload.get("shape_ok") is not True
                else "vérifier la connexion du fabricant dans le portail Open Wearables (docs/troubleshooting.md)")
         return build_check(check_id, "warning", f"{label} : " + " ; ".join(warnings) + ".", fix=fix)
     if freshness_unknown:
@@ -1728,7 +1728,7 @@ def check_garmin_check_not_applicable(check_id: str, source: str = "intervals") 
 
 
 def run_single_check(check_id: str, workspace: Path, now: datetime, tokens_dir: Path, probe_mcp: bool,
-                     probe_ow: bool = False) -> dict:
+                     probe_ow: bool = True) -> dict:
     config = _load_config(workspace)
     source = (config.get("data") or {}).get("source", "garmin")
     if check_id in ("garmin_token", "garmin_mcp") and source in ("intervals", "strava"):
@@ -1775,7 +1775,7 @@ def run_single_check(check_id: str, workspace: Path, now: datetime, tokens_dir: 
 
 
 def run_all_checks(workspace: Path, now: datetime, tokens_dir: Path, probe_mcp: bool = False,
-                   probe_ow: bool = False) -> list:
+                   probe_ow: bool = True) -> list:
     return [run_single_check(check_id, workspace, now, tokens_dir, probe_mcp, probe_ow) for check_id in CHECK_IDS]
 
 
@@ -1861,10 +1861,12 @@ def build_parser() -> argparse.ArgumentParser:
         help="handshake MCP réel au lieu d'une simple vérification de présence — CONTACTE Garmin Connect",
     )
     parser.add_argument(
-        "--probe-ow", action="store_true",
-        help="appel réel à l'instance Open Wearables (un seul `arc_openwearables.py check`) — sans effet hors "
-             "[health].source = \"openwearables\"",
+        "--no-probe-ow", action="store_true",
+        help="Open Wearables : configuration seule, sans appel à l'instance (hors ligne). Par défaut, avec "
+             "[health].source = \"openwearables\" et une configuration complète, UN `arc_openwearables.py check` "
+             "est fait (3 s par requête, sous-processus plafonné à 12 s) ; sans effet hors de cette source",
     )
+    parser.add_argument("--probe-ow", action="store_true", help=argparse.SUPPRESS)  # ancien nom : sans effet
     return parser
 
 
@@ -1875,9 +1877,9 @@ def main(argv: Optional[list] = None) -> int:
     tokens_dir = resolve_tokens_dir(args.tokens_dir, workspace)
 
     if args.check:
-        checks = [run_single_check(args.check, workspace, now, tokens_dir, args.probe_mcp, args.probe_ow)]
+        checks = [run_single_check(args.check, workspace, now, tokens_dir, args.probe_mcp, not args.no_probe_ow)]
     else:
-        checks = run_all_checks(workspace, now, tokens_dir, probe_mcp=args.probe_mcp, probe_ow=args.probe_ow)
+        checks = run_all_checks(workspace, now, tokens_dir, probe_mcp=args.probe_mcp, probe_ow=not args.no_probe_ow)
     has_error = any(check["status"] == "error" for check in checks)
 
     if args.json:

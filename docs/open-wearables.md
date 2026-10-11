@@ -184,16 +184,29 @@ projet s'y **branche** (comme à un compte intervals.icu ou Strava). Aucun serve
      ce qui serait fait.
    - Pour revenir en arrière : `./install.sh --health-source primary` remet `[health].source = "primary"` et ne
      supprime ni l'URL, ni le fournisseur, ni la clé.
-7. **Vérifier** : `python3 scripts/coach_doctor.py --check openwearables --probe-ow` (ou `/coach-doctor` : le
-   contrôle de configuration est local et ne contacte pas OW sans `--probe-ow`).
+7. **Vérifier** : `python3 scripts/coach_doctor.py --check openwearables` (ou `/coach-doctor`). Une fois la
+   configuration complète, le contrôle appelle votre instance (voir « Diagnostic ») ; `--no-probe-ow` pour
+   rester hors ligne.
 
 ### Synchronisation automatique (daily-sync)
 
 Avec `[health].source = "openwearables"` et `[data].source = "garmin"`, `scripts/daily-sync.sh` **refuse** à
 l'exécuteur les quatre outils santé Garmin (`get_hrv_data`, `get_rhr_day`, `get_sleep_data`,
-`get_training_readiness`) : la règle « une seule source de santé par jour » est imposée, pas seulement demandée
-(avec la passerelle leanproxy, seule la consigne du skill protège, comme pour les écritures). Avec
-`[data].source = "intervals"`, rien n'est refusé : `icu_get_wellness_for_date` sert aussi à la phase du cycle.
+`get_training_readiness`) ainsi que ceux de body battery et de stress (`get_body_battery`,
+`get_body_battery_events`, `get_stress_data`, `get_stress_summary`, `get_all_day_stress` : le contrat refuse
+`body_battery_*` et `stress_avg` dans un fichier santé Open Wearables ; absents de la liste blanche livrée, ils
+ne sont refusés que par précaution) : la règle « une seule source de santé par jour » est imposée, pas seulement demandée
+(avec la passerelle leanproxy, seule la consigne du skill protège, comme pour les écritures). Limites par
+exécuteur : `claude`, `copilot`, `opencode` et `gemini` refusent ces outils par nom ; `cursor` les refuse par
+`Mcp(garmin:…)` dans `.cursor/cli.json` (écrit par `install.sh`, retiré au retour à `primary`) — s'ils manquent, le
+run continue avec un avertissement (seule la consigne du skill protège) ; `codex` n'a aucun filtrage par outil ;
+la passerelle leanproxy n'en a aucun non plus. Avec `[data].source = "intervals"`, rien n'est refusé :
+`icu_get_wellness_for_date` sert aussi à la phase du cycle. Le fichier de clé est en outre interdit en lecture
+à l'exécuteur `claude` (`Read(<fichier>)`).
+
+> **En attendant #221** : les consignes des agents n'utilisent pas encore Open Wearables. Avec une santé Open
+> Wearables et des activités Garmin, les outils santé Garmin étant refusés, **le bilan matinal headless n'a pas de
+> santé** (il le dit, sans inventer) ; la lecture de la santé chez Open Wearables par les agents arrive avec #221.
 
 Avant chaque run, le script fait un seul `arc_openwearables.py check`. Si l'instance est morte ou la clé refusée,
 **la synchronisation Garmin continue** : le problème est journalisé et ajouté en une ligne au résumé (au plus une
@@ -207,8 +220,11 @@ agents dans ce cas (pas de fichier santé tant que la nuit n'est pas arrivée) e
 ### Diagnostic
 
 `/coach-doctor` (contrôle `openwearables`) vérifie le fournisseur, l'adresse, la présence et le **mode 600** du
-fichier de clé (valeur jamais affichée) ; avec `--probe-ow`, il fait un appel à l'instance : joignable, clé
-acceptée, fournisseur connecté et synchronisé récemment, forme de réponse compatible avec la version testée.
+fichier de clé (valeur jamais lue ni affichée) ; puis, **automatiquement** quand la configuration est complète, il
+fait un appel à l'instance — la vôtre, jamais un tiers : joignable, clé acceptée, fournisseur connecté et
+synchronisé récemment, forme de réponse compatible avec la version testée. L'appel est borné : 3 s par requête,
+sous-processus plafonné à 12 s. `--no-probe-ow` (hors ligne) s'en tient à la configuration ; l'ancien `--probe-ow`
+est accepté sans effet. Le cron ne lance que `--check garmin_token` : il ne contacte jamais OW par ce biais.
 Hors de l'option `[health].source = "openwearables"`, le contrôle dit seulement « non utilisé ». Pannes
 courantes : voir [Dépannage](troubleshooting.md#sante-open-wearables-instance-injoignable-401-provider_mismatch-donnees-perimees).
 

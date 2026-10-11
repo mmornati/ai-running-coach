@@ -128,7 +128,7 @@ read_options = ["--plan", "--activity", "--planned-weather", "--actual-weather",
 # Diagnostic : lit les jetons Garmin lui-même, n'en affiche rien. `--tokens-dir` et
 # `--workspace` restent refusés (pas de redirection vers d'autres fichiers).
 [shell.scripts."scripts/coach_doctor.py"]
-flags = ["--json", "--probe-mcp"]
+flags = ["--json", "--probe-mcp", "--probe-ow", "--no-probe-ow"]
 value_options = ["--check", "--now"]
 
 # `--garmin-host` refusé : ne jamais envoyer les jetons Garmin vers un autre hôte.

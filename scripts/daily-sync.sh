@@ -180,6 +180,12 @@ else
     MCP_SERVER_NAME="garmin"
     AUTH_CMD_HINT="uv run garmin-mcp-auth"
 fi
+if [[ "$HEALTH_OW" -eq 1 ]]; then
+    # #220 : l'agent n'a jamais à lire la clé d'API Open Wearables (seul le script la lit).
+    _ow_key="$(toml_get health.openwearables api_key_file "$HOME/.config/ai-running-coach/openwearables.key")"
+    CLAUDE_DISALLOWED+=",Read(${_ow_key/#\~/$HOME})"
+    unset _ow_key
+fi
 # En mode -p, un serveur MCP déclaré dans .mcp.json (portée projet) n'est chargé
 # que s'il a été approuvé interactivement ; on le passe explicitement.
 MCP_CONFIG="$ARC_WORKSPACE/.mcp.json"
@@ -354,13 +360,16 @@ print(json.dumps({
 gemini_config_json() {
     python3 -c "$GEMINI_CONFIG_PY" "$ARC_WORKSPACE/.gemini/settings.json" "$MCP_SERVER_NAME" \
         "$SYNC_GARMIN_WRITE_PREFIXES" "$(sync_read_tools "$SOURCE" | tr '\n' ' ')" \
-        "$(sync_write_tools "$SOURCE" | tr '\n' ' ')"
+        "$(sync_deny_tools "$SOURCE" | tr '\n' ' ')"
 }
 
 # Cursor : chaque outil d'écriture de la source est-il refusé (`Mcp(serveur:outil)`)
 # dans .cursor/cli.json ? Sans ces refus, `--force` les approuverait en headless.
-cursor_denies_writes() {
-    # shellcheck disable=SC2046  # un nom d'outil par mot (aucun ne contient d'espace)
+# Les refus santé Garmin (#220) se vérifient À PART (cursor_denies_health) : leur absence avertit, sans bloquer.
+cursor_denies_writes() { cursor_denies_list "$(sync_write_tools "$SOURCE" | tr '\n' ' ')"; }
+cursor_denies_health() { cursor_denies_list "$(sync_health_denied_tools "$SOURCE" | tr '\n' ' ')"; }
+cursor_denies_list() {
+    # shellcheck disable=SC2086  # un nom d'outil par mot (aucun ne contient d'espace)
     python3 -c '
 import json, sys
 path, server = sys.argv[1:3]
@@ -370,7 +379,7 @@ except (OSError, ValueError, AttributeError):
     sys.exit(1)
 missing = [t for t in sys.argv[3:] if f"Mcp({server}:{t})" not in deny]
 sys.exit(1 if missing else 0)
-' "$ARC_WORKSPACE/.cursor/cli.json" "$MCP_SERVER_NAME" $(sync_write_tools "$SOURCE")
+' "$ARC_WORKSPACE/.cursor/cli.json" "$MCP_SERVER_NAME" $1
 }
 
 # ---------------------------------------------------------------------------
@@ -561,7 +570,7 @@ build_command() {
                  --allow-tool=read --allow-tool=write
                  '--allow-tool=shell(python3:*)' "--allow-tool=$MCP_SERVER_NAME")
             local _tool
-            for _tool in $(sync_write_tools "$SOURCE"); do
+            for _tool in $(sync_deny_tools "$SOURCE"); do
                 CMD+=("--deny-tool=$MCP_SERVER_NAME($_tool)")
             done ;;
         opencode)
@@ -588,6 +597,9 @@ build_command() {
             # pas les serveurs MCP du projet.
             cursor_denies_writes || [[ "$DRY_RUN" -eq 1 ]] \
                 || die "Cursor : .cursor/cli.json ne refuse pas les outils d'écriture $SOURCE_LABEL — relancez ./install.sh (ou l'installation guidée) avant la synchronisation."
+            if [[ "$SYNC_DENY_GARMIN_HEALTH" -eq 1 ]] && ! cursor_denies_health && [[ "$DRY_RUN" -ne 1 ]]; then
+                warn "Cursor : .cursor/cli.json ne refuse pas les outils santé Garmin (santé lue chez Open Wearables) — seule la consigne du skill l'impose ; relancez ./install.sh."
+            fi
             CMD=(cursor-agent -p --force --approve-mcps --trust --output-format text "$(skill_prompt)") ;;
         *) die "Exécuteur inconnu : $RUNNER (claude|codex|copilot|opencode|gemini|cursor)" ;;
     esac
@@ -616,7 +628,7 @@ extract_resume() {
 # `Alerte :` plutôt que de s'y ajouter, précisément pour ne jamais dépasser 5
 # lignes en fonctionnement normal).
 enforce_resume_cap() {
-    local resume="$1" max=5
+    local resume="$1" max="${2:-5}"
     local -a lines=()
     local line
     while IFS= read -r line; do
@@ -1177,7 +1189,13 @@ main() {
         warn "Aucun bloc \`\`\`resume trouvé — envoi des 5 dernières lignes de la sortie."
         resume="$(printf '%s\n' "$output" | tail -n 5)"
     fi
-    resume="$(enforce_resume_cap "$resume")"
+    if [[ -n "$OW_NOTICE" ]]; then
+        # L'alerte Open Wearables compte dans les 5 lignes du résumé : on réserve sa place AVANT le plafond.
+        resume="$(enforce_resume_cap "$resume" 4)
+⚠ $OW_NOTICE"
+    else
+        resume="$(enforce_resume_cap "$resume")"
+    fi
     ok "Résumé :"
     printf '%s\n' "$resume"
 
@@ -1231,8 +1249,6 @@ main() {
         priority=4
     fi
     if [[ -n "$OW_NOTICE" ]]; then
-        resume="$resume
-⚠ $OW_NOTICE"
         [[ "$priority" -ge 4 ]] || priority=4
         tags="$tags,warning"
     fi

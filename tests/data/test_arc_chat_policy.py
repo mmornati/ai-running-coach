@@ -485,6 +485,8 @@ class SkillScriptsPolicyTest(PolicyBase):
                         "python3 scripts/arc_workout_targets.py targets --session planning/Semaine.md#mardi --memory",
                         "python3 scripts/arc_race_debrief.py debrief --plan planning/plan.md --activity activities/a.md",
                         "python3 scripts/coach_doctor.py --check garmin_token --json",
+                        "python3 scripts/coach_doctor.py --check openwearables --no-probe-ow --json",
+                        "python3 scripts/coach_doctor.py --check openwearables --probe-ow",
                         "python3 skills/session-parts-analyzer/scripts/analyze_session_parts.py --activity-id 1 --part strides"):
             self.assertEqual(self.sh(command), "allow", command)
 

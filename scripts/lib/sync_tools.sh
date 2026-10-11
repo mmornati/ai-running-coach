@@ -32,6 +32,9 @@ SYNC_GARMIN_WRITE_TOOLS+=" request_reload download_activity_file"
 # (`[health].source = "openwearables"` avec `[data].source = "garmin"`) — une seule source santé par jour.
 # Sans cette condition (SYNC_DENY_GARMIN_HEALTH=1 posé par daily-sync.sh), aucune liste ne change.
 SYNC_GARMIN_HEALTH_TOOLS="get_hrv_data get_rhr_day get_sleep_data get_training_readiness"
+# Body battery et stress : le contrat refuse body_battery_*/stress_avg dans un fichier santé Open Wearables.
+# Absents de la liste blanche livrée (défense en profondeur si une config les expose à la main).
+SYNC_GARMIN_HEALTH_TOOLS+=" get_body_battery get_body_battery_events get_stress_data get_stress_summary get_all_day_stress"
 SYNC_DENY_GARMIN_HEALTH="${SYNC_DENY_GARMIN_HEALTH:-0}"
 
 # intervals.icu (#165) : outils sans `readOnlyHint` + téléchargements (`output_path`).
@@ -62,10 +65,7 @@ SYNC_STRAVA_READ_TOOLS+=" get-activity-streams get-athlete-zones get-athlete-pro
 sync_write_tools() {
     local tool
     case "$1" in
-        garmin) for tool in $SYNC_GARMIN_WRITE_TOOLS; do printf '%s\n' "$tool"; done
-            if [[ "$SYNC_DENY_GARMIN_HEALTH" -eq 1 ]]; then
-                for tool in $SYNC_GARMIN_HEALTH_TOOLS; do printf '%s\n' "$tool"; done
-            fi ;;
+        garmin) for tool in $SYNC_GARMIN_WRITE_TOOLS; do printf '%s\n' "$tool"; done ;;
         intervals)
             for tool in $SYNC_INTERVALS_WRITE_TOOLS; do printf 'icu_%s\n' "$tool"; done
             for tool in $SYNC_INTERVALS_WRITE_TOOLS duplicate_event; do printf '%s\n' "$tool"; done ;;
@@ -99,4 +99,10 @@ sync_health_denied_tools() {
     local tool
     [[ "$1" == "garmin" && "$SYNC_DENY_GARMIN_HEALTH" -eq 1 ]] || return 0
     for tool in $SYNC_GARMIN_HEALTH_TOOLS; do printf '%s\n' "$tool"; done
+}
+
+# Écritures de la source + outils santé refusés (copilot, gemini) ; cursor sépare les deux (cli.json).
+sync_deny_tools() {
+    sync_write_tools "$1"
+    sync_health_denied_tools "$1"
 }

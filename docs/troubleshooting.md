@@ -221,7 +221,8 @@ régénérez-la sur https://intervals.icu/settings (section *Developer*).
 ### Santé Open Wearables : instance injoignable, 401, `provider_mismatch`, données périmées
 
 Seulement si `[health].source = "openwearables"` (voir [Open Wearables](open-wearables.md#installation)).
-Commencez par `python3 scripts/coach_doctor.py --check openwearables --probe-ow` : il dit laquelle de ces
+Commencez par `python3 scripts/coach_doctor.py --check openwearables` (il appelle votre instance, sauf avec
+`--no-probe-ow`) : il dit laquelle de ces
 pannes vous concerne, sans jamais afficher la clé d'API. La synchronisation Garmin n'est jamais bloquée par une
 panne d'Open Wearables.
 

@@ -625,10 +625,15 @@ class TestOpenWearablesHealth(InstallAsserts):
             logs = "".join(p.read_text(errors="replace") for p in (ws / "logs").glob("*") if p.is_file())
             self.assertNotIn(secret, proc.stdout + proc.stderr + logs)
             self.assertTrue(list((ws / "logs").glob(".sync-ow-notified-*")))
-            # Une seule alerte par jour : le second passage ne la répète pas.
+            # Une seule alerte par jour : le second passage ne la répète pas dans le RÉSUMÉ (notification),
+            # mais le journal garde l'avertissement.
             again = sb.script("daily-sync.sh", ARC_WORKSPACE=str(ws),
                               ARC_OW_BASE_URL="http://127.0.0.1:9", ARC_OW_API_KEY_FILE=str(key))
             self.assertSucceeded(again)
+            summary = again.stdout.split("Résumé :")[1]
+            self.assertNotIn("Santé Open Wearables", summary)
+            # Le journal (la sortie standard sous cron) garde l'avertissement.
+            self.assertIn("Santé Open Wearables", again.stdout.split("Résumé :")[0])
 
     def test_primary_makes_no_openwearables_call_in_a_real_run(self):
         with Sandbox() as sb:
@@ -637,3 +642,89 @@ class TestOpenWearablesHealth(InstallAsserts):
             self.assertSucceeded(proc)
             self.assertOutputLacks(proc, "Open Wearables")
             self.assertFalse(list((ws / "logs").glob(".sync-ow-notified-*")))
+
+
+    def _fake_claude(self, sb, resume_lines):
+        fakebin = sb.root / "fakebin"
+        fakebin.mkdir(exist_ok=True)
+        agent = fakebin / "claude"
+        body = "\n".join(resume_lines)
+        agent.write_text("#!/bin/sh\ncat <<'EOF'\n```resume\n" + body + "\n```\nEOF\n")
+        agent.chmod(0o755)
+        return f"{fakebin}:{sb.env()['PATH']}"
+
+    def test_openwearables_notice_keeps_the_summary_within_five_lines(self):
+        with Sandbox() as sb:
+            ws = self._ws(sb, "openwearables")
+            path = self._fake_claude(sb, [f"ligne {i}" for i in range(1, 6)])
+            proc = sb.script("daily-sync.sh", ARC_WORKSPACE=str(ws), PATH=path,
+                             ARC_OW_BASE_URL="http://127.0.0.1:9")
+            self.assertSucceeded(proc)
+            summary = proc.stdout.split("Résumé :")[1].split("Notifications désactivées")[0]
+            lines = [ln for ln in summary.splitlines() if ln.strip()]
+            summary_lines = [ln for ln in lines if ln.startswith(("ligne", "⚠ Santé"))]
+            self.assertLessEqual(len(summary_lines), 5, summary)
+            self.assertTrue([ln for ln in summary_lines if ln.startswith("⚠ Santé Open Wearables")], summary)
+
+    def test_claude_run_may_not_read_the_openwearables_key_file(self):
+        with Sandbox() as sb:
+            ws = self._ws(sb, "openwearables")
+            proc = sb.script("daily-sync.sh", "--dry-run", ARC_WORKSPACE=str(ws))
+            self.assertSucceeded(proc)
+            self.assertOutputContains(proc, "Read(")
+            self.assertOutputContains(proc, "openwearables.key)")
+        with Sandbox() as sb:
+            proc = sb.script("daily-sync.sh", "--dry-run", ARC_WORKSPACE=str(self._ws(sb, None)))
+            self.assertOutputLacks(proc, "openwearables.key")
+
+    def _cursor_ws(self, sb, with_health_denies):
+        import json
+        import subprocess
+        lib = Path(__file__).resolve().parents[2] / "scripts/lib/sync_tools.sh"
+        tools = subprocess.run(["bash", "-c", f'. "{lib}"; sync_write_tools garmin'],
+                               capture_output=True, text=True, check=True).stdout.split()
+        health = []
+        if with_health_denies:
+            health = subprocess.run(["bash", "-c", f'. "{lib}"; SYNC_DENY_GARMIN_HEALTH=1; sync_health_denied_tools garmin'],
+                                    capture_output=True, text=True, check=True).stdout.split()
+        ws = self._ws(sb, "openwearables", runner="cursor")
+        (ws / ".cursor").mkdir()
+        (ws / ".cursor/cli.json").write_text(json.dumps(
+            {"permissions": {"deny": [f"Mcp(garmin:{t})" for t in tools + health]}}))
+        fakebin = sb.root / "fakebin"
+        fakebin.mkdir()
+        agent = fakebin / "cursor-agent"
+        agent.write_text("#!/bin/sh\necho RAN >> \"$0.log\"\n")
+        agent.chmod(0o755)
+        return ws, fakebin
+
+    def test_cursor_with_openwearables_runs_without_health_denials_but_warns(self):
+        """Les refus santé ne conditionnent PAS --force (seules les écritures le font) : avertir, jamais mourir."""
+        with Sandbox() as sb:
+            ws, fakebin = self._cursor_ws(sb, with_health_denies=False)
+            proc = sb.script("daily-sync.sh", ARC_WORKSPACE=str(ws),
+                             PATH=f"{fakebin}:{sb.env()['PATH']}")
+            self.assertSucceeded(proc)
+            self.assertTrue((fakebin / "cursor-agent.log").exists())
+            self.assertOutputContains(proc, "ne refuse pas les outils santé Garmin")
+            self.assertOutputLacks(proc, "ne refuse pas les outils d'écriture")
+
+    def test_cursor_with_openwearables_and_health_denials_is_silent(self):
+        with Sandbox() as sb:
+            ws, fakebin = self._cursor_ws(sb, with_health_denies=True)
+            proc = sb.script("daily-sync.sh", ARC_WORKSPACE=str(ws),
+                             PATH=f"{fakebin}:{sb.env()['PATH']}")
+            self.assertSucceeded(proc)
+            self.assertOutputLacks(proc, "ne refuse pas les outils")
+
+    def test_body_battery_and_stress_tools_are_denied_with_the_health_tools(self):
+        extra = ("get_body_battery", "get_body_battery_events", "get_stress_data",
+                 "get_stress_summary", "get_all_day_stress")
+        with Sandbox() as sb:
+            proc = sb.script("daily-sync.sh", "--dry-run", ARC_WORKSPACE=str(self._ws(sb, "openwearables")))
+            for tool in extra:
+                self.assertOutputContains(proc, f"mcp__garmin__{tool}")
+        with Sandbox() as sb:
+            proc = sb.script("daily-sync.sh", "--dry-run", ARC_WORKSPACE=str(self._ws(sb, None)))
+            for tool in extra:
+                self.assertOutputLacks(proc, tool)
