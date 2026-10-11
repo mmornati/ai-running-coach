@@ -1923,7 +1923,7 @@ function profileSection(p, climbs, showElevation) {
         { type: "line", values: p.alt, cls: "line line--elev" }] },
     has(p.hr) && { id: "hr", title: "FC", height: 110, label: "Fréquence cardiaque le long de la séance", yFormat: (v) => F.num(v),
       layers: [{ type: "line", values: p.hr, cls: "line line--rhr" }] },
-    paceR && { id: "pace", title: hasGap ? "Allure<br>GAP" : "Allure", height: 110, y: { ...paceR.y, invert: true, step: paceStep(paceR.y) },
+    paceR && { id: "pace", title: "Allure", height: 110, y: { ...paceR.y, invert: true, step: paceStep(paceR.y) },
       label: hasGap ? "Allure et allure ajustée à la pente le long de la séance, plus rapide en haut" : "Allure le long de la séance, plus rapide en haut", yFormat: paceFmt,
       layers: [{ type: "line", values: paceR.values, cls: "line line--pace" },
         ...(hasGap ? [{ type: "line", values: paceR.extra, cls: "line line--gap" }] : [])] },
@@ -1939,27 +1939,42 @@ function profileSection(p, climbs, showElevation) {
     const y = sp.id === "alt" ? sp.y : { ...(sp.y || {}), ticks: 2 };
     return { ...sp, c: timeChart(xs, sp.layers, [], { height: sp.height + (last ? 20 : 0), y, xLabels: last ? labels : labels.map(() => ""), label: sp.label, yFormat: sp.yFormat }) };
   });
-  // Légende de chaque graphique juste sous lui (montées sous l'altitude, allure/GAP sous l'allure),
-  // alignée sur le début des courbes — jamais une légende commune en tête du profil.
-  const legends = {
-    alt: climbs.length ? `<span class="legend__item"><span class="key key--climb"></span>Montées détectées</span>` : "",
-    pace: hasGap ? `<span class="legend__item"><span class="key key--pace"></span>Allure</span> <span class="legend__item"><span class="key key--gap"></span>GAP (allure ajustée à la pente)</span>` : "",
+  // Légendes dans la colonne des libellés, sous le titre de chaque graphique : aucune ligne
+  // perdue entre les graphiques. Libellés courts (colonne étroite), le détail en infobulle.
+  const key = (cls, text, title = "") => `<span class="profile__key"${title ? ` title="${title}"` : ""}><span class="key ${cls}"></span>${text}</span>`;
+  const keys = {
+    alt: climbs.length ? key("key--climb", "Montées", "Montées détectées") : "",
+    pace: hasGap ? key("key--pace", "Allure") + key("key--gap", "GAP", "Allure ajustée à la pente") : "",
   };
+  const labelHtml = (r) => (keys[r.id] && r.id === "pace" ? keys.pace : `${r.title}${keys[r.id] || ""}`);
   const html = `<section class="band profile"><h2>Profil</h2>
-    <div class="profile__stack">${rows.map((r) => `<div class="profile__row"><span class="profile__label" aria-hidden="true">${r.title}</span><div class="chart-host chart-host--nox" id="c-prof-${r.id}">${r.c.svg}</div></div>${legends[r.id] ? `<p class="legend profile__legend">${legends[r.id]}</p>` : ""}`).join("")}</div>
-    <p class="readout readout--sticky" id="r-prof" aria-live="polite"></p></section>`;
+    <div class="profile__stack" id="prof-stack">${rows.map((r) => `<div class="profile__row"><span class="profile__label" aria-hidden="true">${labelHtml(r)}</span><div class="chart-host chart-host--nox" id="c-prof-${r.id}">${r.c.svg}</div></div>`).join("")}
+    <div class="profile__tip" id="r-prof" role="status" aria-live="polite" hidden></div></div></section>`;
+  // Infobulle qui suit le curseur (comme Strava) : temps écoulé en tête, puis une valeur par
+  // ligne. Collée à droite du curseur, basculée à gauche près du bord droit.
+  const row = (label, value) => `<div><dt>${label}</dt><dd>${value}</dd></div>`;
   const show = (j) => {
-    const km = (p.d[j] - p.d[0]) / 1000;
+    const tip = $("#r-prof"), stack = $("#prof-stack");
+    if (!tip || !stack) return;
     const g = p.grade[j];
-    readout($("#r-prof"), `<strong>${F.distance(km * 1000, 2)}</strong>`
-      + (p.alt[j] != null ? ` · ${F.elevation(p.alt[j])}` : "")
-      + (g != null ? ` · pente ${g > 0 ? "+" : ""}${F.num(g * 100, 0)}${NB}%` : "")
-      + (p.hr[j] != null ? ` · ${F.num(p.hr[j])}${NB}bpm` : "")
-      + (p.pace[j] != null ? ` · ${F.paceFromSecPerKm(p.pace[j])}` : "")
-      + (p.gap[j] != null ? ` · GAP ${F.paceFromSecPerKm(p.gap[j])}` : "")
-      + (p.cad[j] != null ? ` · ${F.num(p.cad[j])}${NB}pas/min` : "")
-      + (p.t[j] != null ? ` <span class="muted">· ${F.clockShort(p.t[j] - (p.t[0] || 0))}</span>` : ""));
+    tip.innerHTML = (p.t[j] != null ? `<p class="profile__tip-time">${F.clockShort(p.t[j] - (p.t[0] || 0))}</p>` : "")
+      + `<dl>${row("Dist.", F.distance(p.d[j] - p.d[0], 2))}`
+      + (p.alt[j] != null ? row("Alt.", F.elevation(p.alt[j])) : "")
+      + (g != null ? row("Pente", `${g > 0 ? "+" : ""}${F.num(g * 100, 0)}${NB}%`) : "")
+      + (p.hr[j] != null ? row("FC", `${F.num(p.hr[j])}${NB}bpm`) : "")
+      + (p.pace[j] != null ? row("Allure", F.paceFromSecPerKm(p.pace[j])) : "")
+      + (p.gap[j] != null ? row("GAP", F.paceFromSecPerKm(p.gap[j])) : "")
+      + (p.cad[j] != null ? row("Cadence", `${F.num(p.cad[j])}${NB}pas/min`) : "")
+      + "</dl>";
+    tip.hidden = false;
+    // Abscisse du curseur : unités du viewBox du premier graphique → pixels dans la pile.
+    const svg = stack.querySelector("svg.chart");
+    const sb = svg.getBoundingClientRect(), kb = stack.getBoundingClientRect();
+    const xPx = sb.left - kb.left + (rows[0].c.x(j) / svg.viewBox.baseVal.width) * sb.width;
+    const flip = xPx + tip.offsetWidth + 12 > kb.width;
+    tip.style.left = `${flip ? xPx - tip.offsetWidth - 10 : xPx + 10}px`;
   };
+  const hide = () => { const tip = $("#r-prof"); if (tip) tip.hidden = true; };
   return {
     html,
     mount(onIndex) {
@@ -1968,7 +1983,10 @@ function profileSection(p, climbs, showElevation) {
       for (const r of rows) {
         moves.push(attachCursor($(`#c-prof-${r.id}`), r.c, (j) => { all(j); onIndex(j); }, null));
       }
-      show(0);
+      // L'infobulle disparaît quand la souris quitte les graphiques ou que le focus clavier part.
+      const stack = $("#prof-stack");
+      stack.addEventListener("pointerleave", (ev) => { if (ev.pointerType === "mouse") hide(); });
+      stack.addEventListener("focusout", (ev) => { if (!stack.contains(ev.relatedTarget)) hide(); });
       return all;
     },
   };

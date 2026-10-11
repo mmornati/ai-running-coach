@@ -821,10 +821,20 @@ button.seg:focus-visible, .link-btn:focus-visible { outline: 2px solid var(--foc
 .ledger__group:first-child .ledger__rows div:nth-child(-n+3) dd small { display: block; font: 400 0.74rem/1.3 var(--text); letter-spacing: 0; }
 .ledger .chip { vertical-align: middle; }
 
-.profile__stack { display: grid; gap: 0.15rem; margin-bottom: 1rem }
+.profile__stack { position: relative; display: grid; gap: 0.15rem; margin-bottom: 1rem }
 .profile__row { display: grid; grid-template-columns: 4.6rem minmax(0, 1fr); align-items: center; }
-.profile__label { color: var(--ink-faint); font-size: 0.78rem; }
-.profile__legend { margin: 0 0 0.4rem 4.6rem; }
+.profile__label { display: flex; flex-direction: column; gap: 0.3rem; color: var(--ink-faint); font-size: 0.78rem; }
+.profile__key { display: inline-flex; align-items: center; gap: 0.35rem; font-size: 0.72rem; color: var(--ink-soft); white-space: nowrap; }
+.profile__key .key { flex: none; }
+/* Infobulle du profil : suit le curseur, au-dessus des graphiques (pointer-events: none pour
+   ne jamais voler le survol), comme celle de Strava. */
+.profile__tip { position: absolute; top: 0.25rem; z-index: 3; pointer-events: none; min-width: 8.5rem; padding: 0.45rem 0.65rem; background: var(--surface); border: 1px solid var(--line-strong); border-radius: var(--radius-sm); box-shadow: var(--shadow); font-size: 0.8rem; font-variant-numeric: tabular-nums; }
+.profile__tip[hidden] { display: none; }
+.profile__tip-time { margin: 0 0 0.25rem; color: var(--ink-faint); font-size: 0.75rem; }
+.profile__tip dl { display: grid; grid-template-columns: auto auto; gap: 0.1rem 0.6rem; margin: 0; }
+.profile__tip dl div { display: contents; }
+.profile__tip dt { color: var(--ink-soft); }
+.profile__tip dd { margin: 0; color: var(--ink); font-weight: 600; text-align: right; }
 .profile .chart-host { margin: 0; }
 .chart .area--elev { fill: var(--s-band); }
 .chart .area--climb { fill: var(--s-dplus); opacity: 0.22; }
@@ -832,7 +842,6 @@ button.seg:focus-visible, .link-btn:focus-visible { outline: 2px solid var(--foc
 .chart .line--pace { stroke: var(--s-sweat); stroke-width: 1.6; }
 .chart .line--cad { stroke: var(--s-energy); stroke-width: 1.4; }
 .key--climb { background: var(--s-dplus); opacity: 0.45; height: 0.6rem; }
-.profile .readout--sticky { top: 3.6rem; }
 
 /* La colonne utile dépend de la nav latérale, pas de l'écran : requête de conteneur. */
 .main { container-type: inline-size; }
