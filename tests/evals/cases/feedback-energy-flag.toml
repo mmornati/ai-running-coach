@@ -87,10 +87,18 @@ equals = 90
 # échantillons FIT (indépendamment de ce que le coach a écrit) : confirme que
 # le calcul est bien réalisable pour cette séance et reste dans la fourchette
 # vérifiée en local (1804,15 kcal), avant application du seuil d'alerte.
+# Fourchette [1500, 2100] exprimée en DEUX assertions (borne basse puis borne
+# haute) : le format `sqlite_query` n'admet qu'un comparateur par entrée.
 [[expect.sqlite_query]]
 sql = """
 SELECT model_kcal FROM activity_energy
 WHERE activity_id = (SELECT id FROM activity WHERE garmin_activity_id = 99000001)
 """
 min = 1500
+
+[[expect.sqlite_query]]
+sql = """
+SELECT model_kcal FROM activity_energy
+WHERE activity_id = (SELECT id FROM activity WHERE garmin_activity_id = 99000001)
+"""
 max = 2100
