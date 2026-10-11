@@ -75,7 +75,7 @@ DEFAULTS = {
     "shell": {"allowed_prefixes": ["python3 scripts/arc_index.py", "python3 scripts/arc_log.py",
                                    "python3 scripts/garmin_gear_backfill.py", "python3 scripts/arc_guardrails.py",
                                    "python3 scripts/arc_workout_targets.py", "python3 scripts/arc_race_debrief.py",
-                                   "python3 scripts/coach_doctor.py",
+                                   "python3 scripts/coach_doctor.py", "python3 scripts/arc_openwearables.py",
                                    "python3 skills/session-parts-analyzer/scripts/analyze_session_parts.py"],
               "stdin_scripts": ["scripts/arc_log.py"]},
     "web": {"fetch_domains": ["wttr.in", "overpass-api.de", "nominatim.openstreetmap.org"]},
@@ -121,6 +121,9 @@ DEFAULT_SCRIPTS = {
     },
     "scripts/coach_doctor.py": {
         "flags": ["--json", "--probe-mcp", "--probe-ow", "--no-probe-ow"], "value_options": ["--check", "--now"],
+    },
+    "scripts/arc_openwearables.py": {
+        "flags": ["--json"], "value_options": ["--date", "--timeout"],
     },
     "skills/session-parts-analyzer/scripts/analyze_session_parts.py": {
         "flags": ["--quiet"],

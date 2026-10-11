@@ -82,6 +82,17 @@ if the location does not resolve — see above).
 
 Never silently upgrade to a stricter level than configured.
 
+**`[health].source` (#221, opt-in).** Resolve it (`primary` default; absent, empty or
+unknown = `primary`). At `primary` nothing above changes and you never mention Open
+Wearables. At `openwearables` (and `morning_check` not `off`), the health data comes from
+ONE call, `python3 scripts/arc_openwearables.py health-day --json`, instead of the three
+Garmin tools (none of them is called): `full` = HRV (RMSSD) + resting HR + the maker's native
+score named as such (« Readiness Oura 82/100 », « Nightly Recharge Polar 4/6 », never
+« Training Readiness », never rescaled), or « readiness indisponible — <maker> via Open
+Wearables »; `minimal` = that one line only. An unreachable instance, a missing night or stale
+data is said in one line (never « tout va bien »), and the session is planned on load, history
+and declared feeling. Details: `agents/coach.md`, section HEALTH SOURCE.
+
 ## Output contract
 
 **First line, fixed shape, one-line verdict** — start the line with the

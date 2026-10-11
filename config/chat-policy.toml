@@ -35,6 +35,7 @@ allowed_prefixes = [
   "python3 scripts/arc_cycle.py",
   "python3 scripts/arc_nutrition_sync.py",
   "python3 scripts/arc_weight_sync.py",
+  "python3 scripts/arc_openwearables.py",
   "python3 scripts/arc_workout_targets.py",
   "python3 scripts/arc_race_debrief.py",
   "python3 scripts/coach_doctor.py",
@@ -84,6 +85,13 @@ read_options = ["--input"]
 flags = ["--existing-only"]
 value_options = ["--garmin", "--date", "--declared-kg"]
 read_options = ["--input"]
+
+# Santé du bilan matinal lue chez Open Wearables (#221) : client REST en LECTURE SEULE (aucun appel d'écriture
+# chez OW, aucun fichier écrit). `--workspace` reste refusé (pas de redirection vers un autre espace) ; la clé
+# d'API est lue par le script dans un fichier hors dépôt, jamais passée en argument.
+[shell.scripts."scripts/arc_openwearables.py"]
+flags = ["--json"]
+value_options = ["--date", "--timeout"]
 
 [shell.scripts."scripts/arc_race_pacing.py"]
 flags = ["--memory", "--rebuild", "--dem", "--no-dem"]

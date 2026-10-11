@@ -194,7 +194,9 @@ timeout, liste vide) — via une section `[stub.<serveur>.<outil>]` de son
 `.toml`. Détail complet, sémantique des erreurs et exemples dans
 `tests/evals/fixtures/README.md`. Les deux stubs partagent leur protocole
 JSON-RPC via `tests/evals/mcp_stub_common.py`, verrouillé par le palier D
-(`tests/data/test_mcp_stubs.py`).
+(`tests/data/test_mcp_stubs.py`). Open Wearables (#221) a son propre faux serveur HTTP
+(`tests/evals/stub_openwearables_http.py`, verrouillé par `tests/data/test_ow_eval_stub.py`), lancé par
+le runner quand un cas déclare `[stub.openwearables.*]`.
 
 ```bash
 ARC_LLM_TESTS=1 python3 tests/run_tests.py --tier c --repeat 3

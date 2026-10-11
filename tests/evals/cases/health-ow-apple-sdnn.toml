@@ -1,0 +1,43 @@
+# #221 — Apple Health ne fournit que la HRV en SDNN (52 ms dans le serveur factice, fournisseur `apple`). Elle est
+# affichée à titre indicatif, dite « non comparable » à une RMSSD, jamais traitée comme la HRV du verdict : le
+# fichier santé écrit porte `hrv_sdnn_ms` mais PAS `hrv_overnight_ms` (le contrat le refuse d'ailleurs pour
+# `apple`), et la réponse ne présente jamais cette valeur comme une RMSSD.
+#
+# `must_not_match` : « RMSSD » suivi de la valeur 52 (« HRV RMSSD 52 ms », « RMSSD : 52 »). La formule correcte
+# « HRV SDNN 52 ms (Apple Health — non comparable à une RMSSD) » ne la déclenche pas : le 52 PRÉCÈDE « RMSSD ».
+id = "health-ow-apple-sdnn"
+prompt = "Valide ma séance de demain."
+fixture = "base-week"
+
+[config.health]
+morning_check = "full"
+
+[config.health.openwearables]
+provider = "apple"
+
+[config.agents]
+enabled = ["coach", "medical"]
+
+[stub.openwearables.ow_recovery_summary]
+error = "empty"
+
+[expect]
+tools_called = ["ow_sleep_summary"]
+tools_not_called = ["get_hrv_data", "get_rhr_day", "get_sleep_data", "get_training_readiness", "ow_recovery_summary"]
+must_match = ["SDNN", "non comparable|incomparable|pas comparable|ne se compare pas"]
+must_not_match = ["RMSSD\\s*(?:de|:|=)?\\s*52\\b"]
+files_with_arc_block = ["medical/*_health.md"]
+
+[[expect.arc_field]]
+glob = "medical/*_health.md"
+path = "health_provider"
+equals = "apple"
+
+[[expect.arc_field]]
+glob = "medical/*_health.md"
+path = "hrv_sdnn_ms"
+min = 50
+
+[[expect.arc_field_absent]]
+glob = "medical/*_health.md"
+paths = ["hrv_overnight_ms", "readiness_score", "sleep_score"]

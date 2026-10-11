@@ -682,6 +682,13 @@ d'où viennent ses mesures. Règles, validées par `arc_index.py --validate` :
   `provider_scores`, sous son nom et sur son échelle, **sans être remis sur 100** ni
   présenté comme le Training Readiness Garmin.
 - Une seule source santé par fichier ; jamais deux sources fusionnées dans un même jour.
+- **Tout nouveau fichier santé portant une mesure** (HRV, FC de repos, sommeil, score) pose
+  `health_source` : `garmin` ou `intervals` d'après `[data].source` quand la santé en vient, ou
+  `openwearables` (avec `health_provider`/`health_device` tels que rendus par
+  `scripts/arc_openwearables.py health-day`, #221). Un fichier sans mesure (douleur seule, `/log`,
+  Telegram) n'a pas de source.
+- `missing_reason` d'un fichier `openwearables` se recopie de la clé `unavailable` du script
+  (`hrv_overnight_ms`, `resting_hr_bpm`, `readiness`), jamais d'une cause devinée.
 - Une mesure que la source ne fournit pas = clé omise + `missing_reason`, jamais une
   valeur approchée d'une autre méthode.
 

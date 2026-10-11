@@ -58,6 +58,42 @@ Remote Control) et l'IDE partagent. Il délègue tout à l'agent `coach` et au s
   avec cet identifiant (`download_fit.py --source strava`, flux par seconde, pas de `.fit`).
   Un « 429 » (limite de l'API Strava) n'est pas une erreur d'authentification : le noter dans
   `Alerte :` et s'arrêter proprement.
+- **Source de la santé (#221, `[health].source`, opt-in strict)** : défaut `primary` (clé absente,
+  vide ou inconnue = `primary`) — **tout ce qui suit est alors sans objet : rien ne change, aucun
+  appel de plus, et aucune mention d'Open Wearables, d'une bague ou d'un bracelet dans la sortie.**
+  À `openwearables` (et `morning_check` ≠ `off`), HRV, FC de repos, sommeil et score natif du
+  fabricant se lisent chez Open Wearables, **uniquement** là, par UN appel par date :
+  `python3 scripts/arc_openwearables.py health-day --date <date> --json` (sortie 0 = lu, des mesures
+  peuvent manquer ; 2 = configuration incomplète ; 3 = instance injoignable ou clé refusée). Les outils
+  santé Garmin (`get_hrv_data`, `get_rhr_day`, `get_sleep_data`, `get_training_readiness`) ne sont
+  **pas** appelés — `scripts/daily-sync.sh` les refuse à l'exécuteur — ni `icu_get_wellness_for_date`
+  pour HRV/FC de repos/sommeil ; les séances restent lues via `[data].source`. Le bloc `arc` rendu
+  est persisté tel quel (`health_source`, `health_provider`, `health_device`, `provider_scores`…) avec
+  `morning_check`, `verdict`, `verdict_reason` et `missing_reason` (recopié de `unavailable`). Le score
+  natif est nommé « <catégorie> <Fabricant> <valeur>/<borne haute> » (« Readiness Oura 82/100 »), jamais
+  « Training Readiness », jamais remis sur 100, jamais dans `readiness_score`/`sleep_score` ; une HRV en
+  SDNN (Apple Health) reste indicative, « HRV RMSSD indisponible » ; une ligne de base HRV
+  `en_construction` est dite (« ligne de base en reconstruction — N nuits avec <fabricant> »).
+  **Jamais de clé propre à Garmin** dans un fichier Open Wearables : ni body battery
+  (`get_body_battery`, `get_body_battery_events`), ni stress (`get_stress_data`, `get_stress_summary`,
+  `get_all_day_stress`), ni score de sommeil Garmin, ni `readiness_*` — n'écrire ni `body_battery_*`, ni
+  `stress_avg`, ni `sleep_score`, ni `readiness_score`/`readiness_factors` (le contrat les refuse, et deux
+  sources seraient mélangées). `scripts/daily-sync.sh` refuse ces outils par nom pour la plupart des
+  exécuteurs ; `codex` et la passerelle leanproxy ne filtrent pas : la consigne reste la seule protection.
+  **Pannes et retards, dits et jamais lissés :** sortie 3 → aucun fichier santé, un segment
+  `Alerte : santé Open Wearables indisponible : instance injoignable` (ou « clé refusée ») dans la ligne
+  `Alerte :` unique, et la synchronisation des séances continue ; sortie 2 → même traitement, segment
+  `Alerte : santé Open Wearables : configuration incomplète` (fix : `/coach-doctor`, jamais proposé ici) ;
+  **nuit de D pas encore arrivée** = ni `sleep_total_s`, ni HRV (`hrv_overnight_ms`, `hrv_sdnn_ms`) dans
+  `arc` — même si le script rend une FC de repos du jour ou des `provider_scores` ; `unavailable` le dit,
+  synchronisation en retard, typique en mode `watch` → **n'écrire AUCUN fichier santé** pour cette date
+  (pesée comprise : la pesée Garmin du jour est différée, relue au run suivant dès que le fichier existe),
+  pour que le run suivant réessaie, et le dire dans le résumé ; fichier `/log` déjà présent (douleur
+  seule) : le laisser intact ; `freshness.stale` → recopier le `message` de l'avertissement (il porte
+  l'âge, ne rien calculer) ; `not_active`/`not_connected` → fabricant à reconnecter dans le portail Open
+  Wearables ; `unknown_score_scale`/`score_out_of_range` → score natif écarté, dit « indisponible ». Un
+  manque ne fait **jamais** passer un verdict orange ou rouge au vert et n'est jamais remplacé par un
+  « tout va bien ».
 - **Pas de contrôle de premier démarrage** : le coach propose `/coach-setup` quand aucune
   configuration n'existe. **Ici, ne jamais le proposer** : personne ne peut répondre, et la
   proposition finirait dans la notification push. Travailler avec les défauts et le signaler
@@ -127,12 +163,15 @@ Remote Control) et l'IDE partagent. Il délègue tout à l'agent `coach` et au s
    > athlete-declared fields, before any sync ran: see `garmin-sync-efficiency`'s "not yet
    > synced" marker). For each date that is missing OR not yet synced, fetch from the `garmin`
    > MCP server: activities (with splits and `recovery_hr_bpm`), sleep, HRV, training
-   > readiness, resting HR / body battery, and the day's weigh-in (`get_daily_weigh_ins(date)`,
+   > readiness, resting HR / body battery (body battery and stress only when `[health].source` is `primary`), and the day's weigh-in (`get_daily_weigh_ins(date)`,
    > `[data].source = "garmin"` only — pass the raw reply to `python3 scripts/arc_weight_sync.py
    > plan --garmin '<reply>' --date <date>` and write its `set`/`remove` keys as returned, never a
    > weight copied from another day; also re-check TODAY's health file once when it has no
    > `weight_kg` yet, even if already synced; report any `flag` once in your summary; never call
-   > `add_weigh_in`/`delete_weigh_ins`). If a not-yet-synced file already exists for that
+   > `add_weigh_in`/`delete_weigh_ins`). **If `[health].source = "openwearables"` (#221): the sleep, HRV, readiness and resting HR items above
+   > do NOT come from `garmin` — read them with ONE `python3 scripts/arc_openwearables.py health-day --date <date> --json` per date, persist its `arc` object as is,
+   > and follow the « Source de la santé » rules of the skill (no Garmin health tool, no body battery, no stress, no Garmin sleep score or readiness key in that file,
+   > no health file at all — weigh-in included — while the night is not there yet: no `sleep_total_s` and no HRV).** If a not-yet-synced file already exists for that
    > date, MERGE the fetched Garmin fields into it — same file, never a second one for the
    > same session — preserving every athlete-declared key it already carries (`carbs_g`,
    > `fluid_intake_ml`, `rpe`, `gear_id`, `gear_ids`, `weight_pre_kg`, `weight_post_kg` on an activity;
@@ -140,7 +179,7 @@ Remote Control) et l'IDE partagent. Il délègue tout à l'agent `coach` et au s
    > workspace conventions (`AGENTS.md`: file names; load the `workspace-data-contract` skill
    > and open every file with its ```arc JSON block — `kind: activity` with
    > `garmin_activity_id`, `location` and `splits`, `kind: health` with `morning_check` set to
-   > the configured mode. **Gear (#133, `[data].source = "garmin"` only):** for each activity
+   > the configured mode and, whenever the file carries a measurement, `health_source` (`garmin` or `intervals` from `[data].source`; `openwearables` with the provider and device as returned by `health-day`). **Gear (#133, `[data].source = "garmin"` only):** for each activity
    > that is NEW in this run (never for a file that already carried its Garmin data —
    > `garmin-sync-efficiency`, one `get_activity_gear(activity_id)` call per new activity, no
    > more), pass the `uuid` values of its shoes (`gearTypeName` shoes only; ignore other gear types) to
@@ -273,6 +312,30 @@ Séances : 1 nouvelle — trail 12,3 km / 480 m D+ / FC moy 148 / HRR 28 bpm (20
 Sommeil : 7 h 42, score 81
 HRV : 62 ms — équilibré (baseline 58-66)
 Readiness : 74
+Alerte : aucune
+```
+````
+
+**Santé lue chez Open Wearables (#221, `[health].source = "openwearables"` seulement).** Les lignes
+`Sommeil`, `HRV` et `Readiness` portent les valeurs du script, avec le fabricant nommé ; le score natif
+garde son nom et son échelle. Si la nuit de D n'est pas encore arrivée, les trois lignes sont
+remplacées par UNE ligne `Santé :` qui le dit et annonce le nouvel essai (aucun fichier santé écrit) ;
+une instance injoignable va dans l'unique ligne `Alerte :` (jamais une ligne de plus).
+
+````
+```resume
+Séances : à jour
+Sommeil : 7 h 15 (Oura)
+HRV : 48 ms RMSSD (Oura) — ligne de base personnelle 45-57
+Readiness : Readiness Oura 82/100 (score natif)
+Alerte : aucune
+```
+````
+
+````
+```resume
+Séances : 1 nouvelle — trail 12,3 km / 480 m D+ / FC moy 148 / HRR 28 bpm (2026-09-20)
+Santé : nuit du 2026-09-21 pas encore arrivée chez Open Wearables (Oura) — aucun fichier écrit, nouvel essai au prochain passage
 Alerte : aucune
 ```
 ````

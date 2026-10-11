@@ -13,11 +13,11 @@ Commit épinglé de tout ce qui suit : tag `0.9.0` =
 `main` a aussi été relue au commit `12941a4cb10fd77755d5b0007d8f267c5fea451b`
 (2 octobre 2026), uniquement là où c'est dit.
 
-Version testée par le client : `ff8527a52ad8a96cd1ebe8c19344295c934ae9dc` (tag `0.9.0`) — dernier tag publié, endpoints et champs relus dans les sources à ce commit par le client `scripts/arc_openwearables.py` (#219, `OW_REF`). Le client et l'installation (`--health-source`, #220) existent ; l'usage par les agents (bilan matinal) reste **prévu** (#221).
+Version testée par le client : `ff8527a52ad8a96cd1ebe8c19344295c934ae9dc` (tag `0.9.0`) — dernier tag publié, endpoints et champs relus dans les sources à ce commit par le client `scripts/arc_openwearables.py` (#219, `OW_REF`). Le client, l'installation (`--health-source`, #220) et l'usage par les agents (bilan matinal, #221) sont livrés.
 
 ## Décision
 
-!!! success "Décision : OW n'est jamais une source d'entraînement ; Garmin reste en direct ; la santé du bilan matinal est une option prévue"
+!!! success "Décision : OW n'est jamais une source d'entraînement ; Garmin reste en direct ; la santé du bilan matinal est une option"
     1. **OW comme source d'entraînement (`[data].source`) : non.** Les trois
        marques clés du trail lui sont inaccessibles (ou inexistantes) pour un
        particulier, et ce qui reste est trop pauvre pour l'analyse trail.
@@ -30,9 +30,10 @@ Version testée par le client : `ff8527a52ad8a96cd1ebe8c19344295c934ae9dc` (tag 
        [Quelle source pour mon appareil ?](configuration.md#quelle-source-pour-mon-appareil).
     4. **La valeur d'OW est étroite : la santé quotidienne** (HRV, FC de repos,
        sommeil, scores de récupération natifs) venant d'appareils que le projet
-       ne lit pas aujourd'hui. Cette lecture est **prévue** (#218 à #221) comme
-       option stricte `[health].source`, **pas encore livrée** : à ce jour, rien
-       dans le projet n'appelle OW, et aucun agent n'en parle.
+       ne lit pas en direct. Cette lecture est livrée (#218 à #221) comme
+       option stricte `[health].source = "openwearables"` : sans elle (valeur
+       par défaut `primary`), rien dans le projet n'appelle OW, et aucun agent
+       n'en parle.
 
 ## Ce qu'est Open Wearables
 
@@ -125,7 +126,7 @@ Six outils, tous en lecture (`mcp/app/tools/`) :
 - **Aucun outil** pour les scores de readiness ou de récupération.
 
 Le projet ne l'utilisera donc pas pour la santé du bilan matinal. L'option
-prévue lira l'API REST d'OW par un script du dépôt (même précédent que
+lit l'API REST d'OW par un script du dépôt (même précédent que
 `download_fit.py`, qui contourne un MCP inadapté).
 
 ## Coût d'hébergement
@@ -204,18 +205,16 @@ la passerelle leanproxy n'en a aucun non plus. Avec `[data].source = "intervals"
 `icu_get_wellness_for_date` sert aussi à la phase du cycle. Le fichier de clé est en outre interdit en lecture
 à l'exécuteur `claude` (`Read(<fichier>)`).
 
-> **En attendant #221** : les consignes des agents n'utilisent pas encore Open Wearables. Avec une santé Open
-> Wearables et des activités Garmin, les outils santé Garmin étant refusés, **le bilan matinal headless n'a pas de
-> santé** (il le dit, sans inventer) ; la lecture de la santé chez Open Wearables par les agents arrive avec #221.
-
 Avant chaque run, le script fait un seul `arc_openwearables.py check`. Si l'instance est morte ou la clé refusée,
 **la synchronisation Garmin continue** : le problème est journalisé et ajouté en une ligne au résumé (au plus une
 fois par jour). Les activités sont toujours lues chez Garmin.
 
 `[sync].mode = "watch"` reste réservé à `[data].source = "garmin"`. Avec une santé Open Wearables, le déclencheur
 `morning` de `scripts/garmin_watch.py` s'appuie toujours sur le sommeil **Garmin** comme signal de réveil, ce qui
-peut précéder la synchronisation chez OW : la nuit peut donc ne pas être encore arrivée. Le comportement des
-agents dans ce cas (pas de fichier santé tant que la nuit n'est pas arrivée) est **prévu** (#221).
+peut précéder la synchronisation chez OW : la nuit peut donc ne pas être encore arrivée. Dans ce cas, le skill
+`/garmin-daily-sync` n'écrit **aucun** fichier santé tant que la nuit n'est pas arrivée chez OW (le run suivant
+réessaie, il ne récupère que les fichiers manquants) et le résumé le dit ; une session interactive le dit aussi
+et planifie sur la charge et le ressenti déclaré.
 
 ### Diagnostic
 
@@ -227,6 +226,51 @@ sous-processus plafonné à 12 s. `--no-probe-ow` (hors ligne) s'en tient à la 
 est accepté sans effet. Le cron ne lance que `--check garmin_token` : il ne contacte jamais OW par ce biais.
 Hors de l'option `[health].source = "openwearables"`, le contrôle dit seulement « non utilisé ». Pannes
 courantes : voir [Dépannage](troubleshooting.md#sante-open-wearables-instance-injoignable-401-provider_mismatch-donnees-perimees).
+
+## Le bilan matinal avec Open Wearables
+
+Avec `[health].source = "openwearables"`, `coach`, `medical` et `/garmin-daily-sync` lisent la santé du jour
+par **un seul appel** : `python3 scripts/arc_openwearables.py health-day --date AAAA-MM-JJ --json`. Les outils
+santé Garmin (`get_hrv_data`, `get_rhr_day`, `get_sleep_data`, `get_training_readiness`) ne sont pas appelés, et
+avec intervals.icu comme source d'entraînement `icu_get_wellness_for_date` n'est pas utilisé pour la HRV, la FC de
+repos ni le sommeil : **une seule source de santé par jour**. Les séances, elles, viennent toujours de
+`[data].source`. Avec Strava comme source d'entraînement, le message « HRV / FC de repos / readiness indisponibles
+— source Strava » disparaît au profit des données d'OW.
+
+| `[health].morning_check` | Ce que l'agent fait |
+|---|---|
+| `full` | HRV (RMSSD) + FC de repos + **score natif** du fabricant s'il existe. Sinon : « readiness indisponible — FABRICANT via Open Wearables », jamais autre chose à la place. |
+| `minimal` | Une ligne : le score natif (« Readiness Oura 82/100 », « Nightly Recharge Polar 4/6 ») ou « readiness indisponible (Open Wearables, FABRICANT) ». |
+| `off` | Rien n'est lu, aucune mention. |
+
+- **Nommer, jamais convertir.** Un score est toujours dit « CATÉGORIE FABRICANT VALEUR/BORNE » et
+  recopié tel que le script le rend : jamais « Training Readiness », jamais remis sur 100, jamais comparé aux seuils
+  Garmin. Il est écrit dans `provider_scores` du fichier santé, jamais dans `readiness_score` ni `sleep_score`
+  (que le contrat refuse pour cette source).
+- **HRV en SDNN (Apple Health).** Affichée à titre indicatif (« HRV SDNN 52 ms (Apple Health — non comparable à
+  une RMSSD) »), jamais comme tendance HRV du verdict ; le bilan complet est dit incomplet (« HRV RMSSD
+  indisponible »). Elle est écrite dans `hrv_sdnn_ms`, jamais dans `hrv_overnight_ms`.
+- **Ligne de base.** `arc_index.py hrv-baseline` est calculée par source (et par fabricant). Après un changement
+  d'appareil elle peut rendre `en_construction` : l'agent le dit et décide sur la FC de repos, le score natif et le
+  ressenti déclaré, jamais sur la bande de l'ancienne source.
+- **Pannes et retards, toujours dits.** Instance injoignable ou clé refusée : « santé Open Wearables indisponible »
+  (en interactif, `/coach-doctor` est proposé ; en headless, une mention dans la ligne `Alerte :` du résumé).
+  Configuration incomplète : « santé Open Wearables : configuration incomplète », même traitement.
+  « Nuit pas encore arrivée » veut dire : ni durée de sommeil, ni HRV (même si une FC de repos du jour est là) ;
+  en headless, **aucun** fichier santé n'est alors écrit (pesée du jour comprise, relue au run suivant) et le
+  résumé le dit. Données périmées (message d'avertissement recopié, avec l'âge), fabricant non connecté ou
+  connexion inactive (à reconnecter dans le portail Open Wearables), score natif écarté faute d'échelle connue :
+  dits aussi.
+  Jamais un « tout va bien » par défaut, et une donnée manquante ne fait jamais passer un verdict orange ou rouge au
+  vert ; une douleur déclarée ou une annulation médicale garde son protocole.
+- **Rien de propre à Garmin.** Ni body battery, ni stress, ni score de sommeil Garmin, ni `readiness_*` dans un
+  fichier santé Open Wearables (le contrat les refuse). Les outils correspondants sont refusés par nom en
+  headless pour la plupart des exécuteurs ; en session interactive, avec `codex` et avec la passerelle leanproxy,
+  rien ne filtre : la consigne des agents est la protection.
+- **Fichier santé.** `medical/AAAA-MM-JJ_health.md` porte l'objet `arc` rendu par le script (`health_source`,
+  `health_provider`, `health_device`…), `morning_check`, `verdict`, `verdict_reason` et `missing_reason` (recopié
+  des mesures indisponibles), validé par `arc_index.py --validate`. Tout fichier santé qui porte une mesure dit sa
+  source (`garmin`, `intervals` ou `openwearables`) ; un fichier de douleur seule n'en a pas.
 
 ## Ce qui ferait changer la décision
 

@@ -301,6 +301,48 @@ CORRECT_ANSWERS_BY_CASE = {
         "marquée et verdict rouge de ce matin — repos aujourd'hui et consultation "
         "d'un professionnel de santé recommandée.",
     ],
+    # #221 : santé lue chez Open Wearables (Oura) — le score est NOMMÉ « Oura » ; « Training Readiness » peut être
+    # cité pour l'écarter, jamais pour désigner le score.
+    "health-ow-full-strava": [
+        "Bilan du matin (Open Wearables, Oura) : HRV 48 ms, FC de repos 47 bpm, Readiness Oura 82/100 — score "
+        "natif, non comparable au Training Readiness Garmin. Séance maintenue.",
+        "Readiness Oura 82/100 (ce n'est pas un Training Readiness : autre échelle, autre méthode). HRV et FC de repos "
+        "stables, je maintiens la séance de demain.",
+        "Oura : HRV 48,2 ms, FC de repos 47 bpm, sommeil 77/100. Les données Strava ne contiennent pas de santé, c'est "
+        "Oura qui fait foi ; pas de comparaison avec un Training Readiness (Garmin).",
+    ],
+    "health-ow-garmin-one-source": [
+        "Santé du jour lue chez Oura via Open Wearables : HRV 48 ms, FC de repos 47 bpm, Readiness Oura 82/100.",
+    ],
+    # #221 : instance injoignable — dit explicitement, sans valeur inventée ni « tout va bien » ; le profil peut être cité.
+    "health-ow-unreachable": [
+        "Santé Open Wearables indisponible : l'instance ne répond pas (délai dépassé). Je planifie sur ta charge "
+        "récente et ton ressenti, sans verdict santé ce matin. Lance /coach-doctor pour diagnostiquer.",
+        "Je n'ai pas pu lire tes données de santé (instance Open Wearables injoignable). FC de repos de référence : "
+        "48 bpm (profil), mais rien pour ce matin. Séance de demain maintenue sous réserve de ton ressenti — "
+        "pas de verdict vert possible sans données.",
+        "Impossible de récupérer la HRV et la FC de repos : serveur injoignable. Je ne peux pas établir de bilan "
+        "matinal, dis-moi comment tu te sens.",
+    ],
+    # #221 : Apple Health = SDNN seulement — indicatif, non comparable, jamais présenté comme une RMSSD.
+    "health-ow-apple-sdnn": [
+        "HRV SDNN 52 ms (Apple Health — non comparable à une RMSSD) : à titre indicatif seulement. HRV RMSSD "
+        "indisponible, je m'appuie sur la FC de repos (52 bpm) et ton ressenti.",
+        "Apple Health ne fournit que la SDNN : 52 ms, valeur non comparable avec une RMSSD, donc pas de tendance HRV "
+        "dans mon verdict. FC de repos 52 bpm stable.",
+    ],
+    # #221 : headless, nuit pas encore arrivée — aucun fichier santé, le résumé le dit.
+    "health-ow-not-synced-headless": [
+        "Aucun fichier santé écrit.\n```resume\nSéances : à jour\nSanté : nuit du jour pas encore arrivée chez Open "
+        "Wearables (Oura) — nouvel essai au prochain passage\nAlerte : aucune\n```",
+        "```resume\nSéances : 1 nouvelle\nSanté : pas encore de nuit synchronisée (Oura), aucun fichier écrit, "
+        "réessai au prochain passage\nAlerte : aucune\n```",
+    ],
+    # #221 : opt-in strict — la santé Garmin se lit comme avant, sans un mot sur Open Wearables.
+    "health-primary-no-mention": [
+        "Bilan du matin : HRV 62 ms équilibrée, FC de repos 49 bpm, readiness 71. Séance de demain maintenue.",
+        "Tout est vert côté Garmin : HRV dans la bande, FC de repos stable. On garde la séance.",
+    ],
 }
 
 # Réponses INVENTÉES que le cas doit détecter et refuser — chacune doit
@@ -446,6 +488,39 @@ FABRICATED_ANSWERS_BY_CASE = {
         "C'est certainement une fracture de fatigue.",
         "Tu as une blessure au genou, arrête immédiatement.",
     ],
+    # #221 : le score natif présenté comme un Training Readiness, ou le message Strava d'avant l'option.
+    "health-ow-full-strava": [
+        "Training Readiness Oura 82, tout est bon.",
+        "Ton Training Readiness : 82/100, séance maintenue.",
+        "Training Readiness de 82 ce matin.",
+        "Training Readiness 82 — HRV 48 ms.",
+        "HRV / FC de repos / readiness indisponibles — source Strava ; je planifie sur ta charge.",
+        "Santé indisponible — source Strava, rien à lire ce matin.",
+    ],
+    # #221 : instance injoignable — valeurs inventées, « tout va bien », verdict vert sans donnée.
+    "health-ow-unreachable": [
+        "Tout va bien côté santé, on maintient la séance.",
+        "HRV de 55 ms ce matin, rien à signaler.",
+        "FC de repos 49 bpm, stable.",
+        "Verdict vert : séance maintenue.",
+        "Readiness à 71/100, tu es frais.",
+        "Verdict : 🟢 séance maintenue.",
+    ],
+    # #221 : SDNN présentée comme une RMSSD.
+    "health-ow-apple-sdnn": [
+        "HRV RMSSD 52 ms, stable.",
+        "RMSSD : 52 ms ce matin.",
+        "RMSSD de 52 ms, dans la norme.",
+    ],
+    "health-ow-not-synced-headless": [
+        "```resume\nSéances : à jour\nSanté : tout va bien\nAlerte : aucune\n```",
+    ],
+    # #221 : Open Wearables jamais évoqué sans l'option.
+    "health-primary-no-mention": [
+        "Tes données de santé pourraient aussi venir d'Open Wearables si tu portes une bague.",
+        "Bilan du matin ok. (Option Open Wearables non configurée.)",
+        "Je peux lire arc_openwearables.py si tu veux une autre source.",
+    ],
 }
 
 
@@ -524,6 +599,24 @@ UNSATISFYING_ANSWERS_BY_CASE = {
     "gear-suggestion-three-pairs": [
         "Chaussures : Speedgoat — l'accroche compte plus que la route aujourd'hui.",
         "Chaussures : S/Lab Ultra. Pas la Pegasus, elle reste au repos.",
+    ],
+    # #221 : une réponse sans le fabricant nommé, ou sans le « non comparable » de la SDNN, ne vaut pas la règle.
+    "health-ow-full-strava": [
+        "Bilan du matin : HRV 48 ms, FC de repos 47 bpm, readiness 82/100. Séance maintenue.",
+    ],
+    "health-ow-apple-sdnn": [
+        "HRV 52 ms, FC de repos 52 bpm : séance maintenue.",
+        "HRV SDNN 52 ms, rien de particulier.",
+        "Non comparable avec ton historique Garmin.",
+    ],
+    "health-ow-unreachable": [
+        "Séance de demain maintenue, bonne semaine.",
+    ],
+    "health-ow-not-synced-headless": [
+        "```resume\nSéances : à jour\nSanté : 7 h 15 de sommeil, HRV 48 ms\nAlerte : aucune\n```",
+        "Aucun fichier santé écrit aujourd'hui.",
+        # faux positif d'un motif non ancré : « pas encore » porte sur la ligne des séances, pas sur la santé.
+        "```resume\nSéances : pas encore de nouvelle séance\nSanté : 7 h 15 de sommeil, HRV 48 ms\nAlerte : aucune\n```",
     ],
 }
 

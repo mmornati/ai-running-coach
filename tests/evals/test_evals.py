@@ -14,7 +14,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from tests.evals import mcp_stub_common, runner, stub_garmin_mcp, stub_intervals_mcp
+from tests.evals import mcp_stub_common, runner, stub_garmin_mcp, stub_intervals_mcp, stub_openwearables_http
 
 
 class TestCaseFilesAreValid(unittest.TestCase):
@@ -30,11 +30,12 @@ class TestCaseFilesAreValid(unittest.TestCase):
     # Dérivés des modules qui font foi, pas dupliqués : un stub retiré de
     # `runner.STUB_SCRIPTS`, ou un type d'erreur ajouté à
     # `mcp_stub_common.ERROR_KINDS`, se répercute ici sans y toucher.
-    KNOWN_STUB_SERVERS = set(runner.STUB_SCRIPTS)
+    KNOWN_STUB_SERVERS = set(runner.STUB_SCRIPTS) | set(runner.HTTP_STUB_SCRIPTS)
     KNOWN_STUB_ERRORS = mcp_stub_common.ERROR_KINDS
     STUB_TOOL_NAMES = {
         "garmin": {name for name, _ in stub_garmin_mcp.TOOLS},
         "intervals": {name for name, _ in stub_intervals_mcp.TOOLS},
+        "openwearables": {name for name, _ in stub_openwearables_http.TOOLS},      # serveur HTTP (#221)
     }
 
     def setUp(self):
@@ -506,13 +507,16 @@ class TestPromptBehaviour(unittest.TestCase):
         for attempt in range(attempts):
             with tempfile.TemporaryDirectory(prefix=f"arc-eval-{case['id']}-") as tmp:
                 workspace = runner.build_workspace(Path(tmp), case)
-                result = runner.run_case(case, workspace)
-                if runner.looks_unauthenticated(result):
-                    self.skipTest(
-                        f"{runner.runner_command()[0]} n'est pas authentifié dans cet "
-                        "environnement — connectez-vous puis relancez avec ARC_LLM_TESTS=1."
-                    )
-                failures_by_run.append(runner.check(case, result))
+                try:
+                    result = runner.run_case(case, workspace)
+                    if runner.looks_unauthenticated(result):
+                        self.skipTest(
+                            f"{runner.runner_command()[0]} n'est pas authentifié dans cet "
+                            "environnement — connectez-vous puis relancez avec ARC_LLM_TESTS=1."
+                        )
+                    failures_by_run.append(runner.check(case, result))
+                finally:
+                    runner.stop_http_stubs(workspace)      # serveur HTTP factice (#221), s'il y en a un
 
         passed = sum(1 for f in failures_by_run if not f)
         rate = passed / attempts

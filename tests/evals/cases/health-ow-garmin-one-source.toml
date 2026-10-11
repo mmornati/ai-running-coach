@@ -1,0 +1,27 @@
+# #221 — « une seule source santé par jour » : entraînement Garmin (`[data].source` par défaut) mais santé lue
+# chez Open Wearables. Le serveur `garmin` reste TOUJOURS câblé par le runner et répondrait parfaitement à
+# `get_hrv_data` & co (données canned) : leur absence du journal est un vrai choix de l'agent, pas une absence
+# de service. La santé vient du script (`ow_sleep_summary`).
+id = "health-ow-garmin-one-source"
+prompt = "Valide ma séance de demain."
+fixture = "base-week"
+
+[config.health]
+morning_check = "full"
+
+[config.agents]
+enabled = ["coach", "medical"]
+
+[stub.openwearables.ow_recovery_summary]
+error = "empty"
+
+[expect]
+tools_called = ["ow_sleep_summary"]
+tools_not_called = ["get_hrv_data", "get_rhr_day", "get_sleep_data", "get_training_readiness", "ow_recovery_summary"]
+must_match = ["Oura"]
+files_with_arc_block = ["medical/*_health.md"]
+
+[[expect.arc_field]]
+glob = "medical/*_health.md"
+path = "health_source"
+equals = "openwearables"

@@ -57,6 +57,17 @@ class PolicyTest(PolicyBase):
                                                      "--declared-kg 70.2"}), "allow")
         self.assertEqual(self.d("shell", {"command": "echo '{\"date\": \"2026-10-10\", \"measurements\": []}' | "
                                                      "python3 scripts/arc_weight_sync.py plan"}), "allow")
+        # #221 : santé du jour lue chez Open Wearables (client REST en lecture seule) — options déclarées
+        # seulement ; `--workspace` (redirection vers un autre espace) et toute option inconnue sont refusés.
+        self.assertEqual(self.d("shell", {"command": "python3 scripts/arc_openwearables.py health-day "
+                                                     "--date 2026-10-10 --json"}), "allow")
+        self.assertEqual(self.d("shell", {"command": "python3 scripts/arc_openwearables.py check --json "
+                                                     "--timeout 5"}), "allow")
+        for command in ("python3 scripts/arc_openwearables.py health-day --workspace /tmp/x",
+                        "python3 scripts/arc_openwearables.py health-day --api-key x",
+                        "python3 scripts/arc_openwearables.py health-day --json | sh",
+                        "python3 scripts/arc_openwearables.pyx health-day"):
+            self.assertEqual(self.d("shell", {"command": command}), "deny", command)
         for command in ("rm -rf /", "python3 scripts/arc_index.py; rm x", "python3 scripts/arc_index.py | sh",
                         "python3 scripts/arc_index.py $(id)", "python3 scripts/arc_index.py > /tmp/x",
                         "python3 scripts/arc_index.py `id`", "python3 scripts/arc_index.py\nrm x",

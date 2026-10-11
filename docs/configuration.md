@@ -105,14 +105,14 @@ stale_after_h = 36   # au-delà, les données sont dites périmées
 | Valeur | Effet |
 |---|---|
 | `primary` | Défaut : la santé vient de `[data].source` (Garmin, intervals.icu, rien avec Strava). Comportement inchangé. |
-| `openwearables` | Santé lue depuis une instance Open Wearables auto-hébergée, en lecture seule. **Jamais** pour des données Garmin. **Disponible à l'installation** (`./install.sh --health-source openwearables --ow-url … --ow-provider …`, [Installation](open-wearables.md#installation), #220) et contrôlée par `/coach-doctor` ; l'usage par les agents (bilan matinal) est **prévu** (#221). |
+| `openwearables` | Santé lue depuis une instance Open Wearables auto-hébergée, en lecture seule. **Jamais** pour des données Garmin. **Disponible à l'installation** (`./install.sh --health-source openwearables --ow-url … --ow-provider …`, [Installation](open-wearables.md#installation), #220) et contrôlée par `/coach-doctor` ; lue par `coach`, `medical` et `/garmin-daily-sync` pour le bilan matinal (#221) : un seul appel par jour, aucun outil santé Garmin, score natif nommé et jamais converti ([Le bilan matinal avec Open Wearables](open-wearables.md#le-bilan-matinal-avec-open-wearables)). |
 
 Une valeur invalide donne `primary` et un avertissement ; un `provider` `garmin`
 (la donnée Garmin passe en direct) ou `strava` (aucune donnée de santé) est refusé de
 même. Ces valeurs sont personnelles : posez-les dans `config/workspace.user.toml`, jamais
 la clé d'API elle-même. La clé est indépendante de `cycle_tracking`.
 
-Ce que cette clé garantit déjà, côté données (aucun appel réseau à ce stade) :
+Ce que cette clé garantit, côté données :
 
 - chaque fichier `medical/*_health.md` peut dire d'où viennent ses mesures
   (`health_source`, `health_provider`, `health_device`) ; un fichier antérieur est réputé
@@ -266,16 +266,16 @@ synchronisés par Intervals.icu viennent de sa
 | Garmin | `garmin` (direct) | Garmin | référence du projet ; jamais via Open Wearables (programme développeur réservé aux entités légales : `garmin-api-integration.mdx` d'Open Wearables, voir [l'audit](open-wearables.md)) ; intégration directe décrite dans [Configuration Garmin](garmin-setup.md) |
 | COROS | `intervals` | Intervals.icu (si synchronisée) | MCP officiel audité, hors périmètre : [Montres COROS](coros.md) |
 | Suunto | `intervals` | Intervals.icu | l'API cloud de Suunto n'est pas ouverte aux particuliers ([FAQ Suunto](https://apizone.suunto.com/faq), relue le 10 octobre 2026) |
-| Polar | `intervals` | Intervals.icu ; Open Wearables (Nightly Recharge) **prévu** (#216) | Polar est listée sur la page bien-être d'Intervals.icu (relue le 10 octobre 2026) ; accès libre-service et scores Nightly Recharge : `polar-api-integration.mdx` d'Open Wearables ([audit](open-wearables.md)) |
+| Polar | `intervals` | Intervals.icu ; Open Wearables (Nightly Recharge) | Polar est listée sur la page bien-être d'Intervals.icu (relue le 10 octobre 2026) ; accès libre-service et scores Nightly Recharge : `polar-api-integration.mdx` d'Open Wearables ([audit](open-wearables.md)) |
 | Huawei, Amazfit | `intervals` | Intervals.icu | listés sur la page bien-être d'Intervals.icu ; non testé ici |
-| Apple Watch | `strava` (non vérifié : approximation du projet), ou `intervals` via une appli tierce (HealthFit, citée dans [Intervals.icu](intervals-setup.md)) | Open Wearables + son app mobile (bêta) **prévu** (#216) ; HRV en SDNN, jamais mélangée au RMSSD (`coverage.mdx` d'Open Wearables) | Intervals.icu indique synchroniser Apple Health « using 3rd party apps » (page bien-être, relue le 10 octobre 2026) |
-| Bague Oura, WHOOP | — | Intervals.icu si `[data].source = "intervals"` ; sinon Open Wearables **prévu** (#216) | Oura et WHOOP sont listées sur la page bien-être d'Intervals.icu (relue le 10 octobre 2026) ; accès : `oura-api-integration.mdx`, `whoop-api-integration.mdx` d'Open Wearables |
-| Pixel Watch / Fitbit | `strava` (à confirmer : non vérifié, approximation du projet) | Open Wearables **prévu** (#216) | l'ancienne API Fitbit s'arrête le 30 octobre 2026 ([Google](https://developers.google.com/health/about), relue le 10 octobre 2026) ; la lecture Pixel Watch / Fitbit passe par l'API Google Health (`google-api-integration.mdx` d'Open Wearables) |
-| Ultrahuman, Withings | — | Open Wearables **prévu** (#216) | `ultrahuman-api-integration.mdx`, `withings-api-integration.mdx` d'Open Wearables ; aucun chemin d'entraînement identifié |
+| Apple Watch | `strava` (non vérifié : approximation du projet), ou `intervals` via une appli tierce (HealthFit, citée dans [Intervals.icu](intervals-setup.md)) | Open Wearables + son app mobile (bêta) ; HRV en SDNN, jamais mélangée au RMSSD (`coverage.mdx` d'Open Wearables) | Intervals.icu indique synchroniser Apple Health « using 3rd party apps » (page bien-être, relue le 10 octobre 2026) |
+| Bague Oura, WHOOP | — | Intervals.icu si `[data].source = "intervals"` ; sinon Open Wearables | Oura et WHOOP sont listées sur la page bien-être d'Intervals.icu (relue le 10 octobre 2026) ; accès : `oura-api-integration.mdx`, `whoop-api-integration.mdx` d'Open Wearables |
+| Pixel Watch / Fitbit | `strava` (à confirmer : non vérifié, approximation du projet) | Open Wearables | l'ancienne API Fitbit s'arrête le 30 octobre 2026 ([Google](https://developers.google.com/health/about), relue le 10 octobre 2026) ; la lecture Pixel Watch / Fitbit passe par l'API Google Health (`google-api-integration.mdx` d'Open Wearables) |
+| Ultrahuman, Withings | — | Open Wearables | `ultrahuman-api-integration.mdx`, `withings-api-integration.mdx` d'Open Wearables ; aucun chemin d'entraînement identifié |
 
-« **Prévu** » = décrit dans l'épopée #216 mais **pas encore livré** : la clé
-`[health].source` existe (#218), mais la lecture Open Wearables n'est pas encore livrée. Détail des capacités et limites de chaque
-fournisseur : [Open Wearables (audit)](open-wearables.md).
+« Open Wearables » = l'option `[health].source = "openwearables"` (#216) : vous déployez vous-même l'instance, puis
+le projet y lit la santé du bilan matinal en lecture seule ([Installation](open-wearables.md#installation)). Détail des
+capacités et limites de chaque fournisseur : [Open Wearables (audit)](open-wearables.md).
 
 ## La source de données — `[data].source` (#68)
 

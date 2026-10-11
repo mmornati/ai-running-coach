@@ -61,6 +61,11 @@ Il **n'ajoute aucune logique** : il délègue à l'agent `coach` et au skill
    valeur déclarée par l'athlète (un écart > 1 kg va sur la ligne `Alerte :`, une seule fois).
    Le fichier santé du jour sans poids est relu à chaque passage. Aucune écriture du poids côté
    Garmin. Voir [Poids lu dans Garmin Connect](../garmin-setup.md#poids-lu-dans-garmin-connect-222).
+8. **Santé chez Open Wearables (#221, `[health].source = "openwearables"` seulement)** : un appel
+   `arc_openwearables.py health-day` par date remplace les outils santé Garmin ; la nuit de D pas encore arrivée =
+   **aucun** fichier santé écrit (le run suivant réessaie) et le résumé le dit sur une ligne `Santé :` ; instance
+   injoignable = un segment dans la ligne `Alerte :`, la synchronisation des séances continue. Voir
+   [Le bilan matinal avec Open Wearables](../open-wearables.md#le-bilan-matinal-avec-open-wearables).
 
 ## Fichier source
 
