@@ -37,6 +37,13 @@ class TestInstallArgs(InstallAsserts):
             args = (sb.home / ".config/ai-running-coach/install-args").read_text(encoding="utf-8")
             self.assertEqual(args.splitlines(), ["--ide", "opencode"])
 
+    def test_relative_paths_are_remembered_as_absolute(self):
+        with Sandbox() as sb:
+            self.assertSucceeded(sb.install("--no-auth", "--ide", "claude", "--workspace", "./ws-relatif",
+                                            cwd=sb.home))
+            args = (sb.home / ".config/ai-running-coach/install-args").read_text(encoding="utf-8")
+            self.assertEqual(args.splitlines(), ["--ide", "claude", "--workspace", f"{sb.home}/ws-relatif"])
+
     def test_dry_run_remembers_nothing(self):
         with Sandbox() as sb:
             self.assertSucceeded(sb.install("--no-auth", "--dry-run"))

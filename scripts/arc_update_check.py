@@ -10,7 +10,8 @@ Une seule vérification, partagée par trois surfaces :
 Réseau : au plus UN appel par 24 h (`releases/latest` de l'API GitHub, délai 3 s),
 résultat gardé dans `~/.cache/ai-running-coach/update-check.json`. Rien n'est
 envoyé hormis la requête elle-même. Un échec (hors ligne, quota, réponse
-inattendue) n'affiche rien et ne casse rien.
+inattendue) n'affiche rien, ne casse rien et n'est pas retenté avant 1 h
+(mémorisé dans le cache, et en mémoire si le cache n'est pas inscriptible).
 
 Désactivation : `[update].check = false` dans `config/workspace.user.toml`, ou
 `ARC_UPDATE_CHECK=off` dans l'environnement (bac à sable des tests).
@@ -33,7 +34,6 @@ import os
 import re
 import sys
 import time
-import urllib.error
 import urllib.request
 from pathlib import Path
 from typing import Callable, Optional
@@ -45,6 +45,7 @@ from coach_config import config_paths, read_toml  # noqa: E402
 REPOSITORY = "mmornati/ai-running-coach"
 API_URL = f"https://api.github.com/repos/{REPOSITORY}/releases/latest"
 CACHE_TTL_S = 24 * 3600
+RETRY_AFTER_FAILURE_S = 3600
 TIMEOUT_S = 3
 NOTES_MAX_CHARS = 4000
 DISABLED_VALUES = {"0", "off", "false", "no", "non"}
@@ -122,6 +123,8 @@ def fetch_latest(timeout: float = TIMEOUT_S) -> dict:
     })
     with urllib.request.urlopen(request, timeout=timeout) as response:
         payload = json.load(response)
+    if not isinstance(payload, dict):
+        raise ValueError(f"réponse inattendue : {type(payload).__name__}")
     tag = payload.get("tag_name")
     if not isinstance(tag, str) or not parse_version(tag):
         raise ValueError(f"tag de release illisible : {tag!r}")
@@ -133,10 +136,19 @@ def fetch_latest(timeout: float = TIMEOUT_S) -> dict:
     }
 
 
+# Dernier échec par fichier de cache, pour un processus long (tableau de bord) dont le cache
+# n'est pas inscriptible : sans lui, chaque requête repaierait le délai réseau.
+_FAILED_AT: dict = {}
+
+
+def _recent(stamp, now: float, window: float) -> bool:
+    return isinstance(stamp, (int, float)) and 0 <= now - stamp < window
+
+
 def check(workspace: Optional[Path], *, force: bool = False, now: Optional[float] = None,
           fetch: Callable[[], dict] = fetch_latest, current: Optional[str] = None,
           cache: Optional[Path] = None) -> dict:
-    """État de la mise à jour. Ne lève jamais : une erreur réseau devient `error`."""
+    """État de la mise à jour. Ne lève jamais : toute erreur de récupération devient `error`."""
     current = current if current is not None else V.engine_version()
     result = {"enabled": enabled(workspace), "current": current, "latest": None,
               "update_available": False, "url": None, "published_at": None,
@@ -146,13 +158,22 @@ def check(workspace: Optional[Path], *, force: bool = False, now: Optional[float
     now = time.time() if now is None else now
     path = cache or cache_file()
     cached = _read_cache(path)
-    fresh = isinstance(cached.get("checked_at"), (int, float)) and 0 <= now - cached["checked_at"] < CACHE_TTL_S
-    if force or not fresh or not cached.get("latest"):
+    fresh = _recent(cached.get("checked_at"), now, CACHE_TTL_S) and cached.get("latest")
+    failed_recently = (_recent(cached.get("failed_at"), now, RETRY_AFTER_FAILURE_S)
+                       or _recent(_FAILED_AT.get(path), now, RETRY_AFTER_FAILURE_S))
+    if force or not (fresh or failed_recently):
         try:
             cached = {**fetch(), "checked_at": now}
+            _FAILED_AT.pop(path, None)
             _write_cache(path, cached)
-        except (OSError, ValueError, urllib.error.URLError) as error:
+        except Exception as error:  # réseau, HTTP, JSON inattendu… : jamais d'exception à l'appelant
             result["error"] = str(error) or error.__class__.__name__
+            # Échec mémorisé (dernière release connue conservée) : pas de nouvel essai avant 1 h.
+            _FAILED_AT[path] = now
+            cached = {**cached, "failed_at": now}
+            _write_cache(path, cached)
+    elif failed_recently and not fresh:
+        result["error"] = "échec récent, nouvel essai plus tard"
     for key in ("latest", "url", "published_at", "notes", "checked_at"):
         if cached.get(key) is not None:
             result[key] = cached[key]

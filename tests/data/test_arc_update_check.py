@@ -96,6 +96,44 @@ class Check(unittest.TestCase):
         state = self.run_check(now=1000.0 + 2 * U.CACHE_TTL_S, fetch=fetch_fail)
         self.assertTrue(state["update_available"])
 
+    def test_failure_is_not_retried_for_an_hour(self):
+        calls = []
+
+        def failing():
+            calls.append(1)
+            raise OSError("hors ligne")
+        self.run_check(now=1000.0, fetch=failing)
+        state = self.run_check(now=1000.0 + U.RETRY_AFTER_FAILURE_S - 1, fetch=failing)
+        self.assertEqual(calls, [1], "nouvel appel réseau malgré un échec récent")
+        self.assertIn("error", state)
+        self.run_check(now=1000.0 + U.RETRY_AFTER_FAILURE_S + 1, fetch=failing)
+        self.assertEqual(calls, [1, 1])
+
+    def test_failure_is_remembered_even_when_the_cache_is_not_writable(self):
+        calls = []
+
+        def failing():
+            calls.append(1)
+            raise OSError("hors ligne")
+        with mock.patch.object(U, "_write_cache"):
+            self.run_check(now=5000.0, fetch=failing)
+            self.run_check(now=5001.0, fetch=failing)
+        self.assertEqual(calls, [1])
+
+    def test_unexpected_errors_never_escape(self):
+        def broken():
+            raise AttributeError("'list' object has no attribute 'get'")
+        state = self.run_check(fetch=broken)
+        self.assertFalse(state["update_available"])
+        self.assertIn("error", state)
+
+    def test_non_object_payload_is_rejected(self):
+        response = mock.MagicMock()
+        response.__enter__.return_value = io.BytesIO(b"[]")
+        with mock.patch.object(U.urllib.request, "urlopen", return_value=response):
+            with self.assertRaises(ValueError):
+                U.fetch_latest()
+
     def test_disabled_by_config_never_fetches(self):
         (self.workspace / "config/workspace.user.toml").write_text("[update]\ncheck = false\n", encoding="utf-8")
         state = self.run_check(fetch=lambda: self.fail("appel réseau alors que [update].check = false"))

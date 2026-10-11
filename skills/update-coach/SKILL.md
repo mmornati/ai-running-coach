@@ -54,10 +54,14 @@ Seulement si l'étape 2 a rendu 0 avec une mise à jour possible : demander
 scripts/update-coach.sh --yes
 ```
 
-`install.sh` peut être long (dépendances `uv`, serveur MCP). Il peut aussi
-demander une authentification Garmin si les jetons ont expiré : dans ce cas,
-suggérer à l'athlète de lancer la commande lui-même dans son terminal
-(`! scripts/update-coach.sh` dans Claude Code).
+`install.sh` peut être long (dépendances `uv`, serveur MCP). Sans terminal
+(cas de l'assistant), le script le relance avec `--no-auth` : aucune
+authentification interactive ne peut bloquer. Si `coach_doctor.py` signale
+ensuite des jetons expirés, donner la commande de renouvellement qu'il affiche,
+à lancer par l'athlète dans son propre terminal.
+
+La mise à jour amène le moteur à la **dernière release publiée** (celle annoncée),
+jamais aux commits non publiés de `main`.
 
 ## 4. Après la mise à jour
 

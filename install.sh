@@ -365,6 +365,7 @@ apply_preset() {
 # Arguments tels que reçus, mémorisés en fin d'installation réussie (persist_install_args) :
 # scripts/update-coach.sh relance install.sh avec exactement les mêmes options.
 INSTALL_ARGS=("$@")
+INSTALL_CWD="$PWD"   # update-coach.sh relance depuis la racine du moteur : chemins relatifs rendus absolus
 _scan_args=("$@")
 _scan_n=${#_scan_args[@]}
 _scan_i=0
@@ -2801,17 +2802,23 @@ main() {
 # une installation complète, jamais en dry-run. Aucun secret : install.sh ne reçoit que des chemins.
 persist_install_args() {
     [[ "$DRY_RUN" -eq 0 ]] || return 0
-    local file arg kept=()
+    local file arg prev="" kept=()
     file="$(dirname "$WORKSPACE_STATE_FILE")/install-args"
     for arg in ${INSTALL_ARGS[@]+"${INSTALL_ARGS[@]}"}; do
         if [[ "$arg" == *$'\n'* ]]; then
             warn "Option sur plusieurs lignes : options d'installation non mémorisées ($file)."
             return 0
         fi
+        # Valeur de chemin relative : résolue contre le dossier d'où install.sh a été lancé,
+        # sinon la relance (depuis la racine du moteur) viserait un autre dossier.
+        case "$prev" in
+            --workspace|--ow-key-file) [[ "$arg" == /* ]] || arg="$INSTALL_CWD/${arg#./}" ;;
+        esac
         case "$arg" in
             --no-auth|--auth|--dry-run) ;;
             *) kept+=("$arg") ;;
         esac
+        prev="$arg"
     done
     if [[ "${#kept[@]}" -eq 0 && -f "$file" ]]; then
         return 0

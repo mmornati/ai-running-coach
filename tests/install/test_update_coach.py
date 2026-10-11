@@ -38,7 +38,7 @@ class UpdateCoach(unittest.TestCase):
         self.addCleanup(shutil.rmtree, self.tmp)
         self.home = self.tmp / "home"
         (self.home / ".config/ai-running-coach").mkdir(parents=True)
-        seed = self.tmp / "seed"
+        seed = self.seed = self.tmp / "seed"
         (seed / "scripts/lib").mkdir(parents=True)
         for rel in ("scripts/update-coach.sh", "scripts/lib/config.sh", "scripts/arc_version.py"):
             shutil.copy2(REPO / rel, seed / rel)
@@ -85,8 +85,29 @@ class UpdateCoach(unittest.TestCase):
         self.assertEqual(proc.returncode, 0, proc.stdout + proc.stderr)
         self.assertEqual(self.head(), git(self.upstream, "rev-parse", "main"))
         called = (self.home / "install-called").read_text(encoding="utf-8").splitlines()
-        self.assertEqual(called, ["--ide", "claude", "--workspace", "/chemin avec espaces/ws"])
+        self.assertEqual(called, ["--ide", "claude", "--workspace", "/chemin avec espaces/ws", "--no-auth"])
         self.assertIn("doctor ok", proc.stdout)
+
+    def test_install_is_rerun_without_auth_and_without_stdin_when_there_is_no_terminal(self):
+        proc = self.run_update("--yes")
+        self.assertEqual(proc.returncode, 0, proc.stdout + proc.stderr)
+        called = (self.home / "install-called").read_text(encoding="utf-8").splitlines()
+        self.assertEqual(called[-1], "--no-auth")
+        self.assertIn("--no-auth", proc.stderr + proc.stdout)
+
+    def test_stops_at_the_latest_release_not_at_the_tip_of_main(self):
+        release = git(self.upstream, "rev-parse", "v1.1.0^{commit}")
+        (self.seed / "WIP").write_text("pas encore publié\n", encoding="utf-8")
+        git(self.seed, "add", "WIP")
+        git(self.seed, "commit", "-q", "-m", "travail non publié")
+        git(self.seed, "tag", "-a", "v1.2.0-rc.1", "-m", "pré-version")
+        git(self.seed, "push", "-q", "--tags", str(self.upstream), "main")
+        proc = self.run_update("--yes")
+        self.assertEqual(proc.returncode, 0, proc.stdout + proc.stderr)
+        self.assertEqual(self.head(), release)
+        self.assertFalse((self.engine / "WIP").exists())
+        proc = self.run_update("--yes")
+        self.assertIn("Déjà à jour", proc.stdout)
 
     def test_already_up_to_date(self):
         self.assertEqual(self.run_update("--yes").returncode, 0)

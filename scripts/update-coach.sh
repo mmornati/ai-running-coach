@@ -6,9 +6,13 @@
 #   scripts/update-coach.sh --check   # vérifie et résume seulement : rien n'est modifié
 #   scripts/update-coach.sh --yes     # sans question (confirmation déjà donnée dans le chat)
 #
-# Étapes : git fetch → avance rapide de main (git merge --ff-only, jamais de fusion ni
-# de force) → ./install.sh avec les options MÉMORISÉES de la dernière installation
+# Étapes : git fetch → avance rapide de main jusqu'à la DERNIÈRE RELEASE publiée (tag vX.Y.Z
+# fusionné dans main, jamais la tête de main ni une pré-version ; git merge --ff-only, jamais
+# de fusion ni de force) → ./install.sh avec les options MÉMORISÉES de la dernière installation
 # (~/.config/ai-running-coach/install-args, écrit par install.sh) → coach_doctor.py.
+# Sans terminal (--yes depuis l'assistant), install.sh est relancé avec --no-auth et sans
+# entrée standard : aucune saisie interactive ne peut bloquer la mise à jour (coach_doctor
+# signale ensuite des jetons à renouveler).
 # Vos données (workspace) ne sont jamais touchées. Jamais en headless.
 #
 # Codes de sortie (lus par le skill) :
@@ -70,17 +74,27 @@ done < "$ARGS_FILE"
 
 log "Recherche de mises à jour ($upstream)…"
 git -C "$ENGINE" fetch --quiet --tags "${upstream%%/*}" || die "git fetch impossible (réseau ?)."
-behind="$(git -C "$ENGINE" rev-list --count "HEAD..$upstream")"
 current="$(python3 "$ENGINE/scripts/arc_version.py" 2>/dev/null || echo inconnue)"
-if [[ "$behind" -eq 0 ]]; then
-    ok "Déjà à jour ($current)."
+# Dernière release = plus haut tag vX.Y.Z (sans suffixe de pré-version) déjà fusionné dans
+# main en amont : la version annoncée par arc_update_check.py, pas les commits non publiés.
+target=""
+while IFS= read -r tag; do
+    if [[ "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then target="$tag"; break; fi
+done < <(git -C "$ENGINE" tag --merged "$upstream" --list 'v[0-9]*' --sort=-v:refname)
+if [[ -z "$target" ]]; then
+    ok "Aucune release publiée sur $upstream : rien à mettre à jour ($current)."
     exit 0
 fi
-if ! git -C "$ENGINE" merge-base --is-ancestor HEAD "$upstream"; then
-    err "main a divergé de $upstream (commits locaux) : avance rapide impossible, mise à jour manuelle."
+target_commit="$(git -C "$ENGINE" rev-parse "$target^{commit}")"
+if git -C "$ENGINE" merge-base --is-ancestor "$target_commit" HEAD; then
+    ok "Déjà à jour ($current, dernière release : $target)."
+    exit 0
+fi
+if ! git -C "$ENGINE" merge-base --is-ancestor HEAD "$target_commit"; then
+    err "main contient des commits absents de la release $target : avance rapide impossible, mise à jour manuelle."
     exit 5
 fi
-target="$(git -C "$ENGINE" describe --tags --match 'v[0-9]*' "$upstream" 2>/dev/null || git -C "$ENGINE" rev-parse --short "$upstream")"
+behind="$(git -C "$ENGINE" rev-list --count "HEAD..$target_commit")"
 
 printf '%s\n' "Version installée : $current"
 printf '%s\n' "Nouvelle version  : $target ($behind commit(s))"
@@ -95,10 +109,18 @@ if [[ "$MODE" == "ask" ]]; then
     [[ "$answer" =~ ^[oOyY] ]] || die "Mise à jour annulée."
 fi
 
-log "Avance rapide de main…"
-git -C "$ENGINE" merge --ff-only --quiet "$upstream" || die "git merge --ff-only a échoué."
+log "Avance rapide de main jusqu'à $target…"
+git -C "$ENGINE" merge --ff-only --quiet "$target_commit" || die "git merge --ff-only a échoué."
 log "Réinstallation avec les mêmes options…"
-(cd "$ENGINE" && ./install.sh ${INSTALL_ARGS[@]+"${INSTALL_ARGS[@]}"}) \
+if [[ -t 0 ]]; then
+    (cd "$ENGINE" && ./install.sh ${INSTALL_ARGS[@]+"${INSTALL_ARGS[@]}"}) || install_failed=1
+else
+    # Pas de terminal : une authentification interactive (jetons expirés) bloquerait jusqu'au
+    # délai de l'outil. --no-auth n'est jamais mémorisé ; coach_doctor signale les jetons.
+    warn "Sans terminal : authentification sautée (--no-auth) — coach_doctor dira si elle est à refaire."
+    (cd "$ENGINE" && ./install.sh ${INSTALL_ARGS[@]+"${INSTALL_ARGS[@]}"} --no-auth </dev/null) || install_failed=1
+fi
+[[ -z "${install_failed:-}" ]] \
     || die "install.sh a échoué : le code est à jour, relancez ./install.sh $(printf '%q ' ${INSTALL_ARGS[@]+"${INSTALL_ARGS[@]}"})"
 log "Diagnostic…"
 python3 "$ENGINE/scripts/coach_doctor.py" --workspace "$ARC_WORKSPACE" || warn "coach_doctor signale des points à voir (ci-dessus)."
