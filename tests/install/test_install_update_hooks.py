@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import json
+from pathlib import Path
 
 from tests.lib.asserts import InstallAsserts
 from tests.lib.sandbox import Sandbox
@@ -42,7 +43,11 @@ class TestInstallArgs(InstallAsserts):
             self.assertSucceeded(sb.install("--no-auth", "--ide", "claude", "--workspace", "./ws-relatif",
                                             cwd=sb.home))
             args = (sb.home / ".config/ai-running-coach/install-args").read_text(encoding="utf-8")
-            self.assertEqual(args.splitlines(), ["--ide", "claude", "--workspace", f"{sb.home}/ws-relatif"])
+            remembered = args.splitlines()
+            self.assertEqual(remembered[:3], ["--ide", "claude", "--workspace"])
+            # Chemin physique : sur macOS, /var est un lien vers /private/var (getcwd le résout).
+            self.assertTrue(remembered[3].startswith("/"), remembered)
+            self.assertEqual(Path(remembered[3]).resolve(), (sb.home / "ws-relatif").resolve())
 
     def test_dry_run_remembers_nothing(self):
         with Sandbox() as sb:

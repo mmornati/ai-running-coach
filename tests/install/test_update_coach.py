@@ -65,8 +65,12 @@ class UpdateCoach(unittest.TestCase):
     def run_update(self, *args: str, **env: str) -> subprocess.CompletedProcess:
         full_env = {**os.environ, "HOME": str(self.home), "ARC_WORKSPACE": str(self.tmp / "ws"),
                     "ARC_HEADLESS": "", **env}
-        return subprocess.run([str(self.engine / "scripts/update-coach.sh"), *args], cwd=self.tmp,
-                              env=full_env, capture_output=True, text=True, stdin=subprocess.DEVNULL)
+        raw = subprocess.run([str(self.engine / "scripts/update-coach.sh"), *args], cwd=self.tmp,
+                             env=full_env, capture_output=True, stdin=subprocess.DEVNULL)
+        # Décodage tolérant : un octet invalide (vu sur macOS) ne doit pas masquer le vrai message.
+        return subprocess.CompletedProcess(raw.args, raw.returncode,
+                                           raw.stdout.decode("utf-8", "backslashreplace"),
+                                           raw.stderr.decode("utf-8", "backslashreplace"))
 
     def head(self) -> str:
         return git(self.engine, "rev-parse", "HEAD")
@@ -87,6 +91,8 @@ class UpdateCoach(unittest.TestCase):
         called = (self.home / "install-called").read_text(encoding="utf-8").splitlines()
         self.assertEqual(called, ["--ide", "claude", "--workspace", "/chemin avec espaces/ws", "--no-auth"])
         self.assertIn("doctor ok", proc.stdout)
+        # Messages lisibles : aucun caractère coupé en deux (octets invalides vus sur macOS).
+        self.assertNotIn("\\x", proc.stdout + proc.stderr, f"sortie non UTF-8 :\n{proc.stdout}\n{proc.stderr}")
 
     def test_install_is_rerun_without_auth_and_without_stdin_when_there_is_no_terminal(self):
         proc = self.run_update("--yes")
