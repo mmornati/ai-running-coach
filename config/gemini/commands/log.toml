@@ -85,7 +85,8 @@ tout ce calcul, en pur stdlib, déterministe et idempotent :
    demandez plutôt), `duplicate` (voir « Idempotence »), `provenance_line`,
    `activity_merge` (valeurs déjà fusionnées avec `existing_activity_arc` —
    glucides/liquide additionnés, RPE remplacé), `pain_merge` (liste déjà
-   fusionnée avec `existing_pain`), `warnings`. **Recopiez ces valeurs telles
+   fusionnée avec `existing_pain`, entrées réduites à `location`/`score` —
+   `consult` n'appartient pas au contrat `health.pain`), `warnings`. **Recopiez ces valeurs telles
    quelles** dans les blocs ```arc — ne recalculez rien à la main, même une
    addition ou une fusion qui semble triviale : c'est exactement le genre de
    calcul que ce script existe pour vous éviter de refaire, et refaire signifie

@@ -101,7 +101,7 @@ Sortie JSON (clés présentes seulement si les entrées correspondantes le sont)
       "duplicate": false,
       "provenance_line": "[/log 2026-09-24T18:32:00+02:00] 2 gels + 500 ml au km 15, genou gauche 3/10, RPE 7",
       "activity_merge": {"carbs_g": 64.0, "fluid_intake_ml": 500.0, "rpe": 7.0},
-      "pain_merge": [{"location": "cheville", "score": 2}, {"location": "genou gauche", "score": 3.0, "consult": false}],
+      "pain_merge": [{"location": "cheville", "score": 2}, {"location": "genou gauche", "score": 3.0}],
       "warnings": []
     }
 
@@ -624,8 +624,14 @@ def merge_activity(existing: Optional[dict], carbs_g, fluid_intake_ml, rpe) -> d
 def merge_pain(existing_pain: Optional[list], new_entries: list) -> list:
     """Union simple : les entrées de douleur d'un jour s'ACCUMULENT, aucune
     n'est jamais remplacée (#57 — plusieurs zones peuvent être signalées au fil
-    de la journée)."""
-    return list(existing_pain or []) + list(new_entries)
+    de la journée).
+
+    `consult` reste dans `pain.entries` (il sert à recommander une
+    consultation) mais n'est PAS recopié dans les entrées ajoutées : le contrat
+    `health.pain` ne connaît que `location`/`score`, et `pain_merge` est recopié
+    tel quel dans le bloc du fichier santé (#249)."""
+    added = [{k: v for k, v in e.items() if k != "consult"} for e in new_entries]
+    return list(existing_pain or []) + added
 
 
 _PROVENANCE_PREFIX_RE = re.compile(r"^\[/log [^\]]*\]\s*")
