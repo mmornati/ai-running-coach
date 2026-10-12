@@ -41,6 +41,14 @@ côtes ; le coach fait le bilan du matin, propose de décaler la séance et atte
 avant de toucher au calendrier Garmin. À droite, ce que voit le coach : la séance du jour,
 la semaine, le staff actif et ses permissions.*
 
+Pour une écriture au calendrier Garmin (planifier, retirer, supprimer une séance), la carte
+liste les séances concernées par leur date et leur nom (« − mar. 13/10 · Footing Z2 10km »),
+pas par leurs identifiants. Ces noms viennent de ce que Garmin a renvoyé aux lectures de la
+conversation (`get_scheduled_workouts`, `get_workouts`, envoi d'une séance), jamais du texte
+du coach. Un identifiant que Garmin n'a pas montré dans la conversation est marqué « non
+identifiée » avec un avertissement : dans ce cas, demandez au coach de relire le calendrier
+avant d'appliquer.
+
 La trace se déplie d'un clic : chaque appel d'outil, numéroté, avec ce que le coach en dit
 en travaillant (chez certains modèles, tout leur raisonnement — rangé là plutôt que dans la
 réponse).

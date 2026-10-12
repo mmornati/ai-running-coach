@@ -37,8 +37,8 @@ from typing import Any, Optional
 
 from arc_chat_backend import (SYSTEM_ADDENDUM, system_addendum, BackendError, ChatBackend, TurnContext,
                               resolve_workspace_path)
-from arc_chat_tools import (REFUSAL_DENY, display_input, fs_list_input, gate, map_leanproxy, short,
-                            summarize_tool, usd_to_eur)
+from arc_chat_tools import (REFUSAL_DENY, display_input, fs_list_input, gate, map_leanproxy,
+                            remember_result, short, summarize_tool, usd_to_eur)
 
 SDK_TESTED_VERSION = "0.2.161"
 DEFAULT_API_KEY_ENV = "ANTHROPIC_API_KEY"
@@ -419,6 +419,8 @@ class ClaudeBackend(ChatBackend):
             else:
                 summary = "Terminé" if ok else "Échec"
             turn.ctx.emit("tool_end", {"id": block.tool_use_id, "ok": ok, "summary": summary})
+            if ok:
+                remember_result(turn.ctx.backend_state, tool, getattr(block, "content", None))
             if ok and tool == "fs.write":
                 rel = resolve_workspace_path(self.workspace, cinput.get("path"))
                 if rel:

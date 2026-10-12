@@ -67,7 +67,7 @@ from urllib.parse import urlparse
 from arc_chat_backend import (SYSTEM_ADDENDUM, system_addendum, BackendError, ChatBackend, TurnContext,
                               resolve_workspace_path)
 from arc_chat_tools import (REFUSAL_DENY, display_input, fs_list_input, gate, map_leanproxy,
-                            parse_unified_diff, short, summarize_tool, usd_to_eur)
+                            parse_unified_diff, remember_result, short, summarize_tool, usd_to_eur)
 
 OPENCODE_TESTED_VERSION = "1.18.32"
 DEFAULT_MODEL = "openrouter/deepseek/deepseek-v4.1-flash"
@@ -817,6 +817,9 @@ class OpenCodeBackend(ChatBackend):
             else:
                 summary = "Échec : " + short(state.get("error"), 60) if state.get("error") else "Échec"
             turn.ctx.emit("tool_end", {"id": call_id, "ok": ok, "summary": summary})
+            if ok and rec.get("tool"):
+                with turn.lock:
+                    remember_result(turn.ctx.backend_state, rec["tool"], state.get("output"))
             if ok and rec.get("tool") == "fs.write":
                 cinput = rec.get("cinput") or {}
                 targets = cinput.get("paths") or [cinput.get("path")]
