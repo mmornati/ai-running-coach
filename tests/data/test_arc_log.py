@@ -378,6 +378,14 @@ class TestMergePain(unittest.TestCase):
         self.assertEqual(merged[0]["location"], "cheville")
         self.assertEqual(merged[1]["location"], "genou gauche")
 
+    def test_added_entries_drop_consult_key(self):
+        """#249 : `consult` n'est pas une clé du contrat `health.pain` — il reste
+        dans `pain.entries`, jamais dans ce qui est recopié dans le fichier santé."""
+        new = [{"location": "genou gauche", "score": 8, "consult": True}]
+        merged = L.merge_pain([{"location": "cheville", "score": 2}], new)
+        self.assertEqual(merged[1], {"location": "genou gauche", "score": 8})
+        self.assertTrue(new[0]["consult"])  # l'entrée d'origine n'est pas mutée
+
 
 class TestIdempotency(unittest.TestCase):
     def test_duplicate_raw_text_detected_case_and_space_insensitive(self):
@@ -467,6 +475,18 @@ class TestProcessEndToEnd(unittest.TestCase):
         }
         result = L.process(payload)
         self.assertEqual(len(result["pain_merge"]), 2)
+        self.assertIn("consult", result["pain"]["entries"][0])
+        self.assertNotIn("consult", result["pain_merge"][1])
+
+    def test_pain_merge_validates_against_health_contract(self):
+        """#249 : `pain_merge` recopié tel quel dans le bloc santé ne doit lever
+        aucun avertissement de clé inconnue."""
+        import arc_contract
+        result = L.process({"pain": [{"location": "hanche", "score": "0/10"}], "existing_pain": []})
+        arc = {"arc": 1, "kind": "health", "date": "2026-10-12", "morning_check": "full",
+               "pain": result["pain_merge"]}
+        errors, warnings = arc_contract.validate(arc)
+        self.assertEqual((errors, warnings), ([], []))
 
     def test_duplicate_raw_text_skips_merge(self):
         payload = {
