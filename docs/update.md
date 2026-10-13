@@ -179,7 +179,10 @@ Garmin (défaut), rien ne change.
 Ce qui change pour vous : les séances poussées vers Intervals.icu sont
 désormais **structurées** quand c'est possible (étapes lisibles par la montre) au
 lieu d'un texte libre — voir [Configuration Intervals.icu](intervals-setup.md).
-Les séances déjà poussées ne sont pas modifiées. Retour arrière : `git reset`
+Les séances déjà poussées ne sont pas modifiées. **Cursor + intervals.icu, mise à jour
+à la main** : relancez `./install.sh --source intervals` (la liste de refus de
+`.cursor/cli.json` gagne `icu_update_athlete_notes` ; sans cela, le daily-sync refuse de
+démarrer) — `/update-coach` s'en charge déjà. Retour arrière : `git reset`
 du moteur à la version précédente, puis `uv tool install --force` du commit
 `cb91d4a` de `eddmann/intervals-icu-mcp` (voir l'ancien `install.sh`).
 

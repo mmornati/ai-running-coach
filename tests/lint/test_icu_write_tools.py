@@ -8,6 +8,8 @@ et jamais prescrit par un prompt d'agent ou de skill.
 
 from __future__ import annotations
 
+import fnmatch
+import json
 import re
 import subprocess
 import sys
@@ -37,6 +39,65 @@ def _sync_write_tools() -> set:
         ["bash", "-c", f'source "{REPO}/scripts/lib/sync_tools.sh"; sync_write_tools intervals'],
         capture_output=True, text=True, check=True).stdout
     return set(out.split())
+
+
+def _bash(snippet: str) -> str:
+    return subprocess.run(["bash", "-c", f'source "{REPO}/scripts/lib/sync_tools.sh"; {snippet}'],
+                          capture_output=True, text=True, check=True).stdout
+
+
+def _opencode_permission(tmp: Path) -> dict:
+    """Exécute le générateur OC_CONFIG_PY de daily-sync.sh avec les trois serveurs sportifs."""
+    text = (REPO / "scripts/daily-sync.sh").read_text(encoding="utf-8")
+    code = re.search(r"^OC_CONFIG_PY='\n(.*?)^'$", text, re.DOTALL | re.MULTILINE).group(1)
+    mcp = tmp / "mcp.json"
+    mcp.write_text(json.dumps({"mcpServers": {n: {"command": "true"} for n in ("garmin", "intervals", "strava")}}))
+    out = subprocess.run(
+        [sys.executable, "-c", code, "openrouter/x/y", "", "", str(mcp), "",
+         " ".join(_bash("sync_write_tools garmin").split()),
+         " ".join(_bash("sync_write_tools intervals").split()),
+         " ".join(_bash("sync_write_tools strava").split())],
+        capture_output=True, text=True, check=True).stdout
+    return json.loads(out)["permission"]
+
+
+def _denied(permission: dict, name: str) -> bool:
+    """Vrai si une règle « deny » (nom exact ou motif OpenCode) couvre ce nom d'outil MCP."""
+    return any(v == "deny" and fnmatch.fnmatchcase(name, k) for k, v in permission.items())
+
+
+class OpencodeHeadlessDenyTest(unittest.TestCase):
+    """OpenCode expose un outil MCP sous `<serveur>_<outil>` : chaque écriture doit être refusée sous CE nom."""
+
+    @classmethod
+    def setUpClass(cls):
+        with tempfile.TemporaryDirectory() as tmp:
+            cls.permission = _opencode_permission(Path(tmp))
+
+    def test_every_non_read_intervals_tool_is_denied(self):
+        for tool in sorted(t for t in _icu_tools() if not t.startswith(READ_PREFIXES)):
+            self.assertTrue(_denied(self.permission, f"intervals_{tool}"), f"intervals_{tool}")
+
+    def test_intervals_read_tools_are_not_denied(self):
+        for tool in sorted(t for t in _icu_tools() if t.startswith(READ_PREFIXES)):
+            self.assertFalse(_denied(self.permission, f"intervals_{tool}"), f"intervals_{tool}")
+
+    def test_garmin_write_tools_are_denied(self):
+        install = (REPO / "install.sh").read_text(encoding="utf-8")
+        tools = set()
+        for var in ("GARMIN_TOOL_WHITELIST", "GARMIN_CYCLE_TOOLS", "GARMIN_NUTRITION_TOOLS"):
+            tools |= set(re.search(rf'^{var}="([^"]+)"', install, re.M).group(1).split(","))
+        prefixes = tuple(_bash("echo $SYNC_GARMIN_WRITE_PREFIXES").split())
+        writes = sorted(t for t in tools if t.startswith(prefixes))
+        self.assertTrue(writes)
+        for tool in writes:
+            self.assertTrue(_denied(self.permission, f"garmin_{tool}"), f"garmin_{tool}")
+        self.assertFalse(_denied(self.permission, "garmin_get_activities"))
+
+    def test_strava_write_tools_are_denied(self):
+        for tool in _bash("echo $SYNC_STRAVA_WRITE_TOOLS").split():
+            self.assertTrue(_denied(self.permission, f"strava_{tool}"), f"strava_{tool}")
+        self.assertFalse(_denied(self.permission, "strava_get-recent-activities"))
 
 
 class IcuWriteToolsTest(unittest.TestCase):

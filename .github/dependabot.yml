@@ -29,6 +29,11 @@ updates:
     groups:
       docker:
         patterns: ["*"]
+    # Python reste aligné sur `--python 3.12` (install.sh) et la CI : on ne laisse
+    # passer que les correctifs et les digests, pas de saut de version mineure/majeure.
+    ignore:
+      - dependency-name: "python"
+        update-types: ["version-update:semver-major", "version-update:semver-minor"]
 
   - package-ecosystem: "pip"
     directory: "/"

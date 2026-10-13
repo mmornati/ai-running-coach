@@ -1692,8 +1692,12 @@ upgrade_intervals_pin_if_needed() {
         ok "intervals-icu-mcp au commit épinglé (${want_commit:0:7})"
         return 0
     fi
-    log "Mise à jour de intervals-icu-mcp : ${url#https://github.com/}@${commit:0:7} -> ${want_url#https://github.com/}@${want_commit:0:7} (#165)"
-    warn "Les outils du serveur sont désormais préfixés « icu_ » — ouvrez une NOUVELLE session de coaching après l'installation (docs/update.md)."
+    if [[ "$url" == "https://github.com/eddmann/intervals-icu-mcp" ]]; then
+        log "Mise à jour de intervals-icu-mcp : ${url#https://github.com/}@${commit:0:7} -> ${want_url#https://github.com/}@${want_commit:0:7} (#165)"
+        warn "Les outils du serveur sont désormais préfixés « icu_ » — ouvrez une NOUVELLE session de coaching après l'installation (docs/update.md)."
+    else
+        log "Réinstallation de intervals-icu-mcp au commit épinglé du projet : ${commit:0:7} -> ${want_commit:0:7}"
+    fi
     run uv tool install --python 3.12 --force --with fitparse "$INTERVALS_MCP_REF" \
         || warn "Mise à jour de intervals-icu-mcp échouée — l'ancienne version reste en place (voir /coach-doctor)."
 }
