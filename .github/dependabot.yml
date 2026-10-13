@@ -1,0 +1,40 @@
+# Dependabot : mises à jour hebdomadaires, groupées pour limiter le bruit.
+#
+# NE SONT PAS couverts par Dependabot (références épinglées dans des scripts, à
+# relire À LA MAIN lors de chaque revue de dépendances) :
+#   - GARMIN_MCP_REF, INTERVALS_MCP_REF, STRAVA_MCP_PKG (install.sh) ;
+#   - l'ARG OPENCODE_VERSION (deploy/chat/Dockerfile) et OPENCODE_TESTED_VERSION
+#     (scripts/arc_chat_opencode.py), à garder alignés ;
+#   - Sparkle (app macOS).
+# Les PR Dependabot ne touchent donc jamais ces pins : ils se mettent à jour
+# ensemble, avec leurs tests de cohérence (tests/lint, tests/install).
+version: 2
+updates:
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+    groups:
+      github-actions:
+        patterns: ["*"]
+
+  - package-ecosystem: "docker"
+    directories:
+      - "/"
+      - "/deploy/chat"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+    groups:
+      docker:
+        patterns: ["*"]
+
+  - package-ecosystem: "pip"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+    groups:
+      python-docs:
+        patterns: ["*"]

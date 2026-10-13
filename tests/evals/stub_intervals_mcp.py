@@ -11,7 +11,7 @@ données alternative.
 le code source du serveur réellement installé par le projet
 (`./install.sh --source intervals`, voir `AGENTS.md` → « Backends MCP ») :
 [`hhopke/intervals-icu-mcp`](https://github.com/hhopke/intervals-icu-mcp),
-commit `5cd7e1a` (v5.5.0, `src/intervals_icu_mcp/tools/*.py`, `response_builder.py`) — #165 ;
+commit `92a630b` (v5.6.0, `src/intervals_icu_mcp/tools/*.py`, `response_builder.py`) — #165 ;
 le serveur précédent (eddmann@cb91d4a) exposait les mêmes outils SANS le préfixe `icu_`.
 
 Points de fidélité qui ont changé depuis une première version non

@@ -118,7 +118,7 @@ d'outils (`icu_get_wellness_for_date`, `icu_get_recent_activities`,
 `icu_get_calendar_events`, ...) est désormais **vérifiée (#68)** contre le code
 source du serveur retenu par le projet,
 [`hhopke/intervals-icu-mcp`](https://github.com/hhopke/intervals-icu-mcp),
-commit `5cd7e1a` (#165 ; auparavant `eddmann/…@cb91d4a`, mêmes outils sans le
+commit `92a630b` (#165 ; auparavant `eddmann/…@cb91d4a`, mêmes outils sans le
 préfixe `icu_`) — snake_case préfixé `icu_`, pas le kebab-case d'une hypothèse
 antérieure (#26) que #68 a corrigée. Chaque réponse canned est enveloppée
 `{"data": ..., "metadata": {...}}` (`ResponseBuilder.build_response` réel),

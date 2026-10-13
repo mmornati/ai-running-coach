@@ -65,7 +65,7 @@ de votre configuration, sinon `off`.
   donc une phase que si un champ la donne explicitement, et disent « phase indisponible »
   sinon — la forme réelle est à vérifier à la première utilisation.
 - **intervals.icu : vérifié** dans le serveur MCP épinglé (fork `hhopke/intervals-icu-mcp` au
-  commit `5cd7e1a`, #165 : `models.py`, `tools/wellness.py`) : le champ `menstrualPhase` du
+  commit `92a630b`, #165 : `models.py`, `tools/wellness.py`) : le champ `menstrualPhase` du
   modèle wellness ressort dans `icu_get_wellness_for_date`, sous
   `other.menstrual_phase` (chaîne). Les valeurs possibles de cette chaîne ne sont pas définies
   par le serveur : à vérifier ; une valeur non reconnue est traitée comme inconnue.

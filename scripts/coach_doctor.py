@@ -196,7 +196,7 @@ def garmin_token_perms_fix(tokens_dir: Path, base64_open: bool = False) -> str:
 # Pin du serveur MCP intervals.icu (#165) : DOIT rester identique à `INTERVALS_MCP_REF`
 # dans install.sh — tests/lint/test_data_source_parity.py le vérifie.
 INTERVALS_MCP_PINNED_URL = "https://github.com/hhopke/intervals-icu-mcp"
-INTERVALS_MCP_PINNED_COMMIT = "5cd7e1abf716ea28b7bc5a8da5b01860b4bf2aa4"
+INTERVALS_MCP_PINNED_COMMIT = "92a630bfc4ffe7906c9bf8d2280c1ea41a561d66"
 # Ancien serveur (jusqu'à #165) : mêmes binaires, outils SANS préfixe `icu_`.
 INTERVALS_MCP_LEGACY_URL = "https://github.com/eddmann/intervals-icu-mcp"
 INTERVALS_MCP_UPDATE_FIX = "./install.sh --source intervals"

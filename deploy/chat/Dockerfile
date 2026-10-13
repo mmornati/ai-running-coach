@@ -6,7 +6,7 @@
 # Même raison pour HOME : les scripts cherchent garmin-mcp sous
 # ~/.local/share/uv/tools et les jetons Garmin sous ~/.garminconnect.
 # Voir deploy/dashboard/compose.chat.yaml et docs/dashboard/chat.md.
-FROM python:3.12-slim-bookworm
+FROM python:3.12-slim-trixie
 
 LABEL org.opencontainers.image.title="ai-running-coach-chat" \
       org.opencontainers.image.description="Chat avec le coach ai-running-coach (OpenCode)" \
@@ -15,7 +15,7 @@ LABEL org.opencontainers.image.title="ai-running-coach-chat" \
 
 # Gardés alignés sur install.sh (GARMIN_MCP_REF) et scripts/arc_chat_opencode.py
 # (OPENCODE_TESTED_VERSION) — vérifié par tests/install/test_chat_container.py.
-ARG OPENCODE_VERSION=1.18.32
+ARG OPENCODE_VERSION=1.18.35
 ARG GARMIN_MCP_REF=git+https://github.com/Taxuspt/garmin_mcp@cfc5d799ab0f165e837f1188a1d093c65838aaf7
 ARG ARC_HOME=/home/coach
 ARG ARC_UID=1000
@@ -26,7 +26,7 @@ RUN apt-get update \
     && apt-get install -y --no-install-recommends ca-certificates curl git tzdata \
     && rm -rf /var/lib/apt/lists/*
 
-COPY --from=ghcr.io/astral-sh/uv:0.8 /uv /usr/local/bin/uv
+COPY --from=ghcr.io/astral-sh/uv:0.13.0 /uv /usr/local/bin/uv
 
 RUN groupadd -g "$ARC_GID" coach \
     && useradd -u "$ARC_UID" -g "$ARC_GID" -d "$ARC_HOME" -m -s /bin/bash coach

@@ -114,7 +114,7 @@ class PolicyTest(PolicyBase):
         for name in ("icu_create_event", "icu_bulk_create_events", "icu_update_event", "icu_delete_event",
                      "icu_bulk_delete_events", "icu_update_wellness", "icu_add_activity_message",
                      "icu_duplicate_events", "icu_apply_training_plan", "icu_delete_activity",
-                     "icu_download_fit_file", "icu_download_activity_file"):
+                     "icu_download_fit_file", "icu_download_activity_file", "icu_update_athlete_notes"):
             self.assertEqual(self.d(f"mcp:intervals.{name}"), "ask", name)
 
     def test_mcp_outil_inconnu_ou_serveur_inconnu(self):
