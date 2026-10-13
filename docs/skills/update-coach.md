@@ -42,9 +42,16 @@ scripts/update-coach.sh           # idem, puis confirmation et mise à jour
    mémorisées par `install.sh` dans `~/.config/ai-running-coach/install-args` (chemins
    rendus absolus). Sans terminal (depuis l'assistant), l'authentification est sautée
    (`--no-auth`) : `coach_doctor` dit si des jetons sont à renouveler ;
-3. `python3 scripts/coach_doctor.py` pour vérifier le résultat.
+3. `python3 scripts/coach_doctor.py` pour vérifier le résultat ;
+4. si votre tableau de bord tourne dans **Docker** et que son image se construit depuis
+   ce dépôt (conteneur `docker compose` en cours dont `build.context` est le moteur :
+   celui de `./install.sh --dashboard-docker`, `deploy/dashboard`, ou votre propre compose),
+   il est reconstruit (`docker compose build --pull`) et relancé. C'est le seul moment où
+   l'image est reconstruite, et seulement quand une mise à jour a eu lieu. Sans Docker, ou sans conteneur de ce type, rien ne se passe. Un conteneur
+   lancé à la main avec `docker run` n'est pas reconnu : reconstruisez-le vous-même.
 
-Ouvrez ensuite une nouvelle session de votre assistant et relancez le tableau de bord.
+Ouvrez ensuite une nouvelle session de votre assistant, et relancez le tableau de bord
+s'il ne tourne pas dans Docker (`scripts/dashboard.sh`).
 
 ## Quand la mise à jour refuse
 

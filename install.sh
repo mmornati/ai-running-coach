@@ -39,6 +39,7 @@
 #   ./install.sh --llm openrouter   # chat + sync sur une API (openrouter|anthropic|openai)
 #   ./install.sh --chat             # service du chat avec le coach (dashboard)
 #   ./install.sh --telegram         # bot Telegram : retours en un geste, sans LLM (docs/telegram.md)
+#   ./install.sh --dashboard-docker local|traefik # tableau de bord en conteneur, reconstruit par /update-coach
 #   ./install.sh --dry-run          # affiche les actions sans rien exécuter
 #   ./install.sh --help
 #
@@ -186,6 +187,15 @@ DO_TELEGRAM=0      # --telegram : bot Telegram (retours en un geste, #174)
 TELEGRAM_CHAT_ID="" # --telegram-chat-id ID : ajoute un chat à [telegram].allowed_chat_ids
 SYNC_BUDGET=""     # --sync-budget EUR
 SYNC_RUNNER_ARG="" # --sync-runner : exécuteur headless explicite
+DASH_DOCKER=""     # --dashboard-docker off|local|traefik : tableau de bord en conteneur, opt-in
+DASH_HOST=""       # --dashboard-host NOM (avec traefik ; défaut coach.localhost)
+DASH_AUTH=""       # --dashboard-auth MIDDLEWARE (avec traefik ; obligatoire si Traefik est joignable du réseau)
+DASH_NETWORK=""    # réseau Docker de Traefik ([dashboard].docker_network, sinon détecté)
+DASH_ENTRYPOINT="" # point d'entrée Traefik ([dashboard].docker_entrypoint, sinon détecté)
+DASH_TRAEFIK=""    # conteneur Traefik détecté
+DASH_PERSIST=0     # 1 : réponse ou option à écrire dans [dashboard]
+DASH_PROJECT="arc-dashboard"
+DASH_DIR="$HOME/.config/ai-running-coach/dashboard"
 
 # Options qu'un préréglage peut fixer ; « explicite » gagne toujours, quel que
 # soit l'ordre des arguments (voir apply_preset() et la note plus bas).
@@ -203,6 +213,7 @@ EXPLICIT_AGENTS=0
 EXPLICIT_SOURCE=0
 EXPLICIT_CYCLE=0   # --cycle-tracking passé (#166) : seul cas où [health].cycle_tracking est écrit
 EXPLICIT_NUTRITION=0 # --nutrition-sync passé (#167) : seul cas où [nutrition].garmin_sync est écrit
+EXPLICIT_DASH=0    # --dashboard-docker passé : écrit [dashboard].docker
 EXPLICIT_HEALTH=0  # --health-source passé (#220) : seul cas où [health].source et [health.openwearables] sont écrits
 # Vrai (1) uniquement quand --source a été passé explicitement ET que la
 # valeur résolue diffère de celle DÉJÀ en config (resolve_source()) — jamais
@@ -248,6 +259,9 @@ Usage :
   ./install.sh --sync-budget EUR  # plafond quotidien de la sync ([sync].daily_budget_eur)
   ./install.sh --telegram         # active [telegram] et installe le service (scripts/coach-telegram.sh)
   ./install.sh --telegram-chat-id ID # avec --telegram : autorise ce chat (liste blanche, jamais le jeton)
+  ./install.sh --dashboard-docker MODE # off | local | traefik — tableau de bord en conteneur, reconstruit par /update-coach
+  ./install.sh --dashboard-host NOM   # avec traefik : adresse servie (défaut coach.localhost)
+  ./install.sh --dashboard-auth MW    # avec traefik : middleware d'authentification (obligatoire si Traefik est joignable du réseau)
   ./install.sh --dry-run          # affiche les actions sans rien exécuter
   ./install.sh --help
 
@@ -428,6 +442,9 @@ while [[ $# -gt 0 ]]; do
         --telegram) DO_TELEGRAM=1; shift ;;
         --telegram-chat-id) need_value "$@"; TELEGRAM_CHAT_ID="$2"; shift 2 ;;
         --sync-budget) need_value "$@"; SYNC_BUDGET="$2"; shift 2 ;;
+        --dashboard-docker) need_value "$@"; DASH_DOCKER="$2"; EXPLICIT_DASH=1; shift 2 ;;
+        --dashboard-host) need_value "$@"; DASH_HOST="$2"; shift 2 ;;
+        --dashboard-auth) need_value "$@"; DASH_AUTH="$2"; shift 2 ;;
         --dry-run) DRY_RUN=1; shift ;;
         --help|-h) usage ;;
         *) die "Option inconnue : $1 (voir --help)" ;;
@@ -531,6 +548,9 @@ if [[ "$EXPLICIT_HEALTH" -eq 1 ]]; then
 elif [[ -n "$OW_URL$OW_PROVIDER$OW_KEY_FILE_ARG" ]]; then
     die "--ow-url, --ow-provider et --ow-key-file s'utilisent avec --health-source openwearables."
 fi
+
+# Tableau de bord Docker : options vérifiées par resolve_dashboard_docker() (section dédiée, plus
+# bas), au début de main(), avant tout travail.
 
 # Valide $SOURCE (défini ici pour être appelable dès l'analyse des arguments
 # ET depuis resolve_source() dans main(), qui peut réécrire $SOURCE depuis la
@@ -2605,6 +2625,302 @@ install_telegram() {
 }
 
 # ---------------------------------------------------------------------------
+# Tableau de bord en conteneur Docker (--dashboard-docker) — opt-in
+# ---------------------------------------------------------------------------
+# install.sh génère son propre compose ($DASH_DIR/compose.yaml, projet « arc-dashboard ») et lance
+# le conteneur (« up -d » : l'image n'est construite que si elle n'existe pas). Il ne la reconstruit
+# JAMAIS : c'est /update-coach (scripts/update-coach.sh) qui le fait, après une mise à jour du
+# moteur — l'image a alors la version du moteur. État dans [dashboard]
+# (docker, docker_host, docker_auth, docker_network, docker_entrypoint) de workspace.user.toml.
+# Sans configuration, la question n'est posée qu'en terminal, Docker joignable ; la réponse
+# (même « non ») est mémorisée : elle n'est jamais reposée. Sans Docker : rien, aucune mention.
+#
+# Exposition : « local » publie 127.0.0.1:<[dashboard].port> seulement ; « traefik » ne publie
+# aucun port et passe par le Traefik qui tourne sur la machine. Un middleware d'authentification
+# est exigé, SAUF si Traefik ne publie ses ports que sur la boucle locale (rien n'est alors
+# joignable hors de la machine) — même garantie que deploy/dashboard/compose.yaml.
+
+docker_ready() {
+    have docker && docker info >/dev/null 2>&1 && docker compose version >/dev/null 2>&1
+}
+
+# Nom du premier conteneur Traefik en cours (image « traefik », « traefik:v3 », « x/traefik »…).
+traefik_container() {
+    docker ps --format '{{.Names}}	{{.Image}}' 2>/dev/null \
+        | awk -F'\t' '$2 ~ /(^|\/)traefik([:@]|$)/ { print $1; exit }'
+}
+
+# Arguments de lancement de Traefik, un par ligne (configuration en ligne de commande).
+traefik_args() {
+    docker inspect -f '{{range .Args}}{{println .}}{{end}}' "$1" 2>/dev/null || true
+}
+
+# Réseau Docker de Traefik : --providers.docker.network, sinon son premier réseau utilisateur.
+traefik_network() {
+    local net
+    net="$(traefik_args "$1" | sed -n 's/^--providers\.docker\.network=//p' | head -n1)"
+    [[ -n "$net" ]] || net="$(docker inspect -f '{{range $k, $v := .NetworkSettings.Networks}}{{println $k}}{{end}}' "$1" 2>/dev/null \
+        | grep -v -E '^(bridge|host|none)?$' | head -n1 || true)"
+    printf '%s' "$net"
+}
+
+# Points d'entrée Traefik déclarés en ligne de commande, un par ligne.
+traefik_entrypoints() {
+    traefik_args "$1" | sed -n 's/^--entrypoints\.\([^.=]*\)\.address=.*/\1/p'
+}
+
+# Vrai si Traefik ne publie ses ports QUE sur la boucle locale (et en publie au moins un).
+traefik_loopback_only() {
+    local ports
+    ports="$(docker port "$1" 2>/dev/null || true)"
+    [[ -n "$ports" ]] || return 1
+    ! printf '%s\n' "$ports" | grep -v -E -- '-> (127\.[0-9.]+|\[::1\]):[0-9]+$' | grep -q .
+}
+
+# Fuseau horaire de l'hôte (il fixe « aujourd'hui » dans le conteneur).
+host_timezone() {
+    local tz="${TZ:-}"
+    [[ -n "$tz" ]] || tz="$(cat /etc/timezone 2>/dev/null || true)"
+    [[ -n "$tz" ]] || tz="$(readlink /etc/localtime 2>/dev/null | sed -n 's|.*/zoneinfo/||p')"
+    printf '%s' "${tz:-UTC}"
+}
+
+dashboard_config_value() {
+    have python3 || return 0
+    python3 "$PROJECT_ROOT/scripts/coach_config.py" get \
+        --workspace "$WORKSPACE_ROOT" --section dashboard --key "$1" --default "" 2>/dev/null || true
+}
+
+validate_dashboard_docker() {
+    case "$DASH_DOCKER" in
+        off|local|traefik) ;;
+        *) die "Mode de tableau de bord Docker inconnu : « $DASH_DOCKER ». Valides : off, local, traefik (voir --help)." ;;
+    esac
+    if [[ "$DASH_DOCKER" != "traefik" && -n "$DASH_HOST$DASH_AUTH" ]]; then
+        die "--dashboard-host et --dashboard-auth s'utilisent avec --dashboard-docker traefik."
+    fi
+    [[ -z "$DASH_HOST" || "$DASH_HOST" =~ ^[A-Za-z0-9]([A-Za-z0-9.-]*[A-Za-z0-9])?$ ]] \
+        || die "--dashboard-host : nom d'hôte attendu (ex. coach.localhost), sans schéma ni port."
+    [[ -z "$DASH_AUTH" || "$DASH_AUTH" =~ ^[A-Za-z0-9._@-]+$ ]] \
+        || die "--dashboard-auth : nom de middleware Traefik attendu (ex. authentik@file)."
+}
+
+# Pose une question (terminal uniquement) ; $2 = réponse par défaut.
+ask() {
+    local answer
+    read -r -p "$1 " answer || answer=""
+    printf '%s' "${answer:-$2}"
+}
+
+# Complète la configuration Traefik (réseau, point d'entrée, authentification). En terminal, demande
+# ce qui manque ; sinon, échoue avec la commande à lancer. $1 = 1 si les questions sont permises.
+resolve_dashboard_traefik() {
+    local interactive="$1" traefik eps
+    traefik="$(traefik_container)"
+    if [[ -z "$traefik" ]]; then
+        die "--dashboard-docker traefik : aucun conteneur Traefik en cours. Démarrez Traefik, ou utilisez --dashboard-docker local."
+    fi
+    [[ -n "$DASH_NETWORK" ]] || DASH_NETWORK="$(traefik_network "$traefik")"
+    [[ -n "$DASH_NETWORK" ]] \
+        || die "Réseau Docker de Traefik introuvable : renseignez [dashboard].docker_network dans config/workspace.user.toml."
+    if [[ -z "$DASH_ENTRYPOINT" ]]; then
+        eps="$(traefik_entrypoints "$traefik")"
+        if [[ "$(printf '%s\n' "$eps" | grep -c .)" -eq 1 ]]; then
+            DASH_ENTRYPOINT="$eps"
+        elif [[ "$interactive" -eq 1 ]]; then
+            DASH_ENTRYPOINT="$(ask "Point d'entrée Traefik${eps:+ ($(printf '%s' "$eps" | tr '\n' ' ' | sed 's/ $//'))} [web] :" web)"
+        else
+            die "Point d'entrée Traefik ambigu${eps:+ ($(printf '%s' "$eps" | tr '\n' ' '))} : renseignez [dashboard].docker_entrypoint dans config/workspace.user.toml."
+        fi
+    fi
+    if [[ -z "$DASH_HOST" ]]; then
+        if [[ "$interactive" -eq 1 ]]; then
+            DASH_HOST="$(ask "Adresse du tableau de bord [coach.localhost] :" coach.localhost)"
+        else
+            DASH_HOST="coach.localhost"
+        fi
+        validate_dashboard_docker
+    fi
+    if [[ -z "$DASH_AUTH" ]] && ! traefik_loopback_only "$traefik"; then
+        if [[ "$interactive" -eq 1 ]]; then
+            warn "Traefik ($traefik) est joignable hors de cette machine : le tableau de bord (données de santé) exige une authentification."
+            DASH_AUTH="$(ask "Middleware d'authentification Traefik (ex. authentik@file) :" "")"
+            validate_dashboard_docker
+        fi
+        [[ -n "$DASH_AUTH" ]] || die "Traefik ($traefik) est joignable hors de cette machine : --dashboard-auth <middleware> est obligatoire (docs/dashboard/docker.md)."
+    fi
+    DASH_TRAEFIK="$traefik"
+}
+
+# Mode du tableau de bord Docker : option explicite, sinon [dashboard].docker, sinon la question
+# (terminal + Docker joignable), sinon « off » sans rien écrire.
+resolve_dashboard_docker() {
+    local interactive=0
+    [[ -t 0 && "$DRY_RUN" -eq 0 ]] && interactive=1
+    if [[ "$EXPLICIT_DASH" -eq 1 ]]; then
+        DASH_DOCKER="$(printf '%s' "$DASH_DOCKER" | tr '[:upper:]' '[:lower:]')"
+        validate_dashboard_docker
+    elif [[ -n "$DASH_HOST$DASH_AUTH" ]]; then
+        die "--dashboard-host et --dashboard-auth s'utilisent avec --dashboard-docker traefik."
+    fi
+    if [[ "$EXPLICIT_DASH" -eq 0 ]]; then
+        DASH_DOCKER="$(dashboard_config_value docker | tr '[:upper:]' '[:lower:]' | tr -d '[:space:]')"
+        DASH_HOST="$(dashboard_config_value docker_host)"
+        DASH_AUTH="$(dashboard_config_value docker_auth)"
+        case "$DASH_DOCKER" in
+            off|local|traefik) ;;
+            "")
+                if [[ "$interactive" -eq 1 ]] && docker_ready; then
+                    if [[ "$(ask "Docker détecté : servir le tableau de bord dans un conteneur, reconstruit à chaque mise à jour ? [o/N]" n)" =~ ^[oOyY] ]]; then
+                        DASH_DOCKER="local"
+                        if [[ -n "$(traefik_container)" ]] \
+                            && [[ "$(ask "Traefik détecté : y ranger le tableau de bord (sinon 127.0.0.1:$(dashboard_config_value port)) ? [O/n]" o)" =~ ^[oOyY] ]]; then
+                            DASH_DOCKER="traefik"
+                        fi
+                    else
+                        DASH_DOCKER="off"
+                    fi
+                    DASH_PERSIST=1
+                else
+                    DASH_DOCKER="off"
+                fi ;;
+            *) warn "[dashboard].docker = « $DASH_DOCKER » invalide (off, local, traefik) — traité comme « off »."; DASH_DOCKER="off" ;;
+        esac
+    else
+        DASH_PERSIST=1
+    fi
+    [[ "$DASH_DOCKER" == "traefik" ]] || return 0
+    DASH_NETWORK="$(dashboard_config_value docker_network)"
+    DASH_ENTRYPOINT="$(dashboard_config_value docker_entrypoint)"
+    if docker_ready; then
+        resolve_dashboard_traefik "$interactive"
+    elif [[ "$EXPLICIT_DASH" -eq 1 ]]; then
+        die "--dashboard-docker traefik : Docker est injoignable (démon arrêté ?)."
+    fi
+}
+
+persist_dashboard_docker() {
+    [[ "$DASH_PERSIST" -eq 1 ]] || return 0
+    local key value
+    for key in docker docker_host docker_auth docker_network docker_entrypoint; do
+        case "$key" in
+            docker) value="$DASH_DOCKER" ;;
+            docker_host) value="$DASH_HOST" ;;
+            docker_auth) value="$DASH_AUTH" ;;
+            docker_network) value="$DASH_NETWORK" ;;
+            docker_entrypoint) value="$DASH_ENTRYPOINT" ;;
+        esac
+        # Hors Traefik, seule la clé « docker » a un sens : les autres ne sont pas écrites.
+        [[ "$key" == "docker" || "$DASH_DOCKER" == "traefik" ]] || continue
+        if [[ "$DRY_RUN" -eq 1 ]]; then
+            printf '%s\n' "${C_YELLOW}[dry-run]${C_RESET} [dashboard].$key = $value"
+            continue
+        fi
+        have python3 || return 0
+        python3 "$PROJECT_ROOT/scripts/coach_config.py" set \
+            --workspace "$WORKSPACE_ROOT" --section dashboard --key "$key" --value "$value" >/dev/null \
+            || warn "Impossible d'écrire [dashboard].$key — vérifiez config/workspace.user.toml."
+    done
+}
+
+# Chaîne YAML entre guillemets doubles ; « $ » doublé (interpolation compose).
+yaml_quote() {
+    printf '"%s"' "$(printf '%s' "$1" | sed -e 's/\\/\\\\/g' -e 's/"/\\"/g' -e 's/\$/$$/g')"
+}
+
+write_dashboard_compose() {
+    local port="$1" hosts
+    if [[ "$DASH_DOCKER" == "traefik" ]]; then hosts="$DASH_HOST"; else hosts="127.0.0.1,localhost"; fi
+    {
+        cat <<EOF
+# Généré par install.sh (--dashboard-docker $DASH_DOCKER) : ne pas éditer, relancez ./install.sh.
+# Image reconstruite par /update-coach à chaque mise à jour du moteur.
+# Tableau de bord ai-running-coach, lecture seule (docs/dashboard/docker.md).
+name: $DASH_PROJECT
+
+services:
+  dashboard:
+    build:
+      context: $(yaml_quote "$PROJECT_ROOT")
+    image: ai-running-coach-dashboard:local
+    container_name: $DASH_PROJECT
+    restart: unless-stopped
+    # Propriétaire du workspace (config/workspace.user.toml est en 600).
+    user: "$(id -u):$(id -g)"
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    tmpfs: [/tmp]
+    environment:
+      ARC_DASHBOARD_ALLOWED_HOSTS: $(yaml_quote "$hosts")
+      TZ: $(yaml_quote "$(host_timezone)")
+    volumes:
+      - $(yaml_quote "$WORKSPACE_ROOT:/workspace:ro")
+EOF
+        if [[ "$DASH_DOCKER" == "local" ]]; then
+            cat <<EOF
+    # Boucle locale uniquement : rien n'est joignable hors de cette machine.
+    ports:
+      - "127.0.0.1:$port:8765"
+EOF
+        else
+            cat <<EOF
+    networks: [proxy]
+    labels:
+      - "traefik.enable=true"
+      - $(yaml_quote "traefik.docker.network=$DASH_NETWORK")
+      - $(yaml_quote "traefik.http.routers.$DASH_PROJECT.rule=Host(\`$DASH_HOST\`)")
+      - $(yaml_quote "traefik.http.routers.$DASH_PROJECT.entrypoints=$DASH_ENTRYPOINT")
+EOF
+            [[ -z "$DASH_AUTH" ]] || printf '      - %s\n' "$(yaml_quote "traefik.http.routers.$DASH_PROJECT.middlewares=$DASH_AUTH")"
+            cat <<EOF
+      - "traefik.http.routers.$DASH_PROJECT.service=$DASH_PROJECT"
+      - "traefik.http.services.$DASH_PROJECT.loadbalancer.server.port=8765"
+
+networks:
+  proxy:
+    external: true
+    name: $(yaml_quote "$DASH_NETWORK")
+EOF
+        fi
+    } | write_file "$DASH_DIR/compose.yaml"
+}
+
+install_dashboard_docker() {
+    local compose=(docker compose -p "$DASH_PROJECT" -f "$DASH_DIR/compose.yaml")
+    if [[ "$DASH_DOCKER" == "off" ]]; then
+        # Retour à « off » : on arrête le conteneur qu'install.sh avait lancé, et lui seul.
+        if [[ -f "$DASH_DIR/compose.yaml" ]] && docker_ready \
+            && [[ -n "$(docker ps -aq --filter "label=com.docker.compose.project=$DASH_PROJECT" 2>/dev/null)" ]]; then
+            log "Tableau de bord Docker désactivé : arrêt du conteneur $DASH_PROJECT"
+            run "${compose[@]}" down || warn "Arrêt de $DASH_PROJECT impossible : docker compose -p $DASH_PROJECT -f $DASH_DIR/compose.yaml down"
+        fi
+        return 0
+    fi
+    local port
+    port="$(dashboard_config_value port)"
+    [[ "$port" =~ ^[0-9]+$ ]] || port=8765
+    log "Tableau de bord Docker ($DASH_DOCKER)"
+    if [[ "$DRY_RUN" -eq 0 ]] && ! docker_ready; then
+        warn "Docker injoignable : tableau de bord non reconstruit. Démarrez Docker puis relancez ./install.sh."
+        return 0
+    fi
+    write_dashboard_compose "$port"
+    # Pas de --build : l'image n'est reconstruite qu'à une mise à jour (/update-coach). up -d ne
+    # recrée le conteneur que si le compose a changé, et construit l'image seulement si elle manque.
+    if run "${compose[@]}" up -d </dev/null; then
+        if [[ "$DASH_DOCKER" == "local" ]]; then
+            ok "Tableau de bord Docker : http://127.0.0.1:$port/ (conteneur $DASH_PROJECT)"
+        else
+            ok "Tableau de bord Docker : $DASH_HOST via Traefik ($DASH_TRAEFIK, point d'entrée $DASH_ENTRYPOINT)"
+            [[ -n "$DASH_AUTH" ]] || log "Sans authentification : Traefik n'écoute que sur la boucle locale."
+        fi
+    else
+        warn "Lancement du tableau de bord Docker impossible — relancez : ${compose[*]} up -d"
+    fi
+}
+
+# ---------------------------------------------------------------------------
 # 7. Vérification finale
 # ---------------------------------------------------------------------------
 verify() {
@@ -2740,6 +3056,9 @@ print_config_recap() {
     [[ "$HEALTH_EFFECTIVE" != "openwearables" ]] \
         || recap_line "Santé" "Open Wearables (${OW_PROVIDER:-?}) — ${OW_URL:-?}" \
             "$([[ "$EXPLICIT_HEALTH" -eq 1 ]] && echo "explicite" || echo "config")"
+    [[ "$DASH_DOCKER" == "off" || -z "$DASH_DOCKER" ]] \
+        || recap_line "Tableau de bord Docker" "$DASH_DOCKER${DASH_HOST:+ ($DASH_HOST)}" \
+            "$([[ "$EXPLICIT_DASH" -eq 1 ]] && echo "explicite" || echo "config")"
     recap_line "Workspace" "$WORKSPACE_ROOT" "$([[ -n "$WORKSPACE_ARG" ]] && echo "explicite" || echo "défaut")"
     recap_line "Dry-run" \
         "$([[ "$DRY_RUN" -eq 1 ]] && echo "oui" || echo "non")" "$([[ "$DRY_RUN" -eq 1 ]] && echo "explicite" || echo "défaut")"
@@ -2759,6 +3078,7 @@ main() {
     resolve_cycle_tracking
     resolve_nutrition_sync
     resolve_health_source
+    resolve_dashboard_docker
     print_config_recap
     [[ "$DRY_RUN" -eq 1 ]] && warn "Mode dry-run : aucune modification ne sera effectuée."
     echo
@@ -2797,6 +3117,8 @@ main() {
     install_remote_control
     install_chat
     install_telegram
+    persist_dashboard_docker
+    install_dashboard_docker
     verify
     verify_openwearables
     persist_install_args
