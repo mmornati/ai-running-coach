@@ -1,0 +1,25 @@
+#!/usr/bin/env bash
+# Faux docker : démon injoignable par défaut (aucun test ne touche au vrai Docker de la machine).
+# $ARC_FAKE_DOCKER=1 : démon joignable, aucun conteneur ; $ARC_FAKE_TRAEFIK=<ports> : un conteneur
+# « traefik » (image traefik:v3, réseau proxy, point d'entrée web) qui publie ces ports
+# (« 127.0.0.1:80 », « 0.0.0.0:80 »…).
+. "$(dirname "$0")/_common.sh"
+stub_init "$@"
+[ -n "${ARC_FAKE_DOCKER:-}" ] || exit 1
+case "$1" in
+    info) exit 0 ;;
+    compose) [ "${2:-}" = version ] && echo "Docker Compose version v2-stub"; exit 0 ;;
+    ps)
+        case "$*" in
+            *--format*) [ -n "${ARC_FAKE_TRAEFIK:-}" ] && printf 'traefik\ttraefik:v3\n' ;;
+        esac
+        exit 0 ;;
+    inspect)
+        case "$*" in
+            *Args*) [ -n "${ARC_FAKE_TRAEFIK:-}" ] && printf '%s\n' --providers.docker.network=proxy --entrypoints.web.address=:80 ;;
+            *Networks*) [ -n "${ARC_FAKE_TRAEFIK:-}" ] && printf 'proxy\n' ;;
+        esac
+        exit 0 ;;
+    port) [ -n "${ARC_FAKE_TRAEFIK:-}" ] && printf '80/tcp -> %s\n' "$ARC_FAKE_TRAEFIK"; exit 0 ;;
+esac
+exit 0

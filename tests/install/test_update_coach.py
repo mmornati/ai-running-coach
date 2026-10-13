@@ -22,6 +22,29 @@ printf '%s\\n' "$@" > "$HOME/install-called"
 FAKE_DOCTOR = """import sys
 print("doctor ok")
 """
+# Faux `docker` : un conteneur compose en cours par ligne de $HOME/containers (projet, dossier,
+# fichiers, service séparés par des tabulations) ; `compose config` rend le build.context lu dans
+# $HOME/context-<projet> ; `compose build|up` est journalisé dans $HOME/docker-calls.
+FAKE_DOCKER = """#!/usr/bin/env bash
+case "$1" in
+    info) [[ -f "$HOME/docker-down" ]] && exit 1; exit 0 ;;
+    ps) cat "$HOME/containers" 2>/dev/null; exit 0 ;;
+    compose)
+        shift; project=""
+        while [[ $# -gt 0 ]]; do
+            case "$1" in
+                -p) project="$2"; shift 2 ;;
+                --project-directory|-f) shift 2 ;;
+                *) break ;;
+            esac
+        done
+        if [[ "$1" == config ]]; then
+            printf '{"services": {"dashboard": {"build": {"context": "%s"}}}}' "$(cat "$HOME/context-$project")"
+        else
+            printf '%s %s\\n' "$project" "$*" >> "$HOME/docker-calls"
+        fi ;;
+esac
+"""
 
 
 def git(cwd: Path, *args: str) -> str:
@@ -158,6 +181,68 @@ class UpdateCoach(unittest.TestCase):
         proc = self.run_update("--check")
         self.assertEqual(proc.returncode, 3)
         self.assertIn("macOS", proc.stderr)
+
+
+    # --- Tableaux de bord Docker construits depuis le moteur --------------------------------
+    def fake_docker(self, *projects: tuple[str, str]) -> dict[str, str]:
+        """Installe le faux docker ; projects = (nom, build.context) de conteneurs en cours."""
+        bindir = self.tmp / "bin"
+        bindir.mkdir(exist_ok=True)
+        (bindir / "docker").write_text(FAKE_DOCKER, encoding="utf-8")
+        (bindir / "docker").chmod(0o755)
+        lines = []
+        for name, context in projects:
+            folder = self.tmp / "docker" / name
+            folder.mkdir(parents=True, exist_ok=True)
+            lines.append(f"{name}\t{folder}\t{folder}/compose.yaml\tdashboard\n")
+            (self.home / f"context-{name}").write_text(context, encoding="utf-8")
+        (self.home / "containers").write_text("".join(lines), encoding="utf-8")
+        return {"PATH": f"{bindir}{os.pathsep}{os.environ['PATH']}"}
+
+    def docker_calls(self) -> list[str]:
+        calls = self.home / "docker-calls"
+        return calls.read_text(encoding="utf-8").splitlines() if calls.exists() else []
+
+    def test_docker_dashboard_built_from_the_engine_is_rebuilt(self):
+        env = self.fake_docker(("coach", str(self.engine)), ("autre", str(self.tmp / "ailleurs")))
+        proc = self.run_update("--check", **env)
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        self.assertIn("« coach » reconstruit", proc.stdout)
+        self.assertNotIn("autre", proc.stdout)
+        self.assertEqual(self.docker_calls(), [])
+        proc = self.run_update("--yes", **env)
+        self.assertEqual(proc.returncode, 0, proc.stdout + proc.stderr)
+        self.assertEqual(self.docker_calls(), ["coach build --pull dashboard", "coach up -d dashboard"])
+        self.assertIn("« coach » reconstruit et relancé", proc.stdout)
+
+    def test_container_managed_by_install_sh_is_rebuilt_too(self):
+        env = self.fake_docker(("arc-dashboard", str(self.engine)))
+        proc = self.run_update("--yes", **env)
+        self.assertEqual(proc.returncode, 0, proc.stdout + proc.stderr)
+        self.assertEqual(self.docker_calls(), ["arc-dashboard build --pull dashboard", "arc-dashboard up -d dashboard"])
+
+    def test_already_up_to_date_never_rebuilds(self):
+        env = self.fake_docker(("coach", str(self.engine)))
+        self.assertEqual(self.run_update("--yes", **env).returncode, 0)
+        (self.home / "docker-calls").unlink()
+        proc = self.run_update("--yes", **env)
+        self.assertIn("Déjà à jour", proc.stdout)
+        self.assertEqual(self.docker_calls(), [])
+
+    def test_no_docker_dashboard_means_no_docker_call(self):
+        env = self.fake_docker()
+        proc = self.run_update("--yes", **env)
+        self.assertEqual(proc.returncode, 0, proc.stdout + proc.stderr)
+        self.assertEqual(self.docker_calls(), [])
+        self.assertNotIn("Docker «", proc.stdout)
+
+    def test_unreachable_docker_daemon_is_silent(self):
+        env = self.fake_docker(("coach", str(self.engine)))
+        (self.home / "docker-down").touch()
+        proc = self.run_update("--yes", **env)
+        self.assertEqual(proc.returncode, 0, proc.stdout + proc.stderr)
+        self.assertEqual(self.docker_calls(), [])
+        self.assertNotIn("Docker «", proc.stdout + proc.stderr)
 
 
 if __name__ == "__main__":

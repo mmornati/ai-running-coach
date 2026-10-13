@@ -39,7 +39,7 @@ Ne modifie rien. Relayer selon le code de sortie :
 
 | Code | Sens | Quoi dire |
 |---|---|---|
-| 0 | « Déjà à jour », ou mise à jour possible (version installée → nouvelle version, commande `install.sh …` qui sera relancée) | Montrer ces trois lignes telles quelles |
+| 0 | « Déjà à jour », ou mise à jour possible (version installée → nouvelle version, commande `install.sh …` qui sera relancée, et une ligne « Tableau de bord » par conteneur Docker qui sera reconstruit) | Montrer ces lignes telles quelles |
 | 3 | Moteur sans git | Application macOS : la mise à jour passe par l'application. Image Docker : `git pull` dans le dépôt source puis `docker compose up -d --build`. Rien d'autre à faire ici |
 | 4 | Options de la dernière installation inconnues | Installation antérieure à leur mémorisation : aider l'athlète à les retrouver (`docs/update.md`, « Retrouver ses options d'installation »), puis lui faire relancer **lui-même** `install.sh <options>` une fois — elles seront mémorisées pour la prochaine fois |
 | 5 | Moteur hors de `main`, modifications locales ou commits locaux | Ne rien forcer : citer le message et renvoyer vers `docs/update.md`. Un développeur gère ses branches lui-même |
@@ -67,10 +67,14 @@ jamais aux commits non publiés de `main`.
 
 Relayer la fin de la sortie : version installée, et les ❌/⚠️ de
 `coach_doctor.py` avec leur commande de correction (même règle que le skill
-`coach-doctor`). Rappeler en une ligne qu'il faut **ouvrir une nouvelle
-session** de l'assistant (agents et skills relus) et relancer le tableau de
-bord (`scripts/dashboard.sh`, ou `docker compose up -d --build` pour l'image
-Docker).
+`coach-doctor`). Un tableau de bord Docker construit depuis ce moteur
+(conteneur compose en cours) est reconstruit et relancé par le script : le
+dire en une ligne (« Tableau de bord Docker « … » reconstruit ») ; en cas
+d'échec, donner la commande `docker compose up -d --build` qu'il affiche. Sans
+Docker, le script n'en parle pas : n'en parlez pas non plus. Rappeler en une
+ligne qu'il faut **ouvrir une nouvelle session** de l'assistant (agents et
+skills relus) et, si aucun conteneur n'a été reconstruit, relancer le tableau
+de bord (`scripts/dashboard.sh`).
 
 ## Règles
 

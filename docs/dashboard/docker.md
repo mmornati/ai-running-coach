@@ -27,6 +27,33 @@ flowchart LR
     S[daily-sync.sh] -->|écrit| W
 ```
 
+## Lancé par `install.sh`
+
+Le plus simple : laissez l'installeur s'en occuper. Quand Docker est présent, `./install.sh`
+lancé dans un terminal propose une fois de servir le tableau de bord dans un conteneur (la
+réponse, même « non », est mémorisée dans `[dashboard]`). Ou explicitement :
+
+```bash
+./install.sh --dashboard-docker local      # http://127.0.0.1:8765/, rien hors de la machine
+./install.sh --dashboard-docker traefik    # derrière le Traefik de la machine
+./install.sh --dashboard-docker traefik --dashboard-host coach.example.org --dashboard-auth authentik@file
+./install.sh --dashboard-docker off        # arrête le conteneur lancé par install.sh
+```
+
+- **`local`** publie `127.0.0.1:<[dashboard].port>` seulement.
+- **`traefik`** exige un conteneur Traefik en cours : son réseau et son point d'entrée sont
+  détectés, l'adresse est demandée (défaut `coach.localhost`). Un middleware
+  d'authentification est **obligatoire**, sauf si Traefik ne publie ses ports que sur
+  `127.0.0.1` (rien n'est alors joignable hors de la machine).
+- Le compose est généré dans `~/.config/ai-running-coach/dashboard/compose.yaml` (projet
+  `arc-dashboard`), avec les mêmes garanties que ci-dessous (lecture seule, sans privilèges).
+- Une relance de `./install.sh` garde le conteneur lancé mais **ne reconstruit jamais**
+  l'image : c'est [`/update-coach`](../skills/update-coach.md) qui le fait, à chaque mise à
+  jour du moteur.
+
+Pour un déploiement exposé sur Internet avec Authentik ou un tunnel Cloudflare, le compose
+fourni (`deploy/dashboard`, ci-dessous) reste la voie documentée.
+
 ## Mise en route
 
 !!! tip "Préréglage `--preset docker` — prépare l'hôte, pas le conteneur"
@@ -76,8 +103,13 @@ docker compose ps        # l'état passe à « healthy » en une trentaine de se
 ## Mettre à jour
 
 Vos fichiers sont lus en direct : une séance ou un plan écrit par le coach apparaît
-sans rien toucher. L'image, elle, embarque le **code** du moteur : après un `git pull`
-du moteur, reconstruisez-la.
+sans rien toucher. L'image, elle, embarque le **code** du moteur : un simple
+`docker restart` garde l'ancienne version, il faut la reconstruire.
+
+Avec [`/update-coach`](../skills/update-coach.md), c'est automatique : un conteneur en
+cours construit depuis le dépôt du moteur est reconstruit (`build --pull`) et relancé
+à la fin de la mise à jour. Pensez seulement au `diff` du `.env` ci-dessous quand une
+release ajoute une variable. À la main :
 
 ```bash
 cd ~/ai-running-coach && git pull --ff-only

@@ -537,6 +537,17 @@ essayés. L'adresse d'écoute, elle, n'est pas réglable : `127.0.0.1` uniquemen
 [conteneur Docker](dashboard/docker.md) écoute ailleurs, derrière un reverse proxy
 authentifié.
 
+Conteneur lancé par `install.sh` (`--dashboard-docker`, voir
+[Docker](dashboard/docker.md#lance-par-installsh)) — écrit par l'installeur, ne pas éditer
+à la main sauf pour corriger une détection :
+
+| Clé | Effet |
+|---|---|
+| `docker` | `off` (réponse « non », ou désactivé) \| `local` (`127.0.0.1:<port>`) \| `traefik`. Absente : la question est posée au prochain `./install.sh` en terminal, si Docker est présent. |
+| `docker_host` | Avec `traefik` : adresse servie (défaut `coach.localhost`). |
+| `docker_auth` | Avec `traefik` : middleware d'authentification. Vide seulement si Traefik ne publie ses ports que sur `127.0.0.1`. |
+| `docker_network`, `docker_entrypoint` | Avec `traefik` : réseau et point d'entrée, détectés sur le conteneur Traefik. |
+
 ## La langue — `[language]`
 
 ```toml
