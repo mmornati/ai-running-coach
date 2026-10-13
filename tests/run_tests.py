@@ -10,13 +10,22 @@
 
 Le palier C coûte des jetons et n'est pas déterministe : il est ignoré sauf si
 ARC_LLM_TESTS=1 et que le runner est authentifié. Voir tests/README.md.
+
+Les tests tournent sous le Python de la CI (3.12) : lancé avec un Python plus ancien
+(3.10 d'Ubuntu, 3.9 de macOS), ce script se relance sous 3.12 via `uv`, et place un
+`python3` 3.12 en tête du PATH pour les scripts que les tests lancent eux-mêmes.
+ARC_TESTS_ANY_PYTHON=1 garde le Python courant.
 """
 
 from __future__ import annotations
 
 import argparse
+import hashlib
 import os
+import shutil
+import subprocess
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -29,6 +38,63 @@ TIERS = {
     "c": ("evals", "évals d'exécution des prompts"),
     "d": ("data", "données : contrat, index, métriques"),
 }
+
+
+# Python de la CI (.github/workflows/tests.yml) : `tomllib` (3.11+), syntaxe des f-strings
+# (3.12) et valeurs flottantes des goldens supposent cette version.
+CI_PYTHON = (3, 12)
+
+
+def find_ci_python() -> str | None:
+    """Interpréteur CI_PYTHON trouvé (ou installé) par `uv`, sinon None."""
+    uv = shutil.which("uv")
+    if not uv:
+        return None
+    version = ".".join(map(str, CI_PYTHON))
+    for cmd in (["python", "find", version], ["python", "install", version]):
+        proc = subprocess.run([uv, *cmd], capture_output=True, text=True)
+        if proc.returncode == 0:
+            break
+    else:
+        return None
+    found = subprocess.run([uv, "python", "find", version], capture_output=True, text=True)
+    path = found.stdout.strip()
+    return path if found.returncode == 0 and path else None
+
+
+def python_shim_dir(interpreter: str) -> Path:
+    """Dossier où `python3` et `python` pointent sur `interpreter` (réutilisé d'un run à l'autre)."""
+    digest = hashlib.sha256(interpreter.encode()).hexdigest()[:12]
+    shim = Path(tempfile.gettempdir()) / f"arc-tests-python-{digest}"
+    shim.mkdir(exist_ok=True)
+    for name in ("python3", "python"):
+        link = shim / name
+        if not (link.is_symlink() and os.readlink(link) == interpreter):
+            if link.is_symlink() or link.exists():
+                link.unlink()
+            link.symlink_to(interpreter)
+    return shim
+
+
+def ensure_ci_python() -> None:
+    """Se relance sous CI_PYTHON si le Python courant est plus ancien (sans effet en CI)."""
+    if sys.version_info[:2] >= CI_PYTHON or os.environ.get("ARC_TESTS_ANY_PYTHON") == "1":
+        return
+    current = ".".join(map(str, sys.version_info[:3]))
+    if os.environ.get("ARC_TESTS_REEXEC") == "1":
+        return  # déjà relancé : ne jamais boucler
+    interpreter = find_ci_python()
+    wanted = ".".join(map(str, CI_PYTHON))
+    if not interpreter:
+        print(f"⚠ Python {current} : les tests attendent Python {wanted} (CI). Installez uv "
+              f"(https://docs.astral.sh/uv/) ou lancez-les avec python{wanted} — des erreurs "
+              "tomllib/f-string sont attendues avec ce Python.\n", file=sys.stderr)
+        return
+    env = dict(os.environ, ARC_TESTS_REEXEC="1",
+               PATH=f"{python_shim_dir(interpreter)}{os.pathsep}{os.environ.get('PATH', '')}")
+    print(f"Python {current} → relance sous {interpreter} (Python de la CI)\n", file=sys.stderr)
+    sys.stderr.flush()
+    os.execve(interpreter, [interpreter, str(Path(__file__).resolve()), *sys.argv[1:]], env)
 
 
 def build_suite(tiers: list) -> unittest.TestSuite:
@@ -79,6 +145,7 @@ def shard_suite(suite: unittest.TestSuite, index: int, total: int) -> unittest.T
 
 
 def main() -> int:
+    ensure_ci_python()
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--tier", default="abd", help="a, b, c, d, une combinaison (« abd ») ou « all »")
     parser.add_argument("-v", "--verbose", action="count", default=1)
