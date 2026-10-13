@@ -136,9 +136,15 @@ daily-sync les committe de lui-même.
 `garmin-mcp` est épinglé à un commit précis (`GARMIN_MCP_REF` dans `install.sh`) : relancer
 `./install.sh` (ou `/update-coach`) compare l'origine de l'outil installé au pin et le réinstalle
 (`uv tool install --force`) s'il diffère — ce qui met aussi à jour ses dépendances transitives
-(correctifs de sécurité). Vos tokens Garmin sont conservés, et `~/.garminconnect` est resserré en
-`700`/`600` (GHSA-wjhr-76vg-2hvc). Une origine personnalisée n'est jamais écrasée.
-Inutile de lancer `uv tool upgrade garmin-mcp` à la main.
+(correctifs de sécurité). L'installation est ainsi alignée sur le commit revu par le projet, même
+si un commit amont plus récent avait été installé à la main. Vos tokens Garmin sont conservés, et
+`~/.garminconnect` est resserré en `700`/`600` (filet de sécurité, GHSA-wjhr-76vg-2hvc). Une origine
+personnalisée n'est jamais écrasée. Quand le commit est déjà le bon, relancer `./install.sh` ne
+re-résout pas les dépendances : pour les rafraîchir en gardant le commit épinglé, lancez
+
+```bash
+uv tool upgrade garmin-mcp
+```
 
 `intervals-icu-mcp` est épinglé à un commit précis (`INTERVALS_MCP_REF` dans
 `install.sh`) : quand ce commit change dans le moteur, relancez

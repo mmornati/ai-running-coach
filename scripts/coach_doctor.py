@@ -131,6 +131,7 @@ import os
 import platform
 import queue
 import re
+import shlex
 import shutil
 import signal
 import sqlite3
@@ -177,7 +178,20 @@ GARMIN_MCP_PINNED_URL = "https://github.com/Taxuspt/garmin_mcp"
 GARMIN_MCP_PINNED_COMMIT = "cfc5d799ab0f165e837f1188a1d093c65838aaf7"
 GARMIN_MCP_INSTALL_FIX = f"uv tool install --python 3.12 git+{GARMIN_MCP_PINNED_URL}@{GARMIN_MCP_PINNED_COMMIT}"
 GARMIN_MCP_UPDATE_FIX = f"uv tool install --python 3.12 --force git+{GARMIN_MCP_PINNED_URL}@{GARMIN_MCP_PINNED_COMMIT}"
-GARMIN_TOKEN_PERMS_FIX = "chmod 700 ~/.garminconnect && chmod 600 ~/.garminconnect/*"
+
+
+def garmin_token_perms_fix(tokens_dir: Path, base64_open: bool = False) -> str:
+    """Commande de resserrage pour LE dossier de jetons résolu (pas toujours ~/.garminconnect)."""
+    home = Path.home()
+    try:
+        shown = "~/" + str(tokens_dir.relative_to(home)) if tokens_dir != home else str(tokens_dir)
+    except ValueError:
+        shown = str(tokens_dir)
+    quoted = shown if shown.startswith("~/") and shlex.quote(shown[2:]) == shown[2:] else shlex.quote(shown)
+    cmd = f"chmod 700 {quoted} && find {quoted} -type f -exec chmod 600 {{}} +"
+    if base64_open:
+        cmd += " && chmod 600 ~/.garminconnect_base64"
+    return cmd
 
 # Pin du serveur MCP intervals.icu (#165) : DOIT rester identique à `INTERVALS_MCP_REF`
 # dans install.sh — tests/lint/test_data_source_parity.py le vérifie.
@@ -383,25 +397,46 @@ def check_garmin_mcp_presence(workspace: Path) -> dict:
     )
 
 
-def check_garmin_token_perms(tokens_dir: Path, config: dict) -> dict:
-    """GHSA-wjhr-76vg-2hvc : `garminconnect` 0.3.2 écrit le magasin de jetons (jeton de
-    rafraîchissement compris) avec les droits du umask (0644, dossier 0755). `warning` si le
-    dossier ou un fichier est accessible au groupe/autres. Ne lit JAMAIS le contenu des fichiers
-    (seulement leurs droits) ; ne suit pas les liens symboliques."""
+def check_garmin_token_perms(tokens_dir: Path, config: dict, home: Optional[Path] = None) -> dict:
+    """GHSA-wjhr-76vg-2hvc : des jetons Garmin (jeton de rafraîchissement compris) créés par une
+    ancienne version de garmin-mcp, un autre outil ou une connexion garminconnect directe peuvent
+    rester lisibles par les autres comptes de la machine (0644 / dossier 0755). `warning` si le
+    dossier, un fichier ou `~/.garminconnect_base64` est accessible au groupe/autres. Ne lit JAMAIS
+    le contenu des fichiers (seulement leurs droits) ; ne suit pas les liens symboliques."""
     check_id = "garmin_token_perms"
     source = (config.get("data") or {}).get("source", "garmin")
     if source != "garmin":
         return build_check(check_id, "info",
                            f"[data].source = \"{source}\" — jetons Garmin non applicables.", fix=None)
+    base64_file = (home or Path.home()) / ".garminconnect_base64"
+    open_items = []
+    base64_open = False
+    try:
+        b64_mode = base64_file.lstat().st_mode
+        if stat.S_ISREG(b64_mode) and b64_mode & 0o077:
+            open_items.append(f"{base64_file.name} ({b64_mode & 0o777:03o})")
+            base64_open = True
+    except OSError:
+        pass
     try:
         dir_mode = tokens_dir.lstat().st_mode
     except OSError:
+        dir_mode = None
+    if dir_mode is None:
+        if open_items:
+            return build_check(
+                check_id, "warning",
+                "Jeton Garmin lisible par d'autres comptes de la machine : " + ", ".join(open_items)
+                + " (GHSA-wjhr-76vg-2hvc). Relancer ./install.sh le resserre aussi.",
+                fix="chmod 600 ~/.garminconnect_base64")
         return build_check(check_id, "info", f"Aucun dossier de jetons Garmin ({tokens_dir}).", fix=None)
+    if stat.S_ISLNK(dir_mode):
+        return build_check(check_id, "info",
+                           f"{tokens_dir} est un lien symbolique : droits non resserrés automatiquement.", fix=None)
     if not stat.S_ISDIR(dir_mode):
         return build_check(check_id, "info", f"{tokens_dir} n'est pas un dossier : droits non vérifiés.", fix=None)
-    open_items = []
     if dir_mode & 0o077:
-        open_items.append(f"dossier ({dir_mode & 0o777:03o})")
+        open_items.insert(0, f"dossier ({dir_mode & 0o777:03o})")
     try:
         entries = sorted(tokens_dir.iterdir())
     except OSError:
@@ -417,9 +452,9 @@ def check_garmin_token_perms(tokens_dir: Path, config: dict) -> dict:
         return build_check(
             check_id, "warning",
             "Jetons Garmin lisibles par d'autres comptes de la machine : " + ", ".join(open_items)
-            + ". Le client garminconnect fixé par garmin-mcp les écrit avec le umask "
+            + ". Ils ont pu être créés par une ancienne version de garmin-mcp ou un autre outil "
             "(GHSA-wjhr-76vg-2hvc). Relancer ./install.sh les resserre aussi.",
-            fix=GARMIN_TOKEN_PERMS_FIX,
+            fix=garmin_token_perms_fix(tokens_dir, base64_open),
         )
     return build_check(check_id, "ok", "Jetons Garmin : accessibles à leur seul propriétaire.", fix=None)
 

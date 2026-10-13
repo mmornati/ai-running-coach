@@ -652,7 +652,9 @@ class TestPreconditions(ClaudeBackendCase):
     def test_version_floor_blocks_vulnerable_sdk(self):
         """GHSA-h4mw-j7qp-8mwm : < 0.2.121 refusé par check() ; inconnue = non bloquant, dite."""
         cases = [("0.2.120", False), ("0.2.121", True), ("0.2.165", True), ("1.0.0", True),
-                 ("0.1.99", False), ("0.2", False), ("0.2.121rc1", True), ("?", True)]
+                 ("0.1.99", False), ("0.2", False), ("?", True),
+                 ("0.2.121rc1", False), ("0.2.121.dev0", False), ("0.2.121a1", False),
+                 ("0.2.121b2", False), ("0.2.121.post1", True), ("0.2.122rc1", True)]
         for version, expected in cases:
             with self.subTest(version=version):
                 backend, sdk, _ = self.backend([])
@@ -665,7 +667,31 @@ class TestPreconditions(ClaudeBackendCase):
                 if version == "?":
                     self.assertIn("version inconnue", msg)
 
+    def test_run_turn_refuses_vulnerable_sdk_before_any_sdk_call(self):
+        for version in ("0.2.120", "0.2.121rc1", "0.2.121.dev0"):
+            with self.subTest(version=version):
+                holder: list = []
+                backend, sdk, record = self.backend(holder)
+                sdk.__version__ = version
+
+                class NoCall:
+                    def __init__(self, *a, **k):
+                        raise AssertionError("SDK appelé malgré la version vulnérable")
+
+                sdk.ClaudeSDKClient = NoCall
+                sdk.ClaudeAgentOptions = NoCall
+                h = Harness(self.ws)
+                h.ctx.backend_state["sdk_session_id"] = "sess-1"
+                with self.assertRaises(BackendError) as cm:
+                    backend.run_turn(h.ctx, "x")
+                self.assertIn("GHSA-h4mw-j7qp-8mwm", str(cm.exception))
+                self.assertIn("pip install -U 'claude-agent-sdk>=0.2.121'", str(cm.exception))
+
     def test_version_compare_helpers(self):
+        for v in ("0.2.121rc1", "0.2.121.dev0", "0.2.121a1", "0.2.121b2"):
+            self.assertTrue(C.version_below(v, "0.2.121"), v)
+        self.assertFalse(C.version_below("0.2.121.post1", "0.2.121"))
+        self.assertFalse(C.version_below("0.2.122rc1", "0.2.121"))
         self.assertTrue(C.version_below("0.2.120", "0.2.121"))
         self.assertFalse(C.version_below("0.2.121", "0.2.121"))
         self.assertFalse(C.version_below("0.10.0", "0.2.121"))

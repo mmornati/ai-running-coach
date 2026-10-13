@@ -25,7 +25,7 @@ commande de correction sous chaque ligne non ✅ :
 | `config_files` | `config/workspace.toml` et `config/workspace.user.toml` sont du TOML valide |
 | `athlete_profile` | FC max / FC de repos renseignées dans le profil — sinon repli sur le RPE |
 | `index_freshness` | `.arc/coach.db` à jour par rapport aux fichiers du workspace |
-| `garmin_token_perms` | (source `garmin`, sinon ℹ️) Dossier `~/.garminconnect` et fichiers de jetons inaccessibles au groupe/autres (GHSA-wjhr-76vg-2hvc ; droits seuls, contenu jamais lu). ⚠️ sinon : `chmod 700 ~/.garminconnect && chmod 600 ~/.garminconnect/*` ou relancer `install.sh` |
+| `garmin_token_perms` | (source `garmin`, sinon ℹ️) Dossier `~/.garminconnect` et fichiers de jetons inaccessibles au groupe/autres (GHSA-wjhr-76vg-2hvc ; droits seuls, contenu jamais lu). ⚠️ sinon : `chmod 700 ~/.garminconnect && find ~/.garminconnect -type f -exec chmod 600 {} +` ou relancer `install.sh` |
 | `garmin_mcp_pin` | (source `garmin`, sinon ℹ️) Serveur `garmin-mcp` au commit épinglé par `install.sh` ? ⚠️ sinon : relancer `install.sh` (réinstalle au pin, jetons conservés) ; ℹ️ pour une origine personnalisée ou illisible |
 | `out_of_contract` | Nombre de fichiers sans bloc ```` ```arc ```` conforme |
 | `daily_sync_scheduled` | Tâche cron ou LaunchAgent du daily-sync installée ; en mode `[sync].mode = "watch"`, passage récent de `garmin_watch.py` (⚠ après 3 intervalles de silence) |

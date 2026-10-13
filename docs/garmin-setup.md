@@ -28,9 +28,11 @@ flowchart LR
 ## Composants installés
 
 `garmin-mcp` est épinglé à un commit précis (`GARMIN_MCP_REF` dans `install.sh`). Une installation existante qui n'est pas à ce commit
-(par exemple installée sans pin) est **réinstallée au pin** par `./install.sh` : `uv tool install` re-résout les dépendances
-transitives, ce qui apporte leurs correctifs de sécurité. Vos tokens ne sont pas touchés. Une origine personnalisée (chemin local,
-autre fork) n'est jamais écrasée ; `/coach-doctor` (`garmin_mcp_pin`) signale l'écart.
+(par exemple installée sans pin, ou à un commit plus récent installé à la main) est **réalignée sur le commit revu par le projet** par
+`./install.sh` : `uv tool install` re-résout alors les dépendances transitives, ce qui apporte leurs correctifs de sécurité. Vos tokens
+ne sont pas touchés. Une origine personnalisée (chemin local, autre fork) n'est jamais écrasée ; `/coach-doctor` (`garmin_mcp_pin`)
+signale l'écart. Relancer `./install.sh` quand le commit est déjà le bon ne re-résout rien : pour rafraîchir les dépendances
+transitives tout en gardant le commit épinglé, lancez `uv tool upgrade garmin-mcp` (le commit épinglé est conservé).
 
 | Composant | Rôle | Installation |
 |---|---|---|
@@ -353,14 +355,17 @@ Les tokens Garmin sont stockés dans `~/.garminconnect/` et sont valides environ
 
 ### Droits du dossier de tokens
 
-Le client `garminconnect` figé par `garmin-mcp` (0.3.2, avis GHSA-wjhr-76vg-2hvc, corrigé en 0.3.5 mais non validé par `garmin-mcp`)
-écrit `garmin_tokens.json` (qui contient le jeton de rafraîchissement) avec les droits du `umask` : lisible par les autres comptes
-de la machine. `install.sh` resserre donc `~/.garminconnect` à `700` et ses fichiers à `600` à **chaque** exécution (aussi lors d'un
-`/update-coach`, et après l'authentification), le daily-sync le refait après chaque run (le client réécrit le fichier à chaque
-rafraîchissement), et `/coach-doctor` (`garmin_token_perms`) vérifie le résultat. À la main :
+`garmin_tokens.json` contient le jeton de rafraîchissement : il ne doit être lisible que par vous (avis GHSA-wjhr-76vg-2hvc sur
+`garminconnect` 0.3.2, version figée par `garmin-mcp` ; correctif amont en 0.3.5, non validé par `garmin-mcp`). Les versions récentes
+de `garmin-mcp-auth` créent déjà le dossier en `700` et les fichiers en `600`, mais des jetons créés par une **version antérieure** de
+`garmin-mcp`, par un autre outil ou par une connexion `garminconnect` directe peuvent rester en `644` (le client réécrit un fichier
+existant sans en changer le mode). `install.sh` resserre donc, comme **filet de sécurité**, `~/.garminconnect` à `700`, ses fichiers à
+`600`, ainsi que `~/.garminconnect_base64` et un éventuel dossier personnalisé (`GARMINTOKENS` de l'entrée `garmin` de `.mcp.json`),
+à **chaque** exécution (aussi lors d'un `/update-coach`, et après l'authentification) ; le daily-sync le refait après chaque run
+(un fichier recréé par une reconnexion naît au `umask`), et `/coach-doctor` (`garmin_token_perms`) vérifie le résultat. À la main :
 
 ```bash
-chmod 700 ~/.garminconnect && chmod 600 ~/.garminconnect/*
+chmod 700 ~/.garminconnect && find ~/.garminconnect -type f -exec chmod 600 {} + && chmod 600 ~/.garminconnect_base64
 ```
 
 ### Vérifier les tokens

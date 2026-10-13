@@ -1442,24 +1442,54 @@ install_uv() {
 # ---------------------------------------------------------------------------
 # 2. garmin-mcp + auth
 # ---------------------------------------------------------------------------
-# GHSA-wjhr-76vg-2hvc : `garminconnect` 0.3.2 (version figée par garmin_mcp en amont) écrit le
-# magasin de jetons OAuth (`garmin_tokens.json`, qui contient le jeton de rafraîchissement) avec
-# les droits par défaut du umask (0644, dossier 0755) : lisible par les autres comptes de la
-# machine. Le correctif amont (0.3.5) n'est pas validé par garmin_mcp : on resserre de NOTRE côté
-# — dossier en 0700, fichiers réguliers en 0600 (on ne RETIRE que les droits groupe/autres ;
-# `find -type f` ne suit aucun lien symbolique). Idempotent, ne fait jamais échouer l'installation.
-# Relancé par scripts/daily-sync.sh après chaque run, car le client réécrit le fichier à chaque
-# rafraîchissement du jeton. Contrôlé par /coach-doctor (check `garmin_token_perms`).
+# GHSA-wjhr-76vg-2hvc (garminconnect 0.3.2, version figée par garmin_mcp en amont ; correctif amont
+# en 0.3.5, non validé par garmin_mcp) : le magasin de jetons OAuth (`garmin_tokens.json`, qui
+# contient le jeton de rafraîchissement) peut être lisible par les autres comptes de la machine.
+# `Client.dump()` écrit avec `write_text`, qui CONSERVE le mode d'un fichier existant : le umask ne
+# joue qu'à la création. Les versions récentes de garmin-mcp-auth resserrent déjà le dossier (700)
+# et les fichiers (600), mais des jetons créés par une version antérieure de garmin-mcp, par un
+# autre outil ou par une connexion garminconnect directe restent parfois en 0644 (constaté sur une
+# installation réelle). Ce resserrage est donc un FILET DE SÉCURITÉ de notre côté : dossier en 0700,
+# fichiers réguliers en 0600 (on ne RETIRE que les droits groupe/autres ; `find -type f` ne suit
+# aucun lien symbolique), ainsi que `~/.garminconnect_base64` (fichier régulier seulement) et
+# l'éventuel dossier personnalisé `GARMINTOKENS` de l'entrée `garmin` de .mcp.json (ou de
+# l'environnement). Idempotent, ne fait jamais échouer l'installation, sans effet si rien n'existe.
+# Relancé par scripts/daily-sync.sh après chaque run (fichier recréé au umask par une
+# reconnexion). Contrôlé par /coach-doctor (check `garmin_token_perms`).
+garmin_token_dirs() {
+    printf '%s\n' "$GARMIN_TOKENS_DIR"
+    local custom
+    custom="$(python3 -c '
+import json, os, sys
+try:
+    value = json.load(open(sys.argv[1]))["mcpServers"]["garmin"]["env"]["GARMINTOKENS"]
+except Exception:
+    value = os.environ.get("GARMINTOKENS", "")
+if isinstance(value, str) and value:
+    print(os.path.expanduser(value))
+' "$WORKSPACE_ROOT/.mcp.json" 2>/dev/null || true)"
+    [[ -z "$custom" || "$custom" == "$GARMIN_TOKENS_DIR" ]] || printf '%s\n' "$custom"
+}
+
 restrict_garmin_tokens() {
-    [[ -d "$GARMIN_TOKENS_DIR" && ! -L "$GARMIN_TOKENS_DIR" ]] || return 0
-    if [[ "$DRY_RUN" -eq 1 ]]; then
-        printf '%s\n' "${C_YELLOW}[dry-run]${C_RESET} resserrage des droits de $GARMIN_TOKENS_DIR (dossier 700, jetons 600)"
-        return 0
+    local d b64="$HOME/.garminconnect_base64"
+    while IFS= read -r d; do
+        [[ -n "$d" && -d "$d" && ! -L "$d" ]] || continue
+        if [[ "$DRY_RUN" -eq 1 ]]; then
+            printf '%s\n' "${C_YELLOW}[dry-run]${C_RESET} resserrage des droits de $d (dossier 700, jetons 600)"
+            continue
+        fi
+        if chmod go-rwx "$d" 2>/dev/null; then
+            find "$d" -type f -exec chmod go-rwx {} + 2>/dev/null || true
+            ok "Jetons Garmin ($d) : accès réservé au propriétaire (GHSA-wjhr-76vg-2hvc)"
+        else
+            warn "Droits de $d non resserrés (voir /coach-doctor, check garmin_token_perms)."
+        fi
+    done < <(garmin_token_dirs)
+    if [[ -f "$b64" && ! -L "$b64" && "$DRY_RUN" -eq 0 ]]; then
+        chmod go-rwx "$b64" 2>/dev/null || true
     fi
-    chmod go-rwx "$GARMIN_TOKENS_DIR" 2>/dev/null \
-        || { warn "Droits de $GARMIN_TOKENS_DIR non resserrés (voir /coach-doctor, check garmin_token_perms)."; return 0; }
-    find "$GARMIN_TOKENS_DIR" -type f -exec chmod go-rwx {} + 2>/dev/null || true
-    ok "Droits des jetons Garmin : dossier 700, fichiers 600 (GHSA-wjhr-76vg-2hvc)"
+    return 0
 }
 
 # Origine VCS de l'installation `uv tool` de garmin-mcp : « <url> <commit> » (vide si
@@ -1475,7 +1505,7 @@ for path in glob.glob(sys.argv[1] + "/lib/python*/site-packages/garmin_mcp-*.dis
     try:
         info = json.load(open(path))
         print(info.get("url", ""), (info.get("vcs_info") or {}).get("commit_id", ""))
-    except (OSError, ValueError):
+    except Exception:  # noqa: BLE001 — JSON illisible ou non-objet : ne rien afficher
         pass
     break
 PYEOF
@@ -1508,7 +1538,7 @@ upgrade_garmin_pin_if_needed() {
         ok "garmin-mcp au commit épinglé (${want_commit:0:7})"
         return 0
     fi
-    log "Mise à jour de garmin-mcp : ${url#https://github.com/}@${commit:0:7} -> @${want_commit:0:7} (dépendances à jour ; jetons Garmin conservés)"
+    log "Réinstallation de garmin-mcp au commit épinglé du projet : ${commit:0:7} -> ${want_commit:0:7} (dépendances re-résolues ; jetons Garmin conservés)"
     run uv tool install --python 3.12 --force "$GARMIN_MCP_REF" \
         || warn "Mise à jour de garmin-mcp échouée — l'ancienne version reste en place (voir /coach-doctor)."
 }
@@ -1548,7 +1578,6 @@ install_garmin_mcp() {
     else
         warn "Authentification Garmin sautée (--no-auth). Lancez 'uv run garmin-mcp-auth' plus tard."
     fi
-    restrict_garmin_tokens
 }
 
 # ---------------------------------------------------------------------------
@@ -1627,7 +1656,7 @@ for path in glob.glob(sys.argv[1] + "/lib/python*/site-packages/intervals_icu_mc
     try:
         info = json.load(open(path))
         print(info.get("url", ""), (info.get("vcs_info") or {}).get("commit_id", ""))
-    except (OSError, ValueError):
+    except Exception:  # noqa: BLE001 — JSON illisible ou non-objet : ne rien afficher
         pass
     break
 PYEOF
@@ -2848,6 +2877,9 @@ main() {
     else
         install_garmin_mcp
     fi
+    # Sans effet si aucun dossier de jetons n'existe ; resserre aussi des jetons laissés par une
+    # source Garmin abandonnée.
+    restrict_garmin_tokens
     install_leanproxy
     configure_leanproxy
     prepare_workspace

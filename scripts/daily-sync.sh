@@ -797,15 +797,36 @@ telegram_summary() {
 # problème sous-jacent au même run (voir revue PR #77).
 TOKEN_ALERT_SENT_THIS_RUN=0
 
-# GHSA-wjhr-76vg-2hvc : garminconnect 0.3.2 réécrit le magasin de jetons au rafraîchissement
-# avec les droits du umask (0644). On retire les droits groupe/autres après chaque run
-# (Garmin uniquement ; silencieux, jamais bloquant). Voir install.sh (restrict_garmin_tokens).
+# GHSA-wjhr-76vg-2hvc : filet de sécurité, pas un correctif de cause. `Client.dump()` de
+# garminconnect 0.3.2 écrit avec `write_text`, qui conserve le mode d'un fichier EXISTANT ; le umask
+# ne joue qu'à la création. Mais un fichier de jetons recréé par une reconnexion (garmin-mcp-auth
+# ancien, autre outil, connexion garminconnect directe) naît en 0644 : on retire donc les droits
+# groupe/autres après chaque run (Garmin uniquement ; silencieux, jamais bloquant). Dossier
+# résolu comme le fait /coach-doctor : GARMINTOKENS de l'entrée `garmin` de .mcp.json, puis de
+# l'environnement, puis GARMIN_TOKENS_DIR, puis ~/.garminconnect. Voir install.sh
+# (restrict_garmin_tokens).
 restrict_garmin_tokens() {
     [[ "$SOURCE" == "garmin" ]] || return 0
-    local d="${GARMIN_TOKENS_DIR:-$HOME/.garminconnect}"
-    [[ -d "$d" && ! -L "$d" ]] || return 0
-    chmod go-rwx "$d" 2>/dev/null || return 0
-    find "$d" -type f -exec chmod go-rwx {} + 2>/dev/null || true
+    local d
+    d="$(python3 -c '
+import json, sys
+try:
+    value = json.load(open(sys.argv[1]))["mcpServers"]["garmin"]["env"]["GARMINTOKENS"]
+    if isinstance(value, str):
+        print(value)
+except Exception:
+    pass
+' "$ARC_WORKSPACE/.mcp.json" 2>/dev/null || true)"
+    d="${d:-${GARMINTOKENS:-${GARMIN_TOKENS_DIR:-$HOME/.garminconnect}}}"
+    d="${d/#\~/$HOME}"
+    if [[ -d "$d" && ! -L "$d" ]]; then
+        chmod go-rwx "$d" 2>/dev/null || true
+        find "$d" -type f -exec chmod go-rwx {} + 2>/dev/null || true
+    fi
+    if [[ -f "$HOME/.garminconnect_base64" && ! -L "$HOME/.garminconnect_base64" ]]; then
+        chmod go-rwx "$HOME/.garminconnect_base64" 2>/dev/null || true
+    fi
+    return 0
 }
 
 check_token_alert() {
@@ -1170,7 +1191,7 @@ main() {
     fi
     : > "$run_marker"
     raw_output="$("${exec_cmd[@]}" 2>>"$LOG_FILE")" || rc=$?
-    restrict_garmin_tokens
+    restrict_garmin_tokens || true
     if [[ "$OUTPUT_KIND" == "text" ]]; then
         output="$raw_output"
         printf '%s\n' "$output" >> "$LOG_FILE"

@@ -101,6 +101,93 @@ class TestGarminTokenPermsInstall(InstallAsserts):
             self.assertFalse((sb.home / ".garminconnect").exists())
 
 
+    def test_base64_token_file_is_tightened_and_symlink_left_alone(self):
+        with Sandbox() as sb:
+            b64 = sb.home / ".garminconnect_base64"
+            b64.write_text("fake-not-a-secret")
+            b64.chmod(0o644)
+            self.assertSucceeded(sb.install("--no-auth", "--ide", "claude"))
+            self.assertEqual(_mode(b64), 0o600)
+        with Sandbox() as sb:
+            target = sb.root / "elsewhere.txt"
+            target.write_text("x")
+            target.chmod(0o644)
+            (sb.home / ".garminconnect_base64").symlink_to(target)
+            self.assertSucceeded(sb.install("--no-auth", "--ide", "claude"))
+            self.assertEqual(_mode(target), 0o644)
+
+    def test_custom_garmintokens_dir_from_mcp_json_is_tightened(self):
+        with Sandbox() as sb:
+            custom = sb.root / "custom-tokens"
+            custom.mkdir()
+            tok = custom / "garmin_tokens.json"
+            tok.write_text("{}")
+            tok.chmod(0o644)
+            custom.chmod(0o755)
+            first = sb.install("--no-auth", "--ide", "claude")
+            self.assertSucceeded(first)
+            mcp = sb.repo / ".mcp.json"
+            data = json.loads(mcp.read_text())
+            data["mcpServers"]["garmin"].setdefault("env", {})["GARMINTOKENS"] = str(custom)
+            mcp.write_text(json.dumps(data))
+            tok.chmod(0o644)
+            custom.chmod(0o755)
+            self.assertSucceeded(sb.install("--no-auth", "--ide", "claude"))
+            self.assertEqual(_mode(custom), 0o700)
+            self.assertEqual(_mode(tok), 0o600)
+
+    def test_tokens_are_tightened_even_when_source_is_not_garmin(self):
+        with Sandbox() as sb:
+            d, f = _tokens(sb)
+            self.assertSucceeded(sb.install("--source", "intervals", "--no-auth", "--ide", "claude"))
+            self.assertEqual(_mode(d), 0o700)
+            self.assertEqual(_mode(f), 0o600)
+            self.assertEqual(_tool_installs_for(sb, "garmin"), [])
+
+    def test_ok_message_does_not_overclaim(self):
+        with Sandbox() as sb:
+            _tokens(sb)
+            proc = sb.install("--no-auth", "--ide", "claude")
+            self.assertOutputContains(proc, "accès réservé au propriétaire")
+            self.assertOutputLacks(proc, "fichiers 600")
+
+
+def _tool_installs_for(sb, name):
+    return [a for _, a in sb.stub_calls("uv") if a.startswith("tool install") and name in a]
+
+
+class TestDailySyncTokenHook(InstallAsserts):
+    def _run(self, sb, **env):
+        fake_bin = sb.root / "fake-claude-bin"
+        fake_bin.mkdir(exist_ok=True)
+        fake = fake_bin / "claude"
+        fake.write_text("#!/usr/bin/env bash\necho ok\nexit 0\n")
+        fake.chmod(0o755)
+        path = f"{fake_bin}:{STUBS_DIR}:{os.environ.get('PATH', '')}"
+        return sb.script("daily-sync.sh", PATH=path, **env)
+
+    def test_hook_tightens_a_world_readable_token_file(self):
+        with Sandbox() as sb:
+            d, f = _tokens(sb)
+            b64 = sb.home / ".garminconnect_base64"
+            b64.write_text("x")
+            b64.chmod(0o644)
+            self.assertSucceeded(self._run(sb))
+            self.assertEqual(_mode(f), 0o600)
+            self.assertEqual(_mode(d), 0o700)
+            self.assertEqual(_mode(b64), 0o600)
+
+    def test_missing_dir_is_silent_and_exit_status_unaffected(self):
+        with Sandbox() as sb:
+            with_dir = self._run(sb)
+            self.assertFalse((sb.home / ".garminconnect").exists())
+            self.assertSucceeded(with_dir)
+            self.assertOutputLacks(with_dir, "chmod")
+            _tokens(sb)
+            again = self._run(sb)
+            self.assertEqual(with_dir.returncode, again.returncode)
+
+
 class TestGarminPinUpgrade(InstallAsserts):
     def _install(self, sb, path, **env):
         return sb.install("--no-auth", "--ide", "claude", PATH=path, **env)
@@ -140,6 +227,24 @@ class TestGarminPinUpgrade(InstallAsserts):
             self.assertEqual(_tool_installs(sb), [])
             self.assertOutputContains(proc, "origine personnalisée")
 
+    def test_non_object_direct_url_json_never_fails_the_install(self):
+        with Sandbox() as sb:
+            url, _ = _pinned(sb)
+            path = _fake_tool(sb, url, OLD_COMMIT)
+            for meta in (sb.home / ".local/share/uv/tools/garmin-mcp").rglob("direct_url.json"):
+                meta.write_text("[]")
+            proc = self._install(sb, path)
+            self.assertSucceeded(proc)
+            self.assertEqual(_tool_installs(sb), [])
+            self.assertOutputContains(proc, "illisible")
+
+    def test_reinstall_message_names_the_project_pin(self):
+        with Sandbox() as sb:
+            url, _ = _pinned(sb)
+            path = _fake_tool(sb, url, OLD_COMMIT)
+            proc = self._install(sb, path)
+            self.assertOutputContains(proc, "au commit épinglé du projet")
+
     def test_unreadable_origin_is_never_reinstalled(self):
         with Sandbox() as sb:
             url, _ = _pinned(sb)
@@ -175,7 +280,7 @@ class TestGarminTokenPermsDoctor(InstallAsserts):
             d, _ = _tokens(sb, 0o755, 0o644)
             proc, check = _doctor(sb, "garmin_token_perms", d)
             self.assertEqual(check["status"], "warning")
-            self.assertEqual(check["fix"], "chmod 700 ~/.garminconnect && chmod 600 ~/.garminconnect/*")
+            self.assertEqual(check["fix"], "chmod 700 ~/.garminconnect && find ~/.garminconnect -type f -exec chmod 600 {} +")
             self.assertNotIn("fake-not-a-secret", proc.stdout)
 
     def test_only_a_file_open_is_a_warning(self):
@@ -196,6 +301,37 @@ class TestGarminTokenPermsDoctor(InstallAsserts):
         with Sandbox() as sb:
             d, _ = _tokens(sb)
             self.assertEqual(_doctor(sb, "garmin_token_perms", d, source="intervals")[1]["status"], "info")
+
+
+    def test_symlinked_dir_is_info_not_a_non_directory(self):
+        with Sandbox() as sb:
+            real, _ = _tokens(sb, 0o755, 0o644)
+            link = sb.root / "link-tokens"
+            link.symlink_to(real)
+            check = _doctor(sb, "garmin_token_perms", link)[1]
+            self.assertEqual(check["status"], "info")
+            self.assertIn("lien symbolique", check["message"])
+            self.assertNotIn("n'est pas un dossier", check["message"])
+
+    def test_base64_file_is_checked_and_fix_follows_resolved_dir(self):
+        with Sandbox() as sb:
+            d, _ = _tokens(sb, 0o700, 0o600)
+            b64 = sb.home / ".garminconnect_base64"
+            b64.write_text("x")
+            b64.chmod(0o644)
+            check = _doctor(sb, "garmin_token_perms", d)[1]
+            self.assertEqual(check["status"], "warning")
+            self.assertIn(".garminconnect_base64", check["message"])
+            self.assertIn("chmod 600 ~/.garminconnect_base64", check["fix"])
+        with Sandbox() as sb:
+            custom = sb.root / "custom tokens"
+            custom.mkdir()
+            (custom / "garmin_tokens.json").write_text("{}")
+            (custom / "garmin_tokens.json").chmod(0o644)
+            custom.chmod(0o755)
+            check = _doctor(sb, "garmin_token_perms", custom)[1]
+            self.assertIn(f"'{custom}'", check["fix"])
+            self.assertNotIn("~/.garminconnect ", check["fix"])
 
 
 class TestGarminMcpPinDoctor(InstallAsserts):
