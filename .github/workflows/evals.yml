@@ -95,13 +95,13 @@ jobs:
       cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
         with:
           # Le jeton de checkout n'a besoin d'exister que le temps du clone : aucune
           # étape suivante ne pousse quoi que ce soit avec (nit, revue PR #74, point 9).
           persist-credentials: false
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
 
@@ -132,7 +132,7 @@ jobs:
 
       - name: Publier le journal
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: evals-log
           path: /tmp/evals.log
@@ -152,7 +152,7 @@ jobs:
 
       - name: Publier RESULTS.md
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: evals-results
           path: |
@@ -183,13 +183,13 @@ jobs:
       pull-requests: write
     steps:
       - name: Télécharger le relevé
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: evals-results
           path: /tmp/evals-results
 
       - name: Commenter la PR
-        uses: actions/github-script@v7
+        uses: actions/github-script@v9
         with:
           # Le contenu posté vient d'un fichier produit par notre propre script
           # (RESULTS.md), jamais du titre/corps de la PR : rien d'interpolé depuis

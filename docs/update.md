@@ -157,7 +157,7 @@ local, autre fork) n'est jamais écrasée.
 
 Le projet utilisait `eddmann/intervals-icu-mcp@cb91d4a` ; il pointe désormais sur
 le fork maintenu [`hhopke/intervals-icu-mcp`](https://github.com/hhopke/intervals-icu-mcp)
-(v5.5.0). **Concerne uniquement `[data].source = "intervals"`** : avec la source
+(v5.6.0). **Concerne uniquement `[data].source = "intervals"`** : avec la source
 Garmin (défaut), rien ne change.
 
 1. `git pull` dans le moteur, puis `./install.sh --source intervals` (ajoutez
@@ -166,7 +166,7 @@ Garmin (défaut), rien ne change.
    (`~/.config/ai-running-coach/intervals-icu-mcp/.env`) et le wrapper `run.sh`
    sont conservés** — mêmes noms de variables, même commande d'authentification.
    Équivalent manuel : `uv tool install --python 3.12 --force --with fitparse
-   "git+https://github.com/hhopke/intervals-icu-mcp@5cd7e1abf716ea28b7bc5a8da5b01860b4bf2aa4"`
+   "git+https://github.com/hhopke/intervals-icu-mcp@92a630bfc4ffe7906c9bf8d2280c1ea41a561d66"`
    (ou `uv tool uninstall intervals-icu-mcp` puis la même commande sans `--force`).
 2. **Ouvrez une nouvelle session de coaching** : une session reprise garde les
    outils MCP qu'elle avait au démarrage. Les outils du nouveau serveur portent le
@@ -179,7 +179,10 @@ Garmin (défaut), rien ne change.
 Ce qui change pour vous : les séances poussées vers Intervals.icu sont
 désormais **structurées** quand c'est possible (étapes lisibles par la montre) au
 lieu d'un texte libre — voir [Configuration Intervals.icu](intervals-setup.md).
-Les séances déjà poussées ne sont pas modifiées. Retour arrière : `git reset`
+Les séances déjà poussées ne sont pas modifiées. **Cursor + intervals.icu, mise à jour
+à la main** : relancez `./install.sh --source intervals` (la liste de refus de
+`.cursor/cli.json` gagne `icu_update_athlete_notes` ; sans cela, le daily-sync refuse de
+démarrer) — `/update-coach` s'en charge déjà. Retour arrière : `git reset`
 du moteur à la version précédente, puis `uv tool install --force` du commit
 `cb91d4a` de `eddmann/intervals-icu-mcp` (voir l'ancien `install.sh`).
 

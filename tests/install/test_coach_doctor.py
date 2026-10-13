@@ -771,7 +771,7 @@ class TestIntervalsMcpPin(InstallAsserts):
         py.parent.mkdir(parents=True)
         py.write_text("#!/bin/sh\nexit 0\n")
         py.chmod(0o755)
-        dist = env / "lib/python3.12/site-packages/intervals_icu_mcp-5.5.0.dist-info"
+        dist = env / "lib/python3.12/site-packages/intervals_icu_mcp-5.6.0.dist-info"
         dist.mkdir(parents=True)
         (dist / "direct_url.json").write_text(json.dumps({"url": url, "vcs_info": {"vcs": "git", "commit_id": commit}}))
 

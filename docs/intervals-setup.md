@@ -28,10 +28,10 @@ flowchart LR
 - **`intervals-icu-mcp`** — serveur MCP communautaire retenu par le projet :
   [`hhopke/intervals-icu-mcp`](https://github.com/hhopke/intervals-icu-mcp)
   (fork maintenu de `eddmann/intervals-icu-mcp`, qui n'a plus évolué depuis
-  novembre 2025), **épinglé au commit `5cd7e1a`** (v5.5.0 ;
+  novembre 2025), **épinglé au commit `92a630b`** (v5.6.0 ;
   `INTERVALS_MCP_REF` dans `install.sh`) — un changement en amont (renommage
   d'outil, retrait de champ) ne doit jamais casser silencieusement ce projet.
-  66 outils enregistrés en mode de suppression `safe` (défaut ; 69 en `full`,
+  67 outils enregistrés en mode de suppression `safe` (défaut ; 70 en `full`,
   61 en `none`) : activités, wellness, calendrier/événements, séances de
   bibliothèque, matériel, courbes, profil, forme ; ce projet n'en documente et
   n'en vérifie qu'un sous-ensemble, voir la table de correspondance dans
@@ -54,7 +54,7 @@ flowchart LR
 | Composant | Rôle | Installation |
 |---|---|---|
 | `uv` | Gestionnaire Python | `curl -LsSf https://astral.sh/uv/install.sh \| sh` |
-| `intervals-icu-mcp` | Serveur MCP Intervals.icu | `uv tool install --python 3.12 --with fitparse "git+https://github.com/hhopke/intervals-icu-mcp@5cd7e1abf716ea28b7bc5a8da5b01860b4bf2aa4"` |
+| `intervals-icu-mcp` | Serveur MCP Intervals.icu | `uv tool install --python 3.12 --with fitparse "git+https://github.com/hhopke/intervals-icu-mcp@92a630bfc4ffe7906c9bf8d2280c1ea41a561d66"` |
 | `intervals-icu-mcp-auth` | Authentification (clé API + athlete ID) | `(cd ~/.config/ai-running-coach/intervals-icu-mcp && intervals-icu-mcp-auth)` |
 | `run.sh` | Wrapper que la config MCP référence | écrit par `install.sh`, non téléchargé |
 

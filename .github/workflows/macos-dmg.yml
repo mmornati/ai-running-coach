@@ -33,7 +33,7 @@ jobs:
     env:
       ARC_SIGNING_IDENTITY_SECRET: ${{ secrets.MACOS_SIGNING_IDENTITY }}
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
         with:
           ref: ${{ inputs.tag || github.ref }}
 
@@ -117,7 +117,7 @@ jobs:
           (cd dist && shasum -a 256 "$name" > "$name.sha256")
           echo "ARC_DMG_NAME=$name" >> "$GITHUB_ENV"
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: AI-Running-Coach-macOS
           path: |

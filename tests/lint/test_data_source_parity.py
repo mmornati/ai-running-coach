@@ -52,7 +52,7 @@ icu_get_pace_histogram icu_get_power_curves icu_get_power_histogram icu_get_rece
 icu_get_sport_settings icu_get_upcoming_workouts icu_get_wellness_data icu_get_wellness_for_date
 icu_get_workout_library icu_get_workouts_in_folder icu_list_athletes icu_search_activities
 icu_search_activities_full icu_search_intervals icu_update_activity icu_update_activity_streams
-icu_update_custom_item icu_update_event icu_update_gear icu_update_gear_reminder
+icu_update_athlete_notes icu_update_custom_item icu_update_event icu_update_gear icu_update_gear_reminder
 icu_update_sport_settings icu_update_wellness icu_update_workout
 """.split())
 # Identifiants `icu_*` qui ne sont PAS des outils (champs de l'API) et peuvent apparaître en prose.

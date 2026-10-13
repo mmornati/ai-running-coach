@@ -86,9 +86,9 @@ jobs:
       matrix: ${{ fromJSON(needs.changes.outputs.matrix) }}
 
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
 
@@ -133,7 +133,7 @@ jobs:
     name: Docker (tableau de bord)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
 
       - name: Construire l'image
         run: docker build -t arc-dashboard:ci .
@@ -176,8 +176,8 @@ jobs:
     name: Documentation
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
           cache: pip
@@ -191,7 +191,7 @@ jobs:
     if: needs.changes.outputs.macos == 'true'
     runs-on: macos-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
       - name: Tester les transactions du moteur
         run: python3 -m unittest tests.install.test_engine_update tests.lint.test_macos_updates
       - name: Construire et vérifier deux versions avec une clé éphémère

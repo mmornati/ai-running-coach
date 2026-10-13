@@ -252,6 +252,12 @@ import json, sys
 
 model, base_url, api_key_env, mcp_path = sys.argv[1:5]
 denied_health = sys.argv[5].split() if len(sys.argv) > 5 else []
+# Outils d ecriture NOMMES par type de serveur (scripts/lib/sync_tools.sh) : OpenCode les
+# expose sous <serveur>_<outil>, p. ex. intervals_icu_create_event : les motifs par
+# prefixe ne les couvrent pas tous (icu_ en tete, noms a tirets de Strava).
+named_writes = {"garmin": sys.argv[6].split() if len(sys.argv) > 6 else [],
+                "intervals": sys.argv[7].split() if len(sys.argv) > 7 else [],
+                "strava": sys.argv[8].split() if len(sys.argv) > 8 else []}
 provider_id, _, model_id = model.partition("/")
 provider = {}
 if base_url:
@@ -265,6 +271,7 @@ elif api_key_env:
 
 WRITE_PREFIXES = ("schedule_", "upload_", "delete_", "unschedule_", "create_", "add_",
                   "set_", "log_", "update_", "upsert_", "bulk_", "request_reload")
+PERM_PREFIXES = WRITE_PREFIXES + ("remove_", "download_", "apply_", "duplicate_")
 mcp, permission = {}, {}
 try:
     servers = json.load(open(mcp_path, encoding="utf-8")).get("mcpServers") or {}
@@ -285,8 +292,14 @@ for name, spec in servers.items():
     if env:
         entry["environment"] = env
     mcp[name] = entry
-    for prefix in WRITE_PREFIXES:
+    for prefix in PERM_PREFIXES:
         permission["%s_%s*" % (name, prefix)] = "deny"
+        permission["%s_icu_%s*" % (name, prefix)] = "deny"
+    low = name.lower()
+    kind = "garmin" if low == "garmin" else "intervals" if low.startswith("intervals") \
+        else "strava" if low.startswith("strava") else ""
+    for tool in named_writes.get(kind, []):
+        permission["%s_%s" % (name, tool)] = "deny"
     if name.lower() == "garmin":
         # Santé lue chez Open Wearables (#220) : les outils santé Garmin sont refusés explicitement.
         for tool in denied_health:
@@ -318,7 +331,10 @@ print(json.dumps(config, ensure_ascii=False, indent=2))
 
 opencode_config_json() {
     python3 -c "$OC_CONFIG_PY" "$SYNC_MODEL" "$SYNC_BASE_URL" "$API_KEY_ENV" "$MCP_CONFIG" \
-        "$(sync_health_denied_tools "$SOURCE" | tr '\n' ' ')"
+        "$(sync_health_denied_tools "$SOURCE" | tr '\n' ' ')" \
+        "$(sync_write_tools garmin | tr '\n' ' ')" \
+        "$(sync_write_tools intervals | tr '\n' ' ')" \
+        "$(sync_write_tools strava | tr '\n' ' ')"
 }
 
 # Configuration de sécurité propre au run Gemini. Le fichier est chargé comme

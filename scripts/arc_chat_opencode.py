@@ -69,7 +69,7 @@ from arc_chat_backend import (SYSTEM_ADDENDUM, system_addendum, BackendError, Ch
 from arc_chat_tools import (REFUSAL_DENY, display_input, fs_list_input, gate, map_leanproxy,
                             parse_unified_diff, remember_result, short, summarize_tool, usd_to_eur)
 
-OPENCODE_TESTED_VERSION = "1.18.32"
+OPENCODE_TESTED_VERSION = "1.18.35"
 DEFAULT_MODEL = "openrouter/deepseek/deepseek-v4.1-flash"
 DEFAULT_API_KEY_ENV = "OPENROUTER_API_KEY"
 

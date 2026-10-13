@@ -47,6 +47,8 @@ SYNC_INTERVALS_WRITE_TOOLS+=" update_gear delete_gear create_gear_reminder updat
 SYNC_INTERVALS_WRITE_TOOLS+=" update_sport_settings apply_sport_settings create_sport_settings"
 SYNC_INTERVALS_WRITE_TOOLS+=" delete_sport_settings add_activity_message create_custom_item"
 SYNC_INTERVALS_WRITE_TOOLS+=" update_custom_item delete_custom_item"
+# v5.6.0 : remplace les notes libres du profil athlète — jamais appelé par le projet.
+SYNC_INTERVALS_WRITE_TOOLS+=" update_athlete_notes"
 SYNC_INTERVALS_WRITE_TOOLS+=" download_activity_file download_fit_file download_gpx_file"
 
 # intervals.icu : outils de lecture utiles à la synchronisation (liste blanche Gemini).

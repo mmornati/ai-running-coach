@@ -3,12 +3,12 @@ name: intervals-icu-best-practices
 description: Use when creating, updating, or troubleshooting Intervals.icu events or workouts via the Intervals.icu MCP tools (icu_create_event / icu_update_event / icu_delete_event / icu_bulk_create_events on hhopke/intervals-icu-mcp, installed by `./install.sh --source intervals` — #68, #165). Covers the real (verified) tool payloads — no workout_doc parameter, but a WORKOUT `description` written in the native Intervals.icu workout syntax is parsed server-side into structured, device-syncable steps (echoed as workout_parsed/workout_steps), with a plain-text fallback — idempotency via icu_get_calendar_events (no upsert exists), and verify-after-push. Primary push target when `[data].source = "intervals"`, secondary (on explicit request) otherwise.
 ---
 
-# Intervals.icu MCP Tool — Best Practices (#68, #165, verified against hhopke/intervals-icu-mcp @ 5cd7e1a, v5.5.0)
+# Intervals.icu MCP Tool — Best Practices (#68, #165, verified against hhopke/intervals-icu-mcp @ 92a630b, v5.6.0)
 
 Everything below was read directly from the server's source — modules
 event_management.py, events.py, workout_syntax.py, client.py
-and `response_builder.py` of hhopke/intervals-icu-mcp, commit `5cd7e1a`
-(`5cd7e1abf716ea28b7bc5a8da5b01860b4bf2aa4`, pinned in `install.sh` as
+and `response_builder.py` of hhopke/intervals-icu-mcp, commit `92a630b`
+(`92a630bfc4ffe7906c9bf8d2280c1ea41a561d66`, pinned in `install.sh` as
 `INTERVALS_MCP_REF`) — and the tool list was confirmed by importing the
 installed server and listing its registered tools. Nothing here is a hypothesis
 or a forum quote — if the pinned commit changes, re-verify this file against the
