@@ -14,6 +14,14 @@ python3 tests/run_tests.py -k TestCrontab      # filtrer
 Aucune dépendance à installer : `unittest` de la bibliothèque standard, comme
 le reste du projet (voir `CONTRIBUTING.md`).
 
+**Version de Python.** Les tests tournent sous le Python de la CI (3.12) : `tomllib`,
+syntaxe des f-strings et valeurs flottantes des goldens en dépendent. Lancé avec un Python
+plus ancien (3.10 d'Ubuntu, 3.9 de macOS), `run_tests.py` se relance tout seul sous 3.12
+via `uv` (installé par `install.sh` ; `uv python install 3.12` au besoin, fait
+automatiquement) et place un `python3` 3.12 en tête du `PATH` pour les scripts que les
+tests lancent. Passez donc toujours par `run_tests.py` (`-k` pour cibler un module) plutôt
+que par `python3 -m unittest`. `ARC_TESTS_ANY_PYTHON=1` garde le Python courant.
+
 ## Palier A — intégration de l'installation
 
 Lance réellement `install.sh`, `setup-ntfy.sh` et `coach-remote.sh`, puis vérifie
