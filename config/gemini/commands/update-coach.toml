@@ -37,8 +37,8 @@ Ne modifie rien. Relayer selon le code de sortie :
 
 | Code | Sens | Quoi dire |
 |---|---|---|
-| 0 | « Déjà à jour », ou mise à jour possible (version installée → nouvelle version, commande `install.sh …` qui sera relancée, et une ligne « Tableau de bord » par conteneur Docker qui sera reconstruit) | Montrer ces lignes telles quelles |
-| 3 | Moteur sans git | Application macOS : la mise à jour passe par l'application. Image Docker : `git pull` dans le dépôt source puis `docker compose up -d --build`. Rien d'autre à faire ici |
+| 0 | « Déjà à jour », ou mise à jour possible (version installée → nouvelle version, commande `install.sh …` qui sera relancée, et une ligne « Conteneur Docker » par conteneur qui sera reconstruit) | Montrer ces lignes telles quelles |
+| 3 | Moteur sans git | Application macOS : la mise à jour passe par l'application. Image Docker : `git pull` dans le dépôt source puis `scripts/update-docker.sh`. Rien d'autre à faire ici |
 | 4 | Options de la dernière installation inconnues | Installation antérieure à leur mémorisation : aider l'athlète à les retrouver (`docs/update.md`, « Retrouver ses options d'installation »), puis lui faire relancer **lui-même** `install.sh <options>` une fois — elles seront mémorisées pour la prochaine fois |
 | 5 | Moteur hors de `main`, modifications locales ou commits locaux | Ne rien forcer : citer le message et renvoyer vers `docs/update.md`. Un développeur gère ses branches lui-même |
 | 1 | Erreur (réseau, git) | Citer le message tel quel |
@@ -65,11 +65,13 @@ jamais aux commits non publiés de `main`.
 
 Relayer la fin de la sortie : version installée, et les ❌/⚠️ de
 `coach_doctor.py` avec leur commande de correction (même règle que le skill
-`coach-doctor`). Un tableau de bord Docker construit depuis ce moteur
-(conteneur compose en cours) est reconstruit et relancé par le script : le
-dire en une ligne (« Tableau de bord Docker « … » reconstruit ») ; en cas
-d'échec, donner la commande `docker compose up -d --build` qu'il affiche. Sans
-Docker, le script n'en parle pas : n'en parlez pas non plus. Rappeler en une
+`coach-doctor`). Les conteneurs Docker construits depuis ce moteur (tableau
+de bord, chat ; conteneurs compose en cours) sont reconstruits et relancés par
+`scripts/update-docker.sh` : le dire en une ligne (« Conteneur Docker « … »
+reconstruit et relancé ») ; en cas d'échec ou de conteneur « unhealthy »,
+donner la commande qu'il affiche. Même chose quand le moteur était déjà à jour
+mais qu'un conteneur tournait une révision plus ancienne (lignes « ancienne
+version »). Sans Docker, le script n'en parle pas : n'en parlez pas non plus. Rappeler en une
 ligne qu'il faut **ouvrir une nouvelle session** de l'assistant (agents et
 skills relus) et, si aucun conteneur n'a été reconstruit, relancer le tableau
 de bord (`scripts/dashboard.sh`).

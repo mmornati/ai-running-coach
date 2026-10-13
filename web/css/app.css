@@ -150,6 +150,10 @@ small { font-size: 0.82em; }
 .update-pill:hover { background: color-mix(in srgb, var(--lime) 30%, transparent); }
 .update-pill:focus-visible { outline: 2px solid var(--lime); outline-offset: 2px; }
 .update-pill[hidden] { display: none; }
+.sync-pill { display: inline-flex; align-items: center; gap: 0.4rem; padding: 0.35rem 0.75rem; border-radius: 999px; background: color-mix(in srgb, var(--bad) 22%, transparent); border: 1px solid color-mix(in srgb, var(--bad) 60%, transparent); color: #e7ede9; font-size: 0.8rem; font-weight: 600; text-decoration: none; white-space: nowrap; }
+.sync-pill::before { content: ""; width: 0.45rem; height: 0.45rem; border-radius: 50%; background: var(--bad); }
+.sync-pill:focus-visible { outline: 2px solid var(--bad); outline-offset: 2px; }
+.sync-pill[hidden] { display: none; }
 .icon-btn { display: grid; place-items: center; width: 2.2rem; height: 2.2rem; border: 1px solid rgba(231, 237, 233, 0.25); border-radius: 50%; background: transparent; color: #e7ede9; cursor: pointer; transition: background 160ms ease; }
 .icon-btn:hover { background: rgba(231, 237, 233, 0.12); }
 .icon-btn svg { width: 1.05rem; height: 1.05rem; fill: currentColor; }
@@ -1030,4 +1034,23 @@ button.seg:focus-visible, .link-btn:focus-visible { outline: 2px solid var(--foc
 @media (max-width: 36em) {
   /* Frise à dimensions fixes en px (pas de réduction par viewBox) : on rétablit la taille normale du texte. */
   .chart--frise .tick, .chart--frise .frise-phase { font-size: 11px; }
+}
+
+/* ---------------------------------------------------------------- synchro */
+
+.sync-run { border-top: 1px solid var(--line); padding: 0.6rem 0; }
+.sync-run:first-of-type { border-top: 0; }
+.sync-run > summary { display: grid; grid-template-columns: 7.5rem 1fr auto auto; gap: 0.8rem; align-items: baseline; cursor: pointer; }
+.sync-run__when { font-variant-numeric: tabular-nums; font-weight: 600; }
+.sync-run__resume { margin: 0.5rem 0 0; padding-left: 1.1rem; color: var(--ink-soft); }
+.sync-run__err { margin: 0.5rem 0 0; color: var(--bad); font-size: 0.86rem; }
+.sync-run__log { margin-top: 0.5rem; }
+.sync-run__log > summary { cursor: pointer; color: var(--ink-soft); font-size: 0.86rem; }
+.sync-run__log pre { max-height: 28rem; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; font-size: 0.8rem; background: var(--surface-2); padding: 0.75rem; border-radius: var(--radius-sm); }
+.sync-rc { font-size: 0.78rem; font-weight: 600; padding: 0.1rem 0.5rem; border-radius: 999px; }
+.sync-rc--ok { color: var(--ok); background: var(--ok-bg); }
+.sync-rc--bad { color: var(--bad); background: var(--bad-bg); }
+@media (max-width: 640px) {
+  .sync-run > summary { grid-template-columns: 1fr auto; }
+  .sync-run > summary > :nth-child(3) { display: none; }
 }

@@ -37,4 +37,9 @@ EXPOSE 8765
 HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \
     CMD ["python3", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8765/healthz', timeout=4)"]
 
+# Révision git du moteur (passée par scripts/update-docker.sh) : c'est elle qui dit si le
+# conteneur tourne la version du dépôt. En dernier, pour ne pas invalider le cache des couches.
+ARG ARC_REVISION=""
+LABEL org.opencontainers.image.revision="$ARC_REVISION"
+
 ENTRYPOINT ["python3", "/app/scripts/arc_serve.py", "--workspace", "/workspace", "--memory", "--port", "8765"]

@@ -1,7 +1,7 @@
 # ai-running-coach — tableau de bord derrière Traefik.
 #
 #   cp .env.example .env    # puis renseigner .env
-#   docker compose up -d --build
+#   ../../scripts/update-docker.sh   # construit, (re)démarre et vérifie tous les conteneurs
 #
 # Le tableau de bord n'a pas d'authentification propre et montre des données de
 # santé : il n'est joignable QUE par Traefik (aucun port publié), et le routeur
@@ -13,6 +13,9 @@ services:
   dashboard:
     build:
       context: ../..
+      args:
+        # Fourni par scripts/update-docker.sh (git rev-parse HEAD) : étiquette de version de l'image.
+        ARC_REVISION: "${ARC_REVISION:-}"
     image: ai-running-coach-dashboard:local
     container_name: ai-running-coach-dashboard
     restart: unless-stopped

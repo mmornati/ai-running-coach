@@ -289,7 +289,7 @@ Simulation seulement. Pour écrire : relancer avec --apply.
 Après `--apply`, la dernière ligne résume ce qui a été écrit (`Appliqué : profil mis à jour, N séance(s)
 écrite(s), 0 échec(s)…`) et l'index est reconstruit : la vue [Matériel](dashboard/views.md#materiel)
 affiche aussitôt le kilométrage de chaque paire. Sur un serveur avec le tableau de bord en conteneur,
-reconstruisez l'image après la mise à jour du moteur (`docker compose up -d --build`, voir
+reconstruisez l'image après la mise à jour du moteur (`scripts/update-docker.sh`, voir
 [Docker](dashboard/docker.md#mettre-a-jour)).
 
 Options : `--since AAAA-MM-JJ` (séances du workspace à partir de cette date), `--gear <uuid>` (une seule paire),

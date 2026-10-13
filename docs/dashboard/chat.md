@@ -348,7 +348,7 @@ public_url = "https://coach.example.org"
 seulement : aucun port publié). Puis :
 
 ```bash
-cd deploy/dashboard && docker compose up -d --build
+scripts/update-docker.sh
 ```
 
 Si le service systemd du chat était installé, retirez-le (`scripts/coach-chat.sh uninstall`)

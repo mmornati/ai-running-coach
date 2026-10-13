@@ -1004,7 +1004,8 @@ detect_auth_failure() {
     local run_log erreur_line raw_pattern erreur_pattern
     AUTH_FAILURE_KIND=""
     AUTH_FAILURE_LINE=""
-    run_log="$(awk '/^===== /{buf=""} {buf = buf $0 ORS} END{printf "%s", buf}' "$LOG_FILE" 2>/dev/null)"
+    # Dernier run : à partir de son en-tête (« runner= »), pas du pied « fin code= » qui le clôt.
+    run_log="$(awk '/^===== .* runner=/{buf=""} {buf = buf $0 ORS} END{printf "%s", buf}' "$LOG_FILE" 2>/dev/null)"
     if [[ "$SOURCE" == "strava" ]]; then
         # Textes réels du serveur r-huijts/strava-mcp (src/stravaClient.ts, commit épinglé par
         # install.sh) : « Failed to refresh Strava access token » et « Missing refresh
@@ -1185,7 +1186,7 @@ main() {
     git_pull_before_run
     ow_preflight
 
-    local output rc=0
+    local output rc=0 run_started=$SECONDS
     {
         echo "===== $(date '+%F %T') — runner=$RUNNER lookback=$LOOKBACK trigger=${TRIGGER:-planifié} ====="
     } >> "$LOG_FILE"
@@ -1221,6 +1222,8 @@ main() {
         printf '%s\n' "$raw_output" >> "$LOG_FILE"
         record_spend "$(printf '%s\n' "$raw_output" | runner_output cost)"
     fi
+    # Pied de run : code et durée, lus par scripts/arc_sync_status.py (vue « Synchro »).
+    echo "===== $(date '+%F %T') — fin code=$rc durée=$((SECONDS - run_started))s =====" >> "$LOG_FILE"
 
     if [[ "$rc" -ne 0 ]]; then
         err "La synchronisation a échoué (code $rc) — voir $LOG_FILE"

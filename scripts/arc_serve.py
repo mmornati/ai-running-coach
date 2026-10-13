@@ -51,7 +51,7 @@ import statistics
 import sys
 import threading
 import time
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -65,6 +65,7 @@ import arc_health_source as HS  # noqa: E402
 import arc_index as I  # noqa: E402
 import arc_metrics as M  # noqa: E402
 import arc_roadbook as RB  # noqa: E402
+import arc_sync_status as SS  # noqa: E402
 import arc_update_check as U  # noqa: E402
 import arc_version as V  # noqa: E402
 from coach_config import ConfigError  # noqa: E402
@@ -442,6 +443,15 @@ def api_version(workspace: Path) -> dict:
     if state["update_available"]:
         update = {"latest": state["latest"], "url": state["url"], "command": state["command"]}
     return {"version": state["current"], "update": update}
+
+
+def api_sync_status(store: Store) -> dict:
+    """État de la synchronisation automatique (`arc_sync_status`) : journaux de `logs/`, pas l'index.
+    `--today` (tests, démonstrations) fixe aussi la date de référence, heure courante conservée."""
+    now = datetime.now()
+    if store.today:
+        now = datetime.combine(date.fromisoformat(str(store.today)), now.time())
+    return SS.status(store.workspace, now)
 
 
 def api_summary(store: Store, q: dict) -> dict:
@@ -1779,6 +1789,8 @@ class Handler(BaseHTTPRequestHandler):
             self._json(HTTPStatus.OK, {"status": "ok"})
         elif url.path == "/api/version":        # hors de ROUTES : ne réindexe pas, ne dépend pas des données
             self._json(HTTPStatus.OK, api_version(self.store.workspace))
+        elif url.path == "/api/sync-status":    # idem : lit logs/, pas l'index
+            self._json(HTTPStatus.OK, api_sync_status(self.store))
         elif url.path.startswith(CHAT_PREFIX) and self.chat_port:
             self._chat_proxy()
         elif url.path == "/media/gear-photo":
