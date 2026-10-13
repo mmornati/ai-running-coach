@@ -28,6 +28,12 @@ print("doctor ok")
 FAKE_DOCKER = """#!/usr/bin/env bash
 case "$1" in
     info) [[ -f "$HOME/docker-down" ]] && exit 1; exit 0 ;;
+    inspect)
+        case "$3" in
+            *revision*) cat "$HOME/rev-$4" 2>/dev/null ;;
+            *Health*) cat "$HOME/health-$4" 2>/dev/null ;;
+        esac
+        exit 0 ;;
     ps) cat "$HOME/containers" 2>/dev/null; exit 0 ;;
     compose)
         shift; project=""
@@ -40,7 +46,11 @@ case "$1" in
         done
         if [[ "$1" == config ]]; then
             printf '{"services": {"dashboard": {"build": {"context": "%s"}}}}' "$(cat "$HOME/context-$project")"
+        elif [[ "$1" == ps ]]; then
+            echo "$project"
         else
+            # « up -d » : le conteneur tourne désormais l'image de la révision passée par ARC_REVISION.
+            [[ "$1" == up ]] && printf '%s' "$ARC_REVISION" > "$HOME/rev-$project"
             printf '%s %s\\n' "$project" "$*" >> "$HOME/docker-calls"
         fi ;;
 esac
@@ -63,7 +73,7 @@ class UpdateCoach(unittest.TestCase):
         (self.home / ".config/ai-running-coach").mkdir(parents=True)
         seed = self.seed = self.tmp / "seed"
         (seed / "scripts/lib").mkdir(parents=True)
-        for rel in ("scripts/update-coach.sh", "scripts/lib/config.sh", "scripts/arc_version.py"):
+        for rel in ("scripts/update-coach.sh", "scripts/update-docker.sh", "scripts/lib/config.sh", "scripts/arc_version.py"):
             shutil.copy2(REPO / rel, seed / rel)
         (seed / "scripts/coach_doctor.py").write_text(FAKE_DOCTOR, encoding="utf-8")
         (seed / "install.sh").write_text(FAKE_INSTALL, encoding="utf-8")
@@ -194,7 +204,7 @@ class UpdateCoach(unittest.TestCase):
         for name, context in projects:
             folder = self.tmp / "docker" / name
             folder.mkdir(parents=True, exist_ok=True)
-            lines.append(f"{name}\t{folder}\t{folder}/compose.yaml\tdashboard\n")
+            lines.append(f"{name}\t{folder}\t{folder}/compose.yaml\tdashboard\t{name}\n")
             (self.home / f"context-{name}").write_text(context, encoding="utf-8")
         (self.home / "containers").write_text("".join(lines), encoding="utf-8")
         return {"PATH": f"{bindir}{os.pathsep}{os.environ['PATH']}"}
@@ -244,6 +254,67 @@ class UpdateCoach(unittest.TestCase):
         self.assertEqual(self.docker_calls(), [])
         self.assertNotIn("Docker «", proc.stdout + proc.stderr)
 
+
+    # --- scripts/update-docker.sh : chat, révision, santé -----------------------------------
+    def run_docker(self, *args, **env):
+        full = {k: v for k, v in os.environ.items() if k != "ARC_HEADLESS"}
+        full.update(HOME=str(self.home), ARC_WORKSPACE=str(self.home / "ws"), ARC_DOCKER_HEALTH_TIMEOUT_S="1", **env)
+        return subprocess.run(["bash", str(self.engine / "scripts/update-docker.sh"), *args],
+                              env=full, capture_output=True, text=True)
+
+    def test_chat_built_from_an_engine_folder_is_rebuilt(self):
+        """deploy/chat est un dossier du moteur : le chat garde l'ancien code tant qu'il n'est pas recréé."""
+        env = self.fake_docker(("chat", str(self.engine / "deploy/chat")), ("autre", str(self.tmp / "ailleurs")))
+        proc = self.run_update("--yes", **env)
+        self.assertEqual(proc.returncode, 0, proc.stdout + proc.stderr)
+        self.assertEqual(self.docker_calls(), ["chat build --pull dashboard", "chat up -d dashboard"])
+
+    def test_up_to_date_engine_with_older_containers_rebuilds_them(self):
+        env = self.fake_docker(("coach", str(self.engine)))
+        self.assertEqual(self.run_update("--yes", **env).returncode, 0)
+        (self.home / "docker-calls").unlink()
+        (self.home / "rev-coach").write_text("0123456789abcdef", encoding="utf-8")
+        proc = self.run_update("--yes", **env)
+        self.assertIn("Déjà à jour", proc.stdout)
+        self.assertIn("ancienne version", proc.stdout)
+        self.assertEqual(self.docker_calls(), ["coach build --pull dashboard", "coach up -d dashboard"])
+        self.assertEqual((self.home / "rev-coach").read_text(encoding="utf-8"), self.head())
+
+    def test_up_to_date_with_unknown_revision_only_hints(self):
+        """Image sans révision (construite à la main) : signalée, jamais reconstruite d'office."""
+        env = self.fake_docker(("coach", str(self.engine)))
+        self.assertEqual(self.run_update("--yes", **env).returncode, 0)
+        (self.home / "docker-calls").unlink()
+        (self.home / "rev-coach").unlink()
+        proc = self.run_update("--yes", **env)
+        self.assertIn("Révision inconnue", proc.stdout + proc.stderr)
+        self.assertEqual(self.docker_calls(), [])
+
+    def test_update_docker_check_and_rebuild(self):
+        env = self.fake_docker(("coach", str(self.engine)))
+        (self.home / "rev-coach").write_text("0123456789abcdef", encoding="utf-8")
+        proc = self.run_docker("--check", **env)
+        self.assertEqual(proc.returncode, 10, proc.stdout + proc.stderr)
+        self.assertEqual(self.docker_calls(), [])
+        proc = self.run_docker(**env)
+        self.assertEqual(proc.returncode, 0, proc.stdout + proc.stderr)
+        self.assertEqual(self.run_docker("--check", **env).returncode, 0)
+
+    def test_update_docker_without_containers(self):
+        self.assertEqual(self.run_docker("--check", **self.fake_docker()).returncode, 3)
+
+    def test_update_docker_unhealthy_container_fails(self):
+        env = self.fake_docker(("coach", str(self.engine)))
+        (self.home / "health-coach").write_text("unhealthy", encoding="utf-8")
+        proc = self.run_docker(**env)
+        self.assertEqual(proc.returncode, 1)
+        self.assertIn("coach/dashboard", proc.stderr)
+
+    def test_update_docker_refused_in_headless(self):
+        env = self.fake_docker(("coach", str(self.engine)))
+        proc = self.run_docker(ARC_HEADLESS="1", **env)
+        self.assertEqual(proc.returncode, 1)
+        self.assertEqual(self.docker_calls(), [])
 
 if __name__ == "__main__":
     unittest.main()

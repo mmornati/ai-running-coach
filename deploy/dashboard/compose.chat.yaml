@@ -16,6 +16,7 @@ services:
         ARC_HOME: "${ARC_HOME:?ARC_HOME manquant dans .env (le dossier personnel sur l hôte)}"
         ARC_UID: "${ARC_UID:-1000}"
         ARC_GID: "${ARC_GID:-1000}"
+        ARC_REVISION: "${ARC_REVISION:-}"
     image: ai-running-coach-chat:local
     container_name: ai-running-coach-chat
     restart: unless-stopped

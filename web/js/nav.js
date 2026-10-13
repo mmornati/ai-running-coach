@@ -7,7 +7,7 @@ export function navItems(settings) {
     ["", "Aujourd'hui"], ["forme", "Forme & charge"], ["analyse", "Analyse"], ["sante", "Santé"], ["semaine", "Semaine"],
     ["seances", "Séances"], ["performance", "Performance"], ["materiel", "Matériel"], ["trail-shape", "Trail Shape"], ["calendrier", "Calendrier"],
     ["decisions", "Décisions"], ["rapports", "Rapports"], ...(nutrition ? [["nutrition", "Nutrition"]] : []),
-    ["hypotheses", "Hypothèses"],
+    ["hypotheses", "Hypothèses"], ["synchro", "Synchro"],
   ];
 }
 
@@ -32,5 +32,22 @@ export async function showVersion() {
         { className: "update-pill__long", textContent: " disponible" }));
       pill.hidden = false;
     }
+  } catch { /* information de confort : jamais bloquante */ }
+}
+
+// Pastille « synchro » de l'en-tête (`/api/sync-status`) : n'apparaît que si la synchronisation
+// automatique demande de l'attention (en retard, en échec, Garmin injoignable) ; renvoie vers la
+// vue Synchro. Serveur plus ancien sans cette route : rien n'est affiché.
+const SYNC_ALERT = { late: "Synchro en retard", failing: "Synchro en échec", degraded: "Synchro dégradée" };
+export async function showSyncPill() {
+  const pill = document.getElementById("sync-pill");
+  if (!pill) return;
+  try {
+    const res = await fetch("api/sync-status", { headers: { Accept: "application/json" } });
+    const st = res.ok ? await res.json() : {};
+    if (!SYNC_ALERT[st.verdict]) return;
+    pill.textContent = SYNC_ALERT[st.verdict];
+    pill.title = st.reason || "";
+    pill.hidden = false;
   } catch { /* information de confort : jamais bloquante */ }
 }

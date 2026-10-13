@@ -229,6 +229,10 @@ scripts/daily-sync.sh --dry-run   # affiche la commande
 scripts/daily-sync.sh             # exécution réelle, journal dans logs/sync-YYYY-MM-DD.log
 ```
 
+Pour savoir ensuite si elle tourne, quand, et ce qu'elle a fait : la vue **Synchro** du
+tableau de bord ([Les vues](dashboard/views.md#synchro)), ou en terminal
+`python3 scripts/arc_sync_status.py`.
+
 #### Mode `watch` : ne payer le LLM que quand Garmin a du neuf
 
 Garmin ne propose pas de webhook aux particuliers : son

@@ -2940,7 +2940,7 @@ write_dashboard_compose() {
     {
         cat <<EOF
 # Généré par install.sh (--dashboard-docker $DASH_DOCKER) : ne pas éditer, relancez ./install.sh.
-# Image reconstruite par /update-coach à chaque mise à jour du moteur.
+# Image reconstruite par /update-coach (scripts/update-docker.sh) à chaque mise à jour du moteur.
 # Tableau de bord ai-running-coach, lecture seule (docs/dashboard/docker.md).
 name: $DASH_PROJECT
 
@@ -2948,6 +2948,9 @@ services:
   dashboard:
     build:
       context: $(yaml_quote "$PROJECT_ROOT")
+      args:
+        # Révision git du moteur, fournie par scripts/update-docker.sh (/update-coach).
+        ARC_REVISION: "\${ARC_REVISION:-}"
     image: ai-running-coach-dashboard:local
     container_name: $DASH_PROJECT
     restart: unless-stopped

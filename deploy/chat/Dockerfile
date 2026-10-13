@@ -52,3 +52,8 @@ EXPOSE 8766
 # /healthz n'est accepté que depuis la boucle locale ; 503 si OpenCode ou la clé manquent.
 HEALTHCHECK --interval=60s --timeout=20s --start-period=30s --retries=3 \
     CMD ["python3", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8766/api/chat/healthz', timeout=15)"]
+
+# Révision git du moteur (passée par scripts/update-docker.sh) : c'est elle qui dit si le
+# conteneur tourne la version du dépôt. En dernier, pour ne pas invalider le cache des couches.
+ARG ARC_REVISION=""
+LABEL org.opencontainers.image.revision="$ARC_REVISION"

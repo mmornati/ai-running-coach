@@ -100,24 +100,40 @@ docker compose up -d --build
 docker compose ps        # l'état passe à « healthy » en une trentaine de secondes
 ```
 
+Les mises à jour suivantes passent par `scripts/update-docker.sh` (ci-dessous), qui
+étiquette aussi chaque image avec la révision du dépôt.
+
 ## Mettre à jour
 
 Vos fichiers sont lus en direct : une séance ou un plan écrit par le coach apparaît
-sans rien toucher. L'image, elle, embarque le **code** du moteur : un simple
-`docker restart` garde l'ancienne version, il faut la reconstruire.
+sans rien toucher. L'image, elle, embarque le **code** du moteur, et le conteneur du
+[chat](chat.md) garde en mémoire le code chargé à son démarrage : un simple
+`docker restart` du tableau de bord garde l'ancienne version, il faut reconstruire **et**
+recréer les deux.
 
-Avec [`/update-coach`](../skills/update-coach.md), c'est automatique : un conteneur en
-cours construit depuis le dépôt du moteur est reconstruit (`build --pull`) et relancé
-à la fin de la mise à jour. Pensez seulement au `diff` du `.env` ci-dessous quand une
-release ajoute une variable. À la main :
+Avec [`/update-coach`](../skills/update-coach.md), c'est automatique : à la fin de la mise
+à jour, `scripts/update-docker.sh` reconstruit (`build --pull`) et relance chaque conteneur
+en cours construit depuis le moteur ou l'un de ses dossiers — le tableau de bord (ce compose
+ou celui d'`install.sh`) et le chat (`deploy/chat`) — puis attend qu'ils soient « healthy ».
+Il le fait aussi quand le dépôt est déjà à jour mais qu'un conteneur tourne une révision
+plus ancienne (un `git pull` fait à la main). Pensez seulement au `diff` du `.env`
+ci-dessous quand une release ajoute une variable. Directement :
+
+```bash
+scripts/update-docker.sh --check # chaque conteneur tourne-t-il la révision du dépôt ?
+scripts/update-docker.sh         # reconstruit, relance, attend « healthy »
+```
+
+Chaque image porte la révision git du dépôt (`org.opencontainers.image.revision`) :
+`--check` la compare à `HEAD` (`à jour`, `ancienne version`, ou `révision inconnue` pour une
+image construite à la main avec `docker compose up -d --build`, qui ne la reçoit pas).
+Seules les images remplacées de ce projet sont supprimées. Après un `git pull` :
 
 ```bash
 cd ~/ai-running-coach && git pull --ff-only
 cd deploy/dashboard
 diff <(grep -o '^[A-Z_]*=' .env.example | sort) <(grep -o '^[A-Z_]*=' .env | sort)
-docker compose build --pull
-docker compose up -d
-docker compose ps        # « healthy » en une trentaine de secondes
+../../scripts/update-docker.sh
 ```
 
 - `diff` signale une variable apparue dans `.env.example` et absente de votre `.env`
@@ -129,7 +145,7 @@ docker compose ps        # « healthy » en une trentaine de secondes
   synchronisation lit le même dépôt du moteur.
 
 **Revenir en arrière** : `git -C ~/ai-running-coach checkout <commit-précédent>` puis
-`docker compose up -d --build` ; `git switch main` pour revenir ensuite à la version
+`scripts/update-docker.sh` ; `git switch main` pour revenir ensuite à la version
 courante.
 
 ## Exemple : Traefik, Authentik et un tunnel Cloudflare

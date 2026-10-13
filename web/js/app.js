@@ -1,6 +1,6 @@
 // Tableau de bord ai-running-coach — lecture seule, servi par scripts/arc_serve.py.
 import * as F from "./format.js";
-import { navItems, showVersion } from "./nav.js";
+import { navItems, showVersion, showSyncPill } from "./nav.js";
 import { timeChart, attachCursor, verdictStrip, yearCalendar, blockFrise } from "./chart.js";
 import { resampleByDistance, colorModes, sessionMap } from "./map.js";
 import { roadbookHtml, wireRoadbook } from "./roadbook.js";
@@ -3864,10 +3864,67 @@ function daysToWeeksPeriod(days) {
   return offered.reduce((best, w) => (Math.abs(w * 7 - days) < Math.abs(best * 7 - days) ? w : best));
 }
 
+// ---------------------------------------------------------------------------
+// Vue : Synchro — la synchronisation automatique (cron/launchd) vue de ses traces
+// (`/api/sync-status`, `arc_sync_status.py`) : tourne-t-elle, quand, avec quel résultat.
+// ---------------------------------------------------------------------------
+
+const SYNC_VERDICT = {
+  ok: ["green", "Synchro à jour"], running: ["amber", "Synchro en cours"], late: ["red", "Synchro en retard"],
+  failing: ["red", "Synchro en échec"], degraded: ["amber", "Synchro dégradée"], never: ["none", "Jamais lancée"],
+  off: ["none", "Synchro désactivée"],
+};
+const syncWhen = (iso) => (iso ? `${F.dayShort(iso.slice(0, 10))} ${iso.slice(11, 16)}` : "—");
+function syncRc(rc) {
+  if (rc === null || rc === undefined) return `<span class="muted">—</span>`;
+  return rc === 0 ? `<span class="sync-rc sync-rc--ok">OK</span>` : `<span class="sync-rc sync-rc--bad">code ${F.esc(String(rc))}</span>`;
+}
+const syncTrigger = (t) => (t === "planifié" ? "Heure fixe" : t.split(",").map((x) => (x === "morning" ? "Bilan matinal"
+  : x.startsWith("activity:") ? `Séance ${x.slice(9)}` : x.startsWith("fallback") ? "Filet de sécurité" : x)).join(" + "));
+
+async function viewSync() {
+  const st = await api("sync-status", { fresh: true }).catch(() => null);
+  if (!st) {
+    main.innerHTML = header("Synchro") + empty("État indisponible", "Le serveur du tableau de bord est plus ancien que cette vue : mettez-le à jour.");
+    return;
+  }
+  const s = st.settings;
+  const [cls, word] = SYNC_VERDICT[st.verdict] || ["none", st.verdict];
+  const mode = s.mode === "watch"
+    ? `Surveillance Garmin toutes les ${s.watch_interval_min} min (sans LLM) ; synchronisation seulement s'il y a du neuf, ${s.max_runs_per_day} runs/jour au plus`
+    : `Heures fixes : ${s.times.map(F.esc).join(", ") || "aucune"}`;
+  const facts = [
+    ["Mode", mode],
+    ["Exécuteur", `${F.esc(s.runner)}${s.model ? ` · ${F.esc(s.model)}` : ""}`],
+    ["Prochaine exécution", st.next ? `${syncWhen(st.next.at)} — ${F.esc(st.next.what)}` : "—"],
+    ...(st.watch ? [["Dernier sondage", syncWhen(st.watch.last_check)], ["Runs aujourd'hui", `${st.watch.runs_today}`]] : []),
+    ...(s.mode === "watch" && s.fallback_times.length ? [["Filet de sécurité", s.fallback_times.map(F.esc).join(", ")]] : []),
+    ["Versionnement git", s.git_autocommit ? "commit + push après chaque run" : "non"],
+  ];
+  const runs = st.runs.map((r, i) => `<details class="sync-run"${i === 0 ? " open" : ""}>
+      <summary><span class="sync-run__when">${syncWhen(r.start)}</span><span>${F.esc(syncTrigger(r.trigger))}</span>
+        <span class="muted">${r.duration_s != null ? `${Math.round(r.duration_s / 60)} min` : ""}</span>${syncRc(r.rc)}</summary>
+      ${r.resume.length ? `<ul class="sync-run__resume">${r.resume.map((l) => `<li>${F.esc(l)}</li>`).join("")}</ul>` : `<p class="muted">Pas de bloc résumé dans ce run.</p>`}
+      ${r.errors.length ? `<p class="sync-run__err">${r.errors.map(F.esc).join("<br>")}</p>` : ""}
+      ${r.log != null ? `<details class="sync-run__log"><summary>Journal complet <span class="muted">(${F.esc(r.log_file)})</span></summary>${r.log_truncated ? `<p class="muted">Début tronqué.</p>` : ""}<pre>${F.esc(r.log)}</pre></details>` : `<p class="muted">Journal : <code>${F.esc(r.log_file)}</code></p>`}
+    </details>`).join("");
+  const events = st.watch_events.length
+    ? `<section class="band"><h2>Événements du sondage</h2>${note("Seuls les événements sont journalisés (<code>logs/watch.log</code>), pas chaque passage « rien de neuf ».")}
+        <ul class="list sync-events">${st.watch_events.slice(0, 30).map((e) => `<li><span class="list__meta">${syncWhen(e.at)}</span> ${F.esc(e.message)}</li>`).join("")}</ul></section>`
+    : "";
+  main.innerHTML = `${header("Synchro", "La synchronisation automatique avec votre source de données, vue de ses journaux (<code>logs/</code> du workspace).")}
+    <div class="verdict verdict--${cls}"><div class="verdict__word">${F.esc(word)}</div><p class="verdict__why">${F.esc(st.reason)}</p></div>
+    <section class="band"><h2>Réglages</h2><dl class="facts">${facts.map(([k, v]) => `<div><dt>${k}</dt><dd>${v}</dd></div>`).join("")}</dl>
+      ${note("Pour changer de mode ou d'heures : section <code>[sync]</code> de <code>config/workspace.user.toml</code>, puis <code>./install.sh --daily-sync</code>.")}</section>
+    <section class="band"><h2>Derniers runs</h2>${runs || empty("Aucun run", "Aucun journal <code>logs/sync-*.log</code> sur les 14 derniers jours.")}</section>
+    ${events}`;
+}
+
 const ROUTES = {
   "": viewToday, forme: viewForm, analyse: viewAnalyse, sante: viewHealth, semaine: viewWeek, seances: viewSessions,
   performance: viewPerformance, materiel: viewMateriel, "trail-shape": viewTrailShape, roadbook: viewRoadbook, calendrier: viewCalendar, rapports: viewReports, rapport: viewReport,
   nutrition: viewNutrition, fichiers: viewFiles, hypotheses: viewHypotheses, decisions: viewDecisions, decision: viewDecision,
+  synchro: viewSync,
 };
 
 // `decodeURIComponent` lève sur `%E0` (#/materiel/%E0) : repli sur l'identifiant brut → « introuvable ».
@@ -3914,6 +3971,7 @@ async function route() {
 async function boot() {
   setupTheme();
   showVersion();
+  showSyncPill();
   try {
     SUMMARY = await api("summary");
     F.setUnits(SUMMARY.settings.units);

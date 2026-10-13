@@ -107,6 +107,20 @@ class TestDashboardServer(InstallAsserts):
         self.assertEqual((status, json.loads(body)), (200, {"version": expected, "update": None}))
         self.assertEqual(self.server.get("/api/version", host="evil.example")[0], 403)
 
+    def test_sync_status(self):
+        """Vue Synchro : lit logs/ du workspace, hors index, derrière le même contrôle d'hôte."""
+        (self.ws / "logs").mkdir(exist_ok=True)
+        (self.ws / "logs/sync-2026-09-23.log").write_text(
+            "===== 2026-09-23 07:15:02 — runner=claude lookback=2 trigger=planifié =====\n"
+            "```resume\nSéances : à jour\n```\n===== 2026-09-23 07:18:00 — fin code=0 durée=178s =====\n",
+            encoding="utf-8")
+        status, body, _ = self.server.get("/api/sync-status")
+        self.assertEqual(status, 200)
+        st = json.loads(body)
+        self.assertEqual(st["runs"][0]["resume"], ["Séances : à jour"])
+        self.assertEqual(st["runs"][0]["rc"], 0)
+        self.assertEqual(self.server.get("/api/sync-status", host="evil.example")[0], 403)
+
     def test_read_only(self):
         self.assertEqual(self.server.get("/api/summary", method="POST")[0], 405)
 

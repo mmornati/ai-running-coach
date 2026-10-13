@@ -10,9 +10,10 @@
 # fusionné dans main, jamais la tête de main ni une pré-version ; git merge --ff-only, jamais
 # de fusion ni de force) → ./install.sh avec les options MÉMORISÉES de la dernière installation
 # (~/.config/ai-running-coach/install-args, écrit par install.sh) → coach_doctor.py
-# → reconstruction des tableaux de bord Docker construits depuis ce moteur, s'il y en a
-# (conteneurs compose EN COURS dont un service a build.context = moteur, dont celui d'install.sh
-# --dashboard-docker ; sans Docker : rien). Seul endroit où l'image est reconstruite.
+# → scripts/update-docker.sh : reconstruction des conteneurs Docker construits depuis ce moteur,
+# s'il y en a (services compose EN COURS dont build.context est le moteur ou un de ses dossiers :
+# tableau de bord, dont celui d'install.sh --dashboard-docker, et chat ; sans Docker : rien) —
+# aussi quand le dépôt est déjà à jour mais qu'un conteneur tourne une révision plus ancienne.
 # Sans terminal (--yes depuis l'assistant), install.sh est relancé avec --no-auth et sans
 # entrée standard : aucune saisie interactive ne peut bloquer la mise à jour (coach_doctor
 # signale ensuite des jetons à renouveler).
@@ -33,13 +34,12 @@ while [[ $# -gt 0 ]]; do
     case "$1" in
         --check) MODE="check"; shift ;;
         --yes|-y) MODE="yes"; shift ;;
-        --help|-h) sed -n '3,20p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+        --help|-h) sed -n '3,27p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
         *) die "Option inconnue : $1 (voir --help)" ;;
     esac
 done
 
 ENGINE="$ARC_ENGINE_ROOT"
-DASHBOARDS=()  # « projet<TAB>dossier<TAB>fichiers compose (virgules)<TAB>service »
 ARGS_FILE="$HOME/.config/ai-running-coach/install-args"
 
 [[ -z "${ARC_HEADLESS:-}" ]] || die "Mise à jour refusée en headless : lancez-la depuis un terminal ou une session interactive."
@@ -47,7 +47,7 @@ ARGS_FILE="$HOME/.config/ai-running-coach/install-args"
 if [[ ! -e "$ENGINE/.git" ]]; then
     err "Ce moteur n'est pas un dépôt git ($ENGINE)."
     err "  Application macOS : mise à jour par l'application elle-même."
-    err "  Image Docker du tableau de bord : git pull dans le dépôt source, puis « docker compose up -d --build »."
+    err "  Image Docker du tableau de bord : git pull dans le dépôt source, puis scripts/update-docker.sh."
     exit 3
 fi
 have git || die "git est requis."
@@ -76,52 +76,11 @@ while IFS= read -r line || [[ -n "$line" ]]; do
     [[ -n "$line" ]] && INSTALL_ARGS+=("$line")
 done < "$ARGS_FILE"
 
-# Tableaux de bord Docker à reconstruire : conteneurs compose en cours dont le service se
-# construit depuis CE moteur. Docker absent, démon injoignable, aucun conteneur : liste vide,
-# aucun message (la plupart des installations n'utilisent pas Docker). Lecture seule.
-find_docker_dashboards() {
-    have docker || return 0
-    docker info >/dev/null 2>&1 || return 0
-    local project dir files service cf
-    local -a cargs cfs
-    while IFS=$'\t' read -r project dir files service; do
-        [[ -n "$project" && -n "$dir" && -n "$files" && -n "$service" ]] || continue
-        cargs=(-p "$project" --project-directory "$dir")
-        IFS=, read -ra cfs <<< "$files"
-        for cf in "${cfs[@]}"; do cargs+=(-f "$cf"); done
-        docker compose "${cargs[@]}" config --format json </dev/null 2>/dev/null | python3 -c '
-import json, os, sys
-try:
-    build = json.load(sys.stdin)["services"][sys.argv[1]].get("build") or {}
-except (ValueError, KeyError, TypeError):
-    sys.exit(1)
-ctx = build.get("context", "") if isinstance(build, dict) else build
-sys.exit(0 if ctx and os.path.realpath(ctx) == os.path.realpath(sys.argv[2]) else 1)
-' "$service" "$ENGINE" || continue
-        DASHBOARDS+=("$project"$'\t'"$dir"$'\t'"$files"$'\t'"$service")
-    done < <(docker ps --filter label=com.docker.compose.project --format \
-        '{{.Label "com.docker.compose.project"}}{{"\t"}}{{.Label "com.docker.compose.project.working_dir"}}{{"\t"}}{{.Label "com.docker.compose.project.config_files"}}{{"\t"}}{{.Label "com.docker.compose.service"}}' \
-        2>/dev/null | sort -u)
-}
-
-rebuild_docker_dashboards() {
-    local entry project dir files service cf
-    local -a cargs cfs
-    for entry in ${DASHBOARDS[@]+"${DASHBOARDS[@]}"}; do
-        IFS=$'\t' read -r project dir files service <<< "$entry"
-        cargs=(-p "$project" --project-directory "$dir")
-        IFS=, read -ra cfs <<< "$files"
-        for cf in "${cfs[@]}"; do cargs+=(-f "$cf"); done
-        log "Reconstruction du tableau de bord Docker « $project » ($service)…"
-        # --pull : dernière image Python de base, avec ses correctifs de sécurité (docs/dashboard/docker.md).
-        if docker compose "${cargs[@]}" build --pull "$service" </dev/null \
-            && docker compose "${cargs[@]}" up -d "$service" </dev/null; then
-            ok "Tableau de bord Docker « $project » reconstruit et relancé."
-        else
-            warn "Reconstruction de « $project » impossible : le moteur est à jour, relancez « docker compose up -d --build » dans $dir."
-        fi
-    done
-}
+# Conteneurs Docker construits depuis ce moteur (tableau de bord, chat) : scripts/update-docker.sh
+# les trouve, les reconstruit et vérifie leur révision. Code 3 = aucun (Docker absent, démon
+# injoignable, rien en cours) : aucun message, la plupart des installations n'utilisent pas Docker.
+DOCKER_UPDATE="$ENGINE/scripts/update-docker.sh"
+docker_update() { [[ -x "$DOCKER_UPDATE" ]] || return 3; "$DOCKER_UPDATE" "$@"; }
 
 log "Recherche de mises à jour ($upstream)…"
 git -C "$ENGINE" fetch --quiet --tags "${upstream%%/*}" || die "git fetch impossible (réseau ?)."
@@ -139,6 +98,19 @@ fi
 target_commit="$(git -C "$ENGINE" rev-parse "$target^{commit}")"
 if git -C "$ENGINE" merge-base --is-ancestor "$target_commit" HEAD; then
     ok "Déjà à jour ($current, dernière release : $target)."
+    # Le dépôt peut être à jour sans les conteneurs (git pull à la main, reconstruction oubliée).
+    rc=0; docker_update --check || rc=$?
+    if [[ "$rc" -eq 10 ]]; then
+        case "$MODE" in
+            check) ;;
+            yes) docker_update || exit 1 ;;
+            ask)
+                [[ -t 0 ]] || die "Pas de terminal pour confirmer : relancez avec --yes."
+                read -r -p "Reconstruire et relancer les conteneurs maintenant ? [o/N] " answer
+                [[ "$answer" =~ ^[oOyY] ]] || die "Conteneurs laissés tels quels : scripts/update-docker.sh"
+                docker_update || exit 1 ;;
+        esac
+    fi
     exit 0
 fi
 if ! git -C "$ENGINE" merge-base --is-ancestor HEAD "$target_commit"; then
@@ -152,11 +124,7 @@ printf '%s\n' "Nouvelle version  : $target ($behind commit(s))"
 printf '%s' "Réinstallation    : ./install.sh"
 printf ' %q' ${INSTALL_ARGS[@]+"${INSTALL_ARGS[@]}"}
 printf '\n'
-find_docker_dashboards
-for entry in ${DASHBOARDS[@]+"${DASHBOARDS[@]}"}; do
-    IFS=$'\t' read -r project dir _ _ <<< "$entry"
-    printf '%s\n' "Tableau de bord   : conteneur Docker « $project » reconstruit ($dir)"
-done
+docker_update --list || true
 
 [[ "$MODE" != "check" ]] || exit 0
 if [[ "$MODE" == "ask" ]]; then
@@ -180,11 +148,13 @@ fi
     || die "install.sh a échoué : le code est à jour, relancez ./install.sh $(printf '%q ' ${INSTALL_ARGS[@]+"${INSTALL_ARGS[@]}"})"
 log "Diagnostic…"
 python3 "$ENGINE/scripts/coach_doctor.py" --workspace "$ARC_WORKSPACE" || warn "coach_doctor signale des points à voir (ci-dessus)."
-rebuild_docker_dashboards
+docker_rc=0; docker_update || docker_rc=$?
+[[ "$docker_rc" -eq 0 || "$docker_rc" -eq 3 ]] \
+    || warn "Conteneurs Docker non mis à jour (voir ci-dessus) : le moteur est à jour, relancez scripts/update-docker.sh"
 ok "Mise à jour terminée : $(python3 "$ENGINE/scripts/arc_version.py" 2>/dev/null || echo "$target")."
-if [[ ${#DASHBOARDS[@]} -gt 0 ]]; then
+if [[ "$docker_rc" -ne 3 ]]; then
     printf '%s\n' "Ouvrez une nouvelle session de votre assistant pour profiter de la nouvelle version."
 else
     printf '%s\n' "Ouvrez une nouvelle session de votre assistant et relancez le tableau de bord (scripts/dashboard.sh)" \
-        "— ou « docker compose up -d --build » pour l'image Docker — pour profiter de la nouvelle version."
+        "— ou scripts/update-docker.sh pour l'image Docker — pour profiter de la nouvelle version."
 fi
