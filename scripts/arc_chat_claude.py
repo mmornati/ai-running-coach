@@ -6,7 +6,7 @@ skills, `.mcp.json` et `AGENTS.md` du workspace comme l'IDE. Authentification pa
 clé API uniquement (variable nommée par `[chat].api_key_env`), jamais l'OAuth
 d'un abonnement.
 
-Sources officielles vérifiées (claude-agent-sdk 0.2.161, CLI embarqué 2.1.284) :
+Sources officielles vérifiées (claude-agent-sdk 0.2.165, CLI embarqué 2.1.294) :
   - https://code.claude.com/docs/en/agent-sdk/python      (ClaudeAgentOptions, messages)
   - https://code.claude.com/docs/en/agent-sdk/permissions (ordre d'évaluation, can_use_tool, hooks)
   - https://github.com/anthropics/claude-agent-sdk-python (le wheel EMBARQUE le CLI Claude Code :
@@ -31,6 +31,7 @@ from __future__ import annotations
 
 import asyncio
 import os
+import re
 import threading
 from pathlib import Path
 from typing import Any, Optional
@@ -40,7 +41,12 @@ from arc_chat_backend import (SYSTEM_ADDENDUM, system_addendum, BackendError, Ch
 from arc_chat_tools import (REFUSAL_DENY, display_input, fs_list_input, gate, map_leanproxy,
                             remember_result, short, summarize_tool, usd_to_eur)
 
-SDK_TESTED_VERSION = "0.2.161"
+SDK_TESTED_VERSION = "0.2.165"
+# Plancher de sécurité : avant 0.2.121, GHSA-h4mw-j7qp-8mwm (critique, injection d'arguments par
+# `resume`). Une version plus ancienne est refusée par `check()` ET par `run_turn()` (avant tout
+# appel au SDK, donc avant de passer `resume=`).
+SDK_MIN_VERSION = "0.2.121"
+SDK_INSTALL_HINT = f"pip install -U 'claude-agent-sdk>={SDK_MIN_VERSION}'"
 DEFAULT_API_KEY_ENV = "ANTHROPIC_API_KEY"
 
 # Outils natifs retirés du contexte du modèle (interaction terminal sans objet dans le chat).
@@ -182,6 +188,48 @@ class _Turn:
         return result
 
 
+def parse_version(raw: Any) -> Optional[tuple]:
+    """Préfixe numérique d'une version (« 0.2.121 », « 1.0.0rc1 » -> (1, 0, 0)) ; `None` si
+    inconnue ou illisible (« ? »). Bibliothèque standard seulement."""
+    match = re.match(r"\s*v?(\d+(?:\.\d+)*)", str(raw or ""))
+    if not match:
+        return None
+    return tuple(int(part) for part in match.group(1).split("."))
+
+
+_PRE_RE = re.compile(r"^[.\-_]?(?:dev|a|b|c|rc|alpha|beta|pre|preview)", re.IGNORECASE)
+_POST_RE = re.compile(r"^[.\-_]?(?:(?:post|rev)\d*|r\d+)|^-\d+", re.IGNORECASE)
+
+
+def version_below(version: Any, minimum: str) -> Optional[bool]:
+    """`True` si `version` < `minimum`, `False` sinon, `None` si `version` est illisible.
+    Les composantes manquantes valent 0 ((0, 2) == (0, 2, 0)). Ordre PEP 440 pour le plancher :
+    « X.Y.Zrc1 », « X.Y.Za1 », « X.Y.Zb2 », « X.Y.Z.dev0 » sont AVANT « X.Y.Z » ; les
+    post-versions (« X.Y.Z.post1 ») sont >=."""
+    have, floor = parse_version(version), parse_version(minimum)
+    if have is None or floor is None:
+        return None
+    width = max(len(have), len(floor))
+    padded_have = have + (0,) * (width - len(have))
+    padded_floor = floor + (0,) * (width - len(floor))
+    if padded_have != padded_floor:
+        return padded_have < padded_floor
+    rest = re.sub(r"^\s*v?\d+(?:\.\d+)*", "", str(version))
+    return bool(_PRE_RE.match(rest)) and not _POST_RE.match(rest)
+
+
+def installed_sdk_version(sdk: Any) -> str:
+    """Version du SDK : `__version__` du module, sinon métadonnées du paquet installé ; « ? »."""
+    value = getattr(sdk, "__version__", None)
+    if value:
+        return str(value)
+    try:
+        from importlib import metadata
+        return metadata.version("claude-agent-sdk")
+    except Exception:  # noqa: BLE001 — paquet introuvable ou métadonnées illisibles
+        return "?"
+
+
 class ClaudeBackend(ChatBackend):
     name = "claude"
 
@@ -233,11 +281,16 @@ class ClaudeBackend(ChatBackend):
         try:
             import claude_agent_sdk  # type: ignore
         except ImportError:
-            return False, "paquet claude-agent-sdk absent — pip install claude-agent-sdk"
+            return False, f"paquet claude-agent-sdk absent — {SDK_INSTALL_HINT}"
         if not self._api_key():
             return False, (f"clé API absente : variable {self._api_key_env()} vide "
                            "(à renseigner dans ~/.config/ai-running-coach/llm.env)")
-        version = getattr(claude_agent_sdk, "__version__", "?")
+        version = installed_sdk_version(claude_agent_sdk)
+        if version_below(version, SDK_MIN_VERSION):
+            return False, (f"claude-agent-sdk {version} < {SDK_MIN_VERSION} (GHSA-h4mw-j7qp-8mwm) — "
+                           f"{SDK_INSTALL_HINT}")
+        if parse_version(version) is None:
+            return True, f"claude-agent-sdk version inconnue (minimum {SDK_MIN_VERSION}, testé avec {SDK_TESTED_VERSION})"
         return True, f"claude-agent-sdk {version} (testé avec {SDK_TESTED_VERSION})"
 
     def _options(self, sdk: Any, turn: _Turn, resume: Optional[str]) -> Any:
@@ -299,7 +352,11 @@ class ClaudeBackend(ChatBackend):
             import claude_agent_sdk as sdk  # type: ignore
         except ImportError:
             raise BackendError("Le paquet claude-agent-sdk n'est pas installé "
-                               "(pip install claude-agent-sdk).")
+                               f"({SDK_INSTALL_HINT}).")
+        version = installed_sdk_version(sdk)
+        if version_below(version, SDK_MIN_VERSION):
+            raise BackendError(f"claude-agent-sdk {version} < {SDK_MIN_VERSION} (GHSA-h4mw-j7qp-8mwm) — "
+                               f"{SDK_INSTALL_HINT}")
         if not self._api_key():
             raise BackendError(f"Clé API Anthropic absente : la variable {self._api_key_env()} "
                                "est vide (voir ~/.config/ai-running-coach/llm.env).")

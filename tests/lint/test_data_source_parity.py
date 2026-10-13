@@ -225,6 +225,34 @@ class TestDataSourceDocumented(unittest.TestCase):
         # Seules les origines amont connues sont remplacées : jamais une installation personnalisée.
         self.assertIn("origine personnalisée", INSTALL_SH)
 
+    def test_garmin_mcp_pin_agrees_everywhere_and_is_enforced(self):
+        """Sécurité : le pin garmin-mcp (commit COMPLET) est identique dans install.sh, coach_doctor
+        et deploy/chat/Dockerfile, et `install.sh` l'applique aussi aux installations existantes
+        (sans quoi « déjà installé » laisserait des dépendances périmées en place)."""
+        match = re.search(r'^GARMIN_MCP_REF="git\+(https://github\.com/[^@"]+)@([0-9a-f]{40})"$',
+                          INSTALL_SH, re.MULTILINE)
+        self.assertIsNotNone(match, "GARMIN_MCP_REF doit valoir git+<url>@<sha complet de 40 hex>")
+        url, sha = match.groups()
+        doctor = (REPO / "scripts/coach_doctor.py").read_text(encoding="utf-8")
+        self.assertIn(f'GARMIN_MCP_PINNED_URL = "{url}"', doctor)
+        self.assertIn(f'GARMIN_MCP_PINNED_COMMIT = "{sha}"', doctor)
+        dockerfile = (REPO / "deploy/chat/Dockerfile").read_text(encoding="utf-8")
+        self.assertIn(f"ARG GARMIN_MCP_REF=git+{url}@{sha}", dockerfile)
+        self.assertIn("upgrade_garmin_pin_if_needed", INSTALL_SH)
+        self.assertIn('uv tool install --python 3.12 --force "$GARMIN_MCP_REF"', INSTALL_SH)
+        self.assertIn("origine personnalisée", INSTALL_SH)
+
+    def test_garmin_token_perms_hardening_is_wired(self):
+        """GHSA-wjhr-76vg-2hvc : install.sh, daily-sync.sh, coach_doctor et le Dockerfile du chat
+        resserrent / contrôlent les droits des jetons Garmin."""
+        self.assertIn("restrict_garmin_tokens", INSTALL_SH)
+        self.assertIn("restrict_garmin_tokens", DAILY_SYNC_SH)
+        doctor = (REPO / "scripts/coach_doctor.py").read_text(encoding="utf-8")
+        self.assertIn('"garmin_token_perms"', doctor)
+        self.assertIn('"garmin_mcp_pin"', doctor)
+        self.assertIn('chmod 700 "$HOME/.garminconnect"',
+                      (REPO / "deploy/chat/Dockerfile").read_text(encoding="utf-8"))
+
     def test_icu_tool_mentions_are_real_tools(self):
         """Toute mention `icu_<outil>` des prompts/docs de la source intervals.icu est un outil réel
         du serveur épinglé (liste `ICU_TOOLS`) — ni faute de frappe, ni outil inventé. Les motifs

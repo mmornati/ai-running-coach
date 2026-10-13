@@ -427,7 +427,7 @@ class TestInstallLlm(InstallAsserts):
             self.assertEqual(self._get(sb, "sync", "api_key_env"), "ANTHROPIC_API_KEY")
             self.assertOutputContains(proc, "N'exportez PAS ANTHROPIC_API_KEY")
             self.assertOutputContains(proc, "DÉJÀ exporté")
-            self.assertOutputContains(proc, "pip install claude-agent-sdk")
+            self.assertOutputContains(proc, "pip install -U 'claude-agent-sdk>=0.2.121'")
             self.assertOutputLacks(proc, "exporte-dans-le-shell")
 
     def test_anthropic_switch_from_subscription_to_paid_api_is_warned(self):

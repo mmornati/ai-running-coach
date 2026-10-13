@@ -154,6 +154,14 @@ class TestIntervalsPinUpgrade(InstallAsserts):
             self.assertEqual(env_file.stat().st_mode & 0o777, 0o600)
             self.assertNotIn("INTERVALS_ICU_API_KEY=x", proc.stdout + proc.stderr)
 
+    def test_non_object_direct_url_json_never_fails_the_install(self):
+        with Sandbox() as sb:
+            path = self._fake_tool(sb, *self.LEGACY)
+            for meta in (sb.home / ".local/share/uv/tools/intervals-icu-mcp").rglob("direct_url.json"):
+                meta.write_text("[]")
+            self.assertSucceeded(self._install(sb, path))
+            self.assertEqual(self._tool_installs(sb), [])
+
     def test_legacy_origin_is_reinstalled_at_the_pinned_commit(self):
         with Sandbox() as sb:
             path = self._fake_tool(sb, *self.LEGACY)

@@ -1096,7 +1096,7 @@ class TestJsonSchema(InstallAsserts):
             self.assertIsInstance(payload["ok"], bool)
             self.assertIsInstance(payload["checks"], list)
             expected_ids = {
-                "garmin_token", "garmin_mcp", "config_files", "athlete_profile",
+                "garmin_token", "garmin_token_perms", "garmin_mcp", "garmin_mcp_pin", "config_files", "athlete_profile",
                 "index_freshness", "out_of_contract", "daily_sync_scheduled", "ntfy_configured",
                 "gear_sync", "gear_history", "fit_reader", "intervals_mcp_pin",
                 "llm_config", "chat_service", "opencode_cli", "strava_connection", "telegram", "weight_sync", "openwearables",

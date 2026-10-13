@@ -131,9 +131,11 @@ import os
 import platform
 import queue
 import re
+import shlex
 import shutil
 import signal
 import sqlite3
+import stat
 import subprocess
 import sys
 import threading
@@ -170,7 +172,26 @@ MCP_PROBE_TIMEOUT_S = float(os.environ.get("ARC_MCP_PROBE_TIMEOUT_S", "10"))
 CRON_MARKER = "# ai-running-coach daily-sync"
 LAUNCHD_PLIST_REL = "Library/LaunchAgents/com.ai-running-coach.daily-sync.plist"
 
-GARMIN_MCP_INSTALL_FIX = "uv tool install --python 3.12 git+https://github.com/Taxuspt/garmin_mcp@cfc5d799ab0f165e837f1188a1d093c65838aaf7"
+# Pin du serveur garmin-mcp : DOIT rester identique à `GARMIN_MCP_REF` dans install.sh (et à l'ARG
+# de deploy/chat/Dockerfile) — tests/lint/test_data_source_parity.py le vérifie.
+GARMIN_MCP_PINNED_URL = "https://github.com/Taxuspt/garmin_mcp"
+GARMIN_MCP_PINNED_COMMIT = "cfc5d799ab0f165e837f1188a1d093c65838aaf7"
+GARMIN_MCP_INSTALL_FIX = f"uv tool install --python 3.12 git+{GARMIN_MCP_PINNED_URL}@{GARMIN_MCP_PINNED_COMMIT}"
+GARMIN_MCP_UPDATE_FIX = f"uv tool install --python 3.12 --force git+{GARMIN_MCP_PINNED_URL}@{GARMIN_MCP_PINNED_COMMIT}"
+
+
+def garmin_token_perms_fix(tokens_dir: Path, base64_open: bool = False) -> str:
+    """Commande de resserrage pour LE dossier de jetons résolu (pas toujours ~/.garminconnect)."""
+    home = Path.home()
+    try:
+        shown = "~/" + str(tokens_dir.relative_to(home)) if tokens_dir != home else str(tokens_dir)
+    except ValueError:
+        shown = str(tokens_dir)
+    quoted = shown if shown.startswith("~/") and shlex.quote(shown[2:]) == shown[2:] else shlex.quote(shown)
+    cmd = f"chmod 700 {quoted} && find {quoted} -type f -exec chmod 600 {{}} +"
+    if base64_open:
+        cmd += " && chmod 600 ~/.garminconnect_base64"
+    return cmd
 
 # Pin du serveur MCP intervals.icu (#165) : DOIT rester identique à `INTERVALS_MCP_REF`
 # dans install.sh — tests/lint/test_data_source_parity.py le vérifie.
@@ -181,7 +202,7 @@ INTERVALS_MCP_LEGACY_URL = "https://github.com/eddmann/intervals-icu-mcp"
 INTERVALS_MCP_UPDATE_FIX = "./install.sh --source intervals"
 
 CHECK_IDS = (
-    "garmin_token", "garmin_mcp", "config_files", "athlete_profile",
+    "garmin_token", "garmin_token_perms", "garmin_mcp", "garmin_mcp_pin", "config_files", "athlete_profile",
     "index_freshness", "out_of_contract", "daily_sync_scheduled", "ntfy_configured",
     "gear_sync", "gear_history", "fit_reader", "intervals_mcp_pin",
     "llm_config", "chat_service", "opencode_cli", "strava_connection", "telegram", "weight_sync",
@@ -374,6 +395,122 @@ def check_garmin_mcp_presence(workspace: Path) -> dict:
         f"MCP garmin : commande « {server['command']} » présente ({command_path}).",
         fix=None,
     )
+
+
+def check_garmin_token_perms(tokens_dir: Path, config: dict, home: Optional[Path] = None) -> dict:
+    """GHSA-wjhr-76vg-2hvc : des jetons Garmin (jeton de rafraîchissement compris) créés par une
+    ancienne version de garmin-mcp, un autre outil ou une connexion garminconnect directe peuvent
+    rester lisibles par les autres comptes de la machine (0644 / dossier 0755). `warning` si le
+    dossier, un fichier ou `~/.garminconnect_base64` est accessible au groupe/autres. Ne lit JAMAIS
+    le contenu des fichiers (seulement leurs droits) ; ne suit pas les liens symboliques."""
+    check_id = "garmin_token_perms"
+    source = (config.get("data") or {}).get("source", "garmin")
+    if source != "garmin":
+        return build_check(check_id, "info",
+                           f"[data].source = \"{source}\" — jetons Garmin non applicables.", fix=None)
+    base64_file = (home or Path.home()) / ".garminconnect_base64"
+    open_items = []
+    base64_open = False
+    try:
+        b64_mode = base64_file.lstat().st_mode
+        if stat.S_ISREG(b64_mode) and b64_mode & 0o077:
+            open_items.append(f"{base64_file.name} ({b64_mode & 0o777:03o})")
+            base64_open = True
+    except OSError:
+        pass
+    try:
+        dir_mode = tokens_dir.lstat().st_mode
+    except OSError:
+        dir_mode = None
+    if dir_mode is None:
+        if open_items:
+            return build_check(
+                check_id, "warning",
+                "Jeton Garmin lisible par d'autres comptes de la machine : " + ", ".join(open_items)
+                + " (GHSA-wjhr-76vg-2hvc). Relancer ./install.sh le resserre aussi.",
+                fix="chmod 600 ~/.garminconnect_base64")
+        return build_check(check_id, "info", f"Aucun dossier de jetons Garmin ({tokens_dir}).", fix=None)
+    if stat.S_ISLNK(dir_mode):
+        return build_check(check_id, "info",
+                           f"{tokens_dir} est un lien symbolique : droits non resserrés automatiquement.", fix=None)
+    if not stat.S_ISDIR(dir_mode):
+        return build_check(check_id, "info", f"{tokens_dir} n'est pas un dossier : droits non vérifiés.", fix=None)
+    if dir_mode & 0o077:
+        open_items.insert(0, f"dossier ({dir_mode & 0o777:03o})")
+    try:
+        entries = sorted(tokens_dir.iterdir())
+    except OSError:
+        entries = []
+    for entry in entries:
+        try:
+            mode = entry.lstat().st_mode
+        except OSError:
+            continue
+        if stat.S_ISREG(mode) and mode & 0o077:
+            open_items.append(f"{entry.name} ({mode & 0o777:03o})")
+    if open_items:
+        return build_check(
+            check_id, "warning",
+            "Jetons Garmin lisibles par d'autres comptes de la machine : " + ", ".join(open_items)
+            + ". Ils ont pu être créés par une ancienne version de garmin-mcp ou un autre outil "
+            "(GHSA-wjhr-76vg-2hvc). Relancer ./install.sh les resserre aussi.",
+            fix=garmin_token_perms_fix(tokens_dir, base64_open),
+        )
+    return build_check(check_id, "ok", "Jetons Garmin : accessibles à leur seul propriétaire.", fix=None)
+
+
+def installed_garmin_origin(home: Path) -> Optional[tuple]:
+    """Origine VCS `(url, commit)` du serveur `garmin-mcp` installé par `uv tool` (dist-info
+    `garmin_mcp-*`) ; `None` si illisible. Même lecture que `installed_intervals_origin`."""
+    python = _tool_python("garmin-mcp", home)
+    if python is None:
+        return None
+    env_dir = python.parent.parent
+    for path in sorted(env_dir.glob("lib/python*/site-packages/garmin_mcp-*.dist-info/direct_url.json")):
+        try:
+            info = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            return None
+        if not isinstance(info, dict):
+            return None
+        vcs = info.get("vcs_info") if isinstance(info.get("vcs_info"), dict) else {}
+        url = str(info.get("url") or "").rstrip("/")
+        url = url[:-len(".git")] if url.endswith(".git") else url
+        return url, str(vcs.get("commit_id") or "")
+    return None
+
+
+def check_garmin_mcp_pin(config: dict, home: Path) -> dict:
+    """Le serveur garmin-mcp installé est-il au commit épinglé par `install.sh` ? Une installation
+    non épinglée garde des dépendances transitives périmées (`uv tool install` re-résout
+    pyproject.toml) avec des avis de sécurité connus : `warning` + commande de mise à jour.
+    Jamais un `error`. Lecture locale seule. Ne concerne que `[data].source = "garmin"`."""
+    check_id = "garmin_mcp_pin"
+    source = (config.get("data") or {}).get("source", "garmin")
+    if source != "garmin":
+        return build_check(check_id, "info",
+                           f"[data].source = \"{source}\" — serveur garmin-mcp non applicable.", fix=None)
+    origin = installed_garmin_origin(home)
+    if origin is None:
+        return build_check(
+            check_id, "info",
+            "Origine du serveur garmin-mcp illisible (non installé par `uv tool`, ou environnement "
+            "introuvable) : pin non vérifié.", fix=GARMIN_MCP_UPDATE_FIX)
+    url, commit = origin
+    short = commit[:7] or "?"
+    if url != GARMIN_MCP_PINNED_URL:
+        return build_check(
+            check_id, "info",
+            f"Serveur garmin-mcp installé depuis une origine personnalisée ({url or '?'}) : laissé tel quel.",
+            fix=None)
+    if commit == GARMIN_MCP_PINNED_COMMIT:
+        return build_check(check_id, "ok", f"Serveur garmin-mcp au commit épinglé ({short}).", fix=None)
+    return build_check(
+        check_id, "warning",
+        f"Serveur garmin-mcp au commit {short}, différent du pin du projet ({GARMIN_MCP_PINNED_COMMIT[:7]}) : "
+        "la réinstallation au pin apporte les correctifs de sécurité des dépendances transitives "
+        "(les jetons Garmin sont conservés). Relancer ./install.sh ou /update-coach.",
+        fix=GARMIN_MCP_UPDATE_FIX)
 
 
 def _read_line_with_timeout(proc: subprocess.Popen, request: str, timeout_s: float) -> str:
@@ -1735,6 +1872,10 @@ def run_single_check(check_id: str, workspace: Path, now: datetime, tokens_dir: 
         return check_garmin_check_not_applicable(check_id, source)
     if check_id == "garmin_token":
         return check_garmin_token(now, tokens_dir)
+    if check_id == "garmin_token_perms":
+        return check_garmin_token_perms(tokens_dir, config)
+    if check_id == "garmin_mcp_pin":
+        return check_garmin_mcp_pin(config, Path.home())
     if check_id == "garmin_mcp":
         return probe_garmin_mcp(workspace) if probe_mcp else check_garmin_mcp_presence(workspace)
     if check_id == "config_files":

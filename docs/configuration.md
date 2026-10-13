@@ -579,7 +579,7 @@ défaut. Installé par `./install.sh --chat` (`scripts/coach-chat.sh`).
 | Clé | Effet |
 |---|---|
 | `enabled` | `false` (défaut) \| `true`. |
-| `backend` | `"claude"` (Claude Agent SDK, `pip install claude-agent-sdk`) \| `"opencode"` (OpenRouter, OpenAI, Mistral, Ollama…). |
+| `backend` | `"claude"` (Claude Agent SDK, `pip install -U 'claude-agent-sdk>=0.2.121'`) \| `"opencode"` (OpenRouter, OpenAI, Mistral, Ollama…). |
 | `model` | Défaut `claude-sonnet-5-5`. Backend `opencode` : `fournisseur/modèle`. |
 | `base_url` | Backend `opencode` + API compatible OpenAI autre qu'OpenRouter. |
 | `api_key_env` | Nom de la variable de `llm.env` (défaut `ANTHROPIC_API_KEY`). |

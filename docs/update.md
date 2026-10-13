@@ -133,9 +133,14 @@ daily-sync les committe de lui-même.
 
 ## Serveurs MCP (`garmin-mcp`, `intervals-icu-mcp`)
 
-`install.sh` n'installe un serveur MCP que s'il est **absent** : il ne le met jamais à jour
-de lui-même. Pour suivre les correctifs de `garmin-mcp` (API Garmin qui change, nouveaux
-outils de la liste blanche) :
+`garmin-mcp` est épinglé à un commit précis (`GARMIN_MCP_REF` dans `install.sh`) : relancer
+`./install.sh` (ou `/update-coach`) compare l'origine de l'outil installé au pin et le réinstalle
+(`uv tool install --force`) s'il diffère — ce qui met aussi à jour ses dépendances transitives
+(correctifs de sécurité). L'installation est ainsi alignée sur le commit revu par le projet, même
+si un commit amont plus récent avait été installé à la main. Vos tokens Garmin sont conservés, et
+`~/.garminconnect` est resserré en `700`/`600` (filet de sécurité, GHSA-wjhr-76vg-2hvc). Une origine
+personnalisée n'est jamais écrasée. Quand le commit est déjà le bon, relancer `./install.sh` ne
+re-résout pas les dépendances : pour les rafraîchir en gardant le commit épinglé, lancez
 
 ```bash
 uv tool upgrade garmin-mcp
