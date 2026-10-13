@@ -797,6 +797,17 @@ telegram_summary() {
 # problème sous-jacent au même run (voir revue PR #77).
 TOKEN_ALERT_SENT_THIS_RUN=0
 
+# GHSA-wjhr-76vg-2hvc : garminconnect 0.3.2 réécrit le magasin de jetons au rafraîchissement
+# avec les droits du umask (0644). On retire les droits groupe/autres après chaque run
+# (Garmin uniquement ; silencieux, jamais bloquant). Voir install.sh (restrict_garmin_tokens).
+restrict_garmin_tokens() {
+    [[ "$SOURCE" == "garmin" ]] || return 0
+    local d="${GARMIN_TOKENS_DIR:-$HOME/.garminconnect}"
+    [[ -d "$d" && ! -L "$d" ]] || return 0
+    chmod go-rwx "$d" 2>/dev/null || return 0
+    find "$d" -type f -exec chmod go-rwx {} + 2>/dev/null || true
+}
+
 check_token_alert() {
     # Garmin uniquement (#68, #164) : intervals-icu-mcp et Strava n'ont pas d'échéance de token lisible ici
     # comparable (clé API + ID athlète, pas d'OAuth à durée limitée) —
@@ -1159,6 +1170,7 @@ main() {
     fi
     : > "$run_marker"
     raw_output="$("${exec_cmd[@]}" 2>>"$LOG_FILE")" || rc=$?
+    restrict_garmin_tokens
     if [[ "$OUTPUT_KIND" == "text" ]]; then
         output="$raw_output"
         printf '%s\n' "$output" >> "$LOG_FILE"

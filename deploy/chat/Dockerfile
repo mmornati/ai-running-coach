@@ -39,6 +39,7 @@ ENV HOME=$ARC_HOME \
     OPENCODE_DISABLE_AUTOUPDATE=1
 
 RUN mkdir -p "$HOME/.opencode/bin" "$HOME/.local/share/opencode" "$HOME/.garminconnect" \
+    && chmod 700 "$HOME/.garminconnect" \
     && arch="$(uname -m)" && case "$arch" in x86_64) arch=x64 ;; aarch64) arch=arm64 ;; esac \
     && curl -fsSL "https://github.com/anomalyco/opencode/releases/download/v${OPENCODE_VERSION}/opencode-linux-${arch}.tar.gz" \
        | tar -xz -C "$HOME/.opencode/bin" opencode \

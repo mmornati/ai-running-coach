@@ -29,7 +29,7 @@ from arc_chat_backend import BackendError, TurnContext  # noqa: E402
 
 def make_fake_sdk(script: list, record: dict) -> types.ModuleType:
     mod = types.ModuleType("claude_agent_sdk")
-    mod.__version__ = "0.0-fake"
+    mod.__version__ = "0.2.165"
 
     @dataclass
     class TextBlock:
@@ -645,9 +645,32 @@ class TestPreconditions(ClaudeBackendCase):
         backend = C.ClaudeBackend(self.ws, {})
         ok, msg = backend.check()
         self.assertFalse(ok)
-        self.assertEqual(msg, "paquet claude-agent-sdk absent — pip install claude-agent-sdk")
+        self.assertEqual(msg, "paquet claude-agent-sdk absent — pip install -U 'claude-agent-sdk>=0.2.121'")
         with self.assertRaises(BackendError):
             backend.run_turn(Harness(self.ws).ctx, "x")
+
+    def test_version_floor_blocks_vulnerable_sdk(self):
+        """GHSA-h4mw-j7qp-8mwm : < 0.2.121 refusé par check() ; inconnue = non bloquant, dite."""
+        cases = [("0.2.120", False), ("0.2.121", True), ("0.2.165", True), ("1.0.0", True),
+                 ("0.1.99", False), ("0.2", False), ("0.2.121rc1", True), ("?", True)]
+        for version, expected in cases:
+            with self.subTest(version=version):
+                backend, sdk, _ = self.backend([])
+                sdk.__version__ = version
+                ok, msg = backend.check()
+                self.assertEqual(ok, expected, msg)
+                if not expected:
+                    self.assertIn("GHSA-h4mw-j7qp-8mwm", msg)
+                    self.assertIn("pip install -U 'claude-agent-sdk>=0.2.121'", msg)
+                if version == "?":
+                    self.assertIn("version inconnue", msg)
+
+    def test_version_compare_helpers(self):
+        self.assertTrue(C.version_below("0.2.120", "0.2.121"))
+        self.assertFalse(C.version_below("0.2.121", "0.2.121"))
+        self.assertFalse(C.version_below("0.10.0", "0.2.121"))
+        self.assertIsNone(C.version_below("?", "0.2.121"))
+        self.assertEqual(C.SDK_TESTED_VERSION, "0.2.165")
 
     def test_sdk_exception_is_translated(self):
         holder: list = []

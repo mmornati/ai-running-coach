@@ -95,7 +95,7 @@ Le tableau de bord reste **en lecture seule** et ne voit jamais la clé API : c'
 | Harnais | Claude Agent SDK — le moteur de Claude Code | serveur OpenCode |
 | Modèle par défaut | `claude-sonnet-5-5` | `openrouter/deepseek/deepseek-v4.1-flash` |
 | Fidélité aux agents/skills | identique à Claude Code | bonne ; dépend beaucoup du modèle |
-| Prérequis | `pip install claude-agent-sdk` (Python ≥ 3.10) | binaire `opencode` |
+| Prérequis | `pip install -U 'claude-agent-sdk>=0.2.121'` (Python ≥ 3.10) | binaire `opencode` |
 | Coût indicatif (mois type, ci-dessous) | ~30 € (Sonnet, estimation) | **< 1 €** (DeepSeek v4.1 Flash, mesuré) |
 
 Pourquoi Sonnet et pas Haiku côté Claude : c'est dans le chat que se prennent les décisions
@@ -452,5 +452,5 @@ d'OpenCode recopiés dans un fichier — échanges compris, à supprimer après 
 | « Authentification requise » | en-tête d'identité absent : vérifier `auth_header` et le middleware Traefik |
 | « Hôte non autorisé » | `allowed_hosts` / `public_url` ne correspondent pas à l'adresse utilisée |
 | Pas de notification d'approbation | `[notifications]` non configuré, ou `public_url` vide (pas de boutons) |
-| « paquet claude-agent-sdk absent » | `pip install claude-agent-sdk` dans le Python du service |
+| « paquet claude-agent-sdk absent » ou « claude-agent-sdk X < 0.2.121 » (avis GHSA-h4mw-j7qp-8mwm : injection d'arguments par `resume`, corrigé en 0.2.121) | `pip install -U 'claude-agent-sdk>=0.2.121'` dans le Python du service |
 | Budget atteint dès le matin | augmenter `daily_budget_eur`, ou passer à un modèle moins cher |

@@ -1442,11 +1442,83 @@ install_uv() {
 # ---------------------------------------------------------------------------
 # 2. garmin-mcp + auth
 # ---------------------------------------------------------------------------
+# GHSA-wjhr-76vg-2hvc : `garminconnect` 0.3.2 (version figée par garmin_mcp en amont) écrit le
+# magasin de jetons OAuth (`garmin_tokens.json`, qui contient le jeton de rafraîchissement) avec
+# les droits par défaut du umask (0644, dossier 0755) : lisible par les autres comptes de la
+# machine. Le correctif amont (0.3.5) n'est pas validé par garmin_mcp : on resserre de NOTRE côté
+# — dossier en 0700, fichiers réguliers en 0600 (on ne RETIRE que les droits groupe/autres ;
+# `find -type f` ne suit aucun lien symbolique). Idempotent, ne fait jamais échouer l'installation.
+# Relancé par scripts/daily-sync.sh après chaque run, car le client réécrit le fichier à chaque
+# rafraîchissement du jeton. Contrôlé par /coach-doctor (check `garmin_token_perms`).
+restrict_garmin_tokens() {
+    [[ -d "$GARMIN_TOKENS_DIR" && ! -L "$GARMIN_TOKENS_DIR" ]] || return 0
+    if [[ "$DRY_RUN" -eq 1 ]]; then
+        printf '%s\n' "${C_YELLOW}[dry-run]${C_RESET} resserrage des droits de $GARMIN_TOKENS_DIR (dossier 700, jetons 600)"
+        return 0
+    fi
+    chmod go-rwx "$GARMIN_TOKENS_DIR" 2>/dev/null \
+        || { warn "Droits de $GARMIN_TOKENS_DIR non resserrés (voir /coach-doctor, check garmin_token_perms)."; return 0; }
+    find "$GARMIN_TOKENS_DIR" -type f -exec chmod go-rwx {} + 2>/dev/null || true
+    ok "Droits des jetons Garmin : dossier 700, fichiers 600 (GHSA-wjhr-76vg-2hvc)"
+}
+
+# Origine VCS de l'installation `uv tool` de garmin-mcp : « <url> <commit> » (vide si
+# illisible). Même lecture que `intervals_installed_origin` (PEP 610, aucun réseau) ; le
+# dist-info s'appelle `garmin_mcp-*.dist-info`.
+garmin_installed_origin() {
+    local exe env_dir
+    exe="$(command -v garmin-mcp)" || return 0
+    env_dir="$(dirname "$(dirname "$(python3 -c 'import os,sys; print(os.path.realpath(sys.argv[1]))' "$exe")")")"
+    python3 - "$env_dir" <<'PYEOF'
+import glob, json, sys
+for path in glob.glob(sys.argv[1] + "/lib/python*/site-packages/garmin_mcp-*.dist-info/direct_url.json"):
+    try:
+        info = json.load(open(path))
+        print(info.get("url", ""), (info.get("vcs_info") or {}).get("commit_id", ""))
+    except (OSError, ValueError):
+        pass
+    break
+PYEOF
+}
+
+# Le pin GARMIN_MCP_REF n'était appliqué qu'à la première installation (« déjà installé »
+# sautait tout) : une installation antérieure, non épinglée, garde donc des dépendances
+# transitives périmées (`uv tool install` re-résout pyproject.toml, pas l'uv.lock amont) avec
+# des avis de sécurité connus. Même mécanique que `upgrade_intervals_pin_if_needed` : réinstalle
+# au commit épinglé, uniquement pour l'origine amont CONNUE ; une origine personnalisée n'est
+# jamais écrasée. Les jetons de $GARMIN_TOKENS_DIR ne sont pas touchés.
+upgrade_garmin_pin_if_needed() {
+    local origin url commit want_url want_commit ref="${GARMIN_MCP_REF#git+}"
+    want_url="${ref%@*}"
+    want_commit="${ref##*@}"
+    origin="$(garmin_installed_origin)"
+    url="${origin%% *}"
+    commit="${origin#* }"
+    url="${url%/}"
+    url="${url%.git}"
+    if [[ -z "$origin" || -z "$url" ]]; then
+        warn "Origine de l'installation garmin-mcp illisible — non mise à jour (voir /coach-doctor, check garmin_mcp_pin)."
+        return 0
+    fi
+    if [[ "$url" != "$want_url" ]]; then
+        warn "garmin-mcp installé depuis une origine personnalisée ($url) — laissé tel quel."
+        return 0
+    fi
+    if [[ "$commit" == "$want_commit" ]]; then
+        ok "garmin-mcp au commit épinglé (${want_commit:0:7})"
+        return 0
+    fi
+    log "Mise à jour de garmin-mcp : ${url#https://github.com/}@${commit:0:7} -> @${want_commit:0:7} (dépendances à jour ; jetons Garmin conservés)"
+    run uv tool install --python 3.12 --force "$GARMIN_MCP_REF" \
+        || warn "Mise à jour de garmin-mcp échouée — l'ancienne version reste en place (voir /coach-doctor)."
+}
+
 install_garmin_mcp() {
     log "Installation de garmin-mcp (accès Garmin Connect)"
     if have garmin-mcp; then
         # NB : pas de « garmin-mcp --version » — cela démarre le serveur stdio et bloque.
         ok "garmin-mcp déjà installé : $(command -v garmin-mcp)"
+        upgrade_garmin_pin_if_needed
     else
         run uv tool install --python 3.12 "$GARMIN_MCP_REF"
         export PATH="$HOME/.local/bin:$PATH"
@@ -1476,6 +1548,7 @@ install_garmin_mcp() {
     else
         warn "Authentification Garmin sautée (--no-auth). Lancez 'uv run garmin-mcp-auth' plus tard."
     fi
+    restrict_garmin_tokens
 }
 
 # ---------------------------------------------------------------------------
@@ -2483,7 +2556,7 @@ persist_llm() {
     fi
     if [[ "$LLM_PROVIDER" == "anthropic" ]]; then
         if [[ "$DO_CHAT" -eq 1 || "$(effective_value chat enabled)" == "true" ]]; then
-            warn "Le chat avec le backend claude a besoin du SDK Python : pip install claude-agent-sdk (Python 3.10+)."
+            warn "Le chat avec le backend claude a besoin du SDK Python : pip install -U 'claude-agent-sdk>=0.2.121' (Python 3.10+ ; versions antérieures : GHSA-h4mw-j7qp-8mwm)."
         fi
     elif have opencode; then
         ok "opencode : présent ($(opencode --version 2>/dev/null | head -1))"

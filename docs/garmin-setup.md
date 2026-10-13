@@ -27,6 +27,11 @@ flowchart LR
 
 ## Composants installés
 
+`garmin-mcp` est épinglé à un commit précis (`GARMIN_MCP_REF` dans `install.sh`). Une installation existante qui n'est pas à ce commit
+(par exemple installée sans pin) est **réinstallée au pin** par `./install.sh` : `uv tool install` re-résout les dépendances
+transitives, ce qui apporte leurs correctifs de sécurité. Vos tokens ne sont pas touchés. Une origine personnalisée (chemin local,
+autre fork) n'est jamais écrasée ; `/coach-doctor` (`garmin_mcp_pin`) signale l'écart.
+
 | Composant | Rôle | Installation |
 |---|---|---|
 | `uv` | Gestionnaire Python | `curl -LsSf https://astral.sh/uv/install.sh \| sh` |
@@ -345,6 +350,18 @@ contacter Garmin, quand plus de la moitié des séances (au moins 5) portant un 
 ## Authentification
 
 Les tokens Garmin sont stockés dans `~/.garminconnect/` et sont valides environ **6 mois**.
+
+### Droits du dossier de tokens
+
+Le client `garminconnect` figé par `garmin-mcp` (0.3.2, avis GHSA-wjhr-76vg-2hvc, corrigé en 0.3.5 mais non validé par `garmin-mcp`)
+écrit `garmin_tokens.json` (qui contient le jeton de rafraîchissement) avec les droits du `umask` : lisible par les autres comptes
+de la machine. `install.sh` resserre donc `~/.garminconnect` à `700` et ses fichiers à `600` à **chaque** exécution (aussi lors d'un
+`/update-coach`, et après l'authentification), le daily-sync le refait après chaque run (le client réécrit le fichier à chaque
+rafraîchissement), et `/coach-doctor` (`garmin_token_perms`) vérifie le résultat. À la main :
+
+```bash
+chmod 700 ~/.garminconnect && chmod 600 ~/.garminconnect/*
+```
 
 ### Vérifier les tokens
 
