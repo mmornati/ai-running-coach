@@ -30,7 +30,8 @@ jobs:
     # code est du Python stdlib, déjà couvert sur Ubuntu. Sur une poussée vers
     # `main`, même règle appliquée aux fichiers de la poussée. macOS tourne toujours
     # en déclenchement manuel et chaque dimanche (`schedule`), qui rattrapent ce que
-    # le filtrage a laissé passer. Coût macOS : le minutage GitHub facture 10× le Linux.
+    # le filtrage a laissé passer. Sur GitHub, macOS n'est lancé que si la variable
+    # ARC_MACOS_ON_GITHUB vaut « true » : le minutage GitHub facture 10× le Linux.
     name: Plan
     runs-on: ubuntu-latest
     permissions:
@@ -46,6 +47,7 @@ jobs:
           EVENT: ${{ github.event_name }}
           REPO: ${{ github.repository }}
           PR: ${{ github.event.pull_request.number }}
+          MACOS_ON_GITHUB: ${{ vars.ARC_MACOS_ON_GITHUB }}
           BEFORE: ${{ github.event.before }}
           AFTER: ${{ github.sha }}
           # Chemins sensibles à l'OS. En cas de doute, ajouter ici plutôt qu'ailleurs :
@@ -77,6 +79,12 @@ jobs:
             else
               echo "Comparaison de la poussée indisponible : macOS lancé par prudence."
             fi
+          fi
+          # Interrupteur : macOS ne tourne sur GitHub que si la variable de dépôt
+          # ARC_MACOS_ON_GITHUB vaut « true ». Absente = désactivé (CircleCI prend le relais).
+          if [ "${MACOS_ON_GITHUB:-}" != true ]; then
+            macos=false
+            echo "macOS désactivé sur GitHub (ARC_MACOS_ON_GITHUB absent) : CircleCI le couvre."
           fi
           echo "macos=$macos" >> "$GITHUB_OUTPUT"
           # Paliers découpés en parts (`run_tests.py --shard`, par classe) lancées en
