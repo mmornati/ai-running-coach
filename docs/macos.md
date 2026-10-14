@@ -105,8 +105,10 @@ sont pas installées individuellement. Une dernière installation manuelle du DM
 est nécessaire pour passer d'une ancienne app sans ce mécanisme à la première
 version qui l'intègre. Les builds de développement sans configuration de signature
 Sparkle n'effectuent pas de recherche de mise à jour.
-Le DMG `-unsigned` publié aujourd'hui (sans signature Apple) n'embarque pas
-non plus de flux de mises à jour : installez chaque nouvelle version à la main.
+Les releases embarquent une clé publique Sparkle et publient un flux de mises à
+jour, y compris pour les DMG `-unsigned` sans signature Apple Developer ID.
+Sparkle vérifie la signature Ed25519 des mises à jour. L'autorisation de macOS
+au premier lancement reste nécessaire pour une app sans signature Apple.
 
 ## Pour les mainteneurs
 

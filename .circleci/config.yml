@@ -9,7 +9,8 @@ version: 2.1
 # Le DMG est construit par scripts/build-macos-dmg.sh (même script que GitHub),
 # puis joint à la release GitHub du tag release_tag (créée si elle n'existe pas).
 # Contexte CircleCI requis : ai-running-coach-release, avec GH_TOKEN (jeton
-# GitHub à droits « contents: write » sur ce dépôt).
+# GitHub à droits « contents: write » sur ce dépôt), SPARKLE_PUBLIC_KEY et
+# SPARKLE_PRIVATE_KEY (paire Ed25519 stable, indépendante de la signature Apple).
 
 parameters:
   build_dmg:
@@ -43,6 +44,18 @@ jobs:
             git checkout --quiet "refs/tags/$RELEASE_TAG"
 
       - run:
+          name: Configurer la signature Sparkle
+          command: |
+            set -euo pipefail
+            : "${SPARKLE_PUBLIC_KEY:?Clé publique Sparkle absente du contexte ai-running-coach-release}"
+            : "${SPARKLE_PRIVATE_KEY:?Clé privée Sparkle absente du contexte ai-running-coach-release}"
+            # Seules les données publiques vont dans BASH_ENV ; la clé privée
+            # reste dans le contexte et sera passée à Sparkle sur l'entrée standard.
+            printf 'export ARC_SPARKLE_PUBLIC_KEY=%q\n' "$SPARKLE_PUBLIC_KEY" >> "$BASH_ENV"
+            printf 'export ARC_UPDATE_FEED_URL=%q\n' \
+              "https://github.com/$GH_REPO/releases/latest/download/appcast.xml" >> "$BASH_ENV"
+
+      - run:
           name: Attendre la release GitHub (créée par « Tag a release »)
           command: |
             set -euo pipefail
@@ -51,7 +64,11 @@ jobs:
             # on attend jusqu'à 2 min 30 avant de la créer soi-même (tag poussé à la main).
             for attempt in $(seq 30); do
               gh release view "$RELEASE_TAG" >/dev/null 2>&1 && break
-              [ "$attempt" -lt 30 ] || gh release create "$RELEASE_TAG" --verify-tag --generate-notes
+              if [ "$attempt" -eq 30 ]; then
+                args=(--verify-tag --generate-notes)
+                case "$RELEASE_TAG" in *-*) args+=(--prerelease) ;; esac
+                gh release create "$RELEASE_TAG" "${args[@]}"
+              fi
               sleep 5
             done
 
@@ -75,6 +92,20 @@ jobs:
             (cd dist && shasum -a 256 "$name" > "$name.sha256")
             echo "export ARC_DMG_NAME=$name" >> "$BASH_ENV"
 
+      - run:
+          name: Signer le flux de mises à jour
+          command: |
+            set -euo pipefail
+            SPARKLE_DIR="$(scripts/fetch-sparkle.sh)"
+            mkdir -p dist/updates
+            # Le nom a déjà son suffixe -unsigned : l'URL du flux doit le conserver.
+            cp "dist/$ARC_DMG_NAME" dist/updates/
+            printf '%s' "$SPARKLE_PRIVATE_KEY" | "$SPARKLE_DIR/bin/generate_appcast" --ed-key-file - \
+              --maximum-deltas 0 \
+              --download-url-prefix "https://github.com/$GH_REPO/releases/download/$RELEASE_TAG/" \
+              --link "https://github.com/$GH_REPO/releases/tag/$RELEASE_TAG" dist/updates
+            test -s dist/updates/appcast.xml
+
       - store_artifacts:
           path: dist
           destination: AI-Running-Coach-macOS
@@ -85,7 +116,7 @@ jobs:
             set -euo pipefail
             source "$BASH_ENV"
             gh release upload "$RELEASE_TAG" \
-              "dist/$ARC_DMG_NAME" "dist/$ARC_DMG_NAME.sha256" --clobber
+              "dist/$ARC_DMG_NAME" "dist/$ARC_DMG_NAME.sha256" "dist/updates/appcast.xml" --clobber
 
             # Notes d'ouverture ajoutées une seule fois (marqueur), comme sur GitHub.
             notes="$(mktemp)"

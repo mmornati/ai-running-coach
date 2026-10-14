@@ -71,13 +71,9 @@ jobs:
         run: |
           set -euo pipefail
           echo "ARC_APP_VERSION=${TAG#v}" >> "$GITHUB_ENV"
-          # Sans signature Apple, le DMG « -unsigned » est publié sans mises à jour automatiques.
-          if [[ "${ARC_SIGNED_RELEASE:-}" != true ]]; then
-            echo "::notice::DMG non signé : mises à jour automatiques désactivées."
-            exit 0
-          fi
+          # Les signatures Ed25519 de Sparkle sont indépendantes d'Apple Developer ID.
           if [[ -z "$PUBLIC_KEY" || -z "$PRIVATE_KEY" ]]; then
-            echo "::error::Une release signée exige les clés SPARKLE_PUBLIC_KEY / SPARKLE_PRIVATE_KEY."
+            echo "::error::Une release exige les clés SPARKLE_PUBLIC_KEY / SPARKLE_PRIVATE_KEY."
             exit 1
           fi
           echo "ARC_SPARKLE_PUBLIC_KEY=$PUBLIC_KEY" >> "$GITHUB_ENV"
@@ -85,22 +81,6 @@ jobs:
 
       - name: Construire le DMG universel
         run: scripts/build-macos-dmg.sh
-
-      - name: Signer le flux de mises à jour
-        if: ${{ env.ARC_SIGNED_RELEASE == 'true' && (inputs.tag != '' || startsWith(github.ref, 'refs/tags/')) }}
-        env:
-          TAG: ${{ inputs.tag || github.ref_name }}
-          PRIVATE_KEY: ${{ secrets.SPARKLE_PRIVATE_KEY }}
-        run: |
-          set -euo pipefail
-          SPARKLE_DIR="$(scripts/fetch-sparkle.sh)"
-          mkdir -p dist/updates
-          cp dist/AI-Running-Coach-*.dmg dist/updates/
-          printf '%s' "$PRIVATE_KEY" | "$SPARKLE_DIR/bin/generate_appcast" --ed-key-file - \
-            --maximum-deltas 0 \
-            --download-url-prefix "https://github.com/$GITHUB_REPOSITORY/releases/download/$TAG/" \
-            --link "https://github.com/$GITHUB_REPOSITORY/releases/tag/$TAG" dist/updates
-          test -s dist/updates/appcast.xml
 
       - name: Nommer le DMG et calculer son empreinte
         run: |
@@ -116,6 +96,22 @@ jobs:
           name="$(basename "$dmg")"
           (cd dist && shasum -a 256 "$name" > "$name.sha256")
           echo "ARC_DMG_NAME=$name" >> "$GITHUB_ENV"
+
+      - name: Signer le flux de mises à jour
+        if: ${{ inputs.tag != '' || startsWith(github.ref, 'refs/tags/') }}
+        env:
+          TAG: ${{ inputs.tag || github.ref_name }}
+          PRIVATE_KEY: ${{ secrets.SPARKLE_PRIVATE_KEY }}
+        run: |
+          set -euo pipefail
+          SPARKLE_DIR="$(scripts/fetch-sparkle.sh)"
+          mkdir -p dist/updates
+          cp "dist/$ARC_DMG_NAME" dist/updates/
+          printf '%s' "$PRIVATE_KEY" | "$SPARKLE_DIR/bin/generate_appcast" --ed-key-file - \
+            --maximum-deltas 0 \
+            --download-url-prefix "https://github.com/$GITHUB_REPOSITORY/releases/download/$TAG/" \
+            --link "https://github.com/$GITHUB_REPOSITORY/releases/tag/$TAG" dist/updates
+          test -s dist/updates/appcast.xml
 
       - uses: actions/upload-artifact@v7
         with:
@@ -145,7 +141,7 @@ jobs:
             sleep 5
           done
           assets=("dist/$ARC_DMG_NAME" "dist/$ARC_DMG_NAME.sha256")
-          # Flux Sparkle seulement pour une release signée (voir « Signer le flux de mises à jour »).
+          # Le flux référence le nom définitif du DMG, y compris le suffixe -unsigned.
           if [ -f dist/updates/appcast.xml ]; then
             assets+=(dist/updates/appcast.xml)
           fi

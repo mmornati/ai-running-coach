@@ -47,18 +47,32 @@ comme suffixe du numéro de construction. Il publie ensemble le DMG et `appcast.
 le flux est accessible via `releases/latest/download/appcast.xml`. Les préversions
 ne deviennent pas la release « Latest » et ne sont donc pas proposées sur ce canal.
 
-Configuration initiale du dépôt GitHub, en plus des secrets Apple existants :
+Configuration du contexte CircleCI `ai-running-coach-release` :
 
 - variable `SPARKLE_PUBLIC_KEY` : clé publique Ed25519 ;
-- secret `SPARKLE_PRIVATE_KEY` : clé privée correspondante, au format exporté par
+- variable sensible `SPARKLE_PRIVATE_KEY` : clé privée correspondante, au format exporté par
   `generate_keys` ; elle est transmise sur l'entrée standard de `generate_appcast`,
   jamais en argument ni dans l'app.
 
 Générer et exporter ces clés avec les outils officiels de Sparkle :
 [`generate_keys`](https://sparkle-project.org/documentation/). Conserver une copie
 privée sécurisée : les versions déjà distribuées font confiance à cette clé.
-Une release non signée publie le DMG `-unsigned` sans mises à jour automatiques
-(ni clé ni flux) ; une release signée échoue explicitement si les clés Sparkle manquent. Le déclenchement manuel sans tag reste utilisable pour un DMG local.
+Chaque release utilise les clés Sparkle pour signer le DMG et publier le flux,
+même sans compte Apple Developer. Elle échoue explicitement si une clé manque.
+Le suffixe `-unsigned` indique seulement l'absence de signature Apple Developer ID ;
+le DMG reste authentifié par sa signature Sparkle Ed25519. Le nom définitif du
+DMG est fixé avant de générer le flux, pour que son URL pointe sur le bon fichier.
+Le déclenchement manuel GitHub sans tag reste utilisable pour un DMG local.
+
+Dans CircleCI : **Organization Settings → Contexts → ai-running-coach-release →
+Add Environment Variable**. Ajouter les deux valeurs dans ce contexte de
+publication, avec le jeton `GH_TOKEN` existant. Les secrets GitHub ne sont pas
+transmis à CircleCI ; reprendre la même paire de clés, jamais une paire par CI.
+Conserver la clé privée dans une sauvegarde sécurisée hors dépôt.
+
+Le workflow GitHub facultatif utilise toujours la variable de dépôt
+`SPARKLE_PUBLIC_KEY` et le secret `SPARKLE_PRIVATE_KEY` ; il fonctionne aussi sans
+signature Apple quand `ARC_MACOS_ON_GITHUB` est activé.
 Les forks utilisent automatiquement leur propre URL GitHub de distribution.
 
 Pour un build local avec mises à jour configurées, fournir `ARC_SPARKLE_PUBLIC_KEY`
