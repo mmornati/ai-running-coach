@@ -8,6 +8,10 @@ on:
     branches: [main]
   pull_request:
   workflow_dispatch:
+  # Filet de sécurité hebdomadaire : macOS complet, même si aucun fichier sensible
+  # n'a bougé depuis la semaine précédente (coût maîtrisé, voir `changes`).
+  schedule:
+    - cron: "37 4 * * 0"
 
 # Ces jobs ne font que lire le dépôt et lancer des tests locaux : aucun n'a besoin
 # d'écrire quoi que ce soit sur GitHub (#29 — moindre privilège explicite partout).
@@ -23,9 +27,10 @@ jobs:
     # Décide QUOI lancer, en quelques secondes, avant de réserver le moindre runner
     # macOS. Sur une PR, macOS ne tourne que si elle touche ce qui dépend vraiment
     # de l'OS (bash 3.2, sed BSD, launchctl, gestion de processus) : tout le reste du
-    # code est du Python stdlib, déjà couvert sur Ubuntu. Sur `main` et en
-    # déclenchement manuel, macOS tourne TOUJOURS : une régression passée entre les
-    # mailles est rattrapée au plus tard au merge.
+    # code est du Python stdlib, déjà couvert sur Ubuntu. Sur une poussée vers
+    # `main`, même règle appliquée aux fichiers de la poussée. macOS tourne toujours
+    # en déclenchement manuel et chaque dimanche (`schedule`), qui rattrapent ce que
+    # le filtrage a laissé passer. Coût macOS : le minutage GitHub facture 10× le Linux.
     name: Plan
     runs-on: ubuntu-latest
     permissions:
@@ -41,6 +46,8 @@ jobs:
           EVENT: ${{ github.event_name }}
           REPO: ${{ github.repository }}
           PR: ${{ github.event.pull_request.number }}
+          BEFORE: ${{ github.event.before }}
+          AFTER: ${{ github.sha }}
           # Chemins sensibles à l'OS. En cas de doute, ajouter ici plutôt qu'ailleurs :
           # un macOS de trop coûte quelques minutes, un macOS manquant un bug en prod.
           MACOS_PATHS: >-
@@ -55,6 +62,20 @@ jobs:
             else
               macos=false
               echo "Aucun fichier sensible à l'OS : macOS ignoré (Ubuntu couvre tout)."
+            fi
+          elif [ "$EVENT" = push ]; then
+            # Poussée sur main : seuls les fichiers de la poussée comptent. Sans
+            # comparaison exploitable (première poussée d'une branche, « before » nul,
+            # API en échec), macOS tourne par prudence.
+            if files=$(gh api "repos/$REPO/compare/$BEFORE...$AFTER" --jq '.files[].filename' 2>/dev/null); then
+              if printf '%s\n' "$files" | grep -Eq "$MACOS_PATHS"; then
+                printf '%s\n' "$files" | grep -E "$MACOS_PATHS" | sed 's/^/macOS requis par : /'
+              else
+                macos=false
+                echo "Poussée sans fichier sensible à l'OS : macOS ignoré (Ubuntu couvre tout)."
+              fi
+            else
+              echo "Comparaison de la poussée indisponible : macOS lancé par prudence."
             fi
           fi
           echo "macos=$macos" >> "$GITHUB_OUTPUT"

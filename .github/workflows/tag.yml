@@ -8,8 +8,9 @@ name: Tag a release
 # de compter sur le déclencheur `push: tags` : un tag poussé avec le
 # GITHUB_TOKEN ne déclenche AUCUN autre workflow (garde-fou anti-boucle de
 # GitHub). Sans ces appels, la release et son DMG ne seraient jamais créés. Un
-# tag poussé à la main (`git push origin v1.2.3`) passe, lui, par les déclencheurs
-# de release.yml et macos-dmg.yml.
+# tag poussé à la main (`git push origin v1.2.3`) déclenche la release (release.yml)
+# mais PAS le DMG : celui-ci est opt-in (champ « build_dmg », ou Application macOS
+# en déclenchement manuel avec le tag).
 on:
   workflow_dispatch:
     inputs:
@@ -22,6 +23,10 @@ on:
         description: "Version explicite, ex. v1.0.0 ou v1.1.0-rc.1 (optionnel)"
         type: string
         required: false
+      build_dmg:
+        description: "Construire et joindre le DMG macOS à la release (coûteux en minutes macOS)"
+        type: boolean
+        default: false
 
 permissions:
   # Les trois jobs créent le tag, la release ou son DMG. Un workflow réutilisable
@@ -112,6 +117,9 @@ jobs:
       tag: ${{ needs.tag.outputs.tag }}
 
   macos-dmg:
+    # Opt-in : le DMG ne se construit que si demandé (le minutage macOS coûte 10× le
+    # Linux). Pour le joindre plus tard : Application macOS → Run workflow, avec le tag.
+    if: ${{ inputs.build_dmg }}
     needs: [tag, release]
     uses: ./.github/workflows/macos-dmg.yml
     with:
