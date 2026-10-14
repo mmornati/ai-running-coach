@@ -1,9 +1,10 @@
 version: 2.1
 
 # Build du DMG macOS sur CircleCI, en remplacement de « Application macOS »
-# (GitHub Actions) quand les minutes GitHub sont épuisées. Aucun job ne tourne
-# sur une poussée normale : seul un déclenchement manuel avec build_dmg = true
-# lance le workflow (« Trigger Pipeline » dans l'interface, ou l'API).
+# (GitHub Actions, désactivé par défaut). Deux déclencheurs :
+#   - automatique : chaque tag v* (la release créée par « Tag a release ») ;
+#   - manuel : « Trigger Pipeline » avec build_dmg = true et release_tag = vX.Y.Z.
+# Aucune autre poussée ne lance de job.
 #
 # Le DMG est construit par scripts/build-macos-dmg.sh (même script que GitHub),
 # puis joint à la release GitHub du tag release_tag (créée si elle n'existe pas).
@@ -25,7 +26,7 @@ jobs:
     resource_class: m4pro.medium
     environment:
       GH_REPO: mmornati/ai-running-coach
-      RELEASE_TAG: << pipeline.parameters.release_tag >>
+      PIPELINE_RELEASE_TAG: << pipeline.parameters.release_tag >>
     steps:
       - checkout
 
@@ -33,19 +34,26 @@ jobs:
           name: Vérifier le tag et l'extraire
           command: |
             set -euo pipefail
+            # Tag poussé (automatique) ou tag saisi au déclenchement manuel.
+            RELEASE_TAG="${CIRCLE_TAG:-$PIPELINE_RELEASE_TAG}"
+            echo "export RELEASE_TAG=$RELEASE_TAG" >> "$BASH_ENV"
             [[ "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]] \
               || { echo "release_tag invalide ou absent : « $RELEASE_TAG »" >&2; exit 1; }
             git fetch --force --tags origin
             git checkout --quiet "refs/tags/$RELEASE_TAG"
 
       - run:
-          name: Vérifier ou créer la release GitHub
+          name: Attendre la release GitHub (créée par « Tag a release »)
           command: |
             set -euo pipefail
             brew list gh >/dev/null 2>&1 || brew install gh
-            if ! gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
-              gh release create "$RELEASE_TAG" --verify-tag --generate-notes
-            fi
+            # « Tag a release » crée la release juste après avoir poussé le tag :
+            # on attend jusqu'à 2 min 30 avant de la créer soi-même (tag poussé à la main).
+            for attempt in $(seq 30); do
+              gh release view "$RELEASE_TAG" >/dev/null 2>&1 && break
+              [ "$attempt" -lt 30 ] || gh release create "$RELEASE_TAG" --verify-tag --generate-notes
+              sleep 5
+            done
 
       - run:
           name: Construire le DMG universel
@@ -83,24 +91,34 @@ jobs:
             notes="$(mktemp)"
             gh release view "$RELEASE_TAG" --json body -q .body > "$notes"
             if ! grep -q 'arc-macos-unsigned' "$notes"; then
-              cat >> "$notes" <<EOF_NOTES
-
-            <!-- arc-macos-unsigned -->
-            ## Application macOS
-
-            \`$ARC_DMG_NAME\` : application universelle (Apple Silicon et Intel), macOS 13 ou plus récent.
-            Elle n'est **pas signée par Apple** : au premier lancement, macOS la bloque.
-
-            1. Ouvrez le DMG et glissez **AI Running Coach** dans **Applications**.
-            2. Lancez-la une fois, fermez l'alerte, puis ouvrez **Réglages Système → Confidentialité et sécurité** et cliquez sur **Ouvrir quand même**.
-
-            Empreinte SHA-256 : \`$ARC_DMG_NAME.sha256\` (\`shasum -a 256 -c $ARC_DMG_NAME.sha256\`).
-            EOF_NOTES
+              {
+                echo ''
+                echo '<!-- arc-macos-unsigned -->'
+                echo '## Application macOS'
+                echo ''
+                echo "\`$ARC_DMG_NAME\` : application universelle (Apple Silicon et Intel), macOS 13 ou plus récent."
+                echo 'Elle n'"'"'est **pas signée par Apple** : au premier lancement, macOS la bloque.'
+                echo ''
+                echo '1. Ouvrez le DMG et glissez **AI Running Coach** dans **Applications**.'
+                echo '2. Lancez-la une fois, fermez l'"'"'alerte, puis ouvrez **Réglages Système → Confidentialité et sécurité** et cliquez sur **Ouvrir quand même**.'
+                echo ''
+                echo "Empreinte SHA-256 : \`$ARC_DMG_NAME.sha256\` (\`shasum -a 256 -c $ARC_DMG_NAME.sha256\`)."
+              } >> "$notes"
               gh release edit "$RELEASE_TAG" --notes-file "$notes"
             fi
 
 workflows:
-  dmg:
+  dmg-on-release-tag:
+    jobs:
+      - macos-dmg:
+          context: ai-running-coach-release
+          filters:
+            branches:
+              ignore: /.*/
+            tags:
+              only: /^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$/
+
+  dmg-manual:
     when: << pipeline.parameters.build_dmg >>
     jobs:
       - macos-dmg:
