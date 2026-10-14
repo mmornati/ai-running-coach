@@ -30,7 +30,7 @@ import subprocess
 subprocess.run(['dist/macos-build/AI Running Coach.app/Contents/MacOS/AI Running Coach',
                 '--smoke-test'], check=True, timeout=15)
 PYTEST
-    cp "dist/AI-Running-Coach-$version.dmg" "$TEST_ROOT/updates/"
+    cp "dist/AI-Running-Coach-$version.dmg" "$TEST_ROOT/updates/AI-Running-Coach-$version-unsigned.dmg"
     if [[ "$version" == 0.0.1-test ]]; then
         ditto "dist/macos-build/AI Running Coach.app" "$TEST_ROOT/Previous.app"
     fi
@@ -88,7 +88,9 @@ architectures = subprocess.check_output(['lipo', '-archs',
 assert set(architectures) == {'arm64', 'x86_64'}, architectures
 for item in items:
     enclosure = item.find('enclosure')
-    archive = root / 'updates' / enclosure.get('url').rsplit('/', 1)[1]
+    filename = enclosure.get('url').rsplit('/', 1)[1]
+    assert filename.endswith('-unsigned.dmg'), filename
+    archive = root / 'updates' / filename
     assert archive.stat().st_size == int(enclosure.get('length'))
     command = [str(sparkle / 'bin/sign_update'), '--verify', '--ed-key-file', str(root / 'private.key'),
                str(archive), enclosure.get(ns + 'edSignature')]
