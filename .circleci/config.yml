@@ -1,0 +1,107 @@
+version: 2.1
+
+# Build du DMG macOS sur CircleCI, en remplacement de « Application macOS »
+# (GitHub Actions) quand les minutes GitHub sont épuisées. Aucun job ne tourne
+# sur une poussée normale : seul un déclenchement manuel avec build_dmg = true
+# lance le workflow (« Trigger Pipeline » dans l'interface, ou l'API).
+#
+# Le DMG est construit par scripts/build-macos-dmg.sh (même script que GitHub),
+# puis joint à la release GitHub du tag release_tag (créée si elle n'existe pas).
+# Contexte CircleCI requis : ai-running-coach-release, avec GH_TOKEN (jeton
+# GitHub à droits « contents: write » sur ce dépôt).
+
+parameters:
+  build_dmg:
+    type: boolean
+    default: false
+  release_tag:
+    type: string
+    default: ""
+
+jobs:
+  macos-dmg:
+    macos:
+      xcode: 26.4.0
+    resource_class: m4pro.medium
+    environment:
+      GH_REPO: mmornati/ai-running-coach
+      RELEASE_TAG: << pipeline.parameters.release_tag >>
+    steps:
+      - checkout
+
+      - run:
+          name: Vérifier le tag et l'extraire
+          command: |
+            set -euo pipefail
+            [[ "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]] \
+              || { echo "release_tag invalide ou absent : « $RELEASE_TAG »" >&2; exit 1; }
+            git fetch --force --tags origin
+            git checkout --quiet "refs/tags/$RELEASE_TAG"
+
+      - run:
+          name: Vérifier ou créer la release GitHub
+          command: |
+            set -euo pipefail
+            brew list gh >/dev/null 2>&1 || brew install gh
+            if ! gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+              gh release create "$RELEASE_TAG" --verify-tag --generate-notes
+            fi
+
+      - run:
+          name: Construire le DMG universel
+          command: |
+            set -euo pipefail
+            ARC_APP_VERSION="${RELEASE_TAG#v}" scripts/build-macos-dmg.sh
+
+      - run:
+          name: Nommer le DMG et calculer son empreinte
+          command: |
+            set -euo pipefail
+            shopt -s nullglob
+            dmgs=(dist/AI-Running-Coach-*.dmg)
+            [ "${#dmgs[@]}" -eq 1 ] || { echo "Un seul DMG attendu, trouvé : ${dmgs[*]:-aucun}" >&2; exit 1; }
+            dmg="${dmgs[0]}"
+            mv "$dmg" "${dmg%.dmg}-unsigned.dmg"
+            dmg="${dmg%.dmg}-unsigned.dmg"
+            name="$(basename "$dmg")"
+            (cd dist && shasum -a 256 "$name" > "$name.sha256")
+            echo "export ARC_DMG_NAME=$name" >> "$BASH_ENV"
+
+      - store_artifacts:
+          path: dist
+          destination: AI-Running-Coach-macOS
+
+      - run:
+          name: Publier sur la release GitHub
+          command: |
+            set -euo pipefail
+            source "$BASH_ENV"
+            gh release upload "$RELEASE_TAG" \
+              "dist/$ARC_DMG_NAME" "dist/$ARC_DMG_NAME.sha256" --clobber
+
+            # Notes d'ouverture ajoutées une seule fois (marqueur), comme sur GitHub.
+            notes="$(mktemp)"
+            gh release view "$RELEASE_TAG" --json body -q .body > "$notes"
+            if ! grep -q 'arc-macos-unsigned' "$notes"; then
+              cat >> "$notes" <<EOF_NOTES
+
+            <!-- arc-macos-unsigned -->
+            ## Application macOS
+
+            \`$ARC_DMG_NAME\` : application universelle (Apple Silicon et Intel), macOS 13 ou plus récent.
+            Elle n'est **pas signée par Apple** : au premier lancement, macOS la bloque.
+
+            1. Ouvrez le DMG et glissez **AI Running Coach** dans **Applications**.
+            2. Lancez-la une fois, fermez l'alerte, puis ouvrez **Réglages Système → Confidentialité et sécurité** et cliquez sur **Ouvrir quand même**.
+
+            Empreinte SHA-256 : \`$ARC_DMG_NAME.sha256\` (\`shasum -a 256 -c $ARC_DMG_NAME.sha256\`).
+            EOF_NOTES
+              gh release edit "$RELEASE_TAG" --notes-file "$notes"
+            fi
+
+workflows:
+  dmg:
+    when: << pipeline.parameters.build_dmg >>
+    jobs:
+      - macos-dmg:
+          context: ai-running-coach-release
