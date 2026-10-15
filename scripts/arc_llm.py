@@ -67,6 +67,7 @@ from __future__ import annotations
 import argparse
 import base64
 import hashlib
+import http.client
 import json
 import os
 import re
@@ -102,7 +103,8 @@ EXIT_OK, EXIT_USAGE, EXIT_DENIED, EXIT_TIMEOUT, EXIT_EXCHANGE, EXIT_UNVERIFIED, 
 
 # Catalogue : UNE source de vérité. install.sh garde ses constantes de repli (le script doit
 # fonctionner sans python3) ; tests/install/test_llm_connect.py vérifie qu'elles concordent.
-# kind : oauth (connexion en un clic) | subscription (forfait existant) | api_key | free.
+# kind : oauth (connexion en un clic) | subscription (forfait existant) | api_key | free
+# (modèles gratuits OpenRouter : même clé et même connexion que « openrouter », #267).
 CATALOG: List[Dict[str, Any]] = [
     {
         "id": "openrouter",
@@ -115,6 +117,35 @@ CATALOG: List[Dict[str, Any]] = [
         "privacy": "Choisissez, dans les réglages de confidentialité d'OpenRouter, des "
                    "fournisseurs qui ne conservent ni n'entraînent sur vos données.",
         "docs": "docs/choisir-son-ia.md#openrouter-en-un-clic",
+    },
+    {
+        "id": "openrouter-free",
+        "label": "Essai gratuit (OpenRouter, limité)",
+        "kind": "free",
+        # Identifiants vérifiés dans https://openrouter.ai/api/v1/models le 2026-10-15 (présents, finissant par
+        # « :free », `tools` dans supported_parameters, contexte >= 64k). Choix par un essai réel du 2026-10-15
+        # sur un workspace synthétique (tests/lib/synthetic.py --days 60) : `opencode run` sur /log, bilan du
+        # jour, /week ; score /19 (tour terminé, français propre, fichiers valides et datés du jour, valeurs
+        # exactes, garde-fous appelés). UN passage par modèle, sans Garmin ni MCP : écarts de 1 à 2 points non
+        # significatifs. nemotron-3-ultra 19/19 (31 requêtes LLM au total) ; nemotron-3.5-lightning 17/19
+        # (anglais mêlé) ; north-mini-code 17/19 (fichiers du /log datés à tort). Gemma 4 (seul sans
+        # entraînement déclaré) n'a pas pu être testé : sur le compte utilisé pour nos essais (ZDR imposé) il répond 404 ;
+        # les modèles NVIDIA et cohere, eux, ont passé le filtre ZDR de ce compte.
+        "chat_model": "openrouter/nvidia/nemotron-3-ultra-550b-a55b:free",
+        "sync_model": "openrouter/nvidia/nemotron-3-ultra-550b-a55b:free",
+        "alternatives": ["openrouter/nvidia/nemotron-3.5-lightning:free", "openrouter/cohere/north-mini-code:free"],
+        "benchmark": {"date": "2026-10-15", "runs_per_model": 1, "score": "19/19",
+                      "llm_requests": {"log": "17 à 48", "week": "6 à 12", "morning_check": "4 à 9"}},
+        "key_env": "OPENROUTER_API_KEY",
+        "monthly_cost": "0 € (modèles gratuits ; aucun budget en euros)",
+        "quota": "50 requêtes par jour sans achat de crédits (1 000 après 10 $ achetés au total), 20 par minute : "
+                 "environ un /log et quelques questions par jour sans achat",
+        "privacy": "Selon les pages de modèles d'OpenRouter (à vérifier), les modèles gratuits testés peuvent "
+                   "conserver vos prompts et NVIDIA déclare s'entraîner dessus : pas de données de santé sensibles "
+                   "(https://openrouter.ai/settings/privacy). Refuser les fournisseurs qui s'entraînent rend le modèle "
+                   "par défaut inutilisable (404) ; certains modèles gratuits (Gemma 4 sur le compte utilisé pour nos essais) "
+                   "répondent aussi 404 avec ZDR.",
+        "docs": "docs/choisir-son-ia.md#essai-gratuit",
     },
     {
         "id": "anthropic",
@@ -611,6 +642,124 @@ def translate_subscription_error(entry: Dict[str, Any], name: str, status: Any, 
     return None
 
 
+# --------------------------------------------------------------------------- essai gratuit (#267)
+
+def is_openrouter_free_model(model: str) -> bool:
+    """Modèle gratuit OpenRouter : « openrouter/<fabricant>/<modèle>:free »."""
+    m = (model or "").strip()
+    return m.startswith("openrouter/") and m.endswith(":free")
+
+
+def free_quota(env_file: Optional[str] = None, key: Optional[str] = None) -> Optional[Dict[str, Any]]:
+    """Requêtes gratuites restantes du jour (UTC) : {used, limit, remaining, is_free_tier}, ou None.
+
+    `GET /api/v1/key`, champ `free_model_daily_requests` (https://openrouter.ai/docs/api-reference/limits,
+    lu le 2026-10-15) : un appel léger, sans effet sur le quota. None si pas de clé, réseau coupé ou
+    clé refusée — jamais d'exception, jamais la clé dans le résultat. La limite par minute n'y figure pas.
+    """
+    if key is None:
+        key = read_env_var(env_file or default_env_file(), "OPENROUTER_API_KEY")
+    if not key:
+        return None
+    try:
+        status, body = _http_json("GET", base_url() + "/api/v1/key", bearer=key)
+    except (urlerror.URLError, OSError, ValueError, http.client.HTTPException):
+        return None
+    data = body.get("data") if isinstance(body, dict) else None
+    quota = data.get("free_model_daily_requests") if isinstance(data, dict) else None
+    if status != 200 or not isinstance(quota, dict):
+        return None
+    out = {k: quota.get(k) for k in ("used", "limit", "remaining")}
+    out["is_free_tier"] = bool(data.get("is_free_tier"))
+    return out
+
+
+def read_env_var(path: str, var: str) -> str:
+    """Valeur active de VAR dans llm.env (variable d'environnement en repli), vide si absente."""
+    pattern = re.compile(r"^\s*(?:export\s+)?%s=(.*)$" % re.escape(var))
+    try:
+        with open(path, encoding="utf-8") as fh:
+            for line in fh:
+                m = pattern.match(line.rstrip("\n"))
+                if m and m.group(1).strip():
+                    return m.group(1).strip().strip("'\"")
+    except OSError:
+        pass
+    return os.environ.get(var, "")
+
+
+def free_quota_text(quota: Optional[Dict[str, Any]]) -> str:
+    """Phrase française sur le quota restant (vide si inconnu)."""
+    if not quota or not isinstance(quota.get("remaining"), int):
+        return ""
+    return "Requêtes gratuites restantes aujourd'hui : %d sur %s (UTC)." % (quota["remaining"], quota.get("limit", "?"))
+
+
+FREE_QUOTA_MSG = ("Quota gratuit du jour atteint (50 requêtes sans achat, 1 000 après 10 $ de crédits) : "
+                  "réessayez demain (le compteur suit le jour UTC) ou ajoutez des crédits sur openrouter.ai.")
+FREE_RATE_MSG = "Limite par minute des modèles gratuits atteinte (20 requêtes par minute) : réessayez dans une minute."
+FREE_UPSTREAM_MSG = ("Le fournisseur du modèle gratuit est saturé pour le moment (limite côté fournisseur, pas votre quota) : "
+                     "réessayez dans quelques minutes.")
+FREE_LIMIT_MSG = ("Limite des modèles gratuits atteinte (20 requêtes par minute, 50 par jour sans achat de crédits, "
+                  "1 000 après 10 $) : réessayez dans une minute, sinon demain, ou ajoutez des crédits sur openrouter.ai.")
+PRIVACY_FREE_MSG = ("Aucun fournisseur de ce modèle gratuit n'est compatible avec votre réglage de confidentialité "
+                    "OpenRouter (entraînement / rétention / ZDR, erreur 404). Si vous refusez les fournisseurs qui "
+                    "s'entraînent sur vos données, le modèle par défaut (NVIDIA) devient inutilisable : choisissez un autre "
+                    "modèle gratuit (Gemma 4, non testé) ou un modèle payant (docs/choisir-son-ia.md#essai-gratuit), ou "
+                    "ajustez https://openrouter.ai/settings/privacy.")
+PRIVACY_PAID_MSG = ("Aucun fournisseur de ce modèle n'est compatible avec votre réglage de confidentialité OpenRouter "
+                    "(entraînement / rétention / ZDR, erreur 404) : choisissez un autre modèle ([chat].model) ou "
+                    "ajustez https://openrouter.ai/settings/privacy.")
+
+
+def classify_openrouter_free_error(status: Any, text: str, model: str = "") -> str:
+    """Erreur d'un modèle OpenRouter -> « privacy » | « quota » | « rate » | « upstream » | « limit » | vide.
+
+    - Confidentialité : 404 « 0 endpoints … ZDR violation » (mesuré le 2026-10-15 avec Gemma sur un compte à ZDR
+      imposé) ou « No endpoints found matching your data policy » (réglage d'entraînement / rétention du compte ;
+      texte NON vérifié, approximation du projet). Cause probable : l'athlète a suivi notre conseil de refuser les
+      fournisseurs qui s'entraînent. Vaut pour tout modèle OpenRouter, gratuit ou payant.
+    - 429 : https://openrouter.ai/docs/api-reference/limits dit seulement que le 429 vient d'OpenRouter
+      (limites des modèles gratuits par minute ou par jour) ou du fournisseur amont ; le texte exact de la
+      limite journalière n'est pas documenté. Motifs « per-day » / « per-min » / « provider returned error »
+      = APPROXIMATION du projet ; un 429 gratuit sans motif connu reste « limit » (message qui dit les trois cas).
+    Les 429 ne sont classés que pour un modèle gratuit (pour un autre, le message générique s'applique).
+    """
+    low = (text or "").lower()
+    try:
+        code = int(status)
+    except (TypeError, ValueError):
+        code = 0
+    if re.search(r"\bzdr\b", low) or "zero data retention" in low or "data policy" in low:
+        return "privacy"
+    if is_openrouter_free_model(model) and (code == 429 or "rate limit" in low or "too many requests" in low
+                                            or "rate-limited" in low or "free-models-per" in low):
+        # Jetons explicites d'abord (un 429 « par minute » peut citer « 1000 free model requests per day »
+        # dans son texte d'incitation), motifs génériques ensuite — minute avant jour.
+        if "free-models-per-min" in low:
+            return "rate"
+        if "free-models-per-day" in low:
+            return "quota"
+        if re.search(r"per[ -]?min", low):
+            return "rate"
+        if re.search(r"per[ -]?day", low):
+            return "quota"
+        if "provider returned error" in low or "upstream" in low or "temporarily rate-limited" in low:
+            return "upstream"
+        return "limit"
+    return ""
+
+
+def translate_openrouter_free_error(model: str, name: str, status: Any, message: str) -> Optional[str]:
+    """Erreur d'un modèle OpenRouter (gratuit) -> message français actionnable, ou None (repli générique)."""
+    if not (model or "").startswith("openrouter/"):
+        return None
+    kind = classify_openrouter_free_error(status, "%s %s" % (name, message), model)
+    privacy = PRIVACY_FREE_MSG if is_openrouter_free_model(model) else PRIVACY_PAID_MSG
+    return {"privacy": privacy, "quota": FREE_QUOTA_MSG, "rate": FREE_RATE_MSG,
+            "upstream": FREE_UPSTREAM_MSG, "limit": FREE_LIMIT_MSG}.get(kind)
+
+
 # -- verrou du magasin ---------------------------------------------------------
 
 def _lock_path(data_dir: str) -> str:
@@ -953,6 +1102,24 @@ def cmd_providers(args: argparse.Namespace) -> int:
     return EXIT_OK
 
 
+def cmd_free_quota(args: argparse.Namespace) -> int:
+    """Requêtes gratuites restantes aujourd'hui (jamais la clé) ; sortie 1 si indisponible."""
+    try:
+        quota = free_quota(args.env_file)
+    except ValueError as exc:
+        print(str(exc), file=sys.stderr)
+        return EXIT_USAGE
+    if quota is None:
+        msg = "Quota gratuit indisponible (pas de clé OpenRouter, réseau coupé ou clé refusée)."
+        print(json.dumps({"ok": False, "message": msg}, ensure_ascii=False) if args.json else msg)
+        return 1
+    if args.json:
+        print(json.dumps(dict(ok=True, message=free_quota_text(quota), **quota), ensure_ascii=False))
+    else:
+        print(free_quota_text(quota))
+    return EXIT_OK
+
+
 def build_parser() -> argparse.ArgumentParser:
     ap = argparse.ArgumentParser(description="Configuration de l'IA du coach (catalogue, connexion).")
     sub = ap.add_subparsers(dest="cmd", required=True)
@@ -968,6 +1135,11 @@ def build_parser() -> argparse.ArgumentParser:
     so.add_argument("--timeout", type=int, default=DEFAULT_TIMEOUT_S, help="secondes d'attente du navigateur (défaut 300)")
     so.add_argument("--env-file", help="llm.env cible (défaut : $ARC_LLM_ENV ou ~/.config/ai-running-coach/llm.env)")
     so.set_defaults(func=connect_openrouter)
+
+    sq = sub.add_parser("free-quota", help="requêtes gratuites OpenRouter restantes aujourd'hui (essai gratuit)")
+    sq.add_argument("--json", action="store_true")
+    sq.add_argument("--env-file", help="llm.env (défaut : $ARC_LLM_ENV ou ~/.config/ai-running-coach/llm.env)")
+    sq.set_defaults(func=cmd_free_quota)
 
     sl = sub.add_parser("login", help="connexion d'un abonnement ChatGPT ou GitHub Copilot (via OpenCode)")
     sl.add_argument("provider", choices=("chatgpt", "copilot"))

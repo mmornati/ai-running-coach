@@ -415,7 +415,10 @@ function renderCost() {
   // Forfait ChatGPT / Copilot (#266) : aucun coût au jeton, jamais d'euros ni de budget du jour.
   const plan = state.status && state.status.billing && state.status.billing.mode === "subscription"
     ? state.status.billing.label : "";
+  // Essai gratuit OpenRouter (#267) : 0 €, mais un quota — dit au lieu d'un budget en euros.
+  const free = state.status && state.status.billing && state.status.billing.mode === "free";
   if (plan) parts.push(`inclus dans votre forfait ${plan}`);
+  else if (free) parts.push(`essai gratuit (${state.status.billing.quota || "quota gratuit limité"})`);
   else if (state.sessionCost > 0) parts.push(`≈ ${fmtEur(state.sessionCost)} cette conversation`);
   if (u) {
     // Noms du contrat (arc_chat_backend.py) : input_tokens, output_tokens, cache_read_tokens.
@@ -428,7 +431,7 @@ function renderCost() {
     }
   }
   const b = state.status && state.status.budget;
-  if (!plan && b && b.limit_eur != null) parts.push(`budget du jour ${fmtEur(b.spent_eur)} / ${fmtEur(b.limit_eur)}`);
+  if (!plan && !free && b && b.limit_eur != null) parts.push(`budget du jour ${fmtEur(b.spent_eur)} / ${fmtEur(b.limit_eur)}`);
   els.cost.textContent = parts.join(" · ");
 }
 
