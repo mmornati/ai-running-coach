@@ -694,3 +694,64 @@ class InstallReviewTests(InstallAsserts):
     def test_workspace_defaults_declare_the_key(self):
         text = (REPO / "config/workspace.toml").read_text(encoding="utf-8")
         self.assertEqual(text.count('opencode_data_dir = ""'), 2)
+
+
+class ManualSyncOverrideTests(InstallAsserts):
+    CHAT = """\
+[chat]
+backend = "opencode"
+model = "openai/gpt-5.4-mini"
+api_key_env = ""
+opencode_data_dir = "{store}"
+[sync]
+runner = "claude"
+[notifications]
+provider = "ntfy"
+ntfy_topic = "t"
+"""
+
+    def _setup(self, sb: Sandbox):
+        store = sb.root / "store"
+        (sb.repo / "config").mkdir(exist_ok=True)
+        (sb.repo / "config/workspace.user.toml").write_text(self.CHAT.format(store=store))
+        _prime_opencode(sb)
+        _auth(store)
+        return store
+
+    def test_override_runs_this_one_sync_on_the_chat_subscription(self):
+        with Sandbox() as sb:
+            store = self._setup(sb)
+            proc = _sync(sb, ARC_SYNC_USE_CHAT_PROVIDER="1")
+            self.assertSucceeded(proc)
+            env_line = [a for _, a in sb.stub_calls("opencode") if a.startswith("env ")][0]
+            self.assertIn("XDG_DATA_HOME=%s" % store, env_line)
+            run = [a for _, a in sb.stub_calls("opencode") if a.startswith("run ")][0]
+            self.assertIn("--model openai/gpt-5.4 ", run + " ")
+            self.assertTrue((store / ".arc-auth.lock").exists())
+            self.assertIn('runner = "claude"', (sb.repo / "config/workspace.user.toml").read_text())   # rien d'écrit
+
+    def test_without_the_variable_cron_keeps_its_runner(self):
+        with Sandbox() as sb:
+            self._setup(sb)
+            proc = _sync(sb, "--dry-run")
+            self.assertSucceeded(proc)
+            self.assertOutputLacks(proc, "abonnement ChatGPT")
+            self.assertOutputLacks(proc, "opencode run")
+
+    def test_override_is_a_noop_without_a_subscription_in_chat(self):
+        with Sandbox() as sb:
+            (sb.repo / "config").mkdir(exist_ok=True)
+            (sb.repo / "config/workspace.user.toml").write_text('[sync]\nrunner = "claude"\n')
+            proc = _sync(sb, "--dry-run", ARC_SYNC_USE_CHAT_PROVIDER="1")
+            self.assertSucceeded(proc)
+            self.assertOutputLacks(proc, "abonnement")
+
+    def test_scheduler_never_sets_the_variable(self):
+        for path in list((REPO / "scripts").rglob("*")) + [REPO / "install.sh"]:
+            if not path.is_file() or path.name == "daily-sync.sh" or path.suffix in (".pyc",):
+                continue
+            try:
+                text = path.read_text(encoding="utf-8")
+            except (UnicodeDecodeError, OSError):
+                continue
+            self.assertNotIn("ARC_SYNC_USE_CHAT_PROVIDER", text, str(path))

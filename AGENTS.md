@@ -382,6 +382,7 @@ verrou `<magasin>/.arc-auth.lock` entre un tour de chat et une exécution de la 
 `auth.json` sans verrou). Coût rapporté **ignoré** (jamais compté en euros ; « inclus dans votre forfait »).
 Jeton absent/expiré = message actionnable (chat) ou notification (sync), jamais une connexion automatique.
 Forfaits : ChatGPT Plus/Pro (Free refusé : `usage_not_included`), Copilot Pro/Pro+/Business/Enterprise.
+La **sync** ne passe sur l'abonnement que sur une installation neuve ou avec `--sync-subscription` (`--no-sync-subscription` ne la touche jamais) ; `ARC_SYNC_USE_CHAT_PROVIDER=1` fait utiliser l'abonnement du chat à UNE exécution manuelle de `daily-sync.sh` (jamais posée par cron/launchd/watch).
 ## Telegram (#174, opt-in)
 
 `scripts/arc_telegram.py` (service `scripts/coach-telegram.sh`, `./install.sh --telegram`) est un

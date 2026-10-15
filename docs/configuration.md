@@ -579,7 +579,7 @@ pour les changer, sauf `mode`/`times`, voir [Le coach dans la poche](mobile.md))
 | `daily_budget_eur` | Plafond de dépense quotidien (défaut `0.5`), appliqué seulement quand le runner rapporte son coût (`opencode`, `claude` en mode API). Atteint : run sauté, une notification par jour. **Ignoré sur un abonnement ChatGPT/Copilot** (rien n'est facturé au jeton). |
 | `opencode_data_dir` | Magasin d'authentification OpenCode dédié au coach (abonnement ChatGPT/Copilot, [voir plus bas](#chat-et-sync-sur-un-abonnement-chatgpt-ou-copilot)). Vide ou absent (défaut) = comportement historique. |
 
-`./install.sh --llm openrouter|anthropic|openai|chatgpt|copilot` écrit ces clés (et `[chat]`) ; `--connect` (interactif) obtient la clé OpenRouter par OAuth et l'écrit dans `llm.env`, ou, avec `--llm chatgpt|copilot`, connecte votre abonnement ([Choisir son IA](choisir-son-ia.md)) ; `--sync-subscription` met aussi la synchronisation sur l'abonnement ;
+`./install.sh --llm openrouter|anthropic|openai|chatgpt|copilot` écrit ces clés (et `[chat]`) ; `--connect` (interactif) obtient la clé OpenRouter par OAuth et l'écrit dans `llm.env`, ou, avec `--llm chatgpt|copilot`, connecte votre abonnement ([Choisir son IA](choisir-son-ia.md)) ; `--sync-subscription` met aussi la synchronisation sur l'abonnement (`--no-sync-subscription` ne la touche jamais, même sur une installation neuve) ;
 `./install.sh --sync-runner CLI` choisit l'assistant headless et `./install.sh --sync-budget EUR` écrit `daily_budget_eur`. Détails, budget et données de
 santé : [Synchronisation sur OpenRouter](mobile.md#synchronisation-sur-openrouter-ou-toute-api-compatible-openai).
 
@@ -620,7 +620,7 @@ d'OpenCode — contenu des échanges compris : diagnostic seulement, fichier à 
 `./install.sh --llm chatgpt` (ou `copilot`) règle le **chat** (`backend = "opencode"`, `api_key_env = ""`,
 modèle du catalogue `python3 scripts/arc_llm.py providers`, **`opencode_data_dir`**) ; la **synchronisation**
 (`runner = "opencode"`, mêmes clés dans `[sync]`) n'est réglée que sur une installation neuve (aucune installation antérieure) ou avec
-`--sync-subscription`. Le même chemin est posé dans `[chat]` et dans `[sync]`
+`--sync-subscription` (`--no-sync-subscription` l'interdit). Le même chemin est posé dans `[chat]` et dans `[sync]`
 (`~/.local/share/ai-running-coach/opencode`, mode 700, hors dépôt et hors du dossier de données ; un chemin
 relatif est résolu depuis le workspace). Deux clés,
 une par section, comme le reste de la configuration ; l'installation les pose ensemble. Le chat et la

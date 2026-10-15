@@ -417,6 +417,13 @@ synchronisation passe aussi sur votre abonnement, via le runner `opencode` : pas
   (OpenAI autorise les applications open source locales ; GitHub soutient OpenCode). Vérifiez les conditions du
   fournisseur ; la synchronisation peut rester sur une autre IA pendant que le chat utilise votre forfait.
 
+**Synchronisation manuelle sur l'abonnement.** Si la synchronisation automatique n'est pas sur l'abonnement,
+une exécution lancée À LA MAIN peut l'utiliser pour cette fois : `ARC_SYNC_USE_CHAT_PROVIDER=1 scripts/daily-sync.sh`
+(c'est ce que fait « Synchroniser maintenant » de l'application macOS quand la case « Synchroniser aussi avec
+mon forfait » est décochée). Elle reprend l'abonnement du chat (`[chat].opencode_data_dir` et modèle du chat), son
+modèle de synchronisation du catalogue, son magasin et son verrou ; rien n'est écrit dans la configuration. Cron,
+launchd et le mode `watch` ne posent jamais cette variable.
+
 ### Limites du runner `opencode`
 
 Le run de synchronisation `opencode` tourne avec des permissions volontairement étroites

@@ -672,12 +672,12 @@ class OpenCodeBackend(ChatBackend):
                     raise BackendError("La synchronisation du coach utilise la connexion ChatGPT en ce moment : "
                                        "réessaie dans quelques minutes.")
         try:
-            self._run_turn(ctx, user_message, lease)
+            self._run_turn(ctx, user_message)
         finally:
             if lease is not None:
                 lease.close()
 
-    def _run_turn(self, ctx: TurnContext, user_message: str, lease: Optional[_Lease] = None) -> None:
+    def _run_turn(self, ctx: TurnContext, user_message: str) -> None:
         self._ensure_server()
         provider_id, model_id = split_model(self._model())
         sid = self._session_id(ctx)

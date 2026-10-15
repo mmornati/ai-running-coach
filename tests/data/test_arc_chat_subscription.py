@@ -92,10 +92,10 @@ class TestChatGPT(SubscriptionCase):
         seen = {}
         original = O.OpenCodeBackend._run_turn
 
-        def spy(self_, ctx, message, lease=None):
+        def spy(self_, ctx, message):
             other = arc_llm.StoreGate(str(self.store))
             seen["held"] = not other.acquire(0.2)
-            return original(self_, ctx, message, lease)
+            return original(self_, ctx, message)
 
         O.OpenCodeBackend._run_turn = spy
         try:
@@ -281,11 +281,11 @@ class TestReviewFixes(SubscriptionCase):
         h.ctx.request_approval = slow_approval
         original = O.OpenCodeBackend._run_turn
 
-        def run(self_, ctx, message, lease=None):
+        def run(self_, ctx, message):
             # un fil d'approbation reste bloqué alors que le tour se termine
             threading.Thread(target=lambda: ctx.request_approval("t", {}, "s", []), daemon=True).start()
             started.wait(2)
-            return original(self_, ctx, message, lease)
+            return original(self_, ctx, message)
 
         O.OpenCodeBackend._run_turn = run
         try:
@@ -309,7 +309,7 @@ class TestReviewFixes(SubscriptionCase):
     def test_no_leak_after_an_error_in_the_turn(self):
         original = O.OpenCodeBackend._run_turn
 
-        def boom(self_, ctx, message, lease=None):
+        def boom(self_, ctx, message):
             raise BackendError("panne")
 
         O.OpenCodeBackend._run_turn = boom

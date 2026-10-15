@@ -100,6 +100,36 @@ detect_subscription() {
     esac
     return 0
 }
+# Passe unique, À LA DEMANDE (ARC_SYNC_USE_CHAT_PROVIDER=1, posée par le bouton « Synchroniser maintenant » de
+# l'application quand la synchronisation automatique n'est pas sur l'abonnement) : cette exécution
+# SURVEILLÉE utilise l'abonnement du chat ([chat].opencode_data_dir + modèle du chat → runner opencode,
+# modèle de sync du catalogue, même magasin, même verrou). Jamais posée par cron/launchd/watch, rien
+# n'est écrit dans la configuration ; sans abonnement dans [chat], elle est sans effet.
+if [[ "${ARC_SYNC_USE_CHAT_PROVIDER:-}" == "1" ]]; then
+    _chat_dir="$(toml_get chat opencode_data_dir "")"
+    _chat_dir="${_chat_dir/#\~/$HOME}"
+    [[ -z "$_chat_dir" || "$_chat_dir" == /* ]] || _chat_dir="$ARC_WORKSPACE/$_chat_dir"
+    _chat_model="$(toml_get chat model "")"
+    _chat_key="$(toml_get chat api_key_env "")"
+    _chat_base="$(toml_get chat base_url "")"
+    _plan_model=""
+    if [[ -n "$_chat_dir" && -z "$_chat_key" && -z "$_chat_base" ]]; then
+        _plan_model="$(python3 -c '
+import sys
+sys.path.insert(0, sys.argv[1])
+import arc_llm
+entry = arc_llm.subscription_entry(sys.argv[2], "x")
+print(entry["sync_model"] if entry else "")' "$ARC_ENGINE_ROOT/scripts" "$_chat_model" 2>/dev/null || true)"
+    fi
+    if [[ -n "$_plan_model" ]]; then
+        RUNNER="opencode"
+        SYNC_MODEL="$_plan_model"
+        SYNC_BASE_URL=""
+        API_KEY_ENV=""
+        OC_DATA_DIR="$_chat_dir"
+    fi
+    unset _chat_dir _chat_model _chat_key _chat_base _plan_model
+fi
 detect_subscription
 
 # Jeton d'abonnement présent dans le magasin du coach ? (présence seulement, jamais la valeur)

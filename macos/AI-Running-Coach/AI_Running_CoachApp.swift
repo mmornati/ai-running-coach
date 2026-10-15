@@ -430,6 +430,12 @@ final class CoachAppModel: ObservableObject {
     /// (elle passerait par OpenCode, sans clé) tant que « Connecter OpenRouter » n'a pas abouti.
     var integratedChatPending: Bool { defaults.bool(forKey: "integratedChatPending") }
 
+    /// Synchronisation manuelle (supervisée) sur l'abonnement quand la synchronisation automatique n'y est pas :
+    /// sans cela, [sync].runner resterait « claude », que cet athlète n'a pas.
+    var manualSyncEnvironment: [String] {
+        savedChatProvider != nil && !choices.syncWithSubscription ? ["ARC_SYNC_USE_CHAT_PROVIDER=1"] : []
+    }
+
     /// Sondage de l'état de la connexion (un seul à la fois : un nouveau clic annule le précédent).
     var subscriptionPoll: Task<Void, Never>?
 
@@ -1513,7 +1519,8 @@ final class CoachAppModel: ObservableObject {
                 let result = try await runProcess(
                     executable: "/usr/bin/env",
                     arguments: [
-                        "ARC_WORKSPACE=\(workspaceURL.path)",
+                        "ARC_WORKSPACE=\(workspaceURL.path)"
+                    ] + manualSyncEnvironment + [
                         engineURL.appendingPathComponent("scripts/daily-sync.sh").path
                     ],
                     directory: engineURL,
@@ -1954,7 +1961,7 @@ struct SetupView: View {
                             Toggle("Synchroniser aussi avec mon forfait (une ou deux fois par jour)", isOn: $model.choices.syncWithSubscription)
                             Text(model.choices.syncWithSubscription
                                  ? "La synchronisation automatique de vos données sportives utilisera aussi votre forfait \(model.choices.chatProvider.planName), sur vos limites. Dans ce mode, l’application n’a pas d’autre exécuteur de synchronisation. Aucune déclaration officielle n’autorise l’usage planifié sans surveillance d’un forfait grand public : vérifiez les conditions de votre fournisseur."
-                                 : "Sans cette option, la synchronisation automatique n’est pas installée : lancez « Synchroniser maintenant » quand vous le souhaitez.")
+                                 : "Sans cette option, la synchronisation automatique n’est pas installée ; « Synchroniser maintenant » reste disponible et utilise alors votre forfait pour cette seule synchronisation, que vous lancez vous-même.")
                                 .font(.caption).foregroundStyle(.secondary)
                             Text("Vos échanges avec le coach passent par votre compte \(model.choices.chatProvider.planName) : ses réglages de confidentialité s’appliquent.")
                                 .font(.caption).foregroundStyle(.secondary)
