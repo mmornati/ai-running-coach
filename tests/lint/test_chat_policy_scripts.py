@@ -21,6 +21,7 @@ from arc_chat_policy import Policy  # noqa: E402
 # Scripts appelés par un skill/agent mais volontairement absents du chat, avec la raison.
 EXCLUDED = {
     "scripts/coach_setup.py": "premier démarrage : réécrit la configuration, pas une tâche du chat",
+    "scripts/coach_config.py": "écrit config/workspace.user.toml (activation d'une option par coach-setup) : jamais modifiable depuis le chat",
     "skills/mywhoosh-route/scripts/mywhoosh_route.py": "fetch lit le mot de passe MyWhoosh au terminal (getpass) : session interactive uniquement",
 }
 

@@ -38,6 +38,7 @@ allowed_prefixes = [
   "python3 scripts/arc_openwearables.py",
   "python3 scripts/arc_workout_targets.py",
   "python3 scripts/arc_race_debrief.py",
+  "python3 scripts/arc_vanoor.py",
   "python3 scripts/coach_doctor.py",
   "python3 scripts/arc_update_check.py",
   "python3 skills/session-parts-analyzer/scripts/analyze_session_parts.py",
@@ -45,7 +46,7 @@ allowed_prefixes = [
 # Scripts qui lisent du JSON sur l'entrée standard (le skill `log` : `echo '<json>' | python3
 # scripts/arc_log.py`). Seules deux formes sans expansion sont acceptées : chaîne entre
 # apostrophes passée par `|`, ou heredoc à délimiteur entre apostrophes (`<< 'EOF'`).
-stdin_scripts = ["scripts/arc_log.py", "scripts/arc_nutrition_sync.py", "scripts/arc_weight_sync.py"]
+stdin_scripts = ["scripts/arc_log.py", "scripts/arc_nutrition_sync.py", "scripts/arc_weight_sync.py", "scripts/arc_vanoor.py"]
 
 # Options par script (relevées dans l'argparse de chaque script) :
 #   flags           options sans valeur ;
@@ -99,6 +100,13 @@ flags = ["--memory", "--rebuild", "--dem", "--no-dem"]
 value_options = ["--today", "--band", "--months", "--segment-m", "--race-date", "--start", "--official-distance-m", "--fade-pct", "--fade-weeks", "--temp-max-c", "--pack-kg", "--terrain"]
 read_options = ["--gpx", "--aid-stations", "--weather-file"]
 output_options = ["--db"]
+
+# Export Vanoor : écrit seulement dans `[vanoor].output_dir`, choisi par l'athlète dans sa configuration
+# (jamais un chemin passé par le modèle) ; refuse d'écrire tant que `[vanoor].export` n'est pas « on ».
+[shell.scripts."scripts/arc_vanoor.py"]
+flags = ["--dry-run"]
+value_options = ["--name", "--race-date", "--scenario"]
+read_options = ["--week", "--plan"]
 
 [shell.scripts."skills/gpx-analysis/scripts/analyze_gpx.py"]
 flags = ["--quiet", "--dem", "--no-dem"]

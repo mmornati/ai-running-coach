@@ -1,6 +1,6 @@
 ---
 name: coach-setup
-description: Premier démarrage — configure le staff d'agents, le sport, le style de coaching et le profil de l'athlète, puis écrit le tout dans config/workspace.user.toml et planning/Runner_Profile.md. Charger quand l'utilisateur lance /coach-setup, quand il demande à changer la façon dont le coach lui parle, quels agents sont actifs, sa discipline ou son bilan santé matinal, ou quand un agent constate qu'aucune configuration n'existe encore.
+description: Premier démarrage — configure le staff d'agents, le sport, le style de coaching et le profil de l'athlète, puis écrit le tout dans config/workspace.user.toml et planning/Runner_Profile.md. Charger quand l'utilisateur lance /coach-setup, quand il demande à changer la façon dont le coach lui parle, quels agents sont actifs, sa discipline ou son bilan santé matinal, quand il demande à activer une option documentée (ex. l'export Vanoor pour Apple Watch), ou quand un agent constate qu'aucune configuration n'existe encore.
 ---
 
 # Premier démarrage
@@ -221,6 +221,28 @@ Deux champs comptent plus que les autres, dites-le :
 La section « Préférences de coaching » du profil **prime** sur le style choisi à
 l'étape 2 : c'est là que vont « ce qui me motive », « ne me parle jamais de mon
 poids », et la tolérance au risque.
+
+## Activer une option à la demande
+
+Certaines options du moteur ne sont **jamais posées** pendant l'entretien : elles sont
+documentées (`docs/configuration.md`) et s'activent quand l'athlète le demande (« active
+l'export Vanoor », « je cours avec une Apple Watch et Vanoor »). Elles ne demandent aucune
+réinstallation. `coach_setup.py` n'écrit jamais une clé déjà présente : pour celles-ci,
+écrivez la clé avec `scripts/coach_config.py`, qui ne touche qu'à cette clé de
+`config/workspace.user.toml` :
+
+```bash
+python3 scripts/coach_config.py set --workspace <workspace> --section vanoor --key export --value on
+python3 scripts/coach_config.py set --workspace <workspace> --section vanoor --key output_dir --value "<dossier>"
+```
+
+| Option | Clés | Ce qu'il faut demander |
+|---|---|---|
+| Export vers l'app Vanoor (Apple Watch) | `[vanoor].export = "on"`, `[vanoor].output_dir` | Où écrire les fichiers : un dossier synchronisé avec l'iPhone (iCloud Drive de l'ordinateur ; sous WSL, le chemin Windows vu depuis Linux, ex. `/mnt/c/Users/<nom>/iCloudDrive/Vanoor`) ou rien (`exports/vanoor/` du workspace). Vérifiez que le dossier parent existe avant de l'écrire ; ne devinez jamais un chemin. |
+
+Confirmez en une ligne ce qui a changé et ce que ça fait (pour Vanoor : le coach écrira
+le fichier de la semaine à chaque validation ; voir `docs/skills/vanoor-export.md`), sans
+relancer l'entretien. Pour désactiver, la même commande avec `--value off`.
 
 ## 5. Conclure
 
