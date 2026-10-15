@@ -1,0 +1,23 @@
+{
+ "fr": {
+  "OpenRouter": "[[ɔpœn ʁutœʁ]]",
+  "Claude": "[[klˈod]]",
+  "ChatGPT": "tchate gé pé té",
+  "GitHub Copilot": "[[ɡˈitœb kɔpˈajlɔt]]",
+  "IA": "i a",
+  "watch": "[[wˈɔtʃ]]",
+  "prompts": "[[pʁˈɔmpt]]",
+  "macOS": "mac o s"
+ },
+ "en": {
+  "macOS": "mac O S",
+  "IA": "A I"
+ },
+ "fr@microsoft": {
+  "OpenRouter": "Open Router",
+  "IA": "I A"
+ },
+ "en@microsoft": {
+  "OpenRouter": "Open Router"
+ }
+}

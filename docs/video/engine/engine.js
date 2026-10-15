@@ -56,6 +56,7 @@ const SERIES = [
   { n: 18, dir: "sans-terminal", docs: "macos/", fr: "Sans terminal", en: "No terminal needed" },
   { n: 19, dir: "home-trainer", docs: "skills/mywhoosh-route/", fr: "Le home trainer, à votre mesure", en: "The home trainer, sized to you" },
   { n: 20, dir: "directeur-sportif", docs: "agents/sports-director/", fr: "Quelle course, et quand ?", en: "Which race, and when?" },
+  { n: 21, dir: "essai-gratuit", docs: "choisir-son-ia/", fr: "Zéro euro pour démarrer", en: "Start for free" },
 ];
 
 const UI = {

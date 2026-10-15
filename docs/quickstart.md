@@ -34,7 +34,27 @@ Ce guide vous permet d'installer et de configurer `ai-running-coach` en quelques
 !!! tip "Quelle IA ?"
     Le coach a besoin d'un modèle de langage. [Choisir son IA](choisir-son-ia.md) vous guide selon ce
     que vous payez déjà ; sans abonnement, OpenRouter se connecte en un clic
-    (`./install.sh --llm openrouter --connect`).
+    (`./install.sh --llm openrouter --connect`). Pour essayer sans rien payer :
+    `./install.sh --llm openrouter-free --connect` ([essai gratuit](choisir-son-ia.md#essai-gratuit),
+    quota limité, à éviter pour des données de santé sensibles).
+
+<!-- arc-video:essai-gratuit -->
+<div class="arc-video-card" markdown>
+
+[![Zéro euro pour démarrer](video/essai-gratuit/poster.jpg)](video/essai-gratuit/index.html)
+
+<div markdown>
+
+<span class="arc-video__meta">En vidéo · Étape 21 · 1 min 49</span>
+
+**[Zéro euro pour démarrer](video/essai-gratuit/index.html)** — Quelle IA pour le coach ? Celle que vous payez déjà, sinon l'essai gratuit OpenRouter : une option à l'installation, une connexion en un clic sans clé à copier, puis ses limites dites honnêtement (quota, confidentialité) et le passage à « 10 $ une fois ».
+
+[Regarder](video/essai-gratuit/index.html) · [English](video/essai-gratuit/index.html?lang=en) · [Toutes les vidéos](videos.md)
+
+</div>
+
+</div>
+<!-- /arc-video -->
 
 ## Installation
 

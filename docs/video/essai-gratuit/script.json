@@ -1,0 +1,144 @@
+{
+  "title": {
+    "fr": "Zéro euro pour démarrer",
+    "en": "Start for free"
+  },
+  "summary": {
+    "fr": "Quelle IA pour le coach ? Celle que vous payez déjà, sinon l'essai gratuit OpenRouter : une option à l'installation, une connexion en un clic sans clé à copier, puis ses limites dites honnêtement (quota, confidentialité) et le passage à « 10 $ une fois »."
+  },
+  "poster": 18,
+  "scenes": [
+    {
+      "id": "bib",
+      "min": 4.6,
+      "lead": 1.2,
+      "fr": [
+        "Étape vingt et un : zéro euro pour démarrer."
+      ],
+      "en": [
+        "Stage twenty-one: start for free."
+      ]
+    },
+    {
+      "id": "question",
+      "min": 11,
+      "chapter": {
+        "fr": "Que payez-vous déjà ?",
+        "en": "What do you already pay for?"
+      },
+      "fr": [
+        "Le coach a besoin d'une IA. Pas de technologie à choisir : dites seulement ce que vous payez déjà.",
+        "Claude, ChatGPT ou GitHub Copilot : votre forfait suffit, sans rien payer de plus. Rien du tout ? OpenRouter, et son essai gratuit."
+      ],
+      "en": [
+        "The coach needs an AI. No technology to pick: just say what you already pay for.",
+        "Claude, ChatGPT or GitHub Copilot: your plan is enough, at no extra cost. Nothing at all? OpenRouter, and its free trial."
+      ]
+    },
+    {
+      "id": "install",
+      "min": 9,
+      "chapter": {
+        "fr": "Une option",
+        "en": "One option"
+      },
+      "fr": [
+        "Trois lignes, comme à l'étape numéro un. Avec une option en plus : l'essai gratuit, connecté dans la foulée.",
+        "L'installateur annonce la couleur : zéro euro, donc aucun plafond à régler."
+      ],
+      "en": [
+        "Three lines, just like stage one. Plus one option: the free trial, connected right away.",
+        "The installer says it up front: zero euros, so no spending cap to set."
+      ]
+    },
+    {
+      "id": "connect",
+      "min": 12,
+      "chapter": {
+        "fr": "Un clic",
+        "en": "One click"
+      },
+      "fr": [
+        "Une page OpenRouter s'ouvre. Connectez-vous, ou créez un compte, puis autorisez le coach. Aucune clé à créer ni à copier.",
+        "La clé est rangée sur votre machine, dans un fichier privé, et jamais affichée. Le coach vérifie la connexion, et vous dit ce qu'il reste du quota du jour."
+      ],
+      "en": [
+        "An OpenRouter page opens. Sign in, or create an account, then authorize the coach. No key to create or copy.",
+        "The key is stored on your machine, in a private file, and never shown. The coach checks the connection, and tells you what's left of today's quota."
+      ]
+    },
+    {
+      "id": "app",
+      "min": 8,
+      "chapter": {
+        "fr": "Sans terminal",
+        "en": "No terminal"
+      },
+      "fr": [
+        "Sans terminal ? Dans l'application macOS, choisissez « Essai gratuit » : la même connexion, en un clic."
+      ],
+      "en": [
+        "No terminal? In the macOS app, pick “Free trial”: the same connection, in one click."
+      ]
+    },
+    {
+      "id": "quota",
+      "min": 13,
+      "chapter": {
+        "fr": "Le quota",
+        "en": "The quota"
+      },
+      "fr": [
+        "Zéro euro, mais un quota : cinquante requêtes par jour. Et chaque appel d'outil en est une : un /log peut en consommer jusqu'à quarante-huit.",
+        "Comptez donc un /log et quelques questions par jour. La synchronisation passe en mode watch : l'IA ne travaille que si Garmin a du neuf."
+      ],
+      "en": [
+        "Zero euros, but a quota: fifty requests a day. And every tool call is one: a /log can use up to forty-eight.",
+        "So plan on one /log and a few questions a day. The sync switches to watch mode: the AI only works when Garmin has something new."
+      ]
+    },
+    {
+      "id": "privacy",
+      "min": 10,
+      "chapter": {
+        "fr": "Le revers",
+        "en": "The catch"
+      },
+      "fr": [
+        "Le revers : les fournisseurs des modèles gratuits peuvent conserver vos prompts, et celui du modèle par défaut déclare s'entraîner dessus.",
+        "Or le coach envoie votre HRV, votre sommeil, vos blessures. Pas de données de santé sensibles sur l'essai gratuit."
+      ],
+      "en": [
+        "The catch: free model providers may keep your prompts, and the default model's provider says it trains on them.",
+        "And the coach sends your HRV, your sleep, your injuries. No sensitive health data on the free trial."
+      ]
+    },
+    {
+      "id": "upgrade",
+      "min": 11,
+      "chapter": {
+        "fr": "Dix dollars, une fois",
+        "en": "Ten dollars, once"
+      },
+      "fr": [
+        "Convaincu ? Dix dollars de crédit, une seule fois : environ un an de coaching, à quatre-vingts centimes par mois.",
+        "Et ce premier achat fait passer le quota gratuit de cinquante à mille requêtes par jour."
+      ],
+      "en": [
+        "Convinced? Ten dollars of credit, just once: about a year of coaching, at eighty cents a month.",
+        "And that first purchase lifts the free quota from fifty to a thousand requests a day."
+      ]
+    },
+    {
+      "id": "finish",
+      "min": 6,
+      "lead": 2.2,
+      "fr": [
+        "Pour aller plus loin : la page « Choisir son IA » de la documentation."
+      ],
+      "en": [
+        "To go further: the “Choosing your AI” page of the documentation."
+      ]
+    }
+  ]
+}
