@@ -127,9 +127,9 @@ enum ChatProvider: String, CaseIterable, Identifiable {
     var title: String {
         switch self {
         case .openRouter: return "OpenRouter"
-        case .openRouterFree: return "Essai gratuit (limité)"
-        case .chatGPT: return "J’ai ChatGPT Plus/Pro"
-        case .copilot: return "J’ai GitHub Copilot"
+        case .openRouterFree: return "Essai gratuit"
+        case .chatGPT: return "ChatGPT Plus/Pro"
+        case .copilot: return "GitHub Copilot"
         }
     }
     /// Identifiant de `install.sh --llm` et de `arc_llm.py login`.
@@ -1979,11 +1979,11 @@ struct SetupView: View {
                                 .font(.caption).foregroundStyle(.secondary)
                         } else if model.choices.chatChoice == .integrated {
                             if model.choices.chatProvider.isFreeTrial {
-                                Text("Vous retrouverez un bouton « Parler au coach » dans l’application. Ce chat utilise un modèle gratuit d’OpenRouter : 0 €, aucun plafond en euros. La synchronisation automatique passe en mode « surveillance » (le modèle ne travaille que s’il y a du neuf) pour ménager le quota.")
+                                Text("Vous retrouverez un bouton « Parler au coach » dans l’application. Ce chat utilise un modèle gratuit d’OpenRouter : 0 €, aucun plafond en euros. Avec Garmin, la synchronisation automatique passe en mode « surveillance » (le modèle ne travaille que s’il y a du neuf) pour ménager le quota, sauf si vous avez déjà choisi un autre mode.")
                                     .font(.callout).foregroundStyle(.secondary)
                                 Text("Limites : 50 requêtes par jour sans achat de crédits (1 000 après 10 $ achetés au total), 20 par minute. Un /log en consomme 17 à 48 : comptez environ un /log et quelques questions par jour sans achat.")
                                     .font(.callout)
-                                Text("Confidentialité : les modèles gratuits conservent vos prompts et NVIDIA déclare s’entraîner dessus. N’y mettez pas de données de santé sensibles. Pour un usage régulier, préférez OpenRouter payant (DeepSeek, environ 0,80 € par mois) ou « 10 $ une fois ». Un compte OpenRouter qui impose la rétention zéro (ZDR) ne peut pas utiliser la plupart des modèles gratuits.")
+                                Text("Confidentialité : selon les pages d’OpenRouter (à vérifier), les modèles gratuits peuvent conserver vos prompts, et NVIDIA déclare s’entraîner dessus. N’y mettez pas de données de santé sensibles. Pour un usage régulier, préférez OpenRouter payant (DeepSeek, environ 0,80 € par mois) ou « 10 $ une fois ». Si vous refusez les fournisseurs qui s’entraînent sur vos données, le modèle par défaut devient inutilisable (erreur 404).")
                                     .font(.callout).foregroundStyle(.orange)
                             } else {
                                 Text("Vous retrouverez un bouton « Parler au coach » dans l’application. Ce chat utilise OpenRouter, facturé à l’usage ; votre plafond quotidien évite les surprises. La synchronisation automatique des données sportives sera également activée.")

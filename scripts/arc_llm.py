@@ -67,6 +67,7 @@ from __future__ import annotations
 import argparse
 import base64
 import hashlib
+import http.client
 import json
 import os
 import re
@@ -128,7 +129,8 @@ CATALOG: List[Dict[str, Any]] = [
         # exactes, garde-fous appelés). UN passage par modèle, sans Garmin ni MCP : écarts de 1 à 2 points non
         # significatifs. nemotron-3-ultra 19/19 (31 requêtes LLM au total) ; nemotron-3.5-lightning 17/19
         # (anglais mêlé) ; north-mini-code 17/19 (fichiers du /log datés à tort). Gemma 4 (seul sans
-        # entraînement déclaré) n'a pas pu être testé : le compte d'essai imposait le ZDR (404).
+        # entraînement déclaré) n'a pas pu être testé : sur le compte d'essai (ZDR imposé) il répond 404 ;
+        # les modèles NVIDIA et cohere, eux, ont passé le filtre ZDR de ce compte.
         "chat_model": "openrouter/nvidia/nemotron-3-ultra-550b-a55b:free",
         "sync_model": "openrouter/nvidia/nemotron-3-ultra-550b-a55b:free",
         "alternatives": ["openrouter/nvidia/nemotron-3.5-lightning:free", "openrouter/cohere/north-mini-code:free"],
@@ -138,9 +140,11 @@ CATALOG: List[Dict[str, Any]] = [
         "monthly_cost": "0 € (modèles gratuits ; aucun budget en euros)",
         "quota": "50 requêtes par jour sans achat de crédits (1 000 après 10 $ achetés au total), 20 par minute : "
                  "environ un /log et quelques questions par jour sans achat",
-        "privacy": "Les modèles gratuits testés conservent vos prompts et NVIDIA déclare s'entraîner dessus : "
-                   "ne les utilisez pas pour des données de santé sensibles (https://openrouter.ai/settings/privacy). "
-                   "Avec le ZDR imposé sur le compte, la plupart des modèles gratuits répondent 404.",
+        "privacy": "Selon les pages de modèles d'OpenRouter (à vérifier), les modèles gratuits testés peuvent "
+                   "conserver vos prompts et NVIDIA déclare s'entraîner dessus : pas de données de santé sensibles "
+                   "(https://openrouter.ai/settings/privacy). Refuser les fournisseurs qui s'entraînent rend le modèle "
+                   "par défaut inutilisable (404) ; certains modèles gratuits (Gemma 4 sur le compte d'essai) "
+                   "répondent aussi 404 avec ZDR.",
         "docs": "docs/choisir-son-ia.md#essai-gratuit",
     },
     {
@@ -659,7 +663,7 @@ def free_quota(env_file: Optional[str] = None, key: Optional[str] = None) -> Opt
         return None
     try:
         status, body = _http_json("GET", base_url() + "/api/v1/key", bearer=key)
-    except (urlerror.URLError, OSError, ValueError):
+    except (urlerror.URLError, OSError, ValueError, http.client.HTTPException):
         return None
     data = body.get("data") if isinstance(body, dict) else None
     quota = data.get("free_model_daily_requests") if isinstance(data, dict) else None
@@ -692,21 +696,29 @@ def free_quota_text(quota: Optional[Dict[str, Any]]) -> str:
 
 
 FREE_QUOTA_MSG = ("Quota gratuit du jour atteint (50 requêtes sans achat, 1 000 après 10 $ de crédits) : "
-                  "réessayez demain (remise à zéro à minuit UTC) ou ajoutez des crédits sur openrouter.ai.")
+                  "réessayez demain (le compteur suit le jour UTC) ou ajoutez des crédits sur openrouter.ai.")
 FREE_RATE_MSG = "Limite par minute des modèles gratuits atteinte (20 requêtes par minute) : réessayez dans une minute."
 FREE_UPSTREAM_MSG = ("Le fournisseur du modèle gratuit est saturé pour le moment (limite côté fournisseur, pas votre quota) : "
                      "réessayez dans quelques minutes.")
 FREE_LIMIT_MSG = ("Limite des modèles gratuits atteinte (20 requêtes par minute, 50 par jour sans achat de crédits, "
                   "1 000 après 10 $) : réessayez dans une minute, sinon demain, ou ajoutez des crédits sur openrouter.ai.")
-ZDR_MSG = ("Les modèles gratuits ne sont pas disponibles avec la rétention zéro (ZDR) imposée sur votre compte "
-           "OpenRouter (404) : passez sur un modèle payant (docs/choisir-son-ia.md#essai-gratuit) ou relâchez ce réglage "
-           "dans https://openrouter.ai/settings/privacy.")
+PRIVACY_FREE_MSG = ("Aucun fournisseur de ce modèle gratuit n'est compatible avec votre réglage de confidentialité "
+                    "OpenRouter (entraînement / rétention / ZDR, erreur 404). Si vous refusez les fournisseurs qui "
+                    "s'entraînent sur vos données, le modèle par défaut (NVIDIA) devient inutilisable : choisissez un autre "
+                    "modèle gratuit (Gemma 4, non testé) ou un modèle payant (docs/choisir-son-ia.md#essai-gratuit), ou "
+                    "ajustez https://openrouter.ai/settings/privacy.")
+PRIVACY_PAID_MSG = ("Aucun fournisseur de ce modèle n'est compatible avec votre réglage de confidentialité OpenRouter "
+                    "(entraînement / rétention / ZDR, erreur 404) : choisissez un autre modèle ([chat].model) ou "
+                    "ajustez https://openrouter.ai/settings/privacy.")
 
 
 def classify_openrouter_free_error(status: Any, text: str, model: str = "") -> str:
-    """Erreur d'un modèle OpenRouter -> « zdr » | « quota » | « rate » | « upstream » | « limit » | vide.
+    """Erreur d'un modèle OpenRouter -> « privacy » | « quota » | « rate » | « upstream » | « limit » | vide.
 
-    - ZDR : 404 « 0 endpoints … ZDR violation » (mesuré le 2026-10-15 sur un compte avec ZDR imposé).
+    - Confidentialité : 404 « 0 endpoints … ZDR violation » (mesuré le 2026-10-15 avec Gemma sur un compte à ZDR
+      imposé) ou « No endpoints found matching your data policy » (réglage d'entraînement / rétention du compte ;
+      texte NON vérifié, approximation du projet). Cause probable : l'athlète a suivi notre conseil de refuser les
+      fournisseurs qui s'entraînent. Vaut pour tout modèle OpenRouter, gratuit ou payant.
     - 429 : https://openrouter.ai/docs/api-reference/limits dit seulement que le 429 vient d'OpenRouter
       (limites des modèles gratuits par minute ou par jour) ou du fournisseur amont ; le texte exact de la
       limite journalière n'est pas documenté. Motifs « per-day » / « per-min » / « provider returned error »
@@ -719,13 +731,19 @@ def classify_openrouter_free_error(status: Any, text: str, model: str = "") -> s
     except (TypeError, ValueError):
         code = 0
     if "zdr" in low or "zero data retention" in low or "data policy" in low:
-        return "zdr"
+        return "privacy"
     if is_openrouter_free_model(model) and (code == 429 or "rate limit" in low or "too many requests" in low
                                             or "rate-limited" in low or "free-models-per" in low):
-        if re.search(r"per[ -]?day|daily|free-models-per-day|requests per day", low):
-            return "quota"
-        if re.search(r"per[ -]?min|per minute|free-models-per-min", low):
+        # Jetons explicites d'abord (un 429 « par minute » peut citer « 1000 free model requests per day »
+        # dans son texte d'incitation), motifs génériques ensuite — minute avant jour.
+        if "free-models-per-min" in low:
             return "rate"
+        if "free-models-per-day" in low:
+            return "quota"
+        if re.search(r"per[ -]?min", low):
+            return "rate"
+        if re.search(r"per[ -]?day", low):
+            return "quota"
         if "provider returned error" in low or "upstream" in low or "temporarily rate-limited" in low:
             return "upstream"
         return "limit"
@@ -737,7 +755,8 @@ def translate_openrouter_free_error(model: str, name: str, status: Any, message:
     if not (model or "").startswith("openrouter/"):
         return None
     kind = classify_openrouter_free_error(status, "%s %s" % (name, message), model)
-    return {"zdr": ZDR_MSG, "quota": FREE_QUOTA_MSG, "rate": FREE_RATE_MSG,
+    privacy = PRIVACY_FREE_MSG if is_openrouter_free_model(model) else PRIVACY_PAID_MSG
+    return {"privacy": privacy, "quota": FREE_QUOTA_MSG, "rate": FREE_RATE_MSG,
             "upstream": FREE_UPSTREAM_MSG, "limit": FREE_LIMIT_MSG}.get(kind)
 
 

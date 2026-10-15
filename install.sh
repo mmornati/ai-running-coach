@@ -304,8 +304,8 @@ voyiez. Interactif seulement : sans terminal, la commande à lancer vous est ind
 --llm openrouter-free (essai gratuit, #267) : même clé et même connexion qu'openrouter (--connect), modèle
 gratuit « :free » pour le chat ET la sync, rien à payer (aucun budget en euros). Limites dites franchement :
 50 requêtes par jour sans achat de crédits (1 000 après 10 $ achetés au total), 20 par minute — environ un /log
-et quelques questions par jour. CONFIDENTIALITÉ : ces modèles conservent vos prompts et NVIDIA déclare
-s'entraîner dessus : pas de données de santé sensibles (https://openrouter.ai/settings/privacy) ; payant :
+et quelques questions par jour. CONFIDENTIALITÉ : ces modèles peuvent conserver vos prompts (à vérifier sur les pages
+d'OpenRouter) et NVIDIA déclare s'entraîner dessus : pas de données de santé sensibles (https://openrouter.ai/settings/privacy) ; payant :
 DeepSeek ≈ 0,80 €/mois ou « 10 $ une fois ». Si [sync].mode n'est pas déjà posé dans workspace.user.toml, la
 sync passe en mode « watch » (LLM seulement s'il y a du neuf, pour ménager le quota) ; une valeur déjà posée
 n'est jamais écrasée. Détails : docs/choisir-son-ia.md#essai-gratuit.
@@ -2710,6 +2710,7 @@ persist_llm_subscription() {
 
 persist_llm() {
     [[ -n "$LLM_PROVIDER" ]] || return 0
+    note_free_trial_leftover
     case "$LLM_PROVIDER" in
         chatgpt|copilot) persist_llm_subscription; return 0 ;;
     esac
@@ -2786,15 +2787,50 @@ persist_llm() {
 persist_llm_free_trial() {
     log "Essai gratuit OpenRouter : modèle $(effective_value chat model) — 0 € (aucun budget en euros)."
     warn "Quota : 50 requêtes par jour sans achat de crédits (1 000 après 10 \$ achetés au total), 20 par minute. Un /log en consomme 17 à 48, un /week 6 à 12, un bilan 4 à 9 (mesuré) : environ un /log et quelques questions par jour sans achat."
-    warn "CONFIDENTIALITÉ : les modèles gratuits conservent vos prompts et NVIDIA déclare s'entraîner dessus. N'y mettez pas de données de santé sensibles ; réglages : https://openrouter.ai/settings/privacy. Alternatives payantes : DeepSeek (≈ 0,80 €/mois, --llm openrouter) ou « 10 \$ une fois » (1 000 requêtes gratuites par jour)."
-    warn "Un compte OpenRouter qui impose la rétention zéro (ZDR) ne peut pas utiliser la plupart des modèles gratuits (erreur 404) : voir docs/choisir-son-ia.md#essai-gratuit."
+    warn "CONFIDENTIALITÉ : selon les pages de modèles d'OpenRouter (à vérifier), les modèles gratuits peuvent conserver vos prompts, et NVIDIA déclare s'entraîner dessus. N'y mettez pas de données de santé sensibles ; réglages : https://openrouter.ai/settings/privacy. Alternatives payantes : DeepSeek (≈ 0,80 €/mois, --llm openrouter) ou « 10 \$ une fois » (1 000 requêtes gratuites par jour)."
+    warn "Si vous refusez les fournisseurs qui s'entraînent sur vos données, le modèle par défaut (NVIDIA) devient inutilisable (erreur 404) ; certains modèles gratuits (Gemma 4 sur le compte d'essai) répondent aussi 404 avec ZDR : voir docs/choisir-son-ia.md#essai-gratuit."
     if user_toml_value sync mode >/dev/null 2>&1; then
         log "[sync].mode déjà posé dans workspace.user.toml : inchangé ($(effective_value sync mode))."
     elif [[ "$(data_source)" != "garmin" ]]; then
         log "Sync : le mode « watch » n'existe que pour [data].source = \"garmin\" — heures fixes conservées ([sync].times), donc quelques requêtes gratuites par passage."
+    elif ! have python3 && [[ "$DRY_RUN" -eq 0 ]]; then
+        warn "python3 absent : [sync].mode n'a pas pu être écrit (ajoutez mode = \"watch\" dans config/workspace.user.toml pour ménager le quota)."
     else
         log "Sync en mode « watch » proposé par défaut avec l'essai gratuit (LLM seulement s'il y a du neuf, pour ménager le quota) : [sync].mode = \"watch\". Pour revenir : mettez mode = \"schedule\" dans config/workspace.user.toml."
         llm_set sync mode "watch"
+        # daily-sync.sh ne lit pas [sync].mode : c'est le planificateur (cron/launchd) qui change. S'il est déjà
+        # installé, on le réinstalle (install_daily_sync est idempotent : lignes marquées remplacées, sauvegarde
+        # de la crontab) ; sinon la prochaine installation du planificateur en tiendra compte.
+        if [[ "$DAILY_SYNC" -eq 0 ]]; then
+            if scheduler_installed; then
+                if [[ "$DRY_RUN" -eq 1 ]]; then
+                    log "Planificateur de la sync déjà installé : il serait réinstallé pour appliquer le mode watch."
+                else
+                    log "Planificateur de la sync déjà installé : réinstallation pour appliquer le mode watch."
+                    DAILY_SYNC=1
+                fi
+            else
+                log "Aucun planificateur de sync installé : le mode watch s'appliquera avec ./install.sh --daily-sync."
+            fi
+        fi
+    fi
+}
+
+# Le planificateur de la sync (launchd sous macOS, crontab ailleurs) est-il déjà installé ? Lecture seule.
+scheduler_installed() {
+    if [[ "$(uname -s)" == "Darwin" ]]; then
+        [[ -f "$HOME/Library/LaunchAgents/com.ai-running-coach.daily-sync.plist" ]]
+    else
+        crontab -l 2>/dev/null | grep -qF "# ai-running-coach daily-sync"
+    fi
+}
+
+# Changement de fournisseur après l'essai gratuit : [sync].mode posé par lui reste en place (jamais réécrit).
+note_free_trial_leftover() {
+    [[ "$LLM_PROVIDER" != "openrouter-free" ]] || return 0
+    case "$(effective_value sync model)" in *:free) ;; *) return 0 ;; esac
+    if [[ "$(effective_value sync mode)" == "watch" ]] && user_toml_value sync mode >/dev/null 2>&1; then
+        log "[sync].mode reste « watch » (posé par l'essai gratuit) ; mettez mode = \"schedule\" dans config/workspace.user.toml pour revenir aux heures fixes."
     fi
 }
 
@@ -2870,7 +2906,7 @@ install_chat() {
             || warn "Impossible d'écrire [chat].enabled — vérifiez config/workspace.user.toml."
     fi
     if [[ -z "$LLM_PROVIDER" ]]; then
-        log "Modèle et clé du chat : voir [chat] (ou relancez avec --llm openrouter|anthropic|openai|chatgpt|copilot)."
+        log "Modèle et clé du chat : voir [chat] (ou relancez avec --llm openrouter|openrouter-free|anthropic|openai|chatgpt|copilot)."
     fi
     if [[ "$DRY_RUN" -eq 1 ]]; then
         ARC_WORKSPACE="$WORKSPACE_ROOT" ARC_DRY_RUN=1 "$PROJECT_ROOT/scripts/coach-chat.sh" install --dry-run

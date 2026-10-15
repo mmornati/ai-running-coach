@@ -401,7 +401,12 @@ l'épuiser : l'installation passe donc `[sync].mode` à `"watch"` (le modèle ne
 neuf) **uniquement si vous ne l'avez pas déjà posé** — une valeur existante n'est jamais écrasée —, et
 seulement avec `[data].source = "garmin"` (le mode `watch` n'existe que pour Garmin). Un quota ou une limite
 atteint donne une notification distincte (voir [Dépannage](troubleshooting.md#synchronisation-sur-une-api-openrouter-anthropic)),
-et le passage suivant réessaie. Les modèles gratuits conservent les prompts : [confidentialité](choisir-son-ia.md#essai-gratuit).
+et le passage suivant réessaie. Les modèles gratuits peuvent conserver les prompts : [confidentialité](choisir-son-ia.md#essai-gratuit).
+
+Si `[sync].mode` n'était pas posé, l'installation l'écrit (`"watch"`) et **réinstalle le planificateur** s'il
+existe déjà (cron/launchd : c'est lui, pas `daily-sync.sh`, qui change). En changeant ensuite de fournisseur
+(`--llm openrouter`…), le mode reste `"watch"` — l'installation le rappelle ; mettez `mode = "schedule"` dans
+`config/workspace.user.toml` pour revenir aux heures fixes.
 
 ### Synchronisation sur un abonnement ChatGPT ou Copilot
 

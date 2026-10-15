@@ -74,6 +74,8 @@ class InstallFreeTests(InstallAsserts):
             self.assertOutputContains(proc, "NVIDIA")
             self.assertOutputContains(proc, "https://openrouter.ai/settings/privacy")
             self.assertOutputContains(proc, "ZDR")
+            self.assertOutputContains(proc, "à vérifier")
+            self.assertOutputLacks(proc, "la plupart des modèles gratuits")
 
     def test_sync_watch_is_proposed_when_not_set(self):
         with Sandbox() as sb:
@@ -123,6 +125,52 @@ class InstallFreeTests(InstallAsserts):
             before = _toml(sb)
             self.assertSucceeded(sb.install(*BASE))
             self.assertEqual(_toml(sb), before)
+
+    def test_scheduler_already_installed_is_reinstalled_in_watch_mode(self):
+        with Sandbox() as sb:
+            self.assertSucceeded(sb.install(*BASE, "--daily-sync", ARC_FAKE_UNAME="Linux"))
+            self.assertIn("daily-sync.sh", sb.crontab())
+            proc = sb.install(*BASE, "--llm", "openrouter-free", ARC_FAKE_UNAME="Linux")
+            self.assertSucceeded(proc)
+            ours = [l for l in sb.crontab().splitlines() if "ai-running-coach daily-sync" in l]
+            self.assertEqual(len(ours), 1, sb.crontab())
+            self.assertIn("garmin_watch.py", ours[0])
+            self.assertOutputContains(proc, "réinstallation")
+
+    def test_no_scheduler_installed_says_how_to_apply_watch(self):
+        with Sandbox() as sb:
+            proc = sb.install(*BASE, "--llm", "openrouter-free", ARC_FAKE_UNAME="Linux")
+            self.assertSucceeded(proc)
+            self.assertEqual(sb.crontab(), "")
+            self.assertOutputContains(proc, "--daily-sync")
+
+    def test_dry_run_writes_nothing(self):
+        with Sandbox() as sb:
+            self.assertSucceeded(sb.install(*BASE, "--daily-sync", ARC_FAKE_UNAME="Linux"))
+            before, cron = sb.tree(), sb.crontab()
+            proc = sb.install(*BASE, "--llm", "openrouter-free", "--dry-run", ARC_FAKE_UNAME="Linux")
+            self.assertSucceeded(proc)
+            self.assertEqual(sb.tree(), before)
+            self.assertEqual(sb.crontab(), cron)
+            self.assertOutputContains(proc, "[sync].mode = watch")
+
+    def test_non_garmin_source_keeps_fixed_hours(self):
+        with Sandbox() as sb:
+            _write_config(sb, '[data]\nsource = "intervals"\n')
+            proc = sb.install(*BASE, "--llm", "openrouter-free")
+            self.assertSucceeded(proc)
+            self.assertNotIn('mode = "watch"', _toml(sb))
+            self.assertOutputContains(proc, "heures fixes")
+
+    def test_switching_provider_reminds_that_watch_stays(self):
+        with Sandbox() as sb:
+            self.assertSucceeded(sb.install(*BASE, "--llm", "openrouter-free"))
+            proc = sb.install(*BASE, "--llm", "openrouter")
+            self.assertSucceeded(proc)
+            self.assertOutputContains(proc, "reste « watch »")
+            self.assertIn('mode = "watch"', _toml(sb))
+        with Sandbox() as sb:      # sans essai gratuit préalable : aucun rappel
+            self.assertOutputLacks(sb.install(*BASE, "--llm", "openrouter"), "reste « watch »")
 
     def test_remembered_for_updates(self):
         with Sandbox() as sb:
@@ -234,11 +282,24 @@ class SyncFailureTests(InstallAsserts):
             self.assertIn("modèle gratuit saturé", calls)
             self.assertNotIn("quota gratuit du jour atteint", calls)
 
-    def test_zdr_404_has_its_own_notification(self):
+    def test_privacy_setting_404_has_its_own_notification_free_and_paid(self):
         with Sandbox() as sb:
             calls = self._failing_sync(sb, 404, "No endpoints available: 0 endpoints match, ZDR violation")
-            self.assertIn("rétention zéro (ZDR)", calls)
+            self.assertIn("réglage de confidentialité", calls)
+            self.assertIn("NVIDIA", calls)
             self.assertNotIn("Authentification Garmin", calls)
+        with Sandbox() as sb:
+            paid = FREE_SYNC.replace(FREE_MODEL, "openrouter/deepseek/deepseek-v4.1-flash")
+            calls = self._failing_sync(sb, 404, "No endpoints found matching your data policy", paid)
+            self.assertIn("réglage de confidentialité", calls)
+            self.assertNotIn("NVIDIA", calls)
+
+    def test_per_minute_body_with_daily_upsell_is_not_the_daily_quota(self):
+        with Sandbox() as sb:
+            calls = self._failing_sync(sb, 429, "Rate limit exceeded: free-models-per-min. Add 10 credits to unlock "
+                                                "1000 free model requests per day")
+            self.assertIn("modèle gratuit saturé", calls)
+            self.assertNotIn("quota gratuit du jour atteint", calls)
 
     def test_429_on_a_paid_model_keeps_historical_behaviour(self):
         with Sandbox() as sb:

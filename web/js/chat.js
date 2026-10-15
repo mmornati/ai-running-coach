@@ -418,7 +418,7 @@ function renderCost() {
   // Essai gratuit OpenRouter (#267) : 0 €, mais un quota — dit au lieu d'un budget en euros.
   const free = state.status && state.status.billing && state.status.billing.mode === "free";
   if (plan) parts.push(`inclus dans votre forfait ${plan}`);
-  else if (free) parts.push("essai gratuit (environ 50 requêtes par jour sans achat)");
+  else if (free) parts.push(`essai gratuit (${state.status.billing.quota || "quota gratuit limité"})`);
   else if (state.sessionCost > 0) parts.push(`≈ ${fmtEur(state.sessionCost)} cette conversation`);
   if (u) {
     // Noms du contrat (arc_chat_backend.py) : input_tokens, output_tokens, cache_read_tokens.

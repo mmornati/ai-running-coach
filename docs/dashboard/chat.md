@@ -164,10 +164,10 @@ ci-dessus :
 | `cohere/north-mini-code:free` | 17/19 | 42 | fichiers du `/log` datés à tort |
 | `nvidia/nemotron-3-super-120b-a12b:free` | 13/19 | 57 | trop lent (délai de 6 min dépassé) |
 
-Un seul passage par modèle. **Ces modèles conservent les prompts et NVIDIA déclare s'entraîner dessus** :
+Un seul passage par modèle. **Ces modèles peuvent conserver les prompts (selon les pages d'OpenRouter, à vérifier) et NVIDIA déclare s'entraîner dessus** :
 pas de données de santé sensibles ([détail, sources et limites](../choisir-son-ia.md#essai-gratuit)). Le
 chat traduit le quota atteint (« Quota gratuit du jour atteint … »), la limite par minute, un fournisseur
-saturé et le refus du ZDR (« … rétention zéro (ZDR) … ») en messages clairs, et l'en-tête de la page indique
+saturé et un réglage de confidentialité qui exclut tous les fournisseurs (404, « … réglage de confidentialité … ») en messages clairs, et l'en-tête de la page indique
 « essai gratuit » au lieu d'un budget en euros.
 
 ### Ce que coûte le coach

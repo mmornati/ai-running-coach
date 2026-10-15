@@ -51,10 +51,33 @@ class TestFreeErrorMapping(base.OpenCodeCase):
         self.assertIn("20 requêtes par minute", msg)
         self.assertIn("50 par jour", msg)
 
-    def test_zdr_on_any_openrouter_model(self):
-        for model in (FREE, PAID):
-            msg = self.tr(_err(404, "No endpoints found: 0 endpoints, ZDR violation"), model)
-            self.assertIn("rétention zéro (ZDR)", msg)
+    def test_per_minute_body_with_a_daily_upsell_is_still_the_minute_limit(self):
+        msg = self.tr(_err(429, "Rate limit exceeded: free-models-per-min. Add 10 credits to unlock 1000 free model "
+                                "requests per day"))
+        self.assertIn("20 requêtes par minute", msg)
+        self.assertNotIn("Quota gratuit du jour", msg)
+        generic = self.tr(_err(429, "Rate limit: too many requests per minute; 1000 requests per day with credits"))
+        self.assertIn("par minute", generic)
+        self.assertNotIn("Quota gratuit du jour", generic)
+
+    def test_a_bare_daily_word_is_not_the_quota(self):
+        self.assertNotIn("Quota gratuit du jour", self.tr(_err(429, "daily maintenance, rate limit exceeded")))
+
+    def test_privacy_setting_404_free_model_names_the_training_cause(self):
+        for text in ("No endpoints found: 0 endpoints, ZDR violation",
+                     "No endpoints found matching your data policy (Free model training)"):
+            msg = self.tr(_err(404, text), FREE)
+            self.assertIn("réglage de confidentialité", msg)
+            self.assertIn("NVIDIA", msg)
+            self.assertNotIn("rétention zéro (ZDR) imposée", msg)
+
+    def test_privacy_setting_404_paid_model_has_its_own_wording(self):
+        for text in ("No endpoints found matching your data policy", "0 endpoints, ZDR violation"):
+            msg = self.tr(_err(404, text), PAID)
+            self.assertIn("réglage de confidentialité", msg)
+            self.assertIn("[chat].model", msg)
+            self.assertNotIn("NVIDIA", msg)
+            self.assertNotIn("gratuit", msg)
 
     def test_429_on_a_paid_or_other_model_keeps_the_historical_message(self):
         self.assertIn("Limite de débit du fournisseur", self.tr(_err(429, "Rate limit exceeded"), PAID))
@@ -65,7 +88,8 @@ class TestFreeErrorMapping(base.OpenCodeCase):
     def test_classifier(self):
         self.assertEqual(arc_llm.classify_openrouter_free_error(429, "per-day", FREE), "quota")
         self.assertEqual(arc_llm.classify_openrouter_free_error(429, "per-day", PAID), "")
-        self.assertEqual(arc_llm.classify_openrouter_free_error(404, "zdr violation", PAID), "zdr")
+        self.assertEqual(arc_llm.classify_openrouter_free_error(404, "zdr violation", PAID), "privacy")
+        self.assertEqual(arc_llm.classify_openrouter_free_error(404, "your data policy", FREE), "privacy")
 
 
 class TestFreeBilling(base.OpenCodeCase):

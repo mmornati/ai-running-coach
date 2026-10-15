@@ -201,18 +201,21 @@ et les autres modèles gratuits essayés (workspace synthétique, 15 octobre 202
 
 Honnêtement : **sans achat, comptez environ un `/log` et quelques questions par jour.** Une fois les 50
 requêtes épuisées, le chat répond « Quota gratuit du jour atteint (50 requêtes sans achat, 1 000 après 10 $
-de crédits) : réessayez demain ou ajoutez des crédits » ; le compteur est remis à zéro à minuit UTC. Pour
+de crédits) : réessayez demain ou ajoutez des crédits » ; le compteur suit le jour UTC. Pour
 ménager ce quota, l'installation propose la synchronisation en
 [mode `watch`](mobile.md#mode-watch-ne-payer-le-llm-que-quand-garmin-a-du-neuf) (le modèle ne travaille que
 s'il y a du neuf) — **uniquement si vous n'avez pas déjà choisi un `[sync].mode`**, qui n'est jamais écrasé
 (et seulement avec Garmin). Pour connaître le reste du jour : `python3 scripts/arc_llm.py free-quota`
-(lit `free_model_daily_requests` dans `GET /api/v1/key`, sans entamer le quota).
+(lit `free_model_daily_requests` dans `GET /api/v1/key`, un appel léger, sans effet connu sur le quota).
 
 ### Vos données de santé : le point faible de l'essai
 
-!!! warning "Les modèles gratuits retiennent vos prompts"
-    Pour les modèles essayés, les pages de modèles d'OpenRouter indiquent que le fournisseur **conserve les
-    prompts** ; les modèles NVIDIA (dont le modèle par défaut) déclarent **s'entraîner dessus**. Le coach
+!!! warning "Les modèles gratuits peuvent retenir vos prompts"
+    Selon les pages de modèles d'OpenRouter (à vérifier : la politique est celle du fournisseur et peut
+    changer), les fournisseurs des modèles essayés **conservent les prompts** ; les modèles NVIDIA (dont le
+    modèle par défaut) déclarent **s'entraîner dessus**. (Les modèles NVIDIA et cohere ont pourtant passé le
+    filtre ZDR du compte d'essai : la page du fournisseur et l'exigence ZDR ne se recoupent pas, ne déduisez
+    pas une absence de rétention.) Le coach
     envoie votre HRV, votre sommeil, vos blessures. **N'utilisez pas l'essai gratuit pour des données de
     santé sensibles.** Réglages : [confidentialité OpenRouter](https://openrouter.ai/settings/privacy).
     Mieux : OpenRouter payant avec DeepSeek (≈ 0,80 € par mois) ou « 10 $ une fois ».
@@ -227,8 +230,10 @@ et peut changer) :
 | `google/gemma-4-31b-it:free` | Google AI Studio | non | oui, 55 jours |
 | `cohere/north-mini-code:free`, `nvidia/nemotron-3.5-lightning:free` | non relevé page par page | à revérifier | à revérifier |
 
-Seul Gemma 4 déclare ne pas s'entraîner, mais il **n'a pas pu être essayé** (voir la limite ZDR
-ci-dessous) : il n'est donc pas le modèle par défaut.
+Seul Gemma 4 déclare ne pas s'entraîner, mais il **n'a pas pu être essayé** (sur le compte d'essai, avec
+ZDR imposé, il répond 404) : il n'est donc pas le modèle par défaut. **Si vous refusez, dans vos réglages
+OpenRouter, les fournisseurs qui s'entraînent sur vos données, le modèle par défaut (NVIDIA) devient
+inutilisable (404)** : choisissez alors un autre modèle gratuit (Gemma 4, non testé) ou un modèle payant.
 
 ### Quel modèle gratuit ?
 
@@ -245,7 +250,7 @@ outils pris en charge, contexte d'au moins 64 000 jetons).
 | `nvidia/nemotron-3.5-lightning:free` | 17/19 | 35 (18 / 5 / 12) | fichiers corrects, mais anglais mêlé dans les réponses finales |
 | `cohere/north-mini-code:free` | 17/19 | 42 (27 / 9 / 6) | rapide, mais a écrit les fichiers du `/log` **à une mauvaise date** : à éviter comme défaut |
 | `nvidia/nemotron-3-super-120b-a12b:free` | 13/19 | 57 (48 / 5 / 4) | trop lent : `/log` et `/week` n'ont pas fini en 6 minutes |
-| `google/gemma-4-31b-it:free` | — | — | non testé (404 ZDR) |
+| `google/gemma-4-31b-it:free` | — | — | non testé (404 avec ZDR sur le compte d'essai) |
 
 Pour changer : `./install.sh --llm openrouter-free --model cohere/north-mini-code:free` (l'identifiant doit
 finir par `:free`).
@@ -263,10 +268,12 @@ le catalogue gratuit change vite (aucun modèle `:free` Qwen, DeepSeek, GLM ou G
   passer à 1 000 requêtes par jour.
 - **« Limite par minute … »** ou **« fournisseur … saturé »** (429) : attendez une minute ; un 429 peut
   venir du fournisseur du modèle, pas de votre quota.
-- **« … rétention zéro (ZDR) … »** (404 « ZDR violation ») : un compte OpenRouter qui **impose la rétention
-  zéro des données** ne peut pas utiliser la plupart des modèles gratuits, qui conservent les prompts
-  (constaté sur le compte de test). Relâchez ce réglage dans les
-  [réglages de confidentialité](https://openrouter.ai/settings/privacy) ou passez sur un modèle payant.
+- **« … réglage de confidentialité … »** (404 « ZDR violation » ou « data policy ») : votre réglage
+  OpenRouter (entraînement, rétention ou ZDR) exclut tous les fournisseurs du modèle. Cause la plus probable :
+  vous avez refusé les fournisseurs qui s'entraînent (notre conseil pour la santé), ce qui exclut NVIDIA, le
+  modèle par défaut. Constaté sur le compte d'essai : avec ZDR imposé, Gemma 4 répond 404 alors que les
+  modèles NVIDIA et cohere passent. Choisissez un autre modèle gratuit (Gemma 4, non testé) ou un modèle
+  payant, ou ajustez les [réglages de confidentialité](https://openrouter.ai/settings/privacy).
 
 Notifications de la synchronisation : [Dépannage](troubleshooting.md#synchronisation-sur-une-api-openrouter-anthropic).
 
