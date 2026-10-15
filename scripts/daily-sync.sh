@@ -601,7 +601,12 @@ record_spend() {
 # par detect_auth_failure. Un texte d'erreur qui nomme Garmin/Intervals est
 # écarté ici. Motifs à VÉRIFIER contre des échecs réels (# À VÉRIFIER) : 401,
 # « invalid api key », « user not found » (clé) ; 402, « credits », « payment
-# required », « credit balance » (solde). PROVIDER_FAILURE : auth | credits | "".
+# required », « credit balance » (solde). PROVIDER_FAILURE : auth | credits | quota
+# | plan | reconnect | zdr | free_quota | free_rate | "". Essai gratuit OpenRouter
+# (#267, modèle « openrouter/…:free ») : zdr (404 « ZDR violation », mesuré), free_quota
+# (429 journalier), free_rate (429 par minute ou fournisseur amont, ou 429 sans motif :
+# le quota exact n'est pas dans le texte) — motifs « per-day » / « per-min » = APPROXIMATION du
+# projet, le corps exact d'un 429 gratuit n'étant pas documenté (arc_llm.py, classify_openrouter_free_error).
 PROVIDER_FAILURE=""
 detect_provider_failure() {
     local err="$1"
@@ -621,6 +626,20 @@ detect_provider_failure() {
         fi
         if printf '%s' "$err" | grep -qiE 'token refresh failed|(^|[^0-9])40[13]([^0-9]|$)|unauthorized|forbidden|not connected|provider not found|token may be missing'; then
             PROVIDER_FAILURE="reconnect"; return 0
+        fi
+    fi
+    if [[ "$SYNC_MODEL" == openrouter/* ]]; then
+        if printf '%s' "$err" | grep -qiE 'zdr|zero data retention|data policy'; then
+            PROVIDER_FAILURE="zdr"; return 0
+        fi
+        if [[ "$SYNC_MODEL" == *:free ]] \
+            && printf '%s' "$err" | grep -qiE '(^|[^0-9])429([^0-9]|$)|rate limit|too many requests|rate-limited|free-models-per'; then
+            if printf '%s' "$err" | grep -qiE 'per[ -]?day|daily|requests per day'; then
+                PROVIDER_FAILURE="free_quota"
+            else
+                PROVIDER_FAILURE="free_rate"
+            fi
+            return 0
         fi
     fi
     if printf '%s' "$err" | grep -qiE '(^|[^0-9])402([^0-9]|$)|insufficient (credits|funds)|payment required|credit balance|requires more credits|out of credits'; then
@@ -1389,6 +1408,15 @@ main() {
             elif [[ "$PROVIDER_FAILURE" == "quota" ]]; then
                 notify "⏳ Sync $SOURCE_LABEL — limites du forfait $plabel atteintes" 4 "hourglass,warning" \
                     "Synchronisation interrompue : les limites de votre forfait $plabel sont atteintes. Elles se renouvellent d'elles-mêmes ; le prochain passage réessaiera. Ce n'est pas un problème $SOURCE_LABEL. Voir logs/sync-$(date +%F).log."
+            elif [[ "$PROVIDER_FAILURE" == "free_quota" ]]; then
+                notify "⏳ Sync $SOURCE_LABEL — quota gratuit du jour atteint" 4 "hourglass,warning" \
+                    "Synchronisation interrompue : le quota des modèles gratuits $plabel est atteint (50 requêtes par jour sans achat de crédits, 1 000 après 10 \$). Il se remet à zéro à minuit UTC ; le prochain passage réessaiera. Ce n'est pas un problème $SOURCE_LABEL. Voir logs/sync-$(date +%F).log."
+            elif [[ "$PROVIDER_FAILURE" == "free_rate" ]]; then
+                notify "⏳ Sync $SOURCE_LABEL — modèle gratuit saturé" 3 "hourglass" \
+                    "Synchronisation interrompue : limite momentanée du modèle gratuit $plabel (20 requêtes par minute, ou fournisseur saturé ; peut aussi être le quota du jour). Le prochain passage réessaiera. Ce n'est pas un problème $SOURCE_LABEL. Voir logs/sync-$(date +%F).log."
+            elif [[ "$PROVIDER_FAILURE" == "zdr" ]]; then
+                notify "🔒 Sync $SOURCE_LABEL — rétention zéro (ZDR) incompatible" 5 "lock,warning" \
+                    "Synchronisation interrompue : votre compte $plabel impose la rétention zéro des données (ZDR, erreur 404) et le modèle choisi ne peut pas la respecter (c'est le cas de la plupart des modèles gratuits). Choisissez un modèle payant ([sync].model) ou relâchez ce réglage sur openrouter.ai. Ce n'est pas un problème $SOURCE_LABEL. Voir logs/sync-$(date +%F).log."
             elif [[ "$PROVIDER_FAILURE" == "credits" ]]; then
                 notify "💳 Sync $SOURCE_LABEL — crédits $plabel épuisés" 5 "moneybag,warning" \
                     "Synchronisation interrompue : le fournisseur LLM ($plabel) refuse la requête faute de crédits (402). Rechargez le compte. Ce n'est pas un problème $SOURCE_LABEL. Voir logs/sync-$(date +%F).log."

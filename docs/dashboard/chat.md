@@ -148,6 +148,28 @@ OpenCode.
     bilan matinal ou adoucir un garde-fou. Essayez-le d'abord dans le
     [bac à sable](#essayer-sans-risque), et gardez un œil sur la trace des étapes.
 
+#### Et les modèles gratuits (`:free`) ?
+
+`./install.sh --llm openrouter-free` branche le chat sur un modèle gratuit d'OpenRouter : 0 €, mais
+**50 requêtes par jour sans achat de crédits** (1 000 après 10 $ achetés au total, 20 par minute). Un
+`/log` en consomme 17 à 48, un `/week` 6 à 12, un bilan 4 à 9 : environ un `/log` et quelques questions par
+jour sans achat. Essai du 15 octobre 2026, même méthode (trois demandes, vérifications automatiques) mais
+**sur un workspace synthétique et sans Garmin** — ses scores ne se comparent donc pas à ceux du tableau
+ci-dessus :
+
+| Modèle gratuit | Score | Requêtes LLM | Verdict |
+|---|---|---|---|
+| `nvidia/nemotron-3-ultra-550b-a55b:free` | **19/19** | 31 | **défaut** ; lent sur `/log` |
+| `nvidia/nemotron-3.5-lightning:free` | 17/19 | 35 | anglais mêlé aux réponses |
+| `cohere/north-mini-code:free` | 17/19 | 42 | fichiers du `/log` datés à tort |
+| `nvidia/nemotron-3-super-120b-a12b:free` | 13/19 | 57 | trop lent (délai de 6 min dépassé) |
+
+Un seul passage par modèle. **Ces modèles conservent les prompts et NVIDIA déclare s'entraîner dessus** :
+pas de données de santé sensibles ([détail, sources et limites](../choisir-son-ia.md#essai-gratuit)). Le
+chat traduit le quota atteint (« Quota gratuit du jour atteint … »), la limite par minute, un fournisseur
+saturé et le refus du ZDR (« … rétention zéro (ZDR) … ») en messages clairs, et l'en-tête de la page indique
+« essai gratuit » au lieu d'un budget en euros.
+
 ### Ce que coûte le coach
 
 Un mois type pour un athlète : 60 questions (bilan du jour, « je garde ma séance ? »), 12

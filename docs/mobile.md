@@ -393,6 +393,16 @@ du cron : `daily-sync.sh` relit le runner à chaque exécution.
 vers la **clé API facturée au token** : l'installation l'affiche (« abonnement → clé API
 facturée au token ») et `[sync].daily_budget_eur` plafonne la dépense.
 
+### Synchronisation sur l'essai gratuit
+
+`./install.sh --llm openrouter-free` met la synchronisation sur un modèle `:free` d'OpenRouter (0 €, mais
+**50 requêtes par jour sans achat de crédits**, 1 000 après 10 $). Les heures fixes pourraient suffire à
+l'épuiser : l'installation passe donc `[sync].mode` à `"watch"` (le modèle ne travaille que s'il y a du
+neuf) **uniquement si vous ne l'avez pas déjà posé** — une valeur existante n'est jamais écrasée —, et
+seulement avec `[data].source = "garmin"` (le mode `watch` n'existe que pour Garmin). Un quota ou une limite
+atteint donne une notification distincte (voir [Dépannage](troubleshooting.md#synchronisation-sur-une-api-openrouter-anthropic)),
+et le passage suivant réessaie. Les modèles gratuits conservent les prompts : [confidentialité](choisir-son-ia.md#essai-gratuit).
+
 ### Synchronisation sur un abonnement ChatGPT ou Copilot
 
 Avec `./install.sh --llm chatgpt --sync-subscription` (ou `copilot`), ou sur une installation neuve, la

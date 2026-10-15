@@ -129,6 +129,19 @@ ne sont jamais présentés comme un problème Garmin :
 | `💸 Sync Garmin suspendue — budget atteint` | Le cumul du jour (`logs/.sync-spend-AAAA-MM-JJ`) atteint `[sync].daily_budget_eur`. Le run est sauté, sans erreur. | Relancez demain, ou relevez `./install.sh --sync-budget EUR`. |
 | `⚠ hors contrat arc : …` (dans le résumé) | Un fichier écrit par le modèle pendant le run ne respecte pas le bloc `arc`. | Voir `logs/sync-AAAA-MM-JJ.log` ; changez de modèle (`[sync].model`) si cela se répète. |
 
+Avec l'**essai gratuit** (`--llm openrouter-free`, modèle `:free`, [limites](choisir-son-ia.md#essai-gratuit)) :
+
+| Notification | Cause | Correctif |
+|---|---|---|
+| `⏳ Sync Garmin — quota gratuit du jour atteint` | 429 avec un motif « par jour » : 50 requêtes par jour sans achat de crédits (1 000 après 10 $). | Rien à faire : remise à zéro à minuit UTC, le passage suivant réessaie. Ou achetez 10 $ de crédits une fois. `python3 scripts/arc_llm.py free-quota` donne le reste du jour. |
+| `⏳ Sync Garmin — modèle gratuit saturé` | 429 par minute (20 requêtes/min), fournisseur du modèle saturé, ou 429 sans motif identifiable (cela peut aussi être le quota du jour). | Rien à faire, le passage suivant réessaie. |
+| `🔒 Sync Garmin — rétention zéro (ZDR) incompatible` | 404 « ZDR violation » : votre compte OpenRouter impose la rétention zéro, la plupart des modèles gratuits conservent les prompts. | Relâchez ce réglage ([confidentialité OpenRouter](https://openrouter.ai/settings/privacy)) ou choisissez un modèle payant (`./install.sh --llm openrouter`). |
+
+Le chat affiche les mêmes cas en clair (« Quota gratuit du jour atteint … », « … rétention zéro (ZDR) … »).
+Les motifs « par jour » / « par minute » du texte d'erreur sont une approximation du projet : OpenRouter ne
+documente pas le corps exact d'un 429 sur les modèles gratuits ; un 429 sans motif reconnu est présenté comme
+« limite … atteinte » en citant les trois causes possibles.
+
 Avec un **abonnement ChatGPT ou Copilot** (`--llm chatgpt|copilot`), la synchronisation ne lance jamais de
 connexion ; ses notifications :
 

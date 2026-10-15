@@ -14,6 +14,7 @@ flowchart TD
     D -->|non| H{GitHub Copilot ?}
     H -->|oui| I[Se connecter avec GitHub<br/>chat + synchronisation]
     H -->|non| F[OpenRouter<br/>en un clic]
+    F -.->|essayer d'abord| J[Essai gratuit<br/>limité]
 ```
 
 | Vous avez… | Faites ceci | Coût en plus |
@@ -22,6 +23,7 @@ flowchart TD
 | **ChatGPT Plus ou Pro** | [Se connecter avec ChatGPT](#chatgpt-plus-ou-pro) : `./install.sh --llm chatgpt --connect`, ou « J'ai ChatGPT Plus/Pro » dans l'application | aucun (limites de votre forfait) |
 | **GitHub Copilot** | [Se connecter avec GitHub](#github-copilot) : `./install.sh --llm copilot --connect`, ou « J'ai GitHub Copilot » dans l'application | aucun (crédits de votre forfait) |
 | **Rien** | [OpenRouter en un clic](#openrouter-en-un-clic) | environ 1 € par mois |
+| **Rien, et je veux essayer d'abord** | [Essai gratuit](#essai-gratuit) : `./install.sh --llm openrouter-free --connect`, ou « Essai gratuit (limité) » dans l'application | 0 € (environ un `/log` et quelques questions par jour ; prompts conservés) |
 | Une clé API existante | [Coller sa clé](#cle-api-anthropic-openai-ou-autre) | selon le fournisseur |
 
 ## OpenRouter en un clic
@@ -173,6 +175,101 @@ indique : « Unpaid tier and Google One users: Gemini CLI was replaced by Antigr
   données de santé** ;
 - avec une **licence payante**.
 
+## Essai gratuit
+
+Pour **essayer avant de payer quoi que ce soit** : OpenRouter propose des modèles dits `:free`. Le coach
+sait s'y brancher (`./install.sh --llm openrouter-free --connect`, ou « Essai gratuit (limité) » dans
+l'application macOS), avec la **même connexion en un clic** qu'[OpenRouter](#openrouter-en-un-clic).
+Coût : **0 €**, donc aucun plafond en euros. En échange, deux limites à connaître avant de choisir.
+
+### Ce que l'essai permet vraiment
+
+| Limite | Valeur | Source (consultée le 15 octobre 2026) |
+|---|---|---|
+| Requêtes par minute | 20 | [limites OpenRouter](https://openrouter.ai/docs/api-reference/limits) |
+| Requêtes par jour, **sans achat de crédits** | **50** | idem |
+| Requêtes par jour après **10 $ de crédits achetés au total** | 1 000 | idem (le palier haut démarre dès 9 $ achetés) |
+
+Un tour de chat consomme **plusieurs requêtes** (une par appel d'outil). Mesuré avec le modèle par défaut
+et les autres modèles gratuits essayés (workspace synthétique, 15 octobre 2026) :
+
+| Demande | Requêtes LLM consommées |
+|---|---|
+| `/log` (une phrase : gels, eau, douleur, RPE) | **17 à 48** |
+| `/week` | 6 à 12 |
+| Bilan matinal (« je me sens fatigué, je garde la séance ? ») | 4 à 9 |
+
+Honnêtement : **sans achat, comptez environ un `/log` et quelques questions par jour.** Une fois les 50
+requêtes épuisées, le chat répond « Quota gratuit du jour atteint (50 requêtes sans achat, 1 000 après 10 $
+de crédits) : réessayez demain ou ajoutez des crédits » ; le compteur est remis à zéro à minuit UTC. Pour
+ménager ce quota, l'installation propose la synchronisation en
+[mode `watch`](mobile.md#mode-watch-ne-payer-le-llm-que-quand-garmin-a-du-neuf) (le modèle ne travaille que
+s'il y a du neuf) — **uniquement si vous n'avez pas déjà choisi un `[sync].mode`**, qui n'est jamais écrasé
+(et seulement avec Garmin). Pour connaître le reste du jour : `python3 scripts/arc_llm.py free-quota`
+(lit `free_model_daily_requests` dans `GET /api/v1/key`, sans entamer le quota).
+
+### Vos données de santé : le point faible de l'essai
+
+!!! warning "Les modèles gratuits retiennent vos prompts"
+    Pour les modèles essayés, les pages de modèles d'OpenRouter indiquent que le fournisseur **conserve les
+    prompts** ; les modèles NVIDIA (dont le modèle par défaut) déclarent **s'entraîner dessus**. Le coach
+    envoie votre HRV, votre sommeil, vos blessures. **N'utilisez pas l'essai gratuit pour des données de
+    santé sensibles.** Réglages : [confidentialité OpenRouter](https://openrouter.ai/settings/privacy).
+    Mieux : OpenRouter payant avec DeepSeek (≈ 0,80 € par mois) ou « 10 $ une fois ».
+
+Lecture des pages de modèles du 15 octobre 2026 (le champ `data_policy` n'est pas dans l'API `/models`,
+et peut changer) :
+
+| Modèle gratuit | Fournisseur | Entraînement | Conserve les prompts |
+|---|---|---|---|
+| `nvidia/nemotron-3-ultra-550b-a55b:free` (défaut) | NVIDIA (API d'essai) | **oui** | oui |
+| `nvidia/nemotron-3-super-120b-a12b:free` | NVIDIA (API d'essai) | oui | oui |
+| `google/gemma-4-31b-it:free` | Google AI Studio | non | oui, 55 jours |
+| `cohere/north-mini-code:free`, `nvidia/nemotron-3.5-lightning:free` | non relevé page par page | à revérifier | à revérifier |
+
+Seul Gemma 4 déclare ne pas s'entraîner, mais il **n'a pas pu être essayé** (voir la limite ZDR
+ci-dessous) : il n'est donc pas le modèle par défaut.
+
+### Quel modèle gratuit ?
+
+Méthode (15 octobre 2026) : workspace synthétique de 60 jours (`tests/lib/synthetic.py`), `opencode run`
+avec chaque modèle sur trois demandes — `/log` « 2 gels Aptonia + 500 ml, genou gauche 2/10, RPE 6 »,
+« je me sens fatigué, je garde la séance ? » et `/week` — puis un score sur 19 (tour terminé, français
+propre, fichiers valides **datés du jour**, valeurs exactes 46 g de glucides / 500 ml / RPE 6, garde-fous
+appelés). Les identifiants ont été relevés dans `https://openrouter.ai/api/v1/models` (suffixe `:free`,
+outils pris en charge, contexte d'au moins 64 000 jetons).
+
+| Modèle | Score | Requêtes LLM (`/log` / bilan / `/week`) | Verdict |
+|---|---|---|---|
+| `nvidia/nemotron-3-ultra-550b-a55b:free` | **19/19** | 31 (17 / 4 / 10) | **défaut** : seul parfait ; lent sur `/log` (275 s) ; libellés `done/planned` en anglais dans le tableau de `/week` |
+| `nvidia/nemotron-3.5-lightning:free` | 17/19 | 35 (18 / 5 / 12) | fichiers corrects, mais anglais mêlé dans les réponses finales |
+| `cohere/north-mini-code:free` | 17/19 | 42 (27 / 9 / 6) | rapide, mais a écrit les fichiers du `/log` **à une mauvaise date** : à éviter comme défaut |
+| `nvidia/nemotron-3-super-120b-a12b:free` | 13/19 | 57 (48 / 5 / 4) | trop lent : `/log` et `/week` n'ont pas fini en 6 minutes |
+| `google/gemma-4-31b-it:free` | — | — | non testé (404 ZDR) |
+
+Pour changer : `./install.sh --llm openrouter-free --model cohere/north-mini-code:free` (l'identifiant doit
+finir par `:free`).
+
+**Limites de cette mesure** : un seul passage par modèle (des écarts de un ou deux points ne sont pas
+significatifs) ; la latence des modèles gratuits varie beaucoup dans la journée et avec le parallélisme
+(quatre modèles lancés ensemble) ; **pas de Garmin ni de serveur MCP** dans l'essai (le bilan lisait
+`medical/`), donc la synchronisation headless n'a pas été essayée telle quelle ; aucune erreur 429 pendant
+les essais (compte à 1 000 requêtes par jour), donc le comportement réel à 50 par jour n'a pas été mesuré ;
+le catalogue gratuit change vite (aucun modèle `:free` Qwen, DeepSeek, GLM ou Gemini ce jour-là).
+
+### Si ça ne marche pas
+
+- **« Quota gratuit du jour atteint »** (429) : réessayez demain, ou achetez 10 $ de crédits une fois pour
+  passer à 1 000 requêtes par jour.
+- **« Limite par minute … »** ou **« fournisseur … saturé »** (429) : attendez une minute ; un 429 peut
+  venir du fournisseur du modèle, pas de votre quota.
+- **« … rétention zéro (ZDR) … »** (404 « ZDR violation ») : un compte OpenRouter qui **impose la rétention
+  zéro des données** ne peut pas utiliser la plupart des modèles gratuits, qui conservent les prompts
+  (constaté sur le compte de test). Relâchez ce réglage dans les
+  [réglages de confidentialité](https://openrouter.ai/settings/privacy) ou passez sur un modèle payant.
+
+Notifications de la synchronisation : [Dépannage](troubleshooting.md#synchronisation-sur-une-api-openrouter-anthropic).
+
 ## Et le gratuit ?
 
 Il existe, avec des pièges à connaître. Un tour de chat consomme **plusieurs requêtes** (une par appel
@@ -182,6 +279,8 @@ d'outil) : 50 requêtes par jour ne laissent que quelques questions.
 |---|---|---|---|
 | OpenRouter, modèles `:free` | 20 requêtes/min ; **50/jour** ; **1 000/jour** après 9 à 10 $ de crédits achetés au total | la politique varie selon le fournisseur ; l'entraînement se refuse dans les réglages, avec des exceptions possibles | [limites](https://openrouter.ai/docs/api-reference/limits), [journalisation](https://openrouter.ai/docs/guides/privacy/logging) |
 | Gemini, clé API gratuite | 250 requêtes/jour, Flash seulement | données utilisées par Google, relecteurs humains possibles | [quotas](https://geminicli.com/docs/resources/quota-and-pricing/), [conditions](https://ai.google.dev/gemini-api/terms) |
+
+Le détail de l'option OpenRouter (modèle par défaut, mesures, limites) est dans [Essai gratuit](#essai-gratuit).
 
 Pour des données de santé, le message honnête reste : **10 $ une fois, plutôt qu'un gratuit qui
 garde vos prompts.**

@@ -456,7 +456,7 @@ class CatalogTests(InstallAsserts):
         proc = subprocess.run([sys.executable, str(SCRIPT), "providers", "--json"], capture_output=True, text=True, timeout=30)
         self.assertEqual(proc.returncode, 0)
         providers = {p["id"]: p for p in json.loads(proc.stdout)["providers"]}
-        self.assertEqual(set(providers), {"openrouter", "anthropic", "openai", "chatgpt", "copilot"})
+        self.assertEqual(set(providers), {"openrouter", "openrouter-free", "anthropic", "openai", "chatgpt", "copilot"})
         for p in providers.values():
             for field in ("label", "kind", "chat_model", "sync_model", "key_env", "monthly_cost", "privacy", "docs"):
                 self.assertIn(field, p)

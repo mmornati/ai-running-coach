@@ -36,7 +36,7 @@
 #   ./install.sh --use-leanproxy    # mode passerelle leanproxy (power user)
 #   ./install.sh --daily-sync       # cron/launchd : sync Garmin aux heures de [sync].times
 #   ./install.sh --remote-control   # service Remote Control (le coach dans la poche)
-#   ./install.sh --llm openrouter   # chat + sync sur une API (openrouter|anthropic|openai) ou un abonnement (chatgpt|copilot)
+#   ./install.sh --llm openrouter   # chat + sync sur une API (openrouter|anthropic|openai), un abonnement (chatgpt|copilot) ou l'essai gratuit (openrouter-free)
 #   ./install.sh --chat             # service du chat avec le coach (dashboard)
 #   ./install.sh --telegram         # bot Telegram : retours en un geste, sans LLM (docs/telegram.md)
 #   ./install.sh --dashboard-docker local|traefik # tableau de bord en conteneur, reconstruit par /update-coach
@@ -125,6 +125,11 @@ GARMIN_NUTRITION_TOOLS="get_custom_foods,get_custom_food_serving_units,get_nutri
 # Catalogue complet (source de vérité) : python3 scripts/arc_llm.py providers --json ; un test vérifie
 # que ces constantes y concordent (install.sh doit fonctionner sans python3).
 LLM_OPENROUTER_MODEL="openrouter/deepseek/deepseek-v4.1-flash"
+# Essai gratuit (--llm openrouter-free, #267) : identifiants vérifiés dans https://openrouter.ai/api/v1/models le
+# 2026-10-15 (alternatives : openrouter/nvidia/nemotron-3.5-lightning:free, openrouter/cohere/north-mini-code:free).
+# Choisi par un essai réel du même jour (/log, bilan, /week sur un workspace synthétique, un passage par modèle) :
+# 19/19 contre 17/19 pour les alternatives — méthode et limites dans docs/choisir-son-ia.md#essai-gratuit.
+LLM_OPENROUTER_FREE_MODEL="openrouter/nvidia/nemotron-3-ultra-550b-a55b:free"
 LLM_ANTHROPIC_CHAT_MODEL="claude-sonnet-5-5"
 LLM_ANTHROPIC_SYNC_MODEL="claude-haiku-4-5"
 # Abonnements (--llm chatgpt|copilot, #266) : identifiants vérifiés dans models.dev (2026-10-15) et dans la
@@ -190,7 +195,7 @@ OW_PROVIDER=""     # --ow-provider P (avec --health-source openwearables)
 OW_KEY_FILE_ARG="" # --ow-key-file FICHIER : clé d'API à importer (jamais passée en argument)
 OW_KEY_FILE_DEFAULT="$HOME/.config/ai-running-coach/openwearables.key" # = défaut de [health.openwearables].api_key_file
 HEALTH_EFFECTIVE="primary" # résolu par resolve_health_source()
-LLM_PROVIDER=""    # --llm openrouter|anthropic|openai|chatgpt|copilot — chat + sync sur une API ou un abonnement
+LLM_PROVIDER=""    # --llm openrouter|openrouter-free|anthropic|openai|chatgpt|copilot — chat + sync sur une API, un abonnement ou l'essai gratuit
 LLM_MODEL_ARG=""   # --model ID (avec --llm)
 LLM_BASE_URL_ARG="" # --base-url URL (avec --llm openai : API compatible OpenAI)
 SYNC_SUBSCRIPTION=0 # --sync-subscription (1) : avec --llm chatgpt|copilot, met AUSSI la synchronisation sur l'abonnement ; --no-sync-subscription (-1) : jamais
@@ -265,11 +270,11 @@ Usage :
   ./install.sh --no-daily-sync    # désactive la sync (annule --daily-sync d'un préréglage)
   ./install.sh --remote-control   # service Remote Control (le coach dans la poche)
   ./install.sh --no-remote-control # désactive Remote Control (annule --remote-control d'un préréglage)
-  ./install.sh --llm FOURNISSEUR  # openrouter | anthropic | openai | chatgpt | copilot — chat ET sync (voir ci-dessous)
-  ./install.sh --model ID         # avec --llm : modèle (openrouter : ID OpenRouter ; anthropic, chatgpt, copilot : modèle du chat)
+  ./install.sh --llm FOURNISSEUR  # openrouter | openrouter-free | anthropic | openai | chatgpt | copilot — chat ET sync (voir ci-dessous)
+  ./install.sh --model ID         # avec --llm : modèle (openrouter : ID OpenRouter ; openrouter-free : ID finissant par :free ; anthropic, chatgpt, copilot : modèle du chat)
   ./install.sh --sync-subscription # avec --llm chatgpt|copilot : la synchronisation automatique passe aussi sur l'abonnement
   ./install.sh --no-sync-subscription # avec --llm chatgpt|copilot : ne touche pas à la synchronisation, même sur une installation neuve
-  ./install.sh --connect          # avec --llm openrouter|chatgpt|copilot : se connecte dans le navigateur (aucune clé à copier)
+  ./install.sh --connect          # avec --llm openrouter|openrouter-free|chatgpt|copilot : se connecte dans le navigateur (aucune clé à copier)
   ./install.sh --base-url URL     # avec --llm openai : API compatible OpenAI autre que api.openai.com
   ./install.sh --chat             # active [chat] et installe le service (scripts/coach-chat.sh)
   ./install.sh --chat-budget EUR  # plafond quotidien du chat ([chat].daily_budget_eur)
@@ -295,6 +300,15 @@ la lisent dans llm.env et ne la passent qu'à leur propre process.
 s'ouvre, vous autorisez le coach, la clé est écrite dans llm.env (mode 600) sans que vous la
 voyiez. Interactif seulement : sans terminal, la commande à lancer vous est indiquée ; avec
 --dry-run, rien n'est ouvert. Sans --connect, rien ne change.
+
+--llm openrouter-free (essai gratuit, #267) : même clé et même connexion qu'openrouter (--connect), modèle
+gratuit « :free » pour le chat ET la sync, rien à payer (aucun budget en euros). Limites dites franchement :
+50 requêtes par jour sans achat de crédits (1 000 après 10 $ achetés au total), 20 par minute — environ un /log
+et quelques questions par jour. CONFIDENTIALITÉ : ces modèles conservent vos prompts et NVIDIA déclare
+s'entraîner dessus : pas de données de santé sensibles (https://openrouter.ai/settings/privacy) ; payant :
+DeepSeek ≈ 0,80 €/mois ou « 10 $ une fois ». Si [sync].mode n'est pas déjà posé dans workspace.user.toml, la
+sync passe en mode « watch » (LLM seulement s'il y a du neuf, pour ménager le quota) ; une valeur déjà posée
+n'est jamais écrasée. Détails : docs/choisir-son-ia.md#essai-gratuit.
 
 --llm chatgpt (ChatGPT Plus ou Pro) et --llm copilot (GitHub Copilot Pro, Pro+, Business, Enterprise)
 utilisent votre abonnement existant, sans clé API : le CHAT passe par OpenCode, qui garde la
@@ -511,9 +525,12 @@ fi
 if [[ -n "$LLM_PROVIDER" ]]; then
     case "$LLM_PROVIDER" in
         openrouter|anthropic) ;;
+        openrouter-free)
+            [[ -z "$LLM_MODEL_ARG" || "$LLM_MODEL_ARG" == *:free ]] \
+                || die "--llm openrouter-free n'accepte qu'un modèle gratuit (identifiant finissant par :free, ex. nvidia/nemotron-3.5-lightning:free) ; pour un modèle payant, utilisez --llm openrouter." ;;
         openai) [[ -n "$LLM_MODEL_ARG" ]] || die "--llm openai exige --model (ex. --model gpt-4.1-mini ; ajoutez --base-url pour une autre API compatible OpenAI)." ;;
         chatgpt|copilot) ;;
-        *) die "Fournisseur LLM inconnu : « $LLM_PROVIDER ». Valides : openrouter, anthropic, openai, chatgpt, copilot (voir --help)." ;;
+        *) die "Fournisseur LLM inconnu : « $LLM_PROVIDER ». Valides : openrouter, openrouter-free, anthropic, openai, chatgpt, copilot (voir --help)." ;;
     esac
     if [[ -n "$LLM_BASE_URL_ARG" && "$LLM_PROVIDER" == "anthropic" ]]; then
         die "--base-url n'a pas de sens avec --llm anthropic (utilisez --llm openai pour une API compatible OpenAI)."
@@ -534,8 +551,8 @@ fi
 if [[ "$SYNC_SUBSCRIPTION" -ne 0 && "$LLM_PROVIDER" != "chatgpt" && "$LLM_PROVIDER" != "copilot" ]]; then
     die "--sync-subscription et --no-sync-subscription s'utilisent avec --llm chatgpt ou --llm copilot."
 fi
-if [[ "$LLM_CONNECT" -eq 1 && "$LLM_PROVIDER" != "openrouter" && "$LLM_PROVIDER" != "chatgpt" && "$LLM_PROVIDER" != "copilot" ]]; then
-    die "--connect s'utilise avec --llm openrouter, chatgpt ou copilot (connexion sans clé à copier ; pour les autres fournisseurs, collez la clé dans llm.env — docs/choisir-son-ia.md)."
+if [[ "$LLM_CONNECT" -eq 1 && "$LLM_PROVIDER" != "openrouter" && "$LLM_PROVIDER" != "openrouter-free" && "$LLM_PROVIDER" != "chatgpt" && "$LLM_PROVIDER" != "copilot" ]]; then
+    die "--connect s'utilise avec --llm openrouter, openrouter-free, chatgpt ou copilot (connexion sans clé à copier ; pour les autres fournisseurs, collez la clé dans llm.env — docs/choisir-son-ia.md)."
 fi
 
 # Valide $CYCLE_TRACKING (même principe que validate_source).
@@ -2703,6 +2720,12 @@ persist_llm() {
             chat_model="${LLM_MODEL_ARG:-$LLM_OPENROUTER_MODEL}"
             [[ "$chat_model" == openrouter/* ]] || chat_model="openrouter/$chat_model"
             sync_model="$chat_model"; key_var="OPENROUTER_API_KEY" ;;
+        openrouter-free)
+            # Même clé, même connexion, même backend qu'openrouter ; seul le modèle (« :free ») change (#267).
+            chat_backend="opencode"; sync_runner="opencode"
+            chat_model="${LLM_MODEL_ARG:-$LLM_OPENROUTER_FREE_MODEL}"
+            [[ "$chat_model" == openrouter/* ]] || chat_model="openrouter/$chat_model"
+            sync_model="$chat_model"; key_var="OPENROUTER_API_KEY" ;;
         openai)
             chat_backend="opencode"; sync_runner="opencode"
             chat_model="$LLM_MODEL_ARG"
@@ -2752,6 +2775,26 @@ persist_llm() {
     fi
     if [[ "$LLM_PROVIDER" == "openrouter" ]]; then
         warn "Santé : limitez les fournisseurs OpenRouter à ceux qui ne conservent ni n'entraînent sur vos données (docs/mobile.md)."
+    fi
+    if [[ "$LLM_PROVIDER" == "openrouter-free" ]]; then
+        persist_llm_free_trial
+    fi
+}
+
+# Essai gratuit (#267) : dit le coût, les limites et la confidentialité, et propose la sync en mode
+# « watch » (sans jamais écraser un [sync].mode déjà posé par l'athlète dans workspace.user.toml).
+persist_llm_free_trial() {
+    log "Essai gratuit OpenRouter : modèle $(effective_value chat model) — 0 € (aucun budget en euros)."
+    warn "Quota : 50 requêtes par jour sans achat de crédits (1 000 après 10 \$ achetés au total), 20 par minute. Un /log en consomme 17 à 48, un /week 6 à 12, un bilan 4 à 9 (mesuré) : environ un /log et quelques questions par jour sans achat."
+    warn "CONFIDENTIALITÉ : les modèles gratuits conservent vos prompts et NVIDIA déclare s'entraîner dessus. N'y mettez pas de données de santé sensibles ; réglages : https://openrouter.ai/settings/privacy. Alternatives payantes : DeepSeek (≈ 0,80 €/mois, --llm openrouter) ou « 10 \$ une fois » (1 000 requêtes gratuites par jour)."
+    warn "Un compte OpenRouter qui impose la rétention zéro (ZDR) ne peut pas utiliser la plupart des modèles gratuits (erreur 404) : voir docs/choisir-son-ia.md#essai-gratuit."
+    if user_toml_value sync mode >/dev/null 2>&1; then
+        log "[sync].mode déjà posé dans workspace.user.toml : inchangé ($(effective_value sync mode))."
+    elif [[ "$(data_source)" != "garmin" ]]; then
+        log "Sync : le mode « watch » n'existe que pour [data].source = \"garmin\" — heures fixes conservées ([sync].times), donc quelques requêtes gratuites par passage."
+    else
+        log "Sync en mode « watch » proposé par défaut avec l'essai gratuit (LLM seulement s'il y a du neuf, pour ménager le quota) : [sync].mode = \"watch\". Pour revenir : mettez mode = \"schedule\" dans config/workspace.user.toml."
+        llm_set sync mode "watch"
     fi
 }
 

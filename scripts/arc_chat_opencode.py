@@ -350,7 +350,15 @@ class OpenCodeBackend(ChatBackend):
 
     def billing(self) -> Optional[dict]:
         entry = self._subscription()
-        return {"mode": "subscription", "label": entry["plan_label"]} if entry else None
+        if entry:
+            return {"mode": "subscription", "label": entry["plan_label"]}
+        if arc_llm.is_openrouter_free_model(self._model()):
+            # Essai gratuit (#267) : aucun coût, mais un quota. Pas d'appel réseau ici (statut interrogé souvent) :
+            # `arc_llm.py free-quota` donne le reste du jour.
+            return {"mode": "free", "label": "Essai gratuit OpenRouter",
+                    "quota": "environ 50 requêtes par jour sans achat de crédits (1 000 après 10 $)",
+                    "privacy": "les modèles gratuits conservent vos prompts : pas de données de santé sensibles"}
+        return None
 
     def _auth_missing(self) -> Optional[str]:
         entry = self._subscription()
@@ -852,7 +860,7 @@ class OpenCodeBackend(ChatBackend):
             elif etype == "session.error":
                 if turn.aborted:
                     continue
-                raise BackendError(self._translate_error(props.get("error") or {}, self._subscription(), self._data_dir()))
+                raise BackendError(self._translate_error(props.get("error") or {}, self._subscription(), self._data_dir(), self._model()))
 
     # -- évènements ----------------------------------------------------
 
@@ -863,7 +871,7 @@ class OpenCodeBackend(ChatBackend):
             turn.started = True
             error = info.get("error")
             if error and not turn.aborted and not (error.get("name") == "MessageAbortedError"):
-                raise BackendError(self._translate_error(error, self._subscription(), self._data_dir()))
+                raise BackendError(self._translate_error(error, self._subscription(), self._data_dir(), self._model()))
 
     def _on_delta(self, turn: _Turn, props: dict) -> None:
         if props.get("field") != "text" or props.get("messageID") in turn.user_ids:
@@ -1087,7 +1095,7 @@ class OpenCodeBackend(ChatBackend):
     # -- fin de tour -----------------------------------------------------
 
     @staticmethod
-    def _translate_error(error: dict, subscription: Optional[dict] = None, data_dir: str = "") -> str:
+    def _translate_error(error: dict, subscription: Optional[dict] = None, data_dir: str = "", model: str = "") -> str:
         name = str(error.get("name", ""))
         data = error.get("data") or {}
         message = str(data.get("message") or error.get("message") or "")
@@ -1097,6 +1105,12 @@ class OpenCodeBackend(ChatBackend):
             known = arc_llm.translate_subscription_error(subscription, name, status, message, data_dir)
             if known:
                 return known
+        # OpenRouter (#267) : quota/limite des modèles gratuits (429) et ZDR (404), avant les motifs génériques.
+        # Le corps brut de la réponse, quand OpenCode le rapporte, aide à distinguer jour / minute / amont.
+        known = arc_llm.translate_openrouter_free_error(
+            model, name, status, "%s %s" % (message, data.get("responseBody") or ""))
+        if known:
+            return known
         if name == "ProviderAuthError" or status == 401 or "401" in low or "invalid api key" in low \
                 or "unauthorized" in low:
             return "Clé API du fournisseur refusée (401) : vérifier la clé dans llm.env."

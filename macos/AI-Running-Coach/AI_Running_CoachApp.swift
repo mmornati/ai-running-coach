@@ -117,15 +117,17 @@ enum ChatChoice: String, CaseIterable, Identifiable {
     }
 }
 
-/// Fournisseur du chat intégré : OpenRouter (facturé à l'usage) ou l'abonnement que l'athlète a déjà
-/// (ChatGPT Plus/Pro, GitHub Copilot ; connexion avec son compte par scripts/arc_llm.py, #266).
+/// Fournisseur du chat intégré : OpenRouter (facturé à l'usage), l'essai gratuit OpenRouter (modèles
+/// « :free », quota limité, #267) ou l'abonnement que l'athlète a déjà (ChatGPT Plus/Pro, GitHub
+/// Copilot ; connexion avec son compte par scripts/arc_llm.py, #266).
 enum ChatProvider: String, CaseIterable, Identifiable {
-    case openRouter, chatGPT, copilot
+    case openRouter, openRouterFree, chatGPT, copilot
 
     var id: String { rawValue }
     var title: String {
         switch self {
         case .openRouter: return "OpenRouter"
+        case .openRouterFree: return "Essai gratuit (limité)"
         case .chatGPT: return "J’ai ChatGPT Plus/Pro"
         case .copilot: return "J’ai GitHub Copilot"
         }
@@ -134,11 +136,15 @@ enum ChatProvider: String, CaseIterable, Identifiable {
     var llmID: String {
         switch self {
         case .openRouter: return "openrouter"
+        case .openRouterFree: return "openrouter-free"
         case .chatGPT: return "chatgpt"
         case .copilot: return "copilot"
         }
     }
-    var isSubscription: Bool { self != .openRouter }
+    var isSubscription: Bool { self == .chatGPT || self == .copilot }
+    /// Passe par OpenRouter (clé ou connexion en un clic) : facturé à l'usage ou essai gratuit.
+    var usesOpenRouter: Bool { self == .openRouter || self == .openRouterFree }
+    var isFreeTrial: Bool { self == .openRouterFree }
     var planName: String { self == .copilot ? "GitHub Copilot" : "ChatGPT" }
     /// Clé du jeton dans `auth.json` d'OpenCode (magasin dédié au coach).
     var authKey: String { self == .copilot ? "github-copilot" : "openai" }
@@ -295,6 +301,7 @@ struct SetupChoices {
             let key = openRouterAPIKey.trimmingCharacters(in: .whitespacesAndNewlines)
             guard !key.isEmpty, !key.contains("\n"), !key.contains("\r") else { return false }
         }
+        if chatProvider.isFreeTrial { return true }      // essai gratuit : 0 €, pas de plafond en euros
         guard let budget = Double(chatBudget.replacingOccurrences(of: ",", with: ".")) else { return false }
         return budget > 0
     }
@@ -573,6 +580,11 @@ final class CoachAppModel: ObservableObject {
                     args += ["--llm", selected.chatProvider.llmID, "--chat"]
                     // Case décochée : install.sh ne doit pas déplacer la synchronisation, même sur une installation neuve.
                     args += [selected.syncWithSubscription ? "--sync-subscription" : "--no-sync-subscription"]
+                } else if selected.chatChoice == .integrated && selected.chatProvider.isFreeTrial {
+                    // Essai gratuit : même clé OpenRouter, modèle « :free », aucun plafond en euros. Comme pour
+                    // OpenRouter payant, le chat n'est activé que si l'accès a été obtenu (sinon « continuer sans le chat »).
+                    args += ["--llm", selected.chatProvider.llmID]
+                    if chatEnabled { args += ["--chat"] }
                 } else if selected.chatChoice == .integrated {
                     args += ["--llm", "openrouter"]
                     if chatEnabled {
@@ -1966,8 +1978,17 @@ struct SetupView: View {
                             Text("Vos échanges avec le coach passent par votre compte \(model.choices.chatProvider.planName) : ses réglages de confidentialité s’appliquent.")
                                 .font(.caption).foregroundStyle(.secondary)
                         } else if model.choices.chatChoice == .integrated {
-                            Text("Vous retrouverez un bouton « Parler au coach » dans l’application. Ce chat utilise OpenRouter, facturé à l’usage ; votre plafond quotidien évite les surprises. La synchronisation automatique des données sportives sera également activée.")
-                                .font(.callout).foregroundStyle(.secondary)
+                            if model.choices.chatProvider.isFreeTrial {
+                                Text("Vous retrouverez un bouton « Parler au coach » dans l’application. Ce chat utilise un modèle gratuit d’OpenRouter : 0 €, aucun plafond en euros. La synchronisation automatique passe en mode « surveillance » (le modèle ne travaille que s’il y a du neuf) pour ménager le quota.")
+                                    .font(.callout).foregroundStyle(.secondary)
+                                Text("Limites : 50 requêtes par jour sans achat de crédits (1 000 après 10 $ achetés au total), 20 par minute. Un /log en consomme 17 à 48 : comptez environ un /log et quelques questions par jour sans achat.")
+                                    .font(.callout)
+                                Text("Confidentialité : les modèles gratuits conservent vos prompts et NVIDIA déclare s’entraîner dessus. N’y mettez pas de données de santé sensibles. Pour un usage régulier, préférez OpenRouter payant (DeepSeek, environ 0,80 € par mois) ou « 10 $ une fois ». Un compte OpenRouter qui impose la rétention zéro (ZDR) ne peut pas utiliser la plupart des modèles gratuits.")
+                                    .font(.callout).foregroundStyle(.orange)
+                            } else {
+                                Text("Vous retrouverez un bouton « Parler au coach » dans l’application. Ce chat utilise OpenRouter, facturé à l’usage ; votre plafond quotidien évite les surprises. La synchronisation automatique des données sportives sera également activée.")
+                                    .font(.callout).foregroundStyle(.secondary)
+                            }
                             Picker("OpenRouter", selection: $model.choices.openRouterAccess) {
                                 ForEach(OpenRouterAccess.allCases) { Text($0.title).tag($0) }
                             }
@@ -1975,8 +1996,10 @@ struct SetupView: View {
                             if model.choices.openRouterAccess == .connect {
                                 Text("Au moment de l’installation, une page OpenRouter s’ouvre : créez un compte ou connectez-vous, puis autorisez le coach. Aucune clé à copier.")
                                     .font(.callout).foregroundStyle(.secondary)
-                                Text("Coût : environ 1 € par mois. Conseil : achetez 10 $ de crédit une fois, ce qui couvre environ un an de coaching.")
-                                    .font(.callout)
+                                if !model.choices.chatProvider.isFreeTrial {
+                                    Text("Coût : environ 1 € par mois. Conseil : achetez 10 $ de crédit une fois, ce qui couvre environ un an de coaching.")
+                                        .font(.callout)
+                                }
                             } else {
                                 HStack {
                                     Text("Clé OpenRouter").frame(width: 170, alignment: .leading)
@@ -1984,10 +2007,14 @@ struct SetupView: View {
                                     Link("Créer une clé", destination: URL(string: "https://openrouter.ai/settings/keys")!)
                                 }
                             }
-                            ProfileField(label: "Plafond par jour", placeholder: "1.00", text: $model.choices.chatBudget)
+                            if !model.choices.chatProvider.isFreeTrial {
+                                ProfileField(label: "Plafond par jour", placeholder: "1.00", text: $model.choices.chatBudget)
+                            }
                             Text("La clé est enregistrée uniquement sur ce Mac dans un fichier privé. Les données de la conversation sont envoyées au fournisseur du modèle choisi.")
                                 .font(.caption).foregroundStyle(.secondary)
-                            Link("Santé : refuser les fournisseurs qui entraînent sur vos données (confidentialité OpenRouter)",
+                            Link(model.choices.chatProvider.isFreeTrial
+                                 ? "Confidentialité OpenRouter : réglages des modèles gratuits et des données"
+                                 : "Santé : refuser les fournisseurs qui entraînent sur vos données (confidentialité OpenRouter)",
                                  destination: URL(string: "https://openrouter.ai/settings/privacy")!)
                                 .font(.caption)
                         } else {
