@@ -412,7 +412,11 @@ function kTokens(n) { return n >= 1000 ? `${Math.round(n / 100) / 10} k`.replace
 function renderCost() {
   const parts = [];
   const u = state.lastUsage;
-  if (state.sessionCost > 0) parts.push(`≈ ${fmtEur(state.sessionCost)} cette conversation`);
+  // Forfait ChatGPT / Copilot (#266) : aucun coût au jeton, jamais d'euros ni de budget du jour.
+  const plan = state.status && state.status.billing && state.status.billing.mode === "subscription"
+    ? state.status.billing.label : "";
+  if (plan) parts.push(`inclus dans votre forfait ${plan}`);
+  else if (state.sessionCost > 0) parts.push(`≈ ${fmtEur(state.sessionCost)} cette conversation`);
   if (u) {
     // Noms du contrat (arc_chat_backend.py) : input_tokens, output_tokens, cache_read_tokens.
     const cached = u.cache_read_tokens || 0;
@@ -424,7 +428,7 @@ function renderCost() {
     }
   }
   const b = state.status && state.status.budget;
-  if (b && b.limit_eur != null) parts.push(`budget du jour ${fmtEur(b.spent_eur)} / ${fmtEur(b.limit_eur)}`);
+  if (!plan && b && b.limit_eur != null) parts.push(`budget du jour ${fmtEur(b.spent_eur)} / ${fmtEur(b.limit_eur)}`);
   els.cost.textContent = parts.join(" · ");
 }
 

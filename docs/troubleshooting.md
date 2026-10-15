@@ -129,6 +129,16 @@ ne sont jamais présentés comme un problème Garmin :
 | `💸 Sync Garmin suspendue — budget atteint` | Le cumul du jour (`logs/.sync-spend-AAAA-MM-JJ`) atteint `[sync].daily_budget_eur`. Le run est sauté, sans erreur. | Relancez demain, ou relevez `./install.sh --sync-budget EUR`. |
 | `⚠ hors contrat arc : …` (dans le résumé) | Un fichier écrit par le modèle pendant le run ne respecte pas le bloc `arc`. | Voir `logs/sync-AAAA-MM-JJ.log` ; changez de modèle (`[sync].model`) si cela se répète. |
 
+Avec un **abonnement ChatGPT ou Copilot** (`--llm chatgpt|copilot`), la synchronisation ne lance jamais de
+connexion ; ses notifications :
+
+| Notification | Cause | Correctif |
+|---|---|---|
+| `🔑 Sync Garmin — reconnectez ChatGPT` (ou `GitHub Copilot`) | Jeton absent du magasin du coach, expiré (`Token refresh failed`) ou refusé (401/403). | Dans un terminal : `python3 scripts/arc_llm.py login chatgpt` (ou `copilot`). Vérification : `python3 scripts/arc_llm.py auth-status chatgpt`. |
+| `🔑 Sync Garmin — forfait ChatGPT insuffisant` | `usage_not_included` : l'offre ChatGPT Free n'est pas acceptée. | ChatGPT Plus ou Pro, ou une autre IA ([Choisir son IA](choisir-son-ia.md)). |
+| `⏳ Sync Garmin — limites du forfait … atteintes` | `insufficient_quota` / limite d'usage du forfait. | Rien à faire : elles se renouvellent d'elles-mêmes ; le passage suivant réessaie. |
+| `⏳ Sync Garmin reportée` | Le chat tenait le verrou du magasin plus de 5 minutes. | Rien à faire, le passage suivant réessaie. |
+
 `opencode introuvable` : `curl -fsSL https://opencode.ai/v2/install | bash`. Un refus
 d'authentification **Garmin** garde sa notification habituelle
 (`🔑 Authentification Garmin refusée`, voir plus haut).

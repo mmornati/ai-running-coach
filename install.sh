@@ -36,7 +36,7 @@
 #   ./install.sh --use-leanproxy    # mode passerelle leanproxy (power user)
 #   ./install.sh --daily-sync       # cron/launchd : sync Garmin aux heures de [sync].times
 #   ./install.sh --remote-control   # service Remote Control (le coach dans la poche)
-#   ./install.sh --llm openrouter   # chat + sync sur une API (openrouter|anthropic|openai)
+#   ./install.sh --llm openrouter   # chat + sync sur une API (openrouter|anthropic|openai) ou un abonnement (chatgpt|copilot)
 #   ./install.sh --chat             # service du chat avec le coach (dashboard)
 #   ./install.sh --telegram         # bot Telegram : retours en un geste, sans LLM (docs/telegram.md)
 #   ./install.sh --dashboard-docker local|traefik # tableau de bord en conteneur, reconstruit par /update-coach
@@ -127,6 +127,16 @@ GARMIN_NUTRITION_TOOLS="get_custom_foods,get_custom_food_serving_units,get_nutri
 LLM_OPENROUTER_MODEL="openrouter/deepseek/deepseek-v4.1-flash"
 LLM_ANTHROPIC_CHAT_MODEL="claude-sonnet-5-5"
 LLM_ANTHROPIC_SYNC_MODEL="claude-haiku-4-5"
+# Abonnements (--llm chatgpt|copilot, #266) : identifiants vérifiés dans models.dev (2026-10-15) et dans la
+# liste d'autorisation du plugin OAuth d'OpenCode v1.18.35 — PAS évalués sur un vrai forfait (approximation
+# du projet). Un test les compare au catalogue (scripts/arc_llm.py).
+LLM_CHATGPT_CHAT_MODEL="openai/gpt-5.4-mini"
+LLM_CHATGPT_SYNC_MODEL="openai/gpt-5.4"
+LLM_COPILOT_CHAT_MODEL="github-copilot/gpt-5.4-mini"
+LLM_COPILOT_SYNC_MODEL="github-copilot/claude-sonnet-5.5"
+# Magasin d'authentification OpenCode dédié au coach (mode 700), hors dépôt et hors workspace : chat ET sync
+# l'utilisent comme XDG_DATA_HOME pour ces deux fournisseurs ([chat|sync].opencode_data_dir).
+LLM_OPENCODE_DATA_DIR="${ARC_OPENCODE_DATA_DIR:-$HOME/.local/share/ai-running-coach/opencode}"
 # Clés API : dans ce fichier (mode 600), jamais dans le TOML ni dans le shell.
 LLM_ENV_FILE="${ARC_LLM_ENV:-$HOME/.config/ai-running-coach/llm.env}"
 # Jeton du bot Telegram (#174) : même discipline (mode 600, hors dépôt, jamais dans le TOML).
@@ -180,10 +190,10 @@ OW_PROVIDER=""     # --ow-provider P (avec --health-source openwearables)
 OW_KEY_FILE_ARG="" # --ow-key-file FICHIER : clé d'API à importer (jamais passée en argument)
 OW_KEY_FILE_DEFAULT="$HOME/.config/ai-running-coach/openwearables.key" # = défaut de [health.openwearables].api_key_file
 HEALTH_EFFECTIVE="primary" # résolu par resolve_health_source()
-LLM_PROVIDER=""    # --llm openrouter|anthropic|openai — chat + sync sur une API
+LLM_PROVIDER=""    # --llm openrouter|anthropic|openai|chatgpt|copilot — chat + sync sur une API ou un abonnement
 LLM_MODEL_ARG=""   # --model ID (avec --llm)
 LLM_BASE_URL_ARG="" # --base-url URL (avec --llm openai : API compatible OpenAI)
-LLM_CONNECT=0      # --connect : connexion OpenRouter en un clic (avec --llm openrouter), interactif seulement
+LLM_CONNECT=0      # --connect : connexion en un clic (openrouter) ou avec son compte (chatgpt|copilot), interactif seulement
 DO_CHAT=0          # --chat : service du chat avec le coach
 CHAT_BUDGET=""     # --chat-budget EUR
 DO_TELEGRAM=0      # --telegram : bot Telegram (retours en un geste, #174)
@@ -254,9 +264,9 @@ Usage :
   ./install.sh --no-daily-sync    # désactive la sync (annule --daily-sync d'un préréglage)
   ./install.sh --remote-control   # service Remote Control (le coach dans la poche)
   ./install.sh --no-remote-control # désactive Remote Control (annule --remote-control d'un préréglage)
-  ./install.sh --llm FOURNISSEUR  # openrouter | anthropic | openai — chat ET sync sur une API (voir ci-dessous)
-  ./install.sh --model ID         # avec --llm : modèle (openrouter : ID OpenRouter ; anthropic : modèle du chat)
-  ./install.sh --connect          # avec --llm openrouter : se connecte à OpenRouter dans le navigateur (aucune clé à copier)
+  ./install.sh --llm FOURNISSEUR  # openrouter | anthropic | openai | chatgpt | copilot — chat ET sync (voir ci-dessous)
+  ./install.sh --model ID         # avec --llm : modèle (openrouter : ID OpenRouter ; anthropic, chatgpt, copilot : modèle du chat)
+  ./install.sh --connect          # avec --llm openrouter|chatgpt|copilot : se connecte dans le navigateur (aucune clé à copier)
   ./install.sh --base-url URL     # avec --llm openai : API compatible OpenAI autre que api.openai.com
   ./install.sh --chat             # active [chat] et installe le service (scripts/coach-chat.sh)
   ./install.sh --chat-budget EUR  # plafond quotidien du chat ([chat].daily_budget_eur)
@@ -282,6 +292,15 @@ la lisent dans llm.env et ne la passent qu'à leur propre process.
 s'ouvre, vous autorisez le coach, la clé est écrite dans llm.env (mode 600) sans que vous la
 voyiez. Interactif seulement : sans terminal, la commande à lancer vous est indiquée ; avec
 --dry-run, rien n'est ouvert. Sans --connect, rien ne change.
+
+--llm chatgpt (ChatGPT Plus ou Pro) et --llm copilot (GitHub Copilot Pro, Pro+, Business, Enterprise)
+utilisent votre abonnement existant, sans clé API : chat et sync passent par OpenCode, qui garde la
+connexion dans un magasin dédié au coach (mode 700, [chat|sync].opencode_data_dir, par défaut
+~/.local/share/ai-running-coach/opencode). Rien n'est facturé au jeton : les limites de votre forfait
+s'appliquent, et le plafond en euros ne compte rien. Avec --connect, « scripts/arc_llm.py login
+chatgpt|copilot » est lancé (interactif seulement) ; sinon lancez-le vous-même une fois. --model change
+le modèle du chat (identifiant OpenCode « fournisseur/modèle »). Les modèles par défaut n'ont pas été
+évalués sur un vrai forfait.
 
 --telegram active [telegram].enabled et installe le service du bot. Le jeton du
 bot (BotFather) n'est JAMAIS une option de ligne de commande : ~/.config/ai-running-coach/telegram.env
@@ -482,16 +501,20 @@ if [[ -n "$LLM_PROVIDER" ]]; then
     case "$LLM_PROVIDER" in
         openrouter|anthropic) ;;
         openai) [[ -n "$LLM_MODEL_ARG" ]] || die "--llm openai exige --model (ex. --model gpt-4.1-mini ; ajoutez --base-url pour une autre API compatible OpenAI)." ;;
-        *) die "Fournisseur LLM inconnu : « $LLM_PROVIDER ». Valides : openrouter, anthropic, openai (voir --help)." ;;
+        chatgpt|copilot) ;;
+        *) die "Fournisseur LLM inconnu : « $LLM_PROVIDER ». Valides : openrouter, anthropic, openai, chatgpt, copilot (voir --help)." ;;
     esac
     if [[ -n "$LLM_BASE_URL_ARG" && "$LLM_PROVIDER" == "anthropic" ]]; then
         die "--base-url n'a pas de sens avec --llm anthropic (utilisez --llm openai pour une API compatible OpenAI)."
     fi
+    if [[ -n "$LLM_BASE_URL_ARG" && ( "$LLM_PROVIDER" == "chatgpt" || "$LLM_PROVIDER" == "copilot" ) ]]; then
+        die "--base-url n'a pas de sens avec --llm $LLM_PROVIDER (abonnement : aucune URL ni clé)."
+    fi
 elif [[ -n "$LLM_MODEL_ARG" || -n "$LLM_BASE_URL_ARG" ]]; then
     die "--model et --base-url s'utilisent avec --llm (voir --help)."
 fi
-if [[ "$LLM_CONNECT" -eq 1 && "$LLM_PROVIDER" != "openrouter" ]]; then
-    die "--connect s'utilise avec --llm openrouter (connexion en un clic ; pour les autres fournisseurs, collez la clé dans llm.env — docs/choisir-son-ia.md)."
+if [[ "$LLM_CONNECT" -eq 1 && "$LLM_PROVIDER" != "openrouter" && "$LLM_PROVIDER" != "chatgpt" && "$LLM_PROVIDER" != "copilot" ]]; then
+    die "--connect s'utilise avec --llm openrouter, chatgpt ou copilot (connexion sans clé à copier ; pour les autres fournisseurs, collez la clé dans llm.env — docs/choisir-son-ia.md)."
 fi
 
 # Valide $CYCLE_TRACKING (même principe que validate_source).
@@ -2578,8 +2601,57 @@ EOF
     fi
 }
 
+# Abonnement ChatGPT / Copilot (#266) : chat + sync via OpenCode, sans clé, magasin d'authentification dédié.
+persist_llm_subscription() {
+    local chat_model sync_model plan
+    case "$LLM_PROVIDER" in
+        chatgpt) chat_model="${LLM_MODEL_ARG:-$LLM_CHATGPT_CHAT_MODEL}"; sync_model="$LLM_CHATGPT_SYNC_MODEL"; plan="ChatGPT Plus ou Pro" ;;
+        copilot) chat_model="${LLM_MODEL_ARG:-$LLM_COPILOT_CHAT_MODEL}"; sync_model="$LLM_COPILOT_SYNC_MODEL"; plan="GitHub Copilot" ;;
+    esac
+    local prefix="openai"
+    [[ "$LLM_PROVIDER" != "copilot" ]] || prefix="github-copilot"
+    [[ "$chat_model" == "$prefix"/* ]] || chat_model="$prefix/$chat_model"
+    log "Chat et synchronisation sur votre abonnement $plan (aucune clé API ; magasin d'authentification : $LLM_OPENCODE_DATA_DIR)"
+    llm_set chat backend "opencode"
+    llm_set chat model "$chat_model"
+    llm_set chat base_url ""
+    llm_set chat api_key_env ""
+    llm_set chat opencode_data_dir "$LLM_OPENCODE_DATA_DIR"
+    llm_set sync runner "opencode"
+    llm_set sync model "$sync_model"
+    llm_set sync base_url ""
+    llm_set sync api_key_env ""
+    llm_set sync opencode_data_dir "$LLM_OPENCODE_DATA_DIR"
+    if [[ "$DRY_RUN" -eq 1 ]]; then
+        printf '%s\n' "${C_YELLOW}[dry-run]${C_RESET} $LLM_OPENCODE_DATA_DIR (mode 700, magasin d'authentification OpenCode)"
+    else
+        ( umask 077; mkdir -p "$LLM_OPENCODE_DATA_DIR" ) && chmod 700 "$LLM_OPENCODE_DATA_DIR" 2>/dev/null \
+            || warn "Impossible de créer $LLM_OPENCODE_DATA_DIR (mode 700)."
+    fi
+    if have opencode; then
+        ok "opencode : présent ($(opencode --version 2>/dev/null | head -1))"
+    else
+        warn "opencode absent — requis par le runner de sync et le chat sur $plan :"
+        warn "  curl -fsSL https://opencode.ai/v2/install | bash   (ou : npm i -g opencode-ai ; brew install anomalyco/tap/opencode)"
+    fi
+    if [[ -n "${OPENCODE_DISABLE_DEFAULT_PLUGINS:-}" ]]; then
+        warn "OPENCODE_DISABLE_DEFAULT_PLUGINS est défini dans cet environnement : OpenCode n'y charge pas la connexion $plan — retirez-le."
+    fi
+    if [[ "$LLM_PROVIDER" == "chatgpt" ]]; then
+        warn "Forfaits acceptés : ChatGPT Plus ou Pro (l'offre Free est refusée par OpenAI avec « usage_not_included »). Les limites de votre forfait s'appliquent ; la sync automatique les consomme aussi."
+    else
+        warn "Forfaits acceptés : Copilot Pro, Pro+, Business, Enterprise (Copilot Free n'est pas pris en charge). Les crédits de votre forfait s'appliquent ; la sync automatique les consomme aussi."
+    fi
+    if ! have python3 || ! python3 "$PROJECT_ROOT/scripts/arc_llm.py" auth-status "$LLM_PROVIDER" --data-dir "$LLM_OPENCODE_DATA_DIR" >/dev/null 2>&1; then
+        warn "Pas encore connecté : lancez « python3 $PROJECT_ROOT/scripts/arc_llm.py login $LLM_PROVIDER » une fois (ou relancez avec --connect). Ni la sync ni le chat ne lancent de connexion toute seuls."
+    fi
+}
+
 persist_llm() {
     [[ -n "$LLM_PROVIDER" ]] || return 0
+    case "$LLM_PROVIDER" in
+        chatgpt|copilot) persist_llm_subscription; return 0 ;;
+    esac
     local chat_backend chat_model sync_runner sync_model key_var base_url="$LLM_BASE_URL_ARG"
     case "$LLM_PROVIDER" in
         openrouter)
@@ -2635,11 +2707,33 @@ persist_llm() {
     fi
 }
 
+# --connect avec un abonnement (#266) : « arc_llm.py login chatgpt|copilot » dans le magasin du coach.
+# Jamais en --dry-run ni sans terminal (le code d'appareil suppose l'athlète présent).
+connect_llm_subscription() {
+    local cmd="python3 $PROJECT_ROOT/scripts/arc_llm.py login $LLM_PROVIDER --data-dir $LLM_OPENCODE_DATA_DIR"
+    if [[ "$DRY_RUN" -eq 1 ]]; then
+        printf '%s\n' "${C_YELLOW}[dry-run]${C_RESET} $cmd (adresse et code d'appareil à valider dans votre navigateur ; jeton gardé par OpenCode dans le magasin du coach)"
+        return 0
+    fi
+    if [[ ! -t 0 || ! -t 1 ]]; then
+        warn "--connect demande un terminal interactif : lancez ensuite « $cmd »."
+        return 0
+    fi
+    have python3 || { warn "python3 absent : impossible de lancer la connexion."; return 0; }
+    log "Connexion à votre compte ($LLM_PROVIDER)"
+    python3 "$PROJECT_ROOT/scripts/arc_llm.py" login "$LLM_PROVIDER" --data-dir "$LLM_OPENCODE_DATA_DIR" \
+        || warn "Connexion non terminée : relancez « $cmd »."
+}
+
 # --connect : connexion OpenRouter en un clic (arc_llm.py), en TOUT DERNIER (navigateur et saisie
 # du code supposent l'athlète présent ; le reste de l'installation ne l'attend pas). Jamais en
 # --dry-run, jamais sans terminal. Le service du chat lit llm.env au démarrage : redémarré après succès.
 connect_llm() {
     [[ "$LLM_CONNECT" -eq 1 ]] || return 0
+    if [[ "$LLM_PROVIDER" == "chatgpt" || "$LLM_PROVIDER" == "copilot" ]]; then
+        connect_llm_subscription
+        return 0
+    fi
     local script="$PROJECT_ROOT/scripts/arc_llm.py" port
     if [[ "$DRY_RUN" -eq 1 ]]; then
         printf '%s\n' "${C_YELLOW}[dry-run]${C_RESET} python3 $(printf '%q' "$script") connect openrouter (ouvre le navigateur ; clé écrite dans $LLM_ENV_FILE)"
@@ -2684,7 +2778,7 @@ install_chat() {
             || warn "Impossible d'écrire [chat].enabled — vérifiez config/workspace.user.toml."
     fi
     if [[ -z "$LLM_PROVIDER" ]]; then
-        log "Modèle et clé du chat : voir [chat] (ou relancez avec --llm openrouter|anthropic|openai)."
+        log "Modèle et clé du chat : voir [chat] (ou relancez avec --llm openrouter|anthropic|openai|chatgpt|copilot)."
     fi
     if [[ "$DRY_RUN" -eq 1 ]]; then
         ARC_WORKSPACE="$WORKSPACE_ROOT" ARC_DRY_RUN=1 "$PROJECT_ROOT/scripts/coach-chat.sh" install --dry-run
@@ -3200,7 +3294,11 @@ print_config_recap() {
         "$([[ "$DAILY_SYNC" -eq 1 ]] && echo "oui" || echo "non")" "$(_config_origin "$EXPLICIT_DAILY_SYNC")"
     recap_line "Remote Control" \
         "$([[ "$REMOTE_CONTROL" -eq 1 ]] && echo "oui" || echo "non")" "$(_config_origin "$EXPLICIT_REMOTE_CONTROL")"
-    [[ -z "$LLM_PROVIDER" ]] || recap_line "Chat + sync sur API" "$LLM_PROVIDER" "explicite"
+    if [[ "$LLM_PROVIDER" == "chatgpt" || "$LLM_PROVIDER" == "copilot" ]]; then
+        recap_line "Chat + sync (abonnement)" "$LLM_PROVIDER" "explicite"
+    elif [[ -n "$LLM_PROVIDER" ]]; then
+        recap_line "Chat + sync sur API" "$LLM_PROVIDER" "explicite"
+    fi
     [[ "$DO_CHAT" -eq 0 ]] || recap_line "Service du chat" "oui" "explicite"
     [[ "$DO_TELEGRAM" -eq 0 ]] || recap_line "Bot Telegram" "oui" "explicite"
     # Opt-in strict : aucune ligne tant que la santé n'est pas lue chez Open Wearables (#220).

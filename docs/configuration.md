@@ -576,9 +576,10 @@ pour les changer, sauf `mode`/`times`, voir [Le coach dans la poche](mobile.md))
 | `model` | Pour `opencode` en mode API, identifiant `fournisseur/modèle` (ex. `openrouter/deepseek/deepseek-v4.1-flash`). Sans modèle ni clé API, OpenCode réutilise le fournisseur connecté. Optionnel pour `claude` en mode API. |
 | `base_url` | Point d'accès d'une API compatible OpenAI autre qu'OpenRouter (runner `opencode`). |
 | `api_key_env` | **Nom** de la variable qui porte la clé, lue dans `~/.config/ai-running-coach/llm.env` (mode 600). Non vide = mode API, facturé au token ; vide (défaut) = abonnement. Jamais la clé elle-même. |
-| `daily_budget_eur` | Plafond de dépense quotidien (défaut `0.5`), appliqué seulement quand le runner rapporte son coût (`opencode`, `claude` en mode API). Atteint : run sauté, une notification par jour. |
+| `daily_budget_eur` | Plafond de dépense quotidien (défaut `0.5`), appliqué seulement quand le runner rapporte son coût (`opencode`, `claude` en mode API). Atteint : run sauté, une notification par jour. **Ignoré sur un abonnement ChatGPT/Copilot** (rien n'est facturé au jeton). |
+| `opencode_data_dir` | Magasin d'authentification OpenCode dédié au coach (abonnement ChatGPT/Copilot, [voir plus bas](#chat-et-sync-sur-un-abonnement-chatgpt-ou-copilot)). Vide ou absent (défaut) = comportement historique. |
 
-`./install.sh --llm openrouter|anthropic|openai` écrit ces clés (et `[chat]`) ; `--connect` (avec `--llm openrouter`, interactif) obtient la clé par OAuth et l'écrit dans `llm.env` ([Choisir son IA](choisir-son-ia.md)) ;
+`./install.sh --llm openrouter|anthropic|openai|chatgpt|copilot` écrit ces clés (et `[chat]`) ; `--connect` (avec `--llm openrouter`, interactif) obtient la clé par OAuth et l'écrit dans `llm.env` ([Choisir son IA](choisir-son-ia.md)) ;
 `./install.sh --sync-runner CLI` choisit l'assistant headless et `./install.sh --sync-budget EUR` écrit `daily_budget_eur`. Détails, budget et données de
 santé : [Synchronisation sur OpenRouter](mobile.md#synchronisation-sur-openrouter-ou-toute-api-compatible-openai).
 
@@ -593,7 +594,8 @@ défaut. Installé par `./install.sh --chat` (`scripts/coach-chat.sh`).
 | `backend` | `"claude"` (Claude Agent SDK, `pip install -U 'claude-agent-sdk>=0.2.121'`) \| `"opencode"` (OpenRouter, OpenAI, Mistral, Ollama…). |
 | `model` | Défaut `claude-sonnet-5-5`. Backend `opencode` : `fournisseur/modèle`. |
 | `base_url` | Backend `opencode` + API compatible OpenAI autre qu'OpenRouter. |
-| `api_key_env` | Nom de la variable de `llm.env` (défaut `ANTHROPIC_API_KEY`). |
+| `api_key_env` | Nom de la variable de `llm.env` (défaut `ANTHROPIC_API_KEY`). Vide avec un abonnement ChatGPT/Copilot. |
+| `opencode_data_dir` | Magasin d'authentification OpenCode dédié au coach, utilisé comme `XDG_DATA_HOME` par le chat ([voir plus bas](#chat-et-sync-sur-un-abonnement-chatgpt-ou-copilot)). Vide ou absent (défaut) = chat isolé sous `.arc/chat/opencode/xdg`, comme avant. |
 | `port`, `listen` | Port (8766) et interface d'écoute (`127.0.0.1`). |
 | `auth` | `"local"` (boucle locale seulement) \| `"proxy"` (identité transmise par le SSO du reverse proxy). |
 | `auth_header`, `allowed_users`, `trusted_proxies`, `allowed_hosts` | Mode `proxy` : en-tête d'identité (`X-authentik-username`, Authelia : `Remote-User`), utilisateurs admis (vide = tous), adresses source de Traefik (IP, réseau CIDR ou nom d'hôte résolu par le DNS — ex. le conteneur `traefik`), hôtes acceptés. Voir `deploy/chat/traefik/README.md`. |
@@ -612,6 +614,27 @@ commentaires `: ping` du flux SSE, 15 s), `ARC_OPENCODE_TRACE` (fichier où reco
 d'OpenCode — contenu des échanges compris : diagnostic seulement, fichier à supprimer ensuite).
 `./install.sh --chat-budget EUR` écrit `daily_budget_eur`. Le diagnostic :
 `python3 scripts/coach_doctor.py --check llm_config` (et `chat_service`, `opencode_cli`).
+
+### Chat et sync sur un abonnement ChatGPT ou Copilot
+
+`./install.sh --llm chatgpt` (ou `copilot`) règle `backend = "opencode"` / `runner = "opencode"`,
+`api_key_env = ""`, les modèles par défaut du catalogue (`python3 scripts/arc_llm.py providers`) et
+**`opencode_data_dir`**, **dans `[chat]` et dans `[sync]`**, avec le même chemin
+(`~/.local/share/ai-running-coach/opencode`, mode 700, hors dépôt et hors du dossier de données). Deux clés,
+une par section, comme le reste de la configuration ; l'installation les pose ensemble. Le chat et la
+synchronisation partagent alors la même connexion.
+
+Le magasin n'est utilisé que si **tout** ceci est vrai : la clé est renseignée, `api_key_env` et `base_url`
+sont vides, et le modèle commence par `openai/` (ChatGPT) ou `github-copilot/` (Copilot). Sinon, ou clé
+absente, rien ne change : chat isolé, synchronisation sur le magasin global d'OpenCode. Pour revenir à une
+API, `./install.sh --llm openrouter` (la clé reste inerte).
+
+- Le chat n'isole que `XDG_CONFIG_HOME`, `XDG_STATE_HOME` et `XDG_CACHE_HOME` ; `XDG_DATA_HOME` pointe sur
+  le magasin, qui contient aussi la base de sessions d'OpenCode (partagée avec la synchronisation).
+- `scripts/arc_llm.py login chatgpt|copilot` écrit la connexion dans ce magasin ; `auth-status` en vérifie
+  la présence sans jamais afficher le jeton.
+- Un verrou `<magasin>/.arc-auth.lock` évite que le chat et la synchronisation rafraîchissent le jeton
+  ChatGPT en même temps ([détails](choisir-son-ia.md#ou-est-gardee-la-connexion-et-ce-qui-est-facture)).
 
 ## Le bot Telegram — `[telegram]` (#174)
 

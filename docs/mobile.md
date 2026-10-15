@@ -393,6 +393,26 @@ du cron : `daily-sync.sh` relit le runner à chaque exécution.
 vers la **clé API facturée au token** : l'installation l'affiche (« abonnement → clé API
 facturée au token ») et `[sync].daily_budget_eur` plafonne la dépense.
 
+### Synchronisation sur un abonnement ChatGPT ou Copilot
+
+`./install.sh --llm chatgpt` (ou `copilot`) met aussi la synchronisation sur votre abonnement, via le runner
+`opencode` : pas de clé, pas de facturation au jeton. La connexion vit dans un magasin OpenCode dédié au coach
+(`[sync].opencode_data_dir`, voir [Configuration](configuration.md#chat-et-sync-sur-un-abonnement-chatgpt-ou-copilot)) ;
+`python3 scripts/arc_llm.py login chatgpt|copilot` la crée, une fois, dans un terminal.
+
+- **Jamais de connexion en headless** : `daily-sync.sh` n'ouvre aucun navigateur et ne lance aucun `login`.
+  Jeton absent ou refusé : notification « 🔑 Sync … reconnectez ChatGPT » avec la commande à lancer.
+- **Pas de plafond en euros** : le coût rapporté est ignoré (`[sync].daily_budget_eur` ne s'applique pas).
+  Les limites de votre forfait s'appliquent, et chaque synchronisation les consomme. Forfait insuffisant
+  (`usage_not_included`, offre ChatGPT Free) ou limites atteintes : notifications dédiées ; le passage suivant
+  réessaie.
+- **Verrou** : une synchronisation ChatGPT attend (5 minutes au plus) que le chat ait fini son tour, et
+  inversement, pour que deux processus ne rafraîchissent jamais le jeton en même temps. Si le chat l'occupe
+  trop longtemps, le passage est reporté (notification « ⏳ Sync reportée »), sans échec.
+- **Usage planifié d'un forfait grand public** : aucune déclaration officielle n'a été trouvée sur ce point
+  (OpenAI autorise les applications open source locales ; GitHub soutient OpenCode). Vérifiez les conditions du
+  fournisseur ; la synchronisation peut rester sur une autre IA pendant que le chat utilise votre forfait.
+
 ### Limites du runner `opencode`
 
 Le run de synchronisation `opencode` tourne avec des permissions volontairement étroites
@@ -505,5 +525,6 @@ datacenter (à valider une fois). C'est pourquoi la machine coach reste le choix
 | `❌ Sync Garmin échouée` | Voir `logs/sync-YYYY-MM-DD.log`. Cause fréquente : tokens Garmin expirés → `uv run garmin-mcp-auth`. |
 | Pas de notification | `scripts/notify.sh "test"` ; vérifiez `provider`, `ntfy_topic`, le token (serveur `deny-all`) et l'abonnement au sujet dans l'appli. |
 | Sur Linux, le service meurt à la déconnexion SSH | `loginctl enable-linger $USER` (fait par `install`). |
+| `🔑 … reconnectez ChatGPT/GitHub Copilot`, `🔑 … forfait … insuffisant`, `⏳ … limites du forfait … atteintes`, `⏳ … reportée` | Sync sur un abonnement : voir [ci-dessus](#synchronisation-sur-un-abonnement-chatgpt-ou-copilot). |
 | `🔑 … clé … refusée`, `💳 … crédits … épuisés`, `💸 … budget atteint` | Sync sur une API : voir [Synchronisation sur OpenRouter](#synchronisation-sur-openrouter-ou-toute-api-compatible-openai) et le [dépannage](troubleshooting.md#synchronisation-sur-une-api-openrouter-anthropic). |
 | Le portable et la machine coach ont chacun un workspace | Gardez une seule source de vérité (la machine coach) et travaillez dessus en Remote-SSH ; sinon synchronisez les dossiers avec `rsync`. |

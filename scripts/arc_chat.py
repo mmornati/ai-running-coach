@@ -87,6 +87,9 @@ CHAT_DEFAULTS = {
     "ntfy_delay_s": 60,
     # Plafond d'allocation d'un tour (€, 0 = tout le reste du jour, réservé au tour). Voir reserve_turn_budget.
     "turn_budget_max_eur": 1.0,
+    # Magasin d'authentification OpenCode dédié au coach (abonnement ChatGPT/Copilot, #266) ;
+    # vide = comportement historique. Voir scripts/arc_llm.py.
+    "opencode_data_dir": "",
 }
 
 
@@ -1199,6 +1202,9 @@ class ChatService:
                 "model": self.cfg["model"], "user": user,
                 "budget": {"spent_eur": round(self.spend.spent(), 4),
                            "limit_eur": float(self.cfg["daily_budget_eur"])},
+                # Forfait (ChatGPT/Copilot, #266) : la page affiche « inclus dans votre forfait … » au
+                # lieu d'un coût en euros. Clé absente = facturation au jeton, comme avant.
+                **({"billing": self.backend.billing()} if self.backend.billing() else {}),
                 "ntfy": self.ntfy_enabled()}
 
 

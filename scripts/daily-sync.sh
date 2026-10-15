@@ -69,11 +69,42 @@ SYNC_MODEL="$(toml_get sync model "")"
 SYNC_BASE_URL="$(toml_get sync base_url "")"
 API_KEY_ENV="$(toml_get sync api_key_env "")"
 DAILY_BUDGET_EUR="$(toml_get sync daily_budget_eur 0.5)"
+# Abonnement ChatGPT / GitHub Copilot (#266) : [sync].opencode_data_dir = magasin d'authentification
+# OpenCode dédié au coach (le même que [chat].opencode_data_dir, voir scripts/arc_llm.py). Vide =
+# comportement historique (magasin global d'OpenCode, rien de ci-dessous ne s'active).
+OC_DATA_DIR="$(toml_get sync opencode_data_dir "")"
+OC_DATA_DIR="${OC_DATA_DIR/#\~/$HOME}"
+# Attente du verrou du magasin quand le chat l'utilise (tour ChatGPT en cours), en secondes.
+STORE_LOCK_WAIT_S=300
+SUBSCRIPTION_ID=""      # chatgpt | copilot | "" (voir detect_subscription)
+SUBSCRIPTION_LABEL=""
 USD_EUR_RATE="$(toml_get chat usd_eur_rate 0.92)"
 LLM_ENV_FILE="${ARC_LLM_ENV:-$HOME/.config/ai-running-coach/llm.env}"
 SPEND_FILE="$LOG_DIR/.sync-spend-$(date +%F)"
 # Variables « NOM=valeur » réservées au process du runner (voir load_llm_env).
 RUNNER_ENV=()
+# Abonnement : runner opencode, magasin dédié posé, aucune clé API ni URL de base, et un modèle
+# openai/… (ChatGPT) ou github-copilot/… (Copilot). Le coût rapporté par OpenCode n'est alors PAS une
+# facture (ChatGPT : 0 ; Copilot : pseudo-USD tiré des crédits du forfait, non vérifié) : jamais compté
+# contre le plafond quotidien en euros.
+detect_subscription() {
+    SUBSCRIPTION_ID=""
+    SUBSCRIPTION_LABEL=""
+    [[ "$RUNNER" == "opencode" && -n "$OC_DATA_DIR" && -z "$API_KEY_ENV" && -z "$SYNC_BASE_URL" ]] || return 0
+    case "${SYNC_MODEL%%/*}" in
+        openai) SUBSCRIPTION_ID="chatgpt"; SUBSCRIPTION_LABEL="ChatGPT" ;;
+        github-copilot) SUBSCRIPTION_ID="copilot"; SUBSCRIPTION_LABEL="GitHub Copilot" ;;
+    esac
+    return 0
+}
+detect_subscription
+
+# Jeton d'abonnement présent dans le magasin du coach ? (présence seulement, jamais la valeur)
+subscription_auth_ok() {
+    [[ -n "$SUBSCRIPTION_ID" ]] || return 0
+    python3 "$ARC_ENGINE_ROOT/scripts/arc_llm.py" auth-status "$SUBSCRIPTION_ID" --data-dir "$OC_DATA_DIR" >/dev/null 2>&1
+}
+
 # Format de sortie du runner : text | claude-json | opencode-json (voir build_command).
 OUTPUT_KIND="text"
 OC_CONFIG_FILE="$ARC_WORKSPACE/.arc/sync/opencode.json"
@@ -487,6 +518,7 @@ runner_output() { python3 -c "$RUNNER_OUTPUT_PY" "$1" "$OUTPUT_KIND"; }
 # sans coût rapporté (claude/codex par abonnement) : jamais de plafond.
 budget_enforced() {
     [[ "$OUTPUT_KIND" != "text" ]] || return 1
+    [[ -z "$SUBSCRIPTION_ID" ]] || return 1   # forfait : aucun plafond en euros (#266)
     awk -v b="$DAILY_BUDGET_EUR" 'BEGIN { exit !(b + 0 > 0) }'
 }
 
@@ -503,6 +535,11 @@ over_budget() {
 
 record_spend() {
     local cost_usd="$1"
+    if [[ -n "$SUBSCRIPTION_ID" ]]; then
+        # Forfait : le coût rapporté n'est pas une facture, il n'entre dans aucun cumul.
+        log "Run inclus dans votre forfait $SUBSCRIPTION_LABEL (coût rapporté ignoré)."
+        return 0
+    fi
     [[ "$cost_usd" =~ ^[0-9]+(\.[0-9]+)?$ ]] || return 0
     awk -v s="$(spent_today_eur)" -v c="$cost_usd" -v r="$USD_EUR_RATE" \
         'BEGIN { printf "%.4f\n", s + c * r }' > "$SPEND_FILE"
@@ -527,6 +564,19 @@ detect_provider_failure() {
     if printf '%s' "$err" | grep -qiE 'garmin|intervals|strava|open ?wearables'; then
         return 1
     fi
+    if [[ -n "$SUBSCRIPTION_ID" ]]; then
+        # Motifs tirés du code d'OpenCode v1.18.35 (provider/error.ts, plugin/openai/codex.ts) ;
+        # corps exacts d'une limite de forfait et des 401/403 Copilot NON vérifiés sur un vrai compte.
+        if printf '%s' "$err" | grep -qiE 'usage_not_included|upgrade to plus'; then
+            PROVIDER_FAILURE="plan"; return 0
+        fi
+        if printf '%s' "$err" | grep -qiE 'insufficient_quota|quota exceeded|usage limit|rate limit|too many requests|(^|[^0-9])429([^0-9]|$)'; then
+            PROVIDER_FAILURE="quota"; return 0
+        fi
+        if printf '%s' "$err" | grep -qiE 'token refresh failed|(^|[^0-9])40[13]([^0-9]|$)|unauthorized|forbidden|not connected|provider not found|token may be missing'; then
+            PROVIDER_FAILURE="reconnect"; return 0
+        fi
+    fi
     if printf '%s' "$err" | grep -qiE '(^|[^0-9])402([^0-9]|$)|insufficient (credits|funds)|payment required|credit balance|requires more credits|out of credits'; then
         PROVIDER_FAILURE="credits"
         return 0
@@ -539,6 +589,10 @@ detect_provider_failure() {
 }
 
 provider_label() {
+    if [[ -n "$SUBSCRIPTION_ID" ]]; then
+        printf '%s' "$SUBSCRIPTION_LABEL"
+        return 0
+    fi
     if [[ "$RUNNER" == "opencode" && -n "$SYNC_MODEL" ]]; then
         local p="${SYNC_MODEL%%/*}"
         printf '%s' "${p:-fournisseur LLM}"
@@ -1142,6 +1196,13 @@ main() {
             printf '%s\n' "${C_YELLOW}[dry-run]${C_RESET} OPENCODE_CONFIG=$OC_CONFIG_FILE, contenu :"
             opencode_config_json
         fi
+        if [[ -n "$SUBSCRIPTION_ID" ]]; then
+            printf '%s\n' "${C_YELLOW}[dry-run]${C_RESET} abonnement $SUBSCRIPTION_LABEL : XDG_DATA_HOME=$OC_DATA_DIR (magasin du coach), aucun plafond en euros"
+            [[ "$SUBSCRIPTION_ID" != "chatgpt" ]] \
+                || printf '%s\n' "${C_YELLOW}[dry-run]${C_RESET} exécution sous le verrou du magasin (arc_llm.py with-lock, attente max ${STORE_LOCK_WAIT_S} s)"
+            subscription_auth_ok \
+                || warn "$SUBSCRIPTION_LABEL non connecté dans $OC_DATA_DIR — la synchronisation échouerait : python3 scripts/arc_llm.py login $SUBSCRIPTION_ID"
+        fi
         if [[ "$RUNNER" == "gemini" ]]; then
             printf '%s\n' "${C_YELLOW}[dry-run]${C_RESET} GEMINI_CLI_SYSTEM_SETTINGS_PATH=$GEMINI_CONFIG_FILE, contenu :"
             gemini_config_json || warn "Gemini : aucun serveur $SOURCE_LABEL utilisable — la synchronisation réelle s'arrêterait ici."
@@ -1166,6 +1227,15 @@ main() {
         err "$API_KEY_ENV introuvable ($LLM_ENV_FILE) — synchronisation abandonnée."
         notify "🔑 Sync $SOURCE_LABEL — clé API absente" 4 "key,warning" \
             "Mode API activé ([sync].api_key_env = $API_KEY_ENV) mais la clé est introuvable dans $LLM_ENV_FILE. Ajoutez la ligne $API_KEY_ENV=... (chmod 600)."
+        exit 1
+    fi
+
+    # Abonnement ChatGPT / Copilot : jamais de connexion ni de navigateur en headless. Un jeton absent
+    # est une notification claire, pas une tentative de login.
+    if ! subscription_auth_ok; then
+        err "$SUBSCRIPTION_LABEL non connecté ($OC_DATA_DIR) — synchronisation abandonnée."
+        notify "🔑 Sync $SOURCE_LABEL — reconnectez $SUBSCRIPTION_LABEL" 5 "key,warning" \
+            "Aucune connexion $SUBSCRIPTION_LABEL dans le magasin du coach. Reconnectez-vous dans un terminal : python3 scripts/arc_llm.py login $SUBSCRIPTION_ID. La synchronisation ne lance jamais de connexion toute seule."
         exit 1
     fi
 
@@ -1196,6 +1266,16 @@ main() {
         mkdir -p "$(dirname "$OC_CONFIG_FILE")"
         opencode_config_json > "$OC_CONFIG_FILE"
         exec_cmd=(env "OPENCODE_CONFIG=$OC_CONFIG_FILE" "${exec_cmd[@]}")
+        if [[ -n "$SUBSCRIPTION_ID" ]]; then
+            # Magasin d'authentification dédié (mode 700), partagé avec le chat. ChatGPT rafraîchit son
+            # jeton en réécrivant auth.json sans verrou : on sérialise avec le chat (arc_llm.py).
+            mkdir -p "$OC_DATA_DIR" && chmod 700 "$OC_DATA_DIR"
+            exec_cmd=(env "XDG_DATA_HOME=$OC_DATA_DIR" "${exec_cmd[@]}")
+            if [[ "$SUBSCRIPTION_ID" == "chatgpt" ]]; then
+                exec_cmd=(python3 "$ARC_ENGINE_ROOT/scripts/arc_llm.py" with-lock --data-dir "$OC_DATA_DIR"
+                          --timeout "$STORE_LOCK_WAIT_S" -- "${exec_cmd[@]}")
+            fi
+        fi
     fi
     if [[ "$RUNNER" == "gemini" ]]; then
         mkdir -p "$(dirname "$GEMINI_CONFIG_FILE")"
@@ -1225,6 +1305,13 @@ main() {
     # Pied de run : code et durée, lus par scripts/arc_sync_status.py (vue « Synchro »).
     echo "===== $(date '+%F %T') — fin code=$rc durée=$((SECONDS - run_started))s =====" >> "$LOG_FILE"
 
+    if [[ "$rc" -eq 75 && "$SUBSCRIPTION_ID" == "chatgpt" ]]; then
+        # with-lock : le chat tient le magasin (un tour en cours). Rien n'a été lancé : le prochain run réessaie.
+        warn "Le chat utilise la connexion ChatGPT — synchronisation reportée au prochain passage."
+        notify "⏳ Sync $SOURCE_LABEL reportée" 3 "hourglass" \
+            "Le chat du coach utilisait la connexion ChatGPT pendant plus de $((STORE_LOCK_WAIT_S / 60)) min : la synchronisation de ce passage n'a pas été lancée et sera retentée au prochain."
+        exit 0
+    fi
     if [[ "$rc" -ne 0 ]]; then
         err "La synchronisation a échoué (code $rc) — voir $LOG_FILE"
         if detect_provider_failure "$provider_error"; then
@@ -1232,7 +1319,16 @@ main() {
             # comme un problème Garmin, et sans lecture du journal pour un 401.
             local plabel
             plabel="$(provider_label)"
-            if [[ "$PROVIDER_FAILURE" == "credits" ]]; then
+            if [[ "$PROVIDER_FAILURE" == "reconnect" ]]; then
+                notify "🔑 Sync $SOURCE_LABEL — reconnectez $plabel" 5 "key,warning" \
+                    "Synchronisation interrompue : la connexion $plabel est expirée ou refusée. Reconnectez-vous dans un terminal : python3 scripts/arc_llm.py login $SUBSCRIPTION_ID. Ce n'est pas un problème $SOURCE_LABEL. Voir logs/sync-$(date +%F).log."
+            elif [[ "$PROVIDER_FAILURE" == "plan" ]]; then
+                notify "🔑 Sync $SOURCE_LABEL — forfait $plabel insuffisant" 5 "key,warning" \
+                    "Synchronisation interrompue : votre offre $plabel n'inclut pas cet usage (usage_not_included) — ChatGPT Plus ou Pro est nécessaire, l'offre Free n'est pas acceptée. Ce n'est pas un problème $SOURCE_LABEL. Voir logs/sync-$(date +%F).log."
+            elif [[ "$PROVIDER_FAILURE" == "quota" ]]; then
+                notify "⏳ Sync $SOURCE_LABEL — limites du forfait $plabel atteintes" 4 "hourglass,warning" \
+                    "Synchronisation interrompue : les limites de votre forfait $plabel sont atteintes. Elles se renouvellent d'elles-mêmes ; le prochain passage réessaiera. Ce n'est pas un problème $SOURCE_LABEL. Voir logs/sync-$(date +%F).log."
+            elif [[ "$PROVIDER_FAILURE" == "credits" ]]; then
                 notify "💳 Sync $SOURCE_LABEL — crédits $plabel épuisés" 5 "moneybag,warning" \
                     "Synchronisation interrompue : le fournisseur LLM ($plabel) refuse la requête faute de crédits (402). Rechargez le compte. Ce n'est pas un problème $SOURCE_LABEL. Voir logs/sync-$(date +%F).log."
             else

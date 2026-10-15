@@ -456,7 +456,7 @@ class CatalogTests(InstallAsserts):
         proc = subprocess.run([sys.executable, str(SCRIPT), "providers", "--json"], capture_output=True, text=True, timeout=30)
         self.assertEqual(proc.returncode, 0)
         providers = {p["id"]: p for p in json.loads(proc.stdout)["providers"]}
-        self.assertEqual(set(providers), {"openrouter", "anthropic", "openai"})
+        self.assertEqual(set(providers), {"openrouter", "anthropic", "openai", "chatgpt", "copilot"})
         for p in providers.values():
             for field in ("label", "kind", "chat_model", "sync_model", "key_env", "monthly_cost", "privacy", "docs"):
                 self.assertIn(field, p)
@@ -489,8 +489,9 @@ class CatalogTests(InstallAsserts):
         self.assertIn('key_var="OPENROUTER_API_KEY"', text)
         self.assertIn('key_var="ANTHROPIC_API_KEY"', text)
         self.assertIn('key_var="OPENAI_API_KEY"', text)
+        # chatgpt et copilot (abonnements, #266) n'ont pas de clé : key_env vide.
         self.assertEqual({p["key_env"] for p in providers.values()},
-                         {"OPENROUTER_API_KEY", "ANTHROPIC_API_KEY", "OPENAI_API_KEY"})
+                         {"OPENROUTER_API_KEY", "ANTHROPIC_API_KEY", "OPENAI_API_KEY", ""})
 
 
 class InstallConnectTests(InstallAsserts):

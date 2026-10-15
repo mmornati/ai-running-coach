@@ -9,15 +9,44 @@
 #   ARC_STUB_OPENCODE_RC     code de sortie de `run` (défaut 0)
 #   ARC_STUB_OPENCODE_COST   coût USD du run par défaut (défaut 0.01)
 #   ARC_STUB_OPENCODE_WRITE  fichier (chemin absolu) créé sans bloc arc pendant le run
+#   ARC_STUB_OPENCODE_LOGIN  `providers login` (#266) : ok (défaut : affiche « Go to: » / « Enter code: »,
+#                            attend, écrit un faux auth.json dans $XDG_DATA_HOME/opencode) | fail | hang
+#                            (jamais terminé : pour prouver que le wrapper tue l'enfant)
+#   ARC_STUB_OPENCODE_PIDFILE  reçoit le PID du stub pendant `providers login`
 . "$(dirname "$0")/_common.sh"
 stub_init "$@"
 case "${1:-}" in
     --version) echo "1.18.32-stub"; exit 0 ;;
     run) ;;
+    providers)
+        [ "${2:-}" = "login" ] || exit 0
+        stub_log "env XDG_DATA_HOME=${XDG_DATA_HOME:-unset} ARC_HEADLESS=${ARC_HEADLESS:-unset}"
+        [ -z "${ARC_STUB_OPENCODE_PIDFILE:-}" ] || echo $$ > "$ARC_STUB_OPENCODE_PIDFILE"
+        trap 'printf "Canceled\n"; exit 130' TERM INT
+        case "$*" in
+            *github-copilot*)
+                printf '\033[2K\rSelect GitHub deployment type: GitHub.com (Public) / GitHub Enterprise\n'
+                IFS= read -r _answer ;;
+        esac
+        printf '\033[0m\xe2\x94\x8c  Add credential\n'
+        printf '\033[32m\xe2\x97\x8f\033[0m  Go to: https://auth.example.test/device\n'
+        printf '\033[32m\xe2\x97\x8f\033[0m  Enter code: ABCD-1234\n'
+        case "${ARC_STUB_OPENCODE_LOGIN:-ok}" in
+            fail) printf 'Error: Failed to authorize\n' >&2; exit 1 ;;
+            hang) while :; do printf '\r|  Waiting for authorization...'; sleep 0.2; done ;;
+        esac
+        sleep 0.3
+        case "$*" in *github-copilot*) _prov=github-copilot ;; *) _prov=openai ;; esac
+        mkdir -p "${XDG_DATA_HOME:?}/opencode"
+        printf '{"%s":{"type":"oauth","refresh":"stub-refresh","access":"stub-access","expires":%s}}\n' \
+            "$_prov" "$(( ($(date +%s) + 3600) * 1000 ))" > "$XDG_DATA_HOME/opencode/auth.json"
+        chmod 600 "$XDG_DATA_HOME/opencode/auth.json"
+        printf 'Login successful\n'
+        exit 0 ;;
     *) exit 0 ;;
 esac
 key_len="${#OPENROUTER_API_KEY}"
-stub_log "env OPENCODE_CONFIG=${OPENCODE_CONFIG:-unset} OPENROUTER_API_KEY_LEN=$key_len ANTHROPIC_API_KEY=$([ -n "${ANTHROPIC_API_KEY:-}" ] && echo set || echo unset)"
+stub_log "env OPENCODE_CONFIG=${OPENCODE_CONFIG:-unset} OPENROUTER_API_KEY_LEN=$key_len ANTHROPIC_API_KEY=$([ -n "${ANTHROPIC_API_KEY:-}" ] && echo set || echo unset) XDG_DATA_HOME=${XDG_DATA_HOME:-unset}"
 if [ -n "${ARC_STUB_OPENCODE_WRITE:-}" ]; then
     mkdir -p "$(dirname "$ARC_STUB_OPENCODE_WRITE")"
     printf '# fichier sans bloc arc\n' > "$ARC_STUB_OPENCODE_WRITE"

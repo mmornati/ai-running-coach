@@ -9,16 +9,18 @@ Bonne nouvelle : **vous n'avez pas à choisir une technologie, seulement à dire
 flowchart TD
     A[Que payez-vous déjà ?] --> B{Claude Pro ou Max ?}
     B -->|oui| C[Claude Code<br/>+ Remote Control]
-    B -->|non| D{GitHub Copilot ou<br/>ChatGPT Plus/Pro ?}
-    D -->|oui| E[Votre assistant habituel]
-    D -->|non| F[OpenRouter<br/>en un clic]
+    B -->|non| D{ChatGPT Plus/Pro ?}
+    D -->|oui| G[Se connecter avec ChatGPT<br/>chat + synchronisation]
+    D -->|non| H{GitHub Copilot ?}
+    H -->|oui| I[Se connecter avec GitHub<br/>chat + synchronisation]
+    H -->|non| F[OpenRouter<br/>en un clic]
 ```
 
 | Vous avez… | Faites ceci | Coût en plus |
 |---|---|---|
 | **Claude Pro ou Max** | [Assistant habituel](#votre-assistant-habituel) : Claude Code, et [Remote Control](mobile.md) pour le téléphone | aucun |
-| **GitHub Copilot** | [Assistant habituel](#votre-assistant-habituel) : GitHub Copilot (choix guidé dans l'application) | aucun |
-| **ChatGPT Plus ou Pro** | [Assistant habituel](#votre-assistant-habituel) : Codex CLI, en ligne de commande (`--sync-runner codex`) ; pas encore dans l'application | aucun |
+| **ChatGPT Plus ou Pro** | [Se connecter avec ChatGPT](#chatgpt-plus-ou-pro) : `./install.sh --llm chatgpt --connect`, ou « J'ai ChatGPT Plus/Pro » dans l'application | aucun (limites de votre forfait) |
+| **GitHub Copilot** | [Se connecter avec GitHub](#github-copilot) : `./install.sh --llm copilot --connect`, ou « J'ai GitHub Copilot » dans l'application | aucun (crédits de votre forfait) |
 | **Rien** | [OpenRouter en un clic](#openrouter-en-un-clic) | environ 1 € par mois |
 | Une clé API existante | [Coller sa clé](#cle-api-anthropic-openai-ou-autre) | selon le fournisseur |
 
@@ -62,6 +64,70 @@ les fournisseurs qui peuvent entraîner sur vos données (réglage distinct pour
 gratuits ; OpenRouter précise que des exceptions existent). La **conservation**, elle, ne filtre pas
 le routage : consultez le tableau des fournisseurs du modèle choisi.
 
+## ChatGPT Plus ou Pro
+
+OpenAI autorise l'usage du forfait ChatGPT dans les applications **open source et hébergées localement**
+([« ChatGPT plan usage »](https://developers.openai.com/siwc/token-sharing-open-source)), et
+[OpenCode](https://opencode.ai/docs/providers/), le moteur qui fait tourner le chat et la synchronisation,
+sait s'y connecter. Rien n'est facturé au jeton : ce sont **les limites de votre forfait** qui s'appliquent.
+
+- **Application macOS** : au choix du chat, « J'ai ChatGPT Plus/Pro ». À la fin de l'installation,
+  une fenêtre Terminal affiche une adresse et un code d'appareil ; validez-les dans votre navigateur.
+- **Ligne de commande** : `./install.sh --llm chatgpt --connect`, ou plus tard
+  `python3 scripts/arc_llm.py login chatgpt`. La connexion par code d'appareil marche aussi par SSH ;
+  `--browser` utilise à la place le navigateur de la machine (port local 1455).
+
+**Forfaits.** Plus et Pro. La page d'OpenAI ne liste pas les forfaits éligibles ; dans le code d'OpenCode, un
+compte **Free** reçoit l'erreur `usage_not_included` (« passez à Plus ») : il est refusé, et le coach
+vous le dit. Le cas des autres offres (Go, Business…) n'a pas été vérifié.
+
+**Modèles par défaut** : `openai/gpt-5.4-mini` pour le chat, `openai/gpt-5.4` pour la synchronisation. Leurs
+identifiants sont vérifiés dans le catalogue [models.dev](https://models.dev) et dans la liste d'autorisation
+du plugin ChatGPT d'OpenCode 1.18.35 ; ils **n'ont pas été évalués sur un vrai forfait** (comparatif du
+projet : [dashboard/chat.md](dashboard/chat.md#quel-modele-sur-openrouter)) : changez-les avec
+`--model` si votre forfait ne les sert pas.
+
+**Synchronisation automatique.** Elle consomme les limites de votre forfait, comme le chat. Aucune
+déclaration officielle sur l'usage planifié sans surveillance d'un forfait grand public n'a été trouvée
+dans les pages consultées : relisez les conditions d'OpenAI avant de laisser la synchronisation tourner
+chaque jour (vous pouvez la garder sur Claude Code ou OpenRouter et réserver ChatGPT au chat).
+
+## GitHub Copilot
+
+GitHub soutient officiellement OpenCode pour Copilot Pro, Pro+, Business et Enterprise, sans licence d'IA
+supplémentaire ([annonce](https://github.blog/changelog/2026-01-16-github-copilot-now-supports-opencode/)).
+Copilot **Free** n'est pas listé : il n'est pas pris en charge.
+
+- **Application macOS** : « J'ai GitHub Copilot ». À la fin de l'installation, une fenêtre Terminal
+  affiche un code à saisir sur `github.com/login/device`.
+- **Ligne de commande** : `./install.sh --llm copilot --connect`, ou `python3 scripts/arc_llm.py login copilot`
+  (dans un terminal : GitHub.com ou GitHub Enterprise vous est demandé).
+
+Le forfait Copilot compte en « crédits » ([plans](https://docs.github.com/en/copilot/get-started/plans)) ; les
+modèles les plus coûteux peuvent demander Pro+. Modèles par défaut : `github-copilot/gpt-5.4-mini` (chat) et
+`github-copilot/claude-sonnet-5.5` (synchronisation), vérifiés dans models.dev et **non évalués sur un vrai
+forfait** ; la liste réelle dépend de votre forfait. Même remarque que pour ChatGPT sur la synchronisation
+automatique : elle consomme vos crédits, et aucune déclaration officielle sur l'usage planifié n'a été trouvée.
+
+### Où est gardée la connexion, et ce qui est facturé
+
+- **Magasin dédié au coach** : `~/.local/share/ai-running-coach/opencode` (mode 700, hors dépôt et hors de
+  votre dossier de données), posé dans `[chat].opencode_data_dir` et `[sync].opencode_data_dir`
+  ([configuration](configuration.md#chat-et-sync-sur-un-abonnement-chatgpt-ou-copilot)). OpenCode y écrit
+  `auth.json` ; le coach ne lit jamais les jetons, il vérifie seulement leur présence. Votre éventuelle
+  installation personnelle d'OpenCode n'est pas touchée.
+- **Chat et synchronisation ne se marchent pas dessus** : OpenCode réécrit `auth.json` sans verrou quand il
+  rafraîchit le jeton ChatGPT, et deux rafraîchissements simultanés pourraient casser la connexion. Le chat
+  (un tour à la fois) et la synchronisation (une exécution) prennent donc le même verrou. Si le chat occupe le
+  magasin plus de 5 minutes, la synchronisation est reportée au passage suivant (avec une notification) ; si
+  la synchronisation l'occupe, le chat vous le dit et vous invite à réessayer.
+- **Pas d'euros** : le compteur du chat affiche « inclus dans votre forfait ChatGPT » (ou Copilot) ; le plafond
+  quotidien en euros ne compte rien (OpenCode rapporte un coût nul pour ChatGPT, et des dollars fictifs tirés
+  des crédits pour Copilot, qui ne sont pas une facture). Seules les limites de votre forfait comptent.
+- **Jamais de connexion automatique** : la synchronisation ne lance aucune connexion et n'ouvre aucun navigateur.
+  Jeton absent ou expiré : notification « reconnectez ChatGPT : `python3 scripts/arc_llm.py login chatgpt` ».
+- **Confidentialité** : vos échanges passent par votre compte OpenAI ou GitHub ; leurs réglages s'appliquent.
+
 ## Votre assistant habituel
 
 Si vous payez déjà un assistant, utilisez-le : le coach n'ajoute aucune seconde facturation.
@@ -69,11 +135,11 @@ Si vous payez déjà un assistant, utilisez-le : le coach n'ajoute aucune second
 - **Claude Pro / Max** : Claude Code, et [Remote Control](mobile.md) pour le téléphone. L'abonnement
   Claude ne peut pas servir dans le chat intégré de l'application (Anthropic l'interdit dans un
   outil tiers) ; c'est donc Claude Code lui-même qui parle au coach.
-- **GitHub Copilot** : choisissez-le dans « Mon assistant IA habituel » de l'application, ou
-  `./install.sh --ide copilot --sync-runner copilot`.
-- **ChatGPT Plus / Pro** : Codex CLI, l'assistant de ChatGPT, connecté à votre forfait
-  (`./install.sh --sync-runner codex` pour la synchronisation). Il n'est pas encore proposé dans
-  l'application macOS.
+- **GitHub Copilot** (assistant dans le terminal) : « Mon assistant IA habituel » de l'application, ou
+  `./install.sh --ide copilot --sync-runner copilot`. Pour le chat intégré, préférez
+  [Se connecter avec GitHub](#github-copilot).
+- **ChatGPT Plus / Pro** (Codex CLI) : `./install.sh --sync-runner codex` pour la synchronisation. Pour le
+  chat intégré, préférez [Se connecter avec ChatGPT](#chatgpt-plus-ou-pro).
 - **Gemini CLI** : voir [l'avertissement ci-dessous](#gemini-attention).
 
 ## Clé API (Anthropic, OpenAI ou autre)

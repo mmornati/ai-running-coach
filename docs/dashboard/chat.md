@@ -90,6 +90,12 @@ Le tableau de bord reste **en lecture seule** et ne voit jamais la clé API : c'
 
 ## Choisir un fournisseur
 
+!!! tip "Vous payez déjà ChatGPT Plus/Pro ou GitHub Copilot ?"
+    Le chat peut utiliser votre abonnement, sans clé API ni facturation au jeton :
+    `./install.sh --llm chatgpt --chat --connect` (ou `copilot`). Voir
+    [Choisir son IA](../choisir-son-ia.md#chatgpt-plus-ou-pro) : forfaits acceptés, limites, modèles par défaut
+    (non évalués sur un vrai forfait).
+
 | | Claude (API Anthropic) | OpenRouter (ou API compatible OpenAI) |
 |---|---|---|
 | Harnais | Claude Agent SDK — le moteur de Claude Code | serveur OpenCode |
@@ -174,6 +180,12 @@ ou, pour OpenRouter :
 
 ```bash
 ./install.sh --llm openrouter --chat
+```
+
+ou, avec votre abonnement ChatGPT Plus/Pro ou GitHub Copilot (aucune clé, aucun plafond en euros) :
+
+```bash
+./install.sh --llm chatgpt --chat --connect     # ou --llm copilot
 ```
 
 `--llm` règle **à la fois** le chat (`[chat]`) et la synchronisation automatique (`[sync]`) :
@@ -428,6 +440,13 @@ jour : un échange qui s'emballe s'arrête là, et le reste demeure disponible p
 conversation ou une approbation tardive. Avec `0`, un tour réserve tout le reste du jour et une
 seconde conversation simultanée est refusée (« budget réservé par une autre conversation »).
 
+!!! note "Abonnement ChatGPT ou Copilot"
+    Sur un abonnement, rien n'est facturé au jeton : le compteur du chat affiche « inclus dans votre forfait
+    ChatGPT » (ou « GitHub Copilot ») au lieu d'un montant, et le plafond en euros ne compte rien. ChatGPT
+    rapporte un coût nul ; Copilot rapporte des dollars fictifs tirés des crédits du forfait, ignorés ici. Ce sont
+    les limites de votre forfait qui s'appliquent : quand elles sont atteintes, le chat l'explique et vous
+    invite à réessayer plus tard.
+
 !!! note "Coût inconnu"
     Avec OpenCode, un modèle absent de son catalogue de prix remonte un coût nul : le plafond ne
     peut alors rien compter. Surveillez la dépense côté fournisseur (OpenRouter affiche la
@@ -458,3 +477,7 @@ d'OpenCode recopiés dans un fichier — échanges compris, à supprimer après 
 | Pas de notification d'approbation | `[notifications]` non configuré, ou `public_url` vide (pas de boutons) |
 | « paquet claude-agent-sdk absent » ou « claude-agent-sdk X < 0.2.121 » (avis GHSA-h4mw-j7qp-8mwm : injection d'arguments par `resume`, corrigé en 0.2.121) | `pip install -U 'claude-agent-sdk>=0.2.121'` dans le Python du service |
 | Budget atteint dès le matin | augmenter `daily_budget_eur`, ou passer à un modèle moins cher |
+| « Connexion ChatGPT absente » / « expirée ou refusée » (ou GitHub Copilot) | `python3 scripts/arc_llm.py login chatgpt` (ou `copilot`), dans un terminal : le chat ne lance jamais de connexion |
+| « Votre offre ChatGPT n'inclut pas cet usage (usage_not_included) » | l'offre Free n'est pas acceptée : ChatGPT Plus ou Pro |
+| « Les limites de votre forfait … sont atteintes » | attendre le renouvellement du forfait, ou changer de fournisseur ([Choisir son IA](../choisir-son-ia.md)) |
+| « La synchronisation du coach utilise la connexion ChatGPT » | la synchronisation tient le verrou du magasin : réessayez dans quelques minutes |

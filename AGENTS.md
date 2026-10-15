@@ -372,6 +372,16 @@ affichée). `./install.sh --llm openrouter --connect` le lance en interactif seu
 `--dry-run`, jamais sans terminal, jamais mémorisé pour `/update-coach`). Les agents ne l'appellent
 pas et la sync headless n'ouvre jamais de navigateur. Arbre de décision : `docs/choisir-son-ia.md`.
 
+**Abonnements ChatGPT Plus/Pro et GitHub Copilot (#266).** `./install.sh --llm chatgpt|copilot` :
+backend/runner `opencode` sans clé (`api_key_env` vide), et **`[chat].opencode_data_dir` +
+`[sync].opencode_data_dir`** = magasin d'authentification OpenCode dédié au coach (mode 700, défaut
+`~/.local/share/ai-running-coach/opencode`) utilisé comme `XDG_DATA_HOME` par le chat et la sync, pour les
+modèles `openai/…` / `github-copilot/…` sans clé API seulement (clé absente = comportement historique).
+`arc_llm.py login chatgpt|copilot` (interactif, refusé sous `ARC_HEADLESS`), `auth-status`, `with-lock` ;
+verrou `<magasin>/.arc-auth.lock` entre un tour de chat et une exécution de la sync (ChatGPT réécrit
+`auth.json` sans verrou). Coût rapporté **ignoré** (jamais compté en euros ; « inclus dans votre forfait »).
+Jeton absent/expiré = message actionnable (chat) ou notification (sync), jamais une connexion automatique.
+Forfaits : ChatGPT Plus/Pro (Free refusé : `usage_not_included`), Copilot Pro/Pro+/Business/Enterprise.
 ## Telegram (#174, opt-in)
 
 `scripts/arc_telegram.py` (service `scripts/coach-telegram.sh`, `./install.sh --telegram`) est un
