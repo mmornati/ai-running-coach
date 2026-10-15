@@ -2,8 +2,8 @@
 # =============================================================================
 # ai-running-coach — helpers partagés par les scripts (config TOML, logs)
 #
-# Sourcé par scripts/daily-sync.sh, scripts/notify.sh, scripts/setup-ntfy.sh,
-# scripts/coach-remote.sh. Lecture minimaliste de config/workspace.toml +
+# Sourcé par les scripts bash (daily-sync.sh, coach-remote.sh, coach-chat.sh…).
+# Lecture minimaliste de config/workspace.toml +
 # config/workspace.user.toml (overrides), sans dépendance Python : suffisant
 # pour des clés `cle = "valeur"`, `cle = 12`, `cle = ["a", "b"]`.
 #

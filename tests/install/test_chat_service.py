@@ -17,10 +17,9 @@ import tempfile
 import threading
 import time
 import unittest
-from http.server import BaseHTTPRequestHandler
 from pathlib import Path
 
-from tests.lib.local_http import HTTPServer
+from tests.lib.fake_ntfy import FakeNtfy
 
 REPO = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO / "scripts"))
@@ -29,39 +28,6 @@ import arc_chat as C  # noqa: E402
 from arc_chat_mock import MockBackend  # noqa: E402
 
 CSRF = {"X-ARC-Chat": "1"}
-
-
-class FakeNtfy:
-    """Serveur ntfy factice : enregistre chaque POST reçu."""
-
-    def __init__(self):
-        received = self.received = []
-
-        class H(BaseHTTPRequestHandler):
-            def do_POST(self):
-                length = int(self.headers.get("Content-Length") or 0)
-                received.append({"path": self.path, "headers": dict(self.headers),
-                                 "body": self.rfile.read(length).decode("utf-8")})
-                self.send_response(200)
-                self.send_header("Content-Length", "0")
-                self.end_headers()
-
-            def log_message(self, *args):
-                pass
-
-        self.httpd = HTTPServer(("127.0.0.1", 0), H)
-        self.url = f"http://127.0.0.1:{self.httpd.server_address[1]}"
-        threading.Thread(target=self.httpd.serve_forever, kwargs={"poll_interval": 0.02}, daemon=True).start()
-
-    def close(self):
-        self.httpd.shutdown()
-        self.httpd.server_close()
-
-    def wait(self, count=1, timeout=3.0):
-        deadline = time.monotonic() + timeout
-        while len(self.received) < count and time.monotonic() < deadline:
-            time.sleep(0.02)
-        return self.received
 
 
 def wait_for(predicate, timeout=3.0):

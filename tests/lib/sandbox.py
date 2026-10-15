@@ -11,7 +11,9 @@ Le bac à sable :
   - préfixe `PATH` avec `tests/lib/stubs/` (uv, curl, brew, crontab, launchctl,
     claude, …). Chaque stub journalise son argv dans `$ARC_STUB_LOG` ;
   - copie le dépôt dans le temporaire pour que les tests puissent observer les
-    fichiers créés à côté du moteur.
+    fichiers créés à côté du moteur ;
+  - démarre un faux serveur ntfy local (`tests/lib/fake_ntfy.py`) et y envoie toutes les
+    notifications (`ARC_NTFY_URL`) : `ntfy_calls()` / `ntfy_texts()` les relisent.
 
 Aucune modification du code de production n'est nécessaire : tous ces binaires
 sont déjà invoqués via `PATH`.
@@ -28,6 +30,8 @@ import subprocess
 import tempfile
 import time
 from pathlib import Path
+
+from tests.lib.fake_ntfy import FakeNtfy
 
 TESTS_DIR = Path(__file__).resolve().parent.parent
 REPO_ROOT = TESTS_DIR.parent
@@ -109,6 +113,7 @@ class Sandbox:
         self.stub_log.touch()
 
         self._isolated_bin = None
+        self._ntfy = None
 
         if copy_repo:
             self.repo.mkdir()
@@ -129,7 +134,16 @@ class Sandbox:
         return self
 
     def __exit__(self, *exc) -> None:
+        if self._ntfy is not None:
+            self._ntfy.close()
         self._tmp.cleanup()
+
+    @property
+    def ntfy(self) -> FakeNtfy:
+        """Faux serveur ntfy du bac à sable, démarré au premier besoin."""
+        if self._ntfy is None:
+            self._ntfy = FakeNtfy()
+        return self._ntfy
 
     # -- environnement -----------------------------------------------------
     def isolated_bin(self, hide: tuple = ()) -> Path:
@@ -189,6 +203,8 @@ class Sandbox:
         env.setdefault("ARC_STUB_FAIL", "")
         # Vérification des releases GitHub (`arc_update_check.py`) : jamais d'appel réseau en test.
         env.setdefault("ARC_UPDATE_CHECK", "off")
+        # Notifications : jamais le vrai ntfy, toujours le faux serveur du bac à sable.
+        env.setdefault("ARC_NTFY_URL", self.ntfy.url)
         env.update(extra)
 
         resolved = Path(env["HOME"]).resolve()
@@ -299,6 +315,15 @@ class Sandbox:
             if tool is None or name == tool:
                 calls.append((name, args))
         return calls
+
+    def ntfy_calls(self) -> list:
+        """Notifications reçues par le faux ntfy : {"path", "headers", "body"}."""
+        return list(self.ntfy.received)
+
+    def ntfy_texts(self) -> list:
+        """Une chaîne par notification (titre, priorité, tags puis corps), pour les `assertIn`."""
+        return [f"{c['headers'].get('Title', '')}\n{c['headers'].get('Priority', '')}\n"
+                f"{c['headers'].get('Tags', '')}\n{c['body']}" for c in self.ntfy_calls()]
 
     def crontab(self) -> str:
         return self.fake_crontab.read_text() if self.fake_crontab.exists() else ""

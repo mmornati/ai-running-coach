@@ -81,8 +81,8 @@ def _run_sync(sb: Sandbox, *args: str, **env):
     return sb.script("daily-sync.sh", *args, GARMIN_TOKENS_DIR=str(tokens), **env)
 
 
-def _curl_calls(sb: Sandbox) -> list:
-    return [args for _, args in sb.stub_calls("curl")]
+def _ntfy_calls(sb: Sandbox) -> list:
+    return sb.ntfy_texts()
 
 
 class TestOpencodeRunnerDryRun(InstallAsserts):
@@ -210,14 +210,14 @@ class TestOpencodeRunnerExecution(InstallAsserts):
             proc = _run_sync(sb)
             self.assertFailed(proc)
             self.assertNotCalled(sb, "opencode")
-            self.assertTrue(any("clé API absente" in c for c in _curl_calls(sb)), _curl_calls(sb))
+            self.assertTrue(any("clé API absente" in c for c in _ntfy_calls(sb)), _ntfy_calls(sb))
 
     def test_resume_is_extracted_and_spend_recorded(self):
         with Sandbox() as sb:
             self._setup(sb)
             proc = _run_sync(sb, ARC_STUB_OPENCODE_COST="0.5")
             self.assertSucceeded(proc)
-            self.assertTrue(any("Sync OK (stub)" in c for c in _curl_calls(sb)), _curl_calls(sb))
+            self.assertTrue(any("Sync OK (stub)" in c for c in _ntfy_calls(sb)), _ntfy_calls(sb))
             spend = (sb.repo / f"logs/.sync-spend-{TODAY}").read_text().strip()
             self.assertAlmostEqual(float(spend), 0.5 * 0.92, places=3)
 
@@ -229,7 +229,7 @@ class TestOpencodeRunnerExecution(InstallAsserts):
             proc = _run_sync(sb)
             self.assertFailed(proc)
             self.assertNotCalled(sb, "opencode")
-            self.assertTrue(any("leanproxy non pris en charge" in c for c in _curl_calls(sb)), _curl_calls(sb))
+            self.assertTrue(any("leanproxy non pris en charge" in c for c in _ntfy_calls(sb)), _ntfy_calls(sb))
 
     def test_over_budget_skips_the_run_and_notifies_once(self):
         with Sandbox() as sb:
@@ -239,10 +239,10 @@ class TestOpencodeRunnerExecution(InstallAsserts):
             proc = _run_sync(sb)
             self.assertSucceeded(proc, "un budget dépassé n'est pas une panne")
             self.assertNotCalled(sb, "opencode")
-            budget_calls = [c for c in _curl_calls(sb) if "budget" in c]
-            self.assertEqual(len(budget_calls), 1, _curl_calls(sb))
+            budget_calls = [c for c in _ntfy_calls(sb) if "budget" in c]
+            self.assertEqual(len(budget_calls), 1, _ntfy_calls(sb))
             _run_sync(sb)
-            budget_calls = [c for c in _curl_calls(sb) if "budget" in c]
+            budget_calls = [c for c in _ntfy_calls(sb) if "budget" in c]
             self.assertEqual(len(budget_calls), 1, "la notification de budget ne doit partir qu'une fois par jour")
 
     def test_budget_not_enforced_without_reported_cost(self):
@@ -262,7 +262,7 @@ class TestOpencodeRunnerExecution(InstallAsserts):
                 "name": "APIError", "data": {"statusCode": 401, "message": "User not found."}}}])
             proc = _run_sync(sb, ARC_STUB_OPENCODE_OUT=str(out), ARC_STUB_OPENCODE_RC="1")
             self.assertFailed(proc)
-            titles = " ".join(_curl_calls(sb))
+            titles = " ".join(_ntfy_calls(sb))
             self.assertIn("clé openrouter refusée", titles)
             self.assertNotIn("Authentification Garmin", titles)
             self.assertNotIn("garmin-mcp-auth", titles)
@@ -275,7 +275,7 @@ class TestOpencodeRunnerExecution(InstallAsserts):
                 "name": "APIError", "data": {"statusCode": 402, "message": "Insufficient credits."}}}])
             proc = _run_sync(sb, ARC_STUB_OPENCODE_OUT=str(out), ARC_STUB_OPENCODE_RC="1")
             self.assertFailed(proc)
-            titles = " ".join(_curl_calls(sb))
+            titles = " ".join(_ntfy_calls(sb))
             self.assertIn("crédits openrouter épuisés", titles)
             self.assertNotIn("Authentification Garmin", titles)
 
@@ -286,7 +286,7 @@ class TestOpencodeRunnerExecution(InstallAsserts):
                 "ERREUR : tokens Garmin expirés — renouvelez avec garmin-mcp-auth")])
             proc = _run_sync(sb, ARC_STUB_OPENCODE_OUT=str(out), ARC_STUB_OPENCODE_RC="1")
             self.assertFailed(proc)
-            titles = " ".join(_curl_calls(sb))
+            titles = " ".join(_ntfy_calls(sb))
             self.assertIn("Authentification Garmin", titles)
             self.assertNotIn("clé openrouter", titles)
 
@@ -297,8 +297,7 @@ class TestOpencodeRunnerExecution(InstallAsserts):
             proc = _run_sync(sb, ARC_STUB_OPENCODE_WRITE=str(bad))
             self.assertSucceeded(proc)
             self.assertOutputContains(proc, "hors contrat")
-            # Le message ntfy est multi-lignes : on lit le journal brut des stubs.
-            raw = sb.stub_log.read_text()
+            raw = "\n".join(sb.ntfy_texts())
             self.assertIn("hors contrat arc", raw)
             self.assertIn("2099-01-01_running.md", raw)
 
@@ -327,7 +326,7 @@ class TestClaudeApiMode(InstallAsserts):
                                    "result": "```resume\nÀ jour (claude)\n```", "total_cost_usd": 0.1})
             proc = _run_sync(sb)
             self.assertSucceeded(proc)
-            self.assertTrue(any("À jour (claude)" in c for c in _curl_calls(sb)), _curl_calls(sb))
+            self.assertTrue(any("À jour (claude)" in c for c in _ntfy_calls(sb)), _ntfy_calls(sb))
             argv = (sb.root / "claude-argv.txt").read_text()
             self.assertIn("--output-format json", argv)
             self.assertIn("--model claude-haiku-4-5", argv)
@@ -342,7 +341,7 @@ class TestClaudeApiMode(InstallAsserts):
                                    "result": "Invalid API key"}, rc=1)
             proc = _run_sync(sb)
             self.assertFailed(proc)
-            titles = " ".join(_curl_calls(sb))
+            titles = " ".join(_ntfy_calls(sb))
             self.assertIn("clé Anthropic refusée", titles)
             self.assertNotIn("Authentification Garmin", titles)
 

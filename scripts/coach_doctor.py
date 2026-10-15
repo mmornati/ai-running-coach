@@ -926,12 +926,12 @@ def check_ntfy(config: dict) -> dict:
     if provider != "ntfy":
         return build_check(
             check_id, "warning", f"Fournisseur de notification inconnu : « {provider} ».",
-            fix="scripts/setup-ntfy.sh",
+            fix="scripts/arc_notify.py setup",
         )
     topic = notifications.get("ntfy_topic", "")
     if not topic:
         return build_check(
-            check_id, "warning", "ntfy activé mais aucun topic configuré.", fix="scripts/setup-ntfy.sh",
+            check_id, "warning", "ntfy activé mais aucun topic configuré.", fix="scripts/arc_notify.py setup",
         )
     token_file = notifications.get("ntfy_token_file", "")
     if token_file:
@@ -939,7 +939,7 @@ def check_ntfy(config: dict) -> dict:
         if not token_path.is_file():
             return build_check(
                 check_id, "warning", f"Fichier de token ntfy introuvable ({token_path}).",
-                fix="scripts/setup-ntfy.sh",
+                fix="scripts/arc_notify.py setup",
             )
     return build_check(check_id, "ok", "Notifications ntfy configurées.", fix=None)
 

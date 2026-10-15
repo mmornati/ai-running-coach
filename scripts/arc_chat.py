@@ -47,8 +47,6 @@ import sys
 import threading
 import time
 import traceback
-import urllib.error
-import urllib.request
 from collections import deque
 from datetime import date, datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -60,6 +58,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from arc_chat_backend import (EVENT_TYPES, BackendError, ChatBackend, TurnContext,  # noqa: E402
                               load_backend, payload_hash)
 from arc_chat_policy import Policy  # noqa: E402
+import arc_notify  # noqa: E402
 from coach_config import ConfigError, read_toml  # noqa: E402
 
 ENGINE = Path(__file__).resolve().parent.parent
@@ -148,15 +147,9 @@ def load_language(workspace: Path, sections: Optional[dict] = None) -> str:
 
 
 def load_notifications(workspace: Path, sections: Optional[dict] = None) -> dict:
-    """Section `[notifications]` (ntfy) — mêmes clés que `scripts/notify.sh`."""
+    """Section `[notifications]` (ntfy), lue par `arc_notify.settings`."""
     raw = (sections if sections is not None else _merged_sections(workspace)).get("notifications", {})
-    token_file = str(raw.get("ntfy_token_file") or "")
-    return {
-        "provider": str(raw.get("provider") or "none"),
-        "ntfy_url": str(raw.get("ntfy_url") or "https://ntfy.sh").rstrip("/"),
-        "ntfy_topic": str(raw.get("ntfy_topic") or ""),
-        "ntfy_token_file": os.path.expanduser(token_file) if token_file else "",
-    }
+    return arc_notify.settings(raw)
 
 
 def parse_llm_env(text: str) -> dict:
@@ -708,26 +701,8 @@ def build_actions(public_url: str, approval_id: str, tokens: Optional[dict]) -> 
 
 def send_ntfy(notif: dict, title: str, body: str, actions: str = "", timeout: float = 10) -> bool:
     """Envoie une notification ntfy ; ne lève jamais (le service ne doit pas tomber pour un push)."""
-    if notif.get("provider") != "ntfy" or not notif.get("ntfy_topic"):
-        return False
-    headers = {"Title": title, "Priority": "4", "Tags": "runner"}
-    if actions:
-        headers["Actions"] = actions
-    if notif.get("ntfy_token_file"):
-        try:
-            token = Path(notif["ntfy_token_file"]).read_text(encoding="utf-8").strip()
-            headers["Authorization"] = f"Bearer {token}"
-        except OSError:
-            log("ntfy : fichier token illisible")
-            return False
-    url = f"{notif['ntfy_url']}/{notif['ntfy_topic']}"
-    request = urllib.request.Request(url, data=body.encode("utf-8"), headers=headers, method="POST")
-    try:
-        with urllib.request.urlopen(request, timeout=timeout):
-            return True
-    except (urllib.error.URLError, OSError, ValueError) as exc:
-        log(f"ntfy : envoi impossible ({type(exc).__name__})")
-        return False
+    return arc_notify.send(notif, title, body, priority="4", tags="runner", actions=actions,
+                           timeout=timeout, on_error=lambda message: log(message))
 
 
 # ---------------------------------------------------------------------------

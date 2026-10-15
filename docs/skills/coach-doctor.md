@@ -22,7 +22,7 @@ coach doctor — /chemin/vers/votre/workspace
 ℹ️ daily_sync_scheduled   Aucun LaunchAgent daily-sync — synchronisation Garmin manuelle uniquement.
     → correctif : ./install.sh --daily-sync
 ⚠️ ntfy_configured        ntfy activé mais aucun topic configuré.
-    → correctif : scripts/setup-ntfy.sh
+    → correctif : scripts/arc_notify.py setup
 
 Au moins une vérification est en échec (❌) — voir les correctifs ci-dessus.
 ```

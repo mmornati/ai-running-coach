@@ -102,5 +102,5 @@ changez pas les noms de champs sans mettre à jour les deux.
   récente. `--no-probe-ow` le garde hors ligne (athlète sans réseau). Hors de cette
   option de configuration, ne parlez pas d'Open Wearables : le contrôle reste un ℹ️.
 - Il ne remplace pas `/coach-setup` (configuration initiale) ni
-  `scripts/setup-ntfy.sh` (configuration des notifications) — il vous dit
+  `scripts/arc_notify.py setup` (configuration des notifications) — il vous dit
   seulement lequel lancer.

@@ -9,13 +9,12 @@ existe — avant d'envoyer la notification.
 
 Ces tests stubbent `claude` (comme `TestAuthFailureExplicitNotification` dans
 `tests/install/test_token_expiry_alert.py`) pour fixer la sortie de l'agent et
-vérifient ce qui atteint réellement `curl` (donc `scripts/notify.sh`), pas ce
-que l'agent aurait dû produire.
+vérifient ce qui atteint réellement le faux serveur ntfy du bac à sable (envoyé
+par `scripts/arc_notify.py`), pas ce que l'agent aurait dû produire.
 """
 
 from __future__ import annotations
 
-import re
 from pathlib import Path
 
 from tests.lib.asserts import InstallAsserts
@@ -51,43 +50,19 @@ class ResumeCapSandbox(InstallAsserts):
         fake_bin = self._fake_claude(sb, stdout, exit_code=exit_code)
         return sb.script("daily-sync.sh", PATH=self._path_with_fake_claude(fake_bin))
 
-    def _notified_message(self, sb: Sandbox) -> str:
-        """Corps envoyé à `curl --data-binary` (donc le message de
-        `scripts/notify.sh`).
+    def _notification(self, sb: Sandbox) -> dict:
+        """La seule notification du run, telle que reçue par le faux ntfy du bac à sable."""
+        calls = sb.ntfy_calls()
+        self.assertEqual(len(calls), 1, f"attendu exactement 1 notification, reçu : {calls}")
+        return calls[0]
 
-        `Sandbox.stub_calls` découpe `$ARC_STUB_LOG` ligne à ligne : un
-        message MULTI-LIGNE (le bloc ```resume```, justement) y casse la
-        convention `nom<TAB>args` dès sa deuxième ligne — chaque ligne
-        supplémentaire du message se retrouve sans tabulation, donc rejetée
-        par `stub_calls`. On lit le journal brut à la place : un seul appel
-        `curl` est attendu par run (asserté ci-dessous), toujours le DERNIER
-        écrit (la notification finale) — tout ce qui suit `--data-binary `
-        dans le fichier est le message PUIS l'URL ntfy cible
-        (`curl ... --data-binary "$MESSAGE" "$URL"`, un argument de plus,
-        collé au message par un simple espace puisque la substitution de
-        commande `resume="$(enforce_resume_cap "$resume")"` a déjà mangé le
-        saut de ligne final du message). On retire cette URL avec un
-        `rsplit(" ", 1)` — le DERNIER espace du journal sépare forcément le
-        message de cette URL, quel que soit le nombre d'espaces internes au
-        message lui-même.
-        """
-        raw = sb.stub_log.read_text()
-        self.assertEqual(
-            raw.count("curl\t"), 1, f"attendu exactement 1 appel curl, journal :\n{raw}"
-        )
-        marker = "--data-binary "
-        self.assertIn(marker, raw, f"aucun --data-binary dans le journal :\n{raw}")
-        tail = raw.split(marker, 1)[1]
-        message, _, _url_and_trailing_newline = tail.rpartition(" ")
-        return message
+    def _notified_message(self, sb: Sandbox) -> str:
+        """Corps de la notification (le bloc ```resume``` après plafonnement)."""
+        return self._notification(sb)["body"]
 
     def _notified_priority(self, sb: Sandbox) -> int:
-        """La valeur de `-H "Priority: N"` du seul appel `curl` du run (voir
-        `scripts/notify.sh`)."""
-        raw = sb.stub_log.read_text()
-        match = re.search(r"Priority:\s*(\d+)", raw)
-        self.assertIsNotNone(match, f"aucun en-tête Priority dans le journal :\n{raw}")
-        return int(match.group(1))
+        """En-tête `Priority` de la notification."""
+        return int(self._notification(sb)["headers"]["Priority"])
 
 
 class TestResumeCapPreservesPourquoi(ResumeCapSandbox):
