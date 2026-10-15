@@ -75,6 +75,7 @@ nav:
   - Installation:
       - Application macOS: macos.md
       - Démarrage rapide: quickstart.md
+      - Choisir son IA: choisir-son-ia.md
       - Configuration: configuration.md
       - Configuration Garmin: garmin-setup.md
       - Configuration Intervals.icu: intervals-setup.md

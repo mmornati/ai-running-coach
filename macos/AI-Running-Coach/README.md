@@ -11,6 +11,15 @@ officiel de l'assistant sélectionné, puis le bouton quotidien ouvre Terminal a
 bon emplacement et lance directement l'assistant. Gemini utilise un runtime
 Node privé à l'application afin de ne pas imposer Homebrew ou Node à l'utilisateur.
 
+Pour le chat intégré, « Connecter OpenRouter » (choix par défaut) lance
+`scripts/arc_llm.py connect openrouter --json` juste après l'extraction du moteur : une page
+OpenRouter s'ouvre dans le navigateur (OAuth PKCE), la clé est écrite dans
+`~/.config/ai-running-coach/llm.env` sans jamais passer par l'application. L'écran d'installation
+affiche l'adresse d'autorisation si le navigateur ne s'est pas ouvert et un bouton « Annuler la
+connexion ». Un échec propose de réessayer, de coller une clé (« J'ai déjà une clé ») ou de
+continuer sans le chat ; une clé déjà présente dans `llm.env` n'est jamais redemandée. Gemini CLI
+est présenté avec la mention « clé API ou licence payante » (voir `docs/choisir-son-ia.md`).
+
 Le compte Garmin ou Intervals.icu est connecté dans une fenêtre Terminal séparée. C'est volontaire : les identifiants et le code MFA restent saisis directement dans l'outil d'authentification d'origine.
 
 ## Construire le DMG

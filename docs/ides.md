@@ -62,6 +62,12 @@ Le script crée des **liens symboliques** depuis `.opencode/` vers `agents/` et 
 
 ## Gemini CLI
 
+!!! warning "Compte Google gratuit"
+    Depuis le 18 juin 2026, Gemini CLI est remplacé par Antigravity CLI pour les comptes non payants
+    et les utilisateurs Google One ([page officielle](https://geminicli.com/docs/resources/quota-and-pricing/)).
+    Il reste utilisable avec une clé API Gemini (250 requêtes par jour, Flash ; données du palier
+    gratuit utilisables par Google) ou une licence payante. Voir [Choisir son IA](choisir-son-ia.md#gemini-attention).
+
 - **Commandes** : `.gemini/commands/*.toml`
 
 Le script copie les templates depuis `config/gemini/commands/` vers `.gemini/commands/`.

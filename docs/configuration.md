@@ -578,7 +578,7 @@ pour les changer, sauf `mode`/`times`, voir [Le coach dans la poche](mobile.md))
 | `api_key_env` | **Nom** de la variable qui porte la clé, lue dans `~/.config/ai-running-coach/llm.env` (mode 600). Non vide = mode API, facturé au token ; vide (défaut) = abonnement. Jamais la clé elle-même. |
 | `daily_budget_eur` | Plafond de dépense quotidien (défaut `0.5`), appliqué seulement quand le runner rapporte son coût (`opencode`, `claude` en mode API). Atteint : run sauté, une notification par jour. |
 
-`./install.sh --llm openrouter|anthropic|openai` écrit ces clés (et `[chat]`) ;
+`./install.sh --llm openrouter|anthropic|openai` écrit ces clés (et `[chat]`) ; `--connect` (avec `--llm openrouter`, interactif) obtient la clé par OAuth et l'écrit dans `llm.env` ([Choisir son IA](choisir-son-ia.md)) ;
 `./install.sh --sync-runner CLI` choisit l'assistant headless et `./install.sh --sync-budget EUR` écrit `daily_budget_eur`. Détails, budget et données de
 santé : [Synchronisation sur OpenRouter](mobile.md#synchronisation-sur-openrouter-ou-toute-api-compatible-openai).
 

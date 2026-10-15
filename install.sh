@@ -122,6 +122,8 @@ GARMIN_NUTRITION_TOOLS="get_custom_foods,get_custom_food_serving_units,get_nutri
 # L'ancien « deepseek/deepseek-chat » (V3) annonçait des écritures jamais faites. Forme OpenCode « fournisseur/modèle »
 # (https://opencode.ai/docs/providers). Haiku 4.5 pour le cron (répétitif, contrat
 # vérifié par arc_index.py --validate), Sonnet 5.5 pour le chat.
+# Catalogue complet (source de vérité) : python3 scripts/arc_llm.py providers --json ; un test vérifie
+# que ces constantes y concordent (install.sh doit fonctionner sans python3).
 LLM_OPENROUTER_MODEL="openrouter/deepseek/deepseek-v4.1-flash"
 LLM_ANTHROPIC_CHAT_MODEL="claude-sonnet-5-5"
 LLM_ANTHROPIC_SYNC_MODEL="claude-haiku-4-5"
@@ -181,6 +183,7 @@ HEALTH_EFFECTIVE="primary" # résolu par resolve_health_source()
 LLM_PROVIDER=""    # --llm openrouter|anthropic|openai — chat + sync sur une API
 LLM_MODEL_ARG=""   # --model ID (avec --llm)
 LLM_BASE_URL_ARG="" # --base-url URL (avec --llm openai : API compatible OpenAI)
+LLM_CONNECT=0      # --connect : connexion OpenRouter en un clic (avec --llm openrouter), interactif seulement
 DO_CHAT=0          # --chat : service du chat avec le coach
 CHAT_BUDGET=""     # --chat-budget EUR
 DO_TELEGRAM=0      # --telegram : bot Telegram (retours en un geste, #174)
@@ -253,6 +256,7 @@ Usage :
   ./install.sh --no-remote-control # désactive Remote Control (annule --remote-control d'un préréglage)
   ./install.sh --llm FOURNISSEUR  # openrouter | anthropic | openai — chat ET sync sur une API (voir ci-dessous)
   ./install.sh --model ID         # avec --llm : modèle (openrouter : ID OpenRouter ; anthropic : modèle du chat)
+  ./install.sh --connect          # avec --llm openrouter : se connecte à OpenRouter dans le navigateur (aucune clé à copier)
   ./install.sh --base-url URL     # avec --llm openai : API compatible OpenAI autre que api.openai.com
   ./install.sh --chat             # active [chat] et installe le service (scripts/coach-chat.sh)
   ./install.sh --chat-budget EUR  # plafond quotidien du chat ([chat].daily_budget_eur)
@@ -273,6 +277,11 @@ API n'est jamais écrite dans la config : ~/.config/ai-running-coach/llm.env
 ATTENTION : n'exportez PAS ANTHROPIC_API_KEY dans votre shell ou votre profil :
 cela empêche Remote Control de fonctionner (docs/mobile.md). Le chat et la sync
 la lisent dans llm.env et ne la passent qu'à leur propre process.
+
+--connect (avec --llm openrouter) lance « scripts/arc_llm.py connect openrouter » : le navigateur
+s'ouvre, vous autorisez le coach, la clé est écrite dans llm.env (mode 600) sans que vous la
+voyiez. Interactif seulement : sans terminal, la commande à lancer vous est indiquée ; avec
+--dry-run, rien n'est ouvert. Sans --connect, rien ne change.
 
 --telegram active [telegram].enabled et installe le service du bot. Le jeton du
 bot (BotFather) n'est JAMAIS une option de ligne de commande : ~/.config/ai-running-coach/telegram.env
@@ -437,6 +446,7 @@ while [[ $# -gt 0 ]]; do
         --llm) need_value "$@"; LLM_PROVIDER="$2"; shift 2 ;;
         --model) need_value "$@"; LLM_MODEL_ARG="$2"; shift 2 ;;
         --base-url) need_value "$@"; LLM_BASE_URL_ARG="$2"; shift 2 ;;
+        --connect) LLM_CONNECT=1; shift ;;
         --chat) DO_CHAT=1; shift ;;
         --chat-budget) need_value "$@"; CHAT_BUDGET="$2"; shift 2 ;;
         --telegram) DO_TELEGRAM=1; shift ;;
@@ -479,6 +489,9 @@ if [[ -n "$LLM_PROVIDER" ]]; then
     fi
 elif [[ -n "$LLM_MODEL_ARG" || -n "$LLM_BASE_URL_ARG" ]]; then
     die "--model et --base-url s'utilisent avec --llm (voir --help)."
+fi
+if [[ "$LLM_CONNECT" -eq 1 && "$LLM_PROVIDER" != "openrouter" ]]; then
+    die "--connect s'utilise avec --llm openrouter (connexion en un clic ; pour les autres fournisseurs, collez la clé dans llm.env — docs/choisir-son-ia.md)."
 fi
 
 # Valide $CYCLE_TRACKING (même principe que validate_source).
@@ -2622,6 +2635,35 @@ persist_llm() {
     fi
 }
 
+# --connect : connexion OpenRouter en un clic (arc_llm.py), en TOUT DERNIER (navigateur et saisie
+# du code supposent l'athlète présent ; le reste de l'installation ne l'attend pas). Jamais en
+# --dry-run, jamais sans terminal. Le service du chat lit llm.env au démarrage : redémarré après succès.
+connect_llm() {
+    [[ "$LLM_CONNECT" -eq 1 ]] || return 0
+    local script="$PROJECT_ROOT/scripts/arc_llm.py" port
+    if [[ "$DRY_RUN" -eq 1 ]]; then
+        printf '%s\n' "${C_YELLOW}[dry-run]${C_RESET} python3 $(printf '%q' "$script") connect openrouter (ouvre le navigateur ; clé écrite dans $LLM_ENV_FILE)"
+        return 0
+    fi
+    if [[ ! -t 0 || ! -t 1 ]]; then
+        warn "--connect demande un terminal interactif : lancez ensuite « python3 $(printf '%q' "$script") connect openrouter » (ajoutez --headless sur une machine sans navigateur)."
+        return 0
+    fi
+    have python3 || { warn "python3 absent : impossible de lancer la connexion OpenRouter."; return 0; }
+    log "Connexion à OpenRouter (navigateur)"
+    if ARC_LLM_ENV="$LLM_ENV_FILE" python3 "$script" connect openrouter; then
+        port="$(effective_value chat port)"
+        if [[ "$DO_CHAT" -eq 1 ]] || { [[ "$(effective_value chat enabled)" == "true" ]] && have curl \
+            && curl -fsS --max-time 3 "http://127.0.0.1:${port:-8766}/api/chat/healthz" >/dev/null 2>&1; }; then
+            log "Redémarrage du chat pour qu'il lise la nouvelle clé"
+            ARC_WORKSPACE="$WORKSPACE_ROOT" "$PROJECT_ROOT/scripts/coach-chat.sh" restart \
+                || warn "Redémarrage du chat impossible : relancez scripts/coach-chat.sh restart."
+        fi
+    else
+        warn "Connexion OpenRouter non terminée : relancez « python3 $(printf '%q' "$script") connect openrouter » ou collez la clé dans $(printf '%q' "$LLM_ENV_FILE")."
+    fi
+}
+
 persist_budgets() {
     [[ -z "$CHAT_BUDGET" ]] || llm_set chat daily_budget_eur "$CHAT_BUDGET" float
     [[ -z "$SYNC_BUDGET" ]] || llm_set sync daily_budget_eur "$SYNC_BUDGET" float
@@ -3234,11 +3276,12 @@ main() {
     verify
     verify_openwearables
     persist_install_args
+    connect_llm
 }
 
 # Mémorise les options de configuration de cette installation, une par ligne, pour que
 # scripts/update-coach.sh (/update-coach) relance install.sh à l'identique après un git pull.
-# --no-auth/--auth/--dry-run ne décrivent pas la configuration : jamais mémorisés. Une relance
+# --no-auth/--auth/--dry-run/--connect (action ponctuelle interactive) ne décrivent pas la configuration : jamais mémorisés. Une relance
 # sans autre option (« ./install.sh --no-auth ») garde les options déjà mémorisées — sinon elle
 # effacerait, par exemple, le --daily-sync que la mise à jour doit rejouer. Écrit seulement après
 # une installation complète, jamais en dry-run. Aucun secret : install.sh ne reçoit que des chemins.
@@ -3257,7 +3300,7 @@ persist_install_args() {
             --workspace|--ow-key-file) [[ "$arg" == /* ]] || arg="$INSTALL_CWD/${arg#./}" ;;
         esac
         case "$arg" in
-            --no-auth|--auth|--dry-run) ;;
+            --no-auth|--auth|--dry-run|--connect) ;;
             *) kept+=("$arg") ;;
         esac
         prev="$arg"

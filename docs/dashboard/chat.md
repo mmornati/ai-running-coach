@@ -182,10 +182,14 @@ un seul fournisseur pour tout. Si un exécuteur était déjà configuré autreme
 sections restent indépendantes : vous pouvez ensuite remettre la synchronisation sur
 l'abonnement (`[sync].runner = "claude"`) et garder le chat sur l'API.
 
+Pas encore de clé ? Avec OpenRouter, `./install.sh --llm openrouter --connect` ouvre le navigateur et
+écrit la clé à votre place (aucune copie). Voir [Choisir son IA](../choisir-son-ia.md).
+
 Options utiles :
 
 | Option | Effet |
 |---|---|
+| `--connect` | avec `--llm openrouter` : connexion OpenRouter en un clic (interactif) |
 | `--model ID` | autre modèle (ex. `--model anthropic/claude-sonnet-5.5` sur OpenRouter) |
 | `--base-url URL` | avec `--llm openai` : Mistral, Ollama, vLLM… |
 | `--chat-budget EUR` | plafond quotidien du chat (défaut 2 €) |

@@ -24,7 +24,7 @@ enum IDEChoice: String, CaseIterable, Identifiable {
         case .claude: return "Claude Code"
         case .copilot: return "GitHub Copilot"
         case .opencode: return "OpenCode"
-        case .gemini: return "Gemini CLI"
+        case .gemini: return "Gemini CLI (clé API ou licence payante)"
         case .cursor: return "Cursor"
         case .windsurf: return "Windsurf"
         }
@@ -117,6 +117,20 @@ enum ChatChoice: String, CaseIterable, Identifiable {
     }
 }
 
+/// Comment l'athlète donne accès à OpenRouter : connexion en un clic (OAuth, scripts/arc_llm.py)
+/// ou clé déjà créée.
+enum OpenRouterAccess: String, CaseIterable, Identifiable {
+    case connect, manualKey
+
+    var id: String { rawValue }
+    var title: String {
+        switch self {
+        case .connect: return "Connecter OpenRouter"
+        case .manualKey: return "J’ai déjà une clé"
+        }
+    }
+}
+
 struct ShoeChoice {
     var name = ""
     var purchaseDate = ""
@@ -183,6 +197,7 @@ struct SetupChoices {
     var intermediateRaces = ""
     var medicalLimits = ""
     var chatChoice: ChatChoice = .integrated
+    var openRouterAccess: OpenRouterAccess = .connect
     var openRouterAPIKey = ""
     var chatBudget = "1.00"
     var source: DataSource = .garmin
@@ -244,8 +259,10 @@ struct SetupChoices {
 
     var chatIsCompleteEnough: Bool {
         guard chatChoice == .integrated else { return true }
-        let key = openRouterAPIKey.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !key.isEmpty, !key.contains("\n"), !key.contains("\r") else { return false }
+        if openRouterAccess == .manualKey {
+            let key = openRouterAPIKey.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !key.isEmpty, !key.contains("\n"), !key.contains("\r") else { return false }
+        }
         guard let budget = Double(chatBudget.replacingOccurrences(of: ",", with: ".")) else { return false }
         return budget > 0
     }
@@ -273,6 +290,28 @@ private final class OutputBuffer: @unchecked Sendable {
         return String(data: snapshot, encoding: .utf8) ?? ""
     }
 }
+
+/// Issue de la connexion OpenRouter (arc_llm.py : 0 connecté, 6 clé écrite mais non vérifiée).
+private enum ConnectOutcome {
+    case connected(String)
+    case unverified(String)
+    case failed(String)
+}
+
+/// Découpe un flux en lignes complètes : une ligne peut arriver en plusieurs lectures.
+private final class LineBuffer: @unchecked Sendable {
+    private var pending = ""
+    private let lock = NSLock()
+    func append(_ data: Data) -> [String] {
+        lock.lock(); defer { lock.unlock() }
+        pending += String(decoding: data, as: UTF8.self)
+        var lines = pending.components(separatedBy: "\n")
+        pending = lines.removeLast()
+        return lines.filter { !$0.isEmpty }
+    }
+}
+
+private enum ConnectRecovery { case retry, manualKey, skipChat }
 
 private struct ProcessResult {
     let code: Int32
@@ -316,6 +355,10 @@ final class CoachAppModel: ObservableObject {
     @Published var manualSyncStatus = ""
     @Published var manualSyncFailed = false
 
+    @Published var connecting = false
+    @Published var connectURL: URL?
+    private var connectProcess: Process?
+    private var connectCancelled = false
     private var dashboardProcess: Process?
     private var dashboardBaseURL: URL?
     private let fm = FileManager.default
@@ -351,6 +394,9 @@ final class CoachAppModel: ObservableObject {
     }
 
     var integratedChatEnabled: Bool { defaults.bool(forKey: "integratedChatEnabled") }
+    /// Chat intégré choisi mais pas encore connecté : ni chat ni synchronisation en arrière-plan
+    /// (elle passerait par OpenCode, sans clé) tant que « Connecter OpenRouter » n'a pas abouti.
+    var integratedChatPending: Bool { defaults.bool(forKey: "integratedChatPending") }
     var externalAssistantTitle: String { choices.ide.title }
     var syncStatusDetail: String {
         integratedChatEnabled ? "Automatique" : "Après la 1re connexion à \(externalAssistantTitle)"
@@ -416,12 +462,20 @@ final class CoachAppModel: ObservableObject {
 
         Task {
             do {
+                var chatEnabled = selected.chatChoice == .integrated
                 try await ensureDeveloperTools()
                 try await installEngine()
                 if selected.chatChoice == .integrated {
                     progress = 0.16
                     progressTitle = "Préparation du chat avec le coach"
-                    try saveOpenRouterKey(selected.openRouterAPIKey)
+                    if selected.openRouterAccess == .connect {
+                        // Le moteur vient d'être extrait : arc_llm.py est disponible. La connexion
+                        // se fait avant l'activation du chat ; un échec propose de réessayer, de
+                        // coller une clé ou de continuer sans le chat (à connecter plus tard).
+                        chatEnabled = await obtainOpenRouterAccess()
+                    } else {
+                        try saveOpenRouterKey(selected.openRouterAPIKey)
+                    }
                     try await ensureOpenCode()
                 } else {
                     progress = 0.16
@@ -437,16 +491,18 @@ final class CoachAppModel: ObservableObject {
                     "--source", selected.source.rawValue,
                     "--ide", installationIDE.rawValue,
                     "--agents", selected.agents.joined(separator: ","),
-                    "--no-auth",
-                    "--daily-sync",
-                    "--sync-runner", selected.syncRunner
+                    "--no-auth"
                 ]
+                let chatPending = selected.chatChoice == .integrated && !chatEnabled
+                if !chatPending { args += ["--daily-sync", "--sync-runner", selected.syncRunner] }
                 if selected.chatChoice == .integrated {
-                    args += [
-                        "--llm", "openrouter",
-                        "--chat",
-                        "--chat-budget", selected.chatBudget.replacingOccurrences(of: ",", with: ".")
-                    ]
+                    args += ["--llm", "openrouter"]
+                    if chatEnabled {
+                        args += [
+                            "--chat",
+                            "--chat-budget", selected.chatBudget.replacingOccurrences(of: ",", with: ".")
+                        ]
+                    }
                 }
                 let result = try await runProcess(
                     executable: "/bin/bash",
@@ -465,7 +521,11 @@ final class CoachAppModel: ObservableObject {
 
                 defaults.set(selected.workspace, forKey: "workspace")
                 defaults.set(selected.source.rawValue, forKey: "source")
-                defaults.set(selected.chatChoice == .integrated, forKey: "integratedChatEnabled")
+                defaults.set(chatEnabled, forKey: "integratedChatEnabled")
+                defaults.set(chatPending, forKey: "integratedChatPending")
+                if chatPending {
+                    appendLog("Le chat ET la synchronisation en arrière-plan attendent la connexion OpenRouter : utilisez « Connecter OpenRouter » sur l’écran d’accueil.\n")
+                }
                 defaults.set(installationIDE.rawValue, forKey: "assistant")
                 defaults.set(bundleVersion, forKey: "engineVersion")
                 defaults.set(engineBuild, forKey: "engineBuild")
@@ -504,17 +564,16 @@ final class CoachAppModel: ObservableObject {
                 dashboardRunning = false
                 progress = 0.35
                 progressTitle = "Vérification des composants"
-                let args = [
+                var args = [
                     "python3", helper.path,
                     "--archive", archive.path, "--engine", engineURL.path,
                     "--workspace", workspaceURL.path, "--",
                     "--workspace", workspaceURL.path,
                     "--source", choices.source.rawValue,
-                    "--ide", integratedChatEnabled ? IDEChoice.opencode.rawValue : choices.ide.rawValue,
-                    "--no-auth",
-                    "--daily-sync",
-                    "--sync-runner", choices.syncRunner
+                    "--ide", integratedChatPending ? IDEChoice.opencode.rawValue : (integratedChatEnabled ? IDEChoice.opencode.rawValue : choices.ide.rawValue),
+                    "--no-auth"
                 ]
+                if !integratedChatPending { args += ["--daily-sync", "--sync-runner", choices.syncRunner] }
                 let result = try await runProcess(
                     executable: "/usr/bin/env",
                     arguments: args,
@@ -740,6 +799,210 @@ final class CoachAppModel: ObservableObject {
                 try? fm.moveItem(at: backup, to: engineURL)
             }
             throw error
+        }
+    }
+
+    /// Vrai si llm.env contient déjà une clé OpenRouter non vide (évite un doublon sur « Réessayer »).
+    private func hasOpenRouterKey() -> Bool {
+        let file = fm.homeDirectoryForCurrentUser.appendingPathComponent(".config/ai-running-coach/llm.env")
+        guard let text = try? String(contentsOf: file, encoding: .utf8) else { return false }
+        for raw in text.split(separator: "\n") {
+            var line = raw.trimmingCharacters(in: .whitespaces)
+            if line.hasPrefix("export ") { line = String(line.dropFirst(7)).trimmingCharacters(in: .whitespaces) }
+            if line.hasPrefix("OPENROUTER_API_KEY=") {
+                return !line.dropFirst("OPENROUTER_API_KEY=".count).trimmingCharacters(in: .whitespaces).isEmpty
+            }
+        }
+        return false
+    }
+
+    /// Obtient l'accès OpenRouter par connexion. Renvoie false si l'athlète choisit de continuer
+    /// sans le chat (il pourra se connecter plus tard).
+    private func obtainOpenRouterAccess() async -> Bool {
+        if hasOpenRouterKey() {
+            appendLog("Une clé OpenRouter est déjà enregistrée : connexion ignorée.\n")
+            return true
+        }
+        while true {
+            // Re-vérifié à chaque tentative : une tentative précédente a pu écrire la clé.
+            if hasOpenRouterKey() {
+                appendLog("Une clé OpenRouter est maintenant enregistrée : connexion terminée.\n")
+                return true
+            }
+            switch await connectOpenRouter() {
+            case .connected(let message):
+                appendLog("\(message)\n")
+                return true
+            case .unverified(let message):
+                appendLog("Attention : \(message)\n")
+                return true
+            case .failed(let message):
+                appendLog("\(message)\n")
+                var note = message
+                recovery: while true {
+                    switch askConnectionRecovery(note) {
+                    case .retry:
+                        break recovery
+                    case .manualKey:
+                        if let key = askManualKey(), (try? saveOpenRouterKey(key)) != nil { return true }
+                        note = "Clé vide ou invalide. Réessayez la connexion, collez une clé valide ou continuez sans le chat."
+                        appendLog("\(note)\n")
+                    case .skipChat:
+                        appendLog("Le chat intégré et la synchronisation en arrière-plan ne sont pas activés. Utilisez « Connecter OpenRouter » sur l’écran d’accueil pour les activer.\n")
+                        return false
+                    }
+                }
+            }
+        }
+    }
+
+    private func askConnectionRecovery(_ message: String) -> ConnectRecovery {
+        let alert = NSAlert()
+        alert.messageText = "La connexion à OpenRouter n’a pas abouti"
+        alert.informativeText = message
+        alert.addButton(withTitle: "Réessayer la connexion")
+        alert.addButton(withTitle: "J’ai déjà une clé")
+        alert.addButton(withTitle: "Continuer sans le chat")
+        switch alert.runModal() {
+        case .alertFirstButtonReturn: return .retry
+        case .alertSecondButtonReturn: return .manualKey
+        default: return .skipChat
+        }
+    }
+
+    private func askManualKey() -> String? {
+        let alert = NSAlert()
+        alert.messageText = "Clé OpenRouter"
+        alert.informativeText = "Collez votre clé. Elle reste sur ce Mac, dans un fichier privé."
+        let field = NSSecureTextField(frame: NSRect(x: 0, y: 0, width: 320, height: 24))
+        alert.accessoryView = field
+        alert.addButton(withTitle: "Enregistrer")
+        alert.addButton(withTitle: "Annuler")
+        guard alert.runModal() == .alertFirstButtonReturn else { return nil }
+        return field.stringValue
+    }
+
+    /// Écran d'accueil : connexion différée après un « Continuer sans le chat ». Une fois la clé
+    /// obtenue, install.sh active le chat et la synchronisation OpenCode.
+    func connectChatLater() {
+        guard !operationInProgress else { return }
+        wasUpdating = true
+        phase = .installing
+        progress = 0.05
+        progressTitle = "Connexion à OpenRouter"
+        log = ""
+        errorMessage = ""
+        Task {
+            do {
+                guard await obtainOpenRouterAccess() else { phase = .ready; return }
+                progress = 0.6
+                progressTitle = "Activation du chat et de la synchronisation"
+                let budget = choices.chatBudget.replacingOccurrences(of: ",", with: ".")
+                let result = try await runProcess(
+                    executable: "/bin/bash",
+                    arguments: [engineURL.appendingPathComponent("install.sh").path,
+                                "--workspace", workspaceURL.path,
+                                "--source", choices.source.rawValue,
+                                "--ide", IDEChoice.opencode.rawValue,
+                                "--no-auth", "--daily-sync", "--sync-runner", IDEChoice.opencode.rawValue,
+                                "--llm", "openrouter", "--chat", "--chat-budget", budget],
+                    directory: engineURL,
+                    streamOutput: true
+                )
+                guard result.code == 0 else { throw AppFailure("L’activation du chat s’est arrêtée (code \(result.code)).") }
+                defaults.set(true, forKey: "integratedChatEnabled")
+                defaults.set(false, forKey: "integratedChatPending")
+                progress = 1
+                progressTitle = "Chat connecté"
+                phase = .ready
+            } catch {
+                errorMessage = error.localizedDescription
+                appendLog("\nErreur : \(error.localizedDescription)\n")
+                phase = .failed
+            }
+        }
+    }
+
+    func cancelConnection() {
+        connectCancelled = true
+        connectProcess?.terminate()
+    }
+
+    /// Connexion OpenRouter en un clic : `arc_llm.py connect openrouter --json`. La clé est écrite
+    /// dans llm.env par le script ; l'application ne la voit jamais (la sortie n'en contient pas).
+    /// Les événements JSON (stderr) donnent l'adresse d'autorisation ; l'objet final est sur stdout.
+    private func connectOpenRouter() async -> ConnectOutcome {
+        progress = 0.18
+        progressTitle = "Connexion à OpenRouter : autorisez le coach dans votre navigateur"
+        appendLog("Connexion à OpenRouter : une page s’ouvre dans votre navigateur.\n")
+        connectCancelled = false
+        connectURL = nil
+        connecting = true
+        defer { connecting = false; connectURL = nil; connectProcess = nil }
+        let script = engineURL.appendingPathComponent("scripts/arc_llm.py").path
+        let directory = engineURL
+        let environment = processEnvironment()
+        return await withCheckedContinuation { (continuation: CheckedContinuation<ConnectOutcome, Never>) in
+            let process = Process()
+            let stdout = Pipe()
+            let stderr = Pipe()
+            let buffer = OutputBuffer()
+            let eventLines = LineBuffer()
+            process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
+            process.arguments = ["python3", script, "connect", "openrouter", "--json"]
+            process.currentDirectoryURL = directory
+            process.environment = environment
+            process.standardOutput = stdout
+            process.standardError = stderr
+            stdout.fileHandleForReading.readabilityHandler = { handle in
+                let data = handle.availableData
+                if !data.isEmpty { buffer.append(data) }
+            }
+            stderr.fileHandleForReading.readabilityHandler = { [weak self] handle in
+                let data = handle.availableData
+                guard !data.isEmpty else { return }
+                for line in eventLines.append(data) {
+                    guard let lineData = line.data(using: .utf8),
+                          let event = try? JSONSerialization.jsonObject(with: lineData) as? [String: Any],
+                          event["event"] as? String == "auth_url",
+                          event["browser_opened"] as? Bool == false,
+                          let raw = event["url"] as? String, let url = URL(string: raw) else { continue }
+                    Task { @MainActor in self?.connectURL = url }
+                }
+            }
+            process.terminationHandler = { [weak self] process in
+                stdout.fileHandleForReading.readabilityHandler = nil
+                stderr.fileHandleForReading.readabilityHandler = nil
+                buffer.append(stdout.fileHandleForReading.readDataToEndOfFile())
+                var final: [String: Any]?
+                for line in buffer.string().split(separator: "\n") {
+                    guard let data = line.data(using: .utf8),
+                          let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                          object["ok"] != nil else { continue }
+                    final = object
+                }
+                let message = (final?["message"] as? String) ?? "Réponse inattendue du script de connexion."
+                let code = process.terminationStatus
+                Task { @MainActor in
+                    if self?.connectCancelled == true {
+                        continuation.resume(returning: .failed("Connexion annulée."))
+                    } else if code == 0, final?["ok"] as? Bool == true {
+                        continuation.resume(returning: .connected(message))
+                    } else if code == 6 {
+                        continuation.resume(returning: .unverified(message))
+                    } else {
+                        continuation.resume(returning: .failed(message))
+                    }
+                }
+            }
+            do {
+                try process.run()
+                connectProcess = process
+            } catch {
+                stdout.fileHandleForReading.readabilityHandler = nil
+                stderr.fileHandleForReading.readabilityHandler = nil
+                continuation.resume(returning: .failed("Impossible de lancer la connexion : \(error.localizedDescription)"))
+            }
         }
     }
 
@@ -1562,19 +1825,37 @@ struct SetupView: View {
                         }
                         .pickerStyle(.segmented)
                         if model.choices.chatChoice == .integrated {
-                            Text("Vous retrouverez un bouton « Parler au coach » dans l’application. Ce chat utilise OpenRouter et nécessite une clé API facturée à l’usage ; votre plafond quotidien évite les surprises. La synchronisation automatique des données sportives sera également activée.")
+                            Text("Vous retrouverez un bouton « Parler au coach » dans l’application. Ce chat utilise OpenRouter, facturé à l’usage ; votre plafond quotidien évite les surprises. La synchronisation automatique des données sportives sera également activée.")
                                 .font(.callout).foregroundStyle(.secondary)
-                            HStack {
-                                Text("Clé OpenRouter").frame(width: 170, alignment: .leading)
-                                SecureField("sk-or-v1-…", text: $model.choices.openRouterAPIKey)
-                                Link("Créer une clé", destination: URL(string: "https://openrouter.ai/settings/keys")!)
+                            Picker("OpenRouter", selection: $model.choices.openRouterAccess) {
+                                ForEach(OpenRouterAccess.allCases) { Text($0.title).tag($0) }
+                            }
+                            .pickerStyle(.segmented)
+                            if model.choices.openRouterAccess == .connect {
+                                Text("Au moment de l’installation, une page OpenRouter s’ouvre : créez un compte ou connectez-vous, puis autorisez le coach. Aucune clé à copier.")
+                                    .font(.callout).foregroundStyle(.secondary)
+                                Text("Coût : environ 1 € par mois. Conseil : achetez 10 $ de crédit une fois, ce qui couvre environ un an de coaching.")
+                                    .font(.callout)
+                            } else {
+                                HStack {
+                                    Text("Clé OpenRouter").frame(width: 170, alignment: .leading)
+                                    SecureField("sk-or-v1-…", text: $model.choices.openRouterAPIKey)
+                                    Link("Créer une clé", destination: URL(string: "https://openrouter.ai/settings/keys")!)
+                                }
                             }
                             ProfileField(label: "Plafond par jour", placeholder: "1.00", text: $model.choices.chatBudget)
                             Text("La clé est enregistrée uniquement sur ce Mac dans un fichier privé. Les données de la conversation sont envoyées au fournisseur du modèle choisi.")
                                 .font(.caption).foregroundStyle(.secondary)
+                            Link("Santé : refuser les fournisseurs qui entraînent sur vos données (confidentialité OpenRouter)",
+                                 destination: URL(string: "https://openrouter.ai/settings/privacy")!)
+                                .font(.caption)
                         } else {
                             Picker("Assistant IA", selection: $model.choices.ide) {
                                 ForEach(IDEChoice.guidedCases) { Text($0.title).tag($0) }
+                            }
+                            if model.choices.ide == .gemini {
+                                Text("Gemini CLI a été remplacé par Antigravity CLI pour les comptes Google non payants (18 juin 2026). Il reste utilisable avec une clé API Gemini (palier gratuit : 250 requêtes par jour, Flash ; ces données peuvent être utilisées par Google, à éviter pour la santé) ou avec une licence payante.")
+                                    .font(.caption).foregroundStyle(.orange)
                             }
                             Text("L’application installe automatiquement l’assistant choisi. Ensuite, le bouton « Parler au coach » ouvre le bon dossier et lance l’assistant ; sa connexion s’affiche simplement au premier lancement.")
                                 .font(.caption).foregroundStyle(.secondary)
@@ -1646,6 +1927,16 @@ struct InstallingView: View {
                 ProgressView(value: model.progress)
                 Text("Gardez cette fenêtre ouverte. La première installation peut prendre quelques minutes.")
                     .font(.callout).foregroundStyle(.secondary)
+                if model.connecting {
+                    HStack(spacing: 12) {
+                        ProgressView().controlSize(.small)
+                        Text("En attente de l’autorisation dans votre navigateur…")
+                        Button("Annuler la connexion") { model.cancelConnection() }
+                    }
+                    if let url = model.connectURL {
+                        Link("Le navigateur ne s’est pas ouvert ? Ouvrir la page d’autorisation OpenRouter", destination: url)
+                    }
+                }
             }
             ScrollView {
                 Text(model.log.isEmpty ? "Préparation…" : model.log)
@@ -1702,8 +1993,29 @@ struct ReadyView: View {
                 }
             }
 
+            if model.integratedChatPending {
+                GroupBox {
+                    HStack {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Label("Le chat n’est pas encore connecté", systemImage: "exclamationmark.triangle.fill")
+                                .foregroundStyle(.orange)
+                            Text("Le chat et la synchronisation automatique de vos données attendent la connexion à OpenRouter. Environ 1 € par mois.")
+                                .font(.callout).foregroundStyle(.secondary)
+                        }
+                        Spacer()
+                        Button("Connecter OpenRouter") { model.connectChatLater() }.buttonStyle(.borderedProminent)
+                    }.padding(8)
+                }
+            }
+
             HStack(spacing: 12) {
-                if model.integratedChatEnabled {
+                if model.integratedChatPending {
+                    Button {
+                        model.launchDashboard()
+                    } label: {
+                        Label("Tableau de bord", systemImage: "chart.line.uptrend.xyaxis")
+                    }.buttonStyle(.borderedProminent).controlSize(.large)
+                } else if model.integratedChatEnabled {
                     Button {
                         model.launchDashboard(openChat: true)
                     } label: {

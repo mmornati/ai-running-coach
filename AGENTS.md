@@ -364,6 +364,14 @@ courbes allure/FC (`icu_get_pace_curves`, `icu_get_hr_curves`), réglages par
 sport (`icu_get_sport_settings`).
 **v5.6.0 :** `icu_update_athlete_notes` (écriture : remplace les notes libres du profil athlète intervals.icu) est un outil d'ÉCRITURE que le projet n'appelle **jamais** — refusé au run headless, quel que soit l'exécuteur (`scripts/lib/sync_tools.sh` : refus nommés Claude/Copilot/Cursor/Gemini ; permissions OpenCode `<serveur>_<outil>` générées par `daily-sync.sh`) et soumis à approbation dans le chat (`icu_update_*`, `scripts/arc_chat_policy.py`). Le seuil d'allure de course stocké en m/s (correctif amont) concerne `icu_get_sport_settings`/`icu_update_sport_settings`, que le projet n'utilise pas ; `icu_get_activity_streams` ajoute `stream_notes` (côté droit de `left_right_balance`), champ ignoré.
 
+## Connexion de l'IA (#265)
+
+`scripts/arc_llm.py` (stdlib, Python 3.9) : catalogue des fournisseurs (`providers [--json]`) et
+`connect openrouter [--headless] [--json]` (OAuth PKCE, clé écrite dans `llm.env` en mode 600, jamais
+affichée). `./install.sh --llm openrouter --connect` le lance en interactif seulement (jamais en
+`--dry-run`, jamais sans terminal, jamais mémorisé pour `/update-coach`). Les agents ne l'appellent
+pas et la sync headless n'ouvre jamais de navigateur. Arbre de décision : `docs/choisir-son-ia.md`.
+
 ## Telegram (#174, opt-in)
 
 `scripts/arc_telegram.py` (service `scripts/coach-telegram.sh`, `./install.sh --telegram`) est un
