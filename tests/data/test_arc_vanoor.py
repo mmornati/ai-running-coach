@@ -228,7 +228,7 @@ class TestCli(unittest.TestCase):
         self.config('[vanoor]\nexport = "on"\n')
         code, out = self.run_cli("week", "--week", "planning/Semaine_2030-03-04.md", stdin=self.week_request())
         self.assertEqual((code, out["status"]), (0, "written"))
-        path = self.ws / "exports/vanoor/semaine-2030-03-04.vanoor"
+        path = self.ws / "exports/vanoor/weeks/semaine-2030-03-04.vanoor"
         self.assertEqual(Path(out["path"]), path)
         self.assertEqual(V.validate_document(json.loads(path.read_text(encoding="utf-8"))), [])
         self.assertEqual([m["title"] for m in out["missing"]], ["Sortie longue", "Footing du soir"])
@@ -238,7 +238,7 @@ class TestCli(unittest.TestCase):
         code, out = self.run_cli("race", "--plan", "plan.json", "--name", "Trail des Écureuils",
                                  "--race-date", "2030-04-01", "--scenario", "realistic")
         self.assertEqual(code, 0)
-        self.assertEqual(Path(out["path"]), self.ws / "sync/Vanoor/course-2030-04-01-trail-des-ecureuils.vanoor")
+        self.assertEqual(Path(out["path"]), self.ws / "sync/Vanoor/races/course-2030-04-01-trail-des-ecureuils.vanoor")
         self.assertEqual(len(out["workouts"]), 1)
 
     def test_errors_are_reported_not_raised(self):

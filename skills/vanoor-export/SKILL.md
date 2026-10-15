@@ -96,7 +96,8 @@ Dire à l'athlète d'**attacher le GPX de la course** à la séance dans l'édit
 ## Ce que l'athlète doit savoir (le dire une fois, pas à chaque export)
 
 - **Import** : le fichier est dans `[vanoor].output_dir` (dossier iCloud Drive si l'athlète l'a
-  choisi, sinon `exports/vanoor/` du workspace) ; dans l'app iPhone, *Mes séances → + →
+  choisi, sinon `exports/vanoor/` du workspace), sous-dossier `weeks/` (semaines) ou `races/`
+  (plans de course) ; dans l'app iPhone, *Mes séances → + →
   Importer des séances*. Réimporter une semaine réécrite remplace à la main l'ancienne version
   dans l'app (le format n'a pas d'identifiant de séance).
 - **Pas de date** : Vanoor range par dossier, il n'y a pas de calendrier.

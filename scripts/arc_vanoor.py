@@ -79,6 +79,10 @@ CLIMB_TOLERANCE_S = 30
 DEFAULT_TOLERANCE_S = 20
 SCENARIOS = ("safe", "realistic", "ambitious")
 
+# Sous-dossiers de `output_dir` : les semaines et les plans de course ne se mélangent pas.
+WEEKS_SUBDIR = "weeks"
+RACES_SUBDIR = "races"
+
 LABELS = {
     "fr": {
         "climb": "Montée", "descent": "Descente", "flat": "Roulant", "walk": "marche",
@@ -108,8 +112,8 @@ class VanoorError(ValueError):
 
 def settings(workspace: Path) -> dict:
     """`[vanoor]` résolu (user.toml prime) : `export` (`on`/`off`, inconnu = `off`), `output_dir`
-    (vide = `<workspace>/exports/vanoor`, `~` développé, relatif = depuis le workspace) et la
-    langue des documents (libellés des étapes)."""
+    (vide = `<workspace>/exports/vanoor`, `~` développé, relatif = depuis le workspace ; les fichiers
+    vont dans ses sous-dossiers `weeks/` et `races/`) et la langue des documents (libellés des étapes)."""
     config = load_config(workspace)
     section = config.get("vanoor", {})
     export = section.get("export", "off")
@@ -450,7 +454,7 @@ def _emit(payload: dict) -> None:
     print(json.dumps(payload, ensure_ascii=False, indent=2))
 
 
-def _finish(doc: dict, conf: dict, filename: str, dry_run: bool, extra: dict) -> int:
+def _finish(doc: dict, conf: dict, subdir: str, filename: str, dry_run: bool, extra: dict) -> int:
     summary = [{"name": w["name"], "steps": len(w["steps"])} for w in doc["workouts"]]
     if dry_run:
         _emit({"status": "dry_run", "filename": filename, "workouts": summary, **extra, "document": doc})
@@ -459,7 +463,7 @@ def _finish(doc: dict, conf: dict, filename: str, dry_run: bool, extra: dict) ->
         _emit({"status": "disabled", "reason": "[vanoor].export n'est pas « on » : rien n'est écrit "
                                                "(--dry-run pour voir le fichier)"})
         return 2
-    path = write_document(doc, conf["output_dir"], filename)
+    path = write_document(doc, conf["output_dir"] / subdir, filename)
     _emit({"status": "written", "path": str(path), "workouts": summary, **extra})
     return 0
 
@@ -510,7 +514,8 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             except json.JSONDecodeError as exc:
                 raise VanoorError(f"entrée standard : JSON invalide ({exc.msg}, ligne {exc.lineno})") from exc
             doc, missing = build_week(week, request, conf["lang"])
-            return _finish(doc, conf, f"semaine-{week['week_start']}.vanoor", args.dry_run, {"missing": missing})
+            return _finish(doc, conf, WEEKS_SUBDIR, f"semaine-{week['week_start']}.vanoor", args.dry_run,
+                           {"missing": missing})
 
         plan_path = Path(args.plan)
         if not plan_path.is_absolute():
@@ -526,7 +531,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             raise VanoorError("aucun scénario commun à tous les segments du plan")
         doc, warnings = build_race(plan, name, scenarios, conf["lang"])
         filename = f"course-{race_date + '-' if race_date else ''}{slugify(name)}.vanoor"
-        return _finish(doc, conf, filename, args.dry_run, {"warnings": warnings})
+        return _finish(doc, conf, RACES_SUBDIR, filename, args.dry_run, {"warnings": warnings})
     except VanoorError as exc:
         _emit({"status": "error", "error": str(exc)})
         return 1

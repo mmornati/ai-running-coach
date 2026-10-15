@@ -24,14 +24,14 @@ Avec un `output_dir` dans iCloud Drive, le fichier apparaît directement dans l'
 
 ## Ce qui est exporté
 
-**Les séances de la semaine** (`semaine-<lundi>.vanoor`), à chaque validation de semaine par le coach :
+**Les séances de la semaine** (`weeks/semaine-<lundi>.vanoor`), à chaque validation de semaine par le coach :
 
 - seulement les séances `running` / `trail` encore planifiées ;
 - une étape par partie de la séance (échauffement, blocs, récupérations), à la durée ou à la distance ;
 - **vos** cibles : plage FC en bpm de votre profil, allure seulement quand la séance en donne une (mêmes cibles que pour Garmin, `arc_workout_targets.py`) ; jamais de zone générique ni de cible inventée ;
 - les efforts au ressenti (lignes droites, marche active en côte) sans cible, consigne dans le libellé.
 
-**Le plan de course** (`course-<date>-<nom>.vanoor`), écrit par le stratège de course :
+**Le plan de course** (`races/course-<date>-<nom>.vanoor`), écrit par le stratège de course :
 
 - une séance par scénario (prudent, réaliste, ambitieux) ;
 - une étape par segment du plan, à sa distance, avec l'allure du scénario (marge ±30 s/km en montée, ±20 s/km ailleurs — approximation du projet) ;
@@ -41,7 +41,7 @@ Attachez ensuite le GPX de la course à la séance dans Vanoor (onglet *Parcours
 
 ## Importer dans Vanoor
 
-1. Le fichier est dans `output_dir` (ou `exports/vanoor/` du workspace).
+1. Le fichier est dans `output_dir` (ou `exports/vanoor/` du workspace), sous-dossier `weeks/` pour les semaines, `races/` pour les plans de course.
 2. Sur l'iPhone : Vanoor → *Mes séances* → **+** → *Importer des séances* → choisir le fichier.
 3. Les séances apparaissent dans un dossier (« Semaine du 12/10 ») et passent sur la montre.
 
@@ -59,7 +59,7 @@ Attachez ensuite le GPX de la course à la séance dans Vanoor (onglet *Parcours
 ```bash
 python3 scripts/arc_vanoor.py week --week planning/Semaine_2026-10-12.md < structure.json   # séances
 python3 scripts/arc_vanoor.py race --plan planning/2026-10-20_plan_course_feodieres.md      # plan de course
-python3 scripts/arc_vanoor.py validate exports/vanoor/semaine-2026-10-12.vanoor             # vérification
+python3 scripts/arc_vanoor.py validate exports/vanoor/weeks/semaine-2026-10-12.vanoor       # vérification
 ```
 
 `--dry-run` affiche le fichier sans l'écrire. Tant que `[vanoor].export` n'est pas `on`, le script n'écrit rien (code de sortie 2). Bibliothèque standard uniquement.
