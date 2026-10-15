@@ -29,8 +29,6 @@ if [[ "${ARC_ENGINE_LOCKED:-}" != "1" ]]; then
     exec python3 "$ARC_ENGINE_ROOT/scripts/arc_engine_update.py" --workspace "$ARC_WORKSPACE" \
         --sync -- /bin/bash "$0" "$@"
 fi
-# shellcheck source=lib/sync_tools.sh
-source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib/sync_tools.sh"
 
 DRY_RUN=0
 RUNNER=""
@@ -44,6 +42,38 @@ while [[ $# -gt 0 ]]; do
         *) die "Option inconnue : $1 (voir --help)" ;;
     esac
 done
+
+# Source de données (#68) — [data].source, défaut garmin (voir AGENTS.md,
+# « Backends MCP », et install.sh --source). Décide le serveur MCP autorisé,
+# le libellé des notifications et la commande de renouvellement suggérée.
+SOURCE="$(toml_get data source garmin)"
+# Santé du bilan matinal (#220, épopée #216) — [health].source, défaut « primary » (rien ne change).
+# « openwearables » : l'agent lit la santé du jour chez Open Wearables (scripts/arc_openwearables.py,
+# lecture seule). Opt-in strict : sans cette valeur, aucun appel et aucun message OW dans ce script.
+HEALTH_SOURCE="$(toml_get health source primary | tr '[:upper:]' '[:lower:]' | tr -d '[:space:]')"
+HEALTH_OW=0
+SYNC_DENY_GARMIN_HEALTH=0
+if [[ "$HEALTH_SOURCE" == "openwearables" ]]; then
+    HEALTH_OW=1
+    # « Une seule source santé par jour » IMPOSÉE, pas seulement demandée : avec une santé Open Wearables
+    # et des activités Garmin, les outils santé Garmin sont refusés à l'exécuteur
+    # (scripts/arc_sync_tools.py : GARMIN_HEALTH_TOOLS). Avec intervals.icu on ne refuse RIEN :
+    # icu_get_wellness_for_date sert aussi à la phase du cycle ; la règle passe alors par le prompt.
+    [[ "$SOURCE" != "garmin" ]] || SYNC_DENY_GARMIN_HEALTH=1
+fi
+
+# Outils des serveurs sportifs, lecture vs écriture : listes de scripts/arc_sync_tools.py, partagées
+# avec install.sh (une seule source de vérité, quel que soit l'exécuteur). Lues en un appel AVANT
+# d'étendre le PATH (python3 du système). Un échec arrête la synchronisation : sans ces listes, aucun
+# refus d'écriture ne serait posé. Variables : SYNC_WRITE_TOOLS, SYNC_READ_TOOLS,
+# SYNC_HEALTH_DENIED_TOOLS, SYNC_DENY_TOOLS (source configurée), SYNC_GARMIN_WRITE_PREFIXES et les
+# écritures nommées de chaque serveur (SYNC_GARMIN/INTERVALS/STRAVA_WRITE_TOOLS).
+_sync_tools_args=(shell "$SOURCE")
+[[ "$SYNC_DENY_GARMIN_HEALTH" -eq 0 ]] || _sync_tools_args+=(--deny-health)
+_sync_tools_env="$(python3 "$ARC_ENGINE_ROOT/scripts/arc_sync_tools.py" "${_sync_tools_args[@]}")" \
+    || die "Listes d'outils illisibles (scripts/arc_sync_tools.py) — synchronisation abandonnée."
+eval "$_sync_tools_env"
+unset _sync_tools_args _sync_tools_env
 
 # cron/launchd démarrent avec un PATH minimal : ajoute les emplacements usuels
 # de claude, codex, uv et garmin-mcp.
@@ -91,24 +121,6 @@ SYNC_ARGS="lookback_days=$LOOKBACK"
 [[ -f "$SKILL_FILE" ]] || die "Skill introuvable : $SKILL_FILE"
 mkdir -p "$LOG_DIR"
 
-# Source de données (#68) — [data].source, défaut garmin (voir AGENTS.md,
-# « Backends MCP », et install.sh --source). Décide le serveur MCP autorisé,
-# le libellé des notifications et la commande de renouvellement suggérée.
-SOURCE="$(toml_get data source garmin)"
-# Santé du bilan matinal (#220, épopée #216) — [health].source, défaut « primary » (rien ne change).
-# « openwearables » : l'agent lit la santé du jour chez Open Wearables (scripts/arc_openwearables.py,
-# lecture seule). Opt-in strict : sans cette valeur, aucun appel et aucun message OW dans ce script.
-HEALTH_SOURCE="$(toml_get health source primary | tr '[:upper:]' '[:lower:]' | tr -d '[:space:]')"
-HEALTH_OW=0
-SYNC_DENY_GARMIN_HEALTH=0
-if [[ "$HEALTH_SOURCE" == "openwearables" ]]; then
-    HEALTH_OW=1
-    # « Une seule source santé par jour » IMPOSÉE, pas seulement demandée : avec une santé Open Wearables
-    # et des activités Garmin, les quatre outils santé Garmin sont refusés à l'exécuteur
-    # (scripts/lib/sync_tools.sh : SYNC_GARMIN_HEALTH_TOOLS). Avec intervals.icu on ne refuse RIEN :
-    # icu_get_wellness_for_date sert aussi à la phase du cycle ; la règle passe alors par le prompt.
-    [[ "$SOURCE" != "garmin" ]] || SYNC_DENY_GARMIN_HEALTH=1
-fi
 # Durcissement du run non surveillé : une consigne injectée dans une donnée synchronisée
 # (nom d'activité, description d'événement, fichier tiré par `git pull`) ne doit pas pouvoir
 # exécuter du Python arbitraire ni réécrire ce que cron exécutera ensuite.
@@ -143,10 +155,10 @@ elif [[ "$SOURCE" == "intervals" ]]; then
     # fichier local arbitraire, hors des règles `Edit(…)` ; `fit-download` reste le
     # chemin du projet). Les anciens noms sans préfixe (eddmann, avant #165) sont
     # aussi retirés : une installation pas encore mise à jour reste protégée.
-    # Liste partagée avec les autres exécuteurs : scripts/lib/sync_tools.sh.
+    # Liste partagée avec les autres exécuteurs : scripts/arc_sync_tools.py.
     CLAUDE_DISALLOWED=""
     # Ancien serveur eddmann : mêmes noms sans préfixe (+ `duplicate_event` au singulier).
-    for _tool in $(sync_write_tools intervals); do
+    for _tool in $SYNC_INTERVALS_WRITE_TOOLS; do
         CLAUDE_DISALLOWED+="mcp__intervals__${_tool},"
     done
     CLAUDE_DISALLOWED+="$PROTECTED_PATHS"
@@ -181,7 +193,7 @@ else
     # LIMITE (comme pour les écritures) : derrière la passerelle leanproxy, `invoke_tool` est un outil
     # unique non filtrable par sous-outil — seule la consigne du skill protège alors.
     if [[ "$SYNC_DENY_GARMIN_HEALTH" -eq 1 ]]; then
-        for _tool in $SYNC_GARMIN_HEALTH_TOOLS; do
+        for _tool in $SYNC_HEALTH_DENIED_TOOLS; do
             CLAUDE_DISALLOWED+=",mcp__garmin__${_tool}"
         done
     fi
@@ -252,7 +264,7 @@ import json, sys
 
 model, base_url, api_key_env, mcp_path = sys.argv[1:5]
 denied_health = sys.argv[5].split() if len(sys.argv) > 5 else []
-# Outils d ecriture NOMMES par type de serveur (scripts/lib/sync_tools.sh) : OpenCode les
+# Outils d ecriture NOMMES par type de serveur (scripts/arc_sync_tools.py) : OpenCode les
 # expose sous <serveur>_<outil>, p. ex. intervals_icu_create_event : les motifs par
 # prefixe ne les couvrent pas tous (icu_ en tete, noms a tirets de Strava).
 named_writes = {"garmin": sys.argv[6].split() if len(sys.argv) > 6 else [],
@@ -331,10 +343,8 @@ print(json.dumps(config, ensure_ascii=False, indent=2))
 
 opencode_config_json() {
     python3 -c "$OC_CONFIG_PY" "$SYNC_MODEL" "$SYNC_BASE_URL" "$API_KEY_ENV" "$MCP_CONFIG" \
-        "$(sync_health_denied_tools "$SOURCE" | tr '\n' ' ')" \
-        "$(sync_write_tools garmin | tr '\n' ' ')" \
-        "$(sync_write_tools intervals | tr '\n' ' ')" \
-        "$(sync_write_tools strava | tr '\n' ' ')"
+        "$SYNC_HEALTH_DENIED_TOOLS" "$SYNC_GARMIN_WRITE_TOOLS" \
+        "$SYNC_INTERVALS_WRITE_TOOLS" "$SYNC_STRAVA_WRITE_TOOLS"
 }
 
 # Configuration de sécurité propre au run Gemini. Le fichier est chargé comme
@@ -385,15 +395,14 @@ print(json.dumps({
 
 gemini_config_json() {
     python3 -c "$GEMINI_CONFIG_PY" "$ARC_WORKSPACE/.gemini/settings.json" "$MCP_SERVER_NAME" \
-        "$SYNC_GARMIN_WRITE_PREFIXES" "$(sync_read_tools "$SOURCE" | tr '\n' ' ')" \
-        "$(sync_deny_tools "$SOURCE" | tr '\n' ' ')"
+        "$SYNC_GARMIN_WRITE_PREFIXES" "$SYNC_READ_TOOLS" "$SYNC_DENY_TOOLS"
 }
 
 # Cursor : chaque outil d'écriture de la source est-il refusé (`Mcp(serveur:outil)`)
 # dans .cursor/cli.json ? Sans ces refus, `--force` les approuverait en headless.
 # Les refus santé Garmin (#220) se vérifient À PART (cursor_denies_health) : leur absence avertit, sans bloquer.
-cursor_denies_writes() { cursor_denies_list "$(sync_write_tools "$SOURCE" | tr '\n' ' ')"; }
-cursor_denies_health() { cursor_denies_list "$(sync_health_denied_tools "$SOURCE" | tr '\n' ' ')"; }
+cursor_denies_writes() { cursor_denies_list "$SYNC_WRITE_TOOLS"; }
+cursor_denies_health() { cursor_denies_list "$SYNC_HEALTH_DENIED_TOOLS"; }
 cursor_denies_list() {
     # shellcheck disable=SC2086  # un nom d'outil par mot (aucun ne contient d'espace)
     python3 -c '
@@ -596,7 +605,7 @@ build_command() {
                  --allow-tool=read --allow-tool=write
                  '--allow-tool=shell(python3:*)' "--allow-tool=$MCP_SERVER_NAME")
             local _tool
-            for _tool in $(sync_deny_tools "$SOURCE"); do
+            for _tool in $SYNC_DENY_TOOLS; do
                 CMD+=("--deny-tool=$MCP_SERVER_NAME($_tool)")
             done ;;
         opencode)
