@@ -53,7 +53,6 @@ Faits établis (voir `tests/data/fixtures/chat/opencode_*.json`, extraits du bin
 from __future__ import annotations
 
 import base64
-import dataclasses
 import http.client
 import json
 import os
@@ -265,45 +264,30 @@ class _Turn:
         self.budget_hit = False
         self.abort_at: Optional[float] = None
         self.usage_emitted = False
-        self.lease: Optional[Any] = None   # verrou du magasin (abonnement ChatGPT), voir _Lease
 
     def known_sessions(self) -> set:
         return {self.root} | self.children
 
 
 class _Lease:
-    """Verrou du magasin tenu par UN tour, relâché pendant les attentes d'approbation.
+    """Verrou du magasin tenu par UN tour, du début à la fin (attentes d'approbation comprises).
 
-    Pendant qu'une approbation attend l'athlète (jusqu'à 600 s), OpenCode n'envoie aucune requête :
-    rien ne peut rafraîchir le jeton, la synchronisation peut passer. On reprend le verrou avant de
-    répondre à OpenCode (il repartirait sinon sans verrou).
+    `close()` est idempotent et appelé dans un `finally` : le verrou ne survit jamais au tour.
+    Aucune relâche pendant une approbation (elle compliquait la reprise et fuyait le verrou) : une
+    synchronisation qui attend trop longtemps est simplement reportée au passage suivant.
     """
 
     def __init__(self, gate: Any) -> None:
         self.gate = gate
         self._lock = threading.Lock()
-        self._waits = 0
         self.held = False
 
     def acquire(self, timeout_s: float) -> bool:
-        self.held = self.gate.acquire(timeout_s)
-        return self.held
-
-    def suspend(self) -> None:
-        with self._lock:
-            self._waits += 1
-            first = self._waits == 1 and self.held
-            if first:
-                self.held = False
-        if first:
-            self.gate.release()
-
-    def resume(self) -> None:
-        with self._lock:
-            self._waits -= 1
-            last = self._waits == 0
-        if last:
-            self.held = self.gate.acquire(STORE_WAIT_S)
+        if self.gate.acquire(timeout_s):
+            with self._lock:
+                self.held = True
+            return True
+        return False
 
     def close(self) -> None:
         with self._lock:
@@ -698,7 +682,6 @@ class OpenCodeBackend(ChatBackend):
         provider_id, model_id = split_model(self._model())
         sid = self._session_id(ctx)
         turn = _Turn(ctx)
-        turn.lease = lease
         turn.root = sid
         events = self._open_events()
         try:
@@ -1039,23 +1022,6 @@ class OpenCodeBackend(ChatBackend):
                 turn.rejecting.get(sid, set()).discard(request_id)
                 turn.cond.notify_all()
 
-    @staticmethod
-    def _ctx_for_gate(turn: _Turn) -> TurnContext:
-        """Contexte dont l'attente d'approbation relâche le verrou du magasin (abonnement ChatGPT)."""
-        lease = turn.lease
-        if lease is None:
-            return turn.ctx
-        original = turn.ctx.request_approval
-
-        def waiting(*args: Any, **kwargs: Any) -> Any:
-            lease.suspend()
-            try:
-                return original(*args, **kwargs)
-            finally:
-                lease.resume()
-
-        return dataclasses.replace(turn.ctx, request_approval=waiting)
-
     def _answer_permission_guarded(self, sid: str, turn: _Turn, props: dict) -> None:
         try:
             self._answer_permission(sid, turn, props)
@@ -1103,7 +1069,7 @@ class OpenCodeBackend(ChatBackend):
             if call_id:
                 self._ensure_started(turn, call_id, name, inp, child)
             diff = parse_unified_diff(metadata["diff"]) if metadata.get("diff") and tool == "fs.write" else None
-            decision, message = gate(self._ctx_for_gate(turn), tool, cinput, diff)
+            decision, message = gate(ctx, tool, cinput, diff)
             if call_id:
                 turn.verdicts[call_id] = decision
             if decision == "pending":

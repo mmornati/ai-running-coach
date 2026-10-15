@@ -619,7 +619,7 @@ d'OpenCode — contenu des échanges compris : diagnostic seulement, fichier à 
 
 `./install.sh --llm chatgpt` (ou `copilot`) règle le **chat** (`backend = "opencode"`, `api_key_env = ""`,
 modèle du catalogue `python3 scripts/arc_llm.py providers`, **`opencode_data_dir`**) ; la **synchronisation**
-(`runner = "opencode"`, mêmes clés dans `[sync]`) n'est réglée que sur une installation neuve ou avec
+(`runner = "opencode"`, mêmes clés dans `[sync]`) n'est réglée que sur une installation neuve (aucune installation antérieure) ou avec
 `--sync-subscription`. Le même chemin est posé dans `[chat]` et dans `[sync]`
 (`~/.local/share/ai-running-coach/opencode`, mode 700, hors dépôt et hors du dossier de données ; un chemin
 relatif est résolu depuis le workspace). Deux clés,

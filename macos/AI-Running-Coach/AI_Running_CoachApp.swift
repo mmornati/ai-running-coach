@@ -430,6 +430,9 @@ final class CoachAppModel: ObservableObject {
     /// (elle passerait par OpenCode, sans clé) tant que « Connecter OpenRouter » n'a pas abouti.
     var integratedChatPending: Bool { defaults.bool(forKey: "integratedChatPending") }
 
+    /// Sondage de l'état de la connexion (un seul à la fois : un nouveau clic annule le précédent).
+    var subscriptionPoll: Task<Void, Never>?
+
     /// Magasin d'authentification OpenCode du coach (même chemin que `install.sh`, #266).
     var coachOpenCodeStore: URL {
         fm.homeDirectoryForCurrentUser.appendingPathComponent(".local/share/ai-running-coach/opencode", isDirectory: true)
@@ -562,7 +565,8 @@ final class CoachAppModel: ObservableObject {
                 if subscriptionChat {
                     // Pas de plafond en euros : rien n'est facturé au jeton.
                     args += ["--llm", selected.chatProvider.llmID, "--chat"]
-                    if selected.syncWithSubscription { args += ["--sync-subscription"] }
+                    // Case décochée : install.sh ne doit pas déplacer la synchronisation, même sur une installation neuve.
+                    args += [selected.syncWithSubscription ? "--sync-subscription" : "--no-sync-subscription"]
                 } else if selected.chatChoice == .integrated {
                     args += ["--llm", "openrouter"]
                     if chatEnabled {
@@ -646,7 +650,9 @@ final class CoachAppModel: ObservableObject {
                     "--ide", integratedChatPending ? IDEChoice.opencode.rawValue : (integratedChatEnabled ? IDEChoice.opencode.rawValue : choices.ide.rawValue),
                     "--no-auth"
                 ]
-                if !integratedChatPending { args += ["--daily-sync", "--sync-runner", choices.syncRunner] }
+                if !integratedChatPending && (savedChatProvider == nil || choices.syncWithSubscription) {
+                    args += ["--daily-sync", "--sync-runner", choices.syncRunner]
+                }
                 let result = try await runProcess(
                     executable: "/usr/bin/env",
                     arguments: args,
@@ -1481,8 +1487,10 @@ final class CoachAppModel: ObservableObject {
         try? process.run()
         // Rend l'état de la connexion observable : le jeton arrive pendant que l'athlète valide dans
         // son navigateur, sans que l'application change de premier plan. On sonde jusqu'à 10 minutes.
-        Task { @MainActor in
+        subscriptionPoll?.cancel()
+        subscriptionPoll = Task { @MainActor in
             for _ in 0..<200 {
+                if Task.isCancelled { return }
                 try? await Task.sleep(nanoseconds: 3_000_000_000)
                 self.objectWillChange.send()
                 if self.subscriptionConnected { break }

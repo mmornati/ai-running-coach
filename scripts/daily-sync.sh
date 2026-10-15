@@ -106,7 +106,7 @@ detect_subscription
 # Commande de reconnexion à afficher : `--data-dir` seulement si le magasin n'est pas celui par défaut.
 subscription_login_hint() {
     local cmd="python3 scripts/arc_llm.py login $SUBSCRIPTION_ID"
-    if [[ "$OC_DATA_DIR" != "$HOME/.local/share/ai-running-coach/opencode" ]]; then
+    if [[ "${OC_DATA_DIR%/}" != "${HOME%/}/.local/share/ai-running-coach/opencode" ]]; then
         cmd+=" --data-dir $(printf '%q' "$OC_DATA_DIR")"
     fi
     printf '%s' "$cmd"
@@ -1310,19 +1310,6 @@ main() {
     [[ -z "$LOCK_MARKER" ]] || rm -f "$LOCK_MARKER"
     raw_output="$("${exec_cmd[@]}" 2>>"$LOG_FILE")" || rc=$?
     restrict_garmin_tokens || true
-    if [[ "$OUTPUT_KIND" == "text" ]]; then
-        output="$raw_output"
-        printf '%s\n' "$output" >> "$LOG_FILE"
-    else
-        # Sortie JSON : le texte de l'agent d'abord (c'est lui que lisent
-        # extract_resume et detect_auth_failure), puis la sortie brute.
-        output="$(printf '%s\n' "$raw_output" | runner_output text)"
-        provider_error="$(printf '%s\n' "$raw_output" | runner_output error)"
-        printf '%s\n' "$output" >> "$LOG_FILE"
-        [[ -z "$provider_error" ]] || printf 'PROVIDER-ERREUR (%s) : %s\n' "$(provider_label)" "$provider_error" >> "$LOG_FILE"
-        printf '%s\n' "$raw_output" >> "$LOG_FILE"
-        record_spend "$(printf '%s\n' "$raw_output" | runner_output cost)"
-    fi
     if [[ -n "$LOCK_MARKER" && -e "$LOCK_MARKER" ]]; then
         # with-lock : le chat tient le magasin (un tour en cours). Rien n'a été lancé : ce n'est pas un
         # échec (pied de run à code 0, vue « Synchro » inchangée) et le prochain passage réessaie.
@@ -1338,6 +1325,19 @@ main() {
             : > "$postponed_marker"
         fi
         exit 0
+    fi
+    if [[ "$OUTPUT_KIND" == "text" ]]; then
+        output="$raw_output"
+        printf '%s\n' "$output" >> "$LOG_FILE"
+    else
+        # Sortie JSON : le texte de l'agent d'abord (c'est lui que lisent
+        # extract_resume et detect_auth_failure), puis la sortie brute.
+        output="$(printf '%s\n' "$raw_output" | runner_output text)"
+        provider_error="$(printf '%s\n' "$raw_output" | runner_output error)"
+        printf '%s\n' "$output" >> "$LOG_FILE"
+        [[ -z "$provider_error" ]] || printf 'PROVIDER-ERREUR (%s) : %s\n' "$(provider_label)" "$provider_error" >> "$LOG_FILE"
+        printf '%s\n' "$raw_output" >> "$LOG_FILE"
+        record_spend "$(printf '%s\n' "$raw_output" | runner_output cost)"
     fi
     # Pied de run : code et durée, lus par scripts/arc_sync_status.py (vue « Synchro »).
     echo "===== $(date '+%F %T') — fin code=$rc durée=$((SECONDS - run_started))s =====" >> "$LOG_FILE"

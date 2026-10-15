@@ -30,19 +30,23 @@ Module partagé (stdlib seule, Python 3.9 : l'application macOS peut l'appeler a
       Présence (jamais la valeur) du jeton dans le magasin : code 0 présent, 1 absent.
 
 Magasin d'authentification dédié (#266). `[chat].opencode_data_dir` et `[sync].opencode_data_dir`
-(même chemin, posés ensemble par `install.sh --llm chatgpt|copilot`) sont utilisés comme
-XDG_DATA_HOME d'OpenCode par le chat ET la sync, pour ces deux fournisseurs seulement ; clé absente
-ou vide = comportement historique (chat isolé sous .arc/chat/opencode/xdg, sync sur le magasin
-global). Le dossier est partagé en entier (pas seulement auth.json) : OpenCode y garde aussi sa base
-de sessions SQLite, prévue pour plusieurs processus, et le lien symbolique de auth.json n'est pas
-fiable (OpenCode réécrit le fichier à chaque rafraîchissement, vérifié dans le code source v1.18.35).
+(même chemin) sont utilisés comme XDG_DATA_HOME d'OpenCode par le chat ET la sync, pour ces deux
+fournisseurs seulement ; clé absente ou vide = comportement historique (chat isolé sous
+.arc/chat/opencode/xdg, sync sur le magasin global). Le dossier est partagé pour `auth.json` seulement
+en pratique : chaque usage a SA base de sessions (`OPENCODE_DB` : .arc/chat/opencode/opencode.db pour
+le chat, .arc/sync/opencode.db pour la sync). Un lien symbolique de auth.json n'est pas fiable
+(OpenCode réécrit le fichier à chaque rafraîchissement, vérifié dans le code source v1.18.35).
 
 Concurrence. OpenCode réécrit auth.json SANS verrou quand il rafraîchit le jeton ChatGPT, et le
 jeton de rafraîchissement peut être à usage unique (non vérifié). Deux rafraîchissements
-simultanés (tour de chat pendant la sync) risquent donc d'écraser la connexion. Le chat (par tour)
-et la sync (par exécution) prennent un verrou `flock` exclusif `<magasin>/.arc-auth.lock` : jamais
-deux processus qui peuvent rafraîchir en même temps. Copilot ne rafraîchit rien (jeton GitHub
-direct) : pas de verrou.
+simultanés (tour de chat pendant la sync) risquent donc d'écraser la connexion. Garantie : un
+`flock` exclusif `<magasin>/.arc-auth.lock` est tenu par le chat pendant TOUT un tour (attentes
+d'approbation comprises ; tous les tours du service le partagent, pris par le premier, rendu par le
+dernier, jamais tenu au-delà de la fin du tour) et par la sync pendant toute son exécution. Si le
+chat tient le verrou plus longtemps que l'attente de la sync (300 s), la sync est REPORTÉE au
+passage suivant (bénin) ; `with-lock --marker FICHIER` crée alors ce fichier, ce qui distingue ce cas
+d'un code 75 de la commande elle-même. Copilot ne rafraîchit rien (jeton GitHub direct) : pas de
+verrou.
 
 Codes de sortie de `connect` :
   0  clé obtenue, écrite et vérifiée
@@ -635,34 +639,57 @@ class StoreGate:
     """Verrou du magasin partagé entre les tours d'UN processus (le service du chat).
 
     `flock` est par descripteur : deux tours simultanés du même service se bloqueraient entre eux.
-    On compte donc les tours en cours : le premier prend le verrou, le dernier le rend.
+    On compte donc les tours en cours : le premier prend le verrou, le dernier le rend. Le mutex
+    interne n'est JAMAIS tenu pendant l'attente du `flock` : un seul fil attend le fichier, les autres
+    attendent sur la condition, et `release()` d'un autre fil n'est jamais bloqué.
     """
 
     def __init__(self, data_dir: str) -> None:
         self.data_dir = data_dir
-        self._mutex = threading.Lock()
+        self._cond = threading.Condition()
         self._count = 0
         self._fd: Optional[int] = None
+        self._acquiring = False
 
     def acquire(self, timeout_s: float) -> bool:
-        with self._mutex:
-            if self._count == 0:
-                fd = _open_lock(self.data_dir)
-                if not _flock_wait(fd, timeout_s):
-                    os.close(fd)
+        deadline = time.monotonic() + max(0.0, timeout_s)
+        with self._cond:
+            while True:
+                if self._count > 0:
+                    self._count += 1
+                    return True
+                if not self._acquiring:
+                    self._acquiring = True
+                    break
+                left = deadline - time.monotonic()
+                if left <= 0:
                     return False
-                self._fd = fd
-            self._count += 1
-            return True
+                self._cond.wait(left)
+        fd = None
+        ok = False
+        try:
+            fd = _open_lock(self.data_dir)
+            ok = _flock_wait(fd, max(0.0, deadline - time.monotonic()))
+        finally:
+            with self._cond:
+                self._acquiring = False
+                if ok:
+                    self._fd = fd
+                    self._count = 1
+                elif fd is not None:
+                    os.close(fd)
+                self._cond.notify_all()
+        return ok
 
     def release(self) -> None:
-        with self._mutex:
+        with self._cond:
             if self._count <= 0:
                 return
             self._count -= 1
             if self._count == 0 and self._fd is not None:
                 os.close(self._fd)   # ferme le descripteur = rend le verrou
                 self._fd = None
+            self._cond.notify_all()
 
 
 def cmd_with_lock(args: argparse.Namespace) -> int:

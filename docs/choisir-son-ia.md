@@ -88,8 +88,9 @@ projet : [dashboard/chat.md](dashboard/chat.md#quel-modele-sur-openrouter)) : ch
 `--model` si votre forfait ne les sert pas.
 
 **Synchronisation automatique : un choix explicite.** `--llm chatgpt` règle le **chat**. La synchronisation
-ne passe sur l'abonnement que sur une installation neuve (aucun `[sync].runner` configuré) ou si vous ajoutez
-`--sync-subscription` ; sinon elle garde son exécuteur actuel et l'installation vous dit comment basculer.
+ne passe sur l'abonnement que sur une installation **neuve** (aucune installation antérieure : options mémorisées,
+planificateur de la synchronisation, `[sync].runner`) ou si vous ajoutez `--sync-subscription`
+(`--no-sync-subscription` l'interdit, même sur une installation neuve) ; sinon elle garde son exécuteur actuel et l'installation vous dit comment basculer.
 Pourquoi : aucune déclaration officielle sur l'usage planifié, sans surveillance, d'un forfait grand public
 n'a été trouvée dans les pages consultées, et chaque passage consomme vos limites. Relisez les conditions
 d'OpenAI avant de l'activer. Dans l'application macOS, la case « Synchroniser aussi avec mon forfait » est
@@ -123,11 +124,11 @@ automatique : elle consomme vos crédits, et aucune déclaration officielle sur 
 - **Chat et synchronisation ne se marchent pas dessus** : OpenCode réécrit `auth.json` sans verrou quand il
   rafraîchit le jeton ChatGPT, et deux rafraîchissements simultanés pourraient casser la connexion. Le chat
   (tous ses tours partagent un seul verrou, pris au premier et rendu au dernier) et la synchronisation (une
-  exécution) prennent donc le même verrou. Il est **relâché pendant qu'une approbation attend votre réponse**
-  et repris avant de répondre à OpenCode. Si le chat occupe le magasin plus de 5 minutes, la synchronisation
-  est reportée au passage suivant (une notification par jour au plus, sans échec) ; si la synchronisation
-  l'occupe, le chat affiche « Synchronisation en cours… », attend jusqu'à 2 minutes, puis vous invite à
-  réessayer.
+  exécution) prennent donc le même verrou. Le chat le tient **pendant tout le tour, attentes d'approbation
+  comprises**, et le rend à la fin du tour, quoi qu'il arrive. Si le chat l'occupe plus de 5 minutes, la
+  synchronisation est simplement reportée au passage suivant (une notification par jour au plus, sans échec) ;
+  si la synchronisation l'occupe, le chat affiche « Synchronisation en cours… », attend jusqu'à 2 minutes, puis
+  vous invite à réessayer.
 - **Une base de sessions par usage** : `auth.json` est partagé (`XDG_DATA_HOME`), mais le chat et la
   synchronisation ont chacun leur base de sessions (`OPENCODE_DB`), et les instantanés de fichiers d'OpenCode
   sont désactivés (`"snapshot": false`) dans leurs configurations.

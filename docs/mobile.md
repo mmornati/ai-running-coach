@@ -407,12 +407,12 @@ synchronisation passe aussi sur votre abonnement, via le runner `opencode` : pas
   (`usage_not_included`, offre ChatGPT Free) ou limites atteintes : notifications dédiées ; le passage suivant
   réessaie.
 - **Verrou** : une synchronisation ChatGPT attend (5 minutes au plus) que le chat n'utilise plus la
-  connexion (le verrou est relâché pendant que le chat attend une approbation), et le chat attend la
-  synchronisation jusqu'à 2 minutes, pour que deux processus ne rafraîchissent jamais le jeton en même temps.
+  connexion (le chat tient le verrou pendant tout son tour, attentes d'approbation comprises), et le chat
+  attend la synchronisation jusqu'à 2 minutes, pour que deux processus ne rafraîchissent jamais le jeton en même temps.
   Si le chat l'occupe trop longtemps, le passage est reporté (notification « ⏳ Sync reportée », une par jour
   au plus), sans échec dans la vue « Synchro ».
 - **Choix explicite** : `--llm chatgpt|copilot` règle le chat ; la synchronisation ne passe sur l'abonnement
-  que sur une installation neuve ou avec `--sync-subscription` (voir [Choisir son IA](choisir-son-ia.md#chatgpt-plus-ou-pro)).
+  que sur une installation neuve (aucune installation antérieure) ou avec `--sync-subscription` (voir [Choisir son IA](choisir-son-ia.md#chatgpt-plus-ou-pro)).
 - **Usage planifié d'un forfait grand public** : aucune déclaration officielle n'a été trouvée sur ce point
   (OpenAI autorise les applications open source locales ; GitHub soutient OpenCode). Vérifiez les conditions du
   fournisseur ; la synchronisation peut rester sur une autre IA pendant que le chat utilise votre forfait.

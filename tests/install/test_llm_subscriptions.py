@@ -659,6 +659,38 @@ class InstallReviewTests(InstallAsserts):
             self.assertEqual(self._toml(sb).count('opencode_data_dir = ""'), 2)
             self.assertOutputContains(proc, "opencode_data_dir")
 
+    def test_existing_user_on_the_default_runner_keeps_the_sync(self):
+        """Installation antérieure (--daily-sync, exécuteur « claude » par défaut) : jamais déplacée en silence."""
+        with Sandbox() as sb:
+            self.assertSucceeded(sb.install(*BASE, "--daily-sync"))
+            proc = sb.install(*BASE, "--llm", "chatgpt")
+            self.assertSucceeded(proc)
+            toml = self._toml(sb)
+            self.assertEqual(toml.count("opencode_data_dir"), 1)           # chat seulement
+            self.assertNotIn('runner = "opencode"', toml)
+            self.assertOutputContains(proc, "--sync-subscription")
+            self.assertOutputLacks(proc, "Chat + sync (abonnement)")
+            self.assertSucceeded(sb.install(*BASE, "--llm", "chatgpt", "--sync-subscription"))
+            self.assertEqual(self._toml(sb).count("opencode_data_dir"), 2)
+
+    def test_no_sync_subscription_keeps_a_fresh_sync_untouched(self):
+        with Sandbox() as sb:
+            self.assertSucceeded(sb.install(*BASE, "--llm", "chatgpt", "--no-sync-subscription"))
+            toml = self._toml(sb)
+            self.assertEqual(toml.count("opencode_data_dir"), 1)
+            self.assertNotIn('runner = "opencode"', toml)
+
+    def test_fresh_install_moves_the_sync(self):
+        with Sandbox() as sb:
+            self.assertSucceeded(sb.install(*BASE, "--llm", "copilot"))
+            self.assertEqual(self._toml(sb).count("opencode_data_dir"), 2)
+
+    def test_hints_are_quoted(self):
+        with Sandbox() as sb:
+            proc = sb.install(*BASE, "--llm", "chatgpt", ARC_OPENCODE_DATA_DIR=str(sb.root / "mon magasin"))
+            self.assertSucceeded(proc)
+            self.assertOutputContains(proc, "mon\\ magasin")
+
     def test_workspace_defaults_declare_the_key(self):
         text = (REPO / "config/workspace.toml").read_text(encoding="utf-8")
         self.assertEqual(text.count('opencode_data_dir = ""'), 2)

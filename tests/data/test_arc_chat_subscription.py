@@ -253,47 +253,91 @@ class TestReviewFixes(SubscriptionCase):
             sync.release()
         self.assertTrue(any("Synchronisation en cours" in p["message"] for p in h.of("status")))
 
-    def test_lease_released_while_waiting_for_an_approval(self):
-        gate = self.backend._store_gate()
-        lease = O._Lease(gate)
-        self.assertTrue(lease.acquire(1))
+    def _free(self):
         other = arc_llm.StoreGate(str(self.store))
-        self.assertFalse(other.acquire(0.2))
-        lease.suspend()
-        lease.suspend()                              # deux approbations simultanées : un seul relâchement
-        self.assertTrue(other.acquire(1))
-        other.release()
-        lease.resume()
-        self.assertFalse(lease.held)                 # encore une approbation en attente
-        lease.resume()
-        self.assertTrue(lease.held)
-        self.assertFalse(arc_llm.StoreGate(str(self.store)).acquire(0.2))
-        lease.close()
-        free = arc_llm.StoreGate(str(self.store))
-        self.assertTrue(free.acquire(1))
-        free.release()
-
-    def test_approval_wait_goes_through_the_lease(self):
-        calls = []
-        lease = O._Lease(self.backend._store_gate())
-        lease.acquire(1)
-        h = base.Harness(self.ws)
-        turn = O._Turn(h.ctx)
-        turn.lease = lease
-        other = arc_llm.StoreGate(str(self.store))
-
-        def approval(*a):
-            calls.append(other.acquire(0.5))       # pendant l'attente, le magasin est libre
+        ok = other.acquire(0.3)
+        if ok:
             other.release()
-            return "allow"
+        return ok
 
-        h.ctx.request_approval = approval
-        turn.ctx = h.ctx
-        ctx = O.OpenCodeBackend._ctx_for_gate(turn)
-        self.assertEqual(ctx.request_approval("t", {}, "s", []), "allow")
-        self.assertEqual(calls, [True])
-        self.assertTrue(lease.held)
+    def test_lease_is_held_through_an_approval_wait_and_closed_once(self):
+        lease = O._Lease(self.backend._store_gate())
+        self.assertTrue(lease.acquire(1))
+        self.assertFalse(self._free())          # tenu pendant tout le tour (approbations comprises)
         lease.close()
+        lease.close()                           # idempotent
+        self.assertTrue(self._free())
+
+    def test_turn_ending_during_an_approval_wait_releases_the_lock(self):
+        import threading
+        started, done = threading.Event(), threading.Event()
+        h = base.Harness(self.ws)
+
+        def slow_approval(*a):
+            started.set()
+            done.wait(5)
+            return "deny"
+
+        h.ctx.request_approval = slow_approval
+        original = O.OpenCodeBackend._run_turn
+
+        def run(self_, ctx, message, lease=None):
+            # un fil d'approbation reste bloqué alors que le tour se termine
+            threading.Thread(target=lambda: ctx.request_approval("t", {}, "s", []), daemon=True).start()
+            started.wait(2)
+            return original(self_, ctx, message, lease)
+
+        O.OpenCodeBackend._run_turn = run
+        try:
+            self.fake.scenario = base.fixture("opencode_text_only.json")
+            self.backend.run_turn(h.ctx, "salut")
+        finally:
+            O.OpenCodeBackend._run_turn = original
+            done.set()
+        self.assertTrue(self._free())
+
+    def test_two_concurrent_turns_release_the_lock_fully(self):
+        gate = self.backend._store_gate()
+        a, b = O._Lease(gate), O._Lease(gate)
+        self.assertTrue(a.acquire(1))
+        self.assertTrue(b.acquire(1))
+        a.close()
+        self.assertFalse(self._free())
+        b.close()
+        self.assertTrue(self._free())
+
+    def test_no_leak_after_an_error_in_the_turn(self):
+        original = O.OpenCodeBackend._run_turn
+
+        def boom(self_, ctx, message, lease=None):
+            raise BackendError("panne")
+
+        O.OpenCodeBackend._run_turn = boom
+        try:
+            with self.assertRaises(BackendError):
+                self.backend.run_turn(base.Harness(self.ws).ctx, "salut")
+        finally:
+            O.OpenCodeBackend._run_turn = original
+        self.assertTrue(self._free())
+
+    def test_gate_wait_does_not_block_release_from_another_thread(self):
+        import threading, time
+        gate = arc_llm.StoreGate(str(self.store))
+        sync = arc_llm.StoreGate(str(self.store))
+        self.assertTrue(sync.acquire(1))                     # tient le fichier (comme la sync)
+        results = []
+        t = threading.Thread(target=lambda: results.append(gate.acquire(1.0)))
+        t.start()
+        time.sleep(0.2)
+        started = time.monotonic()
+        gate.release()                                       # sans effet mais ne doit pas attendre le flock
+        self.assertLess(time.monotonic() - started, 0.1)
+        self.assertEqual(gate.acquire(0), False)             # second tour : réponse immédiate, pas de blocage
+        t.join(3)
+        self.assertEqual(results, [False])
+        sync.release()
+        self.assertTrue(gate.acquire(1))
+        gate.release()
 
     def test_usage_limit_reached(self):
         msg = O.OpenCodeBackend._translate_error({"name": "APIError", "data": {"message": "usage_limit_reached"}},
