@@ -3,6 +3,24 @@
 Le coach a besoin d'un modèle de langage pour répondre, planifier et synchroniser vos données.
 Bonne nouvelle : **vous n'avez pas à choisir une technologie, seulement à dire ce que vous avez déjà.**
 
+<!-- arc-video:essai-gratuit -->
+<div class="arc-video-card" markdown>
+
+[![Zéro euro pour démarrer](video/essai-gratuit/poster.jpg)](video/essai-gratuit/index.html)
+
+<div markdown>
+
+<span class="arc-video__meta">En vidéo · Étape 21 · 1 min 49</span>
+
+**[Zéro euro pour démarrer](video/essai-gratuit/index.html)** — Quelle IA pour le coach ? Celle que vous payez déjà, sinon l'essai gratuit OpenRouter : une option à l'installation, une connexion en un clic sans clé à copier, puis ses limites dites honnêtement (quota, confidentialité) et le passage à « 10 $ une fois ».
+
+[Regarder](video/essai-gratuit/index.html) · [English](video/essai-gratuit/index.html?lang=en) · [Toutes les vidéos](videos.md)
+
+</div>
+
+</div>
+<!-- /arc-video -->
+
 ## L'arbre de décision
 
 ```mermaid

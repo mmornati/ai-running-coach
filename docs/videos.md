@@ -314,6 +314,20 @@ L'agent directeur sportif : l'historique réel avant toute recherche, la faisabi
 
 </div>
 
+<div class="arc-video" markdown>
+
+[![Zéro euro pour démarrer](video/essai-gratuit/poster.jpg)](video/essai-gratuit/index.html)
+
+<span class="arc-video__meta">Étape 21 · 1 min 49</span>
+
+### [Zéro euro pour démarrer](video/essai-gratuit/index.html)
+
+Quelle IA pour le coach ? Celle que vous payez déjà, sinon l'essai gratuit OpenRouter : une option à l'installation, une connexion en un clic sans clé à copier, puis ses limites dites honnêtement (quota, confidentialité) et le passage à « 10 $ une fois ».
+
+[Regarder](video/essai-gratuit/index.html) · [English (1 min 55)](video/essai-gratuit/index.html?lang=en) · [La documentation](choisir-son-ia.md)
+
+</div>
+
 </div>
 <!-- arc-videos:end -->
 
