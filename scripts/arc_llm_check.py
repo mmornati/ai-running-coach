@@ -30,6 +30,7 @@ Schéma JSON (stable) :
   {"schema": 1, "ok": bool, "worst": "ok|info|warn|error", "probe": bool, "workspace": "...",
    "targets": [{"role": "chat|sync", "backend": "...", "model": "...", "provider": "..."}],
    "checks": [{"id": "...", "scope": "chat|sync|chat+sync|common", "status": "ok|info|warn|error",
+               "data_dir": "magasin d'authentification (abonnements ChatGPT/Copilot seulement)",
                "message": "français", "action": "commande ou consigne" | null,
                "action_kind": "reconnect_openrouter|reconnect_chatgpt|reconnect_copilot|add_credit|
                                wait|set_key|fix_mode|install_opencode|reconfigure|retry|null"}]}
@@ -43,6 +44,7 @@ clé connue, par précaution.
 
 from __future__ import annotations
 
+import http.client
 import json
 import os
 import re
@@ -197,6 +199,16 @@ def _is_loopback(url: str) -> bool:
     return host in ("127.0.0.1", "localhost", "::1")
 
 
+def _host(url: str) -> str:
+    """hôte[:port] d'une URL, sans identifiants ni chemin (une base_url peut porter un utilisateur:mot de passe)."""
+    try:
+        parts = urlparse.urlsplit(url)
+        host = parts.hostname or "?"
+        return "%s:%d" % (host, parts.port) if parts.port else host
+    except ValueError:
+        return "?"
+
+
 def _mode(path: str) -> Optional[int]:
     try:
         return os.stat(path).st_mode & 0o777
@@ -226,13 +238,20 @@ def _api_key_items(ctx: Ctx, t: Dict[str, Any], label: str) -> Tuple[List[Dict[s
     """Clé présente et mode du fichier. Retourne (éléments, valeur de la clé ou « »)."""
     out: List[Dict[str, Any]] = []
     var = t["key_env"]
+    if t["base_url"] and not var:
+        # Serveur compatible sans clé (Ollama…) : valable en local, à signaler seulement à distance.
+        if _is_loopback(t["base_url"]):
+            out.append(item("key", "info", "Serveur local (%s) : aucune clé nécessaire." % _host(t["base_url"])))
+        else:
+            out.append(item("key", "info", "Aucune clé configurée pour %s ([api_key_env] vide) : accepté si ce serveur n'en exige pas." % _host(t["base_url"])))
+        return out, ""
     if not var or not KEY_ENV_PATTERN.match(var):
         out.append(item("key_config", "error", "Nom de variable de clé invalide ou vide dans la configuration (%s)." % (var or "vide"),
                         "./install.sh --llm openrouter|anthropic|openai", "reconfigure"))
         return out, ""
     value, where = ctx.key(var)
     if t["base_url"] and _is_loopback(t["base_url"]) and not value:
-        out.append(item("key", "info", "Serveur local (%s) : aucune clé nécessaire." % t["base_url"]))
+        out.append(item("key", "info", "Serveur local (%s) : aucune clé nécessaire." % _host(t["base_url"])))
         return out, ""
     if not value:
         if t["provider"] in ("openrouter", "openrouter-free"):
@@ -259,7 +278,7 @@ def _probe_get(ctx: Ctx, url: str, headers: Dict[str, str]) -> Tuple[Optional[in
         return ctx.cache[cache_key]
     try:
         result: Tuple[Optional[int], Any] = arc_llm._http_json("GET", url, headers=headers, timeout=PROBE_TIMEOUT_S)
-    except (urlerror.URLError, OSError, ValueError):
+    except (urlerror.URLError, OSError, ValueError, http.client.HTTPException):
         result = (None, None)
     ctx.cache[cache_key] = result
     return result
@@ -368,7 +387,7 @@ def _key_provider_items(ctx: Ctx, t: Dict[str, Any]) -> List[Dict[str, Any]]:
             return items + [item("probe", "error", str(exc), None, "reconfigure")]
         headers = {"Authorization": "Bearer " + key} if key else {}
         if key or _is_loopback(base):
-            items.extend(_models_probe(ctx, "du fournisseur (%s)" % urlparse.urlsplit(base).netloc, base + "/models", headers,
+            items.extend(_models_probe(ctx, "du fournisseur (%s)" % _host(base), base + "/models", headers,
                                        ("Vérifiez la clé %s dans %s" % (t["key_env"], _q(ctx.env_file)), "set_key")))
     return items
 
@@ -534,10 +553,14 @@ def run_checks(workspace: Path, probe: bool) -> Dict[str, Any]:
         elif provider == "opencode-global":
             items = [item("provider", "info", "Synchronisation par OpenCode sans clé du coach ([sync].api_key_env vide) : "
                           "la connexion propre à OpenCode n'est pas vérifiée.")]
+        elif provider == "opencode-other" and t["key_env"]:
+            items, _ = _api_key_items(ctx, t, t["model"].partition("/")[0] or "du fournisseur")
+            items.append(item("provider", "info", "Fournisseur « %s » via OpenCode : clé non testée sur le réseau." % t["model"].partition("/")[0]))
         else:
             items = [item("provider", "info", "Fournisseur « %s » via OpenCode : connexion gérée par OpenCode, non vérifiée." % t["model"].partition("/")[0])]
         for it in items:
-            checks.append(dict(it, scope=scope))
+            extra = {"data_dir": t["data_dir"]} if provider in ("chatgpt", "copilot") else {}
+            checks.append(dict(it, scope=scope, **extra))
     if any(t["uses_opencode"] for t in targets):
         checks.extend(dict(it, scope="common") for it in _opencode_items([t for t in targets if t["uses_opencode"]]))
     if any(t["backend"] == "claude" and t["role"] == "chat" for t in targets):
@@ -564,13 +587,18 @@ def _result(workspace: Path, probe: bool, targets: List[Dict[str, Any]], checks:
 
 def _scrub(value: Any, secrets_list: List[str]) -> Any:
     """Dernière passe anti-fuite : aucune clé lue ne peut rester dans la sortie."""
+    secrets_list = [x for x in secrets_list if len(x) >= 8]
     if not secrets_list:
         return value
-    text = json.dumps(value, ensure_ascii=False)
-    for secret in secrets_list:
-        if len(secret) >= 4:
-            text = text.replace(secret, "[masqué]")
-    return json.loads(text)
+    if isinstance(value, str):
+        for secret in secrets_list:
+            value = value.replace(secret, "[masqué]")
+        return value
+    if isinstance(value, list):
+        return [_scrub(v, secrets_list) for v in value]
+    if isinstance(value, dict):
+        return {k: _scrub(v, secrets_list) for k, v in value.items()}
+    return value
 
 
 def check(workspace: Optional[str] = None, probe: bool = False) -> Dict[str, Any]:

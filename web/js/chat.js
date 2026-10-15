@@ -594,7 +594,8 @@ function followResume() {
 // Événements SSE / journal
 // ---------------------------------------------------------------------------
 
-function showBanner(msg, info = false) {
+function showBanner(msg, info = false, check = false) {
+  els.banner.classList.toggle("banner--check", check);
   els.banner.textContent = msg;
   els.banner.classList.toggle("banner--info", info);
   els.banner.hidden = !msg;
@@ -847,15 +848,15 @@ async function newSession() {
 
 async function testConnection() {
   els.llmCheck.disabled = true;
-  showBanner("Test de la connexion en cours…", true);
+  showBanner("Test de la connexion en cours…", true, true);
   try {
     const r = await call("POST", "/llm-check", { probe: true });
     const mark = { ok: "✅", info: "ℹ️", warn: "⚠️", error: "❌" };
-    const lines = (r.checks || []).filter((c) => c.status !== "info").map((c) => {
+    const lines = (r.checks || []).filter((c) => c.status !== "info" || c.id === "probe").map((c) => {
       const action = c.action && c.status !== "ok" ? `\n    → ${c.action}` : "";
       return `${mark[c.status] || "•"} ${c.message}${action}`;
     });
-    showBanner(lines.join("\n") || "Aucun point à vérifier.", r.ok);
+    showBanner(lines.join("\n") || "Aucun point à vérifier.", r.ok, true);
   } catch (err) {
     showBanner(`Test impossible : ${err.message}`);
   } finally {

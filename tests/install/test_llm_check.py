@@ -11,6 +11,7 @@ Faux serveurs locaux sur 127.0.0.1 (OpenRouter /api/v1/key, Anthropic /v1/models
 
 from __future__ import annotations
 
+import http.client
 import json
 import os
 import socket
@@ -336,7 +337,95 @@ class ApiKeyProviderTests(InstallAsserts):
         self.addCleanup(env.close)
         proc = env.check("--json")
         self.assertIn(proc.returncode, (0, 1))
-        self.assertTrue(json.loads(proc.stdout)["checks"])
+        report = json.loads(proc.stdout)
+        self.assertTrue(report["checks"])
+        if sys.version_info >= (3, 11):          # `tomllib` présent : la syntaxe invalide est refusée
+            self.assertEqual((proc.returncode, _by_id(report, "config")["status"]), (1, "error"))
+
+    def test_keyless_local_server_is_not_an_error_and_is_probed_without_auth(self):
+        with FakeProviders() as fake:
+            toml = ('[chat]\nenabled = true\nbackend = "opencode"\nmodel = "ollama/llama3"\napi_key_env = ""\n'
+                    'base_url = "%s/v1"\n[sync]\nrunner = "opencode"\nmodel = "ollama/llama3"\napi_key_env = ""\nbase_url = "%s/v1"\n'
+                    % (fake.url, fake.url))
+            env = Env(toml)
+            self.addCleanup(env.close)
+            proc = env.check("--json", "--probe")
+            report = json.loads(proc.stdout)
+            self.assertEqual(proc.returncode, 0)
+            self.assertEqual(_by_id(report, "key")["status"], "info")
+            self.assertEqual(_by_id(report, "probe")["status"], "ok")
+            self.assertEqual(fake.hits[0]["path"], "/v1/models")
+            self.assertNotIn("authorization", fake.hits[0]["headers"])
+            self.assertFalse([c for c in report["checks"] if c["id"] == "key_config"])
+
+    def test_keyless_remote_server_is_informational_and_not_probed(self):
+        toml = ('[sync]\nrunner = "opencode"\nmodel = "x/y"\napi_key_env = ""\n'
+                'base_url = "https://user:pass-word-123@example.invalid:8443/v1"\n')
+        env = Env(toml)
+        self.addCleanup(env.close)
+        proc = env.check("--json", "--probe")
+        self.assertEqual(proc.returncode, 0)
+        item = _by_id(json.loads(proc.stdout), "key")
+        self.assertEqual(item["status"], "info")
+        self.assertIn("example.invalid:8443", item["message"])
+        self.assertNotIn("pass-word-123", proc.stdout + proc.stderr)
+
+    def test_base_url_userinfo_is_never_printed(self):
+        with FakeProviders() as fake:
+            host = fake.url.replace("http://", "")
+            toml = ('[chat]\nenabled = true\nbackend = "opencode"\nmodel = "m/x"\napi_key_env = "MY_KEY"\n'
+                    'base_url = "http://user:pass-word-123@%s/v1"\n[sync]\nrunner = "claude"\n' % host)
+            env = Env(toml, "MY_KEY=%s\n" % SECRET)
+            self.addCleanup(env.close)
+            proc = env.check("--probe")
+            self.assertNotIn("pass-word-123", proc.stdout + proc.stderr)
+
+    def test_other_opencode_provider_with_a_key_gets_the_presence_check(self):
+        toml = ('[chat]\nenabled = true\nbackend = "opencode"\nmodel = "mistral/large"\napi_key_env = "MISTRAL_API_KEY"\n'
+                '[sync]\nrunner = "claude"\n')
+        env = Env(toml)
+        self.addCleanup(env.close)
+        proc = env.check("--json")
+        self.assertEqual(proc.returncode, 1)
+        self.assertEqual(_by_id(json.loads(proc.stdout), "key")["status"], "error")
+        env2 = Env(toml, "MISTRAL_API_KEY=%s\n" % SECRET)
+        self.addCleanup(env2.close)
+        self.assertEqual(_by_id(env2.report(), "key")["status"], "ok")
+
+    def test_malformed_http_response_is_a_warning_not_a_crash(self):
+        import threading as th
+        srv = socket.socket()
+        srv.bind(("127.0.0.1", 0))
+        srv.listen(2)
+
+        def serve():
+            for _ in range(2):
+                try:
+                    conn, _addr = srv.accept()
+                    conn.recv(4096)
+                    conn.sendall(b"not http at all\r\n\r\n")
+                    conn.close()
+                except OSError:
+                    return
+
+        th.Thread(target=serve, daemon=True).start()
+        self.addCleanup(srv.close)
+        env = Env(_toml(), "OPENROUTER_API_KEY=%s\n" % SECRET)
+        self.addCleanup(env.close)
+        env.extra["ARC_OPENROUTER_BASE_URL"] = "http://127.0.0.1:%d" % srv.getsockname()[1]
+        proc = env.check("--json", "--probe")
+        self.assertEqual(proc.returncode, 0)
+        self.assertEqual(_by_id(json.loads(proc.stdout), "probe")["status"], "warn")
+
+    def test_scrub_is_recursive_and_ignores_short_values(self):
+        sys.path.insert(0, str(REPO / "scripts"))
+        try:
+            import arc_llm_check
+        finally:
+            sys.path.pop(0)
+        value = {"a": ["xx-SECRET-VALUE-xx", {"b": "ok"}], "n": 3}
+        self.assertEqual(arc_llm_check._scrub(value, ["SECRET-VALUE"]), {"a": ["xx-[masqué]-xx", {"b": "ok"}], "n": 3})
+        self.assertEqual(arc_llm_check._scrub({"a": "abc ok"}, ["ab"]), {"a": "abc ok"})
 
 
 def _store(root: Path, entries: dict, dir_mode: int = 0o700, file_mode: int = 0o600) -> Path:
@@ -534,7 +623,13 @@ class DoctorTests(InstallAsserts):
 
         arc_llm_check.run_checks = boom
         try:
-            self.assertEqual(coach_doctor._llm_diagnostic(env.workspace, False), [])
+            self.assertIsNone(coach_doctor._llm_diagnostic(env.workspace, False))
+            config = {"chat": {"enabled": True, "backend": "opencode", "model": "openrouter/x/y", "api_key_env": "OPENROUTER_API_KEY"},
+                      "sync": {"runner": "claude"}}
+            check = coach_doctor.check_llm_config(config, env.workspace, True)
+            self.assertNotIn("aucun problème détecté", check["message"])
+            self.assertIn("indisponible", check["message"])
+            self.assertNotEqual(check["status"], "error")
         finally:
             arc_llm_check.run_checks = original
 
@@ -622,3 +717,67 @@ class ChatRouteTests(InstallAsserts):
                         os.environ[k] = v
         finally:
             case.doCleanups()
+
+
+class ChatRouteGuardTests(InstallAsserts):
+    """Authentification, limite de débit, cache de la sonde et charge utile de /api/chat/llm-check."""
+
+    def _case(self):
+        from tests.install.test_chat_service import ChatCase
+
+        class Case(ChatCase):
+            def runTest(self):
+                pass
+
+        case = Case()
+        case.setUp()
+        self.addCleanup(case.doCleanups)
+        (case.ws / "config").mkdir()
+        (case.ws / "config/workspace.user.toml").write_text(_toml(), encoding="utf-8")
+        llm_env = case.ws / "llm.env"
+        llm_env.write_text("OPENROUTER_API_KEY=%s\n" % SECRET, encoding="utf-8")
+        llm_env.chmod(0o600)
+        old = os.environ.get("ARC_LLM_ENV")
+        os.environ["ARC_LLM_ENV"] = str(llm_env)
+        self.addCleanup(lambda: os.environ.pop("ARC_LLM_ENV", None) if old is None else os.environ.__setitem__("ARC_LLM_ENV", old))
+        return case
+
+    def test_proxy_mode_requires_identity(self):
+        case = self._case()
+        case.start(auth="proxy", allowed_users=["marco"], auth_header="Remote-User")
+        self.assertEqual(case.post("/api/chat/llm-check", {})[0], 401)
+        self.assertEqual(case.post("/api/chat/llm-check", {}, headers={"Remote-User": "intrus"})[0], 403)
+        self.assertEqual(case.post("/api/chat/llm-check", {}, headers={"Remote-User": "marco"})[0], 200)
+
+    def test_rate_limited_and_probe_results_cached(self):
+        case = self._case()
+        with FakeProviders(key_status=401) as fake:
+            old = os.environ.get("ARC_OPENROUTER_BASE_URL")
+            os.environ["ARC_OPENROUTER_BASE_URL"] = fake.url
+            self.addCleanup(lambda: os.environ.pop("ARC_OPENROUTER_BASE_URL", None) if old is None
+                            else os.environ.__setitem__("ARC_OPENROUTER_BASE_URL", old))
+            case.start()
+            for _ in range(5):
+                status, _, data = case.post("/api/chat/llm-check", {"probe": True})
+                self.assertEqual(status, 200)
+            self.assertEqual(len(fake.hits), 1)              # cache de 30 s : un seul appel au fournisseur
+            self.assertNotIn("workspace", data)              # pas de chemin absolu dans la charge utile
+            self.assertEqual(case.post("/api/chat/llm-check", {})[0], 200)
+            status, _, body = case.post("/api/chat/llm-check", {})
+            self.assertEqual(status, 429)
+            self.assertIn("error", body)
+
+
+class AppMappingTests(InstallAsserts):
+    """Contrôle de texte du code Swift (compilé en CI macOS, pas ici) : la reconnexion d'abonnement vient du diagnostic."""
+
+    def test_subscription_reconnect_uses_the_check_item_not_preferences(self):
+        text = (REPO / "macos/AI-Running-Coach/AI_Running_CoachApp.swift").read_text(encoding="utf-8")
+        start = text.index("func performConnectionAction")
+        body = text[start:text.index("private func reconnectOpenRouter", start)]
+        self.assertIn('case "reconnect_chatgpt", "reconnect_copilot"', body)
+        self.assertIn("item.dataDir", body)
+        self.assertNotIn("savedChatProvider", body)
+        self.assertIn("connectionReconnecting", text)
+        reconnect = text[text.index("private func reconnectOpenRouter"):text.index("func retryLastOperation")]
+        self.assertNotIn("progressTitle", reconnect)      # n'écrase pas l'écran d'installation

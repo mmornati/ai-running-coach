@@ -1226,8 +1226,8 @@ def _mcp_gateway_only(workspace: Path) -> bool:
 _LLM_DIAG_SKIP = {"key", "env_mode", "key_config", "opencode"}
 
 
-def _llm_diagnostic(workspace: Optional[Path], probe: bool) -> list:
-    """Points `warn`/`error` du diagnostic de connexion IA (`arc_llm.py check`), ou [] s'il échoue.
+def _llm_diagnostic(workspace: Optional[Path], probe: bool) -> Optional[list]:
+    """Points `warn`/`error` du diagnostic de connexion IA (`arc_llm.py check`), ou None s'il échoue.
 
     Statique par défaut (aucun appel réseau) ; `probe` = `--probe-llm`. Le doctor reste robuste :
     toute exception du diagnostic est avalée (il ne doit jamais empêcher les autres vérifications)."""
@@ -1237,7 +1237,7 @@ def _llm_diagnostic(workspace: Optional[Path], probe: bool) -> list:
         import arc_llm_check
         report = arc_llm_check.run_checks(workspace, probe)
     except Exception:  # noqa: BLE001
-        return []
+        return None
     kept = [c for c in report.get("checks", []) if c.get("status") in ("warn", "error") and c.get("id") not in _LLM_DIAG_SKIP]
     return sorted(kept, key=lambda c: c["status"] != "error")   # les erreurs d'abord : leur action est proposée en premier
 
@@ -1301,11 +1301,20 @@ def check_llm_config(config: dict, workspace: Optional[Path] = None, probe_llm: 
             "(à garder dans llm.env uniquement)"
         )
     diag = _llm_diagnostic(workspace, probe_llm)
+    unavailable = diag is None and workspace is not None
+    diag = diag or []
     if problems:
         problems.extend(c["message"].rstrip(".") for c in diag)
+        if unavailable:
+            problems.append("diagnostic de connexion indisponible")
         return build_check(
             check_id, "warning", "Configuration LLM à revoir : " + " ; ".join(problems) + ".",
             fix="./install.sh --llm openrouter|anthropic|openai (crée llm.env en mode 600)",
+        )
+    if unavailable:
+        return build_check(
+            check_id, "info", "Configuration LLM cohérente, mais le diagnostic de connexion IA est indisponible "
+            "(essayez python3 scripts/arc_llm.py check).", fix="python3 scripts/arc_llm.py check",
         )
     if diag:
         return build_check(
