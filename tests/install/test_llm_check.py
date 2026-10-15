@@ -752,7 +752,7 @@ class ChatRouteGuardTests(InstallAsserts):
 
     def test_rate_limited_and_probe_results_cached(self):
         case = self._case()
-        with FakeProviders(key_status=401) as fake:
+        with FakeProviders() as fake:
             old = os.environ.get("ARC_OPENROUTER_BASE_URL")
             os.environ["ARC_OPENROUTER_BASE_URL"] = fake.url
             self.addCleanup(lambda: os.environ.pop("ARC_OPENROUTER_BASE_URL", None) if old is None
@@ -781,4 +781,31 @@ class AppMappingTests(InstallAsserts):
         self.assertNotIn("savedChatProvider", body)
         self.assertIn("connectionReconnecting", text)
         reconnect = text[text.index("private func reconnectOpenRouter"):text.index("func retryLastOperation")]
-        self.assertNotIn("progressTitle", reconnect)      # n'écrase pas l'écran d'installation
+        self.assertIn("savedTitle", reconnect)                    # restitue l'état de l'écran d'installation
+        self.assertIn("connectOpenRouter()", reconnect)           # même flux que l'installation (lien, annulation)
+        self.assertIn("cancelConnection", text[text.index("func closeConnectionCheck"):][:200])      # n'écrase pas l'écran d'installation
+
+    def test_error_result_is_not_cached_so_a_fixed_key_is_retested(self):
+        case = ChatRouteGuardTests._case(self)
+        with FakeProviders(key_status=401) as fake:
+            old = os.environ.get("ARC_OPENROUTER_BASE_URL")
+            os.environ["ARC_OPENROUTER_BASE_URL"] = fake.url
+            self.addCleanup(lambda: os.environ.pop("ARC_OPENROUTER_BASE_URL", None) if old is None
+                            else os.environ.__setitem__("ARC_OPENROUTER_BASE_URL", old))
+            case.start()
+            for _ in range(3):
+                self.assertEqual(case.post("/api/chat/llm-check", {"probe": True})[0], 200)
+            self.assertEqual(len(fake.hits), 3)
+
+    def test_doctor_fix_lists_every_action(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            store = _store(Path(tmp), {"openai": _oauth(int((time.time() + 3600) * 1000))}, dir_mode=0o755, file_mode=0o644)
+            toml = ('[chat]\nenabled = true\nbackend = "opencode"\nmodel = "openai/gpt-5.4"\napi_key_env = ""\nopencode_data_dir = "%s"\n'
+                    '[sync]\nrunner = "claude"\n' % store)
+            env = Env(toml)
+            self.addCleanup(env.close)
+            proc = subprocess.run([sys.executable, str(DOCTOR), "--workspace", str(env.workspace), "--check", "llm_config", "--json"],
+                                  capture_output=True, text=True, timeout=60, env=env.env())
+            fix = json.loads(proc.stdout)["checks"][0]["fix"]
+            self.assertIn("chmod 700", fix)
+            self.assertIn("chmod 600", fix)

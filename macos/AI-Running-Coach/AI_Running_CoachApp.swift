@@ -1740,35 +1740,33 @@ final class CoachAppModel: ObservableObject {
     /// Reconnexion OpenRouter depuis le test de connexion : même script que l’installation, mais sans
     /// toucher à l’état de progression de l’écran d’installation, et sans relance tant qu’elle tourne.
     private func reconnectOpenRouter() {
-        guard !connectionReconnecting else { return }
+        guard !connectionReconnecting, !connecting else { return }
         connectionReconnecting = true
         connectionSummary = "Connexion à OpenRouter : autorisez le coach dans votre navigateur…"
+        // Même flux que l’installation (adresse affichée si le navigateur ne s’ouvre pas, annulation) ;
+        // on rend ensuite à l’écran d’installation l’état de progression qu’il avait.
+        let savedProgress = progress, savedTitle = progressTitle
         Task {
-            defer { connectionReconnecting = false }
-            do {
-                let result = try await runProcess(
-                    executable: "/usr/bin/env",
-                    arguments: ["python3", engineURL.appendingPathComponent("scripts/arc_llm.py").path,
-                                "connect", "openrouter", "--json"],
-                    directory: engineURL,
-                    streamOutput: false
-                )
-                var final: [String: Any]?
-                for line in result.output.split(separator: "\n") {
-                    guard let data = line.data(using: .utf8),
-                          let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { continue }
-                    if object["ok"] != nil { final = object }
-                }
-                guard result.code == 0, (final?["ok"] as? Bool) == true else {
-                    connectionSummary = (final?["message"] as? String) ?? "La connexion à OpenRouter a échoué."
-                    return
-                }
-                connectionChecking = false
+            let outcome = await connectOpenRouter()
+            progress = savedProgress
+            progressTitle = savedTitle
+            connectionReconnecting = false
+            switch outcome {
+            case .connected:
                 testConnection()
-            } catch {
-                connectionSummary = "Connexion impossible : \(error.localizedDescription)"
+            case .unverified(let message):
+                connectionSummary = "Clé enregistrée mais non vérifiée : \(message)"
+                testConnection()
+            case .failed(let message):
+                connectionSummary = message
             }
         }
+    }
+
+    /// Ferme la fenêtre du test : une reconnexion en cours est annulée (le processus est arrêté).
+    func closeConnectionCheck() {
+        if connectionReconnecting { cancelConnection() }
+        showConnectionCheck = false
     }
 
     func retryLastOperation() {
@@ -2396,7 +2394,7 @@ struct ReadyView: View {
                 HStack { Spacer(); Button("Fermer") { model.showDiagnostics = false }.keyboardShortcut(.defaultAction) }
             }.padding(24).frame(minWidth: 680, minHeight: 430)
         }
-        .sheet(isPresented: $model.showConnectionCheck) {
+        .sheet(isPresented: $model.showConnectionCheck, onDismiss: { if model.connectionReconnecting { model.cancelConnection() } }) {
             ConnectionCheckView(model: model)
         }
         .sheet(isPresented: $model.showEnrichment) {
@@ -2432,7 +2430,18 @@ struct ConnectionCheckView: View {
     /// Les actions qui ont un bouton (ou le bouton « Relancer le test ») n’affichent pas leur commande :
     /// elle est relative au dossier du moteur et n’a pas de sens collée dans un autre terminal.
     private func showsActionText(_ kind: String) -> Bool {
-        !["reconnect_openrouter", "reconnect_chatgpt", "reconnect_copilot", "add_credit", "retry"].contains(kind)
+        !["reconnect_openrouter", "reconnect_chatgpt", "reconnect_copilot", "add_credit", "retry",
+          "set_key", "reconfigure", "install_opencode"].contains(kind)
+    }
+
+    /// Consigne en clair pour les actions dont la commande dépend du dossier du moteur.
+    private func plainGuidance(_ kind: String) -> String? {
+        switch kind {
+        case "set_key": return "Ajoutez la clé dans le fichier llm.env (dossier ~/.config/ai-running-coach) ou reconnectez le fournisseur, puis relancez le test."
+        case "reconfigure": return "Corrigez la configuration du coach (voir Dépannage → La connexion IA dans la documentation), puis relancez le test."
+        case "install_opencode": return "Installez OpenCode (opencode.ai), puis relancez le test."
+        default: return nil
+        }
     }
 
     private func buttonTitle(_ kind: String) -> String? {
@@ -2453,18 +2462,22 @@ struct ConnectionCheckView: View {
             Text(model.connectionSummary).foregroundStyle(.secondary)
             ScrollView {
                 VStack(alignment: .leading, spacing: 12) {
-                    ForEach(model.connectionItems.filter { $0.status != "info" || $0.checkID == "probe" }) { item in
+                    ForEach(model.connectionItems) { item in
                         let symbol = icon(item.status)
                         HStack(alignment: .top, spacing: 10) {
                             Image(systemName: symbol.0).foregroundStyle(symbol.1)
                             VStack(alignment: .leading, spacing: 4) {
                                 Text(item.message).textSelection(.enabled)
+                                    .foregroundStyle(item.status == "info" ? Color.secondary : Color.primary)
                                 if !item.action.isEmpty && item.status != "ok" && item.status != "info" && showsActionText(item.actionKind) {
                                     Text(item.action).font(.system(.callout, design: .monospaced)).foregroundStyle(.secondary).textSelection(.enabled)
                                 }
                                 if item.status != "ok", item.status != "info", let title = buttonTitle(item.actionKind) {
                                     Button(title) { model.performConnectionAction(item) }
                                         .disabled(model.connectionReconnecting || model.connectionChecking)
+                                }
+                                if let hint = plainGuidance(item.actionKind), item.status == "error" || item.status == "warn" {
+                                    Text(hint).font(.callout).foregroundStyle(.secondary)
                                 }
                                 if item.status == "error", item.actionKind == "wait" {
                                     Text("Rien à faire : réessayez demain.").font(.callout).foregroundStyle(.secondary)
@@ -2475,10 +2488,16 @@ struct ConnectionCheckView: View {
                     }
                 }.frame(maxWidth: .infinity, alignment: .leading)
             }
+            if model.connectionReconnecting, let url = model.connectURL {
+                Link("Ouvrir la page d’autorisation OpenRouter", destination: url)
+            }
             HStack {
-                Button("Relancer le test") { model.testConnection() }.disabled(model.connectionChecking)
+                Button("Relancer le test") { model.testConnection() }.disabled(model.connectionChecking || model.connectionReconnecting)
+                if model.connectionReconnecting {
+                    Button("Annuler la connexion") { model.cancelConnection() }
+                }
                 Spacer()
-                Button("Fermer") { model.showConnectionCheck = false }.keyboardShortcut(.defaultAction)
+                Button("Fermer") { model.closeConnectionCheck() }.keyboardShortcut(.defaultAction)
             }
         }.padding(24).frame(minWidth: 620, minHeight: 380)
     }

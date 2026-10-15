@@ -852,7 +852,7 @@ async function testConnection() {
   try {
     const r = await call("POST", "/llm-check", { probe: true });
     const mark = { ok: "✅", info: "ℹ️", warn: "⚠️", error: "❌" };
-    const lines = (r.checks || []).filter((c) => c.status !== "info" || c.id === "probe").map((c) => {
+    const lines = (r.checks || []).map((c) => {
       const action = c.action && c.status !== "ok" ? `\n    → ${c.action}` : "";
       return `${mark[c.status] || "•"} ${c.message}${action}`;
     });

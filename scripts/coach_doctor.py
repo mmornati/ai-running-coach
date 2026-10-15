@@ -1319,7 +1319,7 @@ def check_llm_config(config: dict, workspace: Optional[Path] = None, probe_llm: 
     if diag:
         return build_check(
             check_id, "warning", "Connexion IA à revoir : " + " ; ".join(c["message"].rstrip(".") for c in diag) + ".",
-            fix=next((c["action"] for c in diag if c.get("action")), None),
+            fix=" ; ".join(dict.fromkeys(c["action"] for c in diag if c.get("action"))) or None,
         )
     parts = [f"sync : {runner}" + (f" ({sync.get('model')})" if sync.get("model") else "")]
     if chat_on:

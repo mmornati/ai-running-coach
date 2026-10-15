@@ -1204,7 +1204,7 @@ class ChatService:
     def llm_check(self, probe: bool) -> dict:
         """`arc_llm.py check` pour la page du chat : jamais de secret, jamais une exception."""
         cached = self._llm_check_cache.get(probe)
-        if probe and cached and time.monotonic() - cached[0] < LLM_CHECK_CACHE_S:
+        if probe and cached and cached[1].get("worst") != "error" and time.monotonic() - cached[0] < LLM_CHECK_CACHE_S:
             return cached[1]
         try:
             import arc_llm_check
@@ -1362,7 +1362,8 @@ class Handler(BaseHTTPRequestHandler):
             body = self._read_body()
             if body is None:
                 return
-            who = client_ip(svc.cfg, self.client_address[0], self.headers)
+            # Mode proxy : une limite par utilisateur authentifié (plusieurs utilisateurs derrière la même adresse).
+            who = user if svc.cfg.get("auth") == "proxy" and user else client_ip(svc.cfg, self.client_address[0], self.headers)
             if not svc.llm_check_limiter.allow(who):
                 return self._error(429, "Trop de tests de connexion : réessayez dans une minute.")
             return self._json(200, svc.llm_check(body.get("probe") is True))
