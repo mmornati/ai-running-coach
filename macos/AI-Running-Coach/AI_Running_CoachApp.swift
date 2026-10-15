@@ -117,6 +117,33 @@ enum ChatChoice: String, CaseIterable, Identifiable {
     }
 }
 
+/// Fournisseur du chat intégré : OpenRouter (facturé à l'usage) ou l'abonnement que l'athlète a déjà
+/// (ChatGPT Plus/Pro, GitHub Copilot ; connexion avec son compte par scripts/arc_llm.py, #266).
+enum ChatProvider: String, CaseIterable, Identifiable {
+    case openRouter, chatGPT, copilot
+
+    var id: String { rawValue }
+    var title: String {
+        switch self {
+        case .openRouter: return "OpenRouter"
+        case .chatGPT: return "J’ai ChatGPT Plus/Pro"
+        case .copilot: return "J’ai GitHub Copilot"
+        }
+    }
+    /// Identifiant de `install.sh --llm` et de `arc_llm.py login`.
+    var llmID: String {
+        switch self {
+        case .openRouter: return "openrouter"
+        case .chatGPT: return "chatgpt"
+        case .copilot: return "copilot"
+        }
+    }
+    var isSubscription: Bool { self != .openRouter }
+    var planName: String { self == .copilot ? "GitHub Copilot" : "ChatGPT" }
+    /// Clé du jeton dans `auth.json` d'OpenCode (magasin dédié au coach).
+    var authKey: String { self == .copilot ? "github-copilot" : "openai" }
+}
+
 /// Comment l'athlète donne accès à OpenRouter : connexion en un clic (OAuth, scripts/arc_llm.py)
 /// ou clé déjà créée.
 enum OpenRouterAccess: String, CaseIterable, Identifiable {
@@ -197,6 +224,10 @@ struct SetupChoices {
     var intermediateRaces = ""
     var medicalLimits = ""
     var chatChoice: ChatChoice = .integrated
+    var chatProvider: ChatProvider = .openRouter
+    /// Abonnement : la synchronisation automatique passe aussi sur le forfait (`--sync-subscription`).
+    /// L'application n'a pas d'autre exécuteur de synchronisation dans ce mode.
+    var syncWithSubscription = true
     var openRouterAccess: OpenRouterAccess = .connect
     var openRouterAPIKey = ""
     var chatBudget = "1.00"
@@ -259,6 +290,7 @@ struct SetupChoices {
 
     var chatIsCompleteEnough: Bool {
         guard chatChoice == .integrated else { return true }
+        if chatProvider.isSubscription { return true }   // abonnement : ni clé ni plafond en euros
         if openRouterAccess == .manualKey {
             let key = openRouterAPIKey.trimmingCharacters(in: .whitespacesAndNewlines)
             guard !key.isEmpty, !key.contains("\n"), !key.contains("\r") else { return false }
@@ -397,6 +429,34 @@ final class CoachAppModel: ObservableObject {
     /// Chat intégré choisi mais pas encore connecté : ni chat ni synchronisation en arrière-plan
     /// (elle passerait par OpenCode, sans clé) tant que « Connecter OpenRouter » n'a pas abouti.
     var integratedChatPending: Bool { defaults.bool(forKey: "integratedChatPending") }
+
+    /// Synchronisation manuelle (supervisée) sur l'abonnement quand la synchronisation automatique n'y est pas :
+    /// sans cela, [sync].runner resterait « claude », que cet athlète n'a pas.
+    var manualSyncEnvironment: [String] {
+        savedChatProvider != nil && !choices.syncWithSubscription ? ["ARC_SYNC_USE_CHAT_PROVIDER=1"] : []
+    }
+
+    /// Sondage de l'état de la connexion (un seul à la fois : un nouveau clic annule le précédent).
+    var subscriptionPoll: Task<Void, Never>?
+
+    /// Magasin d'authentification OpenCode du coach (même chemin que `install.sh`, #266).
+    var coachOpenCodeStore: URL {
+        fm.homeDirectoryForCurrentUser.appendingPathComponent(".local/share/ai-running-coach/opencode", isDirectory: true)
+    }
+    /// Abonnement choisi pour le chat intégré (nil = OpenRouter ou assistant externe).
+    var savedChatProvider: ChatProvider? {
+        guard integratedChatEnabled, let raw = defaults.string(forKey: "chatProvider"),
+              let provider = ChatProvider(rawValue: raw), provider.isSubscription else { return nil }
+        return provider
+    }
+    /// Le jeton est-il dans le magasin ? Présence de la clé seulement, jamais sa valeur.
+    var subscriptionConnected: Bool {
+        guard let provider = savedChatProvider,
+              let data = try? Data(contentsOf: coachOpenCodeStore.appendingPathComponent("opencode/auth.json")),
+              let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return false }
+        // Seule une connexion de type « oauth » (abonnement) compte, pas une clé API rangée là.
+        return (object[provider.authKey] as? [String: Any])?["type"] as? String == "oauth"
+    }
     var externalAssistantTitle: String { choices.ide.title }
     var syncStatusDetail: String {
         integratedChatEnabled ? "Automatique" : "Après la 1re connexion à \(externalAssistantTitle)"
@@ -415,6 +475,12 @@ final class CoachAppModel: ObservableObject {
         let installed = isInstalled
         if installed {
             choices.chatChoice = defaults.bool(forKey: "integratedChatEnabled") ? .integrated : .external
+            if let raw = defaults.string(forKey: "chatProvider"), let provider = ChatProvider(rawValue: raw) {
+                choices.chatProvider = provider
+            }
+            if defaults.object(forKey: "syncWithSubscription") != nil {
+                choices.syncWithSubscription = defaults.bool(forKey: "syncWithSubscription")
+            }
         }
         phase = installed ? .ready : .welcome
         updateAvailable = installed && (
@@ -468,7 +534,11 @@ final class CoachAppModel: ObservableObject {
                 if selected.chatChoice == .integrated {
                     progress = 0.16
                     progressTitle = "Préparation du chat avec le coach"
-                    if selected.openRouterAccess == .connect {
+                    if selected.chatProvider.isSubscription {
+                        // Abonnement ChatGPT / Copilot : aucune clé. La connexion se fait dans Terminal
+                        // une fois l'installation terminée (arc_llm.py login).
+                        appendLog("Chat sur votre abonnement \(selected.chatProvider.planName) : aucune clé API à fournir.\n")
+                    } else if selected.openRouterAccess == .connect {
                         // Le moteur vient d'être extrait : arc_llm.py est disponible. La connexion
                         // se fait avant l'activation du chat ; un échec propose de réessayer, de
                         // coller une clé ou de continuer sans le chat (à connecter plus tard).
@@ -494,8 +564,16 @@ final class CoachAppModel: ObservableObject {
                     "--no-auth"
                 ]
                 let chatPending = selected.chatChoice == .integrated && !chatEnabled
-                if !chatPending { args += ["--daily-sync", "--sync-runner", selected.syncRunner] }
-                if selected.chatChoice == .integrated {
+                let subscriptionChat = selected.chatChoice == .integrated && selected.chatProvider.isSubscription
+                if !chatPending && (!subscriptionChat || selected.syncWithSubscription) {
+                    args += ["--daily-sync", "--sync-runner", selected.syncRunner]
+                }
+                if subscriptionChat {
+                    // Pas de plafond en euros : rien n'est facturé au jeton.
+                    args += ["--llm", selected.chatProvider.llmID, "--chat"]
+                    // Case décochée : install.sh ne doit pas déplacer la synchronisation, même sur une installation neuve.
+                    args += [selected.syncWithSubscription ? "--sync-subscription" : "--no-sync-subscription"]
+                } else if selected.chatChoice == .integrated {
                     args += ["--llm", "openrouter"]
                     if chatEnabled {
                         args += [
@@ -526,6 +604,8 @@ final class CoachAppModel: ObservableObject {
                 if chatPending {
                     appendLog("Le chat ET la synchronisation en arrière-plan attendent la connexion OpenRouter : utilisez « Connecter OpenRouter » sur l’écran d’accueil.\n")
                 }
+                defaults.set(selected.chatProvider.rawValue, forKey: "chatProvider")
+                defaults.set(selected.syncWithSubscription, forKey: "syncWithSubscription")
                 defaults.set(installationIDE.rawValue, forKey: "assistant")
                 defaults.set(bundleVersion, forKey: "engineVersion")
                 defaults.set(engineBuild, forKey: "engineBuild")
@@ -534,6 +614,9 @@ final class CoachAppModel: ObservableObject {
                 progress = 1
                 progressTitle = "Installation terminée"
                 phase = .ready
+                if selected.chatChoice == .integrated && selected.chatProvider.isSubscription {
+                    connectSubscription()   // ouvre Terminal pour la connexion avec le compte
+                }
             } catch {
                 errorMessage = error.localizedDescription
                 appendLog("\nErreur : \(error.localizedDescription)\n")
@@ -573,7 +656,9 @@ final class CoachAppModel: ObservableObject {
                     "--ide", integratedChatPending ? IDEChoice.opencode.rawValue : (integratedChatEnabled ? IDEChoice.opencode.rawValue : choices.ide.rawValue),
                     "--no-auth"
                 ]
-                if !integratedChatPending { args += ["--daily-sync", "--sync-runner", choices.syncRunner] }
+                if !integratedChatPending && (savedChatProvider == nil || choices.syncWithSubscription) {
+                    args += ["--daily-sync", "--sync-runner", choices.syncRunner]
+                }
                 let result = try await runProcess(
                     executable: "/usr/bin/env",
                     arguments: args,
@@ -1384,6 +1469,41 @@ final class CoachAppModel: ObservableObject {
         try? process.run()
     }
 
+    /// Connexion de l'abonnement (ChatGPT : adresse + code d'appareil ; Copilot : code GitHub) dans une
+    /// fenêtre Terminal, comme « Connecter mon compte » : `arc_llm.py login chatgpt|copilot`. Le jeton
+    /// reste dans le magasin d'OpenCode du coach ; l'application ne le lit jamais.
+    func connectSubscription() {
+        guard let provider = savedChatProvider else { return }
+        let home = fm.homeDirectoryForCurrentUser.path
+        // Comme pour Garmin : nos dossiers sont AJOUTÉS devant le PATH de l'utilisateur (jamais à sa place).
+        let extra = [
+            "\(home)/.local/bin",
+            "\(home)/.opencode/bin",
+            appSupport.appendingPathComponent("node-runtime/bin").path,
+            appSupport.appendingPathComponent("npm-tools/bin").path,
+            "/opt/homebrew/bin", "/usr/local/bin"
+        ].joined(separator: ":")
+        let login = "python3 \(shellQuote(engineURL.appendingPathComponent("scripts/arc_llm.py").path)) login \(provider.llmID) --data-dir \(shellQuote(coachOpenCodeStore.path))"
+        let command = "cd \(shellQuote(engineURL.path)) && export PATH=\(shellQuote(extra)):\"$PATH\" && clear && \(login); printf '\\nVous pouvez fermer cette fenêtre.\\n'; read -n 1"
+        let escaped = command.replacingOccurrences(of: "\\", with: "\\\\").replacingOccurrences(of: "\"", with: "\\\"")
+        let script = "tell application \"Terminal\" to do script \"\(escaped)\"\ntell application \"Terminal\" to activate"
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/osascript")
+        process.arguments = ["-e", script]
+        try? process.run()
+        // Rend l'état de la connexion observable : le jeton arrive pendant que l'athlète valide dans
+        // son navigateur, sans que l'application change de premier plan. On sonde jusqu'à 10 minutes.
+        subscriptionPoll?.cancel()
+        subscriptionPoll = Task { @MainActor in
+            for _ in 0..<200 {
+                if Task.isCancelled { return }
+                try? await Task.sleep(nanoseconds: 3_000_000_000)
+                self.objectWillChange.send()
+                if self.subscriptionConnected { break }
+            }
+        }
+    }
+
     func synchronizeNow() {
         guard !manualSyncRunning else { return }
         guard isAuthenticated else {
@@ -1399,7 +1519,8 @@ final class CoachAppModel: ObservableObject {
                 let result = try await runProcess(
                     executable: "/usr/bin/env",
                     arguments: [
-                        "ARC_WORKSPACE=\(workspaceURL.path)",
+                        "ARC_WORKSPACE=\(workspaceURL.path)"
+                    ] + manualSyncEnvironment + [
                         engineURL.appendingPathComponent("scripts/daily-sync.sh").path
                     ],
                     directory: engineURL,
@@ -1825,6 +1946,26 @@ struct SetupView: View {
                         }
                         .pickerStyle(.segmented)
                         if model.choices.chatChoice == .integrated {
+                            Picker("Fournisseur", selection: $model.choices.chatProvider) {
+                                ForEach(ChatProvider.allCases) { Text($0.title).tag($0) }
+                            }
+                            .pickerStyle(.segmented)
+                        }
+                        if model.choices.chatChoice == .integrated && model.choices.chatProvider.isSubscription {
+                            Text("Vous retrouverez un bouton « Parler au coach » dans l’application. Aucune clé API : le chat et la synchronisation automatique utilisent votre abonnement \(model.choices.chatProvider.planName). Une fenêtre Terminal s’ouvre à la fin de l’installation pour vous connecter avec votre compte.")
+                                .font(.callout).foregroundStyle(.secondary)
+                            Text(model.choices.chatProvider == .chatGPT
+                                 ? "Forfaits acceptés : ChatGPT Plus ou Pro (l’offre Free est refusée par OpenAI). Aucun coût supplémentaire : les limites de votre forfait s’appliquent, et la synchronisation quotidienne les consomme aussi. Les modèles par défaut n’ont pas été évalués sur un vrai forfait."
+                                 : "Forfaits acceptés : Copilot Pro, Pro+, Business ou Enterprise (Copilot Free n’est pas pris en charge). Aucun coût supplémentaire : les crédits de votre forfait s’appliquent, et la synchronisation quotidienne les consomme aussi. Les modèles par défaut n’ont pas été évalués sur un vrai forfait.")
+                                .font(.callout)
+                            Toggle("Synchroniser aussi avec mon forfait (une ou deux fois par jour)", isOn: $model.choices.syncWithSubscription)
+                            Text(model.choices.syncWithSubscription
+                                 ? "La synchronisation automatique de vos données sportives utilisera aussi votre forfait \(model.choices.chatProvider.planName), sur vos limites. Dans ce mode, l’application n’a pas d’autre exécuteur de synchronisation. Aucune déclaration officielle n’autorise l’usage planifié sans surveillance d’un forfait grand public : vérifiez les conditions de votre fournisseur."
+                                 : "Sans cette option, la synchronisation automatique n’est pas installée ; « Synchroniser maintenant » reste disponible et utilise alors votre forfait pour cette seule synchronisation, que vous lancez vous-même.")
+                                .font(.caption).foregroundStyle(.secondary)
+                            Text("Vos échanges avec le coach passent par votre compte \(model.choices.chatProvider.planName) : ses réglages de confidentialité s’appliquent.")
+                                .font(.caption).foregroundStyle(.secondary)
+                        } else if model.choices.chatChoice == .integrated {
                             Text("Vous retrouverez un bouton « Parler au coach » dans l’application. Ce chat utilise OpenRouter, facturé à l’usage ; votre plafond quotidien évite les surprises. La synchronisation automatique des données sportives sera également activée.")
                                 .font(.callout).foregroundStyle(.secondary)
                             Picker("OpenRouter", selection: $model.choices.openRouterAccess) {
@@ -1979,6 +2120,20 @@ struct ReadyView: View {
                         }
                         Spacer()
                         Button("Connecter mon compte") { model.connectAccount() }.buttonStyle(.borderedProminent)
+                    }.padding(8)
+                }
+            }
+
+            if let plan = model.savedChatProvider, !model.subscriptionConnected {
+                GroupBox {
+                    HStack {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("Connectez \(plan.planName)").font(.headline)
+                            Text("Une fenêtre Terminal affiche une adresse et un code à valider dans votre navigateur. Le chat et la synchronisation utilisent ensuite votre abonnement, sans clé API.")
+                                .font(.callout).foregroundStyle(.secondary)
+                        }
+                        Spacer()
+                        Button("Connecter \(plan.planName)") { model.connectSubscription() }.buttonStyle(.borderedProminent)
                     }.padding(8)
                 }
             }

@@ -39,7 +39,8 @@ from typing import Callable, Optional
 #   approval_resolved  {"approval_id": str, "decision": "allow"|"deny"|"pending"|"expired"|"cancelled"|"unexecuted"}
 #   file_written       {"path": str (relatif au workspace)}
 #   usage              {"input_tokens": int, "output_tokens": int,
-#                       "cache_read_tokens": int, "cost_eur": float}
+#                       "cache_read_tokens": int, "cost_eur": float,
+#                       "billing": "subscription" (facultatif : forfait ChatGPT/Copilot, cost_eur = 0)}
 #   done               {"reason": "end_turn"|"interrupted"|"budget"|"max_turns"|"pending_approval"}
 #   error              {"message": str (français, lisible par l'athlète)}
 #   status             {"message": str} — état passager (fournisseur saturé, nouvelle tentative…),
@@ -165,6 +166,11 @@ class ChatBackend(ABC):
     def check(self) -> tuple:
         """(ok, message) sans dépenser de jetons — utilisé par /healthz et coach-doctor."""
         return True, f"backend {self.name}"
+
+    def billing(self) -> Optional[dict]:
+        """`{"mode": "subscription", "label": "ChatGPT"}` quand les tours sont inclus dans un forfait
+        (aucun coût au jeton, rien n'est compté contre le plafond du jour), sinon None."""
+        return None
 
     def shutdown(self) -> None:
         """Libère les ressources (processus enfant, boucle asyncio…)."""

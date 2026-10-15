@@ -40,6 +40,12 @@ Faits établis (voir `tests/data/fixtures/chat/opencode_*.json`, extraits du bin
     `session.updated` avec `info.parentID` ; `metadata.sessionId` sur la partie `task`, vérifiés
     dans le schéma OpenAPI 1.18.32 et `tool/task.ts`) : leurs `permission.asked` (avec `"*": "ask"`)
     portent l'id de la session fille -> même politique ; leurs coûts comptent dans le tour.
+  - Abonnements ChatGPT / GitHub Copilot (#266) : avec `[chat].opencode_data_dir` posé, un modèle
+    `openai/…` ou `github-copilot/…` sans clé API utilise ce magasin d'authentification comme
+    XDG_DATA_HOME (partagé avec la sync, voir `arc_llm.py`) ; config/state/cache restent isolés.
+    Coût rapporté ignoré (ChatGPT : 0 ; Copilot : pseudo-USD de `billing.token_prices`, pas une
+    facture) ; verrou du magasin pendant un tour ChatGPT (rafraîchissement du jeton sans verrou
+    côté OpenCode). Clé absente = comportement historique inchangé.
   - `OPENCODE_CONFIG` charge notre fichier ; le config global `~/.config/opencode` est aussi lu
     -> on isole XDG_CONFIG_HOME/XDG_DATA_HOME/XDG_STATE_HOME/XDG_CACHE_HOME sous `.arc/chat/opencode/xdg`.
 """
@@ -64,6 +70,7 @@ from pathlib import Path
 from typing import Any, Optional
 from urllib.parse import urlparse
 
+import arc_llm
 from arc_chat_backend import (SYSTEM_ADDENDUM, system_addendum, BackendError, ChatBackend, TurnContext,
                               resolve_workspace_path)
 from arc_chat_tools import (REFUSAL_DENY, display_input, fs_list_input, gate, map_leanproxy,
@@ -79,6 +86,7 @@ SOCKET_TIMEOUT_S = 120.0         # lecture du flux SSE (le serveur émet un `ser
 TURN_TIMEOUT_S = 1800.0          # durée maximale d'un tour (hors attente d'approbation), `[chat].turn_timeout_s`
 HEARTBEAT_EVENTS = ("server.heartbeat", "server.connected")
 ABORT_GRACE_S = 15.0
+STORE_WAIT_S = 120.0             # attente du verrou du magasin ChatGPT (sync en cours), voir arc_llm.StoreGate
 
 # Permissions refusées d'office (sans passer par la politique) : sans objet dans le chat.
 ALWAYS_REJECT = ("question", "external_directory", "doom_loop", "todowrite", "todoread")
@@ -174,13 +182,20 @@ def convert_mcp_servers(mcp_json: dict) -> dict:
     return out
 
 
-def build_config(model: str, base_url: str, api_key_env: str, mcp: dict) -> dict:
-    """Contenu de `opencode.json` : fournisseur, MCP, permissions « ask » partout."""
+def build_config(model: str, base_url: str, api_key_env: str, mcp: dict, subscription: bool = False) -> dict:
+    """Contenu de `opencode.json` : fournisseur, MCP, permissions « ask » partout.
+
+    `subscription` (ChatGPT / Copilot) : aucun bloc `provider` — ni clé ni modèle déclaré, le plugin
+    OAuth d'OpenCode filtre lui-même le catalogue (et force le coût à 0 pour ChatGPT) ; une clé
+    `options.apiKey` masquerait la connexion.
+    """
     provider_id, model_id = split_model(model)
     options: dict = {}
     if api_key_env:
         options["apiKey"] = "{env:%s}" % api_key_env   # substitué par OpenCode, jamais écrit en clair
-    if base_url:
+    if subscription:
+        provider = None
+    elif base_url:
         provider = {"npm": "@ai-sdk/openai-compatible", "name": provider_id,
                     "options": {**options, "baseURL": base_url},
                     "models": {model_id: {"name": model_id}}}
@@ -193,7 +208,10 @@ def build_config(model: str, base_url: str, api_key_env: str, mcp: dict) -> dict
         "model": f"{provider_id}/{model_id}",
         "autoupdate": False,
         "share": "disabled",
-        "provider": {provider_id: provider},
+        "provider": {provider_id: provider} if provider is not None else {},
+        # Abonnement : pas d'instantanés de fichiers (clé `snapshot` du schéma OpenCode 1.18.35,
+        # core/src/v1/config/config.ts) — inutiles pour le chat et coûteux dans le workspace.
+        **({"snapshot": False} if subscription else {}),
         "mcp": mcp,
         # `*` = ask : l'adaptateur reçoit CHAQUE demande de permission (lectures comprises) et
         # applique la politique du coach ; les outils sans objet disparaissent du contexte.
@@ -251,6 +269,33 @@ class _Turn:
         return {self.root} | self.children
 
 
+class _Lease:
+    """Verrou du magasin tenu par UN tour, du début à la fin (attentes d'approbation comprises).
+
+    `close()` est idempotent et appelé dans un `finally` : le verrou ne survit jamais au tour.
+    Aucune relâche pendant une approbation (elle compliquait la reprise et fuyait le verrou) : une
+    synchronisation qui attend trop longtemps est simplement reportée au passage suivant.
+    """
+
+    def __init__(self, gate: Any) -> None:
+        self.gate = gate
+        self._lock = threading.Lock()
+        self.held = False
+
+    def acquire(self, timeout_s: float) -> bool:
+        if self.gate.acquire(timeout_s):
+            with self._lock:
+                self.held = True
+            return True
+        return False
+
+    def close(self) -> None:
+        with self._lock:
+            held, self.held = self.held, False
+        if held:
+            self.gate.release()
+
+
 class OpenCodeBackend(ChatBackend):
     name = "opencode"
 
@@ -281,7 +326,47 @@ class OpenCodeBackend(ChatBackend):
         return str(self.config.get("opencode_bin") or "") or shutil.which("opencode")
 
     def _need_key(self) -> bool:
+        if self._subscription() is not None:
+            return False
         return not (self._base_url() and _is_loopback_url(self._base_url()))
+
+    # -- abonnement ChatGPT / Copilot (#266) -----------------------------
+
+    def _data_dir(self) -> str:
+        raw = str(self.config.get("opencode_data_dir") or "").strip()
+        if not raw:
+            return ""
+        path = os.path.expanduser(raw)
+        # Chemin relatif : toujours résolu depuis le workspace (comme daily-sync.sh), jamais depuis le cwd.
+        return os.path.abspath(path if os.path.isabs(path) else os.path.join(str(self.workspace), path))
+
+    def _subscription(self) -> Optional[dict]:
+        """Entrée du catalogue (chatgpt|copilot) si ce chat utilise un abonnement, sinon None.
+
+        Lit la clé BRUTE `api_key_env` : `_api_key_env()` renvoie un défaut quand elle est vide.
+        """
+        return arc_llm.subscription_entry(self._model(), self._data_dir(),
+                                          str(self.config.get("api_key_env") or ""), self._base_url())
+
+    def billing(self) -> Optional[dict]:
+        entry = self._subscription()
+        return {"mode": "subscription", "label": entry["plan_label"]} if entry else None
+
+    def _auth_missing(self) -> Optional[str]:
+        entry = self._subscription()
+        if entry is None or arc_llm.auth_status(self._data_dir(), entry["opencode_provider"])["present"]:
+            return None
+        return arc_llm.missing_auth_message(entry, self._data_dir())
+
+    def _store_gate(self) -> Optional["arc_llm.StoreGate"]:
+        """Verrou du magasin, seulement quand le jeton se rafraîchit (ChatGPT)."""
+        entry = self._subscription()
+        if entry is None or not entry.get("refreshes_tokens"):
+            return None
+        gate_obj = getattr(self, "_gate_obj", None)
+        if gate_obj is None or gate_obj.data_dir != self._data_dir():
+            gate_obj = self._gate_obj = arc_llm.StoreGate(self._data_dir())
+        return gate_obj
 
     def _read_mcp(self) -> dict:
         """Entrées MCP d'OpenCode : `.mcp.json` du workspace, sinon config OpenCode de l'utilisateur."""
@@ -309,7 +394,8 @@ class OpenCodeBackend(ChatBackend):
         mcp = self._read_mcp()
         self._mcp_names = set(mcp)
         cfg = build_config(self._model(), self._base_url(),
-                           self._api_key_env() if self._need_key() else "", mcp)
+                           self._api_key_env() if self._need_key() else "", mcp,
+                           subscription=self._subscription() is not None)
         self._state_dir.mkdir(parents=True, exist_ok=True)
         path = self._state_dir / "opencode.json"
         fd = os.open(str(path), os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
@@ -333,6 +419,9 @@ class OpenCodeBackend(ChatBackend):
         version = version[0].strip()
         if out.returncode != 0:
             return False, f"opencode --version a échoué ({short(version, 80)})"
+        missing = self._auth_missing()
+        if missing:
+            return False, missing
         if self._need_key() and not os.environ.get(self._api_key_env(), "").strip():
             return False, f"clé API absente : variable {self._api_key_env()} vide"
         note = "" if version == OPENCODE_TESTED_VERSION else f" (testé avec {OPENCODE_TESTED_VERSION})"
@@ -373,6 +462,9 @@ class OpenCodeBackend(ChatBackend):
             binary = self._binary()
             if not binary:
                 raise BackendError("OpenCode n'est pas installé (binaire « opencode » introuvable).")
+            missing = self._auth_missing()
+            if missing:
+                raise BackendError(missing)
             if self._need_key() and not os.environ.get(self._api_key_env(), "").strip():
                 raise BackendError(f"Clé API du fournisseur absente : la variable {self._api_key_env()} "
                                    "est vide (voir ~/.config/ai-running-coach/llm.env).")
@@ -383,6 +475,14 @@ class OpenCodeBackend(ChatBackend):
                              ("XDG_STATE_HOME", "state"), ("XDG_CACHE_HOME", "cache")):
                 (xdg / sub).mkdir(parents=True, exist_ok=True)
                 env[var] = str(xdg / sub)
+            if self._subscription() is not None:
+                # Magasin d'authentification du coach, partagé avec la sync (arc_llm.py) : seul
+                # XDG_DATA_HOME change ; config, état et cache restent isolés.
+                arc_llm.ensure_data_dir(self._data_dir())
+                env["XDG_DATA_HOME"] = self._data_dir()
+                # auth.json partagé, mais base de sessions propre au chat (jamais deux processus de
+                # rôles différents sur la même base SQLite) : chemin absolu = pris tel quel par OpenCode.
+                env["OPENCODE_DB"] = str(self._state_dir / "opencode.db")
             self._password = secrets.token_urlsafe(24)
             env.update({"OPENCODE_CONFIG": str(cfg_path), "OPENCODE_SERVER_PASSWORD": self._password})
             if self._need_key():
@@ -561,6 +661,23 @@ class OpenCodeBackend(ChatBackend):
     # -- tour --------------------------------------------------------------
 
     def run_turn(self, ctx: TurnContext, user_message: str) -> None:
+        gate_obj = self._store_gate()
+        lease = None
+        if gate_obj is not None:
+            lease = _Lease(gate_obj)
+            if not lease.acquire(0):
+                # La synchronisation tient le magasin : on le dit avant d'attendre (jusqu'à STORE_WAIT_S).
+                ctx.emit("status", {"message": "Synchronisation en cours : j'attends la connexion ChatGPT…"})
+                if not lease.acquire(STORE_WAIT_S):
+                    raise BackendError("La synchronisation du coach utilise la connexion ChatGPT en ce moment : "
+                                       "réessaie dans quelques minutes.")
+        try:
+            self._run_turn(ctx, user_message)
+        finally:
+            if lease is not None:
+                lease.close()
+
+    def _run_turn(self, ctx: TurnContext, user_message: str) -> None:
         self._ensure_server()
         provider_id, model_id = split_model(self._model())
         sid = self._session_id(ctx)
@@ -611,6 +728,11 @@ class OpenCodeBackend(ChatBackend):
                 pass
 
     def _turn_cost_eur(self, turn: _Turn) -> float:
+        if self._subscription() is not None:
+            # Forfait : ChatGPT rapporte 0 ; Copilot rapporte des « USD » dérivés des crédits du forfait
+            # (billing.token_prices d'OpenCode, non vérifié sur un vrai forfait) qui ne sont PAS une
+            # facture : jamais comptés en euros, ni contre le plafond du jour.
+            return 0.0
         return usd_to_eur(turn.cost_usd, turn.ctx.config.get("usd_eur_rate"))
 
     def _adopt_if_child(self, sid: str, turn: _Turn, candidate: str) -> bool:
@@ -730,7 +852,7 @@ class OpenCodeBackend(ChatBackend):
             elif etype == "session.error":
                 if turn.aborted:
                     continue
-                raise BackendError(self._translate_error(props.get("error") or {}))
+                raise BackendError(self._translate_error(props.get("error") or {}, self._subscription(), self._data_dir()))
 
     # -- évènements ----------------------------------------------------
 
@@ -741,7 +863,7 @@ class OpenCodeBackend(ChatBackend):
             turn.started = True
             error = info.get("error")
             if error and not turn.aborted and not (error.get("name") == "MessageAbortedError"):
-                raise BackendError(self._translate_error(error))
+                raise BackendError(self._translate_error(error, self._subscription(), self._data_dir()))
 
     def _on_delta(self, turn: _Turn, props: dict) -> None:
         if props.get("field") != "text" or props.get("messageID") in turn.user_ids:
@@ -965,12 +1087,16 @@ class OpenCodeBackend(ChatBackend):
     # -- fin de tour -----------------------------------------------------
 
     @staticmethod
-    def _translate_error(error: dict) -> str:
+    def _translate_error(error: dict, subscription: Optional[dict] = None, data_dir: str = "") -> str:
         name = str(error.get("name", ""))
         data = error.get("data") or {}
         message = str(data.get("message") or error.get("message") or "")
         status = data.get("statusCode")
         low = message.lower()
+        if subscription is not None:
+            known = arc_llm.translate_subscription_error(subscription, name, status, message, data_dir)
+            if known:
+                return known
         if name == "ProviderAuthError" or status == 401 or "401" in low or "invalid api key" in low \
                 or "unauthorized" in low:
             return "Clé API du fournisseur refusée (401) : vérifier la clé dans llm.env."
@@ -996,6 +1122,7 @@ class OpenCodeBackend(ChatBackend):
             "output_tokens": turn.tokens["output"],
             "cache_read_tokens": turn.tokens["cache_read"],
             "cost_eur": self._turn_cost_eur(turn),
+            **({"billing": "subscription"} if self._subscription() is not None else {}),
         })
 
     def _finish(self, turn: _Turn) -> None:
