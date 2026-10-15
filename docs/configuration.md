@@ -233,7 +233,8 @@ output_dir = ""     # vide = exports/vanoor/ dans le workspace
 ```
 
 **Opt-in strict.** À `off` (défaut, clé absente ou valeur inconnue), aucun fichier n'est écrit et
-aucun agent n'en parle. `on` : à chaque validation de semaine, le coach écrit les séances de course
+aucun agent n'en parle. Rien à réinstaller pour l'activer : demandez-le au coach (« active l'export
+Vanoor », pris en charge par `/coach-setup`) ou écrivez la section à la main. `on` : à chaque validation de semaine, le coach écrit les séances de course
 au format de l'app [Vanoor](https://vanoor.app) (`semaine-<lundi>.vanoor` : étapes, plages FC et
 allures personnelles, répétitions) ; le stratège de course y écrit aussi le plan de course (une
 étape par segment, allure du scénario, rappel à chaque ravito). Rien n'est poussé : vous importez le

@@ -8,7 +8,10 @@ Avec une montre Garmin, le coach pousse les séances au calendrier. Avec une App
 
 ## Activation
 
-Opt-in strict, désactivé par défaut :
+Opt-in strict, désactivé par défaut, et rien à réinstaller. Deux façons de l'activer :
+
+- **Demandez-le au coach** : « active l'export Vanoor » (ou lancez `/coach-setup` et demandez-le). Il vous demande où écrire les fichiers et l'inscrit dans votre configuration.
+- **À la main**, dans votre configuration personnelle :
 
 ```toml
 # config/workspace.user.toml

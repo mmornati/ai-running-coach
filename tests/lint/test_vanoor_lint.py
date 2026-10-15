@@ -36,6 +36,18 @@ class TestConfig(unittest.TestCase):
         self.assertIn("/exports/", _read(".gitignore").splitlines())
 
 
+class TestActivation(unittest.TestCase):
+    def test_coach_setup_can_enable_it_on_request(self):
+        setup = _read("skills/coach-setup/SKILL.md")
+        self.assertIn("Vanoor", setup.split("---")[1], "la description du skill doit déclencher sur la demande")
+        self.assertIn("--section vanoor --key export --value on", setup)
+        self.assertIn("[vanoor].output_dir", setup)
+
+    def test_docs_say_how_to_enable_it(self):
+        for rel in ("docs/skills/vanoor-export.md", "docs/configuration.md"):
+            self.assertIn("active l'export", _read(rel), rel)
+
+
 class TestPrompts(unittest.TestCase):
     def test_agents_gate_on_export_and_never_mention_it_off(self):
         coach = _read("agents/coach.md")

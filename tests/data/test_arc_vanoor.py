@@ -182,7 +182,8 @@ class TestRace(unittest.TestCase):
 class TestCli(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
-        self.ws = Path(self.tmp.name)
+        # Résolu : sous macOS, /var est un lien vers /private/var et le script résout le workspace.
+        self.ws = Path(self.tmp.name).resolve()
         (self.ws / "planning").mkdir()
         (self.ws / "config").mkdir()
         (self.ws / "planning/Semaine_2030-03-04.md").write_text(
