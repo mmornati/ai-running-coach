@@ -274,11 +274,11 @@ ntfy_topic = "test-topic"
 
 
 class SyncFailureTests(InstallAsserts):
-    def _failing_sync(self, sb, status, message, config=FREE_SYNC):
+    def _failing_sync(self, sb, status, message, config=FREE_SYNC, error=None):
         _write_config(sb, config)
         _write_llm_env(sb, "OPENROUTER_API_KEY=%s\n" % SECRET)
         _stub_opencode(sb)
-        out = _events_file(sb, [{"type": "error", "error": {
+        out = _events_file(sb, [{"type": "error", "error": error or {
             "name": "APIError", "data": {"statusCode": status, "message": message}}}])
         proc = _run_sync(sb, ARC_STUB_OPENCODE_OUT=str(out), ARC_STUB_OPENCODE_RC="1")
         self.assertFailed(proc)
@@ -296,6 +296,26 @@ class SyncFailureTests(InstallAsserts):
             calls = self._failing_sync(sb, 429, "Provider returned error")
             self.assertIn("modèle gratuit saturé", calls)
             self.assertNotIn("quota gratuit du jour atteint", calls)
+
+    def test_provider_overloaded_is_upstream_saturation_free_and_paid(self):
+        # Corps réel du 2026-10-15 (HTTP 200, erreur dans le flux), tel qu'OpenCode v1.18.35 le rapporte :
+        # UnknownError dont le message est l'objet d'erreur sérialisé, sans statusCode.
+        overloaded = {"name": "UnknownError", "data": {"message": json.dumps({
+            "message": "Upstream error from Nvidia: Service temporarily overloaded", "code": 503,
+            "metadata": {"error_type": "provider_overloaded"}})}}
+        with Sandbox() as sb:
+            calls = self._failing_sync(sb, None, None, error=overloaded)
+            self.assertIn("fournisseur du modèle saturé", calls)
+            self.assertIn("modèle gratuit", calls)
+            self.assertIn("pas votre quota", calls)
+            self.assertNotIn("quota gratuit du jour atteint", calls)
+            self.assertNotIn("Sync Garmin échouée", calls)
+            self.assertNotIn("Authentification Garmin", calls)
+        with Sandbox() as sb:
+            paid = FREE_SYNC.replace(FREE_MODEL, "openrouter/deepseek/deepseek-v4.1-flash")
+            calls = self._failing_sync(sb, 503, "Service Unavailable", paid)
+            self.assertIn("fournisseur du modèle saturé", calls)
+            self.assertNotIn("modèle gratuit", calls)
 
     def test_privacy_setting_404_has_its_own_notification_free_and_paid(self):
         with Sandbox() as sb:

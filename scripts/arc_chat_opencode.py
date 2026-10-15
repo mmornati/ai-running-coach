@@ -839,7 +839,7 @@ class OpenCodeBackend(ChatBackend):
                 # minutes — on le dit à l'athlète au lieu de laisser une page muette.
                 info = props.get("status") or {}
                 reason = str(info.get("message") or "").strip()
-                short = "fournisseur saturé" if re.search(r"rate.?limit|429|overloaded", reason, re.I) \
+                short = "fournisseur saturé" if re.search(r"rate.?limit|429|503|overloaded", reason, re.I) \
                     else "fournisseur injoignable" if re.search(r"connect|network|timeout", reason, re.I) \
                     else "réponse du fournisseur en échec"
                 attempt = info.get("attempt")
@@ -1105,7 +1105,8 @@ class OpenCodeBackend(ChatBackend):
             known = arc_llm.translate_subscription_error(subscription, name, status, message, data_dir)
             if known:
                 return arc_llm.with_diag(known)
-        # OpenRouter (#267) : quota/limite des modèles gratuits (429) et ZDR (404), avant les motifs génériques.
+        # OpenRouter (#267) : quota/limite des modèles gratuits (429), fournisseur saturé (503 /
+        # provider_overloaded, gratuit ou payant) et ZDR (404), avant les motifs génériques.
         # Le corps brut de la réponse, quand OpenCode le rapporte, aide à distinguer jour / minute / amont.
         known = arc_llm.translate_openrouter_free_error(
             model, name, status, "%s %s" % (message, data.get("responseBody") or ""))
@@ -1120,6 +1121,8 @@ class OpenCodeBackend(ChatBackend):
         if status == 402 or "402" in low or "insufficient" in low or "credit" in low:
             fix = (" Ajoutez du crédit : %s." % arc_llm.CREDITS_URL if openrouter else "")
             return arc_llm.with_diag("Crédit du fournisseur insuffisant (402)." + fix)
+        if arc_llm.is_provider_overloaded(status, low):
+            return arc_llm.with_diag("Fournisseur du modèle saturé pour le moment (503) : réessaie dans quelques minutes.")
         if status == 429 or "rate limit" in low:
             return arc_llm.with_diag("Limite de débit du fournisseur atteinte : réessaie dans un instant.")
         if name in ("ContextOverflowError",):

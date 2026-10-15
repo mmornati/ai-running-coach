@@ -6,6 +6,7 @@ qui ne s'applique aux 429 que pour un modèle gratuit, et l'annonce `billing` «
 
 from __future__ import annotations
 
+import json
 import sys
 from pathlib import Path
 
@@ -13,10 +14,17 @@ REPO = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO / "scripts"))
 import arc_chat_opencode as O  # noqa: E402
 import arc_llm  # noqa: E402
+from arc_chat_backend import BackendError  # noqa: E402
 from tests.data import test_arc_chat_opencode as base  # noqa: E402
 
 FREE = "openrouter/nvidia/nemotron-3-ultra-550b-a55b:free"
 PAID = "openrouter/deepseek/deepseek-v4.1-flash"
+# Corps réel reçu le 2026-10-15 du modèle gratuit par défaut (HTTP 200, erreur dans le flux).
+OVERLOADED_BODY = {"error": {"message": "Upstream error from Nvidia: Service temporarily overloaded", "code": 503,
+                             "metadata": {"error_type": "provider_overloaded"}}}
+# Ce qu'en fait OpenCode v1.18.35 (MessageV2.fromError) : objet sans `type: "error"` -> UnknownError
+# dont le message est l'objet d'erreur sérialisé, sans statusCode.
+OVERLOADED_UNKNOWN = {"name": "UnknownError", "data": {"message": json.dumps(OVERLOADED_BODY["error"])}}
 
 
 def _err(status, message, **data):
@@ -85,11 +93,50 @@ class TestFreeErrorMapping(base.OpenCodeCase):
         self.assertIn("402", self.tr(_err(402, "x"), FREE))
         self.assertIn("llm.env", self.tr(_err(401, "x"), FREE))
 
+    def test_provider_overloaded_free_model_is_the_saturation_message(self):
+        for error in (OVERLOADED_UNKNOWN,
+                      _err(503, "Service Unavailable", responseBody=json.dumps(OVERLOADED_BODY)),
+                      _err(None, "Upstream error from Nvidia: Service temporarily overloaded")):
+            msg = self.tr(error, FREE)
+            self.assertIn("Le fournisseur du modèle gratuit est saturé", msg)
+            self.assertIn("pas votre quota", msg)
+            self.assertNotIn("Quota gratuit du jour", msg)
+            self.assertNotIn("Erreur du fournisseur", msg)
+
+    def test_provider_overloaded_paid_model_has_its_own_wording(self):
+        msg = self.tr(OVERLOADED_UNKNOWN, PAID)
+        self.assertIn("fournisseur de ce modèle est saturé", msg)
+        self.assertIn("[chat].model", msg)
+        self.assertNotIn("gratuit", msg)
+
+    def test_provider_overloaded_other_provider_gets_the_generic_saturation(self):
+        msg = self.tr(_err(503, "Overloaded"), "anthropic/claude-sonnet-5-5")
+        self.assertIn("saturé", msg)
+        self.assertNotIn("Limite de débit", msg)
+
+    def test_a_503_inside_another_number_is_not_saturation(self):
+        self.assertFalse(arc_llm.is_provider_overloaded(None, '{"code": 5030}'))
+        self.assertFalse(arc_llm.is_provider_overloaded(500, "internal error"))
+        self.assertTrue(arc_llm.is_provider_overloaded("503", ""))
+
     def test_classifier(self):
+        self.assertEqual(arc_llm.classify_openrouter_free_error(None, json.dumps(OVERLOADED_BODY), FREE), "upstream")
+        self.assertEqual(arc_llm.classify_openrouter_free_error(503, "", PAID), "upstream")
         self.assertEqual(arc_llm.classify_openrouter_free_error(429, "per-day", FREE), "quota")
         self.assertEqual(arc_llm.classify_openrouter_free_error(429, "per-day", PAID), "")
         self.assertEqual(arc_llm.classify_openrouter_free_error(404, "zdr violation", PAID), "privacy")
         self.assertEqual(arc_llm.classify_openrouter_free_error(404, "your data policy", FREE), "privacy")
+
+
+class TestFreeSessionError(base.OpenCodeCase):
+    def test_overloaded_session_error_reaches_the_athlete_as_saturation(self):
+        self.backend = O.OpenCodeBackend(self.ws, {"model": FREE})
+        scenario = {"events": [
+            {"id": "e1", "type": "session.status", "properties": {"sessionID": "$SESSION", "status": {"type": "busy"}}},
+            {"id": "e2", "type": "session.error", "properties": {"sessionID": "$SESSION", "error": OVERLOADED_UNKNOWN}}]}
+        with self.assertRaises(BackendError) as cm:
+            self.run_turn(scenario)
+        self.assertIn("modèle gratuit est saturé", str(cm.exception))
 
 
 class TestFreeBilling(base.OpenCodeCase):

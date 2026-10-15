@@ -135,9 +135,12 @@ Avec l'**essai gratuit** (`--llm openrouter-free`, modèle `:free`, [limites](ch
 |---|---|---|
 | `⏳ Sync Garmin — quota gratuit du jour atteint` | 429 avec un motif « par jour » : 50 requêtes par jour sans achat de crédits (1 000 après 10 $). | Rien à faire : le compteur suit le jour UTC, le passage suivant réessaie. Ou achetez 10 $ de crédits une fois. `python3 scripts/arc_llm.py free-quota` donne le reste du jour. |
 | `⏳ Sync Garmin — modèle gratuit saturé` | 429 par minute (20 requêtes/min), fournisseur du modèle saturé, ou 429 sans motif identifiable (cela peut aussi être le quota du jour). | Rien à faire, le passage suivant réessaie. |
+| `⏳ Sync Garmin — fournisseur du modèle saturé` | 503 / `provider_overloaded` : le fournisseur amont du modèle est surchargé (observé le 2026-10-15 sur le modèle gratuit par défaut, « Upstream error from Nvidia: Service temporarily overloaded », renvoyé avec un HTTP 200). Ni votre quota, ni votre clé, ni vos crédits. Vaut aussi pour un modèle payant OpenRouter (message sans « gratuit »). | Rien à faire, le passage suivant réessaie ; si cela dure plusieurs heures, choisissez un autre modèle (`[sync].model`). |
 | `🔒 Sync Garmin — réglage de confidentialité … incompatible` | 404 « ZDR violation » ou « data policy » : votre réglage de confidentialité OpenRouter (entraînement / rétention / ZDR) exclut tous les fournisseurs du modèle. Le plus probable : vous avez refusé les fournisseurs qui s'entraînent, ce qui exclut NVIDIA (modèle gratuit par défaut). Avec ZDR imposé, Gemma 4 a répondu 404 sur le compte utilisé pour nos essais. | Choisissez un autre modèle (gratuit : Gemma 4, non testé ; payant : `./install.sh --llm openrouter`) ou ajustez les [réglages de confidentialité](https://openrouter.ai/settings/privacy). |
 
-Le chat affiche les mêmes cas en clair (« Quota gratuit du jour atteint … », « … réglage de confidentialité … »).
+Le chat affiche les mêmes cas en clair (« Quota gratuit du jour atteint … », « Le fournisseur du modèle gratuit
+est saturé … », « … réglage de confidentialité … ») ; un fournisseur saturé sur un modèle payant donne « Le
+fournisseur de ce modèle est saturé … ».
 Les motifs « par jour » / « par minute » du texte d'erreur sont une approximation du projet : OpenRouter ne
 documente pas le corps exact d'un 429 sur les modèles gratuits ; un 429 sans motif reconnu est présenté comme
 « limite … atteinte » en citant les trois causes possibles.
