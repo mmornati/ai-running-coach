@@ -397,7 +397,7 @@ def _key_provider_items(ctx: Ctx, t: Dict[str, Any]) -> List[Dict[str, Any]]:
 def _subscription_items(ctx: Ctx, t: Dict[str, Any]) -> List[Dict[str, Any]]:
     entry, data_dir = t["subscription"], t["data_dir"]
     label = entry["plan_label"]
-    login = "python3 scripts/arc_llm.py login %s --data-dir %s" % (entry["id"], _q(data_dir))
+    login = arc_llm.reconnect_hint(entry, data_dir)   # mêmes mots que les erreurs du chat
     kind = "reconnect_" + entry["id"]
     out: List[Dict[str, Any]] = []
     mode = _mode(data_dir)

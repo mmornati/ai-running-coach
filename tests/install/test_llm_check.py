@@ -491,7 +491,7 @@ class SubscriptionTests(InstallAsserts):
             item = _by_id(json.loads(proc.stdout), "auth")
             self.assertEqual((proc.returncode, item["action_kind"]), (1, "reconnect_copilot"))
 
-    def test_copilot_has_no_expiry_and_api_type_warns(self):
+    def test_copilot_has_no_expiry_and_api_type_is_not_an_account_login(self):
         with tempfile.TemporaryDirectory() as tmp:
             store = _store(Path(tmp), {"github-copilot": _oauth(0)})
             env = self._env("github-copilot/gpt-5.4-mini", store)
@@ -503,7 +503,8 @@ class SubscriptionTests(InstallAsserts):
             store = _store(Path(tmp), {"openai": {"type": "api", "key": TOKEN}})
             env = self._env("openai/gpt-5.4-mini", store)
             proc = env.check("--json")
-            self.assertEqual(_by_id(json.loads(proc.stdout), "auth")["status"], "warn")
+            # une clé API saisie à la main n'est pas une connexion de compte : le coach ne l'utilise pas
+            self.assertEqual(_by_id(json.loads(proc.stdout), "auth")["status"], "error")
             self.assertNotIn(TOKEN, proc.stdout)
 
     def test_store_and_auth_file_modes_warn(self):
@@ -643,7 +644,7 @@ class ChatErrorVocabularyTests(InstallAsserts):
         self.O, self.L = arc_chat_opencode, arc_llm
 
     def tr(self, status, message, model=PAID_MODEL, sub=None):
-        return self.O.OpenCodeBackend._translate_error({"name": "APIError", "data": {"statusCode": status, "message": message}}, sub, model)
+        return self.O.OpenCodeBackend._translate_error({"name": "APIError", "data": {"statusCode": status, "message": message}}, sub, "", model)
 
     def test_openrouter_401_402_429_carry_the_action_and_the_diagnostic(self):
         m401 = self.tr(401, "Unauthorized")
