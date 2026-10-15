@@ -24,7 +24,7 @@ on:
         type: string
         required: false
       build_dmg:
-        description: "Construire et joindre le DMG macOS à la release (coûteux en minutes macOS)"
+        description: "Construire aussi le DMG macOS sur GitHub (CircleCI le construit déjà pour chaque tag v*)"
         type: boolean
         default: false
 
@@ -117,8 +117,8 @@ jobs:
       tag: ${{ needs.tag.outputs.tag }}
 
   macos-dmg:
-    # Opt-in : le DMG ne se construit que si demandé (le minutage macOS coûte 10× le
-    # Linux). Pour le joindre plus tard : Application macOS → Run workflow, avec le tag.
+    # Opt-in : CircleCI construit déjà le DMG pour chaque tag v*, le refaire ici serait
+    # un doublon. Pour le joindre plus tard : Application macOS → Run workflow, avec le tag.
     if: ${{ inputs.build_dmg }}
     needs: [tag, release]
     uses: ./.github/workflows/macos-dmg.yml

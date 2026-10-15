@@ -25,8 +25,8 @@ permissions:
 
 jobs:
   dmg:
-    # Désactivé sans la variable ARC_MACOS_ON_GITHUB = « true » (le DMG se construit sur CircleCI).
-    if: ${{ vars.ARC_MACOS_ON_GITHUB == 'true' }}
+    # Actif par défaut ; la variable de dépôt ARC_MACOS_ON_GITHUB = « false » le coupe.
+    if: ${{ vars.ARC_MACOS_ON_GITHUB != 'false' }}
     runs-on: macos-latest
     permissions:
       contents: write
