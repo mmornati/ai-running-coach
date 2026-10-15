@@ -679,14 +679,11 @@ class TestOpenWearablesHealth(InstallAsserts):
 
     def _cursor_ws(self, sb, with_health_denies):
         import json
-        import subprocess
-        lib = Path(__file__).resolve().parents[2] / "scripts/lib/sync_tools.sh"
-        tools = subprocess.run(["bash", "-c", f'. "{lib}"; sync_write_tools garmin'],
-                               capture_output=True, text=True, check=True).stdout.split()
-        health = []
-        if with_health_denies:
-            health = subprocess.run(["bash", "-c", f'. "{lib}"; SYNC_DENY_GARMIN_HEALTH=1; sync_health_denied_tools garmin'],
-                                    capture_output=True, text=True, check=True).stdout.split()
+        import sys
+        sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "scripts"))
+        import arc_sync_tools
+        tools = arc_sync_tools.write_tools("garmin")
+        health = arc_sync_tools.health_denied_tools("garmin", True) if with_health_denies else []
         ws = self._ws(sb, "openwearables", runner="cursor")
         (ws / ".cursor").mkdir()
         (ws / ".cursor/cli.json").write_text(json.dumps(

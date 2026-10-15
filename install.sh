@@ -2186,11 +2186,11 @@ write_cursor_config() {
     # tout « allow ») : la synchronisation headless lance `cursor-agent --force`, qui
     # approuverait sinon une écriture Garmin/intervals.icu/Strava sans personne pour
     # confirmer. scripts/daily-sync.sh vérifie leur présence avant chaque run.
-    # shellcheck source=scripts/lib/sync_tools.sh
-    source "$PROJECT_ROOT/scripts/lib/sync_tools.sh"
+    # Listes partagées avec la synchronisation headless : scripts/arc_sync_tools.py.
+    local sync_tools="$PROJECT_ROOT/scripts/arc_sync_tools.py"
     local server tool mcp_deny=""
     case "$SOURCE" in intervals|strava) server="$SOURCE" ;; *) server="garmin" ;; esac
-    for tool in $(sync_write_tools "$server"); do
+    for tool in $(python3 "$sync_tools" write "$server"); do
         mcp_deny+=",\"Mcp($server:$tool)\""
     done
     # Santé lue chez Open Wearables avec des activités Garmin (#220) : les outils santé Garmin sont refusés
@@ -2199,9 +2199,7 @@ write_cursor_config() {
     if [[ "$HEALTH_EFFECTIVE" == "openwearables" && "$server" == "garmin" ]]; then
         want_health_deny=1
     fi
-    SYNC_DENY_GARMIN_HEALTH=1
-    health_denied="$(sync_health_denied_tools garmin | tr '\n' ' ')"
-    SYNC_DENY_GARMIN_HEALTH=0
+    health_denied="$(python3 "$sync_tools" health-denied garmin --deny-health | tr '\n' ' ')"
     if [[ "$want_health_deny" -eq 1 ]]; then
         for tool in $health_denied; do
             mcp_deny+=",\"Mcp(garmin:$tool)\""

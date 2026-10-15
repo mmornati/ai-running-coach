@@ -2,7 +2,7 @@
 
 Quand le pin du serveur change (`INTERVALS_MCP_REF`), un nouvel outil d'écriture (v5.6.0 :
 `icu_update_athlete_notes`) doit être classé écriture partout : refusé au run headless
-(`scripts/lib/sync_tools.sh`), soumis à approbation dans le chat (`scripts/arc_chat_policy.py`),
+(`scripts/arc_sync_tools.py`), soumis à approbation dans le chat (`scripts/arc_chat_policy.py`),
 et jamais prescrit par un prompt d'agent ou de skill.
 """
 
@@ -20,6 +20,7 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(REPO / "scripts"))
 
+import arc_sync_tools  # noqa: E402
 from arc_chat_policy import Policy  # noqa: E402
 
 READ_PREFIXES = ("icu_get_", "icu_search_", "icu_list_")
@@ -35,15 +36,7 @@ def _icu_tools() -> set:
 
 
 def _sync_write_tools() -> set:
-    out = subprocess.run(
-        ["bash", "-c", f'source "{REPO}/scripts/lib/sync_tools.sh"; sync_write_tools intervals'],
-        capture_output=True, text=True, check=True).stdout
-    return set(out.split())
-
-
-def _bash(snippet: str) -> str:
-    return subprocess.run(["bash", "-c", f'source "{REPO}/scripts/lib/sync_tools.sh"; {snippet}'],
-                          capture_output=True, text=True, check=True).stdout
+    return set(arc_sync_tools.write_tools("intervals"))
 
 
 def _opencode_permission(tmp: Path) -> dict:
@@ -54,9 +47,9 @@ def _opencode_permission(tmp: Path) -> dict:
     mcp.write_text(json.dumps({"mcpServers": {n: {"command": "true"} for n in ("garmin", "intervals", "strava")}}))
     out = subprocess.run(
         [sys.executable, "-c", code, "openrouter/x/y", "", "", str(mcp), "",
-         " ".join(_bash("sync_write_tools garmin").split()),
-         " ".join(_bash("sync_write_tools intervals").split()),
-         " ".join(_bash("sync_write_tools strava").split())],
+         " ".join(arc_sync_tools.write_tools("garmin")),
+         " ".join(arc_sync_tools.write_tools("intervals")),
+         " ".join(arc_sync_tools.write_tools("strava"))],
         capture_output=True, text=True, check=True).stdout
     return json.loads(out)["permission"]
 
@@ -87,7 +80,7 @@ class OpencodeHeadlessDenyTest(unittest.TestCase):
         tools = set()
         for var in ("GARMIN_TOOL_WHITELIST", "GARMIN_CYCLE_TOOLS", "GARMIN_NUTRITION_TOOLS"):
             tools |= set(re.search(rf'^{var}="([^"]+)"', install, re.M).group(1).split(","))
-        prefixes = tuple(_bash("echo $SYNC_GARMIN_WRITE_PREFIXES").split())
+        prefixes = arc_sync_tools.GARMIN_WRITE_PREFIXES
         writes = sorted(t for t in tools if t.startswith(prefixes))
         self.assertTrue(writes)
         for tool in writes:
@@ -95,7 +88,7 @@ class OpencodeHeadlessDenyTest(unittest.TestCase):
         self.assertFalse(_denied(self.permission, "garmin_get_activities"))
 
     def test_strava_write_tools_are_denied(self):
-        for tool in _bash("echo $SYNC_STRAVA_WRITE_TOOLS").split():
+        for tool in arc_sync_tools.STRAVA_WRITE_TOOLS:
             self.assertTrue(_denied(self.permission, f"strava_{tool}"), f"strava_{tool}")
         self.assertFalse(_denied(self.permission, "strava_get-recent-activities"))
 
@@ -104,7 +97,7 @@ class IcuWriteToolsTest(unittest.TestCase):
     def test_every_non_read_tool_is_denied_in_headless_sync(self):
         writes = _sync_write_tools()
         missing = sorted(t for t in _icu_tools() if not t.startswith(READ_PREFIXES) and t not in writes)
-        self.assertFalse(missing, f"outils intervals non lus absents de SYNC_INTERVALS_WRITE_TOOLS : {missing}")
+        self.assertFalse(missing, f"outils intervals non lus absents de arc_sync_tools.INTERVALS_WRITE_TOOLS : {missing}")
 
     def test_every_non_read_tool_asks_in_chat(self):
         with tempfile.TemporaryDirectory() as tmp:

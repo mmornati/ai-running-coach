@@ -362,7 +362,7 @@ qui alimente `calories_kcal` (référence de dépense de cette source, comme
 **non exploitées** par le projet à ce jour : `nutrition.carbs_ingested_g`,
 courbes allure/FC (`icu_get_pace_curves`, `icu_get_hr_curves`), réglages par
 sport (`icu_get_sport_settings`).
-**v5.6.0 :** `icu_update_athlete_notes` (écriture : remplace les notes libres du profil athlète intervals.icu) est un outil d'ÉCRITURE que le projet n'appelle **jamais** — refusé au run headless, quel que soit l'exécuteur (`scripts/lib/sync_tools.sh` : refus nommés Claude/Copilot/Cursor/Gemini ; permissions OpenCode `<serveur>_<outil>` générées par `daily-sync.sh`) et soumis à approbation dans le chat (`icu_update_*`, `scripts/arc_chat_policy.py`). Le seuil d'allure de course stocké en m/s (correctif amont) concerne `icu_get_sport_settings`/`icu_update_sport_settings`, que le projet n'utilise pas ; `icu_get_activity_streams` ajoute `stream_notes` (côté droit de `left_right_balance`), champ ignoré.
+**v5.6.0 :** `icu_update_athlete_notes` (écriture : remplace les notes libres du profil athlète intervals.icu) est un outil d'ÉCRITURE que le projet n'appelle **jamais** — refusé au run headless, quel que soit l'exécuteur (`scripts/arc_sync_tools.py` : refus nommés Claude/Copilot/Cursor/Gemini ; permissions OpenCode `<serveur>_<outil>` générées par `daily-sync.sh`) et soumis à approbation dans le chat (`icu_update_*`, `scripts/arc_chat_policy.py`). Le seuil d'allure de course stocké en m/s (correctif amont) concerne `icu_get_sport_settings`/`icu_update_sport_settings`, que le projet n'utilise pas ; `icu_get_activity_streams` ajoute `stream_notes` (côté droit de `left_right_balance`), champ ignoré.
 
 ## Telegram (#174, opt-in)
 
