@@ -40,85 +40,29 @@ import urllib.request
 from pathlib import Path
 from typing import Optional
 
-ENGINE = Path(os.path.abspath(__file__)).parent.parent
-sys.path.insert(0, str(ENGINE / "scripts"))
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from coach_config import ConfigError, _read_toml_fallback, read_toml, set_toml_key  # noqa: E402
+from arc_runtime import (ConfigError, config_paths, err, log, ok,  # noqa: E402
+                         resolve_workspace, section, warn)
+from coach_config import set_toml_key  # noqa: E402
 
 DEFAULT_URL = "https://ntfy.sh"
 DEFAULT_TOKEN_FILE = "~/.config/ai-running-coach/ntfy.token"
 SEND_TIMEOUT_S = 15
-
-_TTY = sys.stdout.isatty()
-C_BLUE, C_GREEN, C_YELLOW, C_RED, C_RESET = (
-    ("\033[34m", "\033[32m", "\033[33m", "\033[31m", "\033[0m") if _TTY else ("", "", "", "", ""))
 
 
 class NotifyError(Exception):
     """Erreur attendue : message lisible, pas de trace."""
 
 
-def log(msg: str) -> None:
-    print(f"{C_BLUE}==>{C_RESET} {msg}", flush=True)
-
-
-def ok(msg: str) -> None:
-    print(f"{C_GREEN}✔{C_RESET} {msg}", flush=True)
-
-
-def warn(msg: str) -> None:
-    print(f"{C_YELLOW}⚠{C_RESET} {msg}", flush=True)
-
-
-def err(msg: str) -> None:
-    print(f"{C_RED}✖{C_RESET} {msg}", file=sys.stderr, flush=True)
-
-
 # ---------------------------------------------------------------------------
 # Configuration
 # ---------------------------------------------------------------------------
 
-def resolve_workspace() -> Path:
-    """Même règle que scripts/lib/config.sh : ARC_WORKSPACE, sinon le workspace mémorisé
-    par ./install.sh --workspace, sinon le moteur lui-même."""
-    raw = os.environ.get("ARC_WORKSPACE", "")
-    pointer = Path.home() / ".config/ai-running-coach/workspace"
-    if not raw and pointer.is_file():
-        lines = pointer.read_text(encoding="utf-8").splitlines()
-        raw = lines[0].strip() if lines else ""
-    if not raw or not os.path.isdir(raw):
-        return ENGINE
-    return Path(raw)
-
-
-def config_paths(workspace: Path) -> tuple:
-    """(workspace.toml partagé, workspace.user.toml) ; sans config dans le workspace, celle du moteur."""
-    shared = workspace / "config/workspace.toml"
-    if not shared.exists():
-        shared = ENGINE / "config/workspace.toml"
-    return shared, workspace / "config/workspace.user.toml"
-
-
-def _read_config(path: Path) -> dict:
-    """TOML strict ; s'il est invalide, lecture tolérante (même sous-ensemble que config.sh).
-
-    Un canal d'alerte ne doit pas tomber pour une faute de frappe ailleurs dans la config
-    (ex. `token_alert_days = [14, three]`) : on prévient et on lit ce qui est lisible."""
-    try:
-        return read_toml(path)
-    except ConfigError as exc:
-        warn(f"{exc} — lecture tolérante pour les notifications.")
-        return _read_toml_fallback(path.read_text(encoding="utf-8"))
-
-
 def notifications_section(workspace: Path) -> dict:
-    """[notifications] fusionnée clé par clé : workspace.user.toml > workspace.toml."""
-    merged: dict = {}
-    for path in config_paths(workspace):
-        section = _read_config(path).get("notifications")
-        if isinstance(section, dict):
-            merged.update(section)
-    return merged
+    """[notifications] fusionnée clé par clé : workspace.user.toml > workspace.toml. Une config
+    invalide ailleurs est lue en mode tolérant : un canal d'alerte ne doit pas tomber pour ça."""
+    return section(workspace, "notifications")
 
 
 def settings(section: dict) -> dict:
