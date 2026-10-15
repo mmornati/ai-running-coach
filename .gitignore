@@ -8,6 +8,8 @@
 /rapports/
 /gear/
 /resources/
+# Exports vers des apps tierces (scripts/arc_vanoor.py) : dérivés des plans, personnels
+/exports/
 
 # Secrets & tokens
 *.token

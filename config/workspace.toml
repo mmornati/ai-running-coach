@@ -221,6 +221,19 @@ platform = "off"
 #   "ask" — le coach PROPOSE d'inscrire la sortie ; « oui » explicite à chaque fois, jamais en headless
 mywhoosh_calendar = "off"
 
+[vanoor]
+# Export des séances vers l'app Vanoor (Apple Watch) — OPT-IN STRICT (skill `vanoor-export`).
+#   "off" — défaut : aucun fichier .vanoor, aucun agent n'en parle
+#   "on"  — à chaque validation de semaine, le coach écrit `semaine-<lundi>.vanoor` (séances de course
+#           structurées : étapes, cibles FC/allure, répétitions) ; le course-strategist écrit le plan de
+#           course (une étape par segment, allure du scénario, rappel à chaque ravito). Rien n'est poussé :
+#           l'athlète importe le fichier dans l'app iPhone (Mes séances → + → Importer des séances).
+# Valeur inconnue = "off". Script : `python3 scripts/arc_vanoor.py` (week | race | validate).
+export = "off"
+# Dossier où écrire les fichiers. Vide = `exports/vanoor/` dans le workspace (gitignoré). Un dossier
+# synchronisé avec l'iPhone (iCloud Drive) évite la copie à la main, ex. "~/iCloudDrive/Vanoor".
+output_dir = ""
+
 [data]
 # Source de données primaire des agents (#68).
 #   "garmin"    — Garmin Connect, via garmin-mcp (défaut, comportement historique)

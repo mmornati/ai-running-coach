@@ -22,6 +22,7 @@ key by key.
 | `[athlete].profile` | Path to the athlete profile (default `planning/Runner_Profile.md`). Read it before giving advice. |
 | `[athlete].units` | `metric` or `imperial`, for every figure you state. |
 | `[data].source` | `garmin` (default), `intervals` or `strava` (#68) — see DATA SOURCE MANDATE below: course upload is Garmin-only regardless. |
+| `[vanoor].export` | Opt-in export of the race plan to the Vanoor app (Apple Watch), `off` by default. See ÉTAPE 8 → Export Vanoor — at `off`, never mention it. |
 
 **The profile wins over the catalogue.** Its "Préférences de coaching" section is
 the athlete's own words; where it conflicts with `[coaching].style`, follow the
@@ -459,6 +460,16 @@ rattacher reste `missing` (l'athlète corrige le profil). Ce contrôle ne dépen
    - `activity_type` : `"running"`
    - `description` : résumé (distance, D+, 3 scénarios, points d'eau)
 4. **Confirme** le succès : "GPX disponible dans Garmin Connect sous le nom 'X - Stratégie'"
+
+**Export Vanoor (Apple Watch) — uniquement si `[vanoor].export = "on"`** (à `off`, défaut,
+absent ou valeur inconnue : ne jamais parler de Vanoor ni du skill `vanoor-export`). Indépendant
+de l'upload Garmin, valable quelle que soit `[data].source`. Après l'écriture du plan de course
+(bloc `race_plan` avec `segments`), charge le skill `vanoor-export` et lance
+`python3 scripts/arc_vanoor.py race --plan planning/<plan>.md` : une séance par scénario, une
+étape par segment à l'allure du scénario, un rappel à chaque ravito du plan. Dis en une ligne où
+est le fichier (`path`), les `warnings` éventuels, et qu'il faut attacher le GPX de la course à la
+séance dans l'app (onglet *Parcours*). Plan écrit sans GPX (pas de `segments`) : rien à exporter,
+le dire.
 
 #### ROADBOOK IMPRIMABLE (#187, épopée #170)
 

@@ -224,6 +224,30 @@ Garmin, jamais les deux) : voir [Apports vers Garmin](nutrition-garmin.md).
 !!! warning "Une valeur invalide ne casse rien"
     Une valeur hors de `off`/`ask` est traitée comme `off`, avec un avertissement.
 
+## L'export vers Vanoor (Apple Watch) — `[vanoor]`
+
+```toml
+[vanoor]
+export = "off"      # off (défaut) | on
+output_dir = ""     # vide = exports/vanoor/ dans le workspace
+```
+
+**Opt-in strict.** À `off` (défaut, clé absente ou valeur inconnue), aucun fichier n'est écrit et
+aucun agent n'en parle. `on` : à chaque validation de semaine, le coach écrit les séances de course
+au format de l'app [Vanoor](https://vanoor.app) (`semaine-<lundi>.vanoor` : étapes, plages FC et
+allures personnelles, répétitions) ; le stratège de course y écrit aussi le plan de course (une
+étape par segment, allure du scénario, rappel à chaque ravito). Rien n'est poussé : vous importez le
+fichier dans l'app iPhone (*Mes séances → + → Importer des séances*), qui l'envoie à la montre.
+Voir [Export Vanoor](skills/vanoor-export.md).
+
+- **`output_dir`** : un dossier synchronisé avec l'iPhone évite la copie à la main — par exemple
+  le dossier iCloud Drive de votre ordinateur (`"~/iCloudDrive/Vanoor"`, ou le chemin Windows vu depuis
+  WSL). Un chemin relatif part du workspace.
+- **Retour des séances** : Vanoor enregistre dans Apple Santé. Pour que le coach récupère le FIT
+  complet, faites remonter Apple Santé vers intervals.icu (Intervals.icu Companion ou HealthFit)
+  plutôt que par Strava (les activités importées de Strava n'ont pas de FIT). La structure de la
+  séance (étapes) ne revient pas : un seul tour.
+
 ## Le home trainer — `[home_trainer]`
 
 ```toml

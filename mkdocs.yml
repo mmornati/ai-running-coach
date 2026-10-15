@@ -119,6 +119,7 @@ nav:
       - Intervals.icu: skills/intervals-icu-best-practices.md
       - Téléchargement FIT: skills/fit-download.md
       - Parcours MyWhoosh: skills/mywhoosh-route.md
+      - Export Vanoor: skills/vanoor-export.md
       - Sync quotidienne (headless): skills/garmin-daily-sync.md
       - Premier démarrage: skills/coach-setup.md
       - Contrat de données: skills/workspace-data-contract.md

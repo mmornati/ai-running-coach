@@ -87,7 +87,7 @@ class TestSkillCountsConsistent(unittest.TestCase):
 
     def test_counts_match_the_directory(self):
         count = len(list((REPO / "skills").glob("*/SKILL.md")))
-        words = {19: "Dix-neuf", 20: "Vingt", 21: "Vingt et un", 22: "Vingt-deux"}
+        words = {19: "Dix-neuf", 20: "Vingt", 21: "Vingt et un", 22: "Vingt-deux", 23: "Vingt-trois", 24: "Vingt-quatre"}
         self.assertIn(f"**{count} skills**", (REPO / "README.md").read_text(encoding="utf-8"))
         self.assertIn(f"**{count} skills**", (REPO / "docs/skills.md").read_text(encoding="utf-8"))
         self.assertIn(f"## {words[count]} skills", (REPO / "docs/index.md").read_text(encoding="utf-8"))
