@@ -96,6 +96,19 @@ def _closed_port_url() -> str:
     return "http://127.0.0.1:%d" % port
 
 
+def _fake_opencode(directory: Path) -> Path:
+    """Faux binaire `opencode` à la version testée : le diagnostic ne dépend pas de l'OpenCode de la machine (absent en CI)."""
+    sys.path.insert(0, str(REPO / "scripts"))
+    try:
+        from arc_llm_check import tested_version
+    finally:
+        sys.path.pop(0)
+    path = Path(directory) / "opencode"
+    path.write_text("#!/bin/sh\necho %s\n" % tested_version(), encoding="utf-8")
+    path.chmod(0o755)
+    return path
+
+
 class Env:
     """Workspace + llm.env + variables d'environnement isolés (jamais le vrai HOME)."""
 
@@ -109,7 +122,7 @@ class Env:
         if llm_env:
             self.llm_env.write_text(llm_env, encoding="utf-8")
             self.llm_env.chmod(env_mode)
-        self.extra: dict = {}
+        self.extra: dict = {"ARC_OPENCODE_BIN": str(_fake_opencode(self.root))}
 
     def close(self) -> None:
         self.dir.cleanup()
@@ -738,9 +751,12 @@ class ChatRouteGuardTests(InstallAsserts):
         llm_env = case.ws / "llm.env"
         llm_env.write_text("OPENROUTER_API_KEY=%s\n" % SECRET, encoding="utf-8")
         llm_env.chmod(0o600)
-        old = os.environ.get("ARC_LLM_ENV")
-        os.environ["ARC_LLM_ENV"] = str(llm_env)
-        self.addCleanup(lambda: os.environ.pop("ARC_LLM_ENV", None) if old is None else os.environ.__setitem__("ARC_LLM_ENV", old))
+        bin_dir = tempfile.TemporaryDirectory()
+        self.addCleanup(bin_dir.cleanup)
+        for name, value in (("ARC_LLM_ENV", str(llm_env)), ("ARC_OPENCODE_BIN", str(_fake_opencode(Path(bin_dir.name))))):
+            old = os.environ.get(name)
+            os.environ[name] = value
+            self.addCleanup(lambda name=name, old=old: os.environ.pop(name, None) if old is None else os.environ.__setitem__(name, old))
         return case
 
     def test_proxy_mode_requires_identity(self):
