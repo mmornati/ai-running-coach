@@ -129,7 +129,7 @@ CATALOG: List[Dict[str, Any]] = [
         # exactes, garde-fous appelés). UN passage par modèle, sans Garmin ni MCP : écarts de 1 à 2 points non
         # significatifs. nemotron-3-ultra 19/19 (31 requêtes LLM au total) ; nemotron-3.5-lightning 17/19
         # (anglais mêlé) ; north-mini-code 17/19 (fichiers du /log datés à tort). Gemma 4 (seul sans
-        # entraînement déclaré) n'a pas pu être testé : sur le compte d'essai (ZDR imposé) il répond 404 ;
+        # entraînement déclaré) n'a pas pu être testé : sur le compte utilisé pour nos essais (ZDR imposé) il répond 404 ;
         # les modèles NVIDIA et cohere, eux, ont passé le filtre ZDR de ce compte.
         "chat_model": "openrouter/nvidia/nemotron-3-ultra-550b-a55b:free",
         "sync_model": "openrouter/nvidia/nemotron-3-ultra-550b-a55b:free",
@@ -143,7 +143,7 @@ CATALOG: List[Dict[str, Any]] = [
         "privacy": "Selon les pages de modèles d'OpenRouter (à vérifier), les modèles gratuits testés peuvent "
                    "conserver vos prompts et NVIDIA déclare s'entraîner dessus : pas de données de santé sensibles "
                    "(https://openrouter.ai/settings/privacy). Refuser les fournisseurs qui s'entraînent rend le modèle "
-                   "par défaut inutilisable (404) ; certains modèles gratuits (Gemma 4 sur le compte d'essai) "
+                   "par défaut inutilisable (404) ; certains modèles gratuits (Gemma 4 sur le compte utilisé pour nos essais) "
                    "répondent aussi 404 avec ZDR.",
         "docs": "docs/choisir-son-ia.md#essai-gratuit",
     },
@@ -730,7 +730,7 @@ def classify_openrouter_free_error(status: Any, text: str, model: str = "") -> s
         code = int(status)
     except (TypeError, ValueError):
         code = 0
-    if "zdr" in low or "zero data retention" in low or "data policy" in low:
+    if re.search(r"\bzdr\b", low) or "zero data retention" in low or "data policy" in low:
         return "privacy"
     if is_openrouter_free_model(model) and (code == 429 or "rate limit" in low or "too many requests" in low
                                             or "rate-limited" in low or "free-models-per" in low):

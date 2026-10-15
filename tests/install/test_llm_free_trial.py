@@ -172,6 +172,21 @@ class InstallFreeTests(InstallAsserts):
         with Sandbox() as sb:      # sans essai gratuit préalable : aucun rappel
             self.assertOutputLacks(sb.install(*BASE, "--llm", "openrouter"), "reste « watch »")
 
+    def test_explicit_no_daily_sync_leaves_the_scheduler_alone(self):
+        with Sandbox() as sb:
+            self.assertSucceeded(sb.install(*BASE, "--daily-sync", ARC_FAKE_UNAME="Linux"))
+            before = sb.crontab()
+            proc = sb.install(*BASE, "--llm", "openrouter-free", "--no-daily-sync", ARC_FAKE_UNAME="Linux")
+            self.assertSucceeded(proc)
+            self.assertEqual(sb.crontab(), before)
+            self.assertOutputContains(proc, "--no-daily-sync : planificateur non touché")
+
+    def test_daily_sync_dry_run_states_that_the_real_run_installs_watch(self):
+        with Sandbox() as sb:
+            proc = sb.install(*BASE, "--llm", "openrouter-free", "--daily-sync", "--dry-run", ARC_FAKE_UNAME="Linux")
+            self.assertSucceeded(proc)
+            self.assertOutputContains(proc, "mode watch")
+
     def test_remembered_for_updates(self):
         with Sandbox() as sb:
             self.assertSucceeded(sb.install(*BASE, "--llm", "openrouter-free"))

@@ -2788,7 +2788,7 @@ persist_llm_free_trial() {
     log "Essai gratuit OpenRouter : modèle $(effective_value chat model) — 0 € (aucun budget en euros)."
     warn "Quota : 50 requêtes par jour sans achat de crédits (1 000 après 10 \$ achetés au total), 20 par minute. Un /log en consomme 17 à 48, un /week 6 à 12, un bilan 4 à 9 (mesuré) : environ un /log et quelques questions par jour sans achat."
     warn "CONFIDENTIALITÉ : selon les pages de modèles d'OpenRouter (à vérifier), les modèles gratuits peuvent conserver vos prompts, et NVIDIA déclare s'entraîner dessus. N'y mettez pas de données de santé sensibles ; réglages : https://openrouter.ai/settings/privacy. Alternatives payantes : DeepSeek (≈ 0,80 €/mois, --llm openrouter) ou « 10 \$ une fois » (1 000 requêtes gratuites par jour)."
-    warn "Si vous refusez les fournisseurs qui s'entraînent sur vos données, le modèle par défaut (NVIDIA) devient inutilisable (erreur 404) ; certains modèles gratuits (Gemma 4 sur le compte d'essai) répondent aussi 404 avec ZDR : voir docs/choisir-son-ia.md#essai-gratuit."
+    warn "Si vous refusez les fournisseurs qui s'entraînent sur vos données, le modèle par défaut (NVIDIA) devient inutilisable (erreur 404) ; certains modèles gratuits (Gemma 4 sur le compte utilisé pour nos essais) répondent aussi 404 avec ZDR : voir docs/choisir-son-ia.md#essai-gratuit."
     if user_toml_value sync mode >/dev/null 2>&1; then
         log "[sync].mode déjà posé dans workspace.user.toml : inchangé ($(effective_value sync mode))."
     elif [[ "$(data_source)" != "garmin" ]]; then
@@ -2801,7 +2801,11 @@ persist_llm_free_trial() {
         # daily-sync.sh ne lit pas [sync].mode : c'est le planificateur (cron/launchd) qui change. S'il est déjà
         # installé, on le réinstalle (install_daily_sync est idempotent : lignes marquées remplacées, sauvegarde
         # de la crontab) ; sinon la prochaine installation du planificateur en tiendra compte.
-        if [[ "$DAILY_SYNC" -eq 0 ]]; then
+        if [[ "$DAILY_SYNC" -eq 1 && "$DRY_RUN" -eq 1 ]]; then
+            log "Aperçu : [sync].mode n'est écrit que par le vrai lancement, qui installera alors le planificateur en mode watch (le détail ci-dessous montre les heures fixes)."
+        elif [[ "$DAILY_SYNC" -eq 0 && "$EXPLICIT_DAILY_SYNC" -eq 1 ]]; then
+            log "--no-daily-sync : planificateur non touché ; [sync].mode = \"watch\" s'appliquera à sa prochaine installation (./install.sh --daily-sync)."
+        elif [[ "$DAILY_SYNC" -eq 0 ]]; then
             if scheduler_installed; then
                 if [[ "$DRY_RUN" -eq 1 ]]; then
                     log "Planificateur de la sync déjà installé : il serait réinstallé pour appliquer le mode watch."

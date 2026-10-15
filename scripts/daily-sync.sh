@@ -630,7 +630,7 @@ detect_provider_failure() {
         fi
     fi
     if [[ "$SYNC_MODEL" == openrouter/* ]]; then
-        if printf '%s' "$err" | grep -qiE 'zdr|zero data retention|data policy'; then
+        if printf '%s' "$err" | grep -qiE '(^|[^a-z])zdr([^a-z]|$)|zero data retention|data policy'; then
             PROVIDER_FAILURE="privacy"; return 0
         fi
         if [[ "$SYNC_MODEL" == *:free ]] \
