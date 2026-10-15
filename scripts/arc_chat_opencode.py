@@ -1115,9 +1115,8 @@ class OpenCodeBackend(ChatBackend):
         openrouter = (model or "").startswith("openrouter/")
         if name == "ProviderAuthError" or status == 401 or "401" in low or "invalid api key" in low \
                 or "unauthorized" in low:
-            fix = (" Reconnectez-vous : python3 scripts/arc_llm.py connect openrouter." if openrouter
-                   else " Vérifiez la clé dans llm.env.")
-            return arc_llm.with_diag("Clé API du fournisseur refusée (401)." + fix)
+            fix = (" Ou reconnectez-vous : python3 scripts/arc_llm.py connect openrouter." if openrouter else "")
+            return arc_llm.with_diag("Clé API du fournisseur refusée (401) : vérifier la clé dans llm.env." + fix)
         if status == 402 or "402" in low or "insufficient" in low or "credit" in low:
             fix = (" Ajoutez du crédit : %s." % arc_llm.CREDITS_URL if openrouter else "")
             return arc_llm.with_diag("Crédit du fournisseur insuffisant (402)." + fix)
