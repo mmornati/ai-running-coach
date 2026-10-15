@@ -722,6 +722,8 @@ FREE_QUOTA_MSG = ("Quota gratuit du jour atteint (50 requêtes sans achat, 1 000
 FREE_RATE_MSG = "Limite par minute des modèles gratuits atteinte (20 requêtes par minute) : réessayez dans une minute."
 FREE_UPSTREAM_MSG = ("Le fournisseur du modèle gratuit est saturé pour le moment (limite côté fournisseur, pas votre quota) : "
                      "réessayez dans quelques minutes.")
+PAID_UPSTREAM_MSG = ("Le fournisseur de ce modèle est saturé pour le moment (erreur 503 côté fournisseur, ni votre clé ni vos "
+                     "crédits) : réessayez dans quelques minutes, ou choisissez un autre modèle ([chat].model).")
 FREE_LIMIT_MSG = ("Limite des modèles gratuits atteinte (20 requêtes par minute, 50 par jour sans achat de crédits, "
                   "1 000 après 10 $) : réessayez dans une minute, sinon demain, ou ajoutez des crédits sur openrouter.ai.")
 PRIVACY_FREE_MSG = ("Aucun fournisseur de ce modèle gratuit n'est compatible avec votre réglage de confidentialité "
@@ -732,6 +734,24 @@ PRIVACY_FREE_MSG = ("Aucun fournisseur de ce modèle gratuit n'est compatible av
 PRIVACY_PAID_MSG = ("Aucun fournisseur de ce modèle n'est compatible avec votre réglage de confidentialité OpenRouter "
                     "(entraînement / rétention / ZDR, erreur 404) : choisissez un autre modèle ([chat].model) ou "
                     "ajustez https://openrouter.ai/settings/privacy.")
+
+
+def is_provider_overloaded(status: Any, text: str) -> bool:
+    """Fournisseur amont saturé : statut 503, `error_type: provider_overloaded` ou « overloaded ».
+
+    Mesuré le 2026-10-15 avec `nvidia/nemotron-3-ultra-550b-a55b:free` : HTTP 200 dont le flux porte
+    `{"error": {"message": "Upstream error from Nvidia: Service temporarily overloaded", "code": 503,
+    "metadata": {"error_type": "provider_overloaded"}}}`. OpenCode v1.18.35 (MessageV2.fromError) le rend
+    en `UnknownError` dont le message est ce JSON (sans statusCode) ; un vrai 503 HTTP arrive en `APIError`
+    avec `statusCode: 503`. Les deux formes sont reconnues.
+    """
+    low = (text or "").lower()
+    try:
+        code = int(status)
+    except (TypeError, ValueError):
+        code = 0
+    return code == 503 or "provider_overloaded" in low or "overloaded" in low \
+        or re.search(r'"code"\s*:\s*503\b', low) is not None
 
 
 def classify_openrouter_free_error(status: Any, text: str, model: str = "") -> str:
@@ -746,6 +766,8 @@ def classify_openrouter_free_error(status: Any, text: str, model: str = "") -> s
       limite journalière n'est pas documenté. Motifs « per-day » / « per-min » / « provider returned error »
       = APPROXIMATION du projet ; un 429 gratuit sans motif connu reste « limit » (message qui dit les trois cas).
     Les 429 ne sont classés que pour un modèle gratuit (pour un autre, le message générique s'applique).
+    - 503 / `provider_overloaded` (is_provider_overloaded) : fournisseur amont saturé -> « upstream », pour un
+      modèle gratuit comme payant (le message diffère : translate_openrouter_free_error).
     """
     low = (text or "").lower()
     try:
@@ -754,6 +776,8 @@ def classify_openrouter_free_error(status: Any, text: str, model: str = "") -> s
         code = 0
     if re.search(r"\bzdr\b", low) or "zero data retention" in low or "data policy" in low:
         return "privacy"
+    if is_provider_overloaded(code, low):
+        return "upstream"
     if is_openrouter_free_model(model) and (code == 429 or "rate limit" in low or "too many requests" in low
                                             or "rate-limited" in low or "free-models-per" in low):
         # Jetons explicites d'abord (un 429 « par minute » peut citer « 1000 free model requests per day »
@@ -777,9 +801,11 @@ def translate_openrouter_free_error(model: str, name: str, status: Any, message:
     if not (model or "").startswith("openrouter/"):
         return None
     kind = classify_openrouter_free_error(status, "%s %s" % (name, message), model)
-    privacy = PRIVACY_FREE_MSG if is_openrouter_free_model(model) else PRIVACY_PAID_MSG
+    free = is_openrouter_free_model(model)
+    privacy = PRIVACY_FREE_MSG if free else PRIVACY_PAID_MSG
+    upstream = FREE_UPSTREAM_MSG if free else PAID_UPSTREAM_MSG
     return {"privacy": privacy, "quota": FREE_QUOTA_MSG, "rate": FREE_RATE_MSG,
-            "upstream": FREE_UPSTREAM_MSG, "limit": FREE_LIMIT_MSG}.get(kind)
+            "upstream": upstream, "limit": FREE_LIMIT_MSG}.get(kind)
 
 
 # -- verrou du magasin ---------------------------------------------------------

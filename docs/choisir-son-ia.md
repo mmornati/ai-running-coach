@@ -268,6 +268,9 @@ le catalogue gratuit change vite (aucun modèle `:free` Qwen, DeepSeek, GLM ou G
   passer à 1 000 requêtes par jour.
 - **« Limite par minute … »** ou **« fournisseur … saturé »** (429) : attendez une minute ; un 429 peut
   venir du fournisseur du modèle, pas de votre quota.
+- **« Le fournisseur du modèle gratuit est saturé … »** (503, `provider_overloaded`) : le fournisseur du
+  modèle (NVIDIA pour le modèle par défaut) est surchargé, ce n'est pas votre quota ; réessayez dans quelques
+  minutes, ou changez de modèle si cela dure.
 - **« … réglage de confidentialité … »** (404 « ZDR violation » ou « data policy ») : votre réglage
   OpenRouter (entraînement, rétention ou ZDR) exclut tous les fournisseurs du modèle. Cause la plus probable :
   vous avez refusé les fournisseurs qui s'entraînent (notre conseil pour la santé), ce qui exclut NVIDIA, le

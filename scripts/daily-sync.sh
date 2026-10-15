@@ -602,12 +602,14 @@ record_spend() {
 # écarté ici. Motifs à VÉRIFIER contre des échecs réels (# À VÉRIFIER) : 401,
 # « invalid api key », « user not found » (clé) ; 402, « credits », « payment
 # required », « credit balance » (solde). PROVIDER_FAILURE : auth | credits | quota
-# | plan | reconnect | privacy | free_quota | free_rate | "". Essai gratuit OpenRouter
+# | plan | reconnect | privacy | upstream | free_quota | free_rate | "". Essai gratuit OpenRouter
 # (#267) : privacy (404 « ZDR violation » / « data policy » : réglage de confidentialité
 # OpenRouter qui exclut tous les fournisseurs du modèle, gratuit ou payant), free_quota
 # (429 journalier, modèle « …:free »), free_rate (429 par minute ou fournisseur amont, ou 429 sans motif :
 # le quota exact n'est pas dans le texte) — motifs « per-day » / « per-min » = APPROXIMATION du
 # projet, le corps exact d'un 429 gratuit n'étant pas documenté (arc_llm.py, classify_openrouter_free_error).
+# upstream : fournisseur du modèle OpenRouter saturé (503 / provider_overloaded), gratuit ou payant —
+# distinct du quota, le prochain passage réessaie (arc_llm.py, is_provider_overloaded).
 PROVIDER_FAILURE=""
 detect_provider_failure() {
     local err="$1"
@@ -632,6 +634,11 @@ detect_provider_failure() {
     if [[ "$SYNC_MODEL" == openrouter/* ]]; then
         if printf '%s' "$err" | grep -qiE '(^|[^a-z])zdr([^a-z]|$)|zero data retention|data policy'; then
             PROVIDER_FAILURE="privacy"; return 0
+        fi
+        # Fournisseur amont saturé (503, `error_type: provider_overloaded`, mesuré le 2026-10-15 sur le
+        # modèle gratuit par défaut : HTTP 200 dont le flux porte {"code": 503, …}) : ni quota ni clé.
+        if printf '%s' "$err" | grep -qiE 'provider_overloaded|overloaded|"code" *: *503([^0-9]|$)|(^|[^0-9])503([^0-9]|$)'; then
+            PROVIDER_FAILURE="upstream"; return 0
         fi
         if [[ "$SYNC_MODEL" == *:free ]] \
             && printf '%s' "$err" | grep -qiE '(^|[^0-9])429([^0-9]|$)|rate limit|too many requests|rate-limited|free-models-per'; then
@@ -1420,6 +1427,13 @@ main() {
             elif [[ "$PROVIDER_FAILURE" == "free_quota" ]]; then
                 notify "⏳ Sync $SOURCE_LABEL — quota gratuit du jour atteint" 4 "hourglass,warning" \
                     "Synchronisation interrompue : le quota des modèles gratuits $plabel est atteint (50 requêtes par jour sans achat de crédits, 1 000 après 10 \$). Le compteur suit le jour UTC ; le prochain passage réessaiera. Ce n'est pas un problème $SOURCE_LABEL. Voir logs/sync-$(date +%F).log."
+            elif [[ "$PROVIDER_FAILURE" == "upstream" ]]; then
+                local upstream_what="le fournisseur du modèle $SYNC_MODEL ($plabel) est saturé (503)"
+                if [[ "$SYNC_MODEL" == *:free ]]; then
+                    upstream_what="le fournisseur du modèle gratuit $SYNC_MODEL ($plabel) est saturé (503, limite côté fournisseur, pas votre quota)"
+                fi
+                notify "⏳ Sync $SOURCE_LABEL — fournisseur du modèle saturé" 3 "hourglass" \
+                    "Synchronisation interrompue : $upstream_what. Le prochain passage réessaiera ; si cela dure, choisissez un autre modèle ([sync].model). Ce n'est pas un problème $SOURCE_LABEL. Voir logs/sync-$(date +%F).log."
             elif [[ "$PROVIDER_FAILURE" == "free_rate" ]]; then
                 notify "⏳ Sync $SOURCE_LABEL — modèle gratuit saturé" 3 "hourglass" \
                     "Synchronisation interrompue : limite momentanée du modèle gratuit $plabel (20 requêtes par minute, ou fournisseur saturé ; peut aussi être le quota du jour). Le prochain passage réessaiera. Ce n'est pas un problème $SOURCE_LABEL. Voir logs/sync-$(date +%F).log."
