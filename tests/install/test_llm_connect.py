@@ -86,7 +86,14 @@ class FakeOpenRouter:
                     data["free_model_daily_requests"] = {"used": 3, "limit": 50, "remaining": 47}
                 self._send(200, {"data": data})
 
-        self.server = LocalHTTPServer(("127.0.0.1", 0), Handler)
+        class QuietServer(LocalHTTPServer):
+            def handle_error(self, request, client_address):
+                # Client tué en plein échange (test SIGINT) : tube cassé attendu, pas de trace dans les journaux.
+                if isinstance(sys.exc_info()[1], (BrokenPipeError, ConnectionResetError)):
+                    return
+                super().handle_error(request, client_address)
+
+        self.server = QuietServer(("127.0.0.1", 0), Handler)
         self.thread = threading.Thread(target=self.server.serve_forever, daemon=True)
 
     @property
