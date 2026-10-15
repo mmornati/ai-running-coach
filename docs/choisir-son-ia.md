@@ -44,6 +44,12 @@ dans `~/.config/ai-running-coach/llm.env` (mode 600), puis la vérifie. La clé 
 ni écrite dans la configuration. Aucune inscription d'application et aucun secret du projet ne sont
 nécessaires.
 
+!!! tip "Plafonner la clé dès l'autorisation"
+    La page d'autorisation d'OpenRouter propose une **limite de crédit** (remise à zéro périodique
+    possible) et une **date d'expiration** pour la clé créée. Une limite de quelques euros protège
+    contre une conversation qui s'emballe, en plus du plafond quotidien du coach. Les clés se
+    révoquent à tout moment dans [vos clés OpenRouter](https://openrouter.ai/settings/keys).
+
 ### Combien ça coûte
 
 Mesuré sur un mois type (60 questions, 12 `/log`, 4 `/week`, 4 plans de semaine et 60
