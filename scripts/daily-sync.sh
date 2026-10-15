@@ -1348,7 +1348,8 @@ main() {
         echo "===== $(date '+%F %T') — fin code=0 durée=$((SECONDS - run_started))s =====" >> "$LOG_FILE"
         warn "Le chat utilise la connexion ChatGPT — synchronisation reportée au prochain passage."
         # Une notification par jour au plus (comme le budget) : le mode watch repasserait sinon en boucle.
-        local postponed_marker="$LOG_DIR/.sync-postponed-notified-$(date +%F)"
+        local postponed_marker
+        postponed_marker="$LOG_DIR/.sync-postponed-notified-$(date +%F)"
         if [[ ! -e "$postponed_marker" ]]; then
             notify "⏳ Sync $SOURCE_LABEL reportée" 3 "hourglass" \
                 "Le chat du coach utilisait la connexion ChatGPT pendant plus de $((STORE_LOCK_WAIT_S / 60)) min : la synchronisation de ce passage n'a pas été lancée et sera retentée au prochain."

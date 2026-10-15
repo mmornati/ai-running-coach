@@ -2758,7 +2758,8 @@ persist_llm() {
 # --connect avec un abonnement (#266) : « arc_llm.py login chatgpt|copilot » dans le magasin du coach.
 # Jamais en --dry-run ni sans terminal (le code d'appareil suppose l'athlète présent).
 connect_llm_subscription() {
-    local cmd="python3 $(printf '%q' "$PROJECT_ROOT/scripts/arc_llm.py") login $LLM_PROVIDER --data-dir $(printf '%q' "$LLM_OPENCODE_DATA_DIR")"
+    local cmd
+    cmd="python3 $(printf '%q' "$PROJECT_ROOT/scripts/arc_llm.py") login $LLM_PROVIDER --data-dir $(printf '%q' "$LLM_OPENCODE_DATA_DIR")"
     if [[ "$DRY_RUN" -eq 1 ]]; then
         printf '%s\n' "${C_YELLOW}[dry-run]${C_RESET} $cmd (adresse et code d'appareil à valider dans votre navigateur ; jeton gardé par OpenCode dans le magasin du coach)"
         return 0
