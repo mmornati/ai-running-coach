@@ -37,12 +37,18 @@ class Server:
                 self.url = line.split("URL: ", 1)[1].strip()
                 break
 
+    # Le serveur imprime son URL AVANT le premier index (fil d'arrière-plan) et fait
+    # attendre les requêtes /api/ jusqu'à READY_TIMEOUT_S (120 s) : le client attend
+    # autant. Avec 10 s, le premier GET d'un workspace à échantillons FIT expirait
+    # sur le runner macOS (index > 10 s), alors que le serveur allait répondre.
+    READY_TIMEOUT_S = 120
+
     def get(self, path, host=None, method="GET"):
         req = urllib.request.Request(self.url.rstrip("/") + path, method=method)
         if host:
             req.add_header("Host", host)
         try:
-            with urllib.request.urlopen(req, timeout=10) as res:
+            with urllib.request.urlopen(req, timeout=self.READY_TIMEOUT_S) as res:
                 return res.status, res.read(), dict(res.headers)
         except urllib.error.HTTPError as exc:
             return exc.code, exc.read(), dict(exc.headers)
