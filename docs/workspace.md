@@ -77,7 +77,7 @@ cd ~/ai-running-coach
 ```
 
 Le chemin du workspace est mémorisé dans `~/.config/ai-running-coach/workspace` : les
-scripts (`daily-sync.sh`, `coach-remote.sh`, `setup-ntfy.sh`) l'utilisent automatiquement
+scripts (`daily-sync.sh`, `coach-remote.sh`, `arc_notify.py`) l'utilisent automatiquement
 (variable `ARC_WORKSPACE` pour forcer). Les options `--daily-sync` et `--remote-control`
 (voir [Le coach dans la poche](mobile.md)) s'appliquent au workspace.
 

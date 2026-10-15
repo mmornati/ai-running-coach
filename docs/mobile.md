@@ -83,7 +83,7 @@ flowchart TB
         CLI --> MCP
         CLI --> MD["activities/ medical/<br/>fichiers Markdown"]
         RC --> MD
-        CLI --> NTFY["scripts/notify.sh → ntfy"]
+        CLI --> NTFY["scripts/arc_notify.py → ntfy"]
     end
     NTFY -- push --> P
 ```
@@ -144,7 +144,7 @@ cd ai-running-coach
     (voir plus bas) : `./install.sh --preset coach-server --no-auth`.
 
     Ce préréglage ne couvre que les étapes 2, 4 et 5 : l'**étape 3**
-    (notifications push, `scripts/setup-ntfy.sh`) reste une commande séparée
+    (notifications push, `scripts/arc_notify.py setup`) reste une commande séparée
     à lancer soi-même, comme documenté ci-dessous.
 
 L'authentification Garmin (`garmin-mcp-auth`, MFA compris) fonctionne en SSH. Si vos tokens
@@ -172,7 +172,7 @@ choisit le serveur (public `ntfy.sh` ou le vôtre), le sujet, enregistre un éve
 **hors du dépôt** et envoie une notification de test :
 
 ```bash
-scripts/setup-ntfy.sh
+scripts/arc_notify.py setup
 ```
 
 === "ntfy.sh (public)"
@@ -190,7 +190,7 @@ scripts/setup-ntfy.sh
     docker exec -it ntfy ntfy token add coach     # → tk_…
     ```
 
-    Donnez ce token à `scripts/setup-ntfy.sh` : il est stocké dans
+    Donnez ce token à `scripts/arc_notify.py setup` : il est stocké dans
     `~/.config/ai-running-coach/ntfy.token` (chmod 600) et référencé par
     `ntfy_token_file` dans `config/workspace.user.toml`.
 
@@ -498,7 +498,7 @@ datacenter (à valider une fois). C'est pourquoi la machine coach reste le choix
 | `Remote Control requires claude.ai subscription auth` | `ANTHROPIC_API_KEY` est défini ou vous êtes connecté par clé API : retirez la variable, `claude` → `/login`. |
 | Le service démarre puis s'arrête en boucle | Confirmation unique jamais acceptée : lancez `claude remote-control` une fois au premier plan. |
 | `❌ Sync Garmin échouée` | Voir `logs/sync-YYYY-MM-DD.log`. Cause fréquente : tokens Garmin expirés → `uv run garmin-mcp-auth`. |
-| Pas de notification | `scripts/notify.sh "test"` ; vérifiez `provider`, `ntfy_topic`, le token (serveur `deny-all`) et l'abonnement au sujet dans l'appli. |
+| Pas de notification | `scripts/arc_notify.py send "test"` ; vérifiez `provider`, `ntfy_topic`, le token (serveur `deny-all`) et l'abonnement au sujet dans l'appli. |
 | Sur Linux, le service meurt à la déconnexion SSH | `loginctl enable-linger $USER` (fait par `install`). |
 | `🔑 … clé … refusée`, `💳 … crédits … épuisés`, `💸 … budget atteint` | Sync sur une API : voir [Synchronisation sur OpenRouter](#synchronisation-sur-openrouter-ou-toute-api-compatible-openai) et le [dépannage](troubleshooting.md#synchronisation-sur-une-api-openrouter-anthropic). |
 | Le portable et la machine coach ont chacun un workspace | Gardez une seule source de vérité (la machine coach) et travaillez dessus en Remote-SSH ; sinon synchronisez les dossiers avec `rsync`. |

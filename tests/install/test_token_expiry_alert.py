@@ -4,9 +4,9 @@
 avant chaque synchronisation et journalise, au plus une fois par jour, une
 alerte ntfy quand l'échéance estimée approche (`[notifications].token_alert_days`,
 défaut J-14 puis J-3). Ces tests tournent dans le bac à sable
-(`tests/lib/sandbox.py`) : `curl` est stubbé (voir `tests/lib/stubs/curl`), donc
-`scripts/notify.sh` n'atteint jamais un vrai serveur ntfy — on vérifie le
-contenu réellement envoyé via `sb.stub_calls("curl")`.
+(`tests/lib/sandbox.py`) : les notifications de `scripts/arc_notify.py` partent vers
+le faux serveur ntfy du bac à sable, jamais vers un vrai — on vérifie le contenu
+réellement reçu via `sb.ntfy_texts()`.
 
 `ARC_DOCTOR_NOW` (lu directement par `coach_doctor.py`, jamais un flag de
 `daily-sync.sh`) rend l'échéance et la date du jour déterministes sans dépendre
@@ -83,15 +83,15 @@ class TokenAlertSandbox(InstallAsserts):
         config_dir.mkdir(exist_ok=True)
         (config_dir / "workspace.user.toml").write_text(f"[notifications]\n{body}\n")
 
-    def _curl_messages(self, sb: Sandbox) -> list:
-        return [args for _, args in sb.stub_calls("curl")]
+    def _ntfy_messages(self, sb: Sandbox) -> list:
+        return sb.ntfy_texts()
 
     def _token_alert_calls(self, sb: Sandbox) -> list:
-        """Filtre les envois `curl` sur le TITRE réellement posé par
-        `check_token_alert()` — pas sur un simple décompte total des appels
-        `curl`, qui inclurait aussi le résumé de fin de synchronisation s'il
+        """Filtre les notifications sur le TITRE réellement posé par
+        `check_token_alert()` — pas sur un simple décompte total des
+        notifications, qui inclurait aussi le résumé de fin de synchronisation s'il
         devait un jour porter du texte non vide."""
-        return [c for c in self._curl_messages(sb) if TOKEN_ALERT_TITLE in c]
+        return [c for c in self._ntfy_messages(sb) if TOKEN_ALERT_TITLE in c]
 
 
 class TestTokenAlertThresholds(TokenAlertSandbox):
@@ -266,7 +266,7 @@ class TestTokenAlertDisableSwitch(TokenAlertSandbox):
             tokens_dir = _tokens_dir_with_days_left(sb, 2)
             proc = self._run(sb, tokens_dir, NOW)
             self.assertSucceeded(proc)
-            self.assertNotCalled(sb, "curl")
+            self.assertEqual(sb.ntfy_texts(), [])
 
     def test_provider_none_is_a_noop(self):
         with Sandbox() as sb:
@@ -274,7 +274,7 @@ class TestTokenAlertDisableSwitch(TokenAlertSandbox):
             tokens_dir = _tokens_dir_with_days_left(sb, 2)
             proc = self._run(sb, tokens_dir, NOW)
             self.assertSucceeded(proc)
-            self.assertNotCalled(sb, "curl")
+            self.assertEqual(sb.ntfy_texts(), [])
 
 
 class TestDoctorCrashNeverBlocksSync(TokenAlertSandbox):
@@ -300,7 +300,7 @@ class TestDoctorCrashNeverBlocksSync(TokenAlertSandbox):
 
             proc = self._run(sb, tokens_dir, NOW)
             self.assertSucceeded(proc, "la synchronisation doit continuer malgré un coach doctor cassé")
-            self.assertNotCalled(sb, "curl")
+            self.assertEqual(sb.ntfy_texts(), [])
             self.assertOutputContains(proc, "coach doctor indisponible")
             logs = list((sb.repo / "logs").glob("sync-*.log"))
             self.assertTrue(logs, "aucun journal de synchronisation écrit")
@@ -353,7 +353,7 @@ class TestAuthFailureExplicitNotification(TokenAlertSandbox):
             fake_bin = self._fake_claude(sb, final_message, exit_code=0)
             proc = self._run(sb, tokens_dir, NOW, PATH=self._path_with_fake_claude(fake_bin))
             self.assertSucceeded(proc)
-            calls = self._curl_messages(sb)
+            calls = self._ntfy_messages(sb)
             self.assertEqual(len(calls), 1, f"attendu 1 notification, vu {calls}")
             self.assertIn("Authentification Garmin refusée", calls[0])
             self.assertIn("garmin-mcp-auth", calls[0])
@@ -373,7 +373,7 @@ class TestAuthFailureExplicitNotification(TokenAlertSandbox):
             fake_bin = self._fake_claude(sb, raw_tool_output, exit_code=0)
             proc = self._run(sb, tokens_dir, NOW, PATH=self._path_with_fake_claude(fake_bin))
             self.assertSucceeded(proc)
-            calls = self._curl_messages(sb)
+            calls = self._ntfy_messages(sb)
             self.assertEqual(len(calls), 1, f"attendu 1 notification, vu {calls}")
             self.assertIn("Authentification Garmin refusée", calls[0])
             self.assertIn("garmin-mcp-auth", calls[0])
@@ -386,7 +386,7 @@ class TestAuthFailureExplicitNotification(TokenAlertSandbox):
             fake_bin = self._fake_claude(sb, auth_text, exit_code=1)
             proc = self._run(sb, tokens_dir, NOW, PATH=self._path_with_fake_claude(fake_bin))
             self.assertFailed(proc, "le code de sortie du runner doit rester propagé")
-            calls = self._curl_messages(sb)
+            calls = self._ntfy_messages(sb)
             self.assertEqual(len(calls), 1)
             self.assertIn("garmin-mcp-auth", calls[0])
             self.assertNotIn("Sync Garmin échouée", calls[0])
@@ -402,7 +402,7 @@ class TestAuthFailureExplicitNotification(TokenAlertSandbox):
             fake_bin = self._fake_claude(sb, codex_style_401, exit_code=1)
             proc = self._run(sb, tokens_dir, NOW, PATH=self._path_with_fake_claude(fake_bin))
             self.assertFailed(proc)
-            calls = self._curl_messages(sb)
+            calls = self._ntfy_messages(sb)
             self.assertEqual(len(calls), 1, f"attendu 1 notification, vu {calls}")
             self.assertNotIn("Authentification Garmin refusée", calls[0])
             self.assertIn("Sync Garmin échouée", calls[0])
@@ -424,7 +424,7 @@ class TestAuthFailureExplicitNotification(TokenAlertSandbox):
             fake_bin = self._fake_claude(sb, final_message, exit_code=0)
             proc = self._run(sb, tokens_dir, NOW, PATH=self._path_with_fake_claude(fake_bin))
             self.assertSucceeded(proc)
-            calls = self._curl_messages(sb)
+            calls = self._ntfy_messages(sb)
             self.assertEqual(len(calls), 1, f"attendu 1 notification, vu {calls}")
             self.assertNotIn("Authentification Garmin refusée", calls[0])
             self.assertNotIn("Authentification Garmin — action requise", calls[0])
@@ -442,7 +442,7 @@ class TestAuthFailureExplicitNotification(TokenAlertSandbox):
             fake_bin = self._fake_claude(sb, final_message, exit_code=1)
             proc = self._run(sb, tokens_dir, NOW, PATH=self._path_with_fake_claude(fake_bin))
             self.assertFailed(proc)
-            calls = self._curl_messages(sb)
+            calls = self._ntfy_messages(sb)
             self.assertEqual(len(calls), 1, f"attendu 1 notification, vu {calls}")
             self.assertNotIn("(401)", calls[0])
             self.assertIn("Sync Garmin échouée", calls[0])
@@ -458,7 +458,7 @@ class TestAuthFailureExplicitNotification(TokenAlertSandbox):
             fake_bin = self._fake_claude(sb, auth_text, exit_code=1)
             proc = self._run(sb, tokens_dir, NOW, PATH=self._path_with_fake_claude(fake_bin))
             self.assertFailed(proc)
-            calls = self._curl_messages(sb)
+            calls = self._ntfy_messages(sb)
             self.assertEqual(
                 len(calls), 1,
                 f"une seule notification attendue (alerte d'expiration), pas de doublon 401 : {calls}",
@@ -508,7 +508,7 @@ class TestTokenAlertSkippedUnderIntervalsSource(DataSourceSandbox):
             proc = self._run(sb, tokens_dir, NOW)
             self.assertSucceeded(proc)
             self.assertEqual(self._token_alert_calls(sb), [])
-            self.assertEqual(self._curl_messages(sb), [], "aucune notification attendue de bout en bout")
+            self.assertEqual(self._ntfy_messages(sb), [], "aucune notification attendue de bout en bout")
 
     def test_expired_garmin_like_tokens_still_produce_no_alert_under_intervals(self):
         with Sandbox() as sb:
@@ -533,7 +533,7 @@ class TestIntervalsAuthFailureNotification(DataSourceSandbox):
             fake_bin = self._fake_claude(sb, raw_tool_output, exit_code=1)
             proc = self._run(sb, tokens_dir, NOW, PATH=self._path_with_fake_claude(fake_bin))
             self.assertFailed(proc)
-            calls = self._curl_messages(sb)
+            calls = self._ntfy_messages(sb)
             self.assertEqual(len(calls), 1, f"attendu 1 notification, vu {calls}")
             self.assertIn("Authentification Intervals.icu refusée", calls[0])
             self.assertIn("intervals-icu-mcp-auth", calls[0])
@@ -553,6 +553,6 @@ class TestIntervalsAuthFailureNotification(DataSourceSandbox):
             fake_bin = self._fake_claude(sb, final_message, exit_code=0)
             proc = self._run(sb, tokens_dir, NOW, PATH=self._path_with_fake_claude(fake_bin))
             self.assertSucceeded(proc)
-            calls = self._curl_messages(sb)
+            calls = self._ntfy_messages(sb)
             self.assertEqual(len(calls), 1, f"attendu 1 notification, vu {calls}")
             self.assertIn("Authentification Intervals.icu", calls[0])

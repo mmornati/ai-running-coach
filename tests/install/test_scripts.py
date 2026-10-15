@@ -1,4 +1,4 @@
-"""Palier A — scripts compagnons (setup-ntfy, coach-remote, notify)."""
+"""Palier A — scripts compagnons (arc_notify : setup-ntfy/notify, coach-remote)."""
 
 from __future__ import annotations
 
@@ -97,6 +97,93 @@ class TestSetupNtfy(InstallAsserts):
                 sb.script("setup-ntfy.sh", "--url", "https://ntfy.sh", "--topic", "t", "--no-test")
             )
             self.assertFileContains(cfg, 'documents = "en"')
+
+
+class TestNotify(InstallAsserts):
+    """`scripts/arc_notify.py send` et sa cale `notify.sh` : ce qui arrive réellement chez ntfy."""
+
+    def _config(self, sb: Sandbox, extra: str = "") -> None:
+        cfg = sb.repo / "config/workspace.user.toml"
+        cfg.parent.mkdir(exist_ok=True)
+        cfg.write_text(f'[notifications]\nprovider = "ntfy"\nntfy_topic = "sujet-test"\n{extra}')
+
+    def test_shim_and_module_send_the_same_notification(self):
+        for argv in (["scripts/notify.sh"], ["python3", "scripts/arc_notify.py", "send"]):
+            with self.subTest(argv=argv[-1]), Sandbox() as sb:
+                self._config(sb)
+                cmd = [str(sb.repo / argv[0])] if len(argv) == 1 else [argv[0], str(sb.repo / argv[1]), argv[2]]
+                proc = sb.run(cmd + ["--title", "🏃 Sync Garmin — à jour", "--priority", "4",
+                                     "--tags", "running,warning", "Séances : à jour\nHRV : 52 ms"])
+                self.assertSucceeded(proc)
+                self.assertOutputContains(proc, "Notification envoyée")
+                [call] = sb.ntfy_calls()
+                self.assertEqual(call["path"], "/sujet-test")
+                self.assertEqual(call["headers"]["Title"], "🏃 Sync Garmin — à jour")
+                self.assertEqual(call["headers"]["Priority"], "4")
+                self.assertEqual(call["headers"]["Tags"], "running,warning")
+                self.assertEqual(call["body"], "Séances : à jour\nHRV : 52 ms")
+
+    def test_message_starting_with_a_dash_is_a_message(self):
+        with Sandbox() as sb:
+            self._config(sb)
+            proc = sb.script("notify.sh", "--title", "T", "-5 km aujourd'hui")
+            self.assertSucceeded(proc)
+            self.assertEqual(sb.ntfy_calls()[0]["body"], "-5 km aujourd'hui")
+
+    def test_message_from_stdin(self):
+        with Sandbox() as sb:
+            self._config(sb)
+            self.assertSucceeded(sb.script("notify.sh", "--title", "T", stdin="depuis stdin\n"))
+            self.assertEqual(sb.ntfy_calls()[0]["body"], "depuis stdin\n")
+
+    def test_token_is_sent_as_bearer_without_whitespace(self):
+        with Sandbox() as sb:
+            token = sb.home / "ntfy.token"
+            token.write_text("tk_abc \n")
+            self._config(sb, f'ntfy_token_file = "{token}"\n')
+            self.assertSucceeded(sb.script("notify.sh", "x"))
+            self.assertEqual(sb.ntfy_calls()[0]["headers"]["Authorization"], "Bearer tk_abc")
+
+    def test_exit_codes(self):
+        with Sandbox() as sb:                                  # provider none : 0, rien d'envoyé
+            proc = sb.script("notify.sh", "x")
+            self.assertSucceeded(proc)
+            self.assertOutputContains(proc, "Notifications désactivées")
+            self.assertEqual(sb.ntfy_calls(), [])
+        with Sandbox() as sb:                                  # sujet absent : 1
+            cfg = sb.repo / "config/workspace.user.toml"
+            cfg.parent.mkdir(exist_ok=True)
+            cfg.write_text('[notifications]\nprovider = "ntfy"\n')
+            proc = sb.script("notify.sh", "x")
+            self.assertEqual(proc.returncode, 1)
+            self.assertOutputContains(proc, "ntfy_topic manquant")
+        with Sandbox() as sb:                                  # fichier token absent : 1
+            self._config(sb, 'ntfy_token_file = "~/absent.token"\n')
+            self.assertEqual(sb.script("notify.sh", "x").returncode, 1)
+        with Sandbox() as sb:                                  # serveur injoignable : 2
+            self._config(sb)
+            proc = sb.script("notify.sh", "x", ARC_NTFY_URL="http://127.0.0.1:9")
+            self.assertEqual(proc.returncode, 2)
+            self.assertOutputContains(proc, "Échec de l'envoi")
+        with Sandbox() as sb:                                  # aucun message : 1
+            self._config(sb)
+            self.assertEqual(sb.script("notify.sh").returncode, 1)
+
+    def test_setup_keeps_the_rest_of_the_file_and_the_original_backup(self):
+        with Sandbox() as sb:
+            cfg = sb.repo / "config/workspace.user.toml"
+            cfg.parent.mkdir(exist_ok=True)
+            original = '# mes réglages\n[language]\ndocuments = "en"\n\n[notifications]\nprovider = "none"\n'
+            cfg.write_text(original)
+            self.assertSucceeded(sb.run(["python3", str(sb.repo / "scripts/arc_notify.py"), "setup",
+                                         "--url", "https://ntfy.example.com/", "--topic", "t2", "--no-test"]))
+            text = cfg.read_text()
+            self.assertIn("# mes réglages", text)
+            self.assertIn('documents = "en"', text)
+            self.assertIn('provider = "ntfy"', text)
+            self.assertIn('ntfy_url = "https://ntfy.example.com"', text)
+            self.assertEqual(text.count("[notifications]"), 1)
+            self.assertEqual((cfg.parent / "workspace.user.toml.bak").read_text(), original)
 
 
 # `coach-remote.sh:41` rajoute /opt/homebrew/bin et /usr/local/bin au PATH, hors

@@ -2465,7 +2465,7 @@ EOF
             printf '%s' "$lines"
         fi
     fi
-    warn "Pensez à configurer la notification push : scripts/setup-ntfy.sh"
+    warn "Pensez à configurer la notification push : scripts/arc_notify.py setup"
 }
 
 # ---------------------------------------------------------------------------

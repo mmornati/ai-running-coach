@@ -266,7 +266,7 @@ allowed_chat_ids = ["4242"]
             self.assertIn("Sync OK (stub)", sent[0]["text"])
             data = [b["callback_data"] for row in sent[0]["reply_markup"]["inline_keyboard"] for b in row]
             self.assertTrue(any(d.startswith("pn:") for d in data), data)
-            self.assertTrue(any("Sync OK (stub)" in args for _, args in sb.stub_calls("curl")), "ntfy intact")
+            self.assertTrue(any("Sync OK (stub)" in text for text in sb.ntfy_texts()), "ntfy intact")
 
     def test_telegram_failure_never_fails_the_sync(self):
         with Sandbox() as sb, TelegramStub() as stub:
@@ -274,7 +274,7 @@ allowed_chat_ids = ["4242"]
             stub.fail_next["sendMessage"] = (500, "boom", None)
             proc = self._sync(sb, stub)
             self.assertSucceeded(proc)
-            self.assertTrue(any("Sync OK (stub)" in args for _, args in sb.stub_calls("curl")))
+            self.assertTrue(any("Sync OK (stub)" in text for text in sb.ntfy_texts()))
 
     def test_disabled_by_default_sends_nothing(self):
         with Sandbox() as sb, TelegramStub() as stub:

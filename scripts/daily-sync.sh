@@ -5,7 +5,7 @@
 # Lance le skill /garmin-daily-sync avec l'exécuteur configuré (Claude Code,
 # Codex CLI, GitHub Copilot, OpenCode, Gemini CLI ou Cursor Agent), journalise,
 # extrait le bloc ```resume``` et l'envoie
-# en notification push via scripts/notify.sh. Par défaut : abonnement (pas de
+# en notification push via scripts/arc_notify.py. Par défaut : abonnement (pas de
 # clé API). Avec [sync].api_key_env : mode API (OpenRouter, Anthropic…), clé lue
 # dans ~/.config/ai-running-coach/llm.env et injectée dans le seul process du
 # runner (jamais dans votre shell : ANTHROPIC_API_KEY casse Remote Control).
@@ -18,7 +18,7 @@
 #
 # Configuration : section [sync] de config/workspace.toml (runner, model, base_url,
 # api_key_env, daily_budget_eur, lookback_days) et [notifications] (voir
-# scripts/setup-ntfy.sh). S'exécute dans le workspace (ARC_WORKSPACE / ~/.config/ai-running-coach/workspace, sinon ce dépôt).
+# scripts/arc_notify.py setup). S'exécute dans le workspace (ARC_WORKSPACE / ~/.config/ai-running-coach/workspace, sinon ce dépôt).
 # Journaux : <workspace>/logs/sync-YYYY-MM-DD.log (gitignoré). Verrou : logs/.sync.lock.
 # =============================================================================
 set -euo pipefail
@@ -57,7 +57,8 @@ SKILL_FILE="$ARC_ENGINE_ROOT/skills/garmin-daily-sync/SKILL.md"
 LOG_DIR="$ARC_WORKSPACE/logs"
 LOG_FILE="$LOG_DIR/sync-$(date +%F).log"
 LOCK_FILE="$LOG_DIR/.sync.lock"
-NOTIFY="$ARC_ENGINE_ROOT/scripts/notify.sh"
+# Notifications ntfy : scripts/arc_notify.py (même module que le service de chat).
+NOTIFY=(python3 "$ARC_ENGINE_ROOT/scripts/arc_notify.py" send)
 # Le runner hérite de cette variable : le hook SessionStart « nouvelle version »
 # (arc_update_check.py --hook) se tait en headless ; la notification dédiée
 # (check_update_notice) s'en charge.
@@ -741,10 +742,10 @@ notify() {
     local title="$1" priority="$2" tags="$3"
     shift 3
     if [[ "$DRY_RUN" -eq 1 ]]; then
-        printf '%s\n' "${C_YELLOW}[dry-run]${C_RESET} notify.sh --title \"$title\" — $*"
+        printf '%s\n' "${C_YELLOW}[dry-run]${C_RESET} arc_notify.py send --title \"$title\" — $*"
         return 0
     fi
-    "$NOTIFY" --title "$title" --priority "$priority" --tags "$tags" "$*" || warn "Notification non envoyée."
+    "${NOTIFY[@]}" --title "$title" --priority "$priority" --tags "$tags" "$*" || warn "Notification non envoyée."
 }
 
 # Nouvelle release du moteur : notification séparée, UNE fois par release (état dans
@@ -757,7 +758,7 @@ check_update_notice() {
     message="$(python3 "$ARC_ENGINE_ROOT/scripts/arc_update_check.py" --workspace "$ARC_WORKSPACE" \
         --notify-once "$state_file" 2>>"$LOG_FILE")" || return 0
     [[ -n "$message" ]] || return 0
-    if ! "$NOTIFY" --title "🆕 Nouvelle version d'ai-running-coach" --priority 3 --tags "package" "$message"; then
+    if ! "${NOTIFY[@]}" --title "🆕 Nouvelle version d'ai-running-coach" --priority 3 --tags "package" "$message"; then
         warn "Notification de nouvelle version non envoyée : nouvel essai au prochain run."
         return 0
     fi
