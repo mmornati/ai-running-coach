@@ -24,7 +24,7 @@ enum IDEChoice: String, CaseIterable, Identifiable {
         case .claude: return "Claude Code"
         case .copilot: return "GitHub Copilot"
         case .opencode: return "OpenCode"
-        case .gemini: return "Gemini CLI"
+        case .gemini: return "Gemini CLI (clé API ou licence payante)"
         case .cursor: return "Cursor"
         case .windsurf: return "Windsurf"
         }
@@ -117,6 +117,20 @@ enum ChatChoice: String, CaseIterable, Identifiable {
     }
 }
 
+/// Comment l'athlète donne accès à OpenRouter : connexion en un clic (OAuth, scripts/arc_llm.py)
+/// ou clé déjà créée.
+enum OpenRouterAccess: String, CaseIterable, Identifiable {
+    case connect, manualKey
+
+    var id: String { rawValue }
+    var title: String {
+        switch self {
+        case .connect: return "Connecter OpenRouter"
+        case .manualKey: return "J’ai déjà une clé"
+        }
+    }
+}
+
 struct ShoeChoice {
     var name = ""
     var purchaseDate = ""
@@ -183,6 +197,7 @@ struct SetupChoices {
     var intermediateRaces = ""
     var medicalLimits = ""
     var chatChoice: ChatChoice = .integrated
+    var openRouterAccess: OpenRouterAccess = .connect
     var openRouterAPIKey = ""
     var chatBudget = "1.00"
     var source: DataSource = .garmin
@@ -244,8 +259,10 @@ struct SetupChoices {
 
     var chatIsCompleteEnough: Bool {
         guard chatChoice == .integrated else { return true }
-        let key = openRouterAPIKey.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !key.isEmpty, !key.contains("\n"), !key.contains("\r") else { return false }
+        if openRouterAccess == .manualKey {
+            let key = openRouterAPIKey.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !key.isEmpty, !key.contains("\n"), !key.contains("\r") else { return false }
+        }
         guard let budget = Double(chatBudget.replacingOccurrences(of: ",", with: ".")) else { return false }
         return budget > 0
     }
@@ -421,7 +438,13 @@ final class CoachAppModel: ObservableObject {
                 if selected.chatChoice == .integrated {
                     progress = 0.16
                     progressTitle = "Préparation du chat avec le coach"
-                    try saveOpenRouterKey(selected.openRouterAPIKey)
+                    if selected.openRouterAccess == .connect {
+                        // Le moteur vient d'être extrait : arc_llm.py est disponible. La connexion
+                        // se fait avant l'activation du chat ; sans clé, rien n'est activé.
+                        try await connectOpenRouter()
+                    } else {
+                        try saveOpenRouterKey(selected.openRouterAPIKey)
+                    }
                     try await ensureOpenCode()
                 } else {
                     progress = 0.16
@@ -741,6 +764,33 @@ final class CoachAppModel: ObservableObject {
             }
             throw error
         }
+    }
+
+    /// Connexion OpenRouter en un clic : `arc_llm.py connect openrouter --json`. La clé est écrite
+    /// dans llm.env par le script ; l'application ne la voit jamais (la sortie n'en contient pas).
+    private func connectOpenRouter() async throws {
+        progress = 0.18
+        progressTitle = "Connexion à OpenRouter : autorisez le coach dans votre navigateur"
+        appendLog("Connexion à OpenRouter : une page s’ouvre dans votre navigateur.\n")
+        let result = try await runProcess(
+            executable: "/usr/bin/env",
+            arguments: ["python3", engineURL.appendingPathComponent("scripts/arc_llm.py").path,
+                        "connect", "openrouter", "--json"],
+            directory: engineURL,
+            streamOutput: false
+        )
+        // Les lignes {"event": …} sont la progression ; l'objet final porte « ok ».
+        var final: [String: Any]?
+        for line in result.output.split(separator: "\n") {
+            guard let data = line.data(using: .utf8),
+                  let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { continue }
+            if object["ok"] != nil { final = object }
+        }
+        let message = (final?["message"] as? String) ?? "Réponse inattendue du script de connexion."
+        guard result.code == 0, (final?["ok"] as? Bool) == true else {
+            throw AppFailure("\(message) Vous pouvez aussi choisir « J’ai déjà une clé ».")
+        }
+        appendLog("\(message)\n")
     }
 
     private func saveOpenRouterKey(_ rawKey: String) throws {
@@ -1562,19 +1612,37 @@ struct SetupView: View {
                         }
                         .pickerStyle(.segmented)
                         if model.choices.chatChoice == .integrated {
-                            Text("Vous retrouverez un bouton « Parler au coach » dans l’application. Ce chat utilise OpenRouter et nécessite une clé API facturée à l’usage ; votre plafond quotidien évite les surprises. La synchronisation automatique des données sportives sera également activée.")
+                            Text("Vous retrouverez un bouton « Parler au coach » dans l’application. Ce chat utilise OpenRouter, facturé à l’usage ; votre plafond quotidien évite les surprises. La synchronisation automatique des données sportives sera également activée.")
                                 .font(.callout).foregroundStyle(.secondary)
-                            HStack {
-                                Text("Clé OpenRouter").frame(width: 170, alignment: .leading)
-                                SecureField("sk-or-v1-…", text: $model.choices.openRouterAPIKey)
-                                Link("Créer une clé", destination: URL(string: "https://openrouter.ai/settings/keys")!)
+                            Picker("OpenRouter", selection: $model.choices.openRouterAccess) {
+                                ForEach(OpenRouterAccess.allCases) { Text($0.title).tag($0) }
+                            }
+                            .pickerStyle(.segmented)
+                            if model.choices.openRouterAccess == .connect {
+                                Text("Au moment de l’installation, une page OpenRouter s’ouvre : créez un compte ou connectez-vous, puis autorisez le coach. Aucune clé à copier.")
+                                    .font(.callout).foregroundStyle(.secondary)
+                                Text("Coût : environ 1 € par mois. Conseil : achetez 10 $ de crédit une fois, ce qui couvre environ un an de coaching.")
+                                    .font(.callout)
+                            } else {
+                                HStack {
+                                    Text("Clé OpenRouter").frame(width: 170, alignment: .leading)
+                                    SecureField("sk-or-v1-…", text: $model.choices.openRouterAPIKey)
+                                    Link("Créer une clé", destination: URL(string: "https://openrouter.ai/settings/keys")!)
+                                }
                             }
                             ProfileField(label: "Plafond par jour", placeholder: "1.00", text: $model.choices.chatBudget)
                             Text("La clé est enregistrée uniquement sur ce Mac dans un fichier privé. Les données de la conversation sont envoyées au fournisseur du modèle choisi.")
                                 .font(.caption).foregroundStyle(.secondary)
+                            Link("Santé : choisir des fournisseurs qui ne conservent pas vos données (confidentialité OpenRouter)",
+                                 destination: URL(string: "https://openrouter.ai/settings/privacy")!)
+                                .font(.caption)
                         } else {
                             Picker("Assistant IA", selection: $model.choices.ide) {
                                 ForEach(IDEChoice.guidedCases) { Text($0.title).tag($0) }
+                            }
+                            if model.choices.ide == .gemini {
+                                Text("Gemini CLI a été remplacé par Antigravity CLI pour les comptes Google non payants (18 juin 2026). Il reste utilisable avec une clé API Gemini (palier gratuit : 250 requêtes par jour, Flash ; ces données peuvent être utilisées par Google, à éviter pour la santé) ou avec une licence payante.")
+                                    .font(.caption).foregroundStyle(.orange)
                             }
                             Text("L’application installe automatiquement l’assistant choisi. Ensuite, le bouton « Parler au coach » ouvre le bon dossier et lance l’assistant ; sa connexion s’affiche simplement au premier lancement.")
                                 .font(.caption).foregroundStyle(.secondary)

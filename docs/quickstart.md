@@ -31,6 +31,11 @@ Ce guide vous permet d'installer et de configurer `ai-running-coach` en quelques
 !!! tip "Homebrew"
     **Homebrew** est recommandé sur macOS. Il est requis uniquement pour le mode passerelle optionnel (`leanproxy-mcp`).
 
+!!! tip "Quelle IA ?"
+    Le coach a besoin d'un modèle de langage. [Choisir son IA](choisir-son-ia.md) vous guide selon ce
+    que vous payez déjà ; sans abonnement, OpenRouter se connecte en un clic
+    (`./install.sh --llm openrouter --connect`).
+
 ## Installation
 
 ```bash

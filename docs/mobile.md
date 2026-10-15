@@ -365,6 +365,11 @@ consultez-le par un tunnel SSH : voir [Machine coach & mode headless](dashboard/
 
 ## Synchronisation sur OpenRouter (ou toute API compatible OpenAI)
 
+!!! tip "Pas de clé à copier"
+    `./install.sh --llm openrouter --connect` ouvre le navigateur et écrit la clé dans `llm.env` à
+    votre place ; sur une machine sans navigateur : `python3 scripts/arc_llm.py connect openrouter --headless`.
+    Quelle IA choisir : [Choisir son IA](choisir-son-ia.md).
+
 Sans abonnement Claude, ou pour ne payer que ce que la synchronisation consomme, le cron
 peut tourner sur une API : `scripts/daily-sync.sh` a un troisième exécuteur, `opencode`
 ([OpenCode](https://opencode.ai/docs/cli), `opencode run` en mode headless). Le mode
