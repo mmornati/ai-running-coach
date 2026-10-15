@@ -57,6 +57,9 @@ HTTP_TIMEOUT_S = 20
 KEY_LABEL = "AI Running Coach"
 LOOPBACK_HOSTS = ("127.0.0.1", "localhost", "[::1]", "::1")
 
+# Étape atteinte : sert à dire la vérité en cas d'interruption (la clé a-t-elle pu être créée ?).
+_STAGE = {"name": "auth"}
+
 EXIT_OK, EXIT_USAGE, EXIT_DENIED, EXIT_TIMEOUT, EXIT_EXCHANGE, EXIT_UNVERIFIED, EXIT_INTERRUPTED = 0, 2, 3, 4, 5, 6, 130
 
 # Catalogue : UNE source de vérité. install.sh garde ses constantes de repli (le script doit
@@ -232,6 +235,9 @@ def _make_handler(state: str, result: Dict[str, Any]):
             code = (q.get("code") or [""])[0]
             # OpenRouter ne renvoie pas `state` quand l'athlète refuse (et ne documente pas de
             # paramètre `error`) : un retour sans code ni state, ou avec `error`, vaut refus.
+            # Compromis assumé : n'importe quel onglet local peut donc annuler la connexion en
+            # appelant /callback sans paramètre. Le pire effet est un échec à relancer ; il ne
+            # peut ni fournir un code, ni écrire une clé (le code exige le bon `state`).
             denied = "error" in q or (not code and not got_state)
             if got_state and not secrets.compare_digest(got_state.encode("utf-8"), state.encode("utf-8")):
                 self._reply(400, "Requête refusée", "Le jeton de sécurité ne correspond pas : connexion ignorée.")
@@ -369,6 +375,7 @@ def connect_openrouter(args: argparse.Namespace) -> int:
             server.server_close()
 
     out.event("exchange", "Échange du code avec OpenRouter…")
+    _STAGE["name"] = "exchange"
     try:
         status, body = _http_json("POST", base + "/api/v1/auth/keys", {
             "code": result["code"], "code_verifier": verifier, "code_challenge_method": "S256"})
@@ -387,6 +394,7 @@ def connect_openrouter(args: argparse.Namespace) -> int:
     except (OSError, UnicodeError) as exc:
         out.final(False, _scrub("Impossible d'écrire %s : %s" % (env_file, getattr(exc, "strerror", None) or exc), key), error="write")
         return EXIT_EXCHANGE
+    _STAGE["name"] = "stored"
     out.event("stored", "Clé enregistrée dans %s (mode 600)." % env_file)
 
     try:
@@ -452,7 +460,15 @@ def main(argv: Optional[List[str]] = None) -> int:
     try:
         return args.func(args)
     except KeyboardInterrupt:
-        Out(bool(getattr(args, "json", False))).final(False, "Connexion interrompue : aucune clé n'a été créée.", error="interrupted")
+        stage = _STAGE["name"]
+        if stage == "stored":
+            msg = "Connexion interrompue après l'enregistrement : la clé est dans llm.env mais n'a pas été vérifiée."
+        elif stage == "exchange":
+            msg = ("Connexion interrompue pendant l'échange : une clé a peut-être été créée chez OpenRouter "
+                   "(https://openrouter.ai/settings/keys) sans être enregistrée ; supprimez-la si besoin et relancez la connexion.")
+        else:
+            msg = "Connexion interrompue : aucune clé n'a été créée."
+        Out(bool(getattr(args, "json", False))).final(False, msg, error="interrupted", stage=stage)
         return EXIT_INTERRUPTED
 
 

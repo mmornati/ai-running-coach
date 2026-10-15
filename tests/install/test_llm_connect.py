@@ -43,8 +43,9 @@ class FakeOpenRouter:
     """Faux OpenRouter : POST /api/v1/auth/keys et GET /api/v1/key."""
 
     def __init__(self, exchange_status: int = 200, key_status: int = 200, is_free_tier: bool = True,
-                 free_quota: bool = True) -> None:
+                 free_quota: bool = True, exchange_delay: float = 0) -> None:
         self.free_quota = free_quota
+        self.exchange_delay = exchange_delay
         self.exchange_status = exchange_status
         self.key_status = key_status
         self.is_free_tier = is_free_tier
@@ -67,6 +68,8 @@ class FakeOpenRouter:
             def do_POST(self):
                 length = int(self.headers.get("Content-Length") or 0)
                 outer.exchanges.append(json.loads(self.rfile.read(length) or b"{}"))
+                if outer.exchange_delay:
+                    time.sleep(outer.exchange_delay)
                 if outer.exchange_status == 200:
                     self._send(200, {"key": SECRET_KEY, "user_id": "u1"})
                 else:
@@ -320,6 +323,23 @@ class ConnectOpenRouterTests(InstallAsserts):
         self.assertEqual(rc, 130)
         self.assertEqual(json.loads(out)["error"], "interrupted")
         self.assertNotIn("Traceback", err)
+        self.assertFalse(self.env_file.exists())
+
+    def test_sigint_during_exchange_warns_a_key_may_exist(self):
+        with FakeOpenRouter(exchange_delay=3) as fake:
+            proc = _spawn(fake, self.env_file)
+            url = _auth_url(proc)
+            state = urllib.parse.parse_qs(urllib.parse.urlsplit(url).query)["state"][0]
+            _get(_callback(url, code="c", state=state))
+            deadline = time.monotonic() + 10
+            while not fake.exchanges and time.monotonic() < deadline:
+                time.sleep(0.05)
+            proc.send_signal(signal.SIGINT)
+            rc, out, err = _finish(proc)
+        self.assertEqual(rc, 130)
+        result = json.loads(out)
+        self.assertEqual(result["stage"], "exchange")
+        self.assertIn("a peut-être été créée", result["message"])
         self.assertFalse(self.env_file.exists())
 
     def test_user_denial(self):
