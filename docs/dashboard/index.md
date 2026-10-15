@@ -51,6 +51,9 @@ scripts/dashboard.sh --memory      # index en mémoire : aucun fichier écrit
 scripts/dashboard.sh --rebuild     # reconstruit l'index de zéro
 ```
 
+`scripts/dashboard.sh` appelle `scripts/arc_dashboard.py`, qui accepte les mêmes
+options : sans bash (Windows, par exemple), lancez `python3 scripts/arc_dashboard.py`.
+
 L'index se met à jour tout seul : un fichier écrit par un agent — la
 synchronisation du matin, un rapport, un plan — apparaît en 30 secondes au plus,
 sans relancer le serveur. La réindexation tourne en arrière-plan, jamais pendant
