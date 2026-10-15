@@ -370,6 +370,11 @@ final class CoachAppModel: ObservableObject {
     @Published var dashboardRunning = false
     @Published var diagnostics = ""
     @Published var showDiagnostics = false
+    // Test de la connexion IA (arc_llm.py check --probe --json, #268).
+    @Published var showConnectionCheck = false
+    @Published var connectionChecking = false
+    @Published var connectionItems: [ConnectionCheckItem] = []
+    @Published var connectionSummary = ""
     let appUpdater = AppUpdater()
     @Published var updateAvailable = false
     @Published var updateWaiting = false
@@ -1658,6 +1663,72 @@ final class CoachAppModel: ObservableObject {
         }
     }
 
+    /// « Tester la connexion » : `arc_llm.py check --probe --json`. Appels réseau minimaux vers le
+    /// fournisseur configuré ; la sortie ne contient jamais de clé ni de jeton (le script le garantit).
+    func testConnection() {
+        guard !connectionChecking else { return }
+        connectionChecking = true
+        connectionItems = []
+        connectionSummary = "Vérification de la connexion en cours…"
+        showConnectionCheck = true
+        Task {
+            do {
+                let result = try await runProcess(
+                    executable: "/usr/bin/env",
+                    arguments: ["python3", engineURL.appendingPathComponent("scripts/arc_llm.py").path,
+                                "check", "--probe", "--json", "--workspace", workspaceURL.path],
+                    directory: engineURL,
+                    streamOutput: false
+                )
+                // Le code 1 signifie « au moins une erreur » : le JSON est écrit quand même.
+                if let start = result.output.firstIndex(of: "{"),
+                   let end = result.output.lastIndex(of: "}"), start < end,
+                   let data = String(result.output[start...end]).data(using: .utf8),
+                   let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                   let checks = object["checks"] as? [[String: Any]] {
+                    connectionItems = checks.map {
+                        ConnectionCheckItem(
+                            status: ($0["status"] as? String) ?? "info",
+                            message: ($0["message"] as? String) ?? "",
+                            action: ($0["action"] as? String) ?? "",
+                            actionKind: ($0["action_kind"] as? String) ?? ""
+                        )
+                    }
+                    let ok = (object["ok"] as? Bool) ?? false
+                    connectionSummary = ok ? "Aucune erreur détectée." : "Au moins un point demande votre attention."
+                } else {
+                    connectionSummary = "Réponse inattendue du diagnostic (code \(result.code))."
+                }
+            } catch {
+                connectionSummary = "Test impossible : \(error.localizedDescription)"
+            }
+            connectionChecking = false
+        }
+    }
+
+    /// Action proposée par le diagnostic : reconnecter (OpenRouter en un clic, abonnement dans Terminal)
+    /// ou ouvrir la page de crédit. Les autres actions sont affichées comme consigne.
+    func performConnectionAction(_ kind: String) {
+        switch kind {
+        case "reconnect_openrouter":
+            connectionSummary = "Connexion à OpenRouter : autorisez le coach dans votre navigateur…"
+            Task {
+                do {
+                    try await connectOpenRouter()
+                    testConnection()
+                } catch {
+                    connectionSummary = error.localizedDescription
+                }
+            }
+        case "reconnect_chatgpt", "reconnect_copilot":
+            connectSubscription()
+        case "add_credit":
+            if let url = URL(string: "https://openrouter.ai/settings/credits") { NSWorkspace.shared.open(url) }
+        default:
+            break
+        }
+    }
+
     func retryLastOperation() {
         wasUpdating ? updateEngine() : install()
     }
@@ -2223,6 +2294,14 @@ struct ReadyView: View {
                     }.controlSize(.large)
                 }
 
+                Button {
+                    model.testConnection()
+                } label: {
+                    Label("Tester la connexion", systemImage: "checkmark.shield")
+                }
+                .controlSize(.large)
+                .disabled(model.connectionChecking)
+
                 if model.dashboardRunning {
                     Button("Arrêter") { model.stopDashboard() }.controlSize(.large)
                 }
@@ -2275,10 +2354,82 @@ struct ReadyView: View {
                 HStack { Spacer(); Button("Fermer") { model.showDiagnostics = false }.keyboardShortcut(.defaultAction) }
             }.padding(24).frame(minWidth: 680, minHeight: 430)
         }
+        .sheet(isPresented: $model.showConnectionCheck) {
+            ConnectionCheckView(model: model)
+        }
         .sheet(isPresented: $model.showEnrichment) {
             SetupView(model: model, enrichment: true)
                 .frame(minWidth: 780, minHeight: 680)
         }
+    }
+}
+
+/// Un point du diagnostic de la connexion IA (`arc_llm.py check --json`).
+struct ConnectionCheckItem: Identifiable {
+    let id = UUID()
+    let status: String
+    let message: String
+    let action: String
+    let actionKind: String
+}
+
+struct ConnectionCheckView: View {
+    @ObservedObject var model: CoachAppModel
+
+    private func icon(_ status: String) -> (String, Color) {
+        switch status {
+        case "ok": return ("checkmark.circle.fill", .green)
+        case "warn": return ("exclamationmark.triangle.fill", .orange)
+        case "error": return ("xmark.octagon.fill", .red)
+        default: return ("info.circle.fill", .secondary)
+        }
+    }
+
+    private func buttonTitle(_ kind: String) -> String? {
+        switch kind {
+        case "reconnect_openrouter": return "Reconnecter OpenRouter"
+        case "reconnect_chatgpt", "reconnect_copilot": return "Reconnecter mon compte"
+        case "add_credit": return "Ajouter du crédit"
+        default: return nil
+        }
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack {
+                Text("Connexion à l’IA").font(.title2.bold())
+                if model.connectionChecking { ProgressView().controlSize(.small) }
+            }
+            Text(model.connectionSummary).foregroundStyle(.secondary)
+            ScrollView {
+                VStack(alignment: .leading, spacing: 12) {
+                    ForEach(model.connectionItems.filter { $0.status != "info" }) { item in
+                        let symbol = icon(item.status)
+                        HStack(alignment: .top, spacing: 10) {
+                            Image(systemName: symbol.0).foregroundStyle(symbol.1)
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text(item.message).textSelection(.enabled)
+                                if !item.action.isEmpty && item.status != "ok" {
+                                    Text(item.action).font(.system(.callout, design: .monospaced)).foregroundStyle(.secondary).textSelection(.enabled)
+                                }
+                                if item.status != "ok", let title = buttonTitle(item.actionKind) {
+                                    Button(title) { model.performConnectionAction(item.actionKind) }
+                                }
+                                if item.status != "ok", item.actionKind == "wait" {
+                                    Text("Rien à faire : réessayez demain.").font(.callout).foregroundStyle(.secondary)
+                                }
+                            }
+                            Spacer()
+                        }
+                    }
+                }.frame(maxWidth: .infinity, alignment: .leading)
+            }
+            HStack {
+                Button("Relancer le test") { model.testConnection() }.disabled(model.connectionChecking)
+                Spacer()
+                Button("Fermer") { model.showConnectionCheck = false }.keyboardShortcut(.defaultAction)
+            }
+        }.padding(24).frame(minWidth: 620, minHeight: 380)
     }
 }
 

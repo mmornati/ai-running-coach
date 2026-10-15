@@ -13,7 +13,7 @@ const fmtEur = (v) => eur.format(Number.isFinite(+v) ? +v : 0);
 const els = {
   thread: $("#thread"), empty: $("#empty"), banner: $("#banner"), pinned: $("#pinned"),
   form: $("#composer"), input: $("#composer-input"), send: $("#send"), stop: $("#stop"),
-  select: $("#session-select"), newBtn: $("#new-session"), cost: $("#cost"), backend: $("#backend"),
+  select: $("#session-select"), newBtn: $("#new-session"), cost: $("#cost"), backend: $("#backend"), llmCheck: $("#llm-check"),
 };
 
 const state = {
@@ -842,6 +842,28 @@ async function newSession() {
 }
 
 // ---------------------------------------------------------------------------
+// Diagnostic de la connexion IA (#268) : mêmes mots que `python3 scripts/arc_llm.py check --probe`
+// ---------------------------------------------------------------------------
+
+async function testConnection() {
+  els.llmCheck.disabled = true;
+  showBanner("Test de la connexion en cours…", true);
+  try {
+    const r = await call("POST", "/llm-check", { probe: true });
+    const mark = { ok: "✅", info: "ℹ️", warn: "⚠️", error: "❌" };
+    const lines = (r.checks || []).filter((c) => c.status !== "info").map((c) => {
+      const action = c.action && c.status !== "ok" ? `\n    → ${c.action}` : "";
+      return `${mark[c.status] || "•"} ${c.message}${action}`;
+    });
+    showBanner(lines.join("\n") || "Aucun point à vérifier.", r.ok);
+  } catch (err) {
+    showBanner(`Test impossible : ${err.message}`);
+  } finally {
+    els.llmCheck.disabled = false;
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Statut du service, lien profond d'approbation
 // ---------------------------------------------------------------------------
 
@@ -1055,6 +1077,7 @@ function setupComposer() {
   }));
   els.stop.addEventListener("click", interrupt);
   els.newBtn.addEventListener("click", newSession);
+  els.llmCheck.addEventListener("click", testConnection);
   els.select.addEventListener("change", () => { if (els.select.value) loadSession(els.select.value); });
 }
 

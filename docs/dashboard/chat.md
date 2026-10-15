@@ -503,3 +503,4 @@ d'OpenCode recopiés dans un fichier — échanges compris, à supprimer après 
 | « Votre offre ChatGPT n'inclut pas cet usage (usage_not_included) » | l'offre Free n'est pas acceptée : ChatGPT Plus ou Pro |
 | « Les limites de votre forfait … sont atteintes » | attendre le renouvellement du forfait, ou changer de fournisseur ([Choisir son IA](../choisir-son-ia.md)) |
 | « La synchronisation du coach utilise la connexion ChatGPT » | la synchronisation tient le verrou du magasin : réessayez dans quelques minutes |
+| Une erreur du fournisseur (401, 402, 429, jeton expiré) | le message se termine par « Lancez le diagnostic : `python3 scripts/arc_llm.py check --probe` », ou bouton **Tester la connexion** sous la zone de saisie (`POST /api/chat/llm-check`, mêmes garde-fous que les autres POST : `X-ARC-Chat`, identité) ; [Dépannage — La connexion IA](../troubleshooting.md#la-connexion-ia) |

@@ -22,6 +22,12 @@ Module partagé (stdlib seule, Python 3.9 : l'application macOS peut l'appeler a
       d'appareil, tue le processus enfant à la sortie. Interactif seulement (refusé sous
       ARC_HEADLESS : cron, launchd). Jamais de jeton affiché : OpenCode l'écrit dans auth.json.
 
+  check [--json] [--probe] [--workspace W]
+      Diagnostic de la connexion IA (#268) : fournisseur configuré pour le chat et pour la sync,
+      clé présente (mode 600), jeton d'abonnement, OpenCode, et avec --probe un appel minimal par
+      fournisseur (clé valide, crédit, quota gratuit). Réseau SEULEMENT avec --probe. Jamais une
+      valeur de secret en sortie. Code 1 si au moins un point est en erreur. Voir arc_llm_check.py.
+
   with-lock --data-dir DIR [--timeout S] -- COMMANDE…
       Exécute COMMANDE sous le verrou du magasin (voir « Concurrence »). Code 75 si le verrou n'a
       pas pu être pris dans le délai. Utilisé par daily-sync.sh.
@@ -278,9 +284,12 @@ def auth_url(base: str, challenge: str, callback: Optional[str], state: Optional
 
 # --------------------------------------------------------------------------- HTTP
 
-def _http_json(method: str, url: str, body: Optional[dict] = None, bearer: Optional[str] = None) -> Tuple[int, Any]:
+def _http_json(method: str, url: str, body: Optional[dict] = None, bearer: Optional[str] = None,
+               headers: Optional[Dict[str, str]] = None, timeout: Optional[float] = None) -> Tuple[int, Any]:
     data = json.dumps(body).encode() if body is not None else None
     req = urlrequest.Request(url, data=data, method=method)
+    for name, value in (headers or {}).items():
+        req.add_header(name, value)
     req.add_header("Accept", "application/json")
     req.add_header("User-Agent", "ai-running-coach/arc_llm")
     if data is not None:
@@ -288,7 +297,7 @@ def _http_json(method: str, url: str, body: Optional[dict] = None, bearer: Optio
     if bearer:
         req.add_header("Authorization", "Bearer " + bearer)
     try:
-        with urlrequest.urlopen(req, timeout=HTTP_TIMEOUT_S) as resp:
+        with urlrequest.urlopen(req, timeout=timeout or HTTP_TIMEOUT_S) as resp:
             status, raw = resp.status, resp.read()
     except urlerror.HTTPError as exc:
         status, raw = exc.code, exc.read()
@@ -593,6 +602,19 @@ def auth_status(data_dir: str, opencode_provider: str) -> Dict[str, Any]:
     if isinstance(expires, (int, float)) and not isinstance(expires, bool) and expires > 0:
         info["expires_ms"] = int(expires)
     return info
+
+
+# Vocabulaire commun du diagnostic (`check`, #268) et des erreurs du chat : une seule phrase d'action.
+CREDITS_URL = "https://openrouter.ai/settings/credits"
+DIAG_COMMAND = "python3 scripts/arc_llm.py check --probe"
+DIAG_HINT = "Lancez le diagnostic : %s" % DIAG_COMMAND
+
+
+def with_diag(message: Optional[str]) -> Optional[str]:
+    """Ajoute la phrase du diagnostic à un message d'erreur fournisseur (une seule fois)."""
+    if not message or DIAG_COMMAND in message:
+        return message
+    return "%s %s" % (message.rstrip(), DIAG_HINT + ".")
 
 
 def reconnect_hint(entry: Dict[str, Any], data_dir: str = "") -> str:
@@ -1120,6 +1142,12 @@ def cmd_free_quota(args: argparse.Namespace) -> int:
     return EXIT_OK
 
 
+def cmd_check(args: argparse.Namespace) -> int:
+    """Diagnostic de la connexion IA (#268) : voir scripts/arc_llm_check.py."""
+    import arc_llm_check
+    return arc_llm_check.run(args)
+
+
 def build_parser() -> argparse.ArgumentParser:
     ap = argparse.ArgumentParser(description="Configuration de l'IA du coach (catalogue, connexion).")
     sub = ap.add_subparsers(dest="cmd", required=True)
@@ -1158,6 +1186,12 @@ def build_parser() -> argparse.ArgumentParser:
     sk.add_argument("--marker", help="fichier créé si le verrou n'a pas pu être pris (distingue ce cas d'un code 75 de la commande)")
     sk.add_argument("command", nargs=argparse.REMAINDER, help="-- COMMANDE [ARGUMENTS…]")
     sk.set_defaults(func=cmd_with_lock)
+
+    sd = sub.add_parser("check", help="diagnostic de la connexion IA (clé, crédit, quota, abonnement, OpenCode)")
+    sd.add_argument("--json", action="store_true", help="un objet JSON (schéma stable, jamais de secret)")
+    sd.add_argument("--probe", action="store_true", help="appels réseau minimaux vers les fournisseurs (sans, rien n'est contacté)")
+    sd.add_argument("--workspace", help="workspace (défaut : ARC_WORKSPACE ou celui du moteur)")
+    sd.set_defaults(func=cmd_check)
 
     sa = sub.add_parser("auth-status", help="le jeton d'abonnement est-il présent ? (jamais sa valeur)")
     sa.add_argument("provider", choices=("chatgpt", "copilot"))

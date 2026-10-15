@@ -376,9 +376,11 @@ class ClaudeBackend(ChatBackend):
         text = str(exc)
         low = text.lower()
         if "401" in low or "authentication" in low or "invalid x-api-key" in low:
-            return "Clé API Anthropic refusée (401) : vérifier la clé dans llm.env."
+            return ("Clé API Anthropic refusée (401) : vérifier la clé dans llm.env. "
+                    "Lancez le diagnostic : python3 scripts/arc_llm.py check --probe.")
         if "402" in low or "credit balance" in low:
-            return "Crédit Anthropic insuffisant (402)."
+            return ("Crédit Anthropic insuffisant (402) : ajoutez du crédit sur console.anthropic.com. "
+                    "Lancez le diagnostic : python3 scripts/arc_llm.py check --probe.")
         return f"Erreur du backend Claude : {short(text, 200)}"
 
     async def _run_async(self, sdk: Any, turn: _Turn, user_message: str) -> None:

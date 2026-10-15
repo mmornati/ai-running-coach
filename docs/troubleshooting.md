@@ -156,6 +156,46 @@ connexion ; ses notifications :
 d'authentification **Garmin** garde sa notification habituelle
 (`🔑 Authentification Garmin refusée`, voir plus haut).
 
+## La connexion IA
+
+Le coach ne répond pas ? Avant de chercher, un seul réflexe : **tester la connexion**.
+
+- App macOS : bouton **Tester la connexion**, à côté de « Parler au coach ».
+- Page du chat : bouton **Tester la connexion** sous la zone de saisie.
+- Terminal : `python3 scripts/arc_llm.py check --probe` (`--json` pour une sortie machine).
+
+Le test lit la configuration réelle (`[chat]` et `[sync]`, `workspace.toml` puis `workspace.user.toml`), reconnaît
+le fournisseur de chacun (OpenRouter, essai gratuit, ChatGPT, GitHub Copilot, Anthropic, API compatible OpenAI,
+assistant sur abonnement) et rend une liste de points ✅ / ⚠️ / ❌ / ℹ️, chacun avec **la commande exacte** qui
+corrige. **Sans `--probe`, rien n'est envoyé sur le réseau** (présence de la clé, droits des fichiers, jeton
+d'abonnement, OpenCode). Avec `--probe`, un appel minimal par fournisseur : `GET /api/v1/key` chez OpenRouter
+(clé valide, crédit restant, requêtes gratuites du jour), la liste des modèles chez Anthropic et chez un
+fournisseur compatible OpenAI. Une valeur de clé ou de jeton n'apparaît **jamais**, ni dans le tableau ni dans le JSON.
+Le code de sortie est 1 s'il y a au moins une erreur (❌), 0 sinon.
+
+`python3 scripts/coach_doctor.py --probe-llm` reprend ce diagnostic dans le contrôle `llm_config` ; sans l'option,
+le doctor reste hors ligne.
+
+| Symptôme (ou message du chat) | Ce que dit le test | Que faire |
+|---|---|---|
+| « Clé API du fournisseur refusée (401) » ; le test dit « Clé OpenRouter refusée (401) » | La clé est invalide, révoquée ou supprimée. | `python3 scripts/arc_llm.py connect openrouter` (ou l'App : **Reconnecter OpenRouter**). |
+| « Crédit du fournisseur insuffisant (402) » ; « Crédit OpenRouter insuffisant » ou « Crédit de la clé épuisé » | Le compte (ou le plafond de la clé) n'a plus de crédit. | Ajoutez du crédit : <https://openrouter.ai/settings/credits>. |
+| « Quota gratuit du jour atteint » | Les 50 requêtes gratuites du jour sont consommées (1 000 après 10 $ de crédits au total). | Rien à faire : remise à zéro à minuit UTC. Ou ajoutez du crédit. |
+| « Limite de débit du fournisseur atteinte » | 429 : trop de requêtes en peu de temps (20 par minute sur les modèles gratuits). | Attendez une minute et réessayez. |
+| « Connexion ChatGPT absente du magasin du coach » ; « Connexion … expirée ou refusée » | Pas de jeton `oauth` pour ChatGPT / Copilot dans le magasin du coach, ou OpenCode n'a pas pu le rafraîchir. | `python3 scripts/arc_llm.py login chatgpt --data-dir '<magasin>'` (ou `copilot`) ; la commande exacte est dans le résultat du test. |
+| « Jeton d'accès ChatGPT échu depuis … » (ℹ️) | Normal : OpenCode rafraîchit le jeton d'accès (≈ 1 h) à la prochaine requête. | Rien, sauf si le chat échoue ensuite : reconnectez alors ChatGPT (ligne précédente). |
+| « Votre offre ChatGPT n'inclut pas cet usage » | L'offre Free n'est pas acceptée. | ChatGPT Plus ou Pro, ou une autre IA ([Choisir son IA](choisir-son-ia.md)). |
+| « Clé … absente » | La variable n'est ni dans `llm.env` ni dans l'environnement. | `python3 scripts/arc_llm.py connect openrouter`, ou ajoutez la ligne dans `~/.config/ai-running-coach/llm.env` (mode 600). |
+| « … est lisible par d'autres utilisateurs » | `llm.env`, `auth.json` ou le magasin sont trop ouverts. | La commande `chmod 600 …` (fichiers) ou `chmod 700 …` (dossier) affichée. |
+| « OpenCode est introuvable » | OpenCode n'est pas installé (ou pas dans le PATH de l'App). | `curl -fsSL https://opencode.ai/install \| bash`. |
+| « OPENCODE_DISABLE_DEFAULT_PLUGINS est défini » | Cette variable d'environnement désactive les connexions ChatGPT / Copilot d'OpenCode. | `unset OPENCODE_DISABLE_DEFAULT_PLUGINS` (et retirez-la de votre profil shell). |
+| « … est injoignable (réseau coupé …) » (⚠️) | Le test n'a pas pu joindre le fournisseur : la clé n'est ni validée ni refusée. | Vérifiez la connexion Internet, puis relancez le test. |
+| ℹ️ « Le chat (…) et la synchronisation (…) utilisent des fournisseurs différents » | Information : chacun est vérifié séparément. | Rien. |
+
+Limites assumées : il n'existe pas d'appel peu coûteux pour vérifier un abonnement ChatGPT ou Copilot (leur
+validité réelle ne se voit qu'à la première requête : le chat traduit alors l'erreur avec ces mêmes mots), et le
+solde d'une clé Anthropic n'est pas lisible par l'API (le test dit seulement que la clé est acceptée).
+
 ## Configuration IDE
 
 ### L'agent `coach` n'apparaît pas dans mon IDE

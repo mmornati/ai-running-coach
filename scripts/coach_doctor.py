@@ -25,6 +25,7 @@ Usage :
     scripts/coach_doctor.py --tokens-dir DIR                  # override des tokens Garmin
     scripts/coach_doctor.py --check garmin_token              # une seule vérification (#32)
     scripts/coach_doctor.py --probe-mcp     # handshake MCP réel — CONTACTE Garmin Connect
+    scripts/coach_doctor.py --probe-llm     # connexion IA : appel réseau minimal vers le fournisseur (#268)
     scripts/coach_doctor.py --no-probe-ow   # Open Wearables : configuration seule, aucun appel réseau
 
 Aucun champ de ce script n'affiche jamais le CONTENU d'un token — seuls des
@@ -1220,7 +1221,28 @@ def _mcp_gateway_only(workspace: Path) -> bool:
     return "leanproxy" in servers and not direct
 
 
-def check_llm_config(config: dict, workspace: Optional[Path] = None) -> dict:
+# Points du diagnostic `arc_llm.py check` (#268) déjà couverts par les contrôles statiques de `llm_config`
+# ou par `opencode_cli` : non repris, pour ne pas dire deux fois la même chose.
+_LLM_DIAG_SKIP = {"key", "env_mode", "key_config", "opencode"}
+
+
+def _llm_diagnostic(workspace: Optional[Path], probe: bool) -> list:
+    """Points `warn`/`error` du diagnostic de connexion IA (`arc_llm.py check`), ou [] s'il échoue.
+
+    Statique par défaut (aucun appel réseau) ; `probe` = `--probe-llm`. Le doctor reste robuste :
+    toute exception du diagnostic est avalée (il ne doit jamais empêcher les autres vérifications)."""
+    if workspace is None:
+        return []
+    try:
+        import arc_llm_check
+        report = arc_llm_check.run_checks(workspace, probe)
+    except Exception:  # noqa: BLE001
+        return []
+    kept = [c for c in report.get("checks", []) if c.get("status") in ("warn", "error") and c.get("id") not in _LLM_DIAG_SKIP]
+    return sorted(kept, key=lambda c: c["status"] != "error")   # les erreurs d'abord : leur action est proposée en premier
+
+
+def check_llm_config(config: dict, workspace: Optional[Path] = None, probe_llm: bool = False) -> dict:
     """Jamais plus sévère qu'un `warning` : une configuration LLM incohérente prive
     du chat ou de la sync API, mais n'empêche pas le reste du coach de fonctionner.
     Ne lit ni n'affiche jamais une clé — seulement son NOM, et sa présence."""
@@ -1278,10 +1300,17 @@ def check_llm_config(config: dict, workspace: Optional[Path] = None) -> dict:
             "ANTHROPIC_API_KEY est exporté dans l'environnement : Remote Control refuse la clé API "
             "(à garder dans llm.env uniquement)"
         )
+    diag = _llm_diagnostic(workspace, probe_llm)
     if problems:
+        problems.extend(c["message"].rstrip(".") for c in diag)
         return build_check(
             check_id, "warning", "Configuration LLM à revoir : " + " ; ".join(problems) + ".",
             fix="./install.sh --llm openrouter|anthropic|openai (crée llm.env en mode 600)",
+        )
+    if diag:
+        return build_check(
+            check_id, "warning", "Connexion IA à revoir : " + " ; ".join(c["message"].rstrip(".") for c in diag) + ".",
+            fix=next((c["action"] for c in diag if c.get("action")), None),
         )
     parts = [f"sync : {runner}" + (f" ({sync.get('model')})" if sync.get("model") else "")]
     if chat_on:
@@ -1289,7 +1318,8 @@ def check_llm_config(config: dict, workspace: Optional[Path] = None) -> dict:
     return build_check(
         check_id, "ok",
         "Configuration LLM cohérente — " + ", ".join(parts)
-        + (f" ; clé(s) {', '.join(keys)} présente(s) (valeurs non lues)." if keys else "."),
+        + (f" ; clé(s) {', '.join(keys)} présente(s) (valeurs non lues)." if keys else ".")
+        + (" Test réseau (--probe-llm) : aucun problème détecté." if probe_llm and workspace is not None else ""),
         fix=None,
     )
 
@@ -1865,7 +1895,7 @@ def check_garmin_check_not_applicable(check_id: str, source: str = "intervals") 
 
 
 def run_single_check(check_id: str, workspace: Path, now: datetime, tokens_dir: Path, probe_mcp: bool,
-                     probe_ow: bool = True) -> dict:
+                     probe_ow: bool = True, probe_llm: bool = False) -> dict:
     config = _load_config(workspace)
     source = (config.get("data") or {}).get("source", "garmin")
     if check_id in ("garmin_token", "garmin_mcp") and source in ("intervals", "strava"):
@@ -1901,7 +1931,7 @@ def run_single_check(check_id: str, workspace: Path, now: datetime, tokens_dir: 
     if check_id == "intervals_mcp_pin":
         return check_intervals_mcp_pin(config, Path.home())
     if check_id == "llm_config":
-        return check_llm_config(config, workspace)
+        return check_llm_config(config, workspace, probe_llm)
     if check_id == "chat_service":
         return check_chat_service(Path.home(), config)
     if check_id == "opencode_cli":
@@ -1916,8 +1946,9 @@ def run_single_check(check_id: str, workspace: Path, now: datetime, tokens_dir: 
 
 
 def run_all_checks(workspace: Path, now: datetime, tokens_dir: Path, probe_mcp: bool = False,
-                   probe_ow: bool = True) -> list:
-    return [run_single_check(check_id, workspace, now, tokens_dir, probe_mcp, probe_ow) for check_id in CHECK_IDS]
+                   probe_ow: bool = True, probe_llm: bool = False) -> list:
+    return [run_single_check(check_id, workspace, now, tokens_dir, probe_mcp, probe_ow, probe_llm)
+            for check_id in CHECK_IDS]
 
 
 def render_table(checks: list) -> str:
@@ -2007,6 +2038,11 @@ def build_parser() -> argparse.ArgumentParser:
              "[health].source = \"openwearables\" et une configuration complète, UN `arc_openwearables.py check` "
              "est fait (3 s par requête, sous-processus plafonné à 12 s) ; sans effet hors de cette source",
     )
+    parser.add_argument(
+        "--probe-llm", action="store_true",
+        help="connexion IA : un appel réseau minimal vers le fournisseur configuré (clé valide, crédit, quota gratuit) "
+             "— CONTACTE le fournisseur ; sans cette option, `llm_config` reste statique (voir `arc_llm.py check`)",
+    )
     parser.add_argument("--probe-ow", action="store_true", help=argparse.SUPPRESS)  # ancien nom : sans effet
     return parser
 
@@ -2018,9 +2054,11 @@ def main(argv: Optional[list] = None) -> int:
     tokens_dir = resolve_tokens_dir(args.tokens_dir, workspace)
 
     if args.check:
-        checks = [run_single_check(args.check, workspace, now, tokens_dir, args.probe_mcp, not args.no_probe_ow)]
+        checks = [run_single_check(args.check, workspace, now, tokens_dir, args.probe_mcp, not args.no_probe_ow,
+                                     args.probe_llm)]
     else:
-        checks = run_all_checks(workspace, now, tokens_dir, probe_mcp=args.probe_mcp, probe_ow=not args.no_probe_ow)
+        checks = run_all_checks(workspace, now, tokens_dir, probe_mcp=args.probe_mcp, probe_ow=not args.no_probe_ow,
+                                probe_llm=args.probe_llm)
     has_error = any(check["status"] == "error" for check in checks)
 
     if args.json:

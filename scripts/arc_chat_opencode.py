@@ -1104,24 +1104,29 @@ class OpenCodeBackend(ChatBackend):
         if subscription is not None:
             known = arc_llm.translate_subscription_error(subscription, name, status, message, data_dir)
             if known:
-                return known
+                return arc_llm.with_diag(known)
         # OpenRouter (#267) : quota/limite des modèles gratuits (429) et ZDR (404), avant les motifs génériques.
         # Le corps brut de la réponse, quand OpenCode le rapporte, aide à distinguer jour / minute / amont.
         known = arc_llm.translate_openrouter_free_error(
             model, name, status, "%s %s" % (message, data.get("responseBody") or ""))
         if known:
-            return known
+            return arc_llm.with_diag(known)
+        # Mêmes mots et mêmes actions que `arc_llm.py check` (#268).
+        openrouter = (model or "").startswith("openrouter/")
         if name == "ProviderAuthError" or status == 401 or "401" in low or "invalid api key" in low \
                 or "unauthorized" in low:
-            return "Clé API du fournisseur refusée (401) : vérifier la clé dans llm.env."
+            fix = (" Reconnectez-vous : python3 scripts/arc_llm.py connect openrouter." if openrouter
+                   else " Vérifiez la clé dans llm.env.")
+            return arc_llm.with_diag("Clé API du fournisseur refusée (401)." + fix)
         if status == 402 or "402" in low or "insufficient" in low or "credit" in low:
-            return "Crédit du fournisseur insuffisant (402)."
+            fix = (" Ajoutez du crédit : %s." % arc_llm.CREDITS_URL if openrouter else "")
+            return arc_llm.with_diag("Crédit du fournisseur insuffisant (402)." + fix)
         if status == 429 or "rate limit" in low:
-            return "Limite de débit du fournisseur atteinte : réessaie dans un instant."
+            return arc_llm.with_diag("Limite de débit du fournisseur atteinte : réessaie dans un instant.")
         if name in ("ContextOverflowError",):
             return "La conversation est trop longue pour ce modèle : démarre une nouvelle session."
         if any(w in low for w in ("connect", "unreachable", "enotfound", "econnrefused", "timeout")):
-            return "Fournisseur injoignable : vérifier la connexion et l'URL du fournisseur."
+            return arc_llm.with_diag("Fournisseur injoignable : vérifier la connexion et l'URL du fournisseur.")
         return f"Erreur du fournisseur : {short(message or name or 'inconnue', 200)}"
 
     def _emit_usage(self, turn: _Turn, only_if_known: bool = False) -> None:

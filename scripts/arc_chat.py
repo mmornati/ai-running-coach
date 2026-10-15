@@ -1197,6 +1197,16 @@ class ChatService:
                 "updated": meta["updated"], "cost_eur": meta.get("cost_eur", 0.0),
                 "pending_approvals": pending}
 
+    def llm_check(self, probe: bool) -> dict:
+        """`arc_llm.py check` pour la page du chat : jamais de secret, jamais une exception."""
+        try:
+            import arc_llm_check
+            return arc_llm_check.run_checks(self.workspace, probe)
+        except Exception as exc:  # noqa: BLE001
+            return {"schema": 1, "ok": False, "worst": "error", "probe": probe, "targets": [], "checks": [{
+                "id": "check", "scope": "common", "status": "error", "action": None, "action_kind": None,
+                "message": "Diagnostic impossible (%s)." % type(exc).__name__}]}
+
     def status(self, user: str) -> dict:
         return {"enabled": bool(self.cfg["enabled"]), "backend": self.backend.name,
                 "model": self.cfg["model"], "user": user,
@@ -1336,6 +1346,12 @@ class Handler(BaseHTTPRequestHandler):
                 return
             meta = svc.sessions.create(svc.backend.name, str(svc.cfg["model"]))
             return self._json(200, {"id": meta["id"]})
+        if path == f"{API}/llm-check":
+            # Diagnostic de la connexion IA (#268) : statique, ou avec un appel réseau minimal sur demande.
+            body = self._read_body()
+            if body is None:
+                return
+            return self._json(200, svc.llm_check(body.get("probe") is True))
         match = re.match(rf"^{API}/sessions/([^/]+)/messages$", path)
         if match:
             return self._post_message(match.group(1), user)

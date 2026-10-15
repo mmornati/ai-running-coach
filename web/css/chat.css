@@ -139,7 +139,7 @@
 .chat__empty .btn { margin-top: 0.75rem; }
 .pinned:empty { display: none; }
 .pinned { padding-bottom: 0.5rem; }
-.banner { margin: 0 0 0.75rem; padding: 0.6rem 0.9rem; border-radius: var(--radius-sm); background: var(--bad-bg); color: var(--ink); font-size: 0.9rem; }
+.banner { white-space: pre-line; margin: 0 0 0.75rem; padding: 0.6rem 0.9rem; border-radius: var(--radius-sm); background: var(--bad-bg); color: var(--ink); font-size: 0.9rem; }
 .banner[hidden] { display: none; }
 .banner--info { background: var(--warn-bg); }
 .disabled-panel { max-width: 34rem; margin: 3rem auto; padding: 1.25rem 1.5rem; border-radius: var(--radius); background: var(--surface); box-shadow: var(--shadow); }
