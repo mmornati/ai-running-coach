@@ -64,6 +64,8 @@ même de répondre au protocole MCP (voir la docstring de
 et une possible réécriture des tokens. `coach doctor` s'en tient donc par
 défaut à vérifier que le binaire configuré existe et est exécutable.
 
+Le contrôle `llm_config` reprend `python3 scripts/arc_llm.py check` (#268) : cohérence runner / backend / modèle / clé, puis jeton d'abonnement ChatGPT / Copilot dans le magasin du coach, `OPENCODE_DISABLE_DEFAULT_PLUGINS`. Il reste **statique** (aucun appel réseau) ; `--probe-llm` ajoute l'appel minimal au fournisseur (clé OpenRouter valide, crédit, quota gratuit du jour, liste des modèles Anthropic / compatible OpenAI) et ne fait jamais plus qu'un avertissement. Détail et actions : [Dépannage — La connexion IA](../troubleshooting.md#la-connexion-ia).
+
 Un vrai handshake MCP `initialize`, borné dans le temps, reste disponible :
 
 ```bash
@@ -118,6 +120,7 @@ python3 scripts/coach_doctor.py --tokens-dir /chemin/de/test     # override du r
 python3 scripts/coach_doctor.py --now 2026-09-24T12:00:00+00:00  # horloge figée (tests)
 python3 scripts/coach_doctor.py --check garmin_token             # une seule vérification, sans MCP
 python3 scripts/coach_doctor.py --probe-mcp                      # handshake MCP réel (contacte Garmin)
+python3 scripts/coach_doctor.py --probe-llm                      # connexion IA : appel réseau minimal vers le fournisseur (#268)
 python3 scripts/coach_doctor.py --check openwearables --no-probe-ow # Open Wearables sans appel réseau (#220)
 ```
 

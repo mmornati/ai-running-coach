@@ -277,6 +277,8 @@ le catalogue gratuit change vite (aucun modèle `:free` Qwen, DeepSeek, GLM ou G
 
 Notifications de la synchronisation : [Dépannage](troubleshooting.md#synchronisation-sur-une-api-openrouter-anthropic).
 
+Un doute sur la clé, le crédit ou la connexion ? Le bouton **Tester la connexion** (App macOS ou page du chat) ou `python3 scripts/arc_llm.py check --probe` dit lequel de ces cas vous concerne et la commande qui le corrige : [Dépannage — La connexion IA](troubleshooting.md#la-connexion-ia).
+
 ## Et le gratuit ?
 
 Il existe, avec des pièges à connaître. Un tour de chat consomme **plusieurs requêtes** (une par appel

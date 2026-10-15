@@ -498,6 +498,7 @@ class SkillScriptsPolicyTest(PolicyBase):
                         "python3 scripts/coach_doctor.py --check garmin_token --json",
                         "python3 scripts/coach_doctor.py --check openwearables --no-probe-ow --json",
                         "python3 scripts/coach_doctor.py --check openwearables --probe-ow",
+                        "python3 scripts/coach_doctor.py --check llm_config --probe-llm --json",
                         "python3 skills/session-parts-analyzer/scripts/analyze_session_parts.py --activity-id 1 --part strides"):
             self.assertEqual(self.sh(command), "allow", command)
 
@@ -510,6 +511,7 @@ class SkillScriptsPolicyTest(PolicyBase):
         for command in ("python3 scripts/coach_doctor.py --tokens-dir x",
                         "python3 scripts/coach_doctor.py --workspace planning",
                         "python3 scripts/coach_setup.py",
+                        "python3 scripts/arc_llm.py check --probe",
                         "python3 skills/session-parts-analyzer/scripts/analyze_session_parts.py --garmin-host evil.com",
                         "python3 skills/session-parts-analyzer/scripts/analyze_session_parts.py --output /tmp/x.json",
                         "python3 scripts/arc_race_debrief.py debrief --plan /etc/passwd"):

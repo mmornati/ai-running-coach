@@ -370,6 +370,12 @@ final class CoachAppModel: ObservableObject {
     @Published var dashboardRunning = false
     @Published var diagnostics = ""
     @Published var showDiagnostics = false
+    // Test de la connexion IA (arc_llm.py check --probe --json, #268).
+    @Published var showConnectionCheck = false
+    @Published var connectionChecking = false
+    @Published var connectionItems: [ConnectionCheckItem] = []
+    @Published var connectionSummary = ""
+    @Published var connectionReconnecting = false
     let appUpdater = AppUpdater()
     @Published var updateAvailable = false
     @Published var updateWaiting = false
@@ -1486,6 +1492,12 @@ final class CoachAppModel: ObservableObject {
     /// reste dans le magasin d'OpenCode du coach ; l'application ne le lit jamais.
     func connectSubscription() {
         guard let provider = savedChatProvider else { return }
+        _ = openSubscriptionLogin(providerID: provider.llmID, dataDir: coachOpenCodeStore.path)
+    }
+
+    /// Ouvre Terminal sur `arc_llm.py login <fournisseur> --data-dir <magasin>`. Faux si osascript n’a pas pu être lancé.
+    @discardableResult
+    private func openSubscriptionLogin(providerID: String, dataDir: String) -> Bool {
         let home = fm.homeDirectoryForCurrentUser.path
         // Comme pour Garmin : nos dossiers sont AJOUTÉS devant le PATH de l'utilisateur (jamais à sa place).
         let extra = [
@@ -1495,14 +1507,14 @@ final class CoachAppModel: ObservableObject {
             appSupport.appendingPathComponent("npm-tools/bin").path,
             "/opt/homebrew/bin", "/usr/local/bin"
         ].joined(separator: ":")
-        let login = "python3 \(shellQuote(engineURL.appendingPathComponent("scripts/arc_llm.py").path)) login \(provider.llmID) --data-dir \(shellQuote(coachOpenCodeStore.path))"
+        let login = "python3 \(shellQuote(engineURL.appendingPathComponent("scripts/arc_llm.py").path)) login \(providerID) --data-dir \(shellQuote(dataDir))"
         let command = "cd \(shellQuote(engineURL.path)) && export PATH=\(shellQuote(extra)):\"$PATH\" && clear && \(login); printf '\\nVous pouvez fermer cette fenêtre.\\n'; read -n 1"
         let escaped = command.replacingOccurrences(of: "\\", with: "\\\\").replacingOccurrences(of: "\"", with: "\\\"")
         let script = "tell application \"Terminal\" to do script \"\(escaped)\"\ntell application \"Terminal\" to activate"
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/usr/bin/osascript")
         process.arguments = ["-e", script]
-        try? process.run()
+        do { try process.run() } catch { return false }
         // Rend l'état de la connexion observable : le jeton arrive pendant que l'athlète valide dans
         // son navigateur, sans que l'application change de premier plan. On sonde jusqu'à 10 minutes.
         subscriptionPoll?.cancel()
@@ -1514,6 +1526,7 @@ final class CoachAppModel: ObservableObject {
                 if self.subscriptionConnected { break }
             }
         }
+        return true
     }
 
     func synchronizeNow() {
@@ -1656,6 +1669,104 @@ final class CoachAppModel: ObservableObject {
                 diagnostics = "Diagnostic impossible : \(error.localizedDescription)"
             }
         }
+    }
+
+    /// « Tester la connexion » : `arc_llm.py check --probe --json`. Appels réseau minimaux vers le
+    /// fournisseur configuré ; la sortie ne contient jamais de clé ni de jeton (le script le garantit).
+    func testConnection() {
+        guard !connectionChecking else { return }
+        connectionChecking = true
+        connectionItems = []
+        connectionSummary = "Vérification de la connexion en cours…"
+        showConnectionCheck = true
+        Task {
+            do {
+                let result = try await runProcess(
+                    executable: "/usr/bin/env",
+                    arguments: ["python3", engineURL.appendingPathComponent("scripts/arc_llm.py").path,
+                                "check", "--probe", "--json", "--workspace", workspaceURL.path],
+                    directory: engineURL,
+                    streamOutput: false
+                )
+                // Le code 1 signifie « au moins une erreur » : le JSON est écrit quand même.
+                if let start = result.output.firstIndex(of: "{"),
+                   let end = result.output.lastIndex(of: "}"), start < end,
+                   let data = String(result.output[start...end]).data(using: .utf8),
+                   let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                   let checks = object["checks"] as? [[String: Any]] {
+                    connectionItems = checks.map {
+                        ConnectionCheckItem(
+                            checkID: ($0["id"] as? String) ?? "",
+                            status: ($0["status"] as? String) ?? "info",
+                            message: ($0["message"] as? String) ?? "",
+                            action: ($0["action"] as? String) ?? "",
+                            actionKind: ($0["action_kind"] as? String) ?? "",
+                            dataDir: ($0["data_dir"] as? String) ?? ""
+                        )
+                    }
+                    let ok = (object["ok"] as? Bool) ?? false
+                    connectionSummary = ok ? "Aucune erreur détectée." : "Au moins un point demande votre attention."
+                } else {
+                    connectionSummary = "Réponse inattendue du diagnostic (code \(result.code))."
+                }
+            } catch {
+                connectionSummary = "Test impossible : \(error.localizedDescription)"
+            }
+            connectionChecking = false
+        }
+    }
+
+    /// Action proposée par le diagnostic : reconnecter (OpenRouter en un clic, abonnement dans Terminal)
+    /// ou ouvrir la page de crédit. Les autres actions sont affichées comme consigne.
+    func performConnectionAction(_ item: ConnectionCheckItem) {
+        switch item.actionKind {
+        case "reconnect_openrouter":
+            reconnectOpenRouter()
+        case "reconnect_chatgpt", "reconnect_copilot":
+            // Le fournisseur et le magasin viennent du diagnostic, pas des préférences de l’app :
+            // la configuration peut venir de install.sh, ou mêler deux abonnements (chat / synchronisation).
+            let providerID = item.actionKind == "reconnect_chatgpt" ? "chatgpt" : "copilot"
+            let store = item.dataDir.isEmpty ? coachOpenCodeStore.path : item.dataDir
+            if !openSubscriptionLogin(providerID: providerID, dataDir: store) {
+                connectionSummary = "Impossible d’ouvrir Terminal pour la connexion. Lancez dans un terminal : python3 \(shellQuote(engineURL.appendingPathComponent("scripts/arc_llm.py").path)) login \(providerID) --data-dir \(shellQuote(store))"
+            }
+        case "add_credit":
+            if let url = URL(string: "https://openrouter.ai/settings/credits") { NSWorkspace.shared.open(url) }
+        default:
+            break
+        }
+    }
+
+    /// Reconnexion OpenRouter depuis le test de connexion : même script que l’installation, mais sans
+    /// toucher à l’état de progression de l’écran d’installation, et sans relance tant qu’elle tourne.
+    private func reconnectOpenRouter() {
+        guard !connectionReconnecting, !connecting else { return }
+        connectionReconnecting = true
+        connectionSummary = "Connexion à OpenRouter : autorisez le coach dans votre navigateur…"
+        // Même flux que l’installation (adresse affichée si le navigateur ne s’ouvre pas, annulation) ;
+        // on rend ensuite à l’écran d’installation l’état de progression qu’il avait.
+        let savedProgress = progress, savedTitle = progressTitle
+        Task {
+            let outcome = await connectOpenRouter()
+            progress = savedProgress
+            progressTitle = savedTitle
+            connectionReconnecting = false
+            switch outcome {
+            case .connected:
+                testConnection()
+            case .unverified(let message):
+                connectionSummary = "Clé enregistrée mais non vérifiée : \(message)"
+                testConnection()
+            case .failed(let message):
+                connectionSummary = message
+            }
+        }
+    }
+
+    /// Ferme la fenêtre du test : une reconnexion en cours est annulée (le processus est arrêté).
+    func closeConnectionCheck() {
+        if connectionReconnecting { cancelConnection() }
+        showConnectionCheck = false
     }
 
     func retryLastOperation() {
@@ -2223,6 +2334,14 @@ struct ReadyView: View {
                     }.controlSize(.large)
                 }
 
+                Button {
+                    model.testConnection()
+                } label: {
+                    Label("Tester la connexion", systemImage: "checkmark.shield")
+                }
+                .controlSize(.large)
+                .disabled(model.connectionChecking || model.connectionReconnecting)
+
                 if model.dashboardRunning {
                     Button("Arrêter") { model.stopDashboard() }.controlSize(.large)
                 }
@@ -2275,10 +2394,112 @@ struct ReadyView: View {
                 HStack { Spacer(); Button("Fermer") { model.showDiagnostics = false }.keyboardShortcut(.defaultAction) }
             }.padding(24).frame(minWidth: 680, minHeight: 430)
         }
+        .sheet(isPresented: $model.showConnectionCheck, onDismiss: { if model.connectionReconnecting { model.cancelConnection() } }) {
+            ConnectionCheckView(model: model)
+        }
         .sheet(isPresented: $model.showEnrichment) {
             SetupView(model: model, enrichment: true)
                 .frame(minWidth: 780, minHeight: 680)
         }
+    }
+}
+
+/// Un point du diagnostic de la connexion IA (`arc_llm.py check --json`).
+struct ConnectionCheckItem: Identifiable {
+    let id = UUID()
+    let checkID: String
+    let status: String
+    let message: String
+    let action: String
+    let actionKind: String
+    let dataDir: String
+}
+
+struct ConnectionCheckView: View {
+    @ObservedObject var model: CoachAppModel
+
+    private func icon(_ status: String) -> (String, Color) {
+        switch status {
+        case "ok": return ("checkmark.circle.fill", .green)
+        case "warn": return ("exclamationmark.triangle.fill", .orange)
+        case "error": return ("xmark.octagon.fill", .red)
+        default: return ("info.circle.fill", .secondary)
+        }
+    }
+
+    /// Les actions qui ont un bouton (ou le bouton « Relancer le test ») n’affichent pas leur commande :
+    /// elle est relative au dossier du moteur et n’a pas de sens collée dans un autre terminal.
+    private func showsActionText(_ kind: String) -> Bool {
+        !["reconnect_openrouter", "reconnect_chatgpt", "reconnect_copilot", "add_credit", "retry",
+          "set_key", "reconfigure", "install_opencode"].contains(kind)
+    }
+
+    /// Consigne en clair pour les actions dont la commande dépend du dossier du moteur.
+    private func plainGuidance(_ kind: String) -> String? {
+        switch kind {
+        case "set_key": return "Ajoutez la clé dans le fichier llm.env (dossier ~/.config/ai-running-coach) ou reconnectez le fournisseur, puis relancez le test."
+        case "reconfigure": return "Corrigez la configuration du coach (voir Dépannage → La connexion IA dans la documentation), puis relancez le test."
+        case "install_opencode": return "Installez OpenCode (opencode.ai), puis relancez le test."
+        default: return nil
+        }
+    }
+
+    private func buttonTitle(_ kind: String) -> String? {
+        switch kind {
+        case "reconnect_openrouter": return "Reconnecter OpenRouter"
+        case "reconnect_chatgpt", "reconnect_copilot": return "Reconnecter mon compte"
+        case "add_credit": return "Ajouter du crédit"
+        default: return nil
+        }
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack {
+                Text("Connexion à l’IA").font(.title2.bold())
+                if model.connectionChecking { ProgressView().controlSize(.small) }
+            }
+            Text(model.connectionSummary).foregroundStyle(.secondary)
+            ScrollView {
+                VStack(alignment: .leading, spacing: 12) {
+                    ForEach(model.connectionItems) { item in
+                        let symbol = icon(item.status)
+                        HStack(alignment: .top, spacing: 10) {
+                            Image(systemName: symbol.0).foregroundStyle(symbol.1)
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text(item.message).textSelection(.enabled)
+                                    .foregroundStyle(item.status == "info" ? Color.secondary : Color.primary)
+                                if !item.action.isEmpty && item.status != "ok" && item.status != "info" && showsActionText(item.actionKind) {
+                                    Text(item.action).font(.system(.callout, design: .monospaced)).foregroundStyle(.secondary).textSelection(.enabled)
+                                }
+                                if item.status != "ok", item.status != "info", let title = buttonTitle(item.actionKind) {
+                                    Button(title) { model.performConnectionAction(item) }
+                                        .disabled(model.connectionReconnecting || model.connectionChecking)
+                                }
+                                if let hint = plainGuidance(item.actionKind), item.status == "error" || item.status == "warn" {
+                                    Text(hint).font(.callout).foregroundStyle(.secondary)
+                                }
+                                if item.status == "error", item.actionKind == "wait" {
+                                    Text("Rien à faire : réessayez demain.").font(.callout).foregroundStyle(.secondary)
+                                }
+                            }
+                            Spacer()
+                        }
+                    }
+                }.frame(maxWidth: .infinity, alignment: .leading)
+            }
+            if model.connectionReconnecting, let url = model.connectURL {
+                Link("Ouvrir la page d’autorisation OpenRouter", destination: url)
+            }
+            HStack {
+                Button("Relancer le test") { model.testConnection() }.disabled(model.connectionChecking || model.connectionReconnecting)
+                if model.connectionReconnecting {
+                    Button("Annuler la connexion") { model.cancelConnection() }
+                }
+                Spacer()
+                Button("Fermer") { model.closeConnectionCheck() }.keyboardShortcut(.defaultAction)
+            }
+        }.padding(24).frame(minWidth: 620, minHeight: 380)
     }
 }
 

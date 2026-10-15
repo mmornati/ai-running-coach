@@ -71,6 +71,8 @@ MAX_TEXT_CHARS = 8000
 ID_RE = re.compile(r"^[A-Za-z0-9_-]{6,40}$")
 ISO = "%Y-%m-%dT%H:%M:%SZ"
 APPROVE_PER_IP_PER_MIN = 30          # route à jeton : essais par minute et par adresse cliente
+LLM_CHECK_PER_MIN = 6                # diagnostic de connexion IA : essais par minute et par client
+LLM_CHECK_CACHE_S = 30.0             # un résultat avec sonde réseau est réutilisé 30 s (pas de martelage du fournisseur)
 APPROVE_GLOBAL_PER_MIN = 120         # plafond global, toutes adresses confondues
 
 # Valeurs par défaut de `[chat]` (config/workspace.toml peut les surcharger ; ce
@@ -804,6 +806,8 @@ class ChatService:
         self.limiter = RateLimiter(int(cfg["rate_limit_per_min"]))
         self.approve_limiter = RateLimiter(APPROVE_PER_IP_PER_MIN)   # route à jeton : par adresse cliente
         self.approve_global = RateLimiter(APPROVE_GLOBAL_PER_MIN)    # … et plafond global
+        self.llm_check_limiter = RateLimiter(LLM_CHECK_PER_MIN)     # diagnostic de connexion IA (#268) : par client
+        self._llm_check_cache: dict = {}                             # probe -> (horodatage, rapport)
         self._lock = threading.Lock()
         self._slots: dict = {}                          # session_id → verrou « un tour à la fois »
         self.turns: dict = {}                           # session_id → Turn en cours
@@ -1197,6 +1201,23 @@ class ChatService:
                 "updated": meta["updated"], "cost_eur": meta.get("cost_eur", 0.0),
                 "pending_approvals": pending}
 
+    def llm_check(self, probe: bool) -> dict:
+        """`arc_llm.py check` pour la page du chat : jamais de secret, jamais une exception."""
+        cached = self._llm_check_cache.get(probe)
+        if probe and cached and cached[1].get("worst") != "error" and time.monotonic() - cached[0] < LLM_CHECK_CACHE_S:
+            return cached[1]
+        try:
+            import arc_llm_check
+            report = arc_llm_check.run_checks(self.workspace, probe)
+            report.pop("workspace", None)            # chemin absolu inutile à la page
+            if probe:
+                self._llm_check_cache[probe] = (time.monotonic(), report)
+            return report
+        except Exception as exc:  # noqa: BLE001
+            return {"schema": 1, "ok": False, "worst": "error", "probe": probe, "targets": [], "checks": [{
+                "id": "check", "scope": "common", "status": "error", "action": None, "action_kind": None,
+                "message": "Diagnostic impossible (%s)." % type(exc).__name__}]}
+
     def status(self, user: str) -> dict:
         return {"enabled": bool(self.cfg["enabled"]), "backend": self.backend.name,
                 "model": self.cfg["model"], "user": user,
@@ -1336,6 +1357,16 @@ class Handler(BaseHTTPRequestHandler):
                 return
             meta = svc.sessions.create(svc.backend.name, str(svc.cfg["model"]))
             return self._json(200, {"id": meta["id"]})
+        if path == f"{API}/llm-check":
+            # Diagnostic de la connexion IA (#268) : statique, ou avec un appel réseau minimal sur demande.
+            body = self._read_body()
+            if body is None:
+                return
+            # Mode proxy : une limite par utilisateur authentifié (plusieurs utilisateurs derrière la même adresse).
+            who = user if svc.cfg.get("auth") == "proxy" and user else client_ip(svc.cfg, self.client_address[0], self.headers)
+            if not svc.llm_check_limiter.allow(who):
+                return self._error(429, "Trop de tests de connexion : réessayez dans une minute.")
+            return self._json(200, svc.llm_check(body.get("probe") is True))
         match = re.match(rf"^{API}/sessions/([^/]+)/messages$", path)
         if match:
             return self._post_message(match.group(1), user)
