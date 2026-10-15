@@ -193,6 +193,7 @@ HEALTH_EFFECTIVE="primary" # résolu par resolve_health_source()
 LLM_PROVIDER=""    # --llm openrouter|anthropic|openai|chatgpt|copilot — chat + sync sur une API ou un abonnement
 LLM_MODEL_ARG=""   # --model ID (avec --llm)
 LLM_BASE_URL_ARG="" # --base-url URL (avec --llm openai : API compatible OpenAI)
+SYNC_SUBSCRIPTION=0 # --sync-subscription : avec --llm chatgpt|copilot, met AUSSI la synchronisation sur l'abonnement
 LLM_CONNECT=0      # --connect : connexion en un clic (openrouter) ou avec son compte (chatgpt|copilot), interactif seulement
 DO_CHAT=0          # --chat : service du chat avec le coach
 CHAT_BUDGET=""     # --chat-budget EUR
@@ -266,6 +267,7 @@ Usage :
   ./install.sh --no-remote-control # désactive Remote Control (annule --remote-control d'un préréglage)
   ./install.sh --llm FOURNISSEUR  # openrouter | anthropic | openai | chatgpt | copilot — chat ET sync (voir ci-dessous)
   ./install.sh --model ID         # avec --llm : modèle (openrouter : ID OpenRouter ; anthropic, chatgpt, copilot : modèle du chat)
+  ./install.sh --sync-subscription # avec --llm chatgpt|copilot : la synchronisation automatique passe aussi sur l'abonnement
   ./install.sh --connect          # avec --llm openrouter|chatgpt|copilot : se connecte dans le navigateur (aucune clé à copier)
   ./install.sh --base-url URL     # avec --llm openai : API compatible OpenAI autre que api.openai.com
   ./install.sh --chat             # active [chat] et installe le service (scripts/coach-chat.sh)
@@ -294,10 +296,13 @@ voyiez. Interactif seulement : sans terminal, la commande à lancer vous est ind
 --dry-run, rien n'est ouvert. Sans --connect, rien ne change.
 
 --llm chatgpt (ChatGPT Plus ou Pro) et --llm copilot (GitHub Copilot Pro, Pro+, Business, Enterprise)
-utilisent votre abonnement existant, sans clé API : chat et sync passent par OpenCode, qui garde la
+utilisent votre abonnement existant, sans clé API : le CHAT passe par OpenCode, qui garde la
 connexion dans un magasin dédié au coach (mode 700, [chat|sync].opencode_data_dir, par défaut
 ~/.local/share/ai-running-coach/opencode). Rien n'est facturé au jeton : les limites de votre forfait
-s'appliquent, et le plafond en euros ne compte rien. Avec --connect, « scripts/arc_llm.py login
+s'appliquent, et le plafond en euros ne compte rien. La SYNCHRONISATION automatique ne passe sur
+l'abonnement que sur une installation neuve (aucun [sync].runner configuré) ou avec
+--sync-subscription : aucune déclaration officielle n'autorise l'usage planifié sans surveillance
+d'un forfait grand public, ce choix doit donc être explicite. Sinon elle garde son exécuteur actuel. Avec --connect, « scripts/arc_llm.py login
 chatgpt|copilot » est lancé (interactif seulement) ; sinon lancez-le vous-même une fois. --model change
 le modèle du chat (identifiant OpenCode « fournisseur/modèle »). Les modèles par défaut n'ont pas été
 évalués sur un vrai forfait.
@@ -466,6 +471,7 @@ while [[ $# -gt 0 ]]; do
         --model) need_value "$@"; LLM_MODEL_ARG="$2"; shift 2 ;;
         --base-url) need_value "$@"; LLM_BASE_URL_ARG="$2"; shift 2 ;;
         --connect) LLM_CONNECT=1; shift ;;
+        --sync-subscription) SYNC_SUBSCRIPTION=1; shift ;;
         --chat) DO_CHAT=1; shift ;;
         --chat-budget) need_value "$@"; CHAT_BUDGET="$2"; shift 2 ;;
         --telegram) DO_TELEGRAM=1; shift ;;
@@ -510,8 +516,18 @@ if [[ -n "$LLM_PROVIDER" ]]; then
     if [[ -n "$LLM_BASE_URL_ARG" && ( "$LLM_PROVIDER" == "chatgpt" || "$LLM_PROVIDER" == "copilot" ) ]]; then
         die "--base-url n'a pas de sens avec --llm $LLM_PROVIDER (abonnement : aucune URL ni clé)."
     fi
+    # Un modèle d'un autre fournisseur donnerait « openai/github-copilot/x » : refusé net.
+    if [[ "$LLM_PROVIDER" == "chatgpt" && "$LLM_MODEL_ARG" == */* && "$LLM_MODEL_ARG" != openai/* ]]; then
+        die "--model $LLM_MODEL_ARG : un modèle ChatGPT s'écrit « gpt-5.4 » ou « openai/gpt-5.4 » (pas d'autre fournisseur)."
+    fi
+    if [[ "$LLM_PROVIDER" == "copilot" && "$LLM_MODEL_ARG" == */* && "$LLM_MODEL_ARG" != github-copilot/* ]]; then
+        die "--model $LLM_MODEL_ARG : un modèle Copilot s'écrit « gpt-5.4-mini » ou « github-copilot/gpt-5.4-mini » (pas d'autre fournisseur)."
+    fi
 elif [[ -n "$LLM_MODEL_ARG" || -n "$LLM_BASE_URL_ARG" ]]; then
     die "--model et --base-url s'utilisent avec --llm (voir --help)."
+fi
+if [[ "$SYNC_SUBSCRIPTION" -eq 1 && "$LLM_PROVIDER" != "chatgpt" && "$LLM_PROVIDER" != "copilot" ]]; then
+    die "--sync-subscription s'utilise avec --llm chatgpt ou --llm copilot."
 fi
 if [[ "$LLM_CONNECT" -eq 1 && "$LLM_PROVIDER" != "openrouter" && "$LLM_PROVIDER" != "chatgpt" && "$LLM_PROVIDER" != "copilot" ]]; then
     die "--connect s'utilise avec --llm openrouter, chatgpt ou copilot (connexion sans clé à copier ; pour les autres fournisseurs, collez la clé dans llm.env — docs/choisir-son-ia.md)."
@@ -2617,11 +2633,23 @@ persist_llm_subscription() {
     llm_set chat base_url ""
     llm_set chat api_key_env ""
     llm_set chat opencode_data_dir "$LLM_OPENCODE_DATA_DIR"
-    llm_set sync runner "opencode"
-    llm_set sync model "$sync_model"
-    llm_set sync base_url ""
-    llm_set sync api_key_env ""
-    llm_set sync opencode_data_dir "$LLM_OPENCODE_DATA_DIR"
+    # Synchronisation : sur l'abonnement SEULEMENT si l'athlète le demande (--sync-subscription) ou si
+    # rien n'était configuré (installation neuve). Aucune déclaration officielle n'autorise un usage
+    # planifié sans surveillance d'un forfait grand public : on ne bascule pas un exécuteur existant
+    # (facturation, abonnement Claude…) en silence.
+    local sync_on_plan=0
+    if [[ "$SYNC_SUBSCRIPTION" -eq 1 ]] || ! user_toml_value sync runner >/dev/null 2>&1; then
+        sync_on_plan=1
+    fi
+    if [[ "$sync_on_plan" -eq 1 ]]; then
+        llm_set sync runner "opencode"
+        llm_set sync model "$sync_model"
+        llm_set sync base_url ""
+        llm_set sync api_key_env ""
+        llm_set sync opencode_data_dir "$LLM_OPENCODE_DATA_DIR"
+    else
+        log "Synchronisation automatique inchangée (exécuteur actuel : $(effective_value sync runner)). Pour la mettre aussi sur votre abonnement : ./install.sh --llm $LLM_PROVIDER --sync-subscription (elle consommera les limites de votre forfait ; aucune déclaration officielle n'autorise l'usage planifié sans surveillance, voir docs/choisir-son-ia.md)."
+    fi
     if [[ "$DRY_RUN" -eq 1 ]]; then
         printf '%s\n' "${C_YELLOW}[dry-run]${C_RESET} $LLM_OPENCODE_DATA_DIR (mode 700, magasin d'authentification OpenCode)"
     else
@@ -2643,7 +2671,7 @@ persist_llm_subscription() {
         warn "Forfaits acceptés : Copilot Pro, Pro+, Business, Enterprise (Copilot Free n'est pas pris en charge). Les crédits de votre forfait s'appliquent ; la sync automatique les consomme aussi."
     fi
     if ! have python3 || ! python3 "$PROJECT_ROOT/scripts/arc_llm.py" auth-status "$LLM_PROVIDER" --data-dir "$LLM_OPENCODE_DATA_DIR" >/dev/null 2>&1; then
-        warn "Pas encore connecté : lancez « python3 $PROJECT_ROOT/scripts/arc_llm.py login $LLM_PROVIDER » une fois (ou relancez avec --connect). Ni la sync ni le chat ne lancent de connexion toute seuls."
+        warn "Pas encore connecté : lancez « python3 $PROJECT_ROOT/scripts/arc_llm.py login $LLM_PROVIDER --data-dir $LLM_OPENCODE_DATA_DIR » une fois (ou relancez avec --connect). Ni la sync ni le chat ne lancent de connexion toute seuls."
     fi
 }
 
@@ -2670,6 +2698,10 @@ persist_llm() {
             sync_model="$LLM_ANTHROPIC_SYNC_MODEL"; key_var="ANTHROPIC_API_KEY" ;;
     esac
     log "Chat et synchronisation sur $LLM_PROVIDER (clé : $key_var dans $LLM_ENV_FILE)"
+    # Quitter un abonnement : le magasin dédié n'a plus lieu d'être (écrit « ancien → nouveau »).
+    # Seulement s'il était posé : un --llm ordinaire n'ajoute jamais cette clé.
+    [[ -z "$(effective_value chat opencode_data_dir)" ]] || llm_set chat opencode_data_dir ""
+    [[ -z "$(effective_value sync opencode_data_dir)" ]] || llm_set sync opencode_data_dir ""
     llm_set chat backend "$chat_backend"
     llm_set chat model "$chat_model"
     llm_set chat base_url "$base_url"

@@ -74,9 +74,12 @@ DAILY_BUDGET_EUR="$(toml_get sync daily_budget_eur 0.5)"
 # comportement historique (magasin global d'OpenCode, rien de ci-dessous ne s'active).
 OC_DATA_DIR="$(toml_get sync opencode_data_dir "")"
 OC_DATA_DIR="${OC_DATA_DIR/#\~/$HOME}"
+# Chemin relatif : résolu UNE fois depuis le workspace (comme le chat), jamais depuis le cwd du moment.
+[[ -z "$OC_DATA_DIR" || "$OC_DATA_DIR" == /* ]] || OC_DATA_DIR="$ARC_WORKSPACE/$OC_DATA_DIR"
 # Attente du verrou du magasin quand le chat l'utilise (tour ChatGPT en cours), en secondes.
 STORE_LOCK_WAIT_S=300
 SUBSCRIPTION_ID=""      # chatgpt | copilot | "" (voir detect_subscription)
+LOCK_MARKER=""          # fichier créé par `arc_llm.py with-lock` quand le verrou n'a pas été pris
 SUBSCRIPTION_LABEL=""
 USD_EUR_RATE="$(toml_get chat usd_eur_rate 0.92)"
 LLM_ENV_FILE="${ARC_LLM_ENV:-$HOME/.config/ai-running-coach/llm.env}"
@@ -100,6 +103,15 @@ detect_subscription() {
 detect_subscription
 
 # Jeton d'abonnement présent dans le magasin du coach ? (présence seulement, jamais la valeur)
+# Commande de reconnexion à afficher : `--data-dir` seulement si le magasin n'est pas celui par défaut.
+subscription_login_hint() {
+    local cmd="python3 scripts/arc_llm.py login $SUBSCRIPTION_ID"
+    if [[ "$OC_DATA_DIR" != "$HOME/.local/share/ai-running-coach/opencode" ]]; then
+        cmd+=" --data-dir $(printf '%q' "$OC_DATA_DIR")"
+    fi
+    printf '%s' "$cmd"
+}
+
 subscription_auth_ok() {
     [[ -n "$SUBSCRIPTION_ID" ]] || return 0
     python3 "$ARC_ENGINE_ROOT/scripts/arc_llm.py" auth-status "$SUBSCRIPTION_ID" --data-dir "$OC_DATA_DIR" >/dev/null 2>&1
@@ -351,6 +363,9 @@ permission.update({
     "external_directory": "deny", "task": "allow", "skill": "allow",
 })
 config = {"$schema": "https://opencode.ai/config.json", "permission": permission}
+if len(sys.argv) > 9 and sys.argv[9] == "subscription":
+    # Abonnement ChatGPT/Copilot : pas d instantanes de fichiers (cle `snapshot` du schema OpenCode 1.18.35).
+    config["snapshot"] = False
 if model:
     config["model"] = model
 if provider:
@@ -365,7 +380,8 @@ opencode_config_json() {
         "$(sync_health_denied_tools "$SOURCE" | tr '\n' ' ')" \
         "$(sync_write_tools garmin | tr '\n' ' ')" \
         "$(sync_write_tools intervals | tr '\n' ' ')" \
-        "$(sync_write_tools strava | tr '\n' ' ')"
+        "$(sync_write_tools strava | tr '\n' ' ')" \
+        "${SUBSCRIPTION_ID:+subscription}"
 }
 
 # Configuration de sécurité propre au run Gemini. Le fichier est chargé comme
@@ -570,7 +586,7 @@ detect_provider_failure() {
         if printf '%s' "$err" | grep -qiE 'usage_not_included|upgrade to plus'; then
             PROVIDER_FAILURE="plan"; return 0
         fi
-        if printf '%s' "$err" | grep -qiE 'insufficient_quota|quota exceeded|usage limit|rate limit|too many requests|(^|[^0-9])429([^0-9]|$)'; then
+        if printf '%s' "$err" | grep -qiE 'insufficient_quota|quota exceeded|usage limit|usage_limit_reached|rate limit|too many requests|(^|[^0-9])429([^0-9]|$)'; then
             PROVIDER_FAILURE="quota"; return 0
         fi
         if printf '%s' "$err" | grep -qiE 'token refresh failed|(^|[^0-9])40[13]([^0-9]|$)|unauthorized|forbidden|not connected|provider not found|token may be missing'; then
@@ -1201,7 +1217,7 @@ main() {
             [[ "$SUBSCRIPTION_ID" != "chatgpt" ]] \
                 || printf '%s\n' "${C_YELLOW}[dry-run]${C_RESET} exécution sous le verrou du magasin (arc_llm.py with-lock, attente max ${STORE_LOCK_WAIT_S} s)"
             subscription_auth_ok \
-                || warn "$SUBSCRIPTION_LABEL non connecté dans $OC_DATA_DIR — la synchronisation échouerait : python3 scripts/arc_llm.py login $SUBSCRIPTION_ID"
+                || warn "$SUBSCRIPTION_LABEL non connecté dans $OC_DATA_DIR — la synchronisation échouerait : $(subscription_login_hint)"
         fi
         if [[ "$RUNNER" == "gemini" ]]; then
             printf '%s\n' "${C_YELLOW}[dry-run]${C_RESET} GEMINI_CLI_SYSTEM_SETTINGS_PATH=$GEMINI_CONFIG_FILE, contenu :"
@@ -1235,7 +1251,7 @@ main() {
     if ! subscription_auth_ok; then
         err "$SUBSCRIPTION_LABEL non connecté ($OC_DATA_DIR) — synchronisation abandonnée."
         notify "🔑 Sync $SOURCE_LABEL — reconnectez $SUBSCRIPTION_LABEL" 5 "key,warning" \
-            "Aucune connexion $SUBSCRIPTION_LABEL dans le magasin du coach. Reconnectez-vous dans un terminal : python3 scripts/arc_llm.py login $SUBSCRIPTION_ID. La synchronisation ne lance jamais de connexion toute seule."
+            "Aucune connexion $SUBSCRIPTION_LABEL dans le magasin du coach. Reconnectez-vous dans un terminal : $(subscription_login_hint). La synchronisation ne lance jamais de connexion toute seule."
         exit 1
     fi
 
@@ -1270,10 +1286,14 @@ main() {
             # Magasin d'authentification dédié (mode 700), partagé avec le chat. ChatGPT rafraîchit son
             # jeton en réécrivant auth.json sans verrou : on sérialise avec le chat (arc_llm.py).
             mkdir -p "$OC_DATA_DIR" && chmod 700 "$OC_DATA_DIR"
-            exec_cmd=(env "XDG_DATA_HOME=$OC_DATA_DIR" "${exec_cmd[@]}")
+            # auth.json partagé (XDG_DATA_HOME), mais base de sessions propre à la sync (OPENCODE_DB,
+            # chemin absolu) : jamais le chat et la sync sur la même base SQLite.
+            exec_cmd=(env "XDG_DATA_HOME=$OC_DATA_DIR" "OPENCODE_DB=$ARC_WORKSPACE/.arc/sync/opencode.db" "${exec_cmd[@]}")
             if [[ "$SUBSCRIPTION_ID" == "chatgpt" ]]; then
+                # Le fichier-signal dit « verrou non pris » sans ambiguïté avec un code 75 de la commande.
+                LOCK_MARKER="$LOG_DIR/.sync-lock-timeout"
                 exec_cmd=(python3 "$ARC_ENGINE_ROOT/scripts/arc_llm.py" with-lock --data-dir "$OC_DATA_DIR"
-                          --timeout "$STORE_LOCK_WAIT_S" -- "${exec_cmd[@]}")
+                          --timeout "$STORE_LOCK_WAIT_S" --marker "$LOCK_MARKER" -- "${exec_cmd[@]}")
             fi
         fi
     fi
@@ -1287,6 +1307,7 @@ main() {
         exec_cmd=(env "${RUNNER_ENV[@]}" "${exec_cmd[@]}")
     fi
     : > "$run_marker"
+    [[ -z "$LOCK_MARKER" ]] || rm -f "$LOCK_MARKER"
     raw_output="$("${exec_cmd[@]}" 2>>"$LOG_FILE")" || rc=$?
     restrict_garmin_tokens || true
     if [[ "$OUTPUT_KIND" == "text" ]]; then
@@ -1302,16 +1323,25 @@ main() {
         printf '%s\n' "$raw_output" >> "$LOG_FILE"
         record_spend "$(printf '%s\n' "$raw_output" | runner_output cost)"
     fi
+    if [[ -n "$LOCK_MARKER" && -e "$LOCK_MARKER" ]]; then
+        # with-lock : le chat tient le magasin (un tour en cours). Rien n'a été lancé : ce n'est pas un
+        # échec (pied de run à code 0, vue « Synchro » inchangée) et le prochain passage réessaie.
+        rm -f "$LOCK_MARKER"
+        echo "Synchronisation reportée : le chat utilise la connexion ChatGPT." >> "$LOG_FILE"
+        echo "===== $(date '+%F %T') — fin code=0 durée=$((SECONDS - run_started))s =====" >> "$LOG_FILE"
+        warn "Le chat utilise la connexion ChatGPT — synchronisation reportée au prochain passage."
+        # Une notification par jour au plus (comme le budget) : le mode watch repasserait sinon en boucle.
+        local postponed_marker="$LOG_DIR/.sync-postponed-notified-$(date +%F)"
+        if [[ ! -e "$postponed_marker" ]]; then
+            notify "⏳ Sync $SOURCE_LABEL reportée" 3 "hourglass" \
+                "Le chat du coach utilisait la connexion ChatGPT pendant plus de $((STORE_LOCK_WAIT_S / 60)) min : la synchronisation de ce passage n'a pas été lancée et sera retentée au prochain."
+            : > "$postponed_marker"
+        fi
+        exit 0
+    fi
     # Pied de run : code et durée, lus par scripts/arc_sync_status.py (vue « Synchro »).
     echo "===== $(date '+%F %T') — fin code=$rc durée=$((SECONDS - run_started))s =====" >> "$LOG_FILE"
 
-    if [[ "$rc" -eq 75 && "$SUBSCRIPTION_ID" == "chatgpt" ]]; then
-        # with-lock : le chat tient le magasin (un tour en cours). Rien n'a été lancé : le prochain run réessaie.
-        warn "Le chat utilise la connexion ChatGPT — synchronisation reportée au prochain passage."
-        notify "⏳ Sync $SOURCE_LABEL reportée" 3 "hourglass" \
-            "Le chat du coach utilisait la connexion ChatGPT pendant plus de $((STORE_LOCK_WAIT_S / 60)) min : la synchronisation de ce passage n'a pas été lancée et sera retentée au prochain."
-        exit 0
-    fi
     if [[ "$rc" -ne 0 ]]; then
         err "La synchronisation a échoué (code $rc) — voir $LOG_FILE"
         if detect_provider_failure "$provider_error"; then
@@ -1321,7 +1351,7 @@ main() {
             plabel="$(provider_label)"
             if [[ "$PROVIDER_FAILURE" == "reconnect" ]]; then
                 notify "🔑 Sync $SOURCE_LABEL — reconnectez $plabel" 5 "key,warning" \
-                    "Synchronisation interrompue : la connexion $plabel est expirée ou refusée. Reconnectez-vous dans un terminal : python3 scripts/arc_llm.py login $SUBSCRIPTION_ID. Ce n'est pas un problème $SOURCE_LABEL. Voir logs/sync-$(date +%F).log."
+                    "Synchronisation interrompue : la connexion $plabel est expirée ou refusée. Reconnectez-vous dans un terminal : $(subscription_login_hint). Ce n'est pas un problème $SOURCE_LABEL. Voir logs/sync-$(date +%F).log."
             elif [[ "$PROVIDER_FAILURE" == "plan" ]]; then
                 notify "🔑 Sync $SOURCE_LABEL — forfait $plabel insuffisant" 5 "key,warning" \
                     "Synchronisation interrompue : votre offre $plabel n'inclut pas cet usage (usage_not_included) — ChatGPT Plus ou Pro est nécessaire, l'offre Free n'est pas acceptée. Ce n'est pas un problème $SOURCE_LABEL. Voir logs/sync-$(date +%F).log."

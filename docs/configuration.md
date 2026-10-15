@@ -579,7 +579,7 @@ pour les changer, sauf `mode`/`times`, voir [Le coach dans la poche](mobile.md))
 | `daily_budget_eur` | Plafond de dépense quotidien (défaut `0.5`), appliqué seulement quand le runner rapporte son coût (`opencode`, `claude` en mode API). Atteint : run sauté, une notification par jour. **Ignoré sur un abonnement ChatGPT/Copilot** (rien n'est facturé au jeton). |
 | `opencode_data_dir` | Magasin d'authentification OpenCode dédié au coach (abonnement ChatGPT/Copilot, [voir plus bas](#chat-et-sync-sur-un-abonnement-chatgpt-ou-copilot)). Vide ou absent (défaut) = comportement historique. |
 
-`./install.sh --llm openrouter|anthropic|openai|chatgpt|copilot` écrit ces clés (et `[chat]`) ; `--connect` (avec `--llm openrouter`, interactif) obtient la clé par OAuth et l'écrit dans `llm.env` ([Choisir son IA](choisir-son-ia.md)) ;
+`./install.sh --llm openrouter|anthropic|openai|chatgpt|copilot` écrit ces clés (et `[chat]`) ; `--connect` (interactif) obtient la clé OpenRouter par OAuth et l'écrit dans `llm.env`, ou, avec `--llm chatgpt|copilot`, connecte votre abonnement ([Choisir son IA](choisir-son-ia.md)) ; `--sync-subscription` met aussi la synchronisation sur l'abonnement ;
 `./install.sh --sync-runner CLI` choisit l'assistant headless et `./install.sh --sync-budget EUR` écrit `daily_budget_eur`. Détails, budget et données de
 santé : [Synchronisation sur OpenRouter](mobile.md#synchronisation-sur-openrouter-ou-toute-api-compatible-openai).
 
@@ -617,10 +617,12 @@ d'OpenCode — contenu des échanges compris : diagnostic seulement, fichier à 
 
 ### Chat et sync sur un abonnement ChatGPT ou Copilot
 
-`./install.sh --llm chatgpt` (ou `copilot`) règle `backend = "opencode"` / `runner = "opencode"`,
-`api_key_env = ""`, les modèles par défaut du catalogue (`python3 scripts/arc_llm.py providers`) et
-**`opencode_data_dir`**, **dans `[chat]` et dans `[sync]`**, avec le même chemin
-(`~/.local/share/ai-running-coach/opencode`, mode 700, hors dépôt et hors du dossier de données). Deux clés,
+`./install.sh --llm chatgpt` (ou `copilot`) règle le **chat** (`backend = "opencode"`, `api_key_env = ""`,
+modèle du catalogue `python3 scripts/arc_llm.py providers`, **`opencode_data_dir`**) ; la **synchronisation**
+(`runner = "opencode"`, mêmes clés dans `[sync]`) n'est réglée que sur une installation neuve ou avec
+`--sync-subscription`. Le même chemin est posé dans `[chat]` et dans `[sync]`
+(`~/.local/share/ai-running-coach/opencode`, mode 700, hors dépôt et hors du dossier de données ; un chemin
+relatif est résolu depuis le workspace). Deux clés,
 une par section, comme le reste de la configuration ; l'installation les pose ensemble. Le chat et la
 synchronisation partagent alors la même connexion.
 
@@ -630,7 +632,10 @@ absente, rien ne change : chat isolé, synchronisation sur le magasin global d'O
 API, `./install.sh --llm openrouter` (la clé reste inerte).
 
 - Le chat n'isole que `XDG_CONFIG_HOME`, `XDG_STATE_HOME` et `XDG_CACHE_HOME` ; `XDG_DATA_HOME` pointe sur
-  le magasin, qui contient aussi la base de sessions d'OpenCode (partagée avec la synchronisation).
+  le magasin (`auth.json` partagé). Chaque usage garde sa propre base de sessions (`OPENCODE_DB` : sous
+  `.arc/chat/opencode/` pour le chat, `.arc/sync/` pour la synchronisation).
+- `./install.sh --llm <autre fournisseur>` vide `opencode_data_dir` dans `[chat]` et `[sync]` (avec
+  l'avertissement « ancien → nouveau »).
 - `scripts/arc_llm.py login chatgpt|copilot` écrit la connexion dans ce magasin ; `auth-status` en vérifie
   la présence sans jamais afficher le jeton.
 - Un verrou `<magasin>/.arc-auth.lock` évite que le chat et la synchronisation rafraîchissent le jeton

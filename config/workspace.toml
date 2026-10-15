@@ -66,6 +66,10 @@ base_url = ""
 # (mode 600) — jamais la clé elle-même. Non vide = mode API (facturé au token) ;
 # vide = abonnement. Ex. "OPENROUTER_API_KEY", "ANTHROPIC_API_KEY".
 api_key_env = ""
+# Magasin d'authentification OpenCode dédié au coach (abonnement ChatGPT / GitHub Copilot,
+# `./install.sh --llm chatgpt|copilot`, docs/choisir-son-ia.md). Vide = comportement historique ;
+# chemin relatif = depuis le workspace. Même valeur que [chat].opencode_data_dir.
+opencode_data_dir = ""
 # Plafond de dépense quotidien en EUR de la synchronisation. Appliqué seulement quand le
 # runner rapporte son coût (opencode, claude en mode API) : au-delà, le run est sauté
 # et une notification part. Sans effet en abonnement.
@@ -315,6 +319,9 @@ model = "claude-sonnet-5-5"
 base_url = ""
 # NOM de la variable qui porte la clé (llm.env ou environnement), jamais la clé elle-même.
 api_key_env = "ANTHROPIC_API_KEY"
+# Magasin d'authentification OpenCode dédié au coach (abonnement ChatGPT / Copilot) : XDG_DATA_HOME
+# du chat pour ces fournisseurs. Vide = chat isolé sous .arc/chat/opencode/xdg, comme avant.
+opencode_data_dir = ""
 # Port du service (127.0.0.1 sauf si `listen` est défini) et interface d'écoute.
 port = 8766
 listen = "127.0.0.1"

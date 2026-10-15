@@ -395,8 +395,8 @@ facturée au token ») et `[sync].daily_budget_eur` plafonne la dépense.
 
 ### Synchronisation sur un abonnement ChatGPT ou Copilot
 
-`./install.sh --llm chatgpt` (ou `copilot`) met aussi la synchronisation sur votre abonnement, via le runner
-`opencode` : pas de clé, pas de facturation au jeton. La connexion vit dans un magasin OpenCode dédié au coach
+Avec `./install.sh --llm chatgpt --sync-subscription` (ou `copilot`), ou sur une installation neuve, la
+synchronisation passe aussi sur votre abonnement, via le runner `opencode` : pas de clé, pas de facturation au jeton. La connexion vit dans un magasin OpenCode dédié au coach
 (`[sync].opencode_data_dir`, voir [Configuration](configuration.md#chat-et-sync-sur-un-abonnement-chatgpt-ou-copilot)) ;
 `python3 scripts/arc_llm.py login chatgpt|copilot` la crée, une fois, dans un terminal.
 
@@ -406,9 +406,13 @@ facturée au token ») et `[sync].daily_budget_eur` plafonne la dépense.
   Les limites de votre forfait s'appliquent, et chaque synchronisation les consomme. Forfait insuffisant
   (`usage_not_included`, offre ChatGPT Free) ou limites atteintes : notifications dédiées ; le passage suivant
   réessaie.
-- **Verrou** : une synchronisation ChatGPT attend (5 minutes au plus) que le chat ait fini son tour, et
-  inversement, pour que deux processus ne rafraîchissent jamais le jeton en même temps. Si le chat l'occupe
-  trop longtemps, le passage est reporté (notification « ⏳ Sync reportée »), sans échec.
+- **Verrou** : une synchronisation ChatGPT attend (5 minutes au plus) que le chat n'utilise plus la
+  connexion (le verrou est relâché pendant que le chat attend une approbation), et le chat attend la
+  synchronisation jusqu'à 2 minutes, pour que deux processus ne rafraîchissent jamais le jeton en même temps.
+  Si le chat l'occupe trop longtemps, le passage est reporté (notification « ⏳ Sync reportée », une par jour
+  au plus), sans échec dans la vue « Synchro ».
+- **Choix explicite** : `--llm chatgpt|copilot` règle le chat ; la synchronisation ne passe sur l'abonnement
+  que sur une installation neuve ou avec `--sync-subscription` (voir [Choisir son IA](choisir-son-ia.md#chatgpt-plus-ou-pro)).
 - **Usage planifié d'un forfait grand public** : aucune déclaration officielle n'a été trouvée sur ce point
   (OpenAI autorise les applications open source locales ; GitHub soutient OpenCode). Vérifiez les conditions du
   fournisseur ; la synchronisation peut rester sur une autre IA pendant que le chat utilise votre forfait.

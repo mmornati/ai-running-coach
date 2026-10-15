@@ -53,6 +53,7 @@ Faits établis (voir `tests/data/fixtures/chat/opencode_*.json`, extraits du bin
 from __future__ import annotations
 
 import base64
+import dataclasses
 import http.client
 import json
 import os
@@ -209,6 +210,9 @@ def build_config(model: str, base_url: str, api_key_env: str, mcp: dict, subscri
         "autoupdate": False,
         "share": "disabled",
         "provider": {provider_id: provider} if provider is not None else {},
+        # Abonnement : pas d'instantanés de fichiers (clé `snapshot` du schéma OpenCode 1.18.35,
+        # core/src/v1/config/config.ts) — inutiles pour le chat et coûteux dans le workspace.
+        **({"snapshot": False} if subscription else {}),
         "mcp": mcp,
         # `*` = ask : l'adaptateur reçoit CHAQUE demande de permission (lectures comprises) et
         # applique la politique du coach ; les outils sans objet disparaissent du contexte.
@@ -261,9 +265,51 @@ class _Turn:
         self.budget_hit = False
         self.abort_at: Optional[float] = None
         self.usage_emitted = False
+        self.lease: Optional[Any] = None   # verrou du magasin (abonnement ChatGPT), voir _Lease
 
     def known_sessions(self) -> set:
         return {self.root} | self.children
+
+
+class _Lease:
+    """Verrou du magasin tenu par UN tour, relâché pendant les attentes d'approbation.
+
+    Pendant qu'une approbation attend l'athlète (jusqu'à 600 s), OpenCode n'envoie aucune requête :
+    rien ne peut rafraîchir le jeton, la synchronisation peut passer. On reprend le verrou avant de
+    répondre à OpenCode (il repartirait sinon sans verrou).
+    """
+
+    def __init__(self, gate: Any) -> None:
+        self.gate = gate
+        self._lock = threading.Lock()
+        self._waits = 0
+        self.held = False
+
+    def acquire(self, timeout_s: float) -> bool:
+        self.held = self.gate.acquire(timeout_s)
+        return self.held
+
+    def suspend(self) -> None:
+        with self._lock:
+            self._waits += 1
+            first = self._waits == 1 and self.held
+            if first:
+                self.held = False
+        if first:
+            self.gate.release()
+
+    def resume(self) -> None:
+        with self._lock:
+            self._waits -= 1
+            last = self._waits == 0
+        if last:
+            self.held = self.gate.acquire(STORE_WAIT_S)
+
+    def close(self) -> None:
+        with self._lock:
+            held, self.held = self.held, False
+        if held:
+            self.gate.release()
 
 
 class OpenCodeBackend(ChatBackend):
@@ -304,7 +350,11 @@ class OpenCodeBackend(ChatBackend):
 
     def _data_dir(self) -> str:
         raw = str(self.config.get("opencode_data_dir") or "").strip()
-        return os.path.abspath(os.path.expanduser(raw)) if raw else ""
+        if not raw:
+            return ""
+        path = os.path.expanduser(raw)
+        # Chemin relatif : toujours résolu depuis le workspace (comme daily-sync.sh), jamais depuis le cwd.
+        return os.path.abspath(path if os.path.isabs(path) else os.path.join(str(self.workspace), path))
 
     def _subscription(self) -> Optional[dict]:
         """Entrée du catalogue (chatgpt|copilot) si ce chat utilise un abonnement, sinon None.
@@ -322,7 +372,7 @@ class OpenCodeBackend(ChatBackend):
         entry = self._subscription()
         if entry is None or arc_llm.auth_status(self._data_dir(), entry["opencode_provider"])["present"]:
             return None
-        return arc_llm.missing_auth_message(entry)
+        return arc_llm.missing_auth_message(entry, self._data_dir())
 
     def _store_gate(self) -> Optional["arc_llm.StoreGate"]:
         """Verrou du magasin, seulement quand le jeton se rafraîchit (ChatGPT)."""
@@ -446,6 +496,9 @@ class OpenCodeBackend(ChatBackend):
                 # XDG_DATA_HOME change ; config, état et cache restent isolés.
                 arc_llm.ensure_data_dir(self._data_dir())
                 env["XDG_DATA_HOME"] = self._data_dir()
+                # auth.json partagé, mais base de sessions propre au chat (jamais deux processus de
+                # rôles différents sur la même base SQLite) : chemin absolu = pris tel quel par OpenCode.
+                env["OPENCODE_DB"] = str(self._state_dir / "opencode.db")
             self._password = secrets.token_urlsafe(24)
             env.update({"OPENCODE_CONFIG": str(cfg_path), "OPENCODE_SERVER_PASSWORD": self._password})
             if self._need_key():
@@ -625,20 +678,27 @@ class OpenCodeBackend(ChatBackend):
 
     def run_turn(self, ctx: TurnContext, user_message: str) -> None:
         gate_obj = self._store_gate()
-        if gate_obj is not None and not gate_obj.acquire(STORE_WAIT_S):
-            raise BackendError("La synchronisation du coach utilise la connexion ChatGPT en ce moment : "
-                               "réessaie dans quelques minutes.")
+        lease = None
+        if gate_obj is not None:
+            lease = _Lease(gate_obj)
+            if not lease.acquire(0):
+                # La synchronisation tient le magasin : on le dit avant d'attendre (jusqu'à STORE_WAIT_S).
+                ctx.emit("status", {"message": "Synchronisation en cours : j'attends la connexion ChatGPT…"})
+                if not lease.acquire(STORE_WAIT_S):
+                    raise BackendError("La synchronisation du coach utilise la connexion ChatGPT en ce moment : "
+                                       "réessaie dans quelques minutes.")
         try:
-            self._run_turn(ctx, user_message)
+            self._run_turn(ctx, user_message, lease)
         finally:
-            if gate_obj is not None:
-                gate_obj.release()
+            if lease is not None:
+                lease.close()
 
-    def _run_turn(self, ctx: TurnContext, user_message: str) -> None:
+    def _run_turn(self, ctx: TurnContext, user_message: str, lease: Optional[_Lease] = None) -> None:
         self._ensure_server()
         provider_id, model_id = split_model(self._model())
         sid = self._session_id(ctx)
         turn = _Turn(ctx)
+        turn.lease = lease
         turn.root = sid
         events = self._open_events()
         try:
@@ -809,7 +869,7 @@ class OpenCodeBackend(ChatBackend):
             elif etype == "session.error":
                 if turn.aborted:
                     continue
-                raise BackendError(self._translate_error(props.get("error") or {}, self._subscription()))
+                raise BackendError(self._translate_error(props.get("error") or {}, self._subscription(), self._data_dir()))
 
     # -- évènements ----------------------------------------------------
 
@@ -820,7 +880,7 @@ class OpenCodeBackend(ChatBackend):
             turn.started = True
             error = info.get("error")
             if error and not turn.aborted and not (error.get("name") == "MessageAbortedError"):
-                raise BackendError(self._translate_error(error, self._subscription()))
+                raise BackendError(self._translate_error(error, self._subscription(), self._data_dir()))
 
     def _on_delta(self, turn: _Turn, props: dict) -> None:
         if props.get("field") != "text" or props.get("messageID") in turn.user_ids:
@@ -979,6 +1039,23 @@ class OpenCodeBackend(ChatBackend):
                 turn.rejecting.get(sid, set()).discard(request_id)
                 turn.cond.notify_all()
 
+    @staticmethod
+    def _ctx_for_gate(turn: _Turn) -> TurnContext:
+        """Contexte dont l'attente d'approbation relâche le verrou du magasin (abonnement ChatGPT)."""
+        lease = turn.lease
+        if lease is None:
+            return turn.ctx
+        original = turn.ctx.request_approval
+
+        def waiting(*args: Any, **kwargs: Any) -> Any:
+            lease.suspend()
+            try:
+                return original(*args, **kwargs)
+            finally:
+                lease.resume()
+
+        return dataclasses.replace(turn.ctx, request_approval=waiting)
+
     def _answer_permission_guarded(self, sid: str, turn: _Turn, props: dict) -> None:
         try:
             self._answer_permission(sid, turn, props)
@@ -1026,7 +1103,7 @@ class OpenCodeBackend(ChatBackend):
             if call_id:
                 self._ensure_started(turn, call_id, name, inp, child)
             diff = parse_unified_diff(metadata["diff"]) if metadata.get("diff") and tool == "fs.write" else None
-            decision, message = gate(ctx, tool, cinput, diff)
+            decision, message = gate(self._ctx_for_gate(turn), tool, cinput, diff)
             if call_id:
                 turn.verdicts[call_id] = decision
             if decision == "pending":
@@ -1044,14 +1121,14 @@ class OpenCodeBackend(ChatBackend):
     # -- fin de tour -----------------------------------------------------
 
     @staticmethod
-    def _translate_error(error: dict, subscription: Optional[dict] = None) -> str:
+    def _translate_error(error: dict, subscription: Optional[dict] = None, data_dir: str = "") -> str:
         name = str(error.get("name", ""))
         data = error.get("data") or {}
         message = str(data.get("message") or error.get("message") or "")
         status = data.get("statusCode")
         low = message.lower()
         if subscription is not None:
-            known = arc_llm.translate_subscription_error(subscription, name, status, message)
+            known = arc_llm.translate_subscription_error(subscription, name, status, message, data_dir)
             if known:
                 return known
         if name == "ProviderAuthError" or status == 401 or "401" in low or "invalid api key" in low \

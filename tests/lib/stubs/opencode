@@ -46,7 +46,7 @@ case "${1:-}" in
     *) exit 0 ;;
 esac
 key_len="${#OPENROUTER_API_KEY}"
-stub_log "env OPENCODE_CONFIG=${OPENCODE_CONFIG:-unset} OPENROUTER_API_KEY_LEN=$key_len ANTHROPIC_API_KEY=$([ -n "${ANTHROPIC_API_KEY:-}" ] && echo set || echo unset) XDG_DATA_HOME=${XDG_DATA_HOME:-unset}"
+stub_log "env OPENCODE_CONFIG=${OPENCODE_CONFIG:-unset} OPENROUTER_API_KEY_LEN=$key_len ANTHROPIC_API_KEY=$([ -n "${ANTHROPIC_API_KEY:-}" ] && echo set || echo unset) XDG_DATA_HOME=${XDG_DATA_HOME:-unset} OPENCODE_DB=${OPENCODE_DB:-unset}"
 if [ -n "${ARC_STUB_OPENCODE_WRITE:-}" ]; then
     mkdir -p "$(dirname "$ARC_STUB_OPENCODE_WRITE")"
     printf '# fichier sans bloc arc\n' > "$ARC_STUB_OPENCODE_WRITE"

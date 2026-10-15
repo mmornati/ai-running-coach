@@ -68,6 +68,7 @@ import os
 import re
 import secrets
 import select
+import shlex
 import shutil
 import signal
 import socketserver
@@ -542,30 +543,37 @@ def auth_status(data_dir: str, opencode_provider: str) -> Dict[str, Any]:
     """
     path = os.path.join(data_dir, "opencode", "auth.json")
     info: Dict[str, Any] = {"present": False, "path": path}
+    # Seule une connexion OAuth (abonnement) compte : une entrée « api » (clé facturée au jeton) dans
+    # le magasin ne doit jamais faire passer le chat ou la sync pour un abonnement sans coût.
     try:
         with open(path, encoding="utf-8") as fh:
             data = json.load(fh)
     except (OSError, ValueError):
         return info
     entry = data.get(opencode_provider) if isinstance(data, dict) else None
-    if not isinstance(entry, dict) or not entry.get("type"):
+    if not isinstance(entry, dict) or entry.get("type") != "oauth":
         return info
-    info.update(present=True, type=entry.get("type"))
+    info.update(present=True, type="oauth")
     expires = entry.get("expires")
     if isinstance(expires, (int, float)) and not isinstance(expires, bool) and expires > 0:
         info["expires_ms"] = int(expires)
     return info
 
 
-def reconnect_hint(entry: Dict[str, Any]) -> str:
-    return "python3 scripts/arc_llm.py login %s" % entry["id"]
+def reconnect_hint(entry: Dict[str, Any], data_dir: str = "") -> str:
+    """Commande de reconnexion ; `--data-dir` seulement si le magasin n'est pas celui par défaut."""
+    cmd = "python3 scripts/arc_llm.py login %s" % entry["id"]
+    if data_dir and os.path.abspath(os.path.expanduser(data_dir)) != default_data_dir():
+        cmd += " --data-dir %s" % shlex.quote(os.path.abspath(os.path.expanduser(data_dir)))
+    return cmd
 
 
-def missing_auth_message(entry: Dict[str, Any]) -> str:
-    return "Connexion %s absente : reconnectez-vous avec « %s »." % (entry["plan_label"], reconnect_hint(entry))
+def missing_auth_message(entry: Dict[str, Any], data_dir: str = "") -> str:
+    return "Connexion %s absente : reconnectez-vous avec « %s »." % (entry["plan_label"], reconnect_hint(entry, data_dir))
 
 
-def translate_subscription_error(entry: Dict[str, Any], name: str, status: Any, message: str) -> Optional[str]:
+def translate_subscription_error(entry: Dict[str, Any], name: str, status: Any, message: str,
+                                 data_dir: str = "") -> Optional[str]:
     """Erreur d'un fournisseur d'abonnement -> message français actionnable, ou None (repli générique).
 
     Motifs tirés du code source d'OpenCode v1.18.35 (provider/error.ts : `usage_not_included`,
@@ -582,17 +590,17 @@ def translate_subscription_error(entry: Dict[str, Any], name: str, status: Any, 
     if "usage_not_included" in low or "upgrade to plus" in low:
         return ("Votre offre ChatGPT n'inclut pas cet usage (usage_not_included) : ChatGPT Plus ou Pro est "
                 "nécessaire, l'offre Free n'est pas acceptée.")
-    if "insufficient_quota" in low or "quota exceeded" in low or "usage limit" in low \
+    if "insufficient_quota" in low or "quota exceeded" in low or "usage limit" in low or "usage_limit_reached" in low \
             or code == 429 or "rate limit" in low or "too many requests" in low:
         return ("Les limites de votre forfait %s sont atteintes : réessayez plus tard (la limite se renouvelle "
                 "d'elle-même), ou passez sur une autre IA (docs/choisir-son-ia.md)." % label)
     if entry["id"] == "copilot" and code in (401, 403):
         return ("GitHub Copilot a refusé la connexion (%d) : reconnectez-vous avec « %s » et vérifiez que votre "
-                "forfait Copilot (Pro, Pro+, Business ou Enterprise) est actif." % (code, reconnect_hint(entry)))
+                "forfait Copilot (Pro, Pro+, Business ou Enterprise) est actif." % (code, reconnect_hint(entry, data_dir)))
     if "token refresh failed" in low or name == "ProviderAuthError" or code == 401 or "401" in low \
             or "unauthorized" in low or "token may be missing or expired" in low \
             or "provider not found" in low or "not connected" in low:
-        return "Connexion %s expirée ou refusée : reconnectez-vous avec « %s »." % (label, reconnect_hint(entry))
+        return "Connexion %s expirée ou refusée : reconnectez-vous avec « %s »." % (label, reconnect_hint(entry, data_dir))
     if name == "ProviderModelNotFoundError" or "model not found" in low or "modelnotfound" in low:
         return ("Ce modèle n'est pas disponible avec votre forfait %s : choisissez-en un autre dans [chat].model "
                 "(python3 scripts/arc_llm.py providers)." % label)
@@ -658,6 +666,12 @@ class StoreGate:
 
 
 def cmd_with_lock(args: argparse.Namespace) -> int:
+    marker = getattr(args, "marker", None)
+    if marker:
+        try:
+            os.unlink(marker)
+        except OSError:
+            pass
     command = list(args.command)
     if command and command[0] == "--":
         command = command[1:]
@@ -672,11 +686,19 @@ def cmd_with_lock(args: argparse.Namespace) -> int:
         return EXIT_USAGE
     if not _flock_wait(fd, args.timeout):
         os.close(fd)
+        if marker:
+            # Signal fiable pour l'appelant : le code 75 pourrait aussi venir de la commande elle-même.
+            try:
+                open(marker, "w").close()
+            except OSError:
+                pass
         sys.stderr.write("with-lock : le magasin d'authentification est utilisé par un autre processus du coach "
                          "(délai de %d s dépassé).\n" % args.timeout)
         return EXIT_LOCK_TIMEOUT
     try:
-        proc = subprocess.Popen(command)
+        # pass_fds : le descripteur du verrou vit aussi longtemps que la commande (même si ce
+        # processus est tué), au lieu de se libérer pendant qu'elle tourne encore.
+        proc = subprocess.Popen(command, pass_fds=(fd,))
     except OSError as exc:
         sys.stderr.write("with-lock : commande impossible (%s).\n" % (exc.strerror or exc))
         os.close(fd)
@@ -704,21 +726,26 @@ def _clean(text: str) -> str:
 
 def _kill_group(proc: "subprocess.Popen[Any]") -> None:
     """Arrête le processus enfant ET son groupe (un login orphelin garde le port 1455 ouvert)."""
-    if proc.poll() is not None:
-        return
-    for sig, wait_s in ((signal.SIGTERM, 3.0), (signal.SIGKILL, 3.0)):
+    # Toujours viser le groupe (le login est lancé avec start_new_session) : un petit-enfant qui
+    # survivrait à son parent garderait le port 1455 ouvert.
+    for sig in (signal.SIGTERM, signal.SIGKILL):
         try:
             os.killpg(proc.pid, sig)
         except OSError:
+            if proc.poll() is None:
+                try:
+                    proc.send_signal(sig)
+                except OSError:
+                    pass
+        if sig == signal.SIGTERM:
             try:
-                proc.send_signal(sig)
-            except OSError:
+                proc.wait(timeout=3.0)
+            except subprocess.TimeoutExpired:
                 pass
-        try:
-            proc.wait(timeout=wait_s)
-            return
-        except subprocess.TimeoutExpired:
-            continue
+    try:
+        proc.wait(timeout=3.0)
+    except subprocess.TimeoutExpired:
+        pass
 
 
 def _opencode_binary(explicit: Optional[str]) -> Optional[str]:
@@ -774,7 +801,7 @@ def _login_result(out: Out, entry: Dict[str, Any], data_dir: str, rc: int, tail:
         out.final(False, "Le port 1455 est occupé par une autre connexion ChatGPT en cours : fermez-la puis relancez.",
                   error="port_busy")
         return EXIT_EXCHANGE
-    out.final(False, "Connexion %s non terminée (code %d) : relancez « %s »." % (entry["plan_label"], rc, reconnect_hint(entry)),
+    out.final(False, "Connexion %s non terminée (code %d) : relancez « %s »." % (entry["plan_label"], rc, reconnect_hint(entry, data_dir)),
               error="denied", exit_code=rc)
     return EXIT_DENIED
 
@@ -811,7 +838,7 @@ def _login_relay(out: Out, entry: Dict[str, Any], cmd: List[str], env: Dict[str,
         while True:
             if time.monotonic() > deadline:
                 _kill_group(proc)
-                out.final(False, "Délai dépassé (%d s) sans validation : relancez « %s »." % (args.timeout, reconnect_hint(entry)),
+                out.final(False, "Délai dépassé (%d s) sans validation : relancez « %s »." % (args.timeout, reconnect_hint(entry, data_dir)),
                           error="timeout")
                 return EXIT_TIMEOUT
             ready, _, _ = select.select([read_fd], [], [], 0.5)
@@ -844,7 +871,8 @@ def _login_relay(out: Out, entry: Dict[str, Any], cmd: List[str], env: Dict[str,
                 if match and match.group(1) != code:
                     code = match.group(1)
                     out.event("login_code", "Saisissez ce code : " + code, code=code)
-                if url and code and not getattr(proc, "_arc_opened", False):
+                ready_to_open = bool(url) if args.browser else bool(url and code)
+                if ready_to_open and not getattr(proc, "_arc_opened", False):
                     proc._arc_opened = True    # type: ignore[attr-defined]
                     if not args.no_browser:
                         try:
@@ -883,7 +911,7 @@ def cmd_auth_status(args: argparse.Namespace) -> int:
     if args.json:
         print(json.dumps(dict(provider=entry["id"], **status), ensure_ascii=False))
     else:
-        print("%s : %s" % (entry["plan_label"], "connecté" if status["present"] else "non connecté (%s)" % reconnect_hint(entry)))
+        print("%s : %s" % (entry["plan_label"], "connecté" if status["present"] else "non connecté (%s)" % reconnect_hint(entry, resolve_data_dir(args.data_dir))))
     return EXIT_OK if status["present"] else 1
 
 
@@ -928,6 +956,7 @@ def build_parser() -> argparse.ArgumentParser:
     sk = sub.add_parser("with-lock", help="exécute une commande sous le verrou du magasin d'authentification")
     sk.add_argument("--data-dir", help="magasin d'authentification (défaut : %s)" % default_data_dir())
     sk.add_argument("--timeout", type=int, default=300, help="secondes d'attente du verrou (défaut 300)")
+    sk.add_argument("--marker", help="fichier créé si le verrou n'a pas pu être pris (distingue ce cas d'un code 75 de la commande)")
     sk.add_argument("command", nargs=argparse.REMAINDER, help="-- COMMANDE [ARGUMENTS…]")
     sk.set_defaults(func=cmd_with_lock)
 

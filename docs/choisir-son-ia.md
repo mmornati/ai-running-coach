@@ -87,10 +87,14 @@ du plugin ChatGPT d'OpenCode 1.18.35 ; ils **n'ont pas été évalués sur un vr
 projet : [dashboard/chat.md](dashboard/chat.md#quel-modele-sur-openrouter)) : changez-les avec
 `--model` si votre forfait ne les sert pas.
 
-**Synchronisation automatique.** Elle consomme les limites de votre forfait, comme le chat. Aucune
-déclaration officielle sur l'usage planifié sans surveillance d'un forfait grand public n'a été trouvée
-dans les pages consultées : relisez les conditions d'OpenAI avant de laisser la synchronisation tourner
-chaque jour (vous pouvez la garder sur Claude Code ou OpenRouter et réserver ChatGPT au chat).
+**Synchronisation automatique : un choix explicite.** `--llm chatgpt` règle le **chat**. La synchronisation
+ne passe sur l'abonnement que sur une installation neuve (aucun `[sync].runner` configuré) ou si vous ajoutez
+`--sync-subscription` ; sinon elle garde son exécuteur actuel et l'installation vous dit comment basculer.
+Pourquoi : aucune déclaration officielle sur l'usage planifié, sans surveillance, d'un forfait grand public
+n'a été trouvée dans les pages consultées, et chaque passage consomme vos limites. Relisez les conditions
+d'OpenAI avant de l'activer. Dans l'application macOS, la case « Synchroniser aussi avec mon forfait » est
+cochée par défaut (l'application n'a pas d'autre exécuteur de synchronisation dans ce mode) ; décochée, la
+synchronisation automatique n'est pas installée.
 
 ## GitHub Copilot
 
@@ -118,9 +122,17 @@ automatique : elle consomme vos crédits, et aucune déclaration officielle sur 
   installation personnelle d'OpenCode n'est pas touchée.
 - **Chat et synchronisation ne se marchent pas dessus** : OpenCode réécrit `auth.json` sans verrou quand il
   rafraîchit le jeton ChatGPT, et deux rafraîchissements simultanés pourraient casser la connexion. Le chat
-  (un tour à la fois) et la synchronisation (une exécution) prennent donc le même verrou. Si le chat occupe le
-  magasin plus de 5 minutes, la synchronisation est reportée au passage suivant (avec une notification) ; si
-  la synchronisation l'occupe, le chat vous le dit et vous invite à réessayer.
+  (tous ses tours partagent un seul verrou, pris au premier et rendu au dernier) et la synchronisation (une
+  exécution) prennent donc le même verrou. Il est **relâché pendant qu'une approbation attend votre réponse**
+  et repris avant de répondre à OpenCode. Si le chat occupe le magasin plus de 5 minutes, la synchronisation
+  est reportée au passage suivant (une notification par jour au plus, sans échec) ; si la synchronisation
+  l'occupe, le chat affiche « Synchronisation en cours… », attend jusqu'à 2 minutes, puis vous invite à
+  réessayer.
+- **Une base de sessions par usage** : `auth.json` est partagé (`XDG_DATA_HOME`), mais le chat et la
+  synchronisation ont chacun leur base de sessions (`OPENCODE_DB`), et les instantanés de fichiers d'OpenCode
+  sont désactivés (`"snapshot": false`) dans leurs configurations.
+- **Seule une connexion de type abonnement compte** : une clé API rangée dans ce magasin n'est jamais prise
+  pour un abonnement.
 - **Pas d'euros** : le compteur du chat affiche « inclus dans votre forfait ChatGPT » (ou Copilot) ; le plafond
   quotidien en euros ne compte rien (OpenCode rapporte un coût nul pour ChatGPT, et des dollars fictifs tirés
   des crédits pour Copilot, qui ne sont pas une facture). Seules les limites de votre forfait comptent.

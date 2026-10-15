@@ -92,10 +92,10 @@ class TestChatGPT(SubscriptionCase):
         seen = {}
         original = O.OpenCodeBackend._run_turn
 
-        def spy(self_, ctx, message):
+        def spy(self_, ctx, message, lease=None):
             other = arc_llm.StoreGate(str(self.store))
             seen["held"] = not other.acquire(0.2)
-            return original(self_, ctx, message)
+            return original(self_, ctx, message, lease)
 
         O.OpenCodeBackend._run_turn = spy
         try:
@@ -218,3 +218,88 @@ class TestServiceStatus(SubscriptionCase):
         plain = arc_chat.ChatService(self.ws, dict(cfg), MockBackend(self.ws, cfg))
         self.assertNotIn("billing", plain.status("moi"))
         self.assertEqual(arc_chat.CHAT_DEFAULTS["opencode_data_dir"], "")
+
+
+class TestReviewFixes(SubscriptionCase):
+    def test_own_db_and_snapshots_disabled(self):
+        self.run_turn(base.fixture("opencode_text_only.json"))
+        self.assertEqual(self.spawned[0]["env"]["OPENCODE_DB"], str(self.ws / ".arc/chat/opencode/opencode.db"))
+        cfg = json.loads(self.backend.write_config().read_text(encoding="utf-8"))
+        self.assertIs(cfg["snapshot"], False)
+
+    def test_unset_key_has_no_own_db_and_keeps_snapshots(self):
+        backend = O.OpenCodeBackend(self.ws, {"model": "openrouter/x/y"})
+        self.assertNotIn("snapshot", json.loads(backend.write_config().read_text(encoding="utf-8")))
+
+    def test_api_entry_in_the_store_is_missing_auth(self):
+        (self.store / "opencode/auth.json").write_text(json.dumps({"openai": {"type": "api", "key": "k"}}))
+        self.assertIsNotNone(self.backend._auth_missing())
+
+    def test_hint_carries_a_custom_store(self):
+        (self.store / "opencode/auth.json").unlink()
+        self.assertIn("--data-dir", self.backend._auth_missing())
+
+    def test_busy_store_emits_a_status_event_then_waits(self):
+        sync = arc_llm.StoreGate(str(self.store))
+        self.assertTrue(sync.acquire(1))
+        old = O.STORE_WAIT_S
+        O.STORE_WAIT_S = 0.3
+        h = base.Harness(self.ws)
+        try:
+            with self.assertRaises(BackendError):
+                self.backend.run_turn(h.ctx, "salut")
+        finally:
+            O.STORE_WAIT_S = old
+            sync.release()
+        self.assertTrue(any("Synchronisation en cours" in p["message"] for p in h.of("status")))
+
+    def test_lease_released_while_waiting_for_an_approval(self):
+        gate = self.backend._store_gate()
+        lease = O._Lease(gate)
+        self.assertTrue(lease.acquire(1))
+        other = arc_llm.StoreGate(str(self.store))
+        self.assertFalse(other.acquire(0.2))
+        lease.suspend()
+        lease.suspend()                              # deux approbations simultanées : un seul relâchement
+        self.assertTrue(other.acquire(1))
+        other.release()
+        lease.resume()
+        self.assertFalse(lease.held)                 # encore une approbation en attente
+        lease.resume()
+        self.assertTrue(lease.held)
+        self.assertFalse(arc_llm.StoreGate(str(self.store)).acquire(0.2))
+        lease.close()
+        free = arc_llm.StoreGate(str(self.store))
+        self.assertTrue(free.acquire(1))
+        free.release()
+
+    def test_approval_wait_goes_through_the_lease(self):
+        calls = []
+        lease = O._Lease(self.backend._store_gate())
+        lease.acquire(1)
+        h = base.Harness(self.ws)
+        turn = O._Turn(h.ctx)
+        turn.lease = lease
+        other = arc_llm.StoreGate(str(self.store))
+
+        def approval(*a):
+            calls.append(other.acquire(0.5))       # pendant l'attente, le magasin est libre
+            other.release()
+            return "allow"
+
+        h.ctx.request_approval = approval
+        turn.ctx = h.ctx
+        ctx = O.OpenCodeBackend._ctx_for_gate(turn)
+        self.assertEqual(ctx.request_approval("t", {}, "s", []), "allow")
+        self.assertEqual(calls, [True])
+        self.assertTrue(lease.held)
+        lease.close()
+
+    def test_usage_limit_reached(self):
+        msg = O.OpenCodeBackend._translate_error({"name": "APIError", "data": {"message": "usage_limit_reached"}},
+                                                 arc_llm.provider("chatgpt"))
+        self.assertIn("limites de votre forfait", msg)
+
+    def test_relative_store_is_resolved_from_the_workspace(self):
+        backend = O.OpenCodeBackend(self.ws, {"model": self.MODEL, "api_key_env": "", "opencode_data_dir": "rel"})
+        self.assertEqual(backend._data_dir(), str(self.ws / "rel"))

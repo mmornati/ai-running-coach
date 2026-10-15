@@ -117,7 +117,7 @@ class InstallSubscriptionTests(InstallAsserts):
     def test_switching_from_openrouter_warns_old_to_new(self):
         with Sandbox() as sb:
             self.assertSucceeded(sb.install(*BASE, "--llm", "openrouter"))
-            proc = sb.install(*BASE, "--llm", "chatgpt")
+            proc = sb.install(*BASE, "--llm", "chatgpt", "--sync-subscription")
             self.assertSucceeded(proc)
             self.assertOutputContains(proc, "[chat].model : openrouter/deepseek/deepseek-v4.1-flash → openai/gpt-5.4-mini")
             self.assertOutputContains(proc, "[sync].api_key_env : OPENROUTER_API_KEY →")
@@ -453,7 +453,7 @@ class SyncSubscriptionTests(InstallAsserts):
     def test_lock_timeout_postpones_without_failing(self):
         with Sandbox() as sb:
             store = self._setup(sb)
-            holder = subprocess.Popen([sys.executable, str(SCRIPT), "with-lock", "--data-dir", str(store), "--", "sleep", "8"],
+            holder = subprocess.Popen([sys.executable, str(SCRIPT), "with-lock", "--data-dir", str(store), "--", "sleep", "20"],
                                       env=sb.env())
             try:
                 for _ in range(50):
@@ -469,10 +469,196 @@ class SyncSubscriptionTests(InstallAsserts):
                 self.assertTrue(any("reportée" in c for c in _curl(sb)), _curl(sb))
                 self.assertEqual([a for _, a in sb.stub_calls("opencode") if a.startswith("env ")], [])
             finally:
-                holder.kill()
+                holder.terminate()          # le signal est transmis au `sleep` enfant (pas d'orphelin)
+                holder.wait(timeout=10)
+
+    def test_postponement_notifies_once_a_day_and_is_not_a_failure(self):
+        with Sandbox() as sb:
+            store = self._setup(sb)
+            holder = subprocess.Popen([sys.executable, str(SCRIPT), "with-lock", "--data-dir", str(store), "--", "sleep", "20"],
+                                      env=sb.env())
+            try:
+                for _ in range(50):
+                    if (store / ".arc-auth.lock").exists():
+                        break
+                    time.sleep(0.1)
+                time.sleep(0.3)
+                script = sb.repo / "scripts/daily-sync.sh"
+                script.write_text(script.read_text().replace("STORE_LOCK_WAIT_S=300", "STORE_LOCK_WAIT_S=1"))
+                self.assertSucceeded(_sync(sb))
+                self.assertSucceeded(_sync(sb))
+                self.assertEqual(len([c for c in _curl(sb) if "reportée" in c]), 1)
+                log = next((sb.repo / "logs").glob("sync-*.log")).read_text()
+                self.assertNotIn("fin code=75", log)
+                self.assertIn("fin code=0", log)
+            finally:
+                holder.terminate()
                 holder.wait(timeout=10)
 
     def test_headless_sync_never_calls_login(self):
         text = (REPO / "scripts/daily-sync.sh").read_text(encoding="utf-8")
         self.assertNotIn("providers login", text)
         self.assertNotIn("arc_llm.py\" login", text)
+
+
+# --------------------------------------------------------------------------- revue (S1-S7 et durcissement)
+
+class ReviewFixTests(InstallAsserts):
+    def test_api_key_entry_is_not_a_subscription(self):
+        with Sandbox() as sb:
+            store = sb.root / "store"
+            (store / "opencode").mkdir(parents=True)
+            (store / "opencode/auth.json").write_text(json.dumps({"openai": {"type": "api", "key": "sk-x"}}))
+            proc = _llm(sb, "auth-status", "chatgpt", "--data-dir", str(store), "--json")
+            self.assertEqual(proc.returncode, 1)
+            self.assertFalse(json.loads(proc.stdout)["present"])
+            self.assertNotIn("sk-x", proc.stdout + proc.stderr)
+
+    def test_sync_refuses_an_api_entry(self):
+        with Sandbox() as sb:
+            store = sb.root / "store"
+            (store / "opencode").mkdir(parents=True)
+            (store / "opencode/auth.json").write_text(json.dumps({"openai": {"type": "api", "key": "sk-x"}}))
+            (sb.repo / "config").mkdir(exist_ok=True)
+            (sb.repo / "config/workspace.user.toml").write_text(
+                SYNC_TOML.format(model="openai/gpt-5.4", store=store, extra=""))
+            _prime_opencode(sb)
+            self.assertFailed(_sync(sb))
+            self.assertEqual(sb.stub_calls("opencode"), [])
+
+    def test_reconnect_hint_carries_a_non_default_data_dir(self):
+        sys.path.insert(0, str(REPO / "scripts"))
+        import arc_llm
+        entry = arc_llm.provider("chatgpt")
+        self.assertEqual(arc_llm.reconnect_hint(entry, arc_llm.default_data_dir()), "python3 scripts/arc_llm.py login chatgpt")
+        self.assertEqual(arc_llm.reconnect_hint(entry), "python3 scripts/arc_llm.py login chatgpt")
+        self.assertIn("--data-dir '/tmp/mon magasin'", arc_llm.reconnect_hint(entry, "/tmp/mon magasin"))
+        self.assertIn("--data-dir /srv/store", arc_llm.missing_auth_message(entry, "/srv/store"))
+        self.assertIn("--data-dir /srv/store", arc_llm.translate_subscription_error(entry, "x", 401, "Token refresh failed", "/srv/store"))
+        self.assertIn("quota", arc_llm.translate_subscription_error(entry, "x", None, "usage_limit_reached", "").lower() + "quota")
+        self.assertIn("limites", arc_llm.translate_subscription_error(entry, "x", None, "usage_limit_reached", ""))
+
+    def test_sync_notification_carries_the_data_dir_and_each_runner_gets_its_own_db(self):
+        with Sandbox() as sb:
+            store = SyncSubscriptionTests._setup(self, sb, connected=False)
+            self.assertFailed(_sync(sb))
+            self.assertTrue(any("--data-dir %s" % store in c for c in _curl(sb)), _curl(sb))
+
+    def test_sync_uses_its_own_db_and_disables_snapshots(self):
+        with Sandbox() as sb:
+            SyncSubscriptionTests._setup(self, sb)
+            self.assertSucceeded(_sync(sb))
+            env_line = [a for _, a in sb.stub_calls("opencode") if a.startswith("env ")][0]
+            self.assertIn("OPENCODE_DB=%s" % (sb.repo / ".arc/sync/opencode.db"), env_line)
+            self.assertTrue(json.loads((sb.repo / ".arc/sync/opencode.json").read_text())["snapshot"] is False)
+
+    def test_relative_store_is_resolved_from_the_workspace(self):
+        with Sandbox() as sb:
+            SyncSubscriptionTests._setup(self, sb)
+            toml = sb.repo / "config/workspace.user.toml"
+            store = sb.root / "store"
+            toml.write_text(toml.read_text().replace(str(store), "rel-store"))
+            _auth(sb.repo / "rel-store")
+            self.assertSucceeded(_sync(sb))
+            env_line = [a for _, a in sb.stub_calls("opencode") if a.startswith("env ")][0]
+            self.assertIn("XDG_DATA_HOME=%s" % (sb.repo / "rel-store"), env_line)
+
+    def test_with_lock_marker_distinguishes_a_lock_timeout(self):
+        with Sandbox() as sb:
+            store = sb.root / "store"
+            marker = sb.root / "marker"
+            holder = subprocess.Popen([sys.executable, str(SCRIPT), "with-lock", "--data-dir", str(store), "--", "sleep", "20"],
+                                      env=sb.env())
+            try:
+                for _ in range(50):
+                    if (store / ".arc-auth.lock").exists():
+                        break
+                    time.sleep(0.1)
+                time.sleep(0.3)
+                proc = _llm(sb, "with-lock", "--data-dir", str(store), "--timeout", "1", "--marker", str(marker), "--", "true")
+                self.assertEqual(proc.returncode, 75)
+                self.assertTrue(marker.exists())
+            finally:
+                holder.terminate()
+                holder.wait(timeout=10)
+            ok = _llm(sb, "with-lock", "--data-dir", str(store), "--marker", str(marker), "--", "sh", "-c", "exit 75")
+            self.assertEqual(ok.returncode, 75)              # code de la commande elle-même…
+            self.assertFalse(marker.exists())                # …sans signal de verrou non pris
+
+    def test_browser_method_opens_as_soon_as_the_url_is_seen(self):
+        with Sandbox() as sb:
+            opener = sb.root / "opened"
+            fake = sb.root / "fakebrowser"
+            fake.mkdir()
+            wrapper = fake / "sitecustomize.py"
+            wrapper.write_text("import webbrowser\ndef _o(url, *a, **k):\n    open(%r, 'a').write(url)\n    return True\nwebbrowser.open = _o\n" % str(opener))
+            env = sb.env(PYTHONPATH=str(fake))
+            proc = subprocess.run([sys.executable, str(SCRIPT), "login", "chatgpt", "--data-dir", str(sb.root / "s"),
+                                   "--browser", "--json", "--opencode-bin", str(STUB)], env=env, capture_output=True, text=True, timeout=60)
+            self.assertEqual(proc.returncode, 0, proc.stderr)
+            self.assertIn("https://auth.example.test/device", opener.read_text())
+
+    def test_killing_the_login_kills_grandchildren(self):
+        with Sandbox() as sb:
+            pidfile = sb.root / "gpid"
+            body = ("#!/usr/bin/env bash\n(sleep 60 & echo $! > %s; wait) &\nsleep 60\n" % pidfile)
+            fake = sb.root / "opencode-fake"
+            fake.write_text(body)
+            fake.chmod(0o755)
+            proc = _llm(sb, "login", "chatgpt", "--data-dir", str(sb.root / "s"), "--no-browser", "--timeout", "2",
+                        "--opencode-bin", str(fake))
+            self.assertEqual(proc.returncode, 4)
+            gpid = int(pidfile.read_text())
+            time.sleep(0.5)
+            with self.assertRaises(ProcessLookupError):
+                os.kill(gpid, 0)
+
+
+class InstallReviewTests(InstallAsserts):
+    def _toml(self, sb):
+        return (sb.repo / "config/workspace.user.toml").read_text(encoding="utf-8")
+
+    def test_existing_sync_runner_is_kept_without_sync_subscription(self):
+        with Sandbox() as sb:
+            self.assertSucceeded(sb.install(*BASE, "--llm", "openrouter"))
+            proc = sb.install(*BASE, "--llm", "chatgpt")
+            self.assertSucceeded(proc)
+            toml = self._toml(sb)
+            self.assertIn('model = "openai/gpt-5.4-mini"', toml)                # chat basculé
+            self.assertIn("openrouter/deepseek/deepseek-v4.1-flash", toml)      # sync inchangée
+            self.assertEqual(toml.count("opencode_data_dir"), 1)
+            self.assertOutputContains(proc, "--sync-subscription")
+
+    def test_sync_subscription_moves_the_sync(self):
+        with Sandbox() as sb:
+            self.assertSucceeded(sb.install(*BASE, "--llm", "openrouter"))
+            self.assertSucceeded(sb.install(*BASE, "--llm", "chatgpt", "--sync-subscription"))
+            toml = self._toml(sb)
+            self.assertEqual(toml.count("opencode_data_dir"), 2)
+            self.assertIn('model = "openai/gpt-5.4"', toml)
+
+    def test_sync_subscription_needs_a_subscription(self):
+        with Sandbox() as sb:
+            self.assertFailed(sb.install(*BASE, "--sync-subscription"))
+            self.assertFailed(sb.install(*BASE, "--llm", "openrouter", "--sync-subscription"))
+
+    def test_foreign_model_prefix_is_refused(self):
+        with Sandbox() as sb:
+            proc = sb.install(*BASE, "--llm", "chatgpt", "--model", "github-copilot/x")
+            self.assertFailed(proc)
+            self.assertOutputContains(proc, "--model")
+            self.assertFailed(sb.install(*BASE, "--llm", "copilot", "--model", "openai/gpt-5.4"))
+            self.assertSucceeded(sb.install(*BASE, "--llm", "chatgpt", "--model", "openai/gpt-5.5"))
+
+    def test_leaving_a_subscription_clears_the_store_key(self):
+        with Sandbox() as sb:
+            self.assertSucceeded(sb.install(*BASE, "--llm", "chatgpt"))
+            self.assertEqual(self._toml(sb).count('opencode_data_dir = "'), 2)
+            proc = sb.install(*BASE, "--llm", "openrouter")
+            self.assertSucceeded(proc)
+            self.assertEqual(self._toml(sb).count('opencode_data_dir = ""'), 2)
+            self.assertOutputContains(proc, "opencode_data_dir")
+
+    def test_workspace_defaults_declare_the_key(self):
+        text = (REPO / "config/workspace.toml").read_text(encoding="utf-8")
+        self.assertEqual(text.count('opencode_data_dir = ""'), 2)
