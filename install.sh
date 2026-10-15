@@ -2635,23 +2635,33 @@ persist_llm() {
     fi
 }
 
-# --connect : connexion OpenRouter en un clic (arc_llm.py), après persist_llm. Jamais en
-# --dry-run, jamais sans terminal (le navigateur et la saisie du code supposent l'athlète présent).
+# --connect : connexion OpenRouter en un clic (arc_llm.py), en TOUT DERNIER (navigateur et saisie
+# du code supposent l'athlète présent ; le reste de l'installation ne l'attend pas). Jamais en
+# --dry-run, jamais sans terminal. Le service du chat lit llm.env au démarrage : redémarré après succès.
 connect_llm() {
     [[ "$LLM_CONNECT" -eq 1 ]] || return 0
-    local cmd="python3 $PROJECT_ROOT/scripts/arc_llm.py connect openrouter"
+    local script="$PROJECT_ROOT/scripts/arc_llm.py" port
     if [[ "$DRY_RUN" -eq 1 ]]; then
-        printf '%s\n' "${C_YELLOW}[dry-run]${C_RESET} $cmd (ouvre le navigateur ; clé écrite dans $LLM_ENV_FILE)"
+        printf '%s\n' "${C_YELLOW}[dry-run]${C_RESET} python3 $(printf '%q' "$script") connect openrouter (ouvre le navigateur ; clé écrite dans $LLM_ENV_FILE)"
         return 0
     fi
     if [[ ! -t 0 || ! -t 1 ]]; then
-        warn "--connect demande un terminal interactif : lancez ensuite « $cmd » (ajoutez --headless sur une machine sans navigateur)."
+        warn "--connect demande un terminal interactif : lancez ensuite « python3 $(printf '%q' "$script") connect openrouter » (ajoutez --headless sur une machine sans navigateur)."
         return 0
     fi
     have python3 || { warn "python3 absent : impossible de lancer la connexion OpenRouter."; return 0; }
     log "Connexion à OpenRouter (navigateur)"
-    ARC_LLM_ENV="$LLM_ENV_FILE" python3 "$PROJECT_ROOT/scripts/arc_llm.py" connect openrouter \
-        || warn "Connexion OpenRouter non terminée : relancez « $cmd » ou collez la clé dans $LLM_ENV_FILE."
+    if ARC_LLM_ENV="$LLM_ENV_FILE" python3 "$script" connect openrouter; then
+        port="$(effective_value chat port)"
+        if [[ "$DO_CHAT" -eq 1 ]] || { [[ "$(effective_value chat enabled)" == "true" ]] && have curl \
+            && curl -fsS --max-time 3 "http://127.0.0.1:${port:-8766}/api/chat/healthz" >/dev/null 2>&1; }; then
+            log "Redémarrage du chat pour qu'il lise la nouvelle clé"
+            ARC_WORKSPACE="$WORKSPACE_ROOT" "$PROJECT_ROOT/scripts/coach-chat.sh" restart \
+                || warn "Redémarrage du chat impossible : relancez scripts/coach-chat.sh restart."
+        fi
+    else
+        warn "Connexion OpenRouter non terminée : relancez « python3 $(printf '%q' "$script") connect openrouter » ou collez la clé dans $(printf '%q' "$LLM_ENV_FILE")."
+    fi
 }
 
 persist_budgets() {
@@ -3252,7 +3262,6 @@ main() {
     persist_health_source
     ensure_ow_key
     persist_llm
-    connect_llm
     persist_sync_runner
     persist_budgets
     if [[ "$DAILY_SYNC" -eq 1 || "$REMOTE_CONTROL" -eq 1 ]]; then
@@ -3267,6 +3276,7 @@ main() {
     verify
     verify_openwearables
     persist_install_args
+    connect_llm
 }
 
 # Mémorise les options de configuration de cette installation, une par ligne, pour que

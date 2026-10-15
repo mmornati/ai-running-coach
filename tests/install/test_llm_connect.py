@@ -15,10 +15,15 @@ import hashlib
 import json
 import os
 import re
+import shutil
+import signal
+import socket
 import stat
 import subprocess
 import sys
 import threading
+import time
+import unittest
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -37,7 +42,9 @@ SECRET_KEY = "sk-or-v1-FAKE-SECRET-KEY-0123456789"
 class FakeOpenRouter:
     """Faux OpenRouter : POST /api/v1/auth/keys et GET /api/v1/key."""
 
-    def __init__(self, exchange_status: int = 200, key_status: int = 200, is_free_tier: bool = True) -> None:
+    def __init__(self, exchange_status: int = 200, key_status: int = 200, is_free_tier: bool = True,
+                 free_quota: bool = True) -> None:
+        self.free_quota = free_quota
         self.exchange_status = exchange_status
         self.key_status = key_status
         self.is_free_tier = is_free_tier
@@ -70,8 +77,11 @@ class FakeOpenRouter:
                 if outer.key_status != 200:
                     self._send(outer.key_status, {"error": {"message": "refused"}})
                     return
-                self._send(200, {"data": {"label": "AI Running Coach", "limit": None, "limit_remaining": None,
-                                          "usage": 0.12, "is_free_tier": outer.is_free_tier}})
+                data = {"label": "AI Running Coach", "limit": None, "limit_remaining": None,
+                        "usage": 0.12, "is_free_tier": outer.is_free_tier}
+                if outer.free_quota:
+                    data["free_model_daily_requests"] = {"used": 3, "limit": 50, "remaining": 47}
+                self._send(200, {"data": data})
 
         self.server = LocalHTTPServer(("127.0.0.1", 0), Handler)
         self.thread = threading.Thread(target=self.server.serve_forever, daemon=True)
@@ -154,7 +164,8 @@ class ConnectOpenRouterTests(InstallAsserts):
             self.assertTrue(q["state"][0])
             status, page = _get(_callback(url, code="the-code", state=q["state"][0]))
             self.assertEqual(status, 200)
-            self.assertIn("Coach connecté", page)
+            self.assertIn("Autorisation reçue", page)
+            self.assertNotIn("connecté", page)
             rc, out, err = _finish(proc)
             exchange = fake.exchanges[0]
         self.assertEqual(rc, 0, err)
@@ -167,6 +178,8 @@ class ConnectOpenRouterTests(InstallAsserts):
         self.assertTrue(result["ok"])
         self.assertTrue(result["is_free_tier"])
         self.assertEqual(result["label"], "AI Running Coach")
+        self.assertIn("47 requête(s) restante(s) aujourd'hui sur 50", result["message"])
+        self.assertNotIn("1 000", result["message"])
         self.assertEqual(fake.key_auth, ["Bearer " + SECRET_KEY])
         self.assertNoSecret(out, err)
         text = self.env_file.read_text()
@@ -203,6 +216,111 @@ class ConnectOpenRouterTests(InstallAsserts):
         self.assertEqual(text.count("OPENROUTER_API_KEY="), 1)
         self.assertIn("X=1", text)
         self.assertFalse(json.loads(out)["is_free_tier"])
+
+    def test_neutral_message_without_free_quota(self):
+        with FakeOpenRouter(free_quota=False) as fake:
+            proc = _spawn(fake, self.env_file)
+            url = _auth_url(proc)
+            state = urllib.parse.parse_qs(urllib.parse.urlsplit(url).query)["state"][0]
+            _get(_callback(url, code="c", state=state))
+            rc, out, err = _finish(proc)
+        self.assertEqual(rc, 0, err)
+        self.assertIn("quota gratuit non communiqué", json.loads(out)["message"])
+
+    def test_denial_without_state_or_code(self):
+        # OpenRouter ne renvoie ni code ni state quand l'athlète refuse.
+        with FakeOpenRouter() as fake:
+            proc = _spawn(fake, self.env_file)
+            url = _auth_url(proc)
+            status, page = _get(_callback(url))
+            self.assertIn("annulée", page)
+            rc, out, err = _finish(proc)
+            self.assertEqual(fake.exchanges, [])
+        self.assertEqual(rc, 3)
+        self.assertFalse(self.env_file.exists())
+
+    def test_idle_connection_does_not_block_callback(self):
+        with FakeOpenRouter() as fake:
+            proc = _spawn(fake, self.env_file)
+            url = _auth_url(proc)
+            q = urllib.parse.parse_qs(urllib.parse.urlsplit(url).query)
+            port = urllib.parse.urlsplit(q["callback_url"][0]).port
+            idle = socket.create_connection(("127.0.0.1", port))  # préconnexion muette
+            try:
+                started = time.monotonic()
+                _get(_callback(url, code="c", state=q["state"][0]))
+                rc, out, err = _finish(proc)
+                self.assertLess(time.monotonic() - started, 20)
+            finally:
+                idle.close()
+        self.assertEqual(rc, 0, err)
+
+    def test_timeout_enforced_with_idle_connection(self):
+        with FakeOpenRouter() as fake:
+            proc = _spawn(fake, self.env_file, "--timeout", "2")
+            url = _auth_url(proc)
+            q = urllib.parse.parse_qs(urllib.parse.urlsplit(url).query)
+            port = urllib.parse.urlsplit(q["callback_url"][0]).port
+            idle = socket.create_connection(("127.0.0.1", port))
+            try:
+                started = time.monotonic()
+                rc, out, err = _finish(proc)
+                self.assertLess(time.monotonic() - started, 15)
+            finally:
+                idle.close()
+        self.assertEqual(rc, 4)
+
+    def test_non_ascii_state_is_rejected_not_crashing(self):
+        with FakeOpenRouter() as fake:
+            proc = _spawn(fake, self.env_file)
+            url = _auth_url(proc)
+            status, _ = _get(_callback(url, code="evil", state="éè"))
+            self.assertEqual(status, 400)
+            state = urllib.parse.parse_qs(urllib.parse.urlsplit(url).query)["state"][0]
+            _get(_callback(url, code="good", state=state))
+            rc, out, err = _finish(proc)
+        self.assertEqual(rc, 0, err)
+        self.assertNotIn("Traceback", err)
+
+    def test_symlinked_env_file_keeps_the_link(self):
+        real = self.sb.home / "dotfiles/llm.env"
+        real.parent.mkdir(parents=True)
+        real.write_text("KEEP=1\n")
+        real.chmod(0o600)
+        self.env_file.parent.mkdir(parents=True)
+        self.env_file.symlink_to(real)
+        with FakeOpenRouter() as fake:
+            proc = _spawn(fake, self.env_file)
+            url = _auth_url(proc)
+            state = urllib.parse.parse_qs(urllib.parse.urlsplit(url).query)["state"][0]
+            _get(_callback(url, code="c", state=state))
+            rc, out, err = _finish(proc)
+        self.assertEqual(rc, 0, err)
+        self.assertTrue(self.env_file.is_symlink())
+        self.assertIn("OPENROUTER_API_KEY=" + SECRET_KEY, real.read_text())
+        self.assertIn("KEEP=1", real.read_text())
+        self.assertEqual(stat.S_IMODE(real.stat().st_mode), 0o600)
+
+    def test_non_utf8_env_file_gives_clear_error(self):
+        self.env_file.parent.mkdir(parents=True)
+        self.env_file.write_bytes(b"A=\xff\xfe\n")
+        with FakeOpenRouter() as fake:
+            proc = _spawn(fake, self.env_file)
+            rc, out, err = _finish(proc)
+        self.assertEqual(rc, 2)
+        self.assertIn("UTF-8", json.loads(out)["message"])
+        self.assertNotIn("Traceback", err)
+
+    def test_sigint_exits_cleanly(self):
+        with FakeOpenRouter() as fake:
+            proc = _spawn(fake, self.env_file)
+            _auth_url(proc)
+            proc.send_signal(signal.SIGINT)
+            rc, out, err = _finish(proc)
+        self.assertEqual(rc, 130)
+        self.assertEqual(json.loads(out)["error"], "interrupted")
+        self.assertNotIn("Traceback", err)
+        self.assertFalse(self.env_file.exists())
 
     def test_user_denial(self):
         with FakeOpenRouter() as fake:
@@ -324,6 +442,18 @@ class CatalogTests(InstallAsserts):
                 self.assertIn(field, p)
         self.assertEqual(providers["openrouter"]["kind"], "oauth")
 
+    def test_runs_on_python39(self):
+        py = shutil.which("python3.9") or ("/usr/bin/python3" if os.path.exists("/usr/bin/python3") else None)
+        if not py:
+            self.skipTest("pas de Python 3.9 disponible")
+        version = subprocess.run([py, "-c", "import sys;print(sys.version_info[:2] <= (3, 9))"],
+                                 capture_output=True, text=True).stdout.strip()
+        if version != "True":
+            self.skipTest("Python 3.9 absent (python3.9 / /usr/bin/python3 plus récent)")
+        proc = subprocess.run([py, str(SCRIPT), "providers", "--json"], capture_output=True, text=True, timeout=30)
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        self.assertEqual(subprocess.run([py, "-m", "py_compile", str(SCRIPT)], capture_output=True).returncode, 0)
+
     def test_install_constants_match_catalog(self):
         text = (REPO / "install.sh").read_text(encoding="utf-8")
 
@@ -375,9 +505,9 @@ class InstallConnectTests(InstallAsserts):
         with Sandbox() as sb:
             self.assertSucceeded(sb.install(*self.BASE, "--llm", "openrouter", "--connect"))
             remembered = sb.home / ".config/ai-running-coach/install-args"
-            if remembered.exists():
-                self.assertNotIn("--connect", remembered.read_text())
-                self.assertIn("openrouter", remembered.read_text())
+            self.assertTrue(remembered.exists())
+            self.assertNotIn("--connect", remembered.read_text())
+            self.assertIn("openrouter", remembered.read_text())
 
     def test_no_connect_unchanged(self):
         with Sandbox() as sb:

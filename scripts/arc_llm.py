@@ -22,6 +22,7 @@ Codes de sortie de `connect` :
   4  délai dépassé sans retour du navigateur
   5  échec réseau ou échange du code refusé par OpenRouter (rien n'est écrit)
   6  clé écrite dans llm.env mais non vérifiée (réseau, clé refusée par /key)
+  130  interrompu (Ctrl-C, SIGTERM) : rien n'est écrit
 
 Avec --json : UN objet JSON sur la sortie standard ; la progression est en lignes JSON
 ({"event": ...}) sur la sortie d'erreur. ARC_OPENROUTER_BASE_URL (boucle locale uniquement)
@@ -37,6 +38,7 @@ import json
 import os
 import re
 import secrets
+import signal
 import socketserver
 import sys
 import tempfile
@@ -55,7 +57,7 @@ HTTP_TIMEOUT_S = 20
 KEY_LABEL = "AI Running Coach"
 LOOPBACK_HOSTS = ("127.0.0.1", "localhost", "[::1]", "::1")
 
-EXIT_OK, EXIT_USAGE, EXIT_DENIED, EXIT_TIMEOUT, EXIT_EXCHANGE, EXIT_UNVERIFIED = 0, 2, 3, 4, 5, 6
+EXIT_OK, EXIT_USAGE, EXIT_DENIED, EXIT_TIMEOUT, EXIT_EXCHANGE, EXIT_UNVERIFIED, EXIT_INTERRUPTED = 0, 2, 3, 4, 5, 6, 130
 
 # Catalogue : UNE source de vérité. install.sh garde ses constantes de repli (le script doit
 # fonctionner sans python3) ; tests/install/test_llm_connect.py vérifie qu'elles concordent.
@@ -193,7 +195,11 @@ PAGE = (
 )
 
 
-class _Server(HTTPServer):
+class _Server(socketserver.ThreadingMixIn, HTTPServer):
+    # Une connexion inactive (préconnexion du navigateur) ne doit ni bloquer le vrai retour ni
+    # repousser le délai maximal : un fil par requête, la boucle d'attente garde la main.
+    daemon_threads = True
+
     # Pas de résolution DNS inverse au démarrage (voir tests/lib/local_http.py).
     def server_bind(self) -> None:
         socketserver.TCPServer.server_bind(self)
@@ -203,6 +209,8 @@ class _Server(HTTPServer):
 
 def _make_handler(state: str, result: Dict[str, Any]):
     class Handler(BaseHTTPRequestHandler):
+        timeout = 5  # socket inactive : le fil se libère seul
+
         def log_message(self, *args: Any) -> None:  # silence : l'URL porte le code
             pass
 
@@ -221,23 +229,22 @@ def _make_handler(state: str, result: Dict[str, Any]):
                 return
             q = urlparse.parse_qs(parts.query)
             got_state = (q.get("state") or [""])[0]
-            if "error" in q and not got_state:
-                result["denied"] = (q.get("error") or [""])[0] or "denied"
-                self._reply(200, "Connexion annulée", "Aucune clé n'a été créée. Vous pouvez fermer cet onglet.")
-                return
-            if not secrets.compare_digest(got_state, state):
+            code = (q.get("code") or [""])[0]
+            # OpenRouter ne renvoie pas `state` quand l'athlète refuse (et ne documente pas de
+            # paramètre `error`) : un retour sans code ni state, ou avec `error`, vaut refus.
+            denied = "error" in q or (not code and not got_state)
+            if got_state and not secrets.compare_digest(got_state.encode("utf-8"), state.encode("utf-8")):
                 self._reply(400, "Requête refusée", "Le jeton de sécurité ne correspond pas : connexion ignorée.")
                 return
-            if "error" in q:
-                result["denied"] = (q.get("error") or [""])[0] or "denied"
+            if denied:
                 self._reply(200, "Connexion annulée", "Aucune clé n'a été créée. Vous pouvez fermer cet onglet.")
+                result["denied"] = (q.get("error") or [""])[0] or "denied"
                 return
-            code = (q.get("code") or [""])[0]
-            if not code:
-                self._reply(400, "Requête refusée", "Aucun code reçu d'OpenRouter.")
+            if not got_state or not code:
+                self._reply(400, "Requête refusée", "Retour incomplet : connexion ignorée.")
                 return
+            self._reply(200, "Autorisation reçue", "Retournez à l'application AI Running Coach : la connexion se termine. Vous pouvez fermer cet onglet.")
             result["code"] = code
-            self._reply(200, "Coach connecté", "OpenRouter est connecté à AI Running Coach. Vous pouvez fermer cet onglet.")
 
     return Handler
 
@@ -247,6 +254,7 @@ def wait_for_callback(server: HTTPServer, result: Dict[str, Any], timeout_s: flo
     server.timeout = 0.5
     while time.monotonic() < deadline and "code" not in result and "denied" not in result:
         server.handle_request()
+    time.sleep(0.2)  # laisse le fil de la requête finir d'écrire sa réponse
 
 
 # --------------------------------------------------------------------------- llm.env
@@ -255,9 +263,23 @@ def default_env_file() -> str:
     return os.environ.get("ARC_LLM_ENV") or os.path.expanduser("~/.config/ai-running-coach/llm.env")
 
 
+def check_env_readable(path: str) -> Optional[str]:
+    """Message d'erreur si le fichier existe mais n'est pas un texte UTF-8 lisible, sinon None."""
+    try:
+        if os.path.exists(path):
+            with open(path, encoding="utf-8") as fh:
+                fh.read()
+    except UnicodeDecodeError:
+        return "%s n'est pas un fichier texte UTF-8 : corrigez-le ou déplacez-le, puis relancez." % path
+    except OSError as exc:
+        return "Impossible de lire %s : %s" % (path, exc.strerror or exc)
+    return None
+
+
 def write_env_var(path: str, var: str, value: str) -> None:
     """Pose VAR=valeur dans le fichier, de façon atomique (mode 600) ; garde les autres lignes."""
-    directory = os.path.dirname(os.path.abspath(path))
+    path = os.path.realpath(path)  # un lien symbolique reste un lien : on écrit sa cible
+    directory = os.path.dirname(path)
     if not os.path.isdir(directory):
         os.makedirs(directory, mode=0o700)
         os.chmod(directory, 0o700)
@@ -292,7 +314,7 @@ def write_env_var(path: str, var: str, value: str) -> None:
 # --------------------------------------------------------------------------- connect openrouter
 
 def _key_summary(data: Dict[str, Any]) -> Dict[str, Any]:
-    keep = ("label", "limit", "limit_remaining", "usage", "is_free_tier")
+    keep = ("label", "limit", "limit_remaining", "usage", "is_free_tier", "free_model_daily_requests")
     return {k: data.get(k) for k in keep}
 
 
@@ -304,6 +326,10 @@ def connect_openrouter(args: argparse.Namespace) -> int:
         out.final(False, str(exc), error="usage")
         return EXIT_USAGE
     env_file = args.env_file or default_env_file()
+    problem = check_env_readable(env_file)
+    if problem:
+        out.final(False, problem, error="usage")
+        return EXIT_USAGE
     verifier, challenge = make_pkce()
     state = secrets.token_urlsafe(24)
     result: Dict[str, Any] = {}
@@ -358,8 +384,8 @@ def connect_openrouter(args: argparse.Namespace) -> int:
 
     try:
         write_env_var(env_file, "OPENROUTER_API_KEY", key)
-    except OSError as exc:
-        out.final(False, _scrub("Impossible d'écrire %s : %s" % (env_file, exc.strerror or exc), key), error="write")
+    except (OSError, UnicodeError) as exc:
+        out.final(False, _scrub("Impossible d'écrire %s : %s" % (env_file, getattr(exc, "strerror", None) or exc), key), error="write")
         return EXIT_EXCHANGE
     out.event("stored", "Clé enregistrée dans %s (mode 600)." % env_file)
 
@@ -374,8 +400,12 @@ def connect_openrouter(args: argparse.Namespace) -> int:
                   error="unverified", stored=True, env_file=env_file)
         return EXIT_UNVERIFIED
     info = _key_summary(data)
-    tier = ("palier gratuit : achetez 10 $ une fois pour 1 000 requêtes gratuites par jour"
-            if info.get("is_free_tier") else "crédits déjà achetés")
+    free = info.get("free_model_daily_requests")
+    if isinstance(free, dict) and isinstance(free.get("limit"), int):
+        tier = "modèles gratuits : %s requête(s) restante(s) aujourd'hui sur %d" % (
+            free.get("remaining", "?"), free["limit"])
+    else:
+        tier = "quota gratuit non communiqué"
     out.final(True, "OpenRouter connecté (clé « %s », %s)." % (info.get("label") or "?", tier),
               provider="openrouter", env_file=env_file, **info)
     return EXIT_OK
@@ -410,9 +440,20 @@ def build_parser() -> argparse.ArgumentParser:
     return ap
 
 
+def _on_sigterm(signum: int, frame: Any) -> None:
+    raise KeyboardInterrupt()
+
+
 def main(argv: Optional[List[str]] = None) -> int:
     args = build_parser().parse_args(argv)
-    return args.func(args)
+    # SIGTERM (bouton « Annuler » de l'application) : même sortie propre que Ctrl-C.
+    signal.signal(signal.SIGTERM, _on_sigterm)
+    signal.signal(signal.SIGINT, _on_sigterm)  # actif même si le lanceur ignorait SIGINT (processus en arrière-plan)
+    try:
+        return args.func(args)
+    except KeyboardInterrupt:
+        Out(bool(getattr(args, "json", False))).final(False, "Connexion interrompue : aucune clé n'a été créée.", error="interrupted")
+        return EXIT_INTERRUPTED
 
 
 if __name__ == "__main__":

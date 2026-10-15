@@ -291,6 +291,15 @@ private final class OutputBuffer: @unchecked Sendable {
     }
 }
 
+/// Issue de la connexion OpenRouter (arc_llm.py : 0 connecté, 6 clé écrite mais non vérifiée).
+private enum ConnectOutcome {
+    case connected(String)
+    case unverified(String)
+    case failed(String)
+}
+
+private enum ConnectRecovery { case retry, manualKey, skipChat }
+
 private struct ProcessResult {
     let code: Int32
     let output: String
@@ -333,6 +342,10 @@ final class CoachAppModel: ObservableObject {
     @Published var manualSyncStatus = ""
     @Published var manualSyncFailed = false
 
+    @Published var connecting = false
+    @Published var connectURL: URL?
+    private var connectProcess: Process?
+    private var connectCancelled = false
     private var dashboardProcess: Process?
     private var dashboardBaseURL: URL?
     private let fm = FileManager.default
@@ -433,6 +446,7 @@ final class CoachAppModel: ObservableObject {
 
         Task {
             do {
+                var chatEnabled = selected.chatChoice == .integrated
                 try await ensureDeveloperTools()
                 try await installEngine()
                 if selected.chatChoice == .integrated {
@@ -440,8 +454,9 @@ final class CoachAppModel: ObservableObject {
                     progressTitle = "Préparation du chat avec le coach"
                     if selected.openRouterAccess == .connect {
                         // Le moteur vient d'être extrait : arc_llm.py est disponible. La connexion
-                        // se fait avant l'activation du chat ; sans clé, rien n'est activé.
-                        try await connectOpenRouter()
+                        // se fait avant l'activation du chat ; un échec propose de réessayer, de
+                        // coller une clé ou de continuer sans le chat (à connecter plus tard).
+                        chatEnabled = await obtainOpenRouterAccess()
                     } else {
                         try saveOpenRouterKey(selected.openRouterAPIKey)
                     }
@@ -465,11 +480,13 @@ final class CoachAppModel: ObservableObject {
                     "--sync-runner", selected.syncRunner
                 ]
                 if selected.chatChoice == .integrated {
-                    args += [
-                        "--llm", "openrouter",
-                        "--chat",
-                        "--chat-budget", selected.chatBudget.replacingOccurrences(of: ",", with: ".")
-                    ]
+                    args += ["--llm", "openrouter"]
+                    if chatEnabled {
+                        args += [
+                            "--chat",
+                            "--chat-budget", selected.chatBudget.replacingOccurrences(of: ",", with: ".")
+                        ]
+                    }
                 }
                 let result = try await runProcess(
                     executable: "/bin/bash",
@@ -488,7 +505,7 @@ final class CoachAppModel: ObservableObject {
 
                 defaults.set(selected.workspace, forKey: "workspace")
                 defaults.set(selected.source.rawValue, forKey: "source")
-                defaults.set(selected.chatChoice == .integrated, forKey: "integratedChatEnabled")
+                defaults.set(chatEnabled, forKey: "integratedChatEnabled")
                 defaults.set(installationIDE.rawValue, forKey: "assistant")
                 defaults.set(bundleVersion, forKey: "engineVersion")
                 defaults.set(engineBuild, forKey: "engineBuild")
@@ -766,31 +783,155 @@ final class CoachAppModel: ObservableObject {
         }
     }
 
+    /// Vrai si llm.env contient déjà une clé OpenRouter non vide (évite un doublon sur « Réessayer »).
+    private func hasOpenRouterKey() -> Bool {
+        let file = fm.homeDirectoryForCurrentUser.appendingPathComponent(".config/ai-running-coach/llm.env")
+        guard let text = try? String(contentsOf: file, encoding: .utf8) else { return false }
+        for raw in text.split(separator: "\n") {
+            var line = raw.trimmingCharacters(in: .whitespaces)
+            if line.hasPrefix("export ") { line = String(line.dropFirst(7)).trimmingCharacters(in: .whitespaces) }
+            if line.hasPrefix("OPENROUTER_API_KEY=") {
+                return !line.dropFirst("OPENROUTER_API_KEY=".count).trimmingCharacters(in: .whitespaces).isEmpty
+            }
+        }
+        return false
+    }
+
+    /// Obtient l'accès OpenRouter par connexion. Renvoie false si l'athlète choisit de continuer
+    /// sans le chat (il pourra se connecter plus tard).
+    private func obtainOpenRouterAccess() async -> Bool {
+        if hasOpenRouterKey() {
+            appendLog("Une clé OpenRouter est déjà enregistrée : connexion ignorée.\n")
+            return true
+        }
+        while true {
+            switch await connectOpenRouter() {
+            case .connected(let message):
+                appendLog("\(message)\n")
+                return true
+            case .unverified(let message):
+                appendLog("Attention : \(message)\n")
+                return true
+            case .failed(let message):
+                appendLog("\(message)\n")
+                switch askConnectionRecovery(message) {
+                case .retry:
+                    continue
+                case .manualKey:
+                    if let key = askManualKey(), (try? saveOpenRouterKey(key)) != nil { return true }
+                    continue
+                case .skipChat:
+                    appendLog("Le chat intégré n’est pas activé. Pour le connecter plus tard : python3 \"\(engineURL.appendingPathComponent("scripts/arc_llm.py").path)\" connect openrouter, puis relancez l’installation.\n")
+                    return false
+                }
+            }
+        }
+    }
+
+    private func askConnectionRecovery(_ message: String) -> ConnectRecovery {
+        let alert = NSAlert()
+        alert.messageText = "La connexion à OpenRouter n’a pas abouti"
+        alert.informativeText = message
+        alert.addButton(withTitle: "Réessayer la connexion")
+        alert.addButton(withTitle: "J’ai déjà une clé")
+        alert.addButton(withTitle: "Continuer sans le chat")
+        switch alert.runModal() {
+        case .alertFirstButtonReturn: return .retry
+        case .alertSecondButtonReturn: return .manualKey
+        default: return .skipChat
+        }
+    }
+
+    private func askManualKey() -> String? {
+        let alert = NSAlert()
+        alert.messageText = "Clé OpenRouter"
+        alert.informativeText = "Collez votre clé. Elle reste sur ce Mac, dans un fichier privé."
+        let field = NSSecureTextField(frame: NSRect(x: 0, y: 0, width: 320, height: 24))
+        alert.accessoryView = field
+        alert.addButton(withTitle: "Enregistrer")
+        alert.addButton(withTitle: "Annuler")
+        guard alert.runModal() == .alertFirstButtonReturn else { return nil }
+        return field.stringValue
+    }
+
+    func cancelConnection() {
+        connectCancelled = true
+        connectProcess?.terminate()
+    }
+
     /// Connexion OpenRouter en un clic : `arc_llm.py connect openrouter --json`. La clé est écrite
     /// dans llm.env par le script ; l'application ne la voit jamais (la sortie n'en contient pas).
-    private func connectOpenRouter() async throws {
+    /// Les événements JSON (stderr) donnent l'adresse d'autorisation ; l'objet final est sur stdout.
+    private func connectOpenRouter() async -> ConnectOutcome {
         progress = 0.18
         progressTitle = "Connexion à OpenRouter : autorisez le coach dans votre navigateur"
         appendLog("Connexion à OpenRouter : une page s’ouvre dans votre navigateur.\n")
-        let result = try await runProcess(
-            executable: "/usr/bin/env",
-            arguments: ["python3", engineURL.appendingPathComponent("scripts/arc_llm.py").path,
-                        "connect", "openrouter", "--json"],
-            directory: engineURL,
-            streamOutput: false
-        )
-        // Les lignes {"event": …} sont la progression ; l'objet final porte « ok ».
-        var final: [String: Any]?
-        for line in result.output.split(separator: "\n") {
-            guard let data = line.data(using: .utf8),
-                  let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { continue }
-            if object["ok"] != nil { final = object }
+        connectCancelled = false
+        connectURL = nil
+        connecting = true
+        defer { connecting = false; connectURL = nil; connectProcess = nil }
+        let script = engineURL.appendingPathComponent("scripts/arc_llm.py").path
+        let directory = engineURL
+        let environment = processEnvironment()
+        return await withCheckedContinuation { (continuation: CheckedContinuation<ConnectOutcome, Never>) in
+            let process = Process()
+            let stdout = Pipe()
+            let stderr = Pipe()
+            let buffer = OutputBuffer()
+            process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
+            process.arguments = ["python3", script, "connect", "openrouter", "--json"]
+            process.currentDirectoryURL = directory
+            process.environment = environment
+            process.standardOutput = stdout
+            process.standardError = stderr
+            stdout.fileHandleForReading.readabilityHandler = { handle in
+                let data = handle.availableData
+                if !data.isEmpty { buffer.append(data) }
+            }
+            stderr.fileHandleForReading.readabilityHandler = { [weak self] handle in
+                let data = handle.availableData
+                guard !data.isEmpty, let text = String(data: data, encoding: .utf8) else { return }
+                for line in text.split(separator: "\n") {
+                    guard let lineData = line.data(using: .utf8),
+                          let event = try? JSONSerialization.jsonObject(with: lineData) as? [String: Any],
+                          event["event"] as? String == "auth_url",
+                          event["browser_opened"] as? Bool == false,
+                          let raw = event["url"] as? String, let url = URL(string: raw) else { continue }
+                    Task { @MainActor in self?.connectURL = url }
+                }
+            }
+            process.terminationHandler = { [weak self] process in
+                stdout.fileHandleForReading.readabilityHandler = nil
+                stderr.fileHandleForReading.readabilityHandler = nil
+                buffer.append(stdout.fileHandleForReading.readDataToEndOfFile())
+                var final: [String: Any]?
+                for line in buffer.string().split(separator: "\n") {
+                    guard let data = line.data(using: .utf8),
+                          let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                          object["ok"] != nil else { continue }
+                    final = object
+                }
+                let message = (final?["message"] as? String) ?? "Réponse inattendue du script de connexion."
+                let code = process.terminationStatus
+                Task { @MainActor in
+                    if self?.connectCancelled == true {
+                        continuation.resume(returning: .failed("Connexion annulée."))
+                    } else if code == 0, final?["ok"] as? Bool == true {
+                        continuation.resume(returning: .connected(message))
+                    } else if code == 6 {
+                        continuation.resume(returning: .unverified(message))
+                    } else {
+                        continuation.resume(returning: .failed(message))
+                    }
+                }
+            }
+            do {
+                try process.run()
+                connectProcess = process
+            } catch {
+                continuation.resume(returning: .failed("Impossible de lancer la connexion : \(error.localizedDescription)"))
+            }
         }
-        let message = (final?["message"] as? String) ?? "Réponse inattendue du script de connexion."
-        guard result.code == 0, (final?["ok"] as? Bool) == true else {
-            throw AppFailure("\(message) Vous pouvez aussi choisir « J’ai déjà une clé ».")
-        }
-        appendLog("\(message)\n")
     }
 
     private func saveOpenRouterKey(_ rawKey: String) throws {
@@ -1633,7 +1774,7 @@ struct SetupView: View {
                             ProfileField(label: "Plafond par jour", placeholder: "1.00", text: $model.choices.chatBudget)
                             Text("La clé est enregistrée uniquement sur ce Mac dans un fichier privé. Les données de la conversation sont envoyées au fournisseur du modèle choisi.")
                                 .font(.caption).foregroundStyle(.secondary)
-                            Link("Santé : choisir des fournisseurs qui ne conservent pas vos données (confidentialité OpenRouter)",
+                            Link("Santé : refuser les fournisseurs qui entraînent sur vos données (confidentialité OpenRouter)",
                                  destination: URL(string: "https://openrouter.ai/settings/privacy")!)
                                 .font(.caption)
                         } else {
@@ -1714,6 +1855,16 @@ struct InstallingView: View {
                 ProgressView(value: model.progress)
                 Text("Gardez cette fenêtre ouverte. La première installation peut prendre quelques minutes.")
                     .font(.callout).foregroundStyle(.secondary)
+                if model.connecting {
+                    HStack(spacing: 12) {
+                        ProgressView().controlSize(.small)
+                        Text("En attente de l’autorisation dans votre navigateur…")
+                        Button("Annuler la connexion") { model.cancelConnection() }
+                    }
+                    if let url = model.connectURL {
+                        Link("Le navigateur ne s’est pas ouvert ? Ouvrir la page d’autorisation OpenRouter", destination: url)
+                    }
+                }
             }
             ScrollView {
                 Text(model.log.isEmpty ? "Préparation…" : model.log)

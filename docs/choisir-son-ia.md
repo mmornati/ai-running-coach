@@ -50,15 +50,17 @@ synchronisations automatiques) avec le modèle par défaut, DeepSeek v4.1 Flash 
 
 Acheter 10 $ de crédit une seule fois débloque aussi le quota gratuit élevé d'OpenRouter
 (voir [le tableau des offres gratuites](#et-le-gratuit)). Fixez le plafond quotidien du chat
-(`--chat-budget`) ; le coach s'arrête proprement quand le crédit est épuisé.
+(`--chat-budget`) ; quand le crédit est épuisé, le chat l'indique (« Crédit du fournisseur insuffisant (402) »).
 
 ### Vos données de santé
 
 Le coach envoie au modèle votre HRV, votre sommeil, vos blessures. Chez OpenRouter, le fournisseur
-du modèle compte : certains conservent les requêtes ou s'entraînent dessus
+du modèle compte : chacun a sa propre politique de conservation et d'entraînement
 ([politique de journalisation](https://openrouter.ai/docs/guides/privacy/logging)). Dans
-[vos réglages de confidentialité](https://openrouter.ai/settings/privacy), n'autorisez que des
-fournisseurs qui ne conservent ni n'entraînent sur vos données.
+[vos réglages de confidentialité](https://openrouter.ai/settings/privacy), refusez le routage vers
+les fournisseurs qui peuvent entraîner sur vos données (réglage distinct pour les modèles payants et
+gratuits ; OpenRouter précise que des exceptions existent). La **conservation**, elle, ne filtre pas
+le routage : consultez le tableau des fournisseurs du modèle choisi.
 
 ## Votre assistant habituel
 
@@ -99,7 +101,7 @@ d'outil) : 50 requêtes par jour ne laissent que quelques questions.
 
 | Option | Limites | Confidentialité | Source (consultée en octobre 2026) |
 |---|---|---|---|
-| OpenRouter, modèles `:free` | 20 requêtes/min ; **50/jour** ; **1 000/jour** après 9 à 10 $ de crédits achetés au total | plusieurs hôtes gratuits conservent ou entraînent sur les prompts | [limites](https://openrouter.ai/docs/api-reference/limits), [journalisation](https://openrouter.ai/docs/guides/privacy/logging) |
+| OpenRouter, modèles `:free` | 20 requêtes/min ; **50/jour** ; **1 000/jour** après 9 à 10 $ de crédits achetés au total | la politique varie selon le fournisseur ; l'entraînement se refuse dans les réglages, avec des exceptions possibles | [limites](https://openrouter.ai/docs/api-reference/limits), [journalisation](https://openrouter.ai/docs/guides/privacy/logging) |
 | Gemini, clé API gratuite | 250 requêtes/jour, Flash seulement | données utilisées par Google, relecteurs humains possibles | [quotas](https://geminicli.com/docs/resources/quota-and-pricing/), [conditions](https://ai.google.dev/gemini-api/terms) |
 
 Pour des données de santé, le message honnête reste : **10 $ une fois, plutôt qu'un gratuit qui
