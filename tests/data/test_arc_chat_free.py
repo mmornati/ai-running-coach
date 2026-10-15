@@ -25,7 +25,7 @@ def _err(status, message, **data):
 
 class TestFreeErrorMapping(base.OpenCodeCase):
     def tr(self, error, model=FREE):
-        return O.OpenCodeBackend._translate_error(error, None, model)
+        return O.OpenCodeBackend._translate_error(error, None, model=model)
 
     def test_daily_quota(self):
         for text in ("Rate limit exceeded: free-models-per-day", "limit reached: 50 requests per day"):
