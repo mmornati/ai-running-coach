@@ -82,12 +82,14 @@ MIN_BACKGROUND_INTERVAL_S = 0.2
 READY_TIMEOUT_S = float(os.environ.get("ARC_DASHBOARD_READY_TIMEOUT_S", "120"))
 # En dessous, la compression coûte plus qu'elle ne rapporte.
 GZIP_MIN_BYTES = 1024
-COMPRESSIBLE = ("text/", "application/json", "image/svg+xml")
+COMPRESSIBLE = ("text/", "application/json", "application/manifest+json", "image/svg+xml")
 CONTENT_TYPES = {
     ".html": "text/html; charset=utf-8", ".css": "text/css; charset=utf-8",
     ".js": "text/javascript; charset=utf-8", ".svg": "image/svg+xml",
     ".png": "image/png", ".jpg": "image/jpeg", ".json": "application/json",
     ".woff2": "font/woff2", ".ico": "image/x-icon",
+    # PWA : manifeste d'application (le service worker `sw.js` est servi comme tout `.js`).
+    ".webmanifest": "application/manifest+json",
 }
 # Identifiant STABLE d'une décision (#55) exposé par `/api/decision/<id>` : le nom de
 # fichier SANS son extension (`planning/<id>.md`), jamais le chemin absolu du

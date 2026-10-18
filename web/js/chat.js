@@ -2,6 +2,7 @@
 // Aucun innerHTML sur du texte venu du modèle : tout passe par textContent / createElement.
 import * as F from "./format.js";
 import { navItems, showVersion, showSyncPill } from "./nav.js";
+import { BETA, mountShell } from "./beta.js";
 
 const $ = (s, root = document) => root.querySelector(s);
 const API = "api/chat";
@@ -1007,6 +1008,8 @@ function renderWeek(week) {
 function renderNav(settings) {
   const nav = $("#nav");
   if (!nav) return;
+  // Design bêta (`js/beta.js`) : même coque que le tableau de bord, Coach marqué comme courant.
+  if (BETA) { mountShell({ settings: settings || {}, page: "chat" }); return; }
   const links = navItems(settings || {}).map(([h, l]) => {
     const a = el("a", null, l);
     a.href = `index.html#/${h}`;

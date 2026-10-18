@@ -1,6 +1,6 @@
 {
   "schemaVersion": 2,
-  "generatedAt": "2025-09-18T00:00:00Z",
+  "generatedAt": "2026-10-18T00:00:00Z",
   "title": "Design System: ai-running-coach",
   "extensions": {
     "colorMeta": {
@@ -198,74 +198,524 @@
           "#ffffff",
           "#ffffff"
         ]
+      },
+      "roadbook-sheet": {
+        "role": "neutral",
+        "displayName": "Laminated Sheet",
+        "canonical": "#fdfdfb",
+        "tonalRamp": [
+          "#333319",
+          "#58582c",
+          "#7e7e3f",
+          "#a3a352",
+          "#b9b974",
+          "#cccc99",
+          "#e0e0c2",
+          "#f6f6ee"
+        ]
+      },
+      "roadbook-sheet-2": {
+        "role": "neutral",
+        "displayName": "Sheet Shade",
+        "canonical": "#f1f0ea",
+        "tonalRamp": [
+          "#2e2c1f",
+          "#504c35",
+          "#716c4b",
+          "#938c62",
+          "#aba582",
+          "#c2bda3",
+          "#dad8c8",
+          "#f5f4f0"
+        ]
+      },
+      "roadbook-ink-soft": {
+        "role": "neutral",
+        "displayName": "Roadbook Ink Soft",
+        "canonical": "#46564e",
+        "tonalRamp": [
+          "#222a26",
+          "#3c4942",
+          "#55685e",
+          "#6e877a",
+          "#8ca196",
+          "#abbab2",
+          "#ccd6d1",
+          "#f1f4f2"
+        ]
+      },
+      "roadbook-ink-faint": {
+        "role": "neutral",
+        "displayName": "Roadbook Ink Faint",
+        "canonical": "#627169",
+        "tonalRamp": [
+          "#242926",
+          "#3e4742",
+          "#58655e",
+          "#72837a",
+          "#8f9e96",
+          "#adb8b2",
+          "#ced4d1",
+          "#f1f3f2"
+        ]
+      },
+      "roadbook-line": {
+        "role": "neutral",
+        "displayName": "Hairline",
+        "canonical": "#dddad0",
+        "tonalRamp": [
+          "#2c2a20",
+          "#4d4838",
+          "#6d674f",
+          "#8e8567",
+          "#a79f86",
+          "#bfb9a6",
+          "#d8d5ca",
+          "#f4f3f0"
+        ]
+      },
+      "roadbook-line-strong": {
+        "role": "neutral",
+        "displayName": "Strong Hairline",
+        "canonical": "#bdb8a8",
+        "tonalRamp": [
+          "#2b2921",
+          "#4b4739",
+          "#6b6551",
+          "#8b836a",
+          "#a59e88",
+          "#bdb8a8",
+          "#d7d4cb",
+          "#f4f3f0"
+        ]
+      },
+      "roadbook-band-soft": {
+        "role": "neutral",
+        "displayName": "Band Soft",
+        "canonical": "#c9dccf",
+        "tonalRamp": [
+          "#1e2e23",
+          "#34503d",
+          "#4a7257",
+          "#609571",
+          "#80ad8e",
+          "#a2c3ac",
+          "#c7dbcd",
+          "#f0f5f1"
+        ]
+      },
+      "roadbook-ok": {
+        "role": "tertiary",
+        "displayName": "Trail Green",
+        "canonical": "#2f7a4f",
+        "tonalRamp": [
+          "#153724",
+          "#25603e",
+          "#348858",
+          "#44b172",
+          "#68c590",
+          "#91d4ae",
+          "#bde5ce",
+          "#edf8f1"
+        ]
+      },
+      "roadbook-warn": {
+        "role": "tertiary",
+        "displayName": "Barrier Amber",
+        "canonical": "#8a5a12",
+        "tonalRamp": [
+          "#442c09",
+          "#754d0f",
+          "#a76d16",
+          "#d98d1c",
+          "#e7a746",
+          "#edbe78",
+          "#f4d8ae",
+          "#fcf4e8"
+        ]
+      },
+      "roadbook-bad": {
+        "role": "tertiary",
+        "displayName": "Barrier Red",
+        "canonical": "#b3432f",
+        "tonalRamp": [
+          "#3d1710",
+          "#69271c",
+          "#953827",
+          "#c24933",
+          "#d46c59",
+          "#df9386",
+          "#ecbeb6",
+          "#faedeb"
+        ]
+      },
+      "roadbook-focus": {
+        "role": "secondary",
+        "displayName": "Roadbook Focus",
+        "canonical": "#5a8f1c",
+        "tonalRamp": [
+          "#28400d",
+          "#466f16",
+          "#639e1f",
+          "#81cd28",
+          "#9cdd50",
+          "#b7e67f",
+          "#d4f0b2",
+          "#f3fbea"
+        ]
+      },
+      "roadbook-done": {
+        "role": "primary",
+        "displayName": "Done Fill",
+        "canonical": "rgba(47, 107, 79, 0.42)",
+        "tonalRamp": [
+          "#173527",
+          "#285c44",
+          "#3a8361",
+          "#4baa7e",
+          "#6ebf99",
+          "#95d0b4",
+          "#bfe3d2",
+          "#edf7f3"
+        ]
+      },
+      "roadbook-night-sheet": {
+        "role": "neutral",
+        "displayName": "Night Sheet",
+        "canonical": "#153a2c",
+        "tonalRamp": [
+          "#14382b",
+          "#23614a",
+          "#328b69",
+          "#41b488",
+          "#65c7a2",
+          "#8fd6bb",
+          "#bce7d6",
+          "#ecf8f4"
+        ]
+      },
+      "roadbook-night-sheet-2": {
+        "role": "neutral",
+        "displayName": "Night Sheet 2",
+        "canonical": "#1a4535",
+        "tonalRamp": [
+          "#15382b",
+          "#24604a",
+          "#348969",
+          "#43b289",
+          "#67c6a3",
+          "#90d5bb",
+          "#bce6d6",
+          "#ecf8f4"
+        ]
+      },
+      "roadbook-night-ink-soft": {
+        "role": "neutral",
+        "displayName": "Night Ink Soft",
+        "canonical": "#c3d1c9",
+        "tonalRamp": [
+          "#212b26",
+          "#3a4b41",
+          "#526b5d",
+          "#6a8b78",
+          "#89a494",
+          "#a8bdb1",
+          "#cbd7d0",
+          "#f1f4f2"
+        ]
+      },
+      "roadbook-night-ink-faint": {
+        "role": "neutral",
+        "displayName": "Night Ink Faint",
+        "canonical": "#a3b8ad",
+        "tonalRamp": [
+          "#212b26",
+          "#3a4b42",
+          "#526b5e",
+          "#6b8a7a",
+          "#89a496",
+          "#a9bcb2",
+          "#cbd7d1",
+          "#f1f4f2"
+        ]
+      },
+      "roadbook-night-line": {
+        "role": "neutral",
+        "displayName": "Night Line",
+        "canonical": "#2a5443",
+        "tonalRamp": [
+          "#1a3329",
+          "#2c5847",
+          "#3f7e64",
+          "#52a382",
+          "#74b99d",
+          "#99ccb7",
+          "#c2e0d4",
+          "#eef6f3"
+        ]
+      },
+      "roadbook-night-line-strong": {
+        "role": "neutral",
+        "displayName": "Night Line Strong",
+        "canonical": "#3f6b58",
+        "tonalRamp": [
+          "#1c3028",
+          "#315345",
+          "#467762",
+          "#5b9a7f",
+          "#7bb29a",
+          "#9fc6b5",
+          "#c5ddd3",
+          "#eff6f3"
+        ]
+      },
+      "roadbook-night-band": {
+        "role": "primary",
+        "displayName": "Night Band",
+        "canonical": "#0b1f17",
+        "tonalRamp": [
+          "#14382a",
+          "#236249",
+          "#318b67",
+          "#40b586",
+          "#65c8a0",
+          "#8ed7ba",
+          "#bbe7d5",
+          "#ecf8f3"
+        ]
+      },
+      "roadbook-night-top": {
+        "role": "primary",
+        "displayName": "Night Top",
+        "canonical": "#0a1d15",
+        "tonalRamp": [
+          "#143929",
+          "#226347",
+          "#308c66",
+          "#3fb684",
+          "#64c99e",
+          "#8dd8b8",
+          "#bbe7d5",
+          "#ecf8f3"
+        ]
+      },
+      "roadbook-night-rule": {
+        "role": "primary",
+        "displayName": "Night Rule",
+        "canonical": "#7cc39b",
+        "tonalRamp": [
+          "#183424",
+          "#2a5b3f",
+          "#3b815a",
+          "#4da875",
+          "#70bd92",
+          "#96cfaf",
+          "#c0e2cf",
+          "#eef7f2"
+        ]
+      },
+      "roadbook-night-warn": {
+        "role": "tertiary",
+        "displayName": "Night Amber",
+        "canonical": "#e0ad4f",
+        "tonalRamp": [
+          "#412e0b",
+          "#715014",
+          "#a0721c",
+          "#d09425",
+          "#e0ac4d",
+          "#e8c27d",
+          "#f1dbb1",
+          "#fbf5e9"
+        ]
+      },
+      "roadbook-night-ok": {
+        "role": "tertiary",
+        "displayName": "Night Green",
+        "canonical": "#6fc28f",
+        "tonalRamp": [
+          "#173623",
+          "#275d3c",
+          "#388556",
+          "#49ac6f",
+          "#6cc18d",
+          "#94d1ab",
+          "#bfe4cd",
+          "#edf7f1"
+        ]
+      },
+      "roadbook-night-bad": {
+        "role": "tertiary",
+        "displayName": "Night Red",
+        "canonical": "#ec7f69",
+        "tonalRamp": [
+          "#441309",
+          "#76200f",
+          "#a72e15",
+          "#d93b1c",
+          "#e76145",
+          "#ee8b77",
+          "#f5b9ae",
+          "#fcece8"
+        ]
+      },
+      "roadbook-night-focus": {
+        "role": "secondary",
+        "displayName": "Night Focus",
+        "canonical": "#b6f04a",
+        "tonalRamp": [
+          "#304706",
+          "#537a0a",
+          "#76ae0e",
+          "#9ae213",
+          "#b1ef3e",
+          "#c6f372",
+          "#ddf8aa",
+          "#f6fde7"
+        ]
       }
     },
     "typographyMeta": {
       "display": {
         "displayName": "Display",
-        "purpose": "Hero headline only. Max 15ch, one natural line break."
+        "purpose": "Documentation site: Hero headline only. Max 15ch, one natural line break."
       },
       "headline": {
         "displayName": "Headline",
-        "purpose": "Section headings. Max 24ch."
+        "purpose": "Documentation site: Section headings. Max 24ch."
       },
       "body": {
         "displayName": "Body",
-        "purpose": "Content text. 65-75ch measure in docs, 46-58ch in hero/intros."
+        "purpose": "Documentation site: Content text. 65-75ch measure in docs, 46-58ch in hero/intros."
       },
       "label": {
         "displayName": "Label",
-        "purpose": "Trust markers, step numbers, disclaimers."
+        "purpose": "Documentation site: Trust markers, step numbers, disclaimers."
       },
       "title": {
         "displayName": "Title",
-        "purpose": "Agent names and step titles."
+        "purpose": "Documentation site: Agent names and step titles."
       },
       "lead": {
         "displayName": "Lead",
-        "purpose": "Hero lead sentence and section intros. 46-58ch."
+        "purpose": "Documentation site: Hero lead sentence and section intros. 46-58ch."
       },
       "mono": {
         "displayName": "Mono",
-        "purpose": "Code, commands, and measurements only."
+        "purpose": "Documentation site: Code, commands, and measurements only."
+      },
+      "roadbook-verdict": {
+        "displayName": "Roadbook Verdict",
+        "purpose": "Dashboard roadbook: the day's verdict word only, uppercase, coloured by state."
+      },
+      "roadbook-view-title": {
+        "displayName": "Roadbook View Title",
+        "purpose": "Dashboard roadbook: h1 of every view."
+      },
+      "roadbook-lead-title": {
+        "displayName": "Roadbook Lead Title",
+        "purpose": "Dashboard roadbook: the date on the day's pine lead band, sentence case."
+      },
+      "roadbook-sheet-head": {
+        "displayName": "Roadbook Sheet Head",
+        "purpose": "Dashboard roadbook: sheet card headings and h2, uppercase, 0.04em."
+      },
+      "roadbook-numeral": {
+        "displayName": "Roadbook Numeral",
+        "purpose": "Dashboard roadbook: cut-off, reading and fact values, tabular; units smaller and faint."
+      },
+      "roadbook-label": {
+        "displayName": "Roadbook Label",
+        "purpose": "Dashboard roadbook: rail group titles, column heads, fact terms, plates, pin label; uppercase."
+      },
+      "roadbook-body": {
+        "displayName": "Roadbook Body",
+        "purpose": "Dashboard roadbook: reading text; verdict reason to 56ch, prose to 72ch."
       }
     },
     "shadows": [
       {
         "name": "ambient-card",
         "value": "0 1px 2px rgba(20,40,30,0.06), 0 8px 24px rgba(20,40,30,0.08)",
-        "purpose": "Agent cards on light surfaces."
+        "purpose": "Documentation site: Agent cards on light surfaces."
       },
       {
         "name": "ambient-dark",
         "value": "0 1px 2px rgba(0,0,0,0.3), 0 8px 24px rgba(0,0,0,0.35)",
-        "purpose": "Cards and CTA command block on dark surfaces."
+        "purpose": "Documentation site: Cards and CTA command block on dark surfaces."
       },
       {
         "name": "header",
         "value": "0 0 0.2rem rgba(0,0,0,0.1), 0 0.2rem 0.4rem rgba(0,0,0,0.3)",
-        "purpose": "Sticky header once scrolled past the transparent hero."
+        "purpose": "Documentation site: Sticky header once scrolled past the transparent hero."
+      },
+      {
+        "name": "roadbook-paper",
+        "value": "0 1px 1px rgba(20,40,30,0.05), 0 6px 18px rgba(20,40,30,0.07)",
+        "purpose": "Dashboard roadbook: sheet cards and the profile on stone."
+      },
+      {
+        "name": "roadbook-paper-night",
+        "value": "0 1px 1px rgba(3,12,8,0.35), 0 8px 22px rgba(3,12,8,0.32)",
+        "purpose": "Dashboard roadbook: sheet cards and the profile on deep pine."
+      },
+      {
+        "name": "roadbook-action",
+        "value": "0 1px 1px rgba(15,42,31,0.18), 0 4px 10px rgba(15,42,31,0.12)",
+        "purpose": "Dashboard roadbook: the lime primary action only."
+      },
+      {
+        "name": "roadbook-tab-bar",
+        "value": "0 -4px 14px rgba(20,40,30,0.06)",
+        "purpose": "Dashboard roadbook: bottom tab bar, cast upward."
+      },
+      {
+        "name": "roadbook-drawer",
+        "value": "0 -8px 30px rgba(0,0,0,0.25)",
+        "purpose": "Dashboard roadbook: sections drawer over a rgba(5,15,10,0.6) backdrop."
       }
     ],
     "motion": [
       {
         "name": "hero-rise",
         "value": "cubic-bezier(0.16, 1, 0.3, 1) 0.8s",
-        "purpose": "The single authored motion moment: hero title/lead/actions rise in sequence (0s/0.15s/0.3s). Disabled under prefers-reduced-motion."
+        "purpose": "Documentation site: The single authored motion moment: hero title/lead/actions rise in sequence (0s/0.15s/0.3s). Disabled under prefers-reduced-motion."
+      },
+      {
+        "name": "roadbook-unroll",
+        "value": "clip-path inset(0 100% 0 0) -> inset(0 0 0 0), 900ms cubic-bezier(0.16, 1, 0.3, 1)",
+        "purpose": "Dashboard roadbook, the single motion moment (1/2): the season profile unrolls left to right. Removed under prefers-reduced-motion."
+      },
+      {
+        "name": "roadbook-pin-drop",
+        "value": "opacity 0 -> 1, translateY(-0.5rem) -> none, 420ms cubic-bezier(0.16, 1, 0.3, 1), 520ms delay",
+        "purpose": "Dashboard roadbook, the single motion moment (2/2): the \"vous êtes ici\" pin drops after the unroll. Removed under prefers-reduced-motion."
       }
     ],
     "breakpoints": [
       {
-        "name": "lg",
+        "name": "docs-lg",
         "value": "76.1875em"
       },
       {
-        "name": "md",
+        "name": "docs-md",
         "value": "60em"
       },
       {
-        "name": "sm",
+        "name": "docs-sm",
         "value": "44.9375em"
+      },
+      {
+        "name": "roadbook-wide",
+        "value": "72em"
+      },
+      {
+        "name": "roadbook-tabbar",
+        "value": "63.99em"
+      },
+      {
+        "name": "roadbook-phone",
+        "value": "36em"
       }
     ]
   },
@@ -274,7 +724,7 @@
       "name": "Primary Button",
       "kind": "button",
       "refersTo": "button-primary",
-      "description": "The single action CTA on the page. Lime on pine-deep.",
+      "description": "Documentation site: The single action CTA on the page. Lime on pine-deep.",
       "html": "<button class=\"ds-btn-primary\">Commencer en 5 minutes</button>",
       "css": ".ds-btn-primary { background: #a3e635; color: #0f2a1f; padding: 0.85rem 1.7rem; border-radius: 2rem; border: 1px solid #a3e635; font-weight: 600; font-size: 1rem; transition: background 0.2s; } .ds-btn-primary:hover { background: #b6f04a; } .ds-btn-primary:focus-visible { outline: 2px solid #0f2a1f; outline-offset: 2px; }"
     },
@@ -282,7 +732,7 @@
       "name": "Secondary Button",
       "kind": "button",
       "refersTo": "button-secondary",
-      "description": "Ghost action over the hero image. White text, translucent border.",
+      "description": "Documentation site: Ghost action over the hero image. White text, translucent border.",
       "html": "<button class=\"ds-btn-secondary\">Découvrir les agents</button>",
       "css": ".ds-btn-secondary { background: transparent; color: #ffffff; padding: 0.85rem 1.7rem; border-radius: 2rem; border: 1px solid rgba(255,255,255,0.65); font-weight: 600; font-size: 1rem; transition: background 0.2s; } .ds-btn-secondary:hover { background: rgba(255,255,255,0.14); border-color: #ffffff; } .ds-btn-secondary:focus-visible { outline: 2px solid #ffffff; outline-offset: 2px; }"
     },
@@ -290,7 +740,7 @@
       "name": "Agent Card",
       "kind": "card",
       "refersTo": "agent-card",
-      "description": "One AI specialist: icon, name, role, example prompt in a quote block.",
+      "description": "Documentation site: One AI specialist: icon, name, role, example prompt in a quote block.",
       "html": "<div class=\"ds-agent-card\"><h3>🧠 Coach</h3><p>Le chef d'orchestre du plan d'entraînement.</p><blockquote>« Je veux préparer un trail de 50 km. »</blockquote></div>",
       "css": ".ds-agent-card { background: #f6f4ef; border-radius: 1.1rem; padding: 1.8rem 1.8rem 1.6rem; box-shadow: 0 1px 2px rgba(20,40,30,0.06), 0 8px 24px rgba(20,40,30,0.08); } .ds-agent-card h3 { font-family: Sora, Inter, sans-serif; font-size: 1.3rem; font-weight: 700; letter-spacing: -0.02em; margin: 0 0 0.5rem; } .ds-agent-card p { color: #4a5a52; line-height: 1.6; margin: 0 0 1rem; } .ds-agent-card blockquote { background: #efece3; border-radius: 0.6rem; padding: 0.8rem 1rem; font-size: 0.92rem; color: #1c2b24; } .ds-agent-card blockquote p { margin: 0; color: inherit; }"
     },
@@ -298,7 +748,7 @@
       "name": "CTA Command Block",
       "kind": "custom",
       "refersTo": "cta-command",
-      "description": "The one-line install command. Mono, lime on near-black.",
+      "description": "Documentation site: The one-line install command. Mono, lime on near-black.",
       "html": "<code class=\"ds-cta-cmd\">git clone https://github.com/mmornati/ai-running-coach.git && cd ai-running-coach && ./install.sh</code>",
       "css": ".ds-cta-cmd { display: inline-block; background: #0a1510; color: #a3e635; padding: 1rem 1.6rem; border-radius: 0.8rem; font-family: 'JetBrains Mono', monospace; font-size: 0.95rem; box-shadow: 0 1px 2px rgba(0,0,0,0.3), 0 10px 30px rgba(0,0,0,0.35); }"
     },
@@ -306,21 +756,83 @@
       "name": "Trust Marker",
       "kind": "chip",
       "refersTo": "button-secondary",
-      "description": "Quiet hero trust markers: lime dot + label.",
+      "description": "Documentation site: Quiet hero trust markers: lime dot + label.",
       "html": "<ul class=\"ds-trust\"><li>Open source · MIT</li><li>Garmin Connect</li><li>Français</li></ul>",
       "css": ".ds-trust { list-style: none; display: flex; gap: 0.4rem 1.6rem; font-size: 0.9rem; color: rgba(255,255,255,0.78); } .ds-trust li { display: flex; align-items: center; gap: 0.45rem; } .ds-trust li::before { content: ''; width: 0.4rem; height: 0.4rem; border-radius: 50%; background: #a3e635; }"
+    },
+    {
+      "name": "Roadbook Primary Action",
+      "kind": "button",
+      "refersTo": "roadbook-action",
+      "description": "Dashboard roadbook: the only lime fill on a page.",
+      "html": "<a class=\"ds-rk-action\" href=\"#\">Demander au coach <svg viewBox=\"0 0 24 12\" aria-hidden=\"true\"><path d=\"M1 6h20M16 1.5 21.5 6 16 10.5\"/></svg></a>",
+      "css": ":host{--bg:#f6f4ef;--surface:#fdfdfb;--surface-2:#f1f0ea;--ink:#1c2b24;--ink-soft:#46564e;--ink-faint:#627169;--line:#dddad0;--line-strong:#bdb8a8;--band:#1e4d3b;--on-band:#f6f4ef;--band-soft:#c9dccf;--rule:#1e4d3b;--lime:#a3e635;--ok:#2f7a4f;--warn:#8a5a12;--bad:#b3432f;--focus:#5a8f1c;--cond:\"Barlow Condensed\",\"Arial Narrow\",system-ui,sans-serif;--text:Inter,system-ui,sans-serif;--shadow:0 1px 1px rgba(20,40,30,0.05),0 6px 18px rgba(20,40,30,0.07);} .ds-rk-action{display:inline-flex;align-items:center;gap:0.5rem;padding:0.62rem 1rem 0.58rem;border-radius:0.4rem;background:var(--lime);color:#0f2a1f;border:1px solid #0f2a1f;font:700 1.05rem/1 var(--cond);letter-spacing:0.05em;text-transform:uppercase;text-decoration:none;box-shadow:0 1px 1px rgba(15,42,31,0.18),0 4px 10px rgba(15,42,31,0.12);transition:background 150ms ease;} .ds-rk-action:hover{background:#b6f04a;} .ds-rk-action:focus-visible{outline:2px solid var(--focus);outline-offset:3px;} .ds-rk-action svg{width:1.1rem;height:0.6rem;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;}"
+    },
+    {
+      "name": "Roadbook Ghost Action",
+      "kind": "button",
+      "refersTo": "roadbook-action-ghost",
+      "description": "Dashboard roadbook: secondary action beside the primary.",
+      "html": "<a class=\"ds-rk-ghost\" href=\"#\">Ouvrir la séance</a>",
+      "css": ":host{--bg:#f6f4ef;--surface:#fdfdfb;--surface-2:#f1f0ea;--ink:#1c2b24;--ink-soft:#46564e;--ink-faint:#627169;--line:#dddad0;--line-strong:#bdb8a8;--band:#1e4d3b;--on-band:#f6f4ef;--band-soft:#c9dccf;--rule:#1e4d3b;--lime:#a3e635;--ok:#2f7a4f;--warn:#8a5a12;--bad:#b3432f;--focus:#5a8f1c;--cond:\"Barlow Condensed\",\"Arial Narrow\",system-ui,sans-serif;--text:Inter,system-ui,sans-serif;--shadow:0 1px 1px rgba(20,40,30,0.05),0 6px 18px rgba(20,40,30,0.07);} .ds-rk-ghost{display:inline-flex;align-items:center;padding:0.62rem 1rem 0.58rem;border-radius:0.4rem;background:transparent;color:var(--ink);border:1px solid var(--line-strong);font:700 1.05rem/1 var(--cond);letter-spacing:0.05em;text-transform:uppercase;text-decoration:none;} .ds-rk-ghost:hover{background:var(--surface-2);} .ds-rk-ghost:focus-visible{outline:2px solid var(--focus);outline-offset:3px;}"
+    },
+    {
+      "name": "Roadbook Lead Sheet with Verdict",
+      "kind": "card",
+      "refersTo": "roadbook-sheet-head-lead",
+      "description": "Dashboard roadbook: the day's aid-station sheet with pine lead band, verdict word and reason.",
+      "html": "<section class=\"ds-rk-sheet\"><header class=\"ds-rk-sheet__head\"><h2>Mardi 29 septembre</h2><span>Spécifique · semaine 5 du bloc</span></header><div class=\"ds-rk-sheet__body\"><p class=\"ds-rk-verdict\">Alléger</p><p class=\"ds-rk-why\">HRV sous la bande depuis 3 nuits, FC de repos +6 : on allège, EF 45 min au lieu du seuil.</p></div></section>",
+      "css": ":host{--bg:#f6f4ef;--surface:#fdfdfb;--surface-2:#f1f0ea;--ink:#1c2b24;--ink-soft:#46564e;--ink-faint:#627169;--line:#dddad0;--line-strong:#bdb8a8;--band:#1e4d3b;--on-band:#f6f4ef;--band-soft:#c9dccf;--rule:#1e4d3b;--lime:#a3e635;--ok:#2f7a4f;--warn:#8a5a12;--bad:#b3432f;--focus:#5a8f1c;--cond:\"Barlow Condensed\",\"Arial Narrow\",system-ui,sans-serif;--text:Inter,system-ui,sans-serif;--shadow:0 1px 1px rgba(20,40,30,0.05),0 6px 18px rgba(20,40,30,0.07);} .ds-rk-sheet{background:var(--surface);border:1px solid var(--line);border-radius:0.55rem;box-shadow:var(--shadow);overflow:hidden;font-family:var(--text);color:var(--ink);} .ds-rk-sheet__head{display:flex;flex-wrap:wrap;align-items:baseline;justify-content:space-between;gap:0.25rem 1rem;padding:0.75rem 1.15rem 0.65rem;background:var(--band);} .ds-rk-sheet__head h2{margin:0;font:700 1.55rem/1.05 var(--cond);letter-spacing:0.01em;color:var(--on-band);} .ds-rk-sheet__head span{font:500 0.95rem/1.2 var(--cond);letter-spacing:0.03em;color:var(--band-soft);} .ds-rk-sheet__body{padding:1rem 1.15rem 1.15rem;} .ds-rk-verdict{margin:0;font:700 clamp(3.2rem,13vw,5.25rem)/0.88 var(--cond);letter-spacing:0.005em;text-transform:uppercase;color:var(--warn);} .ds-rk-why{margin:0.6rem 0 0;font-size:1.04rem;line-height:1.5;max-width:56ch;}"
+    },
+    {
+      "name": "Roadbook Ruled Sheet",
+      "kind": "card",
+      "refersTo": "roadbook-sheet-card",
+      "description": "Dashboard roadbook: a standard sheet with a 2px pine-ruled head, holding cut-off rows with shape-and-word state marks.",
+      "html": "<section class=\"ds-rk-card\"><header class=\"ds-rk-card__head\"><h2>Barrières du matin</h2></header><table class=\"ds-rk-cut\"><tr><th>FC de repos<small>médiane 7 j 46</small></th><td class=\"v\">52<small> bpm</small></td><td class=\"s warn\"><svg viewBox=\"0 0 12 12\"><path d=\"M6 1.2 11 10.5H1Z\"/></svg>+6 sur la médiane</td></tr><tr><th>Readiness<small>seuil 60</small></th><td class=\"v\">34<small>/100</small></td><td class=\"s bad\"><svg viewBox=\"0 0 12 12\"><rect x=\"1.6\" y=\"1.6\" width=\"8.8\" height=\"8.8\" transform=\"rotate(45 6 6)\"/></svg>faible</td></tr><tr><th>Sommeil<small>score 82</small></th><td class=\"v\">7<small> h </small>40</td><td class=\"s ok\"><svg viewBox=\"0 0 12 12\"><circle cx=\"6\" cy=\"6\" r=\"4.5\"/></svg>dans la cible</td></tr></table></section>",
+      "css": ":host{--bg:#f6f4ef;--surface:#fdfdfb;--surface-2:#f1f0ea;--ink:#1c2b24;--ink-soft:#46564e;--ink-faint:#627169;--line:#dddad0;--line-strong:#bdb8a8;--band:#1e4d3b;--on-band:#f6f4ef;--band-soft:#c9dccf;--rule:#1e4d3b;--lime:#a3e635;--ok:#2f7a4f;--warn:#8a5a12;--bad:#b3432f;--focus:#5a8f1c;--cond:\"Barlow Condensed\",\"Arial Narrow\",system-ui,sans-serif;--text:Inter,system-ui,sans-serif;--shadow:0 1px 1px rgba(20,40,30,0.05),0 6px 18px rgba(20,40,30,0.07);} .ds-rk-card{background:var(--surface);border:1px solid var(--line);border-radius:0.55rem;box-shadow:var(--shadow);overflow:hidden;font-family:var(--text);color:var(--ink);} .ds-rk-card__head{padding:0.6rem 1.15rem 0.5rem;border-bottom:2px solid var(--rule);} .ds-rk-card__head h2{margin:0;font:600 1.2rem/1.15 var(--cond);letter-spacing:0.04em;text-transform:uppercase;} .ds-rk-cut{width:calc(100% - 2.3rem);margin:0.5rem 1.15rem 0.8rem;border-collapse:collapse;font-variant-numeric:tabular-nums;} .ds-rk-cut th,.ds-rk-cut td{padding:0.55rem 0.5rem 0.5rem 0;border-bottom:1px solid var(--line);text-align:left;vertical-align:baseline;} .ds-rk-cut tr:last-child>*{border-bottom:0;} .ds-rk-cut th{font-weight:500;} .ds-rk-cut th small{display:block;color:var(--ink-faint);font-size:0.86rem;font-weight:400;} .ds-rk-cut .v{font:600 1.55rem/1 var(--cond);white-space:nowrap;} .ds-rk-cut .v small{font-size:0.62em;color:var(--ink-faint);} .ds-rk-cut .s{text-align:right;padding-right:0;font-size:0.86rem;font-weight:600;white-space:nowrap;} .ds-rk-cut .s svg{width:0.72rem;height:0.72rem;fill:currentColor;margin-right:0.38rem;} .ds-rk-cut .ok{color:var(--ok);} .ds-rk-cut .warn{color:var(--warn);} .ds-rk-cut .bad{color:var(--bad);}"
+    },
+    {
+      "name": "Roadbook Trigger Plate",
+      "kind": "chip",
+      "refersTo": "roadbook-plate-trigger",
+      "description": "Dashboard roadbook: a decision signed by its trigger and outcome, then the struck-through change.",
+      "html": "<div class=\"ds-rk-dec\"><p class=\"ds-rk-plate\"><span class=\"who\">Bilan matinal</span><span class=\"what\">Appliquée</span></p><p class=\"ds-rk-change\"><s>Seuil 5 × 6 min</s><svg viewBox=\"0 0 24 12\" aria-hidden=\"true\"><path d=\"M1 6h20M16 1.5 21.5 6 16 10.5\"/></svg><strong>Endurance fondamentale 45 min</strong></p></div>",
+      "css": ":host{--bg:#f6f4ef;--surface:#fdfdfb;--surface-2:#f1f0ea;--ink:#1c2b24;--ink-soft:#46564e;--ink-faint:#627169;--line:#dddad0;--line-strong:#bdb8a8;--band:#1e4d3b;--on-band:#f6f4ef;--band-soft:#c9dccf;--rule:#1e4d3b;--lime:#a3e635;--ok:#2f7a4f;--warn:#8a5a12;--bad:#b3432f;--focus:#5a8f1c;--cond:\"Barlow Condensed\",\"Arial Narrow\",system-ui,sans-serif;--text:Inter,system-ui,sans-serif;--shadow:0 1px 1px rgba(20,40,30,0.05),0 6px 18px rgba(20,40,30,0.07);} .ds-rk-dec{font-family:var(--text);color:var(--ink);} .ds-rk-plate{display:inline-flex;margin:0 0 0.7rem;border:1px solid var(--line-strong);border-radius:0.3rem;overflow:hidden;font:600 0.86rem/1 var(--cond);letter-spacing:0.06em;text-transform:uppercase;} .ds-rk-plate .who{padding:0.34rem 0.55rem;background:var(--band);color:var(--on-band);} .ds-rk-plate .what{padding:0.34rem 0.55rem;color:var(--ink-soft);} .ds-rk-change{display:flex;flex-wrap:wrap;align-items:center;gap:0.35rem 0.6rem;margin:0;} .ds-rk-change s{color:var(--ink-faint);text-decoration-thickness:1.5px;} .ds-rk-change strong{font-weight:600;} .ds-rk-change svg{width:1.6rem;height:0.8rem;fill:none;stroke:var(--ink-soft);stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round;}"
+    },
+    {
+      "name": "Roadbook Capacity Tape",
+      "kind": "custom",
+      "refersTo": "roadbook-sheet-card",
+      "description": "Dashboard roadbook: planned volume as segments against the week target, overflow hatched in amber.",
+      "html": "<div class=\"ds-rk-cap\"><span class=\"l\">Prévu</span><div class=\"ds-rk-tape\"><span class=\"seg s1\"></span><span class=\"seg q s2\"></span><span class=\"seg s3\"></span><span class=\"seg q s4\"></span><span class=\"seg s5\"></span><span class=\"target\"></span><span class=\"over\"></span></div><span class=\"n\">7,9 h<small> / 7,0 h</small></span></div>",
+      "css": ":host{--bg:#f6f4ef;--surface:#fdfdfb;--surface-2:#f1f0ea;--ink:#1c2b24;--ink-soft:#46564e;--ink-faint:#627169;--line:#dddad0;--line-strong:#bdb8a8;--band:#1e4d3b;--on-band:#f6f4ef;--band-soft:#c9dccf;--rule:#1e4d3b;--lime:#a3e635;--ok:#2f7a4f;--warn:#8a5a12;--bad:#b3432f;--focus:#5a8f1c;--cond:\"Barlow Condensed\",\"Arial Narrow\",system-ui,sans-serif;--text:Inter,system-ui,sans-serif;--shadow:0 1px 1px rgba(20,40,30,0.05),0 6px 18px rgba(20,40,30,0.07);} .ds-rk-cap{display:grid;grid-template-columns:4.2rem minmax(0,1fr) 6.5rem;gap:0.75rem;align-items:center;font-family:var(--text);color:var(--ink);} .ds-rk-cap .l{font:600 0.88rem/1 var(--cond);letter-spacing:0.07em;text-transform:uppercase;color:var(--ink-faint);} .ds-rk-cap .n{font:600 1.15rem/1 var(--cond);text-align:right;font-variant-numeric:tabular-nums;} .ds-rk-cap .n small{font-size:0.82em;color:var(--ink-faint);} .ds-rk-tape{position:relative;display:flex;gap:2px;height:1.15rem;padding:2px;border:1px solid var(--line-strong);border-radius:0.3rem;background:var(--surface-2);} .ds-rk-tape .seg{flex:0 0 auto;border-radius:2px;background:rgba(47,107,79,0.42);} .ds-rk-tape .seg.q{background:var(--rule);} .ds-rk-tape .target{position:absolute;top:-0.3rem;bottom:-0.3rem;width:2px;margin-left:-1px;background:var(--ink);} .ds-rk-tape .over{position:absolute;top:2px;bottom:2px;background:repeating-linear-gradient(135deg,var(--warn) 0 3px,transparent 3px 7px);border-radius:0 2px 2px 0;} .ds-rk-tape .s1{width:20%;} .ds-rk-tape .s2{width:13%;} .ds-rk-tape .s3{width:28%;} .ds-rk-tape .s4{width:13%;} .ds-rk-tape .s5{width:22%;} .ds-rk-tape .target{left:88%;} .ds-rk-tape .over{left:88%;width:11%;}"
+    },
+    {
+      "name": "Roadbook Bottom Tab Bar",
+      "kind": "nav",
+      "refersTo": "roadbook-tab-bar",
+      "description": "Dashboard roadbook, phone and tablet: five slots, current tab marked by a lime notch.",
+      "html": "<nav class=\"ds-rk-tabbar\"><a href=\"#\" aria-current=\"page\"><svg viewBox=\"0 0 24 24\"><path d=\"M4 18h16M7 14a5 5 0 0 1 10 0M12 4v3M5 8l2 2M19 8l-2 2\"/></svg><span>Aujourd'hui</span></a><a href=\"#\"><svg viewBox=\"0 0 24 24\"><rect x=\"4\" y=\"5\" width=\"16\" height=\"15\" rx=\"2\"/><path d=\"M4 10h16M9 3v4M15 3v4\"/></svg><span>Semaine</span></a><a href=\"#\"><svg viewBox=\"0 0 24 24\"><path d=\"M12 20s-7-4.5-7-10a4 4 0 0 1 7-2.6A4 4 0 0 1 19 10c0 5.5-7 10-7 10Z\"/></svg><span>Santé</span></a><a href=\"#\"><svg viewBox=\"0 0 24 24\"><path d=\"M5 5h14v10H9l-4 4Z\"/></svg><span>Coach</span></a><a href=\"#\"><svg viewBox=\"0 0 24 24\"><path d=\"M8 6h12M8 12h12M8 18h12M4 6h.01M4 12h.01M4 18h.01\"/></svg><span>Sections</span></a></nav>",
+      "css": ":host{--bg:#f6f4ef;--surface:#fdfdfb;--surface-2:#f1f0ea;--ink:#1c2b24;--ink-soft:#46564e;--ink-faint:#627169;--line:#dddad0;--line-strong:#bdb8a8;--band:#1e4d3b;--on-band:#f6f4ef;--band-soft:#c9dccf;--rule:#1e4d3b;--lime:#a3e635;--ok:#2f7a4f;--warn:#8a5a12;--bad:#b3432f;--focus:#5a8f1c;--cond:\"Barlow Condensed\",\"Arial Narrow\",system-ui,sans-serif;--text:Inter,system-ui,sans-serif;--shadow:0 1px 1px rgba(20,40,30,0.05),0 6px 18px rgba(20,40,30,0.07);} .ds-rk-tabbar{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));height:3.9rem;background:var(--surface);border-top:1px solid var(--line);box-shadow:0 -4px 14px rgba(20,40,30,0.06);} .ds-rk-tabbar a{position:relative;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:0.2rem;color:var(--ink-faint);text-decoration:none;font:600 0.72rem/1 var(--text);} .ds-rk-tabbar svg{width:1.45rem;height:1.45rem;fill:none;stroke:currentColor;stroke-width:1.75;stroke-linecap:round;stroke-linejoin:round;} .ds-rk-tabbar a:hover{color:var(--ink);} .ds-rk-tabbar a[aria-current=page]{color:var(--ink);} .ds-rk-tabbar a[aria-current=page]::before{content:\"\";position:absolute;top:-1px;left:50%;width:2rem;height:3px;margin-left:-1rem;border-radius:0 0 3px 3px;background:var(--lime);box-shadow:0 0 0 1px #0f2a1f;} .ds-rk-tabbar a:focus-visible{outline:2px solid var(--focus);outline-offset:-4px;border-radius:0.5rem;}"
     }
   ],
   "narrative": {
-    "northStar": "Le Sentier",
-    "overview": "The docs are a trailhead, not a manual. Every screen opens onto the runner's own world: deep pine forest, warm stone, a lime accent like a trail marker catching dawn light. The system earns attention with real mountain photography and a quiet alpine type system, then gets out of the way so the reader acts: install in five minutes. The personality is earned and restrained — one full-bleed photographic moment per landing, generous whitespace, soft ambient shadows, and a single authored motion moment on load. Density is low; confidence is high. The palette is earth-and-forest (deep pine greens, warm stone neutrals, energetic lime), chosen from the use scene: a francophone trail runner at dawn, not a corporate dashboard at noon.",
+    "northStar": "Le Sentier (documentation site) · Le Roadbook (dashboard, beta)",
+    "overview": "Two surfaces share one palette root (pine, deep pine, lime, stone) and keep separate systems. **Le Sentier** is the MkDocs documentation and marketing site (Sora/Inter, photographic hero) and governs every section's first part. **Le Roadbook** is the local dashboard (`web/index.html`, `web/chat.html`, installable PWA), shipped as an opt-in beta behind `[data-design=\"roadbook\"]` while the current dashboard stays the default; its rules live in each section under *Dashboard roadbook (beta)* and apply only under that attribute. A rule from one surface never binds the other unless stated.\n\nThe docs are a trailhead, not a manual. Every screen opens onto the runner's own world: deep pine forest, warm stone, a lime accent like a trail marker catching dawn light. The system earns attention with real mountain photography and a quiet alpine type system, then gets out of the way so the reader acts: install in five minutes. The personality is earned and restrained — one full-bleed photographic moment per landing, generous whitespace, soft ambient shadows, and a single authored motion moment on load. Density is low; confidence is high. The palette is earth-and-forest (deep pine greens, warm stone neutrals, energetic lime), chosen from the use scene: a francophone trail runner at dawn, not a corporate dashboard at noon.\n\n**Creative North Star: \"Le Roadbook\"** — the dashboard is the athlete's season roadbook: the training block drawn as an elevation profile cut into sections, ending at the race finish flag, and each day an aid-station sheet. Laminated sheets lie on stone by day and on deep pine in the morning dark; ink is pine; lime marks only \"vous êtes ici\" and the one primary action.\n\nThe personality is **operational and legible at a glance**, for a phone in dim light before a run. Density is medium-high but ruled, not boxed: content sits in rows with hairlines and tabular numerals, never in stat tiles or ring gauges. Barlow Condensed carries headings, verdicts and numbers like the lettering of a race barrier; Inter carries reading text.",
     "keyCharacteristics": [
-      "Full-bleed photographic hero as the first viewport, with a dark scrim for text legibility.",
-      "Earth-and-forest palette: pine greens, warm stone, lime accent.",
-      "Sora display type (tight tracking) over Inter body text.",
-      "One authored motion moment (hero rise on load), exponential ease-out, reduced-motion respected.",
-      "Soft ambient shadows with real offset and blur; never zero-offset halos.",
-      "Generous section rhythm (5rem), tight intra-group gaps (1.4rem)."
+      "Documentation site: Full-bleed photographic hero as the first viewport, with a dark scrim for text legibility.",
+      "Documentation site: Earth-and-forest palette: pine greens, warm stone, lime accent.",
+      "Documentation site: Sora display type (tight tracking) over Inter body text.",
+      "Documentation site: One authored motion moment (hero rise on load), exponential ease-out, reduced-motion respected.",
+      "Documentation site: Soft ambient shadows with real offset and blur; never zero-offset halos.",
+      "Documentation site: Generous section rhythm (5rem), tight intra-group gaps (1.4rem).",
+      "Dashboard roadbook: Season profile ribbon across the top, with week ticks, month marks, section labels, a lime \"vous êtes ici\" pin and a chequered finish flag.",
+      "Dashboard roadbook: Sheet cards with a 2px pine-ruled head; the day's lead sheet carries a solid pine band instead.",
+      "Dashboard roadbook: Verdict word at poster size in Barlow Condensed caps, coloured by state and always a word.",
+      "Dashboard roadbook: Cut-off rows: label, condensed tabular value, reference, and a state mark that is a shape plus a word.",
+      "Dashboard roadbook: Light (stone) and dark (deep pine) schemes are both first-class, following the system preference or an explicit theme.",
+      "Dashboard roadbook: One motion moment: the profile unrolls left to right, then the pin drops."
     ],
     "rules": [
       {
@@ -347,6 +859,21 @@
         "name": "The Offset-Only Rule",
         "body": "Every shadow carries a vertical offset and a soft blur. A zero-offset colored halo is decoration, not depth, and is never used.",
         "section": "elevation"
+      },
+      {
+        "name": "The You-Are-Here Rule",
+        "body": "Lime appears only as the \"vous êtes ici\" marker — profile pin and its label, current rail dot, today's dot in week lists, the active tab notch, today's row tint (lime at 7%) and the selected week on the profile — and as the single primary action. A second lime surface on a screen is a defect.",
+        "section": "colors"
+      },
+      {
+        "name": "The Word-and-Shape Rule",
+        "body": "State is never colour alone: every state carries a word (\"dans la cible\", \"à surveiller\", \"hors cible\", \"pas de mesure\") and a shape (filled circle, triangle, diamond, dash). The verdict colour sits on a verdict word.",
+        "section": "colors"
+      },
+      {
+        "name": "The Condensed-Caps Rule",
+        "body": "On the roadbook, uppercase condensed text takes positive tracking (0.01em to 0.08em, wider as it gets smaller) and every number that can be compared is tabular. The docs site's Tight-Tracking Rule governs Sora only.",
+        "section": "typography"
       }
     ],
     "dos": [
@@ -354,7 +881,13 @@
       "Do use lime only for action: CTAs, step numbers, trust dots.",
       "Do keep display tracking tight (-0.02em to -0.03em) and body measure at 65–75ch in docs.",
       "Do give every shadow an offset and a blur.",
-      "Do respect prefers-reduced-motion by disabling the hero rise."
+      "Do respect prefers-reduced-motion by disabling the hero rise.",
+      "Do keep lime for \"vous êtes ici\" and the single primary action; every other emphasis is pine, ink or a state ink.",
+      "Do give every state a shape and a word as well as a colour.",
+      "Do set comparable numbers in Barlow Condensed with tabular numerals and units in a smaller faint size.",
+      "Do pass computed positions through `data-vars` and the CSSOM; the CSP (`style-src 'self'`) refuses inline style attributes.",
+      "Do keep every roadbook rule under `[data-design=\"roadbook\"]` so the current dashboard is untouched without the attribute.",
+      "Do keep the profile unroll and pin drop as the only motion, removed under `prefers-reduced-motion`."
     ],
     "donts": [
       "Don't add a second accent color; lime is the only one.",
@@ -362,7 +895,12 @@
       "Don't use JetBrains Mono outside code, commands, and data.",
       "Don't add a kicker or eyebrow above a heading; the heading carries its own weight.",
       "Don't use gradient text, glass-as-decoration, or zero-offset colored halos.",
-      "Don't add more than one authored motion moment; the hero rise is the only one."
+      "Don't add more than one authored motion moment; the hero rise is the only one.",
+      "Don't lay out readings as a grid of stat tiles or ring gauges; use ruled rows.",
+      "Don't convey state by colour alone, and never soften a red verdict or a medical decision visually.",
+      "Don't write `style=` attributes in injected markup.",
+      "Don't add a second lime surface or a lime fill on anything but the primary action and the \"here\" marks.",
+      "Don't nest a bordered box inside a sheet; divide with a dashed rule instead."
     ]
   }
 }

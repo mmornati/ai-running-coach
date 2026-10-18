@@ -4,6 +4,7 @@ import { navItems, showVersion, showSyncPill } from "./nav.js";
 import { timeChart, attachCursor, verdictStrip, yearCalendar, blockFrise } from "./chart.js";
 import { resampleByDistance, colorModes, sessionMap } from "./map.js";
 import { roadbookHtml, wireRoadbook } from "./roadbook.js";
+import { BETA, NAV_LINKS, mountShell, viewToday as betaToday, viewWeek as betaWeek } from "./beta.js";
 
 const $ = (sel, root = document) => root.querySelector(sel);
 const main = $("#main");
@@ -613,18 +614,21 @@ function renderObjective(s) {
 
 function renderNav(s) {
   const items = navItems(s.settings);
-  $("#nav").innerHTML = items.map(([h, l]) => `<a href="#/${h}" data-route="${h}">${l}</a>`).join("")
-    // Page séparée (chat.html), pas une route à hash : visible seulement si `[chat].enabled`.
-    + (s.settings.chat_enabled ? `<a href="chat.html" data-route="coach-chat">Coach</a>` : "")
-    + (s.incomplete_files ? `<a href="#/fichiers" data-route="fichiers" class="nav__debt">${s.incomplete_files} fichier${s.incomplete_files > 1 ? "s" : ""} hors contrat</a>` : "")
+  const debt = (s.incomplete_files ? `<a href="#/fichiers" data-route="fichiers" class="nav__debt">${s.incomplete_files} fichier${s.incomplete_files > 1 ? "s" : ""} hors contrat</a>` : "")
     // `week_collisions_count` (#69, revue de code) : compté À PART de
     // `incomplete_files` — ces fichiers sont déjà valides au contrat, jamais
     // « hors contrat » (voir `arc_serve.api_summary`/`viewFiles`).
     + (s.week_collisions_count ? `<a href="#/fichiers" data-route="fichiers" class="nav__debt">${s.week_collisions_count} collision${s.week_collisions_count > 1 ? "s" : ""} de semaine</a>` : "");
+  // Design bêta (`js/beta.js`) : sections groupées en rail, barre du bas et feuille « Sections ».
+  if (BETA) { mountShell({ settings: s.settings, page: "app", debt }); return; }
+  $("#nav").innerHTML = items.map(([h, l]) => `<a href="#/${h}" data-route="${h}">${l}</a>`).join("")
+    // Page séparée (chat.html), pas une route à hash : visible seulement si `[chat].enabled`.
+    + (s.settings.chat_enabled ? `<a href="chat.html" data-route="coach-chat">Coach</a>` : "")
+    + debt;
 }
 
 function markNav(route) {
-  for (const a of document.querySelectorAll("#nav a")) {
+  for (const a of document.querySelectorAll(BETA ? NAV_LINKS : "#nav a")) {
     const on = a.dataset.route === route || (route === "seance" && a.dataset.route === "seances") || (route === "rapport" && a.dataset.route === "rapports")
       // `#/montee/<id>` (#49) n'a pas d'entrée de nav propre — c'est un sous-détail
       // d'Analyse (#50, historique d'un segment de montée listé là), même motif
@@ -639,7 +643,7 @@ function markNav(route) {
     if (on) {
       a.setAttribute("aria-current", "page");
       // Nav défilante sur mobile (#147, une entrée de plus) : l'onglet actif reste visible.
-      if (a.scrollIntoView) a.scrollIntoView({ block: "nearest", inline: "nearest" });
+      if (!BETA && a.scrollIntoView) a.scrollIntoView({ block: "nearest", inline: "nearest" });
     }
   }
 }
@@ -3932,6 +3936,14 @@ function safeDecode(v) {
   try { return decodeURIComponent(v); } catch { return v; }
 }
 
+// Ce que les vues bêta reçoivent de ce fichier : mêmes données (cache `api`), mêmes composants.
+function betaContext() {
+  return {
+    api, summary: SUMMARY, main,
+    ui: { note, statusChip, weatherChip, heatTile, gearTile, equipmentTile, injuryRiskTile, complianceSection, complianceTrend },
+  };
+}
+
 async function route() {
   const hash = location.hash.replace(/^#\/?/, "");
   const [path, query] = hash.split("?");
@@ -3954,7 +3966,8 @@ async function route() {
   markNav(name);
   main.setAttribute("aria-busy", "true");
   try {
-    if (name === "seance" && arg) await viewSession(Number(arg));
+    if (BETA && (name === "" || name === "semaine")) await (name === "" ? betaToday : betaWeek)(betaContext(), params);
+    else if (name === "seance" && arg) await viewSession(Number(arg));
     else if (name === "materiel" && arg) await viewGearDetail(safeDecode(arg));
     else if (name === "montee" && arg) await viewClimbSegment(Number(arg));
     else if (ROUTES[name]) await ROUTES[name](params);
@@ -3978,7 +3991,12 @@ async function boot() {
     renderObjective(SUMMARY);
     renderNav(SUMMARY);
   } catch (err) {
-    main.innerHTML = header("Tableau de bord indisponible") + empty("Impossible de lire l'index", `${F.esc(err.message)}. Relancez <code>scripts/dashboard.sh</code>.`);
+    if (BETA) mountShell({ settings: {}, page: "app" });
+    // Application installée ouverte sans réseau : la coque vient du cache, jamais les données.
+    main.innerHTML = navigator.onLine === false
+      ? header("Hors ligne") + empty("Pas de connexion", "L'application s'ouvre sans réseau, mais vos données restent sur le serveur : elles reviennent dès que la connexion revient.")
+      : header("Tableau de bord indisponible") + empty("Impossible de lire l'index", `${F.esc(err.message)}. Relancez <code>scripts/dashboard.sh</code>.`);
+    window.addEventListener("online", () => location.reload(), { once: true });
     return;
   }
   window.addEventListener("hashchange", route);
