@@ -89,13 +89,13 @@ def target(choice: str, model: str, base_url: str) -> Tuple[Optional[Dict[str, s
     """Valeurs [sync] visées, ou (None, message d'erreur)."""
     if choice == "claude-subscription":
         if model and "/" in model:
-            return None, "--model : identifiant Claude attendu (ex. claude-haiku-4-5), pas « fournisseur/modèle »."
+            return None, "--model : identifiant Claude attendu (ex. claude-haiku-5-5), pas « fournisseur/modèle »."
         return {"runner": "claude", "model": model, "base_url": "", "api_key_env": "", "opencode_data_dir": ""}, ""
     entry = arc_llm.provider(choice) or {}
     if choice == "anthropic":
         model = model or entry.get("sync_model") or ""
         if "/" in model:
-            return None, "--model : identifiant Claude attendu (ex. claude-haiku-4-5), pas « fournisseur/modèle »."
+            return None, "--model : identifiant Claude attendu (ex. claude-haiku-5-5), pas « fournisseur/modèle »."
         return {"runner": "claude", "model": model, "base_url": "", "api_key_env": "ANTHROPIC_API_KEY",
                 "opencode_data_dir": ""}, ""
     if choice in ("openrouter", "openrouter-free"):

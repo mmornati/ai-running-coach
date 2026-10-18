@@ -379,7 +379,7 @@ peut tourner sur une API : `scripts/daily-sync.sh` a un troisième exécuteur, `
 ./install.sh --llm openrouter                  # chat ET sync sur OpenRouter
 ./install.sh --llm openrouter --model mistralai/mistral-small
 ./install.sh --llm openai --model gpt-4.1-mini --base-url https://api.exemple.org/v1
-./install.sh --llm anthropic                   # chat Sonnet 5.5, sync Haiku 4.5, clé API Anthropic
+./install.sh --llm anthropic                   # chat Sonnet 5.5, sync Haiku 5.5, clé API Anthropic
 ./install.sh --sync-budget 0.5                 # plafond quotidien (EUR) de la synchronisation
 ```
 
@@ -489,7 +489,7 @@ et ne la donne **qu'au process du runner** ; le service du chat la reçoit par
 | | OpenRouter | API Anthropic |
 |---|---|---|
 | Chat | `openrouter/deepseek/deepseek-v4.1-flash` | `claude-sonnet-5-5` |
-| Synchronisation | `openrouter/deepseek/deepseek-v4.1-flash` | `claude-haiku-4-5` |
+| Synchronisation | `openrouter/deepseek/deepseek-v4.1-flash` | `claude-haiku-5-5` |
 
 La synchronisation est répétitive et très cadrée (récupérer les dates manquantes, écrire
 les fichiers au contrat, produire le bloc `resume`) : un modèle léger suffit, et

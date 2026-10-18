@@ -120,7 +120,7 @@ GARMIN_NUTRITION_TOOLS="get_custom_foods,get_custom_food_serving_units,get_nutri
 # https://openrouter.ai/api/v1/models et comparé à 7 autres modèles en conditions réelles
 # (docs/dashboard/chat.md, « Quel modèle sur OpenRouter ? ») : le plus fiable et le moins cher.
 # L'ancien « deepseek/deepseek-chat » (V3) annonçait des écritures jamais faites. Forme OpenCode « fournisseur/modèle »
-# (https://opencode.ai/docs/providers). Haiku 4.5 pour le cron (répétitif, contrat
+# (https://opencode.ai/docs/providers). Haiku 5.5 pour le cron (répétitif, contrat
 # vérifié par arc_index.py --validate), Sonnet 5.5 pour le chat.
 # Catalogue complet (source de vérité) : python3 scripts/arc_llm.py providers --json ; un test vérifie
 # que ces constantes y concordent (install.sh doit fonctionner sans python3).
@@ -131,7 +131,7 @@ LLM_OPENROUTER_MODEL="openrouter/deepseek/deepseek-v4.1-flash"
 # 19/19 contre 17/19 pour les alternatives — méthode et limites dans docs/choisir-son-ia.md#essai-gratuit.
 LLM_OPENROUTER_FREE_MODEL="openrouter/nvidia/nemotron-3-ultra-550b-a55b:free"
 LLM_ANTHROPIC_CHAT_MODEL="claude-sonnet-5-5"
-LLM_ANTHROPIC_SYNC_MODEL="claude-haiku-4-5"
+LLM_ANTHROPIC_SYNC_MODEL="claude-haiku-5-5"
 # Abonnements (--llm chatgpt|copilot, #266) : identifiants vérifiés dans models.dev (2026-10-15) et dans la
 # liste d'autorisation du plugin OAuth d'OpenCode v1.18.35 — PAS évalués sur un vrai forfait (approximation
 # du projet). Un test les compare au catalogue (scripts/arc_llm.py).

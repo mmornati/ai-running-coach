@@ -156,16 +156,16 @@ class TestOpencodeRunnerDryRun(InstallAsserts):
 
     def test_claude_api_mode_passes_model_and_json_output(self):
         with Sandbox() as sb:
-            _write_config(sb, '[sync]\nrunner = "claude"\nmodel = "claude-haiku-4-5"\n'
+            _write_config(sb, '[sync]\nrunner = "claude"\nmodel = "claude-haiku-5-5"\n'
                               'api_key_env = "ANTHROPIC_API_KEY"\n')
             proc = sb.script("daily-sync.sh", "--dry-run")
             self.assertSucceeded(proc)
             self.assertOutputContains(proc, "--output-format json")
-            self.assertOutputContains(proc, "--model claude-haiku-4-5")
+            self.assertOutputContains(proc, "--model claude-haiku-5-5")
 
     def test_claude_subscription_mode_is_unchanged(self):
         with Sandbox() as sb:
-            _write_config(sb, '[sync]\nrunner = "claude"\nmodel = "claude-haiku-4-5"\n')
+            _write_config(sb, '[sync]\nrunner = "claude"\nmodel = "claude-haiku-5-5"\n')
             proc = sb.script("daily-sync.sh", "--dry-run")
             self.assertSucceeded(proc)
             self.assertOutputContains(proc, "--output-format text")
@@ -315,7 +315,7 @@ class TestClaudeApiMode(InstallAsserts):
             f'cat "{out}"\nexit {rc}\n'))
 
     def _config(self, sb: Sandbox) -> None:
-        _write_config(sb, '[sync]\nrunner = "claude"\nmodel = "claude-haiku-4-5"\n'
+        _write_config(sb, '[sync]\nrunner = "claude"\nmodel = "claude-haiku-5-5"\n'
                           'api_key_env = "ANTHROPIC_API_KEY"\ndaily_budget_eur = 1.0\n'
                           '[notifications]\nprovider = "ntfy"\nntfy_topic = "t"\n')
         _write_llm_env(sb, "ANTHROPIC_API_KEY=sk-ant-SECRET\n")
@@ -330,7 +330,7 @@ class TestClaudeApiMode(InstallAsserts):
             self.assertTrue(any("À jour (claude)" in c for c in _curl_calls(sb)), _curl_calls(sb))
             argv = (sb.root / "claude-argv.txt").read_text()
             self.assertIn("--output-format json", argv)
-            self.assertIn("--model claude-haiku-4-5", argv)
+            self.assertIn("--model claude-haiku-5-5", argv)
             self.assertEqual((sb.root / "claude-key.txt").read_text(), "set")
             spend = float((sb.repo / f"logs/.sync-spend-{TODAY}").read_text())
             self.assertAlmostEqual(spend, 0.1 * 0.92, places=3)
@@ -423,7 +423,7 @@ class TestInstallLlm(InstallAsserts):
             self.assertEqual(self._get(sb, "chat", "backend"), "claude")
             self.assertEqual(self._get(sb, "chat", "model"), "claude-sonnet-5-5")
             self.assertEqual(self._get(sb, "sync", "runner"), "claude")
-            self.assertEqual(self._get(sb, "sync", "model"), "claude-haiku-4-5")
+            self.assertEqual(self._get(sb, "sync", "model"), "claude-haiku-5-5")
             self.assertEqual(self._get(sb, "sync", "api_key_env"), "ANTHROPIC_API_KEY")
             self.assertOutputContains(proc, "N'exportez PAS ANTHROPIC_API_KEY")
             self.assertOutputContains(proc, "DÉJÀ exporté")

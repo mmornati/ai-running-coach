@@ -163,7 +163,7 @@ CATALOG: List[Dict[str, Any]] = [
         "label": "Clé API Anthropic",
         "kind": "api_key",
         "chat_model": "claude-sonnet-5-5",
-        "sync_model": "claude-haiku-4-5",
+        "sync_model": "claude-haiku-5-5",
         "key_env": "ANTHROPIC_API_KEY",
         "monthly_cost": "facturé au jeton ; quelques euros par mois (approximation du projet)",
         "privacy": "API commerciale : politique de rétention d'Anthropic.",
