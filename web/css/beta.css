@@ -67,6 +67,7 @@
   & .brand { font: 700 1.05rem/1 var(--rk-cond); letter-spacing: 0.01em; text-transform: uppercase; }
   & .objective { gap: 0.7rem; }
   & .objective__count { font: 700 1.45rem/1 var(--rk-cond); letter-spacing: 0; }
+  & .objective__count.is-past { font-size: 1.1rem; color: #b8c4bd; }
   & .objective__text strong { font: 600 1.05rem/1.1 var(--rk-cond); letter-spacing: 0.01em; }
   & .icon-btn { width: 2.1rem; height: 2.1rem; }
 
@@ -323,8 +324,12 @@
   & .rk-finish { position: absolute; left: var(--x); top: 0; bottom: 0; width: 0; pointer-events: none; }
   & .rk-finish::before { content: ""; position: absolute; left: -1px; top: 0; bottom: 0; width: 2px; background: var(--ink); }
   & .rk-finish::after { content: ""; position: absolute; left: 1px; top: 0; width: 0.95rem; height: 0.7rem; background: conic-gradient(var(--ink) 25%, var(--surface) 0 50%, var(--ink) 0 75%, var(--surface) 0) 0 0 / 0.475rem 0.35rem; border: 1px solid var(--ink); box-sizing: border-box; }
-  & .rk-finish__label { position: absolute; top: 0.95rem; right: 0.4rem; text-align: right; font: 700 0.95rem/1.05 var(--rk-cond); letter-spacing: 0.02em; text-transform: uppercase; color: var(--ink); white-space: nowrap; }
-  & .rk-finish__label small { display: block; font-size: 0.82rem; font-weight: 500; color: var(--ink-soft); text-transform: none; letter-spacing: 0.02em; }
+  /* Nom de course borné : jamais plus large que la moitié du profil, coupé proprement. Côté
+     gauche du profil, l'étiquette passe à droite du mât pour rester dans la carte. */
+  & .rk-finish__label { position: absolute; top: 0.95rem; right: 0.4rem; width: max-content; max-width: min(22rem, 42vw); text-align: right; font: 700 0.95rem/1.05 var(--rk-cond); letter-spacing: 0.02em; text-transform: uppercase; color: var(--ink); }
+  & .rk-finish__name { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  & .rk-finish.is-left .rk-finish__label { right: auto; left: 1.4rem; text-align: left; }
+  & .rk-finish__label small { display: block; white-space: nowrap; font-size: 0.82rem; font-weight: 500; color: var(--ink-soft); text-transform: none; letter-spacing: 0.02em; }
 
   & .rk-profile__hits { position: absolute; inset: 0; z-index: 1; }
   & .rk-profile__hit { position: absolute; top: 0; bottom: 0; left: var(--a); width: var(--w); border-radius: 0.2rem; }
