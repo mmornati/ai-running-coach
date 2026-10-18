@@ -222,6 +222,26 @@ propre middleware : `authelia@docker`, ou un `basicAuth` défini dans la
 configuration dynamique de Traefik. Avec un point d'entrée HTTPS géré par Traefik,
 `TRAEFIK_ENTRYPOINT=websecure` (le nom habituel).
 
+## Images publiées (GHCR)
+
+L'image du tableau de bord est aussi construite par la CI et publiée sur GitHub Container
+Registry, pour `linux/amd64` et `linux/arm64` :
+`ghcr.io/mmornati/ai-running-coach-dashboard`. Le compose ci-dessus la construit encore
+localement ; l'image publiée prépare le passage à un simple `docker compose pull`.
+
+| Étiquette | Contenu |
+|---|---|
+| `:latest` | La plus haute release stable. Jamais la tête de `main`. |
+| `:X.Y.Z`, `:X.Y` | Une release (`:X.Y` suit son dernier correctif). |
+| `:X.Y.Z-rc.N` | Une pré-version : jamais `:latest` ni `:X.Y`. |
+| `:edge` | La tête de `main`, à chaque fusion. Pour tester avant une release. |
+| `:sha-<7>` | Un commit précis (toutes les images en portent une). |
+| `:branch-<nom>` | Une branche, publiée à la demande : Actions → *Publish images* → *Run workflow*. |
+
+Chaque image porte la révision construite (`org.opencontainers.image.revision`), la même
+que celle comparée par `scripts/update-docker.sh --check`, ainsi qu'une attestation de
+provenance et un SBOM.
+
 ## Ce que garantit le conteneur
 
 | Garantie | Comment |
