@@ -270,10 +270,11 @@ contrat » dans le menu). Pour tout remettre d'aplomb : [Migrer vos fichiers](mi
 - Lecture seule : il n'écrit que sa propre base, dans `.arc/`.
 - Une page tierce qui tenterait de l'atteindre en se faisant passer pour
   `localhost` est refusée (protection contre le *DNS rebinding*).
-- Vos données ne quittent pas la machine. Deux ressources viennent de l'extérieur :
-  les polices de caractères (Inter, Sora, et Barlow Condensed pour le design bêta),
-  depuis Google Fonts ; hors ligne, le
-  navigateur se rabat sur ses polices système. Et les tuiles du fond de carte de la
+- Vos données ne quittent pas la machine. Les polices de caractères (Inter, Sora, et
+  Barlow Condensed pour le design bêta) sont servies par le tableau de bord lui-même,
+  depuis `web/fonts/` (licence SIL OFL 1.1) : aucun appel à Google Fonts, et
+  l'application installée les garde hors ligne. Une seule ressource vient de
+  l'extérieur : les tuiles du fond de carte de la
   page séance (OpenTopoMap par défaut) : le serveur de tuiles voit la zone affichée,
   jamais la trace ni la séance. Pour n'en charger aucune, posez
   `map_tiles = ""` dans la section `[dashboard]` de `config/workspace.user.toml` et

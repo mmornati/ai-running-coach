@@ -7,6 +7,9 @@
 - Design bêta : opt-in. Toutes les règles de `css/beta.css` sont portées par
   `[data-design="roadbook"]` (sauf le lien d'essai), et `js/beta.js` n'injecte aucun
   attribut `style=` (la CSP `style-src 'self'` le bloquerait en silence).
+- Polices auto-hébergées : chaque fichier cité par `css/fonts.css` existe, est un woff2, fait
+  partie de la coque hors ligne, et sa licence OFL l'accompagne ; aucune page ne charge plus
+  Google Fonts (la CSP `font-src 'self'` le bloquerait).
 """
 
 from __future__ import annotations
@@ -118,6 +121,48 @@ class TestServiceWorker(unittest.TestCase):
         for js in sorted((WEB / "js").glob("*.js")):
             with self.subTest(script=js.name):
                 self.assertIn(f'"js/{js.name}"', shell, "nouveau script absent de la coque hors ligne")
+
+
+class TestSelfHostedFonts(unittest.TestCase):
+    def setUp(self):
+        self.css = (WEB / "css/fonts.css").read_text(encoding="utf-8")
+        self.shell = re.search(r"const SHELL = \[(.*?)\];", (WEB / "sw.js").read_text(encoding="utf-8"), re.S).group(1)
+
+    def font_files(self):
+        return re.findall(r'url\("\.\./(fonts/[^"]+)"\)', self.css)
+
+    def test_every_font_exists_and_is_in_the_shell(self):
+        files = self.font_files()
+        self.assertTrue(files, "css/fonts.css ne cite aucune police")
+        self.assertEqual(len(files), self.css.count("@font-face"))
+        self.assertIn('"css/fonts.css"', self.shell)
+        for path in files:
+            with self.subTest(font=path):
+                self.assertTrue(path.endswith(".woff2"))
+                self.assertEqual((WEB / path).read_bytes()[:4], b"wOF2", f"{path} absent ou pas un woff2")
+                self.assertIn(f'"{path}"', self.shell, "police absente de la coque hors ligne")
+
+    def test_every_shipped_font_is_declared(self):
+        declared = set(self.font_files())
+        for woff2 in sorted((WEB / "fonts").glob("*.woff2")):
+            with self.subTest(font=woff2.name):
+                self.assertIn(f"fonts/{woff2.name}", declared, "fichier de police jamais utilisé")
+
+    def test_families_used_by_the_css_and_licences(self):
+        for family, licence in (("Inter", "OFL-Inter.txt"), ("Sora", "OFL-Sora.txt"),
+                                ("Barlow Condensed", "OFL-BarlowCondensed.txt")):
+            with self.subTest(family=family):
+                self.assertIn(f'font-family: "{family}";', self.css)
+                self.assertIn("SIL OPEN FONT LICENSE", (WEB / "fonts" / licence).read_text(encoding="utf-8"))
+        self.assertEqual(self.css.count("font-display: swap;"), self.css.count("@font-face"))
+
+    def test_pages_load_local_fonts_only(self):
+        for name in PAGES:
+            html = (WEB / name).read_text(encoding="utf-8")
+            with self.subTest(page=name):
+                self.assertNotIn("fonts.googleapis.com", html)
+                self.assertNotIn("fonts.gstatic.com", html)
+                self.assertLess(html.index('href="css/fonts.css"'), html.index('href="css/app.css"'))
 
 
 class TestBetaDesignIsOptIn(unittest.TestCase):

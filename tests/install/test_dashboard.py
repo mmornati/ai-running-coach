@@ -92,7 +92,15 @@ class TestDashboardServer(InstallAsserts):
         status, body, headers = self.server.get("/")
         self.assertEqual(status, 200)
         self.assertIn(b"js/app.js", body)
-        self.assertIn("default-src 'self'", headers.get("Content-Security-Policy", ""))
+        csp = headers.get("Content-Security-Policy", "")
+        self.assertIn("default-src 'self'", csp)
+        # Polices servies par le tableau de bord lui-même (web/fonts/) : plus de Google Fonts.
+        self.assertIn("font-src 'self'", csp)
+        self.assertNotIn("fonts.g", csp)
+        status, body, headers = self.server.get("/fonts/barlow-condensed-latin-600.woff2")
+        self.assertEqual(status, 200)
+        self.assertEqual(headers.get("Content-Type"), "font/woff2")
+        self.assertEqual(body[:4], b"wOF2")
 
     def test_pwa_files_are_served(self):
         """PWA : manifeste au bon type, service worker à la racine (portée « / »), icônes."""

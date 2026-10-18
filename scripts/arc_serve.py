@@ -1763,8 +1763,8 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("X-Content-Type-Options", "nosniff")
         self.send_header("Referrer-Policy", "no-referrer")
         self.send_header("Content-Security-Policy",
-                         "default-src 'self'; style-src 'self' https://fonts.googleapis.com; "
-                         f"font-src https://fonts.gstatic.com; img-src 'self' data:{self.tile_src}; "
+                         "default-src 'self'; style-src 'self'; "
+                         f"font-src 'self'; img-src 'self' data:{self.tile_src}; "
                          "frame-ancestors 'none'; base-uri 'none'; form-action 'none'")
         self.end_headers()
         if self.command != "HEAD":
