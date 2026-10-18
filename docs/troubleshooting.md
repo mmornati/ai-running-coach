@@ -116,6 +116,22 @@ avec la commande de renouvellement quand l'échéance estimée approche.
   d'expiration est déjà partie plus tôt dans le même run, cette notification
   n'est pas doublée.
 
+### Synchronisation sur l'abonnement Claude : « You've hit your weekly limit »
+
+Avec `runner = "claude"` sans `[sync].api_key_env` (défaut), la synchronisation consomme votre forfait
+Claude. Quand il atteint sa limite, `claude -p` s'arrête (code 1, « You've hit your weekly limit · resets … »
+dans `logs/sync-AAAA-MM-JJ.log`) et la notification « ⏳ Sync Garmin — limite de l'abonnement Claude
+atteinte » part (une fois par jour au plus). Rien n'est cassé : le passage suivant réessaie, et la sync
+reprend quand la limite se renouvelle. Pour qu'elle ne dépende plus du forfait :
+
+```bash
+python3 scripts/arc_llm.py sync anthropic
+```
+
+Clé `ANTHROPIC_API_KEY` dans `~/.config/ai-running-coach/llm.env` d'abord, puis la sync passe sur l'API
+(facturée au jeton, plafonnée par `[sync].daily_budget_eur`) sans toucher au chat. Détails :
+[Changer l'IA de la synchronisation](choisir-son-ia.md#changer-lia-de-la-synchronisation).
+
 ### Synchronisation sur une API (OpenRouter, Anthropic)
 
 Quand `[sync].api_key_env` est défini, ces échecs ont **leur propre notification** — ils
@@ -125,7 +141,7 @@ ne sont jamais présentés comme un problème Garmin :
 |---|---|---|
 | `🔑 Sync Garmin — clé openrouter refusée` (ou `Anthropic`) | Le fournisseur renvoie 401 : clé invalide, révoquée ou mal copiée. | Éditez `~/.config/ai-running-coach/llm.env` (ligne `OPENROUTER_API_KEY=…`, mode 600), puis `python3 scripts/coach_doctor.py --check llm_config`. |
 | `💳 Sync Garmin — crédits … épuisés` | Le fournisseur renvoie 402 : plus de crédit. | Rechargez le compte du fournisseur. |
-| `🔑 Sync Garmin — clé API absente` | `[sync].api_key_env` est défini mais la variable est introuvable dans `llm.env` et l'environnement. | Ajoutez la ligne dans `llm.env` (`./install.sh --llm …` crée le fichier). |
+| `🔑 Sync Garmin — clé API absente` | `[sync].api_key_env` est défini mais la variable est introuvable dans `llm.env` et l'environnement. | Ajoutez la ligne dans `llm.env` (`./install.sh --llm …` crée le fichier), ou revenez à l'abonnement : `python3 scripts/arc_llm.py sync claude-subscription`. |
 | `💸 Sync Garmin suspendue — budget atteint` | Le cumul du jour (`logs/.sync-spend-AAAA-MM-JJ`) atteint `[sync].daily_budget_eur`. Le run est sauté, sans erreur. | Relancez demain, ou relevez `./install.sh --sync-budget EUR`. |
 | `⚠ hors contrat arc : …` (dans le résumé) | Un fichier écrit par le modèle pendant le run ne respecte pas le bloc `arc`. | Voir `logs/sync-AAAA-MM-JJ.log` ; changez de modèle (`[sync].model`) si cela se répète. |
 

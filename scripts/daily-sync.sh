@@ -592,6 +592,15 @@ record_spend() {
     log "Coût du run : ${cost_usd} USD — cumul du jour : $(spent_today_eur) EUR (plafond $DAILY_BUDGET_EUR EUR)"
 }
 
+# Runner claude sur ABONNEMENT (sans clé) arrêté par la limite du forfait. Texte réel observé
+# le 2026-10-18 dans le journal de sync (Claude Code 2.1.283, code 1) : « You've hit your weekly limit ·
+# resets 3pm (Europe/Paris) » (sortie standard ou d'erreur : l'appelant passe la sortie ET la fin du
+# journal du run). Le motif couvre aussi les limites de session (même tournure).
+claude_plan_limit_hit() {
+    [[ "$RUNNER" == "claude" && -z "$API_KEY_ENV" ]] || return 1
+    printf '%s' "$1" | grep -qiE "hit your .*limit"
+}
+
 # ---------------------------------------------------------------------------
 # Échec du FOURNISSEUR LLM (clé refusée, crédits épuisés) — jamais un 401 Garmin
 # ---------------------------------------------------------------------------
@@ -1469,6 +1478,16 @@ main() {
                 # l'agent) — on relaie sa ligne telle quelle plutôt que d'affirmer « 401 ».
                 notify "🔑 Authentification $SOURCE_LABEL — action requise" 5 "key,warning" \
                     "Synchronisation interrompue — ${AUTH_FAILURE_LINE#ERREUR : } Voir logs/sync-$(date +%F).log."
+            fi
+        elif claude_plan_limit_hit "$output"$'\n'"$(tail -n 20 "$LOG_FILE" 2>/dev/null)"; then
+            # Abonnement Claude à sa limite (« You've hit your weekly limit · resets … ») : pas une
+            # panne, et le mode watch repasserait en boucle — une notification par jour au plus.
+            local limit_marker
+            limit_marker="$LOG_DIR/.sync-plan-limit-notified-$(date +%F)"
+            if [[ ! -e "$limit_marker" ]]; then
+                notify "⏳ Sync $SOURCE_LABEL — limite de l'abonnement Claude atteinte" 4 "hourglass,warning" \
+                    "$( { printf '%s\n' "$output"; tail -n 20 "$LOG_FILE"; } 2>/dev/null | grep -m1 -iE 'hit your .*limit' | cut -c1-160) — le passage suivant réessaie. Pour ne plus dépendre du forfait : python3 scripts/arc_llm.py sync anthropic (clé API facturée au jeton, voir docs/choisir-son-ia.md)."
+                : > "$limit_marker"
             fi
         else
             notify "❌ Sync $SOURCE_LABEL échouée" 4 "warning" "Exécuteur $RUNNER, code $rc. Voir logs/sync-$(date +%F).log sur la machine coach."

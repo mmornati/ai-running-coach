@@ -371,7 +371,10 @@ sport (`icu_get_sport_settings`).
 `connect openrouter [--headless] [--json]` (OAuth PKCE, clé écrite dans `llm.env` en mode 600, jamais
 affichée). `./install.sh --llm openrouter --connect` le lance en interactif seulement (jamais en
 `--dry-run`, jamais sans terminal, jamais mémorisé pour `/update-coach`). Les agents ne l'appellent
-pas et la sync headless n'ouvre jamais de navigateur. Arbre de décision : `docs/choisir-son-ia.md`.
+pas et la sync headless n'ouvre jamais de navigateur. `arc_llm.py sync anthropic|openrouter|openrouter-free|openai|claude-subscription`
+(`scripts/arc_llm_sync.py`) change la **synchronisation seule** (`[sync]` : runner, model, base_url,
+api_key_env), sans toucher au chat ni réinstaller ; refus si la clé manque dans `llm.env` ; commande de
+l'athlète, jamais lancée par un agent. Arbre de décision : `docs/choisir-son-ia.md`.
 
 **Abonnements ChatGPT Plus/Pro et GitHub Copilot (#266).** `./install.sh --llm chatgpt|copilot` :
 backend/runner `opencode` sans clé (`api_key_env` vide), et **`[chat].opencode_data_dir` +

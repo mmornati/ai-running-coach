@@ -187,6 +187,52 @@ Pour qui a déjà une clé : `./install.sh --llm anthropic`, `--llm openai --mod
 `--llm openrouter` puis éditez `llm.env` (mode 600). Dans l'application macOS, c'est
 « J'ai déjà une clé ». Détails : [Le chat avec le coach](dashboard/chat.md#installer).
 
+## Changer l'IA de la synchronisation
+
+`./install.sh --llm …` règle le chat **et** la synchronisation. Pour ne changer **que** la
+synchronisation automatique (le chat reste tel quel), une commande suffit :
+
+```bash
+python3 scripts/arc_llm.py sync                      # sur quoi tourne la sync aujourd'hui
+python3 scripts/arc_llm.py sync anthropic            # Claude Code avec la clé API Anthropic
+```
+
+Cas typique : la sync tourne sur votre abonnement Claude et s'arrête quand le forfait atteint sa limite
+(« You've hit your weekly limit » dans `logs/sync-AAAA-MM-JJ.log`, notification « ⏳ limite de
+l'abonnement Claude atteinte »). Avec `sync anthropic`, elle garde le même exécuteur (`claude -p`, mêmes
+permissions, mêmes scripts : météo, ligne de dépense…) mais paie au jeton avec la clé de `llm.env`.
+
+| Commande | La synchronisation tourne sur | Clé (dans `llm.env`) |
+|---|---|---|
+| `sync anthropic [--model claude-…]` | `claude -p` + API Anthropic, modèle par défaut `claude-haiku-4-5` | `ANTHROPIC_API_KEY` |
+| `sync openrouter [--model …]` | `opencode` + OpenRouter | `OPENROUTER_API_KEY` |
+| `sync openrouter-free` | `opencode` + modèle gratuit `:free` ([limites](#essai-gratuit)) | `OPENROUTER_API_KEY` |
+| `sync openai --model … [--base-url URL]` | `opencode` + API compatible OpenAI | `OPENAI_API_KEY` |
+| `sync claude-subscription` | `claude -p` sur votre abonnement Claude (retour en arrière) | aucune |
+
+Ce que fait la commande :
+
+- elle n'écrit que `runner`, `model`, `base_url`, `api_key_env` (et vide `opencode_data_dir` s'il était
+  posé) dans la section `[sync]` de `config/workspace.user.toml`, et affiche chaque changement
+  « ancien → nouveau » avec la commande pour revenir. `mode`, `times`, le budget et le chat ne bougent pas ;
+- **aucune réinstallation** : `daily-sync.sh` relit `[sync]` à chaque passage (cron, launchd ou `watch`) ;
+  vérifiez avec `scripts/daily-sync.sh --dry-run` ;
+- elle **refuse** (rien n'est écrit) si la clé visée n'est pas dans `llm.env` : ajoutez d'abord la ligne
+  `ANTHROPIC_API_KEY=…` (mode 600), ou `python3 scripts/arc_llm.py connect openrouter` pour OpenRouter ;
+- elle signale le changement de facturation : abonnement → clé facturée au jeton, plafonnée par
+  `[sync].daily_budget_eur` (0,50 € par jour par défaut, `./install.sh --sync-budget EUR`).
+
+`--dry-run` montre les changements sans rien écrire ; `--json` rend un objet (jamais la valeur d'une clé).
+Le chat se règle à part (`[chat]`, [Le chat avec le coach](dashboard/chat.md)) : chat et synchronisation
+peuvent utiliser deux IA différentes. Les abonnements ChatGPT et Copilot gardent leur propre chemin
+(`./install.sh --llm chatgpt|copilot --sync-subscription`, voir [plus haut](#chatgpt-plus-ou-pro)).
+
+!!! warning "La clé Anthropic reste dans `llm.env`"
+    N'exportez pas `ANTHROPIC_API_KEY` dans votre shell : elle casse Remote Control. La sync la lit dans
+    `llm.env` et ne la donne qu'au process `claude -p` de chaque passage ; dans ce process, la clé passe
+    avant la connexion claude.ai (vérifié le 2026-10-18 avec Claude Code 2.1.283, qui l'annonce sur sa sortie
+    d'erreur).
+
 ## Gemini : attention
 
 La page officielle des quotas ([geminicli.com](https://geminicli.com/docs/resources/quota-and-pricing/))

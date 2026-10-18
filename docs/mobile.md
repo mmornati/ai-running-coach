@@ -383,6 +383,14 @@ peut tourner sur une API : `scripts/daily-sync.sh` a un troisième exécuteur, `
 ./install.sh --sync-budget 0.5                 # plafond quotidien (EUR) de la synchronisation
 ```
 
+Pour changer la synchronisation **seule**, sans toucher au chat ni relancer l'installation :
+
+```bash
+python3 scripts/arc_llm.py sync anthropic      # ou openrouter, openai --model …, claude-subscription
+```
+
+Voir [Changer l'IA de la synchronisation](choisir-son-ia.md#changer-lia-de-la-synchronisation).
+
 `--llm` écrit à la fois `[chat]` et `[sync]` de `config/workspace.user.toml`
 (voir [Configuration](configuration.md#le-chat-avec-le-coach-chat)). Une valeur déjà
 posée qui diffère est **remplacée avec un avertissement** « ancien → nouveau » et la

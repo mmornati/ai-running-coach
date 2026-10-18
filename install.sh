@@ -295,6 +295,8 @@ API n'est jamais écrite dans la config : ~/.config/ai-running-coach/llm.env
 ATTENTION : n'exportez PAS ANTHROPIC_API_KEY dans votre shell ou votre profil :
 cela empêche Remote Control de fonctionner (docs/mobile.md). Le chat et la sync
 la lisent dans llm.env et ne la passent qu'à leur propre process.
+Pour changer la SYNCHRONISATION SEULE (chat intact, sans relancer install.sh) :
+python3 scripts/arc_llm.py sync anthropic|openrouter|openai|claude-subscription.
 
 --connect (avec --llm openrouter) lance « scripts/arc_llm.py connect openrouter » : le navigateur
 s'ouvre, vous autorisez le coach, la clé est écrite dans llm.env (mode 600) sans que vous la

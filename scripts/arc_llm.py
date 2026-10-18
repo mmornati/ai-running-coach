@@ -28,6 +28,11 @@ Module partagé (stdlib seule, Python 3.9 : l'application macOS peut l'appeler a
       fournisseur (clé valide, crédit, quota gratuit). Réseau SEULEMENT avec --probe. Jamais une
       valeur de secret en sortie. Code 1 si au moins un point est en erreur. Voir arc_llm_check.py.
 
+  sync [anthropic|openrouter|openrouter-free|openai|claude-subscription|status] [--model M] [--dry-run] [--json]
+      Change l'IA de la synchronisation automatique SEULE (section [sync]), sans toucher au chat ni
+      relancer l'installation : le passage suivant l'utilise déjà. Refuse (code 3) si la clé visée
+      est absente de llm.env. Sans argument : état actuel. Voir arc_llm_sync.py.
+
   with-lock --data-dir DIR [--timeout S] -- COMMANDE…
       Exécute COMMANDE sous le verrou du magasin (voir « Concurrence »). Code 75 si le verrou n'a
       pas pu être pris dans le délai. Utilisé par daily-sync.sh.
@@ -1218,6 +1223,9 @@ def build_parser() -> argparse.ArgumentParser:
     sd.add_argument("--probe", action="store_true", help="appels réseau minimaux vers les fournisseurs (sans, rien n'est contacté)")
     sd.add_argument("--workspace", help="workspace (défaut : ARC_WORKSPACE ou celui du moteur)")
     sd.set_defaults(func=cmd_check)
+
+    import arc_llm_sync
+    arc_llm_sync.add_parser(sub)
 
     sa = sub.add_parser("auth-status", help="le jeton d'abonnement est-il présent ? (jamais sa valeur)")
     sa.add_argument("provider", choices=("chatgpt", "copilot"))
