@@ -105,7 +105,7 @@ Le tableau de bord reste **en lecture seule** et ne voit jamais la clé API : c'
 | Coût indicatif (mois type, ci-dessous) | ~30 € (Sonnet, estimation) | **< 1 €** (DeepSeek v4.1 Flash, mesuré) |
 
 Pourquoi Sonnet et pas Haiku côté Claude : c'est dans le chat que se prennent les décisions
-délicates (garde-fous médicaux, modification du plan, écriture Garmin). Haiku 4.5 reste le
+délicates (garde-fous médicaux, modification du plan, écriture Garmin). Haiku 5.5 est le
 défaut de la [synchronisation automatique](../mobile.md#modeles-par-defaut), tâche
 répétitive et très cadrée.
 
@@ -182,7 +182,7 @@ moins).
 | `deepseek/deepseek-v4.1-flash` | **≈ 0,80 €** | ≈ 0,45 € |
 | `deepseek/deepseek-v4-pro` | ≈ 6 € | ≈ 1,60 € |
 | `anthropic/claude-haiku-4.5` (via OpenRouter) | ≈ 15 € | ≈ 4,80 € |
-| `claude-sonnet-5-5` (API Anthropic) | ≈ 30 € — estimation | sync sur Haiku 4.5 conseillée |
+| `claude-sonnet-5-5` (API Anthropic) | ≈ 30 € — estimation | sync sur Haiku 5.5 conseillée |
 
 Estimations à partir des coûts mesurés, à ± 50 % selon la longueur des échanges ; Sonnet n'a
 pas été mesuré (environ deux fois le prix de Haiku par jeton). Les plafonds par défaut — 2 €/jour

@@ -204,7 +204,7 @@ permissions, mêmes scripts : météo, ligne de dépense…) mais paie au jeton 
 
 | Commande | La synchronisation tourne sur | Clé (dans `llm.env`) |
 |---|---|---|
-| `sync anthropic [--model claude-…]` | `claude -p` + API Anthropic, modèle par défaut `claude-haiku-4-5` | `ANTHROPIC_API_KEY` |
+| `sync anthropic [--model claude-…]` | `claude -p` + API Anthropic, modèle par défaut `claude-haiku-5-5` | `ANTHROPIC_API_KEY` |
 | `sync openrouter [--model …]` | `opencode` + OpenRouter | `OPENROUTER_API_KEY` |
 | `sync openrouter-free` | `opencode` + modèle gratuit `:free` ([limites](#essai-gratuit)) | `OPENROUTER_API_KEY` |
 | `sync openai --model … [--base-url URL]` | `opencode` + API compatible OpenAI | `OPENAI_API_KEY` |

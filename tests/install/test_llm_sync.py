@@ -79,7 +79,7 @@ class SyncSwitchCase(unittest.TestCase):
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
         sync = self.sync_section()
         self.assertEqual(sync["api_key_env"], "ANTHROPIC_API_KEY")
-        self.assertEqual(sync["model"], "claude-haiku-4-5")
+        self.assertEqual(sync["model"], "claude-haiku-5-5")
         self.assertEqual(sync["mode"], "watch")
         text = self.user.read_text()
         self.assertIn("# mes réglages", text)
@@ -111,7 +111,7 @@ class SyncSwitchCase(unittest.TestCase):
         sync = self.sync_section()
         self.assertEqual(sync["api_key_env"], "")
         self.assertEqual(sync["model"], "")
-        self.assertIn("sync anthropic --model claude-haiku-4-5", r.stdout)
+        self.assertIn("sync anthropic --model claude-haiku-5-5", r.stdout)
 
     def test_openrouter_and_usage_errors(self):
         self.add_key("OPENROUTER_API_KEY")
@@ -120,7 +120,7 @@ class SyncSwitchCase(unittest.TestCase):
         sync = self.sync_section()
         self.assertEqual((sync["runner"], sync["model"]), ("opencode", "openrouter/mistralai/mistral-small"))
         self.assertEqual(self.run_sync("openai").returncode, 2)
-        self.assertEqual(self.run_sync("anthropic", "--model", "anthropic/claude-haiku-4-5").returncode, 2)
+        self.assertEqual(self.run_sync("anthropic", "--model", "anthropic/claude-haiku-5-5").returncode, 2)
         self.assertEqual(self.run_sync("openrouter-free", "--model", "deepseek/x").returncode, 2)
 
     def test_daily_sync_dry_run_uses_api_key(self):
@@ -132,7 +132,7 @@ class SyncSwitchCase(unittest.TestCase):
                            text=True, env=env, timeout=60)
         out = r.stdout + r.stderr
         self.assertIn("claude -p", out)
-        self.assertIn("--output-format json --model claude-haiku-4-5", out)
+        self.assertIn("--output-format json --model claude-haiku-5-5", out)
         self.assertIn("variable réservée au process du runner : ANTHROPIC_API_KEY", out)
         self.assertNotIn(SECRET, out)
 

@@ -72,7 +72,7 @@ daily_budget_eur = 0.5             # enforced only when the runner reports cost
 
 Default models when `install.sh --llm` writes them: `--llm openrouter` → chat + sync
 `openrouter/deepseek/deepseek-v4.1-flash` (exact id verified at implementation, keep one
-constant); `--llm anthropic` → chat `claude-sonnet-5-5`, sync `claude-haiku-4-5`.
+constant); `--llm anthropic` → chat `claude-sonnet-5-5`, sync `claude-haiku-5-5`.
 
 ## HTTP API (chat service, all under `/api/chat`)
 
