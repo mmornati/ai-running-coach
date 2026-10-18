@@ -155,7 +155,10 @@ export function ribbon(block, summary, { selected = null } = {}) {
 
   const weeks = blockWeeks.map((w) => ({ ...w }));
   const mondayOf = (iso) => F.addDays(iso, -((F.parseDate(iso).getDay() + 6) % 7));
-  if (raceDate) {
+  // Course passée (objectif terminé, pas encore remplacé) : on ne prolonge pas le profil vers
+  // elle ; elle n'apparaît que si elle tombe dans les semaines du bloc.
+  const racePast = Boolean(raceDate) && raceDate < today;
+  if (raceDate && !racePast) {
     const raceMonday = mondayOf(raceDate);
     let next = weeks.length ? F.addDays(weeks[weeks.length - 1].week_start, 7) : mondayOf(today);
     while (next <= raceMonday) {
@@ -168,7 +171,10 @@ export function ribbon(block, summary, { selected = null } = {}) {
   if (!weeks.length) return { html: "", mount() {} };
 
   const start = weeks[0].week_start;
-  const end = raceDate ? F.addDays(raceDate, 1) : F.addDays(weeks[weeks.length - 1].week_start, 7);
+  const lastEnd = F.addDays(weeks[weeks.length - 1].week_start, 7);
+  const end = raceDate && !racePast && F.addDays(raceDate, 1) > lastEnd ? F.addDays(raceDate, 1) : lastEnd;
+  const raceShown = Boolean(raceDate) && raceDate >= start && raceDate < end;
+  const todayShown = today >= start && today < end;
   const span = Math.max(1, F.daysBetween(start, end));
   const X = (iso) => Math.max(0, Math.min(1000, (F.daysBetween(start, iso) / span) * 1000));
   const H = 100, TOP = 12;
@@ -213,7 +219,7 @@ export function ribbon(block, summary, { selected = null } = {}) {
     if (d.endsWith("-01")) months.push({ x: X(d), label: `1${NB}${MONTH.format(F.parseDate(d))}` });
   }
   const todayX = X(today);
-  const raceX = raceDate ? X(raceDate) : null;
+  const raceX = raceShown ? X(raceDate) : null;
   const sel = selected ? weeks.find((w) => w.week_start === selected) : null;
   const pct = (x) => `${(x / 10).toFixed(2)}%`;
 
@@ -230,7 +236,7 @@ export function ribbon(block, summary, { selected = null } = {}) {
   };
   const current = weeks.findIndex((w) => w.week_start <= today && today < F.addDays(w.week_start, 7));
   const initial = sel ? describe(sel, weeks.indexOf(sel)) : current >= 0 ? describe(weeks[current], current)
-    : raceDate ? `${raceName} le ${F.dateLong(raceDate)}` : "";
+    : today >= end ? `Bloc terminé le ${F.dateLong(F.addDays(end, -1))}` : raceShown ? `${raceName} le ${F.dateLong(raceDate)}` : "";
 
   const html = `<figure class="rk-profile" aria-labelledby="rk-profile-cap">
     <div class="rk-profile__plot">
@@ -244,8 +250,8 @@ export function ribbon(block, summary, { selected = null } = {}) {
         ${weeks.slice(1).map((w) => `<line class="rk-profile__tick" x1="${X(w.week_start).toFixed(1)}" y1="${H - 4}" x2="${X(w.week_start).toFixed(1)}" y2="${H}"/>`).join("")}
         <line class="rk-profile__base" x1="0" y1="${H - 0.5}" x2="1000" y2="${H - 0.5}"/>
       </svg>
-      <span class="rk-pin${todayX < 110 ? " is-start" : todayX > 890 ? " is-end" : ""}" data-vars="--x:${pct(todayX)}"><span class="rk-pin__label">Vous êtes ici</span></span>
-      ${raceX !== null ? `<span class="rk-finish" data-vars="--x:${pct(raceX)}"><span class="rk-finish__label">${F.esc(raceName)}<small>${F.dayShort(raceDate)}</small></span></span>` : ""}
+      ${todayShown ? `<span class="rk-pin${todayX < 110 ? " is-start" : todayX > 890 ? " is-end" : ""}" data-vars="--x:${pct(todayX)}"><span class="rk-pin__label">Vous êtes ici</span></span>` : ""}
+      ${raceX !== null ? `<span class="rk-finish${raceX < 550 ? " is-left" : ""}" data-vars="--x:${pct(raceX)}"><span class="rk-finish__label" title="${F.esc(raceName)}"><span class="rk-finish__name">${F.esc(raceName)}</span><small>${racePast ? "couru le " : ""}${F.dayShort(raceDate)}</small></span></span>` : ""}
       <div class="rk-profile__hits">${weeks.map((w, i) => `<a class="rk-profile__hit${w.week_start === selected ? " is-selected" : ""}" data-vars="--a:${pct(X(w.week_start))};--w:${pct(X(F.addDays(w.week_start, 7)) - X(w.week_start))}" href="#/semaine?debut=${w.week_start}" data-i="${i}" aria-label="${F.esc(describe(w, i))}"></a>`).join("")}</div>
     </div>
     ${months.length ? `<ol class="rk-profile__months" aria-hidden="true">${months.map((m) => `<li class="rk-profile__month" data-vars="--x:${pct(m.x)}">${m.label}</li>`).join("")}</ol>` : ""}
