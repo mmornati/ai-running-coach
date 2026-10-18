@@ -94,6 +94,17 @@ class TestDashboardServer(InstallAsserts):
         self.assertIn(b"js/app.js", body)
         self.assertIn("default-src 'self'", headers.get("Content-Security-Policy", ""))
 
+    def test_pwa_files_are_served(self):
+        """PWA : manifeste au bon type, service worker à la racine (portée « / »), icônes."""
+        status, body, headers = self.server.get("/manifest.webmanifest")
+        self.assertEqual(status, 200)
+        self.assertTrue(headers.get("Content-Type", "").startswith("application/manifest+json"))
+        self.assertEqual(json.loads(body)["display"], "standalone")
+        status, _, headers = self.server.get("/sw.js")
+        self.assertEqual(status, 200)
+        self.assertTrue(headers.get("Content-Type", "").startswith("text/javascript"))
+        self.assertEqual(self.server.get("/icons/icon-192.png")[0], 200)
+
     def test_rejects_foreign_host(self):
         """Protection contre le DNS rebinding : un Host étranger est refusé."""
         self.assertEqual(self.server.get("/api/summary", host="evil.example")[0], 403)

@@ -57,5 +57,6 @@ logs/
 /.arc/
 # Cache local du hook de design (impeccable)
 /.impeccable/hook.cache.json
+/.impeccable/review/
 # Rendus vidéo (scripts/render_video.py)
 /dist/

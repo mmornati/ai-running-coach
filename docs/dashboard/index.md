@@ -192,6 +192,47 @@ et le volume se compte en kilomètres ; avec `[health].morning_check = "off"`, l
 Santé l'indique au lieu d'afficher des trous ; sans nutritionniste dans le staff, la
 vue Nutrition n'apparaît pas ; en unités impériales, tout s'affiche en miles.
 
+## Le design bêta « roadbook »
+
+Un nouveau design est en test, à côté de l'actuel : la saison s'y lit comme le roadbook
+d'une course. En haut, le **profil du bloc** : une colonne par semaine jusqu'au jour de
+course, la hauteur pour le volume prévu, le plein pour le réalisé, les phases en
+sections et un repère « vous êtes ici ». Survolez ou parcourez-le au clavier : chaque
+semaine se raconte, un clic l'ouvre. Dessous, le jour se lit comme une feuille de
+ravito : le verdict du coach en grand, la séance remplacée barrée, puis le bilan du
+matin en lignes de barrière (valeur, référence, état en forme et en mot, jamais la
+couleur seule).
+
+- **Essayer** : le lien « Essayer le design bêta » de l'en-tête, ou ajoutez
+  `?design=beta` à l'adresse.
+- **Revenir** : « Revenir au design actuel », en bas du menu des sections, ou
+  `?design=classic`.
+- Le choix est mémorisé **par navigateur** : votre téléphone et votre ordinateur
+  peuvent avoir chacun le leur.
+
+Les vues Aujourd'hui et Semaine sont redessinées ; les autres gardent leur contenu
+et prennent l'habillage du roadbook. Sur téléphone, une barre en bas donne
+Aujourd'hui, Semaine, Santé, Coach (ou Course, sans le chat) et toutes les sections ;
+sur ordinateur, un rail les range par groupes.
+
+## Installer l'application (PWA)
+
+Le tableau de bord s'installe comme une application : icône sur l'écran d'accueil,
+plein écran, sans barre d'adresse. Dans le design actuel comme dans le bêta.
+
+- **Sur l'ordinateur** : `scripts/dashboard.sh`, puis l'icône d'installation de la
+  barre d'adresse (Chrome, Edge) ou *Fichier → Ajouter au Dock* (Safari).
+- **Sur le téléphone** : il faut l'adresse HTTPS du
+  [déploiement derrière un reverse proxy](docker.md) — le serveur local n'écoute que
+  sur `127.0.0.1`, que le téléphone n'atteint pas. Puis *Partager → Sur l'écran
+  d'accueil* (iPhone) ou *Installer l'application* (Android).
+
+Hors ligne, l'application s'ouvre encore, mais sans données : le cache ne garde que
+la **coque** (pages, styles, scripts, icônes). Les données de santé et de séances ne
+sont **jamais** mises en cache par le navigateur ; elles sont relues au serveur à
+chaque ouverture. Derrière Authentik, une page de connexion n'est jamais gardée à la
+place de l'application.
+
 ## D'où viennent les chiffres
 
 Les agents ouvrent chaque fichier par un petit bloc de données — le
@@ -230,7 +271,8 @@ contrat » dans le menu). Pour tout remettre d'aplomb : [Migrer vos fichiers](mi
 - Une page tierce qui tenterait de l'atteindre en se faisant passer pour
   `localhost` est refusée (protection contre le *DNS rebinding*).
 - Vos données ne quittent pas la machine. Deux ressources viennent de l'extérieur :
-  les polices de caractères (Inter, Sora), depuis Google Fonts ; hors ligne, le
+  les polices de caractères (Inter, Sora, et Barlow Condensed pour le design bêta),
+  depuis Google Fonts ; hors ligne, le
   navigateur se rabat sur ses polices système. Et les tuiles du fond de carte de la
   page séance (OpenTopoMap par défaut) : le serveur de tuiles voit la zone affichée,
   jamais la trace ni la séance. Pour n'en charger aucune, posez
