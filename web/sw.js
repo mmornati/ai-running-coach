@@ -1,15 +1,18 @@
 // Service worker du tableau de bord (PWA) : la COQUE de l'application, jamais les données.
 //
 // - `/api/…` et `/media/…` (santé, séances, photos) ne passent jamais par le cache : réseau seul.
-// - Coque (pages, CSS, JS, icônes) : réseau d'abord, toujours ; le cache ne sert que hors ligne.
+// - Coque (pages, CSS, JS, polices, icônes) : réseau d'abord, toujours ; le cache ne sert que hors ligne.
 //   Une mise à jour du moteur est donc visible au rechargement suivant, sans version à gérer.
 // - Derrière un proxy qui authentifie (Authentik, déploiement serveur) : une réponse redirigée,
 //   opaque ou en erreur n'est jamais mise en cache — on ne garde pas une page de connexion
 //   à la place de l'application.
-const CACHE = "arc-shell-v1";
+const CACHE = "arc-shell-v2";
 const SHELL = [
   "./", "index.html", "chat.html", "manifest.webmanifest", "favicon.svg",
-  "css/app.css", "css/chat.css", "css/beta.css",
+  "css/app.css", "css/chat.css", "css/beta.css", "css/fonts.css",
+  "fonts/inter-latin-var.woff2", "fonts/sora-latin-var.woff2",
+  "fonts/barlow-condensed-latin-500.woff2", "fonts/barlow-condensed-latin-600.woff2",
+  "fonts/barlow-condensed-latin-700.woff2",
   "js/early.js", "js/app.js", "js/beta.js", "js/chat.js", "js/chart.js", "js/format.js",
   "js/map.js", "js/nav.js", "js/roadbook.js",
   "icons/icon-192.png", "icons/icon-512.png", "icons/icon-maskable-512.png", "icons/apple-touch-icon.png",
