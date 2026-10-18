@@ -2,15 +2,16 @@ name: Tag a release
 
 # Lancé à la main (onglet Actions → « Tag a release » → Run workflow) : calcule
 # la prochaine version SemVer à partir du dernier tag `v*`, pose un tag annoté
-# sur `main` et le pousse, puis enchaîne sur la release et son DMG macOS.
+# sur `main` et le pousse, puis enchaîne sur la release, l'image Docker du
+# tableau de bord (publish.yml) et le DMG macOS.
 #
 # Pourquoi l'appel direct (`uses: ./.github/workflows/release.yml`) plutôt que
 # de compter sur le déclencheur `push: tags` : un tag poussé avec le
 # GITHUB_TOKEN ne déclenche AUCUN autre workflow (garde-fou anti-boucle de
-# GitHub). Sans ces appels, la release et son DMG ne seraient jamais créés. Un
-# tag poussé à la main (`git push origin v1.2.3`) déclenche la release (release.yml)
-# mais PAS le DMG : celui-ci est opt-in (champ « build_dmg », ou Application macOS
-# en déclenchement manuel avec le tag).
+# GitHub). Sans ces appels, la release, son image et son DMG ne seraient jamais
+# créés. Un tag poussé à la main (`git push origin v1.2.3`) déclenche la release
+# (release.yml) et l'image (publish.yml) mais PAS le DMG : celui-ci est opt-in
+# (champ « build_dmg », ou Application macOS en déclenchement manuel avec le tag).
 on:
   workflow_dispatch:
     inputs:
@@ -29,8 +30,9 @@ on:
         default: false
 
 permissions:
-  # Les trois jobs créent le tag, la release ou son DMG. Un workflow réutilisable
-  # ne peut pas élever les droits reçus de son appelant.
+  # Les jobs créent le tag, la release ou son DMG. Un workflow réutilisable ne
+  # peut pas élever les droits reçus de son appelant : le job `docker` déclare
+  # lui-même `packages: write` pour publish.yml.
   contents: write
 
 concurrency:
@@ -113,6 +115,17 @@ jobs:
     permissions:
       contents: write
     uses: ./.github/workflows/release.yml
+    with:
+      tag: ${{ needs.tag.outputs.tag }}
+
+  docker:
+    # Images Docker de la release (:X.Y.Z, :X.Y, :latest) : publish.yml ne voit pas
+    # le tag poussé par le GITHUB_TOKEN, il est donc appelé directement.
+    needs: tag
+    permissions:
+      contents: read
+      packages: write
+    uses: ./.github/workflows/publish.yml
     with:
       tag: ${{ needs.tag.outputs.tag }}
 

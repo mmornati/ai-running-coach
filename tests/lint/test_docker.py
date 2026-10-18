@@ -8,8 +8,11 @@ d'authentification obligatoire, utilisateur non root, image réduite au moteur.
 
 from __future__ import annotations
 
+import os
 import re
 import subprocess
+import tempfile
+import textwrap
 import unittest
 from pathlib import Path
 
@@ -17,6 +20,9 @@ REPO = Path(__file__).resolve().parent.parent.parent
 DOCKERFILE = REPO / "Dockerfile"
 DEPLOY = REPO / "deploy/dashboard"
 COMPOSE_FILES = sorted(DEPLOY.glob("compose*.yaml"))
+WORKFLOWS = REPO / ".github/workflows"
+PUBLISH_YML = WORKFLOWS / "publish.yml"
+IMAGE = "ghcr.io/mmornati/ai-running-coach-dashboard"
 
 VARIABLE = re.compile(r"\$\{([A-Z_][A-Z0-9_]*)")
 
@@ -97,6 +103,112 @@ class TestCompose(unittest.TestCase):
         """Le .env réel (nom public, chemins) ne part jamais dans le dépôt public."""
         proc = subprocess.run(["git", "check-ignore", "-q", str(DEPLOY / ".env")], cwd=str(REPO))
         self.assertEqual(proc.returncode, 0, "deploy/dashboard/.env n'est pas ignoré par git")
+
+
+def _step_run_block(text: str, step_name: str) -> str:
+    """Le bloc `run: |` (désindenté) de l'étape `- name: <step_name>`."""
+    match = re.search(rf"- name: {re.escape(step_name)}\n(?:.*\n)*?(?P<indent> +)run: \|\n", text)
+    if not match:
+        raise AssertionError(f"étape « {step_name} » sans bloc run: | dans publish.yml")
+    body = []
+    for line in text[match.end():].splitlines():
+        if line.strip() and len(line) - len(line.lstrip()) <= len(match.group("indent")):
+            break
+        body.append(line)
+    return textwrap.dedent("\n".join(body))
+
+
+class TestPublishWorkflow(unittest.TestCase):
+    """L'image publiée sur GHCR : jamais :latest depuis main, et chaque release a la sienne."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.text = PUBLISH_YML.read_text(encoding="utf-8")
+        cls.tags_script = _step_run_block(cls.text, "Calcul des étiquettes")
+        cls.repo = tempfile.TemporaryDirectory()
+        # Hors de la configuration de l'utilisateur (signature des tags, hooks…).
+        env = dict(os.environ, GIT_CONFIG_GLOBAL=os.devnull, GIT_CONFIG_NOSYSTEM="1")
+        git = ["git", "-C", cls.repo.name, "-c", "user.name=t", "-c", "user.email=t@t"]
+        subprocess.run(git[:3] + ["init", "-q"], check=True, env=env)
+        subprocess.run(git + ["commit", "-q", "--allow-empty", "-m", "init"], check=True, env=env)
+        for tag in ("v1.3.0", "v1.4.0", "v1.5.0-rc.1"):
+            subprocess.run(git + ["tag", tag], check=True, env=env)
+        cls.sha = subprocess.run(git[:3] + ["rev-parse", "HEAD"], check=True, env=env,
+                                 capture_output=True, text=True).stdout.strip()
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.repo.cleanup()
+
+    def tags_for(self, *, input_tag="", ref_type="branch", ref_name="main"):
+        """Exécute l'étape de calcul comme Actions : rend (code, étiquettes, sorties)."""
+        with tempfile.NamedTemporaryFile("r", suffix=".out") as out:
+            env = dict(os.environ, IMAGE=IMAGE, INPUT_TAG=input_tag, REF_TYPE=ref_type,
+                       REF_NAME=ref_name, GITHUB_OUTPUT=out.name)
+            proc = subprocess.run(["bash", "-c", self.tags_script], cwd=self.repo.name, env=env,
+                                  capture_output=True, text=True)
+            raw = out.read()
+        outputs = dict(re.findall(r"^(revision|version)=(.*)$", raw, re.MULTILINE))
+        tags = re.search(r"^tags<<EOF\n(.*?)^EOF$", raw, re.MULTILINE | re.DOTALL)
+        tags = {t.split(":", 1)[1] for t in tags.group(1).split()} if tags else set()
+        return proc.returncode, tags, outputs
+
+    def test_main_is_edge_never_latest(self):
+        code, tags, out = self.tags_for()
+        self.assertEqual(code, 0)
+        self.assertEqual(tags, {"edge", f"sha-{self.sha[:7]}"})
+        self.assertEqual(out["revision"], self.sha)
+
+    def test_highest_release_moves_latest(self):
+        for kwargs in ({"input_tag": "v1.4.0"}, {"ref_type": "tag", "ref_name": "v1.4.0"}):
+            with self.subTest(**kwargs):
+                code, tags, out = self.tags_for(**kwargs)
+                self.assertEqual(code, 0)
+                self.assertEqual(tags, {"1.4.0", "1.4", "latest", f"sha-{self.sha[:7]}"})
+                self.assertEqual(out["version"], "1.4.0")
+
+    def test_older_release_keeps_latest(self):
+        code, tags, _ = self.tags_for(input_tag="v1.3.0")
+        self.assertEqual(code, 0)
+        self.assertEqual(tags, {"1.3.0", "1.3", f"sha-{self.sha[:7]}"})
+
+    def test_prerelease_is_never_latest(self):
+        code, tags, _ = self.tags_for(input_tag="v1.5.0-rc.1")
+        self.assertEqual(code, 0)
+        self.assertEqual(tags, {"1.5.0-rc.1", f"sha-{self.sha[:7]}"})
+
+    def test_manual_branch_build_gets_a_valid_docker_tag(self):
+        code, tags, _ = self.tags_for(ref_name="claude/Feature_x+y")
+        self.assertEqual(code, 0)
+        self.assertEqual(tags, {"branch-claude-feature_x-y", f"sha-{self.sha[:7]}"})
+
+    def test_invalid_release_tag_fails(self):
+        code, tags, _ = self.tags_for(input_tag="v1.4")
+        self.assertNotEqual(code, 0)
+        self.assertFalse(tags)
+
+    def test_image_name_matches_dockerfile_title(self):
+        self.assertIn(f"IMAGE: {IMAGE}", self.text)
+        dockerfile = DOCKERFILE.read_text(encoding="utf-8")
+        self.assertIn(f'org.opencontainers.image.title="{IMAGE.rsplit("/", 1)[1]}"', dockerfile)
+
+    def test_revision_label_is_the_built_commit(self):
+        """Lue par scripts/update-docker.sh --check : le commit construit, pas github.sha
+        (appelée depuis tag.yml, github.sha précède le commit de VERSION)."""
+        self.assertIn("org.opencontainers.image.revision=${{ steps.meta.outputs.revision }}", self.text)
+        self.assertIn("ARC_REVISION=${{ steps.meta.outputs.revision }}", self.text)
+        self.assertIsNone(re.search(r"\$\{\{\s*github\.sha", self.text),
+                          "publish.yml : github.sha n'est pas le commit construit")
+
+    def test_tag_workflow_calls_publish_with_packages_write(self):
+        """Un tag poussé par le GITHUB_TOKEN ne déclenche pas `push: tags` : sans cet appel,
+        aucune release n'aurait d'image."""
+        tag_yml = (WORKFLOWS / "tag.yml").read_text(encoding="utf-8")
+        job = re.search(r"^  docker:\n((?:    .*\n|\n)+)", tag_yml, re.MULTILINE)
+        self.assertTrue(job, "tag.yml : job `docker` introuvable")
+        self.assertIn("uses: ./.github/workflows/publish.yml", job.group(1))
+        self.assertIn("packages: write", job.group(1))
+        self.assertIn("tag: ${{ needs.tag.outputs.tag }}", job.group(1))
 
 
 if __name__ == "__main__":
