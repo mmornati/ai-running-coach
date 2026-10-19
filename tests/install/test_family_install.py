@@ -263,25 +263,47 @@ class TestSyncWorkspaceLock(InstallAsserts):
                            "--section", "sync", "--key", "mode", "--default", "schedule"], ARC_WORKSPACE=str(alice))
             self.assertSucceeded(free)
 
-    def test_shell_helpers_refuse_a_foreign_workspace_and_a_missing_lock_target(self):
+    def test_shell_lib_refuses_a_missing_lock_target_and_never_falls_back(self):
         with Sandbox() as sb:
             alice, bob = _ws(sb, "alice"), _ws(sb, "bob")
             lib = sb.repo / "scripts/lib/config.sh"
-            foreign = sb.run(["bash", "-c", f'source "{lib}"; arc_assert_workspace "{bob}"; echo OK'],
-                             ARC_LOCK_WORKSPACE="1", ARC_WORKSPACE=str(alice))
-            self.assertFailed(foreign, "workspace refusé")
-            own = sb.run(["bash", "-c", f'source "{lib}"; arc_assert_workspace "{alice}"; echo OK'],
+            own = sb.run(["bash", "-c", f'source "{lib}"; echo "$ARC_WORKSPACE"'],
                          ARC_LOCK_WORKSPACE="1", ARC_WORKSPACE=str(alice))
             self.assertSucceeded(own)
-            self.assertIn("OK", own.stdout)
+            self.assertIn(str(alice), own.stdout)
             # Verrou sans workspace valide : jamais de repli sur le pointeur ni sur le moteur.
             (sb.home / ".config/ai-running-coach").mkdir(parents=True, exist_ok=True)
             (sb.home / ".config/ai-running-coach/workspace").write_text(f"{bob}\n")
             fallback = sb.run(["bash", "-c", f'source "{lib}"; echo "$ARC_WORKSPACE"'], ARC_LOCK_WORKSPACE="1")
             self.assertFailed(fallback, "ARC_LOCK_WORKSPACE=1 sans ARC_WORKSPACE valide")
-            unlocked = sb.run(["bash", "-c", f'source "{lib}"; arc_assert_workspace "{bob}"; echo "$ARC_WORKSPACE"'])
+            unlocked = sb.run(["bash", "-c", f'source "{lib}"; echo "$ARC_WORKSPACE"'])
             self.assertSucceeded(unlocked)
             self.assertIn(str(bob), unlocked.stdout)
+
+    def test_unused_shell_assert_helper_stays_removed(self):
+        """Défaut verrouillé : `arc_assert_workspace` était définie sans aucun appelant (aucun script shell
+        n'accepte d'option --workspace) — code mort qui donnait un faux sentiment de couverture."""
+        with Sandbox() as sb:
+            self.assertNotIn("arc_assert_workspace", (sb.repo / "scripts/lib/config.sh").read_text(encoding="utf-8"))
+
+    def test_daily_sync_exports_an_absolute_workspace_even_when_given_a_relative_one(self):
+        """Défaut verrouillé : un ARC_WORKSPACE relatif exporté tel quel désignait, après un `cd` du runner,
+        un autre dossier pour le verrou que pour lib/config.sh."""
+        with Sandbox() as sb:
+            ws = _ws(sb, "alice")
+            fake_bin = sb.root / "fake-bin"
+            fake_bin.mkdir()
+            dump = sb.root / "seen.txt"
+            claude = fake_bin / "claude"
+            claude.write_text(f'#!/usr/bin/env bash\nprintf "%s|%s" "$ARC_WORKSPACE" "$ARC_LOCK_WORKSPACE" > "{dump}"\n')
+            claude.chmod(0o755)
+            proc = sb.run([str(sb.repo / "scripts/daily-sync.sh")], cwd=sb.root, ARC_WORKSPACE="alice",
+                          PATH=f"{fake_bin}:{sb.env()['PATH']}")
+            self.assertTrue(dump.exists(), proc.stdout + proc.stderr)
+            seen_ws, lock = dump.read_text().split("|")
+            self.assertTrue(seen_ws.startswith("/"), seen_ws)
+            self.assertEqual(Path(seen_ws).resolve(), ws.resolve())
+            self.assertEqual(lock, "1")
 
 
 class TestDoctorReportsTheTokensSource(InstallAsserts):
@@ -301,3 +323,212 @@ class TestDoctorReportsTheTokensSource(InstallAsserts):
             ws = _ws(sb, "solo")
             human = sb.script("coach_doctor.py", "--workspace", str(ws), ARC_FAKE_UNAME="Linux")
             self.assertNotIn("Jetons Garmin :", human.stdout)
+
+
+class TestMigrationAndMovedWorkspaceCron(InstallAsserts):
+    """Défaut verrouillé : l'appartenance d'une ligne était une égalité de chaînes avec $WORKSPACE_ROOT. Sur main,
+    le marqueur remplaçait tout : « Migrer un workspace existant » (installation fusionnée puis --workspace),
+    un workspace déplacé ou une autre graphie du chemin laissaient l'ancienne ligne et doublaient la sync."""
+
+    def _install(self, sb, *args):
+        return sb.install("--no-auth", "--daily-sync", *args, ARC_FAKE_UNAME="Linux")
+
+    def _sync_lines(self, sb):
+        return [l for l in sb.crontab().splitlines() if LEGACY_MARKER in l]
+
+    def test_merged_install_then_workspace_replaces_the_engine_root_lines(self):
+        with Sandbox() as sb:
+            alice = _ws(sb, "alice")
+            self.assertSucceeded(self._install(sb))                                    # fusionnée : racine du moteur
+            self.assertEqual(len([l for l in self._sync_lines(sb) if f'ARC_WORKSPACE="{sb.repo}"' in l]), 2)
+            proc = self._install(sb, "--workspace", str(alice))
+            self.assertSucceeded(proc)
+            self.assertEqual(len(self._sync_lines(sb)), 2, sb.crontab())
+            self.assertEqual(len(_lines(sb, alice)), 2, sb.crontab())
+            self.assertNotIn(f'ARC_WORKSPACE="{sb.repo}"', sb.crontab())
+            self.assertTrue(all(l.endswith(" " + LEGACY_MARKER) for l in self._sync_lines(sb)), sb.crontab())
+            self.assertOutputContains(proc, "périmée")
+
+    def test_moved_workspace_replaces_the_line_of_the_old_path(self):
+        with Sandbox() as sb:
+            alice = _ws(sb, "alice")
+            self.assertSucceeded(self._install(sb, "--workspace", str(alice)))
+            moved = sb.root / "alice-moved"
+            alice.rename(moved)
+            self.assertSucceeded(self._install(sb, "--workspace", str(moved)))
+            self.assertEqual(len(self._sync_lines(sb)), 2, sb.crontab())
+            self.assertEqual(len(_lines(sb, moved)), 2, sb.crontab())
+            self.assertNotIn(f'ARC_WORKSPACE="{alice}"', sb.crontab())
+
+    def test_symlinked_spelling_of_the_same_workspace_is_not_a_second_workspace(self):
+        with Sandbox() as sb:
+            alice = _ws(sb, "alice")
+            link = sb.root / "alice-link"
+            link.symlink_to(alice)
+            self.assertSucceeded(self._install(sb, "--workspace", str(alice)))
+            self.assertSucceeded(self._install(sb, "--workspace", str(link)))
+            self.assertEqual(len(self._sync_lines(sb)), 2, sb.crontab())
+
+    def test_another_existing_workspace_is_still_kept(self):
+        with Sandbox() as sb:
+            alice, bob = _ws(sb, "alice"), _ws(sb, "bob")
+            self.assertSucceeded(self._install(sb, "--workspace", str(alice)))
+            self.assertSucceeded(self._install(sb, "--workspace", str(bob)))
+            self.assertEqual(len(_lines(sb, alice)), 2, sb.crontab())
+            self.assertEqual(len(_lines(sb, bob)), 2, sb.crontab())
+
+
+class TestMigrationAndLegacyPlistLaunchd(InstallAsserts):
+    def _install(self, sb, *args):
+        return sb.install("--no-auth", "--daily-sync", *args, ARC_FAKE_UNAME="Darwin")
+
+    def _plists(self, sb):
+        return sorted((sb.home / "Library/LaunchAgents").glob("com.ai-running-coach.daily-sync*.plist"))
+
+    def test_merged_install_then_workspace_leaves_a_single_plist(self):
+        """Défaut verrouillé : le plist de la racine du moteur restait, le nouveau workspace recevait un second label."""
+        with Sandbox() as sb:
+            alice = _ws(sb, "alice")
+            self.assertSucceeded(self._install(sb))
+            self.assertSucceeded(self._install(sb, "--workspace", str(alice)))
+            plists = self._plists(sb)
+            self.assertEqual([p.name for p in plists], ["com.ai-running-coach.daily-sync.plist"], plists)
+            self.assertIn(f"<key>ARC_WORKSPACE</key><string>{alice}</string>", plists[0].read_text())
+
+    def test_plist_without_arc_workspace_counts_as_this_workspaces(self):
+        """Défaut verrouillé : un plist écrit avant ARC_WORKSPACE (pas d'EnvironmentVariables) n'était à personne
+        -> second LaunchAgent -> double sync. Même règle que la ligne cron sans ARC_WORKSPACE."""
+        with Sandbox() as sb:
+            alice = _ws(sb, "alice")
+            legacy = sb.home / LEGACY_PLIST
+            legacy.parent.mkdir(parents=True)
+            legacy.write_text('<?xml version="1.0"?><plist version="1.0"><dict><key>Label</key>'
+                              '<string>com.ai-running-coach.daily-sync</string></dict></plist>\n')
+            self.assertSucceeded(self._install(sb, "--workspace", str(alice)))
+            plists = self._plists(sb)
+            self.assertEqual(len(plists), 1, plists)
+            self.assertIn(f"<key>ARC_WORKSPACE</key><string>{alice}</string>", plists[0].read_text())
+
+    def test_moved_workspace_retires_the_stale_suffixed_plist(self):
+        with Sandbox() as sb:
+            alice, bob = _ws(sb, "alice"), _ws(sb, "bob")
+            self.assertSucceeded(self._install(sb, "--workspace", str(alice)))
+            self.assertSucceeded(self._install(sb, "--workspace", str(bob)))
+            moved = sb.root / "bob-moved"
+            bob.rename(moved)
+            self.assertSucceeded(self._install(sb, "--workspace", str(moved)))
+            plists = self._plists(sb)
+            self.assertEqual(len(plists), 2, plists)
+            texts = "".join(p.read_text() for p in plists)
+            self.assertIn(f"<string>{moved}</string>", texts)
+            self.assertNotIn(f"<string>{bob}</string>", texts)
+            self.assertIn(f"<string>{alice}</string>", texts)
+
+
+class TestGarminTokensWithLeanproxy(InstallAsserts):
+    def test_explicit_combination_is_refused(self):
+        """Défaut verrouillé : accepté mais cassé (la passerelle lit ~/.garminconnect, valeur non écrite)."""
+        with Sandbox() as sb:
+            ws = _ws(sb, "alice")
+            self.assertFailed(sb.install("--workspace", str(ws), "--garmin-tokens", str(sb.root / "t"),
+                                         "--use-leanproxy", "--no-auth"),
+                              "incompatibles avec le mode passerelle")
+
+    def test_remembered_tokens_then_leanproxy_is_refused(self):
+        with Sandbox() as sb:
+            ws = _ws(sb, "alice")
+            self.assertSucceeded(sb.install("--workspace", str(ws), "--garmin-tokens", str(sb.root / "t"), "--no-auth"))
+            self.assertFailed(sb.install("--workspace", str(ws), "--use-leanproxy", "--no-auth"),
+                              "incompatibles avec le mode passerelle")
+
+
+class TestDoctorDailySyncOwnership(InstallAsserts):
+    """Défaut verrouillé : repli « rien ne correspond et au plus un ARC_WORKSPACE déclaré -> tout est à nous » :
+    `--check daily_sync_scheduled --workspace B` répondait OK alors que seul A était planifié."""
+
+    def _check(self, sb, ws, uname):
+        proc = sb.script("coach_doctor.py", "--check", "daily_sync_scheduled", "--json", "--workspace", str(ws),
+                         ARC_FAKE_UNAME=uname)
+        return json.loads(proc.stdout)["checks"][0]["status"]
+
+    def test_cron_only_a_scheduled(self):
+        with Sandbox() as sb:
+            alice, bob = _ws(sb, "alice"), _ws(sb, "bob")
+            sb.set_crontab(f'0 6 * * * ARC_WORKSPACE="{alice}" "/e/daily-sync.sh" >/dev/null 2>&1 {LEGACY_MARKER}\n')
+            self.assertEqual(self._check(sb, alice, "Linux"), "ok")
+            self.assertNotEqual(self._check(sb, bob, "Linux"), "ok")
+
+    def test_cron_vanished_declared_directory_is_tolerated(self):
+        with Sandbox() as sb:
+            bob = _ws(sb, "bob")
+            sb.set_crontab(f'0 6 * * * ARC_WORKSPACE="{sb.root}/gone" "/e/daily-sync.sh" >/dev/null 2>&1 {LEGACY_MARKER}\n')
+            self.assertEqual(self._check(sb, bob, "Linux"), "ok")
+
+    def test_launchd_only_a_scheduled(self):
+        with Sandbox() as sb:
+            alice, bob = _ws(sb, "alice"), _ws(sb, "bob")
+            plist = sb.home / LEGACY_PLIST
+            plist.parent.mkdir(parents=True)
+            plist.write_text(f"<plist><dict><key>EnvironmentVariables</key><dict><key>ARC_WORKSPACE</key>"
+                             f"<string>{alice}</string></dict></dict></plist>")
+            self.assertEqual(self._check(sb, alice, "Darwin"), "ok")
+            self.assertNotEqual(self._check(sb, bob, "Darwin"), "ok")
+
+
+class TestCredentialDirsSurviveASourceRoundTrip(InstallAsserts):
+    """Défaut verrouillé : le dossier propre n'était mémorisé que par l'entrée garmin du .mcp.json, perdue
+    avec garmin -> intervals -> garmin."""
+
+    def test_garmin_tokens(self):
+        with Sandbox() as sb:
+            ws, tokens = _ws(sb, "alice"), sb.root / "tokens-alice"
+            self.assertSucceeded(sb.install("--workspace", str(ws), "--garmin-tokens", str(tokens), "--no-auth"))
+            self.assertSucceeded(sb.install("--workspace", str(ws), "--source", "intervals", "--no-auth"))
+            self.assertSucceeded(sb.install("--workspace", str(ws), "--source", "garmin", "--no-auth"))
+            self.assertEqual(_mcp(ws)["mcpServers"]["garmin"]["env"]["GARMINTOKENS"], str(tokens))
+            toml = (ws / "config/workspace.user.toml").read_text()
+            self.assertIn("[credentials]", toml)
+            self.assertIn('source = "garmin"', toml)          # les autres clés de l'utilisateur sont intactes
+
+    def test_intervals_dir(self):
+        with Sandbox() as sb:
+            ws, icu = _ws(sb, "alice"), sb.root / "icu-alice"
+            self.assertSucceeded(sb.install("--workspace", str(ws), "--source", "intervals",
+                                            "--intervals-dir", str(icu), "--no-auth"))
+            self.assertSucceeded(sb.install("--workspace", str(ws), "--source", "garmin", "--no-auth"))
+            self.assertSucceeded(sb.install("--workspace", str(ws), "--source", "intervals", "--no-auth"))
+            self.assertEqual(_mcp(ws)["mcpServers"]["intervals"]["command"], f"{icu}/run.sh")
+
+    def test_default_install_writes_no_credentials_section(self):
+        with Sandbox() as sb:
+            ws = _ws(sb, "solo")
+            self.assertSucceeded(sb.install("--workspace", str(ws), "--no-auth"))
+            self.assertNotIn("[credentials]", (ws / "config/workspace.user.toml").read_text())
+
+
+class TestOpencodeProjectConfig(InstallAsserts):
+    """Défaut verrouillé : l'avertissement affirmait « OpenCode lit le .mcp.json du projet » ; OpenCode lit
+    opencode.json (global fusionné avec celui de la racine du projet), si bien que l'entrée propre au workspace
+    n'existait nulle part."""
+
+    def test_project_level_opencode_json_carries_the_workspace_tokens_and_keeps_user_keys(self):
+        with Sandbox() as sb:
+            ws, tokens = _ws(sb, "alice"), sb.root / "tokens-alice"
+            (ws / "opencode.json").write_text(json.dumps({"theme": "mine", "mcp": {"other": {"type": "local"}}}))
+            global_cfg = sb.home / ".config/opencode/opencode.json"
+            self.assertSucceeded(sb.install("--workspace", str(ws), "--garmin-tokens", str(tokens), "--no-auth"))
+            cfg = json.loads((ws / "opencode.json").read_text())
+            self.assertEqual(cfg["theme"], "mine")
+            self.assertIn("other", cfg["mcp"])
+            self.assertEqual(cfg["mcp"]["garmin"]["environment"]["GARMINTOKENS"], str(tokens))
+            self.assertFalse(global_cfg.exists())
+            self.assertIn("/opencode.json", (ws / ".gitignore").read_text().splitlines())
+
+    def test_default_install_writes_no_project_opencode_json(self):
+        with Sandbox() as sb:
+            ws = _ws(sb, "solo")
+            self.assertSucceeded(sb.install("--workspace", str(ws), "--no-auth"))
+            self.assertFalse((ws / "opencode.json").exists())
+            self.assertNotIn("opencode.json", (ws / ".gitignore").read_text())
+            global_env = json.loads((sb.home / ".config/opencode/opencode.json").read_text())["mcp"]["garmin"]["environment"]
+            self.assertEqual(list(global_env), ["GARMIN_ENABLED_TOOLS"])

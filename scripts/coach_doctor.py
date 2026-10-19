@@ -182,47 +182,44 @@ _PLIST_WORKSPACE_RE = re.compile(r"<key>ARC_WORKSPACE</key>\s*<string>([^<]*)</s
 
 
 def _same_workspace(declared: str, workspace: Optional[Path]) -> bool:
-    """`declared` (ARC_WORKSPACE d'une ligne cron / d'un plist) désigne-t-il `workspace` ? Sans workspace
-    à comparer, ou sans valeur déclarée (très anciennes installations), oui : comportement d'avant #127."""
+    """`declared` (ARC_WORKSPACE d'une ligne cron / d'un plist) désigne-t-il `workspace` ?
+
+    Oui sans workspace à comparer, sans valeur déclarée (très anciennes installations) ou si le dossier
+    déclaré n'existe plus (workspace déplacé : `install.sh` le remplace, comme `workspace_claim`) —
+    comportement d'avant #127. Un AUTRE dossier existant n'est jamais le sien : planifier A ne dit rien
+    de B."""
     if workspace is None or not declared:
         return True
     try:
-        return Path(declared).expanduser().resolve() == Path(workspace).resolve()
+        theirs = Path(declared).expanduser()
+        if not theirs.is_dir():
+            return True
+        return theirs.resolve() == Path(workspace).resolve()
     except OSError:
         return declared == str(workspace)
 
 
 def _own_plists(home: Path, workspace: Optional[Path]) -> list:
-    """Plists daily-sync (label historique ou suffixé) de CE workspace. Une seule planification connue,
-    même pour un autre chemin (doctor lancé sans --workspace, lien symbolique…) : réputée la sienne,
-    comme avant #127 ; avec plusieurs workspaces planifiés, seul le chemin exact compte."""
-    found, declared = [], []
+    """Plists daily-sync (label historique ou suffixé) de CE workspace."""
+    found = []
     for plist in sorted((home / "Library" / "LaunchAgents").glob(LAUNCHD_PLIST_GLOB)):
         if not plist.is_file():
             continue
         match = _PLIST_WORKSPACE_RE.search(plist.read_text(encoding="utf-8", errors="replace"))
-        value = match.group(1) if match else ""
-        declared.append((plist, value))
-        if _same_workspace(value, workspace):
+        if _same_workspace(match.group(1) if match else "", workspace):
             found.append(plist)
-    if not found and len({v for _, v in declared}) <= 1:
-        return [p for p, _ in declared]
     return found
 
 
 def _own_cron_lines(crontab: str, workspace: Optional[Path]) -> list:
     """Lignes cron daily-sync (marqueur historique ou suffixé) de CE workspace — mêmes règles que `_own_plists`."""
-    ours, declared = [], []
+    ours = []
     for line in crontab.splitlines():
         if CRON_MARKER not in line:
             continue
         match = _ARC_WORKSPACE_RE.search(line)
-        value = match.group(1) if match else ""
-        declared.append((line, value))
-        if _same_workspace(value, workspace):
+        if _same_workspace(match.group(1) if match else "", workspace):
             ours.append(line)
-    if not ours and len({v for _, v in declared}) <= 1:
-        return [line for line, _ in declared]
     return ours
 
 # Pin du serveur garmin-mcp : DOIT rester identique à `GARMIN_MCP_REF` dans install.sh (et à l'ARG

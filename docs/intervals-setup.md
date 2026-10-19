@@ -291,8 +291,11 @@ Pour donner à un workspace ses propres identifiants :
 se lance depuis ce dossier. L'option est **mémorisée** : un `./install.sh` sans elle conserve le
 dossier (lu dans le `.mcp.json`), et une installation qui ne l'utilise pas ne change pas. Le
 téléchargement de FIT (`download_fit.py`) et l'indice d'authentification de `daily-sync.sh`
-retrouvent ce dossier par le même `.mcp.json`. La configuration OpenCode globale n'est pas
-modifiée dans ce cas. Valable seulement avec `--source intervals`.
+retrouvent ce dossier par le même `.mcp.json`. Il est aussi noté dans `[credentials].intervals_dir`
+de `config/workspace.user.toml` (propre au workspace), donc retrouvé après un passage par une autre
+source. La configuration OpenCode globale n'est pas modifiée dans ce cas : l'entrée `intervals` va dans
+`<workspace>/opencode.json` (OpenCode interactif lit `opencode.json`, pas `.mcp.json`). Valable
+seulement avec `--source intervals`.
 
 ## Passer d'une source à l'autre
 

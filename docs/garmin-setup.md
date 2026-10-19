@@ -394,9 +394,17 @@ L'option écrit `GARMINTOKENS` dans l'`env` du serveur `garmin` du `.mcp.json` d
 de ses configurations Cursor, Gemini et Windsurf), crée le dossier en `700` et lance
 `garmin-mcp-auth --token-path` sur ce dossier. Elle est **mémorisée** : un `./install.sh` sans
 l'option conserve `GARMINTOKENS` (jamais retiré), et une installation qui n'utilise pas l'option
-ne change pas. La configuration OpenCode globale (`~/.config/opencode/opencode.json`) est
-partagée par tous les workspaces : elle n'est pas modifiée dans ce cas, OpenCode lit le
-`.mcp.json` du projet. Valable seulement avec `--source garmin` (hors mode passerelle).
+ne change pas. Le dossier est aussi noté dans `[credentials].garmin_tokens` de
+`config/workspace.user.toml` (propre au workspace) : il survit à un passage par une autre source
+(`--source intervals` puis retour à `garmin`). La configuration OpenCode globale
+(`~/.config/opencode/opencode.json`) est partagée par tous les workspaces : elle n'est pas modifiée
+dans ce cas. OpenCode interactif ne lit pas le `.mcp.json` mais `opencode.json`, fusionné avec celui
+de la racine du projet ([documentation OpenCode](https://opencode.ai/docs/config/)) : l'installateur
+écrit donc l'entrée `garmin` dans `<workspace>/opencode.json` (fusionnée sans toucher à vos autres
+clés, ajoutée au `.gitignore` du workspace). Valable seulement avec `--source garmin`, et
+**incompatible avec le mode passerelle** (`--use-leanproxy`, y compris mémorisé) : la passerelle
+lance `garmin-mcp` sans cet environnement et lit `~/.garminconnect` ; l'installation s'arrête avec un
+message plutôt que d'écrire une configuration sans effet.
 
 Le même dossier est ensuite utilisé partout, dans l'ordre : `--tokens-dir` d'un script, puis
 `GARMINTOKENS` du `.mcp.json` du workspace, puis `GARMINTOKENS` de l'environnement, puis
