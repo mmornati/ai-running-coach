@@ -58,9 +58,16 @@ DENIED = "Accès refusé."
 # Source de confiance (partagé avec arc_chat : même comportement, un seul code)
 # ---------------------------------------------------------------------------
 
+def _normalized(ip: str):
+    """Adresse IP analysée ; un pair IPv4-mappé (`::ffff:a.b.c.d`, socket double pile) devient son IPv4."""
+    addr = ipaddress.ip_address(str(ip).split("%", 1)[0])
+    mapped = getattr(addr, "ipv4_mapped", None)
+    return mapped if mapped is not None else addr
+
+
 def is_loopback(ip: str) -> bool:
     try:
-        return ipaddress.ip_address(ip).is_loopback
+        return _normalized(ip).is_loopback
     except ValueError:
         return False
 
@@ -92,7 +99,7 @@ def ip_in(ip: str, entries) -> bool:
     """Vrai si `ip` est l'une des adresses, l'un des réseaux (CIDR) ou l'un des noms d'hôte
     (résolus par le DNS, voir `resolve_host`) de `entries`."""
     try:
-        addr = ipaddress.ip_address(ip)
+        addr = _normalized(ip)
     except ValueError:
         return False
     for entry in entries:

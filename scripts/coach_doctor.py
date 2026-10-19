@@ -27,11 +27,12 @@ Usage :
     scripts/coach_doctor.py --probe-mcp     # handshake MCP réel — CONTACTE Garmin Connect
     scripts/coach_doctor.py --probe-llm     # connexion IA : appel réseau minimal vers le fournisseur (#268)
     scripts/coach_doctor.py --no-probe-ow   # Open Wearables : configuration seule, aucun appel réseau
-    scripts/coach_doctor.py --family PATH   # registre du mode famille (défaut : ARC_FAMILY, puis
-                                            # ~/.config/ai-running-coach/family.toml — voir ci-dessous)
+    scripts/coach_doctor.py --family PATH   # registre du mode famille (ou ARC_FAMILY — voir ci-dessous)
 
-MODE FAMILLE (#127, docs/family.md) — quand un registre `family.toml` existe (ou est donné par `--family`),
-quatre vérifications SUPPLÉMENTAIRES sont ajoutées à la fin (jamais sans registre, jamais avec `--check`) :
+MODE FAMILLE (#127, docs/family.md) — quand un registre `family.toml` est donné EXPLICITEMENT (`--family` ou
+`ARC_FAMILY`), quatre vérifications SUPPLÉMENTAIRES sont ajoutées à la fin (jamais sans registre explicite, jamais
+avec `--check`, jamais quand `ARC_LOCK_WORKSPACE=1` : un doctor lancé depuis le chat d'un membre ne doit pas
+décrire les autres membres) :
 `family_registry` (registre valide, `error` sinon), `family_tokens` (deux membres `garmin` qui partagent le
 même dossier de jetons → `warning`), `family_ntfy` (même topic ntfy → `warning`) et `family_sync` (membre sans
 synchronisation planifiée détectée → `info`). Schéma JSON inchangé : seules des entrées `checks` s'ajoutent.
@@ -2041,10 +2042,11 @@ def resolve_tokens_dir(raw: Optional[str], workspace: Path) -> Path:
 def _family_registry(raw: Optional[str]):
     """(chemin, registre|None, erreur|None) ; `(None, None, None)` si aucun registre n'est à vérifier."""
     import arc_family
-    explicit = raw or os.environ.get(arc_family.FAMILY_ENV)
-    path = arc_family.resolve_registry_path(raw)
-    if not explicit and not path.is_file():
+    if os.environ.get("ARC_LOCK_WORKSPACE") == "1":      # session confinée à UN workspace (chat d'un membre, sync)
         return None, None, None
+    if not (raw or os.environ.get(arc_family.FAMILY_ENV)):    # jamais de découverte implicite du registre
+        return None, None, None
+    path = arc_family.resolve_registry_path(raw)
     try:
         return path, arc_family.load_registry(path), None
     except ConfigError as exc:
@@ -2097,7 +2099,8 @@ def check_family(registry_path: Optional[Path], registry, error: Optional[str], 
         checks.append(build_check(
             "family_tokens", "warning",
             f"Dossier de jetons Garmin partagé entre membres ({detail}) : une connexion écrase l'autre.",
-            fix="./install.sh --workspace <dossier> --garmin-tokens <dossier de jetons propre au membre>",
+            fix="un dossier de jetons propre à chaque membre (install.sh --garmin-tokens <dossier>, livré par la "
+                "PR « identifiants et planification par workspace » de #127 ; sinon GARMINTOKENS dans le .mcp.json)",
             shared=[{"members": ids} for ids in shared.values()]))
     else:
         checks.append(build_check("family_tokens", "ok", "Aucun dossier de jetons Garmin partagé entre membres.",
@@ -2164,8 +2167,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--probe-ow", action="store_true", help=argparse.SUPPRESS)  # ancien nom : sans effet
     parser.add_argument(
         "--family", metavar="REGISTRE",
-        help="registre du mode famille (#127) : ajoute les vérifications family_* (défaut : ARC_FAMILY, puis "
-             "~/.config/ai-running-coach/family.toml s'il existe ; jamais avec --check)",
+        help="registre du mode famille (#127) : ajoute les vérifications family_* (ou ARC_FAMILY ; jamais avec "
+             "--check, ni sous ARC_LOCK_WORKSPACE=1 qui interdit de décrire les autres membres)",
     )
     return parser
 

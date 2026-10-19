@@ -303,6 +303,9 @@ class ClaudeBackend(ChatBackend):
             "CLAUDE_CODE_OAUTH_TOKEN": "",
             "ANTHROPIC_AUTH_TOKEN": "",
         }
+        # Mode famille : le SDK fusionne ce dictionnaire PAR-DESSUS os.environ ; on impose donc le workspace du
+        # membre (ARC_WORKSPACE, ARC_LOCK_WORKSPACE) et on vide les variables héritées d'un autre membre.
+        env.update(self.family_overlay())
 
         async def pre_tool_use(input_data: dict, tool_use_id: Optional[str], _context: Any) -> dict:
             name = input_data.get("tool_name", "")

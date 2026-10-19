@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import threading
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
@@ -151,6 +152,33 @@ class ChatBackend(ABC):
     def __init__(self, workspace: Path, config: dict):
         self.workspace = workspace
         self.config = config
+
+    @property
+    def family_member(self) -> str:
+        """Identifiant du membre en mode famille (#127, posé par `arc_chat.family_member_config`), sinon ""."""
+        return str(self.config.get("family_member") or "")
+
+    def family_overlay(self) -> dict:
+        """Variables d'environnement à IMPOSER aux processus enfants (outils shell, serveurs MCP) en mode famille.
+
+        Sans cela, les scripts autorisés (`arc_index.py`, `arc_log.py`…) retrouveraient le workspace d'un AUTRE
+        membre par `$ARC_WORKSPACE` hérité du conteneur ou par le pointeur `~/.config/ai-running-coach/workspace`.
+        Une valeur vide retire la variable (jetons Garmin : ceux du membre viennent du `.mcp.json` de SON workspace).
+        Vide hors mode famille : comportement historique."""
+        if not self.family_member:
+            return {}
+        return {"ARC_WORKSPACE": str(self.workspace), "ARC_LOCK_WORKSPACE": "1",
+                "GARMINTOKENS": "", "GARMIN_TOKENS_DIR": ""}
+
+    def child_env(self, base: Optional[dict] = None) -> dict:
+        """Environnement complet d'un processus enfant : `base` (défaut `os.environ`) + `family_overlay()`."""
+        env = dict(os.environ if base is None else base)
+        for key, value in self.family_overlay().items():
+            if value == "":
+                env.pop(key, None)
+            else:
+                env[key] = value
+        return env
 
     @abstractmethod
     def run_turn(self, ctx: TurnContext, user_message: str) -> None:

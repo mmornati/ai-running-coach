@@ -13,6 +13,16 @@ seulement les siennes.
 Sans `--family`, **rien ne change** : le mode mono-athlète reste le comportement par
 défaut, octet pour octet.
 
+!!! warning "Prérequis : identifiants et planification par workspace (même épopée #127)"
+    L'aiguillage du tableau de bord et du chat (cette page) est indépendant, mais **faire vivre
+    plusieurs membres suppose la PR « identifiants et planification par workspace »** de l'épopée #127 :
+    `install.sh --garmin-tokens DIR` et `--intervals-dir DIR`, un marqueur cron (et un label launchd) **par
+    workspace**, et `ARC_LOCK_WORKSPACE=1` qui confine les scripts à leur workspace. **Tant qu'elle n'est pas
+    fusionnée** : lancer `install.sh --daily-sync` pour un second workspace **remplace** la ligne cron du
+    premier, et les jetons Garmin comme les identifiants intervals.icu restent **partagés** (un seul
+    `~/.garminconnect`) ; la vérification `family_tokens` de `coach_doctor` le signale. Ne mettez qu'un
+    seul athlète à synchroniser automatiquement avant cette PR.
+
 ## La décision : une application, une clé API, un dossier par membre
 
 - **Une clé API Anthropic du foyer** alimente le chat et les synchronisations de tout le
@@ -28,7 +38,16 @@ défaut, octet pour octet.
   déjà confiné à un workspace : tout ce qui n'est pas explicitement permis est refusé,
   les chemins sont résolus (liens suivis) puis vérifiés **à l'intérieur** du workspace,
   le shell est limité à une liste blanche de scripts sans `--workspace`, et les motifs de
-  secrets (`.garminconnect`, `*.env`, `*.token`…) sont bloqués.
+  secrets (`.garminconnect`, `*.env`, `*.token`…) sont bloqués. **Cette liste blanche ne suffit pas
+  seule** : un script autorisé (`arc_index.py`, `arc_log.py`…) retrouve son workspace par `$ARC_WORKSPACE`
+  ou par le pointeur `~/.config/ai-running-coach/workspace`, que le conteneur du chat hérite d'un autre
+  membre. En mode famille, chaque backend (Claude, OpenCode, mock) lance donc ses processus enfants avec
+  un environnement **explicite** : `ARC_WORKSPACE=<workspace du membre>`, `ARC_LOCK_WORKSPACE=1`, et
+  `GARMINTOKENS` / `GARMIN_TOKENS_DIR` retirés (les jetons d'un membre viennent du `.mcp.json` de SON
+  workspace). OpenCode ne lit pas non plus la configuration `~/.config/opencode` du compte système. Un
+  test lance un vrai script autorisé avec l'environnement de Bob alors que l'environnement parent et le
+  pointeur désignent Alice : il ne lit que Bob. `ARC_LOCK_WORKSPACE` n'est appliqué par les scripts qu'une
+  fois la PR « identifiants et planification par workspace » fusionnée.
 
 ```mermaid
 flowchart LR
@@ -101,8 +120,20 @@ et ne contiennent aucune donnée.
     python3 scripts/arc_chat.py  --family ~/.config/ai-running-coach/family.toml --listen 0.0.0.0
     ```
 
-    `--family` exclut `--workspace`. Avec `ARC_FAMILY=<registre>` dans l'environnement et sans
-    `--workspace`, le mode famille est aussi activé.
+    `--family` exclut `--workspace`, et `--db` n'est pas permis avec `--family` (un index SQLite partagé
+    mélangerait les membres : chacun a son index dans son workspace). Avec `ARC_FAMILY=<registre>` dans
+    l'environnement et sans `--workspace`, le mode famille est aussi activé.
+
+    Que mettre dans `[family].trusted_proxies` : l'adresse (ou le nom d'hôte) **du reverse proxy qui pose
+    l'en-tête d'identité**, rien d'autre. Dans l'exemple ci-dessus, `--listen 0.0.0.0` n'a de sens que
+    derrière ce proxy, et le chat refuse de démarrer hors boucle locale sans `[family].allowed_hosts` ou
+    `public_url`.
+
+    !!! danger "Ne faites pas confiance à `127.0.0.1` sans y réfléchir"
+        Mettre `127.0.0.1` dans `trusted_proxies` (proxy local, tests) veut dire que **tout processus ou
+        utilisateur local** de la machine peut s'écrire n'importe quelle identité (`curl -H
+        'X-authentik-username: alice' …`) et lire les données d'Alice. À réserver à une machine
+        mono-utilisateur dont le seul client local est le proxy.
 
 === "Docker (compose)"
 
@@ -146,7 +177,11 @@ Détails Docker : [Derrière un reverse proxy](dashboard/docker.md#mode-famille)
 - les **jetons d'approbation ntfy** contiennent le membre et celui-ci entre dans leur
   empreinte : le lien de A est inutilisable pour B, même rejoué avec un autre préfixe ;
 - une **dépense à deux étages** : le budget `[chat].daily_budget_eur` de chaque membre **et** un
-  plafond du foyer (`[family].daily_budget_eur`). Le plus bas des deux s'applique à chaque tour ;
+  plafond du foyer (`[family].daily_budget_eur`). Le plus bas des deux s'applique à chaque tour, et les
+  réservations des tours en cours de **tous** les membres sont tenues sous un seul verrou (deux membres
+  qui parlent en même temps ne peuvent pas dépasser ensemble le plafond) ; `/api/chat/status` donne le
+  reste effectif (`budget.remaining_eur`) ;
+- un membre dont la configuration est cassée est indisponible (503) sans affecter les autres ;
 - `/healthz` (boucle locale) ne renvoie que `{"ok": true, "members": <nombre>}`.
 
 **Isolation testée** : `tests/data/test_family_isolation.py` construit deux vrais workspaces
@@ -160,7 +195,8 @@ de B.
 
 1. **Créer son dépôt privé** et lancer
    `./install.sh --workspace <dossier> --source <garmin|intervals> --garmin-tokens <dossier de jetons>`
-   (selon la source de données).
+   (selon la source de données ; `--garmin-tokens` vient de la PR « identifiants et planification par
+   workspace » — sans elle, les jetons Garmin restent dans `~/.garminconnect`, partagés).
 2. **Brancher sa source de données**
     - Garmin : `garmin-mcp-auth` vers **son** dossier de jetons, avec son compte (MFA).
       Le conteneur du chat ne voit que les dossiers montés : un sous-dossier de
@@ -172,10 +208,13 @@ de B.
     - `[sync]` : `mode = "watch"` (Garmin) ou `"schedule"` (intervals.icu) ;
     - `[notifications]` : un **topic ntfy distinct** ;
     - `[chat]` : `daily_budget_eur`.
-4. **Planifier sa synchronisation** : chaque membre a sa propre entrée, lancée avec son
-   workspace, `./install.sh --workspace <dossier> --daily-sync`. Les lignes cron
-   de plusieurs workspaces coexistent (chacune est marquée par son workspace) ; horaires à décaler
-   pour ménager la limitation de débit de Garmin.
+4. **Planifier sa synchronisation** — *requiert la PR « identifiants et planification par workspace »* :
+   chaque membre a sa propre entrée, `./install.sh --workspace <dossier> --daily-sync`, marquée par
+   son workspace (cron et launchd), de sorte que les lignes de plusieurs workspaces coexistent ; ses
+   identifiants sont ceux de son workspace (`--garmin-tokens DIR`, `--intervals-dir DIR`). Horaires à
+   décaler pour ménager la limitation de débit de Garmin. **Sans cette PR**, la commande remplacerait
+   la ligne cron du membre précédent et les jetons seraient partagés : ne synchronisez alors qu'un seul
+   workspace automatiquement.
 5. **L'ajouter** à `family.toml` et au groupe Authentik « famille », puis **redémarrer les deux
    conteneurs** (le registre est lu au démarrage).
 6. **Première connexion** : dans le chat, `/coach-setup` (son profil, son objectif).
@@ -199,9 +238,12 @@ Mise en place du proxy, de l'avant-poste et de Traefik :
 
 ## `coach_doctor` en mode famille
 
-Quand un registre existe (`~/.config/ai-running-coach/family.toml`, `ARC_FAMILY` ou
-`--family`), `scripts/coach_doctor.py` ajoute quatre vérifications à sa sortie (le reste du
-schéma JSON est inchangé) :
+Quand le registre est donné **explicitement** (`--family <registre>` ou `ARC_FAMILY`),
+`scripts/coach_doctor.py` ajoute quatre vérifications à sa sortie (le reste du schéma JSON est
+inchangé). Le registre n'est jamais cherché tout seul, et **rien n'est ajouté sous
+`ARC_LOCK_WORKSPACE=1`** ni avec `--check` : un doctor lancé depuis le chat d'un membre ne doit pas décrire
+les autres (liste des membres, dossiers de jetons, planifications). À lancer par l'administrateur, hors du
+chat :
 
 | Vérification | Alerte quand… |
 |---|---|
@@ -212,7 +254,8 @@ schéma JSON est inchangé) :
 
 Le dossier de jetons de chaque membre est résolu comme pour la vérification classique
 (`GARMINTOKENS` du `.mcp.json` du workspace, puis variables d'environnement, puis
-`~/.garminconnect`).
+`~/.garminconnect`) : sans la PR « identifiants et planification par workspace », deux membres Garmin
+tombent tous deux sur `~/.garminconnect` et l'avertissement `family_tokens` est attendu.
 
 ## Limites d'isolation
 

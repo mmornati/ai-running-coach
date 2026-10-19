@@ -1911,7 +1911,9 @@ class Handler(BaseHTTPRequestHandler):
             length = 0
         body = self.rfile.read(length) if length > 0 else None
         forward = CHAT_FORWARD_REQUEST
-        if self.family is not None:                 # l'identité vérifiée ici est transmise telle quelle au chat
+        if self.family is not None and not urlparse(self.path).path.startswith(CHAT_PREFIX + "approve/"):
+            # L'identité vérifiée ici est transmise telle quelle au chat — sauf sur la route à jeton ntfy, qui
+            # n'en a pas : le membre vient du jeton, jamais d'un en-tête client.
             forward = forward + (self.family.registry.auth_header,)
         headers = {h: self.headers[h] for h in forward if self.headers.get(h)}
         conn = http.client.HTTPConnection("127.0.0.1", self.chat_port, timeout=CHAT_CONNECT_TIMEOUT_S)
@@ -2165,6 +2167,9 @@ def main(argv=None) -> int:
     if family_raw is not None:
         if args.workspace:
             raise ConfigError("--family et --workspace s'excluent : chaque membre a son workspace dans le registre.")
+        if args.db:
+            raise ConfigError("--db n'est pas permis avec --family : tous les membres partageraient le même index "
+                              "SQLite (mélange des données). Chaque membre a son index dans son workspace.")
         registry = FM.load_registry(FM.resolve_registry_path(family_raw or None))
         port = args.port if args.port is not None else int(registry.settings["port"] or DEFAULT_PORT)
         serve(None, port, args.db, args.memory, args.today, args.listen, args.allowed_hosts, registry)

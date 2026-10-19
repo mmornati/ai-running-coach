@@ -3,9 +3,10 @@
 #
 # Le chat ÉCRIT dans les workspaces : le dossier parent est monté en lecture-écriture, aux
 # mêmes chemins que sur l'hôte. Le registre est en lecture seule. Les jetons Garmin de chaque
-# membre (installés par `install.sh --garmin-tokens`) doivent être sous un dossier monté :
-# par exemple ${ARC_HOME}/.garminconnect/<membre> (déjà monté par compose.chat.yaml).
-# Voir docs/family.md.
+# membre doivent être sous un dossier monté : par exemple ${ARC_HOME}/.garminconnect/<membre>
+# (déjà monté par compose.chat.yaml). Ils sont installés par `install.sh --garmin-tokens DIR`, option de
+# la PR « identifiants et planification par workspace » de #127 : tant qu'elle n'est pas fusionnée, les
+# membres partagent ~/.garminconnect (voir docs/family.md, « Prérequis »).
 services:
   chat:
     command:

@@ -748,11 +748,11 @@ class ChatService:
 
     def __init__(self, workspace: Path, cfg: dict, backend: ChatBackend, notif: Optional[dict] = None,
                  policy: Optional[Policy] = None, language: Optional[str] = None, member: str = "",
-                 household_remaining=None):
+                 household=None):
         self.workspace = Path(workspace)
         self.member = member                             # mode famille (#127) ; "" = mono-athlète
         self.token_prefix = f"{member}~" if member else ""
-        self.household_remaining = household_remaining   # () -> € restants du foyer, ou None
+        self.household = household                       # `FamilyChat` (plafond du foyer, #127) ou None
         self.cfg = cfg
         self.language = language or load_language(self.workspace)
         self.backend = backend
@@ -795,7 +795,7 @@ class ChatService:
             self.sessions.update(sid, add_cost=eur)
 
     def budget_exhausted(self) -> bool:
-        if self.household_remaining is not None and self.household_remaining() <= 0:
+        if self.household is not None and self.household.remaining() <= 0:
             return True                                  # plafond du foyer atteint (#127)
         return self.spend.spent() >= float(self.cfg["daily_budget_eur"])
 
@@ -835,8 +835,8 @@ class ChatService:
 
     def remaining_budget(self) -> float:
         own = max(0.0, float(self.cfg["daily_budget_eur"]) - self.spend.spent())
-        if self.household_remaining is not None:
-            return min(own, max(0.0, self.household_remaining()))
+        if self.household is not None:
+            return min(own, self.household.remaining())
         return own
 
     def reserve_turn_budget(self, turn: Turn) -> float:
@@ -846,10 +846,20 @@ class ChatService:
         Sans cela, deux conversations simultanées recevraient chacune tout le reste du jour.
         `[chat].turn_budget_max_eur` (> 0) plafonne l'allocation d'un tour (permet la concurrence).
         """
+        if self.household is None:
+            return self._reserve_locked(turn)
+        # Mode famille : le registre des réservations du foyer est UN SEUL verrou pour tous les membres,
+        # sinon deux membres lanceraient chacun un tour qui, ensemble, dépasseraient le plafond du foyer.
+        with self.household.lock:
+            return self._reserve_locked(turn)
+
+    def _reserve_locked(self, turn: Turn) -> float:
         with self._lock:
             outstanding = sum(max(0.0, self._reserved[sid] - t.spent_eur)
                               for sid, t in self.turns.items() if sid != turn.session_id and sid in self._reserved)
             grant = max(0.0, self.remaining_budget() - outstanding)
+            if self.household is not None:
+                grant = min(grant, self.household.remaining(exclude=(self.member, turn.session_id), outstanding=True))
             cap = float(self.cfg.get("turn_budget_max_eur") or 0.0)
             if cap > 0:
                 grant = min(grant, cap)
@@ -1186,10 +1196,14 @@ class ChatService:
                 "message": "Diagnostic impossible (%s)." % type(exc).__name__}]}
 
     def status(self, user: str) -> dict:
+        budget = {"spent_eur": round(self.spend.spent(), 4), "limit_eur": float(self.cfg["daily_budget_eur"])}
+        if self.member:                       # mode famille : reste effectif = min(membre, foyer)
+            budget["remaining_eur"] = round(self.remaining_budget(), 4)
+            if self.household is not None:
+                budget["household_limit_eur"] = round(self.household.cap, 4)
         return {"enabled": bool(self.cfg["enabled"]), "backend": self.backend.name,
                 "model": self.cfg["model"], "user": user,
-                "budget": {"spent_eur": round(self.spend.spent(), 4),
-                           "limit_eur": float(self.cfg["daily_budget_eur"])},
+                "budget": budget,
                 # Forfait (ChatGPT/Copilot, #266) : la page affiche « inclus dans votre forfait … » au
                 # lieu d'un coût en euros. Clé absente = facturation au jeton, comme avant.
                 **({"billing": self.backend.billing()} if self.backend.billing() else {}),
@@ -1539,7 +1553,8 @@ def family_member_config(registry: "FM.Registry", member, sections: Optional[dic
     cfg = load_chat_config(member.workspace, sections)
     fam = registry.settings
     cfg.update({"auth": "proxy", "auth_header": registry.auth_header,
-                "trusted_proxies": list(registry.trusted_proxies), "allowed_users": []})
+                "trusted_proxies": list(registry.trusted_proxies), "allowed_users": [],
+                "family_member": member.id})        # lu par les backends : environnement enfant du membre
     if fam.get("listen"):
         cfg["listen"] = fam["listen"]
     if fam.get("chat_port"):
@@ -1566,19 +1581,23 @@ class FamilyChat:
         self.net_cfg = {"auth": "proxy", "trusted_proxies": list(registry.trusted_proxies)}
         self.approve_limiter = RateLimiter(APPROVE_PER_IP_PER_MIN)    # route à jeton : avant même le membre
         self.approve_global = RateLimiter(APPROVE_GLOBAL_PER_MIN)
-        self._cap = float(registry.settings.get("daily_budget_eur") or 0.0)
+        self.cap = float(registry.settings.get("daily_budget_eur") or 0.0)
+        # Registre des réservations du foyer : UN verrou pour tous les membres (voir ChatService.reserve_turn_budget).
+        self.lock = threading.RLock()
         for member in registry.members.values():
-            sections = _merged_sections(member.workspace)
-            cfg = family_member_config(registry, member, sections)
             try:
+                # Tout ce qui lit la configuration DU MEMBRE est dans le `try` : un TOML cassé ou un backend
+                # introuvable rend CE membre indisponible (503), jamais les autres.
+                sections = _merged_sections(member.workspace)
+                cfg = family_member_config(registry, member, sections)
                 if backend_factory is not None:
                     backend = backend_factory(member, cfg)
                 else:
                     backend = load_backend(cfg["backend"], member.workspace, cfg)
                 self.services[member.id] = ChatService(
                     member.workspace, cfg, backend, load_notifications(member.workspace, sections),
-                    member=member.id, household_remaining=self.household_remaining if self._cap > 0 else None)
-            except (BackendError, ConfigError, OSError) as exc:
+                    member=member.id, household=self if self.cap > 0 else None)
+            except Exception as exc:                      # noqa: BLE001 — isolation entre membres
                 self.errors[member.id] = str(exc)
                 log(f"membre {member.id} : service de chat indisponible ({type(exc).__name__})")
 
@@ -1588,8 +1607,23 @@ class FamilyChat:
     def household_spent(self) -> float:
         return sum(svc.spend.spent() for svc in self.services.values())
 
-    def household_remaining(self) -> float:
-        return max(0.0, self._cap - self.household_spent())
+    def outstanding(self, exclude=None) -> float:
+        """Réservations en cours de TOUS les membres (alloué − déjà dépensé), hors `exclude=(membre, session)`."""
+        total = 0.0
+        for svc in list(self.services.values()):
+            for sid, grant in list(svc._reserved.items()):
+                if exclude == (svc.member, sid):
+                    continue
+                turn = svc.turns.get(sid)
+                total += max(0.0, grant - (turn.spent_eur if turn is not None else 0.0))
+        return total
+
+    def remaining(self, exclude=None, outstanding: bool = False) -> float:
+        """€ restants du plafond du foyer ; avec `outstanding`, déduction faite des tours déjà réservés."""
+        left = self.cap - self.household_spent()
+        if outstanding:
+            left -= self.outstanding(exclude)
+        return max(0.0, left)
 
     def start(self) -> None:
         for svc in self.services.values():
@@ -1670,6 +1704,12 @@ def make_family_server(fam: FamilyChat, port: Optional[int] = None) -> "Threadin
     cfg = dict(fam.net_cfg, listen=registry.settings["listen"] or "127.0.0.1",
                port=registry.settings["chat_port"] or CHAT_DEFAULTS["port"],
                allowed_hosts=registry.settings["allowed_hosts"], public_url=registry.settings["public_url"])
+    check_exposure(cfg)
+    if cfg["listen"] not in LOOPBACK_HOSTS and not cfg["allowed_hosts"] and not cfg["public_url"]:
+        # Hors boucle locale, sans nom public déclaré, tout serait refusé (Host) : mieux vaut ne pas démarrer.
+        raise ConfigError(
+            f"écoute sur {cfg['listen']} sans [family].allowed_hosts ni public_url : toute requête réseau serait "
+            "refusée. Déclarez le nom public du chat dans le registre.")
     bound = type("BoundFamilyHandler", (FamilyHandler,), {"family": fam})
     wanted = int(cfg["port"] if port is None else port)
     try:

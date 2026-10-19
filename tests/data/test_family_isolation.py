@@ -10,6 +10,7 @@ from __future__ import annotations
 import http.client
 import http.server
 import json
+import os
 import re
 import sys
 import tempfile
@@ -77,6 +78,10 @@ class FamilyCase(unittest.TestCase):
         self.addCleanup(self._tmp.cleanup)
         self.root = Path(self._tmp.name).resolve()
 
+    def registry_file(self) -> Path:
+        self.registry()
+        return self.root / "family.toml"
+
     def registry(self, trusted=None, extra_family: str = "", workspaces=None) -> F.Registry:
         workspaces = workspaces or {m: make_workspace(self.root, m) for m in ("alice", "bob")}
         trusted = self.TRUSTED if trusted is None else trusted
@@ -142,6 +147,17 @@ class TestRegistry(FamilyCase):
         self.assertEqual(F.resolve_registry_path("/x/f.toml", {}), Path("/x/f.toml"))
         self.assertEqual(F.resolve_registry_path(None, {"ARC_FAMILY": "/y/f.toml"}), Path("/y/f.toml"))
         self.assertEqual(F.resolve_registry_path(None, {}).name, "family.toml")
+
+    def test_pair_ipv4_mappe(self):
+        """Une socket double pile présente `127.0.0.1` sous la forme `::ffff:127.0.0.1` : même proxy de confiance."""
+        self.assertTrue(F.ip_in("::ffff:127.0.0.1", ["127.0.0.1"]))
+        self.assertTrue(F.ip_in("::ffff:10.1.2.3", ["10.0.0.0/8"]))
+        self.assertFalse(F.ip_in("::ffff:10.1.2.3", ["127.0.0.1"]))
+        self.assertTrue(F.is_loopback("::ffff:127.0.0.1"))
+        self.assertFalse(F.ip_in("not-an-ip", ["127.0.0.1"]))
+        registry = self.registry()
+        self.assertEqual(F.authenticate_member(registry, "::ffff:127.0.0.1", {HEADER: "alice"})[1], 0)
+        self.assertEqual(F.authenticate_member(registry, "::ffff:192.0.2.9", {HEADER: "alice"})[1], 403)
 
     def test_authenticate_member(self):
         registry = self.registry()
@@ -345,7 +361,11 @@ class TestDashboardChatProxy(DashboardCase):
         self.assertEqual(self.get(port, "/api/chat/status", "alice")[0], 200)
         self.assertEqual(seen, [("/api/chat/status", "alice")])         # en-tête relayé tel quel
         # route à jeton : source de confiance seulement (le jeton, lié au membre, est vérifié par le chat)
+        seen.clear()
         self.assertEqual(self.get(port, "/api/chat/approve/alice~abc.def/allow")[0], 200)
+        # … et un en-tête d'identité du client n'est PAS relayé sur cette route (le membre vient du jeton)
+        self.assertEqual(self.get(port, "/api/chat/approve/alice~abc.def/allow", "bob")[0], 200)
+        self.assertEqual([h for _, h in seen], [None, None])
 
 
 # ---------------------------------------------------------------------------
@@ -537,7 +557,7 @@ class TestChatBudget(ChatCase):
         self.assertEqual(float(a.cfg["daily_budget_eur"]), 2.0)           # budget propre inchangé
         a.spend.add(1.5)
         b.spend.add(1.0)
-        self.assertAlmostEqual(self.fam.household_remaining(), 0.5)
+        self.assertAlmostEqual(self.fam.remaining(), 0.5)
         self.assertAlmostEqual(a.remaining_budget(), 0.5)                # min(propre 0.5, foyer 0.5)
         self.assertAlmostEqual(b.remaining_budget(), 0.5)                # propre 1.0, foyer 0.5
         self.assertFalse(b.budget_exhausted())
@@ -549,7 +569,7 @@ class TestChatBudget(ChatCase):
     def test_sans_plafond_comportement_mono_membre(self):
         self.start(self.registry())
         a = self.fam.services["alice"]
-        self.assertIsNone(a.household_remaining)
+        self.assertIsNone(a.household)
         a.spend.add(1.0)
         self.assertAlmostEqual(a.remaining_budget(), 1.0)
 
@@ -589,7 +609,11 @@ class TestMonoAthleteInchange(FamilyCase):
     """Sans `--family`, ni le serveur ni le chat ne changent : jetons sans préfixe, empreinte historique."""
 
     def test_empreinte_de_jeton_historique(self):
-        self.assertEqual(C.token_digest("id", "h", "s"), C.token_digest("id", "h", "s", ""))
+        # Empreinte HISTORIQUE figée en dur (sha256 de « id|h|s ») : un jeton ntfy émis avant le mode famille
+        # doit rester valable, donc le format sans membre ne doit jamais changer.
+        self.assertEqual(C.token_digest("id", "h", "s"),
+                         "200fa85d9d591793f03e24e1649254582c02b3853e807b27fcdb021417da2a00")
+        self.assertEqual(C.token_digest("id", "h", "s", ""), C.token_digest("id", "h", "s"))
         self.assertNotEqual(C.token_digest("id", "h", "s", "alice"), C.token_digest("id", "h", "s"))
         self.assertNotEqual(C.token_digest("id", "h", "s", "alice"), C.token_digest("id", "h", "s", "bob"))
 
@@ -598,12 +622,75 @@ class TestMonoAthleteInchange(FamilyCase):
         cfg = dict(C.CHAT_DEFAULTS)
         svc = C.ChatService(ws, cfg, M.MockBackend(ws, {}))
         self.assertEqual(svc.token_prefix, "")
-        self.assertIsNone(svc.household_remaining)
+        self.assertIsNone(svc.household)
         self.assertEqual(svc.approvals.member, "")
 
     def test_handler_sans_famille(self):
+        """Un tableau de bord mono-athlète n'exige AUCUNE identité et ne connaît pas `/api/whoami`."""
         self.assertIsNone(S.Handler.family)
-        self.assertNotIn("--family", sys.argv)
+        ws = make_workspace(self.root, "alice")
+        handler = type("SingleHandler", (S.Handler,), {})
+        handler.store = S.Store(ws, memory=True, today="2026-09-23")
+        handler.chat_port = None
+        handler.tile_src = ""
+        httpd = S.Server(("127.0.0.1", 0), handler)
+        handler.allowed_hosts = S.host_allowlist(httpd.server_address[1], [])
+        threading.Thread(target=httpd.serve_forever, daemon=True).start()
+        self.addCleanup(httpd.server_close)
+        self.addCleanup(httpd.shutdown)
+        port = httpd.server_address[1]
+
+        def get(path, user=None):
+            conn = http.client.HTTPConnection("127.0.0.1", port, timeout=30)
+            conn.request("GET", path, headers={"Host": f"127.0.0.1:{port}", **({HEADER: user} if user else {})})
+            resp = conn.getresponse()
+            return resp.status, resp.read()
+        status, body = get("/api/activities")                        # sans en-tête d'identité
+        self.assertEqual(status, 200)
+        self.assertIn(b"Col-ALICEMARK", body)
+        self.assertEqual(get("/api/whoami")[0], 404)                   # route propre au mode famille
+        self.assertEqual(get("/api/summary", "mallory")[0], 200)       # l'en-tête est ignoré, pas un contrôle d'accès
+
+    def test_precedence_cli_serveur(self):
+        ws = make_workspace(self.root, "alice")
+        registry = self.registry_file()
+        for argv, env, expect_family, boom in (
+                (["--family", str(registry)], {}, True, False),
+                ([], {"ARC_FAMILY": str(registry)}, True, False),
+                (["--workspace", str(ws)], {"ARC_FAMILY": str(registry)}, False, False),   # --workspace l'emporte
+                (["--workspace", str(ws), "--family", str(registry)], {}, None, True),     # exclusifs
+                (["--family", str(registry), "--db", "x.db"], {}, None, True),            # un index partagé = fuite
+        ):
+            with self.subTest(argv=argv, env=env), mock.patch.dict("os.environ", env), \
+                    mock.patch.object(S, "serve") as serve:
+                if "ARC_FAMILY" not in env:
+                    os.environ.pop("ARC_FAMILY", None)
+                if boom:
+                    with self.assertRaises(ConfigError):
+                        S.main(["--port", "0", *argv])
+                    serve.assert_not_called()
+                    continue
+                S.main(["--port", "0", *argv])
+                args, _ = serve.call_args
+                self.assertEqual(len(args) > 7 and args[7] is not None, expect_family)
+                self.assertEqual(args[0] is None, expect_family)
+
+    def test_precedence_cli_chat(self):
+        ws = make_workspace(self.root, "alice")
+        registry = self.registry_file()
+        with mock.patch.dict("os.environ", {"ARC_FAMILY": str(registry)}), \
+                mock.patch.object(C, "serve_family") as fam, mock.patch.object(C, "serve") as single:
+            C.main([])
+            fam.assert_called_once()
+            single.assert_not_called()
+        with mock.patch.dict("os.environ", {"ARC_FAMILY": str(registry)}), \
+                mock.patch.object(C, "serve_family") as fam, mock.patch.object(C, "serve") as single:
+            C.main(["--workspace", str(ws)])                       # --workspace l'emporte sur l'environnement
+            single.assert_called_once()
+            fam.assert_not_called()
+        with mock.patch.object(C, "serve_family") as fam, self.assertRaises(ConfigError):
+            C.main(["--family", str(registry), "--workspace", str(ws)])
+        fam.assert_not_called()
 
 
 if __name__ == "__main__":
