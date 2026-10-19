@@ -11,6 +11,9 @@ auth_header = "X-authentik-username"
 # Plafond de dépense du chat pour tout le foyer, en euros par jour (0 ou absent : aucun plafond).
 # S'ajoute au budget [chat].daily_budget_eur de chaque membre.
 daily_budget_eur = 5.0
+# Recommandé en mode famille : poser `turn_budget_max_eur` (ex. 1.0) dans la section [chat] du
+# workspace de CHAQUE membre. Sans ce plafond par tour, un tour réserve tout le reste du foyer et
+# bloque les autres membres tant qu'il dure.
 # Noms publics acceptés dans l'en-tête Host du chat, et lien des notifications ntfy.
 allowed_hosts = ["coach.example.org"]
 public_url = "https://coach.example.org"

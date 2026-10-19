@@ -38,7 +38,8 @@ class TestBackendEnvironment(FamilyEnvCase):
 
     def foreign_base(self, home: Path) -> dict:
         return {"ARC_WORKSPACE": str(self.root / "coach-alice"), "GARMINTOKENS": "/tok/alice",
-                "GARMIN_TOKENS_DIR": "/tok", "HOME": str(home), "PATH": os.environ.get("PATH", ""),
+                "GARMIN_TOKENS_DIR": "/tok", "GARMINTOKENS_BASE64": "e30=",
+                "INTERVALS_ICU_API_KEY": "cle-foyer", "INTERVALS_ICU_ATHLETE_ID": "i1", "HOME": str(home), "PATH": os.environ.get("PATH", ""),
                 "KEEP_ME": "1"}
 
     def test_chaque_backend_recoit_son_workspace_et_aucune_valeur_etrangere(self):
@@ -52,6 +53,8 @@ class TestBackendEnvironment(FamilyEnvCase):
             self.assertEqual(env["ARC_LOCK_WORKSPACE"], "1")
             self.assertNotIn("GARMINTOKENS", env)
             self.assertNotIn("GARMIN_TOKENS_DIR", env)
+            for leaked in ("GARMINTOKENS_BASE64", "INTERVALS_ICU_API_KEY", "INTERVALS_ICU_ATHLETE_ID"):
+                self.assertNotIn(leaked, env)                 # la clé intervals du foyer ne doit pas ouvrir les données d'un autre
             self.assertEqual(env["KEEP_ME"], "1")             # le reste de l'environnement est conservé
         self.assertNotEqual(fam.services["alice"].backend.child_env(base)["ARC_WORKSPACE"],
                             fam.services["bob"].backend.child_env(base)["ARC_WORKSPACE"])
@@ -101,6 +104,8 @@ class TestBackendEnvironment(FamilyEnvCase):
         self.assertEqual(family["env"]["ARC_LOCK_WORKSPACE"], "1")
         self.assertEqual(family["env"]["GARMINTOKENS"], "")         # le SDK fusionne PAR-DESSUS os.environ : on vide
         self.assertEqual(family["env"]["GARMIN_TOKENS_DIR"], "")
+        for name in ("GARMINTOKENS_BASE64", "INTERVALS_ICU_API_KEY", "INTERVALS_ICU_ATHLETE_ID"):
+            self.assertEqual(family["env"][name], "")
         self.assertNotIn("ARC_WORKSPACE", single["env"])             # mono-athlète : inchangé
 
     def test_opencode_serveur_lance_avec_l_environnement_du_membre(self):
@@ -113,7 +118,8 @@ class TestBackendEnvironment(FamilyEnvCase):
         def fake_spawn(cmd, env, cwd, log_path):
             captured.update(env)
             raise OSError("stop")
-        with mock.patch.dict(os.environ, {"ARC_WORKSPACE": "/autre", "GARMINTOKENS": "/jetons-autre", "HOME": str(self.root)}), \
+        with mock.patch.dict(os.environ, {"ARC_WORKSPACE": "/autre", "GARMINTOKENS": "/jetons-autre",
+                                      "INTERVALS_ICU_API_KEY": "cle-foyer", "HOME": str(self.root)}), \
                 mock.patch.object(backend, "_binary", return_value="/bin/true"), \
                 mock.patch.object(backend, "_auth_missing", return_value=None), \
                 mock.patch.object(backend, "_need_key", return_value=False), \
@@ -124,6 +130,7 @@ class TestBackendEnvironment(FamilyEnvCase):
         self.assertEqual(captured["ARC_WORKSPACE"], str(ws))
         self.assertEqual(captured["ARC_LOCK_WORKSPACE"], "1")
         self.assertNotIn("GARMINTOKENS", captured)
+        self.assertNotIn("INTERVALS_ICU_API_KEY", captured)
 
     def test_opencode_ne_lit_pas_la_config_systeme_en_mode_famille(self):
         from arc_chat_opencode import OpenCodeBackend
@@ -214,6 +221,33 @@ class TestHouseholdCap(T.ChatCase):
             time.sleep(0.02)
         self.assertEqual(fam.outstanding(), 0.0)                    # libéré à la fin du tour
         self.assertGreater(b.reserve_turn_budget(turn_b), 0.0)
+
+    def test_message_distinct_quand_le_budget_est_reserve_par_un_autre_membre(self):
+        gate = threading.Event()
+
+        class Held(BlockingBackend):
+            release = gate
+        _, fam = self.household(Held, cap="1.0")
+        a, b = fam.services["alice"], fam.services["bob"]
+        code, _, _ = a.begin_turn(a.sessions.create("mock", "m")["id"], "alice", "bonjour")
+        self.assertEqual(code, "ok")
+        for _ in range(100):
+            if fam.outstanding() > 0:
+                break
+            time.sleep(0.02)
+
+        def blocked_message(svc, who):
+            code, _, q = svc.begin_turn(svc.sessions.create("mock", "m")["id"], who, "bonjour")
+            self.assertEqual(code, "ok")
+            while True:
+                etype, data = q.get(timeout=10)
+                if etype == "error":
+                    return data["message"]
+        # Bob est bloqué par le tour d'Alice : message propre au foyer, pas le message générique
+        self.assertIn("d'un autre membre", blocked_message(b, "bob"))
+        # Alice, bloquée par sa propre réservation (autre conversation à elle) : message historique
+        self.assertIn("réservé par une autre conversation", blocked_message(a, "alice"))
+        gate.set()
 
     def test_reservation_liberee_aussi_en_cas_d_erreur(self):
         class Failing(BlockingBackend):

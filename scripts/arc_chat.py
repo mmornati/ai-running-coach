@@ -882,6 +882,9 @@ class ChatService:
                     message = (f"Budget quotidien du chat atteint ({self.spend.spent():.2f} € sur "
                                f"{float(self.cfg['daily_budget_eur']):.2f} €). Réessaie demain ou relève "
                                "[chat].daily_budget_eur.")
+                elif self.household is not None and self.household.outstanding_of_others(self) > 0:
+                    message = ("Le budget du foyer est réservé par la conversation d'un autre membre : "
+                               "réessaie dans un instant, quand son tour sera terminé.")
                 else:
                     message = ("Le budget restant du jour est réservé par une autre conversation en cours : "
                                "réessaie quand elle sera terminée.")
@@ -1614,6 +1617,17 @@ class FamilyChat:
             for sid, grant in list(svc._reserved.items()):
                 if exclude == (svc.member, sid):
                     continue
+                turn = svc.turns.get(sid)
+                total += max(0.0, grant - (turn.spent_eur if turn is not None else 0.0))
+        return total
+
+    def outstanding_of_others(self, service) -> float:
+        """Réservations en cours des AUTRES membres que `service` (pour dire qui bloque le budget)."""
+        total = 0.0
+        for svc in list(self.services.values()):
+            if svc is service:
+                continue
+            for sid, grant in list(svc._reserved.items()):
                 turn = svc.turns.get(sid)
                 total += max(0.0, grant - (turn.spent_eur if turn is not None else 0.0))
         return total

@@ -181,6 +181,15 @@ Détails Docker : [Derrière un reverse proxy](dashboard/docker.md#mode-famille)
   réservations des tours en cours de **tous** les membres sont tenues sous un seul verrou (deux membres
   qui parlent en même temps ne peuvent pas dépasser ensemble le plafond) ; `/api/chat/status` donne le
   reste effectif (`budget.remaining_eur`) ;
+- **Recommandé : fixer `[chat].turn_budget_max_eur` dans le workspace de chaque membre.** Sans ce plafond
+  par tour, un tour réserve le plus petit du reste du membre et du reste du foyer : tant qu'il dure, il
+  peut réserver tout le plafond du foyer et les autres membres reçoivent « Le budget du foyer est réservé
+  par la conversation d'un autre membre ». Avec, par exemple, `turn_budget_max_eur = 1.0`, chaque tour ne
+  réserve qu'un euro au plus et plusieurs membres peuvent parler en même temps ;
+- les identifiants de données personnelles (`GARMINTOKENS*`, `GARMIN_EMAIL`/`GARMIN_PASSWORD`,
+  `INTERVALS_ICU_API_KEY`, `INTERVALS_ICU_ATHLETE_ID`) sont **retirés de l'environnement** des outils et
+  serveurs MCP de chaque membre : une clé posée au niveau du conteneur ne donne jamais accès aux
+  données d'un autre. Les identifiants d'un membre vivent dans SON workspace (`.mcp.json`, `.env`) ;
 - un membre dont la configuration est cassée est indisponible (503) sans affecter les autres ;
 - `/healthz` (boucle locale) ne renvoie que `{"ok": true, "members": <nombre>}`.
 

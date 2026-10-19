@@ -144,6 +144,11 @@ class TurnContext:
     language: str = "fr"
 
 
+# Identifiants de données personnelles retirés de l'environnement des processus enfants en mode famille.
+FAMILY_SCRUBBED_ENV = ("GARMINTOKENS", "GARMIN_TOKENS_DIR", "GARMINTOKENS_BASE64", "GARMIN_EMAIL",
+                       "GARMIN_PASSWORD", "INTERVALS_ICU_API_KEY", "INTERVALS_ICU_ATHLETE_ID")
+
+
 class ChatBackend(ABC):
     """Un backend traduit un harnais (SDK, serveur OpenCode, mock) vers le protocole."""
 
@@ -164,11 +169,14 @@ class ChatBackend(ABC):
         Sans cela, les scripts autorisés (`arc_index.py`, `arc_log.py`…) retrouveraient le workspace d'un AUTRE
         membre par `$ARC_WORKSPACE` hérité du conteneur ou par le pointeur `~/.config/ai-running-coach/workspace`.
         Une valeur vide retire la variable (jetons Garmin : ceux du membre viennent du `.mcp.json` de SON workspace).
+        Les identifiants intervals.icu et Garmin posés au niveau du foyer (conteneur, llm.env) sont retirés aussi :
+        `download_fit.py` lit `$INTERVALS_ICU_API_KEY` en premier et le serveur MCP intervals l'hérite, ce qui
+        donnerait à un membre les données d'un autre ; ceux du membre viennent du `.env` / `.mcp.json` de SON workspace.
         Vide hors mode famille : comportement historique."""
         if not self.family_member:
             return {}
         return {"ARC_WORKSPACE": str(self.workspace), "ARC_LOCK_WORKSPACE": "1",
-                "GARMINTOKENS": "", "GARMIN_TOKENS_DIR": ""}
+                **{name: "" for name in FAMILY_SCRUBBED_ENV}}
 
     def child_env(self, base: Optional[dict] = None) -> dict:
         """Environnement complet d'un processus enfant : `base` (défaut `os.environ`) + `family_overlay()`."""
