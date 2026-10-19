@@ -423,7 +423,13 @@ class TestHouseholdCap(T.ChatCase):
         code, _, _ = a.begin_turn(a.sessions.create("mock", "m")["id"], "alice", "bonjour")
         self.assertEqual(code, "ok")
         self.assertTrue(started.wait(60))                          # le tour d'Alice tient sa réservation : pas d'attente chronométrée
-        self.addCleanup(gate.set)
+
+        def drain():                                               # les tours écrivent dans le workspace : les attendre avant son nettoyage
+            gate.set()
+            deadline = time.monotonic() + 60
+            while (a.turns or b.turns) and time.monotonic() < deadline:
+                time.sleep(0.05)
+        self.addCleanup(drain)
 
         def blocked_message(svc, who):
             code, _, q = svc.begin_turn(svc.sessions.create("mock", "m")["id"], who, "bonjour")
@@ -436,7 +442,6 @@ class TestHouseholdCap(T.ChatCase):
         self.assertIn("d'un autre membre", blocked_message(b, "bob"))
         # Alice, bloquée par sa propre réservation (autre conversation à elle) : message historique
         self.assertIn("réservé par une autre conversation", blocked_message(a, "alice"))
-        gate.set()
 
     def test_reservation_liberee_aussi_en_cas_d_erreur(self):
         class Failing(BlockingBackend):
