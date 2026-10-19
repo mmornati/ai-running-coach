@@ -1112,7 +1112,7 @@ def cmd_whoami(args) -> int:
 
 
 def _workspace(args) -> Path:
-    return Path(args.workspace).expanduser().resolve() if args.workspace else workspace_root(None)
+    return workspace_root(args.workspace or None)   # verrou de la sync (#127) dans workspace_root
 
 
 def main(argv=None) -> int:

@@ -234,6 +234,55 @@ class TestWorkspaceLock(_EnvCase):
             coach_config.enforce_workspace_lock(str(self.bob))
         self.assertEqual(coach_config.enforce_workspace_lock(str(self.alice)), self.alice)
 
+    def test_lock_without_workspace_fails_closed(self):
+        """Verrou posé mais ARC_WORKSPACE vide : refus, jamais un repli sur le pointeur ou le moteur."""
+        os.environ["ARC_LOCK_WORKSPACE"] = "1"
+        with self.assertRaises(SystemExit) as ctx:
+            coach_config.enforce_workspace_lock(str(self.alice))
+        self.assertIn("sans ARC_WORKSPACE", str(ctx.exception))
+        with self.assertRaises(SystemExit):
+            coach_setup.workspace_root()
+        with self.assertRaises(SystemExit):
+            coach_setup.workspace_root(str(self.alice))
+
+    def test_credentials_entry_point_enforces_the_lock(self):
+        os.environ.update(ARC_LOCK_WORKSPACE="1", ARC_WORKSPACE=str(self.alice))
+        with self.assertRaises(SystemExit):
+            C.main(["garmin-tokens", "--workspace", str(self.bob)])
+        with patch("sys.stdout", io.StringIO()) as out:
+            self.assertEqual(C.main(["intervals-dir", "--workspace", str(self.alice)]), 0)
+        self.assertTrue(out.getvalue().strip())
+
+    def test_locked_tokens_ignore_env_overrides_and_foreign_tokens_dir(self):
+        alice = _workspace(self.root, "alice2", tokens=str(self.root / "tokens-alice"))
+        os.environ.update(ARC_LOCK_WORKSPACE="1", ARC_WORKSPACE=str(alice),
+                          GARMINTOKENS=str(self.root / "tokens-bob"), GARMIN_TOKENS_DIR=str(self.root / "other"))
+        path, source = C.garmin_tokens_dir_with_source(str(self.root / "tokens-bob"), alice)
+        self.assertEqual(path, self.root / "tokens-alice")
+        self.assertEqual(source, C.SOURCE_MCP)
+        self.assertEqual(coach_doctor.resolve_tokens_dir(str(self.root / "x"), alice), self.root / "tokens-alice")
+        with self.assertRaises(SystemExit):   # le .mcp.json d'un autre workspace n'est pas lisible non plus
+            C.garmin_tokens_dir_with_source(None, self.bob)
+
+    def test_locked_tokens_fall_back_to_the_default_not_to_the_environment(self):
+        os.environ.update(ARC_LOCK_WORKSPACE="1", ARC_WORKSPACE=str(self.alice), GARMINTOKENS=str(self.root / "env"))
+        self.assertEqual(C.garmin_tokens_dir(None, self.alice), self.root / "home" / ".garminconnect")
+
+    def test_scripts_that_built_the_path_themselves_now_refuse_a_foreign_workspace(self):
+        import arc_log
+        import arc_telegram
+        import arc_update_check
+        os.environ.update(ARC_LOCK_WORKSPACE="1", ARC_WORKSPACE=str(self.alice))
+        with self.assertRaises(SystemExit):
+            arc_telegram._workspace(types.SimpleNamespace(workspace=str(self.bob)))
+        self.assertEqual(arc_telegram._workspace(types.SimpleNamespace(workspace=str(self.alice))), self.alice)
+        payload = self.root / "in.json"
+        payload.write_text("{}", encoding="utf-8")
+        with self.assertRaises(SystemExit), patch("sys.stderr", io.StringIO()):
+            arc_log.main(["--workspace", str(self.bob), "--input", str(payload)])
+        with self.assertRaises(SystemExit):
+            arc_update_check.main(["--workspace", str(self.bob), "--json"])
+
 
 class TestDoctorSchedulerDetection(_EnvCase):
     """`daily_sync_scheduled` reconnaît le marqueur historique ET le marqueur suffixé, par workspace."""

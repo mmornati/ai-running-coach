@@ -256,6 +256,9 @@ def main(argv: Optional[list] = None) -> int:
     if args.hook and os.environ.get("ARC_HEADLESS"):
         return 0  # daily-sync : la notification dédiée s'en charge, pas le résumé du modèle
     workspace = args.workspace
+    if workspace is not None:
+        from coach_config import enforce_workspace_lock   # verrou de la sync (#127)
+        workspace = enforce_workspace_lock(workspace)
     if workspace is None:
         try:
             from coach_setup import workspace_root

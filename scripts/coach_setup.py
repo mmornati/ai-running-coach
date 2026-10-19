@@ -29,7 +29,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from coach_config import ConfigError, enforce_workspace_lock, read_toml, set_toml_key  # noqa: E402
+from coach_config import ConfigError, enforce_workspace_lock, locked_workspace, read_toml, set_toml_key  # noqa: E402
 import arc_legacy  # noqa: E402 — uniquement pour normalize_label (#65)
 
 ENGINE = Path(__file__).resolve().parent.parent
@@ -86,6 +86,7 @@ def workspace_root(explicit: str | None = None) -> Path:
     lancer `python3 scripts/*`, ne sort ainsi pas du workspace de la synchronisation en cours."""
     if explicit:
         return enforce_workspace_lock(explicit)
+    locked_workspace()   # verrou sans ARC_WORKSPACE : refus, jamais de repli sur le pointeur
     if os.environ.get("ARC_WORKSPACE"):
         return Path(os.environ["ARC_WORKSPACE"]).expanduser().resolve()
     pointer = Path.home() / ".config/ai-running-coach/workspace"

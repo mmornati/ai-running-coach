@@ -31,6 +31,8 @@ import os
 from pathlib import Path
 from typing import Optional, Tuple
 
+from coach_config import enforce_workspace_lock, locked_workspace
+
 DEFAULT_GARMIN_TOKENS = "~/.garminconnect"
 DEFAULT_INTERVALS_DIR = "~/.config/ai-running-coach/intervals-icu-mcp"
 INTERVALS_WRAPPER = "run.sh"
@@ -64,6 +66,15 @@ def mcp_server_env(workspace: Path, name: str = "garmin") -> dict:
 
 def garmin_tokens_dir_with_source(raw: Optional[str], workspace: Path) -> Tuple[Path, str]:
     """Dossier de jetons Garmin ET l'étiquette de la règle qui l'a désigné (voir docstring du module)."""
+    locked = locked_workspace()
+    if locked is not None:
+        # Verrou de la sync (#127) : le dossier ne vient que du .mcp.json du workspace verrouillé, sinon
+        # du défaut — ni variable d'environnement, ni --tokens-dir qui désignerait un autre dossier.
+        enforce_workspace_lock(workspace)
+        value = mcp_server_env(locked).get("GARMINTOKENS")
+        path, source = ((Path(value).expanduser(), SOURCE_MCP) if value
+                        else (Path(DEFAULT_GARMIN_TOKENS).expanduser(), SOURCE_DEFAULT))
+        return path, source
     if raw:
         return Path(raw).expanduser(), SOURCE_EXPLICIT
     value = mcp_server_env(workspace).get("GARMINTOKENS")
@@ -107,7 +118,7 @@ def main(argv: Optional[list] = None) -> int:
     parser.add_argument("--workspace", required=True)
     parser.add_argument("--source", action="store_true", help="affiche aussi la règle de résolution (garmin-tokens)")
     args = parser.parse_args(argv)
-    workspace = Path(args.workspace).expanduser()
+    workspace = enforce_workspace_lock(args.workspace)
     if args.what == "intervals-dir":
         print(intervals_env_dir(workspace))
         return 0

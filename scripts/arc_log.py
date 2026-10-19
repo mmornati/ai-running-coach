@@ -781,7 +781,8 @@ def main(argv=None) -> int:
 
     workspace = None
     if args.workspace:
-        workspace = Path(args.workspace).expanduser().resolve()
+        from coach_config import enforce_workspace_lock   # verrou de la sync (#127)
+        workspace = enforce_workspace_lock(args.workspace)
     elif workspace_root is not None:
         try:
             workspace = workspace_root(None)

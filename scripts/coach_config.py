@@ -28,6 +28,7 @@ import shutil
 import sys
 import tempfile
 from pathlib import Path
+from typing import Optional
 
 
 class ConfigError(RuntimeError):
@@ -38,6 +39,19 @@ class WorkspaceLockError(SystemExit):
     """Workspace étranger refusé sous `ARC_LOCK_WORKSPACE=1` : sortie non nulle, message français."""
 
 
+def locked_workspace() -> Optional[Path]:
+    """Workspace imposé par `ARC_LOCK_WORKSPACE=1` (valeur de `ARC_WORKSPACE`), None sans verrou.
+    Échoue fermé : verrou posé mais `ARC_WORKSPACE` vide = refus, jamais un repli sur un autre workspace."""
+    if os.environ.get("ARC_LOCK_WORKSPACE") != "1":
+        return None
+    locked = os.environ.get("ARC_WORKSPACE", "").strip()
+    if not locked:
+        raise WorkspaceLockError(
+            "ERREUR : ARC_LOCK_WORKSPACE=1 sans ARC_WORKSPACE — exécution refusée (verrou sans workspace)."
+        )
+    return Path(locked).expanduser().resolve()
+
+
 def enforce_workspace_lock(workspace) -> Path:
     """Chemin résolu de `workspace`, refusé s'il diffère de `ARC_WORKSPACE` sous `ARC_LOCK_WORKSPACE=1` (#127).
 
@@ -46,14 +60,12 @@ def enforce_workspace_lock(workspace) -> Path:
     (cas normal), ne fait que résoudre le chemin. NB : les options qui désignent directement un fichier
     ou un dossier (`--db`, `--dir`, `--output-dir`, `--input`…) ne sont pas couvertes."""
     chosen = Path(workspace).expanduser().resolve()
-    if os.environ.get("ARC_LOCK_WORKSPACE") == "1":
-        locked = os.environ.get("ARC_WORKSPACE", "").strip()
-        if locked and chosen != Path(locked).expanduser().resolve():
-            raise WorkspaceLockError(
-                f"ERREUR : workspace refusé ({chosen}) — cette exécution est verrouillée sur "
-                f"{Path(locked).expanduser().resolve()} (ARC_LOCK_WORKSPACE=1). "
-                "Retirez --workspace ou utilisez celui de la synchronisation."
-            )
+    locked = locked_workspace()
+    if locked is not None and chosen != locked:
+        raise WorkspaceLockError(
+            f"ERREUR : workspace refusé ({chosen}) — cette exécution est verrouillée sur "
+            f"{locked} (ARC_LOCK_WORKSPACE=1). Retirez --workspace ou utilisez celui de la synchronisation."
+        )
     return chosen
 
 
