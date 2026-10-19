@@ -347,6 +347,11 @@ juste après une sortie ([saisie libre](skills/log.md), #67).
     boîte de dépôt. Voir [Faire inspecter une paire](skills/inspection.md). Cette note sera
     levée une fois le parcours testé sur un vrai téléphone.
 
+!!! note "Remote Control et mode famille"
+    Remote Control exige une connexion claude.ai personnelle et refuse la clé API : il ne fait pas
+    partie du [mode famille](family.md), où chaque membre dialogue avec son coach par le chat web du
+    tableau de bord.
+
 ### 6. Voir ce que le coach a stocké
 
 La notification résume ; le [tableau de bord](dashboard/index.md) montre tout — verdict

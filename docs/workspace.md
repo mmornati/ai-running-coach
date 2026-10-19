@@ -143,6 +143,12 @@ Le cron relit les skills à chaque run. Sur la machine coach, relancez Remote Co
 (`scripts/coach-remote.sh restart`) si `.mcp.json` a changé. Procédure complète, retour
 arrière compris : [Mettre à jour](update.md).
 
+## Plusieurs athlètes
+
+Un foyer peut faire tourner **un workspace par personne** derrière un seul tableau de bord et un seul
+chat : voir [Mode famille](family.md) (registre `family.toml`, isolation, ajout d'un membre) et
+[Apple Watch](apple-watch.md) pour un membre sans montre Garmin.
+
 ## Ce qui reste hors des deux dépôts
 
 - `~/.garminconnect/` — tokens Garmin

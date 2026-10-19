@@ -242,6 +242,21 @@ Chaque image porte la révision construite (`org.opencontainers.image.revision`)
 que celle comparée par `scripts/update-docker.sh --check`, ainsi qu'une attestation de
 provenance et un SBOM.
 
+## Mode famille
+
+Un seul conteneur de tableau de bord (et un seul de chat) peut servir **plusieurs athlètes**, chacun
+dans son workspace, aiguillés par l'identité que pose Authentik (`X-authentik-username`) : voir
+[Mode famille](../family.md). Deux compléments compose, à ajouter à `COMPOSE_FILE` :
+
+| Fichier | Effet |
+|---|---|
+| `compose.family.yaml` | tableau de bord en `--family` ; registre (`ARC_FAMILY_FILE`) et dossier parent des workspaces (`ARC_FAMILY_ROOT`) montés aux mêmes chemins que sur l'hôte, **en lecture seule** |
+| `compose.chat.family.yaml` (après `compose.chat.yaml`) | chat en `--family`, workspaces en **lecture-écriture** ; la route ntfy sans SSO accepte le `~` du jeton lié au membre |
+
+Sans ces fichiers, rien ne change : le conteneur reste mono-athlète. Le registre exige
+`[family].trusted_proxies` (le conteneur Traefik) : sans lui, le tableau de bord et le chat
+refusent de démarrer. Redémarrez les deux conteneurs après chaque ajout de membre.
+
 ## Ce que garantit le conteneur
 
 | Garantie | Comment |
