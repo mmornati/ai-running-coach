@@ -143,9 +143,32 @@ Le cron relit les skills à chaque run. Sur la machine coach, relancez Remote Co
 (`scripts/coach-remote.sh restart`) si `.mcp.json` a changé. Procédure complète, retour
 arrière compris : [Mettre à jour](update.md).
 
+## Plusieurs workspaces sur une même machine
+
+Plusieurs workspaces (par exemple un par membre d'un foyer) peuvent tourner sous le **même
+utilisateur** système sans partager leurs identifiants ni leur planification :
+
+- `./install.sh --workspace DIR --garmin-tokens DOSSIER` : jetons Garmin propres au workspace
+  (`GARMINTOKENS` dans son `.mcp.json`), voir [Configuration Garmin](garmin-setup.md#un-dossier-de-jetons-par-workspace-plusieurs-workspaces-meme-utilisateur) ;
+- `./install.sh --workspace DIR --source intervals --intervals-dir DOSSIER` : identifiants
+  intervals.icu propres au workspace, voir [Configuration Intervals.icu](intervals-setup.md#des-identifiants-par-workspace-plusieurs-workspaces-meme-utilisateur) ;
+- `--daily-sync` : chaque workspace a **sa** ligne cron (marqueur
+  `# ai-running-coach daily-sync [<nom>-<somme>]` pour les suivants ; le premier garde le marqueur
+  historique) ou **son** LaunchAgent (label suffixé). Installer un workspace ne remplace plus que
+  ses propres lignes, reconnues à leur `ARC_WORKSPACE` ; les lignes historiques d'un autre
+  workspace sont conservées ;
+- la synchronisation automatique est **confinée** à son workspace : `daily-sync.sh` pose
+  `ARC_LOCK_WORKSPACE=1` pour l'exécuteur, et les scripts refusent alors tout `--workspace`
+  différent de `ARC_WORKSPACE` (message « workspace refusé »). Les options qui désignent
+  directement un fichier ou un dossier (`--db`, `--dir`, `--output-dir`) ne sont pas couvertes
+  par ce verrou.
+
+Les options d'installation mémorisées pour `/update-coach` (`~/.config/ai-running-coach/install-args`)
+restent communes à l'utilisateur : après une mise à jour, relancez `./install.sh` pour chaque workspace.
+
 ## Ce qui reste hors des deux dépôts
 
-- `~/.garminconnect/` — tokens Garmin
+- `~/.garminconnect/` — tokens Garmin (ou le dossier `--garmin-tokens` du workspace)
 - `~/.config/ai-running-coach/ntfy.token` — token de notification
 - `~/.config/ai-running-coach/workspace` — chemin du workspace
 - `~/.claude.json` — approbation du serveur MCP pour le workspace

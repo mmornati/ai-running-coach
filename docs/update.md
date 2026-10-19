@@ -80,7 +80,7 @@ Pour le reste, les traces de l'installation suffisent :
 | Trace | Option correspondante |
 |---|---|
 | `~/.config/ai-running-coach/workspace` existe | `--workspace <ce chemin>` |
-| `crontab -l` contient `# ai-running-coach daily-sync` | `--daily-sync` |
+| `crontab -l` contient `# ai-running-coach daily-sync` (éventuellement suivi de `[<nom>-<somme>]`, un par workspace) | `--daily-sync` |
 | Service `ai-running-coach-remote` (`scripts/coach-remote.sh status`) | `--remote-control` |
 | `[agents].enabled` dans `config/workspace.user.toml` | `--agents …` (ou `--no-medical`) |
 | `[data].source = "intervals"` | `--source intervals` |
