@@ -320,6 +320,7 @@
   & .chip__icon { width: 0.9rem; height: 0.9rem; flex: none; fill: none; stroke: currentColor; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
   & .rk-sport { white-space: nowrap; }
   & .rk-sport__icon { width: 0.95rem; height: 0.95rem; margin-right: 0.3rem; vertical-align: -0.15em; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+  & .rk-runsheet .rk-run__meta .rk-runsheet__real { display: inline; margin-top: 0; }
   & .rk-runsheet__real a { color: inherit; text-decoration: underline; text-underline-offset: 2px; }
   & .rk-check { width: 0.95rem; height: 0.95rem; margin-right: 0.3rem; vertical-align: -0.15em; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
   & .rk-runsheet .rk-run--missed .rk-runsheet__what::before { border-color: var(--bad); }

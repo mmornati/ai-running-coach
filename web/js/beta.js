@@ -621,9 +621,14 @@ export async function viewWeek(ctx, params) {
         const eff = x.effective || x.status || "planned";
         const shown = eff === "done" && x.deviation ? (x.deviation === "short" ? "shortened" : "extended") : eff === "future" ? "planned" : eff;
         const climb = x.planned_elevation_m ? `${F.elevation(x.planned_elevation_m)} D+` : null;
+        const real = a ? realLine(a, a.sport !== x.sport && F.SPORT[a.sport] ? `Réalisé · ${F.SPORT[a.sport]}` : "Réalisé")
+          : eff === "done" ? `<span class="rk-runsheet__real">${CHECK}Faite, sans activité synchronisée</span>` : "";
+        // Séance faite : le type de séance seul, suivi du réalisé sur la même ligne — le D+ et le
+        // créneau prévus ne disent plus rien une fois la séance courue.
         return { cls: `rk-run--${F.esc(eff)} rk-run--${rest ? "rest" : intensityClass(x.intensity)}`, title: F.esc(x.title),
-          meta: rest ? "" : [sportLabel(x.sport), climb, x.best_slot && x.best_slot !== "none" ? F.SLOT[x.best_slot] : null].filter(Boolean).join(" · "),
-          real: a ? realLine(a, a.sport !== x.sport && F.SPORT[a.sport] ? `Réalisé · ${F.SPORT[a.sport]}` : "Réalisé") : eff === "done" ? `<span class="rk-runsheet__real">${CHECK}Faite, sans activité synchronisée</span>` : "",
+          meta: rest ? "" : real ? `${sportLabel(x.sport)} · ${real}`
+            : [sportLabel(x.sport), climb, x.best_slot && x.best_slot !== "none" ? F.SLOT[x.best_slot] : null].filter(Boolean).join(" · "),
+          real: rest ? real : "",
           dur: durCell(x.planned_duration_s, a ? a.duration_s : null, x.deviation), status: rest ? "" : ui.statusChip(shown) };
       }),
       ...extras.map((a) => ({ cls: "rk-run--unplanned", title: `<a href="#/seance/${a.id}">${F.esc(a.name || F.SPORT[a.sport])}</a>`,
