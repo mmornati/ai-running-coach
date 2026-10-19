@@ -37,6 +37,7 @@
 #   ./install.sh --no-auth          # saute l'authentification Garmin
 #   ./install.sh --use-leanproxy    # mode passerelle leanproxy (power user)
 #   ./install.sh --daily-sync       # cron/launchd : sync Garmin aux heures de [sync].times
+#   ./install.sh --replace-schedule # avec --daily-sync --workspace : remplace aussi la planification de la racine du moteur (migration, #127)
 #   ./install.sh --remote-control   # service Remote Control (le coach dans la poche)
 #   ./install.sh --llm openrouter   # chat + sync sur une API (openrouter|anthropic|openai), un abonnement (chatgpt|copilot) ou l'essai gratuit (openrouter-free)
 #   ./install.sh --chat             # service du chat avec le coach (dashboard)
@@ -189,6 +190,7 @@ DO_AUTH=1
 IDE="all"          # all | claude | copilot | opencode | gemini | cursor | windsurf
 USE_LEANPROXY=0    # mode passerelle (power user) — défaut : direct
 DAILY_SYNC=0       # cron/launchd de synchronisation Garmin automatique
+REPLACE_SCHEDULE=0 # --replace-schedule : remplace aussi la planification de la racine du moteur (migration, #127)
 WORKSPACE_ARG=""   # --workspace DIR (défaut : le dossier du projet)
 GARMIN_TOKENS_ARG=""  # --garmin-tokens DIR : jetons Garmin propres à ce workspace (#127)
 INTERVALS_DIR_ARG=""  # --intervals-dir DIR : identifiants intervals.icu propres à ce workspace (#127)
@@ -279,6 +281,7 @@ Usage :
   ./install.sh --use-leanproxy    # mode passerelle leanproxy (power user)
   ./install.sh --skip-leanproxy   # mode direct (annule --use-leanproxy d'un préréglage)
   ./install.sh --daily-sync       # cron/launchd : sync Garmin aux heures de [sync].times
+  ./install.sh --replace-schedule # avec --daily-sync --workspace : remplace aussi la planification de la racine du moteur (migration, #127)
   ./install.sh --sync-runner CLI  # claude | codex | copilot | opencode | gemini | cursor
   ./install.sh --no-daily-sync    # désactive la sync (annule --daily-sync d'un préréglage)
   ./install.sh --remote-control   # service Remote Control (le coach dans la poche)
@@ -508,6 +511,7 @@ while [[ $# -gt 0 ]]; do
         --agents) need_value "$@"; AGENTS_ARG="$2"; EXPLICIT_AGENTS=1; shift 2 ;;
         --no-medical) AGENTS_ARG="${AGENTS_ARG:-__all_but__}:medical"; EXPLICIT_AGENTS=1; shift ;;
         --daily-sync) DAILY_SYNC=1; EXPLICIT_DAILY_SYNC=1; shift ;;
+        --replace-schedule) REPLACE_SCHEDULE=1; shift ;;
         --sync-runner) need_value "$@"; SYNC_RUNNER_ARG="$2"; shift 2 ;;
         --no-daily-sync) DAILY_SYNC=0; EXPLICIT_DAILY_SYNC=1; shift ;;  # annule --daily-sync composé par un préréglage
         --remote-control) REMOTE_CONTROL=1; EXPLICIT_REMOTE_CONTROL=1; shift ;;
@@ -2599,21 +2603,46 @@ physical_path() {
     if resolved="$(cd "$1" 2>/dev/null && pwd -P)"; then printf '%s' "$resolved"; else printf '%s' "$1"; fi
 }
 
+# Des données d'athlète vivent-elles encore à la RACINE DU MOTEUR ? (profil, objectif actif, ou un journal
+# d'activité / de santé : les fichiers que coach_setup et l'installation fusionnée y écrivent). Sert à
+# distinguer une migration terminée (racine vidée) d'un second membre ajouté à côté d'une installation fusionnée.
+engine_root_has_athlete_data() {
+    local f d
+    for f in "$PROJECT_ROOT/planning/Runner_Profile.md" "$PROJECT_ROOT/planning/active_objective.md"; do
+        [[ -f "$f" ]] && return 0
+    done
+    for d in activities medical; do
+        compgen -G "$PROJECT_ROOT/$d/*.md" >/dev/null && return 0
+    done
+    return 1
+}
+
+# Le dossier déclaré $1 est-il la racine du moteur alors que cette installation vise un workspace séparé ?
+declared_is_engine_root() {
+    workspace_is_separate && [[ -d "$1" && "$(physical_path "$1")" == "$(physical_path "$PROJECT_ROOT")" ]]
+}
+
 # À qui appartient une planification dont l'ARC_WORKSPACE déclaré est $1 ?
-#   own   : sans ARC_WORKSPACE (très ancienne installation, remplacée en bloc comme autrefois) ou même
-#           dossier PHYSIQUE que ce workspace (lien symbolique, graphie différente du chemin) ;
-#   stale : dossier disparu (workspace déplacé ou renommé), ou racine du moteur alors que cette
-#           installation vise un workspace séparé (migration « Migrer un workspace existant ») :
-#           remplacée, avec avertissement, sinon la sync tournerait deux fois ;
-#   other : un AUTRE workspace existant, jamais touché.
+#   own    : sans ARC_WORKSPACE (très ancienne installation, remplacée en bloc comme autrefois) ou même
+#            dossier PHYSIQUE que ce workspace (lien symbolique, graphie différente du chemin) ;
+#   stale  : dossier disparu alors que son parent existe (workspace déplacé ou renommé), ou racine du moteur
+#            alors que cette installation vise un workspace séparé ET que la racine ne contient plus de
+#            données d'athlète (migration terminée) ou que --replace-schedule est passé : remplacée, avec
+#            avertissement, sinon la sync tournerait deux fois ;
+#   absent : dossier disparu ET parent disparu (volume démonté, partage réseau absent) : conservée, avertie ;
+#   other  : un AUTRE workspace existant — dont la racine du moteur tant qu'elle porte des données (membre du
+#            foyer en installation fusionnée) —, jamais touché.
 workspace_claim() {
-    local declared="$1"
+    local declared="$1" theirs
     if [[ -z "$declared" ]]; then printf 'own'; return 0; fi
-    if [[ ! -d "$declared" ]]; then printf 'stale'; return 0; fi
-    local theirs
+    if [[ ! -d "$declared" ]]; then
+        if [[ -d "$(dirname "$declared")" ]]; then printf 'stale'; else printf 'absent'; fi
+        return 0
+    fi
     theirs="$(physical_path "$declared")"
     if [[ "$theirs" == "$(physical_path "$WORKSPACE_ROOT")" ]]; then printf 'own'
-    elif workspace_is_separate && [[ "$theirs" == "$(physical_path "$PROJECT_ROOT")" ]]; then printf 'stale'
+    elif declared_is_engine_root "$declared"; then
+        if [[ "$REPLACE_SCHEDULE" -eq 1 ]] || ! engine_root_has_athlete_data; then printf 'stale'; else printf 'other'; fi
     else printf 'other'; fi
 }
 
@@ -2626,7 +2655,7 @@ crontab_without_workspace() {
         declared=""
         if [[ "$line" =~ ARC_WORKSPACE=\"([^\"]*)\" ]]; then declared="${BASH_REMATCH[1]}"; fi
         verdict="$(workspace_claim "$declared")"
-        if [[ "$verdict" == "other" || ( "$verdict" == "stale" && "$mode" == "strict" ) ]]; then
+        if [[ "$verdict" == "other" || "$verdict" == "absent" || ( "$verdict" == "stale" && "$mode" == "strict" ) ]]; then
             printf '%s\n' "$line"
         fi
     done <<< "$1"
@@ -2643,6 +2672,54 @@ crontab_stale_lines() {
         [[ "$(workspace_claim "$declared")" == "stale" ]] && printf '%s\n' "$line"
     done <<< "$1"
     return 0
+}
+
+# Annonce une planification CONSERVÉE qui mérite l'attention : celle de la racine du moteur (données d'un autre
+# membre du foyer, ou les vôtres pas encore migrées) ou celle d'un workspace momentanément indisponible.
+# $1 : ARC_WORKSPACE déclaré, $2 : la ligne cron ou le plist concerné.
+warn_kept_schedule() {
+    local declared="$1" what="$2"
+    case "$(workspace_claim "$declared")" in
+        absent)
+            warn "Planification CONSERVÉE (workspace « $declared » et son dossier parent introuvables : volume démonté ou partage absent ?) : $what" ;;
+        other)
+            declared_is_engine_root "$declared" || return 0
+            warn "ATTENTION — planification de la RACINE DU MOTEUR CONSERVÉE (« $declared » contient encore des données d'athlète) : $what"
+            warn "  Si ce sont VOS données, déjà déplacées vers ce workspace : ./install.sh --daily-sync --workspace \"$WORKSPACE_ROOT\" --replace-schedule"
+            warn "  Si c'est un autre membre du foyer : rien à faire, sa synchronisation continue." ;;
+    esac
+    return 0
+}
+
+# Idem pour toutes les lignes marquées de la crontab $1 (les lignes de ce workspace ont déjà été retirées).
+warn_kept_cron_lines() {
+    local line declared
+    while IFS= read -r line; do
+        [[ "$line" == *"$CRON_MARKER_BASE"* ]] || continue
+        declared=""
+        if [[ "$line" =~ ARC_WORKSPACE=\"([^\"]*)\" ]]; then declared="${BASH_REMATCH[1]}"; fi
+        warn_kept_schedule "$declared" "$line"
+    done <<< "$1"
+    return 0
+}
+
+# Sauvegarde le plist $1 à côté des sauvegardes de la crontab (jamais en --dry-run) ; imprime le chemin.
+backup_plist() {
+    local backup
+    backup="$(dirname "$WORKSPACE_STATE_FILE")/launchagent-$(basename "$1" .plist)-$(date +%Y%m%d-%H%M%S).bak"
+    if [[ "$DRY_RUN" -eq 0 ]]; then
+        mkdir -p "$(dirname "$backup")"
+        cp "$1" "$backup"
+    fi
+    printf '%s' "$backup"
+}
+
+# Annonce le remplacement du plist périmé $1 (sauvegardé dans $2) et la façon de le restaurer.
+warn_replaced_plist() {
+    local declared
+    declared="$(plist_declared_workspace "$1")"
+    warn "LaunchAgent périmé remplacé ($1 : workspace « $declared » disparu ou migré). Sauvegarde : $2"
+    warn "  Pour le rétablir : ./install.sh --daily-sync --workspace \"$declared\""
 }
 
 # Marqueur à écrire pour ce workspace, d'après les lignes CONSERVÉES ($1) : le marqueur historique tant
@@ -2675,13 +2752,15 @@ plist_targets_workspace() {
 }
 
 # Label launchd de ce workspace : le label historique s'il n'existe pas encore ou s'il est à ce workspace ou
-# périmé (installation seule, migration, déplacement : rien ne se double), sinon un label suffixé.
+# périmé (installation seule, migration, déplacement : rien ne se double), sinon un label suffixé — le plist
+# historique d'un autre dossier existant ou indisponible n'est JAMAIS réutilisé ni écrasé.
 launchd_label_for_workspace() {
     local dir="$HOME/Library/LaunchAgents" own
     own="$LAUNCHD_LABEL_BASE.$(workspace_tag)"
     if [[ -f "$dir/$own.plist" ]]; then
         printf '%s' "$own"
-    elif [[ -f "$dir/$LAUNCHD_LABEL_BASE.plist" && "$(plist_claim "$dir/$LAUNCHD_LABEL_BASE.plist")" == "other" ]]; then
+    elif [[ -f "$dir/$LAUNCHD_LABEL_BASE.plist" ]] \
+        && case "$(plist_claim "$dir/$LAUNCHD_LABEL_BASE.plist")" in other|absent) true ;; *) false ;; esac; then
         printf '%s' "$own"
     else
         printf '%s' "$LAUNCHD_LABEL_BASE"
@@ -2690,14 +2769,15 @@ launchd_label_for_workspace() {
 
 # Retire les LaunchAgents daily-sync PÉRIMÉS ou doublons de ce workspace (autre label que $1) : sans cela
 # la sync tournerait deux fois (migration vers --workspace, workspace déplacé). Ceux d'un autre workspace
-# existant ne sont jamais touchés.
+# existant ou indisponible ne sont jamais touchés ; un plist retiré est d'abord sauvegardé.
 retire_stale_plists() {
-    local keep="$1" f verdict
+    local keep="$1" f verdict backup
     for f in "$HOME/Library/LaunchAgents/$LAUNCHD_LABEL_BASE"*.plist; do
         [[ -f "$f" && "$f" != "$keep" ]] || continue
         verdict="$(plist_claim "$f")"
-        [[ "$verdict" != "other" ]] || continue
-        warn "LaunchAgent périmé remplacé ($f : workspace « $(plist_declared_workspace "$f") »)."
+        [[ "$verdict" == "own" || "$verdict" == "stale" ]] || continue
+        backup="$(backup_plist "$f")"
+        warn_replaced_plist "$f" "$backup"
         if [[ "$DRY_RUN" -eq 0 ]]; then
             launchctl bootout "gui/$(id -u)" "$f" 2>/dev/null || true
             rm -f "$f"
@@ -2771,6 +2851,14 @@ install_daily_sync() {
   <array>
 $entries  </array>"
         fi
+        if [[ -f "$plist" && "$(plist_claim "$plist")" == "stale" ]]; then
+            warn_replaced_plist "$plist" "$(backup_plist "$plist")"   # réécrit ci-dessous pour ce workspace
+        fi
+        local other_plist
+        for other_plist in "$HOME/Library/LaunchAgents/$LAUNCHD_LABEL_BASE"*.plist; do
+            [[ -f "$other_plist" && "$other_plist" != "$plist" ]] || continue
+            warn_kept_schedule "$(plist_declared_workspace "$other_plist")" "$other_plist"
+        done
         write_file "$plist" <<EOF
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -2810,9 +2898,15 @@ EOF
         fi
         kept="$(crontab_without_workspace "$current")"
         marker="$(cron_marker_for_workspace "$kept")"
+        local old_ws
         while IFS= read -r line; do
-            [[ -z "$line" ]] || warn "Ligne cron périmée remplacée (workspace disparu ou racine du moteur) : $line"
+            [[ -n "$line" ]] || continue
+            old_ws=""
+            if [[ "$line" =~ ARC_WORKSPACE=\"([^\"]*)\" ]]; then old_ws="${BASH_REMATCH[1]}"; fi
+            warn "Ligne cron périmée retirée (workspace « $old_ws » disparu ou migré ; la crontab d'origine est sauvegardée) : $line"
+            warn "  Pour la rétablir : ./install.sh --daily-sync --workspace \"$old_ws\""
         done < <(crontab_stale_lines "$current")
+        warn_kept_cron_lines "$kept"
         for t in $times; do
             hour="$((10#${t%%:*}))"; minute="$((10#${t##*:}))"
             # Le chemin du workspace peut contenir des espaces : il doit être cité.
@@ -3833,7 +3927,7 @@ main() {
 
 # Mémorise les options de configuration de cette installation, une par ligne, pour que
 # scripts/update-coach.sh (/update-coach) relance install.sh à l'identique après un git pull.
-# --no-auth/--auth/--dry-run/--connect (action ponctuelle interactive) ne décrivent pas la configuration : jamais mémorisés. Une relance
+# --no-auth/--auth/--dry-run/--connect/--replace-schedule (action ponctuelle interactive) ne décrivent pas la configuration : jamais mémorisés. Une relance
 # sans autre option (« ./install.sh --no-auth ») garde les options déjà mémorisées — sinon elle
 # effacerait, par exemple, le --daily-sync que la mise à jour doit rejouer. Écrit seulement après
 # une installation complète, jamais en dry-run. Aucun secret : install.sh ne reçoit que des chemins.
@@ -3852,7 +3946,7 @@ persist_install_args() {
             --workspace|--ow-key-file|--garmin-tokens|--intervals-dir) [[ "$arg" == /* || "$arg" == "~"* ]] || arg="$INSTALL_CWD/${arg#./}" ;;
         esac
         case "$arg" in
-            --no-auth|--auth|--dry-run|--connect) ;;
+            --no-auth|--auth|--dry-run|--connect|--replace-schedule) ;;
             *) kept+=("$arg") ;;
         esac
         prev="$arg"

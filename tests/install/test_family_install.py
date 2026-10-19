@@ -458,11 +458,17 @@ class TestDoctorDailySyncOwnership(InstallAsserts):
             self.assertEqual(self._check(sb, alice, "Linux"), "ok")
             self.assertNotEqual(self._check(sb, bob, "Linux"), "ok")
 
-    def test_cron_vanished_declared_directory_is_tolerated(self):
+    def test_cron_vanished_declared_directory_is_an_orphan_not_ours(self):
+        """Défaut verrouillé (nit N5) : un dossier déclaré disparu était réputé « le nôtre » -> B rapporté planifié
+        alors que la seule ligne vise un dossier supprimé. Remplace l'ancien test « tolerated »."""
         with Sandbox() as sb:
             bob = _ws(sb, "bob")
             sb.set_crontab(f'0 6 * * * ARC_WORKSPACE="{sb.root}/gone" "/e/daily-sync.sh" >/dev/null 2>&1 {LEGACY_MARKER}\n')
-            self.assertEqual(self._check(sb, bob, "Linux"), "ok")
+            proc = sb.script("coach_doctor.py", "--check", "daily_sync_scheduled", "--json", "--workspace", str(bob),
+                             ARC_FAKE_UNAME="Linux")
+            check = json.loads(proc.stdout)["checks"][0]
+            self.assertEqual(check["status"], "info")
+            self.assertIn("orpheline", check["message"])
 
     def test_launchd_only_a_scheduled(self):
         with Sandbox() as sb:
@@ -532,3 +538,194 @@ class TestOpencodeProjectConfig(InstallAsserts):
             self.assertNotIn("opencode.json", (ws / ".gitignore").read_text())
             global_env = json.loads((sb.home / ".config/opencode/opencode.json").read_text())["mcp"]["garmin"]["environment"]
             self.assertEqual(list(global_env), ["GARMIN_ENABLED_TOOLS"])
+
+
+def _athlete_data(root: Path) -> None:
+    (root / "planning").mkdir(parents=True, exist_ok=True)
+    (root / "planning" / "Runner_Profile.md").write_text("- Prénom : Alice\n", encoding="utf-8")
+
+
+class TestFamilyAdditionKeepsTheEngineRootSchedule(InstallAsserts):
+    """Défaut verrouillé (N1) : installation fusionnée de A (workspace = racine du moteur) puis ajout de B avec
+    --workspace : la planification de A était réputée « migrée » -> lignes cron retirées (Linux), plist historique
+    réécrit pour B en silence (Darwin). Migration d'une même personne et ajout d'un membre se ressemblent : tant
+    que la racine porte des données, c'est celle d'un autre ; --replace-schedule force le remplacement."""
+
+    def _linux(self, sb, *args):
+        return sb.install("--no-auth", "--daily-sync", *args, ARC_FAKE_UNAME="Linux")
+
+    def _darwin(self, sb, *args):
+        return sb.install("--no-auth", "--daily-sync", *args, ARC_FAKE_UNAME="Darwin")
+
+    def _engine_lines(self, sb):
+        return [l for l in sb.crontab().splitlines() if f'ARC_WORKSPACE="{sb.repo}"' in l]
+
+    def _plists(self, sb):
+        return sorted((sb.home / "Library/LaunchAgents").glob("com.ai-running-coach.daily-sync*.plist"))
+
+    # -- Linux -----------------------------------------------------------------------------------------------
+    def test_cron_merged_member_then_second_member_keeps_both(self):
+        with Sandbox() as sb:
+            bob = _ws(sb, "bob")
+            self.assertSucceeded(self._linux(sb))
+            _athlete_data(sb.repo)
+            before = self._engine_lines(sb)
+            self.assertEqual(len(before), 2)
+            proc = self._linux(sb, "--workspace", str(bob))
+            self.assertSucceeded(proc)
+            self.assertEqual(self._engine_lines(sb), before, sb.crontab())
+            self.assertEqual(len(_lines(sb, bob)), 2, sb.crontab())
+            self.assertTrue(all("[bob-" in l for l in _lines(sb, bob)), sb.crontab())
+            self.assertOutputContains(proc, "--replace-schedule")
+            self.assertOutputContains(proc, "RACINE DU MOTEUR CONSERVÉE")
+
+    def test_cron_migration_without_the_flag_keeps_both_and_warns(self):
+        with Sandbox() as sb:
+            alice = _ws(sb, "alice")
+            self.assertSucceeded(self._linux(sb))
+            _athlete_data(sb.repo)
+            proc = self._linux(sb, "--workspace", str(alice))
+            self.assertSucceeded(proc)
+            self.assertEqual(len(self._engine_lines(sb)), 2, sb.crontab())
+            self.assertEqual(len(_lines(sb, alice)), 2, sb.crontab())
+            self.assertOutputContains(proc, "--replace-schedule")
+
+    def test_cron_migration_with_the_flag_replaces_the_engine_root_lines(self):
+        with Sandbox() as sb:
+            alice = _ws(sb, "alice")
+            self.assertSucceeded(self._linux(sb))
+            _athlete_data(sb.repo)
+            proc = self._linux(sb, "--workspace", str(alice), "--replace-schedule")
+            self.assertSucceeded(proc)
+            self.assertEqual(self._engine_lines(sb), [], sb.crontab())
+            self.assertEqual(len(_lines(sb, alice)), 2, sb.crontab())
+            self.assertOutputContains(proc, "périmée")
+
+    def test_cron_engine_root_emptied_of_athlete_data_is_replaced_automatically(self):
+        with Sandbox() as sb:
+            alice = _ws(sb, "alice")
+            self.assertSucceeded(self._linux(sb))
+            (sb.repo / "activities").mkdir(exist_ok=True)                     # dossier vide : pas de donnée
+            proc = self._linux(sb, "--workspace", str(alice))
+            self.assertSucceeded(proc)
+            self.assertEqual(self._engine_lines(sb), [], sb.crontab())
+            self.assertEqual(len(_lines(sb, alice)), 2, sb.crontab())
+
+    def test_a_single_activity_journal_counts_as_athlete_data(self):
+        with Sandbox() as sb:
+            alice = _ws(sb, "alice")
+            self.assertSucceeded(self._linux(sb))
+            (sb.repo / "activities").mkdir(exist_ok=True)
+            (sb.repo / "activities" / "2026-01-01_running.md").write_text("x\n", encoding="utf-8")
+            self.assertSucceeded(self._linux(sb, "--workspace", str(alice)))
+            self.assertEqual(len(self._engine_lines(sb)), 2, sb.crontab())
+
+    def test_the_replace_flag_is_not_remembered_for_updates(self):
+        with Sandbox() as sb:
+            alice = _ws(sb, "alice")
+            self.assertSucceeded(self._linux(sb, "--workspace", str(alice), "--replace-schedule"))
+            remembered = (sb.home / ".config/ai-running-coach/install-args").read_text(encoding="utf-8")
+            self.assertNotIn("--replace-schedule", remembered)
+
+    # -- Darwin ----------------------------------------------------------------------------------------------
+    def test_launchd_merged_member_then_second_member_never_touches_the_legacy_plist(self):
+        with Sandbox() as sb:
+            bob = _ws(sb, "bob")
+            self.assertSucceeded(self._darwin(sb))
+            _athlete_data(sb.repo)
+            legacy = sb.home / LEGACY_PLIST
+            before = legacy.read_text()
+            proc = self._darwin(sb, "--workspace", str(bob))
+            self.assertSucceeded(proc)
+            self.assertEqual(legacy.read_text(), before)
+            self.assertIn(f"<string>{sb.repo}</string>", before)
+            suffixed = sorted((sb.home / "Library/LaunchAgents").glob("com.ai-running-coach.daily-sync.bob-*.plist"))
+            self.assertEqual(len(suffixed), 1, self._plists(sb))
+            self.assertIn(f"<string>{bob}</string>", suffixed[0].read_text())
+            self.assertOutputContains(proc, "--replace-schedule")
+
+    def test_launchd_migration_with_the_flag_replaces_the_legacy_plist(self):
+        with Sandbox() as sb:
+            alice = _ws(sb, "alice")
+            self.assertSucceeded(self._darwin(sb))
+            _athlete_data(sb.repo)
+            self.assertSucceeded(self._darwin(sb, "--workspace", str(alice), "--replace-schedule"))
+            plists = self._plists(sb)
+            self.assertEqual([p.name for p in plists], ["com.ai-running-coach.daily-sync.plist"], plists)
+            self.assertIn(f"<string>{alice}</string>", plists[0].read_text())
+            backups = list((sb.home / ".config/ai-running-coach").glob("launchagent-*.bak"))
+            self.assertEqual(len(backups), 1, backups)
+            self.assertIn(f"<string>{sb.repo}</string>", backups[0].read_text())
+
+    def test_launchd_engine_root_emptied_of_athlete_data_is_replaced_automatically(self):
+        with Sandbox() as sb:
+            alice = _ws(sb, "alice")
+            self.assertSucceeded(self._darwin(sb))
+            self.assertSucceeded(self._darwin(sb, "--workspace", str(alice)))
+            self.assertEqual(len(self._plists(sb)), 1, self._plists(sb))
+
+
+class TestUnavailableWorkspaceSchedule(InstallAsserts):
+    """Défaut verrouillé (N2) : un membre dont le workspace est momentanément indisponible (volume démonté, partage
+    réseau, dossier parent renommé) perdait sa planification quand un autre membre réinstallait."""
+
+    def _linux(self, sb, ws):
+        return sb.install("--no-auth", "--daily-sync", "--workspace", str(ws), ARC_FAKE_UNAME="Linux")
+
+    def _darwin(self, sb, ws):
+        return sb.install("--no-auth", "--daily-sync", "--workspace", str(ws), ARC_FAKE_UNAME="Darwin")
+
+    def _unmounted(self, sb) -> Path:
+        return sb.root / "mnt-gone" / "alice"                    # ni le dossier ni son parent n'existent
+
+    def test_cron_missing_parent_keeps_the_line_and_warns(self):
+        with Sandbox() as sb:
+            bob = _ws(sb, "bob")
+            ghost = self._unmounted(sb)
+            sb.set_crontab(f'0 6 * * * ARC_WORKSPACE="{ghost}" "/e/daily-sync.sh" >/dev/null 2>&1 {LEGACY_MARKER}\n')
+            proc = self._linux(sb, bob)
+            self.assertSucceeded(proc)
+            self.assertEqual(len(_lines(sb, ghost)), 1, sb.crontab())
+            self.assertEqual(len(_lines(sb, bob)), 2, sb.crontab())
+            self.assertOutputContains(proc, "volume démonté")
+
+    def test_cron_missing_directory_with_existing_parent_is_replaced_with_a_restore_hint(self):
+        with Sandbox() as sb:
+            bob = _ws(sb, "bob")
+            gone = sb.root / "alice-gone"
+            sb.set_crontab(f'0 6 * * * ARC_WORKSPACE="{gone}" "/e/daily-sync.sh" >/dev/null 2>&1 {LEGACY_MARKER}\n')
+            proc = self._linux(sb, bob)
+            self.assertSucceeded(proc)
+            self.assertEqual(_lines(sb, gone), [], sb.crontab())
+            self.assertOutputContains(proc, f'./install.sh --daily-sync --workspace "{gone}"')
+            self.assertTrue(list((sb.home / ".config/ai-running-coach").glob("crontab-*.bak")))
+
+    def test_launchd_missing_parent_keeps_the_plist_untouched(self):
+        with Sandbox() as sb:
+            bob = _ws(sb, "bob")
+            ghost = self._unmounted(sb)
+            legacy = sb.home / LEGACY_PLIST
+            legacy.parent.mkdir(parents=True)
+            text = (f"<plist><dict><key>Label</key><string>com.ai-running-coach.daily-sync</string>"
+                    f"<key>EnvironmentVariables</key><dict><key>ARC_WORKSPACE</key><string>{ghost}</string></dict>"
+                    f"</dict></plist>")
+            legacy.write_text(text)
+            proc = self._darwin(sb, bob)
+            self.assertSucceeded(proc)
+            self.assertEqual(legacy.read_text(), text)
+            self.assertEqual(len(list(legacy.parent.glob("com.ai-running-coach.daily-sync.bob-*.plist"))), 1)
+            self.assertOutputContains(proc, "volume démonté")
+
+    def test_launchd_stale_suffixed_plist_is_backed_up_before_removal(self):
+        with Sandbox() as sb:
+            alice, bob = _ws(sb, "alice"), _ws(sb, "bob")
+            self.assertSucceeded(self._darwin(sb, alice))
+            self.assertSucceeded(self._darwin(sb, bob))
+            moved = sb.root / "bob-moved"
+            bob.rename(moved)
+            proc = self._darwin(sb, moved)
+            self.assertSucceeded(proc)
+            backups = list((sb.home / ".config/ai-running-coach").glob("launchagent-*.bak"))
+            self.assertEqual(len(backups), 1, backups)
+            self.assertIn(f"<string>{bob}</string>", backups[0].read_text())
+            self.assertOutputContains(proc, f'./install.sh --daily-sync --workspace "{bob}"')
