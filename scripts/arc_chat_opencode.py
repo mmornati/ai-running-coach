@@ -319,6 +319,9 @@ class OpenCodeBackend(ChatBackend):
     def _api_key_env(self) -> str:
         return str(self.config.get("api_key_env") or DEFAULT_API_KEY_ENV)
 
+    def llm_key_env(self) -> str:
+        return self._api_key_env()
+
     def _base_url(self) -> str:
         return str(self.config.get("base_url") or "").strip()
 

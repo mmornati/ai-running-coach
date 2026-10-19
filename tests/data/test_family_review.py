@@ -59,6 +59,81 @@ class TestBackendEnvironment(FamilyEnvCase):
         self.assertNotEqual(fam.services["alice"].backend.child_env(base)["ARC_WORKSPACE"],
                             fam.services["bob"].backend.child_env(base)["ARC_WORKSPACE"])
 
+    SECRETS = ("STRAVA_CLIENT_ID", "STRAVA_CLIENT_SECRET", "STRAVA_TOKEN_FILE", "STRAVA_ACCESS_TOKEN",
+               "MYWHOOSH_USERNAME", "MYWHOOSH_PASSWORD", "ARC_OW_API_KEY_FILE", "ARC_OW_BASE_URL",
+               "TELEGRAM_BOT_TOKEN", "NTFY_TOKEN_FILE", "AZURE_SPEECH_KEY", "GARMIN_EMAIL", "OURA_PAT",
+               "ACME_API_TOKEN", "FOO_SECRET", "SOME_SERVICE_KEY", "DB_PASSWD")
+
+    def secret_env(self, home: Path) -> dict:
+        return dict({name: "valeur-foyer" for name in self.SECRETS}, HOME=str(home), PATH="/usr/bin", LANG="fr_FR.UTF-8",
+                    TZ="Europe/Paris", XDG_CONFIG_HOME="/x", ANTHROPIC_API_KEY="cle-llm", MY_LLM_KEY="cle-llm-2")
+
+    def test_identifiants_retires_par_motif_pour_tout_backend_membre(self):
+        """Défaut verrouillé : liste fermée de noms -> Strava, MyWhoosh, Telegram, ntfy... et tout futur fournisseur
+        restaient visibles des outils et serveurs MCP d'un membre."""
+        fam = C.FamilyChat(self.mock_registry())
+        base = self.secret_env(self.root / "home")
+        env = fam.services["alice"].backend.child_env(base)
+        for name in self.SECRETS:
+            self.assertNotIn(name, env, name)
+        for name in ("PATH", "HOME", "LANG", "TZ", "XDG_CONFIG_HOME"):
+            self.assertEqual(env[name], base[name])
+        # clé LLM configurée du membre : conservée
+        backend = M.MockBackend(self.workspaces["alice"], {"family_member": "alice", "api_key_env": "MY_LLM_KEY"})
+        env = backend.child_env(base)
+        self.assertEqual(env["MY_LLM_KEY"], "cle-llm-2")
+        self.assertNotIn("ANTHROPIC_API_KEY", env)
+        self.assertNotIn("ACME_API_TOKEN", env)
+
+    def test_hors_mode_famille_aucun_identifiant_retire(self):
+        backend = M.MockBackend(T.make_workspace(self.root, "alice"), {})
+        base = self.secret_env(self.root / "home")
+        self.assertEqual(backend.family_overlay(base), {})
+        self.assertEqual(backend.child_env(base), base)
+
+    def test_claude_options_videntes_identifiants_mais_gardent_la_cle_llm(self):
+        from arc_chat_claude import ClaudeBackend
+        ws = self.root / "coach-bob"
+        ws.mkdir()
+        sdk = SimpleNamespace(ClaudeAgentOptions=lambda **kw: kw, HookMatcher=lambda **kw: kw,
+                              PermissionResultAllow=lambda: None, PermissionResultDeny=lambda **kw: None)
+        turn = SimpleNamespace(ctx=SimpleNamespace(language="fr", config={}), gate_sync=lambda *a: ("deny", ""))
+        for cfg, var in (({}, "ANTHROPIC_API_KEY"), ({"api_key_env": "MY_LLM_KEY"}, "MY_LLM_KEY")):
+            with mock.patch.dict(os.environ, self.secret_env(self.root), clear=True):
+                env = ClaudeBackend(ws, dict(cfg, family_member="bob"))._options(sdk, turn, None)["env"]
+            for name in self.SECRETS:
+                self.assertEqual(env[name], "", name)         # le SDK fusionne par-dessus os.environ : blanc
+            # la clé LLM du membre atteint bien le processus Claude (ordre de fusion : posée APRÈS le recouvrement)
+            self.assertEqual(env["ANTHROPIC_API_KEY"], "cle-llm" if var == "ANTHROPIC_API_KEY" else "cle-llm-2")
+            self.assertEqual(env["CLAUDE_CODE_OAUTH_TOKEN"], "")
+            self.assertNotIn("PATH", env)                     # non secret : hérité tel quel, jamais touché
+            self.assertEqual(env["ARC_WORKSPACE"], str(ws))
+
+    def test_opencode_serveur_sans_identifiants_du_foyer_avec_cle_llm(self):
+        from arc_chat_opencode import OpenCodeBackend
+        ws = self.root / "coach-bob"
+        ws.mkdir()
+        backend = OpenCodeBackend(ws, {"family_member": "bob", "model": "openrouter/some-model",
+                                       "api_key_env": "MY_LLM_KEY"})
+        captured = {}
+
+        def fake_spawn(cmd, env, cwd, log_path):
+            captured.update(env)
+            raise OSError("stop")
+        with mock.patch.dict(os.environ, self.secret_env(self.root), clear=True), \
+                mock.patch.object(backend, "_binary", return_value="/bin/true"), \
+                mock.patch.object(backend, "_auth_missing", return_value=None), \
+                mock.patch.object(backend, "_need_key", return_value=True), \
+                mock.patch.object(backend, "_reap_stale"), \
+                mock.patch.object(backend, "_spawn", side_effect=fake_spawn), \
+                self.assertRaises(BackendError):
+            backend._ensure_server()
+        for name in self.SECRETS + ("ANTHROPIC_API_KEY",):
+            self.assertNotIn(name, captured, name)
+        self.assertEqual(captured["MY_LLM_KEY"], "cle-llm-2")
+        self.assertEqual(captured["PATH"], "/usr/bin")
+        self.assertEqual(captured["HOME"], str(self.root))
+
     def test_mono_athlete_environnement_inchange(self):
         ws = T.make_workspace(self.root, "alice")
         backend = M.MockBackend(ws, {})
