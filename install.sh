@@ -30,6 +30,8 @@
 #   ./install.sh --health-source S     # primary (défaut) | openwearables — santé du bilan matinal lue chez Open Wearables, opt-in (#220)
 #     --ow-url URL --ow-provider P     #   instance Open Wearables et UN fabricant (oura, whoop, polar…) ; --ow-key-file F importe la clé
 #   ./install.sh --workspace DIR    # données + config IDE dans DIR (dépôt privé), moteur lié
+#   ./install.sh --garmin-tokens DIR  # jetons Garmin propres à ce workspace (plusieurs workspaces, même utilisateur, #127)
+#   ./install.sh --intervals-dir DIR  # identifiants intervals.icu propres à ce workspace (idem, #127)
 #   ./install.sh --agents LISTE     # staff à installer, ex. coach,nutritionist
 #   ./install.sh --no-medical       # tous les agents sauf le médecin
 #   ./install.sh --no-auth          # saute l'authentification Garmin
@@ -78,6 +80,9 @@ INTERVALS_MCP_REF="git+https://github.com/hhopke/intervals-icu-mcp@92a630bfc4ffe
 # est donc lancé depuis ce dossier dédié, hors du projet, comme `$GARMIN_TOKENS_DIR`
 # ci-dessous pour Garmin.
 INTERVALS_ENV_DIR="$HOME/.config/ai-running-coach/intervals-icu-mcp"
+# Dossier historique, conservé à part : INTERVALS_ENV_DIR devient celui DU workspace quand
+# --intervals-dir (ou un .mcp.json qui en porte un) le déplace (#127, resolve_credential_dirs).
+INTERVALS_ENV_DEFAULT="$INTERVALS_ENV_DIR"
 # Source Strava (#164) : serveur MCP communautaire r-huijts/strava-mcp, publié sur npm
 # (`@r-huijts/strava-mcp-server`, bin `strava-mcp-server`, stdio). Épinglé à la version 1.2.1,
 # publiée depuis le commit a68112aa12a88909593db0f4b1ac0f6aebed6e3a (`gitHead` du registre npm) :
@@ -94,6 +99,10 @@ STRAVA_TOKEN_FILE="$HOME/.config/strava-mcp/config.json"
 LEANPROXY_BREW_TAP="mmornati/leanproxy-mcp"
 LEANPROXY_FORMULA="leanproxy-mcp"
 GARMIN_TOKENS_DIR="$HOME/.garminconnect"
+# Idem : GARMIN_TOKENS_DIR devient le dossier de jetons DU workspace (--garmin-tokens, #127).
+GARMIN_TOKENS_DEFAULT="$GARMIN_TOKENS_DIR"
+GARMIN_TOKENS_CUSTOM=0      # 1 = GARMINTOKENS posé dans l'env du serveur garmin du .mcp.json
+GARMIN_AUTH_EXTRA=()        # --token-path DIR pour garmin-mcp-auth quand le dossier est propre au workspace
 LEANPROXY_CONFIG_DIR="$HOME/.config/leanproxy"
 LEANPROXY_SERVERS="$HOME/.config/leanproxy_servers.yaml"
 
@@ -181,6 +190,8 @@ IDE="all"          # all | claude | copilot | opencode | gemini | cursor | winds
 USE_LEANPROXY=0    # mode passerelle (power user) — défaut : direct
 DAILY_SYNC=0       # cron/launchd de synchronisation Garmin automatique
 WORKSPACE_ARG=""   # --workspace DIR (défaut : le dossier du projet)
+GARMIN_TOKENS_ARG=""  # --garmin-tokens DIR : jetons Garmin propres à ce workspace (#127)
+INTERVALS_DIR_ARG=""  # --intervals-dir DIR : identifiants intervals.icu propres à ce workspace (#127)
 REMOTE_CONTROL=0   # service Claude Code Remote Control (accès mobile)
 AGENTS_ARG=""      # --agents coach,medical,… (défaut : la config, sinon tous)
 ENABLED_AGENTS=""  # résolu par resolve_agents()
@@ -259,6 +270,8 @@ Usage :
   ./install.sh --ow-provider P    # avec --health-source openwearables : UN fabricant (oura, whoop, polar…)
   ./install.sh --ow-key-file F    # avec --health-source openwearables : importe la clé d'API (copiée hors dépôt, mode 600)
   ./install.sh --workspace DIR    # données + config IDE dans DIR (dépôt privé), moteur lié
+  ./install.sh --garmin-tokens DIR  # source garmin : jetons Garmin propres à ce workspace (GARMINTOKENS du .mcp.json), voir ci-dessous
+  ./install.sh --intervals-dir DIR  # source intervals : identifiants intervals.icu propres à ce workspace, voir ci-dessous
   ./install.sh --agents LISTE     # staff à installer, ex. coach,nutritionist
   ./install.sh --no-medical       # tous les agents sauf le médecin
   ./install.sh --no-auth          # saute l'authentification Garmin
@@ -286,6 +299,15 @@ Usage :
   ./install.sh --dashboard-auth MW    # avec traefik : middleware d'authentification (obligatoire si Traefik est joignable du réseau)
   ./install.sh --dry-run          # affiche les actions sans rien exécuter
   ./install.sh --help
+
+Plusieurs workspaces sur une même machine, sous le même utilisateur (#127) :
+--garmin-tokens DIR écrit GARMINTOKENS=DIR dans l'env du serveur « garmin » du .mcp.json
+du workspace (donc aussi de ses configs Cursor, Gemini, Windsurf) et authentifie Garmin dans
+CE dossier (garmin-mcp-auth --token-path) ; --intervals-dir DIR place le wrapper run.sh et le
+.env intervals.icu dans DIR (référencé par le .mcp.json). Mémorisés : un rerun sans l'option
+les conserve, une installation sans option ne change rien. La config OpenCode globale
+(~/.config/opencode) n'est alors pas modifiée. La planification (cron/launchd) est elle aussi
+propre à chaque workspace : installer le workspace B ne remplace jamais la ligne du workspace A.
 
 --llm écrit à la fois [chat] et [sync] de config/workspace.user.toml. Une valeur
 DÉJÀ posée qui diffère est REMPLACÉE, avec un avertissement « ancien → nouveau »
@@ -480,6 +502,8 @@ while [[ $# -gt 0 ]]; do
         --use-leanproxy) USE_LEANPROXY=1; EXPLICIT_LEANPROXY=1; shift ;;
         --skip-leanproxy) USE_LEANPROXY=0; EXPLICIT_LEANPROXY=1; shift ;;  # rétro-compatibilité
         --workspace) need_value "$@"; WORKSPACE_ARG="$2"; shift 2 ;;
+        --garmin-tokens) need_value "$@"; GARMIN_TOKENS_ARG="$2"; shift 2 ;;
+        --intervals-dir) need_value "$@"; INTERVALS_DIR_ARG="$2"; shift 2 ;;
         --agents) need_value "$@"; AGENTS_ARG="$2"; EXPLICIT_AGENTS=1; shift 2 ;;
         --no-medical) AGENTS_ARG="${AGENTS_ARG:-__all_but__}:medical"; EXPLICIT_AGENTS=1; shift ;;
         --daily-sync) DAILY_SYNC=1; EXPLICIT_DAILY_SYNC=1; shift ;;
@@ -1036,6 +1060,62 @@ resolve_source() {
     log "Source de données : $SOURCE"
 }
 
+# Dossiers d'identifiants PROPRES au workspace (#127) : plusieurs workspaces (un par membre d'un
+# foyer) sous le même utilisateur ne doivent ni partager leurs jetons Garmin ni leurs identifiants
+# intervals.icu. Précédence : option explicite, sinon la valeur DÉJÀ posée dans le .mcp.json du
+# workspace (un rerun sans option ne retire jamais ce qu'un run précédent a écrit), sinon le dossier
+# historique — une installation qui n'utilise rien de cela est strictement inchangée.
+normalize_cred_dir() {
+    local flag="$1" value="$2"
+    [[ "$value" != *$'\n'* ]] || die "$flag : chemin sur plusieurs lignes refusé."
+    value="${value/#\~/$HOME}"
+    [[ "$value" == /* ]] || value="$INSTALL_CWD/${value#./}"
+    while [[ "${#value}" -gt 1 && "$value" == */ ]]; do value="${value%/}"; done
+    printf '%s' "$value"
+}
+
+resolve_credential_dirs() {
+    local existing=""
+    if [[ -n "$GARMIN_TOKENS_ARG" ]]; then
+        [[ "$SOURCE" == "garmin" ]] \
+            || die "--garmin-tokens ne s'applique qu'à la source garmin (source retenue : $SOURCE)."
+        GARMIN_TOKENS_DIR="$(normalize_cred_dir --garmin-tokens "$GARMIN_TOKENS_ARG")"
+        GARMIN_TOKENS_CUSTOM=1
+    elif [[ "$SOURCE" == "garmin" ]] && have python3; then
+        existing="$(python3 "$PROJECT_ROOT/scripts/arc_credentials.py" garmin-tokens-mcp \
+            --workspace "$WORKSPACE_ROOT" 2>/dev/null || true)"
+        if [[ -n "$existing" ]]; then
+            GARMIN_TOKENS_DIR="$existing"
+            GARMIN_TOKENS_CUSTOM=1
+        fi
+    fi
+    if [[ "$GARMIN_TOKENS_CUSTOM" -eq 1 ]]; then
+        GARMIN_AUTH_EXTRA=(--token-path "$GARMIN_TOKENS_DIR")
+        if [[ "$USE_LEANPROXY" -eq 1 ]]; then
+            warn "Mode leanproxy : GARMINTOKENS n'est pas écrit dans la config de la passerelle (jetons : $GARMIN_TOKENS_DIR pour l'authentification seulement)."
+        fi
+        log "Jetons Garmin propres à ce workspace : $GARMIN_TOKENS_DIR"
+    fi
+    if [[ -n "$INTERVALS_DIR_ARG" ]]; then
+        [[ "$SOURCE" == "intervals" ]] \
+            || die "--intervals-dir ne s'applique qu'à la source intervals (source retenue : $SOURCE)."
+        INTERVALS_ENV_DIR="$(normalize_cred_dir --intervals-dir "$INTERVALS_DIR_ARG")"
+    elif have python3; then
+        existing="$(python3 "$PROJECT_ROOT/scripts/arc_credentials.py" intervals-dir \
+            --workspace "$WORKSPACE_ROOT" 2>/dev/null || true)"
+        [[ -z "$existing" ]] || INTERVALS_ENV_DIR="$existing"
+    fi
+    if [[ "$INTERVALS_ENV_DIR" != "$INTERVALS_ENV_DEFAULT" ]]; then
+        log "Identifiants intervals.icu propres à ce workspace : $INTERVALS_ENV_DIR"
+    fi
+}
+
+# Vrai quand les identifiants de ce workspace ne sont pas ceux par défaut : les configs GLOBALES de
+# l'utilisateur (OpenCode) ne doivent alors pas être écrasées par une entrée propre à ce workspace.
+workspace_credentials_custom() {
+    [[ "$GARMIN_TOKENS_DIR" != "$GARMIN_TOKENS_DEFAULT" || "$INTERVALS_ENV_DIR" != "$INTERVALS_ENV_DEFAULT" ]]
+}
+
 # Détermine le mode de suivi du cycle (#166) : --cycle-tracking (explicite), sinon
 # [health].cycle_tracking de la configuration EXISTANTE, sinon "off". Une valeur invalide
 # EN CONFIG est traitée comme "off" avec un avertissement (jamais un échec : l'installation
@@ -1553,7 +1633,8 @@ install_uv() {
 # Relancé par scripts/daily-sync.sh après chaque run (fichier recréé au umask par une
 # reconnexion). Contrôlé par /coach-doctor (check `garmin_token_perms`).
 garmin_token_dirs() {
-    printf '%s\n' "$GARMIN_TOKENS_DIR"
+    printf '%s\n' "$GARMIN_TOKENS_DEFAULT"
+    [[ "$GARMIN_TOKENS_DIR" == "$GARMIN_TOKENS_DEFAULT" ]] || printf '%s\n' "$GARMIN_TOKENS_DIR"
     local custom
     custom="$(python3 -c '
 import json, os, sys
@@ -1564,7 +1645,7 @@ except Exception:
 if isinstance(value, str) and value:
     print(os.path.expanduser(value))
 ' "$WORKSPACE_ROOT/.mcp.json" 2>/dev/null || true)"
-    [[ -z "$custom" || "$custom" == "$GARMIN_TOKENS_DIR" ]] || printf '%s\n' "$custom"
+    [[ -z "$custom" || "$custom" == "$GARMIN_TOKENS_DEFAULT" || "$custom" == "$GARMIN_TOKENS_DIR" ]] || printf '%s\n' "$custom"
 }
 
 restrict_garmin_tokens() {
@@ -1639,6 +1720,15 @@ upgrade_garmin_pin_if_needed() {
         || warn "Mise à jour de garmin-mcp échouée — l'ancienne version reste en place (voir /coach-doctor)."
 }
 
+# Commande d'authentification Garmin, telle qu'affichée : avec --token-path si le dossier est propre au workspace.
+garmin_auth_cmd() {
+    if [[ "$GARMIN_TOKENS_CUSTOM" -eq 1 ]]; then
+        printf 'uv run garmin-mcp-auth --token-path "%s"' "$GARMIN_TOKENS_DIR"
+    else
+        printf 'uv run garmin-mcp-auth'
+    fi
+}
+
 install_garmin_mcp() {
     log "Installation de garmin-mcp (accès Garmin Connect)"
     if have garmin-mcp; then
@@ -1657,22 +1747,26 @@ install_garmin_mcp() {
 
     if [[ "$DO_AUTH" -eq 1 ]]; then
         log "Authentification Garmin Connect (une seule fois, tokens valides ~6 mois)"
+        # Dossier propre au workspace : --token-path (GARMIN_AUTH_EXTRA), dossier créé en 700.
+        if [[ "$GARMIN_TOKENS_CUSTOM" -eq 1 && "$DRY_RUN" -eq 0 ]]; then
+            mkdir -p "$GARMIN_TOKENS_DIR" && chmod 700 "$GARMIN_TOKENS_DIR" 2>/dev/null || true
+        fi
         if [[ -f "$GARMIN_TOKENS_DIR/garmin_tokens.json" ]]; then
             if [[ "$DRY_RUN" -eq 1 ]]; then
                 warn "Tokens présents — validité non vérifiée (dry-run)."
-            elif uv run garmin-mcp-auth --verify; then
+            elif uv run garmin-mcp-auth ${GARMIN_AUTH_EXTRA[@]+"${GARMIN_AUTH_EXTRA[@]}"} --verify; then
                 ok "Tokens Garmin valides (vérifiés)"
             else
                 warn "Tokens présents mais invalides/expirés — relance de l'authentification"
-                run uv run garmin-mcp-auth
+                run uv run garmin-mcp-auth ${GARMIN_AUTH_EXTRA[@]+"${GARMIN_AUTH_EXTRA[@]}"}
             fi
         else
             warn "Aucun token trouvé dans $GARMIN_TOKENS_DIR"
             warn "L'authentification interactive va démarrer (email + mot de passe + éventuel MFA)."
-            run uv run garmin-mcp-auth
+            run uv run garmin-mcp-auth ${GARMIN_AUTH_EXTRA[@]+"${GARMIN_AUTH_EXTRA[@]}"}
         fi
     else
-        warn "Authentification Garmin sautée (--no-auth). Lancez 'uv run garmin-mcp-auth' plus tard."
+        warn "Authentification Garmin sautée (--no-auth). Lancez '$(garmin_auth_cmd)' plus tard."
     fi
 }
 
@@ -2066,9 +2160,16 @@ mcp_server_value() {
     elif [[ "$USE_LEANPROXY" -eq 1 ]]; then
         printf '{"command": "leanproxy-mcp", "args": []}'
     else
-        printf '{"command": "garmin-mcp", "args": ["stdio"], "env": {"GARMIN_ENABLED_TOOLS": "%s"}}' \
-            "$GARMIN_TOOL_WHITELIST"
+        printf '{"command": "garmin-mcp", "args": ["stdio"], "env": {"GARMIN_ENABLED_TOOLS": "%s"%s}}' \
+            "$GARMIN_TOOL_WHITELIST" "$(garmin_tokens_env_fragment)"
     fi
+}
+
+# Fragment JSON « , "GARMINTOKENS": "…" » de l'env du serveur garmin (#127) ; vide par défaut, donc
+# la valeur écrite est octet pour octet celle d'avant. garmin-mcp lit GARMINTOKENS à chaque démarrage.
+garmin_tokens_env_fragment() {
+    [[ "$GARMIN_TOKENS_CUSTOM" -eq 1 ]] || return 0
+    printf ', "GARMINTOKENS": "%s"' "$(json_escape "$GARMIN_TOKENS_DIR")"
 }
 
 mcp_server_value_opencode() {
@@ -2105,10 +2206,17 @@ write_opencode_config() {
     # ~/.config/opencode/opencode.json est GLOBAL : d'autres projets y déclarent
     # leurs propres serveurs MCP. On insère la clé, on ne réécrit pas le fichier.
     local cfg="$HOME/.config/opencode/opencode.json"
-    cleanup_stale_mcp_server "$cfg" mcp
-    merge_json_key "$cfg" mcp "$(mcp_server_name)" "$(mcp_server_value_opencode)" \
-        '{"$schema": "https://opencode.ai/config.json"}'
-    ok "Serveur MCP $(mcp_server_name) présent dans $cfg"
+    if workspace_credentials_custom; then
+        # Identifiants propres à CE workspace (#127) : ce fichier est partagé par tous les workspaces de
+        # l'utilisateur, y écrire l'entrée de celui-ci casserait les autres. Le .mcp.json du projet,
+        # écrit juste au-dessus, porte la configuration.
+        warn "Identifiants propres à ce workspace : $cfg (global) non modifié — OpenCode lit le .mcp.json du projet."
+    else
+        cleanup_stale_mcp_server "$cfg" mcp
+        merge_json_key "$cfg" mcp "$(mcp_server_name)" "$(mcp_server_value_opencode)" \
+            '{"$schema": "https://opencode.ai/config.json"}'
+        ok "Serveur MCP $(mcp_server_name) présent dans $cfg"
+    fi
     # Agents/skills : OpenCode lit .opencode/ à la racine du projet.
     if [[ "$DRY_RUN" -eq 0 ]]; then
         mkdir -p "$WORKSPACE_ROOT/.opencode"
@@ -2427,6 +2535,72 @@ read_crontab() {
     return "$status"
 }
 
+# Planification PAR WORKSPACE (#127). Marqueur cron historique : « # ai-running-coach daily-sync » ; un
+# second workspace sous le même utilisateur reçoit « # ai-running-coach daily-sync [<nom>-<somme>] »,
+# label launchd compris. L'appartenance d'une ligne se lit à son ARC_WORKSPACE (les deux formes de
+# marqueur), jamais au seul marqueur : installer le workspace B ne touche pas aux lignes du workspace A.
+CRON_MARKER_BASE="# ai-running-coach daily-sync"
+LAUNCHD_LABEL_BASE="com.ai-running-coach.daily-sync"
+
+# Identifiant lisible et stable de $WORKSPACE_ROOT (nom du dossier + somme de contrôle du chemin).
+workspace_tag() {
+    local base sum
+    base="$(printf '%s' "$(basename "$WORKSPACE_ROOT")" | tr -c 'A-Za-z0-9._-' '_')"
+    sum="$(printf '%s' "$WORKSPACE_ROOT" | cksum | cut -d' ' -f1)"
+    printf '%s-%s' "${base:-ws}" "$sum"
+}
+
+# Lignes de la crontab $1 qui n'appartiennent PAS à ce workspace. Une ligne marquée sans ARC_WORKSPACE
+# (très ancienne installation) est réputée la sienne : c'est le remplacement en bloc d'autrefois.
+crontab_without_workspace() {
+    printf '%s\n' "$1" | awk -v ws="$WORKSPACE_ROOT" -v base="$CRON_MARKER_BASE" '
+        index($0, base) == 0 { print; next }
+        {
+            line_ws = ws
+            if (match($0, /ARC_WORKSPACE="[^"]*"/)) { line_ws = substr($0, RSTART + 15, RLENGTH - 16) }
+            if (line_ws != ws) { print }
+        }'
+}
+
+# Marqueur à écrire pour ce workspace, d'après les lignes CONSERVÉES ($1) : le marqueur historique tant
+# qu'aucune ligne historique d'un autre workspace n'existe (installation seule : rien ne change), sinon
+# le marqueur suffixé.
+cron_marker_for_workspace() {
+    if printf '%s\n' "$1" | grep -qE "${CRON_MARKER_BASE}[[:space:]]*\$"; then
+        printf '%s [%s]' "$CRON_MARKER_BASE" "$(workspace_tag)"
+    else
+        printf '%s' "$CRON_MARKER_BASE"
+    fi
+}
+
+# Le plist launchd cible-t-il ce workspace ? (ARC_WORKSPACE de ses EnvironmentVariables)
+plist_targets_workspace() {
+    grep -qF "<key>ARC_WORKSPACE</key><string>$(xml_escape "$WORKSPACE_ROOT")</string>" "$1" 2>/dev/null
+}
+
+# Label launchd de ce workspace : le label historique s'il n'existe pas encore ou pointe déjà ici
+# (installation seule : rien ne change), sinon un label suffixé.
+launchd_label_for_workspace() {
+    local dir="$HOME/Library/LaunchAgents" own
+    own="$LAUNCHD_LABEL_BASE.$(workspace_tag)"
+    if [[ -f "$dir/$own.plist" ]]; then
+        printf '%s' "$own"
+    elif [[ -f "$dir/$LAUNCHD_LABEL_BASE.plist" ]] && ! plist_targets_workspace "$dir/$LAUNCHD_LABEL_BASE.plist"; then
+        printf '%s' "$own"
+    else
+        printf '%s' "$LAUNCHD_LABEL_BASE"
+    fi
+}
+
+# Une planification (de n'importe quel workspace) existe-t-elle ? Sert à ne pas déplacer en silence.
+any_scheduler_plist() {
+    local f
+    for f in "$HOME/Library/LaunchAgents/$LAUNCHD_LABEL_BASE"*.plist; do
+        [[ -f "$f" ]] && return 0
+    done
+    return 1
+}
+
 install_daily_sync() {
     if [[ "$DAILY_SYNC" -eq 0 ]]; then
         return 0
@@ -2464,7 +2638,9 @@ install_daily_sync() {
     done
 
     if [[ "$(uname -s)" == "Darwin" ]]; then
-        local plist="$HOME/Library/LaunchAgents/com.ai-running-coach.daily-sync.plist" entries=""
+        local label plist entries=""
+        label="$(launchd_label_for_workspace)"
+        plist="$HOME/Library/LaunchAgents/$label.plist"
         for t in $times; do
             hour="$((10#${t%%:*}))"; minute="$((10#${t##*:}))"
             entries+="    <dict><key>Hour</key><integer>$hour</integer><key>Minute</key><integer>$minute</integer></dict>
@@ -2487,7 +2663,7 @@ $entries  </array>"
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-  <key>Label</key><string>com.ai-running-coach.daily-sync</string>
+  <key>Label</key><string>$label</string>
 $program
   <key>WorkingDirectory</key><string>$x_ws</string>
   <key>EnvironmentVariables</key><dict><key>ARC_WORKSPACE</key><string>$x_ws</string></dict>
@@ -2502,7 +2678,7 @@ EOF
         # launchctl bootstrap exige une session graphique : sur un Mac « coach »
         # accessible seulement en SSH il échoue, sans que ce soit fatal.
         if run launchctl bootstrap "gui/$(id -u)" "$plist"; then
-            ok "LaunchAgent com.ai-running-coach.daily-sync installé ($plist)"
+            ok "LaunchAgent $label installé ($plist)"
         else
             warn "launchctl bootstrap a échoué (session graphique absente ?)."
             warn "Le plist est écrit ($plist) : il sera chargé à la prochaine ouverture de session,"
@@ -2510,8 +2686,16 @@ EOF
             warn "  launchctl bootstrap gui/$(id -u) \"$plist\""
         fi
     else
-        # crontab : on remplace les lignes marquées, on conserve le reste.
-        local marker="# ai-running-coach daily-sync" lines="" current backup
+        # crontab : on remplace les lignes marquées DE CE WORKSPACE, on conserve le reste (autres workspaces compris).
+        local marker lines="" current kept backup
+        if [[ "$DRY_RUN" -eq 1 ]]; then
+            current="$(read_crontab 2>/dev/null || true)"
+        else
+            current="$(read_crontab)" \
+                || die "Crontab non modifiée. Corrigez l'accès à cron puis relancez."
+        fi
+        kept="$(crontab_without_workspace "$current")"
+        marker="$(cron_marker_for_workspace "$kept")"
         for t in $times; do
             hour="$((10#${t%%:*}))"; minute="$((10#${t##*:}))"
             # Le chemin du workspace peut contenir des espaces : il doit être cité.
@@ -2526,8 +2710,6 @@ EOF
             printf '%s\n' "${C_YELLOW}[dry-run]${C_RESET} crontab :"
             printf '%s' "$lines"
         else
-            current="$(read_crontab)" \
-                || die "Crontab non modifiée. Corrigez l'accès à cron puis relancez."
             # Sauvegarde avant toute écriture : la crontab n'est pas versionnée.
             if [[ -n "$current" ]]; then
                 backup="$(dirname "$WORKSPACE_STATE_FILE")/crontab-$(date +%Y%m%d-%H%M%S).bak"
@@ -2535,7 +2717,7 @@ EOF
                 printf '%s\n' "$current" > "$backup"
                 ok "Crontab sauvegardée : $backup"
             fi
-            printf '%s\n%s' "$(printf '%s\n' "$current" | grep -vF "$marker" || true)" "$lines" \
+            printf '%s\n%s' "$kept" "$lines" \
                 | grep -v '^[[:space:]]*$' | crontab -
             ok "crontab mise à jour :"
             printf '%s' "$lines"
@@ -2646,7 +2828,7 @@ EOF
 # d'un utilisateur existant (même sur l'exécuteur par défaut « claude »).
 prior_install_state() {
     [[ -e "$(dirname "$WORKSPACE_STATE_FILE")/install-args" ]] && return 0
-    [[ -e "$HOME/Library/LaunchAgents/com.ai-running-coach.daily-sync.plist" ]] && return 0
+    any_scheduler_plist && return 0
     if have crontab && crontab -l 2>/dev/null | grep -q "daily-sync.sh"; then return 0; fi
     user_toml_value sync runner >/dev/null 2>&1 && return 0
     return 1
@@ -2824,10 +3006,20 @@ persist_llm_free_trial() {
 
 # Le planificateur de la sync (launchd sous macOS, crontab ailleurs) est-il déjà installé ? Lecture seule.
 scheduler_installed() {
+    # Propre à ce workspace (#127) : la planification d'un autre membre ne compte pas.
     if [[ "$(uname -s)" == "Darwin" ]]; then
-        [[ -f "$HOME/Library/LaunchAgents/com.ai-running-coach.daily-sync.plist" ]]
+        local f
+        for f in "$HOME/Library/LaunchAgents/$LAUNCHD_LABEL_BASE"*.plist; do
+            [[ -f "$f" ]] && plist_targets_workspace "$f" && return 0
+        done
+        return 1
     else
-        crontab -l 2>/dev/null | grep -qF "# ai-running-coach daily-sync"
+        local current kept before after
+        current="$(crontab -l 2>/dev/null || true)"
+        kept="$(crontab_without_workspace "$current")"
+        before="$(printf '%s\n' "$current" | grep -cF "$CRON_MARKER_BASE" || true)"
+        after="$(printf '%s\n' "$kept" | grep -cF "$CRON_MARKER_BASE" || true)"
+        [[ "$before" != "$after" ]]
     fi
 }
 
@@ -3367,7 +3559,7 @@ verify() {
         if [[ -f "$GARMIN_TOKENS_DIR/garmin_tokens.json" ]]; then
             ok "Tokens Garmin : présents ($GARMIN_TOKENS_DIR)"
         else
-            warn "Tokens Garmin : absents — lancez 'uv run garmin-mcp-auth'"
+            warn "Tokens Garmin : absents — lancez '$(garmin_auth_cmd)'"
         fi
     fi
     if [[ "$fail" -eq 0 ]]; then
@@ -3447,6 +3639,11 @@ print_config_recap() {
         || recap_line "Tableau de bord Docker" "$DASH_DOCKER${DASH_HOST:+ ($DASH_HOST)}" \
             "$([[ "$EXPLICIT_DASH" -eq 1 ]] && echo "explicite" || echo "config")"
     recap_line "Workspace" "$WORKSPACE_ROOT" "$([[ -n "$WORKSPACE_ARG" ]] && echo "explicite" || echo "défaut")"
+    # Aucune ligne tant que les identifiants sont ceux par défaut (#127).
+    [[ "$GARMIN_TOKENS_DIR" == "$GARMIN_TOKENS_DEFAULT" ]] \
+        || recap_line "Jetons Garmin" "$GARMIN_TOKENS_DIR" "$([[ -n "$GARMIN_TOKENS_ARG" ]] && echo "explicite" || echo "config")"
+    [[ "$INTERVALS_ENV_DIR" == "$INTERVALS_ENV_DEFAULT" ]] \
+        || recap_line "Identifiants intervals.icu" "$INTERVALS_ENV_DIR" "$([[ -n "$INTERVALS_DIR_ARG" ]] && echo "explicite" || echo "config")"
     recap_line "Dry-run" \
         "$([[ "$DRY_RUN" -eq 1 ]] && echo "oui" || echo "non")" "$([[ "$DRY_RUN" -eq 1 ]] && echo "explicite" || echo "défaut")"
     echo
@@ -3462,6 +3659,7 @@ main() {
     workspace_is_separate && log "Workspace : $WORKSPACE_ROOT (--workspace)"
     resolve_agents
     resolve_source
+    resolve_credential_dirs
     resolve_cycle_tracking
     resolve_nutrition_sync
     resolve_health_source
@@ -3533,7 +3731,7 @@ persist_install_args() {
         # Valeur de chemin relative : résolue contre le dossier d'où install.sh a été lancé,
         # sinon la relance (depuis la racine du moteur) viserait un autre dossier.
         case "$prev" in
-            --workspace|--ow-key-file) [[ "$arg" == /* ]] || arg="$INSTALL_CWD/${arg#./}" ;;
+            --workspace|--ow-key-file|--garmin-tokens|--intervals-dir) [[ "$arg" == /* || "$arg" == "~"* ]] || arg="$INSTALL_CWD/${arg#./}" ;;
         esac
         case "$arg" in
             --no-auth|--auth|--dry-run|--connect) ;;

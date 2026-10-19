@@ -4,8 +4,9 @@
 Garmin n'offre pas de webhook aux particuliers (le Connect Developer Program est
 réservé aux entités légales). On interroge donc Garmin Connect à intervalle
 régulier, avec la librairie `garminconnect` déjà installée par `garmin-mcp` et
-les tokens de `~/.garminconnect` — jamais le LLM. Un passage « rien de neuf »
-coûte un seul appel HTTP et zéro token.
+les tokens Garmin du workspace (`~/.garminconnect` par défaut, ou `GARMINTOKENS` de son
+`.mcp.json`, #127) — jamais le LLM. Un passage « rien de neuf » coûte un seul appel HTTP et
+zéro token.
 
 À chaque passage (cron/launchd, `[sync].watch_interval_min`) :
 
@@ -260,15 +261,19 @@ def _ensure_garminconnect(argv: list) -> None:
     sys.exit(2)
 
 
-def make_probe() -> GarminProbe:
+def make_probe(workspace: Path | None = None) -> GarminProbe:
     fake = os.environ.get("ARC_WATCH_FAKE_GARMIN")
     if fake:
         return GarminProbe(FakeClient(Path(fake)))
     from garminconnect import Garmin
+    from arc_credentials import garmin_tokens_dir
+    from coach_setup import workspace_root
 
+    # Jetons DU workspace (GARMINTOKENS de son .mcp.json, #127), sinon ~/.garminconnect comme avant.
+    tokens = garmin_tokens_dir(None, workspace if workspace is not None else workspace_root())
     client = Garmin()
     try:
-        client.login(str(Path("~/.garminconnect").expanduser()))
+        client.login(str(tokens))
     except Exception as exc:
         name = type(exc).__name__
         if "Authentication" in name or "401" in str(exc):
@@ -505,7 +510,7 @@ def main(argv=None) -> int:
     if not os.environ.get("ARC_WATCH_FAKE_GARMIN"):
         _ensure_garminconnect(argv)
 
-    result = tick(workspace, _now(), make_probe, _sync_runner(workspace), dry_run=args.dry_run)
+    result = tick(workspace, _now(), lambda: make_probe(workspace), _sync_runner(workspace), dry_run=args.dry_run)
     if args.dry_run or sys.stdout.isatty():
         print(json.dumps(result, ensure_ascii=False))
     return 0

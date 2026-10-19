@@ -147,6 +147,7 @@ from pathlib import Path
 from typing import Any, Optional
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+import arc_credentials  # noqa: E402
 import arc_index  # noqa: E402
 import arc_legacy as L  # noqa: E402
 from coach_config import ConfigError, read_toml  # noqa: E402
@@ -172,6 +173,47 @@ MCP_PROBE_TIMEOUT_S = float(os.environ.get("ARC_MCP_PROBE_TIMEOUT_S", "10"))
 
 CRON_MARKER = "# ai-running-coach daily-sync"
 LAUNCHD_PLIST_REL = "Library/LaunchAgents/com.ai-running-coach.daily-sync.plist"
+# Plusieurs workspaces sous le même utilisateur (#127) : le label launchd historique OU un label suffixé
+# `com.ai-running-coach.daily-sync.<nom>-<somme>`, le marqueur cron historique OU `… daily-sync [<id>]`.
+# L'appartenance à CE workspace se lit à son ARC_WORKSPACE.
+LAUNCHD_PLIST_GLOB = "com.ai-running-coach.daily-sync*.plist"
+_ARC_WORKSPACE_RE = re.compile(r'ARC_WORKSPACE="([^"]*)"')
+_PLIST_WORKSPACE_RE = re.compile(r"<key>ARC_WORKSPACE</key>\s*<string>([^<]*)</string>")
+
+
+def _same_workspace(declared: str, workspace: Optional[Path]) -> bool:
+    """`declared` (ARC_WORKSPACE d'une ligne cron / d'un plist) désigne-t-il `workspace` ? Sans workspace
+    à comparer, ou sans valeur déclarée (très anciennes installations), oui : comportement d'avant #127."""
+    if workspace is None or not declared:
+        return True
+    try:
+        return Path(declared).expanduser().resolve() == Path(workspace).resolve()
+    except OSError:
+        return declared == str(workspace)
+
+
+def _own_plists(home: Path, workspace: Optional[Path]) -> list:
+    """Plists daily-sync (label historique ou suffixé) de CE workspace."""
+    found = []
+    for plist in sorted((home / "Library" / "LaunchAgents").glob(LAUNCHD_PLIST_GLOB)):
+        if not plist.is_file():
+            continue
+        match = _PLIST_WORKSPACE_RE.search(plist.read_text(encoding="utf-8", errors="replace"))
+        if _same_workspace(match.group(1) if match else "", workspace):
+            found.append(plist)
+    return found
+
+
+def _own_cron_lines(crontab: str, workspace: Optional[Path]) -> list:
+    """Lignes cron daily-sync (marqueur historique ou suffixé) de CE workspace."""
+    ours = []
+    for line in crontab.splitlines():
+        if CRON_MARKER not in line:
+            continue
+        match = _ARC_WORKSPACE_RE.search(line)
+        if _same_workspace(match.group(1) if match else "", workspace):
+            ours.append(line)
+    return ours
 
 # Pin du serveur garmin-mcp : DOIT rester identique à `GARMIN_MCP_REF` dans install.sh (et à l'ARG
 # de deploy/chat/Dockerfile) — tests/lint/test_data_source_parity.py le vérifie.
@@ -884,8 +926,9 @@ def check_daily_sync(home: Path, workspace: Path | None = None, config: dict | N
     check_id = "daily_sync_scheduled"
     now = now or datetime.now()
     if _uname() == "Darwin":
-        plist = home / LAUNCHD_PLIST_REL
-        if plist.is_file():
+        own = _own_plists(home, workspace)
+        if own:
+            plist = own[0]
             if workspace is not None and WATCH_SCRIPT in plist.read_text(encoding="utf-8", errors="replace"):
                 return check_watch_heartbeat(check_id, workspace, config or {}, now, "LaunchAgent")
             return build_check(check_id, "ok", f"LaunchAgent daily-sync installé ({plist}).", fix=None)
@@ -900,8 +943,8 @@ def check_daily_sync(home: Path, workspace: Path | None = None, config: dict | N
             check_id, "info", "crontab injoignable — synchronisation Garmin manuelle uniquement.",
             fix="./install.sh --daily-sync",
         )
-    if out.returncode == 0 and CRON_MARKER in out.stdout:
-        ours = [line for line in out.stdout.splitlines() if CRON_MARKER in line]
+    ours = _own_cron_lines(out.stdout, workspace) if out.returncode == 0 else []
+    if ours:
         if workspace is not None and any(WATCH_SCRIPT in line for line in ours):
             return check_watch_heartbeat(check_id, workspace, config or {}, now, "cron")
         return build_check(check_id, "ok", "Tâche cron daily-sync présente.", fix=None)
@@ -2011,18 +2054,9 @@ def resolve_now(parsed_now: Optional[datetime]) -> datetime:
 def resolve_tokens_dir(raw: Optional[str], workspace: Path) -> Path:
     """Voir la docstring du module pour l'ordre de résolution complet — même
     logique que `garmin_mcp/__init__.py` (`GARMINTOKENS` d'abord), avec
-    `--tokens-dir` / `GARMIN_TOKENS_DIR` en plus pour les tests et #32."""
-    if raw:
-        return Path(raw).expanduser()
-    mcp_env = _resolve_mcp_server(workspace).get("env", {})
-    for source in (mcp_env, os.environ):
-        value = source.get("GARMINTOKENS")
-        if value:
-            return Path(value).expanduser()
-    value = os.environ.get("GARMIN_TOKENS_DIR")
-    if value:
-        return Path(value).expanduser()
-    return Path("~/.garminconnect").expanduser()
+    `--tokens-dir` / `GARMIN_TOKENS_DIR` en plus pour les tests et #32.
+    Implémentation partagée : `arc_credentials` (#127)."""
+    return arc_credentials.garmin_tokens_dir(raw, workspace)
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -2061,6 +2095,7 @@ def main(argv: Optional[list] = None) -> int:
     workspace = workspace_root(args.workspace)
     now = resolve_now(args.now)
     tokens_dir = resolve_tokens_dir(args.tokens_dir, workspace)
+    _, tokens_source = arc_credentials.garmin_tokens_dir_with_source(args.tokens_dir, workspace)
 
     if args.check:
         checks = [run_single_check(args.check, workspace, now, tokens_dir, args.probe_mcp, not args.no_probe_ow,
@@ -2075,11 +2110,15 @@ def main(argv: Optional[list] = None) -> int:
             "generated_at": now.replace(microsecond=0).isoformat(),
             "workspace": str(workspace),
             "ok": not has_error,
+            "tokens_dir": str(tokens_dir),
+            "tokens_dir_source": tokens_source,
             "checks": checks,
         }
         print(json.dumps(payload, ensure_ascii=False, indent=2))
     else:
         print(f"coach doctor — {workspace}")
+        if tokens_source != arc_credentials.SOURCE_DEFAULT:
+            print(f"Jetons Garmin : {tokens_dir} (source : {tokens_source})")
         print(render_table(checks))
         print()
         if has_error:
