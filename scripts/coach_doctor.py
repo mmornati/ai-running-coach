@@ -184,19 +184,50 @@ _PLIST_WORKSPACE_RE = re.compile(r"<key>ARC_WORKSPACE</key>\s*<string>([^<]*)</s
 def _same_workspace(declared: str, workspace: Optional[Path]) -> bool:
     """`declared` (ARC_WORKSPACE d'une ligne cron / d'un plist) désigne-t-il `workspace` ?
 
-    Oui sans workspace à comparer, sans valeur déclarée (très anciennes installations) ou si le dossier
-    déclaré n'existe plus (workspace déplacé : `install.sh` le remplace, comme `workspace_claim`) —
-    comportement d'avant #127. Un AUTRE dossier existant n'est jamais le sien : planifier A ne dit rien
-    de B."""
+    Oui sans workspace à comparer ou sans valeur déclarée (très anciennes installations). Un dossier déclaré
+    qui n'existe plus n'est PAS le sien (planification orpheline, voir `_is_orphan_declared`) : B ne serait
+    pas planifié parce que la seule ligne vise un dossier supprimé. Un AUTRE dossier existant non plus :
+    planifier A ne dit rien de B."""
     if workspace is None or not declared:
         return True
     try:
         theirs = Path(declared).expanduser()
         if not theirs.is_dir():
-            return True
+            return False
         return theirs.resolve() == Path(workspace).resolve()
     except OSError:
         return declared == str(workspace)
+
+
+def _is_orphan_declared(declared: str) -> bool:
+    """Le dossier déclaré par une planification a-t-il disparu ? (même repère que `workspace_claim` de
+    install.sh : dossier absent, qu'il ait été supprimé, déplacé ou que son volume soit démonté)."""
+    return bool(declared) and not Path(declared).expanduser().is_dir()
+
+
+def _orphan_schedules(home: Path, crontab: str) -> list:
+    """Planifications daily-sync (plists, lignes cron) dont l'ARC_WORKSPACE n'existe plus."""
+    found = []
+    agents = home / "Library" / "LaunchAgents"
+    if agents.is_dir():
+        for plist in sorted(agents.glob(LAUNCHD_PLIST_GLOB)):
+            match = _PLIST_WORKSPACE_RE.search(plist.read_text(encoding="utf-8", errors="replace"))
+            if match and _is_orphan_declared(match.group(1)):
+                found.append(match.group(1))
+    for line in crontab.splitlines():
+        match = _ARC_WORKSPACE_RE.search(line) if CRON_MARKER in line else None
+        if match and _is_orphan_declared(match.group(1)):
+            found.append(match.group(1))
+    return found
+
+
+def _orphan_info(check_id: str, orphans: list) -> dict:
+    return build_check(
+        check_id, "info",
+        f"Planification orpheline : daily-sync vise un dossier introuvable ({', '.join(sorted(set(orphans)))}) — "
+        "aucune planification pour ce workspace.",
+        fix="./install.sh --daily-sync",
+    )
 
 
 def _own_plists(home: Path, workspace: Optional[Path]) -> list:
@@ -939,6 +970,9 @@ def check_daily_sync(home: Path, workspace: Path | None = None, config: dict | N
             if workspace is not None and WATCH_SCRIPT in plist.read_text(encoding="utf-8", errors="replace"):
                 return check_watch_heartbeat(check_id, workspace, config or {}, now, "LaunchAgent")
             return build_check(check_id, "ok", f"LaunchAgent daily-sync installé ({plist}).", fix=None)
+        orphans = _orphan_schedules(home, "")
+        if orphans:
+            return _orphan_info(check_id, orphans)
         return build_check(
             check_id, "info", "Aucun LaunchAgent daily-sync — synchronisation Garmin manuelle uniquement.",
             fix="./install.sh --daily-sync",
@@ -955,6 +989,9 @@ def check_daily_sync(home: Path, workspace: Path | None = None, config: dict | N
         if workspace is not None and any(WATCH_SCRIPT in line for line in ours):
             return check_watch_heartbeat(check_id, workspace, config or {}, now, "cron")
         return build_check(check_id, "ok", "Tâche cron daily-sync présente.", fix=None)
+    orphans = _orphan_schedules(home, out.stdout) if out.returncode == 0 else []
+    if orphans:
+        return _orphan_info(check_id, orphans)
     return build_check(
         check_id, "info", "Aucune tâche cron daily-sync — synchronisation Garmin manuelle uniquement.",
         fix="./install.sh --daily-sync",
