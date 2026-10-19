@@ -2172,7 +2172,9 @@ def race_gear_check(race_gear: List[Any], equipment_items: List[dict], shoes: Li
     (seul un lien de catégorie : « à vérifier : spécification », JAMAIS `ok` — une ceinture porte-dossard
     n'est pas une ceinture cardio, une veste coupe-vent n'est pas forcément l'imperméable exigé) ;
     sinon, sur les objets à lien fort : `alert`, `never_used` (aucune séance ne cite l'objet — « rien de
-    nouveau le jour J »), ou `ok`. Les objets retirés ne sont jamais rattachés."""
+    nouveau le jour J »), ou `ok`. Un objet de catégorie `autre` (matériel passif : sifflet, couverture,
+    gobelet, téléphone) n'est jamais `never_used` : rien à tester à l'entraînement. Les objets retirés ne
+    sont jamais rattachés."""
     from arc_legacy import EQUIPMENT_CATEGORIES   # import local : évite un cycle au chargement
     results = []
     for raw in race_gear:
@@ -2183,6 +2185,7 @@ def race_gear_check(race_gear: List[Any], equipment_items: List[dict], shoes: Li
             continue
         strong: List[dict] = []
         weak: List[dict] = []
+        passive_ids: set = set()
 
         def match(it, kind, tested, alert):
             return {"gear_id": it["gear_id"], "name": it["name"], "kind": kind, "tested": tested, "alert": alert}
@@ -2192,9 +2195,14 @@ def race_gear_check(race_gear: List[Any], equipment_items: List[dict], shoes: Li
                 continue
             name_w = _norm_words(it.get("name"))
             id_w = _norm_words(it["gear_id"])
-            m = match(it, "equipment", it["lifetime"]["sessions"] > 0, bool(it["alert"]))
+            # Catégorie « autre » (sifflet, couverture de survie, gobelet, téléphone…) : matériel passif,
+            # rien à roder — jamais `never_used`, seulement `ok` (ou `alert` si un seuil est déclaré).
+            passive = it.get("category") == "autre"
+            m = match(it, "equipment", passive or it["lifetime"]["sessions"] > 0, bool(it["alert"]))
             if _sublist(name_w, words) or _sublist(id_w, words) or _sublist(words, name_w):
                 strong.append(m)
+                if passive:
+                    passive_ids.add(it["gear_id"])
                 continue
             cat = it.get("category")
             aliases = EQUIPMENT_CATEGORIES.get(cat or "", ()) if cat != "autre" else ()
@@ -2209,9 +2217,12 @@ def race_gear_check(race_gear: List[Any], equipment_items: List[dict], shoes: Li
             elif words[0] in _RACE_SHOE_HEADS:
                 weak.append(m)
         if strong:
+            # Un objet passif dont le nom cite un objet porté (« sifflet du gilet X ») ne rend jamais
+            # ce dernier « testé » : seuls les objets portés comptent quand il y en a.
+            worn = [m for m in strong if m["gear_id"] not in passive_ids] or strong
             if any(m["alert"] for m in strong):
                 status = "alert"
-            elif not any(m["tested"] for m in strong):
+            elif not any(m["tested"] for m in worn):
                 status = "never_used"
             else:
                 status = "ok"

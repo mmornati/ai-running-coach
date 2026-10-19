@@ -268,7 +268,9 @@ touche pas — aucun profil existant n'a à changer). Même principe : une puce 
 **Sports par catégorie** (approximation du projet, pas une norme fabricant) : les bâtons
 ne comptent qu'en trail et randonnée (jamais sur route) ; gilet, poche, flasques, veste,
 semelles et lacets en course, trail et randonnée ; frontale et ceinture cardio sur tout
-sport (la frontale compte ses heures).
+sport (la frontale compte ses heures). La catégorie `autre` sert au matériel passif
+(sifflet, couverture de survie, gobelet, téléphone) : le roadbook ne le signale jamais
+« jamais utilisé à l'entraînement », il n'y a rien à roder.
 
 **Attribution.** Une séance compte pour un objet seulement si son bloc `arc` le cite
 dans `gear_ids` (liste ; `gear_id` reste la chaussure) — jamais deviné. Le plus simple :
