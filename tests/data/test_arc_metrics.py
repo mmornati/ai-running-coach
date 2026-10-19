@@ -545,7 +545,7 @@ class TestWeekCompliance(unittest.TestCase):
         self.assertEqual(c["sessions_planned"], 2)
 
     def test_strength_intensity_has_its_own_bucket(self):
-        """`strength` (contrat INTENSITY) n'est ni facile ni qualité : bucket `strength` (« Renfo »), jamais perdu."""
+        """`strength` (contrat INTENSITY) n'est ni facile ni qualité : bucket `strength` (« Renforcement »), jamais perdu."""
         sessions = [
             self.session("2026-09-14", intensity="endurance", planned_duration_s=1800, status="done"),
             self.session("2026-09-15", intensity="strength", planned_duration_s=2400, status="done"),

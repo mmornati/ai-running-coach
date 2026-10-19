@@ -182,7 +182,7 @@ const debounce = (fn, ms = 140) => {
 const pctClass = (pct) => (pct === null || pct === undefined ? "" : pct >= 80 ? "pos" : pct < 50 ? "neg" : "");
 const ratioText = (r) => (r === null || r === undefined ? "—" : `${F.num(r * 100, 0)}\u00a0%`);
 
-const INTENSITY_LABEL = { easy: "Facile", quality: "Qualité", strength: "Renfo", other: "Autre" };
+const INTENSITY_LABEL = { easy: "Facile", quality: "Qualité", strength: "Renforcement", other: "Autre" };
 
 /** Le texte d'une semaine de conformité : soit un %, soit ce qui explique son absence. */
 function complianceWeekLabel(c) {

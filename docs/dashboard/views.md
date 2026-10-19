@@ -519,8 +519,8 @@ En dessous, **le réalisé face à la cible** de la semaine (18,2 km sur 40 vis�
 **la conformité** — le KPI de l'épopée #20 (story #33) : % de séances faites, ratio
 durée réalisée/planifiée, ratio D+ réalisé/planifié (route : ratio absent, pas de D+
 significatif), le tout aussi par intensité (*Facile* : récupération, endurance ;
-*Qualité* : tempo, seuil, VO2max, course ; *Renfo* : renforcement ; *Autre* : toute
-intensité non classée, pour que Facile + Qualité + Renfo + Autre reconstitue toujours
+*Qualité* : tempo, seuil, VO2max, course ; *Renforcement* ; *Autre* : toute
+intensité non classée, pour que Facile + Qualité + Renforcement + Autre reconstitue toujours
 le total). Une ligne **Hors plan** (nombre et durée) signale les activités qu'aucune
 séance prévue n'a appariées : information à côté, jamais comptée dans les ratios. Les
 séances de **repos**, **annulées** et **déplacées** sont retirées du calcul (elles ne

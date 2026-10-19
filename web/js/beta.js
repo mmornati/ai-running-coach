@@ -503,7 +503,7 @@ function capacity(w) {
     <div class="rk-capacity__row"><span class="rk-capacity__label">Réalisé</span>
       <div class="rk-tape rk-tape--done" role="img" aria-label="${F.esc(`Réalisé ${F.hours(doneS)}`)}"><span class="rk-tape__fill" data-vars="--w:${pct(doneS)}"></span>${target ? `<span class="rk-tape__target" data-vars="--x:${pct(target)}"></span>` : ""}</div>
       <span class="rk-capacity__num">${F.hours(doneS)}</span></div>
-    <p class="rk-capacity__key"><span class="rk-key rk-key--quality"></span>Qualité <span class="rk-key rk-key--easy"></span>Endurance <span class="rk-key rk-key--strength"></span>Renfo <span class="rk-key rk-key--other"></span>Autre${target ? ` <span class="rk-key rk-key--target"></span>Cible de la semaine` : ""}</p>
+    <p class="rk-capacity__key"><span class="rk-key rk-key--quality"></span>Qualité <span class="rk-key rk-key--easy"></span>Endurance <span class="rk-key rk-key--strength"></span>Renforcement <span class="rk-key rk-key--other"></span>Autre${target ? ` <span class="rk-key rk-key--target"></span>Cible de la semaine` : ""}</p>
     ${over ? `<p class="note rk-capacity__over">Le prévu dépasse la cible de ${F.duration(over)}.</p>` : ""}</div>`;
 }
 
