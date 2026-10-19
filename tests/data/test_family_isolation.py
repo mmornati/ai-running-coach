@@ -28,6 +28,7 @@ import arc_family as F  # noqa: E402
 import arc_serve as S  # noqa: E402
 from arc_chat_policy import Policy  # noqa: E402
 from coach_config import ConfigError  # noqa: E402
+from tests.lib.local_http import ThreadingHTTPServer  # noqa: E402
 
 HEADER = "X-authentik-username"
 MARK = {"alice": "ALICEMARK", "bob": "BOBMARK"}
@@ -322,7 +323,7 @@ class TestDashboardChatProxy(DashboardCase):
             def log_message(self, *a):
                 pass
 
-        up = http.server.ThreadingHTTPServer(("127.0.0.1", 0), Upstream)
+        up = ThreadingHTTPServer(("127.0.0.1", 0), Upstream)
         threading.Thread(target=up.serve_forever, daemon=True).start()
         self.addCleanup(up.server_close)
         self.addCleanup(up.shutdown)
