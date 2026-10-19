@@ -519,8 +519,10 @@ En dessous, **le réalisé face à la cible** de la semaine (18,2 km sur 40 vis�
 **la conformité** — le KPI de l'épopée #20 (story #33) : % de séances faites, ratio
 durée réalisée/planifiée, ratio D+ réalisé/planifié (route : ratio absent, pas de D+
 significatif), le tout aussi par intensité (*Facile* : récupération, endurance ;
-*Qualité* : tempo, seuil, VO2max, course ; *Autre* : renforcement et toute intensité
-non classée, pour que Facile + Qualité + Autre reconstitue toujours le total). Les
+*Qualité* : tempo, seuil, VO2max, course ; *Renfo* : renforcement ; *Autre* : toute
+intensité non classée, pour que Facile + Qualité + Renfo + Autre reconstitue toujours
+le total). Une ligne **Hors plan** (nombre et durée) signale les activités qu'aucune
+séance prévue n'a appariées : information à côté, jamais comptée dans les ratios. Les
 séances de **repos**, **annulées** et **déplacées** sont retirées du calcul (elles ne
 comptent ni en séance faite ni en manquée), les séances des jours pas encore passés
 de la semaine en cours ne sont jamais comptées manquées, et une séance du jour même
@@ -1049,6 +1051,9 @@ score sans que ce soit un problème.
 Une feuille imprimable par scénario (#187, épopée #170), accessible par le lien
 « Roadbook imprimable du plan de course » en bas de [Trail Shape](#trail-shape)
 (adresse `#/roadbook`, `?plan=<fichier>` pour choisir un plan, `?scenario=safe|realistic|ambitious`).
+Quand un plan existe pour la prochaine course (date du jour ou à venir), la navigation
+affiche aussi une entrée « Roadbook » juste au-dessus de Trail Shape ; un plan déjà couru
+reste joignable par le lien de Trail Shape seulement.
 Elle lit le plan de course persisté dans `planning/` (bloc ```` ```arc ````
 `kind: race_plan`, écrit par `course-strategist`) et ne calcule rien de plus :
 heures de passage et marges de barrière viennent de `scripts/arc_race_pacing.py`,

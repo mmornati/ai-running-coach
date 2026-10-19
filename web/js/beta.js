@@ -35,7 +35,7 @@ const GROUPS = [
   ["Au quotidien", ["", "semaine", "coach-chat"]],
   ["Entraînement", ["seances", "calendrier", "analyse", "forme", "performance"]],
   ["Corps et matériel", ["sante", "nutrition", "materiel"]],
-  ["Course", ["trail-shape"]],
+  ["Course", ["roadbook", "trail-shape"]],
   ["Journal", ["decisions", "rapports", "hypotheses", "synchro"]],
 ];
 
@@ -53,8 +53,8 @@ const icon = (name) => `<svg class="rk-icon" viewBox="0 0 24 24" aria-hidden="tr
 const ARROW = '<svg viewBox="0 0 24 12" aria-hidden="true"><path d="M1 6h20M16 1.5 21.5 6 16 10.5"/></svg>';
 const ARROW_BACK = '<svg viewBox="0 0 24 12" aria-hidden="true"><path d="M23 6H3M8 1.5 2.5 6 8 10.5"/></svg>';
 
-function sectionLinks(settings, page) {
-  const items = navItems(settings || {});
+function sectionLinks(settings, page, roadbook) {
+  const items = navItems(settings || {}, { roadbook });
   if (page === "chat" || (settings && settings.chat_enabled)) items.push(["coach-chat", "Coach"]);
   const href = (route) => {
     if (route === "coach-chat") return "chat.html";
@@ -75,8 +75,8 @@ function groupedNavHtml(links, page) {
 const classicLink = `<a class="rk-classic" href="?design=classic">Revenir au design actuel</a>`;
 
 /** Monte la coque bêta. `debt` : liens « fichiers hors contrat » déjà rendus par app.js. */
-export function mountShell({ settings, page = "app", debt = "" }) {
-  const links = sectionLinks(settings, page);
+export function mountShell({ settings, page = "app", debt = "", roadbook = false }) {
+  const links = sectionLinks(settings, page, roadbook);
   const nav = $("#nav");
   if (nav) {
     nav.classList.add("rk-rail");
@@ -351,7 +351,7 @@ function readings(rows, caption) {
 
 const QUALITY = new Set(["tempo", "threshold", "vo2max", "race"]);
 const EASY = new Set(["recovery", "endurance"]);
-const intensityClass = (x) => (QUALITY.has(x) ? "quality" : EASY.has(x) ? "easy" : "other");
+const intensityClass = (x) => (QUALITY.has(x) ? "quality" : EASY.has(x) ? "easy" : x === "strength" ? "strength" : "other");
 
 function sessionLine(x, statusChip) {
   const meta = [F.SPORT[x.sport] || x.sport, x.planned_duration_s ? F.duration(x.planned_duration_s) : null,
@@ -440,7 +440,7 @@ export async function viewToday(ctx) {
     ? `<ul class="rk-runs">${todaySessions.map((x) => sessionLine(x, ui.statusChip)).join("")}
         ${todayActs.map((a) => `<li class="rk-run rk-run--done"><a class="rk-run__title" href="#/seance/${a.id}">${F.esc(a.name || F.SPORT[a.sport])}</a><span class="rk-run__meta">Réalisée · ${a.distance_m ? F.distance(a.distance_m) + " · " : ""}${F.duration(a.duration_s)}</span>${ui.statusChip("done")}</li>`).join("")}</ul>`
     : `<p class="muted">Aucune séance planifiée aujourd'hui${week.week ? "" : " — pas de plan de semaine au contrat pour cette semaine"}.</p>`;
-  const weather = wx ? `<p class="rk-weather">${ui.weatherChip(wx.category)}<span>${F.esc(wx.location)} · ${F.num(wx.temp_max_c)}${NB}°C max · vent ${F.num(wx.wind_kmh)}${NB}km/h${wx.best_slot && wx.best_slot !== "none" ? ` · créneau <strong>${F.SLOT[wx.best_slot]}</strong>` : ""}</span></p>${wx.slot_reason ? `<p class="muted rk-weather__why">${F.esc(wx.slot_reason)}</p>` : ""}` : "";
+  const weather = wx ? `<p class="rk-weather">${weatherChip(wx)}<span>${F.esc(wx.location)} · ${F.num(wx.temp_max_c)}${NB}°C max · vent ${F.num(wx.wind_kmh)}${NB}km/h${wx.best_slot && wx.best_slot !== "none" ? ` · créneau <strong>${F.SLOT[wx.best_slot]}</strong>` : ""}</span></p>${wx.slot_reason ? `<p class="muted rk-weather__why">${F.esc(wx.slot_reason)}</p>` : ""}` : "";
   const equipment = ui.equipmentTile(s.equipment);
   const extras = ui.heatTile(s.heat_acclimation) + ui.gearTile(s.gear, !equipment) + equipment;
   // Prochaine séance clé : qualité ou sortie de 2 h et plus, après aujourd'hui, dans la semaine.
@@ -503,8 +503,98 @@ function capacity(w) {
     <div class="rk-capacity__row"><span class="rk-capacity__label">Réalisé</span>
       <div class="rk-tape rk-tape--done" role="img" aria-label="${F.esc(`Réalisé ${F.hours(doneS)}`)}"><span class="rk-tape__fill" data-vars="--w:${pct(doneS)}"></span>${target ? `<span class="rk-tape__target" data-vars="--x:${pct(target)}"></span>` : ""}</div>
       <span class="rk-capacity__num">${F.hours(doneS)}</span></div>
-    <p class="rk-capacity__key"><span class="rk-key rk-key--quality"></span>Qualité <span class="rk-key rk-key--easy"></span>Endurance <span class="rk-key rk-key--other"></span>Autre${target ? ` <span class="rk-key rk-key--target"></span>Cible de la semaine` : ""}</p>
+    <p class="rk-capacity__key"><span class="rk-key rk-key--quality"></span>Qualité <span class="rk-key rk-key--easy"></span>Endurance <span class="rk-key rk-key--strength"></span>Renfo <span class="rk-key rk-key--other"></span>Autre${target ? ` <span class="rk-key rk-key--target"></span>Cible de la semaine` : ""}</p>
     ${over ? `<p class="note rk-capacity__over">Le prévu dépasse la cible de ${F.duration(over)}.</p>` : ""}</div>`;
+}
+
+// Icônes de sport : Lucide (lucide.dev, lucide-static 0.460.0, licence ISC), tracés recopiés tels
+// quels. Un sport absent de la table garde son libellé seul.
+const SPORT_ICON = {
+  running: '<path d="M4 16v-2.38C4 11.5 2.97 10.5 3 8c.03-2.72 1.49-6 4.5-6C9.37 2 10 3.8 10 5.5c0 3.11-2 5.66-2 8.68V16a2 2 0 1 1-4 0Z"/><path d="M20 20v-2.38c0-2.12 1.03-3.12 1-5.62-.03-2.72-1.49-6-4.5-6C14.63 6 14 7.8 14 9.5c0 3.11 2 5.66 2 8.68V20a2 2 0 1 0 4 0Z"/><path d="M16 17h4"/><path d="M4 13h4"/>',
+  trail: '<path d="m8 3 4 8 5-5 5 15H2L8 3z"/>',
+  strength: '<path d="M12.409 13.017A5 5 0 0 1 22 15c0 3.866-4 7-9 7-4.077 0-8.153-.82-10.371-2.462-.426-.316-.631-.832-.62-1.362C2.118 12.723 2.627 2 10 2a3 3 0 0 1 3 3 2 2 0 0 1-2 2c-1.105 0-1.64-.444-2-1"/><path d="M15 14a5 5 0 0 0-7.584 2"/><path d="M9.964 6.825C8.019 7.977 9.5 13 8 15"/>', // biceps-flexed
+  cycling: '<circle cx="18.5" cy="17.5" r="3.5"/><circle cx="5.5" cy="17.5" r="3.5"/><circle cx="15" cy="5" r="1"/><path d="M12 17.5V14l-3-3 4-3 2 3h2"/>',
+  hiking: '<path d="M4 10a4 4 0 0 1 4-4h8a4 4 0 0 1 4 4v10a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2z"/><path d="M8 10h8"/><path d="M8 18h8"/><path d="M8 22v-6a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v6"/><path d="M9 6V4a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2"/>',
+  walking: '<circle cx="12" cy="5" r="1"/><path d="m9 20 3-6 3 6"/><path d="m6 8 6 2 6-2"/><path d="M12 10v4"/>',
+  elliptical: '<path d="M22 12h-2.48a2 2 0 0 0-1.93 1.46l-2.35 8.36a.25.25 0 0 1-.48 0L9.24 2.18a.25.25 0 0 0-.48 0l-2.35 8.36A2 2 0 0 1 4.49 12H2"/>',
+  rest: '<path d="M2 4v16"/><path d="M2 8h18a2 2 0 0 1 2 2v10"/><path d="M2 17h20"/><path d="M6 8v9"/>',
+  swimming: '<path d="M2 6c.6.5 1.2 1 2.5 1C7 7 7 5 9.5 5c2.6 0 2.4 2 5 2 2.5 0 2.5-2 5-2 1.3 0 1.9.5 2.5 1"/><path d="M2 12c.6.5 1.2 1 2.5 1 2.5 0 2.5-2 5-2 2.6 0 2.4 2 5 2 2.5 0 2.5-2 5-2 1.3 0 1.9.5 2.5 1"/><path d="M2 18c.6.5 1.2 1 2.5 1 2.5 0 2.5-2 5-2 2.6 0 2.4 2 5 2 2.5 0 2.5-2 5-2 1.3 0 1.9.5 2.5 1"/>',
+  rowing: '<path d="M22 18H2a4 4 0 0 0 4 4h12a4 4 0 0 0 4-4Z"/><path d="M21 14 10 2 3 14h18Z"/><path d="M10 2v16"/>',
+};
+SPORT_ICON.indoor_cycling = SPORT_ICON.home_trainer = SPORT_ICON.cycling;
+
+// Icônes météo (Lucide, même origine) : la couleur reste celle de la catégorie, l'icône dit
+// le facteur qui pèse le plus et son palier, d'après les seuils du skill `weather-forecast`
+// (pluie 1/5/15 mm, vent 20/35/50 km/h, chaleur 22/28/32 °C). À égalité : pluie, vent,
+// chaleur. Aucun facteur (catégorie due aux UV, ou optimale) : soleil.
+const SUN = '<circle cx="12" cy="12" r="4"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="m4.93 4.93 1.41 1.41"/><path d="m17.66 17.66 1.41 1.41"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="m6.34 17.66-1.41 1.41"/><path d="m19.07 4.93-1.41 1.41"/>';
+const WIND = '<path d="M12.8 19.6A2 2 0 1 0 14 16H2"/><path d="M17.5 8a2.5 2.5 0 1 1 2 4H2"/><path d="M9.8 4.4A2 2 0 1 1 11 8H2"/>';
+const WEATHER_ICON = {
+  sun: [SUN],
+  // cloud-drizzle, cloud-rain-wind, cloud-lightning (le palier 3 dit « Dangereux », pas un orage mesuré)
+  rain: ['<path d="M4 14.899A7 7 0 1 1 15.71 8h1.79a4.5 4.5 0 0 1 2.5 8.242"/><path d="M8 19v1"/><path d="M8 14v1"/><path d="M16 19v1"/><path d="M16 14v1"/><path d="M12 21v1"/><path d="M12 16v1"/>',
+    '<path d="M4 14.899A7 7 0 1 1 15.71 8h1.79a4.5 4.5 0 0 1 2.5 8.242"/><path d="m9.2 22 3-7"/><path d="m9 13-3 7"/><path d="m17 13-3 7"/>',
+    '<path d="M6 16.326A7 7 0 1 1 15.71 8h1.79a4.5 4.5 0 0 1 .5 8.973"/><path d="m13 12-3 5h4l-3 5"/>'],
+  // wind, wind, tornado
+  wind: [WIND, WIND, '<path d="M21 4H3"/><path d="M18 8H6"/><path d="M19 12H9"/><path d="M16 16h-6"/><path d="M11 20H9"/>'],
+  // sun, thermometer-sun, flame
+  heat: [SUN, '<path d="M12 9a4 4 0 0 0-2 7.5"/><path d="M12 3v2"/><path d="m6.6 18.4-1.4 1.4"/><path d="M20 4v10.54a4 4 0 1 1-4 0V4a2 2 0 0 1 4 0Z"/><path d="M4 13H2"/><path d="M6.34 7.34 4.93 5.93"/>',
+    '<path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.153.433-2.294 1-3a2.5 2.5 0 0 0 2.5 2.5z"/>'],
+};
+const level = (v, [a, b, c]) => (v == null ? 0 : v > c ? 3 : v >= b ? 2 : v >= a ? 1 : 0);
+/** Tracé de l'icône : facteur dominant, à son palier (1 à 3). */
+function weatherIcon(wx) {
+  const factors = [["rain", level(wx.precip_mm, [1, 5, 15])], ["wind", level(wx.wind_kmh, [20, 35, 50])],
+    ["heat", wx.temp_max_c > 22 ? level(wx.temp_max_c, [22, 28, 32]) : 0]];
+  const [factor, lvl] = factors.reduce((best, f) => (f[1] > best[1] ? f : best), ["sun", 0]);
+  return WEATHER_ICON[factor][Math.max(lvl, 1) - 1];
+}
+
+/** Météo d'un jour de la feuille de semaine : l'icône seule, à la couleur de la catégorie ;
+ * le mot et les valeurs restent en infobulle et pour les lecteurs d'écran. */
+function weatherMark(wx) {
+  if (!wx || !wx.category) return "";
+  const label = F.WEATHER[wx.category] || wx.category;
+  const values = [wx.temp_max_c != null ? `${F.num(wx.temp_max_c)}${NB}°C max` : null, wx.wind_kmh != null ? `vent ${F.num(wx.wind_kmh)}${NB}km/h` : null,
+    wx.precip_mm != null ? `pluie ${F.num(wx.precip_mm, 1)}${NB}mm` : null].filter(Boolean).join(" · ");
+  const tip = `Météo : ${label}${values ? ` · ${values}` : ""}`;
+  return `<span class="rk-wx rk-wx--${F.esc(wx.category)}" title="${F.esc(tip)}"><svg class="rk-wx__icon" viewBox="0 0 24 24" aria-hidden="true">${weatherIcon(wx)}</svg><span class="sr-only">${F.esc(tip)}</span></span>`;
+}
+
+/** Puce météo du roadbook : couleur de la catégorie, icône du facteur dominant, valeurs en infobulle. */
+function weatherChip(wx) {
+  if (!wx || !wx.category) return "";
+  const tip = [wx.temp_max_c != null ? `${F.num(wx.temp_max_c)}${NB}°C max` : null, wx.wind_kmh != null ? `vent ${F.num(wx.wind_kmh)}${NB}km/h` : null,
+    wx.precip_mm != null ? `pluie ${F.num(wx.precip_mm, 1)}${NB}mm` : null].filter(Boolean).join(" · ");
+  return `<span class="chip chip--weather-${F.esc(wx.category)} chip--icon"${tip ? ` title="${F.esc(tip)}"` : ""}><svg class="chip__icon" viewBox="0 0 24 24" aria-hidden="true">${weatherIcon(wx)}</svg>${F.esc(F.WEATHER[wx.category] || wx.category)}</span>`;
+}
+
+/** Libellé du sport précédé de son icône (décorative : le libellé reste le texte lu). */
+function sportLabel(sport) {
+  const label = F.esc(F.SPORT[sport] || sport);
+  const path = SPORT_ICON[sport];
+  return path ? `<span class="rk-sport"><svg class="rk-sport__icon" viewBox="0 0 24 24" aria-hidden="true">${path}</svg>${label}</span>` : label;
+}
+
+const CHECK = '<svg class="rk-check" viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="6.5"/><path d="M5.2 8.2 7.2 10.2 10.9 6.2"/></svg>';
+
+/** Distance, FC moyenne et D+ réalisés d'une activité (D+ seulement s'il est significatif). */
+const actFacts = (a) => [a.distance_m ? F.distance(a.distance_m) : null,
+  a.elevation_gain_m >= 20 ? `${F.elevation(a.elevation_gain_m)} D+` : null,
+  a.avg_hr_bpm ? `${F.num(a.avg_hr_bpm)}${NB}bpm` : null];
+
+/** Ligne « réalisé » sous une séance prévue : lien vers l'activité appariée et ses chiffres. */
+function realLine(a, label) {
+  const facts = actFacts(a).filter(Boolean).join(" · ");
+  return `<span class="rk-runsheet__real"><span class="rk-runsheet__link">${CHECK}<a href="#/seance/${a.id}"${a.name ? ` title="${F.esc(a.name)}"` : ""}>${F.esc(label)}</a></span>${facts ? ` · ${facts}` : ""}</span>`;
+}
+
+/** Colonne « Prévu → réalisé » : le prévu en petit au-dessus, le réalisé en gras ; une seule
+ * valeur (en gras) quand l'autre manque. `deviation` colore un réalisé écourté ou allongé. */
+function durCell(plannedS, actualS, deviation) {
+  const planned = plannedS ? F.duration(plannedS) : "—";
+  if (actualS == null) return plannedS ? `<span class="rk-dur__real">${planned}</span>` : "—";
+  return `<span class="rk-dur__plan">${planned}<span class="sr-only"> prévu, </span></span><span class="rk-dur__real${deviation ? ` rk-dur__real--${deviation}` : ""}">${F.duration(actualS)}<span class="sr-only"> réalisé</span></span>`;
 }
 
 export async function viewWeek(ctx, params) {
@@ -516,22 +606,34 @@ export async function viewWeek(ctx, params) {
   const prev = F.addDays(w.week_start, -7), next = F.addDays(w.week_start, 7);
   const days = [...Array(7)].map((_, i) => F.addDays(w.week_start, i));
 
+  // Prévu et réalisé fusionnés : l'appariement vient du serveur (`activity_id`, `effective`,
+  // `deviation`, `unplanned`), le même que celui de la conformité — jamais refait ici.
+  const actById = new Map(w.activities.map((a) => [a.id, a]));
   const rows = days.map((d) => {
     const plans = w.sessions.filter((x) => x.date === d);
-    const acts = w.activities.filter((x) => x.date === d);
-    const wx = w.weather.find((x) => x.date === d);
+    const extras = w.activities.filter((a) => a.date === d && a.unplanned);
+    // Météo seulement pour aujourd'hui et la suite : sur un jour passé, elle ne décide plus rien.
+    const wx = d >= w.today ? w.weather.find((x) => x.date === d) : null;
     const entries = [
-      ...plans.map((x) => ({ cls: `rk-run--${F.esc(x.status || "planned")} rk-run--${intensityClass(x.intensity)}`, title: F.esc(x.title),
-        meta: [F.SPORT[x.sport] || x.sport, x.planned_elevation_m ? `${F.elevation(x.planned_elevation_m)} D+` : null, x.best_slot && x.best_slot !== "none" ? F.SLOT[x.best_slot] : null].filter(Boolean).join(" · "),
-        dur: x.planned_duration_s ? F.duration(x.planned_duration_s) : "—", status: ui.statusChip(x.status) })),
-      ...acts.map((a) => ({ cls: "rk-run--done", title: `<a href="#/seance/${a.id}">${F.esc(a.name || F.SPORT[a.sport])}</a>`,
-        meta: [a.distance_m ? F.distance(a.distance_m) : null, a.avg_hr_bpm ? `${F.num(a.avg_hr_bpm)}${NB}bpm` : null].filter(Boolean).join(" · "),
-        dur: F.duration(a.duration_s), status: ui.statusChip("done") })),
+      ...plans.map((x) => {
+        const a = x.activity_id != null ? actById.get(x.activity_id) : null;
+        const rest = x.sport === "rest" || x.intensity === "rest";
+        const eff = x.effective || x.status || "planned";
+        const shown = eff === "done" && x.deviation ? (x.deviation === "short" ? "shortened" : "extended") : eff === "future" ? "planned" : eff;
+        const climb = x.planned_elevation_m ? `${F.elevation(x.planned_elevation_m)} D+` : null;
+        return { cls: `rk-run--${F.esc(eff)} rk-run--${rest ? "rest" : intensityClass(x.intensity)}`, title: F.esc(x.title),
+          meta: rest ? "" : [sportLabel(x.sport), climb, x.best_slot && x.best_slot !== "none" ? F.SLOT[x.best_slot] : null].filter(Boolean).join(" · "),
+          real: a ? realLine(a, a.sport !== x.sport && F.SPORT[a.sport] ? `Réalisé · ${F.SPORT[a.sport]}` : "Réalisé") : eff === "done" ? `<span class="rk-runsheet__real">${CHECK}Faite, sans activité synchronisée</span>` : "",
+          dur: durCell(x.planned_duration_s, a ? a.duration_s : null, x.deviation), status: rest ? "" : ui.statusChip(shown) };
+      }),
+      ...extras.map((a) => ({ cls: "rk-run--unplanned", title: `<a href="#/seance/${a.id}">${F.esc(a.name || F.SPORT[a.sport])}</a>`,
+        meta: [sportLabel(a.sport), ...actFacts(a)].filter(Boolean).join(" · "),
+        real: "", dur: durCell(null, a.duration_s), status: ui.statusChip("unplanned") })),
     ];
-    const day = `<th scope="rowgroup" class="rk-runsheet__day"${entries.length > 1 ? ` rowspan="${entries.length}"` : ""}><span class="rk-runsheet__wd">${F.weekday(d)}</span><span class="rk-runsheet__date">${F.dayShort(d)}</span>${wx ? ui.weatherChip(wx.category) : ""}</th>`;
+    const day = `<th scope="rowgroup" class="rk-runsheet__day"${entries.length > 1 ? ` rowspan="${entries.length}"` : ""}><span class="rk-runsheet__wd">${F.weekday(d)}${weatherMark(wx)}</span><span class="rk-runsheet__date">${F.dayShort(d)}</span></th>`;
     if (!entries.length) return `<tbody class="rk-runsheet__group${d === w.today ? " is-today" : ""}"><tr>${day}<td colspan="3" class="muted">—</td></tr></tbody>`;
     return `<tbody class="rk-runsheet__group${d === w.today ? " is-today" : ""}">${entries.map((e, i) => `<tr class="rk-run ${e.cls}">${i === 0 ? day : ""}
-      <td class="rk-runsheet__what"><span class="rk-run__title">${e.title}</span>${e.meta ? `<span class="rk-run__meta">${e.meta}</span>` : ""}<span class="rk-runsheet__inline">${e.status}</span></td>
+      <td class="rk-runsheet__what"><span class="rk-run__title">${e.title}</span>${e.meta ? `<span class="rk-run__meta">${e.meta}</span>` : ""}${e.real}<span class="rk-runsheet__inline">${e.status}</span></td>
       <td class="rk-runsheet__dur">${e.dur}</td><td class="rk-runsheet__status">${e.status}</td></tr>`).join("")}</tbody>`;
   }).join("");
 
@@ -545,7 +647,7 @@ export async function viewWeek(ctx, params) {
   const runsheet = sheet({ level: 1, id: "rk-week-title", title: `Semaine du ${F.dayShort(w.week_start)}`, meta, cls: "rk-sheet-card--lead",
     body: `${nav}${capacity(w)}
       <table class="rk-runsheet"><caption class="sr-only">Séances de la semaine, jour par jour</caption>
-        <thead><tr><th scope="col">Jour</th><th scope="col">Séance</th><th scope="col" class="rk-runsheet__dur">Durée</th><th scope="col" class="rk-runsheet__status">Statut</th></tr></thead>${rows}</table>` });
+        <thead><tr><th scope="col">Jour</th><th scope="col">Séance</th><th scope="col" class="rk-runsheet__dur">Prévu → réalisé</th><th scope="col" class="rk-runsheet__status">Statut</th></tr></thead>${rows}</table>` });
   const done = sheet({ title: "Réalisé", body: readings([
     { label: "Séances", value: String(w.activities.length), ref: `${w.sessions.filter((x) => x.status !== "cancelled" && x.sport !== "rest").length} prévues` },
     { label: "Durée", value: `${F.hours(totalS)}${target.target_duration_s ? `<small> / ${F.hours(target.target_duration_s)}</small>` : ""}`, ref: target.target_duration_s ? "cible de la semaine" : "" },

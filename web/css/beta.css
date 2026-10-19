@@ -178,6 +178,7 @@
   & .rk-runs .rk-run:first-child::before { top: 0.6rem; }
   & .rk-run--quality::before { background: var(--rk-rule); }
   & .rk-run--other::before { border-color: var(--line-strong); }
+  & .rk-run--strength::before { background: var(--rk-area); border-style: dashed; }
   & .rk-run__title { grid-area: title; font-weight: 600; color: var(--ink); font-size: 1rem; }
   & .rk-run__meta { grid-area: meta; color: var(--ink-soft); font-size: 0.86rem; }
   & .rk-run .chip { grid-area: status; }
@@ -263,6 +264,7 @@
   & .rk-tape__seg { flex: 0 0 auto; width: calc(var(--w) - 2px); min-width: 3px; border-radius: 2px; background: var(--rk-done); }
   & .rk-tape__seg--quality { background: var(--rk-rule); }
   & .rk-tape__seg--other { background: var(--line-strong); }
+  & .rk-tape__seg--strength { background: var(--rk-area); box-shadow: inset 0 0 0 1.5px var(--rk-rule); }
   & .rk-tape__fill { width: var(--w); border-radius: 2px; background: var(--ok); }
   & .rk-tape__target { position: absolute; top: -0.3rem; bottom: -0.3rem; left: var(--x); width: 2px; margin-left: -1px; background: var(--ink); }
   & .rk-tape__over { position: absolute; top: 2px; bottom: 2px; left: var(--a); width: var(--w); background: repeating-linear-gradient(135deg, var(--warn) 0 3px, transparent 3px 7px); border-radius: 0 2px 2px 0; }
@@ -271,6 +273,7 @@
   & .rk-key:first-child { margin-left: 0; }
   & .rk-key--quality { background: var(--rk-rule); }
   & .rk-key--other { background: var(--line-strong); }
+  & .rk-key--strength { background: var(--rk-area); box-shadow: inset 0 0 0 1.5px var(--rk-rule); }
   & .rk-key--target { width: 2px; height: 0.9rem; background: var(--ink); }
   & .rk-capacity__over { color: var(--warn); }
 
@@ -290,6 +293,7 @@
   & .rk-runsheet .rk-runsheet__what::before { content: ""; position: absolute; left: 0.1rem; top: 1rem; width: 0.48rem; height: 0.48rem; transform: rotate(45deg); border: 1.5px solid var(--rk-rule); }
   & .rk-runsheet .rk-run--quality .rk-runsheet__what::before { background: var(--rk-rule); }
   & .rk-runsheet .rk-run--other .rk-runsheet__what::before { border-color: var(--line-strong); }
+  & .rk-runsheet .rk-run--strength .rk-runsheet__what::before { background: var(--rk-area); border-style: dashed; }
   & .rk-runsheet .rk-run--done .rk-runsheet__what::before { background: var(--ok); border-color: var(--ok); }
   & .rk-runsheet .rk-run--cancelled .rk-runsheet__what::before { opacity: 0.45; }
   & .rk-runsheet .rk-run__title, & .rk-runsheet .rk-run__meta { display: block; }
@@ -298,6 +302,37 @@
   & .rk-runsheet thead .rk-runsheet__dur { font: 600 0.82rem/1 var(--rk-cond); }
   & .rk-runsheet__status { width: 7rem; text-align: right !important; padding-right: 0 !important; }
   & .rk-runsheet .rk-run--cancelled .rk-runsheet__dur { color: var(--ink-faint); text-decoration: line-through; }
+  /* Prévu ↔ réalisé fusionnés : le réalisé sous la séance, le prévu en petit au-dessus du réalisé. */
+  & .rk-runsheet__dur { width: 6.5rem; }
+  & .rk-dur__plan { display: block; font: 400 0.8rem/1.2 var(--rk-cond); color: var(--ink-faint); }
+  & .rk-dur__real { display: block; }
+  & .rk-dur__real--short { color: var(--warn); }
+  & .rk-dur__real--long { color: var(--ink-soft); }
+  & .rk-runsheet__real { display: block; margin-top: 0.3rem; font-size: 0.86rem; color: var(--ok); }
+  & .rk-runsheet__link { white-space: nowrap; }
+  & .rk-wx { display: inline-block; margin-left: 0.35rem; vertical-align: -0.1em; line-height: 0; }
+  & .rk-wx__icon { width: 1rem; height: 1rem; fill: none; stroke: currentColor; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
+  & .rk-wx--green { color: var(--ok); }
+  & .rk-wx--yellow { color: var(--yellow); }
+  & .rk-wx--orange { color: var(--yellow); }
+  & .rk-wx--red { color: var(--bad); }
+  & .chip--icon { gap: 0.3rem; }
+  & .chip__icon { width: 0.9rem; height: 0.9rem; flex: none; fill: none; stroke: currentColor; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
+  & .rk-sport { white-space: nowrap; }
+  & .rk-sport__icon { width: 0.95rem; height: 0.95rem; margin-right: 0.3rem; vertical-align: -0.15em; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+  & .rk-runsheet__real a { color: inherit; text-decoration: underline; text-underline-offset: 2px; }
+  & .rk-check { width: 0.95rem; height: 0.95rem; margin-right: 0.3rem; vertical-align: -0.15em; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
+  & .rk-runsheet .rk-run--missed .rk-runsheet__what::before { border-color: var(--bad); }
+  & .rk-runsheet .rk-run--missed .rk-run__title, & .rk-runsheet .rk-run--cancelled .rk-run__title { color: var(--ink-soft); }
+  & .rk-runsheet .rk-run--missed .rk-runsheet__dur { color: var(--ink-faint); text-decoration: line-through; }
+  & .rk-runsheet .rk-run--unplanned .rk-runsheet__what::before { border: 1.5px dashed var(--line-strong); background: none; }
+  & .rk-runsheet .rk-run--unplanned .rk-run__title a { color: var(--ink-soft); }
+  & .rk-runsheet .rk-run--rest .rk-runsheet__what::before { content: none; }
+  & .rk-runsheet .rk-run--rest .rk-run__title { font-weight: 400; color: var(--ink-soft); }
+  & .chip--status-shortened { color: var(--warn); background: var(--warn-bg); }
+  & .chip--status-extended, & .chip--status-pending { color: var(--ink-soft); background: var(--surface-2); }
+  /* Même habillage que la météo « Vigilance » (`.chip--weather-yellow`). */
+  & .chip--status-unplanned { color: var(--yellow); background: var(--warn-bg); }
   & .rk-prose { margin-top: 1rem; max-width: none; }
   & .rk-prose > :not(h2) { max-width: 72ch; }
 
@@ -432,7 +467,7 @@
     & .rk-runsheet__status { display: none; }
     & .rk-runsheet__inline { display: block; margin-top: 0.3rem; }
     & .rk-runsheet__inline .chip { font-size: 0.72rem; }
-    & .rk-runsheet__dur { width: 3.4rem; padding-right: 0 !important; }
+    & .rk-runsheet__dur { width: 4.2rem; padding-right: 0 !important; font-size: 0.95rem; }
     & .rk-weeknav { flex-wrap: nowrap; gap: 0.3rem; }
     & .rk-weeknav a { flex: 1 1 auto; padding: 0.4rem 0.45rem; text-align: center; font-size: 0.82rem; white-space: nowrap; }
   }

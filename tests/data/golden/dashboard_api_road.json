@@ -8640,14 +8640,21 @@
                   "sessions_planned": 3
                 },
                 "other": {
-                  "duration_ratio": 1.0,
+                  "duration_ratio": null,
+                  "elevation_ratio": null,
+                  "sessions_done": 0,
+                  "sessions_pct": null,
+                  "sessions_planned": 0
+                },
+                "quality": {
+                  "duration_ratio": 0.821,
                   "elevation_ratio": null,
                   "sessions_done": 1,
                   "sessions_pct": 100.0,
                   "sessions_planned": 1
                 },
-                "quality": {
-                  "duration_ratio": 0.821,
+                "strength": {
+                  "duration_ratio": 1.0,
                   "elevation_ratio": null,
                   "sessions_done": 1,
                   "sessions_pct": 100.0,
@@ -8656,6 +8663,8 @@
               },
               "duration_ratio": 1.047,
               "elevation_ratio": null,
+              "extra_duration_s": null,
+              "extra_sessions": 0,
               "sessions_cancelled": 0,
               "sessions_done": 5,
               "sessions_future": 0,
@@ -8690,10 +8699,19 @@
                   "sessions_done": 1,
                   "sessions_pct": 100.0,
                   "sessions_planned": 1
+                },
+                "strength": {
+                  "duration_ratio": null,
+                  "elevation_ratio": null,
+                  "sessions_done": 0,
+                  "sessions_pct": null,
+                  "sessions_planned": 0
                 }
               },
               "duration_ratio": 1.02,
               "elevation_ratio": null,
+              "extra_duration_s": null,
+              "extra_sessions": 0,
               "sessions_cancelled": 0,
               "sessions_done": 2,
               "sessions_future": 3,
@@ -9089,6 +9107,7 @@
           "window_days": 14
         },
         "incomplete_files": 0,
+        "next_race_plan": null,
         "objective": {
           "days_left": 54,
           "distance_m": 42195.0,
@@ -9458,7 +9477,8 @@
             "id": 27,
             "load": 157.52,
             "name": "Seuil 3 × 10 min",
-            "sport": "running"
+            "sport": "running",
+            "unplanned": false
           },
           {
             "avg_hr_bpm": 139.0,
@@ -9469,7 +9489,8 @@
             "id": 28,
             "load": 85.57,
             "name": "Endurance fondamentale",
-            "sport": "running"
+            "sport": "running",
+            "unplanned": false
           }
         ],
         "body_html": "<h2>Semaine du 2026-09-21</h2>\n<h3>Intention</h3>\n<p>Consolider le volume, une seule séance de qualité si la HRV reste dans la bande.</p>",
@@ -9495,10 +9516,19 @@
               "sessions_done": 1,
               "sessions_pct": 100.0,
               "sessions_planned": 1
+            },
+            "strength": {
+              "duration_ratio": null,
+              "elevation_ratio": null,
+              "sessions_done": 0,
+              "sessions_pct": null,
+              "sessions_planned": 0
             }
           },
           "duration_ratio": 1.02,
           "elevation_ratio": null,
+          "extra_duration_s": null,
+          "extra_sessions": 0,
           "sessions_cancelled": 0,
           "sessions_done": 2,
           "sessions_future": 3,
@@ -9514,8 +9544,10 @@
         ],
         "sessions": [
           {
+            "activity_id": 27,
             "best_slot": null,
             "date": "2026-09-22",
+            "effective": "done",
             "garmin_workout_id": null,
             "intensity": "vo2max",
             "outdoor": 1,
@@ -9531,8 +9563,10 @@
             "week_start": "2026-09-21"
           },
           {
+            "activity_id": 28,
             "best_slot": null,
             "date": "2026-09-23",
+            "effective": "done",
             "garmin_workout_id": null,
             "intensity": "endurance",
             "outdoor": 1,
@@ -9550,6 +9584,7 @@
           {
             "best_slot": null,
             "date": "2026-09-24",
+            "effective": "future",
             "garmin_workout_id": null,
             "intensity": "strength",
             "outdoor": 0,
@@ -9567,6 +9602,7 @@
           {
             "best_slot": null,
             "date": "2026-09-26",
+            "effective": "future",
             "garmin_workout_id": null,
             "intensity": "endurance",
             "outdoor": 1,
@@ -9584,6 +9620,7 @@
           {
             "best_slot": null,
             "date": "2026-09-27",
+            "effective": "future",
             "garmin_workout_id": null,
             "intensity": "recovery",
             "outdoor": 1,
