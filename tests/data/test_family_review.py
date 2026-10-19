@@ -85,6 +85,37 @@ class TestBackendEnvironment(FamilyEnvCase):
         self.assertNotIn("ANTHROPIC_API_KEY", env)
         self.assertNotIn("ACME_API_TOKEN", env)
 
+    def test_api_key_env_ne_peut_pas_exempter_un_identifiant_du_foyer(self):
+        """Défaut verrouillé : `api_key_env = "GARMINTOKENS"` d'un membre exemptait l'identifiant du foyer du nettoyage."""
+        from arc_chat_claude import ClaudeBackend
+        alice_ws = T.make_workspace(self.root, "alice")
+        base = dict(self.secret_env(self.root), GARMINTOKENS="/tok/foyer", INTERVALS_ICU_API_KEY="cle-foyer")
+        for name in ("GARMINTOKENS", "INTERVALS_ICU_API_KEY", "STRAVA_CLIENT_SECRET"):
+            env = M.MockBackend(alice_ws, {"family_member": "alice", "api_key_env": name}).child_env(base)
+            self.assertNotIn(name, env, name)
+            ws = self.root / "coach-bob"
+            ws.mkdir(exist_ok=True)
+            sdk = SimpleNamespace(ClaudeAgentOptions=lambda **kw: kw, HookMatcher=lambda **kw: kw,
+                                  PermissionResultAllow=lambda: None, PermissionResultDeny=lambda **kw: None)
+            turn = SimpleNamespace(ctx=SimpleNamespace(language="fr", config={}), gate_sync=lambda *a: ("deny", ""))
+            with mock.patch.dict(os.environ, base, clear=True):
+                opts = ClaudeBackend(ws, {"family_member": "bob", "api_key_env": name})._options(sdk, turn, None)["env"]
+            self.assertEqual(opts[name], "", name)
+        # clés LLM légitimes : conservées
+        for name in ("ANTHROPIC_API_KEY", "OPENROUTER_API_KEY", "MY_LLM_KEY"):
+            env = M.MockBackend(alice_ws, {"family_member": "alice", "api_key_env": name}).child_env(
+                dict(base, **{name: "cle-llm"}))
+            self.assertEqual(env[name], "cle-llm", name)
+
+    def test_membre_dont_api_key_env_designe_un_identifiant_du_foyer_refuse_en_503(self):
+        cfg = '[chat]\nenabled = true\nbackend = "mock"\napi_key_env = "GARMINTOKENS"\n'
+        workspaces = {"alice": T.make_workspace(self.root, "alice", '[chat]\nenabled = true\nbackend = "mock"\n'),
+                      "bob": T.make_workspace(self.root, "bob", cfg)}
+        fam = C.FamilyChat(self.registry(workspaces=workspaces))
+        self.assertEqual(sorted(fam.errors), ["bob"])
+        self.assertEqual(sorted(fam.services), ["alice"])
+        self.assertIn("GARMINTOKENS", fam.errors["bob"])
+
     def test_hors_mode_famille_aucun_identifiant_retire(self):
         backend = M.MockBackend(T.make_workspace(self.root, "alice"), {})
         base = self.secret_env(self.root / "home")

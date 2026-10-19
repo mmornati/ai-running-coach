@@ -64,7 +64,7 @@ from typing import Optional
 from urllib.parse import urlparse
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from arc_chat_backend import (EVENT_TYPES, BackendError, ChatBackend, TurnContext,  # noqa: E402
+from arc_chat_backend import (EVENT_TYPES, BackendError, ChatBackend, TurnContext, family_reserved_name,  # noqa: E402
                               load_backend, payload_hash)
 from arc_chat_policy import Policy  # noqa: E402
 import arc_family as FM  # noqa: E402
@@ -1554,6 +1554,11 @@ def family_member_config(registry: "FM.Registry", member, sections: Optional[dic
     L'authentification est TOUJOURS « proxy » en mode famille ; la liste `allowed_users` du workspace
     est ignorée (le registre est la seule liste des membres)."""
     cfg = load_chat_config(member.workspace, sections)
+    key_env = str(cfg.get("api_key_env") or "")
+    if key_env and family_reserved_name(key_env):
+        log(f"membre {member.id} : [chat].api_key_env refusé ({key_env} est un identifiant du foyer)")
+        # Sinon la clé « LLM » du membre désignerait un identifiant du foyer (jetons Garmin, clé intervals.icu…).
+        raise ValueError(f"[chat].api_key_env = {key_env!r} désigne un identifiant du foyer : refusé en mode famille")
     fam = registry.settings
     cfg.update({"auth": "proxy", "auth_header": registry.auth_header,
                 "trusted_proxies": list(registry.trusted_proxies), "allowed_users": [],

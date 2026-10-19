@@ -157,11 +157,18 @@ FAMILY_SCRUBBED_MARKERS = ("TOKEN", "SECRET", "PASSWORD", "PASSWD", "API_KEY", "
 FAMILY_SCRUBBED_SUFFIXES = ("_KEY", "_KEY_FILE")
 
 
+def family_reserved_name(name: str) -> bool:
+    """Vrai si `name` désigne un identifiant du foyer (liste fermée ou préfixe de fournisseur) : jamais exemptable."""
+    up = str(name).upper()
+    return str(name) in FAMILY_SCRUBBED_ENV or up in FAMILY_SCRUBBED_ENV or up.startswith(FAMILY_SCRUBBED_PREFIXES)
+
+
 def family_scrubbed_names(environ, keep=()) -> list:
     """Noms à retirer de `environ` en mode famille : liste fermée + toute variable présente dont le nom commence
     par un préfixe de fournisseur, contient un marqueur de secret ou finit par `_KEY` / `_KEY_FILE`.
-    `keep` : ce dont le backend du membre a légitimement besoin (clé du fournisseur LLM), jamais retiré."""
-    keep = {k for k in keep if k}
+    `keep` : ce dont le backend du membre a légitimement besoin (clé du fournisseur LLM), jamais retiré, SAUF un nom
+    réservé (`family_reserved_name`) : un `api_key_env = "GARMINTOKENS"` ne doit pas exempter un identifiant du foyer."""
+    keep = {k for k in keep if k and not family_reserved_name(k)}
     names = set(FAMILY_SCRUBBED_ENV)
     for name in environ:
         up = name.upper()
