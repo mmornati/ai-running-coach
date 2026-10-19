@@ -19,8 +19,10 @@ DIRECT = re.compile(r"\bPath\(\s*\w+\.workspace\b|\bos\.path\.\w+\(\s*\w+\.works
                     r"|\.workspace\.(?:resolve|expanduser)\(")
 # Angle mort corrigé : une option `type=Path` arrive déjà en Path, et `args.workspace.resolve()` /
 # `.expanduser()` la résout sans passer par le verrou. Un fichier qui appelle `enforce_workspace_lock(`
-# (sur la même option, au parsing) peut ensuite la résoudre : c'est la liste blanche de ces motifs-là.
+# SUR CETTE OPTION (`enforce_workspace_lock(args.workspace)`, au parsing) peut ensuite la résoudre : c'est la
+# liste blanche de ces motifs-là. Un appel du verrou sur autre chose (un autre argument) n'exempte rien.
 TYPE_PATH = re.compile(r"\.workspace\.(?:resolve|expanduser)\(")
+LOCKS_THE_OPTION = re.compile(r"enforce_workspace_lock\(\s*\w+\.workspace\b")
 
 
 class TestWorkspaceOptionGoesThroughTheLock(unittest.TestCase):
@@ -35,6 +37,12 @@ class TestWorkspaceOptionGoesThroughTheLock(unittest.TestCase):
             self.assertTrue(DIRECT.search(line), line)
         self.assertFalse(DIRECT.search("ws = workspace_root(args.workspace)"))
 
+    def test_the_exemption_needs_the_lock_on_the_workspace_option_itself(self):
+        """Nit 9 : n'importe quel appel de `enforce_workspace_lock(` dans le fichier exemptait toutes ses lignes."""
+        self.assertTrue(LOCKS_THE_OPTION.search("root = enforce_workspace_lock(args.workspace)"))
+        self.assertFalse(LOCKS_THE_OPTION.search("enforce_workspace_lock(other_path)"))
+        self.assertFalse(LOCKS_THE_OPTION.search("from coach_config import enforce_workspace_lock"))
+
     def test_no_direct_path_construction_from_the_workspace_option(self):
         offenders = []
         for path in self._sources():
@@ -42,7 +50,7 @@ class TestWorkspaceOptionGoesThroughTheLock(unittest.TestCase):
             if rel in RESOLVERS:
                 continue
             text = path.read_text(encoding="utf-8")
-            locked = "enforce_workspace_lock(" in text
+            locked = bool(LOCKS_THE_OPTION.search(text))
             for number, line in enumerate(text.splitlines(), 1):
                 if locked and TYPE_PATH.search(line) and not re.search(r"\bPath\(|os\.path\.", line):
                     continue
