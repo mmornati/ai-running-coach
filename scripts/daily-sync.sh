@@ -31,6 +31,9 @@ if [[ "${ARC_ENGINE_LOCKED:-}" != "1" ]]; then
 fi
 # shellcheck source=lib/sync_tools.sh
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib/sync_tools.sh"
+# Chemin ABSOLU exporté : le runner (ou un script qu'il lance) peut faire un `cd`, et un ARC_WORKSPACE relatif
+# désignerait alors un autre dossier pour le verrou que pour lib/config.sh.
+ARC_WORKSPACE="$(cd "$ARC_WORKSPACE" 2>/dev/null && pwd || printf '%s' "$ARC_WORKSPACE")"
 
 DRY_RUN=0
 RUNNER=""

@@ -157,11 +157,24 @@ utilisateur** système sans partager leurs identifiants ni leur planification :
   historique) ou **son** LaunchAgent (label suffixé). Installer un workspace ne remplace plus que
   ses propres lignes, reconnues à leur `ARC_WORKSPACE` ; les lignes historiques d'un autre
   workspace sont conservées ;
-- la synchronisation automatique est **confinée** à son workspace : `daily-sync.sh` pose
-  `ARC_LOCK_WORKSPACE=1` pour l'exécuteur, et les scripts refusent alors tout `--workspace`
-  différent de `ARC_WORKSPACE` (message « workspace refusé »). Les options qui désignent
-  directement un fichier ou un dossier (`--db`, `--dir`, `--output-dir`) ne sont pas couvertes
-  par ce verrou.
+- l'appartenance d'une planification se lit sur le dossier **physique** de son `ARC_WORKSPACE`
+  (liens symboliques et graphies différentes d'un même chemin comptent pour un seul workspace). Une
+  ligne cron ou un LaunchAgent est **remplacé, avec un avertissement**, si son dossier n'existe plus
+  (workspace déplacé ou renommé) ou si c'est la racine du moteur alors que vous installez un
+  workspace séparé (migration ci-dessus) : sans cela la synchronisation tournerait deux fois. Les
+  planifications d'un autre workspace existant ne sont jamais touchées ;
+- le verrou de la synchronisation est une **défense en profondeur pour les scripts du moteur**, pas
+  une cage : `daily-sync.sh` pose `ARC_LOCK_WORKSPACE=1` (avec un `ARC_WORKSPACE` absolu) pour
+  l'exécuteur, et `coach_setup`, `coach_config`, `arc_credentials` et `lib/config.sh` refusent alors
+  tout `--workspace` différent (message « workspace refusé »). Il **ne couvre pas** : les options qui
+  désignent directement un fichier ou un dossier (`--db`, `--dir`, `--output-dir`, `--input`) ; les
+  outils de fichiers de l'exécuteur `claude` (Read, Write, Edit, Glob, Grep acceptent des chemins
+  absolus) ; les shells larges des exécuteurs `codex` et `opencode`. Pour une séparation stricte
+  entre deux personnes, utilisez des utilisateurs système distincts ;
+- l'exécuteur `codex` lit la configuration **globale** `~/.codex/config.toml` : les identifiants
+  qu'elle déclare sont communs à tous les workspaces de l'utilisateur, `--garmin-tokens` /
+  `--intervals-dir` n'y changent rien (les exécuteurs `claude` et `opencode` de la synchro lisent le
+  `.mcp.json` du workspace).
 
 Les options d'installation mémorisées pour `/update-coach` (`~/.config/ai-running-coach/install-args`)
 restent communes à l'utilisateur : après une mise à jour, relancez `./install.sh` pour chaque workspace.
