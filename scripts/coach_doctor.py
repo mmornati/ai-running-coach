@@ -27,6 +27,14 @@ Usage :
     scripts/coach_doctor.py --probe-mcp     # handshake MCP réel — CONTACTE Garmin Connect
     scripts/coach_doctor.py --probe-llm     # connexion IA : appel réseau minimal vers le fournisseur (#268)
     scripts/coach_doctor.py --no-probe-ow   # Open Wearables : configuration seule, aucun appel réseau
+    scripts/coach_doctor.py --family PATH   # registre du mode famille (défaut : ARC_FAMILY, puis
+                                            # ~/.config/ai-running-coach/family.toml — voir ci-dessous)
+
+MODE FAMILLE (#127, docs/family.md) — quand un registre `family.toml` existe (ou est donné par `--family`),
+quatre vérifications SUPPLÉMENTAIRES sont ajoutées à la fin (jamais sans registre, jamais avec `--check`) :
+`family_registry` (registre valide, `error` sinon), `family_tokens` (deux membres `garmin` qui partagent le
+même dossier de jetons → `warning`), `family_ntfy` (même topic ntfy → `warning`) et `family_sync` (membre sans
+synchronisation planifiée détectée → `info`). Schéma JSON inchangé : seules des entrées `checks` s'ajoutent.
 
 Aucun champ de ce script n'affiche jamais le CONTENU d'un token — seuls des
 métadonnées (chemins, dates d'échéance, nombre de jours restants) apparaissent
@@ -2025,6 +2033,107 @@ def resolve_tokens_dir(raw: Optional[str], workspace: Path) -> Path:
     return Path("~/.garminconnect").expanduser()
 
 
+# ---------------------------------------------------------------------------
+# Mode famille (#127) : registre, jetons, ntfy, sync par membre
+# ---------------------------------------------------------------------------
+
+
+def _family_registry(raw: Optional[str]):
+    """(chemin, registre|None, erreur|None) ; `(None, None, None)` si aucun registre n'est à vérifier."""
+    import arc_family
+    explicit = raw or os.environ.get(arc_family.FAMILY_ENV)
+    path = arc_family.resolve_registry_path(raw)
+    if not explicit and not path.is_file():
+        return None, None, None
+    try:
+        return path, arc_family.load_registry(path), None
+    except ConfigError as exc:
+        return path, None, str(exc)
+
+
+def _scheduled_blobs(home: Path) -> list:
+    """Texte de la crontab et des LaunchAgents du coach : de quoi retrouver le workspace d'un membre."""
+    blobs = []
+    try:
+        out = subprocess.run(["crontab", "-l"], capture_output=True, text=True, timeout=5)
+        if out.returncode == 0:
+            blobs.extend(line for line in out.stdout.splitlines() if "ai-running-coach" in line)
+    except (OSError, subprocess.TimeoutExpired):
+        pass
+    agents = home / "Library/LaunchAgents"
+    if agents.is_dir():
+        for plist in agents.glob("*ai-running-coach*daily-sync*.plist"):
+            try:
+                blobs.append(plist.read_text(encoding="utf-8", errors="replace"))
+            except OSError:
+                continue
+    return blobs
+
+
+def check_family(registry_path: Optional[Path], registry, error: Optional[str], home: Optional[Path] = None) -> list:
+    """Les quatre vérifications du mode famille. Ne lit aucun secret : ni jeton Garmin, ni jeton ntfy."""
+    if error is not None:
+        return [build_check("family_registry", "error", f"Registre famille invalide : {error}",
+                            fix="voir docs/family.md ; scripts/arc_family.py --family <registre>")]
+    members = list(registry.members.values())
+    checks = [build_check("family_registry", "ok",
+                          f"Registre {registry_path} valide : {len(members)} membre(s) "
+                          f"({', '.join(m.id for m in members)}).", fix=None, members=[m.id for m in members])]
+    configs = {m.id: _load_config(m.workspace) for m in members}
+
+    by_tokens: dict = {}
+    for member in members:
+        if (configs[member.id].get("data") or {}).get("source", "garmin") != "garmin":
+            continue                                     # source intervals : pas de jetons Garmin
+        tokens = resolve_tokens_dir(None, member.workspace)
+        try:
+            tokens = tokens.resolve()
+        except OSError:
+            pass
+        by_tokens.setdefault(str(tokens), []).append(member.id)
+    shared = {path: ids for path, ids in by_tokens.items() if len(ids) > 1}
+    if shared:
+        detail = "; ".join(f"{', '.join(ids)} → {path}" for path, ids in shared.items())
+        checks.append(build_check(
+            "family_tokens", "warning",
+            f"Dossier de jetons Garmin partagé entre membres ({detail}) : une connexion écrase l'autre.",
+            fix="./install.sh --workspace <dossier> --garmin-tokens <dossier de jetons propre au membre>",
+            shared=[{"members": ids} for ids in shared.values()]))
+    else:
+        checks.append(build_check("family_tokens", "ok", "Aucun dossier de jetons Garmin partagé entre membres.",
+                                  fix=None))
+
+    by_topic: dict = {}
+    for member in members:
+        notif = configs[member.id].get("notifications") or {}
+        if notif.get("provider") == "ntfy" and notif.get("ntfy_topic"):
+            key = f"{str(notif.get('ntfy_url') or 'https://ntfy.sh').rstrip('/')}/{notif['ntfy_topic']}"
+            by_topic.setdefault(key, []).append(member.id)
+    same = [ids for ids in by_topic.values() if len(ids) > 1]
+    if same:
+        checks.append(build_check(
+            "family_ntfy", "warning",
+            "Même topic ntfy pour plusieurs membres (" + "; ".join(", ".join(ids) for ids in same)
+            + ") : chacun recevrait les notifications des autres.",
+            fix="[notifications].ntfy_topic distinct dans le workspace.user.toml de chaque membre",
+            shared=[{"members": ids} for ids in same]))
+    else:
+        checks.append(build_check("family_ntfy", "ok", "Chaque membre a son propre topic ntfy (ou n'en utilise pas).",
+                                  fix=None))
+
+    blobs = _scheduled_blobs(home or Path.home())
+    unscheduled = [m.id for m in members if not any(str(m.workspace) in blob for blob in blobs)]
+    if unscheduled:
+        checks.append(build_check(
+            "family_sync", "info",
+            "Synchronisation planifiée non détectée pour : " + ", ".join(unscheduled)
+            + " (synchronisation manuelle, ou tâche d'un autre format).",
+            fix="./install.sh --workspace <dossier du membre> --daily-sync", members=unscheduled))
+    else:
+        checks.append(build_check("family_sync", "ok", "Chaque membre a une synchronisation planifiée.", fix=None))
+    return checks
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description=__doc__.split("\n\n")[0], formatter_class=argparse.RawDescriptionHelpFormatter,
@@ -2053,6 +2162,11 @@ def build_parser() -> argparse.ArgumentParser:
              "— CONTACTE le fournisseur ; sans cette option, `llm_config` reste statique (voir `arc_llm.py check`)",
     )
     parser.add_argument("--probe-ow", action="store_true", help=argparse.SUPPRESS)  # ancien nom : sans effet
+    parser.add_argument(
+        "--family", metavar="REGISTRE",
+        help="registre du mode famille (#127) : ajoute les vérifications family_* (défaut : ARC_FAMILY, puis "
+             "~/.config/ai-running-coach/family.toml s'il existe ; jamais avec --check)",
+    )
     return parser
 
 
@@ -2068,6 +2182,10 @@ def main(argv: Optional[list] = None) -> int:
     else:
         checks = run_all_checks(workspace, now, tokens_dir, probe_mcp=args.probe_mcp, probe_ow=not args.no_probe_ow,
                                 probe_llm=args.probe_llm)
+    if not args.check:
+        family_path, family_registry, family_error = _family_registry(args.family)
+        if family_path is not None:
+            checks = checks + check_family(family_path, family_registry, family_error)
     has_error = any(check["status"] == "error" for check in checks)
 
     if args.json:

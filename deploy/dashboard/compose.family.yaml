@@ -1,0 +1,22 @@
+# Complément « mode famille » (#127) : UN tableau de bord sert plusieurs athlètes, chacun dans
+# son workspace. Activé en ajoutant ce fichier à COMPOSE_FILE dans .env (voir .env.example) ;
+# sans lui, le conteneur reste mono-athlète, inchangé.
+#
+# Le registre (family.toml) liste les membres et leurs workspaces ; l'identité vient de
+# l'en-tête posé par le SSO (Authentik → Traefik). Les workspaces sont montés AUX MÊMES
+# CHEMINS que sur l'hôte (le registre contient des chemins absolus), en lecture seule ici.
+# Voir docs/family.md. ARC_WORKSPACE_HOST (obligatoire dans compose.yaml) peut simplement
+# valoir ARC_FAMILY_ROOT : il n'est pas servi en mode famille.
+services:
+  dashboard:
+    entrypoint:
+      - python3
+      - /app/scripts/arc_serve.py
+      - --family
+      - "${ARC_FAMILY_FILE:?ARC_FAMILY_FILE manquant dans .env (chemin de family.toml sur l hôte)}"
+      - --memory
+      - --port
+      - "8765"
+    volumes:
+      - "${ARC_FAMILY_FILE}:${ARC_FAMILY_FILE}:ro"
+      - "${ARC_FAMILY_ROOT:?ARC_FAMILY_ROOT manquant dans .env (dossier parent des workspaces)}:${ARC_FAMILY_ROOT}:ro"

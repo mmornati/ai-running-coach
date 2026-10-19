@@ -1,0 +1,27 @@
+# Complément « mode famille » du chat (#127) : un seul conteneur, un ChatService par membre du
+# registre. À ajouter à COMPOSE_FILE APRÈS compose.chat.yaml (voir .env.example).
+#
+# Le chat ÉCRIT dans les workspaces : le dossier parent est monté en lecture-écriture, aux
+# mêmes chemins que sur l'hôte. Le registre est en lecture seule. Les jetons Garmin de chaque
+# membre (installés par `install.sh --garmin-tokens`) doivent être sous un dossier monté :
+# par exemple ${ARC_HOME}/.garminconnect/<membre> (déjà monté par compose.chat.yaml).
+# Voir docs/family.md.
+services:
+  chat:
+    command:
+      - python3
+      - "${ARC_ENGINE_HOST:?ARC_ENGINE_HOST manquant dans .env (chemin du dépôt ai-running-coach)}/scripts/arc_chat.py"
+      - --family
+      - "${ARC_FAMILY_FILE:?ARC_FAMILY_FILE manquant dans .env (chemin de family.toml sur l hôte)}"
+      - --listen
+      - 0.0.0.0
+      - --port
+      - "8766"
+    working_dir: "${ARC_FAMILY_ROOT:?ARC_FAMILY_ROOT manquant dans .env (dossier parent des workspaces)}"
+    volumes:
+      - "${ARC_FAMILY_FILE}:${ARC_FAMILY_FILE}:ro"
+      - "${ARC_FAMILY_ROOT}:${ARC_FAMILY_ROOT}"
+    labels:
+      # Le jeton ntfy porte le membre (`<membre>~<id>.<secret>`) : le `~` doit passer le filtre de la route
+      # sans SSO. Même clé que dans compose.chat.yaml, qu'elle remplace.
+      - 'traefik.http.routers.arc-chat-approve.rule=Host(`${ARC_DASHBOARD_HOST}`) && PathRegexp(`^/api/chat/approve/[A-Za-z0-9_~-]+\.[A-Za-z0-9_-]+/(allow|deny)$$`) && Method(`POST`)'
