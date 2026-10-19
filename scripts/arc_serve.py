@@ -7,7 +7,7 @@ workspace hors de `.arc/` (la base elle-même), et rien n'est exposé hors de la
 machine : le serveur écoute sur 127.0.0.1.
 
     arc_serve.py [--workspace DIR] [--port N] [--memory] [--db FICHIER] [--today AAAA-MM-JJ]
-                 [--listen ADRESSE --allowed-host NOM ...]
+                 [--listen ADRESSE --allowed-host NOM ...] [--family [REGISTRE]]
 
 `--listen` (ou ARC_DASHBOARD_LISTEN) n'existe que pour le conteneur Docker, qui
 doit écouter sur son interface réseau pour que le reverse proxy l'atteigne. Il
@@ -16,6 +16,13 @@ virgules) : les noms sous lesquels le proxy présente le tableau de bord. Tout
 autre en-tête Host reste refusé. Le tableau de bord n'a pas d'authentification
 propre : hors de 127.0.0.1, il se place derrière un proxy qui en a une
 (docs/dashboard/docker.md).
+
+`--family [REGISTRE]` (ou ARC_FAMILY) : mode famille (#127, docs/family.md). Une seule
+application sert plusieurs athlètes, chacun dans son workspace : chaque requête
+`/api/*`, `/media/*` et `/api/chat/*` est routée vers le membre désigné par l'en-tête
+d'identité du proxy d'authentification (`arc_family.py`) ; source hors `trusted_proxies`,
+en-tête absent ou inconnu : 403, sans donnée. `/healthz` et les fichiers statiques de
+`web/` restent anonymes (aucune donnée). Sans `--family`, rien ne change.
 
 Le port vient de `[dashboard].port` (défaut 8765). S'il est pris, les 9 suivants
 sont essayés ; `--port 0` laisse le système choisir (tests). La ligne
@@ -60,6 +67,7 @@ from urllib.parse import parse_qs, quote, urlparse, urlsplit
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import arc_block_timeline as BT  # noqa: E402
+import arc_family as FM  # noqa: E402
 import arc_guardrails as G  # noqa: E402
 import arc_health_source as HS  # noqa: E402
 import arc_index as I  # noqa: E402
@@ -1689,6 +1697,45 @@ ROUTES = {
 # ---------------------------------------------------------------------------
 
 
+class FamilyStores:
+    """Un `Store` par membre du registre famille, ouvert à la PREMIÈRE requête de ce membre.
+
+    Le membre vient d'`arc_family.authenticate_member` (jamais d'un chemin dérivé de l'en-tête) ;
+    `--memory`, `--today` et le rafraîchissement périodique s'appliquent à chaque `Store` comme en
+    mode mono-athlète.
+    """
+
+    def __init__(self, registry: "FM.Registry", db=None, memory=False, today=None):
+        self.registry, self.db, self.memory, self.today = registry, db, memory, today
+        self._stores: dict = {}
+        self._lock = threading.Lock()
+        origins = []
+        for member in registry.members.values():       # configuration seule : aucun index ouvert ici
+            try:
+                origin = tile_origin(I.settings(I.load_config(member.workspace))["map_tiles"])
+            except Exception:                           # noqa: BLE001 — une config cassée ne bloque pas les autres
+                origin = ""
+            if origin and origin not in origins:
+                origins.append(origin)
+        # CSP des fichiers statiques (anonymes, donc communs) : union des fonds de carte des membres.
+        self.tile_src = "".join(f" {o}" for o in origins)
+
+    def store(self, member) -> "Store":
+        with self._lock:
+            found = self._stores.get(member.id)
+            if found is None:
+                found = Store(member.workspace, self.db, self.memory, self.today, background=True)
+                found.start_background()
+                self._stores[member.id] = found
+        return found
+
+    def stop_all(self) -> None:
+        with self._lock:
+            stores = list(self._stores.values())
+        for found in stores:
+            found.stop_background()
+
+
 # Proxy local du chat (`/api/chat/*`) : un simple tuyau vers le service `arc_chat.py`.
 # Actif seulement si `[chat].enabled` ET que le tableau de bord écoute en boucle locale ;
 # en conteneur / derrière un proxy, c'est Traefik qui route `/api/chat` directement.
@@ -1732,6 +1779,7 @@ class Handler(BaseHTTPRequestHandler):
     allowed_hosts: set = set()
     chat_port: Optional[int] = None   # posé par serve() ; None = pas de proxy
     tile_src: str = ""                # posé par serve() : « ␣https://hôte » des tuiles de carte, ou vide
+    family: Optional[FamilyStores] = None   # posé par serve() en mode famille (#127) ; None = mono-athlète
 
     def log_message(self, fmt, *args):         # silencieux : c'est un outil local
         pass
@@ -1779,6 +1827,30 @@ class Handler(BaseHTTPRequestHandler):
         host = (self.headers.get("Host") or "").lower()
         return host in self.allowed_hosts or host.rsplit(":", 1)[0] in self.allowed_hosts
 
+    def _family_store(self) -> Optional["Store"]:
+        """Mode famille : `Store` du membre authentifié, ou None (403 déjà envoyé, aucune donnée)."""
+        member, status, message = FM.authenticate_member(self.family.registry, self.client_address[0], self.headers)
+        if member is None:
+            self._json(status, {"error": message})
+            return None
+        self.member = member
+        self.store = self.family.store(member)
+        return self.store
+
+    def _family_chat_ok(self, path: str) -> bool:
+        """Mode famille, route de chat : identité complète, sauf la route à jeton ntfy (`approve/…`)
+        qui n'exige que la source de confiance — le jeton, signé et lié au membre, fait le reste."""
+        if path.startswith(CHAT_PREFIX + "approve/"):
+            if FM.ip_in(self.client_address[0], self.family.registry.trusted_proxies):
+                return True
+            self._json(HTTPStatus.FORBIDDEN, {"error": FM.DENIED})
+            return False
+        member, status, message = FM.authenticate_member(self.family.registry, self.client_address[0], self.headers)
+        if member is None:
+            self._json(status, {"error": message})
+            return False
+        return True
+
     def do_HEAD(self):
         self.do_GET()
 
@@ -1789,7 +1861,22 @@ class Handler(BaseHTTPRequestHandler):
         url = urlparse(self.path)
         if url.path == "/healthz":              # sonde du conteneur : ne réindexe pas
             self._json(HTTPStatus.OK, {"status": "ok"})
-        elif url.path == "/api/version":        # hors de ROUTES : ne réindexe pas, ne dépend pas des données
+            return
+        if self.family is not None and (url.path.startswith("/api/") or url.path.startswith("/media/")):
+            # Mode famille : TOUTE route de données passe par l'identité, avant tout aiguillage.
+            if url.path.startswith(CHAT_PREFIX):
+                if self._family_chat_ok(url.path):          # identité d'abord : 403 avant tout 404
+                    if self.chat_port:
+                        self._chat_proxy()
+                    else:
+                        self._json(HTTPStatus.NOT_FOUND, {"error": "route inconnue"})
+                return
+            if self._family_store() is None:
+                return
+            if url.path == "/api/whoami":
+                self._json(HTTPStatus.OK, {"member": self.member.id, "display_name": self.member.display_name})
+                return
+        if url.path == "/api/version":          # hors de ROUTES : ne réindexe pas, ne dépend pas des données
             self._json(HTTPStatus.OK, api_version(self.store.workspace))
         elif url.path == "/api/sync-status":    # idem : lit logs/, pas l'index
             self._json(HTTPStatus.OK, api_sync_status(self.store))
@@ -1807,6 +1894,8 @@ class Handler(BaseHTTPRequestHandler):
             if not self._host_ok():
                 self._json(HTTPStatus.FORBIDDEN, {"error": "hôte non autorisé"})
                 return
+            if self.family is not None and not self._family_chat_ok(urlparse(self.path).path):
+                return
             self._chat_proxy()
             return
         self._json(HTTPStatus.METHOD_NOT_ALLOWED, {"error": "lecture seule"})
@@ -1821,7 +1910,10 @@ class Handler(BaseHTTPRequestHandler):
         except ValueError:
             length = 0
         body = self.rfile.read(length) if length > 0 else None
-        headers = {h: self.headers[h] for h in CHAT_FORWARD_REQUEST if self.headers.get(h)}
+        forward = CHAT_FORWARD_REQUEST
+        if self.family is not None:                 # l'identité vérifiée ici est transmise telle quelle au chat
+            forward = forward + (self.family.registry.auth_header,)
+        headers = {h: self.headers[h] for h in forward if self.headers.get(h)}
         conn = http.client.HTTPConnection("127.0.0.1", self.chat_port, timeout=CHAT_CONNECT_TIMEOUT_S)
         try:
             conn.request(self.command, self.path, body=body, headers=headers, encode_chunked=False)
@@ -1994,9 +2086,29 @@ def check_exposure(listen: str, extra_hosts) -> None:
             "Déclarez le nom public (ARC_DASHBOARD_ALLOWED_HOSTS), derrière un proxy authentifié.")
 
 
-def serve(workspace: Path, port: int, db=None, memory=False, today=None,
-          listen: str = LOOPBACK, extra_hosts=()) -> None:
+def serve(workspace: Optional[Path], port: int, db=None, memory=False, today=None,
+          listen: str = LOOPBACK, extra_hosts=(), family: Optional["FM.Registry"] = None) -> None:
     check_exposure(listen, extra_hosts)
+    if family is not None:
+        family.require_trusted_proxies()
+        # Un `Store` par membre, ouvert à la demande (FamilyStores) : rien n'est indexé au démarrage.
+        Handler.family = FamilyStores(family, db, memory, today)
+        Handler.store = None
+        httpd = bind(port, listen=listen)
+        actual = httpd.server_address[1]
+        Handler.allowed_hosts = host_allowlist(actual, extra_hosts)
+        Handler.chat_port = chat_proxy_port({"chat": {"enabled": bool(family.settings["chat_port"]),
+                                                      "port": family.settings["chat_port"]}}, listen)
+        Handler.tile_src = Handler.family.tile_src
+        print(f"URL: http://127.0.0.1:{actual}/", flush=True)
+        try:
+            httpd.serve_forever()
+        except KeyboardInterrupt:
+            pass
+        finally:
+            Handler.family.stop_all()
+            httpd.server_close()
+        return
     # Le premier index (≈ 10 s sur un historique complet avec FIT) se construit en
     # arrière-plan : le serveur écoute tout de suite, la page s'affiche, et les
     # requêtes API attendent la fin de ce passage (`Store.wait_ready`).
@@ -2042,7 +2154,21 @@ def main(argv=None) -> int:
     parser.add_argument("--allowed-host", action="append", dest="allowed_hosts",
                         default=[h for h in os.environ.get("ARC_DASHBOARD_ALLOWED_HOSTS", "").split(",") if h.strip()],
                         help="nom public accepté dans l'en-tête Host (répétable)")
+    parser.add_argument("--family", nargs="?", const="", default=None, metavar="REGISTRE",
+                        help="mode famille (#127) : un workspace par membre, aiguillé par l'en-tête d'identité du "
+                             "proxy ; REGISTRE = family.toml (défaut : ARC_FAMILY, puis "
+                             "~/.config/ai-running-coach/family.toml)")
     args = parser.parse_args(argv)
+    family_raw = args.family
+    if family_raw is None and not args.workspace:         # ARC_FAMILY seul active le mode ; --workspace l'emporte
+        family_raw = os.environ.get(FM.FAMILY_ENV) or None
+    if family_raw is not None:
+        if args.workspace:
+            raise ConfigError("--family et --workspace s'excluent : chaque membre a son workspace dans le registre.")
+        registry = FM.load_registry(FM.resolve_registry_path(family_raw or None))
+        port = args.port if args.port is not None else int(registry.settings["port"] or DEFAULT_PORT)
+        serve(None, port, args.db, args.memory, args.today, args.listen, args.allowed_hosts, registry)
+        return 0
     workspace = I.workspace_root(args.workspace)
     port = args.port if args.port is not None else configured_port(workspace)
     serve(workspace, port, args.db, args.memory, args.today, args.listen, args.allowed_hosts)
