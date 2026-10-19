@@ -34,6 +34,29 @@ class ConfigError(RuntimeError):
     """Erreur attendue : message lisible, pas de trace."""
 
 
+class WorkspaceLockError(SystemExit):
+    """Workspace étranger refusé sous `ARC_LOCK_WORKSPACE=1` : sortie non nulle, message français."""
+
+
+def enforce_workspace_lock(workspace) -> Path:
+    """Chemin résolu de `workspace`, refusé s'il diffère de `ARC_WORKSPACE` sous `ARC_LOCK_WORKSPACE=1` (#127).
+
+    `daily-sync.sh` pose ce verrou pour le runner LLM, qui peut lancer `python3 scripts/*` : sans lui,
+    un `--workspace <autre>` ferait lire ou écrire le dossier d'un autre membre du foyer. Sans verrou
+    (cas normal), ne fait que résoudre le chemin. NB : les options qui désignent directement un fichier
+    ou un dossier (`--db`, `--dir`, `--output-dir`, `--input`…) ne sont pas couvertes."""
+    chosen = Path(workspace).expanduser().resolve()
+    if os.environ.get("ARC_LOCK_WORKSPACE") == "1":
+        locked = os.environ.get("ARC_WORKSPACE", "").strip()
+        if locked and chosen != Path(locked).expanduser().resolve():
+            raise WorkspaceLockError(
+                f"ERREUR : workspace refusé ({chosen}) — cette exécution est verrouillée sur "
+                f"{Path(locked).expanduser().resolve()} (ARC_LOCK_WORKSPACE=1). "
+                "Retirez --workspace ou utilisez celui de la synchronisation."
+            )
+    return chosen
+
+
 def read_json(path: Path) -> dict:
     """Charge un JSON existant, ou {} s'il n'existe pas / est vide.
 
@@ -259,7 +282,7 @@ def config_paths(workspace: Path) -> tuple:
 
 
 def cmd_get(args) -> int:
-    user, shared = config_paths(Path(args.workspace))
+    user, shared = config_paths(enforce_workspace_lock(args.workspace))
     for path in (user, shared):
         section = read_toml(path).get(args.section, {})
         if args.key in section:
@@ -279,7 +302,7 @@ def _render(value) -> str:
 
 
 def cmd_set(args) -> int:
-    user, _ = config_paths(Path(args.workspace))
+    user, _ = config_paths(enforce_workspace_lock(args.workspace))
     if args.list is not None:
         value = args.list
     elif args.type == "bool":

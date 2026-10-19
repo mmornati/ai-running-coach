@@ -17,6 +17,13 @@
 ARC_LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ARC_ENGINE_ROOT="$(cd "$ARC_LIB_DIR/../.." && pwd)"
 ARC_WORKSPACE_STATE_FILE="$HOME/.config/ai-running-coach/workspace"
+# Verrou (#127) : `daily-sync.sh` exporte ARC_LOCK_WORKSPACE=1 avec ARC_WORKSPACE pour le runner LLM.
+# Verrouillé, jamais de repli sur le pointeur ni sur le moteur : un ARC_WORKSPACE absent ou inexistant
+# ferait travailler les scripts sur le dossier d'un autre membre du foyer. Voir arc_assert_workspace.
+if [[ "${ARC_LOCK_WORKSPACE:-}" == "1" && ( -z "${ARC_WORKSPACE:-}" || ! -d "${ARC_WORKSPACE:-}" ) ]]; then
+    printf '%s\n' "ERREUR : ARC_LOCK_WORKSPACE=1 sans ARC_WORKSPACE valide (${ARC_WORKSPACE:-vide}) : exécution refusée." >&2
+    exit 1
+fi
 if [[ -z "${ARC_WORKSPACE:-}" && -f "$ARC_WORKSPACE_STATE_FILE" ]]; then
     ARC_WORKSPACE="$(head -n1 "$ARC_WORKSPACE_STATE_FILE")"
 fi
@@ -43,6 +50,20 @@ warn() { printf '%s\n' "${C_YELLOW}⚠${C_RESET} $*"; }
 err()  { printf '%s\n' "${C_RED}✖${C_RESET} $*" >&2; }
 die()  { err "$*"; exit 1; }
 have() { command -v "$1" >/dev/null 2>&1; }
+
+# Refuse un workspace explicite (option --workspace d'un script) qui diffère de ARC_WORKSPACE quand
+# l'exécution est verrouillée (ARC_LOCK_WORKSPACE=1, #127). Sans verrou : ne fait rien.
+# Usage : arc_assert_workspace <dossier>
+arc_assert_workspace() {
+    [[ "${ARC_LOCK_WORKSPACE:-}" == "1" ]] || return 0
+    local wanted locked
+    wanted="$(cd "$1" 2>/dev/null && pwd -P)" || wanted="$1"
+    locked="$(cd "${ARC_WORKSPACE:-/nonexistent}" 2>/dev/null && pwd -P)" || locked="${ARC_WORKSPACE:-}"
+    if [[ "$wanted" != "$locked" ]]; then
+        err "workspace refusé ($1) — cette exécution est verrouillée sur $ARC_WORKSPACE (ARC_LOCK_WORKSPACE=1)."
+        exit 1
+    fi
+}
 
 # Lit une clé scalaire dans une section d'un fichier TOML.
 #

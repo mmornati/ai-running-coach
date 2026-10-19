@@ -11,6 +11,8 @@ import subprocess
 import sys
 import tempfile
 
+from coach_config import enforce_workspace_lock
+
 BUSY = 75
 
 
@@ -95,6 +97,7 @@ def main() -> int:
     parser.add_argument("--engine", type=Path)
     parser.add_argument("args", nargs=argparse.REMAINDER)
     options = parser.parse_args()
+    enforce_workspace_lock(options.workspace)
     args = options.args[1:] if options.args[:1] == ["--"] else options.args
     if options.sync:
         if not args:
