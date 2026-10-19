@@ -192,9 +192,17 @@ Détails Docker : [Derrière un reverse proxy](dashboard/docker.md#mode-famille)
   `WHOOP_`, `WITHINGS_`, `POLAR_`, `COROS_`, `SUUNTO_`), contient `TOKEN`, `SECRET`, `PASSWORD`, `PASSWD`,
   `API_KEY`, `APIKEY` ou `CREDENTIAL`, ou finit par `_KEY` / `_KEY_FILE` (plus une liste de noms connus,
   dont `AZURE_SPEECH_KEY`). Seule survit la clé du fournisseur LLM du membre (`[chat].api_key_env`), que son
-  backend transmet lui-même ; `PATH`, `HOME`, `LANG`, `TZ`, `XDG_*`… restent intacts. Une clé posée au
+  backend transmet lui-même, **et seulement si son nom est sur liste blanche** (voir ci-dessous) ; `PATH`, `HOME`, `LANG`, `TZ`, `XDG_*`… restent intacts. Une clé posée au
   niveau du conteneur ne donne donc jamais accès aux données d'un autre membre, et un futur fournisseur est
   couvert d'office. Les identifiants d'un membre vivent dans SON workspace (`.mcp.json`, `.env`) ;
+- **le registre décide des clés et points d'accès LLM** (modèle de menace : la config d'un membre est écrite
+  par l'administrateur, et le chat ne peut pas écrire dans `config/`, mais un nom de variable ou une URL
+  ne doivent jamais permettre de sortir un identifiant du foyer). `[chat].api_key_env` doit être un
+  fournisseur connu (`ANTHROPIC_API_KEY`, `OPENROUTER_API_KEY`, `OPENAI_API_KEY`) ou figurer dans
+  `[family].llm_key_envs` du registre (`^[A-Z][A-Z0-9_]*$`, jamais un identifiant du foyer : refusé au
+  chargement du registre). Un `[chat].base_url` hors boucle locale (`127.0.0.1`, `localhost`, `::1`)
+  doit être listé (URL ou nom d'hôte) dans `[family].llm_base_urls`. Sinon CE membre est indisponible (503,
+  journal en français), les autres ne sont pas touchés. Hors mode famille, rien ne change ;
 - un membre dont la configuration est cassée est indisponible (503) sans affecter les autres ;
 - `/healthz` (boucle locale) ne renvoie que `{"ok": true, "members": <nombre>}`.
 

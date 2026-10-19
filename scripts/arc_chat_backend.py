@@ -26,6 +26,7 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable, Optional
+from urllib.parse import urlparse
 
 # ---------------------------------------------------------------------------
 # Événements (SSE : `event: <type>\ndata: <json>\n\n`)
@@ -163,11 +164,30 @@ def family_reserved_name(name: str) -> bool:
     return str(name) in FAMILY_SCRUBBED_ENV or up in FAMILY_SCRUBBED_ENV or up.startswith(FAMILY_SCRUBBED_PREFIXES)
 
 
+# Clés de fournisseur LLM que les installations savent poser (`install.sh --llm`, backends claude / opencode) : en mode
+# famille, `[chat].api_key_env` d'un membre doit en faire partie, ou figurer dans `[family].llm_key_envs` du registre
+# (liste blanche, décidée par l'administrateur du foyer et non par la config d'un membre).
+FAMILY_LLM_KEY_ENVS = ("ANTHROPIC_API_KEY", "OPENROUTER_API_KEY", "OPENAI_API_KEY")
+LLM_KEY_ENV_RE = r"[A-Z][A-Z0-9_]*"
+
+
+def family_llm_key_allowed(name: str, extra=()) -> bool:
+    """Vrai si `name` peut être la clé LLM d'un membre : nom connu ou déclaré par le foyer (`extra`), jamais réservé."""
+    name = str(name)
+    return bool(name) and not family_reserved_name(name) and (name in FAMILY_LLM_KEY_ENVS or name in tuple(extra or ()))
+
+
+def is_loopback_url(url: str) -> bool:
+    host = (urlparse(str(url)).hostname or "").lower()
+    return host in ("localhost", "127.0.0.1", "::1") or host.endswith(".localhost")
+
+
 def family_scrubbed_names(environ, keep=()) -> list:
     """Noms à retirer de `environ` en mode famille : liste fermée + toute variable présente dont le nom commence
     par un préfixe de fournisseur, contient un marqueur de secret ou finit par `_KEY` / `_KEY_FILE`.
     `keep` : ce dont le backend du membre a légitimement besoin (clé du fournisseur LLM), jamais retiré, SAUF un nom
-    réservé (`family_reserved_name`) : un `api_key_env = "GARMINTOKENS"` ne doit pas exempter un identifiant du foyer."""
+    réservé (`family_reserved_name`) : un `api_key_env = "GARMINTOKENS"` ne doit pas exempter un identifiant du foyer.
+    (Le choix du nom autorisé relève de `family_llm_key_allowed`, appliqué par `ChatBackend.family_overlay`.)"""
     keep = {k for k in keep if k and not family_reserved_name(k)}
     names = set(FAMILY_SCRUBBED_ENV)
     for name in environ:
@@ -196,6 +216,12 @@ class ChatBackend(ABC):
         """Nom de la variable portant la clé du fournisseur LLM de ce backend (jamais retirée en mode famille)."""
         return str(self.config.get("api_key_env") or "")
 
+    def _family_keep(self) -> tuple:
+        """Seule exemption du nettoyage : la clé LLM du membre, si elle est sur liste blanche (défense en profondeur :
+        `arc_chat.family_member_config` refuse déjà au démarrage un membre dont le nom n'y figure pas)."""
+        name = self.llm_key_env()
+        return (name,) if family_llm_key_allowed(name, self.config.get("family_llm_key_envs") or ()) else ()
+
     def family_overlay(self, base: Optional[dict] = None) -> dict:
         """Variables d'environnement à IMPOSER aux processus enfants (outils shell, serveurs MCP) en mode famille.
 
@@ -212,7 +238,7 @@ class ChatBackend(ABC):
             return {}
         return {"ARC_WORKSPACE": str(self.workspace), "ARC_LOCK_WORKSPACE": "1",
                 **{name: "" for name in family_scrubbed_names(
-                    os.environ if base is None else base, (self.llm_key_env(),))}}
+                    os.environ if base is None else base, self._family_keep())}}
 
     def child_env(self, base: Optional[dict] = None) -> dict:
         """Environnement complet d'un processus enfant : `base` (défaut `os.environ`) + `family_overlay()`."""

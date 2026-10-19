@@ -183,6 +183,19 @@ def _str_list(value, label: str, path: Path) -> list:
     return [v.strip() for v in value if v.strip()]
 
 
+def _llm_key_envs(value, path: Path) -> list:
+    """`[family].llm_key_envs` : noms de variables de clé LLM autorisés en plus des fournisseurs connus."""
+    from arc_chat_backend import LLM_KEY_ENV_RE, family_reserved_name
+    names = _str_list(value, "[family].llm_key_envs", path)
+    for name in names:
+        if not re.fullmatch(LLM_KEY_ENV_RE, name):
+            raise ConfigError(f"{path} : [family].llm_key_envs : nom invalide « {name} » (A-Z, 0-9 et « _ »).")
+        if family_reserved_name(name):
+            raise ConfigError(f"{path} : [family].llm_key_envs : « {name} » est un identifiant du foyer, "
+                              "jamais utilisable comme clé LLM.")
+    return names
+
+
 def _settings(raw: dict, path: Path) -> dict:
     header = str(raw.get("auth_header") or DEFAULT_AUTH_HEADER).strip()
     if not re.fullmatch(r"[A-Za-z0-9-]+", header):
@@ -199,6 +212,8 @@ def _settings(raw: dict, path: Path) -> dict:
         "allowed_hosts": _str_list(raw.get("allowed_hosts"), "[family].allowed_hosts", path),
         "public_url": str(raw.get("public_url") or "").strip(),
         "daily_budget_eur": budget,
+        "llm_key_envs": _llm_key_envs(raw.get("llm_key_envs"), path),
+        "llm_base_urls": _str_list(raw.get("llm_base_urls"), "[family].llm_base_urls", path),
         "listen": str(raw.get("listen") or "").strip(),
         "port": raw.get("port"),
         "chat_port": raw.get("chat_port"),

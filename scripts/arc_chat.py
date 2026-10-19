@@ -64,7 +64,8 @@ from typing import Optional
 from urllib.parse import urlparse
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from arc_chat_backend import (EVENT_TYPES, BackendError, ChatBackend, TurnContext, family_reserved_name,  # noqa: E402
+from arc_chat_backend import (EVENT_TYPES, BackendError, ChatBackend, TurnContext, family_llm_key_allowed,  # noqa: E402
+                              family_reserved_name, is_loopback_url,
                               load_backend, payload_hash)
 from arc_chat_policy import Policy  # noqa: E402
 import arc_family as FM  # noqa: E402
@@ -1554,15 +1555,28 @@ def family_member_config(registry: "FM.Registry", member, sections: Optional[dic
     L'authentification est TOUJOURS « proxy » en mode famille ; la liste `allowed_users` du workspace
     est ignorée (le registre est la seule liste des membres)."""
     cfg = load_chat_config(member.workspace, sections)
-    key_env = str(cfg.get("api_key_env") or "")
-    if key_env and family_reserved_name(key_env):
-        log(f"membre {member.id} : [chat].api_key_env refusé ({key_env} est un identifiant du foyer)")
-        # Sinon la clé « LLM » du membre désignerait un identifiant du foyer (jetons Garmin, clé intervals.icu…).
-        raise ValueError(f"[chat].api_key_env = {key_env!r} désigne un identifiant du foyer : refusé en mode famille")
     fam = registry.settings
+    key_env = str(cfg.get("api_key_env") or "")
+    # Liste blanche : le registre du foyer décide quelles clés LLM et quels points d'accès un membre peut employer
+    # (la config d'un membre est écrite par l'administrateur, mais ne doit pas pouvoir désigner un identifiant du foyer).
+    if key_env and not family_llm_key_allowed(key_env, fam.get("llm_key_envs") or ()):
+        if family_reserved_name(key_env):
+            why = "est un identifiant du foyer"
+        else:
+            why = "n'est pas une clé de fournisseur LLM connue (voir [family].llm_key_envs dans le registre)"
+        log(f"membre {member.id} : [chat].api_key_env refusé ({key_env} {why})")
+        raise ValueError(f"[chat].api_key_env = {key_env!r} {why} : refusé en mode famille")
+    base_url = str(cfg.get("base_url") or "").strip()
+    if base_url and not is_loopback_url(base_url):
+        host = (urlparse(base_url).hostname or "").lower()
+        allowed = [str(u).strip().rstrip("/").lower() for u in fam.get("llm_base_urls") or ()]
+        if base_url.rstrip("/").lower() not in allowed and host not in allowed:
+            log(f"membre {member.id} : [chat].base_url refusé ({host or '?'} absent de [family].llm_base_urls)")
+            raise ValueError("[chat].base_url hors boucle locale et absent de [family].llm_base_urls : "
+                             "refusé en mode famille")
     cfg.update({"auth": "proxy", "auth_header": registry.auth_header,
                 "trusted_proxies": list(registry.trusted_proxies), "allowed_users": [],
-                "family_member": member.id})        # lu par les backends : environnement enfant du membre
+                "family_member": member.id, "family_llm_key_envs": list(fam.get("llm_key_envs") or ())})        # lu par les backends : environnement enfant du membre
     if fam.get("listen"):
         cfg["listen"] = fam["listen"]
     if fam.get("chat_port"):

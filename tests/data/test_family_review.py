@@ -79,7 +79,8 @@ class TestBackendEnvironment(FamilyEnvCase):
         for name in ("PATH", "HOME", "LANG", "TZ", "XDG_CONFIG_HOME"):
             self.assertEqual(env[name], base[name])
         # clé LLM configurée du membre : conservée
-        backend = M.MockBackend(self.workspaces["alice"], {"family_member": "alice", "api_key_env": "MY_LLM_KEY"})
+        backend = M.MockBackend(self.workspaces["alice"], {"family_member": "alice", "api_key_env": "MY_LLM_KEY",
+                                                          "family_llm_key_envs": ["MY_LLM_KEY"]})
         env = backend.child_env(base)
         self.assertEqual(env["MY_LLM_KEY"], "cle-llm-2")
         self.assertNotIn("ANTHROPIC_API_KEY", env)
@@ -103,8 +104,8 @@ class TestBackendEnvironment(FamilyEnvCase):
             self.assertEqual(opts[name], "", name)
         # clés LLM légitimes : conservées
         for name in ("ANTHROPIC_API_KEY", "OPENROUTER_API_KEY", "MY_LLM_KEY"):
-            env = M.MockBackend(alice_ws, {"family_member": "alice", "api_key_env": name}).child_env(
-                dict(base, **{name: "cle-llm"}))
+            env = M.MockBackend(alice_ws, {"family_member": "alice", "api_key_env": name,
+                                           "family_llm_key_envs": ["MY_LLM_KEY"]}).child_env(dict(base, **{name: "cle-llm"}))
             self.assertEqual(env[name], "cle-llm", name)
 
     def test_membre_dont_api_key_env_designe_un_identifiant_du_foyer_refuse_en_503(self):
@@ -129,7 +130,7 @@ class TestBackendEnvironment(FamilyEnvCase):
         sdk = SimpleNamespace(ClaudeAgentOptions=lambda **kw: kw, HookMatcher=lambda **kw: kw,
                               PermissionResultAllow=lambda: None, PermissionResultDeny=lambda **kw: None)
         turn = SimpleNamespace(ctx=SimpleNamespace(language="fr", config={}), gate_sync=lambda *a: ("deny", ""))
-        for cfg, var in (({}, "ANTHROPIC_API_KEY"), ({"api_key_env": "MY_LLM_KEY"}, "MY_LLM_KEY")):
+        for cfg, var in (({}, "ANTHROPIC_API_KEY"), ({"api_key_env": "MY_LLM_KEY", "family_llm_key_envs": ["MY_LLM_KEY"]}, "MY_LLM_KEY")):
             with mock.patch.dict(os.environ, self.secret_env(self.root), clear=True):
                 env = ClaudeBackend(ws, dict(cfg, family_member="bob"))._options(sdk, turn, None)["env"]
             for name in self.SECRETS:
@@ -145,7 +146,7 @@ class TestBackendEnvironment(FamilyEnvCase):
         ws = self.root / "coach-bob"
         ws.mkdir()
         backend = OpenCodeBackend(ws, {"family_member": "bob", "model": "openrouter/some-model",
-                                       "api_key_env": "MY_LLM_KEY"})
+                                       "api_key_env": "MY_LLM_KEY", "family_llm_key_envs": ["MY_LLM_KEY"]})
         captured = {}
 
         def fake_spawn(cmd, env, cwd, log_path):
@@ -254,16 +255,99 @@ class TestBackendEnvironment(FamilyEnvCase):
             self.assertIn("garmin", OpenCodeBackend(ws, {"family_member": "bob"})._read_mcp())   # son .mcp.json, oui
 
 
+class TestFamilyLlmAllowlist(FamilyEnvCase):
+    """Durcissement #127 : en mode famille la clé LLM d'un membre est sur LISTE BLANCHE (fournisseurs connus ou
+    `[family].llm_key_envs`), et un point d'accès hors boucle locale doit être déclaré (`[family].llm_base_urls`)."""
+
+    def fam_with(self, bob_chat: str, extra_family: str = ""):
+        base = '[chat]\nenabled = true\nbackend = "mock"\n'
+        workspaces = {"alice": T.make_workspace(self.root, "alice", base),
+                      "bob": T.make_workspace(self.root, "bob", base + bob_chat)}
+        return C.FamilyChat(self.registry(workspaces=workspaces, extra_family=extra_family))
+
+    def test_cles_de_fournisseurs_connus_acceptees_et_conservees(self):
+        for name in ("ANTHROPIC_API_KEY", "OPENROUTER_API_KEY", "OPENAI_API_KEY"):
+            fam = self.fam_with(f'api_key_env = "{name}"\n')
+            self.assertEqual(fam.errors, {}, name)
+            env = fam.services["bob"].backend.child_env({name: "cle", "STRAVA_CLIENT_SECRET": "s"})
+            self.assertEqual(env[name], "cle")
+            self.assertNotIn("STRAVA_CLIENT_SECRET", env)
+
+    def test_nom_arbitraire_refuse_sauf_declare_dans_le_registre(self):
+        """Défaut verrouillé : un `api_key_env = "MY_LLM_KEY"` quelconque exemptait une variable du nettoyage."""
+        fam = self.fam_with('api_key_env = "MY_LLM_KEY"\n')
+        self.assertEqual(sorted(fam.errors), ["bob"])
+        self.assertEqual(sorted(fam.services), ["alice"])
+        self.assertIn("MY_LLM_KEY", fam.errors["bob"])
+        fam = self.fam_with('api_key_env = "MY_LLM_KEY"\n', 'llm_key_envs = ["MY_LLM_KEY"]')
+        self.assertEqual(fam.errors, {})
+        env = fam.services["bob"].backend.child_env({"MY_LLM_KEY": "cle", "OTHER_API_KEY": "x"})
+        self.assertEqual(env["MY_LLM_KEY"], "cle")
+        self.assertNotIn("OTHER_API_KEY", env)               # seul le nom autorisé est exempté
+
+    def test_nom_declare_mais_reserve_refuse_des_le_chargement_du_registre(self):
+        for name in ("GARMINTOKENS", "STRAVA_API_KEY", "INTERVALS_ICU_API_KEY"):
+            with self.assertRaises(ConfigError, msg=name):
+                self.mock_registry(f'llm_key_envs = ["{name}"]')
+
+    def test_nom_declare_invalide_refuse(self):
+        for bad in ("my_llm_key", "1KEY", "A-B"):
+            with self.assertRaises(ConfigError, msg=bad):
+                self.mock_registry(f'llm_key_envs = ["{bad}"]')
+
+    def test_defense_en_profondeur_backend_construit_sans_liste_blanche(self):
+        backend = M.MockBackend(self.root, {"family_member": "bob", "api_key_env": "MY_LLM_KEY"})
+        self.assertNotIn("MY_LLM_KEY", backend.child_env({"MY_LLM_KEY": "cle"}))
+
+    def test_point_d_acces_hors_boucle_locale_refuse_sauf_declare(self):
+        url = "https://llm.example.org/v1"
+        fam = self.fam_with(f'base_url = "{url}"\n')
+        self.assertEqual(sorted(fam.errors), ["bob"])
+        self.assertEqual(sorted(fam.services), ["alice"])            # l'autre membre n'est pas touché
+        self.assertEqual(self.fam_with(f'base_url = "{url}"\n', 'llm_base_urls = ["https://llm.example.org/v1"]').errors, {})
+        self.assertEqual(self.fam_with(f'base_url = "{url}"\n', 'llm_base_urls = ["llm.example.org"]').errors, {})
+        self.assertIn("bob", self.fam_with(f'base_url = "{url}"\n', 'llm_base_urls = ["autre.example.org"]').errors)
+
+    def test_point_d_acces_en_boucle_locale_autorise(self):
+        for url in ("http://127.0.0.1:11434/v1", "http://localhost:8080", "http://[::1]:9000/v1"):
+            self.assertEqual(self.fam_with(f'base_url = "{url}"\n').errors, {}, url)
+
+    def test_mono_athlete_inchange(self):
+        """Hors mode famille : aucun nom ni point d'accès n'est filtré."""
+        ws = T.make_workspace(self.root, "alice")
+        backend = M.MockBackend(ws, {"api_key_env": "MY_LLM_KEY", "base_url": "https://llm.example.org/v1"})
+        env = {"MY_LLM_KEY": "cle", "STRAVA_CLIENT_SECRET": "s"}
+        self.assertEqual(backend.child_env(env), env)
+
+    def test_modele_d_exemple_du_registre_charge(self):
+        reg = F.load_registry(self._example_with_workspaces())
+        self.assertEqual(reg.settings["llm_key_envs"], [])
+        self.assertEqual(reg.settings["llm_base_urls"], [])
+
+    def _example_with_workspaces(self) -> Path:
+        text = (REPO / "deploy/dashboard/family.example.toml").read_text(encoding="utf-8")
+        for member in ("alice", "bob"):
+            ws = self.root / member
+            ws.mkdir()
+            text = text.replace(f"/home/athlete/coachs/coach-{member}", str(ws))
+        path = self.root / "example.toml"
+        path.write_text(text, encoding="utf-8")
+        return path
+
+
 class BlockingBackend(M.MockBackend):
     """Tour qui reste ouvert tant que `release` n'est pas posé (réservation de budget en cours)."""
 
     release = None
+    started = None                       # Event posé quand le tour tient sa réservation (synchronisation sans sleep)
     boom = False
 
     def run_turn(self, ctx, user_message):
         if self.boom:
             raise BackendError("échec simulé")
-        self.release.wait(10)
+        if self.started is not None:
+            self.started.set()
+        self.release.wait(30)
 
 
 class TestHouseholdCap(T.ChatCase):
@@ -329,24 +413,23 @@ class TestHouseholdCap(T.ChatCase):
         self.assertGreater(b.reserve_turn_budget(turn_b), 0.0)
 
     def test_message_distinct_quand_le_budget_est_reserve_par_un_autre_membre(self):
-        gate = threading.Event()
+        gate, started = threading.Event(), threading.Event()
 
         class Held(BlockingBackend):
             release = gate
+        Held.started = started
         _, fam = self.household(Held, cap="1.0")
         a, b = fam.services["alice"], fam.services["bob"]
         code, _, _ = a.begin_turn(a.sessions.create("mock", "m")["id"], "alice", "bonjour")
         self.assertEqual(code, "ok")
-        for _ in range(100):
-            if fam.outstanding() > 0:
-                break
-            time.sleep(0.02)
+        self.assertTrue(started.wait(60))                          # le tour d'Alice tient sa réservation : pas d'attente chronométrée
+        self.addCleanup(gate.set)
 
         def blocked_message(svc, who):
             code, _, q = svc.begin_turn(svc.sessions.create("mock", "m")["id"], who, "bonjour")
             self.assertEqual(code, "ok")
             while True:
-                etype, data = q.get(timeout=10)
+                etype, data = q.get(timeout=60)
                 if etype == "error":
                     return data["message"]
         # Bob est bloqué par le tour d'Alice : message propre au foyer, pas le message générique
