@@ -517,6 +517,23 @@ class TestRaceGearMatchingStrictness(unittest.TestCase):
         self.assertEqual(out["Frontale"]["status"], "ok")
         self.assertEqual(out["Lampe frontale 300 lm"]["status"], "category_match")
 
+    def test_passive_other_category_is_never_never_used(self):
+        b = ("### Matériel\n\n- Couverture de survie — catégorie: autre\n"
+             "- Frontale Petzl — catégorie: frontale\n")
+        parsed = L.parse_equipment(b)
+        items = M.equipment_usage([], parsed, TODAY)["items"]
+        out = {e["entry"]: e["status"] for e in M.race_gear_check(["Couverture de survie", "Frontale"], items, [])["entries"]}
+        self.assertEqual(out["Couverture de survie"], "ok")     # passif : rien à roder
+        self.assertEqual(out["Frontale"], "never_used")         # porté : « rien de nouveau le jour J »
+
+    def test_passive_item_naming_a_worn_item_does_not_validate_it(self):
+        b = ("### Matériel\n\n- Gilet Salomon ADV Skin 5 — catégorie: gilet\n"
+             "- Sifflet (intégré au gilet Salomon ADV Skin 5) — catégorie: autre\n")
+        items = M.equipment_usage([], L.parse_equipment(b), TODAY)["items"]
+        out = {e["entry"]: e["status"] for e in M.race_gear_check(["Gilet Salomon ADV Skin 5", "Sifflet"], items, [])["entries"]}
+        self.assertEqual(out["Gilet Salomon ADV Skin 5"], "never_used")
+        self.assertEqual(out["Sifflet"], "ok")
+
     def test_category_word_not_at_head_does_not_match(self):
         out = self.check(["Étui pour ceinture"], "### Matériel\n\n- Ceinture cardio — catégorie: ceinture\n")
         self.assertEqual(out["Étui pour ceinture"]["status"], "missing")
