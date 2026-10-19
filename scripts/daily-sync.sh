@@ -1011,7 +1011,9 @@ check_token_alert() {
     provider="$(toml_get notifications provider none)"
     [[ "$provider" != "none" ]] || return 0
 
-    local doctor_cmd=(python3 "$ARC_ENGINE_ROOT/scripts/coach_doctor.py"
+    # Appel de confiance de daily-sync lui-même (pas du runner) : hors verrou, le dossier de jetons suit
+    # toute la précédence (GARMINTOKENS de l'environnement du cron compris).
+    local doctor_cmd=(env -u ARC_LOCK_WORKSPACE python3 "$ARC_ENGINE_ROOT/scripts/coach_doctor.py"
                        --check garmin_token --json --workspace "$ARC_WORKSPACE")
     local timeout_bin="" doctor_json rc=0
     if have timeout; then

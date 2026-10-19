@@ -193,26 +193,36 @@ def _same_workspace(declared: str, workspace: Optional[Path]) -> bool:
 
 
 def _own_plists(home: Path, workspace: Optional[Path]) -> list:
-    """Plists daily-sync (label historique ou suffixé) de CE workspace."""
-    found = []
+    """Plists daily-sync (label historique ou suffixé) de CE workspace. Une seule planification connue,
+    même pour un autre chemin (doctor lancé sans --workspace, lien symbolique…) : réputée la sienne,
+    comme avant #127 ; avec plusieurs workspaces planifiés, seul le chemin exact compte."""
+    found, declared = [], []
     for plist in sorted((home / "Library" / "LaunchAgents").glob(LAUNCHD_PLIST_GLOB)):
         if not plist.is_file():
             continue
         match = _PLIST_WORKSPACE_RE.search(plist.read_text(encoding="utf-8", errors="replace"))
-        if _same_workspace(match.group(1) if match else "", workspace):
+        value = match.group(1) if match else ""
+        declared.append((plist, value))
+        if _same_workspace(value, workspace):
             found.append(plist)
+    if not found and len({v for _, v in declared}) <= 1:
+        return [p for p, _ in declared]
     return found
 
 
 def _own_cron_lines(crontab: str, workspace: Optional[Path]) -> list:
-    """Lignes cron daily-sync (marqueur historique ou suffixé) de CE workspace."""
-    ours = []
+    """Lignes cron daily-sync (marqueur historique ou suffixé) de CE workspace — mêmes règles que `_own_plists`."""
+    ours, declared = [], []
     for line in crontab.splitlines():
         if CRON_MARKER not in line:
             continue
         match = _ARC_WORKSPACE_RE.search(line)
-        if _same_workspace(match.group(1) if match else "", workspace):
+        value = match.group(1) if match else ""
+        declared.append((line, value))
+        if _same_workspace(value, workspace):
             ours.append(line)
+    if not ours and len({v for _, v in declared}) <= 1:
+        return [line for line, _ in declared]
     return ours
 
 # Pin du serveur garmin-mcp : DOIT rester identique à `GARMIN_MCP_REF` dans install.sh (et à l'ARG
