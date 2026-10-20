@@ -182,7 +182,7 @@ const debounce = (fn, ms = 140) => {
 const pctClass = (pct) => (pct === null || pct === undefined ? "" : pct >= 80 ? "pos" : pct < 50 ? "neg" : "");
 const ratioText = (r) => (r === null || r === undefined ? "—" : `${F.num(r * 100, 0)}\u00a0%`);
 
-const INTENSITY_LABEL = { easy: "Facile", quality: "Qualité", other: "Autre" };
+const INTENSITY_LABEL = { easy: "Facile", quality: "Qualité", strength: "Renforcement", other: "Autre" };
 
 /** Le texte d'une semaine de conformité : soit un %, soit ce qui explique son absence. */
 function complianceWeekLabel(c) {
@@ -212,6 +212,7 @@ function complianceSection(c, trail) {
       <div><dt>Séances faites</dt><dd class="${pctClass(c.sessions_pct)}">${c.sessions_pct !== null ? F.num(c.sessions_pct, 0) + "\u00a0%" : "—"}<small> (${c.sessions_done}/${c.sessions_planned})</small></dd></div>
       <div><dt>Durée réalisée / planifiée</dt><dd>${ratioText(c.duration_ratio)}</dd></div>
       ${trail ? `<div><dt>D+ réalisé / planifié</dt><dd>${ratioText(c.elevation_ratio)}</dd></div>` : ""}
+      ${c.extra_sessions ? `<div><dt>Hors plan</dt><dd>${c.extra_sessions} séance${c.extra_sessions > 1 ? "s" : ""}${c.extra_duration_s ? ` · +${F.duration(c.extra_duration_s)}` : ""}</dd></div>` : ""}
       ${intensityRows}
     </dl>
     ${excluded ? note(`Hors calcul : ${F.esc(excluded)}.`) : ""}
@@ -608,19 +609,25 @@ function renderObjective(s) {
   const when = left > 0 ? `J-${left}` : left === 0 ? "Jour de course" : `Terminé il y a ${-left} j`;
   const meta = [F.dateLong(o.race_date), o.distance_m ? F.distance(o.distance_m, 0) : null,
     o.elevation_gain_m && s.settings.sport === "trail" ? `${F.elevation(o.elevation_gain_m)} D+` : null].filter(Boolean).join(" · ");
-  box.innerHTML = `<span class="objective__count ${left < 0 ? "is-past" : ""}">${when}</span>
+  const inner = `<span class="objective__count ${left < 0 ? "is-past" : ""}">${when}</span>
     <span class="objective__text"><strong>${F.esc(o.name || "Objectif")}</strong><span>${meta}</span></span>`;
+  // Roadbook de cette course (#187) : l'objectif ouvre son plan, seulement si un plan à venir
+  // existe pour la même date — jamais le roadbook d'une autre course.
+  const plan = s.next_race_plan;
+  box.innerHTML = plan && plan.race_date === o.race_date
+    ? `<a class="objective__link" href="#/roadbook?plan=${encodeURIComponent(plan.path)}" title="Ouvrir le roadbook de la course">${inner}</a>`
+    : inner;
 }
 
 function renderNav(s) {
-  const items = navItems(s.settings);
+  const items = navItems(s.settings, { roadbook: !!s.next_race_plan });
   const debt = (s.incomplete_files ? `<a href="#/fichiers" data-route="fichiers" class="nav__debt">${s.incomplete_files} fichier${s.incomplete_files > 1 ? "s" : ""} hors contrat</a>` : "")
     // `week_collisions_count` (#69, revue de code) : compté À PART de
     // `incomplete_files` — ces fichiers sont déjà valides au contrat, jamais
     // « hors contrat » (voir `arc_serve.api_summary`/`viewFiles`).
     + (s.week_collisions_count ? `<a href="#/fichiers" data-route="fichiers" class="nav__debt">${s.week_collisions_count} collision${s.week_collisions_count > 1 ? "s" : ""} de semaine</a>` : "");
   // Design bêta (`js/beta.js`) : sections groupées en rail, barre du bas et feuille « Sections ».
-  if (BETA) { mountShell({ settings: s.settings, page: "app", debt }); return; }
+  if (BETA) { mountShell({ settings: s.settings, page: "app", debt, roadbook: !!s.next_race_plan }); return; }
   $("#nav").innerHTML = items.map(([h, l]) => `<a href="#/${h}" data-route="${h}">${l}</a>`).join("")
     // Page séparée (chat.html), pas une route à hash : visible seulement si `[chat].enabled`.
     + (s.settings.chat_enabled ? `<a href="chat.html" data-route="coach-chat">Coach</a>` : "")
@@ -637,8 +644,9 @@ function markNav(route) {
       // `#/decision?id=…` (#55, détail d'une décision) : même motif que `rapport`
       // ci-dessus, sous-page de « Décisions » sans onglet dédié.
       || (route === "decision" && a.dataset.route === "decisions")
-      // `#/roadbook` (#187, roadbook imprimable d'un plan de course) : sous-page de Trail Shape.
-      || (route === "roadbook" && a.dataset.route === "trail-shape");
+      // `#/roadbook` (#187, roadbook imprimable d'un plan de course) : sous-page de Trail Shape,
+      // sauf quand la nav a sa propre entrée « Roadbook » (plan de la prochaine course).
+      || (route === "roadbook" && a.dataset.route === "trail-shape" && !document.querySelector('[data-route="roadbook"]'));
     a.toggleAttribute("aria-current", on);
     if (on) {
       a.setAttribute("aria-current", "page");

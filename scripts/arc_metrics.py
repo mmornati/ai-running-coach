@@ -2394,7 +2394,8 @@ def sport_family(sport: Optional[str]) -> Optional[str]:
 
 EASY_INTENSITIES = ("recovery", "endurance")
 QUALITY_INTENSITIES = ("tempo", "threshold", "vo2max", "race")
-INTENSITY_BUCKETS = {"easy": EASY_INTENSITIES, "quality": QUALITY_INTENSITIES}
+STRENGTH_INTENSITIES = ("strength",)
+INTENSITY_BUCKETS = {"easy": EASY_INTENSITIES, "quality": QUALITY_INTENSITIES, "strength": STRENGTH_INTENSITIES}
 
 # Statuts qui priment sur l'appariement automatique.
 _EXPLICIT_DONE = "done"
@@ -2527,7 +2528,7 @@ def week_compliance(sessions: List[dict], activities: List[dict], today) -> Opti
     resolved = [r for r in resolved_all if not _is_rest(r["session"])]
 
     overall = _bucket_metrics(resolved)
-    other_intensities = set(EASY_INTENSITIES) | set(QUALITY_INTENSITIES)
+    other_intensities = set(EASY_INTENSITIES) | set(QUALITY_INTENSITIES) | set(STRENGTH_INTENSITIES)
     by_intensity = {
         name: _bucket_metrics([r for r in resolved if r["session"].get("intensity") in values])
         for name, values in INTENSITY_BUCKETS.items()
@@ -2542,7 +2543,69 @@ def week_compliance(sessions: List[dict], activities: List[dict], today) -> Opti
         "sessions_pending": sum(1 for r in resolved if r["effective"] == "pending"),
         "by_intensity": by_intensity,
     })
+    overall.update(_extra_activities(by_date))
     return overall
+
+
+def _extra_activities(by_date: Dict[str, List[dict]]) -> dict:
+    """Activités de la semaine qu'aucune séance planifiée n'a consommées (« hors plan »).
+
+    Information à côté de la conformité, jamais dans ses ratios : une séance en plus
+    ne compense pas une séance raccourcie, et le volume non prévu se lit dans la
+    charge. Les fichiers de repos (`sport: rest`) ne comptent pas.
+    `extra_duration_s` : somme des durées connues, `None` si aucune n'est chiffrée.
+    """
+    extra = [a for acts in by_date.values() for a in acts
+             if not a["_used"] and a.get("sport") != "rest"]
+    durations = [a["duration_s"] for a in extra if a.get("duration_s") is not None]
+    return {
+        "extra_sessions": len(extra),
+        "extra_duration_s": sum(durations) if durations else None,
+    }
+
+
+# Écart de durée d'une séance faite, au-delà duquel la vue Semaine la dit écourtée ou
+# allongée : approximation du projet, assez large pour ignorer le bruit (45 min prévues,
+# 48 courues) et assez serrée pour voir une séance coupée d'un quart.
+SHORTENED_BELOW = 0.8
+EXTENDED_ABOVE = 1.25
+
+
+def week_pairing(sessions: List[dict], activities: List[dict], today) -> dict:
+    """Prévu ↔ réalisé de la vue Semaine, avec le MÊME appariement que `week_compliance`.
+
+    Rend `{"sessions": [...], "extra_activity_ids": [...]}` ; `sessions` est aligné
+    sur l'ordre reçu, une entrée par séance : `effective` (statut effectif, voir
+    `_resolve_sessions`, plus `rest` pour un repos sans activité), `activity_id` (activité appariée, absent sinon) et
+    `deviation` (`short` | `long`, seulement pour une séance faite dont les deux
+    durées sont connues et s'écartent au-delà des seuils ci-dessus).
+    `extra_activity_ids` : activités qu'aucune séance n'a consommées (« hors plan »),
+    repos exclus, comme `_extra_activities`.
+    """
+    today_iso = today.isoformat() if hasattr(today, "isoformat") else today
+    by_date: Dict[str, List[dict]] = {}
+    for act in activities:
+        by_date.setdefault(act.get("date"), []).append({**act, "_used": False})
+    order = sorted(range(len(sessions)), key=lambda i: sessions[i].get("date") or "")
+    resolved = _resolve_sessions([sessions[i] for i in order], by_date, today_iso)
+    out: List[Optional[dict]] = [None] * len(sessions)
+    for i, r in zip(order, resolved):
+        actual = r["actual"]
+        # Un repos n'est jamais « manqué » : la conformité l'écarte, la vue le dit repos.
+        entry = {"effective": "rest" if _is_rest(r["session"]) and not actual else r["effective"]}
+        if actual:
+            entry["activity_id"] = actual.get("id")
+            planned_d, actual_d = r["session"].get("planned_duration_s"), actual.get("duration_s")
+            if planned_d and actual_d:
+                ratio = actual_d / planned_d
+                if ratio < SHORTENED_BELOW:
+                    entry["deviation"] = "short"
+                elif ratio > EXTENDED_ABOVE:
+                    entry["deviation"] = "long"
+        out[i] = entry
+    extra = [a.get("id") for acts in by_date.values() for a in acts
+             if not a["_used"] and a.get("sport") != "rest"]
+    return {"sessions": out, "extra_activity_ids": extra}
 
 
 # ---------------------------------------------------------------------------
