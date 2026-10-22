@@ -85,6 +85,21 @@ class TestCorosAudit(unittest.TestCase):
         self.assertIn('explicit "oui"', text)
         self.assertIn("arc_coros_workout.py validate", text)
 
+    def test_intervals_first_when_source_is_intervals(self):
+        """Avec Intervals.icu comme source, c'est lui qui envoie les séances à COROS :
+        le skill COROS ne pousse pas, ne crée jamais de doublon, et la doc dit pourquoi."""
+        skill = SKILL.read_text(encoding="utf-8")
+        self.assertIn("## Intervals.icu first", skill)
+        self.assertIn('When `[data].source = "intervals"`, do NOT push with this skill', skill)
+        icu = (REPO / "skills/intervals-icu-best-practices/SKILL.md").read_text(encoding="utf-8")
+        self.assertIn("## COROS watch", icu)
+        self.assertIn("One intensity metric per workout", icu)
+        self.assertIn("createScheduledWorkout", icu)
+        doc = DOC.read_text(encoding="utf-8")
+        self.assertIn("## Configuration préconisée : Intervals.icu + COROS", doc)
+        self.assertIn("**Pourquoi ce chemin plutôt que le MCP officiel de COROS :**", doc)
+        self.assertIn("Intervals.icu d'abord", (REPO / "AGENTS.md").read_text(encoding="utf-8"))
+
     def test_doc_in_nav_and_decision_recorded(self):
         nav = (REPO / "mkdocs.yml").read_text(encoding="utf-8")
         self.assertIn("coros.md", nav)

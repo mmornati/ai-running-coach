@@ -1,13 +1,17 @@
 # Skill : Planification COROS
 
-> **Description** : pousse les séances planifiées (course, trail, vélo) au calendrier COROS, et donc sur la montre, par le MCP officiel de COROS, en session interactive et après votre « oui ».
+> **Description** : met les séances planifiées sur la montre COROS. Avec Intervals.icu (préconisé), c'est Intervals.icu qui les envoie et le skill vérifie leur arrivée ; sinon, il les pousse lui-même (course, trail, vélo) par le MCP officiel de COROS, en session interactive et après votre « oui ».
 
-## Quand l'utiliser
+## Intervals.icu d'abord (configuration préconisée)
+
+Si votre source est Intervals.icu (`[data].source = "intervals"`), **activez l'envoi des séances planifiées vers COROS dans Intervals.icu** (*Settings → COROS*) : le coach pousse vers Intervals.icu comme d'habitude, et Intervals.icu envoie les 7 prochains jours à la montre. Ce skill ne pousse alors rien lui-même ; il vérifie seulement, en lecture, que la séance est arrivée sur le calendrier COROS. Pourquoi ce choix et ses limites : [Montres COROS](../coros.md#configuration-preconisee-intervalsicu-coros).
+
+## Quand l'utiliser (poussée directe)
 
 - Vous avez une montre COROS et vous avez ajouté le serveur MCP `coros` à Claude Code (voir [Montres COROS](../coros.md#session-authentifiee-22-octobre-2026) : URL régionale `https://mcpeu.coros.com/mcp`, puis autorisation OAuth par `/mcp`).
-- Le coach a validé une séance et vous voulez la retrouver sur la montre.
+- Votre source n'est pas Intervals.icu (par exemple Strava), ou vous demandez explicitement une poussée directe, et le coach a validé une séance.
 
-COROS n'est **pas** une source de données du projet (`[data].source`) : vos activités et votre santé continuent de passer par Intervals.icu. Ce skill ne sert qu'à envoyer des séances.
+COROS n'est **pas** une source de données du projet (`[data].source`) : vos activités et votre santé passent par votre source configurée. La poussée directe ne sert qu'à envoyer des séances.
 
 ## Ce que fait le skill
 

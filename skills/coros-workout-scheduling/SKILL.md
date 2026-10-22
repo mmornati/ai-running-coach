@@ -1,6 +1,6 @@
 ---
 name: coros-workout-scheduling
-description: Use to push planned running / trail / cycling sessions to the COROS training calendar (and so to the COROS watch) through the official COROS MCP server (`coros`, OAuth, added by the athlete in an interactive session). Covers the verified tools (queryTrainingSchedule, createScheduledWorkout, queryScheduledWorkoutDetails, updateScheduledWorkout), the course JSON schema and its per-sport limits (trail has no time target, no strength), personal HR/pace targets converted by scripts/arc_coros_workout.py, check-before-push idempotency (there is NO delete or move tool), and the verify-after-push pattern. Interactive only, explicit "yes" per push, never headless.
+description: COROS watch scheduling. With `[data].source = "intervals"` (the recommended setup) sessions are pushed to Intervals.icu, which uploads the next 7 days to COROS — this skill then only checks arrival read-only with queryTrainingSchedule. Otherwise (e.g. Strava as source, or on explicit request) it pushes running / trail / cycling sessions through the official COROS MCP server (`coros`, OAuth, added by the athlete in an interactive session): verified tools (queryTrainingSchedule, createScheduledWorkout, queryScheduledWorkoutDetails, updateScheduledWorkout), course schema and per-sport limits (trail has no time target, no strength), personal targets converted and validated by scripts/arc_coros_workout.py, check-before-push idempotency (there is NO delete or move tool), verify-after-push. Interactive only, explicit "yes" per push, never headless.
 ---
 
 # COROS Workout Scheduling
@@ -9,6 +9,32 @@ Push planned sessions onto the athlete's COROS calendar; the COROS app syncs the
 the watch. Tool names, parameters and behaviour below were **verified on 2026-10-22**
 on an authenticated session (live tool list, one real push read back identically and
 shown on a COROS PACE 4 Pro). Details and history: `docs/coros.md`.
+
+## Intervals.icu first — the recommended path
+
+**When `[data].source = "intervals"`, do NOT push with this skill.** Push to
+Intervals.icu as usual (`intervals-icu-best-practices`): with the COROS connection
+enabled in Intervals.icu (Settings → COROS → upload planned workouts), Intervals.icu
+uploads the **next 7 days** of planned workouts to the COROS calendar itself. That path
+already has everything this project built (personal targets in the native syntax,
+check-before-push, verification, deletions and moves made in Intervals.icu follow on
+COROS inside the 7-day window — as reported on the Intervals.icu forum), and it runs in
+the headless sync, where this skill never does. Pushing the same session through both
+paths creates a duplicate on the watch that only the COROS app can remove.
+
+With that setup, the `coros` tools are used read-only, to check that a session arrived:
+`queryTrainingSchedule` for the date. If it did not (upload disabled, date beyond 7 days,
+HR zones not set or a syntax error on the Intervals.icu side, a connection filter), say
+so and point to `docs/coros.md` — never re-push it through `createScheduledWorkout`
+unless the athlete explicitly asks for it in this conversation.
+
+Keep **one intensity metric per workout** (HR, as `intervals-icu-best-practices`
+already does): Intervals.icu sends COROS a single metric per workout, and blocks written
+in the other one arrive without target (reported on the forum, unfixed for COROS as of
+August 2026).
+
+This skill's push path is for an athlete whose `[data].source` is NOT `intervals` (e.g.
+`strava`), or who explicitly asks for a direct COROS push.
 
 ## When this applies
 

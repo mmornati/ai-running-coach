@@ -231,6 +231,25 @@ Bulk-create a week (same field names as `icu_create_event`, except the date key
 ]
 ```
 
+## COROS watch — Intervals.icu uploads for you (recommended path)
+
+For an athlete on a COROS watch, this skill IS the scheduling path (see
+`coros-workout-scheduling` → "Intervals.icu first" and `docs/coros.md`). With the COROS
+connection enabled in Intervals.icu (Settings → COROS → upload planned workouts),
+Intervals.icu uploads the **next 7 days** of WORKOUT events to the COROS calendar; later
+sessions follow as the window moves. Nothing to call for that — just push here as usual.
+
+- **One intensity metric per workout** (HR, as above): Intervals.icu sends COROS a single
+  metric per workout, and steps written in another one arrive without target (forum
+  report, unfixed for COROS as of August 2026). Pace stays in the event name.
+- Changes and deletions made here follow on COROS inside the 7-day window (forum report).
+- Never also push the same session with `createScheduledWorkout`: the watch would show it
+  twice, and only the COROS app can remove one.
+- If the `coros` MCP server is connected, `queryTrainingSchedule` (read-only) can confirm
+  arrival on the watch calendar. Missing session → say so (upload disabled, beyond 7 days,
+  HR zones not set in Intervals.icu, a syntax error, a connection filter), never re-push it
+  elsewhere on your own.
+
 ## Date handling
 
 - `start_date`/`start_date_local` sets the event's date — always double-check

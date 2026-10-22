@@ -24,7 +24,9 @@ authentifier).
     skill [`coros-workout-scheduling`](skills/coros-workout-scheduling.md) pousse
     les séances planifiées au calendrier COROS, **en interactif seulement**, avec
     un « oui » explicite. Reste ouverte : l'exécution sans tête (jeton OAuth en
-    cron), dont dépend une vraie source `coros`.
+    cron), dont dépend une vraie source `coros`. Avec Intervals.icu, la
+    [configuration préconisée](#configuration-preconisee-intervalsicu-coros)
+    reste de laisser Intervals.icu envoyer les séances à COROS.
 
 Pourquoi pas une source `coros` :
 
@@ -55,7 +57,52 @@ support documenté de Claude Code (jeton persistant en mode sans tête), et une
 exactement la méthode de #68 (table de correspondance, `install.sh --source`,
 stubs, `coach-doctor`).
 
-## Aujourd'hui : COROS via Intervals.icu
+## Configuration préconisée : Intervals.icu + COROS
+
+!!! tip "La version préconisée"
+    Montre COROS **connectée à Intervals.icu**, `./install.sh --source intervals`,
+    et dans Intervals.icu : *Settings → COROS*, **envoi des séances planifiées
+    activé**. Le coach pousse les séances vers Intervals.icu, qui les envoie
+    lui-même au calendrier COROS (les 7 prochains jours). Le MCP officiel de
+    COROS n'est pas nécessaire ; s'il est connecté, il sert seulement à vérifier,
+    en lecture, qu'une séance est bien arrivée sur la montre.
+
+**Pourquoi ce chemin plutôt que le MCP officiel de COROS :**
+
+- **Tout est déjà codé.** Lectures (activités, sommeil, HRV, FC de repos), FIT,
+  poussée des séances avec les cibles personnelles dans la syntaxe native,
+  vérification des doublons avant chaque poussée, relecture après : c'est le
+  chemin `[data].source = "intervals"` du projet, sans rien de spécifique à COROS.
+- **Il tourne sans surveillance.** La synchronisation quotidienne (`/garmin-daily-sync`)
+  sait déjà lire et écrire sur Intervals.icu ; le jeton OAuth du MCP COROS, lui,
+  n'a pas encore été démontré en cron.
+- **On peut corriger une erreur.** Une séance modifiée ou supprimée dans
+  Intervals.icu l'est aussi sur COROS tant qu'elle est dans la fenêtre de 7 jours
+  (rapporté sur le forum Intervals.icu) ; le MCP officiel n'a aucun outil de
+  suppression ni de déplacement.
+- **Une seule source de vérité.** Le plan vit dans `planning/`, puis dans le
+  calendrier Intervals.icu ; COROS n'en reçoit qu'une copie. Pousser la même
+  séance par les deux chemins la ferait apparaître deux fois sur la montre.
+
+**Limites de ce chemin** (rapportées sur le forum Intervals.icu, non vérifiées par nous) :
+
+- seulement les **7 prochains jours** sont envoyés ; une séance plus lointaine
+  arrive quand la fenêtre l'atteint ;
+- **une seule métrique d'intensité par séance** : Intervals.icu envoie à COROS la
+  FC *ou* l'allure, et les blocs écrits dans l'autre arrivent sans cible
+  ([fil d'avril-août 2026](https://forum.intervals.icu/t/coros-integration-mixed-pace-hr-intervals/127171),
+  non corrigé pour COROS). Le projet écrit déjà ses séances en FC uniquement ;
+- des envois **silencieusement bloqués** par des zones FC non renseignées dans
+  Intervals.icu, une erreur de syntaxe ou un filtre dans les réglages de la
+  connexion ([fil d'août 2026](https://forum.intervals.icu/t/coros-training-plan-is-created-but-planed-workouts-are-not-syncing/131097)) ;
+- il faut parfois ajouter le plan « Intervals.icu Training Plan » au calendrier
+  de l'app COROS ([annonce de la connexion](https://forum.intervals.icu/t/coros-support-added/37006)).
+
+Le skill [`coros-workout-scheduling`](skills/coros-workout-scheduling.md) ne
+pousse lui-même que si la source n'est pas Intervals.icu (par exemple Strava),
+ou sur demande explicite de l'athlète.
+
+### Les données qui remontent
 
 Pour les autres appareils : [Quelle source pour mon appareil ?](configuration.md#quelle-source-pour-mon-appareil).
 
@@ -233,9 +280,10 @@ configurée :
   https://mcpeu.coros.com/mcp`, puis `/mcp` pour l'autorisation OAuth) ; voir
   [Session authentifiée](#session-authentifiee-22-octobre-2026).
 
-Dans ce cas, le coach n'utilise que les quatre outils de calendrier du skill
-[`coros-workout-scheduling`](skills/coros-workout-scheduling.md), pour pousser
-des séances après un « oui » explicite ; les lectures (activités, santé) ne sont
+Dans ce cas, avec Intervals.icu comme source, le coach continue de pousser vers
+Intervals.icu et ne lit le calendrier COROS que pour vérifier l'arrivée des séances ;
+avec une autre source, il pousse par les quatre outils de calendrier du skill
+[`coros-workout-scheduling`](skills/coros-workout-scheduling.md), après un « oui » explicite ; les lectures (activités, santé) ne sont
 dans aucune table de correspondance, rien n'est persisté au contrat `arc`
 automatiquement, et la synchronisation sans tête ne s'en sert jamais.
 
