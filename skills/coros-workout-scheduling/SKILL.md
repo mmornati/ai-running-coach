@@ -52,9 +52,12 @@ This skill's push path is for an athlete whose `[data].source` is NOT `intervals
 ## When this applies
 
 - The `coros` MCP server is connected **in this interactive session** (its tools are
-  callable). COROS is **not** a `[data].source` value: nothing in `install.sh`, the
-  sync or the tool-correspondence tables of `AGENTS.md` uses it yet. If the tools are
-  not exposed, say so and point to `docs/coros.md` — never guess a tool name.
+  callable): installed by `./install.sh --coros` (local relay `scripts/arc_coros_mcp.py`,
+  one login for every AI client) or added by hand. COROS is **not** a `[data].source`
+  value. If the tools are not exposed, say so and point to `docs/coros.md` — never guess a
+  tool name. If a call answers "COROS non connecté" or "relancez … login", tell the athlete
+  to run `python3 scripts/arc_coros_auth.py login` in a terminal (never run it yourself:
+  it opens a browser).
 - **Never headless** (`/garmin-daily-sync`, cron, Telegram): COROS writes cannot be
   undone through the MCP. Every push needs an explicit "oui" in the conversation, after
   you have shown the athlete what will be pushed (date, name, steps, targets).

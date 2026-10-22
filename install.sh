@@ -28,6 +28,7 @@
 #   ./install.sh --cycle-tracking MODE # off (défaut) | garmin | intervals | manual — contexte du cycle menstruel, opt-in (#166)
 #   ./install.sh --nutrition-sync MODE # off (défaut) | ask — pousser les apports vers Garmin Connect, opt-in (#167)
 #   ./install.sh --health-source S     # primary (défaut) | openwearables — santé du bilan matinal lue chez Open Wearables, opt-in (#220)
+#   ./install.sh --coros            # montre COROS : relais MCP local + connexion unique (arc_coros_auth.py), avec toute source
 #     --ow-url URL --ow-provider P     #   instance Open Wearables et UN fabricant (oura, whoop, polar…) ; --ow-key-file F importe la clé
 #   ./install.sh --workspace DIR    # données + config IDE dans DIR (dépôt privé), moteur lié
 #   ./install.sh --agents LISTE     # staff à installer, ex. coach,nutritionist
@@ -203,6 +204,8 @@ OW_PROVIDER=""     # --ow-provider P (avec --health-source openwearables)
 OW_KEY_FILE_ARG="" # --ow-key-file FICHIER : clé d'API à importer (jamais passée en argument)
 OW_KEY_FILE_DEFAULT="$HOME/.config/ai-running-coach/openwearables.key" # = défaut de [health.openwearables].api_key_file
 HEALTH_EFFECTIVE="primary" # résolu par resolve_health_source()
+COROS_ARG=""       # --coros (1) | --no-coros (0) ; vide = garder [coros].mcp de la config
+COROS_RELAY=0      # résolu par resolve_coros()
 LLM_PROVIDER=""    # --llm openrouter|openrouter-free|anthropic|openai|chatgpt|copilot — chat + sync sur une API, un abonnement ou l'essai gratuit
 LLM_MODEL_ARG=""   # --model ID (avec --llm)
 LLM_BASE_URL_ARG="" # --base-url URL (avec --llm openai : API compatible OpenAI)
@@ -263,6 +266,7 @@ Usage :
   ./install.sh --cycle-tracking MODE # off (défaut) | garmin | intervals | manual — contexte du cycle menstruel, opt-in (#166)
   ./install.sh --nutrition-sync MODE # off (défaut) | ask — pousser les apports vers Garmin Connect, opt-in (#167)
   ./install.sh --health-source S  # primary (défaut) | openwearables — santé du bilan matinal chez Open Wearables, opt-in (#220)
+  ./install.sh --coros            # montre COROS : MCP officiel via un relais local, une seule connexion pour toutes les IA (--no-coros : retirer)
   ./install.sh --ow-url URL       # avec --health-source openwearables : adresse de votre instance (http://hôte[:port])
   ./install.sh --ow-provider P    # avec --health-source openwearables : UN fabricant (oura, whoop, polar…)
   ./install.sh --ow-key-file F    # avec --health-source openwearables : importe la clé d'API (copiée hors dépôt, mode 600)
@@ -480,6 +484,8 @@ while [[ $# -gt 0 ]]; do
         --cycle-tracking) need_value "$@"; CYCLE_TRACKING="$2"; EXPLICIT_CYCLE=1; shift 2 ;;
         --nutrition-sync) need_value "$@"; NUTRITION_SYNC="$2"; EXPLICIT_NUTRITION=1; shift 2 ;;
         --health-source) need_value "$@"; HEALTH_SOURCE="$2"; EXPLICIT_HEALTH=1; shift 2 ;;
+        --coros) COROS_ARG=1; shift ;;
+        --no-coros) COROS_ARG=0; shift ;;
         --ow-url) need_value "$@"; OW_URL="$2"; shift 2 ;;
         --ow-provider) need_value "$@"; OW_PROVIDER="$2"; shift 2 ;;
         --ow-key-file) need_value "$@"; OW_KEY_FILE_ARG="$2"; shift 2 ;;
@@ -2323,6 +2329,107 @@ write_windsurf_config() {
     ok "Serveur MCP $(mcp_server_name) présent dans $cfg"
 }
 
+# ---------------------------------------------------------------------------
+# 5c. Montre COROS : relais MCP local (scripts/arc_coros_mcp.py)
+# ---------------------------------------------------------------------------
+# Comme `garmin-mcp stdio` pour Garmin : chaque client d'IA lance un programme local
+# qui parle au MCP officiel COROS avec les jetons du projet. L'athlète ne se connecte
+# qu'une fois (arc_coros_auth.py login), pour toutes les IA et pour la sync ; aucun
+# client ne fait de connexion OAuth. Indépendant de [data].source : avec Intervals.icu
+# (configuration préconisée), il sert à vérifier l'arrivée des séances sur la montre.
+COROS_SERVER="coros"
+
+resolve_coros() {
+    local previous=""
+    if have python3; then
+        previous="$(python3 "$PROJECT_ROOT/scripts/coach_config.py" get \
+            --workspace "$WORKSPACE_ROOT" --section coros --key mcp --default off 2>/dev/null)" || previous="off"
+    fi
+    case "$COROS_ARG" in
+        1) COROS_RELAY=1 ;;
+        0) COROS_RELAY=0 ;;
+        *) [[ "$previous" == "relay" ]] && COROS_RELAY=1 || COROS_RELAY=0 ;;
+    esac
+    [[ "$COROS_RELAY" -eq 1 ]] && log "Montre COROS : relais MCP local"
+    return 0
+}
+
+coros_relay_command() { echo "$PROJECT_ROOT/scripts/arc_coros_mcp.py"; }
+
+mcp_server_value_coros() {
+    printf '{"command": "%s", "args": []}' "$(json_escape "$(coros_relay_command)")"
+}
+
+mcp_server_value_coros_opencode() {
+    printf '{"type": "local", "command": ["%s"], "enabled": true}' "$(json_escape "$(coros_relay_command)")"
+}
+
+# Écrit (ou retire, avec --no-coros) l'entrée `coros` dans un fichier de config MCP. Le
+# retrait ne touche qu'une entrée qui pointe vers NOTRE relais (comme remove_json_key) :
+# un serveur COROS ajouté à la main (URL + OAuth du client) n'est jamais effacé.
+coros_mcp_entry() {
+    local file="$1" section="$2" value="$3"
+    if [[ "$COROS_RELAY" -eq 1 ]]; then
+        merge_json_key "$file" "$section" "$COROS_SERVER" "$value"
+        ok "Serveur MCP $COROS_SERVER (relais) présent dans $file"
+    elif [[ "$COROS_ARG" == "0" ]]; then
+        remove_json_key "$file" "$section" "$COROS_SERVER" "$(coros_relay_command)"
+    fi
+}
+
+configure_coros() {
+    [[ "$COROS_RELAY" -eq 1 || "$COROS_ARG" == "0" ]] || return 0
+    log "Montre COROS"
+    if [[ "$DRY_RUN" -eq 0 && -f "$(coros_relay_command)" ]]; then
+        chmod +x "$(coros_relay_command)" "$PROJECT_ROOT/scripts/arc_coros_auth.py" 2>/dev/null || true
+    fi
+    local plain opencode
+    plain="$(mcp_server_value_coros)"
+    opencode="$(mcp_server_value_coros_opencode)"
+    case "$IDE" in all|claude|copilot) coros_mcp_entry "$WORKSPACE_ROOT/.mcp.json" mcpServers "$plain" ;; esac
+    case "$IDE" in all|gemini) coros_mcp_entry "$WORKSPACE_ROOT/.gemini/settings.json" mcpServers "$plain" ;; esac
+    case "$IDE" in all|cursor) coros_mcp_entry "$WORKSPACE_ROOT/.cursor/mcp.json" mcpServers "$plain" ;; esac
+    case "$IDE" in all|windsurf) coros_mcp_entry "$WORKSPACE_ROOT/.windsurf/mcp_config.json" mcpServers "$plain" ;; esac
+    case "$IDE" in all|opencode) coros_mcp_entry "$HOME/.config/opencode/opencode.json" mcp "$opencode" ;; esac
+    case "$IDE" in
+        all|claude)
+            if [[ "$COROS_RELAY" -eq 1 ]]; then
+                approve_claude_project_mcp "$COROS_SERVER"
+            elif ! mcp_server_key_exists "$WORKSPACE_ROOT/.mcp.json" mcpServers "$COROS_SERVER"; then
+                unapprove_claude_project_mcp "$COROS_SERVER"
+            fi ;;
+    esac
+    if [[ "$DRY_RUN" -eq 1 ]]; then
+        printf '%s\n' "${C_YELLOW}[dry-run]${C_RESET} [coros].mcp = $([[ "$COROS_RELAY" -eq 1 ]] && echo relay || echo off)"
+        return 0
+    fi
+    have python3 || return 0
+    python3 "$PROJECT_ROOT/scripts/coach_config.py" set --workspace "$WORKSPACE_ROOT" --section coros --key mcp \
+        --value "$([[ "$COROS_RELAY" -eq 1 ]] && echo relay || echo off)" >/dev/null \
+        || warn "Impossible d'écrire [coros].mcp — vérifiez config/workspace.user.toml."
+}
+
+# Connexion unique au compte COROS : interactive seulement (navigateur), jamais en
+# --dry-run, --no-auth, sans terminal ni en headless. Déjà connecté : rien n'est demandé.
+connect_coros() {
+    [[ "$COROS_RELAY" -eq 1 ]] || return 0
+    local auth="$PROJECT_ROOT/scripts/arc_coros_auth.py"
+    if [[ "$DRY_RUN" -eq 1 ]]; then
+        printf '%s\n' "${C_YELLOW}[dry-run]${C_RESET} connexion COROS (python3 scripts/arc_coros_auth.py login) si absente"
+        return 0
+    fi
+    if python3 "$auth" status >/dev/null 2>&1; then
+        ok "Compte COROS : connecté ($(python3 "$auth" status 2>/dev/null | sed 's/^COROS : //'))"
+        return 0
+    fi
+    if [[ "$DO_AUTH" -eq 0 || -n "${ARC_HEADLESS:-}" || ! -t 0 ]]; then
+        warn "Compte COROS : non connecté — lancez une fois : python3 $auth login (navigateur ; --device sans navigateur)"
+        return 0
+    fi
+    log "Connexion à votre compte COROS (une seule fois, pour toutes les IA)"
+    python3 "$auth" login || warn "Connexion COROS non terminée — relancez : python3 $auth login"
+}
+
 configure_ide() {
     case "$IDE" in
         all)      write_opencode_config; write_claude_config; write_copilot_config; write_gemini_config; write_cursor_config; write_windsurf_config ;;
@@ -3473,6 +3580,7 @@ main() {
     resolve_cycle_tracking
     resolve_nutrition_sync
     resolve_health_source
+    resolve_coros
     resolve_dashboard_docker
     print_config_recap
     [[ "$DRY_RUN" -eq 1 ]] && warn "Mode dry-run : aucune modification ne sera effectuée."
@@ -3497,6 +3605,7 @@ main() {
     configure_leanproxy
     prepare_workspace
     configure_ide
+    configure_coros
     create_workspace_dirs
     create_workspace_config
     persist_agents
@@ -3519,6 +3628,7 @@ main() {
     install_dashboard_docker
     verify
     verify_openwearables
+    connect_coros
     persist_install_args
     connect_llm
 }

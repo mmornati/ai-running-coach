@@ -64,8 +64,40 @@ stubs, `coach-doctor`).
     et dans Intervals.icu : *Settings → COROS*, **envoi des séances planifiées
     activé**. Le coach pousse les séances vers Intervals.icu, qui les envoie
     lui-même au calendrier COROS (les 7 prochains jours). Le MCP officiel de
-    COROS n'est pas nécessaire ; s'il est connecté, il sert seulement à vérifier,
-    en lecture, qu'une séance est bien arrivée sur la montre.
+    COROS n'est pas nécessaire ; s'il est installé (`--coros`, voir
+    [Installation](#installation-une-seule-connexion-pour-toutes-les-ia)), il sert
+    à vérifier, en lecture, qu'une séance est bien arrivée sur la montre.
+
+## Installation : une seule connexion pour toutes les IA
+
+```bash
+./install.sh --source intervals --coros
+```
+
+`--coros` fonctionne avec n'importe quelle source. Comme pour Garmin
+(`garmin-mcp-auth` + `garmin-mcp stdio`) :
+
+- **Une seule connexion.** L'installeur lance `python3 scripts/arc_coros_auth.py login`
+  (en interactif seulement) : le navigateur s'ouvre, vous autorisez l'accès à votre
+  compte COROS, c'est tout. Sans navigateur sur la machine (serveur, SSH) :
+  `arc_coros_auth.py login --device` affiche une adresse et un code à valider depuis
+  votre téléphone. Les jetons vont dans `~/.config/ai-running-coach/coros/`
+  (dossier 700, fichiers 600) et ne sont jamais affichés.
+- **Toutes les IA.** Le serveur `coros` est déclaré dans la config de chaque client
+  (Claude Code, Copilot, Cursor, OpenCode, Gemini, Windsurf) : c'est un relais local,
+  `scripts/arc_coros_mcp.py`, qui transmet au MCP officiel de COROS avec ces jetons.
+  Aucun client ne fait de connexion OAuth ; les outils et les réponses sont ceux de
+  COROS, sans réécriture.
+- **Renouvellement automatique.** Le jeton d'accès vit 30 jours ; le relais le
+  renouvelle quand il reste moins de 7 jours (ou après un refus), sous verrou, car COROS
+  remplace aussi le jeton de rafraîchissement à chaque fois.
+- **Vérifier :** `python3 scripts/arc_coros_auth.py status` (sans réseau) ou `verify`
+  (appel réel du MCP). **Retirer :** `./install.sh --no-coros` (ne touche jamais une
+  entrée `coros` ajoutée à la main), puis `arc_coros_auth.py logout`.
+
+Vous aviez ajouté le serveur à la main (`claude mcp add … coros https://mcpeu.coros.com/mcp`) ?
+Retirez-le (`claude mcp remove coros`), sinon il masque le relais : Claude Code donne la
+priorité à une entrée locale sur celle du projet, et vous auriez deux connexions.
 
 **Pourquoi ce chemin plutôt que le MCP officiel de COROS :**
 
@@ -350,8 +382,9 @@ l'app COROS ; le projet n'utilise pas la connexion par mot de passe de l'API pri
 
 ## Utilisation manuelle, en interactif (hors périmètre du projet)
 
-Pour interroger vos données COROS dans une conversation, vous pouvez ajouter le
-connecteur officiel vous-même, à vos risques, **en plus** de la source
+`./install.sh --coros` (voir [Installation](#installation-une-seule-connexion-pour-toutes-les-ia))
+remplace cet ajout manuel. Pour interroger vos données COROS sans réinstaller, vous pouvez
+encore ajouter le connecteur officiel vous-même, à vos risques, **en plus** de la source
 configurée :
 
 - Claude Desktop : Réglages → Connecteurs → connecteur personnalisé, URL

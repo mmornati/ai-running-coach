@@ -33,6 +33,7 @@ import http.server
 import json
 import os
 import secrets
+import socketserver
 import stat
 import sys
 import threading
@@ -243,10 +244,23 @@ def pkce_pair() -> Tuple[str, str]:
     return verifier, challenge
 
 
+class _Server(socketserver.ThreadingMixIn, http.server.HTTPServer):
+    # Une préconnexion inactive du navigateur ne doit pas bloquer le vrai retour (comme arc_llm.py).
+    daemon_threads = True
+
+    # Pas de résolution DNS inverse au démarrage (voir tests/lib/local_http.py).
+    def server_bind(self) -> None:
+        socketserver.TCPServer.server_bind(self)
+        host, port = self.server_address[:2]
+        self.server_name, self.server_port = str(host), port
+
+
 def _wait_for_code(port: int, timeout_s: int) -> dict:
     got: dict = {}
 
     class Handler(http.server.BaseHTTPRequestHandler):
+        timeout = 5  # socket inactive : le fil se libère seul
+
         def do_GET(self):  # noqa: N802 (API de http.server)
             q = urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query)
             got.update({k: v[0] for k, v in q.items()})
@@ -258,13 +272,14 @@ def _wait_for_code(port: int, timeout_s: int) -> dict:
         def log_message(self, *_args):
             pass
 
-    srv = http.server.HTTPServer(("127.0.0.1", port), Handler)
-    srv.timeout = 1
+    srv = _Server(("127.0.0.1", port), Handler)
+    threading.Thread(target=srv.serve_forever, kwargs={"poll_interval": 0.5}, daemon=True).start()
     deadline = time.time() + timeout_s
     try:
-        while not got and time.time() < deadline:
-            srv.handle_request()
+        while not got.get("code") and not got.get("error") and time.time() < deadline:
+            time.sleep(0.5)
     finally:
+        srv.shutdown()
         srv.server_close()
     return got
 
