@@ -269,6 +269,17 @@ if [[ "$HEALTH_OW" -eq 1 ]]; then
     CLAUDE_DISALLOWED+=",Read(${_ow_key/#\~/$HOME})"
     unset _ow_key
 fi
+# Montre COROS (`./install.sh --coros`) : le relais `coros` est déclaré à côté de la source. Il
+# refuse lui-même toute écriture ici (ARC_HEADLESS, exporté plus haut) ; on refuse en plus ses
+# outils d'écriture par leur nom, pour chaque exécuteur (seconde barrière).
+COROS_RELAY=0
+[[ "$(toml_get coros mcp off | tr -d '[:space:]')" == "relay" ]] && COROS_RELAY=1
+export COROS_READ_ONLY=1
+if [[ "$COROS_RELAY" -eq 1 ]]; then
+    for _tool in $(sync_write_tools coros); do
+        CLAUDE_DISALLOWED+=",mcp__coros__${_tool}"
+    done
+fi
 # En mode -p, un serveur MCP déclaré dans .mcp.json (portée projet) n'est chargé
 # que s'il a été approuvé interactivement ; on le passe explicitement.
 MCP_CONFIG="$ARC_WORKSPACE/.mcp.json"
@@ -321,7 +332,7 @@ load_llm_env() {
 # jamais de séance : c'est le coach, sur demande). Nommage OpenCode d'un outil
 # MCP : <serveur>_<outil> (# À VÉRIFIER sur un run réel avec un serveur MCP).
 OC_CONFIG_PY='
-import json, sys
+import json, os, sys
 
 model, base_url, api_key_env, mcp_path = sys.argv[1:5]
 denied_health = sys.argv[5].split() if len(sys.argv) > 5 else []
@@ -330,7 +341,8 @@ denied_health = sys.argv[5].split() if len(sys.argv) > 5 else []
 # prefixe ne les couvrent pas tous (icu_ en tete, noms a tirets de Strava).
 named_writes = {"garmin": sys.argv[6].split() if len(sys.argv) > 6 else [],
                 "intervals": sys.argv[7].split() if len(sys.argv) > 7 else [],
-                "strava": sys.argv[8].split() if len(sys.argv) > 8 else []}
+                "strava": sys.argv[8].split() if len(sys.argv) > 8 else [],
+                "coros": os.environ.get("ARC_SYNC_COROS_WRITES", "").split()}
 provider_id, _, model_id = model.partition("/")
 provider = {}
 if base_url:
@@ -370,7 +382,11 @@ for name, spec in servers.items():
         permission["%s_icu_%s*" % (name, prefix)] = "deny"
     low = name.lower()
     kind = "garmin" if low == "garmin" else "intervals" if low.startswith("intervals") \
-        else "strava" if low.startswith("strava") else ""
+        else "strava" if low.startswith("strava") else "coros" if low == "coros" else ""
+    if kind == "coros":
+        # Relais COROS : lecture seule imposée au serveur lui-même (en plus des refus nommés).
+        env["COROS_READ_ONLY"] = "1"
+        mcp[name]["environment"] = env
     for tool in named_writes.get(kind, []):
         permission["%s_%s" % (name, tool)] = "deny"
     if name.lower() == "garmin":
@@ -406,7 +422,7 @@ print(json.dumps(config, ensure_ascii=False, indent=2))
 '
 
 opencode_config_json() {
-    python3 -c "$OC_CONFIG_PY" "$SYNC_MODEL" "$SYNC_BASE_URL" "$API_KEY_ENV" "$MCP_CONFIG" \
+    ARC_SYNC_COROS_WRITES="$(sync_write_tools coros | tr '\n' ' ')" python3 -c "$OC_CONFIG_PY" "$SYNC_MODEL" "$SYNC_BASE_URL" "$API_KEY_ENV" "$MCP_CONFIG" \
         "$(sync_health_denied_tools "$SOURCE" | tr '\n' ' ')" \
         "$(sync_write_tools garmin | tr '\n' ' ')" \
         "$(sync_write_tools intervals | tr '\n' ' ')" \
@@ -471,6 +487,7 @@ gemini_config_json() {
 # Les refus santé Garmin (#220) se vérifient À PART (cursor_denies_health) : leur absence avertit, sans bloquer.
 cursor_denies_writes() { cursor_denies_list "$(sync_write_tools "$SOURCE" | tr '\n' ' ')"; }
 cursor_denies_health() { cursor_denies_list "$(sync_health_denied_tools "$SOURCE" | tr '\n' ' ')"; }
+cursor_denies_coros() { CURSOR_DENY_SERVER=coros cursor_denies_list "$(sync_write_tools coros | tr '\n' ' ')"; }
 cursor_denies_list() {
     # shellcheck disable=SC2086  # un nom d'outil par mot (aucun ne contient d'espace)
     python3 -c '
@@ -482,7 +499,7 @@ except (OSError, ValueError, AttributeError):
     sys.exit(1)
 missing = [t for t in sys.argv[3:] if f"Mcp({server}:{t})" not in deny]
 sys.exit(1 if missing else 0)
-' "$ARC_WORKSPACE/.cursor/cli.json" "$MCP_SERVER_NAME" $1
+' "$ARC_WORKSPACE/.cursor/cli.json" "${CURSOR_DENY_SERVER:-$MCP_SERVER_NAME}" $1
 }
 
 # ---------------------------------------------------------------------------
@@ -742,7 +759,12 @@ build_command() {
             local _tool
             for _tool in $(sync_deny_tools "$SOURCE"); do
                 CMD+=("--deny-tool=$MCP_SERVER_NAME($_tool)")
-            done ;;
+            done
+            if [[ "$COROS_RELAY" -eq 1 ]]; then
+                for _tool in $(sync_write_tools coros); do
+                    CMD+=("--deny-tool=coros($_tool)")
+                done
+            fi ;;
         opencode)
             have opencode || [[ "$DRY_RUN" -eq 1 ]] || die "opencode introuvable — installez OpenCode : curl -fsSL https://opencode.ai/v2/install | bash"
             if [[ -n "$SYNC_MODEL" && "$SYNC_MODEL" != */* ]]; then
@@ -767,6 +789,8 @@ build_command() {
             # pas les serveurs MCP du projet.
             cursor_denies_writes || [[ "$DRY_RUN" -eq 1 ]] \
                 || die "Cursor : .cursor/cli.json ne refuse pas les outils d'écriture $SOURCE_LABEL — relancez ./install.sh (ou l'installation guidée) avant la synchronisation."
+            [[ "$COROS_RELAY" -eq 0 ]] || cursor_denies_coros || [[ "$DRY_RUN" -eq 1 ]] \
+                || die "Cursor : .cursor/cli.json ne refuse pas les outils d'écriture COROS — relancez ./install.sh --coros avant la synchronisation."
             if [[ "$SYNC_DENY_GARMIN_HEALTH" -eq 1 ]] && ! cursor_denies_health && [[ "$DRY_RUN" -ne 1 ]]; then
                 warn "Cursor : .cursor/cli.json ne refuse pas les outils santé Garmin (santé lue chez Open Wearables) — seule la consigne du skill l'impose ; relancez ./install.sh."
             fi

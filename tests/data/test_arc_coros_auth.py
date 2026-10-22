@@ -156,6 +156,19 @@ class TestRelay(unittest.TestCase):
         names = [t["name"] for t in relay.handle({"jsonrpc": "2.0", "id": 2, "method": "tools/list"})[0]["result"]["tools"]]
         self.assertEqual(names, ["createScheduledWorkout", "querySleepHrv"])
 
+    def test_headless_sync_is_read_only(self):
+        """daily-sync.sh exporte ARC_HEADLESS=1 : le relais refuse les écritures, quel que soit l'exécuteur."""
+        server = FakeServer([(200, {}, json.dumps(TOOLS))])
+        relay, _ = _relay(server, env={"ARC_HEADLESS": "1", "COROS_ENABLED_TOOLS": "createScheduledWorkout,querySleepHrv"})
+        names = [t["name"] for t in relay.handle({"jsonrpc": "2.0", "id": 2, "method": "tools/list"})[0]["result"]["tools"]]
+        self.assertEqual(names, ["querySleepHrv"])
+
+    def test_write_tools_match_the_sync_deny_list(self):
+        import subprocess
+        out = subprocess.run(["bash", "-c", f'. "{REPO}/scripts/lib/sync_tools.sh"; sync_write_tools coros'],
+                             capture_output=True, text=True, check=True).stdout.split()
+        self.assertEqual(set(out), set(M.WRITE_TOOLS))
+
     def test_forbidden_call_never_reaches_coros(self):
         server = FakeServer([])
         relay, _ = _relay(server, env={"COROS_READ_ONLY": "1"})

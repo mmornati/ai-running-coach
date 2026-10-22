@@ -13,6 +13,8 @@
 #               annotations `readOnlyHint` de src/intervals_icu_mcp/server.py ;
 #               les anciens noms sans préfixe (eddmann) restent refusés aussi.
 #   strava    — r-huijts/strava-mcp 1.2.1 (#164), outils à tirets.
+#   coros     — MCP officiel COROS (relais scripts/arc_coros_mcp.py, install.sh --coros), liste
+#               relevée le 22 octobre 2026 (docs/coros.md) ; = WRITE_TOOLS du relais.
 # =============================================================================
 
 # Préfixes d'un outil Garmin qui écrit (côté Garmin, ou un fichier local arbitraire).
@@ -62,6 +64,12 @@ SYNC_STRAVA_WRITE_TOOLS="connect-strava disconnect-strava star-segment"
 SYNC_STRAVA_READ_TOOLS="get-recent-activities get-all-activities get-activity-details get-activity-laps"
 SYNC_STRAVA_READ_TOOLS+=" get-activity-streams get-athlete-zones get-athlete-profile get-athlete-stats"
 
+# COROS : les 7 outils d'écriture (camelCase : aucun préfixe d'écriture ne les couvre). Le relais
+# refuse déjà toute écriture en headless (ARC_HEADLESS) ; ces refus nommés sont la seconde barrière,
+# pour les exécuteurs qui chargent tous les serveurs du projet (OpenCode, Cursor).
+SYNC_COROS_WRITE_TOOLS="createScheduledWorkout updateScheduledWorkout scheduleWorkout"
+SYNC_COROS_WRITE_TOOLS+=" createSingleWorkout updateWorkoutDetails createTrainingPlan updateTrainingPlan"
+
 # Outils d'écriture d'une source, un par ligne. intervals : noms `icu_` du serveur
 # épinglé, puis anciens noms sans préfixe (installation pas encore mise à jour).
 sync_write_tools() {
@@ -72,6 +80,7 @@ sync_write_tools() {
             for tool in $SYNC_INTERVALS_WRITE_TOOLS; do printf 'icu_%s\n' "$tool"; done
             for tool in $SYNC_INTERVALS_WRITE_TOOLS duplicate_event; do printf '%s\n' "$tool"; done ;;
         strava) for tool in $SYNC_STRAVA_WRITE_TOOLS; do printf '%s\n' "$tool"; done ;;
+        coros) for tool in $SYNC_COROS_WRITE_TOOLS; do printf '%s\n' "$tool"; done ;;
     esac
 }
 

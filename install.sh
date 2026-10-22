@@ -2283,6 +2283,12 @@ write_cursor_config() {
     for tool in $(sync_write_tools "$server"); do
         mcp_deny+=",\"Mcp($server:$tool)\""
     done
+    # Relais COROS (--coros) : `--force` approuverait aussi ses écritures (noms camelCase, hors préfixes).
+    if [[ "$COROS_RELAY" -eq 1 ]]; then
+        for tool in $(sync_write_tools coros); do
+            mcp_deny+=",\"Mcp(coros:$tool)\""
+        done
+    fi
     # Santé lue chez Open Wearables avec des activités Garmin (#220) : les outils santé Garmin sont refusés
     # aussi (une seule source santé par jour). Quand on revient à « primary », on retire ces seules entrées.
     local health_denied="" want_health_deny=0

@@ -5,12 +5,15 @@ pointe vers `scripts/arc_coros_mcp.py` dans chaque config d'IA, à côté de la 
 place), est approuvé pour Claude Code et `[coros].mcp = "relay"` est écrit ; aucune connexion
 n'est lancée sans terminal (le message dit la commande à lancer) ; un rerun sans option garde le
 relais ; `--no-coros` le retire, mais jamais une entrée `coros` ajoutée à la main (URL + OAuth du
-client) ; `--dry-run` n'écrit rien.
+client) ; `--dry-run` n'écrit rien. En synchronisation sans tête, les 7 outils d'écriture COROS
+sont refusés par leur nom pour chaque exécuteur (Claude, Copilot, OpenCode, Cursor) et OpenCode
+lance le relais en lecture seule ; sans relais, rien n'est ajouté.
 """
 
 from __future__ import annotations
 
 import json
+import re
 
 from tests.lib.asserts import InstallAsserts
 from tests.lib.sandbox import Sandbox
@@ -81,3 +84,34 @@ class TestCorosInstall(InstallAsserts):
             self.assertIn("[coros].mcp = relay", proc.stdout + proc.stderr)
             self.assertEqual(sb.tree(sb.home), before)
             self.assertNotIn("coros", _servers(sb.repo / ".mcp.json"))
+
+
+COROS_WRITES = {"createScheduledWorkout", "updateScheduledWorkout", "scheduleWorkout", "createSingleWorkout",
+                "updateWorkoutDetails", "createTrainingPlan", "updateTrainingPlan"}
+
+
+class TestCorosHeadlessSync(InstallAsserts):
+
+    def _sync(self, sb, runner):
+        return sb.script("daily-sync.sh", "--dry-run", "--runner", runner, ARC_WORKSPACE=str(sb.repo))
+
+    def test_every_runner_denies_coros_writes(self):
+        with Sandbox() as sb:
+            self.assertSucceeded(sb.install(*BASE, "--source", "intervals", "--coros", **DARWIN))
+            deny = json.loads((sb.repo / ".cursor/cli.json").read_text())["permissions"]["deny"]
+            self.assertTrue({f"Mcp(coros:{t})" for t in COROS_WRITES} <= set(deny))
+            out = self._sync(sb, "claude").stdout
+            self.assertEqual(set(re.findall(r"mcp__coros__(\w+)", out)), COROS_WRITES)
+            self.assertNotIn("mcp__coros,", out)
+            out = self._sync(sb, "copilot").stdout
+            self.assertEqual(set(re.findall(r"--deny-tool=coros\((\w+)\)", out)), COROS_WRITES)
+            out = self._sync(sb, "opencode").stdout
+            config = json.JSONDecoder().raw_decode(out[out.index("{", out.index("contenu :")):])[0]
+            self.assertEqual(config["mcp"]["coros"]["environment"]["COROS_READ_ONLY"], "1")
+            self.assertTrue({f"coros_{t}" for t in COROS_WRITES} <= {k for k, v in config["permission"].items() if v == "deny"})
+
+    def test_without_relay_nothing_about_coros(self):
+        with Sandbox() as sb:
+            self.assertSucceeded(sb.install(*BASE, "--source", "intervals", **DARWIN))
+            self.assertNotIn("coros", self._sync(sb, "claude").stdout)
+            self.assertNotIn("coros", self._sync(sb, "copilot").stdout)

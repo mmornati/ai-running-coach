@@ -10,8 +10,10 @@ connexion OAuth, et un seul propriétaire rafraîchit les jetons (sous verrou).
 Le relais ne réécrit rien : mêmes outils, mêmes réponses. Il ne fait que filtrer :
 - `COROS_ENABLED_TOOLS` (liste séparée par des virgules) : seuls ces outils sont listés et
   appelables — l'équivalent de `GARMIN_ENABLED_TOOLS` ;
-- `COROS_READ_ONLY=1` (posé par la synchronisation sans tête) : les outils d'écriture sont
-  retirés, quelle que soit la liste blanche.
+- `COROS_READ_ONLY=1`, ou `ARC_HEADLESS=1` (exporté par `scripts/daily-sync.sh`, hérité par
+  l'exécuteur puis par ce relais) : les outils d'écriture sont retirés, quelle que soit la
+  liste blanche — aucune écriture COROS sans personne pour confirmer, quel que soit
+  l'exécuteur de la synchronisation.
 
 Un 401 déclenche un rafraîchissement puis un seul nouvel essai ; une session expirée
 (404 avec `Mcp-Session-Id`) est rouverte en rejouant l'`initialize` du client.
@@ -45,7 +47,10 @@ def allowed_tools(env=None) -> Tuple[Optional[frozenset], bool]:
     env = os.environ if env is None else env
     raw = env.get("COROS_ENABLED_TOOLS", "").strip()
     allow = frozenset(t.strip() for t in raw.split(",") if t.strip()) if raw else None
-    return allow, env.get("COROS_READ_ONLY", "").strip() in ("1", "true", "yes")
+    truthy = ("1", "true", "yes")
+    read_only = (env.get("COROS_READ_ONLY", "").strip().lower() in truthy
+                 or env.get("ARC_HEADLESS", "").strip().lower() in truthy)
+    return allow, read_only
 
 
 def tool_permitted(name: str, allow: Optional[frozenset], read_only: bool) -> bool:
