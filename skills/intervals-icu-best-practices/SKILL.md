@@ -66,7 +66,7 @@ it the repeat silently runs once).
 | Element | Syntax | Notes |
 |---|---|---|
 | Duration | `10m`, `30s`, `1h30m`, `5:00` | **`m` = minutes, never metres**; distances use `400mtr`, `5km` |
-| HR zone / range | `Z2 HR`, `140-150bpm`, `70-80% HR` | the `HR` word is required for zones |
+| HR zone / range | `82.4-88.3% LTHR`, `Z2 HR`, `70-80% HR` | the `HR` word is required for zones. **Never `140-150bpm`**: verified 2026-10-22, an absolute bpm step gets no planned load and reaches a COROS watch with no HR target, while `% LTHR` arrives as the exact bpm range |
 | Absolute pace | `5:30/km pace` | the trailing word `pace` is **required** — bare `5:30/km` is silently dropped |
 | Relative pace | `95-100% pace` (of threshold pace) | needs the athlete's threshold pace in Intervals.icu sport settings |
 | Step type | `intensity=rest` | the only form that exports a real rest step on the watch |
@@ -83,8 +83,15 @@ Use the targets exactly as `agents/coach.md` → "Personal targets (#60)" comput
 them (same "drop the target when the value is `null`" rule — never a placeholder,
 never an invented number):
 
-- **HR target** (`hr_target.bounds_bpm`, low then high) → `- 60m 140-150bpm`
-  (or `Z2 HR` when the athlete's zones are the intended reference).
+- **HR target** → `- 60m 82.4-88.3% LTHR`: run the targets command with
+  `--icu-lthr-bpm <fthr_bpm>` (the athlete's **Run** `fthr_bpm` from
+  `icu_get_sport_settings`, read once per session — Intervals.icu converts back with
+  ITS threshold, not the profile's) and paste `hr_target.icu_target`. For a range the
+  plan states directly (e.g. "161-168"), convert it the same way
+  (`arc_workout_targets.icu_hr_lthr_target`), never by hand. No `fthr_bpm` set in
+  Intervals.icu → say so and ask the athlete to set it; meanwhile keep the bpm range in
+  the text only. `Z2 HR` uses Intervals.icu's own zones, not the profile's: only when the
+  athlete wants those.
 - **Pace target** (`pace_target.speed_low_ms`/`speed_high_ms`, m/s): convert to
   min/km — never paste m/s. The documented absolute form is a SINGLE pace
   (`5:40/km pace`); a range of absolute paces is undocumented, so do not write
@@ -118,7 +125,7 @@ Warmup
 - 10m Z1 HR
 
 Main Set 4x
-- 8m 160-168bpm
+- 8m 94.2-98.9% LTHR
 - 3m intensity=rest
 
 Cooldown
@@ -206,7 +213,7 @@ Create a structured planned run:
   "category": "WORKOUT",
   "event_type": "Run",
   "duration_seconds": 3600,
-  "description": "Main Set\n- 60m 140-150bpm"
+  "description": "Main Set\n- 60m 82.4-88.3% LTHR"
 }
 ```
 
@@ -216,7 +223,7 @@ Update an existing one (only the changed fields):
 {
   "event_id": 123456,
   "duration_seconds": 4200,
-  "description": "Main Set\n- 70m 140-150bpm"
+  "description": "Main Set\n- 70m 82.4-88.3% LTHR"
 }
 ```
 
@@ -226,7 +233,7 @@ Bulk-create a week (same field names as `icu_create_event`, except the date key
 ```json
 [
   {"start_date_local": "2026-09-28", "name": "Endurance 60 min", "category": "WORKOUT",
-   "event_type": "Run", "duration_seconds": 3600, "description": "Main Set\n- 60m 140-150bpm"},
+   "event_type": "Run", "duration_seconds": 3600, "description": "Main Set\n- 60m 82.4-88.3% LTHR"},
   {"start_date_local": "2026-09-30", "name": "Repos", "category": "NOTE"}
 ]
 ```
@@ -242,10 +249,10 @@ sessions follow as the window moves. Nothing to call for that — just push here
 - **One intensity metric per workout** (HR, as above): Intervals.icu sends COROS a single
   metric per workout, and steps written in another one arrive without target (forum
   report, unfixed for COROS as of August 2026). Pace stays in the event name.
-- **Observed 2026-10-22:** absolute HR steps (`- 40m 137-149bpm`) reached COROS with the
-  step structure but **without any HR target**, and COROS kept only the description's first
-  paragraph (~250 characters). For a COROS athlete, write the main HR range and the key
-  instruction in that first paragraph, and tell them the watch will not alert on HR.
+- **HR targets as `% LTHR`** (see "Mapping the personal targets"): verified 2026-10-22,
+  `81-88% LTHR` arrived on the watch as 137-149 bpm, whereas `137-149bpm` arrived with NO
+  target. COROS keeps only the description's **first paragraph** (~250 characters): put
+  the main HR range and the key instruction there.
 - Changes and deletions made here follow on COROS inside the 7-day window (forum report).
 - Never also push the same session with `createScheduledWorkout`: the watch would show it
   twice, and only the COROS app can remove one.

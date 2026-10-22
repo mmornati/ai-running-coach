@@ -114,6 +114,19 @@ La cible est en vitesse GAP (« équivalent plat ») : sur une pente, la vitesse
 réelle est plus basse (voir `arc_gap`). Contrôle de cohérence avec le seuil lactique
 Garmin : `arc_cs.compare_threshold` (signalé, jamais arbitré).
 
+## Cible FC pour Intervals.icu : en % de SA FC au seuil, jamais en bpm
+
+`icu_hr_lthr_target(bounds_bpm, lthr_bpm)` rend `"80.6-87.7% LTHR"` : la syntaxe que
+`intervals-icu-best-practices` écrit dans la description d'un événement. Constaté le
+22 octobre 2026 (montre COROS, envoi des séances planifiées par Intervals.icu) : une
+étape `137-149bpm` arrive sur la montre SANS cible FC et sans charge prévue côté
+Intervals.icu, alors que `% LTHR` arrive en bpm absolus. `lthr_bpm` est le seuil FC
+course configuré DANS Intervals.icu (`icu_get_sport_settings`, sport `Run`,
+`fthr_bpm`), pas celui du profil : Intervals.icu reconvertit avec le sien. Une décimale
+suffit pour retomber sur les bornes exactes (`80.6 %` × 170 = 137,02 → 137) : chaque
+pourcentage est le plus petit dixième qui atteint la borne, l'écart est donc inférieur
+à `lthr_bpm / 1000` bpm (< 0,2 bpm), que la conversion tronque ou arrondisse.
+
 ## Unités du DTO Garmin (skills/garmin-workout-scheduling/SKILL.md)
 
 - **FC** (`targetType: heart.rate.zone`, bornes personnalisées) :
@@ -707,6 +720,19 @@ def validate_workout_step_dto(step: dict) -> List[str]:
     return errors
 
 
+def icu_hr_lthr_target(bounds_bpm: Sequence[float], lthr_bpm: float) -> str:
+    """Plage FC `[low, high]` (bpm) en syntaxe Intervals.icu `% LTHR` — voir la
+    docstring du module (« Cible FC pour Intervals.icu »)."""
+    if not lthr_bpm or lthr_bpm <= 0:
+        raise ValueError("seuil FC (LTHR) d'Intervals.icu attendu, > 0")
+    low, high = (round(b) for b in bounds_bpm)
+    if low > high:
+        raise ValueError("plage FC inversée")
+    # Plus petit dixième de % dont la conversion atteint la borne (calcul entier, pas de flottant).
+    lo_t, hi_t = (-(-b * 1000 // round(lthr_bpm)) for b in (low, high))
+    return f"{lo_t / 10:g}-{hi_t / 10:g}% LTHR"
+
+
 def dto_hr_step(step_order: int, *, description: str, duration_s: float, bounds_bpm: Sequence[float],
                  step_type_id: int = 3) -> dict:
     """Construit un `ExecutableStepDTO` de durée `duration_s` (secondes) ciblant
@@ -879,6 +905,9 @@ def build_arg_parser():
                           "(vent/pluie/UV/orage) du fichier météo, la chaleur étant déduite de la température du créneau")
     ap.add_argument("--slot", choices=("morning", "midday", "evening", "none"),
                      help="créneau retenu (défaut : best_slot de la séance, sinon du fichier météo)")
+    ap.add_argument("--icu-lthr-bpm", dest="icu_lthr_bpm", type=float, metavar="N",
+                     help="seuil FC course d'Intervals.icu (icu_get_sport_settings, Run, fthr_bpm) : ajoute "
+                          "hr_target.icu_target, la plage en %% LTHR à écrire dans la description de l'événement")
     ap.add_argument("--pace-s-km", dest="pace_s_km", type=float,
                      help="allure cible déclarée (s/km) à ralentir selon la chaleur (séances de qualité)")
     return ap
@@ -994,6 +1023,9 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         result["cs_target"]["threshold_check"] = CS.compare_threshold(cs_fit, args.lt_speed_ms)
     if args.heat:
         _heat_from_cli(args, conn, conf, session, result)
+    hr = result.get("hr_target") or {}
+    if args.icu_lthr_bpm is not None and hr.get("bounds_bpm"):
+        hr["icu_target"] = icu_hr_lthr_target(hr["bounds_bpm"], args.icu_lthr_bpm)
     print(json.dumps(result, ensure_ascii=False))
     return 0
 

@@ -108,9 +108,14 @@ le MCP COROS) :
   encore envoyée ;
 - la **structure arrive** (blocs, durées, répétitions) et le nom est gardé tel quel ;
 - **les cibles FC en bpm absolus (`137-149bpm`) ne sont PAS arrivées** : aucune
-  section n'a de cible d'intensité sur la montre. La consigne FC ne reste lisible que
-  dans la description. Piste à tester : écrire la cible en % de la FC au seuil ou en
-  zone, que le forum recommande ([fil](https://forum.intervals.icu/t/custom-heart-rate-range-planned-workout/72460)) ;
+  section n'avait de cible d'intensité sur la montre. Testé ensuite sur des séances
+  d'essai (supprimées depuis) : `81-88% LTHR` arrive en 137-149 bpm, `73-80% HR` en
+  136-149, `Z2 HR` avec les zones d'Intervals.icu (144-152), et `137-149bpm` toujours
+  sans cible. **Le projet écrit donc la FC en % du seuil FC d'Intervals.icu**, à une
+  décimale pour retomber pile sur les bornes (`80.6-87.7% LTHR` → 137-149, relu sur la
+  montre) : `arc_workout_targets.py --icu-lthr-bpm` ;
+- une séance **supprimée dans Intervals.icu disparaît de COROS** (vérifié sur ces
+  séances d'essai) ;
 - la **description est tronquée** : COROS ne garde que le premier paragraphe, coupé
   vers 250 caractères. Ce qui compte pour la séance doit donc tenir dans ce premier
   paragraphe ;

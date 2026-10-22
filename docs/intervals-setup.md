@@ -129,7 +129,9 @@ d'outil** : le skill `intervals-icu-best-practices` remplace
   `WORKOUT` écrite dans la **syntaxe native d'Intervals.icu** est analysée
   côté Intervals.icu en étapes structurées (zones, répétitions, charge,
   synchronisation montre). Les cibles de `scripts/arc_workout_targets.py` (#60)
-  y sont écrites : plage de FC en bpm ou zone (`- 60m 140-150bpm`, `Z2 HR`),
+  y sont écrites : plage de FC en % du seuil FC d'Intervals.icu (`- 60m 82.4-88.3% LTHR`,
+  convertie par `arc_workout_targets.py --icu-lthr-bpm`, jamais en bpm absolus : sans
+  charge prévue et sans cible sur une montre COROS, constaté le 22 octobre 2026),
   répétitions de côte en `Main Set Nx`. Le serveur fait écho au résultat
   (`workout_parsed`, `workout_steps`) dans la réponse d'écriture ; si
   l'analyse échoue (`workout_parsed: false`), le coach **retombe sur le texte

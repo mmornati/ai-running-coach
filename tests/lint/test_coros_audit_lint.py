@@ -95,6 +95,9 @@ class TestCorosAudit(unittest.TestCase):
         self.assertIn("## COROS watch", icu)
         self.assertIn("One intensity metric per workout", icu)
         self.assertIn("createScheduledWorkout", icu)
+        # FC en bpm absolus : sans cible sur la montre COROS (constaté le 22/10/2026) -> % LTHR.
+        self.assertIn("--icu-lthr-bpm", icu)
+        self.assertNotRegex(icu, r"- \d+[ms] \d+-\d+bpm")
         doc = DOC.read_text(encoding="utf-8")
         self.assertIn("## Configuration préconisée : Intervals.icu + COROS", doc)
         self.assertIn("**Pourquoi ce chemin plutôt que le MCP officiel de COROS :**", doc)

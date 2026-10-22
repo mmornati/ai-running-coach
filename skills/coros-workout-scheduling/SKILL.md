@@ -38,9 +38,10 @@ Observed on 2026-10-22 (first week uploaded, read back with the `coros` tools):
 - Sessions arrive inside a COROS training plan ("Plan d'entr. Intervals.icu"), listed by
   `queryTrainingSchedule`; `queryScheduledWorkoutDetails` does not find them, and the plan is
   "Editable via MCP: no". Fix sessions in Intervals.icu, never through the COROS tools.
-- Steps, durations and repeats arrive; **absolute HR targets (`137-149bpm`) did not**: no
-  section had an intensity target on the watch. Say so to the athlete (the HR range is only
-  in the text) until a format that survives is verified.
+- Steps, durations and repeats arrive. **HR targets arrive only as `% LTHR`**: `137-149bpm`
+  reached the watch with no target, `80.6-87.7% LTHR` as exactly 137-149 bpm. Write them as
+  `intervals-icu-best-practices` says (`arc_workout_targets.py --icu-lthr-bpm`).
+- A session deleted in Intervals.icu disappears from the COROS calendar (verified).
 - COROS keeps only the **first paragraph** of the description, cut around 250 characters:
   put what matters for the run (main HR range, key instruction) there.
 - Strength (`WeightTraining`) sessions do arrive, which the COROS MCP cannot create.
