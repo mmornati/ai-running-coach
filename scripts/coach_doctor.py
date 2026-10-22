@@ -52,7 +52,7 @@ avant expiration des tokens, qui appelle ce script avec `--json`, éventuellemen
                 | "daily_sync_scheduled" | "ntfy_configured" | "gear_sync"
                 | "gear_history" | "fit_reader" | "intervals_mcp_pin" | "llm_config"
                 | "chat_service" | "opencode_cli" | "strava_connection" | "telegram"
-                | "weight_sync" | "openwearables",
+                | "weight_sync" | "openwearables" | "coros_connection",
           "status": "ok" | "warning" | "error" | "info",
           "message": "<texte français>",
           "fix": "<commande de correction>" | null
@@ -207,7 +207,7 @@ CHECK_IDS = (
     "index_freshness", "out_of_contract", "daily_sync_scheduled", "ntfy_configured",
     "gear_sync", "gear_history", "fit_reader", "intervals_mcp_pin",
     "llm_config", "chat_service", "opencode_cli", "strava_connection", "telegram", "weight_sync",
-    "openwearables",
+    "openwearables", "coros_connection",
 )
 
 CHAT_SYSTEMD_UNIT_REL = ".config/systemd/user/ai-running-coach-chat.service"
@@ -1084,6 +1084,85 @@ def check_strava_connection(workspace: Path, config: dict, home: Path) -> dict:
                        "réelle du jeton n'est testée par aucun appel réseau ici).", fix=None)
 
 # ---------------------------------------------------------------------------
+# coros_connection (montre COROS, `[coros].mcp = "relay"`)
+# ---------------------------------------------------------------------------
+
+COROS_TOKEN_DIR_REL = ".config/ai-running-coach/coros"
+COROS_LOGIN_FIX = "python3 scripts/arc_coros_auth.py login"
+
+
+def _coros_token_dir(home: Path) -> Path:
+    custom = os.environ.get("ARC_COROS_DIR", "").strip()
+    return Path(custom).expanduser() if custom else home / COROS_TOKEN_DIR_REL
+
+
+def check_coros_connection(workspace: Path, config: dict, home: Path, now: datetime, probe: bool = False) -> dict:
+    """`[coros].mcp = "relay"` (`./install.sh --coros`) : relais `scripts/arc_coros_mcp.py` déclaré
+    dans `.mcp.json`, pas masqué par une entrée `coros` ajoutée à la main dans Claude Code (portée
+    locale, prioritaire), jetons du projet présents avec un jeton de rafraîchissement, droits 700/600.
+    STATIQUE : lit l'existence des clés et l'échéance, JAMAIS la valeur d'un jeton ; un jeton d'accès
+    expiré n'est pas une panne (le relais le renouvelle). `probe` (`--probe-mcp`) : appel réel du MCP
+    COROS par `arc_coros_auth.py verify`. Sans relais : `info`."""
+    check_id = "coros_connection"
+    if str((config.get("coros") or {}).get("mcp", "off")).strip() != "relay":
+        return build_check(check_id, "info", "[coros].mcp ≠ \"relay\" — montre COROS non installée.", fix=None)
+    fix_install = "./install.sh --coros"
+    relay = Path(__file__).resolve().parent / "arc_coros_mcp.py"
+    try:
+        servers = json.loads((workspace / ".mcp.json").read_text(encoding="utf-8")).get("mcpServers") or {}
+    except (OSError, ValueError, AttributeError):
+        servers = {}
+    entry = servers.get("coros") if isinstance(servers.get("coros"), dict) else {}
+    if not str(entry.get("command", "")).endswith("arc_coros_mcp.py"):
+        return build_check(check_id, "error", "Serveur MCP « coros » (relais) absent de .mcp.json.", fix=fix_install)
+    if not os.access(relay, os.X_OK):
+        return build_check(check_id, "error", f"Relais non exécutable ({relay}).", fix=fix_install)
+    claude_store = _read_json_object(home / ".claude.json") or {}
+    local = ((claude_store.get("projects") or {}).get(str(workspace)) or {}).get("mcpServers") or {}
+    if isinstance(local, dict) and "coros" in local:
+        return build_check(check_id, "warning",
+                           "Une entrée « coros » ajoutée à la main dans Claude Code masque le relais du projet "
+                           "(portée locale prioritaire) : deux connexions, et la vôtre n'est pas renouvelée par le projet.",
+                           fix="claude mcp remove coros -s local")
+    tdir = _coros_token_dir(home)
+    tokens = _read_json_object(tdir / "tokens.json")
+    if tokens is None or not (tdir / "client.json").is_file() or not tokens.get("access_token"):
+        return build_check(check_id, "error", "Compte COROS non connecté (aucun jeton du projet).", fix=COROS_LOGIN_FIX)
+    if not tokens.get("refresh_token"):
+        return build_check(check_id, "error", "Jeton de rafraîchissement COROS absent : la connexion ne peut pas se renouveler.",
+                           fix=COROS_LOGIN_FIX)
+    loose = []
+    for path in (tdir, tdir / "client.json", tdir / "tokens.json"):
+        try:
+            if path.stat().st_mode & 0o077:
+                loose.append(path.name)
+        except OSError:
+            pass
+    if loose:
+        return build_check(check_id, "warning",
+                           f"Jetons COROS lisibles par d'autres utilisateurs ({', '.join(loose)}).",
+                           fix=f"chmod 700 ~/{COROS_TOKEN_DIR_REL} && chmod 600 ~/{COROS_TOKEN_DIR_REL}/*.json")
+    expires = _safe_epoch_to_datetime(tokens.get("expires_at"))
+    days = round((expires - now).total_seconds() / 86400, 1) if expires else None
+    validity = (f"accès encore valable {days} jours" if days is not None and days > 0
+                else "accès expiré, renouvelé au prochain appel")
+    if probe:
+        try:
+            proc = subprocess.run([sys.executable, str(relay.parent / "arc_coros_auth.py"), "verify", "--json"],
+                                  capture_output=True, text=True, timeout=60)
+            result = json.loads(proc.stdout or "{}")
+        except (OSError, ValueError, subprocess.TimeoutExpired) as exc:
+            result = {"ok": False, "error": str(exc)}
+        if not result.get("ok"):
+            return build_check(check_id, "error", f"MCP COROS : {result.get('error', 'appel refusé')}.", fix=COROS_LOGIN_FIX)
+        return build_check(check_id, "ok", f"COROS : relais déclaré, connecté, {result.get('tools')} outils (appel réel).",
+                           fix=None)
+    return build_check(check_id, "ok",
+                       f"COROS : relais déclaré, jetons du projet présents ({validity} ; valeurs non affichées, "
+                       "aucun appel réseau ici — --probe-mcp pour un appel réel).", fix=None)
+
+
+# ---------------------------------------------------------------------------
 # intervals_mcp_pin (#165)
 # ---------------------------------------------------------------------------
 
@@ -1951,6 +2030,8 @@ def run_single_check(check_id: str, workspace: Path, now: datetime, tokens_dir: 
         return check_telegram(workspace, Path.home(), config, now)
     if check_id == "openwearables":
         return check_openwearables(workspace, config, now, probe_ow)
+    if check_id == "coros_connection":
+        return check_coros_connection(workspace, config, Path.home(), now, probe_mcp)
     raise ValueError(f"vérification inconnue : {check_id!r}")
 
 

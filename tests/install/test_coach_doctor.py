@@ -1100,6 +1100,7 @@ class TestJsonSchema(InstallAsserts):
                 "index_freshness", "out_of_contract", "daily_sync_scheduled", "ntfy_configured",
                 "gear_sync", "gear_history", "fit_reader", "intervals_mcp_pin",
                 "llm_config", "chat_service", "opencode_cli", "strava_connection", "telegram", "weight_sync", "openwearables",
+                "coros_connection",
             }
             self.assertEqual({c["id"] for c in payload["checks"]}, expected_ids)
             for check in payload["checks"]:
