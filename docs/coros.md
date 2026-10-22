@@ -16,6 +16,16 @@ authentifier).
     installé par `install.sh`. Les athlètes COROS passent par
     [Intervals.icu](intervals-setup.md) (`./install.sh --source intervals`).
 
+!!! info "Mise à jour du 22 octobre 2026 : poussée de séances en interactif"
+    Une session authentifiée a permis de relever la vraie liste d'outils et de
+    pousser une séance réelle jusqu'à la montre (voir
+    [Session authentifiée](#session-authentifiee-22-octobre-2026)). Deux des trois
+    conditions ci-dessous sont levées (liste d'outils, écriture de séances) : le
+    skill [`coros-workout-scheduling`](skills/coros-workout-scheduling.md) pousse
+    les séances planifiées au calendrier COROS, **en interactif seulement**, avec
+    un « oui » explicite. Reste ouverte : l'exécution sans tête (jeton OAuth en
+    cron), dont dépend une vraie source `coros`.
+
 Pourquoi pas une source `coros` :
 
 1. **Les noms d'outils ne sont pas vérifiables à la source.** `tools/list`
@@ -136,6 +146,65 @@ Le projet communautaire non officiel
 e-mail/mot de passe, indépendant de COROS) n'a **pas** été retenu : il passe
 par une API privée avec les identifiants du compte.
 
+## Session authentifiée (22 octobre 2026)
+
+Le serveur a été ajouté à Claude Code et autorisé par OAuth avec un compte
+COROS réel (montre COROS PACE 4 Pro associée le jour même). Tout ce qui suit a
+été constaté par nous sur cette session.
+
+**URL.** `https://mcp.coros.com/mcp` (l'URL publiée par COROS) est refusée par
+Claude Code : ses métadonnées OAuth déclarent la ressource
+`https://mcpeu.coros.com/mcp`, et Claude Code exige qu'elles correspondent
+(« Protected resource … does not match expected »). Il faut déclarer
+directement l'URL régionale :
+
+```bash
+claude mcp add --transport http coros https://mcpeu.coros.com/mcp
+```
+
+puis `/mcp` → `coros` → *Authenticate* (redémarrer la session si le serveur a été
+ajouté pendant qu'elle tournait).
+
+**Liste relevée : 34 outils**, dont 27 en lecture et 7 en écriture. Tous les noms
+de la liste du projet tiers ci-dessous y figurent, sauf `querySleepData` (le
+sommeil passe par `querySleepOverview`).
+
+| Famille | Outils |
+|---|---|
+| Activités | `querySportRecords`, `getActivityDetail`, `analyzeActivityDetail`, `queryActivityLapData`, `queryCustomActivityLapData` |
+| FIT | `downloadActivityFitFiles`, `queryActivityFitFileDownloadUrls` (50 fichiers par jour selon COROS) |
+| Santé | `querySleepHrv`, `querySleepOverview`, `queryRestingHeartRate`, `queryAvgHeartRate`, `queryDailyHealthData`, `queryHealthCheckTimeSeries`, `queryStressLevel`, `queryStressTimeSeries`, `queryRecoveryStatus`, `queryMenstruationCycles` |
+| Forme et charge | `queryTrainingLoadAssessment`, `queryFitnessAssessmentOverview` |
+| Profil | `queryUserInfo`, `queryDevices` |
+| Calendrier (lecture) | `queryTrainingSchedule`, `queryScheduledWorkoutDetails`, `queryTrainingPlanLibrary`, `queryTrainingPlanDetails`, `queryWorkoutLibrary`, `queryWorkoutDetails` |
+| Calendrier (écriture) | `createScheduledWorkout`, `updateScheduledWorkout`, `scheduleWorkout`, `createSingleWorkout`, `updateWorkoutDetails`, `createTrainingPlan`, `updateTrainingPlan` |
+
+**Aucun outil de suppression ni de déplacement** : une séance poussée par erreur
+se retire dans l'app COROS.
+
+**Écriture de séances : constatée.** `createScheduledWorkout` a créé la séance
+du jour (40 min à 137-149 bpm, puis 4 × 100 m + 1 min de récupération) ;
+`queryScheduledWorkoutDetails` l'a relue à l'identique (COROS y ajoute son
+estimation de durée, de distance et de charge) ; elle est apparue sur la montre
+après synchronisation. Réponse : texte formaté, la structure de la séance en JSON.
+`idInPlan`, l'identifiant rendu, est un compteur par jour (« 1 »), pas un
+identifiant global.
+
+**Règles du schéma de l'outil** (lues dans sa description, appliquées par
+`scripts/arc_coros_workout.py validate` ; seules la cible de durée, la plage FC
+absolue, la distance et le groupe de répétitions ont été poussés en vrai) :
+séances de course, trail et vélo seulement (pas de renforcement) ; pas de cible
+de durée en trail (distance, D+ ou libre) ; un seul format d'intensité par
+section (zone, pourcentage ou valeurs absolues) ; allure en s/km entières ;
+groupes de 1 à 20 répétitions, sans imbrication ; dates d'aujourd'hui à
+aujourd'hui + 90 jours.
+
+**Lectures : formes à relever.** La montre n'avait encore rien enregistré : les
+lectures santé ont répondu « No data » et `queryRecoveryStatus` « Recovery: -1% /
+Level: Unknown » (valeur absente, pas un score). `queryRestingHeartRate` ne prend
+qu'un nombre de jours, pas de date. Les formes des activités, des tours, du FIT,
+de la HRV et du sommeil restent à relever après les premières séances et nuits.
+
 ## Utilisation manuelle, en interactif (hors périmètre du projet)
 
 Pour interroger vos données COROS dans une conversation, vous pouvez ajouter le
@@ -144,15 +213,15 @@ configurée :
 
 - Claude Desktop : Réglages → Connecteurs → connecteur personnalisé, URL
   `https://mcp.coros.com/mcp` (procédure indiquée par COROS).
-- Claude Code : **non documenté par COROS et non testé ici** (l'audit ne
-  s'est jamais authentifié). À titre indicatif seulement, la commande
-  générique d'ajout d'un serveur MCP HTTP serait
-  `claude mcp add --transport http coros https://mcp.coros.com/mcp`, puis
-  `/mcp` pour lancer l'autorisation OAuth ; rien ne garantit que COROS
-  accepte ce client.
+- Claude Code : non documenté par COROS, mais **testé ici le 22 octobre 2026**
+  avec l'URL régionale (`claude mcp add --transport http coros
+  https://mcpeu.coros.com/mcp`, puis `/mcp` pour l'autorisation OAuth) ; voir
+  [Session authentifiée](#session-authentifiee-22-octobre-2026).
 
-Dans ce cas, le coach ne connaît pas ces outils : rien dans `AGENTS.md`, les
-agents ou les skills ne les utilise, rien n'est persisté au contrat `arc`
+Dans ce cas, le coach n'utilise que les quatre outils de calendrier du skill
+[`coros-workout-scheduling`](skills/coros-workout-scheduling.md), pour pousser
+des séances après un « oui » explicite ; les lectures (activités, santé) ne sont
+dans aucune table de correspondance, rien n'est persisté au contrat `arc`
 automatiquement, et la synchronisation sans tête ne s'en sert jamais.
 
 ## Références

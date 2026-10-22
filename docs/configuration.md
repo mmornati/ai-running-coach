@@ -289,7 +289,7 @@ synchronisés par Intervals.icu viennent de sa
 | Appareil | Entraînement (`[data].source`) | Santé du bilan matinal | Remarque |
 |---|---|---|---|
 | Garmin | `garmin` (direct) | Garmin | référence du projet ; jamais via Open Wearables (programme développeur réservé aux entités légales : `garmin-api-integration.mdx` d'Open Wearables, voir [l'audit](open-wearables.md)) ; intégration directe décrite dans [Configuration Garmin](garmin-setup.md) |
-| COROS | `intervals` | Intervals.icu (si synchronisée) | MCP officiel audité, hors périmètre : [Montres COROS](coros.md) |
+| COROS | `intervals` | Intervals.icu (si synchronisée) | Séances poussées sur la montre par le MCP officiel, en interactif : [Montres COROS](coros.md) |
 | Suunto | `intervals` | Intervals.icu | l'API cloud de Suunto n'est pas ouverte aux particuliers ([FAQ Suunto](https://apizone.suunto.com/faq), relue le 10 octobre 2026) |
 | Polar | `intervals` | Intervals.icu ; Open Wearables (Nightly Recharge) | Polar est listée sur la page bien-être d'Intervals.icu (relue le 10 octobre 2026) ; accès libre-service et scores Nightly Recharge : `polar-api-integration.mdx` d'Open Wearables ([audit](open-wearables.md)) |
 | Huawei, Amazfit | `intervals` | Intervals.icu | listés sur la page bien-être d'Intervals.icu ; non testé ici |

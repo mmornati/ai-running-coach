@@ -622,6 +622,7 @@ Photo inspection of a pair of shoes is handled by the `gear-inspection` skill �
 | `garmin-sync-efficiency` | Before any Garmin data fetch (activities, sleep, HRV, readiness, body battery). Prevents context bloat. |
 | `workspace-data-contract` | Before writing or rewriting ANY file in `activities/`, `medical/`, `nutrition/`, `planning/` or `rapports/` — the ```arc block schema per file kind, SI units, and the `scripts/arc_index.py --validate` check. Also for backfilling old files (`/arc-backfill`). |
 | `garmin-workout-scheduling` | Before pushing planned sessions to the Garmin Connect calendar (PRIMARY scheduling destination). |
+| `coros-workout-scheduling` | ONLY when the `coros` MCP server is connected in this interactive session (the athlete runs with a COROS watch): before pushing validated sessions to the COROS calendar — explicit "yes", never headless; reads still follow `[data].source`. |
 | `mywhoosh-route` | ONLY when `[home_trainer].platform = "mywhoosh"`: before validating or pushing a home trainer session — picks a MyWhoosh route that fits the planned duration at the athlete's calibrated power (`arc_index.py power-hr`). |
 | `vanoor-export` | ONLY when `[vanoor].export = "on"`: on every week validation — writes the week's running sessions as a `.vanoor` file (structured steps, the athlete's own HR/pace targets) for the Vanoor app on Apple Watch. |
 | `intervals-icu-best-practices` | ONLY if the user explicitly asks to mirror or create events on Intervals.icu (SECONDARY). |
