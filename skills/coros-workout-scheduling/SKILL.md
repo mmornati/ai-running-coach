@@ -156,6 +156,13 @@ time, distance or load estimate — do not report one.
 A climb target (`targetType 3`) is used only when the plan states a D+ per repetition
 (e.g. "≥ 27 m D+ par répétition", from `hill_repeats`): the rep ends at that D+.
 
+## Threshold pace (critical-speed check)
+
+`queryFitnessAssessmentOverview` returns COROS's `Threshold Pace` (text, e.g. `4:12 /km`, read on
+2026-10-22). For the `--lt-speed-ms` check of `arc_workout_targets.py` / `arc_index.py pace-curve`,
+convert it with `python3 scripts/arc_coros_workout.py threshold --pace 4:12` (→ `lt_speed_ms`), never
+by hand, and name it « allure seuil COROS ». It is never a target in itself.
+
 ## Workflow
 
 1. Read the session(s) from `planning/Semaine_<monday>.md`; apply guardrails/morning

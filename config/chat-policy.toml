@@ -113,7 +113,7 @@ read_options = ["--week", "--plan"]
 # Séance COROS : conversion d'une section et validation (JSON sur l'entrée standard ou --file) ;
 # ne contacte rien, la poussée passe par le MCP `coros` avec l'approbation du chat.
 [shell.scripts."scripts/arc_coros_workout.py"]
-value_options = ["--type", "--duration-s", "--distance-m", "--climb-m", "--hr", "--speed-ms"]
+value_options = ["--type", "--duration-s", "--distance-m", "--climb-m", "--hr", "--speed-ms", "--pace"]
 multi_value_options = ["--hr", "--speed-ms"]
 read_options = ["--file"]
 

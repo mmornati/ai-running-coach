@@ -23,6 +23,9 @@ observation : `docs/coros.md` dit lesquelles.
   (`--hr LOW HIGH` en bpm, ou `--speed-ms LOW HIGH` en m/s, convertis en s/km).
 - `validate` — vérifie une `course` complète (JSON sur l'entrée standard ou
   `--file`) ; code de sortie 1 et liste d'erreurs si elle est invalide.
+- `threshold` — allure seuil COROS (`Threshold Pace: 4:12 /km` de
+  `queryFitnessAssessmentOverview`, relevé le 2026-10-22) -> vitesse en m/s pour
+  `--lt-speed-ms` (`arc_workout_targets.py`, `arc_index.py pace-curve`) : `--pace M:SS`.
 
 Aucune dépendance hors bibliothèque standard, aucun appel réseau.
 """
@@ -31,6 +34,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import sys
 from typing import List, Optional, Sequence
 
@@ -203,6 +207,17 @@ def validate_course(course: dict) -> List[str]:
     return errors
 
 
+def pace_to_speed_ms(pace: str) -> float:
+    """« 4:12 », « 4:12 /km » ou « 4:12/km » -> vitesse en m/s (3 décimales). Refuse le reste."""
+    m = re.fullmatch(r"\s*(\d{1,2}):([0-5]\d)\s*(?:/\s*km)?\s*", pace or "")
+    if not m:
+        raise ValueError(f"allure illisible : {pace!r} (attendu M:SS, en min/km)")
+    seconds = int(m.group(1)) * 60 + int(m.group(2))
+    if not 120 <= seconds <= 1499:  # bornes d'allure du schéma COROS
+        raise ValueError(f"allure hors bornes : {pace!r}")
+    return round(1000.0 / seconds, 3)
+
+
 def main(argv: Optional[Sequence[str]] = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     sub = ap.add_subparsers(dest="command", required=True)
@@ -218,7 +233,18 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                         help="plage de vitesse (m/s, telle que rendue par arc_workout_targets.py)")
     p_val = sub.add_parser("validate", help="vérifie une course (JSON sur l'entrée standard ou --file)")
     p_val.add_argument("--file")
+    p_thr = sub.add_parser("threshold", help="allure seuil COROS (M:SS /km) -> m/s pour --lt-speed-ms")
+    p_thr.add_argument("--pace", required=True, help="« Threshold Pace » de queryFitnessAssessmentOverview, ex. 4:12")
     args = ap.parse_args(argv)
+
+    if args.command == "threshold":
+        try:
+            speed = pace_to_speed_ms(args.pace)
+        except ValueError as exc:
+            print(f"erreur : {exc}", file=sys.stderr)
+            return 2
+        print(json.dumps({"lt_speed_ms": speed, "pace_s_per_km": round(1000.0 / speed), "source": "COROS"}))
+        return 0
 
     if args.command == "section":
         try:

@@ -163,3 +163,19 @@ class TestCli(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestThreshold(unittest.TestCase):
+    def test_coros_threshold_pace_to_speed(self):
+        # « Threshold Pace: 4:12 /km » relevé le 2026-10-22 = 252 s/km.
+        self.assertEqual(W.pace_to_speed_ms("4:12 /km"), 3.968)
+        self.assertEqual(W.pace_to_speed_ms("4:12"), 3.968)
+        for bad in ("4.12", "", "0:30", "4:75", "25:00"):
+            with self.assertRaises(ValueError):
+                W.pace_to_speed_ms(bad)
+
+    def test_cli(self):
+        out = io.StringIO()
+        with redirect_stdout(out):
+            self.assertEqual(W.main(["threshold", "--pace", "4:12"]), 0)
+        self.assertEqual(json.loads(out.getvalue()), {"lt_speed_ms": 3.968, "pace_s_per_km": 252, "source": "COROS"})
