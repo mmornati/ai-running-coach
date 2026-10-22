@@ -146,6 +146,10 @@ a guessed distance. Ask the athlete once which they prefer, then keep it:
   activity; the planned duration goes in the description ("6 min — appuie sur Tour"); or
 - **running** (`sportType 1`) with time targets, if the session is mostly runnable.
 
+Verified 2026-10-22: free sections show as "Manuel" in the COROS app and keep their HR
+target; a climb rep shows as "30 m" with the climb icon. With free sections COROS gives no
+time, distance or load estimate — do not report one.
+
 A climb target (`targetType 3`) is used only when the plan states a D+ per repetition
 (e.g. "≥ 27 m D+ par répétition", from `hill_repeats`): the rep ends at that D+.
 

@@ -272,6 +272,14 @@ description changés) la remplace : relecture à l'identique, même `idInPlan`, 
 seule séance ce jour-là (pas de doublon). La séance de test reste à supprimer
 dans l'app COROS.
 
+**Trail : cible de D+ et étapes libres, constatées le 22 octobre 2026.** Une séance
+de trail (échauffement libre à 137-149 bpm, 4 × [30 m de D+ à 155-168 bpm +
+récupération libre], retour au calme libre à 130-145 bpm) est acceptée, relue à
+l'identique et affichée par l'app COROS : étapes libres « Manuel » (bouton Tour),
+répétition « 30 m » avec l'icône de montée, cibles FC gardées, « 10 séries ».
+COROS ne donne alors ni durée, ni distance, ni charge estimées (les étapes libres
+en sont exclues). La durée prévue d'une étape va donc dans la description.
+
 **Règles du schéma de l'outil** (lues dans sa description, appliquées par
 `scripts/arc_coros_workout.py validate` ; seules la cible de durée, la plage FC
 absolue, la distance et le groupe de répétitions ont été poussés en vrai) :
@@ -298,9 +306,13 @@ les premières nuits.
   effets aérobie/anaérobie, effort perçu). **Pas de FC de récupération, pas de
   matériel** ;
 - `queryActivityLapData` : JSON avec des libellés de colonnes en chinois, plusieurs
-  découpages (`type` 10 = par km, 2 = étapes de la séance, 11 = tous les 5 km).
-  Unités relevées : distance en **cm**, temps en s, allure en s/km, vitesse en
-  km/h × 100, temps de contact en ms, oscillation en mm, longueur de pas en cm ;
+  découpages (`type` 10 = par km, 2 = étapes de la séance, 11 = tous les 5 km,
+  -1 = total). Unités relevées : distance en **cm**, temps en s, allure en s/km,
+  vitesse en km/h × 100, temps de contact en ms, oscillation en mm, longueur de pas
+  en cm. **Le découpage « par km » repart de zéro à chaque étape de la séance
+  planifiée** : sur la séance du 22/10, un tour de 194,85 m à la fin des 40 min, puis
+  un tour par ligne droite et par récupération. Ce ne sont donc pas des splits au
+  km réguliers, et le projet ne les recopie pas dans `splits` ;
 - `queryActivityFitFileDownloadUrls` : une URL de fichier FIT standard (produit
   « COROS PACE 4 Pro »), lisible par `fitparse` et par la normalisation du projet
   sans changement. Avec Intervals.icu comme source, le même FIT s'obtient déjà par
