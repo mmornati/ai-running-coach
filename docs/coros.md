@@ -205,6 +205,21 @@ Level: Unknown » (valeur absente, pas un score). `queryRestingHeartRate` ne pre
 qu'un nombre de jours, pas de date. Les formes des activités, des tours, du FIT,
 de la HRV et du sommeil restent à relever après les premières séances et nuits.
 
+**Jeton OAuth.** Le jeton d'accès émis est un JWT de l'émetteur
+`https://mcpeu.coros.com`, portées `mcp.tools openid offline_access`, valable
+**30 jours** (`exp − iat` = 2 592 000 s) ; `offline_access` donne un jeton de
+rafraîchissement, donc une durée, pas un accès à d'autres API. Une synchronisation
+sans tête devra renouveler et sauvegarder ce jeton avant l'échéance (rotation à
+usage unique selon le projet tiers, non vérifiée) : c'est le point encore ouvert.
+
+**API privée de Training Hub : jeton refusé.** Une sonde en lecture seule
+(calendrier du jour sur `teameuapi.coros.com`, en-tête `accessToken` puis
+`Authorization: Bearer`) a répondu `1019 « Access token is invalid »` dans les deux
+cas : le jeton du MCP ne donne pas accès aux fonctions que seule l'API privée offre
+(suppression d'une séance, création de renforcement). Elles restent à faire dans
+l'app COROS ; le projet n'utilise pas la connexion par mot de passe de l'API privée
+(voir plus haut).
+
 ## Utilisation manuelle, en interactif (hors périmètre du projet)
 
 Pour interroger vos données COROS dans une conversation, vous pouvez ajouter le
