@@ -70,7 +70,7 @@ This skill's push path is for an athlete whose `[data].source` is NOT `intervals
 | What is on the calendar | `queryTrainingSchedule(startDate?, endDate?)` | yyyyMMdd; default = current Mon–Sun week. Text: per date, name, source, `idInPlan`, distance, estimated time, load. Empty = "No training schedule found." |
 | Push a new session on a date | `createScheduledWorkout(date, course)` | One call per session. `date` from today to today + 90 days (COROS profile timezone). Returns `idInPlan`. |
 | Read a pushed session | `queryScheduledWorkoutDetails(date, idInPlan)` | Summary + `Course JSON` + `Editable via MCP: yes/no` (+ reasons). |
-| Change a pushed session | `updateScheduledWorkout(date, idInPlan, course)` | **Full replacement** of that date's copy; always start from the Course JSON just read. Cannot move it to another date. |
+| Change a pushed session | `updateScheduledWorkout(date, idInPlan, course)` | **Full replacement** of that date's copy; always start from the Course JSON just read. Cannot move it to another date. Verified 2026-10-22: read back identical, same `idInPlan`, no duplicate. |
 
 Not used by this project: `createTrainingPlan` / `updateTrainingPlan` /
 `queryTrainingPlan*` (the plan lives in `planning/`, never duplicated as a COROS plan),
@@ -79,7 +79,7 @@ and the library tools `createSingleWorkout` / `scheduleWorkout` /
 session on a date). **There is no delete, unschedule or move tool**: a wrong or stale
 session can only be removed in the COROS app — tell the athlete exactly which one.
 
-`idInPlan` is a small per-date counter ("1"), not a global id. Never show it to the
+`idInPlan` is a small per-date counter ("1", "2"; it does not always start at 1), not a global id. Never show it to the
 athlete; re-read it from `queryTrainingSchedule` when needed rather than storing it.
 
 ## Course schema

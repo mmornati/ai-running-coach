@@ -261,8 +261,16 @@ du jour (40 min à 137-149 bpm, puis 4 × 100 m + 1 min de récupération) ;
 `queryScheduledWorkoutDetails` l'a relue à l'identique (COROS y ajoute son
 estimation de durée, de distance et de charge) ; elle est apparue sur la montre
 après synchronisation. Réponse : texte formaté, la structure de la séance en JSON.
-`idInPlan`, l'identifiant rendu, est un compteur par jour (« 1 »), pas un
-identifiant global.
+`idInPlan`, l'identifiant rendu, est un petit compteur par jour (« 1 », « 2 »),
+pas un identifiant global ; il ne commence pas toujours à 1 (« 2 » pour la
+première séance du 23 octobre).
+
+**Modification de séances : constatée le 22 octobre 2026.** Une séance de test
+créée sur le lendemain (20 min, 137-149 bpm) est relue `Editable via MCP: yes` ;
+`updateScheduledWorkout` avec le cours entier (25 min, 130-145 bpm, nom et
+description changés) la remplace : relecture à l'identique, même `idInPlan`, une
+seule séance ce jour-là (pas de doublon). La séance de test reste à supprimer
+dans l'app COROS.
 
 **Règles du schéma de l'outil** (lues dans sa description, appliquées par
 `scripts/arc_coros_workout.py validate` ; seules la cible de durée, la plage FC
