@@ -33,6 +33,18 @@ already does): Intervals.icu sends COROS a single metric per workout, and blocks
 in the other one arrive without target (reported on the forum, unfixed for COROS as of
 August 2026).
 
+Observed on 2026-10-22 (first week uploaded, read back with the `coros` tools):
+
+- Sessions arrive inside a COROS training plan ("Plan d'entr. Intervals.icu"), listed by
+  `queryTrainingSchedule`; `queryScheduledWorkoutDetails` does not find them, and the plan is
+  "Editable via MCP: no". Fix sessions in Intervals.icu, never through the COROS tools.
+- Steps, durations and repeats arrive; **absolute HR targets (`137-149bpm`) did not**: no
+  section had an intensity target on the watch. Say so to the athlete (the HR range is only
+  in the text) until a format that survives is verified.
+- COROS keeps only the **first paragraph** of the description, cut around 250 characters:
+  put what matters for the run (main HR range, key instruction) there.
+- Strength (`WeightTraining`) sessions do arrive, which the COROS MCP cannot create.
+
 This skill's push path is for an athlete whose `[data].source` is NOT `intervals` (e.g.
 `strava`), or who explicitly asks for a direct COROS push.
 

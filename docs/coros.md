@@ -98,6 +98,28 @@ stubs, `coach-doctor`).
 - il faut parfois ajouter le plan « Intervals.icu Training Plan » au calendrier
   de l'app COROS ([annonce de la connexion](https://forum.intervals.icu/t/coros-support-added/37006)).
 
+**Constaté par nous le 22 octobre 2026** (envoi activé, première semaine, relue par
+le MCP COROS) :
+
+- les séances arrivent dans un **plan COROS « Plan d'entr. Intervals.icu »**, pas en
+  séances isolées ; `queryTrainingSchedule` les liste. Ce plan n'est **pas modifiable
+  par le MCP** (« Editable via MCP: no ») : on corrige dans Intervals.icu ;
+- la fenêtre couvrait bien 7 jours (22 → 28 octobre) ; la séance du 29 n'était pas
+  encore envoyée ;
+- la **structure arrive** (blocs, durées, répétitions) et le nom est gardé tel quel ;
+- **les cibles FC en bpm absolus (`137-149bpm`) ne sont PAS arrivées** : aucune
+  section n'a de cible d'intensité sur la montre. La consigne FC ne reste lisible que
+  dans la description. Piste à tester : écrire la cible en % de la FC au seuil ou en
+  zone, que le forum recommande ([fil](https://forum.intervals.icu/t/custom-heart-rate-range-planned-workout/72460)) ;
+- la **description est tronquée** : COROS ne garde que le premier paragraphe, coupé
+  vers 250 caractères. Ce qui compte pour la séance doit donc tenir dans ce premier
+  paragraphe ;
+- le **renforcement arrive** (séance de type force, avec son nom et sa description),
+  ce que le MCP COROS ne sait pas créer ;
+- la séance faite revient dans Intervals.icu avec l'appareil « COROS PACE 4 Pro », et
+  son FIT se télécharge par `download_fit.py` sans changement (3 786 points : FC,
+  allure, altitude, GPS, puissance, temps de contact, oscillation, longueur de pas).
+
 Le skill [`coros-workout-scheduling`](skills/coros-workout-scheduling.md) ne
 pousse lui-même que si la source n'est pas Intervals.icu (par exemple Strava),
 ou sur demande explicite de l'athlète.
@@ -249,8 +271,27 @@ aujourd'hui + 90 jours.
 **Lectures : formes à relever.** La montre n'avait encore rien enregistré : les
 lectures santé ont répondu « No data » et `queryRecoveryStatus` « Recovery: -1% /
 Level: Unknown » (valeur absente, pas un score). `queryRestingHeartRate` ne prend
-qu'un nombre de jours, pas de date. Les formes des activités, des tours, du FIT,
-de la HRV et du sommeil restent à relever après les premières séances et nuits.
+qu'un nombre de jours, pas de date. La HRV et le sommeil restent à relever après
+les premières nuits.
+
+**Activités : relevées le 22 octobre 2026** (première séance) :
+
+- `querySportRecords` : une ligne par séance, avec `labelId` et `sportType` (codes
+  d'activité : 100 course, 102 trail…), horodatages de début et de fin, durée,
+  distance, allure, FC moyenne. Le champ « Location » contient le **nom de la séance
+  planifiée**, pas un lieu ;
+- `getActivityDetail` : texte, résumé seulement (allure, allure ajustée à la pente,
+  FC moyenne, cadence, longueur de pas, puissance, D+/D−, calories, charge,
+  effets aérobie/anaérobie, effort perçu). **Pas de FC de récupération, pas de
+  matériel** ;
+- `queryActivityLapData` : JSON avec des libellés de colonnes en chinois, plusieurs
+  découpages (`type` 10 = par km, 2 = étapes de la séance, 11 = tous les 5 km).
+  Unités relevées : distance en **cm**, temps en s, allure en s/km, vitesse en
+  km/h × 100, temps de contact en ms, oscillation en mm, longueur de pas en cm ;
+- `queryActivityFitFileDownloadUrls` : une URL de fichier FIT standard (produit
+  « COROS PACE 4 Pro »), lisible par `fitparse` et par la normalisation du projet
+  sans changement. Avec Intervals.icu comme source, le même FIT s'obtient déjà par
+  `download_fit.py` : le MCP n'apporte rien de plus ici.
 
 **Jeton OAuth.** Le jeton d'accès émis est un JWT de l'émetteur
 `https://mcpeu.coros.com`, portées `mcp.tools openid offline_access`, valable

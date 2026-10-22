@@ -242,6 +242,10 @@ sessions follow as the window moves. Nothing to call for that — just push here
 - **One intensity metric per workout** (HR, as above): Intervals.icu sends COROS a single
   metric per workout, and steps written in another one arrive without target (forum
   report, unfixed for COROS as of August 2026). Pace stays in the event name.
+- **Observed 2026-10-22:** absolute HR steps (`- 40m 137-149bpm`) reached COROS with the
+  step structure but **without any HR target**, and COROS kept only the description's first
+  paragraph (~250 characters). For a COROS athlete, write the main HR range and the key
+  instruction in that first paragraph, and tell them the watch will not alert on HR.
 - Changes and deletions made here follow on COROS inside the 7-day window (forum report).
 - Never also push the same session with `createScheduledWorkout`: the watch would show it
   twice, and only the COROS app can remove one.
