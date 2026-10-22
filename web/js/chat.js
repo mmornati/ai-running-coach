@@ -188,7 +188,14 @@ const el = (tag, cls, text) => {
   return n;
 };
 
-function scrollDown() { els.thread.scrollTop = els.thread.scrollHeight; }
+// Instantané (le CSS a `scroll-behavior: smooth`, qui ferait glisser le fil sous les yeux) et muet
+// pendant un rejeu du journal : `renderHistory` replace lui-même la position une fois à la fin.
+function scrollDown() {
+  if (state.replaying) return;
+  els.thread.scrollTo({ top: els.thread.scrollHeight, behavior: "instant" });
+}
+
+const nearBottom = () => els.thread.scrollHeight - els.thread.scrollTop - els.thread.clientHeight < 80;
 
 // ---------------------------------------------------------------------------
 // Tour du coach : trace des outils, texte, cartes, fichiers
@@ -751,6 +758,10 @@ async function refreshSessions() {
 }
 
 function renderHistory(events) {
+  // Le fil est vidé puis reconstruit (relecture après une approbation, suivi d'un tour en cours) :
+  // sans cela il saute en haut puis redescend. On garde la position, ou le bas si on y était.
+  const stick = nearBottom();
+  const top = els.thread.scrollTop;
   els.thread.replaceChildren();
   els.empty = null;
   state.turn = null;
@@ -764,7 +775,7 @@ function renderHistory(events) {
   endTurn();
   if (!els.thread.children.length) showEmptyThread();
   renderCost();
-  scrollDown();
+  els.thread.scrollTo({ top: stick ? els.thread.scrollHeight : top, behavior: "instant" });
 }
 
 function showEmptyThread() {
