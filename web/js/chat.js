@@ -118,6 +118,7 @@ function table(rows) {
 export function renderMarkdown(container, text) {
   container.replaceChildren();
   let list = null;
+  let lastLi = null;
   let para = [];
   const flushPara = () => {
     if (!para.length) return;
@@ -171,8 +172,14 @@ export function renderMarkdown(container, text) {
       const li = document.createElement("li");
       inline(li, item[1]);
       list.appendChild(li);
+      lastLi = li;
     } else if (!line.trim()) {
       flushPara(); list = null;
+    } else if (list && lastLi) {
+      // Ligne de suite d'une puce repliée par le modèle : elle appartient à la puce, pas à un
+      // nouveau paragraphe (sinon la phrase se coupe en deux, voir le fil du Coach sur mobile).
+      lastLi.appendChild(document.createTextNode(" "));
+      inline(lastLi, line.trim());
     } else {
       list = null;
       para.push(line.trim());
