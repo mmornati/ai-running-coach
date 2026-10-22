@@ -90,7 +90,10 @@ stubs, `coach-doctor`).
   COROS, sans réécriture.
 - **Renouvellement automatique.** Le jeton d'accès vit 30 jours ; le relais le
   renouvelle quand il reste moins de 7 jours (ou après un refus), sous verrou, car COROS
-  remplace aussi le jeton de rafraîchissement à chaque fois.
+  remplace aussi le jeton de rafraîchissement à chaque fois. Vérifié le 22 octobre 2026
+  sur le vrai serveur : rafraîchissement forcé (nouveaux jetons, 30 jours), et relais
+  avec un jeton d'accès refusé → rafraîchi puis 34 outils listés. Pas encore mesurés : la
+  durée de vie du jeton de rafraîchissement et le sort de l'ancien après rotation.
 - **Vérifier :** `python3 scripts/arc_coros_auth.py status` (sans réseau) ou `verify`
   (appel réel du MCP). **Retirer :** `./install.sh --no-coros` (ne touche jamais une
   entrée `coros` ajoutée à la main), puis `arc_coros_auth.py logout`.
