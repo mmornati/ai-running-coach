@@ -116,7 +116,7 @@ Garmin : `arc_cs.compare_threshold` (signalé, jamais arbitré).
 
 ## Cible FC pour Intervals.icu : en % de SA FC au seuil, jamais en bpm
 
-`icu_hr_lthr_target(bounds_bpm, lthr_bpm)` rend `"80.6-87.7% LTHR"` : la syntaxe que
+`intervals_hr_lthr_target(bounds_bpm, lthr_bpm)` rend `"80.6-87.7% LTHR"` : la syntaxe que
 `intervals-icu-best-practices` écrit dans la description d'un événement. Constaté le
 22 octobre 2026 (montre COROS, envoi des séances planifiées par Intervals.icu) : une
 étape `137-149bpm` arrive sur la montre SANS cible FC et sans charge prévue côté
@@ -720,7 +720,7 @@ def validate_workout_step_dto(step: dict) -> List[str]:
     return errors
 
 
-def icu_hr_lthr_target(bounds_bpm: Sequence[float], lthr_bpm: float) -> str:
+def intervals_hr_lthr_target(bounds_bpm: Sequence[float], lthr_bpm: float) -> str:
     """Plage FC `[low, high]` (bpm) en syntaxe Intervals.icu `% LTHR` — voir la
     docstring du module (« Cible FC pour Intervals.icu »)."""
     if not lthr_bpm or lthr_bpm <= 0:
@@ -907,7 +907,7 @@ def build_arg_parser():
                      help="créneau retenu (défaut : best_slot de la séance, sinon du fichier météo)")
     ap.add_argument("--icu-lthr-bpm", dest="icu_lthr_bpm", type=float, metavar="N",
                      help="seuil FC course d'Intervals.icu (icu_get_sport_settings, Run, fthr_bpm) : ajoute "
-                          "hr_target.icu_target, la plage en %% LTHR à écrire dans la description de l'événement")
+                          "hr_target.intervals_target, la plage en %% LTHR à écrire dans la description de l'événement")
     ap.add_argument("--pace-s-km", dest="pace_s_km", type=float,
                      help="allure cible déclarée (s/km) à ralentir selon la chaleur (séances de qualité)")
     return ap
@@ -1025,7 +1025,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         _heat_from_cli(args, conn, conf, session, result)
     hr = result.get("hr_target") or {}
     if args.icu_lthr_bpm is not None and hr.get("bounds_bpm"):
-        hr["icu_target"] = icu_hr_lthr_target(hr["bounds_bpm"], args.icu_lthr_bpm)
+        hr["intervals_target"] = intervals_hr_lthr_target(hr["bounds_bpm"], args.icu_lthr_bpm)
     print(json.dumps(result, ensure_ascii=False))
     return 0
 

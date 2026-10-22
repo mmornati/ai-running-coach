@@ -86,9 +86,9 @@ never an invented number):
 - **HR target** → `- 60m 82.4-88.3% LTHR`: run the targets command with
   `--icu-lthr-bpm <fthr_bpm>` (the athlete's **Run** `fthr_bpm` from
   `icu_get_sport_settings`, read once per session — Intervals.icu converts back with
-  ITS threshold, not the profile's) and paste `hr_target.icu_target`. For a range the
+  ITS threshold, not the profile's) and paste `hr_target.intervals_target`. For a range the
   plan states directly (e.g. "161-168"), convert it the same way
-  (`arc_workout_targets.icu_hr_lthr_target`), never by hand. No `fthr_bpm` set in
+  (`arc_workout_targets.intervals_hr_lthr_target`), never by hand. No `fthr_bpm` set in
   Intervals.icu → say so and ask the athlete to set it; meanwhile keep the bpm range in
   the text only. `Z2 HR` uses Intervals.icu's own zones, not the profile's: only when the
   athlete wants those.
