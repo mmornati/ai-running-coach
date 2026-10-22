@@ -323,7 +323,22 @@ les premières nuits.
 **30 jours** (`exp − iat` = 2 592 000 s) ; `offline_access` donne un jeton de
 rafraîchissement, donc une durée, pas un accès à d'autres API. Une synchronisation
 sans tête devra renouveler et sauvegarder ce jeton avant l'échéance (rotation à
-usage unique selon le projet tiers, non vérifiée) : c'est le point encore ouvert.
+usage unique selon le projet tiers) : c'est le point encore ouvert.
+
+**Client OAuth à nous : constaté le 22 octobre 2026.** Le serveur publie ses
+métadonnées (`/.well-known/oauth-protected-resource/mcp`,
+`/.well-known/oauth-authorization-server`) : enregistrement dynamique de client
+(`/connect/register`, client public sans secret), code + PKCE `S256`, jeton de
+rafraîchissement et connexion par code d'appareil (`device_code`). Une sonde en
+bibliothèque standard a enregistré un client « ai-running-coach (sonde) » (201),
+obtenu un jeton après validation de l'athlète dans son navigateur (retour sur
+`127.0.0.1`, depuis WSL2), puis appelé le MCP **en HTTP direct, sans l'IA** :
+`initialize`, `tools/list` (34 outils), `queryTrainingSchedule`. Le rafraîchissement
+rend un nouveau jeton d'accès (30 jours) **et un nouveau jeton de rafraîchissement**
+(rotation constatée), et le MCP répond avec le nouveau jeton. Une synchronisation
+sans tête est donc possible avec des jetons propres au projet, sans toucher à ceux
+de Claude Code ; restent à mesurer la durée de vie du jeton de rafraîchissement et
+le refus de l'ancien après rotation.
 
 **API privée de Training Hub : jeton refusé.** Une sonde en lecture seule
 (calendrier du jour sur `teameuapi.coros.com`, en-tête `accessToken` puis
