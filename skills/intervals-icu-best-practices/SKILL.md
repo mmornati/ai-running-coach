@@ -256,6 +256,9 @@ sessions follow as the window moves. Nothing to call for that — just push here
 - Changes and deletions made here follow on COROS inside the 7-day window (forum report).
 - Never also push the same session with `createScheduledWorkout`: the watch would show it
   twice, and only the COROS app can remove one.
+- **Strength exception**: when the athlete chose to receive a strength session as one of
+  their COROS templates (`coros-workout-scheduling` → "Strength sessions"), that session
+  is left out of the Intervals.icu push (otherwise its text version arrives too).
 - If the `coros` MCP server is connected, `queryTrainingSchedule` (read-only) can confirm
   arrival on the watch calendar. Missing session → say so (upload disabled, beyond 7 days,
   HR zones not set in Intervals.icu, a syntax error, a connection filter), never re-push it

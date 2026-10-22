@@ -1,6 +1,6 @@
 ---
 name: coros-workout-scheduling
-description: COROS watch scheduling. With `[data].source = "intervals"` (the recommended setup) sessions are pushed to Intervals.icu, which uploads the next 7 days to COROS — this skill then only checks arrival read-only with queryTrainingSchedule. Otherwise (e.g. Strava as source, or on explicit request) it pushes running / trail / cycling sessions through the official COROS MCP server (`coros`, OAuth, added by the athlete in an interactive session): verified tools (queryTrainingSchedule, createScheduledWorkout, queryScheduledWorkoutDetails, updateScheduledWorkout), course schema and per-sport limits (trail has no time target, no strength), personal targets converted and validated by scripts/arc_coros_workout.py, check-before-push idempotency (there is NO delete or move tool), verify-after-push. Interactive only, explicit "yes" per push, never headless.
+description: COROS watch scheduling. With `[data].source = "intervals"` (the recommended setup) sessions are pushed to Intervals.icu, which uploads the next 7 days to COROS — this skill then only checks arrival read-only with queryTrainingSchedule. Otherwise (e.g. Strava as source, or on explicit request) it pushes running / trail / cycling sessions through the official COROS MCP server (`coros`, OAuth, added by the athlete in an interactive session): verified tools (queryTrainingSchedule, createScheduledWorkout, queryScheduledWorkoutDetails, updateScheduledWorkout), course schema and per-sport limits (trail has no time target; strength cannot be created, only scheduled from the athlete's own COROS library templates with scheduleWorkout), personal targets converted and validated by scripts/arc_coros_workout.py, check-before-push idempotency (there is NO delete or move tool), verify-after-push. Interactive only, explicit "yes" per push, never headless.
 ---
 
 # COROS Workout Scheduling
@@ -44,10 +44,12 @@ Observed on 2026-10-22 (first week uploaded, read back with the `coros` tools):
 - A session deleted in Intervals.icu disappears from the COROS calendar (verified).
 - COROS keeps only the **first paragraph** of the description, cut around 250 characters:
   put what matters for the run (main HR range, key instruction) there.
-- Strength (`WeightTraining`) sessions do arrive, which the COROS MCP cannot create.
+- Strength (`WeightTraining`) sessions do arrive, as name + description only (no exercises).
+  For a structured strength session on the watch, see "Strength sessions" below.
 
 This skill's push path is for an athlete whose `[data].source` is NOT `intervals` (e.g.
-`strava`), or who explicitly asks for a direct COROS push.
+`strava`), or who explicitly asks for a direct COROS push. Exception, whatever the source:
+structured strength from the athlete's COROS templates ("Strength sessions" below).
 
 ## When this applies
 
@@ -74,15 +76,19 @@ This skill's push path is for an athlete whose `[data].source` is NOT `intervals
 | Push a new session on a date | `createScheduledWorkout(date, course)` | One call per session. `date` from today to today + 90 days (COROS profile timezone). Returns `idInPlan`. |
 | Read a pushed session | `queryScheduledWorkoutDetails(date, idInPlan)` | Summary + `Course JSON` + `Editable via MCP: yes/no` (+ reasons). |
 | Change a pushed session | `updateScheduledWorkout(date, idInPlan, course)` | **Full replacement** of that date's copy; always start from the Course JSON just read. Cannot move it to another date. Verified 2026-10-22: read back identical, same `idInPlan`, no duplicate. |
+| The athlete's strength templates | `queryWorkoutLibrary(sportType=4)` | Name, estimated time, step count, Workout ID (never shown). See "Strength sessions". |
+| Put a strength template on a date | `scheduleWorkout(workoutId, date)` | `workoutId` as a decimal **string**. Any sport of the athlete's library, strength included. Verified 2026-10-23. |
 
 Not used by this project: `createTrainingPlan` / `updateTrainingPlan` /
 `queryTrainingPlan*` (the plan lives in `planning/`, never duplicated as a COROS plan),
-and the library tools `createSingleWorkout` / `scheduleWorkout` /
-`updateWorkoutDetails` / `queryWorkout*` (a library template is not needed to put a
-session on a date). **There is no delete, unschedule or move tool**: a wrong or stale
+and the library tools `createSingleWorkout` / `updateWorkoutDetails` (a library template
+is not needed to put a running/trail/cycling session on a date). `scheduleWorkout` and
+`queryWorkoutLibrary` / `queryWorkoutDetails` serve strength only. **There is no delete, unschedule or move tool**: a wrong or stale
 session can only be removed in the COROS app — tell the athlete exactly which one.
 
-`idInPlan` is a small per-date counter ("1", "2"; it does not always start at 1), not a global id. Never show it to the
+`idInPlan` is a small counter ("1", "2"; it does not always start at 1), not a global id: on
+2026-10-23 a scheduled template and an Intervals.icu session on two other dates both had
+`4`. Always designate a session by **date + `idInPlan`** together. Never show it to the
 athlete; re-read it from `queryTrainingSchedule` when needed rather than storing it.
 
 ## Course schema
@@ -107,7 +113,7 @@ athlete; re-read it from `queryTrainingSchedule` when needed rather than storing
 
 | Field | Values |
 |---|---|
-| `sportType` (session) | 1 running · 2 cycling · 5 trail running. **No strength, no other sport.** Not the activity codes (100 run, 102 trail…) seen in recorded activities. |
+| `sportType` (session) | 1 running · 2 cycling · 5 trail running. **No strength (see "Strength sessions"), no other sport.** Not the activity codes (100 run, 102 trail…) seen in recorded activities. |
 | `sectionType` | 1 warm-up · 2 training · 3 recovery · 4 cool-down (inside a group: 2 or 3 only) |
 | `targetType` | 1 distance (m) · 2 time (s) · 3 climb (m) · 4 free (lap button, no `targetValue`) |
 | per sport | running / cycling: 1, 2, 4 · **trail: 1, 3, 4 — no time target** |
@@ -156,6 +162,43 @@ time, distance or load estimate — do not report one.
 A climb target (`targetType 3`) is used only when the plan states a D+ per repetition
 (e.g. "≥ 27 m D+ par répétition", from `hill_repeats`): the rep ends at that D+.
 
+## Strength sessions — the athlete's own templates (verified 2026-10-23)
+
+The MCP cannot create, read or edit a strength workout ("COROS sport type 4 (Strength)
+cannot be expressed by MCP"). It can **schedule** one the athlete built in the COROS app:
+
+1. **Templates, once, by the athlete.** In the COROS app, one template per strength session
+   the coach prescribes; usually 1-3, redone at a phase change. Give them the sheet copied
+   from the week file (exercises, rounds, reps or holds, per side), never invented; a rest the plan does not state is their choice — say so.
+   App facts seen 2026-10-23: a side = a separate exercise entry (or one entry "par côté"),
+   reps "N fois", holds "00:30", rounds as a "Répéter N fois" block, an exercise can sit
+   outside the block. French catalogue names: « Crunch », « Chien d'oiseau » (bird-dog),
+   « Couché sur le dos Pont des fessiers », « Extension mollets debout », « Gainage
+   latéral », « Étirement du chat et de la vache ». A McGill curl-up has no exact entry
+   (« Crunch » + a note: hold 10 s, one knee bent, hands under the lower back).
+2. **Find it**: `queryWorkoutLibrary(sportType=4)`. `queryWorkoutDetails` returns only
+   name and sport (empty Course JSON, `Editable via MCP: no`): **you cannot check the
+   exercises** — say so; the app or the watch is the only proof. A step count or an
+   estimated time far from the prescription is worth one line ("30 min estimées pour une
+   séance de 15 min : vérifie les séries dans l'app").
+3. **Match** the week's strength session to a template by name. None or ambiguous → ask,
+   never guess. If the day's prescription differs from the template (e.g. a 1-round
+   "activation" vs the 3-round template), say it in one line and let the athlete choose.
+4. Explicit "oui", then `scheduleWorkout(workoutId, date)`. Same date window as above; the
+   same template already on that date is not copied again.
+5. **Frozen copy**: the date gets a copy of the template as it is now. Editing the
+   template later does not change it, and the MCP cannot edit the copy: template edits
+   first, schedule after. No delete or move: the COROS app.
+6. **Verify**: `queryTrainingSchedule` lists it as "Standalone workout (scheduled from the
+   workout library)" with COROS's estimated time (verified 2026-10-23, then seen on the
+   watch with its exercises).
+
+**One channel per session.** With `[data].source = "intervals"`, a strength session
+scheduled this way is **not** pushed to Intervals.icu (its text version would reach the
+watch as a second session). If `queryTrainingSchedule` already shows the Intervals.icu copy
+on that date, do not schedule over it: offer to delete that Intervals.icu event first
+(`icu_delete_event`, its own explicit "oui"; it then leaves COROS), or keep the text version.
+
 ## Threshold pace (critical-speed check)
 
 `queryFitnessAssessmentOverview` returns COROS's `Threshold Pace` (text, e.g. `4:12 /km`, read on
@@ -166,8 +209,8 @@ by hand, and name it « allure seuil COROS ». It is never a target in itself.
 ## Workflow
 
 1. Read the session(s) from `planning/Semaine_<monday>.md`; apply guardrails/morning
-   check as above. Strength, rest and race-day sessions are not pushed: say so in one line
-   (strength stays in the week file, the COROS app has its own strength workouts).
+   check as above. Rest and race-day sessions are not pushed: say so in one line.
+   Strength goes through "Strength sessions" above (a template, never a created course).
 2. `queryTrainingSchedule(<first date>, <last date>)` for the range to push.
 3. Per session, build the course (targets above), then validate it:
    `python3 scripts/arc_coros_workout.py validate --file <course.json>` (or JSON on

@@ -154,8 +154,9 @@ le MCP COROS) :
 - la **description est tronquée** : COROS ne garde que le premier paragraphe, coupé
   vers 250 caractères. Ce qui compte pour la séance doit donc tenir dans ce premier
   paragraphe ;
-- le **renforcement arrive** (séance de type force, avec son nom et sa description),
-  ce que le MCP COROS ne sait pas créer ;
+- le **renforcement arrive** (séance de type force, avec son nom et sa description,
+  sans exercices) ; pour un renforcement structuré, voir
+  [Renforcement : vos séances types](#renforcement-vos-seances-types-23-octobre-2026) ;
 - la séance faite revient dans Intervals.icu avec l'appareil « COROS PACE 4 Pro », et
   son FIT se télécharge par `download_fit.py` sans changement (3 786 points : FC,
   allure, altitude, GPS, puissance, temps de contact, oscillation, longueur de pas).
@@ -318,11 +319,50 @@ en sont exclues). La durée prévue d'une étape va donc dans la description.
 **Règles du schéma de l'outil** (lues dans sa description, appliquées par
 `scripts/arc_coros_workout.py validate` ; seules la cible de durée, la plage FC
 absolue, la distance et le groupe de répétitions ont été poussés en vrai) :
-séances de course, trail et vélo seulement (pas de renforcement) ; pas de cible
+séances de course, trail et vélo seulement (pas de création de renforcement, voir
+ci-dessous) ; pas de cible
 de durée en trail (distance, D+ ou libre) ; un seul format d'intensité par
 section (zone, pourcentage ou valeurs absolues) ; allure en s/km entières ;
 groupes de 1 à 20 répétitions, sans imbrication ; dates d'aujourd'hui à
 aujourd'hui + 90 jours.
+
+### Renforcement : vos séances types (23 octobre 2026)
+
+Le MCP ne sait ni créer, ni lire, ni modifier une séance de renforcement (« COROS sport
+type 4 (Strength) cannot be expressed by MCP »). Il sait en revanche **planifier** une
+séance de votre bibliothèque COROS, renforcement compris (`scheduleWorkout`). D'où le
+partage :
+
+1. **Vous**, une fois : vous créez dans l'app COROS une séance type par renforcement que
+   le coach vous donne (en général 1 à 3, à refaire au changement de phase). Le coach peut
+   vous en recopier la fiche (exercices, tours, répétitions ou maintiens, par côté) ; les
+   repos qu'il ne précise pas sont à votre choix.
+2. **Le coach** retrouve la séance (`queryWorkoutLibrary`), vous la propose pour la date
+   prévue et la planifie après votre « oui ».
+
+Constaté sur deux séances créées par l'athlète (« Renfo lombaires », « Renfo descentes ») :
+
+- `queryWorkoutLibrary` les liste avec leur durée estimée et leur nombre de séries ;
+  `queryWorkoutDetails` ne rend que le nom et le sport : **le coach ne voit pas les
+  exercices**, seule l'app (ou la montre) fait foi ;
+- `scheduleWorkout` a posé « Renfo descentes » sur une date ; `queryTrainingSchedule` l'a
+  relue comme « Standalone workout (scheduled from the workout library) », et la séance
+  est **arrivée sur la montre avec ses exercices** ;
+- la date reçoit une **copie figée** : modifier ensuite la séance type ne la change pas, et
+  le MCP ne peut pas modifier la copie. Finir les retouches avant de planifier ; supprimer
+  ou déplacer se fait dans l'app ;
+- `idInPlan` n'est pas unique : cette copie et une séance envoyée par Intervals.icu à une
+  autre date avaient le même. Une séance se désigne par sa date **et** son `idInPlan` ;
+- dans l'app, un côté = un exercice à part (ou une seule entrée « par côté »), les tours
+  sont un bloc « Répéter N fois », un exercice peut rester hors du bloc. Noms du catalogue
+  en français : « Crunch », « Chien d'oiseau » (bird-dog), « Couché sur le dos Pont des
+  fessiers », « Extension mollets debout », « Gainage latéral », « Étirement du chat et de
+  la vache ». Le curl-up de McGill n'a pas d'équivalent exact : « Crunch » avec une note
+  (tenir 10 s, une jambe pliée, mains sous les lombaires).
+
+**Un seul canal par séance** : avec Intervals.icu comme source, un renforcement planifié
+ainsi n'est pas poussé vers Intervals.icu, sinon sa version texte arrive aussi sur la
+montre (deux séances le même jour).
 
 **Lectures : formes à relever.** La montre n'avait encore rien enregistré : les
 lectures santé ont répondu « No data » et `queryRecoveryStatus` « Recovery: -1% /
@@ -380,7 +420,8 @@ le refus de l'ancien après rotation.
 `Authorization: Bearer`) a répondu `1019 « Access token is invalid »` dans les deux
 cas : le jeton du MCP ne donne pas accès aux fonctions que seule l'API privée offre
 (suppression d'une séance, création de renforcement). Elles restent à faire dans
-l'app COROS ; le projet n'utilise pas la connexion par mot de passe de l'API privée
+l'app COROS (le renforcement créé dans l'app se planifie ensuite par le MCP, voir
+plus haut) ; le projet n'utilise pas la connexion par mot de passe de l'API privée
 (voir plus haut).
 
 ## Utilisation manuelle, en interactif (hors périmètre du projet)
