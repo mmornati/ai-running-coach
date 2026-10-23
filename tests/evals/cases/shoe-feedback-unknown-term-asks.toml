@@ -10,7 +10,7 @@ responses = "fr"
 [expect]
 files_with_arc_block = ["activities/*.md"]
 must_match = [
-  "couin[^\\n]{0,160}(\\?|pr[ée]cis|reformul|peux-tu|pouvez-vous)|(pr[ée]cis|reformul)[^\\n]{0,160}couin",
+  "couin[^\\n]{0,160}(\\?|\\bpr[ée]cis(er|e|ez)\\b|reformul|peux-tu|pouvez-vous)|\\b(pr[ée]cis(er|e|ez)|reformul)[^\\n]{0,160}couin",
 ]
 
 [[expect.arc_field]]

@@ -131,6 +131,9 @@ de la séance, `shoe_feedback` = `{comfort, issues[], notes}` :
 | `poor_grip` | manque d'adhérence |
 | `upper_tear` | tige déchirée |
 
+Les pluriels, féminins, articles et intensificateurs sont tolérés (« ampoules », « trop dures », « mes
+Kipride ») ; une **négation** (« pas d'ampoule », « sans frottement », « pas de souci ») n'écrit jamais de problème.
+
 `zone` (facultatif) reprend les zones des inspections photo (`heel_lateral`, `forefoot_central`, `toe`…) et
 `side` vaut `left` ou `right`. Un terme hors liste, une zone vague (« sous le pied ») ou un confort hors de
 0-10 déclenchent une **question**, jamais une devinette. Le retour est **rattaché à la paire de la
@@ -160,7 +163,7 @@ python3 scripts/arc_index.py shoe-feedback --gear kipride-max-1 --text
 ```
 
 Lecture seule. Par paire : nombre de séances avec retour, confort (moyenne, min, max, dernier), problèmes
-comptés par `kind` et par zone, retours récents, bilan de retraite. Les chiffres sont **déclaratifs** :
+comptés par `kind` et par zone (en nombre de **séances** touchées), retours récents, bilan de retraite. Les chiffres sont **déclaratifs** :
 corrélation, pas causalité. Les boutons Telegram « confort » après une séance ne font pas partie de cette
 étape.
 

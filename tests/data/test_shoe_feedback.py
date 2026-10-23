@@ -166,8 +166,99 @@ class TestLogFrenchSentences(unittest.TestCase):
             self.assertEqual(out["shoe_feedback"]["entry"]["issues"], [{"kind": kind}], term)
 
     def test_every_closed_kind_is_reachable_from_french(self):
-        reachable = {L._map_shoe_kind(p) for phrases in L._SHOE_ISSUE_TERMS.values() for p in phrases}
+        reachable = {L._classify_shoe_term(p)["kind"] for phrases in L._SHOE_ISSUE_TERMS.values() for p in phrases}
         self.assertEqual(reachable, set(C.SHOE_ISSUE_KIND))
+
+    def test_every_table_phrase_maps_to_its_own_kind(self):
+        for kind, phrases in L._SHOE_ISSUE_TERMS.items():
+            for phrase in phrases:
+                self.assertEqual(L._classify_shoe_term(phrase)["kind"], kind, phrase)
+
+    def test_plurals_agreement_articles_and_intensifiers(self):
+        cases = {"ampoules": "blister", "des cloques": "blister", "frottements": "hot_spot",
+                 "trop dures": "too_firm", "mousse trop dure": "too_firm", "orteils très serrés": "toe_box_tight",
+                 "avant-pied trop serré": "toe_box_tight", "un peu instable": "instability",
+                 "les lacets trop serrés": "lacing_pressure", "orteils à l'étroit": "toe_box_tight",
+                 "tige abîmée": "upper_tear", "trop molle": "too_soft"}
+        for term, kind in cases.items():
+            self.assertEqual(L._classify_shoe_term(term)["kind"], kind, term)
+
+    def test_negations_are_never_logged(self):
+        for term in ("pas d'ampoule", "aucune ampoule", "sans ampoule", "plus d'ampoule", "pas instable",
+                     "pas trop dur", "pas de frottement", "jamais de point chaud", "pas de souci",
+                     "pas de problème", "rien", "ni ampoule ni frottement"):
+            out = self.run_log({"pair": "Kipride", "issues": [{"term": term}], "notes": ""})
+            shoe = out["shoe_feedback"]
+            self.assertEqual(shoe["entry"].get("issues"), None, term)
+            self.assertEqual(shoe["unknown"], [], term)
+            self.assertEqual(shoe["negated"], [term], term)
+            self.assertNotIn("shoe_feedback", out.get("activity_merge", {}), term)
+
+    def test_negation_in_one_clause_does_not_hide_a_real_issue(self):
+        cls = L._classify_shoe_term("pas de souci au talon, mais une ampoule")
+        self.assertEqual(cls["kind"], "blister")
+        self.assertFalse(cls["negated"])
+
+    def test_comfort_with_a_negated_issue_is_still_written(self):
+        out = self.run_log({"pair": "Kipride", "comfort": "8", "issues": [{"term": "pas d'ampoule"}]})
+        self.assertTrue(out["shoe_feedback"]["ready"])
+        self.assertEqual(out["activity_merge"]["shoe_feedback"], {"comfort": 8.0})
+
+    def test_zone_and_side_inside_the_term(self):
+        out = self.run_log({"pair": "Kipride", "issues": [{"term": "Ampoule au talon gauche"}]})
+        self.assertEqual(out["shoe_feedback"]["entry"]["issues"],
+                         [{"kind": "blister", "zone": "heel_central", "side": "left"}])
+        out = self.run_log({"pair": "Kipride", "issues": [{"term": "talon qui bouge"}]})
+        self.assertEqual(out["shoe_feedback"]["entry"]["issues"], [{"kind": "heel_slip"}])
+        out = self.run_log({"pair": "Kipride", "issues": [{"term": "ampoule au talon", "zone": "avant-pied"}]})
+        self.assertEqual(out["shoe_feedback"]["entry"]["issues"], [{"kind": "blister", "zone": "forefoot_central"}])
+
+    def test_pair_with_article_and_plural(self):
+        for said in ("mes Kipride", "les kipride max", "Kipride"):
+            self.assertEqual(L.resolve_pair(said, GEARS), {"gear_id": "kipride-max-1"}, said)
+
+    def test_exact_name_does_not_hide_an_ambiguity(self):
+        gears = [{"gear_id": "pegasus", "name": "Nike Pegasus"}, {"gear_id": "pegasus-41", "name": "Nike Pegasus 41"},
+                 {"gear_id": "speedgoat", "name": "Hoka Speedgoat 5"},
+                 {"gear_id": "speedgoat6", "name": "Hoka Speedgoat 6"}]
+        for said in ("Pegasus", "Speedgoat", "nike pegasus"):
+            res = L.resolve_pair(said, gears)
+            self.assertEqual(res["reason"], "ambiguous_pair", said)
+        self.assertEqual(L.resolve_pair("pegasus 41", gears), {"gear_id": "pegasus-41"})
+        self.assertEqual(L.resolve_pair("speedgoat 6", gears), {"gear_id": "speedgoat6"})
+
+    def test_notes_survive_repeated_logs(self):
+        arc = {"gear_id": "kipride-max-1"}
+        for note, expected in (("A", "A"), ("B", "A ; B"), ("A", "A ; B"), ("C", "A ; B ; C"),
+                               ("A ; B ; C", "A ; B ; C")):
+            out = L.process({"declared_gear": GEARS, "existing_activity_arc": dict(arc),
+                             "shoe_feedback": {"notes": note}})
+            merged = out["activity_merge"]["shoe_feedback"]
+            self.assertEqual(merged["notes"], expected, note)
+            arc["shoe_feedback"] = merged
+
+    def test_confirmed_pair_overrides_the_run_gear(self):
+        payload = {"declared_gear": GEARS, "existing_activity_arc": {"gear_id": "ultra-glide-3", "gear_source": "garmin"},
+                   "shoe_feedback": {"pair": "Kipride", "comfort": "7"}}
+        self.assertEqual(L.process(payload)["shoe_feedback"]["needs_gear"]["reason"], "conflict")
+        payload["shoe_feedback"]["pair_confirmed"] = True
+        out = L.process(payload)
+        self.assertTrue(out["shoe_feedback"]["ready"])
+        merge = out["activity_merge"]
+        self.assertEqual((merge["gear_id"], merge["gear_source"]), ("kipride-max-1", "chat"))
+        data = activity(**merge)
+        self.assertEqual(C.validate(data), ([], []))
+
+    def test_confirmed_flag_without_a_named_pair_changes_nothing(self):
+        out = L.process({"declared_gear": GEARS, "existing_activity_arc": {"gear_id": "ultra-glide-3"},
+                         "shoe_feedback": {"comfort": "7", "pair_confirmed": True}})
+        self.assertEqual(out["shoe_feedback"]["gear_id"], "ultra-glide-3")
+        self.assertNotIn("gear_id", out["activity_merge"])
+
+    def test_new_activity_file_still_gets_an_activity_merge(self):
+        out = L.process({"declared_gear": GEARS, "shoe_feedback": {"pair": "Kipride", "comfort": "6"}})
+        self.assertEqual(out["activity_merge"]["gear_id"], "kipride-max-1")
+        self.assertEqual(out["activity_merge"]["shoe_feedback"], {"comfort": 6.0})
 
     def test_kipride_sentence(self):
         """« Kipride : ampoule sous le talon gauche, avant-pied serré, confort 6 »."""
@@ -350,7 +441,7 @@ class TestIndexAndCli(unittest.TestCase):
         self.assertEqual(kip["runs_with_feedback"], 2)
         self.assertEqual(kip["runs_with_issues"], 1)
         self.assertEqual(kip["comfort"], {"mean": 6.5, "min": 5, "max": 8, "last": 5, "n": 2})
-        self.assertEqual(kip["issue_counts"], {"blister": 1, "toe_box_tight": 1})
+        self.assertEqual(kip["issue_counts"], {"blister": 1, "toe_box_tight": 1})   # en séances
         self.assertEqual(kip["zone_counts"], {"heel_lateral": 1})
         self.assertEqual(kip["verdict"]["would_rebuy"], "yes_with_change")
         self.assertEqual(kip["name"], "Kiprun Kipride Max")
@@ -358,6 +449,14 @@ class TestIndexAndCli(unittest.TestCase):
         self.assertIsNone(ug["comfort"])
         self.assertEqual(ug["issue_counts"], {"poor_grip": 1})
         self.assertIn("pas causalité", report["note"])
+
+    def test_issue_counts_are_runs_not_occurrences(self):
+        rep = SH.feedback_report([
+            {"gear_id": "a", "date": "2026-10-01", "source_path": "x", "comfort": 5,
+             "issues": [{"kind": "blister", "side": "left"}, {"kind": "blister", "side": "right"}]},
+            {"gear_id": "a", "date": "2026-10-02", "source_path": "y", "comfort": 6,
+             "issues": [{"kind": "blister"}]}], [])
+        self.assertEqual(rep["pairs"][0]["issue_counts"], {"blister": 2})
 
     def test_run_without_feedback_is_not_counted(self):
         _, out = self.cli("--gear", "kipride-max-1")

@@ -143,9 +143,20 @@ tout ce calcul, en pur stdlib, déterministe et idempotent :
 - `shoe_feedback.needs_gear` : **demandez quelle paire avant d'écrire** — `no_gear` (séance sans
   `gear_id` et aucune paire citée : listez `candidates`, ne présumez JAMAIS la paire « par défaut »),
   `unknown_pair` (paire absente de `### Chaussures`), `ambiguous_pair` (listez les `candidates`),
-  `conflict` (la phrase cite une autre paire que celle de la séance : demandez laquelle est la bonne,
-  ne réattribuez jamais en silence). Une fois la réponse obtenue, rappelez `arc_log.py` avec `pair`
-  complété : c'est lui qui pose `gear_id` + `gear_source: "chat"` (déclaration de l'athlète prioritaire).
+  `conflict` (la phrase cite une autre paire que celle de la séance — par exemple celle attachée par
+  Garmin : demandez laquelle est la bonne, ne réattribuez jamais en silence). Une fois la réponse
+  obtenue, rappelez `arc_log.py` avec `pair` complété ; **si l'athlète confirme la paire qu'il avait
+  nommée contre celle de la séance, ajoutez `"pair_confirmed": true`** dans `shoe_feedback` : le script
+  pose alors `gear_id` + `gear_source: "chat"` (déclaration de l'athlète > matériel Garmin). Sans ce
+  drapeau le conflit se répéterait indéfiniment. Une paire dont le nom correspond à plusieurs paires du
+  profil (« Pegasus » avec `pegasus` et `pegasus-41`) est toujours `ambiguous_pair`, même si l'une
+  porte exactement ce nom : demandez.
+- **Négation = rien à écrire.** « Pas d'ampoule », « sans ampoule », « aucune ampoule », « plus d'ampoule »,
+  « pas instable », « pas trop dur », « pas de souci » ne sont **jamais** un problème : passez-les tels quels
+  dans `issues[].term` ou simplement omettez-les ; le script les range dans `shoe_feedback.negated` et
+  n'écrit rien pour eux (un confort ou une note donnés dans la même phrase sont écrits normalement).
+  N'inversez jamais une négation en problème, et ne transformez pas « pas d'ampoule » en `notes` sans
+  que l'athlète le demande.
 - Dans tous les cas, ne bloquez jamais les AUTRES parties de la phrase
   (liquide déclaré au gramme près, douleur, RPE valide) en attendant la
   réponse sur la seule partie ambiguë/inconnue.
@@ -207,7 +218,10 @@ risqueraient d'écraser la fusion l'un de l'autre.
 ### Retour de chaussant → `activities/` (#299)
 
 Même fichier, même agent, même passe que le reste d'`activity_merge` : recopiez
-`activity_merge.shoe_feedback` (et `gear_id`/`gear_source` s'ils y figurent) tels quels. Règles :
+`activity_merge.shoe_feedback` (et `gear_id`/`gear_source` s'ils y figurent) tels quels. Pour un fichier
+d'activité **créé par ce `/log`** (aucun `existing_activity_arc`), `activity_merge` est quand même rendu :
+recopiez-le dans le bloc minimal (`date`, `sport`, `duration_s` donnés par l'athlète, plus
+`activity_merge`). Règles :
 
 - **Pas de paire, pas d'écriture** : le contrat exige un `gear_id` sur la séance (la validation échoue
   sinon). C'est `needs_gear` qui force la question ci-dessus.

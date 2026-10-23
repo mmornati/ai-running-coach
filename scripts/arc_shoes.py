@@ -332,7 +332,7 @@ def feedback_report(feedback_rows: List[dict], spec_rows: List[dict], declared: 
     """Rapport de la commande `shoe-feedback` (#299), lecture seule. `feedback_rows` = lignes de la
     table `shoe_feedback` ({source_path, date, gear_id, comfort, issues (liste), notes}) ; `spec_rows`
     = [{source_path, data}] des fiches (pour le bilan de retraite). Agrégation PAR PAIRE : le confort
-    déclaré (moyenne, min/max, dernier) et le décompte des problèmes par `kind`. Un retour décrit une
+    déclaré (moyenne, min/max, dernier) et le nombre de SÉANCES touchées par chaque `kind` / zone. Un retour décrit une
     sensation de chaussant : jamais une cause de douleur (corrélation, pas causalité)."""
     by_gear: Dict[str, List[dict]] = {}
     for r in feedback_rows:
@@ -351,12 +351,12 @@ def feedback_report(feedback_rows: List[dict], spec_rows: List[dict], declared: 
         comforts = [r["comfort"] for r in rows if isinstance(r.get("comfort"), (int, float))]
         kinds: Dict[str, int] = {}
         zones: Dict[str, int] = {}
-        for r in rows:
-            for issue in r.get("issues") or []:
-                if isinstance(issue, dict) and issue.get("kind"):
-                    kinds[issue["kind"]] = kinds.get(issue["kind"], 0) + 1
-                    if issue.get("zone"):
-                        zones[issue["zone"]] = zones.get(issue["zone"], 0) + 1
+        for r in rows:       # comptés en SÉANCES (un même problème deux fois dans une séance compte une fois)
+            issues = [i for i in (r.get("issues") or []) if isinstance(i, dict) and i.get("kind")]
+            for kind in {i["kind"] for i in issues}:
+                kinds[kind] = kinds.get(kind, 0) + 1
+            for zone in {i["zone"] for i in issues if i.get("zone")}:
+                zones[zone] = zones.get(zone, 0) + 1
         pairs.append({
             "gear_id": gid, "name": names.get(gid), "runs_with_feedback": len(rows),
             "runs_with_issues": sum(1 for r in rows if r.get("issues")),
@@ -393,7 +393,7 @@ def render_feedback_text(rep: dict) -> str:
             lines.append(f"  confort : moyenne {c['mean']:g}/10 (min {c['min']:g}, max {c['max']:g}, "
                          f"dernier {c['last']:g}, n={c['n']})")
         if p["issue_counts"]:
-            lines.append("  problèmes : " + ", ".join(f"{k} ×{n}" for k, n in p["issue_counts"].items()))
+            lines.append("  problèmes (séances) : " + ", ".join(f"{k} ×{n}" for k, n in p["issue_counts"].items()))
         v = p.get("verdict")
         if v:
             change = f", changements voulus : {', '.join(v['change_wanted'])}" if v.get("change_wanted") else ""

@@ -15,7 +15,7 @@ responses = "fr"
 [expect]
 # Une vraie question sur la paire.
 must_match = [
-  "(quelle|laquelle|avec quelle|quelles)[^\\n]{0,60}(paire|chaussure)|(paire|chaussure)[^\\n]{0,60}\\?",
+  "(quelle|laquelle)[^\\n]{0,30}(paire|chaussure)|(speedgoat|pegasus|s/?lab)[^\\n]{0,80}\\?",
 ]
 # Ne jamais annoncer le retour comme écrit sans paire.
 must_not_match = [
