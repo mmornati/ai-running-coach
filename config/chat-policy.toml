@@ -130,7 +130,7 @@ read_options = ["--dir"]
 output_options = ["--output", "--json"]
 
 [shell.scripts."skills/fit-download/scripts/download_fit.py"]
-# `--source` : `coros` (#168) n'est pas encore une valeur de [data].source ; toutes les sources ne font que lire.
+# `--source` : garmin | intervals | strava | coros ; toutes les sources ne font que lire.
 flags = ["--json", "--overwrite"]
 value_options = ["--source"]
 read_options = ["--from-dir"]
@@ -191,13 +191,18 @@ fetch_domains = ["wttr.in", "overpass-api.de", "nominatim.openstreetmap.org"]
 # « leanproxy » : méta-outils de la passerelle (list_/search_) ; ses appels
 # invoke_tool sont ramenés au serveur réel par le backend (mcp:garmin.<outil>).
 # « strava » (#164, r-huijts/strava-mcp) nomme ses outils avec des tirets (get-recent-activities…).
-servers = ["garmin", "intervals", "Intervals_icu", "strava", "leanproxy"]
+# « coros » (#168) : relais du MCP officiel COROS (install.sh --coros, ou --source coros), outils en
+# camelCase (querySportRecords…).
+servers = ["garmin", "intervals", "Intervals_icu", "strava", "coros", "leanproxy"]
 # Lectures : préfixes de noms d'outils (les tirets sont ceux du serveur Strava). « icu_get_ » /
 # « icu_search_ » / « icu_list_ » : outils du serveur intervals.icu (fork hhopke, #165), tous préfixés
 # `icu_`. `icu_download_*` n'y figure PAS : ces outils écrivent un fichier local (paramètre
-# `output_path`) → approbation.
+# `output_path`) → approbation. COROS : « query » (lectures), `getActivityDetail` et
+# `analyzeActivityDetail` ; `downloadActivityFitFiles` n'y figure pas (approbation, FIT par
+# download_fit.py).
 read_prefixes = ["get_", "count_", "list_", "download_", "search_", "get-", "list-", "check-", "explore-",
-                 "icu_get_", "icu_search_", "icu_list_"]
+                 "icu_get_", "icu_search_", "icu_list_",
+                 "query", "getActivityDetail", "analyzeActivityDetail"]
 # Écritures : noms exacts ou motifs `*`. Un outil inconnu d'un serveur connu demande aussi l'approbation.
 write_tools = [
   "schedule_workout", "schedule_workouts", "schedule_week",
@@ -213,4 +218,7 @@ write_tools = [
   # intervals.icu (fork hhopke, #165) : tout outil `icu_*` qui modifie quelque chose.
   "icu_create_*", "icu_update_*", "icu_delete_*", "icu_bulk_*", "icu_add_*", "icu_apply_*",
   "icu_duplicate_*",
+  # COROS (#168) : les 7 écritures du MCP officiel (scripts/lib/sync_tools.sh, SYNC_COROS_WRITE_TOOLS).
+  "createScheduledWorkout", "updateScheduledWorkout", "scheduleWorkout", "createSingleWorkout",
+  "updateWorkoutDetails", "createTrainingPlan", "updateTrainingPlan",
 ]

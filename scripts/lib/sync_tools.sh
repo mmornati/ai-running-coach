@@ -13,8 +13,8 @@
 #               annotations `readOnlyHint` de src/intervals_icu_mcp/server.py ;
 #               les anciens noms sans préfixe (eddmann) restent refusés aussi.
 #   strava    — r-huijts/strava-mcp 1.2.1 (#164), outils à tirets.
-#   coros     — MCP officiel COROS (relais scripts/arc_coros_mcp.py, install.sh --coros), liste
-#               relevée le 22 octobre 2026 (docs/coros.md) ; = WRITE_TOOLS du relais.
+#   coros     — MCP officiel COROS (relais scripts/arc_coros_mcp.py, install.sh --coros ou
+#               --source coros), liste relevée le 22 octobre 2026 (docs/coros.md) ; = WRITE_TOOLS du relais.
 # =============================================================================
 
 # Préfixes d'un outil Garmin qui écrit (côté Garmin, ou un fichier local arbitraire).
@@ -69,6 +69,17 @@ SYNC_STRAVA_READ_TOOLS+=" get-activity-streams get-athlete-zones get-athlete-pro
 # pour les exécuteurs qui chargent tous les serveurs du projet (OpenCode, Cursor).
 SYNC_COROS_WRITE_TOOLS="createScheduledWorkout updateScheduledWorkout scheduleWorkout"
 SYNC_COROS_WRITE_TOOLS+=" createSingleWorkout updateWorkoutDetails createTrainingPlan updateTrainingPlan"
+# COROS, source de données (#168) : lectures utiles à la synchronisation (liste blanche Gemini).
+# `downloadActivityFitFiles` n'y est pas : le FIT passe par download_fit.py --source coros.
+SYNC_COROS_READ_TOOLS="querySportRecords getActivityDetail queryActivityLapData querySleepHrv"
+SYNC_COROS_READ_TOOLS+=" querySleepOverview queryRestingHeartRate queryRecoveryStatus queryDailyHealthData"
+SYNC_COROS_READ_TOOLS+=" queryMenstruationCycles queryTrainingSchedule queryScheduledWorkoutDetails"
+SYNC_COROS_READ_TOOLS+=" queryFitnessAssessmentOverview queryTrainingLoadAssessment queryUserInfo queryDevices"
+# Santé COROS refusée quand la santé du bilan vient d'Open Wearables (#220), comme pour Garmin.
+SYNC_COROS_HEALTH_TOOLS="querySleepHrv querySleepOverview queryRestingHeartRate queryRecoveryStatus"
+SYNC_COROS_HEALTH_TOOLS+=" queryDailyHealthData queryHealthCheckTimeSeries queryAvgHeartRate"
+SYNC_COROS_HEALTH_TOOLS+=" queryStressLevel queryStressTimeSeries"
+SYNC_DENY_COROS_HEALTH="${SYNC_DENY_COROS_HEALTH:-0}"
 
 # Outils d'écriture d'une source, un par ligne. intervals : noms `icu_` du serveur
 # épinglé, puis anciens noms sans préfixe (installation pas encore mise à jour).
@@ -102,12 +113,21 @@ sync_read_tools() {
             done ;;
         intervals) for tool in $SYNC_INTERVALS_READ_TOOLS; do printf 'icu_%s\n' "$tool"; done ;;
         strava) for tool in $SYNC_STRAVA_READ_TOOLS; do printf '%s\n' "$tool"; done ;;
+        coros)
+            for tool in $SYNC_COROS_READ_TOOLS; do
+                [[ "$SYNC_DENY_COROS_HEALTH" -eq 1 && " $SYNC_COROS_HEALTH_TOOLS " == *" $tool "* ]] \
+                    || printf '%s\n' "$tool"
+            done ;;
     esac
 }
 
 # Outils santé Garmin refusés pour cette source (vide hors du cas Open Wearables + Garmin), un par ligne.
 sync_health_denied_tools() {
     local tool
+    if [[ "$1" == "coros" && "$SYNC_DENY_COROS_HEALTH" -eq 1 ]]; then
+        for tool in $SYNC_COROS_HEALTH_TOOLS; do printf '%s\n' "$tool"; done
+        return 0
+    fi
     [[ "$1" == "garmin" && "$SYNC_DENY_GARMIN_HEALTH" -eq 1 ]] || return 0
     for tool in $SYNC_GARMIN_HEALTH_TOOLS; do printf '%s\n' "$tool"; done
 }

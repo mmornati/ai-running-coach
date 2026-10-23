@@ -1168,9 +1168,10 @@ def expected_keys(kind: str, data: dict, conf: dict) -> List[str]:
         return keys
     if kind == "health":
         mode = data.get("morning_check") or conf["morning_check"]
-        if data.get("health_source") == "openwearables":
+        if data.get("health_source") in ("openwearables", "coros"):
             # #218 : le score natif d'un autre fabricant va dans `provider_scores`, jamais dans
-            # `readiness_score` (valeur Garmin) — son absence n'est donc pas une dette.
+            # `readiness_score` (valeur Garmin) — son absence n'est donc pas une dette. Idem
+            # pour la récupération COROS (#168).
             return {"full": ["sleep_total_s", "hrv_overnight_ms", "resting_hr_bpm", "verdict"],
                     "minimal": ["verdict"]}.get(mode, [])
         return {

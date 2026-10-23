@@ -226,6 +226,54 @@ class TestRelay(unittest.TestCase):
         self.assertIn("arc_coros_auth.py login", out[0]["error"]["message"])
 
 
+class TestClient(unittest.TestCase):
+    """`arc_coros_mcp.Client` : appels d'outils sans IA (download_fit.py, garmin_watch.py)."""
+
+    INIT = (200, {"mcp-session-id": "S1"}, '{"jsonrpc":"2.0","id":1,"result":{"protocolVersion":"2025-06-18"}}')
+
+    def _answer(self, msg_id, text):
+        return (200, {}, json.dumps({"jsonrpc": "2.0", "id": msg_id,
+                                     "result": {"content": [{"type": "text", "text": text}]}}))
+
+    def test_text_encoded_as_json_string_is_decoded(self):
+        """Constaté le 23/10/2026 : COROS rend « "Sport Records…\\n…" » (chaîne JSON)."""
+        server = FakeServer([self.INIT, (202, {}, ""), self._answer(2, json.dumps("Sport Records\n1. Run"))])
+        relay, _ = _relay(server, tokens=iter(["T"] * 5))
+        self.assertEqual(M.Client(relay).call("querySportRecords"), "Sport Records\n1. Run")
+
+    def test_plain_text_is_kept_and_session_opened_once(self):
+        server = FakeServer([self.INIT, (202, {}, ""), self._answer(2, "a"), self._answer(3, '"quoted" text')])
+        relay, _ = _relay(server, tokens=iter(["T"] * 5))
+        client = M.Client(relay)
+        self.assertEqual(client.call("queryDevices"), "a")
+        self.assertEqual(client.call("queryDevices"), '"quoted" text')
+        self.assertEqual([b.get("method") for b, _ in server.sent],
+                         ["initialize", "notifications/initialized", "tools/call", "tools/call"])
+
+    def test_login_required_is_flagged(self):
+        def token(rejected=None):
+            raise A.CorosAuthError("COROS non connecté — lancez : python3 scripts/arc_coros_auth.py login", 2)
+        relay = M.Relay(post=FakeServer([]), token=token, url="https://mcp.example/mcp", env={})
+        with self.assertRaises(M.CallError) as ctx:
+            M.Client(relay).call("querySportRecords")
+        self.assertTrue(ctx.exception.login_required)
+
+    def test_network_error_is_not_a_login_problem(self):
+        def token(rejected=None):
+            raise A.CorosAuthError("COROS injoignable (timed out)", 3)
+        relay = M.Relay(post=FakeServer([]), token=token, url="https://mcp.example/mcp", env={})
+        with self.assertRaises(M.CallError) as ctx:
+            M.Client(relay).call("querySportRecords")
+        self.assertFalse(ctx.exception.login_required)
+
+    def test_read_only_client_cannot_write(self):
+        server = FakeServer([self.INIT, (202, {}, "")])
+        relay, _ = _relay(server, env={"COROS_READ_ONLY": "1"}, tokens=iter(["T"] * 5))
+        with self.assertRaises(M.CallError):
+            M.Client(relay).call("createScheduledWorkout", {"date": "20261024"})
+        self.assertNotIn("tools/call", [b.get("method") for b, _ in server.sent])
+
+
 class TestCli(_Dir):
     def test_login_refused_headless(self):
         err = io.StringIO()

@@ -952,6 +952,8 @@ def check_ntfy(config: dict) -> dict:
 # Outil `uv` dont l'interpréteur lit les FIT pour `skills/fit-download` (`--json`),
 # par source — le même que celui dans lequel `download_fit.py` se relance.
 FIT_READER_TOOLS = {"garmin": "garmin-mcp", "intervals": "intervals-icu-mcp"}
+# Source COROS (#168) : lecteur de FIT dédié (install.sh, `COROS_FIT_READER_DIR`).
+COROS_FIT_READER_REL = ".local/share/ai-running-coach/fit-reader/bin/python3"
 
 
 def _tool_python(tool: str, home: Path) -> Optional[Path]:
@@ -984,9 +986,16 @@ def check_fit_reader(config: dict, home: Path) -> dict:
             "`download_fit.py --source strava` (stdlib), aucun lecteur `fitparse` requis.",
             fix=None,
         )
-    tool = FIT_READER_TOOLS.get(source, FIT_READER_TOOLS["garmin"])
-    fix = f"./install.sh --source {source}" if source in FIT_READER_TOOLS else "./install.sh"
-    python = _tool_python(tool, home)
+    if source == "coros":
+        # COROS (#168) : environnement dédié créé par `./install.sh --source coros`.
+        tool = "fit-reader"
+        fix = "./install.sh --source coros"
+        candidate = home / COROS_FIT_READER_REL
+        python = candidate if candidate.is_file() and os.access(candidate, os.X_OK) else None
+    else:
+        tool = FIT_READER_TOOLS.get(source, FIT_READER_TOOLS["garmin"])
+        fix = f"./install.sh --source {source}" if source in FIT_READER_TOOLS else "./install.sh"
+        python = _tool_python(tool, home)
     if python is None:
         return build_check(
             check_id, "warning",
@@ -1104,9 +1113,15 @@ def check_coros_connection(workspace: Path, config: dict, home: Path, now: datet
     expiré n'est pas une panne (le relais le renouvelle). `probe` (`--probe-mcp`) : appel réel du MCP
     COROS par `arc_coros_auth.py verify`. Sans relais : `info`."""
     check_id = "coros_connection"
+    source = (config.get("data") or {}).get("source", "garmin")
     if str((config.get("coros") or {}).get("mcp", "off")).strip() != "relay":
+        if source == "coros":
+            # Source COROS (#168) : le relais est la source de données — sans lui, aucune lecture.
+            return build_check(check_id, "error",
+                               "[data].source = \"coros\" mais [coros].mcp ≠ \"relay\" : aucun serveur COROS déclaré.",
+                               fix="./install.sh --source coros")
         return build_check(check_id, "info", "[coros].mcp ≠ \"relay\" — montre COROS non installée.", fix=None)
-    fix_install = "./install.sh --coros"
+    fix_install = "./install.sh --source coros" if source == "coros" else "./install.sh --coros"
     relay = Path(__file__).resolve().parent / "arc_coros_mcp.py"
     try:
         servers = json.loads((workspace / ".mcp.json").read_text(encoding="utf-8")).get("mcpServers") or {}
@@ -1296,7 +1311,8 @@ def _mcp_gateway_only(workspace: Path) -> bool:
     if not isinstance(servers, dict):
         return False
     # Serveur direct : « garmin » ou tout nom commençant par « intervals » (Intervals_icu…), sans tenir compte de la casse.
-    direct = [n for n in servers if str(n).lower() == "garmin" or str(n).lower().startswith(("intervals", "strava"))]
+    direct = [n for n in servers if str(n).lower() in ("garmin", "coros")
+              or str(n).lower().startswith(("intervals", "strava"))]
     return "leanproxy" in servers and not direct
 
 
@@ -1645,6 +1661,12 @@ def check_gear_sync(workspace: Path, config: dict) -> dict:
             "attribuable par séance) ; attribution via le chat/défaut.",
             fix=None,
         )
+    if source == "coros":
+        return build_check(
+            check_id, "info",
+            "[data].source = \"coros\" — le MCP COROS n'expose aucun matériel ; attribution via le chat/défaut.",
+            fix=None,
+        )
     if source == "intervals":
         return build_check(
             check_id, "info",
@@ -1943,7 +1965,7 @@ def check_gear_history(workspace: Path, config: dict) -> dict:
     `activities/`, jamais l'index ni Garmin) ; jamais un avertissement."""
     check_id = "gear_history"
     source = (config.get("data") or {}).get("source", "garmin")
-    if source in ("intervals", "strava"):
+    if source in ("intervals", "strava", "coros"):
         return build_check(check_id, "info",
                            f"[data].source = \"{source}\" — pas de matériel Garmin à rattraper.", fix=None)
     with_id = without_gear = 0
@@ -1986,7 +2008,7 @@ def run_single_check(check_id: str, workspace: Path, now: datetime, tokens_dir: 
                      probe_ow: bool = True, probe_llm: bool = False) -> dict:
     config = _load_config(workspace)
     source = (config.get("data") or {}).get("source", "garmin")
-    if check_id in ("garmin_token", "garmin_mcp") and source in ("intervals", "strava"):
+    if check_id in ("garmin_token", "garmin_mcp") and source in ("intervals", "strava", "coros"):
         return check_garmin_check_not_applicable(check_id, source)
     if check_id == "garmin_token":
         return check_garmin_token(now, tokens_dir)

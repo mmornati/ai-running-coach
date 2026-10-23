@@ -155,7 +155,8 @@ GEMINI_CONFIG_FILE="$ARC_WORKSPACE/.arc/sync/gemini-system.json"
 # Déclencheurs détectés par scripts/garmin_watch.py (#watch) : un indice pour
 # l'agent (quoi récupérer en priorité), jamais une restriction — les dates
 # manquantes de la fenêtre restent récupérées. Format fermé : il finit dans un prompt.
-if [[ -n "$TRIGGER" && ! "$TRIGGER" =~ ^(morning|activity:[0-9]+)(,(morning|activity:[0-9]+))*$ ]]; then
+# COROS (#168) : l'identifiant est le `coros_activity_id` du contrat (« c » + LabelId).
+if [[ -n "$TRIGGER" && ! "$TRIGGER" =~ ^(morning|activity:c?[0-9]+)(,(morning|activity:c?[0-9]+))*$ ]]; then
     die "Déclencheur invalide : « $TRIGGER » (attendu : morning, activity:<id>, séparés par des virgules)."
 fi
 SYNC_ARGS="lookback_days=$LOOKBACK"
@@ -174,6 +175,7 @@ SOURCE="$(toml_get data source garmin)"
 HEALTH_SOURCE="$(toml_get health source primary | tr '[:upper:]' '[:lower:]' | tr -d '[:space:]')"
 HEALTH_OW=0
 SYNC_DENY_GARMIN_HEALTH=0
+SYNC_DENY_COROS_HEALTH=0
 if [[ "$HEALTH_SOURCE" == "openwearables" ]]; then
     HEALTH_OW=1
     # « Une seule source santé par jour » IMPOSÉE, pas seulement demandée : avec une santé Open Wearables
@@ -181,6 +183,8 @@ if [[ "$HEALTH_SOURCE" == "openwearables" ]]; then
     # (scripts/lib/sync_tools.sh : SYNC_GARMIN_HEALTH_TOOLS). Avec intervals.icu on ne refuse RIEN :
     # icu_get_wellness_for_date sert aussi à la phase du cycle ; la règle passe alors par le prompt.
     [[ "$SOURCE" != "garmin" ]] || SYNC_DENY_GARMIN_HEALTH=1
+    # COROS (#168) : même règle, outils santé COROS (SYNC_COROS_HEALTH_TOOLS).
+    [[ "$SOURCE" != "coros" ]] || SYNC_DENY_COROS_HEALTH=1
 fi
 # Durcissement du run non surveillé : une consigne injectée dans une donnée synchronisée
 # (nom d'activité, description d'événement, fichier tiré par `git pull`) ne doit pas pouvoir
@@ -191,7 +195,21 @@ fi
 #     (une règle `Edit(…)` couvre tous les outils d'écriture de fichiers, Write compris).
 PYTHON_TOOLS="Bash(python3 scripts/*),Bash(python3 skills/*)"
 PROTECTED_PATHS="Edit(scripts/**),Edit(skills/**),Edit(local/skills/**),Edit(local/agents/**),Edit(.claude/**),Edit(.mcp.json)"
-if [[ "$SOURCE" == "strava" ]]; then
+if [[ "$SOURCE" == "coros" ]]; then
+    # Source COROS (#168) : relais du MCP officiel (nom « coros », scripts/arc_coros_mcp.py,
+    # install.sh --source coros). Lecture seule à deux niveaux : le relais refuse lui-même toute
+    # écriture (ARC_HEADLESS, COROS_READ_ONLY), et ses 7 outils d'écriture sont retirés par leur nom
+    # (liste partagée : scripts/lib/sync_tools.sh). Pas de leanproxy (garmin uniquement).
+    CLAUDE_TOOLS="mcp__coros,Agent,Task,Skill,Read,Write,Edit,Glob,Grep,$PYTHON_TOOLS"
+    CLAUDE_DISALLOWED=""
+    for _tool in $(sync_write_tools coros) $(sync_health_denied_tools coros); do
+        CLAUDE_DISALLOWED+="mcp__coros__${_tool},"
+    done
+    CLAUDE_DISALLOWED+="$PROTECTED_PATHS"
+    SOURCE_LABEL="COROS"
+    MCP_SERVER_NAME="coros"
+    AUTH_CMD_HINT="python3 scripts/arc_coros_auth.py login (session interactive, navigateur ; --device sans navigateur)"
+elif [[ "$SOURCE" == "strava" ]]; then
     # Source Strava (#164) : serveur MCP communautaire r-huijts/strava-mcp (nom « strava »,
     # install.sh --source strava). Lecture seule : on autorise tout le serveur, puis on retire
     # explicitement les trois outils qui agissent — `connect-strava` (ouvre un navigateur et un
@@ -275,7 +293,7 @@ fi
 COROS_RELAY=0
 [[ "$(toml_get coros mcp off | tr -d '[:space:]')" == "relay" ]] && COROS_RELAY=1
 export COROS_READ_ONLY=1
-if [[ "$COROS_RELAY" -eq 1 ]]; then
+if [[ "$COROS_RELAY" -eq 1 && "$SOURCE" != "coros" ]]; then
     for _tool in $(sync_write_tools coros); do
         CLAUDE_DISALLOWED+=",mcp__coros__${_tool}"
     done
@@ -389,8 +407,8 @@ for name, spec in servers.items():
         mcp[name]["environment"] = env
     for tool in named_writes.get(kind, []):
         permission["%s_%s" % (name, tool)] = "deny"
-    if name.lower() == "garmin":
-        # Santé lue chez Open Wearables (#220) : les outils santé Garmin sont refusés explicitement.
+    if kind in ("garmin", "coros"):
+        # Santé lue chez Open Wearables (#220) : les outils santé de la source sont refusés explicitement.
         for tool in denied_health:
             permission["%s_%s" % (name, tool)] = "deny"
     if name.lower().startswith("strava"):
@@ -641,7 +659,7 @@ detect_provider_failure() {
     local err="$1"
     PROVIDER_FAILURE=""
     [[ -n "$err" ]] || return 1
-    if printf '%s' "$err" | grep -qiE 'garmin|intervals|strava|open ?wearables'; then
+    if printf '%s' "$err" | grep -qiE 'garmin|intervals|strava|coros|open ?wearables'; then
         return 1
     fi
     if [[ -n "$SUBSCRIPTION_ID" ]]; then
@@ -760,7 +778,7 @@ build_command() {
             for _tool in $(sync_deny_tools "$SOURCE"); do
                 CMD+=("--deny-tool=$MCP_SERVER_NAME($_tool)")
             done
-            if [[ "$COROS_RELAY" -eq 1 ]]; then
+            if [[ "$COROS_RELAY" -eq 1 && "$SOURCE" != "coros" ]]; then
                 for _tool in $(sync_write_tools coros); do
                     CMD+=("--deny-tool=coros($_tool)")
                 done
@@ -791,8 +809,8 @@ build_command() {
                 || die "Cursor : .cursor/cli.json ne refuse pas les outils d'écriture $SOURCE_LABEL — relancez ./install.sh (ou l'installation guidée) avant la synchronisation."
             [[ "$COROS_RELAY" -eq 0 ]] || cursor_denies_coros || [[ "$DRY_RUN" -eq 1 ]] \
                 || die "Cursor : .cursor/cli.json ne refuse pas les outils d'écriture COROS — relancez ./install.sh --coros avant la synchronisation."
-            if [[ "$SYNC_DENY_GARMIN_HEALTH" -eq 1 ]] && ! cursor_denies_health && [[ "$DRY_RUN" -ne 1 ]]; then
-                warn "Cursor : .cursor/cli.json ne refuse pas les outils santé Garmin (santé lue chez Open Wearables) — seule la consigne du skill l'impose ; relancez ./install.sh."
+            if [[ "$SYNC_DENY_GARMIN_HEALTH" -eq 1 || "$SYNC_DENY_COROS_HEALTH" -eq 1 ]] && ! cursor_denies_health && [[ "$DRY_RUN" -ne 1 ]]; then
+                warn "Cursor : .cursor/cli.json ne refuse pas les outils santé $SOURCE_LABEL (santé lue chez Open Wearables) — seule la consigne du skill l'impose ; relancez ./install.sh."
             fi
             CMD=(cursor-agent -p --force --approve-mcps --trust --output-format text "$(skill_prompt)") ;;
         *) die "Exécuteur inconnu : $RUNNER (claude|codex|copilot|opencode|gemini|cursor)" ;;
@@ -1014,7 +1032,9 @@ except Exception:
 }
 
 check_token_alert() {
-    # Garmin uniquement (#68, #164) : intervals-icu-mcp et Strava n'ont pas d'échéance de token lisible ici
+    # Garmin uniquement (#68, #164, #168) : intervals-icu-mcp, Strava et COROS n'ont pas d'échéance de token lisible ici
+    # (COROS : le relais renouvelle seul son jeton de 30 jours, rotation du jeton de rafraîchissement ;
+    # un refus remonte par detect_auth_failure)
     # comparable (clé API + ID athlète, pas d'OAuth à durée limitée) —
     # `coach_doctor.py --check garmin_token` n'a d'ailleurs aucun sens à lire
     # ici pour cette source. Skip explicite, jamais une fausse alerte Garmin.
@@ -1174,7 +1194,13 @@ detect_auth_failure() {
     AUTH_FAILURE_LINE=""
     # Dernier run : à partir de son en-tête (« runner= »), pas du pied « fin code= » qui le clôt.
     run_log="$(awk '/^===== .* runner=/{buf=""} {buf = buf $0 ORS} END{printf "%s", buf}' "$LOG_FILE" 2>/dev/null)"
-    if [[ "$SOURCE" == "strava" ]]; then
+    if [[ "$SOURCE" == "coros" ]]; then
+        # Textes réels du relais du projet (scripts/arc_coros_auth.py, CorosAuthError, relayés par
+        # scripts/arc_coros_mcp.py en « COROS : … ») : connexion absente, jeton de rafraîchissement
+        # absent ou refusé, jeton refusé par le MCP.
+        raw_pattern='coros non connect|pas de jeton de rafra.{1,2}chissement|jeton refus.{1,2} par coros|rafra.{1,2}chissement refus.{1,2} par coros'
+        erreur_pattern='^ERREUR.*(arc_coros_auth|jetons? coros|coros.*(expir|invalid|refus|non connect)|401)'
+    elif [[ "$SOURCE" == "strava" ]]; then
         # Textes réels du serveur r-huijts/strava-mcp (src/stravaClient.ts, commit épinglé par
         # install.sh) : « Failed to refresh Strava access token » et « Missing refresh
         # credentials. Please connect your Strava account first… » ; « Request failed with status
@@ -1258,7 +1284,7 @@ try:
 except (OSError, ValueError, AttributeError):
     sys.exit(1)
 # Serveur direct : « garmin » ou tout nom commençant par « intervals » (Intervals_icu, intervals-icu…), sans tenir compte de la casse.
-direct = [n for n in servers if n.lower() == "garmin" or n.lower().startswith(("intervals", "strava"))]
+direct = [n for n in servers if n.lower() in ("garmin", "coros") or n.lower().startswith(("intervals", "strava"))]
 sys.exit(0 if "leanproxy" in servers and not direct else 1)
 ' "$config"
 }

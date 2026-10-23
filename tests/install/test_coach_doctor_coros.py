@@ -40,6 +40,38 @@ def _setup(sb, *, relay=True, mcp=True, tokens=True, refresh=True, mode=0o600, l
             os.chmod(d / f, mode)
 
 
+class TestCorosSourceDoctor(InstallAsserts):
+    """`[data].source = "coros"` (#168) : relais obligatoire, contrôles Garmin non applicables."""
+
+    def _payload(self, sb, *checks):
+        args = ["--json", "--workspace", str(sb.repo), "--tokens-dir", str(sb.root / "tokens-absent")]
+        for check in checks:
+            args += ["--check", check]
+        proc = sb.script("coach_doctor.py", *args)
+        for secret in SECRETS:
+            self.assertNotIn(secret, proc.stdout + proc.stderr)
+        return {c["id"]: c for c in json.loads(proc.stdout)["checks"]}
+
+    def test_source_coros_without_relay_is_an_error(self):
+        with Sandbox() as sb:
+            (sb.repo / "config").mkdir(exist_ok=True)
+            (sb.repo / "config/workspace.user.toml").write_text('[data]\nsource = "coros"\n')
+            check = self._payload(sb, "coros_connection")["coros_connection"]
+            self.assertEqual(check["status"], "error")
+            self.assertEqual(check["fix"], "./install.sh --source coros")
+
+    def test_garmin_checks_are_info_and_fit_reader_points_to_coros(self):
+        with Sandbox() as sb:
+            _setup(sb)
+            (sb.repo / "config/workspace.user.toml").write_text('[data]\nsource = "coros"\n\n[coros]\nmcp = "relay"\n')
+            checks = self._payload(sb)
+            for check_id in ("garmin_token", "garmin_mcp", "gear_sync", "gear_history"):
+                self.assertEqual(checks[check_id]["status"], "info", check_id)
+            self.assertEqual(checks["coros_connection"]["status"], "ok", checks["coros_connection"])
+            self.assertEqual(checks["fit_reader"]["status"], "warning")
+            self.assertEqual(checks["fit_reader"]["fix"], "./install.sh --source coros")
+
+
 class TestCorosConnection(InstallAsserts):
     def _check(self, sb):
         proc = sb.script("coach_doctor.py", "--json", "--workspace", str(sb.repo),

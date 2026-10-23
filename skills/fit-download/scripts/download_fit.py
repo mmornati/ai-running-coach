@@ -138,9 +138,14 @@ _RELAUNCH = {
     # Strava (#164) : téléchargement stdlib et pas de FIT à lire — aucun module, aucun relancement.
     "strava": {"module": None, "env": "STRAVA_PYTHON", "tool": None, "fix": ""},
     # COROS (#168) : téléchargement stdlib par le relais du projet ; `--json` (lecture fitparse) relance
-    # au besoin avec le python de garmin-mcp ou d'intervals-icu-mcp (`_relaunch_for_fitparse`).
-    "coros": {"module": None, "env": "COROS_PYTHON", "tool": None, "fix": ""},
+    # au besoin avec le lecteur de FIT de `./install.sh --source coros` (`COROS_FIT_READER`), sinon le
+    # python de garmin-mcp ou d'intervals-icu-mcp (`_relaunch_for_fitparse`).
+    "coros": {"module": None, "env": "COROS_PYTHON", "tool": None,
+              "fix": "→ relancez ./install.sh --source coros (installe fitparse dans "
+                     "~/.local/share/ai-running-coach/fit-reader)"},
 }
+# Environnement dédié à la lecture des FIT de la source COROS (install.sh, `COROS_FIT_READER_DIR`).
+COROS_FIT_READER = "~/.local/share/ai-running-coach/fit-reader/bin/python3"
 
 
 _RELAUNCHED_ENV = "ARC_FIT_DOWNLOAD_RELAUNCHED"
@@ -153,16 +158,21 @@ def _relaunch_for_fitparse(argv: list[str]) -> None:
     if _module_available("fitparse"):
         return
     if not os.environ.get(_RELAUNCHED_ENV):
+        candidates = [os.environ.get("COROS_PYTHON") or "", os.path.expanduser(COROS_FIT_READER)]
+        py = pick_relaunch_candidate([c for c in candidates if c])
         for source in ("garmin", "intervals"):
+            if py:
+                break
             spec = _RELAUNCH[source]
             py = pick_relaunch_candidate(relaunch_candidates(
                 os.environ.get(spec["env"]), shutil.which(spec["tool"]), tool=spec["tool"]))
-            if py:
-                r = subprocess.run([py, os.path.abspath(__file__)] + argv,
-                                   env={**os.environ, _RELAUNCHED_ENV: "1"})
-                sys.exit(r.returncode)
+        if py:
+            r = subprocess.run([py, os.path.abspath(__file__)] + argv,
+                               env={**os.environ, _RELAUNCHED_ENV: "1"})
+            sys.exit(r.returncode)
     print("ERREUR : module 'fitparse' introuvable dans cet interpréteur.\n"
-          f"{_RELAUNCH['garmin']['fix']}\n{_RELAUNCH['intervals']['fix']}", file=sys.stderr)
+          f"{_RELAUNCH['garmin']['fix']}\n{_RELAUNCH['intervals']['fix']}\n{_RELAUNCH['coros']['fix']}",
+          file=sys.stderr)
     sys.exit(2)
 
 
@@ -645,26 +655,12 @@ class CorosUnavailable(CorosError):
 def _coros_call(tool: str, arguments: dict, relay=None) -> str:
     """Appel d'UN outil du MCP COROS par le relais du projet (`scripts/arc_coros_mcp.py` : jetons de
     `arc_coros_auth.py`, rafraîchis au besoin, jamais affichés). Rend le texte de la réponse."""
-    if relay is None:
-        import arc_coros_mcp  # noqa: E402 (sys.path déjà préparé en tête de module)
+    import arc_coros_mcp  # noqa: E402 (sys.path déjà préparé en tête de module)
 
-        relay = arc_coros_mcp.Relay()
-    relay.handle({"jsonrpc": "2.0", "id": 1, "method": "initialize",
-                  "params": {"protocolVersion": "2025-06-18", "capabilities": {},
-                             "clientInfo": {"name": "ai-running-coach/download_fit", "version": "1"}}})
-    relay.handle({"jsonrpc": "2.0", "method": "notifications/initialized"})
-    out = relay.handle({"jsonrpc": "2.0", "id": 2, "method": "tools/call",
-                        "params": {"name": tool, "arguments": arguments}})
-    msg = next((m for m in out if isinstance(m, dict) and m.get("id") == 2), None)
-    if msg is None:
-        raise CorosError(f"MCP COROS : aucune réponse à {tool}")
-    if "error" in msg:
-        raise CorosError(str((msg.get("error") or {}).get("message") or "erreur inconnue"))
-    result = msg.get("result") or {}
-    text = "\n".join(c.get("text", "") for c in result.get("content") or [] if isinstance(c, dict))
-    if result.get("isError"):
-        raise CorosError(f"MCP COROS : {text.strip()[:200] or tool + ' en erreur'}")
-    return text
+    try:
+        return arc_coros_mcp.Client(relay, name="ai-running-coach/download_fit").call(tool, arguments)
+    except arc_coros_mcp.CallError as exc:
+        raise CorosError(str(exc)) from exc
 
 
 def _download_one_coros(activity_id: str, out_dir: Path, want_json: bool, relay=None, opener=None) -> Path:

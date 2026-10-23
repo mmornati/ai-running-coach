@@ -14,6 +14,8 @@ hydratation, chaleur), jamais une règle automatique ni un diagnostic.
   "intervals" — la phase est lue dans le champ wellness `menstrualPhase`
              d'intervals.icu (même appel `icu_get_wellness_for_date` que le bilan
              matinal, aucune installation à refaire).
+  "coros"  — la phase est lue sur COROS (`queryMenstruationCycles` du MCP officiel,
+             seulement avec `[data].source = "coros"`, #168).
   "manual" — la phase est déclarée par l'athlète (`/log`).
 La casse et les espaces autour de la valeur sont ignorés (« Garmin » = « garmin »,
 comme dans `install.sh`). Toute autre valeur (faute de frappe, type erroné) est
@@ -38,7 +40,7 @@ from datetime import date
 from pathlib import Path
 from typing import Dict, Optional
 
-MODES = ("off", "garmin", "intervals", "manual")
+MODES = ("off", "garmin", "intervals", "coros", "manual")
 DEFAULT_MODE = "off"
 
 # Phases du contrat `arc` (`health.cycle_phase`). Quatre phases, volontairement
@@ -46,7 +48,7 @@ DEFAULT_MODE = "off"
 # distinguent de façon fiable, et la littérature sur la performance ne permet
 # pas davantage de finesse (voir docs/cycle-menstruel.md).
 PHASES = ("menstrual", "follicular", "ovulation", "luteal")
-SOURCES = ("garmin", "intervals", "manual")
+SOURCES = ("garmin", "intervals", "coros", "manual")
 
 # Valeurs reçues d'une source ou dites par l'athlète → phase du contrat.
 # Normalisation : sans accent, minuscules, espaces/tirets/soulignés unifiés.
@@ -100,12 +102,12 @@ def cycle_tracking_mode(config: Dict[str, dict], warn=True) -> str:
 
 def effective_source(mode: str, data_source: str) -> str:
     """Source réellement utilisable pour `mode` compte tenu de `[data].source` :
-    "garmin" exige la source Garmin, "intervals" la source intervals.icu ; un mode qui ne
+    "garmin" exige la source Garmin, "intervals" la source intervals.icu, "coros" la source COROS ; un mode qui ne
     correspond pas à la source configurée (outil absent) retombe sur "manual" — la phase
     n'est alors connue que si l'athlète la déclare. "off" reste "off"."""
     if mode == "off":
         return "off"
-    if mode in ("garmin", "intervals"):
+    if mode in ("garmin", "intervals", "coros"):
         return mode if mode == (data_source or "garmin") else "manual"
     return "manual"
 

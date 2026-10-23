@@ -37,6 +37,8 @@ WRITE_TOOLS = frozenset({
 })
 
 PostFn = Callable[..., Tuple[int, dict, str]]
+# Toute erreur de `arc_coros_auth.py` qui exige une action de l'athlète porte cette commande.
+LOGIN_HINT = "arc_coros_auth.py login"
 
 
 def _log(msg: str) -> None:
@@ -107,7 +109,13 @@ class Relay:
         try:
             status, hdrs, text = self._forward(msg)
         except auth.CorosAuthError as e:
-            return [] if msg_id is None else [_error(msg_id, -32000, f"COROS : {e}")]
+            if msg_id is None:
+                return []
+            err = _error(msg_id, -32000, f"COROS : {e}")
+            # Connexion à refaire par l'athlète (absente, rafraîchissement refusé) : signalé à part
+            # pour les appelants sans IA (garmin_watch.py), qui ne doivent pas insister.
+            err["error"]["data"] = {"login_required": LOGIN_HINT in str(e)}
+            return [err]
         if hdrs.get("mcp-session-id"):
             self.session = hdrs["mcp-session-id"]
         if status in (202, 204) or msg_id is None:
@@ -128,6 +136,76 @@ class Relay:
                 result["tools"] = [t for t in result["tools"]
                                    if tool_permitted(t.get("name", ""), self.allow, self.read_only)]
         return out
+
+
+def _plain(text: str) -> str:
+    """COROS rend son texte encodé en chaîne JSON (« "Sport Records…\\n…" », constaté le 23/10/2026) :
+    décodé une fois ; tout autre texte est rendu tel quel."""
+    stripped = text.strip()
+    if len(stripped) >= 2 and stripped[0] == stripped[-1] == '"':
+        try:
+            decoded = json.loads(stripped)
+        except ValueError:
+            return text
+        if isinstance(decoded, str):
+            return decoded
+    return text
+
+
+class CallError(RuntimeError):
+    """Appel d'outil COROS en échec. `login_required` : la connexion du projet est à refaire."""
+
+    def __init__(self, message: str, login_required: bool = False):
+        super().__init__(message)
+        self.login_required = login_required
+
+
+class Client:
+    """Appels d'outils COROS SANS client d'IA (download_fit.py, garmin_watch.py) : le même relais,
+    donc les mêmes jetons, le même filtrage (lecture seule en headless) et la même reprise sur 401."""
+
+    def __init__(self, relay: Optional[Relay] = None, name: str = "ai-running-coach"):
+        self.relay = relay or Relay()
+        self.name = name
+        self._next_id = 1
+        self._ready = False
+
+    def _id(self) -> int:
+        self._next_id += 1
+        return self._next_id
+
+    def _open(self) -> None:
+        if self._ready:
+            return
+        out = self.relay.handle({"jsonrpc": "2.0", "id": 1, "method": "initialize",
+                                 "params": {"protocolVersion": "2025-06-18", "capabilities": {},
+                                            "clientInfo": {"name": self.name, "version": "1"}}})
+        self._raise_on_error(out, 1, "initialize")
+        self.relay.handle({"jsonrpc": "2.0", "method": "notifications/initialized"})
+        self._ready = True
+
+    @staticmethod
+    def _raise_on_error(out: List[dict], msg_id: int, what: str) -> Optional[dict]:
+        msg = next((m for m in out if isinstance(m, dict) and m.get("id") == msg_id), None)
+        if msg is None:
+            raise CallError(f"MCP COROS : aucune réponse à {what}")
+        if "error" in msg:
+            error = msg.get("error") or {}
+            data = error.get("data") if isinstance(error.get("data"), dict) else {}
+            raise CallError(str(error.get("message") or "erreur inconnue"), bool(data.get("login_required")))
+        return msg
+
+    def call(self, tool: str, arguments: Optional[dict] = None) -> str:
+        """Texte de la réponse de l'outil `tool` ; `CallError` si l'appel échoue."""
+        self._open()
+        msg_id = self._id()
+        out = self.relay.handle({"jsonrpc": "2.0", "id": msg_id, "method": "tools/call",
+                                 "params": {"name": tool, "arguments": arguments or {}}})
+        result = self._raise_on_error(out, msg_id, tool).get("result") or {}
+        text = "\n".join(_plain(c.get("text", "")) for c in result.get("content") or [] if isinstance(c, dict))
+        if result.get("isError"):
+            raise CallError(f"MCP COROS : {text.strip()[:200] or tool + ' en erreur'}")
+        return text
 
 
 def main() -> int:
