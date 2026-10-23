@@ -1136,11 +1136,11 @@ def check_coros_connection(workspace: Path, config: dict, home: Path, now: datet
     claude_store = _read_json_object(home / ".claude.json") or {}
     # Claude Code range le projet sous le chemin tel qu'il l'a vu, pas forcément résolu
     # (macOS : /var → /private/var, ou un workspace atteint par un lien symbolique).
+    # Plusieurs clés peuvent désigner le même dossier (lancé une fois par chaque chemin) : toutes comptent.
     target = os.path.realpath(workspace)
-    project = next((v for k, v in (claude_store.get("projects") or {}).items()
-                    if isinstance(v, dict) and os.path.realpath(k) == target), {})
-    local = project.get("mcpServers") or {}
-    if isinstance(local, dict) and "coros" in local:
+    locals_ = [v.get("mcpServers") for k, v in (claude_store.get("projects") or {}).items()
+               if isinstance(v, dict) and os.path.realpath(k) == target]
+    if any(isinstance(local, dict) and "coros" in local for local in locals_):
         return build_check(check_id, "warning",
                            "Une entrée « coros » ajoutée à la main dans Claude Code masque le relais du projet "
                            "(portée locale prioritaire) : deux connexions, et la vôtre n'est pas renouvelée par le projet.",

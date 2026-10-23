@@ -112,8 +112,10 @@ class TestCorosConnection(InstallAsserts):
             _setup(sb)
             link = sb.home / "lien-vers-le-depot"
             link.symlink_to(sb.repo)
+            # Deux clés pour le même dossier : seule la seconde porte l'entrée ajoutée à la main.
             (sb.home / ".claude.json").write_text(json.dumps(
-                {"projects": {str(link): {"mcpServers": {"coros": {"type": "http", "url": "https://mcpeu.coros.com/mcp"}}}}}))
+                {"projects": {str(sb.repo): {"mcpServers": {}},
+                              str(link): {"mcpServers": {"coros": {"type": "http", "url": "https://mcpeu.coros.com/mcp"}}}}}))
             self.assertEqual(self._check(sb)["status"], "warning")
 
     def test_not_connected_and_no_refresh_token(self):
