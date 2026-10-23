@@ -1,0 +1,23 @@
+# Retour de chaussant (#299) : un terme absent de la liste fermée (« couine ») n'est jamais rangé dans une
+# catégorie au hasard : le coach DEMANDE. Le reste de la phrase (ici le RPE) n'est pas bloqué.
+id = "shoe-feedback-unknown-term-asks"
+prompt = "/log Sortie de ce matin avec les Pegasus, running, 45 min : RPE 5, la chaussure droite couine à chaque foulée"
+fixture = "gear-three-pairs"
+
+[config.language]
+responses = "fr"
+
+[expect]
+files_with_arc_block = ["activities/*.md"]
+must_match = [
+  "couin[^\\n]{0,160}(\\?|pr[ée]cis|reformul|peux-tu|pouvez-vous)|(pr[ée]cis|reformul)[^\\n]{0,160}couin",
+]
+
+[[expect.arc_field]]
+glob = "activities/*.md"
+path = "rpe"
+equals = 5
+
+[[expect.arc_field_absent]]
+glob = "activities/*.md"
+paths = ["shoe_feedback"]

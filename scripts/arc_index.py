@@ -399,7 +399,9 @@ from coach_setup import ENGINE, workspace_root  # noqa: E402
 # trainer) : sans ce bump, l'insertion d'un fichier santé portant ces clés échouerait (« no such column »).
 # #298 : nouvelle table `shoe_spec` (fiches de caractéristiques des chaussures, `gear/specs/<gear_id>.md`) —
 # version 39 (38 = #218) : sans ce bump, une base déjà construite n'a pas la table (« no such table »).
-SCHEMA_VERSION = 39
+# #299 : nouvelle table `shoe_feedback` (retours de chaussant par séance, `activity.shoe_feedback`) — version 40
+# (39 = #298) : sans ce bump, une base déjà construite n'a pas la table (« no such table »).
+SCHEMA_VERSION = 40
 # Colonnes d'identifiant externe d'une séance, dans l'ordre de priorité de `activity_ref` — une séance n'en
 # porte qu'une (`workspace-data-contract`) ; Garmin prime si un fichier ancien en porte plusieurs.
 REF_COLUMNS = ("garmin_activity_id", "intervals_activity_id", "strava_activity_id")
@@ -1014,6 +1016,12 @@ CREATE TABLE shoe_spec (
     purchase_date TEXT, body_md TEXT, data_json TEXT
 );
 CREATE INDEX shoe_spec_gear ON shoe_spec(gear_id);
+-- Retours de chaussant (#299) : une ligne par séance portant `activity.shoe_feedback` ET un `gear_id`.
+-- `issues` : JSON (liste de {kind, zone?, side?}). Lu par `shoe_feedback()` (CLI `shoe-feedback`).
+CREATE TABLE shoe_feedback (
+    source_path TEXT, date TEXT, gear_id TEXT, comfort REAL, issues TEXT, notes TEXT
+);
+CREATE INDEX shoe_feedback_gear ON shoe_feedback(gear_id, date);
 """
 
 # Tables alimentées par fichier (colonne `source_path`) : purgées à la réindexation d'un fichier.
@@ -1021,7 +1029,7 @@ PER_FILE_TABLES = (
     "athlete", "objective", "health_day", "weather_day", "week", "planned_session",
     "nutrition_day", "report", "course_eval", "race_plan", "aid_station", "gear", "equipment",
     "performance_index", "performance_index_warning", "decision", "decision_rule",
-    "gear_inspection", "shoe_spec",
+    "gear_inspection", "shoe_spec", "shoe_feedback",
 )
 
 
@@ -1380,6 +1388,12 @@ def store(conn, rel: str, kind: str, data: dict, arc_version: int) -> None:
             "body_md": body,
             "data_json": _data_json(data),
         })
+        fb = g("shoe_feedback")
+        if isinstance(fb, dict) and g("gear_id"):
+            _insert(conn, "shoe_feedback", {
+                "source_path": rel, "date": g("date"), "gear_id": g("gear_id"), "comfort": fb.get("comfort"),
+                "issues": _j(fb.get("issues")), "notes": fb.get("notes"),
+            })
         for split in C.split_rows(data):
             _insert(conn, "activity_split", {
                 "activity_id": activity_id,
@@ -3566,6 +3580,28 @@ def shoe_specs(conn, gear_id: Optional[str] = None) -> dict:
     return SH.report(rows, declared_gear(conn), gear_id)
 
 
+def shoe_feedback(conn, gear_id: Optional[str] = None) -> dict:
+    """Retours de chaussant par paire (#299) — commande « shoe-feedback ». Lecture seule : confort
+    déclaré, problèmes par `kind`/zone, bilan de retraite (`shoe_spec.verdict`). Déclaratif, jamais
+    une cause de douleur ; #300 l'agrège dans `shoe-usage`."""
+    fb_rows = []
+    for r in conn.execute("SELECT source_path, date, gear_id, comfort, issues, notes FROM shoe_feedback "
+                          "ORDER BY gear_id, date, source_path"):
+        try:
+            issues = json.loads(r["issues"]) if r["issues"] else []
+        except (TypeError, ValueError):
+            issues = []
+        fb_rows.append({"source_path": r["source_path"], "date": r["date"], "gear_id": r["gear_id"],
+                        "comfort": r["comfort"], "issues": issues, "notes": r["notes"]})
+    spec_rows = []
+    for r in conn.execute("SELECT source_path, data_json FROM shoe_spec ORDER BY gear_id, source_path"):
+        try:
+            spec_rows.append({"source_path": r["source_path"], "data": json.loads(r["data_json"])})
+        except (TypeError, ValueError):
+            continue
+    return SH.feedback_report(fb_rows, spec_rows, declared_gear(conn), gear_id)
+
+
 # ---------------------------------------------------------------------------
 # CLI
 # ---------------------------------------------------------------------------
@@ -5073,7 +5109,7 @@ def build_parser() -> argparse.ArgumentParser:
                                  "climb-history", "decisions", "slope-model", "trail-shape", "energy", "equipment",
                                  "inspections", "gear-career", "gait-summary", "pace-curve",
                                  "decision-effects", "load-forecast", "plan-templates", "strength", "dem-check", "prevention", "plan-skeleton",
-                                 "power-hr", "history-summary", "shoe-specs"))
+                                 "power-hr", "history-summary", "shoe-specs", "shoe-feedback"))
     parser.add_argument("selector", nargs="?", default=None,
                         help="argument de la sous-commande (ex. garmin_activity_id, intervals_activity_id ou strava_activity_id "
                              "pour « samples »)")
@@ -5135,7 +5171,7 @@ def build_parser() -> argparse.ArgumentParser:
                         help="commande « energy » : nombre de dernières séances éligibles à rendre "
                              "sans --activity/--date/--since (défaut 10) — incompatible avec ces trois")
     parser.add_argument("--gear", metavar="GEAR_ID",
-                        help="commandes « inspections » (#135) et « shoe-specs » (#298) : restreint à cette paire ; commande "
+                        help="commandes « inspections » (#135), « shoe-specs » (#298) et « shoe-feedback » (#299) : restreint à cette paire ; commande "
                              "« gear-career » : paire dont on veut le bilan de carrière (obligatoire)")
     parser.add_argument("--unreferenced-photos", action="store_true",
                         help="commande « inspections » (#149) : ajoute `unreferenced_photos` (images de `gear/photos/` "
@@ -5406,6 +5442,11 @@ def main(argv=None) -> int:
         rep_specs = shoe_specs(conn, args.gear)
         print(SH.render_text(rep_specs) if args.text and not args.json else json.dumps(rep_specs, ensure_ascii=False))
         return 1 if "error" in rep_specs else 0
+    if args.command == "shoe-feedback":
+        rep_fb = shoe_feedback(conn, args.gear)
+        print(SH.render_feedback_text(rep_fb) if args.text and not args.json
+              else json.dumps(rep_fb, ensure_ascii=False))
+        return 1 if "error" in rep_fb else 0
     if args.command == "prevention":
         if args.days is not None and args.days < 1:
             raise ConfigError(f"--days : un entier >= 1 attendu, « {args.days} » reçu.")

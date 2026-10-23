@@ -113,6 +113,18 @@ configuration du workspace, ou forcé par `"cycle_tracking"` dans l'entrée (tes
 À `"off"`, la saisie est ignorée (`cycle.ignored = "tracking_off"`) : rien n'est
 jamais écrit, et l'agent ne la mentionne pas hors de ce refus.
 
+Retour de chaussant (#299, épopée #297) : `"shoe_feedback": {"pair": "Kipride", "comfort": "6",
+"issues": [{"term": "ampoule", "zone": "sous le pied", "side": "gauche"}, {"term": "avant-pied serré"}],
+"notes": "..."}` (+ `declared_gear` : [{gear_id, name}] ; à défaut, la section « Chaussures » du profil du
+workspace). Le modèle extrait des TERMES ; ce module les rattache à la liste fermée du contrat
+(`arc_contract.SHOE_ISSUE_KIND`), les zones à celles de `gear_inspection`, résout la paire et fusionne avec
+l'éventuel `shoe_feedback` déjà écrit. Sortie `shoe_feedback` : `ready`, `gear_id`, `entry`, `merged`,
+`unknown` (terme/zone/côté/confort inconnu → DEMANDER), `needs_gear` (`no_gear` | `unknown_pair` |
+`ambiguous_pair` | `conflict` → DEMANDER la paire). Tout-ou-rien pour cette partie seulement : tant que
+`ready` est faux, `activity_merge` ne porte pas `shoe_feedback` ; la douleur, le RPE et le ravitaillement de
+la même phrase sont traités normalement. La douleur reste dans `pain` : un retour de chaussant ne la remplace
+jamais et n'en est jamais présenté comme la cause.
+
 Bibliothèque standard uniquement (CONTRIBUTING.md).
 """
 
@@ -141,6 +153,14 @@ except Exception:       # pragma: no cover — repli défensif, voir resolve_pai
     _arc_index = None
     _arc_guardrails = None
     _arc_cycle = None
+try:
+    import arc_contract as _arc_contract  # noqa: E402
+    import arc_legacy as _arc_legacy  # noqa: E402
+except Exception:       # pragma: no cover
+    _arc_contract = None
+    _arc_legacy = None
+# Liste fermée des problèmes de chaussant : jamais dupliquée à la main (le contrat fait foi).
+_SHOE_KINDS = tuple(_arc_contract.SHOE_ISSUE_KIND) if _arc_contract is not None else ()
 
 # Repli si la configuration du workspace est illisible ou si l'import ci-dessus
 # a échoué (environnement minimal, tests unitaires isolés) — même valeur que
@@ -634,6 +654,230 @@ def merge_pain(existing_pain: Optional[list], new_entries: list) -> list:
     return list(existing_pain or []) + added
 
 
+# ---------------------------------------------------------------------------
+# Retour de chaussant (#299)
+# ---------------------------------------------------------------------------
+# Le modèle extrait des TERMES (« ampoule », « avant-pied serré ») ; ce module les rattache à la liste
+# FERMÉE `arc_contract.SHOE_ISSUE_KIND`. Un terme absent de la table est INCONNU : on demande, on ne
+# devine jamais un `kind`. Table volontairement stricte (formes normalisées : sans accent ni tiret).
+_SHOE_ISSUE_TERMS = {
+    "blister": ("ampoule", "cloque"),
+    "toe_box_tight": ("avant pied serre", "orteils serres", "orteil serre", "pointe serree",
+                      "boite a orteils serree", "trop etroit devant", "chaussure etroite devant"),
+    "heel_slip": ("talon qui bouge", "talon qui glisse", "talon flotte", "talon decolle",
+                  "glissement du talon", "talon ballotte"),
+    "hot_spot": ("point chaud", "points chauds", "echauffement", "frottement", "brulure"),
+    "numbness": ("engourdissement", "engourdi", "pied qui s endort", "pied endormi", "fourmillements"),
+    "lacing_pressure": ("pression des lacets", "lacets trop serres", "lacage trop serre", "lacage serre",
+                        "dessus du pied serre", "coup de pied serre"),
+    "instability": ("instable", "instabilite", "manque de stabilite", "pas stable"),
+    "too_soft": ("trop mou", "trop molle", "trop moelleux", "trop souple", "spongieux", "mousse trop molle"),
+    "too_firm": ("trop dur", "trop ferme", "mousse dure", "trop raide"),
+    "poor_grip": ("manque d adherence", "mauvaise adherence", "adherence faible", "mauvaise accroche",
+                  "manque d accroche", "patine", "glisse sur le mouille"),
+    "upper_tear": ("tige dechiree", "empeigne dechiree", "dessus dechire", "tige trouee", "trou dans la tige",
+                   "tige qui se dechire"),
+}
+_SHOE_ZONE_TERMS = (   # du plus spécifique au moins spécifique ; premier motif trouvé gagne
+    ("heel_posterolateral", ("talon postero lateral",)),
+    ("heel_lateral", ("talon externe", "talon lateral", "bord externe du talon")),
+    ("heel_medial", ("talon interne", "talon medial")),
+    ("heel_central", ("talon",)),
+    ("midfoot_lateral", ("medio pied externe", "milieu du pied externe", "voute externe", "medio pied lateral")),
+    ("midfoot_medial", ("medio pied interne", "milieu du pied interne", "voute interne", "medio pied medial")),
+    ("midfoot_central", ("medio pied", "milieu du pied", "voute", "arche")),
+    ("forefoot_lateral", ("avant pied externe", "avant pied lateral", "petit orteil", "cinquieme metatarse")),
+    ("forefoot_medial", ("avant pied interne", "avant pied medial", "oignon")),
+    ("forefoot_central", ("avant pied",)),   # « sous le pied » seul = trop vague : on demande
+    ("toe", ("gros orteil", "orteils", "orteil", "bout du pied", "pointe")),
+)
+_SHOE_SIDE_TERMS = (("left", ("gauche", "gauches")), ("right", ("droit", "droite", "droits", "droites")))
+
+
+def _contains_phrase(norm_text: str, phrase: str) -> bool:
+    return f" {phrase} " in f" {norm_text} "
+
+
+def _map_shoe_kind(term) -> Optional[str]:
+    raw = str(term or "").strip()
+    if raw in _SHOE_KINDS:                    # le modèle a déjà donné une valeur de la liste fermée
+        return raw
+    norm = normalize_name(raw)
+    for kind, phrases in _SHOE_ISSUE_TERMS.items():
+        if any(_contains_phrase(norm, p) for p in phrases):
+            return kind
+    return None
+
+
+def _map_shoe_zone(text) -> tuple:
+    """(zone, reconnue). Texte vide → (None, True) ; non reconnu → (None, False) : on demande."""
+    raw = str(text or "").strip()
+    if not raw:
+        return None, True
+    if _arc_contract is not None and raw in _arc_contract.GEAR_WEAR_ZONE:
+        return raw, True
+    norm = normalize_name(raw)
+    for zone, phrases in _SHOE_ZONE_TERMS:
+        if any(_contains_phrase(norm, p) for p in phrases):
+            return zone, True
+    return None, False
+
+
+def _map_shoe_side(text) -> tuple:
+    raw = str(text or "").strip()
+    if not raw:
+        return None, True
+    if raw in ("left", "right"):
+        return raw, True
+    norm = normalize_name(raw)
+    if norm in ("g", "gauche"):
+        return "left", True
+    if norm in ("d", "droit", "droite"):
+        return "right", True
+    for side, phrases in _SHOE_SIDE_TERMS:
+        if any(_contains_phrase(norm, p) for p in phrases):
+            return side, True
+    return None, False
+
+
+def _declared_gear_from(payload: dict, workspace: Optional[Path]) -> list:
+    """Paires connues : `declared_gear` de l'entrée ([{gear_id, name, ignored?}]) ou, à défaut, la section
+    « Chaussures » du profil du workspace. Liste vide si rien n'est lisible (alors on demande la paire)."""
+    given = payload.get("declared_gear")
+    if isinstance(given, list):
+        return [g for g in given if isinstance(g, dict) and g.get("gear_id")]
+    if workspace is None or _arc_legacy is None:
+        return []
+    try:
+        profile = Path(workspace) / "planning" / "Runner_Profile.md"
+        if profile.is_file():
+            return [g for g in _arc_legacy.parse_gear(profile.read_text(encoding="utf-8")) if g.get("gear_id")]
+    except Exception:
+        pass
+    return []
+
+
+def resolve_pair(text, declared: list) -> dict:
+    """Rattache ce que dit l'athlète (« Kipride », « les UG3 ») à UNE paire du profil. Rend
+    `{"gear_id": ...}` ou `{"reason": "unknown_pair" | "ambiguous_pair", "candidates": [...]}`. Jamais de devinette."""
+    query = normalize_name(str(text or ""))
+    pool = [g for g in declared if not g.get("ignored")]
+    if not query:
+        return {"reason": "no_gear", "candidates": [g["gear_id"] for g in pool]}
+    for g in pool:
+        if query == normalize_name(str(g.get("gear_id"))) or query == normalize_name(str(g.get("name") or "")):
+            return {"gear_id": g["gear_id"]}
+    words = [_singularize_word(w) for w in query.split()]
+    hits = []
+    for g in pool:
+        hay = {_singularize_word(w) for w in normalize_name(f"{g.get('name') or ''} {g['gear_id']}").split()}
+        if all(w in hay for w in words):
+            hits.append(g["gear_id"])
+    if len(hits) == 1:
+        return {"gear_id": hits[0]}
+    if not hits:
+        return {"reason": "unknown_pair", "candidates": [g["gear_id"] for g in pool]}
+    return {"reason": "ambiguous_pair", "candidates": hits}
+
+
+def merge_shoe_feedback(existing: Optional[dict], entry: dict) -> dict:
+    """Fusion avec un `shoe_feedback` déjà écrit sur la même séance : le confort REMPLACE (le dernier
+    déclaré prime, comme `rpe`), les problèmes s'UNISSENT sans doublon exact, les notes s'accolent."""
+    merged = dict(existing) if isinstance(existing, dict) else {}
+    if entry.get("comfort") is not None:
+        merged["comfort"] = entry["comfort"]
+    issues = list(merged.get("issues") or [])
+    for issue in entry.get("issues") or []:
+        if issue not in issues:
+            issues.append(issue)
+    if issues:
+        merged["issues"] = issues
+    if entry.get("notes"):
+        old = merged.get("notes")
+        merged["notes"] = f"{old} ; {entry['notes']}" if old and entry["notes"] not in old else entry["notes"]
+    return merged
+
+
+def compute_shoe_feedback(entry: dict, existing_activity_arc: Optional[dict], declared: list) -> dict:
+    """Normalise un retour de chaussant extrait par le modèle (#299).
+
+    `entry` : {"pair": "Kipride", "comfort": "6", "issues": [{"term": "ampoule", "zone": "sous le pied",
+    "side": "gauche"}], "notes": "..."}. Tout-ou-rien : tant qu'un terme est inconnu ou que la paire n'est pas
+    établie, `ready` vaut False et RIEN n'est à écrire pour la partie chaussant (le reste du `/log` — douleur,
+    RPE, ravitaillement — n'est jamais bloqué). La paire de la séance (`gear_id` déjà écrit) prime ; une paire
+    différente citée dans la phrase est un CONFLIT à trancher par l'athlète, jamais une réattribution silencieuse."""
+    unknown: list = []
+    out_issues: list = []
+    for raw in entry.get("issues") or []:
+        item = raw if isinstance(raw, dict) else {"term": raw}
+        kind = _map_shoe_kind(item.get("term", item.get("kind")))
+        if kind is None:
+            unknown.append({"field": "issue", "input": item.get("term", item.get("kind")),
+                            "reason": "terme hors de la liste fermée (ampoule, avant-pied serré, talon qui "
+                                      "bouge, point chaud, engourdissement, laçage trop serré, instable, "
+                                      "trop mou, trop dur, manque d'adhérence, tige déchirée)"})
+            continue
+        zone, zone_ok = _map_shoe_zone(item.get("zone"))
+        side, side_ok = _map_shoe_side(item.get("side"))
+        if not zone_ok:
+            unknown.append({"field": "zone", "input": item.get("zone"), "reason": "zone non reconnue"})
+        if not side_ok:
+            unknown.append({"field": "side", "input": item.get("side"), "reason": "côté non reconnu"})
+        if not (zone_ok and side_ok):
+            continue
+        issue = {"kind": kind}
+        if zone:
+            issue["zone"] = zone
+        if side:
+            issue["side"] = side
+        if issue not in out_issues:
+            out_issues.append(issue)
+    comfort = None
+    if entry.get("comfort") not in (None, ""):
+        try:
+            comfort = parse_quantity(entry["comfort"])
+        except ArcLogError as exc:
+            unknown.append({"field": "comfort", "input": entry["comfort"], "reason": str(exc)})
+        else:
+            if not 0 <= comfort <= 10:
+                unknown.append({"field": "comfort", "input": entry["comfort"],
+                                "reason": f"confort hors plage 0-10 : {comfort!r}"})
+                comfort = None
+    notes = str(entry.get("notes") or "").strip() or None
+    built: dict = {}
+    if comfort is not None:
+        built["comfort"] = comfort
+    if out_issues:
+        built["issues"] = out_issues
+    if notes:
+        built["notes"] = notes
+
+    existing = existing_activity_arc or {}
+    run_gear = existing.get("gear_id")
+    said = resolve_pair(entry.get("pair"), declared) if entry.get("pair") else None
+    needs_gear = None
+    gear_id = None
+    gear_origin = None
+    if run_gear:
+        gear_id, gear_origin = run_gear, "run"
+        if said and "gear_id" in said and said["gear_id"] != run_gear:
+            needs_gear = {"reason": "conflict", "run_gear_id": run_gear, "said_gear_id": said["gear_id"]}
+    elif said and "gear_id" in said:
+        gear_id, gear_origin = said["gear_id"], "message"
+    elif said:
+        needs_gear = {"reason": said["reason"], "candidates": said["candidates"]}
+    else:
+        needs_gear = {"reason": "no_gear", "candidates": [g["gear_id"] for g in declared if not g.get("ignored")]}
+    result: dict = {"gear_id": gear_id, "gear_origin": gear_origin, "entry": built, "unknown": unknown,
+                    "needs_gear": needs_gear}
+    if not built and not unknown:
+        result["empty"] = True
+    result["ready"] = bool(built) and not unknown and needs_gear is None
+    if result["ready"]:
+        result["merged"] = merge_shoe_feedback(existing.get("shoe_feedback"), built)
+    return result
+
+
 _PROVENANCE_PREFIX_RE = re.compile(r"^\[/log [^\]]*\]\s*")
 
 
@@ -735,6 +979,17 @@ def process(payload: dict, workspace: Optional[Path] = None) -> dict:
                 rpe = candidate
                 out["rpe"] = rpe
 
+    shoe = None
+    if payload.get("shoe_feedback"):
+        shoe = compute_shoe_feedback(payload["shoe_feedback"], payload.get("existing_activity_arc"),
+                                     _declared_gear_from(payload, workspace))
+        out["shoe_feedback"] = shoe
+        if shoe.get("empty"):
+            warnings.append("shoe_feedback : ni confort, ni problème, ni note — rien à écrire")
+        if shoe["unknown"] or shoe["needs_gear"]:
+            warnings.append("shoe_feedback : partie chaussant NON écrite tant que les termes inconnus / la paire "
+                            "ne sont pas clarifiés (le reste du /log n'est pas bloqué)")
+
     if "position" in payload and payload["position"]:
         out["position"] = str(payload["position"]).strip()
 
@@ -744,10 +999,19 @@ def process(payload: dict, workspace: Optional[Path] = None) -> dict:
     if not duplicate:
         carbs_g = nutrition["carbs_g"] if nutrition else None
         fluid_intake_ml = fluids["fluid_intake_ml"] if fluids else None
-        if "existing_activity_arc" in payload and (carbs_g is not None or fluid_intake_ml is not None or rpe is not None):
+        shoe_ready = bool(shoe and shoe["ready"])
+        if "existing_activity_arc" in payload and (
+                carbs_g is not None or fluid_intake_ml is not None or rpe is not None or shoe_ready):
             out["activity_merge"] = merge_activity(
                 payload.get("existing_activity_arc"), carbs_g, fluid_intake_ml, rpe
             )
+            if shoe_ready:
+                out["activity_merge"]["shoe_feedback"] = shoe["merged"]
+                if shoe["gear_origin"] == "message":
+                    # La séance n'avait pas de paire : l'athlète vient de la nommer (priorité « chat »,
+                    # comme `gear-attribution`) ; le contrat exige un `gear_id` pour tout `shoe_feedback`.
+                    out["activity_merge"]["gear_id"] = shoe["gear_id"]
+                    out["activity_merge"]["gear_source"] = "chat"
         if "existing_pain" in payload and pain and pain["entries"]:
             out["pain_merge"] = merge_pain(payload.get("existing_pain"), pain["entries"])
         if cycle and not cycle.get("ignored") and (cycle["phase"] or cycle["day"]):

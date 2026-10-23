@@ -180,6 +180,23 @@ SHOE_OUTLIER_SPREAD = {
     "stack_forefoot_mm": ("abs", 6.0),
     "lug_depth_mm": ("abs", 2.0),
 }
+# `activity.shoe_feedback` (#299, épopée #297) : retour de chaussant d'UNE séance, rattaché à son
+# `gear_id`. Liste FERMÉE de problèmes (jamais de texte libre déguisé en `kind` : le détail va dans
+# `notes`). Les zones reprennent EXACTEMENT celles de `gear_inspection` (`GEAR_WEAR_ZONE`) ; un
+# problème sans zone nette (ex. serrage du laçage) omet `zone`. Un problème de chaussant n'est
+# JAMAIS une douleur : `health.pain` reste le seul canal de la douleur (protocole `medical` inchangé).
+SHOE_ISSUE_KIND = (
+    "blister", "toe_box_tight", "heel_slip", "hot_spot", "numbness", "lacing_pressure",
+    "instability", "too_soft", "too_firm", "poor_grip", "upper_tear",
+)
+SHOE_ISSUES_MAX = 12
+# `shoe_spec.verdict` (#299) : bilan de retraite d'une paire — signal principal de la règle de
+# continuité (#302). `change_wanted` : liste fermée, le détail va dans `notes`.
+SHOE_WOULD_REBUY = ("yes", "yes_with_change", "no")
+SHOE_CHANGE_WANTED = (
+    "wider_toe_box", "narrower", "more_drop", "less_drop", "more_cushion", "firmer",
+    "more_grip", "lighter", "more_stable", "other",
+)
 # Champs porteurs de provenance (ordre de la fiche).
 SHOE_VALUE_FIELDS = ("category", "drop_mm", "stack_heel_mm", "stack_forefoot_mm", "weight_g", "midsole_foam",
                      "midsole_softness", "plate", "lug_depth_mm", "toe_box", "flexibility_longitudinal",
@@ -351,6 +368,8 @@ SCHEMA = {
             # LA chaussure). Absent = aucun objet attribué, jamais « aucun » écrit en liste vide
             # (une liste vide est acceptée mais sans effet). Ancien fichier sans `gear_ids` : valide.
             "gear_ids": "gear_id_list",
+            # #299 : retour de chaussant de la séance (confort, problèmes, notes) — exige `gear_id`.
+            "shoe_feedback": "{shoe_feedback}",
             # #167 : apport en cours d'effort (`/log`) poussé vers Garmin Connect, après un « oui »
             # explicite — trace d'idempotence (voir SUBSCHEMA["garmin_push"]), jamais écrite en headless.
             "garmin_pushed": "[garmin_push]",
@@ -632,6 +651,8 @@ SCHEMA = {
             "flexibility_longitudinal": "{shoe_num}",
             "flexibility_torsional": "{shoe_num}",
             "stability_devices": "{shoe_num}",
+            # #299 : bilan de retraite de la paire (écrit au passage `(retirée)`, jamais en headless).
+            "verdict": "{shoe_verdict}",
         },
     },
     "decision": {
@@ -818,6 +839,22 @@ SUBSCHEMA = {
     "shoe_alt": {
         "required": {"value": "scalar", "source_type": _enum(SHOE_SOURCE_TYPE)},
         "optional": {"url": "str", "retrieved": "date", "outlier": "bool"},
+    },
+    # `activity.shoe_feedback` (#299) : tout est facultatif mais au moins une information est exigée
+    # (règle transverse `_check_shoe_feedback`) ; `comfort` 0 (insupportable) à 10 (parfait).
+    "shoe_feedback": {
+        "required": {},
+        "optional": {"comfort": "shoe_comfort", "issues": "[shoe_issue]", "notes": "str"},
+    },
+    "shoe_issue": {
+        "required": {"kind": _enum(SHOE_ISSUE_KIND)},
+        "optional": {"zone": _enum(GEAR_WEAR_ZONE), "side": _enum(GEAR_SIDE)},
+    },
+    # `shoe_spec.verdict` (#299) : bilan de retraite. `distance_m` = kilométrage de la paire à la retraite.
+    "shoe_verdict": {
+        "required": {"date": "date", "comfort_overall": "shoe_comfort", "would_rebuy": _enum(SHOE_WOULD_REBUY)},
+        "optional": {"change_wanted": "enums:" + "|".join(SHOE_CHANGE_WANTED), "notes": "str",
+                     "distance_m": "num+"},
     },
     # `shoe_spec.size` : pointure et système (jamais convertie d'un système à l'autre).
     "shoe_size": {
@@ -1080,6 +1117,11 @@ def _check_value(spec: str, value, where: str, errors: list, warnings: list) -> 
     if spec == "rpe":
         if not _is_number(value) or not 0 <= value <= 10:
             fail("un RPE de 0 à 10")
+        return
+    if spec == "shoe_comfort":
+        # Confort perçu d'une chaussure (#299) : 0 (insupportable) à 10 (parfait) — jamais un RPE ni une douleur.
+        if not _is_number(value) or not 0 <= value <= 10:
+            fail("un confort de chaussure de 0 à 10")
         return
     if spec == "pain_score":
         # `health.pain[].score` (#57) : même échelle 0-10 que `rpe`, mais un type
@@ -1523,11 +1565,56 @@ def validate(data: dict) -> tuple:
         _check_gear_inspection(data, errors, warnings)
     if kind == "shoe_spec":
         _check_shoe_spec(data, errors, warnings)
+    if kind == "activity":
+        _check_shoe_feedback(data, errors, warnings)
     return errors, warnings
+
+
+def _check_shoe_feedback(data: dict, errors: list, warnings: list) -> None:
+    """Règles transverses de `activity.shoe_feedback` (#299). Le retour de chaussant n'a de sens que
+    rattaché à UNE paire : sans `gear_id` c'est une ERREUR (et non un avertissement), car une note
+    orpheline fausserait l'agrégation par paire (#300) sans que rien ne la signale ; le skill `log`
+    demande la paire AVANT d'écrire, donc une séance conforme n'atteint jamais cette erreur."""
+    fb = data.get("shoe_feedback")
+    if not isinstance(fb, dict):
+        return
+    if not data.get("gear_id"):
+        errors.append("activity.shoe_feedback : exige un gear_id sur la séance (la paire portée) — "
+                      "demander quelle paire avant d'écrire")
+    if not any(fb.get(k) not in (None, "", []) for k in ("comfort", "issues", "notes")):
+        errors.append("activity.shoe_feedback : au moins un confort, un problème ou une note attendu")
+    issues = fb.get("issues")
+    if isinstance(issues, list):
+        if len(issues) > SHOE_ISSUES_MAX:
+            errors.append(f"activity.shoe_feedback.issues : {SHOE_ISSUES_MAX} problèmes au plus")
+        seen = set()
+        for i, issue in enumerate(issues):
+            if not isinstance(issue, dict):
+                continue
+            key = (issue.get("kind"), issue.get("zone"), issue.get("side"))
+            if key in seen:
+                warnings.append(f"activity.shoe_feedback.issues[{i}] : problème en double (même kind/zone/side)")
+            seen.add(key)
+
+
+def _check_shoe_verdict(data: dict, errors: list, warnings: list) -> None:
+    """Règles transverses de `shoe_spec.verdict` (#299)."""
+    v = data.get("verdict")
+    if not isinstance(v, dict):
+        return
+    change = v.get("change_wanted")
+    if v.get("would_rebuy") == "yes_with_change" and not change:
+        errors.append("shoe_spec.verdict.change_wanted : obligatoire quand would_rebuy vaut yes_with_change")
+    if v.get("would_rebuy") == "yes" and change:
+        warnings.append("shoe_spec.verdict.change_wanted : renseigné alors que would_rebuy vaut yes — "
+                        "yes_with_change voulu ?")
+    if isinstance(change, list) and len(set(change)) != len(change):
+        warnings.append("shoe_spec.verdict.change_wanted : valeurs en double")
 
 
 def _check_shoe_spec(data: dict, errors: list, warnings: list) -> None:
     """Règles transverses de `shoe_spec` (#298) : provenance, bornes, mesure > marque, aberrations."""
+    _check_shoe_verdict(data, errors, warnings)
     for field in SHOE_VALUE_FIELDS:
         obj = data.get(field)
         if not isinstance(obj, dict):

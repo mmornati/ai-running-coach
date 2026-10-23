@@ -1,6 +1,6 @@
 ---
 name: log
-description: Saisie libre en une phrase (ravitaillement, douleur, RPE) invoquée comme /log — « 2 gels + 500 ml au km 15, genou gauche 3/10, RPE 7 ». Extrait les entités, délègue l'arithmétique, la correspondance catalogue et la fusion idempotente à scripts/arc_log.py (jamais de calcul ni de conversion à la main), puis écrit dans les bons fichiers au contrat (activities/, medical/) sans jamais inventer une valeur nutritionnelle absente du catalogue ni bloquer/dupliquer une synchronisation Garmin ultérieure. Charger dès que l'utilisateur tape /log ou décrit en une phrase ce qu'il a mangé/bu/ressenti pendant ou après une séance.
+description: Saisie libre en une phrase (ravitaillement, douleur, RPE, retour de chaussant) invoquée comme /log — « 2 gels + 500 ml au km 15, genou gauche 3/10, RPE 7 ». Extrait les entités, délègue l'arithmétique, la correspondance catalogue et la fusion idempotente à scripts/arc_log.py (jamais de calcul ni de conversion à la main), puis écrit dans les bons fichiers au contrat (activities/, medical/) sans jamais inventer une valeur nutritionnelle absente du catalogue ni bloquer/dupliquer une synchronisation Garmin ultérieure. Charger dès que l'utilisateur tape /log ou décrit en une phrase ce qu'il a mangé/bu/ressenti pendant ou après une séance.
 gemini_command: "true"
 ---
 
@@ -13,6 +13,7 @@ propriétaire (`AGENTS.md`) :
 | Nature | Fichier | Clé(s) du contrat | Agent qui écrit |
 |---|---|---|---|
 | Ravitaillement, hydratation **et** RPE de la séance (tout `activity_merge`, voir ci-dessous) | `activities/YYYY-MM-DD_<type>.md` (séance du jour) | `carbs_g`, `fluid_intake_ml`, `rpe` | **Un seul agent, jamais deux** : `nutritionist` si activé (`[agents].enabled`, `agents/nutritionist.md` en fait déjà son ressort pour le ravitaillement en cours d'effort), sinon `coach` — celui qui écrit applique la totalité d'`activity_merge` en une seule passe, `rpe` inclus, même si `rpe` n'a rien de nutritionnel : le séparer forcerait deux agents à éditer le même fichier dans le même `/log` |
+| Retour de chaussant (confort, ampoule, avant-pied serré…, #299) | `activities/YYYY-MM-DD_<type>.md` (séance visée, **avec son `gear_id`**) | `shoe_feedback` (`{comfort, issues[], notes}`) **et** `gear_id` si la séance n'en avait pas | Le même agent que le reste d'`activity_merge` (règle « un seul agent » ci-dessous) ; `coach` s'il est le seul à pouvoir l'écrire |
 | Douleur | `medical/YYYY-MM-DD_health.md` | `pain` (liste `{location, score}`) | `medical` si activé, sinon `coach` dans la limite de sa compétence |
 
 Une **quatrième** nature n'existe que si `[health].cycle_tracking` n'est pas `off`
@@ -58,6 +59,17 @@ tout ce calcul, en pur stdlib, déterministe et idempotent :
    - `position` : la position dans la séance si citée (« au km 15 », « après
      30 min ») — texte libre, aucune clé du contrat ne la porte (voir
      « Position dans la séance » ci-dessous).
+   - `shoe_feedback` (#299) : un objet `{"pair": "...", "comfort": "...", "issues": [{"term": "...",
+     "zone": "...", "side": "..."}], "notes": "..."}` dès que la phrase parle du **chaussant** (confort de
+     la chaussure, ampoule, avant-pied serré, talon qui bouge, point chaud, engourdissement, laçage trop
+     serré, instable, trop mou/dur, manque d'adhérence, tige abîmée). `pair` = ce que dit l'athlète
+     (« Kipride », « les UG3 »), sans le convertir en `gear_id` ; `term`/`zone`/`side` dans ses mots
+     (« ampoule », « talon », « gauche ») ; `comfort` tel que dit (« 6 », « 6/10 »). **Ne reformulez pas
+     un terme vers la liste fermée, ne devinez pas une zone** : `arc_log.py` fait le rattachement. Ajoutez
+     aussi `declared_gear` (les paires de `### Chaussures` : `[{"gear_id", "name"}]`, lisibles avec
+     `python3 scripts/arc_index.py gear`) ; à défaut le script lit le profil du workspace.
+     **Une sensation de douleur (« mal au talon ») va dans `pain`, jamais dans `issues`** ; une phrase
+     avec les deux (« ampoule au talon et douleur 7/10 ») remplit `pain` ET `shoe_feedback`.
 2. Résolvez `catalogue_paths` : listez `resources/nutrition/catalogue-produits-*.md`.
    Absent du dépôt de l'athlète → passez `"catalogue_paths": []` explicitement
    (jamais omis : omis veut dire « je n'ai pas cherché », `[]` veut dire
@@ -80,6 +92,9 @@ tout ce calcul, en pur stdlib, déterministe et idempotent :
           "existing_log_entries": []}' | python3 scripts/arc_log.py
    ```
 
+   (Avec un retour de chaussant, ajoutez `"shoe_feedback": {...}` et `"declared_gear": [...]` au JSON
+   d'entrée ; `existing_activity_arc` doit contenir le `gear_id` déjà écrit de la séance.)
+
    Rend un JSON : `nutrition.matched`/`unknown`/`ambiguous`/`carbs_g`,
    `fluids.matched`/`unknown`/`fluid_intake_ml`, `pain.entries`/`unknown`
    (chaque entrée valide avec `consult: true/false`), `rpe` (absent + une clé
@@ -88,7 +103,10 @@ tout ce calcul, en pur stdlib, déterministe et idempotent :
    `activity_merge` (valeurs déjà fusionnées avec `existing_activity_arc` —
    glucides/liquide additionnés, RPE remplacé), `pain_merge` (liste déjà
    fusionnée avec `existing_pain`, entrées réduites à `location`/`score` —
-   `consult` n'appartient pas au contrat `health.pain`), `warnings`. **Recopiez ces valeurs telles
+   `consult` n'appartient pas au contrat `health.pain`), `shoe_feedback` (`ready`, `gear_id`, `entry`,
+   `unknown`, `needs_gear` — voir ci-dessous ; quand `ready`, `activity_merge.shoe_feedback` porte le
+   bloc fusionné, et `activity_merge.gear_id` + `gear_source: "chat"` si l'athlète vient de nommer la
+   paire d'une séance qui n'en avait pas), `warnings`. **Recopiez ces valeurs telles
    quelles** dans les blocs ```arc — ne recalculez rien à la main, même une
    addition ou une fusion qui semble triviale : c'est exactement le genre de
    calcul que ce script existe pour vous éviter de refaire, et refaire signifie
@@ -117,6 +135,17 @@ tout ce calcul, en pur stdlib, déterministe et idempotent :
   d'écrire un score inventé ou hors contrat.
 - `rpe_unknown` (RPE illisible ou hors de 0-10) : même chose, **demandez**
   plutôt que d'écrire une valeur hors contrat ou de l'omettre en silence.
+- `shoe_feedback.unknown` (terme absent de la liste fermée — ampoule, avant-pied serré, talon qui
+  bouge, point chaud, engourdissement, laçage trop serré, instable, trop mou, trop dur, manque
+  d'adhérence, tige déchirée — zone, côté ou confort illisible/hors 0-10) : **demandez** de préciser
+  (en proposant la liste) plutôt que de ranger le terme dans une catégorie voisine ; le script a alors
+  mis `ready: false` et AUCUN `shoe_feedback` n'est dans `activity_merge`.
+- `shoe_feedback.needs_gear` : **demandez quelle paire avant d'écrire** — `no_gear` (séance sans
+  `gear_id` et aucune paire citée : listez `candidates`, ne présumez JAMAIS la paire « par défaut »),
+  `unknown_pair` (paire absente de `### Chaussures`), `ambiguous_pair` (listez les `candidates`),
+  `conflict` (la phrase cite une autre paire que celle de la séance : demandez laquelle est la bonne,
+  ne réattribuez jamais en silence). Une fois la réponse obtenue, rappelez `arc_log.py` avec `pair`
+  complété : c'est lui qui pose `gear_id` + `gear_source: "chat"` (déclaration de l'athlète prioritaire).
 - Dans tous les cas, ne bloquez jamais les AUTRES parties de la phrase
   (liquide déclaré au gramme près, douleur, RPE valide) en attendant la
   réponse sur la seule partie ambiguë/inconnue.
@@ -174,6 +203,26 @@ risqueraient d'écraser la fusion l'un de l'autre.
    rendue par le script (voir « Idempotence » ci-dessous), suivie d'une phrase
    courte citant la position déclarée si présente (voir ci-dessous).
 4. Validez : `python3 scripts/arc_index.py --validate <fichier>`.
+
+### Retour de chaussant → `activities/` (#299)
+
+Même fichier, même agent, même passe que le reste d'`activity_merge` : recopiez
+`activity_merge.shoe_feedback` (et `gear_id`/`gear_source` s'ils y figurent) tels quels. Règles :
+
+- **Pas de paire, pas d'écriture** : le contrat exige un `gear_id` sur la séance (la validation échoue
+  sinon). C'est `needs_gear` qui force la question ci-dessus.
+- Le retour décrit un **ressenti de chaussant**, il ne remplace **jamais** `pain` et ne se présente
+  **jamais** comme la cause d'une douleur (ni l'inverse) : pas de « ton ampoule explique ta douleur »,
+  corrélation et causalité restent hors de portée d'un retour déclaratif.
+- **Douleur dans la même phrase** : écrivez `pain` (voir plus bas) ET `shoe_feedback`. Le protocole
+  de douleur est inchangé, y compris la **recommandation de consultation** dès
+  `[injury_risk].pain_consult_threshold`.
+- Un second `/log` sur la même séance fusionne (confort remplacé par le dernier, problèmes unis sans
+  doublon, notes accolées) — c'est `arc_log.py` qui le calcule.
+- La confirmation nomme la paire : « Noté : Kipride Max — confort 6/10, ampoule talon gauche, avant-pied
+  serré, dans `activities/2026-10-20_running.md`. »
+- Aucune relance, aucun commentaire de recommandation de chaussure ici : choisir une paire est un autre
+  sujet (épopée #297), jamais déduit d'un seul retour.
 
 ### Douleur → `medical/`
 

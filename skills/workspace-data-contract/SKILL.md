@@ -127,6 +127,7 @@ Types de valeurs ci-dessous : *entier*, *nombre* (≥ 0 sauf mention), *texte*,
 | `fluid_intake_ml` | nombre | liquide ingéré pendant l'effort, 0-10 000 ml |
 | `weight_pre_kg`, `weight_post_kg` | nombre | pesée avant / après effort, 30-200 kg |
 | `gear_ids` | liste de textes | matériel hors chaussures porté sur la séance (slugs, mêmes règles que `gear_id`, 30 max, sans doublon) — voir « Matériel hors chaussures » ci-dessous |
+| `shoe_feedback` | objet | retour de chaussant de la séance (#299, `/log`) : `comfort` 0-10, `issues[]` (`kind` parmi `blister` `toe_box_tight` `heel_slip` `hot_spot` `numbness` `lacing_pressure` `instability` `too_soft` `too_firm` `poor_grip` `upper_tear`, `zone` et `side` facultatifs, mêmes zones que `gear_inspection`), `notes` — **exige un `gear_id`** (erreur sinon) et au moins un des trois ; voir « Retour de chaussant » ci-dessous |
 | `garmin_pushed` | liste d'objets | apport `/log` poussé vers Garmin Connect après un « oui » (#167, opt-in `[nutrition].garmin_sync`) — mêmes entrées que `nutrition.garmin_pushed` (section `nutrition`) ; sert l'idempotence, jamais écrite en headless |
 | `missing_reason` | objet | clé absente → cause |
 | `gap_pace_s_km` | nombre | GAP global de la séance, s/km — voir « Champs KPI FIT » |
@@ -1331,6 +1332,19 @@ seule semelle documentée dans `wear_zones` est signalée (le protocole demande 
 {"arc": 1, "kind": "gear_inspection", "date": "2026-09-24", "gear_id": "pegasus-41", "condition": "yellow", "distance_m": 412000, "wear_zones": [{"side": "left", "zone": "heel_posterolateral", "severity": "moderate"}, {"side": "right", "zone": "heel_posterolateral", "severity": "light"}], "asymmetry": {"level": "mild", "side": "left"}, "gait_hints": ["heel_strike"], "photos": ["gear/photos/2026-09-24_pegasus-41_semelles.jpg"], "previous": "gear/2026-08-02_pegasus-41_inspection.md", "scale_reference": true, "lug_depth_mm": 2.5}
 ```
 
+### Retour de chaussant (`activity.shoe_feedback`, #299)
+
+Ressenti de chaussant d'UNE séance, saisi par `/log` : `{"comfort": 6, "issues": [{"kind": "blister",
+"zone": "heel_lateral", "side": "left"}, {"kind": "toe_box_tight"}], "notes": "serré après 1 h"}`.
+`comfort` : 0 (insupportable) à 10 (parfait). Liste fermée de `kind` (un terme hors liste se demande, il
+ne s'invente pas) ; `zone` = zones de `gear_inspection` (`heel_*`, `midfoot_*`, `forefoot_*`, `toe`), omise
+quand elle n'est pas nette ; `side` = `left` | `right`. **Un `shoe_feedback` sans `gear_id` sur la séance est
+une ERREUR**, pas un avertissement : un retour orphelin fausserait l'agrégation par paire sans rien
+signaler, et `/log` demande la paire avant d'écrire. Il ne remplace **jamais** `health.pain` (la douleur
+garde son canal, son protocole et son seuil de consultation) et n'est jamais présenté comme la cause
+d'une douleur. Lecture : `python3 scripts/arc_index.py shoe-feedback [--gear ID]` (table SQLite
+`shoe_feedback`, une ligne par séance).
+
 ### `shoe_spec`
 
 Fiche de caractéristiques d'une paire (#298, skill `shoe-specs`) : un fichier par paire,
@@ -1387,6 +1401,16 @@ viennent de la même source = avertissement. L'écart marque/labo (ex. drop 6 mm
 est un désaccord légitime, pas une aberration. L'index minimaliste (Esculier 2015) **n'est pas
 persisté** : `python3 scripts/arc_index.py shoe-specs` le calcule à la lecture, et le dit absent s'il
 manque une entrée.
+
+**Bilan de retraite (`verdict`, #299).** Objet facultatif de la fiche, écrit au passage de la paire à
+`(retirée)` (skill `gear-inspection`, interactif seulement) : **`date`**, **`comfort_overall`** (0 à 10),
+**`would_rebuy`** (`yes` | `yes_with_change` | `no`), `change_wanted` (liste fermée : `wider_toe_box`
+`narrower` `more_drop` `less_drop` `more_cushion` `firmer` `more_grip` `lighter` `more_stable` `other`),
+`notes` (texte libre), `distance_m` (kilométrage à la retraite). `change_wanted` est **obligatoire** quand
+`would_rebuy` vaut `yes_with_change` (erreur) et signalé (avertissement) s'il accompagne `yes`. Le
+verdict vit dans la fiche plutôt que dans un fichier à part : une paire = un seul fichier de référence
+pour la règle de continuité (#302), sans nouveau type ni nouveau dossier. Il est un avis déclaré, jamais
+une cause de douleur.
 
 ```arc
 {"arc": 1, "kind": "shoe_spec", "date": "2026-10-12", "gear_id": "kipride-max-1", "brand": "Kiprun", "model": "Kipride Max", "version": "v1", "release_year": 2026, "size": {"value": 42, "system": "EU"}, "purchase_date": "2026-02-20", "category": {"value": "road", "source_type": "manufacturer", "url": "https://runnerslab.com/kiprun-kipride-max-review/", "retrieved": "2026-10-12"}, "drop_mm": {"value": 8.7, "source_type": "measured", "url": "https://www.rtings.com/running-shoes/reviews/kiprun/kipride-max", "retrieved": "2026-10-12", "alternatives": [{"value": 6, "source_type": "manufacturer", "url": "https://runnerslab.com/kiprun-kipride-max-review/", "retrieved": "2026-10-12"}]}, "stack_heel_mm": {"value": 42, "source_type": "manufacturer", "url": "https://runnerslab.com/kiprun-kipride-max-review/", "retrieved": "2026-10-12", "alternatives": [{"value": 44, "source_type": "manufacturer", "url": "https://www.runningwarehouse.com/KIPRUN_Kipride_Max/descpage-KRMAXM3.html", "retrieved": "2026-10-12"}]}, "stack_forefoot_mm": {"value": 36, "source_type": "manufacturer", "url": "https://runnerslab.com/kiprun-kipride-max-review/", "retrieved": "2026-10-12", "alternatives": [{"value": 38, "source_type": "manufacturer", "url": "https://www.runningwarehouse.com/KIPRUN_Kipride_Max/descpage-KRMAXM3.html", "retrieved": "2026-10-12"}]}, "plate": {"value": "none", "source_type": "manufacturer", "url": "https://runnerslab.com/kiprun-kipride-max-review/", "retrieved": "2026-10-12"}, "flexibility_longitudinal": {"value": 1.5, "source_type": "athlete"}, "flexibility_torsional": {"value": 1.0, "source_type": "athlete"}, "stability_devices": {"value": 0, "source_type": "athlete"}}
