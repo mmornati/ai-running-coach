@@ -179,3 +179,69 @@ class TestThreshold(unittest.TestCase):
         with redirect_stdout(out):
             self.assertEqual(W.main(["threshold", "--pace", "4:12"]), 0)
         self.assertEqual(json.loads(out.getvalue()), {"lt_speed_ms": 3.968, "pace_s_per_km": 252, "source": "COROS"})
+
+
+def _plan(**over) -> dict:
+    """Plan de course synthétique : 2 segments, un ravito avec arrêt déclaré, un sans, l'arrivée."""
+    plan = {
+        "arc": 1, "kind": "race_plan", "date": "2026-10-01", "race_name": "Trail test", "race_date": "2026-11-01",
+        "start_time": "2026-11-01T09:00:00+01:00", "target_time_s": 3720,
+        "scenarios": {"safe": 4500, "realistic": 3720, "ambitious": 3300},
+        "aid_stations": [{"km": 5.0, "name": "Col", "stop_s": 120}, {"km": 7.5, "name": "Source"},
+                         {"km": 10.0, "name": "Arrivée", "stop_s": 0}],
+        "segments": [
+            {"id": "s01", "km_start": 0.0, "km_end": 5.0, "distance_m": 5000, "grade_mean_pct": 6.0,
+             "predicted_time_s": {"safe": 2400, "realistic": 2100, "ambitious": 1900},
+             "pace_s_km": {"safe": 480, "realistic": 420.4, "ambitious": 380}},
+            {"id": "s02", "km_start": 5.0, "km_end": 10.15, "distance_m": 5150, "grade_mean_pct": -4.0,
+             "predicted_time_s": {"safe": 1800, "realistic": 1410, "ambitious": 1300},
+             "pace_s_km": {"safe": 350, "realistic": 274, "ambitious": 252}},
+        ],
+    }
+    plan.update(over)
+    return plan
+
+
+class TestPaceStrategy(unittest.TestCase):
+    def test_scenario_of_the_target_time_and_passages_from_the_plan(self):
+        sheet = W.pace_strategy(_plan())
+        self.assertEqual(sheet["scenario"], "realistic")
+        col, source, finish = sheet["waypoints"]
+        self.assertEqual((col["arrival"], col["clock"], col["stop_s"]), ("0:35:00", "09:35", 120))
+        self.assertTrue(source["stop_default"])
+        self.assertEqual(source["stop_s"], 90.0)
+        self.assertTrue(finish["finish"])          # km 10 déclaré, GPX de 10,15 km
+        self.assertEqual(finish["stop_s"], 0.0)
+        # 2100 + 120 (Col) + 1410 + 90 (Source) = 3720, arrondi à la minute comme le plan.
+        self.assertEqual(sheet["target_time"], "1:02:00")
+        self.assertEqual(sheet["segments"][0]["pace"], "7:00 /km")
+
+    def test_explicit_scenario_and_default_when_no_scenario_matches(self):
+        self.assertEqual(W.pace_strategy(_plan(), "safe")["scenario"], "safe")
+        sheet = W.pace_strategy(_plan(target_time_s=9999))
+        self.assertEqual(sheet["scenario"], "realistic")
+        self.assertIn("par défaut", sheet["notes"][0])
+
+    def test_plan_without_segments_is_refused(self):
+        with self.assertRaises(ValueError):
+            W.pace_strategy(_plan(segments=[]))
+
+    def test_text_names_the_route_waypoints_rule(self):
+        text = W.pace_strategy_text(W.pace_strategy(_plan()))
+        self.assertIn("Temps cible : 1:02:00", text)
+        self.assertIn("km 5 — Col : arrivée 0:35:00 (09:35), arrêt 2 min 00 s", text)
+        self.assertIn("point de passage AVEC alerte", text)
+
+    def test_cli_reads_a_contract_file(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "plan.md"
+            path.write_text("# Plan\n\n```arc\n" + json.dumps(_plan()) + "\n```\n", encoding="utf-8")
+            out = io.StringIO()
+            with redirect_stdout(out):
+                self.assertEqual(W.main(["pace-strategy", "--plan", str(path)]), 0)
+            self.assertEqual(json.loads(out.getvalue())["target_time_s"], 3720)
+
+
+if __name__ == "__main__":
+    unittest.main()

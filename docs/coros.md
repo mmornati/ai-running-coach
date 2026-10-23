@@ -13,6 +13,7 @@ Pro), entre le 22 et le 23 octobre 2026.
 | Envoyer les séances de course, trail et vélo à la montre | ✅ cibles FC et allure personnelles |
 | Modifier une séance envoyée | ✅ |
 | Supprimer ou déplacer une séance | ❌ dans l'app COROS (aucun outil dans le MCP) |
+| Parcours et Pace Strategy de course | ❌ dans l'app COROS ; le coach prépare la fiche à recopier (`arc_coros_workout.py pace-strategy`) |
 | Renforcement structuré | ✅ vos séances types, créées une fois dans l'app, planifiées par le coach |
 | Allure seuil COROS (contrôle de la vitesse critique) | ✅ |
 | Lire activités, tours, santé, récupération | ✅ |
@@ -204,6 +205,43 @@ nuit) :
 (`Threshold Pace 4:12 /km` le 22/10) et prédictions, en texte. L'allure seuil sert au
 contrôle de la vitesse critique (`arc_coros_workout.py threshold`, nommée « allure seuil
 COROS »), jamais comme cible.
+
+## Pace Strategy (plan de course)
+
+Le **Pace Strategy** de COROS guide l'allure section par section le jour de la course : allure cible du
+segment en cours, avance ou retard sur le temps visé, compte à rebours avant chaque ravito ([article
+d'aide COROS](https://support.coros.com/hc/en-us/articles/47115766323348-Pace-Strategy), relu le
+23 octobre 2026). Il se crée **uniquement dans l'app COROS** (Profil → Pace Strategy), sur une distance
+ou, pour le trail, sur une **route** de votre bibliothèque. Aucun des outils du MCP ne crée, n'importe ni
+ne lit une route ou un Pace Strategy : le coach ne peut pas le faire à votre place.
+
+Il vous prépare en revanche **ce qu'il faut y saisir**, depuis le plan de course du `course-strategist` :
+
+```bash
+python3 scripts/arc_coros_workout.py pace-strategy --plan planning/<plan>.md --text
+```
+
+- **Temps cible** du scénario choisi (par défaut celui du temps visé du plan ; `--scenario` pour un autre).
+- **Temps d'arrêt à chaque ravito**, à saisir aux points de passage de la route ; l'arrivée n'en a pas.
+- **Nos allures par segment** (modèle personnel, chaleur, nuit, technicité, altitude). COROS découpe ses
+  propres segments et calcule leur allure d'après la pente et son estimation de votre forme : ne
+  corrigez (« Expand and Edit ») que ceux qui s'écartent nettement des nôtres.
+
+Les temps sont exactement ceux du plan (mêmes temps de passage, arrêts compris). Dans l'app :
+
+1. importez le GPX enrichi par le `course-strategist` (ravitos en points de passage) ; dans Explore,
+   vérifiez que chaque ravito est un point de passage **avec alerte**, sinon l'app ne propose pas de
+   temps aux points de passage (la conservation des points de passage à l'import n'a pas encore été
+   vérifiée par le projet) ;
+2. Profil → Pace Strategy → + → Route → cette route, puis le temps cible ;
+3. le temps d'arrêt de chaque point de passage ;
+4. les segments qui s'écartent de la fiche ;
+5. à moins de 3 jours de la course, l'heure de départ (météo par section) ;
+6. sauvegardez et synchronisez ; le jour J : mode Trail Run → Pace Strategy.
+
+En complément, le coach peut pousser l'allure de course sur la montre sous forme de séance structurée
+(une étape par section, cible FC ou allure d'effort), par le MCP : utile pour tenir l'effort, mais
+sans carte ni prévision d'arrivée.
 
 ## Le bilan matinal avec COROS
 

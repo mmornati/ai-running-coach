@@ -26,6 +26,13 @@ observation : `docs/coros.md` dit lesquelles.
 - `threshold` — allure seuil COROS (`Threshold Pace: 4:12 /km` de
   `queryFitnessAssessmentOverview`, relevé le 2026-10-22) -> vitesse en m/s pour
   `--lt-speed-ms` (`arc_workout_targets.py`, `arc_index.py pace-curve`) : `--pace M:SS`.
+- `pace-strategy` — fiche à recopier dans le **Pace Strategy** de l'app COROS depuis un plan
+  de course au contrat (`--plan planning/…md`, bloc `race_plan`) : temps cible du scénario,
+  temps d'arrêt à chaque ravito (points de passage de la route), allure de chaque segment.
+  Le Pace Strategy ne se crée QUE dans l'app COROS (Profil → Pace Strategy, sur une route de
+  la bibliothèque) : aucun outil du MCP ne le crée ni ne le lit (relevé le 2026-10-23, article
+  d'aide COROS « Pace Strategy »). Temps de passage = `arc_race_pacing.compute_passages`, les
+  mêmes que le plan ; rien n'est recalculé ici.
 
 Aucune dépendance hors bibliothèque standard, aucun appel réseau.
 """
@@ -36,7 +43,11 @@ import argparse
 import json
 import re
 import sys
+import os
+from datetime import datetime, timedelta
 from typing import List, Optional, Sequence
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 # sportType d'une SÉANCE (≠ codes des activités enregistrées : 100 course, 102 trail…).
 SPORTS = {1: "running", 2: "cycling", 5: "trail_running"}
@@ -218,6 +229,133 @@ def pace_to_speed_ms(pace: str) -> float:
     return round(1000.0 / seconds, 3)
 
 
+# ---------------------------------------------------------------------------
+# Pace Strategy (app COROS) — fiche depuis un plan de course
+# ---------------------------------------------------------------------------
+
+# Le DERNIER ravito à moins de 2 % de la longueur mesurée du GPX (50 m au moins) est l'arrivée : pas de
+# temps d'arrêt à saisir. Approximation du projet : un GPX mesure souvent 1-2 % de plus que la distance
+# officielle (Féodières : arrivée déclarée au km 10, GPX de 10,13 km).
+FINISH_TOLERANCE_RATIO = 0.02
+FINISH_TOLERANCE_MIN_KM = 0.05
+
+
+def _clock(seconds: float) -> str:
+    total = int(round(seconds))
+    hours, rest = divmod(total, 3600)
+    return f"{hours}:{rest // 60:02d}:{rest % 60:02d}"
+
+
+def _short(seconds: float) -> str:
+    total = int(round(seconds))
+    return f"{total // 60} min {total % 60:02d} s" if total >= 60 else f"{total} s"
+
+
+def _pace(seconds_per_km: float) -> str:
+    total = int(round(seconds_per_km))
+    return f"{total // 60}:{total % 60:02d} /km"
+
+
+def load_race_plan(path: str) -> dict:
+    import arc_contract as C  # noqa: E402 (même dossier)
+
+    try:
+        block = C.extract_block(open(path, encoding="utf-8").read())
+    except (OSError, C.ContractError) as exc:
+        raise ValueError(f"{path} : {exc}") from exc
+    if not block or block.get("kind") != "race_plan":
+        raise ValueError(f"{path} : bloc ```arc de type « race_plan » attendu")
+    return block
+
+
+def pace_strategy(plan: dict, scenario: Optional[str] = None) -> dict:
+    """Ce qu'il faut saisir dans le Pace Strategy COROS (version « Route ») pour suivre `plan`.
+
+    Scénario par défaut : celui dont le total vaut `target_time_s` du plan, sinon `realistic`.
+    Les temps de passage viennent de `arc_race_pacing.compute_passages` (arrêts ravito compris,
+    arrondis à la minute comme dans le plan) ; les allures des `segments` du plan, telles quelles."""
+    import arc_race_pacing as RP  # noqa: E402 (même dossier)
+
+    segments = plan.get("segments")
+    if not isinstance(segments, list) or not segments:
+        raise ValueError("plan de course sans segments (plan écrit sans GPX ?) : rien à recopier")
+    aid = sorted((a for a in plan.get("aid_stations") or [] if isinstance(a, dict) and "km" in a),
+                 key=lambda a: a["km"])
+    passages = RP.compute_passages(segments, aid)
+    notes: List[str] = []
+    if scenario is None:
+        target = plan.get("target_time_s")
+        scenario = next((s for s in RP.SCENARIOS if (plan.get("scenarios") or {}).get(s) == target), "realistic")
+        notes.append(f"scénario « {scenario} » retenu "
+                     + ("(celui du temps visé du plan)" if (plan.get("scenarios") or {}).get(scenario) == target
+                        else "(par défaut : aucun scénario ne correspond au temps visé du plan)"))
+    if scenario not in RP.SCENARIOS:
+        raise ValueError(f"scénario inconnu : {scenario!r} ({', '.join(RP.SCENARIOS)})")
+    start = None
+    if plan.get("start_time"):
+        try:
+            start = datetime.fromisoformat(str(plan["start_time"]))
+        except ValueError:
+            notes.append(f"heure de départ illisible ({plan['start_time']!r}) : pas d'heure murale")
+    end_km = segments[-1].get("km_end") or 0.0
+    waypoints = []
+    tolerance = max(FINISH_TOLERANCE_MIN_KM, end_km * FINISH_TOLERANCE_RATIO)
+    for i, (station, passage) in enumerate(zip(aid, passages["aid_station_passages"])):
+        arrival = passage[scenario]
+        finish = i == len(aid) - 1 and station["km"] >= end_km - tolerance
+        stop = 0.0 if finish else float(station.get("stop_s", RP.DEFAULT_AID_STATION_STOP_S))
+        entry = {"km": station["km"], "name": station.get("name"), "finish": finish,
+                 "arrival_s": arrival, "arrival": _clock(arrival), "stop_s": stop, "stop": _short(stop)}
+        if start is not None:
+            entry["clock"] = (start + timedelta(seconds=arrival)).strftime("%H:%M")
+        if "stop_s" not in station and not finish:
+            entry["stop_default"] = True
+        waypoints.append(entry)
+    rows = []
+    for seg in segments:
+        pace = (seg.get("pace_s_km") or {}).get(scenario)
+        time_s = (seg.get("predicted_time_s") or {}).get(scenario)
+        if pace is None or time_s is None:
+            raise ValueError(f"segment {seg.get('id')} : pas d'allure pour le scénario « {scenario} »")
+        rows.append({"id": seg.get("id"), "km_start": seg.get("km_start"), "km_end": seg.get("km_end"),
+                     "grade_mean_pct": seg.get("grade_mean_pct"), "elevation_gain_m": seg.get("elevation_gain_m"),
+                     "elevation_loss_m": seg.get("elevation_loss_m"), "pace_s_km": round(pace),
+                     "pace": _pace(pace), "time_s": time_s, "time": _clock(time_s)})
+    total = passages["totals_s"][scenario]
+    if any(not w["finish"] for w in waypoints):
+        notes.append("route : un point de passage AVEC alerte par ravito (Explore → route), sinon l'app ne "
+                     "propose pas de temps aux points de passage")
+    if any(w.get("stop_default") for w in waypoints):
+        notes.append(f"temps d'arrêt par défaut du projet ({int(RP.DEFAULT_AID_STATION_STOP_S)} s) aux ravitos "
+                     "sans stop_s dans le plan")
+    notes.append("COROS découpe ses propres segments et calcule leur allure : ne corriger que ceux qui "
+                 "s'écartent nettement des allures ci-dessous")
+    return {"race_name": plan.get("race_name"), "race_date": plan.get("race_date"),
+            "start_time": plan.get("start_time"), "scenario": scenario,
+            "target_time_s": total, "target_time": _clock(total),
+            "distance_m": plan.get("distance_m"), "elevation_gain_m": plan.get("elevation_gain_m"),
+            "waypoints": waypoints, "segments": rows, "notes": notes}
+
+
+def pace_strategy_text(sheet: dict) -> str:
+    lines = [f"Pace Strategy COROS — {sheet.get('race_name') or 'course'} ({sheet.get('race_date') or 'date ?'})",
+             f"Temps cible : {sheet['target_time']} (scénario « {sheet['scenario']} »)"]
+    if sheet.get("start_time"):
+        lines.append(f"Départ : {sheet['start_time']}")
+    if sheet["waypoints"]:
+        lines.append("Points de passage (temps d'arrêt à saisir) :")
+        for w in sheet["waypoints"]:
+            when = f"arrivée {w['arrival']}" + (f" ({w['clock']})" if w.get("clock") else "")
+            stop = "arrivée de course" if w["finish"] else f"arrêt {w['stop']}"
+            lines.append(f"  km {w['km']:g} — {w['name']} : {when}, {stop}")
+    lines.append("Allures par segment (référence pour « Expand and Edit ») :")
+    for r in sheet["segments"]:
+        lines.append(f"  km {r['km_start']:.1f}-{r['km_end']:.1f} : {r['pace']} ({r['time']}, "
+                     f"pente {r['grade_mean_pct']:+.1f} %)")
+    lines += [f"Note : {n}" for n in sheet["notes"]]
+    return "\n".join(lines)
+
+
 def main(argv: Optional[Sequence[str]] = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     sub = ap.add_subparsers(dest="command", required=True)
@@ -235,7 +373,21 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     p_val.add_argument("--file")
     p_thr = sub.add_parser("threshold", help="allure seuil COROS (M:SS /km) -> m/s pour --lt-speed-ms")
     p_thr.add_argument("--pace", required=True, help="« Threshold Pace » de queryFitnessAssessmentOverview, ex. 4:12")
+    p_ps = sub.add_parser("pace-strategy", help="fiche Pace Strategy COROS depuis un plan de course")
+    p_ps.add_argument("--plan", required=True, help="plan de course au contrat (planning/…md, bloc race_plan)")
+    p_ps.add_argument("--scenario", choices=("safe", "realistic", "ambitious"),
+                      help="défaut : celui du temps visé du plan, sinon realistic")
+    p_ps.add_argument("--text", action="store_true", help="fiche lisible au lieu du JSON")
     args = ap.parse_args(argv)
+
+    if args.command == "pace-strategy":
+        try:
+            sheet = pace_strategy(load_race_plan(args.plan), args.scenario)
+        except ValueError as exc:
+            print(f"erreur : {exc}", file=sys.stderr)
+            return 2
+        print(pace_strategy_text(sheet) if args.text else json.dumps(sheet, ensure_ascii=False, indent=2))
+        return 0
 
     if args.command == "threshold":
         try:

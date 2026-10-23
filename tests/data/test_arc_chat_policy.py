@@ -62,6 +62,11 @@ class PolicyTest(PolicyBase):
                                                      "--duration-s 2400 --hr 137 149"}), "allow")
         self.assertEqual(self.d("shell", {"command": "echo '{\"sportType\": 1}' | "
                                                      "python3 scripts/arc_coros_workout.py validate"}), "allow")
+        # Fiche Pace Strategy COROS depuis un plan du workspace ; un plan hors du workspace est refusé.
+        self.assertEqual(self.d("shell", {"command": "python3 scripts/arc_coros_workout.py pace-strategy "
+                                                     "--plan planning/plan.md --scenario safe --text"}), "allow")
+        self.assertEqual(self.d("shell", {"command": "python3 scripts/arc_coros_workout.py pace-strategy "
+                                                     "--plan /etc/passwd"}), "deny")
         self.assertEqual(self.d("shell", {"command": "python3 scripts/arc_workout_targets.py targets "
                                                      "--session planning/S.md#2026-10-25 --icu-lthr-bpm 170"}), "allow")
         # #221 : santé du jour lue chez Open Wearables (client REST en lecture seule) — options déclarées

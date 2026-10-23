@@ -110,12 +110,14 @@ flags = ["--dry-run"]
 value_options = ["--name", "--race-date", "--scenario"]
 read_options = ["--week", "--plan"]
 
-# Séance COROS : conversion d'une section et validation (JSON sur l'entrée standard ou --file) ;
-# ne contacte rien, la poussée passe par le MCP `coros` avec l'approbation du chat.
+# Séance COROS : conversion d'une section, validation (JSON sur l'entrée standard ou --file) et fiche
+# Pace Strategy depuis un plan de course (--plan) ; ne contacte rien, la poussée passe par le MCP
+# `coros` avec l'approbation du chat.
 [shell.scripts."scripts/arc_coros_workout.py"]
-value_options = ["--type", "--duration-s", "--distance-m", "--climb-m", "--hr", "--speed-ms", "--pace"]
+flags = ["--text"]
+value_options = ["--type", "--duration-s", "--distance-m", "--climb-m", "--hr", "--speed-ms", "--pace", "--scenario"]
 multi_value_options = ["--hr", "--speed-ms"]
-read_options = ["--file"]
+read_options = ["--file", "--plan"]
 
 [shell.scripts."skills/gpx-analysis/scripts/analyze_gpx.py"]
 flags = ["--quiet", "--dem", "--no-dem"]
