@@ -250,13 +250,14 @@ règles de persistance) est dans `AGENTS.md`, « Correspondance des outils — G
 | Calendrier, push | `get_scheduled_workouts`, `schedule_workouts` | `queryTrainingSchedule`, `createScheduledWorkout`, `updateScheduledWorkout` | Voir « Envoyer les séances à la montre ». |
 | Matériel, pesées, FC de récupération, nutrition | `get_gear`, `get_daily_weigh_ins`… | **aucun équivalent** | Indisponibles, dits comme tels. |
 
-## Les 34 outils (relevés le 22 octobre 2026)
+## Les outils (relevés le 22 octobre 2026, revus le 23)
 
-27 en lecture, 7 en écriture.
+34 outils le 22 octobre (27 en lecture, 7 en écriture), 33 le 23 : COROS a retiré
+`analyzeActivityDetail` (analyse rédigée d'une séance, jamais utilisée par le projet).
 
 | Famille | Outils |
 |---|---|
-| Activités | `querySportRecords`, `getActivityDetail`, `analyzeActivityDetail`, `queryActivityLapData`, `queryCustomActivityLapData` |
+| Activités | `querySportRecords`, `getActivityDetail`, `queryActivityLapData`, `queryCustomActivityLapData` (`analyzeActivityDetail` : retiré le 23/10) |
 | FIT | `downloadActivityFitFiles`, `queryActivityFitFileDownloadUrls` |
 | Santé | `querySleepHrv`, `querySleepOverview`, `queryRestingHeartRate`, `queryAvgHeartRate`, `queryDailyHealthData`, `queryHealthCheckTimeSeries`, `queryStressLevel`, `queryStressTimeSeries`, `queryRecoveryStatus`, `queryMenstruationCycles` |
 | Forme et charge | `queryTrainingLoadAssessment`, `queryFitnessAssessmentOverview` |
