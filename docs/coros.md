@@ -138,8 +138,10 @@ Constaté sur deux séances créées dans l'app (« Renfo lombaires », « Renfo
 
 - `querySportRecords` : une ligne par séance, avec `labelId` et `sportType` (codes
   d'activité : 100 course, 102 trail…), horodatages de début et de fin, durée,
-  distance, allure, FC moyenne. Le champ « Location » contient le **nom de la séance
-  planifiée**, pas un lieu ;
+  distance, allure, FC moyenne, calories, coordonnées de départ. `LabelId` est un
+  entier de 18 chiffres (`481221836600803431`). Le champ « Location » contient le **nom
+  de l'activité** (celui de la séance planifiée quand elle en vient, sinon le titre,
+  par exemple « Cusy Course ») : jamais un lieu fiable ;
 - `getActivityDetail` : texte, résumé seulement (allure, allure ajustée à la pente,
   FC moyenne, cadence, longueur de pas, puissance, D+/D−, calories, charge,
   effets aérobie/anaérobie, effort perçu). **Pas de FC de récupération, pas de
@@ -172,10 +174,35 @@ nuit) :
   « Sleep detail for this day is not available yet » (0 = absent, pas un score) et « No
   data found ». La forme d'une nuit complète reste à relever.
 
+- `queryMenstruationCycles` : sur un compte sans saisie, plage interrogée (30 jours
+  avant, 365 après), « No cycle includes today », durées habituelles (7 jours de règles,
+  cycle de 28 jours, valeurs par défaut) et « No menstrual cycle data found ». Jamais
+  une phase à déduire de ces durées par défaut.
+
 **Forme** : `queryFitnessAssessmentOverview` rend VO2max, niveau de course, allure seuil
 (`Threshold Pace 4:12 /km` le 22/10) et prédictions, en texte. L'allure seuil sert au
 contrôle de la vitesse critique (`arc_coros_workout.py threshold`, nommée « allure seuil
 COROS »), jamais comme cible.
+
+## Correspondance Garmin ↔ COROS (préparée pour `--source coros`)
+
+Ce que la future source `coros` lira, outil par outil. Rien n'est encore branché :
+cette table entrera dans `AGENTS.md` avec `--source coros`.
+
+| Besoin | Outil `garmin` | Outil `coros` | Note |
+|---|---|---|---|
+| Activités récentes | `get_activities_by_date` | `querySportRecords(startDate, endDate, sportTypeCodes…)` | Texte : une entrée par séance, `LabelId` + `SportType` (100 course, 101 tapis, 102 trail, 104 randonnée…), horodatages, durée, distance, allure, FC moyenne, calories. « Location » = nom de l'activité, jamais `location`. |
+| Détail d'une activité | `get_activity` | `getActivityDetail` | Texte résumé : allure, allure ajustée à la pente, FC, cadence, puissance, D+/D−, calories, charge, effort perçu. Pas de FC de récupération ni de matériel : omis, jamais inventés. |
+| Tours | `get_activity_splits` | `queryActivityLapData` | Distances en **cm**, libellés en chinois. Le découpage « par km » repart à chaque étape de la séance planifiée : jamais recopié dans `splits`. |
+| FIT | `get_activity_fit_data` | `queryActivityFitFileDownloadUrls` | FIT standard, normalisé par le projet sans changement ; 50 fichiers par jour. |
+| HRV nocturne | `get_hrv_data` | `querySleepHrv` | Jour du réveil. Forme d'une nuit complète à relever. |
+| FC de repos | `get_rhr_day` | `queryRestingHeartRate(days)` | `AAAA-MM-JJ: N bpm` ou `No data` ; nombre de jours seulement, pas de date. |
+| Sommeil | `get_sleep_data` | `querySleepOverview` | Jour du réveil ; `Sleep Score: 0` = nuit pas encore disponible, pas un score. Forme d'une nuit complète à relever. |
+| Readiness | `get_training_readiness` | `queryRecoveryStatus` | **Récupération COROS** : `Recovery: N%`, un niveau, un temps avant récupération complète ; `-1%` = absent. État **actuel** seulement (pas d'historique). Toujours nommée « récupération COROS N % », jamais « Training Readiness », jamais comparée aux seuils Garmin. |
+| Cycle menstruel (opt-in) | `get_menstrual_data_for_date` | `queryMenstruationCycles` | Sans saisie : « No menstrual cycle data found », aucune phase. |
+| Seuil lactique | — | `queryFitnessAssessmentOverview` | Allure seuil COROS, `arc_coros_workout.py threshold`. |
+| Calendrier, push | `get_scheduled_workouts`, `schedule_workouts` | `queryTrainingSchedule`, `createScheduledWorkout`, `updateScheduledWorkout` | Voir « Envoyer les séances à la montre ». |
+| Matériel, pesées, FC de récupération, nutrition | `get_gear`, `get_daily_weigh_ins`… | **aucun équivalent** | Indisponibles, dits comme tels. |
 
 ## Les 34 outils (relevés le 22 octobre 2026)
 
