@@ -61,9 +61,14 @@ formulation du modèle.
 | `nutrition` | `nutrition/AAAA-MM-JJ_nutrition.md` |
 | `report` | `rapports/…` |
 | `gear_inspection` | `gear/AAAA-MM-JJ_<gear_id>_inspection.md` — inspection photo d'une paire de chaussures (#135), photos dans `gear/photos/` |
+| `shoe_spec` | `gear/specs/<gear_id>.md` — fiche de caractéristiques d'une paire (#298) ; porte aussi son bilan de retraite `verdict` (#299) |
 | `course_eval` | `planning/…_evaluation_parcours_<lieu>.md` |
 | `race_plan` | plan de course dans `planning/` |
 | `decision` | `planning/AAAA-MM-JJ_decision_<slug>.md` — traçabilité d'un ajustement (garde-fou, bilan matinal, blessure…), un fichier par décision |
+
+Dans un fichier `activity`, la clé facultative `shoe_feedback` (#299, saisie par `/log`) porte le
+retour de chaussant de la séance ; elle exige un `gear_id` et ne remplace jamais la douleur
+(`pain`, dans le fichier santé). Voir [Choisir ses chaussures](../shoes.md).
 
 Votre profil (`planning/Runner_Profile.md`) et votre objectif
 (`planning/active_objective.md`) n'ont **pas** de bloc : vous les éditez à la

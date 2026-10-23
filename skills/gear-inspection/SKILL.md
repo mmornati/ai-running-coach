@@ -208,6 +208,31 @@ dernière inspection et l'historique des états. Présenter un **court résumé*
 si l'athlète le souhaite, le garder dans `rapports/AAAA-MM-JJ_bilan_<gear_id>.md` (`report_type: adhoc`).
 Proposer une dernière inspection si la paire n'en a jamais eu : ce sera la référence de la suivante.
 
+### Bilan de retraite (verdict de l'athlète, #299)
+
+Juste après le résumé de carrière, **proposer** (une seule fois, en interactif uniquement, **jamais en
+headless**, jamais imposé) de noter la paire : c'est le signal le plus utile pour choisir la suivante
+(confort et continuité, épopée #297). Quatre questions, une à la fois, et rien d'écrit sans les réponses :
+
+1. **Confort global** de 0 (insupportable) à 10 (parfait) → `comfort_overall`.
+2. **La rachèterais-tu ?** `yes` (oui) | `yes_with_change` (oui, avec un changement) | `no` → `would_rebuy`.
+3. Si `yes_with_change` (obligatoire dans ce cas) : **quel changement ?** Liste fermée `change_wanted` :
+   `wider_toe_box`, `narrower`, `more_drop`, `less_drop`, `more_cushion`, `firmer`, `more_grip`, `lighter`,
+   `more_stable`, `other` (un terme hors liste → demander, ne jamais deviner ; le détail va dans `notes`).
+4. Un mot libre éventuel → `notes`.
+
+Le résumé du retour de confort déjà accumulé est lisible avec
+`python3 scripts/arc_index.py shoe-feedback --gear ID` : le citer pour aider l'athlète à se souvenir
+(« 14 retours, confort moyen 6,5/10, ampoule ×3 »), sans le lui faire répéter ni le présenter comme une cause de douleur.
+
+**Où écrire :** un objet `verdict` dans le bloc ```arc de `gear/specs/<gear_id>.md` (`shoe_spec`, voir
+`workspace-data-contract`) : `{date, comfort_overall, would_rebuy, change_wanted?, notes?, distance_m?}`
+(`distance_m` = kilométrage de la paire à la retraite, tiré de `gear-career`). Si la fiche n'existe pas,
+proposer d'abord de la créer (skill `shoe-specs`, marque et modèle confirmés par l'athlète, **aucune
+caractéristique inventée**). Valider avec `python3 scripts/arc_index.py --validate gear/specs/<gear_id>.md`.
+Un nouveau verdict remplace le précédent de la même paire. Le bilan est un avis déclaré, pas un avis
+médical ; il ne dit jamais qu'une chaussure a causé une douleur.
+
 ## Sources
 
 - Doctors of Running, « Outsole Wear Patterns » : https://www.doctorsofrunning.com/footwear-science-outsole-wear-patterns/

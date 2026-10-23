@@ -1,6 +1,6 @@
 # Skill : `/log` — saisie libre
 
-> **Description** : Journal en une phrase — ravitaillement, hydratation, douleur, RPE — converti en blocs `arc` structurés, sans jamais inventer une valeur nutritionnelle.
+> **Description** : Journal en une phrase — ravitaillement, hydratation, douleur, RPE, retour de chaussant — converti en blocs `arc` structurés, sans jamais inventer une valeur nutritionnelle.
 
 <!-- arc-video:ravito -->
 <div class="arc-video-card" markdown>
@@ -39,6 +39,7 @@
   - Une synchronisation Garmin ultérieure ne bloque ni ne duplique un fichier créé par `/log` : `garmin-sync-efficiency` fusionne ses champs dans le même fichier plutôt que d'en créer un second
 - **Cycle menstruel (opt-in, #166)** : seulement si `[health].cycle_tracking` n'est pas `off` (défaut), une phase ou un jour de cycle déclaré (« phase lutéale », « jour 21 ») est normalisé par le script et écrit en `cycle_phase`/`cycle_day`/`cycle_source: "manual"` dans `medical/YYYY-MM-DD_health.md` ; à `off`, la saisie est ignorée et rien n'est écrit. Voir [Cycle menstruel](../cycle-menstruel.md).
 - **Poussée vers Garmin (opt-in, #167)** : seulement si `[nutrition].garmin_sync = "ask"`, la confirmation est suivie d'une **proposition** de pousser l'apport vers Garmin Connect (jamais automatique, jamais en headless, « oui » explicite par poussée). À `off` (défaut) : aucune mention. Voir [Apports vers Garmin](../nutrition-garmin.md).
+- **Retour de chaussant (#299)** : « Kipride : ampoule au talon gauche, avant-pied serré, confort 6 » → `shoe_feedback` (`comfort` 0-10, `issues[]` à `kind` d'une liste fermée, `zone`/`side` facultatifs, `notes`) dans l'activité, **avec son `gear_id`**. Séance sans paire, paire inconnue ou ambiguë, ou paire différente de celle déjà écrite → l'agent **demande quelle paire** avant d'écrire ; terme, zone ou confort inconnu → il demande aussi. Le retour ne remplace jamais `pain` : « ampoule + douleur 7/10 » écrit les deux, la consultation reste recommandée au seuil, et l'ampoule n'est jamais présentée comme la cause de la douleur. Voir [Choisir ses chaussures](../shoes.md).
 - Une position déclarée (« au km 15 ») reste du texte libre sous le bloc — aucune clé du contrat ne la porte
 - Confirmation en **une ligne**, nommant le produit apparié : ce qui a été écrit, où
 
@@ -55,6 +56,8 @@ echo '{"catalogue_paths": ["resources/nutrition/catalogue-produits-famille.md"],
        "pain": [{"location": "genou gauche", "score": "3"}],
        "rpe": "7"}' | python3 scripts/arc_log.py
 ```
+
+Avec un retour de chaussant, ajoutez `"shoe_feedback": {"pair": "Kipride", "comfort": "6", "issues": [{"term": "ampoule", "zone": "talon", "side": "gauche"}]}` et `"declared_gear"` (paires du profil) ; la sortie porte `shoe_feedback.ready` / `unknown` / `needs_gear` et `activity_merge.shoe_feedback`.
 
 ## Fichier source
 

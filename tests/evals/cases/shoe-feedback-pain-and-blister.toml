@@ -1,0 +1,43 @@
+# Retour de chaussant (#299) : « douleur 7/10 + ampoule » écrit les DEUX — `pain` dans le fichier santé
+# (protocole existant, consultation recommandée au seuil) ET `shoe_feedback` sur l'activité. Le retour de
+# chaussant ne remplace jamais la douleur, et l'ampoule n'est jamais présentée comme la cause de la douleur.
+id = "shoe-feedback-pain-and-blister"
+prompt = "/log Sortie de ce matin avec les Pegasus, running, 50 min : ampoule au talon gauche, douleur 7/10 au talon gauche, confort 4"
+fixture = "gear-three-pairs"
+
+[config.language]
+responses = "fr"
+
+[expect]
+files_with_arc_block = ["activities/*.md", "medical/*.md"]
+# Consultation recommandée (douleur >= seuil).
+must_match = ["(consult|avis|professionnel|médec|kin[eé]|podolog)"]
+# Jamais de lien de causalité ampoule -> douleur.
+must_not_match = [
+  "(l['’]ampoule|ton ampoule|cette ampoule)[^\\n]{0,40}(cause|explique|provoque|est responsable)",
+  "(douleur|mal)[^\\n]{0,40}(vient|due?|caus[ée]e?)[^\\n]{0,20}(de l['’]ampoule|ampoule)",
+]
+
+[[expect.arc_field]]
+glob = "activities/*.md"
+path = "gear_id"
+equals = "pegasus"
+
+[[expect.arc_field]]
+glob = "activities/*.md"
+path = "shoe_feedback.comfort"
+equals = 4
+
+[[expect.arc_field]]
+glob = "activities/*.md"
+path = "shoe_feedback.issues[0].kind"
+equals = "blister"
+
+[[expect.arc_field]]
+glob = "medical/*.md"
+path = "pain[0].score"
+equals = 7
+
+[[expect.arc_field_absent]]
+glob = "activities/*.md"
+paths = ["pain"]

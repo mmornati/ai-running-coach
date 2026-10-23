@@ -107,6 +107,67 @@ avertissement `warnings` quand `reference_size` manque, est ambiguë (un « 9 »
 EU 42,5, et rend toujours les `assumptions` de la méthode. L'index sert à situer un
 **changement** entre deux paires, pas à juger une chaussure, et ce n'est pas un avis médical.
 
+## Retours de chaussant et bilan de retraite
+
+Le confort perçu est le critère individuel le mieux étayé pour choisir une chaussure (Nigg 2015,
+Malisoux 2025, voir [l'épopée #297](https://github.com/mmornati/ai-running-coach/issues/297)) : il faut
+donc l'enregistrer. Rien de tout cela n'est un avis médical.
+
+### Un retour par séance : `/log`
+
+Une phrase suffit : « Kipride : ampoule au talon gauche, avant-pied serré, confort 6 ». Le modèle
+extrait les termes ; `scripts/arc_log.py` les rattache à une **liste fermée** et écrit, dans le bloc `arc`
+de la séance, `shoe_feedback` = `{comfort, issues[], notes}` :
+
+| `issues[].kind` | Se dit (exemples) |
+|---|---|
+| `blister` | ampoule, cloque |
+| `toe_box_tight` | avant-pied serré, orteils à l'étroit |
+| `heel_slip` | talon qui bouge, qui glisse |
+| `hot_spot` | point chaud, échauffement, frottement |
+| `numbness` | engourdissement, pied qui s'endort |
+| `lacing_pressure` | laçage trop serré, pression des lacets |
+| `instability` | instable, manque de stabilité |
+| `too_soft` / `too_firm` | trop mou / trop dur |
+| `poor_grip` | manque d'adhérence |
+| `upper_tear` | tige déchirée |
+
+Les pluriels, féminins, articles et intensificateurs sont tolérés (« ampoules », « trop dures », « mes
+Kipride ») ; une **négation** (« pas d'ampoule », « sans frottement », « pas de souci ») n'écrit jamais de problème.
+
+`zone` (facultatif) reprend les zones des inspections photo (`heel_lateral`, `forefoot_central`, `toe`…) et
+`side` vaut `left` ou `right`. Un terme hors liste, une zone vague (« sous le pied ») ou un confort hors de
+0-10 déclenchent une **question**, jamais une devinette. Le retour est **rattaché à la paire de la
+séance** : une séance sans `gear_id` fait demander la paire avant d'écrire (la paire « par défaut » n'est
+jamais supposée), et le contrat refuse un `shoe_feedback` sans `gear_id`.
+
+Garde-fous : un retour de chaussant **ne remplace jamais** la douleur. « Ampoule au talon et douleur 7/10 »
+écrit `shoe_feedback` **et** `pain`, avec la recommandation de consultation dès
+`[injury_risk].pain_consult_threshold` ; l'ampoule n'est jamais présentée comme la cause de la douleur
+(ni l'inverse).
+
+### Le bilan de retraite d'une paire
+
+Quand une paire passe à `(retirée)`, le coach **propose** (une fois, jamais en headless) de la noter :
+`comfort_overall` de 0 à 10, `would_rebuy` (`yes` | `yes_with_change` | `no`) et, pour `yes_with_change`,
+`change_wanted` parmi `wider_toe_box`, `narrower`, `more_drop`, `less_drop`, `more_cushion`, `firmer`,
+`more_grip`, `lighter`, `more_stable`, `other`, plus un mot libre. Il est stocké comme objet `verdict` de
+la fiche `gear/specs/<gear_id>.md` : une paire reste décrite par un seul fichier de référence (voir
+[le contrat de données](skills/workspace-data-contract.md)).
+Si la paire n'a pas de fiche, le coach propose de la créer d'abord, sans inventer de caractéristique.
+
+### Lire les retours
+
+```bash
+python3 scripts/arc_index.py shoe-feedback                       # JSON : toutes les paires
+python3 scripts/arc_index.py shoe-feedback --gear kipride-max-1 --text
+```
+
+Lecture seule. Par paire : nombre de séances avec retour, confort (moyenne, min, max, dernier), problèmes
+comptés par `kind` et par zone (en nombre de **séances** touchées), retours récents, bilan de retraite. Les chiffres sont **déclaratifs** :
+corrélation, pas causalité. Les boutons Telegram « confort » après une séance ne font pas partie de cette
+étape.
+
 ## Ce que disent les preuves
 
 *À compléter par la story #301 (moteur de règles fondé sur les preuves : confort, continuité, drop,
