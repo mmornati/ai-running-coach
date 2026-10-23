@@ -836,12 +836,14 @@ la carte le dit. Les paires marquées « ignorées » dans le profil sont listé
 la vue.
 
 **Chaussures** (#40) — kilométrage cumulé de chaque paire déclarée dans « Matériel & lieux » du
-profil (course et randonnée seulement), une ligne « à surveiller » au-delà du seuil d'alerte,
-les paires retirées affichées en grisé sans jamais alerter, et une ligne « inconnue » par
+profil (course et randonnée seulement), une pastille « Fin de vie — à retirer ? » au-delà du
+seuil d'alerte, les paires retirées affichées en grisé sans jamais alerter (« retirée (Garmin) »
+quand la paire est retirée dans Garmin Connect sans que sa puce le dise encore — voir
+[Synchronisation du matériel Garmin](../garmin-setup.md#synchronisation-du-materiel-garmin)), et une ligne « inconnue » par
 `gear_id` vu sur une séance mais absent du profil — jamais masqué silencieusement. Depuis #132 :
 le kilométrage inclut le « départ » déclaré sur la puce (rappelé sous le total : « dont N km de
 départ »), un badge **« ≈ N sem. »** donne la prévision de retraite au rythme des 28 derniers
-jours (rien sans usage récent, « seuil dépassé » au-delà du seuil), « proche du seuil » apparaît
+jours (rien sans usage récent ni au-delà du seuil), « proche du seuil » apparaît
 dès 90 %, et le rôle `usage:` déclaré s'affiche à côté du nom.
 
 ![Matériel : ce qui est à traiter, puis le kilométrage de chaque paire](../assets/dashboard/materiel.webp)

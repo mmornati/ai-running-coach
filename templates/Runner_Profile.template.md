@@ -121,7 +121,9 @@
     que la montre attache à une séance. Le coach vous propose l'association une fois ;
     il ne la devine jamais.
   - "(par défaut)" : chaussure attribuée aux séances sans matériel précisé.
-  - "(retirée)" : sortie de rotation — kilométrage conservé, jamais d'alerte.
+  - "(retirée)" : sortie de rotation — kilométrage conservé, jamais d'alerte. Date facultative :
+    "(retirée 2026-10-12)". Une paire liée par "garmin:" et retirée dans Garmin Connect est déjà
+    traitée comme retirée ; le coach vous propose de le noter ici.
   - "(ignorée)" : matériel Garmin que vous ne suivez pas — puce réduite à `garmin: <uuid>` ; le coach
     ne le repropose plus et ne le signale plus, et ses séances ne sont jamais créditées à la
     paire par défaut.

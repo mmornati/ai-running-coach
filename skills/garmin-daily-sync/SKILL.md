@@ -153,6 +153,16 @@ Remote Control) et l'IDE partagent. Il délègue tout à l'agent `coach` et au s
   coach le propose en session interactive). **Aucune écriture côté Garmin en headless** : `add_gear_to_activity` ne
   s'appelle jamais ici, personne ne peut confirmer. Avec `[data].source = "intervals"`, aucun
   matériel par séance n'est lisible (voir `AGENTS.md`) : `gear_id` reste absent, jamais deviné.
+- **Retraite des chaussures dans Garmin (source `garmin` uniquement)** : au plus UNE fois par jour
+  (`python3 scripts/arc_index.py garmin-gear-status` → `snapshot.fetched_at` absent ou de plus de 20 h),
+  un `get_gear(include_stats=False)` dont la réponse brute (JSON tel quel) est écrite dans
+  `.arc/get_gear_response.json`, puis `python3 scripts/arc_index.py garmin-gear-status --garmin-gear-json
+  .arc/get_gear_response.json` (fichier plutôt qu'un tube : seules les commandes `python3 scripts/…` sont
+  permises en headless). Une paire liée retirée dans
+  Garmin est alors traitée comme retirée tout de suite (plus d'alerte de seuil). **Le profil n'est
+  jamais modifié en headless** (`--mark-retired` est refusé sous `ARC_HEADLESS`) : un nouvel élément
+  `retired_in_garmin` de `drift` est mentionné UNE fois dans `Alerte :` (« Ultra Glide retirée dans
+  Garmin — à noter au profil avec le coach »), puis plus jamais pour la même paire.
 - **Apports vers Garmin (#167, opt-in `[nutrition].garmin_sync`)** : **aucune écriture nutrition
   ni hydratation côté Garmin en headless** — `log_food`, `log_custom_food`, `create_custom_food`,
   `add_hydration_data` ne s'appellent jamais ici (personne ne peut confirmer) ; `scripts/daily-sync.sh`

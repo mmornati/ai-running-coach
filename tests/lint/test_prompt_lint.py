@@ -32,6 +32,8 @@ PATH_ALLOWLIST = {
     "local/skills/",
     ".arc/backfill.md",             # généré par scripts/arc_index.py backfill-plan, gitignoré
     ".arc/coach.db",                # généré par scripts/arc_index.py, gitignoré (skill coach-doctor)
+    ".arc/garmin_gear.json",        # instantané get_gear, écrit par arc_index.py garmin-gear-status, gitignoré
+    ".arc/get_gear_response.json",  # réponse brute de get_gear déposée par l'agent avant garmin-gear-status
 }
 
 # Un chemin entre backticks, assez spécifique pour éviter les faux positifs.

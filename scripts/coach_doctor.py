@@ -1656,7 +1656,10 @@ def check_gear_sync(workspace: Path, config: dict) -> dict:
     2. profil : segment `garmin:` illisible ou uuid dupliqué entre puces (⚠️), paires actives
        sans segment `garmin: <uuid>` (ℹ️). Une puce `(ignorée)` (matériel Garmin volontairement non
        suivi) ou `(retirée)` n'est jamais réclamée. Lister le matériel Garmin sans puce exige
-       `get_gear` : c'est le rôle du coach, jamais du doctor.
+       `get_gear` : c'est le rôle du coach, jamais du doctor ;
+    3. retraite Garmin : d'après l'instantané `.arc/garmin_gear.json` (écrit par le coach ou la
+       synchronisation à chaque `get_gear`, lu ici sans appel), paires liées retirées dans Garmin mais
+       pas au profil (ℹ️ : déjà traitées comme retirées, à reporter sur la puce) ou l'inverse (ℹ️).
     """
     check_id = "gear_sync"
     source = (config.get("data") or {}).get("source", "garmin")
@@ -1727,6 +1730,26 @@ def check_gear_sync(workspace: Path, config: dict) -> dict:
         return build_check(
             check_id, "warning", " ; ".join(problems) + whitelist_note + " — ces puces ne seront pas associées.",
             fix=f"corrigez les segments `garmin: <uuid>` de {rel} (uuid recopié de get_gear, un par paire)",
+        )
+    import arc_garmin_gear as GG
+    snapshot = GG.load_cache(workspace)
+    drift = GG.status_drift(pairs, snapshot)
+    retired_in_garmin = [d for d in drift if d["kind"] == "retired_in_garmin"]
+    if drift:
+        parts = []
+        if retired_in_garmin:
+            parts.append(f"{len(retired_in_garmin)} paire(s) retirée(s) dans Garmin mais pas au profil ("
+                         + ", ".join(d["name"] for d in retired_in_garmin) + ") — déjà traitée(s) comme retirée(s) "
+                         "(aucune alerte, aucun rappel d'inspection)")
+        back = [d for d in drift if d["kind"] == "active_in_garmin"]
+        if back:
+            parts.append(f"{len(back)} paire(s) retirée(s) au profil mais active(s) dans Garmin ("
+                         + ", ".join(d["name"] for d in back) + ") — le profil prime, rien n'est changé")
+        return build_check(
+            check_id, "info", " ; ".join(parts) + whitelist_note + ".",
+            fix=(f"demandez au coach de noter la retraite au profil (python3 scripts/arc_index.py garmin-gear-status "
+                 f"--mark-retired <id>, après votre accord)" if retired_in_garmin else
+                 "retirez la paire dans Garmin Connect, ou enlevez « (retirée) » de sa puce si elle est de nouveau portée"),
         )
     active = [g for g in pairs if not g.get("retired") and not g.get("ignored")]
     unlinked = [g for g in active if not g.get("garmin_uuid")]

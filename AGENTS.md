@@ -347,7 +347,14 @@ exécutée par `python3 scripts/arc_index.py gear-attribution` ; un désaccord G
 signalé une fois ; provenance dans `gear_source` ; un matériel Garmin non associé, ambigu ou
 `(ignorée)` laisse `gear_id` absent avec `gear_source: "garmin_unmapped"` : la séance n'est alors
 jamais créditée à la paire par défaut). Un seul `get_activity_gear` par activité NOUVELLE. Aucune
-écriture Garmin sans confirmation dans la conversation, jamais en headless. **Avec
+écriture Garmin sans confirmation dans la conversation, jamais en headless. **Retraite Garmin** :
+chaque réponse de `get_gear` est écrite telle quelle dans `.arc/get_gear_response.json` puis lue par
+`python3 scripts/arc_index.py garmin-gear-status --garmin-gear-json .arc/get_gear_response.json`
+(instantané dérivé `.arc/garmin_gear.json`, au plus une fois par jour en headless) ; une paire liée retirée
+dans Garmin est retirée **immédiatement** (`retired_source: "garmin"` : ni alerte de seuil, ni rappel
+d'inspection) et le coach propose une fois, en interactif seulement, d'écrire `(retirée AAAA-MM-JJ)` sur la
+puce (`--mark-retired <gear_id>`, refusé sous `ARC_HEADLESS`) ; retirée au profil mais active dans Garmin :
+signalé, jamais annulé. **Avec
 `[data].source = "intervals"`** : le serveur épinglé expose `icu_get_gear_list` (inventaire, à titre
 de référence — jamais utilisé pour attribuer) mais **aucun matériel par activité**
 (`src/intervals_icu_mcp/tools/activities.py`/`activity_analysis.py` n'ont pas de champ gear,

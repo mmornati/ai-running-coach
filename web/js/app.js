@@ -346,11 +346,24 @@ function equipmentTile(eq) {
   return `<p class="weather">${chip("gear", "orange", "Matériel à contrôler")} <span>${alerts.map((i) => gearLink(i.gear_id, i.name)).join(", ")}</span> <a href="#/materiel">Voir le matériel</a></p>`;
 }
 
+// Étiquette « retirée » : date de retraite si connue, et provenance Garmin quand la paire est retirée dans
+// Garmin Connect sans que la puce du profil le dise encore (`retired_source: "garmin"`, statut effectif).
+function retiredTag(s) {
+  if (!s?.retired) return "";
+  const when = s.retired_date ? ` le ${F.esc(F.dayShort(s.retired_date))}` : "";
+  const garmin = s.retired_source === "garmin";
+  const title = garmin ? `Retirée dans Garmin Connect${when} — le profil ne le dit pas encore : le coach proposera de l'y noter.` : `Retirée${when}`;
+  return ` <span class="tag" title="${title}">retirée${garmin ? " (Garmin)" : ""}</span>`;
+}
+
+// Seuil franchi sur une paire encore en service : fin de vie, à retirer (dans Garmin ou au profil).
+const END_OF_LIFE_CHIP = () => chip("gear", "orange", "Fin de vie — à retirer ?");
+
 // Prévision de retraite (#132) : « ≈ 6 sem. » (clé omise côté API = pas de prévision, on
-// n'affiche rien) ; seuil dépassé → « seuil dépassé » ; « proche » à ≥ 90 % du seuil.
+// n'affiche rien) ; seuil dépassé → rien ici (la pastille « Fin de vie — à retirer ? » le dit) ;
+// « proche » à ≥ 90 % du seuil.
 function gearForecast(s) {
-  if (s.retired) return "";
-  if (s.alert) return `<span class="tag">seuil dépassé</span>`;
+  if (s.retired || s.alert) return "";
   const near = s.near_threshold ? `${chip("gear", "orange", "Proche du seuil")} ` : "";
   if (s.retire_forecast_weeks == null) return near;
   const weeks = Math.max(1, Math.round(s.retire_forecast_weeks));
@@ -455,10 +468,10 @@ function gearSection(gear, inspections) {
   if (!shoes.length && !unknown.length) return "";
   const sorted = [...shoes].sort((a, b) => (a.retired === b.retired ? 0 : a.retired ? 1 : -1));
   const rows = sorted.map((s) => `<tr${s.retired ? ` class="muted"` : ""}>
-      <th scope="row">${gearLink(s.gear_id, s.name)}${s.default ? ` <span class="tag">défaut</span>` : ""}${s.retired ? ` <span class="tag">retirée</span>` : ""}${s.usage ? ` <span class="tag">${F.esc(s.usage)}</span>` : ""}</th>
+      <th scope="row">${gearLink(s.gear_id, s.name)}${s.default ? ` <span class="tag">défaut</span>` : ""}${retiredTag(s)}${s.usage ? ` <span class="tag">${F.esc(s.usage)}</span>` : ""}</th>
       <td class="num">${F.distance(s.distance_m, 0)}${s.start_m ? `<br><small class="muted">dont ${F.distance(s.start_m, 0)} de départ</small>` : ""}</td>
       <td class="num">${F.distance(s.threshold_m, 0)}</td>
-      <td>${s.alert ? chip("gear", "orange", "À surveiller") : ""} ${gearForecast(s)} ${inspectionBadge(inspectionByGear[s.gear_id])}</td></tr>`).join("");
+      <td>${s.alert ? END_OF_LIFE_CHIP() : ""} ${gearForecast(s)} ${inspectionBadge(inspectionByGear[s.gear_id])}</td></tr>`).join("");
   const unknownRows = unknown.map((u) => `<tr><th scope="row">${gearLink(u.gear_id, u.gear_id)} <span class="tag">inconnue</span></th><td class="num">${F.distance(u.distance_m, 0)}</td><td class="num">—</td><td></td></tr>`).join("");
   return `<section class="band"><h2>Chaussures</h2><div class="table-wrap"><table class="data data--compact">
       <thead><tr><th scope="col">Chaussure</th><th scope="col" class="num">Kilométrage</th><th scope="col" class="num">Seuil</th><th scope="col">Statut</th></tr></thead>
@@ -2992,7 +3005,8 @@ function gearCareerFacts(d) {
     ...(c.best_efforts ? [["Meilleurs efforts", c.best_efforts.map((b) => `${b.km} km : ${F.clock(b.time_s)}`).join("<br>")]] : []),
   ];
   if (sh) {
-    facts.push(["Seuil d'alerte", `${F.distance(sh.threshold_m, 0)}${sh.alert ? ` ${chip("gear", "orange", "À surveiller")}` : ""} ${gearForecast(sh)}`]);
+    facts.push(["Seuil d'alerte", `${F.distance(sh.threshold_m, 0)}${sh.alert ? ` ${END_OF_LIFE_CHIP()}` : ""} ${gearForecast(sh)}`]);
+    if (sh.retired && sh.retired_date) facts.push(["Retirée le", `${dayYear(sh.retired_date)}${sh.retired_source === "garmin" ? ` <small class="muted">(Garmin Connect)</small>` : ""}`]);
     if (sh.usage) facts.push(["Usage", F.esc(sh.usage)]);
     if (sh.start_date) facts.push(["En service depuis", dayYear(sh.start_date)]);
   }
@@ -3001,7 +3015,7 @@ function gearCareerFacts(d) {
 }
 
 function gearShoeDetail(d) {
-  const tags = `${d.retired ? ` <span class="tag">retirée</span>` : ""}${d.unknown ? ` <span class="tag">inconnue</span>` : ""}${d.shoe?.default ? ` <span class="tag">défaut</span>` : ""}`;
+  const tags = `${d.retired ? retiredTag(d.shoe || { retired: true }) : ""}${d.unknown ? ` <span class="tag">inconnue</span>` : ""}${d.shoe?.default ? ` <span class="tag">défaut</span>` : ""}`;
   if (d.ignored) {
     const ins = d.inspections?.inspections?.length ? `<section class="band"><h2>Inspections</h2><ol class="gear-inspections">${d.inspections.inspections.map(inspectionItem).join("")}</ol>${note(INSPECTION_CAVEAT)}</section>` : "";
     return { html: `${header(d.name, `Paire ignorée · ${HYPOTHESES_LINK}`)}<p><a href="#/materiel">← Matériel</a></p>
