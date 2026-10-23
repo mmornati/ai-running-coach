@@ -13,7 +13,7 @@ Analyse comparative de séances enregistrées sur le **même parcours / même li
 - Évaluation de la faisabilité d'un objectif à partir de la progression sur un parcours de référence.
 - Toute demande « même parcours, dates différentes » → remplacer l'analyse manuelle par ce workflow reproductible.
 
-**Source de données** : ce skill exige des `splits` par km. Avec `[data].source = "intervals"`, `"strava"` ou `"coros"` (#168), les séances synchronisées n'en ont pas (aucun équivalent, `AGENTS.md`) : le dire à l'athlète, ne rien reconstituer.
+**Source de données** : ce skill exige des `splits` par km, calculés depuis le FIT quelle que soit la source (`python3 scripts/arc_index.py splits <id>`, `AGENTS.md`). Une séance sans FIT téléchargé (et sans splits Garmin en repli) n'en a pas : le dire à l'athlète, ne rien reconstituer depuis les tours de la montre.
 
 **Ne PAS utiliser** pour l'analyse globale d'une seule séance (utiliser le workflow coach standard sur `get_activity`) ni pour les drills (strides/intervalles → `session-parts-analyzer`).
 

@@ -107,10 +107,10 @@ it, plan on load, `activities/` history and declared feeling, and write no healt
 **Push**: load `coros-workout-scheduling` instead of `garmin-workout-scheduling` and follow it exactly
 (targets via `scripts/arc_coros_workout.py`, calendar read before each push and after, explicit "yes",
 never headless); there is no delete or move tool — tell the athlete which session to remove in the COROS
-app. **No COROS equivalent — say so, never invent**: HRR (`recovery_hr_bpm`), per-km `splits`
-(`course-comparison` unusable), gear per activity (gear from chat/default only; no
+app. **No COROS equivalent — say so, never invent**: HRR (`recovery_hr_bpm`), gear per activity (gear from chat/default only; no
 `garmin_gear_backfill.py`), weigh-ins (weight stays declared), intake push, course upload. Fine analysis:
-`fit-download` (`download_fit.py --source coros`, same KPIs as Garmin). Lactate threshold: « allure
+`fit-download` (`download_fit.py --source coros`, same KPIs as Garmin); per-km `splits` from the FIT
+like every source (see SPLITS), never the COROS laps. Lactate threshold: « allure
 seuil COROS » (`queryFitnessAssessmentOverview` → `arc_coros_workout.py threshold`).
 
 ### SETUP CHECK (first run only)

@@ -414,7 +414,7 @@ l'HRV et la FC de repos sont datés par le **jour du réveil** (la nuit de D est
 | Activités récentes | `get_activities` / `get_activities_by_date` | `querySportRecords(startDate, endDate, sportTypeCodes…)` (`yyyyMMdd`) | Une entrée par séance : date, type, `Location` (= **nom** de la séance, jamais `location`), horodatages `startTimestamp`/`endTimestamp`, durée, distance, allure, FC moyenne, calories, `LabelId` (18 chiffres), `SportType` (100 course, 101 tapis, 102 trail, 104 randonnée, 200/201 vélo, 402 renforcement…). |
 | Détail d'une activité | `get_activity` | `getActivityDetail` | Texte résumé : allure, allure ajustée à la pente, FC moy./max, cadence, puissance, D+/D−, calories, charge, effort perçu. `calories_kcal` ← calories de la séance ; **pas de `bmr_calories`** (`calories_bmr_kcal` omis). |
 | Identifiant au contrat | `garmin_activity_id` (entier) | `coros_activity_id` = `"c"` + `LabelId` | Toujours avec `start_time` (ISO local, depuis `startTimestamp`) : il numérote les montées. Jamais l'entier nu. |
-| Tours | `get_activity_splits` | `queryActivityLapData` | Distances en **cm**, libellés en chinois ; le découpage « par km » repart à chaque étape de la séance planifiée : **jamais** recopié dans `splits`. |
+| Tours | `get_activity_splits` | `queryActivityLapData` | Distances en **cm**, libellés en chinois ; le découpage « par km » repart à chaque étape de la séance planifiée : **jamais** recopié dans `splits` (calculés depuis le FIT : `arc_index.py splits c<LabelId>`). |
 | FIT, flux par seconde | `get_activity_fit_data` (timeoute) | `download_fit.py <c+LabelId> --json --source coros` (skill `fit-download`) | Jamais par l'IA (URL du fichier jamais affichée) ; 50 fichiers par jour selon COROS. Mêmes KPI qu'avec Garmin (zones, GAP, découplage, VAM, durabilité, dynamique de course). |
 | HRV nocturne | `get_hrv_data` | `querySleepHrv(startDate)` | Évaluation officielle du jour (moyenne, plage normale, ligne de base) → `hrv_overnight_ms` ; ne jamais recalculer depuis la série brute. « No data found » = absente (`missing_reason`). |
 | FC de repos | `get_rhr_day` | `queryRestingHeartRate(days)` | `AAAA-MM-JJ: N bpm` ou `No data` ; nombre de jours seulement, pas de date. Jamais la ligne « Resting HR » de `queryDailyHealthData` (ce n'est pas la FC de repos du jour). |
@@ -433,7 +433,7 @@ l'HRV et la FC de repos sont datés par le **jour du réveil** (la nuit de D est
 
 **Fonctionnalités/champs Garmin sans portage COROS — indisponibles et EXPLIQUÉS comme tels quand
 `[data].source = "coros"`, jamais devinés ou simulés :** fréquence cardiaque de récupération (HRR,
-`recovery_hr_bpm` : absente du détail, des tours et du FIT), splits par km (donc `course-comparison`),
+`recovery_hr_bpm` : absente du détail, des tours et du FIT),
 matériel par séance (et rattrapage `garmin_gear_backfill.py`), pesées, poussée des apports, upload de
 parcours, suppression/déplacement d'une séance planifiée, Training Readiness Garmin (remplacé par la
 récupération COROS, nommée). **Surveillance** (`[sync].mode = "watch"`) : disponible, par le relais

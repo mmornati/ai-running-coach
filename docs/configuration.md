@@ -338,7 +338,7 @@ Suunto/Polar/Apple synchronisées sur Intervals.icu (COROS : [Montres COROS](cor
     Comme Garmin : activités, FIT et KPI fins, bilan matinal complet (HRV, FC de repos et
     **récupération COROS**, toujours nommée ainsi, jamais convertie en Training Readiness),
     séances envoyées à la montre, surveillance (`[sync].mode = "watch"`). Indisponibles :
-    FC de récupération (HRR), splits par km, matériel par séance, pesées, poussée des apports,
+    FC de récupération (HRR), matériel par séance, pesées, poussée des apports,
     upload de parcours, suppression d'une séance planifiée. Détail dans [Montres COROS](coros.md).
 
 ## Le style de coaching — `[coaching]`

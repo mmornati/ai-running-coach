@@ -20,7 +20,7 @@ Pro), entre le 22 et le 23 octobre 2026.
 | FIT et analyses fines (zones, GAP, découplage, montées, foulée) | ✅ `download_fit.py --source coros`, identifiant `coros_activity_id` |
 | Source de données `coros` : activités et santé enregistrées, bilan matinal, synchronisation quotidienne | ✅ `./install.sh --source coros` |
 | Surveillance (`[sync].mode = "watch"`) : synchronisation dès qu'une séance ou la nuit arrive | ✅ sans IA, par le relais |
-| Splits par km | ⬜ à venir, calculés depuis le FIT |
+| Splits par km | ✅ calculés depuis le FIT (`arc_index.py splits c<LabelId>`), comme pour toutes les sources |
 | FC de récupération, matériel par séance, pesées | ❌ absents du MCP COROS |
 
 ## Deux façons de brancher la montre
@@ -163,7 +163,7 @@ Constaté sur deux séances créées dans l'app (« Renfo lombaires », « Renfo
   en cm. **Le découpage « par km » repart de zéro à chaque étape de la séance
   planifiée** : sur la séance du 22/10, un tour de 194,85 m à la fin des 40 min, puis
   un tour par ligne droite et par récupération. Ce ne sont donc pas des splits au
-  km réguliers ; les vrais splits seront calculés depuis le FIT ;
+  km réguliers ; les splits sont calculés depuis le FIT (`arc_index.py splits`) ;
 - `queryActivityFitFileDownloadUrls(labelId, sportType)` : une URL de fichier FIT standard
   (produit « COROS PACE 4 Pro », 3 786 points : FC, allure, altitude, GPS, puissance, temps
   de contact, oscillation, longueur de pas), lisible par `fitparse` et par la normalisation
