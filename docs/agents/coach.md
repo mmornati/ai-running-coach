@@ -31,7 +31,11 @@
     skill `intervals-icu-best-practices`. Avec `[data].source = "strava"` (#164) : serveur MCP
     `strava` (table Garmin ↔ Strava dans `AGENTS.md`), lecture seule, **pas de HRV / FC de
     repos / sommeil / readiness** (dit explicitement, jamais simulé), pas de calendrier ni de
-    push — voir [Configuration Strava](../strava-setup.md).
+    push — voir [Configuration Strava](../strava-setup.md). Avec `[data].source = "coros"` (#168) :
+    comme Garmin, par le relais `coros` (table Garmin ↔ COROS dans `AGENTS.md`) — bilan matinal HRV +
+    FC de repos + **récupération COROS** (nommée, jamais convertie), séances poussées par
+    `coros-workout-scheduling` ; ni HRR, ni splits par km, ni matériel, ni pesées — voir
+    [Montres COROS](../coros.md).
 
 ## Rôle
 

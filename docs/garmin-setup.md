@@ -241,7 +241,7 @@ blanche : `get_daily_weigh_ins` (pesées d'un jour) et `get_weigh_ins` (pesées 
 - **Installations existantes.** Relancez `./install.sh` pour mettre à jour la liste blanche de
   `.mcp.json`. En mode passerelle, ajoutez `get_daily_weigh_ins,get_weigh_ins` à la main à
   `GARMIN_ENABLED_TOOLS` de `~/.config/leanproxy_servers.yaml`.
-- **Sources intervals.icu et Strava.** Rien n'est lu : le poids reste celui que vous déclarez.
+- **Sources intervals.icu, Strava et COROS.** Rien n'est lu : le poids reste celui que vous déclarez.
 
 ## Rattraper le matériel de l'historique
 

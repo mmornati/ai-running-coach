@@ -106,7 +106,7 @@ Types de valeurs ci-dessous : *entier*, *nombre* (≥ 0 sauf mention), *texte*,
 | `intervals_activity_id` | texte | identifiant Intervals.icu (#68, ex. `"i12345678"`) — CHAÎNE, jamais confondue avec `garmin_activity_id` (entier). À renseigner à la place de `garmin_activity_id`, jamais en plus, après un sync `[data].source = "intervals"` |
 | `strava_activity_id` | texte | identifiant Strava (#164) **préfixé `s`**, ex. `"s12345678901"` — l'API Strava rend un entier sans préfixe, indiscernable d'un `garmin_activity_id` ; le préfixe est la convention du projet (jamais le nombre seul : la validation le refuse). À renseigner à la place de `garmin_activity_id`, jamais en plus, après un sync `[data].source = "strava"` |
 | `coros_activity_id` | texte | identifiant COROS (#168) **préfixé `c`** : `"c"` + le `LabelId` de `querySportRecords` (18 chiffres), ex. `"c481221836600803431"` — même convention que Strava (jamais le nombre seul : la validation le refuse). À renseigner à la place des trois autres, jamais en plus. Une activité COROS porte aussi `start_time` : il numérote ses montées (sans lui, elles ne sont pas comparées d'une séance à l'autre) |
-| `name` | texte | nom de l'activité (Garmin, Intervals.icu ou Strava selon la source) |
+| `name` | texte | nom de l'activité (Garmin, Intervals.icu, Strava ou COROS selon la source ; COROS : la ligne `Location` de `querySportRecords`) |
 | `location` | texte | lieu / parcours (sert à la comparaison de parcours) |
 | `start_time` | date-heure | |
 | `distance_m` | nombre | |

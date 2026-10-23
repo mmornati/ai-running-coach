@@ -4,7 +4,7 @@
 
 ## Quand l'utiliser
 
-- Vous avez une montre COROS et installé la connexion COROS (`./install.sh --coros`, une seule connexion pour toutes les IA : voir [Montres COROS](../coros.md#installation-une-seule-connexion-pour-toutes-les-ia)).
+- Vous avez une montre COROS et installé la connexion COROS (`./install.sh --source coros`, ou `--coros` pour la montre seule ; une seule connexion pour toutes les IA : voir [Montres COROS](../coros.md#installation-une-seule-connexion-pour-toutes-les-ia)). Avec `--source coros`, c'est la destination principale des séances, à la place de la planification Garmin.
 - Le coach a validé une ou plusieurs séances et vous voulez les retrouver sur la montre.
 
 ## Ce que fait le skill

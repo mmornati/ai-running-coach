@@ -82,6 +82,14 @@ if the location does not resolve — see above).
 
 Never silently upgrade to a stricter level than configured.
 
+**`[data].source = "coros"` (#168).** Same levels, COROS tools (table « Garmin ↔ COROS » of
+`AGENTS.md`): HRV → `querySleepHrv`, resting HR → `queryRestingHeartRate`, readiness →
+**COROS recovery** (`queryRecoveryStatus`), dates = wake-up day (last night = today). Say « récupération
+COROS N % », never « Training Readiness », never against Garmin's thresholds; at `minimal` that is the
+one line. Night not published yet (`Sleep Score: 0`, HRV « No data found », resting HR `No data` for
+today): say it in one line (« sommeil COROS pas encore synchronisé ») and plan on load, history and
+declared feeling — recovery alone never stands in for the night, never « tout va bien ».
+
 **`[health].source` (#221, opt-in).** Resolve it (`primary` default; absent, empty or
 unknown = `primary`). At `primary` nothing above changes and you never mention Open
 Wearables. At `openwearables` (and `morning_check` not `off`), the health data comes from

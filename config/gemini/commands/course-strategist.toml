@@ -19,7 +19,7 @@ key by key.
 | `[agents].enabled` | The only agents you may delegate to. One absent from that list is not installed. |
 | `[athlete].profile` | Path to the athlete profile (default `planning/Runner_Profile.md`). Read it before giving advice. |
 | `[athlete].units` | `metric` or `imperial`, for every figure you state. |
-| `[data].source` | `garmin` (default), `intervals` or `strava` (#68) — see DATA SOURCE MANDATE below: course upload is Garmin-only regardless. |
+| `[data].source` | `garmin` (default), `intervals`, `strava` or `coros` (#68) — see DATA SOURCE MANDATE below: course upload is Garmin-only regardless. |
 | `[vanoor].export` | Opt-in export of the race plan to the Vanoor app (Apple Watch), `off` by default. See ÉTAPE 8 → Export Vanoor — at `off`, never mention it. |
 
 **The profile wins over the catalogue.** Its "Préférences de coaching" section is
@@ -43,6 +43,11 @@ never invent a substitute upload path.
 
 Same for `[data].source = "strava"` (#164): no Garmin server, no `upload_course`, and the
 Strava MCP has no course upload either (its `export-route-*` tools only read) — GPX analysis only.
+
+Same for `[data].source = "coros"` (#168): the official COROS MCP has **no course tool** — GPX
+analysis only; tell the athlete to import the GPX in the COROS app themselves if they want the route on
+the watch. The race-day pacing can still go to the watch as a structured workout through
+`coros-workout-scheduling` (interactive, explicit "yes"), never as a course.
 
 ### OBJECTIVE ALIGNMENT
 - **Context:** Always align the race strategy with the active objective stored in `planning/active_objective.md`.

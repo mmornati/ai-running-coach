@@ -1155,7 +1155,7 @@ resolve_nutrition_sync() {
             GARMIN_TOOL_WHITELIST="$GARMIN_TOOL_WHITELIST,$GARMIN_NUTRITION_TOOLS"
             log "Synchronisation nutrition (opt-in) : outils de journal alimentaire et d'hydratation ajoutés à la liste blanche garmin"
         else
-            # intervals.icu et Strava (#164) n'ont ni journal alimentaire ni hydratation : rien à pousser.
+            # intervals.icu, Strava (#164) et COROS (#168) n'ont ni journal alimentaire ni hydratation : rien à pousser.
             warn "[nutrition].garmin_sync = « ask » indisponible avec [data].source = « $SOURCE » (journal alimentaire et hydratation propres à Garmin Connect) — aucun outil exposé (voir docs/nutrition-garmin.md)."
         fi
     fi

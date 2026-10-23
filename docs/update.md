@@ -85,6 +85,7 @@ Pour le reste, les traces de l'installation suffisent :
 | `[agents].enabled` dans `config/workspace.user.toml` | `--agents …` (ou `--no-medical`) |
 | `[data].source = "intervals"` | `--source intervals` |
 | `[data].source = "strava"` | `--source strava` |
+| `[data].source = "coros"` | `--source coros` |
 | Dossiers `.claude/`, `.opencode/`, `.gemini/`… présents | `--ide …` |
 
 Une machine coach (daily-sync + Remote Control, Claude Code) correspond au préréglage
