@@ -134,7 +134,7 @@ class InstallFreeTests(InstallAsserts):
             self.assertSucceeded(proc)
             ours = [l for l in sb.crontab().splitlines() if "ai-running-coach daily-sync" in l]
             self.assertEqual(len(ours), 1, sb.crontab())
-            self.assertIn("garmin_watch.py", ours[0])
+            self.assertIn("scripts/watch.py", ours[0])
             self.assertOutputContains(proc, "réinstallation")
 
     def test_no_scheduler_installed_says_how_to_apply_watch(self):

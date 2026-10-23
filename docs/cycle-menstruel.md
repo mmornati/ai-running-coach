@@ -33,7 +33,9 @@ La casse et les espaces sont ignorés (`"Garmin"` vaut `"garmin"`). Une valeur i
 de frappe, type erroné) est traitée comme `off`, avec un avertissement : jamais une erreur,
 jamais un suivi activé par accident. Un mode qui ne
 correspond pas à la source de données (`garmin` avec intervals.icu, par exemple) retombe sur la
-déclaration manuelle. Strava (`[data].source = "strava"`, #164) n'expose **aucune** donnée de
+déclaration manuelle. COROS (`[data].source = "coros"`, #168) : mode `coros`, outil
+`queryMenstruationCycles` ; sans saisie dans l'app COROS, « No menstrual cycle data found » = aucune
+phase (les durées par défaut ne sont jamais lues comme une phase). Strava (`[data].source = "strava"`, #164) n'expose **aucune** donnée de
 cycle : avec cette source, seul `manual` a un effet (`garmin` et `intervals` y retombent).
 
 ### Comment la liste blanche Garmin est gérée

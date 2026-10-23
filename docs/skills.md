@@ -4,7 +4,7 @@
 ![](assets/ridge.jpg)
 </div>
 
-`ai-running-coach` fournit **24 skills** que les agents chargent à la demande pour des tâches spécifiques.
+`ai-running-coach` fournit **25 skills** que les agents chargent à la demande pour des tâches spécifiques.
 
 ## Vue d'ensemble
 
@@ -17,6 +17,7 @@
 <div class="arc-skill"><span class="arc-skill__name"><a href="skills/gpx-analysis.md">Analyse GPX</a></span><span class="arc-skill__desc">Analyse générique d'un fichier GPX et production d'un rapport Markdown structuré</span></div>
 <div class="arc-skill"><span class="arc-skill__name"><a href="skills/course-comparison.md">Comparaison de parcours</a></span><span class="arc-skill__desc">Analyse comparative de séances sur un même parcours/lieu</span></div>
 <div class="arc-skill"><span class="arc-skill__name"><a href="skills/garmin-workout-scheduling.md">Planification Garmin</a></span><span class="arc-skill__desc">Push de séances planifiées dans le calendrier Garmin Connect</span></div>
+<div class="arc-skill"><span class="arc-skill__name"><a href="skills/coros-workout-scheduling.md">Planification COROS</a></span><span class="arc-skill__desc">Séances planifiées poussées au calendrier COROS (montre COROS), en interactif et après votre « oui »</span></div>
 <div class="arc-skill"><span class="arc-skill__name"><a href="skills/garmin-sync-efficiency.md">Synchronisation Garmin</a></span><span class="arc-skill__desc">Récupération efficace des données Garmin sans saturer le contexte</span></div>
 <div class="arc-skill"><span class="arc-skill__name"><a href="skills/weather-forecast.md">Météo</a></span><span class="arc-skill__desc">Prévisions météo pour le lieu d'entraînement</span></div>
 <div class="arc-skill"><span class="arc-skill__name"><a href="skills/session-parts-analyzer.md">Analyse de séances</a></span><span class="arc-skill__desc">Analyse de portions spécifiques d'une séance Garmin</span></div>

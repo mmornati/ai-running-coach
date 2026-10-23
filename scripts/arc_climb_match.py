@@ -81,6 +81,7 @@ from __future__ import annotations
 
 import math
 import re
+from datetime import datetime, timezone
 from typing import Dict, List, Optional, Sequence, Tuple
 
 # Tolérance de position (#49, critère d'acceptation : « robuste aux petites variations de
@@ -155,34 +156,64 @@ SEGMENT_ID_CLIMB_MULTIPLIER = 10_000
 INTERVALS_SEED_OFFSET = 500_000_000_000
 # Troisième espace (#164) : une séance Strava (`s<chiffres>`, entier Strava ~2·10¹⁰ aujourd'hui)
 # est décalée de 10¹¹, entre les identifiants Garmin (~2·10¹⁰) et le décalage Intervals.icu
-# (5·10¹¹) ; ses chiffres doivent rester sous l'écart (4·10¹¹), sinon `ValueError`.
+# (5·10¹¹) ; ses chiffres doivent rester sous l'écart avec COROS (3·10¹¹), sinon `ValueError`.
 STRAVA_SEED_OFFSET = 100_000_000_000
+# Quatrième espace (#168) : le `LabelId` COROS (18 chiffres) ne tient dans aucune graine sous
+# `MAX_SEGMENT_SEED`. Une séance COROS est donc numérotée par l'heure de départ de son
+# `start_time` (secondes Unix, ~1,8·10⁹ aujourd'hui), décalée de 4·10¹¹ : la tranche haute
+# de l'espace Strava, que les identifiants Strava n'atteindront pas avant longtemps. Deux
+# séances COROS parties à la même seconde partageraient leur graine : hypothèse assumée.
+COROS_SEED_OFFSET = 400_000_000_000
 # Plus grande graine dont les identifiants de segment (`graine × SEGMENT_ID_CLIMB_MULTIPLIER
 # + indice`) restent sous `Number.MAX_SAFE_INTEGER` (2⁵³ − 1) — au-delà, le tableau de bord
 # arrondirait silencieusement l'identifiant. Chiffres Intervals.icu admis : < ~4·10¹¹.
 MAX_SEGMENT_SEED = (2 ** 53 - 1) // SEGMENT_ID_CLIMB_MULTIPLIER - 1
 _INTERVALS_ID_RE = re.compile(r"^i(\d+)$")   # même forme que `arc_samples.INTERVALS_ID_RE`
 _STRAVA_ID_RE = re.compile(r"^s(\d+)$")      # même forme que `arc_samples.STRAVA_ID_RE`
+_COROS_ID_RE = re.compile(r"^c(\d+)$")       # même forme que `arc_samples.COROS_ID_RE`
 
 
-def segment_seed(ref) -> int:
+def _epoch_s(start_time) -> Optional[int]:
+    """Secondes Unix d'un `start_time` ISO 8601 (naïf = lu en UTC : seule compte une valeur
+    stable pour une même séance). `None` si absent ou illisible."""
+    if not isinstance(start_time, str) or not start_time.strip():
+        return None
+    try:
+        moment = datetime.fromisoformat(start_time.strip().replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    if moment.tzinfo is None:
+        moment = moment.replace(tzinfo=timezone.utc)
+    return int(moment.timestamp())
+
+
+def segment_seed(ref, start_time=None) -> Optional[int]:
     """Graine entière de `climb_segment.id` pour l'identifiant externe d'une séance :
     le `garmin_activity_id` tel quel, `INTERVALS_SEED_OFFSET + chiffres` pour un
-    `intervals_activity_id` (`i123456789` → 500 123 456 789) ou `STRAVA_SEED_OFFSET + chiffres`
-    pour un `strava_activity_id` (#164) — voir ASSUMPTIONS["segment_id"].
-    `ValueError` sur un identifiant mal formé ou une graine au-delà de `MAX_SEGMENT_SEED` :
-    jamais un identifiant faux produit en silence."""
-    if isinstance(ref, str) and _STRAVA_ID_RE.match(ref):
+    `intervals_activity_id` (`i123456789` → 500 123 456 789), `STRAVA_SEED_OFFSET + chiffres`
+    pour un `strava_activity_id` (#164), ou `COROS_SEED_OFFSET + secondes Unix de start_time`
+    pour un `coros_activity_id` (#168) — voir ASSUMPTIONS["segment_id"].
+    `None` pour une séance COROS sans `start_time` lisible (ses montées ne sont alors pas
+    appariées). `ValueError` sur un identifiant mal formé ou une graine au-delà de
+    `MAX_SEGMENT_SEED` : jamais un identifiant faux produit en silence."""
+    if isinstance(ref, str) and _COROS_ID_RE.match(ref):
+        epoch = _epoch_s(start_time)
+        if epoch is None:
+            return None
+        if not 0 <= epoch < INTERVALS_SEED_OFFSET - COROS_SEED_OFFSET:
+            raise ValueError(f"heure de départ hors bornes pour {ref!r} : {start_time!r}")
+        seed = COROS_SEED_OFFSET + epoch
+    elif isinstance(ref, str) and _STRAVA_ID_RE.match(ref):
         digits = int(ref[1:])
-        if digits >= INTERVALS_SEED_OFFSET - STRAVA_SEED_OFFSET:
+        if digits >= COROS_SEED_OFFSET - STRAVA_SEED_OFFSET:
             raise ValueError(f"identifiant Strava hors bornes : {ref!r} (chiffres < "
-                             f"{INTERVALS_SEED_OFFSET - STRAVA_SEED_OFFSET})")
+                             f"{COROS_SEED_OFFSET - STRAVA_SEED_OFFSET})")
         seed = STRAVA_SEED_OFFSET + digits
     elif isinstance(ref, str):
         match = _INTERVALS_ID_RE.match(ref)
         if not match:
-            raise ValueError(f"identifiant Intervals.icu ou Strava invalide : {ref!r} "
-                             "(attendu « i » ou « s » + chiffres)")
+            raise ValueError(f"identifiant Intervals.icu, Strava ou COROS invalide : {ref!r} "
+                             "(attendu « i », « s » ou « c » + chiffres)")
         seed = INTERVALS_SEED_OFFSET + int(match.group(1))
     else:
         seed = int(ref)
@@ -270,7 +301,7 @@ ASSUMPTIONS = {
         "index_de_la_montée_dans_cette_activité` (1-based, `arc_climb.detect_climbs` "
         "l'attribue déjà) — graine = `garmin_activity_id`, ou `INTERVALS_SEED_OFFSET + "
         "chiffres de l'intervals_activity_id` pour une séance Intervals.icu (#68, "
-        "`segment_seed` : espace disjoint, jamais de collision avec un id Garmin ; `STRAVA_SEED_OFFSET + chiffres` pour une séance Strava, #164) — JAMAIS un compteur séquentiel assigné dans l'ordre de "
+        "`segment_seed` : espace disjoint, jamais de collision avec un id Garmin ; `STRAVA_SEED_OFFSET + chiffres` pour une séance Strava, #164 ; `COROS_SEED_OFFSET + secondes Unix du start_time` pour une séance COROS, #168, dont le LabelId de 18 chiffres ne tient pas sous Number.MAX_SAFE_INTEGER) — JAMAIS un compteur séquentiel assigné dans l'ordre de "
         "traitement des activités (bug corrigé : avec un compteur, indexer une activité "
         "plus ANCIENNE que celles déjà connues décalait l'id de TOUS les segments créés "
         "après elle dans l'ordre chronologique, même sans aucun rapport avec la nouvelle "

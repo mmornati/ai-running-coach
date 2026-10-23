@@ -133,7 +133,7 @@ Le staff vous suit sur tout le parcours d'une préparation — et chaque étape 
 <div class="arc-section" markdown>
   <div class="arc-section__inner" markdown>
 
-## Vingt-quatre skills, prêts à l'emploi
+## Vingt-cinq skills, prêts à l'emploi
 
 Des protocoles précis que l'IA suit à la lettre. Six d'entre eux sont des commandes courtes, pensées pour le téléphone : cinq pour une question, une réponse, et `/inspection` pour une inspection guidée.
 { .arc-section__intro }
@@ -176,6 +176,7 @@ Des protocoles précis que l'IA suit à la lettre. Six d'entre eux sont des comm
 <h3>Garmin et synchronisation</h3>
 <ul>
 <li><a href="skills/garmin-workout-scheduling/">Planification Garmin</a><span>séances poussées au calendrier</span></li>
+<li><a href="skills/coros-workout-scheduling/">Planification COROS</a><span>séances poussées sur une montre COROS, en interactif</span></li>
 <li><a href="skills/garmin-sync-efficiency/">Synchronisation Garmin</a><span>récupérer sans saturer le contexte</span></li>
 <li><a href="skills/garmin-daily-sync/">Sync quotidienne</a><span>headless, résumé poussé sur le téléphone</span></li>
 <li><a href="skills/intervals-icu-best-practices/">Intervals.icu</a><span>source primaire avec <code>--source intervals</code>, secondaire sinon</span></li>

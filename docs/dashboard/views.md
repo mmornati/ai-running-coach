@@ -836,12 +836,14 @@ la carte le dit. Les paires marquées « ignorées » dans le profil sont listé
 la vue.
 
 **Chaussures** (#40) — kilométrage cumulé de chaque paire déclarée dans « Matériel & lieux » du
-profil (course et randonnée seulement), une ligne « à surveiller » au-delà du seuil d'alerte,
-les paires retirées affichées en grisé sans jamais alerter, et une ligne « inconnue » par
+profil (course et randonnée seulement), une pastille « Fin de vie — à retirer ? » au-delà du
+seuil d'alerte, les paires retirées affichées en grisé sans jamais alerter (« retirée (Garmin) »
+quand la paire est retirée dans Garmin Connect sans que sa puce le dise encore — voir
+[Synchronisation du matériel Garmin](../garmin-setup.md#synchronisation-du-materiel-garmin)), et une ligne « inconnue » par
 `gear_id` vu sur une séance mais absent du profil — jamais masqué silencieusement. Depuis #132 :
 le kilométrage inclut le « départ » déclaré sur la puce (rappelé sous le total : « dont N km de
 départ »), un badge **« ≈ N sem. »** donne la prévision de retraite au rythme des 28 derniers
-jours (rien sans usage récent, « seuil dépassé » au-delà du seuil), « proche du seuil » apparaît
+jours (rien sans usage récent ni au-delà du seuil), « proche du seuil » apparaît
 dès 90 %, et le rôle `usage:` déclaré s'affiche à côté du nom.
 
 ![Matériel : ce qui est à traiter, puis le kilométrage de chaque paire](../assets/dashboard/materiel.webp)
@@ -1309,7 +1311,7 @@ la [machine coach](headless.md) ou [derrière votre reverse proxy](docker.md).
   en erreur, tokens Garmin refusés), *dégradée* (Garmin injoignable, nouvel essai programmé) ou
   *jamais lancée*. En retard, en échec ou dégradée, une pastille rouge apparaît aussi dans
   l'en-tête de toutes les pages.
-- **Réglages** : mode (`schedule` aux heures fixes, `watch` par sondage Garmin), exécuteur,
+- **Réglages** : mode (`schedule` aux heures fixes, `watch` par sondage Garmin ou COROS), exécuteur,
   prochaine exécution attendue, dernier sondage, runs du jour, filet de sécurité, versionnement git.
 - **Derniers runs** (14 jours) : heure, déclencheur (bilan matinal, séance, heure fixe), durée,
   code de sortie, le bloc résumé envoyé en notification, les lignes d'erreur, et le journal complet
@@ -1322,7 +1324,7 @@ Même état en terminal : `python3 scripts/arc_sync_status.py` (`--json` pour le
 
 | Fichiers lus | Écrits par |
 |---|---|
-| `logs/sync-<date>.log`, `logs/watch.log`, `logs/.watch-state.json`, `logs/.sync.lock`, `config/workspace*.toml` (`[sync]`) | `scripts/daily-sync.sh`, `scripts/garmin_watch.py` |
+| `logs/sync-<date>.log`, `logs/watch.log`, `logs/.watch-state.json`, `logs/.sync.lock`, `config/workspace*.toml` (`[sync]`) | `scripts/daily-sync.sh`, `scripts/watch.py` |
 
 Code et durée d'un run ne s'affichent que pour les journaux écrits depuis cette version (pied
 `===== … fin code=N durée=Ns =====`) ; pour les plus anciens, seul le dernier run reprend le code
@@ -1349,7 +1351,7 @@ nourrit :
 | Rapports | `rapports/*.md` | coach |
 | Nutrition | `nutrition/<date>_nutrition.md` | nutritionniste |
 | Hypothèses | aucun fichier du workspace : les modules de calcul (`scripts/arc_*.py`) | — |
-| Synchro | `logs/sync-*.log`, `logs/watch.log`, `logs/.watch-state.json`, `[sync]` | `daily-sync.sh`, `garmin_watch.py` |
+| Synchro | `logs/sync-*.log`, `logs/watch.log`, `logs/.watch-state.json`, `[sync]` | `daily-sync.sh`, `watch.py` |
 
 Chacun de ces fichiers s'ouvre par un bloc de données décrit par le
 [contrat de données](../skills/workspace-data-contract.md) : c'est ce bloc que le
