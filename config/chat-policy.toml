@@ -197,12 +197,12 @@ servers = ["garmin", "intervals", "Intervals_icu", "strava", "coros", "leanproxy
 # Lectures : préfixes de noms d'outils (les tirets sont ceux du serveur Strava). « icu_get_ » /
 # « icu_search_ » / « icu_list_ » : outils du serveur intervals.icu (fork hhopke, #165), tous préfixés
 # `icu_`. `icu_download_*` n'y figure PAS : ces outils écrivent un fichier local (paramètre
-# `output_path`) → approbation. COROS : « query » (lectures), `getActivityDetail` et
-# `analyzeActivityDetail` ; `downloadActivityFitFiles` n'y figure pas (approbation, FIT par
+# `output_path`) → approbation. COROS : « query » (lectures) et `getActivityDetail` ;
+# `downloadActivityFitFiles` n'y figure pas (approbation, FIT par
 # download_fit.py).
 read_prefixes = ["get_", "count_", "list_", "download_", "search_", "get-", "list-", "check-", "explore-",
                  "icu_get_", "icu_search_", "icu_list_",
-                 "query", "getActivityDetail", "analyzeActivityDetail"]
+                 "query", "getActivityDetail"]
 # Écritures : noms exacts ou motifs `*`. Un outil inconnu d'un serveur connu demande aussi l'approbation.
 write_tools = [
   "schedule_workout", "schedule_workouts", "schedule_week",

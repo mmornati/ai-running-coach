@@ -55,7 +55,7 @@ est refusé. Il installe aussi un petit environnement Python dédié à la lectu
   renouvelle quand il reste moins de 7 jours (ou après un refus), sous verrou, car COROS
   remplace aussi le jeton de rafraîchissement à chaque fois. Constaté : rafraîchissement
   forcé (nouveaux jetons, 30 jours), et relais avec un jeton d'accès refusé → rafraîchi
-  puis 34 outils listés. Pas encore mesurés : la durée de vie du jeton de rafraîchissement
+  puis 34 outils listés (33 depuis le 23/10). Pas encore mesurés : la durée de vie du jeton de rafraîchissement
   et le sort de l'ancien après rotation.
 - **Jamais d'écriture sans vous.** Pendant la synchronisation sans tête, le relais passe
   en lecture seule et les 7 outils d'écriture sont refusés par leur nom, quelle que soit

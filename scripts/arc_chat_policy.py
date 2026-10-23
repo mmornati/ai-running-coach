@@ -83,7 +83,7 @@ DEFAULTS = {
         "servers": ["garmin", "intervals", "strava", "coros"],
         "read_prefixes": ["get_", "count_", "list_", "download_", "get-", "list-", "check-", "explore-",
                           "icu_get_", "icu_search_", "icu_list_",
-                          "query", "getActivityDetail", "analyzeActivityDetail"],
+                          "query", "getActivityDetail"],
         "write_tools": ["schedule_*", "delete_*", "upload_*", "create_*", "add_*", "set_*", "log_*",
                         "update_*", "remove_*", "request_reload",
                         "connect-strava", "disconnect-strava", "star-segment",

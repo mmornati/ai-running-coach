@@ -1,7 +1,7 @@
 """Palier B — cohérence de la doc COROS (#168).
 
 Le 22 octobre 2026, une session authentifiée a relevé la vraie liste des outils du
-MCP officiel COROS (`docs/coros.md`, « Les 34 outils ») : seuls les noms de CETTE
+MCP officiel COROS (`docs/coros.md`, « Les outils ») : seuls les noms de CETTE
 liste peuvent apparaître dans un prompt, un agent, un skill, un script ou
 l'installeur. `querySleepData`, rapporté par un projet tiers avant cette session,
 n'existe pas et n'apparaît nulle part. COROS se branche directement : la doc et le
@@ -19,7 +19,10 @@ DOC = REPO / "docs" / "coros.md"
 SKILL = REPO / "skills" / "coros-workout-scheduling" / "SKILL.md"
 SKILL_DOC = REPO / "docs" / "skills" / "coros-workout-scheduling.md"
 
-VERIFIED = "## Les 34 outils (relevés le 22 octobre 2026)"
+VERIFIED = "## Les outils (relevés le 22 octobre 2026, revus le 23)"
+# Retirés par COROS depuis le relevé (constaté le 23/10/2026 : 33 outils) : cités dans la doc comme
+# retirés, jamais appelés ailleurs.
+RETIRED = {"analyzeActivityDetail"}
 NAME_RE = re.compile(r"`((?:query|get|download|analyze|create|update|schedule)[A-Z][A-Za-z]+)`")
 NEVER_SEEN = {"querySleepData"}
 
@@ -36,12 +39,12 @@ def _section(title: str) -> str:
 def _verified_names() -> set[str]:
     """Noms du tableau de la liste relevée (lignes `|` seulement, pas la prose)."""
     rows = [l for l in _section(VERIFIED).splitlines() if l.startswith("|")]
-    return set(NAME_RE.findall("\n".join(rows)))
+    return set(NAME_RE.findall("\n".join(rows))) - RETIRED
 
 
 class TestCorosAudit(unittest.TestCase):
-    def test_verified_list_has_the_34_tools(self):
-        self.assertEqual(len(_verified_names()), 34, sorted(_verified_names()))
+    def test_verified_list_has_the_33_tools(self):
+        self.assertEqual(len(_verified_names()), 33, sorted(_verified_names()))
         self.assertFalse(NEVER_SEEN & _verified_names())
 
     def test_only_verified_names_in_prompts_and_code(self):
