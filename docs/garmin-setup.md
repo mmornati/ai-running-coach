@@ -403,5 +403,6 @@ Voir aussi la page [Dépannage](troubleshooting.md).
 
 !!! info "Pas de montre Garmin ?"
     `./install.sh --source intervals` remplace tout ce qui précède par
-    Intervals.icu (COROS, Suunto, Polar, Apple...) — voir
-    [Configuration Intervals.icu](intervals-setup.md).
+    Intervals.icu (Suunto, Polar, Apple...) — voir
+    [Configuration Intervals.icu](intervals-setup.md). Montre COROS :
+    [Montres COROS](coros.md).

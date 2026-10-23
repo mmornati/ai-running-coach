@@ -241,8 +241,8 @@ output_dir = ""
 [data]
 # Source de données primaire des agents (#68).
 #   "garmin"    — Garmin Connect, via garmin-mcp (défaut, comportement historique)
-#   "intervals" — intervals.icu (ouvre le projet aux montres non-Garmin : COROS,
-#                 Suunto, Polar, Apple — tout ce qu'intervals.icu synchronise),
+#   "intervals" — intervals.icu (ouvre le projet aux montres non-Garmin : Suunto,
+#                 Polar, Apple — tout ce qu'intervals.icu synchronise),
 #                 via le serveur MCP communautaire hhopke/intervals-icu-mcp (#165)
 #   "strava"    — Strava (#164), source « universelle » (toutes marques de montres) :
 #                 activités + flux par seconde (donc les KPI FIT : zones, GAP,
@@ -265,8 +265,9 @@ source = "garmin"
 #   "relay" — `./install.sh --coros` déclare le serveur `coros` dans la config de chaque IA
 #             (Claude Code, Copilot, Cursor, OpenCode, Gemini, Windsurf) ; l'athlète se connecte
 #             UNE fois (`python3 scripts/arc_coros_auth.py login`), jetons dans
-#             ~/.config/ai-running-coach/coros/ (600). Indépendant de [data].source : avec
-#             "intervals" (préconisé), sert à vérifier l'arrivée des séances sur la montre.
+#             ~/.config/ai-running-coach/coros/ (600). Séances envoyées directement à la
+#             montre, renforcement par les séances types. Pas encore une valeur de
+#             [data].source (`--source coros` à venir).
 # Écrite par install.sh (--coros / --no-coros). Voir docs/coros.md.
 mcp = "off"
 

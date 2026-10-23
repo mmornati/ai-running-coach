@@ -289,7 +289,7 @@ synchronisés par Intervals.icu viennent de sa
 | Appareil | Entraînement (`[data].source`) | Santé du bilan matinal | Remarque |
 |---|---|---|---|
 | Garmin | `garmin` (direct) | Garmin | référence du projet ; jamais via Open Wearables (programme développeur réservé aux entités légales : `garmin-api-integration.mdx` d'Open Wearables, voir [l'audit](open-wearables.md)) ; intégration directe décrite dans [Configuration Garmin](garmin-setup.md) |
-| COROS | `intervals` | Intervals.icu (si synchronisée) | Séances envoyées à la montre par Intervals.icu (configuration préconisée) : [Montres COROS](coros.md) |
+| COROS | `coros` à venir ; connexion directe dès maintenant (`./install.sh --coros`) | COROS (à venir avec `--source coros`) | MCP officiel de COROS, sans compte tiers : séances envoyées à la montre, renforcement, lectures en session : [Montres COROS](coros.md) |
 | Suunto | `intervals` | Intervals.icu | l'API cloud de Suunto n'est pas ouverte aux particuliers ([FAQ Suunto](https://apizone.suunto.com/faq), relue le 10 octobre 2026) |
 | Polar | `intervals` | Intervals.icu ; Open Wearables (Nightly Recharge) | Polar est listée sur la page bien-être d'Intervals.icu (relue le 10 octobre 2026) ; accès libre-service et scores Nightly Recharge : `polar-api-integration.mdx` d'Open Wearables ([audit](open-wearables.md)) |
 | Huawei, Amazfit | `intervals` | Intervals.icu | listés sur la page bien-être d'Intervals.icu ; non testé ici |
@@ -316,7 +316,7 @@ source = "garmin"   # garmin (défaut) | intervals | strava
 appelés par `coach`/`medical`/`garmin-daily-sync` pour les activités, la
 santé et le calendrier planifié (table de correspondance complète dans
 `AGENTS.md`). Sans montre Garmin, `intervals` ouvre le projet aux données
-COROS/Suunto/Polar/Apple synchronisées sur Intervals.icu.
+Suunto/Polar/Apple synchronisées sur Intervals.icu (COROS : [Montres COROS](coros.md)).
 
 !!! warning "Fonctionnalités indisponibles avec `intervals`"
     Le score de readiness algorithmique de Garmin, le téléchargement FIT (et

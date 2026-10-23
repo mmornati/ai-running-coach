@@ -25,7 +25,7 @@
 
 - Le MCP Garmin (`get_activity_fit_data`) **timeoute** sur les téléchargements FIT (payloads de plusieurs Mo)
 - **Garmin** : le script `download_fit.py` utilise la lib `garminconnect` installée dans l'environnement `garmin-mcp` + les **tokens locaux** `~/.garminconnect` → **aucun mot de passe** nécessaire
-- **Intervals.icu** : le script appelle l'API REST avec la **clé API déjà configurée pour le serveur MCP** → aucune nouvelle configuration. Fonctionne pour toutes les montres qu'Intervals.icu synchronise (Garmin, COROS, Suunto, Polar, Apple Watch via HealthFit…), **sauf les activités importées depuis Strava**, que l'API Strava interdit de redistribuer (signalées `INDISPONIBLE`, jamais inventées). Voir [Intervals.icu — Fichiers FIT](../intervals-setup.md#fichiers-fit)
+- **Intervals.icu** : le script appelle l'API REST avec la **clé API déjà configurée pour le serveur MCP** → aucune nouvelle configuration. Fonctionne pour toutes les montres qu'Intervals.icu synchronise (Garmin, Suunto, Polar, Apple Watch via HealthFit…), **sauf les activités importées depuis Strava**, que l'API Strava interdit de redistribuer (signalées `INDISPONIBLE`, jamais inventées). Voir [Intervals.icu — Fichiers FIT](../intervals-setup.md#fichiers-fit)
 
 - **Strava** (#164) : pas de fichier FIT — le script appelle l'API REST (`/activities/<id>/streams`, bibliothèque standard) avec les **jetons du serveur MCP communautaire** (rafraîchis et réécrits atomiquement, jamais affichés) et normalise les flux par seconde directement en `activities/fit/s<chiffres>.json` : mêmes KPI que le FIT. Voir [Configuration Strava](../strava-setup.md#flux-par-seconde-et-kpi)
 

@@ -1,6 +1,6 @@
 ---
 name: coros-workout-scheduling
-description: COROS watch scheduling. With `[data].source = "intervals"` (the recommended setup) sessions are pushed to Intervals.icu, which uploads the next 7 days to COROS — this skill then only checks arrival read-only with queryTrainingSchedule. Otherwise (e.g. Strava as source, or on explicit request) it pushes running / trail / cycling sessions through the official COROS MCP server (`coros`, OAuth, added by the athlete in an interactive session): verified tools (queryTrainingSchedule, createScheduledWorkout, queryScheduledWorkoutDetails, updateScheduledWorkout), course schema and per-sport limits (trail has no time target; strength cannot be created, only scheduled from the athlete's own COROS library templates with scheduleWorkout), personal targets converted and validated by scripts/arc_coros_workout.py, check-before-push idempotency (there is NO delete or move tool), verify-after-push. Interactive only, explicit "yes" per push, never headless.
+description: COROS watch scheduling through the official COROS MCP server (`coros`, local relay installed by `./install.sh --coros`, one login for every AI client) — no third-party account needed. Pushes running / trail / cycling sessions with verified tools (queryTrainingSchedule, createScheduledWorkout, queryScheduledWorkoutDetails, updateScheduledWorkout), course schema and per-sport limits (trail has no time target), personal targets converted and validated by scripts/arc_coros_workout.py, check-before-push idempotency (there is NO delete or move tool), verify-after-push. Strength cannot be created: the athlete's own COROS library templates are scheduled with scheduleWorkout. Also reads COROS's threshold pace. Interactive only, explicit "yes" per push, never headless.
 ---
 
 # COROS Workout Scheduling
@@ -10,53 +10,22 @@ the watch. Tool names, parameters and behaviour below were **verified on 2026-10
 on an authenticated session (live tool list, one real push read back identically and
 shown on a COROS PACE 4 Pro). Details and history: `docs/coros.md`.
 
-## Intervals.icu first — the recommended path
+## One path to the watch
 
-**When `[data].source = "intervals"`, do NOT push with this skill.** Push to
-Intervals.icu as usual (`intervals-icu-best-practices`): with the COROS connection
-enabled in Intervals.icu (Settings → COROS → upload planned workouts), Intervals.icu
-uploads the **next 7 days** of planned workouts to the COROS calendar itself. That path
-already has everything this project built (personal targets in the native syntax,
-check-before-push, verification, deletions and moves made in Intervals.icu follow on
-COROS inside the 7-day window — as reported on the Intervals.icu forum), and it runs in
-the headless sync, where this skill never does. Pushing the same session through both
-paths creates a duplicate on the watch that only the COROS app can remove.
-
-With that setup, the `coros` tools are used read-only, to check that a session arrived:
-`queryTrainingSchedule` for the date. If it did not (upload disabled, date beyond 7 days,
-HR zones not set or a syntax error on the Intervals.icu side, a connection filter), say
-so and point to `docs/coros.md` — never re-push it through `createScheduledWorkout`
-unless the athlete explicitly asks for it in this conversation.
-
-Keep **one intensity metric per workout** (HR, as `intervals-icu-best-practices`
-already does): Intervals.icu sends COROS a single metric per workout, and blocks written
-in the other one arrive without target (reported on the forum, unfixed for COROS as of
-August 2026).
-
-Observed on 2026-10-22 (first week uploaded, read back with the `coros` tools):
-
-- Sessions arrive inside a COROS training plan ("Plan d'entr. Intervals.icu"), listed by
-  `queryTrainingSchedule`; `queryScheduledWorkoutDetails` does not find them, and the plan is
-  "Editable via MCP: no". Fix sessions in Intervals.icu, never through the COROS tools.
-- Steps, durations and repeats arrive. **HR targets arrive only as `% LTHR`**: `137-149bpm`
-  reached the watch with no target, `80.6-87.7% LTHR` as exactly 137-149 bpm. Write them as
-  `intervals-icu-best-practices` says (`arc_workout_targets.py --icu-lthr-bpm`).
-- A session deleted in Intervals.icu disappears from the COROS calendar (verified).
-- COROS keeps only the **first paragraph** of the description, cut around 250 characters:
-  put what matters for the run (main HR range, key instruction) there.
-- Strength (`WeightTraining`) sessions do arrive, as name + description only (no exercises).
-  For a structured strength session on the watch, see "Strength sessions" below.
-
-This skill's push path is for an athlete whose `[data].source` is NOT `intervals` (e.g.
-`strava`), or who explicitly asks for a direct COROS push. Exception, whatever the source:
-structured strength from the athlete's COROS templates ("Strength sessions" below).
+This skill pushes directly to the COROS calendar through the official COROS MCP — no
+third-party account is needed. A session reaches the watch by **one path only**: if
+`queryTrainingSchedule` shows sessions inside a training plan the athlete did not create
+here (another service uploading planned workouts to COROS), never push the same session
+again — it would appear twice, and only the COROS app can remove one. Ask the athlete
+which path they keep, and say that the other upload must be switched off.
 
 ## When this applies
 
 - The `coros` MCP server is connected **in this interactive session** (its tools are
   callable): installed by `./install.sh --coros` (local relay `scripts/arc_coros_mcp.py`,
-  one login for every AI client) or added by hand. COROS is **not** a `[data].source`
-  value. If the tools are not exposed, say so and point to `docs/coros.md` — never guess a
+  one login for every AI client) or added by hand. COROS is not yet a `[data].source`
+  value (`--source coros` is planned): this skill reads COROS in the session but persists
+  no activity or health file. If the tools are not exposed, say so and point to `docs/coros.md` — never guess a
   tool name. If a call answers "COROS non connecté" or "relancez … login", tell the athlete
   to run `python3 scripts/arc_coros_auth.py login` in a terminal (never run it yourself:
   it opens a browser).
@@ -87,7 +56,7 @@ is not needed to put a running/trail/cycling session on a date). `scheduleWorkou
 session can only be removed in the COROS app — tell the athlete exactly which one.
 
 `idInPlan` is a small counter ("1", "2"; it does not always start at 1), not a global id: on
-2026-10-23 a scheduled template and an Intervals.icu session on two other dates both had
+2026-10-23 a scheduled template and a session of another plan, on two other dates, both had
 `4`. Always designate a session by **date + `idInPlan`** together. Never show it to the
 athlete; re-read it from `queryTrainingSchedule` when needed rather than storing it.
 
@@ -193,11 +162,9 @@ cannot be expressed by MCP"). It can **schedule** one the athlete built in the C
    workout library)" with COROS's estimated time (verified 2026-10-23, then seen on the
    watch with its exercises).
 
-**One channel per session.** With `[data].source = "intervals"`, a strength session
-scheduled this way is **not** pushed to Intervals.icu (its text version would reach the
-watch as a second session). If `queryTrainingSchedule` already shows the Intervals.icu copy
-on that date, do not schedule over it: offer to delete that Intervals.icu event first
-(`icu_delete_event`, its own explicit "oui"; it then leaves COROS), or keep the text version.
+**One path per session** (see above): if `queryTrainingSchedule` already shows a strength
+session on that date coming from another service, do not schedule over it — ask the
+athlete which one to keep.
 
 ## Threshold pace (critical-speed check)
 

@@ -66,7 +66,7 @@ it the repeat silently runs once).
 | Element | Syntax | Notes |
 |---|---|---|
 | Duration | `10m`, `30s`, `1h30m`, `5:00` | **`m` = minutes, never metres**; distances use `400mtr`, `5km` |
-| HR zone / range | `82.4-88.3% LTHR`, `Z2 HR`, `70-80% HR` | the `HR` word is required for zones. **Never `140-150bpm`**: verified 2026-10-22, an absolute bpm step gets no planned load and reaches a COROS watch with no HR target, while `% LTHR` arrives as the exact bpm range |
+| HR zone / range | `82.4-88.3% LTHR`, `Z2 HR`, `70-80% HR` | the `HR` word is required for zones. **Never `140-150bpm`**: verified 2026-10-22, an absolute bpm step gets no planned load and reaches the watch with no HR target, while `% LTHR` arrives as the exact bpm range |
 | Absolute pace | `5:30/km pace` | the trailing word `pace` is **required** — bare `5:30/km` is silently dropped |
 | Relative pace | `95-100% pace` (of threshold pace) | needs the athlete's threshold pace in Intervals.icu sport settings |
 | Step type | `intensity=rest` | the only form that exports a real rest step on the watch |
@@ -237,32 +237,6 @@ Bulk-create a week (same field names as `icu_create_event`, except the date key
   {"start_date_local": "2026-09-30", "name": "Repos", "category": "NOTE"}
 ]
 ```
-
-## COROS watch — Intervals.icu uploads for you (recommended path)
-
-For an athlete on a COROS watch, this skill IS the scheduling path (see
-`coros-workout-scheduling` → "Intervals.icu first" and `docs/coros.md`). With the COROS
-connection enabled in Intervals.icu (Settings → COROS → upload planned workouts),
-Intervals.icu uploads the **next 7 days** of WORKOUT events to the COROS calendar; later
-sessions follow as the window moves. Nothing to call for that — just push here as usual.
-
-- **One intensity metric per workout** (HR, as above): Intervals.icu sends COROS a single
-  metric per workout, and steps written in another one arrive without target (forum
-  report, unfixed for COROS as of August 2026). Pace stays in the event name.
-- **HR targets as `% LTHR`** (see "Mapping the personal targets"): verified 2026-10-22,
-  `81-88% LTHR` arrived on the watch as 137-149 bpm, whereas `137-149bpm` arrived with NO
-  target. COROS keeps only the description's **first paragraph** (~250 characters): put
-  the main HR range and the key instruction there.
-- Changes and deletions made here follow on COROS inside the 7-day window (forum report).
-- Never also push the same session with `createScheduledWorkout`: the watch would show it
-  twice, and only the COROS app can remove one.
-- **Strength exception**: when the athlete chose to receive a strength session as one of
-  their COROS templates (`coros-workout-scheduling` → "Strength sessions"), that session
-  is left out of the Intervals.icu push (otherwise its text version arrives too).
-- If the `coros` MCP server is connected, `queryTrainingSchedule` (read-only) can confirm
-  arrival on the watch calendar. Missing session → say so (upload disabled, beyond 7 days,
-  HR zones not set in Intervals.icu, a syntax error, a connection filter), never re-push it
-  elsewhere on your own.
 
 ## Date handling
 

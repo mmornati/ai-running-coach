@@ -1,12 +1,11 @@
-"""Palier B — cohérence de l'audit COROS (#168).
+"""Palier B — cohérence de la doc COROS (#168).
 
-Jusqu'au 3 octobre 2026, les noms d'outils du MCP officiel COROS n'étaient
-connus que par un projet tiers (« non vérifiés »). Le 22 octobre 2026, une
-session authentifiée a relevé la vraie liste (`docs/coros.md`, « Session
-authentifiée ») : seuls les noms de CETTE liste peuvent apparaître dans un
-prompt, un agent, un skill, un script ou l'installeur. Un nom rapporté par le
-tiers mais absent de la liste relevée (`querySleepData`) n'apparaît jamais hors
-de la doc.
+Le 22 octobre 2026, une session authentifiée a relevé la vraie liste des outils du
+MCP officiel COROS (`docs/coros.md`, « Les 34 outils ») : seuls les noms de CETTE
+liste peuvent apparaître dans un prompt, un agent, un skill, un script ou
+l'installeur. `querySleepData`, rapporté par un projet tiers avant cette session,
+n'existe pas et n'apparaît nulle part. COROS se branche directement : la doc et le
+skill ne passent plus par Intervals.icu.
 """
 
 from __future__ import annotations
@@ -18,14 +17,15 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parent.parent.parent
 DOC = REPO / "docs" / "coros.md"
 SKILL = REPO / "skills" / "coros-workout-scheduling" / "SKILL.md"
+SKILL_DOC = REPO / "docs" / "skills" / "coros-workout-scheduling.md"
 
-UNVERIFIED = "### Noms d'outils rapportés par un tiers (non vérifiés)"
-VERIFIED = "## Session authentifiée (22 octobre 2026)"
+VERIFIED = "## Les 34 outils (relevés le 22 octobre 2026)"
 NAME_RE = re.compile(r"`((?:query|get|download|analyze|create|update|schedule)[A-Z][A-Za-z]+)`")
+NEVER_SEEN = {"querySleepData"}
 
-# Outils de calendrier que le skill a le droit d'appeler (les autres ne sont pas utilisés).
-SKILL_CALLS = {"queryTrainingSchedule", "createScheduledWorkout",
-               "queryScheduledWorkoutDetails", "updateScheduledWorkout"}
+# Outils de calendrier que le skill appelle (les autres ne sont pas utilisés).
+SKILL_CALLS = {"queryTrainingSchedule", "createScheduledWorkout", "queryScheduledWorkoutDetails",
+               "updateScheduledWorkout", "queryWorkoutLibrary", "scheduleWorkout"}
 
 
 def _section(title: str) -> str:
@@ -39,30 +39,14 @@ def _verified_names() -> set[str]:
     return set(NAME_RE.findall("\n".join(rows)))
 
 
-def _unverified_names() -> set[str]:
-    return set(NAME_RE.findall(_section(UNVERIFIED)))
-
-
 class TestCorosAudit(unittest.TestCase):
     def test_verified_list_has_the_34_tools(self):
         self.assertEqual(len(_verified_names()), 34, sorted(_verified_names()))
-        self.assertIn("34 outils", _section(VERIFIED))
-
-    def test_third_party_names_are_verified_or_flagged_absent(self):
-        missing = _unverified_names() - _verified_names()
-        self.assertEqual(missing, {"querySleepData"})
-        self.assertIn("sauf `querySleepData`", _section(VERIFIED))
-
-    def test_third_party_section_stays_marked_unverified(self):
-        text = DOC.read_text(encoding="utf-8")
-        self.assertIn("(non vérifié)", _section(UNVERIFIED))
-        self.assertNotRegex(text, r"outil[s]? vérifié[s]?\b(?! par)")
+        self.assertFalse(NEVER_SEEN & _verified_names())
 
     def test_only_verified_names_in_prompts_and_code(self):
         roots = ["AGENTS.md", "install.sh", "scripts", ".github", "skills", "agents",
-                 "config", "templates"]
-        banned = _unverified_names() - _verified_names()
-        self.assertTrue(banned)
+                 "config", "templates", "docs"]
         for root in roots:
             p = REPO / root
             files = [p] if p.is_file() else (list(p.rglob("*")) if p.exists() else [])
@@ -73,8 +57,12 @@ class TestCorosAudit(unittest.TestCase):
                     body = f.read_text(encoding="utf-8")
                 except (UnicodeDecodeError, OSError):
                     continue
-                for name in sorted(banned):
+                for name in sorted(NEVER_SEEN):
                     self.assertNotIn(name, body, f"{name} (jamais relevé) dans {f.relative_to(REPO)}")
+                if root in ("skills", "agents", "AGENTS.md") and "coros" in body.lower():
+                    for name in set(NAME_RE.findall(body)) - _verified_names():
+                        if name[0].islower() and any(c.isupper() for c in name) and "_" not in name:
+                            self.fail(f"{name} absent de la liste relevée, dans {f.relative_to(REPO)}")
 
     def test_skill_calls_only_the_calendar_tools(self):
         text = SKILL.read_text(encoding="utf-8")
@@ -85,31 +73,25 @@ class TestCorosAudit(unittest.TestCase):
         self.assertIn('explicit "oui"', text)
         self.assertIn("arc_coros_workout.py validate", text)
 
-    def test_intervals_first_when_source_is_intervals(self):
-        """Avec Intervals.icu comme source, c'est lui qui envoie les séances à COROS :
-        le skill COROS ne pousse pas, ne crée jamais de doublon, et la doc dit pourquoi."""
-        skill = SKILL.read_text(encoding="utf-8")
-        self.assertIn("## Intervals.icu first", skill)
-        self.assertIn('When `[data].source = "intervals"`, do NOT push with this skill', skill)
+    def test_coros_stands_alone(self):
+        """COROS se branche par son MCP officiel : ni le skill, ni sa doc, ni la page COROS
+        ne passent par Intervals.icu ; un seul chemin vers la montre."""
+        for path in (SKILL, SKILL_DOC, DOC):
+            self.assertNotIn("intervals", path.read_text(encoding="utf-8").lower(), path)
+        self.assertIn("## One path to the watch", SKILL.read_text(encoding="utf-8"))
         icu = (REPO / "skills/intervals-icu-best-practices/SKILL.md").read_text(encoding="utf-8")
-        self.assertIn("## COROS watch", icu)
-        self.assertIn("One intensity metric per workout", icu)
-        self.assertIn("createScheduledWorkout", icu)
-        # FC en bpm absolus : sans cible sur la montre COROS (constaté le 22/10/2026) -> % LTHR.
+        self.assertNotIn("COROS", icu)
+        # FC en bpm absolus : sans cible sur la montre (constaté le 22/10/2026) -> % LTHR.
         self.assertIn("--icu-lthr-bpm", icu)
         self.assertNotRegex(icu, r"- \d+[ms] \d+-\d+bpm")
-        doc = DOC.read_text(encoding="utf-8")
-        self.assertIn("## Configuration préconisée : Intervals.icu + COROS", doc)
-        self.assertIn("**Pourquoi ce chemin plutôt que le MCP officiel de COROS :**", doc)
-        self.assertIn("Intervals.icu d'abord", (REPO / "AGENTS.md").read_text(encoding="utf-8"))
 
-    def test_doc_in_nav_and_decision_recorded(self):
+    def test_doc_in_nav(self):
         nav = (REPO / "mkdocs.yml").read_text(encoding="utf-8")
         self.assertIn("coros.md", nav)
         self.assertIn("skills/coros-workout-scheduling.md", nav)
         text = DOC.read_text(encoding="utf-8")
-        self.assertIn("Décision", text)
-        self.assertIn("mcpeu.coros.com/mcp", _section(VERIFIED))
+        self.assertIn("## En bref", text)
+        self.assertIn("mcpeu.coros.com/mcp", text)
 
 
 if __name__ == "__main__":
