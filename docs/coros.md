@@ -213,7 +213,15 @@ segment en cours, avance ou retard sur le temps visé, compte à rebours avant c
 d'aide COROS](https://support.coros.com/hc/en-us/articles/47115766323348-Pace-Strategy), relu le
 23 octobre 2026). Il se crée **uniquement dans l'app COROS** (Profil → Pace Strategy), sur une distance
 ou, pour le trail, sur une **route** de votre bibliothèque. Aucun des outils du MCP ne crée, n'importe ni
-ne lit une route ou un Pace Strategy : le coach ne peut pas le faire à votre place.
+ne lit une route ou un Pace Strategy : le coach ne peut pas le faire à votre place. COROS le dit
+lui-même : sa page « Build on COROS MCP » (mise à jour le 20 octobre 2026) liste « No GPX route
+import/export » parmi les limites du MCP.
+
+**Pas de fichier de temps de passage non plus.** Certains formats portent des temps prévus : un parcours
+TCX ou FIT avec horodatages (le « Virtual Partner » de Garmin les suit), ou un GPX avec `<time>` sur
+chaque point. Chez COROS, une route s'importe en GPX standard, par l'app (ou synchronisée depuis Strava,
+Komoot) ; rien dans sa documentation n'indique que les horodatages du GPX servent : la route sert à la
+navigation, l'allure prévue passe par le Pace Strategy.
 
 Il vous prépare en revanche **ce qu'il faut y saisir**, depuis le plan de course du `course-strategist` :
 
@@ -323,6 +331,12 @@ rafraîchissement et connexion par code d'appareil (`device_code`). Portées
 main. Jeton d'accès : JWT de 30 jours ; le rafraîchissement rend un nouveau jeton
 d'accès **et** un nouveau jeton de rafraîchissement (rotation constatée).
 
+**API Partenaires de COROS : hors de portée.** Elle a ce qui manque au MCP (`route/push` en GPX/KML,
+plans d'entraînement poussés, webhooks, synchronisation dans les deux sens), mais elle est réservée aux
+plateformes établies : société enregistrée, base d'utilisateurs démontrée, contrat (page « Partner API
+Access », mise à jour le 12 octobre 2026). Pas pour un projet personnel ; COROS renvoie ceux-là vers le
+MCP.
+
 **API privée de COROS : non utilisée.** Le jeton du MCP y est refusé (`1019 « Access
 token is invalid »`, sonde en lecture seule). Les seules fonctions qu'elle aurait
 ajoutées (suppression d'une séance, création de renforcement) restent dans l'app COROS.
@@ -335,3 +349,7 @@ s'en sert.
 - Page COROS : <https://coros.com/stories/coros-metrics/c/mcp-testing>
 - Revue de presse : <https://the5krunner.com/2026/05/13/coros-mcp-ai-data/>
 - Premier audit du MCP (3 octobre 2026, avant tout accès authentifié) : issue #168
+- Pace Strategy : <https://support.coros.com/hc/en-us/articles/47115766323348-Pace-Strategy>
+- Build on COROS MCP (limites du MCP) : <https://support.coros.com/hc/en-us/articles/53181619102996>
+- Partner API Access : <https://support.coros.com/hc/en-us/articles/53181766856724>
+- Import de routes : <https://support.coros.com/hc/en-us/articles/24181489692436>
