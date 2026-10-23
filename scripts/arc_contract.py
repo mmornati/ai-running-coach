@@ -816,7 +816,7 @@ SUBSCHEMA = {
     # `shoe_spec.*.alternatives[]` : une autre source pour la même caractéristique. `outlier: true` =
     # aberration constatée et assumée (conservée pour mémoire, jamais retenue ni signalée).
     "shoe_alt": {
-        "required": {"value": "scalar", "source_type": _enum(SHOE_SOURCE_TYPE)},
+        "required": {"value": "any", "source_type": _enum(SHOE_SOURCE_TYPE)},
         "optional": {"url": "str", "retrieved": "date", "outlier": "bool"},
     },
     # `shoe_spec.size` : pointure et système (jamais convertie d'un système à l'autre).
@@ -1192,11 +1192,9 @@ def _check_value(spec: str, value, where: str, errors: list, warnings: list) -> 
         if not isinstance(value, str) or not value.strip():
             fail("une chaîne non vide")
         return
-    if spec == "scalar":
-        # `shoe_spec.*.alternatives[].value` (#298) : un nombre ou une chaîne non vide (jamais un booléen).
-        if _is_number(value) or (isinstance(value, str) and value.strip()):
-            return
-        fail("un nombre ou une chaîne non vide")
+    if spec == "any":
+        # `shoe_spec.*.alternatives[].value` (#298) : présent (non nul) ; son TYPE est vérifié par
+        # `_check_shoe_spec` contre celui de la valeur retenue du champ — un seul message d'erreur.
         return
     if spec == "strava_id":
         # `strava_activity_id` (#164) : « s » + chiffres — un identifiant sans préfixe se
@@ -1551,6 +1549,9 @@ def _check_shoe_spec(data: dict, errors: list, warnings: list) -> None:
         if obj.get("basis") is not None and obj.get("source_type") != "athlete":
             errors.append(f"{where}.basis : réservé à une valeur « athlete » (la source sur laquelle l'athlète "
                           "a fondé son choix) ; une valeur measured/manufacturer porte déjà sa source")
+        if obj.get("basis") is not None and obj.get("source_type") == "athlete" and obj.get("url") is None:
+            warnings.append(f"{where}.url : une valeur « athlete » avec basis « {obj['basis']} » devrait citer "
+                            "l'url de la source sur laquelle elle est fondée")
         # Chaque alternative a le TYPE de la valeur retenue (nombre, texte, énumération du champ) : sinon
         # « huit » ou « graphene » passeraient comme alternatives.
         value_spec = SUBSCHEMA[SCHEMA["shoe_spec"]["optional"][field][1:-1]]["required"]["value"]

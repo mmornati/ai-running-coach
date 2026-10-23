@@ -54,7 +54,9 @@ MI_ASSUMPTIONS = (
     "L'article mesure le poids de la chaussure, la hauteur de talon au pied à coulisse au milieu du talon "
     "et le drop comme talon moins avant-pied sous les têtes métatarsiennes ; les valeurs d'une fiche "
     "(marque ou laboratoire) en sont une approximation du projet : taille de référence et point de mesure "
-    "peuvent différer.",
+    "peuvent différer. L'article évalue des chaussures en US men's 9 (= UK 8 = EU 42,5).",
+    "Les évaluateurs de l'article ont mesuré avec la semelle intérieure en place, alors que les chiffres de "
+    "marque l'excluent le plus souvent : poids et pile de marque peuvent donc différer de la méthode.",
     "Flexibilité (longitudinale + torsionnelle, chacune 0 à 2,5 par pas de 0,5) et dispositifs de "
     "stabilité/contrôle du mouvement (0 à 6 : semelle intermédiaire multi-densité, ponton médial "
     "thermoplastique, contrefort rigide, voûte médiale surélevée, tige médiale tendue, évasement médial) "
@@ -94,16 +96,17 @@ def flexibility_subscore(longitudinal: float, torsional: float) -> float:
     return float(longitudinal) + float(torsional)
 
 
-# Pointure de référence attendue du poids : US homme 9 (convention des comparatifs de laboratoire ;
-# le fichier additionnel de l'article ne la précise pas — approximation du projet).
-_US_M9_RE = re.compile(r"^(us)?(m|men|mens)?9$")
+# Pointure de référence du poids : celle de l'article (Esculier et al. 2015, PMC4543477) — chaussures
+# évaluées en « US men's size 9 », soit « standard man size » US 9 = UK 8 = EU 42,5 (Discussion). Un « 9 »
+# sans système est AMBIGU (US ? UK ? EU ?) : refusé, avec avertissement.
+_US_M9_RE = re.compile(r"^(us(m|men|mens)?9|(m|men|mens)9|uk8|eu42\.5|42\.5)$")
 
 
 def is_us_m9(reference_size) -> bool:
-    """« US 9 », « US M9 », « US men's 9 », « M9 »... — US homme 9 (la pointure sans genre précisé est lue homme)."""
+    """« US 9 », « US M9 », « US men's 9 », « M9 », et les équivalents de l'article : « UK 8 », « EU 42,5 »."""
     if not isinstance(reference_size, str):
         return False
-    return bool(_US_M9_RE.match(re.sub(r"[\s.'’\-]", "", reference_size.lower())))
+    return bool(_US_M9_RE.match(re.sub(r"[\s'’\-]", "", reference_size.lower().replace(",", "."))))
 
 
 def _weight_reference_warnings(spec: dict) -> List[str]:
@@ -112,11 +115,11 @@ def _weight_reference_warnings(spec: dict) -> List[str]:
         return []
     ref = entry.get("reference_size")
     if ref is None:
-        return ["pointure de référence du poids absente (attendue : US M9, convention des comparatifs) — le poids "
-                "dépend de la pointure : sous-note de poids à lire avec prudence"]
+        return ["pointure de référence du poids absente (l'article évalue des chaussures en US men's 9 = UK 8 = "
+                "EU 42,5) — le poids dépend de la pointure : sous-note de poids à lire avec prudence"]
     if not is_us_m9(ref):
-        return [f"poids annoncé en pointure « {ref} » et non US M9 (convention des comparatifs) — sous-note de "
-                "poids à lire avec prudence"]
+        return [f"poids annoncé en pointure « {ref} », ambiguë ou différente de la pointure de l'article "
+                "(US men's 9 = UK 8 = EU 42,5) — sous-note de poids à lire avec prudence"]
     return []
 
 
