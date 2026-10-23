@@ -51,7 +51,7 @@ HRV_PERSONAL_STATUS = ("sous", "dans_la_norme", "au_dessus", "en_construction")
 VERDICT = ("green", "amber", "red")
 # Contexte du cycle menstruel (#166, opt-in `[health].cycle_tracking`) — voir scripts/arc_cycle.py.
 CYCLE_PHASE = ("menstrual", "follicular", "ovulation", "luteal")
-CYCLE_SOURCE = ("garmin", "intervals", "manual")
+CYCLE_SOURCE = ("garmin", "intervals", "coros", "manual")
 CYCLE_DAY_PLAUSIBLE = (1, 60)
 # Provenance de `health.weight_kg` (#222) : `garmin` = pesée lue dans Garmin Connect
 # (`get_daily_weigh_ins`/`get_weigh_ins`), `chat` = déclarée par l'athlète. Clé absente =
@@ -60,8 +60,12 @@ CYCLE_DAY_PLAUSIBLE = (1, 60)
 WEIGHT_ORIGINS = ("garmin", "chat")
 # Provenance des données santé du bilan matinal (#218, épopée #216) : d'où viennent HRV, FC de repos et
 # sommeil du fichier (scripts/arc_health_source.py). Clé absente = fichier antérieur, réputé venir de
-# `[data].source`. Une seule source santé par fichier.
-HEALTH_SOURCES = ("garmin", "intervals", "openwearables")
+# `[data].source`. Une seule source santé par fichier. `coros` (#168) : montre COROS lue par son MCP
+# officiel avec `[data].source = "coros"` — récupération et score de sommeil COROS vont dans
+# `provider_scores`, jamais dans les clés Garmin.
+HEALTH_SOURCES = ("garmin", "intervals", "openwearables", "coros")
+# Sources dont les scores natifs ne sont JAMAIS des valeurs Garmin (`GARMIN_ONLY_HEALTH_KEYS` refusées).
+NON_GARMIN_SCORE_SOURCES = ("openwearables", "coros")
 # Catégories d'un score NATIF de fabricant (`health.provider_scores`) ; la charge (`strain`) n'est pas un
 # signal de récupération et n'a pas toujours d'échelle bornée : exclue.
 PROVIDER_SCORE_CATEGORIES = ("readiness", "recovery", "sleep")
@@ -326,6 +330,11 @@ SCHEMA = {
             # projet (voir `arc_samples.STRAVA_ID_RE`). Mêmes règles que ci-dessus :
             # une activité Strava porte celui-ci et omet les deux autres.
             "strava_activity_id": "strava_id",
+            # COROS (#168) : « c » + le `LabelId` du MCP officiel (ex. "c481221836600803431"),
+            # même convention que Strava (`arc_samples.COROS_ID_RE`). Une activité COROS porte
+            # celui-ci et omet les trois autres ; son `start_time` numérote ses montées
+            # (`arc_climb_match.segment_seed`).
+            "coros_activity_id": "coros_id",
             "name": "str",
             "location": "str",
             "start_time": "datetime",
@@ -837,7 +846,7 @@ SUBSCHEMA = {
     # `shoe_spec.*.alternatives[]` : une autre source pour la même caractéristique. `outlier: true` =
     # aberration constatée et assumée (conservée pour mémoire, jamais retenue ni signalée).
     "shoe_alt": {
-        "required": {"value": "scalar", "source_type": _enum(SHOE_SOURCE_TYPE)},
+        "required": {"value": "any", "source_type": _enum(SHOE_SOURCE_TYPE)},
         "optional": {"url": "str", "retrieved": "date", "outlier": "bool"},
     },
     # `activity.shoe_feedback` (#299) : tout est facultatif mais au moins une information est exigée
@@ -1234,17 +1243,20 @@ def _check_value(spec: str, value, where: str, errors: list, warnings: list) -> 
         if not isinstance(value, str) or not value.strip():
             fail("une chaîne non vide")
         return
-    if spec == "scalar":
-        # `shoe_spec.*.alternatives[].value` (#298) : un nombre ou une chaîne non vide (jamais un booléen).
-        if _is_number(value) or (isinstance(value, str) and value.strip()):
-            return
-        fail("un nombre ou une chaîne non vide")
+    if spec == "any":
+        # `shoe_spec.*.alternatives[].value` (#298) : présent (non nul) ; son TYPE est vérifié par
+        # `_check_shoe_spec` contre celui de la valeur retenue du champ — un seul message d'erreur.
         return
     if spec == "strava_id":
         # `strava_activity_id` (#164) : « s » + chiffres — un identifiant sans préfixe se
         # confondrait avec un `garmin_activity_id` et ne se rattacherait à aucun échantillon.
         if not isinstance(value, str) or not re.fullmatch(r"s\d+", value):
             fail("« s » suivi des chiffres de l'identifiant Strava (ex. \"s12345678901\")")
+        return
+    if spec == "coros_id":
+        # `coros_activity_id` (#168) : « c » + chiffres, même raison que `strava_id`.
+        if not isinstance(value, str) or not re.fullmatch(r"c\d+", value):
+            fail("« c » suivi des chiffres du LabelId COROS (ex. \"c481221836600803431\")")
         return
     if spec == "bool":
         if not isinstance(value, bool):
@@ -1638,6 +1650,9 @@ def _check_shoe_spec(data: dict, errors: list, warnings: list) -> None:
         if obj.get("basis") is not None and obj.get("source_type") != "athlete":
             errors.append(f"{where}.basis : réservé à une valeur « athlete » (la source sur laquelle l'athlète "
                           "a fondé son choix) ; une valeur measured/manufacturer porte déjà sa source")
+        if obj.get("basis") is not None and obj.get("source_type") == "athlete" and obj.get("url") is None:
+            warnings.append(f"{where}.url : une valeur « athlete » avec basis « {obj['basis']} » devrait citer "
+                            "l'url de la source sur laquelle elle est fondée")
         # Chaque alternative a le TYPE de la valeur retenue (nombre, texte, énumération du champ) : sinon
         # « huit » ou « graphene » passeraient comme alternatives.
         value_spec = SUBSCHEMA[SCHEMA["shoe_spec"]["optional"][field][1:-1]]["required"]["value"]
@@ -1753,14 +1768,14 @@ def _check_health_weight(data: dict, errors: list) -> None:
 def _check_health_provenance(data: dict, errors: list) -> None:
     """Cohérence de la provenance santé (#218). `health_provider` n'a de sens que pour
     `openwearables` ; les clés Garmin (readiness, sommeil noté, body battery, stress) ne sont jamais
-    remplies depuis `openwearables` ; chaque score natif tient dans son échelle."""
+    remplies depuis `openwearables` ni `coros` ; chaque score natif tient dans son échelle."""
     source = data.get("health_source")
     if data.get("health_provider") is not None and source != "openwearables":
         errors.append("health.health_provider : exige health_source « openwearables »")
-    if source == "openwearables":
+    if source in NON_GARMIN_SCORE_SOURCES:
         for key in GARMIN_ONLY_HEALTH_KEYS:
             if data.get(key) is not None:
-                errors.append(f"health.{key} : valeur Garmin, incompatible avec health_source « openwearables » "
+                errors.append(f"health.{key} : valeur Garmin, incompatible avec health_source « {source} » "
                               "(le score natif va dans provider_scores, sans être remis sur 100)")
     if data.get("health_provider") == "apple" and data.get("hrv_overnight_ms") is not None:
         errors.append("health.hrv_overnight_ms : Apple Health ne fournit que la HRV en SDNN, non comparable au "

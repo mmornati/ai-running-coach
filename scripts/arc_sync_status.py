@@ -4,7 +4,7 @@
 Répond aux questions « est-ce que ça tourne ? quand ? qu'est-ce qui s'est passé ? » :
 
 - configuration `[sync]` (mode `schedule` | `watch`, heures, intervalle, exécuteur) ;
-- état du sondage Garmin (`logs/.watch-state.json`, écrit par `garmin_watch.py`) ;
+- état du sondage Garmin ou COROS (`logs/.watch-state.json`, écrit par `watch.py`) ;
 - runs de `daily-sync.sh` (`logs/sync-YYYY-MM-DD.log` : en-tête `===== … =====` par run,
   pied `===== … fin code=N durée=Ns =====` depuis cette version, bloc ```resume```) ;
 - événements du sondage (`logs/watch.log`) ;
@@ -88,7 +88,7 @@ def load_settings(workspace: Path) -> dict:
     mode = sync.get("mode", "schedule")
     if mode not in ("schedule", "watch"):
         mode = "schedule"
-    if mode == "watch" and source != "garmin":  # même repli que install.sh
+    if mode == "watch" and source not in ("garmin", "coros"):  # même repli que install.sh
         mode = "schedule"
     fallback = sync.get("fallback_times", ["21:30"])
     return {
@@ -270,19 +270,22 @@ def status(workspace: Path, now: Optional[datetime] = None) -> dict:
     if settings["mode"] == "watch":
         interval = settings["watch_interval_min"]
         last_check = _parse_dt(state.get("last_check"))
-        nxt_what = "sondage Garmin (sans LLM)"
+        label = "COROS" if settings["source"] == "coros" else "Garmin"
+        nxt_what = f"sondage {label} (sans LLM)"
         nxt = max(last_check + timedelta(minutes=interval), now) if last_check else None
         if not last_check:
-            verdict, reason = "never", "Le sondage Garmin n'a encore jamais tourné : la tâche cron/launchd est-elle installée (./install.sh --daily-sync) ?"
+            verdict, reason = "never", f"Le sondage {label} n'a encore jamais tourné : la tâche cron/launchd est-elle installée (./install.sh --daily-sync) ?"
         elif now - last_check > timedelta(minutes=3 * interval + 5):
             verdict = "late"
             reason = (f"Dernier sondage il y a {_ago((now - last_check).total_seconds() / 60)} alors qu'il doit passer "
                       f"toutes les {interval} min : la tâche cron/launchd ne tourne plus (machine éteinte, crontab modifiée ?).")
         elif watch and watch["auth_error"]:
-            verdict, reason = "failing", "Tokens Garmin refusés : renouvelez l'authentification (/coach-doctor)."
+            verdict, reason = "failing", (
+                "Connexion COROS refusée : python3 scripts/arc_coros_auth.py login (/coach-doctor)."
+                if settings["source"] == "coros" else "Tokens Garmin refusés : renouvelez l'authentification (/coach-doctor).")
         elif _parse_dt(state.get("backoff_until")) and _parse_dt(state["backoff_until"]) > now:
             verdict = "degraded"
-            reason = f"Garmin injoignable : nouvel essai après {state['backoff_until'][11:16]}."
+            reason = f"{label} injoignable : nouvel essai après {state['backoff_until'][11:16]}."
     else:
         nxt, nxt_what = next_slot(now, settings["times"]), "synchronisation planifiée"
         expected = last_slot(now, settings["times"])
@@ -323,7 +326,8 @@ def status(workspace: Path, now: Optional[datetime] = None) -> dict:
 
 def _text(st: dict) -> str:
     s = st["settings"]
-    mode = (f"surveillance Garmin toutes les {s['watch_interval_min']} min" if s["mode"] == "watch"
+    label = "COROS" if s.get("source") == "coros" else "Garmin"
+    mode = (f"surveillance {label} toutes les {s['watch_interval_min']} min" if s["mode"] == "watch"
             else f"heures fixes {', '.join(s['times']) or '—'}")
     lines = [f"Synchro : {st['verdict']} — {st['reason']}", f"Mode    : {mode} (exécuteur {s['runner']})"]
     if st["next"]:

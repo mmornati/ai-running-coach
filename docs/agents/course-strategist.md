@@ -36,7 +36,7 @@ L'agent suit un workflow structuré en 8 étapes pour construire la stratégie d
 5. **Plan de nutrition** — objectif glucides/h (plafonné au débit toléré à l'entraînement, #41), hydratation, produits réels si un catalogue est fourni
 6. **Météo** — si la course est à ≤ 14 jours, ajustements automatiques et acclimatation à la chaleur (#38)
 7. **Équipement et vêtements** — checklist détaillée (lampe frontale, chaussures, hydratation, matériel obligatoire), puis **contrôle du matériel de course** (#134) : la liste `gear` du plan est croisée avec l'inventaire du profil (`arc_index.py equipment --race-plan`) — objets **manquants** (« non retrouvé dans votre inventaire »), **à vérifier** (seule la catégorie correspond — jamais donné pour conforme), **jamais utilisés à l'entraînement** (« rien de nouveau le jour J ») ou **sous alerte** ; le rapprochement est textuel strict et rien n'est jamais inventé (inventaire non déclaré = dit tel quel)
-8. **Upload Garmin** — GPX enrichi (waypoints des ravitaillements) téléversé via `upload_course`
+8. **Upload Garmin** — GPX enrichi (waypoints des ravitaillements) téléversé via `upload_course`. Avec une montre COROS (`[data].source = "coros"`), pas d'upload (le MCP COROS n'a aucun outil de parcours) : fiche **Pace Strategy COROS** à recopier dans l'app (`arc_coros_workout.py pace-strategy`), voir [Montres COROS](../coros.md#pace-strategy-plan-de-course)
 
 ## Alignement avec l'objectif
 

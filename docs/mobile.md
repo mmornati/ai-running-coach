@@ -220,7 +220,7 @@ Deux modes de déclenchement, choisis par `[sync].mode` dans `config/workspace.u
 | Mode | Déclenchement | Pour qui |
 |---|---|---|
 | `schedule` (défaut) | Le LLM tourne aux heures fixes de `[sync].times` (`07:15`, `14:15`), qu'il y ait du neuf ou non. | Intervals.icu, ou un rythme très régulier. |
-| `watch` | `scripts/garmin_watch.py` interroge Garmin toutes les `watch_interval_min` minutes **sans LLM** et ne lance la synchronisation que si une séance ou le sommeil du jour manque dans le workspace. | Garmin : réveils tardifs le week-end, séances du soir, voyages et fuseaux horaires. |
+| `watch` | `scripts/watch.py` interroge Garmin ou COROS toutes les `watch_interval_min` minutes **sans LLM** et ne lance la synchronisation que si une séance ou le sommeil du jour manque dans le workspace. | Garmin, COROS : réveils tardifs le week-end, séances du soir, voyages et fuseaux horaires. |
 
 Testez sans attendre :
 
@@ -268,9 +268,18 @@ mode = "watch"
 | Séance que l'agent n'arrive pas à persister | Abandonnée après 2 runs sans effet (journalisé), jamais de boucle. |
 | Watcher muet (cron arrêté, python introuvable) | `fallback_times` (`21:30`) : un run complet si aucun daily-sync n'a eu lieu dans la journée (watcher, session mobile ou lancement manuel : `logs/sync-<jour>.log`) ; `coach_doctor.py` passe en ⚠ après 3 intervalles sans passage. |
 
+**Avec une montre COROS** (`[data].source = "coros"`, #168), même boucle par le relais du projet
+(`scripts/arc_coros_mcp.py`, jetons de `arc_coros_auth.py`, lecture seule) — rien d'autre à
+installer. Le MCP COROS ne donne pas l'heure du dernier envoi de la montre : chaque passage lit les
+séances des `lookback_days` derniers jours (`querySportRecords`, un appel) et, tant que le fichier
+santé du jour manque, le sommeil du jour (`querySleepOverview` ; `Sleep Score: 0` = nuit pas encore
+calculée, on attend). Une séance COROS se déclenche en `activity:c<LabelId>` ; `settle_min` part de la
+première détection. Connexion refusée : pas de LLM, journal « connexion COROS refusée — python3
+scripts/arc_coros_auth.py login ».
+
 ```bash
-scripts/garmin_watch.py --dry-run   # décide et affiche, ne lance rien
-scripts/garmin_watch.py --status    # dernier passage, runs du jour, déclencheurs en attente
+scripts/watch.py --dry-run   # décide et affiche, ne lance rien
+scripts/watch.py --status    # dernier passage, runs du jour, déclencheurs en attente
 tail logs/watch.log                 # événements seulement (nouveautés, runs, erreurs)
 ```
 
@@ -321,9 +330,27 @@ Pour utiliser Codex à la place de Claude Code : `runner = "codex"` dans
 
 ```bash
 scripts/coach-remote.sh status    # état + dernière URL de session
+scripts/coach-remote.sh url       # dernière URL de session seule
 scripts/coach-remote.sh restart
 scripts/coach-remote.sh uninstall
 ```
+
+**Rotation du journal.** `claude remote-control` écrit en continu dans
+`logs/remote-control.log` (redessins d'écran, reconnexions : plusieurs centaines de Mo
+en quelques semaines). `scripts/coach-remote.sh rotate-log` fait tourner ce journal
+au-delà de 10 Mo par copie puis troncature — le service garde son fichier ouvert et
+n'est pas redémarré. Trois générations sont gardées : `remote-control.log.1` (en
+clair, `url`/`status` y cherchent l'URL si le journal courant n'en a plus),
+`.2.gz`, `.3.gz`. L'installation la planifie toute seule, chaque heure :
+
+- **Linux (systemd) et screen/tmux** : une ligne de crontab marquée
+  `# ai-running-coach logrotate`. Une ligne déjà posée à la main avec ce marqueur
+  (logrotate) est remplacée, jamais doublée ; sans `crontab`, la rotation n'a lieu
+  qu'au (re)démarrage du service.
+- **macOS** : un second LaunchAgent, `com.ai-running-coach.remote-logrotate`.
+
+La rotation est aussi faite à chaque démarrage du service ; `uninstall` retire la
+ligne de crontab ou le LaunchAgent.
 
 Exemples depuis le téléphone : *« Résume ma semaine »*, *« Analyse ma sortie de ce midi »*,
 *« Décale la séance de jeudi à vendredi et mets-la dans Garmin »*, `/garmin-daily-sync`

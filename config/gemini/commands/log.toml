@@ -190,7 +190,9 @@ risqueraient d'écraser la fusion l'un de l'autre.
      `get_activities`, fichier complet avec `garmin_activity_id`.
      `[data].source = "intervals"` : `icu_get_recent_activities`, fichier complet
      avec `intervals_activity_id` (chaîne) à la place — jamais les deux
-     champs sur la même activité. Un sync réussi (l'un ou l'autre) — reprenez
+     champs sur la même activité. `[data].source = "coros"` (#168) :
+     `querySportRecords`, fichier complet avec `coros_activity_id` (`"c"` +
+     `LabelId`) et `start_time`. Un sync réussi (l'un ou l'autre) — reprenez
      alors l'étape 2 dessus.
    - **Toujours aucun fichier après ce sync, mais le sport et la durée (ou
      l'heure de début et de fin) sont donnés dans le même message** (« sortie
@@ -200,7 +202,8 @@ risqueraient d'écraser la fusion l'un de l'autre.
      `duration_s` vient alors de sa propre déclaration, ce n'est pas une
      valeur inventée. **L'absence de l'identifiant de la source configurée est
      le marqueur « pas encore synchronisé »** (`garmin_activity_id` à
-     `[data].source = "garmin"`, `intervals_activity_id` à `"intervals"` —
+     `[data].source = "garmin"`, `intervals_activity_id` à `"intervals"`,
+     `coros_activity_id` à `"coros"` —
      voir `garmin-sync-efficiency`, règle 1a, #68) : une synchronisation
      ultérieure (`/garmin-daily-sync` ou une session interactive, avec les
      outils de la source configurée) doit fusionner ses champs dans CE fichier
@@ -328,7 +331,7 @@ régularité.
 Après l'écriture et la ligne de confirmation, **uniquement** si `python3 scripts/arc_nutrition_sync.py mode`
 rend `available: true` (`[nutrition].garmin_sync = "ask"`, source Garmin) : **proposez** de pousser
 l'apport (`nutrition_items` appariés, `fluid_intake_ml`) vers le journal alimentaire et l'hydratation de
-Garmin Connect. À `off` (défaut) : n'en parlez pas. Avec `[data].source = "intervals"` ou `"strava"` : dites en une ligne
+Garmin Connect. À `off` (défaut) : n'en parlez pas. Avec `[data].source = "intervals"`, `"strava"` ou `"coros"` : dites en une ligne
 que c'est indisponible, ne simulez rien. **Jamais en headless, jamais sans un « oui » explicite pour CETTE
 poussée.** Le protocole complet (plan → lectures → question → écritures → `record` → `garmin_pushed` dans le
 bloc ```arc de l'activité) est celui de `GARMIN NUTRITION PUSH` dans `agents/nutritionist.md` ; le script

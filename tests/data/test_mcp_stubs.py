@@ -397,7 +397,7 @@ class TestIntervalsStubFraming(StubProcessTestCase):
     def test_workout_write_echoes_the_parse_result_without_workout_doc(self):
         structured = self._payload("icu_create_event", {
             "start_date": "2026-10-05", "name": "Endurance", "category": "WORKOUT",
-            "description": "Main Set\n- 60m 140-150bpm"})
+            "description": "Main Set\n- 60m 82.4-88.3% LTHR"})
         self.assertTrue(structured["data"]["workout_parsed"])
         self.assertGreaterEqual(structured["data"]["workout_steps"], 1)
         self.assertNotIn("workout_doc", structured["data"])
@@ -421,7 +421,7 @@ class TestIntervalsStubFraming(StubProcessTestCase):
     def test_bulk_create_lists_each_created_event_with_its_parse_echo(self):
         events = json.dumps([
             {"start_date_local": "2026-10-05", "name": "Endurance", "category": "WORKOUT",
-             "event_type": "Run", "description": "Main Set 4x\n- 8m 160-168bpm\n- 3m intensity=rest"},
+             "event_type": "Run", "description": "Main Set 4x\n- 8m 94.2-98.9% LTHR\n- 3m intensity=rest"},
             {"start_date_local": "2026-10-07", "name": "Repos", "category": "NOTE"},
         ])
         data = self._payload("icu_bulk_create_events", {"events": events})["data"]

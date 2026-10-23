@@ -8,8 +8,8 @@ refaire — est ici, en pur stdlib, déterministe et testable sans modèle ni Ga
 
 Opt-in strict : `[nutrition].garmin_sync` vaut `off` par défaut (clé absente, vide ou
 invalide = `off`). `ask` = le coach PROPOSE la poussée, jamais automatique, jamais en
-headless. Avec `[data].source` ≠ `garmin` (`intervals`, `strava`), la fonction est indisponible
-(aucun équivalent) et le script le dit (`reason: "source_intervals"` / `"source_strava"`).
+headless. Avec `[data].source` ≠ `garmin` (`intervals`, `strava`, `coros`), la fonction est indisponible
+(aucun équivalent) et le script le dit (`reason: "source_intervals"` / `"source_strava"` / `"source_coros"`).
 
 Outils `garmin-mcp` utilisés (noms, paramètres et formes vérifiés dans le code du commit
 épinglé `GARMIN_MCP_REF` d'`install.sh` : `src/garmin_mcp/nutrition.py`,
@@ -136,8 +136,9 @@ def availability(mode: str, source: str) -> dict:
     """Fonction utilisable ? `reason` explicite pour que l'agent le DISE."""
     source = (source or "garmin").strip().lower()
     if source != "garmin":
-        # intervals.icu (#68) et Strava (#164) : aucun journal nutritionnel ni hydratation équivalents.
-        label = {"intervals": "intervals.icu", "strava": "Strava"}.get(source, source)
+        # intervals.icu (#68), Strava (#164) et COROS (#168) : aucun journal nutritionnel ni hydratation
+        # équivalents.
+        label = {"intervals": "intervals.icu", "strava": "Strava", "coros": "COROS"}.get(source, source)
         return {"mode": mode, "source": source, "available": False, "reason": f"source_{source}",
                 "message": f"Indisponible : [data].source = « {source} » — {label} n'a pas de "
                            "journal nutritionnel ni d'hydratation équivalents à ceux de Garmin Connect."}

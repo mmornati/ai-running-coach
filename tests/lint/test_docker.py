@@ -194,7 +194,7 @@ class TestPublishWorkflow(unittest.TestCase):
 
     def test_revision_label_is_the_built_commit(self):
         """Lue par scripts/update-docker.sh --check : le commit construit, pas github.sha
-        (appelée depuis tag.yml, github.sha précède le commit de VERSION)."""
+        (sous workflow_run ou appelée depuis tag.yml, ce n'est pas forcément lui)."""
         self.assertIn("org.opencontainers.image.revision=${{ steps.meta.outputs.revision }}", self.text)
         self.assertIn("ARC_REVISION=${{ steps.meta.outputs.revision }}", self.text)
         self.assertIsNone(re.search(r"\$\{\{\s*github\.sha", self.text),

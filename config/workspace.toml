@@ -76,11 +76,11 @@ opencode_data_dir = ""
 daily_budget_eur = 0.5
 # Déclenchement (réinstaller avec `./install.sh --daily-sync` après un changement) :
 #   "schedule" — le LLM tourne aux heures fixes de `times`, qu'il y ait du neuf ou non.
-#   "watch"    — scripts/garmin_watch.py interroge Garmin toutes les `watch_interval_min`
+#   "watch"    — scripts/watch.py interroge Garmin ou COROS toutes les `watch_interval_min`
 #                minutes SANS LLM (un appel HTTP, zéro token) et ne lance la synchronisation
 #                que si une séance ou le sommeil du jour manque dans le workspace : le bilan
 #                matinal suit votre réveil réel, une séance du soir est traitée le soir.
-#                Garmin uniquement ([data].source = "garmin") — voir docs/mobile.md.
+#                Garmin ou COROS ([data].source = "garmin" ou "coros") — voir docs/mobile.md.
 mode = "schedule"
 # Heures locales de lancement en mode "schedule" (cron/launchd).
 # Défaut : après la nuit (sommeil/HRV synchronisés) et après la sortie du midi.
@@ -204,7 +204,7 @@ stale_after_h = 36
 #           (trace `garmin_pushed`). Les outils ne sont ajoutés à la liste blanche qu'à
 #           l'installation : relancer `./install.sh` après le changement (ou
 #           `./install.sh --nutrition-sync ask`).
-# Indisponible avec [data].source = "intervals" ou "strava" (dit explicitement). Valeur invalide = "off".
+# Indisponible avec [data].source = "intervals", "strava" ou "coros" (dit explicitement). Valeur invalide = "off".
 # Une seule source de vérité par jour : voir docs/configuration.md.
 garmin_sync = "off"
 
@@ -241,8 +241,8 @@ output_dir = ""
 [data]
 # Source de données primaire des agents (#68).
 #   "garmin"    — Garmin Connect, via garmin-mcp (défaut, comportement historique)
-#   "intervals" — intervals.icu (ouvre le projet aux montres non-Garmin : COROS,
-#                 Suunto, Polar, Apple — tout ce qu'intervals.icu synchronise),
+#   "intervals" — intervals.icu (ouvre le projet aux montres non-Garmin : Suunto,
+#                 Polar, Apple — tout ce qu'intervals.icu synchronise),
 #                 via le serveur MCP communautaire hhopke/intervals-icu-mcp (#165)
 #   "strava"    — Strava (#164), source « universelle » (toutes marques de montres) :
 #                 activités + flux par seconde (donc les KPI FIT : zones, GAP,
@@ -250,14 +250,30 @@ output_dir = ""
 #                 (npm, nécessite Node.js >= 18). Pas de HRV, de FC de repos, de sommeil
 #                 ni de readiness côté Strava : `[health].morning_check` se dégrade
 #                 explicitement. Voir docs/strava-setup.md.
+#   "coros"     — montre COROS (#168), par le MCP officiel de COROS (relais du projet,
+#                 implique [coros].mcp = "relay") : activités, FIT, HRV, FC de repos,
+#                 sommeil, récupération COROS (nommée, jamais convertie), séances envoyées
+#                 à la montre — comme Garmin. Voir docs/coros.md.
 # Change la source des outils appelés par `coach`/`medical`/`garmin-daily-sync`
 # (voir la table de correspondance dans AGENTS.md) et la destination du push de
 # séances planifiées. Certaines fonctionnalités Garmin (téléchargement FIT,
 # upload de parcours, score de readiness algorithmique) n'ont pas d'équivalent
 # côté intervals.icu et sont alors explicitement indisponibles plutôt que
 # devinées — voir AGENTS.md, section « Backends MCP ». `./install.sh --source
-# intervals` (ou `--source strava`) installe le serveur correspondant et écrit cette clé.
+# intervals` (ou `--source strava`, `--source coros`) installe le serveur correspondant et écrit cette clé.
 source = "garmin"
+
+[coros]
+# Montre COROS : MCP officiel de COROS via un relais local (`scripts/arc_coros_mcp.py`).
+#   "off"   — défaut : rien d'installé, aucun agent n'en parle
+#   "relay" — `./install.sh --coros` déclare le serveur `coros` dans la config de chaque IA
+#             (Claude Code, Copilot, Cursor, OpenCode, Gemini, Windsurf) ; l'athlète se connecte
+#             UNE fois (`python3 scripts/arc_coros_auth.py login`), jetons dans
+#             ~/.config/ai-running-coach/coros/ (600). Séances envoyées directement à la
+#             montre, renforcement par les séances types. Avec une autre source, lectures
+#             COROS dans la session seulement ; `--source coros` en fait la source de données.
+# Écrite par install.sh (--coros / --no-coros / --source coros). Voir docs/coros.md.
+mcp = "off"
 
 [metrics]
 # VAM sur les montées détectées (#46) : gain d'altitude minimal (m) et pente

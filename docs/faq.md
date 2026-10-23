@@ -112,10 +112,12 @@ temps) plutôt qu'en remplacement complet de Garmin :
 
 ### Et le MCP officiel de COROS ?
 
-Audité dans #168 : il peut s'ajouter à la main pour un usage interactif, mais il
-n'est pas une source du projet (noms d'outils non vérifiables, authentification
-OAuth interactive, pas de support documenté de Claude Code). Les montres COROS
-passent par Intervals.icu ; voir [Montres COROS](coros.md).
+Oui : `./install.sh --source coros` en fait votre source de données, comme Garmin
+(activités et santé enregistrées, bilan matinal, synchronisation quotidienne,
+surveillance), sans compte tiers, avec une seule connexion pour toutes les IA. Le
+coach envoie vos séances à la montre (et planifie vos séances types de renforcement)
+en interactif, après votre « oui ». Avec une autre source, `./install.sh --coros`
+branche la montre seule. Voir [Montres COROS](coros.md).
 
 ## Agents
 
@@ -143,7 +145,7 @@ Non. Les dossiers de données personnelles sont exclus du dépôt via `.gitignor
 
 ### Puis-je utiliser une bague Oura/WHOOP, une Apple Watch, une montre Polar/Suunto/COROS ?
 
-Oui pour l'entraînement, via Intervals.icu ou Strava selon l'appareil ; pour la santé du bilan matinal
+Oui pour l'entraînement : COROS par son MCP officiel ([Montres COROS](coros.md)), les autres via Intervals.icu ou Strava selon l'appareil ; pour la santé du bilan matinal
 (HRV, FC de repos), certaines bagues passent par Intervals.icu, et l'option Open Wearables (`[health].source`, #216) lit
 la santé d'une instance que vous hébergez vous-même. Voir le guide [Quelle source pour mon appareil ?](configuration.md#quelle-source-pour-mon-appareil)
 et l'[audit d'Open Wearables](open-wearables.md).
