@@ -321,9 +321,27 @@ Pour utiliser Codex à la place de Claude Code : `runner = "codex"` dans
 
 ```bash
 scripts/coach-remote.sh status    # état + dernière URL de session
+scripts/coach-remote.sh url       # dernière URL de session seule
 scripts/coach-remote.sh restart
 scripts/coach-remote.sh uninstall
 ```
+
+**Rotation du journal.** `claude remote-control` écrit en continu dans
+`logs/remote-control.log` (redessins d'écran, reconnexions : plusieurs centaines de Mo
+en quelques semaines). `scripts/coach-remote.sh rotate-log` fait tourner ce journal
+au-delà de 10 Mo par copie puis troncature — le service garde son fichier ouvert et
+n'est pas redémarré. Trois générations sont gardées : `remote-control.log.1` (en
+clair, `url`/`status` y cherchent l'URL si le journal courant n'en a plus),
+`.2.gz`, `.3.gz`. L'installation la planifie toute seule, chaque heure :
+
+- **Linux (systemd) et screen/tmux** : une ligne de crontab marquée
+  `# ai-running-coach logrotate`. Une ligne déjà posée à la main avec ce marqueur
+  (logrotate) est remplacée, jamais doublée ; sans `crontab`, la rotation n'a lieu
+  qu'au (re)démarrage du service.
+- **macOS** : un second LaunchAgent, `com.ai-running-coach.remote-logrotate`.
+
+La rotation est aussi faite à chaque démarrage du service ; `uninstall` retire la
+ligne de crontab ou le LaunchAgent.
 
 Exemples depuis le téléphone : *« Résume ma semaine »*, *« Analyse ma sortie de ce midi »*,
 *« Décale la séance de jeudi à vendredi et mets-la dans Garmin »*, `/garmin-daily-sync`
