@@ -21,7 +21,8 @@ dans la période du workspace, en `(retirée)` quand Garmin les a retirées), `-
 machine), `--workspace`, `--tokens-dir`.
 
 CODES DE SORTIE : 0 = succès (simulation ou application complète) ; 1 = succès partiel
-(paire injoignable côté Garmin, fichier rejeté par la validation et restauré) ; 2 = usage,
+(paire injoignable côté Garmin, fichier rejeté par la validation et restauré, instantané
+`.arc/garmin_gear.json` non écrit) ; 2 = usage,
 dépendance `garminconnect` absente, authentification Garmin impossible ou `get_gear` illisible ; 3 = `--apply`
 impossible faute de profil athlète (`planning/Runner_Profile.md`).
 
@@ -1008,6 +1009,9 @@ def render_report(result: dict, applied: Optional[dict] = None, reindexed: Optio
             lines.append(f"  échec : {f['path']} — {f['error']}")
         for f in applied["out_of_contract"]:
             lines.append(f"  {f['path']} — {f['reason']}")
+        if applied.get("snapshot_error"):
+            lines.append(f"  attention : {applied['snapshot_error']} — la retraite des paires dans Garmin ne sera "
+                         "prise en compte qu'au prochain get_gear du coach")
         if reindexed:
             lines.append(f"Index reconstruit : {reindexed['index']}.")
     return "\n".join(lines)
@@ -1086,13 +1090,17 @@ def run(args, source=None) -> Tuple[int, dict, str]:
     if args.apply:
         # Instantané du statut Garmin (`.arc/garmin_gear.json`, dérivé) : la retraite d'une paire liée prend effet
         # dans l'index même si la puce n'est pas (encore) modifiée. Écrit seulement avec --apply (simulation = rien).
+        # Un échec n'empêche pas le reste (profil, séances), mais il est rapporté et rend le code « partiel » :
+        # sans instantané, une retraite Garmin n'est pas prise en compte avant le prochain `get_gear` du coach.
         import arc_garmin_gear as GG
+        snapshot_error = None
         try:
             GG.write_cache(workspace, GG.normalize_garmin_shoes(raw_gear))
-        except (OSError, GG.GarminGearError):
-            pass
+        except (OSError, GG.GarminGearError) as exc:
+            snapshot_error = f"{GG.CACHE_REL} non écrit : {type(exc).__name__}: {exc}"
         applied = apply_plan(workspace, profile, result)
-        if applied["failed"]:
+        applied["snapshot_error"] = snapshot_error
+        if applied["failed"] or snapshot_error:
             code = EXIT_PARTIAL
         reindexed = reindex(workspace)
     payload = {"dry_run": not args.apply, "workspace": str(workspace), **result}
