@@ -3784,9 +3784,9 @@ def shoe_needs(conn, role: str, replace: Optional[str] = None, today: Optional[d
     for gid, p in sorted(pairs_fb.items()):
         v = p.get("verdict") or {}
         c = comfort_of(p)
-        eligible = v.get("would_rebuy") == "yes" or (gid == replace and v.get("would_rebuy") == "yes_with_change")
-        if eligible and c is not None and c >= min_comfort:
-            references.append({"gear_id": gid, "comfort": c, "would_rebuy": v.get("would_rebuy"), "spec": specs.get(gid)})
+        if v.get("would_rebuy") in ("yes", "yes_with_change") and c is not None and c >= min_comfort:
+            references.append({"gear_id": gid, "comfort": c, "would_rebuy": v.get("would_rebuy"), "verdict": v,
+                               "spec": specs.get(gid)})
 
     replaced = None
     if replace is not None:
@@ -3796,23 +3796,36 @@ def shoe_needs(conn, role: str, replace: Optional[str] = None, today: Optional[d
                     "role": ((pair or {}).get("role") or {}).get("role"),
                     "verdict": (pairs_fb.get(replace) or {}).get("verdict"), "spec": specs.get(replace)}
 
-    # Antécédents : épisodes (jours consécutifs fusionnés) par zone reconnue de `arc_prevention`.
+    # Antécédents : (1) douleurs déclarées (`health.pain`), épisodes par zone et côté ; (2) puces du profil
+    # « Antécédents de blessure » et « Zones fragiles à surveiller ». Zones normalisées par `arc_prevention`.
     zones_doc = PV.load_prevention()
     lookback = max(rules["rules"][rule_ids.index(rid)]["params"]["lookback_days"]
                    for rid in ("achilles_calf_no_drop_decrease", "ankle_sprain_low_stack_wide_base"))
-    entries = []
-    for e in PV.collect_entries(conn, today, lookback):
-        zone = PV.normalize_zone(zones_doc, e["location"])["zone"]
-        if zone:
-            entries.append({"date": e["date"], "location": zone, "score": e["score"]})
-    episodes: Dict[str, int] = {}
-    for ep in SU.pain_episodes(entries):
-        episodes[ep["location"]] = episodes.get(ep["location"], 0) + 1
-
+    raw_entries = PV.collect_entries(conn, today, lookback)
+    ep_input = []
+    for e in raw_entries:
+        z = PV.normalize_zone(zones_doc, e["location"])
+        if z["zone"]:
+            ep_input.append({"date": e["date"], "location": f"{z['zone']}|{z['side'] or ''}", "score": e["score"]})
+    injury_entries = []
+    for ep in SU.pain_episodes(ep_input):
+        zone, _, side = ep["location"].partition("|")
+        injury_entries.append({"source": "health", "zone": zone, "side": side or None, "score": ep["score"], "date": ep["date"]})
     athlete = conn.execute("SELECT * FROM athlete LIMIT 1").fetchone()
+    profile_entries = SN.parse_profile_injuries(athlete["body_md"] if athlete else None,
+                                                lambda text: PV.normalize_zone(zones_doc, text))
+    injury_entries += profile_entries
+    unreadable = len(raw_entries) - len(ep_input)
+    injury = {"entries": injury_entries, "sources": [
+        {"source": "health", "label": "douleurs déclarées (medical/)", "period": f"{(today - timedelta(days=lookback - 1)).isoformat()} au {today.isoformat()}",
+         "entries": sum(1 for e in injury_entries if e["source"] == "health"),
+         **({"unrecognised_zone_declarations": unreadable} if unreadable else {})},
+        {"source": "profile", "label": "profil : Antécédents de blessure + Zones fragiles à surveiller",
+         "entries": len(profile_entries), "profile_found": bool(athlete)}]}
+
     mass, mass_src = resolve_weight_kg_as_of(conn, today.isoformat(), dict(athlete) if athlete else {})
     report = SN.evaluate(rules, {"role": role, "replaced": replaced, "references": references,
-                                 "pain_episodes": episodes, "mass_kg": mass, "mass_source": mass_src,
+                                 "injury": injury, "mass_kg": mass, "mass_source": mass_src,
                                  "active_pairs": sum(1 for g in declared if not g["retired"] and not g["ignored"])})
     if replaced and replaced.get("role") and replaced["role"] not in ("insufficient_data", role):
         report["warnings"].append(f"la paire remplacée sert plutôt de « {replaced['role']} » (rôle déduit de son "

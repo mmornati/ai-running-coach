@@ -272,15 +272,22 @@ de preuve (`rationale`).
 
 Ordre de décision : **confort, puis continuité, puis garde-fous blessures, puis adéquation au terrain.**
 
-1. **Confort d'abord.** La référence est l'ensemble des paires avec `would_rebuy = yes` et un confort
-   d'au moins 7/10 (bilan de retraite, sinon moyenne des retours). Sans paire de référence, le moteur
-   garde des **plages larges** et écrit « données insuffisantes » : il ne devine rien.
+1. **Confort d'abord.** La référence est l'ensemble des paires avec `would_rebuy = yes` **ou
+   `yes_with_change`** (le changement souhaité est alors appliqué) et un confort d'au moins 7/10 (bilan de
+   retraite, sinon moyenne des retours). Sans paire de référence, le moteur garde des **plages larges** et
+   écrit « données insuffisantes » : il ne devine rien. Si la paire remplacée a une fiche mais pas de
+   verdict de confort, il affiche seulement une **bande de continuité indicative** (drop, pile, index
+   minimaliste), étiquetée « paire remplacée, sans verdict de confort » : un avertissement, jamais une
+   contrainte.
 2. **Continuité.** Drop à +/- 4 mm de la référence (la valeur **mesurée** prime sur celle de la marque),
-   index minimaliste à +/- 20 points, pile du talon à +/- 6 mm (ce dernier écart est une approximation du
-   projet), largeur d'avant-pied déjà éprouvée.
-3. **Garde-fous.** Antécédent de douleur au tendon d'Achille ou au mollet : **le drop n'est pas abaissé**.
-   Au moins deux épisodes de douleur à la cheville : pile plus basse et base large (avis d'experts). Masse
-   au-dessus de 71,4 kg : pas de pas vers plus de minimalisme. La masse ne relève **jamais** l'amorti.
+   index minimaliste à +/- 20 points, pile du talon à +/- 6 mm et crampons à +/- 1 mm (ces deux derniers
+   écarts sont des approximations du projet), largeur d'avant-pied déjà éprouvée.
+3. **Garde-fous.** Antécédent de douleur au tendon d'Achille ou au mollet : **le drop n'est pas abaissé**
+   (extrapolation du projet : l'essai sur le drop n'a aucune donnée propre à l'Achille). Entorse de cheville
+   déclarée au profil, ou au moins deux épisodes de douleur à la cheville d'au moins 4/10 **du même côté** :
+   pile du talon au plus égale à celle de la paire actuelle et base large (avis d'experts). Masse au-dessus
+   de 71,4 kg : pas de pas vers plus de minimalisme (niveau faible : sous-groupe d'un seul essai). La masse
+   ne relève **jamais** l'amorti.
 4. **Terrain.** Route : crampons de 4 mm au plus. Trail avec des indices de terrain meuble (au moins 30 %
    de séances humides, ou D+/km d'au moins 40 m) : crampons de 5 mm au moins. L'usage d'une paire ne
    distingue que route et trail : **ni la boue ni la roche ne sont détectées**, la pluie et le dénivelé
@@ -289,8 +296,14 @@ Ordre de décision : **confort, puis continuité, puis garde-fous blessures, pui
 Le bilan de retraite (`yes_with_change` + `change_wanted`) décale la plage correspondante (largeur, drop,
 amorti, adhérence, stabilité) ; un garde-fou de blessure prime toujours sur cette préférence. Une course
 (`race` ou `road_tempo`) ajoute la plaque et la mousse haute performance comme **option de performance**.
-Les antécédents viennent des douleurs déclarées (`medical/`, zones reconnues du skill de prévention) : un
-épisode à la cheville n'est pas une entorse, le moteur le dit.
+**Antécédents lus.** Le moteur lit (1) les douleurs déclarées de `medical/` et (2) les puces du profil
+« Antécédents de blessure » et « Zones fragiles à surveiller » ; les zones sont normalisées comme pour la
+prévention ciblée (« tendon d'Achille gauche », « cheville droite (proprioception) »). La sortie (JSON et
+`--text`) dit toujours quelles sources ont été lues, sur quelle période et combien d'entrées elles ont
+donné ; sans antécédent, elle écrit « aucun antécédent trouvé » avec ces sources. Un élément du profil sans
+zone reconnue est signalé, jamais deviné. Une douleur à la cheville n'est dite « entorse » que si le profil
+la déclare comme telle. Le terrain d'un rôle `race`, `mixed` ou `mixed_long` vient de l'**usage** de la paire
+remplacée, pas de la course visée : le moteur le dit.
 
 ## Ce que disent les preuves
 
@@ -302,9 +315,9 @@ les niveaux ci-dessous disent la solidité de chaque règle, pas une promesse. C
 | **Confort** : filtre principal | [Nigg 2015](https://bjsm.bmj.com/content/49/20/1290) ; [Malisoux 2025](https://researchportal.lih.lu/en/publications/association-of-shoe-cushioning-perception-and-comfort-with-injury/) (analyse secondaire d'un essai randomisé : la paire jugée la plus confortable est associée à un risque plus bas, association) | modéré |
 | **Continuité** (drop, minimalisme) | [Ryan 2014](https://kintec.net/wp-content/uploads/2016/12/Ryan.-minimalist-footwearBJSM_2013.pdf) ; [Fuller 2017](https://researchers.mq.edu.au/en/publications/body-mass-and-weekly-training-distance-influence-the-pain-and-inj/) ; seuils de 4 mm et 20 points = approximation du projet | modéré |
 | **Drop** : pas d'effet global, un drop bas défavorable aux coureurs réguliers en sous-groupe | [Malisoux 2016](https://researchportal.lih.lu/en/publications/influence-of-the-heel-to-toe-drop-of-standard-cushioned-running-s/) | faible |
-| **Masse et minimalisme** : risque plus probable au-delà de 71,4 kg (61 coureurs, un seul essai) ; douleur plus forte au-delà de 35 km/semaine | [Fuller 2017](https://researchers.mq.edu.au/en/publications/body-mass-and-weekly-training-distance-influence-the-pain-and-inj/) | modéré |
+| **Masse et minimalisme** : risque plus probable au-delà de 71,4 kg (61 coureurs, sous-groupe d'un seul essai) ; douleur plus forte au-delà de 35 km/semaine | [Fuller 2017](https://researchers.mq.edu.au/en/publications/body-mass-and-weekly-training-distance-influence-the-pain-and-inj/) | faible |
 | **Amorti** : chaussure dure, risque x1,52, surtout chez les coureurs légers ; pas de bénéfice démontré d'un amorti accru pour les lourds | [Malisoux 2020](https://researchportal.lih.lu/en/publications/shoe-cushioning-influences-the-running-injury-risk-according-to-b/) ; [Theisen 2014](https://bjsm.bmj.com/content/48/5/371) ne trouve pas de lien entre dureté et blessure (HR 0,92, IC 0,57-1,48) | faible |
-| **Type de pied / pronation** : pas de prescription | [Nielsen 2014](https://bjsm.bmj.com/content/48/6/440) ; [Malisoux 2016 (chaussures de contrôle du mouvement)](https://bjsm.bmj.com/content/50/8/481) | modéré |
+| **Type de pied / pronation** : pas de prescription ([Nielsen 2014](https://bjsm.bmj.com/content/48/6/440) : la pronation n'est pas un facteur de risque chez des novices en chaussure neutre) ; **bénéfice possible de la stabilité** ([Malisoux 2016, chaussures de contrôle du mouvement](https://bjsm.bmj.com/content/50/8/481) : HR 0,55 ; 0,34 chez les pieds pronés, analyse secondaire) : une **option**, jamais une règle | modéré |
 | **Rotation** : au moins 2 paires, environ -39 % (observationnel) | [Malisoux 2015](https://pubmed.ncbi.nlm.nih.gov/24286345/) | faible |
 | **Plaque, super-mousse** : économie de course, rien sur les blessures | [Hoogkamer 2018](https://pubmed.ncbi.nlm.nih.gov/29143929/) | élevé (performance) / nul (blessure) |
 | **Pile maximale en course** : 40 mm sur route ; trail et montagne sans limite d'épaisseur | [World Athletics](https://worldathletics.org/download/download?filename=32794443-9c19-4ae4-a436-9b97ecbe0801.pdf&urlslug=Athletic%2Bshoe%2Bregulations%2Bfrequently%2Basked%2Bquestions) | réglementaire |
@@ -317,8 +330,8 @@ L'index minimaliste est celui d'[Esculier 2015](https://jfootankleres.biomedcent
 
 - **Vérifié** (titre, revue, année) dans PubMed : Nigg 2015, Malisoux 2025, Ryan 2014, Fuller 2017
   (résumé lu, seuil de 71,4 kg), Malisoux 2016, Malisoux 2020 (résumé lu), Theisen 2014, Malisoux 2016
-  (contrôle du mouvement), Malisoux 2015, Hoogkamer 2018, Esculier 2015. Nielsen 2014 : lien de l'épopée,
-  titre non revérifié.
+  (contrôle du mouvement), Malisoux 2015, Hoogkamer 2018, Esculier 2015. Nielsen 2014 : titre complet confirmé
+  à la revue de la PR.
 - **Écarté** : Chambon 2015 (drop et attaque du pied) existe, mais mesure la foulée de 12 coureurs sur sol
   plat et sur tapis, sans critère de blessure ; Kulmala 2018 (*Scientific Reports*) existe et montre une
   charge d'impact plus élevée dans une chaussure très amortie **en laboratoire**, sans critère de blessure :

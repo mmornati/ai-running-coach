@@ -19,6 +19,7 @@ Bibliothèque standard uniquement.
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -49,11 +50,13 @@ HANDLED_RULES = (
     "broad_defaults", "comfort_first", "insufficient_reference", "continuity_drop", "continuity_minimalist_index",
     "continuity_stack", "continuity_toe_box", "achilles_calf_no_drop_decrease", "ankle_sprain_low_stack_wide_base",
     "mass_minimalism_caution", "softness_not_firm", "no_mass_cushion_rule", "no_foot_type_prescription",
-    "terrain_lugs_hard", "terrain_lugs_soft", "terrain_rock_plate", "race_performance_option", "race_stack_limit",
+    "continuity_lugs", "terrain_lugs_hard", "terrain_lugs_soft", "terrain_rock_plate", "race_performance_option", "race_stack_limit",
     "rotation_reminder", "change_wanted_adjust", "gait_dynamics_monitor_only",
 )
 
 # Sous-types de `change_wanted` (#299) sans plage associée : dits à l'athlète, jamais ignorés en silence.
+PROFILE_INJURY_BULLETS = ("Antécédents de blessure", "Zones fragiles à surveiller")
+
 CHANGE_NO_RANGE = {
     "lighter": "« plus léger » : le poids n'a pas de plage cible dans ce moteur",
     "narrower": "« plus étroit » : la largeur d'avant-pied autorise le standard et l'étroit",
@@ -173,6 +176,7 @@ class _Target:
         self.allowed: Optional[List[str]] = None
         self.items: List[Tuple[str, str]] = []      # (règle, raison)
         self.conflicts: List[str] = []
+        self.advisory: Optional[dict] = None
 
     def note(self, rid: str, reason: str) -> None:
         self.rules.mark(rid)
@@ -233,6 +237,8 @@ class _Target:
         out["references"] = list(refs.values())
         if self.conflicts:
             out["conflicts"] = list(self.conflicts)
+        if self.advisory:
+            out["advisory"] = dict(self.advisory)
         return out
 
 
@@ -246,6 +252,45 @@ def _spec_value(spec: Optional[dict], field: str) -> Optional[dict]:
 
 def _num(v: Any) -> Optional[float]:
     return float(v) if isinstance(v, (int, float)) and not isinstance(v, bool) else None
+
+
+def _de(name: str) -> str:
+    """Élision française : « d'ultra-glide » devant une voyelle ou un h muet, « de road-a » sinon."""
+    return ("d'" if name[:1].lower() in "aeiouyàâéèêëîïôùûh" else "de ") + name
+
+
+def parse_profile_injuries(body_md: Optional[str], zone_of) -> List[dict]:
+    """Antécédents déclarés dans les puces du profil « Antécédents de blessure » et « Zones fragiles à surveiller »
+    (valeur sur la ligne, ou sous-puces indentées). Un élément (séparé par `;`, `,` ou « et ») = une entrée
+    {source: 'profile', bullet, text, zone, side, sprain}. `zone_of(texte)` -> {zone, side} (`arc_prevention`).
+    « aucun », « néant », « rien », « - » et les commentaires HTML sont ignorés. Un élément sans zone reconnue
+    est gardé avec `zone: None` (dit, jamais deviné)."""
+    out: List[dict] = []
+    if not body_md:
+        return out
+    lines = body_md.splitlines()
+    for bullet in PROFILE_INJURY_BULLETS:
+        pat = re.compile(r"^\s*[-*]\s*\*\*\s*" + re.escape(bullet) + r"\s*\*\*\s*:?\s*(.*)$", re.IGNORECASE)
+        for i, line in enumerate(lines):
+            m = pat.match(line)
+            if not m:
+                continue
+            chunks = [m.group(1)]
+            for nxt in lines[i + 1:]:
+                if re.match(r"^\s*[-*]\s*\*\*", nxt) or nxt.lstrip().startswith("#"):
+                    break
+                if nxt.strip():
+                    chunks.append(re.sub(r"^\s*[-*]\s*", "", nxt))
+            text = re.sub(r"<!--.*?-->", " ", " ".join(chunks), flags=re.DOTALL).strip()
+            for item in re.split(r"[;,\n]| et ", text):
+                item = item.strip(" .\t")
+                if not item or item.lower().strip("- ") in ("aucun", "aucune", "néant", "neant", "rien", "ras", ""):
+                    continue
+                z = zone_of(item)
+                out.append({"source": "profile", "bullet": bullet, "text": item, "zone": z.get("zone"),
+                            "side": z.get("side"), "sprain": "entorse" in item.lower()})
+            break
+    return out
 
 
 def _basis(f: dict) -> str:
@@ -262,7 +307,7 @@ def _reference_values(refs: List[dict], field: str, warnings: List[str]) -> List
             continue
         vals.append(v)
         if field == "drop_mm" and _basis(f) == "manufacturer":
-            warnings.append(f"drop de {r['gear_id']} : valeur annoncée par la marque, non mesurée — les écarts "
+            warnings.append(f"drop {_de(r['gear_id'])} : valeur annoncée par la marque, non mesurée — les écarts "
                             "marque/laboratoire relevés (1,5 à 2,7 mm sur deux paires, épopée #297) peuvent décaler la plage")
     return vals
 
@@ -271,8 +316,11 @@ def evaluate(rules_doc: dict, inp: dict) -> dict:
     """Plages cibles pour `inp` (voir `arc_index.shoe_needs`) :
 
     - `role`, `replace` (gear_id ou None), `replaced` ({gear_id, usage, verdict, spec} ou None) ;
-    - `references` : [{gear_id, comfort, would_rebuy, spec}] — would_rebuy = yes et confort >= 7 ;
-    - `pain_episodes` : {zone: nombre d'épisodes} (zones de `arc_prevention`) ;
+    - `references` : [{gear_id, comfort, would_rebuy, verdict, spec}] — would_rebuy = yes ou yes_with_change
+      (changement appliqué) et confort >= 7 ;
+    - `injury` : {sources: [{source, label, period?, entries}], entries: [{source, zone, side, score?, text?,
+      sprain?, date?}]} — antécédents lus dans les douleurs déclarées (`medical/`) ET dans les puces du profil
+      (« Antécédents de blessure », « Zones fragiles à surveiller »), zones normalisées par `arc_prevention` ;
     - `mass_kg` (+ `mass_source`), `active_pairs` : nombre de paires actives du profil.
     """
     R = _Rules(rules_doc)
@@ -302,8 +350,9 @@ def evaluate(rules_doc: dict, inp: dict) -> dict:
     insufficient = not refs
     if insufficient:
         R.mark("insufficient_reference")
-        warnings.append("données insuffisantes : aucune paire avec would_rebuy = yes et confort >= 7 ; plages larges "
-                        "conservées, aucune continuité calculée (renseigner le bilan de retraite ou les retours de confort)")
+        warnings.append("données insuffisantes : aucune paire avec would_rebuy = yes (ou yes_with_change) et confort >= 7 ; "
+                        "plages larges conservées, aucune continuité contraignante (renseigner le bilan de retraite ou les "
+                        "retours de confort)")
     else:
         R.mark("comfort_first")
 
@@ -344,6 +393,42 @@ def evaluate(rules_doc: dict, inp: dict) -> dict:
                         key=PLATES.index)
     ref_stability = [r for r in refs if (_num((_spec_value(r.get("spec"), "stability_devices") or {}).get("value")) or 0) >= 1]
 
+    # --- paire remplacée sans verdict de confort : bande d'AVERTISSEMENT, jamais une contrainte --------------
+    if not refs and replaced and replaced.get("spec"):
+        label = "paire remplacée, sans verdict de confort"
+        rp = replaced["spec"]
+        bands = []
+        for fld, rid, key, tol_key, unit in (("drop_mm", "continuity_drop", "drop_mm", "tolerance_mm", "mm"),
+                                             ("stack_heel_mm", "continuity_stack", "stack_heel_mm", "tolerance_mm", "mm")):
+            v = _num((_spec_value(rp, key) or {}).get("value"))
+            if v is not None:
+                tol = R.param(rid, tol_key)
+                T[fld].advisory = {"min": round(v - tol, 1), "max": round(v + tol, 1), "basis": label, "rule": rid,
+                                   "reason": f"{FIELD_LABELS_FR[fld]} de la paire remplacée {_fmt(v)} +/- {_fmt(tol)} {unit}"}
+                R.mark(rid)
+                bands.append(FIELD_LABELS_FR[fld])
+        mi = (rp.get("minimalist_index") or {})
+        if mi.get("available"):
+            tol = R.param("continuity_minimalist_index", "tolerance_pts")
+            T["minimalist_index_pct"].advisory = {
+                "min": round(mi["index_pct"] - tol, 1), "max": round(mi["index_pct"] + tol, 1), "basis": label,
+                "rule": "continuity_minimalist_index",
+                "reason": f"index minimaliste de la paire remplacée {_fmt(mi['index_pct'])} +/- {_fmt(tol)} points"}
+            R.mark("continuity_minimalist_index")
+            bands.append(FIELD_LABELS_FR["minimalist_index_pct"])
+        if bands:
+            warnings.append(f"{label} : bande de continuité indicative (non contraignante) pour " + ", ".join(bands)
+                            + " — sortir de cette bande est un grand changement, à décider en connaissance de cause")
+
+    # --- crampons : continuité sur la référence ---------------------------------------------------------
+    ref_lugs = _reference_values(refs, "lug_depth_mm", warnings) if refs else []
+    if ref_lugs:
+        tol = R.param("continuity_lugs", "tolerance_mm")
+        T["lug_depth_mm"].set_range("continuity_lugs", max(0.0, min(ref_lugs) - tol), max(ref_lugs) + tol,
+                                    f"crampons de référence {_fmt(min(ref_lugs))}"
+                                    + (f" à {_fmt(max(ref_lugs))}" if max(ref_lugs) != min(ref_lugs) else "")
+                                    + f" mm à +/- {_fmt(tol)} mm (approximation du projet)")
+
     # --- amorti : défaut souple/modéré ---------------------------------------------------------------
     T["midsole_softness"].set_allowed("softness_not_firm", list(R.param("softness_not_firm", "default")),
                                       "mousse souple ou modérée par défaut (une mousse dure a été associée à plus de blessures)")
@@ -357,9 +442,14 @@ def evaluate(rules_doc: dict, inp: dict) -> dict:
     notes.append("dynamiques de foulée (contact au sol, oscillation, cadence) : à surveiller après un changement, jamais un critère de choix")
 
     # --- change_wanted (préférence déclarée de la paire remplacée) ---------------------------------
-    verdict = (replaced or {}).get("verdict") or {}
-    changes = verdict.get("change_wanted") if verdict.get("would_rebuy") == "yes_with_change" else None
-    changes = [changes] if isinstance(changes, str) else list(changes or [])
+    changes: List[str] = []
+    verdicts = [(replaced or {}).get("verdict")] + [r.get("verdict") for r in refs]
+    for v in verdicts:
+        v = v or {}
+        cw = v.get("change_wanted") if v.get("would_rebuy") == "yes_with_change" else None
+        for ch in ([cw] if isinstance(cw, str) else list(cw or [])):
+            if ch not in changes:
+                changes.append(ch)
     stability_wanted = False
     step = R.param("change_wanted_adjust", "drop_step_mm")
     for ch in changes:
@@ -399,37 +489,68 @@ def evaluate(rules_doc: dict, inp: dict) -> dict:
             notes.append("changement souhaité " + CHANGE_NO_RANGE[ch])
 
     # --- 3. garde-fous blessures --------------------------------------------------------------------
-    episodes = inp.get("pain_episodes") or {}
+    injury = inp.get("injury") or {}
+    entries = [e for e in (injury.get("entries") or []) if isinstance(e, dict)]
+    history_sources = list(injury.get("sources") or [])
+    by_zone: Dict[str, int] = {}
+    for e in entries:
+        if e.get("zone"):
+            by_zone[e["zone"]] = by_zone.get(e["zone"], 0) + 1
+    if not entries:
+        notes.append("aucun antécédent de blessure trouvé (sources lues : "
+                     + (", ".join(s_["label"] for s_ in history_sources) or "aucune") + ") — garde-fous Achille/mollet et "
+                     "cheville non déclenchés ; à compléter dans le profil si c'est inexact")
+    unknown_items = [e["text"] for e in entries if e.get("source") == "profile" and not e.get("zone")]
+    if unknown_items:
+        notes.append("antécédents du profil sans zone reconnue (aucune règle appliquée, à préciser) : " + " ; ".join(unknown_items))
     achilles_zones = R.param("achilles_calf_no_drop_decrease", "zones")
-    hit = {z: episodes[z] for z in achilles_zones if episodes.get(z)}
+    hit = {z: by_zone[z] for z in achilles_zones if by_zone.get(z)}
     if hit:
+        srcs = sorted({e["source"] for e in entries if e.get("zone") in achilles_zones})
         cur = _num((_spec_value((replaced or {}).get("spec"), "drop_mm") or {}).get("value"))
         floor = cur if cur is not None else (min(ref_drops) if ref_drops else None)
-        zones_txt = ", ".join(f"{z.replace('_', ' ')} ({n} épisode{'s' if n > 1 else ''})" for z, n in sorted(hit.items()))
+        zones_txt = ", ".join(f"{z.replace('_', ' ')} ({n} mention{'s' if n > 1 else ''})" for z, n in sorted(hit.items()))
+        src_txt = " + ".join({"health": "douleurs déclarées", "profile": "profil"}[x] for x in srcs)
         if floor is not None:
             T["drop_mm"].set_range("achilles_calf_no_drop_decrease", floor, None,
-                                   f"antécédent de douleur déclarée : {zones_txt} — ne pas descendre sous {_fmt(floor)} mm "
-                                   "(drop de la paire actuelle ou de la référence)", safety=True)
+                                   f"antécédent ({src_txt}) : {zones_txt} — ne pas descendre sous {_fmt(floor)} mm "
+                                   "(drop de la paire actuelle ou de la référence ; extrapolation du projet)", safety=True)
         else:
             R.mark("achilles_calf_no_drop_decrease")
             T["drop_mm"].note("achilles_calf_no_drop_decrease",
-                              f"antécédent de douleur déclarée : {zones_txt} — ne pas baisser le drop ; drop actuel inconnu "
+                              f"antécédent ({src_txt}) : {zones_txt} — ne pas baisser le drop ; drop actuel inconnu "
                               "(renseigner la fiche de la paire)")
             warnings.append("antécédent tendon d'Achille / mollet : ne pas baisser le drop, mais le drop de la paire actuelle "
                             "est inconnu — compléter sa fiche de caractéristiques")
-    ank = episodes.get("cheville", 0)
-    if ank >= R.param("ankle_sprain_low_stack_wide_base", "min_episodes"):
+    ap = "ankle_sprain_low_stack_wide_base"
+    ankle = [e for e in entries if e.get("zone") == R.param(ap, "zone")]
+    sprain = next((e for e in ankle if e.get("sprain")), None)
+    by_side: Dict[str, int] = {}
+    for e in ankle:
+        if e["source"] == "health" and (e.get("score") or 0) >= R.param(ap, "min_score"):
+            side = e.get("side") or "?"
+            by_side[side] = by_side.get(side, 0) + 1
+    side_hit = max(by_side.items(), key=lambda kv: kv[1]) if by_side else None
+    ankle_reason = None
+    if sprain:
+        ankle_reason = f"entorse de cheville déclarée au profil (« {sprain['text']} »)"
+    elif side_hit and side_hit[1] >= R.param(ap, "min_episodes") and side_hit[0] != "?":
+        side_fr = {"left": "gauche", "right": "droit"}.get(side_hit[0], side_hit[0])
+        ankle_reason = (f"douleurs répétées à la cheville ({side_hit[1]} épisodes d'au moins {_fmt(R.param(ap, 'min_score'))}/10, "
+                        f"même côté : {side_fr})")
+    elif side_hit and side_hit[1] >= R.param(ap, "min_episodes"):
+        notes.append("douleurs à la cheville répétées mais côté non précisé : la règle « même côté » ne peut pas être vérifiée, "
+                     "non appliquée (préciser le côté en déclarant la douleur)")
+    if ankle_reason:
         cur_stack = _num((_spec_value((replaced or {}).get("spec"), "stack_heel_mm") or {}).get("value"))
         if cur_stack is None and ref_stacks:
             cur_stack = min(ref_stacks)
-        reason = (f"{ank} épisodes de douleur à la cheville déclarés (l'entorse n'est pas un champ de données : approximation du "
-                  "projet) — pile du talon plus basse et base large (avis d'experts)")
+        reason = ankle_reason + " — pile du talon au plus égale à celle de la paire actuelle, base large (avis d'experts)"
         if cur_stack is not None:
-            T["stack_heel_mm"].set_range("ankle_sprain_low_stack_wide_base", None, cur_stack, reason, safety=True)
+            T["stack_heel_mm"].set_range(ap, None, cur_stack, reason, safety=True)
         else:
-            T["stack_heel_mm"].note("ankle_sprain_low_stack_wide_base", reason + " ; pile actuelle inconnue")
-        T["toe_box"].set_allowed("ankle_sprain_low_stack_wide_base", ["standard", "wide"],
-                                 "base large : avant-pied non étroit (avis d'experts)", safety=True)
+            T["stack_heel_mm"].note(ap, reason + " ; pile actuelle inconnue")
+        T["toe_box"].set_allowed(ap, ["standard", "wide"], "base large : avant-pied non étroit (avis d'experts)", safety=True)
     if mass is not None and mass > R.param("mass_minimalism_caution", "threshold_kg"):
         if ref_mi:
             T["minimalist_index_pct"].set_range(
@@ -451,6 +572,8 @@ def evaluate(rules_doc: dict, inp: dict) -> dict:
         eff = None
         notes.append(f"rôle « {role} » inconnu de ce moteur : plages larges, aucune règle de terrain ni de course appliquée")
     elif role in ("race", "mixed", "mixed_long"):
+        if replaced and (trail_share is not None or road_share is not None):
+            notes.append("terrain déduit de l'USAGE de la paire remplacée, pas de la course visée : à confirmer par l'athlète")
         if trail_share is not None and trail_share >= 0.7:
             eff = "trail"
         elif road_share is not None and road_share >= 0.7:
@@ -460,6 +583,8 @@ def evaluate(rules_doc: dict, inp: dict) -> dict:
             notes.append("rôle « " + role + " » sans terrain dominant connu : aucune règle de crampons appliquée "
                          "(passer --replace d'une paire dont l'usage est connu)")
     if eff in ROAD_ROLES:
+        T["plate"].set_allowed("terrain_rock_plate", [x for x in PLATES if x != "rock_plate"],
+                               "route : pas de plaque anti-roche (avis d'experts)")
         T["lug_depth_mm"].set_range("terrain_lugs_hard", None, float(R.param("terrain_lugs_hard", "max_lug_mm")),
                                     "terrain dur (route) : crampons de 4 mm au plus (avis d'experts)")
     elif eff in TRAIL_ROLES:
@@ -527,8 +652,9 @@ def evaluate(rules_doc: dict, inp: dict) -> dict:
         "replace": (replaced or {}).get("gear_id"),
         "insufficient_data": insufficient,
         "references": [{"gear_id": r["gear_id"], "comfort": r.get("comfort"), "would_rebuy": r.get("would_rebuy")} for r in refs],
-        "inputs": {"mass_kg": mass, "mass_source": inp.get("mass_source"), "pain_episodes": dict(sorted(episodes.items())),
-                   "change_wanted": changes},
+        "inputs": {"mass_kg": mass, "mass_source": inp.get("mass_source"), "change_wanted": changes,
+                   "injury_history": {"sources": history_sources, "entries": len(entries),
+                                      "zones": dict(sorted(by_zone.items()))}},
         "targets": targets,
         "options": options,
         "reminders": reminders,
@@ -569,9 +695,16 @@ def render_text(rep: dict) -> str:
             lines.append("    · " + reason)
         for c in t.get("conflicts", []):
             lines.append("    ! " + c)
+        if t.get("advisory"):
+            ad = t["advisory"]
+            lines.append(f"    ~ bande indicative {_fmt(ad['min'])} à {_fmt(ad['max'])} ({ad['basis']}) : {ad['reason']}")
     if rep["options"]:
         lines.append("Options :")
         lines += [f"- {o['text']} [{CONFIDENCE_LABELS_FR[o['confidence']]}]" for o in rep["options"]]
+    hist = rep["inputs"]["injury_history"]
+    lines.append("Antécédents lus : " + ("; ".join(
+        f"{s_['label']}" + (f" ({s_['period']})" if s_.get("period") else "") + f" -> {s_['entries']} entrée(s)"
+        for s_ in hist["sources"]) or "aucune source") + (" — aucun antécédent trouvé" if not hist["entries"] else ""))
     for r in rep["reminders"]:
         lines.append("Rappel : " + r["text"])
     for w in rep["warnings"]:
