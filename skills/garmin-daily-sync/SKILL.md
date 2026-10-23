@@ -35,8 +35,8 @@ Remote Control) et l'IDE partagent. Il délègue tout à l'agent `coach` et au s
   (mêmes outils de lecture), n'écrire rien côté intervals.icu (de toute façon
   interdit ici) et ajouter à la ligne `Alerte :` « serveur intervals.icu à
   mettre à jour : ./install.sh --source intervals (docs/update.md) » ; l'activité persistée porte `intervals_activity_id`
-  (chaîne) au lieu de `garmin_activity_id` (entier), et omet HRR/`splits`
-  (aucun équivalent). L'étape 2 (échantillons FIT) s'applique aussi, avec
+  (chaîne) au lieu de `garmin_activity_id` (entier), et omet HRR
+  (aucun équivalent) ; les `splits` viennent du FIT (étape 3a). L'étape 2 (échantillons FIT) s'applique aussi, avec
   l'`intervals_activity_id` de la séance (`download_fit.py` lit la source dans
   `[data].source`) ; une activité importée depuis Strava y sort `INDISPONIBLE` —
   ni un échec ni une alerte, juste une séance sans KPI fins. **Marqueur « pas encore
@@ -53,7 +53,7 @@ Remote Control) et l'IDE partagent. Il délègue tout à l'agent `coach` et au s
   ou un 401, écrire `ERREUR : jetons Strava absents ou expirés — relancer connect-strava dans
   une session interactive` et s'arrêter. Aucune donnée de santé (HRV, FC de repos, sommeil,
   readiness) : le bilan matinal est dit « indisponible — source Strava », jamais rempli. L'activité
-  persistée porte `strava_activity_id` (`"s<ID>"`, préfixe du projet) et omet HRR/`splits`/D−.
+  persistée porte `strava_activity_id` (`"s<ID>"`, préfixe du projet) et omet HRR/D− ; les `splits` viennent du FIT (étape 3a).
   Marqueur « pas encore synchronisé » : l'absence de `strava_activity_id`. L'étape 2 s'applique
   avec cet identifiant (`download_fit.py --source strava`, flux par seconde, pas de `.fit`).
   Un « 429 » (limite de l'API Strava) n'est pas une erreur d'authentification : le noter dans
@@ -217,6 +217,13 @@ Remote Control) et l'IDE partagent. Il délègue tout à l'agent `coach` et au s
    façon (« 1 fichier hors contrat — medical/2026-09-20_health.md »). Cette même commande
    ingère aussi les échantillons FIT déposés à l'étape 2 (`activity_sample`, aucune action
    supplémentaire requise).
+3a. **Splits par km depuis le FIT (règle par défaut, toutes sources, best-effort)** : pour
+   chaque activité running/trail créée à l'étape 1, lancer `python3 scripts/arc_index.py
+   splits <id>`. Sortie 0 : écrire `splits_cols` et `splits` tels quels dans son bloc `arc`
+   (ils REMPLACENT les splits Garmin de l'étape 1), valider (`--validate`), puis réindexer
+   une fois. Sortie 1 (pas de FIT ingéré) : garder ce que l'étape 1 a écrit (splits Garmin,
+   ou rien avec intervals.icu/Strava) et ne rien signaler de plus que le segment « FIT non
+   téléchargé » de l'étape 2. Jamais sur une activité qui n'est pas nouvelle dans ce run.
 3b. **Alerte d'usure des chaussures (#132) — une seule fois par franchissement, sans état.**
    Dresser la liste des séances running/trail/hiking **synchronisées pour la première fois dans
    CE run** : fichier d'activité créé à l'étape 1, ou fichier « pas encore synchronisé »

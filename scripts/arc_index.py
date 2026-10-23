@@ -312,6 +312,7 @@ import arc_plan_templates as PT  # noqa: E402
 import arc_prevention as PV  # noqa: E402
 import arc_samples as S  # noqa: E402
 import arc_slope_model as SL  # noqa: E402
+import arc_splits as SP  # noqa: E402
 import arc_strength as SG  # noqa: E402
 import arc_trail_shape as TS  # noqa: E402
 from coach_config import ConfigError, read_toml  # noqa: E402
@@ -2672,6 +2673,20 @@ def activity_gap_report(conn, ref: Union[int, str]) -> dict:
             "splits": [dict(s) for s in splits], "reason": None}
 
 
+def activity_km_splits(conn, ref: Union[int, str]) -> dict:
+    """Splits par km d'une séance calculés depuis ses échantillons FIT ingérés
+    (`arc_splits.km_splits`), pour la CLI `arc_index.py splits <id>` : le coach
+    recopie `splits_cols`/`splits` dans le bloc arc quand la source n'a pas de
+    splits par km. Fonctionne sans séance indexée (FIT ingéré avant le
+    Markdown), comme `samples_by_ref`. Rend TOUJOURS `{<colonne d'id>,
+    "splits_cols", "splits", "reason"}` — `reason` non nul explique un `None`."""
+    rows = samples_by_ref(conn, ref)["samples"]
+    if not rows:
+        return {**ref_label(ref), "splits_cols": SP.SPLIT_COLS, "splits": None,
+                "reason": "aucun échantillon FIT ingéré pour cette séance (skill fit-download)"}
+    return {**ref_label(ref), **SP.km_splits(rows)}
+
+
 # ---------------------------------------------------------------------------
 # Dépense énergétique modèle vs Garmin.
 # ---------------------------------------------------------------------------
@@ -5018,7 +5033,7 @@ def build_parser() -> argparse.ArgumentParser:
                                  "climb-history", "decisions", "slope-model", "trail-shape", "energy", "equipment",
                                  "inspections", "gear-career", "gait-summary", "pace-curve",
                                  "decision-effects", "load-forecast", "plan-templates", "strength", "dem-check", "prevention", "plan-skeleton",
-                                 "power-hr", "history-summary"))
+                                 "power-hr", "history-summary", "splits"))
     parser.add_argument("selector", nargs="?", default=None,
                         help="argument de la sous-commande (ex. garmin_activity_id, intervals_activity_id ou strava_activity_id "
                              "pour « samples »)")
@@ -5447,6 +5462,13 @@ def main(argv=None) -> int:
                                "(--activity ou argument positionnel, ex. arc_index.py gap 19287537093).")
         print(json.dumps(activity_gap_report(conn, ref), ensure_ascii=False))
         return 0
+    if args.command == "splits":
+        ref = parse_activity_selector(args.activity if args.activity is not None else args.selector, args.command)
+        if ref is None:
+            raise ConfigError("commande « splits » : identifiant de séance requis (--activity ou argument positionnel).")
+        result = activity_km_splits(conn, ref)
+        print(json.dumps(result, ensure_ascii=False))
+        return 0 if result["splits"] is not None else 1
     if args.command == "dem-check":
         ref = parse_activity_selector(args.activity if args.activity is not None else args.selector, args.command)
         if ref is None:

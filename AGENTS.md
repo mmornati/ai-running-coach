@@ -231,7 +231,7 @@ check `intervals_mcp_pin`) et ne pousser aucune séance en attendant.
 | Sommeil | `get_sleep_data` | `icu_get_wellness_for_date` (`sleep.*`) | |
 | Readiness algorithmique | `get_training_readiness` | **aucun équivalent** | intervals.icu n'expose que `subjective.readiness` — une valeur manuelle dans le champ wellness du jour, qui peut venir de l'athlète OU d'un appareil tiers synchronisé (Oura, Whoop...), jamais un score calculé par intervals.icu lui-même — jamais présenté comme équivalent au Training Readiness Garmin. Dire explicitement l'indisponibilité (voir `[health].morning_check` ci-dessus). |
 | Activités récentes | `get_activities` / `get_activities_by_date` | `icu_get_recent_activities` | |
-| Détail d'une activité | `get_activity` | `icu_get_activity_details` | Pas de fréquence cardiaque de récupération (HRR/`recovery_hr_bpm`) ni de `splits` par km sur ce serveur — champs omis, jamais inventés (impacte aussi `course-comparison`, qui exige `splits`). Pas de champ équivalent à `bmr_calories` identifié non plus : `calories_bmr_kcal` reste omis pour une activité synchronisée depuis cette source, jamais deviné. Renseigner `intervals_activity_id` (chaîne, ex. `"i12345678"`) sur `activities/*.md` au lieu de `garmin_activity_id` (entier) — `workspace-data-contract`. |
+| Détail d'une activité | `get_activity` | `icu_get_activity_details` | Pas de fréquence cardiaque de récupération (HRR/`recovery_hr_bpm`) ni de `splits` par km sur ce serveur — HRR omise, jamais inventée ; les `splits` : `arc_index.py splits <id>` les calcule depuis le FIT (voir « Splits par km depuis le FIT »). Pas de champ équivalent à `bmr_calories` identifié non plus : `calories_bmr_kcal` reste omis pour une activité synchronisée depuis cette source, jamais deviné. Renseigner `intervals_activity_id` (chaîne, ex. `"i12345678"`) sur `activities/*.md` au lieu de `garmin_activity_id` (entier) — `workspace-data-contract`. |
 | Durées d'une activité | `get_activity` | `icu_get_activity_details` : `duration_s` ← `elapsed_time_seconds` (durée totale, pauses comprises), `moving_duration_s` ← `moving_time_seconds` | **Jamais `duration_s` depuis `icu_get_recent_activities`** : cette liste ne renvoie que `moving_time_seconds` (temps en mouvement). Un `duration_s` égal au temps en mouvement fait refuser par la validation un temps en zone pourtant juste (`time_in_zone_s` > `duration_s`). |
 | Événements planifiés | `get_calendar_events` / `get_scheduled_workouts` | `icu_get_calendar_events` / `icu_get_upcoming_workouts` | |
 | Détail d'une séance planifiée | `get_workout_by_id` | `icu_get_event` | Ne renvoie que id/date/name/category/description/type/tags/metrics — jamais de structure de séance (le résultat du parsing n'est écho que sur la réponse de `icu_create_event`/`icu_update_event`/`icu_bulk_create_events`). |
@@ -256,7 +256,7 @@ telles qu'imprimées, sans en déduire un champ absent.
 | Besoin | Outil `garmin` | Outil `strava` | Note |
 |---|---|---|---|
 | Activités récentes | `get_activities` / `get_activities_by_date` | `get-recent-activities` (`perPage`) ; `get-all-activities` (`startDate`, `endDate`, `activityTypes`, `sportTypes`, `maxActivities`, `maxApiCalls`) | Une ligne de texte par activité : nom, **`(ID: <entier>)`**, distance en mètres, date (jour seulement, au format local du serveur) — pas de type — pas d'heure précise ni de durée dans `get-recent-activities`. Limites d'API Strava : voir `docs/strava-setup.md`. |
-| Détail d'une activité | `get_activity` | `get-activity-details` (`activityId`, entier) | Texte : type/`sport_type`, date locale, temps en mouvement ET écoulé, distance, D+, vitesse moy./max, cadence moy., puissance moy., FC moy./max, calories, description, **nom** du matériel (`Gear: <nom>`, pas d'identifiant), effort perçu. **Pas de D−, pas de FC de récupération (HRR), pas de `bmr_calories`, pas de splits par km, pas d'effort relatif (`suffer_score`, ajouté après 1.2.1)** : champs omis du bloc `arc`, jamais inventés. `Avg Cadence` d'une course à pied = valeur brute de l'API (convention Strava : une jambe — hypothèse du projet, voir `docs/strava-setup.md`), ne pas la recopier en pas/min sans le dire. Renseigner `strava_activity_id` = `"s<ID>"` (préfixe `s` du projet). |
+| Détail d'une activité | `get_activity` | `get-activity-details` (`activityId`, entier) | Texte : type/`sport_type`, date locale, temps en mouvement ET écoulé, distance, D+, vitesse moy./max, cadence moy., puissance moy., FC moy./max, calories, description, **nom** du matériel (`Gear: <nom>`, pas d'identifiant), effort perçu. **Pas de D−, pas de FC de récupération (HRR), pas de `bmr_calories`, pas de splits par km, pas d'effort relatif (`suffer_score`, ajouté après 1.2.1)** : champs omis du bloc `arc`, jamais inventés (les splits par km : `arc_index.py splits <id>` les calcule depuis le FIT (voir « Splits par km depuis le FIT »)). `Avg Cadence` d'une course à pied = valeur brute de l'API (convention Strava : une jambe — hypothèse du projet, voir `docs/strava-setup.md`), ne pas la recopier en pas/min sans le dire. Renseigner `strava_activity_id` = `"s<ID>"` (préfixe `s` du projet). |
 | Tours (laps) | `get_activity_splits` | `get-activity-laps` (`id`) | Laps tels que Strava les expose (blocs JSON bruts) — ce ne sont pas des splits par km réguliers. |
 | Zones FC de l'athlète | — (profil) | `get-athlete-zones` | Référence ; le profil déclaré de l'athlète prime. |
 | Matériel (inventaire) | `get_gear` | **aucun équivalent dans 1.2.1** | `get-athlete-shoes` n'existe que dans des commits non publiés sur npm : ne jamais l'appeler. L'inventaire reste celui du profil déclaré. |
@@ -274,8 +274,9 @@ EXPLIQUÉS comme tels quand `[data].source = "strava"`, jamais devinés ou simul
   se dégrade explicitement (voir plus haut), y compris à `full`.
 - **Push de séances au calendrier, upload de parcours** (`upload_course`,
   `course-strategist` reste limité à l'analyse GPX locale), **suppression de séance planifiée**.
-- **Fréquence cardiaque de récupération (HRR, `recovery_hr_bpm`)**, **splits par km** (donc
-  `course-comparison`, qui exige `splits`) : absents, omis du bloc `arc`.
+- **Fréquence cardiaque de récupération (HRR, `recovery_hr_bpm`)** : absente, omise du bloc `arc`.
+  Les **splits par km** n'existent pas côté Strava, mais se calculent depuis les flux par seconde
+  (`arc_index.py splits s<id>`, voir « Splits par km depuis le FIT »).
 - **Dynamique de course** (temps de contact, balance, oscillation) : aucun flux Strava
   équivalent — `arc_index.py gait-summary` n'a rien à dire pour ces séances.
 - **Identifiant de matériel par séance** : voir ci-dessus.
@@ -305,6 +306,18 @@ activité importée dans intervals.icu depuis Strava** — l'API Strava interdit
 redistribution, aucun FIT n'existe : le script le dit (`INDISPONIBLE`), la
 séance reste valide sans ces KPI, jamais de valeur inventée (avec `--source strava`,
 les flux sont lus directement chez Strava : voir plus haut).
+
+**Splits par km depuis le FIT — règle par défaut, toutes sources.** Les `splits` d'une séance
+viennent du FIT, pour que tous soient calculés de la même façon quelle que soit la source
+(Garmin compris ; intervals.icu et Strava n'en ont pas ; des tours qui repartent de zéro à
+chaque étape d'une séance structurée ne sont jamais recopiés dans `splits`) :
+`python3 scripts/arc_index.py splits <id>` les calcule depuis les échantillons FIT ingérés (`scripts/arc_splits.py`) : `splits_cols` +
+`splits` prêts à recopier tels quels dans le bloc `arc` (km entiers en temps **écoulé**,
+bornes interpolées, dernier split partiel avec sa `distance_m` à partir de 100 m, D+/D−
+sur l'altitude lissée, colonnes sans mesure retirées). Sortie 1 + `reason` si aucun FIT
+n'est ingéré. Seul repli sans FIT : les splits de `get_activity_splits` avec Garmin (une fois
+le FIT arrivé, ils sont remplacés) ; avec les autres sources, la clé reste absente, jamais
+devinée. Les splits déjà écrits ne sont pas recalculés d'office.
 
 **Matériel (#133).** Avec `[data].source = "garmin"`, `get_gear` / `get_activity_gear`
 (lecture) et `add_gear_to_activity` (écriture) sont dans la liste blanche `GARMIN_TOOL_WHITELIST`.
@@ -340,11 +353,12 @@ restent déclaratifs. Avec `intervals` ou `strava` : rien n'est lu, le poids res
 indisponibles et EXPLIQUÉS comme tels quand `[data].source = "intervals"`,
 jamais devinés ou simulés :**
 
-- **Fréquence cardiaque de récupération (HRR, `recovery_hr_bpm`) et `splits`
-  par km** : absents des activités synchronisées côté intervals.icu (voir la
-  table ci-dessus) — omis du bloc `arc`, jamais inventés ; `course-comparison`
-  (qui exige `splits`) n'est donc pas utilisable sur des activités
-  synchronisées depuis cette source.
+- **Fréquence cardiaque de récupération (HRR, `recovery_hr_bpm`)** : absente des
+  activités synchronisées côté intervals.icu (voir la table ci-dessus) — omise du bloc
+  `arc`, jamais inventée. Les **`splits` par km** n'existent pas non plus côté
+  intervals.icu, mais se calculent depuis le FIT (`arc_index.py splits i<id>`, voir
+  « Splits par km depuis le FIT ») : `course-comparison` redevient utilisable dès que
+  le FIT est téléchargé.
 - **Upload de parcours** (`upload_course`, agent `course-strategist`) :
   `course-strategist` reste limité à l'analyse GPX locale (skill
   `gpx-analysis`) — pas d'envoi du parcours vers la montre/l'app tierce.

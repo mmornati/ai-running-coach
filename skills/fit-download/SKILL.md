@@ -45,8 +45,11 @@ Télécharge les fichiers FIT (et leurs records GPS en JSON) en **bypassant le c
    `--output-dir` (ou avec `--output-dir <workspace>/activities`) : la copie normalisée
    canonique est `activities/fit/<garmin_activity_id | intervals_activity_id | strava_activity_id>.json`, jetable et jamais versionnée
    (son propre `.gitignore` est créé automatiquement à la première écriture).
-3. **Analyser** le FIT avec `session-parts-analyzer` (`analyze_session_parts.py --fit ... --part climb|stride|...`) ou `course-comparison` (`compare_course.py --fit-dir`).
-4. **Persister** l'analyse (dérive, profil) dans le MD de l'activité dans la langue des documents (`config/workspace.toml` → `[language].documents`, défaut FRANÇAIS) — ne jamais dump le JSON brut en chat.
+3. **Splits par km** (règle par défaut, toutes sources) : après `python3 scripts/arc_index.py`
+   (ingestion), `python3 scripts/arc_index.py splits <id>` rend `splits_cols`/`splits` à écrire
+   tels quels dans le bloc `arc` de la séance (ils remplacent des splits Garmin).
+4. **Analyser** le FIT avec `session-parts-analyzer` (`analyze_session_parts.py --fit ... --part climb|stride|...`) ou `course-comparison` (`compare_course.py --fit-dir`).
+5. **Persister** l'analyse (dérive, profil) dans le MD de l'activité dans la langue des documents (`config/workspace.toml` → `[language].documents`, défaut FRANÇAIS) — ne jamais dump le JSON brut en chat.
 
 ## Rattraper l'historique pour la dépense énergétique modèle
 

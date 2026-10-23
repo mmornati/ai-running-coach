@@ -170,12 +170,12 @@ qu'elles ne sont pas disponibles :
   existe mais c'est une valeur manuelle du jour, qui peut venir de vous ou
   d'un autre appareil synchronisé (Oura, Whoop...) — jamais présentée comme
   équivalente au score Garmin.
-- **Fréquence cardiaque de récupération (HRR) et `splits` par km** — absents
-  des activités renvoyées par ce serveur (revérifié sur le fork `hhopke`,
-  #165 : `icu_get_activity_intervals` renvoie les tours/intervalles de
-  l'activité, pas des splits par km). `course-comparison` (qui exige des
-  `splits`) n'est donc pas utilisable sur des activités synchronisées depuis
-  Intervals.icu.
+- **Fréquence cardiaque de récupération (HRR)** — absente des activités
+  renvoyées par ce serveur (revérifiée sur le fork `hhopke`, #165).
+- **`splits` par km** — absents du serveur (`icu_get_activity_intervals` renvoie
+  les tours/intervalles de l'activité, pas des splits par km), mais calculés
+  depuis le FIT dès qu'il est téléchargé : `python3 scripts/arc_index.py splits
+  i<id>`. `course-comparison` fonctionne alors comme avec Garmin.
 - **FIT des activités importées depuis Strava** — l'API Strava interdit à
   Intervals.icu de les redistribuer : ni FIT, ni courbes. Connectez la montre
   (ou l'app qui l'exporte : Garmin Connect, COROS, Suunto, Polar, HealthFit

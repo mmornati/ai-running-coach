@@ -47,7 +47,7 @@ Utilise les fichiers `activities/*.md` (bloc `## Données brutes Garmin (référ
 ### Étape 1 — Persistance Garmin (prérequis, via l'agent)
 
 1. Charge `garmin-sync-efficiency` et récupère les activités du lieu via `get_activities_by_date`.
-2. Pour chaque activité à comparer, récupère le détail (`get_activity`) et les splits (`get_activity_splits`).
+2. Pour chaque activité à comparer, récupère le détail (`get_activity`) et les splits : depuis le FIT par défaut (`fit-download`, puis `python3 scripts/arc_index.py splits <id>`), `get_activity_splits` seulement si le FIT est indisponible.
 3. **Persiste immédiatement** chaque activité dans la langue des documents (`config/workspace.toml` → `[language].documents`, défaut FRANÇAIS) dans `activities/YYYY-MM-DD_type.md` **avec** :
    - le bloc `## Données brutes Garmin (référence)` (YAML : `activity_id`, `name`, `distance_m`, `duration_s`, `avg_hr_bpm`, `max_hr_bpm`, `elevation_gain_m`, `elevation_loss_m`, `recovery_hr_bpm`, `training_effect`…)
    - le tableau `## Analyse par splits (km)` (colonnes : `num | durée | allure | vmax | D+/D- | FC moy | cadence | lecture`).

@@ -62,9 +62,10 @@ call echoes `workout_parsed`/`workout_steps`; plain text is the fallback), no
 upsert (check `icu_get_calendar_events` for an existing event on that date before
 deciding create vs `icu_update_event`, there is no `workout_id`-reuse equivalent),
 and verify the parse echo plus only the fields `icu_get_event` actually returns
-(id/date/name/category/description/type/metrics — never a structured field). HRR (`recovery_hr_bpm`) and per-km `splits` have
-no intervals.icu equivalent either — say so explicitly wherever this file (or
-`course-comparison`) expects them, never omit silently as if unmeasured.
+(id/date/name/category/description/type/metrics — never a structured field). HRR (`recovery_hr_bpm`) has
+no intervals.icu equivalent either — say so explicitly wherever this file expects it, never
+omit silently as if unmeasured. Per-km `splits` come from the FIT, as for every source
+(`python3 scripts/arc_index.py splits i<id>`, see SPLITS; no FIT = key omitted and said).
 Exceptions, with no intervals.icu equivalent in this project at all — say so
 explicitly, never invent a value: the Garmin training-readiness score (morning check degrades per
 `AGENTS.md` → `[health].morning_check`), FIT download and everything derived
@@ -82,8 +83,8 @@ session exposes, read its tool list and invent nothing. Reads only: never call `
 (say "indisponible — source Strava" explicitly, plan on load, `activities/` history and the
 athlete's declared feeling; a medical cancellation stays cancelled — unless `[health].source` points elsewhere, see HEALTH SOURCE). **No calendar and no push**:
 `schedule_workouts` and `garmin-workout-scheduling` do not apply — keep the plan in `planning/`
-and tell the athlete nothing is pushed to the watch. No HRR, no per-km `splits`
-(`course-comparison` unusable), no D−, no gear id per activity (gear from chat/default only; the
+and tell the athlete nothing is pushed to the watch. No HRR, no per-km `splits` from Strava itself
+(compute them from the streams: `arc_index.py splits s<id>`, verbatim), no D−, no gear id per activity (gear from chat/default only; the
 shoe NAME in `get-activity-details` is never turned into a `gear_id`). Persist `strava_activity_id`
 = `"s<ID>"` (never the bare integer). For fine analysis use `fit-download`
 (`download_fit.py --source strava`: per-second streams, same KPIs as a FIT).
@@ -303,6 +304,16 @@ enabled) for anything beyond training-load caution.
 - **Contextual interpretation:** HRR is strongly intensity-dependent. Compare it ONLY to sessions of equivalent effort (recovery Z1 vs tempo vs VO2max). Reference norms (≥22 bpm at 2 min = average, ≥42 = excellent) apply to sustained/maximal efforts — a low HRR after an easy Z1/Z2 run is mechanically normal, NOT an alarm.
 - **Watch for fatigue accumulation:** A HRR that stays low (< 15 bpm) after a hard effort is a signal of accumulated fatigue; > 25 bpm after hard effort = good autonomic recovery. Cross-check with HRV and resting HR.
 - **Missing `recovery_hr_bpm` = missing measurement, NOT a signal:** If the field is absent from an activity, note it as such in the feedback and remind the athlete that Garmin computes HRR from **wrist-based optical HR OR a chest strap** (official fēnix 7 manual: "If you are training with wrist-based heart rate or a compatible chest heart rate monitor, you can check your recovery heart rate value after each activity"). The field is only written to the FIT file when ALL of the following hold: (1) the activity is not low-impact (no HRR for e.g. yoga); (2) the athlete remains still ~2 minutes after stopping BEFORE saving/validating the activity on the watch; and (3) the HR signal stays clean during that window — optical wrist HR is unreliable at the exercise→rest transition (lags the true drop), so the watch may fail to record it or produce a dubious value without the strap. The chest strap is therefore NOT formally required but strongly maximizes reliability; keep the strap on until the stop is recorded for race day. Other brands (Apple Watch "Cardio Recovery", Polar, COROS) compute HRR from wrist optical HR with no strap at all. Add this reminder whenever the metric is missing.
+
+### SPLITS (per-km, from the FIT — every source)
+
+Per-km `splits` are computed from the FIT by default, whatever `[data].source` is, so they are
+homogeneous across sources: once the FIT is downloaded and indexed (`fit-download`, then
+`python3 scripts/arc_index.py`), run `python3 scripts/arc_index.py splits <id>` and write its
+`splits_cols`/`splits` verbatim into the arc block (they replace Garmin's `get_activity_splits`;
+add no column of your own). Exit 1 = no FIT ingested: Garmin's splits as a fallback, otherwise
+omit the key and say so. Never copy a watch's laps that restart at each step of a structured
+session into `splits`.
 
 ### FIT KPI MANDATE (session feedback, #51)
 

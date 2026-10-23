@@ -413,6 +413,10 @@ valeurs par km dans cet ordre. `km` et `duration_s` sont obligatoires ; les
 autres sont facultatives : `distance_m` (dernier split partiel),
 `elev_gain_m`, `elev_loss_m`, `avg_hr_bpm`, `max_hr_bpm`, `max_speed_kmh`,
 `cadence_spm`, `label` (lecture courte : « Échauffement », « Montée »).
+Par défaut, quelle que soit la source, `python3 scripts/arc_index.py splits <id>`
+les calcule depuis le FIT ingéré — recopier `splits_cols`/`splits` tels quels, sans
+y ajouter de colonne. Sans FIT : splits de `get_activity_splits` avec Garmin, clé
+omise sinon (jamais les tours d'une séance structurée).
 
 ```arc
 {
