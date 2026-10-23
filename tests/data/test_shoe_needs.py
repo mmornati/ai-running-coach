@@ -226,7 +226,7 @@ class TestInjuryGuards(Workspace):
         t = rep["targets"]["drop_mm"]
         self.assertGreaterEqual(t["min"], 8.0)
         self.assertIn("achilles_calf_no_drop_decrease", t["rules"])
-        self.assertEqual(rep["inputs"]["pain_episodes"], {"tendon_achille": 1})
+        self.assertEqual(rep["inputs"]["injury_history"]["zones"], {"tendon_achille": 1})
 
     def test_calf_history_counts_too(self):
         self.pain(day(0), "mollet droit", 3)
@@ -244,9 +244,11 @@ class TestInjuryGuards(Workspace):
 
     def test_repeated_ankle_pain_lowers_stack_and_requires_a_wide_base(self):
         self.pain(day(0), "cheville gauche", 4)
-        self.pain(day(20), "cheville droite", 5)
+        self.pain(day(20), "cheville gauche", 5)
         rep = self.needs("road_easy", "road-b")
         self.assertLessEqual(rep["targets"]["stack_heel_mm"]["max"], 34.0)
+        self.assertTrue(any("douleurs répétées à la cheville" in r for r in rep["targets"]["stack_heel_mm"]["reasons"]))
+        self.assertFalse(any("entorse" in r for r in rep["targets"]["stack_heel_mm"]["reasons"]))
         self.assertNotIn("narrow", rep["targets"]["toe_box"]["allowed"])
         self.assertEqual(rep["targets"]["stack_heel_mm"]["confidence"], "none")   # continuité (none) + experts
         self.assertIn("ankle_sprain_low_stack_wide_base", rep["targets"]["stack_heel_mm"]["rules"])
@@ -270,6 +272,113 @@ class TestInjuryGuards(Workspace):
         self.assertEqual(self.needs("road_easy")["targets"]["minimalist_index_pct"]["max"], 64.0)
 
 
+class TestProfileHistory(Workspace):
+    """Antécédents déclarés dans les puces du profil (et non dans health.pain) : jamais ignorés."""
+
+    def profile(self, history="", fragile=""):
+        self.write("planning/Runner_Profile.md", PROFILE + "\n## Historique & blessures\n\n- **Meilleures performances** :\n"
+                   f"- **Antécédents de blessure** : {history}\n- **Zones fragiles à surveiller** : {fragile}\n"
+                   "- **Arrêts récents** :\n")
+
+    def setUp(self):
+        super().setUp()
+        self.put_spec(spec("road-a", drop=6.0, stack=34.0, verdict=verdict("yes", 8)))
+        self.put_spec(spec("road-b", drop=6.0, stack=34.0))
+
+    def test_profile_achilles_blocks_a_lower_drop(self):
+        self.profile(history="tendon d'Achille gauche")
+        rep = self.needs("road_easy", "road-b")
+        self.assertGreaterEqual(rep["targets"]["drop_mm"]["min"], 6.0)
+        self.assertIn("achilles_calf_no_drop_decrease", rep["targets"]["drop_mm"]["rules"])
+        hist = rep["inputs"]["injury_history"]
+        self.assertEqual(hist["zones"], {"tendon_achille": 1})
+        self.assertEqual({s["source"] for s in hist["sources"]}, {"health", "profile"})
+        self.assertEqual(next(s for s in hist["sources"] if s["source"] == "profile")["entries"], 1)
+        self.assertIn("period", next(s for s in hist["sources"] if s["source"] == "health"))
+        self.assertTrue(any("profil" in r for r in rep["targets"]["drop_mm"]["reasons"]))
+
+    def test_fragile_zones_bullet_and_several_items(self):
+        self.profile(history="aucun", fragile="mollet droit ; cheville droite (proprioception)")
+        rep = self.needs("road_easy", "road-b")
+        self.assertEqual(rep["inputs"]["injury_history"]["zones"], {"cheville": 1, "mollet": 1})
+        self.assertGreaterEqual(rep["targets"]["drop_mm"]["min"], 6.0)
+        # une zone fragile n'est pas une entorse déclarée : pas de règle de cheville
+        self.assertNotIn("ankle_sprain_low_stack_wide_base", rep["targets"]["stack_heel_mm"]["rules"])
+
+    def test_declared_sprain_triggers_the_ankle_rule(self):
+        self.profile(history="entorse de la cheville droite en 2024")
+        rep = self.needs("road_easy", "road-b")
+        self.assertIn("ankle_sprain_low_stack_wide_base", rep["targets"]["stack_heel_mm"]["rules"])
+        self.assertTrue(any("entorse de cheville déclarée" in r for r in rep["targets"]["stack_heel_mm"]["reasons"]))
+        self.assertLessEqual(rep["targets"]["stack_heel_mm"]["max"], 34.0)
+
+    def test_no_history_is_said_with_sources_read(self):
+        self.profile(history="<!-- rien -->", fragile="")
+        rep = self.needs("road_easy", "road-b")
+        self.assertEqual(rep["inputs"]["injury_history"]["entries"], 0)
+        self.assertTrue(any("aucun antécédent de blessure trouvé" in n for n in rep["notes"]))
+        _, out = self.cli("--role", "road_easy", "--replace", "road-b", "--text")
+        self.assertIn("Antécédents lus", out)
+        self.assertIn("aucun antécédent trouvé", out)
+
+    def test_unrecognised_zone_is_reported_not_guessed(self):
+        self.profile(history="torticolis récurrent")
+        rep = self.needs("road_easy", "road-b")
+        self.assertTrue(any("sans zone reconnue" in n for n in rep["notes"]))
+
+    def test_ankle_pain_needs_severity_and_same_side(self):
+        self.pain(day(0), "cheville gauche", 3)
+        self.pain(day(10), "cheville gauche", 3)
+        self.assertNotIn("ankle_sprain_low_stack_wide_base", self.needs("road_easy", "road-b")["targets"]["stack_heel_mm"]["rules"])
+        self.pain(day(20), "cheville gauche", 5)
+        self.pain(day(30), "cheville droite", 6)
+        self.assertNotIn("ankle_sprain_low_stack_wide_base", self.needs("road_easy", "road-b")["targets"]["stack_heel_mm"]["rules"])
+        self.pain(day(40), "cheville gauche", 4)
+        self.assertIn("ankle_sprain_low_stack_wide_base", self.needs("road_easy", "road-b")["targets"]["stack_heel_mm"]["rules"])
+
+
+class TestAdvisoryAndReferences(Workspace):
+    def test_replaced_pair_without_verdict_gets_an_advisory_band_only(self):
+        self.put_spec(spec("road-b", drop=8.7, stack=34.0))
+        rep = self.needs("road_easy", "road-b")
+        self.assertTrue(rep["insufficient_data"])
+        t = rep["targets"]["drop_mm"]
+        self.assertEqual((t["min"], t["max"]), (0.0, 12.0))                       # non contraignant
+        self.assertEqual((t["advisory"]["min"], t["advisory"]["max"]), (4.7, 12.7))
+        self.assertEqual(t["advisory"]["basis"], "paire remplacée, sans verdict de confort")
+        self.assertTrue(any("sans verdict de confort" in w for w in rep["warnings"]))
+        _, out = self.cli("--role", "road_easy", "--replace", "road-b", "--text")
+        self.assertIn("bande indicative", out)
+
+    def test_no_advisory_without_a_spec_or_with_a_reference(self):
+        self.assertNotIn("advisory", self.needs("road_easy", "road-b")["targets"]["drop_mm"])
+        self.put_spec(spec("road-a", verdict=verdict("yes", 8)))
+        self.assertNotIn("advisory", self.needs("road_easy", "road-b")["targets"]["drop_mm"])
+
+    def test_yes_with_change_is_a_reference_and_its_change_applies(self):
+        self.put_spec(spec("road-a", toe="standard", verdict=verdict("yes_with_change", 8, ["wider_toe_box"])))
+        rep = self.needs("road_easy")            # sans --replace : le changement vient de la référence
+        self.assertEqual([r["gear_id"] for r in rep["references"]], ["road-a"])
+        self.assertEqual(rep["targets"]["toe_box"]["allowed"], ["wide"])
+
+    def test_road_roles_never_offer_a_rock_plate(self):
+        self.assertNotIn("rock_plate", self.needs("road_easy")["targets"]["plate"]["allowed"])
+        self.assertNotIn("rock_plate", self.needs("road_tempo")["targets"]["plate"]["allowed"])
+        self.assertIn("rock_plate", self.needs("trail")["targets"]["plate"]["allowed"])
+
+    def test_elision(self):
+        import arc_shoe_needs as N
+        self.assertEqual(N._de("ultra-glide-3"), "d'ultra-glide-3")
+        self.assertEqual(N._de("road-a"), "de road-a")
+
+    def test_race_terrain_note_says_where_it_comes_from(self):
+        self.put_spec(spec("road-a", verdict=verdict("yes", 8)))
+        for i in range(5):
+            self.run_(day(i * 2), "road-a")
+        rep = self.needs("race", "road-a")
+        self.assertTrue(any("USAGE de la paire remplacée" in n for n in rep["notes"]))
+
+
 class TestTerrain(Workspace):
     def setUp(self):
         super().setUp()
@@ -285,7 +394,8 @@ class TestTerrain(Workspace):
         self.assertEqual(lug["min"], 5.0)
         self.assertIn("terrain_lugs_soft", lug["rules"])
         self.assertTrue(any(o["id"] == "rock_plate" for o in rep["options"]))
-        self.assertEqual(lug["confidence"], "expert_opinion")
+        self.assertEqual((lug["min"], lug["max"]), (5.0, 5.0))             # continuité 3-5 mm, terrain >= 5 mm
+        self.assertIn("continuity_lugs", lug["rules"])
 
     def test_steep_trail_alone_is_a_proxy(self):
         self.assertEqual(self.needs("trail_long", "trail-a")["targets"]["lug_depth_mm"]["min"], 5.0)
@@ -294,8 +404,8 @@ class TestTerrain(Workspace):
         for i in range(6):
             self.run_(day(i * 3), "trail-a", sport="trail", km=15, dur=7200, gain=100)
         rep = self.needs("trail", "trail-a")
-        self.assertEqual(rep["targets"]["lug_depth_mm"]["rules"], ["broad_defaults"])
-        self.assertEqual((rep["targets"]["lug_depth_mm"]["min"], rep["targets"]["lug_depth_mm"]["max"]), (0.0, 12.0))
+        self.assertNotIn("terrain_lugs_soft", rep["targets"]["lug_depth_mm"]["rules"])
+        self.assertEqual((rep["targets"]["lug_depth_mm"]["min"], rep["targets"]["lug_depth_mm"]["max"]), (3.0, 5.0))   # 4 mm +/- 1
         self.assertTrue(any("ne distingue ni la boue ni la roche" in n for n in rep["notes"]))
 
     def test_road_role_caps_lugs(self):
