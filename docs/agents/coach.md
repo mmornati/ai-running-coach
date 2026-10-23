@@ -34,7 +34,8 @@
     push — voir [Configuration Strava](../strava-setup.md). Avec `[data].source = "coros"` (#168) :
     comme Garmin, par le relais `coros` (table Garmin ↔ COROS dans `AGENTS.md`) — bilan matinal HRV +
     FC de repos + **récupération COROS** (nommée, jamais convertie), séances poussées par
-    `coros-workout-scheduling` ; ni HRR, ni splits par km, ni matériel, ni pesées — voir
+    `coros-workout-scheduling` ; splits par km calculés depuis le FIT, comme pour toutes les sources ;
+    ni HRR, ni matériel, ni pesées — voir
     [Montres COROS](../coros.md).
 
 ## Rôle

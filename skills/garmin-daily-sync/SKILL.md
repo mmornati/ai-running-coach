@@ -72,7 +72,8 @@ Remote Control) et l'IDE partagent. Il délègue tout à l'agent `coach` et au s
   **aucun fichier santé** pour ce jour (le run suivant ou la surveillance réessaie) et le résumé le dit
   (« sommeil COROS pas encore synchronisé »), jamais un score inventé ni la récupération seule à la
   place de la nuit. L'activité porte `coros_activity_id` (`"c"` + `LabelId`) et `start_time`, omet
-  HRR/`splits` (aucun équivalent) et `calories_bmr_kcal`. Marqueur « pas encore synchronisé » :
+  HRR et `calories_bmr_kcal` (aucun équivalent) ; les `splits` viennent du FIT (étape 3a), jamais des
+  tours COROS (`queryActivityLapData`). Marqueur « pas encore synchronisé » :
   l'absence de `coros_activity_id`. L'étape 2 s'applique avec cet identifiant (`download_fit.py
   <c…> --json`, la source est lue dans `[data].source`). Ni pesée, ni matériel : rien à lire.
   Déclencheur `activity:c<LabelId>` (surveillance) = cette séance.
