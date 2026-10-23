@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import gzip
 import re
 from pathlib import Path
 
@@ -156,3 +157,102 @@ class TestCoachRemotePrompts(InstallAsserts):
                 ARC_FAKE_UNAME="Darwin",
             )
             self.assertOutputLacks(proc, "Lancement interactif")
+
+
+ROTATE_MARKER = "# ai-running-coach logrotate"
+
+
+class TestCoachRemoteLogRotation(InstallAsserts):
+    """Le journal de `claude remote-control` grossit sans fin (245 Mo en 12 jours).
+
+    Rotation par copie + troncature : le processus garde le descripteur ouvert en
+    ajout, on ne le redémarre pas.
+    """
+
+    @staticmethod
+    def _log(sb: Sandbox) -> Path:
+        path = sb.repo / "logs/remote-control.log"
+        path.parent.mkdir(exist_ok=True)
+        return path
+
+    def test_below_threshold_is_untouched(self):
+        with Sandbox() as sb:
+            log = self._log(sb)
+            log.write_text("petit journal\n")
+            self.assertSucceeded(sb.script("coach-remote.sh", "rotate-log"))
+            self.assertEqual(log.read_text(), "petit journal\n")
+            self.assertFalse(log.with_name("remote-control.log.1").exists())
+
+    def test_copytruncate_keeps_three_generations(self):
+        with Sandbox() as sb:
+            log = self._log(sb)
+            # Le fichier reste le même inode : un écrivain en mode ajout continue.
+            log.touch()
+            inode = log.stat().st_ino
+            for n in range(1, 6):
+                with log.open("a") as fh:
+                    fh.write(f"génération {n}\n" * 10)
+                self.assertSucceeded(
+                    sb.script("coach-remote.sh", "rotate-log", ARC_REMOTE_LOG_MAX_BYTES="50")
+                )
+                self.assertEqual(log.stat().st_size, 0, "journal non tronqué")
+                self.assertEqual(log.stat().st_ino, inode, "journal remplacé au lieu d'être tronqué")
+            d = log.parent
+            self.assertIn("génération 5", (d / "remote-control.log.1").read_text())
+            self.assertIn("génération 4", gzip.decompress((d / "remote-control.log.2.gz").read_bytes()).decode())
+            self.assertIn("génération 3", gzip.decompress((d / "remote-control.log.3.gz").read_bytes()).decode())
+            self.assertFalse((d / "remote-control.log.4.gz").exists(), "plus de 3 générations gardées")
+
+    def test_url_falls_back_to_rotated_log(self):
+        with Sandbox() as sb:
+            log = self._log(sb)
+            log.write_text("reconnexion…\n")
+            log.with_name("remote-control.log.1").write_text(
+                "Remote Control session started https://claude.ai/code/session_abc123\n"
+            )
+            proc = sb.script("coach-remote.sh", "url")
+            self.assertSucceeded(proc)
+            self.assertOutputContains(proc, "https://claude.ai/code/session_abc123")
+
+    def test_url_without_any_url_fails(self):
+        with Sandbox() as sb:
+            self._log(sb).write_text("rien\n")
+            self.assertFailed(sb.script("coach-remote.sh", "url"), "url sans URL dans le journal")
+
+    def test_systemd_install_adopts_manual_cron_line(self):
+        with Sandbox() as sb:
+            manual = (
+                "23 * * * * /usr/sbin/logrotate -s $HOME/.local/state/logrotate/x.state "
+                f"$HOME/.config/logrotate/ai-running-coach.conf {ROTATE_MARKER}\n"
+            )
+            sb.set_crontab("0 6 * * * autre-tache\n" + manual)
+            for _ in range(2):
+                self.assertSucceeded(
+                    sb.script("coach-remote.sh", "install", ARC_FAKE_UNAME="Linux"),
+                    "install systemd",
+                )
+            table = sb.crontab()
+            self.assertEqual(table.count(ROTATE_MARKER), 1, f"ligne de rotation doublée :\n{table}")
+            self.assertIn("coach-remote.sh\" rotate-log", table)
+            self.assertIn("0 6 * * * autre-tache", table)
+
+            self.assertSucceeded(sb.script("coach-remote.sh", "uninstall", ARC_FAKE_UNAME="Linux"))
+            table = sb.crontab()
+            self.assertNotIn(ROTATE_MARKER, table)
+            self.assertIn("0 6 * * * autre-tache", table)
+
+    def test_launchd_install_schedules_rotation_agent(self):
+        with Sandbox() as sb:
+            self.assertSucceeded(sb.script("coach-remote.sh", "install", ARC_FAKE_UNAME="Darwin"))
+            plist = sb.home / "Library/LaunchAgents/com.ai-running-coach.remote-logrotate.plist"
+            self.assertFileContains(plist, "<string>rotate-log</string>")
+            self.assertFileContains(plist, "<key>StartInterval</key>")
+            self.assertTrue(
+                any("bootstrap" in args and "remote-logrotate" in args
+                    for _, args in sb.stub_calls("launchctl")),
+                "agent de rotation non chargé",
+            )
+            self.assertNotIn(ROTATE_MARKER, sb.crontab(), "launchd ne doit pas passer par la crontab")
+
+            self.assertSucceeded(sb.script("coach-remote.sh", "uninstall", ARC_FAKE_UNAME="Darwin"))
+            self.assertFalse(plist.exists(), "agent de rotation laissé après uninstall")
