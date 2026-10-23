@@ -97,7 +97,7 @@ passer au chemin « recherche » avec la plage décalée par `change_wanted`.
 
 **Antécédents pris en compte.** `shoe-needs` lit les antécédents de blessure du profil (puces
 « Antécédents de blessure » / « Zones fragiles à surveiller ») et les douleurs déclarées, et indique
-dans sa sortie quelles sources il a lues (ou une note « aucun antécédent trouvé »). **Montrer à l'athlète
+dans sa sortie quelles sources il a lues (`inputs.injury_history.sources`, avec le nombre d'entrées de chacune ; une note « aucun antécédent de blessure trouvé » quand il n'y en a pas). **Montrer à l'athlète
 cette liste** avant les plages (« j'ai tenu compte de : … » ou « aucun antécédent trouvé : corrigez-moi
 si j'en oublie »), pour qu'il complète ce que le profil ne dit pas ; ne jamais en supposer. Si `warnings`
 signale que la paire remplacée a une fiche mais **aucun bilan de confort**, le dire et proposer de
