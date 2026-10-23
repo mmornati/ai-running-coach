@@ -46,12 +46,35 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+      checks: read # statut « Tests » du commit à taguer
     outputs:
       tag: ${{ steps.next.outputs.tag }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0 # tout l'historique et tous les tags
+
+      # Jamais de release sur un commit dont les tests n'ont pas réussi. Le commit de
+      # VERSION d'une release précédente, poussé par le GITHUB_TOKEN, ne déclenche pas
+      # Tests : on remonte alors à son parent, le dernier commit réellement testé.
+      - name: Tests verts sur le commit à taguer
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          sha="$(git rev-parse HEAD)"
+          while [ "$(git log -1 --format=%an "$sha")" = "github-actions[bot]" ] \
+                && [ "$(git diff-tree --no-commit-id --name-only -r "$sha")" = VERSION ]; do
+            sha="$(git rev-parse "$sha^")"
+          done
+          # Le passage le plus récent du job « Tests » (relances, lancement hebdomadaire…).
+          result="$(gh api "repos/$GITHUB_REPOSITORY/commits/$sha/check-runs?check_name=Tests&filter=latest" \
+            --jq '[.check_runs[] | select(.app.slug == "github-actions")] | sort_by(.started_at) | last | "\(.status) \(.conclusion)"')"
+          echo "Tests sur ${sha:0:7} : ${result:-aucun}"
+          if [ "$result" != "completed success" ]; then
+            echo "::error::Le job « Tests » n'a pas réussi sur ${sha:0:7} (${result:-absent}) : release refusée"
+            exit 1
+          fi
 
       - name: Calcul de la prochaine version
         id: next

@@ -6,7 +6,7 @@ name: Publish images
 # l'image localement. Elle prépare le passage à « docker compose pull ».
 #
 # Étiquettes :
-#   push sur main           → :edge, :sha-<7>     (tête de main, jamais :latest)
+#   main, Tests verts        → :edge, :sha-<7>     (tête de main, jamais :latest)
 #   release vX.Y.Z           → :X.Y.Z, :X.Y, :sha-<7>, et :latest si c'est la
 #                              plus haute release stable (un correctif d'une
 #                              ancienne branche ne fait pas reculer :latest)
@@ -18,12 +18,21 @@ name: Publish images
 # (`push: tags`), ou l'appel depuis tag.yml (un tag poussé par le GITHUB_TOKEN ne
 # déclenche AUCUN autre workflow, d'où `workflow_call`).
 #
+# :edge n'est publiée qu'APRÈS le succès du workflow Tests sur une poussée vers
+# main (`workflow_run`) : un serveur qui suit :edge chaque nuit ne reçoit jamais un
+# commit dont les tests ont échoué. Le lancement hebdomadaire de Tests (`schedule`)
+# ou manuel ne republie rien (`event == 'push'`). Le commit construit est celui que
+# Tests a validé (`workflow_run.head_sha`), même si main a avancé depuis.
+#
 # Chaque image porte org.opencontainers.image.revision = commit construit (pas
 # github.sha : appelée depuis tag.yml, c'est le commit de main AVANT le commit
 # de VERSION) — c'est elle que lit scripts/update-docker.sh --check.
 on:
-  push:
+  workflow_run:
+    workflows: [Tests]
+    types: [completed]
     branches: [main]
+  push:
     tags: ["v*"]
   workflow_call:
     inputs:
@@ -41,20 +50,25 @@ env:
 jobs:
   dashboard:
     # Le dépôt canonique seulement : un fork n'a rien à pousser sous ghcr.io/mmornati.
-    if: github.repository == 'mmornati/ai-running-coach'
+    # Après Tests : seulement une poussée sur main dont les tests sont verts.
+    if: >-
+      github.repository == 'mmornati/ai-running-coach' &&
+      (github.event_name != 'workflow_run' ||
+       (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push'))
     runs-on: ubuntu-latest
     permissions:
       contents: read
       packages: write
     concurrency:
       # Deux fusions rapprochées sur main : seule la dernière compte pour :edge.
-      # Une release n'est jamais annulée.
+      # Une release n'est jamais annulée. Sous workflow_run, github.ref vaut
+      # refs/heads/main (branche par défaut) : même groupe que l'ancien `push`.
       group: publish-dashboard-${{ inputs.tag || github.ref }}
       cancel-in-progress: ${{ inputs.tag == '' && github.ref == 'refs/heads/main' }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ inputs.tag || github.ref }}
+          ref: ${{ inputs.tag || github.event.workflow_run.head_sha || github.ref }}
           fetch-depth: 0 # tous les tags, pour savoir si cette release est la plus haute
 
       - name: Calcul des étiquettes
@@ -62,6 +76,7 @@ jobs:
         env:
           INPUT_TAG: ${{ inputs.tag }}
           REF_TYPE: ${{ github.ref_type }}
+          # Sous workflow_run, ref_name vaut « main » : :edge, comme pour l'ancien `push`.
           REF_NAME: ${{ github.ref_name }}
         run: |
           set -euo pipefail
