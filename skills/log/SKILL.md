@@ -156,7 +156,17 @@ tout ce calcul, en pur stdlib, déterministe et idempotent :
   dans `issues[].term` ou simplement omettez-les ; le script les range dans `shoe_feedback.negated` et
   n'écrit rien pour eux (un confort ou une note donnés dans la même phrase sont écrits normalement).
   N'inversez jamais une négation en problème, et ne transformez pas « pas d'ampoule » en `notes` sans
-  que l'athlète le demande.
+  que l'athlète le demande. Le script ne tient pour « pas de problème » que : un problème de la liste
+  nié, ou un mot explicite (souci, problème, gêne, RAS, rien à signaler). **Toute autre phrase négative**
+  (« pas top », « pas terrible », « pas confortable », « non », « là oui ») ou un comparatif (« plus
+  d'ampoules qu'avant ») n'est PAS « pas de problème » : le script la rend dans `shoe_feedback.unknown`,
+  **demandez** ce que l'athlète a ressenti. Pièges déjà traités par le script, ne les contournez pas :
+  « pas mal d'ampoules » = beaucoup d'ampoules (un problème) ; « pas de souci **sauf** une ampoule »
+  (aussi « hormis », « à part », « excepté ») garde l'ampoule ; « manque de grip » / « pas assez de grip »
+  = `poor_grip` ; un terme à plusieurs problèmes (« ampoule et frottement ») les écrit tous ; un côté ou
+  une zone dits dans une autre proposition (« talon qui glisse, côté gauche ») s'appliquent. Si la séance
+  a déjà une paire et que l'athlète en nomme une inconnue ou ambiguë, le script rend `needs_gear`
+  (`unknown_pair` / `ambiguous_pair`) : demandez, n'écrivez pas en silence sur la paire de la séance.
 - Dans tous les cas, ne bloquez jamais les AUTRES parties de la phrase
   (liquide déclaré au gramme près, douleur, RPE valide) en attendant la
   réponse sur la seule partie ambiguë/inconnue.
