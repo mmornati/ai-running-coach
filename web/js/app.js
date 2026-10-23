@@ -3005,13 +3005,14 @@ const SHOE_USAGE_CAVEAT = "Corrélation, pas causalité : un épisode de douleur
 const pctShare = (v) => (v == null ? "—" : `${F.num(v * 100, 0)}${NB}%`);
 const paceKm = (s) => `${Math.floor(s / 60)}:${String(Math.round(s % 60)).padStart(2, "0")}${NB}/km`;
 
+const GAIT_SHORT = { ground_contact_s: "contact", stance_balance_pct: "balance", vertical_oscillation_m: "oscill.", vertical_ratio_pct: "ratio vert.", step_length_m: "pas", cadence_spm: "cadence" };
 function gearUsageGait(gait) {
   if (!gait?.bands?.length) return `<p class="muted">Aucune dynamique de course mesurée avec cette paire.</p>`;
   const rows = gait.bands.map((b) => {
     const basis = b.basis === "gap" ? "GAP" : "allure";
     if (b.status !== "ok") return `<tr><th scope="row">${F.esc(b.label)} <small class="muted">${basis}</small></th><td colspan="2" class="muted">données insuffisantes (${b.sessions} séance${b.sessions > 1 ? "s" : ""}, ${b.min_sessions} requises)</td></tr>`;
     const vals = GAIT_ROWS.filter(([m]) => b.metrics[m]).map(([m, label, fmt]) => `${F.esc(label)} : ${fmt(b.metrics[m].mean)} <small class="muted">n=${b.metrics[m].n}</small>`).join("<br>");
-    const others = (b.others || []).map((o) => `${gearLink(o.gear_id, o.name || o.gear_id)} : ${GAIT_ROWS.filter(([m]) => o.metrics[m]).map(([m, , fmt]) => fmt(o.metrics[m].mean)).join(" · ")}`).join("<br>");
+    const others = (b.others || []).map((o) => `${gearLink(o.gear_id, o.name || o.gear_id)} : ${GAIT_ROWS.filter(([m]) => o.metrics[m]).map(([m, , fmt]) => `${GAIT_SHORT[m]} ${fmt(o.metrics[m].mean)}`).join(" · ")}`).join("<br>");
     return `<tr><th scope="row">${F.esc(b.label)} <small class="muted">${basis} · ${b.sessions} séances</small></th><td>${vals}</td><td>${others || `<span class="muted">aucune autre paire dans cette tranche</span>`}</td></tr>`;
   }).join("");
   return `<div class="table-wrap"><table class="data data--compact"><thead><tr><th scope="col">Tranche d'allure</th><th scope="col">Cette paire</th><th scope="col">Autres paires, même tranche</th></tr></thead><tbody>${rows}</tbody></table></div>
@@ -3025,7 +3026,7 @@ function gearUsageSection(u) {
   const facts = [
     ["Rôle déduit", `<strong>${F.esc(u.role.label)}</strong> <small class="muted">${F.esc(u.role.reason)}</small>`],
     ["Terrain", `route ${pctShare(t.road.share_km)} · trail ${pctShare(t.trail.share_km)} <small class="muted">des km</small>${t.other ? ` · autre ${F.num(t.other.sessions, 0)} séance${t.other.sessions > 1 ? "s" : ""}` : ""}`],
-    ...(us.d_plus_m_per_km != null ? [["Dénivelé", `D+ ${F.num(us.d_plus_m_per_km, 0)}${NB}m/km${us.d_minus_m_per_km != null ? ` · D− ${F.num(us.d_minus_m_per_km, 0)}${NB}m/km` : ""}`]] : []),
+    ...(us.d_plus_m_per_km != null ? [["Dénivelé", `D+ ${F.num(us.d_plus_m_per_km, 0)}${NB}m/km${us.d_minus_m_per_km != null ? ` · D− ${F.num(us.d_minus_m_per_km, 0)}${NB}m/km` : ""}${us.elevation_sessions != null ? ` <small class="muted">· sur ${us.elevation_sessions} séance${us.elevation_sessions > 1 ? "s" : ""} sur ${us.sessions} (${F.distance(us.elevation_distance_m, 0)})</small>` : ""}`]] : []),
     ...(us.mean_pace_s_km ? [["Allure moyenne", `${paceKm(us.mean_pace_s_km)}${us.mean_gap_pace_s_km ? ` <small class="muted">· GAP ${paceKm(us.mean_gap_pace_s_km)}</small>` : ""}`]] : []),
     ...(us.long_runs ? [["Sorties longues", `${F.num(us.long_runs.sessions, 0)} <small class="muted">(${pctShare(us.long_runs.share_sessions)}, plus de ${us.long_runs.threshold_s / 60}${NB}min)</small>`]] : []),
     ["Courses", F.num(us.races.sessions, 0)],
@@ -3037,7 +3038,9 @@ function gearUsageSection(u) {
     ? `${F.num(p.per_100km, 1)} pour 100${NB}km · ${F.num(p.per_100_sessions, 0)} pour 100 séances`
     : `<span class="muted">${F.esc(p.warning)}</span>`;
   const ua = u.unassigned;
-  const unassigned = ua.runs ? `<p>${chip("gear", "orange", "Séances sans paire")} ${F.num(ua.runs, 0)} séance${ua.runs > 1 ? "s" : ""} de course sans <code>gear_id</code> sur la période (${F.distance(ua.distance_m, 0)}) : le lien douleur ↔ paire n'est pas fiable.</p>` : "";
+  const unassigned = ua.runs ? `<p>${chip("gear", "orange", "Séances sans paire")} ${F.num(ua.runs, 0)} séance${ua.runs > 1 ? "s" : ""} de course sans <code>gear_id</code> sur la période (${F.distance(ua.distance_m, 0)}) : le lien douleur ↔ paire n'est pas fiable${ua.since_last_attributed_run ? ` (dont ${F.num(ua.since_last_attributed_run, 0)} depuis la dernière séance de cette paire)` : ""}.</p>` : "";
+  const un = p.unattributable_episodes;
+  const unattrib = un?.total ? note(`${F.num(un.total, 0)} autre${un.total > 1 ? "s" : ""} épisode${un.total > 1 ? "s" : ""} de douleur (toutes paires) rattaché${un.total > 1 ? "s" : ""} à aucune paire : ${F.num(un.no_run_in_window, 0)} sans séance de course dans la fenêtre, ${F.num(un.run_without_pair, 0)} dont la séance n'a pas de paire. Corrélation, pas causalité.`) : "";
   const dflt = ua.default_attributed_runs ? note(`${F.num(ua.default_attributed_runs, 0)} séance${ua.default_attributed_runs > 1 ? "s" : ""} sans <code>gear_id</code> créditée${ua.default_attributed_runs > 1 ? "s" : ""} à cette paire parce qu'elle est la paire par défaut (hypothèse, non déclarée).`) : "";
   const fb = u.feedback;
   const fbLine = fb ? `<p>Confort déclaré${fb.comfort ? ` : ${F.num(fb.comfort.mean, 1)}/10 <small class="muted">(${fb.comfort.n} retour${fb.comfort.n > 1 ? "s" : ""})</small>` : ""}${Object.keys(fb.issue_counts || {}).length ? ` · problèmes : ${Object.entries(fb.issue_counts).map(([k, n]) => `${F.esc(k)} ×${n}`).join(", ")}` : ""}</p>` : "";
@@ -3050,7 +3053,7 @@ function gearUsageSection(u) {
     <h3>Foulée à allure comparable</h3>${gearUsageGait(u.gait)}
     <h3>Retours, douleurs et usure</h3>${fbLine}
     <p>Douleurs dans les 48${NB}h suivant une séance : <strong>${F.num(p.episodes, 0)}</strong> épisode${p.episodes > 1 ? "s" : ""} sur ${F.num(p.exposure.sessions, 0)} séances / ${F.distance(p.exposure.distance_m, 0)} — ${painLine}</p>
-    ${unassigned}${dflt}${wearLine}
+    ${unattrib}${unassigned}${dflt}${wearLine}
     ${note(SHOE_USAGE_CAVEAT)}</section>`;
 }
 

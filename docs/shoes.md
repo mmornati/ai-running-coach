@@ -186,9 +186,11 @@ Les séances sont **exactement** celles du kilométrage : la règle d'attributio
 | **Foulée** | temps de contact, oscillation et ratio verticaux, longueur de pas, balance, cadence, **par tranche d'allure** |
 | **Retours et douleurs** | synthèse des retours de chaussant (voir plus haut), épisodes de douleur, séances sans paire |
 | **Usure** | dernière inspection (état, asymétrie, indices) |
-| **Rôle déduit** | `race`, `trail_long`, `trail`, `road_tempo`, `road_easy`, `mixed`, `insufficient_data` |
+| **Rôle déduit** | `race`, `trail_long`, `trail`, `road_tempo`, `road_easy`, `mixed_long`, `mixed`, `insufficient_data` |
 
-Toute grandeur sans donnée est **omise** (jamais 0). Les seuils ci-dessous sont des **approximations du projet**,
+Toute grandeur sans donnée est **omise** (jamais 0). D+/km et D−/km ne portent que sur les séances qui ont le
+dénivelé : la couverture (`elevation_sessions`, `elevation_distance_m`) est affichée. La période d'usage court
+jusqu'à aujourd'hui pour une paire active, jusqu'à sa dernière séance pour une paire retirée. Les seuils ci-dessous sont des **approximations du projet**,
 pas des seuils cités d'une source.
 
 ### Foulée à allure comparable
@@ -199,7 +201,8 @@ que **dans la même tranche d'allure**.
 - Tranches de **30 s/km**, ancrées sur des multiples de 30 (5:00–5:30/km, 5:30–6:00/km…).
 - Allure de la tranche : l'allure GAP de la séance si elle existe, sinon l'allure brute. Les deux bases ne
   sont jamais mélangées dans une même tranche (la base est affichée).
-- Valeur d'une paire dans une tranche : moyenne des moyennes de séance (`arc_gait.resolve_session`).
+- Valeur d'une paire dans une tranche : moyenne des moyennes de séance (`arc_gait.resolve_session`) — chaque
+  moyenne porte sur TOUTE la séance (intervalles, marche et échauffement compris) : approximation du projet.
 - **Effectif minimal : 3 séances par tranche et par grandeur**, sinon « données insuffisantes » (pas de
   moyenne, pas de comparaison). Les autres paires ne sont listées que si elles atteignent aussi l'effectif
   dans la même tranche.
@@ -211,6 +214,9 @@ que **dans la même tranche d'allure**.
 - Il est rattaché à la séance de course **la plus récente datée de 0 à 2 jours avant son début** (≤ 48 h à la
   granularité du jour ; le même jour compte, l'heure de la douleur étant inconnue). Plusieurs paires (ou une
   séance sans paire) dans la fenêtre : l'épisode est marqué `ambiguous`.
+- En jours entiers, « ≤ 48 h » couvre en pratique jusqu'à environ 72 h (approximation du projet).
+- Les épisodes sans séance de course dans la fenêtre, ou dont la séance n'a pas de paire, sont rattachés à
+  aucune paire mais **comptés et affichés** (`unattributable_episodes`).
 - Rapportés à l'**exposition** (km et séances de la paire) : par 100 km et par 100 séances, **à partir de
   5 épisodes seulement** (même seuil que `decision-effects`) ; en dessous, comptes bruts et exposition, sans taux
   ni tendance.
@@ -230,7 +236,8 @@ Règles appliquées dans l'ordre, sur les séances de course à pied de la paire
 5. `road_tempo` : au moins 70 % des km sur route et allure moyenne au moins 5 % plus rapide que la moyenne route
    de l'athlète (toutes paires confondues) ;
 6. `road_easy` : au moins 70 % des km sur route ;
-7. `mixed` sinon.
+7. `mixed_long` : aucun terrain à 70 % mais au moins 25 % de sorties longues (paire polyvalente des longues) ;
+8. `mixed` sinon.
 
 Le rôle est une entrée pour la recommandation (story #301), jamais une prescription.
 

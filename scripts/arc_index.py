@@ -3673,7 +3673,10 @@ def shoe_usage(conn, gear_id: Optional[str] = None, today: Optional[date] = None
         acts = acts_by_gear.get(gid, [])
         usage = SU.usage_of(acts)
         first, last = (usage.get("period") or {}).get("first_date"), (usage.get("period") or {}).get("last_date")
-        in_period = [r for r in runs if first and first <= (r["date"] or "") <= last]
+        # Paire active : la période court jusqu'à aujourd'hui (les séances récentes sans paire comptent) ;
+        # paire retirée : jusqu'à sa dernière séance (la date de retraite n'est pas stockée).
+        end = last if (meta.get("retired") or not last) else max(last, today.isoformat())
+        in_period = [r for r in runs if first and first <= (r["date"] or "") <= end]
         unassigned = [r for r in in_period if not r["gear_id"] and owner_of.get(r["id"]) is None]
         default_attr = [r for r in in_period if not r["gear_id"] and owner_of.get(r["id"]) == gid]
         eps = episodes_by_gear.get(gid, [])
@@ -3687,8 +3690,11 @@ def shoe_usage(conn, gear_id: Optional[str] = None, today: Optional[date] = None
         pairs.append({
             **meta, "usage": usage, "role": SU.deduce_role(usage, road_ref),
             "gait": SU.gait_report(bands_by_gear, names, gid),
-            "pain": SU.pain_summary(eps, usage["sessions"], usage["distance_m"], len(unassigned)),
+            "pain": SU.pain_summary(eps, usage["sessions"], usage["distance_m"], len(unassigned),
+                                    ep_no_run, ep_no_pair),
             "unassigned": {"runs": len(unassigned), "distance_m": round(sum(r["distance_m"] or 0 for r in unassigned)),
+                           "since_last_attributed_run": sum(1 for r in unassigned if (r["date"] or "") > (last or "")),
+                           "period_end": end if last else None,
                            "default_attributed_runs": len(default_attr),
                            "note": "séances de course sans gear_id sur la période d'usage de la paire : la "
                                    "corrélation douleur ↔ paire n'est pas fiable tant qu'elles existent"},

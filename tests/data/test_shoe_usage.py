@@ -108,6 +108,9 @@ class TestUsage(Workspace):
         self.assertEqual(road["usage"]["terrain"]["road"]["share_km"], 1.0)
         self.assertEqual(road["usage"]["terrain"]["trail"]["share_km"], 0.0)
         self.assertNotIn("d_plus_m_per_km", road["usage"])           # aucune donnée -> omis, jamais 0
+        self.assertNotIn("elevation_sessions", road["usage"])
+        self.assertEqual(trail["usage"]["elevation_sessions"], 2)    # couverture exposée
+        self.assertEqual(trail["usage"]["elevation_distance_m"], 30000)
         self.assertEqual(trail["usage"]["terrain"]["trail"]["share_km"], 1.0)
         self.assertEqual(trail["usage"]["d_plus_m_per_km"], round(1400 / 30, 1))
         self.assertEqual(trail["usage"]["d_minus_m_per_km"], round(1400 / 30, 1))
@@ -225,6 +228,15 @@ class TestPain(Workspace):
         self.assertEqual(pain["episodes"], 4)
         self.assertFalse(pain["trend_allowed"])
 
+    def test_unattributable_episodes_are_exposed_on_each_pair(self):
+        self.run_(day(0), "road-a")
+        self.pain(day(1), "genou")             # rattaché
+        self.pain(day(20), "mollet")           # aucune séance dans la fenêtre
+        un = self.pair("road-a")["pain"]["unattributable_episodes"]
+        self.assertEqual((un["total"], un["no_run_in_window"], un["run_without_pair"]), (1, 1, 0))
+        code, out = self.cli("--text")
+        self.assertIn("rattaché(s) à aucune paire", out)
+
     def test_zero_score_is_not_an_episode(self):
         self.run_(day(0), "road-a")
         self.pain(day(1), "genou", score=0)
@@ -244,12 +256,26 @@ class TestUnassigned(Workspace):
         self.run_(day(0), "road-a")
         self.run_(day(3))                     # sans gear_id : dans la période
         self.run_(day(8), "road-a")
-        self.run_(day(30))                    # hors période : ignorée
+        self.run_(day(30))                    # après la dernière séance de la paire ACTIVE : comptée aussi
+        self.run_("2026-10-30")               # postérieure à --today : ignorée
         p = self.pair("road-a")
-        self.assertEqual(p["unassigned"]["runs"], 1)
-        self.assertEqual(p["unassigned"]["distance_m"], 10000)
+        self.assertEqual(p["unassigned"]["runs"], 2)
+        self.assertEqual(p["unassigned"]["since_last_attributed_run"], 1)
+        self.assertEqual(p["unassigned"]["period_end"], TODAY)
+        self.assertEqual(p["unassigned"]["distance_m"], 20000)
         self.assertFalse(p["pain"]["reliable"])
         self.assertIn("pas fiable", p["pain"]["warning_unassigned"])
+
+    def test_retired_pair_period_stops_at_its_last_run(self):
+        self.write("planning/Runner_Profile.md", PROFILE.replace("id: road-a", "id: road-a (retirée)"))
+        self.run_(day(0), "road-a")
+        self.run_(day(3))
+        self.run_(day(8), "road-a")
+        self.run_(day(30))                    # après la dernière séance de la paire retirée : hors période
+        p = self.pair("road-a")
+        self.assertEqual(p["unassigned"]["runs"], 1)
+        self.assertEqual(p["unassigned"]["since_last_attributed_run"], 0)
+        self.assertEqual(p["unassigned"]["period_end"], day(8))
 
     def test_default_pair_credit_is_counted_apart(self):
         self.write("planning/Runner_Profile.md", PROFILE.replace("id: road-a", "id: road-a (par défaut)"))
@@ -260,6 +286,34 @@ class TestUnassigned(Workspace):
         self.assertEqual(p["unassigned"]["runs"], 0)
         self.assertEqual(p["unassigned"]["default_attributed_runs"], 1)
         self.assertEqual(p["usage"]["sessions"], 3)
+
+
+class TestPureRules(unittest.TestCase):
+    def test_same_day_same_zone_is_one_day(self):
+        eps = SU.pain_episodes([{"date": "2026-09-01", "location": "Genou", "score": 3},
+                                {"date": "2026-09-01", "location": "genou", "score": 5},
+                                {"date": "2026-09-02", "location": "genou", "score": 2}])
+        self.assertEqual(len(eps), 1)
+        self.assertEqual((eps[0]["days"], eps[0]["score"]), (2, 5))
+
+    def test_paired_run_in_window_is_used_even_if_latest_run_has_no_pair(self):
+        runs = [{"id": 1, "date": "2026-09-01"}, {"id": 2, "date": "2026-09-02"}]
+        eps = SU.pain_episodes([{"date": "2026-09-03", "location": "genou", "score": 4}])
+        per_gear, no_run, no_pair = SU.link_episodes(eps, runs, {1: "road-a", 2: None})
+        self.assertEqual((no_run, no_pair), (0, 0))
+        self.assertEqual(per_gear["road-a"][0]["run_date"], "2026-09-01")
+        self.assertTrue(per_gear["road-a"][0]["ambiguous"])
+
+    def test_gap_and_raw_pace_bases_are_never_mixed(self):
+        # même allure 5:00/km : une séance avec GAP, une sans -> deux clés distinctes
+        with_gap = {"sport": "running", "distance_m": 10000, "duration_s": 3000, "gap_pace_s_km": 300, "gait": {"ground_contact_s": 0.24}}
+        raw = {"sport": "running", "distance_m": 10000, "duration_s": 3000, "gait": {"ground_contact_s": 0.26}}
+        bands = SU.gait_bands([with_gap, with_gap, with_gap, raw, raw])
+        self.assertEqual(sorted(bands), [("gap", 300), ("pace", 300)])
+        rep = SU.gait_report({"a": bands}, {}, "a")
+        by_basis = {b["basis"]: b for b in rep["bands"]}
+        self.assertEqual(by_basis["gap"]["status"], "ok")
+        self.assertEqual(by_basis["pace"]["status"], "insufficient")      # 2 séances seulement : jamais fusionnées
 
 
 class TestRole(Workspace):
@@ -278,6 +332,7 @@ class TestRole(Workspace):
         self.assertEqual(self.role(self.usage(road=6, pace=300)), "road_tempo")
         self.assertEqual(self.role(self.usage(road=6, pace=330)), "road_easy")
         self.assertEqual(self.role(self.usage(road=3, trail=3)), "mixed")
+        self.assertEqual(self.role(self.usage(road=3, trail=5, long_share=0.35)), "mixed_long")   # 62 % trail, 35 % longues
         self.assertEqual(self.role(self.usage(road=3)), "insufficient_data")
         self.assertEqual(self.role(self.usage(road=2, races=2)), "race")
         self.assertEqual(self.role(self.usage(road=1, races=1)), "insufficient_data")   # < 2 séances

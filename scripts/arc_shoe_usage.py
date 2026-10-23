@@ -49,7 +49,7 @@ ROLE_TEMPO_FASTER = 0.05        # allure moyenne >= 5 % plus rapide que la moyen
 
 ROLES_FR = {
     "race": "course", "trail_long": "trail, sorties longues", "trail": "trail", "road_tempo": "route, allure soutenue",
-    "road_easy": "route, allure facile", "mixed": "mixte", "insufficient_data": "données insuffisantes",
+    "road_easy": "route, allure facile", "mixed_long": "mixte, sorties longues", "mixed": "mixte", "insufficient_data": "données insuffisantes",
 }
 
 CAVEAT = ("Corrélation, pas causalité : un épisode de douleur dans les 48 h suivant une séance n'est jamais "
@@ -58,7 +58,8 @@ CAVEAT = ("Corrélation, pas causalité : un épisode de douleur dans les 48 h s
 ASSUMPTIONS = {
     "attribution": "Mêmes séances que le kilométrage (`arc_metrics.attribute_gear`) : jamais une seconde règle.",
     "terrain": "`running` = route, `trail` = trail, `hiking` compté à part (`other`). Les parts sont en km et en séances.",
-    "elevation": "D+/km et D−/km : somme du dénivelé sur la somme des km des seules séances qui portent la grandeur.",
+    "elevation": "D+/km et D−/km : somme du dénivelé sur la somme des km des seules séances qui portent la grandeur "
+                 "(couverture exposée : `elevation_sessions`, `elevation_distance_m`).",
     "long_run": f"Sortie longue = durée > {LONG_RUN_S // 60} min (durée totale, à défaut temps en mouvement).",
     "wet": f"Séance humide = cumul de pluie `precip_mm` >= {WET_PRECIP_MM:g} mm dans le fichier météo du jour "
            "(prévision enregistrée par le coach, pas une observation) ; part calculée sur les seules séances "
@@ -69,14 +70,20 @@ ASSUMPTIONS = {
                   f"de {PACE_BAND_S_KM}), sur l'allure GAP de la séance si elle existe, sinon l'allure brute : les "
                   "deux bases ne sont jamais mélangées dans une même tranche. Moyenne simple des moyennes de séance "
                   f"(`arc_gait.resolve_session`). Minimum {MIN_BAND_SESSIONS} séances par tranche ET par grandeur, "
-                  "sinon « données insuffisantes ». Deux paires ne sont comparées que dans la MÊME tranche.",
+                  "sinon « données insuffisantes ». Deux paires ne sont comparées que dans la MÊME tranche. "
+                  "Limite : la valeur d'une séance est la moyenne de TOUTE la séance (intervalles, marche, "
+                  "échauffement compris) : approximation du projet, sensible aux séances à intervalles ou avec marche.",
     "pain": f"Épisode = une zone douloureuse (`health.pain`, score > 0) ; jours consécutifs d'une même zone fusionnés. "
             f"Rattaché à la séance de course la plus récente datée de 0 à {PAIN_WINDOW_DAYS} jours avant le début "
-            "de l'épisode (même jour compris : l'heure de la douleur est inconnue). Taux par 100 km et par 100 "
+            "de l'épisode (même jour compris : l'heure de la douleur est inconnue ; en jours entiers, « 48 h » couvre en pratique "
+            "jusqu'à environ 72 h). Taux par 100 km et par 100 "
             f"séances, seulement à partir de {PAIN_MIN_CASES} épisodes (même seuil que `decision-effects`) ; en "
             "dessous, comptes bruts et exposition, sans taux ni tendance. Épisode `ambiguous` : plusieurs paires "
             "(ou une séance sans paire) dans la fenêtre.",
-    "unassigned": "Séances de course SANS `gear_id` sur la période d'usage de la paire : comptées et signalées. "
+    "unassigned": "Séances de course SANS `gear_id` sur la période d'usage de la paire (de sa première séance à "
+                  "aujourd'hui pour une paire active, à sa dernière séance pour une paire retirée : la date de "
+                  "retraite n'est pas stockée) : comptées et signalées, dont celles postérieures à sa dernière "
+                  "séance (`since_last_attributed_run`). "
                   "Celles que la règle de la paire par défaut crédite à la paire sont comptées à part "
                   "(`default_attributed_runs`) : c'est une hypothèse, pas une déclaration.",
     "role": f"Règles dans l'ordre, sur les séances de course à pied : `race` si >= {ROLE_RACE_MIN_SESSIONS} séances et "
@@ -85,7 +92,8 @@ ASSUMPTIONS = {
             f"longues ; `trail` si >= {ROLE_TERRAIN_SHARE:.0%} des km en trail ; `road_tempo` si >= "
             f"{ROLE_TERRAIN_SHARE:.0%} des km sur route et allure moyenne >= {ROLE_TEMPO_FASTER:.0%} plus rapide "
             "que la moyenne route de l'athlète (toutes paires) ; `road_easy` si >= "
-            f"{ROLE_TERRAIN_SHARE:.0%} sur route ; sinon `mixed`. Approximation du projet, jamais une prescription.",
+            f"{ROLE_TERRAIN_SHARE:.0%} sur route ; `mixed_long` si aucun terrain n'atteint {ROLE_TERRAIN_SHARE:.0%} "
+            f"mais >= {ROLE_LONG_SHARE:.0%} de sorties longues (paire polyvalente des longues) ; sinon `mixed`. Approximation du projet, jamais une prescription.",
 }
 
 
@@ -180,6 +188,10 @@ def usage_of(acts: Sequence[dict]) -> dict:
         km = sum(a["distance_m"] for a in have) / 1000.0
         return _round(sum(a[field] for a in have) / km, 1) if km else None
 
+    elev = [a for a in acts if a.get("elevation_gain_m") is not None and a.get("distance_m")]
+    if elev:
+        out["elevation_sessions"] = len(elev)
+        out["elevation_distance_m"] = round(sum(a["distance_m"] for a in elev))
     for field, name in (("elevation_gain_m", "d_plus_m_per_km"), ("elevation_loss_m", "d_minus_m_per_km")):
         v = per_km(field)
         if v is not None:
@@ -310,9 +322,10 @@ def pain_episodes(entries: Iterable[dict]) -> List[dict]:
         for e in items:
             day = date.fromisoformat(e["date"])
             if current and (day - current["_last"]).days <= 1:
+                if day != current["_last"]:      # deux fichiers le même jour pour la même zone : un seul jour
+                    current["days"] += 1
                 current["_last"] = day
                 current["score"] = max(current["score"], e["score"])
-                current["days"] += 1
                 continue
             current = {"date": e["date"], "location": e.get("location"), "score": e["score"], "days": 1, "_last": day}
             episodes.append(current)
@@ -333,17 +346,19 @@ def link_episodes(episodes: Sequence[dict], runs: Sequence[dict], owner_of: Dict
         if not window:
             no_run += 1
             continue
-        last = window[-1]
         owners = {owner_of.get(r["id"]) for r in window}
-        gid = owner_of.get(last["id"])
-        if gid is None:
+        paired = [r for r in window if owner_of.get(r["id"]) is not None]
+        if not paired:
             no_pair += 1
             continue
-        per_gear.setdefault(gid, []).append({**ep, "run_date": last["date"], "ambiguous": len(owners) > 1})
+        last = paired[-1]      # la plus récente séance AVEC paire ; ambiguë si la fenêtre contient autre chose
+        per_gear.setdefault(owner_of[last["id"]], []).append(
+            {**ep, "run_date": last["date"], "ambiguous": len(owners) > 1})
     return per_gear, no_run, no_pair
 
 
-def pain_summary(episodes: Sequence[dict], sessions: int, distance_m: float, unassigned_runs: int) -> dict:
+def pain_summary(episodes: Sequence[dict], sessions: int, distance_m: float, unassigned_runs: int,
+                 no_run: int = 0, run_without_pair: int = 0) -> dict:
     km = distance_m / 1000.0
     n = len(episodes)
     out: Dict[str, Any] = {
@@ -351,6 +366,10 @@ def pain_summary(episodes: Sequence[dict], sessions: int, distance_m: float, una
         "window_days": PAIN_WINDOW_DAYS,
         "exposure": {"sessions": sessions, "distance_m": round(distance_m)},
         "reliable": unassigned_runs == 0, "recent": list(episodes)[-5:],
+        "unattributable_episodes": {"total": no_run + run_without_pair, "no_run_in_window": no_run,
+                                    "run_without_pair": run_without_pair,
+                                    "note": "épisodes de douleur (toutes paires) sans séance de course dans la "
+                                            "fenêtre, ou dont les séances n'ont pas de paire : rattachés à aucune paire"},
         "note": CAVEAT,
     }
     if n >= PAIN_MIN_CASES and km > 0 and sessions:
@@ -402,6 +421,9 @@ def deduce_role(usage: dict, road_pace_ref: Optional[float]) -> dict:
                                    f"{_clock(road_pace_ref)}/km pour l'ensemble des paires")
     elif road_share >= ROLE_TERRAIN_SHARE:
         role, why = "road_easy", f"{road_share:.0%} des km sur route, allure non soutenue"
+    elif long_share >= ROLE_LONG_SHARE:
+        role, why = "mixed_long", (f"route {road_share:.0%} / trail {trail_share:.0%} des km, "
+                                   f"{long_share:.0%} de sorties longues")
     else:
         role, why = "mixed", f"route {road_share:.0%} / trail {trail_share:.0%} des km"
     return {"role": role, "label": ROLES_FR[role], "reason": why, "basis": basis,
@@ -436,6 +458,9 @@ def render_text(rep: dict) -> str:
             extra.append(f"D+ {u['d_plus_m_per_km']:g} m/km")
         if "d_minus_m_per_km" in u:
             extra.append(f"D− {u['d_minus_m_per_km']:g} m/km")
+        if "elevation_sessions" in u:
+            extra.append(f"(dénivelé sur {u['elevation_sessions']}/{u['sessions']} séances, "
+                         f"{u['elevation_distance_m'] / 1000:.0f} km)")
         if "mean_pace_s_km" in u:
             extra.append(f"allure {_clock(u['mean_pace_s_km'])}/km")
         if "mean_gap_pace_s_km" in u:
@@ -469,17 +494,23 @@ def render_text(rep: dict) -> str:
                      f"séances / {pain['exposure']['distance_m'] / 1000:.0f} km"
                      + (f" — {pain['per_100km']:g} / 100 km" if pain.get("per_100km") is not None else
                         " — pas de taux (effectif trop faible)"))
-        for key in ("warning_unassigned",):
-            if pain.get(key):
-                lines.append(f"  ! {pain[key]}")
+        if pain.get("warning_unassigned"):
+            lines.append(f"  ! {pain['warning_unassigned']}")
+        un = pain["unattributable_episodes"]
+        if un["total"]:
+            lines.append(f"  ! {un['total']} épisode(s) de douleur (toutes paires) rattaché(s) à aucune paire "
+                         f"(sans séance dans la fenêtre : {un['no_run_in_window']}, séance sans paire : "
+                         f"{un['run_without_pair']}) — corrélation, pas causalité")
         ua = p["unassigned"]
         if ua["runs"] or ua["default_attributed_runs"]:
             lines.append(f"  séances sans gear_id sur la période : {ua['runs']} sans paire"
-                         + (f", {ua['default_attributed_runs']} créditée(s) par défaut" if ua["default_attributed_runs"] else ""))
+                         + (f", {ua['default_attributed_runs']} créditée(s) par défaut" if ua["default_attributed_runs"] else "")
+                         + (f", dont {ua['since_last_attributed_run']} depuis la dernière séance de la paire"
+                            if ua.get("since_last_attributed_run") else ""))
         fb = p.get("feedback")
         if fb and fb.get("comfort"):
             lines.append(f"  confort déclaré : {fb['comfort']['mean']:g}/10 (n={fb['comfort']['n']})"
-                         + (", problèmes : " + ", ".join(f"{k} ×{n}" for k, n in fb["issue_counts"].items())
+                         + (", problèmes (séances) : " + ", ".join(f"{k} ×{n}" for k, n in fb["issue_counts"].items())
                             if fb.get("issue_counts") else ""))
         w = p.get("wear")
         if w:
