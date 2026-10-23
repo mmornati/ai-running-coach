@@ -100,6 +100,20 @@ class TestShoeSpecsSkill(unittest.TestCase):
         self.assertRegex(TEXT, r"(?i)aucun lien d'affiliation")
         self.assertRegex(TEXT, r"(?i)ni un avis médical")
 
+    def test_skill_does_not_cite_a_function_the_agent_cannot_call(self):
+        self.assertNotIn("select_value", TEXT)
+        self.assertRegex(TEXT, r"(?i)priorité : ce que l'athlète a choisi")
+
+    def test_athlete_keeps_the_brand_value_path_is_documented(self):
+        self.assertIn('`basis: "manufacturer"`', TEXT)
+        self.assertRegex(TEXT, r"(?i)la mesure ET la valeur de la marque")
+        self.assertIn("`basis`", read("skills/workspace-data-contract/SKILL.md"))
+
+    def test_one_sheet_per_pair_and_profile_flag_are_documented(self):
+        self.assertRegex(TEXT, r"(?i)une seule fiche par paire")
+        self.assertIn("in_profile", TEXT)
+        self.assertIn("unknown_gear", TEXT)
+
     def test_coach_wiring_keeps_the_guardrails(self):
         coach = read("agents/coach.md")
         section = coach[coach.index("### SHOE SPEC SHEETS"):coach.index("### GEAR INSPECTION MANDATE")]

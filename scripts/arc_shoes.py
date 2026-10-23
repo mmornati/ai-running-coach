@@ -19,6 +19,7 @@ Bibliothèque standard uniquement.
 
 from __future__ import annotations
 
+import re
 import sys
 from pathlib import Path
 from typing import Dict, List, Optional
@@ -93,6 +94,32 @@ def flexibility_subscore(longitudinal: float, torsional: float) -> float:
     return float(longitudinal) + float(torsional)
 
 
+# Pointure de référence attendue du poids : US homme 9 (convention des comparatifs de laboratoire ;
+# le fichier additionnel de l'article ne la précise pas — approximation du projet).
+_US_M9_RE = re.compile(r"^(us)?(m|men|mens)?9$")
+
+
+def is_us_m9(reference_size) -> bool:
+    """« US 9 », « US M9 », « US men's 9 », « M9 »... — US homme 9 (la pointure sans genre précisé est lue homme)."""
+    if not isinstance(reference_size, str):
+        return False
+    return bool(_US_M9_RE.match(re.sub(r"[\s.'’\-]", "", reference_size.lower())))
+
+
+def _weight_reference_warnings(spec: dict) -> List[str]:
+    entry = spec.get("weight_g")
+    if not isinstance(entry, dict) or entry.get("value") is None:
+        return []
+    ref = entry.get("reference_size")
+    if ref is None:
+        return ["pointure de référence du poids absente (attendue : US M9, convention des comparatifs) — le poids "
+                "dépend de la pointure : sous-note de poids à lire avec prudence"]
+    if not is_us_m9(ref):
+        return [f"poids annoncé en pointure « {ref} » et non US M9 (convention des comparatifs) — sous-note de "
+                "poids à lire avec prudence"]
+    return []
+
+
 def minimalist_index(spec: dict) -> dict:
     """Index minimaliste d'une fiche `shoe_spec` (dict du bloc `arc`).
 
@@ -132,7 +159,10 @@ def minimalist_index(spec: dict) -> dict:
         if value is None:
             missing.append(label)
     out: dict = {"available": False, "reference": MI_REFERENCE["citation"], "url": MI_REFERENCE["url"],
-                 "inputs": inputs, "missing": missing}
+                 "inputs": inputs, "missing": missing, "assumptions": list(MI_ASSUMPTIONS)}
+    warnings = _weight_reference_warnings(spec)
+    if warnings:
+        out["warnings"] = warnings
     if missing:
         out["reason"] = "entrées manquantes : " + ", ".join(missing) + " — index non calculé"
         return out
@@ -179,7 +209,7 @@ def field_summary(entry: dict) -> dict:
     `measured_minus_manufacturer` quand un labo ET une marque ont chacun une valeur (l'écart marque/labo
     que la règle de continuité du drop doit voir)."""
     alts = [a for a in (entry.get("alternatives") or []) if isinstance(a, dict)]
-    out = {k: entry[k] for k in ("value", "source_type", "url", "retrieved", "reference_size", "scale")
+    out = {k: entry[k] for k in ("value", "source_type", "basis", "url", "retrieved", "reference_size", "scale")
            if entry.get(k) is not None}
     out["alternatives"] = alts
     numeric = [c for c in [entry] + alts
@@ -225,6 +255,10 @@ def report(rows: List[dict], declared: Optional[List[dict]] = None, gear_id: Opt
     specs.sort(key=lambda s: (s.get("gear_id") or ""))
     out: dict = {"count": len(specs), "specs": specs}
     if declared is not None:
+        known = {g["gear_id"] for g in declared}
+        for spec in specs:
+            spec["in_profile"] = spec["gear_id"] in known
+        out["unknown_gear"] = [s["gear_id"] for s in specs if not s["in_profile"]]
         have = {s["gear_id"] for s in specs}
         out["gear_without_spec"] = [
             {"gear_id": g["gear_id"], "name": g.get("name")} for g in declared
@@ -240,7 +274,8 @@ def _fmt_field(name: str, f: dict) -> str:
     unit = {"drop_mm": " mm", "stack_heel_mm": " mm", "stack_forefoot_mm": " mm", "weight_g": " g",
             "lug_depth_mm": " mm"}.get(name, "")
     scale = f" ({f['scale']})" if f.get("scale") else ""
-    line = f"  {name} : {value}{unit}{scale} [{f.get('source_type')}]"
+    basis = f" (fondée sur {f['basis']})" if f.get("basis") else ""
+    line = f"  {name} : {value}{unit}{scale} [{f.get('source_type')}{basis}]"
     spread = f.get("spread")
     if spread:
         line += f" — sources {spread['min']:g} à {spread['max']:g}"
@@ -263,7 +298,11 @@ def render_text(rep: dict) -> str:
             lines.append(_fmt_field(name, f))
         if spec["absent"]:
             lines.append("  absent : " + ", ".join(spec["absent"]))
+        if spec.get("in_profile") is False:
+            lines.append("  ATTENTION : cette paire ne figure pas dans ### Chaussures du profil")
         mi = spec["minimalist_index"]
+        for warning in mi.get("warnings", []):
+            lines.append(f"  avertissement : {warning}")
         if mi["available"]:
             lines.append(f"  index minimaliste : {mi['index_pct']:g} % (somme {mi['sum']:g}/{mi['max_sum']})")
         else:

@@ -76,7 +76,8 @@ Ordre fixe, en s'arrêtant quand les champs utiles sont couverts :
    départager.
 
 Pour chaque valeur : relever le chiffre, l'**URL exacte**, la date du jour (`retrieved`), la
-pointure de référence du poids (`reference_size`) quand la page la donne. Champs visés : `category`,
+pointure de référence du poids (`reference_size`) quand la page la donne (les comparatifs annoncent en général
+US M9 ; l'index minimaliste avertit si elle manque ou diffère). Champs visés : `category`,
 `drop_mm`, `stack_heel_mm`, `stack_forefoot_mm`, `weight_g`, `midsole_foam`, `midsole_softness`
 (avec son échelle), `plate`, `lug_depth_mm`, `toe_box`. Un champ qu'aucune page ne donne reste **absent**.
 
@@ -92,8 +93,8 @@ Un tableau, une ligne par caractéristique, avant toute écriture :
 
 Règles du tableau :
 
-- **Valeur proposée** = la valeur retenue selon la priorité `athlete` > `measured` > `manufacturer`
-  (`arc_shoes.select_value`) ; **la mesure prime sur la marque**, et l'**écart marque/labo** est affiché
+- **Valeur proposée** = la valeur retenue selon la priorité : ce que l'athlète a choisi ou corrigé,
+  puis la mesure de laboratoire, puis la valeur de la marque ; **la mesure prime sur la marque**, et l'**écart marque/labo** est affiché
   en toutes lettres (surtout sur le drop : c'est lui que la règle de continuité lit).
 - **Écart entre sources** : toutes les autres valeurs trouvées, avec leur URL — elles iront dans
   `alternatives`.
@@ -107,11 +108,16 @@ Règles du tableau :
 ## 6. Validation ligne par ligne, puis écriture
 
 1. L'athlète **valide, corrige ou supprime chaque ligne**. Une correction par l'athlète devient
-   `source_type: "athlete"` (il a le dernier mot) ; l'ancienne valeur peut rester en `alternatives`.
+   `source_type: "athlete"` (il a le dernier mot) ; l'ancienne valeur reste en `alternatives`.
+   **S'il préfère la valeur de la marque à la mesure du laboratoire** (le contrat refuse une valeur retenue
+   `manufacturer` quand une mesure existe) : valeur retenue en `source_type: "athlete"` avec `basis: "manufacturer"`
+   et l'`url` de la page de la marque, et on garde la mesure ET la valeur de la marque dans `alternatives` —
+   l'écart laboratoire - marque reste calculable, et le choix de l'athlète reste traçable.
 2. **Seulement alors**, charger `workspace-data-contract` et écrire `gear/specs/<gear_id>.md` : bloc
    `arc` `kind: "shoe_spec"` (provenance de chaque valeur : `value`, `source_type`, `url`, `retrieved`,
    `alternatives`), puis le texte libre (version et raison, journal des validations : date, lignes
-   corrigées par l'athlète). Un fichier existant est **réécrit en place**, jamais dupliqué.
+   corrigées par l'athlète). Un fichier existant est **réécrit en place**, jamais dupliqué : une seule fiche par paire, le fichier
+   s'appelle exactement `<gear_id>.md` (sinon il n'est pas indexé).
 3. Valider : `python3 scripts/arc_index.py --validate gear/specs/<gear_id>.md`. Une erreur (valeur hors
    bornes, `measured` écarté au profit de `manufacturer`, `url`/`retrieved` manquants) se corrige avec
    l'athlète ; un avertissement d'aberration se résout en marquant `outlier: true` ou en retirant la valeur.
@@ -142,5 +148,7 @@ python3 scripts/arc_index.py shoe-specs --gear ID --text
 ```
 
 Lecture seule. Par fiche : chaque champ avec sa valeur retenue, son type, son URL, ses `alternatives` et
-l'écart (`spread`, dont `measured_minus_manufacturer`), les champs `absent`, et `minimalist_index`
-(`available`, `index_pct`, sous-notes, ou `reason`).
+l'écart (`spread`, dont `measured_minus_manufacturer`), le `basis` d'une valeur de l'athlète, les champs
+`absent`, `in_profile` (`false` = fiche d'une paire absente de `### Chaussures`, aussi listée dans
+`unknown_gear` : le dire à l'athlète), et `minimalist_index` (`available`, `index_pct`, sous-notes ou
+`reason`, `assumptions` et `warnings`, par exemple pointure de référence du poids absente ou différente de US M9).

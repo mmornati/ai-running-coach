@@ -43,7 +43,7 @@ def kipride() -> dict:
     return {
         "arc": 1, "kind": "shoe_spec", "date": DAY, "gear_id": "kipride-max-1", "brand": "Kiprun",
         "model": "Kipride Max", "version": "v1", "release_year": 2026,
-        "size": {"value": 43, "system": "EU"}, "purchase_date": "2026-03-14",
+        "size": {"value": 42, "system": "EU"}, "purchase_date": "2026-02-20",
         "category": src("road", "manufacturer", RL),
         "drop_mm": {**src(8.7, "measured", RT), "alternatives": [src(6, "manufacturer", RL)]},
         "stack_heel_mm": {**src(42, "manufacturer", RL), "alternatives": [src(44, "manufacturer", RW)]},
@@ -168,6 +168,40 @@ class TestContract(unittest.TestCase):
         _, warnings = C.validate(data)
         self.assertTrue(any("incohérent" in w for w in warnings), warnings)
 
+    def test_alternatives_are_type_checked_like_the_retained_value(self):
+        data = kipride()
+        data["drop_mm"]["alternatives"] = [src("huit", "manufacturer", RL)]
+        errors, _ = C.validate(data)
+        self.assertTrue(any("drop_mm.alternatives[0].value" in e for e in errors), errors)
+        data = kipride()
+        data["plate"]["alternatives"] = [src("graphene", "manufacturer", RL)]
+        errors, _ = C.validate(data)
+        self.assertTrue(any("plate.alternatives[0].value" in e for e in errors), errors)
+        data = kipride()
+        data["weight_g"]["alternatives"] = [src(-3, "manufacturer", RL)]
+        self.assertTrue(C.validate(data)[0])
+        data = kipride()
+        data["plate"]["alternatives"] = [src("carbon", "manufacturer", RL)]
+        self.assertEqual(C.validate(data), ([], []))
+
+    def test_basis_is_for_athlete_values_only_and_is_an_enum(self):
+        data = kipride()
+        data["drop_mm"] = {"value": 6, "source_type": "athlete", "basis": "manufacturer", "url": RL,
+                           "retrieved": DAY, "alternatives": [src(8.7, "measured", RT), src(6, "manufacturer", RL)]}
+        self.assertEqual(C.validate(data), ([], []), "l'athlète garde la valeur de la marque")
+        data["drop_mm"]["basis"] = "guess"
+        self.assertTrue(C.validate(data)[0])
+        data = kipride()
+        data["drop_mm"]["basis"] = "measured"          # sur une valeur measured : refusé
+        self.assertTrue(any("basis" in e for e in C.validate(data)[0]))
+
+    def test_future_retrieved_date_is_a_warning(self):
+        data = kipride()
+        data["drop_mm"]["retrieved"] = "2999-01-01"
+        errors, warnings = C.validate(data)
+        self.assertEqual(errors, [])
+        self.assertTrue(any("retrieved" in w and "futur" in w for w in warnings), warnings)
+
     def test_unknown_key_is_reported_and_kind_is_registered(self):
         data = kipride()
         data["dorp_mm"] = src(8, "measured", RT)
@@ -195,6 +229,13 @@ class TestSelectValue(unittest.TestCase):
         self.assertEqual(summary["source_type"], "measured")
         self.assertEqual(summary["spread"]["measured_minus_manufacturer"], 2.7)
         self.assertEqual((summary["spread"]["min"], summary["spread"]["max"]), (6, 8.7))
+
+    def test_athlete_keeping_the_brand_value_keeps_the_gap_and_exposes_the_basis(self):
+        entry = {"value": 6, "source_type": "athlete", "basis": "manufacturer", "url": RL, "retrieved": DAY,
+                 "alternatives": [src(8.7, "measured", RT), src(6, "manufacturer", RL)]}
+        summary = SH.field_summary(entry)
+        self.assertEqual((summary["value"], summary["source_type"], summary["basis"]), (6, "athlete", "manufacturer"))
+        self.assertEqual(summary["spread"]["measured_minus_manufacturer"], 2.7)
 
     def test_field_summary_ignores_the_acknowledged_outlier(self):
         summary = SH.field_summary(ultra_glide()["weight_g"])
@@ -295,6 +336,25 @@ class TestMinimalistIndex(unittest.TestCase):
         out = SH.minimalist_index(spec)
         self.assertFalse(out["available"])
 
+    def test_output_carries_the_assumptions(self):
+        for spec in (kipride(), {}):
+            out = SH.minimalist_index(spec)
+            self.assertEqual(out["assumptions"], list(SH.MI_ASSUMPTIONS))
+            self.assertTrue(any("approximation du projet" in a for a in out["assumptions"]))
+
+    def test_weight_reference_size_is_checked_against_us_m9(self):
+        for ref in ("US 9", "US M9", "US men's 9", "M9", "us m 9", "9"):
+            self.assertTrue(SH.is_us_m9(ref), ref)
+        for ref in ("EU 42", "US W8", "US 10", "US M10", "", None, 9):
+            self.assertFalse(SH.is_us_m9(ref), ref)
+        self.assertNotIn("warnings", SH.minimalist_index(kipride()))          # « US 9 »
+        missing = SH.minimalist_index(ultra_glide())                         # aucune pointure de référence
+        self.assertTrue(any("absente" in w for w in missing["warnings"]), missing)
+        other = kipride()
+        other["weight_g"]["reference_size"] = "EU 42"
+        self.assertTrue(any("EU 42" in w for w in SH.minimalist_index(other)["warnings"]))
+        self.assertNotIn("warnings", SH.minimalist_index({}), "pas de poids, pas d'avertissement de pointure")
+
     def test_reference_is_cited(self):
         self.assertIn("s13047-015-0094-5", SH.minimalist_index({})["url"])
         self.assertIn("Esculier", SH.minimalist_index({})["reference"])
@@ -343,6 +403,57 @@ class TestCliAndIndex(unittest.TestCase):
         self.assertEqual(ug["minimalist_index"]["index_pct"], 46.0)
         self.assertEqual([g["gear_id"] for g in report["gear_without_spec"]], ["speedgoat"],
                          "les paires retirées n'ont pas à avoir de fiche")
+
+    def test_duplicate_sheet_for_the_same_pair_is_not_indexed(self):
+        self.write("gear/specs/autre.md", block_file(kipride()))
+        _, out = self.cli()
+        report = json.loads(out)
+        self.assertEqual([s["gear_id"] for s in report["specs"]], ["kipride-max-1", "ultra-glide-3"],
+                         "une seule fiche par paire")
+        self.assertTrue(all(s["source_path"] == f"gear/specs/{s['gear_id']}.md" for s in report["specs"]))
+        conn = I.open_db(self.ws, memory=True)
+        I.index_workspace(conn, self.ws, "2026-10-23")
+        issues = conn.execute("SELECT issues FROM source_file WHERE path = 'gear/specs/autre.md'").fetchone()[0]
+        self.assertIn("une seule fiche par paire", issues)
+
+    def test_readme_in_specs_is_not_a_shoe_sheet(self):
+        self.assertIsNone(I.classify("gear/specs/README.md"))
+        self.assertIsNone(I.classify("gear/specs/readme.md"))
+        self.write("gear/specs/README.md", "# Fiches\n\nNotes.\n")
+        _, out = self.cli()
+        self.assertEqual(json.loads(out)["count"], 2)
+        conn = I.open_db(self.ws, memory=True)
+        I.index_workspace(conn, self.ws, "2026-10-23")
+        kind = conn.execute("SELECT kind FROM source_file WHERE path = 'gear/specs/README.md'").fetchone()
+        self.assertTrue(kind is None or kind[0] is None)
+
+    def test_sheet_of_a_pair_missing_from_the_profile_is_flagged(self):
+        stray = ultra_glide()
+        stray["gear_id"] = "inconnue"
+        self.write("gear/specs/inconnue.md", block_file(stray))
+        _, out = self.cli()
+        report = json.loads(out)
+        self.assertEqual(report["unknown_gear"], ["inconnue"])
+        by_id = {s["gear_id"]: s for s in report["specs"]}
+        self.assertFalse(by_id["inconnue"]["in_profile"])
+        self.assertTrue(by_id["kipride-max-1"]["in_profile"])
+        _, text = self.cli("--text")
+        self.assertIn("ne figure pas dans ### Chaussures", text)
+
+    def test_athlete_basis_and_reference_warning_are_exposed(self):
+        spec = kipride()
+        spec["drop_mm"] = {"value": 6, "source_type": "athlete", "basis": "manufacturer", "url": RL,
+                           "retrieved": DAY, "alternatives": [src(8.7, "measured", RT), src(6, "manufacturer", RL)]}
+        self.write("gear/specs/kipride-max-1.md", block_file(spec))
+        _, out = self.cli("--gear", "ultra-glide-3")
+        ug = json.loads(out)["specs"][0]["minimalist_index"]
+        self.assertTrue(ug["warnings"])
+        self.assertTrue(ug["assumptions"])
+        _, out = self.cli("--gear", "kipride-max-1")
+        drop = json.loads(out)["specs"][0]["fields"]["drop_mm"]
+        self.assertEqual((drop["basis"], drop["spread"]["measured_minus_manufacturer"]), ("manufacturer", 2.7))
+        _, text = self.cli("--gear", "kipride-max-1", "--text")
+        self.assertIn("[athlete (fondée sur manufacturer)]", text)
 
     def test_gear_filter_and_unknown_pair(self):
         code, out = self.cli("--gear", "ultra-glide-3")

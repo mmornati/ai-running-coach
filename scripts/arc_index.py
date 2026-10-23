@@ -1108,6 +1108,13 @@ _DECISION_FILENAME_RE = re.compile(r"^\d{4}-\d{2}-\d{2}_decision_[^/.]+\.md$")
 _GEAR_INSPECTION_FILENAME_RE = re.compile(r"^(\d{4}-\d{2}-\d{2})_([a-z0-9]+(?:-[a-z0-9]+)*)_inspection\.md$")
 
 
+def _shoe_spec_name_matches(rel: str, data: dict) -> bool:
+    """`gear/specs/<gear_id>.md` : le nom du fichier EST le `gear_id` du bloc (#298). Une seule fiche par
+    paire : un fichier au nom différent (`autre.md` portant `gear_id: kipride-max-1`) doublerait la paire
+    dans `shoe-specs` ; il n'est donc pas indexé (problème signalé à l'index et par `--validate`)."""
+    return Path(rel).stem == data.get("gear_id")
+
+
 def classify(rel: str) -> Optional[str]:
     """Type attendu d'après le chemin (None : fichier hors contrat, sauf bloc ```arc)."""
     parts = rel.split("/")
@@ -1124,7 +1131,8 @@ def classify(rel: str) -> Optional[str]:
         return "nutrition"
     if folder == "rapports" and name.endswith(".md"):
         return "report"
-    if parts[:2] == ["gear", "specs"] and len(parts) == 3 and name.endswith(".md"):
+    if (parts[:2] == ["gear", "specs"] and len(parts) == 3 and name.endswith(".md")
+            and not name.lower().startswith("readme")):
         return "shoe_spec"
     if folder == "gear" and name.endswith("_inspection.md") and L.filename_date(name):
         return "gear_inspection"
@@ -1214,6 +1222,9 @@ def read_file(path: Path, rel: str, conf: dict) -> Tuple[Optional[str], dict, in
                 issues.append("gear_inspection hors de `gear/AAAA-MM-JJ_<gear_id>_inspection.md` : non indexé")
             if kind == "shoe_spec" and classify(rel) != "shoe_spec":
                 issues.append("shoe_spec hors de `gear/specs/<gear_id>.md` : non indexé")
+            elif kind == "shoe_spec" and not _shoe_spec_name_matches(rel, block):
+                issues.append("shoe_spec : le nom du fichier doit être `<gear_id>.md` "
+                              f"(gear_id « {block.get('gear_id')} ») — non indexé, une seule fiche par paire")
         issues.extend(warnings)
         if not errors:
             data = dict(block)
@@ -1467,7 +1478,7 @@ def store(conn, rel: str, kind: str, data: dict, arc_version: int) -> None:
             "scale_reference": None if g("scale_reference") is None else int(bool(g("scale_reference"))),
             "lug_depth_mm": g("lug_depth_mm"), "body_md": body,
         })
-    elif kind == "shoe_spec" and classify(rel) == "shoe_spec":
+    elif kind == "shoe_spec" and classify(rel) == "shoe_spec" and _shoe_spec_name_matches(rel, data):
         _insert(conn, "shoe_spec", {
             "source_path": rel, "date": g("date"), "gear_id": g("gear_id"), "brand": g("brand"),
             "model": g("model"), "version": g("version"), "release_year": g("release_year"),
@@ -3537,7 +3548,8 @@ def validate_file(path: Path) -> Tuple[bool, List[str], List[str]]:
                             "non indexé s'il n'est pas sous gear/specs/.")
         elif isinstance(block.get("gear_id"), str) and path.stem != block["gear_id"]:
             warnings.append(f"gear_id du nom de fichier ({path.stem}) différent de shoe_spec.gear_id "
-                            f"({block['gear_id']})")
+                            f"({block['gear_id']}) — fiche NON indexée (une seule fiche par paire, "
+                            "`gear/specs/<gear_id>.md`)")
     return not errors, errors, warnings
 
 

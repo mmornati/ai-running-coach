@@ -150,6 +150,8 @@ GEAR_LUG_DEPTH_MM_PLAUSIBLE_MAX = 15.0
 # valeur saisie ou corrigée par l'athlète, qui valide chaque ligne et a donc le dernier mot.
 SHOE_SOURCE_TYPE = ("measured", "manufacturer", "athlete")
 SHOE_SOURCE_PRIORITY = ("athlete", "measured", "manufacturer")   # du plus au moins prioritaire
+# `basis` (valeur `athlete` seulement) : sur quelle source l'athlète a fondé sa valeur (#301 en a besoin).
+SHOE_BASIS = ("measured", "manufacturer")
 SHOE_CATEGORY = ("road", "trail", "hybrid")
 SHOE_PLATE = ("none", "carbon", "nylon", "rock_plate")
 SHOE_TOE_BOX = ("narrow", "standard", "wide")
@@ -785,31 +787,31 @@ SUBSCHEMA = {
     # de `value` ; `url` et `retrieved` sont obligatoires (règle transverse) hors `athlete`.
     "shoe_num": {
         "required": {"value": "num", "source_type": _enum(SHOE_SOURCE_TYPE)},
-        "optional": {"url": "str", "retrieved": "date", "alternatives": "[shoe_alt]"},
+        "optional": {"url": "str", "retrieved": "date", "alternatives": "[shoe_alt]", "basis": _enum(SHOE_BASIS)},
     },
     "shoe_weight": {
         "required": {"value": "num+", "source_type": _enum(SHOE_SOURCE_TYPE)},
-        "optional": {"url": "str", "retrieved": "date", "alternatives": "[shoe_alt]", "reference_size": "str"},
+        "optional": {"url": "str", "retrieved": "date", "alternatives": "[shoe_alt]", "basis": _enum(SHOE_BASIS), "reference_size": "str"},
     },
     "shoe_text": {
         "required": {"value": "str", "source_type": _enum(SHOE_SOURCE_TYPE)},
-        "optional": {"url": "str", "retrieved": "date", "alternatives": "[shoe_alt]"},
+        "optional": {"url": "str", "retrieved": "date", "alternatives": "[shoe_alt]", "basis": _enum(SHOE_BASIS)},
     },
     "shoe_softness": {
         "required": {"value": "num+", "source_type": _enum(SHOE_SOURCE_TYPE), "scale": "str"},
-        "optional": {"url": "str", "retrieved": "date", "alternatives": "[shoe_alt]"},
+        "optional": {"url": "str", "retrieved": "date", "alternatives": "[shoe_alt]", "basis": _enum(SHOE_BASIS)},
     },
     "shoe_plate": {
         "required": {"value": _enum(SHOE_PLATE), "source_type": _enum(SHOE_SOURCE_TYPE)},
-        "optional": {"url": "str", "retrieved": "date", "alternatives": "[shoe_alt]"},
+        "optional": {"url": "str", "retrieved": "date", "alternatives": "[shoe_alt]", "basis": _enum(SHOE_BASIS)},
     },
     "shoe_toe_box": {
         "required": {"value": _enum(SHOE_TOE_BOX), "source_type": _enum(SHOE_SOURCE_TYPE)},
-        "optional": {"url": "str", "retrieved": "date", "alternatives": "[shoe_alt]"},
+        "optional": {"url": "str", "retrieved": "date", "alternatives": "[shoe_alt]", "basis": _enum(SHOE_BASIS)},
     },
     "shoe_category": {
         "required": {"value": _enum(SHOE_CATEGORY), "source_type": _enum(SHOE_SOURCE_TYPE)},
-        "optional": {"url": "str", "retrieved": "date", "alternatives": "[shoe_alt]"},
+        "optional": {"url": "str", "retrieved": "date", "alternatives": "[shoe_alt]", "basis": _enum(SHOE_BASIS)},
     },
     # `shoe_spec.*.alternatives[]` : une autre source pour la même caractéristique. `outlier: true` =
     # aberration constatée et assumée (conservée pour mémoire, jamais retenue ni signalée).
@@ -1538,6 +1540,23 @@ def _check_shoe_spec(data: dict, errors: list, warnings: list) -> None:
                     if entry.get(key) is None:
                         errors.append(f"{label}.{key} : obligatoire pour une source « {entry['source_type']} » "
                                       "(provenance de chaque valeur)")
+        for label, entry in [(where, obj)] + [(f"{where}.alternatives[{i}]", a) for i, a in enumerate(alts)]:
+            retrieved = entry.get("retrieved")
+            if isinstance(retrieved, str) and DATE_RE.match(retrieved):
+                try:
+                    if date.fromisoformat(retrieved) > date.today():
+                        warnings.append(f"{label}.retrieved : {retrieved} est dans le futur — date de consultation à vérifier")
+                except ValueError:
+                    pass   # déjà signalé par `_check_value`
+        if obj.get("basis") is not None and obj.get("source_type") != "athlete":
+            errors.append(f"{where}.basis : réservé à une valeur « athlete » (la source sur laquelle l'athlète "
+                          "a fondé son choix) ; une valeur measured/manufacturer porte déjà sa source")
+        # Chaque alternative a le TYPE de la valeur retenue (nombre, texte, énumération du champ) : sinon
+        # « huit » ou « graphene » passeraient comme alternatives.
+        value_spec = SUBSCHEMA[SCHEMA["shoe_spec"]["optional"][field][1:-1]]["required"]["value"]
+        for i, alt in enumerate(alts):
+            if alt.get("value") is not None:
+                _check_value(value_spec, alt["value"], f"{where}.alternatives[{i}].value", errors, warnings)
         value = obj.get("value")
         bounds = SHOE_PLAUSIBLE.get(field)
         if bounds and _is_number(value):

@@ -64,8 +64,14 @@ python3 scripts/arc_index.py shoe-specs --gear kipride-max-1 --text
 ```
 
 Lecture seule. Par champ : la valeur retenue et sa source, les alternatives, l'écart entre sources
-(`spread`, dont `measured_minus_manufacturer`, l'écart laboratoire - marque) ; par fiche : les champs
-absents et l'index minimaliste.
+(`spread`, dont `measured_minus_manufacturer`, l'écart laboratoire - marque) et, pour une valeur que vous avez
+choisie, `basis` (la source sur laquelle vous vous êtes fondé) ; par fiche : les champs absents, `in_profile`
+(`false` si la paire n'est pas dans `### Chaussures`) et l'index minimaliste. **Une seule fiche par paire** :
+le fichier s'appelle exactement `<gear_id>.md`, sinon il n'est pas indexé.
+
+Si vous préférez la valeur de la marque à la mesure d'un laboratoire, la fiche la garde sans contredire la
+règle « la mesure prime » : valeur retenue en `athlete` avec `basis: manufacturer` et l'URL de la marque, la
+mesure et la valeur de la marque restant en `alternatives`.
 
 ## L'index minimaliste (Esculier et al. 2015)
 
@@ -94,7 +100,10 @@ partielle. L'index n'est pas enregistré dans la fiche : il est recalculé à ch
 
 Limites, dites plutôt que cachées : l'article mesure le poids de la chaussure et la pile au pied à
 coulisse sous le talon et les têtes métatarsiennes ; une valeur de marque ou de laboratoire en est une
-**approximation du projet** (pointure de référence, point de mesure). L'index sert à situer un
+**approximation du projet** (pointure de référence, point de mesure). Le poids dépend de la pointure : les
+comparatifs l'annoncent en général en US M9 (convention, le fichier additionnel de l'article ne la précise
+pas) ; la commande ajoute un avertissement `warnings` quand `reference_size` manque ou diffère, et rend
+toujours les `assumptions` de la méthode. L'index sert à situer un
 **changement** entre deux paires, pas à juger une chaussure, et ce n'est pas un avis médical.
 
 ## Ce que disent les preuves

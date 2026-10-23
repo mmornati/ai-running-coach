@@ -1335,7 +1335,7 @@ seule semelle documentée dans `wear_zones` est signalée (le protocole demande 
 
 Fiche de caractéristiques d'une paire (#298, skill `shoe-specs`) : un fichier par paire,
 `gear/specs/<gear_id>.md`, réécrit en place à chaque correction validée. Le nom porte le `gear_id`
-(avertissement à la validation s'il contredit le bloc) ; le profil `### Chaussures` reste inchangé,
+(**une seule fiche par paire** : un fichier dont le nom diffère du `gear_id` du bloc n'est pas indexé, avertissement à la validation) ; le profil `### Chaussures` reste inchangé,
 le lien se fait par `gear_id`. Dossier `gear/` : gitignoré. Le texte libre sous le bloc garde les
 notes de l'athlète et le journal des validations (qui a validé quoi, quand).
 
@@ -1367,10 +1367,17 @@ chaque ligne). Les autres sources vont dans `alternatives`. Une caractéristique
 | `flexibility_longitudinal`, `flexibility_torsional` | valeur + provenance | évaluation MANUELLE de l'athlète pour l'index minimaliste : 0 à 2,5 par pas de 0,5 (`source_type`: `athlete`) |
 | `stability_devices` | valeur + provenance | évaluation MANUELLE : nombre entier de dispositifs de stabilité observés, 0 à 6 (`athlete`) |
 
-Sous-clés d'une valeur : **`value`**, **`source_type`**, `url` et `retrieved` (date de consultation) —
-**obligatoires** pour `measured` et `manufacturer` —, `alternatives`. Chaque élément de
-`alternatives` : **`value`**, **`source_type`**, `url`, `retrieved`, `outlier` (`true` = aberration
-constatée et assumée, conservée pour mémoire, jamais retenue).
+Sous-clés d'une valeur : **`value`**, **`source_type`**, `url` et `retrieved` (date de consultation, jamais
+future — avertissement) — **obligatoires** pour `measured` et `manufacturer` —, `alternatives`, et `basis`
+(`measured` `manufacturer`, **réservé aux valeurs `athlete`** : la source sur laquelle l'athlète a fondé son choix,
+lue par la règle de choix de chaussure #301). Chaque élément de
+`alternatives` : **`value`** (du MÊME type que la valeur retenue : nombre, texte ou énumération du champ),
+**`source_type`**, `url`, `retrieved`, `outlier` (`true` = aberration constatée et assumée, conservée pour
+mémoire, jamais retenue).
+
+**L'athlète garde la valeur de la marque** (il la préfère à la mesure du laboratoire) : valeur retenue en
+`source_type: "athlete"`, `basis: "manufacturer"`, avec l'`url` de la source de la marque, et `alternatives` qui
+garde la mesure ET la valeur de la marque — l'écart laboratoire - marque reste ainsi calculable.
 
 Contrôles : valeur retenue hors des bornes plausibles ci-dessus = **erreur** ; valeur retenue
 `manufacturer` alors qu'une alternative `measured` existe = **erreur** (la mesure prime) ; alternative
@@ -1382,7 +1389,7 @@ persisté** : `python3 scripts/arc_index.py shoe-specs` le calcule à la lecture
 manque une entrée.
 
 ```arc
-{"arc": 1, "kind": "shoe_spec", "date": "2026-10-12", "gear_id": "kipride-max-1", "brand": "Kiprun", "model": "Kipride Max", "version": "v1", "release_year": 2026, "size": {"value": 43, "system": "EU"}, "purchase_date": "2026-03-14", "category": {"value": "road", "source_type": "manufacturer", "url": "https://runnerslab.com/kiprun-kipride-max-review/", "retrieved": "2026-10-12"}, "drop_mm": {"value": 8.7, "source_type": "measured", "url": "https://www.rtings.com/running-shoes/reviews/kiprun/kipride-max", "retrieved": "2026-10-12", "alternatives": [{"value": 6, "source_type": "manufacturer", "url": "https://runnerslab.com/kiprun-kipride-max-review/", "retrieved": "2026-10-12"}]}, "stack_heel_mm": {"value": 42, "source_type": "manufacturer", "url": "https://runnerslab.com/kiprun-kipride-max-review/", "retrieved": "2026-10-12", "alternatives": [{"value": 44, "source_type": "manufacturer", "url": "https://www.runningwarehouse.com/KIPRUN_Kipride_Max/descpage-KRMAXM3.html", "retrieved": "2026-10-12"}]}, "stack_forefoot_mm": {"value": 36, "source_type": "manufacturer", "url": "https://runnerslab.com/kiprun-kipride-max-review/", "retrieved": "2026-10-12", "alternatives": [{"value": 38, "source_type": "manufacturer", "url": "https://www.runningwarehouse.com/KIPRUN_Kipride_Max/descpage-KRMAXM3.html", "retrieved": "2026-10-12"}]}, "plate": {"value": "none", "source_type": "manufacturer", "url": "https://runnerslab.com/kiprun-kipride-max-review/", "retrieved": "2026-10-12"}, "flexibility_longitudinal": {"value": 1.5, "source_type": "athlete"}, "flexibility_torsional": {"value": 1.0, "source_type": "athlete"}, "stability_devices": {"value": 0, "source_type": "athlete"}}
+{"arc": 1, "kind": "shoe_spec", "date": "2026-10-12", "gear_id": "kipride-max-1", "brand": "Kiprun", "model": "Kipride Max", "version": "v1", "release_year": 2026, "size": {"value": 42, "system": "EU"}, "purchase_date": "2026-02-20", "category": {"value": "road", "source_type": "manufacturer", "url": "https://runnerslab.com/kiprun-kipride-max-review/", "retrieved": "2026-10-12"}, "drop_mm": {"value": 8.7, "source_type": "measured", "url": "https://www.rtings.com/running-shoes/reviews/kiprun/kipride-max", "retrieved": "2026-10-12", "alternatives": [{"value": 6, "source_type": "manufacturer", "url": "https://runnerslab.com/kiprun-kipride-max-review/", "retrieved": "2026-10-12"}]}, "stack_heel_mm": {"value": 42, "source_type": "manufacturer", "url": "https://runnerslab.com/kiprun-kipride-max-review/", "retrieved": "2026-10-12", "alternatives": [{"value": 44, "source_type": "manufacturer", "url": "https://www.runningwarehouse.com/KIPRUN_Kipride_Max/descpage-KRMAXM3.html", "retrieved": "2026-10-12"}]}, "stack_forefoot_mm": {"value": 36, "source_type": "manufacturer", "url": "https://runnerslab.com/kiprun-kipride-max-review/", "retrieved": "2026-10-12", "alternatives": [{"value": 38, "source_type": "manufacturer", "url": "https://www.runningwarehouse.com/KIPRUN_Kipride_Max/descpage-KRMAXM3.html", "retrieved": "2026-10-12"}]}, "plate": {"value": "none", "source_type": "manufacturer", "url": "https://runnerslab.com/kiprun-kipride-max-review/", "retrieved": "2026-10-12"}, "flexibility_longitudinal": {"value": 1.5, "source_type": "athlete"}, "flexibility_torsional": {"value": 1.0, "source_type": "athlete"}, "stability_devices": {"value": 0, "source_type": "athlete"}}
 ```
 
 ## Réécrire un fichier ancien (backfill)
