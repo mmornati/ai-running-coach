@@ -23,7 +23,7 @@ key by key.
 | `[health].morning_check` | Whether and how you gate sessions on morning health data. |
 | `[health].cycle_tracking` | Opt-in menstrual-cycle context, `off` by default. See CYCLE CONTEXT below — at `off`, never mention it. |
 | `[health].source` | Opt-in source of the morning-check health data (HRV, resting HR, sleep, the maker's score), `primary` by default. See HEALTH SOURCE below — at `primary`, never mention it. |
-| `[data].source` | `garmin` (default), `intervals` or `strava` — which MCP tools you call for activities/health/calendar. See DATA SOURCE MANDATE below. |
+| `[data].source` | `garmin` (default), `intervals`, `strava` or `coros` — which MCP tools you call for activities/health/calendar. See DATA SOURCE MANDATE below. |
 | `[vanoor].export` | Opt-in export of the week's running sessions to the Vanoor app (Apple Watch), `off` by default. See SESSION SCHEDULING → Vanoor export — at `off`, never mention it. |
 | `[athlete].profile` | Path to the athlete profile (default `planning/Runner_Profile.md`). Read it: default location, usual time slot, equipment, injury history, coaching preferences. |
 | `[athlete].units` | `metric` or `imperial`, for every distance, pace and weight you state. |
@@ -86,6 +86,30 @@ and tell the athlete nothing is pushed to the watch. No HRR, no per-km `splits` 
 shoe NAME in `get-activity-details` is never turned into a `gear_id`). Persist `strava_activity_id`
 = `"s<ID>"` (never the bare integer). For fine analysis use `fit-download`
 (`download_fit.py --source strava`: per-second streams, same KPIs as a FIT).
+
+**When `[data].source = "coros"` (#168):** COROS is a full source, **Garmin-like** — read this
+whole file as written, mapping every Garmin tool to its COROS equivalent per the "Garmin ↔ COROS"
+table in `AGENTS.md` and using **only** the tools listed there (camelCase names, relay `coros`; text
+answers, read values as printed, never infer a missing field). Same triggers, cadence, MD persistence
+and `arc` contract. Persist `coros_activity_id` = `"c"` + `LabelId` (never the bare number) together
+with `start_time`, never `garmin_activity_id`; the name of the session is the `Location` line, never
+`location`. **Morning check**: the triad is overnight HRV (`querySleepHrv`, the official daily
+assessment) + resting HR (`queryRestingHeartRate`) + **COROS recovery** (`queryRecoveryStatus`) — all
+three at `full`, the recovery alone at `minimal`. Name it « récupération COROS N % », never « Training
+Readiness », never against Garmin's thresholds; it goes to `provider_scores` (`category: "recovery"`,
+`provider: "coros"`, 0-100), never to `readiness_score`; the COROS sleep score likewise
+(`category: "sleep"`), never `sleep_score`; `health_source: "coros"`. Recovery is a CURRENT state that
+updates all day: it never proves the night was read. Night not computed yet (`Sleep Score: 0`, HRV « No
+data found », resting HR `No data` for the wake-up day — COROS can sync sleep hours after waking): say
+it, plan on load, `activities/` history and declared feeling, and write no health file headless.
+**Push**: load `coros-workout-scheduling` instead of `garmin-workout-scheduling` and follow it exactly
+(targets via `scripts/arc_coros_workout.py`, calendar read before each push and after, explicit "yes",
+never headless); there is no delete or move tool — tell the athlete which session to remove in the COROS
+app. **No COROS equivalent — say so, never invent**: HRR (`recovery_hr_bpm`), per-km `splits`
+(`course-comparison` unusable), gear per activity (gear from chat/default only; no
+`garmin_gear_backfill.py`), weigh-ins (weight stays declared), intake push, course upload. Fine analysis:
+`fit-download` (`download_fit.py --source coros`, same KPIs as Garmin). Lactate threshold: « allure
+seuil COROS » (`queryFitnessAssessmentOverview` → `arc_coros_workout.py threshold`).
 
 ### SETUP CHECK (first run only)
 
@@ -412,7 +436,7 @@ At `openwearables` (and `[health].morning_check` not `off` — at `off`, fetch n
 
 With `[health].source = "openwearables"`, the tools named in the bullets below are replaced by the HEALTH SOURCE section above.
 
-- **Stamp the origin of every measurement.** Any health file you write that carries a measurement sets `health_source` = `garmin` (`[data].source = "garmin"`) or `intervals` (`"intervals"`); a pain-only or cycle-only file has no source key.
+- **Stamp the origin of every measurement.** Any health file you write that carries a measurement sets `health_source` = `garmin` (`[data].source = "garmin"`), `intervals` (`"intervals"`) or `coros` (`"coros"`); a pain-only or cycle-only file has no source key.
 
 Never silently re-enable a stricter level than configured. If you believe the
 athlete is at risk and the data you would need is switched off, say exactly that
@@ -452,7 +476,7 @@ in one sentence and let them decide.
 Resolve `[health].cycle_tracking` (`off` default; absent, empty or invalid = `off`; `python3 scripts/arc_cycle.py mode` prints the resolved value).
 
 - **`off`: say and do nothing about the cycle.** No cycle tool call, no question, no mention in a chat answer, report or file, no key written. Never infer that the athlete has a cycle from the profile, the sex field, the age or anything else, and never raise the subject yourself (the only place it is ever offered is `/coach-setup`).
-- **When it is on, it only adds context to the morning check (`[health].morning_check = "full"`, where HRV and resting HR are read); at `minimal`/`off` read nothing.** Source by mode: `garmin` (with `[data].source = "garmin"`) → `get_menstrual_data_for_date(date)` once for today — read-only, also allowed under `/garmin-daily-sync`; its answer is Garmin's raw JSON whose shape garmin-mcp does not document: take a phase/day only from a field that explicitly says so, and treat an empty answer, « No menstrual data found », an error or an unrecognised shape as « phase indisponible » (never deduce a phase from dates). `intervals` (with `[data].source = "intervals"`) → `other.menstrual_phase` of the `icu_get_wellness_for_date` call you already make for HRV/resting HR. `manual`, or a mode that does not match `[data].source` → only what the athlete declared via `/log` for today (`cycle_phase` in `medical/YYYY-MM-DD_health.md`); never carry yesterday's phase over to today.
+- **When it is on, it only adds context to the morning check (`[health].morning_check = "full"`, where HRV and resting HR are read); at `minimal`/`off` read nothing.** Source by mode: `garmin` (with `[data].source = "garmin"`) → `get_menstrual_data_for_date(date)` once for today — read-only, also allowed under `/garmin-daily-sync`; its answer is Garmin's raw JSON whose shape garmin-mcp does not document: take a phase/day only from a field that explicitly says so, and treat an empty answer, « No menstrual data found », an error or an unrecognised shape as « phase indisponible » (never deduce a phase from dates). `intervals` (with `[data].source = "intervals"`) → `other.menstrual_phase` of the `icu_get_wellness_for_date` call you already make for HRV/resting HR. `coros` (with `[data].source = "coros"`) → `queryMenstruationCycles` once; « No menstrual cycle data found » or default cycle lengths = « phase indisponible » (never deduce a phase from them). `manual`, or a mode that does not match `[data].source` → only what the athlete declared via `/log` for today (`cycle_phase` in `medical/YYYY-MM-DD_health.md`); never carry yesterday's phase over to today.
 - **Persist** `cycle_phase`, `cycle_day` (if given) and `cycle_source` in the day's health block (`workspace-data-contract`), values normalised by `scripts/arc_cycle.py` (`normalize_phase`/`normalize_day`); unknown value = key omitted.
 - **Use it as ONE line of context next to an HRV or resting-HR deviation**, e.g. « HRV un peu basse — phase lutéale (jour 22) : un décalage de ce type y est possible, à lire comme contexte et non comme fatigue seule ». It lets you nuance a reading that would otherwise be a false positive (a low HRV with a stable resting HR in the luteal phase is not, on its own, a reason to cancel a session — re-check the next morning).
 - **Never**: change a threshold, add or remove a rule, relax a verdict. A red verdict, a guardrail block (R5), an injury-risk `consult`, a resting HR « clearly elevated », a pain ≥ the consult threshold or any symptom stay exactly what they are, whatever the phase. Never tell the athlete a symptom is « normal because of the cycle », never comment on regularity, fertility or hormones, never diagnose. The coaching style changes the wording, never this.
@@ -622,7 +646,7 @@ Photo inspection of a pair of shoes is handled by the `gear-inspection` skill �
 | `garmin-sync-efficiency` | Before any Garmin data fetch (activities, sleep, HRV, readiness, body battery). Prevents context bloat. |
 | `workspace-data-contract` | Before writing or rewriting ANY file in `activities/`, `medical/`, `nutrition/`, `planning/` or `rapports/` — the ```arc block schema per file kind, SI units, and the `scripts/arc_index.py --validate` check. Also for backfilling old files (`/arc-backfill`). |
 | `garmin-workout-scheduling` | Before pushing planned sessions to the Garmin Connect calendar (PRIMARY scheduling destination). |
-| `coros-workout-scheduling` | When the athlete runs with a COROS watch and the `coros` MCP server is connected in this interactive session (`./install.sh --coros`): push planned sessions through it, strength via the athlete's own COROS templates — explicit "yes", never headless; one path to the watch (never a session another service already uploads to COROS). |
+| `coros-workout-scheduling` | With `[data].source = "coros"` it REPLACES `garmin-workout-scheduling` (primary scheduling destination). Otherwise when the athlete runs with a COROS watch and the `coros` MCP server is connected in this interactive session (`./install.sh --coros`): push planned sessions through it, strength via the athlete's own COROS templates — explicit "yes", never headless; one path to the watch (never a session another service already uploads to COROS). |
 | `mywhoosh-route` | ONLY when `[home_trainer].platform = "mywhoosh"`: before validating or pushing a home trainer session — picks a MyWhoosh route that fits the planned duration at the athlete's calibrated power (`arc_index.py power-hr`). |
 | `vanoor-export` | ONLY when `[vanoor].export = "on"`: on every week validation — writes the week's running sessions as a `.vanoor` file (structured steps, the athlete's own HR/pace targets) for the Vanoor app on Apple Watch. |
 | `intervals-icu-best-practices` | ONLY if the user explicitly asks to mirror or create events on Intervals.icu (SECONDARY). |

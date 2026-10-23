@@ -9,27 +9,35 @@ Pro), entre le 22 et le 23 octobre 2026.
 
 | | État |
 |---|---|
-| Connexion (une fois, pour toutes les IA) | ✅ `./install.sh --coros` |
+| Connexion (une fois, pour toutes les IA) | ✅ `./install.sh --source coros` (source de données) ou `--coros` (montre seule) |
 | Envoyer les séances de course, trail et vélo à la montre | ✅ cibles FC et allure personnelles |
 | Modifier une séance envoyée | ✅ |
 | Supprimer ou déplacer une séance | ❌ dans l'app COROS (aucun outil dans le MCP) |
 | Renforcement structuré | ✅ vos séances types, créées une fois dans l'app, planifiées par le coach |
 | Allure seuil COROS (contrôle de la vitesse critique) | ✅ |
-| Lire activités, tours, santé, récupération | ✅ en session interactive |
+| Lire activités, tours, santé, récupération | ✅ |
 | FIT et analyses fines (zones, GAP, découplage, montées, foulée) | ✅ `download_fit.py --source coros`, identifiant `coros_activity_id` |
-| Source de données `coros` : activités et santé enregistrées, bilan matinal, synchronisation quotidienne | ⬜ à venir (`--source coros`) |
+| Source de données `coros` : activités et santé enregistrées, bilan matinal, synchronisation quotidienne | ✅ `./install.sh --source coros` |
+| Surveillance (`[sync].mode = "watch"`) : synchronisation dès qu'une séance ou la nuit arrive | ✅ sans IA, par le relais |
 | Splits par km | ⬜ à venir, calculés depuis le FIT |
 | FC de récupération, matériel par séance, pesées | ❌ absents du MCP COROS |
 
-!!! note "En attendant `--source coros`"
-    COROS n'est pas encore une valeur de `[data].source`. Le coach lit vos données COROS
-    pendant la conversation, mais ne les enregistre pas encore dans `activities/` et
-    `medical/`, et la synchronisation quotidienne ne s'en sert pas.
+## Deux façons de brancher la montre
+
+| | `./install.sh --source coros` | `./install.sh --coros` |
+|---|---|---|
+| Pour qui | votre montre est une COROS | votre source de données reste une autre |
+| Activités et santé enregistrées (`activities/`, `medical/`), bilan matinal, synchronisation quotidienne, surveillance | ✅ comme avec Garmin | ❌ lectures pendant la conversation seulement |
+| Séances envoyées à la montre | ✅ destination principale | ✅ |
+
+`--source coros` implique `--coros` (le relais est la source de données) ; `--no-coros` lui
+est refusé. Il installe aussi un petit environnement Python dédié à la lecture des FIT
+(`~/.local/share/ai-running-coach/fit-reader`, `fitparse`), puisque `garmin-mcp` n'est plus là.
 
 ## Installation : une seule connexion pour toutes les IA
 
 ```bash
-./install.sh --coros
+./install.sh --source coros     # ou --coros pour la montre seule
 ```
 
 - **Une seule connexion.** L'installeur lance `python3 scripts/arc_coros_auth.py login`
@@ -197,10 +205,34 @@ nuit) :
 contrôle de la vitesse critique (`arc_coros_workout.py threshold`, nommée « allure seuil
 COROS »), jamais comme cible.
 
-## Correspondance Garmin ↔ COROS (préparée pour `--source coros`)
+## Le bilan matinal avec COROS
 
-Ce que la future source `coros` lira, outil par outil. Rien n'est encore branché :
-cette table entrera dans `AGENTS.md` avec `--source coros`.
+Avec `--source coros`, le bilan matinal est le même triptyque qu'avec Garmin, au niveau de
+`[health].morning_check` :
+
+| Garmin | COROS | Enregistré dans `medical/AAAA-MM-JJ_health.md` |
+|---|---|---|
+| HRV nocturne | `querySleepHrv` (évaluation officielle du jour) | `hrv_overnight_ms` |
+| FC de repos | `queryRestingHeartRate` | `resting_hr_bpm` |
+| Training Readiness | **récupération COROS** (`queryRecoveryStatus`) | `provider_scores` (`recovery`, 0-100) |
+| Score de sommeil | score de sommeil COROS (`querySleepOverview`) | `provider_scores` (`sleep`, 0-100) |
+
+- **Nommer, jamais convertir.** Le coach dit « récupération COROS 96 % », jamais « Training
+  Readiness », et ne la compare jamais aux seuils Garmin. C'est un état **actuel**, mis à jour en
+  continu : il ne prouve jamais que la nuit a été lue.
+- **Jour du réveil.** La nuit du 22 au 23 est datée du 23.
+- **Nuit pas encore calculée.** `Sleep Score: 0`, HRV « No data found », FC de repos `No data` :
+  la nuit n'est pas encore arrivée chez COROS (constaté le 23/10/2026 : nuit visible dans l'app
+  COROS à 11 h 27, toujours absente du MCP à 11 h 34 ; délai à mesurer). La synchronisation sans
+  tête n'écrit alors **aucun** fichier santé et réessaie au passage suivant ; en conversation, le
+  coach le dit et décide sur la charge et votre ressenti.
+- **Ligne de base HRV** : environ 5 nuits avec la montre selon COROS ; avant, « ligne de base COROS
+  en construction ».
+
+## Correspondance Garmin ↔ COROS
+
+Ce que la source `coros` lit, outil par outil. La table de référence des agents (avec les
+règles de persistance) est dans `AGENTS.md`, « Correspondance des outils — Garmin ↔ COROS ».
 
 | Besoin | Outil `garmin` | Outil `coros` | Note |
 |---|---|---|---|

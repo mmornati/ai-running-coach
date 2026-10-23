@@ -615,7 +615,7 @@ mm ÷ 1000), pourcentages inchangés. Toutes optionnelles :
 | `weight_kg` | nombre | poids du jour : pesée Garmin (`get_daily_weigh_ins`, #222) ou valeur déclarée par l'athlète — voir « Poids du jour » ci-dessous |
 | `weight_origin` | `garmin` `chat` | provenance de `weight_kg` (#222) ; absente = fichier d'avant #222, lu comme déclaré |
 | `weight_garmin_kg` | 30-200 | pesée Garmin ÉCARTÉE au profit de la valeur déclarée, écart > 1 kg (#222) — signalé une seule fois |
-| `health_source` | `garmin` `intervals` `openwearables` | d'où viennent HRV, FC de repos et sommeil de CE fichier (#218) — une seule source santé par fichier. **Absent = fichier antérieur**, réputé venir de `[data].source` (hypothèse du projet, `arc_health_source.ASSUMPTIONS`) |
+| `health_source` | `garmin` `intervals` `openwearables` `coros` | d'où viennent HRV, FC de repos et sommeil de CE fichier (#218) — une seule source santé par fichier. **Absent = fichier antérieur**, réputé venir de `[data].source` (hypothèse du projet, `arc_health_source.ASSUMPTIONS`) |
 | `health_provider` | texte | fabricant amont quand `health_source = "openwearables"` (`oura`, `whoop`, `polar`…) ; refusé sinon |
 | `health_device` | texte | modèle d'appareil tel que rapporté par la source |
 | `hrv_sdnn_ms` | nombre > 0 | HRV en **SDNN** (Apple Health). Jamais dans `hrv_overnight_ms`, qui reste du RMSSD quelle que soit la source |
@@ -626,7 +626,7 @@ mm ÷ 1000), pourcentages inchangés. Toutes optionnelles :
 | `pain` | liste d'objets | douleur STRUCTURÉE déclarée ce jour-là (#57) — voir ci-dessous |
 | `cycle_phase` | `menstrual` `follicular` `ovulation` `luteal` | **opt-in** (#166) : phase du cycle du jour, voir « Contexte du cycle » ci-dessous |
 | `cycle_day` | entier 1-60 | jour du cycle, si la source le donne |
-| `cycle_source` | `garmin` `intervals` `manual` | d'où vient la phase (`manual` = déclarée par l'athlète via `/log`) |
+| `cycle_source` | `garmin` `intervals` `coros` `manual` | d'où vient la phase (`manual` = déclarée par l'athlète via `/log`) |
 
 **Douleur déclarée (`pain`, #57).** Une liste d'objets, un par zone douloureuse
 signalée le jour du fichier (`health.date` fait foi comme date — pas de `date`
@@ -688,7 +688,7 @@ d'où viennent ses mesures. Règles, validées par `arc_index.py --validate` :
   présenté comme le Training Readiness Garmin.
 - Une seule source santé par fichier ; jamais deux sources fusionnées dans un même jour.
 - **Tout nouveau fichier santé portant une mesure** (HRV, FC de repos, sommeil, score) pose
-  `health_source` : `garmin` ou `intervals` d'après `[data].source` quand la santé en vient, ou
+  `health_source` : `garmin`, `intervals` ou `coros` d'après `[data].source` quand la santé en vient, ou
   `openwearables` (avec `health_provider`/`health_device` tels que rendus par
   `scripts/arc_openwearables.py health-day`, #221). Un fichier sans mesure (douleur seule, `/log`,
   Telegram) n'a pas de source.
@@ -696,6 +696,14 @@ d'où viennent ses mesures. Règles, validées par `arc_index.py --validate` :
   (`hrv_overnight_ms`, `resting_hr_bpm`, `readiness`), jamais d'une cause devinée.
 - Une mesure que la source ne fournit pas = clé omise + `missing_reason`, jamais une
   valeur approchée d'une autre méthode.
+
+**Santé COROS (`health_source: "coros"`, #168).** Mêmes règles qu'Open Wearables pour les clés
+Garmin : `readiness_score`, `readiness_factors`, `sleep_score`, `body_battery_*` et `stress_avg` sont
+refusés. La **récupération COROS** (`queryRecoveryStatus`, `Recovery: N%`) et le score de sommeil COROS
+(`querySleepOverview`) vont dans `provider_scores`, nommés et sur leur échelle :
+`{"category": "recovery", "provider": "coros", "value": 96, "scale_min": 0, "scale_max": 100}`. Un
+`Sleep Score: 0` (nuit pas encore calculée) ou `Recovery: -1%` n'est jamais un score : clé omise.
+Pas de `health_provider` (réservé à `openwearables`).
 
 Chaque entrée de `provider_scores` : **`category`** (`readiness`, `recovery` ou
 `sleep` ; la charge n'est pas un signal de récupération), **`value`** (nombre),

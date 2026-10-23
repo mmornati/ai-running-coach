@@ -112,11 +112,12 @@ temps) plutôt qu'en remplacement complet de Garmin :
 
 ### Et le MCP officiel de COROS ?
 
-Oui : `./install.sh --coros` le branche directement, sans compte tiers, avec une
-seule connexion pour toutes les IA. Le coach envoie vos séances à la montre (et
-planifie vos séances types de renforcement) en interactif, après votre « oui ».
-La source de données `coros` (activités et santé enregistrées, bilan matinal,
-synchronisation quotidienne) est à venir. Voir [Montres COROS](coros.md).
+Oui : `./install.sh --source coros` en fait votre source de données, comme Garmin
+(activités et santé enregistrées, bilan matinal, synchronisation quotidienne,
+surveillance), sans compte tiers, avec une seule connexion pour toutes les IA. Le
+coach envoie vos séances à la montre (et planifie vos séances types de renforcement)
+en interactif, après votre « oui ». Avec une autre source, `./install.sh --coros`
+branche la montre seule. Voir [Montres COROS](coros.md).
 
 ## Agents
 

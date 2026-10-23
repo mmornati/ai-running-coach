@@ -23,9 +23,12 @@ which path they keep, and say that the other upload must be switched off.
 
 - The `coros` MCP server is connected **in this interactive session** (its tools are
   callable): installed by `./install.sh --coros` (local relay `scripts/arc_coros_mcp.py`,
-  one login for every AI client) or added by hand. COROS is not yet a `[data].source`
-  value (`--source coros` is planned): this skill reads COROS in the session but persists
-  no activity or health file. If the tools are not exposed, say so and point to `docs/coros.md` — never guess a
+  one login for every AI client) or added by hand. With `[data].source = "coros"`
+  (`./install.sh --source coros`, #168) COROS is the athlete's data source and this skill
+  REPLACES `garmin-workout-scheduling` — the primary scheduling destination; activities and
+  health are then synced like Garmin (`garmin-sync-efficiency`, table « Garmin ↔ COROS » of
+  `AGENTS.md`). With another source, this skill reads COROS in the session but persists no
+  activity or health file. If the tools are not exposed, say so and point to `docs/coros.md` — never guess a
   tool name. If a call answers "COROS non connecté" or "relancez … login", tell the athlete
   to run `python3 scripts/arc_coros_auth.py login` in a terminal (never run it yourself:
   it opens a browser).
