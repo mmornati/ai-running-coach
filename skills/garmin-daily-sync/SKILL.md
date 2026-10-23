@@ -35,8 +35,8 @@ Remote Control) et l'IDE partagent. Il délègue tout à l'agent `coach` et au s
   (mêmes outils de lecture), n'écrire rien côté intervals.icu (de toute façon
   interdit ici) et ajouter à la ligne `Alerte :` « serveur intervals.icu à
   mettre à jour : ./install.sh --source intervals (docs/update.md) » ; l'activité persistée porte `intervals_activity_id`
-  (chaîne) au lieu de `garmin_activity_id` (entier), et omet HRR/`splits`
-  (aucun équivalent). L'étape 2 (échantillons FIT) s'applique aussi, avec
+  (chaîne) au lieu de `garmin_activity_id` (entier), et omet HRR
+  (aucun équivalent) ; les `splits` viennent du FIT (étape 3a). L'étape 2 (échantillons FIT) s'applique aussi, avec
   l'`intervals_activity_id` de la séance (`download_fit.py` lit la source dans
   `[data].source`) ; une activité importée depuis Strava y sort `INDISPONIBLE` —
   ni un échec ni une alerte, juste une séance sans KPI fins. **Marqueur « pas encore
@@ -53,11 +53,30 @@ Remote Control) et l'IDE partagent. Il délègue tout à l'agent `coach` et au s
   ou un 401, écrire `ERREUR : jetons Strava absents ou expirés — relancer connect-strava dans
   une session interactive` et s'arrêter. Aucune donnée de santé (HRV, FC de repos, sommeil,
   readiness) : le bilan matinal est dit « indisponible — source Strava », jamais rempli. L'activité
-  persistée porte `strava_activity_id` (`"s<ID>"`, préfixe du projet) et omet HRR/`splits`/D−.
+  persistée porte `strava_activity_id` (`"s<ID>"`, préfixe du projet) et omet HRR/D− ; les `splits` viennent du FIT (étape 3a).
   Marqueur « pas encore synchronisé » : l'absence de `strava_activity_id`. L'étape 2 s'applique
   avec cet identifiant (`download_fit.py --source strava`, flux par seconde, pas de `.fit`).
   Un « 429 » (limite de l'API Strava) n'est pas une erreur d'authentification : le noter dans
   `Alerte :` et s'arrêter proprement.
+- **Source COROS (#168, `[data].source = "coros"`)** : **mêmes règles que Garmin** (COROS est une
+  source complète), avec le relais MCP `coros` (outils camelCase — table « Garmin ↔ COROS » de
+  `AGENTS.md`, jamais d'outil deviné) : `querySportRecords` + `getActivityDetail` pour les séances,
+  `querySleepHrv` + `queryRestingHeartRate` + `querySleepOverview` + `queryRecoveryStatus` pour le
+  bilan matinal (dates = **jour du réveil**). **Lecture seule, strictement** : aucun outil d'écriture
+  COROS (le relais les refuse en headless, `daily-sync.sh` aussi). Si COROS répond « COROS non
+  connecté », « jeton refusé » ou « relancez … login », écrire `ERREUR : connexion COROS refusée —
+  python3 scripts/arc_coros_auth.py login dans un terminal` et s'arrêter. La récupération COROS et le
+  score de sommeil COROS vont dans `provider_scores` (`recovery` / `sleep`, `provider: "coros"`,
+  0-100), jamais dans `readiness_score` / `sleep_score` ; `health_source: "coros"`. **Nuit pas encore
+  calculée** (`Sleep Score: 0`, HRV « No data found », FC de repos `No data` au jour du réveil) :
+  **aucun fichier santé** pour ce jour (le run suivant ou la surveillance réessaie) et le résumé le dit
+  (« sommeil COROS pas encore synchronisé »), jamais un score inventé ni la récupération seule à la
+  place de la nuit. L'activité porte `coros_activity_id` (`"c"` + `LabelId`) et `start_time`, omet
+  HRR et `calories_bmr_kcal` (aucun équivalent) ; les `splits` viennent du FIT (étape 3a), jamais des
+  tours COROS (`queryActivityLapData`). Marqueur « pas encore synchronisé » :
+  l'absence de `coros_activity_id`. L'étape 2 s'applique avec cet identifiant (`download_fit.py
+  <c…> --json`, la source est lue dans `[data].source`). Ni pesée, ni matériel : rien à lire.
+  Déclencheur `activity:c<LabelId>` (surveillance) = cette séance.
 - **Source de la santé (#221, `[health].source`, opt-in strict)** : défaut `primary` (clé absente,
   vide ou inconnue = `primary`) — **tout ce qui suit est alors sans objet : rien ne change, aucun
   appel de plus, et aucune mention d'Open Wearables, d'une bague ou d'un bracelet dans la sortie.**
@@ -119,7 +138,7 @@ Remote Control) et l'IDE partagent. Il délègue tout à l'agent `coach` et au s
   (un seul `get_daily_weigh_ins`), même s'il est déjà synchronisé : la pesée arrive souvent après
   la première synchronisation du matin. **Jamais d'écriture du poids côté Garmin** (`add_weigh_in`,
   `add_weigh_in_with_timestamps`, `delete_weigh_ins`, `add_body_composition` : hors liste blanche,
-  retirés par `scripts/daily-sync.sh`). Avec `[data].source = "intervals"` ou `"strava"` : rien à lire,
+  retirés par `scripts/daily-sync.sh`). Avec `[data].source = "intervals"`, `"strava"` ou `"coros"` : rien à lire,
   `weight_kg` reste déclaratif.
 - **Matériel (#133, source `garmin` uniquement)** : `gear_id` peut venir du matériel que la
   montre a attaché à la séance (`get_activity_gear`), et seulement si une puce du profil porte
@@ -140,7 +159,7 @@ Remote Control) et l'IDE partagent. Il délègue tout à l'agent `coach` et au s
   les retire explicitement. N'importez pas non plus le journal alimentaire Garmin dans `nutrition/` :
   c'est une lecture interactive, à la demande (`agents/nutritionist.md`).
 
-- **Déclencheurs (`trigger=…`, facultatif)** : posés par `scripts/garmin_watch.py` quand la
+- **Déclencheurs (`trigger=…`, facultatif)** : posés par `scripts/watch.py` quand la
   surveillance (`[sync].mode = "watch"`) a vu du neuf chez Garmin — `morning` (sommeil du
   jour calculé, bilan de santé absent) et/ou `activity:<id>` (séance dont aucun
   `activities/*.md` ne porte ce `garmin_activity_id`). C'est un **indice de priorité, pas
@@ -202,7 +221,7 @@ Remote Control) et l'IDE partagent. Il délègue tout à l'agent `coach` et au s
    > alert such as low HRV, poor sleep, HRR missing).
 2. **Échantillons FIT (#42, best-effort)** : pour chaque activité running/trail dont un
    fichier a été créé à l'étape 1, télécharger son FIT : `python3
-   skills/fit-download/scripts/download_fit.py <garmin_activity_id | intervals_activity_id | s<strava_activity_id>> --json` (sans
+   skills/fit-download/scripts/download_fit.py <garmin_activity_id | intervals_activity_id | s<strava_activity_id> | coros_activity_id> --json` (sans
    `--output-dir` : la copie normalisée canonique doit atterrir dans `activities/fit/`
    du workspace pour être ingérée à l'étape suivante). **Best-effort et non bloquant** :
    un échec (tokens `garminconnect` absents/expirés, clé API intervals.icu refusée,
@@ -217,13 +236,20 @@ Remote Control) et l'IDE partagent. Il délègue tout à l'agent `coach` et au s
    façon (« 1 fichier hors contrat — medical/2026-09-20_health.md »). Cette même commande
    ingère aussi les échantillons FIT déposés à l'étape 2 (`activity_sample`, aucune action
    supplémentaire requise).
+3a. **Splits par km depuis le FIT (règle par défaut, toutes sources, best-effort)** : pour
+   chaque activité running/trail créée à l'étape 1, lancer `python3 scripts/arc_index.py
+   splits <id>`. Sortie 0 : écrire `splits_cols` et `splits` tels quels dans son bloc `arc`
+   (ils REMPLACENT les splits Garmin de l'étape 1), valider (`--validate`), puis réindexer
+   une fois. Sortie 1 (pas de FIT ingéré) : garder ce que l'étape 1 a écrit (splits Garmin,
+   ou rien avec intervals.icu/Strava) et ne rien signaler de plus que le segment « FIT non
+   téléchargé » de l'étape 2. Jamais sur une activité qui n'est pas nouvelle dans ce run.
 3b. **Alerte d'usure des chaussures (#132) — une seule fois par franchissement, sans état.**
    Dresser la liste des séances running/trail/hiking **synchronisées pour la première fois dans
    CE run** : fichier d'activité créé à l'étape 1, ou fichier « pas encore synchronisé »
    (`/log`, #67) qui reçoit ses premiers champs Garmin. Une séance dont le fichier portait déjà
    ses données Garmin (simple re-fusion, second passage le même jour) n'en fait **jamais** partie.
    Lancer `python3 scripts/arc_index.py gear --activities <id1>,<id2>,…` avec, pour chacune, son
-   `garmin_activity_id` (ou `intervals_activity_id`, `strava_activity_id`, ou à défaut le chemin `activities/….md`).
+   `garmin_activity_id` (ou `intervals_activity_id`, `strava_activity_id`, `coros_activity_id`, ou à défaut le chemin `activities/….md`).
    Pour chaque paire du JSON qui porte `crossed_in_run: true`, ajouter le segment
    « Chaussures : <nom> a atteint son seuil (<distance_m/1000> km) » à la ligne `Alerte :`
    unique (concaténé avec ` ; `, jamais une ligne de plus). Méthode : `crossed_in_run` n'est vrai

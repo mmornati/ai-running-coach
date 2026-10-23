@@ -103,6 +103,33 @@ class TestHrTargetForIntensity(unittest.TestCase):
         self.assertIn("seuil", result["reason"])
 
 
+class TestIcuHrLthrTarget(unittest.TestCase):
+    """Constaté le 22/10/2026 : `137-149bpm` arrive sur COROS sans cible, `% LTHR` arrive en bpm."""
+
+    def test_real_ranges_pushed_to_coros(self):
+        # Valeurs relues sur la montre après envoi par Intervals.icu (LTHR course = 170).
+        self.assertEqual(T.intervals_hr_lthr_target([137, 149], 170), "80.6-87.7% LTHR")
+        self.assertEqual(T.intervals_hr_lthr_target([161, 168], 170), "94.8-98.9% LTHR")
+
+    def test_round_trip_hits_the_exact_bounds_whether_truncated_or_rounded(self):
+        for lthr in (150, 163, 170, 185, 199):
+            for low in range(90, 190, 7):
+                high = low + 11
+                lo, hi = (float(x) for x in T.intervals_hr_lthr_target([low, high], lthr).replace("% LTHR", "").split("-"))
+                for pct, bpm in ((lo, low), (hi, high)):
+                    self.assertEqual(int(pct * lthr / 100 + 1e-9), bpm, (lthr, low, high))
+                    self.assertEqual(round(pct * lthr / 100), bpm, (lthr, low, high))
+
+    def test_whole_percent_has_no_trailing_decimal(self):
+        self.assertEqual(T.intervals_hr_lthr_target([136, 153], 170), "80-90% LTHR")
+
+    def test_refuses_missing_threshold_or_inverted_range(self):
+        with self.assertRaises(ValueError):
+            T.intervals_hr_lthr_target([137, 149], 0)
+        with self.assertRaises(ValueError):
+            T.intervals_hr_lthr_target([149, 137], 170)
+
+
 class TestUnitConversions(unittest.TestCase):
     def test_pace_to_speed_and_back_round_trips(self):
         pace = 300.0  # 5 min/km
@@ -571,6 +598,22 @@ class TestMainCli(unittest.TestCase):
             self.assertEqual(code, 0)
             result = json.loads(out.getvalue())
             self.assertEqual(result["hr_target"]["bounds_bpm"], [134, 148])
+            self.assertNotIn("intervals_target", result["hr_target"])
+
+    def test_main_adds_intervals_target_with_intervals_lthr(self):
+        import io
+        from contextlib import redirect_stdout
+        with tempfile.TemporaryDirectory() as tmp:
+            ws = self._workspace(tmp)
+            out = io.StringIO()
+            with redirect_stdout(out):
+                code = T.main(["targets", "--session",
+                                '{"date": "2026-09-30", "sport": "trail", "title": "Footing", '
+                                '"intensity": "endurance"}',
+                                "--workspace", str(ws), "--memory", "--icu-lthr-bpm", "170"])
+            self.assertEqual(code, 0)
+            hr = json.loads(out.getvalue())["hr_target"]
+            self.assertEqual(hr["intervals_target"], T.intervals_hr_lthr_target(hr["bounds_bpm"], 170))
 
     def test_main_reports_error_on_missing_session_date(self):
         import io

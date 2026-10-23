@@ -1309,7 +1309,7 @@ la [machine coach](headless.md) ou [derrière votre reverse proxy](docker.md).
   en erreur, tokens Garmin refusés), *dégradée* (Garmin injoignable, nouvel essai programmé) ou
   *jamais lancée*. En retard, en échec ou dégradée, une pastille rouge apparaît aussi dans
   l'en-tête de toutes les pages.
-- **Réglages** : mode (`schedule` aux heures fixes, `watch` par sondage Garmin), exécuteur,
+- **Réglages** : mode (`schedule` aux heures fixes, `watch` par sondage Garmin ou COROS), exécuteur,
   prochaine exécution attendue, dernier sondage, runs du jour, filet de sécurité, versionnement git.
 - **Derniers runs** (14 jours) : heure, déclencheur (bilan matinal, séance, heure fixe), durée,
   code de sortie, le bloc résumé envoyé en notification, les lignes d'erreur, et le journal complet
@@ -1322,7 +1322,7 @@ Même état en terminal : `python3 scripts/arc_sync_status.py` (`--json` pour le
 
 | Fichiers lus | Écrits par |
 |---|---|
-| `logs/sync-<date>.log`, `logs/watch.log`, `logs/.watch-state.json`, `logs/.sync.lock`, `config/workspace*.toml` (`[sync]`) | `scripts/daily-sync.sh`, `scripts/garmin_watch.py` |
+| `logs/sync-<date>.log`, `logs/watch.log`, `logs/.watch-state.json`, `logs/.sync.lock`, `config/workspace*.toml` (`[sync]`) | `scripts/daily-sync.sh`, `scripts/watch.py` |
 
 Code et durée d'un run ne s'affichent que pour les journaux écrits depuis cette version (pied
 `===== … fin code=N durée=Ns =====`) ; pour les plus anciens, seul le dernier run reprend le code
@@ -1349,7 +1349,7 @@ nourrit :
 | Rapports | `rapports/*.md` | coach |
 | Nutrition | `nutrition/<date>_nutrition.md` | nutritionniste |
 | Hypothèses | aucun fichier du workspace : les modules de calcul (`scripts/arc_*.py`) | — |
-| Synchro | `logs/sync-*.log`, `logs/watch.log`, `logs/.watch-state.json`, `[sync]` | `daily-sync.sh`, `garmin_watch.py` |
+| Synchro | `logs/sync-*.log`, `logs/watch.log`, `logs/.watch-state.json`, `[sync]` | `daily-sync.sh`, `watch.py` |
 
 Chacun de ces fichiers s'ouvre par un bloc de données décrit par le
 [contrat de données](../skills/workspace-data-contract.md) : c'est ce bloc que le

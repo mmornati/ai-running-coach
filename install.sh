@@ -25,9 +25,11 @@
 #   ./install.sh --ide copilot      # GitHub Copilot (CLI, VS Code, agent cloud)
 #   ./install.sh --source intervals # Intervals.icu au lieu de Garmin (#68)
 #   ./install.sh --source strava    # Strava au lieu de Garmin (#164)
-#   ./install.sh --cycle-tracking MODE # off (défaut) | garmin | intervals | manual — contexte du cycle menstruel, opt-in (#166)
+#   ./install.sh --source coros     # montre COROS au lieu de Garmin (#168) : relais du MCP officiel, implique --coros
+#   ./install.sh --cycle-tracking MODE # off (défaut) | garmin | intervals | coros | manual — contexte du cycle menstruel, opt-in (#166)
 #   ./install.sh --nutrition-sync MODE # off (défaut) | ask — pousser les apports vers Garmin Connect, opt-in (#167)
 #   ./install.sh --health-source S     # primary (défaut) | openwearables — santé du bilan matinal lue chez Open Wearables, opt-in (#220)
+#   ./install.sh --coros            # montre COROS : relais MCP local + connexion unique (arc_coros_auth.py), avec toute source
 #     --ow-url URL --ow-provider P     #   instance Open Wearables et UN fabricant (oura, whoop, polar…) ; --ow-key-file F importe la clé
 #   ./install.sh --workspace DIR    # données + config IDE dans DIR (dépôt privé), moteur lié
 #   ./install.sh --agents LISTE     # staff à installer, ex. coach,nutritionist
@@ -99,6 +101,10 @@ STRAVA_MCP_PKG="@r-huijts/strava-mcp-server@1.2.1"
 # (~/.config/strava-mcp/config.json), jamais ici ni dans une config d'IDE.
 STRAVA_MCP_DIR="$HOME/.config/ai-running-coach/strava-mcp"
 STRAVA_TOKEN_FILE="$HOME/.config/strava-mcp/config.json"
+# Source COROS (#168) : le relais MCP est stdlib, mais la lecture des FIT (`download_fit.py --json`)
+# exige `fitparse`, d'ordinaire embarqué par garmin-mcp ou intervals-icu-mcp — absents avec cette
+# source. Environnement dédié, créé par uv, que download_fit.py et coach_doctor connaissent.
+COROS_FIT_READER_DIR="$HOME/.local/share/ai-running-coach/fit-reader"
 LEANPROXY_BREW_TAP="mmornati/leanproxy-mcp"
 LEANPROXY_FORMULA="leanproxy-mcp"
 GARMIN_TOKENS_DIR="$HOME/.garminconnect"
@@ -194,8 +200,8 @@ AGENTS_ARG=""      # --agents coach,medical,… (défaut : la config, sinon tous
 ENABLED_AGENTS=""  # résolu par resolve_agents()
 NEW_AGENTS=""      # agents apparus depuis la dernière installation, activés d'office
 PRESET=""          # --preset laptop|coach-server|docker (défaut : aucun)
-SOURCE="garmin"    # --source garmin|intervals|strava (#68, #164) — source de données primaire
-CYCLE_TRACKING="off" # --cycle-tracking off|garmin|intervals|manual (#166) — contexte du cycle, opt-in
+SOURCE="garmin"    # --source garmin|intervals|strava|coros (#68, #164, #168) — source de données primaire
+CYCLE_TRACKING="off" # --cycle-tracking off|garmin|intervals|coros|manual (#166, #168) — contexte du cycle, opt-in
 NUTRITION_SYNC="off" # --nutrition-sync off|ask (#167) — poussée des apports vers Garmin, opt-in
 HEALTH_SOURCE=""   # --health-source primary|openwearables (#220) — santé du bilan matinal, opt-in
 OW_URL=""          # --ow-url URL (avec --health-source openwearables)
@@ -203,6 +209,8 @@ OW_PROVIDER=""     # --ow-provider P (avec --health-source openwearables)
 OW_KEY_FILE_ARG="" # --ow-key-file FICHIER : clé d'API à importer (jamais passée en argument)
 OW_KEY_FILE_DEFAULT="$HOME/.config/ai-running-coach/openwearables.key" # = défaut de [health.openwearables].api_key_file
 HEALTH_EFFECTIVE="primary" # résolu par resolve_health_source()
+COROS_ARG=""       # --coros (1) | --no-coros (0) ; vide = garder [coros].mcp de la config
+COROS_RELAY=0      # résolu par resolve_coros()
 LLM_PROVIDER=""    # --llm openrouter|openrouter-free|anthropic|openai|chatgpt|copilot — chat + sync sur une API, un abonnement ou l'essai gratuit
 LLM_MODEL_ARG=""   # --model ID (avec --llm)
 LLM_BASE_URL_ARG="" # --base-url URL (avec --llm openai : API compatible OpenAI)
@@ -259,10 +267,11 @@ Usage :
   ./install.sh                    # installation (mode direct Garmin)
   ./install.sh --preset PRESET    # laptop | coach-server | docker — voir --help ci-dessous
   ./install.sh --ide IDE          # claude | copilot | opencode | gemini | cursor | windsurf
-  ./install.sh --source SOURCE    # garmin (défaut) | intervals | strava — source de données primaire (#68, #164)
-  ./install.sh --cycle-tracking MODE # off (défaut) | garmin | intervals | manual — contexte du cycle menstruel, opt-in (#166)
+  ./install.sh --source SOURCE    # garmin (défaut) | intervals | strava | coros — source de données primaire (#68, #164, #168)
+  ./install.sh --cycle-tracking MODE # off (défaut) | garmin | intervals | coros | manual — contexte du cycle menstruel, opt-in (#166)
   ./install.sh --nutrition-sync MODE # off (défaut) | ask — pousser les apports vers Garmin Connect, opt-in (#167)
   ./install.sh --health-source S  # primary (défaut) | openwearables — santé du bilan matinal chez Open Wearables, opt-in (#220)
+  ./install.sh --coros            # montre COROS : MCP officiel via un relais local, une seule connexion pour toutes les IA (--no-coros : retirer)
   ./install.sh --ow-url URL       # avec --health-source openwearables : adresse de votre instance (http://hôte[:port])
   ./install.sh --ow-provider P    # avec --health-source openwearables : UN fabricant (oura, whoop, polar…)
   ./install.sh --ow-key-file F    # avec --health-source openwearables : importe la clé d'API (copiée hors dépôt, mode 600)
@@ -480,6 +489,8 @@ while [[ $# -gt 0 ]]; do
         --cycle-tracking) need_value "$@"; CYCLE_TRACKING="$2"; EXPLICIT_CYCLE=1; shift 2 ;;
         --nutrition-sync) need_value "$@"; NUTRITION_SYNC="$2"; EXPLICIT_NUTRITION=1; shift 2 ;;
         --health-source) need_value "$@"; HEALTH_SOURCE="$2"; EXPLICIT_HEALTH=1; shift 2 ;;
+        --coros) COROS_ARG=1; shift ;;
+        --no-coros) COROS_ARG=0; shift ;;
         --ow-url) need_value "$@"; OW_URL="$2"; shift 2 ;;
         --ow-provider) need_value "$@"; OW_PROVIDER="$2"; shift 2 ;;
         --ow-key-file) need_value "$@"; OW_KEY_FILE_ARG="$2"; shift 2 ;;
@@ -568,8 +579,8 @@ fi
 # Valide $CYCLE_TRACKING (même principe que validate_source).
 validate_cycle_tracking() {
     case "$CYCLE_TRACKING" in
-        off|garmin|intervals|manual) ;;
-        *) die "Mode de suivi du cycle inconnu : « $CYCLE_TRACKING ». Valides : off, garmin, intervals, manual (voir --help)." ;;
+        off|garmin|intervals|coros|manual) ;;
+        *) die "Mode de suivi du cycle inconnu : « $CYCLE_TRACKING ». Valides : off, garmin, intervals, coros, manual (voir --help)." ;;
     esac
 }
 if [[ "$EXPLICIT_CYCLE" -eq 1 ]]; then
@@ -641,8 +652,8 @@ fi
 # config existante).
 validate_source() {
     case "$SOURCE" in
-        garmin|intervals|strava) ;;
-        *) die "Source de données inconnue : « $SOURCE ». Valides : garmin, intervals, strava (voir --help)." ;;
+        garmin|intervals|strava|coros) ;;
+        *) die "Source de données inconnue : « $SOURCE ». Valides : garmin, intervals, strava, coros (voir --help)." ;;
     esac
     if [[ "$SOURCE" != "garmin" && "$USE_LEANPROXY" -eq 1 ]]; then
         die "--use-leanproxy ne route que le serveur garmin — incompatible avec --source $SOURCE (voir --help)."
@@ -744,6 +755,9 @@ stale_mcp_server_names() {
     case "$SOURCE" in
         intervals) echo "garmin strava" ;;
         strava) echo "garmin intervals" ;;
+        # COROS (#168) : le relais `coros` devient le serveur primaire. Il n'est jamais « périmé » pour
+        # les autres sources : il reste piloté par --coros / --no-coros ([coros].mcp).
+        coros) echo "garmin intervals strava" ;;
         *) echo "intervals strava" ;;
     esac
 }
@@ -1063,9 +1077,9 @@ resolve_cycle_tracking() {
             # serait « garmin » pour les agents mais « off » ici — outils appelés mais jamais exposés.
             previous="$(printf '%s' "$previous" | tr '[:upper:]' '[:lower:]' | tr -d '[:space:]')"
             case "$previous" in
-                off|garmin|intervals|manual) CYCLE_TRACKING="$previous" ;;
+                off|garmin|intervals|coros|manual) CYCLE_TRACKING="$previous" ;;
                 "") ;;
-                *) warn "[health].cycle_tracking = « $previous » invalide (off, garmin, intervals, manual) — traité comme « off »." ;;
+                *) warn "[health].cycle_tracking = « $previous » invalide (off, garmin, intervals, coros, manual) — traité comme « off »." ;;
             esac
         fi
     fi
@@ -1074,7 +1088,9 @@ resolve_cycle_tracking() {
             GARMIN_TOOL_WHITELIST="$GARMIN_TOOL_WHITELIST,$GARMIN_CYCLE_TOOLS"
             log "Suivi du cycle (opt-in) : outils get_menstrual_* ajoutés à la liste blanche garmin"
         else
-            if [[ "$SOURCE" == "strava" ]]; then
+            if [[ "$SOURCE" == "coros" ]]; then
+                warn "cycle_tracking = garmin avec la source COROS : utilisez « coros » (queryMenstruationCycles) ou « manual » (voir docs/cycle-menstruel.md)."
+            elif [[ "$SOURCE" == "strava" ]]; then
                 warn "cycle_tracking = garmin avec la source Strava : Strava n'expose aucune donnée de cycle — les agents retomberont sur « manual » (voir docs/cycle-menstruel.md)."
             else
                 warn "cycle_tracking = garmin sans source Garmin : aucun outil à exposer — utilisez « intervals » (champ menstrualPhase) ou « manual » (voir docs/configuration.md)."
@@ -1082,6 +1098,8 @@ resolve_cycle_tracking() {
         fi
     elif [[ "$CYCLE_TRACKING" == "intervals" && "$SOURCE" != "intervals" ]]; then
         warn "cycle_tracking = intervals sans source intervals.icu : les agents retomberont sur la déclaration manuelle (voir docs/configuration.md)."
+    elif [[ "$CYCLE_TRACKING" == "coros" && "$SOURCE" != "coros" ]]; then
+        warn "cycle_tracking = coros sans source COROS : les agents retomberont sur la déclaration manuelle (voir docs/configuration.md)."
     fi
 }
 
@@ -1137,7 +1155,7 @@ resolve_nutrition_sync() {
             GARMIN_TOOL_WHITELIST="$GARMIN_TOOL_WHITELIST,$GARMIN_NUTRITION_TOOLS"
             log "Synchronisation nutrition (opt-in) : outils de journal alimentaire et d'hydratation ajoutés à la liste blanche garmin"
         else
-            # intervals.icu et Strava (#164) n'ont ni journal alimentaire ni hydratation : rien à pousser.
+            # intervals.icu, Strava (#164) et COROS (#168) n'ont ni journal alimentaire ni hydratation : rien à pousser.
             warn "[nutrition].garmin_sync = « ask » indisponible avec [data].source = « $SOURCE » (journal alimentaire et hydratation propres à Garmin Connect) — aucun outil exposé (voir docs/nutrition-garmin.md)."
         fi
     fi
@@ -1929,6 +1947,24 @@ install_strava_mcp() {
 }
 
 # ---------------------------------------------------------------------------
+# 2quater. lecteur de FIT pour la source COROS (--source coros, #168)
+# ---------------------------------------------------------------------------
+# Le serveur COROS (relais du projet, configure_coros) n'a rien à installer ; seul `fitparse`
+# manque pour lire les FIT téléchargés. Un environnement uv dédié, jamais le Python système.
+install_coros_fit_reader() {
+    log "Lecteur de FIT pour la source COROS ($COROS_FIT_READER_DIR)"
+    local py="$COROS_FIT_READER_DIR/bin/python3"
+    if [[ -x "$py" ]] && "$py" -c 'import fitparse' 2>/dev/null; then
+        ok "fitparse déjà présent"
+        return 0
+    fi
+    [[ -x "$py" ]] || run uv venv --python 3.12 "$COROS_FIT_READER_DIR" \
+        || { warn "Environnement du lecteur de FIT non créé — download_fit.py --json indisponible (voir /coach-doctor)"; return 0; }
+    run uv pip install --python "$py" fitparse \
+        || warn "fitparse non installé — download_fit.py --json indisponible (voir /coach-doctor)"
+}
+
+# ---------------------------------------------------------------------------
 # 3. leanproxy-mcp (optionnel — mode power user)
 # ---------------------------------------------------------------------------
 install_leanproxy() {
@@ -2071,6 +2107,8 @@ mcp_server_value() {
         mcp_server_value_intervals
     elif [[ "$SOURCE" == "strava" ]]; then
         mcp_server_value_strava
+    elif [[ "$SOURCE" == "coros" ]]; then
+        mcp_server_value_coros
     elif [[ "$USE_LEANPROXY" -eq 1 ]]; then
         printf '{"command": "leanproxy-mcp", "args": []}'
     else
@@ -2084,6 +2122,8 @@ mcp_server_value_opencode() {
         mcp_server_value_intervals_opencode
     elif [[ "$SOURCE" == "strava" ]]; then
         mcp_server_value_strava_opencode
+    elif [[ "$SOURCE" == "coros" ]]; then
+        mcp_server_value_coros_opencode
     elif [[ "$USE_LEANPROXY" -eq 1 ]]; then
         printf '{"type": "local", "command": ["leanproxy-mcp"], "enabled": true}'
     else
@@ -2098,6 +2138,8 @@ mcp_server_name() {
         echo "intervals"
     elif [[ "$SOURCE" == "strava" ]]; then
         echo "strava"
+    elif [[ "$SOURCE" == "coros" ]]; then
+        echo "coros"
     elif [[ "$USE_LEANPROXY" -eq 1 ]]; then
         echo "leanproxy"
     else
@@ -2273,22 +2315,30 @@ write_cursor_config() {
     # shellcheck source=scripts/lib/sync_tools.sh
     source "$PROJECT_ROOT/scripts/lib/sync_tools.sh"
     local server tool mcp_deny=""
-    case "$SOURCE" in intervals|strava) server="$SOURCE" ;; *) server="garmin" ;; esac
+    case "$SOURCE" in intervals|strava|coros) server="$SOURCE" ;; *) server="garmin" ;; esac
     for tool in $(sync_write_tools "$server"); do
         mcp_deny+=",\"Mcp($server:$tool)\""
     done
+    # Relais COROS (--coros) : `--force` approuverait aussi ses écritures (noms camelCase, hors préfixes).
+    if [[ "$COROS_RELAY" -eq 1 && "$server" != "coros" ]]; then
+        for tool in $(sync_write_tools coros); do
+            mcp_deny+=",\"Mcp(coros:$tool)\""
+        done
+    fi
     # Santé lue chez Open Wearables avec des activités Garmin (#220) : les outils santé Garmin sont refusés
     # aussi (une seule source santé par jour). Quand on revient à « primary », on retire ces seules entrées.
-    local health_denied="" want_health_deny=0
-    if [[ "$HEALTH_EFFECTIVE" == "openwearables" && "$server" == "garmin" ]]; then
+    # COROS (#168) : même règle avec la source COROS (outils santé COROS).
+    local health_denied="" want_health_deny=0 health_server="garmin"
+    [[ "$server" == "coros" ]] && health_server="coros"
+    if [[ "$HEALTH_EFFECTIVE" == "openwearables" && "$server" == "$health_server" ]]; then
         want_health_deny=1
     fi
-    SYNC_DENY_GARMIN_HEALTH=1
-    health_denied="$(sync_health_denied_tools garmin | tr '\n' ' ')"
-    SYNC_DENY_GARMIN_HEALTH=0
+    SYNC_DENY_GARMIN_HEALTH=1 SYNC_DENY_COROS_HEALTH=1
+    health_denied="$(sync_health_denied_tools "$health_server" | tr '\n' ' ')"
+    SYNC_DENY_GARMIN_HEALTH=0 SYNC_DENY_COROS_HEALTH=0
     if [[ "$want_health_deny" -eq 1 ]]; then
         for tool in $health_denied; do
-            mcp_deny+=",\"Mcp(garmin:$tool)\""
+            mcp_deny+=",\"Mcp($health_server:$tool)\""
         done
     fi
     # Fusion par listes : les règles allow/deny ajoutées par l'utilisateur sont conservées.
@@ -2296,14 +2346,14 @@ write_cursor_config() {
         '{"allow":["Read(**)","Write(activities/**)","Write(medical/**)","Write(nutrition/**)","Write(planning/**)","Write(rapports/**)","Write(gear/**)","Shell(python3)"],"deny":["Write(scripts/**)","Write(skills/**)","Write(local/**)","Write(config/**)","Write(.mcp.json)","Write(.cursor/**)","Write(.github/**)","Write(.gemini/**)","Write(.claude/**)","Write(.opencode/**)","Write(install.sh)","Read(**/.env*)","Shell(rm)","Shell(git)","Shell(gh)"'"$mcp_deny"']}' \
         "" union
     if [[ "$want_health_deny" -eq 0 && "$DRY_RUN" -eq 0 && -f "$permissions" ]] && have python3; then
-        python3 - "$permissions" "$health_denied" <<'PYEOF' || warn "Impossible de retirer les refus santé Garmin de $permissions."
+        python3 - "$permissions" "$health_denied" "$health_server" <<'PYEOF' || warn "Impossible de retirer les refus santé de $permissions."
 import json, sys
-path, tools = sys.argv[1], sys.argv[2].split()
+path, tools, server = sys.argv[1], sys.argv[2].split(), sys.argv[3]
 with open(path, encoding="utf-8") as fh:
     data = json.load(fh)
 deny = (data.get("permissions") or {}).get("deny")
 if isinstance(deny, list):
-    drop = {"Mcp(garmin:%s)" % t for t in tools}
+    drop = {"Mcp(%s:%s)" % (server, t) for t in tools}
     kept = [d for d in deny if d not in drop]
     if len(kept) != len(deny):
         data["permissions"]["deny"] = kept
@@ -2321,6 +2371,112 @@ write_windsurf_config() {
     cleanup_stale_mcp_server "$cfg" mcpServers
     merge_json_key "$cfg" mcpServers "$(mcp_server_name)" "$(mcp_server_value)"
     ok "Serveur MCP $(mcp_server_name) présent dans $cfg"
+}
+
+# ---------------------------------------------------------------------------
+# 5c. Montre COROS : relais MCP local (scripts/arc_coros_mcp.py)
+# ---------------------------------------------------------------------------
+# Comme `garmin-mcp stdio` pour Garmin : chaque client d'IA lance un programme local
+# qui parle au MCP officiel COROS avec les jetons du projet. L'athlète ne se connecte
+# qu'une fois (arc_coros_auth.py login), pour toutes les IA et pour la sync ; aucun
+# client ne fait de connexion OAuth. Indépendant de [data].source : avec Intervals.icu
+# (configuration préconisée), il sert à vérifier l'arrivée des séances sur la montre.
+COROS_SERVER="coros"
+
+resolve_coros() {
+    local previous=""
+    if have python3; then
+        previous="$(python3 "$PROJECT_ROOT/scripts/coach_config.py" get \
+            --workspace "$WORKSPACE_ROOT" --section coros --key mcp --default off 2>/dev/null)" || previous="off"
+    fi
+    case "$COROS_ARG" in
+        1) COROS_RELAY=1 ;;
+        0) COROS_RELAY=0 ;;
+        *) [[ "$previous" == "relay" ]] && COROS_RELAY=1 || COROS_RELAY=0 ;;
+    esac
+    # Source COROS (#168) : le relais EST le serveur primaire — impossible sans lui.
+    if [[ "$SOURCE" == "coros" ]]; then
+        [[ "$COROS_ARG" != "0" ]] || die "--no-coros est incompatible avec --source coros (le relais est la source de données)."
+        COROS_RELAY=1
+    fi
+    [[ "$COROS_RELAY" -eq 1 ]] && log "Montre COROS : relais MCP local"
+    return 0
+}
+
+coros_relay_command() { echo "$PROJECT_ROOT/scripts/arc_coros_mcp.py"; }
+
+mcp_server_value_coros() {
+    printf '{"command": "%s", "args": []}' "$(json_escape "$(coros_relay_command)")"
+}
+
+mcp_server_value_coros_opencode() {
+    printf '{"type": "local", "command": ["%s"], "enabled": true}' "$(json_escape "$(coros_relay_command)")"
+}
+
+# Écrit (ou retire, avec --no-coros) l'entrée `coros` dans un fichier de config MCP. Le
+# retrait ne touche qu'une entrée qui pointe vers NOTRE relais (comme remove_json_key) :
+# un serveur COROS ajouté à la main (URL + OAuth du client) n'est jamais effacé.
+coros_mcp_entry() {
+    local file="$1" section="$2" value="$3"
+    if [[ "$COROS_RELAY" -eq 1 ]]; then
+        merge_json_key "$file" "$section" "$COROS_SERVER" "$value"
+        ok "Serveur MCP $COROS_SERVER (relais) présent dans $file"
+    elif [[ "$COROS_ARG" == "0" ]]; then
+        remove_json_key "$file" "$section" "$COROS_SERVER" "$(coros_relay_command)"
+    fi
+}
+
+configure_coros() {
+    [[ "$COROS_RELAY" -eq 1 || "$COROS_ARG" == "0" ]] || return 0
+    log "Montre COROS"
+    if [[ "$DRY_RUN" -eq 0 && -f "$(coros_relay_command)" ]]; then
+        chmod +x "$(coros_relay_command)" "$PROJECT_ROOT/scripts/arc_coros_auth.py" 2>/dev/null || true
+    fi
+    local plain opencode
+    plain="$(mcp_server_value_coros)"
+    opencode="$(mcp_server_value_coros_opencode)"
+    case "$IDE" in all|claude|copilot) coros_mcp_entry "$WORKSPACE_ROOT/.mcp.json" mcpServers "$plain" ;; esac
+    case "$IDE" in all|gemini) coros_mcp_entry "$WORKSPACE_ROOT/.gemini/settings.json" mcpServers "$plain" ;; esac
+    case "$IDE" in all|cursor) coros_mcp_entry "$WORKSPACE_ROOT/.cursor/mcp.json" mcpServers "$plain" ;; esac
+    case "$IDE" in all|windsurf) coros_mcp_entry "$WORKSPACE_ROOT/.windsurf/mcp_config.json" mcpServers "$plain" ;; esac
+    case "$IDE" in all|opencode) coros_mcp_entry "$HOME/.config/opencode/opencode.json" mcp "$opencode" ;; esac
+    case "$IDE" in
+        all|claude)
+            if [[ "$COROS_RELAY" -eq 1 ]]; then
+                approve_claude_project_mcp "$COROS_SERVER"
+            elif ! mcp_server_key_exists "$WORKSPACE_ROOT/.mcp.json" mcpServers "$COROS_SERVER"; then
+                unapprove_claude_project_mcp "$COROS_SERVER"
+            fi ;;
+    esac
+    if [[ "$DRY_RUN" -eq 1 ]]; then
+        printf '%s\n' "${C_YELLOW}[dry-run]${C_RESET} [coros].mcp = $([[ "$COROS_RELAY" -eq 1 ]] && echo relay || echo off)"
+        return 0
+    fi
+    have python3 || return 0
+    python3 "$PROJECT_ROOT/scripts/coach_config.py" set --workspace "$WORKSPACE_ROOT" --section coros --key mcp \
+        --value "$([[ "$COROS_RELAY" -eq 1 ]] && echo relay || echo off)" >/dev/null \
+        || warn "Impossible d'écrire [coros].mcp — vérifiez config/workspace.user.toml."
+}
+
+# Connexion unique au compte COROS : interactive seulement (navigateur), jamais en
+# --dry-run, --no-auth, sans terminal ni en headless. Déjà connecté : rien n'est demandé.
+connect_coros() {
+    [[ "$COROS_RELAY" -eq 1 ]] || return 0
+    local auth="$PROJECT_ROOT/scripts/arc_coros_auth.py"
+    if [[ "$DRY_RUN" -eq 1 ]]; then
+        printf '%s\n' "${C_YELLOW}[dry-run]${C_RESET} connexion COROS (python3 scripts/arc_coros_auth.py login) si absente"
+        return 0
+    fi
+    if python3 "$auth" status >/dev/null 2>&1; then
+        ok "Compte COROS : connecté ($(python3 "$auth" status 2>/dev/null | sed 's/^COROS : //'))"
+        return 0
+    fi
+    if [[ "$DO_AUTH" -eq 0 || -n "${ARC_HEADLESS:-}" || ! -t 0 ]]; then
+        warn "Compte COROS : non connecté — lancez une fois : python3 $auth login (navigateur ; --device sans navigateur)"
+        return 0
+    fi
+    log "Connexion à votre compte COROS (une seule fois, pour toutes les IA)"
+    python3 "$auth" login || warn "Connexion COROS non terminée — relancez : python3 $auth login"
 }
 
 configure_ide() {
@@ -2441,15 +2597,16 @@ install_daily_sync() {
     fi
     log "Synchronisation automatique $(data_source) (scripts/daily-sync.sh)"
     local sync="$PROJECT_ROOT/scripts/daily-sync.sh" times t hour minute mode interval
-    local watch="$PROJECT_ROOT/scripts/garmin_watch.py"
+    local watch="$PROJECT_ROOT/scripts/watch.py"
     mode="$(sync_setting mode schedule)"
     interval="$(sync_setting watch_interval_min 15)"
     case "$mode" in
         schedule) ;;
         watch)
             # intervals.icu et Strava ne sont pas surveillés (pas de sonde équivalente) : heures fixes.
-            if [[ "$(data_source)" != "garmin" ]]; then
-                warn "[sync].mode = \"watch\" n'existe que pour [data].source = \"garmin\" — heures fixes ([sync].times)."
+            # COROS (#168) : sonde par le relais du projet (scripts/watch.py, CorosProbe).
+            if [[ "$(data_source)" != "garmin" && "$(data_source)" != "coros" ]]; then
+                warn "[sync].mode = \"watch\" n'existe que pour [data].source = \"garmin\" ou \"coros\" — heures fixes ([sync].times)."
                 mode="schedule"
             elif [[ ! "$interval" =~ ^[0-9]+$ ]] || (( 10#$interval < 1 || 10#$interval > 59 )); then
                 die "[sync].watch_interval_min invalide : « $interval » (entier de 1 à 59 minutes)."
@@ -2459,7 +2616,7 @@ install_daily_sync() {
     times="$(sync_times | tr '\n' ' ')"
     if [[ "$mode" == "watch" ]]; then
         interval="$((10#$interval))"
-        log "Mode surveillance : scripts/garmin_watch.py toutes les $interval min, LLM seulement s'il y a du neuf ([sync].mode)"
+        log "Mode surveillance : scripts/watch.py toutes les $interval min, LLM seulement s'il y a du neuf ([sync].mode)"
         times=""
     else
         log "Heures : $times (config [sync].times)"
@@ -3355,6 +3512,15 @@ verify() {
         else
             warn "Identifiants Intervals.icu : absents — lancez $(intervals_auth_cmd)"
         fi
+    elif [[ "$SOURCE" == "coros" ]]; then
+        # Relais et connexion : vérifiés par connect_coros ; ici, le lecteur de FIT seulement.
+        if [[ "$DRY_RUN" -eq 1 ]]; then
+            printf '%s\n' "${C_YELLOW}[dry-run]${C_RESET} lecteur de FIT vérifié après installation ($COROS_FIT_READER_DIR)"
+        elif [[ -x "$COROS_FIT_READER_DIR/bin/python3" ]] && "$COROS_FIT_READER_DIR/bin/python3" -c 'import fitparse' 2>/dev/null; then
+            ok "Lecteur de FIT : présent ($COROS_FIT_READER_DIR)"
+        else
+            warn "Lecteur de FIT absent ($COROS_FIT_READER_DIR) — FIT COROS non lus (KPI fins indisponibles) ; relancez ./install.sh --source coros"
+        fi
     else
         for cmd in uv garmin-mcp; do
             if have "$cmd"; then
@@ -3426,6 +3592,7 @@ print_config_recap() {
     case "$SOURCE" in
         intervals) auth_label="Auth Intervals.icu" ;;
         strava) auth_label="Auth Strava" ;;
+        coros) auth_label="Auth COROS" ;;
         *) auth_label="Auth Garmin" ;;
     esac
     recap_line "$auth_label" \
@@ -3473,6 +3640,7 @@ main() {
     resolve_cycle_tracking
     resolve_nutrition_sync
     resolve_health_source
+    resolve_coros
     resolve_dashboard_docker
     print_config_recap
     [[ "$DRY_RUN" -eq 1 ]] && warn "Mode dry-run : aucune modification ne sera effectuée."
@@ -3487,6 +3655,9 @@ main() {
         install_strava_mcp
     elif [[ "$SOURCE" == "intervals" ]]; then
         install_intervals_mcp
+    elif [[ "$SOURCE" == "coros" ]]; then
+        # Relais stdlib (configure_coros) : seul le lecteur de FIT est à installer.
+        install_coros_fit_reader
     else
         install_garmin_mcp
     fi
@@ -3497,6 +3668,7 @@ main() {
     configure_leanproxy
     prepare_workspace
     configure_ide
+    configure_coros
     create_workspace_dirs
     create_workspace_config
     persist_agents
@@ -3519,6 +3691,7 @@ main() {
     install_dashboard_docker
     verify
     verify_openwearables
+    connect_coros
     persist_install_args
     connect_llm
 }

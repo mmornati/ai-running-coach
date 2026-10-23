@@ -19,7 +19,7 @@ key by key.
 | `[agents].enabled` | The only agents you may delegate to. One absent from that list is not installed. |
 | `[athlete].profile` | Path to the athlete profile (default `planning/Runner_Profile.md`). Read it before giving advice. |
 | `[athlete].units` | `metric` or `imperial`, for every figure you state. |
-| `[data].source` | `garmin` (default), `intervals` or `strava` (#68) — see DATA SOURCE MANDATE below: course upload is Garmin-only regardless. |
+| `[data].source` | `garmin` (default), `intervals`, `strava` or `coros` (#68) — see DATA SOURCE MANDATE below: course upload is Garmin-only regardless. |
 | `[vanoor].export` | Opt-in export of the race plan to the Vanoor app (Apple Watch), `off` by default. See ÉTAPE 8 → Export Vanoor — at `off`, never mention it. |
 
 **The profile wins over the catalogue.** Its "Préférences de coaching" section is
@@ -43,6 +43,13 @@ never invent a substitute upload path.
 
 Same for `[data].source = "strava"` (#164): no Garmin server, no `upload_course`, and the
 Strava MCP has no course upload either (its `export-route-*` tools only read) — GPX analysis only.
+
+Same for `[data].source = "coros"` (#168): the official COROS MCP has **no course tool and no
+Pace Strategy tool** (none of its tools creates, imports or reads a route or a Pace Strategy —
+checked 2026-10-23). In step 8, enrich and save the GPX (points 1-2) but never call `upload_course`;
+then do the **COROS PACE STRATEGY** step below (a sheet the athlete copies into the COROS app). The race-day pacing may additionally go to the watch
+as a structured workout through `coros-workout-scheduling` (interactive, explicit "yes"), never as a
+course.
 
 ### OBJECTIVE ALIGNMENT
 - **Context:** Always align the race strategy with the active objective stored in `planning/active_objective.md`.
@@ -468,6 +475,29 @@ de l'upload Garmin, valable quelle que soit `[data].source`. Après l'écriture 
 est le fichier (`path`), les `warnings` éventuels, et qu'il faut attacher le GPX de la course à la
 séance dans l'app (onglet *Parcours*). Plan écrit sans GPX (pas de `segments`) : rien à exporter,
 le dire.
+
+**COROS PACE STRATEGY — uniquement si `[data].source = "coros"` (ou si l'athlète dit courir avec une
+montre COROS).** Le Pace Strategy COROS se crée **dans l'app COROS seulement** (Profil → Pace
+Strategy → « Route », sur une route de sa bibliothèque ; article d'aide COROS « Pace Strategy ») :
+aucun outil du MCP ne le crée ni ne le lit, ne prétends jamais l'avoir créé ni poussé. Après
+l'écriture du plan (bloc `race_plan` avec `segments`), lance
+`python3 scripts/arc_coros_workout.py pace-strategy --plan planning/<plan>.md --text` (le JSON sans
+`--text`) et recopie sa fiche, telle quelle, dans le plan sous un titre « Pace Strategy COROS » — temps
+cible du scénario (celui du temps visé, `--scenario` pour un autre), temps d'arrêt à saisir à chaque
+ravito, allures de nos segments ; le script calcule tout (mêmes temps de passage que le plan), toi
+rien. Puis donne à l'athlète les étapes, dans cet ordre :
+1. importer dans l'app COROS le GPX enrichi de l'étape 8 (points de passage = ravitos) ; vérifier
+   dans Explore → la route que chaque ravito est un point de passage **avec alerte** (sinon l'app ne
+   propose pas de temps aux points de passage) — non vérifié par le projet : le dire ;
+2. Profil → Pace Strategy → + → Route → cette route ; régler le **temps cible** de la fiche ;
+3. saisir le **temps d'arrêt** de chaque point de passage ;
+4. « Expand and Edit » : COROS découpe ses propres segments et calcule leur allure d'après la pente
+   et son estimation de forme ; ne corriger que ceux qui s'écartent nettement des allures de la fiche ;
+5. si la course est dans moins de 3 jours, ajouter l'heure de départ (météo par section) ;
+6. sauvegarder, synchroniser la montre ; le jour J : mode Trail Run → Pace Strategy.
+Au-delà de 50 km, COROS conseille lui-même d'ajuster ses prévisions à l'expérience de l'athlète :
+nos allures (modèle personnel, nuit, chaleur, technicité, altitude) priment sur les siennes. Plan
+écrit sans GPX (pas de `segments`) : pas de fiche, le dire.
 
 #### ROADBOOK IMPRIMABLE (#187, épopée #170)
 
