@@ -142,20 +142,27 @@ jobs:
 
   result:
     # Un seul statut stable (« Tests ») à exiger dans une règle de protection de
-    # branche, quel que soit le découpage de la matrice ou la présence de macOS.
+    # branche, quel que soit le découpage de la matrice ou la présence de macOS. Il
+    # couvre TOUS les jobs : publish.yml (:edge) et tag.yml (release) ne regardent
+    # que lui. L'application macOS ignorée (aucun fichier sensible à l'OS) compte
+    # comme un succès.
     name: Tests
     if: always()
-    needs: [changes, tests]
+    needs: [changes, tests, docker, docs, macos-app]
     runs-on: ubuntu-latest
     steps:
       - name: Bilan
         env:
           CHANGES: ${{ needs.changes.result }}
           TESTS: ${{ needs.tests.result }}
+          DOCKER: ${{ needs.docker.result }}
+          DOCS: ${{ needs.docs.result }}
+          MACOS_APP: ${{ needs.macos-app.result }}
           MACOS: ${{ needs.changes.outputs.macos }}
         run: |
-          echo "plan=$CHANGES tests=$TESTS macos=$MACOS"
-          [ "$CHANGES" = success ] && [ "$TESTS" = success ]
+          echo "plan=$CHANGES tests=$TESTS docker=$DOCKER docs=$DOCS macos-app=$MACOS_APP macos=$MACOS"
+          [ "$CHANGES" = success ] && [ "$TESTS" = success ] && [ "$DOCKER" = success ] && [ "$DOCS" = success ] \
+            && { [ "$MACOS_APP" = success ] || [ "$MACOS_APP" = skipped ]; }
 
   docker:
     # Le conteneur du tableau de bord : construit, démarré sur un workspace en
@@ -201,6 +208,11 @@ jobs:
       - name: Journal du conteneur
         if: failure()
         run: docker logs arc-dashboard || true
+
+      # Le serveur construit lui-même l'image du chat (deploy/chat) : elle doit
+      # rester constructible avec ses arguments par défaut.
+      - name: Construire l'image du chat
+        run: docker build -t arc-chat:ci deploy/chat
 
   docs:
     name: Documentation
