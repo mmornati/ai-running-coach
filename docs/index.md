@@ -133,7 +133,7 @@ Le staff vous suit sur tout le parcours d'une préparation — et chaque étape 
 <div class="arc-section" markdown>
   <div class="arc-section__inner" markdown>
 
-## Vingt-quatre skills, prêts à l'emploi
+## Vingt-cinq skills, prêts à l'emploi
 
 Des protocoles précis que l'IA suit à la lettre. Six d'entre eux sont des commandes courtes, pensées pour le téléphone : cinq pour une question, une réponse, et `/inspection` pour une inspection guidée.
 { .arc-section__intro }
@@ -168,6 +168,7 @@ Des protocoles précis que l'IA suit à la lettre. Six d'entre eux sont des comm
 <li><a href="skills/fit-download/">Téléchargement FIT</a><span>données brutes, précision sub-kilomètre</span></li>
 <li><a href="skills/weather-forecast/">Météo</a><span>prévisions et créneau optimal</span></li>
 <li><a href="skills/gear-inspection/">Inspection des chaussures</a><span>usure lue sur photos, comparée à la précédente (<code>/inspection</code>)</span></li>
+<li><a href="skills/shoe-specs/">Fiche des chaussures</a><span>drop, pile, poids d'une paire, chaque valeur avec sa source, validée par vous</span></li>
 </ul>
 </div>
 

@@ -85,6 +85,7 @@ inattendu pour le dossier) se corrigent aussi.
 | `race_plan` | plan de course dans `planning/` | course-strategist |
 | `decision` | `planning/YYYY-MM-DD_decision_<slug>.md` | coach, medical (garde-fous, bilan matinal, blessure) |
 | `gear_inspection` | `gear/YYYY-MM-DD_<gear_id>_inspection.md` (photos dans `gear/photos/`) | coach (skill `gear-inspection`) |
+| `shoe_spec` | `gear/specs/<gear_id>.md` (une fiche par paire, réécrite en place) | coach (skill `shoe-specs`, jamais en headless) |
 
 `planning/Runner_Profile.md` et `planning/active_objective.md` **n'ont pas de
 bloc** : l'athlète les édite à la main. Remplissez leurs puces
@@ -1349,6 +1350,67 @@ seule semelle documentée dans `wear_zones` est signalée (le protocole demande 
 
 ```arc
 {"arc": 1, "kind": "gear_inspection", "date": "2026-09-24", "gear_id": "pegasus-41", "condition": "yellow", "distance_m": 412000, "wear_zones": [{"side": "left", "zone": "heel_posterolateral", "severity": "moderate"}, {"side": "right", "zone": "heel_posterolateral", "severity": "light"}], "asymmetry": {"level": "mild", "side": "left"}, "gait_hints": ["heel_strike"], "photos": ["gear/photos/2026-09-24_pegasus-41_semelles.jpg"], "previous": "gear/2026-08-02_pegasus-41_inspection.md", "scale_reference": true, "lug_depth_mm": 2.5}
+```
+
+### `shoe_spec`
+
+Fiche de caractéristiques d'une paire (#298, skill `shoe-specs`) : un fichier par paire,
+`gear/specs/<gear_id>.md`, réécrit en place à chaque correction validée. Le nom porte le `gear_id`
+(**une seule fiche par paire** : un fichier dont le nom diffère du `gear_id` du bloc n'est pas indexé, avertissement à la validation) ; le profil `### Chaussures` reste inchangé,
+le lien se fait par `gear_id`. Dossier `gear/` : gitignoré. Le texte libre sous le bloc garde les
+notes de l'athlète et le journal des validations (qui a validé quoi, quand).
+
+**Chaque valeur porte sa provenance** : un objet `{value, source_type, url, retrieved, alternatives}`.
+`source_type` : `measured` (mesure d'un laboratoire), `manufacturer` (donnée de la marque ou d'un
+revendeur qui la recopie) ou `athlete` (saisie ou correction de l'athlète). `value` est la valeur
+**retenue** : `measured` prime sur `manufacturer` ; `athlete` prime sur les deux (l'athlète valide
+chaque ligne). Les autres sources vont dans `alternatives`. Une caractéristique introuvable est
+**absente** (clé omise), jamais reprise d'un modèle voisin.
+
+| Clé | Type | Notes |
+|---|---|---|
+| **`date`** | date | dernière validation par l'athlète |
+| **`gear_id`** | slug | la paire, comme dans `activities` / `### Chaussures` du profil |
+| **`brand`**, **`model`** | texte | marque et modèle exact |
+| `version` | texte | version identifiée (ex. `v1`, `3`), jamais devinée si ambiguë |
+| `release_year` | entier | année de lancement |
+| `size` | objet | **`value`** (pointure), **`system`** (`EU` `US_M` `US_W` `UK` `JP` `CM`) |
+| `purchase_date` | date | sert à identifier la version (date de lancement vs date d'achat) |
+| `category` | valeur + provenance | `road` `trail` `hybrid` |
+| `drop_mm` | valeur + provenance | nombre en mm, de -5 à 20 |
+| `stack_heel_mm`, `stack_forefoot_mm` | valeur + provenance | mm, de 0 à 60 |
+| `weight_g` | valeur + provenance | g, de 100 à 600 ; `reference_size` (texte) = pointure du poids annoncé |
+| `midsole_foam` | valeur + provenance | texte (EVA, PEBA, TPU…) |
+| `midsole_softness` | valeur + provenance | nombre ; **`scale`** (texte) obligatoire (ex. `Asker C`) |
+| `plate` | valeur + provenance | `none` `carbon` `nylon` `rock_plate` |
+| `lug_depth_mm` | valeur + provenance | mm, de 0 à 12 |
+| `toe_box` | valeur + provenance | `narrow` `standard` `wide` |
+| `flexibility_longitudinal`, `flexibility_torsional` | valeur + provenance | évaluation MANUELLE de l'athlète pour l'index minimaliste : 0 à 2,5 par pas de 0,5 (`source_type`: `athlete`) |
+| `stability_devices` | valeur + provenance | évaluation MANUELLE : nombre entier de dispositifs de stabilité observés, 0 à 6 (`athlete`) |
+
+Sous-clés d'une valeur : **`value`**, **`source_type`**, `url` et `retrieved` (date de consultation, jamais
+future — avertissement) — **obligatoires** pour `measured` et `manufacturer` —, `alternatives`, et `basis`
+(`measured` `manufacturer`, **réservé aux valeurs `athlete`** : la source sur laquelle l'athlète a fondé son choix,
+lue par la règle de choix de chaussure #301). Chaque élément de
+`alternatives` : **`value`** (du MÊME type que la valeur retenue : nombre, texte ou énumération du champ),
+**`source_type`**, `url`, `retrieved`, `outlier` (`true` = aberration constatée et assumée, conservée pour
+mémoire, jamais retenue).
+
+**L'athlète garde la valeur de la marque** (il la préfère à la mesure du laboratoire) : valeur retenue en
+`source_type: "athlete"`, `basis: "manufacturer"`, avec l'`url` de la source de la marque, et `alternatives` qui
+garde la mesure ET la valeur de la marque — l'écart laboratoire - marque reste ainsi calculable.
+
+Contrôles : valeur retenue hors des bornes plausibles ci-dessus = **erreur** ; valeur retenue
+`manufacturer` alors qu'une alternative `measured` existe = **erreur** (la mesure prime) ; alternative
+qui s'écarte trop de la valeur retenue (poids de plus de 25 %, cotes de plus de 4 à 6 mm) sans `outlier`
+= **avertissement** (aberration probable) ; drop incohérent avec les deux cotes quand les trois
+viennent de la même source = avertissement. L'écart marque/labo (ex. drop 6 mm annoncé, 8,7 mm mesuré)
+est un désaccord légitime, pas une aberration. L'index minimaliste (Esculier 2015) **n'est pas
+persisté** : `python3 scripts/arc_index.py shoe-specs` le calcule à la lecture, et le dit absent s'il
+manque une entrée.
+
+```arc
+{"arc": 1, "kind": "shoe_spec", "date": "2026-10-12", "gear_id": "kipride-max-1", "brand": "Kiprun", "model": "Kipride Max", "version": "v1", "release_year": 2026, "size": {"value": 42, "system": "EU"}, "purchase_date": "2026-02-20", "category": {"value": "road", "source_type": "manufacturer", "url": "https://runnerslab.com/kiprun-kipride-max-review/", "retrieved": "2026-10-12"}, "drop_mm": {"value": 8.7, "source_type": "measured", "url": "https://www.rtings.com/running-shoes/reviews/kiprun/kipride-max", "retrieved": "2026-10-12", "alternatives": [{"value": 6, "source_type": "manufacturer", "url": "https://runnerslab.com/kiprun-kipride-max-review/", "retrieved": "2026-10-12"}]}, "stack_heel_mm": {"value": 42, "source_type": "manufacturer", "url": "https://runnerslab.com/kiprun-kipride-max-review/", "retrieved": "2026-10-12", "alternatives": [{"value": 44, "source_type": "manufacturer", "url": "https://www.runningwarehouse.com/KIPRUN_Kipride_Max/descpage-KRMAXM3.html", "retrieved": "2026-10-12"}]}, "stack_forefoot_mm": {"value": 36, "source_type": "manufacturer", "url": "https://runnerslab.com/kiprun-kipride-max-review/", "retrieved": "2026-10-12", "alternatives": [{"value": 38, "source_type": "manufacturer", "url": "https://www.runningwarehouse.com/KIPRUN_Kipride_Max/descpage-KRMAXM3.html", "retrieved": "2026-10-12"}]}, "plate": {"value": "none", "source_type": "manufacturer", "url": "https://runnerslab.com/kiprun-kipride-max-review/", "retrieved": "2026-10-12"}, "flexibility_longitudinal": {"value": 1.5, "source_type": "athlete"}, "flexibility_torsional": {"value": 1.0, "source_type": "athlete"}, "stability_devices": {"value": 0, "source_type": "athlete"}}
 ```
 
 ## Réécrire un fichier ancien (backfill)
