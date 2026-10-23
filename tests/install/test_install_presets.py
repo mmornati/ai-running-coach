@@ -112,6 +112,7 @@ EXPECTED_ADDED_PATHS = {
         "home/Library/LaunchAgents",
         "home/Library/LaunchAgents/com.ai-running-coach.daily-sync.plist",
         "home/Library/LaunchAgents/com.ai-running-coach.remote.plist",
+        "home/Library/LaunchAgents/com.ai-running-coach.remote-logrotate.plist",
         "repo/.claude",
         "repo/.claude/agents",
         "repo/.claude/agents/coach.md",

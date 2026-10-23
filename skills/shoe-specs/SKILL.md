@@ -76,8 +76,9 @@ Ordre fixe, en s'arrêtant quand les champs utiles sont couverts :
    départager.
 
 Pour chaque valeur : relever le chiffre, l'**URL exacte**, la date du jour (`retrieved`), la
-pointure de référence du poids (`reference_size`) quand la page la donne (les comparatifs annoncent en général
-US M9 ; l'index minimaliste avertit si elle manque ou diffère). Champs visés : `category`,
+pointure de référence du poids (`reference_size`) avec son système (« US M9 », « UK 8 », « EU 42,5 », jamais un « 9 » nu)
+quand la page la donne : l'article d'Esculier 2015 évalue des chaussures en US men's 9 (= UK 8 = EU 42,5), et
+l'index minimaliste avertit si la pointure manque, est ambiguë ou diffère. Champs visés : `category`,
 `drop_mm`, `stack_heel_mm`, `stack_forefoot_mm`, `weight_g`, `midsole_foam`, `midsole_softness`
 (avec son échelle), `plate`, `lug_depth_mm`, `toe_box`. Un champ qu'aucune page ne donne reste **absent**.
 

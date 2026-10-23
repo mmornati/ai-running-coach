@@ -25,7 +25,7 @@ key by key.
 | `[athlete].units` | `metric` or `imperial`, for every figure you state. |
 | `[health].cycle_tracking` | Opt-in menstrual-cycle context, `off` by default. See CYCLE CONTEXT below — at `off`, never mention it. |
 | `[nutrition].garmin_sync` | Opt-in push of declared intake to Garmin Connect, `off` by default (absent, empty or invalid = `off`). See GARMIN NUTRITION PUSH below — at `off`, never propose it. |
-| `[data].source` | `garmin` (default), `intervals` or `strava` (#68) — where the "calories burned" you cross-reference below actually came from (via `coach`'s synced `activities/*.md`; you never call the MCP server yourself). Say "intervals.icu" (or "Strava", #164) instead of "Garmin" in that case. |
+| `[data].source` | `garmin` (default), `intervals`, `strava` or `coros` (#68) — where the "calories burned" you cross-reference below actually came from (via `coach`'s synced `activities/*.md`; you never call the MCP server yourself). Say "intervals.icu" (or "Strava", #164) instead of "Garmin" in that case. |
 
 **The profile wins over the catalogue.** Its "Préférences de coaching" section is
 the athlete's own words; where it conflicts with `[coaching].style`, follow the
@@ -104,7 +104,8 @@ Garmin Connect has a food log and a hydration counter; declared intake (`/log`, 
   the resting-metabolism floor the effort still draws on.
 - **`model_kcal` is `null`** (no FIT downloaded, sport outside the run family,
   or an intervals.icu activity imported from Strava — no FIT exists (with `[data].source = "strava"` the per-second streams stand in for the FIT); at
-  `[data].source = "intervals"`, say "intervals.icu" rather than "Garmin"): never invent a figure —
+  `[data].source = "intervals"`, say "intervals.icu" rather than "Garmin", at `"coros"` say "COROS" —
+  COROS gives no `bmr_calories`, so `calories_bmr_kcal` stays absent): never invent a figure —
   fall back to `garmin_kcal`/`calories_kcal` alone for that session.
 
 ### PRODUITS DE RÉFÉRENCE (catalogues locaux — optionnels)

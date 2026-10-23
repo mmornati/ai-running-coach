@@ -212,8 +212,9 @@ modifiées. Si la paire est ambiguë, il vous demande laquelle.
 tableau de bord et `arc_index.py gear` affichent « ≈ 6 sem. » — le temps restant
 avant le seuil **à ce rythme**, une approximation linéaire (elle ignore un bloc
 de repos ou un changement de rotation). Aucune prévision sans séance sur 28
-jours, ni pour une paire retirée ; une paire au-dessus de son seuil affiche
-« seuil dépassé ».
+jours, ni pour une paire retirée ; une paire en service au-dessus de son seuil affiche
+« Fin de vie — à retirer ? ». Une paire retirée — au profil `(retirée)`, ou dans Garmin Connect
+pour une paire liée par `garmin:` — n'alerte plus, même au-delà du seuil.
 
 **Alertes visibles (#132).** Le résumé du `garmin-daily-sync` ajoute une ligne
 quand une séance synchronisée fait franchir son seuil à une paire (une seule

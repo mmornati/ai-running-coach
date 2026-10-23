@@ -172,6 +172,16 @@ confirmation explicite dans la conversation, jamais en synchronisation automatiq
   votre suivi peut alimenter son `départ` (départ = total Garmin − kilomètres déjà comptés par vos
   séances, jamais négatif : aucun double comptage). Pour l'historique déjà dans le workspace, voir
   [Rattraper le matériel de l'historique](#rattraper-le-materiel-de-lhistorique).
+- **Retraite décidée dans Garmin.** Quand vous retirez une paire dans Garmin Connect, le coach la
+  traite comme retirée dès qu'il relit `get_gear` (en conversation, ou une fois par jour par la
+  synchronisation automatique) : plus d'alerte de seuil ni de rappel d'inspection, même si sa puce
+  ne dit pas encore `(retirée)`. Le tableau de bord l'affiche « retirée (Garmin) ». Le coach vous
+  propose ensuite, une fois et seulement en conversation, d'écrire `(retirée AAAA-MM-JJ)` sur la
+  puce (date de fin Garmin) ; la synchronisation automatique ne modifie jamais le profil. L'inverse
+  (retirée au profil, active dans Garmin) est signalé, jamais annulé : le profil prime. Une paire
+  `(par défaut)` retirée à une date connue garde les séances jusqu'à cette date.
+  Commande : `python3 scripts/arc_index.py garmin-gear-status [--garmin-gear-json <fichier>|-]
+  [--mark-retired <id>]` ; instantané dérivé `.arc/garmin_gear.json`.
 - **Priorité d'attribution.** Votre déclaration en chat > matériel attaché par la montre
   à la séance (un seul `get_activity_gear` par séance **nouvelle**) > `(par défaut)`. Si Garmin
   dit A et que vous dites B, vous gagnez et le coach le signale une fois. Un matériel Garmin sans
@@ -241,7 +251,7 @@ blanche : `get_daily_weigh_ins` (pesées d'un jour) et `get_weigh_ins` (pesées 
 - **Installations existantes.** Relancez `./install.sh` pour mettre à jour la liste blanche de
   `.mcp.json`. En mode passerelle, ajoutez `get_daily_weigh_ins,get_weigh_ins` à la main à
   `GARMIN_ENABLED_TOOLS` de `~/.config/leanproxy_servers.yaml`.
-- **Sources intervals.icu et Strava.** Rien n'est lu : le poids reste celui que vous déclarez.
+- **Sources intervals.icu, Strava et COROS.** Rien n'est lu : le poids reste celui que vous déclarez.
 
 ## Rattraper le matériel de l'historique
 
@@ -296,6 +306,10 @@ Options : `--since AAAA-MM-JJ` (séances du workspace à partir de cette date), 
 `--all-shoes` (propose aussi les paires sans séance dans la période du workspace — les anciennes paires
 retirées, en `(retirée)`), `--json`, `--workspace`, `--tokens-dir`. Le script est idempotent : une seconde
 exécution ne change rien.
+
+**Paires retirées depuis dans Garmin.** Une puce déjà liée (`garmin: <uuid>`) dont la paire a été retirée
+dans Garmin Connect est listée « → retirée dans Garmin » : `--apply` ajoute alors **seulement**
+`(retirée AAAA-MM-JJ)` à la puce (date de fin Garmin) et rafraîchit l'instantané `.arc/garmin_gear.json`.
 
 - **Dépendance.** Comme `download_fit.py`, il utilise `garminconnect` et les jetons locaux (`~/.garminconnect`,
   ou `GARMINTOKENS` de `.mcp.json`) : c'est la seule exception à « bibliothèque standard seule » ; il se relance
@@ -403,5 +417,6 @@ Voir aussi la page [Dépannage](troubleshooting.md).
 
 !!! info "Pas de montre Garmin ?"
     `./install.sh --source intervals` remplace tout ce qui précède par
-    Intervals.icu (COROS, Suunto, Polar, Apple...) — voir
-    [Configuration Intervals.icu](intervals-setup.md).
+    Intervals.icu (Suunto, Polar, Apple...) — voir
+    [Configuration Intervals.icu](intervals-setup.md). Montre COROS :
+    [Montres COROS](coros.md).

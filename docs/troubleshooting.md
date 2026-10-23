@@ -280,6 +280,13 @@ requis, et seulement avec `--json`. Le script se relance dans l'environnement
 environnement n'a pas encore `fitparse` : relancez `./install.sh --source
 intervals`, qui l'ajoute sans réinstaller le serveur.
 
+**Source COROS** (`[data].source = "coros"`) : le téléchargement passe par le relais
+du projet (aucune dépendance), et `--json` relance le script dans le lecteur de FIT
+dédié, `~/.local/share/ai-running-coach/fit-reader`. S'il manque :
+`./install.sh --source coros` le crée (`/coach-doctor`, contrôle `fit_reader`).
+« COROS non connecté » ou « jeton refusé » : `python3 scripts/arc_coros_auth.py login`
+dans un terminal.
+
 ### Le coach ne trouve pas `icu_get_wellness_for_date` (ou, à l'inverse, ne trouve que `get_wellness_for_date`)
 
 Source Intervals.icu uniquement. Les outils du serveur retenu depuis #165

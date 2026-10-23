@@ -195,6 +195,22 @@ class TestContract(unittest.TestCase):
         data["drop_mm"]["basis"] = "measured"          # sur une valeur measured : refusé
         self.assertTrue(any("basis" in e for e in C.validate(data)[0]))
 
+    def test_athlete_basis_without_url_is_a_warning_and_alt_errors_are_not_doubled(self):
+        data = kipride()
+        data["drop_mm"] = {"value": 6, "source_type": "athlete", "basis": "manufacturer",
+                           "alternatives": [src(8.7, "measured", RT)]}
+        errors, warnings = C.validate(data)
+        self.assertEqual(errors, [])
+        self.assertTrue(any("drop_mm.url" in w and "basis" in w for w in warnings), warnings)
+        data = kipride()
+        data["drop_mm"]["alternatives"] = [src("huit", "manufacturer", RL)]
+        errors, _ = C.validate(data)
+        self.assertEqual(len([e for e in errors if "alternatives[0].value" in e]), 1, errors)
+        data = kipride()
+        data["drop_mm"]["alternatives"] = [src(True, "manufacturer", RL)]
+        errors, _ = C.validate(data)
+        self.assertEqual(len([e for e in errors if "alternatives[0].value" in e]), 1, errors)
+
     def test_future_retrieved_date_is_a_warning(self):
         data = kipride()
         data["drop_mm"]["retrieved"] = "2999-01-01"
@@ -341,12 +357,22 @@ class TestMinimalistIndex(unittest.TestCase):
             out = SH.minimalist_index(spec)
             self.assertEqual(out["assumptions"], list(SH.MI_ASSUMPTIONS))
             self.assertTrue(any("approximation du projet" in a for a in out["assumptions"]))
+            text = " ".join(out["assumptions"])
+            self.assertIn("US men's 9", text)
+            self.assertIn("semelle intérieure", text)
 
     def test_weight_reference_size_is_checked_against_us_m9(self):
-        for ref in ("US 9", "US M9", "US men's 9", "M9", "us m 9", "9"):
+        # US men's 9 = UK 8 = EU 42,5 (Esculier et al. 2015) ; un « 9 » nu est ambigu
+        for ref in ("US 9", "US M9", "US men's 9", "M9", "us m 9", "UK 8", "uk8", "EU 42.5", "EU 42,5", "42,5"):
             self.assertTrue(SH.is_us_m9(ref), ref)
-        for ref in ("EU 42", "US W8", "US 10", "US M10", "", None, 9):
+        for ref in ("9", "EU 42", "US W8", "US 10", "US M10", "UK 9", "EU 43", "", None, 9):
             self.assertFalse(SH.is_us_m9(ref), ref)
+        bare = kipride()
+        bare["weight_g"]["reference_size"] = "9"
+        self.assertTrue(any("ambiguë" in w for w in SH.minimalist_index(bare)["warnings"]))
+        paper = kipride()
+        paper["weight_g"]["reference_size"] = "EU 42,5"
+        self.assertNotIn("warnings", SH.minimalist_index(paper))
         self.assertNotIn("warnings", SH.minimalist_index(kipride()))          # « US 9 »
         missing = SH.minimalist_index(ultra_glide())                         # aucune pointure de référence
         self.assertTrue(any("absente" in w for w in missing["warnings"]), missing)

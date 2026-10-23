@@ -54,7 +54,7 @@ jobs:
           # Chemins sensibles à l'OS. En cas de doute, ajouter ici plutôt qu'ailleurs :
           # un macOS de trop coûte quelques minutes, un macOS manquant un bug en prod.
           MACOS_PATHS: >-
-            ^install\.sh$|\.sh$|^scripts/lib/|^tests/lib/|^macos/|^config/workspace\.toml$|^scripts/(coach_doctor|coach_config|coach_setup|garmin_watch|arc_telegram|arc_chat[a-z_]*)\.py$|^tests/install/test_(install|agent_selection|daily_sync|coach_|scripts|token_expiry|config_parser|cycle_tracking|nutrition_sync|llm_chat_ops|telegram_ops|chat_)|^tests/data/test_arc_chat|^tests/run_tests\.py$|^\.github/workflows/tests\.yml$
+            ^install\.sh$|\.sh$|^scripts/lib/|^tests/lib/|^macos/|^config/workspace\.toml$|^scripts/(coach_doctor|coach_config|coach_setup|garmin_watch|watch|arc_telegram|arc_chat[a-z_]*)\.py$|^tests/install/test_(install|agent_selection|daily_sync|coach_|scripts|token_expiry|config_parser|cycle_tracking|nutrition_sync|llm_chat_ops|telegram_ops|chat_)|^tests/data/test_arc_chat|^tests/run_tests\.py$|^\.github/workflows/tests\.yml$
         run: |
           set -euo pipefail
           macos=true

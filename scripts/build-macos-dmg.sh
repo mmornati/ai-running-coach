@@ -6,9 +6,10 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 SOURCE_DIR="$ROOT/macos/AI-Running-Coach"
-# Fichier VERSION à la racine, réécrit par le workflow « Tag a release » dans le
-# commit qui porte le tag : le DMG d'une release porte donc toujours son numéro.
-# ARC_APP_VERSION le remplace (workflow de release, test des mises à jour).
+# ARC_APP_VERSION = numéro du tag, posé par les builds de release (macos-dmg.yml,
+# CircleCI) : « Tag a release » ne commite plus le fichier VERSION sur main. Sans
+# lui (build local), le fichier VERSION à la racine. Le numéro retenu est aussi
+# écrit dans le VERSION du moteur embarqué, lu sans .git par arc_version.py.
 VERSION="$(tr -d '[:space:]' 2>/dev/null < "$ROOT/VERSION" || true)"
 VERSION="${ARC_APP_VERSION:-$VERSION}"
 [[ -n "$VERSION" ]] || { echo "Version introuvable dans VERSION" >&2; exit 1; }
@@ -85,7 +86,14 @@ git -C "$ROOT" ls-files -z -- \
     ':(exclude)macos/**' \
     ':(exclude).github/workflows/**' \
     ':(exclude).impeccable/**' \
-    | tar --null -czf "$PAYLOAD" -C "$ROOT" -T -
+    ':(exclude)VERSION' \
+    | tar --null -cf "$BUILD_ROOT/engine.tar" -C "$ROOT" -T -
+# VERSION ajouté à part : le numéro du DMG, pas celui du fichier du dépôt.
+mkdir -p "$BUILD_ROOT/engine-version"
+printf '%s\n' "$VERSION" > "$BUILD_ROOT/engine-version/VERSION"
+tar -rf "$BUILD_ROOT/engine.tar" -C "$BUILD_ROOT/engine-version" VERSION
+gzip -9n < "$BUILD_ROOT/engine.tar" > "$PAYLOAD"
+rm -f "$BUILD_ROOT/engine.tar"
 
 # Le numéro fonctionnel peut rester identique entre deux itérations d'un même
 # DMG. L'empreinte du moteur permet alors à l'application de voir que les

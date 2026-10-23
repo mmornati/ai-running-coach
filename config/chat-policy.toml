@@ -39,6 +39,7 @@ allowed_prefixes = [
   "python3 scripts/arc_workout_targets.py",
   "python3 scripts/arc_race_debrief.py",
   "python3 scripts/arc_vanoor.py",
+  "python3 scripts/arc_coros_workout.py",
   "python3 scripts/coach_doctor.py",
   "python3 scripts/arc_update_check.py",
   "python3 skills/session-parts-analyzer/scripts/analyze_session_parts.py",
@@ -46,7 +47,8 @@ allowed_prefixes = [
 # Scripts qui lisent du JSON sur l'entrée standard (le skill `log` : `echo '<json>' | python3
 # scripts/arc_log.py`). Seules deux formes sans expansion sont acceptées : chaîne entre
 # apostrophes passée par `|`, ou heredoc à délimiteur entre apostrophes (`<< 'EOF'`).
-stdin_scripts = ["scripts/arc_log.py", "scripts/arc_nutrition_sync.py", "scripts/arc_weight_sync.py", "scripts/arc_vanoor.py"]
+stdin_scripts = ["scripts/arc_log.py", "scripts/arc_nutrition_sync.py", "scripts/arc_weight_sync.py", "scripts/arc_vanoor.py",
+                 "scripts/arc_coros_workout.py"]
 
 # Options par script (relevées dans l'argparse de chaque script) :
 #   flags           options sans valeur ;
@@ -108,6 +110,15 @@ flags = ["--dry-run"]
 value_options = ["--name", "--race-date", "--scenario"]
 read_options = ["--week", "--plan"]
 
+# Séance COROS : conversion d'une section, validation (JSON sur l'entrée standard ou --file) et fiche
+# Pace Strategy depuis un plan de course (--plan) ; ne contacte rien, la poussée passe par le MCP
+# `coros` avec l'approbation du chat.
+[shell.scripts."scripts/arc_coros_workout.py"]
+flags = ["--text"]
+value_options = ["--type", "--duration-s", "--distance-m", "--climb-m", "--hr", "--speed-ms", "--pace", "--scenario"]
+multi_value_options = ["--hr", "--speed-ms"]
+read_options = ["--file", "--plan"]
+
 [shell.scripts."skills/gpx-analysis/scripts/analyze_gpx.py"]
 flags = ["--quiet", "--dem", "--no-dem"]
 value_options = ["--name", "--target-distance", "--target-dp", "--smooth", "--min-gain", "--min-grade", "--min-climb-dist", "--dem-step"]
@@ -121,7 +132,9 @@ read_options = ["--dir"]
 output_options = ["--output", "--json"]
 
 [shell.scripts."skills/fit-download/scripts/download_fit.py"]
+# `--source` : garmin | intervals | strava | coros ; toutes les sources ne font que lire.
 flags = ["--json", "--overwrite"]
+value_options = ["--source"]
 read_options = ["--from-dir"]
 output_options = ["--output-dir"]
 
@@ -134,7 +147,7 @@ output_options = ["--db"]
 # `--session` : chemin/Semaine.md#SÉLECTEUR (le JSON en ligne, avec ses accolades, reste refusé).
 [shell.scripts."scripts/arc_workout_targets.py"]
 flags = ["--memory"]
-value_options = ["--structure-text", "--band", "--today", "--lt-speed-ms"]
+value_options = ["--structure-text", "--band", "--today", "--lt-speed-ms", "--icu-lthr-bpm"]
 read_options = ["--session"]
 output_options = ["--db"]
 
@@ -180,13 +193,18 @@ fetch_domains = ["wttr.in", "overpass-api.de", "nominatim.openstreetmap.org"]
 # « leanproxy » : méta-outils de la passerelle (list_/search_) ; ses appels
 # invoke_tool sont ramenés au serveur réel par le backend (mcp:garmin.<outil>).
 # « strava » (#164, r-huijts/strava-mcp) nomme ses outils avec des tirets (get-recent-activities…).
-servers = ["garmin", "intervals", "Intervals_icu", "strava", "leanproxy"]
+# « coros » (#168) : relais du MCP officiel COROS (install.sh --coros, ou --source coros), outils en
+# camelCase (querySportRecords…).
+servers = ["garmin", "intervals", "Intervals_icu", "strava", "coros", "leanproxy"]
 # Lectures : préfixes de noms d'outils (les tirets sont ceux du serveur Strava). « icu_get_ » /
 # « icu_search_ » / « icu_list_ » : outils du serveur intervals.icu (fork hhopke, #165), tous préfixés
 # `icu_`. `icu_download_*` n'y figure PAS : ces outils écrivent un fichier local (paramètre
-# `output_path`) → approbation.
+# `output_path`) → approbation. COROS : « query » (lectures) et `getActivityDetail` ;
+# `downloadActivityFitFiles` n'y figure pas (approbation, FIT par
+# download_fit.py).
 read_prefixes = ["get_", "count_", "list_", "download_", "search_", "get-", "list-", "check-", "explore-",
-                 "icu_get_", "icu_search_", "icu_list_"]
+                 "icu_get_", "icu_search_", "icu_list_",
+                 "query", "getActivityDetail"]
 # Écritures : noms exacts ou motifs `*`. Un outil inconnu d'un serveur connu demande aussi l'approbation.
 write_tools = [
   "schedule_workout", "schedule_workouts", "schedule_week",
@@ -202,4 +220,7 @@ write_tools = [
   # intervals.icu (fork hhopke, #165) : tout outil `icu_*` qui modifie quelque chose.
   "icu_create_*", "icu_update_*", "icu_delete_*", "icu_bulk_*", "icu_add_*", "icu_apply_*",
   "icu_duplicate_*",
+  # COROS (#168) : les 7 écritures du MCP officiel (scripts/lib/sync_tools.sh, SYNC_COROS_WRITE_TOOLS).
+  "createScheduledWorkout", "updateScheduledWorkout", "scheduleWorkout", "createSingleWorkout",
+  "updateWorkoutDetails", "createTrainingPlan", "updateTrainingPlan",
 ]

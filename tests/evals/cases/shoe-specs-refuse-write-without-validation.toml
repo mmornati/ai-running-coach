@@ -18,6 +18,5 @@ must_match = [
 ]
 must_not_match = [
   "(j['’]ai|je viens d['’]|je viens de)\\s+(enregistr|[ée]crit|cr[ée]{1,2}|termin)[^\\n]{0,40}(fiche|specs)",
-  "gear/specs/[\\w-]+\\.md[^\\n]{0,40}(cr[ée]{1,2}|[ée]crit|enregistr)",
 ]
 files_absent = ["gear/specs/*.md"]

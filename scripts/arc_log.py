@@ -679,7 +679,8 @@ _SHOE_ISSUE_TERMS = {
     "too_soft": ("trop mou", "trop molle", "trop moelleux", "trop souple", "spongieux", "mousse trop molle"),
     "too_firm": ("trop dur", "trop ferme", "mousse dure", "trop raide"),
     "poor_grip": ("manque d adherence", "mauvaise adherence", "adherence faible", "mauvaise accroche",
-                  "manque d accroche", "patine", "glisse sur le mouille"),
+                  "manque d accroche", "patine", "glisse sur le mouille", "manque de grip", "pas assez de grip",
+                  "grip insuffisant", "pas assez d adherence", "pas assez d accroche", "peu d adherence"),
     "upper_tear": ("tige dechiree", "empeigne dechiree", "dessus dechire", "tige trouee", "trou dans la tige",
                    "tige qui se dechire", "tige abimee", "empeigne abimee", "dessus abime"),
 }
@@ -705,7 +706,12 @@ _SHOE_STOPWORDS = frozenset((
 ))
 _SHOE_NEGATIONS = frozenset(("pas", "sans", "aucun", "aucune", "jamais", "ni", "rien", "non"))
 _PLUS_DE_RE = re.compile(r"\bplus (?:de|d)\b")
-_CLAUSE_SPLIT_RE = re.compile(r"[,;.:/]|\bmais\b|\bet\b", re.IGNORECASE)
+_CLAUSE_SPLIT_RE = re.compile(r"[,;./]|\bmais\b|\bet\b|\bsauf\b|\bhormis\b|\bexcept[ée]\b|\b[àa] part\b",
+                              re.IGNORECASE)
+# « plus de X qu'avant » : comparatif, PAS une négation → ambigu, on demande.
+_PLUS_COMPARATIVE_RE = re.compile(r"\bplus (?:de|d)\b.*\bqu")
+# Mots qui, dans une proposition sans problème reconnu, ne font que situer (« côté gauche », « sur le pied »).
+_SHOE_LOCATOR_WORDS = frozenset(("cote", "pied", "sur", "sous", "a", "en", "dans", "au"))  # racinisés plus bas
 
 
 def _shoe_stem(word: str) -> str:
@@ -717,7 +723,8 @@ def _shoe_stem(word: str) -> str:
     return word
 
 
-_SHOE_NO_ISSUE_WORDS = frozenset(_shoe_stem(w) for w in ("souci", "probleme", "ras", "signaler", "gene"))
+_SHOE_NO_ISSUE_WORDS = frozenset(_shoe_stem(w) for w in ("souci", "probleme", "ras", "signaler", "gene", "rien"))
+_SHOE_LOCATOR_WORDS = frozenset(_shoe_stem(w) for w in _SHOE_LOCATOR_WORDS)
 
 
 def _shoe_tokens(text, keep_stopwords: bool = False) -> list:
@@ -737,31 +744,91 @@ def _find_tokens(tokens: list, phrase: str) -> Optional[int]:
 
 
 def _classify_shoe_term(term) -> dict:
-    """{"kind", "zone", "side", "negated"} d'un terme libre. `kind` None = inconnu (on demande) ;
-    `negated` True = l'athlète dit qu'il n'y a PAS ce problème (ne rien écrire)."""
+    """Analyse un terme libre. Rend `{"kinds": [{"kind", "zone", "side"}], "negated": bool, "unclear": [texte]}`.
+
+    - `kinds` : TOUS les problèmes non niés du terme (« ampoule et frottement » en donne deux) ; la zone / le côté
+      viennent de la proposition du problème, sinon de tout le terme s'il n'y en a qu'un seul (« talon qui
+      glisse, côté gauche »).
+    - `negated` : vrai quand une proposition dit explicitement qu'un problème de la liste n'existe PAS
+      (« pas d'ampoule ») ou qu'il n'y a aucun souci (« pas de souci », « RAS », « rien à signaler »).
+    - `unclear` : propositions qu'on ne sait PAS interpréter (« pas top », « pas confortable », « non »,
+      « là oui », « plus d'ampoules qu'avant ») : à DEMANDER, jamais traitées comme « pas de problème ».
+    « pas mal de » = « beaucoup de » (jamais une négation). Un terme sans `kinds` ni `negated` est inconnu."""
     raw = str(term or "").strip()
     if raw in _SHOE_KINDS:                    # le modèle a déjà donné une valeur de la liste fermée
-        return {"kind": raw, "zone": None, "side": None, "negated": False}
-    negated_seen = False
+        return {"kinds": [{"kind": raw, "zone": None, "side": None}], "negated": False, "unclear": []}
+    found: list = []
+    negated = False
+    unclear: list = []
+    locators: list = []      # (zone, side, indice du dernier problème déjà trouvé)
+    phrases = sorted(((k, p) for k, ps in _SHOE_ISSUE_TERMS.items() for p in ps),
+                     key=lambda kp: -len(_shoe_tokens(kp[1])))
     for clause in _CLAUSE_SPLIT_RE.split(raw):
+        if _PLUS_COMPARATIVE_RE.search(normalize_name(clause)):
+            unclear.append(clause.strip())
+            continue
         tokens = _shoe_tokens(clause)
+        i = 0
+        while i < len(tokens) - 1:             # « pas mal de » = beaucoup de : neutralisé AVANT la négation
+            if tokens[i] == "pas" and tokens[i + 1] == "mal":
+                tokens[i:i + 2] = ["beaucoup"]
+            i += 1
         if not tokens:
             continue
-        for kind, phrases in _SHOE_ISSUE_TERMS.items():
-            for phrase in phrases:
-                at = _find_tokens(tokens, phrase)
-                if at is None:
-                    continue
-                if any(t in _SHOE_NEGATIONS for t in tokens[max(0, at - 3):at]):
-                    negated_seen = True
-                    continue
-                rest = tokens[:at] + tokens[at + len(_shoe_tokens(phrase)):]
-                return {"kind": kind, "zone": _zone_from_tokens(rest), "side": _side_from_tokens(rest),
-                        "negated": False}
-        if any(t in _SHOE_NEGATIONS for t in tokens) and (
-                any(t in _SHOE_NO_ISSUE_WORDS for t in tokens) or len(tokens) <= 2):
-            negated_seen = True       # « pas de souci », « rien », « aucun »
-    return {"kind": None, "zone": None, "side": None, "negated": negated_seen}
+        used: set = set()
+        clause_kinds: list = []
+        clause_negated = False
+        clause_unclear = False
+        for kind, phrase in phrases:
+            n = len(_shoe_tokens(phrase))
+            at = _find_tokens(tokens, phrase)
+            if at is None or used & set(range(at, at + n)):
+                continue
+            used |= set(range(at, at + n))
+            if any(t in _SHOE_NEGATIONS for t in tokens[max(0, at - 3):at]):
+                clause_negated = True
+            elif any(t in _SHOE_NEGATIONS for t in tokens[at + n:]):
+                # « ampoule non », « ampoules ? aucune », « ampoule : rien » : négation APRÈS le problème,
+                # sens incertain → on demande, on n'écrit jamais.
+                clause_unclear = True
+            else:
+                clause_kinds.append(kind)
+        rest = [t for i, t in enumerate(tokens) if i not in used]
+        zone, side = _zone_from_tokens(rest), _side_from_tokens(rest)
+        if clause_unclear:
+            unclear.append(clause.strip())
+        if not clause_kinds and not clause_negated:
+            if any(t in _SHOE_NO_ISSUE_WORDS for t in tokens) and (
+                    any(t in _SHOE_NEGATIONS for t in tokens) or "ras" in tokens or "rien" in tokens):
+                clause_negated = True        # « pas de souci », « RAS », « rien à signaler »
+            else:
+                # Ni problème, ni négation reconnue : seulement un localisateur (« côté gauche ») est inoffensif.
+                left = [t for t in rest if t not in _SHOE_LOCATOR_WORDS
+                        and _side_from_tokens([t]) is None and _zone_from_tokens([t]) is None]
+                if left:
+                    unclear.append(clause.strip())
+                elif zone or side:
+                    # Proposition purement LOCALISATRICE (« côté gauche », « au talon ») : voir plus bas.
+                    locators.append((zone, side, len(found) - 1))
+        negated = negated or clause_negated
+        for kind in clause_kinds:
+            found.append({"kind": kind, "zone": zone, "side": side})
+    # Un problème garde la zone / le côté de SA proposition. Seule une proposition purement localisatrice
+    # (« côté gauche », sans problème) se propage : à l'unique problème du terme, sinon au problème qui la
+    # précède immédiatement — jamais à un autre (« orteils serrés, ampoule au talon » : le talon est à l'ampoule).
+    for zone, side, prev in locators:
+        target = 0 if len(found) == 1 else prev
+        if target < 0 or target >= len(found):
+            continue
+        if zone and found[target]["zone"] is None:
+            found[target]["zone"] = zone
+        if side and found[target]["side"] is None:
+            found[target]["side"] = side
+    out_kinds: list = []
+    for item in found:
+        if item not in out_kinds:
+            out_kinds.append(item)
+    return {"kinds": out_kinds, "negated": negated, "unclear": unclear}
 
 
 def _zone_from_tokens(tokens: list) -> Optional[str]:
@@ -879,33 +946,35 @@ def compute_shoe_feedback(entry: dict, existing_activity_arc: Optional[dict], de
         item = raw if isinstance(raw, dict) else {"term": raw}
         term = item.get("term", item.get("kind"))
         cls = _classify_shoe_term(term)
-        if cls["negated"] and cls["kind"] is None:
+        if cls["negated"] and not cls["kinds"] and not cls["unclear"]:
             negated.append(term)
             continue
-        kind = cls["kind"]
-        if kind is None:
-            unknown.append({"field": "issue", "input": term,
-                            "reason": "terme hors de la liste fermée (ampoule, avant-pied serré, talon qui "
-                                      "bouge, point chaud, engourdissement, laçage trop serré, instable, "
-                                      "trop mou, trop dur, manque d'adhérence, tige déchirée)"})
-            continue
-        zone, zone_ok = _map_shoe_zone(item.get("zone"))
-        side, side_ok = _map_shoe_side(item.get("side"))
-        zone = zone or cls["zone"]        # zone / côté dits DANS le terme (« ampoule au talon gauche »)
-        side = side or cls["side"]
+        if not cls["kinds"] or cls["unclear"]:
+            for text in (cls["unclear"] or [term]):
+                unknown.append({"field": "issue", "input": text,
+                                "reason": "terme hors de la liste fermée ou ambigu (ampoule, avant-pied serré, "
+                                          "talon qui bouge, point chaud, engourdissement, laçage trop serré, "
+                                          "instable, trop mou, trop dur, manque d'adhérence, tige déchirée)"})
+            if not cls["kinds"]:
+                continue
+        zone_f, zone_ok = _map_shoe_zone(item.get("zone"))
+        side_f, side_ok = _map_shoe_side(item.get("side"))
         if not zone_ok:
             unknown.append({"field": "zone", "input": item.get("zone"), "reason": "zone non reconnue"})
         if not side_ok:
             unknown.append({"field": "side", "input": item.get("side"), "reason": "côté non reconnu"})
         if not (zone_ok and side_ok):
             continue
-        issue = {"kind": kind}
-        if zone:
-            issue["zone"] = zone
-        if side:
-            issue["side"] = side
-        if issue not in out_issues:
-            out_issues.append(issue)
+        for found in cls["kinds"]:
+            issue = {"kind": found["kind"]}
+            zone = zone_f or found["zone"]       # champs explicites d'abord, puis ce que dit le terme
+            side = side_f or found["side"]
+            if zone:
+                issue["zone"] = zone
+            if side:
+                issue["side"] = side
+            if issue not in out_issues:
+                out_issues.append(issue)
     comfort = None
     if entry.get("comfort") not in (None, ""):
         try:
@@ -940,6 +1009,10 @@ def compute_shoe_feedback(entry: dict, existing_activity_arc: Optional[dict], de
                 gear_id, gear_origin = said["gear_id"], "message"
             else:
                 needs_gear = {"reason": "conflict", "run_gear_id": run_gear, "said_gear_id": said["gear_id"]}
+        elif said and "gear_id" not in said:
+            # La séance a déjà une paire mais l'athlète en nomme une qu'on ne sait pas rattacher : on demande,
+            # on n'écrit pas en silence sur la paire de la séance.
+            needs_gear = {"reason": said["reason"], "candidates": said["candidates"]}
     elif said and "gear_id" in said:
         gear_id, gear_origin = said["gear_id"], "message"
     elif said:
