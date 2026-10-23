@@ -2597,14 +2597,14 @@ install_daily_sync() {
     fi
     log "Synchronisation automatique $(data_source) (scripts/daily-sync.sh)"
     local sync="$PROJECT_ROOT/scripts/daily-sync.sh" times t hour minute mode interval
-    local watch="$PROJECT_ROOT/scripts/garmin_watch.py"
+    local watch="$PROJECT_ROOT/scripts/watch.py"
     mode="$(sync_setting mode schedule)"
     interval="$(sync_setting watch_interval_min 15)"
     case "$mode" in
         schedule) ;;
         watch)
             # intervals.icu et Strava ne sont pas surveillés (pas de sonde équivalente) : heures fixes.
-            # COROS (#168) : sonde par le relais du projet (scripts/garmin_watch.py, CorosProbe).
+            # COROS (#168) : sonde par le relais du projet (scripts/watch.py, CorosProbe).
             if [[ "$(data_source)" != "garmin" && "$(data_source)" != "coros" ]]; then
                 warn "[sync].mode = \"watch\" n'existe que pour [data].source = \"garmin\" ou \"coros\" — heures fixes ([sync].times)."
                 mode="schedule"
@@ -2616,7 +2616,7 @@ install_daily_sync() {
     times="$(sync_times | tr '\n' ' ')"
     if [[ "$mode" == "watch" ]]; then
         interval="$((10#$interval))"
-        log "Mode surveillance : scripts/garmin_watch.py toutes les $interval min, LLM seulement s'il y a du neuf ([sync].mode)"
+        log "Mode surveillance : scripts/watch.py toutes les $interval min, LLM seulement s'il y a du neuf ([sync].mode)"
         times=""
     else
         log "Heures : $times (config [sync].times)"

@@ -158,7 +158,7 @@ Remote Control) et l'IDE partagent. Il délègue tout à l'agent `coach` et au s
   les retire explicitement. N'importez pas non plus le journal alimentaire Garmin dans `nutrition/` :
   c'est une lecture interactive, à la demande (`agents/nutritionist.md`).
 
-- **Déclencheurs (`trigger=…`, facultatif)** : posés par `scripts/garmin_watch.py` quand la
+- **Déclencheurs (`trigger=…`, facultatif)** : posés par `scripts/watch.py` quand la
   surveillance (`[sync].mode = "watch"`) a vu du neuf chez Garmin — `morning` (sommeil du
   jour calculé, bilan de santé absent) et/ou `activity:<id>` (séance dont aucun
   `activities/*.md` ne porte ce `garmin_activity_id`). C'est un **indice de priorité, pas

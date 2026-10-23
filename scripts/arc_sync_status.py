@@ -4,7 +4,7 @@
 Répond aux questions « est-ce que ça tourne ? quand ? qu'est-ce qui s'est passé ? » :
 
 - configuration `[sync]` (mode `schedule` | `watch`, heures, intervalle, exécuteur) ;
-- état du sondage Garmin (`logs/.watch-state.json`, écrit par `garmin_watch.py`) ;
+- état du sondage Garmin (`logs/.watch-state.json`, écrit par `watch.py`) ;
 - runs de `daily-sync.sh` (`logs/sync-YYYY-MM-DD.log` : en-tête `===== … =====` par run,
   pied `===== … fin code=N durée=Ns =====` depuis cette version, bloc ```resume```) ;
 - événements du sondage (`logs/watch.log`) ;

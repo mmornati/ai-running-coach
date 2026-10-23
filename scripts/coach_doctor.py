@@ -834,7 +834,8 @@ def _uname() -> str:
     return platform.system()
 
 
-WATCH_SCRIPT = "garmin_watch.py"
+# `garmin_watch.py` : ancien nom, encore présent dans les tâches posées avant le renommage.
+WATCH_SCRIPTS = ("watch.py", "garmin_watch.py")
 WATCH_STATE_REL = "logs/.watch-state.json"
 
 
@@ -854,16 +855,16 @@ def check_watch_heartbeat(check_id: str, workspace: Path, config: dict, now: dat
         last = datetime.fromisoformat(state["last_check"])
     except (OSError, ValueError, KeyError, TypeError):
         return build_check(
-            check_id, "warning", f"Surveillance Garmin installée ({installed}) mais jamais exécutée.",
-            fix="python3 scripts/garmin_watch.py --dry-run",
+            check_id, "warning", f"Surveillance installée ({installed}) mais jamais exécutée.",
+            fix="python3 scripts/watch.py --dry-run",
         )
     reference = now.astimezone().replace(tzinfo=None) if now.tzinfo else now
     age_min = (reference - last).total_seconds() / 60
     if age_min > 3 * interval:
         return build_check(
             check_id, "warning",
-            f"Surveillance Garmin silencieuse depuis {age_min:.0f} min (intervalle {interval} min).",
-            fix="python3 scripts/garmin_watch.py --dry-run ; voir logs/watch.log",
+            f"Surveillance silencieuse depuis {age_min:.0f} min (intervalle {interval} min).",
+            fix="python3 scripts/watch.py --dry-run ; voir logs/watch.log",
         )
     runs = state.get("runs") or {}
     today = reference.date().isoformat()
@@ -886,7 +887,7 @@ def check_daily_sync(home: Path, workspace: Path | None = None, config: dict | N
     if _uname() == "Darwin":
         plist = home / LAUNCHD_PLIST_REL
         if plist.is_file():
-            if workspace is not None and WATCH_SCRIPT in plist.read_text(encoding="utf-8", errors="replace"):
+            if workspace is not None and any(s in plist.read_text(encoding="utf-8", errors="replace") for s in WATCH_SCRIPTS):
                 return check_watch_heartbeat(check_id, workspace, config or {}, now, "LaunchAgent")
             return build_check(check_id, "ok", f"LaunchAgent daily-sync installé ({plist}).", fix=None)
         return build_check(
@@ -902,7 +903,7 @@ def check_daily_sync(home: Path, workspace: Path | None = None, config: dict | N
         )
     if out.returncode == 0 and CRON_MARKER in out.stdout:
         ours = [line for line in out.stdout.splitlines() if CRON_MARKER in line]
-        if workspace is not None and any(WATCH_SCRIPT in line for line in ours):
+        if workspace is not None and any(s in line for line in ours for s in WATCH_SCRIPTS):
             return check_watch_heartbeat(check_id, workspace, config or {}, now, "cron")
         return build_check(check_id, "ok", "Tâche cron daily-sync présente.", fix=None)
     return build_check(

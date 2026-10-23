@@ -113,7 +113,7 @@ class Relay:
                 return []
             err = _error(msg_id, -32000, f"COROS : {e}")
             # Connexion à refaire par l'athlète (absente, rafraîchissement refusé) : signalé à part
-            # pour les appelants sans IA (garmin_watch.py), qui ne doivent pas insister.
+            # pour les appelants sans IA (watch.py), qui ne doivent pas insister.
             err["error"]["data"] = {"login_required": LOGIN_HINT in str(e)}
             return [err]
         if hdrs.get("mcp-session-id"):
@@ -161,7 +161,7 @@ class CallError(RuntimeError):
 
 
 class Client:
-    """Appels d'outils COROS SANS client d'IA (download_fit.py, garmin_watch.py) : le même relais,
+    """Appels d'outils COROS SANS client d'IA (download_fit.py, watch.py) : le même relais,
     donc les mêmes jetons, le même filtrage (lecture seule en headless) et la même reprise sur 401."""
 
     def __init__(self, relay: Optional[Relay] = None, name: str = "ai-running-coach"):

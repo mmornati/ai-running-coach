@@ -14,7 +14,7 @@
 #   scripts/daily-sync.sh              # exécution (appelée par cron/launchd)
 #   scripts/daily-sync.sh --dry-run    # affiche la commande sans l'exécuter
 #   scripts/daily-sync.sh --runner copilot   # ou claude|codex|opencode|gemini|cursor
-#   scripts/daily-sync.sh --trigger activity:123,morning   # passé par garmin_watch.py
+#   scripts/daily-sync.sh --trigger activity:123,morning   # passé par watch.py
 #
 # Configuration : section [sync] de config/workspace.toml (runner, model, base_url,
 # api_key_env, daily_budget_eur, lookback_days) et [notifications] (voir
@@ -152,7 +152,7 @@ OUTPUT_KIND="text"
 OC_CONFIG_FILE="$ARC_WORKSPACE/.arc/sync/opencode.json"
 GEMINI_CONFIG_FILE="$ARC_WORKSPACE/.arc/sync/gemini-system.json"
 
-# Déclencheurs détectés par scripts/garmin_watch.py (#watch) : un indice pour
+# Déclencheurs détectés par scripts/watch.py (#watch) : un indice pour
 # l'agent (quoi récupérer en priorité), jamais une restriction — les dates
 # manquantes de la fenêtre restent récupérées. Format fermé : il finit dans un prompt.
 # COROS (#168) : l'identifiant est le `coros_activity_id` du contrat (« c » + LabelId).

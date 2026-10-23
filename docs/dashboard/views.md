@@ -1349,7 +1349,7 @@ nourrit :
 | Rapports | `rapports/*.md` | coach |
 | Nutrition | `nutrition/<date>_nutrition.md` | nutritionniste |
 | Hypothèses | aucun fichier du workspace : les modules de calcul (`scripts/arc_*.py`) | — |
-| Synchro | `logs/sync-*.log`, `logs/watch.log`, `logs/.watch-state.json`, `[sync]` | `daily-sync.sh`, `garmin_watch.py` |
+| Synchro | `logs/sync-*.log`, `logs/watch.log`, `logs/.watch-state.json`, `[sync]` | `daily-sync.sh`, `watch.py` |
 
 Chacun de ces fichiers s'ouvre par un bloc de données décrit par le
 [contrat de données](../skills/workspace-data-contract.md) : c'est ce bloc que le

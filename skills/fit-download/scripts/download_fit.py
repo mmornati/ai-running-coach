@@ -867,7 +867,7 @@ def _should_skip_download(dst: Path, out_dir: Path, activity_id, *,
 
 def _configured_source() -> str:
     """`[data].source` du workspace (#68), `garmin` par défaut ou si illisible — la
-    même résolution que `garmin_watch.load_settings`."""
+    même résolution que `watch.load_settings`."""
     try:
         from arc_index import load_config  # noqa: E402 (sys.path déjà préparé en tête de module)
         from coach_setup import workspace_root  # noqa: E402

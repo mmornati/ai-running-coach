@@ -227,7 +227,7 @@ class TestRelay(unittest.TestCase):
 
 
 class TestClient(unittest.TestCase):
-    """`arc_coros_mcp.Client` : appels d'outils sans IA (download_fit.py, garmin_watch.py)."""
+    """`arc_coros_mcp.Client` : appels d'outils sans IA (download_fit.py, watch.py)."""
 
     INIT = (200, {"mcp-session-id": "S1"}, '{"jsonrpc":"2.0","id":1,"result":{"protocolVersion":"2025-06-18"}}')
 

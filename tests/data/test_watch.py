@@ -1,4 +1,4 @@
-"""Palier D — `scripts/garmin_watch.py` : la surveillance Garmin sans LLM.
+"""Palier D — `scripts/watch.py` : la surveillance Garmin ou COROS sans LLM.
 
 Le point du watcher est de NE PAS lancer le LLM quand il n'y a rien de neuf :
 chaque test affirme autant ce qui ne se passe pas (sonde non appelée, sync non
@@ -19,7 +19,7 @@ from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO / "scripts"))
-import garmin_watch as W  # noqa: E402
+import watch as W  # noqa: E402
 
 NOW = datetime(2026, 9, 27, 9, 0, 0)
 TODAY = NOW.date()
@@ -311,7 +311,7 @@ class TestCli(WatchCase):
             HOME=str(self.ws),
         )
         proc = subprocess.run(
-            [sys.executable, str(REPO / "scripts/garmin_watch.py"), *args],
+            [sys.executable, str(REPO / "scripts/watch.py"), *args],
             env=env, capture_output=True, text=True, timeout=30,
         )
         return proc, record
@@ -437,11 +437,29 @@ class TestCoros(WatchCase):
                                               "querySleepOverview": SLEEP_NOT_YET}}))
         env = dict(os.environ, ARC_WORKSPACE=str(self.ws), ARC_WATCH_NOW=NOW.isoformat(),
                    ARC_WATCH_FAKE_COROS=str(fake), HOME=str(self.ws))
-        proc = subprocess.run([sys.executable, str(REPO / "scripts/garmin_watch.py"), "--dry-run"],
+        proc = subprocess.run([sys.executable, str(REPO / "scripts/watch.py"), "--dry-run"],
                               env=env, capture_output=True, text=True, timeout=30)
         self.assertEqual(proc.returncode, 0, proc.stderr)
         result = json.loads(proc.stdout.strip().splitlines()[-1])
         self.assertEqual(result["triggers"], [f"activity:c{COROS_LABEL}"])
+
+
+class TestLegacyName(WatchCase):
+    """`garmin_watch.py` (ancien nom) reste appelable : tâches cron/launchd posées avant le renommage."""
+
+    def test_old_script_runs_the_watcher(self):
+        fake = self.ws / "fake.json"
+        fake.write_text(json.dumps({"upload_ms": ms(NOW - timedelta(minutes=20)), "activities": [activity(5)]}))
+        env = dict(os.environ, ARC_WORKSPACE=str(self.ws), ARC_WATCH_NOW=NOW.isoformat(),
+                   ARC_WATCH_FAKE_GARMIN=str(fake), HOME=str(self.ws))
+        proc = subprocess.run([sys.executable, str(REPO / "scripts/garmin_watch.py"), "--dry-run"],
+                              env=env, capture_output=True, text=True, timeout=30)
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        self.assertEqual(json.loads(proc.stdout.strip().splitlines()[-1])["triggers"], ["activity:5"])
+
+    def test_old_module_name_still_imports(self):
+        import garmin_watch
+        self.assertIs(garmin_watch.tick, W.tick)
 
 
 if __name__ == "__main__":

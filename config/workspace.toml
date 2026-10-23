@@ -76,7 +76,7 @@ opencode_data_dir = ""
 daily_budget_eur = 0.5
 # Déclenchement (réinstaller avec `./install.sh --daily-sync` après un changement) :
 #   "schedule" — le LLM tourne aux heures fixes de `times`, qu'il y ait du neuf ou non.
-#   "watch"    — scripts/garmin_watch.py interroge Garmin toutes les `watch_interval_min`
+#   "watch"    — scripts/watch.py interroge Garmin ou COROS toutes les `watch_interval_min`
 #                minutes SANS LLM (un appel HTTP, zéro token) et ne lance la synchronisation
 #                que si une séance ou le sommeil du jour manque dans le workspace : le bilan
 #                matinal suit votre réveil réel, une séance du soir est traitée le soir.

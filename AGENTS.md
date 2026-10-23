@@ -436,7 +436,7 @@ l'HRV et la FC de repos sont datés par le **jour du réveil** (la nuit de D est
 matériel par séance (et rattrapage `garmin_gear_backfill.py`), pesées, poussée des apports, upload de
 parcours, suppression/déplacement d'une séance planifiée, Training Readiness Garmin (remplacé par la
 récupération COROS, nommée). **Surveillance** (`[sync].mode = "watch"`) : disponible, par le relais
-(`scripts/garmin_watch.py`, sans LLM) — le MCP COROS n'ayant pas d'heure de dernier envoi, chaque passage
+(`scripts/watch.py`, sans LLM) — le MCP COROS n'ayant pas d'heure de dernier envoi, chaque passage
 lit les séances récentes et, tant que le fichier santé du jour manque, le sommeil du jour.
 
 ## Connexion de l'IA (#265)

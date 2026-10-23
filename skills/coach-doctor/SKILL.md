@@ -28,7 +28,7 @@ commande de correction sous chaque ligne non ✅ :
 | `garmin_token_perms` | (source `garmin`, sinon ℹ️) Dossier `~/.garminconnect` et fichiers de jetons inaccessibles au groupe/autres (GHSA-wjhr-76vg-2hvc ; droits seuls, contenu jamais lu). ⚠️ sinon : `chmod 700 ~/.garminconnect && find ~/.garminconnect -type f -exec chmod 600 {} +` ou relancer `install.sh` |
 | `garmin_mcp_pin` | (source `garmin`, sinon ℹ️) Serveur `garmin-mcp` au commit épinglé par `install.sh` ? ⚠️ sinon : relancer `install.sh` (réinstalle au pin, jetons conservés) ; ℹ️ pour une origine personnalisée ou illisible |
 | `out_of_contract` | Nombre de fichiers sans bloc ```` ```arc ```` conforme |
-| `daily_sync_scheduled` | Tâche cron ou LaunchAgent du daily-sync installée ; en mode `[sync].mode = "watch"`, passage récent de `garmin_watch.py` (⚠ après 3 intervalles de silence) |
+| `daily_sync_scheduled` | Tâche cron ou LaunchAgent du daily-sync installée ; en mode `[sync].mode = "watch"`, passage récent de `watch.py` (⚠ après 3 intervalles de silence) |
 | `ntfy_configured` | Notifications push configurées (si activées) |
 | `gear_sync` | (#133) Liste blanche `GARMIN_ENABLED_TOOLS` de `.mcp.json` avec `get_gear`/`get_activity_gear` ; paires actives du profil sans segment `garmin: <uuid>` (ℹ️). **Statique : aucun appel Garmin** — lister le matériel Garmin sans puce est le rôle du coach (`get_gear`) |
 | `weight_sync` | (#222) Liste blanche `GARMIN_ENABLED_TOOLS` avec `get_daily_weigh_ins`/`get_weigh_ins` (lecture des pesées). ℹ️ si absents (relancer l'installation) ou source ≠ garmin — jamais un avertissement : le poids reste alors déclaratif. **Statique : aucun appel Garmin** |

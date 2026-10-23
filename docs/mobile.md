@@ -220,7 +220,7 @@ Deux modes de déclenchement, choisis par `[sync].mode` dans `config/workspace.u
 | Mode | Déclenchement | Pour qui |
 |---|---|---|
 | `schedule` (défaut) | Le LLM tourne aux heures fixes de `[sync].times` (`07:15`, `14:15`), qu'il y ait du neuf ou non. | Intervals.icu, ou un rythme très régulier. |
-| `watch` | `scripts/garmin_watch.py` interroge Garmin ou COROS toutes les `watch_interval_min` minutes **sans LLM** et ne lance la synchronisation que si une séance ou le sommeil du jour manque dans le workspace. | Garmin, COROS : réveils tardifs le week-end, séances du soir, voyages et fuseaux horaires. |
+| `watch` | `scripts/watch.py` interroge Garmin ou COROS toutes les `watch_interval_min` minutes **sans LLM** et ne lance la synchronisation que si une séance ou le sommeil du jour manque dans le workspace. | Garmin, COROS : réveils tardifs le week-end, séances du soir, voyages et fuseaux horaires. |
 
 Testez sans attendre :
 
@@ -278,8 +278,8 @@ première détection. Connexion refusée : pas de LLM, journal « connexion CORO
 scripts/arc_coros_auth.py login ».
 
 ```bash
-scripts/garmin_watch.py --dry-run   # décide et affiche, ne lance rien
-scripts/garmin_watch.py --status    # dernier passage, runs du jour, déclencheurs en attente
+scripts/watch.py --dry-run   # décide et affiche, ne lance rien
+scripts/watch.py --status    # dernier passage, runs du jour, déclencheurs en attente
 tail logs/watch.log                 # événements seulement (nouveautés, runs, erreurs)
 ```
 
