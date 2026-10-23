@@ -304,6 +304,7 @@ import arc_descent as DS  # noqa: E402
 import arc_durability as DU  # noqa: E402
 import arc_energy as EN  # noqa: E402
 import arc_gait as GT  # noqa: E402
+import arc_garmin_gear as GG  # noqa: E402
 import arc_health_source as HS  # noqa: E402
 import arc_gap as G  # noqa: E402
 import arc_legacy as L  # noqa: E402
@@ -396,7 +397,11 @@ from coach_setup import ENGINE, workspace_root  # noqa: E402
 # #218 : `health_day` gagne `health_source`/`health_provider`/`hrv_sdnn_ms` (provenance santé, NULL pour les
 # fichiers antérieurs — source effective = `[data].source`, `arc_health_source`) — version 38 (37 = home
 # trainer) : sans ce bump, l'insertion d'un fichier santé portant ces clés échouerait (« no such column »).
-SCHEMA_VERSION = 38
+# Cycle de vie des chaussures Garmin : `gear` gagne `retired_profile` (marqueur `(retirée)` de la puce),
+# `retired_source` (`profile` | `garmin`), `retired_date` et `garmin_status` — `retired` devient le statut
+# EFFECTIF, recalculé à CHAQUE `index_workspace()` par `_apply_garmin_gear_status` depuis l'instantané
+# `.arc/garmin_gear.json` (`arc_garmin_gear`). Version 39 (38 = #218) : sans ce bump, l'insertion échouerait.
+SCHEMA_VERSION = 39
 # Colonnes d'identifiant externe d'une séance, dans l'ordre de priorité de `activity_ref` — une séance n'en
 # porte qu'une (`workspace-data-contract`) ; Garmin prime si un fichier ancien en porte plusieurs.
 REF_COLUMNS = ("garmin_activity_id", "intervals_activity_id", "strava_activity_id")
@@ -630,7 +635,8 @@ CREATE TABLE athlete (
 CREATE TABLE gear (
     source_path TEXT, gear_id TEXT, name TEXT, start_date TEXT, threshold_m REAL,
     is_default INTEGER, retired INTEGER, collision_base TEXT, start_m REAL, usage TEXT,
-    garmin_uuid TEXT, ignored INTEGER
+    garmin_uuid TEXT, ignored INTEGER, retired_profile INTEGER, retired_date_profile TEXT,
+    retired_source TEXT, retired_date TEXT, garmin_status TEXT
 );
 -- Matériel hors chaussures (#134) : une ligne par puce de « ### Matériel » du profil.
 -- `kits` : liste JSON de slugs ; seuils typés (`threshold_m`, `threshold_s`, `threshold_sessions`,
@@ -1300,6 +1306,9 @@ def store(conn, rel: str, kind: str, data: dict, arc_version: int) -> None:
                 "collision_base": shoe.get("collision_base"),
                 "start_m": shoe.get("start_m"), "usage": shoe.get("usage"),
                 "garmin_uuid": shoe.get("garmin_uuid"), "ignored": int(bool(shoe.get("ignored"))),
+                # statut effectif (`retired`, `retired_source`, `retired_date`) : `_apply_garmin_gear_status`
+                "retired_profile": int(bool(shoe.get("retired"))), "retired_date_profile": shoe.get("retired_date"),
+                "retired_date": shoe.get("retired_date"), "retired_source": "profile" if shoe.get("retired") else None,
             })
         for item in g("equipment") or []:
             if not isinstance(item, dict) or not item.get("gear_id"):
@@ -3258,6 +3267,9 @@ def index_workspace(conn, workspace: Path, today: Optional[str] = None,
     # fichier gagnant supprimé/inchangé pas de ce passage ne doit jamais laisser
     # une semaine ni un avertissement périmés).
     _mark_week_shadowing(conn)
+    # Retraite des chaussures dans Garmin : même principe, recalculée en ENTIER à chaque passage (l'instantané
+    # `.arc/garmin_gear.json` change sans que le profil change).
+    counts["garmin_gear"] = _apply_garmin_gear_status(conn, workspace)
     # Échantillons FIT (#42) — table dédiée `sample_file`, jamais `source_file` (voir
     # `ingest_samples`) : sa propre découverte/nettoyage ne touche donc jamais la boucle
     # ci-dessus. Le rattachement à `activity` n'est plus résolu ICI (il l'était par
@@ -3628,12 +3640,76 @@ def gear_attribution(conn, garmin_gear: Optional[str], chat_gear: Optional[str])
     return M.resolve_gear_attribution(gear_defs, uuids, chat)
 
 
+def _profile_gear_rows(conn) -> List[dict]:
+    """Puces `### Chaussures` telles que DÉCLARÉES (retraite du profil seulement), au format de
+    `arc_legacy.parse_gear` — entrée de `arc_garmin_gear`."""
+    return [{"gear_id": r["gear_id"], "name": r["name"], "garmin_uuid": r["garmin_uuid"],
+             "ignored": bool(r["ignored"]), "retired": bool(r["retired_profile"]),
+             "retired_date": r["retired_date_profile"]}
+            for r in conn.execute("SELECT gear_id, name, garmin_uuid, ignored, retired_profile, retired_date_profile "
+                                  "FROM gear")]
+
+
+def _apply_garmin_gear_status(conn, workspace: Path) -> dict:
+    """Statut EFFECTIF des chaussures : retraite du profil OU paire liée retirée dans Garmin
+    (`arc_garmin_gear.effective_status`). Repart toujours de la puce : une paire « dé-retirée » dans
+    Garmin, ou un instantané supprimé, n'y laisse aucune trace. Rend `{"snapshot": bool, "retired_by_garmin": n}`."""
+    cache = GG.load_cache(workspace)
+    rows = _profile_gear_rows(conn)
+    statuses = GG.effective_status(rows, cache)
+    n = 0
+    for gear_id, st in statuses.items():
+        if st.get("retired_source") == "garmin":
+            n += 1
+        conn.execute("UPDATE gear SET retired = ?, retired_source = ?, retired_date = ?, garmin_status = ? "
+                     "WHERE gear_id = ?",
+                     (int(st["retired"]), st.get("retired_source"), st.get("retired_date"),
+                      st.get("garmin_status"), gear_id))
+    return {"snapshot": cache is not None, "retired_by_garmin": n}
+
+
+def garmin_gear_status(conn, workspace: Path) -> dict:
+    """Commande « garmin-gear-status » : instantané Garmin + désaccords profil ↔ Garmin."""
+    cache = GG.load_cache(workspace)
+    rows = _profile_gear_rows(conn)
+    return {"snapshot": {"path": GG.CACHE_REL, "fetched_at": cache.get("fetched_at"),
+                         "shoes": len(cache["shoes"])} if cache else None,
+            "drift": GG.status_drift(rows, cache),
+            "unlinked_garmin": GG.unlinked_garmin_shoes(rows, cache)}
+
+
+def mark_retired_in_profile(conn, workspace: Path, gear_id: str, drift: List[dict]) -> dict:
+    """Écrit `(retirée AAAA-MM-JJ)` (date de fin Garmin, ou `(retirée)` sans elle) sur la puce `gear_id` —
+    SEULEMENT pour une paire signalée `retired_in_garmin`, jamais en headless (`ARC_HEADLESS`). Le
+    profil appartient à l'athlète : l'appelant a recueilli son « oui » explicite."""
+    if os.environ.get("ARC_HEADLESS"):
+        return {"error": "refusé en exécution sans surveillance (ARC_HEADLESS) : le profil n'est modifié "
+                         "qu'après un « oui » explicite de l'athlète"}
+    item = next((d for d in drift if d["gear_id"] == gear_id and d["kind"] == "retired_in_garmin"), None)
+    if item is None:
+        return {"error": f"« {gear_id} » n'est pas une paire retirée dans Garmin et active au profil : rien à écrire"}
+    row = conn.execute("SELECT source_path FROM gear WHERE gear_id = ?", (gear_id,)).fetchone()
+    profile = workspace / row["source_path"]
+    import garmin_gear_backfill as B      # paresseux : helpers d'édition de puces (stdlib, garminconnect non requis)
+    original = profile.read_bytes()
+    updated = B.append_retired_marker(original.decode("utf-8"), gear_id, item.get("date_end"))
+    if updated is None:
+        return {"error": f"puce « {gear_id} » introuvable exactement une fois dans {row['source_path']} : profil inchangé"}
+    B._atomic_write(profile, updated.encode("utf-8"))
+    after = next((g for g in L.parse_gear(updated) if g["gear_id"] == gear_id), None)
+    if not after or not after.get("retired"):
+        B._atomic_write(profile, original)
+        return {"error": "puce non relue comme retirée après écriture : profil restauré"}
+    return {"written": True, "gear_id": gear_id, "path": row["source_path"], "marker": item["marker"]}
+
+
 def _gear_defs(conn) -> List[dict]:
     """Paires déclarées PRISES EN COMPTE (`ignored = 0`, #133) — lues par `gear_mileage` ET par le
-    bilan de carrière (#135) : une seule requête, jamais retapée à deux endroits."""
+    bilan de carrière (#135) : une seule requête, jamais retapée à deux endroits. `retired` est le
+    statut EFFECTIF (profil ou Garmin, `_apply_garmin_gear_status`)."""
     return [dict(r) for r in conn.execute(
         "SELECT gear_id, name, start_date, threshold_m, is_default AS \"default\", retired, collision_base, "
-        "start_m, usage FROM gear WHERE ignored = 0")]
+        "start_m, usage, retired_source, retired_date FROM gear WHERE ignored = 0")]
 
 
 def _gear_activities(conn) -> List[dict]:
@@ -4577,10 +4653,12 @@ def unreferenced_gear_photos(conn, workspace: Path) -> List[str]:
 
 def declared_gear(conn) -> List[dict]:
     """TOUTES les paires déclarées au profil (#149) — actives, retirées et `(ignorée)` — avec de quoi
-    résoudre un argument de `/inspection` : `gear_id`, `name`, `retired`, `ignored`, `garmin_uuid`."""
+    résoudre un argument de `/inspection` : `gear_id`, `name`, `retired` (effectif : profil ou Garmin),
+    `retired_source` (si retirée), `ignored`, `garmin_uuid`."""
     return [{"gear_id": r["gear_id"], "name": r["name"], "retired": bool(r["retired"]),
+             **({"retired_source": r["retired_source"]} if r["retired"] and r["retired_source"] else {}),
              "ignored": bool(r["ignored"]), "garmin_uuid": r["garmin_uuid"]}
-            for r in conn.execute("SELECT gear_id, name, retired, ignored, garmin_uuid FROM gear "
+            for r in conn.execute("SELECT gear_id, name, retired, retired_source, ignored, garmin_uuid FROM gear "
                                   "ORDER BY name COLLATE NOCASE, gear_id")]
 
 
@@ -5013,7 +5091,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     parser.add_argument("command", nargs="?", default="index",
                         choices=("index", "backfill-plan", "status", "hrv-baseline", "sleep-debt",
-                                 "heat-acclimation", "altitude-exposure", "gear", "gear-attribution", "performance-index", "fueling", "samples",
+                                 "heat-acclimation", "altitude-exposure", "gear", "gear-attribution", "garmin-gear-status", "performance-index", "fueling", "samples",
                                  "zones", "gap", "decoupling", "vam", "descent", "durability",
                                  "climb-history", "decisions", "slope-model", "trail-shape", "energy", "equipment",
                                  "inspections", "gear-career", "gait-summary", "pace-curve",
@@ -5065,6 +5143,12 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--garmin-gear", metavar="UUID[,UUID…]",
                         help="commande « gear-attribution » (#133) : uuid du matériel Garmin (get_activity_gear ou "
                              "get_gear), séparés par des virgules")
+    parser.add_argument("--garmin-gear-json", metavar="FICHIER|-",
+                        help="commande « garmin-gear-status » : réponse JSON de get_gear (serveur MCP ou garminconnect) ; "
+                             "réécrit l'instantané .arc/garmin_gear.json avant l'indexation (`-` = entrée standard)")
+    parser.add_argument("--mark-retired", metavar="GEAR_ID",
+                        help="commande « garmin-gear-status » : écrit « (retirée AAAA-MM-JJ) » sur la puce d'une paire "
+                             "retirée dans Garmin (après « oui » explicite de l'athlète ; refusé sous ARC_HEADLESS)")
     parser.add_argument("--chat-gear", metavar="GEAR_ID",
                         help="commande « gear-attribution » (#133) : gear_id déclaré par l'athlète en chat")
     parser.add_argument("--kit", metavar="SLUG",
@@ -5303,8 +5387,23 @@ def main(argv=None) -> int:
         return plan_templates_cli(args, workspace)
     if args.command == "strength":
         return strength_cli(args, workspace)
+    if args.command == "garmin-gear-status" and args.garmin_gear_json:
+        try:
+            raw = sys.stdin.read() if args.garmin_gear_json == "-" else Path(args.garmin_gear_json).read_text(encoding="utf-8")
+            GG.write_cache(workspace, GG.normalize_garmin_shoes(raw))
+        except (OSError, GG.GarminGearError) as exc:
+            raise ConfigError(f"--garmin-gear-json : {exc}")
     conn = open_db(workspace, args.db, args.memory, args.rebuild)
     counts = index_workspace(conn, workspace, args.today)
+    if args.command == "garmin-gear-status":
+        report = garmin_gear_status(conn, workspace)
+        if args.mark_retired:
+            report["mark_retired"] = mark_retired_in_profile(conn, workspace, args.mark_retired, report["drift"])
+            if report["mark_retired"].get("written"):
+                index_workspace(conn, workspace, args.today)
+                report.update(garmin_gear_status(conn, workspace))
+        print(json.dumps(report, ensure_ascii=False))
+        return 1 if (report.get("mark_retired") or {}).get("error") else 0
     if args.command == "hrv-baseline":
         conf = settings(load_config(workspace))
         today_date = date.fromisoformat(args.today) if args.today else date.today()

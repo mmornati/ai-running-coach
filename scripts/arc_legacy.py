@@ -752,7 +752,10 @@ GEAR_GARMIN_UUID_RE = _GEAR_GARMIN_UUID_RE   # public : validé aussi par `arc_i
 # à la paire par défaut (`gear_source: "garmin_unmapped"`).
 _GEAR_IGNORED_RE = re.compile(r"\(\s*ignor[ée]e?\s*\)", re.I)
 _GEAR_DEFAULT_RE = re.compile(r"\(\s*par\s*d[ée]faut\s*\)", re.I)
-_GEAR_RETIRED_RE = re.compile(r"\(\s*retir[ée]e?\s*\)", re.I)
+# `(retirée)` ou `(retirée 2026-10-12)` : date de retraite FACULTATIVE (AAAA-MM-JJ), recopiée de Garmin
+# (`date_end`) ou déclarée — les séances SANS `gear_id` datées jusqu'à elle restent créditées à une
+# paire `(par défaut)` retirée (`arc_metrics.attribute_gear`).
+_GEAR_RETIRED_RE = re.compile(r"\(\s*retir[ée]e?(?:\s+(?:le\s+)?(\d{4}-\d{2}-\d{2}))?\s*\)", re.I)
 # « 186mi » (unité collée au nombre) compte : seul un préfixe alphabétique (« min ») l'exclut.
 _GEAR_MILES_RE = re.compile(r"(?<![a-z])mi(?:les?)?\b", re.I)
 # Segment « départ » : UNIQUEMENT « [~] <nombre> [km|mi|mile(s)] » — toute autre forme
@@ -875,7 +878,8 @@ def parse_gear(text: str) -> List[Dict[str, Any]]:
 
     `(par défaut)` déclare la chaussure attribuée à une activité sans `gear_id`
     (voir `arc_metrics.gear_mileage`) ; `(retirée)`, une chaussure sortie de
-    rotation (exclue des alertes, voir la même fonction). Les deux repères sont
+    rotation (exclue des alertes, voir la même fonction) ; `(retirée AAAA-MM-JJ)`
+    porte en plus `retired_date` (date invalide : clé omise, la paire reste retirée). Les deux repères sont
     cherchés sur la ligne ENTIÈRE (n'importe quelle position), puis retirés avant
     de découper le reste en segments — sans quoi l'un d'eux traînerait dans le nom
     ou dans un segment mal reconnu."""
@@ -887,7 +891,9 @@ def parse_gear(text: str) -> List[Dict[str, Any]]:
     for raw in _gear_bullets(section):
         raw = raw.replace("**", "").strip()   # gras markdown : jamais significatif ici (comme `parse_bullets`)
         is_default = bool(_GEAR_DEFAULT_RE.search(raw))
-        is_retired = bool(_GEAR_RETIRED_RE.search(raw))
+        retired_m = _GEAR_RETIRED_RE.search(raw)
+        is_retired = bool(retired_m)
+        retired_date = parse_fr_date(retired_m.group(1)) if retired_m else None
         is_ignored = bool(_GEAR_IGNORED_RE.search(raw))
         raw = _GEAR_IGNORED_RE.sub("", _GEAR_RETIRED_RE.sub("", _GEAR_DEFAULT_RE.sub("", raw))).strip()
         segments = [s for s in _GEAR_SEGMENT_SPLIT_RE.split(raw) if s.strip()]
@@ -935,7 +941,7 @@ def parse_gear(text: str) -> List[Dict[str, Any]]:
         entry = {
             "gear_id": gear_id, "name": name or None, "start_date": start_date,
             "threshold_m": threshold_m, "default": is_default or None, "retired": is_retired or None,
-            "start_m": start_m, "usage": usage, "garmin_uuid": garmin_uuid,
+            "retired_date": retired_date, "start_m": start_m, "usage": usage, "garmin_uuid": garmin_uuid,
             "garmin_uuid_invalid": garmin_invalid or None, "ignored": is_ignored or None,
         }
         if n > 1:

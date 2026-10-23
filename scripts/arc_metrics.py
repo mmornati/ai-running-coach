@@ -535,7 +535,11 @@ ASSUMPTIONS = {
                  "kilométrage affiché (historique), mais jamais d'alerte, et jamais candidate à l'attribution "
                  "par défaut même si `(par défaut)` est aussi coché sur la même puce (une chaussure qu'on ne "
                  "porte plus ne doit pas absorber les séances sans `gear_id`) — priorité documentée : retraite "
-                 "avant défaut. Deux puces qui dérivent le même slug (rachat du même modèle sans `id:` pour les "
+                 "avant défaut ; exception : une retraite DATÉE (`(retirée AAAA-MM-JJ)` ou date de fin Garmin) "
+                 "lui laisse les séances sans `gear_id` jusqu'à cette date incluse (sa carrière reste entière). "
+                 "Retraite effective = puce `(retirée)` OU paire liée (`garmin: <uuid>`) retirée dans Garmin "
+                 "Connect (instantané `.arc/garmin_gear.json`, `arc_garmin_gear`), immédiate même si la puce "
+                 "n'est pas encore modifiée (`retired_source: garmin`). Deux puces qui dérivent le même slug (rachat du même modèle sans `id:` pour les "
                  "distinguer) : `arc_legacy.parse_gear` renomme les suivantes `-2`, `-3`… plutôt que de laisser "
                  "la dernière écraser la première dans l'index, et la collision remonte dans `warnings`. "
                  "Kilométrage de départ (#132) : segment « départ N km » de la puce (`start_m`, « mi » converti) "
@@ -1816,12 +1820,27 @@ def attribute_gear(activities: List[dict], gear_defs: List[dict], today: Optiona
     (`arc_index.gear_career`, #135) pour qu'ils ne divergent jamais. Ne rend que les séances
     comptées : sport d'usure (`GEAR_WEAR_SPORTS`), avec distance, pas postérieures à `today` ;
     `gear_id` explicite prioritaire ; sinon paire par défaut non retirée (filtrée par `depuis`),
-    jamais pour un matériel Garmin non associé (`gear_source == "garmin_unmapped"`)."""
+    jamais pour un matériel Garmin non associé (`gear_source == "garmin_unmapped"`).
+
+    Paire `(par défaut)` RETIRÉE avec une date de retraite (`retired_date`, puce `(retirée AAAA-MM-JJ)` ou
+    `date_end` Garmin) : elle garde les séances sans `gear_id` datées de son `depuis` à sa retraite
+    incluse — sa carrière ne disparaît pas le jour où on la retire. Une paire par défaut active à `depuis`
+    explicite couvrant la séance passe avant ; sans `depuis`, la retraite datée passe avant elle. Retirée
+    sans date : plus jamais par défaut (comportement historique)."""
     by_id = {g["gear_id"]: g for g in gear_defs if g.get("gear_id")}
     default_entry = next((g for g in by_id.values() if g.get("default") and not g.get("retired")), None)
     default_id = default_entry["gear_id"] if default_entry else None
     default_start = default_entry.get("start_date") if default_entry else None
+    retired_defaults = [g for g in by_id.values() if g.get("default") and g.get("retired") and g.get("retired_date")]
     today_iso = today.isoformat() if today else None
+
+    def retired_default_for(day: Optional[str]) -> Optional[str]:
+        if not day:
+            return None
+        for g in retired_defaults:
+            if (not g.get("start_date") or g["start_date"] <= day) and day <= g["retired_date"]:
+                return g["gear_id"]
+        return None
     for act in activities:
         if act.get("sport") not in GEAR_WEAR_SPORTS:
             continue
@@ -1833,11 +1852,17 @@ def attribute_gear(activities: List[dict], gear_defs: List[dict], today: Optiona
         if not gear_id:
             if act.get("gear_source") == "garmin_unmapped":
                 continue    # #133 : matériel Garmin non associé — jamais crédité en silence à la paire par défaut
-            if not default_id:
-                continue
-            if default_start and (not act.get("date") or act["date"] < default_start):
-                continue    # séance antérieure à l'entrée en service de la chaussure par défaut
-            gear_id = default_id
+            day = act.get("date")
+            if default_id and default_start and day and day >= default_start:
+                gear_id = default_id
+            else:
+                gear_id = retired_default_for(day)
+                if gear_id is None:
+                    if not default_id:
+                        continue
+                    if default_start and (not day or day < default_start):
+                        continue    # séance antérieure à l'entrée en service de la chaussure par défaut
+                    gear_id = default_id
         yield act, gear_id
 
 
@@ -1899,6 +1924,12 @@ def gear_mileage(activities: List[dict], gear_defs: List[dict],
             "default": bool(g.get("default")), "retired": retired,
             "alert": alert,
         }
+        if distance_m >= threshold_m:
+            shoe["over_threshold"] = True    # seuil atteint, retraite ou non (une paire retirée n'alerte plus)
+        if retired and g.get("retired_source"):
+            shoe["retired_source"] = g["retired_source"]     # `profile` | `garmin` (retraite Garmin pas encore au profil)
+        if retired and g.get("retired_date"):
+            shoe["retired_date"] = g["retired_date"]
         if g.get("start_m") is not None:
             shoe["start_m"] = start_m
         if g.get("usage"):
@@ -1923,6 +1954,11 @@ def gear_mileage(activities: List[dict], gear_defs: List[dict],
                 f"« {g.get('name') or gear_id} » dérive le même identifiant (« {collision_base} ») qu'une "
                 f"autre chaussure du profil — renommé « {gear_id} » automatiquement ; ajoutez un `id:` "
                 "explicite sur chaque puce pour lever l'ambiguïté (même modèle racheté, deux paires distinctes).")
+    defaults = [g for g in by_id.values() if g.get("default")]
+    if defaults and all(g.get("retired") for g in defaults):
+        names = ", ".join(sorted(g.get("name") or g["gear_id"] for g in defaults))
+        warnings.append(f"La paire par défaut ({names}) est retirée : les nouvelles séances sans chaussure déclarée "
+                        "ne sont plus comptées — marquez « (par défaut) » la paire qui la remplace.")
     unknown = [{"gear_id": gid, "distance_m": round(m)} for gid, m in totals.items() if gid not in by_id]
     shoes.sort(key=lambda s: s["name"].casefold())
     unknown.sort(key=lambda s: s["gear_id"])

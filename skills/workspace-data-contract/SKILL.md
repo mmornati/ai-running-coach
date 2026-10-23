@@ -211,6 +211,14 @@ méthode complète. En résumé :
 - `(retirée)` : kilométrage toujours affiché (historique), jamais d'alerte,
   jamais candidate à l'attribution par défaut (priorité retraite avant
   défaut, même si `(par défaut)` est aussi coché sur la même puce).
+  `(retirée AAAA-MM-JJ)` ajoute la date de retraite (`retired_date`) : une paire
+  `(par défaut)` retirée garde alors les séances sans `gear_id` datées de son
+  `depuis` à cette date incluse. Retraite **effective** (`gear_mileage` →
+  `retired`, `retired_source`, `retired_date`) = puce `(retirée)` OU paire liée
+  par `garmin: <uuid>` retirée dans Garmin Connect (instantané dérivé
+  `.arc/garmin_gear.json`, `arc_index.py garmin-gear-status`), immédiate même
+  avant que la puce soit modifiée ; un profil `(retirée)` n'est jamais annulé par
+  Garmin. `over_threshold` : seuil atteint, retraite ou non.
 - `départ N km` (#132) : ajouté au cumul (`start_m` dans la table `gear`,
   `distance_m` de `gear_mileage` = activités + départ), donc compté dans le
   seuil d'alerte, la prévision et `near_threshold` ; conservé pour une paire
