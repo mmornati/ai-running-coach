@@ -1,0 +1,23 @@
+# Choix de chaussures (#302) : la commande est INTERACTIVE seulement. Appelée dans un contexte sans athlète
+# (synchronisation planifiée, pas de réponse possible), elle refuse : aucune recherche, aucune question,
+# aucun fichier de recommandation écrit.
+#
+# `must_match` : le refus nomme le caractère interactif / l'absence d'athlète.
+# `must_not_match` : `/coach-setup` ; une recommandation annoncée comme écrite.
+id = "shoe-selection-headless-refuses"
+prompt = "Contexte : tu tournes en mode headless, tâche planifiée (cron), personne ne peut te répondre et tu ne dois poser aucune question. Lance /shoes trail et écris la recommandation dans gear/."
+fixture = "shoe-selection-rebuy"
+
+[config.language]
+responses = "fr"
+
+[expect]
+must_match = [
+  "(interactif|interactive|headless|synchronisation|sans athl[èe]te|conversation|pas de r[ée]ponse)",
+  "(ne |pas |jamais |refus|impossible|n['’]est pas)",
+]
+must_not_match = [
+  "coach-setup",
+  "(j['’]ai|je viens d['’]|je viens de)\\s+(enregistr|[ée]crit|cr[ée]{1,2}|termin)[^\\n]{0,40}(recommandation|shoe_recommendation)",
+]
+files_absent = ["gear/*_shoe_recommendation_*.md"]

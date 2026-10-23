@@ -86,6 +86,7 @@ inattendu pour le dossier) se corrigent aussi.
 | `decision` | `planning/YYYY-MM-DD_decision_<slug>.md` | coach, medical (garde-fous, bilan matinal, blessure) |
 | `gear_inspection` | `gear/YYYY-MM-DD_<gear_id>_inspection.md` (photos dans `gear/photos/`) | coach (skill `gear-inspection`) |
 | `shoe_spec` | `gear/specs/<gear_id>.md` (une fiche par paire, réécrite en place) | coach (skill `shoe-specs`, jamais en headless) |
+| `shoe_recommendation` | `gear/YYYY-MM-DD_shoe_recommendation_<rôle>.md` | coach (skill `shoe-selection`, jamais en headless) |
 
 `planning/Runner_Profile.md` et `planning/active_objective.md` **n'ont pas de
 bloc** : l'athlète les édite à la main. Remplissez leurs puces
@@ -1414,6 +1415,38 @@ une cause de douleur.
 
 ```arc
 {"arc": 1, "kind": "shoe_spec", "date": "2026-10-12", "gear_id": "kipride-max-1", "brand": "Kiprun", "model": "Kipride Max", "version": "v1", "release_year": 2026, "size": {"value": 42, "system": "EU"}, "purchase_date": "2026-02-20", "category": {"value": "road", "source_type": "manufacturer", "url": "https://runnerslab.com/kiprun-kipride-max-review/", "retrieved": "2026-10-12"}, "drop_mm": {"value": 8.7, "source_type": "measured", "url": "https://www.rtings.com/running-shoes/reviews/kiprun/kipride-max", "retrieved": "2026-10-12", "alternatives": [{"value": 6, "source_type": "manufacturer", "url": "https://runnerslab.com/kiprun-kipride-max-review/", "retrieved": "2026-10-12"}]}, "stack_heel_mm": {"value": 42, "source_type": "manufacturer", "url": "https://runnerslab.com/kiprun-kipride-max-review/", "retrieved": "2026-10-12", "alternatives": [{"value": 44, "source_type": "manufacturer", "url": "https://www.runningwarehouse.com/KIPRUN_Kipride_Max/descpage-KRMAXM3.html", "retrieved": "2026-10-12"}]}, "stack_forefoot_mm": {"value": 36, "source_type": "manufacturer", "url": "https://runnerslab.com/kiprun-kipride-max-review/", "retrieved": "2026-10-12", "alternatives": [{"value": 38, "source_type": "manufacturer", "url": "https://www.runningwarehouse.com/KIPRUN_Kipride_Max/descpage-KRMAXM3.html", "retrieved": "2026-10-12"}]}, "plate": {"value": "none", "source_type": "manufacturer", "url": "https://runnerslab.com/kiprun-kipride-max-review/", "retrieved": "2026-10-12"}, "flexibility_longitudinal": {"value": 1.5, "source_type": "athlete"}, "flexibility_torsional": {"value": 1.0, "source_type": "athlete"}, "stability_devices": {"value": 0, "source_type": "athlete"}}
+```
+
+### `shoe_recommendation`
+
+Recommandation de chaussures (#302, skill `shoe-selection` / commande `/shoes`) : un fichier par
+recommandation, `gear/AAAA-MM-JJ_shoe_recommendation_<rôle>.md` (la date et le rôle du nom doivent dire la
+même chose que le bloc, sinon avertissement). Écrite **seulement après** avoir été montrée à l'athlète et
+**avec son accord** (`athlete_validated: true`, `false` = erreur), jamais en headless. Ni achat, ni lien
+d'affiliation, ni prix : le contrat n'a aucune clé pour cela. Ce n'est pas une prévention de blessure.
+
+| Clé | Type | Notes |
+|---|---|---|
+| **`date`** | date | jour de la recommandation |
+| **`role`** | enum | `trail_long` `trail` `road_easy` `road_tempo` `race` `mixed_long` `mixed` (vocabulaire de `shoe-usage` / `shoe-needs`) |
+| **`path`** | enum | `continuity` (même modèle, ou modèle le plus proche de la paire remplacée) ou `search` (plages cibles puis recherche en ligne) |
+| `replaced_gear_id` | slug | la paire remplacée ; **obligatoire** pour `continuity` (erreur sinon) |
+| `targets` | objet | copie de `arc_index.py shoe-needs` : `ranges` (objet, champ -> plage/valeurs permises, règles, niveau de preuve), `rule_ids` (liste d'identifiants de règle), `insufficient_data` (booléen) |
+| **`candidates`** | liste d'objets | au moins 1, 3 à 5 pour une recherche (plus de 5 = avertissement) |
+| `medical_veto` | objet | **`status`** (`clear` `caution` `veto`), **`reviewer`** (`medical` `coach`), `reason` (obligatoire pour `veto`) |
+| **`athlete_validated`** | booléen | l'athlète a vu et accepté la restitution |
+| `notes` | texte | version comparée, avertissements, raisons |
+
+Un candidat : **`brand`**, **`model`**, `version`, `specs`, `fits` (liste de textes : règles satisfaites), `misses` (règles non
+satisfaites ou valeur hors plage), `vetoed` (booléen : écarté par le veto, gardé pour mémoire), `notes`.
+`specs` : objet `{champ de shoe_spec: valeur avec provenance}` — **exactement** la forme de `shoe_spec`
+(`value`, `source_type` `measured` | `manufacturer` | `athlete`, `url` + `retrieved` obligatoires hors
+`athlete`, `alternatives`), mêmes bornes plausibles, **mesure > marque**, aberrations signalées ; un champ
+inconnu de `shoe_spec` est une erreur. Une caractéristique introuvable est **absente**, jamais reprise d'un
+modèle voisin.
+
+```arc
+{"arc": 1, "kind": "shoe_recommendation", "date": "2026-10-23", "role": "trail_long", "path": "search", "replaced_gear_id": "trail-a", "targets": {"ranges": {"drop_mm": {"min": 4, "max": 8, "rules": ["continuity_drop"], "confidence": "moderate"}}, "rule_ids": ["continuity_drop", "softness_not_firm"], "insufficient_data": false}, "candidates": [{"brand": "Marque A", "model": "Modèle A", "version": "2", "specs": {"drop_mm": {"value": 6.5, "source_type": "measured", "url": "https://example.org/lab/modele-a", "retrieved": "2026-10-23", "alternatives": [{"value": 5, "source_type": "manufacturer", "url": "https://example.org/marque-a", "retrieved": "2026-10-23"}]}}, "fits": ["drop_mm dans la plage 4-8 (continuity_drop)"], "misses": []}], "medical_veto": {"status": "clear", "reviewer": "coach"}, "athlete_validated": true}
 ```
 
 ## Réécrire un fichier ancien (backfill)

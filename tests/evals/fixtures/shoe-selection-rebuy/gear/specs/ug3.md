@@ -1,0 +1,7 @@
+# Fiche Ultra Glide 3
+
+```arc
+{"arc": 1, "kind": "shoe_spec", "date": "{{TODAY}}", "gear_id": "ug3", "brand": "Salomon", "model": "Ultra Glide", "version": "3", "release_year": 2025, "category": {"value": "trail", "source_type": "manufacturer", "url": "https://example.org/marque/ultra-glide-3", "retrieved": "2026-10-12"}, "drop_mm": {"value": 6, "source_type": "manufacturer", "url": "https://example.org/marque/ultra-glide-3", "retrieved": "2026-10-12"}, "stack_heel_mm": {"value": 41, "source_type": "manufacturer", "url": "https://example.org/marque/ultra-glide-3", "retrieved": "2026-10-12"}, "stack_forefoot_mm": {"value": 35, "source_type": "manufacturer", "url": "https://example.org/marque/ultra-glide-3", "retrieved": "2026-10-12"}, "weight_g": {"value": 260, "source_type": "manufacturer", "url": "https://example.org/marque/ultra-glide-3", "retrieved": "2026-10-12"}, "toe_box": {"value": "standard", "source_type": "manufacturer", "url": "https://example.org/marque/ultra-glide-3", "retrieved": "2026-10-12"}, "lug_depth_mm": {"value": 4, "source_type": "manufacturer", "url": "https://example.org/marque/ultra-glide-3", "retrieved": "2026-10-12"}, "flexibility_longitudinal": {"value": 1.5, "source_type": "athlete"}, "flexibility_torsional": {"value": 1.0, "source_type": "athlete"}, "stability_devices": {"value": 1, "source_type": "athlete"}, "verdict": {"date": "{{TODAY}}", "comfort_overall": 9, "would_rebuy": "yes", "distance_m": 612000}}
+```
+
+Valeurs de la marque, version 3 identifiée par la date d'achat.

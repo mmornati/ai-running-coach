@@ -19,7 +19,7 @@ Le projet est **en français par défaut** (la langue des documents générés e
 | 🎯 **Recalibrage au débrief de course** | `arc_race_debrief.py --calibrate` attribue l'écart plan/réalisé à chaque facteur (nuit, technicité, chaleur, altitude) par contraste stratifié, refuse quand les groupes sont trop petits ou confondus, et propose des coefficients personnels cumulés d'une course à l'autre — écrits seulement après votre accord |
 | ⛰️ **Altitude en ultra** | pénalité de temps au-dessus de 1 500 m (approximation du projet, tirée d'une étude publiée), réduite par l'acclimatation déclarée et par l'exposition mesurée à l'entraînement (carte « Exposition à l'altitude » de la vue Santé) |
 | 🌡️ **Cibles ajustées à la chaleur** | par grosse chaleur, l'allure cible des séances (endurance, sortie longue, qualité) est ralentie de façon déterministe — FC inchangée, créneau frais proposé, jamais d'intensité maintenue en 🔴 (mêmes coefficients que le plan de course) |
-| 🛠️ **24 skills** | commandes courtes `/today` `/why` `/week` `/race` `/log` `/inspection` `/update-coach`, analyse GPX (altitude corrigée par MNT en option), comparaison de parcours, planification Garmin, météo, analyse de séances, Intervals.icu, diagnostic d'installation, inspection photo des chaussures, parcours MyWhoosh à la durée d'une séance home trainer, export des séances vers Vanoor (Apple Watch), etc. |
+| 🛠️ **26 skills** | commandes courtes `/today` `/why` `/week` `/race` `/log` `/inspection` `/shoes` `/update-coach`, analyse GPX (altitude corrigée par MNT en option), comparaison de parcours, planification Garmin, météo, analyse de séances, Intervals.icu, diagnostic d'installation, inspection photo des chaussures, parcours MyWhoosh à la durée d'une séance home trainer, export des séances vers Vanoor (Apple Watch), etc. |
 | 📡 **Accès Garmin Connect** | via `garmin-mcp` (mode direct, liste blanche d'outils) — passerelle `leanproxy-mcp` optionnelle |
 | 🚀 **Installation automatisée** | un script pour installer et configurer tout (uv, Garmin, IDE) |
 | 👟 **Suivi du matériel** | kilométrage par paire depuis Garmin, prévision de retraite, équipement et kits, inspection photo (`/inspection`), contrôle du matériel de course |
@@ -133,8 +133,8 @@ Lors de la première installation, le script lance l'authentification Garmin Con
 
 ### ⚡ Commandes courtes du quotidien
 
-Pour un usage rapide depuis le téléphone, six commandes courtes (cinq réponses rapides, et `/inspection` pour une
-inspection guidée), format prévisible — natives sur **Claude Code** et **Gemini CLI** (commande dédiée),
+Pour un usage rapide depuis le téléphone, sept commandes courtes (cinq réponses rapides, `/inspection` pour une
+inspection guidée et `/shoes` pour choisir sa prochaine paire), format prévisible — natives sur **Claude Code** et **Gemini CLI** (commande dédiée),
 chargées comme n'importe quel skill sur **OpenCode** et **GitHub Copilot**,
 non disponibles sur **Cursor**/**Windsurf** (pas de skills/commandes sur ces
 deux IDE, voir [IDE supportés](docs/ides.md)) :
@@ -147,11 +147,12 @@ deux IDE, voir [IDE supportés](docs/ides.md)) :
 | `/race` | Le compte à rebours de votre objectif, le score Trail Shape, la forme prévue le jour J (estimation), votre plan de course s'il existe |
 | `/log` | Saisie libre en une phrase — ravitaillement, douleur, RPE — convertis en données du contrat sans jamais inventer une valeur |
 | `/inspection` | Lancer l'inspection photo d'une paire de chaussures : désigner la paire, protocole photo, où déposer les photos (`gear/photos/`) |
+| `/shoes` | Choisir la prochaine paire : continuité d'abord (version actuelle du modèle qui vous a convenu, specs comparées), sinon plages sourcées et modèles trouvés en ligne — aucun achat, aucun prix, jamais une prévention de blessure |
 
 `/today`, `/why`, `/week` et `/race` n'écrivent ni ne modifient jamais un
 plan, une semaine, une décision ou un plan de course, et ne poussent jamais
 rien vers Garmin. `/log`, lui, écrit dans `activities/`/`medical/` (jamais
-dans `planning/`) ; `/inspection` n'écrit, une fois la paire et les photos fournies,
+dans `planning/`) ; `/inspection` et `/shoes` n'écrivent, une fois la paire et les photos (ou votre accord) fournis,
 que dans `gear/`.
 
 ### 🎛️ Ce qui est configurable

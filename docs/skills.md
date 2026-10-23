@@ -4,7 +4,7 @@
 ![](assets/ridge.jpg)
 </div>
 
-`ai-running-coach` fournit **24 skills** que les agents chargent à la demande pour des tâches spécifiques.
+`ai-running-coach` fournit **26 skills** que les agents chargent à la demande pour des tâches spécifiques.
 
 ## Vue d'ensemble
 
@@ -33,6 +33,8 @@
 <div class="arc-skill"><span class="arc-skill__name"><a href="skills/gear-inspection.md">Inspection des chaussures</a></span><span class="arc-skill__desc">Photos des semelles : état 🟢🟡🟠🔴, comparaison avec l'inspection précédente, indices de foulée (jamais un diagnostic)</span></div>
 <div class="arc-skill"><span class="arc-skill__name"><a href="skills/inspection.md">Inspection d'une paire (/inspection)</a></span><span class="arc-skill__desc">Désigner la paire, protocole photo, dépôt des photos dans gear/photos/, puis lecture par gear-inspection</span></div>
 <div class="arc-skill"><span class="arc-skill__name"><a href="skills/shoe-specs.md">Fiche des chaussures (shoe-specs)</a></span><span class="arc-skill__desc">Drop, pile, poids, mousse d'une paire cherchés en ligne, source par source, et écrits seulement après votre validation ligne par ligne</span></div>
+<div class="arc-skill"><span class="arc-skill__name"><a href="skills/shoes.md">Choisir une paire (/shoes)</a></span><span class="arc-skill__desc">Désigner le rôle et la paire remplacée, puis laisser shoe-selection mener le choix</span></div>
+<div class="arc-skill"><span class="arc-skill__name"><a href="skills/shoe-selection.md">Choix des chaussures (shoe-selection)</a></span><span class="arc-skill__desc">Continuité d'abord, sinon plages cibles et modèles sourcés ; veto médical, aucun achat, aucun prix, jamais une prévention de blessure</span></div>
 <div class="arc-skill"><span class="arc-skill__name"><a href="skills/log.md">Saisie libre (/log)</a></span><span class="arc-skill__desc">Ravitaillement, douleur et RPE en une phrase, convertis en blocs arc sans jamais inventer une valeur nutritionnelle</span></div>
 
 </div>
@@ -45,13 +47,14 @@ Les agents chargent les skills **à la demande** via l'outil `skill` de leur IDE
 - L'agent **coach** charge `garmin-workout-scheduling` avant de pousser des séances dans Garmin
 - L'agent **course-strategist** charge `gpx-analysis` pour analyser un parcours
 
-Six skills sont aussi des **commandes courtes**, invocables directement par
-leur nom (`/today`, `/why`, `/week`, `/race`, `/log`, `/inspection`) plutôt que chargées par
+Sept skills sont aussi des **commandes courtes**, invocables directement par
+leur nom (`/today`, `/why`, `/week`, `/race`, `/log`, `/inspection`, `/shoes`) plutôt que chargées par
 un agent : format de sortie prévisible, pensées pour un usage rapide depuis
 le téléphone. Les quatre premières délèguent en lecture seule à `coach`
 (jamais d'écriture) ; `/log` écrit dans `activities/`/`medical/` via `coach`,
 `nutritionist` ou `medical` selon le staff installé ; `/inspection` désigne la paire
-et reçoit les photos, puis laisse `gear-inspection` écrire dans `gear/`.
+et reçoit les photos, puis laisse `gear-inspection` écrire dans `gear/` ; `/shoes` désigne le rôle,
+puis laisse `shoe-selection` écrire, avec votre accord, dans `gear/`.
 
 ## Structure d'un skill
 

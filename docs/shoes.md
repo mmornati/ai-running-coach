@@ -3,7 +3,7 @@
 Épopée #297. Le suivi des chaussures (kilométrage, inspection photo, bilan de carrière) dit **ce que
 vous avez porté** ; choisir la prochaine paire demande de savoir **ce qu'elle est**. Cette page décrit la
 première brique : la fiche de caractéristiques d'une paire (#298). Suivent les retours de chaussant, le profil
-d'usage et, en fin de page, le moteur de règles fondé sur les preuves (#301).
+d'usage, le moteur de règles fondé sur les preuves (#301) et, pour finir, la commande `/shoes` qui assemble le tout (#302).
 
 ## La fiche de caractéristiques : `gear/specs/<gear_id>.md`
 
@@ -289,6 +289,44 @@ amorti, adhérence, stabilité) ; un garde-fou de blessure prime toujours sur ce
 (`race` ou `road_tempo`) ajoute la plaque et la mousse haute performance comme **option de performance**.
 Les antécédents viennent des douleurs déclarées (`medical/`, zones reconnues du skill de prévention) : un
 épisode à la cheville n'est pas une entorse, le moteur le dit.
+
+## Choisir la prochaine paire : `/shoes`
+
+```text
+/shoes            # le rôle de la paire en fin de vie
+/shoes trail      # un rôle précis (ou le nom d'une paire à remplacer)
+```
+
+Le skill [`shoes`](skills/shoes.md) désigne le rôle, puis [`shoe-selection`](skills/shoe-selection.md) mène
+la conversation. Il ne calcule rien : les plages viennent de `shoe-needs`, l'historique de la paire de
+`shoe-specs`, `shoe-feedback` et `shoe-usage`. Interactif uniquement, jamais pendant la synchronisation
+automatique.
+
+1. **Le rôle.** Sans argument, celui de la paire non retirée qui arrive en fin de vie : seuil d'alerte franchi
+   ou dernière inspection 🔴. S'il y en a plusieurs, ou aucune, le coach demande ; il ne devine pas.
+2. **La continuité d'abord.** Si la paire remplacée a `would_rebuy = yes`, un confort d'au moins 7/10 et
+   aucun problème de chaussant attribué, le coach propose **la version actuelle du même modèle** et la
+   **compare toujours** à l'ancienne, ligne à ligne : les marques changent le drop, la pile ou le chaussant
+   d'une version à l'autre. Avec `yes_with_change`, c'est le modèle le plus proche qui corrige le point demandé
+   (par exemple un avant-pied plus large).
+3. **Sinon, les plages puis la recherche.** Les plages cibles de `shoe-needs`, puis 3 à 5 modèles trouvés
+   par recherche web à la demande (laboratoire, puis marque, puis revendeurs ; jamais de scraping). Chaque
+   caractéristique garde sa source et son type (`measured` ou `manufacturer`), les écarts entre sources sont
+   montrés, la mesure prime sur la marque, et une valeur introuvable reste absente. Une valeur hors plage
+   est signalée.
+4. **Le veto médical.** Avec l'agent `medical` dans `[agents].enabled` (antécédents tendineux, entorses), il
+   peut écarter un candidat. Sans lui, le coach applique les règles et le dit : *ce n'est pas un avis
+   médical*.
+5. **La restitution.** Un tableau comparatif (caractéristiques, sources, règle satisfaite ou non, niveau de
+   preuve), puis : *essayer en magasin, le confort décide* ; un rodage de 30 à 50 km avant une course
+   (approximation du projet) ; la rotation d'au moins deux paires.
+6. **La trace.** Avec votre accord seulement, `gear/AAAA-MM-JJ_shoe_recommendation_<rôle>.md` (bloc `arc` de
+   type `shoe_recommendation`) : plages, règles appliquées, candidats et leurs caractéristiques sourcées,
+   veto éventuel.
+
+Garde-fous : **aucun achat, aucun lien d'affiliation, aucun prix**, aucune caractéristique inventée, et une
+recommandation n'est **jamais** présentée comme une prévention de blessure. Le suivi de la paire choisie
+(rodage, avant/après) viendra avec la story #303.
 
 ## Ce que disent les preuves
 
