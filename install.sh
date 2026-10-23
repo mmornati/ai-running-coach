@@ -50,9 +50,17 @@ set -euo pipefail
 # ---------------------------------------------------------------------------
 # Constantes
 # ---------------------------------------------------------------------------
-# Numéro de la dernière release : fichier VERSION, réécrit par le workflow « Tag a release ».
-VERSION="$(tr -d '[:space:]' 2>/dev/null < "$(dirname "${BASH_SOURCE[0]}")/VERSION" || true)"
+# Version du moteur, comme scripts/arc_version.py : `git describe --tags` dans un dépôt git
+# (le tag fait foi, « Tag a release » ne commite plus VERSION), sinon le fichier VERSION.
+_engine_dir="$(dirname "${BASH_SOURCE[0]}")"
+VERSION=""
+if [[ -e "$_engine_dir/.git" ]] && command -v git >/dev/null 2>&1; then
+    VERSION="$(git -C "$_engine_dir" describe --tags --match 'v[0-9]*' 2>/dev/null || true)"
+    VERSION="${VERSION#v}"
+fi
+[[ -n "$VERSION" ]] || VERSION="$(tr -d '[:space:]' 2>/dev/null < "$_engine_dir/VERSION" || true)"
 VERSION="${VERSION:-inconnue}"
+unset _engine_dir
 # Épinglé à un commit précis, comme INTERVALS_MCP_REF ci-dessous : ce serveur reçoit le
 # mot de passe et le code MFA Garmin à l'authentification, puis tourne à chaque
 # synchronisation — un changement en amont ne doit jamais être exécuté sans relecture.
