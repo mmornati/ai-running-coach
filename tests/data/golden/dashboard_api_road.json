@@ -4409,7 +4409,155 @@
           "start_date": null,
           "threshold_m": 50000
         },
-        "unknown": false
+        "unknown": false,
+        "usage": {
+          "feedback": null,
+          "gait": {
+            "bands": [],
+            "min_sessions": 3,
+            "pace_band_s_km": 30,
+            "sessions_with_gait": 0
+          },
+          "gear_id": "adizero-sl",
+          "name": "Adidas Adizero SL",
+          "pain": {
+            "ambiguous_episodes": 0,
+            "episodes": 0,
+            "exposure": {
+              "distance_m": 57000,
+              "sessions": 6
+            },
+            "note": "Corrélation, pas causalité : un épisode de douleur dans les 48 h suivant une séance n'est jamais attribué à la paire. Aucun diagnostic ; ce n'est pas un avis médical.",
+            "recent": [],
+            "reliable": true,
+            "trend_allowed": false,
+            "unattributable_episodes": {
+              "no_run_in_window": 0,
+              "note": "épisodes de douleur (toutes paires) sans séance de course dans la fenêtre, ou dont aucune séance de la fenêtre n'a de paire, datés dans la période d'usage de cette paire : rattachés à aucune paire",
+              "run_without_pair": 0,
+              "total": 0
+            },
+            "warning": "effectif trop faible (n=0 < 5) : comptes bruts et exposition, sans taux ni tendance",
+            "window_days": 2
+          },
+          "retired": false,
+          "role": {
+            "basis": {
+              "athlete_road_pace_s_km": 350.0,
+              "long_run_share": 0.0,
+              "mean_pace_s_km": 316,
+              "race_sessions": 0,
+              "road_share_km": 1.0,
+              "running_sessions": 6,
+              "trail_share_km": 0.0
+            },
+            "label": "route, allure soutenue",
+            "note": "approximation du projet, déduite de l'usage ; jamais une prescription",
+            "reason": "100% des km sur route, allure moyenne 5:16/km contre 5:50/km pour l'ensemble des paires",
+            "role": "road_tempo"
+          },
+          "unassigned": {
+            "default_attributed_runs": 0,
+            "distance_m": 0,
+            "note": "séances de course sans gear_id sur la période d'usage de la paire : la corrélation douleur ↔ paire n'est pas fiable tant qu'elles existent",
+            "period_end": "2026-09-23",
+            "runs": 0,
+            "since_last_attributed_run": 0
+          },
+          "usage": {
+            "d_minus_m_per_km": 3.5,
+            "d_plus_m_per_km": 3.6,
+            "distance_distribution": [
+              {
+                "label": "< 5 km",
+                "sessions": 0
+              },
+              {
+                "label": "5–10 km",
+                "sessions": 3
+              },
+              {
+                "label": "10–15 km",
+                "sessions": 3
+              },
+              {
+                "label": "15–21 km",
+                "sessions": 0
+              },
+              {
+                "label": "21–30 km",
+                "sessions": 0
+              },
+              {
+                "label": ">= 30 km",
+                "sessions": 0
+              }
+            ],
+            "distance_m": 57000,
+            "elevation_distance_m": 57000,
+            "elevation_sessions": 6,
+            "long_runs": {
+              "sessions": 0,
+              "share_sessions": 0.0,
+              "threshold_s": 5400
+            },
+            "mean_pace_s_km": 316,
+            "period": {
+              "days": 36,
+              "first_date": "2026-08-18",
+              "last_date": "2026-09-22"
+            },
+            "races": {
+              "distance_m": 0,
+              "sessions": 0
+            },
+            "sessions": 6,
+            "terrain": {
+              "road": {
+                "distance_m": 57000,
+                "sessions": 6,
+                "share_km": 1.0,
+                "share_sessions": 1.0
+              },
+              "trail": {
+                "distance_m": 0,
+                "sessions": 0,
+                "share_km": 0.0,
+                "share_sessions": 0.0
+              }
+            },
+            "wet": {
+              "sessions": 0,
+              "share": 0.0,
+              "with_weather": 1
+            }
+          },
+          "wear": {
+            "asymmetry": {
+              "level": "mild",
+              "side": "left"
+            },
+            "condition": "yellow",
+            "date": "2026-09-18",
+            "distance_m": 45000.0,
+            "gait_hints": [
+              "heel_strike"
+            ],
+            "path": "gear/2026-09-18_adizero-sl_inspection.md",
+            "wear_zones": [
+              {
+                "severity": "moderate",
+                "side": "left",
+                "zone": "heel_posterolateral"
+              },
+              {
+                "severity": "light",
+                "side": "right",
+                "zone": "heel_posterolateral"
+              }
+            ]
+          }
+        }
       },
       "status": 200
     },

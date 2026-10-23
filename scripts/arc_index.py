@@ -313,6 +313,7 @@ import arc_plan_templates as PT  # noqa: E402
 import arc_prevention as PV  # noqa: E402
 import arc_samples as S  # noqa: E402
 import arc_shoes as SH  # noqa: E402
+import arc_shoe_usage as SU  # noqa: E402
 import arc_slope_model as SL  # noqa: E402
 import arc_splits as SP  # noqa: E402
 import arc_strength as SG  # noqa: E402
@@ -3645,6 +3646,112 @@ def shoe_feedback(conn, gear_id: Optional[str] = None) -> dict:
     return SH.feedback_report(fb_rows, spec_rows, declared_gear(conn), gear_id)
 
 
+def shoe_usage(conn, gear_id: Optional[str] = None, today: Optional[date] = None,
+               mileage: Optional[dict] = None) -> dict:
+    """Profil d'usage par paire (#300) — commande « shoe-usage » et `/api/gear/<id>.usage`. Lecture seule,
+    tout est calculé à la lecture (aucune table). Mêmes séances que le kilométrage (`M.attribute_gear`) ;
+    foulée par tranche d'allure, douleurs dans les 48 h, séances sans paire, rôle déduit : voir
+    `arc_shoe_usage.ASSUMPTIONS`. Corrélation, pas causalité."""
+    today = today or date.today()
+    mileage = mileage if mileage is not None else gear_mileage(conn, today)
+    pairs_meta = [{"gear_id": s["gear_id"], "name": s["name"], "retired": bool(s.get("retired"))}
+                  for s in mileage["shoes"]]
+    known = {p["gear_id"] for p in pairs_meta}
+    pairs_meta += [{"gear_id": u["gear_id"], "name": None, "retired": False, "unknown": True}
+                   for u in mileage["unknown"] if u["gear_id"] not in known]
+    names = {p["gear_id"]: p["name"] for p in pairs_meta}
+    if gear_id is not None and gear_id not in names:
+        return {"error": f"paire inconnue : {gear_id}"}
+
+    extra = {r["id"]: dict(r) for r in conn.execute(
+        "SELECT id, moving_duration_s, elevation_gain_m, elevation_loss_m, gap_pace_s_km FROM activity")}
+    gait_by_id: Dict[int, dict] = {}
+    for row in _gait_session_rows(conn, date(2000, 1, 1), today):
+        try:
+            arc = json.loads(row.pop("data_json") or "{}")
+        except (TypeError, ValueError):
+            arc = {}
+        values, _notes = GT.resolve_session(row, arc if isinstance(arc, dict) else {})
+        flat = {m: v["value"] for m, v in values.items()}
+        if any(m != "cadence_spm" for m in flat):
+            gait_by_id[row["activity_id"]] = flat
+    rain: Dict[str, float] = {}
+    for r in conn.execute("SELECT date, MAX(precip_mm) AS p FROM weather_day WHERE precip_mm IS NOT NULL GROUP BY date"):
+        rain[r["date"]] = r["p"]
+
+    owner_of: Dict[int, Optional[str]] = {}
+    acts_by_gear: Dict[str, List[dict]] = {}
+    for act, owner in M.attribute_gear(_gear_activities(conn), _gear_defs(conn), today):
+        a = {**act, **{k: v for k, v in extra.get(act["id"], {}).items() if k != "id"}}
+        a["precip_mm"] = rain.get(a.get("date"))
+        a["gait"] = gait_by_id.get(a["id"])
+        a["is_race"] = planned_intensity_for(conn, a["date"], a["sport"]) == "race"
+        acts_by_gear.setdefault(owner, []).append(a)
+        owner_of[act["id"]] = owner
+
+    runs = [dict(r) for r in conn.execute(
+        f"SELECT id, date, gear_id, gear_source, distance_m FROM activity WHERE sport IN "
+        f"({', '.join('?' for _ in M.RUNNING_SPORTS)}) ORDER BY date, id", M.RUNNING_SPORTS)]
+    for r in runs:
+        owner_of.setdefault(r["id"], None)
+    pain_entries = []
+    for r in conn.execute("SELECT date, data_json FROM health_day ORDER BY date, source_path"):
+        try:
+            pain = (json.loads(r["data_json"] or "{}") or {}).get("pain")
+        except (TypeError, ValueError):
+            pain = None
+        for p in pain if isinstance(pain, list) else []:
+            if isinstance(p, dict):
+                pain_entries.append({"date": r["date"], "location": p.get("location"), "score": p.get("score")})
+    episodes_by_gear, ep_no_run_list, ep_no_pair_list = SU.link_episodes(SU.pain_episodes(pain_entries), runs, owner_of)
+
+    ep_no_run, ep_no_pair = len(ep_no_run_list), len(ep_no_pair_list)
+    bands_by_gear = {gid: SU.gait_bands(acts) for gid, acts in acts_by_gear.items()}
+    road_ref = SU.athlete_road_pace(acts_by_gear)
+    feedback = {p["gear_id"]: p for p in shoe_feedback(conn)["pairs"]}
+    pairs = []
+    for meta in pairs_meta:
+        gid = meta["gear_id"]
+        if gear_id is not None and gid != gear_id:
+            continue
+        acts = acts_by_gear.get(gid, [])
+        usage = SU.usage_of(acts)
+        first, last = (usage.get("period") or {}).get("first_date"), (usage.get("period") or {}).get("last_date")
+        # Paire active : la période court jusqu'à aujourd'hui (les séances récentes sans paire comptent) ;
+        # paire retirée : jusqu'à sa dernière séance (la date de retraite n'est pas stockée).
+        end = last if (meta.get("retired") or not last) else max(last, today.isoformat())
+        in_period = [r for r in runs if first and first <= (r["date"] or "") <= end]
+        unassigned = [r for r in in_period if not r["gear_id"] and owner_of.get(r["id"]) is None]
+        default_attr = [r for r in in_period if not r["gear_id"] and owner_of.get(r["id"]) == gid]
+        eps = episodes_by_gear.get(gid, [])
+        insp = _inspection_rows(conn, gid)
+        wear = None
+        if insp:
+            last_i = insp[0]
+            wear = {k: last_i[k] for k in ("date", "condition", "asymmetry", "wear_zones", "gait_hints", "distance_m",
+                                           "path") if k in last_i}
+        fb = feedback.get(gid)
+        pairs.append({
+            **meta, "usage": usage, "role": SU.deduce_role(usage, road_ref),
+            "gait": SU.gait_report(bands_by_gear, names, gid),
+            "pain": SU.pain_summary(eps, usage["sessions"], usage["distance_m"], len(unassigned),
+                                    sum(1 for e in ep_no_run_list if first and first <= e["date"] <= end),
+                                    sum(1 for e in ep_no_pair_list if first and first <= e["date"] <= end)),
+            "unassigned": {"runs": len(unassigned), "distance_m": round(sum(r["distance_m"] or 0 for r in unassigned)),
+                           "since_last_attributed_run": sum(1 for r in unassigned if (r["date"] or "") > (last or "")),
+                           "period_end": end if last else None,
+                           "default_attributed_runs": len(default_attr),
+                           "note": "séances de course sans gear_id sur la période d'usage de la paire : la "
+                                   "corrélation douleur ↔ paire n'est pas fiable tant qu'elles existent"},
+            "feedback": ({k: fb[k] for k in ("runs_with_feedback", "runs_with_issues", "comfort", "issue_counts",
+                                             "zone_counts", "verdict")} if fb else None),
+            "wear": wear})
+    return {"pairs": pairs, "count": len(pairs),
+            "athlete_road_pace_s_km": round(road_ref) if road_ref else None,
+            "pain_episodes_without_run": ep_no_run, "pain_episodes_run_without_pair": ep_no_pair,
+            "note": SU.CAVEAT}
+
+
 # ---------------------------------------------------------------------------
 # CLI
 # ---------------------------------------------------------------------------
@@ -4835,6 +4942,12 @@ def _monthly_km(acts: List[dict]) -> List[dict]:
     return out
 
 
+def _usage_of_pair(conn, gear_id: str, today: date, mileage: dict) -> Optional[dict]:
+    """Profil d'usage d'UNE paire pour la fiche (#300) : l'entrée de `shoe_usage`, sans second calcul."""
+    rep = shoe_usage(conn, gear_id, today, mileage)
+    return rep["pairs"][0] if rep.get("pairs") else None
+
+
 def gear_detail(conn, gear_id: str, today: Optional[date] = None) -> Optional[dict]:
     """Fiche d'une paire ou d'un objet d'équipement (#147) — `/api/gear/<id>`. `None` si `gear_id` est
     inconnu du profil ET des séances. Bâtie sur les MÊMES fonctions que le kilométrage et le bilan de
@@ -4863,7 +4976,7 @@ def gear_detail(conn, gear_id: str, today: Optional[date] = None) -> Optional[di
         return {"kind": "shoe", "gear_id": gear_id, "name": career["name"], "unknown": shoe is None,
                 "retired": bool(career.get("retired")), "shoe": shoe, "career": career,
                 "garmin_linked": bool(row and row["garmin_uuid"]), "monthly": _monthly_km(acts),
-                "sessions": sessions,
+                "sessions": sessions, "usage": _usage_of_pair(conn, gear_id, today, shoes),
                 "inspections": (insp["gear"][0] if insp.get("gear") else None)}
     usage = equipment_usage(conn, today)
     item = next((i for i in usage["items"] if i["gear_id"] == gear_id), None)
@@ -5220,7 +5333,7 @@ def build_parser() -> argparse.ArgumentParser:
                                  "climb-history", "decisions", "slope-model", "trail-shape", "energy", "equipment",
                                  "inspections", "gear-career", "gait-summary", "pace-curve",
                                  "decision-effects", "load-forecast", "plan-templates", "strength", "dem-check", "prevention", "plan-skeleton",
-                                 "power-hr", "history-summary", "splits", "shoe-specs", "shoe-feedback"))
+                                 "power-hr", "history-summary", "splits", "shoe-specs", "shoe-feedback", "shoe-usage"))
     parser.add_argument("selector", nargs="?", default=None,
                         help="argument de la sous-commande (ex. garmin_activity_id, intervals_activity_id, strava_activity_id "
                              "ou coros_activity_id "
@@ -5290,7 +5403,7 @@ def build_parser() -> argparse.ArgumentParser:
                         help="commande « energy » : nombre de dernières séances éligibles à rendre "
                              "sans --activity/--date/--since (défaut 10) — incompatible avec ces trois")
     parser.add_argument("--gear", metavar="GEAR_ID",
-                        help="commandes « inspections » (#135), « shoe-specs » (#298) et « shoe-feedback » (#299) : restreint à cette paire ; commande "
+                        help="commandes « inspections » (#135), « shoe-specs » (#298), « shoe-feedback » (#299) et « shoe-usage » (#300) : restreint à cette paire ; commande "
                              "« gear-career » : paire dont on veut le bilan de carrière (obligatoire)")
     parser.add_argument("--unreferenced-photos", action="store_true",
                         help="commande « inspections » (#149) : ajoute `unreferenced_photos` (images de `gear/photos/` "
@@ -5581,6 +5694,11 @@ def main(argv=None) -> int:
         print(SH.render_feedback_text(rep_fb) if args.text and not args.json
               else json.dumps(rep_fb, ensure_ascii=False))
         return 1 if "error" in rep_fb else 0
+    if args.command == "shoe-usage":
+        today_date = date.fromisoformat(args.today) if args.today else date.today()
+        rep_use = shoe_usage(conn, args.gear, today_date)
+        print(SU.render_text(rep_use) if args.text and not args.json else json.dumps(rep_use, ensure_ascii=False))
+        return 1 if "error" in rep_use else 0
     if args.command == "prevention":
         if args.days is not None and args.days < 1:
             raise ConfigError(f"--days : un entier >= 1 attendu, « {args.days} » reçu.")
