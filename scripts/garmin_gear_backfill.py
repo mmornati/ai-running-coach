@@ -21,7 +21,8 @@ dans la période du workspace, en `(retirée)` quand Garmin les a retirées), `-
 machine), `--workspace`, `--tokens-dir`.
 
 CODES DE SORTIE : 0 = succès (simulation ou application complète) ; 1 = succès partiel
-(paire injoignable côté Garmin, fichier rejeté par la validation et restauré) ; 2 = usage,
+(paire injoignable côté Garmin, fichier rejeté par la validation et restauré, instantané
+`.arc/garmin_gear.json` non écrit) ; 2 = usage,
 dépendance `garminconnect` absente, authentification Garmin impossible ou `get_gear` illisible ; 3 = `--apply`
 impossible faute de profil athlète (`planning/Runner_Profile.md`).
 
@@ -39,8 +40,10 @@ RÈGLES (voir docs/garmin-setup.md) :
     synchronisation antérieure) n'est JAMAIS écrasée ; la divergence est listée. Seul un
     `gear_source: "garmin_unmapped"` (sans `gear_id`) est remplacé.
   - Une séance présente dans deux paires côté Garmin est ambiguë : jamais attribuée, listée.
-  - Puce existante avec le même `garmin: <uuid>` : son `gear_id` est réutilisé, la puce n'est
-    jamais modifiée. Puce `(ignorée)` : la paire n'est jamais attribuée.
+  - Puce existante avec le même `garmin: <uuid>` : son `gear_id` est réutilisé ; seul ajout possible,
+    ` (retirée AAAA-MM-JJ)` quand Garmin a retiré la paire depuis (date de fin Garmin). `--apply`
+    rafraîchit aussi l'instantané `.arc/garmin_gear.json` (`arc_garmin_gear`). Puce `(ignorée)` : la
+    paire n'est jamais attribuée.
   - `départ N km` d'une puce NOUVELLE = km Garmin de la paire pour les séances Garmin ABSENTES du
     workspace (identifiées par `activityId`, jamais par un total soustrait) : celles du workspace
     sont déjà comptées par leurs fichiers, elles ne peuvent donc pas l'être deux fois. Non calculé
@@ -104,6 +107,7 @@ def normalize_shoes(raw_gear: List[dict]) -> List[dict]:
             continue
         uuid = uuid.lower()
         begin = _DATE_PREFIX_RE.match(str(g.get("dateBegin") or ""))
+        end = _DATE_PREFIX_RE.match(str(g.get("dateEnd") or ""))
         try:
             max_m = float(g.get("maximumMeters") or 0)
         except (TypeError, ValueError):
@@ -113,6 +117,7 @@ def normalize_shoes(raw_gear: List[dict]) -> List[dict]:
             "name": _clean(g.get("displayName")) or _clean(g.get("customMakeModel")) or f"Chaussure Garmin {uuid[:8]}",
             "retired": str(g.get("gearStatusName") or "").strip().lower() == "retired",
             "date_begin": begin.group(1) if begin else None,
+            "date_end": end.group(1) if end else None,
             "max_m": max_m if max_m > 0 else 0.0,
         })
     return shoes
@@ -272,7 +277,7 @@ def plan(shoes: List[dict], gear_acts: Dict[str, dict], ws_files: List[dict], pr
     result: Dict[str, Any] = {
         "since": since, "gear_filter": only, "all_shoes": all_shoes,
         "workspace_period": [ws_min, ws_max],
-        "shoes": [], "assignments": [], "new_bullets": [], "links": [], "conflicts": [], "ambiguous": [],
+        "shoes": [], "assignments": [], "new_bullets": [], "links": [], "retirements": [], "conflicts": [], "ambiguous": [],
         "duplicate_ids": [], "inconsistent": [], "incomplete": incomplete,
         "missing_from_workspace": [], "workspace_without_id": [f["path"] for f in no_id_files],
         "workspace_files": len(ws_files), "workspace_with_id": sum(len(v) for v in by_ws_id.values()),
@@ -317,6 +322,11 @@ def plan(shoes: List[dict], gear_acts: Dict[str, dict], ws_files: List[dict], pr
         if existing:
             entry["status"] = "existing"
             entry["gear_id"] = existing[0]["gear_id"]
+            if shoe["retired"] and not existing[0].get("retired"):
+                # Retraite décidée dans Garmin APRÈS la création de la puce : seul ajout proposé, « (retirée …) ».
+                result["retirements"].append({"uuid": shoe["uuid"], "gear_id": existing[0]["gear_id"],
+                                              "name": existing[0].get("name") or shoe["name"],
+                                              "date_end": shoe.get("date_end")})
         else:
             cands = [g for g in unlinked_bullets if base_slug and (C.gear_slug(g.get("name") or "") == base_slug
                                                                     or g["gear_id"] == base_slug)]
@@ -551,6 +561,33 @@ def append_garmin_segment(text: str, gear_id: str, uuid: str) -> Optional[str]:
     return text[:hits[0]] + f" — garmin: {uuid}" + text[hits[0]:]
 
 
+@_with_lf
+def append_retired_marker(text: str, gear_id: str, retired_date: Optional[str] = None) -> Optional[str]:
+    """Ajoute ` (retirée AAAA-MM-JJ)` (ou ` (retirée)` sans date) en fin de la puce `### Chaussures` qui porte
+    `gear_id` et n'est pas déjà retirée — rien d'autre n'est touché. `None` si la puce n'est pas trouvée
+    exactement une fois (l'appelant le signale sans rien écrire)."""
+    masked = _mask_comments(text)
+    m = _H_CHAUSSURES.search(masked)
+    if not m:
+        return None
+    after = m.end() + 1
+    nxt = _H_ANY.search(masked, after)
+    end = nxt.start() if nxt else len(text)
+    hits, cursor = [], after
+    for ln in text[after:end].splitlines(keepends=True):
+        line_start, cursor = cursor, cursor + len(ln)
+        top = L._GEAR_TOP_BULLET_RE.match(masked[line_start:cursor].rstrip("\r\n"))
+        if not top:
+            continue
+        parsed = _try_parse("- " + top.group(1))
+        if parsed and parsed.get("gear_id") == gear_id and not parsed.get("retired"):
+            hits.append(line_start + len(ln.rstrip("\r\n").rstrip()))
+    if len(hits) != 1:
+        return None
+    marker = f" (retirée {retired_date})" if retired_date else " (retirée)"
+    return text[:hits[0]] + marker + text[hits[0]:]
+
+
 # ---------------------------------------------------------------------------
 # Bloc `arc` d'une activité : écriture textuelle minimale (pur)
 # ---------------------------------------------------------------------------
@@ -639,10 +676,10 @@ def apply_plan(workspace: Path, profile: Path, result: dict, *, validate=None) -
     if validate is None:
         import arc_index
         validate = arc_index.validate_file
-    out: Dict[str, Any] = {"profile_written": False, "linked": [], "written": [], "failed": [], "skipped": [],
+    out: Dict[str, Any] = {"profile_written": False, "linked": [], "retired": [], "written": [], "failed": [], "skipped": [],
                            "out_of_contract": []}
     rel_profile = str(profile.relative_to(workspace)) if profile.is_relative_to(workspace) else str(profile)
-    if result["new_bullets"] or result["links"]:
+    if result["new_bullets"] or result["links"] or result.get("retirements"):
         original = profile.read_bytes()
         text = original.decode("utf-8")
         failed_link = None
@@ -656,17 +693,27 @@ def apply_plan(workspace: Path, profile: Path, result: dict, *, validate=None) -
             out["failed"].append({"path": rel_profile, "error": f"puce « {failed_link['name']} » introuvable "
                                   "exactement une fois pour y ajouter garmin: — profil inchangé"})
             return out
+        for ret in result.get("retirements", []):
+            updated = append_retired_marker(text, ret["gear_id"], ret.get("date_end"))
+            if updated is None:
+                out["failed"].append({"path": rel_profile, "error": f"puce « {ret['name']} » introuvable "
+                                      "exactement une fois pour y ajouter (retirée) — profil inchangé"})
+                return out
+            text = updated
         text = insert_gear_bullets(text, [b["bullet"] for b in result["new_bullets"]])
         _atomic_write(profile, text.encode("utf-8"))
         parsed = {g.get("garmin_uuid"): g["gear_id"] for g in L.parse_gear(text)}
         expected = [(b["uuid"], b["gear_id"]) for b in result["new_bullets"]] + \
                    [(k["uuid"], k["gear_id"]) for k in result["links"]]
-        if any(parsed.get(u) != gid for u, gid in expected):
+        retired_now = {g["gear_id"] for g in L.parse_gear(text) if g.get("retired")}
+        if any(parsed.get(u) != gid for u, gid in expected) or \
+                any(r["gear_id"] not in retired_now for r in result.get("retirements", [])):
             _atomic_write(profile, original)
             out["failed"].append({"path": rel_profile, "error": "puces non relues après écriture — profil restauré"})
             return out
         out["profile_written"] = True
         out["linked"] = [k["gear_id"] for k in result["links"]]
+        out["retired"] = [r["gear_id"] for r in result.get("retirements", [])]
     for a in result["assignments"]:
         path = workspace / a["path"]
         original = path.read_bytes()
@@ -887,6 +934,11 @@ def render_report(result: dict, applied: Optional[dict] = None, reindexed: Optio
         if s["status"] == "error":
             lines.append(f"    erreur : {s['error']}")
             continue
+        ret = next((r for r in result.get("retirements", []) if r["uuid"] == s["uuid"]), None)
+        if ret:
+            lines.append(f"    → retirée dans Garmin" + (f" le {ret['date_end']}" if ret.get("date_end") else "")
+                         + f" : ajouter « (retirée{' ' + ret['date_end'] if ret.get('date_end') else ''}) » à la "
+                         f"puce « {ret['gear_id']} » (seul ajout sur une puce existante)")
         if s["status"] == "link_existing":
             lines.append(f"    → ajouter « — garmin: {s['uuid']} » à la puce existante « {s['gear_id']} » "
                          "(seul ajout sur une puce existante)")
@@ -945,7 +997,7 @@ def render_report(result: dict, applied: Optional[dict] = None, reindexed: Optio
                   "automatiquement (déclarer la paire dans le chat)"]
     total_write = len(result["assignments"])
     lines += ["", f"BILAN : {len(result['new_bullets'])} puce(s) à ajouter, {len(result['links'])} segment(s) garmin: à "
-              f"ajouter à une puce existante, {total_write} séance(s) à renseigner, {len(result['conflicts'])} "
+              f"ajouter à une puce existante, {len(result.get('retirements', []))} retraite(s) Garmin à reporter, {total_write} séance(s) à renseigner, {len(result['conflicts'])} "
               f"conflit(s), {len(result['ambiguous'])} ambiguë(s)."]
     if applied is None:
         lines.append("Simulation seulement. Pour écrire : relancer avec --apply.")
@@ -957,6 +1009,9 @@ def render_report(result: dict, applied: Optional[dict] = None, reindexed: Optio
             lines.append(f"  échec : {f['path']} — {f['error']}")
         for f in applied["out_of_contract"]:
             lines.append(f"  {f['path']} — {f['reason']}")
+        if applied.get("snapshot_error"):
+            lines.append(f"  attention : {applied['snapshot_error']} — la retraite des paires dans Garmin ne sera "
+                         "prise en compte qu'au prochain get_gear du coach")
         if reindexed:
             lines.append(f"Index reconstruit : {reindexed['index']}.")
     return "\n".join(lines)
@@ -1007,7 +1062,8 @@ def run(args, source=None) -> Tuple[int, dict, str]:
     if source is None:
         return EXIT_USAGE, {"error": "no_source"}, "aucune source Garmin"
     try:
-        shoes = normalize_shoes(source.gear())
+        raw_gear = source.gear()
+        shoes = normalize_shoes(raw_gear)
     except Exception as exc:   # noqa: BLE001
         return EXIT_USAGE, {"error": "garmin"}, f"Garmin injoignable : {type(exc).__name__}: {exc}"
     if args.gear and not any(s["uuid"] == args.gear.strip().lower() for s in shoes):
@@ -1032,8 +1088,19 @@ def run(args, source=None) -> Tuple[int, dict, str]:
             "\n\n--apply REFUSÉ : au moins une paire est en erreur ou tronquée (section INCOMPLET) ; rien n'a été écrit. "
             "Relancez quand Garmin répond, ou après avoir réglé le problème.")
     if args.apply:
+        # Instantané du statut Garmin (`.arc/garmin_gear.json`, dérivé) : la retraite d'une paire liée prend effet
+        # dans l'index même si la puce n'est pas (encore) modifiée. Écrit seulement avec --apply (simulation = rien).
+        # Un échec n'empêche pas le reste (profil, séances), mais il est rapporté et rend le code « partiel » :
+        # sans instantané, une retraite Garmin n'est pas prise en compte avant le prochain `get_gear` du coach.
+        import arc_garmin_gear as GG
+        snapshot_error = None
+        try:
+            GG.write_cache(workspace, GG.normalize_garmin_shoes(raw_gear))
+        except (OSError, GG.GarminGearError) as exc:
+            snapshot_error = f"{GG.CACHE_REL} non écrit : {type(exc).__name__}: {exc}"
         applied = apply_plan(workspace, profile, result)
-        if applied["failed"]:
+        applied["snapshot_error"] = snapshot_error
+        if applied["failed"] or snapshot_error:
             code = EXIT_PARTIAL
         reindexed = reindex(workspace)
     payload = {"dry_run": not args.apply, "workspace": str(workspace), **result}

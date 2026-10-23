@@ -216,6 +216,19 @@ class TestContract(unittest.TestCase):
             errors, _ = validate(health_block("2026-09-24", source=source, readiness_score=74, sleep_score=81))
             self.assertEqual(errors, [])
 
+    def test_coros_health_file(self):
+        """#168 : récupération et score de sommeil COROS nommés dans provider_scores, clés Garmin refusées."""
+        recovery = {"category": "recovery", "value": 96, "scale_min": 0, "scale_max": 100, "provider": "coros"}
+        errors, _ = validate(health_block("2026-09-24", hrv=42, rhr=61, source="coros", provider_scores=[recovery]))
+        self.assertEqual(errors, [])
+        for key, value in (("readiness_score", 96), ("sleep_score", 75)):
+            errors, _ = validate(health_block("2026-09-24", source="coros", **{key: value}))
+            self.assertTrue(any(key in e and "coros" in e for e in errors), (key, errors))
+        errors, _ = validate(health_block("2026-09-24", source="coros", provider="coros"))
+        self.assertTrue(any("health_provider" in e for e in errors), errors)
+        coros = {"morning_check": "full", "health_source": "coros"}
+        self.assertNotIn("readiness_score", I.expected_keys("health", coros, {"morning_check": "full"}))
+
     def test_provider_requires_openwearables(self):
         errors, _ = validate(health_block("2026-09-24", source="garmin", provider="oura"))
         self.assertTrue(any("health_provider" in e for e in errors), errors)

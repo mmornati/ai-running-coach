@@ -24,8 +24,8 @@ from typing import Dict, Optional, Tuple
 SOURCES = ("primary", "openwearables")
 DEFAULT_SOURCE = "primary"
 # Valeurs de `health.health_source` dans le bloc `arc` (contrat) : d'où viennent HRV, FC de repos, sommeil.
-FILE_SOURCES = ("garmin", "intervals", "openwearables")
-DATA_SOURCES = ("garmin", "intervals", "strava")
+FILE_SOURCES = ("garmin", "intervals", "openwearables", "coros")
+DATA_SOURCES = ("garmin", "intervals", "strava", "coros")
 DEFAULT_DATA_SOURCE = "garmin"
 # Fournisseurs santé acceptés derrière Open Wearables (UN seul). `garmin` (donnée directe, décision de
 # l'épopée) et `strava` (aucune donnée santé) sont refusés.
@@ -179,4 +179,4 @@ def label(key: str) -> str:
     if source == "openwearables":
         return "Open Wearables" + (f" ({provider})" if provider else "")
     # Strava n'a aucune donnée de santé : jamais « Strava » comme source santé.
-    return {"garmin": "Garmin", "intervals": "intervals.icu", "strava": "source principale"}.get(source, source)
+    return {"garmin": "Garmin", "intervals": "intervals.icu", "coros": "COROS", "strava": "source principale"}.get(source, source)

@@ -446,7 +446,7 @@ class TestWatchMode(InstallAsserts):
             ours = [l for l in sb.crontab().splitlines() if "ai-running-coach daily-sync" in l]
             self.assertEqual(len(ours), 1, sb.crontab())
             self.assertTrue(ours[0].startswith("*/10 * * * * "), ours[0])
-            self.assertIn("garmin_watch.py", ours[0])
+            self.assertIn("scripts/watch.py", ours[0])
             self.assertNotIn("daily-sync.sh", ours[0])
             self.assertIn("sauvegarde.sh", sb.crontab())
 
@@ -457,7 +457,7 @@ class TestWatchMode(InstallAsserts):
             (ws / "config/workspace.user.toml").write_text('[sync]\nmode = "schedule"\n')
             self.assertSucceeded(sb.install("--no-auth", "--daily-sync", "--workspace", str(ws), ARC_FAKE_UNAME="Linux"))
             crontab = sb.crontab()
-            self.assertNotIn("garmin_watch.py", crontab)
+            self.assertNotIn("watch.py", crontab)
             self.assertEqual(crontab.count("daily-sync.sh"), 2, crontab)
 
     def test_launchd_uses_start_interval(self):
@@ -466,7 +466,7 @@ class TestWatchMode(InstallAsserts):
             self.assertSucceeded(sb.install("--no-auth", "--daily-sync", "--workspace", str(ws), ARC_FAKE_UNAME="Darwin"))
             content = (sb.home / self.PLIST).read_text()
             self.assertIn("<key>StartInterval</key><integer>900</integer>", content)
-            self.assertIn("garmin_watch.py", content)
+            self.assertIn("scripts/watch.py", content)
             self.assertNotIn("StartCalendarInterval", content)
             TestLaunchd._assert_valid_xml(self, content)
 
@@ -476,7 +476,7 @@ class TestWatchMode(InstallAsserts):
             proc = sb.install("--no-auth", "--daily-sync", "--workspace", str(ws), ARC_FAKE_UNAME="Linux")
             self.assertSucceeded(proc)
             self.assertOutputContains(proc, "heures fixes")
-            self.assertNotIn("garmin_watch.py", sb.crontab())
+            self.assertNotIn("watch.py", sb.crontab())
 
     def test_invalid_interval_is_refused(self):
         with Sandbox() as sb:

@@ -74,7 +74,7 @@ ASSUMPTIONS = {
                   "Limite : la valeur d'une séance est la moyenne de TOUTE la séance (intervalles, marche, "
                   "échauffement compris) : approximation du projet, sensible aux séances à intervalles ou avec marche.",
     "pain": f"Épisode = une zone douloureuse (`health.pain`, score > 0) ; jours consécutifs d'une même zone fusionnés. "
-            f"Rattaché à la séance de course la plus récente datée de 0 à {PAIN_WINDOW_DAYS} jours avant le début "
+            f"Rattaché à la séance de course la plus récente AVEC paire datée de 0 à {PAIN_WINDOW_DAYS} jours avant le début "
             "de l'épisode (même jour compris : l'heure de la douleur est inconnue ; en jours entiers, « 48 h » couvre en pratique "
             "jusqu'à environ 72 h). Taux par 100 km et par 100 "
             f"séances, seulement à partir de {PAIN_MIN_CASES} épisodes (même seuil que `decision-effects`) ; en "
@@ -334,22 +334,24 @@ def pain_episodes(entries: Iterable[dict]) -> List[dict]:
     return sorted(episodes, key=lambda ep: (ep["date"], ep["location"] or ""))
 
 
-def link_episodes(episodes: Sequence[dict], runs: Sequence[dict], owner_of: Dict[Any, Optional[str]]) -> Tuple[Dict[str, List[dict]], int, int]:
+def link_episodes(episodes: Sequence[dict], runs: Sequence[dict], owner_of: Dict[Any, Optional[str]]) -> Tuple[Dict[str, List[dict]], List[dict], List[dict]]:
     """Rattache chaque épisode à la séance de course la plus récente de la fenêtre. `runs` : {id, date};
-    `owner_of[id]` : paire (ou None). Rend ({gear_id: [épisodes]}, sans_séance_dans_la_fenêtre, séance_sans_paire)."""
+    `owner_of[id]` : paire (ou None). Rend ({gear_id: [épisodes]}, épisodes sans séance dans la fenêtre, épisodes dont aucune séance de la
+    fenêtre n'a de paire)."""
     dated = sorted((r for r in runs if r.get("date")), key=lambda r: (r["date"], r["id"]))
     per_gear: Dict[str, List[dict]] = {}
-    no_run = no_pair = 0
+    no_run: List[dict] = []
+    no_pair: List[dict] = []
     for ep in episodes:
         start = date.fromisoformat(ep["date"])
         window = [r for r in dated if 0 <= (start - date.fromisoformat(r["date"])).days <= PAIN_WINDOW_DAYS]
         if not window:
-            no_run += 1
+            no_run.append(ep)
             continue
         owners = {owner_of.get(r["id"]) for r in window}
         paired = [r for r in window if owner_of.get(r["id"]) is not None]
         if not paired:
-            no_pair += 1
+            no_pair.append(ep)
             continue
         last = paired[-1]      # la plus récente séance AVEC paire ; ambiguë si la fenêtre contient autre chose
         per_gear.setdefault(owner_of[last["id"]], []).append(
@@ -369,7 +371,7 @@ def pain_summary(episodes: Sequence[dict], sessions: int, distance_m: float, una
         "unattributable_episodes": {"total": no_run + run_without_pair, "no_run_in_window": no_run,
                                     "run_without_pair": run_without_pair,
                                     "note": "épisodes de douleur (toutes paires) sans séance de course dans la "
-                                            "fenêtre, ou dont les séances n'ont pas de paire : rattachés à aucune paire"},
+                                            "fenêtre, ou dont aucune séance de la fenêtre n'a de paire, datés dans la période d'usage de cette paire : rattachés à aucune paire"},
         "note": CAVEAT,
     }
     if n >= PAIN_MIN_CASES and km > 0 and sessions:
@@ -443,6 +445,11 @@ def render_text(rep: dict) -> str:
     if rep.get("error"):
         return rep["error"]
     lines: List[str] = []
+    glob = (rep.get("pain_episodes_without_run", 0), rep.get("pain_episodes_run_without_pair", 0))
+    if sum(glob):
+        lines.append(f"Douleurs rattachées à aucune paire (toutes périodes) : {sum(glob)} épisode(s) — {glob[0]} sans "
+                     f"séance de course dans les 48 h, {glob[1]} dont aucune séance de la fenêtre n'a de paire "
+                     "— corrélation, pas causalité")
     for p in rep["pairs"]:
         title = p["gear_id"] + (f" — {p['name']}" if p.get("name") else "")
         u = p["usage"]
@@ -498,9 +505,9 @@ def render_text(rep: dict) -> str:
             lines.append(f"  ! {pain['warning_unassigned']}")
         un = pain["unattributable_episodes"]
         if un["total"]:
-            lines.append(f"  ! {un['total']} épisode(s) de douleur (toutes paires) rattaché(s) à aucune paire "
-                         f"(sans séance dans la fenêtre : {un['no_run_in_window']}, séance sans paire : "
-                         f"{un['run_without_pair']}) — corrélation, pas causalité")
+            lines.append(f"  ! {un['total']} épisode(s) de douleur de sa période rattaché(s) à aucune paire "
+                         f"(sans séance dans la fenêtre : {un['no_run_in_window']}, aucune séance de la fenêtre "
+                         f"avec paire : {un['run_without_pair']}) — corrélation, pas causalité")
         ua = p["unassigned"]
         if ua["runs"] or ua["default_attributed_runs"]:
             lines.append(f"  séances sans gear_id sur la période : {ua['runs']} sans paire"

@@ -100,10 +100,11 @@ partielle. L'index n'est pas enregistré dans la fiche : il est recalculé à ch
 
 Limites, dites plutôt que cachées : l'article mesure le poids de la chaussure et la pile au pied à
 coulisse sous le talon et les têtes métatarsiennes ; une valeur de marque ou de laboratoire en est une
-**approximation du projet** (pointure de référence, point de mesure). Le poids dépend de la pointure : les
-comparatifs l'annoncent en général en US M9 (convention, le fichier additionnel de l'article ne la précise
-pas) ; la commande ajoute un avertissement `warnings` quand `reference_size` manque ou diffère, et rend
-toujours les `assumptions` de la méthode. L'index sert à situer un
+**approximation du projet** (pointure de référence, point de mesure). Le poids dépend de la pointure : l'article
+évalue des chaussures en « US men's size 9 » (soit UK 8, EU 42,5), et ses évaluateurs mesurent avec la semelle
+intérieure en place, alors que les chiffres de marque l'excluent le plus souvent. La commande ajoute un
+avertissement `warnings` quand `reference_size` manque, est ambiguë (un « 9 » seul) ou diffère de US M9, UK 8 ou
+EU 42,5, et rend toujours les `assumptions` de la méthode. L'index sert à situer un
 **changement** entre deux paires, pas à juger une chaussure, et ce n'est pas un avis médical.
 
 ## Retours de chaussant et bilan de retraite
@@ -211,9 +212,10 @@ que **dans la même tranche d'allure**.
 
 - Un **épisode** est une zone douloureuse déclarée (`health.pain`, score > 0) ; les jours consécutifs d'une même
   zone forment un seul épisode.
-- Il est rattaché à la séance de course **la plus récente datée de 0 à 2 jours avant son début** (≤ 48 h à la
+- Il est rattaché à la séance de course **la plus récente avec paire, datée de 0 à 2 jours avant son début** (≤ 48 h à la
   granularité du jour ; le même jour compte, l'heure de la douleur étant inconnue). Plusieurs paires (ou une
-  séance sans paire) dans la fenêtre : l'épisode est marqué `ambiguous`.
+  séance sans paire) dans la fenêtre : l'épisode est marqué `ambiguous`. Le compte global des épisodes non
+  rattachés est donné une fois en tête de rapport ; chaque paire ne compte que ceux de sa période d'usage.
 - En jours entiers, « ≤ 48 h » couvre en pratique jusqu'à environ 72 h (approximation du projet).
 - Les épisodes sans séance de course dans la fenêtre, ou dont la séance n'a pas de paire, sont rattachés à
   aucune paire mais **comptés et affichés** (`unattributable_episodes`).

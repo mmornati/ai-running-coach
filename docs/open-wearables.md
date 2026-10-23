@@ -210,7 +210,7 @@ Avant chaque run, le script fait un seul `arc_openwearables.py check`. Si l'inst
 fois par jour). Les activités sont toujours lues chez Garmin.
 
 `[sync].mode = "watch"` reste réservé à `[data].source = "garmin"`. Avec une santé Open Wearables, le déclencheur
-`morning` de `scripts/garmin_watch.py` s'appuie toujours sur le sommeil **Garmin** comme signal de réveil, ce qui
+`morning` de `scripts/watch.py` s'appuie toujours sur le sommeil **Garmin** comme signal de réveil, ce qui
 peut précéder la synchronisation chez OW : la nuit peut donc ne pas être encore arrivée. Dans ce cas, le skill
 `/garmin-daily-sync` n'écrit **aucun** fichier santé tant que la nuit n'est pas arrivée chez OW (le run suivant
 réessaie, il ne récupère que les fichiers manquants) et le résumé le dit ; une session interactive le dit aussi

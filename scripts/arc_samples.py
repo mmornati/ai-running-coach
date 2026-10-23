@@ -12,9 +12,10 @@ vit dans `skills/fit-download/scripts/download_fit.py`, qui l'importe aussi.
 Chemin canonique : `activities/fit/<id>.json`, un objet JSON
 `{"activity_id": <id>, "records": [...]}` — `<id>` est le `garmin_activity_id`
 (entier) d'une séance Garmin, l'`intervals_activity_id` (chaîne `i<chiffres>`,
-#68) d'une séance synchronisée depuis Intervals.icu, ou le `strava_activity_id` (chaîne
+#68) d'une séance synchronisée depuis Intervals.icu, le `strava_activity_id` (chaîne
 `s<chiffres>`, #164) d'une séance Strava dont les flux par seconde ont été normalisés
-par `strava_streams_to_records` (voir `parse_activity_ref`).
+par `strava_streams_to_records`, ou le `coros_activity_id` (chaîne `c<chiffres>`, #168)
+d'une séance COROS (voir `parse_activity_ref`).
 Le générateur synthétique (`tests/lib/synthetic.py::_write_samples`) y ajoute une
 clé `truth`, ignorée ici. Ce dossier est une donnée **brute et jetable** —
 reconstruisible à tout moment depuis les fichiers FIT réels (Garmin Connect ou
@@ -196,6 +197,11 @@ INTERVALS_ID_RE = re.compile(r"^i\d+$")
 # et dans l'index. Voir `parse_activity_ref`.
 STRAVA_ID_RE = re.compile(r"^s\d+$")
 
+# Identifiant COROS d'une activité (#168) : « c » + le `LabelId` du MCP officiel (entier de 18
+# chiffres, ex. `c481221836600803431`). Même convention de préfixe que Strava : sans lui,
+# l'identifiant se confondrait avec un `garmin_activity_id`.
+COROS_ID_RE = re.compile(r"^c\d+$")
+
 # Saut minimal (m) entre une plage d'altitude à 0,0 m et la mesure valide voisine pour
 # la traiter en valeur sentinelle — voir ASSUMPTIONS["zero_altitude"].
 ZERO_ALTITUDE_JUMP_M = 20.0
@@ -255,7 +261,8 @@ _TIMESTAMP_FORMATS = (
 )
 
 ASSUMPTIONS = {
-    "canonical_path": "Échantillons bruts : activities/fit/<garmin_activity_id | intervals_activity_id | strava_activity_id>.json, "
+    "canonical_path": "Échantillons bruts : activities/fit/<garmin_activity_id | intervals_activity_id | strava_activity_id | "
+                       "coros_activity_id>.json, "
                        "{'activity_id', 'records'} — jetable, jamais versionné (voir docstring du module).",
     "cadence_doubling": "Le champ FIT `cadence` d'une séance à pied (course, marche, randonnée — "
                          "CADENCE_DOUBLING_SPORTS) compte les foulées d'UN pied/min ; cadence_spm = "
@@ -704,13 +711,13 @@ def strava_streams_to_records(streams, sport_type: Optional[str] = None) -> List
 
 def parse_activity_ref(value) -> Optional[Union[int, str]]:
     """Identifiant externe d'une séance : un entier (`garmin_activity_id`), une
-    chaîne `i<chiffres>` (`intervals_activity_id`, #68) ou `s<chiffres>`
-    (`strava_activity_id`, #164). Accepte un entier, ou une chaîne de chiffres
-    (→ `int`) ou de la forme `i123`/`s123` (→ `str`, inchangée). `None` pour tout le
-    reste (booléen, vide, forme inconnue) — jamais deviné.
+    chaîne `i<chiffres>` (`intervals_activity_id`, #68), `s<chiffres>`
+    (`strava_activity_id`, #164) ou `c<chiffres>` (`coros_activity_id`, #168). Accepte un
+    entier, ou une chaîne de chiffres (→ `int`) ou de la forme `i123`/`s123`/`c123` (→ `str`,
+    inchangée). `None` pour tout le reste (booléen, vide, forme inconnue) — jamais deviné.
 
-    Les trois espaces ne se chevauchent pas : le préfixe (`i`, `s`) distingue sans
-    ambiguïté un identifiant Intervals.icu ou Strava d'un identifiant Garmin, dans un
+    Les quatre espaces ne se chevauchent pas : le préfixe (`i`, `s`, `c`) distingue sans
+    ambiguïté un identifiant Intervals.icu, Strava ou COROS d'un identifiant Garmin, dans un
     nom de fichier (`activities/fit/i123456789.json`) comme en argument de CLI."""
     if isinstance(value, bool):
         return None
@@ -721,13 +728,14 @@ def parse_activity_ref(value) -> Optional[Union[int, str]]:
     value = value.strip()
     if value.isdigit():
         return int(value)
-    return value if (INTERVALS_ID_RE.match(value) or STRAVA_ID_RE.match(value)) else None
+    return value if (INTERVALS_ID_RE.match(value) or STRAVA_ID_RE.match(value)
+                     or COROS_ID_RE.match(value)) else None
 
 
 def sample_file_activity_id(path) -> Optional[Union[int, str]]:
     """Identifiant de séance porté par un chemin canonique `<id>.json` (nom de fichier) :
-    entier Garmin (`24070286912.json`), chaîne Intervals.icu (`i123456789.json`) ou
-    Strava (`s12345678901.json`), voir `parse_activity_ref`.
+    entier Garmin (`24070286912.json`), chaîne Intervals.icu (`i123456789.json`),
+    Strava (`s12345678901.json`) ou COROS (`c481221836600803431.json`), voir `parse_activity_ref`.
 
     `None` si le nom de fichier n'a aucune de ces formes — appelant alors replié
     sur la clé `activity_id` du contenu JSON (voir `arc_index.ingest_samples`)."""
