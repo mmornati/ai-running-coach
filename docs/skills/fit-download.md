@@ -27,6 +27,7 @@
 - **Garmin** : le script `download_fit.py` utilise la lib `garminconnect` installée dans l'environnement `garmin-mcp` + les **tokens locaux** `~/.garminconnect` → **aucun mot de passe** nécessaire
 - **Intervals.icu** : le script appelle l'API REST avec la **clé API déjà configurée pour le serveur MCP** → aucune nouvelle configuration. Fonctionne pour toutes les montres qu'Intervals.icu synchronise (Garmin, Suunto, Polar, Apple Watch via HealthFit…), **sauf les activités importées depuis Strava**, que l'API Strava interdit de redistribuer (signalées `INDISPONIBLE`, jamais inventées). Voir [Intervals.icu — Fichiers FIT](../intervals-setup.md#fichiers-fit)
 
+- **COROS** (#168) : `--source coros` demande l'URL du FIT au MCP officiel de COROS par le relais du projet (`./install.sh --coros`, une seule connexion), puis télécharge le fichier d'origine de la montre : mêmes KPI qu'avec Garmin, dynamique de course et puissance comprises. Identifiant `c` + le `LabelId` COROS. Voir [Montres COROS](../coros.md#ce-que-le-mcp-lit)
 - **Strava** (#164) : pas de fichier FIT — le script appelle l'API REST (`/activities/<id>/streams`, bibliothèque standard) avec les **jetons du serveur MCP communautaire** (rafraîchis et réécrits atomiquement, jamais affichés) et normalise les flux par seconde directement en `activities/fit/s<chiffres>.json` : mêmes KPI que le FIT. Voir [Configuration Strava](../strava-setup.md#flux-par-seconde-et-kpi)
 
 ## Quand l'utiliser
@@ -47,7 +48,7 @@
 `skills/fit-download/scripts/download_fit.py` — nécessite `garminconnect` + `fitparse` pour Garmin (environnement `garmin-mcp`), `fitparse` seul pour Intervals.icu avec `--json` (environnement `intervals-icu-mcp`, installé par `./install.sh --source intervals`).
 
 Avec `--json`, écrit aussi une copie **normalisée** au chemin canonique
-`activities/fit/<id>.json` — `<id>` = `garmin_activity_id`, `intervals_activity_id` ou `strava_activity_id` (`s<chiffres>`) (unités SI, mapping documenté dans
+`activities/fit/<id>.json` — `<id>` = `garmin_activity_id`, `intervals_activity_id`, `strava_activity_id` (`s<chiffres>`) ou `coros_activity_id` (`c<chiffres>`) (unités SI, mapping documenté dans
 `scripts/arc_samples.py`) — c'est ce fichier que `scripts/arc_index.py` ingère dans la
 table dérivée `activity_sample` (voir [Mode headless](../dashboard/headless.md)).
 Donnée brute et jetable, jamais versionnée.

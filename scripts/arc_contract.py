@@ -268,6 +268,11 @@ SCHEMA = {
             # projet (voir `arc_samples.STRAVA_ID_RE`). Mêmes règles que ci-dessus :
             # une activité Strava porte celui-ci et omet les deux autres.
             "strava_activity_id": "strava_id",
+            # COROS (#168) : « c » + le `LabelId` du MCP officiel (ex. "c481221836600803431"),
+            # même convention que Strava (`arc_samples.COROS_ID_RE`). Une activité COROS porte
+            # celui-ci et omet les trois autres ; son `start_time` numérote ses montées
+            # (`arc_climb_match.segment_seed`).
+            "coros_activity_id": "coros_id",
             "name": "str",
             "location": "str",
             "start_time": "datetime",
@@ -1081,6 +1086,11 @@ def _check_value(spec: str, value, where: str, errors: list, warnings: list) -> 
         # confondrait avec un `garmin_activity_id` et ne se rattacherait à aucun échantillon.
         if not isinstance(value, str) or not re.fullmatch(r"s\d+", value):
             fail("« s » suivi des chiffres de l'identifiant Strava (ex. \"s12345678901\")")
+        return
+    if spec == "coros_id":
+        # `coros_activity_id` (#168) : « c » + chiffres, même raison que `strava_id`.
+        if not isinstance(value, str) or not re.fullmatch(r"c\d+", value):
+            fail("« c » suivi des chiffres du LabelId COROS (ex. \"c481221836600803431\")")
         return
     if spec == "bool":
         if not isinstance(value, bool):

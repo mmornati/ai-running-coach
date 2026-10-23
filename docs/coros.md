@@ -15,7 +15,8 @@ Pro), entre le 22 et le 23 octobre 2026.
 | Supprimer ou déplacer une séance | ❌ dans l'app COROS (aucun outil dans le MCP) |
 | Renforcement structuré | ✅ vos séances types, créées une fois dans l'app, planifiées par le coach |
 | Allure seuil COROS (contrôle de la vitesse critique) | ✅ |
-| Lire activités, tours, FIT, santé, récupération | ✅ en session interactive |
+| Lire activités, tours, santé, récupération | ✅ en session interactive |
+| FIT et analyses fines (zones, GAP, découplage, montées, foulée) | ✅ `download_fit.py --source coros`, identifiant `coros_activity_id` |
 | Source de données `coros` : activités et santé enregistrées, bilan matinal, synchronisation quotidienne | ⬜ à venir (`--source coros`) |
 | Splits par km | ⬜ à venir, calculés depuis le FIT |
 | FC de récupération, matériel par séance, pesées | ❌ absents du MCP COROS |
@@ -154,10 +155,22 @@ Constaté sur deux séances créées dans l'app (« Renfo lombaires », « Renfo
   planifiée** : sur la séance du 22/10, un tour de 194,85 m à la fin des 40 min, puis
   un tour par ligne droite et par récupération. Ce ne sont donc pas des splits au
   km réguliers ; les vrais splits seront calculés depuis le FIT ;
-- `queryActivityFitFileDownloadUrls` : une URL de fichier FIT standard (produit
-  « COROS PACE 4 Pro », 3 786 points : FC, allure, altitude, GPS, puissance, temps de
-  contact, oscillation, longueur de pas), lisible par `fitparse` et par la normalisation
-  du projet sans changement. COROS annonce 50 fichiers par jour au plus.
+- `queryActivityFitFileDownloadUrls(labelId, sportType)` : une URL de fichier FIT standard
+  (produit « COROS PACE 4 Pro », 3 786 points : FC, allure, altitude, GPS, puissance, temps
+  de contact, oscillation, longueur de pas), lisible par `fitparse` et par la normalisation
+  du projet sans changement. COROS annonce 50 fichiers par jour au plus. Constaté le 23/10 :
+  `sportType` est exigé mais pas vérifié (100 et 102 rendent le même fichier) ; l'URL pointe
+  vers le stockage de COROS et se télécharge **sans authentification** (le projet ne l'affiche
+  jamais) ; une demande par plage de dates a été refusée par le serveur (« Tool call
+  anomalies detected »), d'où une demande par `labelId`.
+
+**Le FIT dans le projet** : `download_fit.py <c+LabelId> --json --source coros` (skill
+`fit-download`) passe par le relais, avec nos jetons, puis écrit la copie normalisée
+`activities/fit/c<LabelId>.json`. Une séance au contrat porte `coros_activity_id`
+(`"c481221836600803431"`) et `start_time`. Constaté sur la séance du 22/10 : zones, allure
+ajustée à la pente, découplage, montées (1 montée de 123 m à 558 m/h) calculés comme pour
+une séance Garmin. Les montées d'une séance COROS sont numérotées par son heure de départ :
+le `LabelId` de 18 chiffres dépasse les entiers que le tableau de bord sait manipuler.
 
 **Santé et récupération** (relevées le 23 octobre 2026, avant la fin de la première
 nuit) :
@@ -194,7 +207,8 @@ cette table entrera dans `AGENTS.md` avec `--source coros`.
 | Activités récentes | `get_activities_by_date` | `querySportRecords(startDate, endDate, sportTypeCodes…)` | Texte : une entrée par séance, `LabelId` + `SportType` (100 course, 101 tapis, 102 trail, 104 randonnée…), horodatages, durée, distance, allure, FC moyenne, calories. « Location » = nom de l'activité, jamais `location`. |
 | Détail d'une activité | `get_activity` | `getActivityDetail` | Texte résumé : allure, allure ajustée à la pente, FC, cadence, puissance, D+/D−, calories, charge, effort perçu. Pas de FC de récupération ni de matériel : omis, jamais inventés. |
 | Tours | `get_activity_splits` | `queryActivityLapData` | Distances en **cm**, libellés en chinois. Le découpage « par km » repart à chaque étape de la séance planifiée : jamais recopié dans `splits`. |
-| FIT | `get_activity_fit_data` | `queryActivityFitFileDownloadUrls` | FIT standard, normalisé par le projet sans changement ; 50 fichiers par jour. |
+| FIT | `get_activity_fit_data` | `queryActivityFitFileDownloadUrls` | Par `download_fit.py --source coros`, jamais par l'IA ; 50 fichiers par jour. |
+| Identifiant au contrat | `garmin_activity_id` | `coros_activity_id` | `"c"` + `LabelId`, avec `start_time`. |
 | HRV nocturne | `get_hrv_data` | `querySleepHrv` | Jour du réveil. Forme d'une nuit complète à relever. |
 | FC de repos | `get_rhr_day` | `queryRestingHeartRate(days)` | `AAAA-MM-JJ: N bpm` ou `No data` ; nombre de jours seulement, pas de date. |
 | Sommeil | `get_sleep_data` | `querySleepOverview` | Jour du réveil ; `Sleep Score: 0` = nuit pas encore disponible, pas un score. Forme d'une nuit complète à relever. |

@@ -130,7 +130,9 @@ read_options = ["--dir"]
 output_options = ["--output", "--json"]
 
 [shell.scripts."skills/fit-download/scripts/download_fit.py"]
+# `--source` : `coros` (#168) n'est pas encore une valeur de [data].source ; toutes les sources ne font que lire.
 flags = ["--json", "--overwrite"]
+value_options = ["--source"]
 read_options = ["--from-dir"]
 output_options = ["--output-dir"]
 
