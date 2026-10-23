@@ -3660,8 +3660,9 @@ def shoe_usage(conn, gear_id: Optional[str] = None, today: Optional[date] = None
         for p in pain if isinstance(pain, list) else []:
             if isinstance(p, dict):
                 pain_entries.append({"date": r["date"], "location": p.get("location"), "score": p.get("score")})
-    episodes_by_gear, ep_no_run, ep_no_pair = SU.link_episodes(SU.pain_episodes(pain_entries), runs, owner_of)
+    episodes_by_gear, ep_no_run_list, ep_no_pair_list = SU.link_episodes(SU.pain_episodes(pain_entries), runs, owner_of)
 
+    ep_no_run, ep_no_pair = len(ep_no_run_list), len(ep_no_pair_list)
     bands_by_gear = {gid: SU.gait_bands(acts) for gid, acts in acts_by_gear.items()}
     road_ref = SU.athlete_road_pace(acts_by_gear)
     feedback = {p["gear_id"]: p for p in shoe_feedback(conn)["pairs"]}
@@ -3691,7 +3692,8 @@ def shoe_usage(conn, gear_id: Optional[str] = None, today: Optional[date] = None
             **meta, "usage": usage, "role": SU.deduce_role(usage, road_ref),
             "gait": SU.gait_report(bands_by_gear, names, gid),
             "pain": SU.pain_summary(eps, usage["sessions"], usage["distance_m"], len(unassigned),
-                                    ep_no_run, ep_no_pair),
+                                    sum(1 for e in ep_no_run_list if first and first <= e["date"] <= end),
+                                    sum(1 for e in ep_no_pair_list if first and first <= e["date"] <= end)),
             "unassigned": {"runs": len(unassigned), "distance_m": round(sum(r["distance_m"] or 0 for r in unassigned)),
                            "since_last_attributed_run": sum(1 for r in unassigned if (r["date"] or "") > (last or "")),
                            "period_end": end if last else None,

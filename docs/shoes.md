@@ -211,9 +211,10 @@ que **dans la même tranche d'allure**.
 
 - Un **épisode** est une zone douloureuse déclarée (`health.pain`, score > 0) ; les jours consécutifs d'une même
   zone forment un seul épisode.
-- Il est rattaché à la séance de course **la plus récente datée de 0 à 2 jours avant son début** (≤ 48 h à la
+- Il est rattaché à la séance de course **la plus récente avec paire, datée de 0 à 2 jours avant son début** (≤ 48 h à la
   granularité du jour ; le même jour compte, l'heure de la douleur étant inconnue). Plusieurs paires (ou une
-  séance sans paire) dans la fenêtre : l'épisode est marqué `ambiguous`.
+  séance sans paire) dans la fenêtre : l'épisode est marqué `ambiguous`. Le compte global des épisodes non
+  rattachés est donné une fois en tête de rapport ; chaque paire ne compte que ceux de sa période d'usage.
 - En jours entiers, « ≤ 48 h » couvre en pratique jusqu'à environ 72 h (approximation du projet).
 - Les épisodes sans séance de course dans la fenêtre, ou dont la séance n'a pas de paire, sont rattachés à
   aucune paire mais **comptés et affichés** (`unattributable_episodes`).

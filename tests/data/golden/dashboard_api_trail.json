@@ -4572,7 +4572,7 @@
             "trend_allowed": false,
             "unattributable_episodes": {
               "no_run_in_window": 0,
-              "note": "épisodes de douleur (toutes paires) sans séance de course dans la fenêtre, ou dont les séances n'ont pas de paire : rattachés à aucune paire",
+              "note": "épisodes de douleur (toutes paires) sans séance de course dans la fenêtre, ou dont aucune séance de la fenêtre n'a de paire, datés dans la période d'usage de cette paire : rattachés à aucune paire",
               "run_without_pair": 0,
               "total": 0
             },

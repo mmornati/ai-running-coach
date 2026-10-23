@@ -237,6 +237,22 @@ class TestPain(Workspace):
         code, out = self.cli("--text")
         self.assertIn("rattaché(s) à aucune paire", out)
 
+    def test_unattributable_count_is_scoped_to_the_pair_period_and_global_once(self):
+        self.write("planning/Runner_Profile.md", PROFILE.replace("id: road-a", "id: road-a (retirée)"))
+        self.run_(day(0), "road-a")
+        self.run_(day(30), "road-b")
+        self.pain(day(1), "genou")             # rattaché à road-a
+        self.pain(day(15), "mollet")           # hors de la période de road-a (retirée), sans séance
+        rep = self.report()
+        a = next(p for p in rep["pairs"] if p["gear_id"] == "road-a")["pain"]["unattributable_episodes"]
+        b = next(p for p in rep["pairs"] if p["gear_id"] == "road-b")["pain"]["unattributable_episodes"]
+        self.assertEqual(a["total"], 0)        # day(15) tombe hors de [day0, day0]
+        self.assertEqual(b["total"], 0)        # road-b commence au jour 30 : hors période aussi
+        self.assertEqual(rep["pain_episodes_without_run"], 1)      # le compte global le garde
+        code, out = self.cli("--text")
+        self.assertEqual(out.count("toutes périodes"), 1)
+        self.assertTrue(out.startswith("Douleurs rattachées à aucune paire"))
+
     def test_zero_score_is_not_an_episode(self):
         self.run_(day(0), "road-a")
         self.pain(day(1), "genou", score=0)
@@ -300,7 +316,7 @@ class TestPureRules(unittest.TestCase):
         runs = [{"id": 1, "date": "2026-09-01"}, {"id": 2, "date": "2026-09-02"}]
         eps = SU.pain_episodes([{"date": "2026-09-03", "location": "genou", "score": 4}])
         per_gear, no_run, no_pair = SU.link_episodes(eps, runs, {1: "road-a", 2: None})
-        self.assertEqual((no_run, no_pair), (0, 0))
+        self.assertEqual((len(no_run), len(no_pair)), (0, 0))
         self.assertEqual(per_gear["road-a"][0]["run_date"], "2026-09-01")
         self.assertTrue(per_gear["road-a"][0]["ambiguous"])
 
