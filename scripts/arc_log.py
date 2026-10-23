@@ -706,7 +706,7 @@ _SHOE_STOPWORDS = frozenset((
 ))
 _SHOE_NEGATIONS = frozenset(("pas", "sans", "aucun", "aucune", "jamais", "ni", "rien", "non"))
 _PLUS_DE_RE = re.compile(r"\bplus (?:de|d)\b")
-_CLAUSE_SPLIT_RE = re.compile(r"[,;.:/]|\bmais\b|\bet\b|\bsauf\b|\bhormis\b|\bexcept[ée]\b|\b[àa] part\b",
+_CLAUSE_SPLIT_RE = re.compile(r"[,;./]|\bmais\b|\bet\b|\bsauf\b|\bhormis\b|\bexcept[ée]\b|\b[àa] part\b",
                               re.IGNORECASE)
 # « plus de X qu'avant » : comparatif, PAS une négation → ambigu, on demande.
 _PLUS_COMPARATIVE_RE = re.compile(r"\bplus (?:de|d)\b.*\bqu")
@@ -760,8 +760,7 @@ def _classify_shoe_term(term) -> dict:
     found: list = []
     negated = False
     unclear: list = []
-    zones: list = []
-    sides: list = []
+    locators: list = []      # (zone, side, indice du dernier problème déjà trouvé)
     phrases = sorted(((k, p) for k, ps in _SHOE_ISSUE_TERMS.items() for p in ps),
                      key=lambda kp: -len(_shoe_tokens(kp[1])))
     for clause in _CLAUSE_SPLIT_RE.split(raw):
@@ -779,6 +778,7 @@ def _classify_shoe_term(term) -> dict:
         used: set = set()
         clause_kinds: list = []
         clause_negated = False
+        clause_unclear = False
         for kind, phrase in phrases:
             n = len(_shoe_tokens(phrase))
             at = _find_tokens(tokens, phrase)
@@ -787,14 +787,16 @@ def _classify_shoe_term(term) -> dict:
             used |= set(range(at, at + n))
             if any(t in _SHOE_NEGATIONS for t in tokens[max(0, at - 3):at]):
                 clause_negated = True
+            elif any(t in _SHOE_NEGATIONS for t in tokens[at + n:]):
+                # « ampoule non », « ampoules ? aucune », « ampoule : rien » : négation APRÈS le problème,
+                # sens incertain → on demande, on n'écrit jamais.
+                clause_unclear = True
             else:
                 clause_kinds.append(kind)
         rest = [t for i, t in enumerate(tokens) if i not in used]
         zone, side = _zone_from_tokens(rest), _side_from_tokens(rest)
-        if zone:
-            zones.append(zone)
-        if side:
-            sides.append(side)
+        if clause_unclear:
+            unclear.append(clause.strip())
         if not clause_kinds and not clause_negated:
             if any(t in _SHOE_NO_ISSUE_WORDS for t in tokens) and (
                     any(t in _SHOE_NEGATIONS for t in tokens) or "ras" in tokens or "rien" in tokens):
@@ -805,16 +807,25 @@ def _classify_shoe_term(term) -> dict:
                         and _side_from_tokens([t]) is None and _zone_from_tokens([t]) is None]
                 if left:
                     unclear.append(clause.strip())
+                elif zone or side:
+                    # Proposition purement LOCALISATRICE (« côté gauche », « au talon ») : voir plus bas.
+                    locators.append((zone, side, len(found) - 1))
         negated = negated or clause_negated
         for kind in clause_kinds:
             found.append({"kind": kind, "zone": zone, "side": side})
-    uniq_zones, uniq_sides = set(zones), set(sides)
+    # Un problème garde la zone / le côté de SA proposition. Seule une proposition purement localisatrice
+    # (« côté gauche », sans problème) se propage : à l'unique problème du terme, sinon au problème qui la
+    # précède immédiatement — jamais à un autre (« orteils serrés, ampoule au talon » : le talon est à l'ampoule).
+    for zone, side, prev in locators:
+        target = 0 if len(found) == 1 else prev
+        if target < 0 or target >= len(found):
+            continue
+        if zone and found[target]["zone"] is None:
+            found[target]["zone"] = zone
+        if side and found[target]["side"] is None:
+            found[target]["side"] = side
     out_kinds: list = []
     for item in found:
-        if item["zone"] is None and len(uniq_zones) == 1:
-            item["zone"] = next(iter(uniq_zones))
-        if item["side"] is None and len(uniq_sides) == 1:
-            item["side"] = next(iter(uniq_sides))
         if item not in out_kinds:
             out_kinds.append(item)
     return {"kinds": out_kinds, "negated": negated, "unclear": unclear}

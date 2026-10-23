@@ -249,6 +249,33 @@ class TestLogFrenchSentences(unittest.TestCase):
         self.assertEqual(out["shoe_feedback"]["entry"]["issues"],
                          [{"kind": "blister", "zone": "heel_central", "side": "right"}])
 
+    def issues_of(self, term):
+        out = self.run_log({"pair": "Kipride", "issues": [{"term": term}]})
+        return out["shoe_feedback"]["entry"].get("issues")
+
+    def test_zone_and_side_stay_with_their_own_problem(self):
+        self.assertEqual(self.issues_of("orteils serrés, ampoule au talon"),
+                         [{"kind": "toe_box_tight"}, {"kind": "blister", "zone": "heel_central"}])
+        self.assertEqual(self.issues_of("ampoule talon gauche, orteils serrés"),
+                         [{"kind": "blister", "zone": "heel_central", "side": "left"}, {"kind": "toe_box_tight"}])
+        self.assertEqual(self.issues_of("ampoule au talon, frottement"),
+                         [{"kind": "blister", "zone": "heel_central"}, {"kind": "hot_spot"}])
+
+    def test_pure_locator_clause_goes_to_the_preceding_problem_only(self):
+        self.assertEqual(self.issues_of("talon qui glisse, côté gauche"), [{"kind": "heel_slip", "side": "left"}])
+        self.assertEqual(self.issues_of("ampoule, côté droit, frottement"),
+                         [{"kind": "blister", "side": "right"}, {"kind": "hot_spot"}])
+        self.assertEqual(self.issues_of("côté gauche, ampoule"), [{"kind": "blister", "side": "left"}])
+
+    def test_negation_after_the_problem_is_a_question(self):
+        for term in ("ampoule non", "ampoules ? aucune", "ampoule ? pas cette fois", "ampoule : rien"):
+            cls = L._classify_shoe_term(term)
+            self.assertEqual(cls["kinds"], [], term)
+            self.assertTrue(cls["unclear"], term)
+            out = self.run_log({"pair": "Kipride", "comfort": "5", "issues": [{"term": term}]})
+            self.assertFalse(out["shoe_feedback"]["ready"], term)
+            self.assertNotIn("shoe_feedback", out.get("activity_merge", {}), term)
+
     def test_named_unknown_or_ambiguous_pair_on_a_run_that_has_one_is_a_question(self):
         gears = GEARS + [{"gear_id": "pegasus", "name": "Nike Pegasus"},
                          {"gear_id": "pegasus-41", "name": "Nike Pegasus 41"}]
