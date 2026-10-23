@@ -10,6 +10,7 @@ import json
 import sys
 import tempfile
 import unittest
+from unittest import mock
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[2]
@@ -460,6 +461,36 @@ class TestReviewMajor(unittest.TestCase):
             self.assertIn("--apply REFUSÉ", text)
             self.assertEqual(before, (prof.read_text(), (root / "activities/2026-03-01_trail.md").read_text()))
             self.assertFalse((root / ".arc").exists())
+
+    def _run_apply(self, root):
+        import argparse
+        (root / "planning").mkdir()
+        (root / "planning" / "Runner_Profile.md").write_text("# P\n", encoding="utf-8")
+        write_activity(root, "2026-03-01_trail.md", garmin_activity_id=1, distance_m=1000)
+        spec = {"gear": [shoe(U1, status="retired")], "gear_activities": {U1: [gact(1, "2026-03-01")]}}
+        args = argparse.Namespace(workspace=str(root), apply=True, since=None, gear=None, all_shoes=False,
+                                  json=False, tokens_dir=None, fake_client=None)
+        return B.run(args, B.GarminSource(B.FakeClient(spec)))
+
+    def test_apply_writes_garmin_snapshot(self):
+        import arc_garmin_gear as GG
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            code, payload, text = self._run_apply(root)
+            self.assertEqual(code, B.EXIT_OK)
+            self.assertIsNone(payload["applied"]["snapshot_error"])
+            self.assertEqual(GG.load_cache(root)["shoes"][0]["status"], "retired")
+
+    def test_apply_reports_snapshot_failure_as_partial(self):
+        import arc_garmin_gear as GG
+        with tempfile.TemporaryDirectory() as tmp, \
+                mock.patch.object(GG, "write_cache", side_effect=PermissionError("lecture seule")):
+            root = Path(tmp)
+            code, payload, text = self._run_apply(root)
+            self.assertEqual(code, B.EXIT_PARTIAL)
+            self.assertIn("lecture seule", payload["applied"]["snapshot_error"])
+            self.assertIn("garmin_gear.json non écrit", text)
+            self.assertTrue(payload["applied"]["profile_written"])     # le reste est écrit quand même
 
     def test_2_depart_ignores_sessions_after_and_inside_the_workspace_period(self):
         files = [ws(1, "2026-03-01"), ws(2, "2026-03-20")]

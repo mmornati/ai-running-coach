@@ -24,6 +24,8 @@ EXCLUDED = {
     "scripts/coach_config.py": "écrit config/workspace.user.toml (activation d'une option par coach-setup) : jamais modifiable depuis le chat",
     "scripts/arc_llm.py": "connexion IA : `connect`/`login` sont interactifs et écrivent llm.env ou le magasin d'authentification ; "
                           "le diagnostic `check` se lance depuis l'App, le bouton du chat ou un terminal (le chat ne répond plus quand l'IA est en panne)",
+    "scripts/arc_coros_auth.py": "connexion COROS : `login` ouvre un navigateur et écrit les jetons, l'athlète la lance "
+                                 "lui-même dans un terminal (interactif seulement, refusée en headless)",
     "skills/mywhoosh-route/scripts/mywhoosh_route.py": "fetch lit le mot de passe MyWhoosh au terminal (getpass) : session interactive uniquement",
 }
 

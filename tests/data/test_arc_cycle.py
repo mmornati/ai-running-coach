@@ -52,6 +52,10 @@ class TestConfigParsing(unittest.TestCase):
         self.assertEqual(CY.effective_source("garmin", "intervals"), "manual")
         self.assertEqual(CY.effective_source("intervals", "intervals"), "intervals")
         self.assertEqual(CY.effective_source("manual", "garmin"), "manual")
+        # COROS (#168) : queryMenstruationCycles, seulement avec la source COROS.
+        self.assertEqual(CY.effective_source("coros", "coros"), "coros")
+        self.assertEqual(CY.effective_source("coros", "garmin"), "manual")
+        self.assertEqual(_mode({"health": {"cycle_tracking": "COROS"}})[0], "coros")
 
 
 class TestNormalization(unittest.TestCase):

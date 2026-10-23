@@ -46,6 +46,8 @@ appel irait à l'encontre de ces mêmes règles.
   - `full` (défaut) : HRV + FC de repos + readiness, les trois ensemble.
   - `minimal` : readiness seule, en une ligne — jamais de HRV ni de FC de repos.
   - `off` : aucune donnée de santé n'est récupérée.
+  - Avec une montre COROS (`[data].source = "coros"`), la readiness est la **récupération
+    COROS**, nommée telle quelle ; une nuit pas encore publiée par COROS est dite en une ligne.
 - Le créneau météo optimal (matin tôt / midi / soir), uniquement si la séance
   du jour est en extérieur — « lieu inconnu » si le lieu ne se résout pas,
   jamais une question.

@@ -100,10 +100,11 @@ partielle. L'index n'est pas enregistré dans la fiche : il est recalculé à ch
 
 Limites, dites plutôt que cachées : l'article mesure le poids de la chaussure et la pile au pied à
 coulisse sous le talon et les têtes métatarsiennes ; une valeur de marque ou de laboratoire en est une
-**approximation du projet** (pointure de référence, point de mesure). Le poids dépend de la pointure : les
-comparatifs l'annoncent en général en US M9 (convention, le fichier additionnel de l'article ne la précise
-pas) ; la commande ajoute un avertissement `warnings` quand `reference_size` manque ou diffère, et rend
-toujours les `assumptions` de la méthode. L'index sert à situer un
+**approximation du projet** (pointure de référence, point de mesure). Le poids dépend de la pointure : l'article
+évalue des chaussures en « US men's size 9 » (soit UK 8, EU 42,5), et ses évaluateurs mesurent avec la semelle
+intérieure en place, alors que les chiffres de marque l'excluent le plus souvent. La commande ajoute un
+avertissement `warnings` quand `reference_size` manque, est ambiguë (un « 9 » seul) ou diffère de US M9, UK 8 ou
+EU 42,5, et rend toujours les `assumptions` de la méthode. L'index sert à situer un
 **changement** entre deux paires, pas à juger une chaussure, et ce n'est pas un avis médical.
 
 ## Retours de chaussant et bilan de retraite

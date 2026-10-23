@@ -1,8 +1,9 @@
 # 🔄 Configuration Intervals.icu (source alternative, #68)
 
 Cette page détaille la source de données **Intervals.icu**, l'alternative à
-Garmin Connect pour les athlètes qui n'ont pas de montre Garmin (COROS,
-Suunto, Polar, Apple — tout ce qu'Intervals.icu synchronise). Elle est
+Garmin Connect pour les athlètes qui n'ont pas de montre Garmin (Suunto,
+Polar, Apple — tout ce qu'Intervals.icu synchronise ; montre COROS : voir
+[Montres COROS](coros.md)). Elle est
 installée par `./install.sh --source intervals`, **à la place** de Garmin, pas
 en plus.
 
@@ -129,7 +130,9 @@ d'outil** : le skill `intervals-icu-best-practices` remplace
   `WORKOUT` écrite dans la **syntaxe native d'Intervals.icu** est analysée
   côté Intervals.icu en étapes structurées (zones, répétitions, charge,
   synchronisation montre). Les cibles de `scripts/arc_workout_targets.py` (#60)
-  y sont écrites : plage de FC en bpm ou zone (`- 60m 140-150bpm`, `Z2 HR`),
+  y sont écrites : plage de FC en % du seuil FC d'Intervals.icu (`- 60m 82.4-88.3% LTHR`,
+  convertie par `arc_workout_targets.py --icu-lthr-bpm`, jamais en bpm absolus : sans
+  charge prévue et sans cible sur la montre, constaté le 22 octobre 2026),
   répétitions de côte en `Main Set Nx`. Le serveur fait écho au résultat
   (`workout_parsed`, `workout_steps`) dans la réponse d'écriture ; si
   l'analyse échoue (`workout_parsed: false`), le coach **retombe sur le texte
@@ -154,12 +157,6 @@ Attention : `icu_delete_gear`, `icu_delete_workout`, `icu_delete_workout_folder`
 et `icu_bulk_delete_events` restent enregistrés en `safe` (seul le mode `none`
 les retire) — `icu_delete_gear` supprime alors sans autre garde-fou.
 
-## Montres COROS
-
-COROS n'a pas de source dédiée : sa montre se synchronise vers Intervals.icu et
-c'est le chemin supporté. Le MCP officiel de COROS a été audité (#168) et reste
-hors du projet : voir [Montres COROS](coros.md).
-
 ## Fonctionnalités et champs indisponibles avec cette source
 
 Aucune valeur n'est jamais devinée à leur place — l'agent dit explicitement
@@ -170,15 +167,15 @@ qu'elles ne sont pas disponibles :
   existe mais c'est une valeur manuelle du jour, qui peut venir de vous ou
   d'un autre appareil synchronisé (Oura, Whoop...) — jamais présentée comme
   équivalente au score Garmin.
-- **Fréquence cardiaque de récupération (HRR) et `splits` par km** — absents
-  des activités renvoyées par ce serveur (revérifié sur le fork `hhopke`,
-  #165 : `icu_get_activity_intervals` renvoie les tours/intervalles de
-  l'activité, pas des splits par km). `course-comparison` (qui exige des
-  `splits`) n'est donc pas utilisable sur des activités synchronisées depuis
-  Intervals.icu.
+- **Fréquence cardiaque de récupération (HRR)** — absente des activités
+  renvoyées par ce serveur (revérifiée sur le fork `hhopke`, #165).
+- **`splits` par km** — absents du serveur (`icu_get_activity_intervals` renvoie
+  les tours/intervalles de l'activité, pas des splits par km), mais calculés
+  depuis le FIT dès qu'il est téléchargé : `python3 scripts/arc_index.py splits
+  i<id>`. `course-comparison` fonctionne alors comme avec Garmin.
 - **FIT des activités importées depuis Strava** — l'API Strava interdit à
   Intervals.icu de les redistribuer : ni FIT, ni courbes. Connectez la montre
-  (ou l'app qui l'exporte : Garmin Connect, COROS, Suunto, Polar, HealthFit
+  (ou l'app qui l'exporte : Garmin Connect, Suunto, Polar, HealthFit
   pour l'Apple Watch…) **directement** à Intervals.icu pour que vos séances
   aient leur FIT. Les autres activités l'ont — voir « Fichiers FIT » ci-dessous.
 - **Upload de parcours** (`course-strategist`) — reste limité à l'analyse GPX
