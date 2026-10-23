@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Surveillance Garmin sans LLM — ne lance `daily-sync.sh` que s'il y a du neuf.
+"""Surveillance Garmin ou COROS sans LLM — ne lance `daily-sync.sh` que s'il y a du neuf.
 
 Garmin n'offre pas de webhook aux particuliers (le Connect Developer Program est
 réservé aux entités légales). On interroge donc Garmin Connect à intervalle
@@ -32,8 +32,19 @@ Usage :
     scripts/garmin_watch.py --dry-run    # décide, affiche, ne lance rien
     scripts/garmin_watch.py --status     # état courant (JSON)
 
+COROS (`[data].source = "coros"`, #168) : même boucle, par le relais du projet
+(`scripts/arc_coros_mcp.py`, jetons de `arc_coros_auth.py`, lecture seule). Le MCP COROS n'a
+pas d'heure de dernier envoi de la montre : chaque passage lit les séances récentes
+(`querySportRecords`, un appel) et, tant que le fichier santé du jour manque, le sommeil
+(`querySleepOverview` : « Sleep Score: 0 » = nuit pas encore calculée). La stabilisation
+(`settle_min`) part de la première fois qu'une nouveauté est vue.
+- `activity:c<LabelId>` : une séance dont le `coros_activity_id` n'apparaît dans aucun
+  `activities/*.md` ;
+- `morning` : score de sommeil du jour calculé par COROS, fichier santé absent.
+
 Tests : `ARC_WATCH_NOW` (ISO local) fixe l'horloge, `ARC_WATCH_FAKE_GARMIN`
-(fichier JSON) remplace Garmin Connect, `ARC_WATCH_SYNC_CMD` la commande lancée.
+(fichier JSON) remplace Garmin Connect, `ARC_WATCH_FAKE_COROS` (fichier JSON :
+textes rendus par les outils COROS) le relais COROS, `ARC_WATCH_SYNC_CMD` la commande lancée.
 """
 
 from __future__ import annotations
@@ -55,6 +66,9 @@ sys.path.insert(0, str(ENGINE / "scripts"))
 STATE_REL = "logs/.watch-state.json"
 LOG_REL = "logs/watch.log"
 ACTIVITY_ID_RE = re.compile(r'"garmin_activity_id"\s*:\s*(\d+)')
+COROS_ACTIVITY_ID_RE = re.compile(r'"coros_activity_id"\s*:\s*"(c\d+)"')
+# Sources surveillées : celles qui ont une sonde ci-dessous.
+WATCHED_SOURCES = ("garmin", "coros")
 
 DEFAULTS = {
     "watch_interval_min": 15,
@@ -73,7 +87,7 @@ BACKOFF_MAX_MIN = 240
 
 
 class AuthError(RuntimeError):
-    """Tokens Garmin refusés : inutile d'insister avant renouvellement."""
+    """Jetons Garmin ou connexion COROS refusés : inutile d'insister avant renouvellement."""
 
 
 class TransientError(RuntimeError):
@@ -164,12 +178,15 @@ def runs_today(state: dict, today: date) -> int:
 
 
 def known_activity_ids(workspace: Path) -> set:
+    """Identifiants déjà persistés : entiers Garmin et chaînes COROS (« c » + LabelId)."""
     ids = set()
     for md in (workspace / "activities").glob("*.md"):
         try:
-            ids.update(int(m) for m in ACTIVITY_ID_RE.findall(md.read_text(encoding="utf-8")))
+            text = md.read_text(encoding="utf-8")
         except (OSError, UnicodeDecodeError):
             continue
+        ids.update(int(m) for m in ACTIVITY_ID_RE.findall(text))
+        ids.update(COROS_ACTIVITY_ID_RE.findall(text))
     return ids
 
 
@@ -184,6 +201,9 @@ def health_file_exists(workspace: Path, day: date) -> bool:
 
 class GarminProbe:
     """Les trois lectures dont le watcher a besoin, rien d'autre."""
+
+    label = "Garmin"
+    auth_fix = "uv run garmin-mcp-auth"
 
     def __init__(self, client):
         self.client = client
@@ -238,6 +258,78 @@ class FakeClient:
         return {"dailySleepDTO": {"sleepTimeSeconds": (self.data.get("sleep") or {}).get(day, 0)}}
 
 
+# Formes relevées le 22-23/10/2026 (docs/coros.md) : une séance par bloc numéroté
+# « 1. Outdoor Run — 2026-10-22 » … « LabelId: 481221836600803431 | SportType: 100 ».
+_COROS_RECORD_RE = re.compile(r"^\s*\d+\.\s.*?(\d{4}-\d{2}-\d{2})\s*$")
+_COROS_LABEL_RE = re.compile(r"LabelId:\s*(\d+)")
+_COROS_SLEEP_SCORE_RE = re.compile(r"Sleep Score:\s*(\d+)")
+
+
+class CorosProbe:
+    """Mêmes lectures que `GarminProbe`, par le relais COROS du projet (sans IA, lecture seule)."""
+
+    label = "COROS"
+    auth_fix = "python3 scripts/arc_coros_auth.py login"
+
+    def __init__(self, client):
+        self.client = client
+
+    def _call(self, tool: str, arguments: dict) -> str:
+        try:
+            return self.client.call(tool, arguments)
+        except Exception as exc:  # CallError du relais, ou panne inattendue
+            if getattr(exc, "login_required", False):
+                raise AuthError(str(exc)) from exc
+            raise TransientError(str(exc)) from exc
+
+    def last_upload_ms(self):
+        """Le MCP COROS n'expose pas l'heure du dernier envoi de la montre."""
+        return None
+
+    def recent_activities(self, days: int = 2, limit: int = 10, today: date = None) -> list:
+        """`[("c<LabelId>", jour de début)]` des `days` derniers jours (dates du compte COROS).
+        Un couple, et non un objet Garmin : `detect_triggers` accepte les deux formes."""
+        today = today or _now().date()
+        text = self._call("querySportRecords", {
+            "startDate": (today - timedelta(days=max(days, 1) - 1)).strftime("%Y%m%d"),
+            "endDate": today.strftime("%Y%m%d"), "limit": limit})
+        out, day = [], None
+        for line in text.splitlines():
+            record = _COROS_RECORD_RE.match(line)
+            if record:
+                day = record.group(1)
+                continue
+            label = _COROS_LABEL_RE.search(line)
+            if label and day:
+                out.append((f"c{label.group(1)}", day))
+                day = None
+        return out
+
+    def sleep_ready(self, day: date) -> bool:
+        """Nuit calculée : score de sommeil > 0 au jour du réveil (0 = « not available yet »)."""
+        text = self._call("querySleepOverview", {"startDate": day.strftime("%Y%m%d"),
+                                                 "endDate": day.strftime("%Y%m%d")})
+        match = _COROS_SLEEP_SCORE_RE.search(text)
+        return bool(match and int(match.group(1)) > 0)
+
+
+class FakeCoros:
+    """Relais COROS simulé depuis un JSON (tests) : `{"error": "auth"|"…", "tools": {nom: texte}}`."""
+
+    def __init__(self, path: Path):
+        self.data = json.loads(path.read_text(encoding="utf-8"))
+
+    def call(self, tool: str, arguments: dict) -> str:
+        error = self.data.get("error")
+        if error == "auth":
+            exc = RuntimeError("COROS : COROS non connecté — lancez : python3 scripts/arc_coros_auth.py login")
+            exc.login_required = True
+            raise exc
+        if error:
+            raise RuntimeError(f"COROS : {error}")
+        return (self.data.get("tools") or {}).get(tool, "")
+
+
 def _ensure_garminconnect(argv: list) -> None:
     """Relance avec le python de garmin-mcp si `garminconnect` est absent (cf. download_fit.py)."""
     try:
@@ -260,7 +352,15 @@ def _ensure_garminconnect(argv: list) -> None:
     sys.exit(2)
 
 
-def make_probe() -> GarminProbe:
+def make_probe(source: str = "garmin"):
+    if source == "coros":
+        fake_coros = os.environ.get("ARC_WATCH_FAKE_COROS")
+        if fake_coros:
+            return CorosProbe(FakeCoros(Path(fake_coros)))
+        os.environ["COROS_READ_ONLY"] = "1"  # le watcher ne fait que lire
+        import arc_coros_mcp
+
+        return CorosProbe(arc_coros_mcp.Client(name="ai-running-coach/watch"))
     fake = os.environ.get("ARC_WATCH_FAKE_GARMIN")
     if fake:
         return GarminProbe(FakeClient(Path(fake)))
@@ -282,22 +382,32 @@ def make_probe() -> GarminProbe:
 # ---------------------------------------------------------------------------
 
 
-def detect_triggers(probe: GarminProbe, workspace: Path, settings: dict, today: date) -> list:
-    """Ce que Garmin a et que le workspace n'a pas encore."""
+def probe_fix(source: str) -> str:
+    """Commande de renouvellement de la connexion, par source."""
+    return CorosProbe.auth_fix if source == "coros" else GarminProbe.auth_fix
+
+
+def detect_triggers(probe, workspace: Path, settings: dict, today: date) -> list:
+    """Ce que la source a et que le workspace n'a pas encore."""
     triggers = []
     oldest = today - timedelta(days=settings["lookback_days"] - 1)
     known = known_activity_ids(workspace)
-    for activity in probe.recent_activities():
-        activity_id = activity.get("activityId")
-        start = str(activity.get("startTimeLocal") or "")[:10]
+    recent = (probe.recent_activities(days=settings["lookback_days"], today=today) if isinstance(probe, CorosProbe)
+              else probe.recent_activities())
+    for item in recent:
+        if isinstance(item, dict):  # Garmin : identifiant entier, début en heure locale
+            activity_id = int(item["activityId"]) if item.get("activityId") else None
+            start = str(item.get("startTimeLocal") or "")[:10]
+        else:                       # COROS : ("c<LabelId>", "AAAA-MM-JJ")
+            activity_id, start = item
         if not activity_id or not start:
             continue
         try:
             started = date.fromisoformat(start)
         except ValueError:
             continue
-        if started >= oldest and int(activity_id) not in known:
-            triggers.append(f"activity:{int(activity_id)}")
+        if started >= oldest and activity_id not in known:
+            triggers.append(f"activity:{activity_id}")
     if settings["morning_check"] != "off" and not health_file_exists(workspace, today):
         if probe.sleep_ready(today):
             triggers.append("morning")
@@ -357,7 +467,7 @@ def fallback_due(settings: dict, state: dict, now: datetime, workspace: Path) ->
 def tick(workspace: Path, now: datetime, probe_factory, run_sync, dry_run: bool = False) -> dict:
     """Un passage. Retourne {'action': ..., 'triggers': [...], 'reason': ...}.
 
-    `probe_factory()` → GarminProbe ; `run_sync(triggers)` → code de retour.
+    `probe_factory()` → GarminProbe ou CorosProbe ; `run_sync(triggers)` → code de retour.
     Séparés pour être remplacés dans les tests."""
     settings = load_settings(workspace)
     state = load_state(workspace)
@@ -384,6 +494,7 @@ def tick(workspace: Path, now: datetime, probe_factory, run_sync, dry_run: bool 
         state["runs"] = {"date": today.isoformat(), "count": runs_today(state, today) + 1}
         state["last_run"] = now.isoformat(timespec="seconds")
         state.pop("pending", None)
+        state.pop("pending_since", None)
         for t in triggers:
             key = _attempt_key(t, today)
             state.setdefault("attempts", {})[key] = state["attempts"].get(key, 0) + 1
@@ -394,8 +505,9 @@ def tick(workspace: Path, now: datetime, probe_factory, run_sync, dry_run: bool 
             log(f"daily-sync terminé en erreur (code {rc})")
         return finish("sync", reason, triggers)
 
-    if settings["source"] != "garmin":
-        return finish("skip", "[data].source n'est pas garmin — surveillance non applicable")
+    if settings["source"] not in WATCHED_SOURCES:
+        return finish("skip", "[data].source n'est ni garmin ni coros — surveillance non applicable")
+    label = "COROS" if settings["source"] == "coros" else "Garmin"
 
     if _minutes_since(now, state.get("backoff_until")) < 0:
         return finish("skip", f"backoff jusqu'à {state['backoff_until']}")
@@ -409,25 +521,26 @@ def tick(workspace: Path, now: datetime, probe_factory, run_sync, dry_run: bool 
             state["upload_seen_at"] = now.isoformat(timespec="seconds")
         in_recheck = _minutes_since(now, state.get("upload_seen_at")) <= settings["recheck_window_min"]
         triggers = []
-        if upload_changed or in_recheck or state.get("pending"):
+        # Sans heure de dernier envoi (COROS), la liste des séances EST le signal : lue à chaque passage.
+        if upload_ms is None or upload_changed or in_recheck or state.get("pending"):
             triggers = detect_triggers(probe, workspace, settings, today)
     except AuthError as exc:
         state.pop("errors", None)
         if state.get("auth_error_date") != today.isoformat():
             state["auth_error_date"] = today.isoformat()
-            log(f"tokens Garmin refusés — {exc}")
+            log(f"connexion {label} refusée — {exc}")
         # Le run de repli relaiera l'alerte (daily-sync → notification tokens).
         if fallback_due(settings, state, now, workspace):
             state["fallback_date"] = today.isoformat()
             return launch([], "repli (tokens refusés)")
-        return finish("error", "tokens Garmin refusés — uv run garmin-mcp-auth")
+        return finish("error", f"connexion {label} refusée — {probe_fix(settings['source'])}")
     except TransientError as exc:
         errors = int(state.get("errors", 0)) + 1
         state["errors"] = errors
         wait = min(BACKOFF_BASE_MIN * 2 ** (errors - 1), BACKOFF_MAX_MIN)
         state["backoff_until"] = (now + timedelta(minutes=wait)).isoformat(timespec="seconds")
-        log(f"Garmin injoignable ({exc}) — prochain essai dans {wait} min")
-        return finish("error", f"Garmin injoignable, backoff {wait} min")
+        log(f"{label} injoignable ({exc}) — prochain essai dans {wait} min")
+        return finish("error", f"{label} injoignable, backoff {wait} min")
 
     state.pop("errors", None)
     state.pop("backoff_until", None)
@@ -443,18 +556,25 @@ def tick(workspace: Path, now: datetime, probe_factory, run_sync, dry_run: bool 
 
     if triggers:
         if triggers != state.get("pending"):
-            log(f"nouveautés Garmin : {','.join(triggers)}")
+            log(f"nouveautés {label} : {','.join(triggers)}")
+        if not state.get("pending"):
+            state["pending_since"] = now.isoformat(timespec="seconds")
         state["pending"] = triggers
-        upload_age = (now.timestamp() * 1000 - (upload_ms or 0)) / 60000
+        if upload_ms is None:
+            # COROS : la stabilisation part de la première détection (aucune heure d'envoi).
+            upload_age = _minutes_since(now, state.get("pending_since"))
+        else:
+            upload_age = (now.timestamp() * 1000 - upload_ms) / 60000
         if upload_age < settings["settle_min"]:
-            return finish("wait", f"stabilisation Garmin ({upload_age:.0f}/{settings['settle_min']} min)", triggers)
+            return finish("wait", f"stabilisation {label} ({upload_age:.0f}/{settings['settle_min']} min)", triggers)
         if _minutes_since(now, state.get("last_run")) < settings["min_gap_min"]:
             return finish("wait", f"écart minimal entre deux runs ({settings['min_gap_min']} min)", triggers)
         if runs_today(state, today) >= settings["max_runs_per_day"]:
             return finish("wait", f"plafond journalier atteint ({settings['max_runs_per_day']} runs)", triggers)
-        return launch(triggers, "nouveautés Garmin")
+        return launch(triggers, f"nouveautés {label}")
 
     state.pop("pending", None)
+    state.pop("pending_since", None)
     _prune_attempts(state, today)
     if fallback_due(settings, state, now, workspace):
         state["fallback_date"] = today.isoformat()
@@ -502,10 +622,11 @@ def main(argv=None) -> int:
     if args.status:
         print(json.dumps({"workspace": str(workspace), **load_state(workspace)}, indent=2, sort_keys=True))
         return 0
-    if not os.environ.get("ARC_WATCH_FAKE_GARMIN"):
+    source = load_settings(workspace)["source"]
+    if source == "garmin" and not os.environ.get("ARC_WATCH_FAKE_GARMIN"):
         _ensure_garminconnect(argv)
 
-    result = tick(workspace, _now(), make_probe, _sync_runner(workspace), dry_run=args.dry_run)
+    result = tick(workspace, _now(), lambda: make_probe(source), _sync_runner(workspace), dry_run=args.dry_run)
     if args.dry_run or sys.stdout.isatty():
         print(json.dumps(result, ensure_ascii=False))
     return 0

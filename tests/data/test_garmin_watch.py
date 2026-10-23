@@ -342,5 +342,107 @@ class TestCli(WatchCase):
         self.assertEqual(json.loads(proc.stdout)["last_check"], "2026-09-27T08:45:00")
 
 
+# COROS (#168) : textes de forme relevée (docs/coros.md), identifiants synthétiques.
+COROS_LABEL = "900000000000000001"
+COROS_RECORDS = (
+    "Sport Records — 2026-09-26 to 2026-09-27 (2 records)\n========================\n\n"
+    "1. Outdoor Run — 2026-09-27\n   Location: Endurance 40 min\n"
+    "   Time Window: startTimestamp=1790000000 | endTimestamp=1790003600\n"
+    f"   Duration: 1:00:00 | Distance: 9.00 km\n   LabelId: {COROS_LABEL} | SportType: 100\n\n"
+    "2. Trail Run — 2026-09-20\n   Location: Vieille sortie\n   LabelId: 900000000000000002 | SportType: 102"
+)
+SLEEP_NOT_YET = ("Sleep Overview\n========================\n\n2026-09-27\nSleep Score: 0\n"
+                 "Sleep detail for this day is not available yet.")
+SLEEP_READY = "Sleep Overview\n========================\n\n2026-09-27\nSleep Score: 75\nMain Sleep: 7h46m"
+
+
+class FakeCorosClient:
+    def __init__(self, tools=None, error=None):
+        self.tools, self.error, self.calls = tools or {}, error, []
+
+    def call(self, tool, arguments):
+        self.calls.append((tool, arguments))
+        if self.error:
+            raise self.error
+        return self.tools.get(tool, "")
+
+
+def login_error():
+    exc = RuntimeError("COROS : COROS non connecté — lancez : python3 scripts/arc_coros_auth.py login")
+    exc.login_required = True
+    return exc
+
+
+class TestCoros(WatchCase):
+    def setUp(self):
+        super().setUp()
+        (self.ws / "config/workspace.user.toml").write_text(
+            '[data]\nsource = "coros"\n\n[sync]\nfallback_times = []\n', encoding="utf-8")
+
+    def probe(self, **tools):
+        return W.CorosProbe(FakeCorosClient({"querySportRecords": COROS_RECORDS, "querySleepOverview": SLEEP_NOT_YET,
+                                             **tools}))
+
+    def test_records_are_parsed_into_contract_ids(self):
+        self.assertEqual(self.probe().recent_activities(days=10),
+                         [(f"c{COROS_LABEL}", "2026-09-27"), ("c900000000000000002", "2026-09-20")])
+
+    def test_sleep_score_zero_is_not_a_night(self):
+        self.assertFalse(self.probe().sleep_ready(TODAY))
+        self.assertTrue(self.probe(querySleepOverview=SLEEP_READY).sleep_ready(TODAY))
+
+    def test_new_activity_waits_settle_from_first_sight_then_syncs(self):
+        probe = self.probe()
+        first = self.tick(probe)
+        self.assertEqual(first["action"], "wait")
+        self.assertEqual(first["triggers"], [f"activity:c{COROS_LABEL}"])
+        self.assertEqual(self.runs, [])
+        later = self.tick(probe, now=NOW + timedelta(minutes=11))
+        self.assertEqual(later["action"], "sync")
+        self.assertEqual(self.runs, [[f"activity:c{COROS_LABEL}"]])
+        self.assertNotIn("pending_since", self.state())
+
+    def test_known_coros_activity_and_health_file_mean_nothing_new(self):
+        (self.ws / "activities/2026-09-27_running.md").write_text(
+            f'# S\n\n```arc\n{{"arc": 1, "kind": "activity", "coros_activity_id": "c{COROS_LABEL}"}}\n```\n')
+        (self.ws / "medical/2026-09-27_health.md").write_text("# Santé\n")
+        probe = self.probe(querySleepOverview=SLEEP_READY)
+        self.assertEqual(self.tick(probe)["action"], "none")
+        self.assertEqual([c[0] for c in probe.client.calls], ["querySportRecords"])
+
+    def test_morning_only_once_the_night_is_computed(self):
+        (self.ws / "activities/2026-09-27_running.md").write_text(
+            f'```arc\n{{"arc": 1, "kind": "activity", "coros_activity_id": "c{COROS_LABEL}"}}\n```\n')
+        self.assertEqual(self.tick(self.probe())["action"], "none")
+        result = self.tick(self.probe(querySleepOverview=SLEEP_READY), now=NOW + timedelta(minutes=15))
+        self.assertEqual(result["triggers"], ["morning"])
+
+    def test_login_error_names_the_coros_command_and_never_runs_the_llm(self):
+        probe = W.CorosProbe(FakeCorosClient(error=login_error()))
+        result = self.tick(probe)
+        self.assertEqual(result["action"], "error")
+        self.assertIn("python3 scripts/arc_coros_auth.py login", result["reason"])
+        self.assertEqual(self.runs, [])
+
+    def test_network_error_backs_off(self):
+        probe = W.CorosProbe(FakeCorosClient(error=RuntimeError("COROS : COROS injoignable")))
+        result = self.tick(probe)
+        self.assertEqual(result["action"], "error")
+        self.assertIn("COROS injoignable", result["reason"])
+        self.assertIn("backoff_until", self.state())
+
+    def test_cli_with_fake_coros(self):
+        fake = self.ws / "fake-coros.json"
+        fake.write_text(json.dumps({"tools": {"querySportRecords": COROS_RECORDS,
+                                              "querySleepOverview": SLEEP_NOT_YET}}))
+        env = dict(os.environ, ARC_WORKSPACE=str(self.ws), ARC_WATCH_NOW=NOW.isoformat(),
+                   ARC_WATCH_FAKE_COROS=str(fake), HOME=str(self.ws))
+        proc = subprocess.run([sys.executable, str(REPO / "scripts/garmin_watch.py"), "--dry-run"],
+                              env=env, capture_output=True, text=True, timeout=30)
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        result = json.loads(proc.stdout.strip().splitlines()[-1])
+        self.assertEqual(result["triggers"], [f"activity:c{COROS_LABEL}"])
+
+
 if __name__ == "__main__":
     unittest.main()
