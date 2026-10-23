@@ -130,9 +130,11 @@ nav:
       - Saisie libre (/log): skills/log.md
       - Inspection des chaussures: skills/gear-inspection.md
       - Faire inspecter une paire (/inspection): skills/inspection.md
+      - Fiche des chaussures (specs): skills/shoe-specs.md
   - Correction altimétrique (MNT): elevation.md
   - Garde-fous: guardrails.md
   - Gabarits de périodisation: plans.md
+  - Choisir ses chaussures: shoes.md
   - Ressources:
       - Base de connaissances: resources.md
       - Cycle menstruel (opt-in): cycle-menstruel.md

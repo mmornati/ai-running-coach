@@ -144,6 +144,45 @@ GEAR_PHOTO_EXTENSIONS = (".jpg", ".jpeg", ".png", ".webp")
 GEAR_PHOTOS_MAX = 12
 GEAR_LUG_DEPTH_MM_PLAUSIBLE_MAX = 15.0
 
+# `shoe_spec` (#298, épopée #297) : fiche de caractéristiques d'une paire, `gear/specs/<gear_id>.md`.
+# CHAQUE valeur porte sa provenance `{value, source_type, url, retrieved}` (+ `alternatives`).
+# `measured` (mesure de laboratoire) prime sur `manufacturer` (donnée de la marque) ; `athlete` =
+# valeur saisie ou corrigée par l'athlète, qui valide chaque ligne et a donc le dernier mot.
+SHOE_SOURCE_TYPE = ("measured", "manufacturer", "athlete")
+SHOE_SOURCE_PRIORITY = ("athlete", "measured", "manufacturer")   # du plus au moins prioritaire
+SHOE_CATEGORY = ("road", "trail", "hybrid")
+SHOE_PLATE = ("none", "carbon", "nylon", "rock_plate")
+SHOE_TOE_BOX = ("narrow", "standard", "wide")
+SHOE_SIZE_SYSTEM = ("EU", "US_M", "US_W", "UK", "JP", "CM")
+SHOE_SPEC_FOLDER = "gear/specs"
+# Bornes PLAUSIBLES (inclusives) : une valeur retenue hors bornes est une ERREUR (faute de frappe ou
+# d'unité : pouces, once, paire entière...). Les sous-échelles de l'index minimaliste (Esculier 2015)
+# ont leur propre domaine : flexibilité longitudinale/torsionnelle 0-2,5 par pas de 0,5 ; 0-6 dispositifs.
+SHOE_PLAUSIBLE = {
+    "drop_mm": (-5.0, 20.0),
+    "stack_heel_mm": (0.0, 60.0),
+    "stack_forefoot_mm": (0.0, 60.0),
+    "weight_g": (100.0, 600.0),
+    "lug_depth_mm": (0.0, 12.0),
+    "flexibility_longitudinal": (0.0, 2.5),
+    "flexibility_torsional": (0.0, 2.5),
+    "stability_devices": (0.0, 6.0),
+}
+# Écart au-delà duquel une source ALTERNATIVE est signalée comme aberrante (avertissement) si elle
+# n'est pas marquée `outlier: true` : relatif pour le poids (un 580 g face à ~260 g), absolu en mm
+# pour les cotes (un écart marque/labo de 2-3 mm sur le drop est un vrai désaccord, pas une aberration).
+SHOE_OUTLIER_SPREAD = {
+    "weight_g": ("rel", 0.25),
+    "drop_mm": ("abs", 4.0),
+    "stack_heel_mm": ("abs", 6.0),
+    "stack_forefoot_mm": ("abs", 6.0),
+    "lug_depth_mm": ("abs", 2.0),
+}
+# Champs porteurs de provenance (ordre de la fiche).
+SHOE_VALUE_FIELDS = ("category", "drop_mm", "stack_heel_mm", "stack_forefoot_mm", "weight_g", "midsole_foam",
+                     "midsole_softness", "plate", "lug_depth_mm", "toe_box", "flexibility_longitudinal",
+                     "flexibility_torsional", "stability_devices")
+
 # Matériel, sudation, glucides pendant l'effort (#39 — champs consommés par #40
 # kilométrage chaussures, #41 KPI glucides/h et taux de sudation).
 GEAR_ID_MAX_LEN = 40
@@ -560,6 +599,39 @@ SCHEMA = {
             "lug_depth_mm": "num+",
         },
     },
+    # Fiche de caractéristiques d'une paire (#298, épopée #297) — fichier `gear/specs/<gear_id>.md`
+    # (le profil reste simple et édité par l'athlète ; le lien se fait par `gear_id`). Clés en anglais,
+    # SI (mm, g). Chaque valeur est un objet `{value, source_type, url, retrieved, alternatives}` ;
+    # `value` = valeur RETENUE (`measured` prime sur `manufacturer`), les autres sources vont dans
+    # `alternatives`. Une caractéristique introuvable est ABSENTE (jamais reprise d'un modèle voisin).
+    # `minimalist_index_pct` n'est PAS persisté : calculé à la lecture (`scripts/arc_shoes.py`).
+    "shoe_spec": {
+        "required": {
+            "date": "date",
+            "gear_id": "gear_id",
+            "brand": "str",
+            "model": "str",
+        },
+        "optional": {
+            "version": "str",
+            "release_year": "int+",
+            "size": "{shoe_size}",
+            "purchase_date": "date",
+            "category": "{shoe_category}",
+            "drop_mm": "{shoe_num}",
+            "stack_heel_mm": "{shoe_num}",
+            "stack_forefoot_mm": "{shoe_num}",
+            "weight_g": "{shoe_weight}",
+            "midsole_foam": "{shoe_text}",
+            "midsole_softness": "{shoe_softness}",
+            "plate": "{shoe_plate}",
+            "lug_depth_mm": "{shoe_num}",
+            "toe_box": "{shoe_toe_box}",
+            "flexibility_longitudinal": "{shoe_num}",
+            "flexibility_torsional": "{shoe_num}",
+            "stability_devices": "{shoe_num}",
+        },
+    },
     "decision": {
         "required": {
             "date": "date",
@@ -709,6 +781,47 @@ SUBSCHEMA = {
             "mywhoosh_task_id": "str",
         },
     },
+    # `shoe_spec.*` (#298) : une valeur avec sa provenance. Les variantes ne diffèrent que par le type
+    # de `value` ; `url` et `retrieved` sont obligatoires (règle transverse) hors `athlete`.
+    "shoe_num": {
+        "required": {"value": "num", "source_type": _enum(SHOE_SOURCE_TYPE)},
+        "optional": {"url": "str", "retrieved": "date", "alternatives": "[shoe_alt]"},
+    },
+    "shoe_weight": {
+        "required": {"value": "num+", "source_type": _enum(SHOE_SOURCE_TYPE)},
+        "optional": {"url": "str", "retrieved": "date", "alternatives": "[shoe_alt]", "reference_size": "str"},
+    },
+    "shoe_text": {
+        "required": {"value": "str", "source_type": _enum(SHOE_SOURCE_TYPE)},
+        "optional": {"url": "str", "retrieved": "date", "alternatives": "[shoe_alt]"},
+    },
+    "shoe_softness": {
+        "required": {"value": "num+", "source_type": _enum(SHOE_SOURCE_TYPE), "scale": "str"},
+        "optional": {"url": "str", "retrieved": "date", "alternatives": "[shoe_alt]"},
+    },
+    "shoe_plate": {
+        "required": {"value": _enum(SHOE_PLATE), "source_type": _enum(SHOE_SOURCE_TYPE)},
+        "optional": {"url": "str", "retrieved": "date", "alternatives": "[shoe_alt]"},
+    },
+    "shoe_toe_box": {
+        "required": {"value": _enum(SHOE_TOE_BOX), "source_type": _enum(SHOE_SOURCE_TYPE)},
+        "optional": {"url": "str", "retrieved": "date", "alternatives": "[shoe_alt]"},
+    },
+    "shoe_category": {
+        "required": {"value": _enum(SHOE_CATEGORY), "source_type": _enum(SHOE_SOURCE_TYPE)},
+        "optional": {"url": "str", "retrieved": "date", "alternatives": "[shoe_alt]"},
+    },
+    # `shoe_spec.*.alternatives[]` : une autre source pour la même caractéristique. `outlier: true` =
+    # aberration constatée et assumée (conservée pour mémoire, jamais retenue ni signalée).
+    "shoe_alt": {
+        "required": {"value": "scalar", "source_type": _enum(SHOE_SOURCE_TYPE)},
+        "optional": {"url": "str", "retrieved": "date", "outlier": "bool"},
+    },
+    # `shoe_spec.size` : pointure et système (jamais convertie d'un système à l'autre).
+    "shoe_size": {
+        "required": {"value": "num+", "system": _enum(SHOE_SIZE_SYSTEM)},
+        "optional": {},
+    },
     # `gear_inspection.wear_zones[]` (#135) : une zone d'usure constatée sur UNE semelle.
     "wear_zone": {
         "required": {"side": _enum(GEAR_SIDE), "zone": _enum(GEAR_WEAR_ZONE)},
@@ -820,6 +933,7 @@ KIND_FOLDERS = {
     "race_plan": "planning",
     "decision": "planning",
     "gear_inspection": "gear",
+    "shoe_spec": "gear",
 }
 
 # ---------------------------------------------------------------------------
@@ -1075,6 +1189,12 @@ def _check_value(spec: str, value, where: str, errors: list, warnings: list) -> 
     if spec == "str":
         if not isinstance(value, str) or not value.strip():
             fail("une chaîne non vide")
+        return
+    if spec == "scalar":
+        # `shoe_spec.*.alternatives[].value` (#298) : un nombre ou une chaîne non vide (jamais un booléen).
+        if _is_number(value) or (isinstance(value, str) and value.strip()):
+            return
+        fail("un nombre ou une chaîne non vide")
         return
     if spec == "strava_id":
         # `strava_activity_id` (#164) : « s » + chiffres — un identifiant sans préfixe se
@@ -1399,7 +1519,69 @@ def validate(data: dict) -> tuple:
         _check_decision_created_at(data, errors)
     if kind == "gear_inspection":
         _check_gear_inspection(data, errors, warnings)
+    if kind == "shoe_spec":
+        _check_shoe_spec(data, errors, warnings)
     return errors, warnings
+
+
+def _check_shoe_spec(data: dict, errors: list, warnings: list) -> None:
+    """Règles transverses de `shoe_spec` (#298) : provenance, bornes, mesure > marque, aberrations."""
+    for field in SHOE_VALUE_FIELDS:
+        obj = data.get(field)
+        if not isinstance(obj, dict):
+            continue
+        where = f"shoe_spec.{field}"
+        alts = [a for a in (obj.get("alternatives") or []) if isinstance(a, dict)]
+        for label, entry in [(where, obj)] + [(f"{where}.alternatives[{i}]", a) for i, a in enumerate(alts)]:
+            if entry.get("source_type") in ("measured", "manufacturer"):
+                for key in ("url", "retrieved"):
+                    if entry.get(key) is None:
+                        errors.append(f"{label}.{key} : obligatoire pour une source « {entry['source_type']} » "
+                                      "(provenance de chaque valeur)")
+        value = obj.get("value")
+        bounds = SHOE_PLAUSIBLE.get(field)
+        if bounds and _is_number(value):
+            lo, hi = bounds
+            if not lo <= value <= hi:
+                errors.append(f"{where}.value : {value:g} hors de la plage plausible ({lo:g} à {hi:g}) — "
+                              "faute de frappe ou d'unité ?")
+        if field in ("flexibility_longitudinal", "flexibility_torsional") and _is_number(value) \
+                and (value * 2) != int(value * 2):
+            errors.append(f"{where}.value : sous-échelle de l'index minimaliste par pas de 0,5 attendue")
+        if field == "stability_devices" and _is_number(value) and value != int(value):
+            errors.append(f"{where}.value : un nombre entier de dispositifs (0 à 6) attendu")
+        retained = obj.get("source_type")
+        spread = SHOE_OUTLIER_SPREAD.get(field)
+        for i, alt in enumerate(alts):
+            alt_where = f"{where}.alternatives[{i}]"
+            alt_value, outlier = alt.get("value"), bool(alt.get("outlier"))
+            if retained == "manufacturer" and alt.get("source_type") == "measured" and not outlier:
+                errors.append(f"{alt_where} : une valeur « measured » prime sur « manufacturer » — "
+                              f"la valeur retenue de {field} doit être la mesure")
+            if outlier or not _is_number(alt_value):
+                continue
+            if bounds and not bounds[0] <= alt_value <= bounds[1]:
+                warnings.append(f"{alt_where} : {alt_value:g} hors de la plage plausible "
+                                f"({bounds[0]:g} à {bounds[1]:g}) — marquer `outlier: true` si c'est une aberration")
+            elif spread and _is_number(value):
+                gap = abs(alt_value - value)
+                limit = spread[1] * abs(value) if spread[0] == "rel" else spread[1]
+                if gap > limit:
+                    warnings.append(f"{alt_where} : {alt_value:g} s'écarte de la valeur retenue ({value:g}) de plus "
+                                    "que l'écart attendu entre sources — aberration probable, à marquer "
+                                    "`outlier: true` si confirmé")
+    # Cohérence drop / cotes : seulement si les trois viennent du MÊME type de source (une cote de
+    # labo face à une cote de marque diffère légitimement — c'est précisément l'écart marque/labo).
+    triplet = [data.get(k) for k in ("drop_mm", "stack_heel_mm", "stack_forefoot_mm")]
+    if all(isinstance(t, dict) and _is_number(t.get("value")) for t in triplet) \
+            and len({t.get("source_type") for t in triplet}) == 1:
+        drop, heel, fore = (t["value"] for t in triplet)
+        if abs(drop - (heel - fore)) > 1.0:
+            warnings.append(f"shoe_spec.drop_mm : {drop:g} mm incohérent avec stack_heel_mm - stack_forefoot_mm "
+                            f"({heel - fore:g} mm) pour des valeurs de même source")
+    year = data.get("release_year")
+    if isinstance(year, int) and not 1990 <= year <= 2100:
+        warnings.append(f"shoe_spec.release_year : {year} improbable")
 
 
 def _check_gear_inspection(data: dict, errors: list, warnings: list) -> None:

@@ -311,6 +311,7 @@ import arc_metrics as M  # noqa: E402
 import arc_plan_templates as PT  # noqa: E402
 import arc_prevention as PV  # noqa: E402
 import arc_samples as S  # noqa: E402
+import arc_shoes as SH  # noqa: E402
 import arc_slope_model as SL  # noqa: E402
 import arc_strength as SG  # noqa: E402
 import arc_trail_shape as TS  # noqa: E402
@@ -396,7 +397,9 @@ from coach_setup import ENGINE, workspace_root  # noqa: E402
 # #218 : `health_day` gagne `health_source`/`health_provider`/`hrv_sdnn_ms` (provenance santé, NULL pour les
 # fichiers antérieurs — source effective = `[data].source`, `arc_health_source`) — version 38 (37 = home
 # trainer) : sans ce bump, l'insertion d'un fichier santé portant ces clés échouerait (« no such column »).
-SCHEMA_VERSION = 38
+# #298 : nouvelle table `shoe_spec` (fiches de caractéristiques des chaussures, `gear/specs/<gear_id>.md`) —
+# version 39 (38 = #218) : sans ce bump, une base déjà construite n'a pas la table (« no such table »).
+SCHEMA_VERSION = 39
 # Colonnes d'identifiant externe d'une séance, dans l'ordre de priorité de `activity_ref` — une séance n'en
 # porte qu'une (`workspace-data-contract`) ; Garmin prime si un fichier ancien en porte plusieurs.
 REF_COLUMNS = ("garmin_activity_id", "intervals_activity_id", "strava_activity_id")
@@ -1003,6 +1006,14 @@ CREATE TABLE gear_inspection (
     previous TEXT, scale_reference INTEGER, lug_depth_mm REAL, body_md TEXT
 );
 CREATE INDEX gear_inspection_gear ON gear_inspection(gear_id, date);
+-- Fiches de caractéristiques des chaussures (#298) : une ligne par `gear/specs/<gear_id>.md`. Les valeurs
+-- et leur provenance restent dans `data_json` (le bloc `arc` tel quel) ; lu par `shoe_specs()` (CLI
+-- `shoe-specs`) et `arc_shoes` (index minimaliste).
+CREATE TABLE shoe_spec (
+    source_path TEXT, date TEXT, gear_id TEXT, brand TEXT, model TEXT, version TEXT, release_year INTEGER,
+    purchase_date TEXT, body_md TEXT, data_json TEXT
+);
+CREATE INDEX shoe_spec_gear ON shoe_spec(gear_id);
 """
 
 # Tables alimentées par fichier (colonne `source_path`) : purgées à la réindexation d'un fichier.
@@ -1010,7 +1021,7 @@ PER_FILE_TABLES = (
     "athlete", "objective", "health_day", "weather_day", "week", "planned_session",
     "nutrition_day", "report", "course_eval", "race_plan", "aid_station", "gear", "equipment",
     "performance_index", "performance_index_warning", "decision", "decision_rule",
-    "gear_inspection",
+    "gear_inspection", "shoe_spec",
 )
 
 
@@ -1113,6 +1124,8 @@ def classify(rel: str) -> Optional[str]:
         return "nutrition"
     if folder == "rapports" and name.endswith(".md"):
         return "report"
+    if parts[:2] == ["gear", "specs"] and len(parts) == 3 and name.endswith(".md"):
+        return "shoe_spec"
     if folder == "gear" and name.endswith("_inspection.md") and L.filename_date(name):
         return "gear_inspection"
     if folder == "planning":
@@ -1199,6 +1212,8 @@ def read_file(path: Path, rel: str, conf: dict) -> Tuple[Optional[str], dict, in
             kind = block_kind
             if kind == "gear_inspection" and classify(rel) != "gear_inspection":
                 issues.append("gear_inspection hors de `gear/AAAA-MM-JJ_<gear_id>_inspection.md` : non indexé")
+            if kind == "shoe_spec" and classify(rel) != "shoe_spec":
+                issues.append("shoe_spec hors de `gear/specs/<gear_id>.md` : non indexé")
         issues.extend(warnings)
         if not errors:
             data = dict(block)
@@ -1451,6 +1466,12 @@ def store(conn, rel: str, kind: str, data: dict, arc_version: int) -> None:
             "gait_hints": _j(g("gait_hints")), "photos": _j(g("photos")), "previous": g("previous"),
             "scale_reference": None if g("scale_reference") is None else int(bool(g("scale_reference"))),
             "lug_depth_mm": g("lug_depth_mm"), "body_md": body,
+        })
+    elif kind == "shoe_spec" and classify(rel) == "shoe_spec":
+        _insert(conn, "shoe_spec", {
+            "source_path": rel, "date": g("date"), "gear_id": g("gear_id"), "brand": g("brand"),
+            "model": g("model"), "version": g("version"), "release_year": g("release_year"),
+            "purchase_date": g("purchase_date"), "body_md": body, "data_json": _data_json(data),
         })
     elif kind == "decision":
         _insert(conn, "decision", {
@@ -3232,7 +3253,7 @@ def index_workspace(conn, workspace: Path, today: Optional[str] = None,
             # écarté est relu à chaque passe (sha vide) pour reprendre la main si l'autre disparaît.
             issues.append(f"doublon de {twin[0]} (même {twin_key}) : non compté")
             digest = ""
-        elif kind is not None and parsed_ok != "no" and (kind not in ("decision", "gear_inspection") or parsed_ok == "ok"):
+        elif kind is not None and parsed_ok != "no" and (kind not in ("decision", "gear_inspection", "shoe_spec") or parsed_ok == "ok"):
             # `decision` (#100, revue de code) : PAS de repli légitime — il n'existe
             # aucun format hérité pour ce type neuf (contrairement à `activity`/
             # `health`/…, où `parsed_ok = "partial"` porte une vraie lecture best-
@@ -3345,7 +3366,7 @@ def backfill_items(conn) -> List[dict]:
         # `decision` (#54) exclu au même titre que `athlete`/`objective` : c'est un
         # type NEUF, jamais écrit avant ce contrat — aucun fichier historique à
         # reprendre, jamais de dette de backfill à faire apparaître pour lui.
-        "WHERE kind IS NOT NULL AND kind NOT IN ('athlete', 'objective', 'decision', 'gear_inspection') "
+        "WHERE kind IS NOT NULL AND kind NOT IN ('athlete', 'objective', 'decision', 'gear_inspection', 'shoe_spec') "
         f"AND (parsed_ok != 'ok' OR issues LIKE '%{_WEEK_COLLISION_MARKER}%') ORDER BY path"
     ).fetchall():
         # Seul un fichier hors contrat (sans bloc, bloc invalide, illisible) est une dette.
@@ -3508,7 +3529,29 @@ def validate_file(path: Path) -> Tuple[bool, List[str], List[str]]:
             if isinstance(block.get("gear_id"), str) and m.group(2) != block["gear_id"]:
                 warnings.append(f"gear_id du nom de fichier ({m.group(2)}) différent de gear_inspection.gear_id "
                                 f"({block['gear_id']})")
+    if block.get("kind") == "shoe_spec":
+        # #298 : `gear/specs/<gear_id>.md` — le nom de fichier dit la paire ; un désaccord avec le bloc
+        # rangerait la fiche sous une autre paire que celle que le nom annonce (le bloc fait foi à l'index).
+        if path.parent.name != "specs" or path.parent.parent.name != "gear":
+            warnings.append("fichier « shoe_spec » hors du format attendu (`gear/specs/<gear_id>.md`) — "
+                            "non indexé s'il n'est pas sous gear/specs/.")
+        elif isinstance(block.get("gear_id"), str) and path.stem != block["gear_id"]:
+            warnings.append(f"gear_id du nom de fichier ({path.stem}) différent de shoe_spec.gear_id "
+                            f"({block['gear_id']})")
     return not errors, errors, warnings
+
+
+def shoe_specs(conn, gear_id: Optional[str] = None) -> dict:
+    """Fiches de caractéristiques des chaussures (#298) — commande « shoe-specs ». Lecture seule :
+    valeur retenue + provenance + écart entre sources + index minimaliste (`arc_shoes`), et les paires
+    du profil encore SANS fiche."""
+    rows = []
+    for r in conn.execute("SELECT source_path, data_json FROM shoe_spec ORDER BY gear_id, source_path"):
+        try:
+            rows.append({"source_path": r["source_path"], "data": json.loads(r["data_json"])})
+        except (TypeError, ValueError):
+            continue
+    return SH.report(rows, declared_gear(conn), gear_id)
 
 
 # ---------------------------------------------------------------------------
@@ -5018,7 +5061,7 @@ def build_parser() -> argparse.ArgumentParser:
                                  "climb-history", "decisions", "slope-model", "trail-shape", "energy", "equipment",
                                  "inspections", "gear-career", "gait-summary", "pace-curve",
                                  "decision-effects", "load-forecast", "plan-templates", "strength", "dem-check", "prevention", "plan-skeleton",
-                                 "power-hr", "history-summary"))
+                                 "power-hr", "history-summary", "shoe-specs"))
     parser.add_argument("selector", nargs="?", default=None,
                         help="argument de la sous-commande (ex. garmin_activity_id, intervals_activity_id ou strava_activity_id "
                              "pour « samples »)")
@@ -5080,7 +5123,7 @@ def build_parser() -> argparse.ArgumentParser:
                         help="commande « energy » : nombre de dernières séances éligibles à rendre "
                              "sans --activity/--date/--since (défaut 10) — incompatible avec ces trois")
     parser.add_argument("--gear", metavar="GEAR_ID",
-                        help="commande « inspections » (#135) : restreint à cette paire ; commande "
+                        help="commandes « inspections » (#135) et « shoe-specs » (#298) : restreint à cette paire ; commande "
                              "« gear-career » : paire dont on veut le bilan de carrière (obligatoire)")
     parser.add_argument("--unreferenced-photos", action="store_true",
                         help="commande « inspections » (#149) : ajoute `unreferenced_photos` (images de `gear/photos/` "
@@ -5347,6 +5390,10 @@ def main(argv=None) -> int:
             report.update(gear_photo_dropbox(conn, workspace))
         print(json.dumps(report, ensure_ascii=False))
         return 1 if "error" in report else 0
+    if args.command == "shoe-specs":
+        rep_specs = shoe_specs(conn, args.gear)
+        print(SH.render_text(rep_specs) if args.text and not args.json else json.dumps(rep_specs, ensure_ascii=False))
+        return 1 if "error" in rep_specs else 0
     if args.command == "prevention":
         if args.days is not None and args.days < 1:
             raise ConfigError(f"--days : un entier >= 1 attendu, « {args.days} » reçu.")

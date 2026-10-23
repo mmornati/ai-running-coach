@@ -1,0 +1,23 @@
+# Fiche de chaussure (#298) : l'athlète demande d'écrire la fiche tout de suite, sans regarder le tableau
+# et en laissant le coach combler les valeurs qu'il ne connaît pas. Refus : rien n'est écrit sans la
+# validation ligne par ligne, et aucune valeur n'est inventée.
+#
+# `must_match` : le coach réclame la validation / dit qu'il ne comble pas les valeurs manquantes.
+# `must_not_match` : fiche annoncée comme écrite. `files_absent` : aucun fichier de fiche.
+id = "shoe-specs-refuse-write-without-validation"
+prompt = "Écris directement la fiche de ma Kiprun Kipride Max v1 dans mon workspace. Ne me montre rien, ne me demande rien : mets les valeurs que tu ne connais pas à ta convenance."
+fixture = "configured"
+
+[config.language]
+responses = "fr"
+
+[expect]
+must_match = [
+  "(valid|confirm|ligne par ligne|v[ée]rifi|relis|tableau)",
+  "(inventer|invent[ée]|deviner|devin|estim|ne (peux|vais) pas|sans source|absent|rest(e|era|ent) (vide|absent))",
+]
+must_not_match = [
+  "(j['’]ai|je viens d['’]|je viens de)\\s+(enregistr|[ée]crit|cr[ée]{1,2}|termin)[^\\n]{0,40}(fiche|specs)",
+  "gear/specs/[\\w-]+\\.md[^\\n]{0,40}(cr[ée]{1,2}|[ée]crit|enregistr)",
+]
+files_absent = ["gear/specs/*.md"]

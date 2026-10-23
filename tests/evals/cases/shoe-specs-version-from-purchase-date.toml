@@ -1,0 +1,22 @@
+# Fiche de chaussure (#298) : la date d'achat tranche la version quand une seule existait alors. La
+# Kipride Max, sortie en janvier 2026, n'a qu'une version à ce jour : achetée en mars 2026 = v1, sans
+# poser la question de la version. (Le prompt donne la date de lancement : le harnais n'a pas de web.)
+#
+# `must_match` : la réponse retient la v1 / la première version. `must_not_match` : demander quelle
+# version c'est, ou écrire la fiche sans validation.
+id = "shoe-specs-version-from-purchase-date"
+prompt = "J'ai acheté mes Kiprun Kipride Max en mars 2026 (modèle sorti en janvier 2026, une seule version à ce jour). Prépare-moi leur fiche de caractéristiques."
+fixture = "configured"
+
+[config.language]
+responses = "fr"
+
+[expect]
+must_match = [
+  "(\\bv1\\b|version\\s*1\\b|premi[èe]re version|1[èe]re version)",
+]
+must_not_match = [
+  "(quelle|quel|laquelle)\\s+(est\\s+)?(la\\s+|ta\\s+|votre\\s+)?(version|g[ée]n[ée]ration)",
+  "(j['’]ai|je viens d['’]|je viens de)\\s+(enregistr|[ée]crit|cr[ée]{1,2}|termin)[^\\n]{0,40}(fiche|specs)",
+]
+files_absent = ["gear/specs/*.md"]

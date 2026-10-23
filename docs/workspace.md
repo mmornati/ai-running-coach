@@ -315,6 +315,8 @@ quand une paire passe en `(retirée)`, `python3 scripts/arc_index.py gear-career
 (km, séances, courses, meilleurs efforts quand des splits existent, dernière inspection). L'usure
 d'une semelle est un signal faible : les indices de foulée qu'on en tire ne sont jamais un diagnostic.
 
+**Fiches de caractéristiques (#298).** `gear/specs/<gear_id>.md` (bloc `arc` de type `shoe_spec`) garde le drop, la pile, le poids, la mousse, la plaque et les crampons d'une paire, **chaque valeur avec sa source** (laboratoire, marque ou vous). Elles se remplissent avec le skill [`shoe-specs`](skills/shoe-specs.md) et se lisent par `python3 scripts/arc_index.py shoe-specs`. Détails dans [Choisir ses chaussures](shoes.md).
+
 ## Les décisions tracées
 
 Chaque fois qu'une séance est changée, remplacée ou annulée par un garde-fou,

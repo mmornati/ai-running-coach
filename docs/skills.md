@@ -4,7 +4,7 @@
 ![](assets/ridge.jpg)
 </div>
 
-`ai-running-coach` fournit **23 skills** que les agents chargent à la demande pour des tâches spécifiques.
+`ai-running-coach` fournit **24 skills** que les agents chargent à la demande pour des tâches spécifiques.
 
 ## Vue d'ensemble
 
@@ -32,6 +32,7 @@
 <div class="arc-skill"><span class="arc-skill__name"><a href="skills/update-coach.md">Mettre à jour (/update-coach)</a></span><span class="arc-skill__desc">Nouvelle version signalée par le tableau de bord, Claude et la notification ; mise à jour du moteur avec vos options d'installation, après votre « oui »</span></div>
 <div class="arc-skill"><span class="arc-skill__name"><a href="skills/gear-inspection.md">Inspection des chaussures</a></span><span class="arc-skill__desc">Photos des semelles : état 🟢🟡🟠🔴, comparaison avec l'inspection précédente, indices de foulée (jamais un diagnostic)</span></div>
 <div class="arc-skill"><span class="arc-skill__name"><a href="skills/inspection.md">Inspection d'une paire (/inspection)</a></span><span class="arc-skill__desc">Désigner la paire, protocole photo, dépôt des photos dans gear/photos/, puis lecture par gear-inspection</span></div>
+<div class="arc-skill"><span class="arc-skill__name"><a href="skills/shoe-specs.md">Fiche des chaussures (shoe-specs)</a></span><span class="arc-skill__desc">Drop, pile, poids, mousse d'une paire cherchés en ligne, source par source, et écrits seulement après votre validation ligne par ligne</span></div>
 <div class="arc-skill"><span class="arc-skill__name"><a href="skills/log.md">Saisie libre (/log)</a></span><span class="arc-skill__desc">Ravitaillement, douleur et RPE en une phrase, convertis en blocs arc sans jamais inventer une valeur nutritionnelle</span></div>
 
 </div>
