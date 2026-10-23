@@ -37,6 +37,7 @@ sert au tableau de bord (`scripts/arc_serve.py`) et aux calculs de charge
                                                                         # gabarits de périodisation (#189)
     arc_index.py strength [--phase P] [--use U] [--equipment LISTE] [--text | --garmin-json]
                                                                         # bibliothèque de renforcement (#191)
+    arc_index.py shoe-needs --role ROLE [--replace GEAR_ID] [--text]  # plages cibles pour la prochaine paire (#301)
     arc_index.py prevention [--days N] [--acute ZONE,…] [--known ZONE,…] [--equipment LISTE] [--text]
                                                                         # prévention ciblée liée aux douleurs (#192)
 
@@ -313,6 +314,7 @@ import arc_prevention as PV  # noqa: E402
 import arc_samples as S  # noqa: E402
 import arc_shoes as SH  # noqa: E402
 import arc_shoe_usage as SU  # noqa: E402
+import arc_shoe_needs as SN  # noqa: E402
 import arc_slope_model as SL  # noqa: E402
 import arc_strength as SG  # noqa: E402
 import arc_trail_shape as TS  # noqa: E402
@@ -3707,6 +3709,72 @@ def shoe_usage(conn, gear_id: Optional[str] = None, today: Optional[date] = None
             "note": SU.CAVEAT}
 
 
+def shoe_needs(conn, role: str, replace: Optional[str] = None, today: Optional[date] = None) -> dict:
+    """Plages cibles pour la prochaine paire (#301) — commande « shoe-needs ». Lecture seule : rassemble les
+    entrées (paires de référence = `would_rebuy` yes et confort >= 7 d'après `shoe_feedback`, fiches de
+    `shoe_specs`, usage de la paire remplacée via `shoe_usage`, épisodes de douleur déclarés par zone, masse)
+    et laisse `arc_shoe_needs.evaluate` appliquer les règles de `config/shoes/rules.json`. Jamais un modèle."""
+    today = today or date.today()
+    declared = declared_gear(conn)
+    names = {g["gear_id"] for g in declared}
+    if replace is not None and replace not in names:
+        return {"error": f"paire inconnue du profil : {replace}"}
+    try:
+        rules = SN.load_rules()
+    except SN.ShoeNeedsError as exc:
+        return {"error": str(exc)}
+    rule_ids = [r["id"] for r in rules["rules"]]
+    specs = {s["gear_id"]: s for s in shoe_specs(conn)["specs"] if s.get("gear_id")}
+    min_comfort = rules["rules"][rule_ids.index("comfort_first")]["params"]["min_comfort"]
+
+    def comfort_of(p: dict) -> Optional[float]:
+        v = p.get("verdict") or {}
+        if isinstance(v.get("comfort_overall"), (int, float)):
+            return float(v["comfort_overall"])
+        c = p.get("comfort")
+        return float(c["mean"]) if isinstance(c, dict) and c.get("mean") is not None else None
+
+    pairs_fb = {p["gear_id"]: p for p in shoe_feedback(conn)["pairs"]}
+    references = []
+    for gid, p in sorted(pairs_fb.items()):
+        v = p.get("verdict") or {}
+        c = comfort_of(p)
+        eligible = v.get("would_rebuy") == "yes" or (gid == replace and v.get("would_rebuy") == "yes_with_change")
+        if eligible and c is not None and c >= min_comfort:
+            references.append({"gear_id": gid, "comfort": c, "would_rebuy": v.get("would_rebuy"), "spec": specs.get(gid)})
+
+    replaced = None
+    if replace is not None:
+        use = shoe_usage(conn, replace, today)
+        pair = (use.get("pairs") or [None])[0] if "error" not in use else None
+        replaced = {"gear_id": replace, "usage": (pair or {}).get("usage"),
+                    "role": ((pair or {}).get("role") or {}).get("role"),
+                    "verdict": (pairs_fb.get(replace) or {}).get("verdict"), "spec": specs.get(replace)}
+
+    # Antécédents : épisodes (jours consécutifs fusionnés) par zone reconnue de `arc_prevention`.
+    zones_doc = PV.load_prevention()
+    lookback = max(rules["rules"][rule_ids.index(rid)]["params"]["lookback_days"]
+                   for rid in ("achilles_calf_no_drop_decrease", "ankle_sprain_low_stack_wide_base"))
+    entries = []
+    for e in PV.collect_entries(conn, today, lookback):
+        zone = PV.normalize_zone(zones_doc, e["location"])["zone"]
+        if zone:
+            entries.append({"date": e["date"], "location": zone, "score": e["score"]})
+    episodes: Dict[str, int] = {}
+    for ep in SU.pain_episodes(entries):
+        episodes[ep["location"]] = episodes.get(ep["location"], 0) + 1
+
+    athlete = conn.execute("SELECT * FROM athlete LIMIT 1").fetchone()
+    mass, mass_src = resolve_weight_kg_as_of(conn, today.isoformat(), dict(athlete) if athlete else {})
+    report = SN.evaluate(rules, {"role": role, "replaced": replaced, "references": references,
+                                 "pain_episodes": episodes, "mass_kg": mass, "mass_source": mass_src,
+                                 "active_pairs": sum(1 for g in declared if not g["retired"] and not g["ignored"])})
+    if replaced and replaced.get("role") and replaced["role"] not in ("insufficient_data", role):
+        report["warnings"].append(f"la paire remplacée sert plutôt de « {replaced['role']} » (rôle déduit de son "
+                                  f"usage) : le rôle demandé est « {role} »")
+    return report
+
+
 # ---------------------------------------------------------------------------
 # CLI
 # ---------------------------------------------------------------------------
@@ -5220,7 +5288,7 @@ def build_parser() -> argparse.ArgumentParser:
                                  "climb-history", "decisions", "slope-model", "trail-shape", "energy", "equipment",
                                  "inspections", "gear-career", "gait-summary", "pace-curve",
                                  "decision-effects", "load-forecast", "plan-templates", "strength", "dem-check", "prevention", "plan-skeleton",
-                                 "power-hr", "history-summary", "shoe-specs", "shoe-feedback", "shoe-usage"))
+                                 "power-hr", "history-summary", "shoe-specs", "shoe-feedback", "shoe-usage", "shoe-needs"))
     parser.add_argument("selector", nargs="?", default=None,
                         help="argument de la sous-commande (ex. garmin_activity_id, intervals_activity_id ou strava_activity_id "
                              "pour « samples »)")
@@ -5284,6 +5352,11 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--gear", metavar="GEAR_ID",
                         help="commandes « inspections » (#135), « shoe-specs » (#298), « shoe-feedback » (#299) et « shoe-usage » (#300) : restreint à cette paire ; commande "
                              "« gear-career » : paire dont on veut le bilan de carrière (obligatoire)")
+    parser.add_argument("--role", metavar="ROLE",
+                        help="commande « shoe-needs » (#301) : rôle de la paire à pourvoir (connus : %s ; un rôle inconnu "
+                             "donne des plages larges, sans règle de terrain)" % ", ".join(SN.ROLES))
+    parser.add_argument("--replace", metavar="GEAR_ID",
+                        help="commande « shoe-needs » (#301) : paire remplacée (usage, bilan de retraite, fiche)")
     parser.add_argument("--unreferenced-photos", action="store_true",
                         help="commande « inspections » (#149) : ajoute `unreferenced_photos` (images de `gear/photos/` "
                              "citées par aucune inspection, boîte de dépôt) et `ignored_files` (fichiers d'un "
@@ -5563,6 +5636,13 @@ def main(argv=None) -> int:
         rep_use = shoe_usage(conn, args.gear, today_date)
         print(SU.render_text(rep_use) if args.text and not args.json else json.dumps(rep_use, ensure_ascii=False))
         return 1 if "error" in rep_use else 0
+    if args.command == "shoe-needs":
+        if not args.role:
+            raise ConfigError("shoe-needs : --role est obligatoire (" + ", ".join(SN.ROLES) + ").")
+        today_date = date.fromisoformat(args.today) if args.today else date.today()
+        rep_needs = shoe_needs(conn, args.role, args.replace, today_date)
+        print(SN.render_text(rep_needs) if args.text and not args.json else json.dumps(rep_needs, ensure_ascii=False))
+        return 1 if "error" in rep_needs else 0
     if args.command == "prevention":
         if args.days is not None and args.days < 1:
             raise ConfigError(f"--days : un entier >= 1 attendu, « {args.days} » reçu.")
