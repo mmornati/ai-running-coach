@@ -3514,7 +3514,9 @@ verify() {
         fi
     elif [[ "$SOURCE" == "coros" ]]; then
         # Relais et connexion : vérifiés par connect_coros ; ici, le lecteur de FIT seulement.
-        if [[ -x "$COROS_FIT_READER_DIR/bin/python3" ]] && "$COROS_FIT_READER_DIR/bin/python3" -c 'import fitparse' 2>/dev/null; then
+        if [[ "$DRY_RUN" -eq 1 ]]; then
+            printf '%s\n' "${C_YELLOW}[dry-run]${C_RESET} lecteur de FIT vérifié après installation ($COROS_FIT_READER_DIR)"
+        elif [[ -x "$COROS_FIT_READER_DIR/bin/python3" ]] && "$COROS_FIT_READER_DIR/bin/python3" -c 'import fitparse' 2>/dev/null; then
             ok "Lecteur de FIT : présent ($COROS_FIT_READER_DIR)"
         else
             warn "Lecteur de FIT absent ($COROS_FIT_READER_DIR) — FIT COROS non lus (KPI fins indisponibles) ; relancez ./install.sh --source coros"
