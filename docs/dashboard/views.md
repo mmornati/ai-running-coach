@@ -900,7 +900,13 @@ ouvre sa fiche, à l'adresse partageable `#/materiel/<gear_id>` :
   sortie la plus longue, meilleurs efforts 1/5/10/21 km sur les séances qui ont des splits,
   seuil et prévision de retraite, paire rattachée ou non à Garmin Connect), **kilomètres par
   mois**, **liste des séances** (chacune renvoie vers son détail) et **historique des
-  inspections** de la paire. Une paire retirée reste consultable ; une paire marquée
+  inspections** de la paire. Une carte **Usage** (#300) précède la liste des séances : rôle déduit,
+  terrain route/trail, D+/km et D−/km, allure et GAP, sorties longues, courses, séances humides,
+  **foulée par tranche d'allure** (comparée aux autres paires de la même tranche seulement, « données
+  insuffisantes » sous 3 séances), confort déclaré, épisodes de douleur ≤ 48 h après une séance
+  rapportés à l'exposition (sans taux sous 5 épisodes ; corrélation, pas causalité), séances sans
+  `gear_id` signalées et dernière inspection — le détail est dans [Choisir ses chaussures](../shoes.md).
+  Une paire retirée reste consultable ; une paire marquée
   « ignorée » le dit, garde ses inspections et n'affiche aucun kilométrage.
 - **Un objet d'équipement** : usage (depuis le dernier entretien, avec le total à vie à côté),
   **déclencheurs** (valeur atteinte face au seuil), **kits** et leurs autres membres, séances où

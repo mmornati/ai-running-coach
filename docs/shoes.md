@@ -167,6 +167,73 @@ comptés par `kind` et par zone (en nombre de **séances** touchées), retours r
 corrélation, pas causalité. Les boutons Telegram « confort » après une séance ne font pas partie de cette
 étape.
 
+## Profil d'usage d'une paire
+
+Pour remplacer une paire, il faut savoir **à quoi elle servait réellement**.
+
+```bash
+python3 scripts/arc_index.py shoe-usage                       # JSON : toutes les paires
+python3 scripts/arc_index.py shoe-usage --gear kipride-max-1 --text
+```
+
+Lecture seule, calculé à la lecture (aucune table, rien d'écrit). Le même profil sert la fiche d'une paire
+du tableau de bord (carte « Usage », [vue Matériel](dashboard/views.md#fiche-dune-paire-ou-dun-objet)).
+Les séances sont **exactement** celles du kilométrage : la règle d'attribution est unique.
+
+| Bloc | Contenu |
+|---|---|
+| **Usage** | part route / trail (km et séances), D+/km et D−/km, distribution des distances, sorties longues (durée > 90 min), courses (intensité planifiée `race`), allure et GAP moyens, part de séances humides, période d'utilisation |
+| **Foulée** | temps de contact, oscillation et ratio verticaux, longueur de pas, balance, cadence, **par tranche d'allure** |
+| **Retours et douleurs** | synthèse des retours de chaussant (voir plus haut), épisodes de douleur, séances sans paire |
+| **Usure** | dernière inspection (état, asymétrie, indices) |
+| **Rôle déduit** | `race`, `trail_long`, `trail`, `road_tempo`, `road_easy`, `mixed`, `insufficient_data` |
+
+Toute grandeur sans donnée est **omise** (jamais 0). Les seuils ci-dessous sont des **approximations du projet**,
+pas des seuils cités d'une source.
+
+### Foulée à allure comparable
+
+Une paire « rapide » aurait mécaniquement un temps de contact plus court : les paires ne sont donc comparées
+que **dans la même tranche d'allure**.
+
+- Tranches de **30 s/km**, ancrées sur des multiples de 30 (5:00–5:30/km, 5:30–6:00/km…).
+- Allure de la tranche : l'allure GAP de la séance si elle existe, sinon l'allure brute. Les deux bases ne
+  sont jamais mélangées dans une même tranche (la base est affichée).
+- Valeur d'une paire dans une tranche : moyenne des moyennes de séance (`arc_gait.resolve_session`).
+- **Effectif minimal : 3 séances par tranche et par grandeur**, sinon « données insuffisantes » (pas de
+  moyenne, pas de comparaison). Les autres paires ne sont listées que si elles atteignent aussi l'effectif
+  dans la même tranche.
+
+### Douleurs : corrélation, pas causalité
+
+- Un **épisode** est une zone douloureuse déclarée (`health.pain`, score > 0) ; les jours consécutifs d'une même
+  zone forment un seul épisode.
+- Il est rattaché à la séance de course **la plus récente datée de 0 à 2 jours avant son début** (≤ 48 h à la
+  granularité du jour ; le même jour compte, l'heure de la douleur étant inconnue). Plusieurs paires (ou une
+  séance sans paire) dans la fenêtre : l'épisode est marqué `ambiguous`.
+- Rapportés à l'**exposition** (km et séances de la paire) : par 100 km et par 100 séances, **à partir de
+  5 épisodes seulement** (même seuil que `decision-effects`) ; en dessous, comptes bruts et exposition, sans taux
+  ni tendance.
+- Les **séances de course sans `gear_id`** sur la période d'usage de la paire sont comptées et signalées : tant
+  qu'il y en a, le lien douleur ↔ paire n'est pas fiable. Celles créditées à la paire par défaut sont
+  comptées à part, comme une hypothèse.
+- Jamais un diagnostic, jamais une cause : ce n'est pas un avis médical.
+
+### Rôle déduit
+
+Règles appliquées dans l'ordre, sur les séances de course à pied de la paire :
+
+1. `race` : au moins 2 séances dont au moins la moitié sont des courses ;
+2. `insufficient_data` : moins de 5 séances ;
+3. `trail_long` : au moins 70 % des km en trail et au moins 25 % de sorties longues ;
+4. `trail` : au moins 70 % des km en trail ;
+5. `road_tempo` : au moins 70 % des km sur route et allure moyenne au moins 5 % plus rapide que la moyenne route
+   de l'athlète (toutes paires confondues) ;
+6. `road_easy` : au moins 70 % des km sur route ;
+7. `mixed` sinon.
+
+Le rôle est une entrée pour la recommandation (story #301), jamais une prescription.
+
 ## Ce que disent les preuves
 
 *À compléter par la story #301 (moteur de règles fondé sur les preuves : confort, continuité, drop,
