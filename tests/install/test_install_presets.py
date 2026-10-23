@@ -68,6 +68,7 @@ EXPECTED_ADDED_PATHS = {
         "repo/.gemini/commands/medical.toml",
         "repo/.gemini/commands/nutritionist.toml",
         "repo/.gemini/commands/race.toml",
+        "repo/.gemini/commands/shoes.toml",
         "repo/.gemini/commands/sports-director.toml",
         "repo/.gemini/commands/today.toml",
         "repo/.gemini/commands/update-coach.toml",

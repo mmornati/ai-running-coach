@@ -95,6 +95,14 @@ largeur, modèle voisin de la marque) ce qui corrige le point demandé, sans éc
 de la plage `shoe-needs --role R --replace ID`. Si rien ne corrige le point avec certitude, le dire et
 passer au chemin « recherche » avec la plage décalée par `change_wanted`.
 
+**Antécédents pris en compte.** `shoe-needs` lit les antécédents de blessure du profil (puces
+« Antécédents de blessure » / « Zones fragiles à surveiller ») et les douleurs déclarées, et indique
+dans sa sortie quelles sources il a lues (ou une note « aucun antécédent trouvé »). **Montrer à l'athlète
+cette liste** avant les plages (« j'ai tenu compte de : … » ou « aucun antécédent trouvé : corrigez-moi
+si j'en oublie »), pour qu'il complète ce que le profil ne dit pas ; ne jamais en supposer. Si `warnings`
+signale que la paire remplacée a une fiche mais **aucun bilan de confort**, le dire et proposer de
+renseigner le bilan avant de s'appuyer sur la continuité.
+
 Toujours lancer `shoe-needs --role R --replace ID` : ses plages valident le candidat de continuité (une
 caractéristique hors plage est signalée, pas cachée).
 
