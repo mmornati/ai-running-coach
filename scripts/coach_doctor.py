@@ -1134,7 +1134,12 @@ def check_coros_connection(workspace: Path, config: dict, home: Path, now: datet
     if not os.access(relay, os.X_OK):
         return build_check(check_id, "error", f"Relais non exécutable ({relay}).", fix=fix_install)
     claude_store = _read_json_object(home / ".claude.json") or {}
-    local = ((claude_store.get("projects") or {}).get(str(workspace)) or {}).get("mcpServers") or {}
+    # Claude Code range le projet sous le chemin tel qu'il l'a vu, pas forcément résolu
+    # (macOS : /var → /private/var, ou un workspace atteint par un lien symbolique).
+    target = os.path.realpath(workspace)
+    project = next((v for k, v in (claude_store.get("projects") or {}).items()
+                    if isinstance(v, dict) and os.path.realpath(k) == target), {})
+    local = project.get("mcpServers") or {}
     if isinstance(local, dict) and "coros" in local:
         return build_check(check_id, "warning",
                            "Une entrée « coros » ajoutée à la main dans Claude Code masque le relais du projet "

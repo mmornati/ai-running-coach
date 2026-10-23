@@ -106,6 +106,16 @@ class TestCorosConnection(InstallAsserts):
             self.assertEqual(check["status"], "warning")
             self.assertIn("claude mcp remove coros", check["fix"])
 
+    def test_hand_added_server_found_through_a_symlink(self):
+        # macOS : Claude Code enregistre /var/… alors que le workspace se résout en /private/var/….
+        with Sandbox() as sb:
+            _setup(sb)
+            link = sb.home / "lien-vers-le-depot"
+            link.symlink_to(sb.repo)
+            (sb.home / ".claude.json").write_text(json.dumps(
+                {"projects": {str(link): {"mcpServers": {"coros": {"type": "http", "url": "https://mcpeu.coros.com/mcp"}}}}}))
+            self.assertEqual(self._check(sb)["status"], "warning")
+
     def test_not_connected_and_no_refresh_token(self):
         with Sandbox() as sb:
             _setup(sb, tokens=False)
