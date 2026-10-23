@@ -220,7 +220,7 @@ Deux modes de déclenchement, choisis par `[sync].mode` dans `config/workspace.u
 | Mode | Déclenchement | Pour qui |
 |---|---|---|
 | `schedule` (défaut) | Le LLM tourne aux heures fixes de `[sync].times` (`07:15`, `14:15`), qu'il y ait du neuf ou non. | Intervals.icu, ou un rythme très régulier. |
-| `watch` | `scripts/garmin_watch.py` interroge Garmin toutes les `watch_interval_min` minutes **sans LLM** et ne lance la synchronisation que si une séance ou le sommeil du jour manque dans le workspace. | Garmin : réveils tardifs le week-end, séances du soir, voyages et fuseaux horaires. |
+| `watch` | `scripts/watch.py` interroge Garmin ou COROS toutes les `watch_interval_min` minutes **sans LLM** et ne lance la synchronisation que si une séance ou le sommeil du jour manque dans le workspace. | Garmin, COROS : réveils tardifs le week-end, séances du soir, voyages et fuseaux horaires. |
 
 Testez sans attendre :
 
@@ -268,9 +268,18 @@ mode = "watch"
 | Séance que l'agent n'arrive pas à persister | Abandonnée après 2 runs sans effet (journalisé), jamais de boucle. |
 | Watcher muet (cron arrêté, python introuvable) | `fallback_times` (`21:30`) : un run complet si aucun daily-sync n'a eu lieu dans la journée (watcher, session mobile ou lancement manuel : `logs/sync-<jour>.log`) ; `coach_doctor.py` passe en ⚠ après 3 intervalles sans passage. |
 
+**Avec une montre COROS** (`[data].source = "coros"`, #168), même boucle par le relais du projet
+(`scripts/arc_coros_mcp.py`, jetons de `arc_coros_auth.py`, lecture seule) — rien d'autre à
+installer. Le MCP COROS ne donne pas l'heure du dernier envoi de la montre : chaque passage lit les
+séances des `lookback_days` derniers jours (`querySportRecords`, un appel) et, tant que le fichier
+santé du jour manque, le sommeil du jour (`querySleepOverview` ; `Sleep Score: 0` = nuit pas encore
+calculée, on attend). Une séance COROS se déclenche en `activity:c<LabelId>` ; `settle_min` part de la
+première détection. Connexion refusée : pas de LLM, journal « connexion COROS refusée — python3
+scripts/arc_coros_auth.py login ».
+
 ```bash
-scripts/garmin_watch.py --dry-run   # décide et affiche, ne lance rien
-scripts/garmin_watch.py --status    # dernier passage, runs du jour, déclencheurs en attente
+scripts/watch.py --dry-run   # décide et affiche, ne lance rien
+scripts/watch.py --status    # dernier passage, runs du jour, déclencheurs en attente
 tail logs/watch.log                 # événements seulement (nouveautés, runs, erreurs)
 ```
 

@@ -129,6 +129,10 @@ jamais en mode headless. `--garmin-json` rend deux charges utiles :
 Avec `[data].source = "intervals"` (ou sans correspondance Garmin), la version `--text`
 sert de `description` de l'événement (skill `intervals-icu-best-practices`).
 
+Avec `[data].source = "coros"` (#168), le MCP COROS ne sait pas créer de renforcement : la
+version `--text` sert de fiche à recopier une fois dans l'app COROS en séance type, que le
+coach planifie ensuite (`scheduleWorkout`, skill `coros-workout-scheduling`).
+
 ### Correspondance Garmin vérifiée
 
 Chaque correspondance est un couple (`category`, `exercise`) **exact** du catalogue public de

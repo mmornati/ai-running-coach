@@ -251,7 +251,7 @@ blanche : `get_daily_weigh_ins` (pesées d'un jour) et `get_weigh_ins` (pesées 
 - **Installations existantes.** Relancez `./install.sh` pour mettre à jour la liste blanche de
   `.mcp.json`. En mode passerelle, ajoutez `get_daily_weigh_ins,get_weigh_ins` à la main à
   `GARMIN_ENABLED_TOOLS` de `~/.config/leanproxy_servers.yaml`.
-- **Sources intervals.icu et Strava.** Rien n'est lu : le poids reste celui que vous déclarez.
+- **Sources intervals.icu, Strava et COROS.** Rien n'est lu : le poids reste celui que vous déclarez.
 
 ## Rattraper le matériel de l'historique
 
@@ -417,5 +417,6 @@ Voir aussi la page [Dépannage](troubleshooting.md).
 
 !!! info "Pas de montre Garmin ?"
     `./install.sh --source intervals` remplace tout ce qui précède par
-    Intervals.icu (COROS, Suunto, Polar, Apple...) — voir
-    [Configuration Intervals.icu](intervals-setup.md).
+    Intervals.icu (Suunto, Polar, Apple...) — voir
+    [Configuration Intervals.icu](intervals-setup.md). Montre COROS :
+    [Montres COROS](coros.md).

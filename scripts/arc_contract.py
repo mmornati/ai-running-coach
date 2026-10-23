@@ -51,7 +51,7 @@ HRV_PERSONAL_STATUS = ("sous", "dans_la_norme", "au_dessus", "en_construction")
 VERDICT = ("green", "amber", "red")
 # Contexte du cycle menstruel (#166, opt-in `[health].cycle_tracking`) — voir scripts/arc_cycle.py.
 CYCLE_PHASE = ("menstrual", "follicular", "ovulation", "luteal")
-CYCLE_SOURCE = ("garmin", "intervals", "manual")
+CYCLE_SOURCE = ("garmin", "intervals", "coros", "manual")
 CYCLE_DAY_PLAUSIBLE = (1, 60)
 # Provenance de `health.weight_kg` (#222) : `garmin` = pesée lue dans Garmin Connect
 # (`get_daily_weigh_ins`/`get_weigh_ins`), `chat` = déclarée par l'athlète. Clé absente =
@@ -60,8 +60,12 @@ CYCLE_DAY_PLAUSIBLE = (1, 60)
 WEIGHT_ORIGINS = ("garmin", "chat")
 # Provenance des données santé du bilan matinal (#218, épopée #216) : d'où viennent HRV, FC de repos et
 # sommeil du fichier (scripts/arc_health_source.py). Clé absente = fichier antérieur, réputé venir de
-# `[data].source`. Une seule source santé par fichier.
-HEALTH_SOURCES = ("garmin", "intervals", "openwearables")
+# `[data].source`. Une seule source santé par fichier. `coros` (#168) : montre COROS lue par son MCP
+# officiel avec `[data].source = "coros"` — récupération et score de sommeil COROS vont dans
+# `provider_scores`, jamais dans les clés Garmin.
+HEALTH_SOURCES = ("garmin", "intervals", "openwearables", "coros")
+# Sources dont les scores natifs ne sont JAMAIS des valeurs Garmin (`GARMIN_ONLY_HEALTH_KEYS` refusées).
+NON_GARMIN_SCORE_SOURCES = ("openwearables", "coros")
 # Catégories d'un score NATIF de fabricant (`health.provider_scores`) ; la charge (`strain`) n'est pas un
 # signal de récupération et n'a pas toujours d'échelle bornée : exclue.
 PROVIDER_SCORE_CATEGORIES = ("readiness", "recovery", "sleep")
@@ -268,6 +272,11 @@ SCHEMA = {
             # projet (voir `arc_samples.STRAVA_ID_RE`). Mêmes règles que ci-dessus :
             # une activité Strava porte celui-ci et omet les deux autres.
             "strava_activity_id": "strava_id",
+            # COROS (#168) : « c » + le `LabelId` du MCP officiel (ex. "c481221836600803431"),
+            # même convention que Strava (`arc_samples.COROS_ID_RE`). Une activité COROS porte
+            # celui-ci et omet les trois autres ; son `start_time` numérote ses montées
+            # (`arc_climb_match.segment_seed`).
+            "coros_activity_id": "coros_id",
             "name": "str",
             "location": "str",
             "start_time": "datetime",
@@ -1082,6 +1091,11 @@ def _check_value(spec: str, value, where: str, errors: list, warnings: list) -> 
         if not isinstance(value, str) or not re.fullmatch(r"s\d+", value):
             fail("« s » suivi des chiffres de l'identifiant Strava (ex. \"s12345678901\")")
         return
+    if spec == "coros_id":
+        # `coros_activity_id` (#168) : « c » + chiffres, même raison que `strava_id`.
+        if not isinstance(value, str) or not re.fullmatch(r"c\d+", value):
+            fail("« c » suivi des chiffres du LabelId COROS (ex. \"c481221836600803431\")")
+        return
     if spec == "bool":
         if not isinstance(value, bool):
             fail("true ou false")
@@ -1465,14 +1479,14 @@ def _check_health_weight(data: dict, errors: list) -> None:
 def _check_health_provenance(data: dict, errors: list) -> None:
     """Cohérence de la provenance santé (#218). `health_provider` n'a de sens que pour
     `openwearables` ; les clés Garmin (readiness, sommeil noté, body battery, stress) ne sont jamais
-    remplies depuis `openwearables` ; chaque score natif tient dans son échelle."""
+    remplies depuis `openwearables` ni `coros` ; chaque score natif tient dans son échelle."""
     source = data.get("health_source")
     if data.get("health_provider") is not None and source != "openwearables":
         errors.append("health.health_provider : exige health_source « openwearables »")
-    if source == "openwearables":
+    if source in NON_GARMIN_SCORE_SOURCES:
         for key in GARMIN_ONLY_HEALTH_KEYS:
             if data.get(key) is not None:
-                errors.append(f"health.{key} : valeur Garmin, incompatible avec health_source « openwearables » "
+                errors.append(f"health.{key} : valeur Garmin, incompatible avec health_source « {source} » "
                               "(le score natif va dans provider_scores, sans être remis sur 100)")
     if data.get("health_provider") == "apple" and data.get("hrv_overnight_ms") is not None:
         errors.append("health.hrv_overnight_ms : Apple Health ne fournit que la HRV en SDNN, non comparable au "

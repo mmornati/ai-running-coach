@@ -2,8 +2,17 @@ name: Tag a release
 
 # Lancé à la main (onglet Actions → « Tag a release » → Run workflow) : calcule
 # la prochaine version SemVer à partir du dernier tag `v*`, pose un tag annoté
-# sur `main` et le pousse, puis enchaîne sur la release, l'image Docker du
-# tableau de bord (publish.yml) et le DMG macOS.
+# sur le commit de `main` dont les tests ont réussi et le pousse, puis enchaîne
+# sur la release, l'image Docker du tableau de bord (publish.yml) et le DMG macOS.
+#
+# Rien n'est jamais poussé sur `main` : seul le tag part. `main` peut donc exiger
+# une pull request et le statut « Tests » (règle de protection), sans exception
+# pour GitHub Actions. Le numéro de version vient du tag : `git describe --tags`
+# dans un dépôt git (scripts/arc_version.py), et le fichier VERSION écrit au
+# moment du build dans l'image Docker (publish.yml) et dans le moteur embarqué du
+# DMG (scripts/build-macos-dmg.sh, ARC_APP_VERSION). Le fichier VERSION du dépôt
+# n'est plus qu'un repli pour un moteur sans `.git` : il se met à jour par une PR
+# ordinaire, et ce workflow signale seulement un écart.
 #
 # Pourquoi l'appel direct (`uses: ./.github/workflows/release.yml`) plutôt que
 # de compter sur le déclencheur `push: tags` : un tag poussé avec le
@@ -30,7 +39,7 @@ on:
         default: false
 
 permissions:
-  # Les jobs créent le tag, la release ou son DMG. Un workflow réutilisable ne
+  # Les jobs créent le tag (jamais de commit sur main), la release ou son DMG. Un workflow réutilisable ne
   # peut pas élever les droits reçus de son appelant : le job `docker` déclare
   # lui-même `packages: write` pour publish.yml.
   contents: write
@@ -45,13 +54,31 @@ jobs:
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     permissions:
-      contents: write
+      contents: write # push du tag seulement : aucun commit, aucune branche
+      checks: read # statut « Tests » du commit à taguer
     outputs:
       tag: ${{ steps.next.outputs.tag }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0 # tout l'historique et tous les tags
+
+      # Jamais de release sur un commit dont les tests n'ont pas réussi. Le commit
+      # tagué est exactement celui-ci (github.sha), même si main avance entre-temps.
+      - name: Tests verts sur le commit à taguer
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          # Le passage le plus récent du job « Tests » (relances, lancement hebdomadaire…).
+          result="$(gh api "repos/$GITHUB_REPOSITORY/commits/$SHA/check-runs?check_name=Tests&filter=latest" \
+            --jq '[.check_runs[] | select(.app.slug == "github-actions")] | sort_by(.started_at) | last | "\(.status) \(.conclusion)"')"
+          echo "Tests sur ${SHA:0:7} : ${result:-aucun}"
+          if [ "$result" != "completed success" ]; then
+            echo "::error::Le job « Tests » n'a pas réussi sur ${SHA:0:7} (${result:-absent}) : release refusée"
+            exit 1
+          fi
 
       - name: Calcul de la prochaine version
         id: next
@@ -89,26 +116,26 @@ jobs:
           fi
           echo "tag=$tag" >> "$GITHUB_OUTPUT"
 
-      # Le fichier VERSION est réécrit dans un commit sur main, et le tag est posé
-      # sur ce commit : le moteur embarqué du DMG, l'image Docker et `install.sh`
-      # lisent ainsi le bon numéro sans `.git`. Si main a avancé entre-temps, le
-      # push est refusé (pas de force-push) : relancer le workflow suffit.
-      - name: Commit de VERSION, création et push du tag
+          # Repli des moteurs sans .git : un écart ne bloque rien (le tag fait foi),
+          # il se corrige par une PR ordinaire.
+          file="$(tr -d '[:space:]' 2>/dev/null < VERSION || true)"
+          if [ "$file" != "${tag#v}" ]; then
+            echo "::notice::VERSION indique « ${file:-vide} », le tag sera $tag : images et DMG reçoivent le numéro du tag ; mettre VERSION à jour par une PR si besoin"
+          fi
+
+      # Seul le tag est poussé, sur le commit testé : aucun push vers main, donc
+      # compatible avec une règle exigeant une PR et le statut « Tests ».
+      - name: Création et push du tag
         env:
           TAG: ${{ steps.next.outputs.tag }}
+          SHA: ${{ github.sha }}
         run: |
           set -euo pipefail
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          echo "${TAG#v}" > VERSION
-          if ! git diff --quiet -- VERSION; then
-            git add VERSION
-            git commit -m "chore(release) : $TAG"
-            git push origin HEAD:main
-          fi
-          git tag -a "$TAG" -m "Release $TAG"
+          git tag -a "$TAG" -m "Release $TAG" "$SHA"
           git push origin "refs/tags/$TAG"
-          echo "### Tag \`$TAG\` poussé sur \`$(git rev-parse --short HEAD)\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "### Tag \`$TAG\` poussé sur \`${SHA:0:7}\`" >> "$GITHUB_STEP_SUMMARY"
 
   release:
     needs: tag

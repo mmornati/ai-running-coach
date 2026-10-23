@@ -105,7 +105,8 @@ Types de valeurs ci-dessous : *entier*, *nombre* (≥ 0 sauf mention), *texte*,
 | `garmin_activity_id` | entier | identifiant Garmin — clé de jointure, à toujours renseigner après un sync `[data].source = "garmin"` |
 | `intervals_activity_id` | texte | identifiant Intervals.icu (#68, ex. `"i12345678"`) — CHAÎNE, jamais confondue avec `garmin_activity_id` (entier). À renseigner à la place de `garmin_activity_id`, jamais en plus, après un sync `[data].source = "intervals"` |
 | `strava_activity_id` | texte | identifiant Strava (#164) **préfixé `s`**, ex. `"s12345678901"` — l'API Strava rend un entier sans préfixe, indiscernable d'un `garmin_activity_id` ; le préfixe est la convention du projet (jamais le nombre seul : la validation le refuse). À renseigner à la place de `garmin_activity_id`, jamais en plus, après un sync `[data].source = "strava"` |
-| `name` | texte | nom de l'activité (Garmin, Intervals.icu ou Strava selon la source) |
+| `coros_activity_id` | texte | identifiant COROS (#168) **préfixé `c`** : `"c"` + le `LabelId` de `querySportRecords` (18 chiffres), ex. `"c481221836600803431"` — même convention que Strava (jamais le nombre seul : la validation le refuse). À renseigner à la place des trois autres, jamais en plus. Une activité COROS porte aussi `start_time` : il numérote ses montées (sans lui, elles ne sont pas comparées d'une séance à l'autre) |
+| `name` | texte | nom de l'activité (Garmin, Intervals.icu, Strava ou COROS selon la source ; COROS : la ligne `Location` de `querySportRecords`) |
 | `location` | texte | lieu / parcours (sert à la comparaison de parcours) |
 | `start_time` | date-heure | |
 | `distance_m` | nombre | |
@@ -254,7 +255,7 @@ méthode complète. En résumé :
   (toujours future). Clés OMISES sans usage sur 28 jours, pour une paire retirée
   ou déjà au seuil (`alert` : « seuil dépassé »). `near_threshold: true` dès 90 %
   du seuil. `arc_index.py gear --activities ID[,ID…]` (garmin_activity_id,
-  intervals_activity_id, strava_activity_id ou chemin du fichier des séances synchronisées dans CE run) ajoute
+  intervals_activity_id, strava_activity_id, coros_activity_id ou chemin du fichier des séances synchronisées dans CE run) ajoute
   `crossed_in_run: true` à la paire dont elles font franchir le seuil — base de
   l'alerte unique du `garmin-daily-sync` (par séance, pas par date : un second
   passage le même jour ne ré-émet rien), sans fichier d'état. Avec `--today`
@@ -421,6 +422,10 @@ valeurs par km dans cet ordre. `km` et `duration_s` sont obligatoires ; les
 autres sont facultatives : `distance_m` (dernier split partiel),
 `elev_gain_m`, `elev_loss_m`, `avg_hr_bpm`, `max_hr_bpm`, `max_speed_kmh`,
 `cadence_spm`, `label` (lecture courte : « Échauffement », « Montée »).
+Par défaut, quelle que soit la source, `python3 scripts/arc_index.py splits <id>`
+les calcule depuis le FIT ingéré — recopier `splits_cols`/`splits` tels quels, sans
+y ajouter de colonne. Sans FIT : splits de `get_activity_splits` avec Garmin, clé
+omise sinon (jamais les tours d'une séance structurée).
 
 ```arc
 {
@@ -545,7 +550,7 @@ de la clé du bloc :
 **Cette copie Markdown est un instantané narratif, jamais la source de
 vérité.** `scripts/arc_index.py` calcule sa PROPRE version de ces mêmes
 grandeurs à chaque passage (`index_workspace`), directement depuis les
-échantillons FIT ingérés (`activities/fit/<garmin_activity_id | intervals_activity_id | strava_activity_id>.json`) — dans
+échantillons FIT ingérés (`activities/fit/<garmin_activity_id | intervals_activity_id | strava_activity_id | coros_activity_id>.json`) — dans
 les colonnes dérivées `activity.gap_pace_s_km`/`decoupling_pct`/`ef_whole`/
 `best_climb_vam_elapsed_m_h` et la table `hr_zone_time`. **La valeur de
 l'index fait TOUJOURS foi** pour le tableau de bord, `arc_index.py` et toute
@@ -618,7 +623,7 @@ mm ÷ 1000), pourcentages inchangés. Toutes optionnelles :
 | `weight_kg` | nombre | poids du jour : pesée Garmin (`get_daily_weigh_ins`, #222) ou valeur déclarée par l'athlète — voir « Poids du jour » ci-dessous |
 | `weight_origin` | `garmin` `chat` | provenance de `weight_kg` (#222) ; absente = fichier d'avant #222, lu comme déclaré |
 | `weight_garmin_kg` | 30-200 | pesée Garmin ÉCARTÉE au profit de la valeur déclarée, écart > 1 kg (#222) — signalé une seule fois |
-| `health_source` | `garmin` `intervals` `openwearables` | d'où viennent HRV, FC de repos et sommeil de CE fichier (#218) — une seule source santé par fichier. **Absent = fichier antérieur**, réputé venir de `[data].source` (hypothèse du projet, `arc_health_source.ASSUMPTIONS`) |
+| `health_source` | `garmin` `intervals` `openwearables` `coros` | d'où viennent HRV, FC de repos et sommeil de CE fichier (#218) — une seule source santé par fichier. **Absent = fichier antérieur**, réputé venir de `[data].source` (hypothèse du projet, `arc_health_source.ASSUMPTIONS`) |
 | `health_provider` | texte | fabricant amont quand `health_source = "openwearables"` (`oura`, `whoop`, `polar`…) ; refusé sinon |
 | `health_device` | texte | modèle d'appareil tel que rapporté par la source |
 | `hrv_sdnn_ms` | nombre > 0 | HRV en **SDNN** (Apple Health). Jamais dans `hrv_overnight_ms`, qui reste du RMSSD quelle que soit la source |
@@ -629,7 +634,7 @@ mm ÷ 1000), pourcentages inchangés. Toutes optionnelles :
 | `pain` | liste d'objets | douleur STRUCTURÉE déclarée ce jour-là (#57) — voir ci-dessous |
 | `cycle_phase` | `menstrual` `follicular` `ovulation` `luteal` | **opt-in** (#166) : phase du cycle du jour, voir « Contexte du cycle » ci-dessous |
 | `cycle_day` | entier 1-60 | jour du cycle, si la source le donne |
-| `cycle_source` | `garmin` `intervals` `manual` | d'où vient la phase (`manual` = déclarée par l'athlète via `/log`) |
+| `cycle_source` | `garmin` `intervals` `coros` `manual` | d'où vient la phase (`manual` = déclarée par l'athlète via `/log`) |
 
 **Douleur déclarée (`pain`, #57).** Une liste d'objets, un par zone douloureuse
 signalée le jour du fichier (`health.date` fait foi comme date — pas de `date`
@@ -691,7 +696,7 @@ d'où viennent ses mesures. Règles, validées par `arc_index.py --validate` :
   présenté comme le Training Readiness Garmin.
 - Une seule source santé par fichier ; jamais deux sources fusionnées dans un même jour.
 - **Tout nouveau fichier santé portant une mesure** (HRV, FC de repos, sommeil, score) pose
-  `health_source` : `garmin` ou `intervals` d'après `[data].source` quand la santé en vient, ou
+  `health_source` : `garmin`, `intervals` ou `coros` d'après `[data].source` quand la santé en vient, ou
   `openwearables` (avec `health_provider`/`health_device` tels que rendus par
   `scripts/arc_openwearables.py health-day`, #221). Un fichier sans mesure (douleur seule, `/log`,
   Telegram) n'a pas de source.
@@ -699,6 +704,14 @@ d'où viennent ses mesures. Règles, validées par `arc_index.py --validate` :
   (`hrv_overnight_ms`, `resting_hr_bpm`, `readiness`), jamais d'une cause devinée.
 - Une mesure que la source ne fournit pas = clé omise + `missing_reason`, jamais une
   valeur approchée d'une autre méthode.
+
+**Santé COROS (`health_source: "coros"`, #168).** Mêmes règles qu'Open Wearables pour les clés
+Garmin : `readiness_score`, `readiness_factors`, `sleep_score`, `body_battery_*` et `stress_avg` sont
+refusés. La **récupération COROS** (`queryRecoveryStatus`, `Recovery: N%`) et le score de sommeil COROS
+(`querySleepOverview`) vont dans `provider_scores`, nommés et sur leur échelle :
+`{"category": "recovery", "provider": "coros", "value": 96, "scale_min": 0, "scale_max": 100}`. Un
+`Sleep Score: 0` (nuit pas encore calculée) ou `Recovery: -1%` n'est jamais un score : clé omise.
+Pas de `health_provider` (réservé à `openwearables`).
 
 Chaque entrée de `provider_scores` : **`category`** (`readiness`, `recovery` ou
 `sleep` ; la charge n'est pas un signal de récupération), **`value`** (nombre),

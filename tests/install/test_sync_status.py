@@ -114,6 +114,13 @@ class SyncStatus(unittest.TestCase):
         self.config('[data]\nsource = "intervals"\n[sync]\nmode = "watch"\n')
         self.assertEqual(SS.status(self.ws, NOW)["settings"]["mode"], "schedule")
 
+    def test_coros_source_keeps_watch_and_names_coros(self):
+        """#168 : la surveillance existe aussi pour COROS — pas de repli, libellés COROS."""
+        self.config('[data]\nsource = "coros"\n[sync]\nmode = "watch"\n')
+        st = SS.status(self.ws, NOW)
+        self.assertEqual(st["settings"]["mode"], "watch")
+        self.assertIn("COROS", st["reason"])
+
     def test_cli_json(self):
         self.config('[sync]\nmode = "schedule"\n')
         out = subprocess.run([sys.executable, str(REPO / "scripts/arc_sync_status.py"), "--workspace", str(self.ws), "--json"],
