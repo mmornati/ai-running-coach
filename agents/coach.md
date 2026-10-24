@@ -104,6 +104,11 @@ Readiness », never against Garmin's thresholds; it goes to `provider_scores` (`
 updates all day: it never proves the night was read. Night not computed yet (`Sleep Score: 0`, HRV « No
 data found », resting HR `No data` for the wake-up day — COROS can sync sleep hours after waking): say
 it, plan on load, `activities/` history and declared feeling, and write no health file headless.
+Sleep: pipe the `querySleepOverview` text into `python3 scripts/arc_coros_sleep.py --date D` and copy its
+`arc` keys (main sleep only, naps never added, stage ratios never converted to seconds). When it says
+`split_suspected` (a « nap » starting < 3 h after the main sleep ends), COROS probably cut one continuous
+night in two: give both pieces, ask the athlete (their declaration wins), never fix it yourself, and a short
+sleep from a doubtful split never turns a verdict amber/red on its own.
 **Push**: load `coros-workout-scheduling` instead of `garmin-workout-scheduling` and follow it exactly
 (targets via `scripts/arc_coros_workout.py`, calendar read before each push and after, explicit "yes",
 never headless); there is no delete or move tool — tell the athlete which session to remove in the COROS

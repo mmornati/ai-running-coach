@@ -67,6 +67,10 @@ class PolicyTest(PolicyBase):
                                                      "--plan planning/plan.md --scenario safe --text"}), "allow")
         self.assertEqual(self.d("shell", {"command": "python3 scripts/arc_coros_workout.py pace-strategy "
                                                      "--plan /etc/passwd"}), "deny")
+        # Sommeil COROS : réponse de querySleepOverview passée par un heredoc à délimiteur entre apostrophes.
+        self.assertEqual(self.d("shell", {"command": "python3 scripts/arc_coros_sleep.py --date 2026-10-24 "
+                                                     "--tz Europe/Paris << 'EOF'\n2026-10-24\nSleep Score: 72\nEOF"}), "allow")
+        self.assertEqual(self.d("shell", {"command": "python3 scripts/arc_coros_sleep.py --workspace /tmp"}), "deny")
         self.assertEqual(self.d("shell", {"command": "python3 scripts/arc_workout_targets.py targets "
                                                      "--session planning/S.md#2026-10-25 --icu-lthr-bpm 170"}), "allow")
         # #221 : santé du jour lue chez Open Wearables (client REST en lecture seule) — options déclarées

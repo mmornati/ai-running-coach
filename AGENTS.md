@@ -102,7 +102,12 @@ preuve qu'une nuit a été lue. Le score de sommeil COROS va de même dans `prov
 du sommeil COROS peut arriver plusieurs heures après le réveil) : le dire, et en headless **aucun**
 fichier santé n'est écrit (le run suivant ou la surveillance réessaie) ; en interactif, planifier sur la
 charge, l'historique et le ressenti déclaré en le disant, jamais un « tout va bien » par défaut. Une HRV
-sans ligne de base (environ 5 nuits avec la montre) : « ligne de base COROS en construction ».
+sans ligne de base (environ 5 nuits avec la montre) : « ligne de base COROS en construction ». La première
+nuit avec une nouvelle montre n'est jamais publiée (ni dans l'app ni dans le MCP). **Nuit coupée** :
+COROS peut couper une nuit continue en sommeil principal + « sieste » (`split_suspected` de
+`arc_coros_sleep.py`) — le dire avec les deux morceaux, demander en interactif (la déclaration de l'athlète
+prime), le signaler dans le résumé en headless ; un sommeil court issu d'un découpage douteux ne fait
+jamais passer un verdict à l'orange ou au rouge à lui seul.
 
 **Avec `[health].source = "openwearables"` (#221) :** la santé du bilan matinal ne
 vient plus de `[data].source` mais d'une instance Open Wearables, en lecture
@@ -425,7 +430,7 @@ l'HRV et la FC de repos sont datés par le **jour du réveil** (la nuit de D est
 | FIT, flux par seconde | `get_activity_fit_data` (timeoute) | `download_fit.py <c+LabelId> --json --source coros` (skill `fit-download`) | Jamais par l'IA (URL du fichier jamais affichée) ; 50 fichiers par jour selon COROS. Mêmes KPI qu'avec Garmin (zones, GAP, découplage, VAM, durabilité, dynamique de course). |
 | HRV nocturne | `get_hrv_data` | `querySleepHrv(startDate)` | Évaluation officielle du jour (moyenne, plage normale, ligne de base) → `hrv_overnight_ms` ; ne jamais recalculer depuis la série brute. « No data found » = absente (`missing_reason`). |
 | FC de repos | `get_rhr_day` | `queryRestingHeartRate(days)` | `AAAA-MM-JJ: N bpm` ou `No data` ; nombre de jours seulement, pas de date. Jamais la ligne « Resting HR » de `queryDailyHealthData` (ce n'est pas la FC de repos du jour). |
-| Sommeil | `get_sleep_data` | `querySleepOverview(startDate, endDate)` | Durée, phases, réveils → `sleep_*` ; score → `provider_scores` (`sleep`, 0-100), jamais `sleep_score`. `Sleep Score: 0` + « not available yet » = nuit pas encore calculée, **pas** un score. |
+| Sommeil | `get_sleep_data` | `querySleepOverview(startDate, endDate)` | Lu par `python3 scripts/arc_coros_sleep.py --date D` (réponse sur l'entrée standard) : `sleep_*` = **sommeil principal** seulement (les siestes ne sont jamais additionnées), ratios de phases jamais convertis en secondes ; score → `provider_scores` (`sleep`, 0-100), jamais `sleep_score`. `split_suspected` (sieste moins de 3 h après la fin du sommeil principal) = **nuit probablement coupée par COROS** : donner les deux morceaux et demander, jamais corriger seul ; la déclaration de l'athlète prime. `Sleep Score: 0` + « not available yet » = nuit pas encore calculée, **pas** un score. |
 | Readiness | `get_training_readiness` | `queryRecoveryStatus` | **Récupération COROS** : `Recovery: N%`, niveau, temps avant récupération complète ; `-1%` = absente. État actuel seulement. → `provider_scores` (`recovery`, 0-100), jamais `readiness_score`, jamais « Training Readiness », jamais comparée aux seuils Garmin. |
 | Cycle menstruel (opt-in, `[health].cycle_tracking = "coros"`) | `get_menstrual_data_for_date` | `queryMenstruationCycles` | « No menstrual cycle data found » = aucune phase ; des durées par défaut ne sont jamais lues comme une phase. |
 | Seuil lactique (#169) | `--lt-speed-ms` (seuil Garmin) | `queryFitnessAssessmentOverview` | `Threshold Pace` → `arc_coros_workout.py threshold`, nommée « allure seuil COROS ». |

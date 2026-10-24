@@ -75,7 +75,10 @@ updates continuously: it never proves a night was read. `Sleep Score: 0` / HRV �
 resting HR `No data` for the wake-up day = night not computed yet: say it, gate on declared feeling,
 pain and load, and the missing data never turns an amber/red verdict green. HRV without a COROS
 baseline yet (about 5 nights with the watch): « ligne de base COROS en construction ». No HRR and no
-weigh-ins on COROS: say so when they matter.
+weigh-ins on COROS: say so when they matter. Sleep keys come from `python3 scripts/arc_coros_sleep.py
+--date D` (main sleep only, naps never added); `split_suspected` = COROS probably cut a continuous night
+in two: give both pieces and ask — the athlete's declaration wins, and a short sleep from a doubtful split
+never turns a verdict amber/red on its own.
 
 ### OBJECTIVE ALIGNMENT
 - **Context:** Always ensure your health strategy is aligned with the active training objective stored in `planning/active_objective.md`.

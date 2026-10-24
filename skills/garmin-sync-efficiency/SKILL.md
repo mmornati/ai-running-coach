@@ -36,7 +36,8 @@ timestamps), `getActivityDetail` per new activity, `querySleepHrv` + `queryResti
 is NOT synced: write no health file headless, the next run retries. `queryRestingHeartRate` takes a
 number of days, not a date: one call with the smallest `days` that covers the missing dates. Recovery
 and sleep score go to `provider_scores` (never `readiness_score` / `sleep_score`), `health_source:
-"coros"`. Marker "not yet synced" = no `coros_activity_id` in the file. No weigh-in, gear or HRR
+"coros"`. Sleep keys: pipe the `querySleepOverview` text into `python3 scripts/arc_coros_sleep.py --date D`
+(main sleep only, naps never added; `split_suspected` = night probably cut in two by COROS). Marker "not yet synced" = no `coros_activity_id` in the file. No weigh-in, gear or HRR
 exists: never fetch a substitute.
 
 **`[health].source = "openwearables"` (#221, opt-in; at `primary` — the default — ignore this paragraph and never mention it):** the health keys (sleep, HRV, resting HR, native score) of a day come from ONE call, `python3 scripts/arc_openwearables.py health-day --date <date> --json`, never from the Garmin or intervals.icu health tools (one health source per day); activities still follow `[data].source`. Persist its `arc` object as is. A health file with no night yet (no `sleep_total_s` and no HRV) is not written (headless) so the next run retries. Such a file carries no Garmin-only key: no `body_battery_*`, `stress_avg`, `sleep_score` or `readiness_*` (the contract rejects them), so the « Body » extraction below does not apply to it. See `agents/coach.md`, HEALTH SOURCE.
