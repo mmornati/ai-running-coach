@@ -35,10 +35,10 @@ qu'en session dans votre IDE : le chat n'invente aucune source de vérité.
 
 ![Coach : question de l'athlète, trace repliée, bilan du matin en tableau, proposition de séance avec carte d'approbation, et à droite ce que voit le coach](../assets/dashboard/coach.webp)
 
-*Workspace de démonstration (générateur des tests, `tests/lib/synthetic.py`) et réponse
-scriptée du backend `mock` : aucune donnée personnelle. L'athlète se dit fatigué avant ses
-côtes ; le coach fait le bilan du matin, propose de décaler la séance et attend son accord
-avant de toucher au calendrier Garmin. À droite, ce que voit le coach : la séance du jour,
+*Workspace de démonstration (athlète fictive, `scripts/video_demo_workspace.py`) et réponse
+scriptée du backend `mock` : aucune donnée personnelle. L'athlète se dit vidée avant son seuil ;
+le coach fait le bilan du matin, propose de le remplacer par 45 minutes d'endurance et attend
+son accord avant de toucher au calendrier Garmin. À droite, ce que voit le coach : la séance du jour,
 la semaine, le staff actif et ses permissions.*
 
 Pour une écriture au calendrier Garmin (planifier, retirer, supprimer une séance), la carte

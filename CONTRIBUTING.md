@@ -102,6 +102,12 @@ python3 scripts/build-gemini-commands.py --check
 mkdocs build --strict
 ```
 
+### Captures d'écran de la documentation
+
+Les images de `docs/assets/dashboard/` ne se refont pas à la main : `uv run --with playwright
+scripts/docs_capture.py` les régénère toutes (workspace fictif, design roadbook). Procédure et
+tableau nom → vue : `docs/videos.md`, section « Captures de la documentation ».
+
 ### Contrat de données
 
 Le schéma du bloc ```` ```arc ```` vit à deux endroits tenus d'accord par le palier D :

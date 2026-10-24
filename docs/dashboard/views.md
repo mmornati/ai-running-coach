@@ -22,10 +22,11 @@ la lire, **d'où viennent ses données** — et que faire quand elle reste vide.
 <!-- /arc-video -->
 
 
-Les captures viennent d'un vrai workspace : deux ans de fichiers (août 2024 →
-septembre 2026), la préparation et le déroulé d'un ultra-trail de 110 km le
-13 septembre 2026, puis le premier bloc de reprise. Date de référence : mercredi
-23 septembre, dix jours après la course.
+Les captures viennent du workspace de démonstration d'une athlète fictive, Camille
+(huit mois de fichiers, jusqu'au mardi 29 septembre 2026, à 54 jours du Trail des Crêtes) :
+aucune donnée réelle. Elles sont **générées par un script**, dans le design roadbook, en thème
+clair (sauf mention) : `uv run --with playwright scripts/docs_capture.py` les régénère
+(voir [la procédure](../videos.md#captures-documentation)).
 
 !!! tip "Partout dans le tableau de bord"
     - **Le bandeau du haut** rappelle l'objectif de `planning/active_objective.md` :
@@ -414,11 +415,11 @@ le coach n'a pas tranché : rien n'est inventé.
 
 ![Santé, carte Foulée : tendances mesurées par la montre, indices des inspections photo, confiance et désaccords](../assets/dashboard/sante-foulee.webp)
 
-*La carte Foulée (workspace de démonstration) : 98 séances de course avec dynamique, dont 71 avec
+*La carte Foulée (workspace de démonstration) : 95 séances de course avec dynamique, dont 68 avec
 balance ; chaque grandeur avec sa moyenne et son sens de variation sur les 4 dernières semaines ;
 la balance reste dans la bande grisée de ±1 point autour de 50 % ; en bas, les indices tirés des
-inspections photo et les deux désaccords relevés — indices d'attaque différents selon la paire, et
-usure asymétrique alors que la balance mesurée est symétrique (« la mesure prime »).*
+inspections photo et le désaccord relevé — usure asymétrique alors que la balance mesurée est
+symétrique (« la mesure prime »). Avec une seule paire inspectée, la confiance est dite faible.*
 
 Une carte en bas de la vue Santé (#151), montrée **même quand le bilan matinal est désactivé**
 (elle ne dépend pas de `[health].morning_check` : aucune donnée de santé du matin). Elle sépare
@@ -492,7 +493,7 @@ l'écrit et pointe vers `skills/fit-download` ; rien n'est inventé. Hors tablea
 Le plan de la semaine face au réalisé. Pour chaque jour :
 
 - **les séances prévues** et leur statut — *Prévue*, *Faite*, *Déplacée*, *Manquée*,
-  *Annulée* ; ici, le footing du mardi a été couru le mercredi ;
+  *Annulée* ; ici, le seuil du mardi est annulé par le bilan matinal et les côtes passent de mercredi à jeudi ;
 - **la catégorie météo** du jour (*Optimal*, *Vigilance*…) quand une prévision existe ;
 - **les séances réellement enregistrées**, sous le plan : un clic ouvre leur détail.
 
@@ -561,7 +562,8 @@ la liste **Plans** saute directement aux semaines qui ont un plan.
 La même vue montre les semaines à venir — ici une semaine d'un plan de transition sur
 dix semaines, écrit en un seul fichier multi-semaines (#69) : fiches de renforcement,
 côtes et home trainer, déjà poussés sur le calendrier Garmin, et l'extrait du plan
-du coach pour cette semaine-là :
+du coach pour cette semaine-là. La capture montre, avec le workspace de démonstration, une
+semaine du squelette d'un bloc (créneaux « à définir ») sous la frise du bloc :
 
 ![Une semaine à venir : séances planifiées, poussées sur le calendrier Garmin](../assets/dashboard/semaine-bloc.webp)
 
@@ -730,10 +732,16 @@ pas tracé ; il reste dans le tableau.
 
 ![Tours d'une séance structurée : l'allure ramenée au kilomètre](../assets/dashboard/seance-tours.webp)
 
+*Le seuil 4 × 8 min du 22 septembre : un tour par étape (échauffement, quatre blocs de seuil, trois
+récupérations) ; le dernier tour, de 40 m, n'est pas tracé mais reste dans le tableau.*
+
 Sur une longue sortie, le graphique devient le profil de la course : ici les 110 km
 de l'ultra, les ravitaillements lisibles en creux de FC et en pics d'allure.
 
 ![Splits d'un ultra-trail de 110 km](../assets/dashboard/seance-ultra.webp)
+
+*Le graphique de l'« Ultra du Val » (110 km, 4 300 m D+) du 13 juin, séance fictive du workspace de
+démonstration ; les 110 kilomètres se dépliant en détail sous le graphique.*
 
 | Alimentée par | Écrit par |
 |---|---|
@@ -848,10 +856,11 @@ dès 90 %, et le rôle `usage:` déclaré s'affiche à côté du nom.
 
 ![Matériel : ce qui est à traiter, puis le kilométrage de chaque paire](../assets/dashboard/materiel.webp)
 
-*La vue Matériel : en tête « À traiter » — la frontale a dépassé ses 40 h, deux paires sont
-à inspecter —, puis les chaussures : l'Adizero SL (« dont 120 km de départ », usure visible
-à la dernière inspection) et la Speedgoat, paire par défaut, affichent leur prévision de
-retraite (≈ 5 et ≈ 4 semaines) ; la Pegasus retirée reste visible en grisé.*
+*La vue Matériel : en tête « À traiter » — la frontale a atteint son seuil (56,5 h / 55,0 h), la
+Route Légère est à inspecter —, puis les chaussures : la Crête Pro (bleue), paire par défaut
+(« dont 4 km de départ », usure visible à la dernière inspection), et la Route Légère affichent
+leur prévision de retraite (≈ 3 et ≈ 37 semaines) ; la Vieille Grimpeuse retirée reste visible en
+grisé.*
 
 **Équipement** (#134) — un tableau pour tout ce qui n'est pas chaussure (`### Matériel` du
 profil) : par objet, son **usage** (distance, heures, séances, jours depuis la date de
@@ -866,10 +875,10 @@ s'affiche que si le profil déclare du matériel ; le détail des règles est da
 
 ![Équipement : usage par objet, déclencheurs en heures, séances et jours, poche à eau à nettoyer](../assets/dashboard/equipement.webp)
 
-*Le tableau Équipement : la frontale a atteint son seuil en heures (59,7 h / 40 h), la
-ceinture cardio approche de son année (« 12 mois » compté 360 j) et la poche à eau de son
-rappel d'hygiène (28 j / 30 j depuis le dernier entretien) ; les objets du kit
-« trail-long » portent leur étiquette.*
+*Le tableau Équipement : la frontale a atteint son seuil en heures (56,5 h / 55,0 h), la
+ceinture cardio approche du sien (262 j / 290 j) et la poche à eau de son rappel d'hygiène
+(27 j / 30 j depuis le dernier entretien) ; les objets du kit « trail-long » portent leur
+étiquette.*
 
 **Inspections photo** (#135) — pour chaque paire, l'historique des inspections du dossier
 `gear/` (plus récente d'abord) : état 🟢🟡🟠🔴 écrit aussi en toutes lettres, kilométrage à
@@ -888,10 +897,10 @@ n'est à inspecter.
 
 ![Inspections photo : historique par paire, état, zones d'usure, asymétrie et vignettes](../assets/dashboard/inspections.webp)
 
-*Les inspections photo : l'Adizero SL compte deux inspections chaînées — la seconde, plus
-dégradée que la précédente, relève une asymétrie légère (pied gauche plus usé) ; la Speedgoat
-n'a jamais été inspectée (« Inspection conseillée »). Photo schématique : jamais de vraies
-photos dans le dépôt.*
+*Les inspections photo : la Crête Pro (bleue) compte deux inspections chaînées — la seconde
+(24 septembre), plus dégradée que la précédente, relève une asymétrie légère (pied gauche plus
+usé) ; la Route Légère n'a jamais été inspectée (« Inspection conseillée »). Photos
+schématiques : jamais de vraies photos dans le dépôt.*
 
 ### Fiche d'une paire ou d'un objet
 
@@ -918,14 +927,14 @@ ouvre sa fiche, à l'adresse partageable `#/materiel/<gear_id>` :
 
 ![Fiche d'une paire : bilan de carrière, kilomètres par mois, séances et inspections](../assets/dashboard/materiel-fiche.webp)
 
-*La fiche d'une paire : bilan de carrière — kilométrage, séances et période, courses, sortie la
+*La fiche d'une paire (ici la Crête Pro) : bilan de carrière — kilométrage, séances et période, courses, sortie la
 plus longue, meilleurs efforts, seuil et prévision, lien Garmin —, kilomètres par mois, puis
 la liste des séances (chacune renvoie vers son détail) et les inspections de la paire.*
 
 ![Fiche d'un objet d'équipement : usage depuis l'entretien et total à vie, déclencheurs, kit, séances](../assets/dashboard/materiel-fiche-equipement.webp)
 
-*La fiche d'un objet : la poche à eau compte 4 séances depuis son dernier entretien
-(2 septembre) pour 34 à vie ; son déclencheur en jours (28 j / 30 j) la met « proche du
+*La fiche d'un objet : la poche à eau compte 5 séances depuis son dernier entretien
+(2 septembre) pour 33 à vie ; son déclencheur en jours (27 j / 30 j) la met « proche du
 seuil », avec le rappel avant séance ; le kit « trail-long » renvoie vers ses autres objets.
 Plus bas, les séances d'avant l'entretien sont grisées.*
 
@@ -935,8 +944,9 @@ hors chaussures), lorsqu'ils existent, chacun renvoyant vers sa fiche.
 
 ![Détail d'une séance : chaussure attribuée et équipement porté, en lien vers leurs fiches](../assets/dashboard/seance-materiel.webp)
 
-*Une sortie longue : la Speedgoat, « paire par défaut » (aucune paire déclarée sur la séance),
-et l'équipement porté du kit « trail-long ».*
+*Le trail du 27 septembre : la Crête Pro (bleue), déclarée en chat pour cette séance (sans
+déclaration, la mention « paire par défaut » s'affiche), et l'équipement porté du kit
+« trail-long ».*
 
 Sur **Aujourd'hui**, une tuile « Matériel à contrôler » (ou « Chaussures à surveiller »)
 apparaît dans « Au programme » dès qu'un élément atteint son seuil, avec un lien vers la vue :
@@ -985,7 +995,7 @@ chiffre n'est inventé. Hors tableau de bord : `python3 scripts/arc_index.py pow
 
 **Ma préparation récente couvre-t-elle ce que la course va exiger ?**
 
-![Trail Shape : score de préparation à J-3 d'un ultra de 110 km, composante par composante](../assets/dashboard/trail-shape.webp)
+![Trail Shape : score de préparation à J-54 du Trail des Crêtes, composante par composante](../assets/dashboard/trail-shape.webp)
 
 Un score 0-100 (#63) qui compare les 8 dernières semaines glissantes
 d'entraînement aux exigences de l'objectif actif (`planning/active_objective.md`) —
@@ -1178,8 +1188,8 @@ règle(s), sources, résultat — et un lien vers ce journal complet.
 
 Les rapports du coach — bilans hebdomadaires, validations du jour, comparaisons de
 parcours, analyses de course —, du plus récent au plus ancien, avec leur type et leur
-période. Un clic les rend lisibles, tableaux compris ; ici, la comparaison entre la
-prévision et le déroulé réel de l'ultra :
+période. Un clic les rend lisibles, tableaux compris ; ici, le bilan de la semaine du 21 au
+27 septembre :
 
 ![Un rapport du coach, rendu dans le tableau de bord](../assets/dashboard/rapport.webp)
 
@@ -1274,7 +1284,7 @@ tableau de bord, dans « Autres » tant qu'elle n'est rattachée à aucun modèl
 ![Fichiers hors contrat : ce qui manque à chaque fichier](../assets/dashboard/fichiers.webp)
 
 Les fichiers sans bloc de données, avec un bloc invalide, ou illisibles — chacun avec
-ce qui lui manque. Le lien n'apparaît dans le menu que s'il en reste. Pour les
+ce qui lui manque. Le lien n'apparaît dans la navigation que s'il en reste. Pour les
 reprendre : [Migrer vos fichiers](migration.md). Les fichiers écartés à dessein (une
 séance prescrite jamais courue, un doublon) peuvent y rester : c'est une liste de
 contrôle, pas une erreur.
@@ -1294,7 +1304,8 @@ l'entrée `weeks[]` en trop.
 
 Le tableau suit le thème clair ou sombre du système ; le bouton lune force l'un ou
 l'autre, un lien avec `?theme=dark` ou `?theme=light` aussi. Sur un téléphone, le
-menu se replie et les graphiques s'adaptent : c'est la vue à ouvrir le matin, depuis
+rail devient une barre en bas (Aujourd'hui, Semaine, Santé, Coach ou Course, et « Sections » pour
+toutes les autres) et les graphiques s'adaptent : c'est la vue à ouvrir le matin, depuis
 la [machine coach](headless.md) ou [derrière votre reverse proxy](docker.md).
 
 <div class="grid" markdown>

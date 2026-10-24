@@ -25,7 +25,8 @@ par ce script (ou s'il est vide) : jamais d'effacement d'un vrai workspace.
 `--no-samples` saute les échantillons FIT seconde par seconde (rapide ; les vues « Analyse » et les
 montées de la séance restent alors vides).
 `--bloc` (épisode 15) et `--suite` (épisodes 16-17) construisent les variantes du workspace : les autres
-épisodes gardent le workspace d'origine.
+épisodes gardent le workspace d'origine. `--docs` ajoute ce que documentent les captures de la documentation
+(`scripts/docs_capture.py`) : un ultra de 110 km, des tours de longueur variable, du matériel à contrôler.
 """
 
 from __future__ import annotations
@@ -394,10 +395,11 @@ trois dernières nuits.""")
     return data
 
 
-def write_samples(root: Path) -> None:
-    """Échantillons FIT des 10 dernières semaines (hors dimanche 27, déjà écrit par `story_sunday`)."""
+def write_samples(root: Path, days: int = SAMPLES_DAYS) -> None:
+    """Échantillons FIT des 10 dernières semaines (hors dimanche 27, déjà écrit par `story_sunday`) ;
+    `days` plus grand pour la variante docs (dynamique de course sur tout l'historique)."""
     start = TODAY - timedelta(days=DAYS - 1)
-    cutoff = (TODAY - timedelta(days=SAMPLES_DAYS)).isoformat()
+    cutoff = (TODAY - timedelta(days=days)).isoformat()
     for path in activity_files(root):
         d = read_block(path)
         if (d["date"] < cutoff or d["date"] == STORY_ACTIVITY.isoformat()
@@ -1006,8 +1008,85 @@ def write_planned_block(root: Path) -> None:
 # Assemblage
 # ---------------------------------------------------------------------------
 
+ULTRA_ACTIVITY_DATE = date(2026, 6, 13)    # variante docs : ultra de 110 km (splits du détail de séance)
+LAPS_ACTIVITY_DATE = date(2026, 9, 22)     # variante docs : séance structurée (tours de longueur variable)
+
+
+def write_docs_extras(root: Path) -> None:
+    """Variante `docs` (captures de la documentation, `scripts/docs_capture.py`) : ce que les images
+    documentent et que l'histoire d'origine ne montre pas. Les épisodes de la série ne l'utilisent pas.
+
+    - un ultra de 110 km (13 juin) : `splits` d'une longue sortie (détail de séance) ;
+    - la séance de seuil du 22 septembre découpée en tours de longueur variable (échauffement, 4 × 8 min,
+      récupérations, reliquat de 40 m) : tours Garmin d'une séance structurée ;
+    - matériel à contrôler : frontale au seuil, ceinture cardio et poche à eau proches du leur.
+    """
+    # Ultra : 110 km, ~19 h, 4 300 m D+, chaussure retirée « Vieille Grimpeuse » (hors fenêtre Trail Shape de 8 semaines).
+    path = root / f"activities/{ULTRA_ACTIVITY_DATE.isoformat()}_trail.md"
+    gid = read_block(path)["garmin_activity_id"]
+    (root / f"activities/fit/{gid}.json").unlink(missing_ok=True)      # les échantillons de l'ancienne séance ne vont plus avec
+    splits, gain_left = [], 4300
+    for km in range(1, 111):
+        duration = round(405 + 3.1 * km + 55 * (math.sin(km / 3.7) + 1) + (40 if 52 <= km <= 70 else 0))
+        gain = 39 + 32 * math.sin(km / 5.1)
+        hr = round(143 - 0.16 * km + 5 * math.sin(km / 2.3))
+        splits.append([km, duration, gain, 0, hr, round(3600 / duration * 1.15, 1), 160 if km < 70 else 154,
+                       "Départ" if km == 1 else ("Arrivée" if km == 110 else ("Ravito" if km % 18 == 0 else "Allure"))])
+    scale = 4300 / sum(r[2] for r in splits)
+    for r in splits:
+        r[2] = max(5, round(r[2] * scale))
+    splits[55][2] += 4300 - sum(r[2] for r in splits)               # le total tombe juste sur 4 300 m
+    for r in splits:
+        r[3] = round(r[2] * 0.98)
+    total = sum(r[1] for r in splits)
+    data = {
+        "arc": 1, "kind": "activity", "date": ULTRA_ACTIVITY_DATE.isoformat(), "sport": "trail",
+        "garmin_activity_id": gid, "name": "Ultra du Val — 110 km", "location": CITY,
+        "start_time": f"{ULTRA_ACTIVITY_DATE.isoformat()}T06:00:00+02:00",
+        "distance_m": 110000, "duration_s": total + 2400, "moving_duration_s": total,
+        "elevation_gain_m": 4300, "elevation_loss_m": sum(r[3] for r in splits),
+        "avg_hr_bpm": 134, "max_hr_bpm": 168, "training_effect_aerobic": 4.6, "training_effect_anaerobic": 0.4,
+        "calories_kcal": 9400, "avg_cadence_spm": 156, "rpe": 8, "gear_id": "vieille-grimpeuse", "gear_source": "chat",
+        "splits_cols": ["km", "duration_s", "elev_gain_m", "elev_loss_m", "avg_hr_bpm", "max_speed_kmh",
+                        "cadence_spm", "label"],
+        "splits": splits,
+    }
+    write(root, f"activities/{ULTRA_ACTIVITY_DATE.isoformat()}_trail.md",
+          f"Séance du {ULTRA_ACTIVITY_DATE.isoformat()} — {data['name']}", data,
+          "## Analyse du coach\n\nUltra de 110 km couru à allure régulière jusqu'au km 50, puis ralentissement progressif "
+          "(nuit, fatigue). Les ravitaillements se lisent en creux de FC et en pics d'allure.")
+
+    # Tours d'une séance structurée : la séance de seuil du 22 septembre.
+    laps = [("Échauffement", 960, 317, 138), ("Seuil 1", 1700, 480, 165), ("Récupération", 400, 150, 148),
+            ("Seuil 2", 1700, 480, 168), ("Récupération", 400, 150, 150), ("Seuil 3", 1700, 480, 169),
+            ("Récupération", 400, 150, 151), ("Seuil 4", 1700, 480, 171), ("Retour au calme", 40, 15, 140)]
+    assert sum(lap[1] for lap in laps) == 9000
+
+    def laps_fn(d: dict) -> None:
+        d["splits_cols"] = ["km", "distance_m", "duration_s", "avg_hr_bpm", "cadence_spm", "label"]
+        d["splits"] = [[i, dist, dur, hr, 176 if "Seuil" not in label else 184, label]
+                       for i, (label, dist, dur, hr) in enumerate(laps, start=1)]
+        d["moving_duration_s"] = sum(lap[2] for lap in laps)
+        d["duration_s"] = d["moving_duration_s"] + 30
+    mutate(root / f"activities/{LAPS_ACTIVITY_DATE.isoformat()}_running.md", laps_fn)
+
+    # Matériel à contrôler (vue Matériel, tuile d'Aujourd'hui) : seuils posés près de l'usage réel.
+    profile = root / "planning/Runner_Profile.md"
+    text = profile.read_text(encoding="utf-8")
+    for old, new in (
+        ("- Poche à eau 2 L — catégorie: poche — depuis 2026-01-10 — alerte 365 jours —",
+         "- Poche à eau 2 L — catégorie: poche — depuis 2026-01-10 — entretien 2026-09-02 — alerte 30 jours —"),
+        ("- Frontale Aube — catégorie: frontale — alerte 100 h —", "- Frontale Aube — catégorie: frontale — alerte 55 h —"),
+        ("- Ceinture cardio — catégorie: ceinture — depuis 2026-01-10 — alerte 365 jours —",
+         "- Ceinture cardio — catégorie: ceinture — depuis 2026-01-10 — alerte 290 jours —"),
+    ):
+        assert old in text, old
+        text = text.replace(old, new)
+    profile.write_text(text, encoding="utf-8")
+
+
 def build_demo(root: Path, *, with_samples: bool = True, force: bool = False, bloc: bool = False,
-               suite: bool = False) -> Path:
+               suite: bool = False, docs: bool = False) -> Path:
     root = Path(root)
     if root.exists() and any(root.iterdir()):
         if not force:
@@ -1034,9 +1113,11 @@ def build_demo(root: Path, *, with_samples: bool = True, force: bool = False, bl
     write_ultra_plan(root)
     write_reports(root)
     if with_samples:
-        write_samples(root)
+        write_samples(root, DAYS if docs else SAMPLES_DAYS)
     set_departure(root)
     write_inspections(root)                       # après le départ : kilométrages cohérents avec la fiche
+    if docs:                                      # captures de la documentation seulement
+        write_docs_extras(root)
     if bloc:                                      # épisode 15 seulement : les autres épisodes gardent le workspace d'origine
         write_skeleton(root)                      # en dernier : lit le volume tenu dans l'index
     if suite:                                     # épisodes 16 et 17 seulement, même règle
@@ -1056,10 +1137,12 @@ def main(argv=None) -> int:
     parser.add_argument("--bloc", action="store_true", help="variante de l'épisode 15 (squelette de bloc)")
     parser.add_argument("--suite", action="store_true",
                         help="variante des épisodes 16-17 (efforts, trace fictive, bloc planifié, décisions passées)")
+    parser.add_argument("--docs", action="store_true",
+                        help="variante des captures de la documentation (ultra de 110 km, tours, matériel à contrôler)")
     args = parser.parse_args(argv)
     try:
         root = build_demo(Path(args.dir), with_samples=not args.no_samples, force=args.force, bloc=args.bloc,
-                          suite=args.suite)
+                          suite=args.suite, docs=args.docs)
     except FileExistsError as exc:
         print(f"erreur : {exc}", file=sys.stderr)
         return 1

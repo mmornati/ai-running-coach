@@ -153,6 +153,22 @@ class TestDemoWorkspace(unittest.TestCase):
             variant = json.loads((root / "planning/variante_affutage-court.json").read_text(encoding="utf-8"))
             self.assertEqual([w["week_start"] for w in variant["weeks"]], ["2026-11-09"])
 
+    def test_variante_docs(self):
+        """Captures de la documentation : ultra de 110 km, tours variables, matériel à contrôler ; défaut inchangé."""
+        self.assertIn("alerte 100 h", (self.root / "planning/Runner_Profile.md").read_text(encoding="utf-8"))
+        with tempfile.TemporaryDirectory() as tmp:
+            root = V.build_demo(Path(tmp) / "ws-docs", with_samples=False, docs=True)
+            ultra = block(root / f"activities/{V.ULTRA_ACTIVITY_DATE}_trail.md")
+            self.assertEqual(len(ultra["splits"]), 110)
+            self.assertEqual(sum(r[2] for r in ultra["splits"]), 4300)
+            laps = block(root / f"activities/{V.LAPS_ACTIVITY_DATE}_running.md")
+            self.assertEqual(sum(r[1] for r in laps["splits"]), laps["distance_m"])
+            for path in (root / f"activities/{V.ULTRA_ACTIVITY_DATE}_trail.md",
+                         root / f"activities/{V.LAPS_ACTIVITY_DATE}_running.md"):
+                errors, _warnings = C.validate(block(path))
+                self.assertEqual(errors, [], f"{path.name} : {errors}")
+            self.assertIn("alerte 55 h", (root / "planning/Runner_Profile.md").read_text(encoding="utf-8"))
+
     def test_efforts_suivent_le_modele_cs(self):
         """Vitesse des efforts posés = CS(date) + D′/durée, tenue à 98-99 % ; plus rapide sur les efforts courts."""
         v = [V._cs_speed("2026-09-22", d) for d in (180, 600, 1200)]

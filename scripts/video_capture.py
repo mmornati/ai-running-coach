@@ -1,7 +1,14 @@
 #!/usr/bin/env python3
 """Captures d'écran du tableau de bord pour la série de vidéos (workspace fictif « Camille »).
 
-    uv run --with playwright scripts/video_capture.py [--only nom,nom] [--out docs/video/shots]
+    uv run --with playwright scripts/video_capture.py [--only nom,nom] [--design classic|roadbook] [--out DIR]
+
+Design : `classic` (défaut) force explicitement l'ancien design (`?design=classic`, mémorisé) — les
+épisodes 01 à 21 sont GELÉS ainsi jusqu'au retrait de l'ancien design en 1.5 ; ne jamais régénérer
+`docs/video/shots/` après. `--design roadbook` capture le design par défaut dans `docs/video/shots-roadbook/`
+(nouveaux épisodes, même format de manifeste ; les cadres `boxes` visent les sélecteurs de l'ancien design
+et sont omis quand ils sont absents). Les captures de la documentation (`docs/assets/dashboard/`) sont
+produites par `scripts/docs_capture.py`, qui réutilise les aides de ce fichier.
 
 Étapes : construit le workspace de démonstration dans un dossier temporaire
 (`scripts/video_demo_workspace.py`), lance `arc_serve.py` (--today 2026-09-29, port éphémère, base en
@@ -343,11 +350,25 @@ def launch(pw):
         return pw.chromium.launch()
 
 
-def new_context(browser, vp):
+# Design capturé. « classic » : séries d'épisodes 01-21, GELÉES avec l'ancien design (le défaut du tableau de
+# bord est le roadbook depuis la 1.4 ; l'ancien n'est joignable que par `?design=classic` jusqu'à la 1.5).
+# Ne JAMAIS régénérer `docs/video/shots/` après le retrait de l'ancien design : les nouveaux épisodes
+# passent par `--design roadbook` (dossier `docs/video/shots-roadbook/`).
+DESIGN = "classic"
+
+DESIGN_INIT_JS = """
+(() => { try { localStorage.setItem("arc-design-v14", "classic"); } catch (e) { /* sans stockage */ } })();
+"""
+
+
+def new_context(browser, vp, scheme="dark", design=None):
+    design = design or DESIGN
     ctx = browser.new_context(viewport={"width": vp["width"], "height": vp["height"]}, device_scale_factor=vp["scale"],
-                              color_scheme="dark", locale="fr-FR", timezone_id="Europe/Paris", reduced_motion="reduce",
+                              color_scheme=scheme, locale="fr-FR", timezone_id="Europe/Paris", reduced_motion="reduce",
                               is_mobile=vp["width"] < 500, has_touch=vp["width"] < 500)
     ctx.add_init_script(INIT_JS)
+    if design == "classic":       # choix explicite, mémorisé par `js/early.js` (clé arc-design-v14)
+        ctx.add_init_script(DESIGN_INIT_JS)
     return ctx
 
 
@@ -566,8 +587,14 @@ def capture_chat(rec, browser, base, ws, port, tmp, only):
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--only", default="", help="noms séparés par des virgules (défaut : tout)")
-    ap.add_argument("--out", type=Path, default=REPO / "docs/video/shots")
+    ap.add_argument("--design", choices=("classic", "roadbook"), default="classic",
+                    help="design capturé : classic (épisodes 01-21, figés, défaut) ou roadbook (nouveaux épisodes)")
+    ap.add_argument("--out", type=Path, default=None, help="défaut : docs/video/shots (classic) ou docs/video/shots-roadbook")
     args = ap.parse_args()
+    global DESIGN
+    DESIGN = args.design
+    if args.out is None:
+        args.out = REPO / ("docs/video/shots" if DESIGN == "classic" else "docs/video/shots-roadbook")
     only = {n.strip() for n in args.only.split(",") if n.strip()}
     try:
         from playwright.sync_api import sync_playwright

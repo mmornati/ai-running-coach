@@ -386,3 +386,39 @@ uv run --with playwright scripts/render_video.py --episode all --burn-subs
 
 Le palier B des tests vérifie que le minutage, la galerie et les vignettes sont à jour
 (`python3 scripts/video_narration.py --check`, `python3 scripts/video_gallery.py --check`).
+
+### Captures : deux designs, deux dossiers {#captures-designs}
+
+`scripts/video_capture.py` capture un des deux designs du tableau de bord :
+
+- **`classic`** (défaut, explicite : le script force `?design=classic`) : `docs/video/shots/`, utilisé
+  par les épisodes 01 à 21. Ces captures sont **gelées** avec l'ancien design : tant qu'il existe
+  (jusqu'à la 1.5), elles se régénèrent à l'identique ; **après son retrait, ne jamais relancer
+  cette commande** sur `docs/video/shots/`.
+- **`roadbook`** (`--design roadbook`) : `docs/video/shots-roadbook/`, même format de manifeste, pour
+  les nouveaux épisodes. Les cadres `boxes` visent les sélecteurs de l'ancien design : ils sont omis
+  quand l'élément n'existe pas, à compléter épisode par épisode.
+
+```bash
+uv run --with playwright scripts/video_capture.py --design roadbook --only aujourdhui
+```
+
+### Captures de la documentation {#captures-documentation}
+
+Les images de `docs/assets/dashboard/` (README, pages du tableau de bord, vignettes) sont produites
+par `scripts/docs_capture.py`, jamais à la main : workspace fictif de Camille (variante `--docs` de
+`scripts/video_demo_workspace.py`, qui ajoute un ultra de 110 km, des tours de longueur variable et
+du matériel à contrôler), design roadbook, thème clair (sauf `sombre-forme`), 1440 px @2x sur
+ordinateur, 390×844 @2x sur téléphone, WebP `cwebp -q 82`. Une ligne de la table `SHOTS` du script
+décrit chaque image (vue, format, découpe) ; les noms de fichiers ne changent pas, aucun lien non plus.
+
+```bash
+brew install webp                                  # cwebp
+uv run --with playwright scripts/docs_capture.py --list                 # la table nom → vue
+uv run --with playwright scripts/docs_capture.py                        # les 46 images
+uv run --with playwright scripts/docs_capture.py --only seance,materiel # quelques-unes
+```
+
+Après un changement du design ou des vues, régénérez, regardez chaque image avant de la
+commiter et ajustez les légendes des pages qui les portent. Ne pas confondre avec les
+captures des vidéos (`docs/video/shots/`, ci-dessus).
