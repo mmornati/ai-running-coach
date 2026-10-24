@@ -274,6 +274,9 @@ class ClaudeBackend(ChatBackend):
     def _api_key_env(self) -> str:
         return str(self.config.get("api_key_env") or DEFAULT_API_KEY_ENV)
 
+    def llm_key_env(self) -> str:
+        return self._api_key_env()
+
     def _api_key(self) -> str:
         return os.environ.get(self._api_key_env(), "").strip()
 
@@ -296,13 +299,17 @@ class ClaudeBackend(ChatBackend):
     def _options(self, sdk: Any, turn: _Turn, resume: Optional[str]) -> Any:
         cfg = self.config
         key = self._api_key()
-        env = {
+        # Mode famille : le SDK fusionne ce dictionnaire PAR-DESSUS os.environ ; on impose donc le workspace du
+        # membre (ARC_WORKSPACE, ARC_LOCK_WORKSPACE) et on vide les variables d'identifiants héritées du foyer.
+        # Posé AVANT les clés explicites : la règle par motif viderait sinon ANTHROPIC_API_KEY.
+        env = dict(self.family_overlay())
+        env.update({
             "ANTHROPIC_API_KEY": key,
             # Jamais d'abonnement : on neutralise les autres sources d'identifiants.
             # À VÉRIFIER : la chaîne vide est bien traitée comme « non définie » par le CLI.
             "CLAUDE_CODE_OAUTH_TOKEN": "",
             "ANTHROPIC_AUTH_TOKEN": "",
-        }
+        })
 
         async def pre_tool_use(input_data: dict, tool_use_id: Optional[str], _context: Any) -> dict:
             name = input_data.get("tool_name", "")

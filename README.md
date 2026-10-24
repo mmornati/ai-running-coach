@@ -32,6 +32,7 @@ Le projet est **en français par défaut** (la langue des documents générés e
 | ✈️ **Bot Telegram** | retours en un geste sous le résumé du daily-sync (séance faite, RPE, douleur), écrits sans modèle ni clé d'API dans votre workspace ; conversation libre en option |
 | 🌙 **Cycle menstruel (opt-in)** | contexte facultatif du bilan matinal (phase du cycle), désactivé par défaut : jamais une règle ni un diagnostic, veille RED-S — voir [Cycle menstruel](docs/cycle-menstruel.md) |
 | 🍽️ **Apports vers Garmin (opt-in)** | le coach propose de pousser ce que vous déclarez (`/log`, rapports) vers le journal alimentaire et l'hydratation de Garmin Connect, désactivé par défaut, jamais sans votre « oui » — voir [Apports vers Garmin](docs/nutrition-garmin.md) |
+| 👨‍👩‍👧 **Mode famille** | un seul tableau de bord et un seul chat pour plusieurs athlètes, chacun dans son workspace, aiguillés par l'identité du SSO (Authentik) ; données strictement séparées, tests d'isolation — voir [Mode famille](docs/family.md) et [Apple Watch](docs/apple-watch.md) |
 | 🎛️ **Coach configurable** | style de coaching, discipline (trail ou route), bilan santé matinal, profil d'athlète |
 | 📚 **Documentation** | guide de démarrage rapide, configuration, dépannage |
 
@@ -200,6 +201,7 @@ La documentation complète est disponible sur [GitHub Pages](https://mmornati.gi
 - [Votre workspace privé (données versionnées, moteur lié)](docs/workspace.md)
 - [Le coach dans la poche (mobile + sync automatique)](docs/mobile.md)
 - [Le bot Telegram (retours en un geste, sans clé d'API)](docs/telegram.md)
+- [Mode famille (plusieurs athlètes, une seule application)](docs/family.md) · [Apple Watch via intervals.icu](docs/apple-watch.md)
 - [Mettre à jour (moteur, workspace, machine coach)](docs/update.md)
 - [Tableau de bord](docs/dashboard/index.md) · [Les vues](docs/dashboard/views.md) · [Migrer vos fichiers](docs/dashboard/migration.md) · [Mode headless](docs/dashboard/headless.md) · [Docker](docs/dashboard/docker.md)
 - [Les agents](docs/agents.md)

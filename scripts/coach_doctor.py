@@ -27,6 +27,15 @@ Usage :
     scripts/coach_doctor.py --probe-mcp     # handshake MCP réel — CONTACTE Garmin Connect
     scripts/coach_doctor.py --probe-llm     # connexion IA : appel réseau minimal vers le fournisseur (#268)
     scripts/coach_doctor.py --no-probe-ow   # Open Wearables : configuration seule, aucun appel réseau
+    scripts/coach_doctor.py --family PATH   # registre du mode famille (ou ARC_FAMILY — voir ci-dessous)
+
+MODE FAMILLE (#127, docs/family.md) — quand un registre `family.toml` est donné EXPLICITEMENT (`--family` ou
+`ARC_FAMILY`), quatre vérifications SUPPLÉMENTAIRES sont ajoutées à la fin (jamais sans registre explicite, jamais
+avec `--check`, jamais quand `ARC_LOCK_WORKSPACE=1` : un doctor lancé depuis le chat d'un membre ne doit pas
+décrire les autres membres) :
+`family_registry` (registre valide, `error` sinon), `family_tokens` (deux membres `garmin` qui partagent le
+même dossier de jetons → `warning`), `family_ntfy` (même topic ntfy → `warning`) et `family_sync` (membre sans
+synchronisation planifiée détectée → `info`). Schéma JSON inchangé : seules des entrées `checks` s'ajoutent.
 
 Aucun champ de ce script n'affiche jamais le CONTENU d'un token — seuls des
 métadonnées (chemins, dates d'échéance, nombre de jours restants) apparaissent
@@ -127,6 +136,7 @@ Bibliothèque standard uniquement (voir CONTRIBUTING.md).
 from __future__ import annotations
 
 import argparse
+import html
 import json
 import os
 import platform
@@ -181,6 +191,12 @@ _ARC_WORKSPACE_RE = re.compile(r'ARC_WORKSPACE="([^"]*)"')
 _PLIST_WORKSPACE_RE = re.compile(r"<key>ARC_WORKSPACE</key>\s*<string>([^<]*)</string>")
 
 
+def _plist_workspace(text: str) -> str:
+    """ARC_WORKSPACE d'un plist, désérialisé du XML (install.sh écrit `&amp;`, `&lt;`, `&gt;`)."""
+    match = _PLIST_WORKSPACE_RE.search(text)
+    return html.unescape(match.group(1)) if match else ""
+
+
 def _same_workspace(declared: str, workspace: Optional[Path]) -> bool:
     """`declared` (ARC_WORKSPACE d'une ligne cron / d'un plist) désigne-t-il `workspace` ?
 
@@ -211,9 +227,9 @@ def _orphan_schedules(home: Path, crontab: str) -> list:
     agents = home / "Library" / "LaunchAgents"
     if agents.is_dir():
         for plist in sorted(agents.glob(LAUNCHD_PLIST_GLOB)):
-            match = _PLIST_WORKSPACE_RE.search(plist.read_text(encoding="utf-8", errors="replace"))
-            if match and _is_orphan_declared(match.group(1)):
-                found.append(match.group(1))
+            declared = _plist_workspace(plist.read_text(encoding="utf-8", errors="replace"))
+            if declared and _is_orphan_declared(declared):
+                found.append(declared)
     for line in crontab.splitlines():
         match = _ARC_WORKSPACE_RE.search(line) if CRON_MARKER in line else None
         if match and _is_orphan_declared(match.group(1)):
@@ -236,8 +252,7 @@ def _own_plists(home: Path, workspace: Optional[Path]) -> list:
     for plist in sorted((home / "Library" / "LaunchAgents").glob(LAUNCHD_PLIST_GLOB)):
         if not plist.is_file():
             continue
-        match = _PLIST_WORKSPACE_RE.search(plist.read_text(encoding="utf-8", errors="replace"))
-        if _same_workspace(match.group(1) if match else "", workspace):
+        if _same_workspace(_plist_workspace(plist.read_text(encoding="utf-8", errors="replace")), workspace):
             found.append(plist)
     return found
 
@@ -2235,6 +2250,119 @@ def resolve_tokens_dir(raw: Optional[str], workspace: Path) -> Path:
     return arc_credentials.garmin_tokens_dir(raw, workspace)
 
 
+# ---------------------------------------------------------------------------
+# Mode famille (#127) : registre, jetons, ntfy, sync par membre
+# ---------------------------------------------------------------------------
+
+
+def _family_registry(raw: Optional[str]):
+    """(chemin, registre|None, erreur|None) ; `(None, None, None)` si aucun registre n'est à vérifier."""
+    import arc_family
+    if os.environ.get("ARC_LOCK_WORKSPACE") == "1":      # session confinée à UN workspace (chat d'un membre, sync)
+        return None, None, None
+    if not (raw or os.environ.get(arc_family.FAMILY_ENV)):    # jamais de découverte implicite du registre
+        return None, None, None
+    path = arc_family.resolve_registry_path(raw)
+    try:
+        return path, arc_family.load_registry(path), None
+    except ConfigError as exc:
+        return path, None, str(exc)
+
+
+def _crontab_text() -> str:
+    """Texte de la crontab de l'utilisateur ('' si absente ou injoignable)."""
+    try:
+        out = subprocess.run(["crontab", "-l"], capture_output=True, text=True, timeout=5)
+    except (OSError, subprocess.TimeoutExpired):
+        return ""
+    return out.stdout if out.returncode == 0 else ""
+
+
+def _member_scheduled(home: Path, crontab: str, workspace: Path) -> bool:
+    """Le workspace d'un membre a-t-il SA planification daily-sync ? Mêmes règles que `check_daily_sync`
+    (marqueur cron historique ou suffixé, label launchd historique ou suffixé, `watch.py` comme
+    `garmin_watch.py`) : appartenance lue sur l'`ARC_WORKSPACE` de la ligne / du plist, jamais sur une
+    simple présence du chemin dans le texte."""
+    # Une ligne / un plist SANS ARC_WORKSPACE (très ancienne installation) vaut « tous les workspaces » pour
+    # `_same_workspace` (mono-athlète) : ici elle marquerait chaque membre planifié. On exige donc une
+    # valeur déclarée.
+    for line in _own_cron_lines(crontab, workspace):
+        match = _ARC_WORKSPACE_RE.search(line)
+        if match and match.group(1):
+            return True
+    agents = home / "Library" / "LaunchAgents"
+    if not agents.is_dir():
+        return False
+    return any(_plist_workspace(p.read_text(encoding="utf-8", errors="replace"))
+               for p in _own_plists(home, workspace))
+
+
+def check_family(registry_path: Optional[Path], registry, error: Optional[str], home: Optional[Path] = None) -> list:
+    """Les quatre vérifications du mode famille. Ne lit aucun secret : ni jeton Garmin, ni jeton ntfy."""
+    if error is not None:
+        return [build_check("family_registry", "error", f"Registre famille invalide : {error}",
+                            fix="voir docs/family.md ; scripts/arc_family.py --family <registre>")]
+    members = list(registry.members.values())
+    checks = [build_check("family_registry", "ok",
+                          f"Registre {registry_path} valide : {len(members)} membre(s) "
+                          f"({', '.join(m.id for m in members)}).", fix=None, members=[m.id for m in members])]
+    configs = {m.id: _load_config(m.workspace) for m in members}
+
+    by_tokens: dict = {}
+    for member in members:
+        if (configs[member.id].get("data") or {}).get("source", "garmin") != "garmin":
+            continue                                     # source intervals : pas de jetons Garmin
+        tokens = resolve_tokens_dir(None, member.workspace)
+        try:
+            tokens = tokens.resolve()
+        except OSError:
+            pass
+        by_tokens.setdefault(str(tokens), []).append(member.id)
+    shared = {path: ids for path, ids in by_tokens.items() if len(ids) > 1}
+    if shared:
+        detail = "; ".join(f"{', '.join(ids)} → {path}" for path, ids in shared.items())
+        checks.append(build_check(
+            "family_tokens", "warning",
+            f"Dossier de jetons Garmin partagé entre membres ({detail}) : une connexion écrase l'autre.",
+            fix="un dossier de jetons propre à chaque membre : ./install.sh --workspace <dossier du membre> "
+                "--garmin-tokens <dossier> (GARMINTOKENS dans son .mcp.json)",
+            shared=[{"members": ids} for ids in shared.values()]))
+    else:
+        checks.append(build_check("family_tokens", "ok", "Aucun dossier de jetons Garmin partagé entre membres.",
+                                  fix=None))
+
+    by_topic: dict = {}
+    for member in members:
+        notif = configs[member.id].get("notifications") or {}
+        if notif.get("provider") == "ntfy" and notif.get("ntfy_topic"):
+            key = f"{str(notif.get('ntfy_url') or 'https://ntfy.sh').rstrip('/')}/{notif['ntfy_topic']}"
+            by_topic.setdefault(key, []).append(member.id)
+    same = [ids for ids in by_topic.values() if len(ids) > 1]
+    if same:
+        checks.append(build_check(
+            "family_ntfy", "warning",
+            "Même topic ntfy pour plusieurs membres (" + "; ".join(", ".join(ids) for ids in same)
+            + ") : chacun recevrait les notifications des autres.",
+            fix="[notifications].ntfy_topic distinct dans le workspace.user.toml de chaque membre",
+            shared=[{"members": ids} for ids in same]))
+    else:
+        checks.append(build_check("family_ntfy", "ok", "Chaque membre a son propre topic ntfy (ou n'en utilise pas).",
+                                  fix=None))
+
+    home = home or Path.home()
+    crontab = _crontab_text()
+    unscheduled = [m.id for m in members if not _member_scheduled(home, crontab, m.workspace)]
+    if unscheduled:
+        checks.append(build_check(
+            "family_sync", "info",
+            "Synchronisation planifiée non détectée pour : " + ", ".join(unscheduled)
+            + " (synchronisation manuelle, ou tâche d'un autre format).",
+            fix="./install.sh --workspace <dossier du membre> --daily-sync", members=unscheduled))
+    else:
+        checks.append(build_check("family_sync", "ok", "Chaque membre a une synchronisation planifiée.", fix=None))
+    return checks
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description=__doc__.split("\n\n")[0], formatter_class=argparse.RawDescriptionHelpFormatter,
@@ -2263,6 +2391,11 @@ def build_parser() -> argparse.ArgumentParser:
              "— CONTACTE le fournisseur ; sans cette option, `llm_config` reste statique (voir `arc_llm.py check`)",
     )
     parser.add_argument("--probe-ow", action="store_true", help=argparse.SUPPRESS)  # ancien nom : sans effet
+    parser.add_argument(
+        "--family", metavar="REGISTRE",
+        help="registre du mode famille (#127) : ajoute les vérifications family_* (ou ARC_FAMILY ; jamais avec "
+             "--check, ni sous ARC_LOCK_WORKSPACE=1 qui interdit de décrire les autres membres)",
+    )
     return parser
 
 
@@ -2279,6 +2412,10 @@ def main(argv: Optional[list] = None) -> int:
     else:
         checks = run_all_checks(workspace, now, tokens_dir, probe_mcp=args.probe_mcp, probe_ow=not args.no_probe_ow,
                                 probe_llm=args.probe_llm)
+    if not args.check:
+        family_path, family_registry, family_error = _family_registry(args.family)
+        if family_path is not None:
+            checks = checks + check_family(family_path, family_registry, family_error)
     has_error = any(check["status"] == "error" for check in checks)
 
     if args.json:

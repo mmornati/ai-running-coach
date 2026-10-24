@@ -86,6 +86,8 @@ nav:
       - Votre workspace privé: workspace.md
       - Le coach dans la poche: mobile.md
       - Le bot Telegram: telegram.md
+      - Mode famille: family.md
+      - Apple Watch: apple-watch.md
       - Mettre à jour: update.md
   - Tableau de bord:
       - Prise en main: dashboard/index.md

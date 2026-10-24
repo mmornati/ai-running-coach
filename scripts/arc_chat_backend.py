@@ -20,11 +20,13 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import threading
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable, Optional
+from urllib.parse import urlparse
 
 # ---------------------------------------------------------------------------
 # Événements (SSE : `event: <type>\ndata: <json>\n\n`)
@@ -143,6 +145,59 @@ class TurnContext:
     language: str = "fr"
 
 
+# Identifiants retirés de l'environnement des processus enfants en mode famille : liste fermée (noms connus)
+# PLUS une règle par motif (`family_scrubbed_names`), pour qu'un futur fournisseur ne passe pas entre les mailles.
+FAMILY_SCRUBBED_ENV = ("GARMINTOKENS", "GARMIN_TOKENS_DIR", "GARMINTOKENS_BASE64", "GARMIN_EMAIL",
+                       "GARMIN_PASSWORD", "INTERVALS_ICU_API_KEY", "INTERVALS_ICU_ATHLETE_ID",
+                       "STRAVA_CLIENT_ID", "STRAVA_CLIENT_SECRET", "STRAVA_TOKEN_FILE",
+                       "MYWHOOSH_USERNAME", "MYWHOOSH_PASSWORD", "ARC_OW_API_KEY_FILE", "ARC_OW_BASE_URL",
+                       "TELEGRAM_BOT_TOKEN", "NTFY_TOKEN_FILE", "AZURE_SPEECH_KEY", "ARC_COROS_DIR")
+FAMILY_SCRUBBED_PREFIXES = ("GARMIN", "INTERVALS_ICU_", "STRAVA_", "MYWHOOSH_", "ARC_OW_", "ARC_COROS_", "TELEGRAM_", "NTFY_",
+                            "OURA_", "WHOOP_", "WITHINGS_", "POLAR_", "COROS_", "SUUNTO_")
+FAMILY_SCRUBBED_MARKERS = ("TOKEN", "SECRET", "PASSWORD", "PASSWD", "API_KEY", "APIKEY", "CREDENTIAL")
+FAMILY_SCRUBBED_SUFFIXES = ("_KEY", "_KEY_FILE")
+
+
+def family_reserved_name(name: str) -> bool:
+    """Vrai si `name` désigne un identifiant du foyer (liste fermée ou préfixe de fournisseur) : jamais exemptable."""
+    up = str(name).upper()
+    return str(name) in FAMILY_SCRUBBED_ENV or up in FAMILY_SCRUBBED_ENV or up.startswith(FAMILY_SCRUBBED_PREFIXES)
+
+
+# Clés de fournisseur LLM que les installations savent poser (`install.sh --llm`, backends claude / opencode) : en mode
+# famille, `[chat].api_key_env` d'un membre doit en faire partie, ou figurer dans `[family].llm_key_envs` du registre
+# (liste blanche, décidée par l'administrateur du foyer et non par la config d'un membre).
+FAMILY_LLM_KEY_ENVS = ("ANTHROPIC_API_KEY", "OPENROUTER_API_KEY", "OPENAI_API_KEY")
+LLM_KEY_ENV_RE = r"[A-Z][A-Z0-9_]*"
+
+
+def family_llm_key_allowed(name: str, extra=()) -> bool:
+    """Vrai si `name` peut être la clé LLM d'un membre : nom connu ou déclaré par le foyer (`extra`), jamais réservé."""
+    name = str(name)
+    return bool(name) and not family_reserved_name(name) and (name in FAMILY_LLM_KEY_ENVS or name in tuple(extra or ()))
+
+
+def is_loopback_url(url: str) -> bool:
+    host = (urlparse(str(url)).hostname or "").lower()
+    return host in ("localhost", "127.0.0.1", "::1") or host.endswith(".localhost")
+
+
+def family_scrubbed_names(environ, keep=()) -> list:
+    """Noms à retirer de `environ` en mode famille : liste fermée + toute variable présente dont le nom commence
+    par un préfixe de fournisseur, contient un marqueur de secret ou finit par `_KEY` / `_KEY_FILE`.
+    `keep` : ce dont le backend du membre a légitimement besoin (clé du fournisseur LLM), jamais retiré, SAUF un nom
+    réservé (`family_reserved_name`) : un `api_key_env = "GARMINTOKENS"` ne doit pas exempter un identifiant du foyer.
+    (Le choix du nom autorisé relève de `family_llm_key_allowed`, appliqué par `ChatBackend.family_overlay`.)"""
+    keep = {k for k in keep if k and not family_reserved_name(k)}
+    names = set(FAMILY_SCRUBBED_ENV)
+    for name in environ:
+        up = name.upper()
+        if (up.startswith(FAMILY_SCRUBBED_PREFIXES) or any(m in up for m in FAMILY_SCRUBBED_MARKERS)
+                or up.endswith(FAMILY_SCRUBBED_SUFFIXES)):
+            names.add(name)
+    return sorted(names - keep)
+
+
 class ChatBackend(ABC):
     """Un backend traduit un harnais (SDK, serveur OpenCode, mock) vers le protocole."""
 
@@ -151,6 +206,49 @@ class ChatBackend(ABC):
     def __init__(self, workspace: Path, config: dict):
         self.workspace = workspace
         self.config = config
+
+    @property
+    def family_member(self) -> str:
+        """Identifiant du membre en mode famille (#127, posé par `arc_chat.family_member_config`), sinon ""."""
+        return str(self.config.get("family_member") or "")
+
+    def llm_key_env(self) -> str:
+        """Nom de la variable portant la clé du fournisseur LLM de ce backend (jamais retirée en mode famille)."""
+        return str(self.config.get("api_key_env") or "")
+
+    def _family_keep(self) -> tuple:
+        """Seule exemption du nettoyage : la clé LLM du membre, si elle est sur liste blanche (défense en profondeur :
+        `arc_chat.family_member_config` refuse déjà au démarrage un membre dont le nom n'y figure pas)."""
+        name = self.llm_key_env()
+        return (name,) if family_llm_key_allowed(name, self.config.get("family_llm_key_envs") or ()) else ()
+
+    def family_overlay(self, base: Optional[dict] = None) -> dict:
+        """Variables d'environnement à IMPOSER aux processus enfants (outils shell, serveurs MCP) en mode famille.
+
+        Sans cela, les scripts autorisés (`arc_index.py`, `arc_log.py`…) retrouveraient le workspace d'un AUTRE
+        membre par `$ARC_WORKSPACE` hérité du conteneur ou par le pointeur `~/.config/ai-running-coach/workspace`.
+        Une valeur vide retire la variable (jetons Garmin : ceux du membre viennent du `.mcp.json` de SON workspace).
+        Les identifiants intervals.icu et Garmin posés au niveau du foyer (conteneur, llm.env) sont retirés aussi :
+        `download_fit.py` lit `$INTERVALS_ICU_API_KEY` en premier et le serveur MCP intervals l'hérite, ce qui
+        donnerait à un membre les données d'un autre ; ceux du membre viennent du `.env` / `.mcp.json` de SON workspace.
+        La règle est un motif (`family_scrubbed_names`, appliqué à `base`, défaut `os.environ`) : Strava, MyWhoosh,
+        Open Wearables, Telegram, ntfy, Azure… et tout futur fournisseur, hors la clé LLM du membre (`llm_key_env`).
+        Vide hors mode famille : comportement historique."""
+        if not self.family_member:
+            return {}
+        return {"ARC_WORKSPACE": str(self.workspace), "ARC_LOCK_WORKSPACE": "1",
+                **{name: "" for name in family_scrubbed_names(
+                    os.environ if base is None else base, self._family_keep())}}
+
+    def child_env(self, base: Optional[dict] = None) -> dict:
+        """Environnement complet d'un processus enfant : `base` (défaut `os.environ`) + `family_overlay()`."""
+        env = dict(os.environ if base is None else base)
+        for key, value in self.family_overlay(env).items():
+            if value == "":
+                env.pop(key, None)
+            else:
+                env[key] = value
+        return env
 
     @abstractmethod
     def run_turn(self, ctx: TurnContext, user_message: str) -> None:

@@ -1,0 +1,37 @@
+# Registre du mode famille (#127) — à copier en ~/.config/ai-running-coach/family.toml.
+# Documentation : docs/family.md. Placeholders uniquement : adaptez noms, chemins et hôtes.
+
+[family]
+# Proxys de confiance : seules leurs requêtes sont crues sur l'en-tête d'identité. Obligatoire :
+# sans lui, le tableau de bord et le chat refusent de démarrer. Adresses, CIDR ou noms d'hôte
+# (le conteneur Traefik, par exemple).
+trusted_proxies = ["traefik"]
+# En-tête posé par le forward-auth (défaut : X-authentik-username).
+auth_header = "X-authentik-username"
+# Plafond de dépense du chat pour tout le foyer, en euros par jour (0 ou absent : aucun plafond).
+# S'ajoute au budget [chat].daily_budget_eur de chaque membre.
+daily_budget_eur = 5.0
+# Recommandé en mode famille : poser `turn_budget_max_eur` (ex. 1.0) dans la section [chat] du
+# workspace de CHAQUE membre. Sans ce plafond par tour, un tour réserve tout le reste du foyer et
+# bloque les autres membres tant qu'il dure.
+# Clés LLM des membres : liste blanche. `[chat].api_key_env` d'un membre doit être un fournisseur connu
+# (ANTHROPIC_API_KEY, OPENROUTER_API_KEY, OPENAI_API_KEY) ou figurer ici (nom en MAJUSCULES, jamais un
+# identifiant du foyer : Garmin, intervals.icu, Strava…). Sinon CE membre est indisponible (503).
+llm_key_envs = []
+# Points d'accès LLM hors boucle locale que les membres peuvent employer (`[chat].base_url`) : URL complète
+# ou nom d'hôte. Vide : seuls OpenRouter / les API officielles (sans base_url) et 127.0.0.1 / localhost.
+llm_base_urls = []
+# Noms publics acceptés dans l'en-tête Host du chat, et lien des notifications ntfy.
+allowed_hosts = ["coach.example.org"]
+public_url = "https://coach.example.org"
+
+# Un bloc par membre. L'identifiant ([a-z0-9_-]+) est comparé tel quel à l'en-tête d'identité ;
+# si le nom d'utilisateur Authentik diffère, listez-le dans `identities`.
+[members.alice]
+workspace = "/home/athlete/coachs/coach-alice"
+display_name = "Alice"
+
+[members.bob]
+workspace = "/home/athlete/coachs/coach-bob"
+display_name = "Bob"
+identities = ["Bob.Martin"]

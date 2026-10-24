@@ -319,6 +319,9 @@ class OpenCodeBackend(ChatBackend):
     def _api_key_env(self) -> str:
         return str(self.config.get("api_key_env") or DEFAULT_API_KEY_ENV)
 
+    def llm_key_env(self) -> str:
+        return self._api_key_env()
+
     def _base_url(self) -> str:
         return str(self.config.get("base_url") or "").strip()
 
@@ -385,6 +388,8 @@ class OpenCodeBackend(ChatBackend):
                 return servers
         except (OSError, ValueError):
             pass
+        if self.family_member:      # mode famille : la config OpenCode du compte système n'est pas celle du membre
+            return {}
         home_cfg = Path(os.environ.get("HOME", "~")).expanduser() / ".config" / "opencode" / "opencode.json"
         try:
             found = json.loads(home_cfg.read_text(encoding="utf-8")).get("mcp") or {}
@@ -478,7 +483,7 @@ class OpenCodeBackend(ChatBackend):
                                    "est vide (voir ~/.config/ai-running-coach/llm.env).")
             cfg_path = self.write_config()
             xdg = self._state_dir / "xdg"
-            env = dict(os.environ)
+            env = self.child_env()           # mode famille : workspace du membre imposé (ChatBackend.family_overlay)
             for var, sub in (("XDG_CONFIG_HOME", "config"), ("XDG_DATA_HOME", "data"),
                              ("XDG_STATE_HOME", "state"), ("XDG_CACHE_HOME", "cache")):
                 (xdg / sub).mkdir(parents=True, exist_ok=True)

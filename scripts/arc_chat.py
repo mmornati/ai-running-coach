@@ -6,7 +6,7 @@ sans clé d'API). Il parle au navigateur avec le protocole d'événements de
 `scripts/arc_chat_backend.py` et délègue le modèle à un backend (`mock`,
 `claude`, `opencode`). Contrat complet : `deploy/chat/SPEC.md`.
 
-    arc_chat.py [--workspace DIR] [--port N] [--listen ADRESSE] [--backend NOM]
+    arc_chat.py [--workspace DIR] [--port N] [--listen ADRESSE] [--backend NOM] [--family [REGISTRE]]
 
 La ligne `URL: http://127.0.0.1:<port>/` est imprimée dès que le serveur écoute
 (`--port 0` : port choisi par le système, tests).
@@ -22,6 +22,13 @@ Sécurité (deploy/chat/PLAN.md §2.4) :
 - L'en-tête Host est vérifié (`allowed_hosts`, sinon `public_url` + boucle locale).
 - Les clés d'API viennent de `~/.config/ai-running-coach/llm.env` (jamais du TOML).
   Rien de secret ni de médical n'est journalisé.
+
+Mode famille (`--family [REGISTRE]` ou ARC_FAMILY, #127, docs/family.md) : un aiguilleur tient un
+`ChatService` PAR membre du registre (backend, politique, sessions, dépense et ntfy de son workspace) ;
+le membre est celui que désigne l'en-tête d'identité du proxy (`arc_family.py`), jamais un chemin lu
+dans la requête. Les jetons d'approbation ntfy portent le membre (`<membre>~<id>.<secret>`) et le
+membre entre dans leur empreinte : le jeton de A est inutilisable pour B. Un plafond de dépense du
+foyer (`[family].daily_budget_eur`) s'ajoute au budget de chaque membre.
 
 Persistance sous `<workspace>/.arc/chat/` (jetable, gitignoré) : sessions,
 approbations, dépense du jour.
@@ -57,9 +64,13 @@ from typing import Optional
 from urllib.parse import urlparse
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from arc_chat_backend import (EVENT_TYPES, BackendError, ChatBackend, TurnContext,  # noqa: E402
+from arc_chat_backend import (EVENT_TYPES, BackendError, ChatBackend, TurnContext, family_llm_key_allowed,  # noqa: E402
+                              family_reserved_name, is_loopback_url,
                               load_backend, payload_hash)
 from arc_chat_policy import Policy  # noqa: E402
+import arc_family as FM  # noqa: E402
+from arc_family import (HOST_CACHE_TTL_S, _host_cache, _host_cache_lock,  # noqa: E402,F401
+                        ip_in, is_loopback, resolve_host)
 from coach_config import ConfigError, read_toml  # noqa: E402
 
 ENGINE = Path(__file__).resolve().parent.parent
@@ -230,62 +241,6 @@ def host_allowlist(port: int, cfg: dict) -> set:
 def host_ok(host_header: str, allowed: set) -> bool:
     host = (host_header or "").lower()
     return host in allowed or host.rsplit(":", 1)[0] in allowed
-
-
-def is_loopback(ip: str) -> bool:
-    try:
-        return ipaddress.ip_address(ip).is_loopback
-    except ValueError:
-        return False
-
-
-# Noms d'hôte de `trusted_proxies` (ex. le conteneur « traefik » sur un réseau Docker, dont
-# l'adresse change à chaque recréation) : résolus par le DNS, gardés quelques secondes.
-HOST_CACHE_TTL_S = 30.0
-_host_cache: dict = {}
-_host_cache_lock = threading.Lock()
-
-
-def resolve_host(name: str) -> frozenset:
-    """Adresses IP de `name` (cache court) ; ensemble vide si le nom ne se résout pas."""
-    now = time.monotonic()
-    with _host_cache_lock:
-        hit = _host_cache.get(name)
-        if hit and now - hit[0] < HOST_CACHE_TTL_S:
-            return hit[1]
-    try:
-        found = frozenset(info[4][0] for info in socket.getaddrinfo(name, None, proto=socket.IPPROTO_TCP))
-    except (OSError, UnicodeError):
-        found = frozenset()
-    with _host_cache_lock:
-        _host_cache[name] = (now, found)
-    return found
-
-
-def ip_in(ip: str, entries) -> bool:
-    """Vrai si `ip` est l'une des adresses, l'un des réseaux (CIDR) ou l'un des noms d'hôte
-    (résolus par le DNS, voir `resolve_host`) de `entries`."""
-    try:
-        addr = ipaddress.ip_address(ip)
-    except ValueError:
-        return False
-    for entry in entries:
-        entry = str(entry).strip()
-        if not entry:
-            continue
-        try:
-            if addr in ipaddress.ip_network(entry, strict=False):
-                return True
-            continue
-        except ValueError:
-            pass
-        for resolved in resolve_host(entry):
-            try:
-                if addr == ipaddress.ip_address(resolved.split("%", 1)[0]):
-                    return True
-            except ValueError:
-                continue
-    return False
 
 
 def authenticate(cfg: dict, peer_ip: str, headers, exempt_identity: bool = False,
@@ -501,9 +456,11 @@ class SessionStore:
 OPEN_STATUSES = ("waiting", "pending")
 
 
-def token_digest(approval_id: str, phash: str, secret: str) -> str:
-    """Empreinte stockée d'un jeton : liée à l'identifiant ET à la charge exacte de l'appel."""
-    return hashlib.sha256(f"{approval_id}|{phash}|{secret}".encode("utf-8")).hexdigest()
+def token_digest(approval_id: str, phash: str, secret: str, member: str = "") -> str:
+    """Empreinte stockée d'un jeton : liée à l'identifiant ET à la charge exacte de l'appel.
+    Mode famille : liée aussi au membre (sans membre, l'empreinte historique est inchangée)."""
+    base = f"{approval_id}|{phash}|{secret}" + (f"|{member}" if member else "")
+    return hashlib.sha256(base.encode("utf-8")).hexdigest()
 
 
 class ApprovalStore:
@@ -520,10 +477,11 @@ class ApprovalStore:
     `approval_resolved: expired` atteigne toujours le journal de la session.
     """
 
-    def __init__(self, path: Path, clock=time.time, on_expired=None):
+    def __init__(self, path: Path, clock=time.time, on_expired=None, member: str = ""):
         self.path = path
         self.clock = clock
         self.on_expired = on_expired
+        self.member = member                    # mode famille : entre dans l'empreinte des jetons
         self._lock = threading.RLock()
 
     def _load(self) -> dict:
@@ -546,7 +504,7 @@ class ApprovalStore:
             for action in ("allow", "deny"):
                 secret = secrets.token_urlsafe(24)
                 tokens[action] = f"{approval_id}.{secret}"
-                hashes[action] = token_digest(approval_id, phash, secret)
+                hashes[action] = token_digest(approval_id, phash, secret, self.member)
         record = {
             "session_id": session_id, "tool": tool, "input": tool_input, "hash": phash,
             "summary": summary, "diff": diff, "status": "waiting",
@@ -665,7 +623,7 @@ class ApprovalStore:
         rec = self._load().get(approval_id)
         if rec is None:
             return "unknown", None
-        stored = token_digest(approval_id, rec["hash"], secret)
+        stored = token_digest(approval_id, rec["hash"], secret, self.member)
         burned = rec.get("burned_hashes", {}).get(action)
         if burned and hmac.compare_digest(burned, stored):
             return "used", dict(rec, id=approval_id)
@@ -790,8 +748,12 @@ class ChatService:
     """État partagé par les requêtes : configuration, stockage, backend, tours, approbations."""
 
     def __init__(self, workspace: Path, cfg: dict, backend: ChatBackend, notif: Optional[dict] = None,
-                 policy: Optional[Policy] = None, language: Optional[str] = None):
+                 policy: Optional[Policy] = None, language: Optional[str] = None, member: str = "",
+                 household=None):
         self.workspace = Path(workspace)
+        self.member = member                             # mode famille (#127) ; "" = mono-athlète
+        self.token_prefix = f"{member}~" if member else ""
+        self.household = household                       # `FamilyChat` (plafond du foyer, #127) ou None
         self.cfg = cfg
         self.language = language or load_language(self.workspace)
         self.backend = backend
@@ -801,7 +763,7 @@ class ChatService:
         root.mkdir(parents=True, exist_ok=True)
         os.chmod(root, 0o700)
         self.sessions = SessionStore(root)
-        self.approvals = ApprovalStore(root / "approvals.json", on_expired=self._on_expired)
+        self.approvals = ApprovalStore(root / "approvals.json", on_expired=self._on_expired, member=member)
         self.spend = SpendStore(root)
         self.limiter = RateLimiter(int(cfg["rate_limit_per_min"]))
         self.approve_limiter = RateLimiter(APPROVE_PER_IP_PER_MIN)   # route à jeton : par adresse cliente
@@ -834,6 +796,8 @@ class ChatService:
             self.sessions.update(sid, add_cost=eur)
 
     def budget_exhausted(self) -> bool:
+        if self.household is not None and self.household.remaining() <= 0:
+            return True                                  # plafond du foyer atteint (#127)
         return self.spend.spent() >= float(self.cfg["daily_budget_eur"])
 
     # -- tours -----------------------------------------------------------------
@@ -871,7 +835,10 @@ class ChatService:
         return "ok", turn, q
 
     def remaining_budget(self) -> float:
-        return max(0.0, float(self.cfg["daily_budget_eur"]) - self.spend.spent())
+        own = max(0.0, float(self.cfg["daily_budget_eur"]) - self.spend.spent())
+        if self.household is not None:
+            return min(own, self.household.remaining())
+        return own
 
     def reserve_turn_budget(self, turn: Turn) -> float:
         """Budget alloué au tour : reste du jour moins ce que les AUTRES tours en cours ont encore
@@ -880,10 +847,20 @@ class ChatService:
         Sans cela, deux conversations simultanées recevraient chacune tout le reste du jour.
         `[chat].turn_budget_max_eur` (> 0) plafonne l'allocation d'un tour (permet la concurrence).
         """
+        if self.household is None:
+            return self._reserve_locked(turn)
+        # Mode famille : le registre des réservations du foyer est UN SEUL verrou pour tous les membres,
+        # sinon deux membres lanceraient chacun un tour qui, ensemble, dépasseraient le plafond du foyer.
+        with self.household.lock:
+            return self._reserve_locked(turn)
+
+    def _reserve_locked(self, turn: Turn) -> float:
         with self._lock:
             outstanding = sum(max(0.0, self._reserved[sid] - t.spent_eur)
                               for sid, t in self.turns.items() if sid != turn.session_id and sid in self._reserved)
             grant = max(0.0, self.remaining_budget() - outstanding)
+            if self.household is not None:
+                grant = min(grant, self.household.remaining(exclude=(self.member, turn.session_id), outstanding=True))
             cap = float(self.cfg.get("turn_budget_max_eur") or 0.0)
             if cap > 0:
                 grant = min(grant, cap)
@@ -906,6 +883,9 @@ class ChatService:
                     message = (f"Budget quotidien du chat atteint ({self.spend.spent():.2f} € sur "
                                f"{float(self.cfg['daily_budget_eur']):.2f} €). Réessaie demain ou relève "
                                "[chat].daily_budget_eur.")
+                elif self.household is not None and self.household.outstanding_of_others(self) > 0:
+                    message = ("Le budget du foyer est réservé par la conversation d'un autre membre : "
+                               "réessaie dans un instant, quand son tour sera terminé.")
                 else:
                     message = ("Le budget restant du jour est réservé par une autre conversation en cours : "
                                "réessaie quand elle sera terminée.")
@@ -1044,7 +1024,8 @@ class ChatService:
         aid = record["id"]
         turn.approval_ids.append(aid)
         if tokens:
-            self._raw_tokens[aid] = tokens
+            # Mode famille : le membre voyage dans le lien (`<membre>~<id>.<secret>`) ; sans membre, inchangé.
+            self._raw_tokens[aid] = {k: self.token_prefix + v for k, v in tokens.items()}
         event, box = threading.Event(), []
         self._waiters[aid] = (event, box)
         turn.emit("approval_request", {"approval_id": aid, "tool": tool, "summary": summary,
@@ -1219,10 +1200,14 @@ class ChatService:
                 "message": "Diagnostic impossible (%s)." % type(exc).__name__}]}
 
     def status(self, user: str) -> dict:
+        budget = {"spent_eur": round(self.spend.spent(), 4), "limit_eur": float(self.cfg["daily_budget_eur"])}
+        if self.member:                       # mode famille : reste effectif = min(membre, foyer)
+            budget["remaining_eur"] = round(self.remaining_budget(), 4)
+            if self.household is not None:
+                budget["household_limit_eur"] = round(self.household.cap, 4)
         return {"enabled": bool(self.cfg["enabled"]), "backend": self.backend.name,
                 "model": self.cfg["model"], "user": user,
-                "budget": {"spent_eur": round(self.spend.spent(), 4),
-                           "limit_eur": float(self.cfg["daily_budget_eur"])},
+                "budget": budget,
                 # Forfait (ChatGPT/Copilot, #266) : la page affiche « inclus dans votre forfait … » au
                 # lieu d'un coût en euros. Clé absente = facturation au jeton, comme avant.
                 **({"billing": self.backend.billing()} if self.backend.billing() else {}),
@@ -1482,24 +1467,25 @@ def check_exposure(cfg: dict) -> None:
             "Derrière un reverse proxy : auth = \"proxy\" avec trusted_proxies et auth_header.")
 
 
+class Server(ThreadingHTTPServer):
+    daemon_threads = True
+    allow_reuse_address = True
+
+    def server_bind(self) -> None:
+        # Sans `socket.getfqdn(host)` (cf. `arc_serve.Server`) : ~35 s de blocage
+        # au démarrage sur un résolveur lent (runners macOS de GitHub, Mac hors ligne).
+        socketserver.TCPServer.server_bind(self)
+        host, port = self.server_address[:2]
+        self.server_name = str(host)
+        self.server_port = port
+
+
 def make_server(workspace: Path, cfg: dict, backend: ChatBackend, notif: Optional[dict] = None,
                 port: Optional[int] = None, policy: Optional[Policy] = None) -> tuple:
     """(serveur HTTP lié, ChatService). `port=0` : port libre choisi par le système."""
     check_exposure(cfg)
     service = ChatService(workspace, cfg, backend, notif, policy)
     listen = cfg["listen"]
-
-    class Server(ThreadingHTTPServer):
-        daemon_threads = True
-        allow_reuse_address = True
-
-        def server_bind(self) -> None:
-            # Sans `socket.getfqdn(host)` (cf. `arc_serve.Server`) : ~35 s de blocage
-            # au démarrage sur un résolveur lent (runners macOS de GitHub, Mac hors ligne).
-            socketserver.TCPServer.server_bind(self)
-            host, port = self.server_address[:2]
-            self.server_name = str(host)
-            self.server_port = port
 
     # Sous-classe par serveur : deux services dans un même processus (tests) ne se marchent pas dessus.
     bound = type("BoundHandler", (Handler,), {"service": service})
@@ -1558,13 +1544,282 @@ def serve(workspace: Path, port: Optional[int] = None, listen: Optional[str] = N
         backend.shutdown()
 
 
+
+# ---------------------------------------------------------------------------
+# Mode famille (#127) : un ChatService par membre derrière un aiguilleur
+# ---------------------------------------------------------------------------
+
+def family_member_config(registry: "FM.Registry", member, sections: Optional[dict] = None) -> dict:
+    """`[chat]` d'un membre (son workspace) + les réglages réseau communs du registre.
+
+    L'authentification est TOUJOURS « proxy » en mode famille ; la liste `allowed_users` du workspace
+    est ignorée (le registre est la seule liste des membres)."""
+    cfg = load_chat_config(member.workspace, sections)
+    fam = registry.settings
+    key_env = str(cfg.get("api_key_env") or "")
+    # Liste blanche : le registre du foyer décide quelles clés LLM et quels points d'accès un membre peut employer
+    # (la config d'un membre est écrite par l'administrateur, mais ne doit pas pouvoir désigner un identifiant du foyer).
+    if key_env and not family_llm_key_allowed(key_env, fam.get("llm_key_envs") or ()):
+        if family_reserved_name(key_env):
+            why = "est un identifiant du foyer"
+        else:
+            why = "n'est pas une clé de fournisseur LLM connue (voir [family].llm_key_envs dans le registre)"
+        log(f"membre {member.id} : [chat].api_key_env refusé ({key_env} {why})")
+        raise ValueError(f"[chat].api_key_env = {key_env!r} {why} : refusé en mode famille")
+    base_url = str(cfg.get("base_url") or "").strip()
+    if base_url and not is_loopback_url(base_url):
+        host = (urlparse(base_url).hostname or "").lower()
+        allowed = [str(u).strip().rstrip("/").lower() for u in fam.get("llm_base_urls") or ()]
+        if base_url.rstrip("/").lower() not in allowed and host not in allowed:
+            log(f"membre {member.id} : [chat].base_url refusé ({host or '?'} absent de [family].llm_base_urls)")
+            raise ValueError("[chat].base_url hors boucle locale et absent de [family].llm_base_urls : "
+                             "refusé en mode famille")
+    cfg.update({"auth": "proxy", "auth_header": registry.auth_header,
+                "trusted_proxies": list(registry.trusted_proxies), "allowed_users": [],
+                "family_member": member.id, "family_llm_key_envs": list(fam.get("llm_key_envs") or ())})        # lu par les backends : environnement enfant du membre
+    if fam.get("listen"):
+        cfg["listen"] = fam["listen"]
+    if fam.get("chat_port"):
+        cfg["port"] = int(fam["chat_port"])
+    if fam.get("allowed_hosts"):
+        cfg["allowed_hosts"] = list(fam["allowed_hosts"])
+    if not cfg.get("public_url") and fam.get("public_url"):
+        cfg["public_url"] = fam["public_url"]
+    return cfg
+
+
+class FamilyChat:
+    """Un `ChatService` par membre : backend, politique, sessions, dépense et ntfy de SON workspace.
+
+    `backend_factory(member, cfg)` (tests) remplace `load_backend`. Un membre dont le service ne démarre
+    pas est consigné dans `errors` et reçoit 503 ; les autres ne sont pas touchés.
+    """
+
+    def __init__(self, registry: "FM.Registry", backend_factory=None):
+        registry.require_trusted_proxies()
+        self.registry = registry
+        self.services: dict = {}
+        self.errors: dict = {}
+        self.net_cfg = {"auth": "proxy", "trusted_proxies": list(registry.trusted_proxies)}
+        self.approve_limiter = RateLimiter(APPROVE_PER_IP_PER_MIN)    # route à jeton : avant même le membre
+        self.approve_global = RateLimiter(APPROVE_GLOBAL_PER_MIN)
+        self.cap = float(registry.settings.get("daily_budget_eur") or 0.0)
+        # Registre des réservations du foyer : UN verrou pour tous les membres (voir ChatService.reserve_turn_budget).
+        self.lock = threading.RLock()
+        for member in registry.members.values():
+            try:
+                # Tout ce qui lit la configuration DU MEMBRE est dans le `try` : un TOML cassé ou un backend
+                # introuvable rend CE membre indisponible (503), jamais les autres.
+                sections = _merged_sections(member.workspace)
+                cfg = family_member_config(registry, member, sections)
+                if backend_factory is not None:
+                    backend = backend_factory(member, cfg)
+                else:
+                    backend = load_backend(cfg["backend"], member.workspace, cfg)
+                self.services[member.id] = ChatService(
+                    member.workspace, cfg, backend, load_notifications(member.workspace, sections),
+                    member=member.id, household=self if self.cap > 0 else None)
+            except Exception as exc:                      # noqa: BLE001 — isolation entre membres
+                self.errors[member.id] = str(exc)
+                log(f"membre {member.id} : service de chat indisponible ({type(exc).__name__})")
+
+    def service(self, member) -> Optional[ChatService]:
+        return self.services.get(member.id)
+
+    def household_spent(self) -> float:
+        return sum(svc.spend.spent() for svc in self.services.values())
+
+    def outstanding(self, exclude=None) -> float:
+        """Réservations en cours de TOUS les membres (alloué − déjà dépensé), hors `exclude=(membre, session)`."""
+        total = 0.0
+        for svc in list(self.services.values()):
+            for sid, grant in list(svc._reserved.items()):
+                if exclude == (svc.member, sid):
+                    continue
+                turn = svc.turns.get(sid)
+                total += max(0.0, grant - (turn.spent_eur if turn is not None else 0.0))
+        return total
+
+    def outstanding_of_others(self, service) -> float:
+        """Réservations en cours des AUTRES membres que `service` (pour dire qui bloque le budget)."""
+        total = 0.0
+        for svc in list(self.services.values()):
+            if svc is service:
+                continue
+            for sid, grant in list(svc._reserved.items()):
+                turn = svc.turns.get(sid)
+                total += max(0.0, grant - (turn.spent_eur if turn is not None else 0.0))
+        return total
+
+    def remaining(self, exclude=None, outstanding: bool = False) -> float:
+        """€ restants du plafond du foyer ; avec `outstanding`, déduction faite des tours déjà réservés."""
+        left = self.cap - self.household_spent()
+        if outstanding:
+            left -= self.outstanding(exclude)
+        return max(0.0, left)
+
+    def start(self) -> None:
+        for svc in self.services.values():
+            svc.resume_at_startup()
+
+    def sweep_expired(self) -> None:
+        for svc in list(self.services.values()):
+            svc.sweep_expired()
+
+    def shutdown(self) -> None:
+        for svc in self.services.values():
+            svc.backend.shutdown()
+
+
+class FamilyHandler(Handler):
+    """`Handler` dont la garde résout le membre (registre) et choisit SON `ChatService`."""
+
+    family: FamilyChat = None
+
+    def _gate(self, post: bool) -> Optional[str]:
+        fam = self.family
+        if not host_ok(self.headers.get("Host"), self.allowed_hosts):
+            self._error(403, "Hôte non autorisé.")
+            return None
+        path = self.path.split("?")[0]
+        if TOKEN_RE.match(path):
+            # Route à jeton ntfy : pas d'identité (exemptée du SSO), mais la source doit être de confiance ;
+            # le membre est lu dans le jeton par `_post_token`.
+            if not ip_in(self.client_address[0], fam.registry.trusted_proxies):
+                self._error(403, FM.DENIED)
+                return None
+            user = "token"
+        else:
+            member, status, message = FM.authenticate_member(fam.registry, self.client_address[0], self.headers)
+            if member is None:
+                self._error(status, message)
+                return None
+            self.service = fam.service(member)
+            if self.service is None:
+                self._error(503, "Chat indisponible pour ce compte.")
+                return None
+            user = member.id
+        if post:
+            problem = check_csrf(self.headers, bool(TOKEN_RE.match(path)))
+            if problem:
+                self._error(403, problem)
+                return None
+        return user
+
+    def do_GET(self):
+        path = self.path.split("?")[0]
+        if (path in (f"{API}/healthz", "/healthz") and host_ok(self.headers.get("Host"), self.allowed_hosts)
+                and is_loopback(self.client_address[0])):
+            # Sonde du conteneur : aucune donnée, aucun nom de membre.
+            return self._json(200, {"ok": True, "members": len(self.family.services)})
+        return super().do_GET()
+
+    def _post_token(self, token: str, action: str) -> None:
+        fam = self.family
+        who = client_ip(fam.net_cfg, self.client_address[0], self.headers)
+        if not (fam.approve_global.peek("global") and fam.approve_limiter.peek(who)
+                and fam.approve_global.allow("global") and fam.approve_limiter.allow(who)):
+            return self._error(429, "Trop de tentatives.")
+        member_id, sep, rest = token.partition("~")
+        member = fam.registry.members.get(member_id) if sep else None     # recherche, jamais un chemin
+        self.service = fam.service(member) if member is not None else None
+        if self.service is None:
+            if self._read_body() is None:
+                return
+            log("jeton refusé (membre inconnu)")
+            return self._error(404, "Lien invalide.")
+        super()._post_token(rest, action)
+
+
+def make_family_server(fam: FamilyChat, port: Optional[int] = None) -> "ThreadingHTTPServer":
+    """Serveur HTTP lié du mode famille. `port=0` : port libre choisi par le système."""
+    registry = fam.registry
+    cfg = dict(fam.net_cfg, listen=registry.settings["listen"] or "127.0.0.1",
+               port=registry.settings["chat_port"] or CHAT_DEFAULTS["port"],
+               allowed_hosts=registry.settings["allowed_hosts"], public_url=registry.settings["public_url"])
+    check_exposure(cfg)
+    if cfg["listen"] not in LOOPBACK_HOSTS and not cfg["allowed_hosts"] and not cfg["public_url"]:
+        # Hors boucle locale, sans nom public déclaré, tout serait refusé (Host) : mieux vaut ne pas démarrer.
+        raise ConfigError(
+            f"écoute sur {cfg['listen']} sans [family].allowed_hosts ni public_url : toute requête réseau serait "
+            "refusée. Déclarez le nom public du chat dans le registre.")
+    bound = type("BoundFamilyHandler", (FamilyHandler,), {"family": fam})
+    wanted = int(cfg["port"] if port is None else port)
+    try:
+        httpd = Server((cfg["listen"], wanted), bound)
+    except OSError as exc:
+        raise ConfigError(f"impossible d'écouter sur {cfg['listen']}:{wanted} ({exc.strerror}).")
+    bound.allowed_hosts = host_allowlist(httpd.server_address[1], cfg)
+    fam.start()
+    return httpd
+
+
+def serve_family(registry: "FM.Registry", port: Optional[int] = None, listen: Optional[str] = None,
+                 backend_name: Optional[str] = None) -> None:
+    for warning in load_llm_env()[1]:
+        log(f"avertissement : {warning}")
+    if listen:
+        registry.settings["listen"] = listen
+    factory = None
+    if backend_name:
+        def factory(member, cfg):                         # noqa: E306
+            cfg["backend"] = backend_name
+            return load_backend(backend_name, member.workspace, cfg)
+    fam = FamilyChat(registry, factory)
+    if not fam.services:
+        raise ConfigError("aucun membre n'a pu démarrer son service de chat : " + "; ".join(fam.errors.values()))
+    httpd = make_family_server(fam, port)
+    stop = threading.Event()
+
+    def sweeper():
+        while not stop.wait(30):
+            try:
+                fam.sweep_expired()
+            except Exception:                             # noqa: BLE001
+                log("balayage des propositions expirées : erreur")
+
+    threading.Thread(target=sweeper, name="chat-sweeper", daemon=True).start()
+    shown = registry.settings["listen"] or "127.0.0.1"
+    shown = "127.0.0.1" if shown in LOOPBACK_HOSTS else shown
+    print(f"URL: http://{shown}:{httpd.server_address[1]}/", flush=True)
+    cap = float(registry.settings["daily_budget_eur"] or 0.0)
+    log(f"mode famille : {len(fam.services)} membre(s), plafond du foyer "
+        + (f"{cap:.2f} €/jour" if cap > 0 else "aucun"))
+
+    def _terminate(signum, _frame):
+        raise KeyboardInterrupt
+    for signame in ("SIGTERM", "SIGHUP"):
+        if hasattr(signal, signame):
+            signal.signal(getattr(signal, signame), _terminate)
+    try:
+        httpd.serve_forever()
+    except KeyboardInterrupt:
+        pass
+    finally:
+        stop.set()
+        httpd.server_close()
+        fam.shutdown()
+
+
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     parser.add_argument("--workspace")
     parser.add_argument("--port", type=int)
     parser.add_argument("--listen")
     parser.add_argument("--backend")
+    parser.add_argument("--family", nargs="?", const="", default=None, metavar="REGISTRE",
+                        help="mode famille (#127) : un ChatService par membre du registre (défaut : ARC_FAMILY, "
+                             "puis ~/.config/ai-running-coach/family.toml)")
     args = parser.parse_args(argv)
+    family_raw = args.family
+    if family_raw is None and not args.workspace:         # ARC_FAMILY seul active le mode ; --workspace l'emporte
+        family_raw = os.environ.get(FM.FAMILY_ENV) or None
+    if family_raw is not None:
+        if args.workspace:
+            raise ConfigError("--family et --workspace s'excluent : chaque membre a son workspace dans le registre.")
+        serve_family(FM.load_registry(FM.resolve_registry_path(family_raw or None)), args.port, args.listen,
+                     args.backend)
+        return 0
     from coach_setup import workspace_root
     serve(workspace_root(args.workspace), args.port, args.listen, args.backend)
     return 0

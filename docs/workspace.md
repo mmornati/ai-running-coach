@@ -153,10 +153,12 @@ Le cron relit les skills à chaque run. Sur la machine coach, relancez Remote Co
 (`scripts/coach-remote.sh restart`) si `.mcp.json` a changé. Procédure complète, retour
 arrière compris : [Mettre à jour](update.md).
 
-## Plusieurs workspaces sur une même machine
+## Plusieurs workspaces et plusieurs athlètes
 
-Plusieurs workspaces (par exemple un par membre d'un foyer) peuvent tourner sous le **même
-utilisateur** système sans partager leurs identifiants ni leur planification :
+Un foyer peut faire tourner **un workspace par personne** derrière un seul tableau de bord et un seul
+chat : voir [Mode famille](family.md) (registre `family.toml`, isolation, ajout d'un membre) et
+[Apple Watch](apple-watch.md) pour un membre sans montre Garmin. Côté machine, plusieurs workspaces
+(par exemple un par membre d'un foyer) peuvent tourner sous le **même utilisateur** système sans partager leurs identifiants ni leur planification :
 
 - `./install.sh --workspace DIR --garmin-tokens DOSSIER` : jetons Garmin propres au workspace
   (`GARMINTOKENS` dans son `.mcp.json`), voir [Configuration Garmin](garmin-setup.md#un-dossier-de-jetons-par-workspace-plusieurs-workspaces-meme-utilisateur) ;
@@ -200,6 +202,7 @@ utilisateur** système sans partager leurs identifiants ni leur planification :
 
 Les options d'installation mémorisées pour `/update-coach` (`~/.config/ai-running-coach/install-args`)
 restent communes à l'utilisateur : après une mise à jour, relancez `./install.sh` pour chaque workspace.
+
 
 ## Ce qui reste hors des deux dépôts
 
