@@ -166,6 +166,27 @@ class TestStandaloneHelper(unittest.TestCase):
         self.assertIn("workspace refusé", result.stderr)
         self.assertNotIn("ModuleNotFoundError", result.stderr)
 
+    def test_lock_accepts_nfc_nfd_and_case_variants_of_same_folder(self):
+        # Défaut : chemin NFC/casse différente du même dossier refusé à tort ("workspace refusé") sur APFS.
+        import unicodedata
+        sys.path.insert(0, str(ROOT / "scripts"))
+        self.addCleanup(sys.path.remove, str(ROOT / "scripts"))
+        import coach_config
+        nfd_dir = self.root / unicodedata.normalize("NFD", "données-é")
+        nfd_dir.mkdir()
+        variants = [("nfc", self.root / unicodedata.normalize("NFC", "données-é"))]
+        probe = self.root / "CaseProbe"
+        probe.mkdir()
+        if (self.root / "caseprobe").exists():
+            variants.append(("case", self.root / "DONNÉES-É"))
+        env = {"ARC_LOCK_WORKSPACE": "1", "ARC_WORKSPACE": str(nfd_dir)}
+        for label, target in variants:
+            if not target.exists():
+                continue  # système de fichiers sensible à la casse / normalisation (Linux) : sans objet
+            for fn in (update.enforce_workspace_lock, coach_config.enforce_workspace_lock):
+                with self.subTest(label, fn=fn.__module__), unittest.mock.patch.dict(os.environ, env, clear=True):
+                    fn(target)
+
     def test_inline_lock_matches_coach_config(self):
         sys.path.insert(0, str(ROOT / "scripts"))
         self.addCleanup(sys.path.remove, str(ROOT / "scripts"))

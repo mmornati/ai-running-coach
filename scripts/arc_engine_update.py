@@ -27,7 +27,11 @@ def enforce_workspace_lock(workspace) -> Path:
             "ERREUR : ARC_LOCK_WORKSPACE=1 sans ARC_WORKSPACE — exécution refusée (verrou sans workspace)."
         )
     locked_path = Path(locked).expanduser().resolve()
-    if chosen != locked_path:
+    try:  # samefile : APFS insensible à la casse / normalisation Unicode (chemins NFD de l'app Mac)
+        same = os.path.samefile(chosen, locked_path)
+    except OSError:
+        same = chosen == locked_path
+    if not same:
         raise SystemExit(
             f"ERREUR : workspace refusé ({chosen}) — cette exécution est verrouillée sur "
             f"{locked_path} (ARC_LOCK_WORKSPACE=1). Retirez --workspace ou utilisez celui de la synchronisation."
