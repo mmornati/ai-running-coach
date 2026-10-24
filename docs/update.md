@@ -154,14 +154,14 @@ l'exécution) :
 
 ```bash
 cp ~/ai-running-coach/scripts/migrate-sync-127.sh ~/
-~/migrate-sync-127.sh check                         # lecture seule, avant ou après la mise à jour
+~/migrate-sync-127.sh check                         # ne modifie rien (sauf git fetch), avant ou après la mise à jour
 ~/migrate-sync-127.sh migrate --fix-install-args    # sauvegarde, mise à jour, ligne cron renommée
 ~/migrate-sync-127.sh verify                        # après le prochain passage du watch (≤ 15 min)
 ```
 
 | Étape | Ce qu'elle fait |
 |---|---|
-| `check` | Ligne cron unique, workspace mémorisé, moteur sur `main` sans modification locale, présence de #127 et de la cale dans `origin/main`, dossier de jetons Garmin résolu (`700`/`600`), `install-args`, fraîcheur du watch. Ne modifie rien. |
+| `check` | Ligne cron unique, workspace mémorisé, moteur sur `main` sans modification locale, présence de #127 et de la cale dans `origin/main`, dossier de jetons Garmin résolu (`700`/`600`), `install-args`, fraîcheur du watch. Ne touche ni à la crontab, ni au moteur, ni au workspace. Lance seulement `git fetch origin` dans le moteur (appel réseau qui met à jour les références `origin/*`, jamais `main`) pour savoir si #127 est fusionné ; `check --no-fetch` l'évite. |
 | `migrate` | Sauvegarde dans `~/.config/ai-running-coach/backup-migration-127-<date>/`, met la ligne cron en pause, attend la fin d'une sync en cours, `git merge --ff-only` du moteur, vérifie que les jetons résolus n'ont pas changé et que `watch.py --dry-run` répond, puis réécrit la ligne cron (seul le nom du script change). Refuse tant que `origin/main` ne contient pas #127. |
 | `--fix-install-args` | Ajoute `--workspace <votre workspace> --daily-sync` aux options mémorisées, seulement si l'aperçu `install.sh --dry-run` montre une seule ligne cron, sur `watch.py`, pour votre workspace. L'aperçu complet est gardé dans la sauvegarde (`install-dry-run.txt`). |
 | `verify` | Vérifie que le watch est passé depuis la migration, puis lance `coach_doctor` (`daily_sync_scheduled`, `garmin_token`, `garmin_token_perms`). |

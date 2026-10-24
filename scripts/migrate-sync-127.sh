@@ -7,7 +7,7 @@
 # l'exécution : bash lit un script au fil de l'eau, il ne doit pas changer sous lui) :
 #
 #   cp ~/ai-running-coach/scripts/migrate-sync-127.sh ~/ && cd ~
-#   ./migrate-sync-127.sh check                         # lecture seule, avant ou après la fusion
+#   ./migrate-sync-127.sh check [--no-fetch]            # ne modifie rien, sauf git fetch (voir plus bas)
 #   ./migrate-sync-127.sh migrate [--fix-install-args] [--allow-pre-127] [--yes]
 #   ./migrate-sync-127.sh verify                        # après le prochain passage du watch (≤ 15 min)
 #   ./migrate-sync-127.sh rollback <dossier-de-sauvegarde>
@@ -15,6 +15,10 @@
 # Principe de sécurité : la ligne cron d'origine (garmin_watch.py) reste valable avant ET après la mise à
 # jour, car garmin_watch.py est gardé comme cale vers watch.py. Toute erreur pendant `migrate` remet donc
 # la crontab d'origine telle quelle : au pire, on revient à l'état de départ, jamais à une sync arrêtée.
+#
+# `check` ne modifie ni la crontab, ni le moteur, ni le workspace. Il lance seulement `git fetch origin`
+# dans le moteur (appel réseau, met à jour les références distantes `origin/*`, jamais `main`) pour savoir
+# si #127 est déjà fusionné ; `--no-fetch` l'évite et compare aux références déjà présentes.
 #
 # Ce que `migrate` NE fait PAS : relancer ./install.sh en entier (agents, .mcp.json, chat Docker,
 # Remote Control). La ligne cron est réécrite à l'identique, seul le nom du script change.
@@ -26,6 +30,7 @@ PAUSE_PREFIX="#ARC-127-PAUSED# "
 DEFAULT_TOKENS="$HOME/.garminconnect"
 
 FAILS=0
+FETCH=1    # check : git fetch origin dans le moteur (--no-fetch : 0)
 WARNS=0
 ok()   { printf '  \033[32m✔\033[0m %s\n' "$*"; }
 info() { printf '  · %s\n' "$*"; }
@@ -118,7 +123,11 @@ check() {
     [[ "$branch" == "main" ]] && ok "branche main" || fail "branche « ${branch:-détachée} » (main attendue)"
     [[ -z "$(git -C "$ENGINE" status --porcelain --untracked-files=no)" ]] && ok "aucune modification locale" \
         || fail "modifications locales dans le moteur (git -C $ENGINE status)"
-    git -C "$ENGINE" fetch --quiet origin 2>/dev/null || warn "git fetch impossible (réseau ?)"
+    if [[ "$FETCH" -eq 1 ]]; then
+        git -C "$ENGINE" fetch --quiet origin 2>/dev/null || warn "git fetch impossible (réseau ?)"
+    else
+        info "--no-fetch : comparaison aux références origin/* déjà présentes (peut-être anciennes)"
+    fi
     upstream="$(git -C "$ENGINE" rev-parse --abbrev-ref '@{u}' 2>/dev/null || true)"
     if [[ -n "$upstream" ]]; then
         if git -C "$ENGINE" merge-base --is-ancestor HEAD "$upstream"; then
@@ -402,9 +411,17 @@ rollback() {
 }
 
 case "${1:-}" in
-    check)    check; [[ "$FAILS" -eq 0 ]] ;;
+    check)
+        shift
+        for a in "$@"; do
+            case "$a" in
+                --no-fetch) FETCH=0 ;;
+                *) die "option inconnue : $a" ;;
+            esac
+        done
+        check; [[ "$FAILS" -eq 0 ]] ;;
     migrate)  shift; migrate "$@" ;;
     verify)   verify; [[ "$FAILS" -eq 0 ]] ;;
     rollback) shift; rollback "$@" ;;
-    *) sed -n '2,20p' "$0" | sed 's/^# \{0,1\}//'; exit 2 ;;
+    *) sed -n '2,24p' "$0" | sed 's/^# \{0,1\}//'; exit 2 ;;
 esac
