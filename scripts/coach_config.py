@@ -52,6 +52,15 @@ def locked_workspace() -> Optional[Path]:
     return Path(locked).expanduser().resolve()
 
 
+def _same_folder(a: Path, b: Path) -> bool:
+    """Même dossier ? `samefile` quand les deux existent (APFS : insensible à la casse et à la
+    normalisation Unicode, l'application Mac écrit des chemins NFD) ; sinon comparaison des chemins résolus."""
+    try:
+        return os.path.samefile(a, b)
+    except OSError:
+        return a == b
+
+
 def enforce_workspace_lock(workspace) -> Path:
     """Chemin résolu de `workspace`, refusé s'il diffère de `ARC_WORKSPACE` sous `ARC_LOCK_WORKSPACE=1` (#127).
 
@@ -61,7 +70,7 @@ def enforce_workspace_lock(workspace) -> Path:
     ou un dossier (`--db`, `--dir`, `--output-dir`, `--input`…) ne sont pas couvertes."""
     chosen = Path(workspace).expanduser().resolve()
     locked = locked_workspace()
-    if locked is not None and chosen != locked:
+    if locked is not None and not _same_folder(chosen, locked):
         raise WorkspaceLockError(
             f"ERREUR : workspace refusé ({chosen}) — cette exécution est verrouillée sur "
             f"{locked} (ARC_LOCK_WORKSPACE=1). Retirez --workspace ou utilisez celui de la synchronisation."

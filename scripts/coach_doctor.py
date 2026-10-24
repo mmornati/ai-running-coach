@@ -420,6 +420,24 @@ def check_garmin_token(now: datetime, tokens_dir: Path) -> dict:
 # ---------------------------------------------------------------------------
 
 
+def _extra_bin_dirs() -> list:
+    """Répertoires usuels que `scripts/daily-sync.sh` ajoute au PATH (mêmes emplacements ; `daily-sync.sh`
+    les met EN TÊTE, le doctor les cherche APRÈS le PATH courant) : un `ssh hôte commande` non interactif
+    n'a pas `~/.local/bin`, alors que la synchronisation, elle, trouve `garmin-mcp`."""
+    home = Path.home()
+    app = home / "Library/Application Support/AI Running Coach"
+    return [str(home / ".local/bin"), str(home / ".opencode/bin"), str(home / ".claude/bin"),
+            str(app / "node-runtime/bin"), str(app / "npm-tools/bin"),
+            str(home / ".cargo/bin"), "/opt/homebrew/bin", "/usr/local/bin"]
+
+
+def _which_with_extra(command: str) -> Optional[str]:
+    """`shutil.which` sur le PATH courant PUIS sur les répertoires de `_extra_bin_dirs()`.
+    Les entrées vides du PATH sont écartées (une entrée vide = dossier courant pour `shutil.which`)."""
+    dirs = [d for d in os.environ.get("PATH", os.defpath).split(os.pathsep) if d] + _extra_bin_dirs()
+    return shutil.which(command, path=os.pathsep.join(dirs))
+
+
 def _resolve_mcp_server(workspace: Path) -> dict:
     """Lit `.mcp.json` du workspace avec des garde-fous : un fichier écrit à
     la main (ou par un scénario de test) peut avoir `mcpServers` en liste,
@@ -479,7 +497,7 @@ def check_garmin_mcp_presence(workspace: Path) -> dict:
     """
     check_id = "garmin_mcp"
     server = _resolve_mcp_server(workspace)
-    command_path = shutil.which(server["command"])
+    command_path = _which_with_extra(server["command"])
     if not command_path or not os.access(command_path, os.X_OK):
         return build_check(
             check_id, "error",
@@ -679,7 +697,7 @@ def probe_garmin_mcp(workspace: Path) -> dict:
     """
     check_id = "garmin_mcp"
     server = _resolve_mcp_server(workspace)
-    command_path = shutil.which(server["command"])
+    command_path = _which_with_extra(server["command"])
     if not command_path or not os.access(command_path, os.X_OK):
         return build_check(
             check_id, "error",
@@ -1544,7 +1562,20 @@ def _chat_health_url(chat: dict) -> str:
     return f"http://{host}:{chat.get('port', 8766)}/api/chat/healthz"
 
 
-def check_chat_service(home: Path, config: dict) -> dict:
+def _chat_container_deployed(engine_root: Path) -> bool:
+    """Vrai si `deploy/dashboard/.env` active `compose.chat.yaml` dans `COMPOSE_FILE` (chat en conteneur)."""
+    try:
+        text = (engine_root / "deploy/dashboard/.env").read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return False
+    for line in text.splitlines():
+        m = re.match(r"^\s*COMPOSE_FILE\s*=\s*(.*)$", line)
+        if m and "compose.chat.yaml" in m.group(1).strip().strip("\"'").split(":"):
+            return True
+    return False
+
+
+def check_chat_service(home: Path, config: dict, engine_root: Optional[Path] = None) -> dict:
     """`info`/`warning` uniquement — jamais `error` : un chat arrêté est une
     dégradation de confort, pas une panne du coach."""
     check_id = "chat_service"
@@ -1587,6 +1618,19 @@ def check_chat_service(home: Path, config: dict) -> dict:
     if reachable:
         where = "service installé" if installed else "lancé à la main (aucun service installé)"
         return build_check(check_id, "ok", f"Service du chat joignable ({where}).", fix=None)
+    if not installed and _chat_container_deployed(engine_root or Path(__file__).resolve().parent.parent):
+        # Déploiement en conteneur (compose.chat.yaml) : ni service systemd/launchd, ni port local — rien à sonder d'ici.
+        return build_check(
+            check_id, "info", "Chat déployé derrière un proxy (conteneur) — vérification locale impossible.",
+            fix=None,
+        )
+    if not installed and str(chat.get("auth") or "local") == "proxy":
+        return build_check(
+            check_id, "warning",
+            f"Chat activé (auth = proxy) : aucun service local et {url} injoignable — normal si le chat tourne "
+            "en conteneur (compose.chat.yaml) ; sinon : ./install.sh --chat",
+            fix="./install.sh --chat",
+        )
     if not installed:
         return build_check(
             check_id, "warning", f"Chat activé mais aucun service installé et {url} injoignable.",
@@ -1669,9 +1713,7 @@ def check_telegram(workspace: Path, home: Path, config: dict, now: datetime) -> 
 
 
 def _find_opencode() -> Optional[str]:
-    extra = [str(Path.home() / ".local/bin"), str(Path.home() / ".opencode/bin"),
-             "/opt/homebrew/bin", "/usr/local/bin"]
-    return shutil.which("opencode", path=os.pathsep.join([os.environ.get("PATH", ""), *extra]))
+    return _which_with_extra("opencode")
 
 
 def check_opencode_cli(config: dict) -> dict:

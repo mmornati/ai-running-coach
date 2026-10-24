@@ -20,7 +20,7 @@ connexion ». Un échec propose de réessayer, de coller une clé (« J'ai déj�
 continuer sans le chat ; une clé déjà présente dans `llm.env` n'est jamais redemandée. Gemini CLI
 est présenté avec la mention « clé API ou licence payante » (voir `docs/choisir-son-ia.md`).
 
-Le compte Garmin ou Intervals.icu est connecté dans une fenêtre Terminal séparée. C'est volontaire : les identifiants et le code MFA restent saisis directement dans l'outil d'authentification d'origine.
+Le compte Garmin ou Intervals.icu est connecté dans une fenêtre Terminal séparée. C'est volontaire : les identifiants et le code MFA restent saisis directement dans l'outil d'authentification d'origine. L'application n'utilise que les emplacements par défaut (`~/.garminconnect`, dossier Intervals.icu par défaut) : `--garmin-tokens` et `--intervals-dir` ne sont pas pris en charge sur son workspace.
 
 ## Construire le DMG
 

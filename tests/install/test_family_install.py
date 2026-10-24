@@ -9,6 +9,7 @@ label launchd, même `.mcp.json`.
 
 from __future__ import annotations
 
+import shutil
 import json
 import re
 from pathlib import Path
@@ -387,6 +388,22 @@ class TestMigrationAndMovedWorkspaceCron(InstallAsserts):
             self.assertEqual(len(_lines(sb, alice)), 2, sb.crontab())
             self.assertEqual(len(_lines(sb, bob)), 2, sb.crontab())
 
+    def test_copied_workspace_reinstall_prints_info_and_keeps_both(self):
+        """Défaut verrouillé : l'ancienne copie d'un workspace gardait sa planification SANS un mot -> double sync muette."""
+        with Sandbox() as sb:
+            alice = _ws(sb, "alice")
+            self.assertSucceeded(self._install(sb, "--workspace", str(alice)))
+            copy = sb.root / "alice-copie"
+            shutil.copytree(alice, copy, symlinks=True)
+            proc = self._install(sb, "--workspace", str(copy))
+            self.assertSucceeded(proc)
+            self.assertEqual(len(_lines(sb, alice)), 2, sb.crontab())
+            self.assertEqual(len(_lines(sb, copy)), 2, sb.crontab())
+            self.assertOutputContains(proc, "ancienne copie de vos données")
+            self.assertOutputContains(proc, "crontab -e")
+            self.assertEqual((proc.stdout + proc.stderr).count("crontab -e"), 1, "annonce répétée par ligne cron")
+            self.assertOutputContains(proc, "autre membre du foyer : rien à faire")
+
 
 class TestMigrationAndLegacyPlistLaunchd(InstallAsserts):
     def _install(self, sb, *args):
@@ -404,6 +421,19 @@ class TestMigrationAndLegacyPlistLaunchd(InstallAsserts):
             plists = self._plists(sb)
             self.assertEqual([p.name for p in plists], ["com.ai-running-coach.daily-sync.plist"], plists)
             self.assertIn(f"<key>ARC_WORKSPACE</key><string>{alice}</string>", plists[0].read_text())
+
+    def test_copied_workspace_reinstall_prints_info_and_keeps_both_plists(self):
+        """Défaut verrouillé : l'ancienne copie d'un workspace gardait son LaunchAgent sans un mot."""
+        with Sandbox() as sb:
+            alice = _ws(sb, "alice")
+            self.assertSucceeded(self._install(sb, "--workspace", str(alice)))
+            copy = sb.root / "alice-copie"
+            shutil.copytree(alice, copy, symlinks=True)
+            proc = self._install(sb, "--workspace", str(copy))
+            self.assertSucceeded(proc)
+            self.assertEqual(len(self._plists(sb)), 2, self._plists(sb))
+            self.assertOutputContains(proc, "ancienne copie de vos données")
+            self.assertOutputContains(proc, "launchctl bootout")
 
     def test_plist_without_arc_workspace_counts_as_this_workspaces(self):
         """Défaut verrouillé : un plist écrit avant ARC_WORKSPACE (pas d'EnvironmentVariables) n'était à personne

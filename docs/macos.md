@@ -71,6 +71,9 @@ Après l'installation, cliquez sur **Connecter mon compte**. Une fenêtre dédi�
 
 Revenez ensuite dans l'app : l'état de connexion est vérifié lorsqu'elle reprend le premier plan.
 
+!!! note "Emplacements des identifiants"
+    L'application utilise toujours les emplacements par défaut : `~/.garminconnect` pour Garmin et le dossier Intervals.icu par défaut. Les options `--garmin-tokens` et `--intervals-dir`, passées en ligne de commande à `install.sh` pour le workspace de l'application, ne sont pas prises en charge : l'application afficherait « non connecté » et se reconnecterait dans le dossier par défaut.
+
 Une fois le compte connecté, le service de synchronisation installé par l'application récupère les nouvelles données aux heures configurées. Garmin et Intervals.icu utilisent la même source choisie pendant l'installation ; les données récupérées sont persistées dans le dossier de travail avant d'être affichées par le coach ou le tableau de bord.
 
 Le bouton **Synchroniser maintenant** de l'écran principal lance exactement la même opération sans attendre la prochaine heure programmée. L'application affiche son avancement puis indique si les données sont à jour ou si une connexion demande votre attention.
