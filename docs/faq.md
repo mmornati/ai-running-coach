@@ -123,7 +123,7 @@ branche la montre seule. Voir [Montres COROS](coros.md).
 
 ### Quelle IA choisir, et puis-je en changer ?
 
-Celle que vous payez déjà : Claude (Claude Code), ChatGPT Plus/Pro ou GitHub Copilot (`./install.sh --llm chatgpt|copilot --connect`), sinon OpenRouter connecté en un clic (`--llm openrouter --connect`), avec un essai gratuit limité (`--llm openrouter-free`). La synchronisation automatique peut changer d'IA seule, sans toucher au chat : `python3 scripts/arc_llm.py sync …`. `python3 scripts/arc_llm.py check` (ou « Tester la connexion » dans l'application) vérifie la clé, le crédit et le quota. Voir [Choisir son IA](choisir-son-ia.md).
+Celle que vous payez déjà : Claude (Claude Code), ChatGPT Plus/Pro ou GitHub Copilot (`./install.sh --llm chatgpt|copilot --connect`), sinon OpenRouter connecté en un clic (`--llm openrouter --connect`), avec un essai gratuit limité (`--llm openrouter-free`). La synchronisation automatique peut changer d'IA seule, sans toucher au chat : `python3 scripts/arc_llm.py sync …`. `python3 scripts/arc_llm.py check --probe` (ou « Tester la connexion » dans l'application Mac et la page du chat) vérifie la clé, le crédit et le quota. Voir [Choisir son IA](choisir-son-ia.md).
 
 ### Puis-je suivre plusieurs athlètes sur la même machine ?
 

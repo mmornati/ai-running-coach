@@ -9,7 +9,7 @@ Pour mettre à jour une installation existante : [Passer de la 1.3 à la 1.4](up
   activités et FIT, bilan matinal (HRV, FC de repos, récupération COROS toujours nommée ainsi), séances envoyées à
   la montre, surveillance. `./install.sh --coros` branche la montre à côté d'une autre source. Une seule connexion
   (`python3 scripts/arc_coros_auth.py login`) pour toutes les IA. Voir [Montres COROS](coros.md).
-- **Fiche Pace Strategy.** Pour une course, `scripts/arc_coros_workout.py pace-strategy` prépare la fiche à recopier
+- **Fiche Pace Strategy.** Pour une course, `python3 scripts/arc_coros_workout.py pace-strategy` prépare la fiche à recopier
   dans l'app COROS (le MCP n'a aucun outil de parcours). Voir [Montres COROS](coros.md) et [Planification COROS](skills/coros-workout-scheduling.md).
 - **Splits par km pour toutes les sources.** `python3 scripts/arc_index.py splits <id>` les calcule depuis le FIT,
   de la même façon avec Garmin, COROS, Intervals.icu ou Strava.
@@ -20,11 +20,14 @@ Pour mettre à jour une installation existante : [Passer de la 1.3 à la 1.4](up
 
 - **OpenRouter en un clic**, sans clé à copier (`./install.sh --llm openrouter --connect`), et **essai gratuit**
   limité avec des modèles `:free` (`--llm openrouter-free`, confidentialité dite honnêtement).
-- **Abonnements ChatGPT Plus/Pro et GitHub Copilot** : `--llm chatgpt` ou `--llm copilot`, sans clé API ;
-  la synchronisation n'y passe qu'avec votre accord (`--sync-subscription`).
-- **Changer la synchronisation seule** : `python3 scripts/arc_llm.py sync …` ; **tester la connexion** :
-  `python3 scripts/arc_llm.py check` ou le bouton « Tester la connexion » de l'application et du chat.
+- **Abonnements ChatGPT Plus/Pro et GitHub Copilot** : `--llm chatgpt` ou `--llm copilot`, sans clé API.
+  Sur une installation existante, la synchronisation automatique garde son exécuteur, sauf avec
+  `--sync-subscription`.
+- **Changer la synchronisation seule** : `python3 scripts/arc_llm.py sync …` ; avec l'API Anthropic, elle
+  tourne par défaut sur Claude Haiku 5.5. **Tester la connexion** : `python3 scripts/arc_llm.py check --probe`
+  ou le bouton « Tester la connexion » de l'application Mac et de la page du chat.
   Voir [Choisir son IA](choisir-son-ia.md).
+- **Une vidéo de plus** : « Zéro euro pour démarrer », l'essai gratuit en moins de deux minutes. Voir [Vidéos](videos.md).
 
 ## Chaussures
 
@@ -53,7 +56,14 @@ Pour mettre à jour une installation existante : [Passer de la 1.3 à la 1.4](up
 - **Le design « roadbook » devient le design par défaut** (l'ancien reste accessible avec `?design=classic`
   jusqu'à la 1.5). Voir [Tableau de bord](dashboard/index.md) et [Les vues](dashboard/views.md).
 - **Application installable (PWA)**, polices embarquées, semaine avec appariement planifié ↔ réalisé.
-- **Image Docker publiée sur GHCR** (`:latest`, `:edge`, `:X.Y.Z`). Voir [Docker](dashboard/docker.md#images-publiees-ghcr).
+- **Image Docker publiée sur GHCR** (`:latest`, `:edge`, `:X.Y.Z`) ; le compose du projet la construit encore
+  localement. Voir [Docker](dashboard/docker.md#images-publiees-ghcr).
+
+## Application Mac
+
+- **Mises à jour dans l'application** : les nouvelles versions sont proposées par l'app (Sparkle, signature
+  vérifiée), même pour le DMG sans signature Apple. Une dernière installation manuelle du DMG reste nécessaire
+  depuis une version qui n'avait pas ce mécanisme. Voir [Mises à jour macOS](macos.md#mises-a-jour).
 
 ## Mettre à jour
 

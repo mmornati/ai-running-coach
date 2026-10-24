@@ -621,7 +621,7 @@ réglée ici.
 ## La synchronisation — `[sync]`
 
 `scripts/daily-sync.sh` lit ces clés à **chaque** exécution (pas de réinstallation du cron
-pour les changer, sauf `mode`/`times`, voir [Le coach dans la poche](mobile.md)).
+pour les changer, sauf `mode`, `times` et `watch_interval_min`, voir [Le coach dans la poche](mobile.md)).
 
 | Clé | Effet |
 |---|---|
