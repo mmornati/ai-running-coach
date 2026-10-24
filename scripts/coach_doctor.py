@@ -405,6 +405,19 @@ def check_garmin_token(now: datetime, tokens_dir: Path) -> dict:
 # ---------------------------------------------------------------------------
 
 
+def _extra_bin_dirs() -> list:
+    """Répertoires que `scripts/daily-sync.sh` ajoute au PATH (même liste) : un `ssh hôte commande` non
+    interactif n'a pas `~/.local/bin`, alors que la synchronisation, elle, trouve `garmin-mcp`."""
+    home = Path.home()
+    return [str(home / ".local/bin"), str(home / ".opencode/bin"), str(home / ".claude/bin"),
+            str(home / ".cargo/bin"), "/opt/homebrew/bin", "/usr/local/bin"]
+
+
+def _which_with_extra(command: str) -> Optional[str]:
+    """`shutil.which` sur le PATH courant PUIS sur les répertoires de `_extra_bin_dirs()`."""
+    return shutil.which(command, path=os.pathsep.join([os.environ.get("PATH", ""), *_extra_bin_dirs()]))
+
+
 def _resolve_mcp_server(workspace: Path) -> dict:
     """Lit `.mcp.json` du workspace avec des garde-fous : un fichier écrit à
     la main (ou par un scénario de test) peut avoir `mcpServers` en liste,
@@ -464,7 +477,7 @@ def check_garmin_mcp_presence(workspace: Path) -> dict:
     """
     check_id = "garmin_mcp"
     server = _resolve_mcp_server(workspace)
-    command_path = shutil.which(server["command"])
+    command_path = _which_with_extra(server["command"])
     if not command_path or not os.access(command_path, os.X_OK):
         return build_check(
             check_id, "error",
@@ -664,7 +677,7 @@ def probe_garmin_mcp(workspace: Path) -> dict:
     """
     check_id = "garmin_mcp"
     server = _resolve_mcp_server(workspace)
-    command_path = shutil.which(server["command"])
+    command_path = _which_with_extra(server["command"])
     if not command_path or not os.access(command_path, os.X_OK):
         return build_check(
             check_id, "error",
@@ -1572,6 +1585,12 @@ def check_chat_service(home: Path, config: dict) -> dict:
     if reachable:
         where = "service installé" if installed else "lancé à la main (aucun service installé)"
         return build_check(check_id, "ok", f"Service du chat joignable ({where}).", fix=None)
+    if not installed and (str(chat.get("auth") or "local") == "proxy" or str(chat.get("public_url") or "").strip()):
+        # Déploiement en conteneur (Docker/Coolify) : ni service systemd/launchd, ni port local — rien à sonder d'ici.
+        return build_check(
+            check_id, "info", "Chat déployé derrière un proxy (conteneur) — vérification locale impossible.",
+            fix=None,
+        )
     if not installed:
         return build_check(
             check_id, "warning", f"Chat activé mais aucun service installé et {url} injoignable.",
@@ -1654,9 +1673,7 @@ def check_telegram(workspace: Path, home: Path, config: dict, now: datetime) -> 
 
 
 def _find_opencode() -> Optional[str]:
-    extra = [str(Path.home() / ".local/bin"), str(Path.home() / ".opencode/bin"),
-             "/opt/homebrew/bin", "/usr/local/bin"]
-    return shutil.which("opencode", path=os.pathsep.join([os.environ.get("PATH", ""), *extra]))
+    return _which_with_extra("opencode")
 
 
 def check_opencode_cli(config: dict) -> dict:
