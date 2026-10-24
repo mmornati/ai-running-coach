@@ -278,6 +278,24 @@ dans la semaine (`virtual_route`). Voir [Parcours MyWhoosh](skills/mywhoosh-rout
   pas de puissance ; les re-extraire avec `python3 skills/fit-download/scripts/download_fit.py
   --refresh-dynamics` (ou les re-télécharger avec `--json --overwrite`).
 
+## La montre COROS — `[coros]`
+
+```toml
+[coros]
+mcp = "off"   # off (défaut) | relay
+```
+
+| Valeur | Effet |
+|---|---|
+| `off` | Défaut : aucun serveur installé, aucun agent ne parle de COROS. |
+| `relay` | `./install.sh --coros` déclare le serveur MCP `coros` dans la configuration de chaque IA : un relais local (`scripts/arc_coros_mcp.py`) vers le MCP officiel de COROS. Vous vous connectez **une seule fois** (`python3 scripts/arc_coros_auth.py login`, interactif, jamais en headless) ; les jetons restent dans `~/.config/ai-running-coach/coros/` (mode 600), jamais affichés. |
+
+Écrite par `install.sh` (`--coros` pose `relay`, `--no-coros` revient à `off`, `--source coros` implique `relay`).
+Avec une autre source de données, COROS se lit seulement dans la session, sans persistance
+automatique ; avec `[data].source = "coros"` ([voir plus bas](#la-source-de-donnees-datasource-68)), COROS devient la
+source primaire, comme Garmin : activités, FIT, bilan matinal, séances envoyées à la montre,
+surveillance (`[sync].mode = "watch"`). Détail : [Montres COROS](coros.md).
+
 ## Quelle source pour mon appareil ?
 
 Deux questions distinctes : d'où viennent **vos séances** (`[data].source`, voir la
@@ -580,6 +598,7 @@ Conteneur lancé par `install.sh` (`--dashboard-docker`, voir
 | `docker` | `off` (réponse « non », ou désactivé) \| `local` (`127.0.0.1:<port>`) \| `traefik`. Absente : la question est posée au prochain `./install.sh` en terminal, si Docker est présent. |
 | `docker_host` | Avec `traefik` : adresse servie (défaut `coach.localhost`). |
 | `docker_auth` | Avec `traefik` : middleware d'authentification. Vide seulement si Traefik ne publie ses ports que sur `127.0.0.1`. |
+| `map_tiles`, `map_attribution` | Fond de carte de la page séance (modèle d'URL de tuiles raster `{z}/{x}/{y}`, en https) et son attribution. Vide = aucune tuile, trace seule (hors ligne). Relancer le tableau de bord après modification. |
 | `docker_network`, `docker_entrypoint` | Avec `traefik` : réseau et point d'entrée, détectés sur le conteneur Traefik. |
 
 ## La langue — `[language]`
@@ -606,6 +625,11 @@ pour les changer, sauf `mode`/`times`, voir [Le coach dans la poche](mobile.md))
 
 | Clé | Effet |
 |---|---|
+| `mode` | `"schedule"` (défaut) : le LLM tourne aux heures de `times`. `"watch"` : `scripts/watch.py` sonde Garmin ou COROS sans LLM et ne lance la synchronisation que s'il y a du neuf ([Le coach dans la poche](mobile.md)). Réinstaller avec `./install.sh --daily-sync` après un changement. |
+| `times` | Heures locales de lancement en mode `schedule` (défaut `["07:15", "14:15"]`). |
+| `watch_interval_min`, `settle_min`, `min_gap_min`, `max_runs_per_day`, `fallback_times` | Mode `watch` : intervalle de sondage (1 à 59 min), délai après le dernier envoi de la montre, écart minimal entre deux runs, plafond quotidien, filet de sécurité (`[]` le désactive). Défauts dans `config/workspace.toml`. |
+| `lookback_days` | Jours vérifiés à chaque run (aujourd'hui inclus) : seuls les fichiers manquants sont récupérés. |
+| `git_autocommit` | `false` (défaut). `true` : commit + push du workspace après chaque run, s'il est un dépôt versionné ([Votre workspace privé](workspace.md)). |
 | `runner` | `"claude"` (défaut) \| `"codex"` \| `"copilot"` \| `"opencode"` \| `"gemini"` \| `"cursor"`. L'application macOS sélectionne automatiquement l'assistant choisi. |
 | `model` | Pour `opencode` en mode API, identifiant `fournisseur/modèle` (ex. `openrouter/deepseek/deepseek-v4.1-flash`). Sans modèle ni clé API, OpenCode réutilise le fournisseur connecté. Optionnel pour `claude` en mode API. |
 | `base_url` | Point d'accès d'une API compatible OpenAI autre qu'OpenRouter (runner `opencode`). |
@@ -724,9 +748,16 @@ démarrage d'une session Claude Code et, une fois par release, par la notificati
 daily-sync. `check = false` coupe tout : aucun appel réseau, aucune mention. Voir
 [Mettre à jour (/update-coach)](skills/update-coach.md).
 
-## Notifications et synchronisation
+## Notifications — `[notifications]`
 
-`[notifications]` et `[sync]` sont décrits dans
+| Clé | Effet |
+|---|---|
+| `provider` | `"none"` (défaut) \| `"ntfy"` : notification push après chaque synchronisation. |
+| `ntfy_url`, `ntfy_topic` | Serveur ntfy (défaut `https://ntfy.sh`) et sujet auquel votre téléphone est abonné. |
+| `ntfy_token_file` | Fichier d'un jeton d'accès (hors dépôt), optionnel. |
+| `token_alerts`, `token_alert_days` | Alerte avant l'expiration des jetons Garmin (défaut `true`, seuils `[14, 3]` jours ; liste vide = désactivée). |
+
+`scripts/setup-ntfy.sh` écrit ces clés dans `workspace.user.toml`. Voir aussi
 [Votre workspace privé](workspace.md) et [Le coach dans la poche](mobile.md).
 
 ## Vérifier

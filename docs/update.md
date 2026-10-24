@@ -32,6 +32,32 @@ git pull --ff-only
 python3 scripts/coach_doctor.py
 ```
 
+## Passer de la 1.3 à la 1.4
+
+La 1.4 ajoute COROS, le choix de l'IA, l'épopée chaussures, l'export Vanoor, plusieurs workspaces sur
+une machine et un tableau de bord installable (liste complète : [Nouveautés](nouveautes.md)). Rien ne
+casse : aucune donnée à migrer, aucune option nouvelle à passer.
+
+1. **Mise à jour ordinaire** : `/update-coach`, ou à la main `git pull --ff-only` puis
+   `./install.sh` avec vos options d'origine (voir [En bref](#en-bref)). Les nouveaux skills
+   (`/shoes`, `shoe-specs`, `shoe-selection`, `vanoor-export`…) apparaissent grâce au rejeu d'`install.sh`.
+2. **Machine coach avec `daily-sync`** : la planification est désormais **propre à chaque workspace**
+   (#127). Si votre synchronisation tourne en mode `watch`, suivez
+   [le script de migration](#mode-watch-garmin_watchpy-devient-watchpy-coros-planification-par-workspace-127)
+   (`scripts/migrate-sync-127.sh`) pour ne pas obtenir deux synchronisations ; en mode `schedule`, relancez
+   `./install.sh --daily-sync --workspace <votre workspace>` (toujours avec `--workspace`).
+3. **Application Mac** : la mise à jour est proposée par l'app (Sparkle, signature Ed25519 vérifiée) ; la
+   première fois depuis une version sans ce mécanisme, une dernière installation manuelle du DMG est
+   nécessaire. Voir [Mises à jour macOS](macos.md#mises-a-jour).
+4. **Tableau de bord en Docker** : `scripts/update-docker.sh` reconstruit et relance
+   ([Docker](dashboard/docker.md)). L'image est aussi publiée sur GHCR
+   (`ghcr.io/mmornati/ai-running-coach-dashboard` : `:latest` = dernière release stable, `:edge` = tête de
+   `main` après tests verts, `:X.Y.Z` pour épingler) : [Images publiées](dashboard/docker.md#images-publiees-ghcr).
+5. **Tableau de bord** : le design « roadbook » devient le design par défaut ; l'ancien reste accessible avec
+   `?design=classic` jusqu'à la 1.5. Rechargez la page une fois (l'application installable met ses
+   fichiers en cache).
+6. **Vérifiez** : `python3 scripts/coach_doctor.py`.
+
 ## Ce qu'un `git pull` seul ne met pas à jour
 
 Les agents et skills existants sont des **liens** vers le moteur : un `git pull` suffit

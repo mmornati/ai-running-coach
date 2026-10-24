@@ -18,6 +18,8 @@ Oui, le projet est **en français par défaut** : les agents, les skills et la d
 
 **Garmin Connect** (montres et capteurs Garmin) est la destination primaire par défaut, installée automatiquement par `./install.sh`. **Intervals.icu** (#68) peut aussi devenir la source primaire avec `./install.sh --source intervals` — voir [Configuration Intervals.icu](intervals-setup.md) — ou rester en secondaire, uniquement sur demande explicite à l'agent `coach`, voir [configurer Intervals.icu sans passer par `install.sh`](#comment-configurer-intervalsicu-sans-passer-par-installsh) ci-dessous.
 
+**COROS** est une source primaire complète, comme Garmin, avec `./install.sh --source coros` : voir [Montres COROS](coros.md).
+
 **Strava** (#164) — la source « universelle » de toutes les marques de montres — peut aussi être la source primaire avec `./install.sh --source strava` (Node.js 18+ requis) : voir [Configuration Strava](strava-setup.md). Sans HRV/sommeil/readiness ni push de séances, mais avec les flux par seconde pour les KPI.
 
 ## Installation
@@ -54,7 +56,7 @@ Environ **6 mois**. Après expiration, relancez `uv run garmin-mcp-auth`.
 
 ### Puis-je utiliser le projet sans compte Garmin ?
 
-Non, l'accès à Garmin Connect est requis pour la synchronisation des données.
+Oui. Garmin n'est que la source par défaut : choisissez Intervals.icu (`--source intervals`), Strava (`--source strava`) ou COROS (`--source coros`) à l'installation. Les fonctions propres à Garmin (readiness, FC de récupération, matériel par séance…) sont alors dites indisponibles plutôt que simulées : voir [Quelle source pour mon appareil ?](configuration.md#quelle-source-pour-mon-appareil).
 
 ## Intervals.icu
 
@@ -118,6 +120,18 @@ surveillance), sans compte tiers, avec une seule connexion pour toutes les IA. L
 coach envoie vos séances à la montre (et planifie vos séances types de renforcement)
 en interactif, après votre « oui ». Avec une autre source, `./install.sh --coros`
 branche la montre seule. Voir [Montres COROS](coros.md).
+
+### Quelle IA choisir, et puis-je en changer ?
+
+Celle que vous payez déjà : Claude (Claude Code), ChatGPT Plus/Pro ou GitHub Copilot (`./install.sh --llm chatgpt|copilot --connect`), sinon OpenRouter connecté en un clic (`--llm openrouter --connect`), avec un essai gratuit limité (`--llm openrouter-free`). La synchronisation automatique peut changer d'IA seule, sans toucher au chat : `python3 scripts/arc_llm.py sync …`. `python3 scripts/arc_llm.py check` (ou « Tester la connexion » dans l'application) vérifie la clé, le crédit et le quota. Voir [Choisir son IA](choisir-son-ia.md).
+
+### Puis-je suivre plusieurs athlètes sur la même machine ?
+
+Oui : un workspace par athlète (`--workspace`), avec ses propres jetons Garmin (`--garmin-tokens`), ses identifiants intervals.icu (`--intervals-dir`) et sa propre planification de synchronisation. Voir [Plusieurs workspaces](workspace.md#plusieurs-workspaces-et-plusieurs-athletes) ; pour un seul tableau de bord et un seul chat, le [mode famille](family.md).
+
+### Comment passer de la 1.3 à la 1.4 ?
+
+Tirez le moteur et relancez `install.sh` avec les mêmes options (ou `/update-coach`) ; une machine coach en mode `watch` ou `daily-sync` demande une étape de plus. Détail : [Mettre à jour](update.md#passer-de-la-13-a-la-14).
 
 ## Agents
 
