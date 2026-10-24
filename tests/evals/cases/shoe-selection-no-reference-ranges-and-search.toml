@@ -1,0 +1,28 @@
+# Choix de chaussures (#302) : aucune paire de référence (pas de fiche, pas de bilan) → chemin
+# « recherche » : plages cibles (`shoe-needs`, « données insuffisantes » dit explicitement), puis modèles
+# cherchés EN LIGNE avec leurs sources ; aucune continuité inventée. Rappels : essayer en magasin, rodage.
+#
+# Limite du harnais : pas de garantie de recherche web ; on vérifie plages + rappels, et qu'aucune
+# prévention de blessure n'est promise.
+# `must_match` : plages (drop/pile), données insuffisantes ou plages larges, essayer en magasin / confort.
+# `must_not_match` : prix / achat, `/coach-setup`, une promesse de prévention de blessure.
+id = "shoe-selection-no-reference-ranges-and-search"
+prompt = "/shoes trail_long"
+fixture = "gear-three-pairs"
+
+[config.language]
+responses = "fr"
+
+[expect]
+must_match = [
+  "(plage|fourchette|entre \\d)[^\\n]{0,120}(drop|pile|stack)|(drop|pile|stack)[^\\n]{0,80}(plage|fourchette|\\d+\\s?(à|-|–)\\s?\\d+)",
+  "(donn[ée]es insuffisantes|plages? larges?|aucune (paire de )?r[ée]f[ée]rence|pas de r[ée]f[ée]rence)",
+  "(essay|magasin|confort)",
+]
+must_not_match = [
+  "coach-setup",
+  "(€|\\$|euros?)\\s*\\d|\\d+\\s?(€|\\$|euros?)\\b",
+  "(achet(e|ez|er)\\s+(la|le|les)|lien d['’]achat|code promo)",
+  "(pr[ée]vient|[ée]vite(ra)?|prot[èe]ge(ra)?)\\s+(les |des |toute )?blessures?",
+]
+files_absent = ["gear/*_shoe_recommendation_*.md"]

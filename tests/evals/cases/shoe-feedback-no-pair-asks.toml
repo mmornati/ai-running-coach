@@ -1,0 +1,27 @@
+# Retour de chaussant (#299) : une séance sans paire identifiée → le coach DEMANDE quelle paire avant
+# d'écrire le moindre `shoe_feedback` (contrat : un retour exige un `gear_id`). Il ne suppose pas la
+# paire « par défaut » du profil. Le prompt donne sport + durée (même raison que `log-freeform`) mais
+# aucune paire.
+#
+# Limite du harnais : on vérifie la question et l'absence d'écriture du retour ; l'écriture d'une fiche
+# d'activité minimale (sans retour de chaussant) reste permise.
+id = "shoe-feedback-no-pair-asks"
+prompt = "/log Sortie de ce matin, running, 45 min : ampoule au talon gauche, confort 6"
+fixture = "gear-three-pairs"
+
+[config.language]
+responses = "fr"
+
+[expect]
+# Une vraie question sur la paire.
+must_match = [
+  "(quelle|laquelle)[^\\n]{0,30}(paire|chaussure)|(speedgoat|pegasus|s/?lab)[^\\n]{0,80}\\?",
+]
+# Ne jamais annoncer le retour comme écrit sans paire.
+must_not_match = [
+  "(j['’]ai|je viens d['’]|noté)[^\\n]{0,40}(ampoule|confort)[^\\n]{0,60}(speedgoat|pegasus|slab)",
+]
+
+[[expect.arc_field_absent]]
+glob = "activities/*.md"
+paths = ["shoe_feedback"]

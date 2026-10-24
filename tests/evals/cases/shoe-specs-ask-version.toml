@@ -1,0 +1,24 @@
+# Fiche de chaussure (#298) : « Ultra Glide » peut être la 1, 2, 3, 4 ou une S/Lab, aux caractéristiques
+# différentes. Sans date d'achat ni étiquette, le coach DEMANDE la version (jamais de devinette) et
+# n'écrit aucune fiche ni ne sort de chiffre non sourcé.
+#
+# Limite du harnais : pas de recherche web ; on vérifie la question de version et l'absence d'écriture.
+# `must_match` : une question sur la version/l'année (ou la date d'achat qui la tranche).
+# `must_not_match` : annoncer un drop/une pile/un poids chiffrés sans source (un nombre de mm ou de g
+# attaché à l'un de ces mots), ou annoncer la fiche comme écrite.
+id = "shoe-specs-ask-version"
+prompt = "Ajoute mes Salomon Ultra Glide à mes chaussures et fais-moi la fiche de caractéristiques."
+fixture = "configured"
+
+[config.language]
+responses = "fr"
+
+[expect]
+must_match = [
+  "(quelle|quel|laquelle)[^\\n]{0,60}(version|g[ée]n[ée]ration|mod[èe]le)|version[^\\n]{0,60}\\?|(date|ann[ée]e)[^\\n]{0,40}(achat|sortie)[^\\n]{0,20}\\?",
+]
+must_not_match = [
+  "(drop|pile|stack|poids|weight)[^\\n]{0,25}\\d+(?:[,.]\\d+)?\\s?(mm|g\\b|grammes)",
+  "(j['’]ai|je viens d['’]|je viens de)\\s+(enregistr|[ée]crit|cr[ée]{1,2}|termin)[^\\n]{0,40}(fiche|specs)",
+]
+files_absent = ["gear/specs/*.md"]

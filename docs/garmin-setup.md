@@ -172,6 +172,16 @@ confirmation explicite dans la conversation, jamais en synchronisation automatiq
   votre suivi peut alimenter son `départ` (départ = total Garmin − kilomètres déjà comptés par vos
   séances, jamais négatif : aucun double comptage). Pour l'historique déjà dans le workspace, voir
   [Rattraper le matériel de l'historique](#rattraper-le-materiel-de-lhistorique).
+- **Retraite décidée dans Garmin.** Quand vous retirez une paire dans Garmin Connect, le coach la
+  traite comme retirée dès qu'il relit `get_gear` (en conversation, ou une fois par jour par la
+  synchronisation automatique) : plus d'alerte de seuil ni de rappel d'inspection, même si sa puce
+  ne dit pas encore `(retirée)`. Le tableau de bord l'affiche « retirée (Garmin) ». Le coach vous
+  propose ensuite, une fois et seulement en conversation, d'écrire `(retirée AAAA-MM-JJ)` sur la
+  puce (date de fin Garmin) ; la synchronisation automatique ne modifie jamais le profil. L'inverse
+  (retirée au profil, active dans Garmin) est signalé, jamais annulé : le profil prime. Une paire
+  `(par défaut)` retirée à une date connue garde les séances jusqu'à cette date.
+  Commande : `python3 scripts/arc_index.py garmin-gear-status [--garmin-gear-json <fichier>|-]
+  [--mark-retired <id>]` ; instantané dérivé `.arc/garmin_gear.json`.
 - **Priorité d'attribution.** Votre déclaration en chat > matériel attaché par la montre
   à la séance (un seul `get_activity_gear` par séance **nouvelle**) > `(par défaut)`. Si Garmin
   dit A et que vous dites B, vous gagnez et le coach le signale une fois. Un matériel Garmin sans
@@ -241,7 +251,7 @@ blanche : `get_daily_weigh_ins` (pesées d'un jour) et `get_weigh_ins` (pesées 
 - **Installations existantes.** Relancez `./install.sh` pour mettre à jour la liste blanche de
   `.mcp.json`. En mode passerelle, ajoutez `get_daily_weigh_ins,get_weigh_ins` à la main à
   `GARMIN_ENABLED_TOOLS` de `~/.config/leanproxy_servers.yaml`.
-- **Sources intervals.icu et Strava.** Rien n'est lu : le poids reste celui que vous déclarez.
+- **Sources intervals.icu, Strava et COROS.** Rien n'est lu : le poids reste celui que vous déclarez.
 
 ## Rattraper le matériel de l'historique
 
@@ -296,6 +306,10 @@ Options : `--since AAAA-MM-JJ` (séances du workspace à partir de cette date), 
 `--all-shoes` (propose aussi les paires sans séance dans la période du workspace — les anciennes paires
 retirées, en `(retirée)`), `--json`, `--workspace`, `--tokens-dir`. Le script est idempotent : une seconde
 exécution ne change rien.
+
+**Paires retirées depuis dans Garmin.** Une puce déjà liée (`garmin: <uuid>`) dont la paire a été retirée
+dans Garmin Connect est listée « → retirée dans Garmin » : `--apply` ajoute alors **seulement**
+`(retirée AAAA-MM-JJ)` à la puce (date de fin Garmin) et rafraîchit l'instantané `.arc/garmin_gear.json`.
 
 - **Dépendance.** Comme `download_fit.py`, il utilise `garminconnect` et les jetons locaux (`~/.garminconnect`,
   ou `GARMINTOKENS` de `.mcp.json`) : c'est la seule exception à « bibliothèque standard seule » ; il se relance
@@ -380,6 +394,39 @@ uv run garmin-mcp-auth --verify
 uv run garmin-mcp-auth
 ```
 
+### Un dossier de jetons par workspace (plusieurs workspaces, même utilisateur)
+
+Par défaut, tous les workspaces d'un utilisateur partagent `~/.garminconnect/` : deux athlètes
+sur la même machine se partageraient donc le même compte Garmin. Pour donner à un workspace ses
+propres jetons :
+
+```bash
+./install.sh --workspace ~/coach-alice --garmin-tokens ~/.garminconnect-alice
+```
+
+L'option écrit `GARMINTOKENS` dans l'`env` du serveur `garmin` du `.mcp.json` du workspace (et
+de ses configurations Cursor, Gemini et Windsurf), crée le dossier en `700` et lance
+`garmin-mcp-auth --token-path` sur ce dossier. Elle est **mémorisée** : un `./install.sh` sans
+l'option conserve `GARMINTOKENS` (jamais retiré), et une installation qui n'utilise pas l'option
+ne change pas. Le dossier est aussi noté dans `[credentials].garmin_tokens` de
+`config/workspace.user.toml` (propre au workspace) : il survit à un passage par une autre source
+(`--source intervals` puis retour à `garmin`). La configuration OpenCode globale
+(`~/.config/opencode/opencode.json`) est partagée par tous les workspaces : elle n'est pas modifiée
+dans ce cas. OpenCode interactif ne lit pas le `.mcp.json` mais `opencode.json`, fusionné avec celui
+de la racine du projet ([documentation OpenCode](https://opencode.ai/docs/config/)) : l'installateur
+écrit donc l'entrée `garmin` dans `<workspace>/opencode.json` (fusionnée sans toucher à vos autres
+clés, ajoutée au `.gitignore` du workspace). Valable seulement avec `--source garmin`, et
+**incompatible avec le mode passerelle** (`--use-leanproxy`, y compris mémorisé) : la passerelle
+lance `garmin-mcp` sans cet environnement et lit `~/.garminconnect` ; l'installation s'arrête avec un
+message plutôt que d'écrire une configuration sans effet.
+
+Le même dossier est ensuite utilisé partout, dans l'ordre : `--tokens-dir` d'un script, puis
+`GARMINTOKENS` du `.mcp.json` du workspace, puis `GARMINTOKENS` de l'environnement, puis
+`GARMIN_TOKENS_DIR`, puis `~/.garminconnect` — `/coach-doctor`, la surveillance `garmin_watch.py`,
+`download_fit.py` et `garmin_gear_backfill.py` partagent cette résolution
+(`scripts/arc_credentials.py`). `python3 scripts/coach_doctor.py` indique la source retenue
+(`tokens_dir_source` en JSON). Pour renouveler : `uv run garmin-mcp-auth --token-path <dossier>`.
+
 ## Données accessibles
 
 Les agents accèdent aux outils Garmin directement (mode direct) ou via `leanproxy_invoke_tool(server="garmin", tool="...")` (mode passerelle) :
@@ -403,5 +450,6 @@ Voir aussi la page [Dépannage](troubleshooting.md).
 
 !!! info "Pas de montre Garmin ?"
     `./install.sh --source intervals` remplace tout ce qui précède par
-    Intervals.icu (COROS, Suunto, Polar, Apple...) — voir
-    [Configuration Intervals.icu](intervals-setup.md).
+    Intervals.icu (Suunto, Polar, Apple...) — voir
+    [Configuration Intervals.icu](intervals-setup.md). Montre COROS :
+    [Montres COROS](coros.md).

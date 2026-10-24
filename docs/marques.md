@@ -15,6 +15,7 @@ soutenu par eux.
 | Intervals.icu, Strava | leurs éditeurs respectifs | Services tiers, facultatifs |
 | Vanoor, Apple Watch, HealthFit | leurs éditeurs respectifs | Application de course pour Apple Watch vers laquelle le projet écrit des fichiers de séances au format qu'elle publie, si vous activez `[vanoor].export` ; HealthFit cité comme passerelle Apple Santé → intervals.icu |
 | Open Wearables, Oura, WHOOP, Polar (Nightly Recharge), Ultrahuman, Withings, Apple Health, Samsung Health, Google Health / Fitbit | leurs éditeurs respectifs | Appareils et services cités dans l'audit Open Wearables ; leurs données ne sont lues (en lecture seule, via votre instance Open Wearables) que si vous activez `[health].source = "openwearables"` |
+| COROS® | COROS Wearables Inc. | Montres COROS : poussée des séances planifiées au calendrier COROS par son MCP officiel (skill `coros-workout-scheduling`), si vous l'avez connecté |
 | Strava GAP, COROS Effort Pace, Suunto NGP | leurs éditeurs respectifs (Strava, Inc. ; COROS ; Suunto Oy) | Cités uniquement pour situer notre allure ajustée à la pente parmi des calculs équivalents du marché (voir l'équivalence ci-dessous) — non utilisés par le projet, calculs propriétaires non reproduits |
 
 Ces noms sont cités uniquement pour désigner les services avec lesquels le projet

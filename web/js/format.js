@@ -171,7 +171,11 @@ export const SPORT = {
 export const VERDICT = { green: "Maintenir", amber: "Alléger", red: "Repos" };
 export const WEATHER = { green: "Optimal", yellow: "Vigilance", orange: "Difficile", red: "Dangereux" };
 export const SLOT = { morning: "Matin tôt", midday: "Midi", evening: "Soir", none: "Aucun créneau" };
-export const STATUS = { planned: "Prévue", done: "Faite", missed: "Manquée", moved: "Déplacée", cancelled: "Annulée" };
+export const STATUS = {
+  planned: "Prévue", done: "Faite", missed: "Manquée", moved: "Déplacée", cancelled: "Annulée",
+  // Statuts de la vue Semaine (prévu ↔ réalisé), dérivés par `/api/week`, jamais écrits dans un fichier.
+  pending: "À faire", shortened: "Écourtée", extended: "Allongée", unplanned: "Hors plan",
+};
 export const REPORT = { weekly: "Hebdomadaire", monthly: "Mensuel", comparison: "Comparaison", race: "Course", adhoc: "Ponctuel" };
 
 // Journal des décisions (#55) : déclencheur et issue d'une décision du coach.

@@ -6,9 +6,12 @@ Deux sources, dans cet ordre :
 1. `git describe --tags` quand le moteur est un dépôt git : `v1.1.0` sur une
    release, `v1.1.0-12-gaab4d9c` douze commits plus loin — le fichier VERSION
    dirait encore « 1.1.0 » alors que le code a avancé.
-2. Le fichier `VERSION` à la racine, écrit par le workflow « Tag a release »
-   dans le commit qui porte le tag : seule source sans `.git` (moteur embarqué
-   du DMG macOS, image Docker du tableau de bord, archive GitHub).
+2. Le fichier `VERSION` à la racine : seule source sans `.git`. Il est écrit au
+   build depuis le tag dans le moteur embarqué du DMG macOS
+   (`scripts/build-macos-dmg.sh`) et dans l'image Docker du tableau de bord
+   (`publish.yml`) ; dans le dépôt, il est mis à jour par une PR ordinaire
+   (« Tag a release » ne pousse plus rien sur `main`) et peut retarder d'une
+   release, par exemple dans une archive GitHub.
 
 Aucune des deux : `None`, et le tableau de bord n'affiche rien plutôt qu'un
 numéro inventé.

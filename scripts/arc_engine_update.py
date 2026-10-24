@@ -14,6 +14,27 @@ import tempfile
 BUSY = 75
 
 
+# Copie volontaire de `coach_config.enforce_workspace_lock` (#127) : ce script est embarqué SEUL dans les
+# Resources de l'application macOS (build-macos-dmg.sh), sans `coach_config.py` à côté — aucun import
+# frère possible. Même sémantique ; la parité est verrouillée par tests/install/test_engine_update.py.
+def enforce_workspace_lock(workspace) -> Path:
+    chosen = Path(workspace).expanduser().resolve()
+    if os.environ.get("ARC_LOCK_WORKSPACE") != "1":
+        return chosen
+    locked = os.environ.get("ARC_WORKSPACE", "").strip()
+    if not locked:
+        raise SystemExit(
+            "ERREUR : ARC_LOCK_WORKSPACE=1 sans ARC_WORKSPACE — exécution refusée (verrou sans workspace)."
+        )
+    locked_path = Path(locked).expanduser().resolve()
+    if chosen != locked_path:
+        raise SystemExit(
+            f"ERREUR : workspace refusé ({chosen}) — cette exécution est verrouillée sur "
+            f"{locked_path} (ARC_LOCK_WORKSPACE=1). Retirez --workspace ou utilisez celui de la synchronisation."
+        )
+    return chosen
+
+
 def acquire_lock(workspace: Path, *, exclusive: bool) -> int:
     logs = workspace / "logs"
     logs.mkdir(parents=True, exist_ok=True)
@@ -95,6 +116,7 @@ def main() -> int:
     parser.add_argument("--engine", type=Path)
     parser.add_argument("args", nargs=argparse.REMAINDER)
     options = parser.parse_args()
+    enforce_workspace_lock(options.workspace)
     args = options.args[1:] if options.args[:1] == ["--"] else options.args
     if options.sync:
         if not args:

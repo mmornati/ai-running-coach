@@ -67,6 +67,7 @@ from typing import Any, Dict, List, Optional, Tuple
 # depuis un workspace séparé — resolve() remonte au vrai dossier du moteur).
 sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "scripts"))
 import arc_contract as C  # noqa: E402
+from coach_config import enforce_workspace_lock  # noqa: E402
 from arc_legacy import parse_split_time, parse_splits_table, parse_yaml_block  # noqa: E402,F401
 
 
@@ -597,6 +598,8 @@ def main(argv: Optional[List[str]] = None) -> int:
     ap.add_argument("--json", dest="json_out", default=None,
                     help="Fichier JSON de sortie (dump structuré)")
     args = ap.parse_args(argv)
+    if args.workspace:
+        enforce_workspace_lock(args.workspace)
 
     base_dir = args.dir
     if not os.path.isdir(base_dir):

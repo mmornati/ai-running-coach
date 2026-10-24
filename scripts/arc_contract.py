@@ -51,7 +51,7 @@ HRV_PERSONAL_STATUS = ("sous", "dans_la_norme", "au_dessus", "en_construction")
 VERDICT = ("green", "amber", "red")
 # Contexte du cycle menstruel (#166, opt-in `[health].cycle_tracking`) — voir scripts/arc_cycle.py.
 CYCLE_PHASE = ("menstrual", "follicular", "ovulation", "luteal")
-CYCLE_SOURCE = ("garmin", "intervals", "manual")
+CYCLE_SOURCE = ("garmin", "intervals", "coros", "manual")
 CYCLE_DAY_PLAUSIBLE = (1, 60)
 # Provenance de `health.weight_kg` (#222) : `garmin` = pesée lue dans Garmin Connect
 # (`get_daily_weigh_ins`/`get_weigh_ins`), `chat` = déclarée par l'athlète. Clé absente =
@@ -60,8 +60,12 @@ CYCLE_DAY_PLAUSIBLE = (1, 60)
 WEIGHT_ORIGINS = ("garmin", "chat")
 # Provenance des données santé du bilan matinal (#218, épopée #216) : d'où viennent HRV, FC de repos et
 # sommeil du fichier (scripts/arc_health_source.py). Clé absente = fichier antérieur, réputé venir de
-# `[data].source`. Une seule source santé par fichier.
-HEALTH_SOURCES = ("garmin", "intervals", "openwearables")
+# `[data].source`. Une seule source santé par fichier. `coros` (#168) : montre COROS lue par son MCP
+# officiel avec `[data].source = "coros"` — récupération et score de sommeil COROS vont dans
+# `provider_scores`, jamais dans les clés Garmin.
+HEALTH_SOURCES = ("garmin", "intervals", "openwearables", "coros")
+# Sources dont les scores natifs ne sont JAMAIS des valeurs Garmin (`GARMIN_ONLY_HEALTH_KEYS` refusées).
+NON_GARMIN_SCORE_SOURCES = ("openwearables", "coros")
 # Catégories d'un score NATIF de fabricant (`health.provider_scores`) ; la charge (`strain`) n'est pas un
 # signal de récupération et n'a pas toujours d'échelle bornée : exclue.
 PROVIDER_SCORE_CATEGORIES = ("readiness", "recovery", "sleep")
@@ -143,6 +147,74 @@ GEAR_PHOTO_DIR = "gear/photos/"
 GEAR_PHOTO_EXTENSIONS = (".jpg", ".jpeg", ".png", ".webp")
 GEAR_PHOTOS_MAX = 12
 GEAR_LUG_DEPTH_MM_PLAUSIBLE_MAX = 15.0
+
+# `shoe_spec` (#298, épopée #297) : fiche de caractéristiques d'une paire, `gear/specs/<gear_id>.md`.
+# CHAQUE valeur porte sa provenance `{value, source_type, url, retrieved}` (+ `alternatives`).
+# `measured` (mesure de laboratoire) prime sur `manufacturer` (donnée de la marque) ; `athlete` =
+# valeur saisie ou corrigée par l'athlète, qui valide chaque ligne et a donc le dernier mot.
+SHOE_SOURCE_TYPE = ("measured", "manufacturer", "athlete")
+SHOE_SOURCE_PRIORITY = ("athlete", "measured", "manufacturer")   # du plus au moins prioritaire
+# `basis` (valeur `athlete` seulement) : sur quelle source l'athlète a fondé sa valeur (#301 en a besoin).
+SHOE_BASIS = ("measured", "manufacturer")
+SHOE_CATEGORY = ("road", "trail", "hybrid")
+SHOE_PLATE = ("none", "carbon", "nylon", "rock_plate")
+SHOE_TOE_BOX = ("narrow", "standard", "wide")
+SHOE_SIZE_SYSTEM = ("EU", "US_M", "US_W", "UK", "JP", "CM")
+SHOE_SPEC_FOLDER = "gear/specs"
+# Bornes PLAUSIBLES (inclusives) : une valeur retenue hors bornes est une ERREUR (faute de frappe ou
+# d'unité : pouces, once, paire entière...). Les sous-échelles de l'index minimaliste (Esculier 2015)
+# ont leur propre domaine : flexibilité longitudinale/torsionnelle 0-2,5 par pas de 0,5 ; 0-6 dispositifs.
+SHOE_PLAUSIBLE = {
+    "drop_mm": (-5.0, 20.0),
+    "stack_heel_mm": (0.0, 60.0),
+    "stack_forefoot_mm": (0.0, 60.0),
+    "weight_g": (100.0, 600.0),
+    "lug_depth_mm": (0.0, 12.0),
+    "flexibility_longitudinal": (0.0, 2.5),
+    "flexibility_torsional": (0.0, 2.5),
+    "stability_devices": (0.0, 6.0),
+}
+# Écart au-delà duquel une source ALTERNATIVE est signalée comme aberrante (avertissement) si elle
+# n'est pas marquée `outlier: true` : relatif pour le poids (un 580 g face à ~260 g), absolu en mm
+# pour les cotes (un écart marque/labo de 2-3 mm sur le drop est un vrai désaccord, pas une aberration).
+SHOE_OUTLIER_SPREAD = {
+    "weight_g": ("rel", 0.25),
+    "drop_mm": ("abs", 4.0),
+    "stack_heel_mm": ("abs", 6.0),
+    "stack_forefoot_mm": ("abs", 6.0),
+    "lug_depth_mm": ("abs", 2.0),
+}
+# `activity.shoe_feedback` (#299, épopée #297) : retour de chaussant d'UNE séance, rattaché à son
+# `gear_id`. Liste FERMÉE de problèmes (jamais de texte libre déguisé en `kind` : le détail va dans
+# `notes`). Les zones reprennent EXACTEMENT celles de `gear_inspection` (`GEAR_WEAR_ZONE`) ; un
+# problème sans zone nette (ex. serrage du laçage) omet `zone`. Un problème de chaussant n'est
+# JAMAIS une douleur : `health.pain` reste le seul canal de la douleur (protocole `medical` inchangé).
+SHOE_ISSUE_KIND = (
+    "blister", "toe_box_tight", "heel_slip", "hot_spot", "numbness", "lacing_pressure",
+    "instability", "too_soft", "too_firm", "poor_grip", "upper_tear",
+)
+SHOE_ISSUES_MAX = 12
+# `shoe_spec.verdict` (#299) : bilan de retraite d'une paire — signal principal de la règle de
+# continuité (#302). `change_wanted` : liste fermée, le détail va dans `notes`.
+SHOE_WOULD_REBUY = ("yes", "yes_with_change", "no")
+SHOE_CHANGE_WANTED = (
+    "wider_toe_box", "narrower", "more_drop", "less_drop", "more_cushion", "firmer",
+    "more_grip", "lighter", "more_stable", "other",
+)
+# `shoe_recommendation` (#302, épopée #297) : recommandation de chaussures, `gear/AAAA-MM-JJ_shoe_recommendation_<rôle>.md`.
+# Rôles = vocabulaire de `arc_shoe_usage` / `arc_shoe_needs`. `path` : « continuity » (même modèle ou plus
+# proche modèle de la paire remplacée) ou « search » (plages cibles puis recherche en ligne).
+SHOE_ROLE = ("trail_long", "trail", "road_easy", "road_tempo", "race", "mixed_long", "mixed")
+SHOE_RECO_PATH = ("continuity", "search")
+SHOE_MEDICAL_STATUS = ("clear", "caution", "veto")
+SHOE_MEDICAL_REVIEWER = ("medical", "coach")
+SHOE_CANDIDATES_MAX = 5
+SHOE_RECO_FOLDER = "gear"
+SHOE_RECO_FILENAME_RE = re.compile(r"^(\d{4}-\d{2}-\d{2})_shoe_recommendation_([a-z_]+)\.md$")
+# Champs porteurs de provenance (ordre de la fiche).
+SHOE_VALUE_FIELDS = ("category", "drop_mm", "stack_heel_mm", "stack_forefoot_mm", "weight_g", "midsole_foam",
+                     "midsole_softness", "plate", "lug_depth_mm", "toe_box", "flexibility_longitudinal",
+                     "flexibility_torsional", "stability_devices")
 
 # Matériel, sudation, glucides pendant l'effort (#39 — champs consommés par #40
 # kilométrage chaussures, #41 KPI glucides/h et taux de sudation).
@@ -268,6 +340,11 @@ SCHEMA = {
             # projet (voir `arc_samples.STRAVA_ID_RE`). Mêmes règles que ci-dessus :
             # une activité Strava porte celui-ci et omet les deux autres.
             "strava_activity_id": "strava_id",
+            # COROS (#168) : « c » + le `LabelId` du MCP officiel (ex. "c481221836600803431"),
+            # même convention que Strava (`arc_samples.COROS_ID_RE`). Une activité COROS porte
+            # celui-ci et omet les trois autres ; son `start_time` numérote ses montées
+            # (`arc_climb_match.segment_seed`).
+            "coros_activity_id": "coros_id",
             "name": "str",
             "location": "str",
             "start_time": "datetime",
@@ -310,6 +387,8 @@ SCHEMA = {
             # LA chaussure). Absent = aucun objet attribué, jamais « aucun » écrit en liste vide
             # (une liste vide est acceptée mais sans effet). Ancien fichier sans `gear_ids` : valide.
             "gear_ids": "gear_id_list",
+            # #299 : retour de chaussant de la séance (confort, problèmes, notes) — exige `gear_id`.
+            "shoe_feedback": "{shoe_feedback}",
             # #167 : apport en cours d'effort (`/log`) poussé vers Garmin Connect, après un « oui »
             # explicite — trace d'idempotence (voir SUBSCHEMA["garmin_push"]), jamais écrite en headless.
             "garmin_pushed": "[garmin_push]",
@@ -560,6 +639,62 @@ SCHEMA = {
             "lug_depth_mm": "num+",
         },
     },
+    # Fiche de caractéristiques d'une paire (#298, épopée #297) — fichier `gear/specs/<gear_id>.md`
+    # (le profil reste simple et édité par l'athlète ; le lien se fait par `gear_id`). Clés en anglais,
+    # SI (mm, g). Chaque valeur est un objet `{value, source_type, url, retrieved, alternatives}` ;
+    # `value` = valeur RETENUE (`measured` prime sur `manufacturer`), les autres sources vont dans
+    # `alternatives`. Une caractéristique introuvable est ABSENTE (jamais reprise d'un modèle voisin).
+    # `minimalist_index_pct` n'est PAS persisté : calculé à la lecture (`scripts/arc_shoes.py`).
+    "shoe_spec": {
+        "required": {
+            "date": "date",
+            "gear_id": "gear_id",
+            "brand": "str",
+            "model": "str",
+        },
+        "optional": {
+            "version": "str",
+            "release_year": "int+",
+            "size": "{shoe_size}",
+            "purchase_date": "date",
+            "category": "{shoe_category}",
+            "drop_mm": "{shoe_num}",
+            "stack_heel_mm": "{shoe_num}",
+            "stack_forefoot_mm": "{shoe_num}",
+            "weight_g": "{shoe_weight}",
+            "midsole_foam": "{shoe_text}",
+            "midsole_softness": "{shoe_softness}",
+            "plate": "{shoe_plate}",
+            "lug_depth_mm": "{shoe_num}",
+            "toe_box": "{shoe_toe_box}",
+            "flexibility_longitudinal": "{shoe_num}",
+            "flexibility_torsional": "{shoe_num}",
+            "stability_devices": "{shoe_num}",
+            # #299 : bilan de retraite de la paire (écrit au passage `(retirée)`, jamais en headless).
+            "verdict": "{shoe_verdict}",
+        },
+    },
+    # Recommandation de chaussures (#302, épopée #297) — fichier `gear/AAAA-MM-JJ_shoe_recommendation_<rôle>.md`,
+    # écrit par le skill `shoe-selection` APRÈS présentation à l'athlète et avec son accord
+    # (`athlete_validated: true` obligatoire). `targets` copie les plages de `arc_index.py shoe-needs`
+    # (+ les identifiants de règle appliqués) ; chaque candidat porte ses caractéristiques AVEC leur
+    # provenance (même forme que `shoe_spec`, mesure > marque, jamais inventées), les règles qu'il
+    # satisfait (`fits`) ou non (`misses`). Ni achat, ni lien d'affiliation, ni prix : aucune clé pour cela.
+    "shoe_recommendation": {
+        "required": {
+            "date": "date",
+            "role": _enum(SHOE_ROLE),
+            "path": _enum(SHOE_RECO_PATH),
+            "candidates": "[shoe_candidate]",
+            "athlete_validated": "bool",
+        },
+        "optional": {
+            "replaced_gear_id": "gear_id",
+            "targets": "{shoe_reco_targets}",
+            "medical_veto": "{shoe_medical_veto}",
+            "notes": "str",
+        },
+    },
     "decision": {
         "required": {
             "date": "date",
@@ -709,6 +844,78 @@ SUBSCHEMA = {
             "mywhoosh_task_id": "str",
         },
     },
+    # `shoe_spec.*` (#298) : une valeur avec sa provenance. Les variantes ne diffèrent que par le type
+    # de `value` ; `url` et `retrieved` sont obligatoires (règle transverse) hors `athlete`.
+    "shoe_num": {
+        "required": {"value": "num", "source_type": _enum(SHOE_SOURCE_TYPE)},
+        "optional": {"url": "str", "retrieved": "date", "alternatives": "[shoe_alt]", "basis": _enum(SHOE_BASIS)},
+    },
+    "shoe_weight": {
+        "required": {"value": "num+", "source_type": _enum(SHOE_SOURCE_TYPE)},
+        "optional": {"url": "str", "retrieved": "date", "alternatives": "[shoe_alt]", "basis": _enum(SHOE_BASIS), "reference_size": "str"},
+    },
+    "shoe_text": {
+        "required": {"value": "str", "source_type": _enum(SHOE_SOURCE_TYPE)},
+        "optional": {"url": "str", "retrieved": "date", "alternatives": "[shoe_alt]", "basis": _enum(SHOE_BASIS)},
+    },
+    "shoe_softness": {
+        "required": {"value": "num+", "source_type": _enum(SHOE_SOURCE_TYPE), "scale": "str"},
+        "optional": {"url": "str", "retrieved": "date", "alternatives": "[shoe_alt]", "basis": _enum(SHOE_BASIS)},
+    },
+    "shoe_plate": {
+        "required": {"value": _enum(SHOE_PLATE), "source_type": _enum(SHOE_SOURCE_TYPE)},
+        "optional": {"url": "str", "retrieved": "date", "alternatives": "[shoe_alt]", "basis": _enum(SHOE_BASIS)},
+    },
+    "shoe_toe_box": {
+        "required": {"value": _enum(SHOE_TOE_BOX), "source_type": _enum(SHOE_SOURCE_TYPE)},
+        "optional": {"url": "str", "retrieved": "date", "alternatives": "[shoe_alt]", "basis": _enum(SHOE_BASIS)},
+    },
+    "shoe_category": {
+        "required": {"value": _enum(SHOE_CATEGORY), "source_type": _enum(SHOE_SOURCE_TYPE)},
+        "optional": {"url": "str", "retrieved": "date", "alternatives": "[shoe_alt]", "basis": _enum(SHOE_BASIS)},
+    },
+    # `shoe_spec.*.alternatives[]` : une autre source pour la même caractéristique. `outlier: true` =
+    # aberration constatée et assumée (conservée pour mémoire, jamais retenue ni signalée).
+    "shoe_alt": {
+        "required": {"value": "any", "source_type": _enum(SHOE_SOURCE_TYPE)},
+        "optional": {"url": "str", "retrieved": "date", "outlier": "bool"},
+    },
+    # `activity.shoe_feedback` (#299) : tout est facultatif mais au moins une information est exigée
+    # (règle transverse `_check_shoe_feedback`) ; `comfort` 0 (insupportable) à 10 (parfait).
+    "shoe_feedback": {
+        "required": {},
+        "optional": {"comfort": "shoe_comfort", "issues": "[shoe_issue]", "notes": "str"},
+    },
+    "shoe_issue": {
+        "required": {"kind": _enum(SHOE_ISSUE_KIND)},
+        "optional": {"zone": _enum(GEAR_WEAR_ZONE), "side": _enum(GEAR_SIDE)},
+    },
+    # `shoe_spec.verdict` (#299) : bilan de retraite. `distance_m` = kilométrage de la paire à la retraite.
+    "shoe_verdict": {
+        "required": {"date": "date", "comfort_overall": "shoe_comfort", "would_rebuy": _enum(SHOE_WOULD_REBUY)},
+        "optional": {"change_wanted": "enums:" + "|".join(SHOE_CHANGE_WANTED), "notes": "str",
+                     "distance_m": "num+"},
+    },
+    # `shoe_recommendation.candidates[]` (#302). `specs` : {champ de shoe_spec: valeur avec provenance},
+    # validé champ par champ par `_check_shoe_recommendation` (mêmes règles que `shoe_spec`).
+    "shoe_candidate": {
+        "required": {"brand": "str", "model": "str"},
+        "optional": {"version": "str", "specs": "obj", "fits": "list", "misses": "list",
+                     "vetoed": "bool", "notes": "str"},
+    },
+    "shoe_reco_targets": {
+        "required": {},
+        "optional": {"ranges": "obj", "rule_ids": "list", "insufficient_data": "bool"},
+    },
+    "shoe_medical_veto": {
+        "required": {"status": _enum(SHOE_MEDICAL_STATUS), "reviewer": _enum(SHOE_MEDICAL_REVIEWER)},
+        "optional": {"reason": "str"},
+    },
+    # `shoe_spec.size` : pointure et système (jamais convertie d'un système à l'autre).
+    "shoe_size": {
+        "required": {"value": "num+", "system": _enum(SHOE_SIZE_SYSTEM)},
+        "optional": {},
+    },
     # `gear_inspection.wear_zones[]` (#135) : une zone d'usure constatée sur UNE semelle.
     "wear_zone": {
         "required": {"side": _enum(GEAR_SIDE), "zone": _enum(GEAR_WEAR_ZONE)},
@@ -820,6 +1027,8 @@ KIND_FOLDERS = {
     "race_plan": "planning",
     "decision": "planning",
     "gear_inspection": "gear",
+    "shoe_spec": "gear",
+    "shoe_recommendation": "gear",
 }
 
 # ---------------------------------------------------------------------------
@@ -965,6 +1174,11 @@ def _check_value(spec: str, value, where: str, errors: list, warnings: list) -> 
         if not _is_number(value) or not 0 <= value <= 10:
             fail("un RPE de 0 à 10")
         return
+    if spec == "shoe_comfort":
+        # Confort perçu d'une chaussure (#299) : 0 (insupportable) à 10 (parfait) — jamais un RPE ni une douleur.
+        if not _is_number(value) or not 0 <= value <= 10:
+            fail("un confort de chaussure de 0 à 10")
+        return
     if spec == "pain_score":
         # `health.pain[].score` (#57) : même échelle 0-10 que `rpe`, mais un type
         # DÉDIÉ — sévérité de douleur perçue, jamais un effort — pour ne jamais
@@ -1076,11 +1290,20 @@ def _check_value(spec: str, value, where: str, errors: list, warnings: list) -> 
         if not isinstance(value, str) or not value.strip():
             fail("une chaîne non vide")
         return
+    if spec == "any":
+        # `shoe_spec.*.alternatives[].value` (#298) : présent (non nul) ; son TYPE est vérifié par
+        # `_check_shoe_spec` contre celui de la valeur retenue du champ — un seul message d'erreur.
+        return
     if spec == "strava_id":
         # `strava_activity_id` (#164) : « s » + chiffres — un identifiant sans préfixe se
         # confondrait avec un `garmin_activity_id` et ne se rattacherait à aucun échantillon.
         if not isinstance(value, str) or not re.fullmatch(r"s\d+", value):
             fail("« s » suivi des chiffres de l'identifiant Strava (ex. \"s12345678901\")")
+        return
+    if spec == "coros_id":
+        # `coros_activity_id` (#168) : « c » + chiffres, même raison que `strava_id`.
+        if not isinstance(value, str) or not re.fullmatch(r"c\d+", value):
+            fail("« c » suivi des chiffres du LabelId COROS (ex. \"c481221836600803431\")")
         return
     if spec == "bool":
         if not isinstance(value, bool):
@@ -1399,7 +1622,195 @@ def validate(data: dict) -> tuple:
         _check_decision_created_at(data, errors)
     if kind == "gear_inspection":
         _check_gear_inspection(data, errors, warnings)
+    if kind == "shoe_spec":
+        _check_shoe_spec(data, errors, warnings)
+    if kind == "shoe_recommendation":
+        _check_shoe_recommendation(data, errors, warnings)
+    if kind == "activity":
+        _check_shoe_feedback(data, errors, warnings)
     return errors, warnings
+
+
+def _check_shoe_feedback(data: dict, errors: list, warnings: list) -> None:
+    """Règles transverses de `activity.shoe_feedback` (#299). Le retour de chaussant n'a de sens que
+    rattaché à UNE paire : sans `gear_id` c'est une ERREUR (et non un avertissement), car une note
+    orpheline fausserait l'agrégation par paire (#300) sans que rien ne la signale ; le skill `log`
+    demande la paire AVANT d'écrire, donc une séance conforme n'atteint jamais cette erreur."""
+    fb = data.get("shoe_feedback")
+    if not isinstance(fb, dict):
+        return
+    if not data.get("gear_id"):
+        errors.append("activity.shoe_feedback : exige un gear_id sur la séance (la paire portée) — "
+                      "demander quelle paire avant d'écrire")
+    if not any(fb.get(k) not in (None, "", []) for k in ("comfort", "issues", "notes")):
+        errors.append("activity.shoe_feedback : au moins un confort, un problème ou une note attendu")
+    issues = fb.get("issues")
+    if isinstance(issues, list):
+        if len(issues) > SHOE_ISSUES_MAX:
+            errors.append(f"activity.shoe_feedback.issues : {SHOE_ISSUES_MAX} problèmes au plus")
+        seen = set()
+        for i, issue in enumerate(issues):
+            if not isinstance(issue, dict):
+                continue
+            key = (issue.get("kind"), issue.get("zone"), issue.get("side"))
+            if key in seen:
+                warnings.append(f"activity.shoe_feedback.issues[{i}] : problème en double (même kind/zone/side)")
+            seen.add(key)
+
+
+def _check_shoe_verdict(data: dict, errors: list, warnings: list) -> None:
+    """Règles transverses de `shoe_spec.verdict` (#299)."""
+    v = data.get("verdict")
+    if not isinstance(v, dict):
+        return
+    change = v.get("change_wanted")
+    if v.get("would_rebuy") == "yes_with_change" and not change:
+        errors.append("shoe_spec.verdict.change_wanted : obligatoire quand would_rebuy vaut yes_with_change")
+    if v.get("would_rebuy") == "yes" and change:
+        warnings.append("shoe_spec.verdict.change_wanted : renseigné alors que would_rebuy vaut yes — "
+                        "yes_with_change voulu ?")
+    if isinstance(change, list) and len(set(change)) != len(change):
+        warnings.append("shoe_spec.verdict.change_wanted : valeurs en double")
+
+
+def _check_shoe_spec(data: dict, errors: list, warnings: list) -> None:
+    """Règles transverses de `shoe_spec` (#298) : provenance, bornes, mesure > marque, aberrations."""
+    _check_shoe_verdict(data, errors, warnings)
+    _check_shoe_values(data, "shoe_spec", errors, warnings)
+    # Cohérence drop / cotes : seulement si les trois viennent du MÊME type de source (une cote de
+    # labo face à une cote de marque diffère légitimement — c'est précisément l'écart marque/labo).
+    triplet = [data.get(k) for k in ("drop_mm", "stack_heel_mm", "stack_forefoot_mm")]
+    if all(isinstance(t, dict) and _is_number(t.get("value")) for t in triplet) \
+            and len({t.get("source_type") for t in triplet}) == 1:
+        drop, heel, fore = (t["value"] for t in triplet)
+        if abs(drop - (heel - fore)) > 1.0:
+            warnings.append(f"shoe_spec.drop_mm : {drop:g} mm incohérent avec stack_heel_mm - stack_forefoot_mm "
+                            f"({heel - fore:g} mm) pour des valeurs de même source")
+    year = data.get("release_year")
+    if isinstance(year, int) and not 1990 <= year <= 2100:
+        warnings.append(f"shoe_spec.release_year : {year} improbable")
+
+
+def _check_shoe_values(values: dict, prefix: str, errors: list, warnings: list) -> None:
+    """Provenance, bornes, mesure > marque et aberrations des valeurs de caractéristiques de `values`
+    ({champ de `SHOE_VALUE_FIELDS`: valeur avec provenance}) — partagé par `shoe_spec` (#298) et par les
+    candidats de `shoe_recommendation` (#302)."""
+    for field in SHOE_VALUE_FIELDS:
+        obj = values.get(field)
+        if not isinstance(obj, dict):
+            continue
+        where = f"{prefix}.{field}"
+        alts = [a for a in (obj.get("alternatives") or []) if isinstance(a, dict)]
+        for label, entry in [(where, obj)] + [(f"{where}.alternatives[{i}]", a) for i, a in enumerate(alts)]:
+            if entry.get("source_type") in ("measured", "manufacturer"):
+                for key in ("url", "retrieved"):
+                    if entry.get(key) is None:
+                        errors.append(f"{label}.{key} : obligatoire pour une source « {entry['source_type']} » "
+                                      "(provenance de chaque valeur)")
+        for label, entry in [(where, obj)] + [(f"{where}.alternatives[{i}]", a) for i, a in enumerate(alts)]:
+            retrieved = entry.get("retrieved")
+            if isinstance(retrieved, str) and DATE_RE.match(retrieved):
+                try:
+                    if date.fromisoformat(retrieved) > date.today():
+                        warnings.append(f"{label}.retrieved : {retrieved} est dans le futur — date de consultation à vérifier")
+                except ValueError:
+                    pass   # déjà signalé par `_check_value`
+        if obj.get("basis") is not None and obj.get("source_type") != "athlete":
+            errors.append(f"{where}.basis : réservé à une valeur « athlete » (la source sur laquelle l'athlète "
+                          "a fondé son choix) ; une valeur measured/manufacturer porte déjà sa source")
+        if obj.get("basis") is not None and obj.get("source_type") == "athlete" and obj.get("url") is None:
+            warnings.append(f"{where}.url : une valeur « athlete » avec basis « {obj['basis']} » devrait citer "
+                            "l'url de la source sur laquelle elle est fondée")
+        # Chaque alternative a le TYPE de la valeur retenue (nombre, texte, énumération du champ) : sinon
+        # « huit » ou « graphene » passeraient comme alternatives.
+        value_spec = SUBSCHEMA[SCHEMA["shoe_spec"]["optional"][field][1:-1]]["required"]["value"]
+        for i, alt in enumerate(alts):
+            if alt.get("value") is not None:
+                _check_value(value_spec, alt["value"], f"{where}.alternatives[{i}].value", errors, warnings)
+        value = obj.get("value")
+        bounds = SHOE_PLAUSIBLE.get(field)
+        if bounds and _is_number(value):
+            lo, hi = bounds
+            if not lo <= value <= hi:
+                errors.append(f"{where}.value : {value:g} hors de la plage plausible ({lo:g} à {hi:g}) — "
+                              "faute de frappe ou d'unité ?")
+        if field in ("flexibility_longitudinal", "flexibility_torsional") and _is_number(value) \
+                and (value * 2) != int(value * 2):
+            errors.append(f"{where}.value : sous-échelle de l'index minimaliste par pas de 0,5 attendue")
+        if field == "stability_devices" and _is_number(value) and value != int(value):
+            errors.append(f"{where}.value : un nombre entier de dispositifs (0 à 6) attendu")
+        retained = obj.get("source_type")
+        spread = SHOE_OUTLIER_SPREAD.get(field)
+        for i, alt in enumerate(alts):
+            alt_where = f"{where}.alternatives[{i}]"
+            alt_value, outlier = alt.get("value"), bool(alt.get("outlier"))
+            if retained == "manufacturer" and alt.get("source_type") == "measured" and not outlier:
+                errors.append(f"{alt_where} : une valeur « measured » prime sur « manufacturer » — "
+                              f"la valeur retenue de {field} doit être la mesure")
+            if outlier or not _is_number(alt_value):
+                continue
+            if bounds and not bounds[0] <= alt_value <= bounds[1]:
+                warnings.append(f"{alt_where} : {alt_value:g} hors de la plage plausible "
+                                f"({bounds[0]:g} à {bounds[1]:g}) — marquer `outlier: true` si c'est une aberration")
+            elif spread and _is_number(value):
+                gap = abs(alt_value - value)
+                limit = spread[1] * abs(value) if spread[0] == "rel" else spread[1]
+                if gap > limit:
+                    warnings.append(f"{alt_where} : {alt_value:g} s'écarte de la valeur retenue ({value:g}) de plus "
+                                    "que l'écart attendu entre sources — aberration probable, à marquer "
+                                    "`outlier: true` si confirmé")
+
+
+def _check_shoe_recommendation(data: dict, errors: list, warnings: list) -> None:
+    """Règles transverses de `shoe_recommendation` (#302) : accord de l'athlète, chemin de continuité,
+    candidats (nombre, caractéristiques avec provenance), cohérence du veto médical."""
+    if data.get("athlete_validated") is False:
+        errors.append("shoe_recommendation.athlete_validated : true attendu — la recommandation n'est écrite "
+                      "qu'après avoir été montrée à l'athlète et avec son accord")
+    if data.get("path") == "continuity" and not data.get("replaced_gear_id"):
+        errors.append("shoe_recommendation.replaced_gear_id : obligatoire pour le chemin « continuity » "
+                      "(la paire dont on prolonge le modèle)")
+    cands = data.get("candidates")
+    if isinstance(cands, list):
+        if not cands:
+            errors.append("shoe_recommendation.candidates : au moins un candidat attendu")
+        if len(cands) > SHOE_CANDIDATES_MAX:
+            warnings.append(f"shoe_recommendation.candidates : {len(cands)} candidats, plus de "
+                            f"{SHOE_CANDIDATES_MAX} — une comparaison lisible en compte 3 à 5")
+        for i, cand in enumerate(cands):
+            if not isinstance(cand, dict):
+                continue
+            where = f"shoe_recommendation.candidates[{i}]"
+            for key in ("fits", "misses"):
+                items = cand.get(key)
+                if isinstance(items, list):
+                    for j, item in enumerate(items):
+                        if not isinstance(item, str) or not item.strip():
+                            errors.append(f"{where}.{key}[{j}] : une chaîne non vide attendue")
+            specs = cand.get("specs")
+            if not isinstance(specs, dict):
+                continue
+            for field, value in specs.items():
+                if field not in SHOE_VALUE_FIELDS:
+                    errors.append(f"{where}.specs.{field} : caractéristique inconnue (parmi "
+                                  f"{', '.join(SHOE_VALUE_FIELDS)})")
+                    continue
+                _check_value(SCHEMA["shoe_spec"]["optional"][field], value, f"{where}.specs.{field}",
+                             errors, warnings)
+            _check_shoe_values(specs, f"{where}.specs", errors, warnings)
+    targets = data.get("targets")
+    if isinstance(targets, dict) and isinstance(targets.get("rule_ids"), list):
+        for j, rid in enumerate(targets["rule_ids"]):
+            if not isinstance(rid, str) or not rid.strip():
+                errors.append(f"shoe_recommendation.targets.rule_ids[{j}] : un identifiant de règle (chaîne) attendu")
+    veto = data.get("medical_veto")
+    if isinstance(veto, dict) and veto.get("status") == "veto":
+        if not veto.get("reason"):
+            errors.append("shoe_recommendation.medical_veto.reason : obligatoire quand status vaut veto")
+        if isinstance(cands, list) and cands and not any(isinstance(c, dict) and c.get("vetoed") for c in cands) \
+                and not data.get("notes"):
+            warnings.append("shoe_recommendation.medical_veto : veto sans candidat marqué `vetoed: true` ni note — "
+                            "qu'est-ce qui a été écarté ?")
 
 
 def _check_gear_inspection(data: dict, errors: list, warnings: list) -> None:
@@ -1465,14 +1876,14 @@ def _check_health_weight(data: dict, errors: list) -> None:
 def _check_health_provenance(data: dict, errors: list) -> None:
     """Cohérence de la provenance santé (#218). `health_provider` n'a de sens que pour
     `openwearables` ; les clés Garmin (readiness, sommeil noté, body battery, stress) ne sont jamais
-    remplies depuis `openwearables` ; chaque score natif tient dans son échelle."""
+    remplies depuis `openwearables` ni `coros` ; chaque score natif tient dans son échelle."""
     source = data.get("health_source")
     if data.get("health_provider") is not None and source != "openwearables":
         errors.append("health.health_provider : exige health_source « openwearables »")
-    if source == "openwearables":
+    if source in NON_GARMIN_SCORE_SOURCES:
         for key in GARMIN_ONLY_HEALTH_KEYS:
             if data.get(key) is not None:
-                errors.append(f"health.{key} : valeur Garmin, incompatible avec health_source « openwearables » "
+                errors.append(f"health.{key} : valeur Garmin, incompatible avec health_source « {source} » "
                               "(le score natif va dans provider_scores, sans être remis sur 100)")
     if data.get("health_provider") == "apple" and data.get("hrv_overnight_ms") is not None:
         errors.append("health.hrv_overnight_ms : Apple Health ne fournit que la HRV en SDNN, non comparable au "

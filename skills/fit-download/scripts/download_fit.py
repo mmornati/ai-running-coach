@@ -1,12 +1,13 @@
 #!/usr/bin/env python3
 """Téléchargeur de fichiers FIT — Garmin Connect ou Intervals.icu, ou flux Strava, sans passer par le MCP.
 
-Trois sources, choisies par `--source` (défaut : `[data].source` du workspace, #68) :
+Quatre sources, choisies par `--source` (défaut : `[data].source` du workspace, #68) :
 
 - **`garmin`** — résout le timeout MCP de `get_activity_fit_data` (records GPS =
   payload de plusieurs Mo qui dépasse le timeout côté client). Utilise la librairie
   `garminconnect` déjà installée dans l'environnement `garmin-mcp` et les tokens
-  locaux `~/.garminconnect` — aucun mot de passe nécessaire.
+  locaux `~/.garminconnect` (ou `GARMINTOKENS` du `.mcp.json` du workspace, #127) — aucun mot de
+  passe nécessaire.
 - **`intervals`** — `GET /api/v1/activity/<id>/fit-file` de l'API Intervals.icu
   (bibliothèque standard, `urllib`), authentifié par la clé API déjà configurée pour
   le serveur MCP `intervals-icu-mcp` (`~/.config/ai-running-coach/intervals-icu-mcp/.env`,
@@ -23,6 +24,10 @@ Trois sources, choisies par `--source` (défaut : `[data].source` du workspace, 
   un jeton expiré est rafraîchi (le nouveau jeton, rotatif, est réécrit atomiquement dans ce même
   fichier) — aucun secret n'est jamais affiché. Pas de `.fit` brut ni de `<id>.records.json` : la
   copie normalisée est toujours écrite, avec ou sans `--json`.
+- **`coros`** (#168) — l'URL du FIT d'origine est demandée au MCP officiel de COROS
+  (`queryActivityFitFileDownloadUrls`) par le relais du projet (`scripts/arc_coros_mcp.py`, jetons de
+  `scripts/arc_coros_auth.py`, jamais affichés), puis le fichier est lu sur le stockage de COROS, qui
+  le sert sans authentification : cette URL n'est jamais affichée. 50 fichiers par jour selon COROS.
 
 Usage:
   download_fit.py 12345678901                          # -> activities/12345678901.fit
@@ -33,7 +38,7 @@ Usage:
   download_fit.py i123456789 --json --source intervals # -> activities/i123456789.fit (+ fit/i123456789.json)
 
 Options:
-  --source       garmin | intervals | strava (défaut: [data].source du workspace, sinon garmin)
+  --source       garmin | intervals | strava | coros (défaut: [data].source du workspace, sinon garmin)
   --output-dir   Répertoire de sortie (défaut: activities/)
   --json         Écrit aussi <id>.records.json (bruts fitparse) ET la copie normalisée
                  activities/fit/<id>.json (#42 — ingérée par `scripts/arc_index.py`)
@@ -53,7 +58,8 @@ Options:
 
 Identifiants : un entier pour Garmin (`garmin_activity_id` du bloc ```arc), une
 chaîne `i<chiffres>` pour Intervals.icu (`intervals_activity_id`), `s<chiffres>` pour Strava
-(`strava_activity_id`, préfixe du projet — l'API rend l'entier nu). La copie
+(`strava_activity_id`, préfixe du projet — l'API rend l'entier nu), `c<chiffres>` pour COROS
+(`coros_activity_id`, « c » + le LabelId). La copie
 normalisée porte ce même identifiant dans son nom (`fit/i123456789.json`) : c'est
 lui qu'`arc_index.py` utilise pour la rattacher à la séance.
 
@@ -132,7 +138,15 @@ _RELAUNCH = {
     },
     # Strava (#164) : téléchargement stdlib et pas de FIT à lire — aucun module, aucun relancement.
     "strava": {"module": None, "env": "STRAVA_PYTHON", "tool": None, "fix": ""},
+    # COROS (#168) : téléchargement stdlib par le relais du projet ; `--json` (lecture fitparse) relance
+    # au besoin avec le lecteur de FIT de `./install.sh --source coros` (`COROS_FIT_READER`), sinon le
+    # python de garmin-mcp ou d'intervals-icu-mcp (`_relaunch_for_fitparse`).
+    "coros": {"module": None, "env": "COROS_PYTHON", "tool": None,
+              "fix": "→ relancez ./install.sh --source coros (installe fitparse dans "
+                     "~/.local/share/ai-running-coach/fit-reader)"},
 }
+# Environnement dédié à la lecture des FIT de la source COROS (install.sh, `COROS_FIT_READER_DIR`).
+COROS_FIT_READER = "~/.local/share/ai-running-coach/fit-reader/bin/python3"
 
 
 _RELAUNCHED_ENV = "ARC_FIT_DOWNLOAD_RELAUNCHED"
@@ -145,16 +159,21 @@ def _relaunch_for_fitparse(argv: list[str]) -> None:
     if _module_available("fitparse"):
         return
     if not os.environ.get(_RELAUNCHED_ENV):
+        candidates = [os.environ.get("COROS_PYTHON") or "", os.path.expanduser(COROS_FIT_READER)]
+        py = pick_relaunch_candidate([c for c in candidates if c])
         for source in ("garmin", "intervals"):
+            if py:
+                break
             spec = _RELAUNCH[source]
             py = pick_relaunch_candidate(relaunch_candidates(
                 os.environ.get(spec["env"]), shutil.which(spec["tool"]), tool=spec["tool"]))
-            if py:
-                r = subprocess.run([py, os.path.abspath(__file__)] + argv,
-                                   env={**os.environ, _RELAUNCHED_ENV: "1"})
-                sys.exit(r.returncode)
+        if py:
+            r = subprocess.run([py, os.path.abspath(__file__)] + argv,
+                               env={**os.environ, _RELAUNCHED_ENV: "1"})
+            sys.exit(r.returncode)
     print("ERREUR : module 'fitparse' introuvable dans cet interpréteur.\n"
-          f"{_RELAUNCH['garmin']['fix']}\n{_RELAUNCH['intervals']['fix']}", file=sys.stderr)
+          f"{_RELAUNCH['garmin']['fix']}\n{_RELAUNCH['intervals']['fix']}\n{_RELAUNCH['coros']['fix']}",
+          file=sys.stderr)
     sys.exit(2)
 
 
@@ -359,15 +378,28 @@ def _read_env_file(path: Path) -> dict:
     return values
 
 
+def _intervals_env_file() -> Path:
+    """`.env` du serveur MCP intervals.icu DU workspace : dossier du wrapper `run.sh` référencé par
+    son `.mcp.json` (`./install.sh --intervals-dir`, #127), sinon `INTERVALS_ENV_FILE`."""
+    try:
+        from arc_credentials import intervals_env_dir  # noqa: E402 (sys.path déjà préparé en tête de module)
+        from coach_setup import workspace_root  # noqa: E402
+
+        return intervals_env_dir(workspace_root()) / ".env"
+    except Exception:  # noqa: BLE001 — résolution impossible : le chemin historique
+        return INTERVALS_ENV_FILE.expanduser()
+
+
 def _intervals_api_key(env_file: Path | None = None) -> str:
     """Clé API Intervals.icu : `$INTERVALS_ICU_API_KEY` si défini (même précédence que
     `intervals-icu-mcp`, pydantic-settings), sinon le `.env` du serveur MCP."""
     key = os.environ.get("INTERVALS_ICU_API_KEY", "").strip()
+    env_file = (env_file or _intervals_env_file()).expanduser()
     if not key:
-        key = _read_env_file((env_file or INTERVALS_ENV_FILE).expanduser()).get("INTERVALS_ICU_API_KEY", "").strip()
+        key = _read_env_file(env_file).get("INTERVALS_ICU_API_KEY", "").strip()
     if not key or key == "your_api_key_here":
         raise IntervalsError(
-            f"clé API Intervals.icu introuvable ($INTERVALS_ICU_API_KEY ou {INTERVALS_ENV_FILE}) — "
+            f"clé API Intervals.icu introuvable ($INTERVALS_ICU_API_KEY ou {env_file}) — "
             "lancez `./install.sh --source intervals` (ou `intervals-icu-mcp-auth`), voir docs/intervals-setup.md")
     return key
 
@@ -612,6 +644,71 @@ def _download_one_strava(activity_id: str, out_dir: Path, tokens: StravaTokens, 
     return out_dir / "fit" / f"{activity_id}.json"
 
 
+# ---------------------------------------------------------------------------
+# Source COROS (#168) — URL du FIT par le MCP officiel (relais du projet), bibliothèque standard
+# ---------------------------------------------------------------------------
+
+# « c » + le `LabelId` de `querySportRecords` (18 chiffres) : `coros_activity_id` du contrat.
+COROS_ID_RE = re.compile(r"^c\d+$")
+# COROS ne vérifie pas `sportType` pour rendre l'URL (constaté le 23/10/2026 : 100 et 102 rendent le
+# même fichier) mais l'exige avec `labelId` : on envoie celui de la course à pied.
+COROS_URL_SPORT_TYPE = 100
+# L'URL rendue pointe vers le stockage de COROS et se télécharge SANS authentification : jamais
+# affichée ni journalisée, et seule une URL https de ce domaine est suivie.
+_COROS_FIT_URL_RE = re.compile(r"https://[A-Za-z0-9.-]+\.coros\.com/\S+\.fit\b")
+
+
+class CorosError(RuntimeError):
+    """Échec côté COROS (connexion du projet absente, MCP injoignable, réponse illisible)."""
+
+
+class CorosUnavailable(CorosError):
+    """Activité sans FIT récupérable (identifiant mal formé, aucune URL rendue). Jamais une panne."""
+
+
+def _coros_call(tool: str, arguments: dict, relay=None) -> str:
+    """Appel d'UN outil du MCP COROS par le relais du projet (`scripts/arc_coros_mcp.py` : jetons de
+    `arc_coros_auth.py`, rafraîchis au besoin, jamais affichés). Rend le texte de la réponse."""
+    import arc_coros_mcp  # noqa: E402 (sys.path déjà préparé en tête de module)
+
+    try:
+        return arc_coros_mcp.Client(relay, name="ai-running-coach/download_fit").call(tool, arguments)
+    except arc_coros_mcp.CallError as exc:
+        raise CorosError(str(exc)) from exc
+
+
+def _download_one_coros(activity_id: str, out_dir: Path, want_json: bool, relay=None, opener=None) -> Path:
+    """FIT d'une activité COROS : `queryActivityFitFileDownloadUrls(labelId, sportType)` par le relais,
+    puis le fichier lui-même (stockage COROS, sans jeton). Même persistance que Garmin/Intervals.icu."""
+    import urllib.error
+    import urllib.request
+
+    if not COROS_ID_RE.match(activity_id):
+        raise CorosUnavailable(
+            f"identifiant « {activity_id} » : forme c<chiffres> attendue (coros_activity_id, "
+            "« c » + le LabelId de querySportRecords)")
+    try:
+        text = _coros_call("queryActivityFitFileDownloadUrls",
+                           {"labelId": activity_id[1:], "sportType": COROS_URL_SPORT_TYPE}, relay)
+    except Exception as exc:  # noqa: BLE001 — CorosAuthError (connexion absente) comprise
+        raise CorosError(f"{exc} — vérifier : python3 scripts/arc_coros_auth.py status") from exc
+    match = next((m for m in _COROS_FIT_URL_RE.finditer(text) if activity_id[1:] in m.group(0)), None)
+    if match is None:
+        raise CorosUnavailable("COROS n'a rendu aucune URL de FIT pour cette activité")
+    req = urllib.request.Request(match.group(0), headers={"User-Agent": "ai-running-coach/download_fit"})
+    try:
+        with (opener or urllib.request.urlopen)(req, timeout=_HTTP_TIMEOUT_S) as resp:
+            fit = resp.read()
+    except urllib.error.HTTPError as exc:
+        raise CorosError(f"HTTP {exc.code} sur le fichier FIT COROS") from exc
+    except urllib.error.URLError as exc:
+        raise CorosError(f"stockage COROS injoignable ({exc.reason})") from exc
+    fit = _unwrap_fit(_unwrap_gzip(fit))
+    if not fit:
+        raise CorosUnavailable("fichier FIT vide renvoyé par COROS")
+    return _persist_fit(fit, activity_id, out_dir, want_json)
+
+
 def _read_fit(fit: bytes) -> tuple[list[dict], str | None]:
     """Records FIT bruts (champs `fitparse` tels quels, valeurs nulles/binaires écartées) et sport
     de la séance (message `session`, minuscules) — sans rien écrire. Partagé par l'écriture du
@@ -746,7 +843,8 @@ def _activity_id_from_arc(text: str, source: str = "garmin"):
     m = re.search(r"^```arc[ \t]*\n(.*?)\n```", text, re.M | re.S)
     if not m:
         return None
-    key = {"intervals": "intervals_activity_id", "strava": "strava_activity_id"}.get(source, "garmin_activity_id")
+    key = {"intervals": "intervals_activity_id", "strava": "strava_activity_id",
+           "coros": "coros_activity_id"}.get(source, "garmin_activity_id")
     try:
         value = json.loads(m.group(1)).get(key)
     except (ValueError, AttributeError):
@@ -755,6 +853,8 @@ def _activity_id_from_arc(text: str, source: str = "garmin"):
         return value if isinstance(value, str) and INTERVALS_ID_RE.match(value) else None
     if source == "strava":
         return value if isinstance(value, str) and STRAVA_ID_RE.match(value) else None
+    if source == "coros":
+        return value if isinstance(value, str) and COROS_ID_RE.match(value) else None
     return value if isinstance(value, int) and not isinstance(value, bool) else None
 
 
@@ -781,7 +881,7 @@ def _should_skip_download(dst: Path, out_dir: Path, activity_id, *,
 
 def _configured_source() -> str:
     """`[data].source` du workspace (#68), `garmin` par défaut ou si illisible — la
-    même résolution que `garmin_watch.load_settings`."""
+    même résolution que `watch.load_settings`."""
     try:
         from arc_index import load_config  # noqa: E402 (sys.path déjà préparé en tête de module)
         from coach_setup import workspace_root  # noqa: E402
@@ -796,7 +896,7 @@ def _parse_ids(raw: list[str], source: str, ap: argparse.ArgumentParser) -> list
     """Entiers pour Garmin ; chaînes pour Intervals.icu (validées au téléchargement,
     pour qu'un identifiant Strava sans préfixe reçoive une raison explicite) ; chaînes
     aussi pour Strava (`s<chiffres>`, validées au téléchargement)."""
-    if source in ("intervals", "strava"):
+    if source in ("intervals", "strava", "coros"):
         return list(raw)
     ids = []
     for value in raw:
@@ -827,9 +927,10 @@ def main(argv: list[str] | None = None) -> int:
         description="Télécharge des fichiers FIT (Garmin Connect ou Intervals.icu) sans passer par le MCP."
     )
     ap.add_argument("activity_ids", nargs="*",
-                    help="identifiants à télécharger (entier Garmin, i<chiffres> Intervals.icu, s<chiffres> Strava)")
+                    help="identifiants à télécharger (entier Garmin, i<chiffres> Intervals.icu, s<chiffres> Strava, "
+                         "c<chiffres> COROS)")
     ap.add_argument("--source", choices=sorted(_RELAUNCH), default=None,
-                    help="garmin | intervals | strava (défaut : [data].source du workspace, sinon garmin)")
+                    help="garmin | intervals | strava | coros (défaut : [data].source du workspace, sinon garmin)")
     ap.add_argument("--output-dir", type=Path, default=None, help="Répertoire de sortie (défaut: activities/)")
     ap.add_argument("--json", action="store_true", help="Écrit aussi <id>.records.json")
     ap.add_argument("--overwrite", action="store_true", help="Réécrire même si présent")
@@ -842,7 +943,7 @@ def main(argv: list[str] | None = None) -> int:
     args = ap.parse_args(argv)
 
     source = args.source or _configured_source()
-    if args.python and source != "strava":
+    if args.python and source not in ("strava", "coros"):
         os.environ[_RELAUNCH[source]["env"]] = str(args.python)
     if args.refresh_dynamics:
         # Hors ligne, quelle que soit la source : ni `garminconnect` ni tokens ni clé API — seul
@@ -866,6 +967,8 @@ def main(argv: list[str] | None = None) -> int:
     # besoin d'un autre interpréteur. Garmin : garminconnect est requis dans tous les cas.
     if source == "garmin" or (args.json and source == "intervals"):
         _auto_relaunch(sys.argv[1:] if argv is None else list(argv), source)
+    if args.json and source == "coros":
+        _relaunch_for_fitparse(sys.argv[1:] if argv is None else list(argv))
 
     ids = _parse_ids(args.activity_ids, source, ap)
     if args.from_dir:
@@ -877,7 +980,10 @@ def main(argv: list[str] | None = None) -> int:
     out_dir = args.output_dir or _activity_dir_out()
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    if source == "strava":
+    if source == "coros":
+        def fetch(aid):
+            return _download_one_coros(aid, out_dir, args.json)
+    elif source == "strava":
         try:
             tokens = StravaTokens()
         except StravaError as exc:
@@ -896,7 +1002,11 @@ def main(argv: list[str] | None = None) -> int:
         def fetch(aid):
             return _download_one_intervals(aid, out_dir, args.json, api_key)
     else:
-        token_dir = str(Path("~/.garminconnect").expanduser())
+        # Jetons DU workspace (GARMINTOKENS de son .mcp.json, #127), sinon ~/.garminconnect comme avant.
+        from arc_credentials import garmin_tokens_dir  # noqa: E402 (sys.path déjà préparé en tête de module)
+        from coach_setup import workspace_root  # noqa: E402
+
+        token_dir = str(garmin_tokens_dir(None, workspace_root()))
         from garminconnect import Garmin
 
         client = Garmin()
@@ -929,7 +1039,7 @@ def _download_all(ids, fetch, should_skip) -> dict:
         try:
             fetch(aid)
             counts["ok"] += 1
-        except (IntervalsUnavailable, StravaUnavailable) as e:
+        except (IntervalsUnavailable, StravaUnavailable, CorosUnavailable) as e:
             # Pas une panne : la séance reste valide sans échantillons — raison dite, puis on continue.
             counts["unavailable"] += 1
             print(f"INDISPONIBLE {aid}: {e}", file=sys.stderr)

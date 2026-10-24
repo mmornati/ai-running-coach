@@ -104,7 +104,7 @@ stale_after_h = 36   # au-delà, les données sont dites périmées
 
 | Valeur | Effet |
 |---|---|
-| `primary` | Défaut : la santé vient de `[data].source` (Garmin, intervals.icu, rien avec Strava). Comportement inchangé. |
+| `primary` | Défaut : la santé vient de `[data].source` (Garmin, intervals.icu, COROS, rien avec Strava). Comportement inchangé. |
 | `openwearables` | Santé lue depuis une instance Open Wearables auto-hébergée, en lecture seule. **Jamais** pour des données Garmin. **Disponible à l'installation** (`./install.sh --health-source openwearables --ow-url … --ow-provider …`, [Installation](open-wearables.md#installation), #220) et contrôlée par `/coach-doctor` ; lue par `coach`, `medical` et `/garmin-daily-sync` pour le bilan matinal (#221) : un seul appel par jour, aucun outil santé Garmin, score natif nommé et jamais converti ([Le bilan matinal avec Open Wearables](open-wearables.md#le-bilan-matinal-avec-open-wearables)). |
 
 Une valeur invalide donne `primary` et un avertissement ; un `provider` `garmin`
@@ -194,7 +194,8 @@ n'est exposé et aucun agent n'en parle. `garmin` ajoute à la liste blanche `GA
 les outils `get_menstrual_data_for_date` et `get_menstrual_calendar_data` — **relancez
 `./install.sh`** après le changement (ou installez avec `--cycle-tracking garmin`, qui écrit la
 clé) ; `intervals` lit le champ `menstrualPhase` d'intervals.icu, `manual` la déclaration via
-`/log`. Avec `[data].source = "strava"` (#164), seul `manual` a un effet : Strava n'expose
+`/log`, `coros` (avec `[data].source = "coros"`) l'outil `queryMenstruationCycles` du MCP COROS.
+Avec `[data].source = "strava"` (#164), seul `manual` a un effet : Strava n'expose
 aucune donnée de cycle. Le cycle n'est qu'un **contexte** de lecture du bilan matinal : jamais une règle, jamais un
 diagnostic, jamais un assouplissement d'un verdict rouge.
 
@@ -217,7 +218,7 @@ pousser l'apport vers le journal alimentaire et l'hydratation de Garmin Connect 
 exige un « oui » explicite, n'a jamais lieu en headless (`/garmin-daily-sync`) et reste idempotente.
 Les outils ne sont ajoutés à la liste blanche qu'à l'installation : **relancez `./install.sh`**
 après le changement (ou installez avec `--nutrition-sync ask`, qui écrit la clé). Indisponible avec
-`[data].source = "intervals"` ou `"strava"`, et en mode passerelle `--use-leanproxy` (refusé : les écritures n'y
+`[data].source = "intervals"`, `"strava"` ou `"coros"`, et en mode passerelle `--use-leanproxy` (refusé : les écritures n'y
 sont pas filtrables en headless). Une seule source de vérité par jour (fichiers du dépôt **ou** journal
 Garmin, jamais les deux) : voir [Apports vers Garmin](nutrition-garmin.md).
 
@@ -289,7 +290,7 @@ synchronisés par Intervals.icu viennent de sa
 | Appareil | Entraînement (`[data].source`) | Santé du bilan matinal | Remarque |
 |---|---|---|---|
 | Garmin | `garmin` (direct) | Garmin | référence du projet ; jamais via Open Wearables (programme développeur réservé aux entités légales : `garmin-api-integration.mdx` d'Open Wearables, voir [l'audit](open-wearables.md)) ; intégration directe décrite dans [Configuration Garmin](garmin-setup.md) |
-| COROS | `intervals` | Intervals.icu (si synchronisée) | MCP officiel audité, hors périmètre : [Montres COROS](coros.md) |
+| COROS | `coros` (`./install.sh --source coros`) | COROS (HRV, FC de repos, sommeil, récupération COROS) | MCP officiel de COROS, sans compte tiers : activités, FIT, bilan matinal, séances envoyées à la montre, renforcement, surveillance : [Montres COROS](coros.md) |
 | Suunto | `intervals` | Intervals.icu | l'API cloud de Suunto n'est pas ouverte aux particuliers ([FAQ Suunto](https://apizone.suunto.com/faq), relue le 10 octobre 2026) |
 | Polar | `intervals` | Intervals.icu ; Open Wearables (Nightly Recharge) | Polar est listée sur la page bien-être d'Intervals.icu (relue le 10 octobre 2026) ; accès libre-service et scores Nightly Recharge : `polar-api-integration.mdx` d'Open Wearables ([audit](open-wearables.md)) |
 | Huawei, Amazfit | `intervals` | Intervals.icu | listés sur la page bien-être d'Intervals.icu ; non testé ici |
@@ -306,17 +307,18 @@ capacités et limites de chaque fournisseur : [Open Wearables (audit)](open-wear
 
 ```toml
 [data]
-source = "garmin"   # garmin (défaut) | intervals | strava
+source = "garmin"   # garmin (défaut) | intervals | strava | coros
 ```
 
-Écrite automatiquement par `./install.sh --source garmin|intervals|strava` — voir
+Écrite automatiquement par `./install.sh --source garmin|intervals|strava|coros` — voir
 [Configuration Garmin](garmin-setup.md),
-[Configuration Intervals.icu](intervals-setup.md) et
-[Configuration Strava](strava-setup.md). Change les outils MCP
+[Configuration Intervals.icu](intervals-setup.md),
+[Configuration Strava](strava-setup.md) et
+[Montres COROS](coros.md). Change les outils MCP
 appelés par `coach`/`medical`/`garmin-daily-sync` pour les activités, la
 santé et le calendrier planifié (table de correspondance complète dans
 `AGENTS.md`). Sans montre Garmin, `intervals` ouvre le projet aux données
-COROS/Suunto/Polar/Apple synchronisées sur Intervals.icu.
+Suunto/Polar/Apple synchronisées sur Intervals.icu (COROS : [Montres COROS](coros.md)).
 
 !!! warning "Fonctionnalités indisponibles avec `intervals`"
     Le score de readiness algorithmique de Garmin, le téléchargement FIT (et
@@ -331,6 +333,13 @@ COROS/Suunto/Polar/Apple synchronisées sur Intervals.icu.
     n'y a ni calendrier ni push de séances. En revanche les flux par seconde alimentent les KPI
     du FIT (zones, GAP, découplage, VAM…) via `download_fit.py --source strava`. Prérequis :
     Node.js 18+. Détail dans [Configuration Strava](strava-setup.md).
+
+!!! info "Avec `coros` (#168)"
+    Comme Garmin : activités, FIT et KPI fins, bilan matinal complet (HRV, FC de repos et
+    **récupération COROS**, toujours nommée ainsi, jamais convertie en Training Readiness),
+    séances envoyées à la montre, surveillance (`[sync].mode = "watch"`). Indisponibles :
+    FC de récupération (HRR), matériel par séance, pesées, poussée des apports,
+    upload de parcours, suppression d'une séance planifiée. Détail dans [Montres COROS](coros.md).
 
 ## Le style de coaching — `[coaching]`
 
@@ -609,6 +618,21 @@ pour les changer, sauf `mode`/`times`, voir [Le coach dans la poche](mobile.md))
 `python3 scripts/arc_llm.py sync anthropic|openrouter|openrouter-free|openai|claude-subscription` change **la synchronisation seule** (ces cinq clés, rien d'autre ; refus si la clé manque dans `llm.env` ; sans réinstallation), voir [Changer l'IA de la synchronisation](choisir-son-ia.md#changer-lia-de-la-synchronisation) ;
 `./install.sh --sync-runner CLI` choisit l'assistant headless et `./install.sh --sync-budget EUR` écrit `daily_budget_eur`. Détails, budget et données de
 santé : [Synchronisation sur OpenRouter](mobile.md#synchronisation-sur-openrouter-ou-toute-api-compatible-openai).
+
+## Les identifiants du workspace — `[credentials]` (#127)
+
+Écrite par `install.sh` (jamais à la main), seulement quand vous passez `--garmin-tokens` ou `--intervals-dir`
+(plusieurs workspaces sous le même utilisateur, [voir Plusieurs workspaces](workspace.md#plusieurs-workspaces-sur-une-meme-machine)) :
+
+| Clé | Effet |
+|---|---|
+| `garmin_tokens` | Dossier des jetons Garmin de CE workspace (`GARMINTOKENS` du `.mcp.json`). |
+| `intervals_dir` | Dossier des identifiants intervals.icu de CE workspace. |
+
+Ce sont des **chemins**, jamais un secret. `[credentials]` est la **mémoire de l'installation** : elle permet à
+une réinstallation sans option de retrouver ces dossiers. À l'exécution, la résolution (`arc_credentials` :
+`coach_doctor`, `garmin_watch`, `download_fit`) lit le `.mcp.json` du workspace, que l'installation
+maintient d'accord avec cette section. Sans option, aucune section `[credentials]` n'est écrite.
 
 ## Le chat avec le coach — `[chat]`
 

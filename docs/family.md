@@ -13,15 +13,22 @@ seulement les siennes.
 Sans `--family`, **rien ne change** : le mode mono-athlète reste le comportement par
 défaut, octet pour octet.
 
-!!! warning "Prérequis : identifiants et planification par workspace (même épopée #127)"
-    L'aiguillage du tableau de bord et du chat (cette page) est indépendant, mais **faire vivre
-    plusieurs membres suppose la PR « identifiants et planification par workspace »** de l'épopée #127 :
-    `install.sh --garmin-tokens DIR` et `--intervals-dir DIR`, un marqueur cron (et un label launchd) **par
-    workspace**, et `ARC_LOCK_WORKSPACE=1` qui confine les scripts à leur workspace. **Tant qu'elle n'est pas
-    fusionnée** : lancer `install.sh --daily-sync` pour un second workspace **remplace** la ligne cron du
-    premier, et les jetons Garmin comme les identifiants intervals.icu restent **partagés** (un seul
-    `~/.garminconnect`) ; la vérification `family_tokens` de `coach_doctor` le signale. Ne mettez qu'un
-    seul athlète à synchroniser automatiquement avant cette PR.
+!!! info "Prérequis : identifiants et planification par workspace (#127)"
+    Faire vivre plusieurs membres repose sur les options par workspace de `install.sh`, à lancer **une
+    fois par membre** :
+
+    ```bash
+    ./install.sh --workspace <dossier du membre> --daily-sync \
+        [--garmin-tokens DOSSIER | --source intervals --intervals-dir DOSSIER]
+    ```
+
+    Chaque workspace a ainsi ses jetons Garmin (ou ses identifiants intervals.icu), sa ligne cron
+    (marqueur `# ai-running-coach daily-sync [<nom>-<somme>]`) ou son LaunchAgent (label suffixé), et
+    `ARC_LOCK_WORKSPACE=1` confine ses scripts. Installer un membre ne touche pas la planification des
+    autres. `coach_doctor --family` s'appuie sur la même attribution (`family_tokens`, `family_sync`).
+    **COROS** : les identifiants COROS ne sont pas encore par workspace (dossier unique
+    `~/.config/ai-running-coach/coros/`) : deux membres COROS du même utilisateur système partagent le
+    même compte.
 
 ## La décision : une application, une clé API, un dossier par membre
 

@@ -1,8 +1,9 @@
 # 🔄 Configuration Intervals.icu (source alternative, #68)
 
 Cette page détaille la source de données **Intervals.icu**, l'alternative à
-Garmin Connect pour les athlètes qui n'ont pas de montre Garmin (COROS,
-Suunto, Polar, Apple — tout ce qu'Intervals.icu synchronise). Elle est
+Garmin Connect pour les athlètes qui n'ont pas de montre Garmin (Suunto,
+Polar, Apple — tout ce qu'Intervals.icu synchronise ; montre COROS : voir
+[Montres COROS](coros.md)). Elle est
 installée par `./install.sh --source intervals`, **à la place** de Garmin, pas
 en plus.
 
@@ -129,7 +130,9 @@ d'outil** : le skill `intervals-icu-best-practices` remplace
   `WORKOUT` écrite dans la **syntaxe native d'Intervals.icu** est analysée
   côté Intervals.icu en étapes structurées (zones, répétitions, charge,
   synchronisation montre). Les cibles de `scripts/arc_workout_targets.py` (#60)
-  y sont écrites : plage de FC en bpm ou zone (`- 60m 140-150bpm`, `Z2 HR`),
+  y sont écrites : plage de FC en % du seuil FC d'Intervals.icu (`- 60m 82.4-88.3% LTHR`,
+  convertie par `arc_workout_targets.py --icu-lthr-bpm`, jamais en bpm absolus : sans
+  charge prévue et sans cible sur la montre, constaté le 22 octobre 2026),
   répétitions de côte en `Main Set Nx`. Le serveur fait écho au résultat
   (`workout_parsed`, `workout_steps`) dans la réponse d'écriture ; si
   l'analyse échoue (`workout_parsed: false`), le coach **retombe sur le texte
@@ -154,12 +157,6 @@ Attention : `icu_delete_gear`, `icu_delete_workout`, `icu_delete_workout_folder`
 et `icu_bulk_delete_events` restent enregistrés en `safe` (seul le mode `none`
 les retire) — `icu_delete_gear` supprime alors sans autre garde-fou.
 
-## Montres COROS
-
-COROS n'a pas de source dédiée : sa montre se synchronise vers Intervals.icu et
-c'est le chemin supporté. Le MCP officiel de COROS a été audité (#168) et reste
-hors du projet : voir [Montres COROS](coros.md).
-
 ## Fonctionnalités et champs indisponibles avec cette source
 
 Aucune valeur n'est jamais devinée à leur place — l'agent dit explicitement
@@ -170,15 +167,15 @@ qu'elles ne sont pas disponibles :
   existe mais c'est une valeur manuelle du jour, qui peut venir de vous ou
   d'un autre appareil synchronisé (Oura, Whoop...) — jamais présentée comme
   équivalente au score Garmin.
-- **Fréquence cardiaque de récupération (HRR) et `splits` par km** — absents
-  des activités renvoyées par ce serveur (revérifié sur le fork `hhopke`,
-  #165 : `icu_get_activity_intervals` renvoie les tours/intervalles de
-  l'activité, pas des splits par km). `course-comparison` (qui exige des
-  `splits`) n'est donc pas utilisable sur des activités synchronisées depuis
-  Intervals.icu.
+- **Fréquence cardiaque de récupération (HRR)** — absente des activités
+  renvoyées par ce serveur (revérifiée sur le fork `hhopke`, #165).
+- **`splits` par km** — absents du serveur (`icu_get_activity_intervals` renvoie
+  les tours/intervalles de l'activité, pas des splits par km), mais calculés
+  depuis le FIT dès qu'il est téléchargé : `python3 scripts/arc_index.py splits
+  i<id>`. `course-comparison` fonctionne alors comme avec Garmin.
 - **FIT des activités importées depuis Strava** — l'API Strava interdit à
   Intervals.icu de les redistribuer : ni FIT, ni courbes. Connectez la montre
-  (ou l'app qui l'exporte : Garmin Connect, COROS, Suunto, Polar, HealthFit
+  (ou l'app qui l'exporte : Garmin Connect, Suunto, Polar, HealthFit
   pour l'Apple Watch…) **directement** à Intervals.icu pour que vos séances
   aient leur FIT. Les autres activités l'ont — voir « Fichiers FIT » ci-dessous.
 - **Upload de parcours** (`course-strategist`) — reste limité à l'analyse GPX
@@ -275,6 +272,27 @@ Ce qui a été **vérifié dans le code** :
 
 Ce qui n'est **pas** couvert : l'audit des dépendances transitives
 (`uv.lock` du serveur) et le comportement côté Intervals.icu.
+
+## Des identifiants par workspace (plusieurs workspaces, même utilisateur)
+
+Le wrapper `run.sh` et le `.env` (clé API) vivent par défaut dans
+`~/.config/ai-running-coach/intervals-icu-mcp/`, communs à tous les workspaces de l'utilisateur.
+Pour donner à un workspace ses propres identifiants :
+
+```bash
+./install.sh --workspace ~/coach-bob --source intervals --intervals-dir ~/.config/coach-bob/intervals
+```
+
+`run.sh` et le `.env` sont alors créés dans ce dossier, et la commande du serveur `intervals` du
+`.mcp.json` du workspace pointe vers ce `run.sh`. L'authentification (`intervals-icu-mcp-auth`)
+se lance depuis ce dossier. L'option est **mémorisée** : un `./install.sh` sans elle conserve le
+dossier (lu dans le `.mcp.json`), et une installation qui ne l'utilise pas ne change pas. Le
+téléchargement de FIT (`download_fit.py`) et l'indice d'authentification de `daily-sync.sh`
+retrouvent ce dossier par le même `.mcp.json`. Il est aussi noté dans `[credentials].intervals_dir`
+de `config/workspace.user.toml` (propre au workspace), donc retrouvé après un passage par une autre
+source. La configuration OpenCode globale n'est pas modifiée dans ce cas : l'entrée `intervals` va dans
+`<workspace>/opencode.json` (OpenCode interactif lit `opencode.json`, pas `.mcp.json`). Valable
+seulement avec `--source intervals`.
 
 ## Passer d'une source à l'autre
 

@@ -203,6 +203,14 @@ ravito : le verdict du coach en grand, la séance remplacée barrée, puis le bi
 matin en lignes de barrière (valeur, référence, état en forme et en mot, jamais la
 couleur seule).
 
+Dans la vue Semaine, prévu et réalisé tiennent sur **une ligne par séance** : la
+séance planifiée, l'activité qui lui a été appariée juste dessous (lien, distance, D+,
+FC moyenne), la durée « prévu → réalisé » et un statut — *Faite*, *Écourtée* (moins de
+80 % de la durée prévue), *Allongée* (plus de 125 %), *Manquée*, *À faire*, *Prévue*.
+Une activité qu'aucune séance n'a appariée apparaît à part, *Hors plan*. L'appariement
+est celui de la conformité, calculé par le serveur : la vue et le bloc Conformité ne
+peuvent pas se contredire. Les seuils sont une approximation du projet.
+
 - **Essayer** : le lien « Essayer le design bêta » de l'en-tête, ou ajoutez
   `?design=beta` à l'adresse.
 - **Revenir** : « Revenir au design actuel », en bas du menu des sections, ou

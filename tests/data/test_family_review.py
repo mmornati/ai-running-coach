@@ -62,6 +62,7 @@ class TestBackendEnvironment(FamilyEnvCase):
     SECRETS = ("STRAVA_CLIENT_ID", "STRAVA_CLIENT_SECRET", "STRAVA_TOKEN_FILE", "STRAVA_ACCESS_TOKEN",
                "MYWHOOSH_USERNAME", "MYWHOOSH_PASSWORD", "ARC_OW_API_KEY_FILE", "ARC_OW_BASE_URL",
                "TELEGRAM_BOT_TOKEN", "NTFY_TOKEN_FILE", "AZURE_SPEECH_KEY", "GARMIN_EMAIL", "OURA_PAT",
+               "ARC_COROS_DIR", "COROS_FIT_READER_DIR", "COROS_EMAIL",
                "ACME_API_TOKEN", "FOO_SECRET", "SOME_SERVICE_KEY", "DB_PASSWD")
 
     def secret_env(self, home: Path) -> dict:
@@ -196,6 +197,27 @@ class TestBackendEnvironment(FamilyEnvCase):
         mine = run(fam.services["alice"].backend.child_env(dict(base, ARC_WORKSPACE=str(self.workspaces["bob"]))))
         self.assertIn("ALICEMARK", mine)
         self.assertNotIn("BOBMARK", mine)
+
+    def test_verrou_du_membre_refuse_un_autre_workspace_de_bout_en_bout(self):
+        """`ARC_LOCK_WORKSPACE=1` posé par le backend est réellement appliqué par les scripts du moteur (#292)."""
+        fam = C.FamilyChat(self.mock_registry())
+        env = fam.services["bob"].backend.child_env(self.foreign_base(self.root / "home"))
+        self.assertEqual(env["ARC_LOCK_WORKSPACE"], "1")
+
+        def run(script, *args, **extra):
+            return subprocess.run([sys.executable, str(REPO / "scripts" / script), *args], env=dict(env, **extra),
+                                  cwd=str(self.root), capture_output=True, text=True, timeout=120)
+
+        for script, args in (("arc_credentials.py", ("intervals-dir",)), ("arc_credentials.py", ("garmin-tokens",))):
+            other = run(script, *args, "--workspace", str(self.workspaces["alice"]))
+            self.assertNotEqual(other.returncode, 0, script)
+            self.assertIn("workspace refusé", other.stdout + other.stderr)
+            own = run(script, *args, "--workspace", str(self.workspaces["bob"]))
+            self.assertEqual(own.returncode, 0, own.stderr)
+            self.assertNotIn("workspace refusé", own.stdout + own.stderr)
+        setup = run("coach_setup.py", "--workspace", str(self.workspaces["alice"]), "--list-questions")
+        self.assertNotEqual(setup.returncode, 0)
+        self.assertIn("workspace refusé", setup.stdout + setup.stderr)
 
     def test_claude_options_imposent_le_workspace_du_membre(self):
         from arc_chat_claude import ClaudeBackend

@@ -24,7 +24,7 @@ climbs are delegated to the engine detector (`scripts/arc_climb.py`).
 
 **Do NOT use this skill** when:
 - The user wants the global session analysis only (use the standard `coach` workflow on `get_activity`).
-- The data is incomplete (no FIT, no MCP access). In that case, fall back to split-level analysis and mention the limitation.
+- The data is incomplete (no FIT, no MCP access). In that case, fall back to split-level analysis and mention the limitation. The FIT can come from any `[data].source` through `fit-download` (Garmin, Intervals.icu, Strava streams, COROS — `download_fit.py <id> --json`); only the "Garmin MCP" CLI below is Garmin-only.
 - The question is a whole-session KPI (time in zone, decoupling/EF, GAP, VAM, descent efficiency, durability/fade) — those are computed by `scripts/arc_index.py` (`zones`/`decoupling`/`gap`/`vam`/`descent`/`durability`, #51), not by this segment detector. Reuse that CLI instead of approximating the same number from segments.
 
 ---

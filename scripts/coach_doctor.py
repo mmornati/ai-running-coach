@@ -61,7 +61,7 @@ avant expiration des tokens, qui appelle ce script avec `--json`, éventuellemen
                 | "daily_sync_scheduled" | "ntfy_configured" | "gear_sync"
                 | "gear_history" | "fit_reader" | "intervals_mcp_pin" | "llm_config"
                 | "chat_service" | "opencode_cli" | "strava_connection" | "telegram"
-                | "weight_sync" | "openwearables",
+                | "weight_sync" | "openwearables" | "coros_connection",
           "status": "ok" | "warning" | "error" | "info",
           "message": "<texte français>",
           "fix": "<commande de correction>" | null
@@ -156,6 +156,7 @@ from pathlib import Path
 from typing import Any, Optional
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+import arc_credentials  # noqa: E402
 import arc_index  # noqa: E402
 import arc_legacy as L  # noqa: E402
 from coach_config import ConfigError, read_toml  # noqa: E402
@@ -181,6 +182,85 @@ MCP_PROBE_TIMEOUT_S = float(os.environ.get("ARC_MCP_PROBE_TIMEOUT_S", "10"))
 
 CRON_MARKER = "# ai-running-coach daily-sync"
 LAUNCHD_PLIST_REL = "Library/LaunchAgents/com.ai-running-coach.daily-sync.plist"
+# Plusieurs workspaces sous le même utilisateur (#127) : le label launchd historique OU un label suffixé
+# `com.ai-running-coach.daily-sync.<nom>-<somme>`, le marqueur cron historique OU `… daily-sync [<id>]`.
+# L'appartenance à CE workspace se lit à son ARC_WORKSPACE.
+LAUNCHD_PLIST_GLOB = "com.ai-running-coach.daily-sync*.plist"
+_ARC_WORKSPACE_RE = re.compile(r'ARC_WORKSPACE="([^"]*)"')
+_PLIST_WORKSPACE_RE = re.compile(r"<key>ARC_WORKSPACE</key>\s*<string>([^<]*)</string>")
+
+
+def _same_workspace(declared: str, workspace: Optional[Path]) -> bool:
+    """`declared` (ARC_WORKSPACE d'une ligne cron / d'un plist) désigne-t-il `workspace` ?
+
+    Oui sans workspace à comparer ou sans valeur déclarée (très anciennes installations). Un dossier déclaré
+    qui n'existe plus n'est PAS le sien (planification orpheline, voir `_is_orphan_declared`) : B ne serait
+    pas planifié parce que la seule ligne vise un dossier supprimé. Un AUTRE dossier existant non plus :
+    planifier A ne dit rien de B."""
+    if workspace is None or not declared:
+        return True
+    try:
+        theirs = Path(declared).expanduser()
+        if not theirs.is_dir():
+            return False
+        return theirs.resolve() == Path(workspace).resolve()
+    except OSError:
+        return declared == str(workspace)
+
+
+def _is_orphan_declared(declared: str) -> bool:
+    """Le dossier déclaré par une planification a-t-il disparu ? (même repère que `workspace_claim` de
+    install.sh : dossier absent, qu'il ait été supprimé, déplacé ou que son volume soit démonté)."""
+    return bool(declared) and not Path(declared).expanduser().is_dir()
+
+
+def _orphan_schedules(home: Path, crontab: str) -> list:
+    """Planifications daily-sync (plists, lignes cron) dont l'ARC_WORKSPACE n'existe plus."""
+    found = []
+    agents = home / "Library" / "LaunchAgents"
+    if agents.is_dir():
+        for plist in sorted(agents.glob(LAUNCHD_PLIST_GLOB)):
+            match = _PLIST_WORKSPACE_RE.search(plist.read_text(encoding="utf-8", errors="replace"))
+            if match and _is_orphan_declared(match.group(1)):
+                found.append(match.group(1))
+    for line in crontab.splitlines():
+        match = _ARC_WORKSPACE_RE.search(line) if CRON_MARKER in line else None
+        if match and _is_orphan_declared(match.group(1)):
+            found.append(match.group(1))
+    return found
+
+
+def _orphan_info(check_id: str, orphans: list) -> dict:
+    return build_check(
+        check_id, "info",
+        f"Planification orpheline : daily-sync vise un dossier introuvable ({', '.join(sorted(set(orphans)))}) — "
+        "aucune planification pour ce workspace.",
+        fix="./install.sh --daily-sync",
+    )
+
+
+def _own_plists(home: Path, workspace: Optional[Path]) -> list:
+    """Plists daily-sync (label historique ou suffixé) de CE workspace."""
+    found = []
+    for plist in sorted((home / "Library" / "LaunchAgents").glob(LAUNCHD_PLIST_GLOB)):
+        if not plist.is_file():
+            continue
+        match = _PLIST_WORKSPACE_RE.search(plist.read_text(encoding="utf-8", errors="replace"))
+        if _same_workspace(match.group(1) if match else "", workspace):
+            found.append(plist)
+    return found
+
+
+def _own_cron_lines(crontab: str, workspace: Optional[Path]) -> list:
+    """Lignes cron daily-sync (marqueur historique ou suffixé) de CE workspace — mêmes règles que `_own_plists`."""
+    ours = []
+    for line in crontab.splitlines():
+        if CRON_MARKER not in line:
+            continue
+        match = _ARC_WORKSPACE_RE.search(line)
+        if _same_workspace(match.group(1) if match else "", workspace):
+            ours.append(line)
+    return ours
 
 # Pin du serveur garmin-mcp : DOIT rester identique à `GARMIN_MCP_REF` dans install.sh (et à l'ARG
 # de deploy/chat/Dockerfile) — tests/lint/test_data_source_parity.py le vérifie.
@@ -216,7 +296,7 @@ CHECK_IDS = (
     "index_freshness", "out_of_contract", "daily_sync_scheduled", "ntfy_configured",
     "gear_sync", "gear_history", "fit_reader", "intervals_mcp_pin",
     "llm_config", "chat_service", "opencode_cli", "strava_connection", "telegram", "weight_sync",
-    "openwearables",
+    "openwearables", "coros_connection",
 )
 
 CHAT_SYSTEMD_UNIT_REL = ".config/systemd/user/ai-running-coach-chat.service"
@@ -843,7 +923,8 @@ def _uname() -> str:
     return platform.system()
 
 
-WATCH_SCRIPT = "garmin_watch.py"
+# `garmin_watch.py` : ancien nom, encore présent dans les tâches posées avant le renommage.
+WATCH_SCRIPTS = ("watch.py", "garmin_watch.py")
 WATCH_STATE_REL = "logs/.watch-state.json"
 
 
@@ -863,16 +944,16 @@ def check_watch_heartbeat(check_id: str, workspace: Path, config: dict, now: dat
         last = datetime.fromisoformat(state["last_check"])
     except (OSError, ValueError, KeyError, TypeError):
         return build_check(
-            check_id, "warning", f"Surveillance Garmin installée ({installed}) mais jamais exécutée.",
-            fix="python3 scripts/garmin_watch.py --dry-run",
+            check_id, "warning", f"Surveillance installée ({installed}) mais jamais exécutée.",
+            fix="python3 scripts/watch.py --dry-run",
         )
     reference = now.astimezone().replace(tzinfo=None) if now.tzinfo else now
     age_min = (reference - last).total_seconds() / 60
     if age_min > 3 * interval:
         return build_check(
             check_id, "warning",
-            f"Surveillance Garmin silencieuse depuis {age_min:.0f} min (intervalle {interval} min).",
-            fix="python3 scripts/garmin_watch.py --dry-run ; voir logs/watch.log",
+            f"Surveillance silencieuse depuis {age_min:.0f} min (intervalle {interval} min).",
+            fix="python3 scripts/watch.py --dry-run ; voir logs/watch.log",
         )
     runs = state.get("runs") or {}
     today = reference.date().isoformat()
@@ -893,11 +974,15 @@ def check_daily_sync(home: Path, workspace: Path | None = None, config: dict | N
     check_id = "daily_sync_scheduled"
     now = now or datetime.now()
     if _uname() == "Darwin":
-        plist = home / LAUNCHD_PLIST_REL
-        if plist.is_file():
-            if workspace is not None and WATCH_SCRIPT in plist.read_text(encoding="utf-8", errors="replace"):
+        own = _own_plists(home, workspace)
+        if own:
+            plist = own[0]
+            if workspace is not None and any(s in plist.read_text(encoding="utf-8", errors="replace") for s in WATCH_SCRIPTS):
                 return check_watch_heartbeat(check_id, workspace, config or {}, now, "LaunchAgent")
             return build_check(check_id, "ok", f"LaunchAgent daily-sync installé ({plist}).", fix=None)
+        orphans = _orphan_schedules(home, "")
+        if orphans:
+            return _orphan_info(check_id, orphans)
         return build_check(
             check_id, "info", "Aucun LaunchAgent daily-sync — synchronisation Garmin manuelle uniquement.",
             fix="./install.sh --daily-sync",
@@ -909,11 +994,14 @@ def check_daily_sync(home: Path, workspace: Path | None = None, config: dict | N
             check_id, "info", "crontab injoignable — synchronisation Garmin manuelle uniquement.",
             fix="./install.sh --daily-sync",
         )
-    if out.returncode == 0 and CRON_MARKER in out.stdout:
-        ours = [line for line in out.stdout.splitlines() if CRON_MARKER in line]
-        if workspace is not None and any(WATCH_SCRIPT in line for line in ours):
+    ours = _own_cron_lines(out.stdout, workspace) if out.returncode == 0 else []
+    if ours:
+        if workspace is not None and any(s in line for line in ours for s in WATCH_SCRIPTS):
             return check_watch_heartbeat(check_id, workspace, config or {}, now, "cron")
         return build_check(check_id, "ok", "Tâche cron daily-sync présente.", fix=None)
+    orphans = _orphan_schedules(home, out.stdout) if out.returncode == 0 else []
+    if orphans:
+        return _orphan_info(check_id, orphans)
     return build_check(
         check_id, "info", "Aucune tâche cron daily-sync — synchronisation Garmin manuelle uniquement.",
         fix="./install.sh --daily-sync",
@@ -961,6 +1049,8 @@ def check_ntfy(config: dict) -> dict:
 # Outil `uv` dont l'interpréteur lit les FIT pour `skills/fit-download` (`--json`),
 # par source — le même que celui dans lequel `download_fit.py` se relance.
 FIT_READER_TOOLS = {"garmin": "garmin-mcp", "intervals": "intervals-icu-mcp"}
+# Source COROS (#168) : lecteur de FIT dédié (install.sh, `COROS_FIT_READER_DIR`).
+COROS_FIT_READER_REL = ".local/share/ai-running-coach/fit-reader/bin/python3"
 
 
 def _tool_python(tool: str, home: Path) -> Optional[Path]:
@@ -993,9 +1083,16 @@ def check_fit_reader(config: dict, home: Path) -> dict:
             "`download_fit.py --source strava` (stdlib), aucun lecteur `fitparse` requis.",
             fix=None,
         )
-    tool = FIT_READER_TOOLS.get(source, FIT_READER_TOOLS["garmin"])
-    fix = f"./install.sh --source {source}" if source in FIT_READER_TOOLS else "./install.sh"
-    python = _tool_python(tool, home)
+    if source == "coros":
+        # COROS (#168) : environnement dédié créé par `./install.sh --source coros`.
+        tool = "fit-reader"
+        fix = "./install.sh --source coros"
+        candidate = home / COROS_FIT_READER_REL
+        python = candidate if candidate.is_file() and os.access(candidate, os.X_OK) else None
+    else:
+        tool = FIT_READER_TOOLS.get(source, FIT_READER_TOOLS["garmin"])
+        fix = f"./install.sh --source {source}" if source in FIT_READER_TOOLS else "./install.sh"
+        python = _tool_python(tool, home)
     if python is None:
         return build_check(
             check_id, "warning",
@@ -1091,6 +1188,96 @@ def check_strava_connection(workspace: Path, config: dict, home: Path) -> dict:
     return build_check(check_id, "ok",
                        "Strava : Node.js, wrapper, serveur MCP et jetons présents (valeurs non affichées ; la validité "
                        "réelle du jeton n'est testée par aucun appel réseau ici).", fix=None)
+
+# ---------------------------------------------------------------------------
+# coros_connection (montre COROS, `[coros].mcp = "relay"`)
+# ---------------------------------------------------------------------------
+
+COROS_TOKEN_DIR_REL = ".config/ai-running-coach/coros"
+COROS_LOGIN_FIX = "python3 scripts/arc_coros_auth.py login"
+
+
+def _coros_token_dir(home: Path) -> Path:
+    custom = os.environ.get("ARC_COROS_DIR", "").strip()
+    return Path(custom).expanduser() if custom else home / COROS_TOKEN_DIR_REL
+
+
+def check_coros_connection(workspace: Path, config: dict, home: Path, now: datetime, probe: bool = False) -> dict:
+    """`[coros].mcp = "relay"` (`./install.sh --coros`) : relais `scripts/arc_coros_mcp.py` déclaré
+    dans `.mcp.json`, pas masqué par une entrée `coros` ajoutée à la main dans Claude Code (portée
+    locale, prioritaire), jetons du projet présents avec un jeton de rafraîchissement, droits 700/600.
+    STATIQUE : lit l'existence des clés et l'échéance, JAMAIS la valeur d'un jeton ; un jeton d'accès
+    expiré n'est pas une panne (le relais le renouvelle). `probe` (`--probe-mcp`) : appel réel du MCP
+    COROS par `arc_coros_auth.py verify`. Sans relais : `info`."""
+    check_id = "coros_connection"
+    source = (config.get("data") or {}).get("source", "garmin")
+    if str((config.get("coros") or {}).get("mcp", "off")).strip() != "relay":
+        if source == "coros":
+            # Source COROS (#168) : le relais est la source de données — sans lui, aucune lecture.
+            return build_check(check_id, "error",
+                               "[data].source = \"coros\" mais [coros].mcp ≠ \"relay\" : aucun serveur COROS déclaré.",
+                               fix="./install.sh --source coros")
+        return build_check(check_id, "info", "[coros].mcp ≠ \"relay\" — montre COROS non installée.", fix=None)
+    fix_install = "./install.sh --source coros" if source == "coros" else "./install.sh --coros"
+    relay = Path(__file__).resolve().parent / "arc_coros_mcp.py"
+    try:
+        servers = json.loads((workspace / ".mcp.json").read_text(encoding="utf-8")).get("mcpServers") or {}
+    except (OSError, ValueError, AttributeError):
+        servers = {}
+    entry = servers.get("coros") if isinstance(servers.get("coros"), dict) else {}
+    if not str(entry.get("command", "")).endswith("arc_coros_mcp.py"):
+        return build_check(check_id, "error", "Serveur MCP « coros » (relais) absent de .mcp.json.", fix=fix_install)
+    if not os.access(relay, os.X_OK):
+        return build_check(check_id, "error", f"Relais non exécutable ({relay}).", fix=fix_install)
+    claude_store = _read_json_object(home / ".claude.json") or {}
+    # Claude Code range le projet sous le chemin tel qu'il l'a vu, pas forcément résolu
+    # (macOS : /var → /private/var, ou un workspace atteint par un lien symbolique).
+    # Plusieurs clés peuvent désigner le même dossier (lancé une fois par chaque chemin) : toutes comptent.
+    target = os.path.realpath(workspace)
+    locals_ = [v.get("mcpServers") for k, v in (claude_store.get("projects") or {}).items()
+               if isinstance(v, dict) and os.path.realpath(k) == target]
+    if any(isinstance(local, dict) and "coros" in local for local in locals_):
+        return build_check(check_id, "warning",
+                           "Une entrée « coros » ajoutée à la main dans Claude Code masque le relais du projet "
+                           "(portée locale prioritaire) : deux connexions, et la vôtre n'est pas renouvelée par le projet.",
+                           fix="claude mcp remove coros -s local")
+    tdir = _coros_token_dir(home)
+    tokens = _read_json_object(tdir / "tokens.json")
+    if tokens is None or not (tdir / "client.json").is_file() or not tokens.get("access_token"):
+        return build_check(check_id, "error", "Compte COROS non connecté (aucun jeton du projet).", fix=COROS_LOGIN_FIX)
+    if not tokens.get("refresh_token"):
+        return build_check(check_id, "error", "Jeton de rafraîchissement COROS absent : la connexion ne peut pas se renouveler.",
+                           fix=COROS_LOGIN_FIX)
+    loose = []
+    for path in (tdir, tdir / "client.json", tdir / "tokens.json"):
+        try:
+            if path.stat().st_mode & 0o077:
+                loose.append(path.name)
+        except OSError:
+            pass
+    if loose:
+        return build_check(check_id, "warning",
+                           f"Jetons COROS lisibles par d'autres utilisateurs ({', '.join(loose)}).",
+                           fix=f"chmod 700 ~/{COROS_TOKEN_DIR_REL} && chmod 600 ~/{COROS_TOKEN_DIR_REL}/*.json")
+    expires = _safe_epoch_to_datetime(tokens.get("expires_at"))
+    days = round((expires - now).total_seconds() / 86400, 1) if expires else None
+    validity = (f"accès encore valable {days} jours" if days is not None and days > 0
+                else "accès expiré, renouvelé au prochain appel")
+    if probe:
+        try:
+            proc = subprocess.run([sys.executable, str(relay.parent / "arc_coros_auth.py"), "verify", "--json"],
+                                  capture_output=True, text=True, timeout=60)
+            result = json.loads(proc.stdout or "{}")
+        except (OSError, ValueError, subprocess.TimeoutExpired) as exc:
+            result = {"ok": False, "error": str(exc)}
+        if not result.get("ok"):
+            return build_check(check_id, "error", f"MCP COROS : {result.get('error', 'appel refusé')}.", fix=COROS_LOGIN_FIX)
+        return build_check(check_id, "ok", f"COROS : relais déclaré, connecté, {result.get('tools')} outils (appel réel).",
+                           fix=None)
+    return build_check(check_id, "ok",
+                       f"COROS : relais déclaré, jetons du projet présents ({validity} ; valeurs non affichées, "
+                       "aucun appel réseau ici — --probe-mcp pour un appel réel).", fix=None)
+
 
 # ---------------------------------------------------------------------------
 # intervals_mcp_pin (#165)
@@ -1226,7 +1413,8 @@ def _mcp_gateway_only(workspace: Path) -> bool:
     if not isinstance(servers, dict):
         return False
     # Serveur direct : « garmin » ou tout nom commençant par « intervals » (Intervals_icu…), sans tenir compte de la casse.
-    direct = [n for n in servers if str(n).lower() == "garmin" or str(n).lower().startswith(("intervals", "strava"))]
+    direct = [n for n in servers if str(n).lower() in ("garmin", "coros")
+              or str(n).lower().startswith(("intervals", "strava"))]
     return "leanproxy" in servers and not direct
 
 
@@ -1564,7 +1752,10 @@ def check_gear_sync(workspace: Path, config: dict) -> dict:
     2. profil : segment `garmin:` illisible ou uuid dupliqué entre puces (⚠️), paires actives
        sans segment `garmin: <uuid>` (ℹ️). Une puce `(ignorée)` (matériel Garmin volontairement non
        suivi) ou `(retirée)` n'est jamais réclamée. Lister le matériel Garmin sans puce exige
-       `get_gear` : c'est le rôle du coach, jamais du doctor.
+       `get_gear` : c'est le rôle du coach, jamais du doctor ;
+    3. retraite Garmin : d'après l'instantané `.arc/garmin_gear.json` (écrit par le coach ou la
+       synchronisation à chaque `get_gear`, lu ici sans appel), paires liées retirées dans Garmin mais
+       pas au profil (ℹ️ : déjà traitées comme retirées, à reporter sur la puce) ou l'inverse (ℹ️).
     """
     check_id = "gear_sync"
     source = (config.get("data") or {}).get("source", "garmin")
@@ -1573,6 +1764,12 @@ def check_gear_sync(workspace: Path, config: dict) -> dict:
             check_id, "info",
             "[data].source = \"strava\" — le serveur Strava ne rend que le NOM de la paire (aucun identifiant "
             "attribuable par séance) ; attribution via le chat/défaut.",
+            fix=None,
+        )
+    if source == "coros":
+        return build_check(
+            check_id, "info",
+            "[data].source = \"coros\" — le MCP COROS n'expose aucun matériel ; attribution via le chat/défaut.",
             fix=None,
         )
     if source == "intervals":
@@ -1629,6 +1826,26 @@ def check_gear_sync(workspace: Path, config: dict) -> dict:
         return build_check(
             check_id, "warning", " ; ".join(problems) + whitelist_note + " — ces puces ne seront pas associées.",
             fix=f"corrigez les segments `garmin: <uuid>` de {rel} (uuid recopié de get_gear, un par paire)",
+        )
+    import arc_garmin_gear as GG
+    snapshot = GG.load_cache(workspace)
+    drift = GG.status_drift(pairs, snapshot)
+    retired_in_garmin = [d for d in drift if d["kind"] == "retired_in_garmin"]
+    if drift:
+        parts = []
+        if retired_in_garmin:
+            parts.append(f"{len(retired_in_garmin)} paire(s) retirée(s) dans Garmin mais pas au profil ("
+                         + ", ".join(d["name"] for d in retired_in_garmin) + ") — déjà traitée(s) comme retirée(s) "
+                         "(aucune alerte, aucun rappel d'inspection)")
+        back = [d for d in drift if d["kind"] == "active_in_garmin"]
+        if back:
+            parts.append(f"{len(back)} paire(s) retirée(s) au profil mais active(s) dans Garmin ("
+                         + ", ".join(d["name"] for d in back) + ") — le profil prime, rien n'est changé")
+        return build_check(
+            check_id, "info", " ; ".join(parts) + whitelist_note + ".",
+            fix=(f"demandez au coach de noter la retraite au profil (python3 scripts/arc_index.py garmin-gear-status "
+                 f"--mark-retired <id>, après votre accord)" if retired_in_garmin else
+                 "retirez la paire dans Garmin Connect, ou enlevez « (retirée) » de sa puce si elle est de nouveau portée"),
         )
     active = [g for g in pairs if not g.get("retired") and not g.get("ignored")]
     unlinked = [g for g in active if not g.get("garmin_uuid")]
@@ -1873,7 +2090,7 @@ def check_gear_history(workspace: Path, config: dict) -> dict:
     `activities/`, jamais l'index ni Garmin) ; jamais un avertissement."""
     check_id = "gear_history"
     source = (config.get("data") or {}).get("source", "garmin")
-    if source in ("intervals", "strava"):
+    if source in ("intervals", "strava", "coros"):
         return build_check(check_id, "info",
                            f"[data].source = \"{source}\" — pas de matériel Garmin à rattraper.", fix=None)
     with_id = without_gear = 0
@@ -1916,7 +2133,7 @@ def run_single_check(check_id: str, workspace: Path, now: datetime, tokens_dir: 
                      probe_ow: bool = True, probe_llm: bool = False) -> dict:
     config = _load_config(workspace)
     source = (config.get("data") or {}).get("source", "garmin")
-    if check_id in ("garmin_token", "garmin_mcp") and source in ("intervals", "strava"):
+    if check_id in ("garmin_token", "garmin_mcp") and source in ("intervals", "strava", "coros"):
         return check_garmin_check_not_applicable(check_id, source)
     if check_id == "garmin_token":
         return check_garmin_token(now, tokens_dir)
@@ -1960,6 +2177,8 @@ def run_single_check(check_id: str, workspace: Path, now: datetime, tokens_dir: 
         return check_telegram(workspace, Path.home(), config, now)
     if check_id == "openwearables":
         return check_openwearables(workspace, config, now, probe_ow)
+    if check_id == "coros_connection":
+        return check_coros_connection(workspace, config, Path.home(), now, probe_mcp)
     raise ValueError(f"vérification inconnue : {check_id!r}")
 
 
@@ -2020,18 +2239,9 @@ def resolve_now(parsed_now: Optional[datetime]) -> datetime:
 def resolve_tokens_dir(raw: Optional[str], workspace: Path) -> Path:
     """Voir la docstring du module pour l'ordre de résolution complet — même
     logique que `garmin_mcp/__init__.py` (`GARMINTOKENS` d'abord), avec
-    `--tokens-dir` / `GARMIN_TOKENS_DIR` en plus pour les tests et #32."""
-    if raw:
-        return Path(raw).expanduser()
-    mcp_env = _resolve_mcp_server(workspace).get("env", {})
-    for source in (mcp_env, os.environ):
-        value = source.get("GARMINTOKENS")
-        if value:
-            return Path(value).expanduser()
-    value = os.environ.get("GARMIN_TOKENS_DIR")
-    if value:
-        return Path(value).expanduser()
-    return Path("~/.garminconnect").expanduser()
+    `--tokens-dir` / `GARMIN_TOKENS_DIR` en plus pour les tests et #32.
+    Implémentation partagée : `arc_credentials` (#127)."""
+    return arc_credentials.garmin_tokens_dir(raw, workspace)
 
 
 # ---------------------------------------------------------------------------
@@ -2053,23 +2263,24 @@ def _family_registry(raw: Optional[str]):
         return path, None, str(exc)
 
 
-def _scheduled_blobs(home: Path) -> list:
-    """Texte de la crontab et des LaunchAgents du coach : de quoi retrouver le workspace d'un membre."""
-    blobs = []
+def _crontab_text() -> str:
+    """Texte de la crontab de l'utilisateur ('' si absente ou injoignable)."""
     try:
         out = subprocess.run(["crontab", "-l"], capture_output=True, text=True, timeout=5)
-        if out.returncode == 0:
-            blobs.extend(line for line in out.stdout.splitlines() if "ai-running-coach" in line)
     except (OSError, subprocess.TimeoutExpired):
-        pass
-    agents = home / "Library/LaunchAgents"
-    if agents.is_dir():
-        for plist in agents.glob("*ai-running-coach*daily-sync*.plist"):
-            try:
-                blobs.append(plist.read_text(encoding="utf-8", errors="replace"))
-            except OSError:
-                continue
-    return blobs
+        return ""
+    return out.stdout if out.returncode == 0 else ""
+
+
+def _member_scheduled(home: Path, crontab: str, workspace: Path) -> bool:
+    """Le workspace d'un membre a-t-il SA planification daily-sync ? Mêmes règles que `check_daily_sync`
+    (marqueur cron historique ou suffixé, label launchd historique ou suffixé, `watch.py` comme
+    `garmin_watch.py`) : appartenance lue sur l'`ARC_WORKSPACE` de la ligne / du plist, jamais sur une
+    simple présence du chemin dans le texte."""
+    if _own_cron_lines(crontab, workspace):
+        return True
+    agents = home / "Library" / "LaunchAgents"
+    return agents.is_dir() and bool(_own_plists(home, workspace))
 
 
 def check_family(registry_path: Optional[Path], registry, error: Optional[str], home: Optional[Path] = None) -> list:
@@ -2099,8 +2310,8 @@ def check_family(registry_path: Optional[Path], registry, error: Optional[str], 
         checks.append(build_check(
             "family_tokens", "warning",
             f"Dossier de jetons Garmin partagé entre membres ({detail}) : une connexion écrase l'autre.",
-            fix="un dossier de jetons propre à chaque membre (install.sh --garmin-tokens <dossier>, livré par la "
-                "PR « identifiants et planification par workspace » de #127 ; sinon GARMINTOKENS dans le .mcp.json)",
+            fix="un dossier de jetons propre à chaque membre : ./install.sh --workspace <dossier du membre> "
+                "--garmin-tokens <dossier> (GARMINTOKENS dans son .mcp.json)",
             shared=[{"members": ids} for ids in shared.values()]))
     else:
         checks.append(build_check("family_tokens", "ok", "Aucun dossier de jetons Garmin partagé entre membres.",
@@ -2124,8 +2335,9 @@ def check_family(registry_path: Optional[Path], registry, error: Optional[str], 
         checks.append(build_check("family_ntfy", "ok", "Chaque membre a son propre topic ntfy (ou n'en utilise pas).",
                                   fix=None))
 
-    blobs = _scheduled_blobs(home or Path.home())
-    unscheduled = [m.id for m in members if not any(str(m.workspace) in blob for blob in blobs)]
+    home = home or Path.home()
+    crontab = _crontab_text()
+    unscheduled = [m.id for m in members if not _member_scheduled(home, crontab, m.workspace)]
     if unscheduled:
         checks.append(build_check(
             "family_sync", "info",
@@ -2178,6 +2390,7 @@ def main(argv: Optional[list] = None) -> int:
     workspace = workspace_root(args.workspace)
     now = resolve_now(args.now)
     tokens_dir = resolve_tokens_dir(args.tokens_dir, workspace)
+    _, tokens_source = arc_credentials.garmin_tokens_dir_with_source(args.tokens_dir, workspace)
 
     if args.check:
         checks = [run_single_check(args.check, workspace, now, tokens_dir, args.probe_mcp, not args.no_probe_ow,
@@ -2196,11 +2409,15 @@ def main(argv: Optional[list] = None) -> int:
             "generated_at": now.replace(microsecond=0).isoformat(),
             "workspace": str(workspace),
             "ok": not has_error,
+            "tokens_dir": str(tokens_dir),
+            "tokens_dir_source": tokens_source,
             "checks": checks,
         }
         print(json.dumps(payload, ensure_ascii=False, indent=2))
     else:
         print(f"coach doctor — {workspace}")
+        if tokens_source != arc_credentials.SOURCE_DEFAULT:
+            print(f"Jetons Garmin : {tokens_dir} (source : {tokens_source})")
         print(render_table(checks))
         print()
         if has_error:

@@ -85,6 +85,8 @@ inattendu pour le dossier) se corrigent aussi.
 | `race_plan` | plan de course dans `planning/` | course-strategist |
 | `decision` | `planning/YYYY-MM-DD_decision_<slug>.md` | coach, medical (garde-fous, bilan matinal, blessure) |
 | `gear_inspection` | `gear/YYYY-MM-DD_<gear_id>_inspection.md` (photos dans `gear/photos/`) | coach (skill `gear-inspection`) |
+| `shoe_spec` | `gear/specs/<gear_id>.md` (une fiche par paire, réécrite en place) | coach (skill `shoe-specs`, jamais en headless) |
+| `shoe_recommendation` | `gear/YYYY-MM-DD_shoe_recommendation_<rôle>.md` | coach (skill `shoe-selection`, jamais en headless) |
 
 `planning/Runner_Profile.md` et `planning/active_objective.md` **n'ont pas de
 bloc** : l'athlète les édite à la main. Remplissez leurs puces
@@ -105,7 +107,8 @@ Types de valeurs ci-dessous : *entier*, *nombre* (≥ 0 sauf mention), *texte*,
 | `garmin_activity_id` | entier | identifiant Garmin — clé de jointure, à toujours renseigner après un sync `[data].source = "garmin"` |
 | `intervals_activity_id` | texte | identifiant Intervals.icu (#68, ex. `"i12345678"`) — CHAÎNE, jamais confondue avec `garmin_activity_id` (entier). À renseigner à la place de `garmin_activity_id`, jamais en plus, après un sync `[data].source = "intervals"` |
 | `strava_activity_id` | texte | identifiant Strava (#164) **préfixé `s`**, ex. `"s12345678901"` — l'API Strava rend un entier sans préfixe, indiscernable d'un `garmin_activity_id` ; le préfixe est la convention du projet (jamais le nombre seul : la validation le refuse). À renseigner à la place de `garmin_activity_id`, jamais en plus, après un sync `[data].source = "strava"` |
-| `name` | texte | nom de l'activité (Garmin, Intervals.icu ou Strava selon la source) |
+| `coros_activity_id` | texte | identifiant COROS (#168) **préfixé `c`** : `"c"` + le `LabelId` de `querySportRecords` (18 chiffres), ex. `"c481221836600803431"` — même convention que Strava (jamais le nombre seul : la validation le refuse). À renseigner à la place des trois autres, jamais en plus. Une activité COROS porte aussi `start_time` : il numérote ses montées (sans lui, elles ne sont pas comparées d'une séance à l'autre) |
+| `name` | texte | nom de l'activité (Garmin, Intervals.icu, Strava ou COROS selon la source ; COROS : la ligne `Location` de `querySportRecords`) |
 | `location` | texte | lieu / parcours (sert à la comparaison de parcours) |
 | `start_time` | date-heure | |
 | `distance_m` | nombre | |
@@ -126,6 +129,7 @@ Types de valeurs ci-dessous : *entier*, *nombre* (≥ 0 sauf mention), *texte*,
 | `fluid_intake_ml` | nombre | liquide ingéré pendant l'effort, 0-10 000 ml |
 | `weight_pre_kg`, `weight_post_kg` | nombre | pesée avant / après effort, 30-200 kg |
 | `gear_ids` | liste de textes | matériel hors chaussures porté sur la séance (slugs, mêmes règles que `gear_id`, 30 max, sans doublon) — voir « Matériel hors chaussures » ci-dessous |
+| `shoe_feedback` | objet | retour de chaussant de la séance (#299, `/log`) : `comfort` 0-10, `issues[]` (`kind` parmi `blister` `toe_box_tight` `heel_slip` `hot_spot` `numbness` `lacing_pressure` `instability` `too_soft` `too_firm` `poor_grip` `upper_tear`, `zone` et `side` facultatifs, mêmes zones que `gear_inspection`), `notes` — **exige un `gear_id`** (erreur sinon) et au moins un des trois ; voir « Retour de chaussant » ci-dessous |
 | `garmin_pushed` | liste d'objets | apport `/log` poussé vers Garmin Connect après un « oui » (#167, opt-in `[nutrition].garmin_sync`) — mêmes entrées que `nutrition.garmin_pushed` (section `nutrition`) ; sert l'idempotence, jamais écrite en headless |
 | `missing_reason` | objet | clé absente → cause |
 | `gap_pace_s_km` | nombre | GAP global de la séance, s/km — voir « Champs KPI FIT » |
@@ -211,6 +215,14 @@ méthode complète. En résumé :
 - `(retirée)` : kilométrage toujours affiché (historique), jamais d'alerte,
   jamais candidate à l'attribution par défaut (priorité retraite avant
   défaut, même si `(par défaut)` est aussi coché sur la même puce).
+  `(retirée AAAA-MM-JJ)` ajoute la date de retraite (`retired_date`) : une paire
+  `(par défaut)` retirée garde alors les séances sans `gear_id` datées de son
+  `depuis` à cette date incluse. Retraite **effective** (`gear_mileage` →
+  `retired`, `retired_source`, `retired_date`) = puce `(retirée)` OU paire liée
+  par `garmin: <uuid>` retirée dans Garmin Connect (instantané dérivé
+  `.arc/garmin_gear.json`, `arc_index.py garmin-gear-status`), immédiate même
+  avant que la puce soit modifiée ; un profil `(retirée)` n'est jamais annulé par
+  Garmin. `over_threshold` : seuil atteint, retraite ou non.
 - `départ N km` (#132) : ajouté au cumul (`start_m` dans la table `gear`,
   `distance_m` de `gear_mileage` = activités + départ), donc compté dans le
   seuil d'alerte, la prévision et `near_threshold` ; conservé pour une paire
@@ -246,7 +258,7 @@ méthode complète. En résumé :
   (toujours future). Clés OMISES sans usage sur 28 jours, pour une paire retirée
   ou déjà au seuil (`alert` : « seuil dépassé »). `near_threshold: true` dès 90 %
   du seuil. `arc_index.py gear --activities ID[,ID…]` (garmin_activity_id,
-  intervals_activity_id, strava_activity_id ou chemin du fichier des séances synchronisées dans CE run) ajoute
+  intervals_activity_id, strava_activity_id, coros_activity_id ou chemin du fichier des séances synchronisées dans CE run) ajoute
   `crossed_in_run: true` à la paire dont elles font franchir le seuil — base de
   l'alerte unique du `garmin-daily-sync` (par séance, pas par date : un second
   passage le même jour ne ré-émet rien), sans fichier d'état. Avec `--today`
@@ -413,6 +425,10 @@ valeurs par km dans cet ordre. `km` et `duration_s` sont obligatoires ; les
 autres sont facultatives : `distance_m` (dernier split partiel),
 `elev_gain_m`, `elev_loss_m`, `avg_hr_bpm`, `max_hr_bpm`, `max_speed_kmh`,
 `cadence_spm`, `label` (lecture courte : « Échauffement », « Montée »).
+Par défaut, quelle que soit la source, `python3 scripts/arc_index.py splits <id>`
+les calcule depuis le FIT ingéré — recopier `splits_cols`/`splits` tels quels, sans
+y ajouter de colonne. Sans FIT : splits de `get_activity_splits` avec Garmin, clé
+omise sinon (jamais les tours d'une séance structurée).
 
 ```arc
 {
@@ -537,7 +553,7 @@ de la clé du bloc :
 **Cette copie Markdown est un instantané narratif, jamais la source de
 vérité.** `scripts/arc_index.py` calcule sa PROPRE version de ces mêmes
 grandeurs à chaque passage (`index_workspace`), directement depuis les
-échantillons FIT ingérés (`activities/fit/<garmin_activity_id | intervals_activity_id | strava_activity_id>.json`) — dans
+échantillons FIT ingérés (`activities/fit/<garmin_activity_id | intervals_activity_id | strava_activity_id | coros_activity_id>.json`) — dans
 les colonnes dérivées `activity.gap_pace_s_km`/`decoupling_pct`/`ef_whole`/
 `best_climb_vam_elapsed_m_h` et la table `hr_zone_time`. **La valeur de
 l'index fait TOUJOURS foi** pour le tableau de bord, `arc_index.py` et toute
@@ -610,7 +626,7 @@ mm ÷ 1000), pourcentages inchangés. Toutes optionnelles :
 | `weight_kg` | nombre | poids du jour : pesée Garmin (`get_daily_weigh_ins`, #222) ou valeur déclarée par l'athlète — voir « Poids du jour » ci-dessous |
 | `weight_origin` | `garmin` `chat` | provenance de `weight_kg` (#222) ; absente = fichier d'avant #222, lu comme déclaré |
 | `weight_garmin_kg` | 30-200 | pesée Garmin ÉCARTÉE au profit de la valeur déclarée, écart > 1 kg (#222) — signalé une seule fois |
-| `health_source` | `garmin` `intervals` `openwearables` | d'où viennent HRV, FC de repos et sommeil de CE fichier (#218) — une seule source santé par fichier. **Absent = fichier antérieur**, réputé venir de `[data].source` (hypothèse du projet, `arc_health_source.ASSUMPTIONS`) |
+| `health_source` | `garmin` `intervals` `openwearables` `coros` | d'où viennent HRV, FC de repos et sommeil de CE fichier (#218) — une seule source santé par fichier. **Absent = fichier antérieur**, réputé venir de `[data].source` (hypothèse du projet, `arc_health_source.ASSUMPTIONS`) |
 | `health_provider` | texte | fabricant amont quand `health_source = "openwearables"` (`oura`, `whoop`, `polar`…) ; refusé sinon |
 | `health_device` | texte | modèle d'appareil tel que rapporté par la source |
 | `hrv_sdnn_ms` | nombre > 0 | HRV en **SDNN** (Apple Health). Jamais dans `hrv_overnight_ms`, qui reste du RMSSD quelle que soit la source |
@@ -621,7 +637,7 @@ mm ÷ 1000), pourcentages inchangés. Toutes optionnelles :
 | `pain` | liste d'objets | douleur STRUCTURÉE déclarée ce jour-là (#57) — voir ci-dessous |
 | `cycle_phase` | `menstrual` `follicular` `ovulation` `luteal` | **opt-in** (#166) : phase du cycle du jour, voir « Contexte du cycle » ci-dessous |
 | `cycle_day` | entier 1-60 | jour du cycle, si la source le donne |
-| `cycle_source` | `garmin` `intervals` `manual` | d'où vient la phase (`manual` = déclarée par l'athlète via `/log`) |
+| `cycle_source` | `garmin` `intervals` `coros` `manual` | d'où vient la phase (`manual` = déclarée par l'athlète via `/log`) |
 
 **Douleur déclarée (`pain`, #57).** Une liste d'objets, un par zone douloureuse
 signalée le jour du fichier (`health.date` fait foi comme date — pas de `date`
@@ -683,7 +699,7 @@ d'où viennent ses mesures. Règles, validées par `arc_index.py --validate` :
   présenté comme le Training Readiness Garmin.
 - Une seule source santé par fichier ; jamais deux sources fusionnées dans un même jour.
 - **Tout nouveau fichier santé portant une mesure** (HRV, FC de repos, sommeil, score) pose
-  `health_source` : `garmin` ou `intervals` d'après `[data].source` quand la santé en vient, ou
+  `health_source` : `garmin`, `intervals` ou `coros` d'après `[data].source` quand la santé en vient, ou
   `openwearables` (avec `health_provider`/`health_device` tels que rendus par
   `scripts/arc_openwearables.py health-day`, #221). Un fichier sans mesure (douleur seule, `/log`,
   Telegram) n'a pas de source.
@@ -691,6 +707,14 @@ d'où viennent ses mesures. Règles, validées par `arc_index.py --validate` :
   (`hrv_overnight_ms`, `resting_hr_bpm`, `readiness`), jamais d'une cause devinée.
 - Une mesure que la source ne fournit pas = clé omise + `missing_reason`, jamais une
   valeur approchée d'une autre méthode.
+
+**Santé COROS (`health_source: "coros"`, #168).** Mêmes règles qu'Open Wearables pour les clés
+Garmin : `readiness_score`, `readiness_factors`, `sleep_score`, `body_battery_*` et `stress_avg` sont
+refusés. La **récupération COROS** (`queryRecoveryStatus`, `Recovery: N%`) et le score de sommeil COROS
+(`querySleepOverview`) vont dans `provider_scores`, nommés et sur leur échelle :
+`{"category": "recovery", "provider": "coros", "value": 96, "scale_min": 0, "scale_max": 100}`. Un
+`Sleep Score: 0` (nuit pas encore calculée) ou `Recovery: -1%` n'est jamais un score : clé omise.
+Pas de `health_provider` (réservé à `openwearables`).
 
 Chaque entrée de `provider_scores` : **`category`** (`readiness`, `recovery` ou
 `sleep` ; la charge n'est pas un signal de récupération), **`value`** (nombre),
@@ -1328,6 +1352,122 @@ seule semelle documentée dans `wear_zones` est signalée (le protocole demande 
 
 ```arc
 {"arc": 1, "kind": "gear_inspection", "date": "2026-09-24", "gear_id": "pegasus-41", "condition": "yellow", "distance_m": 412000, "wear_zones": [{"side": "left", "zone": "heel_posterolateral", "severity": "moderate"}, {"side": "right", "zone": "heel_posterolateral", "severity": "light"}], "asymmetry": {"level": "mild", "side": "left"}, "gait_hints": ["heel_strike"], "photos": ["gear/photos/2026-09-24_pegasus-41_semelles.jpg"], "previous": "gear/2026-08-02_pegasus-41_inspection.md", "scale_reference": true, "lug_depth_mm": 2.5}
+```
+
+### Retour de chaussant (`activity.shoe_feedback`, #299)
+
+Ressenti de chaussant d'UNE séance, saisi par `/log` : `{"comfort": 6, "issues": [{"kind": "blister",
+"zone": "heel_lateral", "side": "left"}, {"kind": "toe_box_tight"}], "notes": "serré après 1 h"}`.
+`comfort` : 0 (insupportable) à 10 (parfait). Liste fermée de `kind` (un terme hors liste se demande, il
+ne s'invente pas) ; `zone` = zones de `gear_inspection` (`heel_*`, `midfoot_*`, `forefoot_*`, `toe`), omise
+quand elle n'est pas nette ; `side` = `left` | `right`. **Un `shoe_feedback` sans `gear_id` sur la séance est
+une ERREUR**, pas un avertissement : un retour orphelin fausserait l'agrégation par paire sans rien
+signaler, et `/log` demande la paire avant d'écrire. Il ne remplace **jamais** `health.pain` (la douleur
+garde son canal, son protocole et son seuil de consultation) et n'est jamais présenté comme la cause
+d'une douleur. Lecture : `python3 scripts/arc_index.py shoe-feedback [--gear ID]` (table SQLite
+`shoe_feedback`, une ligne par séance).
+
+### `shoe_spec`
+
+Fiche de caractéristiques d'une paire (#298, skill `shoe-specs`) : un fichier par paire,
+`gear/specs/<gear_id>.md`, réécrit en place à chaque correction validée. Le nom porte le `gear_id`
+(**une seule fiche par paire** : un fichier dont le nom diffère du `gear_id` du bloc n'est pas indexé, avertissement à la validation) ; le profil `### Chaussures` reste inchangé,
+le lien se fait par `gear_id`. Dossier `gear/` : gitignoré. Le texte libre sous le bloc garde les
+notes de l'athlète et le journal des validations (qui a validé quoi, quand).
+
+**Chaque valeur porte sa provenance** : un objet `{value, source_type, url, retrieved, alternatives}`.
+`source_type` : `measured` (mesure d'un laboratoire), `manufacturer` (donnée de la marque ou d'un
+revendeur qui la recopie) ou `athlete` (saisie ou correction de l'athlète). `value` est la valeur
+**retenue** : `measured` prime sur `manufacturer` ; `athlete` prime sur les deux (l'athlète valide
+chaque ligne). Les autres sources vont dans `alternatives`. Une caractéristique introuvable est
+**absente** (clé omise), jamais reprise d'un modèle voisin.
+
+| Clé | Type | Notes |
+|---|---|---|
+| **`date`** | date | dernière validation par l'athlète |
+| **`gear_id`** | slug | la paire, comme dans `activities` / `### Chaussures` du profil |
+| **`brand`**, **`model`** | texte | marque et modèle exact |
+| `version` | texte | version identifiée (ex. `v1`, `3`), jamais devinée si ambiguë |
+| `release_year` | entier | année de lancement |
+| `size` | objet | **`value`** (pointure), **`system`** (`EU` `US_M` `US_W` `UK` `JP` `CM`) |
+| `purchase_date` | date | sert à identifier la version (date de lancement vs date d'achat) |
+| `category` | valeur + provenance | `road` `trail` `hybrid` |
+| `drop_mm` | valeur + provenance | nombre en mm, de -5 à 20 |
+| `stack_heel_mm`, `stack_forefoot_mm` | valeur + provenance | mm, de 0 à 60 |
+| `weight_g` | valeur + provenance | g, de 100 à 600 ; `reference_size` (texte) = pointure du poids annoncé |
+| `midsole_foam` | valeur + provenance | texte (EVA, PEBA, TPU…) |
+| `midsole_softness` | valeur + provenance | nombre ; **`scale`** (texte) obligatoire (ex. `Asker C`) |
+| `plate` | valeur + provenance | `none` `carbon` `nylon` `rock_plate` |
+| `lug_depth_mm` | valeur + provenance | mm, de 0 à 12 |
+| `toe_box` | valeur + provenance | `narrow` `standard` `wide` |
+| `flexibility_longitudinal`, `flexibility_torsional` | valeur + provenance | évaluation MANUELLE de l'athlète pour l'index minimaliste : 0 à 2,5 par pas de 0,5 (`source_type`: `athlete`) |
+| `stability_devices` | valeur + provenance | évaluation MANUELLE : nombre entier de dispositifs de stabilité observés, 0 à 6 (`athlete`) |
+
+Sous-clés d'une valeur : **`value`**, **`source_type`**, `url` et `retrieved` (date de consultation, jamais
+future — avertissement) — **obligatoires** pour `measured` et `manufacturer` —, `alternatives`, et `basis`
+(`measured` `manufacturer`, **réservé aux valeurs `athlete`** : la source sur laquelle l'athlète a fondé son choix,
+lue par la règle de choix de chaussure #301). Chaque élément de
+`alternatives` : **`value`** (du MÊME type que la valeur retenue : nombre, texte ou énumération du champ),
+**`source_type`**, `url`, `retrieved`, `outlier` (`true` = aberration constatée et assumée, conservée pour
+mémoire, jamais retenue).
+
+**L'athlète garde la valeur de la marque** (il la préfère à la mesure du laboratoire) : valeur retenue en
+`source_type: "athlete"`, `basis: "manufacturer"`, avec l'`url` de la source de la marque, et `alternatives` qui
+garde la mesure ET la valeur de la marque — l'écart laboratoire - marque reste ainsi calculable.
+
+Contrôles : valeur retenue hors des bornes plausibles ci-dessus = **erreur** ; valeur retenue
+`manufacturer` alors qu'une alternative `measured` existe = **erreur** (la mesure prime) ; alternative
+qui s'écarte trop de la valeur retenue (poids de plus de 25 %, cotes de plus de 4 à 6 mm) sans `outlier`
+= **avertissement** (aberration probable) ; drop incohérent avec les deux cotes quand les trois
+viennent de la même source = avertissement. L'écart marque/labo (ex. drop 6 mm annoncé, 8,7 mm mesuré)
+est un désaccord légitime, pas une aberration. L'index minimaliste (Esculier 2015) **n'est pas
+persisté** : `python3 scripts/arc_index.py shoe-specs` le calcule à la lecture, et le dit absent s'il
+manque une entrée.
+
+**Bilan de retraite (`verdict`, #299).** Objet facultatif de la fiche, écrit au passage de la paire à
+`(retirée)` (skill `gear-inspection`, interactif seulement) : **`date`**, **`comfort_overall`** (0 à 10),
+**`would_rebuy`** (`yes` | `yes_with_change` | `no`), `change_wanted` (liste fermée : `wider_toe_box`
+`narrower` `more_drop` `less_drop` `more_cushion` `firmer` `more_grip` `lighter` `more_stable` `other`),
+`notes` (texte libre), `distance_m` (kilométrage à la retraite). `change_wanted` est **obligatoire** quand
+`would_rebuy` vaut `yes_with_change` (erreur) et signalé (avertissement) s'il accompagne `yes`. Le
+verdict vit dans la fiche plutôt que dans un fichier à part : une paire = un seul fichier de référence
+pour la règle de continuité (#302), sans nouveau type ni nouveau dossier. Il est un avis déclaré, jamais
+une cause de douleur.
+
+```arc
+{"arc": 1, "kind": "shoe_spec", "date": "2026-10-12", "gear_id": "kipride-max-1", "brand": "Kiprun", "model": "Kipride Max", "version": "v1", "release_year": 2026, "size": {"value": 42, "system": "EU"}, "purchase_date": "2026-02-20", "category": {"value": "road", "source_type": "manufacturer", "url": "https://runnerslab.com/kiprun-kipride-max-review/", "retrieved": "2026-10-12"}, "drop_mm": {"value": 8.7, "source_type": "measured", "url": "https://www.rtings.com/running-shoes/reviews/kiprun/kipride-max", "retrieved": "2026-10-12", "alternatives": [{"value": 6, "source_type": "manufacturer", "url": "https://runnerslab.com/kiprun-kipride-max-review/", "retrieved": "2026-10-12"}]}, "stack_heel_mm": {"value": 42, "source_type": "manufacturer", "url": "https://runnerslab.com/kiprun-kipride-max-review/", "retrieved": "2026-10-12", "alternatives": [{"value": 44, "source_type": "manufacturer", "url": "https://www.runningwarehouse.com/KIPRUN_Kipride_Max/descpage-KRMAXM3.html", "retrieved": "2026-10-12"}]}, "stack_forefoot_mm": {"value": 36, "source_type": "manufacturer", "url": "https://runnerslab.com/kiprun-kipride-max-review/", "retrieved": "2026-10-12", "alternatives": [{"value": 38, "source_type": "manufacturer", "url": "https://www.runningwarehouse.com/KIPRUN_Kipride_Max/descpage-KRMAXM3.html", "retrieved": "2026-10-12"}]}, "plate": {"value": "none", "source_type": "manufacturer", "url": "https://runnerslab.com/kiprun-kipride-max-review/", "retrieved": "2026-10-12"}, "flexibility_longitudinal": {"value": 1.5, "source_type": "athlete"}, "flexibility_torsional": {"value": 1.0, "source_type": "athlete"}, "stability_devices": {"value": 0, "source_type": "athlete"}}
+```
+
+### `shoe_recommendation`
+
+Recommandation de chaussures (#302, skill `shoe-selection` / commande `/shoes`) : un fichier par
+recommandation, `gear/AAAA-MM-JJ_shoe_recommendation_<rôle>.md` (la date et le rôle du nom doivent dire la
+même chose que le bloc, sinon avertissement). Écrite **seulement après** avoir été montrée à l'athlète et
+**avec son accord** (`athlete_validated: true`, `false` = erreur), jamais en headless. Ni achat, ni lien
+d'affiliation, ni prix : le contrat n'a aucune clé pour cela. Ce n'est pas une prévention de blessure.
+
+| Clé | Type | Notes |
+|---|---|---|
+| **`date`** | date | jour de la recommandation |
+| **`role`** | enum | `trail_long` `trail` `road_easy` `road_tempo` `race` `mixed_long` `mixed` (vocabulaire de `shoe-usage` / `shoe-needs`) |
+| **`path`** | enum | `continuity` (même modèle, ou modèle le plus proche de la paire remplacée) ou `search` (plages cibles puis recherche en ligne) |
+| `replaced_gear_id` | slug | la paire remplacée ; **obligatoire** pour `continuity` (erreur sinon) |
+| `targets` | objet | copie de `arc_index.py shoe-needs` : `ranges` (objet, champ -> plage/valeurs permises, règles, niveau de preuve), `rule_ids` (liste d'identifiants de règle), `insufficient_data` (booléen) |
+| **`candidates`** | liste d'objets | au moins 1, 3 à 5 pour une recherche (plus de 5 = avertissement) |
+| `medical_veto` | objet | **`status`** (`clear` `caution` `veto`), **`reviewer`** (`medical` `coach`), `reason` (obligatoire pour `veto`) |
+| **`athlete_validated`** | booléen | l'athlète a vu et accepté la restitution |
+| `notes` | texte | version comparée, avertissements, raisons |
+
+Un candidat : **`brand`**, **`model`**, `version`, `specs`, `fits` (liste de textes : règles satisfaites), `misses` (règles non
+satisfaites ou valeur hors plage), `vetoed` (booléen : écarté par le veto, gardé pour mémoire), `notes`.
+`specs` : objet `{champ de shoe_spec: valeur avec provenance}` — **exactement** la forme de `shoe_spec`
+(`value`, `source_type` `measured` | `manufacturer` | `athlete`, `url` + `retrieved` obligatoires hors
+`athlete`, `alternatives`), mêmes bornes plausibles, **mesure > marque**, aberrations signalées ; un champ
+inconnu de `shoe_spec` est une erreur. Une caractéristique introuvable est **absente**, jamais reprise d'un
+modèle voisin.
+
+```arc
+{"arc": 1, "kind": "shoe_recommendation", "date": "2026-10-23", "role": "trail_long", "path": "search", "replaced_gear_id": "trail-a", "targets": {"ranges": {"drop_mm": {"min": 4, "max": 8, "rules": ["continuity_drop"], "confidence": "moderate"}}, "rule_ids": ["continuity_drop", "softness_not_firm"], "insufficient_data": false}, "candidates": [{"brand": "Marque A", "model": "Modèle A", "version": "2", "specs": {"drop_mm": {"value": 6.5, "source_type": "measured", "url": "https://example.org/lab/modele-a", "retrieved": "2026-10-23", "alternatives": [{"value": 5, "source_type": "manufacturer", "url": "https://example.org/marque-a", "retrieved": "2026-10-23"}]}}, "fits": ["drop_mm dans la plage 4-8 (continuity_drop)"], "misses": []}], "medical_veto": {"status": "clear", "reviewer": "coach"}, "athlete_validated": true}
 ```
 
 ## Réécrire un fichier ancien (backfill)

@@ -21,7 +21,7 @@ key by key.
 | `[athlete].profile` | Path to the athlete profile (default `planning/Runner_Profile.md`). Read it before giving advice. |
 | `[athlete].units` | `metric` or `imperial`, for every figure you state. |
 | `[health].morning_check` | `full` = the indivisible triad below. `minimal` = readiness only. `off` = the athlete has opted out of health-gated training; answer questions they ask, but do not gate or chase data. |
-| `[data].source` | `garmin` (default), `intervals` or `strava` — which MCP tools you call for HRV/resting HR/sleep. See DATA SOURCE MANDATE below. |
+| `[data].source` | `garmin` (default), `intervals`, `strava` or `coros` — which MCP tools you call for HRV/resting HR/sleep. See DATA SOURCE MANDATE below. |
 | `[health].cycle_tracking` | Opt-in menstrual-cycle context, `off` by default. See CYCLE CONTEXT & RED-S VIGILANCE below — at `off`, never mention it. |
 | `[health].source` | Opt-in source of the health data you read (HRV, resting HR, sleep, the maker's score), `primary` by default. See HEALTH SOURCE in DATA SOURCE MANDATE below — at `primary`, never mention it. |
 
@@ -63,6 +63,20 @@ perceived exertion) as a recovery signal, and gate availability on the athlete's
 pain reports and the training load in `activities/` instead. A reported injury or pain ≥ 7/10
 keeps its protocol: the missing data never turns an amber/red verdict green.
 
+**When `[data].source = "coros"` (#168):** Garmin-like — every Garmin health tool named below maps
+per the "Garmin ↔ COROS" table in `AGENTS.md`: overnight HRV → `querySleepHrv` (the official daily
+assessment, never recomputed from raw points), resting HR → `queryRestingHeartRate` (never the
+« Resting HR » header of `queryDailyHealthData`), sleep → `querySleepOverview`, training readiness →
+**COROS recovery** (`queryRecoveryStatus`). Dates are wake-up days (last night = today). The recovery
+is named « récupération COROS N % » — never « Training Readiness », never read against Garmin's
+thresholds, written to `provider_scores` (`recovery`, `coros`, 0-100), never `readiness_score`; the COROS
+sleep score likewise (`sleep`), never `sleep_score`; `health_source: "coros"`. It is a current state that
+updates continuously: it never proves a night was read. `Sleep Score: 0` / HRV « No data found » /
+resting HR `No data` for the wake-up day = night not computed yet: say it, gate on declared feeling,
+pain and load, and the missing data never turns an amber/red verdict green. HRV without a COROS
+baseline yet (about 5 nights with the watch): « ligne de base COROS en construction ». No HRR and no
+weigh-ins on COROS: say so when they matter.
+
 ### OBJECTIVE ALIGNMENT
 - **Context:** Always ensure your health strategy is aligned with the active training objective stored in `planning/active_objective.md`.
 - **Consistency:** If the objective changes, adjust your recovery protocols accordingly.
@@ -74,7 +88,7 @@ keeps its protocol: the missing data never turns an amber/red verdict green.
 ### DATA MANAGEMENT MANDATES
 - **Contextual Refresh:** Before providing an assessment, check the `medical/`, `activities/`, `planning/`, and `resources/` folders.
 - **Persistence:** Document all health assessments, recovery logs, and injury reports in the `medical/` folder using the format `YYYY-MM-DD_health.md`.
-- **Origin of every measurement:** a health file you write that carries a measurement sets `health_source` = `garmin` (`[data].source = "garmin"`) or `intervals` (`"intervals"`); a pain-only or cycle-only file has no source key.
+- **Origin of every measurement:** a health file you write that carries a measurement sets `health_source` = `garmin` (`[data].source = "garmin"`), `intervals` (`"intervals"`) or `coros` (`"coros"`); a pain-only or cycle-only file has no source key.
 - **MD File Creation REQUIRED:** After EVERY health/sleep data retrieval (from Garmin or other sources), ALWAYS create/update the corresponding MD file in `medical/`. Never skip this step.
 - **Data contract (REQUIRED):** Every file you persist in `activities/`, `medical/`, `nutrition/`, `planning/` (weeks, evaluations, race plans) or `rapports/` MUST open, right under its `# Title`, with ONE fenced ```arc block of JSON conforming to the `workspace-data-contract` skill — load it before writing. Keys stay in English, values in SI units (metres, seconds, bpm) whatever `[athlete].units` says, and an unmeasured value is omitted, never 0. Your prose goes below the block, unchanged. After writing, run `python3 scripts/arc_index.py --validate <file>` and fix any error it names. `planning/Runner_Profile.md` and `planning/active_objective.md` are the exception: they keep their template bullets (fill values, never rename labels).
 - **Gatekeeper verdict as data:** Record your availability decision in the day's `medical/YYYY-MM-DD_health.md` block as `verdict` (`green` / `amber` / `red`) with a one-sentence `verdict_reason`. Injury reports and assessments go in the prose below the block.

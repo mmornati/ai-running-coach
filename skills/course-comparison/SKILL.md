@@ -13,6 +13,8 @@ Analyse comparative de séances enregistrées sur le **même parcours / même li
 - Évaluation de la faisabilité d'un objectif à partir de la progression sur un parcours de référence.
 - Toute demande « même parcours, dates différentes » → remplacer l'analyse manuelle par ce workflow reproductible.
 
+**Source de données** : ce skill exige des `splits` par km, calculés depuis le FIT quelle que soit la source (`python3 scripts/arc_index.py splits <id>`, `AGENTS.md`). Une séance sans FIT téléchargé (et sans splits Garmin en repli) n'en a pas : le dire à l'athlète, ne rien reconstituer depuis les tours de la montre.
+
 **Ne PAS utiliser** pour l'analyse globale d'une seule séance (utiliser le workflow coach standard sur `get_activity`) ni pour les drills (strides/intervalles → `session-parts-analyzer`).
 
 ## Deux niveaux d'analyse
@@ -47,7 +49,7 @@ Utilise les fichiers `activities/*.md` (bloc `## Données brutes Garmin (référ
 ### Étape 1 — Persistance Garmin (prérequis, via l'agent)
 
 1. Charge `garmin-sync-efficiency` et récupère les activités du lieu via `get_activities_by_date`.
-2. Pour chaque activité à comparer, récupère le détail (`get_activity`) et les splits (`get_activity_splits`).
+2. Pour chaque activité à comparer, récupère le détail (`get_activity`) et les splits : depuis le FIT par défaut (`fit-download`, puis `python3 scripts/arc_index.py splits <id>`), `get_activity_splits` seulement si le FIT est indisponible.
 3. **Persiste immédiatement** chaque activité dans la langue des documents (`config/workspace.toml` → `[language].documents`, défaut FRANÇAIS) dans `activities/YYYY-MM-DD_type.md` **avec** :
    - le bloc `## Données brutes Garmin (référence)` (YAML : `activity_id`, `name`, `distance_m`, `duration_s`, `avg_hr_bpm`, `max_hr_bpm`, `elevation_gain_m`, `elevation_loss_m`, `recovery_hr_bpm`, `training_effect`…)
    - le tableau `## Analyse par splits (km)` (colonnes : `num | durée | allure | vmax | D+/D- | FC moy | cadence | lecture`).

@@ -234,9 +234,13 @@ localement ; l'image publiée prépare le passage à un simple `docker compose p
 | `:latest` | La plus haute release stable. Jamais la tête de `main`. |
 | `:X.Y.Z`, `:X.Y` | Une release (`:X.Y` suit son dernier correctif). |
 | `:X.Y.Z-rc.N` | Une pré-version : jamais `:latest` ni `:X.Y`. |
-| `:edge` | La tête de `main`, à chaque fusion. Pour tester avant une release. |
+| `:edge` | La tête de `main`, publiée seulement **après** le succès des tests (workflow *Tests*) sur ce commit. Pour tester avant une release. |
 | `:sha-<7>` | Un commit précis (toutes les images en portent une). |
 | `:branch-<nom>` | Une branche, publiée à la demande : Actions → *Publish images* → *Run workflow*. |
+
+`:edge` ne reçoit donc jamais un commit dont les tests ont échoué : un serveur qui la
+suit chaque nuit peut s'y fier. De même, *Tag a release* refuse de taguer `main` si le job
+*Tests* n'a pas réussi sur le commit visé.
 
 Chaque image porte la révision construite (`org.opencontainers.image.revision`), la même
 que celle comparée par `scripts/update-docker.sh --check`, ainsi qu'une attestation de

@@ -405,6 +405,25 @@ class TestWeekCompliance(unittest.TestCase):
         c = M.week_compliance(sessions, activities, self.TODAY)
         self.assertEqual(c["sessions_done"], 1)
 
+    def test_unplanned_activity_reported_outside_ratios(self):
+        """Activité sans séance planifiée : « hors plan » à part, jamais dans les ratios."""
+        sessions = [self.session("2026-09-14", planned_duration_s=1800, status="done")]
+        activities = [
+            self.activity("2026-09-14", duration_s=1800),
+            self.activity("2026-09-16", duration_s=2460),            # course en plus
+            self.activity("2026-09-17", sport="rest", duration_s=None),
+        ]
+        c = M.week_compliance(sessions, activities, self.TODAY)
+        self.assertEqual(c["duration_ratio"], 1.0, "la séance en plus ne doit pas gonfler le ratio")
+        self.assertEqual(c["extra_sessions"], 1, "un fichier de repos n'est pas une séance hors plan")
+        self.assertEqual(c["extra_duration_s"], 2460)
+
+    def test_no_unplanned_activity(self):
+        sessions = [self.session("2026-09-14", status="done")]
+        c = M.week_compliance(sessions, [self.activity("2026-09-14")], self.TODAY)
+        self.assertEqual(c["extra_sessions"], 0)
+        self.assertIsNone(c["extra_duration_s"])
+
     def test_matching_without_activity_is_missed(self):
         sessions = [self.session("2026-09-14")]
         c = M.week_compliance(sessions, [], self.TODAY)
@@ -525,8 +544,8 @@ class TestWeekCompliance(unittest.TestCase):
         self.assertEqual(c["sessions_done"], 1)
         self.assertEqual(c["sessions_planned"], 2)
 
-    def test_strength_intensity_goes_to_other_bucket(self):
-        """`strength` (contrat INTENSITY) n'est ni facile ni qualité : bucket `other`, jamais perdu."""
+    def test_strength_intensity_has_its_own_bucket(self):
+        """`strength` (contrat INTENSITY) n'est ni facile ni qualité : bucket `strength` (« Renforcement »), jamais perdu."""
         sessions = [
             self.session("2026-09-14", intensity="endurance", planned_duration_s=1800, status="done"),
             self.session("2026-09-15", intensity="strength", planned_duration_s=2400, status="done"),
@@ -534,9 +553,10 @@ class TestWeekCompliance(unittest.TestCase):
         activities = [self.activity("2026-09-14", duration_s=1800), self.activity("2026-09-15", sport="strength", duration_s=2400)]
         c = M.week_compliance(sessions, activities, self.TODAY)
         total_bucketed = sum(v["sessions_planned"] for v in c["by_intensity"].values())
-        self.assertEqual(total_bucketed, c["sessions_planned"], "easy + quality + other doit reconstituer le total")
-        self.assertEqual(c["by_intensity"]["other"]["sessions_planned"], 1)
-        self.assertEqual(c["by_intensity"]["other"]["sessions_done"], 1)
+        self.assertEqual(total_bucketed, c["sessions_planned"], "easy + quality + strength + other doit reconstituer le total")
+        self.assertEqual(c["by_intensity"]["strength"]["sessions_planned"], 1)
+        self.assertEqual(c["by_intensity"]["strength"]["sessions_done"], 1)
+        self.assertEqual(c["by_intensity"]["other"]["sessions_planned"], 0)
 
     def test_hiking_matches_planned_trail_session(self):
         """Une sortie trail remplacée par une randonnée (mauvais temps…) doit pouvoir compter faite."""
@@ -544,6 +564,41 @@ class TestWeekCompliance(unittest.TestCase):
         activities = [self.activity("2026-09-14", sport="hiking")]
         c = M.week_compliance(sessions, activities, self.TODAY)
         self.assertEqual(c["sessions_done"], 1)
+
+
+class TestWeekPairing(unittest.TestCase):
+    """Vue Semaine : prévu ↔ réalisé, même appariement que la conformité."""
+
+    TODAY = "2026-09-17"   # jeudi
+
+    def test_pairing_statuses_deviation_and_extras(self):
+        sessions = [
+            {"date": "2026-09-15", "sport": "trail", "planned_duration_s": 3600},              # écourtée
+            {"date": "2026-09-14", "sport": "strength", "planned_duration_s": 1200, "status": "done"},
+            {"date": "2026-09-14", "sport": "rest"},
+            {"date": "2026-09-16", "sport": "running", "planned_duration_s": 1800},            # manquée
+            {"date": "2026-09-19", "sport": "running", "planned_duration_s": 2700},            # à venir
+        ]
+        activities = [
+            {"id": 1, "date": "2026-09-15", "sport": "trail", "duration_s": 2700},
+            {"id": 2, "date": "2026-09-14", "sport": "strength", "duration_s": 1260},
+            {"id": 3, "date": "2026-09-16", "sport": "cycling", "duration_s": 2460},           # hors plan
+            {"id": 4, "date": "2026-09-16", "sport": "rest"},
+        ]
+        p = M.week_pairing(sessions, activities, self.TODAY)
+        self.assertEqual(p["sessions"], [
+            {"effective": "done", "activity_id": 1, "deviation": "short"},
+            {"effective": "done", "activity_id": 2},
+            {"effective": "rest"},
+            {"effective": "missed"},
+            {"effective": "future"},
+        ])
+        self.assertEqual(p["extra_activity_ids"], [3], "un fichier de repos n'est pas hors plan")
+
+    def test_extended_session(self):
+        p = M.week_pairing([{"date": "2026-09-14", "sport": "running", "planned_duration_s": 1800}],
+                           [{"id": 9, "date": "2026-09-14", "sport": "running", "duration_s": 2400}], self.TODAY)
+        self.assertEqual(p["sessions"][0]["deviation"], "long")
 
 
 class TestResolveSessionsPublicWrapper(unittest.TestCase):

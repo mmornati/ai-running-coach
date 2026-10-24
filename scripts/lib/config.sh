@@ -17,6 +17,13 @@
 ARC_LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ARC_ENGINE_ROOT="$(cd "$ARC_LIB_DIR/../.." && pwd)"
 ARC_WORKSPACE_STATE_FILE="$HOME/.config/ai-running-coach/workspace"
+# Verrou (#127) : `daily-sync.sh` exporte ARC_LOCK_WORKSPACE=1 avec ARC_WORKSPACE pour le runner LLM.
+# Verrouillé, jamais de repli sur le pointeur ni sur le moteur : un ARC_WORKSPACE absent ou inexistant
+# ferait travailler les scripts sur le dossier d'un autre membre du foyer.
+if [[ "${ARC_LOCK_WORKSPACE:-}" == "1" && ( -z "${ARC_WORKSPACE:-}" || ! -d "${ARC_WORKSPACE:-}" ) ]]; then
+    printf '%s\n' "ERREUR : ARC_LOCK_WORKSPACE=1 sans ARC_WORKSPACE valide (${ARC_WORKSPACE:-vide}) : exécution refusée." >&2
+    exit 1
+fi
 if [[ -z "${ARC_WORKSPACE:-}" && -f "$ARC_WORKSPACE_STATE_FILE" ]]; then
     ARC_WORKSPACE="$(head -n1 "$ARC_WORKSPACE_STATE_FILE")"
 fi

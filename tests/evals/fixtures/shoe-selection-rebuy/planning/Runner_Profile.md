@@ -1,0 +1,33 @@
+# Profil de l'athlète
+
+## Identité & contexte
+
+- **Prénom / surnom** : Alex
+- **Années de pratique** : 6
+- **Disponibilité hebdomadaire** : 5 séances, 8 h au total
+- **Jours impossibles** : dimanche matin
+
+## Physiologie
+
+- **FC max** : 188
+- **FC de repos de référence** : 48
+- **Allures de référence** : 10 km en 42 min
+
+## Historique & blessures
+
+- **Zones fragiles à surveiller** : aucune
+
+## Matériel & lieux
+
+- **Lieu par défaut** : Tournai
+- **Créneau habituel** : pause de midi (12 h-14 h)
+- **Équipement** : haltères 5 kg, home trainer
+
+### Chaussures
+
+- Salomon Ultra Glide 3 — usage: trail — alerte 600 km — id: ug3 — départ 580 km (par défaut)
+
+## Préférences de coaching
+
+- **Ce qui me motive** : voir la progression chiffrée
+- **Ce qui ne marche pas avec moi** : les encouragements sans contenu

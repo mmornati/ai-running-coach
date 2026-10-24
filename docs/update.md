@@ -43,7 +43,7 @@ pour eux. Relancer `install.sh` reste nécessaire pour tout ce qui est **génér
 | Liens `config/coaching-styles.md` et `config/sports` du workspace | Ajoutés après coup : un workspace installé avant ne les a pas, et les agents ne trouvent alors ni le style de coaching (`[coaching].style`) ni le profil de sport (`[sport].primary`). Relancer `install.sh --workspace …` une fois. |
 | `.mcp.json` | La liste blanche d'outils Garmin (`GARMIN_ENABLED_TOOLS`) évolue avec les skills ; l'ancienne reste figée dans le fichier. |
 | Bloc `.gitignore` du workspace | De nouveaux fichiers générés peuvent y être ajoutés. |
-| Crontab / launchd du daily-sync | Relus depuis `[sync].mode` (`schedule` : heures de `[sync].times` ; `watch` : sondage `scripts/garmin_watch.py`, voir [Le coach dans la poche](mobile.md#mode-watch-ne-payer-le-llm-que-quand-garmin-a-du-neuf)) ; les lignes marquées sont remplacées, le reste de la crontab est conservé (sauvegarde dans `~/.config/ai-running-coach/`). |
+| Crontab / launchd du daily-sync | Relus depuis `[sync].mode` (`schedule` : heures de `[sync].times` ; `watch` : sondage `scripts/watch.py`, voir [Le coach dans la poche](mobile.md#mode-watch-ne-payer-le-llm-que-quand-garmin-a-du-neuf)) ; les lignes marquées sont remplacées, le reste de la crontab est conservé (sauvegarde dans `~/.config/ai-running-coach/`). |
 | Unité Remote Control | Réécrite si son modèle a changé. |
 | Version du serveur `intervals-icu-mcp` (#165) | Source intervals.icu : `install.sh` réinstalle l'outil `uv` s'il n'est pas au commit épinglé (ancien serveur eddmann ou ancien commit du fork). `coach_doctor.py` le signale (`intervals_mcp_pin`). |
 | Lecteur FIT (`fitparse`) de l'environnement `intervals-icu-mcp` | Source intervals.icu : `fitparse` y est ajouté (sans réinstaller le serveur) pour que `fit-download` lise les FIT — sans lui, zones, GAP, VAM… restent vides. `coach_doctor.py` le signale (`fit_reader`). |
@@ -80,11 +80,12 @@ Pour le reste, les traces de l'installation suffisent :
 | Trace | Option correspondante |
 |---|---|
 | `~/.config/ai-running-coach/workspace` existe | `--workspace <ce chemin>` |
-| `crontab -l` contient `# ai-running-coach daily-sync` | `--daily-sync` |
+| `crontab -l` contient `# ai-running-coach daily-sync` (éventuellement suivi de `[<nom>-<somme>]`, un par workspace) | `--daily-sync` |
 | Service `ai-running-coach-remote` (`scripts/coach-remote.sh status`) | `--remote-control` |
 | `[agents].enabled` dans `config/workspace.user.toml` | `--agents …` (ou `--no-medical`) |
 | `[data].source = "intervals"` | `--source intervals` |
 | `[data].source = "strava"` | `--source strava` |
+| `[data].source = "coros"` | `--source coros` |
 | Dossiers `.claude/`, `.opencode/`, `.gemini/`… présents | `--ide …` |
 
 Une machine coach (daily-sync + Remote Control, Claude Code) correspond au préréglage

@@ -113,6 +113,18 @@ configuration du workspace, ou forcé par `"cycle_tracking"` dans l'entrée (tes
 À `"off"`, la saisie est ignorée (`cycle.ignored = "tracking_off"`) : rien n'est
 jamais écrit, et l'agent ne la mentionne pas hors de ce refus.
 
+Retour de chaussant (#299, épopée #297) : `"shoe_feedback": {"pair": "Kipride", "comfort": "6",
+"issues": [{"term": "ampoule", "zone": "sous le pied", "side": "gauche"}, {"term": "avant-pied serré"}],
+"notes": "..."}` (+ `declared_gear` : [{gear_id, name}] ; à défaut, la section « Chaussures » du profil du
+workspace). Le modèle extrait des TERMES ; ce module les rattache à la liste fermée du contrat
+(`arc_contract.SHOE_ISSUE_KIND`), les zones à celles de `gear_inspection`, résout la paire et fusionne avec
+l'éventuel `shoe_feedback` déjà écrit. Sortie `shoe_feedback` : `ready`, `gear_id`, `entry`, `merged`,
+`unknown` (terme/zone/côté/confort inconnu → DEMANDER), `needs_gear` (`no_gear` | `unknown_pair` |
+`ambiguous_pair` | `conflict` → DEMANDER la paire). Tout-ou-rien pour cette partie seulement : tant que
+`ready` est faux, `activity_merge` ne porte pas `shoe_feedback` ; la douleur, le RPE et le ravitaillement de
+la même phrase sont traités normalement. La douleur reste dans `pain` : un retour de chaussant ne la remplace
+jamais et n'en est jamais présenté comme la cause.
+
 Bibliothèque standard uniquement (CONTRIBUTING.md).
 """
 
@@ -141,6 +153,14 @@ except Exception:       # pragma: no cover — repli défensif, voir resolve_pai
     _arc_index = None
     _arc_guardrails = None
     _arc_cycle = None
+try:
+    import arc_contract as _arc_contract  # noqa: E402
+    import arc_legacy as _arc_legacy  # noqa: E402
+except Exception:       # pragma: no cover
+    _arc_contract = None
+    _arc_legacy = None
+# Liste fermée des problèmes de chaussant : jamais dupliquée à la main (le contrat fait foi).
+_SHOE_KINDS = tuple(_arc_contract.SHOE_ISSUE_KIND) if _arc_contract is not None else ()
 
 # Repli si la configuration du workspace est illisible ou si l'import ci-dessus
 # a échoué (environnement minimal, tests unitaires isolés) — même valeur que
@@ -634,6 +654,383 @@ def merge_pain(existing_pain: Optional[list], new_entries: list) -> list:
     return list(existing_pain or []) + added
 
 
+# ---------------------------------------------------------------------------
+# Retour de chaussant (#299)
+# ---------------------------------------------------------------------------
+# Le modèle extrait des TERMES (« ampoule », « avant-pied serré ») ; ce module les rattache à la liste
+# FERMÉE `arc_contract.SHOE_ISSUE_KIND`. Un terme absent de la table est INCONNU : on demande, on ne
+# devine jamais un `kind`. Table volontairement stricte. La comparaison se fait sur des MOTS racinisés
+# (sans accent, sans article ni possessif ni intensificateur, pluriel et féminin ramenés au radical) :
+# « ampoules », « trop dures », « orteils très serrés » retrouvent leur forme de table.
+# NÉGATION : « pas d'ampoule », « sans ampoule », « aucune ampoule », « plus d'ampoule », « pas instable »,
+# « pas de souci » ne sont JAMAIS un problème : rien n'est écrit (le terme est rendu dans `negated`).
+_SHOE_ISSUE_TERMS = {
+    "blister": ("ampoule", "cloque"),
+    "toe_box_tight": ("avant pied serre", "avant pied trop serre", "orteils serres", "orteils trop serres",
+                      "orteil serre", "orteils a l etroit", "pointe serree", "boite a orteils serree",
+                      "trop etroit devant", "chaussure etroite devant"),
+    "heel_slip": ("talon qui bouge", "talon qui glisse", "talon flotte", "talon decolle",
+                  "glissement du talon", "talon ballotte"),
+    "hot_spot": ("point chaud", "points chauds", "echauffement", "frottement", "brulure"),
+    "numbness": ("engourdissement", "engourdi", "pied qui s endort", "pied endormi", "fourmillements"),
+    "lacing_pressure": ("pression des lacets", "lacets trop serres", "lacage trop serre", "lacage serre",
+                        "dessus du pied serre", "coup de pied serre"),
+    "instability": ("instable", "instabilite", "manque de stabilite", "pas stable"),
+    "too_soft": ("trop mou", "trop molle", "trop moelleux", "trop souple", "spongieux", "mousse trop molle"),
+    "too_firm": ("trop dur", "trop ferme", "mousse dure", "trop raide"),
+    "poor_grip": ("manque d adherence", "mauvaise adherence", "adherence faible", "mauvaise accroche",
+                  "manque d accroche", "patine", "glisse sur le mouille", "manque de grip", "pas assez de grip",
+                  "grip insuffisant", "pas assez d adherence", "pas assez d accroche", "peu d adherence"),
+    "upper_tear": ("tige dechiree", "empeigne dechiree", "dessus dechire", "tige trouee", "trou dans la tige",
+                   "tige qui se dechire", "tige abimee", "empeigne abimee", "dessus abime"),
+}
+_SHOE_ZONE_TERMS = (   # du plus spécifique au moins spécifique ; premier motif trouvé gagne
+    ("heel_posterolateral", ("talon postero lateral",)),
+    ("heel_lateral", ("talon externe", "talon lateral", "bord externe du talon")),
+    ("heel_medial", ("talon interne", "talon medial")),
+    ("heel_central", ("talon",)),
+    ("midfoot_lateral", ("medio pied externe", "milieu du pied externe", "voute externe", "medio pied lateral")),
+    ("midfoot_medial", ("medio pied interne", "milieu du pied interne", "voute interne", "medio pied medial")),
+    ("midfoot_central", ("medio pied", "milieu du pied", "voute", "arche")),
+    ("forefoot_lateral", ("avant pied externe", "avant pied lateral", "petit orteil", "cinquieme metatarse")),
+    ("forefoot_medial", ("avant pied interne", "avant pied medial", "oignon")),
+    ("forefoot_central", ("avant pied",)),   # « sous le pied » seul = trop vague : on demande
+    ("toe", ("gros orteil", "orteils", "orteil", "bout du pied", "pointe")),
+)
+_SHOE_SIDE_TERMS = (("left", ("gauche",)), ("right", ("droit", "droite")))
+# Mots ignorés à la comparaison : articles, possessifs, prépositions courtes, intensificateurs.
+# « trop » n'en fait PAS partie (« trop dur » != « dur »).
+_SHOE_STOPWORDS = frozenset((
+    "le", "la", "les", "l", "un", "une", "des", "du", "de", "d", "au", "aux", "mes", "mon", "ma", "ton", "ta",
+    "tes", "son", "sa", "ses", "tres", "vraiment", "bien", "assez", "peu", "legerement", "tout", "ce", "cette",
+))
+_SHOE_NEGATIONS = frozenset(("pas", "sans", "aucun", "aucune", "jamais", "ni", "rien", "non"))
+_PLUS_DE_RE = re.compile(r"\bplus (?:de|d)\b")
+_CLAUSE_SPLIT_RE = re.compile(r"[,;./]|\bmais\b|\bet\b|\bsauf\b|\bhormis\b|\bexcept[ée]\b|\b[àa] part\b",
+                              re.IGNORECASE)
+# « plus de X qu'avant » : comparatif, PAS une négation → ambigu, on demande.
+_PLUS_COMPARATIVE_RE = re.compile(r"\bplus (?:de|d)\b.*\bqu")
+# Mots qui, dans une proposition sans problème reconnu, ne font que situer (« côté gauche », « sur le pied »).
+_SHOE_LOCATOR_WORDS = frozenset(("cote", "pied", "sur", "sous", "a", "en", "dans", "au"))  # racinisés plus bas
+
+
+def _shoe_stem(word: str) -> str:
+    """Radical grossier : pluriel et féminin ramenés ensemble (« serrées » == « serré »)."""
+    word = _singularize_word(word)
+    for _ in range(2):
+        if len(word) > 3 and word.endswith("e"):
+            word = word[:-1]
+    return word
+
+
+_SHOE_NO_ISSUE_WORDS = frozenset(_shoe_stem(w) for w in ("souci", "probleme", "ras", "signaler", "gene", "rien"))
+_SHOE_LOCATOR_WORDS = frozenset(_shoe_stem(w) for w in _SHOE_LOCATOR_WORDS)
+
+
+def _shoe_tokens(text, keep_stopwords: bool = False) -> list:
+    norm = _PLUS_DE_RE.sub("aucun", normalize_name(str(text or "")))
+    return [_shoe_stem(w) if w not in _SHOE_NEGATIONS else w
+            for w in norm.split() if keep_stopwords or w not in _SHOE_STOPWORDS]
+
+
+def _find_tokens(tokens: list, phrase: str) -> Optional[int]:
+    """Indice de début de `phrase` (même racinisation) comme sous-séquence contiguë de `tokens`."""
+    target = _shoe_tokens(phrase)
+    n = len(target)
+    for i in range(len(tokens) - n + 1):
+        if tokens[i:i + n] == target:
+            return i
+    return None
+
+
+def _classify_shoe_term(term) -> dict:
+    """Analyse un terme libre. Rend `{"kinds": [{"kind", "zone", "side"}], "negated": bool, "unclear": [texte]}`.
+
+    - `kinds` : TOUS les problèmes non niés du terme (« ampoule et frottement » en donne deux) ; la zone / le côté
+      viennent de la proposition du problème, sinon de tout le terme s'il n'y en a qu'un seul (« talon qui
+      glisse, côté gauche »).
+    - `negated` : vrai quand une proposition dit explicitement qu'un problème de la liste n'existe PAS
+      (« pas d'ampoule ») ou qu'il n'y a aucun souci (« pas de souci », « RAS », « rien à signaler »).
+    - `unclear` : propositions qu'on ne sait PAS interpréter (« pas top », « pas confortable », « non »,
+      « là oui », « plus d'ampoules qu'avant ») : à DEMANDER, jamais traitées comme « pas de problème ».
+    « pas mal de » = « beaucoup de » (jamais une négation). Un terme sans `kinds` ni `negated` est inconnu."""
+    raw = str(term or "").strip()
+    if raw in _SHOE_KINDS:                    # le modèle a déjà donné une valeur de la liste fermée
+        return {"kinds": [{"kind": raw, "zone": None, "side": None}], "negated": False, "unclear": []}
+    found: list = []
+    negated = False
+    unclear: list = []
+    locators: list = []      # (zone, side, indice du dernier problème déjà trouvé)
+    phrases = sorted(((k, p) for k, ps in _SHOE_ISSUE_TERMS.items() for p in ps),
+                     key=lambda kp: -len(_shoe_tokens(kp[1])))
+    for clause in _CLAUSE_SPLIT_RE.split(raw):
+        if _PLUS_COMPARATIVE_RE.search(normalize_name(clause)):
+            unclear.append(clause.strip())
+            continue
+        tokens = _shoe_tokens(clause)
+        i = 0
+        while i < len(tokens) - 1:             # « pas mal de » = beaucoup de : neutralisé AVANT la négation
+            if tokens[i] == "pas" and tokens[i + 1] == "mal":
+                tokens[i:i + 2] = ["beaucoup"]
+            i += 1
+        if not tokens:
+            continue
+        used: set = set()
+        clause_kinds: list = []
+        clause_negated = False
+        clause_unclear = False
+        for kind, phrase in phrases:
+            n = len(_shoe_tokens(phrase))
+            at = _find_tokens(tokens, phrase)
+            if at is None or used & set(range(at, at + n)):
+                continue
+            used |= set(range(at, at + n))
+            if any(t in _SHOE_NEGATIONS for t in tokens[max(0, at - 3):at]):
+                clause_negated = True
+            elif any(t in _SHOE_NEGATIONS for t in tokens[at + n:]):
+                # « ampoule non », « ampoules ? aucune », « ampoule : rien » : négation APRÈS le problème,
+                # sens incertain → on demande, on n'écrit jamais.
+                clause_unclear = True
+            else:
+                clause_kinds.append(kind)
+        rest = [t for i, t in enumerate(tokens) if i not in used]
+        zone, side = _zone_from_tokens(rest), _side_from_tokens(rest)
+        if clause_unclear:
+            unclear.append(clause.strip())
+        if not clause_kinds and not clause_negated:
+            if any(t in _SHOE_NO_ISSUE_WORDS for t in tokens) and (
+                    any(t in _SHOE_NEGATIONS for t in tokens) or "ras" in tokens or "rien" in tokens):
+                clause_negated = True        # « pas de souci », « RAS », « rien à signaler »
+            else:
+                # Ni problème, ni négation reconnue : seulement un localisateur (« côté gauche ») est inoffensif.
+                left = [t for t in rest if t not in _SHOE_LOCATOR_WORDS
+                        and _side_from_tokens([t]) is None and _zone_from_tokens([t]) is None]
+                if left:
+                    unclear.append(clause.strip())
+                elif zone or side:
+                    # Proposition purement LOCALISATRICE (« côté gauche », « au talon ») : voir plus bas.
+                    locators.append((zone, side, len(found) - 1))
+        negated = negated or clause_negated
+        for kind in clause_kinds:
+            found.append({"kind": kind, "zone": zone, "side": side})
+    # Un problème garde la zone / le côté de SA proposition. Seule une proposition purement localisatrice
+    # (« côté gauche », sans problème) se propage : à l'unique problème du terme, sinon au problème qui la
+    # précède immédiatement — jamais à un autre (« orteils serrés, ampoule au talon » : le talon est à l'ampoule).
+    for zone, side, prev in locators:
+        target = 0 if len(found) == 1 else prev
+        if target < 0 or target >= len(found):
+            continue
+        if zone and found[target]["zone"] is None:
+            found[target]["zone"] = zone
+        if side and found[target]["side"] is None:
+            found[target]["side"] = side
+    out_kinds: list = []
+    for item in found:
+        if item not in out_kinds:
+            out_kinds.append(item)
+    return {"kinds": out_kinds, "negated": negated, "unclear": unclear}
+
+
+def _zone_from_tokens(tokens: list) -> Optional[str]:
+    for zone, phrases in _SHOE_ZONE_TERMS:
+        if any(_find_tokens(tokens, p) is not None for p in phrases):
+            return zone
+    return None
+
+
+def _side_from_tokens(tokens: list) -> Optional[str]:
+    for side, phrases in _SHOE_SIDE_TERMS:
+        if any(_find_tokens(tokens, p) is not None for p in phrases):
+            return side
+    return None
+
+
+def _map_shoe_zone(text) -> tuple:
+    """(zone, reconnue). Texte vide → (None, True) ; non reconnu → (None, False) : on demande."""
+    raw = str(text or "").strip()
+    if not raw:
+        return None, True
+    if _arc_contract is not None and raw in _arc_contract.GEAR_WEAR_ZONE:
+        return raw, True
+    zone = _zone_from_tokens(_shoe_tokens(raw))
+    return zone, zone is not None
+
+
+def _map_shoe_side(text) -> tuple:
+    raw = str(text or "").strip()
+    if not raw:
+        return None, True
+    if raw in ("left", "right"):
+        return raw, True
+    if normalize_name(raw) in ("g", "d"):
+        return ("left" if normalize_name(raw) == "g" else "right"), True
+    side = _side_from_tokens(_shoe_tokens(raw))
+    return side, side is not None
+
+
+def _declared_gear_from(payload: dict, workspace: Optional[Path]) -> list:
+    """Paires connues : `declared_gear` de l'entrée ([{gear_id, name, ignored?}]) ou, à défaut, la section
+    « Chaussures » du profil du workspace. Liste vide si rien n'est lisible (alors on demande la paire)."""
+    given = payload.get("declared_gear")
+    if isinstance(given, list):
+        return [g for g in given if isinstance(g, dict) and g.get("gear_id")]
+    if workspace is None or _arc_legacy is None:
+        return []
+    try:
+        profile = Path(workspace) / "planning" / "Runner_Profile.md"
+        if profile.is_file():
+            return [g for g in _arc_legacy.parse_gear(profile.read_text(encoding="utf-8")) if g.get("gear_id")]
+    except Exception:
+        pass
+    return []
+
+
+def resolve_pair(text, declared: list) -> dict:
+    """Rattache ce que dit l'athlète (« Kipride », « mes Pegasus ») à UNE paire du profil. Rend
+    `{"gear_id": ...}` ou `{"reason": "unknown_pair" | "ambiguous_pair", "candidates": [...]}`. Jamais de
+    devinette : TOUTES les paires qui correspondent sont calculées d'abord, et plusieurs = ambigu, même si
+    l'une d'elles porte exactement le nom dit (« Pegasus » avec `pegasus` et `pegasus-41`)."""
+    words = _shoe_tokens(text)
+    pool = [g for g in declared if not g.get("ignored")]
+    if not words:
+        return {"reason": "no_gear", "candidates": [g["gear_id"] for g in pool]}
+    hits = []
+    for g in pool:
+        hay = set(_shoe_tokens(f"{g.get('name') or ''} {g['gear_id']}"))
+        if all(w in hay for w in words) and g["gear_id"] not in hits:
+            hits.append(g["gear_id"])
+    if len(hits) == 1:
+        return {"gear_id": hits[0]}
+    if not hits:
+        return {"reason": "unknown_pair", "candidates": [g["gear_id"] for g in pool]}
+    return {"reason": "ambiguous_pair", "candidates": hits}
+
+
+def merge_shoe_feedback(existing: Optional[dict], entry: dict) -> dict:
+    """Fusion avec un `shoe_feedback` déjà écrit sur la même séance : le confort REMPLACE (le dernier
+    déclaré prime, comme `rpe`), les problèmes s'UNISSENT sans doublon exact, les notes s'accolent (une note
+    déjà contenue dans l'ancienne n'est pas répétée ; jamais d'ancienne note perdue)."""
+    merged = dict(existing) if isinstance(existing, dict) else {}
+    if entry.get("comfort") is not None:
+        merged["comfort"] = entry["comfort"]
+    issues = list(merged.get("issues") or [])
+    for issue in entry.get("issues") or []:
+        if issue not in issues:
+            issues.append(issue)
+    if issues:
+        merged["issues"] = issues
+    new_note = entry.get("notes")
+    if new_note:
+        old = merged.get("notes")
+        if not old or old in new_note:
+            merged["notes"] = new_note
+        elif new_note not in old:
+            merged["notes"] = f"{old} ; {new_note}"
+    return merged
+
+
+def compute_shoe_feedback(entry: dict, existing_activity_arc: Optional[dict], declared: list) -> dict:
+    """Normalise un retour de chaussant extrait par le modèle (#299).
+
+    `entry` : {"pair": "Kipride", "comfort": "6", "issues": [{"term": "ampoule", "zone": "talon",
+    "side": "gauche"}], "notes": "...", "pair_confirmed": false}. Tout-ou-rien : tant qu'un terme est inconnu ou
+    que la paire n'est pas établie, `ready` vaut False et RIEN n'est à écrire pour la partie chaussant (le reste
+    du `/log` — douleur, RPE, ravitaillement — n'est jamais bloqué). La paire de la séance (`gear_id` déjà écrit)
+    prime ; une paire différente citée dans la phrase est un CONFLIT à trancher par l'athlète, jamais une
+    réattribution silencieuse — `pair_confirmed: true` (l'athlète a confirmé la paire qu'il a nommée) la fait
+    primer (déclaration de l'athlète > matériel Garmin). Un terme NIÉ (« pas d'ampoule ») n'est jamais écrit."""
+    unknown: list = []
+    negated: list = []
+    out_issues: list = []
+    for raw in entry.get("issues") or []:
+        item = raw if isinstance(raw, dict) else {"term": raw}
+        term = item.get("term", item.get("kind"))
+        cls = _classify_shoe_term(term)
+        if cls["negated"] and not cls["kinds"] and not cls["unclear"]:
+            negated.append(term)
+            continue
+        if not cls["kinds"] or cls["unclear"]:
+            for text in (cls["unclear"] or [term]):
+                unknown.append({"field": "issue", "input": text,
+                                "reason": "terme hors de la liste fermée ou ambigu (ampoule, avant-pied serré, "
+                                          "talon qui bouge, point chaud, engourdissement, laçage trop serré, "
+                                          "instable, trop mou, trop dur, manque d'adhérence, tige déchirée)"})
+            if not cls["kinds"]:
+                continue
+        zone_f, zone_ok = _map_shoe_zone(item.get("zone"))
+        side_f, side_ok = _map_shoe_side(item.get("side"))
+        if not zone_ok:
+            unknown.append({"field": "zone", "input": item.get("zone"), "reason": "zone non reconnue"})
+        if not side_ok:
+            unknown.append({"field": "side", "input": item.get("side"), "reason": "côté non reconnu"})
+        if not (zone_ok and side_ok):
+            continue
+        for found in cls["kinds"]:
+            issue = {"kind": found["kind"]}
+            zone = zone_f or found["zone"]       # champs explicites d'abord, puis ce que dit le terme
+            side = side_f or found["side"]
+            if zone:
+                issue["zone"] = zone
+            if side:
+                issue["side"] = side
+            if issue not in out_issues:
+                out_issues.append(issue)
+    comfort = None
+    if entry.get("comfort") not in (None, ""):
+        try:
+            comfort = parse_quantity(entry["comfort"])
+        except ArcLogError as exc:
+            unknown.append({"field": "comfort", "input": entry["comfort"], "reason": str(exc)})
+        else:
+            if not 0 <= comfort <= 10:
+                unknown.append({"field": "comfort", "input": entry["comfort"],
+                                "reason": f"confort hors plage 0-10 : {comfort!r}"})
+                comfort = None
+    notes = str(entry.get("notes") or "").strip() or None
+    built: dict = {}
+    if comfort is not None:
+        built["comfort"] = comfort
+    if out_issues:
+        built["issues"] = out_issues
+    if notes:
+        built["notes"] = notes
+
+    existing = existing_activity_arc or {}
+    run_gear = existing.get("gear_id")
+    said = resolve_pair(entry.get("pair"), declared) if entry.get("pair") else None
+    confirmed = entry.get("pair_confirmed") is True
+    needs_gear = None
+    gear_id = None
+    gear_origin = None
+    if run_gear:
+        gear_id, gear_origin = run_gear, "run"
+        if said and "gear_id" in said and said["gear_id"] != run_gear:
+            if confirmed:
+                gear_id, gear_origin = said["gear_id"], "message"
+            else:
+                needs_gear = {"reason": "conflict", "run_gear_id": run_gear, "said_gear_id": said["gear_id"]}
+        elif said and "gear_id" not in said:
+            # La séance a déjà une paire mais l'athlète en nomme une qu'on ne sait pas rattacher : on demande,
+            # on n'écrit pas en silence sur la paire de la séance.
+            needs_gear = {"reason": said["reason"], "candidates": said["candidates"]}
+    elif said and "gear_id" in said:
+        gear_id, gear_origin = said["gear_id"], "message"
+    elif said:
+        needs_gear = {"reason": said["reason"], "candidates": said["candidates"]}
+    else:
+        needs_gear = {"reason": "no_gear", "candidates": [g["gear_id"] for g in declared if not g.get("ignored")]}
+    result: dict = {"gear_id": gear_id, "gear_origin": gear_origin, "entry": built, "unknown": unknown,
+                    "needs_gear": needs_gear}
+    if negated:
+        result["negated"] = negated       # dits « pas de … » : volontairement NON écrits
+    if not built and not unknown:
+        result["empty"] = True
+    result["ready"] = bool(built) and not unknown and needs_gear is None
+    if result["ready"]:
+        result["merged"] = merge_shoe_feedback(existing.get("shoe_feedback"), built)
+    return result
+
+
 _PROVENANCE_PREFIX_RE = re.compile(r"^\[/log [^\]]*\]\s*")
 
 
@@ -735,6 +1132,17 @@ def process(payload: dict, workspace: Optional[Path] = None) -> dict:
                 rpe = candidate
                 out["rpe"] = rpe
 
+    shoe = None
+    if payload.get("shoe_feedback"):
+        shoe = compute_shoe_feedback(payload["shoe_feedback"], payload.get("existing_activity_arc"),
+                                     _declared_gear_from(payload, workspace))
+        out["shoe_feedback"] = shoe
+        if shoe.get("empty"):
+            warnings.append("shoe_feedback : ni confort, ni problème, ni note — rien à écrire")
+        if shoe["unknown"] or shoe["needs_gear"]:
+            warnings.append("shoe_feedback : partie chaussant NON écrite tant que les termes inconnus / la paire "
+                            "ne sont pas clarifiés (le reste du /log n'est pas bloqué)")
+
     if "position" in payload and payload["position"]:
         out["position"] = str(payload["position"]).strip()
 
@@ -744,10 +1152,19 @@ def process(payload: dict, workspace: Optional[Path] = None) -> dict:
     if not duplicate:
         carbs_g = nutrition["carbs_g"] if nutrition else None
         fluid_intake_ml = fluids["fluid_intake_ml"] if fluids else None
-        if "existing_activity_arc" in payload and (carbs_g is not None or fluid_intake_ml is not None or rpe is not None):
+        shoe_ready = bool(shoe and shoe["ready"])
+        if ("existing_activity_arc" in payload or shoe_ready) and (
+                carbs_g is not None or fluid_intake_ml is not None or rpe is not None or shoe_ready):
             out["activity_merge"] = merge_activity(
                 payload.get("existing_activity_arc"), carbs_g, fluid_intake_ml, rpe
             )
+            if shoe_ready:
+                out["activity_merge"]["shoe_feedback"] = shoe["merged"]
+                if shoe["gear_origin"] == "message":
+                    # La séance n'avait pas de paire : l'athlète vient de la nommer (priorité « chat »,
+                    # comme `gear-attribution`) ; le contrat exige un `gear_id` pour tout `shoe_feedback`.
+                    out["activity_merge"]["gear_id"] = shoe["gear_id"]
+                    out["activity_merge"]["gear_source"] = "chat"
         if "existing_pain" in payload and pain and pain["entries"]:
             out["pain_merge"] = merge_pain(payload.get("existing_pain"), pain["entries"])
         if cycle and not cycle.get("ignored") and (cycle["phase"] or cycle["day"]):
@@ -781,7 +1198,8 @@ def main(argv=None) -> int:
 
     workspace = None
     if args.workspace:
-        workspace = Path(args.workspace).expanduser().resolve()
+        from coach_config import enforce_workspace_lock   # verrou de la sync (#127)
+        workspace = enforce_workspace_lock(args.workspace)
     elif workspace_root is not None:
         try:
             workspace = workspace_root(None)

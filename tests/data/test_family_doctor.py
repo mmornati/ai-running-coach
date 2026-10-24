@@ -47,16 +47,25 @@ class FamilyDoctor(unittest.TestCase):
         path.write_text(text, encoding="utf-8")
         return F.load_registry(path)
 
-    def run_checks(self, members: dict, blobs=()) -> dict:
+    def run_checks(self, members: dict, cron=(), plists=()) -> dict:
+        """`cron` : lignes de crontab ; `plists` : (nom de fichier, workspace) posés dans un HOME jetable."""
         registry = self.registry(members)
-        with mock.patch.object(D, "_scheduled_blobs", return_value=list(blobs)):
-            checks = D.check_family(registry.path, registry, None)
+        home = self.root / "home"
+        agents = home / "Library" / "LaunchAgents"
+        agents.mkdir(parents=True, exist_ok=True)
+        for name, ws in plists:
+            (agents / name).write_text(
+                f"<dict><key>ARC_WORKSPACE</key><string>{ws}</string></dict>", encoding="utf-8")
+        with mock.patch.object(D, "_crontab_text", return_value="\n".join(cron)):
+            checks = D.check_family(registry.path, registry, None, home=home)
         return {c["id"]: c for c in checks}
 
     def test_registre_valide_et_tout_au_vert(self):
         a = self.member("alice", tokens=str(self.root / "tok-a"), topic="t-a")
         b = self.member("bob", tokens=str(self.root / "tok-b"), topic="t-b")
-        checks = self.run_checks({"alice": a, "bob": b}, blobs=[f"0 6 * * * cd {a} # ai-running-coach", f"cd {b} #"])
+        checks = self.run_checks({"alice": a, "bob": b}, cron=[f'0 6 * * * ARC_WORKSPACE="{a}" /e/scripts/daily-sync.sh # ai-running-coach daily-sync',
+                                                    f'*/15 * * * * ARC_WORKSPACE="{b}" python3 /e/scripts/garmin_watch.py '
+                                                    f'# ai-running-coach daily-sync [bob-123]'])
         self.assertEqual({k: v["status"] for k, v in checks.items()},
                          {"family_registry": "ok", "family_tokens": "ok", "family_ntfy": "ok", "family_sync": "ok"})
 
@@ -88,9 +97,23 @@ class FamilyDoctor(unittest.TestCase):
     def test_membre_sans_synchronisation_planifiee(self):
         a = self.member("alice", tokens="/t/a")
         b = self.member("bob", tokens="/t/b")
-        checks = self.run_checks({"alice": a, "bob": b}, blobs=[f"cd {a} # ai-running-coach daily-sync"])
+        checks = self.run_checks({"alice": a, "bob": b}, cron=[f'0 6 * * * ARC_WORKSPACE="{a}" /e/daily-sync.sh # ai-running-coach daily-sync'])
         self.assertEqual(checks["family_sync"]["status"], "info")
         self.assertEqual(checks["family_sync"]["members"], ["bob"])
+
+    def test_chemin_cite_hors_arc_workspace_ne_compte_pas(self):
+        a = self.member("alice", tokens="/t/a")
+        b = self.member("bob", tokens="/t/b")
+        checks = self.run_checks({"alice": a, "bob": b}, cron=[
+            f'0 6 * * * ARC_WORKSPACE="{a}" /e/daily-sync.sh --note {b} # ai-running-coach daily-sync'])
+        self.assertEqual(checks["family_sync"]["members"], ["bob"])
+
+    def test_launchagent_suffixe_compte_pour_son_membre(self):
+        a = self.member("alice", tokens="/t/a")
+        b = self.member("bob", tokens="/t/b")
+        checks = self.run_checks({"alice": a, "bob": b}, plists=[
+            ("com.ai-running-coach.daily-sync.plist", a), ("com.ai-running-coach.daily-sync.bob-1.plist", b)])
+        self.assertEqual(checks["family_sync"]["status"], "ok")
 
     def test_registre_absent_aucune_verification_ajoutee(self):
         with mock.patch("arc_family.default_registry_path", return_value=self.root / "absent.toml"):
@@ -107,7 +130,7 @@ class FamilyDoctor(unittest.TestCase):
         for argv, expect in ((["--family", str(registry.path)], True), (["--family", str(registry.path), "--check",
                                                                           "config_files"], False)):
             out = io.StringIO()
-            with mock.patch.object(D, "_scheduled_blobs", return_value=[]), \
+            with mock.patch.object(D, "_crontab_text", return_value=""), \
                     mock.patch.object(D, "run_all_checks", return_value=[]), \
                     mock.patch.object(D, "run_single_check", return_value={"id": "config_files", "status": "ok",
                                                                             "message": "", "fix": None}), \

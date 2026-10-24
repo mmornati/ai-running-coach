@@ -23,7 +23,11 @@
 
 ## Quand l'utiliser
 
-- Automatiquement, aux heures de `[sync].times`, ou dès que Garmin a du neuf avec `[sync].mode = "watch"` (voir [Le coach dans la poche](../mobile.md#4-synchronisation-automatique))
+- Automatiquement, aux heures de `[sync].times`, ou dès que Garmin (ou COROS) a du neuf avec `[sync].mode = "watch"` (voir [Le coach dans la poche](../mobile.md#4-synchronisation-automatique))
+
+Avec `[data].source = "coros"`, la même synchro lit COROS par le relais du projet, en lecture seule ;
+une nuit pas encore publiée par COROS n'écrit aucun fichier santé (le passage suivant réessaie) et le
+résumé le dit. Voir [Montres COROS](../coros.md#le-bilan-matinal-avec-coros).
 - À la main, pour forcer une synchronisation : `/garmin-daily-sync`
 
 ## Ce qu'il fait (et ne fait pas)
