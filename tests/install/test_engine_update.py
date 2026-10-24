@@ -9,6 +9,7 @@ import sys
 import tarfile
 import tempfile
 import unittest
+import unittest.mock
 
 ROOT = Path(__file__).resolve().parents[2]
 HELPER = ROOT / "scripts/arc_engine_update.py"
@@ -131,3 +132,65 @@ sys.exit(99)
         self.assertEqual(self.run_update(self.archive("exit 9")).returncode, 1)
         self.assertEqual((self.engine / "version").read_text(), "old")
         self.assertFalse(self.engine.with_name("engine.previous").exists())
+
+
+class TestStandaloneHelper(unittest.TestCase):
+    """Défaut verrouillé : le helper est embarqué SEUL dans l'app macOS (build-macos-dmg.sh) ; un import
+    frère (ex. `coach_config`) planterait la mise à jour du moteur de l'app livrée (#127)."""
+
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory(prefix="arc standalone ")
+        self.addCleanup(self.temp.cleanup)
+        self.root = Path(self.temp.name).resolve()
+        self.alone = self.root / "Resources"
+        self.alone.mkdir()
+        (self.alone / "arc_engine_update.py").write_text(HELPER.read_text(encoding="utf-8"), encoding="utf-8")
+        self.ws = self.root / "ws"
+        self.ws.mkdir()
+
+    def run_alone(self, *argv, env=None):
+        return subprocess.run([sys.executable, "-I", str(self.alone / "arc_engine_update.py"), *argv],
+                              capture_output=True, text=True, cwd=self.alone, env=env or {})
+
+    def test_helper_runs_without_any_sibling_module(self):
+        result = self.run_alone("--help")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertNotIn("ModuleNotFoundError", result.stderr)
+
+    def test_lock_refusal_works_without_sibling_module(self):
+        other = self.root / "autre"
+        other.mkdir()
+        env = {"ARC_LOCK_WORKSPACE": "1", "ARC_WORKSPACE": str(self.ws)}
+        result = self.run_alone("--workspace", str(other), "--sync", "--", "true", env=env)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("workspace refusé", result.stderr)
+        self.assertNotIn("ModuleNotFoundError", result.stderr)
+
+    def test_inline_lock_matches_coach_config(self):
+        sys.path.insert(0, str(ROOT / "scripts"))
+        self.addCleanup(sys.path.remove, str(ROOT / "scripts"))
+        import coach_config
+        link = self.root / "lien"
+        link.symlink_to(self.ws)
+        foreign = self.root / "autre"
+        foreign.mkdir()
+        cases = [
+            ("same dir", {"ARC_LOCK_WORKSPACE": "1", "ARC_WORKSPACE": str(self.ws)}, self.ws),
+            ("symlinked same dir", {"ARC_LOCK_WORKSPACE": "1", "ARC_WORKSPACE": str(self.ws)}, link),
+            ("foreign dir", {"ARC_LOCK_WORKSPACE": "1", "ARC_WORKSPACE": str(self.ws)}, foreign),
+            ("empty ARC_WORKSPACE", {"ARC_LOCK_WORKSPACE": "1", "ARC_WORKSPACE": " "}, self.ws),
+            ("unset ARC_WORKSPACE", {"ARC_LOCK_WORKSPACE": "1"}, self.ws),
+            ("no lock", {"ARC_WORKSPACE": str(self.ws)}, foreign),
+        ]
+
+        def outcome(fn, env, target):
+            with unittest.mock.patch.dict(os.environ, env, clear=True):
+                try:
+                    return ("ok", fn(target))
+                except SystemExit as exc:
+                    return ("refused", str(exc))
+
+        for label, env, target in cases:
+            with self.subTest(label):
+                self.assertEqual(outcome(update.enforce_workspace_lock, env, target),
+                                 outcome(coach_config.enforce_workspace_lock, env, target))

@@ -28,10 +28,45 @@ import shutil
 import sys
 import tempfile
 from pathlib import Path
+from typing import Optional
 
 
 class ConfigError(RuntimeError):
     """Erreur attendue : message lisible, pas de trace."""
+
+
+class WorkspaceLockError(SystemExit):
+    """Workspace étranger refusé sous `ARC_LOCK_WORKSPACE=1` : sortie non nulle, message français."""
+
+
+def locked_workspace() -> Optional[Path]:
+    """Workspace imposé par `ARC_LOCK_WORKSPACE=1` (valeur de `ARC_WORKSPACE`), None sans verrou.
+    Échoue fermé : verrou posé mais `ARC_WORKSPACE` vide = refus, jamais un repli sur un autre workspace."""
+    if os.environ.get("ARC_LOCK_WORKSPACE") != "1":
+        return None
+    locked = os.environ.get("ARC_WORKSPACE", "").strip()
+    if not locked:
+        raise WorkspaceLockError(
+            "ERREUR : ARC_LOCK_WORKSPACE=1 sans ARC_WORKSPACE — exécution refusée (verrou sans workspace)."
+        )
+    return Path(locked).expanduser().resolve()
+
+
+def enforce_workspace_lock(workspace) -> Path:
+    """Chemin résolu de `workspace`, refusé s'il diffère de `ARC_WORKSPACE` sous `ARC_LOCK_WORKSPACE=1` (#127).
+
+    `daily-sync.sh` pose ce verrou pour le runner LLM, qui peut lancer `python3 scripts/*` : sans lui,
+    un `--workspace <autre>` ferait lire ou écrire le dossier d'un autre membre du foyer. Sans verrou
+    (cas normal), ne fait que résoudre le chemin. NB : les options qui désignent directement un fichier
+    ou un dossier (`--db`, `--dir`, `--output-dir`, `--input`…) ne sont pas couvertes."""
+    chosen = Path(workspace).expanduser().resolve()
+    locked = locked_workspace()
+    if locked is not None and chosen != locked:
+        raise WorkspaceLockError(
+            f"ERREUR : workspace refusé ({chosen}) — cette exécution est verrouillée sur "
+            f"{locked} (ARC_LOCK_WORKSPACE=1). Retirez --workspace ou utilisez celui de la synchronisation."
+        )
+    return chosen
 
 
 def read_json(path: Path) -> dict:
@@ -259,7 +294,7 @@ def config_paths(workspace: Path) -> tuple:
 
 
 def cmd_get(args) -> int:
-    user, shared = config_paths(Path(args.workspace))
+    user, shared = config_paths(enforce_workspace_lock(args.workspace))
     for path in (user, shared):
         section = read_toml(path).get(args.section, {})
         if args.key in section:
@@ -279,7 +314,7 @@ def _render(value) -> str:
 
 
 def cmd_set(args) -> int:
-    user, _ = config_paths(Path(args.workspace))
+    user, _ = config_paths(enforce_workspace_lock(args.workspace))
     if args.list is not None:
         value = args.list
     elif args.type == "bool":

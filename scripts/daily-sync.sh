@@ -31,6 +31,9 @@ if [[ "${ARC_ENGINE_LOCKED:-}" != "1" ]]; then
 fi
 # shellcheck source=lib/sync_tools.sh
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib/sync_tools.sh"
+# Chemin ABSOLU exporté : le runner (ou un script qu'il lance) peut faire un `cd`, et un ARC_WORKSPACE relatif
+# désignerait alors un autre dossier pour le verrou que pour lib/config.sh.
+ARC_WORKSPACE="$(cd "$ARC_WORKSPACE" 2>/dev/null && pwd || printf '%s' "$ARC_WORKSPACE")"
 
 DRY_RUN=0
 RUNNER=""
@@ -62,6 +65,9 @@ NOTIFY="$ARC_ENGINE_ROOT/scripts/notify.sh"
 # (arc_update_check.py --hook) se tait en headless ; la notification dédiée
 # (check_update_notice) s'en charge.
 export ARC_HEADLESS=1
+# Le runner peut lancer `python3 scripts/*` : verrouillé sur CE workspace (#127), un `--workspace <autre>`
+# (dossier d'un autre membre du foyer) est refusé par coach_setup.workspace_root et lib/config.sh.
+export ARC_WORKSPACE ARC_LOCK_WORKSPACE=1
 
 # Mode API / modèle (#chat) : [sync].api_key_env non vide = clé lue dans llm.env
 # (jamais dans le TOML). model : requis pour opencode, optionnel pour claude API.
@@ -243,7 +249,10 @@ elif [[ "$SOURCE" == "intervals" ]]; then
     CLAUDE_DISALLOWED+="$PROTECTED_PATHS"
     SOURCE_LABEL="Intervals.icu"
     MCP_SERVER_NAME="intervals"
-    AUTH_CMD_HINT="(cd \"$HOME/.config/ai-running-coach/intervals-icu-mcp\" && intervals-icu-mcp-auth)"
+    # Identifiants DU workspace (./install.sh --intervals-dir, #127), sinon le dossier historique.
+    _icu_dir="$(python3 "$ARC_ENGINE_ROOT/scripts/arc_credentials.py" intervals-dir --workspace "$ARC_WORKSPACE" 2>/dev/null || true)"
+    AUTH_CMD_HINT="(cd \"${_icu_dir:-$HOME/.config/ai-running-coach/intervals-icu-mcp}\" && intervals-icu-mcp-auth)"
+    unset _icu_dir
 else
     # Outils autorisés en mode non interactif : serveur MCP garmin (tous ses outils),
     # délégation au coach (Agent/Task), skills, lecture/écriture des MD, scripts
@@ -280,6 +289,10 @@ else
     SOURCE_LABEL="Garmin"
     MCP_SERVER_NAME="garmin"
     AUTH_CMD_HINT="uv run garmin-mcp-auth"
+    # Dossier de jetons propre au workspace (./install.sh --garmin-tokens, #127) : l'indice le nomme.
+    _gm_dir="$(python3 "$ARC_ENGINE_ROOT/scripts/arc_credentials.py" garmin-tokens-mcp --workspace "$ARC_WORKSPACE" 2>/dev/null || true)"
+    [[ -z "$_gm_dir" ]] || AUTH_CMD_HINT="uv run garmin-mcp-auth --token-path \"$_gm_dir\""
+    unset _gm_dir
 fi
 if [[ "$HEALTH_OW" -eq 1 ]]; then
     # #220 : l'agent n'a jamais à lire la clé d'API Open Wearables (seul le script la lit).
@@ -1045,7 +1058,9 @@ check_token_alert() {
     provider="$(toml_get notifications provider none)"
     [[ "$provider" != "none" ]] || return 0
 
-    local doctor_cmd=(python3 "$ARC_ENGINE_ROOT/scripts/coach_doctor.py"
+    # Appel de confiance de daily-sync lui-même (pas du runner) : hors verrou, le dossier de jetons suit
+    # toute la précédence (GARMINTOKENS de l'environnement du cron compris).
+    local doctor_cmd=(env -u ARC_LOCK_WORKSPACE python3 "$ARC_ENGINE_ROOT/scripts/coach_doctor.py"
                        --check garmin_token --json --workspace "$ARC_WORKSPACE")
     local timeout_bin="" doctor_json rc=0
     if have timeout; then

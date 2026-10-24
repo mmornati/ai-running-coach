@@ -635,7 +635,8 @@ class TestWatchHeartbeat(InstallAsserts):
     """Mode surveillance : le cron existe, mais le watcher a-t-il tourné récemment ?"""
 
     NOW = "2026-09-27T09:00:00+00:00"
-    CRON = '*/15 * * * * ARC_WORKSPACE="/ws" python3 "/e/scripts/watch.py" >/dev/null 2>&1 # ai-running-coach daily-sync\n'
+    # %s : le workspace RÉEL de la sandbox — un ARC_WORKSPACE disparu est désormais une planification orpheline (N5, #127).
+    CRON = '*/15 * * * * ARC_WORKSPACE="%s" python3 "/e/scripts/watch.py" >/dev/null 2>&1 # ai-running-coach daily-sync\n'
     # Ancien nom, encore présent dans une crontab posée avant le renommage.
     LEGACY_CRON = CRON.replace("scripts/watch.py", "scripts/garmin_watch.py")
 
@@ -651,7 +652,7 @@ class TestWatchHeartbeat(InstallAsserts):
                 "last_check": local.isoformat(timespec="seconds"),
                 "runs": {"date": local.date().isoformat(), "count": 2},
             }))
-        sb.set_crontab(self.CRON)
+        sb.set_crontab(self.CRON % ws)
         proc = sb.script(
             "coach_doctor.py", "--json", "--workspace", str(ws), "--tokens-dir", str(_fresh_tokens_dir(sb)),
             ARC_FAKE_UNAME="Linux", ARC_DOCTOR_NOW=self.NOW,

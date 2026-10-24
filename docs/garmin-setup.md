@@ -394,6 +394,39 @@ uv run garmin-mcp-auth --verify
 uv run garmin-mcp-auth
 ```
 
+### Un dossier de jetons par workspace (plusieurs workspaces, même utilisateur)
+
+Par défaut, tous les workspaces d'un utilisateur partagent `~/.garminconnect/` : deux athlètes
+sur la même machine se partageraient donc le même compte Garmin. Pour donner à un workspace ses
+propres jetons :
+
+```bash
+./install.sh --workspace ~/coach-alice --garmin-tokens ~/.garminconnect-alice
+```
+
+L'option écrit `GARMINTOKENS` dans l'`env` du serveur `garmin` du `.mcp.json` du workspace (et
+de ses configurations Cursor, Gemini et Windsurf), crée le dossier en `700` et lance
+`garmin-mcp-auth --token-path` sur ce dossier. Elle est **mémorisée** : un `./install.sh` sans
+l'option conserve `GARMINTOKENS` (jamais retiré), et une installation qui n'utilise pas l'option
+ne change pas. Le dossier est aussi noté dans `[credentials].garmin_tokens` de
+`config/workspace.user.toml` (propre au workspace) : il survit à un passage par une autre source
+(`--source intervals` puis retour à `garmin`). La configuration OpenCode globale
+(`~/.config/opencode/opencode.json`) est partagée par tous les workspaces : elle n'est pas modifiée
+dans ce cas. OpenCode interactif ne lit pas le `.mcp.json` mais `opencode.json`, fusionné avec celui
+de la racine du projet ([documentation OpenCode](https://opencode.ai/docs/config/)) : l'installateur
+écrit donc l'entrée `garmin` dans `<workspace>/opencode.json` (fusionnée sans toucher à vos autres
+clés, ajoutée au `.gitignore` du workspace). Valable seulement avec `--source garmin`, et
+**incompatible avec le mode passerelle** (`--use-leanproxy`, y compris mémorisé) : la passerelle
+lance `garmin-mcp` sans cet environnement et lit `~/.garminconnect` ; l'installation s'arrête avec un
+message plutôt que d'écrire une configuration sans effet.
+
+Le même dossier est ensuite utilisé partout, dans l'ordre : `--tokens-dir` d'un script, puis
+`GARMINTOKENS` du `.mcp.json` du workspace, puis `GARMINTOKENS` de l'environnement, puis
+`GARMIN_TOKENS_DIR`, puis `~/.garminconnect` — `/coach-doctor`, la surveillance `garmin_watch.py`,
+`download_fit.py` et `garmin_gear_backfill.py` partagent cette résolution
+(`scripts/arc_credentials.py`). `python3 scripts/coach_doctor.py` indique la source retenue
+(`tokens_dir_source` en JSON). Pour renouveler : `uv run garmin-mcp-auth --token-path <dossier>`.
+
 ## Données accessibles
 
 Les agents accèdent aux outils Garmin directement (mode direct) ou via `leanproxy_invoke_tool(server="garmin", tool="...")` (mode passerelle) :

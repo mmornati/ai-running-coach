@@ -41,6 +41,8 @@ __pycache__/
 .cursor/
 .windsurf/
 .mcp.json
+# opencode.json de projet : généré seulement avec des identifiants propres au workspace (#127)
+/opencode.json
 
 # Liens symboliques Copilot générés par install.sh (agents/ et skills/ sont la source)
 .github/agents

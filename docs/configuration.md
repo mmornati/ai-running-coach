@@ -619,6 +619,21 @@ pour les changer, sauf `mode`/`times`, voir [Le coach dans la poche](mobile.md))
 `./install.sh --sync-runner CLI` choisit l'assistant headless et `./install.sh --sync-budget EUR` écrit `daily_budget_eur`. Détails, budget et données de
 santé : [Synchronisation sur OpenRouter](mobile.md#synchronisation-sur-openrouter-ou-toute-api-compatible-openai).
 
+## Les identifiants du workspace — `[credentials]` (#127)
+
+Écrite par `install.sh` (jamais à la main), seulement quand vous passez `--garmin-tokens` ou `--intervals-dir`
+(plusieurs workspaces sous le même utilisateur, [voir Plusieurs workspaces](workspace.md#plusieurs-workspaces-sur-une-meme-machine)) :
+
+| Clé | Effet |
+|---|---|
+| `garmin_tokens` | Dossier des jetons Garmin de CE workspace (`GARMINTOKENS` du `.mcp.json`). |
+| `intervals_dir` | Dossier des identifiants intervals.icu de CE workspace. |
+
+Ce sont des **chemins**, jamais un secret. `[credentials]` est la **mémoire de l'installation** : elle permet à
+une réinstallation sans option de retrouver ces dossiers. À l'exécution, la résolution (`arc_credentials` :
+`coach_doctor`, `garmin_watch`, `download_fit`) lit le `.mcp.json` du workspace, que l'installation
+maintient d'accord avec cette section. Sans option, aucune section `[credentials]` n'est écrite.
+
 ## Le chat avec le coach — `[chat]`
 
 Service optionnel du tableau de bord ([page dédiée](dashboard/chat.md)), désactivé par

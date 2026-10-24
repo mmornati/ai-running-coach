@@ -147,6 +147,7 @@ from pathlib import Path
 from typing import Any, Optional
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+import arc_credentials  # noqa: E402
 import arc_index  # noqa: E402
 import arc_legacy as L  # noqa: E402
 from coach_config import ConfigError, read_toml  # noqa: E402
@@ -172,6 +173,85 @@ MCP_PROBE_TIMEOUT_S = float(os.environ.get("ARC_MCP_PROBE_TIMEOUT_S", "10"))
 
 CRON_MARKER = "# ai-running-coach daily-sync"
 LAUNCHD_PLIST_REL = "Library/LaunchAgents/com.ai-running-coach.daily-sync.plist"
+# Plusieurs workspaces sous le même utilisateur (#127) : le label launchd historique OU un label suffixé
+# `com.ai-running-coach.daily-sync.<nom>-<somme>`, le marqueur cron historique OU `… daily-sync [<id>]`.
+# L'appartenance à CE workspace se lit à son ARC_WORKSPACE.
+LAUNCHD_PLIST_GLOB = "com.ai-running-coach.daily-sync*.plist"
+_ARC_WORKSPACE_RE = re.compile(r'ARC_WORKSPACE="([^"]*)"')
+_PLIST_WORKSPACE_RE = re.compile(r"<key>ARC_WORKSPACE</key>\s*<string>([^<]*)</string>")
+
+
+def _same_workspace(declared: str, workspace: Optional[Path]) -> bool:
+    """`declared` (ARC_WORKSPACE d'une ligne cron / d'un plist) désigne-t-il `workspace` ?
+
+    Oui sans workspace à comparer ou sans valeur déclarée (très anciennes installations). Un dossier déclaré
+    qui n'existe plus n'est PAS le sien (planification orpheline, voir `_is_orphan_declared`) : B ne serait
+    pas planifié parce que la seule ligne vise un dossier supprimé. Un AUTRE dossier existant non plus :
+    planifier A ne dit rien de B."""
+    if workspace is None or not declared:
+        return True
+    try:
+        theirs = Path(declared).expanduser()
+        if not theirs.is_dir():
+            return False
+        return theirs.resolve() == Path(workspace).resolve()
+    except OSError:
+        return declared == str(workspace)
+
+
+def _is_orphan_declared(declared: str) -> bool:
+    """Le dossier déclaré par une planification a-t-il disparu ? (même repère que `workspace_claim` de
+    install.sh : dossier absent, qu'il ait été supprimé, déplacé ou que son volume soit démonté)."""
+    return bool(declared) and not Path(declared).expanduser().is_dir()
+
+
+def _orphan_schedules(home: Path, crontab: str) -> list:
+    """Planifications daily-sync (plists, lignes cron) dont l'ARC_WORKSPACE n'existe plus."""
+    found = []
+    agents = home / "Library" / "LaunchAgents"
+    if agents.is_dir():
+        for plist in sorted(agents.glob(LAUNCHD_PLIST_GLOB)):
+            match = _PLIST_WORKSPACE_RE.search(plist.read_text(encoding="utf-8", errors="replace"))
+            if match and _is_orphan_declared(match.group(1)):
+                found.append(match.group(1))
+    for line in crontab.splitlines():
+        match = _ARC_WORKSPACE_RE.search(line) if CRON_MARKER in line else None
+        if match and _is_orphan_declared(match.group(1)):
+            found.append(match.group(1))
+    return found
+
+
+def _orphan_info(check_id: str, orphans: list) -> dict:
+    return build_check(
+        check_id, "info",
+        f"Planification orpheline : daily-sync vise un dossier introuvable ({', '.join(sorted(set(orphans)))}) — "
+        "aucune planification pour ce workspace.",
+        fix="./install.sh --daily-sync",
+    )
+
+
+def _own_plists(home: Path, workspace: Optional[Path]) -> list:
+    """Plists daily-sync (label historique ou suffixé) de CE workspace."""
+    found = []
+    for plist in sorted((home / "Library" / "LaunchAgents").glob(LAUNCHD_PLIST_GLOB)):
+        if not plist.is_file():
+            continue
+        match = _PLIST_WORKSPACE_RE.search(plist.read_text(encoding="utf-8", errors="replace"))
+        if _same_workspace(match.group(1) if match else "", workspace):
+            found.append(plist)
+    return found
+
+
+def _own_cron_lines(crontab: str, workspace: Optional[Path]) -> list:
+    """Lignes cron daily-sync (marqueur historique ou suffixé) de CE workspace — mêmes règles que `_own_plists`."""
+    ours = []
+    for line in crontab.splitlines():
+        if CRON_MARKER not in line:
+            continue
+        match = _ARC_WORKSPACE_RE.search(line)
+        if _same_workspace(match.group(1) if match else "", workspace):
+            ours.append(line)
+    return ours
 
 # Pin du serveur garmin-mcp : DOIT rester identique à `GARMIN_MCP_REF` dans install.sh (et à l'ARG
 # de deploy/chat/Dockerfile) — tests/lint/test_data_source_parity.py le vérifie.
@@ -885,11 +965,15 @@ def check_daily_sync(home: Path, workspace: Path | None = None, config: dict | N
     check_id = "daily_sync_scheduled"
     now = now or datetime.now()
     if _uname() == "Darwin":
-        plist = home / LAUNCHD_PLIST_REL
-        if plist.is_file():
+        own = _own_plists(home, workspace)
+        if own:
+            plist = own[0]
             if workspace is not None and any(s in plist.read_text(encoding="utf-8", errors="replace") for s in WATCH_SCRIPTS):
                 return check_watch_heartbeat(check_id, workspace, config or {}, now, "LaunchAgent")
             return build_check(check_id, "ok", f"LaunchAgent daily-sync installé ({plist}).", fix=None)
+        orphans = _orphan_schedules(home, "")
+        if orphans:
+            return _orphan_info(check_id, orphans)
         return build_check(
             check_id, "info", "Aucun LaunchAgent daily-sync — synchronisation Garmin manuelle uniquement.",
             fix="./install.sh --daily-sync",
@@ -901,11 +985,14 @@ def check_daily_sync(home: Path, workspace: Path | None = None, config: dict | N
             check_id, "info", "crontab injoignable — synchronisation Garmin manuelle uniquement.",
             fix="./install.sh --daily-sync",
         )
-    if out.returncode == 0 and CRON_MARKER in out.stdout:
-        ours = [line for line in out.stdout.splitlines() if CRON_MARKER in line]
+    ours = _own_cron_lines(out.stdout, workspace) if out.returncode == 0 else []
+    if ours:
         if workspace is not None and any(s in line for line in ours for s in WATCH_SCRIPTS):
             return check_watch_heartbeat(check_id, workspace, config or {}, now, "cron")
         return build_check(check_id, "ok", "Tâche cron daily-sync présente.", fix=None)
+    orphans = _orphan_schedules(home, out.stdout) if out.returncode == 0 else []
+    if orphans:
+        return _orphan_info(check_id, orphans)
     return build_check(
         check_id, "info", "Aucune tâche cron daily-sync — synchronisation Garmin manuelle uniquement.",
         fix="./install.sh --daily-sync",
@@ -2143,18 +2230,9 @@ def resolve_now(parsed_now: Optional[datetime]) -> datetime:
 def resolve_tokens_dir(raw: Optional[str], workspace: Path) -> Path:
     """Voir la docstring du module pour l'ordre de résolution complet — même
     logique que `garmin_mcp/__init__.py` (`GARMINTOKENS` d'abord), avec
-    `--tokens-dir` / `GARMIN_TOKENS_DIR` en plus pour les tests et #32."""
-    if raw:
-        return Path(raw).expanduser()
-    mcp_env = _resolve_mcp_server(workspace).get("env", {})
-    for source in (mcp_env, os.environ):
-        value = source.get("GARMINTOKENS")
-        if value:
-            return Path(value).expanduser()
-    value = os.environ.get("GARMIN_TOKENS_DIR")
-    if value:
-        return Path(value).expanduser()
-    return Path("~/.garminconnect").expanduser()
+    `--tokens-dir` / `GARMIN_TOKENS_DIR` en plus pour les tests et #32.
+    Implémentation partagée : `arc_credentials` (#127)."""
+    return arc_credentials.garmin_tokens_dir(raw, workspace)
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -2193,6 +2271,7 @@ def main(argv: Optional[list] = None) -> int:
     workspace = workspace_root(args.workspace)
     now = resolve_now(args.now)
     tokens_dir = resolve_tokens_dir(args.tokens_dir, workspace)
+    _, tokens_source = arc_credentials.garmin_tokens_dir_with_source(args.tokens_dir, workspace)
 
     if args.check:
         checks = [run_single_check(args.check, workspace, now, tokens_dir, args.probe_mcp, not args.no_probe_ow,
@@ -2207,11 +2286,15 @@ def main(argv: Optional[list] = None) -> int:
             "generated_at": now.replace(microsecond=0).isoformat(),
             "workspace": str(workspace),
             "ok": not has_error,
+            "tokens_dir": str(tokens_dir),
+            "tokens_dir_source": tokens_source,
             "checks": checks,
         }
         print(json.dumps(payload, ensure_ascii=False, indent=2))
     else:
         print(f"coach doctor — {workspace}")
+        if tokens_source != arc_credentials.SOURCE_DEFAULT:
+            print(f"Jetons Garmin : {tokens_dir} (source : {tokens_source})")
         print(render_table(checks))
         print()
         if has_error:

@@ -101,6 +101,16 @@ Puis `./install.sh --ide claude --workspace ~/mon-workspace`, vérifiez `git sta
 vos données, `local/`, `config/workspace.user.toml` et `.gitignore` doivent apparaître) et
 committez.
 
+!!! warning "Synchronisation automatique : installation fusionnée avant la migration"
+    Si vous aviez `--daily-sync` avec le workspace par défaut (la racine du moteur) et que vos
+    données y sont **encore** (`planning/Runner_Profile.md`, `planning/active_objective.md` ou des
+    journaux `activities/` / `medical/`), l'installation avec `--workspace` **conserve** l'ancienne
+    planification et l'annonce : à ce stade, rien ne distingue votre migration de l'ajout d'un second
+    membre du foyer. Une fois vos données déplacées, relancez avec
+    `./install.sh --daily-sync --workspace ~/mon-workspace --replace-schedule` pour remplacer la
+    planification de la racine du moteur ; sans l'option, elle est aussi remplacée automatiquement
+    dès que la racine ne contient plus aucune donnée d'athlète.
+
 ## Versionner automatiquement depuis la machine coach
 
 Avec `git_autocommit = true` dans `config/workspace.user.toml` (section `[sync]`), chaque
@@ -143,9 +153,57 @@ Le cron relit les skills à chaque run. Sur la machine coach, relancez Remote Co
 (`scripts/coach-remote.sh restart`) si `.mcp.json` a changé. Procédure complète, retour
 arrière compris : [Mettre à jour](update.md).
 
+## Plusieurs workspaces sur une même machine
+
+Plusieurs workspaces (par exemple un par membre d'un foyer) peuvent tourner sous le **même
+utilisateur** système sans partager leurs identifiants ni leur planification :
+
+- `./install.sh --workspace DIR --garmin-tokens DOSSIER` : jetons Garmin propres au workspace
+  (`GARMINTOKENS` dans son `.mcp.json`), voir [Configuration Garmin](garmin-setup.md#un-dossier-de-jetons-par-workspace-plusieurs-workspaces-meme-utilisateur) ;
+- `./install.sh --workspace DIR --source intervals --intervals-dir DOSSIER` : identifiants
+  intervals.icu propres au workspace, voir [Configuration Intervals.icu](intervals-setup.md#des-identifiants-par-workspace-plusieurs-workspaces-meme-utilisateur) ;
+- `--daily-sync` : chaque workspace a **sa** ligne cron (marqueur
+  `# ai-running-coach daily-sync [<nom>-<somme>]` pour les suivants ; le premier garde le marqueur
+  historique) ou **son** LaunchAgent (label suffixé). Installer un workspace ne remplace plus que
+  ses propres lignes, reconnues à leur `ARC_WORKSPACE` ; les lignes historiques d'un autre
+  workspace sont conservées (le plist historique d'un autre dossier existant n'est jamais réécrit :
+  le nouveau workspace reçoit un label suffixé) ;
+- l'appartenance d'une planification se lit sur le dossier **physique** de son `ARC_WORKSPACE`
+  (liens symboliques et graphies différentes d'un même chemin comptent pour un seul workspace). Une
+  ligne cron ou un LaunchAgent est **remplacé, avec un avertissement**, si son dossier n'existe plus
+  **alors que son dossier parent existe** (workspace déplacé ou renommé), ou si c'est la racine du
+  moteur alors que vous installez un workspace séparé **et** que la racine ne contient plus de données
+  d'athlète (migration terminée) ou que vous passez `--replace-schedule`. Tant que la racine du moteur
+  porte des données, sa planification est celle d'un autre membre (installation fusionnée) : elle est
+  conservée, avec un avertissement qui nomme la ligne et la sortie (`--replace-schedule`). Un dossier
+  **et** son parent introuvables (volume démonté, partage réseau absent) sont conservés avec un
+  avertissement. Un LaunchAgent retiré est d'abord sauvegardé à côté des sauvegardes de crontab
+  (`~/.config/ai-running-coach/launchagent-*.bak`) et l'avertissement donne la commande de
+  restauration (`./install.sh --daily-sync --workspace <ancien chemin>`). Les planifications d'un autre
+  workspace existant ne sont jamais touchées ;
+- le verrou de la synchronisation est une **défense en profondeur pour les scripts du moteur**, pas
+  une cage : `daily-sync.sh` pose `ARC_LOCK_WORKSPACE=1` (avec un `ARC_WORKSPACE` absolu) pour
+  l'exécuteur, et `coach_setup`, `coach_config` et `arc_credentials` refusent alors
+  tout `--workspace` différent (message « workspace refusé ») ; `lib/config.sh` ne fait que refuser un
+  `ARC_WORKSPACE` absent ou invalide sous le verrou, sans repli sur un autre workspace. Il **ne couvre pas** : les options qui
+  désignent directement un fichier ou un dossier (`--db`, `--dir`, `--output-dir`, `--input`) ; les
+  outils de fichiers de l'exécuteur `claude` (Read, Write, Edit, Glob, Grep acceptent des chemins
+  absolus) ; les shells larges des exécuteurs `codex` et `opencode`. Pour une séparation stricte
+  entre deux personnes, utilisez des utilisateurs système distincts ;
+- COROS : les identifiants de la source COROS vivent dans un dossier unique de l'utilisateur
+  (`~/.config/ai-running-coach/coros/`) ; il n'existe pas encore d'option par workspace (comme
+  `--garmin-tokens`) : deux workspaces COROS du même utilisateur partagent le même compte (seule la variable d'environnement `ARC_COROS_DIR` déplace ce dossier, pour tout le processus) ;
+- l'exécuteur `codex` lit la configuration **globale** `~/.codex/config.toml` : les identifiants
+  qu'elle déclare sont communs à tous les workspaces de l'utilisateur, `--garmin-tokens` /
+  `--intervals-dir` n'y changent rien (les exécuteurs `claude` et `opencode` de la synchro lisent le
+  `.mcp.json` du workspace).
+
+Les options d'installation mémorisées pour `/update-coach` (`~/.config/ai-running-coach/install-args`)
+restent communes à l'utilisateur : après une mise à jour, relancez `./install.sh` pour chaque workspace.
+
 ## Ce qui reste hors des deux dépôts
 
-- `~/.garminconnect/` — tokens Garmin
+- `~/.garminconnect/` — tokens Garmin (ou le dossier `--garmin-tokens` du workspace)
 - `~/.config/ai-running-coach/ntfy.token` — token de notification
 - `~/.config/ai-running-coach/workspace` — chemin du workspace
 - `~/.claude.json` — approbation du serveur MCP pour le workspace

@@ -29,7 +29,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from coach_config import ConfigError, read_toml, set_toml_key  # noqa: E402
+from coach_config import ConfigError, enforce_workspace_lock, locked_workspace, read_toml, set_toml_key  # noqa: E402
 import arc_legacy  # noqa: E402 — uniquement pour normalize_label (#65)
 
 ENGINE = Path(__file__).resolve().parent.parent
@@ -79,9 +79,14 @@ WORK_DIRS = ["activities", "medical", "nutrition", "planning", "rapports", "reso
 
 
 def workspace_root(explicit: str | None = None) -> Path:
-    """Même résolution que scripts/lib/config.sh, pour que shell et Python voient le même workspace."""
+    """Même résolution que scripts/lib/config.sh, pour que shell et Python voient le même workspace.
+
+    Verrou (#127) : sous `ARC_LOCK_WORKSPACE=1` (posé par `daily-sync.sh` pour le runner LLM), un
+    `--workspace` qui désigne un autre dossier que `ARC_WORKSPACE` est refusé — le modèle, qui peut
+    lancer `python3 scripts/*`, ne sort ainsi pas du workspace de la synchronisation en cours."""
     if explicit:
-        return Path(explicit).expanduser().resolve()
+        return enforce_workspace_lock(explicit)
+    locked_workspace()   # verrou sans ARC_WORKSPACE : refus, jamais de repli sur le pointeur
     if os.environ.get("ARC_WORKSPACE"):
         return Path(os.environ["ARC_WORKSPACE"]).expanduser().resolve()
     pointer = Path.home() / ".config/ai-running-coach/workspace"

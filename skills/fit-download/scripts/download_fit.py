@@ -6,7 +6,8 @@ Quatre sources, choisies par `--source` (défaut : `[data].source` du workspace,
 - **`garmin`** — résout le timeout MCP de `get_activity_fit_data` (records GPS =
   payload de plusieurs Mo qui dépasse le timeout côté client). Utilise la librairie
   `garminconnect` déjà installée dans l'environnement `garmin-mcp` et les tokens
-  locaux `~/.garminconnect` — aucun mot de passe nécessaire.
+  locaux `~/.garminconnect` (ou `GARMINTOKENS` du `.mcp.json` du workspace, #127) — aucun mot de
+  passe nécessaire.
 - **`intervals`** — `GET /api/v1/activity/<id>/fit-file` de l'API Intervals.icu
   (bibliothèque standard, `urllib`), authentifié par la clé API déjà configurée pour
   le serveur MCP `intervals-icu-mcp` (`~/.config/ai-running-coach/intervals-icu-mcp/.env`,
@@ -377,15 +378,28 @@ def _read_env_file(path: Path) -> dict:
     return values
 
 
+def _intervals_env_file() -> Path:
+    """`.env` du serveur MCP intervals.icu DU workspace : dossier du wrapper `run.sh` référencé par
+    son `.mcp.json` (`./install.sh --intervals-dir`, #127), sinon `INTERVALS_ENV_FILE`."""
+    try:
+        from arc_credentials import intervals_env_dir  # noqa: E402 (sys.path déjà préparé en tête de module)
+        from coach_setup import workspace_root  # noqa: E402
+
+        return intervals_env_dir(workspace_root()) / ".env"
+    except Exception:  # noqa: BLE001 — résolution impossible : le chemin historique
+        return INTERVALS_ENV_FILE.expanduser()
+
+
 def _intervals_api_key(env_file: Path | None = None) -> str:
     """Clé API Intervals.icu : `$INTERVALS_ICU_API_KEY` si défini (même précédence que
     `intervals-icu-mcp`, pydantic-settings), sinon le `.env` du serveur MCP."""
     key = os.environ.get("INTERVALS_ICU_API_KEY", "").strip()
+    env_file = (env_file or _intervals_env_file()).expanduser()
     if not key:
-        key = _read_env_file((env_file or INTERVALS_ENV_FILE).expanduser()).get("INTERVALS_ICU_API_KEY", "").strip()
+        key = _read_env_file(env_file).get("INTERVALS_ICU_API_KEY", "").strip()
     if not key or key == "your_api_key_here":
         raise IntervalsError(
-            f"clé API Intervals.icu introuvable ($INTERVALS_ICU_API_KEY ou {INTERVALS_ENV_FILE}) — "
+            f"clé API Intervals.icu introuvable ($INTERVALS_ICU_API_KEY ou {env_file}) — "
             "lancez `./install.sh --source intervals` (ou `intervals-icu-mcp-auth`), voir docs/intervals-setup.md")
     return key
 
@@ -988,7 +1002,11 @@ def main(argv: list[str] | None = None) -> int:
         def fetch(aid):
             return _download_one_intervals(aid, out_dir, args.json, api_key)
     else:
-        token_dir = str(Path("~/.garminconnect").expanduser())
+        # Jetons DU workspace (GARMINTOKENS de son .mcp.json, #127), sinon ~/.garminconnect comme avant.
+        from arc_credentials import garmin_tokens_dir  # noqa: E402 (sys.path déjà préparé en tête de module)
+        from coach_setup import workspace_root  # noqa: E402
+
+        token_dir = str(garmin_tokens_dir(None, workspace_root()))
         from garminconnect import Garmin
 
         client = Garmin()
