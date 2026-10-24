@@ -1,17 +1,16 @@
-/* Design bêta « roadbook » (opt-in, js/early.js) : la saison lue comme le roadbook d'une course.
+/* Design « roadbook » (design par défaut depuis la 1.4, js/early.js) : la saison lue comme le roadbook d'une course.
    Feuilles de papier plastifié sur la table (clair), ou sur la nuit du matin (sombre) ; encre pin ;
    le lime ne marque que « vous êtes ici » et l'action principale. Barlow Condensed pour les titres
    et les chiffres de barrière, Inter pour lire.
    Toutes les règles vivent sous [data-design="roadbook"] : sans cet attribut, rien ne change —
-   sauf le lien d'essai du design actuel (.design-pill), qui n'existe que là. */
+   sauf l'avis de l'ancien design (.design-notice), qui n'existe que là. */
 
 .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 
-/* Lien d'essai, dans l'en-tête du design actuel. */
-.design-pill { display: inline-flex; align-items: center; gap: 0.3em; padding: 0.35rem 0.75rem; border-radius: 999px; border: 1px solid rgba(231, 237, 233, 0.35); color: #e7ede9; font-size: 0.8rem; font-weight: 600; text-decoration: none; white-space: nowrap; }
-.design-pill:hover { background: rgba(231, 237, 233, 0.12); }
-.design-pill:focus-visible { outline: 2px solid var(--lime); outline-offset: 2px; }
-@media (max-width: 36em) { .design-pill__long { display: none; } }
+/* Avis dans l'ancien design (?design=classic), supprimé avec la 1.5. */
+.design-notice { margin: 0; padding: 0.5rem 1rem; background: var(--surface); color: var(--ink); border-bottom: 1px solid var(--line); font-size: 0.88rem; text-align: center; }
+.design-notice a { color: var(--ink); font-weight: 600; text-decoration: underline; }
+.design-notice a:focus-visible { outline: 2px solid currentColor; outline-offset: 2px; }
 
 /* ---------------------------------------------------------------- jetons */
 
@@ -56,7 +55,7 @@
   caret-color: var(--rk-rule);
 
   & body { background: var(--bg); }
-  & .design-pill { display: none; }
+  & .design-notice { display: none; }
   & .skip { z-index: 30; }
 
   /* ------------------------------------------------------------ en-tête */

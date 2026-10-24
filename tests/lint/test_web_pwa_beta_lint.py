@@ -1,11 +1,11 @@
-"""Palier B — PWA du tableau de bord et design bêta « roadbook » : garanties lues statiquement.
+"""Palier B — PWA du tableau de bord et design « roadbook » (par défaut) : garanties lues statiquement.
 
 - Manifeste valide, icônes présentes et aux bonnes dimensions, pages qui le déclarent (avec
   `crossorigin="use-credentials"` : derrière un proxy qui authentifie, il suit la session).
 - Service worker : la coque seulement. Les données (`/api/`, `/media/`) ne passent jamais par
   son cache, et chaque fichier de la coque existe vraiment.
-- Design bêta : opt-in. Toutes les règles de `css/beta.css` sont portées par
-  `[data-design="roadbook"]` (sauf le lien d'essai), et `js/beta.js` n'injecte aucun
+- Design roadbook : par défaut. Toutes les règles de `css/beta.css` sont portées par
+  `[data-design="roadbook"]` (sauf l'avis de l'ancien design), et `js/beta.js` n'injecte aucun
   attribut `style=` (la CSP `style-src 'self'` le bloquerait en silence).
 - Polices auto-hébergées : chaque fichier cité par `css/fonts.css` existe, est un woff2, fait
   partie de la coque hors ligne, et sa licence OFL l'accompagne ; aucune page ne charge plus
@@ -165,9 +165,9 @@ class TestSelfHostedFonts(unittest.TestCase):
                 self.assertLess(html.index('href="css/fonts.css"'), html.index('href="css/app.css"'))
 
 
-class TestBetaDesignIsOptIn(unittest.TestCase):
+class TestRoadbookIsTheDefaultDesign(unittest.TestCase):
     def test_every_beta_rule_is_scoped(self):
-        allowed = (".sr-only", ".design-pill")
+        allowed = (".sr-only", ".design-notice")
         for sel in top_level_selectors((WEB / "css/beta.css").read_text(encoding="utf-8")):
             if re.fullmatch(r"(from|to|\d+%)", sel):
                 continue
@@ -181,18 +181,44 @@ class TestBetaDesignIsOptIn(unittest.TestCase):
         js = (WEB / "js/beta.js").read_text(encoding="utf-8")
         self.assertNotRegex(js, r"\sstyle=", "la CSP bloque style= : passer par data-vars et le CSSOM")
 
-    def test_early_script_reads_and_clears_the_design_parameter(self):
+    def test_early_script_makes_roadbook_the_default(self):
         js = (WEB / "js/early.js").read_text(encoding="utf-8")
-        self.assertIn('asked === "beta" || asked === "classic"', js)
+        self.assertIn('if (!classic) root.dataset.design = "roadbook"', js)
+        self.assertIn("var classic = false;", js)
         self.assertIn('url.searchParams.delete("design")', js)
-        self.assertIn('root.dataset.design = "roadbook"', js)
         self.assertIn("window.isSecureContext", js)
 
-    def test_both_pages_offer_the_switch_and_the_way_back(self):
+    def test_early_script_migrates_the_legacy_key_and_stores_classic_only(self):
+        js = (WEB / "js/early.js").read_text(encoding="utf-8")
+        self.assertIn('var OLD_KEY = "arc-design";', js)
+        self.assertIn("localStorage.removeItem(OLD_KEY)", js)
+        self.assertIn('var KEY = "arc-design-v14";', js)
+        # Le seul choix mémorisé est « classic », et seulement par le paramètre.
+        self.assertEqual(re.findall(r"localStorage\.setItem\(([^)]*)\)", js), ['KEY, "classic"'])
+        self.assertIn('asked === "classic"', js)
+        # roadbook et l'ancien « beta » reviennent au défaut et effacent le choix.
+        self.assertIn('asked === "roadbook" || asked === "beta"', js)
+        self.assertIn("localStorage.removeItem(KEY)", js)
+
+    def test_classic_is_reachable_only_by_parameter_with_a_deprecation_notice(self):
         for name in PAGES:
+            html = (WEB / name).read_text(encoding="utf-8")
             with self.subTest(page=name):
-                self.assertIn('href="?design=beta"', (WEB / name).read_text(encoding="utf-8"))
-        self.assertIn('href="?design=classic"', (WEB / "js/beta.js").read_text(encoding="utf-8"))
+                self.assertNotIn("bêta", html.lower())
+                self.assertNotIn("design-pill", html)
+                self.assertNotIn("?design=beta", html)
+                self.assertIn("L'ancien design disparaîtra avec la version 1.5", html)
+                self.assertIn('href="?design=roadbook"', html)
+        beta_js = (WEB / "js/beta.js").read_text(encoding="utf-8")
+        self.assertIn('href="?design=classic"', beta_js)
+        self.assertIn("Ancien design (jusqu'à la 1.5)", beta_js)
+        self.assertNotIn("bêta", beta_js.lower())
+
+    def test_service_worker_ships_v3_and_deletes_every_other_shell_cache(self):
+        sw = (WEB / "sw.js").read_text(encoding="utf-8")
+        self.assertIn('const CACHE = "arc-shell-v3";', sw)
+        self.assertIn('k.startsWith("arc-shell-") && k !== CACHE', sw)
+        self.assertIn("caches.delete(k)", sw)
 
     def test_beta_shell_keeps_the_single_nav_list(self):
         js = (WEB / "js/beta.js").read_text(encoding="utf-8")

@@ -6,7 +6,7 @@
 // - Derrière un proxy qui authentifie (Authentik, déploiement serveur) : une réponse redirigée,
 //   opaque ou en erreur n'est jamais mise en cache — on ne garde pas une page de connexion
 //   à la place de l'application.
-const CACHE = "arc-shell-v2";
+const CACHE = "arc-shell-v3";
 const SHELL = [
   "./", "index.html", "chat.html", "manifest.webmanifest", "favicon.svg",
   "css/app.css", "css/chat.css", "css/beta.css", "css/fonts.css",
