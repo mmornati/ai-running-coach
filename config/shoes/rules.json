@@ -1,0 +1,376 @@
+{
+ "schema_version": 1,
+ "status": "approximation_projet",
+ "disclaimer": "Ce n'est pas un avis médical. Une caractéristique de chaussure isolée ne prévient ni ne cause une blessure : ces plages restreignent ou avertissent, le confort perçu décide. Corrélation, pas causalité.",
+ "confidence_levels": [
+  "high",
+  "moderate",
+  "low",
+  "expert_opinion",
+  "none"
+ ],
+ "sources": {
+  "nigg2015": {
+   "citation": "Nigg B, et al. Running shoes and running injuries: mythbusting and a proposal for two new paradigms: 'preferred movement path' and 'comfort filter'. Br J Sports Med. 2015;49(20):1290-1294.",
+   "url": "https://bjsm.bmj.com/content/49/20/1290",
+   "verified": "PubMed 26221015 (titre, revue, pages)"
+  },
+  "malisoux2025": {
+   "citation": "Malisoux L, et al. Association of Shoe Cushioning Perception and Comfort With Injury Risk in Leisure-Time Runners: a secondary analysis of a randomised trial. Eur J Sport Sci. 2025;25:e70063.",
+   "url": "https://researchportal.lih.lu/en/publications/association-of-shoe-cushioning-perception-and-comfort-with-injury/",
+   "verified": "PubMed 41122014 (titre, revue)"
+  },
+  "ryan2014": {
+   "citation": "Ryan M, et al. Examining injury risk and pain perception in runners using minimalist footwear. Br J Sports Med. 2014;48(16):1257-1262.",
+   "url": "https://kintec.net/wp-content/uploads/2016/12/Ryan.-minimalist-footwearBJSM_2013.pdf",
+   "verified": "PubMed 24357642 (titre, revue, pages)"
+  },
+  "fuller2017": {
+   "citation": "Fuller JT, Thewlis D, Buckley JD, Brown NA, Hamill J, Tsiros MD. Body mass and weekly training distance influence the pain and injuries experienced by runners using minimalist shoes: a randomized controlled trial. Am J Sports Med. 2017;45(5):1162-1170.",
+   "url": "https://researchers.mq.edu.au/en/publications/body-mass-and-weekly-training-distance-influence-the-pain-and-inj/",
+   "verified": "PubMed 28129518, résumé lu : risque de blessure en chaussure minimaliste plus probable au-delà de 71,4 kg ; douleur plus forte au-delà de 35 km/semaine ; 61 coureurs"
+  },
+  "malisoux2016drop": {
+   "citation": "Malisoux L, et al. Influence of the heel-to-toe drop of standard cushioned running shoes on injury risk in leisure-time runners: a randomized controlled trial with 6-month follow-up. Am J Sports Med. 2016;44(11):2933-2940.",
+   "url": "https://researchportal.lih.lu/en/publications/influence-of-the-heel-to-toe-drop-of-standard-cushioned-running-s/",
+   "verified": "PubMed 27501833 (titre, revue, pages)"
+  },
+  "malisoux2020": {
+   "citation": "Malisoux L, Delattre N, Urhausen A, Theisen D. Shoe cushioning influences the running injury risk according to body mass: a randomized controlled trial involving 848 recreational runners. Am J Sports Med. 2020;48(2):473-480.",
+   "url": "https://researchportal.lih.lu/en/publications/shoe-cushioning-influences-the-running-injury-risk-according-to-b/",
+   "verified": "PubMed 31877062, résumé lu : chaussures dures SHR 1,52 ; coureurs légers 1,80 ; coureurs lourds sans effet significatif"
+  },
+  "theisen2014": {
+   "citation": "Theisen D, et al. Influence of midsole hardness of standard cushioned shoes on running-related injury risk. Br J Sports Med. 2014;48(5):371-376.",
+   "url": "https://bjsm.bmj.com/content/48/5/371",
+   "verified": "PubMed 24043665 (titre, revue, pages) ; résultat (247 coureurs, 5 mois, HR 0,92 [0,57-1,48]) lu dans un résumé secondaire"
+  },
+  "nielsen2014": {
+   "citation": "Nielsen RO, et al. Foot pronation is not associated with increased injury risk in novice runners wearing a neutral shoe: a 1-year prospective cohort study. Br J Sports Med. 2014;48(6):440-447.",
+   "url": "https://bjsm.bmj.com/content/48/6/440",
+   "verified": "titre complet et pagination confirmés à la revue de la PR #310 ; lien de l'épopée #297"
+  },
+  "malisoux2016mc": {
+   "citation": "Malisoux L, et al. Injury risk in runners using standard or motion control shoes: a randomised controlled trial with participant and assessor blinding. Br J Sports Med. 2016;50(8):481-487. Bénéfice possible de la stabilité (HR 0,55 ; 0,34 chez les pieds pronés, analyse secondaire) : option.",
+   "url": "https://bjsm.bmj.com/content/50/8/481",
+   "verified": "PubMed 26746907 (titre, revue, pages)"
+  },
+  "malisoux2015": {
+   "citation": "Malisoux L, Ramesh J, Mann R, Seil R, Urhausen A, Theisen D. Can parallel use of different running shoes decrease running-related injury risk? Scand J Med Sci Sports. 2015;25(1):110-115.",
+   "url": "https://pubmed.ncbi.nlm.nih.gov/24286345/",
+   "verified": "PubMed 24286345 (titre, auteurs, revue ; étude observationnelle)"
+  },
+  "hoogkamer2018": {
+   "citation": "Hoogkamer W, et al. A comparison of the energetic cost of running in marathon racing shoes. Sports Med. 2018;48(4):1009-1019.",
+   "url": "https://pubmed.ncbi.nlm.nih.gov/29143929/",
+   "verified": "PubMed 29143929 (titre, revue, pages) ; économie de course, aucune donnée de blessure"
+  },
+  "esculier2015": {
+   "citation": "Esculier JF, et al. A consensus definition and rating scale for minimalist shoes. J Foot Ankle Res. 2015;8:42.",
+   "url": "https://jfootankleres.biomedcentral.com/articles/10.1186/s13047-015-0094-5",
+   "verified": "PubMed 26300981 ; grille déjà intégrée par arc_shoes (#298)"
+  },
+  "worldathletics": {
+   "citation": "World Athletics, Athletic Shoe Regulations et FAQ : épaisseur de semelle limitée à 40 mm sur route ; épreuves de montagne et de trail sans limite d'épaisseur.",
+   "url": "https://worldathletics.org/download/download?filename=32794443-9c19-4ae4-a436-9b97ecbe0801.pdf&urlslug=Athletic%2Bshoe%2Bregulations%2Bfrequently%2Basked%2Bquestions",
+   "verified": "extraits de la FAQ officielle lus par recherche web (PDF non extractible) ; à relire dans le règlement de l'épreuve avant toute décision de compétition"
+  }
+ },
+ "unverified_dropped": [
+  {
+   "citation": "Chambon et al. 2015 (drop et attaque du pied)",
+   "reason": "retrouvée (Eur J Appl Physiol 115:911-918, effet du drop sur la foulée en terrain plat vs tapis, 12 hommes) mais sans critère de blessure : non utilisée pour une règle"
+  },
+  {
+   "citation": "Kulmala et al. 2018, Sci Rep 8:17496",
+   "reason": "vérifiée (chaussure très amortie : charge d'impact plus élevée en laboratoire) mais sans critère de blessure : citée seulement comme limite à l'argument « plus d'amorti protège »"
+  },
+  {
+   "citation": "Limite de stack en trail",
+   "reason": "trail et montagne sans limite d'épaisseur selon la FAQ World Athletics (extraits) ; affiché tel quel, à confirmer dans le règlement de l'épreuve"
+  }
+ ],
+ "rules": [
+  {
+   "id": "broad_defaults",
+   "condition": "toujours (point de départ)",
+   "effect": "plages larges du projet avant toute restriction : drop 0 à 12 mm, pile du talon 15 à 45 mm, crampons 0 à 12 mm, index minimaliste 0 à 100 %, les trois largeurs d'avant-pied",
+   "confidence": "none",
+   "rationale": "bornes de départ du projet, sans source : elles ne servent qu'à être restreintes par les règles suivantes",
+   "references": [],
+   "params": {
+    "drop_mm": [
+     0,
+     12
+    ],
+    "stack_heel_mm": [
+     15,
+     45
+    ],
+    "lug_depth_mm": [
+     0,
+     12
+    ],
+    "minimalist_index_pct": [
+     0,
+     100
+    ]
+   }
+  },
+  {
+   "id": "comfort_first",
+   "condition": "au moins une paire avec would_rebuy = yes ou yes_with_change (le changement souhaité est alors appliqué) et confort >= 7 (bilan de retraite, sinon moyenne des retours)",
+   "effect": "ces paires définissent la référence ; les caractéristiques de la fiche restreignent ou avertissent, elles ne décident pas",
+   "confidence": "moderate",
+   "references": [
+    "nigg2015",
+    "malisoux2025"
+   ],
+   "params": {
+    "min_comfort": 7,
+    "rebuy": [
+     "yes",
+     "yes_with_change"
+    ]
+   }
+  },
+  {
+   "id": "insufficient_reference",
+   "condition": "aucune paire de référence (would_rebuy = yes ou yes_with_change, et confort >= 7)",
+   "effect": "plages larges conservées, mention « données insuffisantes » ; si la paire remplacée a une fiche, une bande de continuité INDICATIVE (non contraignante) est affichée, étiquetée « paire remplacée, sans verdict de confort »",
+   "confidence": "none",
+   "rationale": "sans paire confortable connue, aucune preuve ne permet de resserrer les plages",
+   "references": []
+  },
+  {
+   "id": "continuity_drop",
+   "condition": "paire(s) de référence avec un drop connu (valeur mesurée retenue en priorité)",
+   "effect": "drop cible = drop de référence +/- 4 mm",
+   "confidence": "moderate",
+   "references": [
+    "ryan2014",
+    "fuller2017"
+   ],
+   "params": {
+    "tolerance_mm": 4
+   },
+   "rationale": "les sources montrent que les grands changements (drop, minimalisme) augmentent le risque ; le seuil de 4 mm est la traduction opérationnelle de l'épopée #297, approximation du projet"
+  },
+  {
+   "id": "continuity_minimalist_index",
+   "condition": "paire(s) de référence avec un index minimaliste calculable",
+   "effect": "index minimaliste cible = index de référence +/- 20 points",
+   "confidence": "moderate",
+   "references": [
+    "ryan2014",
+    "fuller2017",
+    "esculier2015"
+   ],
+   "params": {
+    "tolerance_pts": 20
+   },
+   "rationale": "même logique que le drop ; le seuil de 20 points est celui de l'épopée #297, approximation du projet"
+  },
+  {
+   "id": "continuity_stack",
+   "condition": "paire(s) de référence avec une pile de talon connue",
+   "effect": "pile du talon cible = pile de référence +/- 6 mm",
+   "confidence": "none",
+   "rationale": "aucune étude ne donne un écart de pile acceptable ; 6 mm est la borne d'aberration de la fiche de caractéristiques, approximation du projet",
+   "references": [],
+   "params": {
+    "tolerance_mm": 6
+   }
+  },
+  {
+   "id": "continuity_lugs",
+   "condition": "paire(s) de référence avec une hauteur de crampons connue",
+   "effect": "crampons cibles = crampons de référence +/- 1 mm (les règles de terrain peuvent ensuite les décaler)",
+   "confidence": "none",
+   "rationale": "aucune étude ; 1 mm est une approximation du projet pour rester proche d'une adhérence déjà éprouvée",
+   "references": [],
+   "params": {
+    "tolerance_mm": 1
+   }
+  },
+  {
+   "id": "continuity_toe_box",
+   "condition": "paire(s) de référence avec une largeur d'avant-pied connue",
+   "effect": "largeur d'avant-pied limitée à celles des paires de référence (chaussant déjà éprouvé)",
+   "confidence": "expert_opinion",
+   "rationale": "aucune étude sur la largeur : le chaussant relève du confort perçu, donc de la référence",
+   "references": []
+  },
+  {
+   "id": "achilles_calf_no_drop_decrease",
+   "condition": "antécédent de douleur au tendon d'Achille ou au mollet : douleurs déclarées (medical/) ou puces du profil « Antécédents de blessure » / « Zones fragiles à surveiller »",
+   "effect": "ne pas baisser le drop par rapport à la paire actuelle (ou à la référence)",
+   "confidence": "low",
+   "references": [
+    "malisoux2016drop"
+   ],
+   "params": {
+    "zones": [
+     "tendon_achille",
+     "mollet"
+    ],
+    "lookback_days": 1095
+   },
+   "rationale": "extrapolation du projet : l'essai sur le drop (Malisoux 2016) ne contient aucune donnée propre au tendon d'Achille ; il montre seulement un drop bas défavorable aux coureurs réguliers en sous-groupe. Antécédent déduit des zones déclarées, jamais un diagnostic"
+  },
+  {
+   "id": "ankle_sprain_low_stack_wide_base",
+   "condition": "entorse de cheville déclarée au profil, OU au moins 2 épisodes de douleur à la cheville d'au moins 4/10 du MÊME côté dans le dossier médical (approximation du projet : une douleur n'est pas une entorse)",
+   "effect": "pile du talon au plus égale à celle de la paire actuelle (jamais plus haute) et base large (avant-pied non étroit)",
+   "confidence": "expert_opinion",
+   "rationale": "avis d'experts sans étude ; « douleurs répétées à la cheville » n'est dit « entorse » que si le profil la déclare comme telle",
+   "references": [],
+   "params": {
+    "zone": "cheville",
+    "min_episodes": 2,
+    "min_score": 4,
+    "same_side": true,
+    "lookback_days": 1095
+   }
+  },
+  {
+   "id": "mass_minimalism_caution",
+   "condition": "masse corporelle > 71 kg",
+   "effect": "pas de pas vers plus de minimalisme : index minimaliste cible plafonné à celui de la référence",
+   "confidence": "low",
+   "references": [
+    "fuller2017"
+   ],
+   "params": {
+    "threshold_kg": 71.4
+   },
+   "rationale": "sous-groupe d'un seul essai de 61 coureurs : dans cet essai le risque en chaussure minimaliste devient plus probable au-delà de 71,4 kg ; prudence plutôt que règle"
+  },
+  {
+   "id": "softness_not_firm",
+   "condition": "toujours",
+   "effect": "mousse souple ou modérée par défaut ; une mousse ferme n'est pas visée sauf demande explicite (change_wanted = firmer)",
+   "confidence": "low",
+   "references": [
+    "malisoux2020",
+    "theisen2014"
+   ],
+   "rationale": "chaussure dure : risque x1,52, surtout chez les coureurs légers (Malisoux 2020) ; l'essai de Theisen 2014 ne trouve pas de lien : d'où le niveau faible",
+   "params": {
+    "default": [
+     "soft",
+     "moderate"
+    ]
+   }
+  },
+  {
+   "id": "no_mass_cushion_rule",
+   "condition": "masse corporelle connue",
+   "effect": "la masse ne relève jamais l'amorti : « plus lourd donc plus d'amorti » n'est pas une règle",
+   "confidence": "low",
+   "references": [
+    "malisoux2020"
+   ],
+   "rationale": "chez les coureurs lourds, la chaussure dure n'a pas augmenté le risque de façon significative ; les mesures de laboratoire sur chaussure très amortie (Kulmala 2018) vont aussi à l'encontre de cette croyance, sans critère de blessure"
+  },
+  {
+   "id": "no_foot_type_prescription",
+   "condition": "toujours",
+   "effect": "aucune prescription par type de pied ou pronation ; la stabilité n'est proposée que comme option (référence qui en porte, ou change_wanted = more_stable), jamais imposée",
+   "confidence": "moderate",
+   "references": [
+    "nielsen2014",
+    "malisoux2016mc"
+   ],
+   "rationale": "Nielsen 2014 : la pronation n'est pas associée à plus de blessures chez des novices en chaussure neutre. À l'inverse, Malisoux 2016 (chaussures de contrôle du mouvement, HR 0,55 ; 0,34 chez les pieds pronés, analyse secondaire) suggère un bénéfice possible de la stabilité : option, jamais règle"
+  },
+  {
+   "id": "terrain_lugs_hard",
+   "condition": "rôle route (road_easy, road_tempo) ou terrain surtout dur",
+   "effect": "crampons <= 4 mm",
+   "confidence": "expert_opinion",
+   "rationale": "aucune étude sur les crampons ; avis d'experts sur le terrain réel",
+   "references": [],
+   "params": {
+    "max_lug_mm": 4
+   }
+  },
+  {
+   "id": "terrain_lugs_soft",
+   "condition": "rôle trail avec indices de terrain meuble : part de séances humides >= 30 % (au moins 3 séances avec météo) ou D+/km >= 40 m (approximations du projet : l'usage ne distingue que route et trail, pas la boue ni la roche)",
+   "effect": "crampons >= 5 mm",
+   "confidence": "expert_opinion",
+   "rationale": "aucune étude sur les crampons ; les indices (pluie, pente) sont des substituts du terrain, pas une mesure",
+   "references": [],
+   "params": {
+    "min_lug_mm": 5,
+    "wet_share": 0.3,
+    "min_sessions_with_weather": 3,
+    "d_plus_m_per_km": 40
+   }
+  },
+  {
+   "id": "terrain_rock_plate",
+   "condition": "rôle trail",
+   "effect": "plaque anti-roche proposée comme option si le terrain est rocheux (non détectable dans les données : à confirmer par l'athlète)",
+   "confidence": "expert_opinion",
+   "rationale": "aucune étude ; l'usage ne sait pas distinguer la roche",
+   "references": []
+  },
+  {
+   "id": "race_performance_option",
+   "condition": "rôle race ou road_tempo",
+   "effect": "plaque et mousse haute performance proposées comme option de performance (économie de course), jamais comme protection : aucune donnée sur les blessures",
+   "confidence": "high",
+   "references": [
+    "hoogkamer2018"
+   ],
+   "rationale": "niveau élevé pour l'économie de course, nul pour la prévention des blessures"
+  },
+  {
+   "id": "race_stack_limit",
+   "condition": "rôle race sur route",
+   "effect": "pile de talon <= 40 mm pour une épreuve sur route homologuée World Athletics ; trail et montagne : pas de limite d'épaisseur selon la FAQ World Athletics (à confirmer dans le règlement de l'épreuve)",
+   "confidence": "high",
+   "references": [
+    "worldathletics"
+   ],
+   "params": {
+    "road_max_stack_mm": 40
+   }
+  },
+  {
+   "id": "rotation_reminder",
+   "condition": "toujours",
+   "effect": "rappel : au moins 2 paires aux rôles distincts en rotation",
+   "confidence": "low",
+   "references": [
+    "malisoux2015"
+   ],
+   "rationale": "étude observationnelle (environ -39 % de blessures avec au moins 2 paires utilisées en parallèle) : association, pas causalité",
+   "params": {
+    "min_pairs": 2
+   }
+  },
+  {
+   "id": "change_wanted_adjust",
+   "condition": "bilan de retraite de la paire remplacée avec would_rebuy = yes_with_change",
+   "effect": "le changement souhaité décale la plage correspondante (largeur, drop, amorti, adhérence, stabilité) ; un garde-fou de blessure prime toujours",
+   "confidence": "none",
+   "rationale": "préférence déclarée de l'athlète, pas une preuve ; les changements sans plage associée (lighter, narrower hors largeur, other) sont dits",
+   "references": [],
+   "params": {
+    "drop_step_mm": 4,
+    "lug_step_mm": 1
+   }
+  },
+  {
+   "id": "gait_dynamics_monitor_only",
+   "condition": "toujours",
+   "effect": "les dynamiques de foulée (contact au sol, oscillation, cadence) ne servent pas à choisir une caractéristique : à surveiller après un changement",
+   "confidence": "none",
+   "rationale": "aucune règle validée entre caractéristique de chaussure et foulée",
+   "references": []
+  }
+ ]
+}

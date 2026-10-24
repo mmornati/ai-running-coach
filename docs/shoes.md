@@ -2,8 +2,8 @@
 
 Épopée #297. Le suivi des chaussures (kilométrage, inspection photo, bilan de carrière) dit **ce que
 vous avez porté** ; choisir la prochaine paire demande de savoir **ce qu'elle est**. Cette page décrit la
-première brique : la fiche de caractéristiques d'une paire (#298). Les retours de chaussant, le profil
-d'usage et le moteur de règles viennent ensuite.
+première brique : la fiche de caractéristiques d'une paire (#298). Suivent les retours de chaussant, le profil
+d'usage et, en fin de page, le moteur de règles fondé sur les preuves (#301).
 
 ## La fiche de caractéristiques : `gear/specs/<gear_id>.md`
 
@@ -243,7 +243,108 @@ Règles appliquées dans l'ordre, sur les séances de course à pied de la paire
 
 Le rôle est une entrée pour la recommandation (story #301), jamais une prescription.
 
+## Besoins pour la prochaine paire
+
+```bash
+python3 scripts/arc_index.py shoe-needs --role trail --replace trail-a          # JSON
+python3 scripts/arc_index.py shoe-needs --role road_tempo --replace road-a --text
+```
+
+Rôles : `trail_long`, `trail`, `road_easy`, `road_tempo`, `race`, `mixed_long`, `mixed` (le vocabulaire du rôle déduit,
+voir plus haut). Lecture seule et **déterministe** : mêmes données, même sortie. La commande rend des
+**plages cibles**, jamais un nom de marque ni de modèle :
+
+| Cible | Valeurs |
+|---|---|
+| `drop_mm`, `stack_heel_mm`, `lug_depth_mm`, `minimalist_index_pct` | `min` / `max` |
+| `midsole_softness` | `soft`, `moderate`, `firm` |
+| `toe_box` | `narrow`, `standard`, `wide` |
+| `plate` | `none`, `carbon`, `nylon`, `rock_plate` |
+
+Chaque cible porte les règles appliquées (`rules`), leurs raisons en français, le niveau de preuve de la
+règle la plus faible qui la contraint (`confidence`) et les références. S'y ajoutent des **options**
+(plaque de performance, plaque anti-roche, stabilité), des **rappels** (rotation), des **avertissements**
+et des **notes** (ce qui n'a pas pu être calculé, et pourquoi). Les règles vivent dans
+[`config/shoes/rules.json`](https://github.com/mmornati/ai-running-coach/blob/main/config/shoes/rules.json) :
+chacune a un identifiant, une condition, un effet, un niveau de preuve (`high`, `moderate`, `low`,
+`expert_opinion`, `none`) et des références ; un niveau `none` ou `expert_opinion` doit justifier l'absence
+de preuve (`rationale`).
+
+Ordre de décision : **confort, puis continuité, puis garde-fous blessures, puis adéquation au terrain.**
+
+1. **Confort d'abord.** La référence est l'ensemble des paires avec `would_rebuy = yes` **ou
+   `yes_with_change`** (le changement souhaité est alors appliqué) et un confort d'au moins 7/10 (bilan de
+   retraite, sinon moyenne des retours). Sans paire de référence, le moteur garde des **plages larges** et
+   écrit « données insuffisantes » : il ne devine rien. Si la paire remplacée a une fiche mais pas de
+   verdict de confort, il affiche seulement une **bande de continuité indicative** (drop, pile, index
+   minimaliste), étiquetée « paire remplacée, sans verdict de confort » : un avertissement, jamais une
+   contrainte.
+2. **Continuité.** Drop à +/- 4 mm de la référence (la valeur **mesurée** prime sur celle de la marque),
+   index minimaliste à +/- 20 points, pile du talon à +/- 6 mm et crampons à +/- 1 mm (ces deux derniers
+   écarts sont des approximations du projet), largeur d'avant-pied déjà éprouvée.
+3. **Garde-fous.** Antécédent de douleur au tendon d'Achille ou au mollet : **le drop n'est pas abaissé**
+   (extrapolation du projet : l'essai sur le drop n'a aucune donnée propre à l'Achille). Entorse de cheville
+   déclarée au profil, ou au moins deux épisodes de douleur à la cheville d'au moins 4/10 **du même côté** :
+   pile du talon au plus égale à celle de la paire actuelle et base large (avis d'experts). Masse au-dessus
+   de 71,4 kg : pas de pas vers plus de minimalisme (niveau faible : sous-groupe d'un seul essai). La masse
+   ne relève **jamais** l'amorti.
+4. **Terrain.** Route : crampons de 4 mm au plus. Trail avec des indices de terrain meuble (au moins 30 %
+   de séances humides, ou D+/km d'au moins 40 m) : crampons de 5 mm au moins. L'usage d'une paire ne
+   distingue que route et trail : **ni la boue ni la roche ne sont détectées**, la pluie et le dénivelé
+   sont des substituts (approximation du projet) et la plaque anti-roche reste une option à confirmer.
+
+Le bilan de retraite (`yes_with_change` + `change_wanted`) décale la plage correspondante (largeur, drop,
+amorti, adhérence, stabilité) ; un garde-fou de blessure prime toujours sur cette préférence. Une course
+(`race` ou `road_tempo`) ajoute la plaque et la mousse haute performance comme **option de performance**.
+**Antécédents lus.** Le moteur lit (1) les douleurs déclarées de `medical/` et (2) les puces du profil
+« Antécédents de blessure » et « Zones fragiles à surveiller » ; les zones sont normalisées comme pour la
+prévention ciblée (« tendon d'Achille gauche », « cheville droite (proprioception) »). La sortie (JSON et
+`--text`) dit toujours quelles sources ont été lues, sur quelle période et combien d'entrées elles ont
+donné ; sans antécédent, elle écrit « aucun antécédent trouvé » avec ces sources. Un élément du profil sans
+zone reconnue est signalé, jamais deviné. Une douleur à la cheville n'est dite « entorse » que si le profil
+la déclare comme telle. Le terrain d'un rôle `race`, `mixed` ou `mixed_long` vient de l'**usage** de la paire
+remplacée, pas de la course visée : le moteur le dit.
+
 ## Ce que disent les preuves
 
-*À compléter par la story #301 (moteur de règles fondé sur les preuves : confort, continuité, drop,
-amorti, rotation, plaque et super-mousses, avec le niveau de preuve de chaque règle).*
+Ce n'est pas un avis médical. Une caractéristique de chaussure isolée ne prévient ni ne cause une blessure ;
+les niveaux ci-dessous disent la solidité de chaque règle, pas une promesse. Corrélation, pas causalité.
+
+| Règle | Preuve | Niveau |
+|---|---|---|
+| **Confort** : filtre principal | [Nigg 2015](https://bjsm.bmj.com/content/49/20/1290) ; [Malisoux 2025](https://researchportal.lih.lu/en/publications/association-of-shoe-cushioning-perception-and-comfort-with-injury/) (analyse secondaire d'un essai randomisé : la paire jugée la plus confortable est associée à un risque plus bas, association) | modéré |
+| **Continuité** (drop, minimalisme) | [Ryan 2014](https://kintec.net/wp-content/uploads/2016/12/Ryan.-minimalist-footwearBJSM_2013.pdf) ; [Fuller 2017](https://researchers.mq.edu.au/en/publications/body-mass-and-weekly-training-distance-influence-the-pain-and-inj/) ; seuils de 4 mm et 20 points = approximation du projet | modéré |
+| **Drop** : pas d'effet global, un drop bas défavorable aux coureurs réguliers en sous-groupe | [Malisoux 2016](https://researchportal.lih.lu/en/publications/influence-of-the-heel-to-toe-drop-of-standard-cushioned-running-s/) | faible |
+| **Masse et minimalisme** : risque plus probable au-delà de 71,4 kg (61 coureurs, sous-groupe d'un seul essai) ; douleur plus forte au-delà de 35 km/semaine | [Fuller 2017](https://researchers.mq.edu.au/en/publications/body-mass-and-weekly-training-distance-influence-the-pain-and-inj/) | faible |
+| **Amorti** : chaussure dure, risque x1,52, surtout chez les coureurs légers ; pas de bénéfice démontré d'un amorti accru pour les lourds | [Malisoux 2020](https://researchportal.lih.lu/en/publications/shoe-cushioning-influences-the-running-injury-risk-according-to-b/) ; [Theisen 2014](https://bjsm.bmj.com/content/48/5/371) ne trouve pas de lien entre dureté et blessure (HR 0,92, IC 0,57-1,48) | faible |
+| **Type de pied / pronation** : pas de prescription ([Nielsen 2014](https://bjsm.bmj.com/content/48/6/440) : la pronation n'est pas un facteur de risque chez des novices en chaussure neutre) ; **bénéfice possible de la stabilité** ([Malisoux 2016, chaussures de contrôle du mouvement](https://bjsm.bmj.com/content/50/8/481) : HR 0,55 ; 0,34 chez les pieds pronés, analyse secondaire) : une **option**, jamais une règle | modéré |
+| **Rotation** : au moins 2 paires, environ -39 % (observationnel) | [Malisoux 2015](https://pubmed.ncbi.nlm.nih.gov/24286345/) | faible |
+| **Plaque, super-mousse** : économie de course, rien sur les blessures | [Hoogkamer 2018](https://pubmed.ncbi.nlm.nih.gov/29143929/) | élevé (performance) / nul (blessure) |
+| **Pile maximale en course** : 40 mm sur route ; trail et montagne sans limite d'épaisseur | [World Athletics](https://worldathletics.org/download/download?filename=32794443-9c19-4ae4-a436-9b97ecbe0801.pdf&urlslug=Athletic%2Bshoe%2Bregulations%2Bfrequently%2Basked%2Bquestions) | réglementaire |
+| **Crampons, plaque anti-roche, largeur, entorses de cheville** | aucune étude | avis d'experts |
+| **Dynamiques de foulée** (contact au sol, oscillation, cadence) | aucune règle validée | aucun : à surveiller |
+
+L'index minimaliste est celui d'[Esculier 2015](https://jfootankleres.biomedcentral.com/articles/10.1186/s13047-015-0094-5).
+
+### Ce qui a été vérifié, et ce qui a été écarté
+
+- **Vérifié** (titre, revue, année) dans PubMed : Nigg 2015, Malisoux 2025, Ryan 2014, Fuller 2017
+  (résumé lu, seuil de 71,4 kg), Malisoux 2016, Malisoux 2020 (résumé lu), Theisen 2014, Malisoux 2016
+  (contrôle du mouvement), Malisoux 2015, Hoogkamer 2018, Esculier 2015. Nielsen 2014 : titre complet confirmé
+  à la revue de la PR.
+- **Écarté** : Chambon 2015 (drop et attaque du pied) existe, mais mesure la foulée de 12 coureurs sur sol
+  plat et sur tapis, sans critère de blessure ; Kulmala 2018 (*Scientific Reports*) existe et montre une
+  charge d'impact plus élevée dans une chaussure très amortie **en laboratoire**, sans critère de blessure :
+  elle n'alimente aucune plage, elle sert seulement de réserve à l'idée « plus d'amorti protège ».
+- **Limite de pile en trail** : les extraits lus de la FAQ World Athletics indiquent qu'il n'y en a pas
+  pour les épreuves de montagne et de trail ; le PDF officiel n'a pas pu être extrait automatiquement, à
+  relire dans le règlement de votre épreuve.
+
+### Limites
+
+- Les essais randomisés portent sur des coureurs de loisir, souvent sur route, avec des chaussures
+  prototypes ; ils ne se transposent pas directement au trail ni à l'ultra.
+- Les seuils opérationnels (4 mm, 20 points, 6 mm de pile, 30 % de séances humides, 40 m de D+/km) sont des
+  **approximations du projet**, pas des valeurs publiées.
+- Une douleur déclarée n'est pas un diagnostic ; une spec isolée ne promet aucune prévention.
+- Le moteur ne remplace ni l'avis d'un professionnel de santé ni votre ressenti : le confort décide.
