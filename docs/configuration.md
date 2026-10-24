@@ -622,7 +622,7 @@ santé : [Synchronisation sur OpenRouter](mobile.md#synchronisation-sur-openrout
 ## Les identifiants du workspace — `[credentials]` (#127)
 
 Écrite par `install.sh` (jamais à la main), seulement quand vous passez `--garmin-tokens` ou `--intervals-dir`
-(plusieurs workspaces sous le même utilisateur, [voir Plusieurs workspaces](workspace.md#plusieurs-workspaces-sur-une-meme-machine)) :
+(plusieurs workspaces sous le même utilisateur, [voir Plusieurs workspaces](workspace.md#plusieurs-workspaces-et-plusieurs-athletes)) :
 
 | Clé | Effet |
 |---|---|

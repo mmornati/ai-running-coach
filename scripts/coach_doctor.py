@@ -136,6 +136,7 @@ Bibliothèque standard uniquement (voir CONTRIBUTING.md).
 from __future__ import annotations
 
 import argparse
+import html
 import json
 import os
 import platform
@@ -190,6 +191,12 @@ _ARC_WORKSPACE_RE = re.compile(r'ARC_WORKSPACE="([^"]*)"')
 _PLIST_WORKSPACE_RE = re.compile(r"<key>ARC_WORKSPACE</key>\s*<string>([^<]*)</string>")
 
 
+def _plist_workspace(text: str) -> str:
+    """ARC_WORKSPACE d'un plist, désérialisé du XML (install.sh écrit `&amp;`, `&lt;`, `&gt;`)."""
+    match = _PLIST_WORKSPACE_RE.search(text)
+    return html.unescape(match.group(1)) if match else ""
+
+
 def _same_workspace(declared: str, workspace: Optional[Path]) -> bool:
     """`declared` (ARC_WORKSPACE d'une ligne cron / d'un plist) désigne-t-il `workspace` ?
 
@@ -220,9 +227,9 @@ def _orphan_schedules(home: Path, crontab: str) -> list:
     agents = home / "Library" / "LaunchAgents"
     if agents.is_dir():
         for plist in sorted(agents.glob(LAUNCHD_PLIST_GLOB)):
-            match = _PLIST_WORKSPACE_RE.search(plist.read_text(encoding="utf-8", errors="replace"))
-            if match and _is_orphan_declared(match.group(1)):
-                found.append(match.group(1))
+            declared = _plist_workspace(plist.read_text(encoding="utf-8", errors="replace"))
+            if declared and _is_orphan_declared(declared):
+                found.append(declared)
     for line in crontab.splitlines():
         match = _ARC_WORKSPACE_RE.search(line) if CRON_MARKER in line else None
         if match and _is_orphan_declared(match.group(1)):
@@ -245,8 +252,7 @@ def _own_plists(home: Path, workspace: Optional[Path]) -> list:
     for plist in sorted((home / "Library" / "LaunchAgents").glob(LAUNCHD_PLIST_GLOB)):
         if not plist.is_file():
             continue
-        match = _PLIST_WORKSPACE_RE.search(plist.read_text(encoding="utf-8", errors="replace"))
-        if _same_workspace(match.group(1) if match else "", workspace):
+        if _same_workspace(_plist_workspace(plist.read_text(encoding="utf-8", errors="replace")), workspace):
             found.append(plist)
     return found
 

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import html
 import json
 import os
 import sys
@@ -55,7 +56,8 @@ class FamilyDoctor(unittest.TestCase):
         agents.mkdir(parents=True, exist_ok=True)
         for name, ws in plists:
             (agents / name).write_text(
-                f"<dict><key>ARC_WORKSPACE</key><string>{ws}</string></dict>", encoding="utf-8")
+                f"<dict><key>ARC_WORKSPACE</key><string>{html.escape(str(ws), quote=False)}</string></dict>",
+                encoding="utf-8")
         with mock.patch.object(D, "_crontab_text", return_value="\n".join(cron)):
             checks = D.check_family(registry.path, registry, None, home=home)
         return {c["id"]: c for c in checks}
@@ -114,6 +116,20 @@ class FamilyDoctor(unittest.TestCase):
         checks = self.run_checks({"alice": a, "bob": b}, plists=[
             ("com.ai-running-coach.daily-sync.plist", a), ("com.ai-running-coach.daily-sync.bob-1.plist", b)])
         self.assertEqual(checks["family_sync"]["status"], "ok")
+
+    def test_chemin_avec_esperluette_et_accent_dans_un_plist_echappe(self):
+        """install.sh écrit `&amp;` dans le plist : ni « orphelin », ni « non planifié »."""
+        ws = self.root / "Run & Trail é"
+        (ws / "config").mkdir(parents=True)
+        other = self.member("bob", tokens="/t/b")
+        checks = self.run_checks({"alice": ws, "bob": other}, plists=[
+            ("com.ai-running-coach.daily-sync.plist", ws), ("com.ai-running-coach.daily-sync.bob-1.plist", other)])
+        self.assertEqual(checks["family_sync"]["status"], "ok")
+        home = self.root / "home"
+        with mock.patch.object(D, "_uname", return_value="Darwin"):
+            check = D.check_daily_sync(home, ws, {})
+        self.assertEqual(check["status"], "ok", check["message"])
+        self.assertNotIn("orpheline", check["message"])
 
     def test_registre_absent_aucune_verification_ajoutee(self):
         with mock.patch("arc_family.default_registry_path", return_value=self.root / "absent.toml"):
