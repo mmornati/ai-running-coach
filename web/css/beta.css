@@ -470,6 +470,9 @@
     & .rk-runsheet__dur { width: 4.2rem; padding-right: 0 !important; font-size: 0.95rem; }
     & .rk-weeknav { flex-wrap: nowrap; gap: 0.3rem; }
     & .rk-weeknav a { flex: 1 1 auto; padding: 0.4rem 0.45rem; text-align: center; font-size: 0.82rem; white-space: nowrap; }
+    /* Calendrier annuel : largeur minimale fixe (défilement dans la carte), donc presque pas
+       réduit par le viewBox ; les 21 unités du grossissement mobile débordaient et se chevauchaient. */
+    & .chart--cal .tick { font-size: 11px; }
   }
 }
 
@@ -478,5 +481,5 @@
 }
 
 @media print {
-  [data-design="roadbook"] .rk-tabbar, [data-design="roadbook"] .rk-sheet { display: none !important; }
+  .design-notice, [data-design="roadbook"] .rk-tabbar, [data-design="roadbook"] .rk-sheet { display: none !important; }
 }
