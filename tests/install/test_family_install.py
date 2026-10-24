@@ -177,6 +177,16 @@ class TestCronPerWorkspace(InstallAsserts):
             self.assertIn(legacy.format(ws=bob).strip(), crontab)
             self.assertFalse([l for l in _lines(sb, alice) if l.startswith("0 6 ")], crontab)
 
+    def test_legacy_garmin_watch_line_of_this_workspace_is_replaced_by_watch_py(self):
+        with Sandbox() as sb:
+            alice = _ws(sb, "alice")
+            sb.set_crontab(f'*/15 * * * * ARC_WORKSPACE="{alice}" python3 "/e/scripts/garmin_watch.py" >/dev/null 2>&1 '
+                           + LEGACY_MARKER + "\n")
+            self.assertSucceeded(self._install(sb, alice))
+            crontab = sb.crontab()
+            self.assertNotIn("garmin_watch.py", crontab)
+            self.assertEqual(len(_lines(sb, alice)), 2, crontab)
+
     def test_legacy_line_of_another_workspace_forces_a_suffixed_marker(self):
         with Sandbox() as sb:
             alice, bob = _ws(sb, "alice"), _ws(sb, "bob")

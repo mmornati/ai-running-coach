@@ -498,6 +498,11 @@ def api_summary(store: Store, q: dict) -> dict:
         sleep_by_date = {r["date"]: r["sleep_total_s"] for r in sleep_rows}
         sleep_debt = M.sleep_debt_7d(sleep_by_date, today, I.athlete_sleep_need_s(athlete))
     heat_acclimation = api_heat_acclimation(store, today, settings, objective)
+    # Roadbook de la prochaine course (#187) : seul un plan dont la date n'est pas passée ouvre
+    # l'entrée « Roadbook » de la navigation — un plan déjà couru reste joignable depuis Trail Shape.
+    next_race_plan = store.one("SELECT source_path AS path, race_name, race_date FROM race_plan "
+                               "WHERE race_date >= ? ORDER BY race_date, source_path LIMIT 1",
+                               (today.isoformat(),))
     return {
         "today": today.isoformat(), "settings": settings, "objective": objective, "athlete": athlete,
         "form": latest, "health": health, "sleep_debt": sleep_debt, "heat_acclimation": heat_acclimation,
@@ -509,6 +514,7 @@ def api_summary(store: Store, q: dict) -> dict:
         "files": {r["parsed_ok"]: r["n"] for r in files},
         "incomplete_files": incomplete, "week_collisions_count": week_collisions_count,
         "compliance_trend": api_compliance_trend(store, q),
+        "next_race_plan": next_race_plan,
         "counts": {
             "activities": (store.one("SELECT COUNT(*) AS n FROM activity") or {}).get("n", 0),
             "reports": (store.one("SELECT COUNT(*) AS n FROM report") or {}).get("n", 0),
@@ -781,6 +787,12 @@ def api_week(store: Store, q: dict) -> dict:
                          "FROM weather_day WHERE date >= ? AND date <= ? ORDER BY date", (monday.isoformat(), sunday.isoformat()))
     weeks = [r["week_start"] for r in store.rows(
         "SELECT DISTINCT week_start FROM week WHERE shadowed = 0 ORDER BY week_start")]
+    # Prévu ↔ réalisé : chaque séance porte l'activité que la conformité lui a attribuée,
+    # chaque activité dit si elle est hors plan — la vue ne refait jamais l'appariement.
+    pairing = M.week_pairing(sessions, done, today)
+    sessions = [{**s, **p} for s, p in zip(sessions, pairing["sessions"])]
+    extra = set(pairing["extra_activity_ids"])
+    done = [{**a, "unplanned": a["id"] in extra} for a in done]
     return {
         "week_start": monday.isoformat(), "today": today.isoformat(),
         "week": _strip(week, "body_md", "shadowed"), "body_html": render_markdown(I.C.body_after_block(week["body_md"] or "")) if week else None,
@@ -884,7 +896,7 @@ def api_activity_climbs(store: Store, activity_id: int) -> dict:
     (`climbs: [], reason: None`), au lieu d'afficher partout le même message
     « aucune montée détectée » qui laisserait croire à tort qu'une séance de
     renforcement ou de vélo aurait pu en avoir une."""
-    act = store.one("SELECT sport, garmin_activity_id, intervals_activity_id, strava_activity_id FROM activity WHERE id = ?",
+    act = store.one("SELECT sport, garmin_activity_id, intervals_activity_id, strava_activity_id, coros_activity_id FROM activity WHERE id = ?",
                     (activity_id,))
     empty = {"climbs": [], "vam_by_grade_class": {}}
     if act is None:
@@ -942,7 +954,7 @@ def api_activity_descent(store: Store, activity_id: int) -> dict:
     TOUS les cas vides (contrairement aux montées, l'absence de classe
     qualifiante est toujours documentée ici — critère d'acceptation de #47 :
     « classes sans assez de données -> absentes », jamais silencieusement)."""
-    act = store.one("SELECT sport, garmin_activity_id, intervals_activity_id, strava_activity_id, descent_reference_gap_pace_s_km, "
+    act = store.one("SELECT sport, garmin_activity_id, intervals_activity_id, strava_activity_id, coros_activity_id, descent_reference_gap_pace_s_km, "
                      "descent_reference_source FROM activity WHERE id = ?", (activity_id,))
     empty = {"classes": {}, "reference_gap_pace_s_km": None, "reference_source": None}
     if act is None:

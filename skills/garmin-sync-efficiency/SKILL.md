@@ -27,6 +27,18 @@ or `upload_workout` — see the correspondence table in `AGENTS.md`.
 the dates still missing. No health data exists (HRV/resting HR/sleep/readiness): say so, never
 fetch a substitute. Marker "not yet synced" = no `strava_activity_id` in the file.
 
+**`[data].source = "coros"` (#168):** this whole skill applies as written — COROS is Garmin-like —
+against the `coros` MCP server (project relay, camelCase tools — see the Garmin ↔ COROS table in
+`AGENTS.md`): `querySportRecords(startDate, endDate)` lists activities (`LabelId`, start/end
+timestamps), `getActivityDetail` per new activity, `querySleepHrv` + `queryRestingHeartRate` +
+`querySleepOverview` + `queryRecoveryStatus` for the day's health. Health dates are **wake-up days**
+(last night = today). A day whose night is not computed yet (`Sleep Score: 0`, HRV « No data found »)
+is NOT synced: write no health file headless, the next run retries. `queryRestingHeartRate` takes a
+number of days, not a date: one call with the smallest `days` that covers the missing dates. Recovery
+and sleep score go to `provider_scores` (never `readiness_score` / `sleep_score`), `health_source:
+"coros"`. Marker "not yet synced" = no `coros_activity_id` in the file. No weigh-in, gear or HRR
+exists: never fetch a substitute.
+
 **`[health].source = "openwearables"` (#221, opt-in; at `primary` — the default — ignore this paragraph and never mention it):** the health keys (sleep, HRV, resting HR, native score) of a day come from ONE call, `python3 scripts/arc_openwearables.py health-day --date <date> --json`, never from the Garmin or intervals.icu health tools (one health source per day); activities still follow `[data].source`. Persist its `arc` object as is. A health file with no night yet (no `sleep_total_s` and no HRV) is not written (headless) so the next run retries. Such a file carries no Garmin-only key: no `body_battery_*`, `stress_avg`, `sleep_score` or `readiness_*` (the contract rejects them), so the « Body » extraction below does not apply to it. See `agents/coach.md`, HEALTH SOURCE.
 
 > **Resting HR:** use `get_rhr_day(date)`. It returns the value directly. `get_sleep_data` also contains it, but that payload can exceed 400 KB — never pull it just to read resting HR.

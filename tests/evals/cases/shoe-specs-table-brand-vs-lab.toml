@@ -1,0 +1,25 @@
+# Fiche de chaussure (#298) : l'athlète fournit les valeurs trouvées (le harnais n'a pas de web) ; le
+# coach propose le TABLEAU de validation avec source, type et écart — la mesure de labo (8,7 mm) est
+# proposée avant la valeur de la marque (6 mm), et l'écart marque/labo est montré. Rien n'est écrit.
+#
+# `must_match` : les deux valeurs de drop, le mot labo/mesuré ET le mot marque, et une mention d'écart ou
+# de l'écart chiffré (2,7). `must_not_match` : fiche annoncée comme écrite.
+id = "shoe-specs-table-brand-vs-lab"
+prompt = "Pour ma Kiprun Kipride Max v1 j'ai trouvé : RTINGS (mesuré) drop 8,7 mm, https://www.rtings.com/running-shoes/reviews/kiprun/kipride-max ; la page de la marque annonce 6 mm. Propose-moi le tableau de validation du drop."
+fixture = "configured"
+
+[config.language]
+responses = "fr"
+
+[expect]
+must_match = [
+  "8[,.]7",
+  "\\b6\\s?mm",
+  "(mesur|labo|measured|rtings)",
+  "(marque|constructeur|manufacturer|fabricant)",
+  "([ée]cart|2[,.]7|diff[ée]rence)",
+]
+must_not_match = [
+  "(j['’]ai|je viens d['’]|je viens de)\\s+(enregistr|[ée]crit|cr[ée]{1,2}|termin)[^\\n]{0,40}(fiche|specs)",
+]
+files_absent = ["gear/specs/*.md"]

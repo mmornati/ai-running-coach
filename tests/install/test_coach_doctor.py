@@ -636,7 +636,9 @@ class TestWatchHeartbeat(InstallAsserts):
 
     NOW = "2026-09-27T09:00:00+00:00"
     # %s : le workspace RÉEL de la sandbox — un ARC_WORKSPACE disparu est désormais une planification orpheline (N5, #127).
-    CRON = '*/15 * * * * ARC_WORKSPACE="%s" python3 "/e/scripts/garmin_watch.py" >/dev/null 2>&1 # ai-running-coach daily-sync\n'
+    CRON = '*/15 * * * * ARC_WORKSPACE="%s" python3 "/e/scripts/watch.py" >/dev/null 2>&1 # ai-running-coach daily-sync\n'
+    # Ancien nom, encore présent dans une crontab posée avant le renommage.
+    LEGACY_CRON = CRON.replace("scripts/watch.py", "scripts/garmin_watch.py")
 
     def _check(self, sb: Sandbox, last_check_utc: str | None):
         from datetime import datetime
@@ -675,6 +677,12 @@ class TestWatchHeartbeat(InstallAsserts):
             check = self._check(sb, None)
             self.assertEqual(check["status"], "warning")
             self.assertIn("jamais", check["message"])
+
+    def test_legacy_script_name_is_still_recognised(self):
+        with Sandbox() as sb:
+            self.CRON = self.LEGACY_CRON
+            check = self._check(sb, "2026-09-27T08:50:00+00:00")
+            self.assertEqual(check["status"], "ok")
 
 
 class TestNtfyConfigured(InstallAsserts):
@@ -1101,6 +1109,7 @@ class TestJsonSchema(InstallAsserts):
                 "index_freshness", "out_of_contract", "daily_sync_scheduled", "ntfy_configured",
                 "gear_sync", "gear_history", "fit_reader", "intervals_mcp_pin",
                 "llm_config", "chat_service", "opencode_cli", "strava_connection", "telegram", "weight_sync", "openwearables",
+                "coros_connection",
             }
             self.assertEqual({c["id"] for c in payload["checks"]}, expected_ids)
             for check in payload["checks"]:

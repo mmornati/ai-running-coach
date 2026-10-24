@@ -72,7 +72,7 @@ référence de dépense, inchangées.
 
 ## Limites et points à vérifier
 
-- **Indisponible avec `[data].source = "intervals"` ou `"strava"`** : ni intervals.icu ni Strava
+- **Indisponible avec `[data].source = "intervals"`, `"strava"` ou `"coros"`** : ni intervals.icu, ni Strava, ni COROS
   n'ont de journal alimentaire ni d'hydratation équivalents ; `install.sh` n'expose aucun outil,
   le coach le dit, il ne simule rien.
 - Jamais en headless : `scripts/daily-sync.sh` retire explicitement ces outils d'écriture (mode

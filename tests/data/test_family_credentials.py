@@ -26,7 +26,7 @@ import coach_config  # noqa: E402
 import coach_doctor  # noqa: E402
 import coach_setup  # noqa: E402
 import download_fit as D  # noqa: E402
-import garmin_watch as W  # noqa: E402
+import watch as W  # noqa: E402
 
 
 def _workspace(root: Path, name: str, tokens: str | None = None, intervals_dir: str | None = None) -> Path:
@@ -131,16 +131,16 @@ class TestWatchAndDownloadUseTheWorkspaceTokens(_EnvCase):
         self._patch.stop()
         super().tearDown()
 
-    def test_garmin_watch_logs_in_with_the_tokens_of_its_workspace(self):
-        W.make_probe(self.alice)
-        W.make_probe(self.bob)
+    def test_watch_logs_in_with_the_tokens_of_its_workspace(self):
+        W.make_probe("garmin", self.alice)
+        W.make_probe("garmin", self.bob)
         self.assertEqual(_FakeGarminModule.logins, [str(self.root / "tokens-alice"), str(self.root / "tokens-bob")])
 
-    def test_garmin_watch_without_configuration_keeps_the_default(self):
-        W.make_probe(_workspace(self.root, "alone"))
+    def test_watch_without_configuration_keeps_the_default(self):
+        W.make_probe("garmin", _workspace(self.root, "alone"))
         self.assertEqual(_FakeGarminModule.logins, [str(self.root / "home" / ".garminconnect")])
 
-    def test_garmin_watch_main_passes_its_workspace(self):
+    def test_watch_main_passes_its_workspace(self):
         seen = []
 
         def fake_tick(workspace, now, probe_factory, run_sync, dry_run=False):
@@ -151,6 +151,13 @@ class TestWatchAndDownloadUseTheWorkspaceTokens(_EnvCase):
         with patch.object(W, "tick", fake_tick), patch.object(W, "_ensure_garminconnect"):
             W.main(["--workspace", str(self.bob), "--dry-run"])
         self.assertEqual(seen, [self.bob])
+        self.assertEqual(_FakeGarminModule.logins, [str(self.root / "tokens-bob")])
+
+    def test_legacy_garmin_watch_shim_uses_the_tokens_of_the_workspace(self):
+        # Ancien nom (crontabs/LaunchAgents posés avant le renommage) : même module, mêmes jetons.
+        import garmin_watch as legacy
+        self.assertIs(legacy.make_probe, W.make_probe)
+        legacy.make_probe("garmin", self.bob)
         self.assertEqual(_FakeGarminModule.logins, [str(self.root / "tokens-bob")])
 
     def test_download_fit_logs_in_with_the_tokens_of_the_workspace(self):

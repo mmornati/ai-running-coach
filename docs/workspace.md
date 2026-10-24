@@ -190,6 +190,9 @@ utilisateur** système sans partager leurs identifiants ni leur planification :
   outils de fichiers de l'exécuteur `claude` (Read, Write, Edit, Glob, Grep acceptent des chemins
   absolus) ; les shells larges des exécuteurs `codex` et `opencode`. Pour une séparation stricte
   entre deux personnes, utilisez des utilisateurs système distincts ;
+- COROS : les identifiants de la source COROS vivent dans un dossier unique de l'utilisateur
+  (`~/.config/ai-running-coach/coros/`) ; il n'existe pas encore d'option par workspace (comme
+  `--garmin-tokens`) : deux workspaces COROS du même utilisateur partagent le même compte (seule la variable d'environnement `ARC_COROS_DIR` déplace ce dossier, pour tout le processus) ;
 - l'exécuteur `codex` lit la configuration **globale** `~/.codex/config.toml` : les identifiants
   qu'elle déclare sont communs à tous les workspaces de l'utilisateur, `--garmin-tokens` /
   `--intervals-dir` n'y changent rien (les exécuteurs `claude` et `opencode` de la synchro lisent le
@@ -267,8 +270,9 @@ modifiées. Si la paire est ambiguë, il vous demande laquelle.
 tableau de bord et `arc_index.py gear` affichent « ≈ 6 sem. » — le temps restant
 avant le seuil **à ce rythme**, une approximation linéaire (elle ignore un bloc
 de repos ou un changement de rotation). Aucune prévision sans séance sur 28
-jours, ni pour une paire retirée ; une paire au-dessus de son seuil affiche
-« seuil dépassé ».
+jours, ni pour une paire retirée ; une paire en service au-dessus de son seuil affiche
+« Fin de vie — à retirer ? ». Une paire retirée — au profil `(retirée)`, ou dans Garmin Connect
+pour une paire liée par `garmin:` — n'alerte plus, même au-delà du seuil.
 
 **Alertes visibles (#132).** Le résumé du `garmin-daily-sync` ajoute une ligne
 quand une séance synchronisée fait franchir son seuil à une paire (une seule
@@ -369,6 +373,8 @@ des deux dernières), le tableau de bord (carte « Inspections photo », vignett
 quand une paire passe en `(retirée)`, `python3 scripts/arc_index.py gear-career --gear ID`
 (km, séances, courses, meilleurs efforts quand des splits existent, dernière inspection). L'usure
 d'une semelle est un signal faible : les indices de foulée qu'on en tire ne sont jamais un diagnostic.
+
+**Fiches de caractéristiques (#298).** `gear/specs/<gear_id>.md` (bloc `arc` de type `shoe_spec`) garde le drop, la pile, le poids, la mousse, la plaque et les crampons d'une paire, **chaque valeur avec sa source** (laboratoire, marque ou vous). Elles se remplissent avec le skill [`shoe-specs`](skills/shoe-specs.md) et se lisent par `python3 scripts/arc_index.py shoe-specs`. Détails dans [Choisir ses chaussures](shoes.md).
 
 ## Les décisions tracées
 

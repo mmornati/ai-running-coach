@@ -519,8 +519,10 @@ En dessous, **le réalisé face à la cible** de la semaine (18,2 km sur 40 vis�
 **la conformité** — le KPI de l'épopée #20 (story #33) : % de séances faites, ratio
 durée réalisée/planifiée, ratio D+ réalisé/planifié (route : ratio absent, pas de D+
 significatif), le tout aussi par intensité (*Facile* : récupération, endurance ;
-*Qualité* : tempo, seuil, VO2max, course ; *Autre* : renforcement et toute intensité
-non classée, pour que Facile + Qualité + Autre reconstitue toujours le total). Les
+*Qualité* : tempo, seuil, VO2max, course ; *Renforcement* ; *Autre* : toute
+intensité non classée, pour que Facile + Qualité + Renforcement + Autre reconstitue toujours
+le total). Une ligne **Hors plan** (nombre et durée) signale les activités qu'aucune
+séance prévue n'a appariées : information à côté, jamais comptée dans les ratios. Les
 séances de **repos**, **annulées** et **déplacées** sont retirées du calcul (elles ne
 comptent ni en séance faite ni en manquée), les séances des jours pas encore passés
 de la semaine en cours ne sont jamais comptées manquées, et une séance du jour même
@@ -834,12 +836,14 @@ la carte le dit. Les paires marquées « ignorées » dans le profil sont listé
 la vue.
 
 **Chaussures** (#40) — kilométrage cumulé de chaque paire déclarée dans « Matériel & lieux » du
-profil (course et randonnée seulement), une ligne « à surveiller » au-delà du seuil d'alerte,
-les paires retirées affichées en grisé sans jamais alerter, et une ligne « inconnue » par
+profil (course et randonnée seulement), une pastille « Fin de vie — à retirer ? » au-delà du
+seuil d'alerte, les paires retirées affichées en grisé sans jamais alerter (« retirée (Garmin) »
+quand la paire est retirée dans Garmin Connect sans que sa puce le dise encore — voir
+[Synchronisation du matériel Garmin](../garmin-setup.md#synchronisation-du-materiel-garmin)), et une ligne « inconnue » par
 `gear_id` vu sur une séance mais absent du profil — jamais masqué silencieusement. Depuis #132 :
 le kilométrage inclut le « départ » déclaré sur la puce (rappelé sous le total : « dont N km de
 départ »), un badge **« ≈ N sem. »** donne la prévision de retraite au rythme des 28 derniers
-jours (rien sans usage récent, « seuil dépassé » au-delà du seuil), « proche du seuil » apparaît
+jours (rien sans usage récent ni au-delà du seuil), « proche du seuil » apparaît
 dès 90 %, et le rôle `usage:` déclaré s'affiche à côté du nom.
 
 ![Matériel : ce qui est à traiter, puis le kilométrage de chaque paire](../assets/dashboard/materiel.webp)
@@ -898,7 +902,13 @@ ouvre sa fiche, à l'adresse partageable `#/materiel/<gear_id>` :
   sortie la plus longue, meilleurs efforts 1/5/10/21 km sur les séances qui ont des splits,
   seuil et prévision de retraite, paire rattachée ou non à Garmin Connect), **kilomètres par
   mois**, **liste des séances** (chacune renvoie vers son détail) et **historique des
-  inspections** de la paire. Une paire retirée reste consultable ; une paire marquée
+  inspections** de la paire. Une carte **Usage** (#300) précède la liste des séances : rôle déduit,
+  terrain route/trail, D+/km et D−/km, allure et GAP, sorties longues, courses, séances humides,
+  **foulée par tranche d'allure** (comparée aux autres paires de la même tranche seulement, « données
+  insuffisantes » sous 3 séances), confort déclaré, épisodes de douleur ≤ 48 h après une séance
+  rapportés à l'exposition (sans taux sous 5 épisodes ; corrélation, pas causalité), séances sans
+  `gear_id` signalées et dernière inspection — le détail est dans [Choisir ses chaussures](../shoes.md).
+  Une paire retirée reste consultable ; une paire marquée
   « ignorée » le dit, garde ses inspections et n'affiche aucun kilométrage.
 - **Un objet d'équipement** : usage (depuis le dernier entretien, avec le total à vie à côté),
   **déclencheurs** (valeur atteinte face au seuil), **kits** et leurs autres membres, séances où
@@ -1049,6 +1059,9 @@ score sans que ce soit un problème.
 Une feuille imprimable par scénario (#187, épopée #170), accessible par le lien
 « Roadbook imprimable du plan de course » en bas de [Trail Shape](#trail-shape)
 (adresse `#/roadbook`, `?plan=<fichier>` pour choisir un plan, `?scenario=safe|realistic|ambitious`).
+Quand un plan existe pour la prochaine course (date du jour ou à venir), la navigation
+affiche aussi une entrée « Roadbook » juste au-dessus de Trail Shape ; un plan déjà couru
+reste joignable par le lien de Trail Shape seulement.
 Elle lit le plan de course persisté dans `planning/` (bloc ```` ```arc ````
 `kind: race_plan`, écrit par `course-strategist`) et ne calcule rien de plus :
 heures de passage et marges de barrière viennent de `scripts/arc_race_pacing.py`,
@@ -1304,7 +1317,7 @@ la [machine coach](headless.md) ou [derrière votre reverse proxy](docker.md).
   en erreur, tokens Garmin refusés), *dégradée* (Garmin injoignable, nouvel essai programmé) ou
   *jamais lancée*. En retard, en échec ou dégradée, une pastille rouge apparaît aussi dans
   l'en-tête de toutes les pages.
-- **Réglages** : mode (`schedule` aux heures fixes, `watch` par sondage Garmin), exécuteur,
+- **Réglages** : mode (`schedule` aux heures fixes, `watch` par sondage Garmin ou COROS), exécuteur,
   prochaine exécution attendue, dernier sondage, runs du jour, filet de sécurité, versionnement git.
 - **Derniers runs** (14 jours) : heure, déclencheur (bilan matinal, séance, heure fixe), durée,
   code de sortie, le bloc résumé envoyé en notification, les lignes d'erreur, et le journal complet
@@ -1317,7 +1330,7 @@ Même état en terminal : `python3 scripts/arc_sync_status.py` (`--json` pour le
 
 | Fichiers lus | Écrits par |
 |---|---|
-| `logs/sync-<date>.log`, `logs/watch.log`, `logs/.watch-state.json`, `logs/.sync.lock`, `config/workspace*.toml` (`[sync]`) | `scripts/daily-sync.sh`, `scripts/garmin_watch.py` |
+| `logs/sync-<date>.log`, `logs/watch.log`, `logs/.watch-state.json`, `logs/.sync.lock`, `config/workspace*.toml` (`[sync]`) | `scripts/daily-sync.sh`, `scripts/watch.py` |
 
 Code et durée d'un run ne s'affichent que pour les journaux écrits depuis cette version (pied
 `===== … fin code=N durée=Ns =====`) ; pour les plus anciens, seul le dernier run reprend le code
@@ -1344,7 +1357,7 @@ nourrit :
 | Rapports | `rapports/*.md` | coach |
 | Nutrition | `nutrition/<date>_nutrition.md` | nutritionniste |
 | Hypothèses | aucun fichier du workspace : les modules de calcul (`scripts/arc_*.py`) | — |
-| Synchro | `logs/sync-*.log`, `logs/watch.log`, `logs/.watch-state.json`, `[sync]` | `daily-sync.sh`, `garmin_watch.py` |
+| Synchro | `logs/sync-*.log`, `logs/watch.log`, `logs/.watch-state.json`, `[sync]` | `daily-sync.sh`, `watch.py` |
 
 Chacun de ces fichiers s'ouvre par un bloc de données décrit par le
 [contrat de données](../skills/workspace-data-contract.md) : c'est ce bloc que le
