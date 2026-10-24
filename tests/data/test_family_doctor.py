@@ -103,6 +103,16 @@ class FamilyDoctor(unittest.TestCase):
         self.assertEqual(checks["family_sync"]["status"], "info")
         self.assertEqual(checks["family_sync"]["members"], ["bob"])
 
+    def test_ligne_ancienne_sans_arc_workspace_ne_planifie_aucun_membre(self):
+        """Une ligne historique sans ARC_WORKSPACE vaut « tout workspace » en mono-athlète, pas en famille."""
+        a = self.member("alice", tokens="/t/a")
+        b = self.member("bob", tokens="/t/b")
+        legacy = "0 6 * * * /e/scripts/daily-sync.sh # ai-running-coach daily-sync"
+        checks = self.run_checks({"alice": a, "bob": b}, cron=[legacy])
+        self.assertEqual(checks["family_sync"]["status"], "info")
+        self.assertEqual(sorted(checks["family_sync"]["members"]), ["alice", "bob"])
+        self.assertEqual(D._own_cron_lines(legacy, a), [legacy])   # mono-athlète inchangé
+
     def test_chemin_cite_hors_arc_workspace_ne_compte_pas(self):
         a = self.member("alice", tokens="/t/a")
         b = self.member("bob", tokens="/t/b")

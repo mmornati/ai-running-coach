@@ -2283,10 +2283,18 @@ def _member_scheduled(home: Path, crontab: str, workspace: Path) -> bool:
     (marqueur cron historique ou suffixé, label launchd historique ou suffixé, `watch.py` comme
     `garmin_watch.py`) : appartenance lue sur l'`ARC_WORKSPACE` de la ligne / du plist, jamais sur une
     simple présence du chemin dans le texte."""
-    if _own_cron_lines(crontab, workspace):
-        return True
+    # Une ligne / un plist SANS ARC_WORKSPACE (très ancienne installation) vaut « tous les workspaces » pour
+    # `_same_workspace` (mono-athlète) : ici elle marquerait chaque membre planifié. On exige donc une
+    # valeur déclarée.
+    for line in _own_cron_lines(crontab, workspace):
+        match = _ARC_WORKSPACE_RE.search(line)
+        if match and match.group(1):
+            return True
     agents = home / "Library" / "LaunchAgents"
-    return agents.is_dir() and bool(_own_plists(home, workspace))
+    if not agents.is_dir():
+        return False
+    return any(_plist_workspace(p.read_text(encoding="utf-8", errors="replace"))
+               for p in _own_plists(home, workspace))
 
 
 def check_family(registry_path: Optional[Path], registry, error: Optional[str], home: Optional[Path] = None) -> list:

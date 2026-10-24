@@ -25,7 +25,11 @@ défaut, octet pour octet.
     Chaque workspace a ainsi ses jetons Garmin (ou ses identifiants intervals.icu), sa ligne cron
     (marqueur `# ai-running-coach daily-sync [<nom>-<somme>]`) ou son LaunchAgent (label suffixé), et
     `ARC_LOCK_WORKSPACE=1` confine ses scripts. Installer un membre ne touche pas la planification des
-    autres. `coach_doctor --family` s'appuie sur la même attribution (`family_tokens`, `family_sync`).
+    autres. **Installation existante** : avant d'ajouter un deuxième membre, le premier athlète migre la
+    sienne (`scripts/migrate-sync-127.sh check` puis `migrate`, voir
+    [Mise à jour](update.md#mode-watch-garmin_watchpy-devient-watchpy-coros-planification-par-workspace-127)),
+    pour que sa planification soit par workspace avant le `--workspace … --daily-sync` d'un autre membre.
+    `coach_doctor --family` s'appuie sur la même attribution (`family_tokens`, `family_sync`).
     **COROS** : les identifiants COROS ne sont pas encore par workspace (dossier unique
     `~/.config/ai-running-coach/coros/`) : deux membres COROS du même utilisateur système partagent le
     même compte.
