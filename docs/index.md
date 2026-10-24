@@ -133,9 +133,9 @@ Le staff vous suit sur tout le parcours d'une préparation — et chaque étape 
 <div class="arc-section" markdown>
   <div class="arc-section__inner" markdown>
 
-## Vingt-cinq skills, prêts à l'emploi
+## Vingt-sept skills, prêts à l'emploi
 
-Des protocoles précis que l'IA suit à la lettre. Six d'entre eux sont des commandes courtes, pensées pour le téléphone : cinq pour une question, une réponse, et `/inspection` pour une inspection guidée.
+Des protocoles précis que l'IA suit à la lettre. Sept d'entre eux sont des commandes courtes, pensées pour le téléphone : cinq pour une question, une réponse, `/inspection` pour une inspection guidée et `/shoes` pour choisir sa prochaine paire.
 { .arc-section__intro }
 
 <div class="arc-daily" markdown>
@@ -148,6 +148,7 @@ Des protocoles précis que l'IA suit à la lettre. Six d'entre eux sont des comm
 <a class="arc-command" href="skills/race/"><code>/race</code><span>Compte à rebours, score Trail Shape, plan de course.</span></a>
 <a class="arc-command" href="skills/log/"><code>/log</code><span>« 2 gels + 500 ml au km 15, genou gauche 3/10, RPE 7 » — noté.</span></a>
 <a class="arc-command" href="skills/inspection/"><code>/inspection</code><span>Inspecter une paire : photos, usure, état.</span></a>
+<a class="arc-command" href="skills/shoes/"><code>/shoes</code><span>Choisir la prochaine paire : continuité, plages sourcées.</span></a>
 
 </div>
 
@@ -169,6 +170,7 @@ Des protocoles précis que l'IA suit à la lettre. Six d'entre eux sont des comm
 <li><a href="skills/weather-forecast/">Météo</a><span>prévisions et créneau optimal</span></li>
 <li><a href="skills/gear-inspection/">Inspection des chaussures</a><span>usure lue sur photos, comparée à la précédente (<code>/inspection</code>)</span></li>
 <li><a href="skills/shoe-specs/">Fiche des chaussures</a><span>drop, pile, poids d'une paire, chaque valeur avec sa source, validée par vous</span></li>
+<li><a href="skills/shoe-selection/">Choix des chaussures</a><span>la prochaine paire : continuité d'abord, caractéristiques sourcées (<code>/shoes</code>)</span></li>
 </ul>
 </div>
 

@@ -1160,6 +1160,8 @@ def classify(rel: str) -> Optional[str]:
         return "shoe_spec"
     if folder == "gear" and name.endswith("_inspection.md") and L.filename_date(name):
         return "gear_inspection"
+    if folder == "gear" and len(parts) == 2 and C.SHOE_RECO_FILENAME_RE.match(name):
+        return "shoe_recommendation"
     if folder == "planning":
         if name == "Runner_Profile.md":
             return "athlete"
@@ -3321,7 +3323,7 @@ def index_workspace(conn, workspace: Path, today: Optional[str] = None,
             # écarté est relu à chaque passe (sha vide) pour reprendre la main si l'autre disparaît.
             issues.append(f"doublon de {twin[0]} (même {twin_key}) : non compté")
             digest = ""
-        elif kind is not None and parsed_ok != "no" and (kind not in ("decision", "gear_inspection", "shoe_spec") or parsed_ok == "ok"):
+        elif kind is not None and parsed_ok != "no" and (kind not in ("decision", "gear_inspection", "shoe_spec", "shoe_recommendation") or parsed_ok == "ok"):
             # `decision` (#100, revue de code) : PAS de repli légitime — il n'existe
             # aucun format hérité pour ce type neuf (contrairement à `activity`/
             # `health`/…, où `parsed_ok = "partial"` porte une vraie lecture best-
@@ -3437,7 +3439,7 @@ def backfill_items(conn) -> List[dict]:
         # `decision` (#54) exclu au même titre que `athlete`/`objective` : c'est un
         # type NEUF, jamais écrit avant ce contrat — aucun fichier historique à
         # reprendre, jamais de dette de backfill à faire apparaître pour lui.
-        "WHERE kind IS NOT NULL AND kind NOT IN ('athlete', 'objective', 'decision', 'gear_inspection', 'shoe_spec') "
+        "WHERE kind IS NOT NULL AND kind NOT IN ('athlete', 'objective', 'decision', 'gear_inspection', 'shoe_spec', 'shoe_recommendation') "
         f"AND (parsed_ok != 'ok' OR issues LIKE '%{_WEEK_COLLISION_MARKER}%') ORDER BY path"
     ).fetchall():
         # Seul un fichier hors contrat (sans bloc, bloc invalide, illisible) est une dette.
@@ -3600,6 +3602,19 @@ def validate_file(path: Path) -> Tuple[bool, List[str], List[str]]:
             if isinstance(block.get("gear_id"), str) and m.group(2) != block["gear_id"]:
                 warnings.append(f"gear_id du nom de fichier ({m.group(2)}) différent de gear_inspection.gear_id "
                                 f"({block['gear_id']})")
+    if block.get("kind") == "shoe_recommendation":
+        # #302 : `gear/AAAA-MM-JJ_shoe_recommendation_<rôle>.md` — date et rôle du nom = ceux du bloc.
+        m = C.SHOE_RECO_FILENAME_RE.match(path.name)
+        if not m or path.parent.name != "gear":
+            warnings.append("fichier « shoe_recommendation » hors du format attendu "
+                            "(`gear/AAAA-MM-JJ_shoe_recommendation_<rôle>.md`).")
+        else:
+            if isinstance(block.get("date"), str) and m.group(1) != block["date"]:
+                warnings.append(f"date du nom de fichier ({m.group(1)}) différente de shoe_recommendation.date "
+                                f"({block['date']})")
+            if isinstance(block.get("role"), str) and m.group(2) != block["role"]:
+                warnings.append(f"rôle du nom de fichier ({m.group(2)}) différent de shoe_recommendation.role "
+                                f"({block['role']})")
     if block.get("kind") == "shoe_spec":
         # #298 : `gear/specs/<gear_id>.md` — le nom de fichier dit la paire ; un désaccord avec le bloc
         # rangerait la fiche sous une autre paire que celle que le nom annonce (le bloc fait foi à l'index).

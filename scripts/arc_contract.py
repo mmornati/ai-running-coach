@@ -201,6 +201,16 @@ SHOE_CHANGE_WANTED = (
     "wider_toe_box", "narrower", "more_drop", "less_drop", "more_cushion", "firmer",
     "more_grip", "lighter", "more_stable", "other",
 )
+# `shoe_recommendation` (#302, épopée #297) : recommandation de chaussures, `gear/AAAA-MM-JJ_shoe_recommendation_<rôle>.md`.
+# Rôles = vocabulaire de `arc_shoe_usage` / `arc_shoe_needs`. `path` : « continuity » (même modèle ou plus
+# proche modèle de la paire remplacée) ou « search » (plages cibles puis recherche en ligne).
+SHOE_ROLE = ("trail_long", "trail", "road_easy", "road_tempo", "race", "mixed_long", "mixed")
+SHOE_RECO_PATH = ("continuity", "search")
+SHOE_MEDICAL_STATUS = ("clear", "caution", "veto")
+SHOE_MEDICAL_REVIEWER = ("medical", "coach")
+SHOE_CANDIDATES_MAX = 5
+SHOE_RECO_FOLDER = "gear"
+SHOE_RECO_FILENAME_RE = re.compile(r"^(\d{4}-\d{2}-\d{2})_shoe_recommendation_([a-z_]+)\.md$")
 # Champs porteurs de provenance (ordre de la fiche).
 SHOE_VALUE_FIELDS = ("category", "drop_mm", "stack_heel_mm", "stack_forefoot_mm", "weight_g", "midsole_foam",
                      "midsole_softness", "plate", "lug_depth_mm", "toe_box", "flexibility_longitudinal",
@@ -664,6 +674,27 @@ SCHEMA = {
             "verdict": "{shoe_verdict}",
         },
     },
+    # Recommandation de chaussures (#302, épopée #297) — fichier `gear/AAAA-MM-JJ_shoe_recommendation_<rôle>.md`,
+    # écrit par le skill `shoe-selection` APRÈS présentation à l'athlète et avec son accord
+    # (`athlete_validated: true` obligatoire). `targets` copie les plages de `arc_index.py shoe-needs`
+    # (+ les identifiants de règle appliqués) ; chaque candidat porte ses caractéristiques AVEC leur
+    # provenance (même forme que `shoe_spec`, mesure > marque, jamais inventées), les règles qu'il
+    # satisfait (`fits`) ou non (`misses`). Ni achat, ni lien d'affiliation, ni prix : aucune clé pour cela.
+    "shoe_recommendation": {
+        "required": {
+            "date": "date",
+            "role": _enum(SHOE_ROLE),
+            "path": _enum(SHOE_RECO_PATH),
+            "candidates": "[shoe_candidate]",
+            "athlete_validated": "bool",
+        },
+        "optional": {
+            "replaced_gear_id": "gear_id",
+            "targets": "{shoe_reco_targets}",
+            "medical_veto": "{shoe_medical_veto}",
+            "notes": "str",
+        },
+    },
     "decision": {
         "required": {
             "date": "date",
@@ -865,6 +896,21 @@ SUBSCHEMA = {
         "optional": {"change_wanted": "enums:" + "|".join(SHOE_CHANGE_WANTED), "notes": "str",
                      "distance_m": "num+"},
     },
+    # `shoe_recommendation.candidates[]` (#302). `specs` : {champ de shoe_spec: valeur avec provenance},
+    # validé champ par champ par `_check_shoe_recommendation` (mêmes règles que `shoe_spec`).
+    "shoe_candidate": {
+        "required": {"brand": "str", "model": "str"},
+        "optional": {"version": "str", "specs": "obj", "fits": "list", "misses": "list",
+                     "vetoed": "bool", "notes": "str"},
+    },
+    "shoe_reco_targets": {
+        "required": {},
+        "optional": {"ranges": "obj", "rule_ids": "list", "insufficient_data": "bool"},
+    },
+    "shoe_medical_veto": {
+        "required": {"status": _enum(SHOE_MEDICAL_STATUS), "reviewer": _enum(SHOE_MEDICAL_REVIEWER)},
+        "optional": {"reason": "str"},
+    },
     # `shoe_spec.size` : pointure et système (jamais convertie d'un système à l'autre).
     "shoe_size": {
         "required": {"value": "num+", "system": _enum(SHOE_SIZE_SYSTEM)},
@@ -982,6 +1028,7 @@ KIND_FOLDERS = {
     "decision": "planning",
     "gear_inspection": "gear",
     "shoe_spec": "gear",
+    "shoe_recommendation": "gear",
 }
 
 # ---------------------------------------------------------------------------
@@ -1577,6 +1624,8 @@ def validate(data: dict) -> tuple:
         _check_gear_inspection(data, errors, warnings)
     if kind == "shoe_spec":
         _check_shoe_spec(data, errors, warnings)
+    if kind == "shoe_recommendation":
+        _check_shoe_recommendation(data, errors, warnings)
     if kind == "activity":
         _check_shoe_feedback(data, errors, warnings)
     return errors, warnings
@@ -1627,11 +1676,30 @@ def _check_shoe_verdict(data: dict, errors: list, warnings: list) -> None:
 def _check_shoe_spec(data: dict, errors: list, warnings: list) -> None:
     """Règles transverses de `shoe_spec` (#298) : provenance, bornes, mesure > marque, aberrations."""
     _check_shoe_verdict(data, errors, warnings)
+    _check_shoe_values(data, "shoe_spec", errors, warnings)
+    # Cohérence drop / cotes : seulement si les trois viennent du MÊME type de source (une cote de
+    # labo face à une cote de marque diffère légitimement — c'est précisément l'écart marque/labo).
+    triplet = [data.get(k) for k in ("drop_mm", "stack_heel_mm", "stack_forefoot_mm")]
+    if all(isinstance(t, dict) and _is_number(t.get("value")) for t in triplet) \
+            and len({t.get("source_type") for t in triplet}) == 1:
+        drop, heel, fore = (t["value"] for t in triplet)
+        if abs(drop - (heel - fore)) > 1.0:
+            warnings.append(f"shoe_spec.drop_mm : {drop:g} mm incohérent avec stack_heel_mm - stack_forefoot_mm "
+                            f"({heel - fore:g} mm) pour des valeurs de même source")
+    year = data.get("release_year")
+    if isinstance(year, int) and not 1990 <= year <= 2100:
+        warnings.append(f"shoe_spec.release_year : {year} improbable")
+
+
+def _check_shoe_values(values: dict, prefix: str, errors: list, warnings: list) -> None:
+    """Provenance, bornes, mesure > marque et aberrations des valeurs de caractéristiques de `values`
+    ({champ de `SHOE_VALUE_FIELDS`: valeur avec provenance}) — partagé par `shoe_spec` (#298) et par les
+    candidats de `shoe_recommendation` (#302)."""
     for field in SHOE_VALUE_FIELDS:
-        obj = data.get(field)
+        obj = values.get(field)
         if not isinstance(obj, dict):
             continue
-        where = f"shoe_spec.{field}"
+        where = f"{prefix}.{field}"
         alts = [a for a in (obj.get("alternatives") or []) if isinstance(a, dict)]
         for label, entry in [(where, obj)] + [(f"{where}.alternatives[{i}]", a) for i, a in enumerate(alts)]:
             if entry.get("source_type") in ("measured", "manufacturer"):
@@ -1691,18 +1759,58 @@ def _check_shoe_spec(data: dict, errors: list, warnings: list) -> None:
                     warnings.append(f"{alt_where} : {alt_value:g} s'écarte de la valeur retenue ({value:g}) de plus "
                                     "que l'écart attendu entre sources — aberration probable, à marquer "
                                     "`outlier: true` si confirmé")
-    # Cohérence drop / cotes : seulement si les trois viennent du MÊME type de source (une cote de
-    # labo face à une cote de marque diffère légitimement — c'est précisément l'écart marque/labo).
-    triplet = [data.get(k) for k in ("drop_mm", "stack_heel_mm", "stack_forefoot_mm")]
-    if all(isinstance(t, dict) and _is_number(t.get("value")) for t in triplet) \
-            and len({t.get("source_type") for t in triplet}) == 1:
-        drop, heel, fore = (t["value"] for t in triplet)
-        if abs(drop - (heel - fore)) > 1.0:
-            warnings.append(f"shoe_spec.drop_mm : {drop:g} mm incohérent avec stack_heel_mm - stack_forefoot_mm "
-                            f"({heel - fore:g} mm) pour des valeurs de même source")
-    year = data.get("release_year")
-    if isinstance(year, int) and not 1990 <= year <= 2100:
-        warnings.append(f"shoe_spec.release_year : {year} improbable")
+
+
+def _check_shoe_recommendation(data: dict, errors: list, warnings: list) -> None:
+    """Règles transverses de `shoe_recommendation` (#302) : accord de l'athlète, chemin de continuité,
+    candidats (nombre, caractéristiques avec provenance), cohérence du veto médical."""
+    if data.get("athlete_validated") is False:
+        errors.append("shoe_recommendation.athlete_validated : true attendu — la recommandation n'est écrite "
+                      "qu'après avoir été montrée à l'athlète et avec son accord")
+    if data.get("path") == "continuity" and not data.get("replaced_gear_id"):
+        errors.append("shoe_recommendation.replaced_gear_id : obligatoire pour le chemin « continuity » "
+                      "(la paire dont on prolonge le modèle)")
+    cands = data.get("candidates")
+    if isinstance(cands, list):
+        if not cands:
+            errors.append("shoe_recommendation.candidates : au moins un candidat attendu")
+        if len(cands) > SHOE_CANDIDATES_MAX:
+            warnings.append(f"shoe_recommendation.candidates : {len(cands)} candidats, plus de "
+                            f"{SHOE_CANDIDATES_MAX} — une comparaison lisible en compte 3 à 5")
+        for i, cand in enumerate(cands):
+            if not isinstance(cand, dict):
+                continue
+            where = f"shoe_recommendation.candidates[{i}]"
+            for key in ("fits", "misses"):
+                items = cand.get(key)
+                if isinstance(items, list):
+                    for j, item in enumerate(items):
+                        if not isinstance(item, str) or not item.strip():
+                            errors.append(f"{where}.{key}[{j}] : une chaîne non vide attendue")
+            specs = cand.get("specs")
+            if not isinstance(specs, dict):
+                continue
+            for field, value in specs.items():
+                if field not in SHOE_VALUE_FIELDS:
+                    errors.append(f"{where}.specs.{field} : caractéristique inconnue (parmi "
+                                  f"{', '.join(SHOE_VALUE_FIELDS)})")
+                    continue
+                _check_value(SCHEMA["shoe_spec"]["optional"][field], value, f"{where}.specs.{field}",
+                             errors, warnings)
+            _check_shoe_values(specs, f"{where}.specs", errors, warnings)
+    targets = data.get("targets")
+    if isinstance(targets, dict) and isinstance(targets.get("rule_ids"), list):
+        for j, rid in enumerate(targets["rule_ids"]):
+            if not isinstance(rid, str) or not rid.strip():
+                errors.append(f"shoe_recommendation.targets.rule_ids[{j}] : un identifiant de règle (chaîne) attendu")
+    veto = data.get("medical_veto")
+    if isinstance(veto, dict) and veto.get("status") == "veto":
+        if not veto.get("reason"):
+            errors.append("shoe_recommendation.medical_veto.reason : obligatoire quand status vaut veto")
+        if isinstance(cands, list) and cands and not any(isinstance(c, dict) and c.get("vetoed") for c in cands) \
+                and not data.get("notes"):
+            warnings.append("shoe_recommendation.medical_veto : veto sans candidat marqué `vetoed: true` ni note — "
+                            "qu'est-ce qui a été écarté ?")
 
 
 def _check_gear_inspection(data: dict, errors: list, warnings: list) -> None:

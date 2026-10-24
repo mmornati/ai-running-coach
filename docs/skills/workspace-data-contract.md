@@ -62,6 +62,7 @@ formulation du modèle.
 | `report` | `rapports/…` |
 | `gear_inspection` | `gear/AAAA-MM-JJ_<gear_id>_inspection.md` — inspection photo d'une paire de chaussures (#135), photos dans `gear/photos/` |
 | `shoe_spec` | `gear/specs/<gear_id>.md` — fiche de caractéristiques d'une paire (#298) ; porte aussi son bilan de retraite `verdict` (#299) |
+| `shoe_recommendation` | `gear/AAAA-MM-JJ_shoe_recommendation_<rôle>.md` — recommandation de chaussures montrée à l'athlète et validée par lui (#302) |
 | `course_eval` | `planning/…_evaluation_parcours_<lieu>.md` |
 | `race_plan` | plan de course dans `planning/` |
 | `decision` | `planning/AAAA-MM-JJ_decision_<slug>.md` — traçabilité d'un ajustement (garde-fou, bilan matinal, blessure…), un fichier par décision |

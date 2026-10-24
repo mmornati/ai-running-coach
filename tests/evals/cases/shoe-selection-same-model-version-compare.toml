@@ -1,0 +1,28 @@
+# Choix de chaussures (#302) : la paire remplacée (Salomon Ultra Glide 3, seuil d'alerte franchi) a un
+# bilan `would_rebuy = yes`, confort 9, aucun problème attribué → CONTINUITÉ : le coach propose la version
+# ACTUELLE DU MÊME MODÈLE et la COMPARE aux caractéristiques de l'ancienne (fiche `gear/specs/ug3.md`),
+# sans écrire de recommandation avant l'accord de l'athlète.
+#
+# Limite du harnais : la recherche web dépend de l'environnement ; on vérifie le chemin (même modèle,
+# comparaison de version) et l'absence d'écriture, pas les chiffres trouvés.
+# `must_match` : le modèle est repris ET il est question d'une comparaison avec l'ancienne version.
+# `must_not_match` : prix / achat, `/coach-setup`, fichier de recommandation annoncé comme écrit.
+id = "shoe-selection-same-model-version-compare"
+prompt = "/shoes"
+fixture = "shoe-selection-rebuy"
+
+[config.language]
+responses = "fr"
+
+[expect]
+must_match = [
+  "ultra glide",
+  "(compar|ancienne|pr[ée]c[ée]dente|version (3|actuelle)|diff[ée]rence|[ée]cart)",
+]
+must_not_match = [
+  "coach-setup",
+  "(€|\\$|euros?)\\s*\\d|\\d+\\s?(€|\\$|euros?)\\b",
+  "(achet(e|ez|er)\\s+(la|le|les)|lien d['’]achat|code promo)",
+  "(j['’]ai|je viens d['’]|je viens de)\\s+(enregistr|[ée]crit|cr[ée]{1,2}|termin)[^\\n]{0,40}(recommandation|shoe_recommendation)",
+]
+files_absent = ["gear/*_shoe_recommendation_*.md"]
