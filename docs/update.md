@@ -132,6 +132,56 @@ daily-sync les committe de lui-même.
     ~4 h, mais une session **reprise** garde les outils MCP qu'elle avait au démarrage.
     Ouvrez une nouvelle session pour profiter des nouveaux outils.
 
+### Mode watch : `garmin_watch.py` devient `watch.py` (COROS), planification par workspace (#127)
+
+L'arrivée de COROS a renommé `scripts/garmin_watch.py` en `scripts/watch.py` (Garmin ou COROS).
+**Une machine coach en mode `watch` ne casse pas** : `garmin_watch.py` est gardé comme cale qui
+lance `watch.py` avec les mêmes arguments, donc la ligne cron posée avant le renommage continue de
+tourner telle quelle. Elle sera réécrite avec le nouveau nom à la prochaine installation avec
+`--daily-sync`.
+
+C'est cette réinstallation qui demande de l'attention depuis #127 (jetons et planification par
+workspace). Une ligne cron appartient désormais au workspace de son `ARC_WORKSPACE`. Sans
+`--workspace`, `install.sh` vise la **racine du moteur** : la ligne de votre workspace est alors
+vue comme celle d'un autre membre du foyer et conservée, et une seconde planification est ajoutée
+pour la racine du moteur. La synchronisation tourne alors **deux fois**. Le piège est fréquent sur
+une machine coach : `~/.config/ai-running-coach/install-args` peut être **vide** (une relance de
+`./install.sh` sans option l'a mémorisé ainsi), et `/update-coach` rejoue ces options.
+
+`scripts/migrate-sync-127.sh` fait la migration sans arrêter ni doubler la sync. À lancer **sur la
+machine coach**, depuis une copie **hors du moteur** (le moteur est mis à jour pendant
+l'exécution) :
+
+```bash
+cp ~/ai-running-coach/scripts/migrate-sync-127.sh ~/
+~/migrate-sync-127.sh check                         # ne modifie rien (sauf git fetch), avant ou après la mise à jour
+~/migrate-sync-127.sh migrate --fix-install-args    # sauvegarde, mise à jour, ligne cron renommée
+~/migrate-sync-127.sh verify                        # après le prochain passage du watch (≤ 15 min)
+```
+
+| Étape | Ce qu'elle fait |
+|---|---|
+| `check` | Ligne cron unique, workspace mémorisé, moteur sur `main` sans modification locale, présence de #127 et de la cale dans `origin/main`, dossier de jetons Garmin résolu (`700`/`600`), `install-args`, fraîcheur du watch. Ne touche ni à la crontab, ni au moteur, ni au workspace. Lance seulement `git fetch origin` dans le moteur (appel réseau qui met à jour les références `origin/*`, jamais `main`) pour savoir si #127 est fusionné ; `check --no-fetch` l'évite. |
+| `migrate` | Sauvegarde dans `~/.config/ai-running-coach/backup-migration-127-<date>/`, met la ligne cron en pause, attend la fin d'une sync en cours, `git merge --ff-only` du moteur, vérifie que les jetons résolus n'ont pas changé et que `watch.py --dry-run` répond, puis réécrit la ligne cron (seul le nom du script change). Refuse tant que `origin/main` ne contient pas #127. |
+| `--fix-install-args` | Ajoute `--workspace <votre workspace> --daily-sync` aux options mémorisées, seulement si l'aperçu `install.sh --dry-run` montre une seule ligne cron, sur `watch.py`, pour votre workspace. L'aperçu complet est gardé dans la sauvegarde (`install-dry-run.txt`). |
+| `verify` | Vérifie que le watch est passé depuis la migration, puis lance `coach_doctor` (`daily_sync_scheduled`, `garmin_token`, `garmin_token_perms`). |
+| `rollback <sauvegarde>` | Remet la crontab, le commit du moteur, `install-args` et le workspace mémorisé. |
+
+Toute erreur ou interruption de `migrate` avant la réécriture remet la crontab d'origine : elle
+reste valable avant comme après la mise à jour, grâce à la cale. `migrate` ne relance **pas**
+`./install.sh` en entier (agents, `.mcp.json`, chat Docker, Remote Control).
+
+!!! warning "Options d'installation perdues"
+    `--fix-install-args` ne reconstitue que `--workspace` et `--daily-sync`. Si `install-args`
+    était vide, vos autres options d'origine (chat, Remote Control, IDE…) ne sont pas
+    mémorisées : relisez `install-dry-run.txt` et complétez `install-args` avec
+    [Retrouver ses options d'installation](#retrouver-ses-options-dinstallation) avant la
+    prochaine `/update-coach`.
+
+Le script ne couvre que le mode `watch`. Une planification à heures fixes
+(`[sync].mode = "schedule"`) est refusée par `check` : mettez-la à jour avec
+`./install.sh --workspace <votre workspace> --daily-sync`, en passant toujours `--workspace`.
+
 ## Serveurs MCP (`garmin-mcp`, `intervals-icu-mcp`)
 
 `garmin-mcp` est épinglé à un commit précis (`GARMIN_MCP_REF` dans `install.sh`) : relancer
