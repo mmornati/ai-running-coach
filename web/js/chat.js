@@ -1026,7 +1026,7 @@ function renderWeek(week) {
 function renderNav(settings) {
   const nav = $("#nav");
   if (!nav) return;
-  // Design bêta (`js/beta.js`) : même coque que le tableau de bord, Coach marqué comme courant.
+  // Design roadbook (`js/beta.js`) : même coque que le tableau de bord, Coach marqué comme courant.
   if (BETA) { mountShell({ settings: settings || {}, page: "chat" }); return; }
   const links = navItems(settings || {}).map(([h, l]) => {
     const a = el("a", null, l);

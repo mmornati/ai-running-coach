@@ -639,7 +639,7 @@ function renderNav(s) {
     // `incomplete_files` — ces fichiers sont déjà valides au contrat, jamais
     // « hors contrat » (voir `arc_serve.api_summary`/`viewFiles`).
     + (s.week_collisions_count ? `<a href="#/fichiers" data-route="fichiers" class="nav__debt">${s.week_collisions_count} collision${s.week_collisions_count > 1 ? "s" : ""} de semaine</a>` : "");
-  // Design bêta (`js/beta.js`) : sections groupées en rail, barre du bas et feuille « Sections ».
+  // Design roadbook (`js/beta.js`) : sections groupées en rail, barre du bas et feuille « Sections ».
   if (BETA) { mountShell({ settings: s.settings, page: "app", debt, roadbook: !!s.next_race_plan }); return; }
   $("#nav").innerHTML = items.map(([h, l]) => `<a href="#/${h}" data-route="${h}">${l}</a>`).join("")
     // Page séparée (chat.html), pas une route à hash : visible seulement si `[chat].enabled`.
@@ -4016,7 +4016,7 @@ function safeDecode(v) {
   try { return decodeURIComponent(v); } catch { return v; }
 }
 
-// Ce que les vues bêta reçoivent de ce fichier : mêmes données (cache `api`), mêmes composants.
+// Ce que les vues roadbook reçoivent de ce fichier : mêmes données (cache `api`), mêmes composants.
 function betaContext() {
   return {
     api, summary: SUMMARY, main,

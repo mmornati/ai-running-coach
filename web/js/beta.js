@@ -1,4 +1,4 @@
-// Design bêta « roadbook » du tableau de bord (opt-in, `js/early.js`) : la saison comme le
+// Design « roadbook » du tableau de bord (par défaut, `js/early.js`) : la saison comme le
 // roadbook d'une course. Le bloc d'entraînement est dessiné comme un profil coupé en sections
 // jusqu'à l'arrivée, et chaque jour se lit comme une feuille de ravito.
 //
@@ -72,9 +72,9 @@ function groupedNavHtml(links, page) {
     ${ls.map((l) => `<a href="${l.href}" data-route="${l.route}"${page === "chat" && l.route === "coach-chat" ? ' aria-current="page"' : ""}>${F.esc(l.label)}</a>`).join("")}</div>`).join("");
 }
 
-const classicLink = `<a class="rk-classic" href="?design=classic">Revenir au design actuel</a>`;
+const classicLink = `<a class="rk-classic" href="?design=classic">Ancien design (jusqu'à la 1.5)</a>`;
 
-/** Monte la coque bêta. `debt` : liens « fichiers hors contrat » déjà rendus par app.js. */
+/** Monte la coque roadbook. `debt` : liens « fichiers hors contrat » déjà rendus par app.js. */
 export function mountShell({ settings, page = "app", debt = "", roadbook = false }) {
   const links = sectionLinks(settings, page, roadbook);
   const nav = $("#nav");
@@ -116,7 +116,7 @@ export function mountShell({ settings, page = "app", debt = "", roadbook = false
   window.addEventListener("hashchange", () => { if (sheet.open) sheet.close(); });
 }
 
-/** Les sélecteurs de liens de navigation que `markNav` doit marquer en bêta. */
+/** Les sélecteurs de liens de navigation que `markNav` doit marquer en roadbook. */
 export const NAV_LINKS = "#nav a, .rk-tabbar a, .rk-sheet a";
 
 // ---------------------------------------------------------------------------

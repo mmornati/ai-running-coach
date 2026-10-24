@@ -192,16 +192,16 @@ et le volume se compte en kilomètres ; avec `[health].morning_check = "off"`, l
 Santé l'indique au lieu d'afficher des trous ; sans nutritionniste dans le staff, la
 vue Nutrition n'apparaît pas ; en unités impériales, tout s'affiche en miles.
 
-## Le design bêta « roadbook »
+## Le design roadbook
 
-Un nouveau design est en test, à côté de l'actuel : la saison s'y lit comme le roadbook
-d'une course. En haut, le **profil du bloc** : une colonne par semaine jusqu'au jour de
-course, la hauteur pour le volume prévu, le plein pour le réalisé, les phases en
-sections et un repère « vous êtes ici ». Survolez ou parcourez-le au clavier : chaque
-semaine se raconte, un clic l'ouvre. Dessous, le jour se lit comme une feuille de
-ravito : le verdict du coach en grand, la séance remplacée barrée, puis le bilan du
-matin en lignes de barrière (valeur, référence, état en forme et en mot, jamais la
-couleur seule).
+Depuis la version 1.4, le tableau de bord s'ouvre sur le design **roadbook** : la saison
+s'y lit comme le roadbook d'une course. En haut, le **profil du bloc** : une colonne par
+semaine jusqu'au jour de course, la hauteur pour le volume prévu, le plein pour le
+réalisé, les phases en sections et un repère « vous êtes ici ». Survolez ou parcourez-le
+au clavier : chaque semaine se raconte, un clic l'ouvre. Dessous, le jour se lit comme une
+feuille de ravito : le verdict du coach en grand, la séance remplacée barrée, puis le
+bilan du matin en lignes de barrière (valeur, référence, état en forme et en mot, jamais
+la couleur seule).
 
 Dans la vue Semaine, prévu et réalisé tiennent sur **une ligne par séance** : la
 séance planifiée, l'activité qui lui a été appariée juste dessous (lien, distance, D+,
@@ -211,12 +211,16 @@ Une activité qu'aucune séance n'a appariée apparaît à part, *Hors plan*. L'
 est celui de la conformité, calculé par le serveur : la vue et le bloc Conformité ne
 peuvent pas se contredire. Les seuils sont une approximation du projet.
 
-- **Essayer** : le lien « Essayer le design bêta » de l'en-tête, ou ajoutez
-  `?design=beta` à l'adresse.
-- **Revenir** : « Revenir au design actuel », en bas du menu des sections, ou
-  `?design=classic`.
-- Le choix est mémorisé **par navigateur** : votre téléphone et votre ordinateur
-  peuvent avoir chacun le leur.
+- **Par défaut** : tout le monde est passé au roadbook, y compris ceux qui avaient
+  choisi l'ancien design pendant l'essai.
+- **Revenir temporairement à l'ancien design** : « Ancien design (jusqu'à la 1.5) », en
+  bas du menu des sections, ou ajoutez `?design=classic` à l'adresse. Un avis rappelle
+  alors que l'ancien design disparaîtra avec la version 1.5.
+- **Retrouver le roadbook** : le lien de cet avis, ou `?design=roadbook` (l'ancien
+  `?design=beta` fonctionne aussi) ; le choix de l'ancien design est alors oublié.
+- Le choix de l'ancien design est mémorisé **par navigateur** : votre téléphone et votre
+  ordinateur peuvent avoir chacun le leur.
+- **Suppression** : l'ancien design et son lien disparaîtront avec la version 1.5.
 
 Les vues Aujourd'hui et Semaine sont redessinées ; les autres gardent leur contenu
 et prennent l'habillage du roadbook. Sur téléphone, une barre en bas donne
@@ -226,7 +230,7 @@ sur ordinateur, un rail les range par groupes.
 ## Installer l'application (PWA)
 
 Le tableau de bord s'installe comme une application : icône sur l'écran d'accueil,
-plein écran, sans barre d'adresse. Dans le design actuel comme dans le bêta.
+plein écran, sans barre d'adresse. Avec le roadbook comme avec l'ancien design.
 
 - **Sur l'ordinateur** : `scripts/dashboard.sh`, puis l'icône d'installation de la
   barre d'adresse (Chrome, Edge) ou *Fichier → Ajouter au Dock* (Safari).
@@ -279,7 +283,7 @@ contrat » dans le menu). Pour tout remettre d'aplomb : [Migrer vos fichiers](mi
 - Une page tierce qui tenterait de l'atteindre en se faisant passer pour
   `localhost` est refusée (protection contre le *DNS rebinding*).
 - Vos données ne quittent pas la machine. Les polices de caractères (Inter, Sora, et
-  Barlow Condensed pour le design bêta) sont servies par le tableau de bord lui-même,
+  Barlow Condensed pour le roadbook) sont servies par le tableau de bord lui-même,
   depuis `web/fonts/` (licence SIL OFL 1.1) : aucun appel à Google Fonts, et
   l'application installée les garde hors ligne. Une seule ressource vient de
   l'extérieur : les tuiles du fond de carte de la
