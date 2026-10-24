@@ -2847,7 +2847,17 @@ warn_kept_schedule() {
         absent)
             warn "Planification CONSERVÉE (workspace « $declared » et son dossier parent introuvables : volume démonté ou partage absent ?) : $what" ;;
         other)
-            declared_is_engine_root "$declared" || return 0
+            if ! declared_is_engine_root "$declared"; then
+                # Autre workspace existant : conservé (un autre membre du foyer, ou une ancienne copie de vos données).
+                if [[ "$what" == *.plist ]]; then
+                    log "Planification d'un autre workspace CONSERVÉE (« $declared ») : $what"
+                    log "  Si c'est une ancienne copie de vos données : launchctl bootout \"gui/\$(id -u)/$(basename "$what" .plist)\" && rm \"$what\""
+                else
+                    log "Planification d'un autre workspace CONSERVÉE (« $declared ») : $what"
+                    log "  Si c'est une ancienne copie de vos données : crontab -e, puis supprimez les lignes contenant ARC_WORKSPACE=\"$declared\""
+                fi
+                return 0
+            fi
             warn "ATTENTION — planification de la RACINE DU MOTEUR CONSERVÉE (« $declared » contient encore des données d'athlète) : $what"
             warn "  Si ce sont VOS données, déjà déplacées vers ce workspace : ./install.sh --daily-sync --workspace \"$WORKSPACE_ROOT\" --replace-schedule"
             warn "  Si c'est un autre membre du foyer : rien à faire, sa synchronisation continue." ;;
