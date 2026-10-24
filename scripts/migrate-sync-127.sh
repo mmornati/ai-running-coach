@@ -42,6 +42,11 @@ step() { printf '\n\033[34m==>\033[0m %s\n' "$*"; }
 read_cron() { crontab -l 2>/dev/null || true; }
 
 # Lignes marquées ACTIVES (ni commentées, ni mises en pause par ce script).
+# Messages d'install.sh signalant une planification conservée / périmée retirée / remplacée. Motif ASCII
+# (« onserv », « p.{1,2}rim » = « périm » en UTF-8 ou en octets) : insensible à la casse des libellés
+# (CONSERVÉE/conservée) et à la locale. Verrouillé par tests/lint/test_migrate_sync_guard.py.
+SCHEDULE_NOTICE_RE='lanification.*(CONSERV|onserv)|igne cron p.{1,2}rim|LaunchAgent p.{1,2}rim'
+
 active_marker_lines() { grep -F "$MARKER" <<<"$1" | grep -vE '^[[:space:]]*#' || true; }
 paused_marker_lines() { grep -F "$PAUSE_PREFIX" <<<"$1" || true; }
 
@@ -351,7 +356,7 @@ migrate() {
         cron_block="$(grep -F "$MARKER" <<<"$preview" | grep -F 'ARC_WORKSPACE=' || true)"
         if [[ "$(grep -c . <<<"$cron_block")" -eq 1 && "$cron_block" == *"ARC_WORKSPACE=\"$WS\""* \
               && "$cron_block" == *"scripts/watch.py"* ]] \
-           && ! grep -qE 'Ligne cron périmée retirée|planification .* conservée' <<<"$preview"; then
+           && ! grep -qE "$SCHEDULE_NOTICE_RE" <<<"$preview"; then
             printf '%s\n' "${args[@]}" > "$CONF/install-args"
             chmod 600 "$CONF/install-args"
             ok "install-args : ${args[*]}"
