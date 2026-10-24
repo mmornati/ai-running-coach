@@ -71,6 +71,7 @@ markdown_extensions:
 
 nav:
   - Accueil: index.md
+  - Nouveautés: nouveautes.md
   - Vidéos: videos.md
   - Installation:
       - Application macOS: macos.md

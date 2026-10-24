@@ -7,6 +7,11 @@ hide:
 <div class="arc-section" markdown>
   <div class="arc-section__inner" markdown>
 
+!!! tip "Quoi de neuf"
+    COROS comme source complète, OpenRouter en un clic, choix des chaussures (`/shoes`), plusieurs athlètes
+    sur une machine, tableau de bord installable : voir les [Nouveautés](nouveautes.md).
+
+
 ## Cinq spécialistes, un seul objectif : le vôtre
 
 `ai-running-coach` transforme votre IDE en staff d'entraînement complet. Cinq agents IA open source, en français par défaut, coordonnés par un coach — chacun avec ses skills, ses données et ses protocoles. Vous décrivez votre objectif, ils construisent le plan. <!-- count:agents -->
