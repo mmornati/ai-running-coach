@@ -714,7 +714,10 @@ refusés. La **récupération COROS** (`queryRecoveryStatus`, `Recovery: N%`) et
 (`querySleepOverview`) vont dans `provider_scores`, nommés et sur leur échelle :
 `{"category": "recovery", "provider": "coros", "value": 96, "scale_min": 0, "scale_max": 100}`. Un
 `Sleep Score: 0` (nuit pas encore calculée) ou `Recovery: -1%` n'est jamais un score : clé omise.
-Pas de `health_provider` (réservé à `openwearables`).
+Pas de `health_provider` (réservé à `openwearables`). Le sommeil se recopie de
+`python3 scripts/arc_coros_sleep.py --date D` : `sleep_total_s` = sommeil principal (« Main Sleep
+(asleep) »), jamais additionné des siestes ; `sleep_start`/`sleep_end` = sa fenêtre ; `sleep_deep_s`,
+`sleep_light_s`, `sleep_rem_s` omis (COROS ne donne que des ratios, de portée ambiguë).
 
 Chaque entrée de `provider_scores` : **`category`** (`readiness`, `recovery` ou
 `sleep` ; la charge n'est pas un signal de récupération), **`value`** (nombre),

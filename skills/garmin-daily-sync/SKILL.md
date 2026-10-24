@@ -71,7 +71,12 @@ Remote Control) et l'IDE partagent. Il délègue tout à l'agent `coach` et au s
   calculée** (`Sleep Score: 0`, HRV « No data found », FC de repos `No data` au jour du réveil) :
   **aucun fichier santé** pour ce jour (le run suivant ou la surveillance réessaie) et le résumé le dit
   (« sommeil COROS pas encore synchronisé »), jamais un score inventé ni la récupération seule à la
-  place de la nuit. L'activité porte `coros_activity_id` (`"c"` + `LabelId`) et `start_time`, omet
+  place de la nuit. Sommeil : la réponse de `querySleepOverview` passe par
+  `python3 scripts/arc_coros_sleep.py --date D` (clés `arc` recopiées telles quelles : sommeil principal
+  seul, siestes jamais additionnées) ; `split_suspected` = nuit probablement coupée par COROS : l'écrire
+  dans le texte du fichier santé avec les deux morceaux, ajouter « nuit coupée par COROS ? à confirmer » à
+  la ligne `Alerte :`, et ne jamais laisser ce sommeil court seul faire passer le verdict à l'orange ou au
+  rouge. L'activité porte `coros_activity_id` (`"c"` + `LabelId`) et `start_time`, omet
   HRR et `calories_bmr_kcal` (aucun équivalent) ; les `splits` viennent du FIT (étape 3a), jamais des
   tours COROS (`queryActivityLapData`). Marqueur « pas encore synchronisé » :
   l'absence de `coros_activity_id`. L'étape 2 s'applique avec cet identifiant (`download_fit.py

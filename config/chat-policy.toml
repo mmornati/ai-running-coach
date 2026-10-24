@@ -40,6 +40,7 @@ allowed_prefixes = [
   "python3 scripts/arc_race_debrief.py",
   "python3 scripts/arc_vanoor.py",
   "python3 scripts/arc_coros_workout.py",
+  "python3 scripts/arc_coros_sleep.py",
   "python3 scripts/coach_doctor.py",
   "python3 scripts/arc_update_check.py",
   "python3 skills/session-parts-analyzer/scripts/analyze_session_parts.py",
@@ -48,7 +49,7 @@ allowed_prefixes = [
 # scripts/arc_log.py`). Seules deux formes sans expansion sont acceptées : chaîne entre
 # apostrophes passée par `|`, ou heredoc à délimiteur entre apostrophes (`<< 'EOF'`).
 stdin_scripts = ["scripts/arc_log.py", "scripts/arc_nutrition_sync.py", "scripts/arc_weight_sync.py", "scripts/arc_vanoor.py",
-                 "scripts/arc_coros_workout.py"]
+                 "scripts/arc_coros_workout.py", "scripts/arc_coros_sleep.py"]
 
 # Options par script (relevées dans l'argparse de chaque script) :
 #   flags           options sans valeur ;
@@ -118,6 +119,10 @@ flags = ["--text"]
 value_options = ["--type", "--duration-s", "--distance-m", "--climb-m", "--hr", "--speed-ms", "--pace", "--scenario"]
 multi_value_options = ["--hr", "--speed-ms"]
 read_options = ["--file", "--plan"]
+
+# Sommeil COROS : réponse de `querySleepOverview` sur l'entrée standard -> clés `sleep_*` ; ne contacte rien.
+[shell.scripts."scripts/arc_coros_sleep.py"]
+value_options = ["--date", "--tz"]
 
 [shell.scripts."skills/gpx-analysis/scripts/analyze_gpx.py"]
 flags = ["--quiet", "--dem", "--no-dem"]

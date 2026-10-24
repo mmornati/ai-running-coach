@@ -194,7 +194,12 @@ nuit) :
 - `querySleepOverview` et `querySleepHrv` : datés par le **jour du réveil** (la nuit qui
   finit le matin de D est rangée sous D). Nuit pas encore terminée : `Sleep Score: 0` avec
   « Sleep detail for this day is not available yet » (0 = absent, pas un score) et « No
-  data found ». La forme d'une nuit complète reste à relever.
+  data found ». Nuit complète (relevée le 24/10/2026) : `Sleep Score: 72`, `Daily Sleep: 5h 29min
+  (incl. naps)`, `Main Sleep (asleep): 4h 47min`, `Main Sleep Period (incl. awake)`, `Sleep metrics
+  scope: daily`, ratios de phases en % (profond, léger, paradoxal, éveil), `Awake Time`, `Main Sleep
+  Window: 2026-10-24 04:45 - 2026-10-24 09:38`, puis les siestes (`Naps Total (asleep)`, `Nap Window`).
+  `querySleepHrv` rend `HRV Avg: 23 ms` seul tant que la ligne de base n'existe pas, puis la série
+  brute (un point toutes les 5 à 15 minutes, horodatage Unix, `timezone` en quarts d'heure).
 
 - `queryMenstruationCycles` : sur un compte sans saisie, plage interrogée (30 jours
   avant, 365 après), « No cycle includes today », durées habituelles (7 jours de règles,
@@ -268,12 +273,26 @@ Avec `--source coros`, le bilan matinal est le même triptyque qu'avec Garmin, a
   continu : il ne prouve jamais que la nuit a été lue.
 - **Jour du réveil.** La nuit du 22 au 23 est datée du 23.
 - **Nuit pas encore calculée.** `Sleep Score: 0`, HRV « No data found », FC de repos `No data` :
-  la nuit n'est pas encore arrivée chez COROS (constaté le 23/10/2026 : nuit visible dans l'app
-  COROS à 11 h 27, toujours absente du MCP à 11 h 34 ; délai à mesurer). La synchronisation sans
+  la nuit n'est pas encore arrivée chez COROS. **La première nuit avec une nouvelle montre n'est
+  jamais publiée** : le 23/10/2026, l'app COROS elle-même affichait « Il n'y a pas de données de
+  sommeil pour le moment », et le MCP n'a jamais rien rendu. Les nuits suivantes arrivent après la
+  synchronisation du téléphone (le 24/10, nuit vue par la surveillance entre 12 h 15 et 12 h 30, juste
+  après la synchronisation). La synchronisation sans
   tête n'écrit alors **aucun** fichier santé et réessaie au passage suivant ; en conversation, le
   coach le dit et décide sur la charge et votre ressenti.
 - **Ligne de base HRV** : environ 5 nuits avec la montre selon COROS ; avant, « ligne de base COROS
   en construction ».
+- **Sommeil principal seulement.** `python3 scripts/arc_coros_sleep.py --date D` (réponse de
+  `querySleepOverview` sur l'entrée standard) rend les clés à recopier : la durée est celle du
+  sommeil principal, les siestes ne sont jamais additionnées, et les ratios de phases ne sont pas
+  convertis en secondes (COROS ne dit pas s'ils couvrent la sieste).
+- **Nuit coupée en deux.** COROS peut découper une nuit continue en sommeil principal + « sieste ».
+  Le 24/10/2026, une personne à côté s'est réveillée vers 9 h 40 : COROS a noté 04:45 – 09:38 puis
+  une sieste 11:30 – 12:15, alors que l'athlète a dormi d'une traite (la série HRV n'a aucun trou).
+  Quand une sieste commence moins de 3 h après la fin du sommeil principal, le script lève
+  `split_suspected` : le coach donne les deux morceaux et vous demande ce qu'il en est (votre
+  réponse prime), la synchronisation le signale dans le résumé, et ce sommeil court ne fait jamais
+  passer le verdict à l'orange ou au rouge à lui seul.
 
 ## Correspondance Garmin ↔ COROS
 
@@ -287,9 +306,9 @@ règles de persistance) est dans `AGENTS.md`, « Correspondance des outils — G
 | Tours | `get_activity_splits` | `queryActivityLapData` | Distances en **cm**, libellés en chinois. Le découpage « par km » repart à chaque étape de la séance planifiée : jamais recopié dans `splits`. |
 | FIT | `get_activity_fit_data` | `queryActivityFitFileDownloadUrls` | Par `download_fit.py --source coros`, jamais par l'IA ; 50 fichiers par jour. |
 | Identifiant au contrat | `garmin_activity_id` | `coros_activity_id` | `"c"` + `LabelId`, avec `start_time`. |
-| HRV nocturne | `get_hrv_data` | `querySleepHrv` | Jour du réveil. Forme d'une nuit complète à relever. |
+| HRV nocturne | `get_hrv_data` | `querySleepHrv` | Jour du réveil. `HRV Avg` (plus plage normale et ligne de base une fois construites), puis la série brute. |
 | FC de repos | `get_rhr_day` | `queryRestingHeartRate(days)` | `AAAA-MM-JJ: N bpm` ou `No data` ; nombre de jours seulement, pas de date. |
-| Sommeil | `get_sleep_data` | `querySleepOverview` | Jour du réveil ; `Sleep Score: 0` = nuit pas encore disponible, pas un score. Forme d'une nuit complète à relever. |
+| Sommeil | `get_sleep_data` | `querySleepOverview` | Jour du réveil ; `Sleep Score: 0` = nuit pas encore disponible, pas un score. Lu par `arc_coros_sleep.py` : sommeil principal seul, nuit coupée signalée. |
 | Readiness | `get_training_readiness` | `queryRecoveryStatus` | **Récupération COROS** : `Recovery: N%`, un niveau, un temps avant récupération complète ; `-1%` = absent. État **actuel** seulement (pas d'historique). Toujours nommée « récupération COROS N % », jamais « Training Readiness », jamais comparée aux seuils Garmin. |
 | Cycle menstruel (opt-in) | `get_menstrual_data_for_date` | `queryMenstruationCycles` | Sans saisie : « No menstrual cycle data found », aucune phase. |
 | Seuil lactique | — | `queryFitnessAssessmentOverview` | Allure seuil COROS, `arc_coros_workout.py threshold`. |
