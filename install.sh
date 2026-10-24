@@ -2841,8 +2841,13 @@ crontab_stale_lines() {
 # Annonce une planification CONSERVÉE qui mérite l'attention : celle de la racine du moteur (données d'un autre
 # membre du foyer, ou les vôtres pas encore migrées) ou celle d'un workspace momentanément indisponible.
 # $1 : ARC_WORKSPACE déclaré, $2 : la ligne cron ou le plist concerné.
+KEPT_SCHEDULE_ANNOUNCED=""
 warn_kept_schedule() {
-    local declared="$1" what="$2"
+    local declared="$1" what="$2" key
+    # Une seule annonce par workspace et par type (la crontab porte plusieurs lignes par workspace).
+    key="$declared|cron"; [[ "$what" != *.plist ]] || key="$declared|$what"
+    case "$KEPT_SCHEDULE_ANNOUNCED" in *"|$key|"*) return 0 ;; esac
+    KEPT_SCHEDULE_ANNOUNCED="$KEPT_SCHEDULE_ANNOUNCED|$key|"
     case "$(workspace_claim "$declared")" in
         absent)
             warn "Planification CONSERVÉE (workspace « $declared » et son dossier parent introuvables : volume démonté ou partage absent ?) : $what" ;;
@@ -2851,9 +2856,11 @@ warn_kept_schedule() {
                 # Autre workspace existant : conservé (un autre membre du foyer, ou une ancienne copie de vos données).
                 if [[ "$what" == *.plist ]]; then
                     log "Planification d'un autre workspace CONSERVÉE (« $declared ») : $what"
+                    log "  Si c'est un autre membre du foyer : rien à faire."
                     log "  Si c'est une ancienne copie de vos données : launchctl bootout \"gui/\$(id -u)/$(basename "$what" .plist)\" && rm \"$what\""
                 else
                     log "Planification d'un autre workspace CONSERVÉE (« $declared ») : $what"
+                    log "  Si c'est un autre membre du foyer : rien à faire."
                     log "  Si c'est une ancienne copie de vos données : crontab -e, puis supprimez les lignes contenant ARC_WORKSPACE=\"$declared\""
                 fi
                 return 0

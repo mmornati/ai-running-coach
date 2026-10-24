@@ -401,6 +401,8 @@ class TestMigrationAndMovedWorkspaceCron(InstallAsserts):
             self.assertEqual(len(_lines(sb, copy)), 2, sb.crontab())
             self.assertOutputContains(proc, "ancienne copie de vos données")
             self.assertOutputContains(proc, "crontab -e")
+            self.assertEqual((proc.stdout + proc.stderr).count("crontab -e"), 1, "annonce répétée par ligne cron")
+            self.assertOutputContains(proc, "autre membre du foyer : rien à faire")
 
 
 class TestMigrationAndLegacyPlistLaunchd(InstallAsserts):

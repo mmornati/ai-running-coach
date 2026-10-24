@@ -202,6 +202,10 @@ class TestStandaloneHelper(unittest.TestCase):
             ("empty ARC_WORKSPACE", {"ARC_LOCK_WORKSPACE": "1", "ARC_WORKSPACE": " "}, self.ws),
             ("unset ARC_WORKSPACE", {"ARC_LOCK_WORKSPACE": "1"}, self.ws),
             ("no lock", {"ARC_WORKSPACE": str(self.ws)}, foreign),
+            ("chosen path missing", {"ARC_LOCK_WORKSPACE": "1", "ARC_WORKSPACE": str(self.ws)}, self.root / "absent"),
+            ("locked path missing", {"ARC_LOCK_WORKSPACE": "1", "ARC_WORKSPACE": str(self.root / "absent")}, self.ws),
+            ("both missing, same", {"ARC_LOCK_WORKSPACE": "1", "ARC_WORKSPACE": str(self.root / "absent")},
+             self.root / "absent"),
         ]
 
         def outcome(fn, env, target):
