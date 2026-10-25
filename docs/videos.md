@@ -98,7 +98,7 @@ Le chat du tableau de bord : trace des outils, carte d'approbation, politique de
 
 ### [Tour du propriétaire](video/tableau-de-bord/index.html)
 
-Visite guidée du tableau de bord local, en lecture seule : une question par vue.
+Visite guidée du tableau de bord local, en lecture seule : une question par vue (ancien design, avant la 1.4).
 
 [Regarder](video/tableau-de-bord/index.html) · [English (1 min 26)](video/tableau-de-bord/index.html?lang=en) · [La documentation](dashboard/views.md)
 
