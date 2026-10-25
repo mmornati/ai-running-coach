@@ -13,6 +13,12 @@ Pour mettre à jour une installation existante : [Passer de la 1.3 à la 1.4](up
   dans l'app COROS (le MCP n'a aucun outil de parcours). Voir [Montres COROS](coros.md) et [Planification COROS](skills/coros-workout-scheduling.md).
 - **Splits par km pour toutes les sources.** `python3 scripts/arc_index.py splits <id>` les calcule depuis le FIT,
   de la même façon avec Garmin, COROS, Intervals.icu ou Strava.
+- **Nuits COROS lues telles quelles.** `python3 scripts/arc_coros_sleep.py` ne garde que le sommeil principal
+  (les siestes ne sont jamais additionnées) et signale une nuit que COROS semble avoir coupée en deux : le coach
+  vous donne les deux morceaux et votre déclaration prime. Voir [Le bilan matinal avec COROS](coros.md#le-bilan-matinal-avec-coros).
+- **FIT COROS lisibles.** Un FIT dont un champ a une taille incohérente (cas réel d'une montre COROS) est relu
+  au lieu d'être refusé en entier ; `download_fit.py --refresh-dynamics` relit aussi les FIT COROS déjà téléchargés.
+  Voir [Téléchargement FIT](skills/fit-download.md).
 - **Surveillance sans LLM.** `scripts/watch.py` (ex-`garmin_watch.py`) sonde Garmin ou COROS et ne lance la
   synchronisation que s'il y a du neuf. Voir [Le coach dans la poche](mobile.md).
 
@@ -55,15 +61,48 @@ Pour mettre à jour une installation existante : [Passer de la 1.3 à la 1.4](up
 
 - **Le design « roadbook » devient le design par défaut** (l'ancien reste accessible avec `?design=classic`
   jusqu'à la 1.5). Voir [Tableau de bord](dashboard/index.md) et [Les vues](dashboard/views.md).
+- **Roadbook plus lisible.** Points de passage « Détaillé » (ravitos et repères espacés d'au moins 15 min,
+  approximation du projet) ou « Ravitaillements uniquement » (`?passages=detailed|aid_stations`) ; un ravito
+  déclaré à l'arrivée n'ajoute plus d'arrêt fictif ; allure moyenne par section. Le matériel passif (sifflet,
+  couverture de survie…) n'est plus signalé « jamais utilisé à l'entraînement ». Voir [Roadbook](dashboard/views.md#roadbook).
 - **Application installable (PWA)**, polices embarquées, semaine avec appariement planifié ↔ réalisé.
 - **Image Docker publiée sur GHCR** (`:latest`, `:edge`, `:X.Y.Z`) ; le compose du projet la construit encore
   localement. Voir [Docker](dashboard/docker.md#images-publiees-ghcr).
+
+- **Captures reproductibles.** Les images de la documentation sont produites par `scripts/docs_capture.py`
+  depuis le workspace fictif de Camille, dans le design roadbook. Voir [Captures de la documentation](videos.md#captures-de-la-documentation).
+
+## Chat et machine coach
+
+- **Fournisseur saturé reconnu.** Une erreur 503 d'OpenRouter (`provider_overloaded`) s'affiche comme un
+  fournisseur saturé à réessayer, dans le chat comme dans la synchronisation.
+- **Chat sur téléphone** : plus de saut du fil vers le haut après « Appliquer », puces repliées entières.
+- **Journal de Remote Control borné.** `scripts/coach-remote.sh rotate-log` fait tourner `logs/remote-control.log`
+  au-delà de 10 Mo, planifié à l'installation. Voir [Le coach dans la poche](mobile.md).
 
 ## Application Mac
 
 - **Mises à jour dans l'application** : les nouvelles versions sont proposées par l'app (Sparkle, signature
   vérifiée), même pour le DMG sans signature Apple. Une dernière installation manuelle du DMG reste nécessaire
   depuis une version qui n'avait pas ce mécanisme. Voir [Mises à jour macOS](macos.md#mises-a-jour).
+
+## Releases
+
+- **Tests verts d'abord.** L'image `:edge` et les releases n'avancent qu'après des tests réussis ; « Tag a release »
+  ne pousse plus rien sur `main` (seul le tag part). Le fichier `VERSION` n'est plus qu'un repli pour un moteur
+  sans `.git` : il se met à jour par une PR ordinaire.
+
+## En vidéo
+
+Quatre nouvelles étapes du « Sentier », en français et en anglais, sous-titrées :
+
+- **22 · [Une autre montre](video/montre-coros/index.html)** : COROS par le MCP officiel, le même bilan matinal (récupération COROS nommée sans conversion), les séances envoyées à la montre après un « oui », la fiche Pace Strategy.
+- **23 · [La paire suivante](video/paire-suivante/index.html)** : fiche de caractéristiques sourcée, retours de chaussant, profil d'usage, plages cibles, puis `/shoes` : la continuité d'abord, le confort décide.
+- **24 · [Le nouveau roadbook](video/roadbook/index.html)** : le tableau de bord lu comme un roadbook de course, design par défaut de la 1.4, application installable.
+- **25 · [Votre IA, votre forfait](video/votre-ia/index.html)** : ChatGPT ou GitHub Copilot sans clé API, une connexion unique, la synchronisation choisie explicitement, « Tester la connexion ».
+
+L'étape 05, « Tour du propriétaire », montre encore l'ancien design du tableau de bord. Toute la série :
+[Vidéos](videos.md).
 
 ## Mettre à jour
 
