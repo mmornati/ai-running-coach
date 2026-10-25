@@ -85,6 +85,16 @@ ESSENTIAL_BINARIES = [
 ]
 
 
+# Variables d'identifiants LLM lues par le projet (arc_llm*, arc_chat*, daily-sync).
+LLM_CREDENTIAL_ENV = (
+    "OPENROUTER_API_KEY",
+    "OPENAI_API_KEY",
+    "ANTHROPIC_API_KEY",
+    "ANTHROPIC_AUTH_TOKEN",
+    "CLAUDE_CODE_OAUTH_TOKEN",
+)
+
+
 class SandboxError(RuntimeError):
     pass
 
@@ -173,6 +183,11 @@ class Sandbox:
         # ne doit jamais fuiter dans un test qui ne les fixe pas lui-même.
         for leaky in ("ARC_DOCTOR_NOW", "GARMIN_TOKENS_DIR", "GARMINTOKENS", "ARC_FAKE_UNAME"):
             env.pop(leaky, None)
+        # Identifiants LLM : les scripts ne remplacent jamais une variable
+        # déjà exportée, donc la vraie clé du contributeur l'emporterait sur
+        # le `llm.env` du bac à sable. Un test qui veut une clé la fixe via `extra`.
+        for name in LLM_CREDENTIAL_ENV:
+            env.pop(name, None)
         if isolate or hide:
             path = str(self.isolated_bin(tuple(hide)))
         else:
