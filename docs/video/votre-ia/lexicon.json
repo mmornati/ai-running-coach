@@ -1,0 +1,37 @@
+{
+ "fr": {
+  "ChatGPT": "tchate gé pé té",
+  "GitHub Copilot": "[[ɡˈitœb kɔpˈajlɔt]]",
+  "Copilot": "[[kɔpˈajlɔt]]",
+  "OpenCode": "[[ˈɔpœn kˈod]]",
+  "Claude": "[[klˈod]]",
+  "Haiku": "[[ˈajku]]",
+  "macOS": "mac o s",
+  "IA": "[[i ˈa]]",
+  "llm": "èl èl èm",
+  "arc llm": "arc èl èl èm",
+  "chatgpt": "tchate gé pé té",
+  "copilot": "[[kɔpˈajlɔt]]",
+  "sync": "[[sˈɪŋk]]",
+  "claude": "[[klˈod]]",
+  "anthropic": "[[ɑ̃tʁɔpˈik]]",
+  "sync anthropic": "[[sˈɪŋk]], [[ɑ̃tʁɔpˈik]]"
+ },
+ "en": {
+  "macOS": "mac O S",
+  "IA": "A I",
+  "llm": "L L M",
+  "arc llm": "arc L L M",
+  "OpenCode": "Open Code",
+  "Claude": "[[klˈɔːd]]",
+  "chatgpt": "chat G P T",
+  "copilot": "co pilot",
+  "claude": "[[klˈɔːd]]",
+  "anthropic": "[[ænθɹˈɒpɪk]]",
+  "sync anthropic": "sink [[ænθɹˈɒpɪk]]"
+ },
+ "fr@microsoft": {
+  "IA": "I A"
+ },
+ "en@microsoft": {}
+}

@@ -21,6 +21,24 @@ Bonne nouvelle : **vous n'avez pas à choisir une technologie, seulement à dire
 </div>
 <!-- /arc-video -->
 
+<!-- arc-video:votre-ia -->
+<div class="arc-video-card" markdown>
+
+[![Votre IA, votre forfait](video/votre-ia/poster.jpg)](video/votre-ia/index.html)
+
+<div markdown>
+
+<span class="arc-video__meta">En vidéo · Étape 25 · 1 min 39</span>
+
+**[Votre IA, votre forfait](video/votre-ia/index.html)** — Vous payez déjà ChatGPT ou GitHub Copilot ? Utilisez-le : une option à l'installation, une connexion unique, un coût « inclus dans votre forfait », le choix explicite de la synchronisation, puis le diagnostic « Tester la connexion » quand quelque chose ne répond plus.
+
+[Regarder](video/votre-ia/index.html) · [English](video/votre-ia/index.html?lang=en) · [Toutes les vidéos](videos.md)
+
+</div>
+
+</div>
+<!-- /arc-video -->
+
 ## L'arbre de décision
 
 ```mermaid

@@ -1,0 +1,146 @@
+{
+  "title": {
+    "fr": "Votre IA, votre forfait",
+    "en": "Your AI, your plan"
+  },
+  "summary": {
+    "fr": "Vous payez déjà ChatGPT ou GitHub Copilot ? Utilisez-le : une option à l'installation, une connexion unique, un coût « inclus dans votre forfait », le choix explicite de la synchronisation, puis le diagnostic « Tester la connexion » quand quelque chose ne répond plus."
+  },
+  "poster": 18,
+  "scenes": [
+    {
+      "id": "bib",
+      "min": 4.6,
+      "lead": 1.2,
+      "fr": [
+        "Étape vingt-cinq : votre IA, votre forfait."
+      ],
+      "en": [
+        "Stage twenty-five: your AI, your plan."
+      ]
+    },
+    {
+      "id": "plans",
+      "min": 8,
+      "chapter": {
+        "fr": "Votre forfait",
+        "en": "Your plan"
+      },
+      "fr": [
+        "Camille paie déjà ChatGPT. Son forfait suffit.",
+        "ChatGPT Plus ou Pro, ou GitHub Copilot Pro, Pro plus, Business, Enterprise. L'offre gratuite est refusée, et le coach le dit."
+      ],
+      "en": [
+        "Camille already pays for ChatGPT. Her plan is enough.",
+        "ChatGPT Plus or Pro, or GitHub Copilot Pro, Pro plus, Business, Enterprise. The free offer is refused, and the coach says so."
+      ]
+    },
+    {
+      "id": "install",
+      "min": 8,
+      "chapter": {
+        "fr": "Une option",
+        "en": "One option"
+      },
+      "fr": [
+        "Une option à l'installation : llm chatgpt, ou llm copilot.",
+        "Puis une connexion, à faire vous-même dans un terminal. Jamais en tâche de fond."
+      ],
+      "en": [
+        "One install option: llm chatgpt, or llm copilot.",
+        "Then you sign in once, yourself, in a terminal. Never in the background."
+      ]
+    },
+    {
+      "id": "store",
+      "min": 8,
+      "chapter": {
+        "fr": "Un coffre à part",
+        "en": "A vault of its own"
+      },
+      "fr": [
+        "La connexion est rangée dans un magasin dédié au coach, en mode sept cent. Votre OpenCode personnel n'est pas touché.",
+        "Le compteur n'affiche aucun euro : « inclus dans votre forfait »."
+      ],
+      "en": [
+        "The sign-in lives in a store dedicated to the coach, mode seven hundred. Your personal OpenCode is untouched.",
+        "The counter shows no euros: “included in your plan”."
+      ]
+    },
+    {
+      "id": "sync",
+      "min": 8,
+      "chapter": {
+        "fr": "La synchronisation",
+        "en": "The sync"
+      },
+      "fr": [
+        "Le chat passe sur le forfait. La synchronisation est un choix explicite : oui sur une installation neuve, sinon sync subscription.",
+        "Aucune règle officielle n'autorise l'usage planifié d'un forfait grand public. No sync subscription l'interdit."
+      ],
+      "en": [
+        "The chat moves onto the plan. The sync is an explicit choice: yes on a fresh install, otherwise sync subscription.",
+        "No official rule allows scheduled use of a consumer plan. No sync subscription forbids it."
+      ]
+    },
+    {
+      "id": "switch",
+      "min": 8,
+      "chapter": {
+        "fr": "Changer la synchro seule",
+        "en": "Sync only"
+      },
+      "fr": [
+        "Forfait Claude à sa limite ? Changez seulement l'intelligence artificielle de la synchronisation, pas celle du chat.",
+        "Une commande : sync anthropic. Haiku cinq point cinq par défaut, payé au jeton. Retour : claude subscription."
+      ],
+      "en": [
+        "Claude plan at its limit? Change the AI of the sync alone, without touching the chat.",
+        "One command: sync anthropic. Haiku five point five by default, paid per token. Back to claude subscription."
+      ]
+    },
+    {
+      "id": "check",
+      "min": 8,
+      "chapter": {
+        "fr": "Le diagnostic",
+        "en": "Diagnosis"
+      },
+      "fr": [
+        "Le coach ne répond plus ? Testez la connexion : un bouton dans l'application macOS et sur la page du chat.",
+        "Ou check dans le terminal, sans réseau ; avec probe, un appel minimal par fournisseur."
+      ],
+      "en": [
+        "The coach stopped answering? Test the connection: a button in the macOS app and on the chat page.",
+        "Or check in the terminal, offline; with probe, one minimal call per provider."
+      ]
+    },
+    {
+      "id": "expired",
+      "min": 8,
+      "chapter": {
+        "fr": "Jeton expiré",
+        "en": "Expired token"
+      },
+      "fr": [
+        "Le jeton a expiré ? Chat et test emploient les mêmes mots ; la synchronisation notifie.",
+        "Le message donne la commande. Le coach ne se reconnecte jamais tout seul."
+      ],
+      "en": [
+        "Token expired? Chat and test use the same words; the sync sends a notification.",
+        "The message gives the command. The coach never signs in on its own."
+      ]
+    },
+    {
+      "id": "finish",
+      "min": 6,
+      "lead": 2.2,
+      "fr": [
+        "Pour aller plus loin : la page « Choisir son IA » de la documentation."
+      ],
+      "en": [
+        "To go further: the “Choosing your AI” page of the documentation."
+      ]
+    }
+  ]
+}
