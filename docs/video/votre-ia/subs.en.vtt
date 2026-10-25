@@ -33,33 +33,37 @@ The counter shows no euros: “included in your plan”.
 The chat moves onto the plan. The sync is an explicit choice: yes on a fresh install, otherwise sync subscription.
 
 9
-00:00:53.764 --> 00:01:00.520
-No official rule allows scheduled use of a consumer plan. No sync subscription forbids it.
+00:00:53.764 --> 00:01:00.840
+No official statement allows scheduled use of a consumer plan. No sync subscription forbids it.
 
 10
-00:01:01.370 --> 00:01:07.401
+00:01:01.690 --> 00:01:07.721
 Claude plan at its limit? Change the AI of the sync alone, without touching the chat.
 
 11
-00:01:07.501 --> 00:01:15.751
+00:01:07.821 --> 00:01:16.071
 One command: sync anthropic. Haiku five point five by default, paid per token. Back to claude subscription.
 
 12
-00:01:16.601 --> 00:01:23.294
+00:01:16.921 --> 00:01:23.614
 The coach stopped answering? Test the connection: a button in the macOS app and on the chat page.
 
 13
-00:01:23.394 --> 00:01:28.849
-Or check in the terminal, offline; with probe, one minimal call per provider.
+00:01:23.714 --> 00:01:26.417
+Or check in the terminal, offline.
 
 14
-00:01:29.699 --> 00:01:35.880
-Token expired? Chat and test use the same words; the sync sends a notification.
+00:01:26.517 --> 00:01:32.612
+With probe, API keys get tested; a plan is only verified on its first request.
 
 15
-00:01:35.980 --> 00:01:40.838
-The message gives the command. The coach never signs in on its own.
+00:01:33.462 --> 00:01:39.536
+Token expired? The chat, the test and the sync notification give the same command.
 
 16
-00:01:43.388 --> 00:01:48.161
+00:01:39.636 --> 00:01:44.153
+The coach never signs in on its own, and opens no browser.
+
+17
+00:01:46.703 --> 00:01:51.476
 To go further: the “Choosing your AI” page of the documentation.

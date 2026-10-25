@@ -1,8 +1,8 @@
 /* Généré par scripts/video_narration.py — ne pas éditer. */
 window.ARC_TIMING = {
  "en": {
-  "digest": "19ca0d9bccb64a3d",
-  "duration": 108.511,
+  "digest": "5793342a655dd740",
+  "duration": 111.826,
   "scenes": [
    {
     "id": "bib",
@@ -73,7 +73,7 @@ window.ARC_TIMING = {
    {
     "id": "sync",
     "start": 45.127,
-    "d": 15.743,
+    "d": 16.063,
     "cues": [
      {
       "s": 0.5,
@@ -82,15 +82,15 @@ window.ARC_TIMING = {
      },
      {
       "s": 8.637,
-      "e": 15.143,
-      "text": "No official rule allows scheduled use of a consumer plan. No sync subscription forbids it."
+      "e": 15.463,
+      "text": "No official statement allows scheduled use of a consumer plan. No sync subscription forbids it."
      }
     ],
     "chapter": "The sync"
    },
    {
     "id": "switch",
-    "start": 60.87,
+    "start": 61.19,
     "d": 15.231,
     "cues": [
      {
@@ -108,8 +108,8 @@ window.ARC_TIMING = {
    },
    {
     "id": "check",
-    "start": 76.101,
-    "d": 13.098,
+    "start": 76.421,
+    "d": 16.541,
     "cues": [
      {
       "s": 0.5,
@@ -118,33 +118,38 @@ window.ARC_TIMING = {
      },
      {
       "s": 7.293,
-      "e": 12.498,
-      "text": "Or check in the terminal, offline; with probe, one minimal call per provider."
+      "e": 9.746,
+      "text": "Or check in the terminal, offline."
+     },
+     {
+      "s": 10.096,
+      "e": 15.941,
+      "text": "With probe, API keys get tested; a plan is only verified on its first request."
      }
     ],
     "chapter": "Diagnosis"
    },
    {
     "id": "expired",
-    "start": 89.199,
-    "d": 11.989,
+    "start": 92.962,
+    "d": 11.541,
     "cues": [
      {
       "s": 0.5,
-      "e": 6.431,
-      "text": "Token expired? Chat and test use the same words; the sync sends a notification."
+      "e": 6.324,
+      "text": "Token expired? The chat, the test and the sync notification give the same command."
      },
      {
-      "s": 6.781,
-      "e": 11.389,
-      "text": "The message gives the command. The coach never signs in on its own."
+      "s": 6.674,
+      "e": 10.941,
+      "text": "The coach never signs in on its own, and opens no browser."
      }
     ],
     "chapter": "Expired token"
    },
    {
     "id": "finish",
-    "start": 101.188,
+    "start": 104.503,
     "d": 7.323,
     "cues": [
      {
@@ -157,8 +162,8 @@ window.ARC_TIMING = {
   ]
  },
  "fr": {
-  "digest": "094aef1a5d0419f5",
-  "duration": 99.0,
+  "digest": "9016ab5236aaae9c",
+  "duration": 103.233,
   "scenes": [
    {
     "id": "bib",
@@ -167,7 +172,7 @@ window.ARC_TIMING = {
     "cues": [
      {
       "s": 1.2,
-      "e": 3.803,
+      "e": 3.739,
       "text": "Étape vingt-cinq : votre IA, votre forfait."
      }
     ]
@@ -229,7 +234,7 @@ window.ARC_TIMING = {
    {
     "id": "sync",
     "start": 39.584,
-    "d": 15.381,
+    "d": 15.765,
     "cues": [
      {
       "s": 0.5,
@@ -238,15 +243,15 @@ window.ARC_TIMING = {
      },
      {
       "s": 8.253,
-      "e": 14.781,
-      "text": "Aucune règle officielle n'autorise l'usage planifié d'un forfait grand public. No sync subscription l'interdit."
+      "e": 15.165,
+      "text": "Aucune déclaration officielle n'autorise l'usage planifié d'un forfait grand public. No sync subscription l'interdit."
      }
     ],
     "chapter": "La synchronisation"
    },
    {
     "id": "switch",
-    "start": 54.965,
+    "start": 55.349,
     "d": 14.271,
     "cues": [
      {
@@ -264,8 +269,8 @@ window.ARC_TIMING = {
    },
    {
     "id": "check",
-    "start": 69.236,
-    "d": 12.906,
+    "start": 69.62,
+    "d": 15.56,
     "cues": [
      {
       "s": 0.5,
@@ -274,38 +279,43 @@ window.ARC_TIMING = {
      },
      {
       "s": 7.186,
-      "e": 12.306,
-      "text": "Ou check dans le terminal, sans réseau ; avec probe, un appel minimal par fournisseur."
+      "e": 9.191,
+      "text": "Ou check dans le terminal, sans réseau."
+     },
+     {
+      "s": 9.541,
+      "e": 14.96,
+      "text": "Avec probe, les clés API sont testées ; un forfait, lui, se vérifie à sa première requête."
      }
     ],
     "chapter": "Le diagnostic"
    },
    {
     "id": "expired",
-    "start": 82.142,
-    "d": 10.346,
+    "start": 85.18,
+    "d": 11.605,
     "cues": [
      {
       "s": 0.5,
-      "e": 5.172,
-      "text": "Le jeton a expiré ? Chat et test emploient les mêmes mots ; la synchronisation notifie."
+      "e": 6.58,
+      "text": "Le jeton a expiré ? Le chat, le test et la notification de la synchronisation donnent la même commande."
      },
      {
-      "s": 5.522,
-      "e": 9.746,
-      "text": "Le message donne la commande. Le coach ne se reconnecte jamais tout seul."
+      "s": 6.93,
+      "e": 11.005,
+      "text": "Le coach ne se reconnecte jamais tout seul, et n'ouvre aucun navigateur."
      }
     ],
     "chapter": "Jeton expiré"
    },
    {
     "id": "finish",
-    "start": 92.488,
-    "d": 6.512,
+    "start": 96.785,
+    "d": 6.448,
     "cues": [
      {
       "s": 2.2,
-      "e": 5.912,
+      "e": 5.848,
       "text": "Pour aller plus loin : la page « Choisir son IA » de la documentation."
      }
     ]

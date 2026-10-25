@@ -32,18 +32,28 @@ const STR = {
     colsC: ["Commande", "La synchro tourne sur"],
     rowsC: [["sync anthropic", "Claude Code + API Anthropic"], ["sync openrouter", "OpenCode + OpenRouter"], ["sync openrouter-free", "OpenCode + modèle gratuit"],
       ["sync openai", "OpenCode + API compatible OpenAI"], ["sync claude-subscription", "retour à l'abonnement Claude"]],
-    haiku: "modèle par défaut : claude-haiku-5-5", perTok: "payé au jeton, clé dans llm.env",
+    haiku: "par défaut : claude-haiku-5-5", perTok: "payé au jeton, clé dans llm.env",
     chatKept: "Chat : inchangé", noReinstall: "aucune réinstallation",
     k6: "06 · LE DIAGNOSTIC", h6: "Un doute ? Testez la connexion.",
     btnMac: "Tester la connexion", btnWeb: "Tester la connexion", appLab: "Application macOS", webLab: "Page du chat",
-    termA: "python3 scripts/arc_llm.py check", termB: "python3 scripts/arc_llm.py check --probe",
-    outA: ["✅ Connexion ChatGPT présente dans le magasin du coach", "   (jetons non affichés)."], netA: "réseau : aucun",
-    outB: ["→ un appel minimal par fournisseur"], netB: "réseau : seulement avec --probe",
-    fixes: "chaque ligne : la commande qui corrige",
+    termA: "python3 scripts/arc_llm.py check", termTitle: "bash — extrait",
+    // Sortie réelle de `arc_llm.py check` (arc_llm_check.render_text) sur un magasin ChatGPT valide ;
+    // lignes vides et ligne de version d'OpenCode omises (« extrait »), ligne longue repliée.
+    outA: [["chat  chatgpt (openai/gpt-5.4-mini)", "soft"], ["sync  chatgpt (openai/gpt-5.4)", "soft"],
+      ["✅ Connexion ChatGPT présente dans le magasin du coach (jetons non affichés).", "ink"],
+      ["✅ Jeton d'accès ChatGPT valable encore 5 jours (rafraîchi automatiquement).", "ink"],
+      ["ℹ️  Pas de test réseau pour un abonnement : la validité réelle se voit à la première requête", "ink"],
+      ["    (le chat traduit alors l'erreur avec ces mêmes mots).", "ink"],
+      ["Aucune erreur.", "accent"],
+      ["Réseau non utilisé : ajoutez --probe pour vérifier la clé, le crédit et le quota.", "soft"]],
     k7: "07 · JETON EXPIRÉ", h7: "Le message dit quoi faire. Rien ne se reconnecte seul.",
-    chatErr: "Connexion ChatGPT expirée ou refusée : reconnectez-vous avec « python3 scripts/arc_llm.py login chatgpt ».",
+    // Messages réels : arc_llm.translate_subscription_error + with_diag (chat), arc_llm_check (test, jeton échu),
+    // daily-sync.sh (notification, PROVIDER_FAILURE=reconnect).
+    chatErr: "Connexion ChatGPT expirée ou refusée : reconnectez-vous avec « python3 scripts/arc_llm.py login chatgpt ». Lancez le diagnostic : python3 scripts/arc_llm.py check --probe.",
+    testErr: "ℹ️ Jeton d'accès ChatGPT échu depuis 3 jours : OpenCode le rafraîchit tout seul à la prochaine requête ; si le chat échoue, la connexion est expirée.",
     chatLab: "Chat", testLab: "Tester la connexion", syncLab: "Notification de la synchro",
-    testMsg: "même message, même commande", notif: "🔑 Sync Garmin — reconnectez ChatGPT",
+    testMsg: "partout, la même commande", notif: "🔑 Sync Garmin — reconnectez ChatGPT",
+    notifBody: "Synchronisation interrompue : la connexion ChatGPT est expirée ou refusée. Reconnectez-vous dans un terminal :",
     never: "jamais de connexion automatique", noBrowser: "aucun navigateur ouvert",
   },
   en: {
@@ -67,18 +77,24 @@ const STR = {
     colsC: ["Command", "The sync runs on"],
     rowsC: [["sync anthropic", "Claude Code + Anthropic API"], ["sync openrouter", "OpenCode + OpenRouter"], ["sync openrouter-free", "OpenCode + free model"],
       ["sync openai", "OpenCode + OpenAI-compatible API"], ["sync claude-subscription", "back to the Claude plan"]],
-    haiku: "default model: claude-haiku-5-5", perTok: "paid per token, key in llm.env",
+    haiku: "default: claude-haiku-5-5", perTok: "paid per token, key in llm.env",
     chatKept: "Chat: unchanged", noReinstall: "no reinstall",
     k6: "06 · DIAGNOSIS", h6: "In doubt? Test the connection.",
     btnMac: "Test the connection", btnWeb: "Test the connection", appLab: "macOS app", webLab: "Chat page",
-    termA: "python3 scripts/arc_llm.py check", termB: "python3 scripts/arc_llm.py check --probe",
-    outA: ["✅ ChatGPT sign-in present in the coach's store", "   (tokens not shown)."], netA: "network: none",
-    outB: ["→ one minimal call per provider"], netB: "network: only with --probe",
-    fixes: "every line: the command that fixes it",
+    termA: "python3 scripts/arc_llm.py check", termTitle: "bash — excerpt, translated",
+    outA: [["chat  chatgpt (openai/gpt-5.4-mini)", "soft"], ["sync  chatgpt (openai/gpt-5.4)", "soft"],
+      ["✅ ChatGPT sign-in present in the coach's store (tokens not shown).", "ink"],
+      ["✅ ChatGPT access token still valid for 5 days (refreshed automatically).", "ink"],
+      ["ℹ️  No network test for a plan: real validity shows on the first request", "ink"],
+      ["    (the chat then translates the error with these same words).", "ink"],
+      ["No errors.", "accent"],
+      ["Network not used: add --probe to check the key, the credit and the quota.", "soft"]],
     k7: "07 · EXPIRED TOKEN", h7: "The message says what to do. Nothing signs in by itself.",
-    chatErr: "ChatGPT sign-in expired or refused: sign in again with “python3 scripts/arc_llm.py login chatgpt”.",
+    chatErr: "ChatGPT sign-in expired or refused: sign in again with “python3 scripts/arc_llm.py login chatgpt”. Run the diagnosis: python3 scripts/arc_llm.py check --probe.",
+    testErr: "ℹ️ ChatGPT access token expired 3 days ago: OpenCode refreshes it on its own at the next request; if the chat fails, the sign-in has expired.",
     chatLab: "Chat", testLab: "Test the connection", syncLab: "Sync notification",
-    testMsg: "same message, same command", notif: "🔑 Garmin sync — reconnect ChatGPT",
+    testMsg: "everywhere, the same command", notif: "🔑 Garmin sync — reconnect ChatGPT",
+    notifBody: "Sync interrupted: the ChatGPT sign-in has expired or was refused. Sign in again in a terminal:",
     never: "never an automatic sign-in", noBrowser: "no browser opened",
   },
 };
@@ -167,7 +183,6 @@ function sStore(t, d, cues) {
   if (kc > 0) {
     panel(760, 190, 440, 300, { r: 18, alpha: clamp(kc), shadow: true });
     label(S.counter.toUpperCase(), 788, 228, clamp(kc), C.faint);
-    text("0 €", 980, 340, { size: 22, weight: 800, font: SORA, color: C.faint, align: "center", alpha: clamp(kc) * 0 });
     pill(S.included, 980, 330, { size: 17, align: "center", alpha: clamp(kc), padX: 22, color: C.deep, fill: C.accent, stroke: C.accent });
     para(S.limits, 788, 410, 380, { size: 16, color: C.soft, alpha: seg(t, a1 + 2, a1 + 2.6) });
   }
@@ -228,57 +243,51 @@ function sSwitch(t, d, cues) {
 /* ------------------------------ 06 · le diagnostic ------------------------------ */
 function sCheck(t, d, cues) {
   head(S.k6, S.h6, t);
-  const a0 = at(cues, 0, 0.6), a1 = at(cues, 1, 6);
+  const a0 = at(cues, 0, 0.6), a1 = at(cues, 1, 6), a2 = at(cues, 2, 9);
   const k0 = outCubic(seg(t, 0.3, 0.9));
-  // deux boutons
-  panel(80, 176, 430, 130, { r: 14, fill: "#1b1d1c", stroke: "#3a3d3b", alpha: k0 });
-  text(S.appLab, 104, 212, { size: 13, color: "#9aa09c", alpha: k0 });
   const press = seg(t, a0 + 3.0, a0 + 3.4) * (1 - seg(t, a0 + 3.6, a0 + 4.0));
-  btn(S.btnMac, 104, 232, 220, k0, { primary: press > 0.5 });
-  panel(80, 330, 430, 130, { r: 14, fill: "#f4f5f4", stroke: false, alpha: k0 });
-  text(S.webLab, 104, 366, { size: 13, color: "#6b736f", alpha: k0 });
-  panel(104, 386, 220, 38, { r: 9, fill: "#fff", stroke: "#cfd4d1", alpha: k0 });
-  text(S.btnWeb, 214, 411, { size: 14, weight: 600, color: "#1c2b24", align: "center", alpha: k0 });
-  // le terminal
-  const lines = [
-    { p: "$ ", s: nolig(S.termA), c: C.accent, w: 700, a: a1 + 0.1, b: a1 + 1.0 },
-    { s: S.outA[0], c: C.ink, a: a1 + 1.3 }, { s: S.outA[1], c: C.soft, a: a1 + 1.3 },
-    { p: "$ ", s: nolig(S.termB), c: C.accent, w: 700, a: a1 + 2.6, b: a1 + 3.6 },
-    { s: S.outB[0], c: C.ink, a: a1 + 3.9 },
-  ];
-  terminal(550, 176, 650, 284, t, lines, { alpha: k0, size: 14, lh: 30, title: "bash" });
-  const kn = outBack(seg(t, a1 + 1.6, a1 + 2.1)), kn2 = outBack(seg(t, a1 + 4.1, a1 + 4.6));
-  if (kn > 0) pill(S.netA, 560, 500, { size: 15, alpha: clamp(kn) * (1 - seg(t, a1 + 2.6, a1 + 3.0)), padX: 18 });
-  if (kn2 > 0) pill(S.netB, 560, 500, { size: 15, alpha: clamp(kn2), padX: 18, color: C.amber, fill: "rgba(240,180,60,0.08)", stroke: "rgba(240,180,60,0.45)" });
-  const kf = outBack(seg(t, a1 + 4.8, a1 + 5.4));
-  if (kf > 0) pill(S.fixes, 80, 520, { size: 16, alpha: clamp(kf), padX: 20 });
+  // deux boutons, côte à côte
+  panel(80, 172, 545, 78, { r: 14, fill: "#1b1d1c", stroke: "#3a3d3b", alpha: k0 });
+  text(S.appLab, 104, 217, { size: 14, color: "#9aa09c", alpha: k0 });
+  btn(S.btnMac, 380, 192, 220, k0, { primary: press > 0.5 });
+  panel(655, 172, 545, 78, { r: 14, fill: "#f4f5f4", stroke: false, alpha: k0 });
+  text(S.webLab, 679, 217, { size: 14, color: "#6b736f", alpha: k0 });
+  panel(955, 192, 220, 38, { r: 9, fill: press > 0.5 ? "#e3f3c4" : "#fff", stroke: "#cfd4d1", alpha: k0 });
+  text(S.btnWeb, 1065, 217, { size: 14, weight: 600, color: "#1c2b24", align: "center", alpha: k0 });
+  // le terminal : sortie réelle (extrait)
+  const lines = [{ p: "$ ", s: nolig(S.termA), c: C.accent, w: 700, a: a1 + 0.1, b: a1 + 1.0 }];
+  S.outA.forEach(([s, c], i) => lines.push({ s: nolig(s), c: C[c], a: a1 + 1.2 + i * 0.18 }));
+  terminal(80, 270, 1120, 300, t, lines, { alpha: outCubic(seg(t, a1 - 0.6, a1)), size: 14, lh: 26, title: S.termTitle });
+  // « --probe » : pas de réseau pour un forfait, la validité se voit à la première requête
+  highlight(92, 452, 1096, 40, seg(t, a2 + 0.2, a2 + 0.8), C.amber);
 }
 
 /* ------------------------------ 07 · le jeton expiré ------------------------------ */
 function sExpired(t, d, cues) {
   head(S.k7, S.h7, t);
   const a0 = at(cues, 0, 0.6), a1 = at(cues, 1, 5);
-  const k0 = outCubic(seg(t, 0.3, 0.9));
-  const card = (x, y, w, lab, k, col) => {
-    panel(x, y, w, 128, { r: 16, fill: "rgba(240,122,95,0.07)", stroke: col, lw: 2, alpha: k });
+  const card = (x, y, w, h, lab, k, col) => {
+    panel(x, y, w, h, { r: 16, fill: "rgba(240,122,95,0.07)", stroke: col, lw: 2, alpha: k });
     label(lab.toUpperCase(), x + 22, y + 30, k, col);
   };
   const k1 = outCubic(seg(t, a0 + 0.5, a0 + 1.1));
-  card(80, 180, 1120, S.chatLab, k1, C.red);
-  para(S.chatErr, 102, 250, 1070, { size: 19, font: MONO, alpha: k1 });
-  const k2 = outCubic(seg(t, a0 + 2.6, a0 + 3.2));
-  card(80, 330, 540, S.testLab, k2, C.amber);
-  para(S.chatErr, 102, 392, 500, { size: 12, font: MONO, color: C.soft, alpha: k2 });
-  const k3 = outCubic(seg(t, a0 + 3.8, a0 + 4.4));
-  card(660, 330, 540, S.syncLab, k3, C.amber);
-  text(S.notif, 682, 390, { size: 18, weight: 700, alpha: k3 });
-  text("python3 scripts/arc_llm.py login chatgpt", 682, 424, { size: 14, font: MONO, color: C.accent, alpha: k3 });
-  const kt = outBack(seg(t, a0 + 4.6, a0 + 5.2));
-  if (kt > 0) pill(S.testMsg, 80, 506, { size: 15, alpha: clamp(kt), padX: 18, color: C.soft, fill: C.deep, stroke: C.line });
+  card(80, 172, 1120, 104, S.chatLab, k1, C.red);
+  para(nolig(S.chatErr), 102, 234, 1076, { size: 16, font: MONO, alpha: k1 });
+  const k2 = outCubic(seg(t, a0 + 2.0, a0 + 2.6));
+  card(80, 296, 540, 150, S.testLab, k2, C.amber);
+  const h2 = para(S.testErr, 102, 352, 496, { size: 12, font: MONO, color: C.soft, alpha: k2, lh: 17 });
+  text("→ python3 scripts/arc_llm.py login chatgpt", 102, 352 + h2 + 8, { size: 13, font: MONO, color: C.accent, alpha: k2 });
+  const k3 = outCubic(seg(t, a0 + 3.2, a0 + 3.8));
+  card(660, 296, 540, 150, S.syncLab, k3, C.amber);
+  text(S.notif, 682, 356, { size: 17, weight: 700, alpha: k3 });
+  const h3 = para(S.notifBody, 682, 382, 496, { size: 13, color: C.soft, alpha: k3, lh: 18 });
+  text("python3 scripts/arc_llm.py login chatgpt", 682, 382 + h3 + 8, { size: 13, font: MONO, color: C.accent, alpha: k3 });
+  const kt = outBack(seg(t, a0 + 4.4, a0 + 5.0));
+  if (kt > 0) pill(S.testMsg, 80, 480, { size: 15, alpha: clamp(kt), padX: 18, color: C.soft, fill: C.deep, stroke: C.line });
   const kn = outBack(seg(t, a1 + 0.6, a1 + 1.2));
   if (kn > 0) {
-    const w = pill(S.never, 80, 566, { size: 18, alpha: clamp(kn), padX: 22 });
-    pill(S.noBrowser, 80 + w + 24, 566, { size: 18, alpha: clamp(kn), padX: 22, color: C.amber, fill: "rgba(240,180,60,0.08)", stroke: "rgba(240,180,60,0.45)" });
+    const w = pill(S.never, 80, 534, { size: 18, alpha: clamp(kn), padX: 22 });
+    pill(S.noBrowser, 80 + w + 24, 534, { size: 18, alpha: clamp(kn), padX: 22, color: C.amber, fill: "rgba(240,180,60,0.08)", stroke: "rgba(240,180,60,0.45)" });
   }
 }
 

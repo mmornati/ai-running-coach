@@ -6,7 +6,7 @@
   "summary": {
     "fr": "Vous payez déjà ChatGPT ou GitHub Copilot ? Utilisez-le : une option à l'installation, une connexion unique, un coût « inclus dans votre forfait », le choix explicite de la synchronisation, puis le diagnostic « Tester la connexion » quand quelque chose ne répond plus."
   },
-  "poster": 18,
+  "poster": 16.4,
   "scenes": [
     {
       "id": "bib",
@@ -76,11 +76,11 @@
       },
       "fr": [
         "Le chat passe sur le forfait. La synchronisation est un choix explicite : oui sur une installation neuve, sinon sync subscription.",
-        "Aucune règle officielle n'autorise l'usage planifié d'un forfait grand public. No sync subscription l'interdit."
+        "Aucune déclaration officielle n'autorise l'usage planifié d'un forfait grand public. No sync subscription l'interdit."
       ],
       "en": [
         "The chat moves onto the plan. The sync is an explicit choice: yes on a fresh install, otherwise sync subscription.",
-        "No official rule allows scheduled use of a consumer plan. No sync subscription forbids it."
+        "No official statement allows scheduled use of a consumer plan. No sync subscription forbids it."
       ]
     },
     {
@@ -108,11 +108,13 @@
       },
       "fr": [
         "Le coach ne répond plus ? Testez la connexion : un bouton dans l'application macOS et sur la page du chat.",
-        "Ou check dans le terminal, sans réseau ; avec probe, un appel minimal par fournisseur."
+        "Ou check dans le terminal, sans réseau.",
+        "Avec probe, les clés API sont testées ; un forfait, lui, se vérifie à sa première requête."
       ],
       "en": [
         "The coach stopped answering? Test the connection: a button in the macOS app and on the chat page.",
-        "Or check in the terminal, offline; with probe, one minimal call per provider."
+        "Or check in the terminal, offline.",
+        "With probe, API keys get tested; a plan is only verified on its first request."
       ]
     },
     {
@@ -123,12 +125,12 @@
         "en": "Expired token"
       },
       "fr": [
-        "Le jeton a expiré ? Chat et test emploient les mêmes mots ; la synchronisation notifie.",
-        "Le message donne la commande. Le coach ne se reconnecte jamais tout seul."
+        "Le jeton a expiré ? Le chat, le test et la notification de la synchronisation donnent la même commande.",
+        "Le coach ne se reconnecte jamais tout seul, et n'ouvre aucun navigateur."
       ],
       "en": [
-        "Token expired? Chat and test use the same words; the sync sends a notification.",
-        "The message gives the command. The coach never signs in on its own."
+        "Token expired? The chat, the test and the sync notification give the same command.",
+        "The coach never signs in on its own, and opens no browser."
       ]
     },
     {

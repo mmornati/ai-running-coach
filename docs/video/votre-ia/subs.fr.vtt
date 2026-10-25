@@ -1,7 +1,7 @@
 WEBVTT
 
 1
-00:00:01.200 --> 00:00:04.053
+00:00:01.200 --> 00:00:03.989
 Étape vingt-cinq : votre IA, votre forfait.
 
 2
@@ -33,33 +33,37 @@ Le compteur n'affiche aucun euro : « inclus dans votre forfait ».
 Le chat passe sur le forfait. La synchronisation est un choix explicite : oui sur une installation neuve, sinon sync subscription.
 
 9
-00:00:47.837 --> 00:00:54.615
-Aucune règle officielle n'autorise l'usage planifié d'un forfait grand public. No sync subscription l'interdit.
+00:00:47.837 --> 00:00:54.999
+Aucune déclaration officielle n'autorise l'usage planifié d'un forfait grand public. No sync subscription l'interdit.
 
 10
-00:00:55.465 --> 00:01:01.966
+00:00:55.849 --> 00:01:02.350
 Forfait Claude à sa limite ? Changez seulement l'intelligence artificielle de la synchronisation, pas celle du chat.
 
 11
-00:01:02.066 --> 00:01:08.886
+00:01:02.450 --> 00:01:09.270
 Une commande : sync anthropic. Haiku cinq point cinq par défaut, payé au jeton. Retour : claude subscription.
 
 12
-00:01:09.736 --> 00:01:16.322
+00:01:10.120 --> 00:01:16.706
 Le coach ne répond plus ? Testez la connexion : un bouton dans l'application macOS et sur la page du chat.
 
 13
-00:01:16.422 --> 00:01:21.792
-Ou check dans le terminal, sans réseau ; avec probe, un appel minimal par fournisseur.
+00:01:16.806 --> 00:01:19.061
+Ou check dans le terminal, sans réseau.
 
 14
-00:01:22.642 --> 00:01:27.564
-Le jeton a expiré ? Chat et test emploient les mêmes mots ; la synchronisation notifie.
+00:01:19.161 --> 00:01:24.830
+Avec probe, les clés API sont testées ; un forfait, lui, se vérifie à sa première requête.
 
 15
-00:01:27.664 --> 00:01:32.138
-Le message donne la commande. Le coach ne se reconnecte jamais tout seul.
+00:01:25.680 --> 00:01:32.010
+Le jeton a expiré ? Le chat, le test et la notification de la synchronisation donnent la même commande.
 
 16
-00:01:34.688 --> 00:01:38.650
+00:01:32.110 --> 00:01:36.435
+Le coach ne se reconnecte jamais tout seul, et n'ouvre aucun navigateur.
+
+17
+00:01:38.985 --> 00:01:42.883
 Pour aller plus loin : la page « Choisir son IA » de la documentation.

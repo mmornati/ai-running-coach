@@ -7,7 +7,7 @@
   "Claude": "[[klˈod]]",
   "Haiku": "[[ˈajku]]",
   "macOS": "mac o s",
-  "IA": "[[i ˈa]]",
+  "IA": "[[iˈa]]",
   "llm": "èl èl èm",
   "arc llm": "arc èl èl èm",
   "chatgpt": "tchate gé pé té",
@@ -15,7 +15,8 @@
   "sync": "[[sˈɪŋk]]",
   "claude": "[[klˈod]]",
   "anthropic": "[[ɑ̃tʁɔpˈik]]",
-  "sync anthropic": "[[sˈɪŋk]], [[ɑ̃tʁɔpˈik]]"
+  "sync anthropic": "[[sˈɪŋk]], [[ɑ̃tʁɔpˈik]]",
+  "API": "a pé i"
  },
  "en": {
   "macOS": "mac O S",
@@ -28,7 +29,8 @@
   "copilot": "co pilot",
   "claude": "[[klˈɔːd]]",
   "anthropic": "[[ænθɹˈɒpɪk]]",
-  "sync anthropic": "sink [[ænθɹˈɒpɪk]]"
+  "sync anthropic": "sink [[ænθɹˈɒpɪk]]",
+  "API": "A P I"
  },
  "fr@microsoft": {
   "IA": "I A"
