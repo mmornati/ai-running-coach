@@ -6,6 +6,24 @@ briques dans l'ordre : la fiche de caractéristiques d'une paire (#298), les ret
 d'usage (#300), les besoins pour la prochaine paire fondés sur les preuves (#301) et la commande `/shoes` qui assemble
 le tout (#302). Une paire retirée dans Garmin Connect est retirée aussitôt du suivi : voir [Configuration Garmin](garmin-setup.md).
 
+<!-- arc-video:paire-suivante -->
+<div class="arc-video-card" markdown>
+
+[![La paire suivante](video/paire-suivante/poster.jpg)](video/paire-suivante/index.html)
+
+<div markdown>
+
+<span class="arc-video__meta">En vidéo · Étape 23 · 1 min 38</span>
+
+**[La paire suivante](video/paire-suivante/index.html)** — Une paire arrive en fin de vie : fiche de caractéristiques sourcée, retours de chaussant, profil d'usage, plages cibles par des règles à preuves et commande /shoes (continuité d'abord, veto médical, confort qui décide) — sans achat, sans prix, sans promesse de prévention.
+
+[Regarder](video/paire-suivante/index.html) · [English](video/paire-suivante/index.html?lang=en) · [Toutes les vidéos](videos.md)
+
+</div>
+
+</div>
+<!-- /arc-video -->
+
 ## La fiche de caractéristiques : `gear/specs/<gear_id>.md`
 
 Un fichier par paire, lié au profil par le `gear_id` (le profil `### Chaussures` reste inchangé et édité

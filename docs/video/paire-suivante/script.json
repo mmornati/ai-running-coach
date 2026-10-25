@@ -1,0 +1,158 @@
+{
+  "title": {
+    "fr": "La paire suivante",
+    "en": "The next pair"
+  },
+  "summary": {
+    "fr": "Une paire arrive en fin de vie : fiche de caractéristiques sourcée, retours de chaussant, profil d'usage, plages cibles par des règles à preuves et commande /shoes (continuité d'abord, veto médical, confort qui décide) — sans achat, sans prix, sans promesse de prévention."
+  },
+  "poster": 62.5,
+  "scenes": [
+    {
+      "id": "bib",
+      "min": 4.6,
+      "lead": 1.2,
+      "fr": [
+        "Étape vingt-trois : la paire suivante."
+      ],
+      "en": [
+        "Stage twenty-three: the next pair."
+      ]
+    },
+    {
+      "id": "endlife",
+      "min": 6,
+      "chapter": {
+        "fr": "Fin de vie",
+        "en": "End of life"
+      },
+      "fr": [
+        "Seuil franchi ou inspection rouge : la Crête Pro de Camille arrive au bout.",
+        "Par quoi la remplacer ?"
+      ],
+      "en": [
+        "Threshold crossed or a red inspection: Camille's Crête Pro is done.",
+        "What replaces it?"
+      ]
+    },
+    {
+      "id": "specs",
+      "min": 6,
+      "chapter": {
+        "fr": "La fiche",
+        "en": "The spec sheet"
+      },
+      "fr": [
+        "Chaque paire a sa fiche. Chaque valeur porte sa source : laboratoire, marque, ou vous.",
+        "La mesure prime : drop annoncé six millimètres, mesuré près de neuf.",
+        "Jamais la valeur d'un modèle voisin, et rien sans votre validation."
+      ],
+      "en": [
+        "Every pair has a spec sheet. Each value carries its source: lab, brand, or you.",
+        "Measurement wins: six millimetres of drop claimed, nearly nine measured.",
+        "Never a neighbouring model's value, and nothing without your approval."
+      ]
+    },
+    {
+      "id": "fit",
+      "min": 6,
+      "chapter": {
+        "fr": "Le chaussant",
+        "en": "The fit"
+      },
+      "fr": [
+        "Après une sortie, /log note le confort, une ampoule, un avant-pied serré.",
+        "À la retraite, un bilan : la rachèteriez-vous ?",
+        "Jamais à la place d'une douleur déclarée."
+      ],
+      "en": [
+        "After a run, /log records comfort, a blister, a tight toe box.",
+        "At retirement, a verdict: would you buy it again?",
+        "Never in place of a reported pain."
+      ]
+    },
+    {
+      "id": "usage",
+      "min": 6,
+      "chapter": {
+        "fr": "L'usage réel",
+        "en": "Real use"
+      },
+      "fr": [
+        "Le profil d'usage dit ce que la paire faisait : le terrain, le dénivelé, les longues sorties.",
+        "On compare la foulée à allure comparable, trois séances minimum.",
+        "Les douleurs : corrélation, pas causalité, pas de taux sous cinq épisodes."
+      ],
+      "en": [
+        "The usage profile shows what the pair did: type of ground, climb, long runs.",
+        "Stride compared at a comparable pace, three runs minimum.",
+        "Pain: correlation, not causation, no rate under five episodes."
+      ]
+    },
+    {
+      "id": "needs",
+      "min": 6,
+      "chapter": {
+        "fr": "Les besoins",
+        "en": "The needs"
+      },
+      "fr": [
+        "Le moteur en tire des plages cibles : drop, pile, souplesse, crampons, largeur.",
+        "Chacune avec sa règle, sa preuve, ses références. Jamais une marque.",
+        "Achille déjà fragile ? Le drop n'est jamais abaissé."
+      ],
+      "en": [
+        "The engine derives target ranges: drop, stack, softness, lugs, width.",
+        "Each with its rule, evidence and references. Never a brand.",
+        "Past Achilles tendon pain? The drop is never lowered."
+      ]
+    },
+    {
+      "id": "shoes",
+      "min": 6,
+      "chapter": {
+        "fr": "La commande /shoes",
+        "en": "The /shoes command"
+      },
+      "fr": [
+        "Tapez la commande /shoes. La continuité d'abord : la version actuelle du modèle qui vous a convenu, comparée à l'ancienne.",
+        "Sinon, trois à cinq modèles trouvés en ligne, chaque valeur sourcée.",
+        "L'agent médical peut en écarter un."
+      ],
+      "en": [
+        "Type the /shoes command. Continuity first: the current version of the model that suited you, compared with the old one.",
+        "Otherwise, three to five models found online, every value sourced.",
+        "The medical agent can rule one out."
+      ]
+    },
+    {
+      "id": "try",
+      "min": 6,
+      "chapter": {
+        "fr": "Le confort décide",
+        "en": "Comfort decides"
+      },
+      "fr": [
+        "Essayer en magasin : le confort décide.",
+        "Rodage de trente à cinquante kilomètres, deux paires en rotation.",
+        "Aucun achat, aucun prix, aucun lien d'affiliation, aucune promesse de prévention."
+      ],
+      "en": [
+        "Try them in store: comfort decides.",
+        "Break them in over thirty to fifty kilometres; keep two pairs in rotation.",
+        "No purchase, no price, no affiliate link, no promise of injury prevention."
+      ]
+    },
+    {
+      "id": "finish",
+      "min": 6,
+      "lead": 2.2,
+      "fr": [
+        "Pour aller plus loin : la page « Choisir ses chaussures » de la documentation."
+      ],
+      "en": [
+        "To go further: the “Choosing your shoes” documentation page."
+      ]
+    }
+  ]
+}
