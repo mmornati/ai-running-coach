@@ -1,6 +1,6 @@
 # 🏃 ai-running-coach
 
-> Votre coach IA de trail running, connecté à **Garmin Connect** — préparez votre objectif avec l'aide d'agents spécialisés.
+> Votre coach IA de trail running, connecté à **Garmin Connect**, **COROS**, **Intervals.icu** ou **Strava** — préparez votre objectif avec l'aide d'agents spécialisés.
 
 `ai-running-coach` est un projet open-source qui fournit des **agents IA** et des **skills** pour aider les coureurs à préparer un objectif (course, trail, ultra) avec l'aide d'un assistant IA dans leur IDE préféré.
 
@@ -20,10 +20,13 @@ Le projet est **en français par défaut** (la langue des documents générés e
 | ⛰️ **Altitude en ultra** | pénalité de temps au-dessus de 1 500 m (approximation du projet, tirée d'une étude publiée), réduite par l'acclimatation déclarée et par l'exposition mesurée à l'entraînement (carte « Exposition à l'altitude » de la vue Santé) |
 | 🌡️ **Cibles ajustées à la chaleur** | par grosse chaleur, l'allure cible des séances (endurance, sortie longue, qualité) est ralentie de façon déterministe — FC inchangée, créneau frais proposé, jamais d'intensité maintenue en 🔴 (mêmes coefficients que le plan de course) |
 | 🛠️ **27 skills** | commandes courtes `/today` `/why` `/week` `/race` `/log` `/inspection` `/shoes` `/update-coach`, analyse GPX (altitude corrigée par MNT en option), comparaison de parcours, planification Garmin et COROS, météo, analyse de séances, Intervals.icu, diagnostic d'installation, inspection photo des chaussures, parcours MyWhoosh à la durée d'une séance home trainer, export des séances vers Vanoor (Apple Watch), etc. |
-| 📡 **Accès Garmin Connect** | via `garmin-mcp` (mode direct, liste blanche d'outils) — passerelle `leanproxy-mcp` optionnelle |
+| 📡 **Sources de données** | [Garmin](docs/garmin-setup.md) (défaut, `garmin-mcp` en mode direct, liste blanche d'outils), [COROS](docs/coros.md) (MCP officiel, source complète), [Intervals.icu](docs/intervals-setup.md), [Strava](docs/strava-setup.md), et [Open Wearables](docs/open-wearables.md) comme source santé du bilan matinal — `--source` à l'installation ; ce que chaque source ne sait pas faire est dit, jamais simulé |
+| 🤖 **Choisir son IA** | celle que vous payez déjà (Claude, ChatGPT Plus/Pro, GitHub Copilot), sinon OpenRouter connecté en un clic (sans clé à copier) avec un essai gratuit ; la synchronisation automatique peut changer d'IA seule, et un test de connexion vérifie clé, crédit et quota — voir [Choisir son IA](docs/choisir-son-ia.md) |
 | 🚀 **Installation automatisée** | un script pour installer et configurer tout (uv, Garmin, IDE) |
-| 👟 **Suivi du matériel** | kilométrage par paire depuis Garmin, prévision de retraite, équipement et kits, inspection photo (`/inspection`), contrôle du matériel de course |
-| 📊 **Tableau de bord local** | courbe de forme (condition / fatigue / forme), bilan santé du matin, semaine, séances et splits, prédictions — à côté du texte du coach (`scripts/dashboard.sh`, lecture seule, 127.0.0.1) |
+| 👟 **Suivi du matériel et choix des chaussures** | kilométrage par paire, prévision de retraite (une paire retirée dans Garmin l'est aussitôt), équipement et kits, inspection photo (`/inspection`), contrôle du matériel de course ; fiche de caractéristiques de chaque paire (sourcée), retours de chaussant, profil d'usage, besoins pour la prochaine paire et choix guidé (`/shoes`) — voir [Choisir ses chaussures](docs/shoes.md) |
+| ⌚ **Export Vanoor (Apple Watch)** | opt-in (`[vanoor]`) : séances de course structurées et plan de course écrits au format de l'app Vanoor, un export sans push — voir [Export Vanoor](docs/skills/vanoor-export.md) |
+| 👥 **Plusieurs athlètes sur une machine** | un workspace par athlète, avec ses jetons, ses identifiants et sa planification de synchronisation ; migration d'une installation existante par `scripts/migrate-sync-127.sh` — voir [Votre workspace privé](docs/workspace.md#plusieurs-workspaces-et-plusieurs-athletes) et [Mettre à jour](docs/update.md) |
+| 📊 **Tableau de bord local** | courbe de forme (condition / fatigue / forme), bilan santé du matin, semaine (planifié ↔ réalisé appariés), séances et splits par km calculés depuis le FIT pour toutes les sources, prédictions — à côté du texte du coach (`scripts/dashboard.sh`, lecture seule, 127.0.0.1) ; installable comme application (PWA), design « roadbook » — voir [Tableau de bord](docs/dashboard/index.md) |
 | 🗓️ **Gabarits de périodisation** | base / développement / spécifique / affûtage / récupération par format (trail court, marathon trail, ultra 80–100 km, 100 miles, semi et marathon route), en données vérifiées par un script contre les garde-fous — point de départ du bloc, jamais un plan imposé ; `plan-skeleton` en tire un squelette semaine par semaine vérifié par les garde-fous (proposition, écriture sur accord) — voir [Gabarits de périodisation](docs/plans.md) |
 | 🏋️ **Renforcement et mobilité** | bibliothèque d'exercices (consignes, progressions, matériel) et programmes par phase du bloc ou par usage (descente, cheville, hanches, pied), correspondance Garmin vérifiée dans le catalogue officiel, placement par rapport aux séances de qualité — approximations du projet, jamais un diagnostic ; **prévention ciblée** d'une douleur déclarée (gêne légère → routine douce, sinon consultation, jamais un diagnostic ; `medical` décide s'il est activé) — voir [Renforcement](docs/strength.md) |
 | 🎯 **Vitesse critique** | courbe allure-durée en GAP, vitesse critique et réserve anaérobie D′ estimées sur vos meilleurs efforts (refus explicite si les données manquent), cibles d'intervalles en % de la vitesse critique — voir [Vitesse critique](docs/vitesse-critique.md) |
@@ -52,6 +55,8 @@ Sur un serveur qui a déjà Traefik et une authentification unique, il se range 
 en conteneur Docker, workspace en lecture seule :
 [Derrière un reverse proxy](docs/dashboard/docker.md).
 
+Il s'installe aussi comme une application sur l'ordinateur ou le téléphone, et son image Docker est publiée sur GHCR (`ghcr.io/mmornati/ai-running-coach-dashboard` ; le compose du projet la construit encore localement, voir [Docker](docs/dashboard/docker.md#images-publiees-ghcr)).
+
 Voir [la documentation du tableau de bord](docs/dashboard/index.md).
 
 ## 🧑‍💻 IDE supportés
@@ -68,7 +73,7 @@ Voir [la documentation du tableau de bord](docs/dashboard/index.md).
 - **macOS** ou **Linux**
 - **bash 3.2+** (celui livré avec macOS convient)
 - **curl** et **git**
-- Un compte **Garmin Connect** (avec un appareil Garmin)
+- Un compte chez votre source de données : **Garmin Connect** (par défaut), COROS, Intervals.icu ou Strava
 
 > 💡 **Homebrew** est recommandé sur macOS. Requis uniquement pour le mode passerelle optionnel (`--use-leanproxy`).
 
@@ -102,12 +107,21 @@ Le script installe et configure automatiquement :
 ./install.sh --preset coach-server  #   coach-server = --ide claude --daily-sync --remote-control
 ./install.sh --preset docker        #   docker       = --ide claude --daily-sync (prépare l'hôte, pas le conteneur)
 ./install.sh --ide claude      # installe pour un IDE précis (claude|copilot|opencode|gemini|cursor|windsurf)
+./install.sh --source coros    # source de données : garmin (défaut) | intervals | strava | coros
+./install.sh --coros           # branche la montre COROS (MCP officiel, relais local) à côté d'une autre source
+./install.sh --llm openrouter --connect   # IA du chat et de la synchro : openrouter | openrouter-free | anthropic | openai | chatgpt | copilot
+./install.sh --llm chatgpt --sync-subscription  # abonnement ChatGPT/Copilot : la synchro aussi (sinon elle garde son exécuteur)
+./install.sh --health-source openwearables  # santé du bilan matinal chez Open Wearables (opt-in)
+./install.sh --cycle-tracking garmin        # contexte du cycle menstruel (opt-in) : off|garmin|intervals|coros|manual
+./install.sh --nutrition-sync ask           # propose de pousser les apports vers Garmin (opt-in)
+./install.sh --telegram        # bot Telegram (retours en un geste, sans clé d'API)
 ./install.sh --agents LISTE    # staff à installer, ex. coach,nutritionist
 ./install.sh --no-medical      # tous les agents sauf le médecin
 ./install.sh --no-auth         # saute l'authentification Garmin
 ./install.sh --use-leanproxy   # mode passerelle leanproxy-mcp (power user, optionnel)
 ./install.sh --workspace DIR   # vos données dans votre dépôt privé, moteur lié (voir docs/workspace.md)
 ./install.sh --daily-sync      # machine « coach » : sync Garmin automatique (cron/launchd) + notification
+./install.sh --daily-sync --workspace DIR --replace-schedule  # remplace aussi la planification de la racine du moteur (migration, voir docs/update.md)
 ./install.sh --remote-control  # machine « coach » : le coach accessible depuis le téléphone
 ./install.sh --dry-run         # affiche les actions sans rien exécuter
 ./install.sh --help
@@ -195,7 +209,11 @@ ai-running-coach/
 
 La documentation complète est disponible sur [GitHub Pages](https://mmornati.github.io/ai-running-coach/) :
 
+- [Nouveautés de la version 1.4](docs/nouveautes.md)
 - [Guide de démarrage rapide](docs/quickstart.md)
+- [Choisir son IA (OpenRouter, ChatGPT, Copilot, essai gratuit)](docs/choisir-son-ia.md)
+- [Montres COROS](docs/coros.md) · [Configuration Intervals.icu](docs/intervals-setup.md) · [Configuration Strava](docs/strava-setup.md)
+- [Choisir ses chaussures (`/shoes`)](docs/shoes.md)
 - [Configuration (staff, style, sport, santé)](docs/configuration.md)
 - [Configuration Garmin](docs/garmin-setup.md)
 - [Votre workspace privé (données versionnées, moteur lié)](docs/workspace.md)

@@ -1,9 +1,10 @@
 # Choisir ses chaussures
 
 Épopée #297. Le suivi des chaussures (kilométrage, inspection photo, bilan de carrière) dit **ce que
-vous avez porté** ; choisir la prochaine paire demande de savoir **ce qu'elle est**. Cette page décrit la
-première brique : la fiche de caractéristiques d'une paire (#298). Suivent les retours de chaussant, le profil
-d'usage, le moteur de règles fondé sur les preuves (#301) et, pour finir, la commande `/shoes` qui assemble le tout (#302).
+vous avez porté** ; choisir la prochaine paire demande de savoir **ce qu'elle est**. Cette page décrit les
+briques dans l'ordre : la fiche de caractéristiques d'une paire (#298), les retours de chaussant (#299), le profil
+d'usage (#300), les besoins pour la prochaine paire fondés sur les preuves (#301) et la commande `/shoes` qui assemble
+le tout (#302). Une paire retirée dans Garmin Connect est retirée aussitôt du suivi : voir [Configuration Garmin](garmin-setup.md).
 
 ## La fiche de caractéristiques : `gear/specs/<gear_id>.md`
 

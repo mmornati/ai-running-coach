@@ -101,6 +101,18 @@ Lors de la première installation, le script lance l'authentification Garmin Con
 | `--no-daily-sync` | Désactive la synchronisation (annule un `--daily-sync` composé par un préréglage) |
 | `--remote-control` | Service Claude Code Remote Control : le coach depuis le téléphone — voir [Le coach dans la poche](mobile.md) |
 | `--no-remote-control` | Désactive Remote Control (annule un `--remote-control` composé par un préréglage) |
+| `--coros` / `--no-coros` | Montre COROS : MCP officiel via un relais local, une seule connexion pour toutes les IA (`--no-coros` le retire) — voir [Montres COROS](coros.md) |
+| `--llm FOURNISSEUR` | IA du chat **et** de la synchronisation : `openrouter`, `openrouter-free` (essai gratuit), `anthropic`, `openai`, `chatgpt`, `copilot`. Avec `--model ID` (obligatoire avec `openai`), `--base-url URL` (`openai`), `--connect` (`openrouter`, `openrouter-free`, `chatgpt`, `copilot` : connexion dans le navigateur, interactif seulement), `--sync-subscription` / `--no-sync-subscription` (`chatgpt`/`copilot`) — voir [Choisir son IA](choisir-son-ia.md) |
+| `--sync-runner CLI` | Assistant de la synchronisation headless : `claude`, `codex`, `copilot`, `opencode`, `gemini`, `cursor` |
+| `--sync-budget EUR`, `--chat-budget EUR` | Plafonds de dépense quotidiens de la synchronisation et du chat |
+| `--chat` | Active `[chat]` et installe le service du chat — voir [Le chat avec le coach](dashboard/chat.md) |
+| `--telegram`, `--telegram-chat-id ID` | Bot Telegram et chat autorisé — voir [Le bot Telegram](telegram.md) |
+| `--cycle-tracking MODE` | Contexte du cycle menstruel, opt-in : `off` (défaut), `garmin`, `intervals`, `coros`, `manual` — voir [Cycle menstruel](cycle-menstruel.md) |
+| `--nutrition-sync MODE` | Poussée des apports vers Garmin, opt-in : `off` (défaut) ou `ask` — voir [Apports vers Garmin](nutrition-garmin.md) |
+| `--health-source S` | Santé du bilan matinal : `primary` (défaut) ou `openwearables` (avec `--ow-url`, `--ow-provider`, `--ow-key-file`) — voir [Open Wearables](open-wearables.md) |
+| `--garmin-tokens DIR`, `--intervals-dir DIR` | Plusieurs workspaces sous le même utilisateur : identifiants propres à ce workspace (`--garmin-tokens` est incompatible avec `--use-leanproxy`) — voir [Plusieurs workspaces](workspace.md#plusieurs-workspaces-et-plusieurs-athletes) |
+| `--replace-schedule` | Avec `--daily-sync --workspace` : remplace aussi la planification de la racine du moteur (migration) |
+| `--dashboard-docker MODE` | Tableau de bord en conteneur : `off`, `local` ou `traefik` (avec `--dashboard-host`, `--dashboard-auth`) — voir [Docker](dashboard/docker.md) |
 | `--dry-run` | Affiche les actions sans rien exécuter |
 | `--help` | Affiche l'aide |
 
