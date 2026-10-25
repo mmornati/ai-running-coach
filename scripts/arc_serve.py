@@ -1374,9 +1374,11 @@ def api_roadbook(store: Store, q: dict) -> dict:
     `arc_race_pacing`, matériel : `arc_index.equipment_race_check`, #134) — aucun calcul ici. Sans
     `plan`, le prochain plan dont la date n'est pas passée (sinon le plus récent) ; `scenario`
     (`safe|realistic|ambitious`) ne garde que ce scénario, absent ou inconnu = les trois (la page
-    bascule sans nouvel appel). Lecture seule, aucune donnée de santé."""
+    bascule sans nouvel appel) ; `passages` (`detailed|aid_stations`) choisit le mode des points de
+    passage par défaut (les deux restent servis). Lecture seule, aucune donnée de santé."""
     plan = (q.get("plan", [""])[0] or "").strip()
     wanted = (q.get("scenario", [""])[0] or "").strip()
+    mode = (q.get("passages", [""])[0] or "").strip()
     today = _today(store)                  # avant le verrou : `store.meta` le prend aussi
     with store.lock:
         plans = [dict(r) for r in store.conn.execute(
@@ -1400,6 +1402,11 @@ def api_roadbook(store: Store, q: dict) -> dict:
         model["default_scenario"] = wanted
     elif wanted and wanted != "all":
         model["warnings"].append(f"scénario inconnu « {wanted} » : les trois scénarios sont renvoyés")
+    if mode in RB.PASSAGE_MODES and model.get("passage_modes", {}).get(mode):
+        model["default_passage_mode"] = mode
+    elif mode:
+        model["warnings"].append(f"mode de points de passage indisponible « {mode} » : "
+                                 f"« {model.get('default_passage_mode')} » par défaut")
     return model
 
 

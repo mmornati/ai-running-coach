@@ -6,6 +6,10 @@ import * as F from "./format.js";
 
 export const SCENARIO_LABEL = { safe: "Prudent", realistic: "Réaliste", ambitious: "Ambitieux" };
 const SCENARIO_ORDER = ["safe", "realistic", "ambitious"];
+// Points de passage (`arc_roadbook.PASSAGE_MODES`) : ravitos + repères espacés d'au moins 15 min, ou
+// ravitos seuls. Les deux tables sont rendues, le sélecteur n'en montre qu'une (aucun appel réseau).
+export const PASSAGE_LABEL = { detailed: "Détaillé", aid_stations: "Ravitaillements uniquement" };
+const PASSAGE_ORDER = ["detailed", "aid_stations"];
 
 // Statuts du contrôle du matériel (#134, `arc_metrics.race_gear_check`) : texte ET case à cocher,
 // jamais la seule couleur (une feuille imprimée en noir et blanc doit rester lisible).
@@ -75,18 +79,20 @@ export function profileSvg(profile, nightSpans, uid) {
 function stationCell(row, idx) {
   const st = row.station;
   if (!st) return row.to_name === "Arrivée" ? "<strong>Arrivée</strong>" : F.esc(row.to_name);
+  // Ravito d'arrivée (`finish`) : ni numéro R, ni arrêt ; ce qu'on y prend reste affiché.
+  const title = row.finish ? "<strong>Arrivée</strong>" : `<strong>R${idx} ${F.esc(st.name)}</strong>`;
   const take = st.take && st.take.length
     ? `<div class="rb-take"><strong>À prendre :</strong> ${st.take.map(F.esc).join(" · ")}</div>`
     : `<div class="rb-take rb-take--none muted">À prendre : non renseigné</div>`;
   const serv = st.services && st.services.length ? `<div class="rb-serv muted">Servi : ${st.services.map(F.esc).join(", ")}</div>` : "";
   const stop = row.stop_s ? `<div class="rb-serv muted">Arrêt prévu ${F.esc(F.duration(row.stop_s, { seconds: row.stop_s % 60 !== 0 }))}</div>` : "";
-  return `<strong>R${idx} ${F.esc(st.name)}</strong>${take}${serv}${stop}`;
+  return `${title}${take}${serv}${stop}`;
 }
 
-function sectionsTable(sc) {
+function sectionsTable(sections, mode, on) {
   let stationIdx = 0;
-  const rows = sc.sections.map((r) => {
-    const idx = r.station ? ++stationIdx : 0;
+  const rows = sections.map((r) => {
+    const idx = r.station && !r.finish ? ++stationIdx : 0;
     const night = r.night ? `<span class="rb-night-tag">${NIGHT_LABEL[r.night]} · frontale</span>` : "";
     const cut = r.cutoff
       ? `<span class="rb-cut rb-cut--${F.esc(r.cutoff.status)}">${F.esc(cutoffText(r.cutoff.text))}${r.cutoff.day ? ` (J${r.cutoff.day})` : ""}</span><br><span class="rb-cut__margin">${F.esc(marginText(r.cutoff))} · ${F.esc(CUTOFF_STATUS[r.cutoff.status] || r.cutoff.status)}</span>`
@@ -98,14 +104,14 @@ function sectionsTable(sc) {
     return `<tr class="${r.night ? "rb-row--night" : ""}">
       <td class="rb-km">${F.esc(F.distanceValue(r.from_km * 1000, 1))}→${F.esc(F.distance(r.to_km * 1000, 1))}${night ? `<br>${night}` : ""}</td>
       <td class="num" data-label="Dist. · D+/D−">${F.esc(F.distance(r.distance_m, 1))}<br><span class="muted">+${F.esc(F.elevation(r.gain_m))} / −${F.esc(F.elevation(r.loss_m))}</span></td>
-      <td class="num" data-label="Temps">${F.esc(F.duration(r.moving_s))}</td>
+      <td class="num" data-label="Temps · allure">${F.esc(F.duration(r.moving_s))}<br><span class="muted">${F.esc(F.pace(r.distance_m, r.moving_s))}</span></td>
       <td class="num" data-label="Passage">${passage}${leave}</td>
       <td data-label="Barrière">${cut}</td>
       <td class="rb-stationcell">${stationCell(r, idx)}</td></tr>`;
   }).join("");
-  return `<div class="table-wrap rb-table-wrap"><table class="data data--compact rb-table">
+  return `<div class="table-wrap rb-table-wrap rb-mode${on ? " is-on" : ""}" data-mode="${mode}"><table class="data data--compact rb-table">
     <caption class="sr-only">Sections, heures de passage, barrières et ravitaillements</caption>
-    <thead><tr><th scope="col">Section</th><th scope="col" class="num">Dist. · D+/D−</th><th scope="col" class="num">Temps</th><th scope="col" class="num">Passage</th><th scope="col">Barrière</th><th scope="col">Ravito · à prendre</th></tr></thead>
+    <thead><tr><th scope="col">Section</th><th scope="col" class="num">Dist. · D+/D−</th><th scope="col" class="num">Temps · allure</th><th scope="col" class="num">Passage</th><th scope="col">Barrière</th><th scope="col">Ravito · à prendre</th></tr></thead>
     <tbody>${rows}</tbody></table></div>`;
 }
 
@@ -124,7 +130,12 @@ function textList(items) {
   return `<ul class="rb-list">${items.map((t) => `<li>${F.esc(t)}</li>`).join("")}</ul>`;
 }
 
-function sheet(model, name, active) {
+/** Sections d'un mode ; plan servi avant les modes = `sections` seules (affichées dans les deux). */
+function modeOf(sc, mode) {
+  return (sc.modes && sc.modes[mode]) || { sections: sc.sections, lamp_sections: sc.lamp_sections };
+}
+
+function sheet(model, name, active, mode) {
   const sc = model.scenarios[name];
   const h = model.header;
   const meta = [
@@ -136,7 +147,10 @@ function sheet(model, name, active) {
   ].filter(Boolean).map(F.esc).join(" · ");
   const target = sc.target_s ? `<span>objectif du plan <strong>${F.esc(F.duration(sc.target_s))}</strong></span>` : "";
   const finish = sc.finish_clock ? `<span>arrivée <strong>${F.esc(sc.finish_clock)}</strong></span>` : "";
-  const lamp = sc.lamp_sections ? `<span class="rb-night-tag">Frontale : ${sc.lamp_sections} section${sc.lamp_sections > 1 ? "s" : ""} de nuit</span>` : "";
+  const lamp = PASSAGE_ORDER.map((m) => {
+    const n = modeOf(sc, m).lamp_sections;
+    return n ? `<span class="rb-night-tag rb-mode${m === mode ? " is-on" : ""}" data-mode="${m}">Frontale : ${n} section${n > 1 ? "s" : ""} de nuit</span>` : "";
+  }).join("");
   const water = model.water_points && model.water_points.length
     ? `<h3>Points d'eau</h3><p class="rb-water">${model.water_points.map((w) => `${F.esc(F.distance(w.km * 1000, 1))}${w.name ? ` ${F.esc(w.name)}` : ""}`).join(" · ")}</p>` : "";
   const gaps = [...(model.missing || []), ...(model.warnings || [])];
@@ -150,7 +164,7 @@ function sheet(model, name, active) {
         <span>temps prévu <strong>${F.esc(F.duration(sc.total_s))}</strong></span>${finish}${target}${lamp}</p>
     </header>
     ${profileSvg(model.profile, sc.night_spans_km, name)}
-    ${sectionsTable(sc)}
+    ${PASSAGE_ORDER.map((m) => sectionsTable(modeOf(sc, m).sections, m, m === mode)).join("")}
     ${water}
     <div class="rb-cols">
       <section><h3>Matériel obligatoire</h3>${gearList(model.gear)}</section>
@@ -164,31 +178,43 @@ function sheet(model, name, active) {
   </section>`;
 }
 
-/** Page complète (hors en-tête de vue) pour un modèle `status: "ok"`. `wanted` = scénario affiché. */
-export function roadbookHtml(model, wanted) {
+/** Page complète (hors en-tête de vue) pour un modèle `status: "ok"`. `wanted` = scénario affiché,
+ * `wantedMode` = mode des points de passage (`detailed` | `aid_stations`). */
+export function roadbookHtml(model, wanted, wantedMode) {
   const avail = SCENARIO_ORDER.filter((s) => model.scenarios[s] && model.scenarios[s].available);
   if (!avail.length) {
     const why = (model.missing || []).map(F.esc).join("<br>") || "Le plan ne contient pas de temps prédits par scénario.";
     return { html: `<div class="empty"><h3>Roadbook indisponible pour ce plan</h3><p>${why}</p></div>`, active: null };
   }
   const active = avail.includes(wanted) ? wanted : (avail.includes(model.default_scenario) ? model.default_scenario : avail[0]);
+  const modes = model.passage_modes || { detailed: true, aid_stations: false };
+  const modeAvail = PASSAGE_ORDER.filter((m) => modes[m]);
+  const mode = modeAvail.includes(wantedMode) ? wantedMode
+    : (modeAvail.includes(model.default_passage_mode) ? model.default_passage_mode : (modeAvail[0] || "detailed"));
   const plans = model.plans && model.plans.length > 1
     ? `<div class="toolbar rb-plans">${model.plans.map((p) => `<a class="seg ${p.path === model.plan ? "is-on" : ""}" href="#/roadbook?plan=${encodeURIComponent(p.path)}">${F.esc(p.race_name || p.path)}${p.race_date ? ` · ${F.esc(p.race_date)}` : ""}</a>`).join("")}</div>` : "";
   const buttons = SCENARIO_ORDER.map((s) => {
     const on = avail.includes(s);
     return `<button type="button" class="seg rb-pick${s === active ? " is-on" : ""}" data-scenario="${s}" aria-pressed="${s === active}"${on ? "" : " disabled"}>${SCENARIO_LABEL[s]}</button>`;
   }).join("");
+  const modeButtons = PASSAGE_ORDER.map((m) => {
+    const on = modeAvail.includes(m);
+    const why = on ? "" : ` title="Aucun ravito sur le parcours dans le plan"`;
+    return `<button type="button" class="seg rb-mode-pick${m === mode ? " is-on" : ""}" data-mode="${m}" aria-pressed="${m === mode}"${on ? "" : ` disabled${why}`}>${PASSAGE_LABEL[m]}</button>`;
+  }).join("");
   const html = `<div class="rb-controls">${plans}
       <div class="toolbar"><span class="rb-controls__label" id="rb-pick-label">Scénario</span><span role="group" aria-labelledby="rb-pick-label" class="rb-picks">${buttons}</span>
+        <span class="rb-controls__label" id="rb-mode-label">Points de passage</span><span role="group" aria-labelledby="rb-mode-label" class="rb-picks">${modeButtons}</span>
         <span class="rb-actions"><button type="button" class="seg rb-print" data-all="0">Imprimer / PDF</button>
         ${avail.length > 1 ? `<button type="button" class="seg rb-print" data-all="1">Imprimer les ${avail.length} scénarios</button>` : ""}</span></div>
       <p class="note">« Imprimer / PDF » ouvre la boîte d'impression du navigateur : choisis « Enregistrer au format PDF » pour un fichier. Format A4 portrait, noir et blanc lisible.</p></div>
-    <article class="rb">${avail.map((s) => sheet(model, s, s === active)).join("")}</article>`;
-  return { html, active };
+    <article class="rb">${avail.map((s) => sheet(model, s, s === active, mode)).join("")}</article>`;
+  return { html, active, mode };
 }
 
-/** Branche le sélecteur de scénario et les boutons d'impression (aucun appel réseau). */
-export function wireRoadbook(root, onScenario) {
+/** Branche les sélecteurs de scénario et de points de passage, et les boutons d'impression
+ * (aucun appel réseau). */
+export function wireRoadbook(root, onScenario, onMode) {
   const sheets = [...root.querySelectorAll(".rb-sheet")];
   for (const btn of root.querySelectorAll(".rb-pick")) {
     btn.addEventListener("click", () => {
@@ -199,6 +225,17 @@ export function wireRoadbook(root, onScenario) {
         b.setAttribute("aria-pressed", String(b === btn));
       }
       if (onScenario) onScenario(name);
+    });
+  }
+  for (const btn of root.querySelectorAll(".rb-mode-pick")) {
+    btn.addEventListener("click", () => {
+      const mode = btn.dataset.mode;
+      for (const el of root.querySelectorAll(".rb-mode")) el.classList.toggle("is-on", el.dataset.mode === mode);
+      for (const b of root.querySelectorAll(".rb-mode-pick")) {
+        b.classList.toggle("is-on", b === btn);
+        b.setAttribute("aria-pressed", String(b === btn));
+      }
+      if (onMode) onMode(mode);
     });
   }
   for (const btn of root.querySelectorAll(".rb-print")) {

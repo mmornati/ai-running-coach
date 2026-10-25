@@ -3259,14 +3259,16 @@ async function viewRoadbook(params) {
     main.innerHTML = `${header("Roadbook", sub)}${empty(r.status === "no_plan" ? "Aucun plan de course" : "Plan introuvable", `${F.esc(r.message || "")}${plans ? `</p><ul>${plans}</ul><p>` : ""}`)}`;
     return;
   }
-  const { html, active } = roadbookHtml(r, params.get("scenario"));
+  const { html, active } = roadbookHtml(r, params.get("scenario"), params.get("passages"));
   main.innerHTML = `<div class="rb-page">${header("Roadbook", sub)}${html}</div>`;
   if (!active) return;
-  wireRoadbook($(".rb-page", main), (name) => {
+  // Scénario et points de passage gardés dans l'URL : un rechargement ou un lien partagé les conserve.
+  const remember = (key) => (value) => {
     const q = new URLSearchParams(location.hash.split("?")[1] || "");
-    q.set("scenario", name);
+    q.set(key, value);
     history.replaceState(null, "", `#/roadbook?${q}`);
-  });
+  };
+  wireRoadbook($(".rb-page", main), remember("scenario"), remember("passages"));
 }
 
 // ---------------------------------------------------------------------------
