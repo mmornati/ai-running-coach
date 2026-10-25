@@ -56,20 +56,24 @@ stdin_scripts = ["scripts/arc_log.py", "scripts/arc_nutrition_sync.py", "scripts
 #   value_options   options à valeur simple (date, nombre, choix…) ;
 #   read_options    options dont la valeur est un chemin LU : dans le workspace, hors secrets et `.arc/` ;
 #   output_options  options dont la valeur est un chemin ÉCRIT : sous `[fs].write_dirs` uniquement ;
+#   ask_flags       options qui font écrire le script hors du contrôle des chemins : carte d'approbation ;
 #   multi_value_options  options argparse `nargs="*"`/`"+"` (déjà listées ci-dessus) : les mots suivants
 #                   jusqu'à la prochaine option sont autant de valeurs, chacune contrôlée selon le type de l'option.
 # Une valeur qui commence par « - » est toujours refusée. `--workspace` n'est jamais accepté : le service
 # tourne déjà dans le workspace.
 # Tout argument positionnel ou valeur qui ressemble à un chemin (« / », extension connue) subit
 # le même contrôle. `--help` / `-h` sont toujours permis.
+# `--write` (plan-skeleton écrit planning/) et `--mark-retired` (écrit le profil) → carte d'approbation.
+# `--garmin-gear-json` refusé : son fichier vit sous `.arc/` (daily-sync), illisible depuis le chat.
 [shell.scripts."scripts/arc_index.py"]
-flags = ["--memory", "--rebuild", "--with-gps", "--assumptions", "--calibration", "--active", "--json"]
-value_options = ["--today", "--activity", "--weeks", "--segment", "--date", "--days", "--since", "--limit", "--trigger", "--outcome", "--months", "--band", "--last-pass", "--activities", "--garmin-gear", "--chat-gear", "--kit", "--sport", "--gear", "--lt-speed-ms"]
+flags = ["--memory", "--rebuild", "--with-gps", "--assumptions", "--calibration", "--active", "--json", "--text", "--unreferenced-photos", "--garmin-json"]
+value_options = ["--today", "--activity", "--weeks", "--segment", "--date", "--days", "--since", "--limit", "--trigger", "--outcome", "--months", "--band", "--last-pass", "--activities", "--garmin-gear", "--chat-gear", "--kit", "--sport", "--gear", "--lt-speed-ms", "--role", "--replace", "--phase", "--use", "--equipment", "--acute", "--known", "--until", "--format", "--distance-km", "--race-date", "--held-hours", "--held-elevation-m", "--long-run-day", "--lead-in", "--lead-in-weeks"]
 # nargs="?" : la valeur est facultative (`--race-plan` seul = plan de course actif).
 optional_value_options = ["--race-plan"]
-read_options = ["--validate", "--race-plan"]
+read_options = ["--validate", "--race-plan", "--compare"]
 multi_value_options = ["--validate"]
 output_options = ["--db"]
+ask_flags = ["--write", "--mark-retired"]
 
 [shell.scripts."scripts/arc_log.py"]
 read_options = ["--input"]
@@ -99,8 +103,9 @@ flags = ["--json"]
 value_options = ["--date", "--timeout"]
 
 [shell.scripts."scripts/arc_race_pacing.py"]
-flags = ["--memory", "--rebuild", "--dem", "--no-dem"]
-value_options = ["--today", "--band", "--months", "--segment-m", "--race-date", "--start", "--official-distance-m", "--fade-pct", "--fade-weeks", "--temp-max-c", "--pack-kg", "--terrain"]
+flags = ["--memory", "--rebuild", "--dem", "--no-dem", "--no-night", "--no-altitude"]
+# `--technicity` : fichier JSON du workspace (contrôlé comme un chemin) ou `osm`.
+value_options = ["--today", "--band", "--months", "--segment-m", "--race-date", "--start", "--official-distance-m", "--fade-pct", "--fade-weeks", "--temp-max-c", "--pack-kg", "--terrain", "--tz", "--night-penalty-pct", "--night-descent-extra-max-pct", "--technicity", "--technicity-baseline", "--altitude-threshold-m", "--altitude-loss-pct", "--altitude-acclimated-days"]
 read_options = ["--gpx", "--aid-stations", "--weather-file"]
 output_options = ["--db"]
 
@@ -138,7 +143,8 @@ output_options = ["--output", "--json"]
 
 [shell.scripts."skills/fit-download/scripts/download_fit.py"]
 # `--source` : garmin | intervals | strava | coros ; toutes les sources ne font que lire.
-flags = ["--json", "--overwrite"]
+# `--python` refusé : jamais un autre interpréteur que celui de l'installation.
+flags = ["--json", "--overwrite", "--refresh-dynamics", "--dry-run"]
 value_options = ["--source"]
 read_options = ["--from-dir"]
 output_options = ["--output-dir"]
@@ -151,13 +157,16 @@ output_options = ["--db"]
 
 # `--session` : chemin/Semaine.md#SÉLECTEUR (le JSON en ligne, avec ses accolades, reste refusé).
 [shell.scripts."scripts/arc_workout_targets.py"]
-flags = ["--memory"]
-value_options = ["--structure-text", "--band", "--today", "--lt-speed-ms", "--icu-lthr-bpm"]
+flags = ["--memory", "--heat"]
+value_options = ["--structure-text", "--band", "--today", "--lt-speed-ms", "--icu-lthr-bpm", "--temp-c", "--feels-like-c", "--humidity-pct", "--category", "--slot", "--pace-s-km"]
 read_options = ["--session"]
 output_options = ["--db"]
 
+# `--apply` écrit `[pacing.personal]` dans workspace.user.toml (#188) → carte d'approbation.
 [shell.scripts."scripts/arc_race_debrief.py"]
-value_options = ["--scenario", "--carbs-target-g-h", "--carbs-actual-g-h", "--carbs-ceiling-g-h"]
+flags = ["--calibrate", "--text"]
+value_options = ["--scenario", "--carbs-target-g-h", "--carbs-actual-g-h", "--carbs-ceiling-g-h", "--exclude-from-km"]
+ask_flags = ["--apply"]
 read_options = ["--plan", "--activity", "--planned-weather", "--actual-weather", "--fit"]
 
 # Diagnostic : lit les jetons Garmin lui-même, n'en affiche rien. `--tokens-dir` et
