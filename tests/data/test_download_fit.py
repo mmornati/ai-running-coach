@@ -541,5 +541,101 @@ class TestIntervalsIdsFromMarkdown(unittest.TestCase):
         self.assertEqual(D._parse_ids(["i42"], "intervals", ap), ["i42"])
 
 
+def _fit_file(*messages: bytes, header_crc: bool = True) -> bytes:
+    """FIT synthétique : en-tête de 14 octets (`.FIT`), messages bruts, CRC du fichier."""
+    data = b"".join(messages)
+    head = bytes([14, 0x20]) + (2132).to_bytes(2, "little") + len(data).to_bytes(4, "little") + b".FIT"
+    head += D._fit_crc(head).to_bytes(2, "little") if header_crc else b"\0\0"
+    body = head + data
+    return body + D._fit_crc(body).to_bytes(2, "little")
+
+
+def _definition(local: int, mesg: int, fields, dev_fields=()) -> bytes:
+    """Message de définition little-endian : `fields` = [(numéro, taille, type de base)]."""
+    head = 0x40 | local | (0x20 if dev_fields else 0)
+    out = bytes([head, 0, 0]) + mesg.to_bytes(2, "little") + bytes([len(fields)])
+    out += b"".join(bytes(f) for f in fields)
+    if dev_fields:
+        out += bytes([len(dev_fields)]) + b"".join(bytes(f) for f in dev_fields)
+    return out
+
+
+class TestFixFitFieldSizes(unittest.TestCase):
+    """`fitparse` 1.2.0 refuse un FIT entier dès qu'un champ a une taille non multiple de son type (cas réel :
+    `event.data`, uint32 écrit sur 1 octet par une COROS Pace 4 Pro). `_fix_fit_field_sizes` relit ces
+    définitions en octets et recalcule le CRC — stdlib, testé sans `fitparse`."""
+
+    UINT32, UINT16, BYTE = 0x86, 0x84, 0x0D
+
+    def test_crc_matches_the_fit_sdk_reference(self):
+        # Valeur de référence calculée avec `fitparse.records.Crc.calculate` (même table que le FIT SDK).
+        self.assertEqual(D._fit_crc(b"123456789"), 0xBB3D)
+
+    def test_odd_sized_field_is_read_as_bytes_and_the_crc_recomputed(self):
+        fit = _fit_file(
+            _definition(0, 21, [(253, 4, self.UINT32), (3, 1, self.UINT32), (0, 1, 0x00)]),
+            bytes([0x00]) + (1000).to_bytes(4, "little") + bytes([7, 0]),
+            _definition(1, 20, [(253, 4, self.UINT32), (3, 1, 0x02)]),
+            bytes([0x01]) + (1001).to_bytes(4, "little") + bytes([140]),
+        )
+        fixed, fixes = D._fix_fit_field_sizes(fit)
+        self.assertEqual(fixes, ["message 21 champ 3 : 1 octet(s) pour un type de 4"])
+        self.assertEqual(len(fixed), len(fit))
+        diff = [i for i, (a, b) in enumerate(zip(fit, fixed)) if a != b]
+        self.assertEqual(fixed[diff[0]], self.BYTE)                # seul le type de base change…
+        self.assertTrue(set(diff[1:]) <= {len(fit) - 2, len(fit) - 1})   # … et le CRC du fichier
+        self.assertEqual(D._fit_crc(fixed[:-2]), int.from_bytes(fixed[-2:], "little"))
+        self.assertEqual(D._fix_fit_field_sizes(fixed), (fixed, []))    # idempotent
+
+    def test_consistent_fit_is_returned_untouched(self):
+        fit = _fit_file(_definition(0, 20, [(253, 4, self.UINT32), (3, 1, 0x02)]),
+                        bytes([0x00]) + (1000).to_bytes(4, "little") + bytes([140]))
+        self.assertEqual(D._fix_fit_field_sizes(fit), (fit, []))
+
+    def test_compressed_timestamps_and_developer_fields_are_walked(self):
+        fit = _fit_file(
+            _definition(0, 20, [(3, 1, 0x02), (7, 3, self.UINT16)], dev_fields=[(0, 2, 0)]),
+            bytes([0x00, 140, 1, 2, 3, 9, 9]),                      # 1 + 3 octets de champs + 2 développeur
+            bytes([0x80 | 0x05, 141, 1, 2, 3, 9, 9]),               # en-tête compressé, type local 0
+        )
+        fixed, fixes = D._fix_fit_field_sizes(fit)
+        self.assertEqual(fixes, ["message 20 champ 7 : 3 octet(s) pour un type de 2"])
+        self.assertEqual(D._fit_crc(fixed[:-2]), int.from_bytes(fixed[-2:], "little"))
+
+    def test_chained_fit_files_are_each_fixed(self):
+        bad = _fit_file(_definition(0, 21, [(3, 1, self.UINT32)]), bytes([0x00, 7]))
+        fixed, fixes = D._fix_fit_field_sizes(bad + bad)
+        self.assertEqual(len(fixes), 1)                             # même définition : signalée une fois
+        half = len(bad)
+        for part in (fixed[:half], fixed[half:]):
+            self.assertEqual(D._fit_crc(part[:-2]), int.from_bytes(part[-2:], "little"))
+            self.assertNotEqual(part, bad)
+
+    def test_bad_crc_truncated_or_foreign_bytes_are_left_to_fitparse(self):
+        bad = _fit_file(_definition(0, 21, [(3, 1, self.UINT32)]), bytes([0x00, 7]))
+        corrupted = bad[:-1] + bytes([bad[-1] ^ 0xFF])
+        for raw in (corrupted, bad[:-5], b"not a fit file", b"",
+                    _fit_file(bytes([0x00, 7]))):                    # données sans définition
+            self.assertEqual(D._fix_fit_field_sizes(raw), (raw, []))
+
+    def test_read_fit_hands_the_fixed_bytes_to_fitparse_and_says_so(self):
+        bad = _fit_file(_definition(0, 21, [(3, 1, self.UINT32)]), bytes([0x00, 7]))
+        seen = []
+
+        class _Fit:
+            def __init__(self, stream):
+                seen.append(stream.read())
+
+            def get_messages(self, _name):
+                return []
+
+        fake = types.ModuleType("fitparse")
+        fake.FitFile = _Fit
+        with patch.dict(sys.modules, {"fitparse": fake}), patch("sys.stderr", new_callable=io.StringIO) as err:
+            self.assertEqual(D._read_fit(bad), ([], None))
+        self.assertEqual(seen, [D._fix_fit_field_sizes(bad)[0]])
+        self.assertIn("message 21 champ 3", err.getvalue())
+
+
 if __name__ == "__main__":
     unittest.main()

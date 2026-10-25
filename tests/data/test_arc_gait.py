@@ -579,6 +579,17 @@ class TestRefreshDynamics(unittest.TestCase):
         self.assertAlmostEqual(payload["records"][0]["ground_contact_s"], 0.25, places=3)
         self.assertFalse((self.tmp / "fit/iabc.json").exists())
 
+    def test_coros_fit_files_are_refreshed_too(self):
+        """#168 : `c<chiffres>.fit` (source COROS) — rattrapable sans retélécharger, JSON `fit/c<chiffres>.json`."""
+        self.fits["crun"] = self.fits["run"]
+        (self.tmp / "c481284612648108342.fit").write_bytes(b"crun")
+        (self.tmp / "cabc.fit").write_bytes(b"crun")             # forme invalide : ignoré
+        result = self.refresh()
+        self.assertIn(("c481284612648108342", "created"), result["files"])
+        payload = json.loads((self.tmp / "fit/c481284612648108342.json").read_text(encoding="utf-8"))
+        self.assertEqual(payload["activity_id"], "c481284612648108342")
+        self.assertFalse((self.tmp / "fit/cabc.json").exists())
+
     def test_unreadable_fit_is_counted_not_fatal(self):
         self.fits.pop("ride")
         result = self.refresh()
