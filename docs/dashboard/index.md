@@ -26,8 +26,9 @@ calendrier — et le texte du coach à côté des chiffres.
 
 ![Vue « Aujourd'hui » : verdict du coach, bilan du matin, séance du jour et forme](../assets/dashboard/aujourdhui.webp)
 
-*Captures réalisées sur le workspace réel d'un athlète : la préparation et
-l'ultra-trail de 110 km du 13 septembre 2026, puis la reprise.*
+*Captures du design roadbook, générées par `scripts/docs_capture.py` sur le workspace de
+démonstration d'une athlète fictive (Camille, mardi 29 septembre 2026, à 54 jours du Trail des
+Crêtes) : aucune donnée réelle.*
 
 Il ne remplace pas la conversation avec le coach : il vous montre **ce qui est
 stocké**, et c'est d'autant plus précieux quand le coach tourne sans vous — en

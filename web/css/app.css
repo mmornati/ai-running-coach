@@ -169,7 +169,7 @@ small { font-size: 0.82em; }
 .nav a[aria-current="page"]::before { content: ""; display: inline-block; width: 0.42rem; height: 0.42rem; border-radius: 50%; background: var(--lime-strong); margin-right: 0.5rem; vertical-align: 0.1em; }
 .nav__debt { margin-top: 1rem; font-size: 0.84rem; color: var(--warn) !important; }
 
-.main { padding: 1.75rem clamp(1rem, 3vw, 2.5rem) 4rem; max-width: 68rem; outline: none; }
+.main { padding: 1.75rem clamp(1rem, 3vw, 2.5rem) 4rem; max-width: 68rem; outline: none; overflow-wrap: break-word; }
 .main[aria-busy="true"] { opacity: 0.6; transition: opacity 120ms ease; }
 
 /* ---------------------------------------------------------------- titres, bandes */

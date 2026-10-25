@@ -153,6 +153,43 @@ class TestDemoWorkspace(unittest.TestCase):
             variant = json.loads((root / "planning/variante_affutage-court.json").read_text(encoding="utf-8"))
             self.assertEqual([w["week_start"] for w in variant["weeks"]], ["2026-11-09"])
 
+    def test_variante_docs(self):
+        """Captures de la documentation : ultra de 110 km, tours variables, matériel à contrôler ; défaut inchangé."""
+        self.assertIn("alerte 100 h", (self.root / "planning/Runner_Profile.md").read_text(encoding="utf-8"))
+        with tempfile.TemporaryDirectory() as tmp:
+            root = V.build_demo(Path(tmp) / "ws-docs", with_samples=False, docs=True)
+            ultra = block(root / f"activities/{V.ULTRA_ACTIVITY_DATE}_trail.md")
+            self.assertEqual(len(ultra["splits"]), 110)
+            self.assertEqual(sum(r[2] for r in ultra["splits"]), 4300)
+            laps = block(root / f"activities/{V.LAPS_ACTIVITY_DATE}_running.md")
+            self.assertEqual(sum(r[1] for r in laps["splits"]), laps["distance_m"])
+            for path in (root / f"activities/{V.ULTRA_ACTIVITY_DATE}_trail.md",
+                         root / f"activities/{V.LAPS_ACTIVITY_DATE}_running.md"):
+                errors, _warnings = C.validate(block(path))
+                self.assertEqual(errors, [], f"{path.name} : {errors}")
+            self.assertIn("alerte 55 h", (root / "planning/Runner_Profile.md").read_text(encoding="utf-8"))
+            # Lendemain de l'ultra : repos imposé dans la frise des verdicts.
+            self.assertEqual(block(root / "medical/2026-06-14_health.md")["verdict"], "red")
+            # Deux fichiers hors contrat VOLONTAIRES (vue « Fichiers hors contrat ») : jamais au contrat.
+            self.assertFalse(C.validate(block(root / "nutrition/2026-02-20_nutrition.md"))[0] == [])
+            self.assertNotIn("```arc", (root / "rapports/2026-02-15_notes-reprise.md").read_text(encoding="utf-8"))
+            # Le workspace par défaut (épisodes) n'a aucun de ces ajouts.
+            self.assertFalse((self.root / "rapports/2026-02-15_notes-reprise.md").exists())
+            self.assertNotEqual(block(self.root / "medical/2026-06-14_health.md").get("verdict"), "red")
+
+    def test_variante_docs_tours_suivent_les_echantillons(self):
+        """Les échantillons FIT de la séance à tours suivent ses étapes (sinon la GAP par tour serait plate)."""
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            fit = root / "fit.json"
+            fit.write_text(json.dumps({"records": [{"t_s": i, "altitude_m": 5.0, "hr_bpm": 150.0} for i in range(100)]}),
+                           encoding="utf-8")
+            V._laps_samples(fit, [("Seuil 1", 1000, 200, 165), ("Récupération", 200, 100, 148)])
+            recs = json.loads(fit.read_text(encoding="utf-8"))["records"]
+            self.assertEqual(len(recs), 300)
+            self.assertAlmostEqual(recs[-1]["distance_m"], 1200, delta=0.5)
+            self.assertGreater(recs[10]["speed_ms"], recs[250]["speed_ms"])
+
     def test_efforts_suivent_le_modele_cs(self):
         """Vitesse des efforts posés = CS(date) + D′/durée, tenue à 98-99 % ; plus rapide sur les efforts courts."""
         v = [V._cs_speed("2026-09-22", d) for d in (180, 600, 1200)]

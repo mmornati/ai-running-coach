@@ -158,7 +158,7 @@ Des protocoles précis que l'IA suit à la lettre. Sept d'entre eux sont des com
 </div>
 
 <figure class="arc-phone">
-  <img src="assets/dashboard/mobile-trail-shape.webp" alt="Le tableau de bord sur téléphone : score Trail Shape à trois jours d'un ultra de 110 km" width="390" height="844" />
+  <img src="assets/dashboard/mobile-trail-shape.webp" alt="Le tableau de bord sur téléphone : score Trail Shape à 54 jours d'un trail de 42 km" width="390" height="844" />
 </figure>
 
 </div>
@@ -211,7 +211,7 @@ Des protocoles précis que l'IA suit à la lettre. Sept d'entre eux sont des com
 
 ## Tout ce que le coach sait, sous vos yeux
 
-Un tableau de bord local, en lecture seule, alimenté par les fichiers de votre workspace — même quand le coach travaille seul sur votre machine coach. Captures réelles, trois jours avant un ultra de 110 km.
+Un tableau de bord local, en lecture seule, alimenté par les fichiers de votre workspace — même quand le coach travaille seul sur votre machine coach. Captures du design roadbook sur le workspace de démonstration d'une athlète fictive, à 54 jours de sa course.
 { .arc-section__intro }
 
 === "Aujourd'hui"
@@ -220,7 +220,7 @@ Un tableau de bord local, en lecture seule, alimenté par les fichiers de votre 
 
 === "Trail Shape"
 
-    ![Vue Trail Shape : score de préparation 75 sur 100 à J-3, composante par composante](assets/dashboard/trail-shape.webp){ .arc-shot loading=lazy }
+    ![Vue Trail Shape : score de préparation 90 sur 100 à J-54, composante par composante](assets/dashboard/trail-shape.webp){ .arc-shot loading=lazy }
 
 === "Forme & charge"
 
@@ -232,7 +232,7 @@ Un tableau de bord local, en lecture seule, alimenté par les fichiers de votre 
 
 === "Séance"
 
-    ![Détail d'une séance : chiffres clés, splits et analyse du coach](assets/dashboard/seance.webp){ .arc-shot loading=lazy }
+    ![Détail d'une séance : carte, chiffres clés, météo et profil](assets/dashboard/seance.webp){ .arc-shot loading=lazy }
 
 === "Matériel"
 
