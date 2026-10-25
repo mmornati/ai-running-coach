@@ -500,15 +500,16 @@ function sFinish(t, d) {
       ctx.fillStyle = c; ctx.fillRect(-4, -2, 8, 4); ctx.restore();
     }
   }
-  // pour aller plus loin
+  // pour aller plus loin — toute la pile tient au-dessus de la zone des sous-titres
+  // (bandeau d'une ou deux lignes dont le haut descend jusqu'à y = 618).
   const kd = seg(t, 1.8, 2.4);
-  text(s.finishSub.toUpperCase(), W / 2, 528, { size: 13, weight: 600, font: MONO, color: C.faint, align: "center", spacing: "2px", alpha: kd });
+  text(s.finishSub.toUpperCase(), W / 2, 516, { size: 13, weight: 600, font: MONO, color: C.faint, align: "center", spacing: "2px", alpha: kd });
   const docsUrl = `mmornati.github.io/ai-running-coach/${ep.docs}`;
-  text(docsUrl, W / 2, 562, { size: 20, weight: 600, font: MONO, color: C.accent, align: "center", alpha: kd });
+  text(docsUrl, W / 2, 546, { size: 20, weight: 600, font: MONO, color: C.accent, align: "center", alpha: kd });
   const next = SERIES[ep.n + 1];
   const kn = seg(t, 2.4, 3.0);
-  text(next ? `${s.next} · ${String(next.n).padStart(2, "0")} — ${next[lang]}` : s.lastLeg, W / 2, 606, { size: 17, color: C.soft, align: "center", alpha: kn });
-  text(s.disclaimer, W / 2, 648, { size: 13, color: C.faint, align: "center", alpha: seg(t, 3.0, 3.6) });
+  text(next ? `${s.next} · ${String(next.n).padStart(2, "0")} — ${next[lang]}` : s.lastLeg, W / 2, 578, { size: 17, color: C.soft, align: "center", alpha: kn });
+  text(s.disclaimer, W / 2, 604, { size: 13, color: C.faint, align: "center", alpha: seg(t, 3.0, 3.6) });
 }
 
 /* ------------------------------ timeline ----------------------------------- */
