@@ -98,14 +98,19 @@ DEFAULTS = {
 # Options des scripts de repli (aucun fichier de politique) : les deux premiers scripts seulement.
 DEFAULT_SCRIPTS = {
     "scripts/arc_index.py": {
-        "flags": ["--memory", "--rebuild", "--with-gps", "--assumptions", "--calibration", "--active"],
+        "flags": ["--memory", "--rebuild", "--with-gps", "--assumptions", "--calibration", "--active", "--json",
+                  "--text", "--unreferenced-photos", "--garmin-json"],
         "value_options": ["--today", "--activity", "--weeks", "--segment", "--date", "--days", "--since",
                           "--limit", "--trigger", "--outcome", "--months", "--band", "--last-pass",
-                          "--activities", "--garmin-gear", "--chat-gear", "--kit", "--sport", "--gear"],
+                          "--activities", "--garmin-gear", "--chat-gear", "--kit", "--sport", "--gear",
+                          "--lt-speed-ms", "--role", "--replace", "--phase", "--use", "--equipment", "--acute",
+                          "--known", "--until", "--format", "--distance-km", "--race-date", "--held-hours",
+                          "--held-elevation-m", "--long-run-day", "--lead-in", "--lead-in-weeks"],
         "optional_value_options": ["--race-plan"],
-        "read_options": ["--validate", "--race-plan"],
+        "read_options": ["--validate", "--race-plan", "--compare"],
         "multi_value_options": ["--validate"],
         "output_options": ["--db"],
+        "ask_flags": ["--write", "--mark-retired"],
     },
     "scripts/arc_log.py": {
         "read_options": ["--input"],
