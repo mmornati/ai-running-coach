@@ -15,9 +15,15 @@ Chaque image est décrite par UNE ligne de `SHOTS` (nom → route, format, thèm
 recouvrent rien), `chat` 1280 px @2x, `mobile` 390×844 @2x (écran seul, comme les images d'origine),
 `thumb` 1440×900 réduit à 800×500 (vignettes de la page d'accueil du tableau de bord).
 
-Découpes (`clip`) : `page` (toute la page, en-tête et rail compris), `main` (le contenu), `("sel", css)` ou
-`("h2", texte)` (une carte), `viewport` (l'écran, mobile et vignettes) ; `crop=(haut, hauteur)` garde une
-tranche en px CSS depuis le haut de la découpe.
+Découpes (`clip`) : `page` (toute la page, en-tête et rail compris), `main` (le contenu, sans le vide sous
+la dernière carte), `("sel", css)` ou `("h2", texte)` (une carte), `viewport` (l'écran, mobile et vignettes) ;
+`until=texte` arrête la découpe sous la carte dont le titre `h2` contient ce texte (jamais une carte coupée) ;
+`crop=(haut, hauteur)` garde une tranche en px CSS depuis le haut de la découpe.
+
+Les captures ne portent aucun artefact de développement (feuille adoptée `DOCS_CSS`) : ni version du moteur
+(`git describe`), ni pastille de mise à jour, ni lien « Ancien design », ni lien « fichiers hors contrat » du rail
+(sauf `debt=True`), ni curseur de frappe ou bouton « Interrompre » du coach. La vérification de mise à jour
+est coupée (`ARC_UPDATE_CHECK=off`) : aucun appel à GitHub.
 
 Rien n'est lu hors du dépôt : workspace fictif, aucune requête hors 127.0.0.1. Prérequis : `uv`, Google Chrome
 ou le Chromium de Playwright, `cwebp` (qualité 82, comme les images d'origine).
@@ -26,6 +32,7 @@ ou le Chromium de Playwright, `cwebp` (qualité 82, comme les images d'origine).
 from __future__ import annotations
 
 import argparse
+import json
 import shutil
 import subprocess
 import sys
@@ -65,29 +72,29 @@ SHOTS = [
     # --- vues complètes ---------------------------------------------------------------------------------------
     S("aujourdhui", "", clip="page", wait=".rk-verdict"),
     S("aujourdhui-materiel", "", clip=("h2", "Au programme"), wait=".rk-verdict"),
-    S("forme", "forme", crop=(0, 1100), wait="svg"),
-    S("sombre-forme", "forme", scheme="dark", crop=(0, 675), wait="svg"),
-    S("sante", "sante", wait="svg"),
+    S("forme", "forme", wait="svg"),
+    S("sombre-forme", "forme", scheme="dark", until="Courbe de forme", wait="svg"),
+    S("sante", "sante?jours=180", until="Dette de sommeil", wait="#c-sleepdebt svg"),
     S("sante-foulee", "sante", clip=("h2", "Comment évolue ma foulée"), wait="svg"),
     S("semaine", "semaine", wait=".rk-runsheet"),
     S("semaine-bloc", "semaine?debut=2026-10-12", ws="bloc", wait=".rk-runsheet", reload=False),
     S("seances", "seances", wait=".list, table"),
-    S("seance", "seance/{act}", crop=(0, 1010), wait="main h1"),
+    S("seance", "seance/{act}", until="Profil", wait="main h1"),
     S("seance-tours", "seance/{laps}", clip=("h2", "Splits"), wait="main h2"),
     S("seance-ultra", "seance/{ultra}", clip=("h2", "Splits"), wait="main h2"),
-    S("seance-materiel", "seance/{act}", crop=(0, 420), wait="main h1"),
+    S("seance-materiel", "seance/{act}", clip=("sel", ".session-hero .ledger"), wait="main h1"),
     S("performance", "performance", wait="main h2"),
-    S("materiel", "materiel", crop=(0, 490)),
+    S("materiel", "materiel", until="Chaussures"),
     S("equipement", "materiel", clip=("h2", "Équipement")),
-    S("inspections", "materiel", clip=("h2", "Inspections photo"), crop=(0, 420)),
-    S("materiel-fiche", "materiel/crete-pro-bleue", crop=(0, 950)),
-    S("materiel-fiche-equipement", "materiel/poche-eau", crop=(0, 740)),
+    S("inspections", "materiel", clip=("h2", "Inspections photo")),
+    S("materiel-fiche", "materiel/crete-pro-bleue", until="Kilomètres par mois"),
+    S("materiel-fiche-equipement", "materiel/poche-eau", crop=(0, 1010)),
     S("trail-shape", "trail-shape"),
     S("calendrier", "calendrier"),
     S("rapports", "rapports", wait=".list li"),
     S("rapport", "rapport?path=rapports/2026-09-27_rapport.md", wait=".prose"),
     S("nutrition", "nutrition"),
-    S("fichiers", "fichiers", clip="page", wait="main h1"),
+    S("fichiers", "fichiers", clip="page", wait="main h1", debt=True),
     # --- coach (chat) -----------------------------------------------------------------------------------------
     S("coach", "chat", fmt="chat", clip="viewport", ws="chat"),
     S("coach-trace", "chat", fmt="chat", clip="viewport", ws="chat", trace=True),
@@ -98,7 +105,8 @@ SHOTS = [
     S("mobile-seance", "seance/{act}", fmt="mobile", clip="viewport", wait="main h1"),
     S("mobile-trail-shape", "trail-shape", fmt="mobile", clip="viewport"),
     S("mobile-materiel", "materiel", fmt="mobile", clip="viewport"),
-    S("mobile-foulee", "sante", fmt="mobile", clip="viewport", wait="svg", scroll=("h2", "Comment évolue ma foulée", 90), hide=".readout--sticky"),
+    S("mobile-foulee", "sante", fmt="mobile", clip="viewport", wait="svg", scroll=("h2", "Comment évolue ma foulée", 64),
+      hide=".readout--sticky"),
     # --- vignettes de la page d'accueil du tableau de bord ---------------------------------------------------
     S("vignette-aujourdhui", "", fmt="thumb", clip="viewport", wait=".rk-verdict"),
     S("vignette-forme", "forme", fmt="thumb", clip="viewport", wait="svg"),
@@ -114,19 +122,45 @@ SHOTS = [
     S("vignette-nutrition", "nutrition", fmt="thumb", clip="viewport"),
 ]
 
+# Feuille adoptée (insensible à la CSP) : rien d'une build de développement ni d'un état transitoire à l'image.
+DOCS_CSS = """
+#version, #update, .rk-rail__foot, .rk-classic { display: none !important; }
+.msg--coach.is-streaming .msg__text > :last-child::after, .msg__text .typing::after { content: none !important; }
+#stop { display: none !important; }
+#send[hidden] { display: grid !important; }
+"""
+DEBT_CSS = ".rk-navgroup--debt { display: none !important; }"
+
+DOCS_INIT_JS = """
+((rules) => { const css = new CSSStyleSheet(); css.replaceSync(rules);
+  document.adoptedStyleSheets = [...document.adoptedStyleSheets, css]; })(%s);
+"""
+
 RECT_JS = """
-([clip, arg, extra]) => {
+([clip, arg, until]) => {
   const q = (s) => document.querySelector(s);
+  const card = (text) => {
+    const h = [...document.querySelectorAll('main h2')].find((n) => n.textContent.includes(text));
+    return h && (h.closest('section') || h.parentElement);
+  };
   let el = null;
   if (clip === 'main') el = q('main');
   else if (clip === 'sel') el = q(arg);
-  else if (clip === 'h2') {
-    const h = [...document.querySelectorAll('main h2')].find((n) => n.textContent.includes(arg));
-    el = h && (h.closest('section') || h.parentElement);
-  } else if (clip === 'page') el = document.documentElement;
+  else if (clip === 'h2') el = card(arg);
+  else if (clip === 'page') el = document.documentElement;
   if (!el) return null;
   const r = el.getBoundingClientRect();
-  return [r.x + scrollX, r.y + scrollY, r.width, r.height];
+  let height = r.height;
+  if (clip === 'main') {            // page agrandie à sa hauteur : on s'arrête sous le dernier élément du contenu
+    const kids = [...el.children].filter((n) => n.getBoundingClientRect().height > 0);
+    if (kids.length) height = Math.max(...kids.map((n) => n.getBoundingClientRect().bottom)) - r.top + 32;
+  }
+  if (until) {
+    const c = card(until);
+    if (!c) return null;
+    height = c.getBoundingClientRect().bottom - r.top + 10;   // marge plus courte que l'écart entre deux cartes
+  }
+  return [r.x + scrollX, r.y + scrollY, r.width, Math.min(height, r.height)];
 }
 """
 
@@ -150,7 +184,7 @@ def snap(page, shot, fmt, tmp: Path, out: Path) -> bool:
             h = int(page.evaluate("document.documentElement.scrollHeight"))
             page.set_viewport_size({"width": fmt["width"], "height": max(h, fmt["height"])})
             page.wait_for_timeout(300)
-        rect = page.evaluate(RECT_JS, [kind, arg, None])
+        rect = page.evaluate(RECT_JS, [kind, arg, shot.get("until")])
         if not rect:
             print(f"  !! découpe introuvable : {name} {clip}", file=sys.stderr)
             return False
@@ -170,6 +204,8 @@ def snap(page, shot, fmt, tmp: Path, out: Path) -> bool:
 def run_shot(browser, shot, base, ids, tmp, out):
     fmt = FORMATS[shot["fmt"]]
     ctx = vc.new_context(browser, fmt, scheme=shot.get("scheme", "light"), design="roadbook")
+    rules = DOCS_CSS + ("" if shot.get("debt") else DEBT_CSS)
+    ctx.add_init_script(DOCS_INIT_JS % json.dumps(rules))
     page = ctx.new_page()
     try:
         route = shot["route"].format(**ids)
@@ -190,7 +226,8 @@ def run_shot(browser, shot, base, ids, tmp, out):
         if shot.get("scroll"):
             sel, text, off = shot["scroll"]
             page.evaluate("""([sel, text, off]) => {
-              const el = [...document.querySelectorAll(sel)].find((n) => n.textContent.includes(text));
+              const h = [...document.querySelectorAll(sel)].find((n) => n.textContent.includes(text));
+              const el = h && (h.closest('section') || h);          // le haut de la carte, pas celui du titre
               if (el) { el.scrollIntoView({block: 'start'}); scrollBy(0, -off); }
             }""", [sel, text, off])
             page.wait_for_timeout(300)
@@ -203,7 +240,6 @@ def run_shot(browser, shot, base, ids, tmp, out):
 
 
 def find_ids(base: str) -> dict:
-    import json
     import urllib.request
     with urllib.request.urlopen(f"{base}/api/activities?limit=400", timeout=20) as r:
         acts = json.load(r)["activities"]
@@ -255,7 +291,8 @@ def main() -> int:
                 else:
                     chat_port = None
                 dash = vc.Service([sys.executable, str(REPO / "scripts/arc_serve.py"), "--workspace", str(ws),
-                                   "--today", vc.TODAY, "--memory", "--port", "0"])
+                                   "--today", vc.TODAY, "--memory", "--port", "0"],
+                                  env={"ARC_UPDATE_CHECK": "off"})       # aucune requête vers GitHub
                 base = dash.url.rstrip("/")
                 services[key] = (base, dash, ws, chat_port, find_ids(base))
                 return base
@@ -264,14 +301,24 @@ def main() -> int:
                 browser = vc.launch(pw)
                 for shot in shots:
                     key = shot.get("ws", "docs")
+                    fresh = key not in services
                     base = serve(key)
+                    if fresh and key != "chat":       # premier chargement lent (index des échantillons) : à chaud
+                        warm = browser.new_page()
+                        try:
+                            warm.goto(f"{base}/#/")
+                            warm.wait_for_selector("main h2", timeout=180000)
+                        except Exception as exc:  # noqa: BLE001 - mise en route facultative : les essais suivent
+                            print(f"  (mise en route : {str(exc).splitlines()[0]})", file=sys.stderr)
+                        finally:
+                            warm.close()
                     _, _, ws, chat_port, ids = services[key]
                     chat = None
                     if key == "chat":
                         chat = vc.start_chat(ws, chat_port, tmp)       # conversation vierge pour chaque capture
                     try:
                         ok = False
-                        for attempt in (1, 2):          # un chargement lent n'est pas une erreur : une seconde chance
+                        for attempt in (1, 2, 3):       # un chargement lent n'est pas une erreur : d'autres chances
                             try:
                                 ok = run_shot(browser, shot, base, ids, tmp, args.out)
                                 break

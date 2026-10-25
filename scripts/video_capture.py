@@ -59,7 +59,8 @@ INIT_JS = """
   // Feuille adoptée : insensible à la CSP (pas de <style> en ligne).
   const css = new CSSStyleSheet();
   css.replaceSync(`*,*::before,*::after{animation:none!important;transition:none!important;caret-color:transparent!important}
-    html{scroll-behavior:auto!important} #backend,#ctx-user,#session-select{visibility:hidden!important}`);
+    html{scroll-behavior:auto!important} #backend,#ctx-user,#session-select{visibility:hidden!important}
+    #version,#update,.design-notice{display:none!important}`);
   document.adoptedStyleSheets = [...document.adoptedStyleSheets, css];
 })();
 """ % FIXED_NOW
@@ -278,6 +279,10 @@ class Service:
                 self.proc.kill()
 
 
+# Aucune vérification de mise à jour (appel GitHub, pastille « nouvelle version ») pendant une capture.
+NO_UPDATE_CHECK = {"ARC_UPDATE_CHECK": "off"}
+
+
 def start_chat(ws: Path, port: int, tmp: Path, hold: str = "") -> Service:
     shutil.rmtree(ws / ".arc/chat", ignore_errors=True)       # conversation vierge
     cfg = ws / "config/workspace.user.toml"
@@ -431,7 +436,7 @@ def capture_bloc(rec, browser, tmp, only):
     ws = tmp / "workspace-bloc"
     demo.build_demo(ws, bloc=True)
     dash = Service([sys.executable, str(REPO / "scripts/arc_serve.py"), "--workspace", str(ws), "--today", TODAY,
-                    "--memory", "--port", "0"])
+                    "--memory", "--port", "0"], env=NO_UPDATE_CHECK)
     try:
         vp = {**DESKTOP, "label": "desktop 1440×900 @2x"}
         for shot in shots:
@@ -462,7 +467,7 @@ def capture_suite(rec, browser, tmp, only):
     ws = tmp / "workspace-suite"
     demo.build_demo(ws, suite=True)
     dash = Service([sys.executable, str(REPO / "scripts/arc_serve.py"), "--workspace", str(ws), "--today", TODAY,
-                    "--memory", "--port", "0"])
+                    "--memory", "--port", "0"], env=NO_UPDATE_CHECK)
     try:
         base = dash.url.rstrip("/")
         act = activity_id(base)
@@ -614,7 +619,7 @@ def main() -> int:
         chat_port = free_port()
         start_chat(ws, chat_port, tmp).stop()          # écrit le [chat] du workspace avant le tableau de bord
         dash = Service([sys.executable, str(REPO / "scripts/arc_serve.py"), "--workspace", str(ws), "--today", TODAY,
-                        "--memory", "--port", "0"])
+                        "--memory", "--port", "0"], env=NO_UPDATE_CHECK)
         base = dash.url.rstrip("/")
         rec = Recorder(args.out, tmp)
         try:

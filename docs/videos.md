@@ -407,10 +407,14 @@ uv run --with playwright scripts/video_capture.py --design roadbook --only aujou
 
 Les images de `docs/assets/dashboard/` (README, pages du tableau de bord, vignettes) sont produites
 par `scripts/docs_capture.py`, jamais à la main : workspace fictif de Camille (variante `--docs` de
-`scripts/video_demo_workspace.py`, qui ajoute un ultra de 110 km, des tours de longueur variable et
-du matériel à contrôler), design roadbook, thème clair (sauf `sombre-forme`), 1440 px @2x sur
+`scripts/video_demo_workspace.py`, qui ajoute un ultra de 110 km et son lendemain, des tours de
+longueur variable, du matériel à contrôler, des efforts de seuil, la trace fictive du dimanche et deux
+fichiers volontairement hors contrat), design roadbook, thème clair (sauf `sombre-forme`), 1440 px @2x sur
 ordinateur, 390×844 @2x sur téléphone, WebP `cwebp -q 82`. Une ligne de la table `SHOTS` du script
 décrit chaque image (vue, format, découpe) ; les noms de fichiers ne changent pas, aucun lien non plus.
+Les images ne portent ni la version du moteur, ni le lien « Ancien design », ni le curseur de frappe
+du coach (feuille de style ajoutée à la capture), et le serveur ne vérifie pas les mises à jour
+(`ARC_UPDATE_CHECK=off`).
 
 ```bash
 brew install webp                                  # cwebp

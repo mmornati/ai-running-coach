@@ -227,7 +227,7 @@ Un tableau de bord local, en lecture seule, alimenté par les fichiers de votre 
 
 === "Séance"
 
-    ![Détail d'une séance : chiffres clés, splits et analyse du coach](assets/dashboard/seance.webp){ .arc-shot loading=lazy }
+    ![Détail d'une séance : carte, chiffres clés, météo et profil](assets/dashboard/seance.webp){ .arc-shot loading=lazy }
 
 === "Matériel"
 

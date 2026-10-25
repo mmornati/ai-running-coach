@@ -33,6 +33,14 @@ class TestDocsCaptureTable(unittest.TestCase):
         dark = [s["name"] for s in DC.SHOTS if s.get("scheme") == "dark"]
         self.assertEqual(dark, ["sombre-forme"])
 
+    def test_no_dev_artifacts_in_captures(self):
+        """Ni version `git describe`, ni lien « Ancien design », ni curseur de frappe sur les images."""
+        for sel in ("#version", "#update", ".rk-classic", "is-streaming", "#stop"):
+            self.assertIn(sel, DC.DOCS_CSS)
+        self.assertIn("rk-navgroup--debt", DC.DEBT_CSS)
+        self.assertEqual([s["name"] for s in DC.SHOTS if s.get("debt")], ["fichiers"])
+        self.assertIn('"ARC_UPDATE_CHECK": "off"', Path(DC.__file__).read_text(encoding="utf-8"))
+
     def test_docs_use_the_real_names(self):
         views = (REPO / "docs/dashboard/views.md").read_text(encoding="utf-8")
         for name in ("sante-foulee", "sombre-forme", "seance-tours"):

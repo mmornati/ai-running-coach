@@ -105,7 +105,7 @@ Trois graphiques, sur 3 mois, 6 mois ou un an :
   impulsion-réponse de Banister, calculé sur le TRIMP (voir
   [Marques et métriques](../marques.md)). Quand la fatigue passe sous la condition,
   la forme devient positive : vous êtes frais. Le jour de course est marqué ; on
-  voit ici la fatigue bondir à plus de 200 le 13 septembre, puis la forme redevenir
+  voit ici la fatigue bondir à plus de 200 après l'ultra du 13 juin, puis la forme redevenir
   positive pendant la reprise.
 - **La projection jusqu'à la course** (#172) prolonge ces trois courbes **en
   pointillés** depuis aujourd'hui jusqu'à la date de l'objectif actif, et affiche
@@ -516,7 +516,8 @@ récente). Une **seule** semaine sans fichier entre deux semaines écrites par `
 pointillé « Semaine sans plan », jamais remplie. Deux semaines manquantes d'affilée, ou une
 voisine écrite à la main, coupent le bloc. Les données viennent de `/api/block`.
 
-En dessous, **le réalisé face à la cible** de la semaine (18,2 km sur 40 visés), puis
+En dessous, **le réalisé face à la cible** de la semaine (ici 0 h sur 7 h prévues : la semaine
+commence), puis
 **la conformité** — le KPI de l'épopée #20 (story #33) : % de séances faites, ratio
 durée réalisée/planifiée, ratio D+ réalisé/planifié (route : ratio absent, pas de D+
 significatif), le tout aussi par intensité (*Facile* : récupération, endurance ;
@@ -565,7 +566,7 @@ côtes et home trainer, déjà poussés sur le calendrier Garmin, et l'extrait d
 du coach pour cette semaine-là. La capture montre, avec le workspace de démonstration, une
 semaine du squelette d'un bloc (créneaux « à définir ») sous la frise du bloc :
 
-![Une semaine à venir : séances planifiées, poussées sur le calendrier Garmin](../assets/dashboard/semaine-bloc.webp)
+![Une semaine à venir : le squelette du bloc, créneaux à définir sous la frise](../assets/dashboard/semaine-bloc.webp)
 
 | Alimentée par | Écrit par |
 |---|---|
@@ -608,7 +609,7 @@ faute de fréquence cardiaque et d'effort perçu, un astérisque.
 
 ### Détail d'une séance
 
-![Détail d'une séance : chiffres clés, météo, splits et analyse du coach](../assets/dashboard/seance.webp)
+![Détail d'une séance : carte, chiffres clés, météo et profil](../assets/dashboard/seance.webp)
 
 - **La carte** : la trace GPS des échantillons FIT sur un fond topographique
   (OpenTopoMap par défaut, `[dashboard].map_tiles`), colorée au choix par **allure**
@@ -829,10 +830,9 @@ matériel, dans la vue [Hypothèses](#hypotheses). Elle réunit, dans cet ordre 
 vivaient jusque-là dans Performance.
 
 !!! note "Captures de cette section"
-    Elles viennent d'un **workspace de démonstration** (générateur des tests,
-    `tests/lib/synthetic.py`), pas du workspace réel des autres captures : un inventaire
-    varié (paire proche du seuil, paire retirée, frontale à contrôler, poche à eau
-    bientôt à nettoyer), sans exposer de données personnelles.
+    Le workspace de démonstration de Camille, comme les autres captures, avec un
+    inventaire varié (paire proche du seuil, paire retirée, frontale à contrôler, poche à
+    eau bientôt à nettoyer) : aucune donnée personnelle.
 
 Sans matériel déclaré, la vue montre un état vide utile : la syntaxe à écrire dans « Matériel &
 lieux » du profil, la commande de simulation `python3 scripts/garmin_gear_backfill.py` pour
@@ -928,8 +928,9 @@ ouvre sa fiche, à l'adresse partageable `#/materiel/<gear_id>` :
 ![Fiche d'une paire : bilan de carrière, kilomètres par mois, séances et inspections](../assets/dashboard/materiel-fiche.webp)
 
 *La fiche d'une paire (ici la Crête Pro) : bilan de carrière — kilométrage, séances et période, courses, sortie la
-plus longue, meilleurs efforts, seuil et prévision, lien Garmin —, kilomètres par mois, puis
-la liste des séances (chacune renvoie vers son détail) et les inspections de la paire.*
+plus longue, meilleurs efforts, seuil et prévision, lien Garmin —, puis les kilomètres par mois ;
+plus bas viennent la carte Usage, la liste des séances (chacune renvoie vers son détail) et les
+inspections de la paire.*
 
 ![Fiche d'un objet d'équipement : usage depuis l'entretien et total à vie, déclencheurs, kit, séances](../assets/dashboard/materiel-fiche-equipement.webp)
 

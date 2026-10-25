@@ -26,7 +26,8 @@ par ce script (ou s'il est vide) : jamais d'effacement d'un vrai workspace.
 montées de la séance restent alors vides).
 `--bloc` (épisode 15) et `--suite` (épisodes 16-17) construisent les variantes du workspace : les autres
 épisodes gardent le workspace d'origine. `--docs` ajoute ce que documentent les captures de la documentation
-(`scripts/docs_capture.py`) : un ultra de 110 km, des tours de longueur variable, du matériel à contrôler.
+(`scripts/docs_capture.py`) : un ultra de 110 km et son lendemain, des tours de longueur variable, du matériel
+à contrôler, des efforts de seuil (vitesse critique), la trace fictive du dimanche et deux fichiers hors contrat.
 """
 
 from __future__ import annotations
@@ -864,11 +865,14 @@ def _sample_file(root: Path, day: str) -> Path:
     return root / f"activities/fit/{read_block(path)['garmin_activity_id']}.json"
 
 
-def plant_efforts(root: Path) -> None:
+def plant_efforts(root: Path, skip: tuple = ()) -> None:
     """Remplace une fenêtre de chaque séance « Seuil » par un effort soutenu à allure constante (± 0,6 %, bruit
     déterministe), sur le plat ; la distance cumulée est recalculée à partir de la fenêtre, le reste de la
-    séance garde ses incréments. La FC monte vers 172 bpm pendant l'effort."""
+    séance garde ses incréments. La FC monte vers 172 bpm pendant l'effort. `skip` : dates laissées telles
+    quelles (variante docs : la séance du 22 septembre garde ses tours)."""
     for day, start, duration in EFFORTS:
+        if day in skip:
+            continue
         path = _sample_file(root, day)
         doc = json.loads(path.read_text(encoding="utf-8"))
         recs = doc["records"]
@@ -1012,6 +1016,30 @@ ULTRA_ACTIVITY_DATE = date(2026, 6, 13)    # variante docs : ultra de 110 km (sp
 LAPS_ACTIVITY_DATE = date(2026, 9, 22)     # variante docs : séance structurée (tours de longueur variable)
 
 
+def _laps_samples(path: Path, laps: list) -> None:
+    """Réécrit les échantillons FIT d'une séance structurée pour qu'ils suivent ses tours (allure, FC et
+    cadence par étape) : sans cela, la GAP de chaque tour, calculée sur les échantillons, resterait celle
+    d'une séance à allure constante. Parcours plat (GAP = allure) ; dynamique de course reprise des anciens
+    échantillons."""
+    if not path.exists():
+        return
+    doc = json.loads(path.read_text(encoding="utf-8"))
+    old = doc["records"]
+    recs, t, dist = [], 0, 0.0
+    for label, lap_m, lap_s, hr in laps:
+        speed = lap_m / lap_s
+        for k in range(lap_s):
+            base = dict(old[min(len(old) - 1, round(len(old) * dist / 9000))])
+            dist += speed
+            base.update({"t_s": t, "distance_m": round(dist, 3), "speed_ms": round(speed, 3), "altitude_m": 12.0,
+                         "hr_bpm": round(hr - 6 * math.exp(-k / 40), 1),
+                         "cadence_spm": 184.0 if "Seuil" in label else 172.0})
+            recs.append(base)
+            t += 1
+    doc["records"] = recs
+    path.write_text(json.dumps(doc, ensure_ascii=False), encoding="utf-8")
+
+
 def write_docs_extras(root: Path) -> None:
     """Variante `docs` (captures de la documentation, `scripts/docs_capture.py`) : ce que les images
     documentent et que l'histoire d'origine ne montre pas. Les épisodes de la série ne l'utilisent pas.
@@ -1019,17 +1047,23 @@ def write_docs_extras(root: Path) -> None:
     - un ultra de 110 km (13 juin) : `splits` d'une longue sortie (détail de séance) ;
     - la séance de seuil du 22 septembre découpée en tours de longueur variable (échauffement, 4 × 8 min,
       récupérations, reliquat de 40 m) : tours Garmin d'une séance structurée ;
-    - matériel à contrôler : frontale au seuil, ceinture cardio et poche à eau proches du leur.
+    - matériel à contrôler : frontale au seuil, ceinture cardio et poche à eau proches du leur ;
+    - le lendemain de l'ultra dans la frise des verdicts (repos, puis reprise) ;
+    - deux fichiers hors contrat VOLONTAIRES (`rapports/2026-02-15_notes-reprise.md` sans bloc,
+      `nutrition/2026-02-20_nutrition.md` au bloc incomplet) : la vue « Fichiers hors contrat » a de quoi montrer.
+    Efforts de seuil et trace GPS fictive : `plant_efforts` / `add_fictional_gps` (appelés par `build_demo`).
     """
     # Ultra : 110 km, ~19 h, 4 300 m D+, chaussure retirée « Vieille Grimpeuse » (hors fenêtre Trail Shape de 8 semaines).
     path = root / f"activities/{ULTRA_ACTIVITY_DATE.isoformat()}_trail.md"
     gid = read_block(path)["garmin_activity_id"]
     (root / f"activities/fit/{gid}.json").unlink(missing_ok=True)      # les échantillons de l'ancienne séance ne vont plus avec
-    splits, gain_left = [], 4300
+    splits = []
     for km in range(1, 111):
-        duration = round(405 + 3.1 * km + 55 * (math.sin(km / 3.7) + 1) + (40 if 52 <= km <= 70 else 0))
+        ravito = km % 18 == 0                                         # arrêt au ravitaillement : pic de temps, creux de FC
+        duration = round(405 + 3.1 * km + 55 * (math.sin(km / 3.7) + 1) + (40 if 52 <= km <= 70 else 0)
+                         + (300 if ravito else 0))
         gain = 39 + 32 * math.sin(km / 5.1)
-        hr = round(143 - 0.16 * km + 5 * math.sin(km / 2.3))
+        hr = round(143 - 0.16 * km + 5 * math.sin(km / 2.3) - (12 if ravito else 0))
         splits.append([km, duration, gain, 0, hr, round(3600 / duration * 1.15, 1), 160 if km < 70 else 154,
                        "Départ" if km == 1 else ("Arrivée" if km == 110 else ("Ravito" if km % 18 == 0 else "Allure"))])
     scale = 4300 / sum(r[2] for r in splits)
@@ -1068,7 +1102,30 @@ def write_docs_extras(root: Path) -> None:
                        for i, (label, dist, dur, hr) in enumerate(laps, start=1)]
         d["moving_duration_s"] = sum(lap[2] for lap in laps)
         d["duration_s"] = d["moving_duration_s"] + 30
-    mutate(root / f"activities/{LAPS_ACTIVITY_DATE.isoformat()}_running.md", laps_fn)
+    laps_path = root / f"activities/{LAPS_ACTIVITY_DATE.isoformat()}_running.md"
+    mutate(laps_path, laps_fn)
+    _laps_samples(root / f"activities/fit/{read_block(laps_path)['garmin_activity_id']}.json", laps)
+
+    # Lendemain de l'ultra (vue Santé sur 6 mois) : repos imposé, FC de repos en pic, puis reprise.
+    for day, hrv, rhr, ready, verdict, reason in (
+        ("2026-06-14", 41, 55, 18, "red", "Lendemain de l'ultra : HRV effondrée, FC de repos +8. Repos complet."),
+        ("2026-06-15", 46, 53, 31, "red", "Récupération en cours : encore une journée sans course."),
+        ("2026-06-16", 51, 50, 52, "amber", "Reprise en douceur : 30 min d'endurance fondamentale au plus."),
+        ("2026-06-17", 56, 48, 66, "green", "Triade revenue dans la norme : reprise du plan."),
+    ):
+        path = root / f"medical/{day}_health.md"
+        if path.exists():
+            mutate(path, lambda d, v=(hrv, rhr, ready, verdict, reason): d.update({
+                "hrv_overnight_ms": v[0], "resting_hr_bpm": v[1], "readiness_score": v[2],
+                "hrv_status": "balanced" if v[0] >= 52 else "low", "verdict": v[3], "verdict_reason": v[4]}))
+
+    # Fichiers hors contrat (vue « Fichiers hors contrat ») : une vieille note sans bloc, un bloc incomplet.
+    (root / "rapports/2026-02-15_notes-reprise.md").write_text(
+        "# Notes de reprise\n\nPremières sorties après l'hiver, notées à la main avant l'installation du coach.\n",
+        encoding="utf-8")
+    (root / "nutrition/2026-02-20_nutrition.md").write_text(
+        "# Nutrition du 2026-02-20\n\n```arc\n{\"arc\": 1, \"kind\": \"nutrition\"}\n```\n\nApports non chiffrés.\n",
+        encoding="utf-8")
 
     # Matériel à contrôler (vue Matériel, tuile d'Aujourd'hui) : seuils posés près de l'usage réel.
     profile = root / "planning/Runner_Profile.md"
@@ -1117,6 +1174,9 @@ def build_demo(root: Path, *, with_samples: bool = True, force: bool = False, bl
     set_departure(root)
     write_inspections(root)                       # après le départ : kilométrages cohérents avec la fiche
     if docs:                                      # captures de la documentation seulement
+        if with_samples:                          # vitesse critique ajustable, trace fictive de la sortie du 27
+            plant_efforts(root, skip=(LAPS_ACTIVITY_DATE.isoformat(),))
+            add_fictional_gps(root)
         write_docs_extras(root)
     if bloc:                                      # épisode 15 seulement : les autres épisodes gardent le workspace d'origine
         write_skeleton(root)                      # en dernier : lit le volume tenu dans l'index
