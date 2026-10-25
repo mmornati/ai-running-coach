@@ -4,7 +4,7 @@
     "en": "Dashboard tour"
   },
   "summary": {
-    "fr": "Visite guidée du tableau de bord local, en lecture seule : une question par vue."
+    "fr": "Visite guidée du tableau de bord local, en lecture seule : une question par vue (ancien design, avant la 1.4)."
   },
   "scenes": [
     {

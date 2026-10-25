@@ -239,7 +239,7 @@ de bord tel qu'il était avant le roadbook.
 
 <span class="arc-video__meta">En vidéo · Étape 05 · 1 min 29</span>
 
-**[Tour du propriétaire](../video/tableau-de-bord/index.html)** — Visite guidée du tableau de bord local, en lecture seule : une question par vue.
+**[Tour du propriétaire](../video/tableau-de-bord/index.html)** — Visite guidée du tableau de bord local, en lecture seule : une question par vue (ancien design, avant la 1.4).
 
 [Regarder](../video/tableau-de-bord/index.html) · [English](../video/tableau-de-bord/index.html?lang=en) · [Toutes les vidéos](../videos.md)
 
