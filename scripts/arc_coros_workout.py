@@ -234,10 +234,7 @@ def pace_to_speed_ms(pace: str) -> float:
 # ---------------------------------------------------------------------------
 
 # Le DERNIER ravito à moins de 2 % de la longueur mesurée du GPX (50 m au moins) est l'arrivée : pas de
-# temps d'arrêt à saisir. Approximation du projet : un GPX mesure souvent 1-2 % de plus que la distance
-# officielle (Féodières : arrivée déclarée au km 10, GPX de 10,13 km).
-FINISH_TOLERANCE_RATIO = 0.02
-FINISH_TOLERANCE_MIN_KM = 0.05
+# temps d'arrêt à saisir. Règle partagée avec le roadbook : `arc_race_pacing.finish_tolerance_km`.
 
 
 def _clock(seconds: float) -> str:
@@ -299,7 +296,7 @@ def pace_strategy(plan: dict, scenario: Optional[str] = None) -> dict:
             notes.append(f"heure de départ illisible ({plan['start_time']!r}) : pas d'heure murale")
     end_km = segments[-1].get("km_end") or 0.0
     waypoints = []
-    tolerance = max(FINISH_TOLERANCE_MIN_KM, end_km * FINISH_TOLERANCE_RATIO)
+    tolerance = RP.finish_tolerance_km(end_km)
     for i, (station, passage) in enumerate(zip(aid, passages["aid_station_passages"])):
         arrival = passage[scenario]
         finish = i == len(aid) - 1 and station["km"] >= end_km - tolerance

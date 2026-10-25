@@ -1058,7 +1058,8 @@ score sans que ce soit un problème.
 
 Une feuille imprimable par scénario (#187, épopée #170), accessible par le lien
 « Roadbook imprimable du plan de course » en bas de [Trail Shape](#trail-shape)
-(adresse `#/roadbook`, `?plan=<fichier>` pour choisir un plan, `?scenario=safe|realistic|ambitious`).
+(adresse `#/roadbook`, `?plan=<fichier>` pour choisir un plan, `?scenario=safe|realistic|ambitious`,
+`?passages=detailed|aid_stations`).
 Quand un plan existe pour la prochaine course (date du jour ou à venir), la navigation
 affiche aussi une entrée « Roadbook » juste au-dessus de Trail Shape ; un plan déjà couru
 reste joignable par le lien de Trail Shape seulement.
@@ -1077,8 +1078,9 @@ Une feuille contient :
   heure d'arrivée, objectif du plan) ;
 - le **profil d'élévation**, avec les ravitos numérotés (R1, R2…) et la nuit
   hachurée — **relatif au départ** : le plan ne contient pas l'altitude absolue ;
-- les **sections** (de ravito à ravito) : km, distance, D+/D−, temps, heure de
-  passage et durée écoulée, barrière horaire avec sa marge (texte « TENDU » /
+- les **sections** (d'un point de passage à l'autre) : km, distance, D+/D−, temps et allure
+  moyenne (distance / temps en mouvement, brute : pente non corrigée), heure de passage et durée
+  écoulée, barrière horaire avec sa marge (texte « TENDU » /
   « HORS DÉLAI », jamais la seule couleur), ravito avec **ce qu'on y prend**
   (`take` du plan nutrition) et ce qu'il sert, drapeau **nuit / frontale** ;
 - le **matériel obligatoire** en liste à cocher, avec son statut contre l'inventaire
@@ -1088,7 +1090,21 @@ Une feuille contient :
   départ renseigné, pas de barrière, `take` absent…) : une donnée absente est
   dite absente, jamais inventée.
 
-Le sélecteur de scénario bascule sans nouvel appel. **Imprimer / PDF** ouvre la
+Le sélecteur **Points de passage** choisit le découpage des sections :
+
+- **Détaillé** (par défaut) : les ravitos, plus des repères tirés des segments du plan,
+  gardés seulement à **au moins 15 min** du point précédent et du ravito ou de l'arrivée
+  qui suit. Un 10 km a ainsi 3 ou 4 repères, un ultra quelques dizaines au lieu d'une
+  centaine de segments. Les repères sont choisis sur le scénario réaliste : les trois
+  feuilles ont les mêmes kilomètres, seules les heures changent.
+- **Ravitaillements uniquement** : départ, ravitos, arrivée. Grisé quand le plan n'a aucun
+  ravito sur le parcours.
+
+Un ravito déclaré à l'arrivée (le dernier, à moins de 2 % de la fin mesurée du GPX, 50 m au
+moins) est l'arrivée elle-même : aucun arrêt ajouté au temps total, pas de ligne à part, sa
+barrière et ce qu'on y prend vont sur la ligne d'arrivée (même règle que la fiche COROS).
+
+Les sélecteurs de scénario et de points de passage basculent sans nouvel appel. **Imprimer / PDF** ouvre la
 boîte d'impression du navigateur (`window.print()`, aucun service ni
 dépendance : choisissez « Enregistrer au format PDF ») ; **Imprimer les 3
 scénarios** met un scénario par page. La feuille d'impression est en A4

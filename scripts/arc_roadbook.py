@@ -32,6 +32,14 @@ import arc_solar as SOLAR  # noqa: E402
 SCENARIOS = RP.SCENARIOS                      # ("safe", "realistic", "ambitious")
 DEFAULT_SCENARIO = "realistic"
 
+# Points de passage : « detailed » = ravitos + limites de segments espacées d'au moins
+# `MIN_PASSAGE_GAP_S` ; « aid_stations » = ravitos uniquement (départ, ravitos, arrivée).
+PASSAGE_MODES = ("detailed", "aid_stations")
+DEFAULT_PASSAGE_MODE = "detailed"
+# Écart minimal entre deux points de passage du mode détaillé (15 min) : assez pour un repère
+# utile sur un 10 km, sans une ligne tous les 750 m sur un ultra — approximation du projet.
+MIN_PASSAGE_GAP_S = 15 * 60
+
 # Seuil au-delà duquel une section est dite « de nuit complète » (le reste, > 0, « partielle ») :
 # les fractions de nuit viennent de `arc_race_pacing.apply_night_penalty`, par segment.
 NIGHT_FULL_FRACTION = 0.95
@@ -42,9 +50,18 @@ ASSUMPTIONS = {
         "(minute arrondie, arrêts ravito compris) : un ravito est rattaché à la fin du segment qui le "
         "contient, donc l'heure peut différer de quelques minutes d'un passage interpolé au mètre."),
     "sections": (
-        "Une section va d'un point à l'autre (départ, ravitos, arrivée). Son D+/D- est la somme des "
-        "segments qu'elle recouvre, répartie au prorata de la distance pour un segment à cheval sur "
-        "un ravito — approximation du projet. Sans ravito, la section est le segment lui-même."),
+        "Une section va d'un point de passage à l'autre. Son D+/D- est la somme des segments qu'elle "
+        "recouvre, répartie au prorata de la distance pour un segment à cheval sur un ravito — "
+        "approximation du projet. Deux modes : « ravitos uniquement » (départ, ravitos, arrivée) et "
+        "« détaillé » (en plus, des limites de segments du plan, gardées seulement à au moins "
+        "`MIN_PASSAGE_GAP_S` = 15 min du point précédent ET du ravito ou de l'arrivée qui suit). "
+        "Les points détaillés sont choisis sur le scénario réaliste (sinon le premier disponible) : "
+        "les trois feuilles ont les mêmes kilomètres, seules les heures changent."),
+    "finish_station": (
+        "Le dernier ravito à moins de 2 % de la fin mesurée du GPX (50 m au moins) est l'arrivée "
+        "(`arc_race_pacing.finish_tolerance_km`, même règle que la fiche COROS) : ni arrêt compté, "
+        "ni ligne à part ; sa barrière et ce qu'on y prend vont sur la ligne d'arrivée, et la marge "
+        "de cette barrière est calculée sur l'heure d'arrivée."),
     "profile": (
         "Profil RELATIF au départ (D+ cumulé moins D- cumulé) : le plan ne persiste pas l'altitude "
         "absolue. Axe en mètres relatifs, jamais une altitude réelle."),
@@ -240,29 +257,85 @@ def _cutoff_entry(cut: Optional[dict], scenario: str, st: dict) -> Optional[dict
     return entry
 
 
-def _scenario_block(plan: dict, segments: Sequence[dict], stations: Sequence[dict], scenario: str,
-                    passages: dict, cutoffs: Sequence[dict], start_dt: Optional[datetime],
-                    total_km: float, warnings: List[str], zone=None) -> dict:
+def _stop_s(st: dict) -> float:
+    stop = _num(st.get("stop_s"))
+    return float(RP.DEFAULT_AID_STATION_STOP_S if stop is None else stop)
+
+
+def _split_finish(stations: Sequence[dict], total_km: float):
+    """`(ravitos en course, ravito d'arrivée ou None)` — voir `ASSUMPTIONS["finish_station"]`."""
+    if stations and stations[-1]["km"] >= total_km - RP.finish_tolerance_km(total_km):
+        return list(stations[:-1]), stations[-1]
+    return list(stations), None
+
+
+def _detail_points(passages: dict, course_stations: Sequence[dict], ref: str, start_km: float,
+                   total_km: float) -> List[int]:
+    """Indices des limites de segments (`segment_passages`) gardées en mode détaillé, choisis sur
+    le scénario `ref` : à au moins `MIN_PASSAGE_GAP_S` du point précédent (départ d'un ravito,
+    arrêt compris) ET du ravito ou de l'arrivée qui suit."""
+    seg_pass = passages["segment_passages"]
+    departures = [(start_km, 0.0)]
+    arrivals = []
+    for st, ps in zip(course_stations, passages["aid_station_passages"]):
+        km, arr = min(st["km"], total_km), float(ps[ref])
+        arrivals.append((km, arr))
+        departures.append((km, arr + _stop_s(st)))
+    arrivals.append((total_km, float(passages["totals_s"][ref])))
+    chosen: List[int] = []
+    for (k0, last), (k1, next_arrival) in zip(departures, arrivals):
+        for i, sp in enumerate(seg_pass[:-1]):
+            km, t = sp["km_end"], float(sp[ref])
+            if k0 < km < k1 and t - last >= MIN_PASSAGE_GAP_S and next_arrival - t >= MIN_PASSAGE_GAP_S:
+                chosen.append(i)
+                last = t
+    return chosen
+
+
+def _bounds(segments: Sequence[dict], course_stations: Sequence[dict], finish_st: Optional[dict],
+            scenario: str, passages: dict, detail: Sequence[int], total_km: float) -> List[dict]:
+    """Points de passage d'un scénario : départ, ravitos en course, points détaillés, arrivée."""
+    points = []
+    for st, ps in zip(course_stations, passages["aid_station_passages"]):
+        points.append({"km": min(st["km"], total_km), "name": _station_info(st)["name"], "st": st,
+                       "arrival_s": float(ps[scenario]), "stop_s": _stop_s(st)})
+    for i in detail:
+        sp = passages["segment_passages"][i]
+        points.append({"km": sp["km_end"], "name": f"km {sp['km_end']:.1f}".replace(".", ","),
+                       "arrival_s": float(sp[scenario]), "stop_s": 0.0})
+    points.sort(key=lambda p: (p["km"], p["arrival_s"]))
+    finish = {"km": total_km, "name": "Arrivée", "arrival_s": float(passages["totals_s"][scenario]),
+              "stop_s": 0.0}
+    if finish_st is not None:
+        finish.update(st=finish_st, finish=True)
+    return [{"km": segments[0]["km_start"], "name": "Départ", "arrival_s": 0.0, "stop_s": 0.0},
+            *points, finish]
+
+
+def _scenario_block(segments: Sequence[dict], course_stations: Sequence[dict], finish_st: Optional[dict],
+                    scenario: str, passages: dict, cutoffs: Sequence[dict], start_dt: Optional[datetime],
+                    total_km: float, detail: Sequence[int], zone=None) -> dict:
     total_s = passages["totals_s"][scenario]
-    seg_pass = passages["aid_station_passages"]
+    modes = {}
+    for mode, points in (("detailed", detail), ("aid_stations", ())):
+        bounds = _bounds(segments, course_stations, finish_st, scenario, passages, points, total_km)
+        sections = _sections(segments, bounds, scenario, cutoffs, start_dt, zone)
+        modes[mode] = {"sections": sections, "lamp_sections": sum(1 for r in sections if r.get("night"))}
+    block: Dict[str, Any] = {
+        "available": True, "total_s": round(total_s),
+        "sections": modes[DEFAULT_PASSAGE_MODE]["sections"],
+        "lamp_sections": modes[DEFAULT_PASSAGE_MODE]["lamp_sections"],
+        "modes": modes, "night_spans_km": _night_spans(segments, scenario),
+    }
+    finish = _clock(start_dt, total_s, zone)
+    if finish:
+        block["finish_clock"] = finish
+    return block
+
+
+def _sections(segments: Sequence[dict], bounds: Sequence[dict], scenario: str, cutoffs: Sequence[dict],
+              start_dt: Optional[datetime], zone=None) -> List[dict]:
     cut_by_km = {round(c["km"], 6): c for c in cutoffs}
-    bounds: List[dict] = [{"km": segments[0]["km_start"], "name": "Départ", "arrival_s": 0.0, "stop_s": 0.0}]
-    for st, ps in zip(stations, seg_pass):
-        stop = _num(st.get("stop_s"))
-        stop = RP.DEFAULT_AID_STATION_STOP_S if stop is None else stop
-        bounds.append({"km": min(st["km"], total_km), "name": _station_info(st)["name"], "st": st,
-                       "arrival_s": float(ps[scenario]), "stop_s": float(stop)})
-    bounds.append({"km": total_km, "name": "Arrivée", "arrival_s": float(total_s), "stop_s": 0.0})
-    # Sans ravito, la section est le segment (un seul bloc Départ -> Arrivée serait peu lisible).
-    if not stations and len(segments) > 1:
-        cum = 0.0
-        bounds = [{"km": segments[0]["km_start"], "name": "Départ", "arrival_s": 0.0, "stop_s": 0.0}]
-        for seg in segments:
-            cum += _num(seg["predicted_time_s"][scenario]) or 0.0
-            bounds.append({"km": seg["km_end"], "name": f"km {seg['km_end']:.1f}".replace(".", ","),
-                           "arrival_s": float(RP._round_passage(cum)), "stop_s": 0.0})
-        bounds[-1]["name"] = "Arrivée"
-        bounds[-1]["arrival_s"] = float(total_s)
     sections = []
     for prev, cur in zip(bounds, bounds[1:]):
         a, b = prev["km"], cur["km"]
@@ -280,10 +353,13 @@ def _scenario_block(plan: dict, segments: Sequence[dict], stations: Sequence[dic
             row["arrival_clock"] = clock
         if cur.get("st") is not None:
             row["station"] = _station_info(cur["st"])
-            row["stop_s"] = round(cur["stop_s"])
-            dep = _clock(start_dt, cur["arrival_s"] + cur["stop_s"], zone)
-            if dep:
-                row["departure_clock"] = dep
+            if cur.get("finish"):
+                row["finish"] = True
+            else:
+                row["stop_s"] = round(cur["stop_s"])
+                dep = _clock(start_dt, cur["arrival_s"] + cur["stop_s"], zone)
+                if dep:
+                    row["departure_clock"] = dep
             cutoff = _cutoff_entry(cut_by_km.get(round(cur["st"]["km"], 6)), scenario, cur["st"])
             if cutoff:
                 row["cutoff"] = cutoff
@@ -291,15 +367,7 @@ def _scenario_block(plan: dict, segments: Sequence[dict], stations: Sequence[dic
             row["night"] = "full" if nf >= NIGHT_FULL_FRACTION else "partial"
             row["night_fraction"] = round(nf, 2)
         sections.append(row)
-    block: Dict[str, Any] = {
-        "available": True, "total_s": round(total_s), "sections": sections,
-        "night_spans_km": _night_spans(segments, scenario),
-        "lamp_sections": sum(1 for r in sections if r.get("night")),
-    }
-    finish = _clock(start_dt, total_s, zone)
-    if finish:
-        block["finish_clock"] = finish
-    return block
+    return sections
 
 
 def _gear_block(gear_check: Optional[dict], plan: dict) -> Optional[dict]:
@@ -353,26 +421,36 @@ def build_roadbook(plan: dict, *, plan_path: Optional[str] = None,
         header["elevation_loss_m"] = round(_cum_at(segments, total_km, "elevation_loss_m"), 1)
     header = {k: v for k, v in header.items() if v is not None}
 
+    course_stations, finish_st = _split_finish(stations, total_km) if segments else (stations, None)
     scenarios: Dict[str, Any] = {}
     if avail:
-        passages = RP.compute_passages(segments, stations)
+        # Le ravito d'arrivée n'est pas un arrêt en course : aucun temps d'arrêt ajouté au total.
+        timed = course_stations + ([{**finish_st, "stop_s": 0}] if finish_st is not None else [])
+        passages = RP.compute_passages(segments, timed)
         for p in passages["aid_station_passages"]:
             if p.get("note"):
                 warnings.append(p["note"])
         cutoffs: List[dict] = []
-        if stations and any(st.get("cutoff") for st in stations):
+        if timed and any(st.get("cutoff") for st in timed):
             if start_dt is None:
                 missing.append("barrières horaires présentes mais heure de départ inconnue : marges non calculées")
             else:
-                cutoffs = RP.check_cutoffs(passages["aid_station_passages"], stations, start_dt, zone)
-                if zone is None and RP.has_offset_cutoff(stations):
+                # Barrière du ravito d'arrivée comparée à l'heure d'ARRIVÉE (fin du GPX), celle de sa
+                # ligne, pas au passage à son km déclaré (jusqu'à 2 % plus tôt : marge trop généreuse).
+                cut_passages = passages["aid_station_passages"]
+                if finish_st is not None and cut_passages:
+                    cut_passages = [*cut_passages[:-1], {**cut_passages[-1], **passages["totals_s"]}]
+                cutoffs = RP.check_cutoffs(cut_passages, timed, start_dt, zone)
+                if zone is None and RP.has_offset_cutoff(timed):
                     missing.append("barrière horaire avec décalage mais fuseau du plan (`timezone`) inconnu : "
                                    "marge comparée à l'heure murale de la barrière")
-        elif stations:
+        elif timed:
             missing.append("aucune barrière horaire renseignée sur les ravitos du plan")
+        ref = DEFAULT_SCENARIO if DEFAULT_SCENARIO in avail else avail[0]
+        detail = _detail_points(passages, course_stations, ref, segments[0]["km_start"], total_km)
         for s in avail:
-            scenarios[s] = _scenario_block(plan, segments, stations, s, passages, cutoffs, start_dt,
-                                           total_km, warnings, zone)
+            scenarios[s] = _scenario_block(segments, course_stations, finish_st, s, passages, cutoffs,
+                                           start_dt, total_km, detail, zone)
         if zone is not None and start_dt is not None:
             longest = max(passages["totals_s"][s] for s in avail)
             off0 = start_dt.replace(tzinfo=zone).utcoffset()
@@ -398,7 +476,7 @@ def build_roadbook(plan: dict, *, plan_path: Optional[str] = None,
     profile = _profile(segments)
     markers = []
     if profile:
-        for st in stations:
+        for st in course_stations:
             km = min(st["km"], total_km)
             markers.append({"km": round(km, 3), "name": _station_info(st)["name"],
                             "elev_m": round(_elev_at(profile["points"], km), 1)})
@@ -409,8 +487,9 @@ def build_roadbook(plan: dict, *, plan_path: Optional[str] = None,
     if stations and not any(_station_info(st).get("take") for st in stations):
         missing.append("ce qu'on prend à chaque ravito n'est pas renseigné (`take` des aid_stations) : "
                        "voir le plan nutrition, rien n'est déduit ici")
-    if not stations and segments:
-        missing.append("aucun ravito dans le plan : sections = segments")
+    if not course_stations and segments:
+        missing.append("aucun ravito sur le parcours dans le plan : le mode « Ravitaillements uniquement » "
+                       "se limite à départ → arrivée")
 
     gear = _gear_block(gear_check, plan)
     if gear is None:
@@ -431,6 +510,8 @@ def build_roadbook(plan: dict, *, plan_path: Optional[str] = None,
         "status": "ok", "plan": plan_path, "header": header, "profile": profile, "water_points": water,
         "scenarios": scenarios, "default_scenario": DEFAULT_SCENARIO if DEFAULT_SCENARIO in avail
         else (avail[0] if avail else DEFAULT_SCENARIO),
+        "passage_modes": {"detailed": bool(avail), "aid_stations": bool(avail and course_stations)},
+        "default_passage_mode": DEFAULT_PASSAGE_MODE,
         "gear": gear, "notes": notes, "emergency": emergency,
         "nutrition_plan": plan.get("nutrition_plan") if isinstance(plan.get("nutrition_plan"), str) else None,
         "missing": missing, "warnings": warnings, "assumptions": ASSUMPTIONS,

@@ -884,6 +884,8 @@ button.seg:focus-visible, .link-btn:focus-visible { outline: 2px solid var(--foc
 .rb-controls .toolbar { gap: 0.5rem; }
 .rb-controls__label { color: var(--ink-faint); font-size: 0.82rem; margin-right: 0.15rem; }
 .rb-picks { display: inline-flex; gap: 0.4rem; }
+/* Points de passage : une seule table (et un seul compte de frontale) visible, à l'écran comme à l'impression. */
+.rb .rb-mode:not(.is-on) { display: none !important; }
 .rb-actions { display: inline-flex; flex-wrap: wrap; gap: 0.4rem; margin-left: auto; }
 .rb .rb-sheet { display: none; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 1.25rem 1.4rem; }
 .rb .rb-sheet.is-active { display: block; }

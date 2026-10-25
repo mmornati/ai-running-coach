@@ -39,7 +39,7 @@ class TestRoadbookSections(unittest.TestCase):
         for s in SCEN:
             sc = self.model["scenarios"][s]
             self.assertTrue(sc["available"])
-            secs = sc["sections"]
+            secs = sc["modes"]["aid_stations"]["sections"]
             self.assertEqual([r["from_name"] for r in secs], ["Départ", "Ravito du Col", "Base de vie"])
             self.assertEqual(secs[-1]["to_name"], "Arrivée")
             for a, b in zip(secs, secs[1:]):
@@ -47,7 +47,7 @@ class TestRoadbookSections(unittest.TestCase):
 
     def test_totals_and_elevation_add_up(self):
         h = self.model["header"]
-        secs = self.model["scenarios"]["realistic"]["sections"]
+        secs = self.model["scenarios"]["realistic"]["modes"]["aid_stations"]["sections"]
         self.assertAlmostEqual(sum(r["distance_m"] for r in secs), h["distance_m"], delta=5.0)
         self.assertAlmostEqual(sum(r["gain_m"] for r in secs), h["elevation_gain_m"], delta=1.0)
         self.assertAlmostEqual(sum(r["loss_m"] for r in secs), h["elevation_loss_m"], delta=1.0)
@@ -55,14 +55,14 @@ class TestRoadbookSections(unittest.TestCase):
     def test_passage_times_are_the_plans_own(self):
         passages = RP.compute_passages(self.plan["segments"], self.plan["aid_stations"])
         for s in SCEN:
-            secs = self.model["scenarios"][s]["sections"]
+            secs = self.model["scenarios"][s]["modes"]["aid_stations"]["sections"]
             self.assertEqual(secs[0]["arrival_s"], passages["aid_station_passages"][0][s])
             self.assertEqual(secs[1]["arrival_s"], passages["aid_station_passages"][1][s])
             self.assertEqual(secs[-1]["arrival_s"], passages["totals_s"][s])
             self.assertEqual(self.model["scenarios"][s]["total_s"], passages["totals_s"][s])
 
     def test_clock_times_follow_the_start_and_roll_over_midnight(self):
-        secs = self.model["scenarios"]["realistic"]["sections"]
+        secs = self.model["scenarios"]["realistic"]["modes"]["aid_stations"]["sections"]
         self.assertEqual(secs[0]["arrival_clock"], "17:54")
         self.assertEqual(secs[0]["departure_clock"], "17:55")
         self.assertTrue(secs[-1]["arrival_clock"].endswith("(J+1)"))
@@ -74,24 +74,25 @@ class TestRoadbookSections(unittest.TestCase):
         self.assertGreaterEqual(t["realistic"], t["ambitious"])
 
     def test_cutoff_margin_and_status(self):
-        first = self.model["scenarios"]["realistic"]["sections"][0]
+        first = self.model["scenarios"]["realistic"]["modes"]["aid_stations"]["sections"][0]
         # barrière « +02:10 » = 7800 s, passage à 6840 s : 960 s de marge, sous les 30 min de confort
         self.assertEqual(first["cutoff"]["margin_s"], 7800 - first["arrival_s"])
         self.assertEqual(first["cutoff"]["status"], "tendu")
-        second = self.model["scenarios"]["realistic"]["sections"][1]
+        second = self.model["scenarios"]["realistic"]["modes"]["aid_stations"]["sections"][1]
         self.assertEqual(second["cutoff"]["status"], "ok")
-        self.assertNotIn("cutoff", self.model["scenarios"]["realistic"]["sections"][2])
+        self.assertNotIn("cutoff", self.model["scenarios"]["realistic"]["modes"]["aid_stations"]["sections"][2])
 
     def test_aid_station_take_and_services_are_carried(self):
-        st = self.model["scenarios"]["realistic"]["sections"][0]["station"]
+        st = self.model["scenarios"]["realistic"]["modes"]["aid_stations"]["sections"][0]["station"]
         self.assertEqual(st["take"], ["2 gels", "500 ml de boisson d'effort"])
         self.assertEqual(st["services"], ["eau", "coca", "soupe"])
-        self.assertEqual(self.model["scenarios"]["realistic"]["sections"][1]["stop_s"], 300)
+        self.assertEqual(self.model["scenarios"]["realistic"]["modes"]["aid_stations"]["sections"][1]["stop_s"], 300)
 
     def test_night_flags_and_spans(self):
         sc = self.model["scenarios"]["realistic"]
-        self.assertEqual([r.get("night") for r in sc["sections"]], ["partial", "full", "full"])
-        self.assertEqual(sc["lamp_sections"], 3)
+        self.assertEqual([r.get("night") for r in sc["modes"]["aid_stations"]["sections"]], ["partial", "full", "full"])
+        self.assertEqual(sc["modes"]["aid_stations"]["lamp_sections"], 3)
+        self.assertEqual(sc["lamp_sections"], sc["modes"]["detailed"]["lamp_sections"])
         self.assertTrue(sc["night_spans_km"])
         # plus on part tard dans la nuit, plus le scénario lent passe de km de nuit : la nuit débute plus tôt (km)
         self.assertLess(self.model["scenarios"]["safe"]["night_spans_km"][0][0],
@@ -121,7 +122,7 @@ class TestRoadbookHonesty(unittest.TestCase):
         plan = R.persisted_plan()
         del plan["start_time"]
         model = RB.build_roadbook(plan)
-        secs = model["scenarios"]["realistic"]["sections"]
+        secs = model["scenarios"]["realistic"]["modes"]["aid_stations"]["sections"]
         self.assertTrue(all("arrival_clock" not in r for r in secs))
         self.assertTrue(all("margin_s" not in r.get("cutoff", {}) for r in secs))
         self.assertTrue(any("heure de départ" in m for m in model["missing"]))
@@ -130,7 +131,7 @@ class TestRoadbookHonesty(unittest.TestCase):
 
     def test_hhmm_start_is_combined_with_the_race_date(self):
         model = _model(start_time="16:00")
-        self.assertEqual(model["scenarios"]["realistic"]["sections"][0]["arrival_clock"], "17:54")
+        self.assertEqual(model["scenarios"]["realistic"]["modes"]["aid_stations"]["sections"][0]["arrival_clock"], "17:54")
 
     def test_plan_without_segments_has_no_timed_sections(self):
         model = _model(segments=[])
@@ -161,7 +162,7 @@ class TestRoadbookHonesty(unittest.TestCase):
         self.assertIn("matériel obligatoire", text)
         self.assertIn("urgence", text)
         self.assertIsNone(model["gear"])
-        self.assertNotIn("take", model["scenarios"]["realistic"]["sections"][0]["station"])
+        self.assertNotIn("take", model["scenarios"]["realistic"]["modes"]["aid_stations"]["sections"][0]["station"])
         # nuit prévue sans matériel déclaré : rappel de la frontale
         self.assertTrue(any("frontale" in w for w in model["warnings"]))
 
@@ -190,7 +191,7 @@ class TestRoadbookHonesty(unittest.TestCase):
         model = RB.build_roadbook(plan)
         self.assertTrue(model["scenarios"]["realistic"]["available"])
         # #205 : la marge est calculée (instant exact dans le fuseau du plan), plus de « fuseau mixte ».
-        first = model["scenarios"]["realistic"]["sections"][0]
+        first = model["scenarios"]["realistic"]["modes"]["aid_stations"]["sections"][0]
         self.assertIn("margin_s", first["cutoff"])
         self.assertFalse(any("fuseau mixte" in m for m in model["missing"]))
         # Etc/GMT+9 : départ 16:00 local = 2026-06-21T01:00Z ; barrière 20:00Z la veille -> hors délai.
@@ -203,12 +204,16 @@ class TestRoadbookHonesty(unittest.TestCase):
         model = RB.build_roadbook(plan)
         self.assertTrue(any("au-delà de la fin" in w for w in model["warnings"]))
 
-    def test_no_aid_station_falls_back_to_segment_rows(self):
+    def test_no_aid_station_detailed_mode_spaces_the_segment_rows(self):
         plan = R.persisted_plan(aid_stations=[])
         model = RB.build_roadbook(plan)
-        secs = model["scenarios"]["realistic"]["sections"]
-        self.assertEqual(len(secs), len(plan["segments"]))
-        self.assertEqual(secs[-1]["arrival_s"], model["scenarios"]["realistic"]["total_s"])
+        sc = model["scenarios"]["realistic"]
+        detailed = sc["modes"]["detailed"]["sections"]
+        self.assertLess(len(detailed), len(plan["segments"]))
+        self.assertTrue(all(r["moving_s"] >= RB.MIN_PASSAGE_GAP_S for r in detailed))
+        self.assertEqual(detailed[-1]["arrival_s"], sc["total_s"])
+        self.assertEqual(len(sc["modes"]["aid_stations"]["sections"]), 1)
+        self.assertEqual(model["passage_modes"], {"detailed": True, "aid_stations": False})
         self.assertTrue(any("aucun ravito" in m for m in model["missing"]))
 
     def test_inputs_are_not_mutated(self):
@@ -216,6 +221,77 @@ class TestRoadbookHonesty(unittest.TestCase):
         before = copy.deepcopy(plan)
         RB.build_roadbook(plan)
         self.assertEqual(plan, before)
+
+
+def _short_plan(aid_stations=()) -> dict:
+    """10 km en 10 segments de 1 km (6 min/km en réaliste) : un 10 km de trail, départ 09:40."""
+    pace = {"safe": 420, "realistic": 360, "ambitious": 300}
+    segments = [{"id": f"s{i + 1:02d}", "km_start": float(i), "km_end": float(i + 1), "distance_m": 1000.0,
+                 "elevation_gain_m": 20.0, "elevation_loss_m": 20.0, "predicted_time_s": dict(pace)}
+                for i in range(10)]
+    return {"arc": 1, "kind": "race_plan", "race_name": "10 km fictif", "race_date": "2026-10-31",
+            "start_time": "2026-10-31T09:40:00", "segments": segments, "aid_stations": list(aid_stations),
+            "gear": ["Gobelet"], "emergency": ["112"]}
+
+
+class TestRoadbookPassageModes(unittest.TestCase):
+    def test_detailed_points_are_at_least_fifteen_minutes_apart(self):
+        sc = RB.build_roadbook(_short_plan())["scenarios"]["realistic"]
+        self.assertEqual([r["to_name"] for r in sc["modes"]["detailed"]["sections"]], ["km 3,0", "km 6,0", "Arrivée"])
+        self.assertEqual([r["arrival_clock"] for r in sc["sections"]], ["09:58", "10:16", "10:40"])
+        self.assertEqual(sc["sections"], sc["modes"][RB.DEFAULT_PASSAGE_MODE]["sections"])
+
+    def test_the_three_scenarios_share_the_same_kilometres(self):
+        model = RB.build_roadbook(_short_plan())
+        kms = {s: [r["to_km"] for r in model["scenarios"][s]["modes"]["detailed"]["sections"]] for s in SCEN}
+        self.assertEqual(kms["safe"], kms["realistic"])
+        self.assertEqual(kms["ambitious"], kms["realistic"])
+
+    def test_aid_stations_are_always_kept_and_the_gap_is_measured_from_their_departure(self):
+        model = RB.build_roadbook(_short_plan([{"km": 5.0, "name": "Ravito", "stop_s": 60}]))
+        sc = model["scenarios"]["realistic"]
+        self.assertEqual([r["to_name"] for r in sc["modes"]["aid_stations"]["sections"]], ["Ravito", "Arrivée"])
+        detailed = sc["modes"]["detailed"]["sections"]
+        self.assertIn("Ravito", [r["to_name"] for r in detailed])
+        self.assertTrue(all(r["moving_s"] >= RB.MIN_PASSAGE_GAP_S for r in detailed))
+        self.assertTrue(model["passage_modes"]["aid_stations"])
+
+    def test_aid_station_at_the_finish_is_the_finish(self):
+        # Arrivée déclarée au km 9,9, GPX de 10 km : ni arrêt compté, ni ligne à part, barrière gardée.
+        model = RB.build_roadbook(_short_plan([{"km": 9.9, "name": "Arrivée — village", "cutoff": "+02:00",
+                                                "take": ["soupe"]}]))
+        sc = model["scenarios"]["realistic"]
+        self.assertEqual(sc["total_s"], 3600)
+        self.assertEqual([r["to_name"] for r in sc["sections"]], ["km 3,0", "km 6,0", "Arrivée"])
+        last = sc["sections"][-1]
+        self.assertTrue(last["finish"])
+        self.assertEqual(last["station"]["take"], ["soupe"])
+        self.assertEqual(last["cutoff"]["status"], "ok")
+        self.assertNotIn("stop_s", last)
+        self.assertFalse(model["passage_modes"]["aid_stations"])
+        self.assertEqual(model["profile"]["aid_stations"], [])
+
+    def test_finish_station_cutoff_margin_uses_the_finish_time(self):
+        # 50 km en segments de 1 km, arrivée déclarée au km 49 (2 % = 1 km de tolérance) : la marge se
+        # lit sur l'heure de la ligne d'arrivée (14:40), pas sur le passage au km 49 (14:34).
+        plan = _short_plan([{"km": 49.0, "name": "Arrivée — village", "cutoff": "+05:03"}])
+        last_seg = plan["segments"][-1]
+        plan["segments"] += [{**last_seg, "id": f"s{i + 1:02d}", "km_start": float(i), "km_end": float(i + 1)}
+                             for i in range(10, 50)]
+        model = RB.build_roadbook(plan)
+        for mode in RB.PASSAGE_MODES:
+            last = model["scenarios"]["realistic"]["modes"][mode]["sections"][-1]
+            self.assertTrue(last["finish"])
+            self.assertEqual(last["arrival_clock"], "14:40")
+            self.assertEqual(last["cutoff"]["margin_s"], 5 * 3600 + 180 - last["arrival_s"])
+            self.assertEqual(last["cutoff"]["margin_s"], 180)
+
+    def test_ultra_detailed_mode_keeps_the_aid_stations_and_the_gap(self):
+        sc = _model()["scenarios"]["realistic"]
+        names = [r["to_name"] for r in sc["modes"]["detailed"]["sections"]]
+        self.assertIn("Ravito du Col", names)
+        self.assertIn("Base de vie", names)
+        self.assertTrue(all(r["moving_s"] >= RB.MIN_PASSAGE_GAP_S for r in sc["modes"]["detailed"]["sections"]))
 
 
 class TestRoadbookClockTimezone(unittest.TestCase):
@@ -235,7 +311,7 @@ class TestRoadbookClockTimezone(unittest.TestCase):
     def test_fall_back_during_the_race_uses_real_local_time(self):
         start = "2026-10-25T01:30:00+02:00"          # 03:00 CEST -> 02:00 CET pendant la course
         model = _model(start_time=start, timezone="Europe/Paris", race_date="2026-10-25")
-        secs = model["scenarios"]["realistic"]["sections"]
+        secs = model["scenarios"]["realistic"]["modes"]["aid_stations"]["sections"]
         for r in secs:
             self.assertEqual(r["arrival_clock"], self._expected(start, r["arrival_s"]))
         # 1 h 30 CEST + 1 h 54 de course = 02:24 CET (et non 03:24 en simple addition murale)
@@ -251,7 +327,7 @@ class TestRoadbookClockTimezone(unittest.TestCase):
         plan = R.persisted_plan(start_time="2026-10-25T01:30:00+02:00", race_date="2026-10-25")
         del plan["timezone"]
         model = RB.build_roadbook(plan)
-        first = model["scenarios"]["realistic"]["sections"][0]
+        first = model["scenarios"]["realistic"]["modes"]["aid_stations"]["sections"][0]
         h, m = divmod((90 * 60 + first["arrival_s"]) // 60, 60)
         self.assertEqual(first["arrival_clock"], f"{h % 24:02d}:{m:02d}")
         self.assertFalse(any("changement d'heure" in w for w in model["warnings"]))

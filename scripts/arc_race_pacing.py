@@ -315,6 +315,18 @@ from arc_heat import (  # noqa: E402,F401
 # approximation du projet (un ravito simple, ni drop bag ni repas chaud).
 DEFAULT_AID_STATION_STOP_S = 90.0
 
+# Ravito d'ARRIVÉE : le DERNIER ravito à moins de 2 % de la longueur mesurée du GPX (50 m au moins)
+# est l'arrivée elle-même, pas un arrêt en course. Approximation du projet : un GPX mesure souvent
+# 1-2 % de plus que la distance officielle (Féodières : arrivée déclarée au km 10, GPX de 10,13 km).
+# Partagée par la fiche Pace Strategy COROS et le roadbook.
+FINISH_TOLERANCE_RATIO = 0.02
+FINISH_TOLERANCE_MIN_KM = 0.05
+
+
+def finish_tolerance_km(end_km: float) -> float:
+    """Distance (km) avant la fin mesurée en deçà de laquelle le dernier ravito est l'arrivée."""
+    return max(FINISH_TOLERANCE_MIN_KM, end_km * FINISH_TOLERANCE_RATIO)
+
 # Barrière horaire : marge de confort avant de considérer un scénario comme
 # "tendu" plutôt que "confortable" — approximation du projet, jamais une règle
 # de course réelle (chaque course a ses propres marges de sécurité).

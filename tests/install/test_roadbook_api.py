@@ -55,9 +55,9 @@ class TestRoadbookApi(_RoadbookSandbox):
         for s in ("safe", "realistic", "ambitious"):
             sc = rb["scenarios"][s]
             self.assertTrue(sc["available"])
-            self.assertEqual([r["to_name"] for r in sc["sections"]], ["Ravito du Col", "Base de vie", "Arrivée"])
-        self.assertEqual(rb["scenarios"]["realistic"]["sections"][0]["cutoff"]["status"], "tendu")
-        self.assertEqual(rb["scenarios"]["realistic"]["sections"][1]["night"], "full")
+            self.assertEqual([r["to_name"] for r in sc["modes"]["aid_stations"]["sections"]], ["Ravito du Col", "Base de vie", "Arrivée"])
+        self.assertEqual(rb["scenarios"]["realistic"]["modes"]["aid_stations"]["sections"][0]["cutoff"]["status"], "tendu")
+        self.assertEqual(rb["scenarios"]["realistic"]["modes"]["aid_stations"]["sections"][1]["night"], "full")
         self.assertEqual(rb["plans"], [{"path": "planning/2026-06-10_plan_course.md",
                                         "race_name": R.RACE_NAME, "race_date": R.RACE_DATE}])
 
@@ -77,6 +77,16 @@ class TestRoadbookApi(_RoadbookSandbox):
     def test_unknown_scenario_falls_back_to_all_with_a_warning(self):
         _, rb = self.roadbook("?scenario=nope")
         self.assertEqual(len(rb["scenarios"]), 3)
+        self.assertTrue(any("nope" in w for w in rb["warnings"]))
+
+    def test_passages_param_picks_the_default_mode_and_both_stay_served(self):
+        _, rb = self.roadbook()
+        self.assertEqual(rb["default_passage_mode"], "detailed")
+        _, rb = self.roadbook("?passages=aid_stations")
+        self.assertEqual(rb["default_passage_mode"], "aid_stations")
+        self.assertEqual(set(rb["scenarios"]["realistic"]["modes"]), {"detailed", "aid_stations"})
+        _, rb = self.roadbook("?passages=nope")
+        self.assertEqual(rb["default_passage_mode"], "detailed")
         self.assertTrue(any("nope" in w for w in rb["warnings"]))
 
     def test_plan_param_selects_by_path_and_unknown_plan_is_reported(self):
