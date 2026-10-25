@@ -1,0 +1,413 @@
+{
+ "generated_for": "Camille — mardi 2026-09-29 (J-54), workspace fictif",
+ "shots": [
+  {
+   "name": "rb-profil",
+   "file": "rb-profil.webp",
+   "view": "Aujourd'hui",
+   "viewport": "desktop 1440×900 @2x",
+   "width": 1440,
+   "height": 900,
+   "scale": 2,
+   "description": "Profil du bloc : une colonne par semaine jusqu'au jour de course, hauteur = prévu, plein = réalisé, phases en sections, « Vous êtes ici », lecture de la semaine survolée.",
+   "boxes": {
+    "profil": [
+     303.4,
+     102.6,
+     1081.2,
+     112.0
+    ],
+    "ici": [
+     508.2,
+     73.0,
+     88.1,
+     19.2
+    ],
+    "course": [
+     1200.8,
+     117.8,
+     108.8,
+     29.7
+    ],
+    "phases": [
+     303.4,
+     233.0,
+     1081.2,
+     24.8
+    ],
+    "lecture": [
+     303.4,
+     263.4,
+     1081.2,
+     21.1
+    ]
+   }
+  },
+  {
+   "name": "rb-profil-defaut",
+   "file": "rb-profil-defaut.webp",
+   "view": "Aujourd'hui",
+   "viewport": "desktop 1440×900 @2x",
+   "width": 1440,
+   "height": 900,
+   "scale": 2,
+   "description": "Profil du bloc du workspace de démonstration (course le 22 novembre).",
+   "boxes": {
+    "profil": [
+     303.4,
+     102.6,
+     1081.2,
+     112.0
+    ],
+    "ici": [
+     632.6,
+     73.0,
+     88.1,
+     19.2
+    ],
+    "course": [
+     1260.8,
+     117.8,
+     104.6,
+     29.7
+    ],
+    "phases": [
+     303.4,
+     233.0,
+     1081.2,
+     24.8
+    ],
+    "lecture": [
+     303.4,
+     263.4,
+     1081.2,
+     21.1
+    ]
+   }
+  },
+  {
+   "name": "rb-aujourdhui",
+   "file": "rb-aujourdhui.webp",
+   "view": "Aujourd'hui",
+   "viewport": "desktop 1440×900 @2x",
+   "width": 1440,
+   "height": 900,
+   "scale": 2,
+   "description": "Aujourd'hui : verdict du coach en grand, séance remplacée barrée, bilan du matin en lignes de barrière.",
+   "boxes": {
+    "verdict": [
+     303.4,
+     378.2,
+     725.2,
+     136.6
+    ],
+    "remplacement": [
+     303.4,
+     568.7,
+     725.2,
+     24.8
+    ],
+    "avant": [
+     303.4,
+     568.7,
+     150.4,
+     24.8
+    ],
+    "apres": [
+     498.6,
+     568.7,
+     358.1,
+     24.8
+    ],
+    "bilan": [
+     303.4,
+     752.7,
+     725.2,
+     147.3
+    ],
+    "plaque": [
+     303.4,
+     530.8,
+     180.3,
+     26.6
+    ],
+    "pourquoi": [
+     303.4,
+     607.1,
+     162.2,
+     22.3
+    ]
+   }
+  },
+  {
+   "name": "rb-bilan",
+   "file": "rb-bilan.webp",
+   "view": "Aujourd'hui",
+   "viewport": "desktop 1440×900 @2x",
+   "width": 1440,
+   "height": 900,
+   "scale": 2,
+   "description": "Bilan du matin : valeur, référence et état (forme + mot) sur chaque ligne de barrière.",
+   "boxes": {
+    "bilan": [
+     303.4,
+     481.7,
+     725.2,
+     229.6
+    ],
+    "hrv": [
+     303.4,
+     481.7,
+     725.2,
+     45.6
+    ],
+    "etat": [
+     828.0,
+     481.7,
+     200.6,
+     45.6
+    ],
+    "fc-repos": [
+     303.4,
+     527.3,
+     725.2,
+     46.1
+    ],
+    "sommeil": [
+     303.4,
+     619.6,
+     725.2,
+     46.1
+    ]
+   }
+  },
+  {
+   "name": "rb-semaine",
+   "file": "rb-semaine.webp",
+   "view": "Semaine",
+   "viewport": "desktop 1440×900 @2x",
+   "width": 1440,
+   "height": 900,
+   "scale": 2,
+   "description": "Semaine : prévu et réalisé sur une ligne par séance (durée prévu → réalisé, statut).",
+   "boxes": {
+    "feuille": [
+     303.4,
+     521.2,
+     725.2,
+     378.8
+    ],
+    "duree": [
+     806.8,
+     521.2,
+     109.8,
+     20.5
+    ],
+    "statut": [
+     916.6,
+     521.2,
+     112.0,
+     20.5
+    ],
+    "capacite": [
+     303.4,
+     430.2,
+     725.2,
+     73.4
+    ]
+   }
+  },
+  {
+   "name": "rb-semaine-passee",
+   "file": "rb-semaine-passee.webp",
+   "view": "Semaine",
+   "viewport": "desktop 1440×900 @2x",
+   "width": 1440,
+   "height": 900,
+   "scale": 2,
+   "description": "Semaine du 21 septembre : séances faites face au prévu, activité appariée sous chaque séance, durée prévu → réalisé, statuts.",
+   "boxes": {
+    "feuille": [
+     303.4,
+     521.2,
+     725.2,
+     378.8
+    ],
+    "reel": [
+     488.0,
+     644.7,
+     257.2,
+     16.0
+    ],
+    "duree": [
+     806.8,
+     607.8,
+     109.8,
+     66.3
+    ],
+    "statut": [
+     916.6,
+     607.8,
+     112.0,
+     66.3
+    ],
+    "ligne": [
+     303.4,
+     607.8,
+     725.2,
+     66.3
+    ]
+   }
+  },
+  {
+   "name": "rb-rail",
+   "file": "rb-rail.webp",
+   "view": "Aujourd'hui",
+   "viewport": "desktop 1440×900 @2x",
+   "width": 1440,
+   "height": 900,
+   "scale": 2,
+   "description": "Rail de navigation du bureau : sections rangées par groupes.",
+   "boxes": {
+    "rail": [
+     0,
+     52,
+     248,
+     848
+    ],
+    "groupes": [
+     13.6,
+     72,
+     219.8,
+     93.4
+    ]
+   }
+  },
+  {
+   "name": "rb-course",
+   "file": "rb-course.webp",
+   "view": "Roadbook",
+   "viewport": "desktop 1440×900 @2x",
+   "width": 1440,
+   "height": 900,
+   "scale": 2,
+   "description": "Vue Roadbook de course (Ultra des Crêtes) dans l'habillage roadbook.",
+   "boxes": {
+    "entete": [
+     307.4,
+     342.6,
+     1073.2,
+     83.2
+    ],
+    "profil": [
+     307.4,
+     432.2,
+     1073.2,
+     282.4
+    ]
+   }
+  },
+  {
+   "name": "mobile-rb-aujourdhui",
+   "file": "mobile-rb-aujourdhui.webp",
+   "view": "Aujourd'hui",
+   "viewport": "mobile 390×844 @3x",
+   "width": 390,
+   "height": 844,
+   "scale": 3,
+   "description": "Aujourd'hui sur téléphone : profil du bloc, verdict, barre du bas.",
+   "boxes": {
+    "verdict": [
+     32.2,
+     369.1,
+     325.6,
+     132.7
+    ],
+    "profil": [
+     0,
+     52,
+     390,
+     215.1
+    ],
+    "barre": [
+     0,
+     781.6,
+     390,
+     62.4
+    ]
+   }
+  },
+  {
+   "name": "mobile-rb-semaine",
+   "file": "mobile-rb-semaine.webp",
+   "view": "Semaine",
+   "viewport": "mobile 390×844 @3x",
+   "width": 390,
+   "height": 844,
+   "scale": 3,
+   "description": "Semaine sur téléphone : une ligne par séance, barre du bas.",
+   "boxes": {
+    "barre": [
+     0,
+     781.6,
+     390,
+     62.4
+    ]
+   }
+  },
+  {
+   "name": "mobile-rb-barre",
+   "file": "mobile-rb-barre.webp",
+   "view": "Aujourd'hui",
+   "viewport": "mobile 390×844 @3x",
+   "width": 390,
+   "height": 844,
+   "scale": 3,
+   "description": "Barre du bas : Aujourd'hui, Semaine, Santé, Coach et Sections.",
+   "boxes": {
+    "barre": [
+     0,
+     781.6,
+     390,
+     62.4
+    ],
+    "sections": [
+     312,
+     782.6,
+     78,
+     61.4
+    ],
+    "bilan": [
+     32.2,
+     219.8,
+     325.6,
+     352.2
+    ]
+   }
+  },
+  {
+   "name": "mobile-rb-sections",
+   "file": "mobile-rb-sections.webp",
+   "view": "Aujourd'hui",
+   "viewport": "mobile 390×844 @3x",
+   "width": 390,
+   "height": 844,
+   "scale": 3,
+   "description": "Feuille « Toutes les sections » ouverte depuis la barre du bas.",
+   "boxes": {
+    "feuille": [
+     0,
+     118.2,
+     390,
+     725.8
+    ],
+    "groupes": [
+     0,
+     182.4,
+     390,
+     645.6
+    ]
+   }
+  }
+ ]
+}

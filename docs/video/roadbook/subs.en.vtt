@@ -1,0 +1,69 @@
+WEBVTT
+
+1
+00:00:01.200 --> 00:00:04.181
+Stage twenty-four: the new roadbook.
+
+2
+00:00:05.100 --> 00:00:14.950
+Since version one point four, the dashboard reads like a race roadbook. At the top, the block profile: one column per week, up to race day.
+
+3
+00:00:15.050 --> 00:00:22.703
+The height is the planned volume; the fill is what is done. Phases make the sections, and a marker says: you are here.
+
+4
+00:00:22.803 --> 00:00:28.535
+Hover, or move through it with the keyboard: each week tells its story. A click opens it.
+
+5
+00:00:29.385 --> 00:00:35.267
+Below, the day reads like an aid-station sheet. The coach's verdict, in large type.
+
+6
+00:00:35.367 --> 00:00:40.545
+The replaced session is struck through, the new one beside it, and a link says why.
+
+7
+00:00:41.395 --> 00:00:46.680
+The morning check comes as cut-off lines: the value, the reference, and the state.
+
+8
+00:00:46.780 --> 00:00:51.062
+The state shows in shape and in word: never colour alone.
+
+9
+00:00:51.912 --> 00:01:00.247
+In the Week view, planned and done share one line per session: the matched activity just below, planned then actual duration.
+
+10
+00:01:00.347 --> 00:01:04.736
+A status says the rest: done, cut short, extended, missed.
+
+11
+00:01:05.586 --> 00:01:09.484
+On a computer, a rail sorts the sections into groups.
+
+12
+00:01:09.584 --> 00:01:14.506
+On a phone, a bar at the bottom, and a Sections sheet for everything else.
+
+13
+00:01:15.586 --> 00:01:20.273
+The dashboard installs like an app: an icon on your home screen.
+
+14
+00:01:20.373 --> 00:01:25.893
+Offline, it opens its shell, never your data: health and sessions are never cached.
+
+15
+00:01:26.743 --> 00:01:32.177
+The fonts are served by the dashboard itself: your data never leaves the machine.
+
+16
+00:01:32.277 --> 00:01:40.036
+And the old design stays reachable, with design equals classic in the address, until version one point five.
+
+17
+00:01:42.586 --> 00:01:46.740
+To go further: the “Dashboard” page of the documentation.
