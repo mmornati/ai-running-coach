@@ -5,6 +5,24 @@ pas de compte tiers, une seule connexion pour toutes les IA. Tout ce qui est mar
 « constaté » ci-dessous a été vérifié par nous sur un compte réel (montre COROS PACE 4
 Pro), entre le 22 et le 23 octobre 2026.
 
+<!-- arc-video:montre-coros -->
+<div class="arc-video-card" markdown>
+
+[![Une autre montre](video/montre-coros/poster.jpg)](video/montre-coros/index.html)
+
+<div markdown>
+
+<span class="arc-video__meta">En vidéo · Étape 22 · 1 min 45</span>
+
+**[Une autre montre](video/montre-coros/index.html)** — Camille passe à une montre COROS : le MCP officiel par un relais local et une seule connexion pour toutes les IA, le même bilan matinal avec une récupération COROS nommée sans conversion, les séances envoyées à la montre après un « oui », la fiche Pace Strategy à recopier le jour J, et les limites dites franchement.
+
+[Regarder](video/montre-coros/index.html) · [English](video/montre-coros/index.html?lang=en) · [Toutes les vidéos](videos.md)
+
+</div>
+
+</div>
+<!-- /arc-video -->
+
 ## En bref
 
 | | État |

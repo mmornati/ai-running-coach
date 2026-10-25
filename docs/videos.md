@@ -328,6 +328,20 @@ Quelle IA pour le coach ? Celle que vous payez déjà, sinon l'essai gratuit Ope
 
 </div>
 
+<div class="arc-video" markdown>
+
+[![Une autre montre](video/montre-coros/poster.jpg)](video/montre-coros/index.html)
+
+<span class="arc-video__meta">Étape 22 · 1 min 45</span>
+
+### [Une autre montre](video/montre-coros/index.html)
+
+Camille passe à une montre COROS : le MCP officiel par un relais local et une seule connexion pour toutes les IA, le même bilan matinal avec une récupération COROS nommée sans conversion, les séances envoyées à la montre après un « oui », la fiche Pace Strategy à recopier le jour J, et les limites dites franchement.
+
+[Regarder](video/montre-coros/index.html) · [English (1 min 49)](video/montre-coros/index.html?lang=en) · [La documentation](coros.md)
+
+</div>
+
 </div>
 <!-- arc-videos:end -->
 
