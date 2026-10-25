@@ -387,7 +387,7 @@ uv run --with playwright scripts/render_video.py --episode all --burn-subs
 Le palier B des tests vérifie que le minutage, la galerie et les vignettes sont à jour
 (`python3 scripts/video_narration.py --check`, `python3 scripts/video_gallery.py --check`).
 
-### Captures : deux designs, deux dossiers {#captures-designs}
+### Captures : deux designs, deux dossiers
 
 `scripts/video_capture.py` capture un des deux designs du tableau de bord :
 
@@ -403,7 +403,7 @@ Le palier B des tests vérifie que le minutage, la galerie et les vignettes sont
 uv run --with playwright scripts/video_capture.py --design roadbook --only aujourdhui
 ```
 
-### Captures de la documentation {#captures-documentation}
+### Captures de la documentation
 
 Les images de `docs/assets/dashboard/` (README, pages du tableau de bord, vignettes) sont produites
 par `scripts/docs_capture.py`, jamais à la main : workspace fictif de Camille (variante `--docs` de

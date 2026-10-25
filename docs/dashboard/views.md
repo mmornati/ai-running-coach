@@ -26,7 +26,7 @@ Les captures viennent du workspace de démonstration d'une athlète fictive, Cam
 (huit mois de fichiers, jusqu'au mardi 29 septembre 2026, à 54 jours du Trail des Crêtes) :
 aucune donnée réelle. Elles sont **générées par un script**, dans le design roadbook, en thème
 clair (sauf mention) : `uv run --with playwright scripts/docs_capture.py` les régénère
-(voir [la procédure](../videos.md#captures-documentation)).
+(voir [la procédure](../videos.md#captures-de-la-documentation)).
 
 !!! tip "Partout dans le tableau de bord"
     - **Le bandeau du haut** rappelle l'objectif de `planning/active_objective.md` :
