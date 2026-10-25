@@ -271,6 +271,21 @@ class TestRoadbookPassageModes(unittest.TestCase):
         self.assertFalse(model["passage_modes"]["aid_stations"])
         self.assertEqual(model["profile"]["aid_stations"], [])
 
+    def test_finish_station_cutoff_margin_uses_the_finish_time(self):
+        # 50 km en segments de 1 km, arrivée déclarée au km 49 (2 % = 1 km de tolérance) : la marge se
+        # lit sur l'heure de la ligne d'arrivée (14:40), pas sur le passage au km 49 (14:34).
+        plan = _short_plan([{"km": 49.0, "name": "Arrivée — village", "cutoff": "+05:03"}])
+        last_seg = plan["segments"][-1]
+        plan["segments"] += [{**last_seg, "id": f"s{i + 1:02d}", "km_start": float(i), "km_end": float(i + 1)}
+                             for i in range(10, 50)]
+        model = RB.build_roadbook(plan)
+        for mode in RB.PASSAGE_MODES:
+            last = model["scenarios"]["realistic"]["modes"][mode]["sections"][-1]
+            self.assertTrue(last["finish"])
+            self.assertEqual(last["arrival_clock"], "14:40")
+            self.assertEqual(last["cutoff"]["margin_s"], 5 * 3600 + 180 - last["arrival_s"])
+            self.assertEqual(last["cutoff"]["margin_s"], 180)
+
     def test_ultra_detailed_mode_keeps_the_aid_stations_and_the_gap(self):
         sc = _model()["scenarios"]["realistic"]
         names = [r["to_name"] for r in sc["modes"]["detailed"]["sections"]]

@@ -60,7 +60,8 @@ ASSUMPTIONS = {
     "finish_station": (
         "Le dernier ravito à moins de 2 % de la fin mesurée du GPX (50 m au moins) est l'arrivée "
         "(`arc_race_pacing.finish_tolerance_km`, même règle que la fiche COROS) : ni arrêt compté, "
-        "ni ligne à part ; sa barrière et ce qu'on y prend vont sur la ligne d'arrivée."),
+        "ni ligne à part ; sa barrière et ce qu'on y prend vont sur la ligne d'arrivée, et la marge "
+        "de cette barrière est calculée sur l'heure d'arrivée."),
     "profile": (
         "Profil RELATIF au départ (D+ cumulé moins D- cumulé) : le plan ne persiste pas l'altitude "
         "absolue. Axe en mètres relatifs, jamais une altitude réelle."),
@@ -434,7 +435,12 @@ def build_roadbook(plan: dict, *, plan_path: Optional[str] = None,
             if start_dt is None:
                 missing.append("barrières horaires présentes mais heure de départ inconnue : marges non calculées")
             else:
-                cutoffs = RP.check_cutoffs(passages["aid_station_passages"], timed, start_dt, zone)
+                # Barrière du ravito d'arrivée comparée à l'heure d'ARRIVÉE (fin du GPX), celle de sa
+                # ligne, pas au passage à son km déclaré (jusqu'à 2 % plus tôt : marge trop généreuse).
+                cut_passages = passages["aid_station_passages"]
+                if finish_st is not None and cut_passages:
+                    cut_passages = [*cut_passages[:-1], {**cut_passages[-1], **passages["totals_s"]}]
+                cutoffs = RP.check_cutoffs(cut_passages, timed, start_dt, zone)
                 if zone is None and RP.has_offset_cutoff(timed):
                     missing.append("barrière horaire avec décalage mais fuseau du plan (`timezone`) inconnu : "
                                    "marge comparée à l'heure murale de la barrière")
