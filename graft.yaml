@@ -1,0 +1,127 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/mmornati/graft/main/schema/graft.v1.schema.json
+#
+# Politique Graft du dépôt (https://github.com/mmornati/graft, référence : docs/graft-yaml.md).
+# Graft lit ce fichier sur `main` uniquement ; une PR qui le modifie est toujours signalée, son
+# risque passe à `sensitive` et elle demande au moins un humain.
+#
+# Les modes (report / enforce) ne se règlent PAS ici : l'opérateur les pose avec
+# `pnpm graft mode set`, sous le plafond `GRAFT_MODE_CEILING` du worker. Tant que le dépôt est
+# en report, rien n'est approuvé ni bloqué : le check `graft/policy` dit ce qu'il ferait.
+#
+# Le dépôt appartient à un compte utilisateur : aucune contrainte d'équipe (`team`) ne pourrait
+# être vérifiée (`owner_not_org`). Les règles ne comptent que des humains ayant le droit
+# d'écriture ; l'auteur de la PR ne compte jamais.
+version: 1
+
+# Un fichier modifié ici relève le plancher de risque de la carte d'intention à `sensitive` :
+# ce qui décide de la sécurité de l'installation, des secrets, des écritures vers Garmin/COROS/
+# intervals.icu en headless, des approbations du chat, de l'exposition réseau, des mises à jour
+# du moteur, et les garde-fous santé (un garde-fou affaibli peut laisser passer une séance qui
+# devrait être annulée).
+sensitive_paths:
+  # CI, publication, mise à jour automatique des dépendances
+  - ".github/workflows/**"
+  - ".github/github-app.yml"
+  - ".github/dependabot.yml"
+  - ".circleci/**"
+  # Installation, mise à jour, exécution headless
+  - "/install.sh"
+  - "scripts/update-coach.sh"
+  - "scripts/update-docker.sh"
+  - "scripts/daily-sync.sh"
+  - "scripts/migrate-sync-127.sh"
+  - "scripts/lib/**"
+  - "scripts/arc_engine_update.py"
+  - "scripts/arc_update_check.py"
+  # Identifiants, jetons, connexion des IA
+  - "scripts/arc_credentials.py"
+  - "scripts/arc_coros_auth.py"
+  - "scripts/arc_coros_mcp.py"
+  - "scripts/arc_llm.py"
+  - "scripts/arc_llm_sync.py"
+  - "scripts/arc_openwearables.py"
+  - "scripts/setup-ntfy.sh"
+  # Chat, approbations, serveur, Telegram, mode famille
+  - "scripts/arc_chat*.py"
+  - "scripts/arc_serve.py"
+  - "scripts/arc_family.py"
+  - "scripts/arc_telegram.py"
+  - "scripts/coach-*.sh"
+  # Garde-fous santé
+  - "scripts/arc_guardrails.py"
+  - "scripts/arc_prevention.py"
+  - "config/strength/prevention.json"
+  - "agents/medical.md"
+  # Déploiement, conteneurs, application macOS (mise à jour Sparkle)
+  - "/Dockerfile"
+  - "deploy/**"
+  - "macos/**"
+  - "scripts/build-macos-dmg.sh"
+  - "scripts/fetch-sparkle.sh"
+  - "scripts/arc_macos_plist.py"
+  - "SECURITY.md"
+  # Site de documentation : configuration et gabarits du build, HTML/JS servis par Pages
+  - "/mkdocs.yml"
+  - "/requirements-docs.txt"
+  - "overrides/**"
+  - "docs/**/*.html"
+  - "docs/**/*.js"
+
+# Quand aucune règle ne s'applique : un humain.
+default:
+  require: { humans: 1 }
+
+rules:
+  # Secrets et clés : jamais depuis un agent.
+  - name: no-agent-secrets
+    match: { author: agent, paths: [".env*", "*.env", "**/*.pem", "**/*.key", "**/*.p12", "llm.env", "**/token*.json"] }
+    block: true
+
+  # Données personnelles de l'athlète : exclues du dépôt public (.gitignore), un agent ne doit
+  # jamais les y pousser.
+  - name: no-agent-athlete-data
+    match: { author: agent, paths: ["/activities/**", "/medical/**", "/nutrition/**", "/rapports/**", "/gear/**", "planning/Runner_Profile.md", "planning/active_objective.md", "config/workspace.user.toml", "**/*.fit"] }
+    block: true
+
+  # Documentation publiée que la carte juge triviale : aucun humain. Pas de `*.md` global :
+  # `agents/*.md`, `skills/**/SKILL.md` et `AGENTS.md` sont les instructions des agents.
+  # Seulement du Markdown et des images : `mkdocs.yml`, `overrides/` et le HTML/JS de `docs/`
+  # construisent et servent le site publié, ils ne s'auto-approuvent jamais.
+  - name: docs-only
+    match: { risk: trivial, only_paths: ["docs/**/*.md", "docs/**/*.png", "docs/**/*.jpg", "docs/**/*.webp", "/README.md", "/CONTRIBUTING.md", "/DESIGN.md", "/PRODUCT.md"] }
+    approve: auto
+
+  # Pas de règle « trivial » générale : ici les prompts (`agents/`, `skills/`, `AGENTS.md`) sont
+  # du comportement, et une modification d'apparence anodine peut changer une décision de séance.
+
+  # Le périmètre de sécurité, quel que soit l'auteur : un humain.
+  - name: safety-core
+    match: { paths: [".github/workflows/**", ".circleci/**", "/install.sh", "scripts/lib/**", "scripts/daily-sync.sh", "scripts/update-coach.sh", "scripts/arc_credentials.py", "scripts/arc_coros_*.py", "scripts/arc_llm*.py", "scripts/arc_chat*.py", "scripts/arc_serve.py", "scripts/arc_family.py", "scripts/arc_telegram.py", "/Dockerfile", "deploy/**", "macos/**"] }
+    require: { humans: 1 }
+
+  # Changement sensible écrit par un agent : deux relectures (le dépôt a trois personnes
+  # ayant le droit d'écriture ; l'auteur ne compte pas).
+  - name: agent-sensitive
+    match: { author: agent, risk: sensitive }
+    require: { humans: 2 }
+
+  # Gros changement écrit par un agent : deux relectures.
+  - name: agent-large
+    match: { author: agent, size: { min_lines: 1500 } }
+    require: { humans: 2 }
+
+  # Très gros changement, quel que soit l'auteur : un humain au moins.
+  - name: big-change
+    match: { size: { min_lines: 3000 } }
+    require: { humans: 1 }
+
+  # Une PR marquée « epic » ou « phase:* » est un jalon : un humain.
+  - name: milestone
+    match: { labels: [epic, "phase:0", "phase:1", "phase:2", "phase:3", "phase:4"] }
+    require: { humans: 1 }
+
+# Garde post-merge : seul le statut agrégé « Tests » de tests.yml (Plan, matrices, Docker,
+# documentation, application macOS) peut ouvrir un événement. Pas d'`auto_merge_reverts` :
+# l'auto-merge est désactivé sur le dépôt, un revert est fusionné par un humain.
+guard:
+  checks: [Tests]
