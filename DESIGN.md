@@ -1,6 +1,6 @@
 ---
 name: ai-running-coach
-description: Staff d'entraînement IA pour trail runners — deux surfaces, le site de documentation « Le Sentier » et le tableau de bord bêta « Roadbook ».
+description: Staff d'entraînement IA pour trail runners — deux surfaces, le site de documentation « Le Sentier » et le tableau de bord « Roadbook » (design par défaut).
 colors:
   primary: "#1e4d3b"
   primary-deep: "#0f2a1f"
@@ -213,7 +213,7 @@ components:
 
 ## Overview
 
-Two surfaces share one palette root (pine, deep pine, lime, stone) and keep separate systems. **Le Sentier** is the MkDocs documentation and marketing site (Sora/Inter, photographic hero) and governs every section's first part. **Le Roadbook** is the local dashboard (`web/index.html`, `web/chat.html`, installable PWA), shipped as an opt-in beta behind `[data-design="roadbook"]` while the current dashboard stays the default; its rules live in each section under *Dashboard roadbook (beta)* and apply only under that attribute. A rule from one surface never binds the other unless stated.
+Two surfaces share one palette root (pine, deep pine, lime, stone) and keep separate systems. **Le Sentier** is the MkDocs documentation and marketing site (Sora/Inter, photographic hero) and governs every section's first part. **Le Roadbook** is the local dashboard (`web/index.html`, `web/chat.html`, installable PWA), the default dashboard surface since v1.4 behind `[data-design="roadbook"]`; the former dashboard design is deprecated, reachable through `?design=classic` until v1.5 (then deleted); roadbook rules live in each section under *Dashboard roadbook* and apply only under that attribute. A rule from one surface never binds the other unless stated.
 
 ### Documentation site — Le Sentier
 
@@ -229,7 +229,7 @@ The personality is **earned and restrained** — one full-bleed photographic mom
 - Soft ambient shadows with real offset and blur; never zero-offset halos.
 - Generous section rhythm (5rem), tight intra-group gaps (1.4rem).
 
-### Dashboard roadbook (beta)
+### Dashboard roadbook
 
 **Creative North Star: "Le Roadbook"** — the dashboard is the athlete's season roadbook: the training block drawn as an elevation profile cut into sections, ending at the race finish flag, and each day an aid-station sheet. Laminated sheets lie on stone by day and on deep pine in the morning dark; ink is pine; lime marks only "vous êtes ici" and the one primary action.
 
@@ -269,7 +269,7 @@ The palette is earth-and-forest: deep pine greens carry structure, warm stone ca
 
 **The Tinted-Secondary Rule.** Secondary text is tinted from the surface hue (green-tinted ink on stone, green-tinted gray on dark) — never pure gray, which reads as disabled.
 
-### Dashboard roadbook (beta)
+### Dashboard roadbook
 
 The roadbook reuses the shared roots — Pine as band and rule ink, Pine Deep as the top bar and the dark ground, Lime as the pin and primary action, Stone as the light ground, Ink as text — and adds paper and night tones of its own.
 
@@ -310,7 +310,7 @@ The roadbook reuses the shared roots — Pine as band and rule ink, Pine Deep as
 
 **The Mono-Is-Data Rule.** JetBrains Mono appears only for code, commands, and measurements — never to make a label look "technical."
 
-### Dashboard roadbook (beta)
+### Dashboard roadbook
 
 **Display Font:** Barlow Condensed 500/600/700 (with Arial Narrow, then system-ui)
 **Body Font:** Inter (with system-ui)
@@ -338,7 +338,7 @@ The layout is a single-column editorial flow with a full-bleed hero, then center
 - **Grids:** team and skills collapse from 2 columns to 1 at 60em; flow from 3 columns to 1 at 60em.
 - **Breakpoints:** 76.1875em (hero height), 60em (grid collapse), 44.9375em (mobile hero, stacked CTAs).
 
-### Dashboard roadbook (beta)
+### Dashboard roadbook
 
 - **Shell:** a deep-pine top bar (roadbook-top-bar min-height, safe-area aware) holding brand, the countdown (J-54 in 700 1.45rem condensed) and the race; below it a sticky grouped rail (roadbook-rail wide) and the main column (max 84rem, padding 1.25rem clamp(1rem, 2.6vw, 2.25rem) 4rem).
 - **Main grid:** the season profile spans the top; sheets stack in one column with roadbook-sheet-gap between them. From 72em the grid becomes main + roadbook-side-column (21rem), the side column sticky under the top bar.
@@ -360,7 +360,7 @@ The system is **layered-flat**: surfaces are flat at rest, and depth comes from 
 ### Named Rules
 **The Offset-Only Rule.** Every shadow carries a vertical offset and a soft blur. A zero-offset colored halo is decoration, not depth, and is never used.
 
-### Dashboard roadbook (beta)
+### Dashboard roadbook
 
 Sheets lie flat on the table: one low paper shadow under every sheet card and the profile, borders do the rest. Rules (2px pine heads, 1px hairlines, dashed dividers) carry hierarchy, not stacking.
 
@@ -383,7 +383,7 @@ The form language is **gently curved, outdoor-gear rounded**: pills for actions,
 
 Borders are used sparingly: a 1px bottom rule separates skill rows; buttons use a 1px border matching their fill (Material's default). No colored border-left/right callouts above 1px.
 
-### Dashboard roadbook (beta)
+### Dashboard roadbook
 
 Cut sheets, not pills: small, firm corners. Sheets and the profile use roadbook-sheet radius; actions, nav items and buttons roadbook-sm; plates, chips and the tape roadbook-plate; the sections drawer opens with a 1rem top radius. The recurring marks are geometric: a diamond (rotated 0.48rem square) for each session — outline for endurance, filled pine for quality, faint for other, filled green when done; circle, triangle, diamond and dash for states; a lime dot with a deep-pine ring for "here"; a chequered flag for the finish; a 135° amber hatch for volume over target.
 
@@ -441,7 +441,7 @@ Cut sheets, not pills: small, firm corners. Sheets and the profile use roadbook-
 - Tables: 1px rule, 0.6rem radius, stone-2 header, tabular numerals. Admonitions: 1px border, 0.7rem radius, Sora titles. Grid cards lift with a soft offset shadow on hover.
 - Browser surfaces: lime-tinted `::selection`, palette scrollbar, lime-strong focus ring, 0.2em underline offset.
 
-### Dashboard roadbook (beta)
+### Dashboard roadbook
 
 #### Sheet Card
 - Laminated sheet on Paper shadow, 1px hairline border, roadbook-sheet radius, overflow clipped.
@@ -505,7 +505,7 @@ The first two lists apply to the MkDocs documentation site; the roadbook lists a
 - **Do** give every state a shape and a word as well as a colour.
 - **Do** set comparable numbers in Barlow Condensed with tabular numerals and units in a smaller faint size.
 - **Do** pass computed positions through `data-vars` and the CSSOM; the CSP (`style-src 'self'`) refuses inline style attributes.
-- **Do** keep every roadbook rule under `[data-design="roadbook"]` so the current dashboard is untouched without the attribute.
+- **Do** keep every roadbook rule under `[data-design="roadbook"]` so the deprecated classic design (until v1.5) is untouched without the attribute.
 - **Do** keep the profile unroll and pin drop as the only motion, removed under `prefers-reduced-motion`.
 
 ### Don't (dashboard roadbook):
