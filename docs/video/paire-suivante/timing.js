@@ -1,8 +1,8 @@
 /* Généré par scripts/video_narration.py — ne pas éditer. */
 window.ARC_TIMING = {
  "en": {
-  "digest": "42f580d94ab31f46",
-  "duration": 110.637,
+  "digest": "d2ab5cd46010f2cc",
+  "duration": 110.722,
   "scenes": [
    {
     "id": "bib",
@@ -19,16 +19,16 @@ window.ARC_TIMING = {
    {
     "id": "endlife",
     "start": 4.6,
-    "d": 8.703,
+    "d": 7.423,
     "cues": [
      {
       "s": 0.5,
-      "e": 6.345,
-      "text": "Threshold crossed, red inspection, or retired by Garmin: Camille's Crête Pro is done."
+      "e": 5.065,
+      "text": "Threshold crossed or a red inspection: Camille's Crête Pro is done."
      },
      {
-      "s": 6.695,
-      "e": 8.103,
+      "s": 5.415,
+      "e": 6.823,
       "text": "What replaces it?"
      }
     ],
@@ -36,7 +36,7 @@ window.ARC_TIMING = {
    },
    {
     "id": "specs",
-    "start": 13.303,
+    "start": 12.023,
     "d": 16.115,
     "cues": [
      {
@@ -59,7 +59,7 @@ window.ARC_TIMING = {
    },
    {
     "id": "fit",
-    "start": 29.418,
+    "start": 28.138,
     "d": 12.787,
     "cues": [
      {
@@ -82,7 +82,7 @@ window.ARC_TIMING = {
    },
    {
     "id": "usage",
-    "start": 42.205,
+    "start": 40.925,
     "d": 15.944,
     "cues": [
      {
@@ -105,8 +105,8 @@ window.ARC_TIMING = {
    },
    {
     "id": "needs",
-    "start": 58.149,
-    "d": 14.195,
+    "start": 56.869,
+    "d": 14.941,
     "cues": [
      {
       "s": 0.5,
@@ -120,30 +120,30 @@ window.ARC_TIMING = {
      },
      {
       "s": 10.587,
-      "e": 13.595,
-      "text": "Achilles history? The drop is never lowered."
+      "e": 14.341,
+      "text": "Past Achilles tendon pain? The drop is never lowered."
      }
     ],
     "chapter": "The needs"
    },
    {
     "id": "shoes",
-    "start": 72.344,
-    "d": 16.221,
+    "start": 71.81,
+    "d": 16.84,
     "cues": [
      {
       "s": 0.5,
-      "e": 7.839,
-      "text": "Type /shoes. Continuity first: the current version of the model that suited you, compared with the old one."
+      "e": 8.457,
+      "text": "Type the /shoes command. Continuity first: the current version of the model that suited you, compared with the old one."
      },
      {
-      "s": 8.189,
-      "e": 12.605,
+      "s": 8.807,
+      "e": 13.223,
       "text": "Otherwise, three to five models found online, every value sourced."
      },
      {
-      "s": 12.955,
-      "e": 15.621,
+      "s": 13.573,
+      "e": 16.24,
       "text": "The medical agent can rule one out."
      }
     ],
@@ -151,7 +151,7 @@ window.ARC_TIMING = {
    },
    {
     "id": "try",
-    "start": 88.565,
+    "start": 88.65,
     "d": 15.261,
     "cues": [
      {
@@ -174,7 +174,7 @@ window.ARC_TIMING = {
    },
    {
     "id": "finish",
-    "start": 103.826,
+    "start": 103.911,
     "d": 6.811,
     "cues": [
      {
@@ -187,8 +187,8 @@ window.ARC_TIMING = {
   ]
  },
  "fr": {
-  "digest": "a671d3efd0e57356",
-  "duration": 98.904,
+  "digest": "56da7bf7c1c000dc",
+  "duration": 98.243,
   "scenes": [
    {
     "id": "bib",
@@ -205,16 +205,16 @@ window.ARC_TIMING = {
    {
     "id": "endlife",
     "start": 4.6,
-    "d": 8.341,
+    "d": 6.741,
     "cues": [
      {
       "s": 0.5,
-      "e": 6.047,
-      "text": "Seuil franchi, inspection rouge, ou retirée par Garmin : la Crête Pro de Camille arrive au bout."
+      "e": 4.447,
+      "text": "Seuil franchi ou inspection rouge : la Crête Pro de Camille arrive au bout."
      },
      {
-      "s": 6.397,
-      "e": 7.741,
+      "s": 4.797,
+      "e": 6.141,
       "text": "Par quoi la remplacer ?"
      }
     ],
@@ -222,7 +222,7 @@ window.ARC_TIMING = {
    },
    {
     "id": "specs",
-    "start": 12.941,
+    "start": 11.341,
     "d": 14.451,
     "cues": [
      {
@@ -245,7 +245,7 @@ window.ARC_TIMING = {
    },
    {
     "id": "fit",
-    "start": 27.392,
+    "start": 25.792,
     "d": 10.995,
     "cues": [
      {
@@ -268,7 +268,7 @@ window.ARC_TIMING = {
    },
    {
     "id": "usage",
-    "start": 38.387,
+    "start": 36.787,
     "d": 14.344,
     "cues": [
      {
@@ -291,7 +291,7 @@ window.ARC_TIMING = {
    },
    {
     "id": "needs",
-    "start": 52.731,
+    "start": 51.131,
     "d": 13.427,
     "cues": [
      {
@@ -314,22 +314,22 @@ window.ARC_TIMING = {
    },
    {
     "id": "shoes",
-    "start": 66.158,
-    "d": 13.789,
+    "start": 64.558,
+    "d": 14.728,
     "cues": [
      {
       "s": 0.5,
-      "e": 6.857,
-      "text": "Tapez /shoes. La continuité d'abord : la version actuelle du modèle qui vous a convenu, comparée à l'ancienne."
+      "e": 7.796,
+      "text": "Tapez la commande /shoes. La continuité d'abord : la version actuelle du modèle qui vous a convenu, comparée à l'ancienne."
      },
      {
-      "s": 7.207,
-      "e": 10.834,
+      "s": 8.146,
+      "e": 11.773,
       "text": "Sinon, trois à cinq modèles trouvés en ligne, chaque valeur sourcée."
      },
      {
-      "s": 11.184,
-      "e": 13.189,
+      "s": 12.123,
+      "e": 14.128,
       "text": "L'agent médical peut en écarter un."
      }
     ],
@@ -337,7 +337,7 @@ window.ARC_TIMING = {
    },
    {
     "id": "try",
-    "start": 79.947,
+    "start": 79.286,
     "d": 12.381,
     "cues": [
      {
@@ -360,7 +360,7 @@ window.ARC_TIMING = {
    },
    {
     "id": "finish",
-    "start": 92.328,
+    "start": 91.667,
     "d": 6.576,
     "cues": [
      {

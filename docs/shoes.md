@@ -13,7 +13,7 @@ le tout (#302). Une paire retirée dans Garmin Connect est retirée aussitôt du
 
 <div markdown>
 
-<span class="arc-video__meta">En vidéo · Étape 23 · 1 min 39</span>
+<span class="arc-video__meta">En vidéo · Étape 23 · 1 min 38</span>
 
 **[La paire suivante](video/paire-suivante/index.html)** — Une paire arrive en fin de vie : fiche de caractéristiques sourcée, retours de chaussant, profil d'usage, plages cibles par des règles à preuves et commande /shoes (continuité d'abord, veto médical, confort qui décide) — sans achat, sans prix, sans promesse de prévention.
 

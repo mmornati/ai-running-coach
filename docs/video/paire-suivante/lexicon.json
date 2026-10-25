@@ -2,11 +2,13 @@
  "fr": {
   "Crête": "[[kʁˈɛt]]",
   "drop": "[[dʁˈɔp]]",
-  "shoes": "[[ʃˈuz]]",
-  "Achille": "[[aʃˈil]]"
+  "Achille": "[[aʃˈil]]",
+  "/shoes": "[[slˈaʃ ʃˈuːz]]"
  },
  "en": {
   "Crête": "crayt",
-  "Camille": "Camille"
- }
+  "Camille": "Camille",
+  "/shoes": "slash shoes"
+ },
+ "_doc": "« /shoes » : la clé doit porter la barre (le lexique ne remplace pas un mot précédé de « / »). [[ʃˈuːz]] validé par Whisper contre un témoin [[ʃˈoz]] (« chose »)."
 }

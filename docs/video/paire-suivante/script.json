@@ -6,7 +6,7 @@
   "summary": {
     "fr": "Une paire arrive en fin de vie : fiche de caractéristiques sourcée, retours de chaussant, profil d'usage, plages cibles par des règles à preuves et commande /shoes (continuité d'abord, veto médical, confort qui décide) — sans achat, sans prix, sans promesse de prévention."
   },
-  "poster": 26,
+  "poster": 62.5,
   "scenes": [
     {
       "id": "bib",
@@ -27,11 +27,11 @@
         "en": "End of life"
       },
       "fr": [
-        "Seuil franchi, inspection rouge, ou retirée par Garmin : la Crête Pro de Camille arrive au bout.",
+        "Seuil franchi ou inspection rouge : la Crête Pro de Camille arrive au bout.",
         "Par quoi la remplacer ?"
       ],
       "en": [
-        "Threshold crossed, red inspection, or retired by Garmin: Camille's Crête Pro is done.",
+        "Threshold crossed or a red inspection: Camille's Crête Pro is done.",
         "What replaces it?"
       ]
     },
@@ -104,7 +104,7 @@
       "en": [
         "The engine derives target ranges: drop, stack, softness, lugs, width.",
         "Each with its rule, evidence and references. Never a brand.",
-        "Achilles history? The drop is never lowered."
+        "Past Achilles tendon pain? The drop is never lowered."
       ]
     },
     {
@@ -115,12 +115,12 @@
         "en": "The /shoes command"
       },
       "fr": [
-        "Tapez /shoes. La continuité d'abord : la version actuelle du modèle qui vous a convenu, comparée à l'ancienne.",
+        "Tapez la commande /shoes. La continuité d'abord : la version actuelle du modèle qui vous a convenu, comparée à l'ancienne.",
         "Sinon, trois à cinq modèles trouvés en ligne, chaque valeur sourcée.",
         "L'agent médical peut en écarter un."
       ],
       "en": [
-        "Type /shoes. Continuity first: the current version of the model that suited you, compared with the old one.",
+        "Type the /shoes command. Continuity first: the current version of the model that suited you, compared with the old one.",
         "Otherwise, three to five models found online, every value sourced.",
         "The medical agent can rule one out."
       ]

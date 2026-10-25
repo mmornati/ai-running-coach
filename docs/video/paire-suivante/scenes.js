@@ -14,10 +14,10 @@ const STR = {
   fr: {
     k1: "01 · FIN DE VIE", h1: "Une paire arrive au bout.",
     pair: "Crête Pro (bleue)", km: "702 km", thr: "seuil d'alerte 700 km",
-    t1: "Seuil franchi", t2: "Inspection : fin de vie", t3: "Retirée dans Garmin", t3b: "retirée immédiatement",
+    t1: "Seuil franchi", t1b: "702 km · le cas de Camille", t2: "Inspection rouge", t3: "Proche du seuil · orange", t3b: "proposée en second",
     ask: "Par quoi la remplacer ?",
     k2: "02 · LA FICHE", h2: "Chaque valeur a sa source.",
-    file: "gear/specs/crete-pro-2.md",
+    file: "gear/specs/crete-pro-bleue.md",
     cols: ["Caractéristique", "Retenue", "Type", "Autres sources"],
     rows: [
       ["drop", "8,7 mm", "measured", "marque : 6 mm"],
@@ -27,35 +27,35 @@ const STR = {
       ["avant-pied", "standard", "athlete", "—"],
     ],
     types: { measured: "mesuré · labo", manufacturer: "marque", athlete: "vous" },
-    wins: "la mesure prime", nb: "Crête Pro 3 (modèle voisin) : 272 g", nbTag: "indice en séance · jamais enregistré",
+    wins: "la mesure prime", nb: "Crête Pro 3 (autre version) : 272 g", nbTag: "indice en séance · jamais enregistré",
     valid: "validé ligne à ligne", none: "valeur introuvable = absente",
     k3: "03 · LE CHAUSSANT", h3: "Un retour, puis un bilan.",
     log: "/log Crête Pro : confort 8, rien à signaler", logd: "séance du 27 septembre",
-    fb: "shoe_feedback", kinds: ["blister", "toe_box_tight", "heel_slip", "hot_spot", "numbness", "too_soft", "poor_grip"], kindsT: "liste fermée · jamais une devinette",
+    fb: "shoe_feedback", kinds: ["blister", "toe_box_tight", "heel_slip", "hot_spot", "numbness", "too_soft", "poor_grip", "…"], kindsT: "liste fermée · jamais une devinette",
     verdict: "bilan de retraite", vrows: [["comfort_overall", "8 / 10"], ["would_rebuy", "yes"]], opts: "yes · yes_with_change · no",
-    pain: "douleur", sep: "≠ retour de chaussant", sep2: "écrits séparément, jamais l'un cause de l'autre",
+    pain: "douleur", sep: "≠ retour de chaussant", sep2: "écrits séparément, jamais l'un à la place de l'autre",
     k4: "04 · L'USAGE RÉEL", h4: "Ce que la paire faisait vraiment.",
-    cmd4: "arc_index.py shoe-usage --gear crete-pro-2",
-    uTitle: "Usage", trail: "trail", road: "route", dplus: "D+ par km", dpv: "62 m", longs: "sorties longues (> 90 min)", longsV: "9 sur 41",
+    cmd4: "arc_index.py shoe-usage --gear crete-pro-bleue",
+    uTitle: "Usage", trail: "trail", road: "route", dplus: "D+ par km", dpv: "46 m", longs: "sorties longues (> 90 min)", longsV: "15 sur 50",
     role: "rôle déduit : trail_long",
-    gTitle: "Foulée par tranche d'allure", b1: "6:00–6:30 /km", b1v: "contact 242 ms · 11 séances", b2: "5:30–6:00 /km", b2v: "données insuffisantes · 2 séances",
+    gTitle: "Foulée par tranche de GAP", b1: "4:30–5:00 /km", b1v: "contact 234 ms · 16 séances", b2: "4:00–4:30 /km", b2v: "données insuffisantes · 1 séance",
     min3: "minimum 3 séances par tranche",
-    pTitle: "Douleurs ≤ 48 h", ep: "épisodes", noRate: "pas de taux sous 5 épisodes",
+    pTitle: "Douleurs ≤ 48 h", ep: "1 épisode", epN: "sur 50 séances", thr5: "seuil d'un taux : 5", noRate: "pas de taux sous 5 épisodes",
     corr: "corrélation, pas causalité",
     k5: "05 · LES BESOINS", h5: "Des plages, jamais une marque.",
-    cmd5: "arc_index.py shoe-needs --role trail_long",
+    cmd5: "arc_index.py shoe-needs --role trail_long --replace crete-pro-bleue",
     needs: [
-      ["drop", "mm", 0, 16, 4, 12, "faible"],
-      ["pile du talon", "mm", 20, 45, 25, 37, "approximation du projet"],
-      ["crampons", "mm", 0, 10, 4, 6, "approximation du projet"],
+      ["drop", "mm", 0, 12, 4.7, 12, "modéré"],
+      ["pile du talon", "mm", 15, 45, 25, 37, "approximation du projet"],
+      ["crampons", "mm", 0, 12, 5, 6, "approximation du projet"],
     ],
     nSoft: "souplesse de la mousse", nSoftV: "souple · modérée", nSoftE: "faible",
     nToe: "avant-pied", nToeV: "standard (éprouvé)", nToeE: "avis d'experts",
     ev: "preuve", rules: "règles + références : config/shoes/rules.json",
-    ach: "antécédent Achille : drop jamais abaissé", achNote: "approximation du projet",
+    ach: "Si antécédent Achille ou mollet : drop jamais abaissé", achNote: "plancher = paire actuelle · extrapolation du projet", low: "faible", dec: ",",
     k6: "06 · /SHOES", h6: "La continuité d'abord.",
-    shoes: "/shoes", shoesR: "Rôle : trail_long — Crête Pro 2 (seuil franchi)",
-    cmpTitle: "Crête Pro 2 → version actuelle", cmpC: ["", "ancienne", "actuelle"],
+    shoes: "/shoes", shoesR: "Je pars de Crête Pro (bleue) : 702 km, seuil franchi · rôle trail_long",
+    cmpTitle: "Crête Pro 2 → Crête Pro 3 (actuelle)", cmpC: ["", "ancienne", "actuelle"],
     cmpRows: [["drop", "8,7", "8,7"], ["pile du talon", "31", "33"], ["crampons", "5", "5"], ["poids (g)", "265", "272"]],
     chg: "les marques changent d'une version à l'autre",
     elseT: "Sinon : 3 à 5 modèles trouvés en ligne", cand: ["Modèle A", "Modèle B", "Modèle C"], candTags: ["labo", "marque"],
@@ -68,11 +68,11 @@ const STR = {
   },
   en: {
     k1: "01 · END OF LIFE", h1: "A pair is nearly done.",
-    pair: "Crête Pro (blue)", km: "702 km", thr: "alert threshold 700 km",
-    t1: "Threshold crossed", t2: "Inspection: end of life", t3: "Retired in Garmin", t3b: "retired immediately",
+    pair: "Crête Pro (bleue)", km: "702 km", thr: "alert threshold 700 km",
+    t1: "Threshold crossed", t1b: "702 km · Camille's case", t2: "Red inspection", t3: "Near threshold · orange", t3b: "suggested second",
     ask: "What replaces it?",
     k2: "02 · THE SPEC SHEET", h2: "Every value has a source.",
-    file: "gear/specs/crete-pro-2.md",
+    file: "gear/specs/crete-pro-bleue.md",
     cols: ["Feature", "Kept", "Type", "Other sources"],
     rows: [
       ["drop", "8.7 mm", "measured", "brand: 6 mm"],
@@ -82,35 +82,35 @@ const STR = {
       ["toe box", "standard", "athlete", "—"],
     ],
     types: { measured: "measured · lab", manufacturer: "brand", athlete: "you" },
-    wins: "measurement wins", nb: "Crête Pro 3 (neighbouring model): 272 g", nbTag: "hint in session · never stored",
+    wins: "measurement wins", nb: "Crête Pro 3 (another version): 272 g", nbTag: "hint in session · never stored",
     valid: "approved line by line", none: "value not found = absent",
     k3: "03 · THE FIT", h3: "A feedback, then a verdict.",
     log: "/log Crête Pro: comfort 8, nothing to report", logd: "run of September 27",
-    fb: "shoe_feedback", kinds: ["blister", "toe_box_tight", "heel_slip", "hot_spot", "numbness", "too_soft", "poor_grip"], kindsT: "closed list · never a guess",
+    fb: "shoe_feedback", kinds: ["blister", "toe_box_tight", "heel_slip", "hot_spot", "numbness", "too_soft", "poor_grip", "…"], kindsT: "closed list · never a guess",
     verdict: "retirement verdict", vrows: [["comfort_overall", "8 / 10"], ["would_rebuy", "yes"]], opts: "yes · yes_with_change · no",
-    pain: "pain", sep: "≠ fit feedback", sep2: "written separately, neither is ever the cause of the other",
+    pain: "pain", sep: "≠ fit feedback", sep2: "written separately, never one in place of the other",
     k4: "04 · REAL USE", h4: "What the pair really did.",
-    cmd4: "arc_index.py shoe-usage --gear crete-pro-2",
-    uTitle: "Use", trail: "trail", road: "road", dplus: "climb per km", dpv: "62 m", longs: "long runs (> 90 min)", longsV: "9 of 41",
+    cmd4: "arc_index.py shoe-usage --gear crete-pro-bleue",
+    uTitle: "Use", trail: "trail", road: "road", dplus: "climb per km", dpv: "46 m", longs: "long runs (> 90 min)", longsV: "15 of 50",
     role: "inferred role: trail_long",
-    gTitle: "Stride by pace band", b1: "6:00–6:30 /km", b1v: "contact 242 ms · 11 runs", b2: "5:30–6:00 /km", b2v: "not enough data · 2 runs",
+    gTitle: "Stride by GAP band", b1: "4:30–5:00 /km", b1v: "contact 234 ms · 16 runs", b2: "4:00–4:30 /km", b2v: "not enough data · 1 run",
     min3: "minimum 3 runs per band",
-    pTitle: "Pain ≤ 48 h", ep: "episodes", noRate: "no rate under 5 episodes",
+    pTitle: "Pain ≤ 48 h", ep: "1 episode", epN: "over 50 runs", thr5: "rate threshold: 5", noRate: "no rate under 5 episodes",
     corr: "correlation, not causation",
     k5: "05 · THE NEEDS", h5: "Ranges, never a brand.",
-    cmd5: "arc_index.py shoe-needs --role trail_long",
+    cmd5: "arc_index.py shoe-needs --role trail_long --replace crete-pro-bleue",
     needs: [
-      ["drop", "mm", 0, 16, 4, 12, "low"],
-      ["heel stack", "mm", 20, 45, 25, 37, "project approximation"],
-      ["lugs", "mm", 0, 10, 4, 6, "project approximation"],
+      ["drop", "mm", 0, 12, 4.7, 12, "moderate"],
+      ["heel stack", "mm", 15, 45, 25, 37, "project approximation"],
+      ["lugs", "mm", 0, 12, 5, 6, "project approximation"],
     ],
     nSoft: "foam softness", nSoftV: "soft · moderate", nSoftE: "low",
     nToe: "toe box", nToeV: "standard (proven)", nToeE: "expert opinion",
     ev: "evidence", rules: "rules + references: config/shoes/rules.json",
-    ach: "Achilles history: drop never lowered", achNote: "project approximation",
+    ach: "If Achilles or calf history: drop never lowered", achNote: "floor = current pair · project extrapolation", low: "low", dec: ".",
     k6: "06 · /SHOES", h6: "Continuity first.",
-    shoes: "/shoes", shoesR: "Role: trail_long — Crête Pro 2 (threshold crossed)",
-    cmpTitle: "Crête Pro 2 → current version", cmpC: ["", "old", "current"],
+    shoes: "/shoes", shoesR: "Starting from Crête Pro (bleue): 702 km, threshold crossed · role trail_long",
+    cmpTitle: "Crête Pro 2 → Crête Pro 3 (current)", cmpC: ["", "old", "current"],
     cmpRows: [["drop", "8.7", "8.7"], ["heel stack", "31", "33"], ["lugs", "5", "5"], ["weight (g)", "265", "272"]],
     chg: "brands change things between versions",
     elseT: "Otherwise: 3 to 5 models found online", cand: ["Model A", "Model B", "Model C"], candTags: ["lab", "brand"],
@@ -154,7 +154,7 @@ function sEnd(t, d, cues) {
   text(S.pair, 290, 450, { size: 22, weight: 800, font: SORA, align: "center", alpha: clamp(kp) });
   text(S.km + " · " + S.thr, 290, 482, { size: 14, font: MONO, color: C.soft, align: "center", alpha: clamp(kp) });
   // les trois déclencheurs
-  const items = [[S.t1, C.amber, null], [S.t2, C.red, null], [S.t3, C.teal, S.t3b]];
+  const items = [[S.t1, C.red, S.t1b], [S.t2, C.red, null], [S.t3, C.amber, S.t3b]];
   items.forEach(([lab, col, sub], i) => {
     const a = a0 + 0.4 + i * 1.3, k = outCubic(seg(t, a, a + 0.5)), y = 190 + i * 104;
     if (k <= 0) return;
@@ -264,10 +264,10 @@ function sUsage(t, d, cues) {
   const ku = outCubic(seg(t, a0 + 0.1, a0 + 0.7));
   panel(80, 200, 360, 340, { r: 18, alpha: ku });
   label(S.uTitle.toUpperCase(), 104, 234, ku, C.accent);
-  const tb = 0.94, kk = inOut(seg(t, a0 + 0.6, a0 + 1.8));
+  const tb = 1.0, kk = inOut(seg(t, a0 + 0.6, a0 + 1.8));
   panel(104, 254, 312, 28, { r: 8, fill: "#22302a", stroke: false, alpha: ku });
   panel(104, 254, 312 * tb * kk, 28, { r: 8, fill: C.accent, stroke: false, alpha: ku });
-  text(S.trail + " 94 %", 104, 308, { size: 15, weight: 700, alpha: ku }); text(S.road + " 6 %", 416, 308, { size: 15, color: C.soft, align: "right", alpha: ku });
+  text(S.trail + " 100 %", 104, 308, { size: 15, weight: 700, alpha: ku }); text(S.road + " 0 %", 416, 308, { size: 15, color: C.soft, align: "right", alpha: ku });
   const kd = outCubic(seg(t, a0 + 1.6, a0 + 2.2));
   text(S.dpv, 104, 372, { size: 34, weight: 800, font: SORA, color: C.accent, alpha: kd * ku });
   text(S.dplus, 104, 396, { size: 13, font: MONO, color: C.soft, alpha: kd * ku });
@@ -292,18 +292,20 @@ function sUsage(t, d, cues) {
   panel(880, 200, 320, 340, { r: 18, alpha: kp });
   label(S.pTitle.toUpperCase(), 904, 234, kp, C.amber);
   for (let i = 0; i < 5; i++) {
-    const on = i < 3, ki = outBack(seg(t, a2 + 0.6 + i * 0.25, a2 + 1.0 + i * 0.25));
+    const on = i < 1, ki = outBack(seg(t, a2 + 0.6 + i * 0.25, a2 + 1.0 + i * 0.25));
     const cx = 924 + i * 56;
     if (ki > 0) {
       dot(cx, 310, 20 * clamp(ki), on ? C.amber : "#22302a", kp);
       if (!on) ring(cx, 310, 20 * clamp(ki), C.line, 2, kp);
     }
   }
-  text("3 / 5 " + S.ep, 904, 372, { size: 26, weight: 800, font: SORA, color: C.amber, alpha: kp * seg(t, a2 + 1.8, a2 + 2.3) });
+  const kE = kp * seg(t, a2 + 1.8, a2 + 2.3);
+  text(S.ep, 904, 372, { size: 26, weight: 800, font: SORA, color: C.amber, alpha: kE });
+  text(S.epN + " · " + S.thr5, 904, 396, { size: 12, font: MONO, color: C.soft, alpha: kE });
   const kn = outBack(seg(t, a2 + 2.6, a2 + 3.2));
   if (kn > 0) {
-    pill(S.noRate, 904, 424, { size: 13, alpha: clamp(kn), color: C.amber, stroke: C.amber, fill: "rgba(240,180,60,0.08)" });
-    pill(S.corr, 904, 468, { size: 13, alpha: clamp(kn), color: C.red, stroke: C.red, fill: "rgba(240,122,95,0.08)" });
+    pill(S.noRate, 904, 436, { size: 13, alpha: clamp(kn), color: C.amber, stroke: C.amber, fill: "rgba(240,180,60,0.08)" });
+    pill(S.corr, 904, 480, { size: 13, alpha: clamp(kn), color: C.red, stroke: C.red, fill: "rgba(240,122,95,0.08)" });
   }
 }
 
@@ -319,32 +321,33 @@ function sNeeds(t, d, cues) {
     const ka = outCubic(seg(t, a0 + 0.4 + i * 0.6, a0 + 0.9 + i * 0.6)), y = 266 + i * 54;
     const isDrop = i === 0;
     const lock = isDrop ? inOut(seg(t, a2 + 0.3, a2 + 1.2)) : 0;
-    const aa = lerp(a, 8, lock);
+    const aa = lerp(a, 8.7, lock), evNow = isDrop && lock > 0.5 ? S.low : ev;
+    const num = v => (Math.round(v * 10) / 10).toString().replace(".", S.dec);
     text(n, 112, y + 6, { size: 18, weight: 700, alpha: ka });
     panel(bx, y - 10, bw, 22, { r: 6, fill: "#22302a", stroke: false, alpha: ka });
     panel(x(aa, lo, hi), y - 10, x(b, lo, hi) - x(aa, lo, hi), 22, { r: 6, fill: C.accent, stroke: false, alpha: ka * 0.9 });
-    text(`${Math.round(aa)}–${b} ${u}`, bx + bw + 16, y + 6, { size: 15, weight: 700, font: MONO, color: C.ink, alpha: ka });
+    text(`${num(aa)}–${num(b)} ${u}`, bx + bw + 16, y + 6, { size: 15, weight: 700, font: MONO, color: C.ink, alpha: ka });
     const ke = outBack(seg(t, a1 + 0.2 + i * 0.5, a1 + 0.6 + i * 0.5));
-    if (ke > 0) pill(ev, 1176, y, { align: "right", size: 12, alpha: clamp(ke), color: ev === "faible" || ev === "low" ? C.amber : C.soft, stroke: C.line, fill: C.deep });
+    if (ke > 0) pill(evNow, 1176, y, { align: "right", size: 12, alpha: clamp(ke), color: evNow === S.low ? C.amber : C.soft, stroke: isDrop && lock > 0.5 ? C.amber : C.line, fill: C.deep });
   });
   [[S.nSoft, S.nSoftV, S.nSoftE], [S.nToe, S.nToeV, S.nToeE]].forEach(([n, v, ev], i) => {
     const ka = outCubic(seg(t, a0 + 2.2 + i * 0.5, a0 + 2.7 + i * 0.5)), y = 266 + (3 + i) * 54 - 6;
     text(n, 112, y + 6, { size: 18, weight: 700, alpha: ka });
     pill(v, bx, y, { size: 14, alpha: ka, padX: 16 });
     const ke = outBack(seg(t, a1 + 1.7 + i * 0.5, a1 + 2.1 + i * 0.5));
-    if (ke > 0) pill(ev, 1176, y, { align: "right", size: 12, alpha: clamp(ke), color: ev === "faible" || ev === "low" ? C.amber : C.soft, stroke: C.line, fill: C.deep });
+    if (ke > 0) pill(ev, 1176, y, { align: "right", size: 12, alpha: clamp(ke), color: ev === S.low ? C.amber : C.soft, stroke: C.line, fill: C.deep });
   });
   label(S.ev.toUpperCase(), 1176 - 70, 226, k0, C.faint);
   text(S.rules, 112, 524, { size: 12, font: MONO, color: C.faint, alpha: k0 * seg(t, a1 + 2.4, a1 + 3.0) });
   // le garde-fou Achille
   const kg = outBack(seg(t, a2, a2 + 0.6));
   if (kg > 0) {
-    panel(80, 556, 760, 48, { r: 14, fill: "rgba(240,122,95,0.07)", stroke: C.red, lw: 2, alpha: clamp(kg) });
+    panel(80, 556, 1120, 48, { r: 14, fill: "rgba(240,122,95,0.07)", stroke: C.red, lw: 2, alpha: clamp(kg) });
     ctx.save(); ctx.globalAlpha *= clamp(kg); ctx.translate(112, 580);
     rr(-8, -2, 16, 12, 3); ctx.fillStyle = C.red; ctx.fill();
     ctx.beginPath(); ctx.arc(0, -3, 6, Math.PI, 0); ctx.strokeStyle = C.red; ctx.lineWidth = 2.5; ctx.stroke(); ctx.restore();
     text(S.ach, 136, 586, { size: 18, weight: 700, font: SORA, alpha: clamp(kg) });
-    text(S.achNote, 820, 586, { size: 12, font: MONO, color: C.faint, align: "right", alpha: clamp(kg) });
+    text(S.achNote, 1176, 586, { size: 12, font: MONO, color: C.faint, align: "right", alpha: clamp(kg) });
   }
 }
 
@@ -422,9 +425,9 @@ function sTry(t, d, cues) {
   });
   // ce que le coach ne fait jamais
   S.no.forEach((s, i) => {
-    const ki = outBack(seg(t, a2 + 0.2 + i * 0.7, a2 + 0.7 + i * 0.7)), y = 476 + Math.floor(i / 2) * 54, x = 80 + (i % 2) * 560;
+    const ki = outBack(seg(t, a2 + 0.2 + i * 0.7, a2 + 0.7 + i * 0.7)), y = 476 + Math.floor(i / 2) * 54, x = 80 + (i % 2) * 570;
     if (ki <= 0) return;
-    panel(x, y - 24, 540, 46, { r: 14, fill: "rgba(240,122,95,0.06)", stroke: "rgba(240,122,95,0.5)", alpha: clamp(ki) });
+    panel(x, y - 24, 550, 46, { r: 14, fill: "rgba(240,122,95,0.06)", stroke: "rgba(240,122,95,0.5)", alpha: clamp(ki) });
     cross(x + 28, y - 1, 7, C.red, clamp(ki));
     text(s, x + 54, y + 6, { size: 18, weight: 700, alpha: clamp(ki) });
   });
