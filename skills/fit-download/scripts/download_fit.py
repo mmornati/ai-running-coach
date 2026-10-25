@@ -265,6 +265,92 @@ def _unwrap_fit(data: bytes) -> bytes:
     return data
 
 
+# Taille (octets) de chaque type de base FIT (profil FIT SDK) ; un type inconnu est lu en octets par
+# `fitparse`, donc jamais incohérent.
+_FIT_BASE_TYPE_SIZE = {
+    0x00: 1, 0x01: 1, 0x02: 1, 0x83: 2, 0x84: 2, 0x85: 4, 0x86: 4, 0x07: 1, 0x88: 4, 0x89: 8,
+    0x0A: 1, 0x8B: 2, 0x8C: 4, 0x0D: 1, 0x8E: 8, 0x8F: 8, 0x90: 8,
+}
+_FIT_BASE_TYPE_BYTE = 0x0D
+_FIT_CRC_TABLE = (0x0000, 0xCC01, 0xD801, 0x1400, 0xF001, 0x3C00, 0x2800, 0xE401,
+                  0xA001, 0x6C00, 0x7800, 0xB401, 0x5000, 0x9C01, 0x8801, 0x4400)
+
+
+def _fit_crc(data: bytes, crc: int = 0) -> int:
+    """CRC-16 du FIT SDK (même calcul que `fitparse.records.Crc`)."""
+    for byte in data:
+        for nibble in (byte & 0xF, byte >> 4):
+            tmp = _FIT_CRC_TABLE[crc & 0xF]
+            crc = ((crc >> 4) & 0x0FFF) ^ tmp ^ _FIT_CRC_TABLE[nibble]
+    return crc
+
+
+def _fix_fit_field_sizes(fit: bytes) -> tuple[bytes, list[str]]:
+    """Lit en octets (`byte`) tout champ dont la taille déclarée n'est pas un multiple de son type.
+
+    `fitparse` 1.2.0 refuse un tel FIT entier (« Invalid field size 1 for type 'uint32' ») alors que
+    son propre code prévoit ce repli. Cas réel : la COROS Pace 4 Pro écrit `event.data` (message 21,
+    champ 3, uint32) sur 1 octet. Seul le type de base de ces définitions change, en `byte` — ce
+    que ferait le repli de `fitparse` —, puis le CRC du fichier est recalculé (le CRC d'origine doit être
+    valide, sinon rien n'est touché). La valeur d'un champ en octets est déjà écartée des records par
+    `_read_fit`. Stdlib, sans `fitparse`. Rend `(fit, ["message 21 champ 3 : 1 octet(s) pour un type de
+    4", …])` ; un fichier illisible, sans champ incohérent ou au CRC faux est rendu tel quel, avec `[]`
+    (`fitparse` dira alors ce qui ne va pas)."""
+    out = bytearray(fit)
+    fixes: dict[tuple[int, int], str] = {}
+    pos = 0
+    try:
+        while pos + 12 <= len(fit):                      # fichiers FIT chaînés : un en-tête par fichier
+            header_size = fit[pos]
+            if fit[pos + 8:pos + 12] != b".FIT" or header_size < 12:
+                return fit, []
+            data_size = int.from_bytes(fit[pos + 4:pos + 8], "little")
+            start, end = pos + header_size, pos + header_size + data_size
+            if end + 2 > len(fit) or _fit_crc(fit[pos:end]) != int.from_bytes(fit[end:end + 2], "little"):
+                return fit, []
+            sizes: dict[int, int] = {}                   # type local -> taille d'un message de données
+            seg_fixed = False
+            i = start
+            while i < end:
+                head = fit[i]
+                i += 1
+                if head & 0x80:                          # en-tête compressé (horodatage) : message de données
+                    i += sizes[(head >> 5) & 0x3]
+                    continue
+                local = head & 0x0F
+                if not head & 0x40:                      # message de données
+                    i += sizes[local]
+                    continue
+                order = "big" if fit[i + 1] else "little"
+                mesg = int.from_bytes(fit[i + 2:i + 4], order)
+                n_fields = fit[i + 4]
+                i += 5
+                total = 0
+                for _ in range(n_fields):
+                    num, size, base = fit[i], fit[i + 1], fit[i + 2]
+                    unit = _FIT_BASE_TYPE_SIZE.get(base, 1)
+                    if size % unit:
+                        out[i + 2] = _FIT_BASE_TYPE_BYTE
+                        seg_fixed = True
+                        fixes[(mesg, num)] = f"message {mesg} champ {num} : {size} octet(s) pour un type de {unit}"
+                    total += size
+                    i += 3
+                if head & 0x20:                          # champs développeur
+                    n_dev = fit[i]
+                    i += 1
+                    total += sum(fit[i + 3 * k + 1] for k in range(n_dev))
+                    i += 3 * n_dev
+                sizes[local] = total
+            if i != end:
+                return fit, []
+            if seg_fixed:
+                out[end:end + 2] = _fit_crc(bytes(out[pos:end])).to_bytes(2, "little")
+            pos = end + 2
+    except (KeyError, IndexError):                       # message de données sans définition, fichier tronqué
+        return fit, []
+    return (bytes(out), list(fixes.values())) if fixes else (fit, [])
+
+
 def _ensure_gitignore(directory: Path, header: str, patterns: list[str]) -> None:
     """Garantit que chaque motif de `patterns` figure dans `directory/.gitignore`.
 
@@ -712,9 +798,14 @@ def _download_one_coros(activity_id: str, out_dir: Path, want_json: bool, relay=
 def _read_fit(fit: bytes) -> tuple[list[dict], str | None]:
     """Records FIT bruts (champs `fitparse` tels quels, valeurs nulles/binaires écartées) et sport
     de la séance (message `session`, minuscules) — sans rien écrire. Partagé par l'écriture du
-    dump brut et par `--refresh-dynamics`."""
+    dump brut et par `--refresh-dynamics`. Un champ de taille incohérente avec son type est lu en
+    octets (`_fix_fit_field_sizes`), signalé sur stderr."""
     import fitparse
 
+    fit, fixes = _fix_fit_field_sizes(fit)
+    if fixes:
+        print(f"NOTE : FIT lu malgré {len(fixes)} définition(s) de champ incohérente(s), "
+              f"lue(s) en octets ({' ; '.join(fixes)})", file=sys.stderr)
     f = fitparse.FitFile(io.BytesIO(fit))
     records: list[dict] = []
     for m in f.get_messages("record"):
@@ -747,11 +838,12 @@ def refresh_dynamics(out_dir: Path, dry_run: bool = False) -> dict:
     fit_dir = out_dir / "fit"
     result: dict = {"created": 0, "rewritten": 0, "unchanged": 0, "failed": 0, "with_dynamics": 0, "files": []}
     for fit_path in sorted(out_dir.glob("*.fit")):
-        # `<entier>.fit` (Garmin) ET `i<chiffres>.fit` (Intervals.icu, #68) : même emplacement, même nom de
+        # `<entier>.fit` (Garmin), `i<chiffres>.fit` (Intervals.icu, #68) et `c<chiffres>.fit` (COROS, #168) :
+        # même emplacement, même nom de
         # copie normalisée (`fit/<id>.json`), identifiant conservé tel quel (entier ou chaîne).
         if fit_path.stem.isdigit():
             activity_id = int(fit_path.stem)
-        elif INTERVALS_ID_RE.match(fit_path.stem):
+        elif INTERVALS_ID_RE.match(fit_path.stem) or COROS_ID_RE.match(fit_path.stem):
             activity_id = fit_path.stem
         else:
             continue
@@ -947,7 +1039,7 @@ def main(argv: list[str] | None = None) -> int:
         os.environ[_RELAUNCH[source]["env"]] = str(args.python)
     if args.refresh_dynamics:
         # Hors ligne, quelle que soit la source : ni `garminconnect` ni tokens ni clé API — seul
-        # `fitparse` est requis. Fichiers Garmin (`<entier>.fit`) ET Intervals.icu (`i<chiffres>.fit`).
+        # `fitparse` est requis. Fichiers Garmin (`<entier>.fit`), Intervals.icu (`i<chiffres>.fit`) et COROS (`c<chiffres>.fit`).
         _relaunch_for_fitparse(sys.argv[1:] if argv is None else list(argv))
         out_dir = args.output_dir or _activity_dir_out()
         result = refresh_dynamics(out_dir, dry_run=args.dry_run)
