@@ -212,6 +212,24 @@ Une activité qu'aucune séance n'a appariée apparaît à part, *Hors plan*. L'
 est celui de la conformité, calculé par le serveur : la vue et le bloc Conformité ne
 peuvent pas se contredire. Les seuils sont une approximation du projet.
 
+<!-- arc-video:roadbook -->
+<div class="arc-video-card" markdown>
+
+[![Le nouveau roadbook](../video/roadbook/poster.jpg)](../video/roadbook/index.html)
+
+<div markdown>
+
+<span class="arc-video__meta">En vidéo · Étape 24 · 1 min 40</span>
+
+**[Le nouveau roadbook](../video/roadbook/index.html)** — Le tableau de bord se lit comme le roadbook d'une course : profil du bloc, feuille de ravito du jour avec le verdict en grand, semaine sur une ligne par séance, navigation rail ou barre du bas, application installable, données qui restent chez vous.
+
+[Regarder](../video/roadbook/index.html) · [English](../video/roadbook/index.html?lang=en) · [Toutes les vidéos](../videos.md)
+
+</div>
+
+</div>
+<!-- /arc-video -->
+
 - **Par défaut** : tout le monde est passé au roadbook, y compris ceux qui avaient
   choisi l'ancien design pendant l'essai.
 - **Revenir temporairement à l'ancien design** : « Ancien design (jusqu'à la 1.5) », en

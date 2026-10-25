@@ -242,6 +242,56 @@ SUITE_SHOTS = [
 ]
 
 
+# Design roadbook (épisode 24 et suivants) : sélecteurs de `web/js/beta.js` / `web/css/beta.css`. Même format que
+# les tables ci-dessus, plus : ws = "default" | "bloc" (variante du workspace), fmt = "desktop" | "mobile",
+# hover = "sélecteur >> nth=N" survolé, click = (sélecteur, texte) cliqué.
+RK_SHOTS = [
+    dict(name="rb-profil", ws="bloc", route="", wait=".rk-profile__cap", fmt="desktop", hover=".rk-profile__hit >> nth=3",
+         view="Aujourd'hui", desc="Profil du bloc : une colonne par semaine jusqu'au jour de course, hauteur = prévu, plein = réalisé, phases en sections, « Vous êtes ici », lecture de la semaine survolée.",
+         boxes={"profil": B(".rk-profile__plot"), "ici": B(".rk-pin__label"), "course": B(".rk-finish__label"), "phases": B(".rk-profile__sections"),
+                "lecture": B(".rk-profile__cap")}),
+    dict(name="rb-profil-defaut", ws="default", route="", wait=".rk-profile__cap", fmt="desktop",
+         view="Aujourd'hui", desc="Profil du bloc du workspace de démonstration (course le 22 novembre).",
+         boxes={"profil": B(".rk-profile__plot"), "ici": B(".rk-pin__label"), "course": B(".rk-finish__label"), "phases": B(".rk-profile__sections"),
+                "lecture": B(".rk-profile__cap")}),
+    dict(name="rb-aujourdhui", ws="default", route="", wait=".rk-verdict", fmt="desktop",
+         view="Aujourd'hui", desc="Aujourd'hui : verdict du coach en grand, séance remplacée barrée, bilan du matin en lignes de barrière.",
+         boxes={"verdict": B(".rk-verdict"), "remplacement": B(".rk-change"), "avant": B(".rk-change__before"), "apres": B(".rk-change__after"),
+                "bilan": B(".rk-cutoffs"), "plaque": B(".rk-plate")}),
+    dict(name="rb-bilan", ws="default", route="", wait=".rk-cutoffs", fmt="desktop", scroll=(".rk-cutoffs", None, 260),
+         view="Aujourd'hui", desc="Bilan du matin : valeur, référence et état (forme + mot) sur chaque ligne de barrière.",
+         boxes={"bilan": B(".rk-cutoffs"), "hrv": B(".rk-cutoffs__row", "HRV"), "etat": B(".rk-cutoffs__state"),
+                "fc-repos": B(".rk-cutoffs__row", "FC de repos"), "sommeil": B(".rk-cutoffs__row", "Sommeil")}),
+    dict(name="rb-semaine", ws="default", route="semaine", wait=".rk-runsheet", fmt="desktop",
+         view="Semaine", desc="Semaine : prévu et réalisé sur une ligne par séance (durée prévu → réalisé, statut).",
+         boxes={"feuille": B(".rk-runsheet"), "duree": B(".rk-runsheet__dur"),
+                "statut": B(".rk-runsheet__status"), "capacite": B(".rk-capacity")}),
+    dict(name="rb-semaine-passee", ws="default", route="semaine?debut=2026-09-21", wait=".rk-runsheet", fmt="desktop",
+         view="Semaine", desc="Semaine du 21 septembre : séances faites face au prévu, activité appariée sous chaque séance, durée prévu → réalisé, statuts.",
+         boxes={"feuille": B(".rk-runsheet"), "reel": B(".rk-runsheet__real"), "duree": B(".rk-runsheet tbody .rk-runsheet__dur"),
+                "statut": B(".rk-runsheet tbody .rk-runsheet__status"), "ligne": B(".rk-runsheet tbody .rk-run")}),
+    dict(name="rb-rail", ws="default", route="", wait=".rk-rail .rk-navgroup", fmt="desktop",
+         view="Aujourd'hui", desc="Rail de navigation du bureau : sections rangées par groupes, lien vers l'ancien design en pied.",
+         boxes={"rail": B(".rk-rail"), "groupes": B(".rk-rail .rk-navgroup"), "ancien": B(".rk-classic")}),
+    dict(name="rb-course", ws="default", route=ULTRA_ROUTE, wait=".rb-sheet.is-active .rb-table", fmt="desktop",
+         view="Roadbook", desc="Vue Roadbook de course (Ultra des Crêtes) dans l'habillage roadbook.",
+         boxes={"entete": B(".rb-sheet.is-active .rb-head"), "profil": B(".rb-sheet.is-active .rb-profile"),
+                "sections": B(".rb-sheet.is-active .rb-table")}),
+    dict(name="mobile-rb-aujourdhui", ws="default", route="", wait=".rk-verdict", fmt="mobile",
+         view="Aujourd'hui", desc="Aujourd'hui sur téléphone : profil du bloc, verdict, barre du bas.",
+         boxes={"verdict": B(".rk-verdict"), "profil": B(".rk-profile"), "barre": B(".rk-tabbar")}),
+    dict(name="mobile-rb-semaine", ws="default", route="semaine", wait=".rk-runsheet", fmt="mobile",
+         view="Semaine", desc="Semaine sur téléphone : une ligne par séance, barre du bas.",
+         boxes={"feuille": B(".rk-runsheet"), "barre": B(".rk-tabbar")}),
+    dict(name="mobile-rb-barre", ws="default", route="", wait=".rk-verdict", fmt="mobile", scroll=(".rk-cutoffs", None, 220),
+         view="Aujourd'hui", desc="Barre du bas : Aujourd'hui, Semaine, Santé, Coach et Sections.",
+         boxes={"barre": B(".rk-tabbar"), "sections": B(".rk-tabbar__more"), "bilan": B(".rk-cutoffs")}),
+    dict(name="mobile-rb-sections", ws="default", route="", wait=".rk-verdict", fmt="mobile", click=(".rk-tabbar__more", None),
+         view="Aujourd'hui", desc="Feuille « Toutes les sections » ouverte depuis la barre du bas.",
+         boxes={"feuille": B(".rk-sheet[open]"), "groupes": B(".rk-sheet__nav"), "ancien": B(".rk-sheet__foot")}),
+]
+
+
 # ---------------------------------------------------------------------------
 # Services
 # ---------------------------------------------------------------------------
@@ -336,7 +386,7 @@ class Recorder:
         log(f"  {name}: {webp.stat().st_size // 1024} Ko, {len(found)} cadres")
 
     def write_manifest(self) -> None:
-        order = {s["name"]: i for i, s in enumerate(SHOTS + BLOC_SHOTS + SUITE_SHOTS)}
+        order = {s["name"]: i for i, s in enumerate(SHOTS + BLOC_SHOTS + SUITE_SHOTS + RK_SHOTS)}
         data = {"generated_for": "Camille — mardi 2026-09-29 (J-54), workspace fictif", "shots": sorted(
             self.entries, key=lambda e: order.get(e["name"], 999))}
         text = json.dumps(data, ensure_ascii=False, indent=1)
@@ -492,6 +542,51 @@ def capture_suite(rec, browser, tmp, only):
         dash.stop()
 
 
+def capture_roadbook(rec, browser, tmp, only):
+    """Design roadbook : table de captures propre (RK_SHOTS), deux variantes de workspace (défaut, bloc), bureau
+    et mobile. Le profil classique n'y touche pas."""
+    shots = [sh for sh in RK_SHOTS if not only or sh["name"] in only]
+    for variant in ("default", "bloc"):
+        group = [sh for sh in shots if sh["ws"] == variant]
+        if not group:
+            continue
+        ws = tmp / f"workspace-rk-{variant}"
+        demo.build_demo(ws, bloc=(variant == "bloc"))
+        dash = Service([sys.executable, str(REPO / "scripts/arc_serve.py"), "--workspace", str(ws), "--today", TODAY,
+                        "--memory", "--port", "0"])
+        try:
+            base = dash.url.rstrip("/")
+            import urllib.request
+            for warm in ("api/today", ""):        # premier appel : index de la base mémoire construit avant les captures
+                try:
+                    urllib.request.urlopen(f"{base}/{warm}", timeout=60).read()
+                except Exception:  # noqa: BLE001 - simple échauffement
+                    pass
+            for shot in group:
+                log(f"  … {shot['name']}")
+                mobile = shot["fmt"] == "mobile"
+                vp = {**(MOBILE if mobile else DESKTOP), "label": "mobile 390×844 @3x" if mobile else "desktop 1440×900 @2x"}
+                ctx = new_context(browser, vp, design="roadbook")
+                page = ctx.new_page()
+                try:
+                    open_view(page, base, shot["route"], shot["wait"], shot.get("scroll"))
+                except Exception:  # noqa: BLE001 - premier chargement parfois lent : un second essai
+                    log("    (nouvel essai)")
+                    open_view(page, base, shot["route"], shot["wait"], shot.get("scroll"))
+                if shot.get("click"):
+                    if not page.evaluate(CLICK_JS, list(shot["click"])):
+                        log(f"  (clic impossible : {shot['click']})")
+                    page.wait_for_timeout(500)
+                if shot.get("hover"):
+                    sel, nth = shot["hover"].split(" >> nth=")
+                    page.locator(sel).nth(int(nth)).hover()
+                    page.wait_for_timeout(300)
+                rec.snap(page, shot["name"], shot["view"], shot["desc"], vp, shot["boxes"], shot.get("full", False))
+                ctx.close()
+        finally:
+            dash.stop()
+
+
 def capture_mobile_dashboard(rec, browser, base, only):
     ctx = new_context(browser, MOBILE)
     page = ctx.new_page()
@@ -610,6 +705,24 @@ def main() -> int:
         print("cwebp ou ffmpeg requis (brew install webp).", file=sys.stderr)
         return 2
     args.out.mkdir(parents=True, exist_ok=True)
+
+    if DESIGN == "roadbook":      # table de captures propre au roadbook ; le chemin classique reste inchangé
+        with tempfile.TemporaryDirectory(prefix="arc-video-") as tmpname:
+            tmp = Path(tmpname)
+            rec = Recorder(args.out, tmp)
+            with sync_playwright() as pw:
+                browser = launch(pw)
+                log("roadbook…")
+                capture_roadbook(rec, browser, tmp, only)
+                browser.close()
+            if only:
+                old = args.out / "manifest.json"
+                if old.exists():
+                    kept = [e for e in json.loads(old.read_text(encoding="utf-8"))["shots"] if e["name"] not in only]
+                    rec.entries = kept + rec.entries
+            rec.write_manifest()
+        log(f"{len(rec.entries)} captures dans {args.out}")
+        return 0
 
     with tempfile.TemporaryDirectory(prefix="arc-video-") as tmpname:
         tmp = Path(tmpname)

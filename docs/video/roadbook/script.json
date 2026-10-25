@@ -1,0 +1,144 @@
+{
+ "title": {
+  "fr": "Le nouveau roadbook",
+  "en": "The new roadbook"
+ },
+ "summary": {
+  "fr": "Le tableau de bord se lit comme le roadbook d'une course : profil du bloc, feuille de ravito du jour avec le verdict en grand, semaine sur une ligne par séance, navigation rail ou barre du bas, application installable, données qui restent chez vous."
+ },
+ "poster": 14,
+ "scenes": [
+  {
+   "id": "bib",
+   "min": 4.6,
+   "lead": 1.2,
+   "fr": [
+    "Étape vingt-quatre : le nouveau roadbook."
+   ],
+   "en": [
+    "Stage twenty-four: the new roadbook."
+   ]
+  },
+  {
+   "id": "profil",
+   "min": 14,
+   "chapter": {
+    "fr": "Le profil du bloc",
+    "en": "The block profile"
+   },
+   "fr": [
+    "Depuis la version un point quatre, le tableau de bord se lit comme un roadbook de course. En haut, le profil du bloc : une colonne par semaine, jusqu'au jour de course.",
+    "La hauteur, c'est le volume prévu ; le plein, ce qui est fait. Les phases font les sections, et un repère dit : vous êtes ici.",
+    "Survolez, ou parcourez au clavier : chaque semaine se raconte. Un clic l'ouvre."
+   ],
+   "en": [
+    "Since version one point four, the dashboard reads like a race roadbook. At the top, the block profile: one column per week, up to race day.",
+    "The height is the planned volume; the fill is what is done. Phases make the sections, and a marker says: you are here.",
+    "Hover, or move through it with the keyboard: each week tells its story. A click opens it."
+   ]
+  },
+  {
+   "id": "jour",
+   "min": 10,
+   "chapter": {
+    "fr": "La feuille de ravito",
+    "en": "The aid-station sheet"
+   },
+   "fr": [
+    "Dessous, le jour se lit comme une feuille de ravito. Le verdict du coach, en grand.",
+    "La séance remplacée est barrée, la nouvelle juste à côté, et un lien dit pourquoi."
+   ],
+   "en": [
+    "Below, the day reads like an aid-station sheet. The coach's verdict, in large type.",
+    "The replaced session is struck through, the new one beside it, and a link says why."
+   ]
+  },
+  {
+   "id": "bilan",
+   "min": 10,
+   "fr": [
+    "Le bilan du matin tient en lignes de barrière : la valeur, la référence, et l'état.",
+    "L'état se lit en forme et en mot : jamais la couleur seule."
+   ],
+   "en": [
+    "The morning check comes as cut-off lines: the value, the reference, and the state.",
+    "The state shows in shape and in word: never colour alone."
+   ]
+  },
+  {
+   "id": "semaine",
+   "min": 10,
+   "chapter": {
+    "fr": "La semaine sur une ligne",
+    "en": "The week on one line"
+   },
+   "fr": [
+    "Dans la vue Semaine, le prévu et le réalisé tiennent sur une ligne par séance : l'activité appariée juste dessous, la durée prévue puis réalisée.",
+    "Un statut dit le reste : faite, écourtée, allongée, manquée."
+   ],
+   "en": [
+    "In the Week view, planned and done share one line per session: the matched activity just below, planned then actual duration.",
+    "A status says the rest: done, cut short, extended, missed."
+   ]
+  },
+  {
+   "id": "nav",
+   "min": 10,
+   "chapter": {
+    "fr": "Se déplacer",
+    "en": "Getting around"
+   },
+   "fr": [
+    "Sur ordinateur, un rail range les sections par groupes.",
+    "Sur téléphone, une barre en bas, et une feuille Sections pour tout le reste."
+   ],
+   "en": [
+    "On a computer, a rail sorts the sections into groups.",
+    "On a phone, a bar at the bottom, and a Sections sheet for everything else."
+   ]
+  },
+  {
+   "id": "pwa",
+   "min": 11,
+   "chapter": {
+    "fr": "Une application",
+    "en": "An app"
+   },
+   "fr": [
+    "Le tableau de bord s'installe comme une application : une icône sur l'écran d'accueil.",
+    "Sans réseau, il ouvre sa coque, jamais vos données : la santé et les séances ne sont jamais mises en cache."
+   ],
+   "en": [
+    "The dashboard installs like an app: an icon on your home screen.",
+    "Offline, it opens its shell, never your data: health and sessions are never cached."
+   ]
+  },
+  {
+   "id": "prive",
+   "min": 10,
+   "chapter": {
+    "fr": "Chez vous",
+    "en": "Staying home"
+   },
+   "fr": [
+    "Les polices sont servies par le tableau de bord lui-même : vos données ne quittent pas la machine.",
+    "Et l'ancien design reste joignable, avec design égale classic dans l'adresse, jusqu'à la version un point cinq."
+   ],
+   "en": [
+    "The fonts are served by the dashboard itself: your data never leaves the machine.",
+    "And the old design stays reachable, with design equals classic in the address, until version one point five."
+   ]
+  },
+  {
+   "id": "finish",
+   "min": 6,
+   "lead": 2.2,
+   "fr": [
+    "Pour aller plus loin : la page « Tableau de bord » de la documentation."
+   ],
+   "en": [
+    "To go further: the “Dashboard” page of the documentation."
+   ]
+  }
+ ]
+}
