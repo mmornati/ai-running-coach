@@ -342,6 +342,20 @@ Camille passe à une montre COROS : le MCP officiel par un relais local et une s
 
 </div>
 
+<div class="arc-video" markdown>
+
+[![Votre IA, votre forfait](video/votre-ia/poster.jpg)](video/votre-ia/index.html)
+
+<span class="arc-video__meta">Étape 25 · 1 min 43</span>
+
+### [Votre IA, votre forfait](video/votre-ia/index.html)
+
+Vous payez déjà ChatGPT ou GitHub Copilot ? Utilisez-le : une option à l'installation, une connexion unique, un coût « inclus dans votre forfait », le choix explicite de la synchronisation, puis le diagnostic « Tester la connexion » quand quelque chose ne répond plus.
+
+[Regarder](video/votre-ia/index.html) · [English (1 min 52)](video/votre-ia/index.html?lang=en) · [La documentation](choisir-son-ia.md)
+
+</div>
+
 </div>
 <!-- arc-videos:end -->
 
