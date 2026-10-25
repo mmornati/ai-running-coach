@@ -114,9 +114,9 @@ function sJour(t, d, cues) {
   const k0 = outCubic(seg(t, 0.3, 0.9));
   const n = "rb-aujourdhui";
   const z = inOut(seg(t, 0.5, a0 + 1.5));
-  const crop = lerpRect(cropTo(n, [250, 52, 1190, 600], asp, 0), cropTo(n, union(n, ["verdict", "remplacement", "plaque"]), asp, 20), z);
+  const crop = lerpRect(cropTo(n, [250, 52, 1190, 600], asp, 0), cropTo(n, union(n, ["verdict", "remplacement", "plaque", "pourquoi"]), asp, 20), z);
   const m = shot(n, FX, FY, FW, FH, { crop, alpha: k0, url: URL });
-  const v = m("verdict"), c = m("remplacement"), w = m("plaque");
+  const v = m("verdict"), c = m("remplacement"), w = m(union(n, ["plaque", "pourquoi"]));
   if (v) { hl(v, seg(t, a0 + 1.4, a0 + 2.0) * (1 - seg(t, a1 - 0.2, a1 + 0.3)), AMBER); cap(S.cV, v[0] + v[2] / 2, outCubic(seg(t, a0 + 1.6, a0 + 2.2)) * (1 - seg(t, a1 - 0.2, a1 + 0.3)), AMBER); }
   if (c) { hl(c, seg(t, a1 + 0.4, a1 + 1.0) * (1 - seg(t, a1 + 3.6, a1 + 4.1))); cap(S.cS, c[0] + c[2] / 2, outCubic(seg(t, a1 + 0.6, a1 + 1.2)) * (1 - seg(t, a1 + 3.6, a1 + 4.1))); }
   if (w) { hl(w, seg(t, a1 + 3.8, a1 + 4.4), C.teal); cap(S.cW, w[0] + w[2] / 2 + 150, outCubic(seg(t, a1 + 4.0, a1 + 4.6)), C.teal); }
@@ -162,7 +162,7 @@ function sSemaine(t, d, cues) {
   if (st) hl(st, seg(t, a1 + 0.3, a1 + 0.9), C.accent);
   const cols = [C.accent, AMBER, AMBER, CORAL];
   S.stats.forEach((s, i) => cap(s, FX + 250 + i * 210, outCubic(seg(t, a1 + 0.5 + i * 0.7, a1 + 1.1 + i * 0.7)), cols[i]));
-  text(S.statsN, FX + FW / 2, CY + 52, { size: 13, font: MONO, color: C.faint, align: "center", alpha: seg(t, a1 + 3.6, a1 + 4.2) });
+  text(S.statsN, FX + FW / 2, CY + 52, { size: 13, font: MONO, color: C.faint, align: "center", alpha: seg(t, a1 + 2.4, a1 + 3.0) });
 }
 
 /* ------------------------------ 05 · se déplacer ------------------------------ */
@@ -172,7 +172,7 @@ function sNav(t, d, cues) {
   const PH = 379, PW = 175, PY = FY - 2;
   const k0 = outCubic(seg(t, 0.3, 0.9)), kp = outCubic(seg(t, a1 - 0.2, a1 + 0.5)), ks = outCubic(seg(t, a1 + 2.4, a1 + 3.1));
   const pan = inOut(seg(t, a0 + 0.8, a0 + 3.2));
-  shot("rb-rail", FX, PY, 250, PH, { crop: [0, lerp(52, 52 + 848 - 376, pan), 248, 376], chrome: false, alpha: k0 });
+  shot("rb-rail", FX, PY, 250, PH, { crop: [0, lerp(52, 830 - 376, pan), 248, 376], chrome: false, alpha: k0 });
   hl([FX, PY, 250, PH], seg(t, a0 + 0.5, a0 + 1.1) * (1 - seg(t, a1 - 0.2, a1 + 0.3)));
   shot("mobile-rb-barre", FX + 290, PY, PW, PH, { chrome: false, alpha: kp });
   shot("mobile-rb-sections", FX + 290 + PW + 30, PY, PW, PH, { chrome: false, alpha: ks });
@@ -240,17 +240,17 @@ function sPrive(t, d, cues) {
   head(S.k7, S.h7, t);
   const a0 = at(cues, 0, 0.6), a1 = at(cues, 1, 5.5);
   const k0 = outCubic(seg(t, 0.3, 0.9));
-  panel(FX, FY, 620, 300, { r: 18, alpha: k0, stroke: C.accent, fill: "rgba(163,230,53,0.04)", lw: 2 });
+  panel(FX, FY, 620, 270, { r: 18, alpha: k0, stroke: C.accent, fill: "rgba(163,230,53,0.04)", lw: 2 });
   text(S.machine.toUpperCase(), FX + 24, FY + 38, { size: 13, weight: 700, font: MONO, color: C.accent, alpha: k0, spacing: "1px" });
   const kd = outCubic(seg(t, a0 + 0.3, a0 + 0.9));
   panel(FX + 24, FY + 62, 280, 70, { r: 12, alpha: kd });
   text(S.dash, FX + 44, FY + 105, { size: 22, weight: 800, font: SORA, alpha: kd });
   const kf = outCubic(seg(t, a0 + 1.2, a0 + 1.8));
-  panel(FX + 24, FY + 156, 572, 112, { r: 12, alpha: kf, stroke: C.teal });
-  text("Aa", FX + 52, FY + 220, { size: 44, weight: 800, font: SORA, color: C.teal, alpha: kf });
-  text(S.fonts, FX + 130, FY + 202, { size: 16, font: MONO, color: C.ink, alpha: kf });
-  text(S.ofl, FX + 130, FY + 232, { size: 14, font: MONO, color: C.faint, alpha: kf });
-  arrow(FX + 304, FY + 97, FX + 304, FY + 156, seg(t, a0 + 1.4, a0 + 2.0), C.teal);
+  panel(FX + 24, FY + 150, 572, 100, { r: 12, alpha: kf, stroke: C.teal });
+  text("Aa", FX + 52, FY + 214, { size: 44, weight: 800, font: SORA, color: C.teal, alpha: kf });
+  text(S.fonts, FX + 130, FY + 194, { size: 16, font: MONO, color: C.ink, alpha: kf });
+  text(S.ofl, FX + 130, FY + 224, { size: 14, font: MONO, color: C.faint, alpha: kf });
+  arrow(FX + 304, FY + 97, FX + 304, FY + 150, seg(t, a0 + 1.4, a0 + 2.0), C.teal);
   // dehors : Google Fonts barré
   const kg = outCubic(seg(t, a0 + 2.6, a0 + 3.2));
   panel(FX + 700, FY + 62, 420, 70, { r: 12, alpha: kg, stroke: C.line });
@@ -262,16 +262,16 @@ function sPrive(t, d, cues) {
   para(S.tiles, FX + 700, FY + 224, 420, { size: 13, color: C.faint, font: MONO, alpha: outCubic(seg(t, a0 + 4.4, a0 + 5.0)) });
   // sentence 2 : l'ancien design
   const k2 = outCubic(seg(t, a1 + 0.3, a1 + 0.9));
-  panel(FX, FY + 328, FW, 62, { r: 14, alpha: k2, fill: "#0a120e", stroke: "#33463b" });
-  text(S.oldUrl, FX + 28, FY + 366, { size: 20, weight: 600, font: MONO, color: C.amber, alpha: k2 });
-  text(S.oldNote, FX + FW - 28, FY + 365, { size: 14, color: C.soft, align: "right", alpha: outCubic(seg(t, a1 + 0.9, a1 + 1.5)) });
+  panel(FX, FY + 290, FW, 56, { r: 14, alpha: k2, fill: "#0a120e", stroke: "#33463b" });
+  text(S.oldUrl, FX + 28, FY + 325, { size: 20, weight: 600, font: MONO, color: C.amber, alpha: k2 });
+  text(S.oldNote, FX + FW - 28, FY + 324, { size: 14, color: C.soft, align: "right", alpha: outCubic(seg(t, a1 + 0.9, a1 + 1.5)) });
   // frise 1.4 → 1.5
   const kt = outCubic(seg(t, a1 + 2.0, a1 + 2.6)), ke = seg(t, a1 + 2.2, a1 + 3.8);
-  const y = FY + 432, x0 = FX + 40, x1 = FX + FW - 40;
+  const y = FY + 384, x0 = FX + 40, x1 = FX + FW - 40;
   line([[x0, y], [lerp(x0, x1, ke), y]], C.accent, 3, kt);
   dot(x0, y, 7, C.accent, kt); dot(x1, y, 7, ke >= 1 ? C.red : C.faint, kt);
-  text(S.t14, x0, y + 30, { size: 15, weight: 600, font: MONO, color: C.accent, alpha: kt });
-  text(S.t15, x1, y + 30, { size: 15, weight: 600, font: MONO, color: C.red, align: "right", alpha: kt });
+  text(S.t14, x0, y + 26, { size: 15, weight: 600, font: MONO, color: C.accent, alpha: kt });
+  text(S.t15, x1, y + 26, { size: 15, weight: 600, font: MONO, color: C.red, align: "right", alpha: kt });
 }
 
 ARC.episode({

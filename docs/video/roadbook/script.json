@@ -45,7 +45,7 @@
     "en": "The aid-station sheet"
    },
    "fr": [
-    "Dessous, le jour se lit comme une feuille de ravito. Le verdict du coach, en grand.",
+    "Dessous, le jour se lit comme une feuille de ravito. Le verdict du coach, écrit en grand.",
     "La séance remplacée est barrée, la nouvelle juste à côté, et un lien dit pourquoi."
    ],
    "en": [
@@ -58,7 +58,7 @@
    "min": 10,
    "fr": [
     "Le bilan du matin tient en lignes de barrière : la valeur, la référence, et l'état.",
-    "L'état se lit en forme et en mot : jamais la couleur seule."
+    "L'état s'affiche en forme et en mot : jamais la couleur seule."
    ],
    "en": [
     "The morning check comes as cut-off lines: the value, the reference, and the state.",
@@ -67,7 +67,7 @@
   },
   {
    "id": "semaine",
-   "min": 10,
+   "min": 13.5,
    "chapter": {
     "fr": "La semaine sur une ligne",
     "en": "The week on one line"
@@ -105,8 +105,8 @@
     "en": "An app"
    },
    "fr": [
-    "Le tableau de bord s'installe comme une application : une icône sur l'écran d'accueil.",
-    "Sans réseau, il ouvre sa coque, jamais vos données : la santé et les séances ne sont jamais mises en cache."
+    "Le tableau de bord peut s'installer comme une application : une icône sur l'écran d'accueil.",
+    "Sans réseau, il ouvre sa coque, sans aucune de vos données : la santé et les séances ne sont jamais mises en cache."
    ],
    "en": [
     "The dashboard installs like an app: an icon on your home screen.",
@@ -121,7 +121,7 @@
     "en": "Staying home"
    },
    "fr": [
-    "Les polices sont servies par le tableau de bord lui-même : vos données ne quittent pas la machine.",
+    "Les polices sont servies par le tableau de bord lui-même : aucune de vos données ne quitte la machine.",
     "Et l'ancien design reste joignable, avec design égale classic dans l'adresse, jusqu'à la version un point cinq."
    ],
    "en": [

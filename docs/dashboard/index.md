@@ -5,25 +5,6 @@ Le tableau de bord met ces fichiers **sous vos yeux** : courbe de forme, bilan d
 matin, semaine planifiée face au réalisé, séances avec leurs splits, prédictions,
 calendrier — et le texte du coach à côté des chiffres.
 
-<!-- arc-video:tableau-de-bord -->
-<div class="arc-video-card" markdown>
-
-[![Tour du propriétaire](../video/tableau-de-bord/poster.jpg)](../video/tableau-de-bord/index.html)
-
-<div markdown>
-
-<span class="arc-video__meta">En vidéo · Étape 05 · 1 min 29</span>
-
-**[Tour du propriétaire](../video/tableau-de-bord/index.html)** — Visite guidée du tableau de bord local, en lecture seule : une question par vue.
-
-[Regarder](../video/tableau-de-bord/index.html) · [English](../video/tableau-de-bord/index.html?lang=en) · [Toutes les vidéos](../videos.md)
-
-</div>
-
-</div>
-<!-- /arc-video -->
-
-
 ![Vue « Aujourd'hui » : verdict du coach, bilan du matin, séance du jour et forme](../assets/dashboard/aujourdhui.webp)
 
 *Captures du design roadbook, générées par `scripts/docs_capture.py` sur le workspace de
@@ -204,14 +185,6 @@ feuille de ravito : le verdict du coach en grand, la séance remplacée barrée,
 bilan du matin en lignes de barrière (valeur, référence, état en forme et en mot, jamais
 la couleur seule).
 
-Dans la vue Semaine, prévu et réalisé tiennent sur **une ligne par séance** : la
-séance planifiée, l'activité qui lui a été appariée juste dessous (lien, distance, D+,
-FC moyenne), la durée « prévu → réalisé » et un statut — *Faite*, *Écourtée* (moins de
-80 % de la durée prévue), *Allongée* (plus de 125 %), *Manquée*, *À faire*, *Prévue*.
-Une activité qu'aucune séance n'a appariée apparaît à part, *Hors plan*. L'appariement
-est celui de la conformité, calculé par le serveur : la vue et le bloc Conformité ne
-peuvent pas se contredire. Les seuils sont une approximation du projet.
-
 <!-- arc-video:roadbook -->
 <div class="arc-video-card" markdown>
 
@@ -219,7 +192,7 @@ peuvent pas se contredire. Les seuils sont une approximation du projet.
 
 <div markdown>
 
-<span class="arc-video__meta">En vidéo · Étape 24 · 1 min 40</span>
+<span class="arc-video__meta">En vidéo · Étape 24 · 1 min 43</span>
 
 **[Le nouveau roadbook](../video/roadbook/index.html)** — Le tableau de bord se lit comme le roadbook d'une course : profil du bloc, feuille de ravito du jour avec le verdict en grand, semaine sur une ligne par séance, navigation rail ou barre du bas, application installable, données qui restent chez vous.
 
@@ -229,6 +202,14 @@ peuvent pas se contredire. Les seuils sont une approximation du projet.
 
 </div>
 <!-- /arc-video -->
+
+Dans la vue Semaine, prévu et réalisé tiennent sur **une ligne par séance** : la
+séance planifiée, l'activité qui lui a été appariée juste dessous (lien, distance, D+,
+FC moyenne), la durée « prévu → réalisé » et un statut — *Faite*, *Écourtée* (moins de
+80 % de la durée prévue), *Allongée* (plus de 125 %), *Manquée*, *À faire*, *Prévue*.
+Une activité qu'aucune séance n'a appariée apparaît à part, *Hors plan*. L'appariement
+est celui de la conformité, calculé par le serveur : la vue et le bloc Conformité ne
+peuvent pas se contredire. Les seuils sont une approximation du projet.
 
 - **Par défaut** : tout le monde est passé au roadbook, y compris ceux qui avaient
   choisi l'ancien design pendant l'essai.
@@ -245,6 +226,27 @@ Les vues Aujourd'hui et Semaine sont redessinées ; les autres gardent leur cont
 et prennent l'habillage du roadbook. Sur téléphone, une barre en bas donne
 Aujourd'hui, Semaine, Santé, Coach (ou Course, sans le chat) et toutes les sections ;
 sur ordinateur, un rail les range par groupes.
+
+L'ancien design en vidéo : la visite de l'étape 05, tournée avant la 1.4, montre le tableau
+de bord tel qu'il était avant le roadbook.
+
+<!-- arc-video:tableau-de-bord -->
+<div class="arc-video-card" markdown>
+
+[![Tour du propriétaire](../video/tableau-de-bord/poster.jpg)](../video/tableau-de-bord/index.html)
+
+<div markdown>
+
+<span class="arc-video__meta">En vidéo · Étape 05 · 1 min 29</span>
+
+**[Tour du propriétaire](../video/tableau-de-bord/index.html)** — Visite guidée du tableau de bord local, en lecture seule : une question par vue.
+
+[Regarder](../video/tableau-de-bord/index.html) · [English](../video/tableau-de-bord/index.html?lang=en) · [Toutes les vidéos](../videos.md)
+
+</div>
+
+</div>
+<!-- /arc-video -->
 
 ## Installer l'application (PWA)
 

@@ -1,7 +1,7 @@
 /* Généré par scripts/video_narration.py — ne pas éditer. */
 window.ARC_TIMING = {
  "en": {
-  "digest": "eeff9460aca697f9",
+  "digest": "0c92ba1163c27aa5",
   "duration": 107.09,
   "scenes": [
    {
@@ -161,8 +161,8 @@ window.ARC_TIMING = {
   ]
  },
  "fr": {
-  "digest": "305a76bdbc42a25e",
-  "duration": 100.366,
+  "digest": "615a256c7d6fe2da",
+  "duration": 102.581,
   "scenes": [
    {
     "id": "bib",
@@ -202,16 +202,16 @@ window.ARC_TIMING = {
    {
     "id": "jour",
     "start": 26.475,
-    "d": 10.389,
+    "d": 10.709,
     "cues": [
      {
       "s": 0.5,
-      "e": 4.959,
-      "text": "Dessous, le jour se lit comme une feuille de ravito. Le verdict du coach, en grand."
+      "e": 5.279,
+      "text": "Dessous, le jour se lit comme une feuille de ravito. Le verdict du coach, écrit en grand."
      },
      {
-      "s": 5.309,
-      "e": 9.789,
+      "s": 5.629,
+      "e": 10.109,
       "text": "La séance remplacée est barrée, la nouvelle juste à côté, et un lien dit pourquoi."
      }
     ],
@@ -219,7 +219,7 @@ window.ARC_TIMING = {
    },
    {
     "id": "bilan",
-    "start": 36.864,
+    "start": 37.184,
     "d": 10.0,
     "cues": [
      {
@@ -229,15 +229,15 @@ window.ARC_TIMING = {
      },
      {
       "s": 5.351,
-      "e": 8.509,
-      "text": "L'état se lit en forme et en mot : jamais la couleur seule."
+      "e": 8.573,
+      "text": "L'état s'affiche en forme et en mot : jamais la couleur seule."
      }
     ]
    },
    {
     "id": "semaine",
-    "start": 46.864,
-    "d": 12.714,
+    "start": 47.184,
+    "d": 13.5,
     "cues": [
      {
       "s": 0.5,
@@ -254,7 +254,7 @@ window.ARC_TIMING = {
    },
    {
     "id": "nav",
-    "start": 59.578,
+    "start": 60.684,
     "d": 10.0,
     "cues": [
      {
@@ -272,35 +272,35 @@ window.ARC_TIMING = {
    },
    {
     "id": "pwa",
-    "start": 69.578,
-    "d": 11.477,
+    "start": 70.684,
+    "d": 12.223,
     "cues": [
      {
       "s": 0.5,
-      "e": 4.937,
-      "text": "Le tableau de bord s'installe comme une application : une icône sur l'écran d'accueil."
+      "e": 5.151,
+      "text": "Le tableau de bord peut s'installer comme une application : une icône sur l'écran d'accueil."
      },
      {
-      "s": 5.287,
-      "e": 10.877,
-      "text": "Sans réseau, il ouvre sa coque, jamais vos données : la santé et les séances ne sont jamais mises en cache."
+      "s": 5.501,
+      "e": 11.623,
+      "text": "Sans réseau, il ouvre sa coque, sans aucune de vos données : la santé et les séances ne sont jamais mises en cache."
      }
     ],
     "chapter": "Une application"
    },
    {
     "id": "prive",
-    "start": 81.055,
-    "d": 12.991,
+    "start": 82.907,
+    "d": 13.354,
     "cues": [
      {
       "s": 0.5,
-      "e": 5.193,
-      "text": "Les polices sont servies par le tableau de bord lui-même : vos données ne quittent pas la machine."
+      "e": 5.556,
+      "text": "Les polices sont servies par le tableau de bord lui-même : aucune de vos données ne quitte la machine."
      },
      {
-      "s": 5.543,
-      "e": 12.391,
+      "s": 5.906,
+      "e": 12.754,
       "text": "Et l'ancien design reste joignable, avec design égale classic dans l'adresse, jusqu'à la version un point cinq."
      }
     ],
@@ -308,7 +308,7 @@ window.ARC_TIMING = {
    },
    {
     "id": "finish",
-    "start": 94.046,
+    "start": 96.261,
     "d": 6.32,
     "cues": [
      {
