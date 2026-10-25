@@ -60,6 +60,12 @@ sensitive_paths:
   - "scripts/fetch-sparkle.sh"
   - "scripts/arc_macos_plist.py"
   - "SECURITY.md"
+  # Site de documentation : configuration et gabarits du build, HTML/JS servis par Pages
+  - "/mkdocs.yml"
+  - "/requirements-docs.txt"
+  - "overrides/**"
+  - "docs/**/*.html"
+  - "docs/**/*.js"
 
 # Quand aucune règle ne s'applique : un humain.
 default:
@@ -79,8 +85,10 @@ rules:
 
   # Documentation publiée que la carte juge triviale : aucun humain. Pas de `*.md` global :
   # `agents/*.md`, `skills/**/SKILL.md` et `AGENTS.md` sont les instructions des agents.
+  # Seulement du Markdown et des images : `mkdocs.yml`, `overrides/` et le HTML/JS de `docs/`
+  # construisent et servent le site publié, ils ne s'auto-approuvent jamais.
   - name: docs-only
-    match: { risk: trivial, only_paths: ["docs/**", "/README.md", "/CONTRIBUTING.md", "/DESIGN.md", "/PRODUCT.md", "overrides/**", "/mkdocs.yml"] }
+    match: { risk: trivial, only_paths: ["docs/**/*.md", "docs/**/*.png", "docs/**/*.jpg", "docs/**/*.webp", "/README.md", "/CONTRIBUTING.md", "/DESIGN.md", "/PRODUCT.md"] }
     approve: auto
 
   # Pas de règle « trivial » générale : ici les prompts (`agents/`, `skills/`, `AGENTS.md`) sont
