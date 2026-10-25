@@ -257,7 +257,8 @@ RK_SHOTS = [
     dict(name="rb-aujourdhui", ws="default", route="", wait=".rk-verdict", fmt="desktop",
          view="Aujourd'hui", desc="Aujourd'hui : verdict du coach en grand, séance remplacée barrée, bilan du matin en lignes de barrière.",
          boxes={"verdict": B(".rk-verdict"), "remplacement": B(".rk-change"), "avant": B(".rk-change__before"), "apres": B(".rk-change__after"),
-                "bilan": B(".rk-cutoffs"), "plaque": B(".rk-plate")}),
+                "bilan": B(".rk-cutoffs"), "plaque": B(".rk-plate"),
+                "pourquoi": B(".rk-links a", "Pourquoi cette décision")}),
     dict(name="rb-bilan", ws="default", route="", wait=".rk-cutoffs", fmt="desktop", scroll=(".rk-cutoffs", None, 260),
          view="Aujourd'hui", desc="Bilan du matin : valeur, référence et état (forme + mot) sur chaque ligne de barrière.",
          boxes={"bilan": B(".rk-cutoffs"), "hrv": B(".rk-cutoffs__row", "HRV"), "etat": B(".rk-cutoffs__state"),
@@ -270,9 +271,9 @@ RK_SHOTS = [
          view="Semaine", desc="Semaine du 21 septembre : séances faites face au prévu, activité appariée sous chaque séance, durée prévu → réalisé, statuts.",
          boxes={"feuille": B(".rk-runsheet"), "reel": B(".rk-runsheet__real"), "duree": B(".rk-runsheet tbody .rk-runsheet__dur"),
                 "statut": B(".rk-runsheet tbody .rk-runsheet__status"), "ligne": B(".rk-runsheet tbody .rk-run")}),
-    dict(name="rb-rail", ws="default", route="", wait=".rk-rail .rk-navgroup", fmt="desktop",
-         view="Aujourd'hui", desc="Rail de navigation du bureau : sections rangées par groupes, lien vers l'ancien design en pied.",
-         boxes={"rail": B(".rk-rail"), "groupes": B(".rk-rail .rk-navgroup"), "ancien": B(".rk-classic")}),
+    dict(name="rb-rail", ws="default", route="", wait=".rk-verdict", fmt="desktop",
+         view="Aujourd'hui", desc="Rail de navigation du bureau : sections rangées par groupes.",
+         boxes={"rail": B(".rk-rail"), "groupes": B(".rk-rail .rk-navgroup")}),
     dict(name="rb-course", ws="default", route=ULTRA_ROUTE, wait=".rb-sheet.is-active .rb-table", fmt="desktop",
          view="Roadbook", desc="Vue Roadbook de course (Ultra des Crêtes) dans l'habillage roadbook.",
          boxes={"entete": B(".rb-sheet.is-active .rb-head"), "profil": B(".rb-sheet.is-active .rb-profile"),
@@ -288,8 +289,18 @@ RK_SHOTS = [
          boxes={"barre": B(".rk-tabbar"), "sections": B(".rk-tabbar__more"), "bilan": B(".rk-cutoffs")}),
     dict(name="mobile-rb-sections", ws="default", route="", wait=".rk-verdict", fmt="mobile", click=(".rk-tabbar__more", None),
          view="Aujourd'hui", desc="Feuille « Toutes les sections » ouverte depuis la barre du bas.",
-         boxes={"feuille": B(".rk-sheet[open]"), "groupes": B(".rk-sheet__nav"), "ancien": B(".rk-sheet__foot")}),
+         boxes={"feuille": B(".rk-sheet[open]"), "groupes": B(".rk-sheet__nav")}),
 ]
+
+# Captures roadbook propres : version de développement (« v1.3.0-…-g… ») et lien « Ancien design » masqués
+# (place gardée, la mise en page ne bouge pas) ; l'épisode montre l'ancien design en canvas quand il en parle.
+RK_CLEAN_JS = """
+(() => {
+  const css = new CSSStyleSheet();
+  css.replaceSync(`#version,.brand__version,.rk-classic{visibility:hidden!important}`);
+  document.adoptedStyleSheets = [...document.adoptedStyleSheets, css];
+})();
+"""
 
 
 # ---------------------------------------------------------------------------
@@ -567,6 +578,7 @@ def capture_roadbook(rec, browser, tmp, only):
                 mobile = shot["fmt"] == "mobile"
                 vp = {**(MOBILE if mobile else DESKTOP), "label": "mobile 390×844 @3x" if mobile else "desktop 1440×900 @2x"}
                 ctx = new_context(browser, vp, design="roadbook")
+                ctx.add_init_script(RK_CLEAN_JS)
                 page = ctx.new_page()
                 try:
                     open_view(page, base, shot["route"], shot["wait"], shot.get("scroll"))

@@ -130,6 +130,12 @@
      530.8,
      180.3,
      26.6
+    ],
+    "pourquoi": [
+     303.4,
+     607.1,
+     162.2,
+     22.3
     ]
    }
   },
@@ -261,7 +267,7 @@
    "width": 1440,
    "height": 900,
    "scale": 2,
-   "description": "Rail de navigation du bureau : sections rangées par groupes, lien vers l'ancien design en pied.",
+   "description": "Rail de navigation du bureau : sections rangées par groupes.",
    "boxes": {
     "rail": [
      0,
@@ -274,12 +280,6 @@
      72,
      219.8,
      93.4
-    ],
-    "ancien": [
-     24.0,
-     862.4,
-     199.0,
-     37.6
     ]
    }
   },
