@@ -57,6 +57,10 @@ const SERIES = [
   { n: 19, dir: "home-trainer", docs: "skills/mywhoosh-route/", fr: "Le home trainer, à votre mesure", en: "The home trainer, sized to you" },
   { n: 20, dir: "directeur-sportif", docs: "agents/sports-director/", fr: "Quelle course, et quand ?", en: "Which race, and when?" },
   { n: 21, dir: "essai-gratuit", docs: "choisir-son-ia/", fr: "Zéro euro pour démarrer", en: "Start for free" },
+  { n: 22, dir: "montre-coros", docs: "coros/", fr: "Une autre montre", en: "Another watch" },
+  { n: 23, dir: "paire-suivante", docs: "shoes/", fr: "La paire suivante", en: "The next pair" },
+  { n: 24, dir: "roadbook", docs: "dashboard/", fr: "Le nouveau roadbook", en: "The new roadbook" },
+  { n: 25, dir: "votre-ia", docs: "choisir-son-ia/", fr: "Votre IA, votre forfait", en: "Your AI, your plan" },
 ];
 
 const UI = {

@@ -1,0 +1,146 @@
+{
+  "title": {
+    "fr": "Une autre montre",
+    "en": "Another watch"
+  },
+  "summary": {
+    "fr": "Camille passe à une montre COROS : le MCP officiel par un relais local et une seule connexion pour toutes les IA, le même bilan matinal avec une récupération COROS nommée sans conversion, les séances envoyées à la montre après un « oui », la fiche Pace Strategy à recopier le jour J, et les limites dites franchement."
+  },
+  "poster": 31,
+  "scenes": [
+    {
+      "id": "bib",
+      "min": 4.6,
+      "lead": 1.2,
+      "fr": [
+        "Étape vingt-deux : une autre montre."
+      ],
+      "en": [
+        "Stage twenty-two: another watch."
+      ]
+    },
+    {
+      "id": "relay",
+      "min": 13,
+      "chapter": {
+        "fr": "Une seule connexion",
+        "en": "One sign-in"
+      },
+      "fr": [
+        "Camille passe à une montre COROS. Pas de compte tiers : le coach parle au MCP officiel de COROS, par un relais local.",
+        "Une option à l'installation, une seule connexion, valable pour toutes les IA. Les jetons restent chez vous."
+      ],
+      "en": [
+        "Camille switches to a COROS watch. No third-party account: the coach talks to the official COROS MCP, through a local relay.",
+        "One install option, a single sign-in, valid for every AI. The tokens stay with you."
+      ]
+    },
+    {
+      "id": "morning",
+      "min": 13,
+      "chapter": {
+        "fr": "Le même bilan",
+        "en": "The same check"
+      },
+      "fr": [
+        "Le bilan matinal reste un triptyque : HRV de la nuit, fréquence cardiaque de repos, et la récupération COROS.",
+        "Nommée comme telle. Jamais convertie en score Garmin, jamais comparée à ses seuils."
+      ],
+      "en": [
+        "The morning check is still a trio: overnight HRV, resting heart rate, and COROS recovery.",
+        "Named as such. Never converted into a Garmin score, never compared with its thresholds."
+      ]
+    },
+    {
+      "id": "night",
+      "min": 11,
+      "chapter": {
+        "fr": "Nuit pas calculée",
+        "en": "Night not ready"
+      },
+      "fr": [
+        "Et si la nuit n'est pas encore arrivée chez COROS ? Le coach le dit. Pas de « tout va bien » par défaut.",
+        "En synchronisation sans tête, aucun fichier de santé n'est écrit : le passage suivant réessaie."
+      ],
+      "en": [
+        "And if the night hasn't reached COROS yet? The coach says so. No default “all good”.",
+        "In headless sync, no health file is written: the next run tries again."
+      ]
+    },
+    {
+      "id": "splits",
+      "min": 10,
+      "chapter": {
+        "fr": "Splits au kilomètre",
+        "en": "Per-km splits"
+      },
+      "fr": [
+        "Les splits au kilomètre viennent du fichier FIT, comme pour toutes les sources.",
+        "Les tours de la montre repartent à chaque étape de la séance : ils ne sont jamais recopiés."
+      ],
+      "en": [
+        "Per-kilometer splits come from the FIT file, like every source.",
+        "The watch's laps restart at every workout step: they are never copied over."
+      ]
+    },
+    {
+      "id": "push",
+      "min": 15,
+      "chapter": {
+        "fr": "Vers la montre",
+        "en": "To the watch"
+      },
+      "fr": [
+        "La semaine est validée. Le coach lit le calendrier COROS, puis demande : j'envoie ? Rien ne part sans un oui explicite, jamais en synchronisation sans tête.",
+        "Il relit ensuite le calendrier, et le renforcement passe par vos propres séances types."
+      ],
+      "en": [
+        "The week is validated. The coach reads the COROS calendar, then asks: shall I send? Nothing goes out without an explicit yes, never in headless sync.",
+        "It then reads the calendar back, and strength goes through your own template workouts."
+      ]
+    },
+    {
+      "id": "race",
+      "min": 13,
+      "chapter": {
+        "fr": "Jour de course",
+        "en": "Race day"
+      },
+      "fr": [
+        "Jour de course. Le MCP ne sait pas créer de Pace Strategy : le coach prépare la fiche à recopier. Temps cible, arrêts aux ravitos, allures par segment.",
+        "Vous la saisissez dans l'application. Jamais présentée comme envoyée."
+      ],
+      "en": [
+        "Race day. The MCP can't create a Pace Strategy: the coach prepares the sheet to copy. Target time, aid-station stops, pace per segment.",
+        "You enter it in the app. Never presented as sent."
+      ]
+    },
+    {
+      "id": "limits",
+      "min": 12,
+      "chapter": {
+        "fr": "Les limites",
+        "en": "The limits"
+      },
+      "fr": [
+        "Les limites, dites franchement : pas de fréquence cardiaque de récupération, pas de matériel par séance, pas d'envoi de parcours.",
+        "Et rien pour supprimer ou déplacer une séance : le coach vous dit laquelle, vous le faites dans l'application."
+      ],
+      "en": [
+        "The limits, stated plainly: no heart rate recovery, no gear per activity, no course upload.",
+        "And nothing to delete or move a workout: the coach tells you which, and you do it in the app."
+      ]
+    },
+    {
+      "id": "finish",
+      "min": 6,
+      "lead": 2.2,
+      "fr": [
+        "Pour aller plus loin : la page « Montres COROS » de la documentation."
+      ],
+      "en": [
+        "To go further: the “COROS watches” page of the documentation."
+      ]
+    }
+  ]
+}

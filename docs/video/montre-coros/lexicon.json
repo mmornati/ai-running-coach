@@ -1,0 +1,21 @@
+{
+ "fr": {
+  "COROS": "[[kɔʁˈos]]",
+  "Pace Strategy": "[[pˈɛjs stʁˈatədʒi]]",
+  "FIT": "fite",
+  "splits": "[[splˈits]]"
+ },
+ "en": {
+  "COROS": "[[kˈɔɹoʊs]]",
+  "FIT": "fit",
+  "MCP": "M C P"
+ },
+ "fr@microsoft": {
+  "COROS": "Coros",
+  "Pace Strategy": "Pace Strategy",
+  "FIT": "fit"
+ },
+ "en@microsoft": {
+  "COROS": "Coros"
+ }
+}
