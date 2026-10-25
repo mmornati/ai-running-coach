@@ -22,7 +22,7 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  GRAFT_REF: 9c1a887185f3e7853d2498d66c07559e2f7ec7e5
+  GRAFT_REF: 84800281d54e2f6301168221466f813faa29522b
 
 jobs:
   lint:
