@@ -125,3 +125,9 @@ rules:
 # l'auto-merge est désactivé sur le dépôt, un revert est fusionné par un humain.
 guard:
   checks: [Tests]
+
+# Langue du texte rédigé par le modèle dans la carte d'intention (objectif, changements de
+# comportement, raisons). Les titres, libellés et textes des checks restent en anglais. Lu sur
+# `main`, comme le reste du fichier : il s'applique aux PR évaluées après la fusion.
+report:
+  language: fr
