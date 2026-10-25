@@ -344,6 +344,20 @@ Camille passe à une montre COROS : le MCP officiel par un relais local et une s
 
 <div class="arc-video" markdown>
 
+[![La paire suivante](video/paire-suivante/poster.jpg)](video/paire-suivante/index.html)
+
+<span class="arc-video__meta">Étape 23 · 1 min 38</span>
+
+### [La paire suivante](video/paire-suivante/index.html)
+
+Une paire arrive en fin de vie : fiche de caractéristiques sourcée, retours de chaussant, profil d'usage, plages cibles par des règles à preuves et commande /shoes (continuité d'abord, veto médical, confort qui décide) — sans achat, sans prix, sans promesse de prévention.
+
+[Regarder](video/paire-suivante/index.html) · [English (1 min 51)](video/paire-suivante/index.html?lang=en) · [La documentation](shoes.md)
+
+</div>
+
+<div class="arc-video" markdown>
+
 [![Votre IA, votre forfait](video/votre-ia/poster.jpg)](video/votre-ia/index.html)
 
 <span class="arc-video__meta">Étape 25 · 1 min 43</span>
