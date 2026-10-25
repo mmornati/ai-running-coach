@@ -36,8 +36,8 @@ const STR = {
     k6: "06 · JOUR DE COURSE", h6: "La fiche Pace Strategy, à recopier.",
     cmd6: "arc_coros_workout.py pace-strategy --plan <plan> --text",
     sheet: "FICHE PACE STRATEGY", race: "Trail des Crêtes · 42 km", target: "Temps cible", targetV: "6 h 05",
-    stops: "Arrêts aux ravitos", stopsV: ["km 12", "km 24", "km 33"], stopsT: ["1:30", "2:00", "1:30"],
-    segs: "Allure par segment", segsV: [["km 0–12", "7:05"], ["km 12–24", "9:30"], ["km 24–33", "9:50"], ["km 33–42", "8:40"]],
+    stops: "Arrêts aux ravitos", stopsV: ["km 12", "km 24", "km 34"], stopsT: ["1:30", "2:00", "1:30"],
+    segs: "Allure par segment", segsV: [["km 0–12", "7:05"], ["km 12–24", "8:57"], ["km 24–34", "9:50"], ["km 34–42", "8:40"]],
     app: "À saisir dans l'app COROS", appP: "Profil → Pace Strategy", notSent: "pas envoyée : à recopier",
     k7: "07 · LES LIMITES", h7: "Ce que le MCP COROS ne fait pas.",
     lim: [["FC de récupération", "absente du MCP", "omise, jamais inventée"], ["Matériel par séance", "absent du MCP", "chat ou « par défaut »"],
@@ -68,8 +68,8 @@ const STR = {
     k6: "06 · RACE DAY", h6: "The Pace Strategy sheet, to copy.",
     cmd6: "arc_coros_workout.py pace-strategy --plan <plan> --text",
     sheet: "PACE STRATEGY SHEET", race: "Trail des Crêtes · 42 km", target: "Target time", targetV: "6 h 05",
-    stops: "Aid-station stops", stopsV: ["km 12", "km 24", "km 33"], stopsT: ["1:30", "2:00", "1:30"],
-    segs: "Pace per segment", segsV: [["km 0–12", "7:05"], ["km 12–24", "9:30"], ["km 24–33", "9:50"], ["km 33–42", "8:40"]],
+    stops: "Aid-station stops", stopsV: ["km 12", "km 24", "km 34"], stopsT: ["1:30", "2:00", "1:30"],
+    segs: "Pace per segment", segsV: [["km 0–12", "7:05"], ["km 12–24", "8:57"], ["km 24–34", "9:50"], ["km 34–42", "8:40"]],
     app: "To enter in the COROS app", appP: "Profile → Pace Strategy", notSent: "not sent: to copy",
     k7: "07 · THE LIMITS", h7: "What the COROS MCP doesn't do.",
     lim: [["Heart rate recovery", "missing from the MCP", "left out, never invented"], ["Gear per activity", "missing from the MCP", "chat or “default”"],
@@ -166,8 +166,8 @@ function sNight(t, d, cues) {
   label(S.raws.toUpperCase(), 104, 214, k0, C.faint);
   S.raw.forEach((s, i) => {
     const k = outCubic(seg(t, a0 + 0.6 + i * 0.5, a0 + 1.0 + i * 0.5));
-    text(s, 104, 262 + i * 40, { size: 20, font: MONO, color: C.soft, alpha: k });
-    if (k > 0) dot(88, 255 + i * 40, 4, C.faint, k);
+    text(s, 124, 262 + i * 40, { size: 20, font: MONO, color: C.soft, alpha: k });
+    if (k > 0) dot(108, 255 + i * 40, 4, C.faint, k);
   });
   const kv = outBack(seg(t, a0 + 2.6, a0 + 3.2));
   if (kv > 0) pill(S.verdict, 330, 420, { size: 18, align: "center", alpha: clamp(kv), color: C.amber, fill: "rgba(240,180,60,0.1)", stroke: C.amber, padX: 22 });
@@ -238,24 +238,24 @@ function sSplits(t, d, cues) {
 /* ------------------------------ 05 · l'envoi à la montre ------------------------------ */
 function sPush(t, d, cues) {
   head(S.k5, S.h5, t);
-  const a0 = at(cues, 0, 0.6), a1 = at(cues, 1, 9);
+  const a0 = at(cues, 0, 0.6), a1 = at(cues, 1, 9), L = atEnd(cues, 0, 9) - a0;
   // la semaine
   S.wk.forEach(([day, what, tgt], i) => {
     const k = outCubic(seg(t, 0.8 + i * 0.3, 1.3 + i * 0.3)), y = 176 + i * 76, tpl = i === 3;
     if (k <= 0) return;
-    const sent = t >= a0 + 5.8 + i * 0.35;
+    const sent = t >= a0 + 0.66 * L + i * 0.35;
     panel(80, y, 600, 64, { r: 14, fill: sent ? "rgba(163,230,53,0.06)" : C.panel, stroke: sent ? C.accent : C.line, alpha: k });
     text(day, 104, y + 40, { size: 20, weight: 800, font: SORA, color: C.accent, alpha: k });
     text(what, 176, y + 30, { size: 17, weight: 700, alpha: k });
     text(tgt, 176, y + 50, { size: 13, font: MONO, color: tpl ? PURPLE : C.faint, alpha: k });
-    if (sent) check(646, y + 32, 16, C.accent, seg(t, a0 + 5.8 + i * 0.35, a0 + 6.2 + i * 0.35));
+    if (sent) check(646, y + 32, 16, C.accent, seg(t, a0 + 0.66 * L + i * 0.35, a0 + 0.66 * L + 0.4 + i * 0.35));
   });
   const kt = outCubic(seg(t, a1 + 2.4, a1 + 3.0));
   if (kt > 0) pill(S.tpl, 80, 498, { size: 13, alpha: kt, color: PURPLE, fill: "rgba(179,157,219,0.08)", stroke: PURPLE });
   // les étapes
   const sx = 740;
   S.steps.forEach((s, i) => {
-    const a = [0.8, a0 + 2.0, a0 + 5.4, a1 + 0.4][i], k = outCubic(seg(t, a, a + 0.5)), y = 190 + i * 70;
+    const a = [a0 + 0.2 * L, a0 + 0.4 * L, a0 + 0.62 * L, a1 + 0.4][i], k = outCubic(seg(t, a, a + 0.5)), y = 190 + i * 70;
     if (k <= 0) return;
     ring2(sx + 20, y + 20, 18, k, i === 1 ? C.amber : C.accent);
     if (i !== 1) check(sx + 20, y + 20, 14, C.accent, k);
@@ -264,22 +264,22 @@ function sPush(t, d, cues) {
     if (i < 3) line([[sx + 20, y + 40], [sx + 20, y + 52]], C.line, 2, k);
   });
   // la réponse de Camille
-  const kb = outBack(seg(t, a0 + 4.0, a0 + 4.6));
+  const kb = outBack(seg(t, a0 + 0.55 * L, a0 + 0.55 * L + 0.6));
   if (kb > 0) {
     panel(1080, 232, 100, 48, { r: 24, fill: C.pine, stroke: C.accent, alpha: clamp(kb) });
     text(S.yes, 1130, 263, { size: 20, weight: 800, font: SORA, color: C.accent, align: "center", alpha: clamp(kb) });
   }
-  const kh = outBack(seg(t, a0 + 8.5, a0 + 9.1));
+  const kh = outBack(seg(t, a0 + 0.86 * L, a0 + 0.86 * L + 0.6));
   if (kh > 0) {
     const w = pill(S.noHL, 740, 500, { size: 14, alpha: clamp(kh), color: C.red, fill: "rgba(240,122,95,0.08)", stroke: C.red });
-    cross(740 + w + 24, 500, 9, C.red, seg(t, a0 + 8.9, a0 + 9.3));
+    cross(740 + w + 24, 500, 9, C.red, seg(t, a0 + 0.86 * L + 0.4, a0 + 0.86 * L + 0.8));
   }
 }
 
 /* ------------------------------ 06 · la fiche Pace Strategy ------------------------------ */
 function sRace(t, d, cues) {
   head(S.k6, S.h6, t);
-  const a0 = at(cues, 0, 0.6), a1 = at(cues, 1, 8);
+  const a0 = at(cues, 0, 0.6), a1 = at(cues, 1, 8), L = atEnd(cues, 0, 8) - a0;
   const k0 = outCubic(seg(t, 0.3, 0.9));
   terminal(80, 176, 1120, 96, t, [{ p: "$ ", s: "python3 scripts/" + S.cmd6, c: C.accent, a: 0.6, b: 3.2 }], { alpha: k0, size: 16, lh: 30, title: "bash" });
   // la fiche
@@ -288,22 +288,22 @@ function sRace(t, d, cues) {
   label(S.sheet, 108, 332, ks, "#4a5a52");
   text(S.race, 108, 366, { size: 22, weight: 800, font: SORA, color: C.paperInk, alpha: ks });
   text(S.target, 108, 408, { size: 15, color: "#4a5a52", alpha: ks });
-  text(S.targetV, 270, 410, { size: 28, weight: 800, font: SORA, color: C.paperInk, alpha: seg(t, a0 + 4.0, a0 + 4.5) });
+  text(S.targetV, 270, 410, { size: 28, weight: 800, font: SORA, color: C.paperInk, alpha: seg(t, a0 + 0.6 * L, a0 + 0.6 * L + 0.5) });
   text(S.stops, 108, 452, { size: 15, color: "#4a5a52", alpha: ks });
   S.stopsV.forEach((s, i) => {
-    const k = seg(t, a0 + 4.6 + i * 0.35, a0 + 5.0 + i * 0.35);
+    const k = seg(t, a0 + 0.68 * L + i * 0.3, a0 + 0.68 * L + 0.4 + i * 0.3);
     text(`${s} · ${S.stopsT[i]}`, 270 + i * 150, 454, { size: 17, weight: 700, font: MONO, color: C.paperInk, alpha: k });
   });
   text(S.segs, 108, 498, { size: 15, color: "#4a5a52", alpha: ks });
   S.segsV.forEach(([r, p], i) => {
-    const k = seg(t, a0 + 5.8 + i * 0.35, a0 + 6.2 + i * 0.35), x = 108 + (i % 2) * 300, y = 530 + Math.floor(i / 2) * 36;
+    const k = seg(t, a0 + 0.8 * L + i * 0.3, a0 + 0.8 * L + 0.4 + i * 0.3), x = 108 + (i % 2) * 300, y = 530 + Math.floor(i / 2) * 36;
     text(r, x, y, { size: 16, font: MONO, color: "#4a5a52", alpha: k });
     text(p + " /km", x + 120, y, { size: 18, weight: 700, font: MONO, color: C.paperInk, alpha: k });
   });
   // vers l'app
   const ka = outCubic(seg(t, a1 + 0.2, a1 + 0.8));
-  arrow(720, 440, 790, 440, clamp(ka), C.accent, ka);
-  phone(810, 298, 190, 290, (x, y, w, h) => {
+  arrow(724, 440, 772, 440, clamp(ka), C.accent, ka);
+  phone(786, 298, 170, 290, (x, y, w, h) => {
     ctx.fillStyle = "#101713"; ctx.fillRect(x, y, w, h);
     text("COROS", x + w / 2, y + 44, { size: 16, weight: 800, font: SORA, color: C.ink, align: "center" });
     text(S.appP, x + w / 2, y + 74, { size: 10, font: MONO, color: C.accent, align: "center" });
@@ -311,8 +311,8 @@ function sRace(t, d, cues) {
   }, { alpha: ka });
   const kn = outBack(seg(t, a1 + 1.2, a1 + 1.8));
   if (kn > 0) {
-    text(S.app, 1020, 340, { size: 15, weight: 700, color: C.soft, alpha: clamp(kn) });
-    pill(S.notSent, 1020, 410, { size: 14, alpha: clamp(kn), color: C.amber, fill: "rgba(240,180,60,0.08)", stroke: C.amber });
+    text(S.app, 976, 340, { size: 15, weight: 700, color: C.soft, alpha: clamp(kn) });
+    pill(S.notSent, 976, 410, { size: 13, alpha: clamp(kn), color: C.amber, fill: "rgba(240,180,60,0.08)", stroke: C.amber });
   }
 }
 

@@ -107,7 +107,7 @@
         "en": "Race day"
       },
       "fr": [
-        "Jour de course. Le MCP ne sait pas créer de Pace Strategy : le coach prépare la fiche à recopier. Temps cible, arrêts aux ravitos, allures par segment.",
+        "Jour de course. Le MCP ne sait pas créer de Pace Strategy. Le coach prépare la fiche à recopier : le temps cible, les arrêts aux ravitos, et l'allure de chaque segment.",
         "Vous la saisissez dans l'application. Jamais présentée comme envoyée."
       ],
       "en": [

@@ -157,8 +157,8 @@ window.ARC_TIMING = {
   ]
  },
  "fr": {
-  "digest": "bae52e1bd40f7486",
-  "duration": 104.782,
+  "digest": "f4f99ee9d109cec5",
+  "duration": 105.422,
   "scenes": [
    {
     "id": "bib",
@@ -265,16 +265,16 @@ window.ARC_TIMING = {
    {
     "id": "race",
     "start": 69.599,
-    "d": 14.421,
+    "d": 15.061,
     "cues": [
      {
       "s": 0.5,
-      "e": 9.759,
-      "text": "Jour de course. Le MCP ne sait pas créer de Pace Strategy : le coach prépare la fiche à recopier. Temps cible, arrêts aux ravitos, allures par segment."
+      "e": 10.399,
+      "text": "Jour de course. Le MCP ne sait pas créer de Pace Strategy. Le coach prépare la fiche à recopier : le temps cible, les arrêts aux ravitos, et l'allure de chaque segment."
      },
      {
-      "s": 10.109,
-      "e": 13.821,
+      "s": 10.749,
+      "e": 14.461,
       "text": "Vous la saisissez dans l'application. Jamais présentée comme envoyée."
      }
     ],
@@ -282,7 +282,7 @@ window.ARC_TIMING = {
    },
    {
     "id": "limits",
-    "start": 84.02,
+    "start": 84.66,
     "d": 14.442,
     "cues": [
      {
@@ -300,7 +300,7 @@ window.ARC_TIMING = {
    },
    {
     "id": "finish",
-    "start": 98.462,
+    "start": 99.102,
     "d": 6.32,
     "cues": [
      {
