@@ -358,6 +358,20 @@ Une paire arrive en fin de vie : fiche de caractéristiques sourcée, retours de
 
 <div class="arc-video" markdown>
 
+[![Le nouveau roadbook](video/roadbook/poster.jpg)](video/roadbook/index.html)
+
+<span class="arc-video__meta">Étape 24 · 1 min 43</span>
+
+### [Le nouveau roadbook](video/roadbook/index.html)
+
+Le tableau de bord se lit comme le roadbook d'une course : profil du bloc, feuille de ravito du jour avec le verdict en grand, semaine sur une ligne par séance, navigation rail ou barre du bas, application installable, données qui restent chez vous.
+
+[Regarder](video/roadbook/index.html) · [English (1 min 47)](video/roadbook/index.html?lang=en) · [La documentation](dashboard/index.md)
+
+</div>
+
+<div class="arc-video" markdown>
+
 [![Votre IA, votre forfait](video/votre-ia/poster.jpg)](video/votre-ia/index.html)
 
 <span class="arc-video__meta">Étape 25 · 1 min 43</span>
