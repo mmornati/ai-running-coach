@@ -16,7 +16,14 @@ from typing import Any, Optional
 # Texte renvoyé au modèle quand l'outil n'est pas exécuté.
 REFUSAL_DENY = ("Refusé : cette action n'est pas autorisée par la politique du coach "
                 "ou l'athlète l'a refusée. Ne la réessaie pas ; explique-le simplement à l'athlète.")
-REFUSAL_PENDING = "La proposition attend la confirmation de l'athlète."
+# Refus d'une commande shell PAR LA POLITIQUE : le shell n'accepte que les scripts du coach, mais
+# lister, lire ou tester l'existence d'un fichier reste permis avec les outils fichiers. « Ne la
+# réessaie pas » seul faisait abandonner toute la tâche (un /log entier perdu sur un `ls`).
+REFUSAL_SHELL = ("Refusé : le shell n'accepte que les scripts du coach (python3 scripts/…, "
+                 "une commande par appel, sans redirection ni tube). Ne réessaie pas cette commande, "
+                 "mais poursuis la tâche : pour lister, lire ou vérifier qu'un fichier existe, "
+                 "utilise les outils fichiers (glob, read, list) ; pour écrire, l'outil d'écriture.")
+REFUSAL_PENDING ="La proposition attend la confirmation de l'athlète."
 
 MAX_DIFF_LINES = 40
 MAX_TEXT = 80
@@ -386,7 +393,7 @@ def gate(ctx: Any, tool: str, tool_input: dict, diff: Any = None) -> tuple:
     if decision == "allow":
         return "allow", ""
     if decision != "ask":
-        return "deny", REFUSAL_DENY
+        return "deny", REFUSAL_SHELL if tool == "shell" else REFUSAL_DENY
     catalog = (getattr(ctx, "backend_state", None) or {}).get(CATALOG_KEY)
     result = ctx.request_approval(tool, tool_input, approval_summary(tool, tool_input, catalog),
                                   diff if diff is not None else approval_diff(tool, tool_input, catalog))
