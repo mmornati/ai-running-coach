@@ -136,6 +136,18 @@ class TestGate(unittest.TestCase):
         self.assertEqual(texts(diff), [("-", "jeu. 15/10 · HT Z2 50 min")])
 
 
+    def test_refus_shell_oriente_vers_les_outils_fichiers(self):
+        # Un `ls` refusé ne doit pas faire abandonner la tâche : le message pointe vers les outils fichiers.
+        class Ctx:
+            def decide(self, tool, inp):
+                return "deny"
+
+        decision, message = T.gate(Ctx(), "shell", {"command": "ls medical/ | tail -5"})
+        self.assertEqual((decision, message), ("deny", T.REFUSAL_SHELL))
+        self.assertIn("poursuis la tâche", message)
+        self.assertEqual(T.gate(Ctx(), "web.search", {"query": "x"}), ("deny", T.REFUSAL_DENY))
+
+
 class TestClaudeBackend(unittest.TestCase):
     """Bout en bout : le résultat d'une lecture SDK alimente la carte de l'écriture suivante."""
 
