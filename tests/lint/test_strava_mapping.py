@@ -31,7 +31,7 @@ ACTING_TOOLS = {"connect-strava", "disconnect-strava", "star-segment"}
 
 
 def _strava_table_rows() -> list:
-    text = (REPO / "AGENTS.md").read_text(encoding="utf-8")
+    text = (REPO / "skills/data-source-mapping/SKILL.md").read_text(encoding="utf-8")
     section = text.split("### Correspondance des outils — Garmin ↔ Strava", 1)[1]
     section = section.split("\n**Fonctionnalités/champs Garmin sans portage Strava", 1)[0]
     rows = [line for line in section.splitlines() if line.startswith("|")][2:]   # sans en-tête
@@ -69,7 +69,7 @@ class TestStravaMappingTable(unittest.TestCase):
         install = (REPO / "install.sh").read_text(encoding="utf-8")
         self.assertIn(f"@r-huijts/strava-mcp-server@{PINNED_VERSION}", install)
         self.assertIn(PINNED_COMMIT, install)
-        for doc in ("AGENTS.md", "docs/strava-setup.md"):
+        for doc in ("skills/data-source-mapping/SKILL.md", "docs/strava-setup.md"):
             text = (REPO / doc).read_text(encoding="utf-8")
             self.assertIn(PINNED_VERSION, text, doc)
             self.assertIn(PINNED_COMMIT, text, doc)

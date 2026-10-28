@@ -123,6 +123,7 @@ nav:
       - Météo: skills/weather-forecast.md
       - Analyse de séances: skills/session-parts-analyzer.md
       - Intervals.icu: skills/intervals-icu-best-practices.md
+      - Correspondance des sources: skills/data-source-mapping.md
       - Téléchargement FIT: skills/fit-download.md
       - Parcours MyWhoosh: skills/mywhoosh-route.md
       - Export Vanoor: skills/vanoor-export.md
@@ -138,6 +139,7 @@ nav:
       - Fiche des chaussures (specs): skills/shoe-specs.md
       - Choisir une paire (/shoes): skills/shoes.md
       - Choix des chaussures (shoe-selection): skills/shoe-selection.md
+      - Catalogue détaillé des skills: skills/skills-reference.md
   - Correction altimétrique (MNT): elevation.md
   - Garde-fous: guardrails.md
   - Gabarits de périodisation: plans.md

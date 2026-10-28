@@ -25,14 +25,14 @@
     Tout ce qui suit est écrit pour `[data].source = "garmin"` (défaut) — rien
     ne change tant que cette clé vaut `garmin` ou est absente. Avec
     `[data].source = "intervals"`, les outils Garmin cités plus bas ont un
-    équivalent intervals.icu (table de correspondance dans `AGENTS.md`) —
+    équivalent intervals.icu (table de correspondance dans `skills/data-source-mapping/SKILL.md`) —
     sauf le push de séances, qui n'est PAS un simple changement de nom
     d'outil : voir [Configuration Intervals.icu](../intervals-setup.md) et le
     skill `intervals-icu-best-practices`. Avec `[data].source = "strava"` (#164) : serveur MCP
-    `strava` (table Garmin ↔ Strava dans `AGENTS.md`), lecture seule, **pas de HRV / FC de
+    `strava` (table Garmin ↔ Strava dans `skills/data-source-mapping/SKILL.md`), lecture seule, **pas de HRV / FC de
     repos / sommeil / readiness** (dit explicitement, jamais simulé), pas de calendrier ni de
     push — voir [Configuration Strava](../strava-setup.md). Avec `[data].source = "coros"` (#168) :
-    comme Garmin, par le relais `coros` (table Garmin ↔ COROS dans `AGENTS.md`) — bilan matinal HRV +
+    comme Garmin, par le relais `coros` (table Garmin ↔ COROS dans `skills/data-source-mapping/SKILL.md`) — bilan matinal HRV +
     FC de repos + **récupération COROS** (nommée, jamais convertie), séances poussées par
     `coros-workout-scheduling` ; splits par km calculés depuis le FIT, comme pour toutes les sources ;
     ni HRR, ni matériel, ni pesées — voir

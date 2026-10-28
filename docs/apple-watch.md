@@ -51,7 +51,7 @@ télécharge avec `download_fit.py <id intervals>` (voir
 ## Ce que cela change pour le coach
 
 Toutes ces conséquences sont déjà couvertes par les règles du projet
-(`AGENTS.md`, table de correspondance Garmin ↔ intervals.icu) :
+(`skills/data-source-mapping/SKILL.md`, table de correspondance Garmin ↔ intervals.icu) :
 
 | Sujet | Avec une Apple Watch via intervals.icu |
 |---|---|
@@ -86,7 +86,7 @@ Si les passerelles ci-dessus déçoivent, **Health Auto Export** (version Premiu
 les données par webhook REST vers la machine maison. La couverture est plus large et aucun
 cloud tiers n'intervient, mais il faudrait une **nouvelle source**
 `[data].source = "applehealth"`, **qui n'est pas implémentée**. Elle toucherait l'installeur, la
-table de correspondance d'`AGENTS.md`, le contrat de données, la synchronisation quotidienne,
+table de correspondance de `skills/data-source-mapping/SKILL.md`, le contrat de données, la synchronisation quotidienne,
 `coach_doctor`, la politique du chat et `download_fit.py`.
 
 À surveiller : Open Wearables, auto-hébergeable avec un MCP intégré, mais pré-1.0

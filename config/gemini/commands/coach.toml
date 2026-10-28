@@ -47,7 +47,7 @@ in this file changes.**
 
 **When `[data].source = "intervals"`:** every Garmin tool call named anywhere
 in this file maps to its intervals.icu equivalent per the correspondence table
-in `AGENTS.md` ("Correspondance des outils — Garmin ↔ intervals.icu") — same
+in `skills/data-source-mapping/SKILL.md` ("Correspondance des outils — Garmin ↔ intervals.icu") — same
 trigger, same cadence, same MD persistence, same `arc` contract for reads. The
 **push mechanics are NOT a drop-in swap** (never assume "only the tool name
 changes" for scheduling): load `intervals-icu-best-practices` instead of
@@ -73,7 +73,7 @@ GPX analysis).
 
 **When `[data].source = "strava"` (#164):** the `strava` MCP server (community
 `strava-mcp` by r-huijts, hyphenated tool names) replaces `garmin` — map tools per the
-"Garmin ↔ Strava" table in `AGENTS.md` and use **only** the tools listed there; the official
+"Garmin ↔ Strava" table in `skills/data-source-mapping/SKILL.md` and use **only** the tools listed there; the official
 Strava connector (`https://mcp.strava.com/mcp`) has unverified tool names, so if it is what the
 session exposes, read its tool list and invent nothing. Reads only: never call `connect-strava`,
 `disconnect-strava` or `star-segment` outside an interactive request the athlete made. There is
@@ -89,7 +89,7 @@ shoe NAME in `get-activity-details` is never turned into a `gear_id`). Persist `
 
 **When `[data].source = "coros"` (#168):** COROS is a full source, **Garmin-like** — read this
 whole file as written, mapping every Garmin tool to its COROS equivalent per the "Garmin ↔ COROS"
-table in `AGENTS.md` and using **only** the tools listed there (camelCase names, relay `coros`; text
+table in `skills/data-source-mapping/SKILL.md` and using **only** the tools listed there (camelCase names, relay `coros`; text
 answers, read values as printed, never infer a missing field). Same triggers, cadence, MD persistence
 and `arc` contract. Persist `coros_activity_id` = `"c"` + `LabelId` (never the bare number) together
 with `start_time`, never `garmin_activity_id`; the name of the session is the `Location` line, never

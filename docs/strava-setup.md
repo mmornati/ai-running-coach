@@ -66,7 +66,7 @@ dans le chat du tableau de bord.
   `get-athlete-profile`, `get-athlete-stats`, plus des outils de
   segments/itinéraires, et trois outils qui **agissent** : `connect-strava`,
   `disconnect-strava`, `star-segment` (écriture). La table de correspondance
-  Garmin ↔ Strava est dans `AGENTS.md`.
+  Garmin ↔ Strava est dans `skills/data-source-mapping/SKILL.md`.
 - Les réponses sont du **texte formaté**, pas du JSON structuré : c'est pourquoi les
   KPI passent par les flux normalisés (voir plus bas) plutôt que par ce texte.
 

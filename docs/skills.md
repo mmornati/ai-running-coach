@@ -4,7 +4,7 @@
 ![](assets/ridge.jpg)
 </div>
 
-`ai-running-coach` fournit **27 skills** que les agents chargent à la demande pour des tâches spécifiques.
+`ai-running-coach` fournit **29 skills** que les agents chargent à la demande pour des tâches spécifiques.
 
 ## Vue d'ensemble
 
@@ -22,6 +22,7 @@
 <div class="arc-skill"><span class="arc-skill__name"><a href="skills/weather-forecast.md">Météo</a></span><span class="arc-skill__desc">Prévisions météo pour le lieu d'entraînement</span></div>
 <div class="arc-skill"><span class="arc-skill__name"><a href="skills/session-parts-analyzer.md">Analyse de séances</a></span><span class="arc-skill__desc">Analyse de portions spécifiques d'une séance Garmin</span></div>
 <div class="arc-skill"><span class="arc-skill__name"><a href="skills/intervals-icu-best-practices.md">Intervals.icu</a></span><span class="arc-skill__desc">Création et mise à jour d'événements Intervals.icu</span></div>
+<div class="arc-skill"><span class="arc-skill__name"><a href="skills/data-source-mapping.md">Correspondance des sources</a></span><span class="arc-skill__desc">Tables Garmin ↔ intervals.icu, Strava et COROS, chargées seulement quand la source n'est pas Garmin</span></div>
 <div class="arc-skill"><span class="arc-skill__name"><a href="skills/fit-download.md">Téléchargement FIT</a></span><span class="arc-skill__desc">Téléchargement de fichiers FIT Garmin en bypassant le canal MCP</span></div>
 <div class="arc-skill"><span class="arc-skill__name"><a href="skills/vanoor-export.md">Export Vanoor</a></span><span class="arc-skill__desc">Séances de la semaine et plan de course au format de l'app Vanoor (Apple Watch)</span></div>
 <div class="arc-skill"><span class="arc-skill__name"><a href="skills/mywhoosh-route.md">Parcours MyWhoosh</a></span><span class="arc-skill__desc">Parcours MyWhoosh qui tient dans la durée d'une séance home trainer, à la puissance tenue dans la plage FC</span></div>
@@ -36,6 +37,7 @@
 <div class="arc-skill"><span class="arc-skill__name"><a href="skills/shoe-specs.md">Fiche des chaussures (shoe-specs)</a></span><span class="arc-skill__desc">Drop, pile, poids, mousse d'une paire cherchés en ligne, source par source, et écrits seulement après votre validation ligne par ligne</span></div>
 <div class="arc-skill"><span class="arc-skill__name"><a href="skills/shoes.md">Choisir une paire (/shoes)</a></span><span class="arc-skill__desc">Désigner le rôle et la paire remplacée, puis laisser shoe-selection mener le choix</span></div>
 <div class="arc-skill"><span class="arc-skill__name"><a href="skills/shoe-selection.md">Choix des chaussures (shoe-selection)</a></span><span class="arc-skill__desc">Continuité d'abord, sinon plages cibles et modèles sourcés ; veto médical, aucun achat, aucun prix, jamais une prévention de blessure</span></div>
+<div class="arc-skill"><span class="arc-skill__name"><a href="skills/skills-reference.md">Catalogue détaillé des skills</a></span><span class="arc-skill__desc">Détail de chaque skill et outil du projet ; AGENTS.md n'en garde qu'un index d'une ligne</span></div>
 <div class="arc-skill"><span class="arc-skill__name"><a href="skills/log.md">Saisie libre (/log)</a></span><span class="arc-skill__desc">Ravitaillement, douleur et RPE en une phrase, convertis en blocs arc sans jamais inventer une valeur nutritionnelle</span></div>
 
 </div>
