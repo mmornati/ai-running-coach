@@ -203,6 +203,19 @@ class SearchWorkspace(unittest.TestCase):
         self.assertEqual(self.paths("oranges pommes")[0], "nutrition/2026-09-13_plan_course.md")
         self.assertEqual(self.paths("froid"), [])
 
+    def test_symlinks_out_of_the_workspace_or_into_arc_ignored(self):
+        outside = self.tmp / "secret.md"
+        outside.write_text("# Secret\n\nmotdepasse confidentiel\n", encoding="utf-8")
+        (self.ws / ".arc/notes.md").write_text("# Interne\n\nmotdepasse interne\n", encoding="utf-8")
+        (self.ws / "resources/lien.md").symlink_to(outside)
+        (self.ws / "planning/lien.md").symlink_to(self.ws / ".arc/notes.md")
+        (self.ws / ".arc/chat/sessions/lien.jsonl").symlink_to(self.ws / "activities/2026-09-13_trail.md")
+        (self.ws / "resources/copie.md").symlink_to(self.ws / "nutrition/2026-09-13_plan_course.md")
+        self.index()
+        self.assertEqual(self.paths("motdepasse"), [])
+        self.assertNotIn("chat/lien", self.paths("crêtes"))
+        self.assertIn("resources/copie.md", self.paths("bananes"))     # lien interne au workspace : gardé
+
     def test_empty_query(self):
         result = I.search(self.conn, "pourquoi le")
         self.assertEqual((result["status"], result["results"]), ("empty_query", []))

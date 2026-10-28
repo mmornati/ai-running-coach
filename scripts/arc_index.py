@@ -3456,22 +3456,41 @@ def _fts_available(conn) -> bool:
     return conn.execute("SELECT 1 FROM sqlite_master WHERE name = 'doc_chunk'").fetchone() is not None
 
 
+def _search_readable(path: Path, root: Path, allowed: Path) -> bool:
+    """Le fichier, liens symboliques résolus, reste-t-il sous `allowed` (lui-même dans le workspace) ?
+
+    Même règle que la politique du chat (`resolve_workspace_path`) : la recherche rend du texte au chat, elle
+    ne doit donc jamais lire, par un lien, un fichier que le chat ne pourrait pas lire lui-même (hors du
+    workspace, ou dans `.arc/` en dehors des conversations).
+    """
+    try:
+        real = path.resolve()
+        real.relative_to(allowed.resolve())
+        rel = real.relative_to(root)
+    except (OSError, ValueError):
+        return False
+    return path.is_file() and (rel.parts[:1] != (".arc",) or allowed.resolve() == (root / CHAT_SESSIONS_DIR))
+
+
 def _search_sources(workspace: Path) -> List[Tuple[str, str, str, Path]]:
     """(clé, source, type, chemin) de chaque document cherchable, dans un ordre stable."""
     out = []
+    root = workspace.resolve()
     for path in discover(workspace):
-        rel = path.relative_to(workspace).as_posix()
-        out.append((rel, "workspace", classify(rel) or "other", path))
+        if _search_readable(path, root, root):
+            rel = path.relative_to(workspace).as_posix()
+            out.append((rel, "workspace", classify(rel) or "other", path))
     resources = workspace / SEARCH_RESOURCES_DIR
     if resources.is_dir():
         for path in sorted(resources.rglob("*.md")):
-            if path.is_file():
+            if _search_readable(path, root, root):
                 out.append((path.relative_to(workspace).as_posix(), "resources", "resource", path))
     sessions = workspace / CHAT_SESSIONS_DIR
     if sessions.is_dir():
         # La clé n'est PAS le chemin : `.arc/` n'est pas lisible depuis le chat, l'extrait rendu suffit.
         for path in sorted(sessions.glob("*.jsonl")):
-            out.append((f"chat/{path.stem}", "chat", "chat", path))
+            if _search_readable(path, root, root / CHAT_SESSIONS_DIR):
+                out.append((f"chat/{path.stem}", "chat", "chat", path))
     return out
 
 
