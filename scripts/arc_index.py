@@ -3456,40 +3456,39 @@ def _fts_available(conn) -> bool:
     return conn.execute("SELECT 1 FROM sqlite_master WHERE name = 'doc_chunk'").fetchone() is not None
 
 
-def _search_readable(path: Path, root: Path, allowed: Path) -> bool:
-    """Le fichier, liens symboliques résolus, reste-t-il sous `allowed` (lui-même dans le workspace) ?
-
-    Même règle que la politique du chat (`resolve_workspace_path`) : la recherche rend du texte au chat, elle
-    ne doit donc jamais lire, par un lien, un fichier que le chat ne pourrait pas lire lui-même (hors du
-    workspace, ou dans `.arc/` en dehors des conversations).
-    """
-    try:
-        real = path.resolve()
-        real.relative_to(allowed.resolve())
-        rel = real.relative_to(root)
-    except (OSError, ValueError):
-        return False
-    return path.is_file() and (rel.parts[:1] != (".arc",) or allowed.resolve() == (root / CHAT_SESSIONS_DIR))
-
-
 def _search_sources(workspace: Path) -> List[Tuple[str, str, str, Path]]:
-    """(clé, source, type, chemin) de chaque document cherchable, dans un ordre stable."""
+    """(clé, source, type, chemin) de chaque document cherchable, dans un ordre stable.
+
+    La recherche rend du texte au chat : un fichier n'est indexé que si le chat pourrait le lire lui-même
+    (`Policy.readable` : lien qui sort du workspace, secrets et `.arc/` refusés sur le nom ET sur la cible,
+    sans tenir compte de la casse). Les conversations, seule exception à `.arc/`, doivent rester dans
+    `.arc/chat/sessions/` une fois les liens résolus.
+    """
+    import arc_chat_policy as CP          # paresseux : seul l'index de recherche en a besoin
+    policy = CP.Policy.load(ENGINE, workspace)
     out = []
-    root = workspace.resolve()
     for path in discover(workspace):
-        if _search_readable(path, root, root):
-            rel = path.relative_to(workspace).as_posix()
+        rel = path.relative_to(workspace).as_posix()
+        if policy.readable(rel):
             out.append((rel, "workspace", classify(rel) or "other", path))
     resources = workspace / SEARCH_RESOURCES_DIR
     if resources.is_dir():
         for path in sorted(resources.rglob("*.md")):
-            if _search_readable(path, root, root):
-                out.append((path.relative_to(workspace).as_posix(), "resources", "resource", path))
+            rel = path.relative_to(workspace).as_posix()
+            if path.is_file() and policy.readable(rel):
+                out.append((rel, "resources", "resource", path))
     sessions = workspace / CHAT_SESSIONS_DIR
     if sessions.is_dir():
+        root = workspace.resolve()
+        prefix = CHAT_SESSIONS_DIR.as_posix().casefold() + "/"
         # La clé n'est PAS le chemin : `.arc/` n'est pas lisible depuis le chat, l'extrait rendu suffit.
         for path in sorted(sessions.glob("*.jsonl")):
-            if _search_readable(path, root, root / CHAT_SESSIONS_DIR):
+            try:
+                target = path.resolve().relative_to(root).as_posix()
+            except (OSError, ValueError):
+                continue
+            if (path.is_file() and target.casefold().startswith(prefix)
+                    and not policy.secret(target) and not policy.secret(path.name)):
                 out.append((f"chat/{path.stem}", "chat", "chat", path))
     return out
 

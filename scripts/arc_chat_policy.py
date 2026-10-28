@@ -247,6 +247,14 @@ class Policy:
         return any(fnmatch.fnmatchcase(part, pattern.casefold())
                    for part in parts for pattern in self.secret_patterns)
 
+    def readable(self, raw: str) -> bool:
+        """Le chat pourrait-il lire ce chemin ? Même règle que `fs.read` (`_locate`), pour les scripts qui
+        rendent du texte au chat (la recherche de `arc_index.py`) : leur contrôle ne peut pas diverger."""
+        return self._locate(raw) is not None
+
+    def secret(self, rel: str) -> bool:
+        return self._secret(rel)
+
     @staticmethod
     def _in_arc(rel: str) -> bool:
         low = rel.casefold()
