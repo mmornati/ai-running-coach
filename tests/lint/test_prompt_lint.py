@@ -34,6 +34,9 @@ PATH_ALLOWLIST = {
     ".arc/coach.db",                # généré par scripts/arc_index.py, gitignoré (skill coach-doctor)
     ".arc/garmin_gear.json",        # instantané get_gear, écrit par arc_index.py garmin-gear-status, gitignoré
     ".arc/get_gear_response.json",  # réponse brute de get_gear déposée par l'agent avant garmin-gear-status
+    # Dépôts et fichiers amont cités par skills/data-source-mapping et skills/skills-reference (sortis d'AGENTS.md)
+    "hhopke/intervals-icu-mcp", "r-huijts/strava-mcp", "src/intervals_icu_mcp/tools/*.py",
+    "src/server.ts", "src/tools/*.ts", "vanoor.workout/1",
 }
 
 # Un chemin entre backticks, assez spécifique pour éviter les faux positifs.

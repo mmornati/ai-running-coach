@@ -27,7 +27,7 @@ which path they keep, and say that the other upload must be switched off.
   (`./install.sh --source coros`, #168) COROS is the athlete's data source and this skill
   REPLACES `garmin-workout-scheduling` — the primary scheduling destination; activities and
   health are then synced like Garmin (`garmin-sync-efficiency`, table « Garmin ↔ COROS » of
-  `AGENTS.md`). With another source, this skill reads COROS in the session but persists no
+  `skills/data-source-mapping/SKILL.md`). With another source, this skill reads COROS in the session but persists no
   activity or health file. If the tools are not exposed, say so and point to `docs/coros.md` — never guess a
   tool name. If a call answers "COROS non connecté" or "relancez … login", tell the athlete
   to run `python3 scripts/arc_coros_auth.py login` in a terminal (never run it yourself:

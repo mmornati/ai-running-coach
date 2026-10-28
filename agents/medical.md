@@ -39,7 +39,7 @@ Offer it, never block on it.
 Everything below is written for `[data].source = "garmin"` (the default) —
 read it unchanged when the key is absent or `garmin`. When it is `intervals`,
 every Garmin tool named below (`get_hrv_data`, `get_rhr_day`, `get_sleep_data`)
-maps to `icu_get_wellness_for_date` per the correspondence table in `AGENTS.md` —
+maps to `icu_get_wellness_for_date` per the correspondence table in `skills/data-source-mapping/SKILL.md` —
 one call returns HRV, resting HR and sleep together. **No intervals.icu
 equivalent exists for the Garmin training-readiness score** — say so
 explicitly (never substitute the unrelated `subjective.readiness` field — a
@@ -64,7 +64,7 @@ pain reports and the training load in `activities/` instead. A reported injury o
 keeps its protocol: the missing data never turns an amber/red verdict green.
 
 **When `[data].source = "coros"` (#168):** Garmin-like — every Garmin health tool named below maps
-per the "Garmin ↔ COROS" table in `AGENTS.md`: overnight HRV → `querySleepHrv` (the official daily
+per the "Garmin ↔ COROS" table in `skills/data-source-mapping/SKILL.md`: overnight HRV → `querySleepHrv` (the official daily
 assessment, never recomputed from raw points), resting HR → `queryRestingHeartRate` (never the
 « Resting HR » header of `queryDailyHealthData`), sleep → `querySleepOverview`, training readiness →
 **COROS recovery** (`queryRecoveryStatus`). Dates are wake-up days (last night = today). The recovery

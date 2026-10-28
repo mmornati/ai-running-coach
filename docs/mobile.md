@@ -28,7 +28,7 @@ Claude (Pro/Max) ou ChatGPT (Codex).
     Cette page (et `/garmin-daily-sync`) suppose la source Garmin par défaut —
     rien n'y change avec `[data].source = "intervals"` (#68) sinon les outils
     MCP appelés en coulisses (voir [Configuration Intervals.icu](intervals-setup.md)
-    et la table de correspondance dans `AGENTS.md`) : machine « coach »,
+    et la table de correspondance dans `skills/data-source-mapping/SKILL.md`) : machine « coach »,
     cron/launchd, notification push et Remote Control fonctionnent à
     l'identique.
 
