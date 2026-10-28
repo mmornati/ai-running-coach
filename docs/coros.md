@@ -297,7 +297,7 @@ Avec `--source coros`, le bilan matinal est le même triptyque qu'avec Garmin, a
 ## Correspondance Garmin ↔ COROS
 
 Ce que la source `coros` lit, outil par outil. La table de référence des agents (avec les
-règles de persistance) est dans `AGENTS.md`, « Correspondance des outils — Garmin ↔ COROS ».
+règles de persistance) est dans `skills/data-source-mapping/SKILL.md`, « Correspondance des outils — Garmin ↔ COROS ».
 
 | Besoin | Outil `garmin` | Outil `coros` | Note |
 |---|---|---|---|

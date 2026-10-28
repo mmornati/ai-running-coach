@@ -36,7 +36,7 @@ flowchart LR
   61 en `none`) : activités, wellness, calendrier/événements, séances de
   bibliothèque, matériel, courbes, profil, forme ; ce projet n'en documente et
   n'en vérifie qu'un sous-ensemble, voir la table de correspondance dans
-  `AGENTS.md`. **Tous les outils portent le préfixe `icu_`**
+  `skills/data-source-mapping/SKILL.md`. **Tous les outils portent le préfixe `icu_`**
   (`icu_get_wellness_for_date`…). `./install.sh --source intervals` l'installe
   avec `uv tool install`, comme `garmin-mcp` pour Garmin ; mêmes binaires
   (`intervals-icu-mcp`, `intervals-icu-mcp-auth`), même `.env`
@@ -119,7 +119,7 @@ alors les outils du serveur `intervals` au lieu de `garmin` pour les
 **lectures** (activités, wellness), avec le même contrat de données (fichiers
 `activities/`, `medical/`, bloc ```arc```, persistance immédiate). Voir la
 table de correspondance complète dans
-[`AGENTS.md`](https://github.com/mmornati/ai-running-coach/blob/main/AGENTS.md#correspondance-des-outils--garmin--intervalsicu-68).
+[`skills/data-source-mapping/SKILL.md`](https://github.com/mmornati/ai-running-coach/blob/main/skills/data-source-mapping/SKILL.md).
 
 **Le push de séances planifiées n'est PAS un simple changement de nom
 d'outil** : le skill `intervals-icu-best-practices` remplace

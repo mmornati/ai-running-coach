@@ -23,7 +23,7 @@ Remote Control) et l'IDE partagent. Il délègue tout à l'agent `coach` et au s
   `[data].source = "garmin"` (défaut) — rien ne change tant que cette clé vaut
   `garmin` ou est absente. À `intervals`, chaque outil `garmin` cité plus bas
   (activités, wellness/HRV/FC de repos/sommeil) est remplacé par son
-  équivalent intervals.icu (table de correspondance dans `AGENTS.md`) : un
+  équivalent intervals.icu (table de correspondance dans `skills/data-source-mapping/SKILL.md`) : un
   seul appel `icu_get_wellness_for_date` couvre HRV + FC de repos + sommeil. Le
   readiness Garmin n'a pas d'équivalent : à `full`, dire "readiness
   indisponible — source intervals.icu" au lieu d'un score ; ne jamais
@@ -47,7 +47,7 @@ Remote Control) et l'IDE partagent. Il délègue tout à l'agent `coach` et au s
   pris pour une séance déjà traitée.
 - **Source Strava (#164, `[data].source = "strava"`)** : mêmes règles, avec le serveur MCP
   `strava` (communautaire `strava-mcp` de r-huijts, outils à tirets : `get-recent-activities`,
-  `get-activity-details`… — table « Garmin ↔ Strava » de `AGENTS.md`, jamais d'outil deviné).
+  `get-activity-details`… — table « Garmin ↔ Strava » de `skills/data-source-mapping/SKILL.md`, jamais d'outil deviné).
   **Lecture seule, strictement** : ne jamais appeler `connect-strava`, `disconnect-strava` ni
   `star-segment` (interdits par `daily-sync.sh`) ; si Strava répond « Missing refresh credentials »
   ou un 401, écrire `ERREUR : jetons Strava absents ou expirés — relancer connect-strava dans
@@ -60,7 +60,7 @@ Remote Control) et l'IDE partagent. Il délègue tout à l'agent `coach` et au s
   `Alerte :` et s'arrêter proprement.
 - **Source COROS (#168, `[data].source = "coros"`)** : **mêmes règles que Garmin** (COROS est une
   source complète), avec le relais MCP `coros` (outils camelCase — table « Garmin ↔ COROS » de
-  `AGENTS.md`, jamais d'outil deviné) : `querySportRecords` + `getActivityDetail` pour les séances,
+  `skills/data-source-mapping/SKILL.md`, jamais d'outil deviné) : `querySportRecords` + `getActivityDetail` pour les séances,
   `querySleepHrv` + `queryRestingHeartRate` + `querySleepOverview` + `queryRecoveryStatus` pour le
   bilan matinal (dates = **jour du réveil**). **Lecture seule, strictement** : aucun outil d'écriture
   COROS (le relais les refuse en headless, `daily-sync.sh` aussi). Si COROS répond « COROS non

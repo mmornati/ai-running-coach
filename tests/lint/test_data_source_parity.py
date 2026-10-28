@@ -26,6 +26,8 @@ REPO = Path(__file__).resolve().parent.parent.parent
 COACH = (REPO / "agents/coach.md").read_text(encoding="utf-8")
 MEDICAL = (REPO / "agents/medical.md").read_text(encoding="utf-8")
 AGENTS_MD = (REPO / "AGENTS.md").read_text(encoding="utf-8")
+# Tables de correspondance par source, sorties d'AGENTS.md (chargées à la demande).
+SOURCE_MAPPING = (REPO / "skills/data-source-mapping/SKILL.md").read_text(encoding="utf-8")
 DAILY_SYNC_SKILL = (REPO / "skills/garmin-daily-sync/SKILL.md").read_text(encoding="utf-8")
 DAILY_SYNC_SH = (REPO / "scripts/daily-sync.sh").read_text(encoding="utf-8")
 INSTALL_SH = (REPO / "install.sh").read_text(encoding="utf-8")
@@ -149,16 +151,19 @@ class TestDataSourceDocumented(unittest.TestCase):
 
     def test_agents_md_documents_the_tool_mapping_and_degraded_features(self):
         self.assertIn("[data].source", AGENTS_MD)
+        # AGENTS.md (toujours chargé) impose la lecture des tables avant tout appel d'outil.
+        self.assertIn("skills/data-source-mapping/SKILL.md", AGENTS_MD)
+        self.assertIn("**Obligatoire :**", AGENTS_MD)
         for tool in (
             "icu_get_wellness_for_date", "icu_get_recent_activities", "icu_get_activity_details",
             "icu_create_event", "icu_bulk_create_events",
         ):
-            self.assertIn(tool, AGENTS_MD)
+            self.assertIn(tool, SOURCE_MAPPING)
         # La readiness algorithmique Garmin n'a pas d'équivalent : ne jamais
         # laisser cette exception disparaître silencieusement d'un futur edit.
-        self.assertIn("aucun équivalent", AGENTS_MD)
-        self.assertIn("Téléchargement FIT", AGENTS_MD)
-        self.assertIn("Upload de parcours", AGENTS_MD)
+        self.assertIn("aucun équivalent", SOURCE_MAPPING)
+        self.assertIn("Téléchargement FIT", SOURCE_MAPPING)
+        self.assertIn("Upload de parcours", SOURCE_MAPPING)
 
     def test_config_workspace_toml_declares_the_key_and_default(self):
         toml_text = (REPO / "config/workspace.toml").read_text(encoding="utf-8")
@@ -215,7 +220,7 @@ class TestDataSourceDocumented(unittest.TestCase):
         self.assertIn(f'INTERVALS_MCP_PINNED_COMMIT = "{sha}"', doctor)
         setup_doc = (REPO / "docs/intervals-setup.md").read_text(encoding="utf-8")
         self.assertIn(sha, setup_doc)
-        self.assertIn(sha[:7], AGENTS_MD)
+        self.assertIn(sha[:7], SOURCE_MAPPING)
         self.assertIn(sha[:7], (REPO / "skills/intervals-icu-best-practices/SKILL.md").read_text(encoding="utf-8"))
 
     def test_install_sh_upgrades_a_stale_intervals_pin(self):
@@ -268,13 +273,13 @@ class TestDataSourceDocumented(unittest.TestCase):
         self.assertFalse(unknown, f"outils icu_* inconnus du serveur épinglé : {unknown}")
 
     def test_intervals_column_uses_prefixed_tool_names(self):
-        """La colonne `intervals` de la table de correspondance (AGENTS.md) ne cite plus que des
+        """La colonne `intervals` de la table de correspondance (skill data-source-mapping) ne cite plus que des
         outils préfixés `icu_` — l'ancien nom nu n'est plus un outil du serveur (#165)."""
-        start = AGENTS_MD.index("### Correspondance des outils — Garmin ↔ intervals.icu")
+        start = SOURCE_MAPPING.index("### Correspondance des outils — Garmin ↔ intervals.icu")
         # Fin : la section suivante (table Strava, #164) ou, à défaut, le paragraphe FIT.
-        nxt = AGENTS_MD.find("\n### ", start + 1)
-        end = nxt if nxt != -1 else AGENTS_MD.index("**Téléchargement FIT")
-        for line in AGENTS_MD[start:end].splitlines():
+        nxt = SOURCE_MAPPING.find("\n### ", start + 1)
+        end = nxt if nxt != -1 else SOURCE_MAPPING.index("**Téléchargement FIT")
+        for line in SOURCE_MAPPING[start:end].splitlines():
             if not line.startswith("|") or line.startswith("|---") or line.startswith("| Besoin"):
                 continue
             cells = [c.strip() for c in line.strip().strip("|").split("|")]

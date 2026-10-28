@@ -335,7 +335,7 @@ source = "garmin"   # garmin (défaut) | intervals | strava | coros
 [Montres COROS](coros.md). Change les outils MCP
 appelés par `coach`/`medical`/`garmin-daily-sync` pour les activités, la
 santé et le calendrier planifié (table de correspondance complète dans
-`AGENTS.md`). Sans montre Garmin, `intervals` ouvre le projet aux données
+`skills/data-source-mapping/SKILL.md`). Sans montre Garmin, `intervals` ouvre le projet aux données
 Suunto/Polar/Apple synchronisées sur Intervals.icu (COROS : [Montres COROS](coros.md)).
 
 !!! warning "Fonctionnalités indisponibles avec `intervals`"
