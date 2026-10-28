@@ -192,6 +192,20 @@ Ce bloc alimente un index SQLite **dérivé** (`scripts/arc_index.py`, jetable,
 reconstruit depuis les fichiers) et le tableau de bord local
 (`scripts/dashboard.sh`). Le Markdown reste la source de vérité.
 
+### Recherche dans l'historique
+
+Pour retrouver quelque chose dans le passé (une blessure, une décision et sa raison, un rapport de
+course, ce que l'athlète a dit dans le chat, un article de `resources/`) :
+`python3 scripts/arc_index.py search "<mots-clés>" [--kind K,…] [--source workspace|resources|chat]
+[--since D] [--until D] [--limit N] [--text]` — **avant** tout grep ou lecture de fichiers entiers.
+Index plein texte (FTS5, BM25) des fichiers du workspace, de `resources/` et des conversations du chat
+(`.arc/chat/sessions/`, illisibles autrement depuis le chat) ; il rend le meilleur passage de chaque
+fichier trouvé. Les mots-clés du domaine marchent mieux qu'une phrase (`tendinite`, `HRR`,
+`ampoules`), sans `?` ni `!` (refusés par la politique du chat). On n'ouvre le fichier que si
+l'extrait ne suffit pas ; une date ou une valeur se vérifie dans les commandes d'analyse (`decisions`,
+`prevention`, `history-summary`…), jamais dans un extrait seul. Le travail du jour reste par date
+(`medical/AAAA-MM-JJ_health.md`…). Voir `docs/search.md`.
+
 ## Sous-agents
 
 Délégation via l'outil `task`, **et uniquement vers les agents listés dans

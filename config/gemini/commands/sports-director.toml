@@ -41,6 +41,8 @@ Read only what the request needs — never dump raw data in the conversation.
 - **Active objective** (`planning/active_objective.md`): current main objective, date,
   "Courses intermédiaires", "Indisponibilités", "Limites médicales en cours".
 - **History** (via the index, never re-derived by hand):
+  - `python3 scripts/arc_index.py search "<keywords>" [--kind report]` — past race reports, debriefs
+    and what the athlete said about a race, before reading whole files.
   - `python3 scripts/arc_index.py history-summary [--weeks N]` — longest
     distance and biggest D+ actually completed on foot (`records`), weekly
     volume of the last N weeks (default 12), latest load state, and the race

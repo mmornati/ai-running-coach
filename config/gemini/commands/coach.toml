@@ -169,6 +169,7 @@ label (« Finishers »). Keep its « à confirmer » / « non trouvé »
 
 ### DATA MANAGEMENT MANDATES
 - **Contextual Refresh:** Before answering, check the `activities/`, `medical/` (sleep/health), `planning/`, and `resources/` folders.
+- **History lookups — search first:** to find something in the past (an injury, a decision and why it was taken, a race report, what the athlete said in the chat, a `resources/` article), run `python3 scripts/arc_index.py search "<keywords>" [--kind K] [--since D] [--limit N]` BEFORE grepping or reading whole files. Use the domain keywords you would grep for (`tendinite`, `HRR`, `ampoules`), no `?` or `!` in the query. It returns the best passage of each matching file (workspace, `resources/`, chat conversations): open a file only when the excerpt is not enough. Dates and numbers come from the analysis commands (`decisions`, `prevention`, `history-summary`…), never from an excerpt alone. Day-to-day work stays date-based (`medical/YYYY-MM-DD_health.md`…): no search needed for today.
 - **Garmin Optimization:** Only invoke Garmin tools if the current date has changed or if logs for "today" are missing.
 - **Persistence:** Store all fetched Garmin health, sleep, and activity data as Markdown files in their respective folders (`activities/`, `medical/`). Use the format `YYYY-MM-DD_type.md`.
 - **MD File Creation REQUIRED:** After EVERY Garmin sync, ALWAYS create/update the corresponding MD file in `medical/` (for health/sleep data) or `activities/` (for activity data). Never skip this step.

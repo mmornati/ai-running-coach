@@ -67,7 +67,7 @@ stdin_scripts = ["scripts/arc_log.py", "scripts/arc_nutrition_sync.py", "scripts
 # `--garmin-gear-json` refusé : son fichier vit sous `.arc/` (daily-sync), illisible depuis le chat.
 [shell.scripts."scripts/arc_index.py"]
 flags = ["--memory", "--rebuild", "--with-gps", "--assumptions", "--calibration", "--active", "--json", "--text", "--unreferenced-photos", "--garmin-json"]
-value_options = ["--today", "--activity", "--weeks", "--segment", "--date", "--days", "--since", "--limit", "--trigger", "--outcome", "--months", "--band", "--last-pass", "--activities", "--garmin-gear", "--chat-gear", "--kit", "--sport", "--gear", "--lt-speed-ms", "--role", "--replace", "--phase", "--use", "--equipment", "--acute", "--known", "--until", "--format", "--distance-km", "--race-date", "--held-hours", "--held-elevation-m", "--long-run-day", "--lead-in", "--lead-in-weeks"]
+value_options = ["--today", "--activity", "--weeks", "--segment", "--date", "--days", "--since", "--limit", "--trigger", "--outcome", "--months", "--band", "--last-pass", "--activities", "--garmin-gear", "--chat-gear", "--kit", "--sport", "--gear", "--lt-speed-ms", "--role", "--replace", "--phase", "--use", "--equipment", "--acute", "--known", "--until", "--format", "--distance-km", "--race-date", "--held-hours", "--held-elevation-m", "--long-run-day", "--lead-in", "--lead-in-weeks", "--kind", "--source"]
 # nargs="?" : la valeur est facultative (`--race-plan` seul = plan de course actif).
 optional_value_options = ["--race-plan"]
 read_options = ["--validate", "--race-plan", "--compare"]
