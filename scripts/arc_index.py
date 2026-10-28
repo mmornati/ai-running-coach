@@ -40,6 +40,16 @@ sert au tableau de bord (`scripts/arc_serve.py`) et aux calculs de charge
     arc_index.py shoe-needs --role ROLE [--replace GEAR_ID] [--text]  # plages cibles pour la prochaine paire (#301)
     arc_index.py prevention [--days N] [--acute ZONE,…] [--known ZONE,…] [--equipment LISTE] [--text]
                                                                         # prévention ciblée liée aux douleurs (#192)
+    arc_index.py search "QUESTION" [--kind K,…] [--source S] [--since D] [--until D] [--limit N] [--text]
+                                                                        # recherche plein texte dans l'historique
+
+`search` cherche une question en langage naturel dans le texte des fichiers du workspace (`activities/`,
+`medical/`, `nutrition/`, `planning/`, `rapports/`, `gear/`), de la base de connaissances `resources/` et
+des conversations du chat (`.arc/chat/sessions/`) : passages classés par BM25 (FTS5), un par fichier, avec
+leur extrait. À utiliser AVANT de parcourir l'historique à coups de grep ou de lectures de fichiers entiers.
+`--kind` filtre sur le type de fichier (`activity`, `health`, `decision`, `report`, `week`, `resource`,
+`chat`…), `--source` sur `workspace` | `resources` | `chat`, `--since`/`--until` sur la date du fichier ou
+de l'échange (un passage sans date en est alors exclu). Lecture seule. Voir `arc_search.py`.
 
 `strength` (#191, épopée #173) choisit un programme de renforcement/mobilité de la bibliothèque livrée avec
 le moteur (`config/strength/`, `arc_strength.py`) par phase du bloc et/ou par usage (descente, cheville,
@@ -318,6 +328,7 @@ import arc_shoe_usage as SU  # noqa: E402
 import arc_shoe_needs as SN  # noqa: E402
 import arc_slope_model as SL  # noqa: E402
 import arc_splits as SP  # noqa: E402
+import arc_search as SE  # noqa: E402
 import arc_strength as SG  # noqa: E402
 import arc_trail_shape as TS  # noqa: E402
 from coach_config import ConfigError, read_toml  # noqa: E402
@@ -413,7 +424,10 @@ from coach_setup import ENGINE, workspace_root  # noqa: E402
 # version 41 (40 = cycle de vie Garmin) : sans ce bump, une base déjà construite n'a pas la table (« no such table »).
 # #299 : nouvelle table `shoe_feedback` (retours de chaussant par séance, `activity.shoe_feedback`) — version 42
 # (41 = #298) : sans ce bump, une base déjà construite n'a pas la table (« no such table »).
-SCHEMA_VERSION = 42
+# Recherche plein texte : tables `search_file` (suivi par empreinte) et `doc_chunk` (FTS5, passages des
+# fichiers du workspace, de `resources/` et des conversations du chat) — version 43 (42 = #299) : sans ce
+# bump, une base déjà construite n'a pas les tables (« no such table »).
+SCHEMA_VERSION = 43
 # Colonnes d'identifiant externe d'une séance, dans l'ordre de priorité de `activity_ref` — une séance n'en
 # porte qu'une (`workspace-data-contract`) ; Garmin prime si un fichier ancien en porte plusieurs.
 REF_COLUMNS = ("garmin_activity_id", "intervals_activity_id", "strava_activity_id", "coros_activity_id")
@@ -1038,7 +1052,17 @@ CREATE TABLE shoe_feedback (
     source_path TEXT, date TEXT, gear_id TEXT, comfort REAL, issues TEXT, notes TEXT
 );
 CREATE INDEX shoe_feedback_gear ON shoe_feedback(gear_id, date);
+-- Recherche plein texte : un fichier suivi par empreinte, indépendamment de `source_file` (les sources de
+-- `resources/` et du chat ne sont pas au contrat). Les passages sont dans la table FTS5 `doc_chunk`, créée
+-- à part (`FTS_DDL`) : un SQLite sans FTS5 garde tout le reste de l'index.
+CREATE TABLE search_file (path TEXT PRIMARY KEY, source TEXT, kind TEXT, sha256 TEXT, chunks INTEGER);
 """
+
+# `remove_diacritics 2` : « tendinite » trouve « tendinité », « eleve » trouve « élevé ». Les colonnes
+# UNINDEXED servent aux filtres et au rendu ; `name` = nom du fichier sans extension (il porte souvent le
+# sujet : `decision_tibia-zero-impact`) ou titre de la session du chat.
+FTS_DDL = ("CREATE VIRTUAL TABLE doc_chunk USING fts5(path UNINDEXED, source UNINDEXED, kind UNINDEXED, "
+           "date UNINDEXED, name, title, heading, body, tokenize='unicode61 remove_diacritics 2')")
 
 # Tables alimentées par fichier (colonne `source_path`) : purgées à la réindexation d'un fichier.
 PER_FILE_TABLES = (
@@ -1084,6 +1108,10 @@ def open_db(workspace: Path, db: Optional[str] = None, memory: bool = False,
         for (name,) in connection.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall():
             connection.execute(f'DROP TABLE IF EXISTS "{name}"')
         connection.executescript(DDL)
+        try:
+            connection.execute(FTS_DDL)
+        except sqlite3.OperationalError:
+            pass                                  # SQLite compilé sans FTS5 : `search` le dira
         connection.execute("INSERT INTO meta VALUES ('schema_version', ?)", (str(SCHEMA_VERSION),))
         connection.commit()
 
@@ -3360,6 +3388,7 @@ def index_workspace(conn, workspace: Path, today: Optional[str] = None,
     # correction, seulement `sport` (déjà en base pour un fichier réingéré CETTE passe
     # puisque le passage Markdown ci-dessus vient de le (ré)écrire).
     counts["fit_ingestion"] = ingest_samples(conn, workspace)
+    counts["search"] = index_search(conn, workspace)
     fingerprint = metrics_fingerprint(conn, conf, today or date.today().isoformat())
     known = conn.execute("SELECT value FROM meta WHERE key = 'metrics_fingerprint'").fetchone()
     if metrics_cache is not None and known and known[0] == fingerprint:
@@ -3412,6 +3441,138 @@ def index_workspace(conn, workspace: Path, today: Optional[str] = None,
         conn.execute("INSERT OR REPLACE INTO meta VALUES (?, ?)", (key, value))
     conn.commit()
     return counts
+
+
+# ---------------------------------------------------------------------------
+# Recherche plein texte (FTS5)
+# ---------------------------------------------------------------------------
+
+CHAT_SESSIONS_DIR = Path(".arc") / "chat" / "sessions"
+SEARCH_RESOURCES_DIR = "resources"
+SEARCH_NO_FTS = "SQLite de ce Python est compilé sans FTS5 : la recherche plein texte est indisponible."
+
+
+def _fts_available(conn) -> bool:
+    return conn.execute("SELECT 1 FROM sqlite_master WHERE name = 'doc_chunk'").fetchone() is not None
+
+
+def _search_sources(workspace: Path) -> List[Tuple[str, str, str, Path]]:
+    """(clé, source, type, chemin) de chaque document cherchable, dans un ordre stable."""
+    out = []
+    for path in discover(workspace):
+        rel = path.relative_to(workspace).as_posix()
+        out.append((rel, "workspace", classify(rel) or "other", path))
+    resources = workspace / SEARCH_RESOURCES_DIR
+    if resources.is_dir():
+        for path in sorted(resources.rglob("*.md")):
+            if path.is_file():
+                out.append((path.relative_to(workspace).as_posix(), "resources", "resource", path))
+    sessions = workspace / CHAT_SESSIONS_DIR
+    if sessions.is_dir():
+        # La clé n'est PAS le chemin : `.arc/` n'est pas lisible depuis le chat, l'extrait rendu suffit.
+        for path in sorted(sessions.glob("*.jsonl")):
+            out.append((f"chat/{path.stem}", "chat", "chat", path))
+    return out
+
+
+def _search_rows(rel: str, source: str, kind: str, path: Path, text: str) -> List[tuple]:
+    if source == "chat":
+        meta = {}
+        try:
+            meta = json.loads(path.with_suffix(".json").read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            pass
+        title = str(meta.get("title") or "") if isinstance(meta, dict) else ""
+        return [(rel, source, kind, day, "", title, "", body) for day, body in SE.chat_turns(text)]
+    title, chunks = SE.chunk_markdown(text)
+    name, day = Path(rel).stem, SE.date_from_path(rel)
+    return [(rel, source, kind, day, name, title, heading, body) for heading, body in chunks]
+
+
+def index_search(conn, workspace: Path) -> dict:
+    """Passages cherchables, incrémental par empreinte (comme `source_file`). Rend un résumé."""
+    if not _fts_available(conn):
+        return {"status": "unavailable"}
+    counts = {"indexed": 0, "unchanged": 0, "removed": 0}
+    seen = set()
+    for rel, source, kind, path in _search_sources(workspace):
+        try:
+            raw = path.read_bytes()
+        except OSError:
+            continue
+        seen.add(rel)
+        digest = hashlib.sha256(raw).hexdigest()
+        known = conn.execute("SELECT sha256 FROM search_file WHERE path = ?", (rel,)).fetchone()
+        if known and known[0] == digest:
+            counts["unchanged"] += 1
+            continue
+        conn.execute("DELETE FROM doc_chunk WHERE path = ?", (rel,))
+        rows = _search_rows(rel, source, kind, path, raw.decode("utf-8", errors="replace"))
+        conn.executemany("INSERT INTO doc_chunk VALUES (?, ?, ?, ?, ?, ?, ?, ?)", rows)
+        conn.execute("INSERT OR REPLACE INTO search_file VALUES (?, ?, ?, ?, ?)",
+                     (rel, source, kind, digest, len(rows)))
+        counts["indexed"] += 1
+    for (rel,) in conn.execute("SELECT path FROM search_file").fetchall():
+        if rel not in seen:
+            conn.execute("DELETE FROM doc_chunk WHERE path = ?", (rel,))
+            conn.execute("DELETE FROM search_file WHERE path = ?", (rel,))
+            counts["removed"] += 1
+    return counts
+
+
+def search(conn, query: str, kinds: Optional[List[str]] = None, source: Optional[str] = None,
+           since: Optional[str] = None, until: Optional[str] = None, limit: int = SE.DEFAULT_LIMIT) -> dict:
+    """Meilleur passage de chaque fichier pour `query`, classés par BM25. Lecture seule."""
+    if not _fts_available(conn):
+        return {"status": "unavailable", "query": query, "reason": SEARCH_NO_FTS, "results": []}
+    match = SE.build_match(query)
+    if not match:
+        return {"status": "empty_query", "query": query, "results": [],
+                "reason": "aucun mot cherchable dans la question (mots vides seulement)."}
+    where, params = ["doc_chunk MATCH ?"], [match]
+    if kinds:
+        where.append("kind IN (%s)" % ",".join("?" * len(kinds)))
+        params.extend(kinds)
+    if source:
+        where.append("source = ?")
+        params.append(source)
+    if since:
+        where.append("date >= ?")
+        params.append(since)
+    if until:
+        where.append("date <= ?")
+        params.append(until)
+    # Poids BM25 par colonne (les quatre premières ne sont pas indexées) : le titre et le nom du fichier
+    # disent le sujet, la section le précise. Approximation du projet, réglée sur un workspace réel.
+    # Le second score ne regarde que le corps du passage : il choisit l'extrait rendu pour un fichier
+    # (sinon un passage court de ce fichier gagnerait sur son seul titre, sans rien dire de la question).
+    rows = conn.execute(
+        "SELECT path, source, kind, date, title, heading, body, "
+        "bm25(doc_chunk, 0, 0, 0, 0, 2.0, 3.0, 2.0, 1.0) AS score, "
+        "bm25(doc_chunk, 0, 0, 0, 0, 0, 0, 0, 1.0) AS body_score FROM doc_chunk "
+        f"WHERE {' AND '.join(where)} ORDER BY score LIMIT ?", (*params, limit * 10)).fetchall()
+    files: Dict[str, dict] = {}
+    for path, src, kind, day, title, heading, body, score, body_score in rows:
+        best = files.get(path)
+        if best is None:
+            files[path] = best = {"path": path, "source": src, "kind": kind, "date": day, "title": title,
+                                  "score": score, "body_score": None}
+        if body_score < 0 and (best["body_score"] is None or body_score < best["body_score"]):
+            best.update(body_score=body_score, heading=heading, body=body, date=day or best["date"])
+        elif "body" not in best:
+            best.update(heading=heading, body=body)
+    results = []
+    for best in list(files.values())[:limit]:
+        hit = {"path": best["path"], "source": best["source"], "kind": best["kind"], "date": best["date"],
+               "title": best["title"] or None, "heading": best["heading"] or None,
+               "text": SE.truncate(best["body"]), "score": round(-best["score"], 3)}
+        if best["source"] == "chat":
+            hit["session_id"] = best["path"].split("/", 1)[1]
+        results.append({k: v for k, v in hit.items() if v is not None})
+    return {"status": "ok", "query": query, "match": match, "results": results,
+            "note": "Extraits : lire le fichier (`path`) pour le détail. Les conversations du chat "
+                    "(`chat/<id>`) ne se lisent qu'ici. Les dates et les valeurs chiffrées se vérifient "
+                    "dans les commandes d'analyse, jamais dans un extrait seul."}
 
 
 # ---------------------------------------------------------------------------
@@ -5429,11 +5590,18 @@ def build_parser() -> argparse.ArgumentParser:
                                  "climb-history", "decisions", "slope-model", "trail-shape", "energy", "equipment",
                                  "inspections", "gear-career", "gait-summary", "pace-curve",
                                  "decision-effects", "load-forecast", "plan-templates", "strength", "dem-check", "prevention", "plan-skeleton",
-                                 "power-hr", "history-summary", "splits", "shoe-specs", "shoe-feedback", "shoe-usage", "shoe-needs"))
+                                 "power-hr", "history-summary", "splits", "shoe-specs", "shoe-feedback", "shoe-usage", "shoe-needs",
+                                 "search"))
     parser.add_argument("selector", nargs="?", default=None,
                         help="argument de la sous-commande (ex. garmin_activity_id, intervals_activity_id, strava_activity_id "
                              "ou coros_activity_id "
                              "pour « samples »)")
+    parser.add_argument("--kind", metavar="K,…",
+                        help="commande « search » : types de fichier à garder (activity, health, decision, report, "
+                             "week, resource, chat…), séparés par des virgules")
+    parser.add_argument("--source", choices=SE.SOURCES,
+                        help="commande « search » : workspace (fichiers de l'athlète), resources (base de "
+                             "connaissances) ou chat (conversations)")
     parser.add_argument("--workspace")
     parser.add_argument("--db")
     parser.add_argument("--memory", action="store_true")
@@ -5464,7 +5632,8 @@ def build_parser() -> argparse.ArgumentParser:
                         help="commande « decisions » : fenêtre glissante de N jours (>= 1) se "
                              "terminant à --today (défaut : toutes les décisions connues)")
     parser.add_argument("--since", metavar="AAAA-MM-JJ",
-                        help="commande « energy » : toutes les séances éligibles depuis cette date "
+                        help="commande « search » : passages datés de ce jour ou après ; "
+                             "commande « energy » : toutes les séances éligibles depuis cette date "
                              "(incluse), ordre chronologique — incompatible avec --activity/--date ; "
                              "commande « equipment » : non utilisé (voir --last-pass)")
     parser.add_argument("--last-pass", metavar="AAAA-MM-JJ",
@@ -5496,7 +5665,8 @@ def build_parser() -> argparse.ArgumentParser:
                         help="commande « equipment » (#134) : croise le matériel obligatoire d'un plan de "
                              "course (chemin, ou sans valeur le prochain plan) avec l'inventaire")
     parser.add_argument("--limit", type=int, metavar="N",
-                        help="commande « energy » : nombre de dernières séances éligibles à rendre "
+                        help="commande « search » : nombre de fichiers rendus (défaut 8, au plus 30) ; "
+                             "commande « energy » : nombre de dernières séances éligibles à rendre "
                              "sans --activity/--date/--since (défaut 10) — incompatible avec ces trois")
     parser.add_argument("--gear", metavar="GEAR_ID",
                         help="commandes « inspections » (#135), « shoe-specs » (#298), « shoe-feedback » (#299) et « shoe-usage » (#300) : restreint à cette paire ; commande "
@@ -5524,7 +5694,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--outcome", choices=C.DECISION_OUTCOME,
                         help="commande « decisions » : ne garde que les décisions de cette issue")
     parser.add_argument("--text", action="store_true",
-                        help="commandes « decision-effects », « load-forecast », « plan-templates », « strength », « prevention » et « plan-skeleton » : "
+                        help="commandes « search », « decision-effects », « load-forecast », « plan-templates », « strength », « prevention » et « plan-skeleton » : "
                              "rendu texte lisible (défaut : JSON, comme les autres sous-commandes)")
     parser.add_argument("--active", action="store_true",
                         help="commande « decisions » : exclut « superseded »/« rejected_by_athlete » "
@@ -5557,7 +5727,8 @@ def build_parser() -> argparse.ArgumentParser:
                         help="commandes « pace-curve », « decision-effects », « load-forecast », « plan-templates », « strength » et « plan-skeleton » : "
                              "sortie JSON (déjà le défaut, accepté pour la clarté ; l'emporte sur --text)")
     parser.add_argument("--until", metavar="AAAA-MM-JJ",
-                        help="commande « load-forecast » (#172) : date de fin de la projection (défaut : date de "
+                        help="commande « search » : passages datés de ce jour ou avant ; "
+                             "commande « load-forecast » (#172) : date de fin de la projection (défaut : date de "
                              "l'objectif actif)")
     parser.add_argument("--compare", metavar="FICHIER",
                         help="commande « load-forecast » (#172) : plan modifié à comparer au plan actuel — fichier "
@@ -5733,6 +5904,26 @@ def main(argv=None) -> int:
             GG.write_cache(workspace, GG.normalize_garmin_shoes(raw))
         except (OSError, GG.GarminGearError) as exc:
             raise ConfigError(f"--garmin-gear-json : {exc}")
+    if args.command == "search":
+        if not args.selector or not args.selector.strip():
+            raise ConfigError('commande « search » : la question est obligatoire (ex. search "douleur tibia").')
+        for flag, value in (("--since", args.since), ("--until", args.until)):
+            if value:
+                try:
+                    date.fromisoformat(value)
+                except ValueError:
+                    raise ConfigError(f"{flag} : date AAAA-MM-JJ attendue, « {value} » reçue.")
+        limit = SE.DEFAULT_LIMIT if args.limit is None else args.limit
+        if not 1 <= limit <= SE.MAX_LIMIT:
+            raise ConfigError(f"--limit : un entier entre 1 et {SE.MAX_LIMIT} attendu, « {limit} » reçu.")
+        conn = open_db(workspace, args.db, args.memory, args.rebuild)
+        # Seuls les passages sont rafraîchis : la recherche ne lit aucune autre table, inutile de payer
+        # l'indexation complète et le recalcul des métriques à chaque question.
+        index_search(conn, workspace)
+        conn.commit()
+        result = search(conn, args.selector, SE.parse_kinds(args.kind), args.source, args.since, args.until, limit)
+        print(SE.format_text(result) if args.text and not args.json else json.dumps(result, ensure_ascii=False))
+        return 0 if result["status"] in ("ok", "empty_query") else 1
     conn = open_db(workspace, args.db, args.memory, args.rebuild)
     counts = index_workspace(conn, workspace, args.today)
     if args.command == "garmin-gear-status":

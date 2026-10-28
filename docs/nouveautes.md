@@ -74,6 +74,9 @@ Pour mettre à jour une installation existante : [Passer de la 1.3 à la 1.4](up
 
 ## Chat et machine coach
 
+- **Recherche dans l'historique.** `python3 scripts/arc_index.py search "<mots-clés>"` retrouve le bon passage
+  parmi les séances, bilans, décisions, rapports, `resources/` et les conversations du chat, sans relire les
+  fichiers entiers : les agents s'en servent avant tout grep. Voir [Recherche dans l'historique](search.md).
 - **Fournisseur saturé reconnu.** Une erreur 503 d'OpenRouter (`provider_overloaded`) s'affiche comme un
   fournisseur saturé à réessayer, dans le chat comme dans la synchronisation.
 - **Chat sur téléphone** : plus de saut du fil vers le haut après « Appliquer », puces repliées entières.
