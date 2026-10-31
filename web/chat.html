@@ -64,6 +64,24 @@
             <button type="button" class="quick__btn" data-cmd="/why">/why</button>
             <button type="button" class="quick__btn" data-cmd="/race">/race</button>
             <button type="button" class="quick__btn" data-cmd="/log ">/log</button>
+            <button type="button" class="quick__btn" data-cmd="/shoes">/shoes</button>
+            <button type="button" class="quick__btn" data-cmd="/inspection">/inspection</button>
+            <button type="button" class="quick__btn quick__btn--text" data-agent="sports-director" data-cmd="Trouve-moi une prochaine course : ">Prochaine course</button>
+            <button type="button" class="quick__btn quick__btn--help" id="help-toggle" aria-expanded="false" aria-controls="help" title="Que demander au coach ?">?</button>
+          </div>
+          <div class="help" id="help" hidden>
+            <p class="help__intro">Clique une commande pour l'envoyer, ou écris simplement ta demande : le coach comprend aussi les phrases.</p>
+            <dl class="help__list">
+              <dt>/today</dt><dd>Séance du jour, bilan matinal (HRV, FC de repos, readiness) et météo.</dd>
+              <dt>/week</dt><dd>Où en est la semaine : fait, prévu, reste, charge et garde-fous.</dd>
+              <dt>/why</dt><dd>Pourquoi le coach a pris sa dernière décision (ou celle que tu nommes) : raison, données, avant / après.</dd>
+              <dt>/race</dt><dd>Compte à rebours vers l'objectif en cours, score Trail Shape et plan de course s'il existe. Ne cherche pas de course.</dd>
+              <dt>/log …</dt><dd>Saisie en une phrase : « 2 gels + 500 ml au km 15, genou gauche 3/10, RPE 7 ».</dd>
+              <dt>/shoes [rôle]</dt><dd>Choisir la prochaine paire de chaussures, à partir de la paire en fin de vie.</dd>
+              <dt>/inspection [paire]</dt><dd>Inspection photo d'une paire ; sans nom, liste les paires et leur rappel.</dd>
+              <dt data-agent="sports-director">Prochaine course</dt><dd data-agent="sports-director">Le directeur sportif cherche des courses (sourcées, dates vérifiées) et conseille le prochain objectif depuis ton historique. Précise distance, période, rayon.</dd>
+            </dl>
+            <p class="help__more">Aussi en phrases libres : « remplis la fiche de ma Speedgoat », « analyse ce GPX », « plan de ravitaillement pour dimanche », « compare mes sorties à Tournai ».</p>
           </div>
           <div class="composer__box">
             <label class="sr-only" for="composer-input">Message au coach</label>

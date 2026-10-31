@@ -969,8 +969,10 @@ function renderObjective(s) {
 }
 
 function renderStaff(s) {
-  const all = ["coach", "medical", "nutritionist", "course-strategist"];
+  const all = ["coach", "medical", "nutritionist", "course-strategist", "sports-director"];
   const enabled = new Set((s && s.settings && s.settings.agents) || all);
+  // Commandes rapides et aide qui reposent sur un agent : masquées s'il n'est pas activé.
+  document.querySelectorAll("[data-agent]").forEach((n) => { n.hidden = !enabled.has(n.dataset.agent); });
   const ul = $("#ctx-staff");
   ul.replaceChildren();
   for (const name of all) {
@@ -1091,7 +1093,13 @@ function setupComposer() {
     els.input.style.height = "auto";
     els.input.style.height = `${els.input.scrollHeight}px`;
   });
-  document.querySelectorAll(".quick__btn").forEach((b) => b.addEventListener("click", () => {
+  const help = $("#help");
+  const helpToggle = $("#help-toggle");
+  helpToggle.addEventListener("click", () => {
+    help.hidden = !help.hidden;
+    helpToggle.setAttribute("aria-expanded", String(!help.hidden));
+  });
+  document.querySelectorAll(".quick__btn[data-cmd]").forEach((b) => b.addEventListener("click", () => {
     if (els.input.disabled) return;
     els.input.value = b.dataset.cmd;
     els.input.focus();

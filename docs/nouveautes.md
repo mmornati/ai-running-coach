@@ -74,6 +74,8 @@ Pour mettre à jour une installation existante : [Passer de la 1.3 à la 1.4](up
 
 ## Chat et machine coach
 
+- **Toutes les commandes à portée de clic.** Le chat gagne `/shoes`, `/inspection` et « Prochaine course »
+  (directeur sportif, masqué s'il n'est pas activé), plus un bouton **?** qui dit à quoi sert chaque commande.
 - **Recherche dans l'historique.** `python3 scripts/arc_index.py search "<mots-clés>"` retrouve le bon passage
   parmi les séances, bilans, décisions, rapports, `resources/` et les conversations du chat, sans relire les
   fichiers entiers : les agents s'en servent avant tout grep. Voir [Recherche dans l'historique](search.md).
