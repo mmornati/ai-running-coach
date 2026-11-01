@@ -48,6 +48,8 @@ class FakeOpenCode:
         self.session_exists = True
         self.child_info: dict = {}      # id de session fille -> réponse de GET /session/{id}
         self.child_messages: dict = {}  # id de session fille -> réponse de GET /session/{id}/message/…
+        self.busy: set = set()          # sessions renvoyées « busy » par GET /session/status
+        self.pending: list = []         # permissions renvoyées par GET /permission
         self.subscribers: list = []
         self.stopping = threading.Event()
         self.lock = threading.Lock()
@@ -86,6 +88,10 @@ class FakeOpenCode:
                     return
                 if self.path == "/global/health":
                     return self._json(200, {"healthy": True, "version": O.OPENCODE_TESTED_VERSION})
+                if self.path == "/session/status":
+                    return self._json(200, {s: {"type": "busy"} for s in outer.busy})
+                if self.path == "/permission":
+                    return self._json(200, list(outer.pending))
                 for child_id, info in outer.child_info.items():
                     if self.path == f"/session/{child_id}":
                         return self._json(200, info)
@@ -132,10 +138,13 @@ class FakeOpenCode:
                     return
                 if self.path.startswith("/permission/") and self.path.endswith("/reply"):
                     self._json(200, True)
+                    pid = self.path.split("/")[2]
+                    outer.pending = [x for x in outer.pending if x.get("id") != pid]
                     outer.on_reply(body)
                     return
                 if self.path.endswith("/abort") and self.path.startswith("/session/"):
                     self._json(200, True)
+                    outer.busy.discard(self.path.split("/")[2])
                     if self.path == f"/session/{SID}/abort":
                         outer.publish([{"id": "evt_a", "type": "session.idle", "properties": {"sessionID": SID}}])
                     return
@@ -163,6 +172,11 @@ class FakeOpenCode:
 
     def on_prompt(self):
         sc = self.scenario
+        self.busy |= set(sc.get("busy_on_prompt", ()))
+        self.pending += self._render(sc.get("pending_on_prompt", []))
+        if sc.get("later"):   # évènements publiés après un silence (génération longue et muette)
+            delay, later = sc["later"]
+            threading.Timer(delay, lambda: self.publish(self._render(later))).start()
         if sc.get("heartbeat"):
             def beat():
                 while not self.stopping.is_set():
@@ -691,6 +705,59 @@ class TestBudgetAndTimeouts(OpenCodeCase):
             self.run_turn(fixture("opencode_edit_permission.json"), h)
         self.assertEqual(h.of("done"), [{"reason": "end_turn"}])
         self.assertEqual(self.replies(), [{"reply": "once"}])
+
+
+class TestOrphanedTurns(OpenCodeCase):
+    """Un tour coupé côté arc_chat ne doit pas laisser OpenCode travailler seul (session bloquée)."""
+
+    IDLE = {"id": "e9", "type": "session.idle", "properties": {"sessionID": "$SESSION"}}
+    BUSY = {"id": "e1", "type": "session.status", "properties": {"sessionID": "$SESSION", "status": {"type": "busy"}}}
+
+    def test_failed_turn_aborts_session(self):
+        scenario = {"events": [self.BUSY, {"id": "e3", "type": "session.error", "properties": {
+            "sessionID": "$SESSION", "error": {"name": "UnknownError", "data": {"message": "boom"}}}}]}
+        with self.assertRaises(BackendError):
+            self.run_turn(scenario)
+        self.assertTrue([1 for m, p, b in self.fake.requests if p == f"/session/{SID}/abort"])
+
+    def test_idle_timeout_aborts_when_session_not_busy(self):
+        with mock.patch.object(O, "EVENT_IDLE_TIMEOUT_S", 0.4):
+            with self.assertRaises(BackendError) as cm:
+                self.run_turn({"events": [self.BUSY]})
+        self.assertIn("ne répond plus", str(cm.exception))
+        self.assertTrue([1 for m, p, b in self.fake.requests if p == f"/session/{SID}/abort"])
+
+    def test_silent_generation_waits_while_session_busy(self):
+        text = fixture("opencode_text_only.json")["events"]
+        scenario = {"busy_on_prompt": [SID], "events": [self.BUSY], "later": [1.2, text]}
+        with mock.patch.object(O, "EVENT_IDLE_TIMEOUT_S", 0.4):
+            h = self.run_turn(scenario)
+        self.assertEqual("".join(p["text"] for p in h.of("text_delta")), "Termine.")
+        self.assertEqual(h.of("done"), [{"reason": "end_turn"}])
+        self.assertFalse([1 for m, p, b in self.fake.requests if p.endswith("/abort")])
+
+    def test_missed_permission_answered_after_silence(self):
+        perm = {"id": "per_missed", "sessionID": "$SESSION", "permission": "read", "patterns": ["planning/x.md"],
+                "metadata": {"filepath": "$WS/planning/x.md"}, "always": ["*"], "tool": {}}
+        scenario = {"busy_on_prompt": [SID], "pending_on_prompt": [perm], "events": [self.BUSY],
+                    "after": {"once": [self.IDLE]}}
+        h = Harness(self.ws)
+        with mock.patch.object(O, "EVENT_IDLE_TIMEOUT_S", 0.4):
+            self.run_turn(scenario, h)
+        self.assertEqual([t for t, _ in h.decided], ["fs.read"])
+        self.assertIn(("POST", "/permission/per_missed/reply", {"reply": "once"}), self.fake.requests)
+        self.assertEqual(h.of("done"), [{"reason": "end_turn"}])
+
+    def test_orphan_cleared_before_prompt(self):
+        self.fake.busy = {SID}
+        self.fake.pending = [{"id": "per_old", "sessionID": SID, "permission": "glob", "patterns": ["*"],
+                              "metadata": {}, "tool": {"messageID": "m", "callID": "c"}}]
+        h = self.run_turn(fixture("opencode_text_only.json"))
+        self.assertEqual(h.of("done"), [{"reason": "end_turn"}])
+        paths = [p for m, p, b in self.fake.requests if m == "POST"]
+        self.assertLess(paths.index("/permission/per_old/reply"), paths.index(f"/session/{SID}/abort"))
+        self.assertLess(paths.index(f"/session/{SID}/abort"), paths.index(f"/session/{SID}/prompt_async"))
+        self.assertEqual(self.replies()[0]["reply"], "reject")
 
 
 class TestAbortSignal(OpenCodeCase):

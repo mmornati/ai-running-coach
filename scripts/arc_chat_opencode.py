@@ -690,10 +690,71 @@ class OpenCodeBackend(ChatBackend):
             if lease is not None:
                 lease.close()
 
+    def _busy_sessions(self) -> set:
+        """Sessions occupées selon `GET /session/status` ({id: {type}} ; les inactives sont absentes)."""
+        status = self._request("GET", "/session/status", timeout=10)
+        if not isinstance(status, dict):
+            return set()
+        return {k for k, v in status.items() if isinstance(v, dict) and v.get("type") in ("busy", "retry")}
+
+    def _pending_permissions(self, sessions: set) -> list:
+        """Permissions en attente côté serveur pour `sessions` (`GET /permission`)."""
+        pending = self._request("GET", "/permission", timeout=10)
+        if not isinstance(pending, list):
+            return []
+        return [p for p in pending if isinstance(p, dict) and p.get("sessionID") in sessions and p.get("id")]
+
+    def _clear_orphan(self, sid: str) -> None:
+        """Arrête un tour précédent resté actif sur la session (tour coupé par arc_chat sans abort).
+
+        Les tours d'une conversation sont sérialisés : une session encore occupée au début d'un
+        tour n'a plus personne pour répondre à ses permissions, et le nouveau message resterait
+        bloqué derrière elle.
+        """
+        try:
+            if sid not in self._busy_sessions():
+                return
+            for perm in self._pending_permissions({sid}):
+                try:
+                    self._reply(sid, perm["id"], False, REFUSAL_DENY)
+                except BackendError:
+                    pass
+            self._request("POST", f"/session/{sid}/abort", timeout=10)
+            deadline = time.monotonic() + ABORT_GRACE_S
+            while sid in self._busy_sessions() and time.monotonic() < deadline:
+                time.sleep(0.2)
+        except BackendError:
+            pass   # serveur ancien ou sans ces endpoints : le tour tente sa chance
+
+    def _still_working(self, turn: _Turn) -> bool:
+        """Délai d'inactivité atteint : OpenCode travaille-t-il encore (génération longue, muette) ?
+
+        Si oui, les permissions posées sans qu'on ait reçu l'évènement sont rattrapées ici.
+        """
+        try:
+            known = turn.known_sessions()
+            if not known & self._busy_sessions():
+                return False
+            for perm in self._pending_permissions(known):
+                with turn.lock:
+                    if any(perm["id"] in ids for ids in turn.outstanding.values()):
+                        continue
+                    turn.awaiting += 1
+                    turn.outstanding.setdefault(perm["sessionID"], set()).add(perm["id"])
+                worker = threading.Thread(target=self._answer_permission_guarded,
+                                          args=(perm["sessionID"], turn, perm),
+                                          name="opencode-permission", daemon=True)
+                turn.workers.append(worker)
+                worker.start()
+            return True
+        except BackendError:
+            return False
+
     def _run_turn(self, ctx: TurnContext, user_message: str) -> None:
         self._ensure_server()
         provider_id, model_id = split_model(self._model())
         sid = self._session_id(ctx)
+        self._clear_orphan(sid)
         turn = _Turn(ctx)
         turn.root = sid
         events = self._open_events()
@@ -708,6 +769,9 @@ class OpenCodeBackend(ChatBackend):
             self._consume(sid, turn, events)
         except BackendError:
             self._emit_usage(turn, only_if_known=True)   # coût partiel du tour interrompu
+            if not turn.aborted:
+                # Sinon OpenCode continue seul et ses permissions restent sans réponse.
+                self._abort(sid, turn)
             raise
         finally:
             events.stop()  # type: ignore[attr-defined]
@@ -789,7 +853,11 @@ class OpenCodeBackend(ChatBackend):
                 self._abort(sid, turn)
                 raise BackendError("Le tour a dépassé la durée maximale autorisée : il a été interrompu.")
             if now - last_event > EVENT_IDLE_TIMEOUT_S:   # vérifié à CHAQUE tour de boucle (battements compris)
-                raise BackendError("Le serveur OpenCode ne répond plus (aucun évènement).")
+                # Une longue génération (plan complet d'un sous-agent) peut rester muette plus
+                # longtemps : tant qu'OpenCode dit la session occupée, on attend (borné par turn_timeout).
+                if turn.aborted or not self._still_working(turn):
+                    raise BackendError("Le serveur OpenCode ne répond plus (aucun évènement).")
+                last_event = time.monotonic()
             try:
                 event = events.get(timeout=0.2)
             except queue.Empty:
