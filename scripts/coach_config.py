@@ -11,7 +11,7 @@ Ce module ne dépend que de la bibliothèque standard (voir CONTRIBUTING.md).
 
 Sous-commandes :
     merge-json          insère une clé dans un fichier JSON, en préservant le reste
-    merge-permissions   fusionne des règles permissions.allow/ask/deny (union, rien n'est retiré)
+    merge-permissions   fusionne des règles permissions.allow/ask/deny et des hooks (union, rien n'est retiré)
     set-claude-hook     pose UN hook Claude Code d'un événement, en remplaçant ses versions antérieures
     approve-claude-mcp  pré-approuve un serveur MCP de projet dans ~/.claude.json
     get                 lit une clé TOML (user.toml > workspace.toml > défaut)
@@ -438,6 +438,20 @@ def cmd_merge_permissions(args) -> int:
             if rule not in current:
                 current.append(rule)
                 added += 1
+    # Hooks (ex. PreToolUse de la session Telegram) : union par événement, sans doublon.
+    template_hooks = read_json(Path(args.template)).get("hooks", {})
+    if template_hooks:
+        hooks = data.setdefault("hooks", {})
+        if not isinstance(hooks, dict):
+            raise ConfigError(f"{path} : « hooks » n'est pas un objet JSON.")
+        for event, entries in template_hooks.items():
+            current = hooks.setdefault(event, [])
+            if not isinstance(current, list):
+                raise ConfigError(f"{path} : « hooks.{event} » n'est pas une liste.")
+            for entry in entries:
+                if entry not in current:
+                    current.append(entry)
+                    added += 1
     if not added:
         print(f"inchangé: {path}")
         return 0

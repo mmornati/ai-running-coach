@@ -205,17 +205,35 @@ La session redémarre chaque nuit (`[telegram_chat].daily_restart`, contexte neu
 
 ### Ce que la session peut faire — et ne fait pas
 
-`install` fusionne `templates/settings.telegram.json` dans `.claude/settings.local.json` du workspace
-(sans rien retirer de vos règles). Ce fichier suit la politique du chat (`config/chat-policy.toml`) et
-les refus de la synchronisation (`scripts/lib/sync_tools.sh`) :
+Le mode est piloté par des messages distants : on suppose que **quiconque contrôle le bot** (compte
+autorisé compromis, jeton du bot volé) peut dicter ce que la session essaie de faire. Le modèle de
+sécurité repose donc sur la politique du chat (`config/chat-policy.toml`), appliquée par un hook
+`PreToolUse` — et non sur la seule bonne volonté du modèle. `install` fusionne
+`templates/settings.telegram.json` (permissions **et** hook) dans `.claude/settings.local.json` du
+workspace, sans rien retirer de vos règles :
 
-- **autorisé d'office** : lectures (fichiers du workspace hors secrets, outils `get_*` de Garmin), écriture
-  sous `activities/`, `medical/`, `nutrition/`, `planning/`, `rapports/` et `gear/` seulement, les scripts
-  listés par la politique, la météo et les cartes ;
-- **soumis à approbation** (`ask`) : toute écriture Garmin, COROS, Strava ou intervals.icu (envoi d'une
-  séance, `icu_update_*`…) — jamais autorisée d'office. Le skill `telegram-chat` exige en plus un « OK »
-  explicite dans un message Telegram suivant ;
-- **interdit** (`deny`) : suppressions et désinscriptions, lecture des fichiers secrets.
+- **Le hook** (`scripts/arc_telegram_hook.py`) soumet chaque commande shell, chemin lu ou écrit et URL à
+  `arc_chat_policy.Policy.decide`, comme le chat du tableau de bord : un script n'est autorisé que sous
+  son préfixe **et** avec les options déclarées (`--python`, `--workspace`, `--tokens-dir`,
+  `--garmin-host`… sont refusées) ; un chemin hors du workspace ou secret est refusé ; une écriture hors de
+  `activities/`, `medical/`, `nutrition/`, `planning/`, `rapports/`, `gear/` est refusée ; un domaine web
+  hors liste demande l'approbation. Toute erreur du hook vaut refus.
+- **`allow`** (sans hook, en filet) : lectures bornées à ces dossiers de données et au moteur
+  (`skills/`, `agents/`, `docs/`), outils de lecture `get_*` de Garmin, écritures sous les dossiers de
+  données seulement, météo (`wttr.in`). **Aucune règle shell à joker** (`Bash(script:*)`), aucun `Read`,
+  `WebFetch` ou `Write` sans périmètre.
+- **`ask`** : toute écriture Garmin, COROS, Strava ou intervals.icu (envoi d'une séance, `icu_update_*`…) —
+  jamais autorisée d'office. Le skill `telegram-chat` exige en plus un « OK » explicite dans un message
+  Telegram suivant ; `--write`, `--mark-retired` et `--apply` des scripts demandent l'approbation.
+- **`deny`** : suppressions et désinscriptions ; fichiers secrets (`.env`, `*.token`, `~/.garminconnect`,
+  `~/.claude/.credentials.json`, `~/.ssh`, le `.env` du plugin, `~/.config/ai-running-coach`) ; options de
+  script détournantes ; **modification des réglages et du moteur** (`.claude/`, `.mcp.json`, `scripts/`,
+  `config/`, `skills/`, `agents/`…) pour que la session ne puisse ni élargir ses droits ni changer le hook.
+
+`tests/lint/test_telegram_chat_lint.py` verrouille ces propriétés. Limites connues : la syntaxe
+des motifs `~/` et `//` de Claude Code et le comportement d'un hook « allow » face aux règles `ask` n'ont pas
+été éprouvés sur une session réelle ; un compte autorisé reste un utilisateur de confiance (il lit vos
+données de santé).
 
 Le mode de permission par défaut est `default` (et non `acceptEdits`, qui validerait toute écriture du
 workspace). Si la session a besoin d'une approbation que le plugin ne relaie pas, elle attend à son

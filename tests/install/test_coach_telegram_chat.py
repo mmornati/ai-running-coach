@@ -152,6 +152,14 @@ class TestCoachTelegramChat(InstallAsserts):
             self.assertIn("mcp__garmin__delete_workout", deny)
             self.assertFalse(set(allow) & set(deny), "règle à la fois autorisée et interdite")
             self.assertFalse(set(allow) & set(ask), "règle à la fois autorisée et soumise à approbation")
+            hooks = json.loads(settings.read_text())["hooks"]["PreToolUse"]
+            self.assertEqual(len(hooks), 1)
+            self.assertIn("arc_telegram_hook.py", hooks[0]["hooks"][0]["command"])
+            # Idempotent : un second install n'ajoute ni règle ni hook.
+            self.assertSucceeded(sb.script("coach-telegram-chat.sh", "install", **NO_ENV_TOKEN, ARC_FAKE_UNAME="Linux"))
+            again = json.loads(settings.read_text())
+            self.assertEqual(again["permissions"]["allow"], allow)
+            self.assertEqual(len(again["hooks"]["PreToolUse"]), 1)
 
     # -- services ----------------------------------------------------------------
     def test_linux_install_writes_a_systemd_unit_on_a_dedicated_tmux_socket(self):
