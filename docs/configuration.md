@@ -525,7 +525,7 @@ Chaque règle (R1 à R8) a sa propre clé `severity_<id>` — seule R5 (qualité
 après un verdict santé rouge) bloque par défaut, les autres sont `warn`. Le
 détail de chaque règle (R2 : hausse de volume, R3 : hausse de D+, R4 :
 monotonie de Foster, R6 : part de la plus longue sortie, R7 : deux séances de
-qualité rapprochées, R8 : pic de charge d'une séance) est dans [Les garde-fous](guardrails.md#les-huit-regles).
+qualité rapprochées, R8 : pic de charge d'une séance) est dans [Les garde-fous](guardrails.md#les-regles).
 
 Le moteur de garde-fous déterministe ([`scripts/arc_guardrails.py`](guardrails.md))
 est un second avis purement calculé, consulté par le coach avant d'écrire une

@@ -259,7 +259,7 @@ Remote Control) et l'IDE partagent. Il délègue tout à l'agent `coach` et au s
    ou rien avec intervals.icu/Strava) et ne rien signaler de plus que le segment « FIT non
    téléchargé » de l'étape 2. Jamais sur une activité qui n'est pas nouvelle dans ce run.
 3b. **Alerte d'usure des chaussures (#132) — une seule fois par franchissement, sans état.**
-   Dresser la liste des séances running/trail/hiking **synchronisées pour la première fois dans
+   Dresser la liste des séances running/trail (jamais hiking/walking) **synchronisées pour la première fois dans
    CE run** : fichier d'activité créé à l'étape 1, ou fichier « pas encore synchronisé »
    (`/log`, #67) qui reçoit ses premiers champs Garmin. Une séance dont le fichier portait déjà
    ses données Garmin (simple re-fusion, second passage le même jour) n'en fait **jamais** partie.
@@ -297,15 +297,15 @@ Remote Control) et l'IDE partagent. Il délègue tout à l'agent `coach` et au s
    ne rien ajouter.** Sinon, pour chaque DATE distincte de ces séances, lancer
    `python3 scripts/arc_guardrails.py session-spike --date <AAAA-MM-JJ> --json` et ne garder que les
    éléments de `sessions` qui sont une de ces séances (`garmin_activity_id` / `intervals_activity_id` /
-   `strava_activity_id` / `coros_activity_id`, ou `source_path`) ET portent `alert: true` (catégorie
-   `moderate` ou `large`). Pour chacun, ajouter à la ligne `Alerte :` unique (` ; `, jamais une ligne
-   de plus) le texte du champ `text`, abrégé : « Pic de charge <catégorie> : <ratio> × la plus longue
-   sortie des 30 jours (<km> km vs <km> km le <date>), hazard ratio <HR> ». Les catégories `reference`
-   et `low`, `insufficient_history` (« historique insuffisant ») et `no_distance` ne produisent
-   **aucune** ligne. Pas de santé en jeu : non soumis à `[health].morning_check`. Sans état, aucun
+   `strava_activity_id` / `coros_activity_id`, ou `source_path`) ET portent `alert: true` (ratio > 1,10 :
+   catégorie `low`, `moderate` ou `large`). Pour chacun, ajouter à la ligne `Alerte :` unique
+   (` ; `, jamais une ligne de plus) le champ `notification` tel quel, par exemple « Pic de charge :
+   16 km = 1,45 × la plus longue sortie des 30 j (11 km le 25/10) ». La catégorie `reference`,
+   `insufficient_history` (« historique insuffisant ») et `no_distance` ne produisent **aucune**
+   ligne. Pas de santé en jeu : non soumis à `[health].morning_check`. Sans état, aucun
    fichier écrit, aucune décision, jamais de modification du plan. Échec de la commande : ignorer
-   silencieusement (non bloquant, jamais `ERREUR :`). Un repère de risque relatif de groupe (Nielsen
-   et al., BJSM 2025;59(17):1203), jamais un diagnostic ni une probabilité de blessure.
+   silencieusement (non bloquant, jamais `ERREUR :`). Un repère de risque relatif de groupe (Frandsen
+   et al., BJSM 2025;59(17):1203-1210), jamais un diagnostic ni une probabilité de blessure.
 4. **Garde-fou r5, bilan rouge (#52/#53) — jamais d'écriture de plan ni de push ici.** Si
    un `medical/YYYY-MM-DD_health.md` persisté à l'étape 1 porte `verdict: "red"`, chercher
    dans `planning/` une semaine (`kind: week`) dont une séance de qualité (intensité
@@ -353,7 +353,7 @@ dans la langue des documents, sans Markdown à l'intérieur. C'est ce bloc que
 
 **Une seule ligne `Alerte :` au total**, jamais une par source : si plusieurs
 alertes s'appliquent en même temps (FIT non téléchargé, fichier hors contrat, chaussure
-ayant atteint son seuil — étape 3b, pic de charge d'une séance modéré/important — étape 3d, matériel Garmin non associé ou en désaccord avec la
+ayant atteint son seuil — étape 3b, pic de charge d'une séance (> 10 % au-dessus de la plus longue sortie) — étape 3d, matériel Garmin non associé ou en désaccord avec la
 déclaration de l'athlète, #133 — « Matériel : Brooks Ghost non associée (à lier via le coach) »
 ou « Matériel : Garmin indique Nike Pegasus, ta déclaration (Salomon S/Lab) est conservée »…),
 les concaténer sur cette même ligne, séparées par ` ; ` — le budget de 5

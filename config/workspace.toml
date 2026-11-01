@@ -333,9 +333,9 @@ severity_r4_monotony_projected = "warn"
 severity_r5_quality_after_red = "block"
 severity_r6_long_run_share = "warn"
 severity_r7_consecutive_quality = "warn"
-# R8 : pic de charge d'UNE séance (distance / plus longue sortie des 30 jours précédents,
-# Nielsen et al., BJSM 2025;59(17):1203). Aucun seuil à régler : les bornes sont celles de
-# l'article ; se déclenche à partir de « modéré » (ratio > 1,30).
+# R8 : pic de charge d'UNE séance (distance / plus longue sortie running/trail des 30 jours
+# précédents, Frandsen et al., BJSM 2025;59(17):1203-1210). Aucun seuil à régler : se
+# déclenche dès ratio > 1,10 (l'étude associe toute hausse > 10 % à plus de blessures de surcharge).
 severity_r8_session_spike = "warn"
 
 [chat]

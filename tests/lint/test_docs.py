@@ -15,6 +15,7 @@ REPO = Path(__file__).resolve().parent.parent.parent
 DOCS = REPO / "docs"
 
 MARKDOWN_LINK = re.compile(r"\[[^\]]*\]\(([^)\s]+)(?:\s+\"[^\"]*\")?\)")
+ATTR_LIST_ID = re.compile(r"\s*\{#([A-Za-z0-9_-]+)\}\s*$")
 NAV_ENTRY = re.compile(r"^\s+-\s+[^:]+:\s*([A-Za-z0-9_./-]+\.md)\s*$", re.MULTILINE)
 
 
@@ -46,11 +47,17 @@ class TestInternalLinks(unittest.TestCase):
                 page = (path.parent / file_part).resolve() if file_part else path
                 if not page.exists():
                     continue                       # déjà signalé par le test précédent
-                slugs = {
-                    _slugify(line.lstrip("#").strip())
-                    for line in page.read_text(encoding="utf-8").splitlines()
-                    if line.startswith("#")
-                }
+                slugs = set()
+                for line in page.read_text(encoding="utf-8").splitlines():
+                    if not line.startswith("#"):
+                        continue
+                    heading = line.lstrip("#").strip()
+                    # attr_list (mkdocs.yml) : `## Titre {#id-stable}` fixe l'ancre explicitement.
+                    explicit = ATTR_LIST_ID.search(heading)
+                    if explicit:
+                        slugs.add(explicit.group(1))
+                        heading = heading[:explicit.start()].strip()
+                    slugs.add(_slugify(heading))
                 if anchor not in slugs:
                     broken.append(f"{path.relative_to(REPO)} → {target}")
         self.assertFalse(broken, "ancres inexistantes :\n  " + "\n  ".join(broken))

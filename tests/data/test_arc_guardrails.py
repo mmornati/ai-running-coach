@@ -1416,7 +1416,7 @@ class TestCLI(WorkspaceCase):
 
 
 # ---------------------------------------------------------------------------
-# R8 — pic de charge d'une séance (#338, Nielsen et al., BJSM 2025)
+# R8 — pic de charge d'une séance (#338, Frandsen et al., BJSM 2025)
 # ---------------------------------------------------------------------------
 
 
@@ -1511,12 +1511,60 @@ class TestR8Rule(unittest.TestCase):
         self.assertEqual(violation["severity"], "warn")
         self.assertEqual(violation["session_dates"], ["2026-09-24"])
         self.assertEqual(violation["values"]["observed"], 1.6)
-        self.assertIn("Nielsen", violation["message"])
+        self.assertIn("> 10 %", violation["message"])
+        self.assertIn("(ratio 1,60)", violation["message"])
+        self.assertIn("sans gradient régulier", violation["message"])
+        self.assertEqual(violation["values"]["threshold"], 1.10)
 
-    def test_low_category_is_visible_but_not_a_violation(self):
+    def test_low_category_is_a_violation_too(self):
         spikes = self._spikes([session("2026-09-24", planned_distance_m=12000)], [hist("2026-09-10", 10.0)])
         self.assertEqual(spikes[0]["category"], "low")
+        self.assertEqual(spikes[0]["hazard_ratio"], 1.64)
+        violation, _ = G._eval_r8(spikes, DEFAULT_GCONF)
+        self.assertEqual(violation["severity"], "warn")
+        self.assertIn("HR 1,64 (IC95 1,31–2,05)", violation["message"])
+
+    def test_reference_category_is_not_a_violation(self):
+        spikes = self._spikes([session("2026-09-24", planned_distance_m=11000)], [hist("2026-09-10", 10.0)])
+        self.assertEqual(spikes[0]["category"], "reference")
         self.assertEqual(G._eval_r8(spikes, DEFAULT_GCONF), (None, None))
+
+    def test_observed_is_the_raw_ratio(self):
+        spikes = self._spikes([session("2026-09-24", planned_distance_m=11004)], [hist("2026-09-10", 10.0)])
+        violation, _ = G._eval_r8(spikes, DEFAULT_GCONF)
+        self.assertEqual(violation["values"]["observed"], 1.1004)
+        self.assertEqual(spikes[0]["ratio"], 1.1)
+
+    def test_hiking_and_walking_are_not_evaluated(self):
+        for sport in ("hiking", "walking"):
+            self.assertEqual(self._spikes([session("2026-09-24", sport=sport, planned_distance_m=25000)],
+                                          [hist("2026-09-10", 10.0)]), [])
+        self.assertEqual(G.SPIKE_SPORTS, ("running", "trail"))
+
+    def test_past_and_already_done_days_are_not_evaluated(self):
+        sessions = [session("2026-09-18", planned_distance_m=30000),    # passée
+                    session("2026-09-22", planned_distance_m=30000),    # déjà courue ce jour-là
+                    session("2026-09-24", planned_distance_m=30000)]
+        spikes = self._spikes(sessions, [hist("2026-09-10", 10.0), hist("2026-09-22", 5.0)])
+        self.assertEqual([e["date"] for e in spikes], ["2026-09-24"])
+
+    def test_same_day_sessions_are_each_compared_on_their_own(self):
+        sessions = [session("2026-09-24", planned_distance_m=8000), session("2026-09-24", planned_distance_m=16000)]
+        spikes = self._spikes(sessions, [hist("2026-09-10", 10.0)])
+        self.assertEqual([e["category"] for e in spikes], ["reference", "moderate"])
+        # le matin (8 km) n'entre pas dans l'historique du soir : même jour exclu
+        self.assertEqual(spikes[1]["reference_distance_m"], 10000.0)
+
+    def test_nothing_to_evaluate_has_its_own_reason_code(self):
+        _, skip = G._eval_r8([], DEFAULT_GCONF)
+        self.assertEqual(skip["reason_code"], "nothing_to_evaluate")
+
+    def test_french_formatting_and_short_notification(self):
+        ev = G.evaluate_spike(date(2026, 10, 30), 16000.0, [hist("2026-10-25", 11.0)])
+        self.assertEqual(G.spike_notification(ev),
+                         "Pic de charge : 16 km = 1,45 × la plus longue sortie des 30 j (11 km le 25/10)")
+        self.assertIn("(ratio 1,45)", G.spike_text(ev))
+        self.assertIn("catégorie modéré, HR 1,52 (IC95 1,16–2,00)", G.spike_text(ev))
 
     def test_large_planned_session(self):
         spikes = self._spikes([session("2026-09-24", planned_distance_m=25000)], [hist("2026-09-10", 10.0)])
@@ -1554,7 +1602,7 @@ class TestR8Rule(unittest.TestCase):
         spikes = self._spikes([session("2026-09-22", sport="cycling", planned_distance_m=90000)], [])
         self.assertEqual(spikes, [])
         _, skip = G._eval_r8(spikes, DEFAULT_GCONF)
-        self.assertEqual(skip["reason_code"], "insufficient_history")
+        self.assertEqual(skip["reason_code"], "nothing_to_evaluate")
 
     def test_earlier_planned_session_of_the_week_is_history(self):
         sessions = [session("2026-09-22", planned_distance_m=10000),
@@ -1568,14 +1616,15 @@ class TestR8Rule(unittest.TestCase):
         sessions = [session("2026-09-22", planned_distance_m=30000),
                     session("2026-09-26", planned_distance_m=12000)]
         spikes = self._spikes(sessions, [hist("2026-09-22", 8.0)], today=date(2026, 9, 25))
-        self.assertEqual(spikes[1]["reference_distance_m"], 8000.0)   # le réalisé, pas les 30 km prévus
-        self.assertEqual(spikes[1]["category"], "moderate")
+        self.assertEqual(len(spikes), 1)   # la séance du 22 est passée : plus évaluée
+        self.assertEqual(spikes[0]["reference_distance_m"], 8000.0)   # le réalisé, pas les 30 km prévus
+        self.assertEqual(spikes[0]["category"], "moderate")
 
     def test_past_planned_session_without_activity_is_not_history(self):
         sessions = [session("2026-09-22", planned_distance_m=30000),
                     session("2026-09-26", planned_distance_m=12000)]
         spikes = self._spikes(sessions, [], today=date(2026, 9, 25))
-        self.assertEqual(spikes[1]["status"], "insufficient_history")
+        self.assertEqual(spikes[0]["status"], "insufficient_history")
 
     def test_excluded_planned_session_is_not_history(self):
         sessions = [session("2026-09-22", planned_distance_m=30000, status="cancelled"),
@@ -1646,7 +1695,8 @@ class TestR8OnWorkspace(WorkspaceCase):
         self.assertEqual(ev["hazard_ratio"], 1.52)
         self.assertEqual(ev["avg_hr_bpm"], 148)
         self.assertTrue(ev["alert"])
-        self.assertEqual(out["alerts"], [ev["text"]])
+        self.assertEqual(out["alerts"], [ev["notification"]])
+        self.assertEqual(ev["notification"], "Pic de charge : 12,3 km = 1,54 × la plus longue sortie des 30 j (8 km le 01/09)")
         self.assertIn("bjsm.bmj.com", out["source"])
 
     def test_session_spike_excludes_the_day_and_ignores_bike(self):
@@ -1658,12 +1708,71 @@ class TestR8OnWorkspace(WorkspaceCase):
         self.assertFalse(out["sessions"][0]["alert"])
         self.assertEqual(out["alerts"], [])
 
-    def test_session_spike_low_category_is_not_an_alert(self):
+    def test_session_spike_low_category_is_an_alert(self):
         self._activity("2026-09-10", 10.0)
         self._activity("2026-09-20", 12.0)
         out = json.loads(self._run("session-spike", "--date", "2026-09-20").stdout)
         self.assertEqual(out["sessions"][0]["category"], "low")
+        self.assertEqual(out["sessions"][0]["hazard_ratio"], 1.64)
+        self.assertEqual(out["alerts"], ["Pic de charge : 12 km = 1,20 × la plus longue sortie des 30 j (10 km le 10/09)"])
+
+    def test_session_spike_reference_category_is_not_an_alert(self):
+        self._activity("2026-09-10", 10.0)
+        self._activity("2026-09-20", 11.0)
+        out = json.loads(self._run("session-spike", "--date", "2026-09-20").stdout)
+        self.assertEqual(out["sessions"][0]["category"], "reference")
         self.assertEqual(out["alerts"], [])
+
+    def test_session_spike_ignores_hiking_as_session_and_as_reference(self):
+        self._activity("2026-09-10", 25.0, sport="hiking")      # une rando n'est pas une référence
+        self._activity("2026-09-12", 10.0, sport="running")
+        self._activity("2026-09-20", 25.0, sport="hiking")      # ni une séance évaluée
+        self._activity("2026-09-20", 12.0, sport="trail")
+        out = json.loads(self._run("session-spike", "--date", "2026-09-20").stdout)
+        self.assertEqual([s["sport"] for s in out["sessions"]], ["trail"])
+        self.assertEqual(out["sessions"][0]["reference_distance_m"], 10000.0)
+
+    def test_hiking_is_not_history_in_build_context(self):
+        self._activity("2026-09-10", 22.0, sport="hiking")
+        self.index()
+        config = I.load_config(self.ws)
+        ctx = G.build_context(self.conn, config, G.guardrail_settings(config), date(2026, 9, 21), date(2026, 9, 20))
+        self.assertEqual(ctx["spike_history"], [])
+
+    def test_upcoming_sessions_of_a_separate_week_file_are_history(self):
+        """Un fichier par semaine : la sortie prévue la semaine d'avant (pas encore courue)
+        est la référence de la semaine évaluée — lue dans l'index, pas dans le fichier évalué."""
+        for week_start, day, km in (("2026-09-21", "2026-09-23", 20000), ("2026-09-28", "2026-09-30", 8000)):
+            self.write(f"planning/{week_start}_semaine.md",
+                       {"kind": "week", "week_start": week_start, "location": "Tournai",
+                        "sessions": [{"date": day, "sport": "trail", "title": "Sortie",
+                                      "intensity": "endurance", "planned_distance_m": km}]})
+        self.index()
+        config = I.load_config(self.ws)
+        ctx = G.build_context(self.conn, config, G.guardrail_settings(config), date(2026, 10, 5), date(2026, 9, 20))
+        history = [(h["date"], h["source"]) for h in ctx["spike_history"]]
+        self.assertIn(("2026-09-23", "plan"), history)
+        self.assertIn(("2026-09-30", "plan"), history)
+        week_ = {"week_start": "2026-10-05", "location": "Tournai",
+                 "sessions": [{"date": "2026-10-08", "sport": "trail", "title": "Longue",
+                               "intensity": "endurance", "planned_distance_m": 30000}]}
+        result = G.evaluate(week_, ctx, G.guardrail_settings(config))
+        ev = result["context"]["session_spike"][0]
+        self.assertEqual(ev["reference_distance_m"], 20000.0)
+        self.assertEqual(ev["category"], "moderate")
+        self.assertEqual(ev["reference_source"], "plan")
+
+    def test_completed_activity_replaces_a_future_plan_of_the_same_day(self):
+        self.write("planning/2026-09-21_semaine.md",
+                   {"kind": "week", "week_start": "2026-09-21", "location": "Tournai",
+                    "sessions": [{"date": "2026-09-23", "sport": "trail", "title": "Sortie",
+                                  "intensity": "endurance", "planned_distance_m": 30000}]})
+        self._activity("2026-09-23", 9.0)
+        self.index()
+        config = I.load_config(self.ws)
+        ctx = G.build_context(self.conn, config, G.guardrail_settings(config), date(2026, 9, 28), date(2026, 9, 22))
+        self.assertEqual([(h["date"], h["distance_m"], h["source"]) for h in ctx["spike_history"]],
+                         [("2026-09-23", 9000.0, "activity")])
 
     def test_session_spike_text_and_day_without_run(self):
         proc = self._run("session-spike", "--date", "2026-09-20", "--text")

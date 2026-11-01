@@ -295,10 +295,10 @@ Alerte : aucune
 ```
 
 **Pic de charge d'une séance (#338).** Quand une séance de course nouvellement synchronisée
-dépasse nettement la plus longue sortie des 30 jours précédents (ratio > 1,30, catégories
-« modéré » ou « important » de [R8](guardrails.md#les-huit-regles)), un segment s'ajoute à la ligne
-`Alerte :` — par exemple `Alerte : Pic de charge modéré : 1,54 × la plus longue sortie des 30 jours
-(12,3 km vs 8 km le 2026-08-25), hazard ratio 1,52`. Aucune ligne de plus, rien d'écrit.
+dépasse de plus de 10 % la plus longue sortie running/trail des 30 jours précédents
+([R8](guardrails.md#r8-pic-de-charge)), un segment s'ajoute à la ligne `Alerte :` — par exemple
+`Alerte : Pic de charge : 16 km = 1,45 × la plus longue sortie des 30 j (11 km le 25/10)`.
+Aucune ligne de plus, rien d'écrit.
 
 **Variante `Pourquoi :` (#56).** Quand une `decision` (garde-fou, bilan
 matinal rouge…) est active pour aujourd'hui ou demain, la 5<sup>e</sup> ligne

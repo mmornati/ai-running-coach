@@ -30,7 +30,7 @@ câblage.
 <!-- /arc-video -->
 
 
-## Les huit règles
+## Les huit règles {#les-regles}
 
 | id | vérifie | sévérité par défaut |
 |---|---|---|
@@ -51,49 +51,66 @@ Seuils et sévérités : `[guardrails]` de `config/workspace.toml`, voir
     scientifiques. Remettez `severity_r1_acwr_projected = "block"` dans
     `[guardrails]` si vous préférez la fermeté.
 
-## R8 : pic de charge d'une séance
+## R8 : pic de charge d'une séance {#r8-pic-de-charge}
 
 R1 et R6 regardent la semaine ; R8 regarde **une séance** et complète les deux.
-D'après Nielsen R. *et al.*, *Br J Sports Med* 2025;59(17):1203
-([article](https://bjsm.bmj.com/content/59/17/1203)) :
+D'après Frandsen J.S.B. *et al.* (dernier auteur Nielsen R.O.), « How much
+running is too much? Identifying high-risk running sessions in a 5200-person
+cohort study », *Br J Sports Med* 2025;59(17):1203-1210,
+[doi 10.1136/bjsports-2024-109380](https://bjsm.bmj.com/content/59/17/1203).
+Selon le résumé de l'article, la cohorte compte 5205 coureurs (âge moyen
+45,8 ans, 22 % de femmes), suivis 18 mois avec des données Garmin
+(588 071 séances).
 
-`ratio = distance de la séance / plus longue distance des séances course des 30 jours précédents`
+`ratio = distance de la séance / plus longue distance de course des 30 jours précédents`
 
 Le jour de la séance est exclu ; la fenêtre est `[J-30, J-1]` (J-30 inclus, J-31
-exclu : choix du projet). Seule la famille course à pied compte (la même que
-R6) : un vélo n'est ni évalué ni pris comme référence. Hazard ratios de
-blessure de surcharge rapportés par l'article :
+exclu : choix du projet). Seuls `running` (route, tapis) et `trail` comptent,
+des deux côtés : le trail est inclus parce que l'étude compte toute séance de
+course enregistrée ; **randonnée et marche sont exclues** (contrairement à R6),
+et un vélo n'est ni évalué ni pris comme référence. Hazard ratios de blessure de
+surcharge rapportés par l'article :
 
 | Catégorie | Ratio | Hazard ratio (IC95) |
 |---|---|---|
 | référence | ≤ 1,10 | 1 |
-| faible | ]1,10 ; 1,30] | 1,64 (1,31-2,05) |
-| modéré | ]1,30 ; 2,00] | 1,52 (1,16-2,00) |
-| important | > 2,00 | 2,28 (1,50-3,48) |
+| faible | ]1,10 ; 1,30] | 1,64 (1,31–2,05) |
+| modéré | ]1,30 ; 2,00] | 1,52 (1,16–2,00) |
+| important | > 2,00 | 2,28 (1,50–3,48) |
 
-- **Plan** : R8 évalue chaque séance planifiée de la semaine qui porte une
-  `planned_distance_m`. Historique = activités **réalisées** de la fenêtre +
-  séances planifiées antérieures de la même semaine (le réalisé remplace le plan
-  du même jour ; une séance passée sans activité ne compte pas). Elle se
-  déclenche à partir de « modéré » (`warn`, jamais bloquante) ; « faible » reste
-  visible dans `context.session_spike`.
+R8 se déclenche dès ratio **> 1,10**, quelle que soit la catégorie : l'étude
+conclut que le risque de blessure de surcharge augmente dès +10 %, et la
+catégorie « faible » a même le hazard ratio ponctuel le plus élevé. Les trois
+catégories ne forment pas un gradient régulier ; le message n'en suggère aucun
+(catégorie et hazard ratio exact restent dans le JSON).
+
+- **Plan** : R8 évalue chaque séance planifiée de course dont la date est
+  aujourd'hui ou à venir, qui porte une `planned_distance_m` et sans activité de
+  course déjà réalisée ce jour-là (une séance faite relève de `session-spike`).
+  Historique = activités **réalisées** de la fenêtre + séances planifiées encore
+  à venir (lues dans l'index, tous fichiers semaine confondus, y compris quand
+  chaque semaine a son fichier) + séances planifiées antérieures de la même
+  semaine. Le réalisé remplace le plan du même jour ; une séance passée sans
+  activité ne compte pas. `warn`, jamais bloquante.
+- **Plusieurs séances le même jour** : chacune est comparée séparément (la
+  « séance unique » de l'étude). Conséquence : la séance du matin ne compte pas
+  dans l'historique de celle du soir, puisque le jour est exclu.
 - **Séance sans distance** : aucune conclusion, jamais de distance déduite d'une
   durée (`reason_code: "missing_planned_distance"`).
 - **Aucune sortie dans la fenêtre** : pas de ratio, « historique insuffisant »
-  (`insufficient_history`). Semaine de course : sautée.
+  (`insufficient_history`). Aucune séance de course à évaluer :
+  `nothing_to_evaluate`. Semaine de course : sautée.
 - **Séance réalisée** : `python3 scripts/arc_guardrails.py session-spike --date AAAA-MM-JJ`
   rend en JSON (ou `--text`) le ratio, la catégorie, le hazard ratio et la FC
-  moyenne de chaque séance course du jour. La sync quotidienne ajoute un segment
-  à la ligne `Alerte :` pour une séance **nouvellement synchronisée** en
-  « modéré » ou « important » ([notification](mobile.md)), sans rien écrire.
+  moyenne de chaque séance de course du jour. La sync quotidienne ajoute un segment
+  à la ligne `Alerte :` pour une séance **nouvellement synchronisée** avec un
+  ratio > 1,10 ([notification](mobile.md)), sans rien écrire.
 
 !!! note "Limites"
     Les hazard ratios sont des risques relatifs de **groupe**, jamais la
     probabilité qu'un athlète précis se blesse. L'article ne valide que la
     dimension distance : dénivelé, descente et effort perçu (trail) sont hors
-    périmètre, faute de seuils validés. La population de la cohorte n'est pas
-    détaillée ici (non vérifiée) : consultez l'article avant d'extrapoler à
-    votre profil.
+    périmètre, faute de seuils validés.
 
 ## Au-delà de la semaine : la projection jusqu'à la course
 
@@ -205,7 +222,7 @@ une estimation sans donnée — voir
 ## Sources
 
 Chaque règle cite sa source dans son champ `source` (littérature vérifiable
-pour R1/R4/R7/R8 — Gabbett 2016, Foster 1998, Seiler & Kjerland 2006, Nielsen *et al.* 2025 — ou
+pour R1/R4/R7/R8 — Gabbett 2016, Foster 1998, Seiler & Kjerland 2006, Frandsen *et al.* 2025 — ou
 « convention du projet » explicite pour R2/R3/R6, faute de source unique et
 consensuelle). Le détail complet, avec les citations complètes, est dans
 `scripts/arc_guardrails.py::ASSUMPTIONS`.

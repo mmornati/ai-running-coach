@@ -2304,7 +2304,7 @@
             "rules": [
               {
                 "default_severity": "warn",
-                "doc_url": "https://mmornati.github.io/ai-running-coach/guardrails/#les-sept-regles",
+                "doc_url": "https://mmornati.github.io/ai-running-coach/guardrails/#les-regles",
                 "label": "ACWR (charge aiguë/chronique) projeté, maximum sur la semaine proposée",
                 "rule_id": "r1_acwr_projected"
               }
@@ -2348,7 +2348,7 @@
             "rules": [
               {
                 "default_severity": "warn",
-                "doc_url": "https://mmornati.github.io/ai-running-coach/guardrails/#les-sept-regles",
+                "doc_url": "https://mmornati.github.io/ai-running-coach/guardrails/#les-regles",
                 "label": "ACWR (charge aiguë/chronique) projeté, maximum sur la semaine proposée",
                 "rule_id": "r1_acwr_projected"
               }
