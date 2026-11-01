@@ -14,9 +14,11 @@ Bibliothèque standard uniquement (CONTRIBUTING.md).
 from __future__ import annotations
 
 import fnmatch
+import ipaddress
 import os
 import re
 import shlex
+import socket
 import sys
 from pathlib import Path
 from typing import Iterable, Optional
@@ -184,6 +186,23 @@ def _script_rules(rules: dict) -> dict:
     return found
 
 
+def resolve_host(host: str) -> list:
+    """Adresses IP de `host` (résolveur du système, celui de l'outil web) ; [] si le nom ne se résout pas."""
+    try:
+        return sorted({info[4][0] for info in socket.getaddrinfo(host, None)})
+    except (OSError, UnicodeError):
+        return []
+
+
+def _public_addresses(addresses: list) -> bool:
+    """Vrai si la liste est non vide et que TOUTES les adresses sont publiques (ni privée, ni boucle locale,
+    ni lien local, ni CGNAT, ni réservée)."""
+    try:
+        return bool(addresses) and all(ipaddress.ip_address(a.split("%", 1)[0]).is_global for a in addresses)
+    except ValueError:
+        return False
+
+
 def _web_verdict(value) -> str:
     value = str(value or "").strip().lower()
     return value if value in WEB_VERDICTS else "deny"
@@ -194,7 +213,8 @@ def _has_wildcard(text: str) -> bool:
 
 
 class Policy:
-    """Règles chargées ; `decide` est pur (aucun effet de bord, thread-safe)."""
+    """Règles chargées ; `decide` est pur (aucun effet de bord, thread-safe), hormis la résolution DNS
+    d'un `web.fetch` hors liste."""
 
     def __init__(self, workspace: Path, rules: Optional[dict] = None, engine: Optional[Path] = None):
         self.workspace = Path(workspace).resolve()
@@ -642,10 +662,18 @@ class Policy:
             return "deny"
         if any(host == d or host.endswith("." + d) for d in self.fetch_domains):
             return "allow"
-        # Hors liste : jamais une IP littérale (10.0.0.x, 127.0.0.1, entier décimal…), un nom sans point
-        # (`localhost`, `nas`) ni un suffixe de réseau local ; le reste suit `[web].unlisted_fetch`.
-        if "." not in host or host.endswith(LOCAL_HOST_SUFFIXES) or re.fullmatch(r"[0-9.]+", host) \
-                or re.search(r"\.[0-9]+$", host):
+        if self.unlisted_fetch == "deny":
+            return "deny"
+        # Hors liste : jamais une IP littérale (10.0.0.x, 127.0.0.1, entier décimal, octet hexadécimal
+        # `0x7f`…), un nom sans point (`localhost`, `nas`) ni un suffixe de réseau local ; et jamais un nom
+        # public qui se RÉSOUT vers une adresse non publique (`10.0.0.48.nip.io`). La résolution est faite
+        # ici, par le même résolveur que l'outil web ; une réponse DNS changée entre la carte et l'appel
+        # (rebinding) reste hors de portée de la politique. Un nom qui ne se résout pas : refus.
+        labels = host.split(".")
+        if len(labels) < 2 or host.endswith(LOCAL_HOST_SUFFIXES) \
+                or any(re.fullmatch(r"[0-9]+|0x[0-9a-f]*", label) for label in labels):
+            return "deny"
+        if not _public_addresses(resolve_host(host)):
             return "deny"
         return self.unlisted_fetch
 

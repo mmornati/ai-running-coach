@@ -5,6 +5,7 @@ from __future__ import annotations
 import sys
 import tempfile
 import unittest
+import unittest.mock
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[2]
@@ -12,7 +13,17 @@ sys.path.insert(0, str(REPO / "scripts"))
 
 import coach_config  # noqa: E402
 from arc_chat_backend import payload_hash  # noqa: E402
+import arc_chat_policy  # noqa: E402
 from arc_chat_policy import Policy  # noqa: E402
+
+# Résolution DNS simulée (jamais le réseau dans les tests) : tout nom public se résout vers une adresse
+# publique, sauf ceux listés ici.
+FAKE_DNS = {"10.0.0.48.nip.io": ["10.0.0.48"], "rebind.example": ["93.184.216.34", "127.0.0.1"],
+            "v6local.example": ["::1"], "absent.example": []}
+
+
+def fake_resolve(host):
+    return FAKE_DNS.get(host, ["93.184.216.34"])
 
 
 class PolicyBase(unittest.TestCase):
@@ -21,6 +32,9 @@ class PolicyBase(unittest.TestCase):
         self.addCleanup(self._tmp.cleanup)
         self.ws = Path(self._tmp.name).resolve()
         (self.ws / "planning").mkdir()
+        patcher = unittest.mock.patch.object(arc_chat_policy, "resolve_host", side_effect=fake_resolve)
+        self.resolver = patcher.start()
+        self.addCleanup(patcher.stop)
         self.policy = Policy.load(REPO, self.ws)
 
     def d(self, tool, tool_input=None, **kw):
@@ -112,8 +126,19 @@ class PolicyTest(PolicyBase):
         for url in ("http://10.0.0.48:8000/", "http://10.0.0.48/", "http://127.0.0.1/", "http://192.168.1.1/",
                     "http://2130706433/", "http://0x7f.0.0.1/", "http://localhost/", "http://nas/",
                     "http://homeassistant.local/", "http://box.lan/", "http://api.internal/",
-                    "http://1.0.0.127.in-addr.arpa/", "http://[::1]/"):
+                    "http://1.0.0.127.in-addr.arpa/", "http://[::1]/",
+                    "http://0x7f.0x0.0x0.0x1/", "http://0x7f.example/", "http://10.0.0.48.nip.io/",
+                    "http://rebind.example/", "http://v6local.example/", "http://absent.example/"):
             self.assertEqual(self.d("web.fetch", {"url": url}), "deny", url)
+
+    def test_web_domaine_liste_sans_resolution(self):
+        self.assertEqual(self.d("web.fetch", {"url": "https://www.kikourou.net/"}), "allow")
+        self.resolver.assert_not_called()
+
+    def test_resolution_reelle_des_adresses(self):
+        self.assertTrue(arc_chat_policy._public_addresses(["93.184.216.34", "2606:2800:220:1::1"]))
+        for addresses in ([], ["10.0.0.48"], ["100.64.0.1"], ["169.254.1.1"], ["fe80::1%en0"], ["x"]):
+            self.assertFalse(arc_chat_policy._public_addresses(addresses), addresses)
 
     def test_web_verdicts_configurables(self):
         custom = self.ws / "web.toml"

@@ -169,7 +169,9 @@ constant); `--llm anthropic` → chat `claude-sonnet-5-5`, sync `claude-haiku-5-
   — http(s) only, parsed with `urlsplit`, no `\`, `%` or userinfo in the authority, ASCII host,
   default port, hostname equal to or a true subdomain of a listed domain. Any other public name
   (a race's official site) → `[web].unlisted_fetch` (**ask** by default); an IP literal, a
-  dotless name or a local suffix (`.local`, `.lan`, `.internal`…) → deny, even with a card.
+  dotless name, a numeric or hex label, a local suffix (`.local`, `.lan`, `.internal`…) or a name
+  that resolves (system resolver) to any non-global address, or does not resolve → deny, even with
+  a card. DNS rebinding between the card and the fetch is out of the policy's reach.
   `web.search` → `[web].search` (**allow** by default; an empty query → deny).
 - `task`, `skill`: allow (agents limited by `[agents].enabled` already).
 - `mcp:garmin.*` / `mcp:intervals.*`: reads allow; writes **ask** (explicit list:
