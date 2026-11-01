@@ -155,6 +155,12 @@
       "Read(//**/.env)",
       "Read(//**/*.env)",
       "Read(//**/.garminconnect/**)",
+      "Read(.arc/**)",
+      "Read(**/.arc/**)",
+      "Grep(.arc/**)",
+      "Grep(**/.arc/**)",
+      "Glob(.arc/**)",
+      "Glob(**/.arc/**)",
       "Edit(.claude/**)",
       "Write(.claude/**)",
       "Edit(~/.claude/**)",
@@ -186,7 +192,7 @@
   "hooks": {
     "PreToolUse": [
       {
-        "matcher": "Bash|WebFetch|Read|Write|Edit|MultiEdit|Glob|Grep",
+        "matcher": "Bash|WebFetch|WebSearch|Read|NotebookRead|Write|Edit|MultiEdit|NotebookEdit|Glob|Grep|LS|mcp__.*",
         "hooks": [
           {
             "type": "command",

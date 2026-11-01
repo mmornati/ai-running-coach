@@ -217,7 +217,7 @@ workspace, sans rien retirer de vos règles :
   son préfixe **et** avec les options déclarées (`--python`, `--workspace`, `--tokens-dir`,
   `--garmin-host`… sont refusées) ; un chemin hors du workspace ou secret est refusé ; une écriture hors de
   `activities/`, `medical/`, `nutrition/`, `planning/`, `rapports/`, `gear/` est refusée ; un domaine web
-  hors liste demande l'approbation. Toute erreur du hook vaut refus.
+  hors liste demande l'approbation. Le hook traduit les appels d'outils **exactement comme le chat du tableau de bord** (`arc_chat_claude.canonical_tool` : la regex d'un `Grep`, le filtre d'un `Glob`, les chemins d'un patch lui parviennent), un outil inconnu est refusé, et la base dérivée `.arc/` n'est jamais lisible. Toute erreur du hook vaut refus.
 - **`allow`** (sans hook, en filet) : lectures bornées à ces dossiers de données et au moteur
   (`skills/`, `agents/`, `docs/`), outils de lecture `get_*` de Garmin, écritures sous les dossiers de
   données seulement, météo (`wttr.in`). **Aucune règle shell à joker** (`Bash(script:*)`), aucun `Read`,

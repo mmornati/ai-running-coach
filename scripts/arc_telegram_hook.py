@@ -26,41 +26,31 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
+from arc_chat_claude import canonical_tool  # noqa: E402
 from arc_chat_policy import Policy  # noqa: E402
 
 ENGINE = Path(__file__).resolve().parent.parent
 
 
-def to_policy_call(tool: str, tool_input: dict):
-    """Nom Claude Code -> (outil canonique de la politique, entrée), ou None si l'outil n'est pas couvert."""
-    if tool == "Bash":
-        return "shell", {"command": str(tool_input.get("command") or "")}
-    if tool == "WebFetch":
-        return "web.fetch", {"url": str(tool_input.get("url") or "")}
-    if tool == "Read":
-        return "fs.read", {"path": str(tool_input.get("file_path") or "")}
-    if tool in ("Write", "Edit", "MultiEdit"):
-        return "fs.write", {"path": str(tool_input.get("file_path") or "")}
-    if tool in ("Glob", "Grep"):
-        entry = {"path": str(tool_input.get("path") or "")}
-        if tool == "Glob":
-            entry["glob"] = str(tool_input.get("pattern") or "")
-        elif tool_input.get("glob"):
-            entry["glob"] = str(tool_input.get("glob"))
-        return "fs.list", entry
-    return None
+# Outils du plugin Telegram lui-même (reply, edit_message, react, download_attachment…) : le canal
+# de la conversation, hors du périmètre des serveurs sportifs de la politique.
+CHANNEL_TOOL_PREFIX = "mcp__plugin_telegram_telegram"
 
 
 def decide(payload: dict) -> tuple:
+    """(verdict, raison). La traduction nom Claude Code -> entrée de politique est CELLE du chat du
+    tableau de bord (`arc_chat_claude.canonical_tool`, qui s'appuie sur `arc_chat_tools.fs_list_input`) :
+    tous les champs sur lesquels la politique décide (regex d'un Grep, filtre de Glob, chemins d'un
+    patch, URL, commande) lui arrivent, exactement comme dans le chat. Un outil inconnu devient
+    `other:<nom>`, que la politique refuse."""
     tool = str(payload.get("tool_name") or "")
     tool_input = payload.get("tool_input")
-    call = to_policy_call(tool, tool_input if isinstance(tool_input, dict) else {})
-    if call is None:
-        return "ask", f"{tool} : hors du périmètre de la politique du chat"
+    if tool.startswith(CHANNEL_TOOL_PREFIX):
+        return "allow", "canal Telegram du plugin"
+    canonical, entry = canonical_tool(tool, tool_input if isinstance(tool_input, dict) else {})
     workspace = Path(os.environ.get("CLAUDE_PROJECT_DIR") or payload.get("cwd") or os.getcwd())
-    policy = Policy.load(ENGINE, workspace)
-    verdict = policy.decide(call[0], call[1])
-    return verdict, f"politique du chat : {verdict} ({call[0]})"
+    verdict = Policy.load(ENGINE, workspace).decide(canonical, entry)
+    return verdict, f"politique du chat : {verdict} ({canonical})"
 
 
 def main() -> int:
