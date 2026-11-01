@@ -1108,7 +1108,7 @@ class TestJsonSchema(InstallAsserts):
                 "garmin_token", "garmin_token_perms", "garmin_mcp", "garmin_mcp_pin", "config_files", "athlete_profile",
                 "index_freshness", "out_of_contract", "daily_sync_scheduled", "ntfy_configured",
                 "gear_sync", "gear_history", "fit_reader", "intervals_mcp_pin",
-                "llm_config", "chat_service", "opencode_cli", "strava_connection", "telegram", "weight_sync", "openwearables",
+                "llm_config", "chat_service", "opencode_cli", "strava_connection", "telegram", "telegram_chat", "weight_sync", "openwearables",
                 "coros_connection",
             }
             self.assertEqual({c["id"] for c in payload["checks"]}, expected_ids)

@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+# Aucune session tmux n'existe jamais dans le bac à sable : has-session échoue,
+# le reste réussit (l'appel est journalisé dans $ARC_STUB_LOG).
+. "$(dirname "$0")/_common.sh"
+stub_init "$@"
+for arg in "$@"; do
+    [ "$arg" = "has-session" ] && exit 1
+done
+exit 0

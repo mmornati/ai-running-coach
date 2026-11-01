@@ -3,7 +3,7 @@
 # ai-running-coach — helpers partagés par les scripts (config TOML, logs)
 #
 # Sourcé par scripts/daily-sync.sh, scripts/notify.sh, scripts/setup-ntfy.sh,
-# scripts/coach-remote.sh. Lecture minimaliste de config/workspace.toml +
+# scripts/coach-remote.sh, scripts/coach-telegram-chat.sh. Lecture minimaliste de config/workspace.toml +
 # config/workspace.user.toml (overrides), sans dépendance Python : suffisant
 # pour des clés `cle = "valeur"`, `cle = 12`, `cle = ["a", "b"]`.
 #
@@ -14,8 +14,12 @@
 #                     (écrit par ./install.sh --workspace), sinon le moteur lui-même.
 # =============================================================================
 
-ARC_LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-ARC_ENGINE_ROOT="$(cd "$ARC_LIB_DIR/../.." && pwd)"
+# -P (physique) : ce fichier est presque toujours atteint via le lien
+# workspace/scripts -> moteur/scripts. `pwd` (logique) laisserait ARC_LIB_DIR
+# sous le workspace et ferait remonter ARC_ENGINE_ROOT vers le workspace au
+# lieu du moteur (donc sans `templates/`) : les deux racines se confondraient.
+ARC_LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
+ARC_ENGINE_ROOT="$(cd "$ARC_LIB_DIR/../.." && pwd -P)"
 ARC_WORKSPACE_STATE_FILE="$HOME/.config/ai-running-coach/workspace"
 # Verrou (#127) : `daily-sync.sh` exporte ARC_LOCK_WORKSPACE=1 avec ARC_WORKSPACE pour le runner LLM.
 # Verrouillé, jamais de repli sur le pointeur ni sur le moteur : un ARC_WORKSPACE absent ou inexistant

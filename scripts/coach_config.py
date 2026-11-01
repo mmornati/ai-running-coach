@@ -11,6 +11,7 @@ Ce module ne dépend que de la bibliothèque standard (voir CONTRIBUTING.md).
 
 Sous-commandes :
     merge-json          insère une clé dans un fichier JSON, en préservant le reste
+    merge-permissions   fusionne des règles permissions.allow/ask/deny (union, rien n'est retiré)
     set-claude-hook     pose UN hook Claude Code d'un événement, en remplaçant ses versions antérieures
     approve-claude-mcp  pré-approuve un serveur MCP de projet dans ~/.claude.json
     get                 lit une clé TOML (user.toml > workspace.toml > défaut)
@@ -413,6 +414,38 @@ def cmd_set_claude_hook(args) -> int:
     return 0
 
 
+def cmd_merge_permissions(args) -> int:
+    """Union des listes permissions.allow / ask / deny, sans rien retirer.
+
+    Les règles déjà présentes (ajoutées à la main ou par Claude Code lui-même
+    après un « toujours autoriser ») sont conservées, dans leur ordre.
+    """
+    path = Path(args.file)
+    template = read_json(Path(args.template)).get("permissions", {})
+    data = read_json(path)
+    permissions = data.setdefault("permissions", {})
+    if not isinstance(permissions, dict):
+        raise ConfigError(f"{path} : « permissions » n'est pas un objet JSON.")
+    added = 0
+    for kind in ("allow", "ask", "deny"):
+        wanted = template.get(kind, [])
+        if not wanted:
+            continue
+        current = permissions.setdefault(kind, [])
+        if not isinstance(current, list):
+            raise ConfigError(f"{path} : « permissions.{kind} » n'est pas une liste.")
+        for rule in wanted:
+            if rule not in current:
+                current.append(rule)
+                added += 1
+    if not added:
+        print(f"inchangé: {path}")
+        return 0
+    write_json(path, data)
+    print(f"fusionné: {added} règle(s) dans {path}")
+    return 0
+
+
 def cmd_remove_json_key(args) -> int:
     """Retire une clé d'un fichier JSON si elle existe — sans effet sinon.
 
@@ -541,6 +574,11 @@ def build_parser() -> argparse.ArgumentParser:
     hook.add_argument("--marker", required=True, help="sous-chaîne identifiant nos commandes (anciennes versions)")
     hook.add_argument("--value", required=True, help="entrée JSON {matcher, hooks: [...]}")
     hook.set_defaults(func=cmd_set_claude_hook)
+
+    perms = sub.add_parser("merge-permissions", help="fusionne des règles de permission Claude Code")
+    perms.add_argument("--file", required=True, help="settings.json / settings.local.json cible")
+    perms.add_argument("--template", required=True, help="JSON contenant permissions.allow/ask/deny")
+    perms.set_defaults(func=cmd_merge_permissions)
 
     remove_key = sub.add_parser("remove-json-key", help="retire une clé d'un fichier JSON si présente")
     remove_key.add_argument("--file", required=True)

@@ -128,6 +128,7 @@ nav:
       - Parcours MyWhoosh: skills/mywhoosh-route.md
       - Export Vanoor: skills/vanoor-export.md
       - Sync quotidienne (headless): skills/garmin-daily-sync.md
+      - Coach sur Telegram (abonnement): skills/telegram-chat.md
       - Premier démarrage: skills/coach-setup.md
       - Contrat de données: skills/workspace-data-contract.md
       - Backfill du contrat: skills/arc-backfill.md

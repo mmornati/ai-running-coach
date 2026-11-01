@@ -35,7 +35,7 @@ Claude (Pro/Max) ou ChatGPT (Codex).
 ## Ce qui n'est pas possible (et pourquoi)
 
 !!! warning "Pas de « front » mobile maison"
-    Une appli ou un bot (Telegram, PWA, Agent SDK…) qui appellerait le modèle **ne peut
+    Une appli ou un bot (Telegram, PWA, Agent SDK…) qui appellerait lui-même le modèle **ne peut
     pas** utiliser votre abonnement. Depuis avril 2026, Anthropic bloque l'authentification
     par abonnement pour tout outil tiers (OpenCode a dû retirer cette possibilité), et la
     connexion « Sign in with ChatGPT » d'OpenAI est réservée à Codex CLI/App. Un front
@@ -48,6 +48,11 @@ Claude (Pro/Max) ou ChatGPT (Codex).
     [bot Telegram](telegram.md) (#174) répond en un geste à la notification — « séance faite »,
     RPE, douleur — par de simples écritures déterministes dans votre workspace : aucune clé
     d'API, aucun coût. Seule sa conversation libre (opt-in) passe par le chat facturé.
+
+    Seconde exception, **expérimentale** : ce n'est pas un bot qui appelle le modèle, mais une
+    vraie session Claude Code (donc votre abonnement) à laquelle le plugin officiel *Channels*
+    relaie vos messages Telegram. Elle demande un second bot et un terminal multiplexé sur la
+    machine coach : voir le [niveau 3 de la page Telegram](telegram.md#niveau-3-conversation-sur-abonnement-claude-code-channels-experimental).
 
 La seule voie qui préserve l'abonnement : utiliser les **surfaces distantes officielles**
 des éditeurs, en gardant une **machine « coach »** où vivent le workspace (`activities/`,
