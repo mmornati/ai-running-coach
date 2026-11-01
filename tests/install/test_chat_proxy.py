@@ -27,7 +27,9 @@ from tests.lib.synthetic import build
 TODAY = "2026-09-23"
 REPO = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(REPO / "scripts"))
+import arc_chat  # noqa: E402
 import arc_serve  # noqa: E402
+from arc_chat_mock import MockBackend  # noqa: E402
 
 
 class FakeChat(BaseHTTPRequestHandler):
@@ -183,6 +185,82 @@ class TestChatProxyDisabled(ChatProxyBase):
         conn, res = self.request("GET", "/api/summary")
         self.assertFalse(json.loads(res.read())["settings"]["chat_enabled"])
         conn.close()
+
+
+class TestChatProxyAttachments(ChatProxyBase):
+    """Pièces jointes (#342) à travers le proxy : un VRAI service de chat derrière `arc_serve.py`."""
+
+    LIMIT = 3000
+    GPX = (b'<?xml version="1.0"?><gpx version="1.1" xmlns="http://www.topografix.com/GPX/1/1"><trk/></gpx>')
+
+    def _configure(self, port):
+        cfg = dict(arc_chat.CHAT_DEFAULTS, enabled=True, backend="mock", rate_limit_per_min=0,
+                   upload_max_bytes=self.LIMIT)
+        original, arc_chat.log = arc_chat.log, lambda message: None
+        self.addCleanup(lambda: setattr(arc_chat, "log", original))
+        httpd, self.service = arc_chat.make_server(self.ws, cfg, MockBackend(self.ws, cfg), None, port=0)
+        threading.Thread(target=httpd.serve_forever, kwargs={"poll_interval": 0.02}, daemon=True).start()
+        self.addCleanup(httpd.server_close)
+        self.addCleanup(httpd.shutdown)
+        user = self.ws / "config/workspace.user.toml"
+        prev = user.read_text(encoding="utf-8") if user.exists() else ""
+        user.write_text(prev + f"\n[chat]\nenabled = true\nport = {httpd.server_address[1]}\n"
+                        f"upload_max_bytes = {self.LIMIT}\n", encoding="utf-8")
+
+    def upload(self, sid, data, name="sortie.gpx", length=None):
+        headers = {"X-ARC-Chat": "1", "Content-Type": "application/octet-stream",
+                   "X-Filename": name, "Content-Length": str(len(data) if length is None else length)}
+        conn = http.client.HTTPConnection(self.host, int(self.dport), timeout=15)
+        conn.request("POST", f"/api/chat/sessions/{sid}/attachments", body=data, headers=headers)
+        res = conn.getresponse()
+        body = json.loads(res.read() or b"{}")
+        conn.close()
+        return res.status, body
+
+    def new_session(self):
+        conn, res = self.request("POST", "/api/chat/sessions", body="{}", headers={"X-ARC-Chat": "1"})
+        sid = json.loads(res.read())["id"]
+        conn.close()
+        return sid
+
+    def test_upload_traverse_le_proxy_avec_son_nom_et_arrive_dans_le_workspace(self):
+        sid = self.new_session()
+        status, body = self.upload(sid, self.GPX, "Ma sortie.gpx")
+        self.assertEqual(status, 200, body)
+        self.assertEqual(body["kind"], "gpx")
+        self.assertTrue(body["path"].startswith("planning/inbox/") and body["path"].endswith("_ma-sortie.gpx"))
+        self.assertEqual((self.ws / body["path"]).read_bytes(), self.GPX)
+
+    def test_fichier_plus_gros_que_le_plafond_refuse_sans_lire_le_corps(self):
+        sid = self.new_session()
+        conn = http.client.HTTPConnection(self.host, int(self.dport), timeout=15)
+        conn.putrequest("POST", f"/api/chat/sessions/{sid}/attachments")
+        for name, value in (("X-ARC-Chat", "1"), ("X-Filename", "a.gpx"), ("Content-Length", str(self.LIMIT + 1))):
+            conn.putheader(name, value)
+        conn.endheaders()                                   # aucun octet de corps envoyé
+        res = conn.getresponse()
+        self.assertEqual(res.status, 413)
+        res.read()
+        conn.close()
+
+    def test_les_routes_json_gardent_un_plafond_modeste(self):
+        sid = self.new_session()
+        conn = http.client.HTTPConnection(self.host, int(self.dport), timeout=15)
+        conn.putrequest("POST", f"/api/chat/sessions/{sid}/messages")
+        for name, value in (("X-ARC-Chat", "1"), ("Content-Type", "application/json"),
+                            ("Content-Length", str(arc_serve.CHAT_BODY_MAX + 1))):
+            conn.putheader(name, value)
+        conn.endheaders()
+        res = conn.getresponse()
+        self.assertEqual(res.status, 413)
+        res.read()
+        conn.close()
+
+    def test_contenu_refuse_par_le_service_est_relaye(self):
+        sid = self.new_session()
+        status, body = self.upload(sid, b"\x89PNG\r\n\x1a\n" + b"\x00" * 16, "faux.gpx")
+        self.assertEqual(status, 415, body)
+        self.assertFalse((self.ws / "planning/inbox").exists() and any((self.ws / "planning/inbox").iterdir()))
 
 
 class TestChatProxyPort(unittest.TestCase):

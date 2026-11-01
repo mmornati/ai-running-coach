@@ -450,6 +450,32 @@ fournisseur :
 Les conversations sont gardées dans `.arc/chat/` (jetable, hors versionnement). Ce que le coach
 décide est écrit comme d'habitude dans les fichiers Markdown, avec leur bloc ```` ```arc ````.
 
+## Pièces jointes
+
+Le bouton **📎** (ou un glisser-déposer sur la zone de saisie) envoie un fichier au service de chat,
+qui le range dans le workspace puis le signale au coach : « analyse ce GPX », « inspecte ces
+chaussures » n'exigent plus de copier le fichier à la main sur le serveur.
+
+| Fichier | Rangé dans | Utilisé par |
+|---|---|---|
+| `.gpx`, `.tcx`, `.fit` (traces) | `planning/inbox/` | `course-strategist`, `analyze_gpx.py`, `arc_race_pacing.py` |
+| `.jpg`, `.jpeg`, `.png`, `.webp` (photos) | `gear/photos/` | `/inspection` (boîte de dépôt, `arc_index.py inspections --unreferenced-photos`) |
+
+- **Contrôle du contenu, pas seulement du nom** : un `.gpx` doit être un XML GPX valide, un `.fit`
+  doit porter un en-tête FIT, une image doit commencer par les octets magiques de son format. Un
+  fichier dont le contenu ne correspond pas à l'extension est refusé (415).
+- Les GPX et TCX qui déclarent un `DOCTYPE` ou une `ENTITY` sont refusés (sécurité XML).
+- **HEIC / HEIF (iPhone) refusés** avec un message clair : exportez la photo en JPEG
+  (Réglages > Appareil photo > Formats > « Le plus compatible »).
+- Le fichier est renommé par le service (`AAAA-MM-JJ_HHMMSS_<nom>.<ext>`), sans jamais écraser un
+  fichier existant ; le nom d'origine n'est utilisé que pour l'extension et un court identifiant.
+- Taille maximale : `[chat].upload_max_bytes` (20 Mo par défaut). Les messages texte restent à 64 Ko.
+- Au message suivant, le service ajoute une ligne `Pièce jointe : <chemin> (<type>)` par fichier à ce
+  que reçoit le coach, et n'accepte que des fichiers qu'il a lui-même reçus dans **cette**
+  conversation. Les images ne sont pas passées au modèle comme image : le coach les lit avec ses
+  outils habituels. Elles restent dans `gear/photos/` (privé, hors dépôt public).
+- Les fichiers envoyés mais jamais utilisés restent dans leur dossier : le service ne les purge pas.
+
 ## Budget
 
 `[chat].daily_budget_eur` (2 € par défaut) plafonne la dépense du jour ; une fois atteint, le

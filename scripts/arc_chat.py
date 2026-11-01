@@ -68,6 +68,7 @@ from arc_chat_backend import (EVENT_TYPES, BackendError, ChatBackend, TurnContex
                               family_reserved_name, is_loopback_url,
                               load_backend, payload_hash)
 from arc_chat_policy import Policy  # noqa: E402
+import arc_chat_upload as UP  # noqa: E402
 import arc_family as FM  # noqa: E402
 from arc_family import (HOST_CACHE_TTL_S, _host_cache, _host_cache_lock,  # noqa: E402,F401
                         ip_in, is_loopback, resolve_host)
@@ -82,6 +83,8 @@ MAX_TEXT_CHARS = 8000
 ID_RE = re.compile(r"^[A-Za-z0-9_-]{6,40}$")
 ISO = "%Y-%m-%dT%H:%M:%SZ"
 APPROVE_PER_IP_PER_MIN = 30          # route à jeton : essais par minute et par adresse cliente
+UPLOAD_PER_MIN = 20                  # pièces jointes par minute et par utilisateur (route d'envoi de fichiers)
+UPLOAD_READ_TIMEOUT_S = 60.0         # délai maximal entre deux morceaux d'un envoi (client lent coupé)
 LLM_CHECK_PER_MIN = 6                # diagnostic de connexion IA : essais par minute et par client
 LLM_CHECK_CACHE_S = 30.0             # un résultat avec sonde réseau est réutilisé 30 s (pas de martelage du fournisseur)
 APPROVE_GLOBAL_PER_MIN = 120         # plafond global, toutes adresses confondues
@@ -103,6 +106,8 @@ CHAT_DEFAULTS = {
     # Magasin d'authentification OpenCode dédié au coach (abonnement ChatGPT/Copilot, #266) ;
     # vide = comportement historique. Voir scripts/arc_llm.py.
     "opencode_data_dir": "",
+    # Plafond (octets) d'une pièce jointe (#342) ; `MAX_BODY_BYTES` (64 Ko) ne vaut que pour les autres routes.
+    "upload_max_bytes": UP.DEFAULT_UPLOAD_MAX_BYTES,
 }
 
 
@@ -428,6 +433,20 @@ class SessionStore:
                     meta[key] = value
             self.save(meta)
             return meta
+
+    MAX_ATTACHMENTS_KEPT = 200
+
+    def add_attachment(self, sid: str, record: dict) -> bool:
+        """Ajoute une pièce jointe créée par le service à la liste de la session (#342)."""
+        with self._lock:
+            meta = self.get(sid)
+            if meta is None:
+                return False
+            items = [a for a in meta.get("attachments", []) if isinstance(a, dict)]
+            items.append(record)
+            meta["attachments"] = items[-self.MAX_ATTACHMENTS_KEPT:]
+            self.save(meta)
+            return True
 
     def list(self) -> list:
         metas = [_read_json(p, None) for p in self.dir.glob("*.json")]
@@ -766,6 +785,7 @@ class ChatService:
         self.approvals = ApprovalStore(root / "approvals.json", on_expired=self._on_expired, member=member)
         self.spend = SpendStore(root)
         self.limiter = RateLimiter(int(cfg["rate_limit_per_min"]))
+        self.upload_limiter = RateLimiter(UPLOAD_PER_MIN)           # pièces jointes (#342) : par utilisateur
         self.approve_limiter = RateLimiter(APPROVE_PER_IP_PER_MIN)   # route à jeton : par adresse cliente
         self.approve_global = RateLimiter(APPROVE_GLOBAL_PER_MIN)    # … et plafond global
         self.llm_check_limiter = RateLimiter(LLM_CHECK_PER_MIN)     # diagnostic de connexion IA (#268) : par client
@@ -806,8 +826,32 @@ class ChatService:
         with self._lock:
             return self._slots.setdefault(sid, threading.Lock())
 
+    def resolve_attachments(self, sid: str, paths) -> tuple:
+        """(enregistrements, message d'erreur) : UNIQUEMENT des fichiers que le service a créés pour CETTE session."""
+        if paths in (None, []):
+            return [], None
+        if (not isinstance(paths, list) or len(paths) > UP.MAX_ATTACHMENTS_PER_MESSAGE
+                or not all(isinstance(p, str) for p in paths)):
+            return None, f"attachments : liste de {UP.MAX_ATTACHMENTS_PER_MESSAGE} chemins au plus attendue."
+        known = {a.get("path"): a for a in (self.sessions.get(sid) or {}).get("attachments", []) if isinstance(a, dict)}
+        records = []
+        for path in dict.fromkeys(paths):                     # doublons écartés, ordre conservé
+            if path not in known:
+                return None, "Pièce jointe inconnue de cette conversation : envoyez-la d'abord."
+            records.append({"path": path, "kind": known[path].get("kind", "")})
+        return records, None
+
+    @staticmethod
+    def attachment_text(text: str, attachments: list) -> str:
+        """Texte transmis au backend : une ligne `Pièce jointe : <chemin> (<type>)` par fichier, AVANT le texte.
+        Un message qui commence par « / » (commande du coach) garde sa commande en tête : lignes après."""
+        if not attachments:
+            return text
+        lines = "\n".join(f"Pièce jointe : {a['path']} ({a['kind']})" for a in attachments)
+        return f"{text}\n{lines}" if text.startswith("/") else f"{lines}\n{text}"
+
     def begin_turn(self, sid: str, user: str, text: str, preapproved=None, resume: bool = False,
-                   resume_rec: Optional[dict] = None) -> tuple:
+                   resume_rec: Optional[dict] = None, attachments: Optional[list] = None) -> tuple:
         """Démarre un tour. Renvoie (code, Turn|None, file d'événements|None).
 
         code : ok | busy (409) | rate (429) | unknown (404). Un tour de reprise (`resume`) n'entre
@@ -828,9 +872,12 @@ class ChatService:
             self.turns[sid] = turn
         if resume_rec is not None:
             self.approvals.set_resume(resume_rec["id"], "running")   # dès ici : un redémarrage ne la rejouera pas
-        self.sessions.append_event(sid, "user_message", {"text": text, **({"synthetic": True} if resume else {})})
+        event = {"text": text, **({"synthetic": True} if resume else {}),
+                 **({"attachments": attachments} if attachments else {})}
+        self.sessions.append_event(sid, "user_message", event)
         self.sessions.update(sid, title=re.sub(r"\s+", " ", text).strip()[:60] or "Conversation")
-        threading.Thread(target=self._run_turn, args=(turn, text, set(preapproved or ()), resume_rec),
+        backend_text = self.attachment_text(text, attachments or [])
+        threading.Thread(target=self._run_turn, args=(turn, backend_text, set(preapproved or ()), resume_rec),
                          name=f"chat-turn-{sid[:6]}", daemon=True).start()
         return "ok", turn, q
 
@@ -1214,6 +1261,7 @@ class ChatService:
         return {"enabled": bool(self.cfg["enabled"]), "backend": self.backend.name,
                 "model": self.cfg["model"], "user": user,
                 "budget": budget,
+                "upload_max_bytes": int(self.cfg.get("upload_max_bytes") or UP.DEFAULT_UPLOAD_MAX_BYTES),
                 # Forfait (ChatGPT/Copilot, #266) : la page affiche « inclus dans votre forfait … » au
                 # lieu d'un coût en euros. Clé absente = facturation au jeton, comme avant.
                 **({"billing": self.backend.billing()} if self.backend.billing() else {}),
@@ -1361,6 +1409,9 @@ class Handler(BaseHTTPRequestHandler):
         match = re.match(rf"^{API}/sessions/([^/]+)/messages$", path)
         if match:
             return self._post_message(match.group(1), user)
+        match = re.match(rf"^{API}/sessions/([^/]+)/attachments$", path)
+        if match:
+            return self._post_attachment(match.group(1), user)
         match = re.match(rf"^{API}/sessions/([^/]+)/interrupt$", path)
         if match:
             if self._read_body() is None:
@@ -1417,17 +1468,84 @@ class Handler(BaseHTTPRequestHandler):
         outcome, _ = svc.resolve_approval(rec["id"], action, via="ntfy")
         self._approval_result(outcome, rec, action)
 
+    def _post_attachment(self, sid: str, user: str) -> None:
+        """Pièce jointe (#342) : corps = octets bruts du fichier, nom d'origine dans `X-Filename`.
+
+        Refus AVANT lecture du corps : débit, session, `Content-Length` absent / trop grand, type
+        d'après le nom. Après lecture : le contenu doit concorder avec l'extension (liste blanche)."""
+        svc = self.service
+        self.close_connection = True                      # un refus laisse un corps non lu : pas de réutilisation
+        if not svc.upload_limiter.allow(user or client_ip(svc.cfg, self.client_address[0], self.headers)):
+            return self._error(429, "Trop de fichiers envoyés : patientez une minute.")
+        if svc.sessions.get(sid) is None:
+            return self._error(404, "Conversation introuvable.")
+        if self.headers.get("Transfer-Encoding"):
+            return self._error(411, "Content-Length obligatoire (pas d'envoi en morceaux).")
+        raw_length = self.headers.get("Content-Length")
+        try:
+            length = int(raw_length) if raw_length is not None else None
+        except ValueError:
+            length = -1
+        if length is None:
+            return self._error(411, "Content-Length obligatoire.")
+        if length <= 0:
+            return self._error(400, "Fichier vide.")
+        limit = int(svc.cfg.get("upload_max_bytes") or UP.DEFAULT_UPLOAD_MAX_BYTES)
+        if length > limit:
+            return self._error(413, f"Fichier trop volumineux (maximum {limit // (1024 * 1024) or 1} Mo).")
+        try:
+            kind, folder_rel, ext, slug = UP.classify_name(UP.decode_filename(self.headers.get("X-Filename")))
+            folder = UP.safe_folder(svc.workspace, folder_rel)
+            fd, tmp = UP.new_temp(folder)
+        except UP.UploadError as exc:
+            return self._error(exc.status, exc.message)
+        except OSError:
+            return self._error(500, "Écriture impossible dans le workspace.")
+        done = False
+        try:
+            self.connection.settimeout(UPLOAD_READ_TIMEOUT_S)
+            with os.fdopen(fd, "wb") as out:
+                remaining = length
+                while remaining > 0:
+                    chunk = self.rfile.read(min(UP.CHUNK, remaining))
+                    if not chunk:
+                        raise UP.UploadError(400, "Envoi interrompu : fichier incomplet.")
+                    out.write(chunk)
+                    remaining -= len(chunk)
+            UP.check_content(Path(tmp), kind, ext)
+            name = UP.publish(tmp, folder, slug, ext)
+            done = True
+        except UP.UploadError as exc:
+            return self._error(exc.status, exc.message)
+        except (OSError, TimeoutError):
+            return self._error(400, "Envoi interrompu ou écriture impossible.")
+        finally:
+            if not done:
+                try:
+                    os.unlink(tmp)
+                except OSError:
+                    pass
+        record = {"path": f"{folder_rel}/{name}", "kind": kind, "bytes": length}
+        svc.sessions.add_attachment(sid, record)
+        self._json(200, record)
+
     def _post_message(self, sid: str, user: str) -> None:
         svc = self.service
         body = self._read_body()
         if body is None:
             return
         text = body.get("text")
-        if not isinstance(text, str) or not text.strip():
+        attachments, problem = svc.resolve_attachments(sid, body.get("attachments"))
+        if problem:
+            return self._error(400, problem)
+        if text is None and attachments:
+            text = ""
+        if not isinstance(text, str) or (not text.strip() and not attachments):
             return self._error(400, "Message vide.")
         if len(text) > MAX_TEXT_CHARS:
             return self._error(413, "Message trop long.")
-        code, turn, q = svc.begin_turn(sid, user, text.strip())
+        text = text.strip() or ("Voici le fichier." if len(attachments) == 1 else "Voici les fichiers.")
+        code, turn, q = svc.begin_turn(sid, user, text, attachments=attachments)
         if code == "unknown":
             return self._error(404, "Conversation introuvable.")
         if code == "busy":

@@ -1764,7 +1764,41 @@ CHAT_CONNECT_TIMEOUT_S = 5.0
 CHAT_READ_TIMEOUT_S = float(os.environ.get("ARC_DASHBOARD_CHAT_READ_TIMEOUT_S", "120"))  # > ping SSE (15 s)
 CHAT_UNREACHABLE = {"error": "Service de chat injoignable — lancez scripts/coach-chat.sh start"}
 # En-têtes de requête relayés (liste blanche : ni Cookie, ni Authorization).
-CHAT_FORWARD_REQUEST = ("Content-Type", "X-ARC-Chat", "Origin", "Sec-Fetch-Site", "Accept", "Host")
+CHAT_FORWARD_REQUEST = ("Content-Type", "X-ARC-Chat", "Origin", "Sec-Fetch-Site", "Accept", "Host", "X-Filename")
+# Corps relayés (#342) : les routes JSON sont plafonnées à 1 Mo ici (le service refuse déjà > 64 Ko) ;
+# l'envoi d'une pièce jointe (`.../attachments`) a son propre plafond, relayé en flux (jamais en mémoire).
+# Mono-athlète : `[chat].upload_max_bytes`. Mode famille : plafond fixe de 64 Mo, le service de chat
+# applique ensuite la limite propre à chaque membre.
+CHAT_BODY_MAX = 1024 * 1024
+CHAT_UPLOAD_DEFAULT_MAX = 20 * 1024 * 1024
+CHAT_UPLOAD_FAMILY_MAX = 64 * 1024 * 1024
+CHAT_ATTACHMENT_PATH = re.compile(r"^/api/chat/sessions/[^/]+/attachments$")
+
+
+def chat_upload_max(config: dict) -> int:
+    """Plafond (octets) d'une pièce jointe relayée, lu dans `[chat].upload_max_bytes`."""
+    try:
+        value = int(float((config.get("chat", {}) or {}).get("upload_max_bytes", CHAT_UPLOAD_DEFAULT_MAX)))
+    except (TypeError, ValueError):
+        return CHAT_UPLOAD_DEFAULT_MAX
+    return value if value > 0 else CHAT_UPLOAD_DEFAULT_MAX
+
+
+class _BoundedBody:
+    """Lecture d'au plus `remaining` octets du socket client, pour `http.client` (flux, pas de copie en mémoire)."""
+
+    def __init__(self, rfile, remaining: int):
+        self.rfile, self.remaining = rfile, remaining
+
+    def read(self, size: int = -1) -> bytes:
+        if self.remaining <= 0:
+            return b""
+        size = self.remaining if size is None or size < 0 else min(size, self.remaining)
+        chunk = self.rfile.read(size)
+        self.remaining -= len(chunk)
+        if not chunk:
+            self.remaining = 0
+        return chunk
 # En-têtes de réponse relayés (jamais de CORS).
 CHAT_FORWARD_RESPONSE = ("Content-Type", "Cache-Control", "X-Accel-Buffering", "Retry-After")
 LOOPBACK_LISTEN = (LOOPBACK, "localhost", "::1")
@@ -1797,6 +1831,7 @@ class Handler(BaseHTTPRequestHandler):
     store: Store = None           # posé par serve()
     allowed_hosts: set = set()
     chat_port: Optional[int] = None   # posé par serve() ; None = pas de proxy
+    chat_upload_max: int = CHAT_UPLOAD_DEFAULT_MAX   # posé par serve() : plafond d'une pièce jointe relayée
     tile_src: str = ""                # posé par serve() : « ␣https://hôte » des tuiles de carte, ou vide
     family: Optional[FamilyStores] = None   # posé par serve() en mode famille (#127) ; None = mono-athlète
 
@@ -1928,13 +1963,22 @@ class Handler(BaseHTTPRequestHandler):
             length = int(self.headers.get("Content-Length") or 0)
         except ValueError:
             length = 0
-        body = self.rfile.read(length) if length > 0 else None
+        upload = bool(CHAT_ATTACHMENT_PATH.match(urlparse(self.path).path))
+        if length > (self.chat_upload_max if upload else CHAT_BODY_MAX):
+            self.close_connection = True                 # refus AVANT de lire le corps
+            self._json(HTTPStatus.REQUEST_ENTITY_TOO_LARGE, {"error": "Corps de requête trop volumineux."})
+            return
+        body = None
+        if length > 0:
+            body = _BoundedBody(self.rfile, length) if upload else self.rfile.read(length)
         forward = CHAT_FORWARD_REQUEST
         if self.family is not None and not urlparse(self.path).path.startswith(CHAT_PREFIX + "approve/"):
             # L'identité vérifiée ici est transmise telle quelle au chat — sauf sur la route à jeton ntfy, qui
             # n'en a pas : le membre vient du jeton, jamais d'un en-tête client.
             forward = forward + (self.family.registry.auth_header,)
         headers = {h: self.headers[h] for h in forward if self.headers.get(h)}
+        if upload and length > 0:
+            headers["Content-Length"] = str(length)       # corps en flux : sans cela http.client enverrait du chunked
         conn = http.client.HTTPConnection("127.0.0.1", self.chat_port, timeout=CHAT_CONNECT_TIMEOUT_S)
         try:
             conn.request(self.command, self.path, body=body, headers=headers, encode_chunked=False)
@@ -2120,6 +2164,7 @@ def serve(workspace: Optional[Path], port: int, db=None, memory=False, today=Non
         Handler.allowed_hosts = host_allowlist(actual, extra_hosts)
         Handler.chat_port = chat_proxy_port({"chat": {"enabled": bool(family.settings["chat_port"]),
                                                       "port": family.settings["chat_port"]}}, listen)
+        Handler.chat_upload_max = CHAT_UPLOAD_FAMILY_MAX
         Handler.tile_src = Handler.family.tile_src
         print(f"URL: http://127.0.0.1:{actual}/", flush=True)
         try:
@@ -2139,6 +2184,7 @@ def serve(workspace: Optional[Path], port: int, db=None, memory=False, today=Non
     Handler.allowed_hosts = host_allowlist(actual, extra_hosts)
     config = I.load_config(workspace)
     Handler.chat_port = chat_proxy_port(config, listen)
+    Handler.chat_upload_max = chat_upload_max(config)
     origin = tile_origin(I.settings(config)["map_tiles"])
     Handler.tile_src = f" {origin}" if origin else ""
     Handler.store.start_background()

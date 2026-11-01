@@ -15,6 +15,7 @@ const els = {
   thread: $("#thread"), empty: $("#empty"), banner: $("#banner"), pinned: $("#pinned"),
   form: $("#composer"), input: $("#composer-input"), send: $("#send"), stop: $("#stop"),
   select: $("#session-select"), newBtn: $("#new-session"), cost: $("#cost"), backend: $("#backend"), llmCheck: $("#llm-check"),
+  attach: $("#attach"), fileInput: $("#file-input"), chips: $("#attachments"), box: $("#composer-box"),
 };
 
 const state = {
@@ -28,6 +29,7 @@ const state = {
   lastUsage: null,
   approvals: new Map(), // approval_id -> { card, pinned }
   pollTimer: null,      // sondage d'une session dont un tour tourne ailleurs (autre onglet, reprise)
+  attachments: [],      // pièces jointes prêtes ou en cours d'envoi pour le prochain message : { key, name, size, path, kind, busy }
 };
 
 // ---------------------------------------------------------------------------
@@ -208,10 +210,22 @@ const nearBottom = () => els.thread.scrollHeight - els.thread.scrollTop - els.th
 // Tour du coach : trace des outils, texte, cartes, fichiers
 // ---------------------------------------------------------------------------
 
-function addUser(text) {
+function addUser(text, attachments = []) {
   els.empty?.remove();
   const art = el("article", "msg msg--user");
   art.appendChild(el("div", "msg__bubble", text));
+  if (Array.isArray(attachments) && attachments.length) {
+    const list = el("ul", "msg__files");
+    list.setAttribute("aria-label", "Pièces jointes");
+    for (const a of attachments) {
+      const item = el("li");
+      const chip = el("span", "file-chip", `${KIND_LABEL[a.kind] || "Fichier"} · ${String(a.path || "").split("/").pop()}`);
+      chip.title = String(a.path || "");
+      item.appendChild(chip);
+      list.appendChild(item);
+    }
+    art.appendChild(list);
+  }
   els.thread.appendChild(art);
   scrollDown();
 }
@@ -619,7 +633,7 @@ function showBanner(msg, info = false, check = false) {
 function handleEvent(type, d) {
   d = d && typeof d === "object" ? d : {};
   switch (type) {
-    case "user_message": endTurn(); addUser(d.text || ""); break;
+    case "user_message": endTurn(); addUser(d.text || "", d.attachments); break;
     case "status": if (!state.replaying) onStatus(d); break;
     case "text_delta": clearStatus(); onTextDelta(d); break;
     case "tool_start": clearStatus(); onToolStart(d); break;
@@ -690,10 +704,10 @@ function setBusy(busy) {
   if (!busy) els.input.focus();
 }
 
-async function sendMessage(text) {
-  if (!text || state.streaming || !state.sessionId) return;
+async function sendMessage(text, attachments = []) {
+  if ((!text && !attachments.length) || state.streaming || !state.sessionId) return;
   showBanner("");
-  addUser(text);
+  addUser(text || (attachments.length === 1 ? "Voici le fichier." : "Voici les fichiers."), attachments);
   startTurn();
   setBusy(true);
   state.abort = new AbortController();
@@ -702,7 +716,7 @@ async function sendMessage(text) {
     const res = await fetch(`${API}/sessions/${encodeURIComponent(sid)}/messages`, {
       method: "POST",
       headers: { ...CSRF, "Content-Type": "application/json", Accept: "text/event-stream" },
-      body: JSON.stringify({ text }),
+      body: JSON.stringify({ text, attachments: attachments.map((a) => a.path) }),
       signal: state.abort.signal,
     });
     if (!res.ok) {
@@ -819,6 +833,7 @@ async function loadSession(id, { quiet = false } = {}) {
   clearTimeout(state.pollTimer);
   try {
     const detail = await call("GET", `/sessions/${encodeURIComponent(id)}`);
+    if (state.sessionId !== id) clearAttachments();
     state.sessionId = id;
     const events = detail.events || detail.log || [];
     renderHistory(events);
@@ -845,6 +860,7 @@ async function newSession() {
   showBanner("");
   try {
     const res = await call("POST", "/sessions", {});
+    clearAttachments();
     state.sessionId = res.id;
     els.thread.replaceChildren();
     showEmptyThread();
@@ -1077,14 +1093,99 @@ function setupTheme() {
   });
 }
 
+// ---------------------------------------------------------------------------
+// Pièces jointes (#342) : envoi immédiat du fichier, puis leur chemin dans le message suivant
+// ---------------------------------------------------------------------------
+
+const KIND_LABEL = { gpx: "GPX", tcx: "TCX", fit: "FIT", image: "Photo" };
+const ATTACH_EXT = /\.(gpx|tcx|fit|jpe?g|png|webp)$/i;
+const MAX_ATTACH = 10;
+const sizeFmt = (n) => (n >= 1048576 ? `${(n / 1048576).toFixed(1).replace(".", ",")} Mo` : `${Math.max(1, Math.round(n / 1024))} Ko`);
+
+function renderChips() {
+  els.chips.replaceChildren();
+  els.chips.hidden = !state.attachments.length;
+  for (const a of state.attachments) {
+    const li = el("li", `attach-chip${a.busy ? " is-busy" : ""}`);
+    li.append(el("span", "attach-chip__name", a.name), el("span", "attach-chip__meta", a.busy ? "envoi…" : `${KIND_LABEL[a.kind] || "Fichier"} · ${sizeFmt(a.size)}`));
+    const rm = el("button", "attach-chip__rm", "×");
+    rm.type = "button";
+    rm.setAttribute("aria-label", `Retirer la pièce jointe ${a.name}`);
+    rm.addEventListener("click", () => { state.attachments = state.attachments.filter((x) => x !== a); renderChips(); els.input.focus(); });
+    li.appendChild(rm);
+    els.chips.appendChild(li);
+  }
+}
+
+function clearAttachments() { state.attachments = []; renderChips(); }
+
+async function uploadFile(file) {
+  const sid = state.sessionId;
+  if (!sid || state.streaming) return;
+  if (/\.hei[cf]$/i.test(file.name)) return showBanner("Format HEIC non pris en charge : exportez la photo en JPEG (Réglages > Appareil photo > Formats > « Le plus compatible »).");
+  if (!ATTACH_EXT.test(file.name)) return showBanner(`« ${file.name} » : type non pris en charge. Formats acceptés : GPX, TCX, FIT, JPEG, PNG, WebP.`);
+  const max = Number(state.status?.upload_max_bytes) || 0;
+  if (max && file.size > max) return showBanner(`« ${file.name} » est trop volumineux (${sizeFmt(file.size)}, maximum ${sizeFmt(max)}).`);
+  if (state.attachments.length >= MAX_ATTACH) return showBanner(`Dix pièces jointes au plus par message.`);
+  showBanner("");
+  const item = { name: file.name, size: file.size, busy: true };
+  state.attachments.push(item);
+  renderChips();
+  try {
+    const res = await fetch(`${API}/sessions/${encodeURIComponent(sid)}/attachments`, {
+      method: "POST",
+      headers: { ...CSRF, "Content-Type": "application/octet-stream", "X-Filename": encodeURIComponent(file.name), Accept: "application/json" },
+      body: file,
+    });
+    let data = null;
+    try { data = await res.json(); } catch { /* corps non JSON */ }
+    if (!res.ok) throw new Error((data && data.error) || `HTTP ${res.status}`);
+    if (sid !== state.sessionId) throw new Error("");          // conversation changée entre-temps : fichier ignoré
+    Object.assign(item, { path: data.path, kind: data.kind, busy: false });
+  } catch (err) {
+    state.attachments = state.attachments.filter((x) => x !== item);
+    if (err.message) showBanner(`Pièce jointe refusée : ${err.message}`);
+  }
+  renderChips();
+}
+
+async function addFiles(fileList) {
+  for (const file of Array.from(fileList || [])) await uploadFile(file);
+}
+
+function setupAttachments() {
+  els.attach.addEventListener("click", () => els.fileInput.click());
+  els.fileInput.addEventListener("change", () => { addFiles(els.fileInput.files); els.fileInput.value = ""; });
+  // Le bouton suit l'état de la saisie (désactivée pendant un tour, sans conversation, etc.).
+  new MutationObserver(() => { els.attach.disabled = els.input.disabled; })
+    .observe(els.input, { attributes: true, attributeFilter: ["disabled"] });
+  const hasFiles = (e) => Array.from(e.dataTransfer?.types || []).includes("Files");
+  els.form.addEventListener("dragover", (e) => {
+    if (!hasFiles(e)) return;
+    e.preventDefault();
+    els.box.classList.toggle("is-dragover", !els.input.disabled);
+  });
+  els.form.addEventListener("dragleave", (e) => { if (!els.form.contains(e.relatedTarget)) els.box.classList.remove("is-dragover"); });
+  els.form.addEventListener("drop", (e) => {
+    if (!hasFiles(e)) return;
+    e.preventDefault();
+    els.box.classList.remove("is-dragover");
+    if (!els.input.disabled) addFiles(e.dataTransfer.files);
+  });
+}
+
 function setupComposer() {
+  setupAttachments();
   els.form.addEventListener("submit", (e) => {
     e.preventDefault();
     const text = els.input.value.trim();
-    if (!text) return;
+    if (state.attachments.some((a) => a.busy)) { showBanner("Envoi du fichier en cours : patiente un instant.", true); return; }
+    const attachments = state.attachments.filter((a) => a.path);
+    if (!text && !attachments.length) return;
     els.input.value = "";
     els.input.style.height = "";
-    sendMessage(text);
+    clearAttachments();
+    sendMessage(text, attachments);
   });
   els.input.addEventListener("keydown", (e) => {
     if (e.key === "Enter" && !e.shiftKey && !e.isComposing) { e.preventDefault(); els.form.requestSubmit(); }

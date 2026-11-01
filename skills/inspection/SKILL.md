@@ -104,6 +104,9 @@ Dire en quelques lignes, sans promettre ce qu'on ne peut pas vérifier :
 - **Chemin recommandé, valable quel que soit le client** : copier les photos (n'importe quel nom
   de fichier) dans `<workspace>/gear/photos/`, puis écrire « c'est fait » — ou donner le chemin
   de chaque fichier. Le coach les repère, les renomme et les cite dans l'inspection.
+- **Chat web du tableau de bord** : le bouton **📎** (ou un glisser-déposer sur la zone de saisie) dépose la
+  photo dans `gear/photos/` ; le message suivant porte une ligne « Pièce jointe : gear/photos/… » (le fichier est
+  renommé par le service, JPEG / PNG / WebP uniquement, HEIC refusé). Lancer ensuite `/inspection`.
 - **Terminal Claude Code** : donner le **chemin du fichier** dans la conversation.
 - **Image collée dans la conversation** : le modèle la **voit**, donc l'inspection est possible,
   mais elle **ne peut pas être enregistrée** comme fichier : `photos` reste absent du fichier

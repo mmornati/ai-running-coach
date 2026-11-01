@@ -29,7 +29,7 @@ L'agent **course-strategist** transforme un fichier GPX ou une URL de course en 
 
 L'agent suit un workflow structuré en 8 étapes pour construire la stratégie de course :
 
-1. **Analyse d'entrée** — GPX (analyse générique via le skill `gpx-analysis`) ou URL de course (extraction via `webfetch`)
+1. **Analyse d'entrée** — GPX (analyse générique via le skill `gpx-analysis` ; un GPX joint dans le chat web par le bouton 📎 arrive dans `planning/inbox/` et est utilisé tel quel) ou URL de course (extraction via `webfetch`)
 2. **Points d'eau et ravitaillement** — points officiels + enrichissement OpenStreetMap (Overpass), alertes sur les écarts > 8 km / > 15 km
 3. **Vérification et questions utilisateur** — comble les informations critiques manquantes (barrières horaires, terrain, points d'eau proposés) avant de continuer
 4. **Synthèse allures et temps de passage** — 3 scénarios (ambitieux, réaliste, sécurité), par segment depuis le modèle personnel pente → allure quand un GPX est fourni (`scripts/arc_race_pacing.py`, #59) ; règles génériques en repli (URL seule, sans GPX)

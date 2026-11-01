@@ -77,6 +77,7 @@ course.
 #### ÉTAPE 1 : ANALYSE D'ENTRÉE (GPX ou URL)
 
 **Cas A : Fichier GPX fourni**
+Un GPX joint dans le chat web (bouton 📎) arrive dans `planning/inbox/` et le message porte « Pièce jointe : planning/inbox/<fichier>.gpx (gpx) » : utilise ce chemin directement avec `--gpx`, sans redemander le fichier. Un `.tcx` ou `.fit` joint arrive au même endroit ; le skill `gpx-analysis` ne lit que le GPX, dis-le si l'athlète n'en fournit pas.
 Charge le skill **`gpx-analysis`** et utilise `skills/gpx-analysis/scripts/analyze_gpx.py` (générique, stdlib) :
 ```bash
 python3 skills/gpx-analysis/scripts/analyze_gpx.py \

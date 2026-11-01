@@ -196,6 +196,9 @@ def match_turn(scenario: dict, message: str) -> Optional[dict]:
     return next((t for t in scenario["turns"] if t["pattern"].search(message)), None)
 
 
+ATTACHMENT_LINE = re.compile(r"^Pièce jointe : (\S.*?) \((?:gpx|tcx|fit|image)\)[ \t]*\n?", re.MULTILINE)
+
+
 class MockBackend(ChatBackend):
     name = "mock"
 
@@ -216,6 +219,11 @@ class MockBackend(ChatBackend):
 
     def run_turn(self, ctx: TurnContext, user_message: str) -> None:
         emit = ctx.emit
+        # Pièces jointes (#342) : le service préfixe (ou, après une commande « /… », suffixe) une ligne
+        # `Pièce jointe : <chemin> (<type>)` par fichier. Le texte de l'athlète reste ce qui pilote le scénario.
+        attached = [m.group(1) for m in ATTACHMENT_LINE.finditer(user_message)]
+        if attached:
+            user_message = ATTACHMENT_LINE.sub("", user_message).strip()
         text = user_message.lower()
         cost = float(self.config.get("mock_cost_eur", 0.01))
 
@@ -240,6 +248,13 @@ class MockBackend(ChatBackend):
 
         if "fatigu" in text:
             self._demo_morning_check(ctx, finish)
+            return
+
+        if attached:
+            emit("tool_start", {"id": "a1", "name": "fs.read", "summary": f"Lecture de {attached[0]}"})
+            emit("tool_end", {"id": "a1", "ok": True, "summary": "Fichier lu"})
+            emit("text_delta", {"text": f"J'ai bien reçu {len(attached)} pièce(s) jointe(s) : {', '.join(attached)}."})
+            finish("end_turn")
             return
 
         emit("text_delta", {"text": "Je regarde ton plan de la semaine. "})
