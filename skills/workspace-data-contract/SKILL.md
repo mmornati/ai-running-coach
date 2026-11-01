@@ -1181,7 +1181,7 @@ semaine :
 | **`summary`** | texte | une phrase, dans la langue des documents — c'est elle qu'affichent l'encart « Pourquoi aujourd'hui ? » (#55) et la ligne « Pourquoi » du `resume` (#56) |
 | **`outcome`** | `applied` `proposed` `rejected_by_athlete` `superseded` | ce qu'il est advenu de la décision |
 | `inputs` | objet | valeurs clés qui l'ont justifiée, ex. `{"hrv_personal_status": "sous", "acwr_projected": 1.42}` — clés libres, en anglais, SI |
-| `rule_ids` | liste | `rule_id` de `scripts/arc_guardrails.py` concernés (`r1_acwr_projected` … `r7_consecutive_quality`, voir `RULE_IDS`) — format `rN_nom_de_regle` validé, pas la liste vivante des règles (voir note ci-dessous) |
+| `rule_ids` | liste | `rule_id` de `scripts/arc_guardrails.py` concernés (`r1_acwr_projected` … `r8_session_spike`, voir `RULE_IDS`) — format `rN_nom_de_regle` validé, pas la liste vivante des règles (voir note ci-dessous) |
 | `sources` | liste | chemins **relatifs au workspace** ayant justifié la décision, ex. `resources/running/acwr.md`, `medical/2026-09-20_health.md` — voir « chemins relatifs au workspace » ci-dessous pour ce qui est refusé |
 | `before` | objet | ce qui change dans la séance concernée, état AVANT — voir ci-dessous |
 | `after` | objet | même chose, état APRÈS — pour une annulation sans remplacement, écrivez `"after": {"status": "cancelled"}` explicitement (jamais une clé absente pour dire « annulé » : l'absence de `after` veut dire « pas encore de remplacement connu », pas « annulé ») |

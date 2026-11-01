@@ -131,7 +131,7 @@ DEFAULT_SCRIPTS = {
         "output_options": ["--output"],
     },
     "scripts/arc_guardrails.py": {
-        "flags": ["--memory"], "value_options": ["--week-start", "--today"],
+        "flags": ["--memory", "--json", "--text"], "value_options": ["--week-start", "--today", "--date"],
         "read_options": ["--week"], "output_options": ["--db"],
     },
     "scripts/arc_workout_targets.py": {

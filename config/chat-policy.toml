@@ -150,8 +150,8 @@ read_options = ["--from-dir"]
 output_options = ["--output-dir"]
 
 [shell.scripts."scripts/arc_guardrails.py"]
-flags = ["--memory"]
-value_options = ["--week-start", "--today"]
+flags = ["--memory", "--json", "--text"]
+value_options = ["--week-start", "--today", "--date"]
 read_options = ["--week"]
 output_options = ["--db"]
 

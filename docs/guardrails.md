@@ -30,7 +30,7 @@ câblage.
 <!-- /arc-video -->
 
 
-## Les sept règles
+## Les huit règles
 
 | id | vérifie | sévérité par défaut |
 |---|---|---|
@@ -41,6 +41,7 @@ câblage.
 | `r5_quality_after_red` | séance de qualité le jour même ou le lendemain d'un verdict santé rouge | `block` |
 | `r6_long_run_share` | part de la plus longue sortie dans le volume hebdomadaire | `warn` |
 | `r7_consecutive_quality` | deux séances de qualité le même jour ou sur deux jours consécutifs | `warn` |
+| `r8_session_spike` | pic de charge d'**une** séance : sa distance vs la plus longue sortie course des 30 jours précédents | `warn` |
 
 Seuils et sévérités : `[guardrails]` de `config/workspace.toml`, voir
 [Configuration](configuration.md#les-garde-fous-guardrails).
@@ -49,6 +50,50 @@ Seuils et sévérités : `[guardrails]` de `config/workspace.toml`, voir
     Voir [Sources](#sources) ci-dessous pour le détail des réserves
     scientifiques. Remettez `severity_r1_acwr_projected = "block"` dans
     `[guardrails]` si vous préférez la fermeté.
+
+## R8 : pic de charge d'une séance
+
+R1 et R6 regardent la semaine ; R8 regarde **une séance** et complète les deux.
+D'après Nielsen R. *et al.*, *Br J Sports Med* 2025;59(17):1203
+([article](https://bjsm.bmj.com/content/59/17/1203)) :
+
+`ratio = distance de la séance / plus longue distance des séances course des 30 jours précédents`
+
+Le jour de la séance est exclu ; la fenêtre est `[J-30, J-1]` (J-30 inclus, J-31
+exclu : choix du projet). Seule la famille course à pied compte (la même que
+R6) : un vélo n'est ni évalué ni pris comme référence. Hazard ratios de
+blessure de surcharge rapportés par l'article :
+
+| Catégorie | Ratio | Hazard ratio (IC95) |
+|---|---|---|
+| référence | ≤ 1,10 | 1 |
+| faible | ]1,10 ; 1,30] | 1,64 (1,31-2,05) |
+| modéré | ]1,30 ; 2,00] | 1,52 (1,16-2,00) |
+| important | > 2,00 | 2,28 (1,50-3,48) |
+
+- **Plan** : R8 évalue chaque séance planifiée de la semaine qui porte une
+  `planned_distance_m`. Historique = activités **réalisées** de la fenêtre +
+  séances planifiées antérieures de la même semaine (le réalisé remplace le plan
+  du même jour ; une séance passée sans activité ne compte pas). Elle se
+  déclenche à partir de « modéré » (`warn`, jamais bloquante) ; « faible » reste
+  visible dans `context.session_spike`.
+- **Séance sans distance** : aucune conclusion, jamais de distance déduite d'une
+  durée (`reason_code: "missing_planned_distance"`).
+- **Aucune sortie dans la fenêtre** : pas de ratio, « historique insuffisant »
+  (`insufficient_history`). Semaine de course : sautée.
+- **Séance réalisée** : `python3 scripts/arc_guardrails.py session-spike --date AAAA-MM-JJ`
+  rend en JSON (ou `--text`) le ratio, la catégorie, le hazard ratio et la FC
+  moyenne de chaque séance course du jour. La sync quotidienne ajoute un segment
+  à la ligne `Alerte :` pour une séance **nouvellement synchronisée** en
+  « modéré » ou « important » ([notification](mobile.md)), sans rien écrire.
+
+!!! note "Limites"
+    Les hazard ratios sont des risques relatifs de **groupe**, jamais la
+    probabilité qu'un athlète précis se blesse. L'article ne valide que la
+    dimension distance : dénivelé, descente et effort perçu (trail) sont hors
+    périmètre, faute de seuils validés. La population de la cohorte n'est pas
+    détaillée ici (non vérifiée) : consultez l'article avant d'extrapoler à
+    votre profil.
 
 ## Au-delà de la semaine : la projection jusqu'à la course
 
@@ -103,7 +148,7 @@ mesure.
   (R1/R2/R4) : sautées avec `reason_code: "missing_planned_duration"` — voir
   [Séances prescrites en distance](#seances-prescrites-en-distance) ci-dessous.
 - **Semaine de course** (date de `planning/active_objective.md` dans la
-  semaine proposée) : R1, R2, R3, R4, R6 et R7 sont sautées
+  semaine proposée) : R1, R2, R3, R4, R6, R7 et R8 sont sautées
   (`reason_code: "race_week"`) — l'objectif est d'éviter une progression trop
   agressive à l'entraînement, jamais de bloquer la course elle-même. R5 reste
   active (une alerte santé reste pertinente juste avant une course).
@@ -160,7 +205,7 @@ une estimation sans donnée — voir
 ## Sources
 
 Chaque règle cite sa source dans son champ `source` (littérature vérifiable
-pour R1/R4/R7 — Gabbett 2016, Foster 1998, Seiler & Kjerland 2006 — ou
+pour R1/R4/R7/R8 — Gabbett 2016, Foster 1998, Seiler & Kjerland 2006, Nielsen *et al.* 2025 — ou
 « convention du projet » explicite pour R2/R3/R6, faute de source unique et
 consensuelle). Le détail complet, avec les citations complètes, est dans
 `scripts/arc_guardrails.py::ASSUMPTIONS`.

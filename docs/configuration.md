@@ -518,17 +518,18 @@ severity_r4_monotony_projected = "warn"
 severity_r5_quality_after_red = "block"
 severity_r6_long_run_share = "warn"
 severity_r7_consecutive_quality = "warn"
+severity_r8_session_spike = "warn"
 ```
 
-Chaque règle (R1 à R7) a sa propre clé `severity_<id>` — seule R5 (qualité
+Chaque règle (R1 à R8) a sa propre clé `severity_<id>` — seule R5 (qualité
 après un verdict santé rouge) bloque par défaut, les autres sont `warn`. Le
 détail de chaque règle (R2 : hausse de volume, R3 : hausse de D+, R4 :
 monotonie de Foster, R6 : part de la plus longue sortie, R7 : deux séances de
-qualité rapprochées) est dans [Les garde-fous](guardrails.md#les-sept-regles).
+qualité rapprochées, R8 : pic de charge d'une séance) est dans [Les garde-fous](guardrails.md#les-huit-regles).
 
 Le moteur de garde-fous déterministe ([`scripts/arc_guardrails.py`](guardrails.md))
 est un second avis purement calculé, consulté par le coach avant d'écrire une
-semaine et avant de la pousser au calendrier Garmin. Chaque règle (R1 à R7) a son
+semaine et avant de la pousser au calendrier Garmin. Chaque règle (R1 à R8) a son
 seuil et sa sévérité propres — voir [la page dédiée](guardrails.md) pour le détail,
 les sources et le format de sortie.
 

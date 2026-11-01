@@ -290,6 +290,22 @@ Remote Control) et l'IDE partagent. Il délègue tout à l'agent `coach` et au s
    avant séance du coach. N'utiliser jamais `--last-pass` ici. Sans état persistant, sans fichier
    écrit ; les objets sans déclencheur ne remontent jamais (aucun seuil inventé). Aucune donnée de
    santé ; non soumis à `[health].morning_check`. Échec de la commande : ignorer silencieusement.
+3d. **Alerte de pic de charge d'une séance (R8, #338) — une seule fois par séance, sans état.**
+   Dresser la liste des séances running/trail/hiking **synchronisées pour la première fois dans CE
+   run** (même critère qu'en 3b : un fichier qui portait déjà ses données, simple re-fusion ou second
+   passage du jour, n'en fait jamais partie). **Aucune séance nouvelle = ne PAS lancer la commande et
+   ne rien ajouter.** Sinon, pour chaque DATE distincte de ces séances, lancer
+   `python3 scripts/arc_guardrails.py session-spike --date <AAAA-MM-JJ> --json` et ne garder que les
+   éléments de `sessions` qui sont une de ces séances (`garmin_activity_id` / `intervals_activity_id` /
+   `strava_activity_id` / `coros_activity_id`, ou `source_path`) ET portent `alert: true` (catégorie
+   `moderate` ou `large`). Pour chacun, ajouter à la ligne `Alerte :` unique (` ; `, jamais une ligne
+   de plus) le texte du champ `text`, abrégé : « Pic de charge <catégorie> : <ratio> × la plus longue
+   sortie des 30 jours (<km> km vs <km> km le <date>), hazard ratio <HR> ». Les catégories `reference`
+   et `low`, `insufficient_history` (« historique insuffisant ») et `no_distance` ne produisent
+   **aucune** ligne. Pas de santé en jeu : non soumis à `[health].morning_check`. Sans état, aucun
+   fichier écrit, aucune décision, jamais de modification du plan. Échec de la commande : ignorer
+   silencieusement (non bloquant, jamais `ERREUR :`). Un repère de risque relatif de groupe (Nielsen
+   et al., BJSM 2025;59(17):1203), jamais un diagnostic ni une probabilité de blessure.
 4. **Garde-fou r5, bilan rouge (#52/#53) — jamais d'écriture de plan ni de push ici.** Si
    un `medical/YYYY-MM-DD_health.md` persisté à l'étape 1 porte `verdict: "red"`, chercher
    dans `planning/` une semaine (`kind: week`) dont une séance de qualité (intensité
@@ -337,7 +353,7 @@ dans la langue des documents, sans Markdown à l'intérieur. C'est ce bloc que
 
 **Une seule ligne `Alerte :` au total**, jamais une par source : si plusieurs
 alertes s'appliquent en même temps (FIT non téléchargé, fichier hors contrat, chaussure
-ayant atteint son seuil — étape 3b, matériel Garmin non associé ou en désaccord avec la
+ayant atteint son seuil — étape 3b, pic de charge d'une séance modéré/important — étape 3d, matériel Garmin non associé ou en désaccord avec la
 déclaration de l'athlète, #133 — « Matériel : Brooks Ghost non associée (à lier via le coach) »
 ou « Matériel : Garmin indique Nike Pegasus, ta déclaration (Salomon S/Lab) est conservée »…),
 les concaténer sur cette même ligne, séparées par ` ; ` — le budget de 5
