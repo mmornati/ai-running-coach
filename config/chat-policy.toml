@@ -198,8 +198,17 @@ ask_flags = ["--apply"]
 flags = ["--json", "--force"]
 
 [web]
-# Domaines joignables par `web.fetch` (le domaine exact ou un sous-domaine). `web.search` est refusé.
-fetch_domains = ["wttr.in", "overpass-api.de", "nominatim.openstreetmap.org"]
+# Domaines joignables par `web.fetch` sans carte (le domaine exact ou un sous-domaine) : météo, OSM, et
+# les calendriers de courses du directeur sportif (agents/sports-director.md, recherche « SEARCH »).
+# ITRA et UTMB n'y figurent pas (vie privée #62, indice de l'athlète) : carte d'approbation.
+fetch_domains = ["wttr.in", "overpass-api.de", "nominatim.openstreetmap.org",
+                 "kikourou.net", "betrail.run", "finishers.com",
+                 "ahotu.com", "athle.fr", "jogging-plus.com", "protiming.fr"]
+# `web.search` (moteur de recherche de l'outil) : « allow », « ask » ou « deny ».
+search = "allow"
+# `web.fetch` d'un nom public hors liste (site officiel d'une course) : « ask » = carte d'approbation
+# montrant l'URL complète. Une adresse IP, un nom sans point ou local (.local, .lan…) reste refusé.
+unlisted_fetch = "ask"
 
 [mcp]
 # Serveurs MCP connus : lectures autorisées, écritures soumises à approbation.

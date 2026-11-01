@@ -93,11 +93,36 @@ class PolicyTest(PolicyBase):
     def test_web(self):
         self.assertEqual(self.d("web.fetch", {"url": "https://wttr.in/Lyon?format=j1"}), "allow")
         self.assertEqual(self.d("web.fetch", {"url": "https://overpass-api.de/api/interpreter"}), "allow")
-        self.assertEqual(self.d("web.fetch", {"url": "https://evil.example/wttr.in"}), "deny")
-        self.assertEqual(self.d("web.fetch", {"url": "https://wttr.in.evil.example/"}), "deny")
+        # Nom public hors liste (site officiel d'une course) : carte d'approbation, pas d'accès libre.
+        self.assertEqual(self.d("web.fetch", {"url": "https://evil.example/wttr.in"}), "ask")
+        self.assertEqual(self.d("web.fetch", {"url": "https://wttr.in.evil.example/"}), "ask")
         self.assertEqual(self.d("web.fetch", {"url": "https://user@evil.example@wttr.in/"}), "deny")
         self.assertEqual(self.d("web.fetch", {"url": "file:///etc/passwd"}), "deny")
-        self.assertEqual(self.d("web.search", {"query": "x"}), "deny")
+        # Recherche web permise (directeur sportif) ; requête vide refusée.
+        self.assertEqual(self.d("web.search", {"query": "trail 30 km Jura mai 2027"}), "allow")
+        self.assertEqual(self.d("web.search", {"query": "  "}), "deny")
+
+    def test_web_calendriers_de_courses(self):
+        for url in ("https://www.kikourou.net/calendrier/", "https://www.betrail.run/races",
+                    "https://www.finishers.com/courses", "https://bases.athle.fr/asp.net/accueil.aspx"):
+            self.assertEqual(self.d("web.fetch", {"url": url}), "allow", url)
+
+    def test_web_reseau_local_jamais_joignable(self):
+        # Même avec une carte : ni IP littérale, ni nom sans point, ni suffixe local (LAN de l'installation).
+        for url in ("http://10.0.0.48:8000/", "http://10.0.0.48/", "http://127.0.0.1/", "http://192.168.1.1/",
+                    "http://2130706433/", "http://0x7f.0.0.1/", "http://localhost/", "http://nas/",
+                    "http://homeassistant.local/", "http://box.lan/", "http://api.internal/",
+                    "http://1.0.0.127.in-addr.arpa/", "http://[::1]/"):
+            self.assertEqual(self.d("web.fetch", {"url": url}), "deny", url)
+
+    def test_web_verdicts_configurables(self):
+        custom = self.ws / "web.toml"
+        custom.write_text('[web]\nsearch = "ask"\nunlisted_fetch = "deny"\n', encoding="utf-8")
+        policy = Policy.load(custom, self.ws)
+        self.assertEqual(policy.decide("web.search", {"query": "x"}), "ask")
+        self.assertEqual(policy.decide("web.fetch", {"url": "https://www.trail-du-jura.fr/"}), "deny")
+        custom.write_text('[web]\nsearch = "oui"\n', encoding="utf-8")
+        self.assertEqual(Policy.load(custom, self.ws).decide("web.search", {"query": "x"}), "deny")
 
     def test_task_skill_autres(self):
         self.assertEqual(self.d("task", {"agent": "coach"}), "allow")
@@ -153,7 +178,7 @@ class PolicyTest(PolicyBase):
         custom.write_text('[web]\nfetch_domains = ["example.org"]\n', encoding="utf-8")
         policy = Policy.load(custom, self.ws)
         self.assertEqual(policy.decide("web.fetch", {"url": "https://example.org/x"}), "allow")
-        self.assertEqual(policy.decide("web.fetch", {"url": "https://wttr.in/"}), "deny")
+        self.assertEqual(policy.decide("web.fetch", {"url": "https://wttr.in/"}), "ask")
         # Sans fichier : les défauts intégrés s'appliquent.
         empty = Policy.load(self.ws / "absent", self.ws)
         self.assertEqual(empty.decide("mcp:garmin.schedule_workouts", {}), "ask")
@@ -259,6 +284,10 @@ class WebFetchBypassTest(PolicyBase):
                     "https://wttr.in\\@evil.com/", "https://wttr.іn/x", "https://xn--wttr-in-x.evil/",
                     "https://wttr.in./", " https://wttr.in/", "https://wttr.in/ x", "https:wttr.in",
                     "https://user:pw@wttr.in/", "https://wttr.in.@evil.com/"):
+            # Jamais « allow » : un contournement ne passe pour un domaine listé, au mieux il demande une carte.
+            self.assertNotEqual(self.d("web.fetch", {"url": url}), "allow", repr(url))
+        for url in ("https://wttr.in@evil.com/", "https://wttr.in%2eevil.com/", "https://wttr.in:8443/x",
+                    "ftp://wttr.in/", "https://wttr.іn/x", "https://user:pw@wttr.in/"):
             self.assertEqual(self.d("web.fetch", {"url": url}), "deny", repr(url))
 
     def test_domaines_valides(self):

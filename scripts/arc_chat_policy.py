@@ -62,6 +62,15 @@ WILDCARDS = "*?["
 BRACE_MAX_EXPANSION = 64
 BRACE_MAX_DEPTH = 3
 
+# Calendriers de courses joignables sans carte (sports-director) ; le site officiel d'une course passe par
+# `[web].unlisted_fetch`. ITRA et UTMB n'y sont pas (vie privée #62 : leurs pages portent l'indice de
+# l'athlète) : chaque consultation demande une carte.
+RACE_CALENDAR_DOMAINS = ["kikourou.net", "betrail.run", "finishers.com",
+                         "ahotu.com", "athle.fr", "jogging-plus.com", "protiming.fr"]
+# Hôtes jamais joignables, même avec une carte : réseau local de l'installation (NAS, Home Assistant…).
+LOCAL_HOST_SUFFIXES = (".local", ".lan", ".home", ".internal", ".localhost", ".localdomain", ".arpa")
+WEB_VERDICTS = ("allow", "ask", "deny")
+
 # Valeurs de repli si le fichier est absent ou incomplet : elles reproduisent
 # `config/chat-policy.toml` (le refus reste le comportement par défaut).
 DEFAULTS = {
@@ -78,7 +87,8 @@ DEFAULTS = {
                                    "python3 scripts/coach_doctor.py", "python3 scripts/arc_openwearables.py",
                                    "python3 skills/session-parts-analyzer/scripts/analyze_session_parts.py"],
               "stdin_scripts": ["scripts/arc_log.py"]},
-    "web": {"fetch_domains": ["wttr.in", "overpass-api.de", "nominatim.openstreetmap.org"]},
+    "web": {"fetch_domains": ["wttr.in", "overpass-api.de", "nominatim.openstreetmap.org", *RACE_CALENDAR_DOMAINS],
+            "search": "allow", "unlisted_fetch": "ask"},
     "mcp": {
         "servers": ["garmin", "intervals", "strava", "coros"],
         "read_prefixes": ["get_", "count_", "list_", "download_", "get-", "list-", "check-", "explore-",
@@ -174,6 +184,11 @@ def _script_rules(rules: dict) -> dict:
     return found
 
 
+def _web_verdict(value) -> str:
+    value = str(value or "").strip().lower()
+    return value if value in WEB_VERDICTS else "deny"
+
+
 def _has_wildcard(text: str) -> bool:
     return any(ch in text for ch in WILDCARDS)
 
@@ -197,6 +212,9 @@ class Policy:
         self.stdin_scripts = _as_list(merged["shell"].get("stdin_scripts"))
         self.shell_scripts = _script_rules(rules or {}) or {k: dict(v) for k, v in DEFAULT_SCRIPTS.items()}
         self.fetch_domains = [d.lower() for d in _as_list(merged["web"].get("fetch_domains"))]
+        # Verdict hors liste : une valeur inconnue vaut refus.
+        self.web_search = _web_verdict(merged["web"].get("search"))
+        self.unlisted_fetch = _web_verdict(merged["web"].get("unlisted_fetch"))
         self.mcp_servers = [s.lower() for s in _as_list(merged["mcp"].get("servers"))]
         self.mcp_read_prefixes = _as_list(merged["mcp"].get("read_prefixes"))
         self.mcp_write_tools = _as_list(merged["mcp"].get("write_tools"))
@@ -235,11 +253,13 @@ class Policy:
             return self._shell(str(tool_input.get("command") or ""))
         if tool == "web.fetch":
             return self._web_fetch(str(tool_input.get("url") or ""))
+        if tool == "web.search":
+            return self.web_search if str(tool_input.get("query") or "").strip() else "deny"
         if tool in ("task", "skill"):
             return "allow"
         if tool.startswith("mcp:"):
             return self._mcp(tool)
-        return "deny"           # web.search, other:*, inconnu
+        return "deny"           # other:*, inconnu
 
     def _secret(self, rel: str) -> bool:
         # Comparaison insensible à la casse des deux côtés (macOS : `.ARC` et `.arc` sont le même dossier).
@@ -601,7 +621,8 @@ class Policy:
     # -- web -------------------------------------------------------------------------
 
     def _web_fetch(self, url: str) -> str:
-        """http(s) sans identifiants, sans encodage dans l'hôte, hôte ASCII, port par défaut, domaine listé."""
+        """http(s) sans identifiants, sans encodage dans l'hôte, hôte ASCII, port par défaut ; domaine listé
+        → allow, autre nom public → `[web].unlisted_fetch`, adresse IP ou nom local → deny."""
         if not url or url != url.strip() or "\\" in url or any(ord(c) <= 0x20 or ord(c) == 0x7F for c in url):
             return "deny"
         try:
@@ -619,7 +640,14 @@ class Policy:
         host = (parts.hostname or "").lower()
         if not re.fullmatch(r"[a-z0-9]([a-z0-9.-]*[a-z0-9])?", host) or ".." in host:
             return "deny"
-        return "allow" if any(host == d or host.endswith("." + d) for d in self.fetch_domains) else "deny"
+        if any(host == d or host.endswith("." + d) for d in self.fetch_domains):
+            return "allow"
+        # Hors liste : jamais une IP littérale (10.0.0.x, 127.0.0.1, entier décimal…), un nom sans point
+        # (`localhost`, `nas`) ni un suffixe de réseau local ; le reste suit `[web].unlisted_fetch`.
+        if "." not in host or host.endswith(LOCAL_HOST_SUFFIXES) or re.fullmatch(r"[0-9.]+", host) \
+                or re.search(r"\.[0-9]+$", host):
+            return "deny"
+        return self.unlisted_fetch
 
     # -- mcp -------------------------------------------------------------------------
 
