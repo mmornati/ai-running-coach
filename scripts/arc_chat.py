@@ -911,16 +911,22 @@ class ChatService:
                     if digest in preapproved:
                         preapproved.discard(digest)
                         consumed.append(digest)
-                        return "allow"
-                return verdict
+                    else:
+                        return verdict
+                return "allow" if self.policy.after_approval(tool, tool_input) else "deny"
+
+            def request_approval(tool, tool_input, summary, diff):
+                result = self._request_approval(turn, tool, tool_input, summary, diff)
+                if result == "allow" and not self.policy.after_approval(tool, tool_input):
+                    return "deny"        # p. ex. un nom approuvé qui se résout vers le réseau local
+                return result
 
             # Copie : le budget restant est propre au tour (les backends l'appliquent en cours de tour).
             config = dict(self.cfg, turn_budget_eur=grant)
             ctx = TurnContext(
                 session_id=sid, workspace=self.workspace, config=config, emit=turn.emit,
                 decide=decide,
-                request_approval=lambda tool, tool_input, summary, diff: self._request_approval(
-                    turn, tool, tool_input, summary, diff),
+                request_approval=request_approval,
                 cancelled=turn.cancelled, backend_state=state, language=self.language)
             try:
                 self.backend.run_turn(ctx, text)

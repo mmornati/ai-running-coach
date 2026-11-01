@@ -20,6 +20,7 @@ import re
 import shlex
 import socket
 import sys
+import threading
 from pathlib import Path
 from typing import Iterable, Optional
 from urllib.parse import urlsplit
@@ -186,12 +187,24 @@ def _script_rules(rules: dict) -> dict:
     return found
 
 
-def resolve_host(host: str) -> list:
-    """Adresses IP de `host` (résolveur du système, celui de l'outil web) ; [] si le nom ne se résout pas."""
-    try:
-        return sorted({info[4][0] for info in socket.getaddrinfo(host, None)})
-    except (OSError, UnicodeError):
-        return []
+RESOLVE_TIMEOUT_S = 5.0
+
+
+def resolve_host(host: str, timeout: float = RESOLVE_TIMEOUT_S) -> list:
+    """Adresses IP de `host` (résolveur du système, celui de l'outil web) ; [] si le nom ne se résout pas
+    dans `timeout` secondes (le fil de résolution, démon, est alors abandonné)."""
+    box: list = []
+
+    def run() -> None:
+        try:
+            box.append(sorted({info[4][0] for info in socket.getaddrinfo(host, None)}))
+        except (OSError, UnicodeError):
+            box.append([])
+
+    worker = threading.Thread(target=run, daemon=True)
+    worker.start()
+    worker.join(timeout)
+    return box[0] if box else []
 
 
 def _public_addresses(addresses: list) -> bool:
@@ -213,8 +226,7 @@ def _has_wildcard(text: str) -> bool:
 
 
 class Policy:
-    """Règles chargées ; `decide` est pur (aucun effet de bord, thread-safe), hormis la résolution DNS
-    d'un `web.fetch` hors liste."""
+    """Règles chargées ; `decide` est pur (aucun effet de bord, thread-safe)."""
 
     def __init__(self, workspace: Path, rules: Optional[dict] = None, engine: Optional[Path] = None):
         self.workspace = Path(workspace).resolve()
@@ -662,20 +674,37 @@ class Policy:
             return "deny"
         if any(host == d or host.endswith("." + d) for d in self.fetch_domains):
             return "allow"
-        if self.unlisted_fetch == "deny":
-            return "deny"
         # Hors liste : jamais une IP littérale (10.0.0.x, 127.0.0.1, entier décimal, octet hexadécimal
-        # `0x7f`…), un nom sans point (`localhost`, `nas`) ni un suffixe de réseau local ; et jamais un nom
-        # public qui se RÉSOUT vers une adresse non publique (`10.0.0.48.nip.io`). La résolution est faite
-        # ici, par le même résolveur que l'outil web ; une réponse DNS changée entre la carte et l'appel
-        # (rebinding) reste hors de portée de la politique. Un nom qui ne se résout pas : refus.
+        # `0x7f`…), un nom sans point (`localhost`, `nas`), trop long, ni un suffixe de réseau local ; le
+        # reste suit `[web].unlisted_fetch`. Aucune résolution DNS ici : elle enverrait au résolveur un nom
+        # choisi par le modèle AVANT la carte (`<donnée>.attaquant.com`) — voir `after_approval`.
         labels = host.split(".")
-        if len(labels) < 2 or host.endswith(LOCAL_HOST_SUFFIXES) \
+        if len(labels) < 2 or len(host) > 253 or any(len(label) > 63 for label in labels) \
+                or host.endswith(LOCAL_HOST_SUFFIXES) \
                 or any(re.fullmatch(r"[0-9]+|0x[0-9a-f]*", label) for label in labels):
             return "deny"
-        if not _public_addresses(resolve_host(host)):
-            return "deny"
         return self.unlisted_fetch
+
+    def _listed_host(self, url: str) -> bool:
+        host = (urlsplit(url).hostname or "").lower()
+        return any(host == d or host.endswith("." + d) for d in self.fetch_domains)
+
+    def after_approval(self, tool: str, tool_input: dict) -> bool:
+        """Dernier contrôle d'un appel que l'athlète vient d'approuver (carte ou reprise) : un `web.fetch`
+        hors liste n'est exécuté que si son nom se résout, et UNIQUEMENT vers des adresses publiques
+        (`10.0.0.48.nip.io` → refus). Résolution après le consentement seulement, par le résolveur du
+        système (celui de l'outil web) ; un changement de réponse DNS entre ce contrôle et l'appel
+        (rebinding) reste hors de portée de la politique."""
+        if tool != "web.fetch":
+            return True
+        url = str((tool_input or {}).get("url") or "")
+        try:
+            if self._listed_host(url):
+                return True
+            host = (urlsplit(url).hostname or "").lower()
+        except ValueError:
+            return False
+        return bool(host) and _public_addresses(resolve_host(host))
 
     # -- mcp -------------------------------------------------------------------------
 
