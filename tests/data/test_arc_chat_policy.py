@@ -162,6 +162,9 @@ class PolicyTest(PolicyBase):
         policy = Policy.load(custom, self.ws)
         self.assertEqual(policy.decide("web.search", {"query": "x"}), "ask")
         self.assertEqual(policy.decide("web.fetch", {"url": "https://www.trail-du-jura.fr/"}), "deny")
+        custom.write_text('[web]\nunlisted_fetch = "allow"\n', encoding="utf-8")
+        self.assertEqual(Policy.load(custom, self.ws).decide("web.fetch", {"url": "https://www.trail-du-jura.fr/"}),
+                         "ask")      # jamais sans carte : le contrôle des adresses suit l'approbation
         custom.write_text('[web]\nsearch = "oui"\n', encoding="utf-8")
         self.assertEqual(Policy.load(custom, self.ws).decide("web.search", {"query": "x"}), "deny")
 

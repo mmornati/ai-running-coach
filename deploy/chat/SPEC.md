@@ -168,7 +168,7 @@ constant); `--llm anthropic` → chat `claude-sonnet-5-5`, sync `claude-haiku-5-
   never ITRA/UTMB, which carry the athlete's index, #62)
   — http(s) only, parsed with `urlsplit`, no `\`, `%` or userinfo in the authority, ASCII host,
   default port, hostname equal to or a true subdomain of a listed domain. Any other public name
-  (a race's official site) → `[web].unlisted_fetch` (**ask** by default); an IP literal, a
+  (a race's official site) → `[web].unlisted_fetch` (**ask** by default, or deny; `allow` is read as ask); an IP literal, a
   dotless name, a numeric or hex label, an over-long name or a local suffix (`.local`, `.lan`,
   `.internal`…) → deny, even with a card. No DNS lookup before consent (it would leak the name to
   the resolver); once approved (card or resume), `Policy.after_approval` resolves an unlisted name

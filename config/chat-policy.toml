@@ -207,7 +207,8 @@ fetch_domains = ["wttr.in", "overpass-api.de", "nominatim.openstreetmap.org",
 # `web.search` (moteur de recherche de l'outil) : « allow », « ask » ou « deny ».
 search = "allow"
 # `web.fetch` d'un nom public hors liste (site officiel d'une course) : « ask » = carte d'approbation
-# montrant l'URL complète. Une adresse IP, un nom sans point ou local (.local, .lan…) reste refusé.
+# montrant l'URL complète, ou « deny » (« allow » vaut « ask »). Une adresse IP, un nom sans point ou
+# local (.local, .lan…) reste refusé ; après la carte, un nom résolu vers le réseau local aussi.
 unlisted_fetch = "ask"
 
 [mcp]

@@ -246,7 +246,9 @@ class Policy:
         self.fetch_domains = [d.lower() for d in _as_list(merged["web"].get("fetch_domains"))]
         # Verdict hors liste : une valeur inconnue vaut refus.
         self.web_search = _web_verdict(merged["web"].get("search"))
-        self.unlisted_fetch = _web_verdict(merged["web"].get("unlisted_fetch"))
+        # Jamais « allow » hors liste : le contrôle des adresses (`after_approval`) ne court qu'après une
+        # carte ; « allow » est donc ramené à « ask ».
+        self.unlisted_fetch = _web_verdict(merged["web"].get("unlisted_fetch")).replace("allow", "ask")
         self.mcp_servers = [s.lower() for s in _as_list(merged["mcp"].get("servers"))]
         self.mcp_read_prefixes = _as_list(merged["mcp"].get("read_prefixes"))
         self.mcp_write_tools = _as_list(merged["mcp"].get("write_tools"))
