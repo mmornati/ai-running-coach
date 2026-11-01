@@ -238,6 +238,45 @@ class TestPermissionsFollowThePolicy(unittest.TestCase):
             self.assertNotEqual(verdict("SomethingNew", x=1), "allow")
             self.assertEqual(verdict("SomethingNew", x=1), "deny")
 
+    def test_hook_never_answers_allow(self):
+        """Le hook ne fait que durcir : « allow » de la politique = silence (les réglages décident)."""
+        import arc_telegram_hook as hook
+        import tempfile
+        with tempfile.TemporaryDirectory() as ws:
+            ok = hook.hook_output({"tool_name": "mcp__garmin__get_sleep_data", "tool_input": {}, "cwd": ws})
+            self.assertIsNone(ok)
+            asked = hook.hook_output({"tool_name": "mcp__garmin__schedule_workouts", "tool_input": {}, "cwd": ws})
+            self.assertEqual(asked["hookSpecificOutput"]["permissionDecision"], "ask")
+        out = subprocess.run([sys.executable, str(REPO / "scripts/arc_telegram_hook.py")], capture_output=True, text=True,
+                             input=json.dumps({"tool_name": "mcp__garmin__get_sleep_data", "tool_input": {}})).stdout
+        self.assertEqual(out.strip(), "")
+        self.assertNotIn('"allow"', (REPO / "scripts/arc_telegram_hook.py").read_text(encoding="utf-8").split("def hook_output")[1])
+
+    def test_hook_never_loosens_a_settings_ask_or_deny(self):
+        """Pour chaque entrée `ask`/`deny` du template (outils MCP et chemins simples), le hook ne répond jamais allow."""
+        import arc_telegram_hook as hook
+        import tempfile
+        perms = template()
+        with tempfile.TemporaryDirectory() as ws:
+            checked = 0
+            for rule in perms["ask"] + perms["deny"]:
+                payloads = []
+                if mcp_rule(rule):
+                    payloads.append({"tool_name": rule, "tool_input": {}})
+                match = re.fullmatch(r"(Read|Edit|Write|Grep|Glob)\((.+)\)", rule)
+                if match:
+                    path = match.group(2).replace("/**", "").replace("**/", "").replace("//", "/")
+                    key = {"Read": "file_path", "Edit": "file_path", "Write": "file_path"}.get(match.group(1), "path")
+                    payloads.append({"tool_name": match.group(1), "tool_input": {key: path, **({"pattern": "x"} if match.group(1) == "Grep" else {})}})
+                for payload in payloads:
+                    out = hook.hook_output({**payload, "cwd": ws})
+                    if out is not None:
+                        self.assertNotEqual(out["hookSpecificOutput"]["permissionDecision"], "allow", rule)
+                    checked += 1
+            self.assertGreater(checked, 100)
+        # download_activity_file : lecture pour la politique du chat, `ask` dans le template.
+        self.assertIn("mcp__garmin__download_activity_file", perms["ask"])
+
     def test_hook_fails_closed(self):
         import arc_telegram_hook as hook
         out = subprocess.run([sys.executable, str(REPO / "scripts/arc_telegram_hook.py")], input="pas du json",

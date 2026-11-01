@@ -212,7 +212,7 @@ sécurité repose donc sur la politique du chat (`config/chat-policy.toml`), app
 `templates/settings.telegram.json` (permissions **et** hook) dans `.claude/settings.local.json` du
 workspace, sans rien retirer de vos règles :
 
-- **Le hook** (`scripts/arc_telegram_hook.py`) soumet chaque commande shell, chemin lu ou écrit et URL à
+- **Le hook** (`scripts/arc_telegram_hook.py`) ne fait que **durcir** : il ne répond jamais « allow » (ce qui lèverait une règle `ask` des réglages) ; quand la politique laisse passer, il se tait et les règles de `settings.local.json` décident — une commande shell sans règle `allow` demande donc l'approbation. Il soumet chaque commande shell, chemin lu ou écrit et URL à
   `arc_chat_policy.Policy.decide`, comme le chat du tableau de bord : un script n'est autorisé que sous
   son préfixe **et** avec les options déclarées (`--python`, `--workspace`, `--tokens-dir`,
   `--garmin-host`… sont refusées) ; un chemin hors du workspace ou secret est refusé ; une écriture hors de

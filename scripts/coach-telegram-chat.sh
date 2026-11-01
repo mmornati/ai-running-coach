@@ -50,7 +50,10 @@ CHANNEL="plugin:telegram@claude-plugins-official"
 PERMISSION_MODE="$(toml_get telegram_chat permission_mode default)"
 DAILY_RESTART="$(toml_get telegram_chat daily_restart 03:30)"
 TG_DIR="${TELEGRAM_STATE_DIR:-$HOME/.claude/channels/telegram}"
-SELF="$ARC_ENGINE_ROOT/scripts/coach-telegram-chat.sh"
+# Racine PHYSIQUE du moteur : ce script est presque toujours lancé via workspace/scripts -> moteur/scripts,
+# et ARC_ENGINE_ROOT (chemin logique) désignerait alors le workspace, qui n'a pas templates/.
+ENGINE_PHYS="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
+SELF="$ENGINE_PHYS/scripts/coach-telegram-chat.sh"
 # Aussi le nom de la socket tmux (-L) : serveur dédié, sinon le restart systemd
 # (KillMode=control-group) tuerait toutes les sessions tmux de l'utilisateur.
 TMUX_SESSION="coach-telegram-chat"
@@ -61,7 +64,7 @@ LAUNCHD_DIR="$HOME/Library/LaunchAgents"
 LOG_DIR="$ARC_WORKSPACE/logs"
 LOG_FILE="$LOG_DIR/telegram-chat.log"   # distinct de telegram.log (bot un geste)
 SETTINGS_FILE="$ARC_WORKSPACE/.claude/settings.local.json"
-SETTINGS_TEMPLATE="$ARC_ENGINE_ROOT/templates/settings.telegram.json"
+SETTINGS_TEMPLATE="$ENGINE_PHYS/templates/settings.telegram.json"
 OS="$(uname -s)"
 
 # Rappel injecté dans la session : chaque message Telegram passe par le skill
@@ -272,7 +275,7 @@ install_permissions() {
         printf '%s\n' "${C_YELLOW}[dry-run]${C_RESET} fusion de $SETTINGS_TEMPLATE dans $SETTINGS_FILE"
         return 0
     fi
-    python3 "$ARC_ENGINE_ROOT/scripts/coach_config.py" merge-permissions \
+    python3 "$ENGINE_PHYS/scripts/coach_config.py" merge-permissions \
         --file "$SETTINGS_FILE" --template "$SETTINGS_TEMPLATE"
     ok "Permissions de la session Telegram : $SETTINGS_FILE (lectures libres ; écritures Garmin/COROS/intervals.icu soumises à approbation, suppressions interdites)"
 }
