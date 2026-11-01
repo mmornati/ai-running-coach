@@ -5,6 +5,7 @@ from __future__ import annotations
 import sys
 import tempfile
 import unittest
+import unittest.mock
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[2]
@@ -12,7 +13,17 @@ sys.path.insert(0, str(REPO / "scripts"))
 
 import coach_config  # noqa: E402
 from arc_chat_backend import payload_hash  # noqa: E402
+import arc_chat_policy  # noqa: E402
 from arc_chat_policy import Policy  # noqa: E402
+
+# Résolution DNS simulée (jamais le réseau dans les tests) : tout nom public se résout vers une adresse
+# publique, sauf ceux listés ici.
+FAKE_DNS = {"nas-maison.example": ["10.0.0.48"], "rebind.example": ["93.184.216.34", "127.0.0.1"],
+            "v6local.example": ["::1"], "absent.example": []}
+
+
+def fake_resolve(host):
+    return FAKE_DNS.get(host, ["93.184.216.34"])
 
 
 class PolicyBase(unittest.TestCase):
@@ -21,6 +32,9 @@ class PolicyBase(unittest.TestCase):
         self.addCleanup(self._tmp.cleanup)
         self.ws = Path(self._tmp.name).resolve()
         (self.ws / "planning").mkdir()
+        patcher = unittest.mock.patch.object(arc_chat_policy, "resolve_host", side_effect=fake_resolve)
+        self.resolver = patcher.start()
+        self.addCleanup(patcher.stop)
         self.policy = Policy.load(REPO, self.ws)
 
     def d(self, tool, tool_input=None, **kw):
@@ -93,11 +107,66 @@ class PolicyTest(PolicyBase):
     def test_web(self):
         self.assertEqual(self.d("web.fetch", {"url": "https://wttr.in/Lyon?format=j1"}), "allow")
         self.assertEqual(self.d("web.fetch", {"url": "https://overpass-api.de/api/interpreter"}), "allow")
-        self.assertEqual(self.d("web.fetch", {"url": "https://evil.example/wttr.in"}), "deny")
-        self.assertEqual(self.d("web.fetch", {"url": "https://wttr.in.evil.example/"}), "deny")
+        # Nom public hors liste (site officiel d'une course) : carte d'approbation, pas d'accès libre.
+        self.assertEqual(self.d("web.fetch", {"url": "https://evil.example/wttr.in"}), "ask")
+        self.assertEqual(self.d("web.fetch", {"url": "https://wttr.in.evil.example/"}), "ask")
         self.assertEqual(self.d("web.fetch", {"url": "https://user@evil.example@wttr.in/"}), "deny")
         self.assertEqual(self.d("web.fetch", {"url": "file:///etc/passwd"}), "deny")
-        self.assertEqual(self.d("web.search", {"query": "x"}), "deny")
+        # Recherche web permise (directeur sportif) ; requête vide refusée.
+        self.assertEqual(self.d("web.search", {"query": "trail 30 km Jura mai 2027"}), "allow")
+        self.assertEqual(self.d("web.search", {"query": "  "}), "deny")
+
+    def test_web_calendriers_de_courses(self):
+        for url in ("https://www.kikourou.net/calendrier/", "https://www.betrail.run/races",
+                    "https://www.finishers.com/courses", "https://bases.athle.fr/asp.net/accueil.aspx"):
+            self.assertEqual(self.d("web.fetch", {"url": url}), "allow", url)
+
+    def test_web_reseau_local_jamais_joignable(self):
+        # Même avec une carte : ni IP littérale, ni nom sans point, ni suffixe local (LAN de l'installation).
+        for url in ("http://10.0.0.48:8000/", "http://10.0.0.48/", "http://127.0.0.1/", "http://192.168.1.1/",
+                    "http://2130706433/", "http://0x7f.0.0.1/", "http://localhost/", "http://nas/",
+                    "http://homeassistant.local/", "http://box.lan/", "http://api.internal/",
+                    "http://1.0.0.127.in-addr.arpa/", "http://[::1]/",
+                    "http://0x7f.0x0.0x0.0x1/", "http://0x7f.example/",
+                    "https://" + "a" * 64 + ".example/"):
+            self.assertEqual(self.d("web.fetch", {"url": url}), "deny", url)
+
+    def test_web_aucune_resolution_avant_la_carte(self):
+        # Résoudre avant le consentement enverrait le nom au résolveur DNS (exfiltration) : jamais.
+        for url in ("https://www.kikourou.net/", "http://nas-maison.example/", "https://secret.attacker.example/"):
+            self.d("web.fetch", {"url": url})
+        # Nom public visant le LAN : carte d'abord, refus après approbation (`after_approval`).
+        self.assertEqual(self.d("web.fetch", {"url": "http://nas-maison.example/"}), "ask")
+        self.assertEqual(self.d("web.fetch", {"url": "http://10.0.0.48.nip.io/"}), "deny")
+        self.resolver.assert_not_called()
+
+    def test_apres_approbation_nom_resolu_vers_le_reseau_local(self):
+        ok = self.policy.after_approval
+        for url in ("http://nas-maison.example/", "http://rebind.example/", "http://v6local.example/",
+                    "http://absent.example/", "not a url"):
+            self.assertFalse(ok("web.fetch", {"url": url}), url)
+        self.assertTrue(ok("web.fetch", {"url": "https://www.trail-du-jura.fr/"}))
+        self.resolver.reset_mock()
+        self.assertTrue(ok("web.fetch", {"url": "https://www.kikourou.net/"}))
+        self.assertTrue(ok("mcp:garmin.schedule_workout", {}))
+        self.resolver.assert_not_called()
+
+    def test_resolution_reelle_des_adresses(self):
+        self.assertTrue(arc_chat_policy._public_addresses(["93.184.216.34", "2606:2800:220:1::1"]))
+        for addresses in ([], ["10.0.0.48"], ["100.64.0.1"], ["169.254.1.1"], ["fe80::1%en0"], ["x"]):
+            self.assertFalse(arc_chat_policy._public_addresses(addresses), addresses)
+
+    def test_web_verdicts_configurables(self):
+        custom = self.ws / "web.toml"
+        custom.write_text('[web]\nsearch = "ask"\nunlisted_fetch = "deny"\n', encoding="utf-8")
+        policy = Policy.load(custom, self.ws)
+        self.assertEqual(policy.decide("web.search", {"query": "x"}), "ask")
+        self.assertEqual(policy.decide("web.fetch", {"url": "https://www.trail-du-jura.fr/"}), "deny")
+        custom.write_text('[web]\nunlisted_fetch = "allow"\n', encoding="utf-8")
+        self.assertEqual(Policy.load(custom, self.ws).decide("web.fetch", {"url": "https://www.trail-du-jura.fr/"}),
+                         "ask")      # jamais sans carte : le contrôle des adresses suit l'approbation
+        custom.write_text('[web]\nsearch = "oui"\n', encoding="utf-8")
+        self.assertEqual(Policy.load(custom, self.ws).decide("web.search", {"query": "x"}), "deny")
 
     def test_task_skill_autres(self):
         self.assertEqual(self.d("task", {"agent": "coach"}), "allow")
@@ -153,7 +222,7 @@ class PolicyTest(PolicyBase):
         custom.write_text('[web]\nfetch_domains = ["example.org"]\n', encoding="utf-8")
         policy = Policy.load(custom, self.ws)
         self.assertEqual(policy.decide("web.fetch", {"url": "https://example.org/x"}), "allow")
-        self.assertEqual(policy.decide("web.fetch", {"url": "https://wttr.in/"}), "deny")
+        self.assertEqual(policy.decide("web.fetch", {"url": "https://wttr.in/"}), "ask")
         # Sans fichier : les défauts intégrés s'appliquent.
         empty = Policy.load(self.ws / "absent", self.ws)
         self.assertEqual(empty.decide("mcp:garmin.schedule_workouts", {}), "ask")
@@ -259,6 +328,10 @@ class WebFetchBypassTest(PolicyBase):
                     "https://wttr.in\\@evil.com/", "https://wttr.іn/x", "https://xn--wttr-in-x.evil/",
                     "https://wttr.in./", " https://wttr.in/", "https://wttr.in/ x", "https:wttr.in",
                     "https://user:pw@wttr.in/", "https://wttr.in.@evil.com/"):
+            # Jamais « allow » : un contournement ne passe pour un domaine listé, au mieux il demande une carte.
+            self.assertNotEqual(self.d("web.fetch", {"url": url}), "allow", repr(url))
+        for url in ("https://wttr.in@evil.com/", "https://wttr.in%2eevil.com/", "https://wttr.in:8443/x",
+                    "ftp://wttr.in/", "https://wttr.іn/x", "https://user:pw@wttr.in/"):
             self.assertEqual(self.d("web.fetch", {"url": url}), "deny", repr(url))
 
     def test_domaines_valides(self):
@@ -266,6 +339,41 @@ class WebFetchBypassTest(PolicyBase):
                     "https://fr.wttr.in/x", "https://wttr.in:443/x", "https://wttr.in?x=1",
                     "https://nominatim.openstreetmap.org/search?q=Besan%C3%A7on"):
             self.assertEqual(self.d("web.fetch", {"url": url}), "allow", url)
+
+
+class AfterApprovalServiceTest(PolicyBase):
+    """Bout en bout : une carte approuvée pour un nom qui vise le LAN n'est jamais exécutée."""
+
+    def test_carte_approuvee_puis_refus_si_le_nom_vise_le_reseau_local(self):
+        import threading
+
+        import arc_chat as C
+        from arc_chat_backend import ChatBackend
+
+        seen = {}
+        done = threading.Event()
+
+        class Backend(ChatBackend):
+            name = "mock"
+
+            def run_turn(self, ctx, text):
+                for url in ("http://nas-maison.example/", "https://www.trail-du-jura.fr/"):
+                    inp = {"url": url}
+                    assert ctx.decide("web.fetch", inp) == "ask"
+                    seen[url] = ctx.request_approval("web.fetch", inp, "", [])
+                done.set()
+
+        svc = C.ChatService(self.ws, dict(C.CHAT_DEFAULTS, enabled=True), Backend(self.ws, {}),
+                            policy=self.policy)
+        with unittest.mock.patch.object(svc, "_request_approval", return_value="allow"):
+            sid = svc.sessions.create("mock", "m")["id"]
+            code, turn, _ = svc.begin_turn(sid, "local", "cherche une course")
+            self.assertEqual(code, "ok")
+            self.assertTrue(done.wait(10))
+            self.assertTrue(turn.finished.wait(10))
+            for worker in [t for t in threading.enumerate() if t.name.startswith("chat-turn-")]:
+                worker.join(10)       # fin du `finally` du tour avant le nettoyage du workspace
+        self.assertEqual(seen, {"http://nas-maison.example/": "deny", "https://www.trail-du-jura.fr/": "allow"})
 
 
 class FsListGlobTest(PolicyBase):

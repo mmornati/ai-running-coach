@@ -103,6 +103,12 @@ Il n'existe **pas d'API publique** de calendrier de courses. L'agent utilise la
 recherche web de l'environnement (WebSearch / WebFetch sous Claude Code,
 `webfetch` sous opencode), comme vous le feriez vous-même.
 
+Dans le **chat** du tableau de bord, la recherche web est permise et les grands
+calendriers (Kikourou, Betrail, Finishers, Ahotu, FFA…) se consultent
+librement ; le site officiel d'une course, comme ITRA et UTMB (qui portent
+votre indice), affiche une **carte d'approbation** avec son adresse complète. Une adresse du réseau local n'est
+jamais joignable. Réglage : section `[web]` de `config/chat-policy.toml`.
+
 - **Aucune course inventée** : chaque course vient d'une page consultée pendant
   la session.
 - **Date vérifiée sur le site officiel** de l'organisateur, pour l'édition à
