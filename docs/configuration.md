@@ -736,6 +736,20 @@ Les retours en un geste ne demandent aucune clé d'API. Variable d'environnement
 `ARC_TELEGRAM_API_BASE` (https, ou http en boucle locale seulement). Le diagnostic :
 `python3 scripts/coach_doctor.py --check telegram`.
 
+## La conversation Telegram sur abonnement — `[telegram_chat]` (#337, expérimental)
+
+Mode optionnel, **sans clé d'API** (abonnement claude.ai, Claude Code Channels, *research preview*),
+absent tant que vous n'avez pas lancé `scripts/coach-telegram-chat.sh install`
+([niveau 3 de la page Telegram](telegram.md#niveau-3-conversation-sur-abonnement-claude-code-channels-experimental)).
+Il exige **un second bot** : le jeton du plugin ne doit pas être celui de `[telegram].token_file`.
+
+| Clé | Effet |
+|---|---|
+| `permission_mode` | Mode de permission de la session : `default` (défaut), `plan` ou `acceptEdits` (`bypassPermissions` est refusé). Les outils autorisés d'office, soumis à approbation ou interdits viennent de `templates/settings.telegram.json`, alignés sur `config/chat-policy.toml` ; `acceptEdits` validerait en plus toute écriture du workspace, hors de ce périmètre. |
+| `daily_restart` | Heure locale (`HH:MM`) du redémarrage quotidien de la session (contexte neuf). `""` pour désactiver. |
+
+Le diagnostic : `python3 scripts/coach_doctor.py --check telegram_chat`.
+
 ## Les nouvelles versions — `[update]`
 
 ```toml

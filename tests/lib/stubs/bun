@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+. "$(dirname "$0")/_common.sh"
+stub_init "$@"
+[ "${1:-}" = "--version" ] && echo "1.0.0-stub"
+exit 0

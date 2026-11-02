@@ -12,6 +12,8 @@ intervals.icu (`intervals_mcp_pin`, #165), et — chat avec
 le coach / sync sur une API — cohérence runner/backend/modèle/clé (`llm_config`),
 service du chat (`chat_service`), présence d'OpenCode (`opencode_cli`), bot Telegram
 (`telegram` : liste blanche, jeton hors dépôt en mode 600, service vivant — jamais le jeton affiché),
+conversation Telegram par abonnement (`telegram_chat`, expérimental : prérequis, plugin Channels, politique
+`allowlist`, bot distinct de `telegram`, session active — jamais un jeton affiché),
 connexion Strava (`strava_connection`, #164), pesées Garmin (`weight_sync`, #222) et santé Open Wearables
 (`openwearables`, #220 : configuration et clé d'API en mode 600 — valeur jamais affichée ; joignabilité
 testée AUTOMATIQUEMENT quand `[health].source = "openwearables"` et que la configuration est complète —
@@ -61,6 +63,7 @@ avant expiration des tokens, qui appelle ce script avec `--json`, éventuellemen
                 | "daily_sync_scheduled" | "ntfy_configured" | "gear_sync"
                 | "gear_history" | "fit_reader" | "intervals_mcp_pin" | "llm_config"
                 | "chat_service" | "opencode_cli" | "strava_connection" | "telegram"
+                | "telegram_chat"
                 | "weight_sync" | "openwearables" | "coros_connection",
           "status": "ok" | "warning" | "error" | "info",
           "message": "<texte français>",
@@ -301,7 +304,7 @@ CHECK_IDS = (
     "garmin_token", "garmin_token_perms", "garmin_mcp", "garmin_mcp_pin", "config_files", "athlete_profile",
     "index_freshness", "out_of_contract", "daily_sync_scheduled", "ntfy_configured",
     "gear_sync", "gear_history", "fit_reader", "intervals_mcp_pin",
-    "llm_config", "chat_service", "opencode_cli", "strava_connection", "telegram", "weight_sync",
+    "llm_config", "chat_service", "opencode_cli", "strava_connection", "telegram", "telegram_chat", "weight_sync",
     "openwearables", "coros_connection",
 )
 
@@ -1712,6 +1715,103 @@ def check_telegram(workspace: Path, home: Path, config: dict, now: datetime) -> 
     return build_check(check_id, "ok", f"Bot Telegram actif ({bridge} ; jeton non affiché).", fix=None)
 
 
+# ---------------------------------------------------------------------------
+# telegram_chat — conversation sur abonnement (Claude Code Channels, expérimental, #337)
+# ---------------------------------------------------------------------------
+
+TELEGRAM_CHAT_SYSTEMD_UNIT_REL = ".config/systemd/user/ai-running-coach-telegram-chat.service"
+TELEGRAM_CHAT_LAUNCHD_PLIST_REL = "Library/LaunchAgents/com.ai-running-coach.telegram-chat.plist"
+# Socket (-L) ET nom de session du tmux dédié (scripts/coach-telegram-chat.sh).
+TELEGRAM_CHAT_TMUX = "coach-telegram-chat"
+
+
+def _env_file_token(path: Path) -> str:
+    """Dernière valeur non vide de `TELEGRAM_BOT_TOKEN=` dans un fichier d'environnement ('' sinon).
+    La valeur sert uniquement à des comparaisons : elle n'est jamais écrite dans un message."""
+    try:
+        text = path.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return ""
+    values = [m.group(1).strip().strip("\"'") for m in
+              (re.match(r"^\s*(?:export\s+)?TELEGRAM_BOT_TOKEN=(.*)$", line) for line in text.splitlines()) if m]
+    values = [v for v in values if v]
+    return values[-1] if values else ""
+
+
+def _tmux_session_alive() -> bool:
+    tmux = _which_with_extra("tmux")
+    if not tmux:
+        return False
+    try:
+        done = subprocess.run([tmux, "-L", TELEGRAM_CHAT_TMUX, "has-session", "-t", TELEGRAM_CHAT_TMUX],
+                              capture_output=True, timeout=5)
+    except (OSError, subprocess.SubprocessError):
+        return False
+    return done.returncode == 0
+
+
+def check_telegram_chat(workspace: Path, home: Path, config: dict) -> dict:
+    """`info`/`warning` uniquement (mode expérimental, confort). Ne compare les jetons que pour détecter
+    qu'ils sont IDENTIQUES (deux processus en long polling sur le même bot → erreur 409) : aucune valeur
+    de jeton n'apparaît dans un message. Aucun appel réseau."""
+    check_id = "telegram_chat"
+    install_fix = "scripts/coach-telegram-chat.sh install"
+    darwin = _uname() == "Darwin"
+    unit = home / (TELEGRAM_CHAT_LAUNCHD_PLIST_REL if darwin else TELEGRAM_CHAT_SYSTEMD_UNIT_REL)
+    session = _tmux_session_alive()
+    if not unit.is_file() and not session:
+        return build_check(check_id, "info",
+                           "Conversation Telegram sur abonnement (Channels, expérimental) non installée.",
+                           fix=install_fix)
+    problems: list = []
+    for tool, hint in (("claude", "Claude Code"), ("bun", "Bun, requis par le plugin Telegram"), ("tmux", "tmux")):
+        if not _which_with_extra(tool):
+            problems.append(f"{tool} introuvable ({hint})")
+    config_dir = os.environ.get("CLAUDE_CONFIG_DIR") or str(home / ".claude")
+    state = Path(os.environ.get("TELEGRAM_STATE_DIR") or (Path(config_dir) / "channels/telegram"))
+    env_token = os.environ.get("TELEGRAM_BOT_TOKEN", "").strip()
+    plugin_token = env_token or _env_file_token(state / ".env")
+    if not plugin_token:
+        problems.append("plugin Telegram non configuré (/plugin install telegram@claude-plugins-official puis /telegram:configure)")
+    access = _read_json_object(state / "access.json")
+    if access is None:
+        problems.append("politique d'accès du bot absente ou illisible (scripts/coach-telegram-chat.sh run --pairing)")
+    else:
+        policy = access.get("dmPolicy", "pairing")
+        if policy != "allowlist":
+            problems.append(f"politique d'accès « {policy} » au lieu de « allowlist » (/telegram:access policy allowlist)")
+        elif not [i for i in (access.get("allowFrom") if isinstance(access.get("allowFrom"), list) else []) if str(i).strip()]:
+            problems.append("politique allowlist sans compte autorisé (/telegram:access pair <code>)")
+        raw_groups = access.get("groups")
+        if raw_groups is not None and not isinstance(raw_groups, dict):
+            problems.append("access.json : « groups » invalide (objet attendu), le script refusera de démarrer")
+        else:
+            groups = raw_groups or {}
+            open_groups = [g for g in groups.values()
+                           if not (isinstance(g, dict) and isinstance(g.get("allowFrom"), list) and g["allowFrom"])]
+            if open_groups:
+                problems.append(f"{len(open_groups)} groupe(s) sans liste allowFrom (ou invalide(s)) : n'importe quel "
+                                "membre parlerait au coach (/telegram:access)")
+    tg = config.get("telegram") or {}
+    bot_file = Path(os.path.expanduser(str(tg.get("token_file") or TELEGRAM_DEFAULT_TOKEN_FILE)))
+    if plugin_token and plugin_token == _env_file_token(bot_file):
+        problems.append("le jeton du plugin est identique à celui de [telegram].token_file : deux processus en long "
+                        "polling sur le même bot provoquent l'erreur 409 (créez un second bot avec BotFather)")
+    if not (workspace / ".claude/telegram-chat.settings.json").is_file():
+        problems.append("réglages dédiés absents (.claude/telegram-chat.settings.json : scripts/coach-telegram-chat.sh install)")
+    if unit.is_file() and not session:
+        problems.append("service installé mais session tmux absente (scripts/coach-telegram-chat.sh restart)")
+    elif not session:
+        problems.append("session tmux absente (scripts/coach-telegram-chat.sh start)")
+    if problems:
+        return build_check(check_id, "warning",
+                           "Conversation Telegram (Channels) à revoir : " + " ; ".join(problems) + ".",
+                           fix="scripts/coach-telegram-chat.sh status && scripts/coach-telegram-chat.sh logs" if unit.is_file() else install_fix)
+    return build_check(check_id, "ok",
+                       "Conversation Telegram sur abonnement active (Channels, expérimental ; bot distinct, jetons non affichés).",
+                       fix=None)
+
+
 def _find_opencode() -> Optional[str]:
     return _which_with_extra("opencode")
 
@@ -2223,6 +2323,8 @@ def run_single_check(check_id: str, workspace: Path, now: datetime, tokens_dir: 
         return check_strava_connection(workspace, config, Path.home())
     if check_id == "telegram":
         return check_telegram(workspace, Path.home(), config, now)
+    if check_id == "telegram_chat":
+        return check_telegram_chat(workspace, Path.home(), config)
     if check_id == "openwearables":
         return check_openwearables(workspace, config, now, probe_ow)
     if check_id == "coros_connection":

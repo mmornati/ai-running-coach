@@ -384,6 +384,7 @@ une estimation du projet est dite comme telle, jamais présentée comme une mesu
 - `coach-doctor` — diagnostic d'installation (`/coach-doctor`) ; connexion IA (#268) : `python3 scripts/arc_llm.py check`.
 - `update-coach` — `/update-coach`, mise à jour du moteur ; interactif, « oui » explicite.
 - `garmin-daily-sync` — orchestration headless (`/garmin-daily-sync`, `scripts/daily-sync.sh`) : aucune question, résumé ```` ```resume ````.
+- `telegram-chat` — session Claude Code *Channels* sur abonnement (`scripts/coach-telegram-chat.sh`, **expérimental**, `docs/telegram.md` niveau 3) : réponses courtes par `reply`, aucune écriture Garmin/COROS/intervals.icu sans « OK » dans un message suivant ni approbation, aucune suppression.
 - `weather-forecast` — météo + créneau optimal ; utilisé à chaque validation hebdo/journalière.
 - `session-parts-analyzer` — analyse par segment (strides, montées, intervalles).
 - `fit-download` — FIT et flux par seconde hors MCP (`download_fit.py`), toutes sources.

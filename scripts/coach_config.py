@@ -11,6 +11,7 @@ Ce module ne dépend que de la bibliothèque standard (voir CONTRIBUTING.md).
 
 Sous-commandes :
     merge-json          insère une clé dans un fichier JSON, en préservant le reste
+    render-settings     écrit un fichier de réglages dédié depuis un modèle {{VARIABLE}} (session Telegram)
     set-claude-hook     pose UN hook Claude Code d'un événement, en remplaçant ses versions antérieures
     approve-claude-mcp  pré-approuve un serveur MCP de projet dans ~/.claude.json
     get                 lit une clé TOML (user.toml > workspace.toml > défaut)
@@ -413,6 +414,44 @@ def cmd_set_claude_hook(args) -> int:
     return 0
 
 
+def _substitute(value, variables: dict):
+    """Remplace `{{NOM}}` dans toutes les chaînes d'une structure JSON ; un jeton inconnu lève."""
+    if isinstance(value, str):
+        for key, replacement in variables.items():
+            value = value.replace("{{" + key + "}}", replacement)
+        leftover = re.search(r"\{\{[A-Z_]+\}\}", value)
+        if leftover:
+            raise ConfigError(f"variable de modèle non résolue : {leftover.group(0)}")
+        return value
+    if isinstance(value, list):
+        return [_substitute(item, variables) for item in value]
+    if isinstance(value, dict):
+        return {key: _substitute(item, variables) for key, item in value.items()}
+    return value
+
+
+def cmd_render_settings(args) -> int:
+    """Écrit un fichier de réglages Claude Code dédié à partir d'un modèle `{{VARIABLE}}`.
+
+    Utilisé pour la session Telegram : le fichier est passé par `claude --settings`, il ne touche jamais
+    `.claude/settings.local.json` (donc aucune autre session du workspace). Régénéré à chaque appel.
+    """
+    variables = {}
+    for item in args.var or []:
+        name, sep, value = item.partition("=")
+        if not sep or not name:
+            raise ConfigError(f"--var attend NOM=valeur (reçu : {name!r})")
+        variables[name] = value
+    rendered = _substitute(read_json(Path(args.template)), variables)
+    path = Path(args.out)
+    if path.is_file() and read_json(path) == rendered:
+        print(f"inchangé: {path}")
+        return 0
+    write_json(path, rendered, backup=False)
+    print(f"écrit: {path}")
+    return 0
+
+
 def cmd_remove_json_key(args) -> int:
     """Retire une clé d'un fichier JSON si elle existe — sans effet sinon.
 
@@ -541,6 +580,12 @@ def build_parser() -> argparse.ArgumentParser:
     hook.add_argument("--marker", required=True, help="sous-chaîne identifiant nos commandes (anciennes versions)")
     hook.add_argument("--value", required=True, help="entrée JSON {matcher, hooks: [...]}")
     hook.set_defaults(func=cmd_set_claude_hook)
+
+    render = sub.add_parser("render-settings", help="écrit un fichier de réglages Claude Code depuis un modèle")
+    render.add_argument("--template", required=True, help="modèle JSON avec des {{VARIABLE}}")
+    render.add_argument("--out", required=True, help="fichier de réglages à écrire (passé à claude --settings)")
+    render.add_argument("--var", action="append", help="NOM=valeur, répétable")
+    render.set_defaults(func=cmd_render_settings)
 
     remove_key = sub.add_parser("remove-json-key", help="retire une clé d'un fichier JSON si présente")
     remove_key.add_argument("--file", required=True)

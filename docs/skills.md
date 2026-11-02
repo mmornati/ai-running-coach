@@ -4,7 +4,7 @@
 ![](assets/ridge.jpg)
 </div>
 
-`ai-running-coach` fournit **29 skills** que les agents chargent à la demande pour des tâches spécifiques.
+`ai-running-coach` fournit **30 skills** que les agents chargent à la demande pour des tâches spécifiques.
 
 ## Vue d'ensemble
 
@@ -27,6 +27,7 @@
 <div class="arc-skill"><span class="arc-skill__name"><a href="skills/vanoor-export.md">Export Vanoor</a></span><span class="arc-skill__desc">Séances de la semaine et plan de course au format de l'app Vanoor (Apple Watch)</span></div>
 <div class="arc-skill"><span class="arc-skill__name"><a href="skills/mywhoosh-route.md">Parcours MyWhoosh</a></span><span class="arc-skill__desc">Parcours MyWhoosh qui tient dans la durée d'une séance home trainer, à la puissance tenue dans la plage FC</span></div>
 <div class="arc-skill"><span class="arc-skill__name"><a href="skills/garmin-daily-sync.md">Sync quotidienne</a></span><span class="arc-skill__desc">Synchronisation Garmin sans surveillance (cron, téléphone) avec résumé pour notification</span></div>
+<div class="arc-skill"><span class="arc-skill__name"><a href="skills/telegram-chat.md">Coach sur Telegram (abonnement)</a></span><span class="arc-skill__desc">Session Claude Code Channels (expérimental) : réponses courtes par <code>reply</code>, aucune écriture distante sans « OK » dans un message suivant ni approbation, aucune suppression</span></div>
 <div class="arc-skill"><span class="arc-skill__name"><a href="skills/coach-setup.md">Premier démarrage</a></span><span class="arc-skill__desc">Entretien de configuration : staff d'agents, discipline, style de coaching, bilan santé, profil d'athlète</span></div>
 <div class="arc-skill"><span class="arc-skill__name"><a href="skills/workspace-data-contract.md">Contrat de données</a></span><span class="arc-skill__desc">Schéma JSON du bloc <code>arc</code> pour la persistance structurée des données</span></div>
 <div class="arc-skill"><span class="arc-skill__name"><a href="skills/arc-backfill.md">Backfill du contrat</a></span><span class="arc-skill__desc">Migration des fichiers Markdown existants pour les conformer au contrat de données</span></div>

@@ -420,6 +420,20 @@ chat_bridge = false
 # Durée (s) d'une interrogation longue de l'API Telegram (getUpdates).
 poll_timeout_s = 30
 
+[telegram_chat]
+# Conversation libre avec le coach depuis Telegram SUR ABONNEMENT claude.ai (Claude Code Channels,
+# plugin officiel ; EXPÉRIMENTAL — research preview). Session permanente gérée par
+# `scripts/coach-telegram-chat.sh install` (docs/telegram.md, « Niveau 3 »). Distinct du bot
+# [telegram] : il faut un SECOND bot (BotFather) — le jeton du plugin
+# (~/.claude/channels/telegram/.env) ne doit pas être celui de [telegram].token_file, sinon deux
+# processus lisent le même bot (erreur 409) et le script refuse de démarrer.
+# Mode de permission de la session : « default » (défaut), « plan » ou « acceptEdits ». Les outils
+# autorisés d'office, soumis à approbation ou interdits viennent de templates/settings.telegram.json
+# (alignés sur config/chat-policy.toml) ; acceptEdits validerait en plus toute écriture du workspace.
+permission_mode = "default"
+# Heure locale du redémarrage quotidien (contexte neuf). "" pour désactiver.
+daily_restart = "03:30"
+
 [dashboard]
 # Tableau de bord local (`scripts/dashboard.sh`) : lecture seule, n'écoute que sur
 # 127.0.0.1 — l'adresse n'est volontairement pas configurable. Si le port est pris,

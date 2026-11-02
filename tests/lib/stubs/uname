@@ -5,9 +5,14 @@ if [ -n "${ARC_FAKE_UNAME:-}" ] && [ "${1:-}" = "-s" ]; then
     echo "$ARC_FAKE_UNAME"
     exit 0
 fi
-for d in $(echo "$PATH" | tr ':' ' '); do
-    case "$d" in *"/tests/lib/stubs") continue ;; esac
-    if [ -x "$d/uname" ]; then exec "$d/uname" "$@"; fi
+# Le PATH isolé (Sandbox.isolated_bin) ne contient qu'un lien vers ce stub :
+# sauter tout candidat qui EST ce script (-ef suit les liens), sinon exec
+# boucle sans fin. Les répertoires système servent de repli.
+for d in $(echo "$PATH" | tr ':' ' ') /usr/bin /bin; do
+    [ -x "$d/uname" ] || continue
+    [ "$d/uname" -ef "$0" ] && continue
+    # shellcheck disable=SC2093  # exec voulu : on rend la main au vrai uname
+    exec "$d/uname" "$@"
 done
 echo "uname: introuvable" >&2
 exit 127

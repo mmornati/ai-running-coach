@@ -202,6 +202,9 @@ class Sandbox:
             LANG="C",
         )
         env.setdefault("ARC_STUB_FAIL", "")
+        # coach-telegram-chat.sh place d'ordinaire /opt/homebrew/bin AVANT le PATH : avec ce drapeau, les stubs
+        # l'emportent sur les vrais tmux / claude de la machine du contributeur.
+        env.setdefault("ARC_PATH_APPEND", "1")
         # Vérification des releases GitHub (`arc_update_check.py`) : jamais d'appel réseau en test.
         env.setdefault("ARC_UPDATE_CHECK", "off")
         env.update(extra)

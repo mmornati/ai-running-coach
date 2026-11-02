@@ -40,7 +40,7 @@ from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent.parent
 
-# --- Nombres en toutes lettres (français, 2 à 29) -----------------------------
+# --- Nombres en toutes lettres (français, 2 à 30) -----------------------------
 
 FRENCH_NUMBERS = {
     # « un »/« une » sont délibérément exclus : dans une phrase du type
@@ -53,7 +53,7 @@ FRENCH_NUMBERS = {
     # Le catalogue a dépassé vingt skills : sans ces formes, « Vingt-deux skills » se lisait
     # « deux skills ».
     "vingt et un": 21, "vingt-deux": 22, "vingt-trois": 23, "vingt-quatre": 24, "vingt-cinq": 25,
-    "vingt-six": 26, "vingt-sept": 27, "vingt-huit": 28, "vingt-neuf": 29,
+    "vingt-six": 26, "vingt-sept": 27, "vingt-huit": 28, "vingt-neuf": 29, "trente": 30,
 }
 
 # Les formes composées (« dix-sept ») doivent être testées avant leurs
