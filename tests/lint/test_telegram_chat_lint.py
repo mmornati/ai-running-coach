@@ -270,7 +270,7 @@ class TestHook(unittest.TestCase):
     def test_hook_uses_the_dashboard_mapping(self):
         text = HOOK.read_text(encoding="utf-8")
         self.assertIn("from arc_chat_claude import canonical_tool", text)
-        self.assertIn("canonical_tool(tool, _resolved_paths(tool_input, workspace))", text)
+        self.assertIn("canonical_tool(tool, _paths_as(tool_input, workspace, convert))", text)
 
     def test_bash_is_the_only_tool_that_can_be_allowed(self):
         self.assertEqual(self.verdict("Bash", command="python3 scripts/arc_index.py --memory"), "allow")
@@ -359,6 +359,35 @@ class TestHook(unittest.TestCase):
         self.assertEqual(self.verdict("Read", file_path=str(alias / "planning/semaine.md")), "")
         self.assertEqual(self.verdict("Grep", pattern="x", path=str(alias / ".arc")), "deny")
         self.assertEqual(self.verdict("Glob", pattern="*.md", path=str(alias / "planning")), "")
+
+    def test_a_link_named_arc_or_claude_is_denied_even_when_it_resolves_to_an_allowed_folder(self):
+        (self.ws / "activities").mkdir()
+        (self.ws / "activities/x.md").write_text("x")
+        (self.ws / ".arc").mkdir()
+        (self.ws / ".arc/evil").symlink_to(self.ws / "activities")
+        (self.ws / ".claude").symlink_to(self.ws / "activities")
+        alias = self.ws.parent / (self.ws.name + "-alias2")
+        alias.symlink_to(self.ws)
+        self.addCleanup(alias.unlink)
+        self.assertEqual(self.verdict("Read", file_path=str(self.ws / "activities/x.md")), "")
+        for base in (self.ws, alias):
+            for tool, key in (("Read", "file_path"), ("Write", "file_path"), ("Edit", "file_path")):
+                self.assertEqual(self.verdict(tool, **{key: str(base / ".arc/evil/x.md")}), "deny", f"{tool} {base.name}")
+                if tool != "Read":      # la politique laisse lire .claude/ mais n'y écrit jamais
+                    self.assertEqual(self.verdict(tool, **{key: str(base / ".claude/x.md")}), "deny", f"{tool} {base.name}")
+            self.assertEqual(self.verdict("Grep", pattern="x", path=str(base / ".arc/evil")), "deny")
+            self.assertEqual(self.verdict("Glob", pattern="*.md", path=str(base / ".arc/evil")), "deny")
+        # Le même fichier par son nom physique reste permis.
+        self.assertEqual(self.verdict("Write", file_path=str(self.ws / "activities/x.md")), "")
+        reply = "mcp__plugin_telegram_telegram__reply"
+        self.assertEqual(self.verdict(reply, files=[str(self.ws / ".arc/evil/x.md")]), "deny")
+        self.assertEqual(self.verdict(reply, files=[str(alias / "activities/x.md")]), "")
+        # Bash : « allow » seulement si les deux formes sont « allow ».
+        self.assertEqual(hook._stricter(["allow", "allow"], "Bash"), "allow")
+        self.assertEqual(hook._stricter(["allow", "deny"], "Bash"), "deny")
+        self.assertEqual(hook._stricter(["allow", "ask"], "Bash"), "ask")
+        self.assertEqual(hook._stricter(["allow", ""], "Bash"), "")
+        self.assertEqual(hook._stricter(["allow", "allow"], "Read"), "")
 
     def test_received_photos_can_be_read(self):
         self.assertEqual(self.verdict("Read", file_path=str(self.state / "inbox/photo.jpg")), "")
