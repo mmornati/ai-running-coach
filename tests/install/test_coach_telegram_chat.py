@@ -135,33 +135,119 @@ class TestCoachTelegramChat(InstallAsserts):
             self._no_secret(proc)
 
     # -- permissions ------------------------------------------------------------
-    def test_install_merges_permissions_without_losing_existing_rules(self):
+    def test_install_writes_a_dedicated_settings_file_and_leaves_settings_local_alone(self):
         with Sandbox() as sb:
             _telegram_state(sb)
-            settings = sb.repo / ".claude/settings.local.json"
-            settings.parent.mkdir(parents=True, exist_ok=True)
-            settings.write_text(json.dumps({"permissions": {"allow": ["Bash(ls:*)"]}}))
+            local = sb.repo / ".claude/settings.local.json"
+            local.parent.mkdir(parents=True, exist_ok=True)
+            local.write_text(json.dumps({"permissions": {"allow": ["Bash(ls:*)"]}}))
             proc = sb.script("coach-telegram-chat.sh", "install", **NO_ENV_TOKEN, ARC_FAKE_UNAME="Linux")
             self.assertSucceeded(proc)
-            perms = json.loads(settings.read_text())["permissions"]
+            self.assertEqual(json.loads(local.read_text()), {"permissions": {"allow": ["Bash(ls:*)"]}},
+                             "settings.local.json (toutes les sessions du workspace) ne doit pas être modifié")
+            dedicated = sb.repo / ".claude/telegram-chat.settings.json"
+            self.assertIsFile(dedicated)
+            data = json.loads(dedicated.read_text())
+            perms = data["permissions"]
             allow, ask, deny = perms["allow"], perms["ask"], perms["deny"]
-            self.assertIn("Bash(ls:*)", allow)
-            self.assertIn("mcp__garmin__get_sleep_data", allow)
-            self.assertIn("mcp__garmin__schedule_workouts", ask)
+            self.assertIn("mcp__garmin__get_*", allow)
             self.assertNotIn("mcp__garmin__schedule_workouts", allow)
+            self.assertIn("mcp__garmin__schedule_workouts", ask)
             self.assertIn("mcp__garmin__delete_workout", deny)
+            self.assertEqual(perms["disableBypassPermissionsMode"], "disable")
             self.assertFalse(set(allow) & set(deny), "règle à la fois autorisée et interdite")
             self.assertFalse(set(allow) & set(ask), "règle à la fois autorisée et soumise à approbation")
-            hooks = json.loads(settings.read_text())["hooks"]["PreToolUse"]
-            self.assertEqual(len(hooks), 1)
-            self.assertIn("arc_telegram_hook.py", hooks[0]["hooks"][0]["command"])
-            # Idempotent : un second install n'ajoute ni règle ni hook.
+            self.assertNotIn("{{", dedicated.read_text(), "variable de modèle non résolue")
+            hook = data["hooks"]["PreToolUse"][0]
+            self.assertEqual(hook["matcher"], "*")
+            command = hook["hooks"][0]
+            self.assertEqual(command["onFailure"], "block")
+            self.assertTrue(command["timeout"] <= 30)
+            self.assertIn("arc_telegram_hook.py", command["command"])
+            self.assertTrue(command["command"].startswith('"/'), "interpréteur en chemin absolu")
+            self.assertIn(f"Read(/{sb.home.resolve().as_posix()}/.claude/channels/telegram/inbox/**)", allow)
+            # Idempotent : le fichier est régénéré à l'identique.
             self.assertSucceeded(sb.script("coach-telegram-chat.sh", "install", **NO_ENV_TOKEN, ARC_FAKE_UNAME="Linux"))
-            again = json.loads(settings.read_text())
-            self.assertEqual(again["permissions"]["allow"], allow)
-            self.assertEqual(len(again["hooks"]["PreToolUse"]), 1)
+            self.assertEqual(json.loads(dedicated.read_text()), data)
 
-    # -- services ----------------------------------------------------------------
+    def test_install_migrates_rules_merged_by_older_versions(self):
+        with Sandbox() as sb:
+            _telegram_state(sb)
+            local = sb.repo / ".claude/settings.local.json"
+            local.parent.mkdir(parents=True, exist_ok=True)
+            local.write_text(json.dumps({
+                "permissions": {"allow": ["Bash(ls:*)", "mcp__garmin__get_*"], "deny": ["mcp__garmin__delete_workout"]},
+                "hooks": {"PreToolUse": [
+                    {"matcher": "Bash", "hooks": [{"type": "command", "command": "mon-hook"}]},
+                    {"matcher": "Bash|Read", "hooks": [{"type": "command", "command": "python3 \"$CLAUDE_PROJECT_DIR/scripts/arc_telegram_hook.py\""}]},
+                ]}}))
+            self.assertSucceeded(sb.script("coach-telegram-chat.sh", "install", **NO_ENV_TOKEN, ARC_FAKE_UNAME="Linux"))
+            data = json.loads(local.read_text())
+            self.assertEqual(data["permissions"], {"allow": ["Bash(ls:*)"]})
+            self.assertEqual(len(data["hooks"]["PreToolUse"]), 1)
+            self.assertEqual(data["hooks"]["PreToolUse"][0]["hooks"][0]["command"], "mon-hook")
+
+    def test_run_passes_the_dedicated_settings_except_when_pairing(self):
+        with Sandbox() as sb:
+            _telegram_state(sb)
+            self.assertSucceeded(sb.script("coach-telegram-chat.sh", "install", **NO_ENV_TOKEN, ARC_FAKE_UNAME="Linux"))
+            proc = sb.script("coach-telegram-chat.sh", "run", "--dry-run", **NO_ENV_TOKEN)
+            self.assertSucceeded(proc)
+            self.assertOutputContains(proc, "--settings")
+            self.assertOutputContains(proc, "telegram-chat.settings.json")
+            pairing = sb.script("coach-telegram-chat.sh", "run", "--pairing", "--dry-run", **NO_ENV_TOKEN)
+            self.assertSucceeded(pairing)
+            self.assertOutputLacks(pairing, "--settings")
+            self.assertOutputContains(pairing, "ne sont PAS relayés")
+
+    def test_run_and_start_refuse_without_the_dedicated_settings(self):
+        with Sandbox() as sb:
+            _telegram_state(sb)
+            for action in ("run", "start"):
+                proc = sb.script("coach-telegram-chat.sh", action, **NO_ENV_TOKEN, ARC_FAKE_UNAME="Linux")
+                self.assertFailed(proc, action)
+                self.assertOutputContains(proc, "telegram-chat.settings.json")
+            self.assertEqual(sb.stub_calls("tmux"), [], "aucune session ne doit démarrer sans réglages")
+
+    def test_refuses_an_old_claude_code(self):
+        with Sandbox() as sb:
+            _telegram_state(sb)
+            proc = sb.script("coach-telegram-chat.sh", "install", **NO_ENV_TOKEN, ARC_FAKE_UNAME="Linux",
+                             ARC_STUB_CLAUDE_VERSION="2.1.294")
+            self.assertFailed(proc, "Claude Code trop ancien")
+            self.assertOutputContains(proc, "2.1.295")
+            ok = sb.script("coach-telegram-chat.sh", "install", "--dry-run", **NO_ENV_TOKEN, ARC_FAKE_UNAME="Linux",
+                           ARC_STUB_CLAUDE_VERSION="2.1.295")
+            self.assertSucceeded(ok)
+
+    def test_refuses_a_group_without_allow_from(self):
+        with Sandbox() as sb:
+            state = _telegram_state(sb)
+            access = json.loads((state / "access.json").read_text())
+            access["groups"] = {"-100123": {"requireMention": True}}
+            (state / "access.json").write_text(json.dumps(access))
+            proc = sb.script("coach-telegram-chat.sh", "run", "--dry-run", **NO_ENV_TOKEN)
+            self.assertFailed(proc, "groupe sans allowFrom")
+            self.assertOutputContains(proc, "allowFrom")
+            access["groups"] = {"-100123": {"allowFrom": ["4242"]}}
+            (state / "access.json").write_text(json.dumps(access))
+            self.assertSucceeded(sb.script("coach-telegram-chat.sh", "run", "--dry-run", **NO_ENV_TOKEN))
+
+    def test_honours_claude_config_dir_for_the_plugin_state(self):
+        with Sandbox() as sb:
+            custom = sb.home / "cfg"
+            state = custom / "channels/telegram"
+            state.mkdir(parents=True)
+            (state / ".env").write_text(f"TELEGRAM_BOT_TOKEN={PLUGIN_TOKEN}\n")
+            (state / "access.json").write_text(json.dumps({"dmPolicy": "allowlist", "allowFrom": ["1"]}))
+            proc = sb.script("coach-telegram-chat.sh", "run", "--dry-run", **{**NO_ENV_TOKEN, "CLAUDE_CONFIG_DIR": str(custom)})
+            self.assertSucceeded(proc)
+            unit = sb.script("coach-telegram-chat.sh", "install", **{**NO_ENV_TOKEN, "CLAUDE_CONFIG_DIR": str(custom)},
+                             ARC_FAKE_UNAME="Linux")
+            self.assertSucceeded(unit)
+            service = sb.home / ".config/systemd/user/ai-running-coach-telegram-chat.service"
+            self.assertFileContains(service, f'Environment="CLAUDE_CONFIG_DIR={custom}"')
+
     def test_linux_install_writes_a_systemd_unit_on_a_dedicated_tmux_socket(self):
         with Sandbox() as sb:
             _telegram_state(sb)
@@ -170,6 +256,8 @@ class TestCoachTelegramChat(InstallAsserts):
             unit = sb.home / ".config/systemd/user/ai-running-coach-telegram-chat.service"
             self.assertIsFile(unit)
             self.assertFileContains(unit, "-L coach-telegram-chat new-session")
+            self.assertFileContains(unit, 'ExecStart="')
+            self.assertFileContains(unit, 'Environment="ARC_WORKSPACE=')
             self.assertFileLacks(unit, "TELEGRAM_BOT_TOKEN")
             self.assertIsFile(sb.home / ".config/systemd/user/ai-running-coach-telegram-chat-restart.timer")
             self.assertCalled(sb, "systemctl", "--user enable --now ai-running-coach-telegram-chat")
@@ -186,6 +274,7 @@ class TestCoachTelegramChat(InstallAsserts):
             self.assertIsFile(plist)
             self.assertFileContains(plist, "coach-telegram-chat.sh")
             self.assertFileContains(plist, "AbandonProcessGroup")
+            self.assertFileContains(plist, "<key>HOME</key>")
             self.assertCalled(sb, "launchctl", "bootstrap")
 
     def test_uninstall_removes_the_service_files(self):
@@ -194,6 +283,7 @@ class TestCoachTelegramChat(InstallAsserts):
             self.assertSucceeded(sb.script("coach-telegram-chat.sh", "install", **NO_ENV_TOKEN, ARC_FAKE_UNAME="Linux"))
             self.assertSucceeded(sb.script("coach-telegram-chat.sh", "uninstall", **NO_ENV_TOKEN, ARC_FAKE_UNAME="Linux"))
             self.assertFalse((sb.home / ".config/systemd/user/ai-running-coach-telegram-chat.service").exists())
+            self.assertFalse((sb.repo / ".claude/telegram-chat.settings.json").exists(), "les réglages dédiés sont supprimés")
 
     def test_dry_run_writes_nothing(self):
         with Sandbox() as sb:
@@ -206,6 +296,7 @@ class TestCoachTelegramChat(InstallAsserts):
                 self.assertOutputContains(proc, "[dry-run]")
                 self.assertEqual(before, (_tree(sb.home), _tree(sb.repo)), f"--dry-run a écrit des fichiers ({uname})")
                 self.assertFalse((sb.repo / ".claude/settings.local.json").exists())
+                self.assertFalse((sb.repo / ".claude/telegram-chat.settings.json").exists())
                 self.assertFalse((sb.repo / "logs").exists())
                 mutating = [c for c in sb.stub_calls()[calls_before:]
                             if c[0] in ("systemctl", "launchctl", "loginctl", "tmux")
@@ -221,10 +312,13 @@ class TestDoctorTelegramChat(InstallAsserts):
             self.assertNotIn(secret, proc.stdout + proc.stderr, "un jeton ne doit jamais être affiché")
         return json.loads(proc.stdout)["checks"][0]
 
-    def _unit(self, sb: Sandbox) -> None:
+    def _unit(self, sb: Sandbox, settings: bool = True) -> None:
         unit = sb.home / ".config/systemd/user/ai-running-coach-telegram-chat.service"
         unit.parent.mkdir(parents=True, exist_ok=True)
         unit.write_text("[Unit]\n")
+        if settings:
+            (sb.repo / ".claude").mkdir(exist_ok=True)
+            (sb.repo / ".claude/telegram-chat.settings.json").write_text("{}")
 
     def _live_tmux(self, sb: Sandbox) -> str:
         """Un faux `tmux` dont la session existe : en tête de PATH pour le doctor."""
@@ -249,6 +343,27 @@ class TestDoctorTelegramChat(InstallAsserts):
             self._unit(sb)
             check = self._check(sb, ARC_FAKE_UNAME="Linux", PATH=self._live_tmux(sb))
             self.assertEqual(check["status"], "ok", check["message"])
+
+    def test_missing_dedicated_settings_are_flagged(self):
+        with Sandbox() as sb:
+            _telegram_state(sb)
+            _bot_token_file(sb)
+            self._unit(sb, settings=False)
+            check = self._check(sb, ARC_FAKE_UNAME="Linux", PATH=self._live_tmux(sb))
+            self.assertEqual(check["status"], "warning")
+            self.assertIn("réglages dédiés absents", check["message"])
+
+    def test_group_without_allow_from_is_flagged(self):
+        with Sandbox() as sb:
+            state = _telegram_state(sb)
+            access = json.loads((state / "access.json").read_text())
+            access["groups"] = {"-100": {}}
+            (state / "access.json").write_text(json.dumps(access))
+            _bot_token_file(sb)
+            self._unit(sb)
+            check = self._check(sb, ARC_FAKE_UNAME="Linux", PATH=self._live_tmux(sb))
+            self.assertEqual(check["status"], "warning")
+            self.assertIn("groupe(s) sans liste allowFrom", check["message"])
 
     def test_same_token_is_flagged_without_showing_it(self):
         with Sandbox() as sb:

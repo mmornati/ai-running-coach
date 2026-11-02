@@ -27,11 +27,13 @@ Toutes les règles d'`AGENTS.md` restent valables : bilan matinal selon
 
 ## Permissions
 
-`coach-telegram-chat.sh install` fusionne `templates/settings.telegram.json` dans
-`.claude/settings.local.json` du workspace. Il suit `config/chat-policy.toml` et les refus de
-`scripts/lib/sync_tools.sh` : lectures et écritures de données (dossiers `activities/`, `medical/`,
-`nutrition/`, `planning/`, `rapports/`, `gear/`) autorisées ; écritures Garmin, COROS, Strava et
-intervals.icu en `ask` ; suppressions et fichiers secrets en `deny`.
+`coach-telegram-chat.sh install` écrit `.claude/telegram-chat.settings.json` (modèle
+`templates/settings.telegram.json`), passé par `claude --settings` à cette session seulement, avec un hook
+`PreToolUse` en échec fermé. Il suit `config/chat-policy.toml` et `scripts/lib/sync_tools.sh` : lectures et
+écritures de données (dossiers `activities/`, `medical/`, `nutrition/`, `planning/`, `rapports/`, `gear/`)
+autorisées ; écritures Garmin, COROS, Strava et intervals.icu en `ask` ; suppressions, secrets et
+modification des réglages en `deny`. Un `ask` est relayé à Telegram mais n'arrête pas un compte autorisé
+compromis : seul `deny` tient. Détail : [niveau 3 de la page Telegram](../telegram.md#niveau-3-conversation-sur-abonnement-claude-code-channels-experimental).
 
 ## Fichier source
 

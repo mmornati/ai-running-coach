@@ -11,7 +11,8 @@ Ce module ne dépend que de la bibliothèque standard (voir CONTRIBUTING.md).
 
 Sous-commandes :
     merge-json          insère une clé dans un fichier JSON, en préservant le reste
-    merge-permissions   fusionne des règles permissions.allow/ask/deny et des hooks (union, rien n'est retiré)
+    render-settings     écrit un fichier de réglages dédié depuis un modèle {{VARIABLE}} (session Telegram)
+    unmerge-permissions retire d'un fichier de réglages les règles d'un modèle rendu (migration)
     set-claude-hook     pose UN hook Claude Code d'un événement, en remplaçant ses versions antérieures
     approve-claude-mcp  pré-approuve un serveur MCP de projet dans ~/.claude.json
     get                 lit une clé TOML (user.toml > workspace.toml > défaut)
@@ -414,49 +415,96 @@ def cmd_set_claude_hook(args) -> int:
     return 0
 
 
-def cmd_merge_permissions(args) -> int:
-    """Union des listes permissions.allow / ask / deny, sans rien retirer.
+def _substitute(value, variables: dict):
+    """Remplace `{{NOM}}` dans toutes les chaînes d'une structure JSON ; un jeton inconnu lève."""
+    if isinstance(value, str):
+        for key, replacement in variables.items():
+            value = value.replace("{{" + key + "}}", replacement)
+        leftover = re.search(r"\{\{[A-Z_]+\}\}", value)
+        if leftover:
+            raise ConfigError(f"variable de modèle non résolue : {leftover.group(0)}")
+        return value
+    if isinstance(value, list):
+        return [_substitute(item, variables) for item in value]
+    if isinstance(value, dict):
+        return {key: _substitute(item, variables) for key, item in value.items()}
+    return value
 
-    Les règles déjà présentes (ajoutées à la main ou par Claude Code lui-même
-    après un « toujours autoriser ») sont conservées, dans leur ordre.
+
+def cmd_render_settings(args) -> int:
+    """Écrit un fichier de réglages Claude Code dédié à partir d'un modèle `{{VARIABLE}}`.
+
+    Utilisé pour la session Telegram : le fichier est passé par `claude --settings`, il ne touche jamais
+    `.claude/settings.local.json` (donc aucune autre session du workspace). Régénéré à chaque appel.
+    """
+    variables = {}
+    for item in args.var or []:
+        name, sep, value = item.partition("=")
+        if not sep or not name:
+            raise ConfigError(f"--var attend NOM=valeur (reçu : {name!r})")
+        variables[name] = value
+    rendered = _substitute(read_json(Path(args.template)), variables)
+    path = Path(args.out)
+    if path.is_file() and read_json(path) == rendered:
+        print(f"inchangé: {path}")
+        return 0
+    write_json(path, rendered, backup=False)
+    print(f"écrit: {path}")
+    return 0
+
+
+def _is_chat_hook(entry) -> bool:
+    return isinstance(entry, dict) and any(
+        "arc_telegram_hook.py" in str(h.get("command", "")) for h in entry.get("hooks", []) if isinstance(h, dict))
+
+
+def cmd_unmerge_permissions(args) -> int:
+    """Retire d'un fichier de réglages les règles identiques à celles du modèle rendu, et le hook de la
+    session Telegram (migration : anciennes versions les fusionnaient dans settings.local.json).
+
+    Suppression par égalité exacte : les règles de l'utilisateur ne sont jamais touchées.
     """
     path = Path(args.file)
-    template = read_json(Path(args.template)).get("permissions", {})
+    if not path.is_file():
+        print(f"inchangé: {path}")
+        return 0
+    template = read_json(Path(args.template))
     data = read_json(path)
-    permissions = data.setdefault("permissions", {})
-    if not isinstance(permissions, dict):
-        raise ConfigError(f"{path} : « permissions » n'est pas un objet JSON.")
-    added = 0
-    for kind in ("allow", "ask", "deny"):
-        wanted = template.get(kind, [])
-        if not wanted:
-            continue
-        current = permissions.setdefault(kind, [])
-        if not isinstance(current, list):
-            raise ConfigError(f"{path} : « permissions.{kind} » n'est pas une liste.")
-        for rule in wanted:
-            if rule not in current:
-                current.append(rule)
-                added += 1
-    # Hooks (ex. PreToolUse de la session Telegram) : union par événement, sans doublon.
-    template_hooks = read_json(Path(args.template)).get("hooks", {})
-    if template_hooks:
-        hooks = data.setdefault("hooks", {})
-        if not isinstance(hooks, dict):
-            raise ConfigError(f"{path} : « hooks » n'est pas un objet JSON.")
-        for event, entries in template_hooks.items():
-            current = hooks.setdefault(event, [])
+    removed = 0
+    permissions = data.get("permissions")
+    if isinstance(permissions, dict):
+        for kind in ("allow", "ask", "deny"):
+            current = permissions.get(kind)
             if not isinstance(current, list):
-                raise ConfigError(f"{path} : « hooks.{event} » n'est pas une liste.")
-            for entry in entries:
-                if entry not in current:
-                    current.append(entry)
-                    added += 1
-    if not added:
+                continue
+            drop = set(template.get("permissions", {}).get(kind, []))
+            kept = [rule for rule in current if rule not in drop]
+            removed += len(current) - len(kept)
+            if kept:
+                permissions[kind] = kept
+            else:
+                permissions.pop(kind, None)
+        if not permissions:
+            data.pop("permissions", None)
+    hooks = data.get("hooks")
+    if isinstance(hooks, dict):
+        for event in list(hooks):
+            entries = hooks[event]
+            if not isinstance(entries, list):
+                continue
+            kept = [entry for entry in entries if not _is_chat_hook(entry)]
+            removed += len(entries) - len(kept)
+            if kept:
+                hooks[event] = kept
+            else:
+                hooks.pop(event, None)
+        if not hooks:
+            data.pop("hooks", None)
+    if not removed:
         print(f"inchangé: {path}")
         return 0
     write_json(path, data)
-    print(f"fusionné: {added} règle(s) dans {path}")
+    print(f"migré: {removed} règle(s) de la session Telegram retirée(s) de {path}")
     return 0
 
 
@@ -589,10 +637,16 @@ def build_parser() -> argparse.ArgumentParser:
     hook.add_argument("--value", required=True, help="entrée JSON {matcher, hooks: [...]}")
     hook.set_defaults(func=cmd_set_claude_hook)
 
-    perms = sub.add_parser("merge-permissions", help="fusionne des règles de permission Claude Code")
-    perms.add_argument("--file", required=True, help="settings.json / settings.local.json cible")
-    perms.add_argument("--template", required=True, help="JSON contenant permissions.allow/ask/deny")
-    perms.set_defaults(func=cmd_merge_permissions)
+    render = sub.add_parser("render-settings", help="écrit un fichier de réglages Claude Code depuis un modèle")
+    render.add_argument("--template", required=True, help="modèle JSON avec des {{VARIABLE}}")
+    render.add_argument("--out", required=True, help="fichier de réglages à écrire (passé à claude --settings)")
+    render.add_argument("--var", action="append", help="NOM=valeur, répétable")
+    render.set_defaults(func=cmd_render_settings)
+
+    unmerge = sub.add_parser("unmerge-permissions", help="retire d'un settings.local.json les règles d'un modèle rendu")
+    unmerge.add_argument("--file", required=True)
+    unmerge.add_argument("--template", required=True, help="modèle déjà rendu (render-settings)")
+    unmerge.set_defaults(func=cmd_unmerge_permissions)
 
     remove_key = sub.add_parser("remove-json-key", help="retire une clé d'un fichier JSON si présente")
     remove_key.add_argument("--file", required=True)

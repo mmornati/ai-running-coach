@@ -2,7 +2,8 @@
 . "$(dirname "$0")/_common.sh"
 stub_init "$@"
 case "${1:-}" in
-    --version) echo "1.0.0-stub (Claude Code)" ;;
+    # ARC_STUB_CLAUDE_VERSION : version annoncée (la conversation Telegram exige >= 2.1.295)
+    --version) echo "${ARC_STUB_CLAUDE_VERSION:-2.1.300} (Claude Code)" ;;
     auth) echo '{"loggedIn": true}' ;;
 esac
 exit 0

@@ -23,10 +23,10 @@ sans modèle) : ne jamais confondre les deux.
 - Ne jamais poser de question par l'outil de questions interactives, ni passer
   en mode plan : la question part dans Telegram, par `reply`, et la réponse
   arrivera dans un message suivant.
-- Une demande de permission peut bloquer la conversation : se limiter aux outils
-  pré-autorisés (`templates/settings.telegram.json`, aligné sur
-  `config/chat-policy.toml`). Si une action en exige un autre, le dire à
-  l'athlète et proposer Remote Control ou le terminal.
+- Les demandes de permission sont relayées à Telegram (boutons Autoriser / Refuser envoyés aux comptes
+  autorisés) ; la confiance du dossier et le consentement MCP ne le sont pas. Se limiter aux outils prévus
+  (`templates/settings.telegram.json`, aligné sur `config/chat-policy.toml`). Ce qui est refusé (`deny`) ne
+  se contourne pas : le dire à l'athlète et proposer Remote Control ou le terminal.
 
 ## Forme des réponses
 
@@ -66,8 +66,8 @@ intervals.icu (`icu_update_*`, `icu_create_*`…) est classée **`ask`** dans
    (« programme-moi un footing demain ») **n'est pas** une approbation : elle
    déclenche l'étape 1.
 3. **Approbation de la permission.** L'appel déclenche la demande de permission
-   de la session (`ask`). Si elle n'arrive pas sur le téléphone, dire à l'athlète
-   que l'envoi attend son approbation sur la machine du coach, sans contourner.
+   de la session (`ask`), relayée à Telegram avec des boutons Autoriser / Refuser. Ne jamais
+   la présenter comme une garantie : n'importe quel compte autorisé peut l'approuver.
 4. Après l'envoi, vérifier (`garmin-workout-scheduling` → vérification après
    envoi) et confirmer en une ligne.
 

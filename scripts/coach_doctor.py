@@ -1750,7 +1750,7 @@ def _tmux_session_alive() -> bool:
     return done.returncode == 0
 
 
-def check_telegram_chat(home: Path, config: dict) -> dict:
+def check_telegram_chat(workspace: Path, home: Path, config: dict) -> dict:
     """`info`/`warning` uniquement (mode expérimental, confort). Ne compare les jetons que pour détecter
     qu'ils sont IDENTIQUES (deux processus en long polling sur le même bot → erreur 409) : aucune valeur
     de jeton n'apparaît dans un message. Aucun appel réseau."""
@@ -1767,7 +1767,8 @@ def check_telegram_chat(home: Path, config: dict) -> dict:
     for tool, hint in (("claude", "Claude Code"), ("bun", "Bun, requis par le plugin Telegram"), ("tmux", "tmux")):
         if not _which_with_extra(tool):
             problems.append(f"{tool} introuvable ({hint})")
-    state = Path(os.environ.get("TELEGRAM_STATE_DIR") or (home / ".claude/channels/telegram"))
+    config_dir = os.environ.get("CLAUDE_CONFIG_DIR") or str(home / ".claude")
+    state = Path(os.environ.get("TELEGRAM_STATE_DIR") or (Path(config_dir) / "channels/telegram"))
     env_token = os.environ.get("TELEGRAM_BOT_TOKEN", "").strip()
     plugin_token = env_token or _env_file_token(state / ".env")
     if not plugin_token:
@@ -1781,11 +1782,19 @@ def check_telegram_chat(home: Path, config: dict) -> dict:
             problems.append(f"politique d'accès « {policy} » au lieu de « allowlist » (/telegram:access policy allowlist)")
         elif not [i for i in (access.get("allowFrom") if isinstance(access.get("allowFrom"), list) else []) if str(i).strip()]:
             problems.append("politique allowlist sans compte autorisé (/telegram:access pair <code>)")
+        groups = access.get("groups") if isinstance(access.get("groups"), dict) else {}
+        open_groups = [g for g in groups.values()
+                       if not (isinstance(g, dict) and isinstance(g.get("allowFrom"), list) and g["allowFrom"])]
+        if open_groups:
+            problems.append(f"{len(open_groups)} groupe(s) sans liste allowFrom : n'importe quel membre parlerait au coach "
+                            "(/telegram:access)")
     tg = config.get("telegram") or {}
     bot_file = Path(os.path.expanduser(str(tg.get("token_file") or TELEGRAM_DEFAULT_TOKEN_FILE)))
     if plugin_token and plugin_token == _env_file_token(bot_file):
         problems.append("le jeton du plugin est identique à celui de [telegram].token_file : deux processus en long "
                         "polling sur le même bot provoquent l'erreur 409 (créez un second bot avec BotFather)")
+    if not (workspace / ".claude/telegram-chat.settings.json").is_file():
+        problems.append("réglages dédiés absents (.claude/telegram-chat.settings.json : scripts/coach-telegram-chat.sh install)")
     if unit.is_file() and not session:
         problems.append("service installé mais session tmux absente (scripts/coach-telegram-chat.sh restart)")
     elif not session:
@@ -2311,7 +2320,7 @@ def run_single_check(check_id: str, workspace: Path, now: datetime, tokens_dir: 
     if check_id == "telegram":
         return check_telegram(workspace, Path.home(), config, now)
     if check_id == "telegram_chat":
-        return check_telegram_chat(Path.home(), config)
+        return check_telegram_chat(workspace, Path.home(), config)
     if check_id == "openwearables":
         return check_openwearables(workspace, config, now, probe_ow)
     if check_id == "coros_connection":

@@ -18,7 +18,7 @@
 #   scripts/coach-telegram-chat.sh uninstall
 #   scripts/coach-telegram-chat.sh --dry-run install   # affiche sans rien écrire ni lancer
 #
-# Prérequis : Claude Code connecté avec un abonnement claude.ai (pas de clé API),
+# Prérequis : Claude Code >= 2.1.295 connecté avec un abonnement claude.ai (pas de clé API),
 # Bun, tmux, plugin installé et configuré avec le jeton d'un second bot :
 #   /plugin install telegram@claude-plugins-official
 #   /telegram:configure <token BotFather du second bot>
@@ -49,7 +49,8 @@ CHANNEL="plugin:telegram@claude-plugins-official"
 # viderait de son sens le périmètre d'écriture de templates/settings.telegram.json.
 PERMISSION_MODE="$(toml_get telegram_chat permission_mode default)"
 DAILY_RESTART="$(toml_get telegram_chat daily_restart 03:30)"
-TG_DIR="${TELEGRAM_STATE_DIR:-$HOME/.claude/channels/telegram}"
+# Dossier d'état du plugin : ${TELEGRAM_STATE_DIR}, sinon ${CLAUDE_CONFIG_DIR:-~/.claude}/channels/telegram.
+TG_DIR="${TELEGRAM_STATE_DIR:-${CLAUDE_CONFIG_DIR:-$HOME/.claude}/channels/telegram}"
 # Racine PHYSIQUE du moteur : ce script est presque toujours lancé via workspace/scripts -> moteur/scripts,
 # et ARC_ENGINE_ROOT (chemin logique) désignerait alors le workspace, qui n'a pas templates/.
 ENGINE_PHYS="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
@@ -63,8 +64,13 @@ LAUNCHD_LABEL="com.ai-running-coach.telegram-chat"
 LAUNCHD_DIR="$HOME/Library/LaunchAgents"
 LOG_DIR="$ARC_WORKSPACE/logs"
 LOG_FILE="$LOG_DIR/telegram-chat.log"   # distinct de telegram.log (bot un geste)
-SETTINGS_FILE="$ARC_WORKSPACE/.claude/settings.local.json"
+# Réglages DÉDIÉS à cette session, passés par « claude --settings » (jamais dans settings.local.json, qui
+# s'applique à toutes les sessions du workspace : synchronisation headless, /coach-setup, appairage…).
+CHAT_SETTINGS="$ARC_WORKSPACE/.claude/telegram-chat.settings.json"
+LEGACY_SETTINGS="$ARC_WORKSPACE/.claude/settings.local.json"   # anciennes versions y fusionnaient les règles
 SETTINGS_TEMPLATE="$ENGINE_PHYS/templates/settings.telegram.json"
+HOOK_SCRIPT="$ENGINE_PHYS/scripts/arc_telegram_hook.py"
+MIN_CLAUDE="2.1.295"   # onFailure du hook (échec fermé)
 OS="$(uname -s)"
 
 # Rappel injecté dans la session : chaque message Telegram passe par le skill
@@ -95,7 +101,8 @@ write_file() {
     cat > "$file"
 }
 
-# Channels exige une connexion claude.ai (abonnement) — pas de clé API.
+# Channels exige une connexion claude.ai (abonnement). Refuser ANTHROPIC_API_KEY est un CHOIX du projet
+# (ne jamais facturer une clé Console par surprise ; le mode existe pour l'abonnement), pas une limite de Claude Code.
 check_login() {
     local status
     status="$(claude auth status 2>/dev/null || true)"
@@ -167,6 +174,27 @@ require_distinct_bot() {
     fi
 }
 
+# Version de Claude Code >= MIN_CLAUDE (hook en échec fermé : « onFailure »).
+claude_version_ok() {
+    local version maj min pat
+    version="$(claude --version 2>/dev/null | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -n 1)"
+    [[ -n "$version" ]] || return 1
+    IFS=. read -r maj min pat <<< "$version"
+    local want_maj want_min want_pat
+    IFS=. read -r want_maj want_min want_pat <<< "$MIN_CLAUDE"
+    (( maj > want_maj || (maj == want_maj && (min > want_min || (min == want_min && pat >= want_pat))) ))
+}
+
+# Nombre de groupes de access.json sans liste allowFrom (n'importe quel membre pourrait alors parler au coach).
+open_groups() {
+    [[ -f "$TG_DIR/access.json" ]] || { echo 0; return 0; }
+    python3 -c '
+import json, sys
+groups = json.load(open(sys.argv[1])).get("groups") or {}
+print(sum(1 for g in groups.values() if not (isinstance(g, dict) and isinstance(g.get("allowFrom"), list) and g["allowFrom"])))
+' "$TG_DIR/access.json" 2>/dev/null || echo 0
+}
+
 require_bin() {
     have "$1" && return 0
     [[ "$DRY_RUN" -eq 1 ]] && { warn "$1 introuvable (ignoré en dry-run) — $2"; return 0; }
@@ -177,12 +205,15 @@ preflight() {
     require_bin claude "installez Claude Code : curl -fsSL https://claude.ai/install.sh | bash"
     require_bin bun "le plugin Telegram en a besoin : curl -fsSL https://bun.sh/install | bash"
     have claude && check_login
+    if have claude && ! claude_version_ok; then
+        [[ "$DRY_RUN" -eq 1 ]] && warn "Claude Code < $MIN_CLAUDE (ignoré en dry-run)." \
+            || die "Claude Code >= $MIN_CLAUDE requis (hook en échec fermé) : mettez-le à jour (claude update)."
+    fi
     [[ -n "${TELEGRAM_BOT_TOKEN:-}" || -f "$TG_DIR/.env" ]] \
         || die "Token du bot absent ($TG_DIR/.env). Dans Claude Code : /plugin install telegram@claude-plugins-official puis /telegram:configure <token>."
-    # Mode passerelle : un seul outil (mcp__leanproxy__…) porte lecture, envoi ET
-    # suppression. L'autoriser contournerait le deny des suppressions ; ne pas
-    # l'autoriser bloquerait la session sur une demande de permission que le
-    # plugin ne relaie pas. Pas de compromis sûr : refus.
+    # Mode passerelle : un seul outil (mcp__leanproxy__…) porte lecture, envoi ET suppression, sans nom
+    # qui permette de les distinguer. Les réglages et le hook refusent « leanproxy » ; le laisser
+    # déclaré rendrait la session inutilisable. Pas de compromis sûr : refus.
     if grep -qs '"leanproxy"[[:space:]]*:' "$ARC_WORKSPACE/.mcp.json"; then
         die "Mode passerelle leanproxy détecté ($ARC_WORKSPACE/.mcp.json) : incompatible avec le coach sur Telegram.
   Réinstallez en mode direct (./install.sh sans --use-leanproxy), ou utilisez Remote Control."
@@ -195,6 +226,10 @@ preflight() {
     esac
     local policy
     policy="$(dm_policy)"
+    if [[ "$PAIRING" -eq 0 && "$(open_groups)" != "0" ]]; then
+        die "Un groupe de $TG_DIR/access.json n'a pas de liste allowFrom : n'importe quel membre pourrait parler au coach.
+  Dans la session d'appairage : /telegram:access (retirez le groupe ou renseignez allowFrom)."
+    fi
     if [[ "$policy" != "allowlist" && "$PAIRING" -eq 0 ]]; then
         die "Politique d'accès du bot : « $policy ». Appairez d'abord votre compte :
   scripts/coach-telegram-chat.sh run --pairing
@@ -233,14 +268,19 @@ do_run() {
     preflight
     cd "$ARC_WORKSPACE"
     log "Session Telegram (Channels, expérimental) — workspace : $ARC_WORKSPACE ($PERMISSION_MODE)"
+    local settings_args=()
     if [[ "$PAIRING" -eq 1 ]]; then
-        log "Appairage : écrivez au bot, puis tapez ici /telegram:access pair <code> et /telegram:access policy allowlist. Ensuite Ctrl+C deux fois."
+        log "Appairage (sans les réglages restrictifs de la conversation) : écrivez au bot, puis tapez ici /telegram:access pair <code> et /telegram:access policy allowlist. Ensuite Ctrl+C deux fois."
+        log "1er démarrage : acceptez ici la confiance du dossier et le consentement MCP (ces dialogues ne sont PAS relayés à Telegram), au besoin via : tmux -L $TMUX_SESSION attach -t $TMUX_SESSION"
+    else
+        require_settings
+        settings_args=(--settings "$CHAT_SETTINGS")
     fi
     if [[ "$DRY_RUN" -eq 1 ]]; then
-        run claude --channels "$CHANNEL" --permission-mode "$PERMISSION_MODE" --append-system-prompt "…"
+        run claude ${settings_args[@]+"${settings_args[@]}"} --channels "$CHANNEL" --permission-mode "$PERMISSION_MODE" --append-system-prompt "…"
         return 0
     fi
-    exec claude --channels "$CHANNEL" --permission-mode "$PERMISSION_MODE" --append-system-prompt "$SYSTEM_HINT"
+    exec claude ${settings_args[@]+"${settings_args[@]}"} --channels "$CHANNEL" --permission-mode "$PERMISSION_MODE" --append-system-prompt "$SYSTEM_HINT"
 }
 
 # Boucle lancée dans tmux : relance la session si elle s'arrête (crash, /exit).
@@ -258,7 +298,7 @@ tmux_start() {
         ok "Session tmux $TMUX_SESSION déjà active."
         return 0
     fi
-    run tmux -L "$TMUX_SESSION" new-session -d -s "$TMUX_SESSION" -c "$ARC_WORKSPACE" "$SELF supervise"
+    run tmux -L "$TMUX_SESSION" new-session -d -s "$TMUX_SESSION" -c "$ARC_WORKSPACE" "'$SELF' supervise"
 }
 
 tmux_stop() {
@@ -270,14 +310,42 @@ tmux_stop() {
 # ---------------------------------------------------------------------------
 # install
 # ---------------------------------------------------------------------------
+# Fichier de réglages dédié, régénéré à chaque installation, puis migration : retire de settings.local.json
+# les règles (et le hook) que d'anciennes versions y avaient fusionnées.
 install_permissions() {
     if [[ "$DRY_RUN" -eq 1 ]]; then
-        printf '%s\n' "${C_YELLOW}[dry-run]${C_RESET} fusion de $SETTINGS_TEMPLATE dans $SETTINGS_FILE"
+        printf '%s\n' "${C_YELLOW}[dry-run]${C_RESET} écriture de $CHAT_SETTINGS (depuis $SETTINGS_TEMPLATE)"
+        printf '%s\n' "${C_YELLOW}[dry-run]${C_RESET} retrait des anciennes règles de $LEGACY_SETTINGS"
         return 0
     fi
-    python3 "$ENGINE_PHYS/scripts/coach_config.py" merge-permissions \
-        --file "$SETTINGS_FILE" --template "$SETTINGS_TEMPLATE"
-    ok "Permissions de la session Telegram : $SETTINGS_FILE (lectures libres ; écritures Garmin/COROS/intervals.icu soumises à approbation, suppressions interdites)"
+    local tg_phys python_bin
+    tg_phys="$(cd "$TG_DIR" 2>/dev/null && pwd -P || printf '%s' "$TG_DIR")"
+    python_bin="$(command -v python3)"
+    python3 "$ENGINE_PHYS/scripts/coach_config.py" render-settings \
+        --template "$SETTINGS_TEMPLATE" --out "$CHAT_SETTINGS" \
+        --var "PYTHON=$python_bin" --var "HOOK=$HOOK_SCRIPT" --var "ENGINE_ABS=/$ENGINE_PHYS" \
+        --var "TG_ABS=/$tg_phys" --var "INBOX_ABS=/$tg_phys/inbox"
+    python3 "$ENGINE_PHYS/scripts/coach_config.py" unmerge-permissions \
+        --file "$LEGACY_SETTINGS" --template "$CHAT_SETTINGS"
+    ok "Réglages de la session Telegram : $CHAT_SETTINGS (passés à cette session seulement ; lectures libres, écritures Garmin/COROS/intervals.icu soumises à approbation, suppressions interdites)"
+}
+
+# Les réglages dédiés sont obligatoires (restrictions, hook en échec fermé) : jamais de session sans eux.
+require_settings() {
+    [[ -f "$CHAT_SETTINGS" ]] && return 0
+    [[ "$DRY_RUN" -eq 1 ]] && { warn "$CHAT_SETTINGS absent (ignoré en dry-run)."; return 0; }
+    die "Réglages de la session absents ($CHAT_SETTINGS) : lancez d'abord scripts/coach-telegram-chat.sh install."
+}
+
+# Variables d'environnement à propager au service (le plugin lit TELEGRAM_STATE_DIR / CLAUDE_CONFIG_DIR).
+extra_env_systemd() {
+    [[ -z "${TELEGRAM_STATE_DIR:-}" ]] || printf 'Environment="TELEGRAM_STATE_DIR=%s"\n' "$TELEGRAM_STATE_DIR"
+    [[ -z "${CLAUDE_CONFIG_DIR:-}" ]] || printf 'Environment="CLAUDE_CONFIG_DIR=%s"\n' "$CLAUDE_CONFIG_DIR"
+}
+
+extra_env_plist() {
+    [[ -z "${TELEGRAM_STATE_DIR:-}" ]] || printf '    <key>TELEGRAM_STATE_DIR</key><string>%s</string>\n' "$(xml_escape "$TELEGRAM_STATE_DIR")"
+    [[ -z "${CLAUDE_CONFIG_DIR:-}" ]] || printf '    <key>CLAUDE_CONFIG_DIR</key><string>%s</string>\n' "$(xml_escape "$CLAUDE_CONFIG_DIR")"
 }
 
 valid_time() { [[ "$1" =~ ^([01][0-9]|2[0-3]):[0-5][0-9]$ ]]; }
@@ -295,10 +363,11 @@ Wants=network-online.target
 Type=forking
 WorkingDirectory=$ARC_WORKSPACE
 Environment=PATH=$HOME/.local/bin:$HOME/.claude/bin:$HOME/.bun/bin:$HOME/.cargo/bin:/usr/local/bin:/usr/bin:/bin
-Environment=HOME=$HOME
-Environment=ARC_WORKSPACE=$ARC_WORKSPACE
-ExecStart=$(command -v tmux) -L $TMUX_SESSION new-session -d -s $TMUX_SESSION -c $ARC_WORKSPACE $SELF supervise
-ExecStop=$(command -v tmux) -L $TMUX_SESSION kill-session -t $TMUX_SESSION
+Environment="HOME=$HOME"
+Environment="ARC_WORKSPACE=$ARC_WORKSPACE"
+$(extra_env_systemd)
+ExecStart="$(command -v tmux)" -L $TMUX_SESSION new-session -d -s $TMUX_SESSION -c "$ARC_WORKSPACE" "'$SELF' supervise"
+ExecStop="$(command -v tmux)" -L $TMUX_SESSION kill-session -t $TMUX_SESSION
 RemainAfterExit=yes
 
 [Install]
@@ -312,7 +381,7 @@ Description=ai-running-coach — redémarrage quotidien de la session Telegram (
 
 [Service]
 Type=oneshot
-ExecStart=$(command -v systemctl) --user restart $SERVICE_NAME.service
+ExecStart="$(command -v systemctl)" --user restart $SERVICE_NAME.service
 EOT
         write_file "$SYSTEMD_DIR/$SERVICE_NAME-restart.timer" <<EOT
 [Unit]
@@ -352,11 +421,12 @@ install_launchd() {
   <dict>
     <key>ARC_WORKSPACE</key><string>$(xml_escape "$ARC_WORKSPACE")</string>
     <key>PATH</key><string>$HOME/.local/bin:$HOME/.claude/bin:$HOME/.bun/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string>
-    <key>HOME</key><string>$HOME</string>
+    <key>HOME</key><string>$(xml_escape "$HOME")</string>
+$(extra_env_plist)
   </dict>
   <key>RunAtLoad</key><true/>
-  <key>StandardOutPath</key><string>$LOG_FILE</string>
-  <key>StandardErrorPath</key><string>$LOG_FILE</string>
+  <key>StandardOutPath</key><string>$(xml_escape "$LOG_FILE")</string>
+  <key>StandardErrorPath</key><string>$(xml_escape "$LOG_FILE")</string>
 </dict>
 </plist>
 EOT
@@ -371,11 +441,13 @@ EOT
 <dict>
   <key>Label</key><string>$LAUNCHD_LABEL.restart</string>
   <key>ProgramArguments</key>
-  <array><string>$SELF</string><string>restart</string></array>
+  <array><string>$(xml_escape "$SELF")</string><string>restart</string></array>
   <key>EnvironmentVariables</key>
   <dict>
-    <key>ARC_WORKSPACE</key><string>$ARC_WORKSPACE</string>
+    <key>ARC_WORKSPACE</key><string>$(xml_escape "$ARC_WORKSPACE")</string>
     <key>PATH</key><string>$HOME/.local/bin:$HOME/.claude/bin:$HOME/.bun/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string>
+    <key>HOME</key><string>$(xml_escape "$HOME")</string>
+$(extra_env_plist)
   </dict>
   <key>StartCalendarInterval</key>
   <dict><key>Hour</key><integer>$((10#${DAILY_RESTART%%:*}))</integer><key>Minute</key><integer>$((10#${DAILY_RESTART##*:}))</integer></dict>
@@ -406,6 +478,7 @@ do_install() {
     warn_if_remote_control_runs
     echo
     log "Écrivez au bot depuis Telegram : « séance du jour ? »"
+    log "Si la session attend une confiance de dossier ou un consentement MCP (jamais relayés à Telegram) : tmux -L $TMUX_SESSION attach -t $TMUX_SESSION"
 }
 
 do_uninstall() {
@@ -424,13 +497,15 @@ do_uninstall() {
             tmux_stop ;;
         tmux) tmux_stop ;;
     esac
-    ok "Service Telegram retiré (permissions de $SETTINGS_FILE conservées)."
+    run rm -f "$CHAT_SETTINGS"
+    ok "Service Telegram retiré (réglages dédiés $CHAT_SETTINGS supprimés)."
 }
 
 # ---------------------------------------------------------------------------
 # start / stop / status / logs
 # ---------------------------------------------------------------------------
 do_start() {
+    require_settings
     local chosen
     chosen="$(backend)" || die "$NO_BACKEND_MSG"
     case "$chosen" in

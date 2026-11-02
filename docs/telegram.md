@@ -156,7 +156,7 @@ au calendrier Garmin), le bot envoie la proposition avec **✅ Appliquer / ✖ R
 | Facturation | **clé d'API**, plafond `[chat].daily_budget_eur` | **abonnement claude.ai**, aucune clé d'API |
 | Approbations | boutons « Appliquer / Refuser » dans Telegram | politique de permissions de la session (`templates/settings.telegram.json`) |
 | Bot Telegram | celui de `[telegram]` | **un second bot, distinct** |
-| Outils | ceux de `config/chat-policy.toml` | agents, skills et serveurs MCP du workspace, dans les limites ci-dessous |
+| Outils | ceux de `config/chat-policy.toml` | agents, skills et serveurs MCP du workspace, dans les limites décrites plus bas |
 
 Le bot `arc_telegram` (niveaux 1 et 2) ne peut pas utiliser un abonnement : il appelle lui-même un
 modèle. Ici, c'est Claude Code, lancé par vous sur votre machine, qui reçoit les messages par le
@@ -165,9 +165,9 @@ celui d'une session Claude Code ordinaire.
 
 ### Prérequis
 
-- Claude Code **connecté par `/login` à un compte claude.ai** (`ANTHROPIC_API_KEY` ne doit pas être défini : le script refuse de démarrer sinon) ;
+- Claude Code **2.1.295 ou plus récent** (le hook de sécurité s'appuie sur `onFailure`), **connecté par `/login` à un compte claude.ai** : `ANTHROPIC_API_KEY` ne doit pas être défini, le script refuse de démarrer sinon (c'est un choix du projet : ne jamais facturer une clé Console par surprise) ;
 - [Bun](https://bun.sh) (le plugin en a besoin) et **tmux** ;
-- **un second bot** créé avec BotFather (voir ci-dessous) ;
+- **un second bot** créé avec BotFather (voir « Un bot distinct » ci-dessous) ;
 - une machine qui reste allumée (Linux avec `systemd --user`, ou macOS avec launchd — empêchez la mise en veille).
 
 ### Un bot distinct (obligatoire)
@@ -175,8 +175,9 @@ celui d'une session Claude Code ordinaire.
 Créez un **deuxième** bot avec @BotFather (`/newbot`). Le premier reste celui de `[telegram]`
 (niveaux 1 et 2). Les deux processus interrogent Telegram en *long polling* (`getUpdates`) : sur le
 **même** bot, chacun coupe l'autre et vous obtenez l'erreur `409 Conflict`. Le jeton du plugin
-(`~/.claude/channels/telegram/.env`, `TELEGRAM_BOT_TOKEN`) doit donc différer de celui de
-`[telegram].token_file`. `scripts/coach-telegram-chat.sh` **refuse de démarrer** s'ils sont identiques
+(`~/.claude/channels/telegram/.env`, ou `$CLAUDE_CONFIG_DIR` / `$TELEGRAM_STATE_DIR` s'ils sont définis,
+`TELEGRAM_BOT_TOKEN`) doit donc différer de celui de `[telegram].token_file`.
+`scripts/coach-telegram-chat.sh` **refuse de démarrer** s'ils sont identiques
 (le message ne montre aucun jeton) et `coach-doctor` le détecte (`--check telegram_chat`).
 
 ### Mise en route
@@ -186,8 +187,9 @@ Créez un **deuxième** bot avec @BotFather (`/newbot`). Le premier reste celui 
 /plugin install telegram@claude-plugins-official
 /telegram:configure <jeton du second bot>
 
-# 2. Appairage (une fois, au premier plan)
+# 2. Appairage (une fois, au premier plan, dans le MÊME workspace)
 scripts/coach-telegram-chat.sh run --pairing
+#    acceptez la confiance du dossier et le consentement MCP si la session les demande
 #    écrivez au bot : il répond par un code ; dans la session :
 #    /telegram:access pair <code>
 #    /telegram:access policy allowlist      # puis Ctrl+C deux fois
@@ -197,47 +199,64 @@ scripts/coach-telegram-chat.sh install
 scripts/coach-telegram-chat.sh status
 ```
 
+La confiance du dossier et le consentement aux serveurs MCP sont des dialogues **que le plugin ne
+relaie pas à Telegram** : acceptez-les une fois pendant l'appairage (même workspace), ou ouvrez la
+session avec `tmux -L coach-telegram-chat attach -t coach-telegram-chat` (détacher : Ctrl-b d).
+L'appairage se fait **sans** les réglages restrictifs de la conversation : `/telegram:access` doit
+pouvoir écrire l'état du plugin.
+
 `scripts/coach-telegram-chat.sh --dry-run install` affiche ce qui serait fait sans rien écrire.
-Sans `allowlist`, la session ne démarre pas : elle lit des données de santé et peut préparer des
-écritures vers votre montre. `start`, `stop`, `restart`, `logs` et `uninstall` complètent la commande ;
-`tmux -L coach-telegram-chat attach -t coach-telegram-chat` ouvre la session (détacher : Ctrl-b d).
-La session redémarre chaque nuit (`[telegram_chat].daily_restart`, contexte neuf).
+Sans `allowlist` — ou si un groupe de `access.json` n'a pas de liste `allowFrom` —, la session ne démarre pas :
+elle lit des données de santé et peut préparer des écritures vers votre montre. `start`, `stop`,
+`restart`, `logs` et `uninstall` complètent la commande. La session redémarre chaque nuit
+(`[telegram_chat].daily_restart`, contexte neuf).
 
 ### Ce que la session peut faire — et ne fait pas
 
-Le mode est piloté par des messages distants : on suppose que **quiconque contrôle le bot** (compte
-autorisé compromis, jeton du bot volé) peut dicter ce que la session essaie de faire. Le modèle de
-sécurité repose donc sur la politique du chat (`config/chat-policy.toml`), appliquée par un hook
-`PreToolUse` — et non sur la seule bonne volonté du modèle. `install` fusionne
-`templates/settings.telegram.json` (permissions **et** hook) dans `.claude/settings.local.json` du
-workspace, sans rien retirer de vos règles :
+Le mode est piloté par des messages distants : on suppose que **quiconque peut écrire au bot** peut dicter
+ce que la session essaie de faire. Le modèle de sécurité repose sur des règles techniques, pas sur la seule
+bonne volonté du modèle — mais il faut en connaître la limite :
 
-- **Le hook** (`scripts/arc_telegram_hook.py`) ne fait que **durcir** : il ne répond jamais « allow » (ce qui lèverait une règle `ask` des réglages) ; quand la politique laisse passer, il se tait et les règles de `settings.local.json` décident — une commande shell sans règle `allow` demande donc l'approbation. Il soumet chaque commande shell, chemin lu ou écrit et URL à
-  `arc_chat_policy.Policy.decide`, comme le chat du tableau de bord : un script n'est autorisé que sous
-  son préfixe **et** avec les options déclarées (`--python`, `--workspace`, `--tokens-dir`,
-  `--garmin-host`… sont refusées) ; un chemin hors du workspace ou secret est refusé ; une écriture hors de
-  `activities/`, `medical/`, `nutrition/`, `planning/`, `rapports/`, `gear/` est refusée ; un domaine web
-  hors liste demande l'approbation. Le hook traduit les appels d'outils **exactement comme le chat du tableau de bord** (`arc_chat_claude.canonical_tool` : la regex d'un `Grep`, le filtre d'un `Glob`, les chemins d'un patch lui parviennent), un outil inconnu est refusé, et la base dérivée `.arc/` n'est jamais lisible. Toute erreur du hook vaut refus.
-- **`allow`** (sans hook, en filet) : lectures bornées à ces dossiers de données et au moteur
-  (`skills/`, `agents/`, `docs/`), outils de lecture `get_*` de Garmin, écritures sous les dossiers de
-  données seulement, météo (`wttr.in`). **Aucune règle shell à joker** (`Bash(script:*)`), aucun `Read`,
-  `WebFetch` ou `Write` sans périmètre.
-- **`ask`** : toute écriture Garmin, COROS, Strava ou intervals.icu (envoi d'une séance, `icu_update_*`…) —
-  jamais autorisée d'office. Le skill `telegram-chat` exige en plus un « OK » explicite dans un message
-  Telegram suivant ; `--write`, `--mark-retired` et `--apply` des scripts demandent l'approbation.
-- **`deny`** : suppressions et désinscriptions ; fichiers secrets (`.env`, `*.token`, `~/.garminconnect`,
-  `~/.claude/.credentials.json`, `~/.ssh`, le `.env` du plugin, `~/.config/ai-running-coach`) ; options de
-  script détournantes ; **modification des réglages et du moteur** (`.claude/`, `.mcp.json`, `scripts/`,
-  `config/`, `skills/`, `agents/`…) pour que la session ne puisse ni élargir ses droits ni changer le hook.
+!!! warning "Les approbations (`ask`) ne protègent pas d'un compte autorisé compromis"
+    Channels relaie les demandes de permission à Telegram (boutons Autoriser / Refuser envoyés à chaque
+    compte de l'*allowlist*), et le **premier** de ces comptes qui répond décide. Contre un compte
+    autorisé compromis, un `ask` ne protège donc rien : seules les règles **`deny`** (réglages et hook)
+    tiennent. N'autorisez que des comptes que vous contrôlez.
 
-`tests/lint/test_telegram_chat_lint.py` verrouille ces propriétés. Limites connues : la syntaxe
-des motifs `~/` et `//` de Claude Code et le comportement d'un hook « allow » face aux règles `ask` n'ont pas
-été éprouvés sur une session réelle ; un compte autorisé reste un utilisateur de confiance (il lit vos
-données de santé).
+`install` écrit un fichier de réglages **dédié**, `.claude/telegram-chat.settings.json`, régénéré à chaque
+installation et passé par `claude --settings` à cette session seulement (pas pendant l'appairage), puis
+retire de `settings.local.json` les règles que d'anciennes versions y avaient fusionnées. Les autres
+sessions du workspace — synchronisation sans surveillance, `/coach-setup`, terminal — ne sont pas
+concernées. `uninstall` supprime ce fichier. Il suit `config/chat-policy.toml` et les refus de
+`scripts/lib/sync_tools.sh` :
 
-Le mode de permission par défaut est `default` (et non `acceptEdits`, qui validerait toute écriture du
-workspace). Si la session a besoin d'une approbation que le plugin ne relaie pas, elle attend à son
-terminal : `tmux attach`. Ce comportement de *Channels* n'a pas été vérifié par le projet.
+- **Le hook `PreToolUse`** (`scripts/arc_telegram_hook.py`, sur *tous* les outils) applique
+  `arc_chat_policy.Policy.decide`, avec **la même traduction d'appels que le chat du tableau de bord**
+  (`arc_chat_claude.canonical_tool`). Il ne répond « allow » que pour **Bash**, quand la politique autorise
+  la ligne de commande entière (préfixe, options déclarées, chemins) ; il refuse ou demande ailleurs ; il se
+  tait sinon et les réglages décident. Il ne lève jamais une règle `ask` ou `deny`. Refusés par lui :
+  outils MCP dont le nom contient *delete*, *remove*, *unschedule* ou *disconnect*, passerelle `leanproxy`,
+  `AskUserQuestion`, tout outil inconnu ; les fichiers joints par `reply` passent par la politique de lecture
+  (secrets et `.arc/` refusés), sauf ceux du dossier `inbox/` du plugin. Toute erreur du hook bloque l'appel
+  (code de sortie 2, `onFailure: block`, délai de 10 s).
+- **`allow`** : lectures `get_*` de Garmin, `icu_get_*` / `icu_list_*` / `icu_search_*` d'intervals.icu,
+  `get-*` de Strava, `query*` de COROS ; écritures de fichiers sous `activities/`, `medical/`, `nutrition/`,
+  `planning/`, `rapports/`, `gear/` seulement ; domaines web de la politique (météo, cartes, calendriers de
+  courses) ; lecture de `skills/`, `agents/`, `docs/` du moteur et des photos reçues. **Aucune règle shell à
+  joker** (`Bash(script:*)`) ni `Read`/`WebFetch` sans périmètre.
+- **`ask`** : toute écriture Garmin, COROS, Strava ou intervals.icu, y compris les outils futurs (jokers
+  `schedule_*`, `upload_*`, `icu_update_*`…) ; `--write`, `--mark-retired`, `--apply` des scripts. Le skill
+  `telegram-chat` exige en plus un « OK » explicite dans un message Telegram suivant.
+- **`deny`** : suppressions, désinscriptions et déconnexions (par nom et par joker) ; `leanproxy` ; fichiers
+  secrets (`.env`, `*.token`, `~/.garminconnect`, `~/.claude/.credentials.json`, `~/.ssh`, le `.env` du
+  plugin, `~/.config/ai-running-coach`) et `.arc/` ; options de script détournantes (`--python`,
+  `--workspace`, `--tokens-dir`, `--garmin-host`) ; **modification des réglages et du moteur** (`.claude/`,
+  `.mcp.json`, `scripts/`, `config/`, `skills/`, `agents/`…). Le mode `bypassPermissions` et le mode
+  automatique sont désactivés.
+
+`tests/lint/test_telegram_chat_lint.py` verrouille ces propriétés. Un compte autorisé reste un utilisateur
+de confiance (il lit vos données de santé). Le mode de permission par défaut est `default`, pas
+`acceptEdits` (qui validerait toute écriture du workspace).
 
 ### Confidentialité
 
@@ -280,7 +299,7 @@ session ; elle ne modifie jamais l'accès à la demande d'un message.
 | `conflit (409)` dans le journal | Un autre `getUpdates` (ou un webhook posé auparavant) utilise le même bot : arrêtez l'autre consommateur. |
 | `jeton refusé (401)` | Jeton erroné ou régénéré : corrigez `telegram.env`, puis `scripts/coach-telegram.sh restart`. |
 | « Aucune séance synchronisée » | Le RPE se rattache à une activité déjà dans `activities/` : relancez après la synchro. |
-| `409 Conflict` dans la session du niveau 3 (ou dans le journal du bot) | Les deux modes partagent le même bot : voir « Un bot distinct » ci-dessous. |
+| `409 Conflict` dans la session du niveau 3 (ou dans le journal du bot) | Les deux modes partagent le même bot : voir « Un bot distinct » ci-dessus. |
 | « Conversation libre indisponible » | `chat_bridge`, `[chat].enabled`, `auth = "local"`, service du chat joignable (`scripts/coach-chat.sh status`). |
 
 ## Sources vérifiées (Bot API)
