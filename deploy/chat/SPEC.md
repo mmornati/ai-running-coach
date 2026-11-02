@@ -126,6 +126,11 @@ constant); `--llm anthropic` → chat `claude-sonnet-5-5`, sync `claude-haiku-5-
   discards the body first (bounded by 64 MiB and a 5-30 s deadline) and then answers; for a 413 it answers
   first, then `shutdown(SHUT_WR)` and drains within the same bounds. Without a valid `Content-Length`
   (411/400) there is nothing to drain.
+  Limit: the drain stops after 30 s, so a refusal of a big file over a very slow link can still be lost to a
+  RST. The idle timeout (10 s) and the global deadline both answer 408 (after a bounded drain); a write failure
+  while creating the temp file answers 500. The proxy applies the same idle timeout (10 s) and global deadline
+  to the client side of the upload: a stalled client gets a 408 from the proxy and its upstream connection is
+  dropped immediately.
 - **Allow-list by content AND extension** (they must agree, 415 otherwise): `.gpx`/`.tcx` = well-formed
   XML with root `gpx` / `TrainingCenterDatabase`, parsed with the stdlib without DTD or entity
   (any `<!DOCTYPE`/`<!ENTITY` is refused, UTF-16 refused); `.fit` = FIT header (size byte 12 or 14,

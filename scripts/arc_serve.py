@@ -1774,6 +1774,9 @@ CHAT_FORWARD_REQUEST = ("Content-Type", "X-ARC-Chat", "Origin", "Sec-Fetch-Site"
 CHAT_BODY_MAX = 1024 * 1024
 CHAT_UPLOAD_DEFAULT_MAX = 20 * 1024 * 1024
 CHAT_UPLOAD_FAMILY_MAX = 64 * 1024 * 1024
+CHAT_UPLOAD_IDLE_TIMEOUT_S = 10.0           # inactivité tolérée du client pendant un envoi (comme le service)
+CHAT_UPLOAD_MIN_RATE = 50 * 1024            # débit minimal toléré (octets/s) : échéance = taille / débit
+CHAT_UPLOAD_MIN_DEADLINE_S = 30.0           # plancher de l'échéance globale
 CHAT_DRAIN_MAX_BYTES = 64 * 1024 * 1024     # octets jetés au plus après un refus (413) du proxy
 CHAT_ATTACHMENT_PATH = re.compile(r"^/api/chat/sessions/[^/]+/attachments$")
 
@@ -1792,12 +1795,20 @@ class _BoundedBody:
 
     def __init__(self, rfile, remaining: int):
         self.rfile, self.remaining = rfile, remaining
+        # Échéance globale alignée sur le service (taille / débit minimal, plancher) ; le délai d'inactivité
+        # par lecture est posé sur la connexion par `_chat_proxy`.
+        self.deadline = time.monotonic() + max(CHAT_UPLOAD_MIN_DEADLINE_S, remaining / CHAT_UPLOAD_MIN_RATE)
 
     def read(self, size: int = -1) -> bytes:
         if self.remaining <= 0:
             return b""
+        if time.monotonic() > self.deadline:
+            raise ClientGone()
         size = self.remaining if size is None or size < 0 else min(size, self.remaining)
-        chunk = self.rfile.read1(size)
+        try:
+            chunk = self.rfile.read1(size)
+        except OSError:                              # délai d'inactivité, reset : le client est parti ou bloqué
+            raise ClientGone() from None
         if not chunk:
             raise ClientGone()
         self.remaining -= len(chunk)
@@ -2000,18 +2011,26 @@ class Handler(BaseHTTPRequestHandler):
         if upload and length > 0:
             headers["Content-Length"] = str(length)       # corps en flux : sans cela http.client enverrait du chunked
         conn = http.client.HTTPConnection("127.0.0.1", self.chat_port, timeout=CHAT_CONNECT_TIMEOUT_S)
+        if upload:
+            self.connection.settimeout(CHAT_UPLOAD_IDLE_TIMEOUT_S)
         try:
             try:
                 conn.request(self.command, self.path, body=body, headers=headers, encode_chunked=False)
             except ClientGone:
-                conn.close()                         # le client a coupé : le chat voit la coupure et échoue vite
+                conn.close()                         # client parti ou bloqué : le chat voit la coupure et échoue vite
                 self.close_connection = True
+                try:
+                    self._json(HTTPStatus.REQUEST_TIMEOUT, {"error": "Envoi interrompu ou trop lent."})
+                except OSError:
+                    pass
                 return
             except OSError:
                 # Le service a pu refuser AVANT la fin du corps (429, 404, 413…) puis fermer : sa réponse est
                 # déjà dans le socket. On la lit avant de conclure à un service injoignable.
                 if conn.sock is None:
                     raise
+            if upload:
+                self.connection.settimeout(None)     # corps reçu en entier : délai d'origine pour la suite
             conn.sock.settimeout(CHAT_READ_TIMEOUT_S)
             resp = conn.getresponse()
         except (OSError, http.client.HTTPException):

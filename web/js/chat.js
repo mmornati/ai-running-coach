@@ -724,20 +724,29 @@ async function sendMessage(text, attachments = []) {
     });
     if (!res.ok) {
       let msg = `HTTP ${res.status}`;
-      try { msg = (await res.json()).error || msg; } catch { /* corps non JSON */ }
+      let badPath = null;
+      try { const body = await res.json(); msg = body.error || msg; badPath = body.path || null; } catch { /* corps non JSON */ }
       if (res.status === 409) msg = "Une réponse est déjà en cours pour cette conversation.";
       if (res.status === 429) msg = "Trop de messages d'affilée — patientez une minute.";
-      throw new Error(msg);
+      const err = new Error(msg);
+      err.rejected = res.status >= 400 && res.status < 500;
+      err.badPath = badPath;
+      throw err;
     }
     started = true;
     await readSse(res, handleEvent);
   } catch (err) {
-    if (err.name !== "AbortError") showBanner(`Connexion interrompue : ${err.message}`);
+    // Refus du service (4xx) : message neutre ; « Connexion interrompue » seulement pour une coupure réseau / du flux.
+    if (err.name !== "AbortError") showBanner(err.rejected ? `Message non envoyé : ${err.message}` : `Connexion interrompue : ${err.message}`);
     if (!started && sid === state.sessionId) {
       // Refus ou réseau avant le début de la réponse : le message n'est pas parti, on rend la saisie et les pièces jointes.
       bubble.remove();
       if (!els.input.value) els.input.value = text;
-      if (attachments.length && !state.attachments.length) { state.attachments = attachments; renderChips(); }
+      // Fusion avec ce qui a été joint entre-temps ; la pièce jointe dont le service dit qu'elle n'existe plus est écartée.
+      const have = new Set(state.attachments.map((a) => a.path));
+      const back = attachments.filter((a) => a.path !== err.badPath && !have.has(a.path));
+      if (back.length) { state.attachments = [...back, ...state.attachments].slice(0, MAX_ATTACH); }
+      renderChips();
     }
   } finally {
     flushText(state.turn);
@@ -1129,15 +1138,14 @@ function renderChips() {
 
 function clearAttachments() { state.attachments = []; renderChips(); }
 
-async function uploadFile(file) {
-  const sid = state.sessionId;
-  if (!sid || state.streaming) return showBanner(`« ${file.name} » non joint : la conversation est occupée ou indisponible.`);
-  if (/\.hei[cf]$/i.test(file.name)) return showBanner("Format HEIC non pris en charge : exportez la photo en JPEG (Réglages > Appareil photo > Formats > « Le plus compatible »).");
-  if (!ATTACH_EXT.test(file.name)) return showBanner(`« ${file.name} » : type non pris en charge. Formats acceptés : GPX, TCX, FIT, JPEG, PNG, WebP.`);
+// Envoie UN fichier vers la conversation `sid` ; renvoie le motif du refus (texte) ou `null`. N'affiche rien :
+// `addFiles` regroupe les refus d'un lot pour qu'un fichier suivant n'efface pas l'erreur du précédent.
+async function uploadFile(file, sid) {
+  if (/\.hei[cf]$/i.test(file.name)) return "format HEIC non pris en charge : exportez la photo en JPEG (Réglages > Appareil photo > Formats > « Le plus compatible »)";
+  if (!ATTACH_EXT.test(file.name)) return "type non pris en charge (formats acceptés : GPX, TCX, FIT, JPEG, PNG, WebP)";
   const max = Number(state.status?.upload_max_bytes) || 0;
-  if (max && file.size > max) return showBanner(`« ${file.name} » est trop volumineux (${sizeFmt(file.size)}, maximum ${sizeFmt(max)}).`);
-  if (state.attachments.length >= MAX_ATTACH) return showBanner(`Dix pièces jointes au plus par message.`);
-  showBanner("");
+  if (max && file.size > max) return `trop volumineux (${sizeFmt(file.size)}, maximum ${sizeFmt(max)})`;
+  if (state.attachments.length >= MAX_ATTACH) return "dix pièces jointes au plus par message";
   const item = { name: file.name, size: file.size, busy: true };
   state.attachments.push(item);
   renderChips();
@@ -1150,23 +1158,40 @@ async function uploadFile(file) {
     let data = null;
     try { data = await res.json(); } catch { /* corps non JSON */ }
     if (!res.ok) throw new Error((data && data.error) || `HTTP ${res.status}`);
-    if (sid !== state.sessionId) throw new Error(`« ${file.name} » abandonné : la conversation a changé pendant l'envoi.`);
+    if (sid !== state.sessionId) throw new Error("la conversation a changé pendant l'envoi");
     Object.assign(item, { path: data.path, kind: data.kind, busy: false });
+    return null;
   } catch (err) {
     state.attachments = state.attachments.filter((x) => x !== item);
-    showBanner(err.message.startsWith("«") ? err.message : `Pièce jointe refusée : ${err.message}`);
+    return err.message;
+  } finally {
+    renderChips();
   }
-  renderChips();
 }
 
 async function addFiles(fileList) {
   const files = Array.from(fileList || []);
+  const sid = state.sessionId;                               // capturé UNE fois : tout le lot vise la même conversation
+  if (!files.length) return;
+  if (!sid || state.streaming) return showBanner("Conversation occupée ou indisponible : fichiers non joints.");
+  showBanner("");
   state.uploading += files.length;
+  const refused = [];
+  let abandoned = 0;
   try {
-    for (const file of files) {
-      try { await uploadFile(file); } finally { state.uploading -= 1; }
+    for (const [index, file] of files.entries()) {
+      if (sid !== state.sessionId) { abandoned = files.length - index; break; }   // conversation changée : le reste du lot est abandonné
+      const why = await uploadFile(file, sid);
+      if (why) refused.push(`${file.name} — ${why}`);
     }
-  } finally { renderChips(); }
+  } finally {
+    state.uploading -= files.length;                       // l'envoi du message reste bloqué jusqu'à la fin du LOT
+    renderChips();
+  }
+  const lines = [];
+  if (refused.length) lines.push(`${refused.length} fichier${refused.length > 1 ? "s" : ""} refusé${refused.length > 1 ? "s" : ""} : ${refused.join(" ; ")}`);
+  if (abandoned) lines.push(`${abandoned} fichier${abandoned > 1 ? "s" : ""} non envoyé${abandoned > 1 ? "s" : ""} : la conversation a changé.`);
+  if (lines.length) showBanner(lines.join("\n"), false, true);
 }
 
 function setupAttachments() {

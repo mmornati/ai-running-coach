@@ -292,8 +292,40 @@ class TestChatProxyAttachments(ChatProxyBase):
             conn.putheader(name, value)
         conn.endheaders(self.GPX)
         conn.close()                                          # coupe après 100 octets sur 100000
-        time.sleep(1.0)
         inbox = self.ws / "planning/inbox"
+        # État observable : le service a créé le temporaire (le dossier existe), puis il doit l'avoir supprimé.
+        deadline = time.monotonic() + 8
+        while time.monotonic() < deadline and not inbox.exists():
+            time.sleep(0.05)
+        self.assertTrue(inbox.exists(), "le service n'a jamais reçu l'envoi")
+        while time.monotonic() < deadline and any(inbox.iterdir()):
+            time.sleep(0.05)
+        self.assertEqual([p.name for p in inbox.iterdir()], [])
+
+    def test_client_qui_s_arrete_au_milieu_est_libere_en_temps_borne(self):
+        """10 Ko sur 2 Mo annoncés puis plus rien : le proxy répond (408) après son délai d'inactivité, sans
+        attendre les 60 s du service, et le fil est libéré (une requête suivante passe)."""
+        sid = self.new_session()
+        sock = socket.create_connection((self.host, int(self.dport)), timeout=30)
+        self.addCleanup(sock.close)
+        head = (f"POST /api/chat/sessions/{sid}/attachments HTTP/1.1\r\nHost: {self.host}:{self.dport}\r\n"
+                f"X-ARC-Chat: 1\r\nX-Filename: a.gpx\r\nContent-Length: {2 * 1024 * 1024}\r\n\r\n").encode()
+        sock.sendall(head + b"<" * 10240)
+        started = time.monotonic()
+        reply = b""
+        while b"\r\n\r\n" not in reply:
+            chunk = sock.recv(65536)
+            if not chunk:
+                break
+            reply += chunk
+        elapsed = time.monotonic() - started
+        self.assertIn(b" 408 ", reply.split(b"\r\n")[0], reply)
+        self.assertLess(elapsed, 25)
+        self.assertEqual(self.new_session() is not None, True)             # le serveur répond encore
+        inbox = self.ws / "planning/inbox"
+        deadline = time.monotonic() + 8
+        while time.monotonic() < deadline and inbox.exists() and any(inbox.iterdir()):
+            time.sleep(0.05)
         self.assertEqual([p.name for p in inbox.iterdir()] if inbox.exists() else [], [])
 
     def test_contenu_refuse_par_le_service_est_relaye(self):

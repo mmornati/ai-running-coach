@@ -51,9 +51,9 @@ BIG = 2 * 1024 * 1024
 class AttachCase(ChatCase):
     def setUp(self):
         super().setUp()
-        # Envois refusés sans corps (tests bruts) : ne pas attendre 10 s l'arrêt du client.
+        # Délai d'inactivité large (CI chargée) ; seuls les tests de délai le raccourcissent.
         old = C.UPLOAD_IDLE_TIMEOUT_S, C.UPLOAD_DRAIN_MIN_S
-        C.UPLOAD_IDLE_TIMEOUT_S = C.UPLOAD_DRAIN_MIN_S = 0.3
+        C.UPLOAD_IDLE_TIMEOUT_S, C.UPLOAD_DRAIN_MIN_S = 2.0, 0.3
         self.addCleanup(lambda: (setattr(C, "UPLOAD_IDLE_TIMEOUT_S", old[0]), setattr(C, "UPLOAD_DRAIN_MIN_S", old[1])))
 
     def start(self, **over):
@@ -158,6 +158,7 @@ class TestUpload(AttachCase):
     def test_taille_refusee_avant_lecture_du_corps(self):
         self.start(upload_max_bytes=1000)
         sid = self.new_session()
+        C.UPLOAD_IDLE_TIMEOUT_S = 0.3                  # aucun octet de corps ne vient : ne pas attendre le délai large
         head = (f"POST /api/chat/sessions/{sid}/attachments HTTP/1.1\r\nHost: 127.0.0.1:{self.port}\r\n"
                 f"X-ARC-Chat: 1\r\nX-Filename: a.gpx\r\nContent-Length: 5000\r\n\r\n").encode()
         status, body = self.raw(head)                 # aucun octet de corps envoyé : la réponse vient quand même
@@ -380,6 +381,7 @@ class TestRobustness(AttachCase):
         status, raw = self.message(sid, "x", [path])
         self.assertEqual(status, 400)
         self.assertIn("n'existe plus", raw)
+        self.assertEqual(json.loads(raw)["path"], path)                 # l'UI retire cette pastille, pas les autres
 
     def test_droits_selon_l_umask(self):
         import os
@@ -392,28 +394,43 @@ class TestRobustness(AttachCase):
             os.umask(old)
         self.assertEqual((self.ws / path).stat().st_mode & 0o777, 0o644)
 
-    def test_envoi_trop_lent_abandonne(self):
+    def _slow_request(self, sid, declared=100000):
+        head = (f"POST /api/chat/sessions/{sid}/attachments HTTP/1.1\r\nHost: 127.0.0.1:{self.port}\r\n"
+                f"X-ARC-Chat: 1\r\nX-Filename: a.gpx\r\nContent-Length: {declared}\r\n\r\n").encode()
+        sock = socket.create_connection(("127.0.0.1", self.port), timeout=10)
+        self.addCleanup(sock.close)
+        sock.sendall(head)
+        return sock
+
+    def test_client_a_l_arret_recoit_408(self):
+        """Délai d'inactivité : 408 (comme l'échéance globale), le corps restant est vidé avant de répondre."""
         self.start()
         sid = self.new_session()
-        old = C.UPLOAD_MIN_DEADLINE_S
-        C.UPLOAD_MIN_DEADLINE_S = 0.3
+        C.UPLOAD_IDLE_TIMEOUT_S = 0.5
+        sock = self._slow_request(sid)
+        sock.sendall(b"<gpx>")                               # quelques octets, puis plus rien
+        reply = sock.recv(65536)
+        self.assertIn(b" 408 ", reply.split(b"\r\n")[0], reply)
+        self.assertEqual(self.files(), [])
+
+    def test_envoi_trop_lent_abandonne(self):
+        """Échéance globale : un client qui goutte-à-goutte (jamais inactif) reçoit quand même un 408."""
+        self.start()
+        sid = self.new_session()
+        C.UPLOAD_MIN_DEADLINE_S, old = 0.3, C.UPLOAD_MIN_DEADLINE_S
         self.addCleanup(lambda: setattr(C, "UPLOAD_MIN_DEADLINE_S", old))
         C.UPLOAD_MIN_RATE, old_rate = 10 ** 9, C.UPLOAD_MIN_RATE
         self.addCleanup(lambda: setattr(C, "UPLOAD_MIN_RATE", old_rate))
         import time
-        head = (f"POST /api/chat/sessions/{sid}/attachments HTTP/1.1\r\nHost: 127.0.0.1:{self.port}\r\n"
-                f"X-ARC-Chat: 1\r\nX-Filename: a.gpx\r\nContent-Length: 100000\r\n\r\n").encode()
-        with socket.create_connection(("127.0.0.1", self.port), timeout=10) as sock:
-            sock.sendall(head)
-            reply = b""
+        sock = self._slow_request(sid)
+        for _ in range(12):                                  # goutte-à-goutte : le service finit par répondre
             try:
-                for _ in range(8):                           # goutte-à-goutte : le service coupe avant la fin
-                    sock.sendall(b"<")
-                    time.sleep(0.15)
-                reply = sock.recv(65536)
+                sock.sendall(b"<")
             except OSError:
-                pass                                         # coupure côté service : normal pour un client trop lent
-        self.assertTrue(not reply or b" 408 " in reply.split(b"\r\n")[0], reply)
+                break
+            time.sleep(0.1)
+        reply = sock.recv(65536)
+        self.assertIn(b" 408 ", reply.split(b"\r\n")[0], reply)
         self.assertEqual(self.files(), [])
 
 

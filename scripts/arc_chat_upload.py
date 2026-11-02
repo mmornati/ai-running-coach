@@ -277,7 +277,11 @@ class DropFolder:
             except FileExistsError:
                 continue
             os.close(fd)
-            os.replace(tmp, name, src_dir_fd=self.fd, dst_dir_fd=self.fd)   # remplace NOTRE réservation vide
+            try:
+                os.replace(tmp, name, src_dir_fd=self.fd, dst_dir_fd=self.fd)   # remplace NOTRE réservation vide
+            except OSError:
+                self.discard(name)                   # ne laisse pas la réservation vide sur le disque
+                raise
             return name
         raise UploadError(409, "Trop de fichiers du même nom : réessayez dans une seconde.")
 

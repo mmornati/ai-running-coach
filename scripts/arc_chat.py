@@ -844,7 +844,7 @@ class ChatService:
             if path not in known:
                 return None, "Pièce jointe inconnue de cette conversation : envoyez-la d'abord."
             if not (self.workspace / path).is_file():         # le coach renomme les photos (gear-inspection)
-                return None, f"La pièce jointe {path} n'existe plus (renommée ou supprimée) : renvoyez le fichier."
+                return None, (f"La pièce jointe {path} n'existe plus (renommée ou supprimée) : renvoyez le fichier.", path)
             records.append({"path": path, "kind": known[path].get("kind", "")})
         return records, None
 
@@ -1512,7 +1512,8 @@ class Handler(BaseHTTPRequestHandler):
 
         Refus AVANT lecture du corps (le corps est jeté proprement, voir `_refuse_upload`) : débit,
         session, `Content-Length` absent / trop grand, type d'après le nom. Après lecture : le contenu
-        doit concorder avec l'extension (liste blanche). Seul un envoi valide consomme le quota de débit."""
+        doit concorder avec l'extension (liste blanche). Seul un envoi qui passe les contrôles préalables
+        (session, taille, type) consomme le quota de débit. Inactivité ou échéance globale : 408."""
         svc = self.service
         self.close_connection = True                      # un refus laisse un corps non lu : pas de réutilisation
         who = user or client_ip(svc.cfg, self.client_address[0], self.headers)
@@ -1549,17 +1550,25 @@ class Handler(BaseHTTPRequestHandler):
         except UP.UploadError as exc:
             return self._refuse_upload(exc.status, exc.message, length)
         tmp = name = None
+        remaining_box = [length]                             # octets encore attendus (pour jeter le reste d'un 408)
         try:
-            fd, tmp = folder.new_temp()
+            try:
+                fd, tmp = folder.new_temp()
+            except OSError:
+                return self._refuse_upload(500, "Écriture impossible dans le workspace.", length)
             # Échéance GLOBALE de lecture (taille / débit minimal, plancher) : un client très lent ne garde pas un fil.
             deadline = time.monotonic() + max(UPLOAD_MIN_DEADLINE_S, length / UPLOAD_MIN_RATE)
             self.connection.settimeout(UPLOAD_IDLE_TIMEOUT_S)
             with os.fdopen(fd, "wb") as out:
                 remaining = length
                 while remaining > 0:
+                    remaining_box[0] = remaining
                     if time.monotonic() > deadline:
                         raise UP.UploadError(408, "Envoi trop lent : abandonné.")
-                    chunk = self.rfile.read1(min(UP.CHUNK, remaining))
+                    try:
+                        chunk = self.rfile.read1(min(UP.CHUNK, remaining))
+                    except TimeoutError:
+                        raise UP.UploadError(408, "Envoi interrompu : plus aucune donnée reçue.") from None
                     if not chunk:
                         raise UP.UploadError(400, "Envoi interrompu : fichier incomplet.")
                     out.write(chunk)
@@ -1575,8 +1584,10 @@ class Handler(BaseHTTPRequestHandler):
                 return self._error(404, "Conversation introuvable.")
             name = None
         except UP.UploadError as exc:
+            if exc.status == 408:                            # client lent : vider ce qui arrive encore, borné, avant de répondre
+                self._drain(remaining_box[0], UPLOAD_DRAIN_MAX_BYTES)
             return self._error(exc.status, exc.message)
-        except (OSError, TimeoutError):
+        except OSError:
             return self._error(400, "Envoi interrompu ou écriture impossible.")
         finally:
             if tmp:
@@ -1594,6 +1605,8 @@ class Handler(BaseHTTPRequestHandler):
         text = body.get("text")
         attachments, problem = svc.resolve_attachments(sid, body.get("attachments"))
         if problem:
+            if isinstance(problem, tuple):                   # pièce jointe disparue : on dit LAQUELLE (l'UI retire la pastille)
+                return self._json(400, {"error": problem[0], "path": problem[1]})
             return self._error(400, problem)
         if text is None and attachments:
             text = ""
