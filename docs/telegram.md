@@ -224,9 +224,8 @@ bonne volonté du modèle — mais il faut en connaître la limite :
     tiennent. N'autorisez que des comptes que vous contrôlez.
 
 `install` écrit un fichier de réglages **dédié**, `.claude/telegram-chat.settings.json`, régénéré à chaque
-installation et passé par `claude --settings` à cette session seulement (pas pendant l'appairage), puis
-retire de `settings.local.json` les règles que d'anciennes versions y avaient fusionnées. Les autres
-sessions du workspace — synchronisation sans surveillance, `/coach-setup`, terminal — ne sont pas
+installation et passé par `claude --settings` à cette session seulement (pas pendant l'appairage) ;
+`settings.local.json` n'est jamais modifié. Les autres sessions du workspace — synchronisation sans surveillance, `/coach-setup`, terminal — ne sont pas
 concernées. `uninstall` supprime ce fichier. Il suit `config/chat-policy.toml` et les refus de
 `scripts/lib/sync_tools.sh` :
 
@@ -252,7 +251,8 @@ concernées. `uninstall` supprime ce fichier. Il suit `config/chat-policy.toml` 
   plugin, `~/.config/ai-running-coach`) et `.arc/` ; options de script détournantes (`--python`,
   `--workspace`, `--tokens-dir`, `--garmin-host`) ; **modification des réglages et du moteur** (`.claude/`,
   `.mcp.json`, `scripts/`, `config/`, `skills/`, `agents/`…). Le mode `bypassPermissions` et le mode
-  automatique sont désactivés.
+  automatique sont désactivés, ainsi que l'exécution de shell en ligne par les skills
+  (`disableSkillShellExecution`) et les sous-agents distants (`Agent(isolation:remote)`).
 
 `tests/lint/test_telegram_chat_lint.py` verrouille ces propriétés. Un compte autorisé reste un utilisateur
 de confiance (il lit vos données de santé). Le mode de permission par défaut est `default`, pas

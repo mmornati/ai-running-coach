@@ -89,6 +89,21 @@ def _real(raw: str, base: Path) -> Path:
     return (p if p.is_absolute() else base / p).resolve()
 
 
+PATH_KEYS = ("file_path", "notebook_path", "path")
+
+
+def _resolved_paths(tool_input: dict, workspace: Path) -> dict:
+    """Copie de l'entrée où chaque chemin ABSOLU est résolu (liens symboliques compris), comme l'espace de
+    travail : un chemin logique sous un espace de travail lié (/var -> /private/var sur macOS) reçoit ainsi
+    le même verdict que le chemin physique. Les chemins relatifs restent relatifs à l'espace de travail."""
+    out = dict(tool_input)
+    for key in PATH_KEYS:
+        value = out.get(key)
+        if isinstance(value, str) and value and Path(os.path.expanduser(value)).is_absolute():
+            out[key] = str(_real(value, workspace))
+    return out
+
+
 def _deny(reason: str) -> tuple:
     return "deny", reason
 
@@ -142,7 +157,7 @@ def decide(payload: dict) -> tuple:
         raw = str(tool_input.get("file_path") or tool_input.get("notebook_path") or "")
         if raw and _under(_real(raw, workspace), (state_dir() / "inbox").resolve()):
             return "", "photo ou fichier reçu par le plugin"
-    canonical, entry = canonical_tool(tool, tool_input)
+    canonical, entry = canonical_tool(tool, _resolved_paths(tool_input, workspace))
     verdict = policy.decide(canonical, entry)
     if verdict == "allow":
         return ("allow" if tool == "Bash" else ""), f"politique du chat : allow ({canonical})"

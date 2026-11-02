@@ -170,22 +170,45 @@ class TestCoachTelegramChat(InstallAsserts):
             self.assertSucceeded(sb.script("coach-telegram-chat.sh", "install", **NO_ENV_TOKEN, ARC_FAKE_UNAME="Linux"))
             self.assertEqual(json.loads(dedicated.read_text()), data)
 
-    def test_install_migrates_rules_merged_by_older_versions(self):
+    def test_install_leaves_an_existing_settings_local_json_byte_identical(self):
+        """settings.local.json appartient à l'utilisateur : règles, hooks (même nommant notre hook) et mise en forme."""
         with Sandbox() as sb:
             _telegram_state(sb)
             local = sb.repo / ".claude/settings.local.json"
             local.parent.mkdir(parents=True, exist_ok=True)
-            local.write_text(json.dumps({
-                "permissions": {"allow": ["Bash(ls:*)", "mcp__garmin__get_*"], "deny": ["mcp__garmin__delete_workout"]},
-                "hooks": {"PreToolUse": [
-                    {"matcher": "Bash", "hooks": [{"type": "command", "command": "mon-hook"}]},
-                    {"matcher": "Bash|Read", "hooks": [{"type": "command", "command": "python3 \"$CLAUDE_PROJECT_DIR/scripts/arc_telegram_hook.py\""}]},
-                ]}}))
-            self.assertSucceeded(sb.script("coach-telegram-chat.sh", "install", **NO_ENV_TOKEN, ARC_FAKE_UNAME="Linux"))
-            data = json.loads(local.read_text())
-            self.assertEqual(data["permissions"], {"allow": ["Bash(ls:*)"]})
-            self.assertEqual(len(data["hooks"]["PreToolUse"]), 1)
-            self.assertEqual(data["hooks"]["PreToolUse"][0]["hooks"][0]["command"], "mon-hook")
+            raw = ('{"permissions":{"allow":["Edit(activities/**)","WebFetch(domain:wttr.in)"],\n'
+                   '"deny":["Read(**/.env)","Read(~/.ssh/**)"]},\n'
+                   '"hooks":{"PreToolUse":[{"matcher":"Bash","hooks":[{"type":"command","command":"my-audit.sh"},'
+                   '{"type":"command","command":"python3 scripts/arc_telegram_hook.py"}]}]}}\n')
+            local.write_text(raw)
+            for _ in range(2):
+                self.assertSucceeded(sb.script("coach-telegram-chat.sh", "install", **NO_ENV_TOKEN, ARC_FAKE_UNAME="Linux"))
+                self.assertEqual(local.read_bytes(), raw.encode(), "settings.local.json a été modifié")
+            self.assertEqual(sorted(p.name for p in local.parent.iterdir()),
+                             ["settings.local.json", "telegram-chat.settings.json"], "aucune sauvegarde ni autre fichier")
+            # Désinstaller ne le touche pas non plus.
+            self.assertSucceeded(sb.script("coach-telegram-chat.sh", "uninstall", **NO_ENV_TOKEN, ARC_FAKE_UNAME="Linux"))
+            self.assertEqual(local.read_bytes(), raw.encode())
+
+    def test_systemd_unit_escapes_spaces_percent_and_dollar(self):
+        with Sandbox() as sb:
+            _telegram_state(sb)
+            workspace = sb.root / "ws 50% $x"
+            workspace.mkdir()
+            home_with_space = sb.root / "home dir"      # HOME reste celui du bac à sable ; seul le workspace varie
+            self.assertFalse(home_with_space.exists())
+            proc = sb.script("coach-telegram-chat.sh", "install", **NO_ENV_TOKEN, ARC_FAKE_UNAME="Linux",
+                             ARC_WORKSPACE=str(workspace))
+            self.assertSucceeded(proc)
+            text = (sb.home / ".config/systemd/user/ai-running-coach-telegram-chat.service").read_text()
+            self.assertIn(f"WorkingDirectory={workspace}".replace("%", "%%"), text)
+            self.assertIn(f'-c "{workspace}"'.replace("%", "%%").replace("$", "$$"), text)
+            self.assertIn(f'Environment="ARC_WORKSPACE={workspace}"'.replace("%", "%%"), text)
+            self.assertIn('Environment="PATH=', text)
+            self.assertIn('Environment="HOME=', text)
+            self.assertNotRegex(text, r"(?m)^Environment=[A-Z]")        # chaque affectation est entre guillemets
+            self.assertRegex(text, r"(?m)^ExecStart=\"[^\"]+tmux\" -L coach-telegram-chat new-session")
+            self.assertIsFile(workspace / ".claude/telegram-chat.settings.json")
 
     def test_run_passes_the_dedicated_settings_except_when_pairing(self):
         with Sandbox() as sb:

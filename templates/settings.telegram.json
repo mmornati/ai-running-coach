@@ -1,4 +1,5 @@
 {
+  "disableSkillShellExecution": true,
   "_comment": "Réglages de la session Telegram (scripts/coach-telegram-chat.sh install) : modèle à variables entre doubles accolades, rendu dans <workspace>/.claude/telegram-chat.settings.json et passé par « claude --settings » à CETTE session seulement (jamais dans settings.local.json). Alignés sur config/chat-policy.toml et scripts/lib/sync_tools.sh (verrouillé par tests/lint/test_telegram_chat_lint.py). allow : lectures d'outils sportifs, écritures sous les dossiers de données, domaines web de la politique ; AUCUNE règle shell à joker : le hook PreToolUse (scripts/arc_telegram_hook.py, Policy.decide) autorise Bash commande par commande. ask : écritures Garmin / COROS / Strava / intervals.icu, y compris futures (jokers). ATTENTION : tout compte de l'allowlist du bot peut approuver un ask ; seules les règles deny et le hook tiennent contre un compte compromis.",
   "permissions": {
     "disableBypassPermissionsMode": "disable",
@@ -159,6 +160,7 @@
       "mcp__*__*disconnect*",
       "mcp__leanproxy",
       "mcp__leanproxy__*",
+      "Agent(isolation:remote)",
       "Read(**/.env)",
       "Read(**/*.env)",
       "Read(**/*.token)",

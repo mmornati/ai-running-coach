@@ -42,7 +42,13 @@ while [[ $# -gt 0 ]]; do
 done
 [[ -n "$ACTION" ]] || { sed -n '3,25p' "$0" | sed 's/^# \{0,1\}//'; exit 1; }
 
-export PATH="$HOME/.local/bin:$HOME/.claude/bin:$HOME/.bun/bin:$HOME/.cargo/bin:/opt/homebrew/bin:/usr/local/bin:$PATH"
+# Production : les dossiers d'outils passent AVANT le PATH. ARC_PATH_APPEND=1 (tests : les stubs doivent
+# l'emporter sur les vrais tmux / claude de la machine) les place APRÈS.
+if [[ "${ARC_PATH_APPEND:-0}" == "1" ]]; then
+    export PATH="$PATH:$HOME/.local/bin:$HOME/.claude/bin:$HOME/.bun/bin:$HOME/.cargo/bin:/opt/homebrew/bin:/usr/local/bin"
+else
+    export PATH="$HOME/.local/bin:$HOME/.claude/bin:$HOME/.bun/bin:$HOME/.cargo/bin:/opt/homebrew/bin:/usr/local/bin:$PATH"
+fi
 
 CHANNEL="plugin:telegram@claude-plugins-official"
 # « default » (pas acceptEdits) : acceptEdits validerait d'office toute écriture du workspace et
@@ -66,8 +72,8 @@ LOG_DIR="$ARC_WORKSPACE/logs"
 LOG_FILE="$LOG_DIR/telegram-chat.log"   # distinct de telegram.log (bot un geste)
 # Réglages DÉDIÉS à cette session, passés par « claude --settings » (jamais dans settings.local.json, qui
 # s'applique à toutes les sessions du workspace : synchronisation headless, /coach-setup, appairage…).
+# Ce script n'écrit JAMAIS settings.local.json.
 CHAT_SETTINGS="$ARC_WORKSPACE/.claude/telegram-chat.settings.json"
-LEGACY_SETTINGS="$ARC_WORKSPACE/.claude/settings.local.json"   # anciennes versions y fusionnaient les règles
 SETTINGS_TEMPLATE="$ENGINE_PHYS/templates/settings.telegram.json"
 HOOK_SCRIPT="$ENGINE_PHYS/scripts/arc_telegram_hook.py"
 MIN_CLAUDE="2.1.295"   # onFailure du hook (échec fermé)
@@ -324,12 +330,10 @@ tmux_stop() {
 # ---------------------------------------------------------------------------
 # install
 # ---------------------------------------------------------------------------
-# Fichier de réglages dédié, régénéré à chaque installation, puis migration : retire de settings.local.json
-# les règles (et le hook) que d'anciennes versions y avaient fusionnées.
+# Fichier de réglages dédié, régénéré à chaque installation (settings.local.json n'est jamais touché).
 install_permissions() {
     if [[ "$DRY_RUN" -eq 1 ]]; then
         printf '%s\n' "${C_YELLOW}[dry-run]${C_RESET} écriture de $CHAT_SETTINGS (depuis $SETTINGS_TEMPLATE)"
-        printf '%s\n' "${C_YELLOW}[dry-run]${C_RESET} retrait des anciennes règles de $LEGACY_SETTINGS"
         return 0
     fi
     local tg_phys python_bin
@@ -339,8 +343,6 @@ install_permissions() {
         --template "$SETTINGS_TEMPLATE" --out "$CHAT_SETTINGS" \
         --var "PYTHON=$python_bin" --var "HOOK=$HOOK_SCRIPT" --var "ENGINE_ABS=/$ENGINE_PHYS" \
         --var "TG_ABS=/$tg_phys" --var "INBOX_ABS=/$tg_phys/inbox"
-    python3 "$ENGINE_PHYS/scripts/coach_config.py" unmerge-permissions \
-        --file "$LEGACY_SETTINGS" --template "$CHAT_SETTINGS"
     ok "Réglages de la session Telegram : $CHAT_SETTINGS (passés à cette session seulement ; lectures libres, écritures Garmin/COROS/intervals.icu soumises à approbation, suppressions interdites)"
 }
 
@@ -351,10 +353,18 @@ require_settings() {
     die "Réglages de la session absents ($CHAT_SETTINGS) : lancez d'abord scripts/coach-telegram-chat.sh install."
 }
 
+# Échappements systemd (unité écrite à la main) : « % » est un spécificateur (%%) ; dans ExecStart/ExecStop,
+# « $ » ouvre une expansion ($$) et « \ » / « " » sont traités par le découpage en mots entre guillemets.
+sd_escape_path() { printf '%s' "$1" | sed -e 's/%/%%/g'; }
+sd_escape_env() { printf '%s' "$1" | sed -e 's/\\/\\\\/g' -e 's/"/\\"/g' -e 's/%/%%/g'; }
+sd_escape_exec() { printf '%s' "$1" | sed -e 's/\\/\\\\/g' -e 's/"/\\"/g' -e 's/%/%%/g' -e 's/\$/$$/g'; }
+# Mot protégé pour le shell que tmux lance (le chemin de ce script peut contenir une apostrophe).
+sh_quote() { printf "'%s'" "$(printf '%s' "$1" | sed -e "s/'/'\\\\''/g")"; }
+
 # Variables d'environnement à propager au service (le plugin lit TELEGRAM_STATE_DIR / CLAUDE_CONFIG_DIR).
 extra_env_systemd() {
-    [[ -z "${TELEGRAM_STATE_DIR:-}" ]] || printf 'Environment="TELEGRAM_STATE_DIR=%s"\n' "$TELEGRAM_STATE_DIR"
-    [[ -z "${CLAUDE_CONFIG_DIR:-}" ]] || printf 'Environment="CLAUDE_CONFIG_DIR=%s"\n' "$CLAUDE_CONFIG_DIR"
+    [[ -z "${TELEGRAM_STATE_DIR:-}" ]] || printf 'Environment="TELEGRAM_STATE_DIR=%s"\n' "$(sd_escape_env "$TELEGRAM_STATE_DIR")"
+    [[ -z "${CLAUDE_CONFIG_DIR:-}" ]] || printf 'Environment="CLAUDE_CONFIG_DIR=%s"\n' "$(sd_escape_env "$CLAUDE_CONFIG_DIR")"
 }
 
 extra_env_plist() {
@@ -365,6 +375,13 @@ extra_env_plist() {
 valid_time() { [[ "$1" =~ ^([01][0-9]|2[0-3]):[0-5][0-9]$ ]]; }
 
 install_systemd() {
+    local sd_ws sd_tmux sd_systemctl sd_path sd_home sd_cmd
+    sd_ws="$(sd_escape_exec "$ARC_WORKSPACE")"
+    sd_tmux="$(sd_escape_exec "$(command -v tmux)")"
+    sd_systemctl="$(sd_escape_exec "$(command -v systemctl)")"
+    sd_cmd="$(sd_escape_exec "$(sh_quote "$SELF") supervise")"
+    sd_path="$(sd_escape_env "$HOME/.local/bin:$HOME/.claude/bin:$HOME/.bun/bin:$HOME/.cargo/bin:/usr/local/bin:/usr/bin:/bin")"
+    sd_home="$(sd_escape_env "$HOME")"
     write_file "$SYSTEMD_DIR/$SERVICE_NAME.service" <<EOT
 [Unit]
 Description=ai-running-coach — coach sur Telegram (Claude Code Channels, dans tmux)
@@ -375,13 +392,13 @@ Wants=network-online.target
 # La session Claude Code est interactive : elle vit dans tmux, qui relance
 # elle-même la session en cas d'arrêt (coach-telegram-chat.sh supervise).
 Type=forking
-WorkingDirectory=$ARC_WORKSPACE
-Environment=PATH=$HOME/.local/bin:$HOME/.claude/bin:$HOME/.bun/bin:$HOME/.cargo/bin:/usr/local/bin:/usr/bin:/bin
-Environment="HOME=$HOME"
-Environment="ARC_WORKSPACE=$ARC_WORKSPACE"
+WorkingDirectory=$(sd_escape_path "$ARC_WORKSPACE")
+Environment="PATH=$sd_path"
+Environment="HOME=$sd_home"
+Environment="ARC_WORKSPACE=$(sd_escape_env "$ARC_WORKSPACE")"
 $(extra_env_systemd)
-ExecStart="$(command -v tmux)" -L $TMUX_SESSION new-session -d -s $TMUX_SESSION -c "$ARC_WORKSPACE" "'$SELF' supervise"
-ExecStop="$(command -v tmux)" -L $TMUX_SESSION kill-session -t $TMUX_SESSION
+ExecStart="$sd_tmux" -L $TMUX_SESSION new-session -d -s $TMUX_SESSION -c "$sd_ws" "$sd_cmd"
+ExecStop="$sd_tmux" -L $TMUX_SESSION kill-session -t $TMUX_SESSION
 RemainAfterExit=yes
 
 [Install]
@@ -395,7 +412,7 @@ Description=ai-running-coach — redémarrage quotidien de la session Telegram (
 
 [Service]
 Type=oneshot
-ExecStart="$(command -v systemctl)" --user restart $SERVICE_NAME.service
+ExecStart="$sd_systemctl" --user restart $SERVICE_NAME.service
 EOT
         write_file "$SYSTEMD_DIR/$SERVICE_NAME-restart.timer" <<EOT
 [Unit]

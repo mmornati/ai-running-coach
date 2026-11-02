@@ -12,7 +12,6 @@ Ce module ne dépend que de la bibliothèque standard (voir CONTRIBUTING.md).
 Sous-commandes :
     merge-json          insère une clé dans un fichier JSON, en préservant le reste
     render-settings     écrit un fichier de réglages dédié depuis un modèle {{VARIABLE}} (session Telegram)
-    unmerge-permissions retire d'un fichier de réglages les règles d'un modèle rendu (migration)
     set-claude-hook     pose UN hook Claude Code d'un événement, en remplaçant ses versions antérieures
     approve-claude-mcp  pré-approuve un serveur MCP de projet dans ~/.claude.json
     get                 lit une clé TOML (user.toml > workspace.toml > défaut)
@@ -453,61 +452,6 @@ def cmd_render_settings(args) -> int:
     return 0
 
 
-def _is_chat_hook(entry) -> bool:
-    return isinstance(entry, dict) and any(
-        "arc_telegram_hook.py" in str(h.get("command", "")) for h in entry.get("hooks", []) if isinstance(h, dict))
-
-
-def cmd_unmerge_permissions(args) -> int:
-    """Retire d'un fichier de réglages les règles identiques à celles du modèle rendu, et le hook de la
-    session Telegram (migration : anciennes versions les fusionnaient dans settings.local.json).
-
-    Suppression par égalité exacte : les règles de l'utilisateur ne sont jamais touchées.
-    """
-    path = Path(args.file)
-    if not path.is_file():
-        print(f"inchangé: {path}")
-        return 0
-    template = read_json(Path(args.template))
-    data = read_json(path)
-    removed = 0
-    permissions = data.get("permissions")
-    if isinstance(permissions, dict):
-        for kind in ("allow", "ask", "deny"):
-            current = permissions.get(kind)
-            if not isinstance(current, list):
-                continue
-            drop = set(template.get("permissions", {}).get(kind, []))
-            kept = [rule for rule in current if rule not in drop]
-            removed += len(current) - len(kept)
-            if kept:
-                permissions[kind] = kept
-            else:
-                permissions.pop(kind, None)
-        if not permissions:
-            data.pop("permissions", None)
-    hooks = data.get("hooks")
-    if isinstance(hooks, dict):
-        for event in list(hooks):
-            entries = hooks[event]
-            if not isinstance(entries, list):
-                continue
-            kept = [entry for entry in entries if not _is_chat_hook(entry)]
-            removed += len(entries) - len(kept)
-            if kept:
-                hooks[event] = kept
-            else:
-                hooks.pop(event, None)
-        if not hooks:
-            data.pop("hooks", None)
-    if not removed:
-        print(f"inchangé: {path}")
-        return 0
-    write_json(path, data)
-    print(f"migré: {removed} règle(s) de la session Telegram retirée(s) de {path}")
-    return 0
-
-
 def cmd_remove_json_key(args) -> int:
     """Retire une clé d'un fichier JSON si elle existe — sans effet sinon.
 
@@ -642,11 +586,6 @@ def build_parser() -> argparse.ArgumentParser:
     render.add_argument("--out", required=True, help="fichier de réglages à écrire (passé à claude --settings)")
     render.add_argument("--var", action="append", help="NOM=valeur, répétable")
     render.set_defaults(func=cmd_render_settings)
-
-    unmerge = sub.add_parser("unmerge-permissions", help="retire d'un settings.local.json les règles d'un modèle rendu")
-    unmerge.add_argument("--file", required=True)
-    unmerge.add_argument("--template", required=True, help="modèle déjà rendu (render-settings)")
-    unmerge.set_defaults(func=cmd_unmerge_permissions)
 
     remove_key = sub.add_parser("remove-json-key", help="retire une clé d'un fichier JSON si présente")
     remove_key.add_argument("--file", required=True)

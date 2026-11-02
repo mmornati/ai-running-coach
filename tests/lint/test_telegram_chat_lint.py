@@ -218,6 +218,10 @@ class TestPermissionsFollowThePolicy(unittest.TestCase):
                      "Read(//**/.env)"):
             self.assertIn(rule, deny)
 
+    def test_skill_shell_execution_is_disabled_and_remote_agents_denied(self):
+        self.assertIs(raw_template()["disableSkillShellExecution"], True)
+        self.assertIn("Agent(isolation:remote)", template()["deny"])
+
     def test_arc_database_is_denied_for_reading(self):
         deny = template()["deny"]
         for rule in ("Read(.arc/**)", "Read(**/.arc/**)"):
@@ -266,7 +270,7 @@ class TestHook(unittest.TestCase):
     def test_hook_uses_the_dashboard_mapping(self):
         text = HOOK.read_text(encoding="utf-8")
         self.assertIn("from arc_chat_claude import canonical_tool", text)
-        self.assertIn("canonical_tool(tool, tool_input)", text)
+        self.assertIn("canonical_tool(tool, _resolved_paths(tool_input, workspace))", text)
 
     def test_bash_is_the_only_tool_that_can_be_allowed(self):
         self.assertEqual(self.verdict("Bash", command="python3 scripts/arc_index.py --memory"), "allow")
@@ -340,6 +344,21 @@ class TestHook(unittest.TestCase):
         for name in ("react", "edit_message", "download_attachment"):
             self.assertEqual(self.verdict(f"mcp__plugin_telegram_telegram__{name}", chat_id="1"), "", name)
         self.assertEqual(self.verdict("mcp__plugin_telegram_telegram__unknown_tool"), "deny")
+
+    def test_logical_paths_under_a_symlinked_workspace_get_the_physical_verdict(self):
+        alias = self.ws.parent / (self.ws.name + "-alias")
+        alias.symlink_to(self.ws)
+        self.addCleanup(alias.unlink)
+        for tool, key in (("Read", "file_path"), ("Write", "file_path"), ("Edit", "file_path")):
+            physical = self.verdict(tool, **{key: str(self.ws / "planning/semaine.md")})
+            logical = self.verdict(tool, **{key: str(alias / "planning/semaine.md")})
+            self.assertEqual(logical, physical, tool)
+            self.assertEqual(self.verdict(tool, **{key: str(alias / ".env")}), "deny", tool)
+            if tool != "Read":
+                self.assertEqual(self.verdict(tool, **{key: str(alias / ".claude/settings.local.json")}), "deny", tool)
+        self.assertEqual(self.verdict("Read", file_path=str(alias / "planning/semaine.md")), "")
+        self.assertEqual(self.verdict("Grep", pattern="x", path=str(alias / ".arc")), "deny")
+        self.assertEqual(self.verdict("Glob", pattern="*.md", path=str(alias / "planning")), "")
 
     def test_received_photos_can_be_read(self):
         self.assertEqual(self.verdict("Read", file_path=str(self.state / "inbox/photo.jpg")), "")
