@@ -84,7 +84,11 @@ ID_RE = re.compile(r"^[A-Za-z0-9_-]{6,40}$")
 ISO = "%Y-%m-%dT%H:%M:%SZ"
 APPROVE_PER_IP_PER_MIN = 30          # route à jeton : essais par minute et par adresse cliente
 UPLOAD_PER_MIN = 20                  # pièces jointes par minute et par utilisateur (route d'envoi de fichiers)
-UPLOAD_READ_TIMEOUT_S = 60.0         # délai maximal entre deux morceaux d'un envoi (client lent coupé)
+UPLOAD_IDLE_TIMEOUT_S = 10.0         # délai maximal entre deux morceaux d'un envoi (client à l'arrêt coupé)
+UPLOAD_MIN_RATE = 50 * 1024          # débit minimal toléré (octets/s) : échéance globale = taille / débit
+UPLOAD_MIN_DEADLINE_S = 30.0         # plancher de l'échéance globale de lecture
+UPLOAD_DRAIN_MIN_S, UPLOAD_DRAIN_MAX_S = 5.0, 30.0   # échéance pour jeter le corps d'un envoi refusé
+UPLOAD_DRAIN_MAX_BYTES = 64 * 1024 * 1024            # octets jetés au plus pour un envoi refusé
 LLM_CHECK_PER_MIN = 6                # diagnostic de connexion IA : essais par minute et par client
 LLM_CHECK_CACHE_S = 30.0             # un résultat avec sonde réseau est réutilisé 30 s (pas de martelage du fournisseur)
 APPROVE_GLOBAL_PER_MIN = 120         # plafond global, toutes adresses confondues
@@ -159,6 +163,7 @@ def load_chat_config(workspace: Path, sections: Optional[dict] = None) -> dict:
     cfg = dict(CHAT_DEFAULTS)
     for key, value in raw.items():
         cfg[key] = _coerce(CHAT_DEFAULTS[key], value) if key in CHAT_DEFAULTS else value
+    cfg["upload_max_bytes"] = UP.effective_limit(cfg["upload_max_bytes"])     # <= 0 : défaut (comme arc_serve)
     return cfg
 
 
@@ -838,6 +843,8 @@ class ChatService:
         for path in dict.fromkeys(paths):                     # doublons écartés, ordre conservé
             if path not in known:
                 return None, "Pièce jointe inconnue de cette conversation : envoyez-la d'abord."
+            if not (self.workspace / path).is_file():         # le coach renomme les photos (gear-inspection)
+                return None, f"La pièce jointe {path} n'existe plus (renommée ou supprimée) : renvoyez le fichier."
             records.append({"path": path, "kind": known[path].get("kind", "")})
         return records, None
 
@@ -1261,7 +1268,7 @@ class ChatService:
         return {"enabled": bool(self.cfg["enabled"]), "backend": self.backend.name,
                 "model": self.cfg["model"], "user": user,
                 "budget": budget,
-                "upload_max_bytes": int(self.cfg.get("upload_max_bytes") or UP.DEFAULT_UPLOAD_MAX_BYTES),
+                "upload_max_bytes": UP.effective_limit(self.cfg.get("upload_max_bytes")),
                 # Forfait (ChatGPT/Copilot, #266) : la page affiche « inclus dans votre forfait … » au
                 # lieu d'un coût en euros. Clé absente = facturation au jeton, comme avant.
                 **({"billing": self.backend.billing()} if self.backend.billing() else {}),
@@ -1468,65 +1475,115 @@ class Handler(BaseHTTPRequestHandler):
         outcome, _ = svc.resolve_approval(rec["id"], action, via="ntfy")
         self._approval_result(outcome, rec, action)
 
+    def _drain(self, length: int, cap: int) -> None:
+        """Lit et jette (au plus `cap` octets, dans une échéance) le corps non lu : sans cela, fermer le socket
+        avec des octets en attente fait envoyer un RST qui peut effacer la réponse déjà écrite côté client."""
+        remaining = min(length, cap)
+        deadline = time.monotonic() + min(UPLOAD_DRAIN_MAX_S, max(UPLOAD_DRAIN_MIN_S, remaining / UPLOAD_MIN_RATE))
+        try:
+            self.connection.settimeout(UPLOAD_IDLE_TIMEOUT_S)
+            while remaining > 0 and time.monotonic() < deadline:
+                chunk = self.rfile.read1(min(UP.CHUNK, remaining))
+                if not chunk:
+                    break
+                remaining -= len(chunk)
+        except (OSError, ValueError):
+            pass
+
+    def _refuse_upload(self, status: int, message: str, length: Optional[int], early: bool = False) -> None:
+        """Refus d'un envoi. Corps connu : jeté AVANT de répondre (`early` : 413, répondre d'abord puis fermer
+        l'écriture et vider, car le corps peut être énorme). Longueur inconnue : réponse directe."""
+        self.close_connection = True
+        if not length or length < 0:
+            return self._error(status, message)
+        if not early:
+            self._drain(length, UPLOAD_DRAIN_MAX_BYTES)
+            return self._error(status, message)
+        self._error(status, message)
+        try:
+            self.wfile.flush()
+            self.connection.shutdown(socket.SHUT_WR)
+        except OSError:
+            return
+        self._drain(length, UPLOAD_DRAIN_MAX_BYTES)
+
     def _post_attachment(self, sid: str, user: str) -> None:
         """Pièce jointe (#342) : corps = octets bruts du fichier, nom d'origine dans `X-Filename`.
 
-        Refus AVANT lecture du corps : débit, session, `Content-Length` absent / trop grand, type
-        d'après le nom. Après lecture : le contenu doit concorder avec l'extension (liste blanche)."""
+        Refus AVANT lecture du corps (le corps est jeté proprement, voir `_refuse_upload`) : débit,
+        session, `Content-Length` absent / trop grand, type d'après le nom. Après lecture : le contenu
+        doit concorder avec l'extension (liste blanche). Seul un envoi valide consomme le quota de débit."""
         svc = self.service
         self.close_connection = True                      # un refus laisse un corps non lu : pas de réutilisation
-        if not svc.upload_limiter.allow(user or client_ip(svc.cfg, self.client_address[0], self.headers)):
-            return self._error(429, "Trop de fichiers envoyés : patientez une minute.")
-        if svc.sessions.get(sid) is None:
-            return self._error(404, "Conversation introuvable.")
-        if self.headers.get("Transfer-Encoding"):
-            return self._error(411, "Content-Length obligatoire (pas d'envoi en morceaux).")
+        who = user or client_ip(svc.cfg, self.client_address[0], self.headers)
         raw_length = self.headers.get("Content-Length")
         try:
             length = int(raw_length) if raw_length is not None else None
         except ValueError:
             length = -1
+        known = length if (length or 0) > 0 else None
+        if self.headers.get("Transfer-Encoding"):
+            return self._refuse_upload(411, "Content-Length obligatoire (pas d'envoi en morceaux).", None)
         if length is None:
-            return self._error(411, "Content-Length obligatoire.")
-        if length <= 0:
-            return self._error(400, "Fichier vide.")
-        limit = int(svc.cfg.get("upload_max_bytes") or UP.DEFAULT_UPLOAD_MAX_BYTES)
+            return self._refuse_upload(411, "Content-Length obligatoire.", None)
+        if length < 0:
+            return self._refuse_upload(400, "Content-Length invalide.", None)
+        if not svc.upload_limiter.peek(who):
+            return self._refuse_upload(429, "Trop de fichiers envoyés : patientez une minute.", known)
+        if svc.sessions.get(sid) is None:
+            return self._refuse_upload(404, "Conversation introuvable.", known)
+        if length == 0:
+            return self._refuse_upload(400, "Fichier vide.", None)
+        limit = UP.effective_limit(svc.cfg.get("upload_max_bytes"))
         if length > limit:
-            return self._error(413, f"Fichier trop volumineux (maximum {limit // (1024 * 1024) or 1} Mo).")
+            return self._refuse_upload(413, f"Fichier trop volumineux (maximum {UP.format_size(limit)}).", length,
+                                       early=True)
         try:
             kind, folder_rel, ext, slug = UP.classify_name(UP.decode_filename(self.headers.get("X-Filename")))
-            folder = UP.safe_folder(svc.workspace, folder_rel)
-            fd, tmp = UP.new_temp(folder)
         except UP.UploadError as exc:
-            return self._error(exc.status, exc.message)
-        except OSError:
-            return self._error(500, "Écriture impossible dans le workspace.")
-        done = False
+            return self._refuse_upload(exc.status, exc.message, length)
+        if not svc.upload_limiter.allow(who):               # quota consommé seulement par un envoi qui va être lu
+            return self._refuse_upload(429, "Trop de fichiers envoyés : patientez une minute.", length)
         try:
-            self.connection.settimeout(UPLOAD_READ_TIMEOUT_S)
+            folder = UP.DropFolder(svc.workspace, folder_rel)
+        except UP.UploadError as exc:
+            return self._refuse_upload(exc.status, exc.message, length)
+        tmp = name = None
+        try:
+            fd, tmp = folder.new_temp()
+            # Échéance GLOBALE de lecture (taille / débit minimal, plancher) : un client très lent ne garde pas un fil.
+            deadline = time.monotonic() + max(UPLOAD_MIN_DEADLINE_S, length / UPLOAD_MIN_RATE)
+            self.connection.settimeout(UPLOAD_IDLE_TIMEOUT_S)
             with os.fdopen(fd, "wb") as out:
                 remaining = length
                 while remaining > 0:
-                    chunk = self.rfile.read(min(UP.CHUNK, remaining))
+                    if time.monotonic() > deadline:
+                        raise UP.UploadError(408, "Envoi trop lent : abandonné.")
+                    chunk = self.rfile.read1(min(UP.CHUNK, remaining))
                     if not chunk:
                         raise UP.UploadError(400, "Envoi interrompu : fichier incomplet.")
                     out.write(chunk)
                     remaining -= len(chunk)
-            UP.check_content(Path(tmp), kind, ext)
-            name = UP.publish(tmp, folder, slug, ext)
-            done = True
+            with folder.open_read(tmp) as written:
+                UP.check_content(written, kind, ext)
+            name = folder.publish(tmp, slug, ext)
+            tmp = None
+            record = {"path": f"{folder_rel}/{name}", "kind": kind, "bytes": length}
+            if not svc.sessions.add_attachment(sid, record):          # session disparue pendant l'envoi
+                folder.discard(name)
+                name = None
+                return self._error(404, "Conversation introuvable.")
+            name = None
         except UP.UploadError as exc:
             return self._error(exc.status, exc.message)
         except (OSError, TimeoutError):
             return self._error(400, "Envoi interrompu ou écriture impossible.")
         finally:
-            if not done:
-                try:
-                    os.unlink(tmp)
-                except OSError:
-                    pass
-        record = {"path": f"{folder_rel}/{name}", "kind": kind, "bytes": length}
-        svc.sessions.add_attachment(sid, record)
+            if tmp:
+                folder.discard(tmp)
+            if name:
+                folder.discard(name)
+            folder.close()
         self._json(200, record)
 
     def _post_message(self, sid: str, user: str) -> None:

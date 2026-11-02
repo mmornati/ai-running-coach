@@ -190,7 +190,7 @@ class TestChatProxyDisabled(ChatProxyBase):
 class TestChatProxyAttachments(ChatProxyBase):
     """Pièces jointes (#342) à travers le proxy : un VRAI service de chat derrière `arc_serve.py`."""
 
-    LIMIT = 3000
+    LIMIT = 3 * 1024 * 1024
     GPX = (b'<?xml version="1.0"?><gpx version="1.1" xmlns="http://www.topografix.com/GPX/1/1"><trk/></gpx>')
 
     def _configure(self, port):
@@ -255,6 +255,46 @@ class TestChatProxyAttachments(ChatProxyBase):
         self.assertEqual(res.status, 413)
         res.read()
         conn.close()
+
+    def test_refus_du_service_avec_corps_de_2_mo_atteignent_le_client(self):
+        """Avant correction : 502 « service injoignable » ou reset, car le service fermait avec le corps non lu."""
+        sid = self.new_session()
+        big = b"\xff\xd8\xff" + b"\x00" * (2 * 1024 * 1024)
+        status, body = self.upload(sid, big, "IMG_1.HEIC")
+        self.assertEqual(status, 415, body)
+        self.assertIn("JPEG", body["error"])
+        status, body = self.upload("inconnue123456", big, "photo.jpg")
+        self.assertEqual(status, 404, body)
+        self.service.upload_limiter.per_min = 1
+        self.assertEqual(self.upload(sid, big, "photo.jpg")[0], 200)
+        status, body = self.upload(sid, big, "photo.jpg")
+        self.assertEqual(status, 429, body)
+        self.assertIn("Trop de fichiers", body["error"])
+
+    def test_413_du_proxy_avec_corps_reel(self):
+        sid = self.new_session()
+        status, body = self.upload(sid, b"\xff\xd8\xff" + b"\x00" * (4 * 1024 * 1024), "photo.jpg")
+        self.assertEqual(status, 413, body)
+        self.assertIn("error", body)
+
+    def test_413_du_service_avec_corps_reel_via_le_proxy(self):
+        sid = self.new_session()
+        self.service.cfg["upload_max_bytes"] = 1000                 # le proxy laisse passer, le service refuse
+        status, body = self.upload(sid, b"\xff\xd8\xff" + b"\x00" * (2 * 1024 * 1024), "photo.jpg")
+        self.assertEqual(status, 413, body)
+        self.assertIn("1 Ko", body["error"])
+
+    def test_client_qui_coupe_en_cours_d_envoi_ne_laisse_rien(self):
+        sid = self.new_session()
+        conn = http.client.HTTPConnection(self.host, int(self.dport), timeout=15)
+        conn.putrequest("POST", f"/api/chat/sessions/{sid}/attachments")
+        for name, value in (("X-ARC-Chat", "1"), ("X-Filename", "a.gpx"), ("Content-Length", "100000")):
+            conn.putheader(name, value)
+        conn.endheaders(self.GPX)
+        conn.close()                                          # coupe après 100 octets sur 100000
+        time.sleep(1.0)
+        inbox = self.ws / "planning/inbox"
+        self.assertEqual([p.name for p in inbox.iterdir()] if inbox.exists() else [], [])
 
     def test_contenu_refuse_par_le_service_est_relaye(self):
         sid = self.new_session()

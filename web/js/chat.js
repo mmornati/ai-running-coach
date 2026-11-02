@@ -29,6 +29,7 @@ const state = {
   lastUsage: null,
   approvals: new Map(), // approval_id -> { card, pinned }
   pollTimer: null,      // sondage d'une session dont un tour tourne ailleurs (autre onglet, reprise)
+  uploading: 0,         // fichiers en attente ou en cours d'envoi (l'envoi du message est bloqué tant qu'il en reste)
   attachments: [],      // pièces jointes prêtes ou en cours d'envoi pour le prochain message : { key, name, size, path, kind, busy }
 };
 
@@ -228,6 +229,7 @@ function addUser(text, attachments = []) {
   }
   els.thread.appendChild(art);
   scrollDown();
+  return art;
 }
 
 function startTurn() {
@@ -707,8 +709,9 @@ function setBusy(busy) {
 async function sendMessage(text, attachments = []) {
   if ((!text && !attachments.length) || state.streaming || !state.sessionId) return;
   showBanner("");
-  addUser(text || (attachments.length === 1 ? "Voici le fichier." : "Voici les fichiers."), attachments);
+  const bubble = addUser(text || (attachments.length === 1 ? "Voici le fichier." : "Voici les fichiers."), attachments);
   startTurn();
+  let started = false;                   // le service a accepté le message (flux ouvert)
   setBusy(true);
   state.abort = new AbortController();
   const sid = state.sessionId;
@@ -726,9 +729,16 @@ async function sendMessage(text, attachments = []) {
       if (res.status === 429) msg = "Trop de messages d'affilée — patientez une minute.";
       throw new Error(msg);
     }
+    started = true;
     await readSse(res, handleEvent);
   } catch (err) {
     if (err.name !== "AbortError") showBanner(`Connexion interrompue : ${err.message}`);
+    if (!started && sid === state.sessionId) {
+      // Refus ou réseau avant le début de la réponse : le message n'est pas parti, on rend la saisie et les pièces jointes.
+      bubble.remove();
+      if (!els.input.value) els.input.value = text;
+      if (attachments.length && !state.attachments.length) { state.attachments = attachments; renderChips(); }
+    }
   } finally {
     flushText(state.turn);
     endTurn();
@@ -1121,7 +1131,7 @@ function clearAttachments() { state.attachments = []; renderChips(); }
 
 async function uploadFile(file) {
   const sid = state.sessionId;
-  if (!sid || state.streaming) return;
+  if (!sid || state.streaming) return showBanner(`« ${file.name} » non joint : la conversation est occupée ou indisponible.`);
   if (/\.hei[cf]$/i.test(file.name)) return showBanner("Format HEIC non pris en charge : exportez la photo en JPEG (Réglages > Appareil photo > Formats > « Le plus compatible »).");
   if (!ATTACH_EXT.test(file.name)) return showBanner(`« ${file.name} » : type non pris en charge. Formats acceptés : GPX, TCX, FIT, JPEG, PNG, WebP.`);
   const max = Number(state.status?.upload_max_bytes) || 0;
@@ -1140,17 +1150,23 @@ async function uploadFile(file) {
     let data = null;
     try { data = await res.json(); } catch { /* corps non JSON */ }
     if (!res.ok) throw new Error((data && data.error) || `HTTP ${res.status}`);
-    if (sid !== state.sessionId) throw new Error("");          // conversation changée entre-temps : fichier ignoré
+    if (sid !== state.sessionId) throw new Error(`« ${file.name} » abandonné : la conversation a changé pendant l'envoi.`);
     Object.assign(item, { path: data.path, kind: data.kind, busy: false });
   } catch (err) {
     state.attachments = state.attachments.filter((x) => x !== item);
-    if (err.message) showBanner(`Pièce jointe refusée : ${err.message}`);
+    showBanner(err.message.startsWith("«") ? err.message : `Pièce jointe refusée : ${err.message}`);
   }
   renderChips();
 }
 
 async function addFiles(fileList) {
-  for (const file of Array.from(fileList || [])) await uploadFile(file);
+  const files = Array.from(fileList || []);
+  state.uploading += files.length;
+  try {
+    for (const file of files) {
+      try { await uploadFile(file); } finally { state.uploading -= 1; }
+    }
+  } finally { renderChips(); }
 }
 
 function setupAttachments() {
@@ -1179,7 +1195,7 @@ function setupComposer() {
   els.form.addEventListener("submit", (e) => {
     e.preventDefault();
     const text = els.input.value.trim();
-    if (state.attachments.some((a) => a.busy)) { showBanner("Envoi du fichier en cours : patiente un instant.", true); return; }
+    if (state.uploading > 0 || state.attachments.some((a) => a.busy)) { showBanner("Envoi du fichier en cours : patiente un instant.", true); return; }
     const attachments = state.attachments.filter((a) => a.path);
     if (!text && !attachments.length) return;
     els.input.value = "";

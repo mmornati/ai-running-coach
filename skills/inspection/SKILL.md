@@ -6,6 +6,8 @@ gemini_command: "true"
 
 # `/inspection [paire]` — lancer l'inspection photo d'une paire (#149)
 
+> **Pièces jointes : dans le chat web, les lignes « Pièce jointe : <chemin> (<type>) » qui suivent la commande sont des FICHIERS joints (photos déjà déposées dans `gear/photos/`), jamais une partie de l'argument : ne pas les lire comme le nom, l'id ou le slug de la paire. Résoudre la paire sur le texte restant ; les images jointes sont des candidates de la boîte de dépôt (vérifier avec `inspections --unreferenced-photos`).**
+
 Ce skill n'ajoute **aucune logique de lecture** : il sert à **désigner la paire** et à
 **recevoir les photos**, puis passe la main au skill `gear-inspection` (grille de lecture,
 comparaison avec la précédente, garde-fous, persistance). Une inspection = **une paire**.

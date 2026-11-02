@@ -136,44 +136,77 @@ class TestContent(Base):
 
 
 class TestStorage(Base):
+    def put(self, folder, data: bytes, slug="sortie", ext=".gpx", now=None):
+        fd, tmp = folder.new_temp()
+        os.write(fd, data)
+        os.close(fd)
+        return folder.publish(tmp, slug, ext, now)
+
     def test_publication_sans_ecrasement(self):
-        folder = UP.safe_folder(self.dir, "planning/inbox")
         now = datetime(2026, 11, 1, 10, 30, 5)
-        names = []
-        for i in range(3):
-            fd, tmp = UP.new_temp(folder)
-            os.write(fd, b"contenu %d" % i)
-            os.close(fd)
-            names.append(UP.publish(tmp, folder, "sortie", ".gpx", now))
+        with UP.DropFolder(self.dir, "planning/inbox") as folder:
+            names = [self.put(folder, b"contenu %d" % i, now=now) for i in range(3)]
         self.assertEqual(names, ["2026-11-01_103005_sortie.gpx", "2026-11-01_103005_sortie-2.gpx",
                                  "2026-11-01_103005_sortie-3.gpx"])
+        out = self.dir / "planning" / "inbox"
         for i, name in enumerate(names):
-            self.assertEqual((folder / name).read_bytes(), b"contenu %d" % i)
-        self.assertEqual(sorted(p.name for p in folder.iterdir()), sorted(names))      # aucun temporaire laissé
+            self.assertEqual((out / name).read_bytes(), b"contenu %d" % i)
+        self.assertEqual(sorted(p.name for p in out.iterdir()), sorted(names))      # aucun temporaire laissé
 
     def test_un_fichier_existant_n_est_jamais_ecrase(self):
-        folder = UP.safe_folder(self.dir, "gear/photos")
-        existing = folder / "2026-11-01_103005_a.png"
+        (self.dir / "gear" / "photos").mkdir(parents=True)
+        existing = self.dir / "gear" / "photos" / "2026-11-01_103005_a.png"
         existing.write_bytes(b"original")
-        fd, tmp = UP.new_temp(folder)
-        os.write(fd, b"nouveau")
-        os.close(fd)
-        name = UP.publish(tmp, folder, "a", ".png", datetime(2026, 11, 1, 10, 30, 5))
+        with UP.DropFolder(self.dir, "gear/photos") as folder:
+            name = self.put(folder, b"nouveau", "a", ".png", datetime(2026, 11, 1, 10, 30, 5))
         self.assertEqual(name, "2026-11-01_103005_a-2.png")
         self.assertEqual(existing.read_bytes(), b"original")
+
+    def test_droits_suivent_l_umask(self):
+        old = os.umask(0o022)
+        try:
+            with UP.DropFolder(self.dir, "planning/inbox") as folder:
+                name = self.put(folder, b"x")
+        finally:
+            os.umask(old)
+        self.assertEqual((self.dir / "planning" / "inbox" / name).stat().st_mode & 0o777, 0o644)
 
     def test_lien_symbolique_dans_le_chemin_refuse(self):
         outside = Path(tempfile.mkdtemp())
         self.addCleanup(lambda: __import__("shutil").rmtree(outside, ignore_errors=True))
         (self.dir / "planning").symlink_to(outside)
         with self.assertRaises(UP.UploadError):
-            UP.safe_folder(self.dir, "planning/inbox")
+            UP.DropFolder(self.dir, "planning/inbox")
         self.assertEqual(list(outside.iterdir()), [])
         (self.dir / "gear").mkdir()
         (self.dir / "gear" / "photos").symlink_to(outside)
         with self.assertRaises(UP.UploadError):
-            UP.safe_folder(self.dir, "gear/photos")
+            UP.DropFolder(self.dir, "gear/photos")
         self.assertEqual(list(outside.iterdir()), [])
+
+    def test_composant_remplace_par_un_lien_apres_ouverture(self):
+        """Le descripteur du dossier reste celui ouvert : un lien posé ensuite ne détourne rien."""
+        outside = Path(tempfile.mkdtemp())
+        self.addCleanup(lambda: __import__("shutil").rmtree(outside, ignore_errors=True))
+        with UP.DropFolder(self.dir, "planning/inbox") as folder:
+            (self.dir / "planning" / "inbox").rename(self.dir / "planning" / "ancien")
+            (self.dir / "planning" / "inbox").symlink_to(outside)
+            self.put(folder, b"x")
+        self.assertEqual(list(outside.iterdir()), [])
+        self.assertEqual(len(list((self.dir / "planning" / "ancien").iterdir())), 1)
+
+
+class TestLimit(unittest.TestCase):
+    def test_plafond_valide_partout_de_la_meme_facon(self):
+        for bad in (0, -5, "x", None, "0"):
+            self.assertEqual(UP.effective_limit(bad), UP.DEFAULT_UPLOAD_MAX_BYTES, bad)
+        self.assertEqual(UP.effective_limit(1000), 1000)
+        self.assertEqual(UP.effective_limit("2048"), 2048)
+
+    def test_affichage_en_ko_sous_1_mio(self):
+        self.assertEqual(UP.format_size(20 * 1024 * 1024), "20 Mo")
+        self.assertEqual(UP.format_size(1000), "1 Ko")
+        self.assertEqual(UP.format_size(512 * 1024), "512 Ko")
 
 
 class TestPolicy(Base):

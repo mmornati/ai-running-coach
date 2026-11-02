@@ -474,7 +474,11 @@ chaussures » n'exigent plus de copier le fichier à la main sur le serveur.
   que reçoit le coach, et n'accepte que des fichiers qu'il a lui-même reçus dans **cette**
   conversation. Les images ne sont pas passées au modèle comme image : le coach les lit avec ses
   outils habituels. Elles restent dans `gear/photos/` (privé, hors dépôt public).
-- Les fichiers envoyés mais jamais utilisés restent dans leur dossier : le service ne les purge pas.
+- Les fichiers envoyés mais jamais utilisés restent dans leur dossier : le service ne les purge pas, et il
+  n'existe **aucun quota disque total** (seuls la taille par fichier et le débit — 20 envois par minute —
+  sont limités). Surveillez `planning/inbox/` et `gear/photos/` si le chat est ouvert à plusieurs personnes.
+- Derrière le tableau de bord local (`arc_serve.py`), le plafond relayé est `upload_max_bytes` ; **en mode famille**
+  il vaut 64 Mio fixes côté proxy (le service applique ensuite la limite de chaque membre).
 
 ## Budget
 

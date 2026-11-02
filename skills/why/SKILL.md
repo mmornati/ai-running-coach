@@ -6,6 +6,8 @@ gemini_command: "true"
 
 # `/why` — explain a decision from the log, nothing invented
 
+> **Pièces jointes : les lignes « Pièce jointe : … » qui suivent la commande (chat web) sont des fichiers joints, jamais une partie de l'argument : ne pas les lire comme un identifiant ou une date de décision.**
+
 This skill reads the `decision` log (see `workspace-data-contract`'s
 `decision` section) and reports **exactly** what it contains — trigger, rule
 IDs, inputs, before/after, outcome. It never fabricates a reason from a

@@ -45,7 +45,17 @@ class Capture(MockBackend):
         super().run_turn(ctx, user_message)
 
 
+BIG = 2 * 1024 * 1024
+
+
 class AttachCase(ChatCase):
+    def setUp(self):
+        super().setUp()
+        # Envois refusés sans corps (tests bruts) : ne pas attendre 10 s l'arrêt du client.
+        old = C.UPLOAD_IDLE_TIMEOUT_S, C.UPLOAD_DRAIN_MIN_S
+        C.UPLOAD_IDLE_TIMEOUT_S = C.UPLOAD_DRAIN_MIN_S = 0.3
+        self.addCleanup(lambda: (setattr(C, "UPLOAD_IDLE_TIMEOUT_S", old[0]), setattr(C, "UPLOAD_DRAIN_MIN_S", old[1])))
+
     def start(self, **over):
         Capture.received = []
         over.setdefault("backend_factory", Capture)
@@ -301,6 +311,110 @@ class TestUpload(AttachCase):
         self.assertEqual(self.upload(sid, GPX, headers={"Remote-User": "intrus"})[0], 403)
         self.assertEqual(self.files(), [])
         self.assertEqual(self.upload(sid, GPX, headers={"Remote-User": "marco"})[0], 200)
+
+
+class TestRefusalsWithRealBody(AttachCase):
+    """Un refus envoyé avant la lecture du corps doit ATTEINDRE le client même avec ~2 Mo en route (pas de RST)."""
+
+    def test_refus_avec_corps_de_2_mo(self):
+        self.start(upload_max_bytes=1000)
+        sid = self.new_session()
+        big_jpg = b"\xff\xd8\xff" + b"\x00" * BIG
+        status, body = self.upload(sid, big_jpg, "photo.jpg")
+        self.assertEqual((status, "trop volumineux" in body["error"]), (413, True), body)
+        self.service.cfg["upload_max_bytes"] = 4 * BIG
+        status, body = self.upload(sid, big_jpg, "IMG_1.HEIC")
+        self.assertEqual(status, 415, body)
+        self.assertIn("JPEG", body["error"])
+        status, body = self.upload("inconnue123456", big_jpg, "photo.jpg")
+        self.assertEqual(status, 404, body)
+        self.service.upload_limiter.per_min = 1
+        self.assertEqual(self.upload(sid, big_jpg, "photo.jpg")[0], 200)
+        status, body = self.upload(sid, big_jpg, "photo.jpg")
+        self.assertEqual(status, 429, body)
+        self.assertEqual(len(self.files()), 1)
+
+    def test_les_refus_ne_consomment_pas_le_quota(self):
+        self.start()
+        sid = self.new_session()
+        self.service.upload_limiter.per_min = 2
+        for _ in range(4):
+            self.assertEqual(self.upload("inconnue123456", GPX)[0], 404)
+            self.assertEqual(self.upload(sid, GPX, "notes.txt")[0], 415)
+        self.assertEqual([self.upload(sid, GPX)[0] for _ in range(3)], [200, 200, 429])
+
+
+class TestRobustness(AttachCase):
+    def test_plafond_invalide_retombe_sur_le_defaut(self):
+        user = self.ws / "config"
+        user.mkdir(parents=True)
+        (user / "workspace.user.toml").write_text("[chat]\nupload_max_bytes = 0\n", encoding="utf-8")
+        self.assertEqual(C.load_chat_config(self.ws)["upload_max_bytes"], 20 * 1024 * 1024)
+        (user / "workspace.user.toml").write_text("[chat]\nupload_max_bytes = -1\n", encoding="utf-8")
+        self.assertEqual(C.load_chat_config(self.ws)["upload_max_bytes"], 20 * 1024 * 1024)
+        self.start(upload_max_bytes=-5)
+        sid = self.new_session()
+        self.assertEqual(self.upload(sid, GPX)[0], 200)
+        self.assertEqual(self.get("/api/chat/status")[2]["upload_max_bytes"], 20 * 1024 * 1024)
+
+    def test_message_d_erreur_de_taille_en_ko(self):
+        self.start(upload_max_bytes=512 * 1024)
+        sid = self.new_session()
+        status, body = self.upload(sid, b"x" * (512 * 1024 + 1), "a.gpx")
+        self.assertEqual(status, 413)
+        self.assertIn("512 Ko", body["error"])
+
+    def test_session_disparue_pendant_l_envoi(self):
+        self.start()
+        sid = self.new_session()
+        self.service.sessions.add_attachment = lambda *a, **k: False
+        status, body = self.upload(sid, GPX)
+        self.assertEqual(status, 404, body)
+        self.assertEqual(self.files(), [])                                       # fichier supprimé
+
+    def test_fichier_renomme_apres_envoi(self):
+        self.start()
+        sid = self.new_session()
+        path = self.upload(sid, JPG, "semelle.jpg")[1]["path"]
+        (self.ws / path).rename(self.ws / "gear/photos/2026-11-01_pegasus_semelle.jpg")      # gear-inspection renomme
+        status, raw = self.message(sid, "x", [path])
+        self.assertEqual(status, 400)
+        self.assertIn("n'existe plus", raw)
+
+    def test_droits_selon_l_umask(self):
+        import os
+        old = os.umask(0o022)
+        try:
+            self.start()
+            sid = self.new_session()
+            path = self.upload(sid, GPX)[1]["path"]
+        finally:
+            os.umask(old)
+        self.assertEqual((self.ws / path).stat().st_mode & 0o777, 0o644)
+
+    def test_envoi_trop_lent_abandonne(self):
+        self.start()
+        sid = self.new_session()
+        old = C.UPLOAD_MIN_DEADLINE_S
+        C.UPLOAD_MIN_DEADLINE_S = 0.3
+        self.addCleanup(lambda: setattr(C, "UPLOAD_MIN_DEADLINE_S", old))
+        C.UPLOAD_MIN_RATE, old_rate = 10 ** 9, C.UPLOAD_MIN_RATE
+        self.addCleanup(lambda: setattr(C, "UPLOAD_MIN_RATE", old_rate))
+        import time
+        head = (f"POST /api/chat/sessions/{sid}/attachments HTTP/1.1\r\nHost: 127.0.0.1:{self.port}\r\n"
+                f"X-ARC-Chat: 1\r\nX-Filename: a.gpx\r\nContent-Length: 100000\r\n\r\n").encode()
+        with socket.create_connection(("127.0.0.1", self.port), timeout=10) as sock:
+            sock.sendall(head)
+            reply = b""
+            try:
+                for _ in range(8):                           # goutte-à-goutte : le service coupe avant la fin
+                    sock.sendall(b"<")
+                    time.sleep(0.15)
+                reply = sock.recv(65536)
+            except OSError:
+                pass                                         # coupure côté service : normal pour un client trop lent
+        self.assertTrue(not reply or b" 408 " in reply.split(b"\r\n")[0], reply)
+        self.assertEqual(self.files(), [])
 
 
 class TestMessageLink(AttachCase):

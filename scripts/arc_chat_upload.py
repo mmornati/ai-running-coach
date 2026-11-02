@@ -15,9 +15,10 @@ Bibliothèque standard uniquement.
 
 from __future__ import annotations
 
+import contextlib
 import os
 import re
-import tempfile
+import secrets
 import unicodedata
 import xml.etree.ElementTree as ET
 from datetime import datetime
@@ -125,14 +126,22 @@ class _RootOnly:
         return self.root
 
 
-def check_xml(path: Path, kind: str) -> None:
+def _opened(source):
+    """`source` : chemin (ouvert ici) ou fichier binaire déjà ouvert (non refermé)."""
+    if hasattr(source, "read"):
+        source.seek(0)
+        return contextlib.nullcontext(source)
+    return open(source, "rb")
+
+
+def check_xml(source, kind: str) -> None:
     """GPX/TCX : XML bien formé, sans DTD ni entité, racine attendue. Lecture par morceaux."""
     tail = b""
     target = _RootOnly()
     parser = ET.XMLParser(target=target)
     mismatch = UploadError(415, f"Le contenu n'est pas un fichier {kind.upper()} valide.")
     try:
-        with open(path, "rb") as handle:
+        with _opened(source) as handle:
             first = True
             while True:
                 chunk = handle.read(CHUNK)
@@ -159,17 +168,17 @@ def check_xml(path: Path, kind: str) -> None:
         raise mismatch
 
 
-def sniff(path: Path) -> bytes:
-    with open(path, "rb") as handle:
+def sniff(source) -> bytes:
+    with _opened(source) as handle:
         return handle.read(64)
 
 
-def check_content(path: Path, kind: str, ext: str) -> None:
-    """Concordance extension / contenu ; lève `UploadError(415, …)`."""
+def check_content(source, kind: str, ext: str) -> None:
+    """Concordance extension / contenu ; lève `UploadError(415, …)`. `source` : chemin ou fichier ouvert."""
     if kind in XML_ROOTS:
-        check_xml(path, kind)
+        check_xml(source, kind)
         return
-    head = sniff(path)
+    head = sniff(source)
     if kind == "fit":
         # En-tête FIT : octet 0 = taille (12 ou 14), octets 8-11 = « .FIT ».
         ok = len(head) >= 12 and head[0] in (12, 14) and head[8:12] == b".FIT"
@@ -191,45 +200,97 @@ def check_content(path: Path, kind: str, ext: str) -> None:
 # Rangement
 # ---------------------------------------------------------------------------
 
-def safe_folder(workspace: Path, rel: str) -> Path:
-    """Dossier de dépôt `workspace/rel` (créé au besoin), sans jamais suivre de lien symbolique.
+class DropFolder:
+    """Dossier de dépôt `workspace/rel` ouvert par descripteur : tout se fait RELATIVEMENT à ce `dir_fd`.
 
-    Chaque composant est contrôlé AVANT d'être créé : un lien symbolique (même vers un dossier
-    valide) est refusé et rien n'est créé au-delà ; la résolution réelle doit enfin être exactement
-    `<workspace réel>/rel` (même règle que `gear_photo_file` pour la lecture)."""
-    try:
-        current = Path(workspace).resolve(strict=True)
-        for part in rel.split("/"):
-            current = current / part
-            if current.is_symlink():
-                raise OSError("lien symbolique")
-            if not current.exists():
-                current.mkdir()
-            elif not current.is_dir():
-                raise OSError("pas un dossier")
-        if current.resolve(strict=True) != current:
-            raise OSError("résolution inattendue")
-    except OSError:
-        raise UploadError(500, "Dossier de dépôt indisponible ou invalide dans le workspace.") from None
-    return current
+    Chaque composant est ouvert avec `O_DIRECTORY | O_NOFOLLOW` (créé au besoin par `mkdir(dir_fd=)`) :
+    un lien symbolique, même vers un dossier valide, est refusé, et un composant remplacé par un lien
+    entre deux requêtes ne peut pas détourner l'écriture (création du temporaire, réservation du nom
+    et rename passent par le même descripteur). Les fichiers sont créés avec le mode 0o666 : c'est
+    l'umask du service qui règle les droits, comme pour le reste du workspace."""
 
-
-def new_temp(folder: Path) -> Tuple[int, str]:
-    """Fichier temporaire (mode 600, caché) dans le dossier de destination, pour un rename atomique."""
-    return tempfile.mkstemp(prefix=".upload-", suffix=".tmp", dir=folder)
-
-
-def publish(tmp: str, folder: Path, slug: str, ext: str, now: Optional[datetime] = None) -> str:
-    """Donne à `tmp` son nom définitif `AAAA-MM-JJ_HHMMSS_<slug><ext>` sans jamais écraser :
-    réservation exclusive (`O_EXCL`), suffixes `-2`, `-3`… puis rename atomique. Renvoie le nom."""
-    stamp = (now or datetime.now()).strftime("%Y-%m-%d_%H%M%S")
-    for index in range(1, 1000):
-        name = f"{stamp}_{slug}{'' if index == 1 else f'-{index}'}{ext}"
+    def __init__(self, workspace: Path, rel: str):
+        self.rel = rel
+        self.fd = -1
+        flags = os.O_RDONLY | getattr(os, "O_DIRECTORY", 0) | getattr(os, "O_NOFOLLOW", 0)
         try:
-            fd = os.open(folder / name, os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0), 0o600)
-        except FileExistsError:
-            continue
-        os.close(fd)
-        os.replace(tmp, folder / name)       # remplace NOTRE réservation vide, jamais un fichier existant
-        return name
-    raise UploadError(409, "Trop de fichiers du même nom : réessayez dans une seconde.")
+            fd = os.open(Path(workspace).resolve(strict=True), os.O_RDONLY | getattr(os, "O_DIRECTORY", 0))
+            for part in rel.split("/"):
+                try:
+                    os.mkdir(part, 0o777, dir_fd=fd)
+                except FileExistsError:
+                    pass
+                except OSError:
+                    os.close(fd)
+                    raise
+                try:
+                    nxt = os.open(part, flags, dir_fd=fd)
+                finally:
+                    os.close(fd)
+                fd = nxt
+        except OSError:
+            raise UploadError(500, "Dossier de dépôt indisponible ou invalide dans le workspace.") from None
+        self.fd = fd
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        self.close()
+
+    def close(self) -> None:
+        if self.fd >= 0:
+            os.close(self.fd)
+            self.fd = -1
+
+    def new_temp(self) -> Tuple[int, str]:
+        """(descripteur en écriture, nom) d'un fichier temporaire caché du dossier, pour un rename atomique."""
+        for _ in range(20):
+            name = f".upload-{secrets.token_hex(6)}.tmp"
+            try:
+                fd = os.open(name, os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0), 0o666,
+                             dir_fd=self.fd)
+            except FileExistsError:
+                continue
+            return fd, name
+        raise UploadError(500, "Création du fichier temporaire impossible.")
+
+    def open_read(self, name: str):
+        """Le fichier `name` du dossier, ouvert en lecture binaire (sans suivre de lien)."""
+        return os.fdopen(os.open(name, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0), dir_fd=self.fd), "rb")
+
+    def discard(self, name: str) -> None:
+        try:
+            os.unlink(name, dir_fd=self.fd)
+        except OSError:
+            pass
+
+    def publish(self, tmp: str, slug: str, ext: str, now: Optional[datetime] = None) -> str:
+        """Donne à `tmp` son nom définitif `AAAA-MM-JJ_HHMMSS_<slug><ext>` sans jamais écraser :
+        réservation exclusive (`O_EXCL`), suffixes `-2`, `-3`… puis rename atomique. Renvoie le nom."""
+        stamp = (now or datetime.now()).strftime("%Y-%m-%d_%H%M%S")
+        for index in range(1, 1000):
+            name = f"{stamp}_{slug}{'' if index == 1 else f'-{index}'}{ext}"
+            try:
+                fd = os.open(name, os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0), 0o666,
+                             dir_fd=self.fd)
+            except FileExistsError:
+                continue
+            os.close(fd)
+            os.replace(tmp, name, src_dir_fd=self.fd, dst_dir_fd=self.fd)   # remplace NOTRE réservation vide
+            return name
+        raise UploadError(409, "Trop de fichiers du même nom : réessayez dans une seconde.")
+
+
+def effective_limit(value) -> int:
+    """Plafond d'envoi valide (> 0, entier), sinon le défaut : MÊME règle pour le chat et pour le proxy."""
+    try:
+        number = int(float(value))
+    except (TypeError, ValueError):
+        return DEFAULT_UPLOAD_MAX_BYTES
+    return number if number > 0 else DEFAULT_UPLOAD_MAX_BYTES
+
+
+def format_size(n: int) -> str:
+    """« 20 Mo » ou « 512 Ko » (Ko sous 1 Mio)."""
+    return f"{n // (1024 * 1024)} Mo" if n >= 1024 * 1024 else f"{max(1, n // 1024)} Ko"
