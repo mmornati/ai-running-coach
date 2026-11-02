@@ -6,6 +6,8 @@ gemini_command: "true"
 
 # `/log` — saisie libre (#67)
 
+> **Pièces jointes : les lignes « Pièce jointe : … » qui suivent la commande (chat web) sont des fichiers joints, jamais du texte à journaliser : ne pas les recopier dans le log.**
+
 Une phrase du type « 2 gels + 500 ml au km 15, genou gauche 3/10, RPE 7 »
 contient jusqu'à trois natures de données, chacune avec son fichier et son
 propriétaire (`AGENTS.md`) :

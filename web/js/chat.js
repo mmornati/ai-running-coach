@@ -15,6 +15,7 @@ const els = {
   thread: $("#thread"), empty: $("#empty"), banner: $("#banner"), pinned: $("#pinned"),
   form: $("#composer"), input: $("#composer-input"), send: $("#send"), stop: $("#stop"),
   select: $("#session-select"), newBtn: $("#new-session"), cost: $("#cost"), backend: $("#backend"), llmCheck: $("#llm-check"),
+  attach: $("#attach"), fileInput: $("#file-input"), chips: $("#attachments"), box: $("#composer-box"),
 };
 
 const state = {
@@ -28,6 +29,8 @@ const state = {
   lastUsage: null,
   approvals: new Map(), // approval_id -> { card, pinned }
   pollTimer: null,      // sondage d'une session dont un tour tourne ailleurs (autre onglet, reprise)
+  uploading: 0,         // fichiers en attente ou en cours d'envoi (l'envoi du message est bloqué tant qu'il en reste)
+  attachments: [],      // pièces jointes prêtes ou en cours d'envoi pour le prochain message : { key, name, size, path, kind, busy }
 };
 
 // ---------------------------------------------------------------------------
@@ -208,12 +211,25 @@ const nearBottom = () => els.thread.scrollHeight - els.thread.scrollTop - els.th
 // Tour du coach : trace des outils, texte, cartes, fichiers
 // ---------------------------------------------------------------------------
 
-function addUser(text) {
+function addUser(text, attachments = []) {
   els.empty?.remove();
   const art = el("article", "msg msg--user");
   art.appendChild(el("div", "msg__bubble", text));
+  if (Array.isArray(attachments) && attachments.length) {
+    const list = el("ul", "msg__files");
+    list.setAttribute("aria-label", "Pièces jointes");
+    for (const a of attachments) {
+      const item = el("li");
+      const chip = el("span", "file-chip", `${KIND_LABEL[a.kind] || "Fichier"} · ${String(a.path || "").split("/").pop()}`);
+      chip.title = String(a.path || "");
+      item.appendChild(chip);
+      list.appendChild(item);
+    }
+    art.appendChild(list);
+  }
   els.thread.appendChild(art);
   scrollDown();
+  return art;
 }
 
 function startTurn() {
@@ -619,7 +635,7 @@ function showBanner(msg, info = false, check = false) {
 function handleEvent(type, d) {
   d = d && typeof d === "object" ? d : {};
   switch (type) {
-    case "user_message": endTurn(); addUser(d.text || ""); break;
+    case "user_message": endTurn(); addUser(d.text || "", d.attachments); break;
     case "status": if (!state.replaying) onStatus(d); break;
     case "text_delta": clearStatus(); onTextDelta(d); break;
     case "tool_start": clearStatus(); onToolStart(d); break;
@@ -690,11 +706,12 @@ function setBusy(busy) {
   if (!busy) els.input.focus();
 }
 
-async function sendMessage(text) {
-  if (!text || state.streaming || !state.sessionId) return;
+async function sendMessage(text, attachments = []) {
+  if ((!text && !attachments.length) || state.streaming || !state.sessionId) return;
   showBanner("");
-  addUser(text);
+  const bubble = addUser(text || (attachments.length === 1 ? "Voici le fichier." : "Voici les fichiers."), attachments);
   startTurn();
+  let started = false;                   // le service a accepté le message (flux ouvert)
   setBusy(true);
   state.abort = new AbortController();
   const sid = state.sessionId;
@@ -702,19 +719,35 @@ async function sendMessage(text) {
     const res = await fetch(`${API}/sessions/${encodeURIComponent(sid)}/messages`, {
       method: "POST",
       headers: { ...CSRF, "Content-Type": "application/json", Accept: "text/event-stream" },
-      body: JSON.stringify({ text }),
+      body: JSON.stringify({ text, attachments: attachments.map((a) => a.path) }),
       signal: state.abort.signal,
     });
     if (!res.ok) {
       let msg = `HTTP ${res.status}`;
-      try { msg = (await res.json()).error || msg; } catch { /* corps non JSON */ }
+      let badPath = null;
+      try { const body = await res.json(); msg = body.error || msg; badPath = body.path || null; } catch { /* corps non JSON */ }
       if (res.status === 409) msg = "Une réponse est déjà en cours pour cette conversation.";
       if (res.status === 429) msg = "Trop de messages d'affilée — patientez une minute.";
-      throw new Error(msg);
+      const err = new Error(msg);
+      err.rejected = res.status >= 400 && res.status < 500;
+      err.badPath = badPath;
+      throw err;
     }
+    started = true;
     await readSse(res, handleEvent);
   } catch (err) {
-    if (err.name !== "AbortError") showBanner(`Connexion interrompue : ${err.message}`);
+    // Refus du service (4xx) : message neutre ; « Connexion interrompue » seulement pour une coupure réseau / du flux.
+    if (err.name !== "AbortError") showBanner(err.rejected ? `Message non envoyé : ${err.message}` : `Connexion interrompue : ${err.message}`);
+    if (!started && sid === state.sessionId) {
+      // Refus ou réseau avant le début de la réponse : le message n'est pas parti, on rend la saisie et les pièces jointes.
+      bubble.remove();
+      if (!els.input.value) els.input.value = text;
+      // Fusion avec ce qui a été joint entre-temps ; la pièce jointe dont le service dit qu'elle n'existe plus est écartée.
+      const have = new Set(state.attachments.map((a) => a.path));
+      const back = attachments.filter((a) => a.path !== err.badPath && !have.has(a.path));
+      if (back.length) { state.attachments = [...back, ...state.attachments].slice(0, MAX_ATTACH); }
+      renderChips();
+    }
   } finally {
     flushText(state.turn);
     endTurn();
@@ -819,6 +852,7 @@ async function loadSession(id, { quiet = false } = {}) {
   clearTimeout(state.pollTimer);
   try {
     const detail = await call("GET", `/sessions/${encodeURIComponent(id)}`);
+    if (state.sessionId !== id) clearAttachments();
     state.sessionId = id;
     const events = detail.events || detail.log || [];
     renderHistory(events);
@@ -845,6 +879,7 @@ async function newSession() {
   showBanner("");
   try {
     const res = await call("POST", "/sessions", {});
+    clearAttachments();
     state.sessionId = res.id;
     els.thread.replaceChildren();
     showEmptyThread();
@@ -1077,14 +1112,128 @@ function setupTheme() {
   });
 }
 
+// ---------------------------------------------------------------------------
+// Pièces jointes (#342) : envoi immédiat du fichier, puis leur chemin dans le message suivant
+// ---------------------------------------------------------------------------
+
+const KIND_LABEL = { gpx: "GPX", tcx: "TCX", fit: "FIT", image: "Photo" };
+const ATTACH_EXT = /\.(gpx|tcx|fit|jpe?g|png|webp)$/i;
+const MAX_ATTACH = 10;
+const sizeFmt = (n) => (n >= 1048576 ? `${(n / 1048576).toFixed(1).replace(".", ",")} Mo` : `${Math.max(1, Math.round(n / 1024))} Ko`);
+
+function renderChips() {
+  els.chips.replaceChildren();
+  els.chips.hidden = !state.attachments.length;
+  for (const a of state.attachments) {
+    const li = el("li", `attach-chip${a.busy ? " is-busy" : ""}`);
+    li.append(el("span", "attach-chip__name", a.name), el("span", "attach-chip__meta", a.busy ? "envoi…" : `${KIND_LABEL[a.kind] || "Fichier"} · ${sizeFmt(a.size)}`));
+    const rm = el("button", "attach-chip__rm", "×");
+    rm.type = "button";
+    rm.setAttribute("aria-label", `Retirer la pièce jointe ${a.name}`);
+    rm.addEventListener("click", () => { state.attachments = state.attachments.filter((x) => x !== a); renderChips(); els.input.focus(); });
+    li.appendChild(rm);
+    els.chips.appendChild(li);
+  }
+}
+
+function clearAttachments() { state.attachments = []; renderChips(); }
+
+// Envoie UN fichier vers la conversation `sid` ; renvoie le motif du refus (texte) ou `null`. N'affiche rien :
+// `addFiles` regroupe les refus d'un lot pour qu'un fichier suivant n'efface pas l'erreur du précédent.
+const WAIT_BANNER = "Envoi du fichier en cours : patiente un instant.";
+const LATE = "reçu mais non joint : la conversation a changé";     // fichier arrivé après un changement de conversation
+
+async function uploadFile(file, sid) {
+  if (/\.hei[cf]$/i.test(file.name)) return "format HEIC non pris en charge : exportez la photo en JPEG (Réglages > Appareil photo > Formats > « Le plus compatible »)";
+  if (!ATTACH_EXT.test(file.name)) return "type non pris en charge (formats acceptés : GPX, TCX, FIT, JPEG, PNG, WebP)";
+  const max = Number(state.status?.upload_max_bytes) || 0;
+  if (max && file.size > max) return `trop volumineux (${sizeFmt(file.size)}, maximum ${sizeFmt(max)})`;
+  if (state.attachments.length >= MAX_ATTACH) return "dix pièces jointes au plus par message";
+  const item = { name: file.name, size: file.size, busy: true };
+  state.attachments.push(item);
+  renderChips();
+  try {
+    const res = await fetch(`${API}/sessions/${encodeURIComponent(sid)}/attachments`, {
+      method: "POST",
+      headers: { ...CSRF, "Content-Type": "application/octet-stream", "X-Filename": encodeURIComponent(file.name), Accept: "application/json" },
+      body: file,
+    });
+    let data = null;
+    try { data = await res.json(); } catch { /* corps non JSON */ }
+    if (!res.ok) throw new Error((data && data.error) || `HTTP ${res.status}`);
+    if (sid !== state.sessionId) throw new Error(LATE);
+    Object.assign(item, { path: data.path, kind: data.kind, busy: false });
+    return null;
+  } catch (err) {
+    state.attachments = state.attachments.filter((x) => x !== item);
+    return err.message;
+  } finally {
+    renderChips();
+  }
+}
+
+async function addFiles(fileList) {
+  const files = Array.from(fileList || []);
+  const sid = state.sessionId;                               // capturé UNE fois : tout le lot vise la même conversation
+  if (!files.length) return;
+  if (!sid || state.streaming) return showBanner("Conversation occupée ou indisponible : fichiers non joints.");
+  showBanner("");
+  state.uploading += files.length;
+  const refused = [];
+  let abandoned = 0;
+  try {
+    for (const [index, file] of files.entries()) {
+      if (sid !== state.sessionId) { abandoned = files.length - index; break; }   // conversation changée : le reste du lot est abandonné
+      const why = await uploadFile(file, sid);
+      if (why) refused.push(`${file.name} — ${why}`);
+    }
+  } finally {
+    state.uploading -= files.length;                       // l'envoi du message reste bloqué jusqu'à la fin du LOT
+    renderChips();
+  }
+  const lines = [];
+  const late = refused.filter((x) => x.endsWith(LATE));
+  const real = refused.filter((x) => !x.endsWith(LATE));
+  if (real.length) lines.push(`${real.length} fichier${real.length > 1 ? "s" : ""} refusé${real.length > 1 ? "s" : ""} : ${real.join(" ; ")}`);
+  if (late.length) lines.push(late.join(" ; "));
+  if (abandoned) lines.push(`${abandoned} fichier${abandoned > 1 ? "s" : ""} non envoyé${abandoned > 1 ? "s" : ""} : la conversation a changé.`);
+  if (lines.length) showBanner(lines.join("\n"), false, true);
+  else if (els.banner.textContent === WAIT_BANNER) showBanner("");   // seulement le bandeau d'attente posé pendant le lot
+}
+
+function setupAttachments() {
+  els.attach.addEventListener("click", () => els.fileInput.click());
+  els.fileInput.addEventListener("change", () => { addFiles(els.fileInput.files); els.fileInput.value = ""; });
+  // Le bouton suit l'état de la saisie (désactivée pendant un tour, sans conversation, etc.).
+  new MutationObserver(() => { els.attach.disabled = els.input.disabled; })
+    .observe(els.input, { attributes: true, attributeFilter: ["disabled"] });
+  const hasFiles = (e) => Array.from(e.dataTransfer?.types || []).includes("Files");
+  els.form.addEventListener("dragover", (e) => {
+    if (!hasFiles(e)) return;
+    e.preventDefault();
+    els.box.classList.toggle("is-dragover", !els.input.disabled);
+  });
+  els.form.addEventListener("dragleave", (e) => { if (!els.form.contains(e.relatedTarget)) els.box.classList.remove("is-dragover"); });
+  els.form.addEventListener("drop", (e) => {
+    if (!hasFiles(e)) return;
+    e.preventDefault();
+    els.box.classList.remove("is-dragover");
+    if (!els.input.disabled) addFiles(e.dataTransfer.files);
+  });
+}
+
 function setupComposer() {
+  setupAttachments();
   els.form.addEventListener("submit", (e) => {
     e.preventDefault();
     const text = els.input.value.trim();
-    if (!text) return;
+    if (state.uploading > 0 || state.attachments.some((a) => a.busy)) { showBanner(WAIT_BANNER, true); return; }
+    const attachments = state.attachments.filter((a) => a.path);
+    if (!text && !attachments.length) return;
     els.input.value = "";
     els.input.style.height = "";
-    sendMessage(text);
+    clearAttachments();
+    sendMessage(text, attachments);
   });
   els.input.addEventListener("keydown", (e) => {
     if (e.key === "Enter" && !e.shiftKey && !e.isComposing) { e.preventDefault(); els.form.requestSubmit(); }

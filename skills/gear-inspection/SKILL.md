@@ -165,7 +165,7 @@ python3 scripts/arc_index.py --validate gear/AAAA-MM-JJ_<gear_id>_inspection.md
 ```
 
 **Boîte de dépôt `gear/photos/` (#149).** L'athlète peut y copier ses photos, sous n'importe quel nom,
-avant ou pendant l'inspection (chemin fiable quel que soit le client — voir le skill `inspection`).
+avant ou pendant l'inspection (chemin fiable quel que soit le client — voir le skill `inspection` ; le bouton 📎 du chat web y dépose les photos sous `AAAA-MM-JJ_HHMMSS_<nom>.<ext>` et signale « Pièce jointe : gear/photos/… »).
 Les images **non citées** par une inspection (indexée ou non) sont des candidates :
 
 ```bash

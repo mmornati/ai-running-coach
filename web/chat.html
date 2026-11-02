@@ -79,11 +79,17 @@
               <dt>/log …</dt><dd>Saisie en une phrase : « 2 gels + 500 ml au km 15, genou gauche 3/10, RPE 7 ».</dd>
               <dt>/shoes [rôle]</dt><dd>Choisir la prochaine paire de chaussures, à partir de la paire en fin de vie.</dd>
               <dt>/inspection [paire]</dt><dd>Inspection photo d'une paire ; sans nom, liste les paires et leur rappel.</dd>
+              <dt>📎 Joindre</dt><dd>Un GPX, TCX ou FIT, ou une photo de chaussures (JPEG, PNG, WebP) : bouton 📎 ou glisser-déposer sur la saisie. Le fichier est rangé dans ton workspace et le coach le lit.</dd>
               <dt data-agent="sports-director">Prochaine course</dt><dd data-agent="sports-director">Le directeur sportif cherche des courses (sourcées, dates vérifiées) et conseille le prochain objectif depuis ton historique. Précise distance, période, rayon.</dd>
             </dl>
-            <p class="help__more">Aussi en phrases libres : « remplis la fiche de ma Speedgoat », « analyse ce GPX », « plan de ravitaillement pour dimanche », « compare mes sorties à Tournai ».</p>
+            <p class="help__more">Aussi en phrases libres : « remplis la fiche de ma Speedgoat », « analyse ce GPX » (joins le fichier avec 📎), « plan de ravitaillement pour dimanche », « compare mes sorties à Tournai ».</p>
           </div>
-          <div class="composer__box">
+          <ul class="attachments" id="attachments" aria-label="Pièces jointes" aria-live="polite" hidden></ul>
+          <div class="composer__box" id="composer-box">
+            <input type="file" id="file-input" accept=".gpx,.tcx,.fit,.jpg,.jpeg,.png,.webp" multiple hidden tabindex="-1">
+            <button class="composer__attach" id="attach" type="button" aria-label="Joindre un fichier (GPX, TCX, FIT ou photo)" title="Joindre un fichier : GPX, TCX, FIT, JPEG, PNG, WebP" disabled>
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M16.5 6v11.5c0 2.21-1.79 4-4 4s-4-1.79-4-4V5a2.5 2.5 0 0 1 5 0v10.5c0 .55-.45 1-1 1s-1-.45-1-1V6H10v9.5a2.5 2.5 0 0 0 5 0V5c0-2.21-1.79-4-4-4S7 2.79 7 5v12.5c0 3.04 2.46 5.5 5.5 5.5s5.5-2.46 5.5-5.5V6h-1.5Z"/></svg>
+            </button>
             <label class="sr-only" for="composer-input">Message au coach</label>
             <textarea id="composer-input" rows="1" placeholder="Écris au coach…" disabled></textarea>
             <button class="composer__stop" id="stop" type="button" hidden aria-label="Interrompre la réponse">

@@ -81,6 +81,9 @@ Pour mettre à jour une installation existante : [Passer de la 1.3 à la 1.4](up
   fichiers entiers : les agents s'en servent avant tout grep. Voir [Recherche dans l'historique](search.md).
 - **Fournisseur saturé reconnu.** Une erreur 503 d'OpenRouter (`provider_overloaded`) s'affiche comme un
   fournisseur saturé à réessayer, dans le chat comme dans la synchronisation.
+- **Pièces jointes dans le chat.** Le bouton 📎 (ou un glisser-déposer) envoie un GPX, un TCX, un FIT ou une photo
+  de chaussures au coach, rangé dans `planning/inbox/` ou `gear/photos/` ; le contenu est vérifié, HEIC refusé.
+  Voir [Pièces jointes](dashboard/chat.md#pieces-jointes).
 - **Chat sur téléphone** : plus de saut du fil vers le haut après « Appliquer », puces repliées entières.
 - **Journal de Remote Control borné.** `scripts/coach-remote.sh rotate-log` fait tourner `logs/remote-control.log`
   au-delà de 10 Mo, planifié à l'installation. Voir [Le coach dans la poche](mobile.md).

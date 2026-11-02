@@ -393,6 +393,10 @@ ntfy_delay_s = 60
 # Plafond (€) de ce qu'un tour peut dépenser : le reste du budget du jour reste disponible
 # pour une autre conversation ou une approbation tardive. 0 = tout le reste du jour.
 turn_budget_max_eur = 1.0
+# Pièces jointes du chat (#342) : taille maximale (octets) d'un fichier envoyé par le bouton 📎
+# (GPX, TCX, FIT, photos JPEG / PNG / WebP). 20 Mo par défaut. Cette limite ne concerne que
+# l'envoi de fichiers : les messages texte restent plafonnés à 64 Ko.
+upload_max_bytes = 20971520
 
 [telegram]
 # Bot Telegram (#174, voir docs/telegram.md) : retours en un geste SANS modèle ni clé d'API

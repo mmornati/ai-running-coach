@@ -58,6 +58,7 @@ max_turns = 30
 rate_limit_per_min = 6             # turns per user per minute
 approval_wait_s = 600              # in-turn wait before a proposal becomes "pending"
 approval_ttl_s = 86400             # pending proposal lifetime
+upload_max_bytes = 20971520        # attachment size cap (#342); the 64 KiB cap of the other routes is unchanged
 ntfy_approvals = true              # push an "Ouvrir" button (needs [notifications] + public_url)
 ntfy_quick_approve = true          # also "Appliquer / Refuser" buttons (single-use tokens) — only sent when [notifications].ntfy_token_file is set
 ntfy_token_ttl_s = 1800
@@ -83,7 +84,8 @@ constant); `--llm anthropic` → chat `claude-sonnet-5-5`, sync `claude-haiku-5-
 | GET | `/api/chat/sessions` | list `{id, title, created, updated, cost_eur, pending_approvals}` newest first |
 | POST | `/api/chat/sessions` | `{}` → `{id}` |
 | GET | `/api/chat/sessions/{id}` | meta + full event log (to redraw after reload) |
-| POST | `/api/chat/sessions/{id}/messages` | body `{"text": str}` → **SSE stream** of events until `done`/`error` |
+| POST | `/api/chat/sessions/{id}/messages` | body `{"text": str, "attachments"?: [path, …]}` → **SSE stream** of events until `done`/`error` (see *Attachments*) |
+| POST | `/api/chat/sessions/{id}/attachments` | raw file bytes → `{"path", "kind", "bytes"}` (see *Attachments*) |
 | POST | `/api/chat/sessions/{id}/interrupt` | cancels running turn |
 | GET | `/api/chat/approvals/{approval_id}` | pending approval detail (deep link `chat.html#approval=<id>`) |
 | POST | `/api/chat/approvals/{approval_id}` | body `{"decision": "allow"|"deny"}` |
@@ -103,8 +105,69 @@ constant); `--llm anthropic` → chat `claude-sonnet-5-5`, sync `claude-haiku-5-
 - SSE: `Content-Type: text/event-stream`, `Cache-Control: no-store`,
   `X-Accel-Buffering: no`; a `: ping` comment every 15 s.
 
+## Attachments (#342)
+
+`POST /api/chat/sessions/{id}/attachments` — same `_gate(post=True)` as every POST (Host, identity,
+`X-ARC-Chat`/Origin/Sec-Fetch-Site) and, in family mode, the member's own `ChatService`/workspace.
+
+- **Body = the raw bytes of the file** (no multipart), `Content-Length` mandatory (411 otherwise,
+  chunked bodies refused), header `X-Filename` = original name, URL-encoded; it only feeds the
+  extension and an ASCII slug, never a path.
+- Limits, all checked **before the body is read**: rate limit (20 files/min/user → 429), unknown
+  session (404), empty body (400), `Content-Length` > `[chat].upload_max_bytes` (20 MiB default → 413),
+  extension outside the allow-list (415). Only an upload that passes these checks consumes the rate
+  quota. A value of `upload_max_bytes` that is not > 0 falls back to the default (same rule in the chat
+  service and in the `arc_serve.py` proxy, `arc_chat_upload.effective_limit`). The body is then read in
+  64 KiB chunks (10 s idle timeout, and a global deadline of size / 50 KiB/s with a 30 s floor → 408)
+  into a hidden temp file of the destination folder. `MAX_BODY_BYTES` (64 KiB) is unchanged for all
+  other routes.
+- **A refusal must reach the client**: closing a socket that still has unread bytes sends a RST that can
+  erase the response. So, for every refusal whose `Content-Length` is known, the service reads and
+  discards the body first (bounded by 64 MiB and a 5-30 s deadline) and then answers; for a 413 it answers
+  first, then `shutdown(SHUT_WR)` and drains within the same bounds. Without a valid `Content-Length`
+  (411/400) there is nothing to drain.
+  Limit: the drain stops after 30 s, so a refusal of a big file over a very slow link can still be lost to a
+  RST. The idle timeout (10 s) and the global deadline both answer 408 (after a bounded drain); a write failure
+  while creating the temp file answers 500. The proxy applies the same idle timeout (10 s) and global deadline
+  to the client side of the upload: a stalled client gets a 408 from the proxy and its upstream connection is
+  dropped immediately.
+- **Allow-list by content AND extension** (they must agree, 415 otherwise): `.gpx`/`.tcx` = well-formed
+  XML with root `gpx` / `TrainingCenterDatabase`, parsed with the stdlib without DTD or entity
+  (any `<!DOCTYPE`/`<!ENTITY` is refused, UTF-16 refused); `.fit` = FIT header (size byte 12 or 14,
+  `.FIT` at bytes 8-11); `.jpg`/`.jpeg` (FF D8 FF), `.png` (PNG signature), `.webp` (`RIFF….WEBP`).
+  HEIC/HEIF (extension or `ftyp` brand) → 415 "exportez en JPEG". Everything else → 415.
+- **Server-generated name** `YYYY-MM-DD_HHMMSS_<slug>.<ext>` (local time, lowercase normalised extension,
+  `.jpeg`→`.jpg`), never overwriting (`O_EXCL` reservation, suffix `-2`, `-3`…), written atomically
+  (temp file in the same folder, then rename).
+- **Storage** (created on demand under the service's workspace — the member's in family mode; the
+  resolved folder must be exactly `<workspace>/<folder>`, a symlinked component is refused):
+  images → `gear/photos/` (the `/inspection` drop box, listed by `arc_index.py inspections
+  --unreferenced-photos`); traces (GPX/TCX/FIT) → `planning/inbox/` (inside `[fs].write_dirs`).
+  The folder is opened component by component with `O_DIRECTORY|O_NOFOLLOW` and everything (temp file,
+  name reservation, rename) is done relative to that descriptor; files are created 0666 & ~umask.
+  There is **no total disk quota** and uploaded files are **never purged** (only the per-file cap and the
+  rate limit bound the growth).
+- Response `{"path": "<workspace-relative>", "kind": "gpx|tcx|fit|image", "bytes": n}`; the service keeps
+  the list of attachments it created in the session meta (`attachments`).
+- **Link to the message**: `messages` accepts `attachments: [path, …]` (max 10). Only paths this
+  service created for THAT session and that still exist are accepted (400 otherwise — `gear-inspection`
+  renames photos). If the session disappears while a file is being received, the file is deleted (404). The text sent to the backend gets
+  one line `Pièce jointe : <path> (<kind>)` per file before the text (after it when the text starts
+  with `/`, so a slash command stays first). Text may be empty with attachments (default
+  "Voici le fichier."). The `user_message` event stores `{"text", "attachments": [{"path","kind"}]}`
+  so the history shows them. Images are NOT passed to the model as images: only the path; no change
+  to `chat-policy.toml` (relative workspace paths already pass `_shell_value`).
+- Proxy `arc_serve.py` (`/api/chat/*`): forwards `X-Filename`, refuses (413) before reading a body
+  above `[chat].upload_max_bytes` on this route (family mode: fixed 64 MiB ceiling, the service then
+  applies the member's own limit) or above 1 MiB elsewhere, and streams the upload instead of buffering it.
+  A 413 of the proxy is answered then the body is drained (bounded) like the service does; an `OSError` while
+  sending the body still reads the service's answer before concluding 502; a client that cuts mid-upload makes
+  the proxy drop its upstream connection at once (the chat then fails fast on the truncated body).
+- Out of scope: Telegram, purge of never-referenced files.
+
 ## Persistence (`<workspace>/.arc/chat/`, gitignored, disposable)
-- `sessions/<id>.json` — meta `{id, title, created, updated, backend, model, backend_state, cost_eur}`
+- `sessions/<id>.json` — meta `{id, title, created, updated, backend, model, backend_state, cost_eur,
+  attachments}` (`attachments` : `[{path, kind, bytes}]` created by the service for that session, 200 kept)
 - `sessions/<id>.jsonl` — one event per line `{"ts", "type", "data"}` incl. `user_message`
   (type `user_message`, `{"text"}`; stored only, never streamed).
 - `approvals.json` — `{approval_id: {session_id, tool, input, hash, summary, diff, status,

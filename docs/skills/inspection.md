@@ -60,10 +60,11 @@ cadre (sans elle, aucune mesure en millimètres).
 | Comment | Résultat |
 |---|---|
 | **Copier les photos** (n'importe quel nom) dans `gear/photos/` de votre workspace, puis dire « c'est fait » | **Chemin recommandé**, valable quel que soit le client : le coach les repère, les renomme et les cite dans l'inspection |
+| **Chat web du tableau de bord** : bouton **📎** (ou glisser-déposer) | La photo est déposée dans `gear/photos/` (renommée `AAAA-MM-JJ_HHMMSS_<nom>.<ext>` par le service) ; lancez ensuite `/inspection`. JPEG, PNG ou WebP, HEIC refusé : voir [Pièces jointes](../dashboard/chat.md#pieces-jointes) |
 | **Terminal Claude Code** : donner le chemin du fichier | Le coach lit l'image depuis ce chemin et peut la ranger dans `gear/photos/` |
 | **Application de bureau Claude, VS Code, autres IDE** (Copilot, OpenCode, Gemini CLI…) | Même règle partout : déposez les fichiers dans `gear/photos/` ou donnez leur chemin ; une image collée est lue mais pas enregistrée |
 | **Image collée** dans la conversation | Le coach la **voit** et peut inspecter, mais elle ne peut pas être enregistrée : `photos` reste absent du fichier d'inspection, et il le dit |
-| **Téléphone (Remote Control)** | Envoi d'images **à valider** : voir [Le coach dans la poche](../mobile.md) ; en attendant, copiez les photos dans `gear/photos/` du serveur (synchronisation de fichiers, `scp`…) puis lancez `/inspection` depuis le téléphone |
+| **Téléphone (Remote Control)** | Envoi d'images **à valider** : voir [Le coach dans la poche](../mobile.md) ; en attendant, joignez-les depuis le chat web (📎) ou copiez les photos dans `gear/photos/` du serveur (synchronisation de fichiers, `scp`…) puis lancez `/inspection` depuis le téléphone |
 
 Les photos déposées dans `gear/photos/` et citées par aucune inspection sont des **candidates** :
 si la paire n'est pas évidente, le coach demande à laquelle elles appartiennent, puis les renomme

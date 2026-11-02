@@ -6,6 +6,8 @@ gemini_command: "true"
 
 # `/race` — countdown and readiness, never writes a plan
 
+> **Pièces jointes : les lignes « Pièce jointe : … » qui suivent la commande (chat web) sont des fichiers joints (un GPX arrive dans `planning/inbox/`), jamais une partie de l'argument.**
+
 Thin wrapper around existing signals: the active objective's countdown, the
 Trail Shape score as ONE indicator among others (never the only word on
 readiness), and the race plan when `course-strategist` already produced one.

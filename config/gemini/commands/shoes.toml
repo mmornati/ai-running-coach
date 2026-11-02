@@ -4,6 +4,8 @@ description = "Commande courte /shoes [rôle] (#302) — choisir la prochaine pa
 prompt = '''
 # `/shoes [rôle]` — choisir la prochaine paire (#302)
 
+> **Pièces jointes : les lignes « Pièce jointe : … » qui suivent la commande (chat web) sont des fichiers joints, jamais une partie de l'argument : ne pas les lire comme un rôle de chaussure.**
+
 Ce skill n'ajoute **aucune logique de choix** : il sert à **désigner le rôle** (et la paire remplacée), puis
 passe la main au skill `shoe-selection` (continuité d'abord, plages cibles `shoe-needs`, recherche
 sourcée, veto `medical`, restitution, persistance). Même schéma que `/inspection` → `gear-inspection`.
