@@ -1515,7 +1515,7 @@ async function friseSection(selected = null) {
     const bits = [`Semaine du ${F.dayShort(w.week_start)}`, w.phase_label];
     if (w.week_type) bits.push(TYPE[w.week_type] || w.week_type);
     if (!w.planned) bits.push("aucun fichier de semaine (trou dans le bloc)");
-    else bits.push(w.target_duration_s ? `prévu ${F.duration(w.target_duration_s)}${w.target_elevation_m ? ` · ${F.elevation(w.target_elevation_m)}` : ""}` : "volume prévu non renseigné");
+    else bits.push(w.target_duration_s ? `prévu ${F.duration(w.target_duration_s)}${w.target_duration_from_sessions ? " (somme des séances)" : ""}${w.target_elevation_m ? ` · ${F.elevation(w.target_elevation_m)}` : ""}` : "volume prévu non renseigné");
     if (w.done) bits.push(`réalisé ${F.duration(w.done.duration_s)}${w.done.elevation_m ? ` · ${F.elevation(w.done.elevation_m)}` : ""}${w.done.partial ? " (semaine en cours)" : ""}`);
     if (w.status === "current") bits.push("semaine en cours");
     if (w.is_race_week) bits.push("semaine de course");

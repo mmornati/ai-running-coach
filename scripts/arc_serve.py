@@ -1130,8 +1130,12 @@ def api_block(store: Store, q: dict) -> dict:
             agg["distance_m"] += row["distance_m"] or 0
             agg["elevation_m"] += row["elevation_gain_m"] or 0
             agg["sessions"] += 1
+    # Repli du volume prévu (`target_duration_s` facultatif au contrat) : somme des séances non éclipsées.
+    planned = {r["week_start"]: r["planned_s"] for r in store.rows(
+        "SELECT week_start, SUM(planned_duration_s) AS planned_s FROM planned_session "
+        "WHERE shadowed = 0 AND week_start IS NOT NULL GROUP BY week_start")}
     obj = store.one("SELECT name, race_date FROM objective WHERE race_date IS NOT NULL ORDER BY source_path LIMIT 1")
-    return BT.build(weeks, done, obj["race_date"] if obj else None, today, obj["name"] if obj else None)
+    return BT.build(weeks, done, obj["race_date"] if obj else None, today, obj["name"] if obj else None, planned)
 
 
 def api_calendar(store: Store, q: dict) -> dict:
