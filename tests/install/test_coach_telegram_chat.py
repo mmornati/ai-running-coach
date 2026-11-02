@@ -12,7 +12,7 @@ import stat
 from pathlib import Path
 
 from tests.lib.asserts import InstallAsserts
-from tests.lib.sandbox import Sandbox
+from tests.lib.sandbox import STUBS_DIR, Sandbox
 
 PLUGIN_TOKEN = "111111:PLUGIN-secret-AAAAAAAAAAAAAAAAAAAA"
 BOT_TOKEN = "222222:BOT-secret-BBBBBBBBBBBBBBBBBBBBBBB"
@@ -363,13 +363,14 @@ class TestDoctorTelegramChat(InstallAsserts):
             (sb.repo / ".claude/telegram-chat.settings.json").write_text("{}")
 
     def _live_tmux(self, sb: Sandbox) -> str:
-        """Un faux `tmux` dont la session existe : en tête de PATH pour le doctor."""
+        """Un faux `tmux` dont la session existe : en tête de PATH pour le doctor, devant les stubs
+        (claude, bun) — sans eux, le test dépendrait des vrais outils de la machine (absents en CI)."""
         bindir = sb.root / "livebin"
         bindir.mkdir(exist_ok=True)
         fake = bindir / "tmux"
         fake.write_text("#!/bin/sh\nexit 0\n")
         fake.chmod(fake.stat().st_mode | stat.S_IXUSR)
-        return f"{bindir}:{os.environ.get('PATH', '')}"
+        return f"{bindir}:{STUBS_DIR}:{os.environ.get('PATH', '')}"
 
     def test_not_installed_is_informational(self):
         with Sandbox() as sb:
