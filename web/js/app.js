@@ -54,7 +54,7 @@ function effectDetailHtml(ev) {
 
 // Journal des décisions (#55) : lien de la documentation des garde-fous (#52),
 // cité depuis « Décisions » et depuis l'encart « Pourquoi aujourd'hui ? ».
-const GUARDRAILS_DOC_URL = "https://mmornati.github.io/ai-running-coach/guardrails/#les-sept-regles";
+const GUARDRAILS_DOC_URL = "https://mmornati.github.io/ai-running-coach/guardrails/#les-regles";
 
 // `decision.inputs`/`before`/`after` : valeurs libres (revue de code #55, nit) —
 // un objet imbriqué (rare, mais le contrat ne l'interdit pas) doit se lire

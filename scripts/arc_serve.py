@@ -112,7 +112,7 @@ DECISION_ID_RE = re.compile(r"^\d{4}-\d{2}-\d{2}_decision_[^/.]+$")
 # `<workspace>/gear/photos/`, SEULEMENT si une inspection indexée cite ce chemin exact dans `photos`.
 GEAR_PHOTO_TYPES = {".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".png": "image/png", ".webp": "image/webp"}
 GEAR_PHOTO_MAX_BYTES = 15 * 1024 * 1024
-GUARDRAILS_DOC_URL = "https://mmornati.github.io/ai-running-coach/guardrails/#les-sept-regles"
+GUARDRAILS_DOC_URL = "https://mmornati.github.io/ai-running-coach/guardrails/#les-regles"
 
 # ---------------------------------------------------------------------------
 # Markdown → HTML (sous-ensemble : ce que les agents écrivent)

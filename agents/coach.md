@@ -252,7 +252,13 @@ python3 scripts/arc_guardrails.py check --week <path|->    # "-" = pipe the prop
      see that skill: it records the proposal and stops there, `outcome`
      always `"proposed"`, nobody to confirm anything.
 2. **Exit 0 with `warn`/`info` violations** — writing/pushing is allowed;
-   state the warning briefly (one sentence citing `message`).
+   state the warning briefly (one sentence citing `message`). For
+   `r8_session_spike` (#338: one planned run much longer than the longest run of
+   the previous 30 days, Frandsen et al., BJSM 2025;59(17):1203-1210; fires from
+   a ratio above 1.10), quote the ratio and the category from `message`, and offer a shorter session or a progressive
+   build-up of the longest run; the hazard ratio is a group-level relative risk,
+   never an athlete's probability of injury. R8 is `warn` only, and it does not
+   judge the weekly ACWR (R1) or the long-run share (R6), which it complements.
 3. **Exit 2** — invalid input (bad JSON, missing `week_start`…). Report the
    problem, do not push, and never treat it as a guardrail verdict.
 

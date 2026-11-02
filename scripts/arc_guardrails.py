@@ -30,13 +30,14 @@ dans `[guardrails]` de `config/workspace.toml`) :
 | `r5_quality_after_red` | séance de qualité le jour même ou le lendemain d'un verdict santé rouge | `block` |
 | `r6_long_run_share` | part de la plus longue sortie dans le volume hebdomadaire | `warn` |
 | `r7_consecutive_quality` | deux séances de qualité sur deux jours consécutifs | `warn` |
+| `r8_session_spike` | pic de charge d'UNE séance : distance / plus longue sortie des 30 jours précédents (Frandsen et al., BJSM 2025) | `warn` |
 
 Toutes les règles qui ont besoin d'historique rendent `skipped_rules` avec
 `reason_code: "insufficient_history"` plutôt que de bloquer sur un calcul
 bruité (première semaine d'un nouveau workspace, ACWR non significatif tant
 que `arc_metrics.ACWR_MIN_FITNESS` n'est pas atteint…). La semaine de course
 (objectif actif, `race_date` dans les 7 jours de `week_start`) désactive les
-règles de charge (R1-R4, R6-R7) : voir `ASSUMPTIONS["race_week"]`.
+règles de charge (R1-R4, R6-R8) : voir `ASSUMPTIONS["race_week"]`.
 
 Sortie JSON (consommée par #53 pour le câblage agent, #54 pour le futur bloc
 `decision.rule_ids`, #57 pour le drapeau composite de risque de blessure) :
@@ -77,6 +78,15 @@ de chaque facteur :
 ```bash
 python3 scripts/arc_guardrails.py injury-risk
 python3 scripts/arc_guardrails.py injury-risk --today 2026-09-24 --workspace .
+```
+
+Quatrième usage, évaluation d'une séance RÉALISÉE (R8, sync quotidienne) : pour une
+date donnée, rend le ratio, la catégorie et le hazard ratio de chaque séance de la
+famille course à pied de ce jour (JSON par défaut, `--text` pour une ligne lisible) :
+
+```bash
+python3 scripts/arc_guardrails.py session-spike --date 2026-09-24
+python3 scripts/arc_guardrails.py session-spike --date 2026-09-24 --text
 ```
 
 Choix : script DÉDIÉ plutôt qu'une sous-commande de `arc_index.py` (déjà
@@ -139,6 +149,44 @@ DEFAULT_LONG_RUN_SHARE_MAX_PCT = 35.0
 # longue séance dépasse presque toujours 35 % par construction (peu de séances
 # parmi lesquelles se répartir), sans que ce soit un signal de charge excessive.
 R6_MIN_SESSIONS = 4
+
+# R8 (pic de charge d'une séance) — Frandsen J.S.B. et al. (dernier auteur
+# Nielsen R.O.), Br J Sports Med 2025;59(17):1203-1210 : ratio = distance de la
+# séance / plus longue distance de course à pied (`SPIKE_SPORTS`) sur les
+# `SPIKE_WINDOW_DAYS` jours PRÉCÉDENTS (jour de la séance exclu). Bornes hautes INCLUSIVES de chaque catégorie, hazard ratio de
+# blessure de surcharge et IC95 tels que rapportés par l'article. Voir
+# ASSUMPTIONS["session_spike"].
+SPIKE_WINDOW_DAYS = 30
+# Sports de R8 : `running` (route, tapis) et `trail` SEULEMENT. Volontairement PAS
+# `arc_metrics.sport_family == "run"` (qui inclut randonnée/marche, nécessaire à R6 et
+# au km-effort) : l'étude compte les séances de course enregistrées, une randonnée n'en
+# est pas une (faux positif d'une rando de 25 km, faux négatif d'une rando de 22 km
+# masquant un pic de trail).
+SPIKE_SPORTS = ("running", "trail")
+SPIKE_ALERT_RATIO = 1.10   # au-delà : toute hausse > 10 % (catégories faible, modéré, important)
+SPIKE_EPSILON = 1e-9     # tolérance flottante des comparaisons aux bornes (1,10 / 1,30 / 2,00)
+SPIKE_CATEGORIES: Tuple[dict, ...] = (
+    {"id": "reference", "max_ratio": 1.10, "hazard_ratio": 1.0, "ci95": None,
+     "label": "référence", "label_en": "reference"},
+    {"id": "low", "max_ratio": 1.30, "hazard_ratio": 1.64, "ci95": (1.31, 2.05),
+     "label": "faible", "label_en": "low"},
+    {"id": "moderate", "max_ratio": 2.00, "hazard_ratio": 1.52, "ci95": (1.16, 2.00),
+     "label": "modéré", "label_en": "moderate"},
+    {"id": "large", "max_ratio": None, "hazard_ratio": 2.28, "ci95": (1.50, 3.48),
+     "label": "important", "label_en": "large"},
+)
+# Catégories qui déclenchent R8 et la notification de la sync quotidienne : toute
+# hausse > 10 % (l'étude conclut que le risque de blessure de surcharge augmente dès
+# +10 % ; la catégorie « faible » a même le hazard ratio ponctuel le plus élevé).
+SPIKE_ALERT_CATEGORIES = ("low", "moderate", "large")
+SPIKE_REFERENCE_URL = "https://bjsm.bmj.com/content/59/17/1203"
+SPIKE_CITATION = "Frandsen et al., BJSM 2025"
+SPIKE_SOURCE = ("Frandsen J.S.B. et al. (dernier auteur Nielsen R.O.), « How much running is too much? "
+                "Identifying high-risk running sessions in a 5200-person cohort study », Br J Sports Med "
+                "2025;59(17):1203-1210, doi 10.1136/bjsports-2024-109380 — " + SPIKE_REFERENCE_URL)
+SPIKE_STUDY_SENTENCE = ("Dans l'étude, toute hausse > 10 % s'accompagne d'un taux de blessure de surcharge "
+                        "plus élevé (HR 1,5 à 2,3 selon la catégorie, sans gradient régulier). Risque "
+                        "relatif de groupe, pas une probabilité individuelle.")
 # Fenêtre de calcul de l'allure course RÉCENTE (voir `_recent_run_pace_s_km`,
 # ASSUMPTIONS["distance_only_estimate"]) : les 90 jours qui précèdent
 # `week_start`, jamais tout l'historique (une allure d'il y a deux ans ne
@@ -191,6 +239,7 @@ DEFAULT_SEVERITY: Dict[str, str] = {
     "r5_quality_after_red": "block",
     "r6_long_run_share": "warn",
     "r7_consecutive_quality": "warn",
+    "r8_session_spike": "warn",
 }
 RULE_IDS: Tuple[str, ...] = tuple(sorted(DEFAULT_SEVERITY))
 
@@ -212,6 +261,7 @@ RULE_LABELS: Dict[str, str] = {
     "r5_quality_after_red": "Séance de qualité le jour même ou le lendemain d'un verdict santé rouge",
     "r6_long_run_share": "Part de la plus longue sortie dans le volume hebdomadaire",
     "r7_consecutive_quality": "Deux séances de qualité sur deux jours consécutifs",
+    "r8_session_spike": "Pic de charge d'une séance : distance vs plus longue sortie des 30 jours précédents",
 }
 
 # Statuts de séance qui sortent une séance du calcul (charge, volume, D+,
@@ -476,7 +526,7 @@ ASSUMPTIONS: Dict[str, str] = {
         "l'absence de verdict connu pour la date concernée (jamais un rouge "
         "supposé par défaut). Semaine de course : voir ASSUMPTIONS[\"race_week\"] "
         "— R5 reste ACTIVE même en semaine de course (une alerte santé reste "
-        "pertinente juste avant une course), contrairement à R1-R4/R6-R7."
+        "pertinente juste avant une course), contrairement à R1-R4/R6-R8."
     ),
     "long_run_share": (
         "R6 : part de la plus longue sortie planifiée (famille course à pied) "
@@ -525,10 +575,71 @@ ASSUMPTIONS: Dict[str, str] = {
         "depuis la revue de code #98 (comptage par date, pas seulement l'écart "
         "entre dates distinctes)."
     ),
+    "session_spike": (
+        "R8 : pic de charge d'UNE séance, d'après Frandsen J.S.B. et al. (dernier "
+        "auteur Nielsen R.O.), « How much running is too much? Identifying "
+        "high-risk running sessions in a 5200-person cohort study », Br J Sports "
+        "Med 2025;59(17):1203-1210, doi 10.1136/bjsports-2024-109380 "
+        "(https://bjsm.bmj.com/content/59/17/1203). Cohorte (résumé de "
+        "l'article) : 5205 coureurs, âge moyen 45,8 ans, 22 % de femmes, 18 mois "
+        "de suivi, données Garmin, 588 071 séances. ratio = distance de la "
+        "séance évaluée / plus longue distance parmi les séances de course à "
+        "pied des SPIKE_WINDOW_DAYS = 30 jours PRÉCÉDENTS. SPORTS : `running` "
+        "(route, tapis) et `trail` (SPIKE_SPORTS) — le trail est inclus parce que "
+        "l'étude compte toute séance de course enregistrée ; la randonnée et la "
+        "marche (`hiking`/`walking`) sont EXCLUES, des deux côtés (séance évaluée "
+        "et référence), contrairement à R6 qui utilise arc_metrics.sport_family. "
+        "Le vélo et les autres sports sont ignorés. Le jour de la séance est "
+        "exclu ; la fenêtre est `[J-30, J-1]`, J-30 INCLUS (choix du projet, la "
+        "lecture la plus naturelle de « 30 jours précédents » ; J-31 est exclu). "
+        "PLUSIEURS SÉANCES LE MÊME JOUR : chacune est comparée séparément à la "
+        "fenêtre `[J-30, J-1]` (cohérent avec la « séance unique » de l'étude) ; "
+        "conséquence : la séance du matin ne compte PAS dans l'historique de celle "
+        "du soir, puisque le jour est exclu. Catégories, bornes hautes incluses : "
+        "ratio <= 1,10 référence (hazard ratio 1) ; ]1,10 ; 1,30] faible (1,64, "
+        "IC95 1,31-2,05) ; ]1,30 ; 2,00] modéré (1,52, IC95 1,16-2,00) ; > 2,00 "
+        "important (2,28, IC95 1,50-3,48). Comparaison aux bornes avec une "
+        "tolérance flottante de 1e-9 (11 km / 10 km vaut exactement 1,10). "
+        "DÉCLENCHEMENT : R8 (`warn` par défaut, jamais bloquante) et la "
+        "notification de la sync quotidienne se déclenchent dès ratio > 1,10, donc "
+        "pour faible, modéré et important : l'étude conclut que le risque de "
+        "blessure de surcharge augmente dès +10 %, et la catégorie « faible » a "
+        "le hazard ratio ponctuel le plus élevé (1,64) — les trois catégories ne "
+        "dessinent pas un gradient régulier, le libellé n'en suggère donc aucun. "
+        "La catégorie et son hazard ratio exact restent dans le JSON. Les hazard "
+        "ratios décrivent un risque relatif de groupe, jamais la probabilité de se "
+        "blesser d'un athlète donné. R8 COMPLÈTE R1 (ACWR) et R6 (part de la "
+        "sortie longue) : elle regarde la séance isolée, pas la charge "
+        "hebdomadaire. "
+        "SÉANCES ÉVALUÉES ET HISTORIQUE : chaque séance PLANIFIÉE de la semaine "
+        "évaluée (running/trail, non annulée/déplacée/manquée/repos) avec "
+        "`planned_distance_m`, SI sa date est >= `today` et qu'aucune activité "
+        "de course n'existe ce jour-là (une séance déjà faite est le travail de la "
+        "sous-commande `session-spike`). Historique = (1) les activités RÉALISÉES "
+        "indexées de la fenêtre ; (2) les séances planifiées encore À VENIR "
+        "(`today` à la veille de la séance évaluée) lues dans l'index "
+        "(`planned_session`, tous fichiers semaine confondus, hors "
+        "semaines éclipsées), plus celles des autres semaines du fichier "
+        "multi-semaines évalué ; (3) les séances planifiées antérieures de la "
+        "même semaine (comme R6 traite le plan). Dans les trois cas le RÉALISÉ "
+        "REMPLACE le plan du même jour, et une séance planifiée déjà passée sans "
+        "activité (date < `today`, hors `status: \"done\"`) ne compte pas : elle "
+        "est probablement manquée. Séance planifiée SANS `planned_distance_m` : "
+        "aucune conclusion (le module estime une durée depuis une distance, "
+        "jamais l'inverse ; une distance déduite d'une durée serait une valeur "
+        "inventée) — `no_distance` dans `context.session_spike`. Aucun historique "
+        "de course dans la fenêtre : pas de ratio, `insufficient_history` "
+        "(« historique insuffisant »). Aucune séance de course à évaluer : "
+        "`reason_code: \"nothing_to_evaluate\"`. Semaine de course : R8 sautée "
+        "comme R1-R4/R6-R7 (la course est le plus gros pic par construction). "
+        "LIMITES : l'article ne valide que la dimension distance ; dénivelé, "
+        "descente et effort perçu (trail) sont hors périmètre faute de seuils "
+        "validés."
+    ),
     "race_week": (
         "Semaine de course : `race_date` de l'objectif actif (`planning/"
         "active_objective.md`, table `objective`) tombe dans les 7 jours de "
-        "`week_start` à `week_start + 6` inclus. Dans ce cas, R1/R2/R3/R4/R6/R7 "
+        "`week_start` à `week_start + 6` inclus. Dans ce cas, R1/R2/R3/R4/R6/R7/R8 "
         "sont SAUTÉES avec `reason_code: \"race_week\"` — l'objectif de #52 est "
         "d'éviter une progression trop agressive à l'entraînement, jamais de "
         "bloquer la course elle-même (volume/D+/intensité d'une course dépassent "
@@ -782,6 +893,59 @@ def _week_activities(conn, week_start: date, week_end: date) -> List[dict]:
     return [{"date": d, "sport": sport, "load": load or 0.0} for d, sport, load in rows]
 
 
+def _run_activity_rows(conn, start: date, end: date) -> List[dict]:
+    """Activités RÉALISÉES de course (`SPIKE_SPORTS`) dans `[start, end]` (distance
+    renseignée) — lecture de la table `activity`, source commune de R8."""
+    rows = conn.execute(
+        "SELECT date, sport, distance_m, source_path FROM activity WHERE date >= ? AND date <= ? "
+        "ORDER BY date, id", (start.isoformat(), end.isoformat())).fetchall()
+    return [{"date": d, "sport": sport, "distance_m": dist, "source": "activity", "source_path": path}
+            for d, sport, dist, path in rows
+            if sport in SPIKE_SPORTS and dist and dist > 0]
+
+
+def _spike_sessions(sessions: List[dict]) -> List[dict]:
+    """Séances de course (`SPIKE_SPORTS`) non exclues d'une liste de séances."""
+    return [x for x in sessions if not _is_excluded(x) and x.get("sport") in SPIKE_SPORTS]
+
+
+def _spike_history(conn, week_start: date, week_end: date, today: date,
+                   other_weeks: Optional[List[dict]]) -> List[dict]:
+    """Historique de R8 pour la semaine `[week_start, week_end]` : activités réalisées
+    de `week_start - SPIKE_WINDOW_DAYS` à `week_end`, plus les séances planifiées encore
+    à venir (`today` à `week_start - 1`) — celles de l'index (`planned_session`, tous
+    fichiers semaine, hors semaines éclipsées : le cas courant d'un fichier par semaine)
+    et celles des autres semaines du fichier multi-semaines évalué (qui font foi sur l'index pour
+    leurs propres `week_start`). Le réalisé remplace
+    le plan du même jour — voir ASSUMPTIONS["session_spike"]."""
+    history = _run_activity_rows(conn, week_start - timedelta(days=SPIKE_WINDOW_DAYS), week_end)
+    activity_days = {h["date"] for h in history}
+    candidates: List[dict] = []
+    if today < week_start:
+        rows = conn.execute(
+            "SELECT date, sport, planned_distance_m, status, intensity, week_start FROM planned_session "
+            "WHERE COALESCE(shadowed, 0) = 0 AND date >= ? AND date < ? AND planned_distance_m > 0",
+            (today.isoformat(), week_start.isoformat())).fetchall()
+        # La proposition fait foi pour SES semaines (`--week -` sur un fichier multi-semaines :
+        # la version révisée, pas celle encore sur disque) : les lignes indexées de ces
+        # `week_start` sont ignorées.
+        proposed_weeks = {w.get("week_start") for w in (other_weeks or [])}
+        candidates.extend({"date": d, "sport": sport, "planned_distance_m": dist, "status": status,
+                           "intensity": intensity} for d, sport, dist, status, intensity, ws in rows
+                          if ws not in proposed_weeks)
+    for week_ in other_weeks or []:
+        candidates.extend(_week_sessions(week_))
+    for session_ in _spike_sessions(candidates):
+        day = _parse_day(session_.get("date"))
+        distance = session_.get("planned_distance_m")
+        if day is None or not distance or not (today <= day < week_start):
+            continue
+        if session_["date"] in activity_days:
+            continue
+        history.append({"date": session_["date"], "distance_m": distance, "source": "plan"})
+    return history
+
+
 def _reference_totals(conn, week_start: date, reference: str) -> dict:
     """Totaux de référence pour R2/R3, selon `reference` ("previous_week" | "mean4").
     `mean4` moyenne les 4 semaines calendaires précédentes (chacune Lun-Dim), qu'elles
@@ -905,6 +1069,7 @@ def build_context(conn, config: Dict[str, dict], gconf: dict, week_start: date,
         "has_load_history": bool(loads_by_date),
         "loads_by_date": loads_by_date,
         "week_activities": _week_activities(conn, week_start, week_end),
+        "spike_history": _spike_history(conn, week_start, week_end, today, other_weeks),
         "recent_run_pace_s_km": recent_run_pace_s_km,
         "previous_week": previous_week,
         "mean4_weeks": mean4,
@@ -1404,10 +1569,186 @@ def _eval_r7(sessions: List[dict], gconf: dict) -> Tuple[Optional[dict], Optiona
         dates, 1, ASSUMPTIONS["consecutive_quality"], dates), None
 
 
+# ---------------------------------------------------------------------------
+# R8 — pic de charge d'une séance (Frandsen et al., BJSM 2025) : cœur PUR, partagé
+# par `evaluate` (séances planifiées) et la sous-commande `session-spike`
+# (séances réalisées). Voir ASSUMPTIONS["session_spike"].
+# ---------------------------------------------------------------------------
+
+
+def _parse_day(value) -> Optional[date]:
+    try:
+        return date.fromisoformat(value) if isinstance(value, str) else None
+    except ValueError:
+        return None
+
+
+def spike_category(ratio: float) -> dict:
+    """Catégorie de l'article pour un ratio (bornes hautes INCLUSIVES, tolérance
+    flottante `SPIKE_EPSILON`) : <= 1,10 référence, <= 1,30 faible, <= 2,00 modéré,
+    au-delà important."""
+    for category in SPIKE_CATEGORIES:
+        upper = category["max_ratio"]
+        if upper is None or ratio <= upper + SPIKE_EPSILON:
+            return category
+    return SPIKE_CATEGORIES[-1]
+
+
+def evaluate_spike(day: date, distance_m, history: Sequence[dict]) -> dict:
+    """Ratio de pic d'UNE séance (`day`, `distance_m`) contre `history` : liste de
+    `{"date": ISO, "distance_m": float, ...}`. Seules les entrées de la fenêtre
+    `[day - SPIKE_WINDOW_DAYS, day - 1]` (J-30 inclus, jour exclu) à distance > 0
+    comptent. Rend toujours un dict de forme stable ; `status` vaut `ok`,
+    `no_distance` (séance sans distance : aucune conclusion) ou
+    `insufficient_history` (aucune séance dans la fenêtre : pas de ratio)."""
+    result = {
+        "date": day.isoformat(), "distance_m": distance_m if distance_m else None, "status": "ok",
+        "ratio": None, "ratio_raw": None, "alert": False, "category": None, "category_label": None, "hazard_ratio": None,
+        "hazard_ratio_ci95": None, "reference_distance_m": None, "reference_date": None,
+        "reference_source": None, "window_sessions": 0,
+    }
+    if not distance_m or distance_m <= 0:
+        result["status"] = "no_distance"
+        return result
+    window_start = day - timedelta(days=SPIKE_WINDOW_DAYS)
+    in_window = []
+    for entry in history:
+        entry_day = _parse_day(entry.get("date"))
+        dist = entry.get("distance_m")
+        if entry_day is None or not dist or dist <= 0:
+            continue
+        if window_start <= entry_day < day:
+            in_window.append((dist, entry_day, entry))
+    result["window_sessions"] = len(in_window)
+    if not in_window:
+        result["status"] = "insufficient_history"
+        return result
+    ref_distance, ref_day, ref_entry = max(in_window, key=lambda t: (t[0], t[1]))
+    ratio = distance_m / ref_distance
+    category = spike_category(ratio)
+    result.update({
+        "ratio": round(ratio, 2), "ratio_raw": ratio, "alert": category["id"] in SPIKE_ALERT_CATEGORIES,
+        "category": category["id"], "category_label": category["label"],
+        "hazard_ratio": category["hazard_ratio"],
+        "hazard_ratio_ci95": list(category["ci95"]) if category["ci95"] else None,
+        "reference_distance_m": ref_distance, "reference_date": ref_day.isoformat(),
+        "reference_source": ref_entry.get("source"),
+    })
+    return result
+
+
+def _fr(value: float, decimals: int = 2) -> str:
+    """Nombre au format français (virgule décimale, décimales fixes)."""
+    return f"{value:.{decimals}f}".replace(".", ",")
+
+
+def _km(distance_m: float) -> str:
+    """Kilomètres au format français, sans zéros inutiles (16 -> « 16 », 12,3 -> « 12,3 »)."""
+    return f"{distance_m / 1000.0:.2f}".rstrip("0").rstrip(".").replace(".", ",")
+
+
+def _fr_date(iso: str) -> str:
+    return f"{iso[8:10]}/{iso[5:7]}"
+
+
+def spike_text(ev: dict) -> str:
+    """Ligne lisible d'une évaluation (`--text`, message de R8)."""
+    if ev["status"] == "no_distance":
+        return f"{ev['date']} : séance sans distance — aucun ratio calculé."
+    if ev["status"] == "insufficient_history":
+        return (f"{ev['date']} : {_km(ev['distance_m'])} km — historique insuffisant "
+                f"(aucune séance de course dans les {SPIKE_WINDOW_DAYS} jours précédents).")
+    ci = ev["hazard_ratio_ci95"]
+    hazard = f"HR {_fr(ev['hazard_ratio'])}" + (f" (IC95 {_fr(ci[0])}–{_fr(ci[1])})" if ci else " (référence)")
+    head = (f"{ev['date']} : {_km(ev['distance_m'])} km, séance > 10 % au-dessus de la plus longue sortie "
+            f"des {SPIKE_WINDOW_DAYS} jours précédents ({_km(ev['reference_distance_m'])} km le "
+            f"{ev['reference_date']}) (ratio {_fr(ev['ratio'])})" if ev["alert"] else
+            f"{ev['date']} : {_km(ev['distance_m'])} km = {_fr(ev['ratio'])} × la plus longue sortie "
+            f"des {SPIKE_WINDOW_DAYS} jours précédents ({_km(ev['reference_distance_m'])} km le "
+            f"{ev['reference_date']})")
+    return f"{head} — catégorie {ev['category_label']}, {hazard}."
+
+
+def spike_notification(ev: dict) -> str:
+    """Segment court de la ligne `Alerte :` de la sync quotidienne."""
+    return (f"Pic de charge : {_km(ev['distance_m'])} km = {_fr(ev['ratio'])} × la plus longue sortie "
+            f"des {SPIKE_WINDOW_DAYS} j ({_km(ev['reference_distance_m'])} km le {_fr_date(ev['reference_date'])})")
+
+
+def _planned_session_spikes(sessions: List[dict], context: dict, today: date) -> List[dict]:
+    """Évalue chaque séance PLANIFIÉE de course (`SPIKE_SPORTS`) de la semaine dont la
+    date est >= `today` et qui n'a pas déjà une activité de course ce jour-là (le
+    réalisé est le travail de `session-spike`). Historique = `context["spike_history"]`
+    (activités réalisées + séances planifiées à venir hors semaine, voir `_spike_history`)
+    + séances planifiées ANTÉRIEURES de cette semaine — voir
+    ASSUMPTIONS["session_spike"] pour les règles de remplacement."""
+    base = list(context.get("spike_history") or [])
+    activity_days = {h.get("date") for h in base if h.get("source") == "activity"}
+    run = [x for x in _spike_sessions(sessions) if _parse_day(x.get("date")) is not None]
+    run.sort(key=lambda x: x["date"])
+    evaluations = []
+    for session_ in run:
+        day = date.fromisoformat(session_["date"])
+        if day < today or session_["date"] in activity_days:
+            continue
+        history = list(base)
+        for other in run:
+            other_day = date.fromisoformat(other["date"])
+            if other_day >= day or not other.get("planned_distance_m"):
+                continue
+            if other["date"] in activity_days:
+                continue            # le réalisé remplace le plan de ce jour-là
+            if other_day < today and other.get("status") != "done":
+                continue            # passée sans activité : probablement manquée
+            history.append({"date": other["date"], "distance_m": other["planned_distance_m"],
+                            "source": "plan"})
+        ev = evaluate_spike(day, session_.get("planned_distance_m"), history)
+        ev["planned"] = True
+        ev["alert"] = ev["category"] in SPIKE_ALERT_CATEGORIES
+        evaluations.append(ev)
+    return evaluations
+
+
+def _eval_r8(spikes: List[dict], gconf: dict) -> Tuple[Optional[dict], Optional[dict]]:
+    rule_id = "r8_session_spike"
+    if not spikes:
+        return None, _skip(rule_id, "nothing_to_evaluate",
+                            "rien à évaluer : aucune séance de course (running/trail) à venir cette "
+                            "semaine, ou déjà réalisée (voir `session-spike`).")
+    scored = [e for e in spikes if e["status"] == "ok"]
+    if not scored:
+        if all(e["status"] == "no_distance" for e in spikes):
+            return None, _skip(rule_id, "missing_planned_distance",
+                                "aucune séance de course n'a de planned_distance_m — aucun ratio de "
+                                "pic calculé (jamais une distance inventée).")
+        return None, _skip(rule_id, "insufficient_history",
+                            f"historique insuffisant : aucune séance de course dans les "
+                            f"{SPIKE_WINDOW_DAYS} jours précédant les séances de la semaine.")
+    flagged = [e for e in scored if e["alert"]]
+    if not flagged:
+        return None, None
+    worst = max(flagged, key=lambda e: e["ratio_raw"])
+    label_en = next(c["label_en"] for c in SPIKE_CATEGORIES if c["id"] == worst["category"])
+    ci = worst["hazard_ratio_ci95"]
+    hr_en = f"hazard ratio {worst['hazard_ratio']:g}" + (f", 95% CI {ci[0]:g}-{ci[1]:g}" if ci else "")
+    return _violation(
+        rule_id, gconf["severity"][rule_id],
+        "Pic de charge d'une séance — " + " ".join(spike_text(e) for e in flagged) + " "
+        + SPIKE_STUDY_SENTENCE,
+        f"Session load spike ({SPIKE_CITATION}): the planned run on {worst['date']} is "
+        f"{worst['ratio']:.2f}x the longest run of the previous {SPIKE_WINDOW_DAYS} days "
+        f"(> 10% above it; category {label_en}, {hr_en}). In the study every increase above 10% goes "
+        "with a higher overuse-injury rate, with no regular gradient. Group-level relative risk, "
+        "not an individual probability.",
+        worst["ratio_raw"], SPIKE_ALERT_RATIO, ASSUMPTIONS["session_spike"],
+        [e["date"] for e in flagged]), None
+
+
 # Règles désactivées en semaine de course (voir ASSUMPTIONS["race_week"]) — R5
 # reste volontairement hors de cette liste.
 _RACE_WEEK_SKIPPED = ("r1_acwr_projected", "r2_weekly_volume_jump", "r3_weekly_elevation_jump",
-                      "r4_monotony_projected", "r6_long_run_share", "r7_consecutive_quality")
+                      "r4_monotony_projected", "r6_long_run_share", "r7_consecutive_quality",
+                      "r8_session_spike")
 
 
 def evaluate(proposed_week: dict, context: dict, gconf: dict) -> dict:
@@ -1421,7 +1762,7 @@ def evaluate(proposed_week: dict, context: dict, gconf: dict) -> dict:
     (c'est le point même du garde-fou : évaluer AVANT écriture). `context` :
     voir `build_context`. `gconf` : voir `guardrail_settings`.
     """
-    _internal_only_keys = ("loads_by_date", "week_activities")
+    _internal_only_keys = ("loads_by_date", "week_activities", "spike_history")
     output_context = {k: v for k, v in context.items() if k not in _internal_only_keys}
     if not gconf.get("enabled", True):
         return {
@@ -1454,6 +1795,9 @@ def evaluate(proposed_week: dict, context: dict, gconf: dict) -> dict:
     work_context = {**context, **projected}
     output_context.update(projected)
     output_context["distance_only_sessions_estimated"] = _estimated_duration_dates(sessions, recent_pace)
+    today_day = _parse_day(context.get("today")) or date.today()
+    spikes = _planned_session_spikes(sessions, context, today_day)
+    output_context["session_spike"] = spikes
 
     violations: List[dict] = []
     skipped: List[dict] = []
@@ -1467,6 +1811,7 @@ def evaluate(proposed_week: dict, context: dict, gconf: dict) -> dict:
         "r5_quality_after_red": lambda: _eval_r5(work_context, sessions, gconf),
         "r6_long_run_share": lambda: _eval_r6(sessions, gconf, recent_pace),
         "r7_consecutive_quality": lambda: _eval_r7(sessions, gconf),
+        "r8_session_spike": lambda: _eval_r8(spikes, gconf),
     }
 
     for rule_id in RULE_IDS:
@@ -2023,6 +2368,37 @@ def evaluate_injury_risk(context: dict, gconf: dict) -> dict:
     }
 
 
+def realised_session_spikes(conn, day: date, gconf: dict) -> dict:
+    """Évalue les séances RÉALISÉES de course (`SPIKE_SPORTS`) du jour `day` (R8) :
+    chacune contre les activités réalisées de `[day - 30, day - 1]` (jour exclu). Sortie
+    JSON agent-lisible ; `alert` vaut vrai dès ratio > 1,10 (faible, modéré, important) (seule
+    raison d'une ligne de notification dans la sync quotidienne ; `notification` est le segment court). Rend des listes vides
+    si `[guardrails].enabled = false` ; la sévérité de R8 ne concerne que le plan."""
+    base = {"date": day.isoformat(), "window_days": SPIKE_WINDOW_DAYS, "source": SPIKE_SOURCE,
+            "sessions": [], "alerts": [], "enabled": bool(gconf.get("enabled", True))}
+    if not base["enabled"]:
+        return base
+    rows = conn.execute(
+        "SELECT source_path, date, sport, distance_m, avg_hr_bpm, garmin_activity_id, "
+        "intervals_activity_id, strava_activity_id, coros_activity_id FROM activity "
+        "WHERE date = ? ORDER BY start_time, id", (day.isoformat(),)).fetchall()
+    history = _run_activity_rows(conn, day - timedelta(days=SPIKE_WINDOW_DAYS), day - timedelta(days=1))
+    for (path, _d, sport, distance, avg_hr, garmin_id, intervals_id, strava_id, coros_id) in rows:
+        if sport not in SPIKE_SPORTS:
+            continue
+        ev = evaluate_spike(day, distance, history)
+        ev.update({
+            "planned": False, "sport": sport, "source_path": path, "avg_hr_bpm": avg_hr,
+            "garmin_activity_id": garmin_id, "intervals_activity_id": intervals_id,
+            "strava_activity_id": strava_id, "coros_activity_id": coros_id,
+        })
+        ev["text"] = spike_text(ev)
+        ev["notification"] = spike_notification(ev) if ev["alert"] else None
+        base["sessions"].append(ev)
+    base["alerts"] = [e["notification"] for e in base["sessions"] if e["alert"]]
+    return base
+
+
 # ---------------------------------------------------------------------------
 # CLI
 # ---------------------------------------------------------------------------
@@ -2120,7 +2496,7 @@ def build_parser() -> argparse.ArgumentParser:
     # `injury-risk` (#57) : pas de semaine proposée (--week n'a de sens que pour
     # `check`, rendu optionnel au niveau argparse et exigé à la main dans
     # `main()` selon la sous-commande — voir juste en dessous).
-    parser.add_argument("command", nargs="?", default="check", choices=("check", "injury-risk"))
+    parser.add_argument("command", nargs="?", default="check", choices=("check", "injury-risk", "session-spike"))
     parser.add_argument("--week", metavar="FICHIER|-",
                         help="(sous-commande « check », obligatoire) semaine proposée : chemin "
                              "d'un fichier (Markdown ```arc ou JSON brut) ou « - » pour lire le "
@@ -2130,6 +2506,14 @@ def build_parser() -> argparse.ArgumentParser:
                              "vérifier — sinon la première semaine dont le lundi tombe le jour de "
                              "--today ou après. Sans effet sur un fichier à une seule semaine, "
                              "sauf s'il désigne une AUTRE semaine que celle du fichier (erreur).")
+    parser.add_argument("--date", metavar="AAAA-MM-JJ",
+                        help="(sous-commande « session-spike », obligatoire) jour des séances RÉALISÉES "
+                             "à évaluer (R8, pic de charge d'une séance).")
+    parser.add_argument("--json", action="store_true",
+                        help="(« session-spike ») sortie JSON — c'est déjà le défaut, option acceptée "
+                             "pour les agents qui la passent systématiquement.")
+    parser.add_argument("--text", action="store_true",
+                        help="(« session-spike ») une ligne lisible par séance au lieu du JSON.")
     parser.add_argument("--workspace")
     parser.add_argument("--db")
     parser.add_argument("--memory", action="store_true")
@@ -2168,6 +2552,35 @@ def main(argv=None) -> int:
             date.fromisoformat(args.week_start)
         except ValueError:
             raise ConfigError(f"--week-start : date AAAA-MM-JJ attendue, « {args.week_start} » reçue.")
+
+    if args.command != "session-spike":
+        for flag, value in (("--date", args.date), ("--json", args.json), ("--text", args.text)):
+            if value:
+                raise ConfigError(f"{flag} : réservé à la sous-commande « session-spike » (voir --help).")
+
+    if args.command == "session-spike":
+        if args.week or args.week_start:
+            raise ConfigError("--week/--week-start : sans effet pour la sous-commande « session-spike ».")
+        if not args.date:
+            raise ConfigError("--date : obligatoire pour la sous-commande « session-spike » (voir --help).")
+        if args.json and args.text:
+            raise ConfigError("--json et --text s'excluent.")
+        try:
+            day = date.fromisoformat(args.date)
+        except ValueError:
+            raise ConfigError(f"--date : date AAAA-MM-JJ attendue, « {args.date} » reçue.")
+        workspace = workspace_root(args.workspace)
+        conn = I.open_db(workspace, args.db, args.memory)
+        today = date.fromisoformat(args.today) if args.today else date.today()
+        I.index_workspace(conn, workspace, today.isoformat())
+        gconf = guardrail_settings(I.load_config(workspace))
+        result = realised_session_spikes(conn, day, gconf)
+        if args.text:
+            lines = [spike_text(e) for e in result["sessions"]]
+            print("\n".join(lines) if lines else f"{day.isoformat()} : aucune séance course réalisée.")
+        else:
+            print(json.dumps(result, ensure_ascii=False))
+        return 0   # informatif : R8 n'est jamais bloquante
 
     if args.command == "injury-risk":
         if args.week:
