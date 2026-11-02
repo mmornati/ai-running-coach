@@ -259,7 +259,7 @@ Remote Control) et l'IDE partagent. Il délègue tout à l'agent `coach` et au s
    ou rien avec intervals.icu/Strava) et ne rien signaler de plus que le segment « FIT non
    téléchargé » de l'étape 2. Jamais sur une activité qui n'est pas nouvelle dans ce run.
 3b. **Alerte d'usure des chaussures (#132) — une seule fois par franchissement, sans état.**
-   Dresser la liste des séances running/trail (jamais hiking/walking) **synchronisées pour la première fois dans
+   Dresser la liste des séances running/trail/hiking **synchronisées pour la première fois dans
    CE run** : fichier d'activité créé à l'étape 1, ou fichier « pas encore synchronisé »
    (`/log`, #67) qui reçoit ses premiers champs Garmin. Une séance dont le fichier portait déjà
    ses données Garmin (simple re-fusion, second passage le même jour) n'en fait **jamais** partie.
@@ -291,7 +291,7 @@ Remote Control) et l'IDE partagent. Il délègue tout à l'agent `coach` et au s
    écrit ; les objets sans déclencheur ne remontent jamais (aucun seuil inventé). Aucune donnée de
    santé ; non soumis à `[health].morning_check`. Échec de la commande : ignorer silencieusement.
 3d. **Alerte de pic de charge d'une séance (R8, #338) — une seule fois par séance, sans état.**
-   Dresser la liste des séances running/trail/hiking **synchronisées pour la première fois dans CE
+   Dresser la liste des séances running/trail (jamais hiking/walking) **synchronisées pour la première fois dans CE
    run** (même critère qu'en 3b : un fichier qui portait déjà ses données, simple re-fusion ou second
    passage du jour, n'en fait jamais partie). **Aucune séance nouvelle = ne PAS lancer la commande et
    ne rien ajouter.** Sinon, pour chaque DATE distincte de ces séances, lancer

@@ -915,18 +915,24 @@ def _spike_history(conn, week_start: date, week_end: date, today: date,
     de `week_start - SPIKE_WINDOW_DAYS` à `week_end`, plus les séances planifiées encore
     à venir (`today` à `week_start - 1`) — celles de l'index (`planned_session`, tous
     fichiers semaine, hors semaines éclipsées : le cas courant d'un fichier par semaine)
-    et celles des autres semaines du fichier multi-semaines évalué. Le réalisé remplace
+    et celles des autres semaines du fichier multi-semaines évalué (qui font foi sur l'index pour
+    leurs propres `week_start`). Le réalisé remplace
     le plan du même jour — voir ASSUMPTIONS["session_spike"]."""
     history = _run_activity_rows(conn, week_start - timedelta(days=SPIKE_WINDOW_DAYS), week_end)
     activity_days = {h["date"] for h in history}
     candidates: List[dict] = []
     if today < week_start:
         rows = conn.execute(
-            "SELECT date, sport, planned_distance_m, status, intensity FROM planned_session "
+            "SELECT date, sport, planned_distance_m, status, intensity, week_start FROM planned_session "
             "WHERE COALESCE(shadowed, 0) = 0 AND date >= ? AND date < ? AND planned_distance_m > 0",
             (today.isoformat(), week_start.isoformat())).fetchall()
+        # La proposition fait foi pour SES semaines (`--week -` sur un fichier multi-semaines :
+        # la version révisée, pas celle encore sur disque) : les lignes indexées de ces
+        # `week_start` sont ignorées.
+        proposed_weeks = {w.get("week_start") for w in (other_weeks or [])}
         candidates.extend({"date": d, "sport": sport, "planned_distance_m": dist, "status": status,
-                           "intensity": intensity} for d, sport, dist, status, intensity in rows)
+                           "intensity": intensity} for d, sport, dist, status, intensity, ws in rows
+                          if ws not in proposed_weeks)
     for week_ in other_weeks or []:
         candidates.extend(_week_sessions(week_))
     for session_ in _spike_sessions(candidates):

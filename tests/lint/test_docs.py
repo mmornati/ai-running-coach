@@ -47,20 +47,33 @@ class TestInternalLinks(unittest.TestCase):
                 page = (path.parent / file_part).resolve() if file_part else path
                 if not page.exists():
                     continue                       # déjà signalé par le test précédent
-                slugs = set()
-                for line in page.read_text(encoding="utf-8").splitlines():
-                    if not line.startswith("#"):
-                        continue
-                    heading = line.lstrip("#").strip()
-                    # attr_list (mkdocs.yml) : `## Titre {#id-stable}` fixe l'ancre explicitement.
-                    explicit = ATTR_LIST_ID.search(heading)
-                    if explicit:
-                        slugs.add(explicit.group(1))
-                        heading = heading[:explicit.start()].strip()
-                    slugs.add(_slugify(heading))
-                if anchor not in slugs:
+                if anchor not in heading_anchors(page.read_text(encoding="utf-8")):
                     broken.append(f"{path.relative_to(REPO)} → {target}")
         self.assertFalse(broken, "ancres inexistantes :\n  " + "\n  ".join(broken))
+
+
+def heading_anchors(text: str) -> set:
+    """Ancres générées par mkdocs pour les titres de `text`. attr_list (mkdocs.yml) : pour
+    `## Titre {#id-stable}`, seul l'id explicite existe — jamais aussi le slug automatique."""
+    anchors = set()
+    for line in text.splitlines():
+        if not line.startswith("#"):
+            continue
+        heading = line.lstrip("#").strip()
+        explicit = ATTR_LIST_ID.search(heading)
+        if explicit:
+            anchors.add(explicit.group(1))
+            continue
+        anchors.add(_slugify(heading))
+    return anchors
+
+
+class TestHeadingAnchors(unittest.TestCase):
+    def test_explicit_id_replaces_the_automatic_slug(self):
+        anchors = heading_anchors("## Les huit règles {#les-regles}\n\n## Autre titre\n")
+        self.assertIn("les-regles", anchors)
+        self.assertNotIn("les-huit-regles", anchors)
+        self.assertIn("autre-titre", anchors)
 
 
 def _slugify(heading: str) -> str:

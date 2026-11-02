@@ -1762,6 +1762,26 @@ class TestR8OnWorkspace(WorkspaceCase):
         self.assertEqual(ev["category"], "moderate")
         self.assertEqual(ev["reference_source"], "plan")
 
+    def test_proposed_multi_week_file_wins_over_its_stale_indexed_version(self):
+        """`check --week -` sur un fichier multi-semaines : la version révisée de la proposition
+        (14 km le 08/11) fait foi sur celle encore sur disque (20 km)."""
+        def sess(day, km):
+            return {"date": day, "sport": "trail", "title": "Sortie", "intensity": "endurance",
+                    "planned_distance_m": km}
+        self.write("planning/2026-11-02_bloc.md",
+                   {"kind": "week", "weeks": [
+                       {"week_start": "2026-11-02", "location": "Tournai", "sessions": [sess("2026-11-08", 20000)]},
+                       {"week_start": "2026-11-09", "location": "Tournai", "sessions": [sess("2026-11-15", 18000)]}]})
+        revised = {"arc": 1, "kind": "week", "weeks": [
+            {"week_start": "2026-11-02", "location": "Tournai", "sessions": [sess("2026-11-08", 14000)]},
+            {"week_start": "2026-11-09", "location": "Tournai", "sessions": [sess("2026-11-15", 18000)]}]}
+        proc = self._run("check", "--week", "-", "--week-start", "2026-11-09", "--today", "2026-10-29",
+                         input_text=json.dumps(revised))
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        ev = json.loads(proc.stdout)["context"]["session_spike"][0]
+        self.assertEqual(ev["reference_distance_m"], 14000.0)
+        self.assertEqual(ev["ratio"], 1.29)
+
     def test_completed_activity_replaces_a_future_plan_of_the_same_day(self):
         self.write("planning/2026-09-21_semaine.md",
                    {"kind": "week", "week_start": "2026-09-21", "location": "Tournai",
