@@ -1140,6 +1140,9 @@ function clearAttachments() { state.attachments = []; renderChips(); }
 
 // Envoie UN fichier vers la conversation `sid` ; renvoie le motif du refus (texte) ou `null`. N'affiche rien :
 // `addFiles` regroupe les refus d'un lot pour qu'un fichier suivant n'efface pas l'erreur du précédent.
+const WAIT_BANNER = "Envoi du fichier en cours : patiente un instant.";
+const LATE = "reçu mais non joint : la conversation a changé";     // fichier arrivé après un changement de conversation
+
 async function uploadFile(file, sid) {
   if (/\.hei[cf]$/i.test(file.name)) return "format HEIC non pris en charge : exportez la photo en JPEG (Réglages > Appareil photo > Formats > « Le plus compatible »)";
   if (!ATTACH_EXT.test(file.name)) return "type non pris en charge (formats acceptés : GPX, TCX, FIT, JPEG, PNG, WebP)";
@@ -1158,7 +1161,7 @@ async function uploadFile(file, sid) {
     let data = null;
     try { data = await res.json(); } catch { /* corps non JSON */ }
     if (!res.ok) throw new Error((data && data.error) || `HTTP ${res.status}`);
-    if (sid !== state.sessionId) throw new Error("la conversation a changé pendant l'envoi");
+    if (sid !== state.sessionId) throw new Error(LATE);
     Object.assign(item, { path: data.path, kind: data.kind, busy: false });
     return null;
   } catch (err) {
@@ -1189,9 +1192,13 @@ async function addFiles(fileList) {
     renderChips();
   }
   const lines = [];
-  if (refused.length) lines.push(`${refused.length} fichier${refused.length > 1 ? "s" : ""} refusé${refused.length > 1 ? "s" : ""} : ${refused.join(" ; ")}`);
+  const late = refused.filter((x) => x.endsWith(LATE));
+  const real = refused.filter((x) => !x.endsWith(LATE));
+  if (real.length) lines.push(`${real.length} fichier${real.length > 1 ? "s" : ""} refusé${real.length > 1 ? "s" : ""} : ${real.join(" ; ")}`);
+  if (late.length) lines.push(late.join(" ; "));
   if (abandoned) lines.push(`${abandoned} fichier${abandoned > 1 ? "s" : ""} non envoyé${abandoned > 1 ? "s" : ""} : la conversation a changé.`);
   if (lines.length) showBanner(lines.join("\n"), false, true);
+  else if (els.banner.textContent === WAIT_BANNER) showBanner("");   // seulement le bandeau d'attente posé pendant le lot
 }
 
 function setupAttachments() {
@@ -1220,7 +1227,7 @@ function setupComposer() {
   els.form.addEventListener("submit", (e) => {
     e.preventDefault();
     const text = els.input.value.trim();
-    if (state.uploading > 0 || state.attachments.some((a) => a.busy)) { showBanner("Envoi du fichier en cours : patiente un instant.", true); return; }
+    if (state.uploading > 0 || state.attachments.some((a) => a.busy)) { showBanner(WAIT_BANNER, true); return; }
     const attachments = state.attachments.filter((a) => a.path);
     if (!text && !attachments.length) return;
     els.input.value = "";
