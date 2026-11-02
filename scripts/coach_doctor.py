@@ -1782,12 +1782,16 @@ def check_telegram_chat(workspace: Path, home: Path, config: dict) -> dict:
             problems.append(f"politique d'accès « {policy} » au lieu de « allowlist » (/telegram:access policy allowlist)")
         elif not [i for i in (access.get("allowFrom") if isinstance(access.get("allowFrom"), list) else []) if str(i).strip()]:
             problems.append("politique allowlist sans compte autorisé (/telegram:access pair <code>)")
-        groups = access.get("groups") if isinstance(access.get("groups"), dict) else {}
-        open_groups = [g for g in groups.values()
-                       if not (isinstance(g, dict) and isinstance(g.get("allowFrom"), list) and g["allowFrom"])]
-        if open_groups:
-            problems.append(f"{len(open_groups)} groupe(s) sans liste allowFrom : n'importe quel membre parlerait au coach "
-                            "(/telegram:access)")
+        raw_groups = access.get("groups")
+        if raw_groups is not None and not isinstance(raw_groups, dict):
+            problems.append("access.json : « groups » invalide (objet attendu), le script refusera de démarrer")
+        else:
+            groups = raw_groups or {}
+            open_groups = [g for g in groups.values()
+                           if not (isinstance(g, dict) and isinstance(g.get("allowFrom"), list) and g["allowFrom"])]
+            if open_groups:
+                problems.append(f"{len(open_groups)} groupe(s) sans liste allowFrom (ou invalide(s)) : n'importe quel "
+                                "membre parlerait au coach (/telegram:access)")
     tg = config.get("telegram") or {}
     bot_file = Path(os.path.expanduser(str(tg.get("token_file") or TELEGRAM_DEFAULT_TOKEN_FILE)))
     if plugin_token and plugin_token == _env_file_token(bot_file):

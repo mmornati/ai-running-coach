@@ -233,6 +233,25 @@ class TestCoachTelegramChat(InstallAsserts):
             (state / "access.json").write_text(json.dumps(access))
             self.assertSucceeded(sb.script("coach-telegram-chat.sh", "run", "--dry-run", **NO_ENV_TOKEN))
 
+    def test_unreadable_or_malformed_groups_fail_closed(self):
+        with Sandbox() as sb:
+            state = _telegram_state(sb)
+            good = {"dmPolicy": "allowlist", "allowFrom": ["4242"]}
+            cases = {
+                "JSON cassé": "{pas du json",
+                "racine en liste": json.dumps([1, 2]),
+                "groups en liste": json.dumps({**good, "groups": ["-100"]}),
+                "groups en chaîne": json.dumps({**good, "groups": "oui"}),
+                "groupe non objet": json.dumps({**good, "groups": {"-100": "tous"}}),
+            }
+            for label, content in cases.items():
+                (state / "access.json").write_text(content)
+                proc = sb.script("coach-telegram-chat.sh", "run", "--dry-run", **NO_ENV_TOKEN)
+                self.assertFailed(proc, label)
+            # Appairage : ces fichiers se réparent justement dans la session d'appairage.
+            (state / "access.json").write_text(json.dumps({**good, "groups": ["-100"]}))
+            self.assertSucceeded(sb.script("coach-telegram-chat.sh", "run", "--pairing", "--dry-run", **NO_ENV_TOKEN))
+
     def test_honours_claude_config_dir_for_the_plugin_state(self):
         with Sandbox() as sb:
             custom = sb.home / "cfg"
@@ -364,6 +383,16 @@ class TestDoctorTelegramChat(InstallAsserts):
             check = self._check(sb, ARC_FAKE_UNAME="Linux", PATH=self._live_tmux(sb))
             self.assertEqual(check["status"], "warning")
             self.assertIn("groupe(s) sans liste allowFrom", check["message"])
+
+    def test_malformed_groups_are_flagged(self):
+        with Sandbox() as sb:
+            state = _telegram_state(sb)
+            _bot_token_file(sb)
+            self._unit(sb)
+            (state / "access.json").write_text(json.dumps({"dmPolicy": "allowlist", "allowFrom": ["1"], "groups": ["-100"]}))
+            check = self._check(sb, ARC_FAKE_UNAME="Linux", PATH=self._live_tmux(sb))
+            self.assertEqual(check["status"], "warning")
+            self.assertIn("groups", check["message"])
 
     def test_same_token_is_flagged_without_showing_it(self):
         with Sandbox() as sb:

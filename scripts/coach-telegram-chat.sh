@@ -185,14 +185,23 @@ claude_version_ok() {
     (( maj > want_maj || (maj == want_maj && (min > want_min || (min == want_min && pat >= want_pat))) ))
 }
 
-# Nombre de groupes de access.json sans liste allowFrom (n'importe quel membre pourrait alors parler au coach).
+# Groupes de access.json sans liste allowFrom (n'importe quel membre pourrait alors parler au coach) :
+# affiche leur nombre, ou « illisible » si le fichier ou sa structure est invalide (échec fermé, comme dm_policy).
 open_groups() {
     [[ -f "$TG_DIR/access.json" ]] || { echo 0; return 0; }
     python3 -c '
 import json, sys
-groups = json.load(open(sys.argv[1])).get("groups") or {}
-print(sum(1 for g in groups.values() if not (isinstance(g, dict) and isinstance(g.get("allowFrom"), list) and g["allowFrom"])))
-' "$TG_DIR/access.json" 2>/dev/null || echo 0
+try:
+    data = json.load(open(sys.argv[1]))
+    groups = data.get("groups") if isinstance(data, dict) else None
+    if not isinstance(data, dict) or (groups is not None and not isinstance(groups, dict)):
+        raise ValueError("structure")
+    if any(not isinstance(g, dict) for g in (groups or {}).values()):
+        raise ValueError("groupe")
+    print(sum(1 for g in (groups or {}).values() if not (isinstance(g.get("allowFrom"), list) and g["allowFrom"])))
+except Exception:
+    print("illisible")
+' "$TG_DIR/access.json" 2>/dev/null || echo "illisible"
 }
 
 require_bin() {
@@ -226,8 +235,13 @@ preflight() {
     esac
     local policy
     policy="$(dm_policy)"
-    if [[ "$PAIRING" -eq 0 && "$(open_groups)" != "0" ]]; then
-        die "Un groupe de $TG_DIR/access.json n'a pas de liste allowFrom : n'importe quel membre pourrait parler au coach.
+    if [[ "$PAIRING" -eq 0 ]]; then
+        local groups
+        groups="$(open_groups)"
+        [[ "$groups" != "illisible" ]] \
+            || die "$TG_DIR/access.json est illisible ou de structure invalide (groupes) : refus de démarrer. Corrigez-le avec /telegram:access."
+        [[ "$groups" == "0" ]] \
+            || die "Un groupe de $TG_DIR/access.json n'a pas de liste allowFrom : n'importe quel membre pourrait parler au coach.
   Dans la session d'appairage : /telegram:access (retirez le groupe ou renseignez allowFrom)."
     fi
     if [[ "$policy" != "allowlist" && "$PAIRING" -eq 0 ]]; then
