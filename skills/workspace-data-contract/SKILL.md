@@ -923,6 +923,15 @@ chaque semaine par sa propre date sans distinguer les deux formats. La purge
 par fichier (une écriture qui change le fichier) retire bien TOUTES ses
 semaines à la fois, comme avant #69 pour une semaine unique.
 
+**Avertissements de présentation.** `--validate` accepte un fichier `week` au
+contrat mais avertit (sans bloquer, le bloc reste indexé) quand le tableau de
+bord le servirait mal : nom différent de `planning/Semaine_<premier lundi>.md`,
+`target_duration_s` absent (la frise du bloc trace alors la somme des
+`planned_duration_s` des séances, marquée `target_duration_from_sessions`), ou
+`phase` hors des libellés que la frise reconnaît (« Base », « Développement »,
+« Spécifique », « Affûtage », « Récupération » — ceux qu'écrit
+`plan-skeleton`). Corrigez ces avertissements dans un plan que vous écrivez.
+
 **`scripts/arc_guardrails.py check --week`** ne peut pas deviner tout seul
 *laquelle* des semaines d'un fichier `weeks[]` vérifier : par défaut, il prend
 la **première dont le lundi tombe le jour de `--today` ou après** — ce qui

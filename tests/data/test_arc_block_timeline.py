@@ -13,6 +13,7 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO / "scripts"))
 import arc_block_timeline as BT  # noqa: E402
+import arc_index as I  # noqa: E402
 import arc_plan_templates as PS  # noqa: E402
 import arc_serve as S  # noqa: E402
 
@@ -94,6 +95,14 @@ class TestBuild(unittest.TestCase):
         self.assertEqual(out["race"], {"date": "2026-10-21", "name": "Course", "week_start": "2026-10-19",
                                        "in_block": True, "days_left": 14})
 
+    def test_planned_volume_falls_back_to_sessions(self):
+        weeks = [wk("2026-10-05", "Base", None, 18000), wk("2026-10-12", "Base")]
+        planned = {"2026-10-05": 9000, "2026-10-12": 12000, "2026-10-19": 5000}
+        w = BT.build(weeks, {}, None, date(2026, 10, 7), planned_by_week=planned)["weeks"]
+        self.assertEqual((w[0]["target_duration_s"], "target_duration_from_sessions" in w[0]), (18000, False))
+        self.assertEqual((w[1]["target_duration_s"], w[1]["target_duration_from_sessions"]), (12000, True))
+        self.assertEqual(len(w), 2)   # des séances sans semaine n'ajoutent jamais de semaine
+
     def test_race_outside_block_and_no_plan(self):
         out = BT.build([wk("2026-10-05", "Base")], {}, "2027-03-01", date(2026, 10, 7))
         self.assertFalse(out["race"]["in_block"])
@@ -145,9 +154,62 @@ class TestApiBlock(unittest.TestCase):
         self.assertEqual(done["distance_m"], sum(a["distance_m"] or 0 for a in week["activities"]))
         self.assertEqual((done["duration_s"], done["sessions"]), (4800, 2))
 
+    def test_multi_week_plan_without_target_uses_sessions(self):
+        """Plan multi-semaines (#69) écrit sans `target_duration_s` : la frise trace la somme des séances."""
+        data = {"arc": 1, "kind": "week", "weeks": [
+            {"week_start": "2026-09-28", "location": "X", "phase": "Base", "target_distance_m": 14000, "sessions": [
+                {"date": "2026-09-29", "sport": "running", "title": "Footing", "planned_duration_s": 1800},
+                {"date": "2026-10-01", "sport": "strength", "title": "Renfo", "planned_duration_s": 1500}]},
+            {"week_start": "2026-10-05", "location": "X", "phase": "Base", "sessions": []}]}
+        (self.ws / "planning/2026-09-27_plan.md").write_text(
+            f"# Plan\n\n```arc\n{json.dumps(data)}\n```\n", encoding="utf-8")
+        store = S.Store(self.ws, memory=True, today="2026-09-30")
+        w = S.api_block(store, {})["weeks"]
+        self.assertEqual((w[0]["target_duration_s"], w[0]["target_duration_from_sessions"]), (3300, True))
+        self.assertIsNone(w[1]["target_duration_s"])
+
     def test_no_plan(self):
         store = S.Store(self.ws, memory=True, today="2026-09-30")
         self.assertEqual(S.api_block(store, {})["status"], "no_plan")
+
+
+class TestValidateWeekPresentation(unittest.TestCase):
+    """`--validate` avertit (sans bloquer) quand un plan valide serait mal servi par la frise."""
+
+    def setUp(self):
+        self.tmp = Path(tempfile.mkdtemp(prefix="arc-week-val-"))
+        (self.tmp / "planning").mkdir()
+
+    def tearDown(self):
+        shutil.rmtree(self.tmp, ignore_errors=True)
+
+    def _write(self, name, block):
+        path = self.tmp / "planning" / name
+        path.write_text(f"# Plan\n\n```arc\n{json.dumps(block)}\n```\n", encoding="utf-8")
+        return path
+
+    def test_hand_written_multi_week_plan_is_flagged(self):
+        sess = [{"date": "2026-11-03", "sport": "running", "title": "Footing", "planned_duration_s": 1800}]
+        path = self._write("2026-11-01_plan_valjoly.md", {"arc": 1, "kind": "week", "weeks": [
+            {"week_start": "2026-11-02", "location": "Lille", "phase": "Reprise (1 nov. – 27 déc.)",
+             "target_distance_m": 14000, "sessions": sess},
+            {"week_start": "2026-11-09", "location": "Lille", "phase": "Base", "target_duration_s": 3600,
+             "sessions": []}]})
+        ok, errors, warnings = I.validate_file(path)
+        self.assertTrue(ok, errors)
+        text = "\n".join(warnings)
+        self.assertIn("planning/Semaine_2026-11-02.md", text)
+        self.assertIn("target_duration_s absent (1 semaine(s), dès 2026-11-02)", text)
+        self.assertIn("Reprise (1 nov. – 27 déc.)", text)
+        self.assertNotIn("Base;", text)
+
+    def test_skeleton_shaped_week_is_silent(self):
+        path = self._write("Semaine_2026-11-02.md", {"arc": 1, "kind": "week", "week_start": "2026-11-02",
+                                                     "location": "Lille", "phase": "Développement",
+                                                     "target_duration_s": 3600, "sessions": []})
+        ok, errors, warnings = I.validate_file(path)
+        self.assertTrue(ok, errors)
+        self.assertEqual(warnings, [])
 
 
 if __name__ == "__main__":

@@ -41,6 +41,10 @@ ASSUMPTIONS = {
         "« semaine sans plan », jamais remplie. Deux semaines manquantes, ou une voisine écrite à la main "
         "(sans `week_type`), coupent le bloc."),
     "realise": "Volume réalisé = somme des activités (hors repos) du lundi au dimanche ; partiel pour la semaine en cours.",
+    "prevu": (
+        "Volume prévu = `target_duration_s` de la semaine. Facultatif au contrat : absent, il est remplacé par la "
+        "somme des `planned_duration_s` de ses séances, et la semaine porte `target_duration_from_sessions` "
+        "(une estimation, jamais réécrite dans le fichier)."),
 }
 
 
@@ -97,9 +101,11 @@ def block_bridgeable(weeks: List[dict]) -> List[str]:
 
 
 def build(weeks: List[dict], done_by_week: Dict[str, dict], race_date: Optional[str], today: date,
-          race_name: Optional[str] = None) -> dict:
+          race_name: Optional[str] = None, planned_by_week: Optional[Dict[str, float]] = None) -> dict:
     """Frise : `weeks` = lignes `week` non éclipsées ; `done_by_week` : lundi ISO ->
-    `{duration_s, distance_m, elevation_m, sessions}` réalisés."""
+    `{duration_s, distance_m, elevation_m, sessions}` réalisés ; `planned_by_week` : lundi ISO -> somme des
+    `planned_duration_s` des séances, repli du volume prévu (voir `ASSUMPTIONS["prevu"]`)."""
+    planned_by_week = planned_by_week or {}
     by_start = {w["week_start"]: w for w in weeks if w.get("week_start")}
     starts = select_block(list(by_start), today, block_bridgeable(weeks))
     current = _monday(today).isoformat()
@@ -129,6 +135,9 @@ def build(weeks: List[dict], done_by_week: Dict[str, dict], race_date: Optional[
             "target_duration_s": w.get("target_duration_s"), "target_distance_m": w.get("target_distance_m"),
             "target_elevation_m": w.get("target_elevation_m"),
         }
+        if planned and item["target_duration_s"] is None and planned_by_week.get(ws):
+            item["target_duration_s"] = planned_by_week[ws]
+            item["target_duration_from_sessions"] = True
         if ws <= current:
             done = done_by_week.get(ws) or {}
             item["done"] = {"duration_s": done.get("duration_s") or 0, "distance_m": done.get("distance_m") or 0,

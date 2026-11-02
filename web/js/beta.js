@@ -228,7 +228,7 @@ export function ribbon(block, summary, { selected = null } = {}) {
     if (w.gap) bits.push(w.is_race_week ? "semaine de course, pas encore planifiée" : "à planifier");
     else {
       bits.push(w.phase_label || PHASE_SHORT[w.phase] || "phase non renseignée");
-      bits.push(w.target_duration_s ? `prévu ${F.hours(w.target_duration_s)}` : "volume prévu non renseigné");
+      bits.push(w.target_duration_s ? `prévu ${F.hours(w.target_duration_s)}${w.target_duration_from_sessions ? " (somme des séances)" : ""}` : "volume prévu non renseigné");
       if (w.done && w.week_start <= today) bits.push(`réalisé ${F.hours(w.done.duration_s)}${w.done.partial ? " (en cours)" : ""}`);
       if (w.is_race_week) bits.push("semaine de course");
     }

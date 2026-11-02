@@ -302,6 +302,7 @@ from typing import Any, Dict, List, Optional, Tuple, Union
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import arc_altitude as AL  # noqa: E402
+import arc_block_timeline as BT  # noqa: E402
 import arc_power as PW  # noqa: E402
 import arc_climb as VC  # noqa: E402
 import arc_climb_match as VM  # noqa: E402
@@ -3721,6 +3722,31 @@ def _validate_gear_inspection_links(path: Path, block: dict, warnings: List[str]
                 warnings.append(f"previous : {pm.group(1)} n'est pas antérieure à la date de l'inspection")
 
 
+def _validate_week_presentation(path: Path, block: dict, warnings: List[str]) -> None:
+    """Fichier `week` valide au contrat mais mal servi au tableau de bord : avertissements seulement
+    (le bloc reste indexé). Nom `planning/Semaine_<premier lundi>.md` (la règle de collision #69 et les
+    skills le supposent), `target_duration_s` (volume prévu de la frise, sinon estimé depuis les
+    séances) et `phase` reconnue par la frise (`arc_block_timeline.classify_phase`)."""
+    entries = block["weeks"] if isinstance(block.get("weeks"), list) else [block]
+    entries = [e for e in entries if isinstance(e, dict) and isinstance(e.get("week_start"), str)]
+    if not entries:
+        return
+    first = min(e["week_start"] for e in entries)
+    if path.name != f"Semaine_{first}.md" or path.parent.name != "planning":
+        warnings.append(f"fichier « week » hors du format attendu : `planning/Semaine_{first}.md` "
+                        "(lundi de la première semaine) — un autre nom perd les collisions de semaine (#69).")
+    no_target = [e["week_start"] for e in entries if e.get("target_duration_s") is None]
+    if no_target:
+        warnings.append(f"target_duration_s absent ({len(no_target)} semaine(s), dès {no_target[0]}) : la frise "
+                        "estime le volume prévu depuis les séances — renseignez la durée visée.")
+    free = sorted({e["phase"] for e in entries
+                   if isinstance(e.get("phase"), str) and BT.classify_phase(e["phase"]) == BT.OTHER})
+    if free:
+        labels = ", ".join(BT.PHASE_LABELS_FR[i] for i in BT.PHASE_IDS)
+        warnings.append(f"phase non reconnue par la frise ({'; '.join(free[:3])}"
+                        f"{' ; …' if len(free) > 3 else ''}) — libellés reconnus : {labels}.")
+
+
 def validate_file(path: Path) -> Tuple[bool, List[str], List[str]]:
     if not path.is_file():
         return False, [f"{path} : fichier introuvable"], []
@@ -3765,6 +3791,8 @@ def validate_file(path: Path) -> Tuple[bool, List[str], List[str]]:
                 "directement sous `planning/`) — le tableau de bord (#55) l'affiche "
                 "dans le journal mais ne pourra jamais résoudre son détail par id."
             )
+    if block.get("kind") == "week" and not errors:
+        _validate_week_presentation(path, block, warnings)
     if block.get("kind") == "gear_inspection":
         # #135 : `gear/AAAA-MM-JJ_<gear_id>_inspection.md` — la date et le `gear_id` du nom de fichier
         # doivent dire la même chose que le bloc (sinon l'inspection est retrouvée sous une autre paire
