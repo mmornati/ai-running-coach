@@ -440,6 +440,30 @@ class TestGarminGearWhitelist(unittest.TestCase):
         text = (SKILLS / "garmin-sync-efficiency/SKILL.md").read_text(encoding="utf-8")
         self.assertIn("one `get_activity_gear(activity_id)` call per NEW activity", text)
         self.assertIn("include_stats=False", text)
+
+
+class TestUnattendedShellRules(unittest.TestCase):
+    """Le run sans surveillance n'autorise que `python3 scripts/*` et `python3 skills/*` : l'agent doit
+    le savoir, et un refus ne doit jamais arrêter la synchronisation ni pousser à élargir les droits."""
+
+    SYNC = REPO / "skills/garmin-daily-sync/SKILL.md"
+    EFFICIENCY = REPO / "skills/garmin-sync-efficiency/SKILL.md"
+
+    def test_allowlist_still_matches_the_rule(self):
+        script = (REPO / "scripts/daily-sync.sh").read_text(encoding="utf-8")
+        self.assertIn('PYTHON_TOOLS="Bash(python3 scripts/*),Bash(python3 skills/*)"', script)
+
+    def test_coach_prompt_and_skill_state_the_rule(self):
+        self.assertIn("## Shell in an unattended run", self.EFFICIENCY.read_text(encoding="utf-8"))
+        self.assertIn("A denied command refuses **that command, not Bash**", self.EFFICIENCY.read_text(encoding="utf-8"))
+        self.assertIn('"Shell in an unattended run"', self.SYNC.read_text(encoding="utf-8"))
+
+    def test_denied_command_is_not_a_sync_failure(self):
+        text = self.SYNC.read_text(encoding="utf-8")
+        self.assertIn("Une commande Bash refusée n'est pas un échec du coach", text)
+        self.assertIn("élargir les permissions", text)
+
+
 class TestEquipmentWiring(unittest.TestCase):
     """#134 — matériel hors chaussures : kits, entretien, alertes une seule fois et contrôle du
     matériel de course n'existent que par les prompts ; verrouille les commandes citées, les

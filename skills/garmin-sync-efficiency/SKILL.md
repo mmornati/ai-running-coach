@@ -7,6 +7,12 @@ description: Use when fetching Garmin data (activities, sleep, HRV, training rea
 
 Garmin MCP responses are verbose JSON. Pulling wide date ranges or raw payloads into the conversation causes rapid context-window exhaustion (observed: 5 context compressions in a single coaching session). Follow these rules strictly.
 
+## Shell in an unattended run
+
+An unattended run (`/garmin-daily-sync`) only allows Bash for **one** `python3 scripts/…` or `python3 skills/…` command per call, from the current directory (already the workspace). No `cd`, no chaining or pipes (`;`, `&&`, `|`), no `$?`, no heredoc, no `python3 -c`, no `cat`, `ls`, `head`, `date` or loop. Read a file with Read, list with Glob, search with Grep.
+
+A denied command refuses **that command, not Bash**. Never stop on it: use the dedicated tool, or split it into single `python3` calls, and carry on with the fetch. If a step really cannot run, finish the rest and name that step in your summary. Never ask to widen the permissions: the restriction is deliberate.
+
 ## Tool Access
 
 All Garmin tools are exposed by the `garmin` MCP server (direct mode) or via `leanproxy_invoke_tool(server="garmin", ...)` (power-user mode). Useful tools include `get_sleep_data`, `get_hrv_data`, `get_rhr_day`, `get_training_readiness`, `get_daily_weigh_ins` / `get_weigh_ins` (#222, read-only), `get_activities`, `upload_course`, `upload_workout`, `get_courses`.
