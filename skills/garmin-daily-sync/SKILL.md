@@ -188,7 +188,9 @@ Remote Control) et l'IDE partagent. Il délègue tout à l'agent `coach` et au s
 
 1. Déléguer à l'agent **`coach`** (outil `task`, prompt en anglais + « Respond in <langue des
    documents> ») la tâche suivante :
-   > Load the `garmin-sync-efficiency` skill. For each of the last `lookback_days` days
+   > Load the `garmin-sync-efficiency` skill and obey its "Shell in an unattended run" rules: Bash takes
+   > one `python3 scripts/…` command per call, no `cd`, chaining, `cat` or `ls` (use Read, Glob, Grep);
+   > a denied command refuses that command, not Bash, so never stop the sync on it. For each of the last `lookback_days` days
    > (today included) — and, first, for every `activity:<id>` listed in `trigger` (if any),
    > even when its date already has a file: a second same-type session that day goes to
    > `activities/YYYY-MM-DD_<type>_2.md` — check whether `activities/YYYY-MM-DD_<type>.md` and
@@ -343,7 +345,10 @@ Remote Control) et l'IDE partagent. Il délègue tout à l'agent `coach` et au s
    traiter comme « aucune décision trouvée ».
 6. Si l'agent `coach` échoue (MCP indisponible, tokens Garmin expirés…), ne rien inventer :
    le résumé doit contenir `ERREUR : <cause>` (ex. « tokens Garmin expirés — relancer
-   `uv run garmin-mcp-auth` »).
+   `uv run garmin-mcp-auth` »). **Une commande Bash refusée n'est pas un échec du coach** : la
+   restriction est voulue (voir `garmin-sync-efficiency`, « Shell in an unattended run »). Si le coach
+   s'arrête là-dessus sans avoir interrogé la source, le relancer **une seule fois** en lui rappelant ces
+   règles. Ne jamais écrire d'`ERREUR` ni d'`Alerte` qui demande d'élargir les permissions.
 
 ## Sortie OBLIGATOIRE (dernier élément de la réponse)
 
