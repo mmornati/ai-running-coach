@@ -22,6 +22,12 @@ automatiquement) et place un `python3` 3.12 en tête du `PATH` pour les scripts 
 tests lancent. Passez donc toujours par `run_tests.py` (`-k` pour cibler un module) plutôt
 que par `python3 -m unittest`. `ARC_TESTS_ANY_PYTHON=1` garde le Python courant.
 
+**En parallèle.** `--jobs N` (ou `--jobs auto`, un processus par cœur) répartit les classes
+de test sur plusieurs processus, en file partagée ; la CI l'utilise partout. Une classe n'est
+jamais coupée, et sa sortie n'est affichée que si elle échoue. Un test doit donc rester
+indépendant des autres classes : un dossier ou un port partagés deviennent une collision.
+Le palier C reste séquentiel. Sans `--jobs`, tout tourne dans un seul processus, comme avant.
+
 ## Palier A — intégration de l'installation
 
 Lance réellement `install.sh`, `setup-ntfy.sh` et `coach-remote.sh`, puis vérifie

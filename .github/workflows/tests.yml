@@ -134,7 +134,7 @@ jobs:
           shellcheck -S warning install.sh scripts/*.sh scripts/lib/*.sh tests/lib/stubs/*
 
       - name: Palier(s) ${{ matrix.tier }}${{ matrix.shard && format(' — part {0}', matrix.shard) || '' }}
-        run: python3 tests/run_tests.py --tier "${{ matrix.tier }}" ${{ matrix.shard && format('--shard {0}', matrix.shard) || '' }}
+        run: python3 tests/run_tests.py --tier "${{ matrix.tier }}" --jobs auto ${{ matrix.shard && format('--shard {0}', matrix.shard) || '' }}
 
       - name: Aperçu --dry-run (aucune écriture attendue)
         if: matrix.dryrun

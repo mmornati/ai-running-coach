@@ -13,6 +13,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from unittest import mock
 from pathlib import Path
 from urllib.parse import quote
 
@@ -401,6 +402,23 @@ class TestRobustness(AttachCase):
         self.addCleanup(sock.close)
         sock.sendall(head)
         return sock
+
+    def test_le_temporaire_est_retire_avant_la_reponse(self):
+        """Le client qui reçoit le refus ne doit plus voir de fichier temporaire : l'ordre est
+        garanti, il ne dépend pas de la vitesse du fil serveur face à celle du client."""
+        self.start()
+        sid = self.new_session()
+        seen = []
+        reply = C.Handler._error
+
+        def spy(handler, *args, **kwargs):
+            seen.append(self.files())
+            return reply(handler, *args, **kwargs)
+
+        with mock.patch.object(C.Handler, "_error", spy):
+            status, _ = self.upload(sid, b"<!DOCTYPE gpx><gpx/>", "a.gpx")
+        self.assertEqual(status, 415)
+        self.assertEqual(seen, [[]])
 
     def test_client_a_l_arret_recoit_408(self):
         """Délai d'inactivité : 408 (comme l'échéance globale), le corps restant est vidé avant de répondre."""

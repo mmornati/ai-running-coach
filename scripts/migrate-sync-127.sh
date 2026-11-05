@@ -347,7 +347,7 @@ migrate() {
             done <"$CONF/install-args"
         fi
         args+=(--workspace "$WS")
-        printf '%s\n' "${args[@]}" | grep -qx -- '--daily-sync' || args+=(--daily-sync)
+        grep -qx -- '--daily-sync' <<<"$(printf '%s\n' "${args[@]}")" || args+=(--daily-sync)
         info "aperçu : ./install.sh ${args[*]} --no-auth --dry-run"
         local preview cron_block
         preview="$(cd "$ENGINE" && ./install.sh "${args[@]}" --no-auth --dry-run </dev/null 2>&1 || true)"

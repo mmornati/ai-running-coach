@@ -875,7 +875,7 @@ link_agents() {
     for existing in "$link"/*.md; do
         [[ -L "$existing" ]] || continue
         base="$(basename "$existing" .md)"
-        if ! printf '%s\n' $ENABLED_AGENTS | grep -qx "$base" || [[ ! -e "$existing" ]]; then
+        if ! grep -qx "$base" <<<"$(printf '%s\n' $ENABLED_AGENTS)" || [[ ! -e "$existing" ]]; then
             rm -f "$existing"
             ok "Agent retiré : $base"
         fi
@@ -1022,7 +1022,7 @@ resolve_agents() {
                 || known=""
             [[ -n "${known// /}" ]] || known="$LEGACY_KNOWN_AGENTS"
             for name in $available; do
-                printf '%s\n' $known $requested | grep -qx "$name" && continue
+                grep -qx "$name" <<<"$(printf '%s\n' $known $requested)" && continue
                 NEW_AGENTS="$NEW_AGENTS $name"
             done
             NEW_AGENTS="${NEW_AGENTS# }"
@@ -1034,7 +1034,7 @@ resolve_agents() {
     ENABLED_AGENTS=""
     for name in $requested; do
         [[ -n "$name" ]] || continue
-        printf '%s\n' "$available" | grep -qx "$name" \
+        grep -qx "$name" <<<"$available" \
             || die "Agent inconnu : « $name ». Disponibles : $(all_agents | tr '\n' ' ')"
         keep=1
         for skip in $(printf '%s' "$excluded" | tr ',' ' '); do
@@ -1048,11 +1048,11 @@ resolve_agents() {
     if [[ -n "$NEW_AGENTS" ]]; then
         local without=""
         for name in $ENABLED_AGENTS; do
-            printf '%s\n' $NEW_AGENTS | grep -qx "$name" || without="$without,$name"
+            grep -qx "$name" <<<"$(printf '%s\n' $NEW_AGENTS)" || without="$without,$name"
         done
         ok "Nouvel agent activé : $NEW_AGENTS — pour le retirer : ./install.sh --agents ${without#,}"
     fi
-    printf '%s\n' $ENABLED_AGENTS | grep -qx coach \
+    grep -qx coach <<<"$(printf '%s\n' $ENABLED_AGENTS)" \
         || die "L'agent « coach » est indispensable : c'est lui qui planifie et pousse vers Garmin."
     log "Staff : $ENABLED_AGENTS"
 }
@@ -2739,7 +2739,7 @@ read_crontab() {
     local out status
     out="$(crontab -l 2>&1)" && { printf '%s\n' "$out"; return 0; }
     status=$?
-    if printf '%s' "$out" | grep -qi 'no crontab'; then
+    if grep -qi 'no crontab' <<<"$out"; then
         return 0            # table vide
     fi
     err "Lecture de la crontab impossible : $out"
@@ -2907,7 +2907,7 @@ warn_replaced_plist() {
 # qu'aucune ligne historique d'un autre workspace n'existe (installation seule : rien ne change), sinon
 # le marqueur suffixé.
 cron_marker_for_workspace() {
-    if printf '%s\n' "$1" | grep -qE "${CRON_MARKER_BASE}[[:space:]]*\$"; then
+    if grep -qE "${CRON_MARKER_BASE}[[:space:]]*\$" <<<"$1"; then
         printf '%s [%s]' "$CRON_MARKER_BASE" "$(workspace_tag)"
     else
         printf '%s' "$CRON_MARKER_BASE"
@@ -3222,7 +3222,7 @@ EOF
 prior_install_state() {
     [[ -e "$(dirname "$WORKSPACE_STATE_FILE")/install-args" ]] && return 0
     any_scheduler_plist && return 0
-    if have crontab && crontab -l 2>/dev/null | grep -q "daily-sync.sh"; then return 0; fi
+    if have crontab && grep -q "daily-sync.sh" <<<"$(crontab -l 2>/dev/null)"; then return 0; fi
     user_toml_value sync runner >/dev/null 2>&1 && return 0
     return 1
 }
@@ -3550,7 +3550,7 @@ add_telegram_chat_id() {
         [[ -n "$id" ]] || continue
         args+=(--list "$id")
     done <<< "$current"
-    if printf '%s\n' "$current" | grep -qxF -- "$TELEGRAM_CHAT_ID"; then
+    if grep -qxF -- "$TELEGRAM_CHAT_ID" <<<"$current"; then
         ok "Chat $TELEGRAM_CHAT_ID déjà autorisé"
         return 0
     fi
@@ -3635,7 +3635,7 @@ traefik_loopback_only() {
     local ports
     ports="$(docker port "$1" 2>/dev/null || true)"
     [[ -n "$ports" ]] || return 1
-    ! printf '%s\n' "$ports" | grep -v -E -- '-> (127\.[0-9.]+|\[::1\]):[0-9]+$' | grep -q .
+    [[ -z "$(grep -v -E -- '-> (127\.[0-9.]+|\[::1\]):[0-9]+$' <<<"$ports")" ]]
 }
 
 # Fuseau horaire de l'hôte (il fixe « aujourd'hui » dans le conteneur).

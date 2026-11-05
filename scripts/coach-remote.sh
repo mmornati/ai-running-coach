@@ -88,7 +88,7 @@ claude_bin() {
 check_login() {
     local status
     status="$(claude auth status 2>/dev/null || true)"
-    if printf '%s' "$status" | grep -q '"loggedIn": *true'; then
+    if grep -q '"loggedIn": *true' <<<"$status"; then
         ok "Claude Code connecté ($(printf '%s' "$status" | grep -o '"authMethod": *"[^"]*"' | cut -d'"' -f4))"
     elif [[ "$DRY_RUN" -eq 1 ]]; then
         warn "Claude Code n'est pas connecté (ignoré en dry-run)."
@@ -144,7 +144,7 @@ last_session_url() {
 read_crontab() {
     local out
     out="$(crontab -l 2>&1)" && { printf '%s\n' "$out"; return 0; }
-    printf '%s' "$out" | grep -qi 'no crontab' && return 0
+    grep -qi 'no crontab' <<<"$out" && return 0
     err "Lecture de la crontab impossible : $out"
     return 1
 }
@@ -163,7 +163,7 @@ install_rotation_cron() {
         return 0
     fi
     current="$(read_crontab)" || die "crontab illisible — rotation du journal non installée."
-    if printf '%s\n' "$current" | grep -qxF "$line"; then
+    if grep -qxF "$line" <<<"$current"; then
         ok "Rotation du journal déjà planifiée (crontab)."
         return 0
     fi
@@ -176,7 +176,7 @@ remove_rotation_cron() {
     local current
     have crontab || return 0
     current="$(read_crontab)" || { warn "crontab illisible — ligne de rotation laissée en place."; return 0; }
-    printf '%s\n' "$current" | grep -qF "$ROTATE_MARKER" || return 0
+    grep -qF "$ROTATE_MARKER" <<<"$current" || return 0
     if [[ "$DRY_RUN" -eq 1 ]]; then
         printf '%s\n' "${C_YELLOW}[dry-run]${C_RESET} retrait de la ligne « $ROTATE_MARKER » de la crontab"
         return 0
@@ -411,7 +411,7 @@ do_status() {
         systemd) systemctl --user status "$SERVICE_NAME" --no-pager || true ;;
         launchd) launchctl print "gui/$(id -u)/$LAUNCHD_LABEL" 2>/dev/null | grep -E "state|pid|last exit" || warn "Service non chargé." ;;
         screen)
-            if have screen; then screen -ls | grep -q "$SCREEN_NAME" && ok "screen $SCREEN_NAME actif" || warn "Non démarré."
+            if have screen; then grep -q "$SCREEN_NAME" <<<"$(screen -ls)" && ok "screen $SCREEN_NAME actif" || warn "Non démarré."
             else tmux has-session -t "$SCREEN_NAME" 2>/dev/null && ok "tmux $SCREEN_NAME actif" || warn "Non démarré."; fi ;;
     esac
     if [[ -f "$REMOTE_LOG" || -f "$REMOTE_LOG.1" ]]; then
