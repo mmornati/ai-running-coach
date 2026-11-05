@@ -68,3 +68,49 @@ jobs:
           # See https://github.com/anthropics/claude-code-action/blob/main/docs/usage.md
           # or https://code.claude.com/docs/en/cli-reference for available options
 
+      # L'action masque le texte de l'erreur (`is_error: true` sans explication) : en cas d'échec,
+      # on lit seulement le motif dans le dernier enregistrement `result` de son fichier d'exécution,
+      # jamais le prompt ni la sortie des outils. Ce texte n'est pas fiable : il sort sur une ligne,
+      # tronqué, derrière un `stop-commands` à jeton aléatoire. `-I` empêche un fichier de la PR de
+      # remplacer un module. L'étape précédente reste en échec : le job reste rouge.
+      - name: Show Claude failure reason
+        if: failure() && steps.claude-review.outputs.execution_file != ''
+        env:
+          EXECUTION_FILE: ${{ steps.claude-review.outputs.execution_file }}
+        run: |
+          python3 -I - <<'PY'
+          import json, os, secrets
+
+          LIMIT = 500
+
+
+          def field(record, key):
+              if key not in record:
+                  return "(absent)"
+              value = record[key]
+              if isinstance(value, str):
+                  return json.dumps(value[:LIMIT])
+              return json.dumps(value)[:LIMIT]
+
+
+          lines = []
+          try:
+              with open(os.environ["EXECUTION_FILE"], encoding="utf-8") as handle:
+                  messages = json.load(handle)
+              if not isinstance(messages, list):
+                  messages = []
+              records = [m for m in messages if isinstance(m, dict) and m.get("type") == "result"]
+              if records:
+                  for key in ("result", "api_error_status", "terminal_reason"):
+                      lines.append(f"{key}: {field(records[-1], key)}")
+              else:
+                  lines.append("Aucun enregistrement result dans le fichier d'exécution.")
+          except Exception as error:
+              lines.append(f"Fichier d'exécution illisible ({type(error).__name__}).")
+
+          token = secrets.token_hex(16)
+          print(f"::stop-commands::{token}")
+          print("\n".join(lines))
+          print(f"::{token}::")
+          PY
+
