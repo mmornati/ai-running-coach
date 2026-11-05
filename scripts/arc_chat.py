@@ -1551,6 +1551,15 @@ class Handler(BaseHTTPRequestHandler):
             return self._refuse_upload(exc.status, exc.message, length)
         tmp = name = None
         remaining_box = [length]                             # octets encore attendus (pour jeter le reste d'un 408)
+
+        def cleanup() -> None:
+            nonlocal tmp, name
+            if tmp:
+                folder.discard(tmp)
+            if name:
+                folder.discard(name)
+            tmp = name = None
+
         try:
             try:
                 fd, tmp = folder.new_temp()
@@ -1586,14 +1595,13 @@ class Handler(BaseHTTPRequestHandler):
         except UP.UploadError as exc:
             if exc.status == 408:                            # client lent : vider ce qui arrive encore, borné, avant de répondre
                 self._drain(remaining_box[0], UPLOAD_DRAIN_MAX_BYTES)
+            cleanup()                                        # avant de répondre : le client ne voit jamais le temporaire
             return self._error(exc.status, exc.message)
         except OSError:
+            cleanup()
             return self._error(400, "Envoi interrompu ou écriture impossible.")
         finally:
-            if tmp:
-                folder.discard(tmp)
-            if name:
-                folder.discard(name)
+            cleanup()
             folder.close()
         self._json(200, record)
 
