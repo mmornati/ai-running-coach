@@ -24,6 +24,25 @@ PYTHON_SCRIPTS = sorted(
 )
 
 
+class TestPipefailEarlyExit(unittest.TestCase):
+    """`producteur | grep -q` sous `set -o pipefail` : grep sort au premier résultat, le
+    producteur qui écrit encore meurt de SIGPIPE (141) et pipefail fait passer la recherche
+    réussie pour un échec. Rare (0,2 % des appels sous charge, Linux), donc invisible en
+    local : « Agent inconnu : coach » à l'installation. `grep -q motif <<<"$texte"` n'a pas
+    de tube."""
+
+    EARLY_EXIT = re.compile(r"\|\s*grep\s+(?:-[a-zA-Z]*q|--quiet)")
+
+    def test_no_grep_quiet_at_the_end_of_a_pipeline(self):
+        for path in SHELL_SCRIPTS:
+            source = path.read_text(encoding="utf-8")
+            if "pipefail" not in source:
+                continue
+            for number, line in enumerate(source.splitlines(), 1):
+                if not line.lstrip().startswith("#") and self.EARLY_EXIT.search(line):
+                    self.fail(f"{path.name}:{number} : {line.strip()}")
+
+
 class TestSyntax(unittest.TestCase):
     def test_shell_scripts_parse(self):
         for path in SHELL_SCRIPTS:

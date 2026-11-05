@@ -646,7 +646,7 @@ record_spend() {
 # journal du run). Le motif couvre aussi les limites de session (même tournure).
 claude_plan_limit_hit() {
     [[ "$RUNNER" == "claude" && -z "$API_KEY_ENV" ]] || return 1
-    printf '%s' "$1" | grep -qiE "hit your .*limit"
+    grep -qiE "hit your .*limit" <<<"$1"
 }
 
 # ---------------------------------------------------------------------------
@@ -672,42 +672,42 @@ detect_provider_failure() {
     local err="$1"
     PROVIDER_FAILURE=""
     [[ -n "$err" ]] || return 1
-    if printf '%s' "$err" | grep -qiE 'garmin|intervals|strava|coros|open ?wearables'; then
+    if grep -qiE 'garmin|intervals|strava|coros|open ?wearables' <<<"$err"; then
         return 1
     fi
     if [[ -n "$SUBSCRIPTION_ID" ]]; then
         # Motifs tirés du code d'OpenCode v1.18.35 (provider/error.ts, plugin/openai/codex.ts) ;
         # corps exacts d'une limite de forfait et des 401/403 Copilot NON vérifiés sur un vrai compte.
-        if printf '%s' "$err" | grep -qiE 'usage_not_included|upgrade to plus'; then
+        if grep -qiE 'usage_not_included|upgrade to plus' <<<"$err"; then
             PROVIDER_FAILURE="plan"; return 0
         fi
-        if printf '%s' "$err" | grep -qiE 'insufficient_quota|quota exceeded|usage limit|usage_limit_reached|rate limit|too many requests|(^|[^0-9])429([^0-9]|$)'; then
+        if grep -qiE 'insufficient_quota|quota exceeded|usage limit|usage_limit_reached|rate limit|too many requests|(^|[^0-9])429([^0-9]|$)' <<<"$err"; then
             PROVIDER_FAILURE="quota"; return 0
         fi
-        if printf '%s' "$err" | grep -qiE 'token refresh failed|(^|[^0-9])40[13]([^0-9]|$)|unauthorized|forbidden|not connected|provider not found|token may be missing'; then
+        if grep -qiE 'token refresh failed|(^|[^0-9])40[13]([^0-9]|$)|unauthorized|forbidden|not connected|provider not found|token may be missing' <<<"$err"; then
             PROVIDER_FAILURE="reconnect"; return 0
         fi
     fi
     if [[ "$SYNC_MODEL" == openrouter/* ]]; then
-        if printf '%s' "$err" | grep -qiE '(^|[^a-z])zdr([^a-z]|$)|zero data retention|data policy'; then
+        if grep -qiE '(^|[^a-z])zdr([^a-z]|$)|zero data retention|data policy' <<<"$err"; then
             PROVIDER_FAILURE="privacy"; return 0
         fi
         # Fournisseur amont saturé (503, `error_type: provider_overloaded`, mesuré le 2026-10-15 sur le
         # modèle gratuit par défaut : HTTP 200 dont le flux porte {"code": 503, …}) : ni quota ni clé.
-        if printf '%s' "$err" | grep -qiE 'provider_overloaded|overloaded|"code" *: *503([^0-9]|$)|(^|[^0-9])503([^0-9]|$)'; then
+        if grep -qiE 'provider_overloaded|overloaded|"code" *: *503([^0-9]|$)|(^|[^0-9])503([^0-9]|$)' <<<"$err"; then
             PROVIDER_FAILURE="upstream"; return 0
         fi
         if [[ "$SYNC_MODEL" == *:free ]] \
-            && printf '%s' "$err" | grep -qiE '(^|[^0-9])429([^0-9]|$)|rate limit|too many requests|rate-limited|free-models-per'; then
+            && grep -qiE '(^|[^0-9])429([^0-9]|$)|rate limit|too many requests|rate-limited|free-models-per' <<<"$err"; then
             # Jetons explicites d'abord (un 429 « par minute » peut citer « per day » dans son texte
             # d'incitation), génériques ensuite — minute avant jour.
-            if printf '%s' "$err" | grep -qiE 'free-models-per-min'; then
+            if grep -qiE 'free-models-per-min' <<<"$err"; then
                 PROVIDER_FAILURE="free_rate"
-            elif printf '%s' "$err" | grep -qiE 'free-models-per-day'; then
+            elif grep -qiE 'free-models-per-day' <<<"$err"; then
                 PROVIDER_FAILURE="free_quota"
-            elif printf '%s' "$err" | grep -qiE 'per[ -]?min'; then
+            elif grep -qiE 'per[ -]?min' <<<"$err"; then
                 PROVIDER_FAILURE="free_rate"
-            elif printf '%s' "$err" | grep -qiE 'per[ -]?day'; then
+            elif grep -qiE 'per[ -]?day' <<<"$err"; then
                 PROVIDER_FAILURE="free_quota"
             else
                 PROVIDER_FAILURE="free_rate"
@@ -715,11 +715,11 @@ detect_provider_failure() {
             return 0
         fi
     fi
-    if printf '%s' "$err" | grep -qiE '(^|[^0-9])402([^0-9]|$)|insufficient (credits|funds)|payment required|credit balance|requires more credits|out of credits'; then
+    if grep -qiE '(^|[^0-9])402([^0-9]|$)|insufficient (credits|funds)|payment required|credit balance|requires more credits|out of credits' <<<"$err"; then
         PROVIDER_FAILURE="credits"
         return 0
     fi
-    if printf '%s' "$err" | grep -qiE '(^|[^0-9])401([^0-9]|$)|invalid (x-)?api[ _-]?key|incorrect api key|user not found|authentication[_ ]error|unauthorized|no auth'; then
+    if grep -qiE '(^|[^0-9])401([^0-9]|$)|invalid (x-)?api[ _-]?key|incorrect api key|user not found|authentication[_ ]error|unauthorized|no auth' <<<"$err"; then
         PROVIDER_FAILURE="auth"
         return 0
     fi
@@ -1127,7 +1127,7 @@ print(check.get("expires_at") or "")
     # Liste vide (après filtrage, ou `token_alert_days = []` explicite) : aucun
     # seuil configuré -> aucune alerte d'expiration, quelle que soit l'échéance.
     [[ -n "$thresholds_asc" ]] || return 0
-    smallest_threshold="$(printf '%s\n' "$thresholds_asc" | head -n1)"
+    smallest_threshold="$(head -n1 <<<"$thresholds_asc")"
 
     local tier="" t
     for t in $thresholds_asc; do
@@ -1232,7 +1232,7 @@ detect_auth_failure() {
         raw_pattern='garminconnectauthenticationerror|401 client error: unauthorized for url: https://connect(api)?\.garmin\.com|error retrieving [a-z ]+ data: authentication failed'
         erreur_pattern='^ERREUR.*(garmin-mcp-auth|tokens? garmin (expir|invalid|refus)|401)'
     fi
-    if printf '%s' "$run_log" | grep -qiE "$raw_pattern"; then
+    if grep -qiE "$raw_pattern" <<<"$run_log"; then
         AUTH_FAILURE_KIND="raw"
         return 0
     fi
@@ -1338,7 +1338,7 @@ main() {
         for arg in "${CMD[@]}"; do
             if [[ "$arg" == *$'\n'* ]]; then shown+=("<prompt : ${#arg} caractères>"); else shown+=("$arg"); fi
         done
-        printf '%s\n' "${C_YELLOW}[dry-run]${C_RESET} cd $ARC_WORKSPACE && ${shown[*]}" | head -c 4000; echo
+        head -c 4000 <<<"${C_YELLOW}[dry-run]${C_RESET} cd $ARC_WORKSPACE && ${shown[*]}"; echo
         if [[ -n "$API_KEY_ENV" ]]; then
             # Le NOM de la variable seulement — jamais sa valeur.
             if [[ "$key_missing" -eq 0 ]]; then
@@ -1580,12 +1580,12 @@ main() {
     if detect_auth_failure; then
         title="🔑 Authentification $SOURCE_LABEL refusée"; priority=5; tags="key,warning"
         # N'ajoute la commande que si l'agent (ERREUR du skill) ne l'a pas déjà écrite.
-        if ! printf '%s' "$resume" | grep -qiF "$AUTH_CMD_HINT"; then
+        if ! grep -qiF "$AUTH_CMD_HINT" <<<"$resume"; then
             resume="$resume — renouvelez avec : $AUTH_CMD_HINT"
         fi
-    elif printf '%s' "$resume" | grep -qi '^ERREUR'; then
+    elif grep -qi '^ERREUR' <<<"$resume"; then
         title="⚠️ Sync $SOURCE_LABEL"; priority=4; tags="warning"
-    elif printf '%s' "$resume" | grep -qi '^À jour'; then
+    elif grep -qi '^À jour' <<<"$resume"; then
         title="Sync $SOURCE_LABEL — à jour"; priority=2; tags="running"
     fi
     # Une ligne « Pourquoi : » (#56) signale un ajustement (garde-fou r5…) : la
@@ -1593,7 +1593,7 @@ main() {
     # part par ailleurs sur un « À jour » (priorité 2 par défaut) — mais ne
     # descend jamais une priorité déjà plus grave (401, ERREUR, à 4 ou 5).
     # Motif accordé avec `enforce_resume_cap` (NBSP-safe sous `LC_ALL=C`).
-    if printf '%s' "$resume" | grep -qE '^Pourquoi[^:]{0,4}:' && [[ "$priority" -lt 4 ]]; then
+    if grep -qE '^Pourquoi[^:]{0,4}:' <<<"$resume" && [[ "$priority" -lt 4 ]]; then
         priority=4
         tags="running,warning"
     fi

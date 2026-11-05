@@ -279,7 +279,7 @@ do_status() {
         systemd) systemctl --user status "$SERVICE_NAME" --no-pager || true ;;
         launchd) launchctl print "gui/$(id -u)/$LAUNCHD_LABEL" 2>/dev/null | grep -E "state|pid|last exit" || warn "Service non chargé." ;;
         screen)
-            if have screen; then screen -ls | grep -q "$SCREEN_NAME" && ok "screen $SCREEN_NAME actif" || warn "Non démarré."
+            if have screen; then grep -q "$SCREEN_NAME" <<<"$(screen -ls)" && ok "screen $SCREEN_NAME actif" || warn "Non démarré."
             else tmux has-session -t "$SCREEN_NAME" 2>/dev/null && ok "tmux $SCREEN_NAME actif" || warn "Non démarré."; fi ;;
     esac
     if have curl; then

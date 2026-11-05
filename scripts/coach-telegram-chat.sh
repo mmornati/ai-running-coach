@@ -112,7 +112,7 @@ write_file() {
 check_login() {
     local status
     status="$(claude auth status 2>/dev/null || true)"
-    if ! printf '%s' "$status" | grep -q '"loggedIn": *true'; then
+    if ! grep -q '"loggedIn": *true' <<<"$status"; then
         [[ "$DRY_RUN" -eq 1 ]] && { warn "Claude Code n'est pas connecté (ignoré en dry-run)."; return 0; }
         die "Claude Code n'est pas connecté. Lancez 'claude' puis '/login' (compte claude.ai, pas de clé API)."
     fi
@@ -263,7 +263,7 @@ preflight() {
 warn_if_remote_control_runs() {
     if (have systemctl && systemctl --user is-active --quiet ai-running-coach-remote 2>/dev/null) \
         || (have tmux && tmux has-session -t coach-remote 2>/dev/null) \
-        || (have screen && screen -ls 2>/dev/null | grep -q coach-remote); then
+        || (have screen && grep -q coach-remote <<<"$(screen -ls 2>/dev/null)"); then
         warn "Remote Control tourne aussi (scripts/coach-remote.sh) : évitez de travailler sur les mêmes fichiers depuis les deux à la fois."
     fi
 }
