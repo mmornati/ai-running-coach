@@ -70,7 +70,8 @@ ARC_LLM_TESTS=1 python3 tests/run_tests.py --tier c   # évals d'exécution (mod
 ```
 
 Les paliers A, B et D tournent en CI sur `ubuntu-latest`, découpés en parts parallèles
-(`--shard I/N`, par classe de test). Ils tournent aussi sur `macos-latest` — bash 3.2,
+(`--shard I/N`, par classe de test), chaque part utilisant tous les cœurs du runner
+(`--jobs auto`, à essayer aussi en local). Ils tournent aussi sur `macos-latest` — bash 3.2,
 le sed de BSD et `launchctl` sont des cibles de premier plan — à chaque poussée sur
 `main`, en déclenchement manuel, et sur toute PR qui touche un fichier sensible à l'OS
 (scripts shell, installateur, bac à sable de test… liste `MACOS_PATHS` dans
