@@ -30,6 +30,24 @@ class Clock:
         return self.now
 
 
+class UsageLogTest(unittest.TestCase):
+    def _line(self, env):
+        with mock.patch.dict(os.environ, env), mock.patch("sys.stderr") as err:
+            C.log_usage("claude", "claude-sonnet-5-5", {"input_tokens": 3, "output_tokens": 2, "cost_eur": 0.01})
+        return "".join(c.args[0] for c in err.write.call_args_list)
+
+    def test_off_by_default(self):
+        with mock.patch.dict(os.environ):
+            os.environ.pop("ARC_CHAT_USAGE_LOG", None)
+            self.assertEqual(self._line({}), "")
+
+    def test_one_json_line_with_numbers_only(self):
+        line = json.loads(self._line({"ARC_CHAT_USAGE_LOG": "1"}))
+        self.assertEqual(line["event"], "llm_usage")
+        self.assertEqual(line["gen_ai_usage_input_tokens"], 3)
+        self.assertEqual(line["gen_ai_request_model"], "claude-sonnet-5-5")
+
+
 class TmpCase(unittest.TestCase):
     def setUp(self):
         self._tmp = tempfile.TemporaryDirectory()

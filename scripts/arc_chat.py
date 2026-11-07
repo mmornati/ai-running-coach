@@ -120,6 +120,21 @@ def log(message: str) -> None:
     print(f"arc_chat: {message}", file=sys.stderr, flush=True)
 
 
+def log_usage(backend: str, model: str, data: dict) -> None:
+    """Avec `ARC_CHAT_USAGE_LOG=1`, une ligne JSON sur stderr par événement `usage`, pour un collecteur de journaux local.
+
+    Des noms et des nombres seulement : jamais de contenu de santé, de message ni d'identifiant de session.
+    """
+    if os.environ.get("ARC_CHAT_USAGE_LOG") != "1":
+        return
+    print(json.dumps({
+        "event": "llm_usage", "app": "ai-running-coach", "gen_ai_provider_name": backend, "gen_ai_request_model": model,
+        "job": "chat", "gen_ai_usage_input_tokens": data.get("input_tokens"),
+        "gen_ai_usage_output_tokens": data.get("output_tokens"), "cache_read_tokens": data.get("cache_read_tokens"),
+        "cost_eur": data.get("cost_eur"), "billing": data.get("billing"),
+    }), file=sys.stderr, flush=True)
+
+
 def iso(ts: float) -> str:
     return datetime.fromtimestamp(ts, timezone.utc).strftime(ISO)
 
@@ -810,6 +825,7 @@ class ChatService:
     # -- dépense ---------------------------------------------------------------
 
     def record_usage(self, sid: str, data: dict, turn: Optional["Turn"] = None) -> None:
+        log_usage(self.backend.name, str(self.cfg["model"]), data)
         try:
             eur = float(data.get("cost_eur") or 0.0)
         except (TypeError, ValueError):
