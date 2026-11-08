@@ -477,15 +477,25 @@ def claude_permission_rules(remote_writes: str = "ask", web: str = "open", engin
         pass
     web_rules = {"open": ["WebSearch", "WebFetch"], "domains": ["WebSearch"] + domains, "ask": []}[web]
 
-    allow = (reads + web_rules + [f"Edit({d}/**)" for d in DATA_DIRS]
-             + ["Bash(python3 scripts/arc_*.py)", "Bash(python3 scripts/arc_*.py *)",
-                "Bash(python3 skills/*/scripts/*.py)", "Bash(python3 skills/*/scripts/*.py *)"])
+    # Scripts : liste EXACTE de config/chat-policy.toml, jamais un joker de dossier. Les dossiers de données
+    # sont modifiables sans prompt : un joker `skills/*/scripts/*.py` laisserait exécuter, via `..`, un
+    # fichier que le modèle vient d'y écrire. Le refus `..` ferme aussi les chemins relatifs détournés.
+    prefixes = []
+    policy = (engine or Path(__file__).resolve().parent.parent) / "config/chat-policy.toml"
+    try:
+        listed = read_toml(policy).get("shell", {}).get("allowed_prefixes", [])
+        prefixes = [p for p in listed if isinstance(p, str) and p.startswith("python3 ") and "*" not in p]
+    except (OSError, ConfigError):
+        pass
+    script_rules = [r for p in prefixes for r in (f"Bash({p})", f"Bash({p} *)")]
+
+    allow = reads + web_rules + [f"Edit({d}/**)" for d in DATA_DIRS] + script_rules
     ask = deletes + downloads + scripts_ask
     if remote_writes == "allow":
         allow += writes
     else:
         ask += writes
-    return {"allow": allow, "ask": ask}
+    return {"allow": allow, "ask": ask, "deny": ["Bash(python3 *..*)"]}
 
 
 def cmd_set_claude_permissions(args) -> int:
@@ -501,9 +511,9 @@ def cmd_set_claude_permissions(args) -> int:
     for rem in ("ask", "allow"):
         for w in ("open", "domains", "ask"):
             rules = claude_permission_rules(rem, w, Path(args.engine) if args.engine else None)
-            owned.update(rules["allow"] + rules["ask"])
+            owned.update(rules["allow"] + rules["ask"] + rules["deny"])
     before = json.dumps(data, sort_keys=True)
-    for key in ("allow", "ask"):
+    for key in ("allow", "ask", "deny"):
         current = perms.get(key) or []
         if not isinstance(current, list):
             raise ConfigError(f"{path} : « permissions.{key} » n'est pas une liste.")

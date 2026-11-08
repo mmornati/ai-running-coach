@@ -1022,7 +1022,7 @@ def render_report(result: dict, applied: Optional[dict] = None, reindexed: Optio
 # ---------------------------------------------------------------------------
 
 def build_parser() -> argparse.ArgumentParser:
-    p = argparse.ArgumentParser(description=__doc__.split("\n\n")[0],
+    p = argparse.ArgumentParser(description=__doc__.split("\n\n")[0], allow_abbrev=False,
                                 formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("--workspace", help="racine du workspace (sinon ARC_WORKSPACE / défaut du moteur)")
     p.add_argument("--apply", action="store_true", help="écrit (sinon simulation)")

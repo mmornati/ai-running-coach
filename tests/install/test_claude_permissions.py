@@ -62,7 +62,7 @@ class TestClaudePermissions(unittest.TestCase):
         self.assertNotIn("mcp__garmin__schedule_*", p["allow"])
         self.assertIn("mcp__garmin__schedule_*", p["ask"])
         self.assertIn("Bash(ls)", p["allow"])
-        self.assertEqual(p["deny"], ["Read(.env)"])
+        self.assertEqual(p["deny"], ["Read(.env)", "Bash(python3 *..*)"])
         self.assertEqual(json.loads(self.path.read_text(encoding="utf-8"))["x"], 1)
 
     def test_idempotent(self):
@@ -76,6 +76,22 @@ class TestClaudePermissions(unittest.TestCase):
         self.assertNotIn("WebFetch", allow)
         self.assertIn("WebSearch", allow)
         self.assertIn("WebFetch(domain:wttr.in)", allow)
+
+    def test_script_rules_are_exact_and_traversal_is_denied(self):
+        """Edit sur les dossiers de données + joker de scripts = exécution de code écrit par le modèle."""
+        run(self.path)
+        p = self.perms()
+        bash = [r for r in p["allow"] if r.startswith("Bash(")]
+        self.assertIn("Bash(python3 scripts/arc_index.py *)", bash)
+        self.assertFalse([r for r in bash if "*.py" in r or "/*/" in r], bash)
+        self.assertIn("Bash(python3 *..*)", p["deny"])
+
+    def test_ask_flag_scripts_reject_option_abbreviations(self):
+        """`--wr` ne doit pas contourner la règle ask `*--write*` : abréviations argparse interdites."""
+        for script in ("arc_index.py", "arc_race_debrief.py", "garmin_gear_backfill.py"):
+            with self.subTest(script=script):
+                text = (REPO / "scripts" / script).read_text(encoding="utf-8")
+                self.assertIn("allow_abbrev=False", text)
 
     def test_invalid_values_are_refused(self):
         self.assertNotEqual(run(self.path, "--remote-writes", "yes").returncode, 0)
