@@ -13,6 +13,7 @@ Sous-commandes :
     merge-json          insère une clé dans un fichier JSON, en préservant le reste
     render-settings     écrit un fichier de réglages dédié depuis un modèle {{VARIABLE}} (session Telegram)
     set-claude-hook     pose UN hook Claude Code d'un événement, en remplaçant ses versions antérieures
+    set-claude-permissions  pose les règles allow/ask de Claude Code interactif (lectures, web, données ; écritures selon [permissions])
     approve-claude-mcp  pré-approuve un serveur MCP de projet dans ~/.claude.json
     get                 lit une clé TOML (user.toml > workspace.toml > défaut)
     set                 écrit une clé dans workspace.user.toml sans toucher au reste
@@ -414,6 +415,108 @@ def cmd_set_claude_hook(args) -> int:
     return 0
 
 
+# --- Permissions de Claude Code interactif (.claude/settings.json du workspace) -------------------
+# Sans ces règles, Claude Code demande une approbation pour CHAQUE outil MCP et chaque URL. On
+# pré-autorise les lectures, le web et les dossiers de données ; les écritures distantes restent
+# soumises à approbation (défaut) ou sont autorisées via [permissions].remote_writes = "allow".
+# Suppressions, téléchargements (écrivent un fichier local) et options `--write` des scripts :
+# toujours « ask ». Les règles de l'utilisateur sont conservées : seules les entrées que CE module
+# génère (tous modes confondus) sont remplacées à chaque appel.
+
+DATA_DIRS = ("activities", "medical", "nutrition", "planning", "rapports", "gear")
+
+# (préfixes d'outils par serveur) — les noms suivent scripts/lib/sync_tools.sh.
+_GARMIN_WRITE = ("schedule_", "upload_", "create_", "add_", "set_", "log_", "update_", "upsert_", "bulk_", "request_reload")
+_GARMIN_DELETE = ("delete_", "remove_", "unschedule_")
+_ICU_WRITE = ("icu_create_", "icu_update_", "icu_add_", "icu_apply_", "icu_bulk_", "icu_duplicate_")
+_ICU_DELETE = ("icu_delete_", "icu_bulk_delete_")
+# Via leanproxy, intervals.icu garde ses noms d'origine (sans « icu_ ») suffixés d'un identifiant.
+_ICU_LEAN_WRITE = ("add_", "update_", "create_", "apply_", "bulk_", "duplicate_")
+_ICU_LEAN_DELETE = ("delete_",)
+
+
+def claude_permission_rules(remote_writes: str = "ask", web: str = "open", engine: Optional[Path] = None) -> dict:
+    """Règles `{allow, ask}` de Claude Code interactif. `engine` : racine du moteur (liste de domaines web)."""
+    if remote_writes not in ("ask", "allow"):
+        raise ConfigError(f"[permissions].remote_writes : « ask » ou « allow » attendu (reçu : {remote_writes!r})")
+    if web not in ("open", "domains", "ask"):
+        raise ConfigError(f"[permissions].web : « open », « domains » ou « ask » attendu (reçu : {web!r})")
+
+    def globs(server: str, prefixes) -> list:
+        return [f"mcp__{server}__{p}*" for p in prefixes]
+
+    servers = ("garmin", "leanproxy__garmin")
+    reads = ["mcp__garmin__get_*", "mcp__leanproxy__garmin__get_*", "mcp__leanproxy__Intervals_icu__get_*",
+             "mcp__intervals__icu_get_*", "mcp__intervals__icu_list_*", "mcp__intervals__icu_search_*",
+             "mcp__Intervals_icu__icu_get_*", "mcp__Intervals_icu__icu_list_*", "mcp__Intervals_icu__icu_search_*",
+             "mcp__strava__get-*", "mcp__coros__query*"]
+    writes, deletes = [], []
+    for server in servers:
+        writes += globs(server, _GARMIN_WRITE)
+        deletes += globs(server, _GARMIN_DELETE)
+    for server in ("intervals", "Intervals_icu"):
+        writes += globs(server, _ICU_WRITE)
+        deletes += globs(server, _ICU_DELETE)
+    writes += globs("leanproxy__Intervals_icu", _ICU_LEAN_WRITE)
+    deletes += globs("leanproxy__Intervals_icu", _ICU_LEAN_DELETE)
+    writes += ["mcp__strava__connect-strava", "mcp__strava__star-segment",
+               "mcp__coros__create*", "mcp__coros__update*", "mcp__coros__schedule*"]
+    deletes += ["mcp__strava__disconnect-strava"]
+    # Un téléchargement écrit un fichier local arbitraire : approbation dans tous les modes.
+    downloads = [f"mcp__{s}__download_*" for s in ("garmin", "leanproxy__garmin", "intervals", "Intervals_icu")]
+    downloads += ["mcp__leanproxy__Intervals_icu__download_*"]
+    scripts_ask = ["Bash(python3 scripts/arc_index.py *--write*)", "Bash(python3 scripts/arc_index.py *--mark-retired*)",
+                   "Bash(python3 scripts/arc_race_debrief.py *--apply*)", "Bash(python3 scripts/garmin_gear_backfill.py *--apply*)"]
+
+    domains = []
+    template = (engine or Path(__file__).resolve().parent.parent) / "templates/settings.telegram.json"
+    try:
+        listed = json.loads(template.read_text(encoding="utf-8")).get("permissions", {}).get("allow", [])
+        domains = [r for r in listed if isinstance(r, str) and r.startswith("WebFetch(domain:")]
+    except (OSError, ValueError):
+        pass
+    web_rules = {"open": ["WebSearch", "WebFetch"], "domains": ["WebSearch"] + domains, "ask": []}[web]
+
+    allow = (reads + web_rules + [f"Edit({d}/**)" for d in DATA_DIRS]
+             + ["Bash(python3 scripts/arc_*.py)", "Bash(python3 scripts/arc_*.py *)",
+                "Bash(python3 skills/*/scripts/*.py)", "Bash(python3 skills/*/scripts/*.py *)"])
+    ask = deletes + downloads + scripts_ask
+    if remote_writes == "allow":
+        allow += writes
+    else:
+        ask += writes
+    return {"allow": allow, "ask": ask}
+
+
+def cmd_set_claude_permissions(args) -> int:
+    """Pose les règles de `claude_permission_rules` dans `permissions.allow/ask` d'un settings.json."""
+    path = Path(args.file)
+    data = read_json(path)
+    perms = data.setdefault("permissions", {})
+    if not isinstance(perms, dict):
+        raise ConfigError(f"{path} : « permissions » n'est pas un objet JSON.")
+    wanted = claude_permission_rules(args.remote_writes, args.web, Path(args.engine) if args.engine else None)
+    # Entrées que nous possédons, quel que soit le mode : un changement ask <-> allow ne laisse rien derrière.
+    owned = set()
+    for rem in ("ask", "allow"):
+        for w in ("open", "domains", "ask"):
+            rules = claude_permission_rules(rem, w, Path(args.engine) if args.engine else None)
+            owned.update(rules["allow"] + rules["ask"])
+    before = json.dumps(data, sort_keys=True)
+    for key in ("allow", "ask"):
+        current = perms.get(key) or []
+        if not isinstance(current, list):
+            raise ConfigError(f"{path} : « permissions.{key} » n'est pas une liste.")
+        kept = [r for r in current if r not in owned]
+        perms[key] = kept + [r for r in wanted[key] if r not in kept]
+    if json.dumps(data, sort_keys=True) == before:
+        print(f"inchangé: {path} (permissions)")
+        return 0
+    write_json(path, data)
+    print(f"permissions posées: {path} (remote_writes={args.remote_writes}, web={args.web})")
+    return 0
+
+
 def _substitute(value, variables: dict):
     """Remplace `{{NOM}}` dans toutes les chaînes d'une structure JSON ; un jeton inconnu lève."""
     if isinstance(value, str):
@@ -580,6 +683,13 @@ def build_parser() -> argparse.ArgumentParser:
     hook.add_argument("--marker", required=True, help="sous-chaîne identifiant nos commandes (anciennes versions)")
     hook.add_argument("--value", required=True, help="entrée JSON {matcher, hooks: [...]}")
     hook.set_defaults(func=cmd_set_claude_hook)
+
+    perms = sub.add_parser("set-claude-permissions", help="pose les règles allow/ask de Claude Code interactif")
+    perms.add_argument("--file", required=True)
+    perms.add_argument("--remote-writes", choices=("ask", "allow"), default="ask")
+    perms.add_argument("--web", choices=("open", "domains", "ask"), default="open")
+    perms.add_argument("--engine", default="", help="racine du moteur (défaut : celle de ce script)")
+    perms.set_defaults(func=cmd_set_claude_permissions)
 
     render = sub.add_parser("render-settings", help="écrit un fichier de réglages Claude Code depuis un modèle")
     render.add_argument("--template", required=True, help="modèle JSON avec des {{VARIABLE}}")

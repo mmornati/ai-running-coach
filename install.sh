@@ -2357,7 +2357,33 @@ write_claude_config() {
             mcp_server_key_exists "$cfg" mcpServers "$stale" || unapprove_claude_project_mcp "$stale"
         done
     fi
+    # Première installation : le hook crée settings.json, les permissions le réécrivent aussitôt ;
+    # la sauvegarde .bak d'un fichier que nous venons de créer n'a pas de sens.
+    local settings_file="$WORKSPACE_ROOT/.claude/settings.json" settings_existed=1
+    [[ -f "$settings_file" ]] || settings_existed=0
     install_claude_update_hook
+    install_claude_permissions
+    [[ "$settings_existed" -eq 1 || "$DRY_RUN" -eq 1 ]] || rm -f "$settings_file.bak"
+}
+
+# Pré-autorise ce que le coach fait en continu (lectures Garmin/intervals.icu/Strava/COROS, web, dossiers
+# de données, scripts du moteur) dans .claude/settings.json : sans cela Claude Code redemande à chaque
+# outil MCP et chaque URL. Les écritures distantes restent soumises à approbation, sauf
+# [permissions].remote_writes = "allow" dans config/workspace.user.toml. Règles de l'utilisateur conservées.
+install_claude_permissions() {
+    local settings="$WORKSPACE_ROOT/.claude/settings.json" writes web
+    if [[ "$DRY_RUN" -eq 1 ]]; then
+        printf '%s\n' "${C_YELLOW}[dry-run]${C_RESET} permissions Claude Code (lectures, web, données) dans $settings"
+        return 0
+    fi
+    have python3 || { warn "python3 absent : permissions Claude Code non installées."; return 0; }
+    writes="$(python3 "$PROJECT_ROOT/scripts/coach_config.py" get --workspace "$WORKSPACE_ROOT" \
+        --section permissions --key remote_writes --default ask 2>/dev/null || echo ask)"
+    web="$(python3 "$PROJECT_ROOT/scripts/coach_config.py" get --workspace "$WORKSPACE_ROOT" \
+        --section permissions --key web --default open 2>/dev/null || echo open)"
+    python3 "$PROJECT_ROOT/scripts/coach_config.py" set-claude-permissions --file "$settings" \
+        --remote-writes "$writes" --web "$web" --engine "$PROJECT_ROOT" >/dev/null \
+        || die "Échec de la mise à jour des permissions de $settings (voir le message ci-dessus ; [permissions] dans workspace.user.toml)."
 }
 
 # Hook SessionStart (nouvelles sessions seulement, pas les reprises) : si une release plus
