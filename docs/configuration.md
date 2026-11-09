@@ -578,6 +578,29 @@ une douleur sévère. Une valeur hors plage (ex. `pain_score_threshold = 15`,
 `pain_window_days = 0.5`) retombe sur son défaut avec un avertissement sur
 stderr, jamais silencieusement.
 
+## Les validations de Claude Code — `[permissions]`
+
+Dans une session Claude Code **interactive**, le coach demandait une approbation pour chaque appel
+d'outil Garmin et chaque URL. `install.sh` écrit désormais dans `<workspace>/.claude/settings.json`
+les règles qui évitent ces validations répétées (vos propres règles sont conservées) :
+
+- **toujours autorisés** : les lectures (Garmin, intervals.icu, Strava, COROS), les dossiers de données
+  (`activities`, `medical`, `nutrition`, `planning`, `rapports`, `gear`) et les scripts du moteur ;
+- **toujours soumis à approbation** : suppressions, téléchargements de fichiers et options
+  `--write` / `--apply` des scripts ;
+- **réglables** : les écritures distantes et le web.
+
+```toml
+[permissions]
+remote_writes = "ask"   # "allow" : programmer / envoyer des séances sans prompt Claude Code
+web = "open"            # "domains" : liste de domaines sportifs seulement ; "ask" : approbation à chaque URL
+```
+
+Mettez la valeur dans `config/workspace.user.toml`, puis relancez `install.sh`. Avec `remote_writes =
+"allow"`, le coach confirme toujours dans la conversation avant de pousser vers Garmin (règle du projet) ;
+seul le second prompt de Claude Code disparaît. `web = "open"` laisse le modèle consulter n'importe quel
+site : une page web piégée pourrait lui souffler une requête ; choisissez `domains` si cela vous gêne.
+
 ## Le tableau de bord — `[dashboard]`
 
 ```toml

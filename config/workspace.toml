@@ -463,6 +463,19 @@ step_m = 50
 # Cache local des altitudes (<workspace>/.arc/dem-cache.json, jamais dans le dépôt).
 cache = true
 
+[permissions]
+# Claude Code INTERACTIF (installé dans <workspace>/.claude/settings.json par install.sh).
+# Lectures (Garmin, intervals.icu, Strava, COROS), dossiers de données et scripts du moteur :
+# toujours pré-autorisés, pour ne plus valider chaque appel. Relancer install.sh après un changement.
+# Écritures distantes (programmer/envoyer des séances, journaux, réglages) :
+#   "ask"   = Claude Code demande une approbation par outil (défaut, recommandé) ;
+#   "allow" = autorisées sans prompt (le coach confirme toujours dans la conversation avant de pousser).
+# Suppressions, téléchargements de fichiers et options --write/--apply des scripts : toujours « ask ».
+remote_writes = "ask"
+# Web : "open" (WebSearch + WebFetch, tout domaine ; défaut) | "domains" (WebSearch + liste de domaines
+# de templates/settings.telegram.json) | "ask" (approbation à chaque recherche / URL).
+web = "open"
+
 [privacy]
 # Séances personnelles (`arc_index.py dem-check <séance>`) : une trace d'activité révèle votre
 # domicile. Tant que `false` (défaut), AUCUNE trace de séance n'est envoyée à un service

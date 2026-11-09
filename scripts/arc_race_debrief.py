@@ -1065,6 +1065,7 @@ def _build_findings(first_third_num: float, first_third_den: float,
 
 def build_arg_parser() -> argparse.ArgumentParser:
     ap = argparse.ArgumentParser(
+        allow_abbrev=False,
         description="Débrief post-course : plan vs réalisé, par segment (#61).")
     ap.add_argument("command", choices=("debrief",), help="sous-commande (seule « debrief » existe)")
     ap.add_argument("--plan", required=True, type=Path, help="fichier plan de course (kind: race_plan)")
