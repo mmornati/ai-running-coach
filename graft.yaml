@@ -61,7 +61,8 @@ sensitive_paths:
   - "scripts/arc_macos_plist.py"
   - "SECURITY.md"
   # Site de documentation : configuration et gabarits du build, et le HTML/JS partagé servi par
-  # Pages (racine de docs/, page d'index des vidéos, moteur du lecteur chargé par chaque épisode).
+  # Pages (racine de docs/, page d'index des vidéos, moteur du lecteur et manifestes de captures
+  # chargés par chaque épisode).
   # Les pages d'un épisode (docs/video/<épisode>/index.html, scenes.js, timing.js) ne sont plus
   # listées : ce sont les données d'une vidéo, et elles rendaient `sensitive` chaque PR d'épisode.
   # Elles ne s'auto-approuvent pas pour autant : `docs-only` n'accepte que du Markdown et des
@@ -76,6 +77,7 @@ sensitive_paths:
   - "docs/video/*.html"
   - "docs/video/*.js"
   - "docs/video/engine/**"
+  - "docs/video/shots*/*.js"
 
 # Quand aucune règle ne s'applique : un humain.
 default:
