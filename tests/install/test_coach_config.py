@@ -165,6 +165,40 @@ class TestSet(CoachConfigCase):
             self.assertEqual(proc.stdout.strip(), "off")
 
 
+class TestUnattendedLlmRun(CoachConfigCase):
+    """Sous ARC_LLM_SANDBOX (posé par daily-sync.sh sur le runner), seule la lecture reste permise."""
+
+    def test_write_subcommands_refused(self):
+        with Sandbox() as sb:
+            target = sb.root / "mcp.json"
+            proc = sb.run(["python3", str(sb.repo / "scripts/coach_config.py"), "merge-json",
+                           "--file", str(target), "--section", "mcpServers", "--name", "x",
+                           "--value", '{"command": "sh"}'], ARC_LLM_SANDBOX="1")
+            self.assertFailed(proc)
+            self.assertFalse(target.exists())
+            proc = sb.run(["python3", str(sb.repo / "scripts/coach_config.py"), "set", "--workspace", str(sb.repo),
+                           "--section", "sync", "--key", "runner", "--value", "codex"], ARC_LLM_SANDBOX="1")
+            self.assertFailed(proc)
+
+    def test_other_engine_scripts_refuse_their_write_modes(self):
+        """Le refus vit dans chaque script : une règle de la sync qui compare des chaînes
+        (`Bash(python3 scripts/x.py*)`) se contourne par `scripts/./x.py`."""
+        with Sandbox() as sb:
+            proc = sb.run(["python3", str(sb.repo / "scripts/./coach_setup.py"), "--workspace", str(sb.root / "ws"),
+                           "--scaffold"], ARC_LLM_SANDBOX="1")
+            self.assertEqual(proc.returncode, 2, proc.stderr)
+            self.assertFalse((sb.root / "ws" / "planning").exists())
+            proc = sb.run(["python3", str(sb.repo / "scripts/arc_coros_auth.py"), "logout"], ARC_LLM_SANDBOX="1")
+            self.assertEqual(proc.returncode, 2, proc.stderr)
+
+    def test_get_still_works(self):
+        with Sandbox() as sb:
+            proc = sb.run(["python3", str(sb.repo / "scripts/coach_config.py"), "get", "--workspace", str(sb.repo),
+                           "--section", "language", "--key", "documents", "--default", "fr"],
+                          ARC_LLM_SANDBOX="1")
+            self.assertSucceeded(proc)
+
+
 class TestMergeJson(CoachConfigCase):
     def test_refuses_to_touch_invalid_json(self):
         with Sandbox() as sb:

@@ -86,7 +86,9 @@ class TestDataSourceAwareTools(InstallAsserts):
                 self.assertOutputContains(proc, "Bash(python3 scripts/*)")
                 self.assertOutputContains(proc, "Bash(python3 skills/*)")
                 self.assertOutputContains(proc, "--disallowedTools")
-                for rule in ("Edit(scripts/**)", "Edit(skills/**)", "Edit(.claude/**)", "Edit(.mcp.json)"):
+                for rule in ("Edit(scripts/**)", "Edit(skills/**)", "Edit(.claude/**)", "Edit(.mcp.json)",
+                             "Bash(python3 *..*)", "Bash(python3 scripts/arc_llm.py*)",
+                             "Bash(python3 scripts/coach_config.py*)"):
                     self.assertOutputContains(proc, rule)
 
     def test_intervals_source_forbids_every_write_tool_in_headless_runs(self):

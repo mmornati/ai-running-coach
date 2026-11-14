@@ -434,6 +434,9 @@ def main(argv=None) -> int:
                   "renouvelé automatiquement).")
             return 0
         if args.cmd == "logout":
+            if os.environ.get("ARC_LLM_SANDBOX") == "1":   # run IA non surveillé : lecture seule
+                print("coros : déconnexion refusée depuis un run IA non surveillé.", file=sys.stderr)
+                return 2
             for p in (_tokens_file(), _client_file()):
                 with contextlib.suppress(FileNotFoundError):
                     p.unlink()

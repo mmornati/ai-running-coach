@@ -292,6 +292,16 @@ class LockTests(InstallAsserts):
             proc = _llm(sb, "with-lock", "--data-dir", str(sb.root / "s"), "--", "sh", "-c", "exit 7")
             self.assertEqual(proc.returncode, 7)
 
+    def test_with_lock_refused_from_an_unattended_llm_run(self):
+        """`with-lock` exécute une commande quelconque : refusé sous ARC_LLM_SANDBOX (daily-sync.sh
+        le pose sur le runner, dont la liste d'outils autorise `python3 scripts/*`)."""
+        with Sandbox() as sb:
+            out = sb.root / "ran"
+            proc = _llm(sb, "with-lock", "--data-dir", str(sb.root / "s"), "--", "touch", str(out),
+                        ARC_LLM_SANDBOX="1")
+            self.assertEqual(proc.returncode, 2, proc.stderr)
+            self.assertFalse(out.exists())
+
     def test_auth_status_absent(self):
         with Sandbox() as sb:
             proc = _llm(sb, "auth-status", "copilot", "--data-dir", str(sb.root / "s"))

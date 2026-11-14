@@ -749,6 +749,12 @@ def build_parser() -> argparse.ArgumentParser:
 
 def main(argv: list | None = None) -> int:
     args = build_parser().parse_args(argv)
+    # Run IA non surveillé (daily-sync.sh pose ARC_LLM_SANDBOX) : lecture seule. Les sous-commandes
+    # d'écriture posent du JSON/TOML à un chemin quelconque (réglages IDE, serveurs MCP, hooks).
+    if os.environ.get("ARC_LLM_SANDBOX") == "1" and args.func is not cmd_get:
+        print("coach_config: écriture refusée depuis un run IA non surveillé (ARC_LLM_SANDBOX).",
+              file=sys.stderr)
+        return 1
     try:
         return args.func(args)
     except ConfigError as exc:

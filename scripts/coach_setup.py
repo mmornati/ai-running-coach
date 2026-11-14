@@ -654,6 +654,15 @@ def main(argv: list | None = None) -> int:
     group.add_argument("--scaffold", action="store_true", help="installe les modèles sans rien demander")
     args = parser.parse_args(argv)
 
+    # Run IA non surveillé (daily-sync.sh pose ARC_LLM_SANDBOX) : lecture seule. Les modes
+    # --apply* et --scaffold réécrivent le profil, l'objectif et la configuration du workspace ;
+    # le refus est ici, pas seulement dans une règle de la sync qui compare des chaînes.
+    if os.environ.get("ARC_LLM_SANDBOX") == "1" and not (
+            args.list_questions or args.export_state or args.status):
+        print("coach_setup: écriture refusée depuis un run IA non surveillé (ARC_LLM_SANDBOX).",
+              file=sys.stderr)
+        return 2
+
     try:
         if args.list_questions:
             return cmd_list_questions(args)

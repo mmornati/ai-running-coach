@@ -895,6 +895,11 @@ class StoreGate:
 
 
 def cmd_with_lock(args: argparse.Namespace) -> int:
+    # `with-lock` exécute une commande quelconque : jamais depuis le modèle d'un run non surveillé,
+    # dont la liste d'outils autorise `python3 scripts/*` (daily-sync.sh pose ARC_LLM_SANDBOX).
+    if os.environ.get("ARC_LLM_SANDBOX") == "1":
+        sys.stderr.write("with-lock : refusé depuis un run IA non surveillé (ARC_LLM_SANDBOX).\n")
+        return EXIT_USAGE
     marker = getattr(args, "marker", None)
     if marker:
         try:

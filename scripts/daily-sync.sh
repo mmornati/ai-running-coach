@@ -201,6 +201,17 @@ fi
 #     (une règle `Edit(…)` couvre tous les outils d'écriture de fichiers, Write compris).
 PYTHON_TOOLS="Bash(python3 scripts/*),Bash(python3 skills/*)"
 PROTECTED_PATHS="Edit(scripts/**),Edit(skills/**),Edit(local/skills/**),Edit(local/agents/**),Edit(.claude/**),Edit(.mcp.json)"
+#   - Scripts du moteur qui exécutent une commande ou écrivent un fichier quelconque
+#     (`arc_llm.py with-lock`, sous-commandes d'écriture de `coach_config.py`, installation) :
+#     refusés par leur nom ici, et par eux-mêmes sous ARC_LLM_SANDBOX (posé sur la commande du
+#     runner, voir run_sync) quelle que soit l'écriture du chemin. `arc_coros_auth.py` n'a que
+#     le refus intégré (login sous ARC_HEADLESS, logout sous ARC_LLM_SANDBOX).
+#   - `..` dans une commande Python : `python3 scripts/../activities/x.py` correspond au motif
+#     `scripts/*` alors que le modèle peut écrire dans activities/.
+PROTECTED_PATHS+=",Bash(python3 *..*)"
+for _script in arc_llm coach_config coach_setup; do
+    PROTECTED_PATHS+=",Bash(python3 scripts/${_script}.py*)"
+done
 if [[ "$SOURCE" == "coros" ]]; then
     # Source COROS (#168) : relais du MCP officiel (nom « coros », scripts/arc_coros_mcp.py,
     # install.sh --source coros). Lecture seule à deux niveaux : le relais refuse lui-même toute
@@ -1416,7 +1427,9 @@ main() {
         echo "===== $(date '+%F %T') — runner=$RUNNER lookback=$LOOKBACK trigger=${TRIGGER:-planifié} ====="
     } >> "$LOG_FILE"
     cd "$ARC_WORKSPACE"
-    local exec_cmd=("${CMD[@]}") raw_output provider_error="" run_marker="$LOG_DIR/.sync-run-start"
+    # ARC_LLM_SANDBOX : posé au plus près du runner (à l'intérieur de with-lock), il fait refuser
+    # aux scripts du moteur leurs sous-commandes dangereuses quand c'est le modèle qui les appelle.
+    local exec_cmd=(env ARC_LLM_SANDBOX=1 "${CMD[@]}") raw_output provider_error="" run_marker="$LOG_DIR/.sync-run-start"
     if [[ "$RUNNER" == "opencode" ]]; then
         mkdir -p "$(dirname "$OC_CONFIG_FILE")"
         opencode_config_json > "$OC_CONFIG_FILE"
