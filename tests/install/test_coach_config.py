@@ -180,6 +180,17 @@ class TestUnattendedLlmRun(CoachConfigCase):
                            "--section", "sync", "--key", "runner", "--value", "codex"], ARC_LLM_SANDBOX="1")
             self.assertFailed(proc)
 
+    def test_other_engine_scripts_refuse_their_write_modes(self):
+        """Le refus vit dans chaque script : une règle de la sync qui compare des chaînes
+        (`Bash(python3 scripts/x.py*)`) se contourne par `scripts/./x.py`."""
+        with Sandbox() as sb:
+            proc = sb.run(["python3", str(sb.repo / "scripts/./coach_setup.py"), "--workspace", str(sb.root / "ws"),
+                           "--scaffold"], ARC_LLM_SANDBOX="1")
+            self.assertEqual(proc.returncode, 2, proc.stderr)
+            self.assertFalse((sb.root / "ws" / "planning").exists())
+            proc = sb.run(["python3", str(sb.repo / "scripts/arc_coros_auth.py"), "logout"], ARC_LLM_SANDBOX="1")
+            self.assertEqual(proc.returncode, 2, proc.stderr)
+
     def test_get_still_works(self):
         with Sandbox() as sb:
             proc = sb.run(["python3", str(sb.repo / "scripts/coach_config.py"), "get", "--workspace", str(sb.repo),
