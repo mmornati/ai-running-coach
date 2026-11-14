@@ -60,12 +60,24 @@ sensitive_paths:
   - "scripts/fetch-sparkle.sh"
   - "scripts/arc_macos_plist.py"
   - "SECURITY.md"
-  # Site de documentation : configuration et gabarits du build, HTML/JS servis par Pages
+  # Site de documentation : configuration et gabarits du build, et le HTML/JS partagé servi par
+  # Pages (racine de docs/, page d'index des vidéos, moteur du lecteur et manifestes de captures
+  # chargés par chaque épisode).
+  # Les pages d'un épisode (docs/video/<épisode>/index.html, scenes.js, timing.js) ne sont plus
+  # listées : ce sont les données d'une vidéo, et elles rendaient `sensitive` chaque PR d'épisode.
+  # Elles ne s'auto-approuvent pas pour autant : `docs-only` n'accepte que du Markdown et des
+  # images, la règle par défaut demande donc toujours un humain. Conséquence à connaître : un
+  # fichier HTML/JS ajouté ailleurs, dans un sous-dossier de docs/, n'est plus `sensitive` par
+  # son chemin ; l'ajouter ici s'il sert du code partagé.
   - "/mkdocs.yml"
   - "/requirements-docs.txt"
   - "overrides/**"
-  - "docs/**/*.html"
-  - "docs/**/*.js"
+  - "docs/*.html"
+  - "docs/*.js"
+  - "docs/video/*.html"
+  - "docs/video/*.js"
+  - "docs/video/engine/**"
+  - "docs/video/shots*/*.js"
 
 # Quand aucune règle ne s'applique : un humain.
 default:
