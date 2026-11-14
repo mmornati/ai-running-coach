@@ -202,13 +202,14 @@ fi
 PYTHON_TOOLS="Bash(python3 scripts/*),Bash(python3 skills/*)"
 PROTECTED_PATHS="Edit(scripts/**),Edit(skills/**),Edit(local/skills/**),Edit(local/agents/**),Edit(.claude/**),Edit(.mcp.json)"
 #   - Scripts du moteur qui exécutent une commande ou écrivent un fichier quelconque
-#     (`arc_llm.py with-lock`, sous-commandes d'écriture de `coach_config.py`, installation,
-#     connexions interactives) : refusés par leur nom ici, et par eux-mêmes sous ARC_LLM_SANDBOX
-#     (posé sur la commande du runner, voir run_sync) quelle que soit l'écriture du chemin.
+#     (`arc_llm.py with-lock`, sous-commandes d'écriture de `coach_config.py`, installation) :
+#     refusés par leur nom ici, et par eux-mêmes sous ARC_LLM_SANDBOX (posé sur la commande du
+#     runner, voir run_sync) quelle que soit l'écriture du chemin. `arc_coros_auth.py` n'a que
+#     le refus intégré (login sous ARC_HEADLESS, logout sous ARC_LLM_SANDBOX).
 #   - `..` dans une commande Python : `python3 scripts/../activities/x.py` correspond au motif
 #     `scripts/*` alors que le modèle peut écrire dans activities/.
 PROTECTED_PATHS+=",Bash(python3 *..*)"
-for _script in arc_llm coach_config coach_setup arc_coros_auth; do
+for _script in arc_llm coach_config coach_setup; do
     PROTECTED_PATHS+=",Bash(python3 scripts/${_script}.py*)"
 done
 if [[ "$SOURCE" == "coros" ]]; then
