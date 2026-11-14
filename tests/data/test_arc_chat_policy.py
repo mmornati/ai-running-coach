@@ -476,6 +476,45 @@ class Round2PolicyTest(PolicyBase):
         self.assertEqual(self.d("fs.list", {"path": ".", "glob": "*.md"}), "allow")
 
 
+
+class ShellWorkdirTest(PolicyBase):
+    """Un préfixe relatif autorisé ne vaut que depuis la racine du workspace : le `workdir` du
+    bash OpenCode est transmis à la politique, et le chat n'écrit jamais de code exécutable."""
+
+    def bash(self, **inp):
+        sys.path.insert(0, str(REPO / "scripts"))
+        from arc_chat_opencode import canonical_tool
+        return canonical_tool("bash", inp)
+
+    def test_workdir_hors_racine_refuse(self):
+        (self.ws / "planning" / "x" / "scripts").mkdir(parents=True)
+        for workdir in ("planning/x", str(self.ws / "planning" / "x"), "..", "/tmp"):
+            with self.subTest(workdir=workdir):
+                tool, inp = self.bash(command="python3 scripts/arc_index.py", workdir=workdir)
+                self.assertEqual(inp["workdir"], workdir)
+                self.assertEqual(self.d(tool, inp), "deny")
+        tool, inp = self.bash(command="python3 scripts/arc_index.py", cwd="planning/x")
+        self.assertEqual(self.d(tool, inp), "deny")
+
+    def test_workdir_racine_ou_absent_inchange(self):
+        for extra in ({}, {"workdir": str(self.ws)}, {"workdir": "."}, {"workdir": ""}):
+            with self.subTest(extra=extra):
+                tool, inp = self.bash(command="python3 scripts/arc_index.py", **extra)
+                self.assertEqual(self.d(tool, inp), "allow")
+
+    def test_workdir_entre_dans_le_hash(self):
+        from arc_chat_backend import payload_hash
+        _, a = self.bash(command="python3 scripts/arc_index.py")
+        _, b = self.bash(command="python3 scripts/arc_index.py", workdir="planning/x")
+        self.assertNotEqual(payload_hash("shell", a), payload_hash("shell", b))
+
+    def test_pas_de_code_executable_dans_les_dossiers_de_donnees(self):
+        for path in ("planning/x/scripts/arc_index.py", "planning/run.sh", "planning/X.PY"):
+            with self.subTest(path=path):
+                self.assertEqual(self.d("fs.write", {"path": path}), "deny")
+        self.assertEqual(self.d("fs.write", {"path": "planning/note.md"}), "allow")
+
+
 if __name__ == "__main__":
     unittest.main()
 

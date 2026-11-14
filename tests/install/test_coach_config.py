@@ -165,6 +165,29 @@ class TestSet(CoachConfigCase):
             self.assertEqual(proc.stdout.strip(), "off")
 
 
+class TestUnattendedLlmRun(CoachConfigCase):
+    """Sous ARC_LLM_SANDBOX (posé par daily-sync.sh sur le runner), seule la lecture reste permise."""
+
+    def test_write_subcommands_refused(self):
+        with Sandbox() as sb:
+            target = sb.root / "mcp.json"
+            proc = sb.run(["python3", str(sb.repo / "scripts/coach_config.py"), "merge-json",
+                           "--file", str(target), "--section", "mcpServers", "--name", "x",
+                           "--value", '{"command": "sh"}'], ARC_LLM_SANDBOX="1")
+            self.assertFailed(proc)
+            self.assertFalse(target.exists())
+            proc = sb.run(["python3", str(sb.repo / "scripts/coach_config.py"), "set", "--workspace", str(sb.repo),
+                           "--section", "sync", "--key", "runner", "--value", "codex"], ARC_LLM_SANDBOX="1")
+            self.assertFailed(proc)
+
+    def test_get_still_works(self):
+        with Sandbox() as sb:
+            proc = sb.run(["python3", str(sb.repo / "scripts/coach_config.py"), "get", "--workspace", str(sb.repo),
+                           "--section", "language", "--key", "documents", "--default", "fr"],
+                          ARC_LLM_SANDBOX="1")
+            self.assertSucceeded(proc)
+
+
 class TestMergeJson(CoachConfigCase):
     def test_refuses_to_touch_invalid_json(self):
         with Sandbox() as sb:

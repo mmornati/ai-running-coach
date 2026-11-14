@@ -128,7 +128,15 @@ def canonical_tool(name: str, tool_input: Optional[dict], mcp_servers: Any = ())
                                             inp.get("include") or inp.get("glob"))
         return "fs.list", fs_list_input(inp.get("path"))
     if name == "bash":
-        return "shell", {"command": inp.get("command", "")}
+        out = {"command": inp.get("command", "")}
+        # Le répertoire d'exécution fait partie de l'appel : sans lui, un préfixe relatif autorisé
+        # (`python3 scripts/arc_index.py`) désignerait un autre fichier depuis un sous-dossier.
+        # Transmis à la politique (refus hors racine du workspace), au hash et à la carte.
+        for key in ("workdir", "cwd"):
+            if inp.get(key) not in (None, ""):
+                out["workdir"] = str(inp[key])
+                break
+        return "shell", out
     if name == "webfetch":
         return "web.fetch", {"url": inp.get("url", "")}
     if name in ("websearch", "codesearch"):

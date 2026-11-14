@@ -22,7 +22,7 @@ import socket
 import sys
 import threading
 from pathlib import Path
-from typing import Iterable, Optional
+from typing import Any, Iterable, Optional
 from urllib.parse import urlsplit
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -41,6 +41,8 @@ SHELL_META = set(";|&$`><()\n\r\\~*?[]{}!")
 ECHO_LITERAL_RE = re.compile(r"""^echo(?:[ \t]+(?:"[^"$`\\!]*"|'[^']*'|[A-Za-z0-9_.:=+,/-]+))*$""")
 # `#` ne commence un commentaire qu'en début de mot : refusé là seulement (`fichier.md#mardi` passe).
 COMMENT_RE = re.compile(r"(^|\s)#")
+# Extensions refusées en écriture par le chat, même dans un dossier de données (fs.write).
+EXECUTABLE_SUFFIXES = (".py", ".pyc", ".pyw", ".sh", ".bash", ".zsh", ".command")
 # Entrée standard des scripts qui lisent du JSON (`[shell].stdin_scripts`, ex. arc_log.py) : deux
 # formes seulement, sans aucune expansion possible par le shell — une chaîne entre apostrophes
 # (rien n'est interprété entre ' ') ou un heredoc à délimiteur entre apostrophes (`<< 'EOF'`).
@@ -284,6 +286,8 @@ class Policy:
         if tool == "fs.write":
             return self._fs_write(tool_input)
         if tool == "shell":
+            if not self._shell_workdir_ok(tool_input.get("workdir")):
+                return "deny"
             return self._shell(str(tool_input.get("command") or ""))
         if tool == "web.fetch":
             return self._web_fetch(str(tool_input.get("url") or ""))
@@ -373,9 +377,24 @@ class Policy:
                     return "deny"
         return self._fs_write_one(str(tool_input.get("path") or ""))
 
+    def _shell_workdir_ok(self, workdir: Any) -> bool:
+        """Les préfixes autorisés sont relatifs : ils ne valent que depuis la racine du workspace."""
+        if workdir in (None, ""):
+            return True
+        try:
+            path = Path(str(workdir))
+            if not path.is_absolute():
+                path = self.workspace / path
+            return path.resolve() == self.workspace
+        except (OSError, ValueError):
+            return False
+
     def _fs_write_one(self, raw: str) -> str:
         rel = resolve_workspace_path(self.workspace, raw)
         if rel is None or self._secret(rel) or "/" not in rel:
+            return "deny"
+        # Jamais de code exécutable dans les dossiers de données : le chat écrit des documents.
+        if rel.lower().endswith(EXECUTABLE_SUFFIXES):
             return "deny"
         return "allow" if rel.split("/", 1)[0] in self.write_dirs else "deny"
 
