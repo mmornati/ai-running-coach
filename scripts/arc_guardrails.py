@@ -89,6 +89,21 @@ python3 scripts/arc_guardrails.py session-spike --date 2026-09-24
 python3 scripts/arc_guardrails.py session-spike --date 2026-09-24 --text
 ```
 
+Cinquième usage, consigne du jour : le verdict santé appliqué à la séance PRÉVUE ce jour-là
+(maintenue, allégée, remplacée, annulée) — voir `ASSUMPTIONS_DAY_ADVICE`. `--verdict` sert
+quand le fichier santé du jour n'est pas encore écrit :
+
+```bash
+python3 scripts/arc_guardrails.py day-advice --date 2026-11-15 --verdict amber
+```
+
+Sixième usage, dérive de charge RÉALISÉE de la semaine en cours contre le plan et les trois
+semaines précédentes — voir `ASSUMPTIONS_LOAD_DRIFT` :
+
+```bash
+python3 scripts/arc_guardrails.py load-drift --today 2026-11-13
+```
+
 Choix : script DÉDIÉ plutôt qu'une sous-commande de `arc_index.py` (déjà
 2300+ lignes, focalisé sur l'indexation et les métriques dérivées). Les
 garde-fous sont un CONSOMMATEUR de l'index (comme le sont déjà les agents),
@@ -2400,6 +2415,211 @@ def realised_session_spikes(conn, day: date, gconf: dict) -> dict:
 
 
 # ---------------------------------------------------------------------------
+# Consigne du jour : le verdict santé appliqué à la séance PRÉVUE
+# ---------------------------------------------------------------------------
+
+ASSUMPTIONS_DAY_ADVICE: Dict[str, str] = {
+    "purpose": (
+        "Le bilan matinal pose un verdict (`green`/`amber`/`red`) sur la seule triade santé. Sans "
+        "la séance du planning, sa phrase reste générique (« footing facile au plus ») même un jour "
+        "de renforcement : l'athlète ne sait pas s'il garde la séance. `day-advice` lit la ou les "
+        "séances prévues ce jour-là et rend, pour chacune, une action et la phrase à écrire."
+    ),
+    "matrix": (
+        "Table fixe, approximation du projet (aucune source n'en donne une chiffrée) : `green` = "
+        "séance maintenue ; `red` = séance annulée, repos ; `amber` = séance de qualité "
+        "(tempo/seuil/VO2max/course) remplacée par de l'endurance facile, renforcement maintenu "
+        "allégé (effort modéré, RPE 5 au plus, ni charge maximale ni pliométrie), récupération "
+        "maintenue, toute autre séance (endurance, sortie longue, vélo) maintenue allégée (effort "
+        "facile strict, sans dénivelé ni accélérations). Le verdict lui-même reste celui de l'agent "
+        "médical : cette table ne le change jamais, elle le traduit sur le planning."
+    ),
+    "scope": (
+        "Séances non éclipsées (#69), hors repos, hors statut `cancelled`/`moved`/`missed`. Une "
+        "séance dont une activité de la même famille de sport est déjà indexée ce jour-là est rendue "
+        "`done: true`, sans consigne : il n'y a plus rien à décider. Sans verdict (bilan `off`, nuit "
+        "pas encore arrivée), aucune consigne n'est inventée (`status: \"no_verdict\"`)."
+    ),
+}
+
+ADVICE_VERDICT_LABEL = {"green": "vert", "amber": "orange", "red": "rouge"}
+ADVICE_ACTION_LABEL = {"keep": "maintenue", "lighten": "allégée", "replace": "remplacée", "cancel": "annulée"}
+ADVICE_LIGHTEN_RPE_MAX = 5   # renforcement un jour orange : approximation du projet
+
+
+def advise_session(verdict: str, session: dict) -> Tuple[str, str]:
+    """PURE. Rend `(action, phrase)` pour une séance prévue un jour de verdict `verdict` —
+    table de ASSUMPTIONS_DAY_ADVICE["matrix"]."""
+    title = session.get("title") or "Séance prévue"
+    sport, intensity = session.get("sport"), session.get("intensity")
+    if verdict == "green":
+        return "keep", f"{title} : maintenue telle que prévue."
+    if verdict == "red":
+        return "cancel", f"{title} : annulée, repos aujourd'hui."
+    if intensity in M.QUALITY_INTENSITIES:
+        return "replace", (f"{title} : remplacée par de l'endurance facile (Z1-Z2), "
+                           "durée prévue au plus, sans intensité.")
+    if sport == "strength" or intensity == "strength":
+        return "lighten", (f"{title} : maintenue en version allégée — effort modéré "
+                           f"(RPE {ADVICE_LIGHTEN_RPE_MAX} au plus), ni charge maximale ni pliométrie.")
+    if intensity == "recovery":
+        return "keep", f"{title} : maintenue, une séance de récupération reste compatible avec ce verdict."
+    return "lighten", (f"{title} : maintenue en version allégée — effort facile strict (Z1-Z2), "
+                       "sans dénivelé ni accélérations, écourtée si les sensations sont mauvaises.")
+
+
+def planned_sessions_on(conn, day: date) -> List[dict]:
+    """Séances prévues le jour `day` (non éclipsées, hors repos et statuts exclus), avec `done`
+    vrai quand une activité de la même famille de sport est déjà indexée ce jour-là."""
+    rows = conn.execute(
+        "SELECT source_path, date, sport, title, intensity, planned_duration_s, planned_distance_m, "
+        "planned_elevation_m, status FROM planned_session WHERE date = ? AND shadowed = 0 "
+        "ORDER BY source_path, rowid", (day.isoformat(),)).fetchall()
+    done_families = [M.sport_family(sport) for (sport,) in conn.execute(
+        "SELECT sport FROM activity WHERE date = ?", (day.isoformat(),)).fetchall()]
+    sessions = []
+    for path, d, sport, title, intensity, duration_s, distance_m, elevation_m, status in rows:
+        session_ = {"date": d, "sport": sport, "title": title, "intensity": intensity,
+                    "planned_duration_s": duration_s, "planned_distance_m": distance_m,
+                    "planned_elevation_m": elevation_m, "status": status, "week": path}
+        if _is_excluded(session_):
+            continue
+        family = M.sport_family(sport)
+        session_["done"] = status == "done" or family in done_families
+        if family in done_families:
+            done_families.remove(family)
+        sessions.append({k: v for k, v in session_.items() if v is not None})
+    return sessions
+
+
+def day_advice(day: date, verdict: Optional[str], sessions: List[dict]) -> dict:
+    """PURE. Consigne du jour : `session_advice` est la liste à recopier telle quelle dans le
+    bloc `health` du jour, `reason_sentence` la phrase qui termine `verdict_reason`,
+    `notification` le segment court de la ligne `Readiness :` du résumé."""
+    result = {"date": day.isoformat(), "verdict": verdict, "sessions": sessions, "session_advice": [],
+              "reason_sentence": None, "notification": None, "decision_needed": False}
+    pending = [x for x in sessions if not x.get("done")]
+    if verdict not in C.VERDICT:
+        result["status"] = "no_verdict"
+        return result
+    if not pending:
+        result["status"] = "done" if sessions else "no_session"
+        result["reason_sentence"] = ("Séance du jour déjà réalisée." if sessions
+                                     else "Aucune séance prévue aujourd'hui.")
+        return result
+    result["status"] = "ok"
+    short = []
+    for session_ in pending:
+        action, text = advise_session(verdict, session_)
+        entry = {"action": action, "text": text, "title": session_.get("title") or "Séance prévue",
+                 "session_ref": {"week": session_["week"], "date": session_["date"]}}
+        entry.update({k: session_[k] for k in ("sport", "intensity", "planned_duration_s") if session_.get(k)})
+        result["session_advice"].append(entry)
+        short.append(f"{entry['title']} {ADVICE_ACTION_LABEL[action]}")
+    result["reason_sentence"] = " ".join(e["text"] for e in result["session_advice"])
+    result["notification"] = f"verdict {ADVICE_VERDICT_LABEL[verdict]} → " + " ; ".join(short)
+    result["decision_needed"] = any(e["action"] in ("replace", "cancel") for e in result["session_advice"])
+    return result
+
+
+# ---------------------------------------------------------------------------
+# Dérive de charge RÉALISÉE : la semaine en cours contre le plan et l'historique
+# ---------------------------------------------------------------------------
+
+ASSUMPTIONS_LOAD_DRIFT: Dict[str, str] = {
+    "purpose": (
+        "R1-R8 vérifient ce que le coach PRESCRIT. Rien ne signalait une semaine courue au double "
+        "du plan (17 km prévus, 34,9 km courus) : l'ACWR restait bas, gonflé par un gros bloc "
+        "ancien. `load-drift` compare le réalisé de la semaine en cours (lundi → jour de référence, "
+        "famille course à pied) au total PRÉVU de la semaine et à la moyenne RÉALISÉE des trois "
+        "semaines calendaires précédentes."
+    ),
+    "thresholds": (
+        "Approximations du projet, volontairement larges pour ne pas alerter sur le bruit : contre "
+        "le plan, dépassement de plus de 20 % du total de la SEMAINE ENTIÈRE et d'au moins 3 km "
+        "(300 m pour le D+) ; contre l'historique, plus de 1,5 × la moyenne des trois semaines "
+        "précédentes avec les mêmes planchers absolus. Le réalisé partiel d'une semaine est comparé "
+        "à des semaines complètes : une alerte en milieu de semaine sous-estime donc la dérive, "
+        "jamais l'inverse."
+    ),
+    "scope": (
+        "Distance et D+ seulement (la durée suit la distance). Sans séance de course prévue cette "
+        "semaine, la comparaison au plan est sautée ; sans activité de course sur les trois "
+        "semaines précédentes, celle à l'historique l'est aussi. Semaine de course (objectif actif "
+        "dans la semaine) : aucune alerte, la course dépasse le plan par construction. Sans état : "
+        "la sync ne l'appelle que quand une séance de course vient d'être synchronisée."
+    ),
+}
+
+DRIFT_PLAN_MARGIN = 1.20
+DRIFT_HISTORY_RATIO = 1.50
+DRIFT_HISTORY_WEEKS = 3
+DRIFT_MIN_EXCESS = {"distance_m": 3000.0, "elevation_gain_m": 300.0}
+
+
+def _drift_amount(metric: str, value: float) -> str:
+    if metric == "distance_m":
+        return f"{value / 1000.0:.1f}".rstrip("0").rstrip(".").replace(".", ",") + " km"
+    return f"{round(value)} m D+"
+
+
+def evaluate_load_drift(realised: dict, planned: Optional[dict], history: Optional[dict]) -> List[dict]:
+    """PURE. `realised`/`planned`/`history` : totaux `distance_m`/`elevation_gain_m` (None = pas de
+    référence). Rend les dépassements, voir ASSUMPTIONS_LOAD_DRIFT["thresholds"]."""
+    alerts = []
+    for metric in ("distance_m", "elevation_gain_m"):
+        done = realised.get(metric) or 0.0
+        for kind, reference, ratio_max in (("vs_plan", planned, DRIFT_PLAN_MARGIN),
+                                           ("vs_history", history, DRIFT_HISTORY_RATIO)):
+            ref = (reference or {}).get(metric) or 0.0
+            if ref <= 0 or done - ref < DRIFT_MIN_EXCESS[metric] or done <= ref * ratio_max:
+                continue
+            head = f"{_drift_amount(metric, done)} cette semaine"
+            tail = (f"pour {_drift_amount(metric, ref)} prévus (× {_fr(done / ref)})" if kind == "vs_plan" else
+                    f"× {_fr(done / ref)} la moyenne des {DRIFT_HISTORY_WEEKS} semaines précédentes "
+                    f"({_drift_amount(metric, ref)})")
+            # `short` : le même constat sans le réalisé, quand l'alerte précédente l'a déjà donné.
+            repeat = bool(alerts) and alerts[-1]["metric"] == metric
+            alerts.append({"metric": metric, "kind": kind, "realised": done, "reference": ref,
+                           "ratio": round(done / ref, 2),
+                           "text": f"{head} {tail}" if kind == "vs_plan" else f"{head}, {tail}",
+                           "short": tail if repeat else None})
+    return alerts
+
+
+def load_drift(conn, today: date, gconf: dict) -> dict:
+    """Dérive de charge réalisée de la semaine de `today` — lecture de l'index, sans état."""
+    monday = _monday(today)
+    result = {"week_start": monday.isoformat(), "today": today.isoformat(), "alerts": [], "alert": False,
+              "notification": None, "enabled": bool(gconf.get("enabled", True))}
+    if not result["enabled"]:
+        return result
+    realised = _run_family_totals(conn, monday, today)
+    result["realised"] = {k: realised[k] for k in ("distance_m", "elevation_gain_m")}
+    race_date = _active_objective_race_date(conn)
+    if race_date and monday.isoformat() <= race_date <= (monday + timedelta(days=6)).isoformat():
+        result["skipped"] = "race_week"
+        return result
+    rows = conn.execute(
+        "SELECT sport, intensity, status, planned_distance_m, planned_elevation_m FROM planned_session "
+        "WHERE week_start = ? AND shadowed = 0", (monday.isoformat(),)).fetchall()
+    run = [r for r in rows if M.sport_family(r[0]) == "run"
+           and not _is_excluded({"sport": r[0], "intensity": r[1], "status": r[2]})]
+    planned = ({"distance_m": sum(r[3] or 0.0 for r in run), "elevation_gain_m": sum(r[4] or 0.0 for r in run)}
+               if run else None)
+    totals = [_run_family_totals(conn, monday - timedelta(days=7 * i), monday - timedelta(days=7 * i - 6))
+              for i in range(1, DRIFT_HISTORY_WEEKS + 1)]
+    history = ({k: sum(t[k] for t in totals) / DRIFT_HISTORY_WEEKS for k in ("distance_m", "elevation_gain_m")}
+               if any(t["has_any_activity"] for t in totals) else None)
+    result.update({"planned": planned, "history": history})
+    result["alerts"] = evaluate_load_drift(result["realised"], planned, history)
+    result["alert"] = bool(result["alerts"])
+    if result["alerts"]:
+        result["notification"] = "Dérive de charge : " + " ; ".join(a["short"] or a["text"] for a in result["alerts"])
+    return result
+
+
+# ---------------------------------------------------------------------------
 # CLI
 # ---------------------------------------------------------------------------
 
@@ -2496,7 +2716,7 @@ def build_parser() -> argparse.ArgumentParser:
     # `injury-risk` (#57) : pas de semaine proposée (--week n'a de sens que pour
     # `check`, rendu optionnel au niveau argparse et exigé à la main dans
     # `main()` selon la sous-commande — voir juste en dessous).
-    parser.add_argument("command", nargs="?", default="check", choices=("check", "injury-risk", "session-spike"))
+    parser.add_argument("command", nargs="?", default="check", choices=("check", "injury-risk", "session-spike", "day-advice", "load-drift"))
     parser.add_argument("--week", metavar="FICHIER|-",
                         help="(sous-commande « check », obligatoire) semaine proposée : chemin "
                              "d'un fichier (Markdown ```arc ou JSON brut) ou « - » pour lire le "
@@ -2509,6 +2729,9 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--date", metavar="AAAA-MM-JJ",
                         help="(sous-commande « session-spike », obligatoire) jour des séances RÉALISÉES "
                              "à évaluer (R8, pic de charge d'une séance).")
+    parser.add_argument("--verdict", choices=C.VERDICT,
+                        help="(« day-advice ») verdict du jour quand le fichier santé n'est pas encore "
+                             "écrit — sinon celui du fichier `medical/` du jour.")
     parser.add_argument("--json", action="store_true",
                         help="(« session-spike ») sortie JSON — c'est déjà le défaut, option acceptée "
                              "pour les agents qui la passent systématiquement.")
@@ -2553,10 +2776,35 @@ def main(argv=None) -> int:
         except ValueError:
             raise ConfigError(f"--week-start : date AAAA-MM-JJ attendue, « {args.week_start} » reçue.")
 
-    if args.command != "session-spike":
+    if args.command not in ("session-spike", "day-advice", "load-drift"):
         for flag, value in (("--date", args.date), ("--json", args.json), ("--text", args.text)):
             if value:
                 raise ConfigError(f"{flag} : réservé à la sous-commande « session-spike » (voir --help).")
+    if args.verdict and args.command != "day-advice":
+        raise ConfigError("--verdict : réservé à la sous-commande « day-advice » (voir --help).")
+
+    if args.command in ("day-advice", "load-drift"):
+        if args.week or args.week_start:
+            raise ConfigError(f"--week/--week-start : sans effet pour la sous-commande « {args.command} ».")
+        if args.text:
+            raise ConfigError(f"--text : sans effet pour la sous-commande « {args.command} » (sortie JSON).")
+        if args.command == "load-drift" and args.date:
+            raise ConfigError("--date : sans effet pour « load-drift » (jour de référence : --today).")
+        today = date.fromisoformat(args.today) if args.today else date.today()
+        try:
+            day = date.fromisoformat(args.date) if args.date else today
+        except ValueError:
+            raise ConfigError(f"--date : date AAAA-MM-JJ attendue, « {args.date} » reçue.")
+        workspace = workspace_root(args.workspace)
+        conn = I.open_db(workspace, args.db, args.memory)
+        I.index_workspace(conn, workspace, today.isoformat())
+        if args.command == "load-drift":
+            result = load_drift(conn, today, guardrail_settings(I.load_config(workspace)))
+        else:
+            verdict = args.verdict or _health_verdicts(conn, day, day).get(day.isoformat())
+            result = day_advice(day, verdict, planned_sessions_on(conn, day))
+        print(json.dumps(result, ensure_ascii=False))
+        return 0   # informatif : jamais bloquant
 
     if args.command == "session-spike":
         if args.week or args.week_start:

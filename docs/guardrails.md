@@ -112,6 +112,58 @@ catégories ne forment pas un gradient régulier ; le message n'en suggère aucu
     dimension distance : dénivelé, descente et effort perçu (trail) sont hors
     périmètre, faute de seuils validés.
 
+## Le verdict du matin appliqué à la séance prévue
+
+Le bilan matinal pose un verdict (maintenir, alléger, repos) à partir de la VFC,
+de la FC de repos et de la readiness. Seul, il ne dit pas quoi faire de la séance
+du planning : « footing facile au plus » un jour de renforcement laisse l'athlète
+sans consigne. La commande `day-advice` lit la séance prévue ce jour-là et rend
+une action par séance, avec la phrase à afficher :
+
+```bash
+python3 scripts/arc_guardrails.py day-advice --date 2026-11-15 --verdict amber
+```
+
+| Verdict | Séance prévue | Consigne |
+|---|---|---|
+| Maintenir (vert) | toutes | maintenue telle que prévue |
+| Alléger (orange) | qualité (tempo, seuil, VO2max, course) | remplacée par de l'endurance facile |
+| Alléger (orange) | renforcement | maintenue allégée : effort modéré, ni charge maximale ni pliométrie |
+| Alléger (orange) | récupération | maintenue |
+| Alléger (orange) | endurance, sortie longue, vélo | maintenue allégée : effort facile strict, sans dénivelé |
+| Repos (rouge) | toutes | annulée |
+
+La consigne est écrite dans le fichier santé du jour (`session_advice`), affichée
+sous le verdict du tableau de bord et reprise dans la [notification](mobile.md).
+Une séance remplacée ou annulée donne en plus une décision « proposée » ; une
+séance maintenue ou allégée n'en crée pas. La table est une approximation du
+projet : elle ne change jamais le verdict, elle le traduit sur le planning.
+
+La consigne est un point de départ, pas un ordre. L'athlète reste libre de faire
+autrement, et peut en discuter avec le coach dans le [chat](dashboard/chat.md) pour
+l'affiner selon ses sensations ou les contraintes du jour : ce qui est convenu
+remplace alors la consigne et est tracé comme une décision.
+
+## La dérive de charge réalisée
+
+Les règles ci-dessus vérifient ce que le coach **prescrit**. Une semaine courue
+au double du plan ne déclenchait rien : l'ACWR peut rester bas quand un gros bloc
+ancien gonfle la charge chronique. `load-drift` compare le réalisé de la semaine
+en cours (course à pied, du lundi au jour même) :
+
+- **au plan** de la semaine entière : alerte au-delà de 20 % de dépassement ;
+- **à la moyenne des trois semaines précédentes** : alerte au-delà de 1,5 fois.
+
+Dans les deux cas le dépassement doit atteindre 3 km (300 m pour le D+), pour ne
+pas alerter sur le bruit. La sync quotidienne lance la commande quand une séance
+de course vient d'être synchronisée et ajoute un segment à la ligne `Alerte :`,
+par exemple « Dérive de charge : 34,9 km cette semaine pour 17 km prévus
+(× 2,05) ». Semaine de course : aucune alerte.
+
+```bash
+python3 scripts/arc_guardrails.py load-drift --today 2026-11-13
+```
+
 ## Au-delà de la semaine : la projection jusqu'à la course
 
 <!-- arc-video:avant-apres -->

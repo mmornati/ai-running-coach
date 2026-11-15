@@ -305,6 +305,16 @@ dépasse de plus de 10 % la plus longue sortie running/trail des 30 jours préc�
 `Alerte : Pic de charge : 16 km = 1,45 × la plus longue sortie des 30 j (11 km le 25/10)`.
 Aucune ligne de plus, rien d'écrit.
 
+**Verdict et séance du jour.** Quand une séance est prévue aujourd'hui, la ligne `Readiness :`
+se termine par ce que le verdict en fait — par exemple
+`Readiness : 33/100 — verdict orange → Renfo B — force de base (RPE 7) allégée`
+([consigne du jour](guardrails.md#le-verdict-du-matin-applique-a-la-seance-prevue)).
+
+**Dérive de charge de la semaine.** Quand une séance de course nouvellement synchronisée porte
+la semaine au-delà du plan ou des trois semaines précédentes
+([dérive de charge](guardrails.md#la-derive-de-charge-realisee)), un segment s'ajoute à la ligne
+`Alerte :` — par exemple `Alerte : Dérive de charge : 34,9 km cette semaine pour 17 km prévus (× 2,05)`.
+
 **Variante `Pourquoi :` (#56).** Quand une `decision` (garde-fou, bilan
 matinal rouge…) est active pour aujourd'hui ou demain, la 5<sup>e</sup> ligne
 change d'étiquette — `Pourquoi :` au lieu d'`Alerte :`, jamais les deux à la

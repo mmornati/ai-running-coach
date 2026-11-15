@@ -230,12 +230,22 @@ Remote Control) et l'IDE partagent. Il délègue tout à l'agent `coach` et au s
    > `full` or `minimal`, record the gatekeeper `verdict` (`green`/`amber`/`red`) and
    > `verdict_reason` per the morning-check rules (`agents/medical.md`) — never leave it to
    > chance, step 4 below depends on it; document language from `config/workspace.toml` for
-   > the prose below the block). Validate each file with `python3 scripts/arc_index.py
+   > the prose below the block). **The verdict is applied to TODAY's planned session, never left
+   > generic:** once the verdict is decided, run `python3 scripts/arc_guardrails.py day-advice --date
+   > <today> --verdict <green|amber|red>` and (a) write its `session_advice` list into the block **as
+   > returned** (omit the key when the list is empty), (b) END `verdict_reason` — and the verdict
+   > line of the prose — with its `reason_sentence`, word for word. Never write an advice that names
+   > another kind of session than the planned one ("easy jog at most" on a strength day), and never
+   > re-derive the action yourself. `status: "no_verdict"`, or a failed command: write no
+   > `session_advice` and say nothing about the session. A PAST day's health file that has
+   > `body_battery_high` but no `body_battery_low` is completed with one `get_stats` call
+   > (`garmin-sync-efficiency`, rule 5's exception) even though it counts as synced. Validate each file with `python3 scripts/arc_index.py
    > --validate <file>` and fix what it reports. Never dump raw JSON into the conversation.
    > Do not ask questions. Do not push anything to the Garmin calendar. Reply with: the list
    > of files created or merged, and a 5-line maximum summary (new activities:
    > type/distance/D+/HR avg/HRR; sleep score; HRV status vs baseline; readiness score; any
-   > alert such as low HRV, poor sleep, HRR missing).
+   > alert such as low HRV, poor sleep, HRR missing), plus `day-advice`'s `notification` and
+   > `decision_needed` fields as returned.
 2. **Échantillons FIT (#42, best-effort)** : pour chaque activité running/trail dont un
    fichier a été créé à l'étape 1, télécharger son FIT : `python3
    skills/fit-download/scripts/download_fit.py <garmin_activity_id | intervals_activity_id | s<strava_activity_id> | coros_activity_id> --json` (sans
@@ -308,6 +318,14 @@ Remote Control) et l'IDE partagent. Il délègue tout à l'agent `coach` et au s
    fichier écrit, aucune décision, jamais de modification du plan. Échec de la commande : ignorer
    silencieusement (non bloquant, jamais `ERREUR :`). Un repère de risque relatif de groupe (Frandsen
    et al., BJSM 2025;59(17):1203-1210), jamais un diagnostic ni une probabilité de blessure.
+3e. **Dérive de charge réalisée — signal informatif.** Même condition qu'en 3d : seulement si une
+   séance running/trail a été synchronisée pour la première fois dans CE run (sinon ne PAS lancer la
+   commande). Lancer `python3 scripts/arc_guardrails.py load-drift --today <date du jour>` : si
+   `alert` vaut `true`, ajouter le champ `notification` tel quel à la ligne `Alerte :` unique
+   (` ; `, jamais une ligne de plus), par exemple « Dérive de charge : 34,9 km cette semaine pour
+   17 km prévus (× 2,05) ; × 2,91 la moyenne des 3 semaines précédentes (12 km) ». `alert: false`, `skipped` ou échec de la commande : rien, jamais
+   `ERREUR :`. Compare le réalisé de la semaine en cours au plan et aux trois semaines précédentes ;
+   sans état, aucun fichier écrit, jamais de modification du plan.
 4. **Garde-fou r5, bilan rouge (#52/#53) — jamais d'écriture de plan ni de push ici.** Si
    un `medical/YYYY-MM-DD_health.md` persisté à l'étape 1 porte `verdict: "red"`, chercher
    dans `planning/` une semaine (`kind: week`) dont une séance de qualité (intensité
@@ -327,6 +345,15 @@ Remote Control) et l'IDE partagent. Il délègue tout à l'agent `coach` et au s
    change l'alternative, elle écrit une NOUVELLE `decision` (`outcome: "applied"`,
    `supersedes: <chemin de la decision proposed ci-dessus>`) — ce skill headless ne le fait
    jamais lui-même.
+4b. **Séance du jour changée par le verdict — même règle, jamais d'écriture de plan.** Si l'étape 1
+   a rendu `decision_needed: true` (`day-advice` : une séance d'AUJOURD'HUI est `replace` ou
+   `cancel`) et que l'étape 4 n'a pas déjà écrit une `decision` pour cette séance, écrire une
+   `decision` avec `outcome: "proposed"`, `trigger: "morning_check"`, `date` = aujourd'hui,
+   `session_ref` = celui de l'entrée `session_advice`, `before` = la séance prévue (`title`,
+   `intensity`, `planned_duration_s`), `after` = ce que dit la consigne (`intensity: "endurance"`
+   pour `replace`, `status: "cancelled"` pour `cancel`), `summary` = le `text` de la consigne —
+   sans `rule_ids` (aucune règle de garde-fou n'est en jeu). La valider comme à l'étape 4. Une
+   séance `keep` ou `lighten` ne produit **aucune** décision : la consigne du fichier santé suffit.
 5. **Raison de l'ajustement pour la notification (#56).** Interroger le journal des décisions
    pour AUJOURD'HUI **et** DEMAIN — `date` d'une `decision` de l'étape 4 est celle de la séance
    qu'elle concerne, pas forcément celle du run :
@@ -356,9 +383,15 @@ Terminer la réponse par un bloc de code clôturé avec le langage `resume`, **5
 dans la langue des documents, sans Markdown à l'intérieur. C'est ce bloc que
 `scripts/daily-sync.sh` extrait mot pour mot pour la notification push.
 
+**Ligne `Readiness :` — le verdict et la séance du jour.** Quand l'étape 1 a rendu un champ
+`notification` (`day-advice`), la ligne `Readiness :` se termine par ` — ` suivi de ce champ tel
+quel : « Readiness : 33/100 — verdict orange → Renfo B — force de base (RPE 7) allégée ». C'est ce
+qui dit à l'athlète quoi faire de la séance prévue ; aucune ligne n'est ajoutée. Sans champ
+`notification` (pas de verdict, pas de séance prévue, séance déjà faite), la ligne reste inchangée.
+
 **Une seule ligne `Alerte :` au total**, jamais une par source : si plusieurs
 alertes s'appliquent en même temps (FIT non téléchargé, fichier hors contrat, chaussure
-ayant atteint son seuil — étape 3b, pic de charge d'une séance (> 10 % au-dessus de la plus longue sortie) — étape 3d, matériel Garmin non associé ou en désaccord avec la
+ayant atteint son seuil — étape 3b, pic de charge d'une séance (> 10 % au-dessus de la plus longue sortie) — étape 3d, dérive de charge de la semaine — étape 3e, matériel Garmin non associé ou en désaccord avec la
 déclaration de l'athlète, #133 — « Matériel : Brooks Ghost non associée (à lier via le coach) »
 ou « Matériel : Garmin indique Nike Pegasus, ta déclaration (Salomon S/Lab) est conservée »…),
 les concaténer sur cette même ligne, séparées par ` ; ` — le budget de 5

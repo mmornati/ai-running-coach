@@ -94,6 +94,10 @@ INTENSITY = (
     "rest", "recovery", "endurance", "tempo", "threshold", "vo2max", "race", "strength",
 )
 SESSION_STATUS = ("planned", "done", "missed", "moved", "cancelled")
+# `health.session_advice[].action` : ce que le verdict du jour fait de la séance PRÉVUE ce jour-là
+# (`scripts/arc_guardrails.py day-advice`). `keep` = telle que prévue, `lighten` = maintenue en
+# version allégée, `replace` = remplacée par une séance facile, `cancel` = annulée (repos).
+SESSION_ADVICE_ACTION = ("keep", "lighten", "replace", "cancel")
 # Type de semaine d'un squelette de bloc (#190, `scripts/arc_plan_skeleton.py`).
 WEEK_TYPE = ("build", "recovery", "taper", "race", "lead_in", "post_race")
 REPORT_TYPE = ("weekly", "monthly", "comparison", "race", "race_debrief", "adhoc")
@@ -472,6 +476,9 @@ SCHEMA = {
             "provider_scores": "[provider_score]",
             "verdict": _enum(VERDICT),
             "verdict_reason": "str",
+            # Consigne sur la ou les séances prévues ce jour-là, recopiée de
+            # `arc_guardrails.py day-advice` — voir SUBSCHEMA["session_advice"].
+            "session_advice": "[session_advice]",
             "missing_reason": "obj",
             # #57 : douleur structurée déclarée le jour du fichier — voir SUBSCHEMA["pain"].
             "pain": "[pain]",
@@ -1002,6 +1009,19 @@ SUBSCHEMA = {
             "intensity": _enum(INTENSITY),
             "planned_duration_s": "num+",
             "status": _enum(SESSION_STATUS),
+        },
+    },
+    # `health.session_advice[]` : le verdict du jour appliqué à UNE séance prévue ce jour-là. Sans
+    # cet objet, le bilan dit « alléger » sans dire quoi faire de la séance du planning. Produit par
+    # `scripts/arc_guardrails.py day-advice` et recopié tel quel ; `text` est la phrase montrée à
+    # l'athlète, `title`/`sport`/`intensity`/`planned_duration_s` rappellent la séance visée.
+    "session_advice": {
+        "required": {"action": _enum(SESSION_ADVICE_ACTION), "text": "str", "title": "str"},
+        "optional": {
+            "sport": _enum(SPORTS),
+            "intensity": _enum(INTENSITY),
+            "planned_duration_s": "num+",
+            "session_ref": "{session_ref}",
         },
     },
     # `decision.session_ref` (#54) : pointeur vers la séance du fichier semaine

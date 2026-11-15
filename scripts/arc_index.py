@@ -1458,7 +1458,8 @@ def store(conn, rel: str, kind: str, data: dict, arc_version: int) -> None:
         # `health_day` n'a pas de colonne dédiée pour un champ non-scalaire, il reste
         # accessible via `data_json` (voir `arc_guardrails.build_injury_risk_context`).
         cols = [k for k in C.SCHEMA["health"]["optional"]
-                if k not in ("readiness_factors", "missing_reason", "pain", "provider_scores", "health_device")]
+                if k not in ("readiness_factors", "missing_reason", "pain", "provider_scores", "health_device",
+                             "session_advice")]
         _insert(conn, "health_day", {
             "source_path": rel, "arc_version": arc_version, "date": g("date"),
             "morning_check": g("morning_check"), **{k: g(k) for k in cols},
@@ -3747,7 +3748,44 @@ def _validate_week_presentation(path: Path, block: dict, warnings: List[str]) ->
                         f"{' ; …' if len(free) > 3 else ''}) — libellés reconnus : {labels}.")
 
 
-def validate_file(path: Path) -> Tuple[bool, List[str], List[str]]:
+def _validate_health_session_advice(path: Path, block: dict, errors: List[str], today: str) -> None:
+    """Un verdict orange ou rouge posé pour AUJOURD'HUI (ou un jour à venir) alors qu'une séance est
+    prévue ce jour-là doit dire quoi en faire (`session_advice`, recopié de `arc_guardrails.py
+    day-advice`) : sans cela le bilan dit « alléger » sans nommer la séance du planning. Erreur, pas
+    avertissement — c'est la seule protection contre une consigne générique. Les jours passés ne
+    sont jamais concernés (rien à décider, aucune dette de rattrapage), ni un jour dont une activité
+    est déjà enregistrée. Lit `planning/` à côté de `medical/` : cette fonction n'a pas d'index."""
+    day = block.get("date")
+    if block.get("verdict") not in ("amber", "red") or block.get("session_advice"):
+        return
+    if not isinstance(day, str) or day < today or path.parent.name != "medical":
+        return
+    root = path.resolve().parent.parent
+    if any((root / "activities").glob(f"{day}_*.md")):
+        return
+    titles = []
+    for plan in sorted((root / "planning").glob("*.md")):
+        try:
+            week = C.extract_block(plan.read_text(encoding="utf-8"))
+        except (OSError, C.ContractError):
+            continue
+        if not isinstance(week, dict) or week.get("kind") != "week":
+            continue
+        entries = week["weeks"] if isinstance(week.get("weeks"), list) else [week]
+        for entry in entries:
+            for session in (entry.get("sessions") if isinstance(entry, dict) else None) or []:
+                if (isinstance(session, dict) and session.get("date") == day
+                        and session.get("status") not in ("cancelled", "moved", "missed", "done")
+                        and "rest" not in (session.get("sport"), session.get("intensity"))):
+                    titles.append(str(session.get("title") or "séance"))
+    if titles:
+        errors.append(
+            f"health.session_advice : absent alors qu'une séance est prévue ce jour-là ({' ; '.join(titles[:3])}) "
+            f"et que le verdict est « {block['verdict']} » — lancer `python3 scripts/arc_guardrails.py day-advice "
+            f"--date {day} --verdict {block['verdict']}` et recopier `session_advice` tel quel")
+
+
+def validate_file(path: Path, today: Optional[str] = None) -> Tuple[bool, List[str], List[str]]:
     if not path.is_file():
         return False, [f"{path} : fichier introuvable"], []
     if path.name in ("Runner_Profile.md", "active_objective.md"):
@@ -3762,6 +3800,8 @@ def validate_file(path: Path) -> Tuple[bool, List[str], List[str]]:
     expected = classify(f"{path.parent.name}/{path.name}")
     if expected and block.get("kind") in C.KINDS and block.get("kind") != expected:
         warnings.append(f"kind « {block.get('kind')} » inattendu pour ce fichier (« {expected} » attendu)")
+    if block.get("kind") == "health":
+        _validate_health_session_advice(path, block, errors, today or date.today().isoformat())
     if block.get("kind") == "decision":
         # #100, revue de code : `date` du bloc doit correspondre à la date du nom de
         # fichier (`AAAA-MM-JJ_decision_<slug>.md`) — ce n'est pas une erreur de
@@ -5930,7 +5970,7 @@ def main(argv=None) -> int:
     if args.validate:
         all_ok = True
         for name in args.validate:
-            ok, errors, warnings = validate_file(Path(name))
+            ok, errors, warnings = validate_file(Path(name), args.today)
             all_ok &= ok
             print(f"{'ok' if ok else 'NON CONFORME'}: {name}")
             for line in errors:

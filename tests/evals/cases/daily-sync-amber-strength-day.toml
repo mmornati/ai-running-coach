@@ -1,0 +1,38 @@
+# Le verdict du matin doit nommer la séance PRÉVUE. Historique santé stable sur 7 jours, puis une
+# readiness basse le jour même (stub `readiness-low.json`) avec HRV et FC de repos canned : verdict
+# orange (rouge accepté — la triade reste jugée par le modèle). La semaine prévoit du RENFORCEMENT
+# aujourd'hui : le bilan ne doit pas conseiller un « footing facile au plus », il doit dire ce que
+# devient le renfo (`session_advice`, recopié de `arc_guardrails.py day-advice`) et le reprendre
+# dans la ligne `Readiness :` du bloc ```resume```.
+id = "daily-sync-amber-strength-day"
+prompt = "/garmin-daily-sync"
+fixture = "daily-sync-amber-strength"
+
+[config.health]
+morning_check = "full"
+
+[stub.garmin.get_training_readiness]
+file = "readiness-low.json"
+
+[expect]
+must_match = [
+  '```resume',
+  '```resume[ \t]*\n(?:(?!```)[^\n]*\n){0,4}Readiness\s*:[^\n]{0,160}Renfo B',
+]
+must_not_match = ["coach-setup"]
+files_with_arc_block = ["medical/*_health.md"]
+
+[[expect.arc_field]]
+glob = "medical/*_health.md"
+path = "verdict"
+in = ["amber", "red"]
+
+[[expect.arc_field]]
+glob = "medical/*_health.md"
+path = "session_advice[*].action"
+in = ["lighten", "cancel"]
+
+[[expect.arc_field]]
+glob = "medical/*_health.md"
+path = "session_advice[0].title"
+equals = "Renfo B — force de base (RPE 7)"

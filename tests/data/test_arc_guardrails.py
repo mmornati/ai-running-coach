@@ -1805,6 +1805,206 @@ class TestR8OnWorkspace(WorkspaceCase):
         self.assertEqual(self._run("check", "--date", "2026-09-20").returncode, 2)
 
 
+class TestAdviseSession(unittest.TestCase):
+    """Table verdict × séance prévue (ASSUMPTIONS_DAY_ADVICE["matrix"])."""
+
+    def _action(self, verdict, **fields):
+        return G.advise_session(verdict, {"title": "Séance", **fields})[0]
+
+    def test_green_keeps_everything(self):
+        for intensity in ("vo2max", "strength", "endurance"):
+            self.assertEqual(self._action("green", sport="running", intensity=intensity), "keep")
+
+    def test_red_cancels_everything(self):
+        for intensity in ("recovery", "strength", "tempo"):
+            self.assertEqual(self._action("red", sport="running", intensity=intensity), "cancel")
+
+    def test_amber_matrix(self):
+        self.assertEqual(self._action("amber", sport="running", intensity="threshold"), "replace")
+        self.assertEqual(self._action("amber", sport="strength", intensity="strength"), "lighten")
+        self.assertEqual(self._action("amber", sport="strength"), "lighten")
+        self.assertEqual(self._action("amber", sport="running", intensity="recovery"), "keep")
+        self.assertEqual(self._action("amber", sport="running", intensity="endurance"), "lighten")
+        self.assertEqual(self._action("amber", sport="home_trainer"), "lighten")
+
+    def test_amber_strength_sentence_names_the_session_not_a_jog(self):
+        action, text = G.advise_session("amber", {"title": "Renfo B — force de base (RPE 7)",
+                                                  "sport": "strength", "intensity": "strength"})
+        self.assertEqual(action, "lighten")
+        self.assertTrue(text.startswith("Renfo B — force de base (RPE 7) : maintenue en version allégée"))
+        self.assertNotIn("ooting", text)
+
+
+class TestDayAdvice(WorkspaceCase):
+    DAY = "2026-11-15"
+
+    def _plan(self, *sessions):
+        self.write("planning/Semaine_2026-11-09.md",
+                   {"kind": "week", "week_start": "2026-11-09", "location": "Lille", "sessions": list(sessions)})
+
+    def _health(self, verdict):
+        self.write(f"medical/{self.DAY}_health.md",
+                   {"kind": "health", "date": self.DAY, "morning_check": "full", "verdict": verdict,
+                    "verdict_reason": "Readiness basse."})
+
+    def _run(self, *args):
+        cmd = [sys.executable, str(REPO / "scripts/arc_guardrails.py"), *args, "--workspace", str(self.ws),
+               "--today", self.DAY]
+        return subprocess.run(cmd, capture_output=True, text=True)
+
+    def _advice(self, *args):
+        proc = self._run("day-advice", "--date", self.DAY, *args)
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        return json.loads(proc.stdout)
+
+    def test_amber_on_a_strength_day_reads_the_plan(self):
+        self._plan(session(self.DAY, sport="strength", intensity="strength",
+                           title="Renfo B — force de base (RPE 7)", planned_duration_s=2400))
+        self._health("amber")
+        out = self._advice()
+        self.assertEqual(out["status"], "ok")
+        self.assertEqual(out["verdict"], "amber")
+        [entry] = out["session_advice"]
+        self.assertEqual(entry["action"], "lighten")
+        self.assertEqual(entry["session_ref"], {"week": "planning/Semaine_2026-11-09.md", "date": self.DAY})
+        self.assertEqual(entry["planned_duration_s"], 2400)
+        self.assertEqual(out["notification"], "verdict orange → Renfo B — force de base (RPE 7) allégée")
+        self.assertFalse(out["decision_needed"])
+        # L'objet rendu est valide tel quel dans le bloc santé du jour.
+        errors, _ = G.C.validate({"arc": 1, "kind": "health", "date": self.DAY, "morning_check": "full",
+                                  "verdict": "amber", "verdict_reason": out["reason_sentence"],
+                                  "session_advice": out["session_advice"]})
+        self.assertEqual(errors, [])
+
+    def test_verdict_argument_wins_before_the_health_file_exists(self):
+        self._plan(session(self.DAY, sport="running", intensity="vo2max", title="VO2max 6 × 3 min"))
+        out = self._advice("--verdict", "amber")
+        self.assertEqual(out["session_advice"][0]["action"], "replace")
+        self.assertTrue(out["decision_needed"])
+
+    def test_no_verdict_invents_nothing(self):
+        self._plan(session(self.DAY, sport="running", title="Footing"))
+        out = self._advice()
+        self.assertEqual((out["status"], out["session_advice"], out["reason_sentence"]), ("no_verdict", [], None))
+
+    def test_no_session_and_excluded_sessions(self):
+        self._plan(session(self.DAY, sport="rest", intensity="rest", title="Repos"),
+                   session(self.DAY, sport="running", title="Annulée", status="cancelled"))
+        out = self._advice("--verdict", "amber")
+        self.assertEqual((out["status"], out["session_advice"]), ("no_session", []))
+        self.assertEqual(out["reason_sentence"], "Aucune séance prévue aujourd'hui.")
+
+    def test_session_already_done_needs_no_advice(self):
+        self._plan(session(self.DAY, sport="running", title="Footing 5 km"))
+        self.write(f"activities/{self.DAY}_running.md",
+                   {"kind": "activity", "date": self.DAY, "sport": "running", "duration_s": 1800})
+        out = self._advice("--verdict", "amber")
+        self.assertEqual((out["status"], out["session_advice"]), ("done", []))
+
+    def test_two_sessions_same_day(self):
+        self._plan(session(self.DAY, sport="running", intensity="tempo", title="Tempo"),
+                   session(self.DAY, sport="strength", intensity="strength", title="Renfo"))
+        out = self._advice("--verdict", "red")
+        self.assertEqual([e["action"] for e in out["session_advice"]], ["cancel", "cancel"])
+        self.assertEqual(out["notification"], "verdict rouge → Tempo annulée ; Renfo annulée")
+
+    def test_cli_rejects_misplaced_options(self):
+        self.assertEqual(self._run("day-advice", "--date", "demain").returncode, 2)
+        self.assertEqual(self._run("day-advice", "--text").returncode, 2)
+        self.assertEqual(self._run("session-spike", "--date", self.DAY, "--verdict", "red").returncode, 2)
+        self.assertEqual(self._run("load-drift", "--date", self.DAY).returncode, 2)
+
+
+class TestLoadDriftPure(unittest.TestCase):
+    def test_under_every_threshold(self):
+        self.assertEqual(G.evaluate_load_drift({"distance_m": 19000, "elevation_gain_m": 100},
+                                               {"distance_m": 17000, "elevation_gain_m": 40},
+                                               {"distance_m": 15000, "elevation_gain_m": 50}), [])
+
+    def test_plan_margin_and_absolute_floor(self):
+        # +25 % mais 2,5 km seulement : sous le plancher de 3 km.
+        self.assertEqual(G.evaluate_load_drift({"distance_m": 12500}, {"distance_m": 10000}, None), [])
+        [alert] = G.evaluate_load_drift({"distance_m": 34900}, {"distance_m": 17000}, None)
+        self.assertEqual((alert["kind"], alert["metric"], alert["ratio"]), ("vs_plan", "distance_m", 2.05))
+        self.assertEqual(alert["text"], "34,9 km cette semaine pour 17 km prévus (× 2,05)")
+
+    def test_history_ratio(self):
+        self.assertEqual(G.evaluate_load_drift({"distance_m": 20000}, None, {"distance_m": 14000}), [])
+        [alert] = G.evaluate_load_drift({"distance_m": 34900}, None, {"distance_m": 12000})
+        self.assertEqual(alert["kind"], "vs_history")
+        self.assertEqual(alert["text"],
+                         "34,9 km cette semaine, × 2,91 la moyenne des 3 semaines précédentes (12 km)")
+        self.assertIsNone(alert["short"])
+
+    def test_elevation(self):
+        [alert] = G.evaluate_load_drift({"elevation_gain_m": 1200}, {"elevation_gain_m": 600}, None)
+        self.assertEqual(alert["text"], "1200 m D+ cette semaine pour 600 m D+ prévus (× 2,00)")
+
+
+class TestLoadDriftOnWorkspace(WorkspaceCase):
+    def _activity(self, day, km, sport="running", n=""):
+        self.write(f"activities/{day}_{sport}{n}.md",
+                   {"kind": "activity", "date": day, "sport": sport, "duration_s": 3600, "distance_m": km * 1000.0})
+
+    def _drift(self, today="2026-11-13"):
+        self.index(today)
+        return G.load_drift(self.conn, date.fromisoformat(today), DEFAULT_GCONF)
+
+    def _plan(self):
+        self.write("planning/Semaine_2026-11-09.md",
+                   {"kind": "week", "week_start": "2026-11-09", "location": "Lille", "sessions": [
+                       session("2026-11-10", sport="running", planned_distance_m=5000),
+                       session("2026-11-11", sport="strength", intensity="strength"),
+                       session("2026-11-12", sport="running", planned_distance_m=5000),
+                       session("2026-11-14", sport="running", planned_distance_m=7000)]})
+
+    def test_week_run_at_double_the_plan(self):
+        self._plan()
+        for day, km in (("2026-10-21", 13.0), ("2026-10-28", 10.0), ("2026-11-04", 13.0)):
+            self._activity(day, km)
+        for day, km in (("2026-11-09", 8.0), ("2026-11-10", 8.9), ("2026-11-12", 8.0), ("2026-11-13", 10.0)):
+            self._activity(day, km)
+        self._activity("2026-11-11", 40.0, sport="cycling")
+        out = self._drift()
+        self.assertTrue(out["alert"])
+        self.assertEqual(out["planned"]["distance_m"], 17000)
+        self.assertEqual(out["realised"]["distance_m"], 34900)
+        self.assertEqual([a["kind"] for a in out["alerts"]], ["vs_plan", "vs_history"])
+        self.assertEqual(out["notification"],
+                         "Dérive de charge : 34,9 km cette semaine pour 17 km prévus (× 2,05) ; "
+                         "× 2,91 la moyenne des 3 semaines précédentes (12 km)")
+
+    def test_week_on_plan_is_silent(self):
+        self._plan()
+        self._activity("2026-11-10", 5.2)
+        self._activity("2026-11-12", 5.0)
+        out = self._drift()
+        self.assertFalse(out["alert"])
+        self.assertIsNone(out["notification"])
+
+    def test_no_plan_no_history(self):
+        self._activity("2026-11-10", 20.0)
+        out = self._drift()
+        self.assertEqual((out["planned"], out["history"], out["alerts"]), (None, None, []))
+
+    def test_race_week_is_skipped(self):
+        self._plan()
+        (self.ws / "planning/active_objective.md").write_text(
+            "# Objectif actif\n\n## Course visée\n\n- **Nom** : Trail X\n- **Date** : 2026-11-14\n"
+            "- **Distance** : 40 km\n", encoding="utf-8")
+        self._activity("2026-11-10", 40.0)
+        out = self._drift()
+        self.assertEqual(out.get("skipped"), "race_week")
+        self.assertFalse(out["alert"])
+
+    def test_disabled_guardrails(self):
+        self._plan()
+        self._activity("2026-11-10", 40.0)
+        self.index("2026-11-13")
+        out = G.load_drift(self.conn, date(2026, 11, 13), gconf(enabled=False))
+        self.assertEqual((out["enabled"], out["alerts"]), (False, []))
+
+
 class TestRuleLabels(unittest.TestCase):
     """#55 : `RULE_LABELS` doit toujours couvrir exactement `RULE_IDS`, jamais
     plus ni moins — le dashboard (`scripts/arc_serve.py::rule_info`) affiche un

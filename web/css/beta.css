@@ -139,6 +139,17 @@
   & .rk-verdict--none .rk-verdict__word { font-size: clamp(2rem, 8vw, 2.75rem); }
   & .rk-verdict__why { margin: 0.6rem 0 0; font-size: 1.04rem; line-height: 1.5; color: var(--ink); max-width: 56ch; }
 
+  & .rk-advice { list-style: none; margin: 0.9rem 0 0; padding: 0; display: grid; gap: 0.5rem; }
+  & .rk-advice li { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.3rem 0.6rem; }
+  & .rk-advice__label { font: 600 0.8rem/1 var(--rk-cond); letter-spacing: 0.06em; text-transform: uppercase; color: var(--ink-soft); }
+  & .rk-advice__title { font-weight: 600; color: var(--ink); }
+  & .rk-advice__title small { font: 600 0.95rem/1 var(--rk-cond); color: var(--ink-soft); margin-left: 0.15rem; font-variant-numeric: tabular-nums; }
+  & .rk-advice__action { padding: 0.22rem 0.5rem; border: 1px solid var(--line-strong); border-radius: 0.3rem; font: 600 0.82rem/1 var(--rk-cond); letter-spacing: 0.06em; text-transform: uppercase; }
+  & .rk-advice__action--keep { color: var(--ok); }
+  & .rk-advice__action--lighten, & .rk-advice__action--replace { color: var(--warn); }
+  & .rk-advice__action--cancel { color: var(--bad); }
+  & .rk-advice__action--none { border-style: dashed; color: var(--ink-soft); text-transform: none; letter-spacing: 0; }
+
   & .rk-decision { margin-top: 1rem; }
   & .rk-plate { display: inline-flex; margin: 0 0 0.7rem; border: 1px solid var(--line-strong); border-radius: 0.3rem; overflow: hidden; font: 600 0.86rem/1 var(--rk-cond); letter-spacing: 0.06em; text-transform: uppercase; }
   & .rk-plate__who { padding: 0.34rem 0.55rem; background: var(--rk-band); color: var(--rk-on-band); }
