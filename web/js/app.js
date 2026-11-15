@@ -741,7 +741,7 @@ async function viewToday() {
 
   let verdict;
   if (h && h.verdict) {
-    verdict = `<div class="verdict verdict--${h.verdict}"><div class="verdict__word">${F.VERDICT[h.verdict]}</div><p class="verdict__why">${F.esc(h.verdict_reason || "")}</p></div>`;
+    verdict = `<div class="verdict verdict--${h.verdict}"><div class="verdict__word">${F.VERDICT[h.verdict]}</div><p class="verdict__why">${F.esc(h.verdict_reason || "")}</p>${F.adviceList(h, week.sessions.filter((x) => x.date === today), "advice")}</div>`;
   } else {
     verdict = `<div class="verdict verdict--none"><div class="verdict__word">Pas de verdict aujourd'hui</div><p class="verdict__why">${lastVerdict
       ? `Dernier verdict du coach le ${F.dayLong(lastVerdict.date)} : <strong>${F.VERDICT[lastVerdict.verdict]}</strong> — ${F.esc(lastVerdict.verdict_reason || "")}`

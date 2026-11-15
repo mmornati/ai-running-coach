@@ -385,7 +385,7 @@ export async function viewToday(ctx) {
   // Verdict : le mot du coach à la taille d'une affiche, sa raison, et le changement de séance.
   const v = h && h.verdict;
   const verdictHtml = v
-    ? `<div class="rk-verdict rk-verdict--${v}"><p class="rk-verdict__word">${F.VERDICT[v]}</p><p class="rk-verdict__why">${F.esc(h.verdict_reason || "")}</p></div>`
+    ? `<div class="rk-verdict rk-verdict--${v}"><p class="rk-verdict__word">${F.VERDICT[v]}</p><p class="rk-verdict__why">${F.esc(h.verdict_reason || "")}</p>${F.adviceList(h, week.sessions.filter((x) => x.date === today), "rk-advice")}</div>`
     : `<div class="rk-verdict rk-verdict--none"><p class="rk-verdict__word">Pas de verdict</p><p class="rk-verdict__why">${lastVerdict
       ? `Dernier verdict le ${F.dayLong(lastVerdict.date)} : <strong>${F.VERDICT[lastVerdict.verdict]}</strong> — ${F.esc(lastVerdict.verdict_reason || "")}`
       : "Le coach pose un verdict (maintenir, alléger, repos) lors du bilan matinal."}</p></div>`;

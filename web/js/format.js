@@ -169,6 +169,25 @@ export const SPORT = {
 };
 
 export const VERDICT = { green: "Maintenir", amber: "Alléger", red: "Repos" };
+export const ADVICE = { keep: "Maintenue", lighten: "Allégée", replace: "Remplacée", cancel: "Annulée" };
+
+/**
+ * Séance(s) prévue(s) du jour sous le verdict : ce que le bilan en fait (`session_advice`).
+ * Sans consigne dans le bilan, un verdict orange ou rouge montre quand même la séance prévue,
+ * dite sans consigne — jamais un conseil générique laissé seul face au planning.
+ */
+export function adviceList(point, planned, cls) {
+  const advice = (point && point.session_advice) || [];
+  const open = (planned || []).filter((x) => !["cancelled", "moved", "missed", "done"].includes(x.status)
+    && x.sport !== "rest" && x.intensity !== "rest");
+  const items = advice.length ? advice
+    : (point && (point.verdict === "amber" || point.verdict === "red") ? open.map((x) => ({ title: x.title, planned_duration_s: x.planned_duration_s })) : []);
+  if (!items.length) return "";
+  return `<ul class="${cls}">${items.map((a) => `<li><span class="${cls}__label">Séance prévue</span>
+    <span class="${cls}__title">${esc(a.title)}${a.planned_duration_s ? ` <small>${duration(a.planned_duration_s)}</small>` : ""}</span>
+    <span class="${cls}__action ${cls}__action--${a.action || "none"}">${a.action ? ADVICE[a.action] || esc(a.action) : "sans consigne dans le bilan — demande au coach"}</span></li>`).join("")}</ul>`;
+}
+
 export const WEATHER = { green: "Optimal", yellow: "Vigilance", orange: "Difficile", red: "Dangereux" };
 export const SLOT = { morning: "Matin tôt", midday: "Midi", evening: "Soir", none: "Aucun créneau" };
 export const STATUS = {

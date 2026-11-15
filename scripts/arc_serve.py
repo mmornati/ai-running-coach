@@ -729,6 +729,13 @@ def api_health(store: Store, q: dict) -> dict:
                 "hrv_overnight_ms", "hrv_baseline_low_ms", "hrv_baseline_high_ms", "hrv_status",
                 "resting_hr_bpm", "readiness_score", "sleep_total_s", "sleep_score", "sleep_deep_s",
                 "sleep_rem_s", "sleep_light_s", "verdict", "verdict_reason", "morning_check")})
+            # Consigne sur la séance prévue (`arc_guardrails.py day-advice`) : liste non scalaire, lue dans le bloc.
+            try:
+                advice = json.loads(row["data_json"] or "{}").get("session_advice")
+            except (TypeError, ValueError):
+                advice = None
+            if isinstance(advice, list) and advice:
+                point["session_advice"] = advice
             # Provenance (#218) : posée seulement quand le fichier la déclare (fichiers antérieurs : clés absentes).
             point.update({k: row[k] for k in ("health_source", "health_provider", "hrv_sdnn_ms") if row[k] is not None})
             rhr = row["resting_hr_bpm"]

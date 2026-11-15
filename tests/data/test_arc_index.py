@@ -2178,6 +2178,58 @@ class TestDecisionIndex(Workspace):
         self.assertTrue(any("hors du format attendu" in w for w in warnings), warnings)
 
 
+class TestValidateHealthSessionAdvice(Workspace):
+    """Verdict orange/rouge du jour + séance prévue : la consigne est obligatoire."""
+
+    DAY = "2026-11-15"
+
+    def _block(self, data: dict) -> str:
+        return f"# Titre\n\n```arc\n{json.dumps({'arc': 1, **data}, ensure_ascii=False)}\n```\n\nTexte.\n"
+
+    def _plan(self, **session_fields):
+        session = {"date": self.DAY, "sport": "strength", "title": "Renfo B", "intensity": "strength", **session_fields}
+        self.write("planning/Semaine_2026-11-09.md", self._block(
+            {"kind": "week", "weeks": [{"week_start": "2026-11-09", "location": "Lille", "sessions": [session]}]}))
+
+    def _health(self, verdict="amber", **extra):
+        path = self.ws / f"medical/{self.DAY}_health.md"
+        path.write_text(self._block({"kind": "health", "date": self.DAY, "morning_check": "full",
+                                     "verdict": verdict, "verdict_reason": "Readiness basse.", **extra}),
+                        encoding="utf-8")
+        return path
+
+    def test_amber_with_planned_session_and_no_advice_is_refused(self):
+        self._plan()
+        ok, errors, _ = I.validate_file(self._health(), self.DAY)
+        self.assertFalse(ok)
+        self.assertTrue(any("session_advice" in e and "Renfo B" in e and "day-advice" in e for e in errors), errors)
+
+    def test_advice_present_is_accepted(self):
+        self._plan()
+        advice = [{"action": "lighten", "title": "Renfo B", "text": "Renfo B : maintenue en version allégée."}]
+        ok, errors, _ = I.validate_file(self._health(session_advice=advice), self.DAY)
+        self.assertTrue(ok, errors)
+
+    def test_malformed_advice_is_refused_by_the_contract(self):
+        ok, errors, _ = I.validate_file(self._health(session_advice=[{"action": "jog", "title": "x"}]), self.DAY)
+        self.assertFalse(ok)
+        self.assertTrue(any("action" in e for e in errors) and any("text" in e for e in errors), errors)
+
+    def test_green_past_day_rest_done_and_no_plan_are_not_concerned(self):
+        ok, errors, _ = I.validate_file(self._health(), self.DAY)          # aucun plan
+        self.assertTrue(ok, errors)
+        self._plan()
+        self.assertTrue(I.validate_file(self._health("green"), self.DAY)[0])
+        self.assertTrue(I.validate_file(self._health(), "2026-11-16")[0])    # jour passé
+        self._plan(sport="rest", intensity="rest")
+        self.assertTrue(I.validate_file(self._health(), self.DAY)[0])
+        self._plan(status="cancelled")
+        self.assertTrue(I.validate_file(self._health("red"), self.DAY)[0])
+        self._plan()
+        self.write(f"activities/{self.DAY}_strength.md", "# Faite\n")
+        self.assertTrue(I.validate_file(self._health(), self.DAY)[0])
+
+
 class TestClassifySourcePath(unittest.TestCase):
     """#55 : `classify_source_path` — pure, aucun accès disque/base — reconnaît
     un chemin `sources`/`supersedes`/`session_ref.week` de décision PAR SON NOM

@@ -199,6 +199,14 @@ select { font: inherit; color: var(--ink); background: var(--surface); border: 1
 .verdict__word { font: 700 1.6rem/1.1 var(--display); letter-spacing: -0.02em; display: flex; align-items: center; gap: 0.6rem; }
 .verdict__word::before { content: ""; width: 0.8rem; height: 0.8rem; border-radius: 50%; background: var(--ink-faint); flex: none; }
 .verdict__why { margin: 0; color: var(--ink-soft); max-width: 62ch; }
+.advice { grid-column: 1 / -1; list-style: none; margin: 0.5rem 0 0; padding: 0; display: grid; gap: 0.4rem; }
+.advice li { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.3rem 0.6rem; }
+.advice__label { font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--ink-soft); }
+.advice__title { font-weight: 600; }
+.advice__title small { font-weight: 500; color: var(--ink-soft); }
+.advice__action { padding: 0.1rem 0.5rem; border: 1px solid var(--line-strong, currentColor); border-radius: 0.3rem; font-size: 0.82rem; font-weight: 600; }
+.advice__action--keep { color: var(--ok); } .advice__action--lighten, .advice__action--replace { color: var(--warn); } .advice__action--cancel { color: var(--bad); }
+.advice__action--none { border-style: dashed; color: var(--ink-soft); font-weight: 500; }
 .verdict--green { background: var(--ok-bg); } .verdict--green .verdict__word { color: var(--ok); } .verdict--green .verdict__word::before { background: var(--ok); }
 .verdict--amber { background: var(--warn-bg); } .verdict--amber .verdict__word { color: var(--warn); } .verdict--amber .verdict__word::before { background: var(--warn); }
 .verdict--red { background: var(--bad-bg); } .verdict--red .verdict__word { color: var(--bad); } .verdict--red .verdict__word::before { background: var(--bad); }

@@ -633,6 +633,7 @@ mm ÷ 1000), pourcentages inchangés. Toutes optionnelles :
 | `provider_scores` | liste d'objets | scores **natifs** du fabricant (#218), voir « Provenance de la santé » ci-dessous |
 | `verdict` | `green` `amber` `red` | disponibilité du jour : maintenir / alléger / repos |
 | `verdict_reason` | texte | obligatoire avec `verdict` |
+| `session_advice` | liste d'objets | ce que le verdict fait de la séance PRÉVUE ce jour-là — voir « Consigne sur la séance du jour » ci-dessous |
 | `missing_reason` | objet | |
 | `pain` | liste d'objets | douleur STRUCTURÉE déclarée ce jour-là (#57) — voir ci-dessous |
 | `cycle_phase` | `menstrual` `follicular` `ovulation` `luteal` | **opt-in** (#166) : phase du cycle du jour, voir « Contexte du cycle » ci-dessous |
@@ -660,6 +661,33 @@ n'existe que pour l'agent qui écrit le fichier. Plus de
 {"arc": 1, "kind": "health", "date": "2026-09-24", "morning_check": "full",
  "pain": [{"location": "genou droit", "score": 6}],
  "verdict": "amber", "verdict_reason": "Douleur au genou signalée : séance de qualité annulée par prudence."}
+```
+
+**Consigne sur la séance du jour (`session_advice`).** Un verdict dit « alléger »
+ou « repos » ; il doit aussi dire quoi faire de la séance du planning. Une liste
+d'objets, un par séance prévue ce jour-là, **recopiée telle quelle** de
+`python3 scripts/arc_guardrails.py day-advice --date <date> --verdict <verdict>`
+(champ `session_advice`), jamais rédigée à la main : **`action`** (`keep`
+maintenue, `lighten` maintenue allégée, `replace` remplacée par une séance
+facile, `cancel` annulée), **`text`** (la phrase montrée à l'athlète),
+**`title`** (la séance visée), et en option `sport`, `intensity`,
+`planned_duration_s`, `session_ref` (`week` + `date`, comme pour une
+`decision`). `verdict_reason` se termine par le `reason_sentence` de la même
+commande. `arc_index.py --validate` **refuse** un fichier santé d'aujourd'hui
+(ou d'un jour à venir) dont le verdict est `amber` ou `red` sans
+`session_advice` alors qu'une séance est prévue ce jour-là ; un jour passé, un
+verdict `green`, un jour de repos ou une séance déjà faite ne sont pas
+concernés. Clé absente = aucune séance prévue, ou fichier antérieur à ce champ :
+aucune dette de rattrapage. La consigne est une proposition par défaut : en
+session interactive, le coach peut la réécrire (`action` et `text`) après en avoir
+discuté avec l'athlète, et trace ce qui a été convenu dans une `decision`.
+
+```arc
+{"arc": 1, "kind": "health", "date": "2026-11-15", "morning_check": "full", "readiness_score": 33,
+ "verdict": "amber", "verdict_reason": "Readiness 33/100, VFC dans la bande, FC de repos favorable. Renfo B — force de base (RPE 7) : maintenue en version allégée — effort modéré (RPE 5 au plus), ni charge maximale ni pliométrie.",
+ "session_advice": [{"action": "lighten", "title": "Renfo B — force de base (RPE 7)", "sport": "strength", "intensity": "strength", "planned_duration_s": 2400,
+   "text": "Renfo B — force de base (RPE 7) : maintenue en version allégée — effort modéré (RPE 5 au plus), ni charge maximale ni pliométrie.",
+   "session_ref": {"week": "planning/Semaine_2026-11-09.md", "date": "2026-11-15"}}]}
 ```
 
 **Poids du jour (`weight_kg`, `weight_origin`, `weight_garmin_kg`, #222).** Avec
