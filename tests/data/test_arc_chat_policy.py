@@ -796,6 +796,36 @@ class ShellSkillCatalogFormsTest(PolicyBase):
         self.assertEqual(self.policy.shell_hint("ls medical | tail -5"), "")
         self.assertEqual(self.policy.shell_hint("python3 scripts/not_arc_index.py"), "")
 
+    def test_fit_sous_arc_fit_lisible_par_un_script(self):
+        (self.ws / ".arc" / "fit").mkdir(parents=True)
+        (self.ws / ".arc" / "chat").mkdir()
+        run = "python3 " + self.SCRIPT
+        for command in (run + " --fit .arc/fit/25171955090.fit --part interval",
+                        run + " --fit .ARC/fit/25171955090.fit --part interval",
+                        f"{run} --fit {self.ws}/.arc/fit/25171955090.fit"):
+            self.assertEqual(self.sh(command), "allow", command)
+        (self.ws / ".arc" / "fit" / "lien.fit").symlink_to(self.ws / ".arc" / "chat" / "approvals.json")
+        for command in (run + " --fit .arc/coach.db",
+                        run + " --fit .arc/chat/approvals.json",
+                        run + " --fit .arc/fit/../chat/approvals.json",
+                        run + " --fit .arc/fit/lien.fit",
+                        run + " --fit .arc/fit",
+                        run + " --output .arc/fit/x.json",
+                        run + " .arc/fit/25171955090.fit"):
+            self.assertEqual(self.sh(command), "deny", command)
+        self.assertEqual(self.d("fs.read", {"path": ".arc/fit/25171955090.fit"}), "deny")
+
+    def test_arc_chat_jamais_ouvert_par_la_configuration(self):
+        policy = Policy(self.ws, {"shell": {"arc_read_dirs": [".arc/chat", ".arc", "planning", ".arc/../x"]}})
+        self.assertEqual(policy.arc_read_dirs, [])
+
+    def test_argument_refuse_nomme(self):
+        run = "python3 " + self.SCRIPT
+        self.assertEqual(self.policy.shell_refused_arg(run + " --fit .arc/coach.db --part interval"), ".arc/coach.db")
+        self.assertEqual(self.policy.shell_refused_arg(run + " --garmin-host x.example"), "--garmin-host")
+        self.assertEqual(self.policy.shell_refused_arg(run + " --part interval"), "")
+        self.assertEqual(self.policy.shell_refused_arg(run + " --part interval | head"), "")
+
 
 class MultiFilePatchTest(PolicyBase):
     """Revue : un patch OpenCode peut toucher plusieurs fichiers — chacun doit passer."""
