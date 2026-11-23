@@ -70,6 +70,7 @@ from pathlib import Path
 from typing import Any, Optional
 from urllib.parse import urlparse
 
+import arc_credentials
 import arc_llm
 from arc_chat_backend import (SYSTEM_ADDENDUM, system_addendum, BackendError, ChatBackend, TurnContext,
                               resolve_workspace_path)
@@ -314,6 +315,7 @@ class OpenCodeBackend(ChatBackend):
         self._base = ""
         self._password = ""
         self._mcp_names: set = set()
+        self._garmin_stamp: Optional[tuple] = None   # jetons Garmin vus par le garmin-mcp du serveur en cours
 
     # -- utilitaires de configuration ---------------------------------
 
@@ -475,10 +477,43 @@ class OpenCodeBackend(ChatBackend):
         except BackendError:
             return False
 
+    def _garmin_tokens_stamp(self) -> Optional[tuple]:
+        """Empreinte (nom, mtime, taille) des fichiers de jetons Garmin du workspace, None si illisible.
+
+        Même dossier que celui que voit `garmin-mcp` (`arc_credentials`, `GARMINTOKENS` du `.mcp.json`).
+        """
+        try:
+            path = arc_credentials.garmin_tokens_dir(None, self.workspace)
+            files = [path] if path.is_file() else sorted(p for p in path.iterdir() if p.is_file())
+            return tuple((p.name, p.stat().st_mtime_ns, p.stat().st_size) for p in files)
+        except (Exception, SystemExit):  # noqa: BLE001 — verrou de workspace, dossier absent : pas d'empreinte
+            return None
+
+    def _garmin_tokens_rotated(self) -> bool:
+        """Jetons Garmin réécrits sur disque depuis le démarrage du serveur, et aucun tour en cours.
+
+        `garmin-mcp` charge les jetons UNE fois, au lancement par `opencode serve`. La sync (cron
+        `watch.py`) les renouvelle chaque jour et Garmin fait alors tourner le jeton de rafraîchissement :
+        celui que le `garmin-mcp` encore vivant garde en mémoire est refusé (401) dès que son jeton
+        d'accès expire, alors que les données de santé du matin, lues par la sync, passent. Il faut
+        donc relancer le serveur — seulement s'il est inactif : un redémarrage couperait le tour
+        d'une autre conversation (on réessaie au tour suivant).
+        """
+        if self._garmin_stamp is None:
+            return False
+        current = self._garmin_tokens_stamp()
+        if current is None or current == self._garmin_stamp:
+            return False
+        try:
+            return not self._busy_sessions()
+        except BackendError:
+            return False
+
     def _ensure_server(self) -> None:
         with self._lock:
             if self._proc is not None and self._proc.poll() is None and self._healthy():
-                return
+                if not self._garmin_tokens_rotated():
+                    return
             self._stop_locked()
             binary = self._binary()
             if not binary:
@@ -512,6 +547,7 @@ class OpenCodeBackend(ChatBackend):
             self._base = f"http://127.0.0.1:{port}"
             cmd = [binary, "serve", "--pure", "--hostname", "127.0.0.1", "--port", str(port)]
             self._reap_stale()
+            self._garmin_stamp = self._garmin_tokens_stamp()
             try:
                 self._proc = self._spawn(cmd, env, str(self.workspace), str(self._state_dir / "server.log"))
             except OSError as exc:
