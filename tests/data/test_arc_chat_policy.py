@@ -669,6 +669,8 @@ class SkillScriptsPolicyTest(PolicyBase):
         self.assertEqual(self.sh("python3 scripts/arc_index.py energy # ; rm -rf x"), "deny")
         self.assertEqual(self.sh("python3 scripts/arc_index.py energy #x"), "deny")
         self.assertEqual(self.sh("python3 scripts/arc_workout_targets.py targets --session planning/S.md#jeudi"), "allow")
+        self.assertEqual(self.sh("python3 scripts/arc_workout_targets.py workout --session planning/S.md#2026-11-23"),
+                         "allow")
 
     def test_options_dangereuses_refusees(self):
         for command in ("python3 scripts/coach_doctor.py --tokens-dir x",

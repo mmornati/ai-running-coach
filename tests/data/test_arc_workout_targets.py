@@ -679,5 +679,153 @@ class TestMainCli(unittest.TestCase):
             self.assertNotIn("éclipsée", err.getvalue())
 
 
+STRIDES = {"date": "2026-11-23", "sport": "running", "intensity": "endurance",
+           "title": "Footing Z2 6 km + 6 × 30 s en côte douce (seulement si la semaine précédente a été sans gêne "
+                    "au tendon)", "planned_distance_m": 6000, "planned_duration_s": 2340}
+
+
+def _flat_steps(workout):
+    out = []
+    for step in workout["workoutSegments"][0]["workoutSteps"]:
+        out.append(step)
+        out.extend(step.get("workoutSteps") or [])
+    return out
+
+
+class TestParseRepeatText(unittest.TestCase):
+    def test_short_hill_reps_without_grade(self):
+        self.assertEqual(T.parse_repeat_text(STRIDES["title"]),
+                         {"reps": 6, "rep_duration_s": 30.0, "uphill": True, "recovery_s": None, "zones": None})
+
+    def test_zones_and_recovery_after_reps(self):
+        r = T.parse_repeat_text("Affûtage : 3 × 8 min Z3 (2 min de trot entre)")
+        self.assertEqual((r["reps"], r["rep_duration_s"], r["zones"], r["recovery_s"], r["uphill"]),
+                         (3, 480.0, (3, 3), 120.0, False))
+        self.assertEqual(T.parse_repeat_text("Côtes accessibles : 6 × 2 min Z3-Z4")["zones"], (3, 4))
+
+    def test_no_time_reps(self):
+        for title in ("Footing Z2 plat 6 km", "Piste 6 × 400 m", "", None):
+            self.assertIsNone(T.parse_repeat_text(title), title)
+
+
+class TestBuildRunWorkout(unittest.TestCase):
+    def test_strides_are_structured_with_lap_warmup_and_cooldown(self):
+        built = T.build_run_workout(STRIDES, athlete=ATHLETE_KARVONEN, bins=FLAT_BINS)
+        self.assertEqual(built["kind"], "repeats")
+        self.assertEqual(built["checks"], [])
+        steps = built["workout_data"]["workoutSegments"][0]["workoutSteps"]
+        warm, group, cool = steps
+        self.assertEqual(warm["stepType"]["stepTypeKey"], "warmup")
+        self.assertEqual(warm["endCondition"]["conditionTypeKey"], "lap.button")
+        self.assertNotIn("endConditionValue", warm)
+        self.assertEqual([warm["targetValueOne"], warm["targetValueTwo"]], [134, 148])   # Z2 de l'athlète
+        self.assertEqual(cool["stepType"]["stepTypeKey"], "cooldown")
+        self.assertEqual(cool["endCondition"]["conditionTypeKey"], "lap.button")
+        self.assertEqual(group["type"], "RepeatGroupDTO")
+        self.assertEqual(group["numberOfIterations"], 6)
+        rep, rec = group["workoutSteps"]
+        self.assertEqual((rep["endCondition"]["conditionTypeKey"], rep["endConditionValue"]), ("time", 30))
+        self.assertEqual(rep["targetType"]["workoutTargetTypeKey"], "no.target")   # 30 s : pas de cible FC
+        self.assertEqual(rec["endCondition"]["conditionTypeKey"], "lap.button")      # redescente au Lap
+        self.assertEqual([s["stepOrder"] for s in _flat_steps(built["workout_data"])], [1, 2, 3, 4, 5])
+
+    def test_advised_times_are_in_descriptions(self):
+        built = T.build_run_workout(STRIDES, athlete=ATHLETE_KARVONEN, bins=FLAT_BINS)
+        # 2340 s planifiés - 6 × (30 + 90) = 1620 s faciles -> 540 s de retour au calme, 1080 s d'échauffement
+        self.assertEqual(built["advised"], {"warmup_s": 1080.0, "cooldown_s": 540.0, "recovery_s": 90})
+        warm, _, cool = built["workout_data"]["workoutSegments"][0]["workoutSteps"]
+        self.assertIn("≈ 18 min", warm["description"])
+        self.assertIn("km", warm["description"])            # allure d'endurance connue : distance conseillée
+        self.assertIn("≈ 9 min", cool["description"])
+        description = built["workout_data"]["description"]
+        self.assertIn("Lap", description)
+        self.assertIn("Seulement si la semaine précédente", description)
+        self.assertIn("passer les répétitions", description)
+        self.assertEqual(built["workout_data"]["workoutName"], "Footing Z2 6 km + 6 × 30 s en côte douce")
+
+    def test_long_hill_reps_keep_hr_target_and_timed_recovery(self):
+        session = {"date": "2027-02-09", "sport": "running", "intensity": "threshold", "planned_duration_s": 2340,
+                   "title": "Côtes accessibles : 6 × 2 min Z3-Z4 + 2 km d'échauffement et retour (6 km au total)"}
+        built = T.build_run_workout(session, athlete=ATHLETE_KARVONEN, bins=FLAT_BINS)
+        self.assertEqual(built["checks"], [])
+        warm, group, cool = built["workout_data"]["workoutSegments"][0]["workoutSteps"]
+        rep, rec = group["workoutSteps"]
+        self.assertEqual([rep["targetValueOne"], rep["targetValueTwo"]], [148, 176])   # bas Z3 -> haut Z4
+        self.assertEqual((rec["endCondition"]["conditionTypeKey"], rec["endConditionValue"]), ("time", 120))
+        self.assertEqual(warm["endCondition"]["conditionTypeKey"], "lap.button")
+        self.assertNotIn("passer les répétitions", built["workout_data"]["description"])
+
+    def test_continuous_run_is_one_timed_step(self):
+        session = {"date": "2026-11-26", "sport": "running", "intensity": "endurance", "planned_duration_s": 2340,
+                   "title": "Footing Z2 plat 6 km"}
+        built = T.build_run_workout(session, athlete=ATHLETE_KARVONEN, bins=FLAT_BINS)
+        self.assertEqual(built["kind"], "continuous")
+        (step,) = built["workout_data"]["workoutSegments"][0]["workoutSteps"]
+        self.assertEqual((step["endConditionValue"], step["targetValueOne"], step["targetValueTwo"]),
+                         (2340, 134, 148))
+
+    def test_no_zone_data_drops_targets_never_invents(self):
+        built = T.build_run_workout(STRIDES, athlete={}, bins=[])
+        self.assertEqual(built["checks"], [])
+        warm = built["workout_data"]["workoutSegments"][0]["workoutSteps"][0]
+        self.assertEqual(warm["targetType"]["workoutTargetTypeKey"], "no.target")
+        self.assertTrue(built["notes"])
+
+    def test_non_running_refused(self):
+        with self.assertRaises(ValueError):
+            T.build_run_workout({"sport": "strength", "title": "Renfo"}, athlete=ATHLETE_KARVONEN)
+
+
+class TestCheckRunWorkout(unittest.TestCase):
+    def test_single_step_for_repeat_title_is_flagged(self):
+        # Ce qui partait sur la montre jusqu'au 23 novembre 2026.
+        old = {"workoutSegments": [{"workoutSteps": [T.dto_hr_step(1, description="6 km dont 6 x 30 s",
+                                                                    duration_s=2340, bounds_bpm=[122, 136])]}]}
+        errors = T.check_run_workout(old, STRIDES)
+        self.assertTrue(any("RepeatGroupDTO" in e for e in errors))
+
+    def test_timed_warmup_is_flagged(self):
+        built = T.build_run_workout(STRIDES, athlete=ATHLETE_KARVONEN, bins=FLAT_BINS)
+        warm = built["workout_data"]["workoutSegments"][0]["workoutSteps"][0]
+        warm["endCondition"] = {"conditionTypeId": 2, "conditionTypeKey": "time"}
+        warm["endConditionValue"] = 600
+        self.assertTrue(any("warmup" in e for e in T.check_run_workout(built["workout_data"], STRIDES)))
+
+
+class TestMainWorkoutCommand(unittest.TestCase):
+    def test_workout_from_week_file(self):
+        import io
+        from contextlib import redirect_stdout
+        with tempfile.TemporaryDirectory() as tmp:
+            ws = Path(tmp)
+            (ws / "planning").mkdir()
+            (ws / "planning" / "Runner_Profile.md").write_text(
+                "# Profil de l'athlète\n\n## Physiologie\n\n"
+                "- **FC max** : 190\n- **FC de repos de référence** : 50\n", encoding="utf-8")
+            (ws / "planning" / "Semaine.md").write_text(
+                '# Semaine\n\n```arc\n' + json.dumps({"arc": 1, "kind": "week", "week_start": "2026-11-23",
+                                                        "location": "Lille", "sessions": [STRIDES]})
+                + '\n```\n', encoding="utf-8")
+            out = io.StringIO()
+            with redirect_stdout(out):
+                code = T.main(["workout", "--session", "planning/Semaine.md#2026-11-23",
+                               "--workspace", str(ws), "--memory"])
+            self.assertEqual(code, 0)
+            result = json.loads(out.getvalue())
+            self.assertEqual(result["kind"], "repeats")
+            self.assertEqual(result["checks"], [])
+
+    def test_workout_refuses_strength(self):
+        import io
+        from contextlib import redirect_stderr
+        with tempfile.TemporaryDirectory() as tmp:
+            err = io.StringIO()
+            with redirect_stderr(err):
+                code = T.main(["workout", "--session", '{"date": "2026-11-25", "sport": "strength", '
+                               '"title": "Renfo A"}', "--workspace", tmp, "--memory"])
+            self.assertEqual(code, 2)
+            self.assertIn("running/trail", err.getvalue())
+
+
 if __name__ == "__main__":
     unittest.main()
