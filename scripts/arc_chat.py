@@ -997,7 +997,8 @@ class ChatService:
                 session_id=sid, workspace=self.workspace, config=config, emit=turn.emit,
                 decide=decide,
                 request_approval=request_approval,
-                cancelled=turn.cancelled, backend_state=state, language=self.language)
+                cancelled=turn.cancelled, backend_state=state, language=self.language,
+                shell_hint=self.policy.shell_hint)
             try:
                 self.backend.run_turn(ctx, text)
             finally:

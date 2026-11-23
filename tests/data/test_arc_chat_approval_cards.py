@@ -147,6 +147,20 @@ class TestGate(unittest.TestCase):
         self.assertIn("poursuis la tâche", message)
         self.assertEqual(T.gate(Ctx(), "web.search", {"query": "x"}), ("deny", T.REFUSAL_DENY))
 
+    def test_refus_shell_d_un_script_du_coach_donne_la_forme_acceptee(self):
+        class Ctx:
+            def decide(self, tool, inp):
+                return "deny"
+
+            def shell_hint(self, command):
+                return "python3 scripts/arc_index.py" if "arc_index.py" in command else ""
+
+        decision, message = T.gate(Ctx(), "shell", {"command": "cd /ws && python3 scripts/arc_index.py gear | head"})
+        self.assertEqual(decision, "deny")
+        self.assertIn("`python3 scripts/arc_index.py <options>`", message)
+        self.assertIn("relance-le une fois", message)
+        self.assertEqual(T.gate(Ctx(), "shell", {"command": "ls x"}), ("deny", T.REFUSAL_SHELL))
+
 
 class TestClaudeBackend(unittest.TestCase):
     """Bout en bout : le résultat d'une lecture SDK alimente la carte de l'écriture suivante."""
