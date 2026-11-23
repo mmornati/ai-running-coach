@@ -998,7 +998,8 @@ class ChatService:
                 decide=decide,
                 request_approval=request_approval,
                 cancelled=turn.cancelled, backend_state=state, language=self.language,
-                shell_hint=self.policy.shell_hint)
+                shell_hint=self.policy.shell_hint,
+                shell_refused_arg=self.policy.shell_refused_arg)
             try:
                 self.backend.run_turn(ctx, text)
             finally:

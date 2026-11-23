@@ -45,6 +45,11 @@ allowed_prefixes = [
   "python3 scripts/arc_update_check.py",
   "python3 skills/session-parts-analyzer/scripts/analyze_session_parts.py",
 ]
+# Sous-dossiers de `.arc/` lisibles par une option de LECTURE d'un script (`read_options`, ex.
+# `analyze_session_parts.py --fit .arc/fit/<id>.fit`) : les FIT bruts rangés là par l'assistant. Le
+# reste de `.arc/` (base, conversations, caches) reste fermé ; `.arc/chat/` l'est toujours, même listé ici.
+# Ni `fs.read` ni les sorties (`output_options`) ne sont concernés.
+arc_read_dirs = [".arc/fit"]
 # Scripts qui lisent du JSON sur l'entrée standard (le skill `log` : `echo '<json>' | python3
 # scripts/arc_log.py`). Seules deux formes sans expansion sont acceptées : chaîne entre
 # apostrophes passée par `|`, ou heredoc à délimiteur entre apostrophes (`<< 'EOF'`).

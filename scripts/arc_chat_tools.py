@@ -394,6 +394,17 @@ def shell_refusal(ctx: Any, command: str) -> str:
         prefix = ""
     if not prefix:
         return REFUSAL_SHELL
+    arg_fn = getattr(ctx, "shell_refused_arg", None)
+    try:
+        arg = arg_fn(command) if callable(arg_fn) else ""
+    except Exception:                                   # noqa: BLE001
+        arg = ""
+    if arg:
+        return (f"Refusé : ce script du coach est autorisé et la forme de la commande est bonne, mais l'argument "
+                f"`{arg}` ne l'est pas (option non déclarée pour ce script, ou chemin hors du workspace, secret, "
+                f"ou sous `.arc/` ailleurs que `.arc/fit/`). Relance une fois sans cet argument ou avec un chemin "
+                f"permis (un FIT se lit sous `activities/` ou `.arc/fit/`). Si ce nouvel appel est refusé aussi, "
+                f"dis à l'athlète quel argument bloque et poursuis avec les autres outils.")
     return (f"Refusé : forme de commande non acceptée. Ce script du coach est autorisé, relance-le une fois "
             f"sous cette forme exacte : `{prefix} <options>` (chemin relatif, sans cd ni chaînage, sans tube "
             f"ni redirection, seulement les options documentées du script). Si ce nouvel appel est refusé "

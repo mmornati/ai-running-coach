@@ -145,6 +145,8 @@ class TurnContext:
     language: str = "fr"
     # Forme acceptée d'un script du coach cité dans une commande shell refusée ("" sinon) : texte de refus.
     shell_hint: Optional[Callable[[str], str]] = None
+    # Argument refusé d'une commande dont la forme est bonne ("" sinon) : texte de refus, lui aussi.
+    shell_refused_arg: Optional[Callable[[str], str]] = None
 
 
 # Identifiants retirés de l'environnement des processus enfants en mode famille : liste fermée (noms connus)

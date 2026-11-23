@@ -94,7 +94,7 @@ DEFAULTS = {
                                    "python3 scripts/arc_workout_targets.py", "python3 scripts/arc_race_debrief.py",
                                    "python3 scripts/coach_doctor.py", "python3 scripts/arc_openwearables.py",
                                    "python3 skills/session-parts-analyzer/scripts/analyze_session_parts.py"],
-              "stdin_scripts": ["scripts/arc_log.py"]},
+              "stdin_scripts": ["scripts/arc_log.py"], "arc_read_dirs": [".arc/fit"]},
     "web": {"fetch_domains": ["wttr.in", "overpass-api.de", "nominatim.openstreetmap.org", *RACE_CALENDAR_DOMAINS],
             "search": "allow", "unlisted_fetch": "ask"},
     "mcp": {
@@ -247,6 +247,12 @@ class Policy:
         self.search_dirs = _as_list(merged["fs"].get("search_dirs")) + list(self.write_dirs)
         self.shell_prefixes = _as_list(merged["shell"].get("allowed_prefixes"))
         self.stdin_scripts = _as_list(merged["shell"].get("stdin_scripts"))
+        # Sous-dossiers de `.arc/` qu'un script peut LIRE par une option de lecture (`--fit .arc/fit/x.fit`).
+        # Jamais `.arc/chat/` (conversations, approbations), quoi que dise le fichier.
+        self.arc_read_dirs = [d for d in (str(v).strip("/").casefold()
+                                          for v in _as_list(merged["shell"].get("arc_read_dirs")))
+                              if d.startswith(".arc/") and ".." not in d.split("/")
+                              and not (d + "/").startswith(".arc/chat/")]
         self.shell_scripts = _script_rules(rules or {}) or {k: dict(v) for k, v in DEFAULT_SCRIPTS.items()}
         self.fetch_domains = [d.lower() for d in _as_list(merged["web"].get("fetch_domains"))]
         # Verdict hors liste : une valeur inconnue vaut refus.
@@ -572,6 +578,26 @@ class Policy:
         return bool(match) and not any(ch in SHELL_META for ch in match.group(1)) \
             and self._shell_workdir_ok(match.group(1))
 
+    def _arc_readable(self, rel: str) -> bool:
+        low = rel.casefold()
+        return any(low.startswith(d + "/") for d in self.arc_read_dirs)
+
+    def shell_refused_arg(self, command: str) -> str:
+        """Argument qui fait refuser une commande dont la FORME est bonne (script autorisé, sans
+        métacaractère), sinon "". Comme `shell_hint` : texte de refus seulement, aucune décision."""
+        command = self._normalize_command(command.strip())
+        if not command or any(ch in SHELL_META for ch in command) or COMMENT_RE.search(command):
+            return ""
+        try:
+            words = shlex.split(command)
+        except ValueError:
+            return ""
+        for prefix in self.shell_prefixes:
+            head = prefix.split()
+            if head and words[:len(head)] == head:
+                return self._scan_args(head[-1], words[len(head):])[1]
+        return ""
+
     def shell_hint(self, command: str) -> str:
         """Forme acceptée d'un script de la liste blanche cité dans une commande refusée, sinon "".
 
@@ -637,6 +663,10 @@ class Policy:
 
     def _shell_args(self, script: str, args: list) -> str:
         """Chaque option doit être connue du script ; chaque chemin reste dans le workspace."""
+        return self._scan_args(script, args)[0]
+
+    def _scan_args(self, script: str, args: list) -> tuple:
+        """(verdict, argument refusé) : l'argument ne sert qu'au texte de refus (`shell_refused_arg`)."""
         rules = self.shell_scripts.get(script, {})
         flags = set(rules.get("flags", [])) | set(COMMON_FLAGS)
         outputs = set(rules.get("output_options", []))
@@ -660,7 +690,7 @@ class Policy:
                 if name in flags and not eq:
                     continue
                 if name not in valued:
-                    return "deny"                           # option inconnue : refusée
+                    return "deny", name                     # option inconnue : refusée
                 kind = "write" if name in outputs else "read" if name in reads else "plain"
                 values: list = []
                 if eq:
@@ -674,23 +704,25 @@ class Policy:
                 elif i < len(args):
                     values, i = [args[i]], i + 1
                 else:
-                    return "deny"
+                    return "deny", name
                 # Jamais de valeur qui commence par « - » : argparse la lirait comme une autre option
                 # (ou l'avalerait) et la politique ne verrait plus ce qui s'exécute vraiment.
                 if any(v.startswith("-") for v in values):
-                    return "deny"
+                    return "deny", name
             else:
                 values, kind = [token], "plain"
-            if not all(self._shell_value(v, kind) for v in values):
-                return "deny"
-        return verdict
+            for v in values:
+                if not self._shell_value(v, kind):
+                    return "deny", v
+        return verdict, ""
 
     @staticmethod
     def _option_like(token: str) -> bool:
         return token.startswith("-") and token != "-"
 
     def _shell_value(self, value: str, kind: str) -> bool:
-        """Argument acceptable ? Les chemins restent dans le workspace, hors secrets et `.arc/`."""
+        """Argument acceptable ? Les chemins restent dans le workspace, hors secrets et `.arc/`
+        (sauf, pour une option de LECTURE, les sous-dossiers de `[shell].arc_read_dirs`)."""
         if value == "" and kind == "plain":
             return True
         if value.startswith("/"):
@@ -711,8 +743,10 @@ class Policy:
         if not pathlike:
             return True
         rel = resolve_workspace_path(self.workspace, value)
-        if rel is None or self._secret(rel) or self._in_arc(rel):
+        if rel is None or self._secret(rel):
             return False
+        if self._in_arc(rel):                               # cible réelle : un lien vers `.arc/chat/` reste refusé
+            return kind == "read" and self._arc_readable(rel)
         if kind == "write":                                 # sortie : uniquement les dossiers de données
             return "/" in rel and rel.split("/", 1)[0] in self.write_dirs
         return True
