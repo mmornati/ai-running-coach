@@ -51,6 +51,9 @@ STDIN_HEREDOC_RE = re.compile(
     r"^(?P<cmd>[^\n\r<]+?)[ \t]*<<[ \t]*'(?P<tag>[A-Za-z_][A-Za-z0-9_]*)'[ \t]*\n(?P<body>.*?)\n(?P=tag)[ \t]*\n?$",
     re.S)
 
+# Catalogue de skills vu par l'agent (OpenCode, Claude Code) : liens posés par install.sh vers `skills/`.
+SKILL_CATALOG_ALIASES = (".claude/skills", ".opencode/skills")
+
 # Un argument qui se termine ainsi est traité comme un chemin même sans « / ».
 PATH_SUFFIXES = (".md", ".json", ".jsonl", ".toml", ".db", ".sqlite", ".gpx", ".fit", ".csv", ".txt",
                  ".yml", ".yaml", ".env", ".token", ".pem", ".key", ".py", ".sh")
@@ -530,16 +533,56 @@ class Policy:
         - `… 2>&1` en fin de commande : fusionne la sortie d'erreur dans la sortie standard,
           aucune écriture de fichier ;
         - chemin absolu d'un script du workspace (`python3 /…/ws/scripts/arc_log.py`) : même
-          script que `python3 scripts/arc_log.py` (le chemin doit rester DANS le workspace).
+          script que `python3 scripts/arc_log.py` (le chemin doit rester DANS le workspace) ;
+        - `./scripts/…` et catalogue de skills vu par l'agent (`.claude/skills/…`, `.opencode/skills/…`,
+          liens posés par install.sh vers `skills/`) : ramenés à `scripts/…` / `skills/…`, seulement si
+          le fichier réel est LE MÊME que celui de la forme canonique.
         """
         command = re.sub(r"[ \t]+2>(?:&1|/dev/null)[ \t]*$", "", command)
-        match = re.match(r"^(python3[ \t]+)(/\S+)(.*)$", command, re.S)
-        if match:
+        match = re.match(r"^(python3[ \t]+)(\S+)(.*)$", command, re.S)
+        if not match:
+            return command
+        script = match.group(2)
+        if script.startswith("/"):
             root = str(self.workspace) + os.sep
-            script = os.path.normpath(match.group(2))
-            if script.startswith(root):
-                command = match.group(1) + script[len(root):] + match.group(3)
-        return command
+            normed = os.path.normpath(script)
+            if not normed.startswith(root):
+                return command
+            script = normed[len(root):]
+        while script.startswith("./"):
+            script = script[2:]
+        if ".." not in script.split("/"):
+            for alias in SKILL_CATALOG_ALIASES:
+                if script.startswith(alias + "/"):
+                    canonical = "skills/" + script[len(alias) + 1:]
+                    if self._same_file(script, canonical):
+                        script = canonical
+                    break
+        return match.group(1) + script + match.group(3)
+
+    def _same_file(self, a: str, b: str) -> bool:
+        try:
+            return (self.workspace / a).resolve() == (self.workspace / b).resolve()
+        except (OSError, ValueError):
+            return False
+
+    def _cd_workspace(self, part: str) -> bool:
+        """`cd <workspace>` (ou `cd .`) dans une chaîne : sans effet, le shell y est déjà."""
+        match = re.match(r"^cd[ \t]+([^\s'\"]+)$", part)
+        return bool(match) and not any(ch in SHELL_META for ch in match.group(1)) \
+            and self._shell_workdir_ok(match.group(1))
+
+    def shell_hint(self, command: str) -> str:
+        """Forme acceptée d'un script de la liste blanche cité dans une commande refusée, sinon "".
+
+        Sert uniquement au texte de refus renvoyé au modèle (aucune décision n'en dépend) : le modèle
+        relance alors le script sous la bonne forme au lieu d'abandonner (`cd … && python3 .claude/skills/…`).
+        """
+        for prefix in self.shell_prefixes:
+            script = prefix.split()[-1] if prefix.split() else ""
+            if script and re.search(r"(^|[\s/])" + re.escape(script.rsplit("/", 1)[-1]) + r"(\s|$)", command):
+                return prefix
+        return ""
 
     def _chain(self, command: str) -> Optional[list]:
         """`a && b`, `a; echo "---"; b` → [a, echo, b] ; None si ce n'est pas une chaîne simple.
@@ -562,7 +605,10 @@ class Policy:
         chain = self._chain(command)
         if chain is not None:
             # Chaque maillon doit passer seul ; le plus prudent l'emporte (deny > ask > allow).
-            verdicts = ["allow" if ECHO_LITERAL_RE.match(p) else self._shell(p) for p in chain]
+            if all(ECHO_LITERAL_RE.match(p) or self._cd_workspace(p) for p in chain):
+                return "deny"                               # rien du coach à exécuter
+            verdicts = ["allow" if ECHO_LITERAL_RE.match(p) or self._cd_workspace(p) else self._shell(p)
+                        for p in chain]
             return "deny" if "deny" in verdicts else "ask" if "ask" in verdicts else "allow"
         inner = self._stdin_command(command)
         if inner is not None:

@@ -143,6 +143,8 @@ class TurnContext:
     # État propre au backend, persisté avec la session (ex. id de session SDK / OpenCode).
     backend_state: dict = field(default_factory=dict)
     language: str = "fr"
+    # Forme acceptée d'un script du coach cité dans une commande shell refusée ("" sinon) : texte de refus.
+    shell_hint: Optional[Callable[[str], str]] = None
 
 
 # Identifiants retirés de l'environnement des processus enfants en mode famille : liste fermée (noms connus)

@@ -736,6 +736,67 @@ class ShellChainAndAbsoluteArgsTest(PolicyBase):
         self.assertEqual(self.sh(f"python3 scripts/arc_log.py --output {self.ws}/config/x.json"), "deny")
 
 
+class ShellSkillCatalogFormsTest(PolicyBase):
+    """Formes vues en production (2026-11-23) : `cd <workspace> && python3 .claude/skills/…`. Le catalogue
+    `.claude/skills` / `.opencode/skills` est un lien vers `skills/` (install.sh) : même fichier, même contrôle."""
+
+    SCRIPT = "skills/session-parts-analyzer/scripts/analyze_session_parts.py"
+
+    def setUp(self):
+        super().setUp()
+        (self.ws / "skills" / "session-parts-analyzer" / "scripts").mkdir(parents=True)
+        (self.ws / self.SCRIPT).write_text("")
+        for alias in (".claude", ".opencode"):
+            (self.ws / alias).mkdir()
+            (self.ws / alias / "skills").symlink_to(self.ws / "skills")
+
+    def sh(self, command):
+        return self.d("shell", {"command": command})
+
+    def test_catalogue_de_l_agent_ramene_a_skills(self):
+        for alias in (".claude/skills", ".opencode/skills", f"{self.ws}/.claude/skills", "./skills"):
+            script = self.SCRIPT.replace("skills", alias, 1)
+            self.assertEqual(self.sh(f"python3 {script} --activity-id 1 --part strides"), "allow", script)
+
+    def test_cd_workspace_en_tete_de_chaine(self):
+        self.assertEqual(self.sh(f"cd {self.ws} && python3 .claude/skills/session-parts-analyzer/scripts/"
+                                 "analyze_session_parts.py --activity-id 1 --part strides"), "allow")
+        self.assertEqual(self.sh("cd . && python3 scripts/arc_index.py gear 2>&1"), "allow")
+
+    def test_formes_toujours_refusees(self):
+        other = Path(tempfile.mkdtemp()).resolve()
+        self.addCleanup(lambda: __import__("shutil").rmtree(other, ignore_errors=True))
+        (self.ws / "evil").mkdir()
+        (self.ws / "evil" / "skills").symlink_to(other)
+        for command in (f"cd {other} && python3 scripts/arc_index.py gear",
+                        "cd .. && python3 scripts/arc_index.py gear",
+                        f"cd {self.ws}",
+                        f"cd {self.ws} && echo \"---\"",
+                        f"cd {self.ws} && ls planning",
+                        "cd ~ && python3 scripts/arc_index.py gear",
+                        "python3 .claude/skills/../../x/scripts/arc_log.py",
+                        "python3 evil/skills/session-parts-analyzer/scripts/analyze_session_parts.py",
+                        f"cd {self.ws} && python3 .claude/skills/session-parts-analyzer/scripts/"
+                        "analyze_session_parts.py --output /tmp/x.json"):
+            self.assertEqual(self.sh(command), "deny", command)
+
+    def test_catalogue_qui_pointe_ailleurs_refuse(self):
+        other = Path(tempfile.mkdtemp()).resolve()
+        self.addCleanup(lambda: __import__("shutil").rmtree(other, ignore_errors=True))
+        (self.ws / ".claude" / "skills").unlink()
+        (self.ws / ".claude" / "skills").symlink_to(other)
+        self.assertEqual(self.sh("python3 .claude/skills/session-parts-analyzer/scripts/analyze_session_parts.py"),
+                         "deny")
+
+    def test_indice_de_forme_pour_un_script_autorise(self):
+        refused = "cd /x && python3 .claude/skills/session-parts-analyzer/scripts/analyze_session_parts.py | head"
+        self.assertEqual(self.policy.shell_hint(refused), "python3 " + self.SCRIPT)
+        self.assertEqual(self.policy.shell_hint("python3 scripts/arc_index.py gear | head -5"),
+                         "python3 scripts/arc_index.py")
+        self.assertEqual(self.policy.shell_hint("ls medical | tail -5"), "")
+        self.assertEqual(self.policy.shell_hint("python3 scripts/not_arc_index.py"), "")
+
+
 class MultiFilePatchTest(PolicyBase):
     """Revue : un patch OpenCode peut toucher plusieurs fichiers — chacun doit passer."""
 

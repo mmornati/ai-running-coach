@@ -19,8 +19,9 @@ REFUSAL_DENY = ("Refusé : cette action n'est pas autorisée par la politique du
 # Refus d'une commande shell PAR LA POLITIQUE : le shell n'accepte que les scripts du coach, mais
 # lister, lire ou tester l'existence d'un fichier reste permis avec les outils fichiers. « Ne la
 # réessaie pas » seul faisait abandonner toute la tâche (un /log entier perdu sur un `ls`).
-REFUSAL_SHELL = ("Refusé : le shell n'accepte que les scripts du coach (python3 scripts/…, "
-                 "une commande par appel, sans redirection ni tube). Ne réessaie pas cette commande, "
+REFUSAL_SHELL = ("Refusé : le shell n'accepte que les scripts du coach (python3 scripts/… ou "
+                 "python3 skills/<skill>/scripts/…, chemin relatif, sans cd : le shell est déjà dans le "
+                 "workspace ; une commande par appel, sans redirection ni tube). Ne réessaie pas cette commande, "
                  "mais poursuis la tâche : pour lister, lire ou vérifier qu'un fichier existe, "
                  "utilise les outils fichiers (glob, read, list) ; pour écrire, l'outil d'écriture.")
 REFUSAL_PENDING ="La proposition attend la confirmation de l'athlète."
@@ -383,6 +384,22 @@ def parse_unified_diff(diff_text: str) -> list:
     return out
 
 
+def shell_refusal(ctx: Any, command: str) -> str:
+    """Refus shell ; si la commande vise un script du coach sous une forme refusée (`cd … &&`, tube,
+    autre chemin), le texte donne la forme acceptée et invite à relancer UNE fois sous cette forme."""
+    hint_fn = getattr(ctx, "shell_hint", None)
+    try:
+        prefix = hint_fn(command) if callable(hint_fn) else ""
+    except Exception:                                   # noqa: BLE001 — l'indice ne doit jamais casser le refus
+        prefix = ""
+    if not prefix:
+        return REFUSAL_SHELL
+    return (f"Refusé : forme de commande non acceptée. Ce script du coach est autorisé, relance-le une fois "
+            f"sous cette forme exacte : `{prefix} <options>` (chemin relatif, sans cd ni chaînage, sans tube "
+            f"ni redirection, seulement les options documentées du script). Si ce nouvel appel est refusé "
+            f"aussi, n'insiste pas et poursuis la tâche avec les autres outils.")
+
+
 def gate(ctx: Any, tool: str, tool_input: dict, diff: Any = None) -> tuple:
     """Politique puis approbation : renvoie (« allow » | « deny » | « pending », texte de refus).
 
@@ -393,7 +410,9 @@ def gate(ctx: Any, tool: str, tool_input: dict, diff: Any = None) -> tuple:
     if decision == "allow":
         return "allow", ""
     if decision != "ask":
-        return "deny", REFUSAL_SHELL if tool == "shell" else REFUSAL_DENY
+        if tool != "shell":
+            return "deny", REFUSAL_DENY
+        return "deny", shell_refusal(ctx, str((tool_input or {}).get("command") or ""))
     catalog = (getattr(ctx, "backend_state", None) or {}).get(CATALOG_KEY)
     result = ctx.request_approval(tool, tool_input, approval_summary(tool, tool_input, catalog),
                                   diff if diff is not None else approval_diff(tool, tool_input, catalog))
