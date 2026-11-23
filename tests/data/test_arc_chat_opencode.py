@@ -838,6 +838,53 @@ class TestSupervision(OpenCodeCase):
         self.assertEqual(self.spawned, [])
 
 
+class TestGarminTokenRotation(OpenCodeCase):
+    """La sync renouvelle les jetons Garmin : le garmin-mcp du serveur en cours garde les anciens (401)."""
+
+    def setUp(self):
+        super().setUp()
+        os.environ.pop("GARMINTOKENS", None)
+        self.tokens = self.ws / "garmin-tokens"
+        self.tokens.mkdir()
+        os.environ["GARMIN_TOKENS_DIR"] = str(self.tokens)
+        self._write_tokens("v1", 1_000_000_000)
+
+    def _write_tokens(self, content, mtime):
+        path = self.tokens / "garmin_tokens.json"
+        path.write_text(json.dumps({"di_token": content}), encoding="utf-8")
+        os.utime(path, (mtime, mtime))
+
+    def test_restarted_when_tokens_rewritten(self):
+        self.run_turn(fixture("opencode_text_only.json"))
+        first = self.backend._proc
+        self.run_turn(fixture("opencode_text_only.json"))
+        self.assertEqual(len(self.spawned), 1)          # jetons inchangés : serveur réutilisé
+        self._write_tokens("v2", 1_000_086_400)
+        self.run_turn(fixture("opencode_text_only.json"))
+        self.assertEqual(len(self.spawned), 2)
+        self.assertTrue(first.terminated)
+        self.run_turn(fixture("opencode_text_only.json"))
+        self.assertEqual(len(self.spawned), 2)          # nouvelle empreinte retenue au redémarrage
+
+    def test_not_restarted_while_another_conversation_runs(self):
+        self.run_turn(fixture("opencode_text_only.json"))
+        self._write_tokens("v2", 1_000_086_400)
+        self.fake.busy.add("ses_autre_conversation")
+        self.run_turn(fixture("opencode_text_only.json"))
+        self.assertEqual(len(self.spawned), 1)
+        self.fake.busy.discard("ses_autre_conversation")
+        self.run_turn(fixture("opencode_text_only.json"))
+        self.assertEqual(len(self.spawned), 2)
+
+    def test_missing_tokens_never_restart(self):
+        for f in self.tokens.iterdir():
+            f.unlink()
+        self.tokens.rmdir()
+        self.run_turn(fixture("opencode_text_only.json"))
+        self.run_turn(fixture("opencode_text_only.json"))
+        self.assertEqual(len(self.spawned), 1)
+
+
 class TestCheck(unittest.TestCase):
     def setUp(self):
         self._tmp = tempfile.TemporaryDirectory()
