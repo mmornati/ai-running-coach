@@ -769,6 +769,276 @@ def dto_pace_step(step_order: int, *, description: str, duration_s: float, speed
 
 
 # ---------------------------------------------------------------------------
+# Séance de course complète pour Garmin : échauffement / répétitions / retour au calme
+# ---------------------------------------------------------------------------
+#
+# Constaté le 23 novembre 2026 : les séances « Footing Z2 6 km + 6 × 30 s en côte
+# douce » arrivaient sur la montre en UNE étape de 39 min avec la cible FC Z2, les
+# répétitions seulement en description — la montre sonnait pendant chaque effort.
+# Les séances de côtes étaient structurées, mais avec un échauffement et un retour
+# au calme en temps fixe. `build_run_workout` construit le DTO entier, toujours de
+# la même façon :
+#
+# - toute séance dont le titre contient « N × durée » est structurée (même si les
+#   répétitions sont facultatives : sur la montre, Lap passe une étape) ;
+# - échauffement et retour au calme se terminent au bouton Lap (`lap.button`),
+#   cible FC d'endurance, et leur description donne le temps conseillé ;
+# - une répétition de moins de `SHORT_REP_MAX_S` n'a pas de cible FC (la FC n'a
+#   pas le temps de monter) : la consigne d'effort est dans la description ;
+# - la récupération d'une répétition courte en côte se termine au Lap (la
+#   redescente dépend de la côte) ; sinon elle est en temps.
+
+SHORT_REP_MAX_S = 60
+MIN_WARMUP_S = 600
+MAX_COOLDOWN_S = 600
+MIN_COOLDOWN_S = 300
+SHORT_RECOVERY_ESTIMATE_S = 90
+RUN_SPORTS = ("running", "trail")
+WORKOUT_NAME_MAX = 60
+
+_ZONE_RANGE_RE = re.compile(r"\bZ(?P<lo>[1-5])(?:\s*[-/à]\s*Z?(?P<hi>[1-5]))?\b", re.IGNORECASE)
+_RECOVERY_RE = re.compile(
+    r"(?P<dur>\d+(?:[.,]\d+)?\s*(?:min(?:ute)?s?\s*\d{0,2}|'|sec(?:onde)?s?|s|\"))\s*(?:de\s+)?"
+    r"(?:trot|r[ée]cup|marche)", re.IGNORECASE)
+_HILL_RE = re.compile(r"c[oô]tes?\b", re.IGNORECASE)
+_ZONE_TO_INTENSITY = {zone: name for name, zone in INTENSITY_TO_ZONE.items()}
+
+
+def parse_repeat_text(text: Optional[str]) -> Optional[dict]:
+    """Premier groupe « N × durée » d'un titre : `"Footing Z2 6 km + 6 × 30 s en côte douce"` ->
+    `{"reps": 6, "rep_duration_s": 30.0, "uphill": True, "recovery_s": None, "zones": None}`.
+
+    Durée seulement (`"6 × 400 m"` -> `None` : pas de répétition en temps reconnue). `zones` =
+    `(bas, haut)` si une zone « Z3 » / « Z3-Z4 » suit le groupe ; `recovery_s` si le texte donne
+    « 2 min de trot » / « 90 s récup ». Aucune pente requise, à la différence de
+    `parse_structure_text` (qui reste celui du D+ attendu)."""
+    if not text:
+        return None
+    for m in _REPS_RE.finditer(text):
+        reps = int(m.group("reps"))
+        after = text[m.end():]
+        duration_s = _parse_duration_s(after)
+        if duration_s is None or not 1 <= reps <= 50 or duration_s <= 0:
+            continue
+        zones = None
+        zm = _ZONE_RANGE_RE.search(after)
+        if zm:
+            lo = int(zm.group("lo"))
+            hi = int(zm.group("hi") or lo)
+            zones = (min(lo, hi), max(lo, hi))
+        recovery_s = None
+        rm = _RECOVERY_RE.search(after)
+        if rm:
+            recovery_s = _parse_duration_s(rm.group("dur"))
+        return {"reps": reps, "rep_duration_s": duration_s, "uphill": bool(_HILL_RE.search(text)),
+                "recovery_s": recovery_s, "zones": zones}
+    return None
+
+
+def hr_bounds_for_zones(zones: Tuple[int, int], athlete: dict, hr_zones_method: Optional[str] = None
+                        ) -> Optional[List[int]]:
+    """Plage FC `[bas de la zone basse, haut de la zone haute]` de l'athlète, `None` si une des deux
+    zones n'est pas calculable (jamais une borne inventée, même règle que `hr_target_for_intensity`)."""
+    low_t = hr_target_for_intensity(_ZONE_TO_INTENSITY[zones[0]], athlete, hr_zones_method)
+    high_t = hr_target_for_intensity(_ZONE_TO_INTENSITY[zones[1]], athlete, hr_zones_method)
+    if not low_t["bounds_bpm"] or not high_t["bounds_bpm"]:
+        return None
+    return [low_t["bounds_bpm"][0], high_t["bounds_bpm"][1]]
+
+
+def _fmt_duration(seconds: float) -> str:
+    seconds = int(round(seconds))
+    if seconds < 60:
+        return f"{seconds} s"
+    minutes, rest = divmod(seconds, 60)
+    return f"{minutes} min" if rest == 0 else f"{minutes} min {rest:02d}"
+
+
+def _fmt_km(meters: float) -> str:
+    return f"{meters / 1000:.1f}".replace(".", ",") + " km"
+
+
+def _fmt_bounds(bounds: Optional[Sequence[int]]) -> str:
+    return f" ({bounds[0]}-{bounds[1]} bpm)" if bounds else ""
+
+
+def _exec_step(order: int, type_id: int, *, description: str, end: str, value: Optional[float] = None,
+               bounds: Optional[Sequence[float]] = None) -> dict:
+    end_id = {key: cid for cid, key in _END_CONDITION_IDS.items()}[end]
+    step = {
+        "type": "ExecutableStepDTO", "stepOrder": order,
+        "stepType": {"stepTypeId": type_id, "stepTypeKey": _STEP_TYPE_IDS[type_id]},
+        "description": description,
+        "endCondition": {"conditionTypeId": end_id, "conditionTypeKey": end},
+    }
+    if end != "lap.button":
+        step["endConditionValue"] = round(value)
+    if bounds:
+        step["targetType"] = {"workoutTargetTypeId": 4, "workoutTargetTypeKey": "heart.rate.zone"}
+        step["targetValueOne"], step["targetValueTwo"] = round(bounds[0]), round(bounds[1])
+    else:
+        step["targetType"] = {"workoutTargetTypeId": 1, "workoutTargetTypeKey": "no.target"}
+    return step
+
+
+def easy_time_split(total_s: Optional[float], work_s: float) -> Tuple[float, float]:
+    """(échauffement, retour au calme) CONSEILLÉS (s) : le temps facile restant une fois le bloc de
+    répétitions retiré de la durée planifiée, un tiers au retour au calme (borné à
+    [`MIN_COOLDOWN_S`, `MAX_COOLDOWN_S`]), l'échauffement jamais sous `MIN_WARMUP_S`. Sans durée
+    planifiée : les minima. Ce sont des repères écrits dans la description, la fin est au Lap."""
+    if not total_s or total_s <= work_s:
+        return float(MIN_WARMUP_S), float(MIN_COOLDOWN_S)
+    remaining = total_s - work_s
+    cooldown = max(MIN_COOLDOWN_S, min(MAX_COOLDOWN_S, remaining / 3))
+    return max(float(MIN_WARMUP_S), remaining - cooldown), float(cooldown)
+
+
+def _workout_name(title: str) -> str:
+    name = re.sub(r"\s*\(.*$", "", title or "").strip() or "Séance"
+    if len(name) <= WORKOUT_NAME_MAX:
+        return name
+    cut = name[:WORKOUT_NAME_MAX - 1]
+    return (cut.rsplit(" ", 1)[0] if " " in cut else cut).rstrip(" +:,-") + "…"
+
+
+def _title_note(title: str) -> Optional[str]:
+    m = re.search(r"\((?P<note>[^()]+)\)", title or "")
+    return m.group("note").strip() if m else None
+
+
+def build_run_workout(session: dict, *, athlete: dict, bins: Sequence[dict] = (),
+                      hr_zones_method: Optional[str] = None) -> dict:
+    """`workout_data` Garmin complet d'une séance course/trail (voir le commentaire de section).
+
+    Rend `{"kind": "repeats"|"continuous", "workout_data", "repeats", "advised", "notes", "checks"}`.
+    `checks` = `check_run_workout` sur le résultat (vide attendu). Lève `ValueError` pour un sport
+    hors course/trail ou une séance continue sans durée ni distance planifiée."""
+    sport = session.get("sport")
+    if sport not in RUN_SPORTS:
+        raise ValueError(f"séance « {sport} » : seules les séances running/trail sont construites ici")
+    title = session.get("title") or ""
+    intensity = session.get("intensity")
+    notes: List[str] = []
+    easy = hr_target_for_intensity("endurance", athlete, hr_zones_method)
+    easy_bounds = easy["bounds_bpm"]
+    if not easy_bounds:
+        notes.append(f"pas de cible FC d'endurance ({easy['reason']}) : échauffement et retour au calme sans cible")
+    pace = flat_pace_target_for_intensity("endurance", bins)
+    easy_speed = ((pace["speed_low_ms"] + pace["speed_high_ms"]) / 2) if pace.get("speed_low_ms") else None
+    sport_type = {"sportTypeId": 1, "sportTypeKey": "running"}
+    note = _title_note(title)
+    repeats = parse_repeat_text(title)
+    total_s = session.get("planned_duration_s")
+
+    if repeats is None:
+        own = hr_target_for_intensity(intensity, athlete, hr_zones_method)
+        if total_s:
+            step = _exec_step(1, 3, description=title, end="time", value=total_s, bounds=own["bounds_bpm"])
+        elif session.get("planned_distance_m"):
+            step = _exec_step(1, 3, description=title, end="distance", value=session["planned_distance_m"],
+                              bounds=own["bounds_bpm"])
+        else:
+            raise ValueError("séance continue sans planned_duration_s ni planned_distance_m")
+        if not own["bounds_bpm"]:
+            notes.append(f"pas de cible FC ({own['reason']})")
+        description = (f"{title} — Z{own['zone']}{_fmt_bounds(own['bounds_bpm'])}" if own.get("zone") else title)
+        workout = {"workoutName": _workout_name(title), "description": description, "sportType": sport_type,
+                   "workoutSegments": [{"segmentOrder": 1, "sportType": sport_type, "workoutSteps": [step]}]}
+        return {"kind": "continuous", "workout_data": workout, "repeats": None, "advised": None,
+                "notes": notes, "checks": check_run_workout(workout, session)}
+
+    reps, rep_s = repeats["reps"], repeats["rep_duration_s"]
+    short = rep_s < SHORT_REP_MAX_S
+    recovery_on_lap = short and repeats["uphill"] and repeats["recovery_s"] is None
+    recovery_s = repeats["recovery_s"] or (SHORT_RECOVERY_ESTIMATE_S if short else max(60.0, rep_s))
+    warmup_s, cooldown_s = easy_time_split(total_s, reps * (rep_s + recovery_s))
+
+    rep_bounds = None
+    if not short:
+        if repeats["zones"]:
+            rep_bounds = hr_bounds_for_zones(repeats["zones"], athlete, hr_zones_method)
+        elif intensity in INTENSITY_TO_ZONE and INTENSITY_TO_ZONE[intensity] > 2:
+            rep_bounds = hr_target_for_intensity(intensity, athlete, hr_zones_method)["bounds_bpm"]
+        if rep_bounds is None:
+            notes.append("répétitions sans cible FC : zone non indiquée dans le titre ni par l'intensité")
+    if repeats["zones"]:
+        lo, hi = repeats["zones"]
+        effort_zone = f"Z{lo}" if lo == hi else f"Z{lo}-Z{hi}"
+    else:
+        effort_zone = "Z3 max" if short else ""
+    where = " en côte" if repeats["uphill"] else ""
+    if short:
+        effort = f"effort soutenu sans sprint{', ' + effort_zone if effort_zone else ''} (pas de cible FC : trop court)"
+    else:
+        effort = f"{effort_zone}{_fmt_bounds(rep_bounds)}".strip() or "effort selon le plan"
+    rep_desc = f"{_fmt_duration(rep_s)}{where} : {effort}"
+    if recovery_on_lap:
+        rec_desc = f"Récup : redescente en trot ou marche (≈ {_fmt_duration(recovery_s)}), Lap pour repartir"
+        recovery = _exec_step(4, 4, description=rec_desc, end="lap.button")
+    else:
+        rec_desc = f"Récup {_fmt_duration(recovery_s)} en trot"
+        recovery = _exec_step(4, 4, description=rec_desc, end="time", value=recovery_s)
+
+    def advised(seconds: float) -> str:
+        km = f", ≈ {_fmt_km(seconds * easy_speed)}" if easy_speed else ""
+        return f"≈ {_fmt_duration(seconds)}{km}"
+
+    warm_desc = f"Échauffement Z2{_fmt_bounds(easy_bounds)} {advised(warmup_s)} conseillé. Lap au départ des répétitions"
+    cool_desc = f"Retour au calme Z2{_fmt_bounds(easy_bounds)} {advised(cooldown_s)} conseillé. Lap pour terminer"
+    steps = [
+        _exec_step(1, 1, description=warm_desc, end="lap.button", bounds=easy_bounds),
+        {"type": "RepeatGroupDTO", "stepOrder": 2,
+         "stepType": {"stepTypeId": 6, "stepTypeKey": "repeat"},
+         "numberOfIterations": reps, "smartRepeat": False,
+         "endCondition": {"conditionTypeId": 7, "conditionTypeKey": "iterations"}, "endConditionValue": reps,
+         "workoutSteps": [_exec_step(3, 3, description=rep_desc, end="time", value=rep_s, bounds=rep_bounds),
+                          recovery]},
+        _exec_step(5, 2, description=cool_desc, end="lap.button", bounds=easy_bounds),
+    ]
+    lines = [f"Échauffement {advised(warmup_s)} · {reps} × {rep_desc}",
+             f"{rec_desc} · Retour au calme {advised(cooldown_s)}",
+             "Échauffement et retour au calme se terminent au bouton Lap."]
+    if note:
+        sentence = note[:1].upper() + note[1:]
+        if re.match(r"(seulement|uniquement)?\s*si\b", note, re.IGNORECASE):
+            sentence += " ; sinon, Lap pour passer les répétitions"   # répétitions facultatives
+        lines.append(sentence + ".")
+    workout = {"workoutName": _workout_name(title), "description": "\n".join(lines), "sportType": sport_type,
+               "workoutSegments": [{"segmentOrder": 1, "sportType": sport_type, "workoutSteps": steps}]}
+    return {"kind": "repeats", "workout_data": workout, "repeats": repeats,
+            "advised": {"warmup_s": warmup_s, "cooldown_s": cooldown_s, "recovery_s": recovery_s},
+            "notes": notes, "checks": check_run_workout(workout, session)}
+
+
+def _walk_steps(steps: Sequence[dict]):
+    for step in steps:
+        yield step
+        if step.get("type") == "RepeatGroupDTO":
+            yield from _walk_steps(step.get("workoutSteps") or [])
+
+
+def check_run_workout(workout: dict, session: dict) -> List[str]:
+    """Écarts d'un `workout_data` course aux règles de la section (liste vide = conforme) : séance
+    « N × durée » sans `RepeatGroupDTO`, échauffement/retour au calme pas au Lap, pas invalides."""
+    errors: List[str] = []
+    steps = [s for seg in workout.get("workoutSegments") or [] for s in seg.get("workoutSteps") or []]
+    flat = list(_walk_steps(steps))
+    if parse_repeat_text(session.get("title")) and not any(s.get("type") == "RepeatGroupDTO" for s in flat):
+        errors.append("titre avec répétitions « N × durée » mais aucun RepeatGroupDTO : la montre n'aura "
+                      "qu'une étape continue")
+    for step in flat:
+        if step.get("type") == "RepeatGroupDTO":
+            if not step.get("numberOfIterations"):
+                errors.append("RepeatGroupDTO sans numberOfIterations")
+            continue
+        errors.extend(validate_workout_step_dto(step))
+        key = (step.get("stepType") or {}).get("stepTypeKey")
+        if key in ("warmup", "cooldown") and (step.get("endCondition") or {}).get("conditionTypeKey") != "lap.button":
+            errors.append(f"{key} attendu au bouton Lap (lap.button), temps conseillé dans la description")
+    return errors
+
+
+# ---------------------------------------------------------------------------
 # CLI
 # ---------------------------------------------------------------------------
 
@@ -876,7 +1146,9 @@ def _load_session_arg(value: str, workspace: Path) -> Tuple[dict, Optional[dict]
 def build_arg_parser():
     import argparse
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    ap.add_argument("command", choices=("targets",))
+    ap.add_argument("command", choices=("targets", "workout"),
+                     help="targets : cibles personnelles ; workout : workout_data Garmin complet d'une séance "
+                          "course/trail (échauffement et retour au calme au Lap, répétitions structurées)")
     ap.add_argument("--session", required=True,
                      help="séance en JSON inline, ou chemin/Semaine.md#SÉLECTEUR "
                           "(AAAA-MM-JJ, AAAA-MM-JJ@index ou AAAA-MM-JJ:titre)")
@@ -1010,6 +1282,15 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                 "les autres CLI ignorent ce fichier pour cette semaine ; les cibles ci-dessous "
                 "restent calculées, mais corrigez la collision avant de pousser ce plan.",
                 file=sys.stderr)
+
+    if args.command == "workout":
+        try:
+            built = build_run_workout(session, athlete=athlete, bins=bins, hr_zones_method=conf.get("hr_zones"))
+        except ValueError as exc:
+            print(f"erreur : {exc}", file=sys.stderr)
+            return 2
+        print(json.dumps(built, ensure_ascii=False))
+        return 0
 
     # #169 : la CS n'est calculée que pour une intensité qui en a besoin (coût : lecture des échantillons).
     cs_fit = None

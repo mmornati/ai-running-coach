@@ -23,6 +23,22 @@
 - **Intervals.icu est secondaire** (uniquement si l'utilisateur le demande)
 - Les séances de renforcement doivent inclure le **détail complet** (boucles, exercices, séries, poids, repos)
 
+## Séances de course : `arc_workout_targets.py workout`
+
+Le `workout_data` d'une séance `running`/`trail` est construit par le script, jamais à la main :
+
+```bash
+python3 scripts/arc_workout_targets.py workout --session planning/Semaine.md#2026-11-23
+```
+
+- Tout titre avec « N × durée » est structuré : échauffement, N × (effort + récupération), retour au calme. Les
+  lignes droites et les côtes courtes aussi, même facultatives (Lap passe une étape sur la montre).
+- L'échauffement et le retour au calme se terminent au **bouton Lap**, cible FC Z2 ; leur description donne le temps
+  conseillé (et la distance si l'allure d'endurance est connue).
+- Une répétition de moins de 60 s n'a pas de cible FC (la consigne d'effort est dans la description) ; au-delà, la
+  zone écrite dans le titre (« Z3-Z4 ») ou l'intensité de la séance.
+- La récupération d'une côte courte se termine au Lap (redescente) ; sinon elle est en temps.
+
 ## Cibles personnelles (`scripts/arc_workout_targets.py`, #60)
 
 Avant de construire le `workout_data` d'une séance, l'agent `coach` calcule

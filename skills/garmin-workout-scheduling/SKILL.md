@@ -166,9 +166,37 @@ On a hot (> 25 °C) or 🔴 forecast day, add `--heat` to the same command (`pyt
 }
 ```
 
-### Interval session (warmup + repeats + cooldown)
+### Running / trail sessions — ALWAYS built by `arc_workout_targets.py workout`
 
-Use stepType 1/3/4/2 in order; distance steps use endCondition 3 with meters; repeats are plain consecutive steps (Garmin runs them in order, no group needed for simple ladders).
+Never hand-write the `workout_data` of a `running`/`trail` session. Build it with:
+
+```bash
+python3 scripts/arc_workout_targets.py workout --session planning/Semaine.md#2026-11-23
+```
+
+and push its `workout_data` UNCHANGED (`schedule_workouts` with `{calendar_date, workout_data}`). Its `checks` list
+must be empty; `notes` (a target dropped for missing zone data) are relayed to the athlete in one line. Exit code 2
+= not a running/trail session (strength and home trainer keep their own templates below).
+
+What the command encodes — these are the rules, do not undo them by editing the JSON:
+
+- **Every title with « N × durée » is structured** (`warmup` → `RepeatGroupDTO` N × [`interval` + `recovery`] →
+  `cooldown`), including strides and short hill reps (« Footing Z2 6 km + 6 × 30 s en côte douce ») and reps the
+  plan marks optional (« seulement si … »): on the watch, Lap skips a step. Until 23 Nov 2026 these went out as ONE
+  39-min Z2 step with the reps only in the description, so the watch alarmed during every rep.
+- **Warm-up and cool-down end on the Lap button** (`lap.button`, Z2 HR range of the athlete), never on a fixed time:
+  the athlete runs until the start of the hill or the flat section. Their description carries the ADVISED time (and
+  distance when the personal endurance pace is known), e.g. « Échauffement Z2 (122-136 bpm) ≈ 18 min, ≈ 3,0 km
+  conseillé. Lap au départ des répétitions ». The workout `description` sums up every part.
+- **Reps under 60 s have no HR target** (heart rate has no time to rise; effort cue in the description, « effort
+  soutenu sans sprint, Z3 max »). Reps of 60 s or more target the zone written after them in the title (« Z3-Z4 » →
+  low of Z3 to high of Z4) or, without one, the session intensity when it is above endurance.
+- **Recovery of short hill reps ends on Lap** (walk/jog back down, Lap to start the next one); otherwise it is timed
+  (title value such as « 2 min de trot », else the rep duration, at least 60 s), no target.
+- A continuous run (no « N × durée ») stays one timed step with the HR range of its intensity.
+
+The structured version of a session counts as a changed session for idempotency: delete the old `workout_id` before
+pushing it.
 
 ### Strength circuit WITH FULL DETAIL (TESTED — workout_id 1661524725)
 
@@ -228,9 +256,9 @@ Alternative helper: `create_strength_workout(name, exercises)` — simpler but e
    - **Exit 0 with `warn`/`info`:** push proceeds; mention the warning briefly.
    - **Exit 2:** invalid input — report it, do not push.
 3. Check `get_scheduled_workouts(start_date, end_date)` for the week — identify existing workout_ids per date and any stale entries (dedupe strategy per Idempotency section).
-4. For each session, run `scripts/arc_workout_targets.py targets` (see "Personal targets" above) then build `workout_data` with the schema above, using its `hr_target`/`pace_target`/`hill_repeats` for the step targets. Strength sessions come from the plan's circuit detail.
+4. For each `running`/`trail` session, run `scripts/arc_workout_targets.py workout` (see "Running / trail sessions" above) and use its `workout_data` as is; `targets` stays the source for heat adjustment, pace and D+ notes you relay. Strength sessions come from the plan's circuit detail; home trainer sessions use the HR target of `targets`.
 5. Push via `schedule_workouts` with one `{calendar_date, workout_data}` per NEW session (reuse `workout_id` for unchanged ones).
-6. VERIFY: `get_scheduled_workouts(start_date, end_date)` for the week → confirm each date, duration, name, and NO duplicates; `get_workout_by_id` for any structured detail (loops/reps/weight).
+6. VERIFY: `get_scheduled_workouts(start_date, end_date)` for the week → confirm each date, duration, name, and NO duplicates; `get_workout_by_id` for any structured detail (loops/reps/weight) — a running session whose title has « N × durée » must come back with its `RepeatGroupDTO` and Lap-ended warm-up/cool-down.
 7. Persist: note the pushed session (workout_id, date) in the week's `planning/` MD file.
 
 ## Home trainer route (MyWhoosh)
