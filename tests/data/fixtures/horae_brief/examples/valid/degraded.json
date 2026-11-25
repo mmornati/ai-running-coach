@@ -1,0 +1,9 @@
+{
+  "schema_version": 1,
+  "service": {"id": "training-coach", "name": "Training"},
+  "generated_at": "2026-11-10T07:00:00Z",
+  "valid_until": "2026-11-10T13:00:00Z",
+  "status": {"state": "degraded", "reason": "Watch sync is 2 days old; load figures are estimates."},
+  "headline": "Load looks moderate, but the data is stale.",
+  "alerts": [{"key": "sync.stale", "severity": "info", "title": "Watch not synced for 2 days"}]
+}

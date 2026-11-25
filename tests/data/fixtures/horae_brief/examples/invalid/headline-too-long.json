@@ -1,0 +1,14 @@
+{
+  "schema_version": 1,
+  "service": {
+    "id": "training-coach",
+    "name": "Training"
+  },
+  "generated_at": "2026-11-10T07:00:00+01:00",
+  "valid_until": "2026-11-10T19:00:00+01:00",
+  "status": {
+    "state": "ok"
+  },
+  "headline": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+  "tasks": []
+}

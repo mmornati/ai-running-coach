@@ -41,9 +41,10 @@ sensitive_paths:
   - "scripts/arc_llm_sync.py"
   - "scripts/arc_openwearables.py"
   - "scripts/setup-ntfy.sh"
-  # Chat, approbations, serveur, Telegram, mode famille
+  # Chat, approbations, serveur (dont le brief Horae à jeton, POST /mcp), Telegram, mode famille
   - "scripts/arc_chat*.py"
   - "scripts/arc_serve.py"
+  - "scripts/arc_brief.py"
   - "scripts/arc_family.py"
   - "scripts/arc_telegram.py"
   - "scripts/coach-*.sh"
@@ -108,7 +109,7 @@ rules:
 
   # Le périmètre de sécurité, quel que soit l'auteur : un humain.
   - name: safety-core
-    match: { paths: [".github/workflows/**", ".circleci/**", "/install.sh", "scripts/lib/**", "scripts/daily-sync.sh", "scripts/update-coach.sh", "scripts/arc_credentials.py", "scripts/arc_coros_*.py", "scripts/arc_llm*.py", "scripts/arc_chat*.py", "scripts/arc_serve.py", "scripts/arc_family.py", "scripts/arc_telegram.py", "/Dockerfile", "deploy/**", "macos/**"] }
+    match: { paths: [".github/workflows/**", ".circleci/**", "/install.sh", "scripts/lib/**", "scripts/daily-sync.sh", "scripts/update-coach.sh", "scripts/arc_credentials.py", "scripts/arc_coros_*.py", "scripts/arc_llm*.py", "scripts/arc_chat*.py", "scripts/arc_serve.py", "scripts/arc_brief.py", "scripts/arc_family.py", "scripts/arc_telegram.py", "/Dockerfile", "deploy/**", "macos/**"] }
     require: { humans: 1 }
 
   # Changement sensible écrit par un agent : deux relectures (le dépôt a trois personnes

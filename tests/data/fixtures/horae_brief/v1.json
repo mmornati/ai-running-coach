@@ -1,0 +1,311 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/horae-dev/plugin-mcp-brief/main/schemas/brief/v1.json",
+  "$defs": {
+    "Alert": {
+      "additionalProperties": false,
+      "description": "Something the user should know. Only `crit` is pushed; the rest ride the brief.",
+      "properties": {
+        "key": {
+          "description": "Stable per condition (not per occurrence). Horae dedupes on it.",
+          "pattern": "^[A-Za-z0-9._:-]{1,64}$",
+          "title": "Key",
+          "type": "string"
+        },
+        "severity": {
+          "enum": [
+            "info",
+            "warn",
+            "crit"
+          ],
+          "title": "Severity",
+          "type": "string"
+        },
+        "title": {
+          "maxLength": 120,
+          "minLength": 1,
+          "pattern": "^[^\\x00-\\x1f\\x7f-\\x9f\\u00ad\\u0600-\\u0605\\u061c\\u06dd\\u070f\\u0890\\u0891\\u08e2\\u180e\\u200b-\\u200f\\u2028-\\u202e\\u2060-\\u2064\\u2066-\\u206f\\ufeff\\ufff9-\\ufffb]+$",
+          "title": "Title",
+          "type": "string"
+        },
+        "body": {
+          "anyOf": [
+            {
+              "maxLength": 500,
+              "pattern": "^[^\\x00-\\x1f\\x7f-\\x9f\\u00ad\\u0600-\\u0605\\u061c\\u06dd\\u070f\\u0890\\u0891\\u08e2\\u180e\\u200b-\\u200f\\u2028-\\u202e\\u2060-\\u2064\\u2066-\\u206f\\ufeff\\ufff9-\\ufffb]+$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Body"
+        },
+        "link": {
+          "anyOf": [
+            {
+              "maxLength": 2048,
+              "minLength": 9,
+              "pattern": "^https://[A-Za-z0-9](?:[A-Za-z0-9.-]*[A-Za-z0-9])?(?::[0-9]{1,5})?(?:[/?#][\\x21-\\x5b\\x5d-\\x7e]*)?$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Link"
+        }
+      },
+      "required": [
+        "key",
+        "severity",
+        "title"
+      ],
+      "title": "Alert",
+      "type": "object"
+    },
+    "Link": {
+      "additionalProperties": false,
+      "description": "A place to read more.",
+      "properties": {
+        "label": {
+          "maxLength": 80,
+          "minLength": 1,
+          "pattern": "^[^\\x00-\\x1f\\x7f-\\x9f\\u00ad\\u0600-\\u0605\\u061c\\u06dd\\u070f\\u0890\\u0891\\u08e2\\u180e\\u200b-\\u200f\\u2028-\\u202e\\u2060-\\u2064\\u2066-\\u206f\\ufeff\\ufff9-\\ufffb]+$",
+          "title": "Label",
+          "type": "string"
+        },
+        "url": {
+          "maxLength": 2048,
+          "minLength": 9,
+          "pattern": "^https://[A-Za-z0-9](?:[A-Za-z0-9.-]*[A-Za-z0-9])?(?::[0-9]{1,5})?(?:[/?#][\\x21-\\x5b\\x5d-\\x7e]*)?$",
+          "title": "Url",
+          "type": "string"
+        }
+      },
+      "required": [
+        "label",
+        "url"
+      ],
+      "title": "Link",
+      "type": "object"
+    },
+    "Service": {
+      "additionalProperties": false,
+      "description": "Who produced this brief.",
+      "properties": {
+        "id": {
+          "description": "Stable lowercase slug. Namespaces every key and id below.",
+          "pattern": "^[a-z0-9][a-z0-9-]{0,31}$",
+          "title": "Id",
+          "type": "string"
+        },
+        "name": {
+          "description": "Section title.",
+          "maxLength": 60,
+          "minLength": 1,
+          "pattern": "^[^\\x00-\\x1f\\x7f-\\x9f\\u00ad\\u0600-\\u0605\\u061c\\u06dd\\u070f\\u0890\\u0891\\u08e2\\u180e\\u200b-\\u200f\\u2028-\\u202e\\u2060-\\u2064\\u2066-\\u206f\\ufeff\\ufff9-\\ufffb]+$",
+          "title": "Name",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "name"
+      ],
+      "title": "Service",
+      "type": "object"
+    },
+    "Status": {
+      "additionalProperties": false,
+      "description": "Can the service stand behind this brief?",
+      "if": {
+        "properties": {
+          "state": {
+            "enum": [
+              "degraded",
+              "error"
+            ]
+          }
+        },
+        "required": [
+          "state"
+        ]
+      },
+      "properties": {
+        "state": {
+          "enum": [
+            "ok",
+            "degraded",
+            "error"
+          ],
+          "title": "State",
+          "type": "string"
+        },
+        "reason": {
+          "anyOf": [
+            {
+              "maxLength": 200,
+              "pattern": "^[^\\x00-\\x1f\\x7f-\\x9f\\u00ad\\u0600-\\u0605\\u061c\\u06dd\\u070f\\u0890\\u0891\\u08e2\\u180e\\u200b-\\u200f\\u2028-\\u202e\\u2060-\\u2064\\u2066-\\u206f\\ufeff\\ufff9-\\ufffb]+$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Why the state is not `ok`. Required unless the state is `ok`.",
+          "title": "Reason"
+        }
+      },
+      "required": [
+        "state"
+      ],
+      "then": {
+        "properties": {
+          "reason": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "reason"
+        ]
+      },
+      "title": "Status",
+      "type": "object"
+    },
+    "Task": {
+      "additionalProperties": false,
+      "description": "Something the user should do.",
+      "properties": {
+        "id": {
+          "description": "Stable per task. Horae derives the task fingerprint and block id.",
+          "pattern": "^[A-Za-z0-9._:-]{1,64}$",
+          "title": "Id",
+          "type": "string"
+        },
+        "title": {
+          "maxLength": 200,
+          "minLength": 1,
+          "pattern": "^[^\\x00-\\x1f\\x7f-\\x9f\\u00ad\\u0600-\\u0605\\u061c\\u06dd\\u070f\\u0890\\u0891\\u08e2\\u180e\\u200b-\\u200f\\u2028-\\u202e\\u2060-\\u2064\\u2066-\\u206f\\ufeff\\ufff9-\\ufffb]+$",
+          "title": "Title",
+          "type": "string"
+        },
+        "due": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Due date, `YYYY-MM-DD`.",
+          "format": "date",
+          "title": "Due"
+        },
+        "link": {
+          "anyOf": [
+            {
+              "maxLength": 2048,
+              "minLength": 9,
+              "pattern": "^https://[A-Za-z0-9](?:[A-Za-z0-9.-]*[A-Za-z0-9])?(?::[0-9]{1,5})?(?:[/?#][\\x21-\\x5b\\x5d-\\x7e]*)?$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Link"
+        }
+      },
+      "required": [
+        "id",
+        "title"
+      ],
+      "title": "Task",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "description": "What a service returns from its `brief()` tool (contract v1).",
+  "properties": {
+    "schema_version": {
+      "const": 1,
+      "description": "Major version of this contract.",
+      "title": "Schema Version",
+      "type": "integer"
+    },
+    "service": {
+      "$ref": "#/$defs/Service"
+    },
+    "generated_at": {
+      "description": "RFC 3339, with an offset.",
+      "format": "date-time",
+      "maxLength": 32,
+      "minLength": 20,
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\\.[0-9]{1,6})?(Z|[+-][0-9]{2}:[0-9]{2})$",
+      "title": "Generated At",
+      "type": "string"
+    },
+    "valid_until": {
+      "description": "After this instant the brief is stale and is not trusted.",
+      "format": "date-time",
+      "maxLength": 32,
+      "minLength": 20,
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\\.[0-9]{1,6})?(Z|[+-][0-9]{2}:[0-9]{2})$",
+      "title": "Valid Until",
+      "type": "string"
+    },
+    "status": {
+      "$ref": "#/$defs/Status"
+    },
+    "headline": {
+      "description": "One-line summary: the morning-note section's first line.",
+      "maxLength": 200,
+      "minLength": 1,
+      "pattern": "^[^\\x00-\\x1f\\x7f-\\x9f\\u00ad\\u0600-\\u0605\\u061c\\u06dd\\u070f\\u0890\\u0891\\u08e2\\u180e\\u200b-\\u200f\\u2028-\\u202e\\u2060-\\u2064\\u2066-\\u206f\\ufeff\\ufff9-\\ufffb]+$",
+      "title": "Headline",
+      "type": "string"
+    },
+    "alerts": {
+      "items": {
+        "$ref": "#/$defs/Alert"
+      },
+      "maxItems": 10,
+      "title": "Alerts",
+      "type": "array"
+    },
+    "tasks": {
+      "items": {
+        "$ref": "#/$defs/Task"
+      },
+      "maxItems": 10,
+      "title": "Tasks",
+      "type": "array"
+    },
+    "links": {
+      "items": {
+        "$ref": "#/$defs/Link"
+      },
+      "maxItems": 5,
+      "title": "Links",
+      "type": "array"
+    }
+  },
+  "required": [
+    "schema_version",
+    "service",
+    "generated_at",
+    "valid_until",
+    "status",
+    "headline"
+  ],
+  "title": "Horae brief v1",
+  "type": "object"
+}

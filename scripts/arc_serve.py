@@ -68,6 +68,7 @@ from urllib.parse import parse_qs, quote, urlparse, urlsplit
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import arc_block_timeline as BT  # noqa: E402
+import arc_brief as AB  # noqa: E402
 import arc_chat_upload as UP  # noqa: E402
 import arc_family as FM  # noqa: E402
 import arc_guardrails as G  # noqa: E402
@@ -1709,6 +1710,71 @@ def api_injury_risk(store: Store, q: dict) -> dict:
     return G.evaluate_injury_risk(context, gconf)
 
 
+def brief_facts(store: Store) -> dict:
+    """Faits AGRÉGÉS du brief Horae (`arc_brief.build_brief`) : ce que lisent déjà les vues
+    Aujourd'hui, Semaine, Santé, Matériel et Synchro, réduit à des champs structurés.
+
+    Rien de brut (ni trace, ni échantillon, ni texte libre : titre de séance, motif du verdict,
+    notes) : la séance du jour n'est décrite que par sport, intensité, durée, distance et D+."""
+    today = _today(store)
+    settings = store.meta("settings") or {}
+    morning_check = settings.get("morning_check", "full")
+    sessions = store.rows("SELECT sport, intensity, planned_duration_s, planned_distance_m, planned_elevation_m, status "
+                          "FROM planned_session WHERE date = ? AND shadowed = 0 ORDER BY rowid", (today.isoformat(),))
+    health_today = None
+    if morning_check != "off":
+        series = api_health(store, {"days": ["1"]}).get("series") or []
+        point = series[-1] if series else {}
+        if point.get("date") == today.isoformat() and "morning_check" in point:
+            health_today = {
+                "verdict": point.get("verdict"), "readiness_score": point.get("readiness_score"),
+                "hrv_personal_status": point.get("hrv_personal_status"), "rhr_delta": point.get("rhr_delta"),
+                "advice_actions": sorted({a.get("action") for a in point.get("session_advice") or []
+                                          if isinstance(a, dict) and isinstance(a.get("action"), str)}),
+            }
+    yesterday = today - timedelta(days=1)
+    recent = store.rows("SELECT date, sport, rpe FROM activity WHERE date >= ? AND date <= ?",
+                        (yesterday.isoformat(), today.isoformat()))
+    by_day: dict = {}
+    for act in recent:
+        if act["sport"] in AB.NO_FEEDBACK_SPORTS:
+            continue
+        by_day.setdefault(act["date"], []).append(act["rpe"] is not None)
+    feedback_missing = sorted(day for day, rated in by_day.items() if not any(rated))
+    next_monday = _monday(today) + timedelta(days=7)
+    next_week = store.one("SELECT COUNT(*) AS n FROM planned_session WHERE date >= ? AND date <= ? AND shadowed = 0",
+                          (next_monday.isoformat(), (next_monday + timedelta(days=6)).isoformat()))
+    race = None
+    candidates = store.rows("SELECT name, race_date FROM objective WHERE race_date >= ? "
+                            "UNION ALL SELECT race_name AS name, race_date FROM race_plan WHERE race_date >= ? "
+                            "ORDER BY race_date LIMIT 1", (today.isoformat(), today.isoformat()))
+    if candidates and candidates[0]["race_date"]:
+        race_date = candidates[0]["race_date"]
+        has_plan = store.one("SELECT COUNT(*) AS n FROM race_plan WHERE race_date = ?", (race_date,))
+        race = {"name": candidates[0]["name"], "date": race_date, "has_plan": bool((has_plan or {}).get("n"))}
+    shoes = [{k: s.get(k) for k in ("gear_id", "name", "distance_m", "threshold_m", "alert", "near_threshold",
+                                    "retired", "retire_forecast_date")}
+             for s in store.gear_mileage(today).get("shoes", []) if not s.get("retired")]
+    sync = None
+    try:
+        status = api_sync_status(store)
+    except Exception:                             # noqa: BLE001 — journaux illisibles : pas d'état de sync
+        status = None
+    if status:
+        runs = status.get("runs") or []
+        ok_starts = [r["start"] for r in runs if r.get("rc") == 0 and r.get("start")]
+        starts = [r["start"] for r in runs if r.get("start")]
+        sync = {"verdict": status.get("verdict"), "mode": (status.get("settings") or {}).get("mode"),
+                "last_ok_run_at": max(ok_starts) if ok_starts else None,
+                "oldest_run_at": min(starts) if starts else None,
+                "last_check_at": (status.get("watch") or {}).get("last_check")}
+    return {
+        "today": today.isoformat(), "language": settings.get("language", "fr"), "morning_check": morning_check,
+        "sessions_today": sessions, "health_today": health_today, "feedback_missing": feedback_missing,
+        "next_week_planned": bool((next_week or {}).get("n")), "race": race, "shoes": shoes, "sync": sync,
+    }
+
+
 ROUTES = {
     "/api/summary": api_summary, "/api/assumptions": api_assumptions, "/api/form": api_form, "/api/load": api_load,
     "/api/health": api_health, "/api/week": api_week, "/api/activities": api_activities,
@@ -1790,6 +1856,10 @@ CHAT_UPLOAD_MIN_RATE = 50 * 1024            # débit minimal toléré (octets/s)
 CHAT_UPLOAD_MIN_DEADLINE_S = 30.0           # plancher de l'échéance globale
 CHAT_DRAIN_MAX_BYTES = 64 * 1024 * 1024     # octets jetés au plus après un refus (413) du proxy
 CHAT_ATTACHMENT_PATH = re.compile(r"^/api/chat/sessions/[^/]+/attachments$")
+# Brief Horae (scripts/arc_brief.py) : point d'entrée MCP, désactivé sans jeton.
+MCP_PATH = "/mcp"
+MCP_READ_TIMEOUT_S = 10.0       # lecture du corps d'un POST /mcp
+MCP_READY_TIMEOUT_S = 8.0       # attente du premier index (le client Horae abandonne à 10 s par défaut)
 
 
 def chat_upload_max(config: dict) -> int:
@@ -1859,6 +1929,8 @@ class Handler(BaseHTTPRequestHandler):
     chat_upload_max: int = CHAT_UPLOAD_DEFAULT_MAX   # posé par serve() : plafond d'une pièce jointe relayée
     tile_src: str = ""                # posé par serve() : « ␣https://hôte » des tuiles de carte, ou vide
     family: Optional[FamilyStores] = None   # posé par serve() en mode famille (#127) ; None = mono-athlète
+    brief_token: Optional[str] = None       # posé par serve() : jeton du brief Horae ; None = /mcp n'existe pas
+    brief_base_url: Optional[str] = None    # posé par serve() : URL publique des liens du brief
 
     def log_message(self, fmt, *args):         # silencieux : c'est un outil local
         pass
@@ -1938,6 +2010,9 @@ class Handler(BaseHTTPRequestHandler):
             self._json(HTTPStatus.FORBIDDEN, {"error": "hôte non autorisé"})
             return
         url = urlparse(self.path)
+        if url.path == MCP_PATH:                # brief Horae : POST seulement (405), ou 404 s'il est désactivé
+            self._mcp()
+            return
         if url.path == "/healthz":              # sonde du conteneur : ne réindexe pas
             self._json(HTTPStatus.OK, {"status": "ok"})
             return
@@ -1968,7 +2043,10 @@ class Handler(BaseHTTPRequestHandler):
         else:
             self._static(url.path)
 
-    def do_POST(self):          # lecture seule (sauf le tuyau vers le service de chat)
+    def do_POST(self):          # lecture seule (sauf le tuyau vers le service de chat et le brief Horae)
+        if urlparse(self.path).path == MCP_PATH:
+            self._mcp()
+            return
         if self.path.startswith(CHAT_PREFIX) and self.chat_port:
             if not self._host_ok():
                 self._json(HTTPStatus.FORBIDDEN, {"error": "hôte non autorisé"})
@@ -1980,6 +2058,106 @@ class Handler(BaseHTTPRequestHandler):
         self._json(HTTPStatus.METHOD_NOT_ALLOWED, {"error": "lecture seule"})
 
     do_PUT = do_DELETE = do_PATCH = do_POST
+
+    # ------------------------------------------------------------------
+    # Brief Horae : MCP « streamable HTTP » sur POST /mcp (scripts/arc_brief.py, docs/dashboard/horae.md)
+    # ------------------------------------------------------------------
+
+    def _mcp_send(self, status: int, body: Optional[bytes], extra: Tuple[Tuple[str, str], ...] = ()) -> None:
+        """Réponse du point d'entrée MCP : JSON jamais compressé (Horae refuse un corps compressé), jamais en cache."""
+        body = body or b""
+        self.send_response(status)
+        if body:
+            self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(body)))
+        self.send_header("Cache-Control", "no-store")
+        self.send_header("X-Content-Type-Options", "nosniff")
+        self.send_header("Referrer-Policy", "no-referrer")
+        for name, value in extra:
+            self.send_header(name, value)
+        self.end_headers()
+        if body and self.command != "HEAD":
+            self.wfile.write(body)
+
+    def _mcp_refuse(self, status: int, message: str, extra: Tuple[Tuple[str, str], ...] = ()) -> None:
+        """Refus AVANT lecture du corps : réponse, puis corps jeté (borné) et connexion fermée."""
+        try:
+            length = int(self.headers.get("Content-Length") or 0)
+        except ValueError:
+            length = 0
+        self.close_connection = True
+        self._mcp_send(status, json.dumps({"error": message}).encode("utf-8"), extra)
+        if length > 0 and self.command not in ("GET", "HEAD"):
+            self._drain_after_refusal(min(length, AB.MCP_BODY_MAX))
+
+    def _mcp_origin_ok(self) -> bool:
+        """Un navigateur envoie `Origin` : seule l'origine publique du tableau de bord est admise (le client
+        MCP de Horae n'en envoie pas). Défense contre le DNS rebinding, en plus du contrôle de Host."""
+        origin = (self.headers.get("Origin") or "").strip().lower()
+        if not origin:
+            return True
+        host = urlsplit(origin).netloc
+        return origin.startswith(("https://", "http://")) and host in self.allowed_hosts
+
+    def _mcp(self) -> None:
+        """`POST /mcp` : JSON-RPC du brief Horae. Rien n'est journalisé (ni jeton, ni corps) ; rien n'est écrit."""
+        if self.brief_token is None or self.family is not None:
+            self._mcp_refuse(HTTPStatus.NOT_FOUND, "route inconnue")   # désactivé : la route n'existe pas
+            return
+        if not self._host_ok():
+            self._mcp_refuse(HTTPStatus.FORBIDDEN, "host not allowed")
+            return
+        if not AB.token_ok(self.headers.get("Authorization"), self.brief_token):
+            self._mcp_refuse(HTTPStatus.UNAUTHORIZED, "unauthorized", (("WWW-Authenticate", 'Bearer realm="mcp"'),))
+            return
+        if self.command != "POST":
+            self._mcp_refuse(HTTPStatus.METHOD_NOT_ALLOWED, "method not allowed", (("Allow", "POST"),))
+            return
+        if not self._mcp_origin_ok():
+            self._mcp_refuse(HTTPStatus.FORBIDDEN, "origin not allowed")
+            return
+        if self.headers.get("Transfer-Encoding"):
+            self._mcp_refuse(HTTPStatus.LENGTH_REQUIRED, "content-length required")
+            return
+        try:
+            length = int(self.headers.get("Content-Length") or "")
+        except ValueError:
+            length = -1
+        if length < 0:
+            self._mcp_refuse(HTTPStatus.LENGTH_REQUIRED, "content-length required")
+            return
+        if length > AB.MCP_BODY_MAX:
+            self._mcp_refuse(HTTPStatus.REQUEST_ENTITY_TOO_LARGE, "request too large")
+            return
+        ctype = (self.headers.get("Content-Type") or "").split(";")[0].strip().lower()
+        if ctype != "application/json":
+            self._mcp_refuse(HTTPStatus.UNSUPPORTED_MEDIA_TYPE, "application/json expected")
+            return
+        try:
+            self.connection.settimeout(MCP_READ_TIMEOUT_S)
+            body = self.rfile.read(length)
+        except OSError:
+            self.close_connection = True
+            return
+        if len(body) != length:
+            self.close_connection = True
+            return
+        status, out = AB.handle_body(body, self._brief_document, V.cached_engine_version() or "")
+        self._mcp_send(status, out)
+
+    def _brief_document(self) -> dict:
+        now = datetime.now().astimezone()
+        if self.store.background:
+            if not self.store.wait_ready(MCP_READY_TIMEOUT_S):
+                return AB.error_brief(now, "fr")
+        else:
+            self.store.refresh()
+        language = (self.store.meta("settings") or {}).get("language", "fr")
+        try:
+            facts = brief_facts(self.store)
+        except Exception:                        # noqa: BLE001 — aucun détail interne dans le brief
+            return AB.error_brief(now, language)
+        return AB.build_brief(facts, now, self.brief_base_url)
 
     def _drain_after_refusal(self, length: int) -> None:
         """Jette (borné en octets et en temps) le corps non lu d'une requête refusée ici, après avoir répondu."""
@@ -2211,9 +2389,31 @@ def check_exposure(listen: str, extra_hosts) -> None:
             "Déclarez le nom public (ARC_DASHBOARD_ALLOWED_HOSTS), derrière un proxy authentifié.")
 
 
+def brief_settings(extra_hosts, family: bool, env=None) -> Tuple[Optional[str], Optional[str]]:
+    """(jeton, URL des liens) du brief Horae. Jeton absent : `/mcp` n'existe pas. Mode famille : désactivé
+    (un brief par athlète demanderait un jeton par membre). URL des liens : `HORAE_BRIEF_BASE_URL`, sinon
+    `https://<premier nom public déclaré>/`, sinon aucun lien."""
+    env = os.environ if env is None else env
+    token = AB.load_token(env)
+    if token is None:
+        return None, None
+    if family:
+        print("avertissement : brief Horae (/mcp) non disponible en mode famille : point d'entrée désactivé.",
+              file=sys.stderr)
+        return None, None
+    base = (env.get(AB.BASE_URL_ENV) or "").strip()
+    if not base:
+        names = [h.strip().lower() for h in extra_hosts if h.strip()]
+        base = f"https://{names[0]}/" if names else ""
+    return token, AB.link_base(base)
+
+
 def serve(workspace: Optional[Path], port: int, db=None, memory=False, today=None,
           listen: str = LOOPBACK, extra_hosts=(), family: Optional["FM.Registry"] = None) -> None:
     check_exposure(listen, extra_hosts)
+    Handler.brief_token, Handler.brief_base_url = brief_settings(extra_hosts, family is not None)
+    if Handler.brief_token:
+        print("brief Horae : POST /mcp activé (jeton porteur chargé).", file=sys.stderr, flush=True)
     if family is not None:
         family.require_trusted_proxies()
         # Un `Store` par membre, ouvert à la demande (FamilyStores) : rien n'est indexé au démarrage.

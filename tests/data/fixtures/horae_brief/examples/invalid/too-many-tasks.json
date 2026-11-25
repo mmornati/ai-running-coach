@@ -1,0 +1,59 @@
+{
+  "schema_version": 1,
+  "service": {
+    "id": "training-coach",
+    "name": "Training"
+  },
+  "generated_at": "2026-11-10T07:00:00+01:00",
+  "valid_until": "2026-11-10T19:00:00+01:00",
+  "status": {
+    "state": "ok"
+  },
+  "headline": "Rest day. Easy 30 minute walk is enough.",
+  "tasks": [
+    {
+      "id": "t0",
+      "title": "t"
+    },
+    {
+      "id": "t1",
+      "title": "t"
+    },
+    {
+      "id": "t2",
+      "title": "t"
+    },
+    {
+      "id": "t3",
+      "title": "t"
+    },
+    {
+      "id": "t4",
+      "title": "t"
+    },
+    {
+      "id": "t5",
+      "title": "t"
+    },
+    {
+      "id": "t6",
+      "title": "t"
+    },
+    {
+      "id": "t7",
+      "title": "t"
+    },
+    {
+      "id": "t8",
+      "title": "t"
+    },
+    {
+      "id": "t9",
+      "title": "t"
+    },
+    {
+      "id": "t10",
+      "title": "t"
+    }
+  ]
+}

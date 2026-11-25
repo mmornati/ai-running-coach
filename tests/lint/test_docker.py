@@ -105,6 +105,39 @@ class TestCompose(unittest.TestCase):
         self.assertEqual(proc.returncode, 0, "deploy/dashboard/.env n'est pas ignoré par git")
 
 
+class TestBriefRouter(unittest.TestCase):
+    """`compose.brief.yaml` : seul POST /mcp échappe au SSO, avec un jeton en secret, jamais dans les labels."""
+
+    def setUp(self):
+        self.text = (DEPLOY / "compose.brief.yaml").read_text(encoding="utf-8")
+        self.labels = [line.strip().strip('-').strip().strip('"') for line in self.text.splitlines()
+                       if "traefik." in line and not line.lstrip().startswith("#")]
+
+    def label(self, suffix: str) -> str:
+        found = [l.split("=", 1)[1] for l in self.labels if l.startswith(f"traefik.http.routers.arc-dashboard-mcp.{suffix}=")]
+        self.assertEqual(len(found), 1, suffix)
+        return found[0]
+
+    def test_exact_path_post_only(self):
+        self.assertEqual(self.label("rule"), "Host(`${ARC_DASHBOARD_HOST}`) && Path(`/mcp`) && Method(`POST`)")
+
+    def test_no_auth_middleware_but_rate_limit_and_priority(self):
+        self.assertEqual(self.label("middlewares"), "arc-dashboard-mcp-ratelimit")
+        self.assertNotIn("TRAEFIK_AUTH_MIDDLEWARE", self.text)
+        self.assertGreater(int(self.label("priority")), 0)
+        self.assertEqual(self.label("service"), "arc-dashboard")
+        self.assertIn("traefik.http.middlewares.arc-dashboard-mcp-ratelimit.ratelimit.average=", self.text)
+
+    def test_only_one_router_without_sso(self):
+        """Le complément n'ajoute qu'un routeur, sans toucher au routeur principal (SSO obligatoire)."""
+        routers = {l.split(".")[3] for l in self.labels if l.startswith("traefik.http.routers.")}
+        self.assertEqual(routers, {"arc-dashboard-mcp"})
+
+    def test_token_from_secret_file(self):
+        self.assertIn("HORAE_BRIEF_TOKEN_FILE: /run/secrets/horae_brief_token", self.text)
+        self.assertRegex(self.text, r"file: \"\$\{HORAE_BRIEF_TOKEN_FILE_HOST:\?")
+        self.assertNotRegex(self.text, r"HORAE_BRIEF_TOKEN\s*[:=]")
+
 def _step_run_block(text: str, step_name: str) -> str:
     """Le bloc `run: |` (désindenté) de l'étape `- name: <step_name>`."""
     match = re.search(rf"- name: {re.escape(step_name)}\n(?:.*\n)*?(?P<indent> +)run: \|\n", text)
