@@ -17,6 +17,8 @@ name: Claude Review
 #
 # Prérequis :
 #   - secret ANTHROPIC_API_KEY (clé de la Claude Console, facturée sur ses crédits API)
+#   - facultatif : variable CLAUDE_MODEL (Settings > Secrets and variables > Actions > Variables),
+#     ex. claude-sonnet-5-5 ; absente = modèle par défaut de Claude Code. Partagée avec claude.yml.
 #   - Settings > Actions > General > « Allow GitHub Actions to create and approve
 #     pull requests » coché, sinon l'étape d'approbation échoue (la revue reste postée).
 
@@ -76,6 +78,7 @@ jobs:
             6. Verdict : « approve » seulement s'il ne reste aucun problème bloquant (les remarques mineures sont
                permises), sinon « changes ». Résume en 1 à 3 phrases.
           claude_args: |
+            ${{ vars.CLAUDE_MODEL && format('--model {0}', vars.CLAUDE_MODEL) || '' }}
             --max-turns 40
             --allowedTools "Read,Grep,Glob,Bash(gh pr diff:*),Bash(gh pr view:*),Bash(gh pr comment:*),Bash(git diff:*),Bash(git log:*),mcp__github_inline_comment__create_inline_comment"
             --json-schema '{"type":"object","properties":{"verdict":{"type":"string","enum":["approve","changes"]},"summary":{"type":"string"}},"required":["verdict","summary"]}'
