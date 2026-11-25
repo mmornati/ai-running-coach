@@ -1,0 +1,31 @@
+{
+  "schema_version": 1,
+  "service": {"id": "finance-coach", "name": "Finance"},
+  "generated_at": "2026-11-10T06:30:00Z",
+  "valid_until": "2026-11-10T18:30:00Z",
+  "status": {"state": "ok", "reason": null},
+  "headline": "Spending is 8% under budget this month; one bill is due Friday.",
+  "alerts": [
+    {
+      "key": "budget.groceries.80pct",
+      "severity": "warn",
+      "title": "Groceries at 82% of the monthly budget",
+      "body": "20 days in, 12 left."
+    },
+    {
+      "key": "balance.checking.low",
+      "severity": "crit",
+      "title": "Checking balance below the safety floor",
+      "link": "https://finance.example.test/accounts/checking"
+    }
+  ],
+  "tasks": [
+    {
+      "id": "bill.electricity.2026-11",
+      "title": "Pay the electricity bill",
+      "due": "2026-11-14",
+      "link": "https://finance.example.test/bills/electricity"
+    }
+  ],
+  "links": [{"label": "Monthly overview", "url": "https://finance.example.test/overview"}]
+}

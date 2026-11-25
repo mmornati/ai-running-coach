@@ -98,6 +98,7 @@ nav:
       - Machine coach & mode headless: dashboard/headless.md
       - Derrière un reverse proxy (Docker): dashboard/docker.md
       - Le chat avec le coach: dashboard/chat.md
+      - Le brief Horae: dashboard/horae.md
   - Dépense énergétique modèle: energie.md
   - Allure ajustée à la pente (GAP): gap.md
   - Vitesse critique et courbe allure-durée: vitesse-critique.md

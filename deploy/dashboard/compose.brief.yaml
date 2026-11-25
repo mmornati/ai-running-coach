@@ -1,0 +1,31 @@
+# Complément : brief Horae (MCP `brief()`) sur https://<ARC_DASHBOARD_HOST>/mcp.
+# Activé en ajoutant ce fichier à COMPOSE_FILE dans .env (voir .env.example).
+# Documentation : docs/dashboard/horae.md.
+#
+# Horae appelle POST /mcp avec `Authorization: Bearer <jeton>`, sans navigateur ni cookie SSO :
+# ce chemin exact, en POST seulement, passe par un routeur SANS le middleware d'authentification,
+# limité en débit (même schéma que arc-chat-approve dans compose.chat.yaml). C'est le jeton qui
+# remplace le SSO : le serveur le compare en temps constant, répond 401 sans lui et 404 si aucun
+# jeton n'est configuré. Tout autre chemin (et /mcp en GET) reste derrière le SSO.
+#
+# Le jeton est un secret compose lu dans un fichier de l'hôte (propriétaire ARC_UID, mode 600),
+# jamais dans .env ni dans les labels. Le conteneur reste en lecture seule.
+services:
+  dashboard:
+    environment:
+      HORAE_BRIEF_TOKEN_FILE: /run/secrets/horae_brief_token
+    secrets:
+      - horae_brief_token
+    labels:
+      - "traefik.http.routers.arc-dashboard-mcp.rule=Host(`${ARC_DASHBOARD_HOST}`) && Path(`/mcp`) && Method(`POST`)"
+      - "traefik.http.routers.arc-dashboard-mcp.entrypoints=${TRAEFIK_ENTRYPOINT:-websecure}"
+      - "traefik.http.routers.arc-dashboard-mcp.priority=300"
+      - "traefik.http.routers.arc-dashboard-mcp.middlewares=arc-dashboard-mcp-ratelimit"
+      - "traefik.http.routers.arc-dashboard-mcp.service=arc-dashboard"
+      - "traefik.http.middlewares.arc-dashboard-mcp-ratelimit.ratelimit.average=30"
+      - "traefik.http.middlewares.arc-dashboard-mcp-ratelimit.ratelimit.period=1m"
+      - "traefik.http.middlewares.arc-dashboard-mcp-ratelimit.ratelimit.burst=10"
+
+secrets:
+  horae_brief_token:
+    file: "${HORAE_BRIEF_TOKEN_FILE_HOST:?HORAE_BRIEF_TOKEN_FILE_HOST manquant dans .env (fichier du jeton du brief Horae)}"

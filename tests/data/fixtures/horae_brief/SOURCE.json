@@ -1,0 +1,10 @@
+{
+  "description": "Copie du contrat Horae brief v1 (schéma et exemples), utilisée par tests/data/test_arc_brief.py. Ne pas modifier à la main : recopier depuis la source au commit indiqué.",
+  "repository": "https://github.com/horae-dev/plugin-mcp-brief",
+  "commit": "81d2dc2011e1b694f5d38706574c2258627fb69a",
+  "files": {
+    "v1.json": "https://github.com/horae-dev/plugin-mcp-brief/blob/81d2dc2011e1b694f5d38706574c2258627fb69a/schemas/brief/v1.json",
+    "examples/": "https://github.com/horae-dev/plugin-mcp-brief/tree/81d2dc2011e1b694f5d38706574c2258627fb69a/schemas/brief/examples"
+  },
+  "license": "Apache-2.0"
+}

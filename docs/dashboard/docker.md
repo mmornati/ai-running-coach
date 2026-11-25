@@ -246,6 +246,13 @@ Chaque image porte la révision construite (`org.opencontainers.image.revision`)
 que celle comparée par `scripts/update-docker.sh --check`, ainsi qu'une attestation de
 provenance et un SBOM.
 
+## Brief Horae
+
+`compose.brief.yaml` (à ajouter à `COMPOSE_FILE`) expose l'outil MCP `brief` sur `POST /mcp` pour la
+note du matin de [Horae](https://github.com/horae-dev/horae) : un routeur Traefik sans SSO sur ce seul
+chemin, protégé par un jeton porteur lu dans un secret (`HORAE_BRIEF_TOKEN_FILE_HOST`). Voir
+[Le brief Horae](horae.md).
+
 ## Mode famille
 
 Un seul conteneur de tableau de bord (et un seul de chat) peut servir **plusieurs athlètes**, chacun
@@ -269,9 +276,9 @@ refusent de démarrer. Redémarrez les deux conteneurs après chaque ajout de me
 | Rien n'est écrit dans le conteneur | `read_only: true`, seul `/tmp` est un tmpfs |
 | Pas de privilèges | Utilisateur non root (`ARC_UID`), `cap_drop: ALL`, `no-new-privileges` |
 | Pas d'accès direct | Aucun port publié : seul Traefik, sur son réseau, l'atteint |
-| Pas d'accès sans connexion | Middleware d'authentification obligatoire, compose refuse de démarrer sans |
+| Pas d'accès sans connexion | Middleware d'authentification obligatoire, compose refuse de démarrer sans (seule exception, opt-in : `POST /mcp` du [brief Horae](horae.md), protégé par un jeton porteur) |
 | Pas de *DNS rebinding* | Seul `ARC_DASHBOARD_HOST` est accepté ; le serveur refuse de démarrer s'il n'est pas déclaré |
-| Lecture seule côté HTTP | `POST`, `PUT`, `DELETE`, `PATCH` → 405 |
+| Lecture seule côté HTTP | `POST`, `PUT`, `DELETE`, `PATCH` → 405 (le `POST /mcp` du brief Horae ne fait que lire) |
 | Contenu verrouillé | En-tête `Content-Security-Policy` strict, émis par le serveur ; seul l'hôte de `[dashboard].map_tiles` (tuiles de carte) y est ajouté aux images |
 
 !!! note "En-têtes de sécurité ajoutés par le proxy"
