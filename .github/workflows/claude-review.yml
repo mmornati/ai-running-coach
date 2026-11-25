@@ -16,7 +16,7 @@ name: Claude Review
 # après avoir lu le contenu brut de la PR. Une PR de fork n'est jamais approuvée ici.
 #
 # Prérequis :
-#   - secret CLAUDE_CODE_OAUTH_TOKEN (déjà utilisé par claude.yml)
+#   - secret ANTHROPIC_API_KEY (clé de la Claude Console, facturée sur ses crédits API)
 #   - Settings > Actions > General > « Allow GitHub Actions to create and approve
 #     pull requests » coché, sinon l'étape d'approbation échoue (la revue reste postée).
 
@@ -58,7 +58,7 @@ jobs:
         id: claude
         uses: anthropics/claude-code-action@v1
         with:
-          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
           prompt: |
             Tu fais la revue de la pull request #${{ github.event.pull_request.number }} du dépôt ${{ github.repository }}.
 

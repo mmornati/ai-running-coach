@@ -31,7 +31,7 @@ jobs:
       # `@claude` can be tagged on a fork PR, whose body and files are untrusted
       # and end up in the prompt. Strip Anthropic/GitHub credentials from the
       # environment of every subprocess Claude spawns, so an injected instruction
-      # has a harder time reading CLAUDE_CODE_OAUTH_TOKEN. Reduces the risk, does
+      # has a harder time reading ANTHROPIC_API_KEY. Reduces the risk, does
       # not remove it: read the raw PR before tagging Claude on outside work.
       CLAUDE_CODE_SUBPROCESS_ENV_SCRUB: "1"
     steps:
@@ -54,7 +54,7 @@ jobs:
         id: claude
         uses: anthropics/claude-code-action@v1
         with:
-          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
 
           # This is an optional setting that allows Claude to read CI results on PRs
           additional_permissions: |
